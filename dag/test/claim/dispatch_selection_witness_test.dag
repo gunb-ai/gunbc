@@ -2,29 +2,29 @@ module test.claim.dispatch_selection_witness
 
 
 fn fixture_multibucket_codex_standing_inventory(
-  instance: HostDashboardInstance,
-) -> ProviderInventory {
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
+) -> gunbc.dispatch_selection.ProviderInventory {
   match dashboard_instance_provider_executable(instance: instance) {
-    Absent => ProviderInventory { offers: [] }
+    Absent => gunbc.dispatch_selection.ProviderInventory { offers: [] }
     Present { value: executable } =>
-      ProviderInventory {
+      gunbc.dispatch_selection.ProviderInventory {
         offers: [
           fixture_codex_offer_with_standing(
             instance: instance,
             executable: executable,
             standing: provider_standing_from_fixture_bundle(
-              provider: ProviderInstance {
+              provider: extdeps.llm.cli_lifecycle.ProviderInstance {
                 kind: CodexCliProvider,
-                host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
-                executable: "codex" as NonEmptyStr,
-                observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
-                state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+                host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+                executable: "codex" as std.types.NonEmptyStr,
+                observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+                state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
                 credential_storage_method: ProviderInstanceFieldUnobserved {
-                  reason: "fixture" as NonEmptyStr,
+                  reason: "fixture" as std.types.NonEmptyStr,
                 },
-                service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+                service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
               },
-              bundle: ProviderStandingBundle {
+              bundle: gunbc.provider_standing.ProviderStandingBundle {
                 installation: InstallationReady,
                 authentication: AuthenticationAuthenticated,
                 entitlement: EntitlementObservedAvailable,
@@ -144,7 +144,7 @@ test fn witness_srv1_inventory_includes_codex() -> Bool {
     Absent => false
     Present { value: executable } =>
       inventory_includes_provider_kind(
-        inventory: ProviderInventory {
+        inventory: gunbc.dispatch_selection.ProviderInventory {
           offers: [
             fixture_codex_offer_with_standing(
               instance: srv1_live_dashboard_instance(),
@@ -164,21 +164,21 @@ test fn witness_srv1_inventory_includes_claude() -> Bool {
       instance: srv1_live_dashboard_instance(),
       codex_standing: provider_standing_inventory_unobserved(),
       claude_standing: provider_standing_from_fixture_bundle(
-        provider: ProviderInstance {
+        provider: extdeps.llm.cli_lifecycle.ProviderInstance {
           kind: ClaudeCliProvider,
-          host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as NonEmptyStr },
-          executable: "claude" as NonEmptyStr,
+          host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as std.types.NonEmptyStr },
+          executable: "claude" as std.types.NonEmptyStr,
           observed_version: ProviderInstanceFieldUnobserved {
-            reason: "fixture claude inventory row" as NonEmptyStr,
+            reason: "fixture claude inventory row" as std.types.NonEmptyStr,
           },
           state_directory: ProviderInstanceFieldUnobserved {
-            reason: "fixture claude inventory row" as NonEmptyStr,
+            reason: "fixture claude inventory row" as std.types.NonEmptyStr,
           },
           credential_storage_method: ProviderInstanceFieldUnobserved {
-            reason: "fixture claude inventory row" as NonEmptyStr,
+            reason: "fixture claude inventory row" as std.types.NonEmptyStr,
           },
           service_identity: ProviderInstanceFieldUnobserved {
-            reason: "fixture claude inventory row" as NonEmptyStr,
+            reason: "fixture claude inventory row" as std.types.NonEmptyStr,
           },
         },
         bundle: fixture_standing_bundle_authenticated_available(),
@@ -303,7 +303,7 @@ test fn witness_probe_bridge_ineligible_standing_refuses_selection() -> Bool {
     Absent => false
     Present { value: executable } =>
       match resolve_dispatch_selection(
-        inventory: ProviderInventory {
+        inventory: gunbc.dispatch_selection.ProviderInventory {
           offers: [
             fixture_codex_offer_with_standing(
               instance: instance,
@@ -316,7 +316,7 @@ test fn witness_probe_bridge_ineligible_standing_refuses_selection() -> Bool {
                   process_fingerprint: fixture_codex_process_fingerprint_standing(),
                 ).instance,
                 bundle: provider_standing_bundle_from_codex_dashboard_probes(
-                  observation: CodexProviderDashboardProbeObservation {
+                  observation: gunbc.provider_standing_probe_bridge.CodexProviderDashboardProbeObservation {
                     state_root: CodexStateRootPresent,
                     runtime: ProviderDashboardExecProbeReported {
                       succeeded: true,
@@ -347,21 +347,21 @@ test fn witness_probe_bridge_ineligible_standing_refuses_selection() -> Bool {
 
 test fn witness_srv1_claude_selection_resolves_with_fixture_standing() -> Bool {
   let instance = srv1_live_dashboard_instance()
-  let claude_provider = ProviderInstance {
+  let claude_provider = extdeps.llm.cli_lifecycle.ProviderInstance {
     kind: ClaudeCliProvider,
-    host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as NonEmptyStr },
-    executable: "claude" as NonEmptyStr,
+    host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as std.types.NonEmptyStr },
+    executable: "claude" as std.types.NonEmptyStr,
     observed_version: ProviderInstanceFieldUnobserved {
-      reason: "fixture claude inventory row" as NonEmptyStr,
+      reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
     state_directory: ProviderInstanceFieldUnobserved {
-      reason: "fixture claude inventory row" as NonEmptyStr,
+      reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
     credential_storage_method: ProviderInstanceFieldUnobserved {
-      reason: "fixture claude inventory row" as NonEmptyStr,
+      reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
     service_identity: ProviderInstanceFieldUnobserved {
-      reason: "fixture claude inventory row" as NonEmptyStr,
+      reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
   }
   match resolve_dispatch_selection(
@@ -460,22 +460,22 @@ test fn witness_select_claude_automatic_honors_request_credential_and_model() ->
   let request_credential = ClaudeStateRootRef {
     root: "/managed/claude-enrollment" as std.types.FilePath,
   }
-  let request_model = "claude-managed-model" as NonEmptyStr
-  let claude_provider = ProviderInstance {
+  let request_model = "claude-managed-model" as std.types.NonEmptyStr
+  let claude_provider = extdeps.llm.cli_lifecycle.ProviderInstance {
     kind: ClaudeCliProvider,
-    host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as NonEmptyStr },
-    executable: "claude" as NonEmptyStr,
+    host: ProviderInstanceFieldUnobserved { reason: "fixture claude inventory row" as std.types.NonEmptyStr },
+    executable: "claude" as std.types.NonEmptyStr,
     observed_version: ProviderInstanceFieldUnobserved {
-      reason: "fixture claude inventory row" as NonEmptyStr,
+      reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
     state_directory: ProviderInstanceFieldUnobserved {
-      reason: "fixture claude inventory row" as NonEmptyStr,
+      reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
     credential_storage_method: ProviderInstanceFieldUnobserved {
-      reason: "fixture claude inventory row" as NonEmptyStr,
+      reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
     service_identity: ProviderInstanceFieldUnobserved {
-      reason: "fixture claude inventory row" as NonEmptyStr,
+      reason: "fixture claude inventory row" as std.types.NonEmptyStr,
     },
   }
   match resolve_dispatch_selection(

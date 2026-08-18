@@ -2,8 +2,8 @@ module extdeps.crypto.hash
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "csrc.nist.gov/pubs/fips/180-4/upd1/final"
   }
@@ -13,26 +13,26 @@ type HashAlgorithm =
   | Sha256
   | Sha512
 
-data sha256_authority_note: NonEmptyStr = "SHA-256 per FIPS 180-4 (Secure Hash Standard, anchor above); the hex form is the lowercase hexadecimal rendering of the 32-byte output as sha256sum(1) prints it. A digest value carries its algorithm explicitly (Digest.algorithm) so an artifact pin is never an anonymous hex string fused into a field name."
+data sha256_authority_note: std.types.NonEmptyStr = "SHA-256 per FIPS 180-4 (Secure Hash Standard, anchor above); the hex form is the lowercase hexadecimal rendering of the 32-byte output as sha256sum(1) prints it. A digest value carries its algorithm explicitly (Digest.algorithm) so an artifact pin is never an anonymous hex string fused into a field name."
 
-data sha512_authority_note: NonEmptyStr = "SHA-512 per FIPS 180-4 (Secure Hash Standard, same NIST anchor); the hex form is the lowercase hexadecimal rendering of the 64-byte output as sha512sum(1) prints it. npm package-lock SRI and OCI digests consume std.content_hash.Sha512Digest; this module cites the algorithm itself so npm's use of SHA-512 does not ground the cryptographic primitive."
+data sha512_authority_note: std.types.NonEmptyStr = "SHA-512 per FIPS 180-4 (Secure Hash Standard, same NIST anchor); the hex form is the lowercase hexadecimal rendering of the 64-byte output as sha512sum(1) prints it. npm package-lock SRI and OCI digests consume std.content_hash.Sha512Digest; this module cites the algorithm itself so npm's use of SHA-512 does not ground the cryptographic primitive."
 
 type Digest {
   algorithm: HashAlgorithm
   hex: std.types.NonEmptyStr
 }
 
-fn sha256_digest(hex: NonEmptyStr) -> Digest {
+fn sha256_digest(hex: std.types.NonEmptyStr) -> Digest {
   Digest { algorithm: Sha256, hex: hex }
 }
 
-fn sha512_digest(hex: NonEmptyStr) -> Digest {
+fn sha512_digest(hex: std.types.NonEmptyStr) -> Digest {
   Digest { algorithm: Sha512, hex: hex }
 }
 
-data digest_shell_verify_line_legacy_note: NonEmptyStr = "LEGACY SHA-256-only shell-string verifier for the existing sccache consumer. Not a package-delivery realization. SHA-512 intentionally has no production shell arm here — gunbc.package_delivery uses PackageArchiveDigestObservation. dissolve-on: sccache migrates off this helper and the function deletes."
+data digest_shell_verify_line_legacy_note: std.types.NonEmptyStr = "LEGACY SHA-256-only shell-string verifier for the existing sccache consumer. Not a package-delivery realization. SHA-512 intentionally has no production shell arm here — gunbc.package_delivery uses PackageArchiveDigestObservation. dissolve-on: sccache migrates off this helper and the function deletes."
 
-fn digest_shell_verify_line(digest: Digest, file_path: NonEmptyStr) -> String {
+fn digest_shell_verify_line(digest: Digest, file_path: std.types.NonEmptyStr) -> String {
   match digest.algorithm {
     Sha256 => join(["echo '", digest.hex as String, "  ", file_path as String, "' | sha256sum -c -"], "")
     Sha512 =>
@@ -42,7 +42,7 @@ fn digest_shell_verify_line(digest: Digest, file_path: NonEmptyStr) -> String {
 
 data sha256_digest_content_hash_convergence_note: String = "THE BRIDGE from extdeps.crypto.hash.Digest to std.content_hash.ContentHash for artifact pins — NOT a merge with std.content_hash's fnv1a64 structural fingerprint (dag/std/content_hash.dag, dag/extdeps/provisioning/ubuntu_install_media_fetch.dag install_media_fetch_hash_convergence_note). Digest is a cited cryptographic SHA-256 authority value; ContentHash is the family-grounded coproduct carrier (Sha256Hash arm for this bridge). sha256_digest_content_hash validates hex via sha256_hex_digest then mints through as_content_hash_cryptographic — construction-walled, refuses invalid hex. Wire serialization (sha256:<hex>) is std.content_hash.serialize_content_hash, not a second rendering rule here."
 
-fn sha256_digest_content_hash(digest: Digest) -> ContentHash? {
+fn sha256_digest_content_hash(digest: Digest) -> std.content_hash.ContentHash? {
   match digest.algorithm {
     Sha256 =>
       match sha256_hex_digest(hex: digest.hex as String) {
@@ -53,7 +53,7 @@ fn sha256_digest_content_hash(digest: Digest) -> ContentHash? {
   }
 }
 
-fn sha512_digest_content_hash(digest: Digest) -> ContentHash? {
+fn sha512_digest_content_hash(digest: Digest) -> std.content_hash.ContentHash? {
   match digest.algorithm {
     Sha512 =>
       match sha512_hex_digest(hex: digest.hex as String) {

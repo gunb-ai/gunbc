@@ -1,22 +1,22 @@
 module v2.test.lens_determinism.reach_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn det_atom(id: Symbol) -> Node {
-  Node {
+fn det_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn det_positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+fn det_positional(target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Positional, target: target }
 }
 
-fn det_call(callee: Symbol, arg: Node) -> Node {
-  Node {
+fn det_call(callee: v2.std.node.Symbol, arg: Node) -> Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Transform },
     children: [det_positional(target: det_atom(id: callee)), det_positional(target: arg)],
     occurrence_id: SyntheticOccurrence
@@ -27,7 +27,7 @@ fn map_keys_call_fixture() -> Node {
   det_call(callee: ^map_keys, arg: det_atom(id: ^emit_export_map))
 }
 
-fn unrelated_same_named_call_fixture(callee: Symbol) -> Node {
+fn unrelated_same_named_call_fixture(callee: v2.std.node.Symbol) -> Node {
   det_call(callee: callee, arg: det_atom(id: ^unrelated_non_map_domain))
 }
 
@@ -47,21 +47,21 @@ fn nested_map_keys_fixture() -> Node {
   det_call(callee: ^emit_concat, arg: map_keys_call_fixture())
 }
 
-fn witness_violates(w: Witness<DeterminismFact>) -> Bool {
+fn witness_violates(w: Witness<v2.std.determinism.DeterminismFact>) -> Bool {
   match w {
     Violates { diagnostic: _ } => true
     Holds { value: _ } => false
   }
 }
 
-fn witness_holds(w: Witness<DeterminismFact>) -> Bool {
+fn witness_holds(w: Witness<v2.std.determinism.DeterminismFact>) -> Bool {
   match w {
     Holds { value: _ } => true
     Violates { diagnostic: _ } => false
   }
 }
 
-fn axis_is_nondeterministic(a: Determinism) -> Bool {
+fn axis_is_nondeterministic(a: std.determinism.Determinism) -> Bool {
   match a {
     NonDeterministic { source: _ } => true
     Deterministic => false

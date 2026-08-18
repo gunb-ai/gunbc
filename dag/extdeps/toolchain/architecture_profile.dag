@@ -11,19 +11,19 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 type Endianness = LittleEndian | BigEndian
 
 type ArchitectureProfile {
-  architecture: Architecture
+  architecture: extdeps.toolchain.types.Architecture
 
-  word_width: BitWidth
-  pointer_width: BitWidth
+  word_width: std.measure.BitWidth
+  pointer_width: std.measure.BitWidth
   endianness: Endianness
-  page_size: ByteSize
-  default_alignment: ByteSize
-  register_file: List<ArchitecturalRegister>
-  calling_convention: CallingConvention
-  stack_layout: StackLayout
+  page_size: std.measure.ByteSize
+  default_alignment: std.measure.ByteSize
+  register_file: List<std.abi.ArchitecturalRegister>
+  calling_convention: std.abi.CallingConvention
+  stack_layout: std.abi.StackLayout
 }
 
 type DeploymentTarget {
   profile: ArchitectureProfile
-  invocation: StableInvocationSurface
+  invocation: std.os.invocation.StableInvocationSurface
 }

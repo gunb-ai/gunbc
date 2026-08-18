@@ -15,11 +15,11 @@ data unterminated_string_source: String = "module frontier_probe\n\ndata d: Stri
 // some helper then splits: a helper taking a list would have to answer for the empty one, which
 // is the state this increment just made unrepresentable. The head is passed separately because
 // the carrier separates it.
-fn classify_reasons(first: Symbol, rest: List<Symbol>) -> FrontendStage {
+fn classify_reasons(first: v2.std.node.Symbol, rest: List<v2.std.node.Symbol>) -> gunbc.tools.frontier_ingestion_probe.FrontendStage {
   classify_normalize_diagnostics(
-    d: NonEmptyDiagnostics {
+    d: v2.std.diagnostic.NonEmptyDiagnostics {
       head: module_unavailable_diagnostic(reason: first, module_file: ^frontier_probe),
-      tail: fold_list(xs: rest, empty: [] as List<Diagnostic>, cons: fn(acc, r) {
+      tail: fold_list(xs: rest, empty: [] as List<v2.std.diagnostic.Diagnostic>, cons: fn(acc, r) {
         concat(acc, [module_unavailable_diagnostic(reason: r, module_file: ^frontier_probe)])
       }),
     }
@@ -148,18 +148,18 @@ test fn stage_labels_are_pairwise_distinct() -> Bool {
 // covering direction is below; the two directions it alone accepts — a stray observation and a
 // doubled member — are exercised further down, because each is a census containing every roster
 // member and so passes any per-label existence check.
-fn observations_for_whole_roster() -> List<MemberObservation> {
-  fold_list(xs: frontier_roster, empty: [] as List<MemberObservation>, cons: fn(acc, m) {
-    concat(acc, [MemberObservation { label: m.label, stage: NormalizeOther }])
+fn observations_for_whole_roster() -> List<gunbc.tools.frontier_ingestion_probe.MemberObservation> {
+  fold_list(xs: frontier_roster, empty: [] as List<gunbc.tools.frontier_ingestion_probe.MemberObservation>, cons: fn(acc, m) {
+    concat(acc, [gunbc.tools.frontier_ingestion_probe.MemberObservation { label: m.label, stage: NormalizeOther }])
   })
 }
 
-fn observations_missing_one() -> List<MemberObservation> {
-  fold_list(xs: frontier_roster, empty: [] as List<MemberObservation>, cons: fn(acc, m) {
+fn observations_missing_one() -> List<gunbc.tools.frontier_ingestion_probe.MemberObservation> {
+  fold_list(xs: frontier_roster, empty: [] as List<gunbc.tools.frontier_ingestion_probe.MemberObservation>, cons: fn(acc, m) {
     if m.label == ^entry {
       acc
     } else {
-      concat(acc, [MemberObservation { label: m.label, stage: NormalizeOther }])
+      concat(acc, [gunbc.tools.frontier_ingestion_probe.MemberObservation { label: m.label, stage: NormalizeOther }])
     }
   })
 }
@@ -174,8 +174,8 @@ test fn census_missing_one_member_is_incomplete_RED() -> Bool {
 
 // A count equality would accept this: fifteen observations, none of them a roster member.
 test fn census_of_the_right_size_but_wrong_members_is_incomplete_RED() -> Bool {
-  let wrong = fold_list(xs: frontier_roster, empty: [] as List<MemberObservation>, cons: fn(acc, m) {
-    concat(acc, [MemberObservation { label: ^not_a_roster_member, stage: NormalizeOther }])
+  let wrong = fold_list(xs: frontier_roster, empty: [] as List<gunbc.tools.frontier_ingestion_probe.MemberObservation>, cons: fn(acc, m) {
+    concat(acc, [gunbc.tools.frontier_ingestion_probe.MemberObservation { label: ^not_a_roster_member, stage: NormalizeOther }])
   })
   census_is_complete(obs: wrong) == false
 }
@@ -187,7 +187,7 @@ test fn census_of_the_right_size_but_wrong_members_is_incomplete_RED() -> Bool {
 test fn census_with_an_unrostered_observation_is_refused_RED() -> Bool {
   let strayed = concat(
     observations_for_whole_roster(),
-    [MemberObservation { label: ^not_a_roster_member, stage: NormalizeOther }]
+    [gunbc.tools.frontier_ingestion_probe.MemberObservation { label: ^not_a_roster_member, stage: NormalizeOther }]
   )
   match reconcile_census(obs: strayed) {
     CensusUnrosteredObservation { label: l } => l == ^not_a_roster_member
@@ -198,7 +198,7 @@ test fn census_with_an_unrostered_observation_is_refused_RED() -> Bool {
 test fn census_observing_one_member_twice_is_refused_RED() -> Bool {
   let doubled = concat(
     observations_for_whole_roster(),
-    [MemberObservation { label: ^entry, stage: NormalizeOther }]
+    [gunbc.tools.frontier_ingestion_probe.MemberObservation { label: ^entry, stage: NormalizeOther }]
   )
   match reconcile_census(obs: doubled) {
     CensusDuplicateMember { label: l } => l == ^entry
@@ -226,24 +226,24 @@ test fn whole_roster_census_reconciles_exactly() -> Bool {
 // fifteen rows and fourteen labels reconciles exactly against fourteen observations. A duplicated
 // PATH under two labels is invisible at label grain entirely: the census reads one file twice and
 // reports it as two members.
-data duplicate_label_roster: List<FrontierMember> = [
-  FrontierMember { label: ^a, path: "dag/std/one.dag" },
-  FrontierMember { label: ^a, path: "dag/std/two.dag" },
+data duplicate_label_roster: List<gunbc.tools.frontier_ingestion_probe.FrontierMember> = [
+  gunbc.tools.frontier_ingestion_probe.FrontierMember { label: ^a, path: "dag/std/one.dag" },
+  gunbc.tools.frontier_ingestion_probe.FrontierMember { label: ^a, path: "dag/std/two.dag" },
 ]
 
-data duplicate_path_roster: List<FrontierMember> = [
-  FrontierMember { label: ^a, path: "dag/std/one.dag" },
-  FrontierMember { label: ^b, path: "dag/std/one.dag" },
+data duplicate_path_roster: List<gunbc.tools.frontier_ingestion_probe.FrontierMember> = [
+  gunbc.tools.frontier_ingestion_probe.FrontierMember { label: ^a, path: "dag/std/one.dag" },
+  gunbc.tools.frontier_ingestion_probe.FrontierMember { label: ^b, path: "dag/std/one.dag" },
 ]
 
-data two_row_roster: List<FrontierMember> = [
-  FrontierMember { label: ^a, path: "dag/std/one.dag" },
-  FrontierMember { label: ^b, path: "dag/std/two.dag" },
+data two_row_roster: List<gunbc.tools.frontier_ingestion_probe.FrontierMember> = [
+  gunbc.tools.frontier_ingestion_probe.FrontierMember { label: ^a, path: "dag/std/one.dag" },
+  gunbc.tools.frontier_ingestion_probe.FrontierMember { label: ^b, path: "dag/std/two.dag" },
 ]
 
-data two_row_roster_reordered: List<FrontierMember> = [
-  FrontierMember { label: ^b, path: "dag/std/two.dag" },
-  FrontierMember { label: ^a, path: "dag/std/one.dag" },
+data two_row_roster_reordered: List<gunbc.tools.frontier_ingestion_probe.FrontierMember> = [
+  gunbc.tools.frontier_ingestion_probe.FrontierMember { label: ^b, path: "dag/std/two.dag" },
+  gunbc.tools.frontier_ingestion_probe.FrontierMember { label: ^a, path: "dag/std/one.dag" },
 ]
 
 test fn live_frontier_roster_is_valid() -> Bool {

@@ -3,16 +3,16 @@ module test.claim.roadmap_emit
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data parent_id: RoadmapNodeId = "invert-hand-maintained"
-data second_parent_id: RoadmapNodeId = "model-before-implement"
-data child_id: RoadmapNodeId = "pr-checkbox-status"
+data parent_id: gunbc.roadmap_model.RoadmapNodeId = "invert-hand-maintained"
+data second_parent_id: gunbc.roadmap_model.RoadmapNodeId = "model-before-implement"
+data child_id: gunbc.roadmap_model.RoadmapNodeId = "pr-checkbox-status"
 
-fn parent_node() -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_5E27VQFME81E3RP60RE6" as RoadmapNodeIdentity,
+fn parent_node() -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_5E27VQFME81E3RP60RE6" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: parent_id,
     line: AuthoredLine { done: false, content: "**invert hand-maintained**" },
-    carriers: [Pointer { label: "plan", path: "docs/plans/invert-hand-maintained.md" }],
+    carriers: [gunbc.roadmap_model.Pointer { label: "plan", path: "docs/plans/invert-hand-maintained.md" }],
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
@@ -20,9 +20,9 @@ fn parent_node() -> RoadmapNode {
   }
 }
 
-fn child_node() -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_8P7AJ3QVQCM2E8W3AMR7" as RoadmapNodeIdentity,
+fn child_node() -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_8P7AJ3QVQCM2E8W3AMR7" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: child_id,
     line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
@@ -33,9 +33,9 @@ fn child_node() -> RoadmapNode {
   }
 }
 
-fn signed_child_node() -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_D1QNZ9290W7D8GPH4XJQ" as RoadmapNodeIdentity,
+fn signed_child_node() -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_D1QNZ9290W7D8GPH4XJQ" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: child_id,
     line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
@@ -46,10 +46,10 @@ fn signed_child_node() -> RoadmapNode {
   }
 }
 
-fn nodes() -> List<RoadmapNode> { [parent_node(), child_node()] }
-fn edges() -> List<RoadmapEdge> { [RoadmapEdge { child: child_id, parent: parent_id }] }
+fn nodes() -> List<gunbc.roadmap_model.RoadmapNode> { [parent_node(), child_node()] }
+fn edges() -> List<gunbc.roadmap_model.RoadmapEdge> { [gunbc.roadmap_model.RoadmapEdge { child: child_id, parent: parent_id }] }
 
-fn emit_nodes(nodes: List<RoadmapNode>, merged: List<Int>) -> String {
+fn emit_nodes(nodes: List<gunbc.roadmap_model.RoadmapNode>, merged: List<Int>) -> String {
   serialize_markdown_source(doc: project_roadmap_section(
     title: "6. Expansion", elements: [section_group(label: "", nodes: nodes, edges: edges())], merged: merged,
   ))
@@ -91,8 +91,8 @@ test fn witness_child_derived_unchecked_when_unmerged() -> Bool {
 
 test fn witness_multi_parent_dependencies_render_complete_set() -> Bool {
   let es = [
-    RoadmapEdge { child: child_id, parent: parent_id },
-    RoadmapEdge { child: child_id, parent: second_parent_id },
+    gunbc.roadmap_model.RoadmapEdge { child: child_id, parent: parent_id },
+    gunbc.roadmap_model.RoadmapEdge { child: child_id, parent: second_parent_id },
   ]
   let out = serialize_markdown_source(doc: project_roadmap_section(
     title: "6. Expansion",
@@ -105,9 +105,9 @@ test fn witness_multi_parent_dependencies_render_complete_set() -> Bool {
   )
 }
 
-fn superseded_child_node() -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_HSDEAR3FG68K530CRD70" as RoadmapNodeIdentity,
+fn superseded_child_node() -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_HSDEAR3FG68K530CRD70" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: child_id,
     line: SupersededLine { by: "successor-lane", content: "**PR-checkbox status**" },
     carriers: [],

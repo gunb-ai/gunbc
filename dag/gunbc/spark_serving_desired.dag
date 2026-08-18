@@ -35,8 +35,8 @@ data spark_serving_desired_model_digest_value: OllamaModelDigest = OllamaModelDi
 }
 
 type SparkServingDesiredAdmission
-  = SparkServingDesiredAdmitted { serving_release: SparkServingRelease }
-  | SparkServingDesiredRefused { cause: NonEmptyStr }
+  = SparkServingDesiredAdmitted { serving_release: gunbc.spark_serving_release.SparkServingRelease }
+  | SparkServingDesiredRefused { cause: std.types.NonEmptyStr }
 
 fn spark_serving_desired_model_digest() -> OllamaModelDigest {
   spark_serving_desired_model_digest_value
@@ -77,8 +77,8 @@ fn spark_serving_desired_release_admission() -> SparkServingDesiredAdmission {
 data spark_serving_desired_admission: SparkServingDesiredAdmission = spark_serving_desired_release_admission()
 
 type SparkServingFleetDesired
-  = SparkServingFleetDesiredReady { occurrences: List<SparkServingOccurrence> }
-  | SparkServingFleetDesiredRefused { cause: NonEmptyStr }
+  = SparkServingFleetDesiredReady { occurrences: List<gunbc.spark_serving_release.SparkServingOccurrence> }
+  | SparkServingFleetDesiredRefused { cause: std.types.NonEmptyStr }
 
 fn spark_serving_occurrence(host: product.placement_supply.HostIdentity, serving_release: SparkServingRelease) -> SparkServingOccurrence {
   SparkServingOccurrence {

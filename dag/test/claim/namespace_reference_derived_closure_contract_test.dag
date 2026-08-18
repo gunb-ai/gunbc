@@ -9,17 +9,17 @@ fn fixture_span() -> std.types.SourceSpan {
   std.types.SourceSpan { file: "contract-fixture.dag", start: 1, end: 2 }
 }
 
-fn fixture_path(ancestor: std.occurrence_identity.OccurrenceId, terminal: std.occurrence_identity.OccurrenceId) -> OccurrenceContainmentPath {
-  OccurrenceContainmentPath { ancestors: [ancestor], terminal: terminal }
+fn fixture_path(ancestor: std.occurrence_identity.OccurrenceId, terminal: std.occurrence_identity.OccurrenceId) -> std.occurrence_identity.OccurrenceContainmentPath {
+  std.occurrence_identity.OccurrenceContainmentPath { ancestors: [ancestor], terminal: terminal }
 }
 
 fn fixture_index_entry(
   occurrence: std.occurrence_identity.OccurrenceId,
   authored_name: String,
-  containment: OccurrenceContainmentPath,
-) -> OccurrenceIndexEntry {
-  OccurrenceIndexEntry {
-    projection: OccurrenceProjection {
+  containment: std.occurrence_identity.OccurrenceContainmentPath,
+) -> std.occurrence_identity.OccurrenceIndexEntry {
+  std.occurrence_identity.OccurrenceIndexEntry {
+    projection: std.occurrence_identity.OccurrenceProjection {
       occurrence: occurrence,
       authored_name: authored_name,
       diagnostic_span: fixture_span(),
@@ -28,7 +28,7 @@ fn fixture_index_entry(
   }
 }
 
-fn fixture_transport() -> OccurrenceTransport {
+fn fixture_transport() -> std.occurrence_identity.OccurrenceTransport {
   let first = oid(value: 1)
   let second = oid(value: 2)
   let later = oid(value: 3)
@@ -37,34 +37,34 @@ fn fixture_transport() -> OccurrenceTransport {
   let second_path = fixture_path(ancestor: oid(value: 21), terminal: second)
   let later_path = fixture_path(ancestor: oid(value: 22), terminal: later)
   let reference_path = fixture_path(ancestor: oid(value: 23), terminal: reference)
-  OccurrenceTransport {
-    index: OccurrenceIndex { entries: [
+  std.occurrence_identity.OccurrenceTransport {
+    index: std.occurrence_identity.OccurrenceIndex { entries: [
       fixture_index_entry(occurrence: first, authored_name: "x", containment: first_path),
       fixture_index_entry(occurrence: second, authored_name: "x", containment: second_path),
       fixture_index_entry(occurrence: later, authored_name: "x", containment: later_path),
       fixture_index_entry(occurrence: reference, authored_name: "x", containment: reference_path),
     ] },
     declarations: [
-      DeclarationOccurrence {
+      std.occurrence_identity.DeclarationOccurrence {
         occurrence: first,
         containment: first_path,
         category: LexicalValueOccurrence,
         diagnostic_span: fixture_span(),
       },
-      DeclarationOccurrence {
+      std.occurrence_identity.DeclarationOccurrence {
         occurrence: second,
         containment: second_path,
         category: LexicalValueOccurrence,
         diagnostic_span: fixture_span(),
       },
-      DeclarationOccurrence {
+      std.occurrence_identity.DeclarationOccurrence {
         occurrence: later,
         containment: later_path,
         category: LexicalValueOccurrence,
         diagnostic_span: fixture_span(),
       },
     ],
-    references: [ReferenceOccurrence {
+    references: [std.occurrence_identity.ReferenceOccurrence {
       occurrence: reference,
       containment: reference_path,
       category: LexicalValueOccurrence,
@@ -73,7 +73,7 @@ fn fixture_transport() -> OccurrenceTransport {
   }
 }
 
-fn p1_outcome(supplied_candidates: List<std.occurrence_identity.OccurrenceId>) -> OccurrenceReferenceBindingOutcome {
+fn p1_outcome(supplied_candidates: List<std.occurrence_identity.OccurrenceId>) -> std.occurrence_binding_resolve.OccurrenceReferenceBindingOutcome {
   resolve_reference_occurrence_binding(
     transport: fixture_transport(),
     occurrence: oid(value: 10),
@@ -87,7 +87,7 @@ fn p1_resolution(supplied_candidates: List<std.occurrence_identity.OccurrenceId>
   }
 }
 
-fn positive_admissions() -> List<ReferenceDerivedClosureAdmission> {
+fn positive_admissions() -> List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> {
   [
     assess_reference_binding_observation(observation: SameFileNeighbourObservation {
       neighbour: oid(value: 1),

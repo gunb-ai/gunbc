@@ -2,8 +2,8 @@ module test.claim.host_converge_delta_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn fixture_srv2_host() -> RunnerHostDeployment {
-  RunnerHostDeployment {
+fn fixture_srv2_host() -> gunbc.ci_runner_placement.RunnerHostDeployment {
+  gunbc.ci_runner_placement.RunnerHostDeployment {
     identity: "srv2",
     runner_count: 7,
     runner_slice_cap: byte_size(70391285350),
@@ -17,11 +17,11 @@ fn fixture_srv2_host() -> RunnerHostDeployment {
   }
 }
 
-fn fixture_base_knobs() -> List<ConvergeKnob> {
+fn fixture_base_knobs() -> List<gunbc.host_converge.ConvergeKnob> {
   runner_host_knobs(h: fixture_srv2_host())
 }
 
-fn fixture_desired_knobs() -> List<ConvergeKnob> {
+fn fixture_desired_knobs() -> List<gunbc.host_converge.ConvergeKnob> {
   let glob = runner_instance_glob(host: "srv2")
   fold(fixture_base_knobs(), init: [], f: fn(acc, knob) {
     if knob.name == "per_slot_memory_max_bytes" {
@@ -58,12 +58,12 @@ fn fixture_desired_knobs() -> List<ConvergeKnob> {
   })
 }
 
-fn memory_max_key() -> ConvergeKnobKey {
-  ConvergeKnobKey { slice: RunnerSlice, name: "per_slot_memory_max_bytes" }
+fn memory_max_key() -> gunbc.host_converge_delta.ConvergeKnobKey {
+  gunbc.host_converge_delta.ConvergeKnobKey { slice: RunnerSlice, name: "per_slot_memory_max_bytes" }
 }
 
-fn swap_max_key() -> ConvergeKnobKey {
-  ConvergeKnobKey { slice: RunnerSlice, name: "per_slot_memory_swap_max_bytes" }
+fn swap_max_key() -> gunbc.host_converge_delta.ConvergeKnobKey {
+  gunbc.host_converge_delta.ConvergeKnobKey { slice: RunnerSlice, name: "per_slot_memory_swap_max_bytes" }
 }
 
 test fn witness_two_key_collection_fold() -> Bool {
@@ -85,11 +85,11 @@ test fn witness_unchanged_knobs_absent_by_monoid_law() -> Bool {
   )
   !host_converge_knob_in_patch(
     patch: patch,
-    key: ConvergeKnobKey { slice: RunnerSlice, name: "runner_count" },
+    key: gunbc.host_converge_delta.ConvergeKnobKey { slice: RunnerSlice, name: "runner_count" },
   )
     && !host_converge_knob_in_patch(
       patch: patch,
-      key: ConvergeKnobKey { slice: RunnerSlice, name: "cpu_weight" },
+      key: gunbc.host_converge_delta.ConvergeKnobKey { slice: RunnerSlice, name: "cpu_weight" },
     )
 }
 
@@ -134,7 +134,7 @@ test fn witness_drifted_knob_is_conflict() -> Bool {
   fold(patch.entries, init: false, f: fn(acc, entry) {
     acc || keyed_leaf_verdict_fold(
       verdict: entry.verdict,
-      fold: KeyedLeafVerdictFold {
+      fold: std.change.KeyedLeafVerdictFold {
         unchanged: false,
         conflict: true,
         apply_hunk: fn(_, _) { false },
@@ -169,7 +169,7 @@ test fn witness_already_applied_is_noop() -> Bool {
   )
 }
 
-fn probe_effective_knob(ee: String) -> ConvergeKnob {
+fn probe_effective_knob(ee: String) -> gunbc.host_converge.ConvergeKnob {
   legacy_converge_knob(
     slice: RunnerSlice,
     name: "effective_probe",

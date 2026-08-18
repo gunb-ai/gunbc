@@ -59,11 +59,11 @@ test fn srv3_seeded_remaster_toolchain_ensure_is_privileged_gated() -> Bool {
     && srv3_seeded_install_media_toolchain_ensure_is_privileged_gated()
     && srv3_seeded_install_media_toolchain_unprivileged_fixture_denied()
     && string_contains(
-      s: srv3_seeded_install_media_toolchain_receipt_line(outcome: "Present" as NonEmptyStr),
+      s: srv3_seeded_install_media_toolchain_receipt_line(outcome: "Present" as std.types.NonEmptyStr),
       pattern: "InstallMediaRemasterToolchainReceipt",
     )
     && string_contains(
-      s: srv3_seeded_install_media_toolchain_receipt_line(outcome: "Installed" as NonEmptyStr),
+      s: srv3_seeded_install_media_toolchain_receipt_line(outcome: "Installed" as std.types.NonEmptyStr),
       pattern: "xorriso",
     )
 }

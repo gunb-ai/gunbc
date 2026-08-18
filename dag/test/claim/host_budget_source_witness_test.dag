@@ -4,9 +4,9 @@ module test.claim.host_budget_source_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // These rows are about the RELATION between a kernel family and a budget source, not about the machine running them, so they are SubstrateInputsOnly and give the same verdict on every platform. That is deliberate and is the point: the defect being walled is a claim the code makes about a platform, and a check that could only run on the affected platform would be untestable from the fleet's own Linux CI — which is how the fabricated label survived in the first place.
-data all_kernels: List<KernelFamily> = [Linux, Darwin, WindowsNt, LinuxGuestOnWindows]
+data all_kernels: List<std.os.types.KernelFamily> = [Linux, Darwin, WindowsNt, LinuxGuestOnWindows]
 
-data all_sources: List<HostBudgetSource> = [
+data all_sources: List<gunbc.host_budget_source.HostBudgetSource> = [
   BudgetSourceEnvOverride,
   BudgetSourceCgroupMemoryHigh { cgroup_dir: "/sys/fs/cgroup/system.slice" },
   BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup/system.slice" },

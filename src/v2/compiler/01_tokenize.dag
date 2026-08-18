@@ -7,9 +7,9 @@ type LexMatchResult
 
 type LexRuleApply
   = LexRuleNoMatch
-  | LexRuleToken { class: Symbol, lexeme: String, remaining: String }
+  | LexRuleToken { class: v2.std.node.Symbol, lexeme: String, remaining: String }
   | LexRuleTrivia { lexeme: String, remaining: String }
-  | LexRuleAnnotation { class: Symbol, lexeme: String, remaining: String }
+  | LexRuleAnnotation { class: v2.std.node.Symbol, lexeme: String, remaining: String }
 
 type LexMatchThunk {
   apply: fn(String) -> LexMatchResult
@@ -191,7 +191,7 @@ fn lex_delimited_step(close_r: LexMatchThunk, body_r: LexMatchThunk, state: Deli
 }
 
 type CompiledLexRule {
-  rule: LexRule
+  rule: v2.std.compilers.lexing.LexRule
   thunk: LexMatchThunk
 }
 
@@ -381,13 +381,13 @@ fn lex_try_rules(rules: List<CompiledLexRule>, source: String) -> LexRuleApply {
 // The walk carries `line_prefix_indent_only` and advances it with the raw text of EVERY consumed lexeme — token, trivia, and annotation alike — through the shared std.source_annotation authority. It is not a `has a semantic token appeared on this line` flag, and the difference is not cosmetic: a token lexeme may itself contain line feeds, so a grammar whose tokens span lines has line boundaries INSIDE tokens rather than only in trivia. Resetting on trivia alone misclassifies every annotation following such a token.
 type LexWalkAcc {
   remaining: String
-  tokens: List<Token>
-  annotations: List<UnboundSourceAnnotation>
+  tokens: List<v2.std.compilers.lexing.Token>
+  annotations: List<v2.std.compilers.lexing.UnboundSourceAnnotation>
   line_prefix_indent_only: Bool
   pos: Int
   done: Bool
   error: Bool
-  file: Symbol
+  file: v2.std.node.Symbol
   rules: List<CompiledLexRule>
 }
 

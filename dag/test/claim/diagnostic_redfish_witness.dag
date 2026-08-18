@@ -1,9 +1,9 @@
 module test.claim.diagnostic_redfish_witness
 
 
-data closed_loopback_bmc_host: NonEmptyStr = "127.0.0.1"
-data closed_loopback_chassis_id: NonEmptyStr = "Self"
-data closed_loopback_netrc_file: NonEmptyStr = "/dev/null"
+data closed_loopback_bmc_host: std.types.NonEmptyStr = "127.0.0.1"
+data closed_loopback_chassis_id: std.types.NonEmptyStr = "Self"
+data closed_loopback_netrc_file: std.types.NonEmptyStr = "/dev/null"
 
 func witness_redfish_get_chassis_sensors_closed_host() -> Bool {
   let r = redfish.Http.GetChassisSensors(

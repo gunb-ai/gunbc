@@ -28,12 +28,12 @@ module product.spatial_edit
 // copying one and swapping fields.
 
 type EditRefusal
-  = EditTargetMissing { identity: RoomIdentity }
-  | EditTargetAlreadyPresent { identity: RoomIdentity }
-  | RoomEditedTwiceInOneBatch { identity: RoomIdentity }
-  | EditGeometryRefused { cause: OrthogonalRefusal }
+  = EditTargetMissing { identity: product.placement_supply.RoomIdentity }
+  | EditTargetAlreadyPresent { identity: product.placement_supply.RoomIdentity }
+  | RoomEditedTwiceInOneBatch { identity: product.placement_supply.RoomIdentity }
+  | EditGeometryRefused { cause: std.orthogonal_geometry.OrthogonalRefusal }
   | EditArithmeticRefused { cause: IntegerOverflow }
-  | EditFrameRefused { refusal: SpatialFrameRefusal }
+  | EditFrameRefused { refusal: std.affine_space.SpatialFrameRefusal }
 
 type EditConstruction<T>
   = EditReady { value: T }
@@ -45,10 +45,10 @@ type EditConstruction<T>
 // the reader; "move the room 500 east" is how a move is described, and an absolute destination for a
 // polygon would need an anchor vertex nobody has named.
 type RoomEdit
-  = AddRoom { identity: RoomIdentity, space: EnclosedSpace }
-  | RemoveRoom { identity: RoomIdentity }
-  | MoveRoom { identity: RoomIdentity, east: Int, north: Int, up: Int }
-  | SetCeilingHeight { identity: RoomIdentity, high: Int }
+  = AddRoom { identity: product.placement_supply.RoomIdentity, space: std.orthogonal_topology.EnclosedSpace }
+  | RemoveRoom { identity: product.placement_supply.RoomIdentity }
+  | MoveRoom { identity: product.placement_supply.RoomIdentity, east: Int, north: Int, up: Int }
+  | SetCeilingHeight { identity: product.placement_supply.RoomIdentity, high: Int }
 
 fn edit_subject(e: RoomEdit) -> RoomIdentity {
   match e {
@@ -72,7 +72,7 @@ fn find_room(rooms: List<PlacedSpace>, identity: RoomIdentity) -> PlacedSpace? {
 }
 
 type VertexAcc {
-  moved: List<Point2>
+  moved: List<std.affine_space.Point2>
   refusal: EditRefusal?
 }
 
@@ -235,7 +235,7 @@ fn edits_to_variant(base: World, edits: List<RoomEdit>) -> EditConstruction<Worl
 // admit it.
 type EditOutcome
   = EditNotCompiled { cause: EditRefusal }
-  | EditRealized { result: WorldConstruction<World> }
+  | EditRealized { result: WorldConstruction<product.spatial_world.World> }
 
 fn apply_edits(base: World, edits: List<RoomEdit>) -> EditOutcome {
   match edits_to_variant(base: base, edits: edits) {

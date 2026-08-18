@@ -7,14 +7,14 @@ data host_phase_status_authority_note: String = "THE per-(host x phase) status a
 data host_phase_cell_grain_note: String = "The cell is keyed by (host, phase_label) and NOT by (host, phase) structurally, because phase_label is already the spine's own stable identity for a step (it is what the gap ledger keyed on, what the refusal strings name, and what an operator reads). Keying on the label keeps ONE identity for a phase across the spine, this matrix, and every refusal message, rather than introducing a second notion of phase identity that could disagree with the first. key_of returns identity, never content (membership_reconcile's R2 contract): a cell whose STATUS changes is Modified — the same cell re-derived — not Removed+Added, which would read as a host leaving and rejoining the fleet."
 
 type HostPhaseCell {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   phase_label: String
 }
 
 type HostPhaseCellStatus {
   cell: HostPhaseCell
-  disposition: PhaseDisposition
-  observation: ObservationVerdict?
+  disposition: gunbc.host_standup.PhaseDisposition
+  observation: std.upsert_decision.ObservationVerdict?
 }
 
 data host_phase_no_producer_is_unknown_not_converged_note: String = "THE fail-closed hinge of this module (DESIGN §5). When a modeled phase has NO live observation producer for a host, the derived verdict is UnknownRefused — never Converged, and never silently omitted from the matrix. The tempting arm is the absorbing fallback in its purest form: nothing is known to be wrong, so report converged; the matrix goes green, the coverage deficit's frequency drops to zero by construction, and the status read becomes a fabricated plausible output exactly like a stats probe that auto-starts the server it is measuring (the DaemonUnsupervised finding, #7213). It is also why UnknownRefused and Inaccessible must stay DISTINCT arms rather than one 'not converged': Inaccessible means we asked the host and could not reach it (remedy: fix reach — the A1 materialized-secret lane); UnknownRefused means we have no way to ask at all (remedy: build the producer). Different states, different owners, different work — and the count of each is the honest measure of how far subsumption actually is. host_phase_verdict_absorbing_fallback_widen_sketch models the forbidden arm as a RED control so the fold cannot drift back into it unnoticed. Note the separation this correction forced: 'has a live producer' is now read from the OBSERVATION being Present, not from the verdict being something other than UnknownRefused — a producer that runs and honestly refuses (an unreadable lease table) is coverage, while no producer at all is not, and the earlier version conflated the two."

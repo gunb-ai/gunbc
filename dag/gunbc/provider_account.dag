@@ -3,7 +3,7 @@ module gunbc.provider_account
 
 data provider_account_naming_note: String = "THE SUFFIX CONVENTION IS OURS; THE ISOLATION IS CODEX'S. extdeps.llm.codex_auth records that CODEX_HOME selects an independent credential store — that is the CLI's capability and exists regardless of what anyone names the directories. What lives here is the choice to name them ~/.codex@<label>, which is a gunbc fact and must not be written into the extdeps module, or a reader would take our policy for the tool's requirement.\\n\\nIT WAS ALREADY IN USE BEFORE IT WAS MODELED, which is why this cites rather than invents. Observed on srv2, 2026-07-30: ~/.codex (the default), ~/.codex@briansrls-gunb.ai, and ~/.codex@gunbc-roadmap coexisting under one user. Minting a different scheme — accounts/<label>/codex, or a flat registry — would have forked a convention with three live instances and forced a migration to satisfy a model nobody needed.\\n\\nThe default root is deliberately representable. ~/.codex has no label and holds the seventeen-session personal account; a model that could only express labelled roots would have been unable to describe the account carrying nearly all the current load."
 
-type ProviderAccountLabel = NonEmptyStr where brand("ProviderAccountLabel")
+type ProviderAccountLabel = std.types.NonEmptyStr where brand("ProviderAccountLabel")
 
 type CodexAccountSelection
   = CodexDefaultAccount
@@ -23,12 +23,12 @@ fn codex_account_directory_name(selection: CodexAccountSelection) -> String {
   }
 }
 
-fn codex_account_state_root(home: std.types.FilePath, selection: CodexAccountSelection) -> CodexStateRoot {
+fn codex_account_state_root(home: std.types.FilePath, selection: CodexAccountSelection) -> extdeps.llm.codex_auth.CodexStateRoot {
   join([
     home as String,
     "/",
     codex_account_directory_name(selection: selection),
-  ], "") as CodexStateRoot
+  ], "") as extdeps.llm.codex_auth.CodexStateRoot
 }
 
 data session_concurrency_carrier_note: String = "HOW MANY SESSIONS IS NOT AN Int, because the Int admitted numbers that are not counts. concurrent_sessions was a bare Int on every admission arm, so ExclusiveBinding's guard — greater than one refuses — passed zero and passed negative, admitting a binding of minus three sessions as comfortably as a binding of one. ConcurrentBindingSafe was worse: it admitted every Int there is without looking.\\n\\nThe two nonsense values are not equally silly. Zero is the one that would actually be written, by a caller computing a roster length that came back empty, and BindingAdmitted with zero sessions reads downstream as a successful binding of a deployment that will never run. Negative arrives from a subtraction. Neither is a count, and a guard phrased as greater-than-one cannot say so.\\n\\nSo the count becomes a shape with no zero and no negative to write. One session is its own constructor rather than the number 1, which also makes the common case — a single serve process per instance — legible at every call site. The decoder is the only way in from arithmetic, and it refuses below one with the raw value named. What stays writable is a hand-authored ManySessions literal carrying a bad total; that is the residue a coproduct cannot close, and it is not the path any caller takes."
@@ -74,7 +74,7 @@ fn codex_observed_ceiling() -> SessionConcurrency {
 }
 
 fn codex_sharing_discipline(
-  persistence: CodexRefreshPersistence,
+  persistence: extdeps.llm.codex_auth.CodexRefreshPersistence,
 ) -> CredentialSharingDiscipline {
   match persistence {
     CodexPersistenceUnobserved => SharingDisciplineUnknown

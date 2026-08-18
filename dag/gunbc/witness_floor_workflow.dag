@@ -268,7 +268,7 @@ data witness_floor_workflow: extdeps.github.actions.Workflow = {
   on: [
     WorkflowDispatch { inputs: [] },
     Push { branches: [gunbc.repo_identity.gunbc_default_branch_name], paths: [] },
-    PullRequest {
+    extdeps.github.pulls.PullRequest {
       branches: [gunbc.repo_identity.gunbc_default_branch_name],
       types: [Opened, Synchronize, Reopened, ReadyForReview]
     }

@@ -6,76 +6,76 @@ data runner_connectivity_recovery_scope_disposition: Disposition = SingleAuthori
 data runner_connectivity_watchdog_note: String = "PORTS the incident ctrl watchdog into gunbc (operator ruling 2026-08-06). Replace eligibility is the CONJUNCTION: remote registration offline/absent AND broker progress silent beyond the derived ten-minute bound AND no Runner.Worker alive AND registration grace elapsed. Offline-alone and quiet-locally-alone are both unsafe single-signal policies; only the conjunction is safe. Re-read immediately before mutation; fanout is canary-first with per-host cooldown. systemctl restart exit 0 is NOT success."
 
 type RunnerLocalIncarnation {
-  slot: RunnerSlotIdentity
+  slot: gunbc.build_cache_instance.RunnerSlotIdentity
   process: ProcessIdentity
-  unit: NonEmptyStr
+  unit: std.types.NonEmptyStr
 }
 
 type RunnerRemoteObservation {
-  evidence: RemoteRegistrationEvidence
-  observed_at: Timestamp
+  evidence: gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence
+  observed_at: std.types.Timestamp
   control_plane_error_burst: Bool
 }
 
 type RunnerLocalObservation {
   incarnation: RunnerLocalIncarnation
   systemd_active: Bool
-  observed_at: Timestamp
+  observed_at: std.types.Timestamp
 }
 
 type RunnerSlotConnectivitySnapshot {
-  slot: RunnerSlotIdentity
+  slot: gunbc.build_cache_instance.RunnerSlotIdentity
   local: RunnerLocalObservation
   remote: RunnerRemoteObservation
-  broker: BrokerProgressObservation
-  worker: RunnerWorkerObservation
+  broker: gunbc.runner_broker_progress_watchdog.BrokerProgressObservation
+  worker: gunbc.runner_broker_progress_watchdog.RunnerWorkerObservation
   registration_grace_elapsed: Bool
-  confirmed_at: Timestamp
-  last_restart_at: Timestamp?
+  confirmed_at: std.types.Timestamp
+  last_restart_at: std.types.Timestamp?
 }
 
-type HostReachAdmissionRefusedCause { reason: NonEmptyStr }
+type HostReachAdmissionRefusedCause { reason: std.types.NonEmptyStr }
 
 type RecoveryRunnerReplacementCause
   = RemoteRegistrationOfflineWhileLocalAlive
   | RemoteRegistrationAbsentWhileLocalAlive
   | AcquireJobWedgeSessionDead
-  | BrokerProgressWedged { silence_seconds: Duration }
+  | BrokerProgressWedged { silence_seconds: std.types.Duration }
 
 type RunnerRepairRefusalCause
   = RunnerStillConnected
   | RunnerRemotelyBusy
   | RepairBlockedByRunnerWorker
-  | BrokerProgressStillRecent { silence_seconds: Duration }
+  | BrokerProgressStillRecent { silence_seconds: std.types.Duration }
   | RegistrationGraceNotElapsed
-  | RemoteEvidenceRefused { reason: NonEmptyStr }
-  | RemoteEvidenceUnobserved { reason: NonEmptyStr }
-  | ReobservationRefused { reason: NonEmptyStr }
+  | RemoteEvidenceRefused { reason: std.types.NonEmptyStr }
+  | RemoteEvidenceUnobserved { reason: std.types.NonEmptyStr }
+  | ReobservationRefused { reason: std.types.NonEmptyStr }
   | LocalProcessNotActive
-  | ObservationStale { observed_at: Timestamp, act_at: Timestamp }
+  | ObservationStale { observed_at: std.types.Timestamp, act_at: std.types.Timestamp }
   | IncarnationChangedSinceObservation {
       expected: ProcessIdentity,
       found: ProcessIdentity,
     }
-  | HostReachAdmissionRefused { reason: NonEmptyStr }
+  | HostReachAdmissionRefused { reason: std.types.NonEmptyStr }
   | RestartCooldownActive { seconds_remaining: Int }
   | ConditionNotPersistentAcrossReobservation
-  | ControlPlaneDegraded { reason: NonEmptyStr }
+  | ControlPlaneDegraded { reason: std.types.NonEmptyStr }
   | CanaryAwaitingVerification
-  | HostReplacementCapExceeded { host: HostIdentity, cap: Int }
+  | HostReplacementCapExceeded { host: product.placement_supply.HostIdentity, cap: Int }
 
 type RunnerConnectivityAction
   = RunnerConnectedNoop {
       local: RunnerLocalIncarnation,
-      remote: RunnerRemoteRegistration,
+      remote: gunbc.runner_broker_progress_watchdog.RunnerRemoteRegistration,
     }
   | RunnerIncarnationReplace {
-      slot: RunnerSlotIdentity,
+      slot: gunbc.build_cache_instance.RunnerSlotIdentity,
       from: RunnerLocalIncarnation,
       cause: RecoveryRunnerReplacementCause,
     }
   | RunnerRepairRefused {
-      slot: RunnerSlotIdentity,
+      slot: gunbc.build_cache_instance.RunnerSlotIdentity,
       cause: RunnerRepairRefusalCause,
     }
 
@@ -84,19 +84,19 @@ type RunnerControlPlaneStanding
   | RunnerControlPlaneDegraded {
       offline_slots: Int,
       total_slots: Int,
-      reason: NonEmptyStr,
+      reason: std.types.NonEmptyStr,
     }
 
 type IncarnationReplacePostcondition
   = ReplaceVerified {
-      slot: RunnerSlotIdentity,
+      slot: gunbc.build_cache_instance.RunnerSlotIdentity,
       prior: RunnerLocalIncarnation,
       successor: RunnerLocalIncarnation,
-      remote: RunnerRemoteRegistration,
+      remote: gunbc.runner_broker_progress_watchdog.RunnerRemoteRegistration,
     }
   | ReplacePostconditionFailed {
-      slot: RunnerSlotIdentity,
-      reason: NonEmptyStr,
+      slot: gunbc.build_cache_instance.RunnerSlotIdentity,
+      reason: std.types.NonEmptyStr,
     }
 
 type FleetConnectivityRepairPlan {

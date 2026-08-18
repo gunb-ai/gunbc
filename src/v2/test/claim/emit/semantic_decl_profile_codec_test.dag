@@ -1,19 +1,19 @@
 module v2.test.emit.semantic_decl_profile_codec
 
 
-fn decoded_profile() -> Outcome<TargetSemanticDeclSerializeProfile> {
+fn decoded_profile() -> Outcome<v2.std.compilers.semantic_decl_emission.TargetSemanticDeclSerializeProfile> {
   decode_semantic_decl_serialize_profile_bundle(
     bundle: rust_semantic_decl_serialize_profile_bundle_node()
   )
 }
 
-fn lex_literal(rules: LexRules, token_class: Symbol) -> Outcome<String> {
+fn lex_literal(rules: v2.std.compilers.lexing.LexRules, token_class: v2.std.node.Symbol) -> Outcome<String> {
   lex_rules_literal_for_class(rules: rules, token_class: token_class)
 }
 
 fn binding_spelling(
-  binding_spellings: Map<Symbol, String>,
-  binding: Symbol
+  binding_spellings: Map<v2.std.node.Symbol, String>,
+  binding: v2.std.node.Symbol
 ) -> Outcome<String> {
   bound_spelling_from_map(binding_spellings: binding_spellings, binding: binding)
 }

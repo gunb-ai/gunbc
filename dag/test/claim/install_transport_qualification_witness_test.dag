@@ -4,10 +4,10 @@ module test.claim.install_transport_qualification_witness_test
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn probe(
-  requirement: ConfigfsTransportRequirement,
-  outcome: TransportProbeOutcome,
-) -> TransportProbeObservation {
-  TransportProbeObservation {
+  requirement: gunbc.install_transport_qualification.ConfigfsTransportRequirement,
+  outcome: gunbc.install_transport_qualification.TransportProbeOutcome,
+) -> gunbc.install_transport_qualification.TransportProbeObservation {
+  gunbc.install_transport_qualification.TransportProbeObservation {
     host: operator_host_srv3,
     requirement: requirement,
     probe: "synthetic fixture probe",
@@ -17,7 +17,7 @@ fn probe(
   }
 }
 
-data every_requirement_present: List<TransportProbeObservation> = [
+data every_requirement_present: List<gunbc.install_transport_qualification.TransportProbeObservation> = [
   probe(requirement: ConfigfsMounted, outcome: ProbeFoundPresent),
   probe(requirement: UsbGadgetFrameworkPresent, outcome: ProbeFoundPresent),
   probe(requirement: MassStorageFunctionAvailable, outcome: ProbeFoundPresent),
@@ -30,7 +30,7 @@ data every_requirement_present: List<TransportProbeObservation> = [
 
 // The same eight with ONE flipped to absent. Authored explicitly rather than
 // folded so the single difference from the row above is readable.
-data one_requirement_absent: List<TransportProbeObservation> = [
+data one_requirement_absent: List<gunbc.install_transport_qualification.TransportProbeObservation> = [
   probe(requirement: ConfigfsMounted, outcome: ProbeFoundAbsent),
   probe(requirement: UsbGadgetFrameworkPresent, outcome: ProbeFoundPresent),
   probe(requirement: MassStorageFunctionAvailable, outcome: ProbeFoundPresent),
@@ -41,7 +41,7 @@ data one_requirement_absent: List<TransportProbeObservation> = [
   probe(requirement: NoForeignGadgetOrNbdAttachment, outcome: ProbeFoundPresent),
 ]
 
-data absence_beside_unprobed: List<TransportProbeObservation> = [
+data absence_beside_unprobed: List<gunbc.install_transport_qualification.TransportProbeObservation> = [
   probe(requirement: ConfigfsMounted, outcome: ProbeFoundPresent),
   probe(requirement: NbdClientPresent, outcome: ProbeFoundAbsent),
 ]

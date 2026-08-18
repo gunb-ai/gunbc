@@ -16,10 +16,10 @@ A substrate note, recorded because it shaped the decision rather than being rout
 data sound_growth_trigger: String = "SoundOccasion becomes a closed sum — MechanismEngage | MechanismSettle | MechanismBlocked — in the PR that lands checkpoint 7b (the accept settle tone and the refusal thud). At that point sound_specs becomes a total occasion→spec assignment with a coverage census mirroring interaction coverage_gaps, and every_declared_sound_admissible folds over the occasions instead of over a hand list."
 
 type SoundSpec {
-  frequency: Hertz
-  timbre: OscillatorType
-  attack: Milliseconds
-  decay: Milliseconds
+  frequency: std.measure.Hertz
+  timbre: extdeps.web_audio.OscillatorType
+  attack: std.types.Milliseconds
+  decay: std.types.Milliseconds
   peak_gain_micros: Int
 }
 

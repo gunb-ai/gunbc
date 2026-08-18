@@ -1,7 +1,7 @@
 module v2.test.lens_inert_carrier.inert_carrier_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data roster_one: List<String> = ["KnownEntry"]
 data names_with_unknown: List<String> = ["UnknownEntry"]

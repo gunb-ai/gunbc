@@ -33,7 +33,7 @@ module std.spatial_knowledge
 type SpatialKnowledge<Value, Uncertainty, Evidence, Method, Obligation>
   = SpatialMeasured { value: Value, uncertainty: Uncertainty, evidence: Evidence }
   | SpatialEstimated { region: Uncertainty, method: Method, evidence: Evidence }
-  | SpatialHypothesis { value: Value, purpose: NonEmptyStr }
+  | SpatialHypothesis { value: Value, purpose: std.types.NonEmptyStr }
   | SpatialUnknown { obligation: Obligation }
 
 type SpatialEvidenceClass
@@ -73,7 +73,7 @@ fn spatial_measured_value<Value, Uncertainty, Evidence, Method, Obligation>(
 type SpatialRenderProjection<Value, Uncertainty, Obligation>
   = RenderMeasured { value: Value, uncertainty: Uncertainty }
   | RenderEstimated { region: Uncertainty }
-  | RenderHypothesis { value: Value, purpose: NonEmptyStr }
+  | RenderHypothesis { value: Value, purpose: std.types.NonEmptyStr }
   | RenderUnknown { obligation: Obligation }
 
 // Total: every standing is renderable AS ITSELF. The guarantee this buys is scoped honestly — it
@@ -109,7 +109,7 @@ type SpatialRequirement<Uncertainty> {
 
 type SpatialRefusalCause<Uncertainty, Method, Obligation>
   = SpatialGeometryUnknown { obligation: Obligation }
-  | SpatialHypothesisNotAdmissible { purpose: NonEmptyStr }
+  | SpatialHypothesisNotAdmissible { purpose: std.types.NonEmptyStr }
   | SpatialStandingBelowMinimum { method: Method }
   | SpatialUncertaintyExceedsBudget { actual: Uncertainty, budget: Uncertainty }
 

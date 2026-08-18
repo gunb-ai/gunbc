@@ -4,8 +4,8 @@ module extdeps.connector.samtec_ftsh_105_01_l_dv
 // THE LOCATOR IS THE SERIES FOOTPRINT PRINT FOR A DIFFERENT VARIANT, AND THAT IS DELIBERATE. The
 // -DH print is the one observed to exist at this path, so the anchor names the publisher and the
 // document family that were observed, rather than a constructed path nobody has seen resolve.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "suddendocs.samtec.com/prints/ftsh-1xx-xx-xxx-dh-xx footprint.pdf"
   }
@@ -13,17 +13,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data ftsh_105_01_l_dv_note: String = "THIS ROW HAS NO UPSTREAM PRECEDENT BEHIND IT AT ALL, AND SAYING SO IS THE POINT OF CARRYING IT. The other three unread rows in this lane are named by Ampere's Mt. Jade reference for specific jobs; this part number was proposed here as a debug header, and Mt. Jade names no part number for its JTAG headers. So there is nothing upstream that even suggests it — which is the class of pick the operator's ruling on this lane exists to make visible, and it is recorded rather than quietly presented alongside the others. THE ANCHOR POINTS AT A SIBLING VARIANT'S PRINT. Samtec publishes per-variant footprint prints under one path pattern, and the print observed to exist is the -DH one; the anchor records the path that was observed rather than a constructed -DV path, because guessing a locator is how a citation ends up naming a document nobody has seen. The -DV footprint print is what the standing below owes."
 
-data ftsh_105_01_l_dv: CatalogPartIdentity = CatalogPartIdentity {
+data ftsh_105_01_l_dv: extdeps.land_pattern.types.CatalogPartIdentity = extdeps.land_pattern.types.CatalogPartIdentity {
   ordering_part_number: "FTSH-105-01-L-DV",
   vendor: samtec,
-  board_pattern: MountingPatternObligation {
+  board_pattern: extdeps.land_pattern.types.MountingPatternObligation {
     what_is_missing: "the vendor's per-variant footprint print for the -DV variant of FTSH-105-01-L, which Samtec publishes as a print in its footprint series and which this row does not transcribe",
   },
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.connector.samtec_ftsh_105_01_l_dv",
       decl_name: "ftsh_105_01_l_dv",
       field: WholeDeclaration

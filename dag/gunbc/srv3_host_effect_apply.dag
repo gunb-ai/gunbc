@@ -5,11 +5,11 @@ type Srv3TypedReceipt {
   lines: List<String>
 }
 
-fn srv3_actuator_target() -> NodeControlPlane {
+fn srv3_actuator_target() -> gunbc.host_effect.NodeControlPlane {
   HostOs { node: srv3_os_install_actuator_host }
 }
 
-data srv3_seeded_install_media_toolchain_ensure_deploy_access: DeployAccess = ci_deploy_srv1_access
+data srv3_seeded_install_media_toolchain_ensure_deploy_access: gunbc.ci_deploy_access.DeployAccess = ci_deploy_srv1_access
 
 fn srv3_seeded_install_media_toolchain_unprivileged_fixture_denied() -> Bool {
   match deploy_access_check(
@@ -22,7 +22,7 @@ fn srv3_seeded_install_media_toolchain_unprivileged_fixture_denied() -> Bool {
 }
 
 fn srv3_host_effect_apply(
-  effect: HostEffect,
+  effect: gunbc.host_effect.HostEffect,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   host_effect_apply(
     target: srv3_actuator_target(),
@@ -104,7 +104,7 @@ fn srv3_reconciliation_failure_reason(
 fn srv3_reconciliation_to_process_exit(
   r: Reconciliation<HostEffectIntent, HostEffectEvidence>,
   failure_prefix: String,
-) -> ProcessExit {
+) -> std.process.ProcessExit {
   if reconciliation_converged(r: r) {
     ExitSuccess
   } else {
@@ -115,7 +115,7 @@ fn srv3_reconciliation_to_process_exit(
   }
 }
 
-fn srv3_emit_typed_receipt(receipt: Srv3TypedReceipt) -> ProcessExit {
+fn srv3_emit_typed_receipt(receipt: Srv3TypedReceipt) -> std.process.ProcessExit {
   srv3_reconciliation_to_process_exit(
     r: srv3_receipt_emit_apply(receipt: receipt),
     failure_prefix: "srv3-receipt-emit: ",

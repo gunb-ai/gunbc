@@ -25,17 +25,17 @@ test fn non_fold_residue_frontier_is_populated() -> Bool {
 // downstream well-formedness guard defends -- and this control has to reach it
 // through the gap in order to keep proving the guard works (DESIGN 4b(4):
 // production machinery dissolves on a climb, the evidence stays enrolled).
-fn synthetic_nonliteral_text(text: String) -> NonEmptyStr {
+fn synthetic_nonliteral_text(text: String) -> std.types.NonEmptyStr {
   concat(text, "")
 }
 
-fn synthetic_empty_condition(text: String) -> DissolutionCondition {
+fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionCondition {
   unbound_dissolution(description: synthetic_nonliteral_text(text: text))
 }
 
 test fn non_fold_residue_frontier_red_control_empty_trigger_reds() -> Bool {
   let verdict = frontier_row_well_formed(
-    row: FrontierRow {
+    row: std.roster_frontier.FrontierRow {
       subject: PathSubject { path: "synthetic.dag::f" },
       reason: "a reason without a trigger is not a frontier row",
       dissolution: synthetic_empty_condition(text: "")
@@ -47,12 +47,12 @@ test fn non_fold_residue_frontier_red_control_empty_trigger_reds() -> Bool {
 test fn non_fold_residue_frontier_red_control_duplicate_path_reds() -> Bool {
   match frontier_rows_keyed_roster_build(
     rows: [
-      FrontierRow {
+      std.roster_frontier.FrontierRow {
         subject: PathSubject { path: "synthetic/a.dag::f" },
         reason: "r1",
         dissolution: unbound_dissolution(description: "d1"),
       },
-      FrontierRow {
+      std.roster_frontier.FrontierRow {
         subject: PathSubject { path: "synthetic/a.dag::f" },
         reason: "r2",
         dissolution: unbound_dissolution(description: "d2"),

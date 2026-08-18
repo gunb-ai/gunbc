@@ -197,8 +197,8 @@ type GcpPredefinedRole {
 }
 
 type RolePermissionAuthority
-  = RolePermissionsObserved { role: GcpPredefinedRole, observed_at_revision: NonEmptyStr }
-  | RolePermissionsUnobserved { role_name: NonEmptyStr, cause: NonEmptyStr }
+  = RolePermissionsObserved { role: GcpPredefinedRole, observed_at_revision: std.types.NonEmptyStr }
+  | RolePermissionsUnobserved { role_name: std.types.NonEmptyStr, cause: std.types.NonEmptyStr }
 
 // Whether a role grants a permission is answerable ONLY from an observation. The
 // unobserved arm returns no Bool at all rather than false, because "we did not
@@ -207,7 +207,7 @@ type RolePermissionAuthority
 type RoleGrantsPermissionVerdict
   = RoleGrantsPermission
   | RoleDoesNotGrantPermission
-  | RoleGrantUndetermined { cause: NonEmptyStr }
+  | RoleGrantUndetermined { cause: std.types.NonEmptyStr }
 
 fn role_grants_permission(authority: RolePermissionAuthority, permission: String) -> RoleGrantsPermissionVerdict {
   match authority {

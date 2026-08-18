@@ -25,8 +25,8 @@ fn wave1_gate1_b1_resolve_source(source: String) -> Bool {
                   match resolve_with_admission(
                     lm: lm,
                     roots: Cons { head: root, tail: Empty },
-                    admission: Admission {
-                      subject: ResolutionSubject { name: module_qn },
+                    admission: v2.compiler.name_resolve.Admission {
+                      subject: v2.compiler.name_resolve.ResolutionSubject { name: module_qn },
                       imports: Empty
                     }
                   ) {

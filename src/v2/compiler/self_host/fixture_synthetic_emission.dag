@@ -13,7 +13,7 @@ type FixtureEmissionQualification
 
 type FixtureBehaviorReceipt {
   module_path: String
-  emitted_source_identity: Hash
+  emitted_source_identity: v2.std.node.Hash
   fixture_lane_tag: String
   qualifications: List<FixtureEmissionQualification>
   build_green: Bool
@@ -27,7 +27,7 @@ type SyntheticEmittedArtifact {
 
 type WrittenSyntheticEmittedArtifact {
   artifact: SyntheticEmittedArtifact
-  write: RustWorkspaceWriteReceipt
+  write: v2.compiler.self_host.candidate_generation.RustWorkspaceWriteReceipt
 }
 
 data fixture_source_produced_qualifications: List<FixtureEmissionQualification> = [

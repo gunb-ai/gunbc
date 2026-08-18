@@ -223,10 +223,10 @@ data codex_device_prompt_input_contract_note: String = "WHAT codex EMITS IS A co
 
 type CodexDeviceLoginPrompt
   = CodexDeviceLoginReady {
-      verification_url: NonEmptyStr,
-      user_code: NonEmptyStr,
+      verification_url: std.types.NonEmptyStr,
+      user_code: std.types.NonEmptyStr,
     }
-  | CodexDeviceLoginPromptUnavailable { reason: NonEmptyStr }
+  | CodexDeviceLoginPromptUnavailable { reason: std.types.NonEmptyStr }
 
 data codex_device_prompt_marker_url: String = "https://auth.openai.com/codex/device"
 data codex_device_prompt_marker_code_line: String = "Enter this one-time code"

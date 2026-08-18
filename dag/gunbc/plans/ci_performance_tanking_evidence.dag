@@ -1,7 +1,7 @@
 module gunbc.plans.ci_performance_tanking_evidence
 
 
-fn ci_performance_tanking_evidence_body() -> List<MarkdownBlock> {
+fn ci_performance_tanking_evidence_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "One-line: main CI went red at 2026-07-10T21:58Z and has stayed red; the cause is NOT one thing — it is one latent-red exposure plus three cost terms stacking inside fixed 60/45-minute job budgets, and the loudest prior narrative (per-witness resolve cost in CI) is refuted by the floor's own receipts. Every claim below carries the receipt that grounds it (GitHub Actions run id + step timing, a floor receipt line from that run's log, or a controlled single-variable A/B). Method note: job WALLS are confounded (concurrent runs, cold caches) — all attribution below is at STEP or receipt grain."),
 
@@ -84,7 +84,7 @@ fn ci_performance_tanking_evidence_body() -> List<MarkdownBlock> {
   ]
 }
 
-data ci_performance_tanking_evidence_plan: Plan = Plan {
+data ci_performance_tanking_evidence_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "ci-performance-tanking-evidence",
   title: "Why CI performance is tanking - the evidence, argued serially (2026-07-10/11 main-red incident)",
   body: ci_performance_tanking_evidence_body(),

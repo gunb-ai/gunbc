@@ -2,7 +2,7 @@ module gunbc.cli_invoke
 
 
 
-data cli_invoke_shell_spelling_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: cli_invoke _shell builders — interim GHA emit surface for Phase 3a; delete when gunbc run / claim_executor call sites render through bash emit (shell→intent open thread, docs/plans/shell-intent-emit-realization-design.md Phase 3 completion).")
+data cli_invoke_shell_spelling_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: cli_invoke _shell builders — interim GHA emit surface for Phase 3a; delete when gunbc run / claim_executor call sites render through bash emit (shell→intent open thread, docs/plans/shell-intent-emit-realization-design.md Phase 3 completion).")
 
 type SourceRootShellStyle
   = SourceRootBare

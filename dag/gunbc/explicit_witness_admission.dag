@@ -8,12 +8,12 @@ data explicit_witness_admission_separation_note: String = "SEPARATION FROM PATH 
 data explicit_witness_admission_axis_note: String = "One row carries all three axes of std.witness_admission independently: cadence (which consumer runs it), budget (how much eval time IT needs, never a property of the batch holding it) and expected (which verdict is agreement, at FUNCTION grain). The row is the single authority for each; the batch rosters, the scheduler ceiling and the expectation the executor matches per result are all DERIVED from it. Before this split a row declaring a long budget had to join a second batch to obtain one — see witness_admission_axis_separation_note for the measurement that produced the correction."
 
 type ExplicitWitnessAdmission {
-  witness: ScheduleWitnessEntry
-  cadence: WitnessConsumerCadence
-  budget: WitnessExecutionBudget
-  expected: WitnessExpectedVerdict
-  reason: NonEmptyStr
-  dissolution: DissolutionCondition
+  witness: std.realization_schedule.ScheduleWitnessEntry
+  cadence: std.witness_admission.WitnessConsumerCadence
+  budget: std.witness_admission.WitnessExecutionBudget
+  expected: std.witness_admission.WitnessExpectedVerdict
+  reason: std.types.NonEmptyStr
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 fn known_red_probe_expecting(

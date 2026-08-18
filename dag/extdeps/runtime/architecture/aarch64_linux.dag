@@ -2,16 +2,16 @@ module extdeps.runtime.architecture.aarch64_linux
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst"
   }
 }
 
-data aarch64_stack_grows_down: StackLayout = { grows_down: true }
+data aarch64_stack_grows_down: std.abi.StackLayout = { grows_down: true }
 
-data aarch64_general_purpose_registers: List<ArchitecturalRegister> = [
+data aarch64_general_purpose_registers: List<std.abi.ArchitecturalRegister> = [
   aarch64_inhabitant_x0,
   aarch64_inhabitant_x1,
   aarch64_inhabitant_x2,
@@ -21,7 +21,7 @@ data aarch64_general_purpose_registers: List<ArchitecturalRegister> = [
   aarch64_inhabitant_x8,
 ]
 
-data aarch64_linux_architecture_profile: ArchitectureProfile = {
+data aarch64_linux_architecture_profile: extdeps.toolchain.architecture_profile.ArchitectureProfile = {
   architecture: Aarch64,
   word_width: bit_width(64),
   pointer_width: bit_width(64),
@@ -33,7 +33,7 @@ data aarch64_linux_architecture_profile: ArchitectureProfile = {
   stack_layout: aarch64_stack_grows_down,
 }
 
-data aarch64_linux_deployment_target: DeploymentTarget = {
+data aarch64_linux_deployment_target: extdeps.toolchain.architecture_profile.DeploymentTarget = {
   profile: aarch64_linux_architecture_profile,
   invocation: SyscallAbiSurface { abi: linux_aarch64_syscall_abi },
 }

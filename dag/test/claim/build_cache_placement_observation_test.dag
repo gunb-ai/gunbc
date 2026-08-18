@@ -4,51 +4,51 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data placement_observation_witness_doc: String = "The step-1 controls for the endpoint-owner observer, at the MODEL grain. Every fixture below is synthetic; the live counterparts were captured read-only against srv1, srv2 and srv3 on 2026-08-01 and are recorded in docs/plans/build-cache-placement-receipt.md. The controls that can only be executed against a real host — that --show-stats does not manufacture a server, that a compile does, and that two consecutive observations do not perturb the subject — are live receipts rather than witnesses here, because a hermetic fixture cannot falsify them."
 
-fn srv1_ci_instance_fixture() -> BuildCacheInstance {
+fn srv1_ci_instance_fixture() -> gunbc.build_cache_instance.BuildCacheInstance {
   ci_cache_instance(host: "srv1")
 }
 
 fn owner_fixture() -> gunbc.build_cache_instance.ProcessIdentity {
   gunbc.build_cache_instance.ProcessIdentity {
-    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
+    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as std.types.NonEmptyStr,
     pid: 3975946,
-    start_time: "79870020" as NonEmptyStr,
+    start_time: "79870020" as std.types.NonEmptyStr,
   }
 }
 
-fn observed_with_context(ctx: EndpointOwnerContext) -> BuildCacheEndpointObservation {
+fn observed_with_context(ctx: gunbc.build_cache_instance.EndpointOwnerContext) -> gunbc.build_cache_instance.BuildCacheEndpointObservation {
   EndpointOwnerObserved {
     instance: srv1_ci_instance_fixture(),
     owner: owner_fixture(),
-    executable: "/usr/local/bin/sccache" as NonEmptyStr,
-    principal: "ghrunner" as NonEmptyStr,
+    executable: "/usr/local/bin/sccache" as std.types.NonEmptyStr,
+    principal: "ghrunner" as std.types.NonEmptyStr,
     owner_context: ctx,
     memory_limits: none,
     memory_events: none,
   }
 }
 
-fn observed_in_slot(slot: RunnerSlotIdentity, lifecycle: RunnerSlotLifecycle) -> BuildCacheEndpointObservation {
+fn observed_in_slot(slot: gunbc.build_cache_instance.RunnerSlotIdentity, lifecycle: gunbc.build_cache_instance.RunnerSlotLifecycle) -> gunbc.build_cache_instance.BuildCacheEndpointObservation {
   observed_with_context(
     ctx: OwnerInRunnerSlot {
       slot: slot,
       lifecycle: lifecycle,
-      observed_cgroup: "/system.slice/system-actions-runner.slice/actions-runner@srv1-10.service" as NonEmptyStr,
+      observed_cgroup: "/system.slice/system-actions-runner.slice/actions-runner@srv1-10.service" as std.types.NonEmptyStr,
     },
   )
 }
 
-fn observed_owned_by_unit(unit: NonEmptyStr) -> BuildCacheEndpointObservation {
+fn observed_owned_by_unit(unit: std.types.NonEmptyStr) -> gunbc.build_cache_instance.BuildCacheEndpointObservation {
   observed_with_context(
     ctx: OwnerInSystemdUnit {
       unit: unit,
-      observed_cgroup: "/system.slice/some.service" as NonEmptyStr,
+      observed_cgroup: "/system.slice/some.service" as std.types.NonEmptyStr,
     },
   )
 }
 
 test fn witness_retired_slot_owner_is_runner_owned_and_retired() -> Bool {
-  match placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot)) {
+  match placement_of_endpoint_observation(observed: observed_in_slot(slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot)) {
     ServerRunnerOwned { slot: s, lifecycle: lc } =>
       match lc {
         RetiredRunnerSlot => s.slot_index == 10
@@ -62,7 +62,7 @@ test fn witness_retired_slot_owner_is_runner_owned_and_retired() -> Bool {
 }
 
 test fn witness_active_slot_owner_also_refuses() -> Bool {
-  match placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 5 }, lifecycle: DesiredRunnerSlot)) {
+  match placement_of_endpoint_observation(observed: observed_in_slot(slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 5 }, lifecycle: DesiredRunnerSlot)) {
     ServerRunnerOwned { slot: _, lifecycle: lc } =>
       match lc {
         DesiredRunnerSlot => true
@@ -76,11 +76,11 @@ test fn witness_active_slot_owner_also_refuses() -> Bool {
 }
 
 test fn witness_both_runner_lifecycles_refuse_at_the_verdict() -> Bool {
-  refuses(placement: placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot)))
-    && refuses(placement: placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 5 }, lifecycle: DesiredRunnerSlot)))
+  refuses(placement: placement_of_endpoint_observation(observed: observed_in_slot(slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot)))
+    && refuses(placement: placement_of_endpoint_observation(observed: observed_in_slot(slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 5 }, lifecycle: DesiredRunnerSlot)))
 }
 
-fn refuses(placement: BuildCacheServerPlacement) -> Bool {
+fn refuses(placement: gunbc.build_cache_instance.BuildCacheServerPlacement) -> Bool {
   match placement_verdict(catalog_id: sccache_local_id, stats_line: "stats", placement: placement) {
     ProvisionRefused { cause: _, reason: _ } => true
     ProvisionConverged { catalog_id: _, stats_line: _ } => false
@@ -96,7 +96,7 @@ test fn witness_managed_unit_owner_converges_only_on_the_intended_unit() -> Bool
     ServerPlacementAbsent => false
     ServerPlacementUnknown { detail: _ } => false
   }
-  let wrong = match placement_of_endpoint_observation(observed: observed_owned_by_unit(unit: "some-other.service" as NonEmptyStr)) {
+  let wrong = match placement_of_endpoint_observation(observed: observed_owned_by_unit(unit: "some-other.service" as std.types.NonEmptyStr)) {
     ServerUnsupervised { cgroup: _ } => true
     ServerManagedUnitOwned { unit: _ } => false
     ServerRunnerOwned { slot: _, lifecycle: _ } => false
@@ -135,7 +135,7 @@ test fn witness_unreachable_host_is_unknown_never_absent() -> Bool {
   let p = placement_of_endpoint_observation(
     observed: EndpointObservationUnavailable {
       instance: srv1_ci_instance_fixture(),
-      reason: ReachRefused { detail: "ssh 192.168.1.196: Permission denied (publickey)" as NonEmptyStr },
+      reason: ReachRefused { detail: "ssh 192.168.1.196: Permission denied (publickey)" as std.types.NonEmptyStr },
     },
   )
   match p {
@@ -150,12 +150,12 @@ test fn witness_unreachable_host_is_unknown_never_absent() -> Bool {
 data owner_context_coupling_doc: String = "THE CONTROL FOR THE COUPLING FIX (review 46217). The classification of an endpoint owner's cgroup was once three loose fields — a unit beside an optional slot beside an optional lifecycle — and the combination that mattered was slot-Absent with lifecycle-Present: the derivation matched the slot first, so that state skipped the runner arm entirely and reached the unit comparison, where a cgroup whose unit happened to equal intended_unit would return ServerManagedUnitOwned. A runner-owned endpoint could therefore be reported as correctly placed because two fields disagreed. There is deliberately NO witness asserting that state refuses, and its absence is the claim: EndpointOwnerContext has no arm that can express it, so it is unwritable rather than checked, and a test would have to construct a value the type does not admit (DESIGN section 4b, construction over validation). What IS witnessed below is the arm that replaced the half-filled record — a cgroup the observer could not classify is a positive OwnerContextUndecided carrying its own located reason, and it refuses."
 
 test fn witness_undecided_owner_context_refuses_and_keeps_the_located_reason() -> Bool {
-  let detail = "cgroup names actions-runner@srv1-XX.service; slot index did not parse" as NonEmptyStr
+  let detail = "cgroup names actions-runner@srv1-XX.service; slot index did not parse" as std.types.NonEmptyStr
   let p = placement_of_endpoint_observation(
     observed: observed_with_context(
       ctx: OwnerContextUndecided {
         detail: detail,
-        observed_cgroup: "/system.slice/system-actions-runner.slice/actions-runner@srv1-XX.service" as NonEmptyStr,
+        observed_cgroup: "/system.slice/system-actions-runner.slice/actions-runner@srv1-XX.service" as std.types.NonEmptyStr,
       },
     ),
   )
@@ -172,8 +172,8 @@ test fn witness_undecided_owner_context_refuses_and_keeps_the_located_reason() -
 data client_false_positive_doc: String = "THE CLIENT FALSE-POSITIVE CONTROL, expressed as a construction property rather than a fixture count. A name-based probe would have to take 'how many processes are called sccache' as an input; this model has no such input anywhere — BuildCacheEndpointObservation is indexed by the ENDPOINT, and its ambiguity arm counts candidate ENDPOINT OWNERS, not same-named processes. So the srv1 reality at receipt time (four ghrunner sccache processes: one endpoint owner plus three transient clients under live slots 01/04/05) classifies from the owner alone and the three clients cannot perturb it. A probe that refused on 'multiple sccache processes' would have produced a FALSE refusal on all three hosts simultaneously."
 
 test fn witness_placement_is_indexed_by_owner_not_by_process_count() -> Bool {
-  let a = placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot))
-  let b = placement_of_endpoint_observation(observed: observed_in_slot(slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot))
+  let a = placement_of_endpoint_observation(observed: observed_in_slot(slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot))
+  let b = placement_of_endpoint_observation(observed: observed_in_slot(slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 }, lifecycle: RetiredRunnerSlot))
   match a {
     ServerRunnerOwned { slot: sa, lifecycle: _ } =>
       match b {

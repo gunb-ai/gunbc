@@ -59,16 +59,16 @@ type Issue {
   title: String
   body: String
   state: IssueState
-  html_url: NonEmptyStr
-  created_at: Timestamp
-  updated_at: Timestamp
+  html_url: std.types.NonEmptyStr
+  created_at: std.types.Timestamp
+  updated_at: std.types.Timestamp
 }
 
 type IssueComment {
   id: Int
-  html_url: NonEmptyStr
+  html_url: std.types.NonEmptyStr
   body: String
-  created_at: Timestamp
+  created_at: std.types.Timestamp
 }
 
 data issues_labels_and_raw_listing_note: String = "TWO NAMING-AND-SHAPE CORRECTIONS, both the same defect seen from different sides (review on the ALERT-0..3 PR).\n\nlabels IS A LIST, NOT A STRING. GitHub's issues API takes labels as a JSON array, and modeling it as one String meant the caller owned the join — which is to say the caller owned a piece of the wire format, in a module whose whole job is to own the wire format. A label containing the separator would have silently become two labels, and the shape the type advertised was not the shape the endpoint accepts.\n\nListForRepo IS RENAMED ListForRepoRaw BECAUSE IT RETURNS UNPARSED TEXT. An operation named for a typed resource whose output is an undecoded String is the naming half of rung inflation: the name asserts a guarantee — you get issues — that the signature does not deliver, and every consumer then writes its own ad-hoc parse while believing it was handed a resource. The honest options were to decode it here or to say what it actually returns; decoding a list of issues needs a total Issue decoder, which is real work with no consumer yet, so the name now matches the output. When a consumer lands, ListForRepo returns List<Issue> with a decoder beside it and this operation becomes its transport rather than its interface.\n\nTHE TWO labels FIELDS ARE DIFFERENT SHAPES BECAUSE UPSTREAM MAKES THEM DIFFERENT, and this is deliberate rather than an oversight. Create sends labels in the request BODY, where GitHub takes a JSON array, so it is List<String>. ListForRepoRaw sends labels as a QUERY parameter, which GitHub documents as `a list of comma separated label names` (docs.github.com/en/rest/issues/issues#list-repository-issues, read 2026-08-06) — a query string cannot carry a JSON array, so comma-separated text IS the wire form there and typing it as a list would be modeling a shape the endpoint does not accept. The residue this leaves is that the caller still performs the join for the query case; the right end state is a transport that models list-valued query parameters and encodes them per the operation's declared separator, at which point both fields are List<String> and neither caller joins anything. Dissolve-on: the rest transport carries a list-valued query encoding."

@@ -134,11 +134,11 @@ type CopperRefusalCause
 // was to extract the general grain rather than to move the specimen -- product.electrical
 // .connectivity now owns it and the analog article consumes it on the same footing this module
 // does, so neither is the other's authority.
-fn net_exists(nets: List<ElectricalNet>, net: NetIdentity) -> Bool {
+fn net_exists(nets: List<product.electrical.connectivity.ElectricalNet>, net: product.electrical.connectivity.NetIdentity) -> Bool {
   count(filter(nets, n => n.identity == net)) > 0
 }
 
-fn realizations_of_net(rs: std.types.List<NetCopperRealization>, net: NetIdentity) -> std.types.List<NetCopperRealization> {
+fn realizations_of_net(rs: std.types.List<NetCopperRealization>, net: product.electrical.connectivity.NetIdentity) -> std.types.List<NetCopperRealization> {
   filter(rs, r => r.net == net)
 }
 
@@ -155,7 +155,7 @@ fn realizations_of_net(rs: std.types.List<NetCopperRealization>, net: NetIdentit
 // derive from intent.nets, so the population is the schematic's, and a realization naming a net the
 // schematic lacks is still caught by RealizationNamesNoSuchNet rather than silently skipped.
 fn copper_refusal_causes(
-  nets: List<ElectricalNet>,
+  nets: List<product.electrical.connectivity.ElectricalNet>,
   board: product.pcb.stackup.AdmittedStackup,
   rs: List<NetCopperRealization>,
   vs: List<InterlayerConnection>,
@@ -202,7 +202,7 @@ fn interlayer_touches_ordinal(v: InterlayerConnection, ordinal: Int) -> Bool {
   count(filter(interlayer_ordinals(v: v), o => o == ordinal)) > 0
 }
 
-fn connections_of_net(vs: List<InterlayerConnection>, net: NetIdentity) -> List<InterlayerConnection> {
+fn connections_of_net(vs: List<InterlayerConnection>, net: product.electrical.connectivity.NetIdentity) -> List<InterlayerConnection> {
   filter(vs, v => v.net == net)
 }
 
@@ -254,7 +254,7 @@ fn expand_reached(
 fn net_reached_ordinals(
   rs: List<NetCopperRealization>,
   vs: List<InterlayerConnection>,
-  net: NetIdentity,
+  net: product.electrical.connectivity.NetIdentity,
   seed: Int,
 ) -> List<Int> {
   let conns = connections_of_net(vs: vs, net: net)
@@ -281,7 +281,7 @@ fn net_reached_ordinals(
 // The cause carries the net and not the ordinal. Naming WHICH layer is duplicated needs a fold over
 // distinct ordinals that this increment does not build, and picking one of them would name a layer
 // the model did not establish as the offender.
-fn net_has_duplicate_on_one_layer(rs: List<NetCopperRealization>, net: NetIdentity) -> Bool {
+fn net_has_duplicate_on_one_layer(rs: List<NetCopperRealization>, net: product.electrical.connectivity.NetIdentity) -> Bool {
   let on = realizations_of_net(rs: rs, net: net)
   count(filter(on, r =>
     count(filter(on, other => copper_layer_ordinal(r: other.layer) == copper_layer_ordinal(r: r.layer))) > 1
@@ -294,7 +294,7 @@ fn net_has_duplicate_on_one_layer(rs: List<NetCopperRealization>, net: NetIdenti
 // if any of them fails to reach all the others. For a connected net every start reaches everything,
 // so the two readings agree; for an islanded net every start fails, so the refusal is not sensitive
 // to which layer it began from.
-fn net_split_is_unrouted(rs: List<NetCopperRealization>, vs: List<InterlayerConnection>, net: NetIdentity) -> Bool {
+fn net_split_is_unrouted(rs: List<NetCopperRealization>, vs: List<InterlayerConnection>, net: product.electrical.connectivity.NetIdentity) -> Bool {
   let on = realizations_of_net(rs: rs, net: net)
   if count(on) <= 1 {
     false
@@ -333,8 +333,8 @@ fn connection_orphan_endpoints(
 }
 
 fn interlayer_refusal_causes(
-  nets: List<ElectricalNet>,
-  board: AdmittedStackup,
+  nets: List<product.electrical.connectivity.ElectricalNet>,
+  board: product.pcb.stackup.AdmittedStackup,
   rs: List<NetCopperRealization>,
   vs: List<InterlayerConnection>,
 ) -> List<CopperRefusalCause> {
@@ -380,7 +380,7 @@ type CopperAdmission
   | CopperRefused { causes: List<CopperRefusalCause> }
 
 fn mint_admitted_copper(
-  board: DeclarationRef,
+  board: std.decl_ref.DeclarationRef,
   rs: List<NetCopperRealization>,
   vs: List<InterlayerConnection>,
 ) -> CopperAdmission
@@ -397,12 +397,12 @@ fn admitted_copper_connections(a: AdmittedCopper) -> List<InterlayerConnection> 
   a.interlayer_connections
 }
 
-fn admitted_copper_board(a: AdmittedCopper) -> DeclarationRef {
+fn admitted_copper_board(a: AdmittedCopper) -> std.decl_ref.DeclarationRef {
   a.board
 }
 
 fn admit_copper(
-  nets: List<ElectricalNet>,
+  nets: List<product.electrical.connectivity.ElectricalNet>,
   board: product.pcb.stackup.AdmittedStackup,
   rs: List<NetCopperRealization>,
   vs: List<InterlayerConnection>,
@@ -420,10 +420,10 @@ fn admit_copper(
 // realized at all. Fusing them would let a board with two correct traces and forty unrouted nets
 // report as admitted-and-therefore-done, which is the completeness-versus-verdict conflation
 // PcbBodyLayoutStanding already had to split into separate arms.
-fn unrealized_nets(nets: std.types.List<ElectricalNet>, rs: std.types.List<NetCopperRealization>) -> std.types.List<ElectricalNet> {
+fn unrealized_nets(nets: std.types.List<product.electrical.connectivity.ElectricalNet>, rs: std.types.List<NetCopperRealization>) -> std.types.List<product.electrical.connectivity.ElectricalNet> {
   filter(nets, n => count(realizations_of_net(rs: rs, net: n.identity)) == 0)
 }
 
-fn copper_is_complete_over_nets(nets: std.types.List<ElectricalNet>, rs: std.types.List<NetCopperRealization>) -> Bool {
+fn copper_is_complete_over_nets(nets: std.types.List<product.electrical.connectivity.ElectricalNet>, rs: std.types.List<NetCopperRealization>) -> Bool {
   count(unrealized_nets(nets: nets, rs: rs)) == 0
 }

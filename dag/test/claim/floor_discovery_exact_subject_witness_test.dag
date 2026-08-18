@@ -3,32 +3,32 @@ module test.claim.floor_discovery_exact_subject_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data tested_commit: GitObjectId = GitSha1ObjectId {
-  digest: Sha1Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+data tested_commit: extdeps.git.object_store.GitObjectId = GitSha1ObjectId {
+  digest: std.content_hash.Sha1Digest { hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
 }
-data other_commit: GitObjectId = GitSha1ObjectId {
-  digest: Sha1Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
-}
-
-data tested_tree: GitObjectId = GitSha1ObjectId {
-  digest: Sha1Digest { hex: "1111111111111111111111111111111111111111" }
+data other_commit: extdeps.git.object_store.GitObjectId = GitSha1ObjectId {
+  digest: std.content_hash.Sha1Digest { hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" }
 }
 
-data other_tree: GitObjectId = GitSha1ObjectId {
-  digest: Sha1Digest { hex: "2222222222222222222222222222222222222222" }
+data tested_tree: extdeps.git.object_store.GitObjectId = GitSha1ObjectId {
+  digest: std.content_hash.Sha1Digest { hex: "1111111111111111111111111111111111111111" }
 }
 
-fn naming_identity() -> Fnv1a64Structural {
+data other_tree: extdeps.git.object_store.GitObjectId = GitSha1ObjectId {
+  digest: std.content_hash.Sha1Digest { hex: "2222222222222222222222222222222222222222" }
+}
+
+fn naming_identity() -> std.content_hash.Fnv1a64Structural {
   content_hash_atom(value: "floor-discovery-naming-authority-fixture")
 }
 
-fn tool_identity() -> Fnv1a64Structural {
+fn tool_identity() -> std.content_hash.Fnv1a64Structural {
   content_hash_atom(value: "floor-discovery-tool-fixture")
 }
 
 fn subject_fx(
-  commit: GitObjectId,
-  tree: GitObjectId,
+  commit: extdeps.git.object_store.GitObjectId,
+  tree: extdeps.git.object_store.GitObjectId,
   roots: List<String>,
 ) -> v2.workflow.floor_discovery.FloorDiscoverySubject {
   v2.workflow.floor_discovery.FloorDiscoverySubject {
@@ -44,7 +44,7 @@ fn subject_fx(
 fn request_fx(
   subject: v2.workflow.floor_discovery.FloorDiscoverySubject,
   scope: List<String>,
-  mode: ExecutionMode,
+  mode: std.execution_mode.ExecutionMode,
 ) -> v2.workflow.floor_discovery.FloorDiscoveryRequest {
   v2.workflow.floor_discovery.FloorDiscoveryRequest {
     subject: subject,

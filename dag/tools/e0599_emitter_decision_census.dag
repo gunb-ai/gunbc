@@ -32,7 +32,7 @@ type E0599ExternalAuthority {
   impl_site: String,
   impl_bound: String,
   member_site: String,
-  cited_upstream: Optional<ExternalAuthority>,
+  cited_upstream: Optional<extdeps.external_authority.ExternalAuthority>,
 }
 
 type E0599LoweringRow {

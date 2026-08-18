@@ -15,7 +15,7 @@ data fleet_desired_ref_name: String = "refs/fleet/desired"
 // holds last-known-good and says so; it never fabricates a target and never treats
 // "could not read" as "nothing desired" (the empty-observation narrow).
 type FleetDesiredRevision
-  = FleetDesiredAdmitted { revision: GitObjectId }
+  = FleetDesiredAdmitted { revision: extdeps.git.object_store.GitObjectId }
   | FleetDesiredUnobserved { cause: String }
 
 fn fleet_desired_revision_target(d: FleetDesiredRevision) -> GitObjectId? {
@@ -31,7 +31,7 @@ fn fleet_desired_revision_target(d: FleetDesiredRevision) -> GitObjectId? {
 // ruling), so a concurrent admission refuses instead of silently overwriting. A prior
 // of none is the first admission (ref creation).
 type FleetDesiredAdvance
-  = AdvanceAdmitted { from: GitObjectId?, to: GitObjectId }
+  = AdvanceAdmitted { from: extdeps.git.object_store.GitObjectId?, to: extdeps.git.object_store.GitObjectId }
   | AdvanceRefused { cause: String }
 
 fn admit_fleet_desired_advance(

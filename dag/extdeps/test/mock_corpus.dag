@@ -1,13 +1,13 @@
 module extdeps.test.mock_corpus
 
 
-data http_pilot_mock_case_get_post: PublishedMockCase = PublishedMockCase {
+data http_pilot_mock_case_get_post: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "test.HttpPilot.GetPost",
   service: "test.HttpPilot",
   operation: "GetPost",
   case_id: 0
 }
 
-data http_pilot_published_mock_corpus: List<PublishedMockCase> = [
+data http_pilot_published_mock_corpus: List<std.hermetic_replay.PublishedMockCase> = [
   http_pilot_mock_case_get_post
 ]

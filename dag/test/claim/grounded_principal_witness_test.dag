@@ -3,8 +3,8 @@ module test.claim.grounded_principal_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_runner_fiction_not_in_roster() -> Bool {
-  !fleet_posix_account_exists(name: "runner" as NonEmptyStr)
-    && match fleet_posix_account_from_name(name: "runner" as NonEmptyStr) {
+  !fleet_posix_account_exists(name: "runner" as std.types.NonEmptyStr)
+    && match fleet_posix_account_from_name(name: "runner" as std.types.NonEmptyStr) {
       Present { value: _ } => false
       Absent => true
     }
@@ -41,10 +41,10 @@ test fn witness_declared_probe_names_principal() -> Bool {
 
 test fn witness_declared_probe_mismatch_red() -> Bool {
   let p = fleet_posix_ci_runner_principal()
-  let poisoned = GroundedPosixPrincipal {
+  let poisoned = gunbc.fleet_posix_accounts.GroundedPosixPrincipal {
     posix: p.posix,
     sudo_grants: p.sudo_grants,
-    declared_probe: PosixAccountDeclaredProbe {
+    declared_probe: gunbc.fleet_posix_accounts.PosixAccountDeclaredProbe {
       probed_at: p.declared_probe.probed_at,
       probe_command: "id runner",
       host: p.declared_probe.host,
@@ -83,7 +83,7 @@ test fn witness_preflight_shell_is_dash_safe() -> Bool {
 
 test fn witness_gha_runner_context_is_not_os_account() -> Bool {
   context_name(context: Runner) == "runner"
-    && !fleet_posix_account_exists(name: "runner" as NonEmptyStr)
+    && !fleet_posix_account_exists(name: "runner" as std.types.NonEmptyStr)
 }
 
 test fn witness_operator_secret_binding_uses_fleet_gcp_member() -> Bool {
@@ -91,7 +91,7 @@ test fn witness_operator_secret_binding_uses_fleet_gcp_member() -> Bool {
     && operator_principal_member() == fleet_operator_gcp_iam_member()
 }
 
-fn srv1_host_observation() -> DeployTargetHostObservation {
+fn srv1_host_observation() -> gunbc.ci_deploy_target_host.DeployTargetHostObservation {
   deploy_target_host_fixture_observation(
     hostname: "srv1",
     runner_name: "actions-runner@srv1-01.service"
@@ -153,10 +153,10 @@ test fn witness_deploy_grant_admits_apt_get_probe() -> Bool {
 test fn witness_deploy_grant_refuses_outside_envelope() -> Bool {
   match deploy_access_grant_admits_probe(
     access: ci_deploy_srv1_access,
-    cmd: PrivilegedCommand {
-      grant: PosixSudoGrant {
-        command_path: "/usr/bin/bash" as NonEmptyStr,
-        probe: NopasswdExecuteCheck { check_argv: "--version" as NonEmptyStr },
+    cmd: gunbc.ci_deploy_access.PrivilegedCommand {
+      grant: gunbc.fleet_posix_accounts.PosixSudoGrant {
+        command_path: "/usr/bin/bash" as std.types.NonEmptyStr,
+        probe: NopasswdExecuteCheck { check_argv: "--version" as std.types.NonEmptyStr },
       }
     }
   ) {
@@ -173,7 +173,7 @@ fn witness_srv1_job_principal_resolves_from_runner() -> Bool {
 }
 
 test fn witness_deploy_job_principal_unresolved_refuses_not_maps_ghrunner() -> Bool {
-  let poisoned = DeployRunnerPrincipal { unit_user: "root", job_user: "runner" as NonEmptyStr }
+  let poisoned = gunbc.fleet_posix_accounts.DeployRunnerPrincipal { unit_user: "root", job_user: "runner" as std.types.NonEmptyStr }
   match fleet_deploy_job_principal(runner: poisoned) {
     Present { value: _ } => false
     Absent => true
@@ -181,7 +181,7 @@ test fn witness_deploy_job_principal_unresolved_refuses_not_maps_ghrunner() -> B
 }
 
 test fn witness_unknown_job_user_does_not_silent_map_ci_runner() -> Bool {
-  let poisoned = DeployRunnerPrincipal { unit_user: "root", job_user: "runner" as NonEmptyStr }
+  let poisoned = gunbc.fleet_posix_accounts.DeployRunnerPrincipal { unit_user: "root", job_user: "runner" as std.types.NonEmptyStr }
   match deploy_access_or_refusal_for_runner(
     runner: poisoned,
     host: srv1_host,
@@ -200,7 +200,7 @@ test fn witness_two_phase_principal_derives_job_user() -> Bool {
 }
 
 test fn witness_srv3_host_roster_row_exists() -> Bool {
-  fleet_posix_account_exists(name: "ubuntu" as NonEmptyStr)
+  fleet_posix_account_exists(name: "ubuntu" as std.types.NonEmptyStr)
     && grounded_posix_principal_name(p: fleet_posix_srv3_host_principal()) == "ubuntu"
 }
 
@@ -217,8 +217,8 @@ test fn witness_blessed_helper_grant_absent_from_roster() -> Bool {
 
 test fn witness_unknown_sudo_grant_command_lint_red() -> Bool {
   !posix_sudo_grant_generic_mover_lint_ok(
-    g: PosixSudoGrant {
-      command_path: "/usr/bin/bash" as NonEmptyStr,
+    g: gunbc.fleet_posix_accounts.PosixSudoGrant {
+      command_path: "/usr/bin/bash" as std.types.NonEmptyStr,
       probe: NopasswdExecuteCheck { check_argv: "--version" },
     }
   )
@@ -226,7 +226,7 @@ test fn witness_unknown_sudo_grant_command_lint_red() -> Bool {
 
 test fn witness_posix_sudo_grant_materializes_execute_grant() -> Bool {
   let projected = posix_sudo_grant_to_effect_grant(
-    g: PosixSudoGrant {
+    g: gunbc.fleet_posix_accounts.PosixSudoGrant {
       command_path: fleet_apt_get_binary_path,
       probe: NopasswdExecuteCheck { check_argv: "--help" },
     }

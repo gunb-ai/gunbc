@@ -2,16 +2,16 @@ module v2.std.runtime
 
 
 type RuntimeIdentity {
-  identity: Symbol
+  identity: v2.std.node.Symbol
 }
 
 type RuntimeFieldValue {
-  field: Symbol
+  field: v2.std.node.Symbol
   value: RuntimeValue
 }
 
 type EnvironmentBindingKey {
-  identity: Symbol
+  identity: v2.std.node.Symbol
 }
 
 fn environment_binding_key_for_symbol(sym: Symbol) -> EnvironmentBindingKey {
@@ -58,7 +58,7 @@ type RuntimeValue
   | RuntimeUnit { value: RuntimeUnitValue }
 
 type RuntimeOutcome
-  = Panic { panic_classification: Symbol }
+  = Panic { panic_classification: v2.std.node.Symbol }
   | Wrap
   | CheckedReturn { wrapped_value: Node }
   | ExceptionRaise { exception_node: Node }
@@ -249,7 +249,7 @@ type EvaluationCall {
 type ControlTransfer
   = Continue { value: RuntimeValue }
   | Return { value: RuntimeValue }
-  | Raise { diagnostic: Diagnostic }
+  | Raise { diagnostic: v2.std.diagnostic.Diagnostic }
   | Suspend { continuation: EvaluationFrame }
 
 type AllocationSemantics {
@@ -306,12 +306,12 @@ type InterpretationAlgebra {
 }
 
 type InterpretationStructureWitness {
-  allocate_literal: Symbol,
-  call_primitive: Symbol,
-  choose_branch: Symbol,
-  step_loop: Symbol,
-  bind_value: Symbol,
-  choose_arm: Symbol
+  allocate_literal: v2.std.node.Symbol,
+  call_primitive: v2.std.node.Symbol,
+  choose_branch: v2.std.node.Symbol,
+  step_loop: v2.std.node.Symbol,
+  bind_value: v2.std.node.Symbol,
+  choose_arm: v2.std.node.Symbol
 }
 
 type RuntimeBehaviorInterpreter
@@ -353,8 +353,8 @@ fn runtime_reject_match_arm(
 }
 
 type BoundaryAllowance {
-  operation: PrimitiveOperationRef
-  resource: ResourceAccess
+  operation: v2.std.model_core.PrimitiveOperationRef
+  resource: v2.std.model_core.ResourceAccess
   allowed: Bool
 }
 
@@ -372,7 +372,7 @@ type EffectRequestKind
 
 type EffectRequest {
   kind: EffectRequestKind
-  operation: PrimitiveOperationRef
+  operation: v2.std.model_core.PrimitiveOperationRef
   arguments: List<RuntimeValue>
   continuation: EvaluationFrame
 }

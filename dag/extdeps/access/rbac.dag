@@ -9,33 +9,33 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type Permission {
-  operation: NonEmptyStr
-  object: NonEmptyStr
+  operation: std.types.NonEmptyStr
+  object: std.types.NonEmptyStr
 }
 
 type UserAssignment {
-  user: NonEmptyStr
-  role: NonEmptyStr
+  user: std.types.NonEmptyStr
+  role: std.types.NonEmptyStr
 }
 
 type PermissionAssignment {
   permission: Permission
-  role: NonEmptyStr
+  role: std.types.NonEmptyStr
 }
 
 type RoleInheritance {
-  senior: NonEmptyStr
-  junior: NonEmptyStr
+  senior: std.types.NonEmptyStr
+  junior: std.types.NonEmptyStr
 }
 
 type Session {
-  user: NonEmptyStr
-  active_roles: List<NonEmptyStr>
+  user: std.types.NonEmptyStr
+  active_roles: List<std.types.NonEmptyStr>
 }
 
 type RbacPolicy {
-  users: List<NonEmptyStr>
-  roles: List<NonEmptyStr>
+  users: List<std.types.NonEmptyStr>
+  roles: List<std.types.NonEmptyStr>
   user_assignments: List<UserAssignment>
   permission_assignments: List<PermissionAssignment>
   role_hierarchy: List<RoleInheritance>

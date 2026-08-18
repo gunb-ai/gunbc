@@ -12,7 +12,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 type MemoryKind = Dram | Hbm | UnifiedShared
 
 type MemoryFacts {
-  capacity: ByteSize
+  capacity: std.measure.ByteSize
   memory_kind: MemoryKind
 }
 
@@ -53,9 +53,9 @@ fn dram_generation_signaling_family(gen: DramGeneration) -> SdramSignalingFamily
 type JedecDdrGenerationCatalogRow {
   generation: DramGeneration
 
-  max_monolithic_die_density: ByteSize
+  max_monolithic_die_density: std.measure.ByteSize
 
-  jedec_standard: NonEmptyStr
+  jedec_standard: std.types.NonEmptyStr
 }
 
 type DimmBuffering = Unbuffered | Registered | LoadReduced
@@ -93,18 +93,18 @@ fn dram_module_class_eq(a: DramModuleClass, b: DramModuleClass) -> Bool {
 }
 
 type DramModuleCatalogRow {
-  part_number: NonEmptyStr
-  manufacturer: Vendor<Hardware>
+  part_number: std.types.NonEmptyStr
+  manufacturer: Vendor<extdeps.hardware.Hardware>
 
   generation: DramGeneration
 
-  capacity_bytes: ByteSize
+  capacity_bytes: std.measure.ByteSize
   data_rate_mts: Int
   ecc: Bool
 
   buffering: DimmBuffering
 
-  chip_width: BitWidth
+  chip_width: std.measure.BitWidth
 
   rank_count: Int
 }

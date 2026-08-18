@@ -1,16 +1,16 @@
 module v2.test.workflow.lens_parallelism_family_eval
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data parallelism_control_effect_dep: DependencyView = DependencyView {
+data parallelism_control_effect_dep: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: parallelism_root,
   dependent: parallelism_child,
   kind: EffectDependsOn,
   usage_site: parallelism_child
 }
 
-data parallelism_control_type_dep: DependencyView = DependencyView {
+data parallelism_control_type_dep: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: parallelism_root,
   dependent: parallelism_child,
   kind: TypeDependsOn,
@@ -22,9 +22,9 @@ fn parallelism_control_effect_is_effect_coupled() -> Bool {
     Holds { value: f } =>
       parallelism_fact_eq(
         a: f,
-        b: ParallelismFact {
+        b: v2.lens.parallelism.ParallelismFact {
           dependencies: [
-            ClassifiedDependencyView {
+            v2.std.dependency.ClassifiedDependencyView {
               dependency: parallelism_control_effect_dep,
               classification: EffectCoupled
             }
@@ -40,9 +40,9 @@ fn parallelism_control_effect_not_data_dependent() -> Bool {
     Holds { value: f } =>
       !parallelism_fact_eq(
         a: f,
-        b: ParallelismFact {
+        b: v2.lens.parallelism.ParallelismFact {
           dependencies: [
-            ClassifiedDependencyView {
+            v2.std.dependency.ClassifiedDependencyView {
               dependency: parallelism_control_effect_dep,
               classification: DataDependent
             }
@@ -74,7 +74,7 @@ type LensFamilyEvalReport {
   entries: List<LensFamilyEvalEntry>
 }
 
-fn lens_family_eval_report_tally(r: LensFamilyEvalReport) -> VerdictTally {
+fn lens_family_eval_report_tally(r: LensFamilyEvalReport) -> v2.std.verdict.VerdictTally {
   fold(r.entries, init: verdict_tally_empty, f: fn(acc, e) {
     verdict_tally_add(t: acc, v: test_claim_run_verdict(run: e.run))
   })

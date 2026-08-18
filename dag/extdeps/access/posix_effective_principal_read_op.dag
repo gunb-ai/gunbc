@@ -1,8 +1,8 @@
 module extdeps.access.posix_effective_principal_read_op
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/whoami.html"
   }
@@ -15,10 +15,10 @@ fn posix_effective_principal_read_argv() -> List<String> {
 }
 
 func effective_posix_principal_read(
-  read: EffectivePosixPrincipalRead,
-) -> EffectivePosixPrincipalReadOutcome {
+  read: extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead,
+) -> extdeps.access.posix_effective_principal.EffectivePosixPrincipalReadOutcome {
   let result = access.PosixEffectivePrincipal.Read(read: read)
-  return EffectivePosixPrincipalReadOutcome {
+  return extdeps.access.posix_effective_principal.EffectivePosixPrincipalReadOutcome {
     read: read,
     exit_code: result.exit_code,
     success: result.success,
@@ -29,7 +29,7 @@ func effective_posix_principal_read(
 
 service access.PosixEffectivePrincipal {
   operation Read {
-    input { read: EffectivePosixPrincipalRead }
+    input { read: extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead }
     output {
       exit_code: Int from "exit_code"
       success: Bool from "exit_success"

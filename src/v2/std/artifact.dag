@@ -10,7 +10,7 @@ type ArtifactKind
 
 type Artifact {
   kind: ArtifactKind
-  id: Symbol
+  id: v2.std.node.Symbol
   file_path: String
 }
 

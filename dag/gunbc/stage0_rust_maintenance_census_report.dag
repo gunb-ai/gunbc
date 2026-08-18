@@ -21,13 +21,13 @@ type RustMaintenanceCensusReport
   | RustMaintenanceCensusObservationRefused { detail: String }
 
 fn row_has_disposition_variant(
-  row: RustSourceLifecycleRow,
+  row: gunbc.stage0_rust_source_lifecycle_scaffold.RustSourceLifecycleRow,
   predicate: fn(RustMaintenanceDisposition) -> Bool
 ) -> Bool {
   any(xs: row.maintenance_dispositions, predicate: predicate)
 }
 
-fn is_emit_from_disposition(d: RustMaintenanceDisposition) -> Bool {
+fn is_emit_from_disposition(d: gunbc.stage0_rust_source_lifecycle_scaffold.RustMaintenanceDisposition) -> Bool {
   match d {
     Generated { authority: authority } => false
     EmitFrom { authority: authority } => true
@@ -37,7 +37,7 @@ fn is_emit_from_disposition(d: RustMaintenanceDisposition) -> Bool {
   }
 }
 
-fn is_delete_with_disposition(d: RustMaintenanceDisposition) -> Bool {
+fn is_delete_with_disposition(d: gunbc.stage0_rust_source_lifecycle_scaffold.RustMaintenanceDisposition) -> Bool {
   match d {
     Generated { authority: authority } => false
     EmitFrom { authority: authority } => false
@@ -47,7 +47,7 @@ fn is_delete_with_disposition(d: RustMaintenanceDisposition) -> Bool {
   }
 }
 
-fn is_retained_kernel_disposition(d: RustMaintenanceDisposition) -> Bool {
+fn is_retained_kernel_disposition(d: gunbc.stage0_rust_source_lifecycle_scaffold.RustMaintenanceDisposition) -> Bool {
   match d {
     Generated { authority: authority } => false
     EmitFrom { authority: authority } => false
@@ -57,7 +57,7 @@ fn is_retained_kernel_disposition(d: RustMaintenanceDisposition) -> Bool {
   }
 }
 
-fn is_hand_scaffold_disposition(d: RustMaintenanceDisposition) -> Bool {
+fn is_hand_scaffold_disposition(d: gunbc.stage0_rust_source_lifecycle_scaffold.RustMaintenanceDisposition) -> Bool {
   match d {
     Generated { authority: authority } => false
     EmitFrom { authority: authority } => false
@@ -68,7 +68,7 @@ fn is_hand_scaffold_disposition(d: RustMaintenanceDisposition) -> Bool {
 }
 
 fn disposition_category_paths(
-  rows: List<RustSourceLifecycleRow>,
+  rows: List<gunbc.stage0_rust_source_lifecycle_scaffold.RustSourceLifecycleRow>,
   tracked_paths: List<String>,
   predicate: fn(RustMaintenanceDisposition) -> Bool
 ) -> List<String> {
@@ -89,7 +89,7 @@ fn current_rust_maintenance_census_report() -> RustMaintenanceCensusReport {
 }
 
 fn rust_maintenance_census_report_over(
-  observation: RustSourceHostObservation
+  observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation
 ) -> RustMaintenanceCensusReport {
   match observation {
     RustManifestReadRefused { detail: detail } =>

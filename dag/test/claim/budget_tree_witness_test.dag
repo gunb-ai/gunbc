@@ -3,15 +3,15 @@ module test.claim.budget_tree_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn claim(name: String, amount: std.nat.Nat, p: BudgetPriority) -> BudgetClaim {
-  BudgetClaim { item: LineItem { purpose: name, amount: byte_size(count: amount) }, priority: p }
+fn claim(name: String, amount: std.nat.Nat, p: product.budget_tree.BudgetPriority) -> product.budget_tree.BudgetClaim {
+  product.budget_tree.BudgetClaim { item: extdeps.accounting.budget.LineItem { purpose: name, amount: byte_size(count: amount) }, priority: p }
 }
 
 fn appr(n: std.nat.Nat) -> Appropriation<Memory, One> {
-  Appropriation { ceiling: byte_size(count: n) }
+  extdeps.accounting.budget.Appropriation { ceiling: byte_size(count: n) }
 }
 
-fn sample_claims() -> List<BudgetClaim> {
+fn sample_claims() -> List<product.budget_tree.BudgetClaim> {
   [
     claim(name: "g1", amount: 40, p: Guaranteed),
     claim(name: "g2", amount: 40, p: Guaranteed),
@@ -19,27 +19,27 @@ fn sample_claims() -> List<BudgetClaim> {
   ]
 }
 
-fn leaf_node(cap: std.nat.Nat) -> BudgetNode {
-  BudgetNode { name: "host", appropriation: appr(n: cap), claims: sample_claims(), children: [] }
+fn leaf_node(cap: std.nat.Nat) -> product.budget_tree.BudgetNode {
+  product.budget_tree.BudgetNode { name: "host", appropriation: appr(n: cap), claims: sample_claims(), children: [] }
 }
 
-fn child_node(cap: std.nat.Nat) -> BudgetNode {
-  BudgetNode { name: "c", appropriation: appr(n: cap), claims: sample_claims(), children: [] }
+fn child_node(cap: std.nat.Nat) -> product.budget_tree.BudgetNode {
+  product.budget_tree.BudgetNode { name: "c", appropriation: appr(n: cap), claims: sample_claims(), children: [] }
 }
 
-fn root_with(child: BudgetNode) -> BudgetNode {
-  BudgetNode { name: "root", appropriation: appr(n: 200), claims: [], children: [child] }
+fn root_with(child: product.budget_tree.BudgetNode) -> product.budget_tree.BudgetNode {
+  product.budget_tree.BudgetNode { name: "root", appropriation: appr(n: 200), claims: [], children: [child] }
 }
 
-fn is_all_satisfied(r: BudgetReconciliation) -> Bool {
+fn is_all_satisfied(r: product.budget_tree.BudgetReconciliation) -> Bool {
   match r { AllSatisfied { realized: x } => true  _ => false }
 }
 
-fn is_evicted(r: BudgetReconciliation) -> Bool {
+fn is_evicted(r: product.budget_tree.BudgetReconciliation) -> Bool {
   match r { Evicted { kept: k, evicted: e } => true  _ => false }
 }
 
-fn is_guaranteed_shortfall(r: BudgetReconciliation) -> Bool {
+fn is_guaranteed_shortfall(r: product.budget_tree.BudgetReconciliation) -> Bool {
   match r { GuaranteedShortfall { shortfall: s } => true  _ => false }
 }
 
@@ -54,8 +54,8 @@ test fn witness_tree_conservation_recursive() -> Bool {
 
 test fn witness_divide_once() -> Bool {
   let two_children = [child_node(cap: 100), child_node(cap: 100)]
-  let tight = BudgetNode { name: "r", appropriation: appr(n: 150), claims: [], children: two_children }
-  let roomy = BudgetNode { name: "r", appropriation: appr(n: 250), claims: [], children: two_children }
+  let tight = product.budget_tree.BudgetNode { name: "r", appropriation: appr(n: 150), claims: [], children: two_children }
+  let roomy = product.budget_tree.BudgetNode { name: "r", appropriation: appr(n: 250), claims: [], children: two_children }
   return !node_conserves_local(node: tight) && node_conserves_local(node: roomy)
 }
 

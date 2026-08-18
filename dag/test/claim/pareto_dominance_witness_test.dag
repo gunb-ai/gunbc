@@ -2,14 +2,14 @@ module test.claim.pareto_dominance
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn compare_axes(a_cap: Int, a_cost: Int, b_cap: Int, b_cost: Int) -> List<AxisComparison> {
+fn compare_axes(a_cap: Int, a_cost: Int, b_cap: Int, b_cost: Int) -> List<std.pareto.AxisComparison> {
   [
     axis_comparison_int(goal: HigherIsBetter, a: a_cap, b: b_cap),
     axis_comparison_int(goal: LowerIsBetter, a: a_cost, b: b_cost)
   ]
 }
 
-fn verdict_of(a_cap: Int, a_cost: Int, b_cap: Int, b_cost: Int) -> DominanceVerdict {
+fn verdict_of(a_cap: Int, a_cost: Int, b_cap: Int, b_cost: Int) -> std.pareto.DominanceVerdict {
   dominance_of_comparisons(comparisons: compare_axes(a_cap: a_cap, a_cost: a_cost, b_cap: b_cap, b_cost: b_cost))
 }
 

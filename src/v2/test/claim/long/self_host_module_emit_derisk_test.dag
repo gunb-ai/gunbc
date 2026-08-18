@@ -1,18 +1,18 @@
 module v2.test.long.self_host_module_emit_derisk
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
-data derisk_module_artifact: Artifact = Artifact {
+data derisk_module_artifact: v2.std.artifact.Artifact = v2.std.artifact.Artifact {
   kind: SourceFile,
   id: ^derisk_module_artifact,
   file_path: "src/v2/pilot/derisk_pilot.dag"
 }
 
-fn derisk_ingest_for(src: String) -> SourceRootIngest {
+fn derisk_ingest_for(src: String) -> v2.compiler.source_authority.SourceRootIngest {
   Cons {
-    head: DagSourceReadWitness {
-      source: Medium { carried: src, fidelity: Lossless },
+    head: v2.compiler.source_authority.DagSourceReadWitness {
+      source: extdeps.communication.medium.Medium { carried: src, fidelity: Lossless },
       artifact: derisk_module_artifact,
       compilation_unit: ^derisk_pilot_cu,
       source_root: V2Tree
@@ -21,9 +21,9 @@ fn derisk_ingest_for(src: String) -> SourceRootIngest {
   }
 }
 
-fn derisk_module_admission() -> Admission {
-  Admission {
-    subject: ResolutionSubject {
+fn derisk_module_admission() -> v2.compiler.name_resolve.Admission {
+  v2.compiler.name_resolve.Admission {
+    subject: v2.compiler.name_resolve.ResolutionSubject {
       name: Cons { head: ^derisk_pilot, tail: Empty }
     },
     imports: Empty
@@ -45,7 +45,7 @@ fn derisk_assemble_accepts(src: String) -> Bool {
   }
 }
 
-fn derisk_infer_outcome_for(src: String) -> Outcome<InferredTree> {
+fn derisk_infer_outcome_for(src: String) -> Outcome<v2.compiler.infer.InferredTree> {
   bind_outcome(o: derisk_assemble_for(src: src), f: fn(resolved) { infer(tree: resolved) })
 }
 

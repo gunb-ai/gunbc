@@ -1,8 +1,8 @@
 module extdeps.rack.navepoint
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.navepoint.com"
   }
@@ -10,7 +10,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 // Operator-supplied rack identity. The exact serial and U layout are OBSERVATIONS on the
 // owned instance rather than facts this catalog may author, so they are absent by intent.
-data navepoint_18u_open_frame_catalog: RackCatalogRow = RackCatalogRow {
+data navepoint_18u_open_frame_catalog: extdeps.rack.types.RackCatalogRow = extdeps.rack.types.RackCatalogRow {
   model: "18U 4-post open-frame rack",
   manufacturer: navepoint,
   rack_units: rack_unit(18),
@@ -18,9 +18,9 @@ data navepoint_18u_open_frame_catalog: RackCatalogRow = RackCatalogRow {
   open_frame: true,
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.rack.navepoint",
       decl_name: "navepoint_18u_open_frame_catalog",
       field: WholeDeclaration

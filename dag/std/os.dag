@@ -1,8 +1,8 @@
 module std.os
 
 
-fn operating_system_surface_ubuntu(row: UbuntuDistributionCatalogRow) -> OperatingSystemSurface {
-  OperatingSystemSurface {
+fn operating_system_surface_ubuntu(row: std.os.types.UbuntuDistributionCatalogRow) -> std.os.types.OperatingSystemSurface {
+  std.os.types.OperatingSystemSurface {
     kernel: Linux,
     distro_or_product: Present { value: "Ubuntu" },
     version: Present { value: row.release_label },
@@ -11,8 +11,8 @@ fn operating_system_surface_ubuntu(row: UbuntuDistributionCatalogRow) -> Operati
   }
 }
 
-fn operating_system_surface_windows(row: WindowsDistributionCatalogRow) -> OperatingSystemSurface {
-  OperatingSystemSurface {
+fn operating_system_surface_windows(row: std.os.types.WindowsDistributionCatalogRow) -> std.os.types.OperatingSystemSurface {
+  std.os.types.OperatingSystemSurface {
     kernel: WindowsNt,
     distro_or_product: Present { value: "Windows 11" },
     version: Present { value: concat(row.release_label, " (OS build ", row.os_build, ")") },
@@ -21,8 +21,8 @@ fn operating_system_surface_windows(row: WindowsDistributionCatalogRow) -> Opera
   }
 }
 
-fn operating_system_surface_macos(row: MacosDistributionCatalogRow) -> OperatingSystemSurface {
-  OperatingSystemSurface {
+fn operating_system_surface_macos(row: std.os.types.MacosDistributionCatalogRow) -> std.os.types.OperatingSystemSurface {
+  std.os.types.OperatingSystemSurface {
     kernel: Darwin,
     distro_or_product: Present { value: "macOS Sequoia" },
     version: Present { value: row.annual_release_label },

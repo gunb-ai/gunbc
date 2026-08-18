@@ -1,20 +1,20 @@
 module v2.test.manual.loop_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn loop_emit_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn loop_emit_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   loop_round_trip_inferred_facts_for(node: key)
 }
 
-fn loop_emit_inferred_tree_for(root: Node) -> InferredTree {
-  InferredTree {
+fn loop_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: root,
     facts: Map { lookup: loop_emit_facts_lookup }
   }
 }
 
-fn loop_emit_producer_tree() -> Outcome<InferredTree> {
+fn loop_emit_producer_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_loop_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
@@ -25,7 +25,7 @@ fn loop_emit_producer_tree() -> Outcome<InferredTree> {
   }
 }
 
-fn loop_emit_wrong_value_producer_tree() -> Outcome<InferredTree> {
+fn loop_emit_wrong_value_producer_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_loop_wrong_value_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
@@ -36,7 +36,7 @@ fn loop_emit_wrong_value_producer_tree() -> Outcome<InferredTree> {
   }
 }
 
-fn loop_emit_from_producer(target: TargetModel) -> Outcome<Medium<String>> {
+fn loop_emit_from_producer(target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
     o: loop_emit_producer_tree(),
     f: fn(tree) {
@@ -45,7 +45,7 @@ fn loop_emit_from_producer(target: TargetModel) -> Outcome<Medium<String>> {
   )
 }
 
-fn loop_emit_wrong_value_from_producer(target: TargetModel) -> Outcome<Medium<String>> {
+fn loop_emit_wrong_value_from_producer(target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
     o: loop_emit_wrong_value_producer_tree(),
     f: fn(tree) {

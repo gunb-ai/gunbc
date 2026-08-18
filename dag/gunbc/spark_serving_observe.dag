@@ -39,10 +39,10 @@ data spark_serving_nvidia_driver_probe_words: List<String> = [
 
 type SparkServingObservationReport
   = SparkServingObservationsProduced {
-      first: SparkServingObservation,
-      more: List<SparkServingObservation>,
+      first: gunbc.spark_serving_release.SparkServingObservation,
+      more: List<gunbc.spark_serving_release.SparkServingObservation>,
     }
-  | SparkServingObservationReportRefused { cause: NonEmptyStr }
+  | SparkServingObservationReportRefused { cause: std.types.NonEmptyStr }
 
 // LOCUS-PARAMETERIZED PROBE LEG. Same observation, either credential locus. The
 // context-taking leg below remains for the operator-workstation entry; this one is what the

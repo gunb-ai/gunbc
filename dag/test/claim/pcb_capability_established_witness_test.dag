@@ -1,9 +1,9 @@
 module test.claim.pcb_capability_established_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data a_stackup_authority: DeclarationRef = DeclarationRef {
+data a_stackup_authority: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "test.claim.pcb_capability_established_witness",
   decl_name: "a_stackup_authority",
   field: WholeDeclaration,

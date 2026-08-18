@@ -3,19 +3,19 @@ module test.claim.ledger_tail_liveness_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn verdict_of(tail: LedgerTail, liveness: ProducerState) -> LedgerTailVerdict {
+fn verdict_of(tail: std.observation.LedgerTail, liveness: std.observation.ProducerState) -> std.observation.LedgerTailVerdict {
   classify_ledger_tail(observed: probe_liveness_for(tail: tail, observed: liveness))
 }
 
-fn is_torn(v: LedgerTailVerdict) -> Bool {
+fn is_torn(v: std.observation.LedgerTailVerdict) -> Bool {
   match v { TailTorn { bytes: _ } => true, _ => false }
 }
 
-fn is_pending(v: LedgerTailVerdict) -> Bool {
+fn is_pending(v: std.observation.LedgerTailVerdict) -> Bool {
   match v { TailPending { bytes: _ } => true, _ => false }
 }
 
-fn is_indeterminate(v: LedgerTailVerdict) -> Bool {
+fn is_indeterminate(v: std.observation.LedgerTailVerdict) -> Bool {
   match v { TailIndeterminate { bytes: _, cause: _ } => true, _ => false }
 }
 

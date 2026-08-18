@@ -20,12 +20,12 @@ data orch_construct_cmdsubst_assign: Symbol = ^orch_construct_cmdsubst_assign
 data orch_construct_let_assign: Symbol = ^orch_construct_let_assign
 
 type OrchRunEmitPlan {
-  construct_tag: Symbol
-  target: TargetModel
+  construct_tag: v2.std.node.Symbol
+  target: v2.std.compilers.target_model.TargetModel
 }
 
 type OrchestrationEmitMedium {
-  authority: TargetModel
+  authority: v2.std.compilers.target_model.TargetModel
   realize_run_rawline: fn(String) -> TargetModel
   run_env_plan: fn(Run) -> OrchRunEmitPlan
   realize_seq2: fn(String, String) -> TargetModel

@@ -9,7 +9,7 @@ module test.claim.cargo_execution_placement_witness_test
 // and roughly 11 GiB for the clone-and-build, which is a cadence job, not a session job.
 // Saying so here keeps a green hermetic file from reading as evidence about the wet one.
 
-data placement_probe_subject: DeclarationRef = DeclarationRef {
+data placement_probe_subject: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "tools.interpreter_dispatch_bijection_real_roster_transport",
   decl_name: "run_interpreter_dispatch_bijection_real_roster_red",
   field: WholeDeclaration,
@@ -99,7 +99,7 @@ fn w_passed_is_the_only_holding_outcome() -> Bool {
   cargo_outcome_holds(o: CargoInvocationPassed)
 }
 
-fn placement_decision_text(d: CargoPlacementDecision) -> String {
+fn placement_decision_text(d: gunbc.cargo_execution_placement.CargoPlacementDecision) -> String {
   match d {
     PlacementAdmitted { cargo_path: p } => concat("admitted:", p)
     PlacementRefused { cause: c } => cargo_placement_refusal_text(cause: c)

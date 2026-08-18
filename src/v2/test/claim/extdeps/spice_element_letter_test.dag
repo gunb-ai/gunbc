@@ -1,18 +1,18 @@
 module v2.test.extdeps.spice_element_letter
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn one_resistor(name: String) -> SpiceNetlist {
-  SpiceNetlist {
+fn one_resistor(name: String) -> v2.extdeps.formats.spice.SpiceNetlist {
+  v2.extdeps.formats.spice.SpiceNetlist {
     title: "",
     body: Cons {
       head: DeckComponent {
         component: Resistor {
           name: name,
-          n_plus: Named { node: NamedNode { name: "hot" } },
+          n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "hot" } },
           n_minus: Ground,
-          value: SpiceValue { lexeme: "1k" },
+          value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1k" },
         },
       },
       tail: Empty,
@@ -20,16 +20,16 @@ fn one_resistor(name: String) -> SpiceNetlist {
   }
 }
 
-fn one_capacitor(name: String) -> SpiceNetlist {
-  SpiceNetlist {
+fn one_capacitor(name: String) -> v2.extdeps.formats.spice.SpiceNetlist {
+  v2.extdeps.formats.spice.SpiceNetlist {
     title: "",
     body: Cons {
       head: DeckComponent {
         component: Capacitor {
           name: name,
-          n_plus: Named { node: NamedNode { name: "hot" } },
+          n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "hot" } },
           n_minus: Ground,
-          value: SpiceValue { lexeme: "1k" },
+          value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1k" },
         },
       },
       tail: Empty,
@@ -73,15 +73,15 @@ test fn w_the_empty_name_is_not_an_identifier() -> Bool {
 
 // A voltage source and a resistor with one name are different elements, and the deck says so.
 test fn w_a_source_and_a_resistor_do_not_collide() -> Bool {
-  let src = SpiceNetlist {
+  let src = v2.extdeps.formats.spice.SpiceNetlist {
     title: "",
     body: Cons {
       head: DeckComponent {
         component: VoltageSource {
           name: "x",
-          n_plus: Named { node: NamedNode { name: "hot" } },
+          n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "hot" } },
           n_minus: Ground,
-          value: SpiceValue { lexeme: "1k" },
+          value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1k" },
         },
       },
       tail: Empty,

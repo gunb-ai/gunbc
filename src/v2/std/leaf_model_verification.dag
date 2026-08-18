@@ -19,10 +19,10 @@ type TargetArtifact {
 }
 
 type TargetInvocation {
-  toolchain: Symbol
-  edition: Symbol
-  build_profile: Symbol
-  overflow_disposition_field: Symbol
+  toolchain: v2.std.node.Symbol
+  edition: v2.std.node.Symbol
+  build_profile: v2.std.node.Symbol
+  overflow_disposition_field: v2.std.node.Symbol
 }
 
 type LeafModelFixture<C> {
@@ -35,7 +35,7 @@ type LeafModelFixture<C> {
 }
 
 type LeafModelClaimVerdictRow {
-  claim_id: Symbol
+  claim_id: v2.std.node.Symbol
   verdict: Verdict<Symbol, Symbol>
   falsification_verdict: Verdict<Symbol, Symbol>
 }
@@ -55,35 +55,35 @@ type LeafModelVerificationReport<M> {
 
 type TargetCompileVerdict
   = TargetCompileAccepted
-  | TargetCompileRejected { diagnostic_code: Symbol }
+  | TargetCompileRejected { diagnostic_code: v2.std.node.Symbol }
 
 type TargetPythonExerciseVerdict
   = TargetPythonExerciseAccepted
-  | TargetPythonCompileRejected { diagnostic_code: Symbol }
-  | TargetPythonExecRejected { diagnostic_code: Symbol }
+  | TargetPythonCompileRejected { diagnostic_code: v2.std.node.Symbol }
+  | TargetPythonExecRejected { diagnostic_code: v2.std.node.Symbol }
 
 type TargetRuntimeExerciseVerdict
   = TargetRuntimeExerciseAccepted
-  | TargetRuntimeExerciseRejected { diagnostic_code: Symbol }
+  | TargetRuntimeExerciseRejected { diagnostic_code: v2.std.node.Symbol }
 
 type TargetStaticAnalysisRole
   = Advisory
   | BlockingForRung
 
 type TargetStaticAnalysisInvocation {
-  tool_profile_ref: Symbol
+  tool_profile_ref: v2.std.node.Symbol
   input_artifact: TargetArtifact
   analysis_role: TargetStaticAnalysisRole
 }
 
 type TargetStaticAnalysisVerdict
   = StaticAnalysisAccepted
-  | StaticAnalysisRejected { tool_id: Symbol, diagnostic_code: Symbol }
-  | StaticAnalysisAdvisory { tool_id: Symbol, diagnostic_code: Symbol }
+  | StaticAnalysisRejected { tool_id: v2.std.node.Symbol, diagnostic_code: v2.std.node.Symbol }
+  | StaticAnalysisAdvisory { tool_id: v2.std.node.Symbol, diagnostic_code: v2.std.node.Symbol }
 
 type TargetTypeScriptCompileVerdict
   = TargetTypeScriptCompileAccepted
-  | TargetTypeScriptCompileRejected { diagnostic_code: Symbol }
+  | TargetTypeScriptCompileRejected { diagnostic_code: v2.std.node.Symbol }
 
 type LeafModelClaimId = Symbol
 
@@ -114,9 +114,9 @@ data leaf_model_claim_python_l2_cross_target_parity_r3_symbol_projection: LeafMo
 type LeafModelCrossRuntimeDriftProbe {
   claim_id: LeafModelClaimId
 
-  arbitrary_precision_fact: Symbol
-  fixed_width_rust_fact: Symbol
-  fixed_width_go_fact: Symbol
+  arbitrary_precision_fact: v2.std.node.Symbol
+  fixed_width_rust_fact: v2.std.node.Symbol
+  fixed_width_go_fact: v2.std.node.Symbol
   arbitrary_precision_source: String
   fixed_width_rust_source: String
   fixed_width_go_source: String
@@ -126,9 +126,9 @@ type LeafModelCrossRuntimeDriftProbe {
 type LeafModelCrossTargetParityProbe {
   claim_id: LeafModelClaimId
 
-  python_fact: Symbol
-  rust_fact: Symbol
-  go_fact: Symbol
+  python_fact: v2.std.node.Symbol
+  rust_fact: v2.std.node.Symbol
+  go_fact: v2.std.node.Symbol
   python_source: String
   rust_source: String
   go_source: String
@@ -152,8 +152,8 @@ type LeafModelFalsificationCase {
 
 type LeafModelFixturePair {
   claim_id: LeafModelClaimId
-  surface_spelling_fact: Symbol
-  coercion_spelling_fact: Symbol
+  surface_spelling_fact: v2.std.node.Symbol
+  coercion_spelling_fact: v2.std.node.Symbol
   happy: LeafModelRustFixture
   expected_happy_verdict: TargetCompileVerdict
   falsification: LeafModelFalsificationCase
@@ -161,11 +161,11 @@ type LeafModelFixturePair {
 
 type LeafModelEmitCouplingReceipt {
   claim_id: LeafModelClaimId
-  atom_realization_fact: Symbol
-  baseline_type_emit: Symbol
-  mutated_type_emit: Symbol
-  baseline_value_emit_kind: Symbol
-  mutated_value_emit_kind: Symbol
+  atom_realization_fact: v2.std.node.Symbol
+  baseline_type_emit: v2.std.node.Symbol
+  mutated_type_emit: v2.std.node.Symbol
+  baseline_value_emit_kind: v2.std.node.Symbol
+  mutated_value_emit_kind: v2.std.node.Symbol
 }
 
 type LeafModelPythonFixture {
@@ -179,8 +179,8 @@ type LeafModelPythonFalsificationCase {
 
 type LeafModelPythonFixturePair {
   claim_id: LeafModelClaimId
-  surface_spelling_fact: Symbol
-  encoding_spelling_fact: Symbol
+  surface_spelling_fact: v2.std.node.Symbol
+  encoding_spelling_fact: v2.std.node.Symbol
   happy: LeafModelPythonFixture
   expected_happy_verdict: TargetPythonExerciseVerdict
   falsification: LeafModelPythonFalsificationCase
@@ -222,19 +222,19 @@ type LeafModelGoRuntimeFixturePair {
 
 type LeafModelPythonStaticHappyCase {
   artifact: TargetArtifact
-  tool_profile_ref: Symbol
+  tool_profile_ref: v2.std.node.Symbol
 }
 
 type LeafModelPythonStaticFalsificationCase {
   artifact: TargetArtifact
-  tool_profile_ref: Symbol
-  tool_id: Symbol
-  diagnostic_code: Symbol
+  tool_profile_ref: v2.std.node.Symbol
+  tool_id: v2.std.node.Symbol
+  diagnostic_code: v2.std.node.Symbol
 }
 
 type LeafModelPythonStaticFixturePair {
   claim_id: LeafModelClaimId
-  surface_spelling_fact: Symbol
+  surface_spelling_fact: v2.std.node.Symbol
   happy: LeafModelPythonStaticHappyCase
   falsification: LeafModelPythonStaticFalsificationCase
 }
@@ -282,8 +282,8 @@ type LeafModelTypeScriptFalsificationCase {
 
 type LeafModelTypeScriptFixturePair {
   claim_id: LeafModelClaimId
-  surface_spelling_fact: Symbol
-  encoding_spelling_fact: Symbol
+  surface_spelling_fact: v2.std.node.Symbol
+  encoding_spelling_fact: v2.std.node.Symbol
   happy: LeafModelTypeScriptFixture
   expected_happy_verdict: TargetTypeScriptCompileVerdict
   falsification: LeafModelTypeScriptFalsificationCase
@@ -295,8 +295,8 @@ type LeafModelTypeScriptRuntimeFixture {
 
 type LeafModelTypeScriptRuntimeFixturePair {
   claim_id: LeafModelClaimId
-  surface_spelling_fact: Symbol
-  encoding_spelling_fact: Symbol
+  surface_spelling_fact: v2.std.node.Symbol
+  encoding_spelling_fact: v2.std.node.Symbol
   happy: LeafModelTypeScriptRuntimeFixture
   expected_happy_verdict: TargetRuntimeExerciseVerdict
   falsification: LeafModelTypeScriptRuntimeFixture

@@ -13,7 +13,7 @@ fn offered_programs() -> List<String> {
 }
 
 type ProgramSelection
-  = ProgramSelected { package: String, cargo_target: CargoTarget, bin_name: String }
+  = ProgramSelected { package: String, cargo_target: extdeps.cargo.CargoTarget, bin_name: String }
   | ProgramNotOffered { program: String }
 
 fn program_is_offered(program: String) -> Bool {

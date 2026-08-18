@@ -1,24 +1,24 @@
 module v2.test.long.frontier_probe_closure_matrix_integration
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data frontier_probe_closure_matrix_integration_cadence_note: String = "PR #7762 scheduled integration witnesses (operator msg_b51df9e7): below_cap and second_root on FalsifierCadenceJob with SpanEnrolled measured envelopes (4h cadence). Per-PR mechanism controls: src/v2/test/claim/workflow/frontier_probe_closure_matrix_test.dag (9 synthetic). Per-PR wet controls: src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag (read_failure 3ms, hash_mismatch 2ms, elision boundary 3ms — measured claim_batch eval wall, not full-pipeline resolve). below_cap and second_root re-homed to falsifier_rehomed_bin_wet_rows with measured exact-head eval (784772ms / 742109ms)."
 
-fn fp_matrix_ref_a() -> SourceRef {
+fn fp_matrix_ref_a() -> v2.compiler.source_authority.SourceRef {
   source_ref_for_observed_storage_path(path: "dag/std/algebra.dag")
 }
 
-fn fp_matrix_ref_v2() -> SourceRef {
+fn fp_matrix_ref_v2() -> v2.compiler.source_authority.SourceRef {
   source_ref_for_observed_storage_path(path: "src/v2/std/text.dag")
 }
 
 fn fp_matrix_closure_subject_matching_digest(
-  refs: List<SourceRef>,
-  coverage: SourceRootCoverage,
+  refs: List<v2.compiler.source_authority.SourceRef>,
+  coverage: v2.compiler.source_authority.SourceRootCoverage,
   ingest_read_count: Int,
-  entry: SourceRef
-) -> FrontierProbeIngestSubject {
+  entry: v2.compiler.source_authority.SourceRef
+) -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
   frontier_probe_discovered_closure_subject_for_matrix(
     closure: frontier_probe_discovered_closure_seal(refs: refs, entry: entry),
     coverage: coverage,
@@ -26,7 +26,7 @@ fn fp_matrix_closure_subject_matching_digest(
   )
 }
 
-fn fp_matrix_below_cap_complete_subject() -> FrontierProbeIngestSubject {
+fn fp_matrix_below_cap_complete_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
   fp_matrix_closure_subject_matching_digest(
     refs: Cons {
       head: fp_matrix_ref_a(),
@@ -38,7 +38,7 @@ fn fp_matrix_below_cap_complete_subject() -> FrontierProbeIngestSubject {
   )
 }
 
-fn fp_matrix_second_root_subject() -> FrontierProbeIngestSubject {
+fn fp_matrix_second_root_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
   fp_matrix_closure_subject_matching_digest(
     refs: Cons {
       head: fp_matrix_ref_a(),
@@ -50,7 +50,7 @@ fn fp_matrix_second_root_subject() -> FrontierProbeIngestSubject {
   )
 }
 
-fn fp_matrix_population_gates_not_refused(detail: FrontierProbeDetail) -> Bool {
+fn fp_matrix_population_gates_not_refused(detail: v2.compiler.self_host.frontier_probe_types.FrontierProbeDetail) -> Bool {
   match detail {
     FrontierProbeClosurePopulationRefused { cause: _ } => false
     FrontierProbeCoverageRefused { coverage: _ } => false

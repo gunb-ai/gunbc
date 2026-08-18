@@ -6,25 +6,25 @@ module test.claim.live_rust_observation_contract
 // Control 1 -- observed revision equals the workflow's immutable tested SHA -- is deliberately absent here, because it is the one claim that cannot be made without the host. It lives in the wet entry, and asserting it here against a constructed observation would be the fabricated-evidence failure this whole contract exists to prevent: two constants agreeing proves nothing about any repository.
 //
 // Control 8 is structural rather than asserted. The fold takes its observation as a parameter and never calls the host, so nothing in this file can reach Git even by accident; only live_rust_observation_wet can, and it is not imported here.
-data test_revision: CommitSha = "0123456789abcdef0123456789abcdef01234567"
-data other_revision: CommitSha = "fedcba9876543210fedcba9876543210fedcba98"
+data test_revision: std.types.CommitSha = "0123456789abcdef0123456789abcdef01234567"
+data other_revision: std.types.CommitSha = "fedcba9876543210fedcba9876543210fedcba98"
 
 fn observation_at(
-  revision: CommitSha,
+  revision: std.types.CommitSha,
   tracked: List<String>,
   prior: List<String>,
   cargo: List<String>
-) -> RustSourceHostObservation {
+) -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
   RustManifestObserved {
     repository_revision: revision,
-    manifest_content_identity: Fnv1a64Structural { digest: "c0a750000000000d" },
+    manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "c0a750000000000d" },
     tracked_rust_repo_paths: tracked,
     prior_tracked_rust_repo_paths: prior,
     cargo_bin_repo_paths: cargo
   }
 }
 
-fn populated_observation(revision: CommitSha) -> RustSourceHostObservation {
+fn populated_observation(revision: std.types.CommitSha) -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
   observation_at(
     revision: revision,
     tracked: ["src/v1/stage0/src/main.rs", "src/v1/stage0/src/cli_run.rs"],
@@ -33,8 +33,8 @@ fn populated_observation(revision: CommitSha) -> RustSourceHostObservation {
   )
 }
 
-fn request_for(revision: CommitSha) -> LiveRustObservationRequest {
-  LiveRustObservationRequest { expected_repository_revision: revision }
+fn request_for(revision: std.types.CommitSha) -> gunbc.live_rust_observation.LiveRustObservationRequest {
+  gunbc.live_rust_observation.LiveRustObservationRequest { expected_repository_revision: revision }
 }
 
 test fn control_matching_revision_admits_with_exact_counts() -> Bool {

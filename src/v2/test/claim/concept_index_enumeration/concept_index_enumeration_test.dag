@@ -1,6 +1,6 @@
 module v2.test.claim.concept_index_enumeration
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 type ConceptIndexWitnessRecord {
   alpha: String
@@ -20,11 +20,11 @@ data concept_index_enumeration_pool_note: String = "The pool root is this witnes
 
 data concept_index_enumeration_pool_roots: List<String> = ["src/v2/test/claim/concept_index_enumeration"]
 
-fn idx() -> List<QualifiedConcept> {
+fn idx() -> List<v2.std.concept_index.QualifiedConcept> {
   enumerate_concepts()
 }
 
-fn parse_only_idx() -> List<QualifiedConcept> {
+fn parse_only_idx() -> List<v2.std.concept_index.QualifiedConcept> {
   enumerate_concepts_in(pool_roots: concept_index_enumeration_pool_roots)
 }
 
@@ -36,7 +36,7 @@ fn parse_only_idx_has_qn(target: String) -> Bool {
   fold(parse_only_idx(), init: false, f: fn(acc, qc) { acc || (qc.qualified_name == target) })
 }
 
-fn fields_contains(fields: List<FieldRef>, fname: String, tname: String) -> Bool {
+fn fields_contains(fields: List<v2.std.concept_index.FieldRef>, fname: String, tname: String) -> Bool {
   fold(fields, init: false, f: fn(acc, fr) { acc || ((fr.field == fname) && (fr.type_name == tname)) })
 }
 

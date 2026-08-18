@@ -84,7 +84,7 @@ type DiagnosticTransport
 // No identifier at all. Matching on the prose is matching on a wording the
 // vendor may change without notice.
 type DiagnosticDecodability
-  = DecodableFromPublishedRegistry { registry: NonEmptyStr }
+  = DecodableFromPublishedRegistry { registry: std.types.NonEmptyStr }
   | OpaqueStableIdentifier
   | UnstructuredProse
 
@@ -92,12 +92,12 @@ type DiagnosticDecodability
 // Verbatim, as emitted. Never normalized, because normalizing a code we
 // cannot decode can only lose information.
 type HostDiagnostic {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   authority: DiagnosticAuthority
   transport: DiagnosticTransport
   decodability: DiagnosticDecodability
-  raw: NonEmptyStr
-  observed_at: EpochMs
+  raw: std.types.NonEmptyStr
+  observed_at: std.types.EpochMs
 }
 
 // Whether a diagnostic may be READ by a given convergence run, derived from
@@ -139,8 +139,8 @@ fn diagnostic_channel_reachability(
 // empty-observation narrow this module exists to prevent.
 type DiagnosticProjectionStanding
   = ProjectionPresentAndPopulated
-  | ProjectionUnavailableOrIncomplete { projection: NonEmptyStr }
-  | SourceConfirmedAbsent { source: NonEmptyStr, evidence: NonEmptyStr }
+  | ProjectionUnavailableOrIncomplete { projection: std.types.NonEmptyStr }
+  | SourceConfirmedAbsent { source: std.types.NonEmptyStr, evidence: std.types.NonEmptyStr }
 
 fn projection_absence_establishes_source_absence() -> Bool {
   false

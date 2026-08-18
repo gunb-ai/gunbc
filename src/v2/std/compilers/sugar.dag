@@ -2,13 +2,13 @@ module v2.std.compilers.sugar
 
 
 type SugarLowering
-  = SugarRewriteConnective { connective: Connective, edges: EdgeDiscipline }
+  = SugarRewriteConnective { connective: v2.std.node.Connective, edges: v2.std.node.EdgeDiscipline }
   | SugarUnwrapPositionalChild {}
   | SugarFoldCoproductPipeChain {}
 
 type SugarKey
-  = SurfaceAtomKey { atom: Symbol }
-  | ProductionIdentityKey { identity: Symbol }
+  = SurfaceAtomKey { atom: v2.std.node.Symbol }
+  | ProductionIdentityKey { identity: v2.std.node.Symbol }
 
 type SugarRule {
   key: SugarKey

@@ -442,7 +442,7 @@ type ClangFormatSpacesInAnglesStyle
 
 type ClangFormatSpacesInLineComment {
   minimum: Outcome<v2.std.refinement.NonNegativeInt>,
-  maximum: Outcome<AtLeastMinusOneInt>,
+  maximum: Outcome<v2.std.refinement.AtLeastMinusOneInt>,
 }
 
 type ClangFormatSpacesInParensStyle
@@ -626,7 +626,7 @@ type ClangFormatConfig {
   penalty_indented_whitespace: Outcome<v2.std.refinement.NonNegativeInt>
   penalty_return_type_on_its_own_line: Outcome<v2.std.refinement.NonNegativeInt>
   pointer_alignment: ClangFormatPointerAlignmentStyle
-  pp_indent_width: Outcome<AtLeastMinusOneInt>
+  pp_indent_width: Outcome<v2.std.refinement.AtLeastMinusOneInt>
   qualifier_alignment: ClangFormatQualifierAlignmentStyle
   qualifier_order: List<String>
   reference_alignment: ClangFormatReferenceAlignmentStyle

@@ -9,15 +9,15 @@ fn seed_tier(emoji: Bool) -> Tier {
 }
 
 type ScopedRunWriteProjection
-  = ScopedRunWriteProjected { bytes: String, next: DynamicLineState }
-  | ScopedRunWriteRefused { cause: NonEmptyStr }
+  = ScopedRunWriteProjected { bytes: String, next: extdeps.render.terminal.DynamicLineState }
+  | ScopedRunWriteRefused { cause: std.types.NonEmptyStr }
 
 type ScopedRunMeasuredProjection
-  = ScopedRunMeasuredProjected { bytes: String, next: DynamicLineState, wall: Nanosecond }
-  | ScopedRunMeasuredRefused { cause: NonEmptyStr }
+  = ScopedRunMeasuredProjected { bytes: String, next: extdeps.render.terminal.DynamicLineState, wall: std.measure.Nanosecond }
+  | ScopedRunMeasuredRefused { cause: std.types.NonEmptyStr }
 
 type ScopedRunTimingReceipt
-  = ScopedRunTimingProjected { wall: Nanosecond, seed_resolution: Nanosecond }
+  = ScopedRunTimingProjected { wall: std.measure.Nanosecond, seed_resolution: std.measure.Nanosecond }
 
 data scoped_run_observation_note: String = "The first real density-aware seed consumer. The user program's entry graph stays independent: cli_run resolves this authority as a dedicated graph and transports only the scoped run facts it already owns. The interpreter seed bridge is the narrow primitive-argument call into this module; its hand seam dissolves when the generated host-effect bridge can carry the same typed arguments without a stringly call scaffold. This module constructs the Run/Entry/Phase subject, derives attention and cursor action through observation_tty_render, and delegates every terminal byte and dynamic-line transition to extdeps.render.terminal. The seed may retain the returned canonical dynamic-line state; it may not spell a fallback line or reinterpret a refusal. Monotonic Nanosecond elapsed wall values include the bridge-resolution overhead by starting before authority resolution; no acceptance threshold is invented here, and the measured overhead is recorded by the seed witness receipt."
 

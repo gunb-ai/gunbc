@@ -5,11 +5,11 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 fn str_eq(a: String, b: String) -> Bool { a == b }
 
-fn one_intermediate(step: StagedIntermediate) -> StagedIntermediates {
-  StagedIntermediates { first: step, rest: [] }
+fn one_intermediate(step: gunbc.change_realization.StagedIntermediate) -> gunbc.change_realization.StagedIntermediates {
+  gunbc.change_realization.StagedIntermediates { first: step, rest: [] }
 }
 
-fn is_realized_staged(c: ChangeRealizationClassification) -> Bool {
+fn is_realized_staged(c: gunbc.change_realization.ChangeRealizationClassification) -> Bool {
   match c {
     ChangeRealized { realization: r } =>
       match r {
@@ -22,7 +22,7 @@ fn is_realized_staged(c: ChangeRealizationClassification) -> Bool {
   }
 }
 
-fn is_realized(c: ChangeRealizationClassification, expected_in_place: Bool) -> Bool {
+fn is_realized(c: gunbc.change_realization.ChangeRealizationClassification, expected_in_place: Bool) -> Bool {
   match c {
     ChangeRealized { realization: r } =>
       match r {
@@ -38,7 +38,7 @@ fn is_realized(c: ChangeRealizationClassification, expected_in_place: Bool) -> B
 data w_scm_ref_is_cas_note: String = "An SCM ref update classifies as a compare-and-swap because git update-ref <ref> <new> <old> NAMES the expected prior — the from side of MemberChanged. This is the row that shows the from side UNLOCKS a realization rather than merely documenting one: with only `to` in hand the sole reachable realization is the unconditional write, and a concurrent update would be silently overwritten instead of losing."
 
 test fn w_scm_ref_update_is_compare_and_swap() -> Bool {
-  match classify_change(subject: ScmRefSubject, subject_label: "refs/heads/main" as NonEmptyStr, continuity: AddressPreserved, declared_intermediates: none) {
+  match classify_change(subject: ScmRefSubject, subject_label: "refs/heads/main" as std.types.NonEmptyStr, continuity: AddressPreserved, declared_intermediates: none) {
     ChangeRealized { realization: r } =>
       match r {
         AtomicCompareAndSwap => true
@@ -55,7 +55,7 @@ data w_source_move_is_not_host_migration_note: String = "THE CONFLATION THIS TAB
 test fn w_source_declaration_move_is_tree_transformation_not_migration() -> Bool {
   let moved = classify_change(
     subject: SourceDeclarationSubject,
-    subject_label: "gunbc.membership_reconcile.MemberChanged" as NonEmptyStr,
+    subject_label: "gunbc.membership_reconcile.MemberChanged" as std.types.NonEmptyStr,
     continuity: AddressChanged,
     declared_intermediates: none,
   )
@@ -77,7 +77,7 @@ test fn w_host_resource_address_preserved_is_in_place() -> Bool {
   is_realized(
     c: classify_change(
       subject: HostResourceSubject,
-      subject_label: "srv4/build-cache" as NonEmptyStr,
+      subject_label: "srv4/build-cache" as std.types.NonEmptyStr,
       continuity: address_continuity(from: "gunbc-cache.service", to: "gunbc-cache.service", address_eq: str_eq),
       declared_intermediates: none,
     ),
@@ -89,10 +89,10 @@ test fn w_host_resource_address_changed_is_staged_replacement() -> Bool {
   is_realized_staged(
     c: classify_change(
       subject: HostResourceSubject,
-      subject_label: "srv4/build-cache" as NonEmptyStr,
+      subject_label: "srv4/build-cache" as std.types.NonEmptyStr,
       continuity: address_continuity(from: "gunbc-cache.service", to: "gunbc-buildcache.service", address_eq: str_eq),
       declared_intermediates: Present {
-        value: one_intermediate(step: RetirePriorEndpoint { endpoint: "/run/sccache.sock" as NonEmptyStr })
+        value: one_intermediate(step: RetirePriorEndpoint { endpoint: "/run/sccache.sock" as std.types.NonEmptyStr })
       },
     )
   )
@@ -103,7 +103,7 @@ data w_srv4_undeclared_intermediates_refuses_note: String = "THE srv4 SPECIMEN, 
 test fn w_staged_replacement_without_declared_intermediates_refuses() -> Bool {
   match classify_change(
     subject: HostResourceSubject,
-    subject_label: "srv4/build-cache" as NonEmptyStr,
+    subject_label: "srv4/build-cache" as std.types.NonEmptyStr,
     continuity: AddressChanged,
     declared_intermediates: none,
   ) {
@@ -119,12 +119,12 @@ test fn w_staged_replacement_without_declared_intermediates_refuses() -> Bool {
 data w_intermediates_nonempty_by_construction_note: String = "StagedIntermediates is head + tail, not a List that could be []. So the srv4 state — a staged replacement that believed it had nothing to retire — is UNREPRESENTABLE rather than validated against (DESIGN §5 construction-over-validation, §4b: the invalid state has no constructor). This row asserts the floor that construction guarantees: every StagedIntermediates yields at least one step, so a count of zero cannot be built to be tested for."
 
 test fn w_staged_intermediates_are_never_empty() -> Bool {
-  let single = one_intermediate(step: StopPriorUnit { unit: "sccache.service" as NonEmptyStr })
-  let many = StagedIntermediates {
-    first: StopPriorUnit { unit: "sccache.service" as NonEmptyStr },
+  let single = one_intermediate(step: StopPriorUnit { unit: "sccache.service" as std.types.NonEmptyStr })
+  let many = gunbc.change_realization.StagedIntermediates {
+    first: StopPriorUnit { unit: "sccache.service" as std.types.NonEmptyStr },
     rest: [
-      UnlinkStalePath { path: "/run/sccache.sock" as NonEmptyStr },
-      DrainPriorConsumers { description: "in-flight compiles" as NonEmptyStr },
+      UnlinkStalePath { path: "/run/sccache.sock" as std.types.NonEmptyStr },
+      DrainPriorConsumers { description: "in-flight compiles" as std.types.NonEmptyStr },
     ],
   }
   staged_intermediates_count(steps: single) == 1
@@ -139,11 +139,11 @@ test fn w_occurrence_survives_total_value_change() -> Bool {
   let a0 = resource_occurrence_allocator_initial()
   let first = alloc_resource_occurrence(alloc: a0)
   let second = alloc_resource_occurrence(alloc: first.alloc)
-  let id = HostResourceIdentity { host: "srv4" as HostIdentity, occurrence: first.id }
-  let before = HostResource { identity: id, role: "BuildCache", value: "gunbc-cache.service@/run/sccache.sock" }
-  let after = HostResource { identity: id, role: "BuildCache", value: "gunbc-buildcache.service@/run/buildcache.sock" }
-  let unrelated = HostResource {
-    identity: HostResourceIdentity { host: "srv4" as HostIdentity, occurrence: second.id },
+  let id = gunbc.host_resource.HostResourceIdentity { host: "srv4" as product.placement_supply.HostIdentity, occurrence: first.id }
+  let before = gunbc.host_resource.HostResource { identity: id, role: "BuildCache", value: "gunbc-cache.service@/run/sccache.sock" }
+  let after = gunbc.host_resource.HostResource { identity: id, role: "BuildCache", value: "gunbc-buildcache.service@/run/buildcache.sock" }
+  let unrelated = gunbc.host_resource.HostResource {
+    identity: gunbc.host_resource.HostResourceIdentity { host: "srv4" as product.placement_supply.HostIdentity, occurrence: second.id },
     role: "BuildCache",
     value: "gunbc-cache.service@/run/sccache.sock",
   }
@@ -157,8 +157,8 @@ data w_identity_is_host_scoped_note: String = "The occurrence is scoped BY HOST:
 test fn w_same_occurrence_different_host_is_different_identity() -> Bool {
   let a0 = resource_occurrence_allocator_initial()
   let first = alloc_resource_occurrence(alloc: a0)
-  let on_srv3 = HostResourceIdentity { host: "srv3" as HostIdentity, occurrence: first.id }
-  let on_srv4 = HostResourceIdentity { host: "srv4" as HostIdentity, occurrence: first.id }
+  let on_srv3 = gunbc.host_resource.HostResourceIdentity { host: "srv3" as product.placement_supply.HostIdentity, occurrence: first.id }
+  let on_srv4 = gunbc.host_resource.HostResourceIdentity { host: "srv4" as product.placement_supply.HostIdentity, occurrence: first.id }
   !host_resource_identity_eq(left: on_srv3, right: on_srv4)
     && host_resource_identity_eq(left: on_srv3, right: on_srv3)
 }

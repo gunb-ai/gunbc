@@ -7,9 +7,9 @@ module test.claim.hermetic_fixture_realization
 // a module that names some of its dependencies and leans on coincidence for the rest is in the
 // worst of both states.
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data shared_input_digest: ContentHash = content_hash_of_value(value: "hermetic-fixture-witness-shared-input-digest")
+data shared_input_digest: std.content_hash.ContentHash = content_hash_of_value(value: "hermetic-fixture-witness-shared-input-digest")
 
 test fn witness_file_handler_is_content_addressed_reference() -> Bool {
   let f = cache_interface_facts_from_catalog(row: hermetic_fixture_file_facts)
@@ -48,7 +48,7 @@ test fn witness_handlers_share_kernel_invariants() -> Bool {
 }
 
 test fn witness_one_artifact_routes_to_both_backends() -> Bool {
-  let id = ArtifactIdentity {
+  let id = std.cache_interface.ArtifactIdentity {
     subject_digest: shared_input_digest,
     artifact_kind: hermetic_fixture_artifact_kind,
   }

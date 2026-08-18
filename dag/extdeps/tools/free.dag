@@ -9,18 +9,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type MemoryStats {
-  total: ByteSize
-  used: ByteSize
-  free: ByteSize
-  shared: ByteSize
-  buff_cache: ByteSize
-  available: ByteSize
+  total: std.measure.ByteSize
+  used: std.measure.ByteSize
+  free: std.measure.ByteSize
+  shared: std.measure.ByteSize
+  buff_cache: std.measure.ByteSize
+  available: std.measure.ByteSize
 }
 
 type SwapStats {
-  total: ByteSize
-  used: ByteSize
-  free: ByteSize
+  total: std.measure.ByteSize
+  used: std.measure.ByteSize
+  free: std.measure.ByteSize
 }
 
 type FreeOutput {

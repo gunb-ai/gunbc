@@ -1,22 +1,22 @@
 module v2.test.manual.typescript_record_task_translate
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 data typescript_record_task_emitted_root: Node = ts_task_type_alias_emitted()
 
-fn typescript_record_task_target_model_for_emit() -> Witness<TargetModel> {
+fn typescript_record_task_target_model_for_emit() -> Witness<v2.std.compilers.target_model.TargetModel> {
   ts_task_target_model_witness()
 }
 
-fn typescript_record_task_canonical_grounding(node: Node, algebra: Node) -> CanonicalGrounding {
-  CanonicalGrounding {
+fn typescript_record_task_canonical_grounding(node: Node, algebra: Node) -> v2.std.constraints.CanonicalGrounding {
+  v2.std.constraints.CanonicalGrounding {
     node: node,
-    witness: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
+    witness: v2.std.constraints.CanonicalGroundingWitness {
+      structural: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_being_canonical,
         evidence: algebra
       },
-      closedness: StructuralPropertyWitness {
+      closedness: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_candidate_set_closedness,
         evidence: node
       }
@@ -24,7 +24,7 @@ fn typescript_record_task_canonical_grounding(node: Node, algebra: Node) -> Cano
   }
 }
 
-fn typescript_record_task_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
+fn typescript_record_task_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == typescript_record_task_emitted_root {
     Holds {
       value: typescript_record_task_canonical_grounding(node: node, algebra: node)
@@ -43,7 +43,7 @@ fn typescript_record_task_canonical_grounding_for(node: Node) -> Witness<Canonic
     }
   } else {
     Violates {
-      diagnostic: Diagnostic {
+      diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^typescript_record_task_grounding_miss,
         at: node_locus(node: node),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -52,7 +52,7 @@ fn typescript_record_task_canonical_grounding_for(node: Node) -> Witness<Canonic
   }
 }
 
-fn typescript_record_task_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
+fn typescript_record_task_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   match typescript_record_task_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -67,11 +67,11 @@ fn typescript_record_task_inferred_facts_for(node: Node) -> Optional<InferredFac
   }
 }
 
-fn typescript_record_task_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn typescript_record_task_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   typescript_record_task_inferred_facts_for(node: key)
 }
 
-data typescript_record_task_inferred_tree: InferredTree = InferredTree {
+data typescript_record_task_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: typescript_record_task_emitted_root,
   facts: Map { lookup: typescript_record_task_facts_lookup }
 }
@@ -84,7 +84,7 @@ fn anchor_typescript_record_task_emit_accepts() -> Outcome<Medium<String>> {
   }
 }
 
-fn anchor_typescript_record_task_compile_inferred_accepts() -> Outcome<CompileOutput> {
+fn anchor_typescript_record_task_compile_inferred_accepts() -> Outcome<v2.compiler.compile.CompileOutput> {
   match typescript_record_task_target_model_for_emit() {
     Holds { value: target } =>
       compile_inferred(
@@ -98,7 +98,7 @@ fn anchor_typescript_record_task_compile_inferred_accepts() -> Outcome<CompileOu
 
 data typescript_record_task_emit_receipt: Outcome<Medium<String>> = anchor_typescript_record_task_emit_accepts()
 
-data typescript_record_task_compile_inferred_receipt: Outcome<CompileOutput> = anchor_typescript_record_task_compile_inferred_accepts()
+data typescript_record_task_compile_inferred_receipt: Outcome<v2.compiler.compile.CompileOutput> = anchor_typescript_record_task_compile_inferred_accepts()
 test fn typescript_record_task_emit_receipt_decided() -> Bool {
   match typescript_record_task_emit_receipt {
     Accepted { value: _, diagnostics: _ } => true

@@ -32,16 +32,16 @@ data cursor_sdk_authority_note: String = "Slice-E modeling only (provider-contro
 data cursor_sdk_package_closure_note: String = "Exact-lock facts from provider_interface_acquisition_2026-08-03.json via extdeps.probes.provider_interface_acquisition — requirement versus exact selection, archive integrity, zero install scripts. Dissolves into gunbc.package_delivery when slice B lands; this module owns only the Cursor @cursor/sdk closure projection the delivery spine will consume. No acquisition on a deployed host in this slice."
 
 type CursorSdkPackageClosure {
-  package_name: NonEmptyStr
-  exact_version: NonEmptyStr
+  package_name: std.types.NonEmptyStr
+  exact_version: std.types.NonEmptyStr
   lockfile_sha256: String
-  root_integrity: NonEmptyStr
+  root_integrity: std.types.NonEmptyStr
   lock_entry_count: Int
   platform_gated_entry_count: Int
   install_script_count: Int
-  node_toolchain_version: NonEmptyStr
-  npm_toolchain_version: NonEmptyStr
-  module_export: NonEmptyStr
+  node_toolchain_version: std.types.NonEmptyStr
+  npm_toolchain_version: std.types.NonEmptyStr
+  module_export: std.types.NonEmptyStr
 }
 
 fn cursor_sdk_local_package_closure() -> CursorSdkPackageClosure {
@@ -65,8 +65,8 @@ data cursor_sdk_api_key_never_in_argv_note: String = "Slice E: modeled SDK local
 data cursor_sdk_usage_capability_gap_note: String = "Cursor local exposes NO account-level remaining capacity. The SDK usage API is per-agent and cloud-only (provider-control-interface-audit §6, §10). Local usage standing must be CursorSdkLocalAccountUsageUnobservable — a typed capability gap naming the missing capability — never an estimated or assumed healthy balance. Coordinate arm adoption with valiant-stag-845 (ProviderLimitObservation decomposition). Silence is not a positive observation (DESIGN §5)."
 
 type CursorSdkLocalAccountUsageUnobservable {
-  reason: NonEmptyStr
-  missing_capability: NonEmptyStr
+  reason: std.types.NonEmptyStr
+  missing_capability: std.types.NonEmptyStr
 }
 
 data cursor_sdk_local_usage_missing_capability: NonEmptyStr = "cursor-sdk-local-account-usage-api" as NonEmptyStr
@@ -83,8 +83,8 @@ fn cursor_sdk_local_account_usage_unobservable() -> CursorSdkLocalAccountUsageUn
 data cursor_sdk_srv1_presence_note: String = "Audit §6/§7: @cursor/sdk was acquired and inspected in a disposable probe directory only — not in srv1's runtime dependency closure at audit time. Until gunbc.package_delivery admits a ProviderInterfaceAdmissionReceipt for the local SDK export, provision on a deployed host is a typed capability gap, never an assumed offer."
 
 type CursorSdkLocalProvisionGap {
-  reason: NonEmptyStr
-  missing_capability: NonEmptyStr
+  reason: std.types.NonEmptyStr
+  missing_capability: std.types.NonEmptyStr
 }
 
 data cursor_sdk_local_provision_missing_capability: NonEmptyStr = "cursor-sdk-local-package-provisioned" as NonEmptyStr

@@ -2,16 +2,16 @@ module v2.test.language_model.python_l2_cross_target_parity
 
 fn python_l2_parity_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: ^python_l2_parity_claim_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^python_l2_parity_claim_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => Node { kind: TypeNode { connective: Atom { identity: ^python_l2_parity_claim_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^python_l2_parity_claim_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-fn python_l2_parity_r2a_probe_is_wired(p: LeafModelCrossTargetParityProbe) -> Bool {
+fn python_l2_parity_r2a_probe_is_wired(p: v2.std.leaf_model_verification.LeafModelCrossTargetParityProbe) -> Bool {
   p.claim_id == leaf_model_claim_python_l2_cross_target_parity_r2a_add
     && p.python_fact == ^python_repr_int_arbitrary_precision
     && p.rust_fact == ^rust_repr_integer_twos_complement
@@ -23,7 +23,7 @@ fn python_l2_parity_r2a_probe_is_wired(p: LeafModelCrossTargetParityProbe) -> Bo
     && p.expected_parity.actual == python_l2_parity_r2a_value
 }
 
-fn python_l2_parity_r3_probe_is_wired(p: LeafModelCrossTargetParityProbe) -> Bool {
+fn python_l2_parity_r3_probe_is_wired(p: v2.std.leaf_model_verification.LeafModelCrossTargetParityProbe) -> Bool {
   p.claim_id == leaf_model_claim_python_l2_cross_target_parity_r3_symbol_projection
     && p.python_fact == ^python_atom_realization_symbol
     && p.rust_fact == ^rust_atom_realization_symbol
@@ -35,46 +35,46 @@ fn python_l2_parity_r3_probe_is_wired(p: LeafModelCrossTargetParityProbe) -> Boo
     && p.expected_parity.actual == python_l2_parity_r3_value
 }
 
-fn python_l2_parity_probe_agrees(p: LeafModelCrossTargetParityProbe) -> Bool {
+fn python_l2_parity_probe_agrees(p: v2.std.leaf_model_verification.LeafModelCrossTargetParityProbe) -> Bool {
   p.expected_parity.expected == p.expected_parity.actual
 }
 
-data claim_python_l2_parity_r2a_probe_wired: TestClaim = EqualsClaim {
+data claim_python_l2_parity_r2a_probe_wired: v2.std.verification.TestClaim = EqualsClaim {
   label: "language_model/python_l2_cross_target_parity: R2a probe wires parity claim id + per-target sources + repr facts + ValueDiff payload",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_l2_parity_claim_bool_atom(b: true),
   rhs: python_l2_parity_claim_bool_atom(
     b: python_l2_parity_r2a_probe_is_wired(p: python_l2_parity_r2a_probe())
   ),
-  classification: TestClassification { tier: Tier1, layer: Boundary }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }
 
-data claim_python_l2_parity_r3_probe_wired: TestClaim = EqualsClaim {
+data claim_python_l2_parity_r3_probe_wired: v2.std.verification.TestClaim = EqualsClaim {
   label: "language_model/python_l2_cross_target_parity: R3 probe wires parity claim id + per-target sources + atom-realization facts + ValueDiff payload",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_l2_parity_claim_bool_atom(b: true),
   rhs: python_l2_parity_claim_bool_atom(
     b: python_l2_parity_r3_probe_is_wired(p: python_l2_parity_r3_probe())
   ),
-  classification: TestClassification { tier: Tier1, layer: Boundary }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }
 
-data claim_python_l2_parity_r2a_is_positive_parity: TestClaim = EqualsClaim {
+data claim_python_l2_parity_r2a_is_positive_parity: v2.std.verification.TestClaim = EqualsClaim {
   label: "language_model/python_l2_cross_target_parity: R2a small-value add agrees across Python/Rust/Go (parity is real)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_l2_parity_claim_bool_atom(b: true),
   rhs: python_l2_parity_claim_bool_atom(
     b: python_l2_parity_probe_agrees(p: python_l2_parity_r2a_probe())
   ),
-  classification: TestClassification { tier: Tier1, layer: Boundary }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }
 
-data claim_python_l2_parity_r3_is_positive_parity: TestClaim = EqualsClaim {
+data claim_python_l2_parity_r3_is_positive_parity: v2.std.verification.TestClaim = EqualsClaim {
   label: "language_model/python_l2_cross_target_parity: R3 Symbol projection agrees across Python/Rust/Go (parity is real)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_l2_parity_claim_bool_atom(b: true),
   rhs: python_l2_parity_claim_bool_atom(
     b: python_l2_parity_probe_agrees(p: python_l2_parity_r3_probe())
   ),
-  classification: TestClassification { tier: Tier1, layer: Boundary }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }

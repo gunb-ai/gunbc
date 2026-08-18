@@ -9,14 +9,14 @@ data repo_tree_root: String = "/home/user/gunbc/dag"
 data non_gunbc_tmp_root: String = "/tmp/other_scratch"
 data gunbc_prefix_without_separator_root: String = "/tmp/gunbcsomethingelse"
 
-fn is_refused(a: AccessDecision) -> Bool {
+fn is_refused(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => false
     Deny { refusal: refusal } => true
   }
 }
 
-fn is_admitted(a: AccessDecision) -> Bool {
+fn is_admitted(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => true
     Deny { refusal: refusal } => false

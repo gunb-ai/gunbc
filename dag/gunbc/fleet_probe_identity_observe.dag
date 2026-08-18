@@ -12,7 +12,7 @@ module gunbc.fleet_probe_identity_observe
 data fleet_probe_identity_receipt_path: String = "target/fleet-probe-identity-observe-receipt.txt"
 
 fn observe_capture_line(label: String, argv: List<String>) -> String {
-  let r = run_shell_command_capture(command: ArgvCommand { argv: argv }, transport: LocalExec)
+  let r = run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: argv }, transport: LocalExec)
   if r.success {
     join([label, " outcome=observed value=", trim(s: r.stdout), "\n"], "")
   } else {
@@ -22,7 +22,7 @@ fn observe_capture_line(label: String, argv: List<String>) -> String {
 
 fn observe_authorized_keys_line(home: String) -> String {
   let path = concat(home, "/.ssh/authorized_keys")
-  let read = run_shell_command_capture(command: ArgvCommand { argv: ["cat", path] }, transport: LocalExec)
+  let read = run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["cat", path] }, transport: LocalExec)
   if read.success {
     if string_contains(s: read.stdout, pattern: fleet_automation_ssh_key.material) {
       join(["authorized-keys home=", home, " outcome=fleet-key-present\n"], "")
@@ -34,16 +34,16 @@ fn observe_authorized_keys_line(home: String) -> String {
   }
 }
 
-func fleet_probe_identity_observe_wet() -> ProcessExit
+func fleet_probe_identity_observe_wet() -> std.process.ProcessExit
   uses net: Network
 {
-  let user = run_shell_command_capture(command: ArgvCommand { argv: ["whoami"] }, transport: LocalExec)
+  let user = run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["whoami"] }, transport: LocalExec)
   let passwd_home = run_shell_command_capture(
-    command: ArgvCommand { argv: ["sh", "-c", "getent passwd \"$(whoami)\" | cut -d: -f6"] },
+    command: extdeps.exec.command.ArgvCommand { argv: ["sh", "-c", "getent passwd \"$(whoami)\" | cut -d: -f6"] },
     transport: LocalExec,
   )
   let job_home = run_shell_command_capture(
-    command: ArgvCommand { argv: ["sh", "-c", "echo \"$HOME\"" ] },
+    command: extdeps.exec.command.ArgvCommand { argv: ["sh", "-c", "echo \"$HOME\"" ] },
     transport: LocalExec,
   )
   let ph = trim(s: passwd_home.stdout)

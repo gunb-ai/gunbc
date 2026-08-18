@@ -3,13 +3,13 @@ module test.claim.spatial_frame_scale_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn board_frame_id() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
-fn chassis_frame_id() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
-fn unregistered_frame_id() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 3) }
+fn board_frame_id() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
+fn chassis_frame_id() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
+fn unregistered_frame_id() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 3) }
 
 // The board is drawn in micrometres and the chassis it mounts into is drawn in millimetres. That
 // is the whole subject: two frames, two units, in one program.
-fn populated_registry() -> SpatialFrameRegistry {
+fn populated_registry() -> std.spatial_frame.SpatialFrameRegistry {
   let r0 = empty_frame_registry()
   let r1 = match register_frame(r: r0, identity: board_frame_id(), length_scale: Micro) {
     FrameRegistered { frame: f } => registry_with(r: r0, f: f)
@@ -21,7 +21,7 @@ fn populated_registry() -> SpatialFrameRegistry {
   }
 }
 
-fn scale_of(id_occurrence_is_board: Bool) -> Scale? {
+fn scale_of(id_occurrence_is_board: Bool) -> std.measure.Scale? {
   frame_length_scale(
     r: populated_registry(),
     identity: if id_occurrence_is_board { board_frame_id() } else { chassis_frame_id() }

@@ -1,22 +1,22 @@
 module v2.test.manual.parallel_executor
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data parallel_executor_expected_first_batch: ExecutorBatch = ExecutorBatch {
+data parallel_executor_expected_first_batch: v2.workflow.executor.ExecutorBatch = v2.workflow.executor.ExecutorBatch {
   jobs: [
     executor_job_for_node(node: scheduler_build_node),
     executor_job_for_node(node: scheduler_test_node)
   ]
 }
 
-data parallel_executor_expected_second_batch: ExecutorBatch = ExecutorBatch {
+data parallel_executor_expected_second_batch: v2.workflow.executor.ExecutorBatch = v2.workflow.executor.ExecutorBatch {
   jobs: [
     executor_job_for_node(node: scheduler_emit_node)
   ]
 }
 
-data parallel_executor_expected_batches: List<ExecutorBatch> = [
+data parallel_executor_expected_batches: List<v2.workflow.executor.ExecutorBatch> = [
   parallel_executor_expected_first_batch,
   parallel_executor_expected_second_batch
 ]
@@ -115,8 +115,8 @@ fn parallel_executor_blocks_on_missing_prerequisite() -> Bool {
 
 fn parallel_executor_layers_reuse_readiness_frontiers() -> Bool {
   let layers = [
-    ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] },
-    ReadinessLayer { ready: [scheduler_emit_node] }
+    v2.std.dependency.ReadinessLayer { ready: [scheduler_build_node, scheduler_test_node] },
+    v2.std.dependency.ReadinessLayer { ready: [scheduler_emit_node] }
   ]
   match parallel_executor_plan_from_layers(layers: layers) {
     ExecutorRunComplete { batches: batches, scheduled: scheduled } =>

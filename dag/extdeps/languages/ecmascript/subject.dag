@@ -1,15 +1,15 @@
 module extdeps.languages.ecmascript.subject
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "tc39.es/ecma262/"
   }
 }
 
-data ecmascript_language_further_authority_1: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data ecmascript_language_further_authority_1: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "www.ecma-international.org/publications-and-standards/standards/ecma-262/"
   }
@@ -22,9 +22,9 @@ type EcmaScript
 
 data ecmascript_language: EcmaScript = EcmaScriptTarget
 
-data ecmascript_language_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data ecmascript_language_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.languages.ecmascript.subject",
       decl_name: "ecmascript_language",
       field: WholeDeclaration
@@ -34,4 +34,4 @@ data ecmascript_language_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [ecmascript_language_further_authority_1]
 }
 
-data extdeps_model_scope: ExternalModelScope = ecmascript_language_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = ecmascript_language_model_scope

@@ -5,35 +5,35 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data coverage_witness_separability_note: String = "EVERY WITNESS HERE ASSERTS ONE PROPERTY, and that is a rule this file was built under rather than a style preference (operator refinement 2026-08-04). A conjunction can only be licensed one conjunct at a time — a discriminating RED credits exactly the conjunct it trips, so one live conjunct can launder several dead ones and the result is indistinguishable from an all-live conjunction. That is only mechanically checkable when the conjuncts are SEPARABLE: a witness whose arms cannot be individually falsified cannot be individually licensed. Splitting them also makes a red self-locating, so a guard that fires is never read as a failure of the property the witness is named for."
 
-fn coverage_witness_decl(name: String) -> DeclarationRef {
+fn coverage_witness_decl(name: String) -> std.decl_ref.DeclarationRef {
   decl_ref(module_path: "test.claim.repository_census_coverage_witness", decl_name: name)
 }
 
-data coverage_witness_revision: MeasurementRevision = GitRevision {
+data coverage_witness_revision: gunbc.guarantee_measurement.MeasurementRevision = GitRevision {
   commit: "ca75137ee30000000000000000000000000000ff",
 }
 
-data coverage_witness_other_revision: MeasurementRevision = GitRevision {
+data coverage_witness_other_revision: gunbc.guarantee_measurement.MeasurementRevision = GitRevision {
   commit: "ca75137ee30000000000000000000000000000aa",
 }
 
-fn coverage_witness_digest(seed: String) -> Fnv1a64Structural {
-  content_hash_atom(value: seed as NonEmptyStr)
+fn coverage_witness_digest(seed: String) -> std.content_hash.Fnv1a64Structural {
+  content_hash_atom(value: seed as std.types.NonEmptyStr)
 }
 
 fn coverage_witness_run_at(
   classifier: String,
   invocation: String,
-  revision: MeasurementRevision,
-) -> CensusMethodRunIdentity {
-  CensusMethodRunIdentity {
+  revision: gunbc.guarantee_measurement.MeasurementRevision,
+) -> gunbc.repository_census_observation.CensusMethodRunIdentity {
+  gunbc.repository_census_observation.CensusMethodRunIdentity {
     classifier: coverage_witness_decl(name: classifier),
     classifier_revision: revision,
     invocation_identity: coverage_witness_digest(seed: invocation),
   }
 }
 
-fn coverage_witness_enumeration_run() -> CensusMethodRunIdentity {
+fn coverage_witness_enumeration_run() -> gunbc.repository_census_observation.CensusMethodRunIdentity {
   coverage_witness_run_at(
     classifier: "coverage_witness_enumerator",
     invocation: "enumerate",
@@ -41,7 +41,7 @@ fn coverage_witness_enumeration_run() -> CensusMethodRunIdentity {
   )
 }
 
-fn coverage_witness_classification_run() -> CensusMethodRunIdentity {
+fn coverage_witness_classification_run() -> gunbc.repository_census_observation.CensusMethodRunIdentity {
   coverage_witness_run_at(
     classifier: "coverage_witness_classifier",
     invocation: "classify",
@@ -49,27 +49,27 @@ fn coverage_witness_classification_run() -> CensusMethodRunIdentity {
   )
 }
 
-data coverage_witness_population: RepositoryPopulation = RepositoryPopulation {
-  repository: "gunbc" as RepositoryIdentity,
-  first_source_root: "dag" as SourceRootIdentity,
-  additional_source_roots: ["src/v2" as SourceRootIdentity],
+data coverage_witness_population: gunbc.repository_census_observation.RepositoryPopulation = gunbc.repository_census_observation.RepositoryPopulation {
+  repository: "gunbc" as gunbc.repository_census_observation.RepositoryIdentity,
+  first_source_root: "dag" as gunbc.repository_census_observation.SourceRootIdentity,
+  additional_source_roots: ["src/v2" as gunbc.repository_census_observation.SourceRootIdentity],
   inclusion_rule: coverage_witness_decl(name: "coverage_witness_inclusion_rule"),
   exclusion_rule: Absent,
 }
 
-data coverage_witness_other_population: RepositoryPopulation = RepositoryPopulation {
-  repository: "gunbc" as RepositoryIdentity,
-  first_source_root: "dag" as SourceRootIdentity,
+data coverage_witness_other_population: gunbc.repository_census_observation.RepositoryPopulation = gunbc.repository_census_observation.RepositoryPopulation {
+  repository: "gunbc" as gunbc.repository_census_observation.RepositoryIdentity,
+  first_source_root: "dag" as gunbc.repository_census_observation.SourceRootIdentity,
   additional_source_roots: [],
   inclusion_rule: coverage_witness_decl(name: "coverage_witness_inclusion_rule"),
   exclusion_rule: Absent,
 }
 
-fn coverage_witness_key(name: String) -> CensusSubjectKey {
-  name as CensusSubjectKey
+fn coverage_witness_key(name: String) -> gunbc.repository_census_observation.CensusSubjectKey {
+  name as gunbc.repository_census_observation.CensusSubjectKey
 }
 
-fn coverage_witness_row(name: String) -> CensusObservedRow {
+fn coverage_witness_row(name: String) -> gunbc.repository_census_observation.CensusObservedRow {
   census_observed_row(
     subject: coverage_witness_key(name: name),
     fact: coverage_witness_digest(seed: concat("fact-", name)),
@@ -77,11 +77,11 @@ fn coverage_witness_row(name: String) -> CensusObservedRow {
 }
 
 fn coverage_witness_observation_of(
-  population: RepositoryPopulation,
-  revision: MeasurementRevision,
-  rows: List<CensusObservedRow>,
-  run: CensusMethodRunIdentity,
-) -> RepositoryCensusObservation {
+  population: gunbc.repository_census_observation.RepositoryPopulation,
+  revision: gunbc.guarantee_measurement.MeasurementRevision,
+  rows: List<gunbc.repository_census_observation.CensusObservedRow>,
+  run: gunbc.repository_census_observation.CensusMethodRunIdentity,
+) -> gunbc.repository_census_observation.RepositoryCensusObservation {
   repository_census_observation(
     population: population,
     observed_at_revision: revision,
@@ -90,7 +90,7 @@ fn coverage_witness_observation_of(
   )
 }
 
-fn coverage_witness_observation(rows: List<CensusObservedRow>) -> RepositoryCensusObservation {
+fn coverage_witness_observation(rows: List<gunbc.repository_census_observation.CensusObservedRow>) -> gunbc.repository_census_observation.RepositoryCensusObservation {
   coverage_witness_observation_of(
     population: coverage_witness_population,
     revision: coverage_witness_revision,
@@ -100,10 +100,10 @@ fn coverage_witness_observation(rows: List<CensusObservedRow>) -> RepositoryCens
 }
 
 fn coverage_witness_denominator_of(
-  population: RepositoryPopulation,
-  revision: MeasurementRevision,
-  subjects: List<CensusSubjectKey>,
-) -> CensusDenominatorObservation {
+  population: gunbc.repository_census_observation.RepositoryPopulation,
+  revision: gunbc.guarantee_measurement.MeasurementRevision,
+  subjects: List<gunbc.repository_census_observation.CensusSubjectKey>,
+) -> gunbc.repository_census_coverage.CensusDenominatorObservation {
   census_denominator_observation(
     population: population,
     observed_at_revision: revision,
@@ -113,8 +113,8 @@ fn coverage_witness_denominator_of(
 }
 
 fn coverage_witness_denominator(
-  subjects: List<CensusSubjectKey>,
-) -> CensusDenominatorObservation {
+  subjects: List<gunbc.repository_census_observation.CensusSubjectKey>,
+) -> gunbc.repository_census_coverage.CensusDenominatorObservation {
   coverage_witness_denominator_of(
     population: coverage_witness_population,
     revision: coverage_witness_revision,
@@ -122,17 +122,17 @@ fn coverage_witness_denominator(
   )
 }
 
-data coverage_witness_ab_subjects: List<CensusSubjectKey> = [
+data coverage_witness_ab_subjects: List<gunbc.repository_census_observation.CensusSubjectKey> = [
   coverage_witness_key(name: "a"),
   coverage_witness_key(name: "b"),
 ]
 
-data coverage_witness_ab_rows: List<CensusObservedRow> = [
+data coverage_witness_ab_rows: List<gunbc.repository_census_observation.CensusObservedRow> = [
   coverage_witness_row(name: "a"),
   coverage_witness_row(name: "b"),
 ]
 
-fn coverage_outcome_has_receipt(outcome: CensusCoverageOutcome) -> Bool {
+fn coverage_outcome_has_receipt(outcome: gunbc.repository_census_coverage.CensusCoverageOutcome) -> Bool {
   match outcome {
     CoverageEstablished { receipt: _ } => true
     CoverageRefused {
@@ -144,8 +144,8 @@ fn coverage_outcome_has_receipt(outcome: CensusCoverageOutcome) -> Bool {
 }
 
 fn coverage_witness_established(
-  denominator: CensusDenominatorObservation,
-  observation: RepositoryCensusObservation,
+  denominator: gunbc.repository_census_coverage.CensusDenominatorObservation,
+  observation: gunbc.repository_census_observation.RepositoryCensusObservation,
 ) -> Bool {
   coverage_outcome_has_receipt(
     outcome: census_establish_coverage(denominator: denominator, observation: observation),
@@ -311,9 +311,9 @@ test fn witness_a_clean_pair_reports_no_duplicates() -> Bool {
 }
 
 fn coverage_witness_aligned(
-  denominator_subjects: List<CensusSubjectKey>,
-  observed_subjects: List<CensusSubjectKey>,
-) -> CensusCoverageReconciliation {
+  denominator_subjects: List<gunbc.repository_census_observation.CensusSubjectKey>,
+  observed_subjects: List<gunbc.repository_census_observation.CensusSubjectKey>,
+) -> gunbc.repository_census_coverage.CensusCoverageReconciliation {
   census_reconcile_aligned_subjects(
     denominator_subjects: denominator_subjects,
     observed_subjects: observed_subjects,
@@ -433,17 +433,17 @@ test fn witness_two_distinct_classifiers_establish_independence() -> Bool {
 
 data coverage_blocker_four_note: String = "BLOCKER 4 WITNESSES. A capability receipt exists only when its contract names the classifier that actually ran, checked at identity grain, and when any conformance control it carries names the same classifier at the same revision under a DIFFERENT invocation. Each of those three refusals gets its own witness."
 
-fn coverage_witness_capability_for(contract_name: String) -> CensusMethodCapability {
+fn coverage_witness_capability_for(contract_name: String) -> gunbc.repository_census_coverage.CensusMethodCapability {
   ClassifiesDeclaredStructure { contract: coverage_witness_decl(name: contract_name) }
 }
 
 // THE CONFORMANCE FIXTURES BUILD REAL CONTROL OUTCOMES, because the carrier no longer accepts an assertion about them. Each control here is an actual census_establish_coverage run against a denominator: the discriminating control observes rows that do NOT reconcile with the declared subjects and must come back CoverageRefused, the positive control observes rows that DO and must come back CoverageEstablished. A fixture that simply claimed those two results is no longer expressible, which is the point of the recut.
 fn coverage_witness_control_outcome(
-  subjects: List<CensusSubjectKey>,
-  rows: List<CensusObservedRow>,
+  subjects: List<gunbc.repository_census_observation.CensusSubjectKey>,
+  rows: List<gunbc.repository_census_observation.CensusObservedRow>,
   invocation: String,
-  revision: MeasurementRevision,
-) -> CensusCoverageOutcome {
+  revision: gunbc.guarantee_measurement.MeasurementRevision,
+) -> gunbc.repository_census_coverage.CensusCoverageOutcome {
   census_establish_coverage(
     denominator: coverage_witness_denominator_of(
       population: coverage_witness_population,
@@ -465,9 +465,9 @@ fn coverage_witness_control_outcome(
 
 fn coverage_witness_control_pair_at(
   invocation: String,
-  revision: MeasurementRevision,
-) -> CensusControlPair {
-  CensusControlPair {
+  revision: gunbc.guarantee_measurement.MeasurementRevision,
+) -> gunbc.repository_census_coverage.CensusControlPair {
+  gunbc.repository_census_coverage.CensusControlPair {
     control_run: coverage_witness_run_at(
       classifier: "coverage_witness_classifier",
       invocation: invocation,
@@ -488,14 +488,14 @@ fn coverage_witness_control_pair_at(
   }
 }
 
-fn coverage_witness_conformance_outcome_for(pair: CensusControlPair) -> CensusConformanceOutcome {
+fn coverage_witness_conformance_outcome_for(pair: gunbc.repository_census_coverage.CensusControlPair) -> gunbc.repository_census_coverage.CensusConformanceOutcome {
   census_method_conformance_receipt(
     pair: pair,
     method_run: coverage_witness_classification_run(),
   )
 }
 
-fn coverage_witness_conforming_control() -> CensusMethodConformanceReceipt? {
+fn coverage_witness_conforming_control() -> gunbc.repository_census_coverage.CensusMethodConformanceReceipt? {
   census_conformance_receipt_of(
     outcome: coverage_witness_conformance_outcome_for(
       pair: coverage_witness_control_pair_at(
@@ -507,8 +507,8 @@ fn coverage_witness_conforming_control() -> CensusMethodConformanceReceipt? {
 }
 
 fn coverage_witness_receipt_exists(
-  capability: CensusMethodCapability,
-  conformance: CensusMethodConformanceReceipt?,
+  capability: gunbc.repository_census_coverage.CensusMethodCapability,
+  conformance: gunbc.repository_census_coverage.CensusMethodConformanceReceipt?,
 ) -> Bool {
   match census_method_capability_receipt(
     observation: coverage_witness_observation(rows: coverage_witness_ab_rows),
@@ -544,7 +544,7 @@ test fn witness_two_executed_controls_that_discriminate_yield_a_conformance_rece
 test fn witness_a_control_pair_that_refused_nothing_does_not_establish_conformance() -> Bool {
   let invocation = "control"
   match coverage_witness_conformance_outcome_for(
-    pair: CensusControlPair {
+    pair: gunbc.repository_census_coverage.CensusControlPair {
       control_run: coverage_witness_run_at(
         classifier: "coverage_witness_classifier",
         invocation: invocation,
@@ -581,7 +581,7 @@ test fn witness_a_control_pair_that_refused_nothing_does_not_establish_conforman
 test fn witness_a_control_pair_that_accepted_nothing_does_not_establish_conformance() -> Bool {
   let invocation = "control"
   match coverage_witness_conformance_outcome_for(
-    pair: CensusControlPair {
+    pair: gunbc.repository_census_coverage.CensusControlPair {
       control_run: coverage_witness_run_at(
         classifier: "coverage_witness_classifier",
         invocation: invocation,
@@ -659,7 +659,7 @@ test fn witness_a_control_at_another_revision_establishes_no_conformance() -> Bo
 
 test fn witness_control_outcomes_borrowed_from_another_run_are_unjoined() -> Bool {
   match coverage_witness_conformance_outcome_for(
-    pair: CensusControlPair {
+    pair: gunbc.repository_census_coverage.CensusControlPair {
       control_run: coverage_witness_run_at(
         classifier: "coverage_witness_classifier",
         invocation: "declared-control",
@@ -728,7 +728,7 @@ fn coverage_cost_names_240() -> List<String> {
   coverage_cost_cross(xs: coverage_cost_names_24(), ys: coverage_cost_ten)
 }
 
-fn coverage_cost_subjects(n: Int) -> List<CensusSubjectKey> {
+fn coverage_cost_subjects(n: Int) -> List<gunbc.repository_census_observation.CensusSubjectKey> {
   let names = if n == 24 { coverage_cost_names_24() } else { coverage_cost_names_240() }
   map(names, name => coverage_witness_key(name: name))
 }
@@ -801,8 +801,8 @@ data coverage_blocker_three_note: String = "BLOCKER 3 WITNESSES. The ceiling tak
 data coverage_conformance_per_observation_note: String = "THE CONFORMANCE IS DERIVED AGAINST THE OBSERVATION'S OWN RUN, and this fixture had to change for that reason. It previously reused one conforming control for every observation, which the carrier now refuses: a conformance receipt records the method run it was derived against, and the capability receipt re-joins on that identity, so a receipt earned against run A cannot be attached to an observation produced by run B. Deriving per observation is what an honest caller does; the fixture was relying on the borrowed-evidence shape the re-join closes."
 
 fn coverage_witness_conformance_for(
-  observation: RepositoryCensusObservation,
-) -> CensusMethodConformanceReceipt? {
+  observation: gunbc.repository_census_observation.RepositoryCensusObservation,
+) -> gunbc.repository_census_coverage.CensusMethodConformanceReceipt? {
   census_conformance_receipt_of(
     outcome: census_method_conformance_receipt(
       pair: coverage_witness_control_pair_at(
@@ -815,8 +815,8 @@ fn coverage_witness_conformance_for(
 }
 
 fn coverage_witness_capability_receipt_for(
-  observation: RepositoryCensusObservation,
-) -> CensusMethodCapabilityReceipt? {
+  observation: gunbc.repository_census_observation.RepositoryCensusObservation,
+) -> gunbc.repository_census_coverage.CensusMethodCapabilityReceipt? {
   census_method_capability_receipt(
     observation: observation,
     capability: coverage_witness_capability_for(contract_name: "coverage_witness_classifier"),
@@ -825,8 +825,8 @@ fn coverage_witness_capability_receipt_for(
 }
 
 fn coverage_witness_ceiling_option(
-  outcome: CensusInferenceCeilingOutcome,
-) -> CensusInferenceCeiling? {
+  outcome: gunbc.repository_census_coverage.CensusInferenceCeilingOutcome,
+) -> gunbc.repository_census_coverage.CensusInferenceCeiling? {
   match outcome {
     CensusCeilingDerived { ceiling: ceiling } => Present { value: ceiling }
     CensusCeilingRefusedRunMismatch {
@@ -837,10 +837,10 @@ fn coverage_witness_ceiling_option(
 }
 
 fn coverage_witness_ceiling_for(
-  observation: RepositoryCensusObservation,
-  denominator: CensusDenominatorObservation,
-  coverage_observation: RepositoryCensusObservation,
-) -> CensusInferenceCeiling? {
+  observation: gunbc.repository_census_observation.RepositoryCensusObservation,
+  denominator: gunbc.repository_census_coverage.CensusDenominatorObservation,
+  coverage_observation: gunbc.repository_census_observation.RepositoryCensusObservation,
+) -> gunbc.repository_census_coverage.CensusInferenceCeiling? {
   match coverage_witness_capability_receipt_for(observation: observation) {
     Present { value: receipt } =>
       coverage_witness_ceiling_option(
@@ -857,9 +857,9 @@ fn coverage_witness_ceiling_for(
 }
 
 fn coverage_witness_matched_ceiling(
-  denominator_subjects: List<CensusSubjectKey>,
-  rows: List<CensusObservedRow>,
-) -> CensusInferenceCeiling? {
+  denominator_subjects: List<gunbc.repository_census_observation.CensusSubjectKey>,
+  rows: List<gunbc.repository_census_observation.CensusObservedRow>,
+) -> gunbc.repository_census_coverage.CensusInferenceCeiling? {
   let observation = coverage_witness_observation(rows: rows)
   coverage_witness_ceiling_for(
     observation: observation,
@@ -900,7 +900,7 @@ test fn witness_a_capability_receipt_for_another_run_yields_no_ceiling() -> Bool
   }
 }
 
-fn coverage_witness_mismatched_outcome() -> CensusInferenceCeilingOutcome? {
+fn coverage_witness_mismatched_outcome() -> gunbc.repository_census_coverage.CensusInferenceCeilingOutcome? {
   let other_observation = coverage_witness_observation_of(
     population: coverage_witness_population,
     revision: coverage_witness_revision,
@@ -992,7 +992,7 @@ test fn witness_the_ceiling_observation_identity_comes_from_the_coverage_outcome
 }
 
 fn coverage_witness_ceiling_predicate(
-  ceiling: CensusInferenceCeiling?,
+  ceiling: gunbc.repository_census_coverage.CensusInferenceCeiling?,
   f: fn(CensusInferenceCeiling) -> Bool,
 ) -> Bool {
   match ceiling {
@@ -1041,7 +1041,7 @@ test fn witness_a_floor_cannot_support_a_semantic_absence_claim() -> Bool {
   )
 }
 
-fn coverage_witness_self_joined_ceiling() -> CensusInferenceCeiling? {
+fn coverage_witness_self_joined_ceiling() -> gunbc.repository_census_coverage.CensusInferenceCeiling? {
   let shared_run = coverage_witness_classification_run()
   let observation = coverage_witness_observation(rows: coverage_witness_ab_rows)
   let denominator = census_denominator_observation(
@@ -1092,7 +1092,7 @@ test fn witness_a_self_joined_census_names_the_independence_limit() -> Bool {
   )
 }
 
-fn coverage_witness_unconformed_ceiling() -> CensusInferenceCeiling? {
+fn coverage_witness_unconformed_ceiling() -> gunbc.repository_census_coverage.CensusInferenceCeiling? {
   let observation = coverage_witness_observation(rows: coverage_witness_ab_rows)
   match census_method_capability_receipt(
     observation: observation,
@@ -1127,7 +1127,7 @@ test fn witness_an_unobserved_conformance_names_its_limit() -> Bool {
   )
 }
 
-fn coverage_witness_textual_ceiling(rows: List<CensusObservedRow>) -> CensusInferenceCeiling? {
+fn coverage_witness_textual_ceiling(rows: List<gunbc.repository_census_observation.CensusObservedRow>) -> gunbc.repository_census_coverage.CensusInferenceCeiling? {
   let observation = coverage_witness_observation(rows: rows)
   match census_method_capability_receipt(
     observation: observation,

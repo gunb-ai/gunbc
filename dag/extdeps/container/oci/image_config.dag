@@ -8,20 +8,20 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type ContainerImageConfig {
-  User: NonEmptyStr?
+  User: std.types.NonEmptyStr?
   Env: List<String>?
   Entrypoint: List<String>?
   Cmd: List<String>?
   WorkingDir: std.types.FilePath?
-  ExposedPorts: List<ContainerExposedPort>?
+  ExposedPorts: List<extdeps.container.oci.types.ContainerExposedPort>?
 }
 
 type ImageRootfs
-  = RootfsLayers { diff_ids: List<OciContentDigest> }
+  = RootfsLayers { diff_ids: List<extdeps.container.oci.digest.OciContentDigest> }
 
 type ImageConfiguration {
-  architecture: Architecture
-  os: Os
+  architecture: extdeps.toolchain.types.Architecture
+  os: extdeps.toolchain.types.Os
   config: ContainerImageConfig?
   rootfs: ImageRootfs
 }

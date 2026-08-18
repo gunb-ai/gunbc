@@ -23,9 +23,9 @@ fn utf8_encode_bytes(s: String) -> Bytes {
   s as Bytes
 }
 
-data bytes_seam_host_realization_marker: Disposition = Scaffold {
+data bytes_seam_host_realization_marker: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "std.bytes",
     decl_name: "builtin_function_registry",
     field: WholeDeclaration

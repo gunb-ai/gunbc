@@ -1,9 +1,9 @@
 module v2.test.claim.algebra.generic_alias_coproduct_instantiation
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-type SymbolPath = FreeMonoid<Symbol>
+type SymbolPath = FreeMonoid<v2.std.node.Symbol>
 
 fn symbol_path_of_three() -> SymbolPath {
   Cons { head: ^a, tail: Cons { head: ^b, tail: Cons { head: ^c, tail: std.algebra.Empty } } }
@@ -20,7 +20,7 @@ fn symbol_path_len(path: SymbolPath) -> Int {
   }
 }
 
-fn first_symbol(path: SymbolPath) -> Symbol? {
+fn first_symbol(path: SymbolPath) -> v2.std.node.Symbol? {
   match path {
     Empty => none
     Cons { head: h, tail: _ } => Present { value: h }

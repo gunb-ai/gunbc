@@ -2,14 +2,14 @@ module extdeps.cache.key_completeness
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/cache"
   }
 }
 
-fn cache_key_derivation_complete(facts: CatalogKeyDerivationFacts) -> Bool {
+fn cache_key_derivation_complete(facts: extdeps.cache.types.CatalogKeyDerivationFacts) -> Bool {
   match facts.key_inputs {
     ContentAddressed => true
     HandAuthored { cited_inputs: _ } => true
@@ -22,6 +22,6 @@ fn cache_key_derivation_complete(facts: CatalogKeyDerivationFacts) -> Bool {
   }
 }
 
-fn cache_catalog_key_completeness_holds(catalog: List<CacheInterfaceCatalogFacts>) -> Bool {
+fn cache_catalog_key_completeness_holds(catalog: List<extdeps.cache.types.CacheInterfaceCatalogFacts>) -> Bool {
   all(catalog, row => cache_key_derivation_complete(facts: row.key_derivation))
 }

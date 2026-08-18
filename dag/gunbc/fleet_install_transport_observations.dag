@@ -11,7 +11,7 @@ module gunbc.fleet_install_transport_observations
 // reading. They do NOT establish the path — that needs the remaining four plus
 // the non-destructive boot qualification in INSTALL-0 C3.
 
-data srv3_configfs_mounted_probe: TransportProbeObservation = TransportProbeObservation {
+data srv3_configfs_mounted_probe: gunbc.install_transport_qualification.TransportProbeObservation = gunbc.install_transport_qualification.TransportProbeObservation {
   host: operator_host_srv3,
   requirement: ConfigfsMounted,
   probe: "mount | grep configfs",
@@ -24,7 +24,7 @@ data srv3_configfs_mounted_probe: TransportProbeObservation = TransportProbeObse
 // works on this image; it says NOTHING about whether a UDC is free for another,
 // which is why NoForeignGadgetOrNbdAttachment stays unprobed rather than being
 // inferred from this row.
-data srv3_usb_gadget_framework_probe: TransportProbeObservation = TransportProbeObservation {
+data srv3_usb_gadget_framework_probe: gunbc.install_transport_qualification.TransportProbeObservation = gunbc.install_transport_qualification.TransportProbeObservation {
   host: operator_host_srv3,
   requirement: UsbGadgetFrameworkPresent,
   probe: "ls -d /sys/kernel/config/usb_gadget; ls /sys/kernel/config/usb_gadget/",
@@ -33,7 +33,7 @@ data srv3_usb_gadget_framework_probe: TransportProbeObservation = TransportProbe
   observed_at: 1786629600000,
 }
 
-data srv3_udc_present_probe: TransportProbeObservation = TransportProbeObservation {
+data srv3_udc_present_probe: gunbc.install_transport_qualification.TransportProbeObservation = gunbc.install_transport_qualification.TransportProbeObservation {
   host: operator_host_srv3,
   requirement: UdcPresent,
   probe: "ls /sys/class/udc/",
@@ -42,7 +42,7 @@ data srv3_udc_present_probe: TransportProbeObservation = TransportProbeObservati
   observed_at: 1786629600000,
 }
 
-data srv3_nbd_client_probe: TransportProbeObservation = TransportProbeObservation {
+data srv3_nbd_client_probe: gunbc.install_transport_qualification.TransportProbeObservation = gunbc.install_transport_qualification.TransportProbeObservation {
   host: operator_host_srv3,
   requirement: NbdClientPresent,
   probe: "ls -l /sbin/nbd-client; ls /sys/module/nbd; ls /dev/nbd0",
@@ -51,7 +51,7 @@ data srv3_nbd_client_probe: TransportProbeObservation = TransportProbeObservatio
   observed_at: 1786629600000,
 }
 
-data srv3_configfs_transport_observations: List<TransportProbeObservation> = [
+data srv3_configfs_transport_observations: List<gunbc.install_transport_qualification.TransportProbeObservation> = [
   srv3_configfs_mounted_probe,
   srv3_usb_gadget_framework_probe,
   srv3_udc_present_probe,
@@ -68,6 +68,6 @@ data srv3_configfs_transport_observations: List<TransportProbeObservation> = [
 // extdeps.bmc.virtual_media VirtualMediaTransport rather than its own enum,
 // which is the next INSTALL-0 commit and would drag the actuator step lists with
 // it. This row is the authority that work will read.
-data srv3_configfs_reinstall_path_standing: ReinstallPathStanding = configfs_reinstall_path_standing(
+data srv3_configfs_reinstall_path_standing: gunbc.install_transport_qualification.ReinstallPathStanding = configfs_reinstall_path_standing(
   observations: srv3_configfs_transport_observations,
 )

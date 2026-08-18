@@ -3,7 +3,7 @@ module test.claim.altra_attachment_stack_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn blocker_kind(b: LayerBlocker) -> String {
+fn blocker_kind(b: product.altra_motherboard.attachment_stack.LayerBlocker) -> String {
   match b.blocker {
     NeedsSomeoneToFindTheDocument { what_is_missing: _ } => "find-document"
     NeedsARedistributionDecision { reason: _ } => "redistribution"
@@ -13,11 +13,11 @@ fn blocker_kind(b: LayerBlocker) -> String {
   }
 }
 
-fn blocker_layer(b: LayerBlocker) -> AttachmentLayer {
+fn blocker_layer(b: product.altra_motherboard.attachment_stack.LayerBlocker) -> product.altra_motherboard.attachment_stack.AttachmentLayer {
   b.layer
 }
 
-fn count_of(xs: List<LayerBlocker>) -> Int {
+fn count_of(xs: List<product.altra_motherboard.attachment_stack.LayerBlocker>) -> Int {
   fold(xs, init: 0, f: fn(acc, _b) { acc + 1 })
 }
 
@@ -126,7 +126,7 @@ test fn w_the_three_blocker_kinds_are_distinct() -> Bool {
 // and the test would have quietly measured nothing. A planted row keeps the arm executed and
 // keeps it independent of any decision made about a real subject.
 fn undecided_carriage_blocker() -> String {
-  let planted = AttachmentLayerStanding {
+  let planted = product.altra_motherboard.attachment_stack.AttachmentLayerStanding {
     layer: board_land_pattern_standing.layer,
     fact: processor_package_standing.fact,
     carriage: CarriageDecisionRequired { reason: "planted: carriage undecided for this subject" },
@@ -255,8 +255,8 @@ test fn w_the_coherent_pairs_are_admitted() -> Bool {
 // Absent, so a consumer reading the blockers saw a settled layer -- two answers about one row,
 // disagreeing, with the reassuring one on the path everything downstream reads. Both directions
 // are asserted here so neither half can quietly stop firing.
-fn incoherent_row() -> AttachmentLayerStanding {
-  AttachmentLayerStanding {
+fn incoherent_row() -> product.altra_motherboard.attachment_stack.AttachmentLayerStanding {
+  product.altra_motherboard.attachment_stack.AttachmentLayerStanding {
     layer: BoardLandPatternLayer,
     fact: processor_package_standing.fact,
     carriage: CarriageNotApplicable {

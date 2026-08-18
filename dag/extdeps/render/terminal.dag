@@ -122,7 +122,7 @@ type DynamicLineState = DynamicLineClosed | DynamicLineOpen
 
 type TerminalWriteProjection
   = TerminalWriteProjected { bytes: String, next: DynamicLineState }
-  | TerminalWriteRefused { cause: NonEmptyStr }
+  | TerminalWriteRefused { cause: std.types.NonEmptyStr }
 
 data terminal_wire_projection_note: String = "Stateful terminal projection owns every terminal control byte. Callers supply rendered text only; overwrite, append, and clear are projected through the ECMA-48 CSI authority in extdeps.render.ansi. DynamicLineOpen means the previous write deliberately omitted LF and therefore may only be continued by an addressable terminal. A non-addressable capability paired with Open is contradictory and refuses before downgrade. Overwrite downgrades to Append when cursor addressing is absent; Clear becomes a no-op. Clear also requires empty rendered text, making caller-owned control payloads and ambiguous clear-plus-content states unwritable."
 

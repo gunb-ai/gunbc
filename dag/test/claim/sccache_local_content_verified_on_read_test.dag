@@ -17,7 +17,7 @@ test fn witness_sccache_local_cites_disk_rs_read_path_evidence() -> Bool {
     |> any(row => (row.field == "content_verified_on_read") && evidence_url_contains(row: row, fragment: "disk.rs"))
 }
 
-fn evidence_url_contains(row: CacheEvidence, fragment: String) -> Bool {
+fn evidence_url_contains(row: std.cache_interface.CacheEvidence, fragment: String) -> Bool {
   match row.evidence {
     VendorCitation { source: _, url: url } => url.contains(fragment)
     _ => false

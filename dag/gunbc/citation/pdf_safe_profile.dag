@@ -17,9 +17,9 @@ type PdfProfileRefusalCause
   = ParameterOutsideCit1SafeProfile { parameter: PdfRefusedParameterKind }
 
 type PdfSafeProfileParameter
-  = SafeOpenPage(PdfOpenPage)
-  | SafeOpenNamedDest(PdfOpenNamedDest)
-  | SafeOpenStructElem(PdfOpenStructElem)
+  = SafeOpenPage(extdeps.standards.rfc_8118.PdfOpenPage)
+  | SafeOpenNamedDest(extdeps.standards.rfc_8118.PdfOpenNamedDest)
+  | SafeOpenStructElem(extdeps.standards.rfc_8118.PdfOpenStructElem)
 
 type PdfSafeProfileParameterConstruction
   = SafeParameterConstructed(PdfSafeProfileParameter)
@@ -39,14 +39,14 @@ type PdfSafeParameterSequenceFoldState
 
 type NavigableUriSafeRefusalCause
   = SafeParameterConstructionRefusedInSequence { cause: PdfProfileRefusalCause }
-  | BaseLocatorAlreadyCarriesFragmentFromRfc { locator: NonEmptyStr }
+  | BaseLocatorAlreadyCarriesFragmentFromRfc { locator: std.types.NonEmptyStr }
   | PdfOpenParameterPercentEncodeRefusedFromSafe {
-      parameter: PdfProfileParameter,
-      cause: UriPercentEncodeRefusalCause,
+      parameter: extdeps.standards.rfc_8118.PdfProfileParameter,
+      cause: extdeps.uri.UriPercentEncodeRefusalCause,
     }
 
 type NavigableUriSafeProjection
-  = NavigableUriSafeProjected { uri: Uri }
+  = NavigableUriSafeProjected { uri: extdeps.uri.Uri }
   | NavigableUriSafeRefused { cause: NavigableUriSafeRefusalCause }
 
 fn pdf_safe_open_page(page: std.integer.PositiveInt) -> PdfSafeProfileParameterConstruction {

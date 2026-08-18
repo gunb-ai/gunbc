@@ -2,25 +2,25 @@ module gunbc.command_runner
 
 
 
-data command_runner_scaffold: Disposition = Scaffold {
+data command_runner_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.command_runner",
     decl_name: "command_runner_dissolution_trigger",
     field: WholeDeclaration,
   }
 }
 
-data command_runner_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command — generic ArgvCommand runner routes the typed extdeps.exec.command shape through shell.Exec.Run via the shell_bash_runner heredoc transport; DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires its shell_exec_via_bash glue")
+data command_runner_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: run_shell_command — generic ArgvCommand runner routes the typed extdeps.exec.command shape through shell.Exec.Run via the shell_bash_runner heredoc transport; DISSOLVES WHEN host_effect_apply binds ArgvCommand execution as a typed transport handler and dag/gunbc/command_runner.dag retires its shell_exec_via_bash glue")
 
-func run_shell_command(command: ArgvCommand, transport: CommandTransport) -> ProcessExit
+func run_shell_command(command: extdeps.exec.command.ArgvCommand, transport: extdeps.exec.command.CommandTransport) -> std.process.ProcessExit
   uses net: Network
 {
   let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
   let run = shell.Exec.Run(
     script: retained_runtime(
       body: shell_exec_via_bash(body: rendered),
-      reason: "generic ArgvCommand runner heredoc transport, pending the typed host_effect_apply argv handler" as NonEmptyStr,
+      reason: "generic ArgvCommand runner heredoc transport, pending the typed host_effect_apply argv handler" as std.types.NonEmptyStr,
     )
   )
   if run.success {
@@ -40,14 +40,14 @@ type ShellCaptureResult {
   stderr: String
 }
 
-func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport) -> ShellCaptureResult
+func run_shell_command_capture(command: extdeps.exec.command.ArgvCommand, transport: extdeps.exec.command.CommandTransport) -> ShellCaptureResult
   uses net: Network
 {
   let rendered = shell_command_render(command: command_over_transport(command: command, transport: transport))
   let run = shell.Exec.Run(
     script: retained_runtime(
       body: shell_exec_via_bash(body: rendered),
-      reason: "generic ArgvCommand capture runner heredoc transport, pending the typed host_effect_apply argv handler" as NonEmptyStr,
+      reason: "generic ArgvCommand capture runner heredoc transport, pending the typed host_effect_apply argv handler" as std.types.NonEmptyStr,
     )
   )
   ShellCaptureResult { success: run.success, stdout: run.stdout, stderr: run.stderr }
@@ -57,12 +57,12 @@ func run_shell_command_capture(command: ArgvCommand, transport: CommandTransport
 // extdeps.filesystem.filesystem_io carries typed owner observation.
 fn stat_owner_name_capture(path: String) -> ShellCaptureResult {
   run_shell_command_capture(
-    command: ArgvCommand { argv: ["stat", "-c", "%U", path] },
+    command: extdeps.exec.command.ArgvCommand { argv: ["stat", "-c", "%U", path] },
     transport: LocalExec,
   )
 }
 
-func run_shell_commands(commands: List<ArgvCommand>, transport: CommandTransport) -> ProcessExit
+func run_shell_commands(commands: List<extdeps.exec.command.ArgvCommand>, transport: extdeps.exec.command.CommandTransport) -> std.process.ProcessExit
   uses net: Network
 {
   fold(

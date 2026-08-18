@@ -27,8 +27,8 @@ data running_release_revision_key: String = "revision"
 data running_release_surface_identity_key: String = "surface_bundle_identity"
 
 type RunningReleaseObservation {
-  revision: CommitSha
-  surface_bundle_identity: Fnv1a64Structural
+  revision: std.types.CommitSha
+  surface_bundle_identity: std.content_hash.Fnv1a64Structural
 }
 
 // HealthzBodyNotAnObject is named for the DOCUMENT, not for whichever member happened to be looked up when

@@ -1,50 +1,50 @@
 module v2.test.claim.module_resolution_plan_witness
 
 
-data module_fixture_a_node: Node = Node {
+data module_fixture_a_node: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^module_fixture_a } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data module_fixture_b_node: Node = Node {
+data module_fixture_b_node: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^module_fixture_b } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data module_fixture_c_node: Node = Node {
+data module_fixture_c_node: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^module_fixture_c } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data module_fixture_d_node: Node = Node {
+data module_fixture_d_node: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^module_fixture_d } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data module_fixture_declarations: List<ModuleDeclarationFact> = [
-  ModuleDeclarationFact { module: "fixture.a", path: "fixture/a.dag" },
-  ModuleDeclarationFact { module: "fixture.b", path: "fixture/b.dag" },
-  ModuleDeclarationFact { module: "fixture.c", path: "fixture/c.dag" },
-  ModuleDeclarationFact { module: "fixture.d", path: "fixture/d.dag" }
+data module_fixture_declarations: List<v2.lens.module_graph.ModuleDeclarationFact> = [
+  v2.lens.module_graph.ModuleDeclarationFact { module: "fixture.a", path: "fixture/a.dag" },
+  v2.lens.module_graph.ModuleDeclarationFact { module: "fixture.b", path: "fixture/b.dag" },
+  v2.lens.module_graph.ModuleDeclarationFact { module: "fixture.c", path: "fixture/c.dag" },
+  v2.lens.module_graph.ModuleDeclarationFact { module: "fixture.d", path: "fixture/d.dag" }
 ]
 
-data module_fixture_diamond_imports: List<ImportResolutionFact> = [
-  ImportResolutionFact { path: "fixture/b.dag", import_module: "fixture.a", target_declared: true },
-  ImportResolutionFact { path: "fixture/c.dag", import_module: "fixture.a", target_declared: true },
-  ImportResolutionFact { path: "fixture/d.dag", import_module: "fixture.b", target_declared: true },
-  ImportResolutionFact { path: "fixture/d.dag", import_module: "fixture.c", target_declared: true },
-  ImportResolutionFact { path: "fixture/d.dag", import_module: "fixture.absent", target_declared: false }
+data module_fixture_diamond_imports: List<v2.lens.module_graph.ImportResolutionFact> = [
+  v2.lens.module_graph.ImportResolutionFact { path: "fixture/b.dag", import_module: "fixture.a", target_declared: true },
+  v2.lens.module_graph.ImportResolutionFact { path: "fixture/c.dag", import_module: "fixture.a", target_declared: true },
+  v2.lens.module_graph.ImportResolutionFact { path: "fixture/d.dag", import_module: "fixture.b", target_declared: true },
+  v2.lens.module_graph.ImportResolutionFact { path: "fixture/d.dag", import_module: "fixture.c", target_declared: true },
+  v2.lens.module_graph.ImportResolutionFact { path: "fixture/d.dag", import_module: "fixture.absent", target_declared: false }
 ]
 
-data module_fixture_bindings: List<ModuleNodeBinding> = [
-  ModuleNodeBinding { module: "fixture.a", node: module_fixture_a_node },
-  ModuleNodeBinding { module: "fixture.b", node: module_fixture_b_node },
-  ModuleNodeBinding { module: "fixture.c", node: module_fixture_c_node },
-  ModuleNodeBinding { module: "fixture.d", node: module_fixture_d_node }
+data module_fixture_bindings: List<v2.workflow.module_resolution_plan.ModuleNodeBinding> = [
+  v2.workflow.module_resolution_plan.ModuleNodeBinding { module: "fixture.a", node: module_fixture_a_node },
+  v2.workflow.module_resolution_plan.ModuleNodeBinding { module: "fixture.b", node: module_fixture_b_node },
+  v2.workflow.module_resolution_plan.ModuleNodeBinding { module: "fixture.c", node: module_fixture_c_node },
+  v2.workflow.module_resolution_plan.ModuleNodeBinding { module: "fixture.d", node: module_fixture_d_node }
 ]
 
 data module_fixture_nodes: List<Node> = [
@@ -54,7 +54,7 @@ data module_fixture_nodes: List<Node> = [
   module_fixture_d_node
 ]
 
-fn module_fixture_diamond_views() -> List<DependencyView> {
+fn module_fixture_diamond_views() -> List<v2.std.dependency.DependencyView> {
   match module_dependency_views(
     edges: module_import_edges(
       imports: module_fixture_diamond_imports,
@@ -82,16 +82,16 @@ test fn witness_diamond_schedules_as_antichain_levels() -> Bool {
   ) {
     RunnerScheduleComplete { batches: batches, store: store } =>
       (runner_schedule_batch_count(batches: batches) == 3)
-        && runner_schedule_contains_batch(batches: batches, batch: ExecutorBatch {
+        && runner_schedule_contains_batch(batches: batches, batch: v2.workflow.executor.ExecutorBatch {
              jobs: [executor_job_for_node(node: module_fixture_a_node)]
            })
-        && runner_schedule_contains_batch(batches: batches, batch: ExecutorBatch {
+        && runner_schedule_contains_batch(batches: batches, batch: v2.workflow.executor.ExecutorBatch {
              jobs: [
                executor_job_for_node(node: module_fixture_b_node),
                executor_job_for_node(node: module_fixture_c_node)
              ]
            })
-        && runner_schedule_contains_batch(batches: batches, batch: ExecutorBatch {
+        && runner_schedule_contains_batch(batches: batches, batch: v2.workflow.executor.ExecutorBatch {
              jobs: [executor_job_for_node(node: module_fixture_d_node)]
            })
         && runner_schedule_store_covers_nodes(store: store, nodes: module_fixture_nodes)
@@ -100,9 +100,9 @@ test fn witness_diamond_schedules_as_antichain_levels() -> Bool {
   }
 }
 
-data module_fixture_cycle_imports: List<ImportResolutionFact> = [
-  ImportResolutionFact { path: "fixture/a.dag", import_module: "fixture.b", target_declared: true },
-  ImportResolutionFact { path: "fixture/b.dag", import_module: "fixture.a", target_declared: true }
+data module_fixture_cycle_imports: List<v2.lens.module_graph.ImportResolutionFact> = [
+  v2.lens.module_graph.ImportResolutionFact { path: "fixture/a.dag", import_module: "fixture.b", target_declared: true },
+  v2.lens.module_graph.ImportResolutionFact { path: "fixture/b.dag", import_module: "fixture.a", target_declared: true }
 ]
 
 test fn witness_cycle_refuses_never_partially_schedules() -> Bool {
@@ -125,10 +125,10 @@ test fn witness_cycle_refuses_never_partially_schedules() -> Bool {
   }
 }
 
-data module_fixture_bindings_without_d: List<ModuleNodeBinding> = [
-  ModuleNodeBinding { module: "fixture.a", node: module_fixture_a_node },
-  ModuleNodeBinding { module: "fixture.b", node: module_fixture_b_node },
-  ModuleNodeBinding { module: "fixture.c", node: module_fixture_c_node }
+data module_fixture_bindings_without_d: List<v2.workflow.module_resolution_plan.ModuleNodeBinding> = [
+  v2.workflow.module_resolution_plan.ModuleNodeBinding { module: "fixture.a", node: module_fixture_a_node },
+  v2.workflow.module_resolution_plan.ModuleNodeBinding { module: "fixture.b", node: module_fixture_b_node },
+  v2.workflow.module_resolution_plan.ModuleNodeBinding { module: "fixture.c", node: module_fixture_c_node }
 ]
 
 test fn witness_missing_binding_refuses_with_the_module_named() -> Bool {

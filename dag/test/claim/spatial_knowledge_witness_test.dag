@@ -6,43 +6,43 @@ module test.claim.spatial_knowledge_witness
 // massing premise that produced this lane: a plausible, useful, wrong number is exactly the input
 // a fabrication guard must refuse.
 
-fn the_room() -> RoomIdentity {
+fn the_room() -> product.placement_supply.RoomIdentity {
   "room-open-work"
 }
 
 // A real claim-evidence link, not a prose string: it carries provenance, the inference rule, the
 // direction, freshness and fidelity. The production specimen would be indistinguishable from a
 // bare string if this module had kept the generic unbound.
-fn tape_anchor_evidence() -> RoomDimensionEvidence {
-  EvidenceLink {
-    fact: RecordedFact { id: "fact-room-open-work-clear-width", value: "3660 mm at 1.0 m height" },
+fn tape_anchor_evidence() -> product.spatial_dimension.RoomDimensionEvidence {
+  std.claim_evidence.EvidenceLink {
+    fact: std.claim_evidence.RecordedFact { id: "fact-room-open-work-clear-width", value: "3660 mm at 1.0 m height" },
     direction: EvidenceSupports,
     inference_rule: "direct-instrument-reading",
     authority: "operator walkthrough, laser measure",
-    provenance: EvidenceProvenance {
+    provenance: std.claim_evidence.EvidenceProvenance {
       entity: "walkthrough-2026-08-10",
       activity: "tape-anchor-measurement",
       agent: "operator",
     },
-    freshness: EvidenceFreshness { maximum_conclusion: "current-as-of-walkthrough", basis: "physical structure, not expected to move" },
-    fidelity: EvidenceFidelity { boundary: "single-axis clear width at one height", losses: ["out-of-plumb wall variation above measurement height"] },
+    freshness: std.claim_evidence.EvidenceFreshness { maximum_conclusion: "current-as-of-walkthrough", basis: "physical structure, not expected to move" },
+    fidelity: std.claim_evidence.EvidenceFidelity { boundary: "single-axis clear width at one height", losses: ["out-of-plumb wall variation above measurement height"] },
     probe_independence: "independent-of-listing-claims",
   }
 }
 
-fn photo_reconstruction_evidence() -> RoomDimensionEvidence {
-  EvidenceLink {
-    fact: RecordedFact { id: "fact-room-open-work-photo-scale", value: "scaled on 3x6in subway tile course" },
+fn photo_reconstruction_evidence() -> product.spatial_dimension.RoomDimensionEvidence {
+  std.claim_evidence.EvidenceLink {
+    fact: std.claim_evidence.RecordedFact { id: "fact-room-open-work-photo-scale", value: "scaled on 3x6in subway tile course" },
     direction: EvidenceSupports,
     inference_rule: "photo-reconstruction-scaled-on-in-frame-constant",
     authority: "listing photo set",
-    provenance: EvidenceProvenance {
+    provenance: std.claim_evidence.EvidenceProvenance {
       entity: "loopnet-35253254-photos",
       activity: "ai-photo-reconstruction",
       agent: "modeling-session",
     },
-    freshness: EvidenceFreshness { maximum_conclusion: "as-listed", basis: "photos predate any walkthrough" },
-    fidelity: EvidenceFidelity { boundary: "apparent geometry only", losses: ["lens distortion", "unknown camera pose", "tile course assumed nominal"] },
+    freshness: std.claim_evidence.EvidenceFreshness { maximum_conclusion: "as-listed", basis: "photos predate any walkthrough" },
+    fidelity: std.claim_evidence.EvidenceFidelity { boundary: "apparent geometry only", losses: ["lens distortion", "unknown camera pose", "tile course assumed nominal"] },
     probe_independence: "not-independent-of-listing",
   }
 }
@@ -50,19 +50,19 @@ fn photo_reconstruction_evidence() -> RoomDimensionEvidence {
 // Every fixture below is ordered, so the refused arm is unreachable here; it collapses to the
 // degenerate zero interval rather than fabricating a width. The reversed case is asserted on its
 // own in witness 4, against the mint directly, so this helper never becomes the thing under test.
-fn interval_or_degenerate(low: std.nat.Nat, high: std.nat.Nat) -> LengthInterval {
+fn interval_or_degenerate(low: std.nat.Nat, high: std.nat.Nat) -> product.spatial_dimension.LengthInterval {
   match length_interval(low: millimeter(count: low), high: millimeter(count: high)) {
     IntervalReady { interval: i } => i
     IntervalRefused { reason: _ } => degenerate_interval(point: millimeter(count: 0))
   }
 }
 
-fn dimension_at(standing: RoomDimensionStanding) -> RoomDimensionKnowledge {
-  RoomDimensionKnowledge { room: the_room(), axis: ClearWidth, standing: standing }
+fn dimension_at(standing: product.spatial_dimension.RoomDimensionStanding) -> product.spatial_dimension.RoomDimensionKnowledge {
+  product.spatial_dimension.RoomDimensionKnowledge { room: the_room(), axis: ClearWidth, standing: standing }
 }
 
 // Measured to +/- 10 mm: uncertainty interval spans 20 mm.
-fn measured_precise() -> RoomDimensionKnowledge {
+fn measured_precise() -> product.spatial_dimension.RoomDimensionKnowledge {
   dimension_at(standing: SpatialMeasured {
     value: millimeter(count: 3660),
     uncertainty: interval_or_degenerate(low: 3650, high: 3670),
@@ -72,7 +72,7 @@ fn measured_precise() -> RoomDimensionKnowledge {
 
 // Measured, but to +/- 250 mm: same STANDING, 500 mm span. The standing-only guard admitted this
 // exactly as readily as the specimen above; the precision budget is what separates them.
-fn measured_coarse() -> RoomDimensionKnowledge {
+fn measured_coarse() -> product.spatial_dimension.RoomDimensionKnowledge {
   dimension_at(standing: SpatialMeasured {
     value: millimeter(count: 3660),
     uncertainty: interval_or_degenerate(low: 3410, high: 3910),
@@ -80,7 +80,7 @@ fn measured_coarse() -> RoomDimensionKnowledge {
   })
 }
 
-fn estimate_narrow() -> RoomDimensionKnowledge {
+fn estimate_narrow() -> product.spatial_dimension.RoomDimensionKnowledge {
   dimension_at(standing: SpatialEstimated {
     region: interval_or_degenerate(low: 3600, high: 3700),
     method: "photo-reconstruction-scaled-on-in-frame-constant",
@@ -88,7 +88,7 @@ fn estimate_narrow() -> RoomDimensionKnowledge {
   })
 }
 
-fn estimate_wide() -> RoomDimensionKnowledge {
+fn estimate_wide() -> product.spatial_dimension.RoomDimensionKnowledge {
   dimension_at(standing: SpatialEstimated {
     region: interval_or_degenerate(low: 3300, high: 4000),
     method: "photo-reconstruction-scaled-on-in-frame-constant",
@@ -96,34 +96,34 @@ fn estimate_wide() -> RoomDimensionKnowledge {
   })
 }
 
-fn hypothesis_25ft() -> RoomDimensionKnowledge {
+fn hypothesis_25ft() -> product.spatial_dimension.RoomDimensionKnowledge {
   dimension_at(standing: SpatialHypothesis {
     value: millimeter(count: 7620),
     purpose: "H1 massing candidate: assumed 25 ft corner-lot width, refuted by parcel records",
   })
 }
 
-fn unknown_width() -> RoomDimensionKnowledge {
+fn unknown_width() -> product.spatial_dimension.RoomDimensionKnowledge {
   dimension_at(standing: SpatialUnknown { obligation: "srv-geometry-capture" })
 }
 
 // Furniture / rack layout: +/- 100 mm, i.e. a 200 mm budget span.
-fn furniture_layout_requirement() -> SpatialRequirement<LengthInterval> {
-  SpatialRequirement {
+fn furniture_layout_requirement() -> SpatialRequirement<product.spatial_dimension.LengthInterval> {
+  std.spatial_knowledge.SpatialRequirement {
     minimum_standing: MeasuredOrEstimated,
     maximum_uncertainty: interval_or_degenerate(low: 0, high: 200),
   }
 }
 
 // Egress clearance: measured only, +/- 5 mm, a 10 mm budget span.
-fn egress_requirement() -> SpatialRequirement<LengthInterval> {
-  SpatialRequirement {
+fn egress_requirement() -> SpatialRequirement<product.spatial_dimension.LengthInterval> {
+  std.spatial_knowledge.SpatialRequirement {
     minimum_standing: MeasuredOnly,
     maximum_uncertainty: interval_or_degenerate(low: 0, high: 10),
   }
 }
 
-fn admits(dimension: RoomDimensionKnowledge, requirement: SpatialRequirement<LengthInterval>) -> Bool {
+fn admits(dimension: product.spatial_dimension.RoomDimensionKnowledge, requirement: SpatialRequirement<product.spatial_dimension.LengthInterval>) -> Bool {
   match admit_room_dimension(dimension: dimension, requirement: requirement) {
     SpatialAdmittedMeasured { value: _, uncertainty: _ } => true
     SpatialAdmittedEstimated { region: _ } => true
@@ -132,8 +132,8 @@ fn admits(dimension: RoomDimensionKnowledge, requirement: SpatialRequirement<Len
 }
 
 fn refused_for_precision(
-  dimension: RoomDimensionKnowledge,
-  requirement: SpatialRequirement<LengthInterval>,
+  dimension: product.spatial_dimension.RoomDimensionKnowledge,
+  requirement: SpatialRequirement<product.spatial_dimension.LengthInterval>,
 ) -> Bool {
   match admit_room_dimension(dimension: dimension, requirement: requirement) {
     SpatialAdmittedMeasured { value: _, uncertainty: _ } => false
@@ -148,7 +148,7 @@ fn refused_for_precision(
   }
 }
 
-fn refused_naming_obligation(dimension: RoomDimensionKnowledge) -> Bool {
+fn refused_naming_obligation(dimension: product.spatial_dimension.RoomDimensionKnowledge) -> Bool {
   match admit_room_dimension(dimension: dimension, requirement: furniture_layout_requirement()) {
     SpatialAdmittedMeasured { value: _, uncertainty: _ } => false
     SpatialAdmittedEstimated { region: _ } => false
@@ -162,7 +162,7 @@ fn refused_naming_obligation(dimension: RoomDimensionKnowledge) -> Bool {
   }
 }
 
-fn refused_as_hypothesis(dimension: RoomDimensionKnowledge) -> Bool {
+fn refused_as_hypothesis(dimension: product.spatial_dimension.RoomDimensionKnowledge) -> Bool {
   match admit_room_dimension(dimension: dimension, requirement: furniture_layout_requirement()) {
     SpatialAdmittedMeasured { value: _, uncertainty: _ } => false
     SpatialAdmittedEstimated { region: _ } => false
@@ -176,7 +176,7 @@ fn refused_as_hypothesis(dimension: RoomDimensionKnowledge) -> Bool {
   }
 }
 
-fn standing_is(dimension: RoomDimensionKnowledge, expected: SpatialEvidenceClass) -> Bool {
+fn standing_is(dimension: product.spatial_dimension.RoomDimensionKnowledge, expected: std.spatial_knowledge.SpatialEvidenceClass) -> Bool {
   match spatial_evidence_class(knowledge: dimension.standing) {
     SpatialClassMeasured =>
       match expected {
@@ -209,7 +209,7 @@ fn standing_is(dimension: RoomDimensionKnowledge, expected: SpatialEvidenceClass
   }
 }
 
-fn style_wire_of(dimension: RoomDimensionKnowledge) -> String {
+fn style_wire_of(dimension: product.spatial_dimension.RoomDimensionKnowledge) -> String {
   render_style_wire(style: render_style(rendering: render_room_dimension(dimension: dimension)))
 }
 

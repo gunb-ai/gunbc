@@ -3,7 +3,7 @@ module test.claim.storage_nvme_grounding
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data sample_wd_device: StorageDevice = nvme_storage_device(
+data sample_wd_device: extdeps.storage.types.StorageDevice = nvme_storage_device(
   catalog: wd_black_sn850x_2tb_catalog,
   persistence: Persistent,
 )

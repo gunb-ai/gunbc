@@ -3,8 +3,8 @@ module v2.workflow.orchestration_bash_emit_support
 
 data orchestration_bash_emit_support_note: String = "Shared run/do/comment/emit_pipeline helpers for v2.workflow.ci_*_emit modules (bucket D). Each emit module keeps its own refused_poison string; this module holds the byte-identical plumbing only. Pre-existing ci_*_emit forks migrate onto these helpers in a later slice. orch_bash_comment_line uses PipelineStep.Comment (non-command), not a fake Do-run."
 
-fn orch_bash_run(command: String) -> Run {
-  Run {
+fn orch_bash_run(command: String) -> v2.std.orchestration.Run {
+  v2.std.orchestration.Run {
     command: command,
     env: [],
     redirect: Absent,
@@ -12,15 +12,15 @@ fn orch_bash_run(command: String) -> Run {
   }
 }
 
-fn orch_bash_do(command: String) -> PipelineStep {
+fn orch_bash_do(command: String) -> v2.std.orchestration.PipelineStep {
   Do { run: orch_bash_run(command: command) }
 }
 
-fn orch_bash_comment_line(text: String) -> PipelineStep {
+fn orch_bash_comment_line(text: String) -> v2.std.orchestration.PipelineStep {
   Comment { text: text }
 }
 
-fn orch_bash_emit_pipeline(p: Pipeline, refused_poison: String) -> String {
+fn orch_bash_emit_pipeline(p: v2.std.orchestration.Pipeline, refused_poison: String) -> String {
   match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: d } =>
       match d {

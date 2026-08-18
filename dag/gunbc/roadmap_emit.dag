@@ -4,19 +4,19 @@ module gunbc.roadmap_emit
 
 fn roadmap_max_depth() -> Int { 12 }
 
-fn node_is_superseded(rn: RoadmapNode) -> Bool {
+fn node_is_superseded(rn: gunbc.roadmap_model.RoadmapNode) -> Bool {
   !(item_superseded_by(item: rn.line) == "")
 }
 
-fn node_is_done(rn: RoadmapNode, merged: List<Int>) -> Bool {
+fn node_is_done(rn: gunbc.roadmap_model.RoadmapNode, merged: List<Int>) -> Bool {
   signoff_accepts(s: rn.signoff) || node_is_superseded(rn: rn)
 }
 
-fn node_evidence_present(rn: RoadmapNode, merged: List<Int>) -> Bool {
+fn node_evidence_present(rn: gunbc.roadmap_model.RoadmapNode, merged: List<Int>) -> Bool {
   item_is_done(item: rn.line, merged: merged)
 }
 
-fn signoff_suffix_inlines(rn: RoadmapNode, merged: List<Int>) -> List<MarkdownInline> {
+fn signoff_suffix_inlines(rn: gunbc.roadmap_model.RoadmapNode, merged: List<Int>) -> List<std.markdown.MarkdownInline> {
   if node_is_superseded(rn: rn) {
     []
   } else {
@@ -32,14 +32,14 @@ fn signoff_suffix_inlines(rn: RoadmapNode, merged: List<Int>) -> List<MarkdownIn
   }
 }
 
-fn pointer_inlines(p: Pointer) -> List<MarkdownInline> {
+fn pointer_inlines(p: gunbc.roadmap_model.Pointer) -> List<std.markdown.MarkdownInline> {
   [
     TextInline { text: " " },
     LinkInline { inlines: [TextInline { text: p.label }], url: p.path },
   ]
 }
 
-fn carriers_inlines(carriers: List<Pointer>) -> List<MarkdownInline> {
+fn carriers_inlines(carriers: List<gunbc.roadmap_model.Pointer>) -> List<std.markdown.MarkdownInline> {
   fold(carriers, init: [], f: (acc, p) => concat(acc, pointer_inlines(p: p)))
 }
 
@@ -47,21 +47,21 @@ fn refs_text(prs: List<Int>) -> String {
   fold(prs, init: "", f: (acc, p) =>
     if acc == "" { concat("#", to_string(p)) } else { concat(acc, concat("/#", to_string(p))) })
 }
-fn refs_inlines(prs: List<Int>) -> List<MarkdownInline> {
+fn refs_inlines(prs: List<Int>) -> List<std.markdown.MarkdownInline> {
   if count(prs) == 0 { [] } else { [TextInline { text: concat(" (", concat(refs_text(prs: prs), ")")) }] }
 }
 
-fn desc_inlines(description: String) -> List<MarkdownInline> {
+fn desc_inlines(description: String) -> List<std.markdown.MarkdownInline> {
   if description == "" { [] } else { [TextInline { text: concat(" ", description) }] }
 }
 
 data why_clause_note: String = "A reader of ROADMAP.md kept asking what a row actually accomplishes, and the answer was already on the row — displaced_cost, the pain that goes away — but the markdown projection never rendered it, so only the scope sentence showed. Rendering it here is a projection fix, not a new field: the authority still states the reason exactly once. An empty reason renders nothing rather than a dangling label, so a row that has not stated its why is visibly missing it instead of quietly padded."
 
-fn why_clause(t: TicketFields) -> String {
+fn why_clause(t: gunbc.roadmap_status.TicketFields) -> String {
   if t.displaced_cost == "" { "" } else { concat(" Why: ", t.displaced_cost) }
 }
 
-fn line_inlines(line: RoadmapItem) -> List<MarkdownInline> {
+fn line_inlines(line: gunbc.roadmap_status.RoadmapItem) -> List<std.markdown.MarkdownInline> {
   match line {
     DerivableLine { prs, title, description } =>
       concat(
@@ -76,7 +76,7 @@ fn line_inlines(line: RoadmapItem) -> List<MarkdownInline> {
   }
 }
 
-fn node_is_plain(rn: RoadmapNode) -> Bool {
+fn node_is_plain(rn: gunbc.roadmap_model.RoadmapNode) -> Bool {
   match rn.line {
     PlainLine { content: _ } => true
     DerivableLine { prs: _, title: _, description: _ } => false
@@ -86,7 +86,7 @@ fn node_is_plain(rn: RoadmapNode) -> Bool {
   }
 }
 
-fn dependency_inlines(rn: RoadmapNode, edges: List<RoadmapEdge>) -> List<MarkdownInline> {
+fn dependency_inlines(rn: gunbc.roadmap_model.RoadmapNode, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> List<std.markdown.MarkdownInline> {
   let parents = roadmap_parent_ids(edges: edges, node: rn.node)
   if count(parents) > 1 {
     [
@@ -102,7 +102,7 @@ fn dependency_inlines(rn: RoadmapNode, edges: List<RoadmapEdge>) -> List<Markdow
   }
 }
 
-fn node_inlines(rn: RoadmapNode, edges: List<RoadmapEdge>) -> List<MarkdownInline> {
+fn node_inlines(rn: gunbc.roadmap_model.RoadmapNode, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> List<std.markdown.MarkdownInline> {
   concat(
     concat(
       line_inlines(line: rn.line),
@@ -112,26 +112,26 @@ fn node_inlines(rn: RoadmapNode, edges: List<RoadmapEdge>) -> List<MarkdownInlin
   )
 }
 
-fn children_of(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, parent: RoadmapNodeId) -> List<RoadmapNode> {
+fn children_of(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, parent: gunbc.roadmap_model.RoadmapNodeId) -> List<gunbc.roadmap_model.RoadmapNode> {
   nodes |> filter(n => match roadmap_primary_parent(edges: edges, node: n.node) {
     UnderParent { parent: p } => p == parent
     TopLevel => false
   })
 }
 
-fn task_item_with(done: Bool, blocks: List<MarkdownBlock>) -> MarkdownTaskItem {
+fn task_item_with(done: Bool, blocks: List<std.markdown.MarkdownBlock>) -> std.markdown.MarkdownTaskItem {
   if done {
-    MarkdownTaskItem { state: Checked, blocks: blocks }
+    std.markdown.MarkdownTaskItem { state: Checked, blocks: blocks }
   } else {
-    MarkdownTaskItem { state: Unchecked, blocks: blocks }
+    std.markdown.MarkdownTaskItem { state: Unchecked, blocks: blocks }
   }
 }
 
-fn plain_item_for(rn: RoadmapNode, edges: List<RoadmapEdge>) -> MarkdownListItem {
-  MarkdownListItem { blocks: [ParagraphBlock { inlines: node_inlines(rn: rn, edges: edges) }] }
+fn plain_item_for(rn: gunbc.roadmap_model.RoadmapNode, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> std.markdown.MarkdownListItem {
+  std.markdown.MarkdownListItem { blocks: [ParagraphBlock { inlines: node_inlines(rn: rn, edges: edges) }] }
 }
 
-fn task_item_for(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> MarkdownTaskItem {
+fn task_item_for(rn: gunbc.roadmap_model.RoadmapNode, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, merged: List<Int>, fuel: Int) -> std.markdown.MarkdownTaskItem {
   let para = ParagraphBlock { inlines: concat(node_inlines(rn: rn, edges: edges), signoff_suffix_inlines(rn: rn, merged: merged)) }
   let kids = if fuel > 0 { children_of(nodes: nodes, edges: edges, parent: rn.node) } else { [] }
   let blocks = if count(kids) > 0 {
@@ -142,7 +142,7 @@ fn task_item_for(rn: RoadmapNode, nodes: List<RoadmapNode>, edges: List<RoadmapE
   task_item_with(done: node_is_done(rn: rn, merged: merged), blocks: blocks)
 }
 
-fn flush_run(acc: { blocks: List<MarkdownBlock>, mode: Int, tbuf: List<MarkdownTaskItem>, pbuf: List<MarkdownListItem> }) -> List<MarkdownBlock> {
+fn flush_run(acc: { blocks: List<std.markdown.MarkdownBlock>, mode: Int, tbuf: List<std.markdown.MarkdownTaskItem>, pbuf: List<std.markdown.MarkdownListItem> }) -> List<std.markdown.MarkdownBlock> {
   if acc.mode == 1 {
     concat(acc.blocks, [TaskListBlock { items: acc.tbuf }])
   } else {
@@ -154,7 +154,7 @@ fn flush_run(acc: { blocks: List<MarkdownBlock>, mode: Int, tbuf: List<MarkdownT
   }
 }
 
-fn nodes_to_blocks(items: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: List<RoadmapEdge>, merged: List<Int>, fuel: Int) -> List<MarkdownBlock> {
+fn nodes_to_blocks(items: List<gunbc.roadmap_model.RoadmapNode>, nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>, merged: List<Int>, fuel: Int) -> List<std.markdown.MarkdownBlock> {
   let acc = fold(items, init: { blocks: [], mode: 0, tbuf: [], pbuf: [] }, f: (a, rn) => {
     if node_is_plain(rn: rn) {
       let flushed = if a.mode == 1 { concat(a.blocks, [TaskListBlock { items: a.tbuf }]) } else { a.blocks }
@@ -167,7 +167,7 @@ fn nodes_to_blocks(items: List<RoadmapNode>, nodes: List<RoadmapNode>, edges: Li
   flush_run(acc: acc)
 }
 
-fn group_blocks(g: SectionGroup, merged: List<Int>) -> List<MarkdownBlock> {
+fn group_blocks(g: gunbc.roadmap_model.SectionGroup, merged: List<Int>) -> List<std.markdown.MarkdownBlock> {
   let tops = g.nodes |> filter(n => is_top_level(edges: g.edges, node: n.node))
   let list_blocks = nodes_to_blocks(items: tops, nodes: g.nodes, edges: g.edges, merged: merged, fuel: roadmap_max_depth())
   if g.label == "" {
@@ -180,15 +180,15 @@ fn group_blocks(g: SectionGroup, merged: List<Int>) -> List<MarkdownBlock> {
   }
 }
 
-fn element_blocks(e: SectionElement, merged: List<Int>) -> List<MarkdownBlock> {
+fn element_blocks(e: gunbc.roadmap_model.SectionElement, merged: List<Int>) -> List<std.markdown.MarkdownBlock> {
   match e {
     Prose { prose } => [ParagraphBlock { inlines: [TextInline { text: prose.content }] }]
     Group { group } => group_blocks(g: group, merged: merged)
   }
 }
 
-fn project_roadmap_section(title: String, elements: List<SectionElement>, merged: List<Int>) -> MarkdownDocument {
-  MarkdownDocument {
+fn project_roadmap_section(title: String, elements: List<gunbc.roadmap_model.SectionElement>, merged: List<Int>) -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: fold(elements,
       init: [HeadingBlock { level: H2, inlines: [TextInline { text: title }] }],
       f: fn(acc, e) { concat(acc, element_blocks(e: e, merged: merged)) })

@@ -37,13 +37,13 @@ type ManufacturingSemantic
 
 type SemanticCarriage
   = CarriedInFormat
-  | CarriedInCompanionArtifact { artifact: NonEmptyStr }
+  | CarriedInCompanionArtifact { artifact: std.types.NonEmptyStr }
   | NotCarried
 
 type FormatSemanticRow {
   semantic: ManufacturingSemantic
   carriage: SemanticCarriage
-  authority: ExternalAuthority
+  authority: extdeps.external_authority.ExternalAuthority
 }
 
 // Every row cites the same fetched page, which states the format covers printed circuit board

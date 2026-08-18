@@ -2,7 +2,7 @@ module v2.workflow.bash_command_fold_serialize
 
 
 // Emit realization for bash_command_fold grammar rows lives in workflow (serialize_target ∘ translate over pre-built TargetModel rows). Grammar productions and target-model witnesses stay in v2.extdeps.languages.bash_command_fold per layer DAG (extdeps must not import compiler).
-fn bash_fold_serialize_emit_from_node(emitted: Node, target: TargetModel) -> Outcome<String> {
+fn bash_fold_serialize_emit_from_node(emitted: Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<String> {
   match target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: d } =>
       match d {
@@ -13,7 +13,7 @@ fn bash_fold_serialize_emit_from_node(emitted: Node, target: TargetModel) -> Out
   }
 }
 
-fn bash_fold_built_stmt_production_binding(stmt: Node) -> Symbol {
+fn bash_fold_built_stmt_production_binding(stmt: Node) -> v2.std.node.Symbol {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 0) {
     Present { value: tag } =>
       match tag.kind {
@@ -26,8 +26,8 @@ fn bash_fold_built_stmt_production_binding(stmt: Node) -> Symbol {
 
 fn bash_fold_serialize_leaf_node(
   emitted: Node,
-  production_binding: Symbol,
-  rule_name: Symbol
+  production_binding: v2.std.node.Symbol,
+  rule_name: v2.std.node.Symbol
 ) -> Outcome<String> {
   match bash_fold_target_model_for_emitted_witness(
     emitted: emitted,

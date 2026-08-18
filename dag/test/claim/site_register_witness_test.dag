@@ -8,9 +8,9 @@ fn witness_themes_coherent() -> Bool {
 }
 
 fn witness_gamer_cyan_refused() -> Bool {
-  let gamer_cyan = Material { name: "gamer-cyan", hue: 194, sat_pct: 88, light_pct: 76, area: PointArea }
-  let warm_bright = Material { name: "warm-bright", hue: 45, sat_pct: 26, light_pct: 87, area: PointArea }
-  let chromatic_dim = Material { name: "chromatic-dim", hue: 226, sat_pct: 58, light_pct: 20, area: PointArea }
+  let gamer_cyan = gunbc.design.material.Material { name: "gamer-cyan", hue: 194, sat_pct: 88, light_pct: 76, area: PointArea }
+  let warm_bright = gunbc.design.material.Material { name: "warm-bright", hue: 45, sat_pct: 26, light_pct: 87, area: PointArea }
+  let chromatic_dim = gunbc.design.material.Material { name: "chromatic-dim", hue: 226, sat_pct: 58, light_pct: 20, area: PointArea }
   !quiet_envelope(m: gamer_cyan)
     && !chroma_admissible(m: gamer_cyan)
     && chroma_admissible(m: warm_bright)
@@ -18,20 +18,20 @@ fn witness_gamer_cyan_refused() -> Bool {
 }
 
 fn witness_saturated_field_refused() -> Bool {
-  let neon_field = Material { name: "neon-field", hue: 226, sat_pct: 60, light_pct: 40, area: FieldArea }
+  let neon_field = gunbc.design.material.Material { name: "neon-field", hue: 226, sat_pct: 60, light_pct: 40, area: FieldArea }
   !chroma_admissible(m: neon_field)
 }
 
 fn witness_dataviz_seam_open_but_unused() -> Bool {
-  let series_cyan = Material { name: "series-cyan", hue: 194, sat_pct: 88, light_pct: 76, area: DataVizArea }
-  let same_as_point = Material { name: "gamer-point", hue: 194, sat_pct: 88, light_pct: 76, area: PointArea }
+  let series_cyan = gunbc.design.material.Material { name: "series-cyan", hue: 194, sat_pct: 88, light_pct: 76, area: DataVizArea }
+  let same_as_point = gunbc.design.material.Material { name: "gamer-point", hue: 194, sat_pct: 88, light_pct: 76, area: PointArea }
   chroma_admissible(m: series_cyan)
     && !chroma_admissible(m: same_as_point)
     && all(theme_roles, r => !(area_key(area: role_area(r: r)) == "dataviz"))
     && all(site_themes, t => all(t.assignments, a => !(area_key(area: a.material.area) == "dataviz")))
 }
 
-fn brass_paints_text_somewhere(rules: List<BuildRule>) -> Bool {
+fn brass_paints_text_somewhere(rules: List<gunbc.design.material.BuildRule>) -> Bool {
   fold(rules, init: false, f: (acc, r) => acc || match r {
     StaticRule { selector: _, decls } =>
       fold(decls, init: false, f: (inner, d) => inner || (css_property_wire(p: d.prop) == "color" && d.value == role_var(r: FocusRole)))
@@ -50,7 +50,7 @@ fn witness_focus_boundary_differ_by_area() -> Bool {
 }
 
 fn witness_theme_gap_is_located() -> Bool {
-  let partial = Theme { name: "partial", scheme: "dark", assignments: [
+  let partial = gunbc.design.theme.Theme { name: "partial", scheme: "dark", assignments: [
     assign(role: CanvasRole, material: night_canvas),
   ] }
   theme_gaps(t: partial, roles: theme_roles).length() == theme_roles.length() - 1
@@ -59,7 +59,7 @@ fn witness_theme_gap_is_located() -> Bool {
 }
 
 fn witness_role_area_mismatch_refused() -> Bool {
-  let field_on_figure = Theme { name: "mismatched", scheme: "dark", assignments: [
+  let field_on_figure = gunbc.design.theme.Theme { name: "mismatched", scheme: "dark", assignments: [
     assign(role: FigureRole, material: night_canvas),
   ] }
   !theme_area_coherent(t: field_on_figure)
@@ -76,14 +76,14 @@ fn witness_moodboard_coverage_complete() -> Bool {
 }
 
 fn witness_dead_hover_is_located_gap() -> Bool {
-  let elements = [ InteractiveElement { element: HashElement, verbs: [Enter] } ]
+  let elements = [ gunbc.design.interaction.InteractiveElement { element: HashElement, verbs: [Enter] } ]
   let gaps = coverage_gaps(elements: elements, rows: moodboard_behaviors)
   gaps.length() == 1
     && all(gaps, g => element_id_eq(a: g.element, b: HashElement) && verb_key(v: g.verb) == "enter")
 }
 
 fn witness_unrealized_behavior_is_counted() -> Bool {
-  let ghost = BehaviorRow { element: StarElement, verb: Enter, response: Receipt, timing: respond_fast }
+  let ghost = gunbc.design.interaction.BehaviorRow { element: StarElement, verb: Enter, response: Receipt, timing: respond_fast }
   unrealized_behaviors(rows: [ghost]).length() == 1
     && unrealized_behaviors(rows: moodboard_behaviors).length() == 0
 }
@@ -95,9 +95,9 @@ fn witness_mark_on_grid_and_confluent() -> Bool {
 
 fn witness_broken_fork_refutes_confluence() -> Bool {
   let severed = [
-    MarkEdge { from_key: "a", to_key: "b" },
-    MarkEdge { from_key: "a", to_key: "c" },
-    MarkEdge { from_key: "c", to_key: "d" },
+    gunbc.site.mark.MarkEdge { from_key: "a", to_key: "b" },
+    gunbc.site.mark.MarkEdge { from_key: "a", to_key: "c" },
+    gunbc.site.mark.MarkEdge { from_key: "c", to_key: "d" },
   ]
   !all_forks_rejoin(nodes: mark_nodes, edges: severed, source: "a")
 }

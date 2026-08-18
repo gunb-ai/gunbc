@@ -2,9 +2,9 @@ module test.claim.host_phase_status
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data modeled_phase_fixture: PhaseDisposition = ModeledCompose {
+data modeled_phase_fixture: gunbc.host_standup.PhaseDisposition = ModeledCompose {
   authorities: [
-    DeclarationRef {
+    std.decl_ref.DeclarationRef {
       module_path: "gunbc.host_phase_status",
       decl_name: "host_phase_verdict_from",
       field: WholeDeclaration,
@@ -12,18 +12,18 @@ data modeled_phase_fixture: PhaseDisposition = ModeledCompose {
   ]
 }
 
-data unmodeled_phase_fixture: PhaseDisposition = DeclaredGap {
+data unmodeled_phase_fixture: gunbc.host_standup.PhaseDisposition = DeclaredGap {
   interim_realization: "ctrl:scripts/session-dashboard/lib/spawn_placement.mjs",
   refusal: "host_standup:P4:session-placement-enrollment:unmodeled — refuse until placement enrollment has a .dag authority",
 }
 
 fn cell_fixture(
   label: String,
-  disposition: PhaseDisposition,
-  observation: ObservationVerdict?,
-) -> HostPhaseCellStatus {
-  HostPhaseCellStatus {
-    cell: HostPhaseCell { host: operator_host_srv3, phase_label: label },
+  disposition: gunbc.host_standup.PhaseDisposition,
+  observation: std.upsert_decision.ObservationVerdict?,
+) -> gunbc.host_phase_status.HostPhaseCellStatus {
+  gunbc.host_phase_status.HostPhaseCellStatus {
+    cell: gunbc.host_phase_status.HostPhaseCell { host: operator_host_srv3, phase_label: label },
     disposition: disposition,
     observation: observation,
   }
@@ -103,7 +103,7 @@ test fn witness_red_control_widen_on_absent_rejected_by_gate() -> Bool {
     && host_phase_verdict_gate_accepts(verdict: authority, observation: none)
 }
 
-data departed_host_fixture: HostIdentity = "srv-departed" as HostIdentity
+data departed_host_fixture: product.placement_supply.HostIdentity = "srv-departed" as product.placement_supply.HostIdentity
 
 data witness_reconcile_non_vacuous_note: String = "The membership instantiation must be exercised on a NON-DEGENERATE diff, or it is an instantiation nobody has tested. The live fleet produces only Modified and Unchanged hunks today (no host has left), so the Removed arm — a cell observed for a host absent from fleet_intent — is supplied synthetically here. All three outcomes are asserted in one reconcile: a departed host's cell tears down (cells are Owned, so R5 permits it rather than refusing), an unconverged cell upserts, and a cell already at the desired state produces no hunk at all."
 
@@ -118,13 +118,13 @@ test fn witness_reconcile_covers_upsert_teardown_and_noop() -> Bool {
     disposition: modeled_phase_fixture,
     observation: none,
   )
-  let desired_unconverged = HostPhaseCellStatus {
+  let desired_unconverged = gunbc.host_phase_status.HostPhaseCellStatus {
     cell: unconverged.cell,
     disposition: modeled_phase_fixture,
     observation: Present { value: std.upsert_decision.Converged },
   }
-  let departed = HostPhaseCellStatus {
-    cell: HostPhaseCell { host: departed_host_fixture, phase_label: "P1b:build-cache-provision" },
+  let departed = gunbc.host_phase_status.HostPhaseCellStatus {
+    cell: gunbc.host_phase_status.HostPhaseCell { host: departed_host_fixture, phase_label: "P1b:build-cache-provision" },
     disposition: modeled_phase_fixture,
     observation: Present { value: std.upsert_decision.Converged },
   }
@@ -194,22 +194,22 @@ test fn witness_remaining_work_counts_every_unfinished_cell() -> Bool {
 
 data witness_program_scoping_note: String = "HOST-0 acceptance. The refactor's whole risk is that program scoping quietly CHANGES the runner fleet while looking tidy, so the identity conjunct is asserted rather than argued: a CI-participation enrollment must select the entire spine, because every phase authored to date exists to serve runner hosts. The complementary conjunct is the one the refactor exists for -- an inference enrollment must not carry a single runner or BMC obligation. Both are needed: the first alone would pass a no-op, the second alone would pass a refactor that broke srv1 through srv4."
 
-data synthetic_inference_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
+data synthetic_inference_enrollment: gunbc.host_assimilation_program.HostEnrollmentIntent = gunbc.host_assimilation_program.HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: inference_serving_enrollment_participation,
 }
 
-data synthetic_ci_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
+data synthetic_ci_enrollment: gunbc.host_assimilation_program.HostEnrollmentIntent = gunbc.host_assimilation_program.HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: ci_runner_enrollment_participation,
 }
 
-fn cell_label_is_runner_only(c: HostPhaseCellStatus) -> Bool {
+fn cell_label_is_runner_only(c: gunbc.host_phase_status.HostPhaseCellStatus) -> Bool {
   let l = c.cell.phase_label
   l == "prefix:bmc-credential-converge" || l == "prefix:os-install-mechanism" || l == "prefix:os-install-actuated" || l == "P1:runner-deploy-slot" || l == "P1b:build-cache-provision" || l == "P1c:codex-runtime-provision" || l == "P3:green-place-readiness" || l == "P4:session-placement-enrollment"
 }
 
-fn cell_label_is_shared(c: HostPhaseCellStatus) -> Bool {
+fn cell_label_is_shared(c: gunbc.host_phase_status.HostPhaseCellStatus) -> Bool {
   let l = c.cell.phase_label
   l == "P0:host-identity-converge" || l == "P0:reach-secrets-network" || l == "P2:compute-fabric-enroll" || l == "P5:assimilation-complete-gate"
 }
@@ -224,17 +224,17 @@ test fn witness_inference_program_is_strictly_smaller_than_the_spine() -> Bool {
   inference > 0 && inference < host_standup_spine.length()
 }
 
-data synthetic_reordered_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
+data synthetic_reordered_enrollment: gunbc.host_assimilation_program.HostEnrollmentIntent = gunbc.host_assimilation_program.HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [InferenceServingParticipation, CiRunnerParticipation],
 }
 
-data synthetic_forward_order_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
+data synthetic_forward_order_enrollment: gunbc.host_assimilation_program.HostEnrollmentIntent = gunbc.host_assimilation_program.HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [CiRunnerParticipation, InferenceServingParticipation],
 }
 
-data synthetic_duplicated_enrollment: HostEnrollmentIntent = HostEnrollmentIntent {
+data synthetic_duplicated_enrollment: gunbc.host_assimilation_program.HostEnrollmentIntent = gunbc.host_assimilation_program.HostEnrollmentIntent {
   host: operator_host_srv3,
   participation: [CiRunnerParticipation, CiRunnerParticipation, InferenceServingParticipation],
 }

@@ -3,32 +3,32 @@ module test.claim.roadmap_publish_witness_test
 
 data witness_scope_note: String = "What is claimed is the ADJUDICATION, not the fetch. adjudicate_publication is pure and total over observations the caller already holds, so every arm is reachable with no network and no token.\\n\\nWhat is NOT claimed, stated so the bound is visible: nothing here executes github.Pulls or git. A change that broke the reads while leaving the adjudication intact would keep these green. What the coproduct inputs buy is that a broken read is now REPRESENTABLE — the caller reports it and the refusal arm is exercised here — where an earlier cut could only raise."
 
-data fixture_expected: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-data fixture_older: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-data fixture_branch: NonEmptyStr = "dispatch/some-node-a7" as NonEmptyStr
-data fixture_remote: NonEmptyStr = "origin" as NonEmptyStr
-data fixture_base: NonEmptyStr = "main" as NonEmptyStr
+data fixture_expected: std.types.CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data fixture_older: std.types.CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data fixture_branch: std.types.NonEmptyStr = "dispatch/some-node-a7" as std.types.NonEmptyStr
+data fixture_remote: std.types.NonEmptyStr = "origin" as std.types.NonEmptyStr
+data fixture_base: std.types.NonEmptyStr = "main" as std.types.NonEmptyStr
 
-fn fixture_user() -> GitHubUser {
-  GitHubUser { login: "someone", id: 1, type: User }
+fn fixture_user() -> extdeps.github.github.GitHubUser {
+  extdeps.github.github.GitHubUser { login: "someone", id: 1, type: User }
 }
 
 fn fixture_pull(
   number: Int,
   branch: String,
   base: String,
-  sha: CommitSha,
+  sha: std.types.CommitSha,
   draft: Bool,
-) -> PullRequest {
-  PullRequest {
+) -> extdeps.github.pulls.PullRequest {
+  extdeps.github.pulls.PullRequest {
     number: number,
     title: "a change",
     body: Absent,
     state: Open,
-    html_url: "https://github.com/gunb-ai/gunbc/pull/1" as NonEmptyStr,
+    html_url: "https://github.com/gunb-ai/gunbc/pull/1" as std.types.NonEmptyStr,
     user: fixture_user(),
-    head: PullRequestRef { ref: branch, sha: sha, label: branch },
-    base: PullRequestRef { ref: base, sha: fixture_older, label: base },
+    head: extdeps.github.pulls.PullRequestRef { ref: branch, sha: sha, label: branch },
+    base: extdeps.github.pulls.PullRequestRef { ref: base, sha: fixture_older, label: base },
     created_at: "2026-07-31T00:00:00Z",
     updated_at: "2026-07-31T00:00:00Z",
     merged_at: Absent,
@@ -36,18 +36,18 @@ fn fixture_pull(
   }
 }
 
-fn fixture_ref(branch: String, sha: CommitSha) -> RemoteBranch {
-  RemoteBranch {
+fn fixture_ref(branch: String, sha: std.types.CommitSha) -> gunbc.roadmap_publish.RemoteBranch {
+  gunbc.roadmap_publish.RemoteBranch {
     remote: fixture_remote,
-    branch: branch as NonEmptyStr,
+    branch: branch as std.types.NonEmptyStr,
     head_sha: sha,
   }
 }
 
 fn adjudicate_with(
-  pulls: PullRequestObservation,
-  remotes: RemoteBranchObservation,
-) -> PublicationOutcome {
+  pulls: gunbc.roadmap_publish.PullRequestObservation,
+  remotes: gunbc.roadmap_publish.RemoteBranchObservation,
+) -> gunbc.roadmap_publish.PublicationOutcome {
   adjudicate_publication(
     pulls: pulls,
     remotes: remotes,
@@ -58,11 +58,11 @@ fn adjudicate_with(
   )
 }
 
-fn remotes_deliberately_unreadable() -> RemoteBranchObservation {
-  RemoteBranchesUnreadable { cause: RefAdvertisementRefused { remote: "origin" as NonEmptyStr, exit_code: 128, stderr: "not consulted on this path" } }
+fn remotes_deliberately_unreadable() -> gunbc.roadmap_publish.RemoteBranchObservation {
+  RemoteBranchesUnreadable { cause: RefAdvertisementRefused { remote: "origin" as std.types.NonEmptyStr, exit_code: 128, stderr: "not consulted on this path" } }
 }
 
-fn one_pull(sha: CommitSha, draft: Bool) -> PullRequestObservation {
+fn one_pull(sha: std.types.CommitSha, draft: Bool) -> gunbc.roadmap_publish.PullRequestObservation {
   PullRequestsRead {
     pulls: [
       fixture_pull(
@@ -205,7 +205,7 @@ test fn a_stale_remote_branch_diverges_rather_than_counting_as_published() -> Bo
 }
 
 // The pull-request fold got 0/1/many in the first cut of that correction and the remote-ref fold beside it did not - it handled zero and then took the first of the rest, which is the same silent pick one screen below the note forbidding it. This is stated in BOTH orders on purpose: with the expected head first, the old code answered RemoteBranchAtExpectedHeadWithoutPullRequest, and with the stale ref first it answered RemoteBranchHeadDiverged, so a single-order claim would have been satisfied by list position rather than by a decision. Two orders over one observation make the answer order-independent, which is the property that was actually missing.
-fn ambiguous_over_two_refs(outcome: PublicationOutcome) -> Bool {
+fn ambiguous_over_two_refs(outcome: gunbc.roadmap_publish.PublicationOutcome) -> Bool {
   match outcome {
     RemoteBranchBindingAmbiguous { branch: _, remote: _, refs_matched } =>
       refs_matched == 2
@@ -306,7 +306,7 @@ test fn unreadable_pull_requests_refuse_rather_than_report_unpublished() -> Bool
 test fn unreadable_remotes_with_no_pull_request_refuse_rather_than_report_unpublished() -> Bool {
   match adjudicate_with(
     pulls: PullRequestsRead { pulls: [] },
-    remotes: RemoteBranchesUnreadable { cause: RefAdvertisementRefused { remote: "origin" as NonEmptyStr, exit_code: 124, stderr: "ls-remote timed out" } },
+    remotes: RemoteBranchesUnreadable { cause: RefAdvertisementRefused { remote: "origin" as std.types.NonEmptyStr, exit_code: 124, stderr: "ls-remote timed out" } },
   ) {
     PublicationObservationRefused { detail } =>
       string_contains(s: detail, pattern: "ls-remote timed out")
@@ -372,7 +372,7 @@ test fn the_bound_detail_distinguishes_draft_from_ready() -> Bool {
 data receipt_witness_scope_note: String = "What is claimed here is the RECEIPT ROUND TRIP - that what publication_receipt_json writes, publication_receipt_decode reads back with the same outcome AND the same subject, and that a document this emitter did not write refuses rather than decoding to something plausible.\\n\\nThe discriminating pair is deliberate: two receipts that differ ONLY in expected_head must decode to different subjects. A receipt format that dropped the subject would pass every positive claim above and fail that one, which is why it is here rather than left to inspection."
 
 
-data fixture_repository: Repository = Repository {
+data fixture_repository: extdeps.github.github.Repository = extdeps.github.github.Repository {
   owner: "gunb-ai",
   name: "gunbc",
   full_name: "gunb-ai/gunbc",
@@ -380,7 +380,7 @@ data fixture_repository: Repository = Repository {
   default_branch: "main",
 }
 
-data fixture_other_repository: Repository = Repository {
+data fixture_other_repository: extdeps.github.github.Repository = extdeps.github.github.Repository {
   owner: "gunb-ai",
   name: "not-gunbc",
   full_name: "gunb-ai/not-gunbc",
@@ -388,8 +388,8 @@ data fixture_other_repository: Repository = Repository {
   default_branch: "main",
 }
 
-fn subject_for(head: CommitSha) -> RoadmapPublicationSubject {
-  RoadmapPublicationSubject {
+fn subject_for(head: std.types.CommitSha) -> gunbc.roadmap_publish.RoadmapPublicationSubject {
+  gunbc.roadmap_publish.RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a7",
     repository: fixture_repository,
@@ -399,20 +399,20 @@ fn subject_for(head: CommitSha) -> RoadmapPublicationSubject {
   }
 }
 
-fn receipt_for(outcome: PublicationOutcome, head: CommitSha) -> String {
+fn receipt_for(outcome: gunbc.roadmap_publish.PublicationOutcome, head: std.types.CommitSha) -> String {
   publication_receipt_json(
     receipt: publication_receipt_of(subject: subject_for(head: head), outcome: outcome),
   )
 }
 
-fn bound_outcome() -> PublicationOutcome {
+fn bound_outcome() -> gunbc.roadmap_publish.PublicationOutcome {
   adjudicate_with(
     pulls: one_pull(sha: fixture_expected, draft: false),
     remotes: remotes_deliberately_unreadable(),
   )
 }
 
-fn diverged_outcome() -> PublicationOutcome {
+fn diverged_outcome() -> gunbc.roadmap_publish.PublicationOutcome {
   adjudicate_with(
     pulls: one_pull(sha: fixture_older, draft: false),
     remotes: remotes_deliberately_unreadable(),
@@ -636,12 +636,12 @@ test fn an_ambiguous_binding_round_trips_its_pull_request_numbers() -> Bool {
 
 // THE DECODER USED TO REBUILD THE REPOSITORY IT DID NOT STORE - full_name by concatenation, private as false, and default_branch from the subject's expected_base. For this repository the base IS the default branch, so the round trip compared equal and nothing looked wrong. This claim uses a subject whose base is NOT the default branch, which is the case that would have produced a repository nobody recorded and a false wrong-subject refusal in the one function whose job is to tell those apart.
 test fn a_subject_against_a_non_default_base_still_round_trips_its_repository() -> Bool {
-  let subject = RoadmapPublicationSubject {
+  let subject = gunbc.roadmap_publish.RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a7",
     repository: fixture_repository,
     branch: fixture_branch,
-    expected_base: "release-2026-08" as NonEmptyStr,
+    expected_base: "release-2026-08" as std.types.NonEmptyStr,
     expected_head: fixture_expected,
   }
   let text = publication_receipt_json(
@@ -684,14 +684,14 @@ test fn a_receipt_that_is_not_json_refuses() -> Bool {
 
 data subject_check_witness_note: String = "THE NEGATIVE HALF IS THE POINT. A claim that a bound receipt paints the lamp green proves only that the happy path works; it would stay green under the exact defect this rewrite exists to remove, which is a consumer that finds a receipt at a path and trusts it.\\n\\nSo each claim below pairs one receipt with TWO expectations - the subject it was written for, and a subject differing in exactly one field - and asserts that the first is evidence and the second is not. Six fields, six ways to be about the wrong question, and heads are only one of them: attempt keys and node ids collide far more readily than shas do, so a head-only comparison would pass these claims and still be wrong."
 
-fn evidence_for_subject_of(expected: RoadmapPublicationSubject, receipt: String) -> PublicationEvidence {
+fn evidence_for_subject_of(expected: gunbc.roadmap_publish.RoadmapPublicationSubject, receipt: String) -> gunbc.roadmap_publish.PublicationEvidence {
   publication_evidence_for(
     expected: expected,
     source: ReceiptSourcePresent { text: receipt },
   )
 }
 
-fn is_evidence(e: PublicationEvidence) -> Bool {
+fn is_evidence(e: gunbc.roadmap_publish.PublicationEvidence) -> Bool {
   match e {
     EvidenceForSubject { receipt: _ } => true
     EvidenceAbsent => false
@@ -700,7 +700,7 @@ fn is_evidence(e: PublicationEvidence) -> Bool {
   }
 }
 
-fn differing_field(e: PublicationEvidence) -> String {
+fn differing_field(e: gunbc.roadmap_publish.PublicationEvidence) -> String {
   match e {
     EvidenceForAnotherSubject { field, expected: _, found: _ } => field as String
     EvidenceForSubject { receipt: _ } => ""
@@ -727,7 +727,7 @@ test fn a_receipt_for_another_head_is_not_evidence_for_this_one() -> Bool {
 }
 
 test fn a_receipt_for_another_node_is_not_evidence_for_this_one() -> Bool {
-  let expected = RoadmapPublicationSubject {
+  let expected = gunbc.roadmap_publish.RoadmapPublicationSubject {
     node_id: "another-node",
     attempt_key: "a7",
     repository: fixture_repository,
@@ -743,7 +743,7 @@ test fn a_receipt_for_another_node_is_not_evidence_for_this_one() -> Bool {
 }
 
 test fn a_receipt_for_another_attempt_of_this_node_is_not_evidence() -> Bool {
-  let expected = RoadmapPublicationSubject {
+  let expected = gunbc.roadmap_publish.RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a8",
     repository: fixture_repository,
@@ -761,7 +761,7 @@ test fn a_receipt_for_another_attempt_of_this_node_is_not_evidence() -> Bool {
 data repository_identity_is_owner_and_name_note: String = "THE REPOSITORY IS COMPARED BY ITS IDENTITY, WHICH IS OWNER AND NAME, and the refusal names which half differs rather than saying `repository`. Those are different situations for a reader: a different owner usually means a fork or another organization, while a different name under the same owner usually means the receipt is about a sibling repository - and the remedies diverge from there. The receipt also records full_name, private and default_branch, which are ATTRIBUTES the judgment was made against rather than identity, so they round trip and are not part of the match."
 
 test fn a_receipt_about_a_repository_of_another_name_is_not_evidence() -> Bool {
-  let expected = RoadmapPublicationSubject {
+  let expected = gunbc.roadmap_publish.RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a7",
     repository: fixture_other_repository,
@@ -777,10 +777,10 @@ test fn a_receipt_about_a_repository_of_another_name_is_not_evidence() -> Bool {
 }
 
 test fn a_receipt_about_another_owners_repository_is_not_evidence() -> Bool {
-  let expected = RoadmapPublicationSubject {
+  let expected = gunbc.roadmap_publish.RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a7",
-    repository: Repository {
+    repository: extdeps.github.github.Repository {
       owner: "someone-else",
       name: "gunbc",
       full_name: "someone-else/gunbc",
@@ -799,12 +799,12 @@ test fn a_receipt_about_another_owners_repository_is_not_evidence() -> Bool {
 }
 
 test fn a_receipt_against_another_base_is_not_evidence() -> Bool {
-  let expected = RoadmapPublicationSubject {
+  let expected = gunbc.roadmap_publish.RoadmapPublicationSubject {
     node_id: "some-node",
     attempt_key: "a7",
     repository: fixture_repository,
     branch: fixture_branch,
-    expected_base: "release" as NonEmptyStr,
+    expected_base: "release" as std.types.NonEmptyStr,
     expected_head: fixture_expected,
   }
   let e = evidence_for_subject_of(
@@ -839,7 +839,7 @@ test fn an_absent_receipt_is_absent_and_present_but_unusable_ones_refuse() -> Bo
     && evidence_key(e: faulted) == "unreadable"
 }
 
-fn evidence_key(e: PublicationEvidence) -> String {
+fn evidence_key(e: gunbc.roadmap_publish.PublicationEvidence) -> String {
   match e {
     EvidenceAbsent => "absent"
     EvidenceUnreadable { reason: _ } => "unreadable"
@@ -850,7 +850,7 @@ fn evidence_key(e: PublicationEvidence) -> String {
 
 data four_causes_stay_four_note: String = "THE COLLAPSE THIS FILE MUST KEEP FAILING TO PRODUCE. PullRequestsUnreadable used to carry a single detail String, and the four failures that reach it were flattened into prose at the point of construction. A caller could then only re-derive which one it held by matching on substrings, which is the classifier-by-substring move DESIGN removes - and the case that matters most is the most decidable one: a 401 is the single clearest failure in this path and would have arrived as the least tractable kind of value.\\n\\nWHAT THIS ASSERTS, and why the key projection rather than the sentence: render_pull_request_read_failure is a PROJECTION of the cause, so asserting only its text would let a future edit collapse two arms into one sentence while both still typechecked, and the claim would stay green. Matching the coproduct gives four distinct keys, so a collapse is a compile error rather than a silently identical string. The rendering is asserted SEPARATELY below, for the facts a reader of the refusal actually needs.\\n\\nWHY NO ARM IS OMITTED: each is reachable from a different producer state - a credential decided locally before any request, a status a remote authority chose, an exchange that never produced a status, and a payload that arrived and could not be decoded. Three of the four were unreachable through the real transport until the REST outcome became data, which is why they are witnessed here rather than assumed."
 
-fn pull_request_failure_key(cause: PullRequestReadFailure) -> String {
+fn pull_request_failure_key(cause: gunbc.roadmap_publish.PullRequestReadFailure) -> String {
   match cause {
     PullRequestCredentialUnavailable { repository: _, reason: _ } => "credential"
     PullRequestStatusRefused { repository: _, status: _, body: _ } => "status"
@@ -861,7 +861,7 @@ fn pull_request_failure_key(cause: PullRequestReadFailure) -> String {
 
 fn fixture_repository_name() -> String { "gunb-ai/gunbc" }
 
-fn fixture_pull_request_failures() -> List<PullRequestReadFailure> {
+fn fixture_pull_request_failures() -> List<gunbc.roadmap_publish.PullRequestReadFailure> {
   [
     PullRequestCredentialUnavailable {
       repository: fixture_repository_name(),
@@ -874,12 +874,12 @@ fn fixture_pull_request_failures() -> List<PullRequestReadFailure> {
     },
     PullRequestTransportRefused {
       repository: fixture_repository_name(),
-      cause: "connection refused" as NonEmptyStr,
+      cause: "connection refused" as std.types.NonEmptyStr,
     },
     PullRequestBodyUndecodable {
       repository: fixture_repository_name(),
       status: 200,
-      cause: "response body was not valid utf-8" as NonEmptyStr,
+      cause: "response body was not valid utf-8" as std.types.NonEmptyStr,
     },
   ]
 }
@@ -913,7 +913,7 @@ test fn a_transport_refusal_carries_no_status_at_all() -> Bool {
   let rendered = render_pull_request_read_failure(
     cause: PullRequestTransportRefused {
       repository: fixture_repository_name(),
-      cause: "connection refused" as NonEmptyStr,
+      cause: "connection refused" as std.types.NonEmptyStr,
     },
   )
   string_contains(s: rendered, pattern: "github.Pulls.List")

@@ -4,9 +4,9 @@ module gunbc.host_effect_plan
 type HostEffectPlan = EffectPlan<HostEffect>
 
 type HostEffectPlanContext {
-  target: NodeControlPlane
-  evidence: IdempotencyEvidence
-  transport: HostEffectTransport
+  target: gunbc.host_effect.NodeControlPlane
+  evidence: std.effects.IdempotencyEvidence
+  transport: gunbc.host_effect.HostEffectTransport
 }
 
 data host_effect_plan_unsupported_step_reason: String = "host_effect_plan_apply: control-flow step refuses on the typed host_effect_apply spine until predicate interpretation lands; only Do-effect leaves are supported (Wave A2 keystone, host-effect-orchestration.md std.effect_plan band)"

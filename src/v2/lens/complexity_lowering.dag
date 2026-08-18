@@ -2,9 +2,9 @@ module v2.lens.complexity_lowering
 
 
 type ComplexityLowering {
-  name: Symbol
-  before: AsymptoticClass
-  after: AsymptoticClass
+  name: v2.std.node.Symbol
+  before: v2.lens.cost.AsymptoticClass
+  after: v2.lens.cost.AsymptoticClass
 }
 
 fn asymptotic_class_equal(a: AsymptoticClass, b: AsymptoticClass) -> Bool {

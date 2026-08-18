@@ -1,8 +1,8 @@
 module extdeps.bmc.ipmi
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.intel.com/content/www/us/en/products/docs/servers/ipmi/ipmi-second-gen-interface-spec-v2-rev1-1.html"
   }
@@ -10,7 +10,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 service diagnostic.ipmi.Tool {
   operation SensorList {
-    input { bmc_host: NonEmptyStr }
+    input { bmc_host: std.types.NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "sensor"] }
@@ -21,7 +21,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation SdrList {
-    input { bmc_host: NonEmptyStr }
+    input { bmc_host: std.types.NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "sdr", "elist"] }
@@ -32,7 +32,7 @@ service diagnostic.ipmi.Tool {
   }
 
   operation SelList {
-    input { bmc_host: NonEmptyStr }
+    input { bmc_host: std.types.NonEmptyStr }
     output { stdout: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell { argv: ["ipmitool", "-H", "{bmc_host}", "-I", "lanplus", "sel", "elist"] }

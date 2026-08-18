@@ -92,8 +92,8 @@ fn runner_width_disk_required(requested_width: Int) -> ByteSize {
 }
 
 type RunnerWidthDiskPreflight
-  = DiskHeadroomSufficient { requested_width: Int, required: ByteSize, observed_free: ByteSize }
-  | DiskHeadroomInsufficient { requested_width: Int, required: ByteSize, observed_free: ByteSize }
+  = DiskHeadroomSufficient { requested_width: Int, required: std.measure.ByteSize, observed_free: std.measure.ByteSize }
+  | DiskHeadroomInsufficient { requested_width: Int, required: std.measure.ByteSize, observed_free: std.measure.ByteSize }
   | DiskHeadroomUnobserved { requested_width: Int, reason: String }
 
 fn runner_width_disk_preflight(
@@ -120,7 +120,7 @@ fn runner_width_disk_preflight(
 }
 
 type RunnerSlotLifecycleReceipt {
-  slot: RunnerSlotIdentity
+  slot: gunbc.build_cache_instance.RunnerSlotIdentity
   requested: Bool
   materialized: Bool
   active_unit: Bool
@@ -149,25 +149,25 @@ fn host_runner_capacity_converged(receipt: HostRunnerCapacityReceipt) -> Bool {
 
 type RunnerLocalStateObservation
   = RunnerLocalStateObserved {
-      slot: RunnerSlotIdentity
+      slot: gunbc.build_cache_instance.RunnerSlotIdentity
       unit_active: Bool
       unit_busy: Bool
-      runner_version: NonEmptyStr
+      runner_version: std.types.NonEmptyStr
     }
-  | RunnerLocalStateUnobserved { slot: RunnerSlotIdentity, reason: NonEmptyStr }
+  | RunnerLocalStateUnobserved { slot: gunbc.build_cache_instance.RunnerSlotIdentity, reason: std.types.NonEmptyStr }
 
 type GitHubRunnerRegistrationObservation
   = GitHubRunnerRegisteredOnline {
-      slot: RunnerSlotIdentity
-      organization: NonEmptyStr
+      slot: gunbc.build_cache_instance.RunnerSlotIdentity
+      organization: std.types.NonEmptyStr
       ephemeral: Bool
       online: Bool
       busy: Bool
-      runner_version: NonEmptyStr
+      runner_version: std.types.NonEmptyStr
       labels_match: Bool
     }
-  | GitHubRunnerRegistrationPending { slot: RunnerSlotIdentity, reason: NonEmptyStr }
-  | GitHubRunnerRegistrationRefused { slot: RunnerSlotIdentity, reason: NonEmptyStr }
+  | GitHubRunnerRegistrationPending { slot: gunbc.build_cache_instance.RunnerSlotIdentity, reason: std.types.NonEmptyStr }
+  | GitHubRunnerRegistrationRefused { slot: gunbc.build_cache_instance.RunnerSlotIdentity, reason: std.types.NonEmptyStr }
 
 // Aspiration bind: runner_lifecycle_realize is not yet a single top-level decl; names the realize
 // module's per-effect dissolve targets (runner_lifecycle_realize_*), not a live symbol (review 49698).
@@ -188,9 +188,9 @@ data runner_lifecycle_ci_org: NonEmptyStr = gunbai_ci_declared.owner_login
 data runner_lifecycle_ci_installation_id: GitHubAppInstallationId = gunbai_ci_declared_installation_id
 
 type RunnerPerSlotMemoryCaps {
-  memory_max: ByteSize
-  memory_high: ByteSize
-  memory_swap_max: ByteSize
+  memory_max: std.measure.ByteSize
+  memory_high: std.measure.ByteSize
+  memory_swap_max: std.measure.ByteSize
 }
 
 fn runner_lifecycle_per_slot_caps() -> RunnerPerSlotMemoryCaps {

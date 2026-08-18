@@ -3,8 +3,8 @@ module test.claim.github_merge_state_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data sample_merge_state_clean: MergeStateStatus = Clean
-data sample_merge_state_blocked: MergeStateStatus = Blocked
+data sample_merge_state_clean: extdeps.github.merge_state.MergeStateStatus = Clean
+data sample_merge_state_blocked: extdeps.github.merge_state.MergeStateStatus = Blocked
 
 test fn witness_clean_and_blocked_are_distinct_variants() -> Bool {
   match sample_merge_state_clean {

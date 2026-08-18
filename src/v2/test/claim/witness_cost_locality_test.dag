@@ -15,7 +15,7 @@ data fixture_round_trip_closure: List<String> = ["fix.subject", "fix.stage_inges
 
 data fixture_both_axes_closure: List<String> = ["fix.subject", "fix.corpus_reader", "fix.stage_ingest", "fix.stage_infer"]
 
-fn verdict_of(closure: List<String>) -> WitnessCostLocality {
+fn verdict_of(closure: List<String>) -> v2.lens.witness_cost_locality.WitnessCostLocality {
   witness_cost_locality(
     closure_modules: closure,
     ambient_read_carriers: fixture_carriers,
@@ -50,25 +50,25 @@ test fn red_control_spanning_closure_is_not_local() -> Bool {
   locality_is_local(verdict: verdict_of(closure: fixture_round_trip_closure)) == false
 }
 
-data fixture_two_hop_facts: List<ModuleImportFact> = [
-  ModuleImportFact { module: "fix.entry", imports: ["fix.mid", "fix.std_logic"] },
-  ModuleImportFact { module: "fix.mid", imports: ["fix.corpus_reader"] },
-  ModuleImportFact { module: "fix.corpus_reader", imports: [] }
+data fixture_two_hop_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.entry", imports: ["fix.mid", "fix.std_logic"] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.mid", imports: ["fix.corpus_reader"] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.corpus_reader", imports: [] }
 ]
 
-data fixture_severed_facts: List<ModuleImportFact> = [
-  ModuleImportFact { module: "fix.entry", imports: ["fix.mid", "fix.std_logic"] },
-  ModuleImportFact { module: "fix.mid", imports: [] },
-  ModuleImportFact { module: "fix.corpus_reader", imports: [] }
+data fixture_severed_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.entry", imports: ["fix.mid", "fix.std_logic"] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.mid", imports: [] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.corpus_reader", imports: [] }
 ]
 
-data fixture_cyclic_facts: List<ModuleImportFact> = [
-  ModuleImportFact { module: "fix.entry", imports: ["fix.a"] },
-  ModuleImportFact { module: "fix.a", imports: ["fix.b"] },
-  ModuleImportFact { module: "fix.b", imports: ["fix.a", "fix.corpus_reader"] }
+data fixture_cyclic_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.entry", imports: ["fix.a"] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.a", imports: ["fix.b"] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.b", imports: ["fix.a", "fix.corpus_reader"] }
 ]
 
-fn facts_verdict(facts: List<ModuleImportFact>) -> WitnessCostLocality {
+fn facts_verdict(facts: List<v2.lens.witness_cost_locality.ModuleImportFact>) -> v2.lens.witness_cost_locality.WitnessCostLocality {
   witness_cost_locality_from_facts(
     entry_module: "fix.entry",
     facts: facts,
@@ -89,7 +89,7 @@ test fn cyclic_facts_terminate_and_still_reach_carrier() -> Bool {
   couples_on_data_breadth(verdict: facts_verdict(facts: fixture_cyclic_facts))
 }
 
-fn coupled_fixture_verdict() -> WitnessCostLocality {
+fn coupled_fixture_verdict() -> v2.lens.witness_cost_locality.WitnessCostLocality {
   verdict_of(closure: fixture_reading_closure)
 }
 

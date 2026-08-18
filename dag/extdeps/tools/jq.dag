@@ -1,14 +1,14 @@
 module extdeps.tools.jq
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "jqlang.org/manual/"
   }
 }
 
-data jq_authority: ExternalAuthority = extdeps_external_authority_anchor
+data jq_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
 
 data jq_authority_anchor_scaffold_note: String = "SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads an aliased anchor as absent, so the literal anchor grounds its projection while jq_authority remains the semantic authority name. This copy dissolves with the host seam under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus witness."
 
@@ -20,7 +20,7 @@ data jq_cli_tool: CliTool = CliTool {
 
 service jq.Json {
   operation ExtractRaw {
-    input { filter: NonEmptyStr, path: NonEmptyStr }
+    input { filter: std.types.NonEmptyStr, path: std.types.NonEmptyStr }
     output { value: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell { argv: ["jq", "-r", "{filter}", "{path}"] }

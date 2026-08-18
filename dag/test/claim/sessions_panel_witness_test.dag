@@ -18,8 +18,8 @@ test fn witness_projection_standing_refusal_specimen_omits_wire_row() -> Bool {
     && belt_sessions_http_status(o: o) == 200
 }
 
-fn fixture_live() -> DispatchLiveSession {
-  DispatchLiveSession {
+fn fixture_live() -> gunbc.roadmap_dispatch_actuator.DispatchLiveSession {
+  gunbc.roadmap_dispatch_actuator.DispatchLiveSession {
     session_name: "gunbc-dispatch-5-regen-cutover",
     node_id: "5-regen-cutover",
     windows: 1,
@@ -53,7 +53,7 @@ test fn sessions_observed_projects_to_wire() -> Bool {
 }
 
 test fn retained_dead_process_projects_clear_without_erasing_session() -> Bool {
-  let retained = DispatchLiveSession {
+  let retained = gunbc.roadmap_dispatch_actuator.DispatchLiveSession {
     session_name: "gunbc-dispatch-5-regen-cutover",
     node_id: "5-regen-cutover",
     windows: 1,

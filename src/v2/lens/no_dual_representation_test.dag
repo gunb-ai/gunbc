@@ -1,22 +1,22 @@
 module v2.lens.no_dual_representation_test
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
-fn module_refs_from_declaration_facts(pool_roots: List<String>) -> List<DualRepModuleRef> {
+fn module_refs_from_declaration_facts(pool_roots: List<String>) -> List<v2.lens.no_dual_representation_test.scan.DualRepModuleRef> {
   fold_list(
     xs: module_declaration_facts_live(pool_roots: pool_roots),
     empty: empty_dual_rep_module_refs,
     cons: fn(acc, decl) {
       list_snoc_item(
         xs: acc,
-        item: DualRepModuleRef { module: decl.module, path: decl.path }
+        item: v2.lens.no_dual_representation_test.scan.DualRepModuleRef { module: decl.module, path: decl.path }
       )
     }
   )
 }
 
-fn dual_rep_live_module_scans() -> List<DualRepModuleScan> {
+fn dual_rep_live_module_scans() -> List<v2.lens.no_dual_representation_test.scan.DualRepModuleScan> {
   dual_rep_module_scans_from_fn_index(
     modules: module_refs_from_declaration_facts(pool_roots: witness_layer_roots)
   )
@@ -45,7 +45,7 @@ fn no_dual_representation_test_clean_holds() -> Bool {
 
 
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
 

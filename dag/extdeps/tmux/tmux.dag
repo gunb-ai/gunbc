@@ -334,7 +334,7 @@ fn parse_tmux_attempt_panes_output(
 
 type TmuxServerScope
   = DefaultTmuxServer
-  | NamedTmuxServer { socket_name: NonEmptyStr }
+  | NamedTmuxServer { socket_name: std.types.NonEmptyStr }
 
 fn tmux_server_scope_argv(scope: TmuxServerScope) -> List<String> {
   match scope {
@@ -368,7 +368,7 @@ fn shape_tmux_new_session_argv(session_name: String, working_dir: String, inner_
 }
 
 type TmuxPipeCommand {
-  body: NonEmptyStr
+  body: std.types.NonEmptyStr
 }
 
 data tmux_staged_provider_start_note: String = "Provider attempts use a staged pane rather than asking tmux to start the provider in the same call that creates the session: create an idle shell pane; select its exact default shell; enable remain-on-exit; attach the event pipe; then respawn the pane with typed provider argv. That ordering makes event capture and terminal exit observation active before the provider can emit or exit. tmux pipe-pane is itself a foreign executor whose API requires one shell-command string, so TmuxPipeCommand is an explicit carrier for that bounded residue. Callers must construct dynamic argv tokens with the shared POSIX shell_quote authority; tmux set-environment is not a transport for pipe commands (live readback showed pipe processes do not inherit session environment updates)."
@@ -460,7 +460,7 @@ fn shape_tmux_capture_pane_argv_for(
 data tmux_capture_rendering_note: String = "THE PRODUCER SIDE OF THE SEAM, without which the brand was a claim nothing could satisfy (review, 2026-07-30). std.types.RenderedTerminalText says a capture surface PRODUCES it and a parser CONSUMES it, and the composition is admissible because the types line up — but the argv shaper above returns argv, so nothing in the tree inhabited the type. A consumer with no producer is a described surface never checked against the surface; the types could not line up because only one side existed.\\n\\nThis is the fn that makes the claim true, and it is a tmux fact rather than a caller's convenience: the fidelity that was REQUESTED determines whether the bytes that came back are rendered text. A plain capture inhabits the brand because tmux's renderer already consumed the control sequences; a -e capture re-serialized them, so it does not, and it says so with a typed arm rather than branding the bytes anyway.\\n\\nThat is the whole construction. A caller cannot reach RenderedTerminalText from an escape-carrying capture at all, so the failure the brand exists to prevent — a one-time code extracted with escape bytes still inside it, pasted, and rejected at the far end with no sign the dashboard mangled it — is unwritable rather than merely discouraged. The captured bytes are taken as a parameter because performing the capture is a transport question this module does not answer."
 
 type TmuxCaptureRendering
-  = TmuxPaneRendered { text: RenderedTerminalText }
+  = TmuxPaneRendered { text: std.types.RenderedTerminalText }
   | TmuxCaptureRetainedEscapes { fidelity: TmuxCaptureFidelity }
 
 fn tmux_captured_pane_rendering(

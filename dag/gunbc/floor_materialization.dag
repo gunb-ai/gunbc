@@ -14,7 +14,7 @@ fn floor_executor_process_frame() -> std.materialization_ladder.Frame {
   std.materialization_ladder.Frame { name: "claim_executor-process", kind: SharedStateFrame }
 }
 
-data floor_index_build_share_provider: CacheProvider = provider_row(
+data floor_index_build_share_provider: std.materialization_ladder.CacheProvider = provider_row(
   id: floor_index_build_share_provider_id,
   scope: [floor_executor_process_frame()],
   coverage: CoversIdentities { identities: [floor_index_build_identity] },
@@ -22,11 +22,11 @@ data floor_index_build_share_provider: CacheProvider = provider_row(
   retention: scope_released_retention(capacity: CapacityUnbounded)
 )
 
-data floor_index_build_share_providers: List<CacheProvider> = [floor_index_build_share_provider]
+data floor_index_build_share_providers: List<std.materialization_ladder.CacheProvider> = [floor_index_build_share_provider]
 
 data floor_index_build_share_tier_note: String = "ReferenceTier declared DIRECTLY via provider_row, deliberately NOT provider_from_catalog: the catalog door births STORE tiers from cited upstream facts (that is P2 = extdeps.realization.resolved_graph.resolved_graph_cache, the cross-process content-keyed store graph-major S2b adopts). ReferenceTier is keyless by shape (the dependency edge IS the address) and enters only via provider_row; forcing an in-process name-keyed share through the catalog would project ExistenceKeyed and be refused/mislabeled (#6352). The share's legitimacy is the value tier — the product of the rule-1 rewire S1 already did — not obligation discharge."
 
-fn gate_consumer_site(g: Gate) -> String {
+fn gate_consumer_site(g: gunbc.ci_gate.Gate) -> String {
   match g {
     EmitHostGate => "gate:EmitHostGate"
     CheapClaimPoolGate => "gate:CheapClaimPoolGate"
@@ -46,7 +46,7 @@ data floor_prelude_consumer_sites_note: String = "EMPTY, and that is a measured 
 
 data floor_prelude_consumer_sites: List<String> = []
 
-fn floor_index_build_consumer_sites(gates: List<Gate>, witnesses: List<ScheduleWitnessEntry>) -> List<String> {
+fn floor_index_build_consumer_sites(gates: List<gunbc.ci_gate.Gate>, witnesses: List<std.realization_schedule.ScheduleWitnessEntry>) -> List<String> {
   concat(
     floor_prelude_consumer_sites,
     concat(
@@ -56,28 +56,28 @@ fn floor_index_build_consumer_sites(gates: List<Gate>, witnesses: List<ScheduleW
   )
 }
 
-fn floor_index_build_value_usage(gates: List<Gate>, witnesses: List<ScheduleWitnessEntry>) -> ValueUsage {
-  ValueUsage {
+fn floor_index_build_value_usage(gates: List<gunbc.ci_gate.Gate>, witnesses: List<std.realization_schedule.ScheduleWitnessEntry>) -> std.materialization_ladder.ValueUsage {
+  std.materialization_ladder.ValueUsage {
     identity: floor_index_build_identity,
     consumers: floor_index_build_consumer_sites(gates: gates, witnesses: witnesses)
-      |> map(s => ValueConsumerEdge { access: ReadAccess, site: s })
+      |> map(s => std.materialization_ladder.ValueConsumerEdge { access: ReadAccess, site: s })
   }
 }
 
-fn floor_index_build_reader_count(gates: List<Gate>, witnesses: List<ScheduleWitnessEntry>) -> Int {
+fn floor_index_build_reader_count(gates: List<gunbc.ci_gate.Gate>, witnesses: List<std.realization_schedule.ScheduleWitnessEntry>) -> Int {
   floor_index_build_consumer_sites(gates: gates, witnesses: witnesses) |> count
 }
 
-fn floor_index_build_materialization(gates: List<Gate>, witnesses: List<ScheduleWitnessEntry>) -> ValueMaterialization {
+fn floor_index_build_materialization(gates: List<gunbc.ci_gate.Gate>, witnesses: List<std.realization_schedule.ScheduleWitnessEntry>) -> std.materialization_ladder.ValueMaterialization {
   value_materialization(
     usage: floor_index_build_value_usage(gates: gates, witnesses: witnesses),
     providers: floor_index_build_share_providers
   )
 }
 
-data floor_index_build_no_providers: List<CacheProvider> = []
+data floor_index_build_no_providers: List<std.materialization_ladder.CacheProvider> = []
 
-fn floor_index_build_materialization_without_provider(gates: List<Gate>, witnesses: List<ScheduleWitnessEntry>) -> ValueMaterialization {
+fn floor_index_build_materialization_without_provider(gates: List<gunbc.ci_gate.Gate>, witnesses: List<std.realization_schedule.ScheduleWitnessEntry>) -> std.materialization_ladder.ValueMaterialization {
   value_materialization(
     usage: floor_index_build_value_usage(gates: gates, witnesses: witnesses),
     providers: floor_index_build_no_providers
@@ -96,7 +96,7 @@ data floor_typecheck_store_share_provider_id: String = "process_shared_typecheck
 
 data floor_typecheck_store_identity: String = "union-typecheck-store(dag,src/v2)"
 
-data floor_typecheck_store_share_provider: CacheProvider = provider_row(
+data floor_typecheck_store_share_provider: std.materialization_ladder.CacheProvider = provider_row(
   id: floor_typecheck_store_share_provider_id,
   scope: [floor_executor_process_frame()],
   coverage: CoversIdentities { identities: [floor_typecheck_store_identity] },
@@ -104,7 +104,7 @@ data floor_typecheck_store_share_provider: CacheProvider = provider_row(
   retention: scope_released_retention(capacity: CapacityUnbounded)
 )
 
-data floor_typecheck_store_share_providers: List<CacheProvider> = [floor_typecheck_store_share_provider]
+data floor_typecheck_store_share_providers: List<std.materialization_ladder.CacheProvider> = [floor_typecheck_store_share_provider]
 
 data floor_typecheck_store_consumer_sites_note: String = "The two minimum co-readers of the adaptive worker pool at W>=2 (cross-worker-typecheck-share-design.md §4.4). Runtime width may exceed 2 under the memory governor; the ladder counts declared readonly sites, not live W. The pump thread uses private process_shared_index (P1); only admitted worker shards clone Arc<RwLock<SharedTypecheckCaches>> and read the shared typed store."
 
@@ -113,11 +113,11 @@ data floor_typecheck_store_consumer_sites: List<String> = [
   "cli_run.rs:run_discovery_corpus_with_options:adaptive-worker-shard:co-reader"
 ]
 
-fn floor_typecheck_store_value_usage() -> ValueUsage {
-  ValueUsage {
+fn floor_typecheck_store_value_usage() -> std.materialization_ladder.ValueUsage {
+  std.materialization_ladder.ValueUsage {
     identity: floor_typecheck_store_identity,
     consumers: floor_typecheck_store_consumer_sites
-      |> map(s => ValueConsumerEdge { access: ReadAccess, site: s })
+      |> map(s => std.materialization_ladder.ValueConsumerEdge { access: ReadAccess, site: s })
   }
 }
 
@@ -125,16 +125,16 @@ fn floor_typecheck_store_reader_count() -> Int {
   floor_typecheck_store_consumer_sites |> count
 }
 
-fn floor_typecheck_store_materialization() -> ValueMaterialization {
+fn floor_typecheck_store_materialization() -> std.materialization_ladder.ValueMaterialization {
   value_materialization(
     usage: floor_typecheck_store_value_usage(),
     providers: floor_typecheck_store_share_providers
   )
 }
 
-data floor_typecheck_store_no_providers: List<CacheProvider> = []
+data floor_typecheck_store_no_providers: List<std.materialization_ladder.CacheProvider> = []
 
-fn floor_typecheck_store_materialization_without_provider() -> ValueMaterialization {
+fn floor_typecheck_store_materialization_without_provider() -> std.materialization_ladder.ValueMaterialization {
   value_materialization(
     usage: floor_typecheck_store_value_usage(),
     providers: floor_typecheck_store_no_providers

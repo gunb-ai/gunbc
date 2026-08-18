@@ -51,7 +51,7 @@ fn raw_lifecycle_string_survivor_facts() -> List<v2.std.decl_index.DataDeclTypeF
   filter(xs: lifecycle_survivor_scan_facts, predicate: fn(f) { fact_is_raw_lifecycle_survivor(f: f) })
 }
 
-fn raw_lifecycle_string_survivor_refs() -> List<DeclarationRef> {
+fn raw_lifecycle_string_survivor_refs() -> List<std.decl_ref.DeclarationRef> {
   v2.std.algebra.list_map(
     xs: raw_lifecycle_string_survivor_facts(),
     f: fn(f) { decl_ref(module_path: f.module_path, decl_name: f.decl_name) }

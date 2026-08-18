@@ -1,7 +1,7 @@
 module v2.test.manual.parse_tree_content_hash_witness
 
 
-fn parse_tree_content_hash_for_path(path: String) -> Optional<Hash> {
+fn parse_tree_content_hash_for_path(path: String) -> Optional<v2.std.node.Hash> {
   let lm = dag_language_model()
   let at = port_locus(port: ^parse_stage_locus_port)
   let source_text = filesystem_read(path: path).content
@@ -27,10 +27,10 @@ fn parse_tree_content_hash_for_path(path: String) -> Optional<Hash> {
   }
 }
 
-fn witness_parse_tree_content_hash_tiny() -> Optional<Hash> {
+fn witness_parse_tree_content_hash_tiny() -> Optional<v2.std.node.Hash> {
   parse_tree_content_hash_for_path(path: "src/v2/std/witness.dag")
 }
 
-fn witness_parse_tree_content_hash_small() -> Optional<Hash> {
+fn witness_parse_tree_content_hash_small() -> Optional<v2.std.node.Hash> {
   parse_tree_content_hash_for_path(path: "dag/std/execution_mode.dag")
 }

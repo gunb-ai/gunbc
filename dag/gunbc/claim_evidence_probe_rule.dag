@@ -3,24 +3,24 @@ module gunbc.claim_evidence_probe_rule
 
 fn infer_probe_evidence<F, C, A, FidelityBoundary>(
   fact: RecordedFact<F>,
-  direction: EvidenceDirection,
-  inference_rule: InferenceRuleId,
+  direction: std.claim_evidence.EvidenceDirection,
+  inference_rule: std.claim_evidence.InferenceRuleId,
   authority: A,
-  provenance: EvidenceProvenance,
+  provenance: std.claim_evidence.EvidenceProvenance,
   freshness: EvidenceFreshness<C>,
   fidelity: EvidenceFidelity<FidelityBoundary>,
-  probe: ReadBackProbe,
+  probe: gunbc.readback_independence.ReadBackProbe,
 ) -> EvidenceInference<F, C, A, FidelityBoundary, ReadBackProbe> {
   let supports = evidence_direction_fold(
     direction: direction,
-    fold: EvidenceDirectionFold {
+    fold: std.claim_evidence.EvidenceDirectionFold {
       supports: true,
       challenges: false,
     },
   )
   let probe_is_independent = probe_effect_on_subject_fold(
     effect: probe.effect_on_subject,
-    fold: ProbeEffectOnSubjectFold {
+    fold: gunbc.readback_independence.ProbeEffectOnSubjectFold {
       inert: true,
       may_establish: fn(_) { false },
       answers_without_subject: fn(_) { false },
@@ -29,7 +29,7 @@ fn infer_probe_evidence<F, C, A, FidelityBoundary>(
   )
   if supports && !probe_is_independent {
     insufficient_evidence_inference(
-      insufficiency: EvidenceInsufficiency {
+      insufficiency: std.claim_evidence.EvidenceInsufficiency {
         fact: fact,
         claim: freshness.maximum_conclusion,
         inference_rule: inference_rule,
@@ -39,7 +39,7 @@ fn infer_probe_evidence<F, C, A, FidelityBoundary>(
     )
   } else {
     applicable_evidence_inference(
-      link: EvidenceLink {
+      link: std.claim_evidence.EvidenceLink {
         fact: fact,
         direction: direction,
         inference_rule: inference_rule,

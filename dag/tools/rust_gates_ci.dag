@@ -25,7 +25,7 @@ fn rust_gate_reason(
   concat("rust gate:\n", concat(fmt_diag, test_diag))
 }
 
-func run_gates() -> ProcessExit {
+func run_gates() -> std.process.ProcessExit {
   fmt = cargo.Build.Fmt(extra_args: ["--all", "--check"])
   test = cargo.Build.Nextest(extra_args: ["-p", "v1-compiler-tests"], build_jobs_args: rust_gate_build_jobs_args())
   return if fmt.success && test.success {
@@ -38,7 +38,7 @@ func run_gates() -> ProcessExit {
   }
 }
 
-func run_rust_monolith_gate() -> ProcessExit {
+func run_rust_monolith_gate() -> std.process.ProcessExit {
   let policy = gunbc_ci_spec.diff_policy
   let changed = match policy.mode {
     DiffMergeBase => git.Core.DiffNameOnlyMerge(base: policy.base, head: policy.head)
@@ -51,6 +51,6 @@ func run_rust_monolith_gate() -> ProcessExit {
   }
 }
 
-func main() -> ProcessExit {
+func main() -> std.process.ProcessExit {
   run_rust_monolith_gate()
 }

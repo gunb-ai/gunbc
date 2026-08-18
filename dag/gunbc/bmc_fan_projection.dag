@@ -15,8 +15,8 @@ type BmcFanProjectionApplySuitability
     }
 
 type BmcFanProjectionLiveDigestRefusalCause {
-  observed: Digest
-  expected: Digest
+  observed: extdeps.crypto.hash.Digest
+  expected: extdeps.crypto.hash.Digest
 }
 
 type BmcFanProjectionLiveDigestSuitability
@@ -50,7 +50,7 @@ type BmcFanPolicyDriftAssessment
   | BmcFanPolicyDrifted { cause: BmcFanPolicyDriftCause }
 
 type BmcFanConfigReadbackSubject {
-  config_path: NonEmptyStr
+  config_path: std.types.NonEmptyStr
 }
 
 type BmcFanDurabilityAdmission =
@@ -60,27 +60,27 @@ type BmcFanDurabilityEvidence =
   StateDurabilityEvidence<product.placement_supply.HostIdentity, BmcFanConfigReadbackSubject>
 
 type BmcFanPolicyProjectionCapability {
-  board: BaseboardModel
-  firmware: BmcFirmwareVersion
-  projected_curve: BmcFanCurve
-  projected_config_digest: Digest
-  config_path: NonEmptyStr
-  controller_service: NonEmptyStr
-  controller_zone_path: NonEmptyStr
-  aggregate_fan_pid_entry: NonEmptyStr
-  realization: StateRealizationIdentity
-  durability_capability_version: StateDurabilityCapabilityVersion
-  publication_protocol: LinuxFilePublicationProtocol
-  durability_boundaries: List<StateDurabilityBoundary>
-  required_tach_inputs: List<NonEmptyStr>
+  board: extdeps.boards.types.BaseboardModel
+  firmware: extdeps.bmc.capability.BmcFirmwareVersion
+  projected_curve: extdeps.bmc.types.BmcFanCurve
+  projected_config_digest: extdeps.crypto.hash.Digest
+  config_path: std.types.NonEmptyStr
+  controller_service: std.types.NonEmptyStr
+  controller_zone_path: std.types.NonEmptyStr
+  aggregate_fan_pid_entry: std.types.NonEmptyStr
+  realization: std.state_durability.StateRealizationIdentity
+  durability_capability_version: std.state_durability.StateDurabilityCapabilityVersion
+  publication_protocol: extdeps.filesystem.linux.LinuxFilePublicationProtocol
+  durability_boundaries: List<std.state_durability.StateDurabilityBoundary>
+  required_tach_inputs: List<std.types.NonEmptyStr>
 }
 
 type BmcAdmittedConfigDigest
-  = AdmittedConfigDigestKnown { digest: Digest }
+  = AdmittedConfigDigestKnown { digest: extdeps.crypto.hash.Digest }
   | AdmittedConfigDigestUnavailable
 
 type BmcProjectedConfigDigest
-  = ProjectedConfigDigestKnown { digest: Digest }
+  = ProjectedConfigDigestKnown { digest: extdeps.crypto.hash.Digest }
   | ProjectedConfigDigestUnavailable
 
 data altrad8ud_openbmc_322_swampd_config_asrr_path: NonEmptyStr = "/usr/share/swampd/config-asrr.json"
@@ -90,10 +90,10 @@ data altrad8ud_openbmc_322_swampd_temp_soc_jffs2_realization_id: NonEmptyStr = "
 data altrad8ud_openbmc_322_fleet_quiet_projected_config_sha256_hex: NonEmptyStr = "f559aff7f3455011e951bed1eac52e8cbe7a724b772fe6ece1d8545ff47cb5bc"
 
 type BmcProjectedConfigContentIdentity {
-  realization_id: NonEmptyStr
-  config_path: NonEmptyStr
-  projected_curve: BmcFanCurve
-  projected_config_sha256_hex: NonEmptyStr
+  realization_id: std.types.NonEmptyStr
+  config_path: std.types.NonEmptyStr
+  projected_curve: extdeps.bmc.types.BmcFanCurve
+  projected_config_sha256_hex: std.types.NonEmptyStr
 }
 
 data altrad8ud_openbmc_322_fleet_quiet_projected_config_curve_steps: List<BmcFanCurveStep> = [

@@ -74,6 +74,6 @@ fn release_bin_is_enrolled(bin_name: String) -> Bool {
   release_bin_list_contains(xs: ci_floor_required_artifact_names(), needle: bin_name)
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

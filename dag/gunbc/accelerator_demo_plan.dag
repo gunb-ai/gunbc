@@ -16,9 +16,9 @@ type AcceleratorRecognitionOutcome
   = Recognized {
       plan: RealizationPlan<Nano>
       kernel_step: RealizedStep<Nano>
-      contract: NumericalContract
-      fidelity: DecodeFidelity
-      target_medium: NonEmptyStr
+      contract: std.numerical_contract.NumericalContract
+      fidelity: extdeps.communication.medium.DecodeFidelity
+      target_medium: std.types.NonEmptyStr
     }
   | Refused { reason: AcceleratorRefusalReason }
 

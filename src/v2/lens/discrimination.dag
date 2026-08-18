@@ -5,7 +5,7 @@ type WitnessPolarity
   | AssertsRed
 
 type DiscriminatingWitness {
-  unit: List<TestClaim>
+  unit: List<v2.std.verification.TestClaim>
 }
 
 fn test_claim_polarity(c: TestClaim) -> WitnessPolarity {

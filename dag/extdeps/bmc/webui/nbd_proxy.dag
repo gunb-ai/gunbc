@@ -23,7 +23,7 @@ data openbmc_virtual_media_design_authority: ExternalAuthority = ExternalAuthori
 }
 
 type NbdProxyServeInterface {
-  export_byte_count: ByteSize
+  export_byte_count: std.measure.ByteSize
 }
 
 type NbdPeerRole = NbdClient | NbdServer
@@ -94,7 +94,7 @@ fn nbd_transmission_flag_wire(f: NbdTransmissionFlag) -> Int {
 data nbd_read_only_export_transmission_flags: Int = 3
 
 type NbdExportReply {
-  export_size: ByteSize
+  export_size: std.measure.ByteSize
   transmission_flags: Int
 }
 

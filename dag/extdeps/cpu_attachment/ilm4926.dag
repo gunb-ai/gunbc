@@ -31,7 +31,7 @@ data ocp_mt_jade_specification_authority: ExternalAuthority = mt_jade_subject_au
 // 'cpu_attachment' names what the designation is FOR — how a processor is
 // attached to a board — which every candidate referent has in common.
 type ProcessorAttachmentDesignation {
-  designator: NonEmptyStr
+  designator: std.types.NonEmptyStr
 }
 
 data ilm4926: ProcessorAttachmentDesignation = ProcessorAttachmentDesignation {
@@ -59,7 +59,7 @@ type AttachmentDesignationReferent
   = SocketBodyOnly
   | IndependentLoadingMechanismOnly
   | SocketAssemblyIncludingLoadingMechanism
-  | ReferentUnresolvedByCitedDocuments { reason: NonEmptyStr }
+  | ReferentUnresolvedByCitedDocuments { reason: std.types.NonEmptyStr }
 
 // WHAT WOULD CLOSE THE REFERENT QUESTION, named so the next reader knows what
 // to look for rather than re-deriving the search. A vendor part number
@@ -91,9 +91,9 @@ fn designation_referent_is_resolved(referent: AttachmentDesignationReferent) -> 
 // authority it came from, so a second source is a second row rather than a
 // strengthened adjective on the first.
 type DesignationAttestation {
-  authority: ExternalAuthority
-  wording: NonEmptyStr
-  context: NonEmptyStr
+  authority: extdeps.external_authority.ExternalAuthority
+  wording: std.types.NonEmptyStr
+  context: std.types.NonEmptyStr
 }
 
 data ilm4926_attestations: List<DesignationAttestation> = [
@@ -152,7 +152,7 @@ fn attested_by_independent_publishers() -> Bool {
 // thread, and the claim's strength is a property of the CLAIMANT, not of the domain it sits on.
 type AttestationStanding
   = PublisherOfRecord
-  | ThirdPartyUnofficial { claimant: NonEmptyStr }
+  | ThirdPartyUnofficial { claimant: std.types.NonEmptyStr }
 
 // THE VENDOR'S OWN CATALOGUE PAGE, which is a publisher of record for its own part and therefore
 // outranks the forum for anything it states. It resolves what the community thread could not.
@@ -182,14 +182,14 @@ type PartReferentClaim
   = ClaimedSocketBody
   | ClaimedLoadingMechanism
   | ClaimedLoadingMechanismWithBackplate
-  | ReferentAssignmentDisputed { because: NonEmptyStr }
+  | ReferentAssignmentDisputed { because: std.types.NonEmptyStr }
 
 type PartNumberCandidate {
-  part_number: NonEmptyStr
-  vendor: Vendor<Hardware>
+  part_number: std.types.NonEmptyStr
+  vendor: Vendor<extdeps.hardware.Hardware>
   claimed_referent: PartReferentClaim
   standing: AttestationStanding
-  authority: ExternalAuthority
+  authority: extdeps.external_authority.ExternalAuthority
 }
 
 // ONE PART, NOT TWO, AND THE VENDOR SAYS WHICH. An earlier revision of this module carried
@@ -270,12 +270,12 @@ fn part_referent_is_assigned(c: PartNumberCandidate) -> Bool {
 // reason the cited set does not yet establish.
 type DesignationResolutionStanding
   = DesignationFactEstablished {
-      value: NonEmptyStr
-      authority: ExternalAuthority
+      value: std.types.NonEmptyStr
+      authority: extdeps.external_authority.ExternalAuthority
     }
   | DesignationFactUnresolved {
-      reason: NonEmptyStr
-      next_authority_to_consult: ExternalAuthority?
+      reason: std.types.NonEmptyStr
+      next_authority_to_consult: extdeps.external_authority.ExternalAuthority?
     }
 
 // THE OBLIGATIONS ARE PER CONSTITUENT, BECAUSE THE CONSTITUENTS ARE SEPARATELY SOURCED.
@@ -359,12 +359,12 @@ fn attachment_unresolved_constituent_count(a: AttachmentStanding) -> Int {
 // this route is not a fallback to the gated one -- it is the only route whose result can land.
 type LandPatternRoute
   = PublicSocketVendorDrawing {
-      vendor_authority: ExternalAuthority
-      what_to_request: NonEmptyStr
+      vendor_authority: extdeps.external_authority.ExternalAuthority
+      what_to_request: std.types.NonEmptyStr
     }
   | AccessGatedReferenceCollateral {
-      access_route: ExternalAuthority
-      why_not_carriable: NonEmptyStr
+      access_route: extdeps.external_authority.ExternalAuthority
+      why_not_carriable: std.types.NonEmptyStr
     }
 
 data lga4926_land_pattern_public_route: LandPatternRoute = PublicSocketVendorDrawing {

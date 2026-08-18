@@ -14,13 +14,13 @@ type Stage
 
 type StageStep {
   stage: Stage
-  verdict: ReduceVerdict
+  verdict: std.reducible.ReduceVerdict
 }
 
 type Review {
   subject: WorkProduct
-  reviewer: ReviewProvider
-  verdict: ReviewVerdict
+  reviewer: gunbc.review_verdict.ReviewProvider
+  verdict: gunbc.review_verdict.ReviewVerdict
 }
 
 fn work_tag(p: WorkProduct) -> String {

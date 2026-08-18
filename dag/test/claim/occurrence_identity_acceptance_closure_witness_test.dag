@@ -52,7 +52,7 @@ test fn occurrence_identity_consumer_red_debt_is_counted_holds() -> Bool {
 
 test fn occurrence_identity_receipt_enrollment_debt_is_counted_holds() -> Bool {
   occurrence_identity_receipt_enrollment_debts == [
-    OccurrenceIdentityReceiptEnrollmentDebt {
+    gunbc.occurrence_identity_acceptance_closure.OccurrenceIdentityReceiptEnrollmentDebt {
       id: "namespace-parser-occurrence-receipts-per-pr-enrollment",
       receipt_functions: [
         "w_rebuilt_reference_identity_preservation_executes_holds",
@@ -71,9 +71,9 @@ test fn occurrence_identity_receipt_enrollment_debt_is_counted_holds() -> Bool {
 data occurrence_identity_closing_check_witness_note: String = "Synthetic controls for the validation/workflow closing fold, not production behavior receipts and not grounds for deleting debt. The positive control constructs Passed rows only to test the fold; it does not assert that any production consumer executed. The deferral control proves covered-with-deferral is not completion; the open control removes one law's coverage; and the refusal controls independently plant unknown, duplicate, stale, non-green, and receipt-plus-deferral rows. Production integration must replace these fixtures with observations decoded from the live scoped execution receipt."
 
 fn occurrence_identity_closing_receipt(
-  law: OccurrenceIdentityAcceptanceLaw
-) -> OccurrenceIdentityExecutingReceipt {
-  OccurrenceIdentityExecutingReceipt {
+  law: std.occurrence_identity.OccurrenceIdentityAcceptanceLaw
+) -> gunbc.occurrence_identity_acceptance_closure.OccurrenceIdentityExecutingReceipt {
+  gunbc.occurrence_identity_acceptance_closure.OccurrenceIdentityExecutingReceipt {
     law_id: law.id,
     required_receipt: law.required_receipt,
     consumer: "synthetic-closing-check-control",
@@ -81,15 +81,15 @@ fn occurrence_identity_closing_receipt(
   }
 }
 
-fn occurrence_identity_closing_exact_receipts() -> List<OccurrenceIdentityExecutingReceipt> {
+fn occurrence_identity_closing_exact_receipts() -> List<gunbc.occurrence_identity_acceptance_closure.OccurrenceIdentityExecutingReceipt> {
   occurrence_identity_acceptance_laws
     |> map(law => occurrence_identity_closing_receipt(law: law))
 }
 
 fn occurrence_identity_closing_deferral(
-  law: OccurrenceIdentityAcceptanceLaw
-) -> OccurrenceIdentityAdmittedDeferral {
-  OccurrenceIdentityAdmittedDeferral {
+  law: std.occurrence_identity.OccurrenceIdentityAcceptanceLaw
+) -> gunbc.occurrence_identity_acceptance_closure.OccurrenceIdentityAdmittedDeferral {
+  gunbc.occurrence_identity_acceptance_closure.OccurrenceIdentityAdmittedDeferral {
     law_id: law.id,
     required_receipt: law.required_receipt,
     reason: "synthetic closing-check deferral control",
@@ -145,7 +145,7 @@ test fn occurrence_identity_closing_missing_law_stays_open_holds() -> Bool {
 }
 
 test fn occurrence_identity_closing_unknown_receipt_refuses_holds() -> Bool {
-  let unknown = OccurrenceIdentityExecutingReceipt {
+  let unknown = gunbc.occurrence_identity_acceptance_closure.OccurrenceIdentityExecutingReceipt {
     law_id: "unknown-occurrence-law",
     required_receipt: "unknown",
     consumer: "synthetic-closing-check-control",
@@ -190,7 +190,7 @@ test fn occurrence_identity_closing_stale_receipt_refuses_holds() -> Bool {
   match first_exact {
     Absent => false
     Present { value: receipt } =>
-      let stale = OccurrenceIdentityExecutingReceipt {
+      let stale = gunbc.occurrence_identity_acceptance_closure.OccurrenceIdentityExecutingReceipt {
         law_id: receipt.law_id,
         required_receipt: "stale receipt text",
         consumer: receipt.consumer,
@@ -219,7 +219,7 @@ test fn occurrence_identity_closing_non_green_receipt_refuses_holds() -> Bool {
   match first_exact {
     Absent => false
     Present { value: receipt } =>
-      let failed = OccurrenceIdentityExecutingReceipt {
+      let failed = gunbc.occurrence_identity_acceptance_closure.OccurrenceIdentityExecutingReceipt {
         law_id: receipt.law_id,
         required_receipt: receipt.required_receipt,
         consumer: receipt.consumer,

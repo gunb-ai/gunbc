@@ -76,7 +76,7 @@ type YamlAnchorAliasResolutionFacts {
 }
 
 type YamlDocument {
-  grammar_schema: GrammarSchema,
+  grammar_schema: v2.std.grammar.GrammarSchema,
   canonical_keys: YamlCanonicalKeyProfileFacts,
   anchor_alias_resolution: YamlAnchorAliasResolutionFacts,
   value: YamlSchemaCarrierValue,

@@ -95,7 +95,7 @@ data all_contact_population_kinds: List<ContactPopulationKind> = [
 type ContactPopulation {
   kind: ContactPopulationKind
   count: std.nat.Nat
-  authority: NonEmptyStr
+  authority: std.types.NonEmptyStr
 }
 
 // COMPARISON REFUSES ACROSS KINDS RATHER THAN ANSWERING FALSE. A false would say the populations
@@ -127,7 +127,7 @@ fn compare_populations(a: ContactPopulation, b: ContactPopulation) -> Population
 type PopulationProjection {
   target: ContactPopulationKind
   from_kinds: List<ContactPopulationKind>
-  rationale: NonEmptyStr
+  rationale: std.types.NonEmptyStr
 }
 
 fn project_population(p: PopulationProjection, parts: List<ContactPopulation>) -> ContactPopulation? {
@@ -164,13 +164,13 @@ data placeable_from_vendor_categories: PopulationProjection = PopulationProjecti
 // are three separate facts, and a sentence holding all three can be read by a human and by
 // nothing else. A consumer cannot ask "which population disagrees" of a paragraph.
 type CitationCurrency
-  = CitedRevisionCurrent { revision: NonEmptyStr }
-  | CitedRevisionSuperseded { cited: NonEmptyStr, current: NonEmptyStr }
+  = CitedRevisionCurrent { revision: std.types.NonEmptyStr }
+  | CitedRevisionSuperseded { cited: std.types.NonEmptyStr, current: std.types.NonEmptyStr }
 
 // The populations that reconcile and the one that does not are the same carrier, so the gap is a
 // statement in the same vocabulary as the agreement it qualifies — not a footnote beside it.
 type PopulationGap {
-  subject: NonEmptyStr
+  subject: std.types.NonEmptyStr
   reconciled: List<ContactPopulation>
   unreconciled: List<ContactPopulation>
   citation_currency: CitationCurrency

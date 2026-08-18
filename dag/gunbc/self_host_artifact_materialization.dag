@@ -10,18 +10,18 @@ data artifact_materialization_unbuilt_note: String = "There is NO arm here that 
 type ArtifactPathOutcome
   = ArtifactPathReported { executable: std.types.FilePath }
   | ArtifactPathBuildFailed { target_name: String }
-  | ArtifactPathRefused { selection: CargoArtifactSelection }
+  | ArtifactPathRefused { selection: extdeps.cargo_message.CargoArtifactSelection }
 
 type ArtifactMaterializationOutcome
   = ArtifactMaterializationObserved {
       executable: std.types.FilePath
-      digest: Sha512Digest
+      digest: std.content_hash.Sha512Digest
     }
   | ArtifactMaterializationBuildFailed { target_name: String }
-  | ArtifactMaterializationPathRefused { selection: CargoArtifactSelection }
+  | ArtifactMaterializationPathRefused { selection: extdeps.cargo_message.CargoArtifactSelection }
   | ArtifactMaterializationDigestRefused {
       executable: std.types.FilePath
-      cause: NonEmptyStr
+      cause: std.types.NonEmptyStr
     }
 
 // A build that exited nonzero is its own arm and never reaches the stream decode.

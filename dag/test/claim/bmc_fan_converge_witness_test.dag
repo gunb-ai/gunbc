@@ -3,11 +3,11 @@ module test.claim.bmc_fan_converge_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data cleanup_debt_test_digest: Digest = sha256_digest(
+data cleanup_debt_test_digest: extdeps.crypto.hash.Digest = sha256_digest(
   hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 )
 
-data cleanup_debt_test_manifest: BmcFanBackupManifest = bmc_fan_backup_manifest(
+data cleanup_debt_test_manifest: gunbc.bmc_fan_converge.BmcFanBackupManifest = bmc_fan_backup_manifest(
   target: srv4_host.identity,
   stable_bmc_identity: "srv4-bmc-machine-id",
   firmware: asrock_altrad8ud_openbmc_3_22_00_capabilities.firmware,
@@ -18,12 +18,12 @@ data cleanup_debt_test_manifest: BmcFanBackupManifest = bmc_fan_backup_manifest(
   created_at: 1,
 )
 
-data cleanup_debt_test_applied_receipt: BmcFanAppliedReceipt = BmcFanAppliedReceipt {
+data cleanup_debt_test_applied_receipt: gunbc.bmc_fan_converge.BmcFanAppliedReceipt = gunbc.bmc_fan_converge.BmcFanAppliedReceipt {
   backup_manifest: cleanup_debt_test_manifest,
   projected_digest: cleanup_debt_test_digest,
   post_publication_active_digest: cleanup_debt_test_digest,
   post_restart_active_digest: cleanup_debt_test_digest,
-  monitoring: BmcFanMonitoringReceipt {
+  monitoring: gunbc.bmc_fan_monitor.BmcFanMonitoringReceipt {
     sample_count: 12,
     elapsed: second(360),
     required_elapsed: second(360),
@@ -33,11 +33,11 @@ data cleanup_debt_test_applied_receipt: BmcFanAppliedReceipt = BmcFanAppliedRece
 
 test fn duty_curve_cannot_fall_after_reaching_emergency_full_duty() -> Bool {
   match validate_bmc_fan_curve(
-    curve: BmcFanCurve {
+    curve: extdeps.bmc.types.BmcFanCurve {
       control_sensor: "TEMP_SOC",
       steps: [
-        BmcFanCurveStep { at_or_above: celsius(90), duty: percent(100) },
-        BmcFanCurveStep { at_or_above: celsius(95), duty: percent(30) },
+        extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(90), duty: percent(100) },
+        extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(95), duty: percent(30) },
       ],
       minimum_duty: percent(30),
       sensor_unavailable_duty: percent(100),
@@ -105,7 +105,7 @@ test fn stale_backup_manifest_generation_is_not_admitted() -> Bool {
 }
 
 fn backup_manifest_identity_differs(
-  changed: BmcFanBackupManifest,
+  changed: gunbc.bmc_fan_converge.BmcFanBackupManifest,
 ) -> Bool {
   let baseline_identity = bmc_fan_backup_manifest_identity(
     manifest: cleanup_debt_test_manifest,
@@ -141,7 +141,7 @@ test fn backup_manifest_identity_is_derived_from_every_manifest_field() -> Bool 
     && backup_manifest_identity_differs(changed: bmc_fan_backup_manifest(
       target: cleanup_debt_test_manifest.target,
       stable_bmc_identity: cleanup_debt_test_manifest.stable_bmc_identity,
-      firmware: BmcFirmwareVersion {
+      firmware: extdeps.bmc.capability.BmcFirmwareVersion {
         family: OpenBmc,
         version: firmware_semantic_version(
           major: cleanup_debt_test_manifest.firmware.version.major + 1,
@@ -265,13 +265,13 @@ test fn semantically_equal_but_digest_different_config_is_not_live_exact() -> Bo
 test fn delayed_temperature_rise_is_seen_inside_the_bounded_window() -> Bool {
   match bmc_fan_assess_monitoring_samples(
     samples: [
-      BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
-      BmcFanMonitoringSample { elapsed: second(60), safety_refusal: none },
-      BmcFanMonitoringSample {
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(60), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample {
         elapsed: second(90),
         safety_refusal: Present { value: "TEMP_SOC crossed rollback threshold" },
       },
-      BmcFanMonitoringSample { elapsed: second(360), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(360), safety_refusal: none },
     ],
     required_elapsed: second(360),
     maximum_sample_gap: second(30),
@@ -285,8 +285,8 @@ test fn delayed_temperature_rise_is_seen_inside_the_bounded_window() -> Bool {
 test fn short_monitoring_window_cannot_claim_completion() -> Bool {
   match bmc_fan_assess_monitoring_samples(
     samples: [
-      BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
-      BmcFanMonitoringSample { elapsed: second(60), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(60), safety_refusal: none },
     ],
     required_elapsed: second(360),
     maximum_sample_gap: second(30),
@@ -312,18 +312,18 @@ test fn empty_monitoring_window_cannot_claim_completion() -> Bool {
 test fn bounded_monitoring_completion_carries_the_admitted_bound() -> Bool {
   match bmc_fan_assess_monitoring_samples(
     samples: [
-      BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
-      BmcFanMonitoringSample { elapsed: second(60), safety_refusal: none },
-      BmcFanMonitoringSample { elapsed: second(90), safety_refusal: none },
-      BmcFanMonitoringSample { elapsed: second(120), safety_refusal: none },
-      BmcFanMonitoringSample { elapsed: second(150), safety_refusal: none },
-      BmcFanMonitoringSample { elapsed: second(180), safety_refusal: none },
-      BmcFanMonitoringSample { elapsed: second(210), safety_refusal: none },
-      BmcFanMonitoringSample { elapsed: second(240), safety_refusal: none },
-      BmcFanMonitoringSample { elapsed: second(270), safety_refusal: none },
-      BmcFanMonitoringSample { elapsed: second(300), safety_refusal: none },
-      BmcFanMonitoringSample { elapsed: second(330), safety_refusal: none },
-      BmcFanMonitoringSample { elapsed: second(360), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(30), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(60), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(90), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(120), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(150), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(180), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(210), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(240), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(270), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(300), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(330), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(360), safety_refusal: none },
     ],
     required_elapsed: second(360),
     maximum_sample_gap: second(30),
@@ -340,7 +340,7 @@ test fn bounded_monitoring_completion_carries_the_admitted_bound() -> Bool {
 test fn one_late_sample_cannot_claim_monitoring_coverage() -> Bool {
   match bmc_fan_assess_monitoring_samples(
     samples: [
-      BmcFanMonitoringSample { elapsed: second(360), safety_refusal: none },
+      gunbc.bmc_fan_monitor.BmcFanMonitoringSample { elapsed: second(360), safety_refusal: none },
     ],
     required_elapsed: second(360),
     maximum_sample_gap: second(30),

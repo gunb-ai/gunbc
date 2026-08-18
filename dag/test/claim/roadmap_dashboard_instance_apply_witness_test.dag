@@ -11,7 +11,7 @@ test fn dashboard_source_transport_argv_is_exact_and_atomic() -> Bool {
   shape_git_bundle_create_argv(
     repo: "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0" as std.types.FilePath,
     bundle: local,
-    source_ref: "refs/heads/session/codex-provider-feedback-v0" as GitRef,
+    source_ref: "refs/heads/session/codex-provider-feedback-v0" as std.types.GitRef,
   ) == [
     "-C",
     "/home/briansrls/.worktrees/gunbc/codex-provider-feedback-v0",
@@ -67,7 +67,7 @@ test fn dashboard_local_origin_ref_translation_is_exact() -> Bool {
     && shape_git_bare_fetch_argv(
       repo: origin,
       bundle: bundle,
-      source_ref: "refs/heads/session/codex-provider-feedback-v0" as GitRef,
+      source_ref: "refs/heads/session/codex-provider-feedback-v0" as std.types.GitRef,
     ) == [
       "--git-dir",
       "/instance/origin.git",
@@ -78,7 +78,7 @@ test fn dashboard_local_origin_ref_translation_is_exact() -> Bool {
     ]
     && shape_git_bare_update_ref_argv(
       repo: origin,
-      publish_ref: "refs/heads/main" as GitRef,
+      publish_ref: "refs/heads/main" as std.types.GitRef,
     ) == [
       "--git-dir",
       "/instance/origin.git",
@@ -235,8 +235,8 @@ test fn dashboard_poll_interval_is_a_usable_duration() -> Bool {
 
 data dashboard_health_identity_witness_note: String = "review 44058. The served document is the oracle, so the green arm feeds dashboard_instance_json's real output rather than a hand-spelled stub — a stub is exactly what let the previous scan look correct while accepting anything. The REDs are the two ways a wrong server passes a scan but must fail positional identity: a different instance, and a document that merely MENTIONS the wanted id in a nested value."
 
-fn health_result(body: String) -> DashboardExecResult {
-  DashboardExecResult { success: true, stdout: body, stderr: "" }
+fn health_result(body: String) -> gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
+  gunbc.roadmap_dashboard_instance_apply.DashboardExecResult { success: true, stdout: body, stderr: "" }
 }
 
 test fn dashboard_health_requires_intended_instance_identity() -> Bool {
@@ -294,7 +294,7 @@ test fn dashboard_refusal_receipt_is_typed_and_located() -> Bool {
     step: "verify-provider-auth",
     detail: "codex login status exited nonzero",
     receipts: [
-      DashboardProvisionStepReceipt {
+      gunbc.roadmap_dashboard_instance_apply.DashboardProvisionStepReceipt {
         kind: "verify-provider-auth",
         target: "/home/briansrls/.codex@gunbc-roadmap",
         success: false,
@@ -312,22 +312,22 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
   let lab = srv1_lab_dashboard_instance()
   let dirty = dashboard_source_preflight_decision(
     instance: lab,
-    ref_read: DashboardExecResult {
+    ref_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: true,
       stdout: "deadbeef",
       stderr: "",
     },
-    status_read: DashboardExecResult {
+    status_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: true,
       stdout: " M dag/gunbc/roadmap_dashboard_instance.dag",
       stderr: "",
     },
-    shallow_read: DashboardExecResult {
+    shallow_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: true,
       stdout: "true",
       stderr: "",
     },
-    history_remote_read: DashboardExecResult {
+    history_remote_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: true,
       stdout: "configured",
       stderr: "",
@@ -335,22 +335,22 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
   )
   let clean = dashboard_source_preflight_decision(
     instance: lab,
-    ref_read: DashboardExecResult {
+    ref_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: true,
       stdout: "deadbeef",
       stderr: "",
     },
-    status_read: DashboardExecResult {
+    status_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: true,
       stdout: "",
       stderr: "",
     },
-    shallow_read: DashboardExecResult {
+    shallow_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: true,
       stdout: "false",
       stderr: "",
     },
-    history_remote_read: DashboardExecResult {
+    history_remote_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: false,
       stdout: "",
       stderr: "unused when history is complete",
@@ -358,22 +358,22 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
   )
   let missing_remote = dashboard_source_preflight_decision(
     instance: lab,
-    ref_read: DashboardExecResult {
+    ref_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: true,
       stdout: "deadbeef",
       stderr: "",
     },
-    status_read: DashboardExecResult {
+    status_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: true,
       stdout: "",
       stderr: "",
     },
-    shallow_read: DashboardExecResult {
+    shallow_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: true,
       stdout: "true",
       stderr: "",
     },
-    history_remote_read: DashboardExecResult {
+    history_remote_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: false,
       stdout: "",
       stderr: "No such remote",
@@ -381,22 +381,22 @@ test fn dashboard_dirty_controller_source_refuses_before_apply() -> Bool {
   )
   let empty_revision = dashboard_source_preflight_decision(
     instance: lab,
-    ref_read: DashboardExecResult {
+    ref_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: true,
       stdout: "",
       stderr: "",
     },
-    status_read: DashboardExecResult {
+    status_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: true,
       stdout: "",
       stderr: "",
     },
-    shallow_read: DashboardExecResult {
+    shallow_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: true,
       stdout: "false",
       stderr: "",
     },
-    history_remote_read: DashboardExecResult {
+    history_remote_read: gunbc.roadmap_dashboard_instance_apply.DashboardExecResult {
       success: true,
       stdout: "unused",
       stderr: "",
@@ -539,17 +539,17 @@ test fn dashboard_unreachable_root_refuses_before_choosing_a_parent() -> Bool {
 }
 
 // THE ARM THAT MATTERS IS THE MIXED ONE. An unpeered host has no production liveness to compare, so the tempting shortcut is to let an absent reading compare equal to anything and move on — which would let an apply that STARTED with production served and ENDED with it unreachable report untouched, the precise reading the post-apply check exists to prevent. Equality is therefore required to agree on the arm as well as the contents: two reads compare their snapshots, two unpeered readings compare their hosts, and one of each is never equal regardless of what happened in between.\n\nThe isolation claim is the counterpart. NoProductionPeer discharges the disjointness obligation because there is no peer to overlap with, but it must not discharge the instance's OWN ownership requirement — an unowned path is unowned whether or not a production dashboard shares the machine, and preflight checks the two separately for that reason.
-fn witness_peered() -> DashboardProductionPeer {
+fn witness_peered() -> gunbc.roadmap_dashboard_instance_apply.DashboardProductionPeer {
   ProductionPeer { instance: srv1_live_dashboard_instance() }
 }
 
-fn witness_unpeered() -> DashboardProductionPeer {
-  NoProductionPeer { host: "srv2" as NonEmptyStr }
+fn witness_unpeered() -> gunbc.roadmap_dashboard_instance_apply.DashboardProductionPeer {
+  NoProductionPeer { host: "srv2" as std.types.NonEmptyStr }
 }
 
-fn witness_reading_read() -> DashboardProductionReading {
+fn witness_reading_read() -> gunbc.roadmap_dashboard_instance_apply.DashboardProductionReading {
   ProductionRead {
-    snapshot: DashboardProductionSnapshot {
+    snapshot: gunbc.roadmap_dashboard_instance_apply.DashboardProductionSnapshot {
       observed: true,
       head: "abc123",
       health: "ok",
@@ -560,14 +560,14 @@ fn witness_reading_read() -> DashboardProductionReading {
 
 test fn production_reading_never_equates_absent_with_observed() -> Bool {
   let read = witness_reading_read()
-  let unpeered = ProductionUnpeered { host: "srv2" as NonEmptyStr }
+  let unpeered = ProductionUnpeered { host: "srv2" as std.types.NonEmptyStr }
   dashboard_production_readings_equal(before: read, after: read)
     && dashboard_production_readings_equal(before: unpeered, after: unpeered)
     && !dashboard_production_readings_equal(before: read, after: unpeered)
     && !dashboard_production_readings_equal(before: unpeered, after: read)
     && !dashboard_production_readings_equal(
       before: unpeered,
-      after: ProductionUnpeered { host: "srv1" as NonEmptyStr },
+      after: ProductionUnpeered { host: "srv1" as std.types.NonEmptyStr },
     )
 }
 

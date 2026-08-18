@@ -31,11 +31,11 @@ data other_in_scope_path: String = "dag/extdeps/auth/moved_probe.dag"
 
 data out_of_scope_path: String = "dag/gunbc/probe.dag"
 
-fn observe(diff_text: String) -> ProseRowDiffObservation {
+fn observe(diff_text: String) -> gunbc.prose_row_frontier.ProseRowDiffObservation {
   prose_row_diff_observation(diff_text: diff_text)
 }
 
-fn refused_of(diff_text: String) -> List<ProseRowRef> {
+fn refused_of(diff_text: String) -> List<gunbc.prose_row_frontier.ProseRowRef> {
   match observe(diff_text: diff_text) {
     ProseRowDiffUnreadable { reason: _ } => []
     ProseRowsObserved { added: added, removed: removed } =>
@@ -43,7 +43,7 @@ fn refused_of(diff_text: String) -> List<ProseRowRef> {
   }
 }
 
-fn residue_of(diff_text: String) -> List<ProseRowRef> {
+fn residue_of(diff_text: String) -> List<gunbc.prose_row_frontier.ProseRowRef> {
   match observe(diff_text: diff_text) {
     ProseRowDiffUnreadable { reason: _ } => []
     ProseRowsObserved { added: added, removed: removed } =>

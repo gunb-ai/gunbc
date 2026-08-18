@@ -23,15 +23,15 @@ type GitlabSubscriptionTier
 
 type GitlabSeatPricing
   = FreeOfCharge
-  | ListedPerSeatMonth { per_seat_month: MoneyPerMonth, billed_annually: Bool }
+  | ListedPerSeatMonth { per_seat_month: std.measure.MoneyPerMonth, billed_annually: Bool }
   | CustomNegotiatedPricing
 
 type GitlabTierPriceRow {
   tier: GitlabSubscriptionTier
-  tier_wire_label: NonEmptyStr
+  tier_wire_label: std.types.NonEmptyStr
   seat_pricing: GitlabSeatPricing
-  included_duo_credits_per_seat_month: MoneyPerMonth
-  pricing_citation: NonEmptyStr
+  included_duo_credits_per_seat_month: std.measure.MoneyPerMonth
+  pricing_citation: std.types.NonEmptyStr
 }
 
 // GitLab Duo Agent Platform usage is metered in GitLab Credits at 1 USD per credit (volume discounts with annual commitment). Paid tiers bundle a monthly per-seat credit allowance denominated in dollars-worth of credits on the live page ('Includes 12 in GitLab Credits per user per month' on Premium, 24 on Ultimate), modeled as MoneyPerMonth per seat. Additional meters on the page: compute minutes sold in 1,000-minute packs at 10 USD one-time (the MoneyPerMinute row below is that pack price normalized per minute), and storage at 5 USD per month per 10 GiB.
@@ -88,10 +88,10 @@ data gitlab_compute_minute_overage_price: MoneyPerMinute = MoneyPerMinute {
 }
 
 type GitlabPremiumListPriceChange {
-  effective_date: NonEmptyStr
-  prior_per_seat_month: MoneyPerMonth
-  new_per_seat_month: MoneyPerMonth
-  announcement_citation: NonEmptyStr
+  effective_date: std.types.NonEmptyStr
+  prior_per_seat_month: std.measure.MoneyPerMonth
+  new_per_seat_month: std.measure.MoneyPerMonth
+  announcement_citation: std.types.NonEmptyStr
 }
 
 // The one Premium list-price change since IPO, from GitLab's own announcement (citation below): 'Effective April 3, 2023, GitLab is increasing the list price of GitLab Premium from 19 to 29 USD per user per month.' The FY2023 and FY2024 10-K sentences quoted in the provenance note are the SEC-filed references to this same event. effective_date is an ISO 8601 calendar date.

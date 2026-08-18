@@ -1,7 +1,7 @@
 module v2.test.long.typescript_import_pipeline
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data ts_import_pipeline_source: String = "module v2.test.import_pipeline\nimport v2.std.algebra { Cons, Empty }\n"
 data ts_import_pipeline_canonical_text: String = "import { Cons, Empty } from \"v2/std/algebra\";"
@@ -9,7 +9,7 @@ data ts_import_pipeline_canonical_text: String = "import { Cons, Empty } from \"
 data ts_import_pipeline_other_source: String = "module v2.test.import_pipeline_b\nimport v2.std.collection { Cons, Empty }\n"
 data ts_import_pipeline_other_text: String = "import { Cons, Empty } from \"v2/std/collection\";"
 
-fn ts_import_pipeline_spellings(third_seg: Symbol, third_spell: String) -> Map<Symbol, String> {
+fn ts_import_pipeline_spellings(third_seg: v2.std.node.Symbol, third_spell: String) -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(
       map_insert(
@@ -28,8 +28,8 @@ fn ts_import_pipeline_spellings(third_seg: Symbol, third_spell: String) -> Map<S
   )
 }
 
-fn ts_import_pipeline_target(third_seg: Symbol, third_spell: String) -> TargetModel {
-  TargetModel {
+fn ts_import_pipeline_target(third_seg: v2.std.node.Symbol, third_spell: String) -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_lex(),
@@ -78,7 +78,7 @@ fn ts_import_pipeline_parse_import_node(source: String) -> Outcome<Node> {
         f: fn(tree) {
           match ts_import_pipeline_find_import_node(tree: tree) {
             Absent =>
-              outcome_rejected(Diagnostic {
+              outcome_rejected(v2.std.diagnostic.Diagnostic {
                 reason: ^ts_import_pipeline_no_import_found,
                 at: port_locus(port: ^ts_import_pipeline_probe),
                 correction: Unavailable { reason: ExternalContractUnknown }
@@ -94,7 +94,7 @@ fn ts_import_pipeline_parse_import_node(source: String) -> Outcome<Node> {
 
 fn ts_import_pipeline_emit(
   source: String,
-  third_seg: Symbol,
+  third_seg: v2.std.node.Symbol,
   third_spell: String
 ) -> Outcome<String> {
   bind_outcome(

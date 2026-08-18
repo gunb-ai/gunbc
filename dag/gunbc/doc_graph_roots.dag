@@ -14,9 +14,9 @@ type DocHome
 type HandAuthoredDocBind {
   home: DocHome,
   slug: String,
-  primary_work: DeclarationRef,
-  additional_works: List<DeclarationRef>,
-  dissolution: PlanRetirement,
+  primary_work: std.decl_ref.DeclarationRef,
+  additional_works: List<std.decl_ref.DeclarationRef>,
+  dissolution: gunbc.plan.PlanRetirement,
 }
 
 fn hand_authored_bind_works(b: HandAuthoredDocBind) -> List<DeclarationRef> {

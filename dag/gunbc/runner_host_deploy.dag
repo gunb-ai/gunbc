@@ -4,9 +4,9 @@ module gunbc.runner_host_deploy
 data runner_host_deploy_citation: String = "VOID CITATION RETIRED (operator ruling 2026-08-06): ctrl:scripts/session-dashboard/host/* path literals and void_note twins were deleted — ctrl is a dead repo, not a live upstream. Runner slot materialization is owned in gunbc.runner_slot_provision / gunbc.runner_lifecycle on host_effect_apply. runner_host_installer_command_argv remains a legacy argv builder taking installer_path as a parameter; it is not an authority row citing ctrl."
 
 type GithubAppRunnerConfig {
-  app: DeclaredGitHubApp
-  installation_id: GitHubAppInstallationId
-  app_pem_secret: SecretRef
+  app: gunbc.auth.github_apps.DeclaredGitHubApp
+  installation_id: extdeps.github.app.GitHubAppInstallationId
+  app_pem_secret: extdeps.cloud.gcp.secret_ref.SecretRef
 }
 
 fn github_app_runner_org(config: GithubAppRunnerConfig) -> NonEmptyStr {
@@ -20,10 +20,10 @@ data gunbc_ci_github_app: GithubAppRunnerConfig = GithubAppRunnerConfig {
 }
 
 type RunnerHostDeploy {
-  host_label: NonEmptyStr
-  ssh_target: NonEmptyStr
-  runner_user: NonEmptyStr
-  job_user: NonEmptyStr
+  host_label: std.types.NonEmptyStr
+  ssh_target: std.types.NonEmptyStr
+  runner_user: std.types.NonEmptyStr
+  job_user: std.types.NonEmptyStr
   app: GithubAppRunnerConfig
   runner_count: Int
 }
@@ -74,11 +74,11 @@ data runner_host_enrollment_wall_note: String = "THE ENROLLMENT WALL, and it is 
 
 type RunnerHostAdmission
   = RunnerHostEnrolled { deploy: RunnerHostDeploy }
-  | RunnerHostUnenrolled { host_label: NonEmptyStr, reason: NonEmptyStr }
+  | RunnerHostUnenrolled { host_label: std.types.NonEmptyStr, reason: std.types.NonEmptyStr }
 
 type RunnerCommandOrRefusal
-  = RunnerCommandReady { command: ArgvCommand }
-  | RunnerCommandRefused { host_label: NonEmptyStr, reason: NonEmptyStr }
+  = RunnerCommandReady { command: extdeps.exec.command.ArgvCommand }
+  | RunnerCommandRefused { host_label: std.types.NonEmptyStr, reason: std.types.NonEmptyStr }
 
 fn fleet_intent_enrolls_host_label(label: NonEmptyStr) -> Bool {
   fold(

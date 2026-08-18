@@ -3,11 +3,11 @@ module test.claim.long.cited_symbol_resolution_witness_test
 
 data cited_symbol_resolution_long_witness_note: String = "G1 corpus-scale cited-symbol resolution witnesses — production HandAuthoredDocBind census and planted-control mutation proofs over live decl_facts + module_declaration_facts. Long lane only: each witness pays full witness-layer decl_facts scan(s) (operator 5s fast-lane rule 2026-07-12)."
 
-data cited_symbol_long_witness_layer_facts: List<DeclFact> = decl_facts(pool_roots: witness_layer_roots)
+data cited_symbol_long_witness_layer_facts: List<v2.std.decl_index.DeclFact> = decl_facts(pool_roots: witness_layer_roots)
 
-data cited_symbol_long_witness_layer_modules: List<ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: witness_layer_roots)
+data cited_symbol_long_witness_layer_modules: List<v2.lens.module_graph.ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: witness_layer_roots)
 
-fn cited_symbol_hand_authored_census_live() -> DeclarationRefResolutionCensus {
+fn cited_symbol_hand_authored_census_live() -> v2.std.decl_ref_resolution.DeclarationRefResolutionCensus {
   let pool = hand_authored_works_resolution_pool_roots()
   let facts = decl_facts(pool_roots: pool)
   let modules = module_declaration_facts_live(pool_roots: pool)
@@ -57,7 +57,7 @@ test fn cited_symbol_post7688_production_census_is_zero_violations() -> Bool {
 
 test fn cited_symbol_refusal_count_red_on_dangling_fixture() -> Bool {
   let dangling = [
-    DeclarationRef {
+    std.decl_ref.DeclarationRef {
       module_path: "v2.std.node",
       decl_name: "NoSuchDecl_G1_RED",
       field: WholeDeclaration,
@@ -98,7 +98,7 @@ test fn cited_symbol_production_census_ambiguous_count_is_zero() -> Bool {
 
 test fn cited_symbol_resolves_node_kind_authority() -> Bool {
   match resolve_declaration_ref(
-    ref: DeclarationRef {
+    ref: std.decl_ref.DeclarationRef {
       module_path: "v2.std.node",
       decl_name: "NodeKind",
       field: WholeDeclaration,
@@ -130,7 +130,7 @@ test fn cited_symbol_resolves_decl_ref_constructor() -> Bool {
 
 test fn cited_symbol_refuses_module_absent() -> Bool {
   match resolve_declaration_ref(
-    ref: DeclarationRef {
+    ref: std.decl_ref.DeclarationRef {
       module_path: "synthetic.g1_module_absent_RED",
       decl_name: "any",
       field: WholeDeclaration,
@@ -148,7 +148,7 @@ test fn cited_symbol_refuses_module_absent() -> Bool {
 
 test fn cited_symbol_refuses_declaration_absent() -> Bool {
   match resolve_declaration_ref(
-    ref: DeclarationRef {
+    ref: std.decl_ref.DeclarationRef {
       module_path: "v2.std.node",
       decl_name: "NoSuchDecl_G1_RED",
       field: WholeDeclaration,
@@ -166,14 +166,14 @@ test fn cited_symbol_refuses_declaration_absent() -> Bool {
 
 test fn cited_symbol_refuses_ambiguous_binding() -> Bool {
   let facts = [
-    DeclFact {
+    v2.std.decl_index.DeclFact {
       qualified_name: "std.node.g1_ambiguous",
       name: "g1_ambiguous",
       kind: FnItem,
       node: enforcement_red_probe_body_leaf,
       rel_path: "synthetic/a.dag",
     },
-    DeclFact {
+    v2.std.decl_index.DeclFact {
       qualified_name: "std.node.g1_ambiguous",
       name: "g1_ambiguous",
       kind: FnItem,
@@ -182,7 +182,7 @@ test fn cited_symbol_refuses_ambiguous_binding() -> Bool {
     },
   ]
   match resolve_declaration_ref(
-    ref: DeclarationRef {
+    ref: std.decl_ref.DeclarationRef {
       module_path: "v2.std.node",
       decl_name: "g1_ambiguous",
       field: WholeDeclaration,
@@ -200,7 +200,7 @@ test fn cited_symbol_refuses_ambiguous_binding() -> Bool {
 
 test fn cited_symbol_refuses_named_field_absent() -> Bool {
   match resolve_declaration_ref(
-    ref: DeclarationRef {
+    ref: std.decl_ref.DeclarationRef {
       module_path: "v2.std.node",
       decl_name: "NodeKind",
       field: NamedField { field_name: "NoSuchField_G1_RED" },

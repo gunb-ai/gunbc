@@ -5,7 +5,7 @@ data totality_witness_note: String = "The exact half of C0(b2) totality: derive 
 
 data totality_pool_roots: List<String> = ["dag", "src/v2", "src/v1"]
 
-data totality_population: List<DeclFact> = v1_complexity_decl_population(pool_roots: totality_pool_roots)
+data totality_population: List<v2.std.decl_index.DeclFact> = v1_complexity_decl_population(pool_roots: totality_pool_roots)
 
 test fn w_population_and_roster_counts_match() -> Bool {
   population_matches_roster_count(

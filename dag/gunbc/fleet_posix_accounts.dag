@@ -6,14 +6,14 @@ data fleet_posix_accounts_scope_disposition: Disposition = Terminal {
 }
 
 type PosixAccountDeclaredProbe {
-  probed_at: NonEmptyStr
-  probe_command: NonEmptyStr
-  host: NonEmptyStr
+  probed_at: std.types.NonEmptyStr
+  probe_command: std.types.NonEmptyStr
+  host: std.types.NonEmptyStr
 }
 
 type PosixSudoGrant {
-  command_path: NonEmptyStr
-  probe: SudoNopasswdProbeKind
+  command_path: std.types.NonEmptyStr
+  probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdProbeKind
 }
 
 data posix_sudo_grant_materialization_note: String = "PosixSudoGrant is the fleet-domain MATERIALIZATION carrier for std.effect_grant.Grant over ExecuteEffect: posix_sudo_grant_to_effect_grant projects command_path to filesystem_position and carries verb via verb_of_effect_shape(ExecuteEffect) -- never a parallel grant vocabulary (DESIGN 3). probe chooses the typed verification operation (execute-check, or grant-list when the binary may be absent); it is observation policy, not grant reach. WHO may sudo remains GroundedPosixPrincipal / std.access. dissolve-on = deploy-preflight envelope admits via admit_effect over projected grants."
@@ -32,14 +32,14 @@ fn posix_sudo_grant_to_effect_grant(g: PosixSudoGrant) -> Grant {
 }
 
 type GroundedPosixPrincipal {
-  posix: PosixUser
+  posix: extdeps.access.posix.PosixUser
   sudo_grants: List<PosixSudoGrant>
   declared_probe: PosixAccountDeclaredProbe
 }
 
 type DeployRunnerPrincipal {
-  unit_user: NonEmptyStr
-  job_user: NonEmptyStr
+  unit_user: std.types.NonEmptyStr
+  job_user: std.types.NonEmptyStr
 }
 
 data deploy_runner_principal_note: String = "Two-phase runner principal (#6096 declared-vs-effective): unit_user is the systemd User= on the actions-runner unit (root on srv1); job_user is the deprivileged effective principal for workflow steps (ghrunner on srv1). Deploy authorization and sudoers roster ground on job_user only — never unit_user."
@@ -201,7 +201,7 @@ type NameHumanFactors = Opaque | Compact | Pronounceable | OperatorMeaningful
 // automation label should be, and the fused coproduct made it unrepresentable.
 type NameSemanticContent
   = EncodesNoDomainMeaning
-  | EncodesAuthorityMeaning { authority: DeclarationRef }
+  | EncodesAuthorityMeaning { authority: std.decl_ref.DeclarationRef }
 
 type NameAuthorityRole = PresentationOnly | OperationalHandle | ExternalIdentityAuthority
 
@@ -421,7 +421,7 @@ fn fleet_posix_inference_service_sudo_grants() -> List<PosixSudoGrant> {
 // permitted but never required, and is never evidence of one principal.
 type PosixIdentityDomain
   = HostLocalIdentityDomain { host: product.placement_supply.HostIdentity }
-  | SharedNumericOwnershipDomain { identity: NonEmptyStr, members: List<product.placement_supply.HostIdentity> }
+  | SharedNumericOwnershipDomain { identity: std.types.NonEmptyStr, members: List<product.placement_supply.HostIdentity> }
 
 type PosixAccountOccurrence {
   host: product.placement_supply.HostIdentity
@@ -430,7 +430,7 @@ type PosixAccountOccurrence {
 
 type PosixAccountAllocation {
   occurrence: PosixAccountOccurrence
-  local_name: PosixLoginName
+  local_name: extdeps.access.posix.PosixLoginName
   uid: Int
   gid: Int
   domain: PosixIdentityDomain
@@ -439,7 +439,7 @@ type PosixAccountAllocation {
 }
 
 type PosixAccountAllocationConflict
-  = LocalNameOccupied { name: NonEmptyStr }
+  = LocalNameOccupied { name: std.types.NonEmptyStr }
   | NumericIdentityOccupied { uid: Int }
   | AllocationContradictsObservation
 
@@ -466,7 +466,7 @@ type PosixAccountAllocationStanding
 data grounding_outcome_note: String = "Absent cannot carry a remedy. Intent-absent, allocated-but-unapplied, applied-but-unobserved, observation-contradicts-allocation, drifted and grounded are six different situations with six different next actions, and an Optional answer makes them one. Only PrincipalGrounded may enter live SSH or deployment access -- that is the construction wall replacing the reverted commit's attempt to present a desired account as a grounded one."
 
 type PosixAccountConflict
-  = ObservedNameDiffersFromAllocation { observed: NonEmptyStr, allocated: NonEmptyStr }
+  = ObservedNameDiffersFromAllocation { observed: std.types.NonEmptyStr, allocated: std.types.NonEmptyStr }
   | ObservedUidDiffersFromAllocation { observed: Int, allocated: Int }
   | ObservationSubjectMismatch { observed_host: product.placement_supply.HostIdentity, allocated_host: product.placement_supply.HostIdentity }
 
@@ -483,10 +483,10 @@ type PosixAccountConflict
 // change is detectable; observed_at is when, not whether.
 type PosixAccountObservation {
   occurrence: PosixAccountOccurrence
-  observed_user: PosixUser
-  effect_receipt: ProcessReceipt
-  raw_output_identity: Fnv1a64Structural
-  observed_at: Timestamp
+  observed_user: extdeps.access.posix.PosixUser
+  effect_receipt: gunbc.fleet_lifecycle_observation.ProcessReceipt
+  raw_output_identity: std.content_hash.Fnv1a64Structural
+  observed_at: std.types.Timestamp
 }
 
 // ACCOUNT GROUNDING IS NOT ACCESS GROUNDING, and fusing them is why the earlier fold could call an
@@ -502,7 +502,7 @@ type PosixAccountObservation {
 // key login proven, narrow privilege proven, host subsumed -- is the whole srv5 canary.
 type PosixAccessObservation {
   account: PosixAccountObservation
-  observed_authorized_keys: List<SshPublicKey>
+  observed_authorized_keys: List<extdeps.ssh.SshPublicKey>
   password_login_refused: Bool
   privileged_probe_succeeded: Bool
 }
@@ -510,7 +510,7 @@ type PosixAccessObservation {
 type HostAccessOutcome
   = HostAccessGrounded { principal: GroundedPosixPrincipal }
   | HostAccessAccountNotGrounded { account_outcome: GroundedPosixPrincipalOutcome }
-  | HostAccessKeyPopulationDrifted { expected: List<SshPublicKey>, observed: List<SshPublicKey> }
+  | HostAccessKeyPopulationDrifted { expected: List<extdeps.ssh.SshPublicKey>, observed: List<extdeps.ssh.SshPublicKey> }
   | HostAccessPasswordLoginStillAdmitted
   | HostAccessPrivilegeNotProven
 
@@ -638,7 +638,7 @@ fn spark_automation_allocation_standing(host: HostIdentity) -> PosixAccountAlloc
 // down.
 type ServicePrincipalRealizationStanding
   = ServicePrincipalRealizationUnselected
-  | DynamicServicePrincipal { supervisor: NonEmptyStr }
+  | DynamicServicePrincipal { supervisor: std.types.NonEmptyStr }
   | PersistentServiceAccount { allocation: PosixAccountAllocationStanding }
 
 fn spark_inference_realization_standing(host: HostIdentity) -> ServicePrincipalRealizationStanding {
@@ -817,9 +817,9 @@ type ReportedAccountContradiction {
   modeled_gid: Int
   reported_uid: Int
   reported_gid: Int
-  reported_shell: PosixLoginShell
+  reported_shell: extdeps.access.posix.PosixLoginShell
   hosts: List<product.placement_supply.HostIdentity>
-  source: NonEmptyStr
+  source: std.types.NonEmptyStr
 }
 
 fn fleet_ci_runner_reported_contradiction() -> ReportedAccountContradiction {
@@ -865,10 +865,10 @@ data srv1_duplicate_sudoers_dropin_note: String = "srv1 carries /etc/sudoers.d/g
 type FleetAutomationAllocationStanding
   = AutomationAllocationApplied {
       host: product.placement_supply.HostIdentity
-      user: PosixUser
-      source: NonEmptyStr
+      user: extdeps.access.posix.PosixUser
+      source: std.types.NonEmptyStr
     }
-  | AutomationAllocationPending { host: product.placement_supply.HostIdentity, cause: NonEmptyStr }
+  | AutomationAllocationPending { host: product.placement_supply.HostIdentity, cause: std.types.NonEmptyStr }
 
 fn fleet_automation_user_on(host: HostIdentity) -> PosixUser {
   PosixUser {

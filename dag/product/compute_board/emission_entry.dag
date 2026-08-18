@@ -22,7 +22,7 @@ data emission_entry_note: String = "THE ENTRY POINTS THAT ACTUALLY PRODUCE THE A
 // caller has to match exhaustively, which is the widening a per-target authority exists to avoid.
 type BoardEmission<R>
   = BoardEmitted { source: String }
-  | BoardArticleNotAdmitted { causes: BoardArticleRefusalSet }
+  | BoardArticleNotAdmitted { causes: product.compute_board.admission.BoardArticleRefusalSet }
   | BoardTargetRefused { cause: R }
 
 fn emit_spice_for(article: BoardPowerInterfaceArticle) -> BoardEmission<SpiceProjectionRefusal> {

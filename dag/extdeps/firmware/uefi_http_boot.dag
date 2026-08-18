@@ -9,9 +9,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type UefiHttpBootEntry {
-  description: NonEmptyStr
-  boot_file_uri: Uri
-  interface_name: NonEmptyStr
+  description: std.types.NonEmptyStr
+  boot_file_uri: extdeps.uri.Uri
+  interface_name: std.types.NonEmptyStr
 }
 
 fn uefi_http_boot_uri_wire(entry: UefiHttpBootEntry) -> String {
@@ -20,4 +20,4 @@ fn uefi_http_boot_uri_wire(entry: UefiHttpBootEntry) -> String {
 
 type UefiHttpBootProvisioning
   = FirmwareHttpBootDhcp
-  | BcfgUriDevicePath { device_path: NonEmptyStr }
+  | BcfgUriDevicePath { device_path: std.types.NonEmptyStr }

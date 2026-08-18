@@ -3,19 +3,19 @@ module v2.test.manual.parse_forensics_scaling_witness
 
 data forensics_scaling_witness_note: String = "adhoc-c328b166-bca interpreted-parse cost forensics: per-file packrat memo stats (hits/misses/lookup_calls) at increasing corpus-file sizes, timed externally via `time ./target/release/gunbc run --claim-run`. One fn per fixture file so each can be timed as an isolated process (amortizes nothing; each pays full corpus-load overhead, which is the point -- wall time here is (fixed load) + (parse cost) and the parse-cost delta across sizes is read off the growth curve, not the absolute number)."
 
-fn forensics_scaling_stats_for_path(path: String) -> ParseMemoStats {
+fn forensics_scaling_stats_for_path(path: String) -> v2.compiler.parse.ParseMemoStats {
   let lm = dag_language_model()
   let at = port_locus(port: ^parse_stage_locus_port)
   let source_text = filesystem_read(path: path).content
   match tokenize(text: source_text, file: ^parse_forensics_scaling_file_anchor, rules: lm.lex) {
     Rejected { diagnostics: _ } =>
-      ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+      v2.compiler.parse.ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
     Accepted { value: stream, diagnostics: _ } =>
       match lm.grammar {
         ModeledGrammar { root: root } =>
           match grammar_validate_for_parse(root: root, at: at) {
             Rejected { diagnostics: _ } =>
-              ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+              v2.compiler.parse.ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
             Accepted { value: validated, diagnostics: _ } =>
               parse_production_memo_stats(
                 tokens: token_stream_remaining(stream: stream),
@@ -24,7 +24,7 @@ fn forensics_scaling_stats_for_path(path: String) -> ParseMemoStats {
               )
           }
         VoidGrammar =>
-          ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+          v2.compiler.parse.ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
       }
   }
 }

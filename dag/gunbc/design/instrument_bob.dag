@@ -40,7 +40,7 @@ Deriving the amplitude from CUMULATIVE elapsed time makes the step size irreleva
 
 type BobState {
   initial_milli_px: Int
-  elapsed_ms: Milliseconds
+  elapsed_ms: std.types.Milliseconds
   phase: BobPhase
 }
 
@@ -239,7 +239,7 @@ data frame_sequence_note: String = "THE DETERMINISTIC FRAME SEQUENCE, which is w
 The recursion is bounded by a frame budget derived from the settle time rather than by waiting for the settled phase, so termination is structural: the list cannot be longer than the budget even if the envelope were somehow changed to stop decaying."
 
 type BobFrame {
-  at_ms: Milliseconds
+  at_ms: std.types.Milliseconds
   displacement_px: Int
   phase: BobPhase
 }

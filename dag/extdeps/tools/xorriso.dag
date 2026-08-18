@@ -1,14 +1,14 @@
 module extdeps.tools.xorriso
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.gnu.org/software/xorriso/"
   }
 }
 
-data xorriso_pinned_version: VersionConstraint = ">= 1.5"
+data xorriso_pinned_version: extdeps.version.VersionConstraint = ">= 1.5"
 
 data xorriso_cli_tool: CliTool = CliTool {
   name: "xorriso",
@@ -18,7 +18,7 @@ data xorriso_cli_tool: CliTool = CliTool {
 
 service xorriso.Iso {
   operation ExtractPathBestEffort {
-    input { iso_path: NonEmptyStr, iso_internal_path: NonEmptyStr, destination: NonEmptyStr }
+    input { iso_path: std.types.NonEmptyStr, iso_internal_path: std.types.NonEmptyStr, destination: std.types.NonEmptyStr }
     output { success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -31,7 +31,7 @@ service xorriso.Iso {
   }
 
   operation ExtractTree {
-    input { iso_path: NonEmptyStr, destination: NonEmptyStr }
+    input { iso_path: std.types.NonEmptyStr, destination: std.types.NonEmptyStr }
     output { success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -44,7 +44,7 @@ service xorriso.Iso {
   }
 
   operation BuildIso {
-    input { volume_id: NonEmptyStr, output_path: NonEmptyStr, source_dir: NonEmptyStr }
+    input { volume_id: std.types.NonEmptyStr, output_path: std.types.NonEmptyStr, source_dir: std.types.NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell {
       argv: ["xorriso", "-as", "mkisofs", "-r", "-V", "{volume_id}", "-o", "{output_path}", "-graft-points", "/={source_dir}"]
@@ -57,13 +57,13 @@ service xorriso.Iso {
 
   operation ReplayBuildWithTwoMaps {
     input {
-      stock_iso_path: NonEmptyStr,
-      output_path: NonEmptyStr,
-      volume_id: NonEmptyStr,
-      map_one_source: NonEmptyStr,
-      map_one_iso_path: NonEmptyStr,
-      map_two_source: NonEmptyStr,
-      map_two_iso_path: NonEmptyStr,
+      stock_iso_path: std.types.NonEmptyStr,
+      output_path: std.types.NonEmptyStr,
+      volume_id: std.types.NonEmptyStr,
+      map_one_source: std.types.NonEmptyStr,
+      map_one_iso_path: std.types.NonEmptyStr,
+      map_two_source: std.types.NonEmptyStr,
+      map_two_iso_path: std.types.NonEmptyStr,
     }
     output { success: Bool from "exit_success" }
     transport shell {

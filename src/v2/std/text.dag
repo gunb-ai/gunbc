@@ -21,7 +21,7 @@ fn host_string_text_to_rust_host(text: String) -> String {
 }
 
 type CharResult
-  = CharFound { value: Char }
+  = CharFound { value: std.types.Char }
   | CharAbsent
 
 fn string_is_empty(s: String) -> Bool {

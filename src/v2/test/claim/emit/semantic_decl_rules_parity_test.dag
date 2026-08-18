@@ -2,11 +2,11 @@ module v2.test.emit.semantic_decl_rules_parity_test
 
 
 fn bool_coproduct() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Named { name: ^True }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } },
-      Edge { label: Named { name: ^False }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } }
+      v2.std.node.Edge { label: Named { name: ^True }, target: v2.std.node.Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } },
+      v2.std.node.Edge { label: Named { name: ^False }, target: v2.std.node.Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } }
     ],
     occurrence_id: SyntheticOccurrence
   }

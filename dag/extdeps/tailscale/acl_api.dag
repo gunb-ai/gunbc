@@ -10,7 +10,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type TailscaleAclApiError {
   message: String
-  status: HttpStatus
+  status: std.types.HttpStatus
 }
 
 service tailscale.AclAdmin {

@@ -93,21 +93,21 @@ type ContactElectricalFunction
   | PowerReturnContact
   | SignalReferenceContact
   | SingleEndedSignalContact
-  | DifferentialPairMemberContact { pair: NonEmptyStr }
-  | IncompleteDifferentialPolarityContact { pair: NonEmptyStr }
+  | DifferentialPairMemberContact { pair: std.types.NonEmptyStr }
+  | IncompleteDifferentialPolarityContact { pair: std.types.NonEmptyStr }
   | NoConnectContact
   | ReservedContact
   | FunctionUnstated
 
 type PackageContact {
-  designator: NonEmptyStr
+  designator: std.types.NonEmptyStr
   function: ContactElectricalFunction
 }
 
 // One Table 4 row before classification: the datasheet names a land and its default signal.
 type Table4PinRow {
-  designator: NonEmptyStr
-  signal_name: NonEmptyStr
+  designator: std.types.NonEmptyStr
+  signal_name: std.types.NonEmptyStr
 }
 
 data power_supply_signal_prefixes: List<NonEmptyStr> = [
@@ -250,9 +250,9 @@ fn contacts_from_table4(rows: List<Table4PinRow>) -> List<PackageContact> {
 }
 
 type PackageContactMap {
-  socket: CpuSocket
+  socket: extdeps.cpu.types.CpuSocket
   contacts: List<PackageContact>
-  authority: ExternalAuthority
+  authority: extdeps.external_authority.ExternalAuthority
 }
 
 // The three refusal causes are kept apart because their OWNERS differ. Collateral absence is a
@@ -262,10 +262,10 @@ type PackageContactMap {
 // three to the same reader and make the Altra blocker indistinguishable from a typo.
 type PackageContactMapStanding
   = PackageContactMapAdmitted { resolved: Int }
-  | ContactMapPubliclyAvailableNotIngested { document: NonEmptyStr, authority: ExternalAuthority }
+  | ContactMapPubliclyAvailableNotIngested { document: std.types.NonEmptyStr, authority: extdeps.external_authority.ExternalAuthority }
   | ContactPopulationIncomplete { expected: Int, resolved: Int }
-  | DuplicateContactDesignator { designator: NonEmptyStr }
-  | IncompleteDifferentialPolarity { pair: NonEmptyStr }
+  | DuplicateContactDesignator { designator: std.types.NonEmptyStr }
+  | IncompleteDifferentialPolarity { pair: std.types.NonEmptyStr }
 
 fn contact_designators(map: PackageContactMap) -> List<NonEmptyStr> {
   map.contacts |> map(c => c.designator)
@@ -310,7 +310,7 @@ fn classified_reserved_pin_count(contacts: List<PackageContact>) -> Int {
 // only when BOTH polarities exist under the same base name. Active-low _N names with no _P mate
 // (WE_N, RAS_N, …) stay single-ended; PCIe lanes use _M as the negative leg beside _P.
 type DifferentialPairPopulationScan {
-  counts: Map<NonEmptyStr, Int>
+  counts: Map<std.types.NonEmptyStr, Int>
 }
 
 fn scan_differential_pair_population(contacts: List<PackageContact>) -> DifferentialPairPopulationScan {
@@ -332,7 +332,7 @@ fn scan_differential_pair_population(contacts: List<PackageContact>) -> Differen
 
 type DifferentialPairStanding
   = AllDifferentialPairsComplete
-  | IncompleteDifferentialPair { pair: NonEmptyStr, member_count: Int }
+  | IncompleteDifferentialPair { pair: std.types.NonEmptyStr, member_count: Int }
 
 fn first_incomplete_polarity_pair(contacts: List<PackageContact>) -> NonEmptyStr? {
   fold(contacts, init: none, f: fn(acc, c) {
@@ -386,8 +386,8 @@ fn differential_pair_standing(contacts: List<PackageContact>) -> DifferentialPai
 // preserves the exact prior semantics — the first designator in SOURCE order whose value occurs
 // more than once, not the position where a repeat happens to be noticed.
 type DesignatorScan {
-  seen: Map<NonEmptyStr, Bool>
-  duplicated: Map<NonEmptyStr, Bool>
+  seen: Map<std.types.NonEmptyStr, Bool>
+  duplicated: Map<std.types.NonEmptyStr, Bool>
 }
 
 fn scan_designators(designators: List<NonEmptyStr>) -> DesignatorScan {
@@ -445,7 +445,7 @@ fn admit_package_contact_map(map: PackageContactMap, expected: Int) -> PackageCo
 // owner, and now it cannot be mistaken for a package fact because it cannot inhabit that type.
 type ReferenceBoardCollateralStanding
   = ReferenceBoardCollateralAvailable
-  | ReferenceBoardCollateralUnderNda { subject: NonEmptyStr, access_route: ExternalAuthority }
+  | ReferenceBoardCollateralUnderNda { subject: std.types.NonEmptyStr, access_route: extdeps.external_authority.ExternalAuthority }
 
 fn altra_reference_board_collateral_standing() -> ReferenceBoardCollateralStanding {
   ReferenceBoardCollateralUnderNda {

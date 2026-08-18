@@ -27,11 +27,11 @@ test fn witness_structure_projects() -> Bool {
     && charset_utf8.value == "utf-8"
 }
 
-fn perturbed_charset_media_type() -> MediaType {
-  MediaType {
+fn perturbed_charset_media_type() -> extdeps.http.server.MediaType {
+  extdeps.http.server.MediaType {
     top_level: TopLevelText,
     subtype: "html",
-    parameters: [MediaTypeParameter { name: "charset", value: "utf-16" }],
+    parameters: [extdeps.http.server.MediaTypeParameter { name: "charset", value: "utf-16" }],
   }
 }
 
@@ -42,7 +42,7 @@ test fn witness_perturbed_parameter_reds() -> Bool {
 }
 
 test fn witness_perturbed_subtype_reds() -> Bool {
-  let bad = MediaType { top_level: TopLevelText, subtype: "xml", parameters: [charset_utf8] }
+  let bad = extdeps.http.server.MediaType { top_level: TopLevelText, subtype: "xml", parameters: [charset_utf8] }
   media_type_wire_label(m: bad) != media_type_wire_label(m: text_html_utf8)
     && media_type_wire_label(m: bad) == "text/xml; charset=utf-8"
 }

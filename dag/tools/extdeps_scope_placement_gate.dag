@@ -4,7 +4,7 @@ module tools.extdeps_scope_placement_gate
 data extdeps_scope_placement_gate_note: String = "Server-side per-PR wall for the ExternalModelScope disk-to-roster direction (codex review 46281; modeled on the publication placement gate pattern, whose own gate was deleted by operator ruling in #7591 — this gate is independent and remains). It collects Added/Copied/Renamed paths with git.Core.DiffNameStatus at TWO bases, one per question (scope_placement_base_split_note), and refuses when (a) a dag/extdeps .dag file added by THIS CHANGE — the merge base origin/main...HEAD — is in neither scope_carrier_paths nor scope_machinery_exempt_paths (scope_placement_refused_paths — the frozen manifest is deliberately NOT an admission channel for a new file), (b) any frozen-manifest row names a file added after the freeze anchor, read over the whole post-freeze population at legacy_manifest_freeze_sha..HEAD (manifest_freeze_holds — the smuggling channel), or (c) the change itself ADDS a line to the manifest (manifest_line_observation folded to a verdict by manifest_remove_only_exit, over git.Core.DiffUnified0 against origin/main merge-base — the remove-only lifecycle made mechanical, codex review 46378; the sole admitted arm is the manifest file absent at the merge base, i.e. the PR that first introduces it, unforgeable once it exists on main). Diff failure and parse truncation are refusals, never skips. Merge-base grain on the membership arm is what makes the refusal attributable: only paths the change itself introduces are judged there, so this gate neither retroactively reds the frozen manifest population nor blocks a lane for a file some other lane landed. The wet live-cover witness (dag/test/claim/external_model_scope_live_cover_witness_test.dag) remains the whole-population re-verification. This gate dissolves with the whole storage-grain frontier into the v2.lens.mandatory_tag region promotion (compile-grain, module-name grain)."
 
 // ONE fold over a name-status diff, read at two different bases (DESIGN section 2 horizontal: one concept, every breadth). The base is the caller's parameter because WHICH base answers WHICH question is a workflow fact, not a property of the git operation (DESIGN section 3: business policy must not fuse into the extdeps interface).
-fn diff_added_paths_observation(success: Bool, raw: String) -> DiffAddedObservation {
+fn diff_added_paths_observation(success: Bool, raw: String) -> gunbc.extdeps_scope_frontier.DiffAddedObservation {
   if success {
     match git_diff_name_status_parse(raw: raw) {
       GitDiffNameStatusTruncated { pending: _, entries: _ } => DiffParseTruncated
@@ -25,19 +25,19 @@ fn diff_added_paths_observation(success: Bool, raw: String) -> DiffAddedObservat
   }
 }
 
-fn scope_placement_added_paths() -> DiffAddedObservation {
+fn scope_placement_added_paths() -> gunbc.extdeps_scope_frontier.DiffAddedObservation {
   let diff = git.Core.DiffNameStatus(
-    base: legacy_manifest_freeze_sha as GitRef,
-    head: "HEAD" as GitRef,
+    base: legacy_manifest_freeze_sha as std.types.GitRef,
+    head: "HEAD" as std.types.GitRef,
     range: TwoDot,
   )
   diff_added_paths_observation(success: diff.success, raw: diff.raw)
 }
 
-fn scope_placement_change_added_paths() -> DiffAddedObservation {
+fn scope_placement_change_added_paths() -> gunbc.extdeps_scope_frontier.DiffAddedObservation {
   let diff = git.Core.DiffNameStatus(
-    base: "origin/main" as GitRef,
-    head: "HEAD" as GitRef,
+    base: "origin/main" as std.types.GitRef,
+    head: "HEAD" as std.types.GitRef,
     range: ThreeDot,
   )
   diff_added_paths_observation(success: diff.success, raw: diff.raw)
@@ -45,7 +45,7 @@ fn scope_placement_change_added_paths() -> DiffAddedObservation {
 
 data manifest_remove_only_exit_note: String = "THE one verdict surface over ManifestLineObservation (codex review 46387: a parallel Bool predicate beside this match was two verdict authorities — deleted; the hermetic witness controls and the wet gate both route through THIS fn)."
 
-fn manifest_remove_only_exit(observation: ManifestLineObservation) -> ProcessExit {
+fn manifest_remove_only_exit(observation: gunbc.extdeps_scope_frontier.ManifestLineObservation) -> std.process.ProcessExit {
   match observation {
     ManifestUntouched => ExitSuccess
     ManifestIntroduced => ExitSuccess
@@ -61,10 +61,10 @@ fn manifest_remove_only_exit(observation: ManifestLineObservation) -> ProcessExi
   }
 }
 
-fn manifest_remove_only_verdict() -> ProcessExit {
+fn manifest_remove_only_verdict() -> std.process.ProcessExit {
   let diff = git.Core.DiffUnified0(
-    base: "origin/main" as GitRef,
-    head: "HEAD" as GitRef,
+    base: "origin/main" as std.types.GitRef,
+    head: "HEAD" as std.types.GitRef,
     range: ThreeDot,
   )
   if diff.success {
@@ -78,7 +78,7 @@ fn manifest_remove_only_verdict() -> ProcessExit {
 
 data scope_placement_base_split_note: String = "The two arms read DIFFERENT bases because they answer different questions (the defect this splits, gunbc#7644 diagnosis): the PLACEMENT arm asks 'does THIS CHANGE introduce an unrostered dag/extdeps file', which is the merge base origin/main...HEAD; the FREEZE arm asks 'does any manifest row name a file created after the freeze anchor', which is inherently the whole post-freeze population and therefore stays at legacy_manifest_freeze_sha..HEAD. Before the split both arms read the freeze base, so ONE unrostered file merged to main refused EVERY branch — the party blocked was never the party at fault (gunbc#7573 added dag/extdeps/session_dashboard.dag eleven seconds after the gate landed, its own CI ran against a gate-less base, and main then refused ten consecutive runs while unrelated lanes burned sessions proving the red was not theirs). DECLARED COVERAGE NARROWING (DESIGN section 4b meta-obligation 3, no silent regression): the freeze-base placement read incidentally re-verified roster membership over the WHOLE post-freeze population on every run; the merge-base read does not, so a file that reaches main unrostered is no longer re-refused per-PR. Bounded population: dag/extdeps .dag files added after legacy_manifest_freeze_sha whose introducing PR never executed this gate — reachable only when the gate itself changes between a PR's last CI run and its merge. Residual detection: the wet live-cover witness (test.claim.external_model_scope_live_cover_witness) still walks disk and re-verifies the whole population under its documented local recipe, and the manifest-smuggling class keeps whole-population coverage here because the freeze arm is unchanged. Restoration trigger: the v2.lens.mandatory_tag region promotion, which replaces this storage-grain gate with a compile-grain wall over every module and makes the population question structural rather than diffed."
 
-fn scope_placement_membership_verdict(observation: DiffAddedObservation) -> ProcessExit {
+fn scope_placement_membership_verdict(observation: gunbc.extdeps_scope_frontier.DiffAddedObservation) -> std.process.ProcessExit {
   match observation {
     DiffObserveFailed => exit_failure(
       reason: "extdeps scope placement gate: git.Core.DiffNameStatus(origin/main...HEAD) failed — refusing, never skipping (DESIGN section 5)"
@@ -106,7 +106,7 @@ fn scope_placement_membership_verdict(observation: DiffAddedObservation) -> Proc
   }
 }
 
-fn scope_placement_freeze_verdict(observation: DiffAddedObservation) -> ProcessExit {
+fn scope_placement_freeze_verdict(observation: gunbc.extdeps_scope_frontier.DiffAddedObservation) -> std.process.ProcessExit {
   match observation {
     DiffObserveFailed => exit_failure(
       reason: "extdeps scope placement gate: git.Core.DiffNameStatus(freeze..HEAD) failed — refusing, never skipping (DESIGN section 5)"
@@ -131,7 +131,7 @@ fn scope_placement_freeze_verdict(observation: DiffAddedObservation) -> ProcessE
 
 data language_module_home_arm_note: String = "The language-module homing arm (operator requirement, 2026-08-05). It reuses the SAME merge-base added-path observation the membership arm already reads — one diff, two questions — rather than taking a second reading of git, because which base answers which question is already settled above and a second observation would be a second authority for one fact. It refuses on the same DiffObserveFailed and DiffParseTruncated arms for the same reason: an unreadable diff must never report a clean tree. WHAT THIS ARM DOES NOT DECIDE, stated here because a refusal message is where a reader forms their model of the wall (cursor review 48573): it checks that an added path sits inside SOME declared target directory, never that it sits under the home of the target the module actually declares — the observation carries paths and no subject. An earlier revision of this message said a module 'must live under its target's declared canonical_prefix', which promised the relational check the predicate does not perform, and it also named an unregistered-target-directory roster that no longer exists. WHY IT LIVES IN THIS GATE rather than beside the rows it enforces: gunbc.language_module_home holds the decision functions and this file holds the per-PR execution, exactly the split gunbc.extdeps_scope_frontier and this gate already use. Without this arm the homing rosters would have been a predicate nothing calls — the coverage-by-illusion tier DESIGN section 6 names, where an inert lens is itself a lie."
 
-fn language_module_home_verdict(observation: DiffAddedObservation) -> ProcessExit {
+fn language_module_home_verdict(observation: gunbc.extdeps_scope_frontier.DiffAddedObservation) -> std.process.ProcessExit {
   match observation {
     DiffObserveFailed => exit_failure(
       reason: "extdeps scope placement gate: git.Core.DiffNameStatus(origin/main...HEAD) failed for the language-module homing arm — refusing, never skipping (DESIGN section 5)"
@@ -156,9 +156,9 @@ fn language_module_home_verdict(observation: DiffAddedObservation) -> ProcessExi
 }
 
 fn scope_placement_gate_verdict(
-  change_observation: DiffAddedObservation,
-  freeze_observation: DiffAddedObservation,
-) -> ProcessExit {
+  change_observation: gunbc.extdeps_scope_frontier.DiffAddedObservation,
+  freeze_observation: gunbc.extdeps_scope_frontier.DiffAddedObservation,
+) -> std.process.ProcessExit {
   let membership = scope_placement_membership_verdict(observation: change_observation)
   match membership {
     ExitFailure { code: _, reason: _ } => membership
@@ -178,7 +178,7 @@ fn scope_placement_gate_verdict(
   }
 }
 
-func run_extdeps_scope_placement_gate_body() -> ProcessExit {
+func run_extdeps_scope_placement_gate_body() -> std.process.ProcessExit {
   scope_placement_gate_verdict(
     change_observation: scope_placement_change_added_paths(),
     freeze_observation: scope_placement_added_paths(),
@@ -187,7 +187,7 @@ func run_extdeps_scope_placement_gate_body() -> ProcessExit {
 
 data scope_placement_failure_receipt_note: String = "The loudness half (gunbc#7644 diagnosis): the floor witness collapses this gate's ProcessExit to Bool via tools.ci_gates.exit_ok, so ten consecutive main runs reported the bare string 'returned Bool(false)' and named neither the refusing arm nor the offending path — the located diagnostic scope_placement_gate_verdict already builds was discarded one frame above it. This projects the SAME verdict (one authority, never a second decision path) into the claim_executor failure-receipt companion channel, the mechanism v2.std.native_agreement established for exactly this class."
 
-fn scope_placement_failure_reason(exit: ProcessExit) -> String {
+fn scope_placement_failure_reason(exit: std.process.ProcessExit) -> String {
   match exit {
     ExitSuccess => ""
     ExitFailure { code: _, reason: reason } => reason
@@ -198,10 +198,10 @@ func scope_placement_failure_receipt() -> String {
   scope_placement_failure_reason(exit: run_extdeps_scope_placement_gate_body())
 }
 
-func main() -> ProcessExit {
+func main() -> std.process.ProcessExit {
   run_extdeps_scope_placement_gate_body()
 }
 
-func run_extdeps_scope_placement_gate() -> ProcessExit {
+func run_extdeps_scope_placement_gate() -> std.process.ProcessExit {
   run_extdeps_scope_placement_gate_body()
 }

@@ -5,10 +5,10 @@ data cursor_sdk_local_binding_note: String = "Slice-E bridge only — no live wi
 
 type CursorSdkLocalCredentialAdmission
   = CursorSdkLocalCredentialAdmitted {
-      credential: CursorSdkLocalCredential
-      materialization: CursorSdkApiKeyMaterialization
+      credential: extdeps.llm.cursor_sdk.CursorSdkLocalCredential
+      materialization: extdeps.llm.cursor_sdk.CursorSdkApiKeyMaterialization
     }
-  | CursorSdkLocalCredentialRefused { reason: NonEmptyStr }
+  | CursorSdkLocalCredentialRefused { reason: std.types.NonEmptyStr }
 
 fn cursor_sdk_local_credential_from_dispatch(
   credential: CursorCredentialRef,

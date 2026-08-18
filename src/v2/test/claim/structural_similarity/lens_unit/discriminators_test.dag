@@ -1,18 +1,18 @@
 module v2.test.structural_similarity.lens_unit.discriminators
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn atom(id: Symbol) -> Node {
+fn atom(id: v2.std.node.Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
 }
 fn disj2(a: Node, b: Node) -> Node {
   node_synthetic(kind: TypeNode { connective: Disj }, children: [
-    Edge { label: Positional, target: a }, Edge { label: Positional, target: b } ])
+    v2.std.node.Edge { label: Positional, target: a }, v2.std.node.Edge { label: Positional, target: b } ])
 }
 fn compose2(a: Node, b: Node) -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [
-    Edge { label: Positional, target: a }, Edge { label: Positional, target: b } ])
+    v2.std.node.Edge { label: Positional, target: a }, v2.std.node.Edge { label: Positional, target: b } ])
 }
 
 data nickname_pair: List<Node> = [

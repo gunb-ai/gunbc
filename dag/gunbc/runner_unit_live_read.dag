@@ -2,21 +2,21 @@ module gunbc.runner_unit_live_read
 
 
 type RunnerUnitLiveReadRow {
-  unit: NonEmptyStr
+  unit: std.types.NonEmptyStr
   memory_max_raw: String
   memory_swap_max_raw: String
   memory_high_raw: String
   memory_current_raw: String
-  probed_at: NonEmptyStr
+  probed_at: std.types.NonEmptyStr
 }
 
 type RunnerUnitMemoryLiveRead {
-  unit: NonEmptyStr
-  memory_max: SystemdCgroupMemoryLimit
-  memory_swap_max: SystemdCgroupMemoryLimit
-  memory_high: SystemdCgroupMemoryLimit
-  memory_current: SystemdCgroupMemoryLimit
-  probed_at: NonEmptyStr
+  unit: std.types.NonEmptyStr
+  memory_max: extdeps.systemd.SystemdCgroupMemoryLimit
+  memory_swap_max: extdeps.systemd.SystemdCgroupMemoryLimit
+  memory_high: extdeps.systemd.SystemdCgroupMemoryLimit
+  memory_current: extdeps.systemd.SystemdCgroupMemoryLimit
+  probed_at: std.types.NonEmptyStr
 }
 
 data gunbc_runner_unit_live_read_scope_disposition: Disposition = std.disposition.Terminal {

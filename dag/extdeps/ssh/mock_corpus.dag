@@ -1,42 +1,42 @@
 module extdeps.ssh.mock_corpus
 
 
-data ssh_session_mock_case_exec: PublishedMockCase = PublishedMockCase {
+data ssh_session_mock_case_exec: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "ssh.Session.Exec",
   service: "ssh.Session",
   operation: "Exec",
   case_id: 0
 }
 
-data ssh_session_mock_case_exec_script: PublishedMockCase = PublishedMockCase {
+data ssh_session_mock_case_exec_script: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "ssh.Session.ExecScript",
   service: "ssh.Session",
   operation: "ExecScript",
   case_id: 0
 }
 
-data ssh_session_mock_case_exec_argv: PublishedMockCase = PublishedMockCase {
+data ssh_session_mock_case_exec_argv: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "ssh.Session.ExecArgv",
   service: "ssh.Session",
   operation: "ExecArgv",
   case_id: 0
 }
 
-data ssh_session_mock_case_exec_portable_words_with_stdin: PublishedMockCase = PublishedMockCase {
+data ssh_session_mock_case_exec_portable_words_with_stdin: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "ssh.Session.ExecPortableWordsWithStdin",
   service: "ssh.Session",
   operation: "ExecPortableWordsWithStdin",
   case_id: 0
 }
 
-data ssh_session_mock_case_reachability: PublishedMockCase = PublishedMockCase {
+data ssh_session_mock_case_reachability: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "ssh.Session.Reachability",
   service: "ssh.Session",
   operation: "Reachability",
   case_id: 0
 }
 
-data ssh_published_mock_corpus: List<PublishedMockCase> = [
+data ssh_published_mock_corpus: List<std.hermetic_replay.PublishedMockCase> = [
   ssh_session_mock_case_exec,
   ssh_session_mock_case_exec_script,
   ssh_session_mock_case_exec_argv,

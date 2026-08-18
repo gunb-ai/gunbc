@@ -7,11 +7,11 @@ type GunbcCliRouteSemantics
   | BoundaryDebugRoute
 
 type GunbcTestgenRoute {
-  generator: GeneratorId
+  generator: v2.std.artifact.GeneratorId
 }
 
 type GunbcTestRoute {
-  selection_fn: Symbol
+  selection_fn: v2.std.node.Symbol
 }
 
 fn gunbc_testgen_route_name_of(_route: GunbcTestgenRoute) -> Symbol {
@@ -27,7 +27,7 @@ fn gunbc_test_corpus_harness_route_name_of(_route: GunbcTestCorpusHarnessRoute) 
 }
 
 type GunbcTestCorpusHarnessRoute {
-  harness: BootstrapEvaluatorCorpusHarnessEntry
+  harness: v2.workflow.bootstrap.BootstrapEvaluatorCorpusHarnessEntry
 }
 
 fn gunbc_testgen_route_semantics(_route: GunbcTestgenRoute) -> GunbcCliRouteSemantics {

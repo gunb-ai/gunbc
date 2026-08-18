@@ -1,7 +1,7 @@
 module gunbc.plans.cardinality_refinement
 
 
-fn cardinality_refinement_body() -> List<MarkdownBlock> {
+fn cardinality_refinement_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** scoping (Feature-1 from the byte-grounding thread). **DESIGN.md + carriers are authority** (§6 no parallel ledger); each item dissolves into a wired parser/checker change + a green witness when it lands."),
     p(text: "**Verified against the live tree 2026-07-31.** Symbols, not line positions, are receipts; re-check the cited declarations before acting."),
@@ -53,7 +53,7 @@ fn cardinality_refinement_body() -> List<MarkdownBlock> {
   ]
 }
 
-data cardinality_refinement_plan: Plan = Plan {
+data cardinality_refinement_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "cardinality-refinement",
   title: "Plan — Cardinality refinement (the decidable fold-propagated refinement axis)",
   body: cardinality_refinement_body(),

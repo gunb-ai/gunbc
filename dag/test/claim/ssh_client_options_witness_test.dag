@@ -10,7 +10,7 @@ test fn w_strict_yes_serializes_to_exact_pair() -> Bool {
 }
 
 test fn w_known_hosts_path_serializes_to_exact_pair() -> Bool {
-  serialize_ssh_client_option(option: UserKnownHostsFile { path: "/home/ghrunner/.ssh/anchor" as NonEmptyStr }) == ["-o", "UserKnownHostsFile=/home/ghrunner/.ssh/anchor"]
+  serialize_ssh_client_option(option: UserKnownHostsFile { path: "/home/ghrunner/.ssh/anchor" as std.types.NonEmptyStr }) == ["-o", "UserKnownHostsFile=/home/ghrunner/.ssh/anchor"]
 }
 
 // THE DISCRIMINATING PAIR. This is the divergence the corpus carried unnoticed -- one site
@@ -37,7 +37,7 @@ test fn w_bool_and_int_domains_serialize_without_a_second_enum() -> Bool {
 test fn w_options_flatten_into_one_argv_run() -> Bool {
   serialize_ssh_client_options(options: [
     StrictHostKeyChecking { value: StrictYes },
-    UserKnownHostsFile { path: "/tmp/anchor" as NonEmptyStr },
+    UserKnownHostsFile { path: "/tmp/anchor" as std.types.NonEmptyStr },
   ]) == ["-o", "StrictHostKeyChecking=yes", "-o", "UserKnownHostsFile=/tmp/anchor"]
 }
 
@@ -49,7 +49,7 @@ test fn w_options_flatten_into_one_argv_run() -> Bool {
 // form was anchored to the registry plus whatever the machine already believed. This asserts all six
 // words in order, so removing any disabler reds here rather than silently widening what is trusted.
 test fn w_trust_posture_excludes_every_other_host_key_source() -> Bool {
-  serialize_ssh_client_options(options: openssh_exclusive_known_hosts_trust_options(known_hosts: "/tmp/a" as NonEmptyStr)) == [
+  serialize_ssh_client_options(options: openssh_exclusive_known_hosts_trust_options(known_hosts: "/tmp/a" as std.types.NonEmptyStr)) == [
     "-o", "StrictHostKeyChecking=yes",
     "-o", "UserKnownHostsFile=/tmp/a",
     "-o", "GlobalKnownHostsFile=/dev/null",

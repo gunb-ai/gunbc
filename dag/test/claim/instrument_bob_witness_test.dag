@@ -5,9 +5,9 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data instrument_bob_witness_note: String = "The three properties that make the bob a modelled behaviour rather than an animation — bounded, settling, inert — each with the control that reds it. The settle claim is the one worth reading closely: it is carried as descent evidence over the advance function, so a retune that made the envelope grow would not merely look wrong, it would fail a claim about termination."
 
-fn an_impulse(magnitude: Int) -> PhysicalImpulse {
-  PhysicalImpulse {
-    source_provider: DeclarationRef {
+fn an_impulse(magnitude: Int) -> gunbc.capability_binding.PhysicalImpulse {
+  gunbc.capability_binding.PhysicalImpulse {
+    source_provider: std.decl_ref.DeclarationRef {
       module_path: "gunbc.capability_binding",
       decl_name: "synthetic_tap_impulse",
       field: WholeDeclaration
@@ -58,7 +58,7 @@ fn witness_red_every_advanced_state_stays_bounded() -> Bool {
 
 data step_size_independence_note: String = "THE DEFECT THIS CONTROL EXISTS FOR. Decaying by each step's duration made the envelope a function of how a caller chose to advance rather than of elapsed time, and at the production interval — sixteen milliseconds against a one-hundred-and-eighty-millisecond half-life — it decayed by nothing at all. So this asserts the property directly: reaching one instant in many small steps and reaching it in one large step produce the SAME amplitude, and the production interval genuinely reduces it. A model that regressed to per-step decay fails the first conjunct AND the second."
 
-fn advance_n(s: BobState, dt_ms: Int, n: Int) -> BobState {
+fn advance_n(s: gunbc.design.instrument_bob.BobState, dt_ms: Int, n: Int) -> gunbc.design.instrument_bob.BobState {
   if n <= 0 { s } else { advance_n(s: advance(s: s, dt_ms: dt_ms), dt_ms: dt_ms, n: n - 1) }
 }
 
@@ -138,8 +138,8 @@ data platform_blindness_note: String = "The physics never learns where the knock
 
 fn witness_the_physics_is_blind_to_which_binding_produced_the_impulse() -> Bool {
   let synthetic = an_impulse(magnitude: 3000)
-  let hardware = PhysicalImpulse {
-    source_provider: DeclarationRef {
+  let hardware = gunbc.capability_binding.PhysicalImpulse {
+    source_provider: std.decl_ref.DeclarationRef {
       module_path: "extdeps.w3c.device_orientation_and_motion",
       decl_name: "devicemotion_event_type",
       field: WholeDeclaration
@@ -155,7 +155,7 @@ fn witness_the_physics_is_blind_to_which_binding_produced_the_impulse() -> Bool 
 
 data frame_sequence_witness_note: String = "The deterministic frame sequence is what makes the bob judgeable without a browser: the whole response is a finite list computed with no clock and no host, so a physics regression is a diff over a list rather than something someone has to watch for. These claims assert the four properties a renderer relies on — it is deterministic, it terminates exactly once, every frame stays inside the envelope in BOTH directions, and it actually crosses rest rather than sagging."
 
-fn a_knock_sequence() -> BobSequence {
+fn a_knock_sequence() -> gunbc.design.instrument_bob.BobSequence {
   bob_sequence(i: an_impulse(magnitude: impulse_reference_magnitude_milli), m: MotionFull, interval_ms: 16)
 }
 
@@ -203,7 +203,7 @@ fn witness_the_frame_sequence_is_deterministic() -> Bool {
   }
 }
 
-fn witness_the_sequence_terminates_exactly_once_and_is_bounded(fs: List<BobFrame>) -> Bool {
+fn witness_the_sequence_terminates_exactly_once_and_is_bounded(fs: List<gunbc.design.instrument_bob.BobFrame>) -> Bool {
   frames_terminate_exactly_once(fs: fs)
     && settled_frame_count(fs: fs) == 1
     && fs.length() <= max_frame_count(interval_ms: 16) + 1
@@ -212,7 +212,7 @@ fn witness_the_sequence_terminates_exactly_once_and_is_bounded(fs: List<BobFrame
 
 data crosses_rest_note: String = "A bobber crosses the waterline; a sag does not; and a square wave jumps over it. The sequence must start at rest, travel downward first because a knock pushes the plate away from the hand, occupy positions that are neither rest nor an extreme, appear on both sides of rest, visibly lose reach, and end at zero on its own."
 
-fn witness_the_plate_bobs_rather_than_sagging(fs: List<BobFrame>) -> Bool {
+fn witness_the_plate_bobs_rather_than_sagging(fs: List<gunbc.design.instrument_bob.BobFrame>) -> Bool {
   frames_cross_rest(fs: fs)
     && frames_visit_an_intermediate_position(fs: fs)
     && frames_max_abs_between(fs: fs, from_ms: 0, to_ms: 1) == 0
@@ -232,21 +232,21 @@ fn witness_the_waveform_passes_through_rest_rather_than_jumping() -> Bool {
 
 data reach_falls_note: String = "The reach of the SHIPPED frames diminishes: the largest displacement in the first third of the settle window strictly exceeds the largest in the last third. Stated over the emitted list rather than over the envelope function, because the defect this replaces left the envelope function correct in isolation while the sequence it produced never fell."
 
-fn witness_the_shipped_reach_actually_falls(fs: List<BobFrame>) -> Bool {
+fn witness_the_shipped_reach_actually_falls(fs: List<gunbc.design.instrument_bob.BobFrame>) -> Bool {
   let settle = max_settle_time_ms()
   frames_max_abs_between(fs: fs, from_ms: 0, to_ms: settle / 3) >
     frames_max_abs_between(fs: fs, from_ms: (settle * 2) / 3, to_ms: settle * 4)
 }
 
 fn witness_red_a_frame_outside_the_envelope_is_rejected_in_both_directions() -> Bool {
-  frame_is_within_bound(f: BobFrame { at_ms: 0, displacement_px: bob_max_travel_px, phase: BobRinging })
-    && frame_is_within_bound(f: BobFrame { at_ms: 0, displacement_px: 0 - bob_max_travel_px, phase: BobRinging })
-    && !frame_is_within_bound(f: BobFrame { at_ms: 0, displacement_px: bob_max_travel_px + 1, phase: BobRinging })
-    && !frame_is_within_bound(f: BobFrame { at_ms: 0, displacement_px: 0 - (bob_max_travel_px + 1), phase: BobRinging })
+  frame_is_within_bound(f: gunbc.design.instrument_bob.BobFrame { at_ms: 0, displacement_px: bob_max_travel_px, phase: BobRinging })
+    && frame_is_within_bound(f: gunbc.design.instrument_bob.BobFrame { at_ms: 0, displacement_px: 0 - bob_max_travel_px, phase: BobRinging })
+    && !frame_is_within_bound(f: gunbc.design.instrument_bob.BobFrame { at_ms: 0, displacement_px: bob_max_travel_px + 1, phase: BobRinging })
+    && !frame_is_within_bound(f: gunbc.design.instrument_bob.BobFrame { at_ms: 0, displacement_px: 0 - (bob_max_travel_px + 1), phase: BobRinging })
     && !frames_visit_an_intermediate_position(fs: [
-         BobFrame { at_ms: 0, displacement_px: 0, phase: BobRinging },
-         BobFrame { at_ms: 45, displacement_px: 0 - bob_max_travel_px, phase: BobRinging },
-         BobFrame { at_ms: 90, displacement_px: bob_max_travel_px, phase: BobRinging },
+         gunbc.design.instrument_bob.BobFrame { at_ms: 0, displacement_px: 0, phase: BobRinging },
+         gunbc.design.instrument_bob.BobFrame { at_ms: 45, displacement_px: 0 - bob_max_travel_px, phase: BobRinging },
+         gunbc.design.instrument_bob.BobFrame { at_ms: 90, displacement_px: bob_max_travel_px, phase: BobRinging },
        ])
 }
 

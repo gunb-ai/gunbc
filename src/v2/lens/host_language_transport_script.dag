@@ -76,7 +76,7 @@ fn transport_script_literal_ban_holds(
 
 fn transport_script_lens_verdict(
   facts: List<TransportScriptPositionFact>
-) -> LensVerdict {
+) -> v2.std.lens_verdict.LensVerdict {
   if transport_script_literal_ban_holds(facts: facts) {
     Holds
   } else {
@@ -97,6 +97,6 @@ fn transport_script_position_facts_live(path: String) -> List<TransportScriptPos
   transport_script_position_facts_for_path(path: path)
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

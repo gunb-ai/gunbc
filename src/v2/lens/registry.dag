@@ -69,7 +69,7 @@ type LensRegistryEntryV0 {
 }
 
 type LensOwnedFnV0 {
-  fn_name: Symbol
+  fn_name: v2.std.node.Symbol
   owner_module_path: String
 }
 data lens_owned_fn_llvm_instruction_cost: LensOwnedFnV0 = {

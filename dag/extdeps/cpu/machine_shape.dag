@@ -10,11 +10,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type ShapeFromCatalogInput
   = FromCpuModelCatalog {
-      domain: DomainId
-      l1_level: LevelId
-      l2_level: LevelId
-      l3_level: LevelId
-      row: CpuModelCatalogRow
+      domain: std.machine_shape.DomainId
+      l1_level: std.machine_shape.LevelId
+      l2_level: std.machine_shape.LevelId
+      l3_level: std.machine_shape.LevelId
+      row: extdeps.cpu.types.CpuModelCatalogRow
     }
 
 fn memory_level_from_l1_cache(level_id: LevelId, row: CpuModelCatalogRow) -> MemoryLevel {

@@ -1,15 +1,15 @@
 module v2.test.manual.go_language_model_anchor
 
 
-type go_anchor_language_model = LanguageModel
+type go_anchor_language_model = v2.std.language_model.LanguageModel
 
 data go_anchor: go_anchor_language_model = go_language_model()
 data go_anchor_int: Node = go_int_inhabitant_node()
 data go_anchor_add_fn_target_model: Node = go_target_model_node()
-data go_anchor_core: ModelCore = go_model_core()
-data go_anchor_formal_add_fn_production: FormalProduction = go_formal_production_fn_add()
-data go_anchor_model_core_inhabitance: List<AlgebraInhabitanceDecl> = go_model_core_inhabitance_decls()
-data go_anchor_int_algebra_inhabitance: AlgebraInhabitanceDecl = go_integer_algebra_inhabitance(facts: go_facts_int)
-data go_anchor_float_algebra_inhabitance: AlgebraInhabitanceDecl = go_float_algebra_inhabitance(facts: go_facts_float64)
-data go_anchor_bool_algebra_inhabitance: AlgebraInhabitanceDecl = go_bool_algebra_inhabitance()
-data go_anchor_string_algebra_inhabitance: AlgebraInhabitanceDecl = go_string_algebra_inhabitance(facts: go_facts_string)
+data go_anchor_core: v2.std.model_core.ModelCore = go_model_core()
+data go_anchor_formal_add_fn_production: v2.std.grammar.FormalProduction = go_formal_production_fn_add()
+data go_anchor_model_core_inhabitance: List<v2.std.model_core.AlgebraInhabitanceDecl> = go_model_core_inhabitance_decls()
+data go_anchor_int_algebra_inhabitance: v2.std.model_core.AlgebraInhabitanceDecl = go_integer_algebra_inhabitance(facts: go_facts_int)
+data go_anchor_float_algebra_inhabitance: v2.std.model_core.AlgebraInhabitanceDecl = go_float_algebra_inhabitance(facts: go_facts_float64)
+data go_anchor_bool_algebra_inhabitance: v2.std.model_core.AlgebraInhabitanceDecl = go_bool_algebra_inhabitance()
+data go_anchor_string_algebra_inhabitance: v2.std.model_core.AlgebraInhabitanceDecl = go_string_algebra_inhabitance(facts: go_facts_string)

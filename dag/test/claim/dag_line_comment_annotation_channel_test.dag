@@ -3,7 +3,7 @@ module gunbc.test.claim.dag_line_comment_annotation_channel_test
 
 data dag_line_comment_annotation_channel_note: String = "THE PRODUCTION '//' CHANNEL, asserted against the LexArtifact rather than against Accepted. Before this rule was registered, dag_lex_rules carried NO annotation rule at all, so a '//' line was not lexed as a comment: it tokenized as two dag_token_slash tokens followed by whatever its payload happened to lex as. A comment therefore 'lexed' BY ACCIDENT, exactly when every character in its payload had a semantic rule, and refused at the first character that did not — measured: '-' passed while the em-dash, the backtick and '@' each refused, and the em-dash passed inside a string literal where it is string content.\n\nThat is why an Accepted-only control is a FALSE CONTROL for this capability: 'module m // a b' lexing proves that slash-slash-ident-ident is lexable, not that a comment was recognised. Every claim below therefore reads the artifact — the annotation the channel captured, and the semantic stream it must NOT have polluted. The payload controls use characters with no semantic lex rule precisely because under the accidental route they were the refusing cases; under a real channel the payload is opaque and they are ordinary text."
 
-fn artifact_of(source: String) -> LexArtifact? {
+fn artifact_of(source: String) -> v2.std.compilers.lexing.LexArtifact? {
   match lex_walk_artifact(source: source, file: ^annotation_probe, rules: dag_lex_rules()) {
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } => Present { value: a }
     v2.std.diagnostic.Rejected { diagnostics: _ } => Absent

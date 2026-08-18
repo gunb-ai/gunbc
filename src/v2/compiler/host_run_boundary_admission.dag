@@ -7,8 +7,8 @@ data host_run_network_layers: List<NamespaceTree> = [UriTree]
 
 type HostRunBoundaryAdmission
   = HostRunBoundaryAdmitted
-  | HostRunBoundaryUnderConstructed { grade: LifecycleGrade }
-  | HostRunBoundaryRefused { tree: NamespaceTree }
+  | HostRunBoundaryUnderConstructed { grade: std.effect_grant.LifecycleGrade }
+  | HostRunBoundaryRefused { tree: std.effect_grant.NamespaceTree }
 
 fn grade_is_construction(g: LifecycleGrade) -> Bool {
   match g {

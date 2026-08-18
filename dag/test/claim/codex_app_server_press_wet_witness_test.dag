@@ -9,8 +9,8 @@ fn committed_codex_lock_text() -> String {
   filesystem_read(path: codex_runtime_lock_path as String).content
 }
 
-fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
-  AdmittedCodexRuntimeSource {
+fn committed_admitted_codex_runtime_source() -> gunbc.package_delivery.AdmittedCodexRuntimeSource {
+  gunbc.package_delivery.AdmittedCodexRuntimeSource {
     manifest_bytes: filesystem_read(path: codex_runtime_manifest_path as String).content,
     lock_bytes: committed_codex_lock_text(),
   }
@@ -34,7 +34,7 @@ test fn press_account_trip_yields_standing_or_typed_refusal_never_turn_started_h
         } else {
           match observe_codex_account_preflight(
             bundle: bundle,
-            probe_key: "wet-account-trip-1" as ProviderProbeKey,
+            probe_key: "wet-account-trip-1" as gunbc.codex_app_server_press.ProviderProbeKey,
             evidence_root: evidence.path,
             codex_home: home.path,
           ) {

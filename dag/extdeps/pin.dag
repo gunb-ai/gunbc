@@ -28,14 +28,14 @@ data pin_refresh_window_positivity_note: String = "review 44397, carried forward
 type PinSelection
   = ExactPin
   | TrackedChannel {
-      channel: NonEmptyStr
+      channel: std.types.NonEmptyStr
       refresh_window_days: std.integer.PositiveInt
     }
 
 type Pin<Subject> {
   subject: Subject
-  version: VersionIdentity
-  expected_identity: ContentHash
+  version: extdeps.version.VersionIdentity
+  expected_identity: std.content_hash.ContentHash
   selection: PinSelection
 }
 
@@ -109,7 +109,7 @@ data integrity_versus_currency_note: String = "Two questions were once fused und
 
 type CurrencyGap
   = AuthoredPinHasNoReviewDate
-  | TrackedPinHasNoResolutionDate { channel: NonEmptyStr }
+  | TrackedPinHasNoResolutionDate { channel: std.types.NonEmptyStr }
 
 fn pin_currency_gap<Subject>(pin: Pin<Subject>) -> CurrencyGap {
   match pin.selection {
@@ -122,12 +122,12 @@ fn pin_currency_gap<Subject>(pin: Pin<Subject>) -> CurrencyGap {
 data pin_refusal_cause_note: String = "Every cause is SUBJECT-AGNOSTIC, which is why they live on the generic carrier rather than beside any one instantiation. ConstraintIsNotIdentity and PinAbsent are the two ingest deficits — a range is not an identity, and no version stated at all is a DIFFERENT deficit from a stated range, so collapsing them would be a state-space conflation. TrackedResolutionUnrecorded and ObservedIdentityMismatch are the two admission refusals on Pin<Subject>. CitedDigestIdentityUnprojectable is the SubjectProjectedPin admission refusal when the subject's cited digest cannot be bridged to ContentHash (review 45470 — sha256_digest_content_hash Absent must refuse, never absorb a hardcoded fallback). CrossFamilyIdentityIncomparable is the sixth: expected and observed are both real identities but sit in different hash families, so no comparison is defined and answering `false` would be a fabricated mismatch rather than a refusal. All six name their deficit and are countable, so a migration frontier burns down visibly instead of being silently assumed complete. Subjects that fully determine cited digest identity use SubjectProjectedPin instead (no second writable expected_identity field); review 44999 and deep-eagle-728 oracle msg_36c1fcf1 — a PinRestatesSubjectMismatch validation arm had no live producer for shipped CliTool/ActionRef subjects and would have been coverage-by-illusion."
 
 type PinRefusalCause
-  = ConstraintIsNotIdentity { constraint: VersionConstraint }
+  = ConstraintIsNotIdentity { constraint: extdeps.version.VersionConstraint }
   | PinAbsent
-  | TrackedResolutionUnrecorded { channel: NonEmptyStr }
+  | TrackedResolutionUnrecorded { channel: std.types.NonEmptyStr }
   | CitedDigestIdentityUnprojectable
-  | CrossFamilyIdentityIncomparable { expected: ContentHash, observed: ContentHash }
-  | ObservedIdentityMismatch { expected: ContentHash, observed: ContentHash }
+  | CrossFamilyIdentityIncomparable { expected: std.content_hash.ContentHash, observed: std.content_hash.ContentHash }
+  | ObservedIdentityMismatch { expected: std.content_hash.ContentHash, observed: std.content_hash.ContentHash }
 
 // PinRefused carries the SUBJECT, not a name string. The first shape carried tool_name: NonEmptyStr, which re-spelled the subject's identity in the refusal and forced every consumer to join back by string equality — the same anemic-leaf defect the dimension note records for ToolPin itself. Carrying the subject means a refusal points AT the row that failed, so a consumer can project whatever identity it actually needs (a CliTool's name, a release's tag) from the modeled value rather than trusting a copied string.
 type PinAdmission<Subject>

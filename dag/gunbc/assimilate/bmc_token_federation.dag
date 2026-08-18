@@ -92,7 +92,7 @@ type SecretAccessBinding {
   member: String
   role: String
   secret: String
-  project: GcpProjectId
+  project: extdeps.cloud.gcp.gcp.GcpProjectId
 }
 
 fn bmc_secret_binding(role: String) -> SecretAccessBinding {

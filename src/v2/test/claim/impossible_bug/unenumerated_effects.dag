@@ -1,31 +1,31 @@
 module v2.test.impossible_bug.unenumerated_effects
 
 
-fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+fn atom_node(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
 fn effect_subject(signature: Node, body: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: signature },
-      Edge { label: Positional, target: body },
+      v2.std.node.Edge { label: Positional, target: signature },
+      v2.std.node.Edge { label: Positional, target: body },
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-data effect_derived_from_signature_input: Node = Node {
+data effect_derived_from_signature_input: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
+    v2.std.node.Edge {
       label: Named { name: ^effect_read_subject_field },
       target: effect_subject(signature: atom_node(s: ^read_signature_symbol), body: atom_node(s: ^read_signature_symbol))
     },
-    Edge {
+    v2.std.node.Edge {
       label: Named { name: ^effect_write_subject_field },
       target: effect_subject(signature: atom_node(s: ^write_signature_symbol), body: atom_node(s: ^write_signature_symbol))
     },
@@ -35,41 +35,41 @@ data effect_derived_from_signature_input: Node = Node {
 
 data explicit_reread_input: Node = effect_subject(signature: atom_node(s: ^read_signature_symbol), body: atom_node(s: ^explicit_reread_symbol))
 
-data falsification_redundant_read: Node = Node {
+data falsification_redundant_read: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^effect_signature_field }, target: atom_node(s: ^read_signature_symbol) },
-    Edge { label: Named { name: ^effect_body_field }, target: atom_node(s: ^read_signature_symbol) },
+    v2.std.node.Edge { label: Named { name: ^effect_signature_field }, target: atom_node(s: ^read_signature_symbol) },
+    v2.std.node.Edge { label: Named { name: ^effect_body_field }, target: atom_node(s: ^read_signature_symbol) },
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data claim_effect_derived_from_signature: TestClaim = CompilesClaim {
+data claim_effect_derived_from_signature: v2.std.verification.TestClaim = CompilesClaim {
   label: "effect lens derives read write shape from signature",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: effect_derived_from_signature_input,
   expected_value: effect_derived_from_signature_input,
-  classification: TestClassification { tier: Tier2, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
 }
 
-data claim_explicit_reread_passes: TestClaim = CompilesClaim {
+data claim_explicit_reread_passes: v2.std.verification.TestClaim = CompilesClaim {
   label: "explicit reread primitive records intent without effect side taxonomy",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: explicit_reread_input,
   expected_value: explicit_reread_input,
-  classification: TestClassification { tier: Tier2, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
 }
 
-data claim_redundant_read_caught: TestClaim = DiagnosticClaim {
+data claim_redundant_read_caught: v2.std.verification.TestClaim = DiagnosticClaim {
   label: "redundant read without intervening write is rejected by effect lens",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_redundant_read,
   expected_rejection: diagnostics_singleton(
-      d: Diagnostic {
+      d: v2.std.diagnostic.Diagnostic {
         reason: ^impossible_bug_reason_redundant_read,
         at: node_locus(node: falsification_redundant_read),
         correction: Suggested { node: explicit_reread_input }
       }
     ),
-  classification: TestClassification { tier: Tier2, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier2, layer: Unit }
 }

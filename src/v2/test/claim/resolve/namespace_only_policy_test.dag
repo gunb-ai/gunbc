@@ -1,13 +1,13 @@
 module v2.test.resolve.namespace_only_policy
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn policy_pilot_namespace_with_index(
-  symbol_index: SymbolIndex,
-  module_qn: QualifiedName
-) -> Namespace {
-  Namespace {
+  symbol_index: v2.std.symbol_index.SymbolIndex,
+  module_qn: v2.std.qualified_name.QualifiedName
+) -> v2.compiler.resolve.Namespace {
+  v2.compiler.resolve.Namespace {
     bindings: empty_map(),
     canonical_symbols: empty_canonical_symbol_set(),
     symbol_index: symbol_index,
@@ -15,8 +15,8 @@ fn policy_pilot_namespace_with_index(
   }
 }
 
-fn policy_pilot_atom(identity: Symbol) -> Node {
-  Node {
+fn policy_pilot_atom(identity: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -24,18 +24,18 @@ fn policy_pilot_atom(identity: Symbol) -> Node {
 }
 
 fn policy_pilot_resolve(
-  policy: NameResolutionPolicy,
-  position: QualifiedName,
-  symbol_index: SymbolIndex,
-  module_qn: QualifiedName,
-  identity: Symbol
+  policy: v2.std.resolution_policy.NameResolutionPolicy,
+  position: v2.std.qualified_name.QualifiedName,
+  symbol_index: v2.std.symbol_index.SymbolIndex,
+  module_qn: v2.std.qualified_name.QualifiedName,
+  identity: v2.std.node.Symbol
 ) -> Bool {
   let namespace = policy_pilot_namespace_with_index(
     symbol_index: symbol_index,
     module_qn: module_qn
   )
   match resolve_atom(
-    ctx: ResolveContext {
+    ctx: v2.compiler.resolve.ResolveContext {
       scope: scope_from_namespace(namespace: namespace),
       namespace: namespace,
       policy: policy,
@@ -52,8 +52,8 @@ fn policy_pilot_resolve(
 }
 
 fn policy_pilot_resolve_yes(
-  policy: NameResolutionPolicy,
-  position: QualifiedName
+  policy: v2.std.resolution_policy.NameResolutionPolicy,
+  position: v2.std.qualified_name.QualifiedName
 ) -> Bool {
   policy_pilot_resolve(
     policy: policy,
@@ -65,19 +65,19 @@ fn policy_pilot_resolve_yes(
 }
 
 fn policy_pilot_resolve_rejects_with_reason(
-  policy: NameResolutionPolicy,
-  position: QualifiedName,
-  symbol_index: SymbolIndex,
-  module_qn: QualifiedName,
-  identity: Symbol,
-  reason: Symbol
+  policy: v2.std.resolution_policy.NameResolutionPolicy,
+  position: v2.std.qualified_name.QualifiedName,
+  symbol_index: v2.std.symbol_index.SymbolIndex,
+  module_qn: v2.std.qualified_name.QualifiedName,
+  identity: v2.std.node.Symbol,
+  reason: v2.std.node.Symbol
 ) -> Bool {
   let namespace = policy_pilot_namespace_with_index(
     symbol_index: symbol_index,
     module_qn: module_qn
   )
   match resolve_atom(
-    ctx: ResolveContext {
+    ctx: v2.compiler.resolve.ResolveContext {
       scope: scope_from_namespace(namespace: namespace),
       namespace: namespace,
       policy: policy,

@@ -11,8 +11,8 @@ module extdeps.vendor.lotes
 // different facts: Lotes exists and is citable regardless of whether a community forum post
 // correctly identifies it as this socket's maker. Minting the company only once the attribution
 // firms up would mean the attribution row had nowhere to point.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.lotes.cc/en/about.php"
   }
@@ -20,11 +20,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data lotes_registrant_note: String = "Lotes Co., Ltd is cited from its corporate site as a manufacturer of sockets, connectors and loading mechanisms. This module owns only the company entity. The LGA4926 attachment part numbers attributed to it, and the strength of that attribution, live in extdeps.cpu_attachment.ilm4926."
 
-data lotes: Vendor<Hardware> = Vendor { legal_name: "Lotes Co., Ltd" }
+data lotes: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "Lotes Co., Ltd" }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.vendor.lotes",
       decl_name: "lotes",
       field: WholeDeclaration

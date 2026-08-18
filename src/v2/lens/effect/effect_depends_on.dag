@@ -31,9 +31,9 @@ fn effect_claim_tree() -> InferredTree {
 }
 
 type LensEffectClaim {
-  input: InferredTree
-  expected: EffectFact
-  actual: Witness<EffectFact>
+  input: v2.compiler.infer.InferredTree
+  expected: v2.lens.effect.EffectFact
+  actual: Witness<v2.lens.effect.EffectFact>
 }
 
 data effect_depends_on_claim: LensEffectClaim = LensEffectClaim {

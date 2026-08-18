@@ -5,13 +5,13 @@ type InferReceiptCase
 
   = InferDiagnosticReceiptCase {
       label: String
-      input_symbol: Symbol
+      input_symbol: v2.std.node.Symbol
       input: Node
-      expected_rejection: NonEmptyDiagnostics
+      expected_rejection: v2.std.diagnostic.NonEmptyDiagnostics
     }
   | InferCompilesReceiptCase {
       label: String
-      input_symbol: Symbol
+      input_symbol: v2.std.node.Symbol
       input: Node
       expected_value: Node
     }

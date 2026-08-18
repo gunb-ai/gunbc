@@ -7,15 +7,15 @@ type HealthzEffectiveRead {
 }
 
 type RoadmapSiteSurfaceArtifact {
-  url_path: NonEmptyStr
+  url_path: std.types.NonEmptyStr
   body: String
-  digest: Fnv1a64Structural
+  digest: std.content_hash.Fnv1a64Structural
 }
 
 type RoadmapSiteSurfaceBundle {
-  subject_identity: Fnv1a64Structural
-  producer_identity: Fnv1a64Structural
-  bundle_identity: Fnv1a64Structural
+  subject_identity: std.content_hash.Fnv1a64Structural
+  producer_identity: std.content_hash.Fnv1a64Structural
+  bundle_identity: std.content_hash.Fnv1a64Structural
   roadmap_md: RoadmapSiteSurfaceArtifact
   dispatch_json: RoadmapSiteSurfaceArtifact
   daily_html: RoadmapSiteSurfaceArtifact

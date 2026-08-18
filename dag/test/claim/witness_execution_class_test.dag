@@ -50,13 +50,13 @@ test fn witness_classifier_hermetic_splits_on_emitter_carriage_with_typed_cause(
   }
 }
 
-fn census_fixture_rows() -> List<WitnessClassRow> {
+fn census_fixture_rows() -> List<gunbc.witness_execution_class.WitnessClassRow> {
   [
-    WitnessClassRow { entry: "a_test.dag", function: "w_meet", class: NativeRequired },
-    WitnessClassRow { entry: "a_test.dag", function: "w_live", class: NativeLiveObservation },
-    WitnessClassRow { entry: "b_test.dag", function: "w_wet", class: EffectObligation },
-    WitnessClassRow { entry: "c_test.dag", function: "w_interp", class: InterpreterSubjectTest },
-    WitnessClassRow { entry: "d_test.dag", function: "w_blocked", class: NativeBlocked { cause: GeneralWitnessTargetModelUnavailable } }
+    gunbc.witness_execution_class.WitnessClassRow { entry: "a_test.dag", function: "w_meet", class: NativeRequired },
+    gunbc.witness_execution_class.WitnessClassRow { entry: "a_test.dag", function: "w_live", class: NativeLiveObservation },
+    gunbc.witness_execution_class.WitnessClassRow { entry: "b_test.dag", function: "w_wet", class: EffectObligation },
+    gunbc.witness_execution_class.WitnessClassRow { entry: "c_test.dag", function: "w_interp", class: InterpreterSubjectTest },
+    gunbc.witness_execution_class.WitnessClassRow { entry: "d_test.dag", function: "w_blocked", class: NativeBlocked { cause: GeneralWitnessTargetModelUnavailable } }
   ]
 }
 
@@ -72,12 +72,12 @@ test fn witness_census_partitions_the_population_exactly() -> Bool {
 }
 
 test fn witness_census_RED_planted_duplicate_identity_refuses_exactly_once() -> Bool {
-  let planted = concat(census_fixture_rows(), [WitnessClassRow { entry: "a_test.dag", function: "w_meet", class: EffectObligation }])
+  let planted = concat(census_fixture_rows(), [gunbc.witness_execution_class.WitnessClassRow { entry: "a_test.dag", function: "w_meet", class: EffectObligation }])
   every_identity_classified_exactly_once(rows: census_fixture_rows())
     && !every_identity_classified_exactly_once(rows: planted)
 }
 
-fn first_declared_axis() -> ClassificationAxis {
+fn first_declared_axis() -> gunbc.witness_execution_class.ClassificationAxis {
   match declared_class_precedence.first() {
     Present { value: axis } => axis
     Absent => CarriageAxis

@@ -8,7 +8,7 @@ module v2.test.claim.body_lowering.arrow_body_form_witness
 // ingested-module value rows live in stern-wren-884's atom_body_discriminator receipt
 // (#8248) — extended here only after that PR merges to main.
 
-fn arrow_body_form_fixture_atom(identity: Symbol) -> Node {
+fn arrow_body_form_fixture_atom(identity: v2.std.node.Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Atom { identity: identity } },
     children: []
@@ -19,10 +19,10 @@ fn arrow_body_form_fixture_arrow_with_body(body: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_domain) },
-      Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
-      Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      v2.std.node.Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_domain) },
+      v2.std.node.Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
+      v2.std.node.Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_return) },
+      v2.std.node.Edge { label: Named { name: ^arrow_body_edge }, target: body }
     ]
   )
 }
@@ -32,7 +32,7 @@ fn arrow_body_form_id_arrow_fixture() -> Node {
     domain: node_synthetic(
       kind: TypeNode { connective: Conj },
       children: [
-        Edge {
+        v2.std.node.Edge {
           label: Named { name: ^dag_binding_param_x },
           target: dag_type_atom_node(identity: dag_int_type_binding())
         }
@@ -66,7 +66,7 @@ fn arrow_body_form_zero_arrow_fixture() -> Optional<Node> {
 // wrapper-payload conflation this witness population exists to keep out. The `Rejected`
 // arm FAILS the witness rather than skipping it — an unadmittable fixture is a defect in
 // the fixture, not a reason to report green.
-fn abf_admitted_add_arrow_tree() -> Outcome<NormalizedTree> {
+fn abf_admitted_add_arrow_tree() -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   admit_normalized_tree(root: dag_add_arrow_with_body_node(), diagnostics: None)
 }
 
@@ -112,7 +112,7 @@ test fn arrow_body_form_classify_record_construct_holds() -> Bool {
     target: node_synthetic(
       kind: TypeNode { connective: Conj },
       children: [
-        Edge {
+        v2.std.node.Edge {
           label: Named { name: ^arrow_body_form_record_field },
           target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_record_value)
         }
@@ -163,7 +163,7 @@ test fn arrow_body_form_value_illegal_child_refused_well_formed_holds() -> Bool 
     n: arrow_body_form_fixture_arrow_with_body(
       body: node_synthetic(
         kind: ComputationNode { behavior: Value },
-        children: [Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_value_child) }]
+        children: [v2.std.node.Edge { label: Positional, target: arrow_body_form_fixture_atom(identity: ^arrow_body_form_value_child) }]
       )
     )
   )

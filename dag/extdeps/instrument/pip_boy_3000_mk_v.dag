@@ -1,22 +1,22 @@
 module extdeps.instrument.pip_boy_3000_mk_v
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.thewandcompany.com/fallout-pip-boy/"
   }
 }
 
-data pip_boy_mk_v_manual_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data pip_boy_mk_v_manual_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.thewandcompany.com/pip-boy-manual/"
   }
 }
 
-data pip_boy_mk_v_retail_listing_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data pip_boy_mk_v_retail_listing_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.amazon.com/dp/B0CWPNXHQ4"
   }
@@ -27,9 +27,9 @@ type PipBoy3000MkV
 
 data pip_boy_3000_mk_v: PipBoy3000MkV = PipBoy3000MkVReplica
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.instrument.pip_boy_3000_mk_v",
       decl_name: "pip_boy_3000_mk_v",
       field: WholeDeclaration
@@ -44,13 +44,13 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 data manufacturer_edge_note: String = "THE SHARED MANUFACTURER IS A TYPED EDGE, NOT A SENTENCE (review finding 48251, 2026-08-04: the vendor row was standalone and nothing read it). Both products are manufactured by the same company, and an earlier revision stated that only in the separation notes — a claim about a real entity, asserted in prose, where the graph could carry it. The edge points at the one cited vendor declaration, so 'same manufacturer, different subjects' becomes a fact a consumer can derive instead of a sentence two modules each restate. This is the same axis the SEC issuer corpus settled: the folder says which authority produced the facts, a typed edge says which entity they are about."
 
-data pip_boy_mk_v_manufacturer: Vendor<Hardware> = the_wand_company
+data pip_boy_mk_v_manufacturer: Vendor<extdeps.hardware.Hardware> = the_wand_company
 
 data subject_separation_note: String = "This module models the Fallout TV series Pip-Boy 3000 Mk V ONLY, and it carries only what THIS product's own manual grounds. The Fallout 3 / New Vegas Pip-Boy 3000 is a separate independently governed product with its own module. They share a manufacturer and a family name; neither makes them one subject. DESIGN section 3 'External upstream decomposition'."
 
 data manual_read_path_note: String = "PROVENANCE: read directly from the manual URI above (2026-08-04), and this module is much shorter than its sibling because a direct read is what shortened it. An earlier revision carried a settings menu — Glitch on tap, Tap threshold, CRT jitter, Vertical shift — that this manual does not contain: those are the sibling product's settings, attributed here by a search index that had both manuals in scope. The mechanism is recorded at the sibling's compliance_block_names_the_mk_v_note. Nothing replaced them, because the correct action on discovering a fact belongs to another subject is to remove it, not to relocate a guess."
 
-data maintenance_submenu_wording: NonEmptyStr = "The Pip-Boy's various settings can be adjusted via the MAINTENANCE submenu."
+data maintenance_submenu_wording: std.types.NonEmptyStr = "The Pip-Boy's various settings can be adjusted via the MAINTENANCE submenu."
 
 data variant_identifiers_must_be_corpus_unique_note: String = "MkVClock IS THE MANUAL'S 'Clock', RENAMED BECAUSE THE IDENTIFIER COLLIDED — the cited wording is untouched in the label below and in the retail listing, so nothing about the upstream claim moved. The bare identifier had to move because the interpreter resolves a data item's free names through a FLAT, corpus-wide registry: when the floor re-evaluates an imported data item to compute the affected set, it evaluates the item's body in the IMPORTING entry's closure with an empty environment, so every free name resolves against that closure's registry rather than this module's scope. `Clock` is already taken there — extdeps.clock declares a service Clock and std.resources declares a resource Clock — so `pip_boy_mk_v_capabilities` re-evaluated inside a witness bound the service, found no variant, and refused with `undefined variable: Clock`. It typechecked and ran green everywhere EXCEPT that path, which is why it reached CI: the collision is invisible from inside the module that owns the name. The other seven identifiers are corpus-unique and stay as authored. The rule this leaves behind for anyone adding a capability: a nullary variant identifier is a corpus-wide name, not a module-local one, so check it is unique before authoring it — the type-stem prefix the rest of the corpus uses (SalienceFocal, ReadingStatus, AuditionRestrained) is the convention that makes that automatic."
 
@@ -64,7 +64,7 @@ type PipBoyMkVCapability
   | AlarmSnooze
   | FmRadio
 
-fn pip_boy_mk_v_capability_label(c: PipBoyMkVCapability) -> NonEmptyStr {
+fn pip_boy_mk_v_capability_label(c: PipBoyMkVCapability) -> std.types.NonEmptyStr {
   match c {
     DisplayColourSelection => "Changing the display colour"
     DisplayBrightness => "Setting the display brightness"
@@ -91,8 +91,8 @@ data pip_boy_mk_v_capabilities: List<PipBoyMkVCapability> = [
 data capability_roster_grain_note: String = "These are the manual's own section headings for what the MAINTENANCE submenu and the mode selector expose, not a settings-menu roster transcribed entry by entry as the sibling module carries. The grain differs because the two manuals are written differently, and forcing this product's facts into the sibling's shape would be modeling the sibling rather than this product. Absence of a display-effect capability here is not a denial: the downstream join holds that as a typed coverage obligation."
 
 // The regulatory block — 'Model name: PIP-BOY 3000 Mk V, Model number: WRC18423. Issuing Party: The Wand Company Limited' — appears IDENTICALLY in this manual and in the Fallout 3 / New Vegas manual. It therefore does NOT discriminate the two products, and an earlier revision of this module carried WRC18423 as this product's identifying model number on exactly that mistake. No model-number row is declared here. The discriminators that actually hold are the manual URI, the licensor on the retail listing, and the capability rosters themselves.
-data pip_boy_mk_v_retail_listing_title: NonEmptyStr = "Fallout from The Wand Company: Pip-Boy Life Size Wearable Cosplay die-cast Replica. Memory Foam Cuff, LCD Screen, FM Radio, Alarm Clock and Stand. Officially Licensed Collectible by Amazon Studios."
+data pip_boy_mk_v_retail_listing_title: std.types.NonEmptyStr = "Fallout from The Wand Company: Pip-Boy Life Size Wearable Cosplay die-cast Replica. Memory Foam Cuff, LCD Screen, FM Radio, Alarm Clock and Stand. Officially Licensed Collectible by Amazon Studios."
 
-data pip_boy_mk_v_licensing_statement: NonEmptyStr = "Officially Licensed Collectible by Amazon Studios."
+data pip_boy_mk_v_licensing_statement: std.types.NonEmptyStr = "Officially Licensed Collectible by Amazon Studios."
 
 data retail_listing_shape_note: String = "Flat cited leaves rather than a shared record, for the reason stated at the sibling product's retail_listing_shape_note; the dissolve-on is the same."

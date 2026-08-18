@@ -2,12 +2,12 @@ module v2.std.test_claim_falsification
 
 
 type InterpreterTrace {
-  pinned_eval_call: Symbol
-  diagnostics: List<Diagnostic>
+  pinned_eval_call: v2.std.node.Symbol
+  diagnostics: List<v2.std.diagnostic.Diagnostic>
 }
 
 type ExecutionEvidence
-  = Host { receipt: EmitHostRunReceipt }
+  = Host { receipt: v2.std.host_run.EmitHostRunReceipt }
   | Interpreter { trace: InterpreterTrace }
   | EvidenceNone
 

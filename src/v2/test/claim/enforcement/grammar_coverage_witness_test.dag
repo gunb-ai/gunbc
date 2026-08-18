@@ -1,7 +1,7 @@
 module v2.test.claim.enforcement.grammar_coverage_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 fn gc_witness_live_dag_roster() -> List<String> {
   grammar_coverage_paths_for_tree(
@@ -29,19 +29,19 @@ data gc_witness_v2_paths: List<String> = [
   "src/v2/std/nat.dag"
 ]
 
-fn gc_witness_smoke_receipt_live() -> GrammarCoverageTreeReceipt {
+fn gc_witness_smoke_receipt_live() -> v2.lens.enforcement.grammar_coverage.GrammarCoverageTreeReceipt {
   grammar_coverage_tree_census(tree_root: "dag", paths: gc_witness_smoke_paths)
 }
 
-fn gc_witness_dag_tree_receipt_live() -> GrammarCoverageTreeReceipt {
+fn gc_witness_dag_tree_receipt_live() -> v2.lens.enforcement.grammar_coverage.GrammarCoverageTreeReceipt {
   grammar_coverage_tree_census(tree_root: "dag", paths: gc_witness_dag_paths)
 }
 
-fn gc_witness_v1_tree_receipt_live() -> GrammarCoverageTreeReceipt {
+fn gc_witness_v1_tree_receipt_live() -> v2.lens.enforcement.grammar_coverage.GrammarCoverageTreeReceipt {
   grammar_coverage_tree_census(tree_root: "src/v1", paths: gc_witness_v1_paths)
 }
 
-fn gc_witness_v2_tree_receipt_live() -> GrammarCoverageTreeReceipt {
+fn gc_witness_v2_tree_receipt_live() -> v2.lens.enforcement.grammar_coverage.GrammarCoverageTreeReceipt {
   grammar_coverage_tree_census(tree_root: "src/v2", paths: gc_witness_v2_paths)
 }
 

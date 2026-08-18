@@ -106,21 +106,21 @@ type UpdateHostKeysValue
 // new concepts by re-invention).
 type SshClientOption
   = StrictHostKeyChecking { value: StrictHostKeyCheckingValue }
-  | UserKnownHostsFile { path: NonEmptyStr }
-  | GlobalKnownHostsFile { path: NonEmptyStr }
-  | KnownHostsCommand { command: NonEmptyStr }
+  | UserKnownHostsFile { path: std.types.NonEmptyStr }
+  | GlobalKnownHostsFile { path: std.types.NonEmptyStr }
+  | KnownHostsCommand { command: std.types.NonEmptyStr }
   | VerifyHostKeyDNS { value: VerifyHostKeyDnsValue }
   | UpdateHostKeys { value: UpdateHostKeysValue }
   | BatchMode { enabled: Bool }
-  | ConnectTimeout { seconds: Second }
-  | ConfigFile { path: NonEmptyStr }
-  | IdentityFile { path: NonEmptyStr }
+  | ConnectTimeout { seconds: std.measure.Second }
+  | ConfigFile { path: std.types.NonEmptyStr }
+  | IdentityFile { path: std.types.NonEmptyStr }
   | IdentitiesOnly { enabled: Bool }
-  | IdentityAgent { path: NonEmptyStr }
-  | PreferredAuthentications { methods: NonEmptyStr }
+  | IdentityAgent { path: std.types.NonEmptyStr }
+  | PreferredAuthentications { methods: std.types.NonEmptyStr }
   | PasswordAuthentication { enabled: Bool }
   | KbdInteractiveAuthentication { enabled: Bool }
-  | User { name: NonEmptyStr }
+  | User { name: std.types.NonEmptyStr }
 
 // The ONE place each keyword's wire spelling lives. A rename upstream is a one-line edit here
 // rather than a corpus-wide grep.

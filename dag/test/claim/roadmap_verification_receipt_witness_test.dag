@@ -3,29 +3,29 @@ module test.claim.roadmap_verification_receipt_witness_test
 
 data verification_receipt_witness_note: String = "GREEN-BY-CONSTRUCTION witness for the exact-head verification model. The fixture supplies every required subject field, one structural validation operation, one realized program-plus-argv command, and separated exit/stdout/stderr evidence. The discriminating RED changes only head_sha: the old receipt remains readable and passed, but verification_evidence_moves_lamp refuses it for the new head. The legacy control supplies the old decoder's most favourable value, passed, and still cannot move the lamp because no subject can be recovered from it."
 
-fn subject_at(head: CommitSha) -> VerificationSubject {
-  VerificationSubject {
-    node_identity: "node-identity-019" as NonEmptyStr as RoadmapNodeIdentity,
+fn subject_at(head: std.types.CommitSha) -> gunbc.roadmap_verification_receipt.VerificationSubject {
+  gunbc.roadmap_verification_receipt.VerificationSubject {
+    node_identity: "node-identity-019" as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeIdentity,
     criteria_digest: content_hash_atom(value: "criteria-v3"),
     attempt_key: "feedfacefeedface",
-    branch: "dispatch/exact-head-afeedfacefeedface" as NonEmptyStr,
+    branch: "dispatch/exact-head-afeedfacefeedface" as std.types.NonEmptyStr,
     head_sha: head,
     change_window_identity: git_diff_window_absent_identity(),
   }
 }
 
-fn exact_head_receipt(head: CommitSha) -> VerificationReceipt {
-  VerificationReceipt {
+fn exact_head_receipt(head: std.types.CommitSha) -> gunbc.roadmap_verification_receipt.VerificationReceipt {
+  gunbc.roadmap_verification_receipt.VerificationReceipt {
     subject: subject_at(head: head),
     oracle_identity: content_hash_of_value(value: "pinned-oracle"),
     executions: [
-      ValidationExecution {
+      gunbc.roadmap_verification_receipt.ValidationExecution {
         validation: GunbcClaimValidation {
           entry: "dag/test/claim/exact_head_test.dag" as std.types.FilePath,
-          function: "exact_head_holds" as NonEmptyStr,
+          function: "exact_head_holds" as std.types.NonEmptyStr,
         },
-        command: ModeledValidationCommand {
-          label: "gunbc-claim" as NonEmptyStr,
+        command: gunbc.roadmap_execution_contract.ModeledValidationCommand {
+          label: "gunbc-claim" as std.types.NonEmptyStr,
           program: "/opt/gunbc/bin/gunbc" as std.types.FilePath,
           args: [
             "run", "--claim-run", "--entry",
@@ -44,8 +44,8 @@ fn exact_head_receipt(head: CommitSha) -> VerificationReceipt {
   }
 }
 
-data head_a: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as CommitSha
-data head_b: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as CommitSha
+data head_a: std.types.CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as std.types.CommitSha
+data head_b: std.types.CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as std.types.CommitSha
 
 test fn complete_exact_head_receipt_constructs_and_matches() -> Bool {
   let expected = subject_at(head: head_a)
@@ -99,14 +99,14 @@ test fn one_attempt_addresses_multiple_heads_without_overwrite() -> Bool {
   let absent_identity = git_diff_window_absent_identity().digest as String
   let path_a = dispatch_attempt_verification_receipt_path_for_instance(
     instance: instance,
-    node_id: "exact-head-node" as NonEmptyStr as RoadmapNodeId,
+    node_id: "exact-head-node" as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeId,
     attempt_key: "feedfacefeedface",
     head_sha: head_a as String,
     window_identity_hex: absent_identity,
   )
   let path_b = dispatch_attempt_verification_receipt_path_for_instance(
     instance: instance,
-    node_id: "exact-head-node" as NonEmptyStr as RoadmapNodeId,
+    node_id: "exact-head-node" as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeId,
     attempt_key: "feedfacefeedface",
     head_sha: head_b as String,
     window_identity_hex: absent_identity,
@@ -140,7 +140,7 @@ test fn exact_head_receipt_round_trips_through_json_codec() -> Bool {
 }
 
 test fn change_window_refused_verdict_round_trips_through_json_codec() -> Bool {
-  let receipt = VerificationReceipt {
+  let receipt = gunbc.roadmap_verification_receipt.VerificationReceipt {
     subject: subject_at(head: head_a),
     oracle_identity: content_hash_of_value(value: "pinned-oracle"),
     executions: [],

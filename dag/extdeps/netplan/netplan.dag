@@ -21,7 +21,7 @@ type NetplanConfigWriter
   | WriterUnknown
 
 type NetplanConfigFile {
-  path: NonEmptyStr
+  path: std.types.NonEmptyStr
   writer: NetplanConfigWriter
 }
 
@@ -43,8 +43,8 @@ type InterfaceCarrier
   | CarrierUnobserved
 
 type InterfaceObservation {
-  name: NonEmptyStr
-  mac: NonEmptyStr
+  name: std.types.NonEmptyStr
+  mac: std.types.NonEmptyStr
   admin: InterfaceAdminState
   carrier: InterfaceCarrier
 }

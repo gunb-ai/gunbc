@@ -1,7 +1,7 @@
 module gunbc.plans.compile_clean_forcecheck
 
 
-fn compile_clean_forcecheck_body() -> List<MarkdownBlock> {
+fn compile_clean_forcecheck_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** historical diagnosis (execution-proven) + live **(A) partition design**. The 10-name / 102-site blast radius is a 2026-06-21 capture, not a live census. **DESIGN §5 (fail-closed) is authority.** Sibling of [fail-closed-lockdown.md](fail-closed-lockdown.md) §3."),
     p(text: "**Re-verified against the live tree 2026-07-31.** `v1.compiler.infer_method` `builtin_function_registry` remains a flat global name→type map; `std.encoding` `utf8_decode_bytes` is now grounded and its old registry row is gone. Symbols, not line positions, are receipts."),
@@ -88,7 +88,7 @@ fn compile_clean_forcecheck_body() -> List<MarkdownBlock> {
   ]
 }
 
-data compile_clean_forcecheck_plan: Plan = Plan {
+data compile_clean_forcecheck_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "compile-clean-forcecheck",
   title: "Plan — compile-clean gate force-check (ROADMAP §1 floor-coverage / §0 inference fail-open)",
   body: compile_clean_forcecheck_body(),

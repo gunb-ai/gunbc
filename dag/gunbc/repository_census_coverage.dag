@@ -20,8 +20,8 @@ data repository_census_index_cost_note: String = "THE OPERATION COUNTS ARE INCRE
 
 type CensusSubjectIndex {
   seen: Map<String, Int>
-  distinct: List<CensusSubjectKey>
-  duplicated: List<CensusSubjectKey>
+  distinct: List<gunbc.repository_census_observation.CensusSubjectKey>
+  duplicated: List<gunbc.repository_census_observation.CensusSubjectKey>
   map_lookups: Int
   map_inserts: Int
   key_prepends: Int
@@ -32,8 +32,8 @@ data repository_census_index_accumulation_note: String = "THE ORDER LISTS ARE BU
 
 type CensusSubjectIndexBuild {
   seen: Map<String, Int>
-  distinct_reversed: List<CensusSubjectKey>
-  duplicated_reversed: List<CensusSubjectKey>
+  distinct_reversed: List<gunbc.repository_census_observation.CensusSubjectKey>
+  duplicated_reversed: List<gunbc.repository_census_observation.CensusSubjectKey>
   map_lookups: Int
   map_inserts: Int
   key_prepends: Int
@@ -152,11 +152,11 @@ fn census_subject_keys_identity(subjects: List<CensusSubjectKey>) -> Fnv1a64Stru
 data repository_census_denominator_note: String = "THE DENOMINATOR IS AN OBSERVATION IN ITS OWN RIGHT, carrying the same population and revision as the census it will be joined against and its OWN run identity. It is not a list of expected keys handed to the reconciliation, because a bare list carries no statement about what population it enumerates, at which revision, or by which executed procedure — and those three are exactly what the join must compare before it may compare spellings. The enumeration run is separate from the classification run on purpose: a census whose denominator and rows came out of one procedure has not been checked against anything, and this module makes that condition a typed verdict rather than a diagnostic."
 
 type CensusDenominatorObservation sole_constructor {
-  population: RepositoryPopulation
-  observed_at_revision: MeasurementRevision
-  enumeration_run: CensusMethodRunIdentity
-  subjects: List<CensusSubjectKey>
-  subjects_identity: Fnv1a64Structural
+  population: gunbc.repository_census_observation.RepositoryPopulation
+  observed_at_revision: gunbc.guarantee_measurement.MeasurementRevision
+  enumeration_run: gunbc.repository_census_observation.CensusMethodRunIdentity
+  subjects: List<gunbc.repository_census_observation.CensusSubjectKey>
+  subjects_identity: std.content_hash.Fnv1a64Structural
 }
 
 fn census_denominator_observation(
@@ -190,16 +190,16 @@ data repository_census_subject_resolution_note: String = "BLOCKER 1 — THE JOIN
 
 type CoverageSubjectResolution
   = CoverageSubjectsAligned {
-      population_identity: Fnv1a64Structural
-      revision_identity: Fnv1a64Structural
+      population_identity: std.content_hash.Fnv1a64Structural
+      revision_identity: std.content_hash.Fnv1a64Structural
     }
   | CoveragePopulationMismatch {
-      denominator_population_identity: Fnv1a64Structural
-      observation_population_identity: Fnv1a64Structural
+      denominator_population_identity: std.content_hash.Fnv1a64Structural
+      observation_population_identity: std.content_hash.Fnv1a64Structural
     }
   | CoverageRevisionMismatch {
-      denominator_revision_identity: Fnv1a64Structural
-      observation_revision_identity: Fnv1a64Structural
+      denominator_revision_identity: std.content_hash.Fnv1a64Structural
+      observation_revision_identity: std.content_hash.Fnv1a64Structural
     }
 
 fn census_resolve_coverage_subjects(
@@ -260,11 +260,11 @@ data repository_census_duplicate_note: String = "BLOCKER 2 — DUPLICATES ARE RE
 
 type CoverageDuplicateResolution
   = NoDuplicateSubjects
-  | DenominatorDuplicated { denominator_duplicated: List<CensusSubjectKey> }
-  | ObservationDuplicated { observation_duplicated: List<CensusSubjectKey> }
+  | DenominatorDuplicated { denominator_duplicated: List<gunbc.repository_census_observation.CensusSubjectKey> }
+  | ObservationDuplicated { observation_duplicated: List<gunbc.repository_census_observation.CensusSubjectKey> }
   | BothDuplicated {
-      denominator_duplicated: List<CensusSubjectKey>
-      observation_duplicated: List<CensusSubjectKey>
+      denominator_duplicated: List<gunbc.repository_census_observation.CensusSubjectKey>
+      observation_duplicated: List<gunbc.repository_census_observation.CensusSubjectKey>
     }
 
 fn census_resolve_duplicate_subjects(
@@ -309,14 +309,14 @@ fn census_duplicates_resolved_clean(duplicates: CoverageDuplicateResolution) -> 
 }
 
 type CensusCoverageReconciliation
-  = CoverageReconciled { population_identity: Fnv1a64Structural, revision_identity: Fnv1a64Structural }
+  = CoverageReconciled { population_identity: std.content_hash.Fnv1a64Structural, revision_identity: std.content_hash.Fnv1a64Structural }
   | CoverageSubjectsUnresolved { resolution: CoverageSubjectResolution }
   | CoverageDuplicateSubjects { duplicates: CoverageDuplicateResolution }
-  | CoverageIncomplete { missing: List<CensusSubjectKey> }
-  | CoverageUnexpected { unexpected: List<CensusSubjectKey> }
+  | CoverageIncomplete { missing: List<gunbc.repository_census_observation.CensusSubjectKey> }
+  | CoverageUnexpected { unexpected: List<gunbc.repository_census_observation.CensusSubjectKey> }
   | CoverageDiverged {
-      missing: List<CensusSubjectKey>
-      unexpected: List<CensusSubjectKey>
+      missing: List<gunbc.repository_census_observation.CensusSubjectKey>
+      unexpected: List<gunbc.repository_census_observation.CensusSubjectKey>
       duplicates: CoverageDuplicateResolution
     }
 
@@ -402,11 +402,11 @@ data repository_census_independence_note: String = "BLOCKER 5 — INDEPENDENCE I
 
 type DenominatorIndependence
   = DistinctProcedureDenominatorEstablished {
-      enumeration_classifier_identity: Fnv1a64Structural
-      classification_classifier_identity: Fnv1a64Structural
+      enumeration_classifier_identity: std.content_hash.Fnv1a64Structural
+      classification_classifier_identity: std.content_hash.Fnv1a64Structural
     }
-  | SharedRun { run_identity: Fnv1a64Structural }
-  | IndependenceUnestablished { shared_classifier_identity: Fnv1a64Structural }
+  | SharedRun { run_identity: std.content_hash.Fnv1a64Structural }
+  | IndependenceUnestablished { shared_classifier_identity: std.content_hash.Fnv1a64Structural }
 
 fn census_resolve_independence(
   enumeration_run: CensusMethodRunIdentity,
@@ -454,12 +454,12 @@ fn census_independence_is_established(independence: DenominatorIndependence) -> 
 data repository_census_exact_receipt_note: String = "THE RECEIPT HAS NO CONSTRUCTOR OTHER THAN A RECONCILED JOIN. It is sole_constructor, so no other module can write one; the only function in this module that returns one is census_establish_coverage, which returns it exclusively on the CoverageReconciled arm; and it takes no parameter a caller could use to assert exactness. So this census is complete is not a claim anyone can make — it is a value only an executed reconciliation hands you (DESIGN section 5, correctness by construction rather than validation). What it replaces is a nullary CompleteForDeclaredPopulation tag writable by anyone, beside a separately derived completeness fold nothing forced it to agree with. Every field here is DERIVED by that reconciliation from the two observations it joined: the population and revision identities are the ones ALIGNMENT established rather than either side's own copy, and independence is the resolved verdict rather than a boolean recomputed later from fields a reader might join differently."
 
 type ExactCoverageReceipt sole_constructor {
-  denominator_identity: Fnv1a64Structural
-  observation_identity: Fnv1a64Structural
-  population_identity: Fnv1a64Structural
-  revision_identity: Fnv1a64Structural
-  enumeration_run_identity: Fnv1a64Structural
-  classification_run_identity: Fnv1a64Structural
+  denominator_identity: std.content_hash.Fnv1a64Structural
+  observation_identity: std.content_hash.Fnv1a64Structural
+  population_identity: std.content_hash.Fnv1a64Structural
+  revision_identity: std.content_hash.Fnv1a64Structural
+  enumeration_run_identity: std.content_hash.Fnv1a64Structural
+  classification_run_identity: std.content_hash.Fnv1a64Structural
   independence: DenominatorIndependence
   covered_subject_count: Int
 }
@@ -469,8 +469,8 @@ data repository_census_refusal_note: String = "THE REFUSAL ARM CARRIES THE OBSER
 type CensusCoverageOutcome
   = CoverageEstablished { receipt: ExactCoverageReceipt }
   | CoverageRefused {
-      observation_identity: Fnv1a64Structural
-      classification_run_identity: Fnv1a64Structural
+      observation_identity: std.content_hash.Fnv1a64Structural
+      classification_run_identity: std.content_hash.Fnv1a64Structural
       reconciliation: CensusCoverageReconciliation
     }
 
@@ -567,9 +567,9 @@ fn census_coverage_classification_run_identity(
 data repository_census_capability_note: String = "BLOCKER 4 — A CAPABILITY RECEIPT IS JOINED TO THE RUN AND CARRIES CONFORMANCE EVIDENCE. The first cut let CensusMethodCapability be authored with no tie to anything: its contract need not name the classifier that ran, its revision need not match the method run's, and ClassifiesDeclaredStructure mapped automatically to semantic fidelity. Its own note admitted this was the weak link and the ceiling consumed it anyway as if it were sufficient — a note beside an overstating claim, the third time on this carrier, which is why the shape rather than the prose is what changed. The receipt is now built ONLY from an observation plus a capability whose contract IS that observation's classifier, checked at identity grain; a contract naming any other declaration returns none, so the receipt cannot exist. Its method_run_identity and fidelity are DERIVED from the observation and the capability, never supplied. And conformance is the separate proposition that the classifier was demonstrated to discriminate: a control invocation of the same classifier at the same revision, where a discriminating input was refused AND a positive control was accepted. UNTIL CONFORMANCE IS ESTABLISHED THE SEMANTIC CEILING STAYS A FLOOR. That is deliberately strict: a structural classifier can classify the wrong thing, and its SHAPE is not evidence that it classified the intended subject."
 
 type CensusMethodCapability
-  = ClassifiesDeclaredStructure { contract: DeclarationRef }
-  | ReadsGeneratedArtifact { contract: DeclarationRef, artifact: MeasurementRevision }
-  | MatchesSourceText { contract: DeclarationRef }
+  = ClassifiesDeclaredStructure { contract: std.decl_ref.DeclarationRef }
+  | ReadsGeneratedArtifact { contract: std.decl_ref.DeclarationRef, artifact: gunbc.guarantee_measurement.MeasurementRevision }
+  | MatchesSourceText { contract: std.decl_ref.DeclarationRef }
 
 type CensusSubjectFidelity = SemanticSubjects | TextualMatchesOnly
 
@@ -608,28 +608,28 @@ fn census_capability_identity(capability: CensusMethodCapability) -> Fnv1a64Stru
 data repository_census_conformance_note: String = "CONFORMANCE IS DERIVED FROM EXECUTED CONTROL OUTCOMES, NEVER FROM AUTHORED BOOLEANS (operator ruling 2026-08-05, superseding the first shape of this carrier). The previous shape took discriminating_input_refused and positive_control_accepted as caller-supplied Bool, so ANY caller could pass true and true and receive a conformance value that then raised a semantic ceiling. The domain consumer in this repository computed those two honestly by running the controls, and that is exactly what made the defect invisible: the GENERIC CARRIER never required it, so the honesty lived in one consumer rather than in the type. That is the same author-supplied-answer class this whole module exists to close, committed one layer above the layer it closes it at — the third time on this carrier that a name stood where a receipt belonged.\n\nWHAT REPLACES IT. The carrier now consumes a CensusControlPair of two real CensusCoverageOutcome values and DERIVES the verdict. Four conditions must hold together and each is checked against structure rather than assertion: the discriminating control must have REFUSED, the positive control must have been ESTABLISHED, both outcomes must have come from the declared control run (joined on the classification run identity each outcome carries, so an outcome borrowed from an unrelated run cannot be presented), and the control run must be the same classifier at the same revision under a DIFFERENT invocation from the measurement. Only that join yields a CensusMethodConformanceReceipt, which is sole_constructor and has no other producer. Both halves remain required because either alone is satisfiable by a broken classifier: one that accepts everything passes the positive control, one that refuses everything passes the discriminating one.\n\nWHAT IS STILL NOT ESTABLISHED, unchanged and still the honest frontier: that the discriminating input was WELL CHOSEN. This carrier can prove a classifier discriminated between two inputs; it cannot prove the input it refused was the one worth refusing. That judgement belongs to whoever authored the control."
 
 type CensusControlPair {
-  control_run: CensusMethodRunIdentity
+  control_run: gunbc.repository_census_observation.CensusMethodRunIdentity
   discriminating: CensusCoverageOutcome
   positive: CensusCoverageOutcome
 }
 
 type CensusMethodConformanceReceipt sole_constructor {
-  control_run_identity: Fnv1a64Structural
-  method_run_identity: Fnv1a64Structural
-  discriminating_observation_identity: Fnv1a64Structural
-  positive_observation_identity: Fnv1a64Structural
+  control_run_identity: std.content_hash.Fnv1a64Structural
+  method_run_identity: std.content_hash.Fnv1a64Structural
+  discriminating_observation_identity: std.content_hash.Fnv1a64Structural
+  positive_observation_identity: std.content_hash.Fnv1a64Structural
 }
 
 type CensusConformanceOutcome
   = CensusConformanceEstablished { receipt: CensusMethodConformanceReceipt }
   | CensusConformanceControlOutcomesUnjoined {
-      control_run_identity: Fnv1a64Structural
-      discriminating_run_identity: Fnv1a64Structural
-      positive_run_identity: Fnv1a64Structural
+      control_run_identity: std.content_hash.Fnv1a64Structural
+      discriminating_run_identity: std.content_hash.Fnv1a64Structural
+      positive_run_identity: std.content_hash.Fnv1a64Structural
     }
   | CensusConformanceControlNotDistinctFromMeasurement {
-      control_run_identity: Fnv1a64Structural
-      method_run_identity: Fnv1a64Structural
+      control_run_identity: std.content_hash.Fnv1a64Structural
+      method_run_identity: std.content_hash.Fnv1a64Structural
     }
   | CensusConformanceControlsDidNotDiscriminate {
       discriminating: CensusCoverageOutcome
@@ -747,9 +747,9 @@ fn census_conformance_receipt_of(outcome: CensusConformanceOutcome) -> CensusMet
 }
 
 type CensusMethodCapabilityReceipt sole_constructor {
-  method_run_identity: Fnv1a64Structural
-  contract: DeclarationRef
-  capability_identity: Fnv1a64Structural
+  method_run_identity: std.content_hash.Fnv1a64Structural
+  contract: std.decl_ref.DeclarationRef
+  capability_identity: std.content_hash.Fnv1a64Structural
   fidelity: CensusSubjectFidelity
   conformance: CensusMethodConformanceReceipt?
 }
@@ -827,8 +827,8 @@ type CensusInferenceCeilingStrength
 
 type CensusInferenceCeiling sole_constructor {
   strength: CensusInferenceCeilingStrength
-  observation_identity: Fnv1a64Structural
-  capability_identity: Fnv1a64Structural
+  observation_identity: std.content_hash.Fnv1a64Structural
+  capability_identity: std.content_hash.Fnv1a64Structural
   limits: List<CensusCeilingLimit>
 }
 
@@ -883,8 +883,8 @@ fn census_ceiling_limits_for(
 type CensusInferenceCeilingOutcome
   = CensusCeilingDerived { ceiling: CensusInferenceCeiling }
   | CensusCeilingRefusedRunMismatch {
-      coverage_classification_run_identity: Fnv1a64Structural
-      capability_method_run_identity: Fnv1a64Structural
+      coverage_classification_run_identity: std.content_hash.Fnv1a64Structural
+      capability_method_run_identity: std.content_hash.Fnv1a64Structural
     }
 
 fn census_inference_ceiling(

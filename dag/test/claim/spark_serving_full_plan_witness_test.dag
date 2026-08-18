@@ -233,7 +233,7 @@ test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
 // separately, so neither could ever match and a correctly installed host replanned both members on
 // every run. The defect survived review precisely because no witness asserted the zero case -- a
 // roster full of drift-detection claims is satisfied by a projection that reports drift always.
-fn observed_exactly_desired(r: SparkServingRelease) -> SparkServingObservedMemberProjection {
+fn observed_exactly_desired(r: gunbc.spark_serving_release.SparkServingRelease) -> gunbc.spark_serving_observed_members.SparkServingObservedMemberProjection {
   spark_serving_observed_members(
     observation: SparkServingObserved { host: subject_host, loaded_release: r },
     unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
@@ -279,8 +279,8 @@ test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
         projection: spark_serving_observed_members(
           observation: SparkServingObserved {
             host: subject_host,
-            loaded_release: SparkServingRelease {
-              runtime: RuntimeArtifactIdentity { closure_digest: "drifted-runtime" as NonEmptyStr },
+            loaded_release: gunbc.spark_serving_release.SparkServingRelease {
+              runtime: gunbc.spark_serving_release.RuntimeArtifactIdentity { closure_digest: "drifted-runtime" as std.types.NonEmptyStr },
               model: r.model,
             },
           },

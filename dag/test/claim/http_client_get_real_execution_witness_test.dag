@@ -11,7 +11,7 @@ test fn http_client_get_roundtrip_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
   let path = concat(dir.path as String, "/fixture")
   let wrote = Filesystem.Write(path: path, content: http_client_get_fixture_body)
-  let got = http.Client.Get(url: concat("file://", path) as NonEmptyStr)
+  let got = http.Client.Get(url: concat("file://", path) as std.types.NonEmptyStr)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && wrote.success && got.success && got.body == http_client_get_fixture_body
 }
@@ -19,7 +19,7 @@ test fn http_client_get_roundtrip_by_real_execution() -> Bool {
 test fn http_client_get_missing_target_red_control_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
   let missing = concat(dir.path as String, "/does-not-exist")
-  let got = http.Client.Get(url: concat("file://", missing) as NonEmptyStr)
+  let got = http.Client.Get(url: concat("file://", missing) as std.types.NonEmptyStr)
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
   dir.success && got.success == false && got.body == ""
 }

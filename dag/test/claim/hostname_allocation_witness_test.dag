@@ -2,10 +2,10 @@ module test.claim.hostname_allocation_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn allocation_fixture(slot: String, hostname: String) -> HostnameAllocation {
-  HostnameAllocation {
-    fleet_slot: slot as HostIdentity,
-    canonical_hostname: hostname as DnsLabel,
+fn allocation_fixture(slot: String, hostname: String) -> gunbc.hostname_allocation.HostnameAllocation {
+  gunbc.hostname_allocation.HostnameAllocation {
+    fleet_slot: slot as product.placement_supply.HostIdentity,
+    canonical_hostname: hostname as extdeps.dns.domain_name.DnsLabel,
   }
 }
 
@@ -39,7 +39,7 @@ test fn witness_identity_that_is_not_a_dns_label_can_still_have_a_hostname() -> 
     Err { value: _ } =>
       match canonical_hostname_in_roster(
         allocations: roster,
-        fleet_slot: "spark_lab#1" as HostIdentity,
+        fleet_slot: "spark_lab#1" as product.placement_supply.HostIdentity,
       ) {
         Present { value: allocated } => (allocated as String) == "spark-lab-1"
         Absent => false
@@ -84,9 +84,9 @@ test fn witness_colliding_roster_serves_no_hostname_rather_than_a_winner() -> Bo
     allocation_fixture(slot: "srvA", hostname: "shared"),
     allocation_fixture(slot: "srvB", hostname: "shared"),
   ]
-  match canonical_hostname_in_roster(allocations: roster, fleet_slot: "srvA" as HostIdentity) {
+  match canonical_hostname_in_roster(allocations: roster, fleet_slot: "srvA" as product.placement_supply.HostIdentity) {
     Absent =>
-      match canonical_hostname_in_roster(allocations: roster, fleet_slot: "srvB" as HostIdentity) {
+      match canonical_hostname_in_roster(allocations: roster, fleet_slot: "srvB" as product.placement_supply.HostIdentity) {
         Absent => true
         Present { value: _ } => false
       }
@@ -96,7 +96,7 @@ test fn witness_colliding_roster_serves_no_hostname_rather_than_a_winner() -> Bo
 
 test fn witness_lookup_of_unallocated_slot_is_absent_not_reconstructed() -> Bool {
   let roster = [allocation_fixture(slot: "srvA", hostname: "srv-a")]
-  match canonical_hostname_in_roster(allocations: roster, fleet_slot: "srvB" as HostIdentity) {
+  match canonical_hostname_in_roster(allocations: roster, fleet_slot: "srvB" as product.placement_supply.HostIdentity) {
     Absent => true
     Present { value: _ } => false
   }

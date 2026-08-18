@@ -19,7 +19,7 @@ data expected_verilog_source: String = "module board_power_interlock (\n  input 
 // nothing constructs an AdmittedBoardPowerInterfaceArticle except admit_board_article, so this
 // match is the only route by which the production article reaches either projection. A refused
 // article fails the witness rather than being projected anyway.
-fn admitted_production_article() -> AdmittedBoardPowerInterfaceArticle? {
+fn admitted_production_article() -> product.compute_board.admission.AdmittedBoardPowerInterfaceArticle? {
   match admit_board_article(a: power_interlock_article) {
     BoardArticleAdmitted { article: adm } => Present { value: adm }
     BoardArticleRefused { causes: _ } => none
@@ -65,10 +65,10 @@ test fn w_one_article_feeds_both_emissions() -> Bool {
 // component that no longer exists — and the projection still refused, for the unrelated reason
 // that every real component had become unbound. The control would have stayed green while
 // measuring nothing.
-fn perturbed_bindings() -> List<ComponentModelBinding> {
+fn perturbed_bindings() -> List<product.compute_board.analog.ComponentModelBinding> {
   fold(power_interlock_article.model_bindings, init: [], f: fn(acc, b) {
     if component_local_label(c: b.component) == "pg_top" {
-      concat(acc, [ComponentModelBinding { component: b.component, standing: ElectricalModelAbsent }])
+      concat(acc, [product.compute_board.analog.ComponentModelBinding { component: b.component, standing: ElectricalModelAbsent }])
     } else {
       concat(acc, [b])
     }
@@ -101,7 +101,7 @@ test fn w_verilog_refuses_unbound_signal() -> Bool {
   }
 }
 
-fn bond_is_chassis(b: ElectricalBond) -> Bool {
+fn bond_is_chassis(b: product.compute_board.article.ElectricalBond) -> Bool {
   match b {
     ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => true
     PowerReturnConnection { domain: _, terminal: _ } => false
@@ -111,7 +111,7 @@ fn bond_is_chassis(b: ElectricalBond) -> Bool {
   }
 }
 
-fn bond_is_power_return(b: ElectricalBond) -> Bool {
+fn bond_is_power_return(b: product.compute_board.article.ElectricalBond) -> Bool {
   match b {
     PowerReturnConnection { domain: _, terminal: _ } => true
     ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => false
@@ -121,7 +121,7 @@ fn bond_is_power_return(b: ElectricalBond) -> Bool {
   }
 }
 
-fn bond_is_signal_reference(b: ElectricalBond) -> Bool {
+fn bond_is_signal_reference(b: product.compute_board.article.ElectricalBond) -> Bool {
   match b {
     SignalReferenceConnection { signal_class: _, terminal: _ } => true
     ChassisBond { board_feature: _, chassis_feature: _, standing: _ } => false
@@ -131,7 +131,7 @@ fn bond_is_signal_reference(b: ElectricalBond) -> Bool {
   }
 }
 
-fn bond_is_proposed_chassis(b: ElectricalBond) -> Bool {
+fn bond_is_proposed_chassis(b: product.compute_board.article.ElectricalBond) -> Bool {
   match b {
     ChassisBond { board_feature: _, chassis_feature: _, standing: st } =>
       match st {
@@ -145,7 +145,7 @@ fn bond_is_proposed_chassis(b: ElectricalBond) -> Bool {
   }
 }
 
-fn count_bonds(bonds: List<ElectricalBond>, pred: fn(ElectricalBond) -> Bool) -> Int {
+fn count_bonds(bonds: List<product.compute_board.article.ElectricalBond>, pred: fn(ElectricalBond) -> Bool) -> Int {
   fold(bonds, init: 0, f: fn(acc, b) { if pred(b) { acc + 1 } else { acc } })
 }
 
@@ -223,7 +223,7 @@ test fn w_physical_and_manufacturing_boundaries_refuse_with_named_causes() -> Bo
 // in the production contract rather than one being decorative. The board's own two are signals it
 // drives; the console and the recovery request belong to platform components; boot storage is
 // explicitly NOT this article's, which is a claim and not an omission.
-fn establishment_kind(p: HostFirmwareStartPrecondition) -> String {
+fn establishment_kind(p: product.compute_board.article.HostFirmwareStartPrecondition) -> String {
   match p.establishment {
     EstablishedByBoardSignal { signal: _ } => "signal"
     EstablishedByPlatformComponent { role: _ } => "component"
@@ -286,7 +286,7 @@ test fn w_the_permit_and_reset_preconditions_name_their_own_signals() -> Bool {
 // upstream module say so rather than answering Absent. The distinction is the whole point: an
 // Optional would make "nobody has cited this yet" indistinguishable from "there is nothing to
 // cite", and only the first is an authoring gap someone can close.
-fn role_is_cited(role: PlatformFirmwareRole) -> Bool {
+fn role_is_cited(role: product.compute_board.article.PlatformFirmwareRole) -> Bool {
   match platform_firmware_role_upstream(role: role) {
     UpstreamCited { subject: _ } => true
     UpstreamNotModelledHere { reason: _ } => false

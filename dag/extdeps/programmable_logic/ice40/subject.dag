@@ -8,8 +8,8 @@ module extdeps.programmable_logic.ice40.subject
 // uncited. Binding was tried first and refused by that wall. So the three modules of this package
 // each carry the record: the citation duty is per module, and a shared binding cannot discharge it
 // while the reader is structural.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "www.latticesemi.com/-/media/LatticeSemi/Documents/DataSheets/iCE/FPGA-DS-02029-4-3-iCE40-LP-HX-Family-Data-Sheet.ashx?document_id=49312"
   }
@@ -196,9 +196,9 @@ data ice40_hx1k_vq100_contacts: Ice40PackageContactItemization = Ice40PackageCon
   declared_bonded_pins: 100,
 }
 
-data ice40_family_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data ice40_family_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.programmable_logic.ice40.subject",
       decl_name: "ice40_hx1k",
       field: WholeDeclaration
@@ -208,6 +208,6 @@ data ice40_family_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data ice40_vendor: Vendor<Hardware> = lattice_semiconductor_vendor
+data ice40_vendor: Vendor<extdeps.hardware.Hardware> = lattice_semiconductor_vendor
 
-data extdeps_model_scope: ExternalModelScope = ice40_family_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = ice40_family_model_scope

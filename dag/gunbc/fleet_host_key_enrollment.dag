@@ -45,8 +45,8 @@ module gunbc.fleet_host_key_enrollment
 //     AVAILABLE but UNUSED; the arm is ready for bold-eagle to flip these two once that
 //     join executes, with no widening edit.
 type HostKeyEnrollmentProvenance
-  = ScannedFirstContact { scanned_from: NonEmptyStr }
-  | IndependentlyAnchored { authority: NonEmptyStr }
+  = ScannedFirstContact { scanned_from: std.types.NonEmptyStr }
+  | IndependentlyAnchored { authority: std.types.NonEmptyStr }
 
 type KnownHostKeyRow {
   host: product.placement_supply.HostIdentity

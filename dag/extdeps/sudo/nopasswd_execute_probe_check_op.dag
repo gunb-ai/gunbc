@@ -1,8 +1,8 @@
 module extdeps.sudo.nopasswd_execute_probe_check_op
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.sudo.ws/docs/man/sudo.man/"
   }
@@ -10,7 +10,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data sudo_nopasswd_execute_probe_check_op_note: String = "Typed argv transport for sudo.NopasswdExecuteProbe.Check and sudo.NopasswdGrantList.Read — program+args dispatch at the realization edge without shell.Exec.Run (Wave C5 / bash-emit #5828 slice). Grant-list authorization is not inferred from exit zero: sudoers listpw may permit a noninteractive list query because some other entry is NOPASSWD. The typed observation must also contain an exact NOPASSWD row for the requested command path."
 
-fn sudo_nopasswd_execute_probe_argv(probe: SudoNopasswdExecuteProbeShape) -> List<String> {
+fn sudo_nopasswd_execute_probe_argv(probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdExecuteProbeShape) -> List<String> {
   ["sudo", "-n", probe.command_path as String, probe.check_argv as String]
 }
 
@@ -20,7 +20,7 @@ fn sudo_nopasswd_grant_list_argv() -> List<String> {
 
 fn sudo_nopasswd_grant_list_line_admits_probe(
   line: String,
-  probe: SudoNopasswdGrantListProbeShape,
+  probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape,
 ) -> Bool {
   let parts = split(s: line.trim(), delimiter: "NOPASSWD:")
   if length(xs: parts) != 2 {
@@ -32,7 +32,7 @@ fn sudo_nopasswd_grant_list_line_admits_probe(
 
 fn sudo_nopasswd_grant_list_admits_probe(
   listing: String,
-  probe: SudoNopasswdGrantListProbeShape,
+  probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape,
 ) -> Bool {
   any(
     xs: split(s: listing, delimiter: "\n"),
@@ -44,7 +44,7 @@ fn sudo_nopasswd_grant_list_admits_probe(
 
 service sudo.NopasswdExecuteProbe {
   operation Check {
-    input { probe: SudoNopasswdExecuteProbeShape }
+    input { probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdExecuteProbeShape }
     output { success: Bool from "exit_success" }
     readonly
 

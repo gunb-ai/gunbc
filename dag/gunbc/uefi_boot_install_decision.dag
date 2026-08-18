@@ -5,10 +5,10 @@ type DesiredOutcome
   = | InstalledFleetNode
 
 type BootInstallSituation
-  = InstallMediaReady { boot_file: NonEmptyStr }
-  | NetworkReady { interface: NonEmptyStr }
-  | NetworkUpNeedsDhcp { interface: NonEmptyStr }
-  | NoBootSourceAvailable { reason: NonEmptyStr }
+  = InstallMediaReady { boot_file: std.types.NonEmptyStr }
+  | NetworkReady { interface: std.types.NonEmptyStr }
+  | NetworkUpNeedsDhcp { interface: std.types.NonEmptyStr }
+  | NoBootSourceAvailable { reason: std.types.NonEmptyStr }
 
 fn ipv4_link_local(ipv4: NonEmptyStr) -> Bool {
   starts_with(ipv4 as String, prefix: uefi_ipv4_link_local_prefix)
@@ -29,7 +29,7 @@ fn mapping_is_removable_install_media(m: UefiDeviceMapping) -> Bool {
 
 type MediaScan {
   found: Bool
-  boot_file: NonEmptyStr
+  boot_file: std.types.NonEmptyStr
 }
 
 fn scan_install_media(env: UefiShellEnvironment) -> MediaScan {
@@ -46,13 +46,13 @@ fn scan_install_media(env: UefiShellEnvironment) -> MediaScan {
 
 type IfaceScan {
   found: Bool
-  name: NonEmptyStr
+  name: std.types.NonEmptyStr
   routable: Bool
 }
 
 type IfaceScanRanked {
   rank: Int
-  name: NonEmptyStr
+  name: std.types.NonEmptyStr
 }
 
 data iface_dhcp_rank_doc: String = "DHCP-candidate ranking, grounded in the srv4 live receipt (commit e0bdb3377cf): a link-local 169.254.x address on a linked NIC is EVIDENCE that DHCP was already tried there and failed (UEFI self-assigns after a lease timeout), so the scan must prefer a linked NIC that is merely unconfigured (0.0.0.0 = untried) over one stuck in link-local — on srv4 that is eth2 (the NIC that leases on the BMC LAN), never eth0. Rank: routable configured (3) > linked untried (2) > linked link-local (1) > no link (0)."
@@ -100,9 +100,9 @@ fn diagnose_boot_install(env: UefiShellEnvironment) -> BootInstallSituation {
 }
 
 type BootInstallAction
-  = BootFromMappedMedia { boot_file: NonEmptyStr }
-  | DhcpThenNetworkBoot { interface: NonEmptyStr }
-  | RefuseNoSource { reason: NonEmptyStr }
+  = BootFromMappedMedia { boot_file: std.types.NonEmptyStr }
+  | DhcpThenNetworkBoot { interface: std.types.NonEmptyStr }
+  | RefuseNoSource { reason: std.types.NonEmptyStr }
 
 fn decide_boot_install(situation: BootInstallSituation, goal: DesiredOutcome) -> BootInstallAction {
   match goal {

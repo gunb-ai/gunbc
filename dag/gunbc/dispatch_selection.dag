@@ -18,42 +18,42 @@ type ExecutionProfile
 
 type ClaudeCredentialRef
   = ClaudeStateRootRef { root: std.types.FilePath }
-  | ClaudeOAuthTokenSecretRef { secret_ref: SecretRef }
-  | ClaudeApiKeySecretRef { secret_ref: SecretRef }
+  | ClaudeOAuthTokenSecretRef { secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef }
+  | ClaudeApiKeySecretRef { secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef }
 
 type CursorCredentialRef
   = CursorLocalLoginRef
-  | CursorApiKeySecretRef { secret_ref: SecretRef }
+  | CursorApiKeySecretRef { secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef }
 
 type DeepRealization
-  = DeepConfigured { effort: ReasoningEffort }
+  = DeepConfigured { effort: extdeps.llm.cli.ReasoningEffort }
   | DeepUnavailable
 
 type CodexOffer {
-  instance: ProviderInstance
+  instance: extdeps.llm.cli_lifecycle.ProviderInstance
   account_state_root: std.types.FilePath
-  account_binding: AdmittedAccountBinding
-  standing: ProviderStanding
-  default_effort: ReasoningEffort
+  account_binding: gunbc.provider_account.AdmittedAccountBinding
+  standing: gunbc.provider_standing.ProviderStanding
+  default_effort: extdeps.llm.cli.ReasoningEffort
   deep: DeepRealization
-  process_fingerprint: CodexProcessFingerprintStanding
+  process_fingerprint: gunbc.codex_provider_runtime_receipt.CodexProcessFingerprintStanding
 }
 
 type ClaudeOffer {
-  instance: ProviderInstance
+  instance: extdeps.llm.cli_lifecycle.ProviderInstance
   credential: ClaudeCredentialRef
-  standing: ProviderStanding
-  default_effort: ReasoningEffort
+  standing: gunbc.provider_standing.ProviderStanding
+  default_effort: extdeps.llm.cli.ReasoningEffort
   deep: DeepRealization
-  process_fingerprint: NonEmptyStr
+  process_fingerprint: std.types.NonEmptyStr
 }
 
 type CursorOffer {
-  instance: ProviderInstance
+  instance: extdeps.llm.cli_lifecycle.ProviderInstance
   credential: CursorCredentialRef
-  standing: ProviderStanding
-  default_model: CursorModelId
-  process_fingerprint: NonEmptyStr
+  standing: gunbc.provider_standing.ProviderStanding
+  default_model: extdeps.llm.cursor_cli.CursorModelId
+  process_fingerprint: std.types.NonEmptyStr
 }
 
 type ProviderOffer
@@ -69,104 +69,104 @@ type ProviderSelectionRequest
   = SelectAutomatically { profile: ExecutionProfile }
   | SelectCodex {
       profile: ExecutionProfile,
-      account: CodexAccountSelection,
-      model: NonEmptyStr,
-      effort: ReasoningEffort,
-      operator_asserted_native_limit_bucket: NonEmptyStr?,
+      account: gunbc.provider_account.CodexAccountSelection,
+      model: std.types.NonEmptyStr,
+      effort: extdeps.llm.cli.ReasoningEffort,
+      operator_asserted_native_limit_bucket: std.types.NonEmptyStr?,
     }
   | SelectClaude {
       profile: ExecutionProfile,
       credential: ClaudeCredentialRef,
-      model: NonEmptyStr,
-      effort: ReasoningEffort,
-      workflow_mode: NonEmptyStr,
+      model: std.types.NonEmptyStr,
+      effort: extdeps.llm.cli.ReasoningEffort,
+      workflow_mode: std.types.NonEmptyStr,
     }
   | SelectCursor {
       profile: ExecutionProfile,
       credential: CursorCredentialRef,
-      model: CursorModelId,
-      agent_mode: NonEmptyStr,
+      model: extdeps.llm.cursor_cli.CursorModelId,
+      agent_mode: std.types.NonEmptyStr,
     }
 
 type ResolvedCodexSelection {
-  account: CodexAccountSelection
-  model: NonEmptyStr
-  effort: ReasoningEffort
-  process_fingerprint: NonEmptyStr
+  account: gunbc.provider_account.CodexAccountSelection
+  model: std.types.NonEmptyStr
+  effort: extdeps.llm.cli.ReasoningEffort
+  process_fingerprint: std.types.NonEmptyStr
 }
 
 type ResolvedClaudeSelection {
   credential: ClaudeCredentialRef
-  model: NonEmptyStr
-  effort: ReasoningEffort
-  workflow_mode: NonEmptyStr
-  process_fingerprint: NonEmptyStr
+  model: std.types.NonEmptyStr
+  effort: extdeps.llm.cli.ReasoningEffort
+  workflow_mode: std.types.NonEmptyStr
+  process_fingerprint: std.types.NonEmptyStr
 }
 
 type ResolvedCursorSelection {
   credential: CursorCredentialRef
-  model: CursorModelId
-  agent_mode: NonEmptyStr
-  process_fingerprint: NonEmptyStr
+  model: extdeps.llm.cursor_cli.CursorModelId
+  agent_mode: std.types.NonEmptyStr
+  process_fingerprint: std.types.NonEmptyStr
 }
 
 type ResolvedProviderSelection
-  = ResolvedCodex { selection: ResolvedCodexSelection, instance: ProviderInstance, account_binding: AdmittedAccountBinding }
-  | ResolvedClaude { selection: ResolvedClaudeSelection, instance: ProviderInstance }
-  | ResolvedCursor { selection: ResolvedCursorSelection, instance: ProviderInstance }
+  = ResolvedCodex { selection: ResolvedCodexSelection, instance: extdeps.llm.cli_lifecycle.ProviderInstance, account_binding: gunbc.provider_account.AdmittedAccountBinding }
+  | ResolvedClaude { selection: ResolvedClaudeSelection, instance: extdeps.llm.cli_lifecycle.ProviderInstance }
+  | ResolvedCursor { selection: ResolvedCursorSelection, instance: extdeps.llm.cli_lifecycle.ProviderInstance }
 
 type DispatchCredentialBindingIdentity
-  = CodexCredentialBinding { binding: AdmittedAccountBinding }
+  = CodexCredentialBinding { binding: gunbc.provider_account.AdmittedAccountBinding }
   | ClaudeCredentialBinding { credential: ClaudeCredentialRef }
   | CursorCredentialBinding { credential: CursorCredentialRef }
 
 type DispatchModelIdentity
-  = DispatchModelNamed { model: NonEmptyStr }
-  | DispatchCursorModelIdentity { model: CursorModelId }
+  = DispatchModelNamed { model: std.types.NonEmptyStr }
+  | DispatchCursorModelIdentity { model: extdeps.llm.cursor_cli.CursorModelId }
 
 type DispatchProviderControl
-  = CodexProviderControl { effort: ReasoningEffort }
-  | ClaudeProviderControl { effort: ReasoningEffort, workflow_mode: NonEmptyStr }
-  | CursorProviderControl { agent_mode: NonEmptyStr }
+  = CodexProviderControl { effort: extdeps.llm.cli.ReasoningEffort }
+  | ClaudeProviderControl { effort: extdeps.llm.cli.ReasoningEffort, workflow_mode: std.types.NonEmptyStr }
+  | CursorProviderControl { agent_mode: std.types.NonEmptyStr }
 
 type DispatchTemporalBounds
-  = DispatchTemporalUnobserved { reason: NonEmptyStr }
-  | DispatchTemporalObserved { started_at: NonEmptyStr, ended_at: NonEmptyStr }
+  = DispatchTemporalUnobserved { reason: std.types.NonEmptyStr }
+  | DispatchTemporalObserved { started_at: std.types.NonEmptyStr, ended_at: std.types.NonEmptyStr }
 
 type DispatchUsageObservations
-  = DispatchUsageUnobserved { reason: NonEmptyStr }
-  | DispatchUsageObserved { observations: List<NonEmptyStr> }
+  = DispatchUsageUnobserved { reason: std.types.NonEmptyStr }
+  | DispatchUsageObserved { observations: List<std.types.NonEmptyStr> }
 
 type DispatchAttemptIdentity
-  = DispatchAttemptUnassigned { reason: NonEmptyStr }
-  | DispatchAttemptAssigned { attempt_key: NonEmptyStr }
+  = DispatchAttemptUnassigned { reason: std.types.NonEmptyStr }
+  | DispatchAttemptAssigned { attempt_key: std.types.NonEmptyStr }
 
 type DispatchResolvedExecution {
-  provider_instance: ProviderInstance
+  provider_instance: extdeps.llm.cli_lifecycle.ProviderInstance
   credential_binding: DispatchCredentialBindingIdentity
   model_identity: DispatchModelIdentity
   provider_control: DispatchProviderControl
-  provider_version: ProviderInstanceField
+  provider_version: extdeps.llm.cli_lifecycle.ProviderInstanceField
   temporal_bounds: DispatchTemporalBounds
   usage_observations: DispatchUsageObservations
   attempt_identity: DispatchAttemptIdentity
 }
 
 type DispatchExecutionReceipt {
-  node_sizing: NodeSizing
+  node_sizing: gunbc.roadmap_model.NodeSizing
   requested_selection: ProviderSelectionRequest
   resolved_selection: ResolvedProviderSelection
   resolved_execution: DispatchResolvedExecution
-  provider_kind: ProviderKind
-  applied_effort: ReasoningEffort
+  provider_kind: extdeps.llm.cli_lifecycle.ProviderKind
+  applied_effort: extdeps.llm.cli.ReasoningEffort
 }
 
 type DispatchSelectionResult
   = DispatchSelectionResolved { receipt: DispatchExecutionReceipt }
   | DispatchSelectionRefused {
-      node_sizing: NodeSizing
+      node_sizing: gunbc.roadmap_model.NodeSizing
       requested_selection: ProviderSelectionRequest
-      reason: NonEmptyStr
+      reason: std.types.NonEmptyStr
     }
 
 data dispatch_codex_process_fingerprint_note: String = "SUPERSEDED AS EVIDENCE (operator ruling 2026-08-13): the literal below is NOT a process fingerprint receipt — two branches agreeing on a hand-authored string is agreement, not observation. Authoritative standing lives in gunbc.codex_provider_runtime_receipt CodexProviderRuntimeReceipt.process_fingerprint, derived from the bundled runtime converge installs; #8224 must consume that receipt, not this constant. Until wet tmux observation on the bundled binary lands, process_fingerprint is CodexProcessFingerprintUnobserved and dispatch must refuse rather than substitute this literal. Historical context (srv1 npm-shim, 2026-07-27): authenticated /usr/bin/codex (0.133.0) reported pane_current_command node during exec — that observation applied to the npm launcher, not the bundled-native 0.146.0 tree this PR converges."

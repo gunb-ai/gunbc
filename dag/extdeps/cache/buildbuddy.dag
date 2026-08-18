@@ -2,16 +2,16 @@ module extdeps.cache.buildbuddy
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.buildbuddy.io/docs/remote-cache"
   }
 }
 
-data buildbuddy_cas_id: CacheInterfaceId = "buildbuddy_cas"
+data buildbuddy_cas_id: std.cache_identity.CacheInterfaceId = "buildbuddy_cas"
 
-data buildbuddy_cas_facts: CacheInterfaceCatalogFacts = {
+data buildbuddy_cas_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: buildbuddy_cas_id
   backing_surface: "buildbuddy-remote-cas"
   transport_encoding: CatalogCasContentEncoding

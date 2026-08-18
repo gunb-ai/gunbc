@@ -3,11 +3,11 @@ module v2.compiler.program_assembly
 
 type ProgramAssemblyFoldState
   = ProgramAssemblyFoldOk {
-      roots: FreeMonoid<NormalizedTree>,
+      roots: FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>,
       index: v2.std.cross_tree.resolution.SourceRootIndex
     }
   | ProgramAssemblyFoldFailed {
-      diagnostics: NonEmptyDiagnostics
+      diagnostics: v2.std.diagnostic.NonEmptyDiagnostics
     }
 
 fn program_assembly_empty_roots() -> FreeMonoid<NormalizedTree> {

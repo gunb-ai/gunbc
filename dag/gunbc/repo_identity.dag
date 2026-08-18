@@ -11,9 +11,9 @@ data gunbc_default_remote_name: String = default_remote
 
 data gunbc_default_branch_name: String = "main"
 
-data gunbc_merge_target: GitRemoteRefParts = GitRemoteRefParts {
+data gunbc_merge_target: extdeps.git.GitRemoteRefParts = extdeps.git.GitRemoteRefParts {
   remote: gunbc_default_remote_name,
   ref_name: gunbc_default_branch_name,
 }
 
-data gunbc_merge_target_ref: GitRef = git_remote_ref(parts: gunbc_merge_target)
+data gunbc_merge_target_ref: std.types.GitRef = git_remote_ref(parts: gunbc_merge_target)

@@ -1,7 +1,7 @@
 module gunbc.plans.format_model_reconciliation
 
 
-fn format_model_reconciliation_body() -> List<MarkdownBlock> {
+fn format_model_reconciliation_body() -> List<std.markdown.MarkdownBlock> {
   [
     BlockquoteBlock { blocks: [p(text: "Record-spelling reconciliation: one concept — how a format spells records — was historically forked across three models. The live tree has dissolved the two legacy models into `ConfigFormat`, `CommentSyntax`, `LayoutProtocol`, and `SerializationKnobs`; this tracker now owns only the remaining emitter migrations. DESIGN refs: §2 (one concept every scale), §3 (single authority), §5 (execution-grounded swap test), §6 (complementary to [regime-2 shared emission fold](regime2-shared-emission-fold.md), not a parallel ledger).")] },
     p(text: "**Status:** implementation tail · **`.dag` carrier is authority** (§6). Carrier facts re-verified against the live tree 2026-07-31."),
@@ -61,7 +61,7 @@ fn format_model_reconciliation_body() -> List<MarkdownBlock> {
   ]
 }
 
-data format_model_reconciliation_plan: Plan = Plan {
+data format_model_reconciliation_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "format-model-reconciliation",
   title: "Format-model reconciliation — record spelling onto single authority",
   body: format_model_reconciliation_body(),

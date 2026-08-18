@@ -17,23 +17,23 @@ type SwiftFloatWidth
   | FloatBits64
 
 type SwiftStringRepresentation {
-  tag: Symbol
+  tag: v2.std.node.Symbol
 }
 
 type SwiftCharacterRepresentation {
-  tag: Symbol
+  tag: v2.std.node.Symbol
 }
 
 type SwiftUnitRepresentation {
-  tag: Symbol
+  tag: v2.std.node.Symbol
 }
 
 type SwiftBoolRepresentation {
-  tag: Symbol
+  tag: v2.std.node.Symbol
 }
 
 type SwiftIntegerOverflowSemantics {
-  tag: Symbol
+  tag: v2.std.node.Symbol
 }
 
 type SwiftScalar
@@ -45,40 +45,40 @@ type SwiftScalar
   | VoidScalar
 
 type SwiftIntegerPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   signedness: SwiftIntSignedness
   width: SwiftIntWidth
   overflow: SwiftIntegerOverflowSemantics
 }
 
 type SwiftFloatPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   width: SwiftFloatWidth
-  ieee754_binary: Symbol
+  ieee754_binary: v2.std.node.Symbol
 }
 
 type SwiftNonNumericPrimitiveFacts
   = SwiftBoolPrimitiveFacts {
-      surface_spelling: Symbol
+      surface_spelling: v2.std.node.Symbol
       representation: SwiftBoolRepresentation
     }
   | SwiftCharacterPrimitiveFacts {
-      surface_spelling: Symbol
+      surface_spelling: v2.std.node.Symbol
       representation: SwiftCharacterRepresentation
     }
   | SwiftStringPrimitiveFacts {
-      surface_spelling: Symbol
+      surface_spelling: v2.std.node.Symbol
       representation: SwiftStringRepresentation
     }
   | SwiftVoidPrimitiveFacts {
-      surface_spelling: Symbol
+      surface_spelling: v2.std.node.Symbol
       representation: SwiftUnitRepresentation
     }
 
 type SwiftGrammarRelationRow {
-  production: GrammarProduction
+  production: v2.std.grammar.GrammarProduction
   emitted: Node
-  tokens: List<ConcreteSyntaxToken>
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 fn swift_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [

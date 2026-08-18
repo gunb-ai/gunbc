@@ -1,14 +1,14 @@
 module extdeps.languages.yaml.emit
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "yaml.org/spec/1.2.2/"
   }
 }
 
-data yaml_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "  " }
+data yaml_protocol: std.layout.LayoutProtocol = std.layout.LayoutProtocol { indent_unit: "  " }
 
 fn is_expression(s: String) -> Bool {
   starts_with(s: s, prefix: "${{")
@@ -68,7 +68,7 @@ fn emit_inline_scalar_text(s: String) -> String {
   }
 }
 
-fn emit_scalar(v: YamlValue) -> String {
+fn emit_scalar(v: extdeps.languages.yaml.types.YamlValue) -> String {
   match v {
     YamlNull => ""
     YamlBool { value: b } => if b { "true" } else { "false" }
@@ -80,7 +80,7 @@ fn emit_scalar(v: YamlValue) -> String {
   }
 }
 
-fn all_scalars_flowable(elements: List<YamlValue>) -> Bool {
+fn all_scalars_flowable(elements: List<extdeps.languages.yaml.types.YamlValue>) -> Bool {
   fold(elements, init: true, f: (acc, e) => acc && match e {
     YamlString { value: s } => !string_contains(s: s, pattern: "\n")
     YamlInt { lexeme: _ } => true
@@ -89,7 +89,7 @@ fn all_scalars_flowable(elements: List<YamlValue>) -> Bool {
   })
 }
 
-fn emit_flow_sequence(elements: List<YamlValue>) -> String {
+fn emit_flow_sequence(elements: List<extdeps.languages.yaml.types.YamlValue>) -> String {
   concat(
     concat(
       "[",
@@ -102,11 +102,11 @@ fn emit_flow_sequence(elements: List<YamlValue>) -> String {
   )
 }
 
-fn nested_body_doc(body: Doc) -> Doc {
+fn nested_body_doc(body: std.layout.Doc) -> std.layout.Doc {
   doc_nest(levels: 1, body: doc_concat(parts: [DocLine, body]))
 }
 
-fn multiline_block_doc(prefix: String, s: String) -> Doc {
+fn multiline_block_doc(prefix: String, s: String) -> std.layout.Doc {
   let lines = filter(split(s: s, delimiter: "\n"), l => l != "")
   let content = fold(lines, init: [], f: (acc, l) => append(acc, items: [DocLine, doc_text(text: l)]))
   doc_concat(parts: [
@@ -116,7 +116,7 @@ fn multiline_block_doc(prefix: String, s: String) -> Doc {
   ])
 }
 
-fn entry_doc(entry: YamlKeyValue) -> Doc {
+fn entry_doc(entry: extdeps.languages.yaml.types.YamlKeyValue) -> std.layout.Doc {
   let key = entry.key
   let val = entry.value
   match val {
@@ -139,11 +139,11 @@ fn entry_doc(entry: YamlKeyValue) -> Doc {
   }
 }
 
-fn mapping_body_doc(entries: List<YamlKeyValue>) -> Doc {
+fn mapping_body_doc(entries: List<extdeps.languages.yaml.types.YamlKeyValue>) -> std.layout.Doc {
   doc_concat(parts: map(entries, e => entry_doc(entry: e)))
 }
 
-fn block_sequence_element_doc(e: YamlValue) -> Doc {
+fn block_sequence_element_doc(e: extdeps.languages.yaml.types.YamlValue) -> std.layout.Doc {
   match e {
     YamlMapping { entries: ents } =>
       doc_concat(parts: [doc_text(text: "- "), doc_nest(levels: 1, body: mapping_body_doc(entries: ents))])
@@ -161,11 +161,11 @@ fn block_sequence_element_doc(e: YamlValue) -> Doc {
   }
 }
 
-fn block_sequence_doc(elements: List<YamlValue>) -> Doc {
+fn block_sequence_doc(elements: List<extdeps.languages.yaml.types.YamlValue>) -> std.layout.Doc {
   doc_concat(parts: map(elements, e => block_sequence_element_doc(e: e)))
 }
 
-fn project_yaml_to_doc(v: YamlValue) -> Doc {
+fn project_yaml_to_doc(v: extdeps.languages.yaml.types.YamlValue) -> std.layout.Doc {
   match v {
     YamlMapping { entries: ents } => mapping_body_doc(entries: ents)
     YamlSequence { elements: els } =>
@@ -187,6 +187,6 @@ fn project_yaml_to_doc(v: YamlValue) -> Doc {
   }
 }
 
-fn serialize_yaml(v: YamlValue) -> String {
+fn serialize_yaml(v: extdeps.languages.yaml.types.YamlValue) -> String {
   render(doc: project_yaml_to_doc(v: v), proto: yaml_protocol)
 }

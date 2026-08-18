@@ -11,7 +11,7 @@ fn table_fixture_add_arrow_with_body_swapped_operands() -> Outcome<Node> {
   outcome_accepted(value: dag_add_arrow_with_body_swapped_operands_fixture)
 }
 
-fn table_fixture_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
+fn table_fixture_add_decl_node(fn_name: v2.std.node.Symbol) -> Outcome<Node> {
   bind_outcome(
     o: table_fixture_add_arrow_with_body(),
     f: fn(arrow_with_body) {
@@ -19,7 +19,7 @@ fn table_fixture_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
         value: node_synthetic(
           kind: TypeNode { connective: Conj },
           children: [
-            Edge {
+            v2.std.node.Edge {
               label: Named { name: fn_name },
               target: arrow_with_body
             }

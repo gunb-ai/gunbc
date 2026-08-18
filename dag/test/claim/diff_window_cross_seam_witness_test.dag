@@ -8,21 +8,21 @@ data planted_head_hex: String = "fedcba0987654321fedcba0987654321fedcba09"
 data planted_target_generation_hex: String = "1111111111111111111111111111111111111111"
 data planted_window_path: String = "/tmp/attempt/verification/fedcba09.identity.diff-window.json"
 
-fn planted_oid(hex: String) -> GitObjectId {
+fn planted_oid(hex: String) -> extdeps.git.object_store.GitObjectId {
   match git_sha1_object_id(hex: hex) {
     Present { value: oid } => oid
     Absent =>
       GitSha1ObjectId {
-        digest: Sha1Digest {
-          hex: planted_base_hex as Sha1DigestHex
+        digest: std.content_hash.Sha1Digest {
+          hex: planted_base_hex as std.content_hash.Sha1DigestHex
         }
       }
   }
 }
 
-fn planted_exact_window() -> GitExactDiffWindow {
+fn planted_exact_window() -> gunbc.git_diff_change_window.GitExactDiffWindow {
   git_exact_diff_window_for_verification(
-    target: "origin/main" as GitRef,
+    target: "origin/main" as std.types.GitRef,
     target_generation: planted_oid(hex: planted_target_generation_hex),
     base: planted_oid(hex: planted_base_hex),
     head: planted_oid(hex: planted_head_hex),
@@ -30,12 +30,12 @@ fn planted_exact_window() -> GitExactDiffWindow {
 }
 
 fn resolve_with_diff_window(
-  diff_window: GitDiffWindowObservation?,
+  diff_window: gunbc.git_diff_change_window.GitDiffWindowObservation?,
   base_ref: String?,
   override_ref: String?
-) -> DiffBaselineResolution {
+) -> gunbc.diff_baseline.DiffBaselineResolution {
   resolve_diff_baseline(
-    event: CiDiffEvent {
+    event: gunbc.diff_baseline.CiDiffEvent {
       override_ref: override_ref,
       event_name: "pull_request",
       base_ref: base_ref,

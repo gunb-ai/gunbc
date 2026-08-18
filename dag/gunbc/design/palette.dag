@@ -5,7 +5,7 @@ data design_palette_note: String = "L2 palette-catalogue machinery (design-regis
 
 type Swatch {
   name: String
-  color: Srgb8
+  color: extdeps.color.srgb.Srgb8
 }
 
 type SwatchMemberKind
@@ -28,7 +28,7 @@ fn swatch_derived(sw: Swatch, anchor_name: String, note: String) -> SwatchMember
 type SwatchSetProvenance
   = HouseAuthored { note: String }
   | InspiredByExternal { note: String }
-  | CitedUpstream { authority: ExternalAuthority, version: String }
+  | CitedUpstream { authority: extdeps.external_authority.ExternalAuthority, version: String }
 
 type SwatchSet {
   name: String

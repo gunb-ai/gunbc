@@ -5,10 +5,10 @@ type QualifiedName = FreeMonoid<Symbol>
 
 type QnFoldStatus
   = QnFoldInit
-  | QnFoldHeadSeen { sym: Symbol }
+  | QnFoldHeadSeen { sym: v2.std.node.Symbol }
   | QnFoldTailSeen { tail: QualifiedName }
   | QnFoldDone { qn: QualifiedName }
-  | QnFoldError { diag: Diagnostic }
+  | QnFoldError { diag: v2.std.diagnostic.Diagnostic }
 
 fn qn_fold_init(n: Node) -> QnFoldStatus {
   match n.kind {

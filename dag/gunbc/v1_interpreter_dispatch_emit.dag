@@ -58,29 +58,29 @@ fn drop_first_segment(segments: List<String>) -> List<String> {
     |> map(pair => pair.second)
 }
 
-fn module_domain_segments(module: QualifiedName) -> List<String> {
+fn module_domain_segments(module: v2.std.qualified_name.QualifiedName) -> List<String> {
   qualified_name_to_dotted_string(qn: module) |> split(delimiter: ".")
 }
 
-fn module_domain_prefix_ok(module: QualifiedName) -> Bool {
+fn module_domain_prefix_ok(module: v2.std.qualified_name.QualifiedName) -> Bool {
   match module_domain_segments(module: module) |> first {
     Present { value: head } => head == expected_bridge_family_domain_segment()
     Absent => false
   }
 }
 
-fn module_pascal_after_domain_prefix(module: QualifiedName) -> String {
+fn module_pascal_after_domain_prefix(module: v2.std.qualified_name.QualifiedName) -> String {
   drop_first_segment(segments: module_domain_segments(module: module))
     |> map(segment => to_pascal_segment(segment: segment))
     |> join(separator: "")
 }
 
-fn module_slug_after_domain_prefix(module: QualifiedName) -> String {
+fn module_slug_after_domain_prefix(module: v2.std.qualified_name.QualifiedName) -> String {
   drop_first_segment(segments: module_domain_segments(module: module))
     |> join(separator: "_")
 }
 
-fn dispatch_emit_site_key(site: InterpreterDispatchEmitSite) -> String {
+fn dispatch_emit_site_key(site: gunbc.v1_interpreter_primitive_surface.InterpreterDispatchEmitSite) -> String {
   match site {
     EvalBuiltinInnerSite => "eval_builtin_inner"
     EvalAlgebraMethodInnerSite => "eval_algebra_method_inner"
@@ -93,11 +93,11 @@ fn dispatch_emit_site_key(site: InterpreterDispatchEmitSite) -> String {
   }
 }
 
-fn roster_site_key(row: InterpreterPrimitiveDispatchArm) -> String {
+fn roster_site_key(row: gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm) -> String {
   dispatch_emit_site_key(site: row.dispatch_emit_site)
 }
 
-fn emittable_dispatch_emit_sites(rows: List<InterpreterPrimitiveDispatchArm>) -> List<InterpreterDispatchEmitSite> {
+fn emittable_dispatch_emit_sites(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> List<gunbc.v1_interpreter_primitive_surface.InterpreterDispatchEmitSite> {
   rows |> map(r => r.dispatch_emit_site)
 }
 
@@ -105,43 +105,43 @@ fn distinct_strings(xs: List<String>) -> List<String> {
   xs |> fold(init: [], f: (acc, x) => if acc |> any(y => y == x) { acc } else { acc |> concat([x]) })
 }
 
-fn distinct_identities(rows: List<InterpreterPrimitiveDispatchArm>) -> List<String> {
+fn distinct_identities(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> List<String> {
   distinct_strings(xs: rows |> map(r => concat(r.arm.identity, "")))
 }
 
-fn distinct_spellings(rows: List<InterpreterPrimitiveDispatchArm>) -> List<String> {
+fn distinct_spellings(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> List<String> {
   distinct_strings(xs: rows |> map(r => concat(r.authored_spelling, "")))
 }
 
-fn rust_variant_for_row(row: InterpreterPrimitiveDispatchArm) -> String {
+fn rust_variant_for_row(row: gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm) -> String {
   arm_identity_to_rust_variant(identity: concat(row.arm.identity, ""))
 }
 
-fn distinct_rust_variants(rows: List<InterpreterPrimitiveDispatchArm>) -> List<String> {
+fn distinct_rust_variants(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> List<String> {
   distinct_strings(xs: rows |> map(r => rust_variant_for_row(row: r)))
 }
 
-fn known_dispatch_emit_site_keys(rows: List<InterpreterPrimitiveDispatchArm>) -> List<String> {
+fn known_dispatch_emit_site_keys(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> List<String> {
   distinct_strings(xs: rows |> map(r => roster_site_key(row: r)))
 }
 
-fn dispatch_emit_site_key_is_emittable(rows: List<InterpreterPrimitiveDispatchArm>, site_key: String) -> Bool {
+fn dispatch_emit_site_key_is_emittable(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>, site_key: String) -> Bool {
   known_dispatch_emit_site_keys(rows: rows) |> any(k => k == site_key)
 }
 
-fn filter_roster_site(rows: List<InterpreterPrimitiveDispatchArm>, site_key: String) -> List<InterpreterPrimitiveDispatchArm> {
+fn filter_roster_site(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>, site_key: String) -> List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm> {
   rows |> filter(r => roster_site_key(row: r) == site_key)
 }
 
-fn site_has_rust_variant_collision(site_rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+fn site_has_rust_variant_collision(site_rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> Bool {
   count(distinct_identities(rows: site_rows)) != count(distinct_rust_variants(rows: site_rows))
 }
 
-fn roster_site_has_rust_variant_collision(site_key: String, rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+fn roster_site_has_rust_variant_collision(site_key: String, rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> Bool {
   site_has_rust_variant_collision(site_rows: filter_roster_site(rows: rows, site_key: site_key))
 }
 
-fn any_roster_site_has_rust_variant_collision(rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+fn any_roster_site_has_rust_variant_collision(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> Bool {
   known_dispatch_emit_site_keys(rows: rows)
     |> any(site_key => roster_site_has_rust_variant_collision(site_key: site_key, rows: rows))
 }
@@ -153,28 +153,28 @@ fn rust_variant_collision_synthetic_red_control() -> Bool {
 
 data spelling_collision_note: String = "A ROSTER ROW SPELLING COLLIDES ONLY WITHIN ITS OWN DISPATCH SITE. Two distinct arm identities at one site sharing one authored_spelling would emit two identical match-arm string literals into that site's generated lookup_* function -- Rust's own unreachable-pattern lint would flag it, but a lint is advisory, not a modeled refusal, so generation refuses first. Cross-site reuse of the same spelling is legitimate and already witnessed (lookup is dispatched both by the eval_method_call short-circuit and by the algebra arm it shadows) -- the check is scoped per site, never across the whole roster."
 
-fn rows_with_spelling(site_rows: List<InterpreterPrimitiveDispatchArm>, spelling: String) -> List<InterpreterPrimitiveDispatchArm> {
+fn rows_with_spelling(site_rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>, spelling: String) -> List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm> {
   site_rows |> filter(r => r.authored_spelling == spelling)
 }
 
-fn site_has_spelling_collision(site_rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+fn site_has_spelling_collision(site_rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> Bool {
   distinct_spellings(rows: site_rows)
     |> any(spelling => count(distinct_identities(rows: rows_with_spelling(site_rows: site_rows, spelling: spelling))) > 1)
 }
 
-fn roster_site_has_spelling_collision(site_key: String, rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+fn roster_site_has_spelling_collision(site_key: String, rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> Bool {
   site_has_spelling_collision(site_rows: filter_roster_site(rows: rows, site_key: site_key))
 }
 
-fn any_roster_site_has_spelling_collision(rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+fn any_roster_site_has_spelling_collision(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> Bool {
   known_dispatch_emit_site_keys(rows: rows)
     |> any(site_key => roster_site_has_spelling_collision(site_key: site_key, rows: rows))
 }
 
 fn spelling_collision_synthetic_red_control() -> Bool {
   let rows = [
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "synthetic.arm_one" },
+    gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm {
+      arm: gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveArmId { identity: "synthetic.arm_one" },
       form: FreeCall,
       authored_spelling: "shared_spelling",
       realization_module: "v1_interpreter",
@@ -182,8 +182,8 @@ fn spelling_collision_synthetic_red_control() -> Bool {
       dispatch_emit_site: EvalBuiltinInnerSite,
       enumeration: AuthoredInRoster,
     },
-    InterpreterPrimitiveDispatchArm {
-      arm: InterpreterPrimitiveArmId { identity: "synthetic.arm_two" },
+    gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm {
+      arm: gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveArmId { identity: "synthetic.arm_two" },
       form: FreeCall,
       authored_spelling: "shared_spelling",
       realization_module: "v1_interpreter",
@@ -195,7 +195,7 @@ fn spelling_collision_synthetic_red_control() -> Bool {
   any_roster_site_has_spelling_collision(rows: rows)
 }
 
-fn site_enum_name(site: InterpreterDispatchEmitSite) -> String {
+fn site_enum_name(site: gunbc.v1_interpreter_primitive_surface.InterpreterDispatchEmitSite) -> String {
   match site {
     EvalBuiltinInnerSite => "EvalBuiltinArm"
     EvalAlgebraMethodInnerSite => "EvalAlgebraMethodArm"
@@ -208,7 +208,7 @@ fn site_enum_name(site: InterpreterDispatchEmitSite) -> String {
   }
 }
 
-fn site_lookup_name(site: InterpreterDispatchEmitSite) -> String {
+fn site_lookup_name(site: gunbc.v1_interpreter_primitive_surface.InterpreterDispatchEmitSite) -> String {
   match site {
     EvalBuiltinInnerSite => "lookup_eval_builtin_inner"
     EvalAlgebraMethodInnerSite => "lookup_eval_algebra_method_inner"
@@ -221,7 +221,7 @@ fn site_lookup_name(site: InterpreterDispatchEmitSite) -> String {
   }
 }
 
-fn render_lookup_match_rows(rows: List<InterpreterPrimitiveDispatchArm>, enum_name: String) -> String {
+fn render_lookup_match_rows(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>, enum_name: String) -> String {
   fold_list(rows, empty: "", cons: fn(acc, row) {
     let escaped = escape_rust_string_literal_body(s: concat(row.authored_spelling, ""))
     let variant = rust_variant_for_row(row: row)
@@ -251,7 +251,7 @@ fn qualified_enum_variant(enum_name: String, variant: String) -> String {
   )
 }
 
-fn render_identity_arm_rows(rows: List<InterpreterPrimitiveDispatchArm>, enum_name: String) -> String {
+fn render_identity_arm_rows(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>, enum_name: String) -> String {
   let identities = distinct_identities(rows: rows)
   fold_list(identities, empty: "", cons: fn(acc, identity) {
     let variant = arm_identity_to_rust_variant(identity: identity)
@@ -281,7 +281,7 @@ fn render_enum_variants(variants: List<String>) -> String {
   })
 }
 
-fn render_site_block(site: InterpreterDispatchEmitSite, rows: List<InterpreterPrimitiveDispatchArm>) -> String {
+fn render_site_block(site: gunbc.v1_interpreter_primitive_surface.InterpreterDispatchEmitSite, rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> String {
   let enum_name = site_enum_name(site: site)
   let lookup_name = site_lookup_name(site: site)
   let site_key = dispatch_emit_site_key(site: site)
@@ -318,7 +318,7 @@ fn render_site_block(site: InterpreterDispatchEmitSite, rows: List<InterpreterPr
 
 data distinct_dispatch_sites_note: String = "distinct_dispatch_sites keeps the typed InterpreterDispatchEmitSite carried by each row all the way through grouping -- it never drops to a String key and searches back for the site that produced it. The prior site_for_key/distinct_sites pairing did exactly that (known_dispatch_emit_site_keys() -> site_for_key() re-lookup), and its Absent arm papered over a lookup that structurally cannot fail (every key came from the very rows being searched) by silently returning EvalBuiltinInnerSite -- an absorbing fallback sitting inside the mechanism this closeout removes fallbacks from (operator finding, PR 7801, 2026-08-04). Deduplication still needs a comparable key (dispatch_emit_site_key), but the key is used only to test membership, never to recover a value -- the site itself always comes from the row's own dispatch_emit_site field."
 
-fn distinct_dispatch_sites(rows: List<InterpreterPrimitiveDispatchArm>) -> List<InterpreterDispatchEmitSite> {
+fn distinct_dispatch_sites(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> List<gunbc.v1_interpreter_primitive_surface.InterpreterDispatchEmitSite> {
   rows
     |> fold(init: [], f: (acc, row) =>
       if acc |> any(s => dispatch_emit_site_key(site: s) == roster_site_key(row: row)) {
@@ -332,7 +332,7 @@ type V1InterpreterDispatchEmitOutcome
   = V1InterpreterDispatchGenerated { content: String }
   | V1InterpreterDispatchGenerationRefused { reason: String }
 
-fn render_dispatch_generated_rs(rows: List<InterpreterPrimitiveDispatchArm>) -> String {
+fn render_dispatch_generated_rs(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> String {
   let sites = distinct_dispatch_sites(rows: rows)
   concat(
     "// Generated by gunbc v1_interpreter_dispatch_emit — do not hand-edit.\n",
@@ -348,7 +348,7 @@ fn render_dispatch_generated_rs(rows: List<InterpreterPrimitiveDispatchArm>) -> 
   )
 }
 
-fn row_has_invalid_bridge_family_domain_prefix(row: InterpreterPrimitiveDispatchArm) -> Bool {
+fn row_has_invalid_bridge_family_domain_prefix(row: gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm) -> Bool {
   match row.dispatch_emit_site {
     EvalCallBridgeFamilySite { module: bridge_module } => !module_domain_prefix_ok(module: bridge_module)
     EvalBuiltinInnerSite => false
@@ -361,7 +361,7 @@ fn row_has_invalid_bridge_family_domain_prefix(row: InterpreterPrimitiveDispatch
   }
 }
 
-fn any_row_has_invalid_bridge_family_domain_prefix(rows: List<InterpreterPrimitiveDispatchArm>) -> Bool {
+fn any_row_has_invalid_bridge_family_domain_prefix(rows: List<gunbc.v1_interpreter_primitive_surface.InterpreterPrimitiveDispatchArm>) -> Bool {
   rows |> any(r => row_has_invalid_bridge_family_domain_prefix(row: r))
 }
 

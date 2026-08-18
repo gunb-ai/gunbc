@@ -256,7 +256,7 @@ fn sensor_may_deliver_impulses(a: SensorAvailability) -> Bool {
 data impulse_admission_note: String = "An impulse is admitted only when its SOURCE is available and the glitch channel is armed, and the refusal says which of the two failed rather than returning a bare false. The synthetic source is always available because it is authored input, which is what keeps the audition runnable on hardware that has no sensor — and it is a source in its own right rather than a simulation of one, so nothing here pretends a reading occurred."
 
 type ImpulseAdmission
-  = ImpulseAdmitted { source: String, settle: TimingToken }
+  = ImpulseAdmitted { source: String, settle: gunbc.design.material.TimingToken }
   | ImpulseSourceUnavailable { source: String, availability: String }
   | ImpulseChannelDisabled { source: String }
 

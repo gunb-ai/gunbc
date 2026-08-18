@@ -15,16 +15,16 @@ fn use_chained() -> Int {
 
 data witness_chained_generic_field: Bool = use_chained() == 9
 
-data chained_generic_field_claim_payload: Node = Node {
+data chained_generic_field_claim_payload: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data claim_chained_generic_field_compiles: TestClaim = CompilesClaim {
+data claim_chained_generic_field_compiles: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/chained_generic_field_access: chained o.middle.inner.value compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: chained_generic_field_claim_payload,
   expected_value: chained_generic_field_claim_payload,
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

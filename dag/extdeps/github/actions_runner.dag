@@ -9,9 +9,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type ActionsRunnerRelease {
-  version: NonEmptyStr
-  digest_aarch64: Digest
-  digest_x86_64: Digest
+  version: std.types.NonEmptyStr
+  digest_aarch64: extdeps.crypto.hash.Digest
+  digest_x86_64: extdeps.crypto.hash.Digest
 }
 
 type ActionsRunnerPublishedLinuxArch = ActionsRunnerLinuxArm64 | ActionsRunnerLinuxX64

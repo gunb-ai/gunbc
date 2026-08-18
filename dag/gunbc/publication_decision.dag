@@ -10,10 +10,10 @@ type PublicationAudience
   | EnumeratedPublicationAudience { label: String }
 
 type PublicationDecisionReceipt {
-  subject_identity: ContentHash
-  content_identity: ContentHash
+  subject_identity: std.content_hash.ContentHash
+  content_identity: std.content_hash.ContentHash
   audience: PublicationAudience
-  policy_version: NonEmptyStr
+  policy_version: std.types.NonEmptyStr
   authority: PublicationAuthorityId
 }
 

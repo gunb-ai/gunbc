@@ -1,18 +1,18 @@
 module v2.test.tokenize.annotation_channel
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // The exhaustiveness arms added to lex_match_thunk_claims prove only that a new variant was handled; they never CONSTRUCT an AnnotationRule, so they establish nothing about whether the third channel works. These do: every claim below routes real source through the real walk and asserts where the lexeme landed. Pre-regen by design — the whole point is evidence before a long regen cycle, so nothing here needs a rebuilt stage0.
-fn annotation_pattern() -> LexPattern {
+fn annotation_pattern() -> v2.std.compilers.lexing.LexPattern {
   SequencePattern {
     left: LiteralPattern { text: "//" },
     right: RepeatPattern { element: CharClassPattern { class: LineCommentTextChar } }
   }
 }
 
-fn test_rules() -> LexRuleSet {
-  LexRuleSet {
+fn test_rules() -> v2.std.compilers.lexing.LexRuleSet {
+  v2.std.compilers.lexing.LexRuleSet {
     rules: [
       AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() },
       TriviaRule { pattern: OneOrMorePattern { element: CharClassPattern { class: WhitespaceChar } } },
@@ -43,7 +43,7 @@ fn token_identity(source: String) -> String {
   }
 }
 
-fn annotations_of(source: String) -> List<UnboundSourceAnnotation> {
+fn annotations_of(source: String) -> List<v2.std.compilers.lexing.UnboundSourceAnnotation> {
   match lex_walk_artifact(source: source, file: ^probe, rules: test_rules()) {
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } => lex_artifact_annotations(artifact: a)
     v2.std.diagnostic.Rejected { diagnostics: _ } => []
@@ -93,7 +93,7 @@ test fn zero_width_annotation_rule_refuses_rather_than_looping() -> Bool {
   match lex_walk_artifact(
     source: "a",
     file: ^probe,
-    rules: LexRuleSet { rules: [ AnnotationRule { annotation_class: ^empty_ann, pattern: EmptyPattern } ] }
+    rules: v2.std.compilers.lexing.LexRuleSet { rules: [ AnnotationRule { annotation_class: ^empty_ann, pattern: EmptyPattern } ] }
   ) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => true
     v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => false
@@ -120,8 +120,8 @@ data line_spanning_token_note: String = "The two discriminators the category rul
 
 After `):\n    ` the annotation begins a fresh line carrying only indentation, so it is LEADING. After `\n    if ` the annotation follows semantic text on its line, so it is TRAILING. A rule that resets only on trivia, or that sets `a semantic token appeared` after every token, calls both TRAILING and cannot tell them apart. These pin the physical-line reading before placement becomes a parser input."
 
-fn line_spanning_rules(token_text: String) -> LexRuleSet {
-  LexRuleSet {
+fn line_spanning_rules(token_text: String) -> v2.std.compilers.lexing.LexRuleSet {
+  v2.std.compilers.lexing.LexRuleSet {
     rules: [
       AnnotationRule { annotation_class: ^line_comment, pattern: annotation_pattern() },
       TokenRule { token_class: ^spanning, pattern: LiteralPattern { text: token_text } }

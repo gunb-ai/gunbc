@@ -1,9 +1,9 @@
 module v2.test.lens_application.empty_required_lenses_skip_gate
 
 
-data empty_lenses_target_model_stub: TargetModel = TargetModel {
+data empty_lenses_target_model_stub: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
-  bundle: Node {
+  bundle: v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -15,13 +15,13 @@ data empty_lenses_target_model_stub: TargetModel = TargetModel {
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-data empty_lenses_authority_node: Node = Node {
+data empty_lenses_authority_node: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^empty_lenses_claim_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-fn non_empty_diagnostics_contain_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+fn non_empty_diagnostics_contain_reason(d: v2.std.diagnostic.NonEmptyDiagnostics, reason: v2.std.node.Symbol) -> Bool {
   if d.head.reason == reason {
     true
   } else {
@@ -51,7 +51,7 @@ fn empty_required_lenses_skip_gate_claim_rhs() -> Node {
   if empty_required_lenses_skip_gate_claim_holds() {
     empty_lenses_authority_node
   } else {
-    Node {
+    v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -59,10 +59,10 @@ fn empty_required_lenses_skip_gate_claim_rhs() -> Node {
   }
 }
 
-data claim_empty_required_lenses_skip_gate: TestClaim = EqualsClaim {
+data claim_empty_required_lenses_skip_gate: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_application/empty_required_lenses_skip_gate: empty lens list skips gate reject",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: empty_lenses_authority_node,
   rhs: empty_required_lenses_skip_gate_claim_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

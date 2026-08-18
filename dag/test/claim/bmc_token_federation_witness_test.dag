@@ -3,7 +3,7 @@ module test.claim.bmc_token_federation_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn binding_is_scoped(b: SecretAccessBinding) -> Bool {
+fn binding_is_scoped(b: gunbc.assimilate.bmc_token_federation.SecretAccessBinding) -> Bool {
   b.member == bmc_assimilator_sa_member()
     && b.secret == bmc_srv3_secret_name
     && b.project == bmc_secrets_project_id

@@ -25,8 +25,8 @@ data rust_target_triple_scope_subject_note: String = "THE SUBJECT IS RUST'S SPEL
 data rust_target_triple_note: String = "RUST'S OWN SPELLING OF A TARGET TRIPLE, living with the Rust upstream that publishes it rather than with any consumer. The toolchain module's diagnostic-name functions state the rule this module obeys: every upstream spells these axes differently, and each spelling belongs beside its own upstream as a PARTIAL projection that refuses what that upstream does not publish. This is that projection for Rust.\\n\\nIT IS DELIBERATELY PARTIAL AND REFUSING. The table below carries the triples this repository actually builds for; anything else returns absent rather than being assembled from parts. Assembling one would be the failure this shape exists to prevent -- a triple composed by concatenating axis spellings looks plausible for every combination, including the many that Rust does not publish, and the resulting string would be handed to a compiler that rejects it or, worse, to an identity that claims a target nobody can build.\\n\\nGROWING IT IS ADDING A ROW, which is the point: a new supported target is a cited addition here, not an edit to a consumer, and until the row exists every consumer refuses rather than guessing."
 
 type RustTargetTripleRow {
-  spelling: NonEmptyStr
-  triple: TargetTriple
+  spelling: std.types.NonEmptyStr
+  triple: extdeps.toolchain.types.TargetTriple
 }
 
 fn rust_target_triple_rows() -> List<RustTargetTripleRow> {

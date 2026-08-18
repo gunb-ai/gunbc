@@ -1,14 +1,14 @@
 module extdeps.network.tp_link
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.tp-link.com/us/home-networking/unmanaged-switch/tl-sg1024s/"
   }
 }
 
-data tp_link_tl_sg1024s_catalog: NetworkSwitchCatalogRow = NetworkSwitchCatalogRow {
+data tp_link_tl_sg1024s_catalog: extdeps.network.switch_types.NetworkSwitchCatalogRow = extdeps.network.switch_types.NetworkSwitchCatalogRow {
   model: "TL-SG1024S",
   manufacturer: tp_link,
   port_count: 24,
@@ -18,9 +18,9 @@ data tp_link_tl_sg1024s_catalog: NetworkSwitchCatalogRow = NetworkSwitchCatalogR
   max_power_draw: milliwatt(13600),
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.network.tp_link",
       decl_name: "tp_link_tl_sg1024s_catalog",
       field: WholeDeclaration

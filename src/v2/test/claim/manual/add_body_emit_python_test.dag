@@ -1,11 +1,11 @@
 module v2.test.manual.add_body_emit_python
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data python_add_emit_perturbed_source_text: String = "def add(a, b): return a + b"
 
-fn python_add_emit_perturbed_binding_spellings() -> Map<Symbol, String> {
+fn python_add_emit_perturbed_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(
       map_insert(empty_map(), ^python_binding_fn_add, "add"),
@@ -17,8 +17,8 @@ fn python_add_emit_perturbed_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn python_add_emit_perturbed_target_model() -> TargetModel {
-  TargetModel {
+fn python_add_emit_perturbed_target_model() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: python_target_model_node(),
     lex: python_lex(),
@@ -29,7 +29,7 @@ fn python_add_emit_perturbed_target_model() -> TargetModel {
   }
 }
 
-fn python_add_emit_from_tree(target: TargetModel) -> Outcome<Medium<String>> {
+fn python_add_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
   emit(tree: python_add_inferred_tree, target: target)
 }
 

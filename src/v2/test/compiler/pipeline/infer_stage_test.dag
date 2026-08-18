@@ -1,7 +1,7 @@
 module v2.test.compiler.pipeline.infer_stage
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data pipeline_infer_stage_note: String = "Relationship witness: ResolvedTree -> InferredTree on the canonical add fixture (fast-lane: fixture input, no full ingest). Match corpus infer lives in long lane."
 

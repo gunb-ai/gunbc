@@ -1,9 +1,9 @@
 module v2.test.long.compiler_frontier_probe_entry
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
-fn frontier_probe_entry_receipt() -> FrontierProbeReceipt {
+fn frontier_probe_entry_receipt() -> v2.compiler.self_host.frontier_probe_types.FrontierProbeReceipt {
   if frontier_probe_entry_module_path != "" {
     frontier_probe_receipt_for_host_manifest_entry(
       refs: host_source_root_closure_refs,

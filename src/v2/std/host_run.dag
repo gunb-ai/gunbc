@@ -15,7 +15,7 @@ type HostExit {
 }
 
 type HostRunStdout {
-  bytes: ByteString
+  bytes: v2.std.host_transport.ByteString
 }
 
 type HostLogicalRun {
@@ -23,11 +23,11 @@ type HostLogicalRun {
 }
 
 type EmitHostRunReceipt {
-  target: TargetModel
+  target: v2.std.compilers.target_model.TargetModel
   source_text: String
   exit: HostExit
   logical_run: Outcome<HostLogicalRun>
-  stderr_bytes: ByteString
+  stderr_bytes: v2.std.host_transport.ByteString
   build_log: BuildLog
   compile_skipped: Bool
 }

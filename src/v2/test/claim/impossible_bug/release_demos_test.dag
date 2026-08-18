@@ -1,7 +1,7 @@
 module v2.test.impossible_bug.release_demos
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn release_complexity_claim_catches() -> Bool {
   match test_claim_expected_outcome(c: claim_overcost_against_structural_bound_violates) {

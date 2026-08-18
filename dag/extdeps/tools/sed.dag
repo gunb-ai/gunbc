@@ -1,8 +1,8 @@
 module extdeps.tools.sed
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.gnu.org/software/sed/manual/sed.html"
   }
@@ -16,7 +16,7 @@ data sed_cli_tool: CliTool = CliTool {
 
 service sed.Sed {
   operation InPlaceSubstitute {
-    input { expression: NonEmptyStr, path: NonEmptyStr }
+    input { expression: std.types.NonEmptyStr, path: std.types.NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["sed", "-i", "{expression}", "{path}"] }
     exit {

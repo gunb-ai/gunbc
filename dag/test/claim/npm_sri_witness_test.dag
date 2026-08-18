@@ -21,7 +21,7 @@ test fn npm_sri_refuses_structural_expectation() -> Bool {
     NpmSingleSha512Integrity { digest } =>
       match compare_content_hash(
         left: as_content_hash_sha512(digest: digest),
-        right: content_hash_of_value(value: "not-a-digest" as NonEmptyStr),
+        right: content_hash_of_value(value: "not-a-digest" as std.types.NonEmptyStr),
       ) {
         ContentHashCrossFamilyIncomparable => true
         ContentHashEqual => false
@@ -34,7 +34,7 @@ test fn npm_sri_refuses_structural_expectation() -> Bool {
 test fn npm_sri_refuses_sha256_prefix_as_unsupported_algorithm() -> Bool {
   match npm_decode_integrity(wire: "sha256-deadbeef") {
     NpmIntegrityUnsupportedAlgorithm { algorithm } =>
-      algorithm == ("sha256" as NonEmptyStr)
+      algorithm == ("sha256" as std.types.NonEmptyStr)
     _ => false
   }
 }
@@ -102,10 +102,10 @@ test fn npm_sri_preserves_sha1_as_native_arm() -> Bool {
 test fn npm_boolean_member_distinguishes_absent_observed_wrong_type() -> Bool {
   let absent_obj = JsonObject { members: [] }
   let observed_obj = JsonObject {
-    members: [JsonKeyValue { key: "optional", value: JsonBool { value: true } }],
+    members: [extdeps.languages.json.emit.JsonKeyValue { key: "optional", value: JsonBool { value: true } }],
   }
   let wrong_obj = JsonObject {
-    members: [JsonKeyValue { key: "optional", value: JsonString { value: "false" } }],
+    members: [extdeps.languages.json.emit.JsonKeyValue { key: "optional", value: JsonString { value: "false" } }],
   }
   match npm_json_boolean_member(v: absent_obj, key: "optional") {
     NpmBooleanMemberAbsent =>
@@ -124,12 +124,12 @@ test fn npm_boolean_member_distinguishes_absent_observed_wrong_type() -> Bool {
 
 test fn npm_string_list_member_refuses_wrong_type() -> Bool {
   let wrong = JsonObject {
-    members: [JsonKeyValue { key: "os", value: JsonString { value: "linux" } }],
+    members: [extdeps.languages.json.emit.JsonKeyValue { key: "os", value: JsonString { value: "linux" } }],
   }
   let absent = JsonObject { members: [] }
   let ok = JsonObject {
     members: [
-      JsonKeyValue {
+      extdeps.languages.json.emit.JsonKeyValue {
         key: "os",
         value: JsonArray { elements: [JsonString { value: "linux" }] },
       },

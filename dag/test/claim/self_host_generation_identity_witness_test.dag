@@ -9,7 +9,7 @@ data gi_artifact_moved_hex: String = "f316fd8378b70362bcac957857fd6dd68292084d75
 // digest yields ArtifactNotMaterialized rather than a fabricated one, which admission
 // then refuses by name — the honest arm, and strictly better than a green axis
 // derived from bytes nobody observed.
-fn gi_artifact(hex: String) -> GeneratedArtifactIdentity {
+fn gi_artifact(hex: String) -> v2.compiler.self_host.generation.GeneratedArtifactIdentity {
   match sha512_hex_digest(hex: hex) {
     Present { value: d } =>
       ArtifactMaterialized { digest: observed_artifact_digest(observed: d) }
@@ -17,12 +17,12 @@ fn gi_artifact(hex: String) -> GeneratedArtifactIdentity {
   }
 }
 
-fn gi_digest(label: String) -> Hash {
+fn gi_digest(label: String) -> v2.std.node.Hash {
   symbol_identity_digest(sym: label)
 }
 
-fn gi_baseline() -> GenerationIdentity {
-  GenerationIdentity {
+fn gi_baseline() -> v2.compiler.self_host.generation.GenerationIdentity {
+  v2.compiler.self_host.generation.GenerationIdentity {
     producer_compiler: gi_digest(label: "producer-compiler-baseline"),
     source_closure: gi_digest(label: "source-closure-baseline"),
     target_model: gi_digest(label: "target-model-baseline"),
@@ -36,11 +36,11 @@ fn gi_baseline() -> GenerationIdentity {
 // fixed, so a carrier that folded the six into a single scalar would be unable to
 // tell these six apart — which is precisely what the per-axis assertions below
 // falsify.
-fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
+fn gi_perturbed(axis: v2.compiler.self_host.generation.GenerationAxis) -> v2.compiler.self_host.generation.GenerationIdentity {
   let base = gi_baseline()
   match axis {
     ProducerCompilerAxis =>
-      GenerationIdentity {
+      v2.compiler.self_host.generation.GenerationIdentity {
         producer_compiler: gi_digest(label: "producer-compiler-MOVED"),
         source_closure: base.source_closure,
         target_model: base.target_model,
@@ -49,7 +49,7 @@ fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
         materialized_artifact: base.materialized_artifact
       }
     SourceClosureAxis =>
-      GenerationIdentity {
+      v2.compiler.self_host.generation.GenerationIdentity {
         producer_compiler: base.producer_compiler,
         source_closure: gi_digest(label: "source-closure-MOVED"),
         target_model: base.target_model,
@@ -58,7 +58,7 @@ fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
         materialized_artifact: base.materialized_artifact
       }
     TargetModelAxis =>
-      GenerationIdentity {
+      v2.compiler.self_host.generation.GenerationIdentity {
         producer_compiler: base.producer_compiler,
         source_closure: base.source_closure,
         target_model: gi_digest(label: "target-model-MOVED"),
@@ -67,7 +67,7 @@ fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
         materialized_artifact: base.materialized_artifact
       }
     ToolchainAxis =>
-      GenerationIdentity {
+      v2.compiler.self_host.generation.GenerationIdentity {
         producer_compiler: base.producer_compiler,
         source_closure: base.source_closure,
         target_model: base.target_model,
@@ -76,7 +76,7 @@ fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
         materialized_artifact: base.materialized_artifact
       }
     BuildConfigurationAxis =>
-      GenerationIdentity {
+      v2.compiler.self_host.generation.GenerationIdentity {
         producer_compiler: base.producer_compiler,
         source_closure: base.source_closure,
         target_model: base.target_model,
@@ -85,7 +85,7 @@ fn gi_perturbed(axis: GenerationAxis) -> GenerationIdentity {
         materialized_artifact: base.materialized_artifact
       }
     MaterializedArtifactAxis =>
-      GenerationIdentity {
+      v2.compiler.self_host.generation.GenerationIdentity {
         producer_compiler: base.producer_compiler,
         source_closure: base.source_closure,
         target_model: base.target_model,
@@ -158,9 +158,9 @@ test fn perturbing_one_axis_leaves_the_other_five_agreeing() -> Bool {
   )
 }
 
-fn gi_unbuilt() -> GenerationIdentity {
+fn gi_unbuilt() -> v2.compiler.self_host.generation.GenerationIdentity {
   let base = gi_baseline()
-  GenerationIdentity {
+  v2.compiler.self_host.generation.GenerationIdentity {
     producer_compiler: base.producer_compiler,
     source_closure: base.source_closure,
     target_model: base.target_model,
@@ -190,15 +190,15 @@ test fn two_unmaterialized_artifacts_do_not_agree() -> Bool {
     )
 }
 
-fn gi_member(identity: String, content: String) -> SourceClosureMember {
-  SourceClosureMember {
+fn gi_member(identity: String, content: String) -> v2.compiler.self_host.generation.SourceClosureMember {
+  v2.compiler.self_host.generation.SourceClosureMember {
     identity: identity,
     content: gi_digest(label: content)
   }
 }
 
-fn gi_roster_canonical() -> SourceClosureRoster {
-  SourceClosureRoster {
+fn gi_roster_canonical() -> v2.compiler.self_host.generation.SourceClosureRoster {
+  v2.compiler.self_host.generation.SourceClosureRoster {
     members: [
       gi_member(identity: "a_module", content: "a-content"),
       gi_member(identity: "b_module", content: "b-content"),
@@ -210,8 +210,8 @@ fn gi_roster_canonical() -> SourceClosureRoster {
 // The SAME set of members, enumerated in a different order. A digest folded over
 // host traversal order would silently report this as a different generation; this
 // carrier refuses it instead, so the disorder is visible rather than laundered.
-fn gi_roster_reordered() -> SourceClosureRoster {
-  SourceClosureRoster {
+fn gi_roster_reordered() -> v2.compiler.self_host.generation.SourceClosureRoster {
+  v2.compiler.self_host.generation.SourceClosureRoster {
     members: [
       gi_member(identity: "b_module", content: "b-content"),
       gi_member(identity: "a_module", content: "a-content"),
@@ -220,8 +220,8 @@ fn gi_roster_reordered() -> SourceClosureRoster {
   }
 }
 
-fn gi_roster_duplicate() -> SourceClosureRoster {
-  SourceClosureRoster {
+fn gi_roster_duplicate() -> v2.compiler.self_host.generation.SourceClosureRoster {
+  v2.compiler.self_host.generation.SourceClosureRoster {
     members: [
       gi_member(identity: "a_module", content: "a-content"),
       gi_member(identity: "a_module", content: "a-content-again"),
@@ -230,8 +230,8 @@ fn gi_roster_duplicate() -> SourceClosureRoster {
   }
 }
 
-fn gi_roster_empty_identity() -> SourceClosureRoster {
-  SourceClosureRoster {
+fn gi_roster_empty_identity() -> v2.compiler.self_host.generation.SourceClosureRoster {
+  v2.compiler.self_host.generation.SourceClosureRoster {
     members: [
       gi_member(identity: "", content: "nameless-content")
     ]
@@ -325,7 +325,7 @@ test fn axis_symbols_are_pairwise_distinct() -> Bool {
 
 // Test-side projection over the roster verdict coproduct; the authority exposes the
 // verdict itself, not a Bool (review 51217).
-fn gi_ordered(roster: SourceClosureRoster) -> Bool {
+fn gi_ordered(roster: v2.compiler.self_host.generation.SourceClosureRoster) -> Bool {
   match roster_order_verdict(roster: roster) {
     RosterCanonicallyOrdered => true
     RosterNotAscending { at_member: _ } => false

@@ -7,8 +7,8 @@ module v2.test.manual.cross_language_add_python_to_typescript
 data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
 
 type ParseTreeToTargetModelBridge {
-  source_parse_tree: Symbol
-  intended_target_language: Symbol
+  source_parse_tree: v2.std.node.Symbol
+  intended_target_language: v2.std.node.Symbol
 }
 
 type ParseTreeToTargetModelBridgeCheck = Witness<ParseTreeToTargetModelBridge>
@@ -105,12 +105,12 @@ fn cross_language_compile_on_real_tree_refuses_underived_holds(parse_tree: Parse
 
 type CrossLanguageEmitCellStatus
   = ChainProven
-  | ChainFailsClosedAtCheck { check: Symbol }
+  | ChainFailsClosedAtCheck { check: v2.std.node.Symbol }
   | ChainSourceNotModeled
 
 type CrossLanguageEmitMatrixRow {
-  source_language: Symbol
-  target_language: Symbol
+  source_language: v2.std.node.Symbol
+  target_language: v2.std.node.Symbol
   status: CrossLanguageEmitCellStatus
 }
 

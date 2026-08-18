@@ -3,19 +3,19 @@ module v2.test.claim.emit.trait_derive_supplemental_generic_bound_contract
 
 data trait_derive_supplemental_generic_bound_contract_note: String = "Model-only carrier, target-bundle codec, and measured Rust collection policy. The selected representation choice owns keyed parameter slots and one keyed row per derive trait. Each derive-keyed contract value owns its upstream authority and complete slot-keyed, required-trait-keyed obligations, so contract metadata cannot drift from or silently discard its requirements. The wire decoder alone sees list-shaped malformed input and refuses duplicate or undeclared keys before constructing a choice. The production Vec surface is the emitter's im::Vector alias, so its contracts consume exact im 15.1.0 implementation authorities rather than inapplicable std::vec::Vec or serde Vec rows. Versioned Rust, serde, and im authorities flow with each contract and requirement. HashSet rows whose Hash obligation is outside ReprGroundingDeriveTrait remain absent and carry a typed, authority-backed coverage blocker instead of an incomplete contract."
 
-data sgb_type_param: Symbol = ^sgb_type_param
-data sgb_left_slot: Symbol = ^sgb_left_slot
-data sgb_right_slot: Symbol = ^sgb_right_slot
-data sgb_unknown_slot: Symbol = ^sgb_unknown_slot
-data sgb_vec_surface: Symbol = ^sgb_vec_surface
-data sgb_vec_open: Symbol = ^sgb_vec_open
-data sgb_vec_separator: Symbol = ^sgb_vec_separator
-data sgb_vec_close: Symbol = ^sgb_vec_close
-data sgb_unrelated_source: Symbol = ^sgb_unrelated_source
-data sgb_phantom_source: Symbol = ^sgb_phantom_source
+data sgb_type_param: v2.std.node.Symbol = ^sgb_type_param
+data sgb_left_slot: v2.std.node.Symbol = ^sgb_left_slot
+data sgb_right_slot: v2.std.node.Symbol = ^sgb_right_slot
+data sgb_unknown_slot: v2.std.node.Symbol = ^sgb_unknown_slot
+data sgb_vec_surface: v2.std.node.Symbol = ^sgb_vec_surface
+data sgb_vec_open: v2.std.node.Symbol = ^sgb_vec_open
+data sgb_vec_separator: v2.std.node.Symbol = ^sgb_vec_separator
+data sgb_vec_close: v2.std.node.Symbol = ^sgb_vec_close
+data sgb_unrelated_source: v2.std.node.Symbol = ^sgb_unrelated_source
+data sgb_phantom_source: v2.std.node.Symbol = ^sgb_phantom_source
 
 fn sgb_left_param_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^sgb_type_param } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -23,7 +23,7 @@ fn sgb_left_param_node() -> Node {
 }
 
 fn sgb_right_param_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^sgb_type_param } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -31,30 +31,30 @@ fn sgb_right_param_node() -> Node {
 }
 
 fn sgb_nested_source_carrier_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: target_carrier_free_monoid_node() },
-      Edge { label: Positional, target: sgb_left_param_node() },
-      Edge { label: Positional, target: sgb_right_param_node() }
+      v2.std.node.Edge { label: Positional, target: target_carrier_free_monoid_node() },
+      v2.std.node.Edge { label: Positional, target: sgb_left_param_node() },
+      v2.std.node.Edge { label: Positional, target: sgb_right_param_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn sgb_concrete_source_carrier_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Instantiation },
     children: [
-      Edge { label: Positional, target: target_carrier_free_monoid_node() },
-      Edge { label: Positional, target: char_kernel_type_node() }
+      v2.std.node.Edge { label: Positional, target: target_carrier_free_monoid_node() },
+      v2.std.node.Edge { label: Positional, target: char_kernel_type_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn sgb_collection_eligible_elem_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode {
       connective: Atom { identity: ^target_collection_kernel_string }
     },
@@ -63,18 +63,18 @@ fn sgb_collection_eligible_elem_node() -> Node {
   }
 }
 
-fn sgb_atom_source_carrier_node(identity: Symbol) -> Node {
-  Node {
+fn sgb_atom_source_carrier_node(identity: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn sgb_vec_representation() -> TargetRepresentation {
-  TargetRepresentation {
+fn sgb_vec_representation() -> v2.std.compilers.target_model.TargetRepresentation {
+  v2.std.compilers.target_model.TargetRepresentation {
     kind: TargetCollectionReprVec,
-    apply: TargetGenericApply {
+    apply: v2.std.compilers.target_model.TargetGenericApply {
       surface: ^sgb_vec_surface,
       open: ^sgb_vec_open,
       separator: ^sgb_vec_separator,
@@ -85,23 +85,23 @@ fn sgb_vec_representation() -> TargetRepresentation {
 }
 
 fn sgb_requirement_set(
-  required_trait: ReprGroundingDeriveTrait,
-  authority: ExternalAuthority
-) -> TargetDeriveSupplementalGenericBoundRequirementSet {
+  required_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
+  authority: extdeps.external_authority.ExternalAuthority
+) -> v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet {
   map_insert(
     m: target_derive_supplemental_generic_bound_requirement_set_empty(),
     key: target_grounding_derive_trait_key(derive_trait: required_trait),
-    value: TargetDeriveSupplementalGenericBoundRequirementAuthority {
+    value: v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementAuthority {
       authority: authority
     }
   )
 }
 
 fn sgb_single_parameter_requirements(
-  representation_parameter: Symbol,
-  required_trait: ReprGroundingDeriveTrait,
-  authority: ExternalAuthority
-) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+  representation_parameter: v2.std.node.Symbol,
+  required_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
+  authority: extdeps.external_authority.ExternalAuthority
+) -> Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet> {
   map_insert(
     m: target_derive_supplemental_generic_bound_contract_requirements_empty(),
     key: representation_parameter,
@@ -113,8 +113,8 @@ fn sgb_single_parameter_requirements(
 }
 
 fn sgb_single_clone_requirement(
-  authority: ExternalAuthority
-) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+  authority: extdeps.external_authority.ExternalAuthority
+) -> Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet> {
   sgb_single_parameter_requirements(
     representation_parameter: ^sgb_left_slot,
     required_trait: ReprDeriveClone,
@@ -123,8 +123,8 @@ fn sgb_single_clone_requirement(
 }
 
 fn sgb_deserialize_requirements(
-  clone_authority: ExternalAuthority
-) -> Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+  clone_authority: extdeps.external_authority.ExternalAuthority
+) -> Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet> {
   map_insert(
     m: sgb_single_clone_requirement(authority: clone_authority),
     key: ^sgb_right_slot,
@@ -136,16 +136,16 @@ fn sgb_deserialize_requirements(
 }
 
 fn sgb_contract(
-  authority: ExternalAuthority,
-  requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>
-) -> TargetDeriveSupplementalGenericBoundContractAuthority {
-  TargetDeriveSupplementalGenericBoundContractAuthority {
+  authority: extdeps.external_authority.ExternalAuthority,
+  requirements: Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundRequirementSet>
+) -> v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContractAuthority {
+  v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContractAuthority {
     authority: authority,
     requirements: requirements
   }
 }
 
-fn sgb_nested_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+fn sgb_nested_contracts() -> Map<v2.std.compilers.target_model.TargetDeriveTraitKey, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContractAuthority> {
   let debug_contracts = map_insert(
     m: target_derive_supplemental_generic_bound_contract_authorities_empty(),
     key: target_grounding_derive_trait_key(derive_trait: ReprDeriveDebug),
@@ -196,7 +196,7 @@ fn sgb_nested_contracts() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalG
   )
 }
 
-fn sgb_nested_representation_parameters() -> Map<Symbol, TargetRepresentationParameterSlot> {
+fn sgb_nested_representation_parameters() -> Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetRepresentationParameterSlot> {
   map_insert(
     m: map_insert(
       m: target_representation_parameter_slots_empty(),
@@ -209,10 +209,10 @@ fn sgb_nested_representation_parameters() -> Map<Symbol, TargetRepresentationPar
 }
 
 fn sgb_choice(
-  representation_parameters: Map<Symbol, TargetRepresentationParameterSlot>,
-  contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>
-) -> TargetRepresentationChoice {
-  TargetRepresentationChoice {
+  representation_parameters: Map<v2.std.node.Symbol, v2.std.compilers.target_model.TargetRepresentationParameterSlot>,
+  contracts: Map<v2.std.compilers.target_model.TargetDeriveTraitKey, v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContractAuthority>
+) -> v2.std.compilers.target_model.TargetRepresentationChoice {
+  v2.std.compilers.target_model.TargetRepresentationChoice {
     form: sgb_vec_representation(),
     representation_parameters: representation_parameters,
     constraints: Empty,
@@ -220,14 +220,14 @@ fn sgb_choice(
   }
 }
 
-fn sgb_empty_choice() -> TargetRepresentationChoice {
+fn sgb_empty_choice() -> v2.std.compilers.target_model.TargetRepresentationChoice {
   sgb_choice(
     representation_parameters: target_representation_parameter_slots_empty(),
     contracts: target_derive_supplemental_generic_bound_contract_authorities_empty()
   )
 }
 
-fn sgb_nested_choice() -> TargetRepresentationChoice {
+fn sgb_nested_choice() -> v2.std.compilers.target_model.TargetRepresentationChoice {
   sgb_choice(
     representation_parameters: sgb_nested_representation_parameters(),
     contracts: sgb_nested_contracts()
@@ -236,10 +236,10 @@ fn sgb_nested_choice() -> TargetRepresentationChoice {
 
 fn sgb_realization(
   source_carrier: Node,
-  primary: TargetRepresentationChoice,
-  alternatives: List<TargetRepresentationChoice>
-) -> TargetCollectionRealization {
-  TargetCollectionRealization {
+  primary: v2.std.compilers.target_model.TargetRepresentationChoice,
+  alternatives: List<v2.std.compilers.target_model.TargetRepresentationChoice>
+) -> v2.std.compilers.target_model.TargetCollectionRealization {
+  v2.std.compilers.target_model.TargetCollectionRealization {
     source_carrier: source_carrier,
     primary: primary,
     alternatives: alternatives,
@@ -248,7 +248,7 @@ fn sgb_realization(
   }
 }
 
-fn sgb_nested_realization() -> TargetCollectionRealization {
+fn sgb_nested_realization() -> v2.std.compilers.target_model.TargetCollectionRealization {
   sgb_realization(
     source_carrier: sgb_nested_source_carrier_node(),
     primary: sgb_nested_choice(),
@@ -256,7 +256,7 @@ fn sgb_nested_realization() -> TargetCollectionRealization {
   )
 }
 
-fn sgb_empty_realization(source_carrier: Node) -> TargetCollectionRealization {
+fn sgb_empty_realization(source_carrier: Node) -> v2.std.compilers.target_model.TargetCollectionRealization {
   sgb_realization(
     source_carrier: source_carrier,
     primary: sgb_empty_choice(),
@@ -264,7 +264,7 @@ fn sgb_empty_realization(source_carrier: Node) -> TargetCollectionRealization {
   )
 }
 
-fn sgb_wrong_choice_realization() -> TargetCollectionRealization {
+fn sgb_wrong_choice_realization() -> v2.std.compilers.target_model.TargetCollectionRealization {
   sgb_realization(
     source_carrier: sgb_nested_source_carrier_node(),
     primary: sgb_empty_choice(),
@@ -276,8 +276,8 @@ fn sgb_wrong_choice_realization() -> TargetCollectionRealization {
 }
 
 fn sgb_optional_symbol_matches(
-  left: Optional<Symbol>,
-  right: Optional<Symbol>
+  left: Optional<v2.std.node.Symbol>,
+  right: Optional<v2.std.node.Symbol>
 ) -> Bool {
   match left {
     Absent =>
@@ -294,8 +294,8 @@ fn sgb_optional_symbol_matches(
 }
 
 fn sgb_representation_matches(
-  left: TargetRepresentation,
-  right: TargetRepresentation
+  left: v2.std.compilers.target_model.TargetRepresentation,
+  right: v2.std.compilers.target_model.TargetRepresentation
 ) -> Bool {
   left.kind == right.kind
     && left.apply.surface == right.apply.surface
@@ -309,8 +309,8 @@ fn sgb_representation_matches(
 }
 
 fn sgb_choice_matches_exact(
-  choice: TargetRepresentationChoice,
-  expected: TargetRepresentationChoice
+  choice: v2.std.compilers.target_model.TargetRepresentationChoice,
+  expected: v2.std.compilers.target_model.TargetRepresentationChoice
 ) -> Bool {
   sgb_representation_matches(left: choice.form, right: expected.form)
     && choice.representation_parameters == expected.representation_parameters
@@ -319,10 +319,10 @@ fn sgb_choice_matches_exact(
 }
 
 fn sgb_requirement_authority_matches(
-  contract: TargetDeriveSupplementalGenericBoundContract,
-  representation_parameter: Symbol,
-  required_trait: ReprGroundingDeriveTrait,
-  authority: ExternalAuthority
+  contract: v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContract,
+  representation_parameter: v2.std.node.Symbol,
+  required_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
+  authority: extdeps.external_authority.ExternalAuthority
 ) -> Bool {
   match target_derive_supplemental_generic_bound_requirement_authority(
     contract: contract,
@@ -335,10 +335,10 @@ fn sgb_requirement_authority_matches(
 }
 
 fn sgb_contract_has_single_requirement(
-  contract: TargetDeriveSupplementalGenericBoundContract,
-  representation_parameter: Symbol,
-  required_trait: ReprGroundingDeriveTrait,
-  authority: ExternalAuthority
+  contract: v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContract,
+  representation_parameter: v2.std.node.Symbol,
+  required_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
+  authority: extdeps.external_authority.ExternalAuthority
 ) -> Bool {
   count(contract.requirements.keys()) == 1
     && match contract.requirements.lookup(representation_parameter) {
@@ -355,13 +355,13 @@ fn sgb_contract_has_single_requirement(
 }
 
 fn sgb_contract_has_two_requirements(
-  contract: TargetDeriveSupplementalGenericBoundContract,
-  first_parameter: Symbol,
-  first_trait: ReprGroundingDeriveTrait,
-  first_authority: ExternalAuthority,
-  second_parameter: Symbol,
-  second_trait: ReprGroundingDeriveTrait,
-  second_authority: ExternalAuthority
+  contract: v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContract,
+  first_parameter: v2.std.node.Symbol,
+  first_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
+  first_authority: extdeps.external_authority.ExternalAuthority,
+  second_parameter: v2.std.node.Symbol,
+  second_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
+  second_authority: extdeps.external_authority.ExternalAuthority
 ) -> Bool {
   count(contract.requirements.keys()) == 2
     && match contract.requirements.lookup(first_parameter) {
@@ -389,9 +389,9 @@ fn sgb_contract_has_two_requirements(
 }
 
 fn sgb_contract_is_explicit_empty(
-  contract: TargetDeriveSupplementalGenericBoundContract,
-  derive_trait: ReprGroundingDeriveTrait,
-  authority: ExternalAuthority
+  contract: v2.std.compilers.target_model.TargetDeriveSupplementalGenericBoundContract,
+  derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
+  authority: extdeps.external_authority.ExternalAuthority
 ) -> Bool {
   contract.derive_trait == derive_trait
     && contract.authority == authority
@@ -399,9 +399,9 @@ fn sgb_contract_is_explicit_empty(
 }
 
 fn sgb_hash_set_coverage_blocker_matches(
-  blocker: RustSupplementalGenericBoundContractCoverageBlocker,
-  derive_trait: ReprGroundingDeriveTrait,
-  authority: ExternalAuthority
+  blocker: v2.extdeps.languages.rust.RustSupplementalGenericBoundContractCoverageBlocker,
+  derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
+  authority: extdeps.external_authority.ExternalAuthority
 ) -> Bool {
   blocker.derive_trait == derive_trait
     && blocker.authority == authority
@@ -425,14 +425,14 @@ fn sgb_hash_set_coverage_blocker_matches(
 }
 
 fn sgb_hash_set_coverage_disposition_matches(
-  coverage: RustSupplementalGenericBoundContractCoverageDisposition
+  coverage: extdeps.languages.rust.derive_contracts.RustSupplementalGenericBoundContractCoverageDisposition
 ) -> Bool {
-  let requirement_set_ref = DeclarationRef {
+  let requirement_set_ref = std.decl_ref.DeclarationRef {
       module_path: "v2.std.compilers.target_model",
       decl_name: "TargetDeriveSupplementalGenericBoundRequirementSet",
       field: WholeDeclaration
     }
-  let property_carrier_ref = DeclarationRef {
+  let property_carrier_ref = std.decl_ref.DeclarationRef {
       module_path: "v2.std.compilers.target_model",
       decl_name: "RequiredTraitWitness",
       field: WholeDeclaration
@@ -476,8 +476,8 @@ fn sgb_choice_bundle_node() -> Node {
 }
 
 fn sgb_contract_wire_node(
-  derive_trait: ReprGroundingDeriveTrait,
-  authority: ExternalAuthority,
+  derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
+  authority: extdeps.external_authority.ExternalAuthority,
   requirement_nodes: List<Node>
 ) -> Node {
   target_derive_supplemental_generic_bound_contract_wire_node(
@@ -488,9 +488,9 @@ fn sgb_contract_wire_node(
 }
 
 fn sgb_requirement_wire_node(
-  representation_parameter: Symbol,
-  required_trait: ReprGroundingDeriveTrait,
-  authority: ExternalAuthority
+  representation_parameter: v2.std.node.Symbol,
+  required_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
+  authority: extdeps.external_authority.ExternalAuthority
 ) -> Node {
   target_derive_supplemental_generic_bound_requirement_wire_node(
     representation_parameter: representation_parameter,
@@ -537,7 +537,7 @@ fn sgb_choice_bundle_with_contract_nodes(
           form_edge,
           params_edge,
           constraints_edge,
-          Edge {
+          v2.std.node.Edge {
             label: contracts_label,
             target: fold_list_node(
               xs: contract_nodes,
@@ -577,7 +577,7 @@ fn sgb_choice_bundle_with_parameter_nodes(
         n: bundle,
         children: [
           form_edge,
-          Edge {
+          v2.std.node.Edge {
             label: params_label,
             target: fold_list_node(
               xs: parameter_nodes,
@@ -592,8 +592,8 @@ fn sgb_choice_bundle_with_parameter_nodes(
   }
 }
 
-fn sgb_atom_node(identity: Symbol) -> Node {
-  Node {
+fn sgb_atom_node(identity: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -652,10 +652,10 @@ fn sgb_choice_bundle_duplicate_contract_edge_node() -> Node {
 }
 
 fn sgb_malformed_contract_row_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: sgb_atom_node(identity: discriminant(v: ReprDeriveDebug))
       }

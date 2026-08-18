@@ -1,29 +1,29 @@
 module extdeps.ebay.ebay_contracts
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "developer.ebay.com/api-docs/sell/inventory/types/slr:ConditionEnum"
   }
 }
 
-data marketplace_wire_contract: CoproductWireContract = {
-  coproduct: DeclarationRef { module_path: "extdeps.ebay.ebay", decl_name: "MarketplaceEnum", field: WholeDeclaration },
+data marketplace_wire_contract: std.serialization.CoproductWireContract = {
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.ebay.ebay", decl_name: "MarketplaceEnum", field: WholeDeclaration },
   encoding: StringVariant { naming: ScreamingSnakeCase }
 }
 
-data condition_wire_contract: CoproductWireContract = {
-  coproduct: DeclarationRef { module_path: "extdeps.ebay.inventory", decl_name: "ConditionEnum", field: WholeDeclaration },
+data condition_wire_contract: std.serialization.CoproductWireContract = {
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.ebay.inventory", decl_name: "ConditionEnum", field: WholeDeclaration },
   encoding: StringVariant { naming: ScreamingSnakeCase }
 }
 
-data format_type_wire_contract: CoproductWireContract = {
-  coproduct: DeclarationRef { module_path: "extdeps.ebay.inventory", decl_name: "FormatTypeEnum", field: WholeDeclaration },
+data format_type_wire_contract: std.serialization.CoproductWireContract = {
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.ebay.inventory", decl_name: "FormatTypeEnum", field: WholeDeclaration },
   encoding: StringVariant { naming: ScreamingSnakeCase }
 }
 
-data error_category_wire_contract: CoproductWireContract = {
-  coproduct: DeclarationRef { module_path: "extdeps.ebay.errors", decl_name: "EbayErrorCategory", field: WholeDeclaration },
+data error_category_wire_contract: std.serialization.CoproductWireContract = {
+  coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.ebay.errors", decl_name: "EbayErrorCategory", field: WholeDeclaration },
   encoding: StringVariant { naming: ScreamingSnakeCase }
 }

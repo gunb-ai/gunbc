@@ -5,18 +5,18 @@ type ProbeHandler
   = ProbePage
   | ProbeDispatch
 
-fn tpl(raw: String) -> PathTemplate {
+fn tpl(raw: String) -> std.http_path.PathTemplate {
   match parse_path_template(raw: raw) {
     ParsedPathTemplate { template: t } => t
-    MalformedPathTemplate { raw: _, segment: _, reason: _ } => PathTemplate { tokens: [] }
+    MalformedPathTemplate { raw: _, segment: _, reason: _ } => std.http_path.PathTemplate { tokens: [] }
   }
 }
 
 fn probe_table() -> ServedRouteTable<ProbeHandler> {
-  ServedRouteTable {
+  extdeps.http.server.ServedRouteTable {
     routes: [
       DynamicRoute { method: GET, path_pattern: tpl(raw: "/"), handler: ProbePage },
-      StaticRoute { route: ServedStaticRoute {
+      StaticRoute { route: extdeps.http.server.ServedStaticRoute {
         method: GET,
         path_pattern: tpl(raw: "/healthz"),
         body: "ok",
@@ -90,7 +90,7 @@ test fn witness_unknown_path_folds_404() -> Bool {
 }
 
 test fn witness_first_match_wins_on_overlap() -> Bool {
-  let overlap = ServedRouteTable {
+  let overlap = extdeps.http.server.ServedRouteTable {
     routes: [
       DynamicRoute { method: GET, path_pattern: tpl(raw: "/a/\{x\}"), handler: ProbePage },
       DynamicRoute { method: GET, path_pattern: tpl(raw: "/a/b"), handler: ProbeDispatch },
@@ -181,7 +181,7 @@ fn parity_corpus() -> List<String> {
   ["/", "/roadmap", "/roadmap/", "/dispatch", "/dispatch/abc", "/dispatch/abc/d", "/dispatch//x", "/nope", "/healthz"]
 }
 
-fn matcher_accepts(template: PathTemplate, path: String) -> Bool {
+fn matcher_accepts(template: std.http_path.PathTemplate, path: String) -> Bool {
   match extdeps.uri_path.match_path_template(template: template, path: path) {
     extdeps.uri_path.PathMatched { params: _ } => true
     extdeps.uri_path.PathNotMatched => false

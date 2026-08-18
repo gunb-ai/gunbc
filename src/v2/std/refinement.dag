@@ -6,7 +6,7 @@ fn refinement_authoritative_locus() -> Locus {
 }
 
 type Validation<B> {
-  reason: Symbol
+  reason: v2.std.node.Symbol
   admits: fn(B) -> Bool
 }
 
@@ -15,7 +15,7 @@ type VacuousAdmits {}
 data vacuous_admits_marker: VacuousAdmits = VacuousAdmits {}
 
 type VacuousValidation<B> {
-  reason: Symbol
+  reason: v2.std.node.Symbol
   vacuous: VacuousAdmits
 }
 

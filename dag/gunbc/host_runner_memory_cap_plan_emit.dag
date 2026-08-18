@@ -1,9 +1,9 @@
 module gunbc.host_runner_memory_cap_plan_emit
 
 
-data runner_memory_cap_plan_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+data runner_memory_cap_plan_protocol: std.layout.LayoutProtocol = std.layout.LayoutProtocol { indent_unit: "" }
 
-data runner_memory_cap_plan_record_knobs: SerializationKnobs = {
+data runner_memory_cap_plan_record_knobs: std.languages.SerializationKnobs = {
   assign: "=",
   entry_separator: " ",
   open: "",
@@ -16,7 +16,7 @@ data runner_memory_cap_plan_emit_disclaimer: String = "RUNNER-MEMORY-CAP APPLY S
 
 data memory_cap_plan_row_kind_guard_note: String = "memory_cap_plan_row_is_per_slot_memory_cap is a structural ConvergeTarget coproduct guard for plan-emit projection only — PerSlotMemoryCap rows serialize; any other arm emits an UNSOUND line (fail-closed, not silent skip). Dissolve-on: host_converge_realize PerSlotMemoryCap interpreter retires the hand-apply sheet."
 
-fn memory_cap_plan_row_is_per_slot_memory_cap(knob: ConvergeKnob) -> Bool {
+fn memory_cap_plan_row_is_per_slot_memory_cap(knob: gunbc.host_converge.ConvergeKnob) -> Bool {
   match knob.target {
     PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: _, bytes_value: _ } => true
     _ => false
@@ -27,7 +27,7 @@ fn memory_cap_dropin_stanza(property: String, bytes_value: String) -> String {
   concat(concat(concat("[Service]\n", property), "="), bytes_value)
 }
 
-fn memory_cap_plan_row_fields(host: HostIdentity, knob: ConvergeKnob) -> List<SerialField> {
+fn memory_cap_plan_row_fields(host: product.placement_supply.HostIdentity, knob: gunbc.host_converge.ConvergeKnob) -> List<std.languages.SerialField> {
   match knob.target {
     PerSlotMemoryCap { dropin_path: path, instance_glob: glob, property: prop, bytes_value: bytes } =>
       [
@@ -46,7 +46,7 @@ fn memory_cap_plan_row_fields(host: HostIdentity, knob: ConvergeKnob) -> List<Se
   }
 }
 
-fn memory_cap_plan_row_doc(host: HostIdentity, knob: ConvergeKnob) -> Doc {
+fn memory_cap_plan_row_doc(host: product.placement_supply.HostIdentity, knob: gunbc.host_converge.ConvergeKnob) -> std.layout.Doc {
   if memory_cap_plan_row_is_per_slot_memory_cap(knob: knob) {
     doc_concat(parts: [
       doc_text(text: "runner-memory-cap-plan "),
@@ -58,7 +58,7 @@ fn memory_cap_plan_row_doc(host: HostIdentity, knob: ConvergeKnob) -> Doc {
   }
 }
 
-fn project_runner_memory_cap_plan_doc(host: HostIdentity) -> Doc {
+fn project_runner_memory_cap_plan_doc(host: product.placement_supply.HostIdentity) -> std.layout.Doc {
   match runner_memory_host_converge(host: host) {
     Present { value: hc } =>
       doc_concat(parts: append(
@@ -78,11 +78,11 @@ fn project_runner_memory_cap_plan_doc(host: HostIdentity) -> Doc {
   }
 }
 
-fn expected_runner_memory_cap_apply_sheet(host: HostIdentity) -> String {
+fn expected_runner_memory_cap_apply_sheet(host: product.placement_supply.HostIdentity) -> String {
   render(doc: project_runner_memory_cap_plan_doc(host: host), proto: runner_memory_cap_plan_protocol)
 }
 
-fn runner_memory_cap_plan_emit_claims_nothing(host: HostIdentity) -> Bool {
+fn runner_memory_cap_plan_emit_claims_nothing(host: product.placement_supply.HostIdentity) -> Bool {
   string_contains(
     s: expected_runner_memory_cap_apply_sheet(host: host),
     pattern: "EMIT CLAIMS NOTHING"

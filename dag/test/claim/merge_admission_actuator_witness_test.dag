@@ -3,11 +3,11 @@ module test.claim.merge_admission_actuator_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data scenario_base_b0: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-witness-base-b0")
-data scenario_base_b1: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-witness-base-b1")
-data scenario_roster_r0: GateRosterHash = merge_admission_witness_gate_roster(label: "merge-admission-witness-roster-r0")
-data scenario_roster_r1: GateRosterHash = merge_admission_witness_gate_roster(label: "merge-admission-witness-roster-r1")
-data scenario_pr_x_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
+data scenario_base_b0: extdeps.git.object_store.GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-witness-base-b0")
+data scenario_base_b1: extdeps.git.object_store.GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-witness-base-b1")
+data scenario_roster_r0: gunbc.merge_admission.GateRosterHash = merge_admission_witness_gate_roster(label: "merge-admission-witness-roster-r0")
+data scenario_roster_r1: gunbc.merge_admission.GateRosterHash = merge_admission_witness_gate_roster(label: "merge-admission-witness-roster-r1")
+data scenario_pr_x_receipt: gunbc.merge_admission.MergeAdmissionReceipt = gunbc.merge_admission.MergeAdmissionReceipt {
   pr_number: Present { value: 5933 },
   head_sha: "abc1234def5678901234567890abcd1234567890",
   base_tree_hash: scenario_base_b0,
@@ -65,7 +65,7 @@ test fn enforcement_admits_fresh_verdict() -> Bool {
 }
 
 test fn enforcement_denies_skipped_fresh_receipt() -> Bool {
-  let receipt = MergeAdmissionReceipt {
+  let receipt = gunbc.merge_admission.MergeAdmissionReceipt {
     pr_number: Present { value: 5933 },
     head_sha: scenario_pr_x_receipt.head_sha,
     base_tree_hash: scenario_base_b0,
@@ -87,7 +87,7 @@ test fn enforcement_denies_skipped_fresh_receipt() -> Bool {
 }
 
 test fn enforcement_denies_failure_fresh_receipt() -> Bool {
-  let receipt = MergeAdmissionReceipt {
+  let receipt = gunbc.merge_admission.MergeAdmissionReceipt {
     pr_number: Present { value: 5933 },
     head_sha: scenario_pr_x_receipt.head_sha,
     base_tree_hash: scenario_base_b0,

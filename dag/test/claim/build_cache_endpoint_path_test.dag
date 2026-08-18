@@ -4,23 +4,23 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data endpoint_path_wall_doc: String = "THE UNLINK ADMISSION'S ACCEPTANCE SET. The subject is srv4, observed 2026-08-01: a stale server.sock with no listener behind it, every new server failing with 'Address in use (os error 98)', the host uncached since roughly 2026-07-26. Exactly one of the five path states licenses removing that file, and the controls below assert the other four refuse — but the load-bearing ones are the two that assert a DIFFERENCE from ExecStartPre=rm -f, because a wall that refuses where the naive fix would also have been harmless has not been shown to be worth anything."
 
-fn srv4_instance() -> BuildCacheInstance {
+fn srv4_instance() -> gunbc.build_cache_instance.BuildCacheInstance {
   ci_cache_instance(host: "srv4")
 }
 
-fn current() -> ObservationCurrency {
-  ObservationCurrent { observed_at_boot: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr }
+fn current() -> gunbc.build_cache_endpoint_path.ObservationCurrency {
+  ObservationCurrent { observed_at_boot: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as std.types.NonEmptyStr }
 }
 
 fn live_owner() -> gunbc.build_cache_instance.ProcessIdentity {
   gunbc.build_cache_instance.ProcessIdentity {
-    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
+    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as std.types.NonEmptyStr,
     pid: 3975946,
-    start_time: "79870020" as NonEmptyStr,
+    start_time: "79870020" as std.types.NonEmptyStr,
   }
 }
 
-fn unlinks(observed: EndpointPathState, currency: ObservationCurrency) -> Bool {
+fn unlinks(observed: gunbc.build_cache_endpoint_path.EndpointPathState, currency: gunbc.build_cache_endpoint_path.ObservationCurrency) -> Bool {
   admission_yields_unlink(
     admission: admit_stale_socket_unlink(
       instance: srv4_instance(),
@@ -30,9 +30,9 @@ fn unlinks(observed: EndpointPathState, currency: ObservationCurrency) -> Bool {
   )
 }
 
-fn srv4_stale() -> EndpointPathState {
+fn srv4_stale() -> gunbc.build_cache_endpoint_path.EndpointPathState {
   EndpointStaleSocket {
-    detail: "server.sock present, no listening entry in /proc/net/unix, no fd owner; sccache error log reads 'Address in use (os error 98)'" as NonEmptyStr,
+    detail: "server.sock present, no listening entry in /proc/net/unix, no fd owner; sccache error log reads 'Address in use (os error 98)'" as std.types.NonEmptyStr,
   }
 }
 
@@ -48,7 +48,7 @@ test fn witness_a_live_listener_is_never_unlinked() -> Bool {
 
 test fn witness_a_non_socket_path_is_never_unlinked() -> Bool {
   let conflict = EndpointPathConflict {
-    detail: "path exists and stat reports a regular file, not a socket" as NonEmptyStr,
+    detail: "path exists and stat reports a regular file, not a socket" as std.types.NonEmptyStr,
   }
   let refused = unlinks(observed: conflict, currency: current())
   let naive = unconditional_unlink_sketch(observed: conflict)
@@ -62,7 +62,7 @@ test fn witness_an_absent_path_refuses_rather_than_no_ops() -> Bool {
 test fn witness_an_unreadable_path_does_not_default_to_stale() -> Bool {
   unlinks(
     observed: EndpointPathObservationUnavailable {
-      reason: EndpointPathUnreadable { detail: "permission denied reading /proc/net/unix" as NonEmptyStr },
+      reason: EndpointPathUnreadable { detail: "permission denied reading /proc/net/unix" as std.types.NonEmptyStr },
     },
     currency: current(),
   ) == false
@@ -71,11 +71,11 @@ test fn witness_an_unreadable_path_does_not_default_to_stale() -> Bool {
 test fn witness_a_stale_read_cannot_license_an_unlink() -> Bool {
   let stale_read = unlinks(
     observed: srv4_stale(),
-    currency: ObservationStale { detail: "observation predates a reboot" as NonEmptyStr },
+    currency: ObservationStale { detail: "observation predates a reboot" as std.types.NonEmptyStr },
   )
   let unknown_currency = unlinks(
     observed: srv4_stale(),
-    currency: ObservationCurrencyUnknown { detail: "boot id could not be read" as NonEmptyStr },
+    currency: ObservationCurrencyUnknown { detail: "boot id could not be read" as std.types.NonEmptyStr },
   )
   (stale_read == false) && (unknown_currency == false)
 }
@@ -83,7 +83,7 @@ test fn witness_a_stale_read_cannot_license_an_unlink() -> Bool {
 data currency_arms_are_not_graded_doc: String = "ObservationStale and ObservationCurrencyUnknown must BOTH refuse, and they are asserted together rather than separately because the tempting shape is to grade them — to treat 'I do not know if this read is current' as weaker evidence than 'I know it is old' and let it through. It is the same evidence. An arm that admitted Unknown would be the absorbing fallback, and it would fire exactly when /proc is least readable, which is when a bind race is most likely."
 
 test fn witness_a_tcp_endpoint_has_no_stale_socket_state() -> Bool {
-  let tcp = BuildCacheInstance {
+  let tcp = gunbc.build_cache_instance.BuildCacheInstance {
     identity: srv4_instance().identity,
     implementation: srv4_instance().implementation,
     endpoint: SccacheServerTcpPort { port: 4226 },
@@ -107,7 +107,7 @@ data red_control_doc: String = "The RED control asserted as a whole rather than 
 test fn witness_the_unconditional_sketch_differs_where_it_is_destructive() -> Bool {
   let states = [
     EndpointListening { owner: live_owner() },
-    EndpointPathConflict { detail: "regular file" as NonEmptyStr },
+    EndpointPathConflict { detail: "regular file" as std.types.NonEmptyStr },
   ]
   states |> all(s => unconditional_unlink_sketch(observed: s) && (unlinks(observed: s, currency: current()) == false))
 }

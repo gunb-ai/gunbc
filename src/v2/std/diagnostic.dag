@@ -10,9 +10,9 @@ type LocusAnchor<T> {
 }
 
 type Locus
-  = Textual { file: Symbol, extent: Extent }
+  = Textual { file: v2.std.node.Symbol, extent: Extent }
   | NodeLocus { anchor: LocusAnchor<Node> }
-  | PortLocus { anchor: LocusAnchor<Symbol> }
+  | PortLocus { anchor: LocusAnchor<v2.std.node.Symbol> }
 
 type NoCorrectionReason
   = UserInputBoundary
@@ -24,7 +24,7 @@ type Correction
   = Suggested { node: Node }
   | Unavailable { reason: NoCorrectionReason }
 type Diagnostic {
-  reason: Symbol
+  reason: v2.std.node.Symbol
   at: Locus
   correction: Correction
 }

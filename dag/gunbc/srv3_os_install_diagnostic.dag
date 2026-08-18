@@ -13,8 +13,8 @@ data srv3_install_hang_no_router_lease_ms: Milliseconds = 4500000
 
 type OsInstallHangStallCause
   = HangStallWithinBudget
-  | HangStallInstallerProgressSilent { elapsed_ms: Millisecond }
-  | HangStallRouterLeaseAbsent { elapsed_ms: Millisecond }
+  | HangStallInstallerProgressSilent { elapsed_ms: std.measure.Millisecond }
+  | HangStallRouterLeaseAbsent { elapsed_ms: std.measure.Millisecond }
 
 type HangStallCauseFoldAcc {
   dominant: OsInstallHangStallCause
@@ -69,12 +69,12 @@ data bmc_install_debug_checklist_surfaces: List<OsInstallObservationSurface> = [
 type OsInstallAttemptIntent {
   target_host: product.placement_supply.HostIdentity
   actuator_host: product.placement_supply.HostIdentity
-  bmc_endpoint: NonEmptyStr
-  iso_path: NonEmptyStr
-  iso_content_hash: ContentHash
-  expected_hostname: NonEmptyStr
-  boot_source: RedfishBootSourceOverrideTarget
-  boot_override: RedfishBootSourceOverrideEnabled
+  bmc_endpoint: std.types.NonEmptyStr
+  iso_path: std.types.NonEmptyStr
+  iso_content_hash: std.content_hash.ContentHash
+  expected_hostname: std.types.NonEmptyStr
+  boot_source: extdeps.bmc.types.RedfishBootSourceOverrideTarget
+  boot_override: extdeps.bmc.types.RedfishBootSourceOverrideEnabled
   serve_port: Int
 }
 
@@ -106,7 +106,7 @@ type BmcSessionTokenObservation
 
 type IsoServeReadinessObservation
   = IsoMissing
-  | IsoPresent { observed_content_hash: ContentHash }
+  | IsoPresent { observed_content_hash: std.content_hash.ContentHash }
 
 type NbdServeReadinessVerdict
   = ServeAbsent
@@ -125,9 +125,9 @@ type RedfishBootProgressLastState
   | BootProgressOsRunning
 
 type RedfishSystemBootObservation {
-  power_state: RedfishPowerState
-  boot_override_enabled: RedfishBootSourceOverrideEnabled
-  boot_override_target: RedfishBootSourceOverrideTarget
+  power_state: extdeps.bmc.types.RedfishPowerState
+  boot_override_enabled: extdeps.bmc.types.RedfishBootSourceOverrideEnabled
+  boot_override_target: extdeps.bmc.types.RedfishBootSourceOverrideTarget
   boot_progress: RedfishBootProgressLastState
 }
 
@@ -142,7 +142,7 @@ type RedfishSystemBootVerdict
 
 type BmcVirtualMediaObservation {
   inserted_or_connected: Bool
-  image_or_endpoint: NonEmptyStr?
+  image_or_endpoint: std.types.NonEmptyStr?
   connected_to_expected_port: Bool
   bmc_session_valid: Bool
 }
@@ -155,8 +155,8 @@ type BmcVirtualMediaVerdict
   | BmcSessionExpired
 
 type SolConsoleContentObservation {
-  bytes_captured: ByteSize
-  duration_ms: Milliseconds
+  bytes_captured: std.measure.ByteSize
+  duration_ms: std.types.Milliseconds
   contains_grub: Bool
   contains_subiquity: Bool
   contains_autoinstall: Bool
@@ -202,9 +202,9 @@ type OsInstallActuationObservations {
   redfish_system: RedfishSystemBootObservation
   virtual_media: BmcVirtualMediaObservation
   sol_console: SolConsoleContentObservation
-  router_lease_table: Cr1000aDhcpLeaseTable
+  router_lease_table: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseTable
   kvm: KvmObservation
-  elapsed_since_boot_once_ms: Milliseconds
+  elapsed_since_boot_once_ms: std.types.Milliseconds
 }
 
 type InstallDiagnosticVerdict
@@ -242,9 +242,9 @@ type NbdServeObservation
     }
 
 type RedfishBootObservation {
-  power_state: RedfishPowerState
-  boot_override_enabled: RedfishBootSourceOverrideEnabled
-  boot_override_target: RedfishBootSourceOverrideTarget
+  power_state: extdeps.bmc.types.RedfishPowerState
+  boot_override_enabled: extdeps.bmc.types.RedfishBootSourceOverrideEnabled
+  boot_override_target: extdeps.bmc.types.RedfishBootSourceOverrideTarget
   boot_progress: RedfishBootProgressLastState
 }
 
@@ -254,9 +254,9 @@ type Srv3InstallDebugObservation {
   redfish_boot: RedfishBootObservation
   virtual_media_session: VirtualMediaSessionObservation
   sol: SolConsoleContentObservation?
-  router_lease_table: Cr1000aDhcpLeaseTable?
+  router_lease_table: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseTable?
   kvm: KvmObservation?
-  elapsed_since_boot_once_ms: Milliseconds?
+  elapsed_since_boot_once_ms: std.types.Milliseconds?
 }
 
 type Srv3InstallDiagnostic

@@ -21,8 +21,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 type OllamaGpuSupportRow {
-  gpu_model: NonEmptyStr
-  compute_capability: GpuComputeCapability
+  gpu_model: std.types.NonEmptyStr
+  compute_capability: extdeps.gpu.types.GpuComputeCapability
 }
 
 data ollama_gb10_gpu_support_row: OllamaGpuSupportRow = OllamaGpuSupportRow {
@@ -50,7 +50,7 @@ type OllamaNvidiaDriverRequirementVerdict
       observed: OllamaNvidiaDriverVersion,
       minimum: OllamaNvidiaDriverVersion,
     }
-  | OllamaNvidiaDriverRequirementUnobserved { cause: NonEmptyStr }
+  | OllamaNvidiaDriverRequirementUnobserved { cause: std.types.NonEmptyStr }
 
 fn ollama_nvidia_driver_version_from_wire_text(raw: String) -> OllamaNvidiaDriverVersion? {
   let trimmed = trim(s: raw)

@@ -1,8 +1,8 @@
 module extdeps.shell
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
   }
@@ -62,7 +62,7 @@ service shell.Find {
 
 service shell.Env {
   operation Get {
-    input { name: NonEmptyStr }
+    input { name: std.types.NonEmptyStr }
     output { value: String? from "stdout" }
     readonly
     transport shell { argv: ["printenv", "{name}"] }
@@ -76,7 +76,7 @@ service shell.Env {
 
 service shell.Which {
   operation Check {
-    input { command: NonEmptyStr }
+    input { command: std.types.NonEmptyStr }
     output { exists: Bool from "exit_success", path: std.types.FilePath? from "stdout" }
     readonly
     transport shell { argv: ["which", "{command}"] }

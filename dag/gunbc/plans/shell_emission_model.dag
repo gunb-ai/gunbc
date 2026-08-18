@@ -3,7 +3,7 @@ module gunbc.plans.shell_emission_model
 
 
 
-fn shell_emission_model_body() -> List<MarkdownBlock> {
+fn shell_emission_model_body() -> List<std.markdown.MarkdownBlock> {
   [
     BlockquoteBlock { blocks: [p(text: "Operator-signed design (multi-agent audit, verified against live tree). Shell emission lane: medium-agnostic orchestration intent → `emit(intent, Bash)` via the existing `05_emit_orchestration` dispatcher — **not** a new `ShellProgram` AST. DESIGN refs: §2 (intent vs transport vs spelling), §3 (single authority; `program.dag` deleted #6831 Phase 0), §4 (`emit = serialize_target ∘ translate` — endgame Q3), §5 (emit-only faithfulness; green by execution vs frozen bytes), §6 (purity-trap fence: no construct without a named live site). Complements [regime-2 shared emission fold](regime2-shared-emission-fold.md) (`std.layout.Doc` = **layout only**, never shell content) and [format-model-reconciliation](format-model-reconciliation.md) (record spelling). Parent arc: [emission-ingestion-inverse.md](emission-ingestion-inverse.md) gap (B). Residual census + arc-completion scoping: [shell-to-dag-residual-census-and-arc-completion.md](shell-to-dag-residual-census-and-arc-completion.md) (witty-ibex-317, #6514).")] },
     p(text: "**Status:** planning tracker · **`.dag` carrier is authority** (§6). Linked from `ROADMAP.md` §6. **This PR is docs/authority only** — no emitter/serializer code."),
@@ -60,7 +60,7 @@ fn shell_emission_model_body() -> List<MarkdownBlock> {
   ]
 }
 
-data shell_emission_model_plan: Plan = Plan {
+data shell_emission_model_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "shell-emission-model",
   title: "Shell emission model — orchestration intent to bash via emit(intent, Bash)",
   body: shell_emission_model_body(),

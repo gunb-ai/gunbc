@@ -1,7 +1,7 @@
 module gunbc.plans.representation_minimization
 
 
-fn representation_minimization_body() -> List<MarkdownBlock> {
+fn representation_minimization_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "Status: operator-funded 2026-06-27. Steer: minimal representation, attack root causes as much as we can, v1 is going away. This is the resolved-graph REPRESENTATION-minimization follow-on to the acute floor-OOM fix (#5867 shared InternTable: whole-tree resolve 14.2 GiB to 5.5 GiB, 61 percent reclaimed). It repoints the orphaned tidy-wren-707 resolved-graph-minimization lane. Distinct from `docs/plans/resource-aware-scheduler.md`, which is the ALLOCATION lane; this lane is REPRESENTATION minimization at the root."),
     h2(text: "The discriminator: root authority vs doomed seed"),
@@ -50,7 +50,7 @@ fn representation_minimization_body() -> List<MarkdownBlock> {
   ]
 }
 
-data representation_minimization_plan: Plan = Plan {
+data representation_minimization_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "representation-minimization",
   title: "Resolved-graph representation minimization (root-first, v1-survivable)",
   body: representation_minimization_body(),

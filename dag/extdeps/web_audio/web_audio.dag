@@ -1,8 +1,8 @@
 module extdeps.web_audio
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.w3.org/TR/webaudio/"
   }
@@ -46,7 +46,7 @@ data web_audio_stop_method: String = "stop"
 
 data web_audio_gain_epsilon_micros: Int = 1000
 
-fn web_audio_frequency_wire(f: Hertz) -> String {
+fn web_audio_frequency_wire(f: std.measure.Hertz) -> String {
   to_string(hertz_count(h: f))
 }
 

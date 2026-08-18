@@ -1,14 +1,14 @@
 module extdeps.color.okabe_ito
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "jfly.uni-koeln.de/color/"
   }
 }
 
-fn okabe_ito_authority() -> ExternalAuthority {
+fn okabe_ito_authority() -> extdeps.external_authority.ExternalAuthority {
   extdeps_external_authority_anchor
 }
 
@@ -16,22 +16,22 @@ data okabe_ito_note: String = "Cited upstream: Okabe, M. & Ito, K. (2008) Color 
 
 data okabe_ito_version: String = "2008"
 
-data okabe_ito_orange: Srgb8 = Srgb8 { r: 230, g: 159, b: 0 }
-data okabe_ito_sky_blue: Srgb8 = Srgb8 { r: 86, g: 180, b: 233 }
-data okabe_ito_bluish_green: Srgb8 = Srgb8 { r: 0, g: 158, b: 115 }
-data okabe_ito_yellow: Srgb8 = Srgb8 { r: 240, g: 228, b: 66 }
-data okabe_ito_blue: Srgb8 = Srgb8 { r: 0, g: 114, b: 178 }
-data okabe_ito_vermillion: Srgb8 = Srgb8 { r: 213, g: 94, b: 0 }
-data okabe_ito_reddish_purple: Srgb8 = Srgb8 { r: 204, g: 121, b: 167 }
-data okabe_ito_black: Srgb8 = Srgb8 { r: 0, g: 0, b: 0 }
+data okabe_ito_orange: extdeps.color.srgb.Srgb8 = extdeps.color.srgb.Srgb8 { r: 230, g: 159, b: 0 }
+data okabe_ito_sky_blue: extdeps.color.srgb.Srgb8 = extdeps.color.srgb.Srgb8 { r: 86, g: 180, b: 233 }
+data okabe_ito_bluish_green: extdeps.color.srgb.Srgb8 = extdeps.color.srgb.Srgb8 { r: 0, g: 158, b: 115 }
+data okabe_ito_yellow: extdeps.color.srgb.Srgb8 = extdeps.color.srgb.Srgb8 { r: 240, g: 228, b: 66 }
+data okabe_ito_blue: extdeps.color.srgb.Srgb8 = extdeps.color.srgb.Srgb8 { r: 0, g: 114, b: 178 }
+data okabe_ito_vermillion: extdeps.color.srgb.Srgb8 = extdeps.color.srgb.Srgb8 { r: 213, g: 94, b: 0 }
+data okabe_ito_reddish_purple: extdeps.color.srgb.Srgb8 = extdeps.color.srgb.Srgb8 { r: 204, g: 121, b: 167 }
+data okabe_ito_black: extdeps.color.srgb.Srgb8 = extdeps.color.srgb.Srgb8 { r: 0, g: 0, b: 0 }
 
-data okabe_ito_swatches: List<CitedColorRow> = [
-  CitedColorRow { name: "orange", color: okabe_ito_orange },
-  CitedColorRow { name: "sky_blue", color: okabe_ito_sky_blue },
-  CitedColorRow { name: "bluish_green", color: okabe_ito_bluish_green },
-  CitedColorRow { name: "yellow", color: okabe_ito_yellow },
-  CitedColorRow { name: "blue", color: okabe_ito_blue },
-  CitedColorRow { name: "vermillion", color: okabe_ito_vermillion },
-  CitedColorRow { name: "reddish_purple", color: okabe_ito_reddish_purple },
-  CitedColorRow { name: "black", color: okabe_ito_black },
+data okabe_ito_swatches: List<extdeps.color.srgb.CitedColorRow> = [
+  extdeps.color.srgb.CitedColorRow { name: "orange", color: okabe_ito_orange },
+  extdeps.color.srgb.CitedColorRow { name: "sky_blue", color: okabe_ito_sky_blue },
+  extdeps.color.srgb.CitedColorRow { name: "bluish_green", color: okabe_ito_bluish_green },
+  extdeps.color.srgb.CitedColorRow { name: "yellow", color: okabe_ito_yellow },
+  extdeps.color.srgb.CitedColorRow { name: "blue", color: okabe_ito_blue },
+  extdeps.color.srgb.CitedColorRow { name: "vermillion", color: okabe_ito_vermillion },
+  extdeps.color.srgb.CitedColorRow { name: "reddish_purple", color: okabe_ito_reddish_purple },
+  extdeps.color.srgb.CitedColorRow { name: "black", color: okabe_ito_black },
 ]

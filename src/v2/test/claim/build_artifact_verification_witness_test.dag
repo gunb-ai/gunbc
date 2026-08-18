@@ -1,10 +1,10 @@
 module v2.test.claim.build_artifact_verification_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn probe_artifact() -> BuildArtifact {
-  BuildArtifact {
+fn probe_artifact() -> tools.build_step.BuildArtifact {
+  tools.build_step.BuildArtifact {
     path: bash_build_word_concat_parts(parts: [
       bash_build_word_var(name: "ROOT"),
       bash_build_word_lit(text: "/target/release/probe_bin")

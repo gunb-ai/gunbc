@@ -3,11 +3,11 @@ module test.claim.floor_materialization_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn live_floor_gates() -> List<Gate> {
+fn live_floor_gates() -> List<gunbc.ci_gate.Gate> {
   project_ci_floor_gates(roster: commit_gate_roster)
 }
 
-fn live_floor_witnesses() -> List<ScheduleWitnessEntry> {
+fn live_floor_witnesses() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   project_ci_floor_witness_entries(roster: commit_gate_roster)
 }
 

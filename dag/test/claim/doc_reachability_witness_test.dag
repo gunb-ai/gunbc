@@ -23,10 +23,10 @@ test fn doc_graph_hand_authored_slugs_not_registered() -> Bool {
 }
 
 test fn doc_graph_slug_wall_reds_on_registered_slug() -> Bool {
-  return hand_authored_plan_slug_is_unregistered(b: HandAuthoredDocBind {
+  return hand_authored_plan_slug_is_unregistered(b: gunbc.doc_graph_roots.HandAuthoredDocBind {
     home: PlanDoc,
     slug: "typescript-gap-census",
-    primary_work: DeclarationRef { module_path: "gunbc.plans.typescript_gap_census", decl_name: "typescript_gap_census_plan", field: WholeDeclaration },
+    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.plans.typescript_gap_census", decl_name: "typescript_gap_census_plan", field: WholeDeclaration },
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic negative control: this slug IS registered, so the wall must refuse it") },
   }) == false
@@ -50,10 +50,10 @@ test fn doc_graph_bind_keyed_build_admits_live_incomings() -> Bool {
 }
 
 test fn doc_graph_duplicate_bind_key_red_control() -> Bool {
-  let dup = HandAuthoredDocBind {
+  let dup = gunbc.doc_graph_roots.HandAuthoredDocBind {
     home: PlanDoc,
     slug: "synthetic-duplicate-identity-control",
-    primary_work: DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key", field: WholeDeclaration },
+    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key", field: WholeDeclaration },
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic negative control: two rows carrying one (home, slug) identity must refuse at keyed construction — proves the construction wall discriminates") },
   }
@@ -66,31 +66,31 @@ test fn doc_graph_duplicate_bind_key_red_control() -> Bool {
   }
 }
 
-fn fixture_union_branch_a_bind() -> HandAuthoredDocBind {
-  HandAuthoredDocBind {
+fn fixture_union_branch_a_bind() -> gunbc.doc_graph_roots.HandAuthoredDocBind {
+  gunbc.doc_graph_roots.HandAuthoredDocBind {
     home: PlanDoc,
     slug: "synthetic-union-branch-a",
-    primary_work: DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key", field: WholeDeclaration },
+    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key", field: WholeDeclaration },
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic union fixture: branch A disjoint bind key") },
   }
 }
 
-fn fixture_union_branch_b_disjoint_bind() -> HandAuthoredDocBind {
-  HandAuthoredDocBind {
+fn fixture_union_branch_b_disjoint_bind() -> gunbc.doc_graph_roots.HandAuthoredDocBind {
+  gunbc.doc_graph_roots.HandAuthoredDocBind {
     home: PlanDoc,
     slug: "synthetic-union-branch-b-disjoint",
-    primary_work: DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key_eq", field: WholeDeclaration },
+    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_bind_key_eq", field: WholeDeclaration },
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic union fixture: branch B disjoint bind key") },
   }
 }
 
-fn fixture_union_branch_b_overlap_bind() -> HandAuthoredDocBind {
-  HandAuthoredDocBind {
+fn fixture_union_branch_b_overlap_bind() -> gunbc.doc_graph_roots.HandAuthoredDocBind {
+  gunbc.doc_graph_roots.HandAuthoredDocBind {
     home: PlanDoc,
     slug: "synthetic-union-branch-a",
-    primary_work: DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_doc_binds", field: WholeDeclaration },
+    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.doc_graph_roots", decl_name: "hand_authored_doc_binds", field: WholeDeclaration },
     additional_works: [],
     dissolution: PlanRetiresWhen { condition: unbound_dissolution(description: "synthetic union fixture: branch B overlaps branch A bind key") },
   }

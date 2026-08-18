@@ -3,31 +3,31 @@ module v2.test.claim.rust_crate_partition_witness
 
 data witness_red_control_note: String = "Discriminating RED: (1) assign std_algebra and std_nat to different units while keeping std_nat -> std_algebra edge → validate_partition_r4 returns SccSplit refusal; (2) fabricate a cyclic unit dep graph → UnitGraphCycle refusal; (3) drop a module from explicit assignment → partition_fold_outcome refuses or unit member count diverges."
 
-data witness_mod_a: ModuleId = "witness.scc.a" as NonEmptyStr
-data witness_mod_b: ModuleId = "witness.scc.b" as NonEmptyStr
-data witness_mod_c: ModuleId = "witness.scc.c" as NonEmptyStr
-data witness_unit_x: CompilationUnitId = "witness-unit-x" as CompilationUnitId
-data witness_unit_y: CompilationUnitId = "witness-unit-y" as CompilationUnitId
+data witness_mod_a: v2.std.compilers.compilation_unit.ModuleId = "witness.scc.a" as std.types.NonEmptyStr
+data witness_mod_b: v2.std.compilers.compilation_unit.ModuleId = "witness.scc.b" as std.types.NonEmptyStr
+data witness_mod_c: v2.std.compilers.compilation_unit.ModuleId = "witness.scc.c" as std.types.NonEmptyStr
+data witness_unit_x: v2.std.compilers.compilation_unit.CompilationUnitId = "witness-unit-x" as v2.std.compilers.compilation_unit.CompilationUnitId
+data witness_unit_y: v2.std.compilers.compilation_unit.CompilationUnitId = "witness-unit-y" as v2.std.compilers.compilation_unit.CompilationUnitId
 
-data witness_unit_p: CompilationUnitId = "witness-unit-p" as CompilationUnitId
-data witness_unit_q: CompilationUnitId = "witness-unit-q" as CompilationUnitId
-data witness_mod_p: ModuleId = "witness.unit.p" as NonEmptyStr
-data witness_mod_q: ModuleId = "witness.unit.q" as NonEmptyStr
+data witness_unit_p: v2.std.compilers.compilation_unit.CompilationUnitId = "witness-unit-p" as v2.std.compilers.compilation_unit.CompilationUnitId
+data witness_unit_q: v2.std.compilers.compilation_unit.CompilationUnitId = "witness-unit-q" as v2.std.compilers.compilation_unit.CompilationUnitId
+data witness_mod_p: v2.std.compilers.compilation_unit.ModuleId = "witness.unit.p" as std.types.NonEmptyStr
+data witness_mod_q: v2.std.compilers.compilation_unit.ModuleId = "witness.unit.q" as std.types.NonEmptyStr
 
-fn witness_triangle_scc_dag() -> ModuleDag {
-  ModuleDag {
+fn witness_triangle_scc_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
+  v2.std.compilers.compilation_unit.ModuleDag {
     modules: [witness_mod_a, witness_mod_b, witness_mod_c],
     edges: [
-      ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
-      ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
-      ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
+      v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
+      v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
+      v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
     ],
     exports: empty_map(),
     type_definitions: empty_map(),
   }
 }
 
-fn witness_forced_scc_split_assignment() -> Map<ModuleId, CompilationUnitId> {
+fn witness_forced_scc_split_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
   empty_map()
     |> map_insert(witness_mod_a, witness_unit_x)
     |> map_insert(witness_mod_b, witness_unit_x)
@@ -50,30 +50,30 @@ test fn witness_r4_refuses_forced_scc_split_holds() -> Bool {
   }
 }
 
-fn witness_acyclic_module_dag() -> ModuleDag {
-  ModuleDag {
+fn witness_acyclic_module_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
+  v2.std.compilers.compilation_unit.ModuleDag {
     modules: [witness_mod_p, witness_mod_q],
-    edges: [ModuleDagEdge { from: witness_mod_p, to: witness_mod_q }],
+    edges: [v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_p, to: witness_mod_q }],
     exports: empty_map(),
     type_definitions: empty_map(),
   }
 }
 
-fn witness_two_unit_assignment_no_scc_split() -> Map<ModuleId, CompilationUnitId> {
+fn witness_two_unit_assignment_no_scc_split() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
   empty_map()
     |> map_insert(witness_mod_p, witness_unit_p)
     |> map_insert(witness_mod_q, witness_unit_q)
 }
 
-fn witness_cyclic_unit_graph() -> List<CompilationUnit> {
+fn witness_cyclic_unit_graph() -> List<v2.std.compilers.compilation_unit.CompilationUnit> {
   [
-    CompilationUnit {
+    v2.std.compilers.compilation_unit.CompilationUnit {
       id: witness_unit_p,
       members: [witness_mod_p],
       interface: [],
       deps: [witness_unit_q]
     },
-    CompilationUnit {
+    v2.std.compilers.compilation_unit.CompilationUnit {
       id: witness_unit_q,
       members: [witness_mod_q],
       interface: [],
@@ -118,7 +118,7 @@ test fn witness_policy_partition_refuses_holds() -> Bool {
   let dag = stage0_module_dag()
   match resolve_partition_outcome(
     parameter: PolicyPartitionParam {
-      policy: PartitionPolicy { target_crate_count: rust_crate_partition_declared_core_target }
+      policy: v2.workflow.rust_crate_partition.PartitionPolicy { target_crate_count: rust_crate_partition_declared_core_target }
     },
     module_dag: dag
   ) {
@@ -137,9 +137,9 @@ test fn witness_interim_provenance_is_hand_explicit_holds() -> Bool {
 test fn witness_provenance_distinct_from_policy_derived_holds() -> Bool {
   let explicit = partition_provenance_hand_explicit()
   let derived = partition_provenance_policy_derived(
-    policy: DeclarationRef {
-      module_path: "v2.workflow.rust_crate_partition" as NonEmptyStr,
-      decl_name: "resolve_partition" as NonEmptyStr,
+    policy: std.decl_ref.DeclarationRef {
+      module_path: "v2.workflow.rust_crate_partition" as std.types.NonEmptyStr,
+      decl_name: "resolve_partition" as std.types.NonEmptyStr,
       field: WholeDeclaration,
     }
   )

@@ -1,28 +1,28 @@
 module v2.extdeps.languages.bash_command_fold
 
 
-data bash_fold_diagnostic_anchor: Node = Node {
+data bash_fold_diagnostic_anchor: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-fn bash_fold_stmt_kind_tag_terminal(binding: Symbol) -> FormalGrammarSymbol {
+fn bash_fold_stmt_kind_tag_terminal(binding: v2.std.node.Symbol) -> v2.std.grammar.FormalGrammarSymbol {
   grammar_formal_terminal_bound(
     identity: ^bash_fold_stmt_kind_tag,
     binding: binding
   )
 }
 
-fn bash_fold_unsupported_variant_diagnostic(variant: Symbol) -> Diagnostic {
-  Diagnostic {
+fn bash_fold_unsupported_variant_diagnostic(variant: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: variant,
     at: node_locus(node: bash_fold_diagnostic_anchor),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn bash_fold_serialize_refused(variant: Symbol) -> Outcome<String> {
+fn bash_fold_serialize_refused(variant: v2.std.node.Symbol) -> Outcome<String> {
   Rejected {
     diagnostics: diagnostics_singleton(
       d: bash_fold_unsupported_variant_diagnostic(variant: variant)
@@ -30,8 +30,8 @@ fn bash_fold_serialize_refused(variant: Symbol) -> Outcome<String> {
   }
 }
 
-fn bash_fold_delegated_needs_component_spellings_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn bash_fold_delegated_needs_component_spellings_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^bash_fold_delegated_target_needs_component_spellings,
     at: node_locus(node: bash_fold_diagnostic_anchor),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -84,7 +84,7 @@ data bash_fold_pipe_echo_hi_wc_emitted: Node = bash_build_pipe(
   right: bash_fold_cmd_wc_minus_c_emitted
 )
 
-fn bash_fold_word_leaf_productions() -> List<FormalProduction> {
+fn bash_fold_word_leaf_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^bash_production_fold_lit_word,
@@ -103,7 +103,7 @@ fn bash_fold_word_leaf_productions() -> List<FormalProduction> {
   ]
 }
 
-fn bash_fold_word_compound_productions() -> List<FormalProduction> {
+fn bash_fold_word_compound_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^bash_production_fold_concat_word,
@@ -124,14 +124,14 @@ fn bash_fold_word_compound_productions() -> List<FormalProduction> {
   ]
 }
 
-fn bash_fold_concat_parts_leaf_production(word_kind: Symbol) -> FormalProduction {
+fn bash_fold_concat_parts_leaf_production(word_kind: v2.std.node.Symbol) -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_concat_parts,
     rhs: [grammar_formal_nonterminal_occurrence(identity: word_kind)]
   )
 }
 
-fn bash_fold_concat_parts_pair_production(word_kind: Symbol) -> FormalProduction {
+fn bash_fold_concat_parts_pair_production(word_kind: v2.std.node.Symbol) -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_concat_parts,
     rhs: [
@@ -141,7 +141,7 @@ fn bash_fold_concat_parts_pair_production(word_kind: Symbol) -> FormalProduction
   )
 }
 
-fn bash_fold_concat_parts_productions() -> List<FormalProduction> {
+fn bash_fold_concat_parts_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     bash_fold_concat_parts_leaf_production(word_kind: ^bash_production_fold_lit_word),
     bash_fold_concat_parts_leaf_production(word_kind: ^bash_production_fold_var_word),
@@ -154,7 +154,7 @@ fn bash_fold_concat_parts_productions() -> List<FormalProduction> {
   ]
 }
 
-fn bash_fold_command_words_leaf_productions() -> List<FormalProduction> {
+fn bash_fold_command_words_leaf_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^bash_production_fold_command_words,
@@ -175,7 +175,7 @@ fn bash_fold_command_words_leaf_productions() -> List<FormalProduction> {
   ]
 }
 
-fn bash_fold_command_words_list_production(word_kind: Symbol) -> FormalProduction {
+fn bash_fold_command_words_list_production(word_kind: v2.std.node.Symbol) -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_command_words,
     rhs: [
@@ -186,7 +186,7 @@ fn bash_fold_command_words_list_production(word_kind: Symbol) -> FormalProductio
   )
 }
 
-fn bash_fold_command_words_list_productions() -> List<FormalProduction> {
+fn bash_fold_command_words_list_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     bash_fold_command_words_list_production(word_kind: ^bash_production_fold_lit_word),
     bash_fold_command_words_list_production(word_kind: ^bash_production_fold_var_word),
@@ -195,7 +195,7 @@ fn bash_fold_command_words_list_productions() -> List<FormalProduction> {
   ]
 }
 
-fn bash_fold_stmt_list_leaf_productions() -> List<FormalProduction> {
+fn bash_fold_stmt_list_leaf_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^bash_production_fold_stmt_list,
@@ -204,7 +204,7 @@ fn bash_fold_stmt_list_leaf_productions() -> List<FormalProduction> {
   ]
 }
 
-fn bash_fold_stmt_list_pair_productions() -> List<FormalProduction> {
+fn bash_fold_stmt_list_pair_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^bash_production_fold_stmt_list,
@@ -217,7 +217,7 @@ fn bash_fold_stmt_list_pair_productions() -> List<FormalProduction> {
   ]
 }
 
-fn bash_fold_operand_command_production() -> FormalProduction {
+fn bash_fold_operand_command_production() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_operand,
     rhs: [
@@ -227,7 +227,7 @@ fn bash_fold_operand_command_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_operand_exit_production() -> FormalProduction {
+fn bash_fold_operand_exit_production() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_operand,
     rhs: [
@@ -238,7 +238,7 @@ fn bash_fold_operand_exit_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_assign_rhs(value_word_kind: Symbol) -> List<FormalGrammarSymbol> {
+fn bash_fold_assign_rhs(value_word_kind: v2.std.node.Symbol) -> List<v2.std.grammar.FormalGrammarSymbol> {
   [
     bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_assign),
     grammar_formal_terminal_free(identity: ^bash_token_orch_raw),
@@ -247,35 +247,35 @@ fn bash_fold_assign_rhs(value_word_kind: Symbol) -> List<FormalGrammarSymbol> {
   ]
 }
 
-fn bash_fold_operand_assign_lit_production() -> FormalProduction {
+fn bash_fold_operand_assign_lit_production() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_operand,
     rhs: bash_fold_assign_rhs(value_word_kind: ^bash_production_fold_lit_word)
   )
 }
 
-fn bash_fold_operand_assign_var_production() -> FormalProduction {
+fn bash_fold_operand_assign_var_production() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_operand,
     rhs: bash_fold_assign_rhs(value_word_kind: ^bash_production_fold_var_word)
   )
 }
 
-fn bash_fold_operand_assign_concat_production() -> FormalProduction {
+fn bash_fold_operand_assign_concat_production() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_operand,
     rhs: bash_fold_assign_rhs(value_word_kind: ^bash_production_fold_concat_word)
   )
 }
 
-fn bash_fold_operand_assign_cmdsubst_production() -> FormalProduction {
+fn bash_fold_operand_assign_cmdsubst_production() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_operand,
     rhs: bash_fold_assign_rhs(value_word_kind: ^bash_production_fold_cmdsubst_word)
   )
 }
 
-fn bash_fold_with_redir_fixed_rhs(redir_binding: Symbol, redir_token: Symbol) -> List<FormalGrammarSymbol> {
+fn bash_fold_with_redir_fixed_rhs(redir_binding: v2.std.node.Symbol, redir_token: v2.std.node.Symbol) -> List<v2.std.grammar.FormalGrammarSymbol> {
   [
     bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_with_redir),
     grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_operand),
@@ -284,7 +284,7 @@ fn bash_fold_with_redir_fixed_rhs(redir_binding: Symbol, redir_token: Symbol) ->
   ]
 }
 
-fn bash_fold_with_redir_to_file_rhs(path_word_kind: Symbol) -> List<FormalGrammarSymbol> {
+fn bash_fold_with_redir_to_file_rhs(path_word_kind: v2.std.node.Symbol) -> List<v2.std.grammar.FormalGrammarSymbol> {
   [
     bash_fold_stmt_kind_tag_terminal(binding: ^bash_production_fold_with_redir),
     grammar_formal_nonterminal_occurrence(identity: ^bash_production_fold_operand),
@@ -294,7 +294,7 @@ fn bash_fold_with_redir_to_file_rhs(path_word_kind: Symbol) -> List<FormalGramma
   ]
 }
 
-fn bash_fold_with_redir_rhs_alternatives() -> List<List<FormalGrammarSymbol>> {
+fn bash_fold_with_redir_rhs_alternatives() -> List<List<v2.std.grammar.FormalGrammarSymbol>> {
   [
     bash_fold_with_redir_fixed_rhs(
       redir_binding: ^bash_production_fold_redir_stderr_null,
@@ -317,7 +317,7 @@ fn bash_fold_with_redir_rhs_alternatives() -> List<List<FormalGrammarSymbol>> {
   ]
 }
 
-fn bash_fold_with_redir_productions() -> List<FormalProduction> {
+fn bash_fold_with_redir_productions() -> List<v2.std.grammar.FormalProduction> {
   list_append(
     list_map(xs: bash_fold_with_redir_rhs_alternatives(), f: fn(rhs) {
       grammar_formal_production(lhs: ^bash_production_fold_with_redir, rhs: rhs)
@@ -328,7 +328,7 @@ fn bash_fold_with_redir_productions() -> List<FormalProduction> {
   )
 }
 
-fn bash_fold_operand_and_then_production() -> FormalProduction {
+fn bash_fold_operand_and_then_production() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_operand,
     rhs: [
@@ -340,7 +340,7 @@ fn bash_fold_operand_and_then_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_operand_or_else_production() -> FormalProduction {
+fn bash_fold_operand_or_else_production() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_operand,
     rhs: [
@@ -352,7 +352,7 @@ fn bash_fold_operand_or_else_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_operand_pipe_production() -> FormalProduction {
+fn bash_fold_operand_pipe_production() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_operand,
     rhs: [
@@ -364,7 +364,7 @@ fn bash_fold_operand_pipe_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_operand_subshell_production() -> FormalProduction {
+fn bash_fold_operand_subshell_production() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_operand,
     rhs: [
@@ -376,7 +376,7 @@ fn bash_fold_operand_subshell_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_operand_if_production() -> FormalProduction {
+fn bash_fold_operand_if_production() -> v2.std.grammar.FormalProduction {
   grammar_formal_production(
     lhs: ^bash_production_fold_operand,
     rhs: [
@@ -390,7 +390,7 @@ fn bash_fold_operand_if_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_operand_productions() -> List<FormalProduction> {
+fn bash_fold_operand_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     bash_fold_operand_command_production(),
     bash_fold_operand_exit_production(),
@@ -406,11 +406,11 @@ fn bash_fold_operand_productions() -> List<FormalProduction> {
   ]
 }
 
-fn bash_fold_top_level_production(binding: Symbol, rule_rhs: List<FormalGrammarSymbol>) -> FormalProduction {
+fn bash_fold_top_level_production(binding: v2.std.node.Symbol, rule_rhs: List<v2.std.grammar.FormalGrammarSymbol>) -> v2.std.grammar.FormalProduction {
   grammar_formal_production(lhs: binding, rhs: rule_rhs)
 }
 
-fn bash_fold_and_then_top_production() -> FormalProduction {
+fn bash_fold_and_then_top_production() -> v2.std.grammar.FormalProduction {
   bash_fold_top_level_production(
     binding: ^bash_production_fold_and_then,
     rule_rhs: [
@@ -422,7 +422,7 @@ fn bash_fold_and_then_top_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_or_else_top_production() -> FormalProduction {
+fn bash_fold_or_else_top_production() -> v2.std.grammar.FormalProduction {
   bash_fold_top_level_production(
     binding: ^bash_production_fold_or_else,
     rule_rhs: [
@@ -434,7 +434,7 @@ fn bash_fold_or_else_top_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_pipe_top_production() -> FormalProduction {
+fn bash_fold_pipe_top_production() -> v2.std.grammar.FormalProduction {
   bash_fold_top_level_production(
     binding: ^bash_production_fold_pipe,
     rule_rhs: [
@@ -446,7 +446,7 @@ fn bash_fold_pipe_top_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_command_top_production() -> FormalProduction {
+fn bash_fold_command_top_production() -> v2.std.grammar.FormalProduction {
   bash_fold_top_level_production(
     binding: ^bash_production_fold_command,
     rule_rhs: [
@@ -456,7 +456,7 @@ fn bash_fold_command_top_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_exit_top_production() -> FormalProduction {
+fn bash_fold_exit_top_production() -> v2.std.grammar.FormalProduction {
   bash_fold_top_level_production(
     binding: ^bash_production_fold_exit,
     rule_rhs: [
@@ -467,7 +467,7 @@ fn bash_fold_exit_top_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_assign_lit_top_production() -> FormalProduction {
+fn bash_fold_assign_lit_top_production() -> v2.std.grammar.FormalProduction {
   bash_fold_top_level_production(
     binding: ^bash_production_fold_assign,
     rule_rhs: [
@@ -479,7 +479,7 @@ fn bash_fold_assign_lit_top_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_assign_var_top_production() -> FormalProduction {
+fn bash_fold_assign_var_top_production() -> v2.std.grammar.FormalProduction {
   bash_fold_top_level_production(
     binding: ^bash_production_fold_assign,
     rule_rhs: [
@@ -491,21 +491,21 @@ fn bash_fold_assign_var_top_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_assign_concat_top_production() -> FormalProduction {
+fn bash_fold_assign_concat_top_production() -> v2.std.grammar.FormalProduction {
   bash_fold_top_level_production(
     binding: ^bash_production_fold_assign,
     rule_rhs: bash_fold_assign_rhs(value_word_kind: ^bash_production_fold_concat_word)
   )
 }
 
-fn bash_fold_assign_cmdsubst_top_production() -> FormalProduction {
+fn bash_fold_assign_cmdsubst_top_production() -> v2.std.grammar.FormalProduction {
   bash_fold_top_level_production(
     binding: ^bash_production_fold_assign,
     rule_rhs: bash_fold_assign_rhs(value_word_kind: ^bash_production_fold_cmdsubst_word)
   )
 }
 
-fn bash_fold_subshell_top_production() -> FormalProduction {
+fn bash_fold_subshell_top_production() -> v2.std.grammar.FormalProduction {
   bash_fold_top_level_production(
     binding: ^bash_production_fold_subshell,
     rule_rhs: [
@@ -517,7 +517,7 @@ fn bash_fold_subshell_top_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_if_top_production() -> FormalProduction {
+fn bash_fold_if_top_production() -> v2.std.grammar.FormalProduction {
   bash_fold_top_level_production(
     binding: ^bash_production_fold_if,
     rule_rhs: [
@@ -531,7 +531,7 @@ fn bash_fold_if_top_production() -> FormalProduction {
   )
 }
 
-fn bash_fold_list_stmt_productions() -> List<FormalProduction> {
+fn bash_fold_list_stmt_productions() -> List<v2.std.grammar.FormalProduction> {
   [
     bash_fold_and_then_top_production(),
     bash_fold_or_else_top_production(),
@@ -541,7 +541,7 @@ fn bash_fold_list_stmt_productions() -> List<FormalProduction> {
   ]
 }
 
-fn bash_fold_formal_productions() -> List<FormalProduction> {
+fn bash_fold_formal_productions() -> List<v2.std.grammar.FormalProduction> {
   list_append(
     list_append(
       list_append(
@@ -584,13 +584,13 @@ fn bash_fold_formal_productions() -> List<FormalProduction> {
 
 fn bash_fold_translation_rules_node_for_emitted(
   emitted: Node,
-  lhs: Symbol,
-  rule_name: Symbol
+  lhs: v2.std.node.Symbol,
+  rule_name: v2.std.node.Symbol
 ) -> Witness<Node> {
   match bash_fold_relation_row_witness(emitted: emitted, lhs: lhs) {
     Holds { value: row } =>
       Holds {
-        value: Node {
+        value: v2.std.node.Node {
           kind: TypeNode { connective: Conj },
           children: [
             bash_named_edge(
@@ -611,7 +611,7 @@ fn bash_fold_translation_rules_node_for_emitted(
   }
 }
 
-fn bash_fold_relation_row_witness(emitted: Node, lhs: Symbol) -> Witness<Node> {
+fn bash_fold_relation_row_witness(emitted: Node, lhs: v2.std.node.Symbol) -> Witness<Node> {
   let productions = bash_fold_formal_productions()
   match formal_production_for_lhs_exact(
     productions: productions,
@@ -630,15 +630,15 @@ fn bash_fold_relation_row_witness(emitted: Node, lhs: Symbol) -> Witness<Node> {
 
 fn bash_fold_serialize_source_witness(
   emitted: Node,
-  source_literal: Symbol,
-  production_binding: Symbol
+  source_literal: v2.std.node.Symbol,
+  production_binding: v2.std.node.Symbol
 ) -> Witness<Node> {
   match bash_fold_relation_row_witness(emitted: emitted, lhs: production_binding) {
     Holds { value: row } =>
       match find_named_child(root: row, name: ^grammar_relation_field_tokens) {
         Accepted { value: tokens_root, diagnostics: _ } =>
           Holds {
-            value: Node {
+            value: v2.std.node.Node {
               kind: TypeNode { connective: Conj },
               children: [
                 bash_named_edge(
@@ -663,7 +663,7 @@ fn bash_fold_serialize_source_witness(
   }
 }
 
-fn bash_fold_lex_rule(token_class: Symbol, text: String) -> LexRule {
+fn bash_fold_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers.lexing.LexRule {
   TokenRule {
     token_class: token_class,
     pattern: LiteralPattern { text: text }
@@ -676,8 +676,8 @@ data bash_fold_word_var_sentinel: String = "\u{0001}"
 data bash_fold_word_concat_sentinel: String = "\u{0003}"
 data bash_fold_word_cmdsubst_sentinel: String = "\u{0004}"
 
-fn bash_fold_lex_rules() -> LexRuleSet {
-  LexRuleSet {
+fn bash_fold_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
+  v2.std.compilers.lexing.LexRuleSet {
     rules: [
       bash_fold_lex_rule(token_class: ^bash_token_word_sep, text: " "),
       bash_fold_lex_rule(token_class: ^bash_token_stmt_exit_kw, text: "exit "),
@@ -707,14 +707,14 @@ fn bash_fold_lex_rules() -> LexRuleSet {
   }
 }
 
-fn bash_fold_lex() -> LexRules {
+fn bash_fold_lex() -> v2.std.compilers.lexing.LexRules {
   ModeledLexRules { root: bash_fold_lex_rules() }
 }
 
 data bash_ingest_only_lex_rules_note: String = "INGEST-direction lex view. §4 asymmetry — ingest RECOGNIZES a superset of what emit PRODUCES. Recognized-but-UNMODELED control keywords (no production); presence marks an incompletely-modeled control form => AmbiguousParse, never Violation. Emit set (bash_fold_lex_rules) UNCHANGED so emit stays byte-identical. Word boundaries ride the spelling (trailing/leading space; done/esac terminal; do is spelled with a REQUIRED leading space so at the d of done its spelling can never be a prefix candidate — do and done do not collide at the same start position, so no maximal-munch arbitration between them is needed). newline reuses existing separator class bash_token_orch_seq_newline (bash.dag:1184)."
 
-fn bash_ingest_only_lex_rules() -> LexRuleSet {
-  LexRuleSet {
+fn bash_ingest_only_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
+  v2.std.compilers.lexing.LexRuleSet {
     rules: [
       bash_fold_lex_rule(token_class: ^bash_ingest_kw_for, text: "for "),
       bash_fold_lex_rule(token_class: ^bash_ingest_kw_do, text: " do"),
@@ -732,8 +732,8 @@ fn bash_ingest_only_lex_rules() -> LexRuleSet {
   }
 }
 
-fn bash_ingest_lex_rules() -> LexRuleSet {
-  LexRuleSet {
+fn bash_ingest_lex_rules() -> v2.std.compilers.lexing.LexRuleSet {
+  v2.std.compilers.lexing.LexRuleSet {
     rules: list_append(
       left: bash_fold_lex_rules().rules,
       right: bash_ingest_only_lex_rules().rules
@@ -753,7 +753,7 @@ fn bash_fold_identity_emit_transform(spelling: String) -> String {
   spelling
 }
 
-fn bash_fold_emit_transforms() -> Map<Symbol, fn(String) -> String> {
+fn bash_fold_emit_transforms() -> Map<v2.std.node.Symbol, fn(String) -> String> {
   let m0 = bash_token_class_emit_transforms()
   let m1 = map_insert(m0, ^bash_fold_word_kind_lit, bash_fold_kind_emit_transform)
   let m2 = map_insert(m1, ^bash_fold_word_kind_var, bash_fold_kind_emit_transform)
@@ -763,16 +763,16 @@ fn bash_fold_emit_transforms() -> Map<Symbol, fn(String) -> String> {
   map_insert(m5, ^bash_token_orch_raw, bash_fold_identity_emit_transform)
 }
 
-fn bash_fold_binding_spellings() -> Map<Symbol, String> {
+fn bash_fold_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   let m0 = map_insert(empty_map(), ^bash_fold_word_kind_lit, "")
   map_insert(m0, ^bash_fold_word_kind_var, "")
 }
 
 fn bash_fold_target_model_bundle_witness(
   emitted: Node,
-  source_literal: Symbol,
-  production_binding: Symbol,
-  rule_name: Symbol
+  source_literal: v2.std.node.Symbol,
+  production_binding: v2.std.node.Symbol,
+  rule_name: v2.std.node.Symbol
 ) -> Witness<Node> {
   match bash_fold_serialize_source_witness(
     emitted: emitted,
@@ -800,11 +800,11 @@ fn bash_fold_target_model_bundle_witness(
 
 fn bash_fold_target_model_for_emitted_witness(
   emitted: Node,
-  source_literal: Symbol,
+  source_literal: v2.std.node.Symbol,
   source_text: String,
-  production_binding: Symbol,
-  rule_name: Symbol
-) -> Witness<TargetModel> {
+  production_binding: v2.std.node.Symbol,
+  rule_name: v2.std.node.Symbol
+) -> Witness<v2.std.compilers.target_model.TargetModel> {
   match bash_fold_target_model_bundle_witness(
     emitted: emitted,
     source_literal: source_literal,
@@ -826,11 +826,11 @@ fn bash_fold_target_model_for_emitted_witness(
   }
 }
 
-fn bash_fold_raw_line_target_model(text: String) -> TargetModel {
+fn bash_fold_raw_line_target_model(text: String) -> v2.std.compilers.target_model.TargetModel {
   bash_word_pass_target_model(spelling: text)
 }
 
-fn bash_fold_negation_target_model(inner_spelling: String) -> TargetModel {
+fn bash_fold_negation_target_model(inner_spelling: String) -> v2.std.compilers.target_model.TargetModel {
   bash_stmt_negation_target_model(inner: inner_spelling)
 }
 
@@ -838,7 +838,7 @@ fn bash_fold_env_prefixed_target_model(
   name: String,
   value_spelling: String,
   command_spelling: String
-) -> TargetModel {
+) -> v2.std.compilers.target_model.TargetModel {
   bash_stmt_env_prefixed_target_model(
     name: name,
     value: value_spelling,
@@ -846,15 +846,15 @@ fn bash_fold_env_prefixed_target_model(
   )
 }
 
-fn bash_fold_with_redir_target_model(stmt_spelling: String, redir_spelling: String) -> TargetModel {
+fn bash_fold_with_redir_target_model(stmt_spelling: String, redir_spelling: String) -> v2.std.compilers.target_model.TargetModel {
   bash_stmt_with_redir_target_model(stmt: stmt_spelling, redir: redir_spelling)
 }
 
-fn bash_fold_heredoc_target_model(path_spelling: String, delimiter: String, body: String) -> TargetModel {
+fn bash_fold_heredoc_target_model(path_spelling: String, delimiter: String, body: String) -> v2.std.compilers.target_model.TargetModel {
   bash_stmt_heredoc_target_model(path: path_spelling, delimiter: delimiter, body: body)
 }
 
-fn bash_fold_with_redir_wrong_target_model_witness() -> Witness<TargetModel> {
+fn bash_fold_with_redir_wrong_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
   Holds {
     value: bash_fold_with_redir_target_model(
       stmt_spelling: "'true'",
@@ -863,7 +863,7 @@ fn bash_fold_with_redir_wrong_target_model_witness() -> Witness<TargetModel> {
   }
 }
 
-fn bash_fold_heredoc_wrong_target_model_witness() -> Witness<TargetModel> {
+fn bash_fold_heredoc_wrong_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
   Holds {
     value: bash_fold_heredoc_target_model(
       path_spelling: "'out'",
@@ -873,19 +873,19 @@ fn bash_fold_heredoc_wrong_target_model_witness() -> Witness<TargetModel> {
   }
 }
 
-fn bash_fold_raw_line_wrong_target_model_witness() -> Witness<TargetModel> {
+fn bash_fold_raw_line_wrong_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
   Holds {
     value: bash_fold_raw_line_target_model(text: "wrong")
   }
 }
 
-fn bash_fold_negation_wrong_target_model_witness() -> Witness<TargetModel> {
+fn bash_fold_negation_wrong_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
   Holds {
     value: bash_fold_negation_target_model(inner_spelling: "(true)")
   }
 }
 
-fn bash_fold_env_prefixed_wrong_target_model_witness() -> Witness<TargetModel> {
+fn bash_fold_env_prefixed_wrong_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
   Holds {
     value: bash_fold_env_prefixed_target_model(
       name: "TMPDIR",
@@ -905,22 +905,22 @@ data bash_fold_exit_42_emitted: Node = bash_build_exit(code: "42")
 
 data bash_fold_exit_wrong_emitted: Node = bash_build_exit(code: "0")
 
-data bash_fold_assign_foo_bar_emitted: Node = Node {
+data bash_fold_assign_foo_bar_emitted: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
+    v2.std.node.Edge {
       label: Positional,
       target: bash_build_stmt_tag(binding: ^bash_production_fold_assign)
     },
-    Edge {
+    v2.std.node.Edge {
       label: Positional,
-      target: Node {
+      target: v2.std.node.Node {
         kind: TypeNode { connective: Atom { identity: "FOO" } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
     },
-    Edge {
+    v2.std.node.Edge {
       label: Positional,
       target: bash_build_word_lit(text: "bar")
     }
@@ -928,22 +928,22 @@ data bash_fold_assign_foo_bar_emitted: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data bash_fold_assign_x_home_emitted: Node = Node {
+data bash_fold_assign_x_home_emitted: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
+    v2.std.node.Edge {
       label: Positional,
       target: bash_build_stmt_tag(binding: ^bash_production_fold_assign)
     },
-    Edge {
+    v2.std.node.Edge {
       label: Positional,
-      target: Node {
+      target: v2.std.node.Node {
         kind: TypeNode { connective: Atom { identity: "X" } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
     },
-    Edge {
+    v2.std.node.Edge {
       label: Positional,
       target: bash_build_word_var(name: "HOME")
     }
@@ -951,22 +951,22 @@ data bash_fold_assign_x_home_emitted: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data bash_fold_assign_wrong_emitted: Node = Node {
+data bash_fold_assign_wrong_emitted: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
+    v2.std.node.Edge {
       label: Positional,
       target: bash_build_stmt_tag(binding: ^bash_production_fold_assign)
     },
-    Edge {
+    v2.std.node.Edge {
       label: Positional,
-      target: Node {
+      target: v2.std.node.Node {
         kind: TypeNode { connective: Atom { identity: "FOO" } },
         children: [],
         occurrence_id: SyntheticOccurrence
       }
     },
-    Edge {
+    v2.std.node.Edge {
       label: Positional,
       target: bash_build_word_lit(text: "baz")
     }
@@ -974,7 +974,7 @@ data bash_fold_assign_wrong_emitted: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn bash_fold_cmd_true_wrong_target_model_witness() -> Witness<TargetModel> {
+fn bash_fold_cmd_true_wrong_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
   bash_fold_target_model_for_emitted_witness(
     emitted: bash_fold_cmd_true_wrong_emitted,
     source_literal: ^bash_fold_cmd_true_wrong_source_literal,
@@ -984,7 +984,7 @@ fn bash_fold_cmd_true_wrong_target_model_witness() -> Witness<TargetModel> {
   )
 }
 
-fn bash_fold_exit_wrong_target_model_witness() -> Witness<TargetModel> {
+fn bash_fold_exit_wrong_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
   bash_fold_target_model_for_emitted_witness(
     emitted: bash_fold_exit_wrong_emitted,
     source_literal: ^bash_fold_exit_wrong_source_literal,
@@ -994,7 +994,7 @@ fn bash_fold_exit_wrong_target_model_witness() -> Witness<TargetModel> {
   )
 }
 
-fn bash_fold_assign_wrong_target_model_witness() -> Witness<TargetModel> {
+fn bash_fold_assign_wrong_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
   bash_fold_target_model_for_emitted_witness(
     emitted: bash_fold_assign_wrong_emitted,
     source_literal: ^bash_fold_assign_wrong_source_literal,
@@ -1004,7 +1004,7 @@ fn bash_fold_assign_wrong_target_model_witness() -> Witness<TargetModel> {
   )
 }
 
-fn bash_fold_and_then_wrong_target_model_witness() -> Witness<TargetModel> {
+fn bash_fold_and_then_wrong_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
   bash_fold_target_model_for_emitted_witness(
     emitted: bash_fold_and_then_true_false_emitted,
     source_literal: ^bash_fold_and_then_wrong_source_literal,
@@ -1014,7 +1014,7 @@ fn bash_fold_and_then_wrong_target_model_witness() -> Witness<TargetModel> {
   )
 }
 
-fn bash_fold_pipe_wrong_target_model_witness() -> Witness<TargetModel> {
+fn bash_fold_pipe_wrong_target_model_witness() -> Witness<v2.std.compilers.target_model.TargetModel> {
   bash_fold_target_model_for_emitted_witness(
     emitted: bash_fold_pipe_echo_hi_wc_emitted,
     source_literal: ^bash_fold_pipe_wrong_source_literal,

@@ -7,25 +7,25 @@ data ensure_effect_grain_migration_note: String = "WHY THE EFFECT GRAIN IS WRONG
 
 type EndpointPreflight
   = EndpointClearForBind
-  | EndpointClearedByUnlink { stale_detail: NonEmptyStr }
+  | EndpointClearedByUnlink { stale_detail: std.types.NonEmptyStr }
 
 type EnsureRefusal
   = EnsureEndpointOccupied { owner: ProcessIdentity }
-  | EnsureEndpointPathConflict { detail: NonEmptyStr }
-  | EnsureEndpointUnobservable { detail: NonEmptyStr }
-  | EnsureUnlinkRefused { detail: NonEmptyStr }
-  | EnsurePlacementUnknown { detail: NonEmptyStr }
+  | EnsureEndpointPathConflict { detail: std.types.NonEmptyStr }
+  | EnsureEndpointUnobservable { detail: std.types.NonEmptyStr }
+  | EnsureUnlinkRefused { detail: std.types.NonEmptyStr }
+  | EnsurePlacementUnknown { detail: std.types.NonEmptyStr }
 
 data ensure_is_a_reconcile_not_an_install_note: String = "ENSURE MUST BE IDEMPOTENT, WHICH IS WHY EnsureAlreadyConverged IS ITS OWN ARM RATHER THAN A SUCCESSFUL RE-INSTALL. The membership-diff spine's reading applies unchanged here: desired versus observed, and Unchanged is the ABSENCE of a hunk, not a cheap version of Added. If a correctly-placed managed unit already owns the endpoint, writing the unit again and restarting it would tear down a healthy cache and re-cold every compile on the host to reach a state it was already in — the most expensive possible no-op, and one that would fire on every convergence pass.\n\nDeciding it needs the OWNER, not the path. A listening endpoint tells you something holds it; only placement tells you whether that something is the unit we intend. So this admission takes both, and the placement authority is consulted FIRST: already-converged short-circuits before any path reasoning, because when the answer is 'nothing to do' the path state is irrelevant and reading it could only produce a spurious refusal."
 
 type EnsureBuildCacheAdmission
-  = EnsureAlreadyConverged { desired: BuildCacheInstance, unit: NonEmptyStr }
+  = EnsureAlreadyConverged { desired: gunbc.build_cache_instance.BuildCacheInstance, unit: std.types.NonEmptyStr }
   | EnsureBuildCacheAdmitted {
-      desired: BuildCacheInstance
+      desired: gunbc.build_cache_instance.BuildCacheInstance
       preflight: EndpointPreflight
       unit_lines: List<String>
     }
-  | EnsureBuildCacheRefused { instance: BuildCacheInstance, reason: EnsureRefusal }
+  | EnsureBuildCacheRefused { instance: gunbc.build_cache_instance.BuildCacheInstance, reason: EnsureRefusal }
 
 data canonical_fold_note: String = "THE ELIMINATION SURFACE IS A FOLD, NOT A SCATTER OF MATCHES (review 46784, raised three times before it was taken). The predicates below previously each matched EnsureBuildCacheAdmission directly, which is legal — DESIGN section 4 names Match as one of the six closed behaviours — and that legality was the whole of my argument for keeping them. It was the wrong question. The right one is whether a coproduct with several consumers should have ONE named elimination surface, and it should: a fold record makes adding an arm a COMPILE ERROR at every consumer, because each literal must gain a field, whereas a scattered match silently keeps compiling and silently stops covering.\n\nThat is not theoretical here. Earlier in this same lane a fourth ProbeEffectOnSubjectFold literal in gunbc.claim_evidence_probe_rule was missed when an arm was added, and it was the FOLD RECORD that caught it — the compiler refused the incomplete literal. A hand-written match in that position would have gone on compiling against the old arm set. So the fold is the better construction for exactly the reason DESIGN prefers construction to validation, and the precedent to follow was already in the tree.\n\nBuildCacheServerPlacement is deliberately NOT folded here. It lives in gunbc.build_cache_instance with consumers already on main, so giving it a canonical fold is a broader refactor of a merged module rather than part of this change; placement_already_converged still matches it directly and is named as the residue that follow-up closes."
 

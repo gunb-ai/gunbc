@@ -1,11 +1,11 @@
 module test.claim.roadmap_belt_witness
 
 
-fn roadmap_belt_nid(s: String) -> RoadmapNodeId { s }
+fn roadmap_belt_nid(s: String) -> gunbc.roadmap_model.RoadmapNodeId { s }
 
-fn ready_node(id: String) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_P2E65A1P1148Z5Y175QT" as RoadmapNodeIdentity,
+fn ready_node(id: String) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_P2E65A1P1148Z5Y175QT" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: roadmap_belt_nid(s: id),
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
@@ -16,17 +16,17 @@ fn ready_node(id: String) -> RoadmapNode {
   }
 }
 
-fn frontier_ready(ids: List<String>) -> SpawnFrontier {
-  SpawnFrontier { ready: map(ids, id => ready_node(id: id)), upcoming: [], done: [], superseded: [] }
+fn frontier_ready(ids: List<String>) -> gunbc.roadmap_spawner.SpawnFrontier {
+  gunbc.roadmap_spawner.SpawnFrontier { ready: map(ids, id => ready_node(id: id)), upcoming: [], done: [], superseded: [] }
 }
 
-fn cap(n: Int) -> BeltCapacity { BeltCapacity { max_concurrent: n } }
+fn cap(n: Int) -> gunbc.roadmap_belt.BeltCapacity { gunbc.roadmap_belt.BeltCapacity { max_concurrent: n } }
 
-fn any_paused(actions: List<BeltAction>) -> Bool {
+fn any_paused(actions: List<gunbc.roadmap_belt.BeltAction>) -> Bool {
   any(actions, a => match a { HoldPaused => true, _ => false })
 }
 
-fn at_capacity_waiting(actions: List<BeltAction>) -> Int {
+fn at_capacity_waiting(actions: List<gunbc.roadmap_belt.BeltAction>) -> Int {
   fold(actions, init: 0, f: (acc, a) => match a { AtCapacity { ready_waiting } => ready_waiting, _ => acc })
 }
 
@@ -93,8 +93,8 @@ test fn witness_belt_status_json_shape() -> Bool {
     && string_contains(s: j, pattern: "max_concurrent")
 }
 
-fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSession {
-  DispatchLiveSession {
+fn live_session(node_id: String, verdict: std.upsert_decision.ObservationVerdict) -> gunbc.roadmap_dispatch_actuator.DispatchLiveSession {
+  gunbc.roadmap_dispatch_actuator.DispatchLiveSession {
     session_name: "gunbc-dispatch-{node_id}",
     node_id: node_id,
     windows: 1,
@@ -105,11 +105,11 @@ fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSes
   }
 }
 
-fn spawns_node(r: BeltReconcile, id: String) -> Bool {
+fn spawns_node(r: gunbc.roadmap_belt.BeltReconcile, id: String) -> Bool {
   any(belt_member_ids(ms: r.spawns), x => x == id)
 }
 
-fn tears_down_node(r: BeltReconcile, id: String) -> Bool {
+fn tears_down_node(r: gunbc.roadmap_belt.BeltReconcile, id: String) -> Bool {
   any(belt_member_ids(ms: r.teardowns), x => x == id)
 }
 

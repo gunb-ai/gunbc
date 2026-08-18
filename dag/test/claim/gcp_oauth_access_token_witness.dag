@@ -46,7 +46,7 @@ fn witness_leaves_are_distinguishable() -> Bool {
   )
 }
 
-pattern gcp_oauth_access_token_dispatch_swapped(strategy: GcpOAuth2AccessTokenStrategy) -> { token: Secret }
+pattern gcp_oauth_access_token_dispatch_swapped(strategy: extdeps.cloud.gcp.gcp.GcpOAuth2AccessTokenStrategy) -> { token: Secret }
 {
   node result = match strategy {
     GcloudCli => gcp_oauth_access_token_via_adc_refresh()

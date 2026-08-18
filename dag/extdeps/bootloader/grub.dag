@@ -9,14 +9,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type GrubMenuEntry {
-  title: NonEmptyStr
-  linux_image: NonEmptyStr
-  linux_cmdline: List<KernelCmdlineArg>
-  initrd_image: NonEmptyStr
+  title: std.types.NonEmptyStr
+  linux_image: std.types.NonEmptyStr
+  linux_cmdline: List<extdeps.firmware.kernel_cmdline.KernelCmdlineArg>
+  initrd_image: std.types.NonEmptyStr
 }
 
 type GrubConfig {
-  timeout_seconds: Seconds
+  timeout_seconds: std.types.Seconds
   default_entry: Int
   entries: List<GrubMenuEntry>
 }

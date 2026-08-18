@@ -5,8 +5,8 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data salience_witness_note: String = "S1 selective-spectacle receipts (operator recalibration 2026-08-02), each a decided law with its RED control: the budget table grants energy to focus only; a second ordinary focal subject in one region is a typed refusal while Critical coexists; emission refuses for the wrong role, outside the envelope, and without a non-emission discriminator (so reduced-motion/no-emission renderings keep every distinction by construction); attraction is bounded and borrows the register's one spring rather than minting a second; and the principles carrier holds the revised thesis with the three new laws carried by real salience declarations."
 
-fn fx_emission_ok() -> EmissionSpec {
-  EmissionSpec {
+fn fx_emission_ok() -> gunbc.design.salience.EmissionSpec {
+  gunbc.design.salience.EmissionSpec {
     core_radius: css_px(4),
     corona_radius: css_px(24),
     core_alpha_pct: 70,
@@ -39,9 +39,9 @@ test fn witness_budget_grants_energy_to_focus_only() -> Bool {
 
 test fn witness_red_two_focal_subjects_in_one_region_refuse() -> Bool {
   let two_focal = [
-    SalienceAssignment { subject: "finish-line-compiler-fixed-point", role: SalienceFocal },
-    SalienceAssignment { subject: "finish-line-interpreter-delete", role: SalienceFocal },
-    SalienceAssignment { subject: "sibling", role: SalienceSupporting },
+    gunbc.design.salience.SalienceAssignment { subject: "finish-line-compiler-fixed-point", role: SalienceFocal },
+    gunbc.design.salience.SalienceAssignment { subject: "finish-line-interpreter-delete", role: SalienceFocal },
+    gunbc.design.salience.SalienceAssignment { subject: "sibling", role: SalienceSupporting },
   ]
   match region_focal_admission(region: "outcome-screen", assignments: two_focal) {
     FocalBudgetExceeded { region: r, focal_count: n } => r == "outcome-screen" && n == 2
@@ -51,10 +51,10 @@ test fn witness_red_two_focal_subjects_in_one_region_refuse() -> Bool {
 
 test fn witness_critical_interrupts_without_dethroning_the_focal_subject() -> Bool {
   let one_each = [
-    SalienceAssignment { subject: "finish-line-compiler-fixed-point", role: SalienceFocal },
-    SalienceAssignment { subject: "workflow-observation-refused", role: SalienceCritical },
-    SalienceAssignment { subject: "sibling-a", role: SalienceSupporting },
-    SalienceAssignment { subject: "world", role: SalienceGround },
+    gunbc.design.salience.SalienceAssignment { subject: "finish-line-compiler-fixed-point", role: SalienceFocal },
+    gunbc.design.salience.SalienceAssignment { subject: "workflow-observation-refused", role: SalienceCritical },
+    gunbc.design.salience.SalienceAssignment { subject: "sibling-a", role: SalienceSupporting },
+    gunbc.design.salience.SalienceAssignment { subject: "world", role: SalienceGround },
   ]
   match region_focal_admission(region: "outcome-screen", assignments: one_each) {
     FocalAdmitted { focal_count: fc, critical_count: cc } => fc == 1 && cc == 1
@@ -83,7 +83,7 @@ test fn witness_red_emission_cannot_be_the_sole_discriminator() -> Bool {
 }
 
 test fn witness_red_loud_corona_refuses_with_the_measured_violation() -> Bool {
-  let loud = EmissionSpec {
+  let loud = gunbc.design.salience.EmissionSpec {
     core_radius: css_px(4),
     corona_radius: css_px(60),
     core_alpha_pct: 70,
@@ -120,7 +120,7 @@ test fn witness_attraction_is_bounded_and_borrows_the_register_spring() -> Bool 
 }
 
 test fn witness_red_viewport_scale_attraction_is_outside_the_envelope() -> Bool {
-  let evasive = AttractionField {
+  let evasive = gunbc.design.salience.AttractionField {
     activation_radius: css_px(800),
     max_travel: css_px(40),
     settle: settle_spring,
@@ -130,9 +130,9 @@ test fn witness_red_viewport_scale_attraction_is_outside_the_envelope() -> Bool 
 
 // THE DISCRIMINATING PART IS THE NUMBER, NOT THE SIZE. Both controls below are authored to satisfy EVERY numeric constraint in their envelope and differ from an accepted specimen ONLY in unit, so they cannot pass by being small and cannot fail by being large — the sole reason either refuses is that a rem magnitude is not comparable to a px bound. A corona of 40rem satisfies 40 <= 48 and 40 > 4 while denoting roughly 640px, and an attraction field of 12rem travel inside a 150rem radius satisfies every one of the four numeric bounds; before the unit check both were admitted. The emission arm additionally pins WHICH refusal fires: EmissionUnitNotComparable carrying both offending unit tokens, never EmissionOutsideEnvelope, whose corona_radius_px field would report a rem magnitude under a px name.
 test fn witness_red_rem_emission_is_not_comparable_to_a_px_bound() -> Bool {
-  let rem_spec = EmissionSpec {
-    core_radius: CssLength { n: 4, unit: Rem },
-    corona_radius: CssLength { n: 40, unit: Rem },
+  let rem_spec = gunbc.design.salience.EmissionSpec {
+    core_radius: extdeps.languages.css.values.CssLength { n: 4, unit: Rem },
+    corona_radius: extdeps.languages.css.values.CssLength { n: 40, unit: Rem },
     core_alpha_pct: 70,
     corona_alpha_pct: 12,
   }
@@ -150,9 +150,9 @@ test fn witness_red_rem_emission_is_not_comparable_to_a_px_bound() -> Bool {
 }
 
 test fn witness_red_rem_attraction_is_not_comparable_to_a_px_bound() -> Bool {
-  let rem_field = AttractionField {
-    activation_radius: CssLength { n: 150, unit: Rem },
-    max_travel: CssLength { n: 12, unit: Rem },
+  let rem_field = gunbc.design.salience.AttractionField {
+    activation_radius: extdeps.languages.css.values.CssLength { n: 150, unit: Rem },
+    max_travel: extdeps.languages.css.values.CssLength { n: 12, unit: Rem },
     settle: settle_spring,
   }
   !attraction_envelope(f: rem_field)

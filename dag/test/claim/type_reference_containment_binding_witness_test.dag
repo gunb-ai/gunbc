@@ -2,8 +2,8 @@ module test.claim.type_reference_containment_binding_witness_test
 
 
 // N2 slice 1 — THREE discriminating controls modeled on the N1a import-strip section 14.1 matrix at fixture grain, plus one API-boundary control for category inadmissibility. The kernel is resolve_type_reference_containment_binding → P2a candidate population → resolve_reference_occurrence_binding → occurrence_binding_from_candidates (OccurrenceBindingResult). No parallel fold, no production lookup_type_by_name changeover, N1a discriminator untouched. Matrix controls: (1) binds when containment exposes the type; (2) refuses when no declaration exists (row 3); (3) pool-coincidence must not bind (row 4). API control: non-TypeOccurrence reference → ReferenceBindingProjectionWrongCategory before candidate enumeration.
-fn trcb_module_path(dotted: String) -> NonEmptyStr {
-  dotted as NonEmptyStr
+fn trcb_module_path(dotted: String) -> std.types.NonEmptyStr {
+  dotted as std.types.NonEmptyStr
 }
 
 fn trcb_fixture_span(file: String, start: Int, end: Int) -> std.types.SourceSpan {
@@ -13,8 +13,8 @@ fn trcb_fixture_span(file: String, start: Int, end: Int) -> std.types.SourceSpan
 fn trcb_fixture_path(
   ancestors: List<std.occurrence_identity.OccurrenceId>,
   terminal: std.occurrence_identity.OccurrenceId
-) -> OccurrenceContainmentPath {
-  OccurrenceContainmentPath {
+) -> std.occurrence_identity.OccurrenceContainmentPath {
+  std.occurrence_identity.OccurrenceContainmentPath {
     ancestors: ancestors,
     terminal: terminal,
   }
@@ -23,10 +23,10 @@ fn trcb_fixture_path(
 fn trcb_fixture_index_entry(
   occurrence: std.occurrence_identity.OccurrenceId,
   authored_name: String,
-  containment: OccurrenceContainmentPath
-) -> OccurrenceIndexEntry {
-  OccurrenceIndexEntry {
-    projection: OccurrenceProjection {
+  containment: std.occurrence_identity.OccurrenceContainmentPath
+) -> std.occurrence_identity.OccurrenceIndexEntry {
+  std.occurrence_identity.OccurrenceIndexEntry {
+    projection: std.occurrence_identity.OccurrenceProjection {
       occurrence: occurrence,
       authored_name: authored_name,
       diagnostic_span: trcb_fixture_span(file: "fixture.dag", start: 0, end: 1),
@@ -37,10 +37,10 @@ fn trcb_fixture_index_entry(
 
 fn trcb_fixture_declaration(
   occurrence: std.occurrence_identity.OccurrenceId,
-  containment: OccurrenceContainmentPath,
-  category: OccurrenceCategory
-) -> DeclarationOccurrence {
-  DeclarationOccurrence {
+  containment: std.occurrence_identity.OccurrenceContainmentPath,
+  category: std.occurrence_identity.OccurrenceCategory
+) -> std.occurrence_identity.DeclarationOccurrence {
+  std.occurrence_identity.DeclarationOccurrence {
     occurrence: occurrence,
     containment: containment,
     category: category,
@@ -50,10 +50,10 @@ fn trcb_fixture_declaration(
 
 fn trcb_fixture_reference(
   occurrence: std.occurrence_identity.OccurrenceId,
-  containment: OccurrenceContainmentPath,
-  category: OccurrenceCategory
-) -> ReferenceOccurrence {
-  ReferenceOccurrence {
+  containment: std.occurrence_identity.OccurrenceContainmentPath,
+  category: std.occurrence_identity.OccurrenceCategory
+) -> std.occurrence_identity.ReferenceOccurrence {
+  std.occurrence_identity.ReferenceOccurrence {
     occurrence: occurrence,
     containment: containment,
     category: category,
@@ -62,33 +62,33 @@ fn trcb_fixture_reference(
 }
 
 fn trcb_fixture_inputs(
-  module_paths: List<OccurrenceModulePathRow>,
-  exposure_rows: List<DeclarationExposureRow>,
-  authored_order_rows: List<AuthoredOrderRow>
-) -> OccurrenceBindingCandidateInputs {
-  OccurrenceBindingCandidateInputs {
+  module_paths: List<std.occurrence_binding_candidates.OccurrenceModulePathRow>,
+  exposure_rows: List<std.occurrence_binding_candidates.DeclarationExposureRow>,
+  authored_order_rows: List<std.occurrence_binding_candidates.AuthoredOrderRow>
+) -> std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
+  std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
     module_paths: module_paths,
     exposure_rows: exposure_rows,
     authored_order_rows: authored_order_rows,
   }
 }
 
-fn trcb_authored_order(occurrence: std.occurrence_identity.OccurrenceId, ordinal: Int) -> AuthoredOrderRow {
-  AuthoredOrderRow {
+fn trcb_authored_order(occurrence: std.occurrence_identity.OccurrenceId, ordinal: Int) -> std.occurrence_binding_candidates.AuthoredOrderRow {
+  std.occurrence_binding_candidates.AuthoredOrderRow {
     occurrence: occurrence,
-    ordinal: AuthoredTokenOrdinal { value: ordinal },
+    ordinal: std.occurrence_identity.AuthoredTokenOrdinal { value: ordinal },
   }
 }
 
-fn trcb_module_exposure(occurrence: std.occurrence_identity.OccurrenceId, module: String) -> DeclarationExposureRow {
-  DeclarationExposureRow {
+fn trcb_module_exposure(occurrence: std.occurrence_identity.OccurrenceId, module: String) -> std.occurrence_binding_candidates.DeclarationExposureRow {
+  std.occurrence_binding_candidates.DeclarationExposureRow {
     occurrence: occurrence,
     exposure: ModuleExposure { module: trcb_module_path(dotted: module) },
   }
 }
 
-fn trcb_root_exposure(occurrence: std.occurrence_identity.OccurrenceId) -> DeclarationExposureRow {
-  DeclarationExposureRow {
+fn trcb_root_exposure(occurrence: std.occurrence_identity.OccurrenceId) -> std.occurrence_binding_candidates.DeclarationExposureRow {
+  std.occurrence_binding_candidates.DeclarationExposureRow {
     occurrence: occurrence,
     exposure: RootExposure,
   }
@@ -103,8 +103,8 @@ test fn control_one_containment_bind_holds() -> Bool {
   let fn_path = trcb_fixture_path(ancestors: [], terminal: fn_body)
   let ref_path = trcb_fixture_path(ancestors: [fn_body], terminal: type_ref)
   match resolve_type_reference_containment_binding(
-    transport: OccurrenceTransport {
-      index: OccurrenceIndex {
+    transport: std.occurrence_identity.OccurrenceTransport {
+      index: std.occurrence_identity.OccurrenceIndex {
         entries: [
           trcb_fixture_index_entry(occurrence: type_decl, authored_name: "ContentHash", containment: type_path),
           trcb_fixture_index_entry(occurrence: fn_body, authored_name: "f", containment: fn_path),
@@ -121,9 +121,9 @@ test fn control_one_containment_bind_holds() -> Bool {
     },
     inputs: trcb_fixture_inputs(
       module_paths: [
-        OccurrenceModulePathRow { occurrence: type_decl, module_path: trcb_module_path(dotted: "std.content_hash") },
-        OccurrenceModulePathRow { occurrence: fn_body, module_path: trcb_module_path(dotted: "extdeps.consumer") },
-        OccurrenceModulePathRow { occurrence: type_ref, module_path: trcb_module_path(dotted: "extdeps.consumer") },
+        std.occurrence_binding_candidates.OccurrenceModulePathRow { occurrence: type_decl, module_path: trcb_module_path(dotted: "std.content_hash") },
+        std.occurrence_binding_candidates.OccurrenceModulePathRow { occurrence: fn_body, module_path: trcb_module_path(dotted: "extdeps.consumer") },
+        std.occurrence_binding_candidates.OccurrenceModulePathRow { occurrence: type_ref, module_path: trcb_module_path(dotted: "extdeps.consumer") },
       ],
       exposure_rows: [
         trcb_root_exposure(occurrence: type_decl),
@@ -153,8 +153,8 @@ test fn control_two_absent_must_refuse_holds() -> Bool {
   let fn_path = trcb_fixture_path(ancestors: [], terminal: fn_body)
   let ref_path = trcb_fixture_path(ancestors: [fn_body], terminal: type_ref)
   match resolve_type_reference_containment_binding(
-    transport: OccurrenceTransport {
-      index: OccurrenceIndex {
+    transport: std.occurrence_identity.OccurrenceTransport {
+      index: std.occurrence_identity.OccurrenceIndex {
         entries: [
           trcb_fixture_index_entry(occurrence: fn_body, authored_name: "f", containment: fn_path),
           trcb_fixture_index_entry(occurrence: type_ref, authored_name: "ContentHash", containment: ref_path),
@@ -169,8 +169,8 @@ test fn control_two_absent_must_refuse_holds() -> Bool {
     },
     inputs: trcb_fixture_inputs(
       module_paths: [
-        OccurrenceModulePathRow { occurrence: fn_body, module_path: trcb_module_path(dotted: "extdeps.consumer") },
-        OccurrenceModulePathRow { occurrence: type_ref, module_path: trcb_module_path(dotted: "extdeps.consumer") },
+        std.occurrence_binding_candidates.OccurrenceModulePathRow { occurrence: fn_body, module_path: trcb_module_path(dotted: "extdeps.consumer") },
+        std.occurrence_binding_candidates.OccurrenceModulePathRow { occurrence: type_ref, module_path: trcb_module_path(dotted: "extdeps.consumer") },
       ],
       exposure_rows: [
         trcb_module_exposure(occurrence: fn_body, module: "extdeps.consumer"),
@@ -196,8 +196,8 @@ test fn control_three_pool_coincidence_must_not_bind_holds() -> Bool {
   let fn_path = trcb_fixture_path(ancestors: [], terminal: fn_body)
   let ref_path = trcb_fixture_path(ancestors: [fn_body], terminal: type_ref)
   match resolve_type_reference_containment_binding(
-    transport: OccurrenceTransport {
-      index: OccurrenceIndex {
+    transport: std.occurrence_identity.OccurrenceTransport {
+      index: std.occurrence_identity.OccurrenceIndex {
         entries: [
           trcb_fixture_index_entry(occurrence: type_decl, authored_name: "ContentHash", containment: type_path),
           trcb_fixture_index_entry(occurrence: fn_body, authored_name: "f", containment: fn_path),
@@ -214,9 +214,9 @@ test fn control_three_pool_coincidence_must_not_bind_holds() -> Bool {
     },
     inputs: trcb_fixture_inputs(
       module_paths: [
-        OccurrenceModulePathRow { occurrence: type_decl, module_path: trcb_module_path(dotted: "std.content_hash") },
-        OccurrenceModulePathRow { occurrence: fn_body, module_path: trcb_module_path(dotted: "extdeps.consumer") },
-        OccurrenceModulePathRow { occurrence: type_ref, module_path: trcb_module_path(dotted: "extdeps.consumer") },
+        std.occurrence_binding_candidates.OccurrenceModulePathRow { occurrence: type_decl, module_path: trcb_module_path(dotted: "std.content_hash") },
+        std.occurrence_binding_candidates.OccurrenceModulePathRow { occurrence: fn_body, module_path: trcb_module_path(dotted: "extdeps.consumer") },
+        std.occurrence_binding_candidates.OccurrenceModulePathRow { occurrence: type_ref, module_path: trcb_module_path(dotted: "extdeps.consumer") },
       ],
       exposure_rows: [
         trcb_module_exposure(occurrence: type_decl, module: "std.content_hash"),
@@ -240,8 +240,8 @@ test fn control_api_non_type_occurrence_refuses_wrong_category_holds() -> Bool {
   let call_ref = std.occurrence_identity.OccurrenceId { value: 30 }
   let ref_path = trcb_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: call_ref)
   match resolve_type_reference_containment_binding(
-    transport: OccurrenceTransport {
-      index: OccurrenceIndex {
+    transport: std.occurrence_identity.OccurrenceTransport {
+      index: std.occurrence_identity.OccurrenceIndex {
         entries: [
           trcb_fixture_index_entry(occurrence: call_ref, authored_name: "f", containment: ref_path),
         ],
@@ -253,7 +253,7 @@ test fn control_api_non_type_occurrence_refuses_wrong_category_holds() -> Bool {
     },
     inputs: trcb_fixture_inputs(
       module_paths: [
-        OccurrenceModulePathRow { occurrence: call_ref, module_path: trcb_module_path(dotted: "app.module") },
+        std.occurrence_binding_candidates.OccurrenceModulePathRow { occurrence: call_ref, module_path: trcb_module_path(dotted: "app.module") },
       ],
       exposure_rows: [],
       authored_order_rows: [

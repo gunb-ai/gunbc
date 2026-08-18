@@ -25,7 +25,7 @@ data walk_plan_stage_plan_site: String = "src/v2/test/fixture/walk_plan_stage/pl
 
 data walk_plan_stage_barrier_receipt_row_note: String = "Per-stage receipt claim rows are tab-separated: claim, entry, function, outcome, wall_ms (#7518). plan_site in the header is plan.dag::plan_function."
 
-fn walk_plan_stage_negligible_wet_profile() -> RunnableResourceProfile {
+fn walk_plan_stage_negligible_wet_profile() -> std.realization_schedule.RunnableResourceProfile {
   runnable_resource_profile(
     heavy_whole_tree_resolve: false,
     spawns_host_compiler: false,
@@ -34,7 +34,7 @@ fn walk_plan_stage_negligible_wet_profile() -> RunnableResourceProfile {
   )
 }
 
-fn walk_plan_stage_green_floor_claim() -> Runnable {
+fn walk_plan_stage_green_floor_claim() -> std.realization_schedule.Runnable {
   RunnableSingleClaim {
     entry: "src/v2/test/fixture/floor_skip/falsifier_divergence_control_test.dag",
     function: "falsifier_green_control_holds",
@@ -42,7 +42,7 @@ fn walk_plan_stage_green_floor_claim() -> Runnable {
   }
 }
 
-fn walk_plan_stage_cleanup_claim() -> Runnable {
+fn walk_plan_stage_cleanup_claim() -> std.realization_schedule.Runnable {
   RunnableSingleClaim {
     entry: "src/v2/test/fixture/walk_plan_stage/cleanup_test.dag",
     function: "walk_plan_stage_cleanup_holds",
@@ -50,7 +50,7 @@ fn walk_plan_stage_cleanup_claim() -> Runnable {
   }
 }
 
-fn walk_plan_stage_overlap_peer_a_claim() -> Runnable {
+fn walk_plan_stage_overlap_peer_a_claim() -> std.realization_schedule.Runnable {
   RunnableSingleClaim {
     entry: "src/v2/test/fixture/walk_plan_stage/overlap_peer_a_test.dag",
     function: "walk_plan_stage_overlap_peer_a_holds",
@@ -58,7 +58,7 @@ fn walk_plan_stage_overlap_peer_a_claim() -> Runnable {
   }
 }
 
-fn walk_plan_stage_overlap_peer_b_claim() -> Runnable {
+fn walk_plan_stage_overlap_peer_b_claim() -> std.realization_schedule.Runnable {
   RunnableSingleClaim {
     entry: "src/v2/test/fixture/walk_plan_stage/overlap_peer_b_test.dag",
     function: "walk_plan_stage_overlap_peer_b_holds",
@@ -66,7 +66,7 @@ fn walk_plan_stage_overlap_peer_b_claim() -> Runnable {
   }
 }
 
-fn walk_plan_stage_barrier_witness_claim() -> Runnable {
+fn walk_plan_stage_barrier_witness_claim() -> std.realization_schedule.Runnable {
   RunnableSingleClaim {
     entry: "src/v2/test/fixture/walk_plan_stage/barrier_witness_test.dag",
     function: "walk_plan_stage_barrier_witness_holds",
@@ -74,7 +74,7 @@ fn walk_plan_stage_barrier_witness_claim() -> Runnable {
   }
 }
 
-fn walk_plan_stage_failure_red_member_claim() -> Runnable {
+fn walk_plan_stage_failure_red_member_claim() -> std.realization_schedule.Runnable {
   RunnableSingleClaim {
     entry: "src/v2/test/fixture/walk_plan_stage/failure_red_member_test.dag",
     function: "walk_plan_stage_failure_red_member_holds",
@@ -82,7 +82,7 @@ fn walk_plan_stage_failure_red_member_claim() -> Runnable {
   }
 }
 
-fn walk_plan_stage_recursion_refusal_member_claim() -> Runnable {
+fn walk_plan_stage_recursion_refusal_member_claim() -> std.realization_schedule.Runnable {
   RunnableSingleClaim {
     entry: "src/v2/test/fixture/walk_plan_stage/recursion_refusal_member_test.dag",
     function: "walk_plan_stage_recursion_refusal_member_holds",
@@ -90,7 +90,7 @@ fn walk_plan_stage_recursion_refusal_member_claim() -> Runnable {
   }
 }
 
-fn walk_plan_stage_receipt_refusal_poison_claim() -> Runnable {
+fn walk_plan_stage_receipt_refusal_poison_claim() -> std.realization_schedule.Runnable {
   RunnableSingleClaim {
     entry: "src/v2/test/fixture/walk_plan_stage/receipt_refusal_poison_test.dag",
     function: "walk_plan_stage_receipt_refusal_poison_holds",
@@ -98,7 +98,7 @@ fn walk_plan_stage_receipt_refusal_poison_claim() -> Runnable {
   }
 }
 
-fn walk_plan_stage_stage2_marker_claim() -> Runnable {
+fn walk_plan_stage_stage2_marker_claim() -> std.realization_schedule.Runnable {
   RunnableSingleClaim {
     entry: "src/v2/test/fixture/walk_plan_stage/stage2_marker_test.dag",
     function: "walk_plan_stage_stage2_marker_holds",

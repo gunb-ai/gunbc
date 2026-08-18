@@ -1,18 +1,18 @@
 module v2.test.manual.fact_density_anchor
 
-data fact_density_anchor_hollow_alias: Node = Node {
+data fact_density_anchor_hollow_alias: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^fact_density_anchor_int32_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
-data fact_density_anchor_fact_bundle: Node = Node {
+data fact_density_anchor_fact_bundle: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
+    v2.std.node.Edge {
       label: Named { name: ^fact_density_anchor_width_field },
       target: fact_density_anchor_hollow_alias
     },
-    Edge {
+    v2.std.node.Edge {
       label: Named { name: ^fact_density_anchor_signedness_field },
       target: fact_density_anchor_hollow_alias
     }
@@ -20,20 +20,20 @@ data fact_density_anchor_fact_bundle: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data fact_density_anchor_kernel_ambient_bool: Node = Node {
+data fact_density_anchor_kernel_ambient_bool: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^fact_density_kernel_ambient_bool } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-fn anchor_hollow_alias_read() -> SourceSpecReadFact {
+fn anchor_hollow_alias_read() -> v2.lens.fact_density.SourceSpecReadFact {
   carrier_spec_fact(carrier: fact_density_anchor_hollow_alias)
 }
 
-fn anchor_fact_bundle_read() -> SourceSpecReadFact {
+fn anchor_fact_bundle_read() -> v2.lens.fact_density.SourceSpecReadFact {
   carrier_spec_fact(carrier: fact_density_anchor_fact_bundle)
 }
 
-fn anchor_kernel_ambient_bool_read() -> SourceSpecReadFact {
+fn anchor_kernel_ambient_bool_read() -> v2.lens.fact_density.SourceSpecReadFact {
   carrier_spec_fact(carrier: fact_density_anchor_kernel_ambient_bool)
 }

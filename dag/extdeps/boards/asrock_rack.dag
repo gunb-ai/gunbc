@@ -195,9 +195,9 @@ data asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_absent_endpoints: List<BmcwebNbd
 type BmcReadOnlyProbeVerdict = ProbePresent | ProbeAbsent | ProbeInconclusive
 
 type BmcLiveReadOnlyProbeRow {
-  locator: NonEmptyStr
+  locator: std.types.NonEmptyStr
   verdict: BmcReadOnlyProbeVerdict
-  probed_at: NonEmptyStr
+  probed_at: std.types.NonEmptyStr
 }
 
 data asrock_srv3_live_bmc_host: NonEmptyStr = "192.168.1.192"

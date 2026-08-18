@@ -2,16 +2,16 @@ module v2.test.language_model.go_r2b
 
 fn go_r2b_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: ^go_r2b_claim_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^go_r2b_claim_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => Node { kind: TypeNode { connective: Atom { identity: ^go_r2b_claim_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^go_r2b_claim_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_go_r2b_fixture_pair_wired: TestClaim = EqualsClaim {
+data claim_go_r2b_fixture_pair_wired: v2.std.verification.TestClaim = EqualsClaim {
   label: "language_model/go_r2b: fixture pair references go_facts_int64",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: go_r2b_claim_bool_atom(b: true),
@@ -23,17 +23,17 @@ data claim_go_r2b_fixture_pair_wired: TestClaim = EqualsClaim {
       && go_r2b_fixture().falsification.fixture.source == go_r2b_falsification_fixture_source
       && go_r2b_fixture().falsification.expected_verdict == go_r2b_modeled_falsification_expectation
   ),
-  classification: TestClassification { tier: Tier1, layer: Boundary }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }
-fn go_r2b_pending_verification_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn go_r2b_pending_verification_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^go_r2b_pending_verification_reason,
     at: Textual { file: ^go_r2b_pending_verification_reason, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
-data go_r2b_verification_run_receipt_default: LeafModelRuntimeVerificationRunReceipt = LeafModelRuntimeVerificationRunReceipt {
+data go_r2b_verification_run_receipt_default: v2.std.leaf_model_verification.LeafModelRuntimeVerificationRunReceipt = v2.std.leaf_model_verification.LeafModelRuntimeVerificationRunReceipt {
   claim_id: leaf_model_claim_go_r2b_int64_silent_overflow_truncates,
   happy_verdict: verdict_fail(
     actual: outcome_rejected(d: go_r2b_pending_verification_diagnostic())
@@ -43,16 +43,16 @@ data go_r2b_verification_run_receipt_default: LeafModelRuntimeVerificationRunRec
   )
 }
 
-data claim_go_r2b_verification_receipt_shape: TestClaim = EqualsClaim {
+data claim_go_r2b_verification_receipt_shape: v2.std.verification.TestClaim = EqualsClaim {
   label: "language_model/go_r2b: verification receipt carriers happy + falsification verdict slots",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: go_r2b_claim_bool_atom(
     b: go_r2b_verification_run_receipt_default.claim_id == leaf_model_claim_go_r2b_int64_silent_overflow_truncates
   ),
   rhs: go_r2b_claim_bool_atom(b: true),
-  classification: TestClassification { tier: Tier1, layer: Boundary }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }
 
-data go_r2b_modeled_falsification_expectation: TargetRuntimeExerciseVerdict = TargetRuntimeExerciseRejected {
+data go_r2b_modeled_falsification_expectation: v2.std.leaf_model_verification.TargetRuntimeExerciseVerdict = TargetRuntimeExerciseRejected {
   diagnostic_code: ^target_diagnostic_go_runtime_panic
 }

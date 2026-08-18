@@ -2,7 +2,7 @@ module v2.test.claim.lean_bit_width_admissibility_witness
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data lean_bit_width_admissibility_witness_note: String = "P3b cluster-1 receipt (lean end-to-end): lean_admit_bit_width is the admission boundary; LeanAdmittedBitWidth is sole_constructor. Honest rung: accepted refinement with executing refusal — not structural impossibility. RED: width 128 refuses at admission and catalog construction yields LeanWidthAdmissionRefused, not LeanIntegerScalar."
 
@@ -30,7 +30,7 @@ test fn lean_admit_accepts_catalog_fixed_widths() -> Bool {
 }
 
 test fn lean_admit_refuses_bits128() -> Bool {
-  let w128: BitWidth = bit_width(count: 128)
+  let w128: std.measure.BitWidth = bit_width(count: 128)
   match lean_admit_bit_width(width: w128) {
     LeanBitWidthRefused { width: refused } => bit_width_count(refused) == 128
     LeanBitWidthAccepted { width: _ } => false

@@ -34,17 +34,17 @@ type ProducedDeclSupport
   = ProducedDeclUnwired
   | ProducedDeclWired {
       render: fn(Node) -> Outcome<TargetBodiedArrowStatementScaffold>
-      scaffold_relation_rule_name: Symbol
+      scaffold_relation_rule_name: v2.std.node.Symbol
       scaffold_base_row: Node
     }
 
 type TargetModel {
   bundle: Node
-  lex: LexRules
-  binding_spellings: Map<Symbol, String>
-  token_class_emit_transforms: Map<Symbol, fn(String) -> String>
+  lex: v2.std.compilers.lexing.LexRules
+  binding_spellings: Map<v2.std.node.Symbol, String>
+  token_class_emit_transforms: Map<v2.std.node.Symbol, fn(String) -> String>
   authority_source_text: String
-  runtime_row: TargetEmitHostRuntimeRow
+  runtime_row: v2.std.host_transport.TargetEmitHostRuntimeRow
   produced_decl_support: ProducedDeclSupport
 }
 
@@ -88,8 +88,8 @@ fn runtime_row_from_target(target: TargetModel) -> Outcome<EmitHostRuntimeRow> {
 }
 
 type ConcreteSyntaxToken
-  = FixedToken { token_class: Symbol }
-  | BoundToken { token_class: Symbol, binding: Symbol }
+  = FixedToken { token_class: v2.std.node.Symbol }
+  | BoundToken { token_class: v2.std.node.Symbol, binding: v2.std.node.Symbol }
 
 fn concrete_syntax_token_to_node(token: ConcreteSyntaxToken) -> Node {
   match token {
@@ -519,9 +519,9 @@ fn serialize_type_expr_arrow_param_spelling(
 }
 
 type SourceAtomValue
-  = SourceAtomSymbol { identity: Symbol }
+  = SourceAtomSymbol { identity: v2.std.node.Symbol }
   | SourceAtomBool { value: Bool }
-  | SourceAtomChar { codepoint: Char }
+  | SourceAtomChar { codepoint: std.types.Char }
 
   | SourceAtomString { value: Node }
 
@@ -584,10 +584,10 @@ type EqualityPredicate
   | IsNotEqual
 
 type CanonicalOperation
-  = AlgebraPrimitive { algebra_field: Symbol }
-  | AlgebraInverseCompose { binary_field: Symbol, inverse_field: Symbol }
-  | OrderingComparison { compare_field: Symbol, predicate: OrderingPredicate }
-  | EqualityComparison { eq_field: Symbol, predicate: EqualityPredicate }
+  = AlgebraPrimitive { algebra_field: v2.std.node.Symbol }
+  | AlgebraInverseCompose { binary_field: v2.std.node.Symbol, inverse_field: v2.std.node.Symbol }
+  | OrderingComparison { compare_field: v2.std.node.Symbol, predicate: OrderingPredicate }
+  | EqualityComparison { eq_field: v2.std.node.Symbol, predicate: EqualityPredicate }
 
 fn ordering_predicate_accepts(predicate: OrderingPredicate) -> List<Ordering> {
   match predicate {
@@ -668,10 +668,10 @@ fn canonical_operation_op_ne() -> CanonicalOperation {
 }
 
 type TargetOperatorShape
-  = InfixToken { token: Symbol }
-  | PrefixToken { token: Symbol }
-  | CallIdent { ident: Symbol }
-  | MethodIdent { ident: Symbol }
+  = InfixToken { token: v2.std.node.Symbol }
+  | PrefixToken { token: v2.std.node.Symbol }
+  | CallIdent { ident: v2.std.node.Symbol }
+  | MethodIdent { ident: v2.std.node.Symbol }
 
 type TargetOperatorRealization {
   operation: CanonicalOperation
@@ -679,42 +679,42 @@ type TargetOperatorRealization {
 }
 
 type TargetBindingRefShape {
-  ident_token: Symbol
+  ident_token: v2.std.node.Symbol
 }
 
 type TargetPrimitiveApplyShape {
-  open: Symbol
-  close: Symbol
-  separator: Symbol
+  open: v2.std.node.Symbol
+  close: v2.std.node.Symbol
+  separator: v2.std.node.Symbol
 }
 
 type TargetCallApplyShape {
-  callee_ident_token: Symbol
-  open: Symbol
-  separator: Symbol
-  close: Symbol
+  callee_ident_token: v2.std.node.Symbol
+  open: v2.std.node.Symbol
+  separator: v2.std.node.Symbol
+  close: v2.std.node.Symbol
 }
 
 type TargetEffectCalleeRow {
-  effect_kind: Symbol
-  callee: Symbol
+  effect_kind: v2.std.node.Symbol
+  callee: v2.std.node.Symbol
 }
 
 type TargetEffectApplyShape {
   callees: List<TargetEffectCalleeRow>
-  open: Symbol
-  close: Symbol
-  separator: Symbol
+  open: v2.std.node.Symbol
+  close: v2.std.node.Symbol
+  separator: v2.std.node.Symbol
 }
 
 type TargetClosureShape {
-  fn_token: Symbol
-  open: Symbol
-  separator: Symbol
-  close: Symbol
-  body_open: Symbol
-  body_close: Symbol
-  param_ident_token: Symbol
+  fn_token: v2.std.node.Symbol
+  open: v2.std.node.Symbol
+  separator: v2.std.node.Symbol
+  close: v2.std.node.Symbol
+  body_open: v2.std.node.Symbol
+  body_close: v2.std.node.Symbol
+  param_ident_token: v2.std.node.Symbol
 }
 
 // Whether the construct needs a token AFTER its final arm. This is the axis the
@@ -727,31 +727,31 @@ type TargetClosureShape {
 // target is self-delimiting" and "nobody modeled it yet", the state-space
 // conflation DESIGN forbids, and a missing close would read as fine again.
 type ConditionalDelimiting
-  = ConditionalClosedByToken { close_token: Symbol }
+  = ConditionalClosedByToken { close_token: v2.std.node.Symbol }
   | ConditionalSelfDelimiting
 
 type TargetConditionalShape {
-  if_token: Symbol
-  then_token: Symbol
-  else_token: Symbol
+  if_token: v2.std.node.Symbol
+  then_token: v2.std.node.Symbol
+  else_token: v2.std.node.Symbol
   delimiting: ConditionalDelimiting
 }
 
 type TargetBindLetShape {
-  let_token: Symbol
-  assign_token: Symbol
-  in_token: Symbol
+  let_token: v2.std.node.Symbol
+  assign_token: v2.std.node.Symbol
+  in_token: v2.std.node.Symbol
 }
 
 type TargetLoopShape {
-  loop_token: Symbol
+  loop_token: v2.std.node.Symbol
 }
 
 type BlockEvaluationMode
   = ValueProducing
   | StatementSequenced {
-      return_token: Symbol
-      statement_terminator: Symbol
+      return_token: v2.std.node.Symbol
+      statement_terminator: v2.std.node.Symbol
     }
 
 type RecordLiteralTypeNaming
@@ -759,30 +759,30 @@ type RecordLiteralTypeNaming
   | Omit
 
 type TargetRecordConstructShape {
-  open: Symbol
-  close: Symbol
-  separator: Symbol
-  assign: Symbol
+  open: v2.std.node.Symbol
+  close: v2.std.node.Symbol
+  separator: v2.std.node.Symbol
+  assign: v2.std.node.Symbol
   record_literal_names_type: RecordLiteralTypeNaming
 }
 
 type TargetFieldAccessShape {
-  dot: Symbol
+  dot: v2.std.node.Symbol
 }
 
 type TargetMatchShape {
-  match_token: Symbol
-  scrutinee_open: Symbol
-  scrutinee_close: Symbol
-  open: Symbol
-  close: Symbol
-  fat_arrow: Symbol
-  arm_separator: Symbol
+  match_token: v2.std.node.Symbol
+  scrutinee_open: v2.std.node.Symbol
+  scrutinee_close: v2.std.node.Symbol
+  open: v2.std.node.Symbol
+  close: v2.std.node.Symbol
+  fat_arrow: v2.std.node.Symbol
+  arm_separator: v2.std.node.Symbol
 }
 
 type TargetBoolLiteralShape {
-  true_token: Symbol
-  false_token: Symbol
+  true_token: v2.std.node.Symbol
+  false_token: v2.std.node.Symbol
 }
 
 type TargetValueExpressionProjection {
@@ -808,17 +808,17 @@ type TargetBodiedArrowStatementScaffold {
 
 type TargetImportShape
   = EsModuleImport {
-      import_token: Symbol
-      names_open: Symbol
-      names_separator: Symbol
-      names_close: Symbol
-      from_token: Symbol
-      path_open: Symbol
-      path_segment_separator: Symbol
-      path_close: Symbol
-      terminator: Symbol
-      name_ident_token: Symbol
-      path_segment_token: Symbol
+      import_token: v2.std.node.Symbol
+      names_open: v2.std.node.Symbol
+      names_separator: v2.std.node.Symbol
+      names_close: v2.std.node.Symbol
+      from_token: v2.std.node.Symbol
+      path_open: v2.std.node.Symbol
+      path_segment_separator: v2.std.node.Symbol
+      path_close: v2.std.node.Symbol
+      terminator: v2.std.node.Symbol
+      name_ident_token: v2.std.node.Symbol
+      path_segment_token: v2.std.node.Symbol
     }
 
 type TargetModuleProjection {
@@ -826,8 +826,8 @@ type TargetModuleProjection {
 }
 
 type TargetImport {
-  path_segments: List<Symbol>
-  names: List<Symbol>
+  path_segments: List<v2.std.node.Symbol>
+  names: List<v2.std.node.Symbol>
 }
 
 fn derive_bodied_arrow_scaffold(
@@ -3155,7 +3155,7 @@ type TargetAtomRealization {
   type_form: TargetTypeExpression
   value_form: TargetValueTemplate
   constructor_form: Optional<TargetConstructorTemplate>
-  display_name: Symbol
+  display_name: v2.std.node.Symbol
 }
 
 fn symbol_kernel_type_node() -> Node {
@@ -4011,7 +4011,7 @@ fn target_value_expression_loop(body: TargetValueExpression) -> TargetValueExpre
 }
 
 type TargetValueExprFieldInitSlot {
-  label: Symbol
+  label: v2.std.node.Symbol
   value: TargetValueExpression
 }
 
@@ -4087,7 +4087,7 @@ type TargetValueExprMatchArmSlot {
 }
 
 type TargetValueExprMatchArmEdgeFold {
-  edges: List<Edge>
+  edges: List<v2.std.node.Edge>
   skipped_scrutinee: Bool
 }
 
@@ -8627,46 +8627,46 @@ fn target_type_expr_arrow_wire_shape(node: Node) -> Outcome<TargetTypeExprArrowW
 }
 
 type TargetTypeExprArrowParamSlot {
-  label: Symbol
+  label: v2.std.node.Symbol
   type_expr: Node
 }
 
 type TargetAtomTypeShape {
-  surface: Symbol
-  ident_token: Symbol
+  surface: v2.std.node.Symbol
+  ident_token: v2.std.node.Symbol
 }
 
 type TargetGenericApply {
-  surface: Symbol
-  open: Symbol
-  separator: Symbol
-  field_label_separator: Optional<Symbol>
-  close: Symbol
+  surface: v2.std.node.Symbol
+  open: v2.std.node.Symbol
+  separator: v2.std.node.Symbol
+  field_label_separator: Optional<v2.std.node.Symbol>
+  close: v2.std.node.Symbol
 }
 
 type TargetSumTypeShape {
-  surface: Symbol
-  variant_separator: Symbol
+  surface: v2.std.node.Symbol
+  variant_separator: v2.std.node.Symbol
 }
 
 type TargetTypeExprFieldSlot {
-  label: Symbol
+  label: v2.std.node.Symbol
   type_expr: Node
 }
 
 type TargetTypeExprVariantSlot {
-  label: Symbol
+  label: v2.std.node.Symbol
   type_expr: Node
 }
 
 type TargetFunctionTypeShape {
-  surface: Symbol
-  open: Symbol
-  close: Symbol
-  arrow: Symbol
-  param_ident_token: Symbol
-  param_type_separator: Symbol
-  param_list_separator: Symbol
+  surface: v2.std.node.Symbol
+  open: v2.std.node.Symbol
+  close: v2.std.node.Symbol
+  arrow: v2.std.node.Symbol
+  param_ident_token: v2.std.node.Symbol
+  param_type_separator: v2.std.node.Symbol
+  param_list_separator: v2.std.node.Symbol
 }
 
 type TargetTypeExpression {
@@ -9383,14 +9383,14 @@ data target_external_authority_field_uri_scheme: Symbol = ^target_external_autho
 data target_external_authority_field_uri_locator: Symbol = ^target_external_authority_field_uri_locator
 
 type RequiredTraitWitness
-  = TargetCollectionWitnessOrd { type_param: Symbol }
-  | TargetCollectionWitnessHash { type_param: Symbol }
-  | TargetCollectionWitnessEq { type_param: Symbol }
+  = TargetCollectionWitnessOrd { type_param: v2.std.node.Symbol }
+  | TargetCollectionWitnessHash { type_param: v2.std.node.Symbol }
+  | TargetCollectionWitnessEq { type_param: v2.std.node.Symbol }
 
 type TargetDeriveTraitKey = Symbol where brand("TargetDeriveTraitKey")
 
 type TargetDeriveSupplementalGenericBoundRequirementAuthority {
-  authority: ExternalAuthority
+  authority: extdeps.external_authority.ExternalAuthority
 }
 
 type TargetDeriveSupplementalGenericBoundRequirementSet =
@@ -9399,13 +9399,13 @@ type TargetDeriveSupplementalGenericBoundRequirementSet =
 type TargetRepresentationParameterSlot {}
 
 type TargetDeriveSupplementalGenericBoundContractAuthority {
-  authority: ExternalAuthority
-  requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>
+  authority: extdeps.external_authority.ExternalAuthority
+  requirements: Map<v2.std.node.Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>
 }
 
 type TargetRepresentationChoice {
   form: TargetRepresentation
-  representation_parameters: Map<Symbol, TargetRepresentationParameterSlot>
+  representation_parameters: Map<v2.std.node.Symbol, TargetRepresentationParameterSlot>
   constraints: List<RequiredTraitWitness>
   supplemental_generic_bound_contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>
 }
@@ -9419,30 +9419,30 @@ type TargetCollectionRealization {
   source_carrier: Node
   primary: TargetRepresentationChoice
   alternatives: List<TargetRepresentationChoice>
-  fallback_diagnostic: Diagnostic
+  fallback_diagnostic: v2.std.diagnostic.Diagnostic
   text_carrier: Optional<TargetTextCarrier>
 }
 
 type TargetDeriveSupplementalGenericBoundContract {
-  derive_trait: ReprGroundingDeriveTrait
-  authority: ExternalAuthority
-  requirements: Map<Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>
+  derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait
+  authority: extdeps.external_authority.ExternalAuthority
+  requirements: Map<v2.std.node.Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>
 }
 
 type TargetDeriveSupplementalGenericBoundRequirementWire {
-  representation_parameter: Symbol
-  required_trait: ReprGroundingDeriveTrait
-  authority: ExternalAuthority
+  representation_parameter: v2.std.node.Symbol
+  required_trait: std.trait_derive_shape.ReprGroundingDeriveTrait
+  authority: extdeps.external_authority.ExternalAuthority
 }
 
 type TargetDeriveSupplementalGenericBoundContractWire {
-  derive_trait: ReprGroundingDeriveTrait
-  authority: ExternalAuthority
+  derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait
+  authority: extdeps.external_authority.ExternalAuthority
   requirements: List<TargetDeriveSupplementalGenericBoundRequirementWire>
 }
 
 type TargetDeriveSupplementalGenericBoundContractCatalog {
-  representation_parameters: Map<Symbol, TargetRepresentationParameterSlot>
+  representation_parameters: Map<v2.std.node.Symbol, TargetRepresentationParameterSlot>
   contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>
 }
 
@@ -10520,10 +10520,10 @@ type TargetReferenceLayer
   | ReferenceLayerBox
 
 type TargetReferenceLayerTokens {
-  rc_type_head: Symbol
-  box_type_head: Symbol
-  rc_new_ctor: Symbol
-  box_new_ctor: Symbol
+  rc_type_head: v2.std.node.Symbol
+  box_type_head: v2.std.node.Symbol
+  rc_new_ctor: v2.std.node.Symbol
+  box_new_ctor: v2.std.node.Symbol
 }
 
 type TargetUseSiteOwnershipSourceProjection
@@ -10535,7 +10535,7 @@ type TargetUseSiteOwnershipRealization {
   source_projection: TargetUseSiteOwnershipSourceProjection
   use_site: TargetOwnershipUseSite
   reference_layer: TargetReferenceLayer
-  display_name: Symbol
+  display_name: v2.std.node.Symbol
 }
 
 type TargetCarrierOwnership

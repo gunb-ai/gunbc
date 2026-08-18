@@ -1,100 +1,100 @@
 module v2.test.manual.find_witness_identity
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 fn identity_source_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^identity_source_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn identity_other_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^identity_other_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
-fn identity_closedness() -> StructuralPropertyWitness {
-  StructuralPropertyWitness {
+fn identity_closedness() -> v2.std.witness.StructuralPropertyWitness {
+  v2.std.witness.StructuralPropertyWitness {
     property: ^identity_closed_candidates,
     evidence: identity_source_node()
   }
 }
-fn exact_identity_predicate() -> PreservationPredicate {
-  PreservationPredicate {
+fn exact_identity_predicate() -> v2.std.find_witness.PreservationPredicate {
+  v2.std.find_witness.PreservationPredicate {
     algebra: identity_source_node(),
     preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
   }
 }
-fn constraint_predicate() -> PreservationPredicate {
-  PreservationPredicate {
+fn constraint_predicate() -> v2.std.find_witness.PreservationPredicate {
+  v2.std.find_witness.PreservationPredicate {
     algebra: identity_source_node(),
     preservation_rule: ^preservation_rule_constraint_satisfaction
   }
 }
-fn unknown_rule_predicate() -> PreservationPredicate {
-  PreservationPredicate {
+fn unknown_rule_predicate() -> v2.std.find_witness.PreservationPredicate {
+  v2.std.find_witness.PreservationPredicate {
     algebra: identity_source_node(),
     preservation_rule: ^identity_wrong_property
   }
 }
-fn candidate_set_identity_single() -> CandidateSet {
-  CandidateSet {
+fn candidate_set_identity_single() -> v2.std.find_witness.CandidateSet {
+  v2.std.find_witness.CandidateSet {
     candidates: [identity_source_node()],
     closedness: identity_closedness()
   }
 }
-fn candidate_set_non_identity_single() -> CandidateSet {
-  CandidateSet {
+fn candidate_set_non_identity_single() -> v2.std.find_witness.CandidateSet {
+  v2.std.find_witness.CandidateSet {
     candidates: [identity_other_node()],
     closedness: identity_closedness()
   }
 }
-fn candidate_set_identity_duplicate() -> CandidateSet {
-  CandidateSet {
+fn candidate_set_identity_duplicate() -> v2.std.find_witness.CandidateSet {
+  v2.std.find_witness.CandidateSet {
     candidates: [identity_source_node(), identity_source_node()],
     closedness: identity_closedness()
   }
 }
-fn valid_identity_witness() -> StructuralPropertyWitness {
-  StructuralPropertyWitness {
+fn valid_identity_witness() -> v2.std.witness.StructuralPropertyWitness {
+  v2.std.witness.StructuralPropertyWitness {
     property: ^preservation_rule_exact_structural_equality_zip_fold,
     evidence: identity_source_node()
   }
 }
-fn mismatched_property_witness() -> StructuralPropertyWitness {
-  StructuralPropertyWitness {
+fn mismatched_property_witness() -> v2.std.witness.StructuralPropertyWitness {
+  v2.std.witness.StructuralPropertyWitness {
     property: ^identity_wrong_property,
     evidence: identity_source_node()
   }
 }
-fn mismatched_evidence_witness() -> StructuralPropertyWitness {
-  StructuralPropertyWitness {
+fn mismatched_evidence_witness() -> v2.std.witness.StructuralPropertyWitness {
+  v2.std.witness.StructuralPropertyWitness {
     property: ^preservation_rule_exact_structural_equality_zip_fold,
     evidence: identity_other_node()
   }
 }
-fn rejected_for_no_candidate(o: Outcome<FindWitnessResult>) -> Bool {
+fn rejected_for_no_candidate(o: Outcome<v2.std.find_witness.FindWitnessResult>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_no_candidate
   }
 }
-fn rejected_for_ambiguous_candidate(o: Outcome<FindWitnessResult>) -> Bool {
+fn rejected_for_ambiguous_candidate(o: Outcome<v2.std.find_witness.FindWitnessResult>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_ambiguous_candidate
   }
 }
-fn rejected_for_not_realized(o: Outcome<FindWitnessResult>) -> Bool {
+fn rejected_for_not_realized(o: Outcome<v2.std.find_witness.FindWitnessResult>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_not_realized
   }
 }
-fn quality_is_identity(q: CoercionQuality) -> Bool {
+fn quality_is_identity(q: v2.std.coercion.CoercionQuality) -> Bool {
   match q {
     Identity => true
     Exact => false
@@ -190,17 +190,17 @@ test data witness_verify_witness_evidence_mismatch_rejects: Bool = match verify_
   Accepted { value: _, diagnostics: _ } => false
   Rejected { diagnostics: _ } => true
 }
-fn identity_grounding() -> CanonicalGrounding {
-  CanonicalGrounding {
+fn identity_grounding() -> v2.std.constraints.CanonicalGrounding {
+  v2.std.constraints.CanonicalGrounding {
     node: identity_source_node(),
-    witness: CanonicalGroundingWitness {
+    witness: v2.std.constraints.CanonicalGroundingWitness {
       structural: valid_identity_witness(),
       closedness: identity_closedness()
     }
   }
 }
-fn coercion_identity_candidates() -> CoercionCandidateSet {
-  CoercionCandidateSet { set: candidate_set_identity_single() }
+fn coercion_identity_candidates() -> v2.std.coercion.CoercionCandidateSet {
+  v2.std.coercion.CoercionCandidateSet { set: candidate_set_identity_single() }
 }
 test data witness_coercion_fold_identity_accepts: Bool = match coercion_fold(
   source: identity_grounding(),

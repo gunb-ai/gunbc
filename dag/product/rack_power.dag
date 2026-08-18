@@ -48,9 +48,9 @@ type DeclaredPowerFactor sole_constructor {
 // this module can be in and must report rather than treat as zero. A zero default is the arrangement
 // where an unmeasured rack reports comfortable headroom.
 type AssetLoad
-  = ObservedRealPower { asset: PhysicalAssetIdentity, draw: Watt }
-  | DeclaredApparentPower { asset: PhysicalAssetIdentity, draw: VoltAmpere }
-  | LoadUnobserved { asset: PhysicalAssetIdentity }
+  = ObservedRealPower { asset: product.placement_supply.PhysicalAssetIdentity, draw: std.measure.Watt }
+  | DeclaredApparentPower { asset: product.placement_supply.PhysicalAssetIdentity, draw: std.measure.VoltAmpere }
+  | LoadUnobserved { asset: product.placement_supply.PhysicalAssetIdentity }
 
 fn asset_load_subject(l: AssetLoad) -> PhysicalAssetIdentity {
   match l {
@@ -68,12 +68,12 @@ fn asset_load_subject(l: AssetLoad) -> PhysicalAssetIdentity {
 // meets.
 type PowerRefusal
   = PowerFactorOutOfRange { supplied: Int }
-  | LoadNotObserved { asset: PhysicalAssetIdentity }
-  | LoadDeclaredTwice { asset: PhysicalAssetIdentity }
-  | LoadDeclaredForUnmountedAsset { asset: PhysicalAssetIdentity }
-  | MountedAssetHasNoLoad { asset: PhysicalAssetIdentity }
+  | LoadNotObserved { asset: product.placement_supply.PhysicalAssetIdentity }
+  | LoadDeclaredTwice { asset: product.placement_supply.PhysicalAssetIdentity }
+  | LoadDeclaredForUnmountedAsset { asset: product.placement_supply.PhysicalAssetIdentity }
+  | MountedAssetHasNoLoad { asset: product.placement_supply.PhysicalAssetIdentity }
   | OutletsExhausted { required: Int, available: Int }
-  | FeedCapacityExceeded { real_load: Watt, apparent_load: VoltAmpere, capacity: VoltAmpere }
+  | FeedCapacityExceeded { real_load: std.measure.Watt, apparent_load: std.measure.VoltAmpere, capacity: std.measure.VoltAmpere }
 
 type PowerConstruction<T>
   = PowerReady { value: T }
@@ -93,8 +93,8 @@ fn power_factor_percent(f: DeclaredPowerFactor) -> Int { f.percent }
 // identity says which unit this is. The distinction is the same one RackInstance draws, and it is
 // what lets two identical PDUs in one room stay two PDUs.
 type PowerFeed sole_constructor {
-  identity: PhysicalAssetIdentity
-  catalog: PduCatalogRow
+  identity: product.placement_supply.PhysicalAssetIdentity
+  catalog: extdeps.power.types.PduCatalogRow
 }
 
 fn power_feed(identity: PhysicalAssetIdentity, catalog: PduCatalogRow) -> PowerFeed {
@@ -166,8 +166,8 @@ fn scan_loads_against_rack(r: RackInstance, loads: List<AssetLoad>) -> PowerRefu
 // with nothing objecting. Carrying Watt and VoltAmpere means the dimensions stay apart here for the
 // same reason they do at the boundary.
 type LoadTotals {
-  real_load: Watt
-  apparent_load: VoltAmpere
+  real_load: std.measure.Watt
+  apparent_load: std.measure.VoltAmpere
   refusal: PowerRefusal?
 }
 
@@ -189,8 +189,8 @@ fn add_load(acc: LoadTotals, l: AssetLoad) -> LoadTotals {
 type PowerBudget sole_constructor {
   feed: PowerFeed
   power_factor: DeclaredPowerFactor
-  real_load: Watt
-  apparent_load: VoltAmpere
+  real_load: std.measure.Watt
+  apparent_load: std.measure.VoltAmpere
   outlets_used: Int
 }
 

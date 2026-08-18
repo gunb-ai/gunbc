@@ -222,7 +222,7 @@ fn ci_floor_resolve_obligation_identities() -> List<ResolveObligationIdentity> {
 }
 
 type ResolveColdReceipt {
-  resolve_nanos: Nanosecond
+  resolve_nanos: std.measure.Nanosecond
 }
 
 type ResolveSharedPoolProvider {

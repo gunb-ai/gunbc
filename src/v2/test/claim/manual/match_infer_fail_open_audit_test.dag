@@ -1,16 +1,16 @@
 module v2.test.manual.match_infer_fail_open_audit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn diagnostics_contain_reason(d: Diagnostics, reason: Symbol) -> Bool {
+fn diagnostics_contain_reason(d: v2.std.diagnostic.Diagnostics, reason: v2.std.node.Symbol) -> Bool {
   match d {
     None => false
     Some { diagnostics: nes } => non_empty_diagnostics_contain_reason(nes: nes, reason: reason)
   }
 }
 
-fn non_empty_diagnostics_contain_reason(nes: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+fn non_empty_diagnostics_contain_reason(nes: v2.std.diagnostic.NonEmptyDiagnostics, reason: v2.std.node.Symbol) -> Bool {
   if nes.head.reason == reason {
     true
   } else {
@@ -46,14 +46,14 @@ test fn match_infer_fail_open_audit_rejects_holds() -> Bool {
 }
 
 fn match_infer_fail_open_audit_non_exhaustive_body() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Match },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: ^dag_token_kw_true)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_true,
@@ -73,28 +73,28 @@ test fn match_infer_fail_open_audit_non_exhaustive_rejects_holds() -> Bool {
 }
 
 fn match_infer_fail_open_audit_extra_arm_body() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Match },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: ^dag_token_kw_true)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_true,
           body_lit: ^dag_pick_lit_one
         )
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_false,
           body_lit: ^dag_pick_lit_one
         )
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_match_arm_node(
           pattern_lit: ^dag_token_kw_true,
@@ -117,10 +117,10 @@ data match_infer_fail_open_audit_literal_arm_note: String = "literal_arm_accepts
 
 fn classical_not_int_match_arrow_fixture() -> Node {
   dag_arrow_with_body_node(
-    domain: Node {
+    domain: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge {
+        v2.std.node.Edge {
           label: Named { name: ^dag_binding_param_x },
           target: dag_type_atom_node(identity: ^dag_binding_type_int)
         }
@@ -162,10 +162,10 @@ test fn classical_not_int_match_arrow_real_infer_holds() -> Bool {
 
 fn classical_not_int_match_non_octet_arm_fixture() -> Node {
   dag_arrow_with_body_node(
-    domain: Node {
+    domain: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
-        Edge {
+        v2.std.node.Edge {
           label: Named { name: ^dag_binding_param_x },
           target: dag_type_atom_node(identity: ^dag_binding_type_int)
         }

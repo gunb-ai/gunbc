@@ -3,8 +3,8 @@ module gunbc.source_admission_selection
 
 
 type AdmissionMechanismRoot {
-  realization_file: NonEmptyStr
-  function_name: NonEmptyStr
+  realization_file: std.types.NonEmptyStr
+  function_name: std.types.NonEmptyStr
 }
 
 // src/v1 is not in witness_layer_roots, so mechanism identity is a separate axis from the compile-clean active-source manifest: a tokenize_artifact edit cannot appear as an IncrementalSources path-diff of corpus files. Until self-host, the executing admission path is the seed: tokenize_artifact, parse_with_table_at / parse_module, admit_source_annotations, attach_annotations / admit_annotations, and alloc_occurrence_id. A .dag-only identity is MechanismIdentityUnobservable, not an identity. Omitting the seed is broken by construction. transform_content_digest and hashing those five files whole are both rejected: file-grain is still a roster, and a parse-only edit of v1_compiler_parse.rs would EntireHead the corpus. Identity is the reachable-declaration closure of those roots, which gunbc.namespace_reference_derived_closure cannot yet produce (production admissions Unavailable; closing witness red on purpose). Seed-Rust declaration closure is likewise uncomputable (rustc dep-info is file/crate grain). Do not substitute a 4-file or 38-file module union.
@@ -46,15 +46,15 @@ type ExecutingAdmissionRealization
 
 type ComputedMechanismIdentity {
   executing: ExecutingAdmissionRealization
-  digest: Fnv1a64Structural
+  digest: std.content_hash.Fnv1a64Structural
 }
 
 type SeedDeclarationClosureStanding
   = SeedDeclarationClosureUnavailable
-  | SeedDeclarationClosureComputed { digest: Fnv1a64Structural }
+  | SeedDeclarationClosureComputed { digest: std.content_hash.Fnv1a64Structural }
 
 type MechanismIdentityUnobservableCause {
-  modeled_trigger: ReferenceDerivedClosureTrigger
+  modeled_trigger: gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureTrigger
   seed_standing: SeedDeclarationClosureStanding
 }
 
@@ -65,7 +65,7 @@ type AnnotationMechanismIdentity
 type ActiveSourceIdentity {
   module_path: String
   path: String
-  content_digest: Fnv1a64Structural
+  content_digest: std.content_hash.Fnv1a64Structural
 }
 
 type NonEmptyActiveSourceIdentities {
@@ -77,7 +77,7 @@ type SourcePoolFile {
   root_ordinal: Int
   module_path: String
   path: String
-  content_digest: Fnv1a64Structural
+  content_digest: std.content_hash.Fnv1a64Structural
 }
 
 type NonEmptySourceKeys {
@@ -95,15 +95,15 @@ type ActiveSourceManifest
   | ManifestUnobservable { cause: ManifestUnobservableCause }
 
 type AnnotationCorpusAdmitted {
-  tree: GitObjectId
+  tree: extdeps.git.object_store.GitObjectId
   mechanism: ComputedMechanismIdentity
   manifest: NonEmptyActiveSourceIdentities
   admitted: NonEmptyActiveSourceIdentities
 }
 
 type AnnotationCorpusInductionStanding
-  = AwaitingComputedMechanismIdentity { tree: GitObjectId }
-  | AwaitingAdmittedSourceJoin { tree: GitObjectId, mechanism: ComputedMechanismIdentity }
+  = AwaitingComputedMechanismIdentity { tree: extdeps.git.object_store.GitObjectId }
+  | AwaitingAdmittedSourceJoin { tree: extdeps.git.object_store.GitObjectId, mechanism: ComputedMechanismIdentity }
   | CorpusAdmitted { receipt: AnnotationCorpusAdmitted }
 
 type SourceTransitionRefusalCause
@@ -117,16 +117,16 @@ type SourceTransitionRefusalCause
 // The live compile-clean MultiEntryIndex (witness_layer_roots: dag then src/v2) had 0 shadowed modules and 0 path collisions when this axis was specified, so the higher-precedence-delete-exposes-lower-precedence RED is a synthetic two-root fixture for an uninhabited law, not a specimen drawn from the corpus. The inverse control (deleting a shadowed loser is a no-op on the active map though git shows a delete) is the spurious-work direction.
 type SourceAdmissionSelection
   = IncrementalSources { changed: NonEmptyActiveSourceIdentities }
-  | UnchangedNoop { base: GitObjectId, head: GitObjectId }
+  | UnchangedNoop { base: extdeps.git.object_store.GitObjectId, head: extdeps.git.object_store.GitObjectId }
   | EntireHeadCorpusAffected {
-      head: GitObjectId
+      head: extdeps.git.object_store.GitObjectId
       base_mechanism: ComputedMechanismIdentity
       head_mechanism: ComputedMechanismIdentity
     }
   | SourceTransitionRefused {
       cause: SourceTransitionRefusalCause
-      base_tree: GitObjectId
-      head_tree: GitObjectId
+      base_tree: extdeps.git.object_store.GitObjectId
+      head_tree: extdeps.git.object_store.GitObjectId
     }
 
 fn nonempty_active_sources_all(rows: NonEmptyActiveSourceIdentities) -> List<ActiveSourceIdentity> {

@@ -1,7 +1,7 @@
 module gunbc.plans.ci_process_end_to_end
 
 
-fn ci_process_end_to_end_body() -> List<MarkdownBlock> {
+fn ci_process_end_to_end_body() -> List<std.markdown.MarkdownBlock> {
   [
     quote(blocks: [
       p(text: "**The charter for ROADMAP §1.** Every other CI plan doc is a *slice*; this is the whole pipeline in one place — the causal chain from `git push` to test execution, each link marked on-`.dag` or not, with each slice linked where it applies (no dual representation — the carriers and linked docs stay the authority). Built from two independent audits that agree (neat-dove-397 Explore + quick-ant-298, the §1 CI lead), both verified on `origin/main`, 2026-06-22. DESIGN refs: §1 (time = cost/safety), §2 (Realization — the parallelization arm), §3 (single authority; the *measured-peripheral* split), §5 (fail-closed — **derive, don't hand-set**), §6 (price the lane in displaced cost, not elegance), §7 (the substrate analyzing itself)."),
@@ -156,7 +156,7 @@ fn ci_process_end_to_end_body() -> List<MarkdownBlock> {
   ]
 }
 
-data ci_process_end_to_end_plan: Plan = Plan {
+data ci_process_end_to_end_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "ci-process-end-to-end",
   title: "CI, end to end — what's on `.dag` today, what isn't, and the lane that closes the gap",
   body: ci_process_end_to_end_body(),

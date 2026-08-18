@@ -8,9 +8,9 @@ data deploy_revision_four_cases_note: String = "FOUR CASES, NOT A BINARY DESCEND
 data deploy_revision_probe_note: String = "The relation is OBSERVED, not inferred from timestamps or run numbers. `git merge-base --is-ancestor A B` answers it in one exit code — 0 for yes, 1 for no, 128 for a bad object — and the exit-1 case is a legitimate ANSWER rather than an error, which is precisely what lets UnrelatedHistories and RelationUnverifiable stay separate variants. Two probes are needed because a single direction cannot distinguish 'candidate is older' from 'unrelated': is_ancestor(deployed, candidate) and is_ancestor(candidate, deployed) together give (true,true)=same, (true,false)=advance, (false,true)=superseded, (false,false)=unrelated. Equality is decided by SHA comparison BEFORE any probe, because it is the common no-op case and deserves neither a subprocess nor a chance to misclassify. Timestamps are explicitly NOT an input: wall-clock ordering of CI runs is exactly the signal that is already inverted, and commit dates are attacker- and rebase-controlled."
 
 type DeployTargetId {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   destination: std.types.FilePath
-  service_unit: NonEmptyStr
+  service_unit: std.types.NonEmptyStr
 }
 
 data deploy_target_id_note: String = "The mutex identity is the DEPLOYMENT DOMAIN — the host, the directory the deploy rsyncs into, and the service unit it restarts — never the workflow job name. A job id is a CI-side label: renaming the job silently mints a different lock while the same three host resources are still being mutated, and two differently-named stages that touch the same directory would serialize against nothing. Deriving the identity from what is actually mutated makes 'same target' mean 'same bytes at risk', which is the only reading under which a mutex is a safety property rather than a naming convention."
@@ -26,13 +26,13 @@ type DeployRevisionRelation
   | DeployedIsAncestor
   | CandidateIsAncestor
   | UnrelatedHistories
-  | RelationUnverifiable { cause: NonEmptyStr }
+  | RelationUnverifiable { cause: std.types.NonEmptyStr }
 
 type DeployRevisionVerdict
   = RevisionAlreadyConverged
   | RevisionAdvance
   | RevisionSupersededNoOp
-  | RevisionRefused { cause: NonEmptyStr }
+  | RevisionRefused { cause: std.types.NonEmptyStr }
 
 fn classify_deploy_revision(relation: DeployRevisionRelation) -> DeployRevisionVerdict {
   match relation {

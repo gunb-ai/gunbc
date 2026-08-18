@@ -3,14 +3,14 @@ module test.claim.session_auto_publish_harness_witness
 
 data witness_scope_note: String = "AUTO-PUBLISH harness: slice 0 recut proves three independent axes — LocalCheckpoint (local autosave), RemoteBranchPublication (explicit publish push), WorkerNotification (user publish or drift reminder) — and that silent polling advances none of them; slice 1 proves immediate policy adjudication by (repair_target, operation) pair; slice 2 proves default-deny remote-publish conjunction with PostWriteValidationReceipt exact-joined to ingested PublicationRequest. What is NOT claimed: shell transport does not yet call admit_remote_publication, so publishSessionWorktree can still auto-push until the transport slice lands."
 
-data head_a: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-data head_b: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-data head_c: CommitSha = "cccccccccccccccccccccccccccccccccccccccc"
-data head_main: CommitSha = "dddddddddddddddddddddddddddddddddddddddd"
-data stamp_one: Timestamp = "2026-08-07T00:00:00.000Z"
-data stamp_two: Timestamp = "2026-08-07T00:00:01.000Z"
-data write_digest_a: Fnv1a64Structural = Fnv1a64Structural { digest: "1111111111111111" }
-data write_digest_b: Fnv1a64Structural = Fnv1a64Structural { digest: "2222222222222222" }
+data head_a: std.types.CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data head_b: std.types.CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data head_c: std.types.CommitSha = "cccccccccccccccccccccccccccccccccccccccc"
+data head_main: std.types.CommitSha = "dddddddddddddddddddddddddddddddddddddddd"
+data stamp_one: std.types.Timestamp = "2026-08-07T00:00:00.000Z"
+data stamp_two: std.types.Timestamp = "2026-08-07T00:00:01.000Z"
+data write_digest_a: std.content_hash.Fnv1a64Structural = std.content_hash.Fnv1a64Structural { digest: "1111111111111111" }
+data write_digest_b: std.content_hash.Fnv1a64Structural = std.content_hash.Fnv1a64Structural { digest: "2222222222222222" }
 
 test fn local_autosave_advances_local_checkpoint_only() -> Bool {
   let state = after_local_autosave(
@@ -315,7 +315,7 @@ test fn red_autosave_remote_would_have_published() -> Bool {
   }
 }
 
-fn ingested_publish_request(head: CommitSha) -> PublicationRequest {
+fn ingested_publish_request(head: std.types.CommitSha) -> gunbc.session_auto_publish_ctrl_ingest.PublicationRequest {
   ingest_publication_request_from_ctrl(
     authority: harness_ctrl_publication_ingest_authority(),
     expected_remote_head: head,
@@ -323,8 +323,8 @@ fn ingested_publish_request(head: CommitSha) -> PublicationRequest {
   )
 }
 
-fn validation_receipt_for_head(head: CommitSha, digest: Fnv1a64Structural) -> PostWriteValidationReceipt {
-  PostWriteValidationReceipt {
+fn validation_receipt_for_head(head: std.types.CommitSha, digest: std.content_hash.Fnv1a64Structural) -> gunbc.session_auto_publish.PostWriteValidationReceipt {
+  gunbc.session_auto_publish.PostWriteValidationReceipt {
     candidate_head: head,
     declared_write_set_digest: digest,
     actual_write_set_digest: digest,
@@ -335,10 +335,10 @@ fn validation_receipt_for_head(head: CommitSha, digest: Fnv1a64Structural) -> Po
   }
 }
 
-fn clean_publish_attempt(head: CommitSha, paths: List<String>) -> RemotePublishAttempt {
+fn clean_publish_attempt(head: std.types.CommitSha, paths: List<String>) -> gunbc.session_auto_publish.RemotePublishAttempt {
   let request = ingested_publish_request(head: head)
   let digest = write_digest_a
-  RemotePublishAttempt {
+  gunbc.session_auto_publish.RemotePublishAttempt {
     context: PublicationContextCtrlUserPublish { request: request },
     operation: RemotePushBranch,
     observed_remote_head: RemoteHeadKnown { head: head },
@@ -371,7 +371,7 @@ test fn ingested_request_positive_control_permits_remote_publication() -> Bool {
 test fn fixture_uncompilable_tree_refuses_before_remote_write() -> Bool {
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
-    attempt: RemotePublishAttempt {
+    attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
       observed_remote_head: RemoteHeadKnown { head: head_a },
@@ -383,7 +383,7 @@ test fn fixture_uncompilable_tree_refuses_before_remote_write() -> Bool {
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       post_write_validation: Present {
-        value: PostWriteValidationReceipt {
+        value: gunbc.session_auto_publish.PostWriteValidationReceipt {
           candidate_head: head_a,
           declared_write_set_digest: write_digest_a,
           actual_write_set_digest: write_digest_a,
@@ -405,7 +405,7 @@ test fn fixture_uncompilable_tree_refuses_before_remote_write() -> Bool {
 test fn fixture_conflict_markers_refuse_before_remote_write() -> Bool {
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
-    attempt: RemotePublishAttempt {
+    attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
       observed_remote_head: RemoteHeadKnown { head: head_a },
@@ -431,7 +431,7 @@ test fn fixture_conflict_markers_refuse_before_remote_write() -> Bool {
 test fn fixture_write_outside_declared_set_refuses_before_remote_write() -> Bool {
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
-    attempt: RemotePublishAttempt {
+    attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
       observed_remote_head: RemoteHeadKnown { head: head_a },
@@ -458,7 +458,7 @@ test fn fixture_write_outside_declared_set_refuses_before_remote_write() -> Bool
 test fn fixture_peer_commit_not_authored_by_publisher_refuses() -> Bool {
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
-    attempt: RemotePublishAttempt {
+    attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
       observed_remote_head: RemoteHeadKnown { head: head_a },
@@ -484,7 +484,7 @@ test fn fixture_peer_commit_not_authored_by_publisher_refuses() -> Bool {
 test fn fixture_remote_head_moved_refuses_before_remote_write() -> Bool {
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
-    attempt: RemotePublishAttempt {
+    attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
       observed_remote_head: RemoteHeadKnown { head: head_a },
@@ -509,7 +509,7 @@ test fn fixture_remote_head_moved_refuses_before_remote_write() -> Bool {
 
 test fn fixture_no_explicit_request_refuses_before_remote_write() -> Bool {
   match admit_remote_publication(
-    attempt: RemotePublishAttempt {
+    attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: PublicationContextScratchProbe,
       operation: RemotePushBranch,
       observed_remote_head: RemoteHeadKnown { head: head_a },
@@ -535,7 +535,7 @@ test fn fixture_no_explicit_request_refuses_before_remote_write() -> Bool {
 test fn red_unevaluable_validation_status_refuses_not_passes() -> Bool {
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
-    attempt: RemotePublishAttempt {
+    attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
       observed_remote_head: RemoteHeadKnown { head: head_a },
@@ -547,7 +547,7 @@ test fn red_unevaluable_validation_status_refuses_not_passes() -> Bool {
       declared_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       actual_write_paths: ["dag/gunbc/session_auto_publish.dag"],
       post_write_validation: Present {
-        value: PostWriteValidationReceipt {
+        value: gunbc.session_auto_publish.PostWriteValidationReceipt {
           candidate_head: head_a,
           declared_write_set_digest: write_digest_a,
           actual_write_set_digest: write_digest_a,
@@ -569,7 +569,7 @@ test fn red_unevaluable_validation_status_refuses_not_passes() -> Bool {
 test fn red_transferable_green_evidence_refuses_when_receipt_head_differs_from_request() -> Bool {
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
-    attempt: RemotePublishAttempt {
+    attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
       observed_remote_head: RemoteHeadKnown { head: head_a },
@@ -595,7 +595,7 @@ test fn red_transferable_green_evidence_refuses_when_receipt_head_differs_from_r
 test fn dirty_index_refuses_before_remote_write() -> Bool {
   let request = ingested_publish_request(head: head_a)
   match admit_remote_publication(
-    attempt: RemotePublishAttempt {
+    attempt: gunbc.session_auto_publish.RemotePublishAttempt {
       context: PublicationContextCtrlUserPublish { request: request },
       operation: RemotePushBranch,
       observed_remote_head: RemoteHeadKnown { head: head_a },

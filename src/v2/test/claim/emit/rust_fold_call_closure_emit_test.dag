@@ -1,20 +1,20 @@
 module v2.test.emit.rust_fold_call_closure_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn rust_fold_call_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
+fn rust_fold_call_emit_facts_miss(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   optional_absent()
 }
 
-fn rust_fold_call_emit_inferred_tree_for(root: Node) -> InferredTree {
-  InferredTree {
+fn rust_fold_call_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: root,
     facts: Map { lookup: rust_fold_call_emit_facts_miss }
   }
 }
 
-fn rust_fold_call_emit_from_root(root: Node, target: TargetModel) -> Outcome<Medium<String>> {
+fn rust_fold_call_emit_from_root(root: Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
     o: Accepted {
       value: rust_fold_call_emit_inferred_tree_for(root: root),

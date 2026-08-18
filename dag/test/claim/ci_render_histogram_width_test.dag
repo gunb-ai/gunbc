@@ -3,8 +3,8 @@ module test.claim.ci_render_histogram_width
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn no_color_cap() -> RenderCapability {
-  RenderCapability { color: false, tier: Unicode, cursor_addressable: false }
+fn no_color_cap() -> std.render.RenderCapability {
+  std.render.RenderCapability { color: false, tier: Unicode, cursor_addressable: false }
 }
 
 fn sample_frame(width: Int) -> std.render.RenderFrame {

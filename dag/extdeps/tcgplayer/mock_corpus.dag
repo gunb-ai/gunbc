@@ -1,56 +1,56 @@
 module extdeps.tcgplayer.mock_corpus
 
 
-data tcgplayer_auth_mock_case_mint_bearer_token: PublishedMockCase = PublishedMockCase {
+data tcgplayer_auth_mock_case_mint_bearer_token: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "tcgplayer.Auth.MintBearerToken",
   service: "tcgplayer.Auth",
   operation: "MintBearerToken",
   case_id: 0
 }
 
-data tcgplayer_catalog_mock_case_search_products: PublishedMockCase = PublishedMockCase {
+data tcgplayer_catalog_mock_case_search_products: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "tcgplayer.Catalog.SearchProducts",
   service: "tcgplayer.Catalog",
   operation: "SearchProducts",
   case_id: 0
 }
 
-data tcgplayer_catalog_mock_case_get_product_skus: PublishedMockCase = PublishedMockCase {
+data tcgplayer_catalog_mock_case_get_product_skus: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "tcgplayer.Catalog.GetProductSkus",
   service: "tcgplayer.Catalog",
   operation: "GetProductSkus",
   case_id: 0
 }
 
-data tcgplayer_catalog_mock_case_get_category_conditions: PublishedMockCase = PublishedMockCase {
+data tcgplayer_catalog_mock_case_get_category_conditions: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "tcgplayer.Catalog.GetCategoryConditions",
   service: "tcgplayer.Catalog",
   operation: "GetCategoryConditions",
   case_id: 0
 }
 
-data tcgplayer_pricing_mock_case_get_product_prices: PublishedMockCase = PublishedMockCase {
+data tcgplayer_pricing_mock_case_get_product_prices: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "tcgplayer.Pricing.GetProductPrices",
   service: "tcgplayer.Pricing",
   operation: "GetProductPrices",
   case_id: 0
 }
 
-data tcgplayer_store_mock_case_update_sku_price: PublishedMockCase = PublishedMockCase {
+data tcgplayer_store_mock_case_update_sku_price: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "tcgplayer.Store.UpdateSkuPrice",
   service: "tcgplayer.Store",
   operation: "UpdateSkuPrice",
   case_id: 0
 }
 
-data tcgplayer_store_mock_case_increment_sku_quantity: PublishedMockCase = PublishedMockCase {
+data tcgplayer_store_mock_case_increment_sku_quantity: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "tcgplayer.Store.IncrementSkuQuantity",
   service: "tcgplayer.Store",
   operation: "IncrementSkuQuantity",
   case_id: 0
 }
 
-data tcgplayer_published_mock_corpus: List<PublishedMockCase> = [
+data tcgplayer_published_mock_corpus: List<std.hermetic_replay.PublishedMockCase> = [
   tcgplayer_auth_mock_case_mint_bearer_token,
   tcgplayer_catalog_mock_case_search_products,
   tcgplayer_catalog_mock_case_get_product_skus,

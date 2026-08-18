@@ -1,7 +1,7 @@
 module v2.test.long.accumulator_copy_compile_gate
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data compile_gate_witness_note: String = "RED/GREEN controls for the accumulator-copy compile gate at its two consumption grains. Gate grain (normalize output — the tree shape the lens provably reads): the quadratic snippet REJECTS with accumulator_copy_poly2_suspect located at the finding node; the identity fold ACCEPTS clean; the unregistered-combiner-carrying-carrier snippet ACCEPTS with the refusal ledger attached (typed per-cause, counted, non-gating — the stopped-line audit channel). Door grain (validate_then_compile): the resolved add fixture passes through the root-required roster with empty caller lenses — proving the roster RUNS on every door call and passes clean trees. The end-to-end door RED (real module with imports through tokenize->resolve->infer->gate) rides the PR-2 CI transport stage whose red control ingests a real corpus module; an import-free snippet cannot pass resolve (proven by execution 2026-07-13), so the door-grain suspect red is homed there, not here."
 
@@ -32,7 +32,7 @@ fn normalized_of(source: String) -> NormalizedProbe {
   }
 }
 
-fn non_empty_contains_reason(d: NonEmptyDiagnostics, reason: Symbol) -> Bool {
+fn non_empty_contains_reason(d: v2.std.diagnostic.NonEmptyDiagnostics, reason: v2.std.node.Symbol) -> Bool {
   if d.head.reason == reason {
     true
   } else {
@@ -88,9 +88,9 @@ test fn gate_refusal_ledger_counted_not_gating() -> Bool {
   }
 }
 
-data compile_gate_target_stub: TargetModel = TargetModel {
+data compile_gate_target_stub: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
-  bundle: Node {
+  bundle: v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence

@@ -3,7 +3,7 @@ module v2.compiler.use_site_verdict
 
 type UseSiteVerdict
   = MoveWhole
-  | MoveField { field: Symbol }
+  | MoveField { field: v2.std.node.Symbol }
   | Borrow
   | CloneShared
   | Unclassified

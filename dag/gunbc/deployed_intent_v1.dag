@@ -2,9 +2,9 @@ module gunbc.deployed_intent_v1
 
 
 type DeployedIntentV1 {
-  fleet_slot: HostIdentity
-  target_host: ComputeHost
-  desired_hostname_short: DnsLabel
+  fleet_slot: product.placement_supply.HostIdentity
+  target_host: gunbc.fleet_intent.ComputeHost
+  desired_hostname_short: extdeps.dns.domain_name.DnsLabel
 }
 
 data gunbc_deployed_intent_v1_scope_disposition: Disposition = Terminal {

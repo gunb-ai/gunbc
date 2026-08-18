@@ -5,11 +5,11 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data instrument_camera_witness_note: String = "First v1-deletion instrument, model layer. Each claim is a decided law with the control that reds when it breaks: the camera cannot write a program fact and cannot skip a detent; the salience role is DERIVED from selection rather than handed in (firing salience_note's dissolve-on); and the derived assignments are judged by the same focal-admission fold that judges hand-authored ones, so the projection is checked by the register's own authority instead of by a second copy of its rule. The subjects are V0's four real v1-deletion finish lines read from gunbc.v1_deletion_plan, not a demo roster, so a fifth line reaches the instrument by being declared once."
 
-fn role_key_for(assignments: List<SalienceAssignment>, subject: String) -> String {
+fn role_key_for(assignments: List<gunbc.design.salience.SalienceAssignment>, subject: String) -> String {
   salience_key(role: assignment_role_for(assignments: assignments, subject: subject))
 }
 
-fn camera_on(l: V1FinishLine) -> ProgramCamera {
+fn camera_on(l: gunbc.v1_deletion_plan.V1FinishLine) -> gunbc.design.instrument_camera.ProgramCamera {
   camera_select(c: camera_initial, f: focus_finish_line(l: l))
 }
 
@@ -86,9 +86,9 @@ fn witness_red_nothing_selected_spends_no_focal_energy() -> Bool {
 
 fn witness_a_subject_outside_the_focal_region_stays_ground() -> Bool {
   let placements = [
-    SubjectPlacement { key: "compiler-fixed-point", region: finish_line_region },
-    SubjectPlacement { key: "interpreter-deleted", region: finish_line_region },
-    SubjectPlacement { key: "instrument-chrome", region: "instrument-chrome" },
+    gunbc.design.instrument_projection.SubjectPlacement { key: "compiler-fixed-point", region: finish_line_region },
+    gunbc.design.instrument_projection.SubjectPlacement { key: "interpreter-deleted", region: finish_line_region },
+    gunbc.design.instrument_projection.SubjectPlacement { key: "instrument-chrome", region: "instrument-chrome" },
   ]
   let a = project_salience(
     camera: camera_on(l: CompilerFixedPoint),

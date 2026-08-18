@@ -1,76 +1,76 @@
 module v2.test.execution.emit_on_demand_family_crate_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data emit_on_demand_family_crate_note: String = "Family-grain build receipt (std.emit_on_demand witness_family_build_grain_ruling, operator-directed 2026-07-21): per-witness crates measured ~17s each and LOSE to the interpreter; ONE family crate wins. Members meet + join + complement concatenate into one emitted source (emit_family, per-member target models) under the derived argv-dispatched family main (rust_logic_family_target_model_staging). THE flip receipt is family_crate_one_build_members_warm_holds: the first member run builds the crate (compile_skipped false); every later member run on the same family workspace is compile_skipped TRUE — under per-witness grain each member would be its own ~17s cold build. This module is the ONE executing consumer for the logic family's native execution (suite migration, merry-pike-487 follow-on): the eval-anchored member agreements (interpreted == native via run_test_claim_from_source_emit_vs_eval_cached, per-member fixtures derived from each subject's claim) and the unknown-member refusal all run WARM on the same one-build workspace — the per-witness native builds formerly in emit_on_demand_meet_join_family_witness_test and emit_on_demand_complement_family_witness_test are deleted, those suites keep the pure key/store/budget receipts. REDs: unknown member id refuses (dispatcher exits 2 — refused logical_run, never fabricated octets); the ALL-ALT family (every member the swapped-arms tree) changes family_closure_digest -> new key -> ONE cold rebuild carrying every wrong-fixture discriminator at once (meet 1 -> 0, join 1 -> 0, complement 0 -> 1; members 2..3 warm). Key sensitivity is pure: family digest differs from every member digest (tag-seeded, singleton included) and member LIST ORDER is declared key material."
 
 data family_crate_cache_root: String = emit_on_demand_family_cache_root(family: "family_crate")
 data family_crate_emitter: String = "v2.compiler.emit"
 
-fn family_crate_meet_tree() -> InferredTree {
+fn family_crate_meet_tree() -> v2.compiler.infer.InferredTree {
   meet_join_eval_tree_for(root: dag_meet_arrow_with_body_fixture)
 }
 
-fn family_crate_meet_alt_tree() -> InferredTree {
+fn family_crate_meet_alt_tree() -> v2.compiler.infer.InferredTree {
   meet_join_eval_tree_for(root: dag_meet_arrow_with_body_swapped_arms_fixture)
 }
 
-fn family_crate_join_tree() -> InferredTree {
+fn family_crate_join_tree() -> v2.compiler.infer.InferredTree {
   meet_join_eval_tree_for(root: dag_join_arrow_with_body_fixture)
 }
 
-fn family_crate_complement_tree() -> InferredTree {
+fn family_crate_complement_tree() -> v2.compiler.infer.InferredTree {
   emit_complement_eval_tree_for(root: dag_complement_arrow_with_body_fixture)
 }
 
-fn family_crate_members() -> List<EmitFamilyMember> {
+fn family_crate_members() -> List<v2.compiler.emit_module.EmitFamilyMember> {
   [
-    EmitFamilyMember {
+    v2.compiler.emit_module.EmitFamilyMember {
       tree: family_crate_meet_tree(),
       target: rust_logic_meet_target_model_staging()
     },
-    EmitFamilyMember {
+    v2.compiler.emit_module.EmitFamilyMember {
       tree: family_crate_join_tree(),
       target: rust_logic_join_target_model_staging()
     },
-    EmitFamilyMember {
+    v2.compiler.emit_module.EmitFamilyMember {
       tree: family_crate_complement_tree(),
       target: rust_logic_complement_target_model_staging()
     }
   ]
 }
 
-fn family_crate_join_alt_tree() -> InferredTree {
+fn family_crate_join_alt_tree() -> v2.compiler.infer.InferredTree {
   meet_join_eval_tree_for(root: dag_join_arrow_with_body_swapped_arms_fixture)
 }
 
-fn family_crate_complement_alt_tree() -> InferredTree {
+fn family_crate_complement_alt_tree() -> v2.compiler.infer.InferredTree {
   emit_complement_eval_tree_for(root: dag_complement_arrow_with_body_swapped_arms_fixture)
 }
 
-fn family_crate_alt_members() -> List<EmitFamilyMember> {
+fn family_crate_alt_members() -> List<v2.compiler.emit_module.EmitFamilyMember> {
   [
-    EmitFamilyMember {
+    v2.compiler.emit_module.EmitFamilyMember {
       tree: family_crate_meet_alt_tree(),
       target: rust_logic_meet_target_model_staging()
     },
-    EmitFamilyMember {
+    v2.compiler.emit_module.EmitFamilyMember {
       tree: family_crate_join_alt_tree(),
       target: rust_logic_join_target_model_staging()
     },
-    EmitFamilyMember {
+    v2.compiler.emit_module.EmitFamilyMember {
       tree: family_crate_complement_alt_tree(),
       target: rust_logic_complement_target_model_staging()
     }
   ]
 }
 
-fn family_crate_member_digest(member: EmitFamilyMember) -> Fnv1a64Structural {
+fn family_crate_member_digest(member: v2.compiler.emit_module.EmitFamilyMember) -> std.content_hash.Fnv1a64Structural {
   inferred_tree_digest(tree: member.tree)
 }
 
-fn family_crate_member_digests(members: List<EmitFamilyMember>) -> List<Fnv1a64Structural> {
+fn family_crate_member_digests(members: List<v2.compiler.emit_module.EmitFamilyMember>) -> List<std.content_hash.Fnv1a64Structural> {
   match members {
     Empty => []
     Cons { head: m, tail: t } =>
@@ -81,11 +81,11 @@ fn family_crate_member_digests(members: List<EmitFamilyMember>) -> List<Fnv1a64S
   }
 }
 
-fn family_crate_digest(members: List<EmitFamilyMember>) -> Fnv1a64Structural {
+fn family_crate_digest(members: List<v2.compiler.emit_module.EmitFamilyMember>) -> std.content_hash.Fnv1a64Structural {
   family_closure_digest(members: family_crate_member_digests(members: members))
 }
 
-fn family_crate_native_key(members: List<EmitFamilyMember>) -> ContentHash {
+fn family_crate_native_key(members: List<v2.compiler.emit_module.EmitFamilyMember>) -> std.content_hash.ContentHash {
   emit_on_demand_key(
     closure_digest: family_crate_digest(members: members),
     emitter_identity: family_crate_emitter,
@@ -94,7 +94,7 @@ fn family_crate_native_key(members: List<EmitFamilyMember>) -> ContentHash {
   )
 }
 
-fn family_crate_fixture_inputs() -> Inputs {
+fn family_crate_fixture_inputs() -> v2.compiler.eval.Inputs {
   inputs_for_emit_host(
     claim_input_root: dag_meet_eval_subgraph_fixture,
     expected_eval_root: dag_meet_eval_subgraph_fixture,
@@ -108,7 +108,7 @@ fn family_crate_cache_root_for(test_id: String) -> String {
 
 fn family_crate_evict_and_workspace(
   test_id: String,
-  members: List<EmitFamilyMember>
+  members: List<v2.compiler.emit_module.EmitFamilyMember>
 ) -> String {
   let key = family_crate_native_key(members: members)
   let root = family_crate_cache_root_for(test_id: test_id)
@@ -147,7 +147,7 @@ fn family_crate_member_run(
 fn family_crate_member_run_with_target(
   workspace: String,
   source: Medium<String>,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   member_id: String,
   expect_compile_skipped: Bool,
   expected_octet: Int
@@ -176,10 +176,10 @@ fn family_crate_member_run_with_target(
 fn family_crate_meet_join_member_agreement_divergence(
   workspace: String,
   source: Medium<String>,
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   subgraph: Node,
   member_id: String
-) -> Optional<NativeAgreementDivergence> {
+) -> Optional<v2.std.native_agreement.NativeAgreementDivergence> {
   native_agreement_divergence_from_run(
     member_id: member_id,
     run: run_test_claim_from_source_emit_vs_eval_cached(
@@ -195,7 +195,7 @@ fn family_crate_meet_join_member_agreement_divergence(
 fn family_crate_meet_join_member_agreement(
   workspace: String,
   source: Medium<String>,
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   subgraph: Node,
   member_id: String
 ) -> Bool {
@@ -214,7 +214,7 @@ fn family_crate_meet_join_member_agreement(
 fn family_crate_complement_member_agreement_divergence(
   workspace: String,
   source: Medium<String>
-) -> Optional<NativeAgreementDivergence> {
+) -> Optional<v2.std.native_agreement.NativeAgreementDivergence> {
   native_agreement_divergence_from_run(
     member_id: "complement",
     run: run_test_claim_from_source_emit_vs_eval_cached(
@@ -241,23 +241,23 @@ fn family_crate_complement_member_agreement(
 }
 
 fn optional_divergence_to_list(
-  opt: Optional<NativeAgreementDivergence>
-) -> List<NativeAgreementDivergence> {
+  opt: Optional<v2.std.native_agreement.NativeAgreementDivergence>
+) -> List<v2.std.native_agreement.NativeAgreementDivergence> {
   match opt {
     Absent => []
     Present { value: d } => [d]
   }
 }
 
-fn family_crate_emit_family_rejected_divergence() -> NativeAgreementDivergence {
-  NativeAgreementDivergence {
+fn family_crate_emit_family_rejected_divergence() -> v2.std.native_agreement.NativeAgreementDivergence {
+  v2.std.native_agreement.NativeAgreementDivergence {
     member_id: "emit_family",
     interpreted_value: "emit_rejected",
     native_value: "emit_rejected"
   }
 }
 
-fn family_crate_pr_native_agreement_divergences() -> List<NativeAgreementDivergence> {
+fn family_crate_pr_native_agreement_divergences() -> List<v2.std.native_agreement.NativeAgreementDivergence> {
   let members = family_crate_members()
   let workspace = native_cache_workspace_root(
     cache_root: family_crate_cache_root_for(test_id: "pr_native"),

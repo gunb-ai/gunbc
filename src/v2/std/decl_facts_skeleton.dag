@@ -13,7 +13,7 @@ data decl_facts_nullary_variant_value_identity_gap_note: String = "BOUNDED const
 data decl_facts_outer_record_constructor_lexeme_authority_note: String = "OuterRecordConstructorLexeme is the honest name for ExprRecordLit-authored constructor spelling reflected in decl_facts skeleton atoms. It is not variant identity: parent coproduct, module, declaration, and variant resolution are separate open obligations. skeleton_contains_outer_record_constructor_lexeme reads the same marshal atom spine as skeleton_contains_marshal_atom_lexeme but types the query parameter honestly."
 
 type DeclFactQualifiedNameResolution
-  = DeclFactResolvedUnique { fact: DeclFact }
+  = DeclFactResolvedUnique { fact: v2.std.decl_index.DeclFact }
   | DeclFactResolvedMissing { qualified_name: String }
   | DeclFactResolvedAmbiguous { qualified_name: String, match_count: Int }
 

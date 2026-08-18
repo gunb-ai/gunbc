@@ -1,21 +1,21 @@
 module extdeps.communication.fidelity_carriers
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Means_of_communication"
   }
 }
 
-fn decode_fidelity_merge(left: DecodeFidelity, right: DecodeFidelity) -> DecodeFidelity {
+fn decode_fidelity_merge(left: extdeps.communication.medium.DecodeFidelity, right: extdeps.communication.medium.DecodeFidelity) -> extdeps.communication.medium.DecodeFidelity {
   match left {
     Lossy => Lossy
     Lossless => right
   }
 }
 
-fn decode_fidelity_from_step_fidelities(steps: List<DecodeFidelity>) -> DecodeFidelity {
+fn decode_fidelity_from_step_fidelities(steps: List<extdeps.communication.medium.DecodeFidelity>) -> extdeps.communication.medium.DecodeFidelity {
   fold(
     steps,
     init: Lossless,
@@ -23,8 +23,8 @@ fn decode_fidelity_from_step_fidelities(steps: List<DecodeFidelity>) -> DecodeFi
   )
 }
 
-fn source_medium_carried<R>(carried: R, fidelity: DecodeFidelity) -> Medium<R> {
-  Medium { carried: carried, fidelity: fidelity }
+fn source_medium_carried<R>(carried: R, fidelity: extdeps.communication.medium.DecodeFidelity) -> Medium<R> {
+  extdeps.communication.medium.Medium { carried: carried, fidelity: fidelity }
 }
 
 fn medium_section_equal<R>(left: Medium<R>, right: Medium<R>) -> Bool {

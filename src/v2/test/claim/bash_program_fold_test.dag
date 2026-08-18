@@ -2,7 +2,7 @@ module v2.test.claim.bash_program_fold
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data bash_program_fold_golden_note: String = "Goldens below are hand-authored expected bytes, deliberately independent of extdeps.languages.bash.program serialize_bash and of the grammar rows/segment spellings. Each test compares bash_emit_program (row-emit) against its golden only, so a row/emitter regression cannot go green by perturbing both sides at once (PR #6467 ci_cargo_eagain_retry_core_golden pattern)."
 
@@ -28,14 +28,14 @@ data bash_program_real_claims_golden: String = "set -e\nROOT=$('git' 'rev-parse'
 
 data bash_program_exit_tail_regression_note: String = "The exit-in-joined-tail tests below are the discriminating controls for the improper-string class fixed in 06_translate (serialize joins once built modeled cons cells with the last spelling attached as an improper native tail; interp == NORMALIZES a top-level hybrid, so a matches-golden oracle alone can be fooled when both sides carry the same hybrid - which is why the literal-equality witness exists: it is normalization-independent). Red before the concat grounding of serialize_concrete_syntax_tokens_to_source_string / target_serialize_relation_row_from_model_bounded / token_sequence_to_source_bounded; green after. Declared residue of the same class (not yet grounded, no bash-row consumer today): the type-expression joins in 06_translate (serialize_type_expr_args/separated/record_fields) and the list_append string joins in emit_produced.dag / emit_module.dag - the follow-up sweep grounds them the same way (native concat accumulator), priced by the first oracle that reds on them."
 
-fn bash_program_fold_sample_specials() -> List<BashEmitSpecial> {
+fn bash_program_fold_sample_specials() -> List<v2.workflow.bash_emit.BashEmitSpecial> {
   [
     bash_program_fold_tag_command(node: bash_build_command_from_lits(lits: ["echo", "hi"])),
     bash_program_fold_tag_assign(node: bash_build_assign_lit(name: "X", text: "1"))
   ]
 }
 
-fn bash_program_depth2_cmdsubst_specials() -> List<BashEmitSpecial> {
+fn bash_program_depth2_cmdsubst_specials() -> List<v2.workflow.bash_emit.BashEmitSpecial> {
   [
     bash_program_fold_tag_assign(
       node: bash_build_assign(
@@ -48,7 +48,7 @@ fn bash_program_depth2_cmdsubst_specials() -> List<BashEmitSpecial> {
   ]
 }
 
-fn bash_program_depth2_redir_specials() -> List<BashEmitSpecial> {
+fn bash_program_depth2_redir_specials() -> List<v2.workflow.bash_emit.BashEmitSpecial> {
   [
     bash_program_fold_tag_with_redir(
       node: bash_build_with_redir(
@@ -59,7 +59,7 @@ fn bash_program_depth2_redir_specials() -> List<BashEmitSpecial> {
   ]
 }
 
-fn bash_program_depth2_concat_specials() -> List<BashEmitSpecial> {
+fn bash_program_depth2_concat_specials() -> List<v2.workflow.bash_emit.BashEmitSpecial> {
   [
     bash_program_fold_tag_assign(
       node: bash_build_assign(
@@ -75,7 +75,7 @@ fn bash_program_depth2_concat_specials() -> List<BashEmitSpecial> {
   ]
 }
 
-fn bash_program_mktemp_rm_specials() -> List<BashEmitSpecial> {
+fn bash_program_mktemp_rm_specials() -> List<v2.workflow.bash_emit.BashEmitSpecial> {
   [
     bash_program_fold_tag_assign(
       node: bash_build_assign(
@@ -214,7 +214,7 @@ test fn bash_program_exit_in_if_body_matches_golden_holds() -> Bool {
 
 test fn bash_program_exit_spelling_literal_holds() -> Bool {
   bash_emit_matches_golden(
-    stmt: BashEmitStmt {
+    stmt: v2.workflow.bash_emit.BashEmitStmt {
       node: bash_build_subshell_from_stmts(stmts: [
         bash_build_command_from_lits(lits: ["echo", "hi"]),
         bash_build_exit(code: "1")

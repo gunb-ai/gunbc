@@ -38,7 +38,7 @@ type AtlasRingSlotProbe {
   found: Int
 }
 
-fn atlas_slot_angle_millidegrees(address: AtlasAddress) -> Int {
+fn atlas_slot_angle_millidegrees(address: gunbc.repo_atlas_projection.AtlasAddress) -> Int {
   address.slot * 360000 / atlas_ring_slot_count(ring: address.ring)
 }
 
@@ -56,7 +56,7 @@ fn atlas_millidegrees_text(millidegrees: Int) -> String {
     concat(to_string(tens), to_string(ones)))))
 }
 
-fn atlas_cell_transform(address: AtlasAddress) -> String {
+fn atlas_cell_transform(address: gunbc.repo_atlas_projection.AtlasAddress) -> String {
   let center = to_string(atlas_svg_center)
   let angle = atlas_millidegrees_text(millidegrees: atlas_slot_angle_millidegrees(address: address))
   let radius = to_string(atlas_ring_radius(ring: address.ring))
@@ -66,7 +66,7 @@ fn atlas_cell_transform(address: AtlasAddress) -> String {
   concat(move_to_center, concat(turn, push_out))
 }
 
-fn sattr(name: String, value: String) -> Attribute {
+fn sattr(name: String, value: String) -> std.markup.Attribute {
   attr(name: name, value: value)
 }
 
@@ -74,15 +74,15 @@ data repo_atlas_role_note: String = "THE FOUR ROLES ARE SEPARATE VISUAL CHANNELS
 
 Density, not brightness, carries a cell's occupant count: brightness is the change channel, and reusing it for population would make a crowded structural cell read as a change."
 
-fn atlas_cell_class(cell: RepoAtlasCell) -> String {
+fn atlas_cell_class(cell: gunbc.repo_atlas_projection.RepoAtlasCell) -> String {
   if atlas_cell_occupant_count(cell: cell) > 1 { "atlas-dot atlas-dot-shared" } else { "atlas-dot" }
 }
 
-fn atlas_cell_any_impacted(cell: RepoAtlasCell, impact: AtlasImpactOverlay) -> Bool {
+fn atlas_cell_any_impacted(cell: gunbc.repo_atlas_projection.RepoAtlasCell, impact: gunbc.repo_atlas_projection.AtlasImpactOverlay) -> Bool {
   any(cell.occupants, o => atlas_module_is_impacted(overlay: impact, identity: o))
 }
 
-fn atlas_cell_title(cell: RepoAtlasCell) -> String {
+fn atlas_cell_title(cell: gunbc.repo_atlas_projection.RepoAtlasCell) -> String {
   fold(cell.occupants, init: "", f: (acc, o) =>
     if acc == "" { o.name } else { concat(acc, concat(" · ", o.name)) })
 }
@@ -91,37 +91,37 @@ data repo_atlas_plane_independence_note: String = "THE CHANGE PLANE IS ITS OWN G
 
 A SECOND DEFECT DISSOLVED WITH IT. Marking the structural dot marked the CELL, so in a shared cell every occupant appeared changed when only one of them was. The change plane emits one mark per changed OCCUPANT and titles it with the changed occupants alone, so a cell holding a changed module beside an untouched one no longer reports both as changed."
 
-fn atlas_structure_dot(cell: RepoAtlasCell) -> Fragment {
-  Element { tag: "g", attributes: [
+fn atlas_structure_dot(cell: gunbc.repo_atlas_projection.RepoAtlasCell) -> std.markup.Fragment {
+  extdeps.browser.Element { tag: "g", attributes: [
     sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
   ], children: [
-    Element { tag: "circle", attributes: [
+    extdeps.browser.Element { tag: "circle", attributes: [
       sattr(name: "r", value: to_string(atlas_dot_radius)),
       sattr(name: "class", value: atlas_cell_class(cell: cell)),
     ], children: [
-      Element { tag: "title", attributes: [], children: [ txt(atlas_cell_title(cell: cell)) ] },
+      extdeps.browser.Element { tag: "title", attributes: [], children: [ txt(atlas_cell_title(cell: cell)) ] },
     ] },
   ] }
 }
 
-fn atlas_changed_occupants(cell: RepoAtlasCell, marks: List<AtlasChangeMark>) -> List<ModuleIdentity> {
+fn atlas_changed_occupants(cell: gunbc.repo_atlas_projection.RepoAtlasCell, marks: List<gunbc.repo_atlas_projection.AtlasChangeMark>) -> List<v2.lens.module_impact_query.ModuleIdentity> {
   filter(cell.occupants, o => atlas_module_is_marked(marks: marks, identity: o))
 }
 
-fn atlas_identity_list_text(identities: List<ModuleIdentity>) -> String {
+fn atlas_identity_list_text(identities: List<v2.lens.module_impact_query.ModuleIdentity>) -> String {
   fold(identities, init: "", f: (acc, o) =>
     if acc == "" { o.name } else { concat(acc, concat(" · ", o.name)) })
 }
 
-fn atlas_change_dot(cell: RepoAtlasCell, changed: List<ModuleIdentity>) -> Fragment {
-  Element { tag: "g", attributes: [
+fn atlas_change_dot(cell: gunbc.repo_atlas_projection.RepoAtlasCell, changed: List<v2.lens.module_impact_query.ModuleIdentity>) -> std.markup.Fragment {
+  extdeps.browser.Element { tag: "g", attributes: [
     sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
   ], children: [
-    Element { tag: "circle", attributes: [
+    extdeps.browser.Element { tag: "circle", attributes: [
       sattr(name: "r", value: to_string(atlas_dot_radius)),
       sattr(name: "class", value: "atlas-dot atlas-dot-changed"),
     ], children: [
-      Element { tag: "title", attributes: [], children: [
+      extdeps.browser.Element { tag: "title", attributes: [], children: [
         txt(concat("changed — ", atlas_identity_list_text(identities: changed))),
       ] },
     ] },
@@ -130,12 +130,12 @@ fn atlas_change_dot(cell: RepoAtlasCell, changed: List<ModuleIdentity>) -> Fragm
 
 data repo_atlas_plane_note: String = "Each plane is its own SVG group so a register or a motion realization can transform one without the others. They are emitted in one document and share the coordinate frame — co-registered, not composited after the fact — which is what lets a future impulse desynchronize them the way a CRT loses hold, using the planes that already exist rather than new machinery."
 
-fn atlas_structure_plane(snapshot: RepoAtlasSnapshot) -> Fragment {
-  Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-structure") ],
+fn atlas_structure_plane(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> std.markup.Fragment {
+  extdeps.browser.Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-structure") ],
     children: map(snapshot.cells, c => atlas_structure_dot(cell: c)) }
 }
 
-fn atlas_change_plane(snapshot: RepoAtlasSnapshot, marks: List<AtlasChangeMark>) -> List<Fragment> {
+fn atlas_change_plane(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot, marks: List<gunbc.repo_atlas_projection.AtlasChangeMark>) -> List<std.markup.Fragment> {
   let changed_cells = filter(snapshot.cells, c => atlas_changed_occupants(cell: c, marks: marks).length() > 0)
   if changed_cells.length() == 0 { [] } else {
     [ el_class("g", "atlas-plane atlas-plane-changes",
@@ -144,11 +144,11 @@ fn atlas_change_plane(snapshot: RepoAtlasSnapshot, marks: List<AtlasChangeMark>)
   }
 }
 
-fn atlas_impact_ring(cell: RepoAtlasCell) -> Fragment {
-  Element { tag: "g", attributes: [
+fn atlas_impact_ring(cell: gunbc.repo_atlas_projection.RepoAtlasCell) -> std.markup.Fragment {
+  extdeps.browser.Element { tag: "g", attributes: [
     sattr(name: "transform", value: atlas_cell_transform(address: cell.address)),
   ], children: [
-    Element { tag: "circle", attributes: [
+    extdeps.browser.Element { tag: "circle", attributes: [
       sattr(name: "r", value: to_string(atlas_dot_radius + 4)),
       sattr(name: "class", value: "atlas-impact-ring"),
       sattr(name: "fill", value: "none"),
@@ -158,11 +158,11 @@ fn atlas_impact_ring(cell: RepoAtlasCell) -> Fragment {
 
 data repo_atlas_impact_plane_note: String = "The impact plane renders ONLY from AtlasImpactComputed. Under AtlasImpactNotComputed it emits no group at all and the readout says impact not computed — because an empty plane and an uncomputed plane look identical on screen, and the difference is exactly what a reader needs to know before concluding nothing is affected."
 
-fn atlas_impact_plane(snapshot: RepoAtlasSnapshot) -> List<Fragment> {
+fn atlas_impact_plane(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> List<std.markup.Fragment> {
   match snapshot.impact {
     AtlasImpactNotComputed => []
     AtlasImpactComputed { reached: _, standing: _ } => [
-      Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-impact") ],
+      extdeps.browser.Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-impact") ],
         children: map(
           filter(snapshot.cells, c => atlas_cell_any_impacted(cell: c, impact: snapshot.impact)),
           c => atlas_impact_ring(cell: c)) }
@@ -170,10 +170,10 @@ fn atlas_impact_plane(snapshot: RepoAtlasSnapshot) -> List<Fragment> {
   }
 }
 
-fn atlas_glass_plane() -> Fragment {
-  Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-glass") ],
+fn atlas_glass_plane() -> std.markup.Fragment {
+  extdeps.browser.Element { tag: "g", attributes: [ sattr(name: "class", value: "atlas-plane atlas-plane-glass") ],
     children: [
-      Element { tag: "circle", attributes: [
+      extdeps.browser.Element { tag: "circle", attributes: [
         sattr(name: "cx", value: to_string(atlas_svg_center)),
         sattr(name: "cy", value: to_string(atlas_svg_center)),
         sattr(name: "r", value: to_string(atlas_ring_radius(ring: 15) + 16)),
@@ -183,13 +183,13 @@ fn atlas_glass_plane() -> Fragment {
     ] }
 }
 
-fn atlas_marks_of(snapshot: RepoAtlasSnapshot) -> List<AtlasChangeMark> {
+fn atlas_marks_of(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> List<gunbc.repo_atlas_projection.AtlasChangeMark> {
   atlas_overlay_marks(overlay: snapshot.changes)
 }
 
-fn atlas_svg(snapshot: RepoAtlasSnapshot) -> Fragment {
+fn atlas_svg(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> std.markup.Fragment {
   let marks = atlas_marks_of(snapshot: snapshot)
-  Element {
+  extdeps.browser.Element {
     tag: "svg",
     attributes: [
       sattr(name: "viewBox", value: concat("0 0 ", concat(to_string(atlas_svg_extent),
@@ -210,12 +210,12 @@ fn atlas_svg(snapshot: RepoAtlasSnapshot) -> Fragment {
 
 data repo_atlas_readout_note: String = "THE READOUT IS THE HONEST HALF OF THE PAGE AND IS NOT OPTIONAL GARNISH. Everything the atlas cannot draw truthfully is stated here in words: the refusal cause when the change overlay refused, the departed paths that have no head identity, the paths declaring no module, and whether an impact reading exists and at what standing. A viewer who reads only the picture must not be able to conclude more than the model knows."
 
-fn atlas_comparison_text(c: AtlasComparison) -> String {
+fn atlas_comparison_text(c: gunbc.repo_atlas_projection.AtlasComparison) -> String {
   let rel = match c.relation { TwoDot => ".." ThreeDot => "..." }
   concat("comparison — ", concat(c.base, concat(rel, c.head)))
 }
 
-fn atlas_refusal_text(cause: AtlasOverlayRefusalCause) -> String {
+fn atlas_refusal_text(cause: gunbc.repo_atlas_projection.AtlasOverlayRefusalCause) -> String {
   match cause {
     ComparisonHeadUnbound { detail: d } =>
       concat("comparison not bound to this tree — ", d)
@@ -232,7 +232,7 @@ fn atlas_refusal_text(cause: AtlasOverlayRefusalCause) -> String {
   }
 }
 
-fn atlas_unprojected_text(change: UnprojectedChange) -> String {
+fn atlas_unprojected_text(change: gunbc.repo_atlas_projection.UnprojectedChange) -> String {
   match change {
     DepartedPathPriorIdentityUnavailable { path: p, status: _ } =>
       concat(p, " — departed; prior semantic identity is not recoverable from the head")
@@ -241,7 +241,7 @@ fn atlas_unprojected_text(change: UnprojectedChange) -> String {
   }
 }
 
-fn atlas_standing_text(standing: ImpactStanding) -> String {
+fn atlas_standing_text(standing: v2.lens.module_impact_query.ImpactStanding) -> String {
   match standing {
     ExactForGraphSubject => "exact for the graph subject"
     ProvisionalForObservedPool => "provisional — relative to the observed pool"
@@ -252,7 +252,7 @@ fn atlas_standing_text(standing: ImpactStanding) -> String {
   }
 }
 
-fn atlas_impact_readout(snapshot: RepoAtlasSnapshot) -> Fragment {
+fn atlas_impact_readout(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> std.markup.Fragment {
   match snapshot.impact {
     AtlasImpactNotComputed =>
       el_class("p", "atlas-readout atlas-readout-absent", [
@@ -268,7 +268,7 @@ fn atlas_impact_readout(snapshot: RepoAtlasSnapshot) -> Fragment {
 
 data repo_atlas_not_observed_readout_note: String = "The not-observed arm reads differently from a comparison that found nothing, because they ARE different and the remedy differs: one needs a comparison run, the other needs nothing."
 
-fn atlas_changes_readout(snapshot: RepoAtlasSnapshot) -> List<Fragment> {
+fn atlas_changes_readout(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> List<std.markup.Fragment> {
   match snapshot.changes {
     AtlasChangeNotObserved => [
       el_class("p", "atlas-readout atlas-readout-absent", [
@@ -296,14 +296,14 @@ fn atlas_changes_readout(snapshot: RepoAtlasSnapshot) -> List<Fragment> {
   }
 }
 
-fn atlas_object_id_text(id: GitObjectId) -> String {
+fn atlas_object_id_text(id: extdeps.git.object_store.GitObjectId) -> String {
   match id {
     GitSha1ObjectId { digest: d } => d.hex
     GitSha256ObjectId { digest: d } => d.hex
   }
 }
 
-fn atlas_subject_text(subject: AtlasSubject) -> String {
+fn atlas_subject_text(subject: gunbc.repo_atlas_projection.AtlasSubject) -> String {
   match subject {
     AtlasSubjectUnobserved =>
       "subject — unobserved; this snapshot names no revision"
@@ -314,8 +314,8 @@ fn atlas_subject_text(subject: AtlasSubject) -> String {
 
 data repo_atlas_occupancy_absent_note: String = "The page states the absence of agent occupancy out loud rather than simply omitting it. A viewer arriving at a repo atlas expecting to see where agents are working must not read 'no dots lit' as 'nobody is working' — the honest statement is that the channel does not exist yet."
 
-fn atlas_legend() -> Fragment {
-  Element { tag: "ul", attributes: [ sattr(name: "class", value: "atlas-legend") ], children: [
+fn atlas_legend() -> std.markup.Fragment {
+  extdeps.browser.Element { tag: "ul", attributes: [ sattr(name: "class", value: "atlas-legend") ], children: [
     el("li", [ txt("dim dot — a structural module cell") ]),
     el("li", [ txt("denser dot — several modules share this cell; neither displaces the other") ]),
     el("li", [ txt("bright dot — directly changed, from a real SCM comparison") ]),
@@ -324,7 +324,7 @@ fn atlas_legend() -> Fragment {
   ] }
 }
 
-fn repo_atlas_section(snapshot: RepoAtlasSnapshot) -> Fragment {
+fn repo_atlas_section(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> std.markup.Fragment {
   el_class("section", "atlas-section", concat(
     concat(
       [
@@ -357,7 +357,7 @@ data repo_atlas_pool_roots: List<String> = ["dag", "src/v2"]
 data repo_atlas_comparison_base: String = "HEAD^"
 data repo_atlas_comparison_head: String = "HEAD"
 
-fn repo_atlas_observe_changes() -> AtlasChangeObservation {
+fn repo_atlas_observe_changes() -> gunbc.repo_atlas_projection.AtlasChangeObservation {
   let status = git.Inspect.WorkingTreeStatus()
   if status.success == false {
     AtlasComparisonUnavailable {
@@ -387,7 +387,7 @@ fn repo_atlas_observe_changes() -> AtlasChangeObservation {
           }
         } else {
           AtlasComparisonObserved {
-            comparison: AtlasComparison {
+            comparison: gunbc.repo_atlas_projection.AtlasComparison {
               base: repo_atlas_comparison_base,
               head: head.sha,
               relation: TwoDot
@@ -400,7 +400,7 @@ fn repo_atlas_observe_changes() -> AtlasChangeObservation {
   }
 }
 
-fn repo_atlas_observed_subject(observation: AtlasChangeObservation) -> AtlasSubject {
+fn repo_atlas_observed_subject(observation: gunbc.repo_atlas_projection.AtlasChangeObservation) -> gunbc.repo_atlas_projection.AtlasSubject {
   match observation {
     AtlasChangesNotObserved => AtlasSubjectUnobserved
     AtlasComparisonUnavailable { cause: _ } => AtlasSubjectUnobserved
@@ -412,7 +412,7 @@ fn repo_atlas_observed_subject(observation: AtlasChangeObservation) -> AtlasSubj
   }
 }
 
-fn repo_atlas_live_snapshot() -> RepoAtlasSnapshot {
+fn repo_atlas_live_snapshot() -> gunbc.repo_atlas_projection.RepoAtlasSnapshot {
   let observation = repo_atlas_observe_changes()
   repo_atlas_snapshot(
     subject: repo_atlas_observed_subject(observation: observation),
@@ -427,11 +427,11 @@ THE CHANNELS, and why each is what it is. Structure is the FIGURE role held belo
 
 GLOW IS ABSENT ON PURPOSE. It belongs to selection, there is no selection on this page yet, and an unused channel is safer than one that collides with occupancy when the occupancy overlay finally arrives."
 
-fn cls(name: String) -> SelectorSubject {
+fn cls(name: String) -> extdeps.languages.css.selectors.SelectorSubject {
   ClassSelector { name: name }
 }
 
-fn atlas_rules() -> List<BuildRule> {
+fn atlas_rules() -> List<gunbc.design.material.BuildRule> {
   [
     StaticRule {
       selector: cls(name: "atlas"),
@@ -523,8 +523,8 @@ data repo_atlas_page_title: String = "gunbc — repo atlas"
 
 data repo_atlas_document_note: String = "A FULL DOCUMENT, matching every sibling route on the same serve table. The route previously returned a bare main fragment, so the browser received markup with no charset, no viewport, no title, no stylesheet and no header — an incomplete document that the sibling pages all get right (review 50752). The page witnesses now serialize THIS function rather than the section beneath it, because the shape the route serves is the shape a claim has to cover."
 
-fn repo_atlas_document(snapshot: RepoAtlasSnapshot) -> Fragment {
-  Element {
+fn repo_atlas_document(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "html",
     attributes: [ attr(name: "lang", value: "en") ],
     children: [
@@ -553,7 +553,7 @@ fn repo_atlas_document(snapshot: RepoAtlasSnapshot) -> Fragment {
 
 data repo_atlas_served_shape_note: String = "repo_atlas_document IS THE SERVED SHAPE and takes the snapshot as a parameter for exactly one reason: the page witnesses must be able to drive the shape the route serves with controlled fixtures. Before this split the claims serialized the SECTION while the route served a bare main, so a headless or unstyled page stayed green — the claims were covering a shape nobody received. repo_atlas_page is now the thin live binding and nothing else."
 
-fn repo_atlas_page() -> Fragment {
+fn repo_atlas_page() -> std.markup.Fragment {
   repo_atlas_document(snapshot: repo_atlas_live_snapshot())
 }
 

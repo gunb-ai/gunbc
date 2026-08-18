@@ -1,17 +1,17 @@
 module gunbc.fleet_converge_apply
 
 
-fn fleet_compute_host_for_identity(identity: product.placement_supply.HostIdentity) -> ComputeHost? {
+fn fleet_compute_host_for_identity(identity: product.placement_supply.HostIdentity) -> gunbc.fleet_intent.ComputeHost? {
   find_by_identity(fleet_intent_known_hosts, identity: identity, key: fn(host) { host.identity })
 }
 
-fn converge_plan_effect(host_converge: HostConverge) -> HostEffect {
+fn converge_plan_effect(host_converge: gunbc.host_converge.HostConverge) -> gunbc.host_effect.HostEffect {
   ConvergePlan { policy: host_converge }
 }
 
 fn converge_apply_for_host(
-  host_converge: HostConverge,
-  transport: HostEffectTransport,
+  host_converge: gunbc.host_converge.HostConverge,
+  transport: gunbc.host_effect.HostEffectTransport,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence>? {
   match fleet_compute_host_for_identity(identity: host_converge.identity) {
     Present { value: host } =>
@@ -31,7 +31,7 @@ type FleetConvergeApplyResult =
     FleetConvergeApplied { host_count: Int, all_converged: Bool }
   | FleetConvergeApplyRefused { reason: String }
 
-fn converge_apply(policy: ConvergePolicy, transport: HostEffectTransport) -> FleetConvergeApplyResult {
+fn converge_apply(policy: gunbc.host_converge.ConvergePolicy, transport: gunbc.host_effect.HostEffectTransport) -> FleetConvergeApplyResult {
   match policy {
     ConvergePolicyUnsound { reason: reason } =>
       FleetConvergeApplyRefused { reason: concat("fleet_converge_apply: policy unsound — ", reason) }
@@ -65,12 +65,12 @@ fn converge_apply(policy: ConvergePolicy, transport: HostEffectTransport) -> Fle
   }
 }
 
-fn converge_apply_fleet(transport: HostEffectTransport) -> FleetConvergeApplyResult {
+fn converge_apply_fleet(transport: gunbc.host_effect.HostEffectTransport) -> FleetConvergeApplyResult {
   converge_apply(policy: fleet_converge_policy(), transport: transport)
 }
 
-fn fleet_converge_thin_invocation(host: product.placement_supply.HostIdentity) -> ThinInvocation {
-  ThinInvocation { argv: ["gunbc", "converge", "--host", host as String] }
+fn fleet_converge_thin_invocation(host: product.placement_supply.HostIdentity) -> gunbc.host_effect.ThinInvocation {
+  gunbc.host_effect.ThinInvocation { argv: ["gunbc", "converge", "--host", host as String] }
 }
 
 fn fleet_converge_apply_result_converged(r: FleetConvergeApplyResult) -> Bool {

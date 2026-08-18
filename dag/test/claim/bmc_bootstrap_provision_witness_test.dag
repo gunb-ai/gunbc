@@ -7,7 +7,7 @@ fn api_required(name: String) -> Bool {
   fold(bmc_required_gcp_apis, init: false, f: (acc, a) => acc || a == name)
 }
 
-fn binding_targets_only_assimilator(b: GcpBinding) -> Bool {
+fn binding_targets_only_assimilator(b: extdeps.cloud.gcp.iam.GcpBinding) -> Bool {
   b.members.length() == 1
     && fold(b.members, init: true, f: (acc, m) => acc && m == bmc_assimilator_sa_member())
     && bmc_role_allowed(role: b.role)

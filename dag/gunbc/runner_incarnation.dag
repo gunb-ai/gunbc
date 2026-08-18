@@ -122,10 +122,10 @@ fn srv4_slot_installation_observation(slot_index: std.nat.Nat) -> RunnerSlotInst
 }
 
 type LocalRunnerSlotIncarnation {
-  slot: RunnerSlotIdentity
-  unit: NonEmptyStr
+  slot: gunbc.build_cache_instance.RunnerSlotIdentity
+  unit: std.types.NonEmptyStr
   unit_active: Bool
-  registration_name: NonEmptyStr
+  registration_name: std.types.NonEmptyStr
 }
 
 fn slot_suffix(slot_index: std.nat.Nat) -> String {

@@ -10,16 +10,16 @@ data why_this_metric_note: String = "THE DEFECT IS INVISIBLE ON THE AXIS EVERYON
 data bimodality_is_the_mechanism_note: String = "SORTED, srv1's 44 samples fall into two clusters with an EMPTY GAP between 112000ms and 505000ms — nothing in between, on either side of a four-minute void. Ten samples sit at 78000-112000ms; thirty-four sit at 505000-1640000ms. That gap is the mechanism made visible: there is no partially-warm state, because a compile is either served from the cache or it is not.\n\nA CORRECTION THE FULL DISTRIBUTION FORCED, and it sharpens the diagnosis rather than softening it. The fast cluster was first read as 'faster than peers', comparing srv1's 78000ms floor to the peer MEDIAN of 238000ms. That comparison is wrong: the peer hosts' own minima are 74000-81000ms, indistinguishable from srv1's. Every host gets full cache hits at about the same speed.\n\nThe difference is entirely at the top. Peer builds cap at 342000-372000ms — that is what a cache MISS costs on a healthy host. srv1's misses run 505000-1640000ms, between 1.4x and 4.4x a peer's worst case. So srv1 is not merely running cold; its misses are individually more expensive than a peer's misses, which a cold cache alone does not explain. It is consistent with the server being memory-starved while compiling — the same server whose cgroup carries 229780 memory.max breach events and 12 oom_kills (gunbc.fleet_host_budget gunbc_compile_pool_doc).\n\nCONSEQUENCE FOR THE FIX, which is why the correction matters: respawning the server into a healthier cgroup addresses the placement, but the durable repair is the one that gives it a memory budget of its own — the managed unit plus the declared compile-pool slice. A server that is merely relocated is still unbudgeted."
 
 type BuildLatencySample {
-  host: HostIdentity
-  run_id: NonEmptyStr
-  job_id: NonEmptyStr
-  duration: Millisecond
+  host: product.placement_supply.HostIdentity
+  run_id: std.types.NonEmptyStr
+  job_id: std.types.NonEmptyStr
+  duration: std.measure.Millisecond
 }
 
 type BuildLatencyPopulation {
-  host: HostIdentity
-  observation_window: NonEmptyStr
-  durations: List<Millisecond>
+  host: product.placement_supply.HostIdentity
+  observation_window: std.types.NonEmptyStr
+  durations: List<std.measure.Millisecond>
 }
 
 // Provenance sits on the POPULATION rather than on each sample, because the claim is distributional — 'every successful build job in this window' — and per-row run ids would not make it more checkable, only longer. The window string carries the query needed to reproduce the population exactly. Extreme samples are cited individually below, since claims about the fastest and slowest builds ARE per-run claims and must name their runs.
@@ -66,9 +66,9 @@ data srv1_build_latency_exemplars: List<BuildLatencySample> = [
 //
 // ONE CAVEAT ON THESE THREE NUMBERS, following the median convention correction above: they were computed during collection by an averaging median, so srv3's (n=86) and srv4's (n=58) are means of two middle samples rather than samples any build produced, while srv2's (n=57) is a real element. They are carried as CONTEXT and no verdict is taken against them individually. The number the verdict actually uses is peer_combined_median over all 201 peer samples, and 201 is odd, so that one is a real observation — which is the only reason this caveat is a footnote rather than a defect.
 type BuildLatencyReference {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   sample_count: Int
-  median: Millisecond
+  median: std.measure.Millisecond
 }
 
 data peer_build_latency_references: List<BuildLatencyReference> = [
@@ -81,7 +81,7 @@ data peer_combined_median: Millisecond = millisecond(count: 238000)
 
 type MedianScan {
   index: Int
-  picked: Millisecond?
+  picked: std.measure.Millisecond?
 }
 
 data median_selection_note: String = "Selection is a single linear fold over the sorted list because this substrate exposes only first/last/length on List — there is no index accessor, and the alternatives are a quadratic rank-count or a hand-rolled recursion. One fold carrying (index, picked) is O(n) after the sort, which keeps the whole derivation at sort cost and clear of DESIGN section 6's standing rule that a quadratic fold is always fixed regardless of the realized n.\n\nEVEN-SIZED POPULATIONS take the LOWER median rather than averaging the middle pair. Declared rather than incidental: averaging would mint a duration that no build actually took, and every consumer here compares a real observation against a policy ratio, so a synthetic midpoint would be the only unmeasured number in the chain.\n\nRECEIPT FOR THE RULE, from this file: a sibling note first quoted srv1's median as 609000ms, taken from an averaging median computed in a shell during collection. The derivation returns 607000ms — a real sample — and 609000 is the mean of the two middle values, a duration no build on srv1 ever took. The witness comparing the recorded verdict to its re-derivation caught the discrepancy immediately. The convention was already declared here and violated two declarations away, which is the ordinary way a stated convention fails."
@@ -119,9 +119,9 @@ data gunbc_build_latency_divergence_policy: BuildLatencyDivergencePolicy = Build
 }
 
 type BuildLatencyVerdict
-  = BuildLatencyConverged { host: HostIdentity, host_median: Millisecond, reference: Millisecond }
-  | BuildLatencyDiverged { host: HostIdentity, host_median: Millisecond, reference: Millisecond }
-  | BuildLatencyUnmeasured { host: HostIdentity, reason: NonEmptyStr }
+  = BuildLatencyConverged { host: product.placement_supply.HostIdentity, host_median: std.measure.Millisecond, reference: std.measure.Millisecond }
+  | BuildLatencyDiverged { host: product.placement_supply.HostIdentity, host_median: std.measure.Millisecond, reference: std.measure.Millisecond }
+  | BuildLatencyUnmeasured { host: product.placement_supply.HostIdentity, reason: std.types.NonEmptyStr }
 
 fn build_latency_verdict(
   p: BuildLatencyPopulation,
@@ -164,12 +164,12 @@ data live_producer_frontier_note: String = "THE LIVE PRODUCER IS MODELED BUT NOT
 data build_cache_latency_producer_disposition: Disposition = SingleAuthority
 
 type ActionsBuildJobObservation {
-  run_id: NonEmptyStr
-  job_id: NonEmptyStr
-  runner_name: NonEmptyStr
-  job_name: NonEmptyStr
-  conclusion: NonEmptyStr
-  duration: Millisecond
+  run_id: std.types.NonEmptyStr
+  job_id: std.types.NonEmptyStr
+  runner_name: std.types.NonEmptyStr
+  job_name: std.types.NonEmptyStr
+  conclusion: std.types.NonEmptyStr
+  duration: std.measure.Millisecond
 }
 
 // Each row is ONE successful or attempted CI build job as returned by the Actions jobs API: runner_name carries the self-hosted label (srv1-01, srv2-05, …), duration is completed_at minus started_at in milliseconds already computed by the collector. This module does not parse ISO-8601 timestamps — that parsing belongs in the collector, not in the verdict fold.

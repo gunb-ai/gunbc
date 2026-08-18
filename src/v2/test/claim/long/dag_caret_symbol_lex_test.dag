@@ -1,7 +1,7 @@
 module v2.test.long.dag_caret_symbol_lex
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn caret_lex_accepts_symbol_literal_holds() -> Bool {
   match tokenize(text: "^foo", file: ^probe, rules: dag_language_model().lex) {

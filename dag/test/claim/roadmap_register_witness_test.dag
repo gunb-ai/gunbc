@@ -13,7 +13,7 @@ test fn witness_roadmap_colors_all_routed() -> Bool {
   unthemed_color_decls(rules: roadmap_rules()).length() == 0
 }
 
-fn rogue_hex_rule() -> BuildRule {
+fn rogue_hex_rule() -> gunbc.design.material.BuildRule {
   StaticRule { selector: ClassSelector { name: "rogue-link" }, decls: [ decl(prop: Color, value: "#0969da") ] }
 }
 
@@ -28,7 +28,7 @@ test fn witness_roadmap_lengths_all_tokened() -> Bool {
   untokened_length_decls(rules: roadmap_instance_rules()).length() == 0
 }
 
-fn rogue_px_rule() -> BuildRule {
+fn rogue_px_rule() -> gunbc.design.material.BuildRule {
   StaticRule { selector: ClassSelector { name: "rogue-pad" }, decls: [ decl(prop: Padding, value: "14px") ] }
 }
 
@@ -59,7 +59,7 @@ test fn witness_roadmap_coverage_complete() -> Bool {
 
 data dropped_row_witness_scope_note: String = "The drop is scoped to ONE element's ONE verb so the assertion stays a LOCATED-gap check as the roster grows. The earlier form dropped every dispatch row tree-wide and asserted exactly one gap, which was only true while one element declared that verb — adding the sound toggle made it two and the witness reddened for a reason that had nothing to do with the property under test. A count that tracks the roster is a count that has to be re-tuned on every unrelated addition, and a witness re-tuned that often stops being read. Dropping the dispatch button's dispatch rows specifically keeps the claim exactly what it was meant to be: a missing row names its own element and verb."
 
-fn rows_without(element: ElementId, verb_label: String) -> List<BehaviorRow> {
+fn rows_without(element: gunbc.design.interaction.ElementId, verb_label: String) -> List<gunbc.design.interaction.BehaviorRow> {
   fold(roadmap_behaviors, init: [], f: (acc, r) =>
     if element_id_eq(a: r.element, b: element) && verb_key(v: r.verb) == verb_label {
       acc
@@ -77,11 +77,11 @@ test fn witness_dropped_row_gap_is_located() -> Bool {
 }
 
 test fn witness_unrealized_row_is_counted() -> Bool {
-  let rogue = BehaviorRow { element: DispatchBtnElement, verb: Approach, response: Reveal, timing: respond_fast }
+  let rogue = gunbc.design.interaction.BehaviorRow { element: DispatchBtnElement, verb: Approach, response: Reveal, timing: respond_fast }
   roadmap_unrealized_behaviors(rows: concat(roadmap_behaviors, [rogue])).length() == 1
 }
 
-fn demand_matches_for_role(r: ThemeRole) -> Bool {
+fn demand_matches_for_role(r: gunbc.design.theme.ThemeRole) -> Bool {
   let demanded = archetype_demands_role(a: dashboard_archetype, r: r)
   let used = string_contains(s: roadmap_css(), pattern: join(["var(--", role_key(r: r), ")"], ""))
   demanded == used
@@ -103,11 +103,11 @@ data header_wordmark_witness_note: String = "Replaced witness_header_carries_sha
 
 data header_frame_scan_note: String = "Amended for the A2 hierarchy closeout: the header's children now sit inside one div.header-inner composition frame (header_composition_frame_note — header and content share the page measure), so the wordmark no longer sits at direct-child depth. The scan is a RECURSIVE descent over the header's Fragment subtree, not a depth-pinned adjacency check: the CLAIM is 'the header carries the wordmark', and a fixed depth constant would only be the accidental nesting pinned one level looser — the same re-pin the A1 header note warns against, and it would red spuriously the next time a wrapper lands. Descent is on the Fragment sub-value relation (a node's children), so it terminates on the tree it walks (the std.layout render_go shape)."
 
-fn fragment_is_wordmark(c: Fragment) -> Bool {
+fn fragment_is_wordmark(c: std.markup.Fragment) -> Bool {
   c == el_class("span", "wordmark", [ txt("gunbc") ])
 }
 
-fn subtree_carries_wordmark(f: Fragment) -> Bool {
+fn subtree_carries_wordmark(f: std.markup.Fragment) -> Bool {
   fragment_is_wordmark(c: f)
     || (match f {
       Element { tag: _, attributes: _, children } =>
@@ -117,7 +117,7 @@ fn subtree_carries_wordmark(f: Fragment) -> Bool {
     })
 }
 
-fn header_subtree_carries_wordmark(h: Fragment) -> Bool {
+fn header_subtree_carries_wordmark(h: std.markup.Fragment) -> Bool {
   match h {
     Element { tag, attributes: _, children } =>
       tag == "header"
@@ -135,39 +135,39 @@ test fn witness_header_carries_wordmark() -> Bool {
 data header_scan_discrimination_note: String = "An unbounded subtree search buys depth-independence at the cost of being easy to satisfy, so it owes a control proving the two bounds it still holds. Arm 1: the scan matches the wordmark NODE, not its text — a header carrying the bare string 'gunbc' at any depth is not a wordmark. Arm 2: the header tag guard still bites — the exact wordmark node under a non-header root does not satisfy 'the HEADER carries it'. Without both arms an always-true search would read identically to the real claim."
 
 test fn witness_header_wordmark_scan_discriminates() -> Bool {
-  !header_subtree_carries_wordmark(h: Element {
+  !header_subtree_carries_wordmark(h: extdeps.browser.Element {
     tag: "header",
     attributes: [],
     children: [
-      Element { tag: "div", attributes: [], children: [ txt("gunbc") ] },
+      extdeps.browser.Element { tag: "div", attributes: [], children: [ txt("gunbc") ] },
     ],
   })
-    && !header_subtree_carries_wordmark(h: Element {
+    && !header_subtree_carries_wordmark(h: extdeps.browser.Element {
       tag: "div",
       attributes: [],
       children: [ el_class("span", "wordmark", [ txt("gunbc") ]) ],
     })
 }
 
-fn theme_with_role_material(t: Theme, target: ThemeRole, m: Material) -> Theme {
-  Theme {
+fn theme_with_role_material(t: gunbc.design.theme.Theme, target: gunbc.design.theme.ThemeRole, m: gunbc.design.material.Material) -> gunbc.design.theme.Theme {
+  gunbc.design.theme.Theme {
     name: t.name,
     scheme: t.scheme,
     assignments: map(t.assignments, a =>
       if role_eq(a: a.role, b: target) {
-        RoleAssignment { role: a.role, material: m, alpha_pct: a.alpha_pct }
+        gunbc.design.theme.RoleAssignment { role: a.role, material: m, alpha_pct: a.alpha_pct }
       } else {
         a
       }),
   }
 }
 
-fn probe_canvas_material() -> Material {
-  Material { name: "probe-canvas", hue: 41, sat_pct: 32, light_pct: 95, area: FieldArea }
+fn probe_canvas_material() -> gunbc.design.material.Material {
+  gunbc.design.material.Material { name: "probe-canvas", hue: 41, sat_pct: 32, light_pct: 95, area: FieldArea }
 }
 
-fn probe_figure_lit_material() -> Material {
-  Material { name: "probe-figure-lit", hue: 227, sat_pct: 58, light_pct: 20, area: PointArea }
+fn probe_figure_lit_material() -> gunbc.design.material.Material {
+  gunbc.design.material.Material { name: "probe-figure-lit", hue: 227, sat_pct: 58, light_pct: 20, area: PointArea }
 }
 
 test fn witness_upstream_edit_propagates_to_both_surfaces() -> Bool {

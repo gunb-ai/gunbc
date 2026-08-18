@@ -1,8 +1,8 @@
 module extdeps.llm.openai_rest
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "platform.openai.com/docs/api-reference/introduction"
   }
@@ -23,14 +23,14 @@ service llm.OpenAI {
     input {
       api_key: Secret
       model: String
-      messages: List<OpenAiChatMessage>
+      messages: List<extdeps.llm.openai.OpenAiChatMessage>
       temperature: Float?
       max_tokens: Int?
     }
     output {
       content: String from "choices/0/message/content"
       model: String from "model"
-      finish_reason: OpenAiFinishReason from "choices/0/finish_reason"
+      finish_reason: extdeps.llm.openai.OpenAiFinishReason from "choices/0/finish_reason"
       prompt_tokens: Int from "usage/prompt_tokens"
       completion_tokens: Int from "usage/completion_tokens"
     }

@@ -7,22 +7,22 @@ test fn claude_lifecycle_consumes_cli_authority() -> Bool {
   claude_cli_lifecycle_external_authority.uri.locator == claude_cli_external_authority_anchor.uri.locator
 }
 
-fn fixture_instance() -> ProviderInstance {
-  ProviderInstance {
+fn fixture_instance() -> extdeps.llm.cli_lifecycle.ProviderInstance {
+  extdeps.llm.cli_lifecycle.ProviderInstance {
     kind: ClaudeCliProvider,
-    host: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
-    executable: "claude" as NonEmptyStr,
-    observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
-    state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
-    credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
-    service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as NonEmptyStr },
+    host: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+    executable: "claude" as std.types.NonEmptyStr,
+    observed_version: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+    state_directory: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+    credential_storage_method: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
+    service_identity: ProviderInstanceFieldUnobserved { reason: "fixture" as std.types.NonEmptyStr },
   }
 }
 
 test fn recorded_credentials_do_not_imply_refreshable_authentication() -> Bool {
   let recorded = provider_readiness_label(readiness: ProviderCredentialsRecordedUnverified)
   let failed = provider_readiness_label(readiness: ProviderRefreshFailed {
-    reason: "invalid_refresh_token" as NonEmptyStr,
+    reason: "invalid_refresh_token" as std.types.NonEmptyStr,
   })
   recorded == "credentials recorded, unverified"
     && failed == "authentication refresh failed"
@@ -30,21 +30,21 @@ test fn recorded_credentials_do_not_imply_refreshable_authentication() -> Bool {
 }
 
 test fn model_access_and_sandbox_readiness_are_independent() -> Bool {
-  let observation = WorkerObservation {
+  let observation = gunbc.worker_lifecycle.WorkerObservation {
     configured_provider: fixture_instance(),
     process: WorkerProcessExited {
       exit_code: 0,
       last_command: "env",
     },
     provider_instance: ProviderEvidenceUnobserved {
-      reason: "fixture process tree unobserved" as NonEmptyStr,
+      reason: "fixture process tree unobserved" as std.types.NonEmptyStr,
     },
     provider_readiness: ProviderAuthenticated,
     tool_readiness: SandboxProbeFailed {
-      reason: "bwrap loopback RTM_NEWADDR refused" as NonEmptyStr,
+      reason: "bwrap loopback RTM_NEWADDR refused" as std.types.NonEmptyStr,
     },
     phase: WorkerPhaseUnobserved {
-      reason: "no progress transcript" as NonEmptyStr,
+      reason: "no progress transcript" as std.types.NonEmptyStr,
     },
   }
   provider_readiness_label(readiness: observation.provider_readiness) == "authenticated"
@@ -54,17 +54,17 @@ test fn model_access_and_sandbox_readiness_are_independent() -> Bool {
 }
 
 test fn session_presence_cannot_promote_setup_to_execution() -> Bool {
-  let observation = WorkerObservation {
+  let observation = gunbc.worker_lifecycle.WorkerObservation {
     configured_provider: fixture_instance(),
     process: WorkerProcessUnobserved {
-      reason: "session-only fixture" as NonEmptyStr,
+      reason: "session-only fixture" as std.types.NonEmptyStr,
     },
     provider_instance: ProviderEvidenceUnobserved {
-      reason: "fixture process tree unobserved" as NonEmptyStr,
+      reason: "fixture process tree unobserved" as std.types.NonEmptyStr,
     },
     provider_readiness: ProviderSetupRequired,
     tool_readiness: ToolExecutionReadinessUnobserved {
-      reason: "provider has not reached tool execution" as NonEmptyStr,
+      reason: "provider has not reached tool execution" as std.types.NonEmptyStr,
     },
     phase: WorkerWaitingForHumanSetup,
   }
@@ -78,7 +78,7 @@ test fn session_presence_cannot_promote_setup_to_execution() -> Bool {
 test fn terminal_evidence_accepts_only_terminal_outcomes() -> Bool {
   let completed_phase = WorkerTerminal { outcome: WorkerTerminalCompleted }
   let failed_outcome = WorkerTerminalFailed {
-    reason: "provider exited nonzero" as NonEmptyStr,
+    reason: "provider exited nonzero" as std.types.NonEmptyStr,
   }
   worker_phase_label(phase: completed_phase) == "completed"
     && worker_terminal_outcome_label(outcome: failed_outcome) == "failed"

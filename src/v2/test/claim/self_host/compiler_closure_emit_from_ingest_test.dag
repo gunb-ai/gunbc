@@ -14,10 +14,10 @@ type Gap4IngestProbeState
   = Gap4IngestProbePending
   | Gap4IngestProbeFound {
       path: String,
-      reason: Symbol,
-      stage: Symbol,
-      at: Locus,
-      remain_class: Optional<Symbol>,
+      reason: v2.std.node.Symbol,
+      stage: v2.std.node.Symbol,
+      at: v2.std.diagnostic.Locus,
+      remain_class: Optional<v2.std.node.Symbol>,
       remain_lexeme: Optional<String>,
       remain_start: Optional<Int>,
       remain_end: Optional<Int>,

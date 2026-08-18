@@ -7,7 +7,7 @@ data witness_note: String = "Hermetic controls for gunbc.host_cli_dependency: wi
 
 test fn host_dependency_absent_wire_is_stable() -> Bool {
   let wire = host_dependency_absent_wire(
-    tool: "npm" as NonEmptyStr,
+    tool: "npm" as std.types.NonEmptyStr,
     hint: "apt install npm",
   )
   wire.starts_with(prefix: "HostDependencyAbsent")
@@ -25,12 +25,12 @@ test fn host_cli_dependency_failure_receipt_absent_on_present() -> Bool {
 
 test fn host_cli_dependency_failure_receipt_present_on_absent() -> Bool {
   let wire = host_dependency_absent_wire(
-    tool: "npm" as NonEmptyStr,
+    tool: "npm" as std.types.NonEmptyStr,
     hint: "apt install npm",
   )
   match host_cli_dependency_failure_receipt(
     observation: HostCliDependencyAbsent {
-      tool: "npm" as NonEmptyStr,
+      tool: "npm" as std.types.NonEmptyStr,
       hint: "apt install npm",
     },
   ) {

@@ -11,7 +11,7 @@ data gunbc_converge_target_byte_normalization_marker: Disposition = Scaffold {
 }
 
 type ConvergeKnobKey {
-  slice: ConvergeSlice
+  slice: gunbc.host_converge.ConvergeSlice
   name: String
 }
 

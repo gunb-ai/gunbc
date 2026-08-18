@@ -51,7 +51,7 @@ type SubValueRelation
   | MixedTop
   | SubValueUnknown
 
-fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
+fn sub_value_to_evidence(relation: SubValueRelation) -> std.termination.DescentEvidence {
   match relation {
     StrictSubValue { field: _, factor: f } =>
       match f {
@@ -76,7 +76,7 @@ fn sub_value_to_evidence(relation: SubValueRelation) -> DescentEvidence {
   }
 }
 
-fn shrink_factor_eq(a: ShrinkFactor, b: ShrinkFactor) -> Bool {
+fn shrink_factor_eq(a: std.computation.ShrinkFactor, b: std.computation.ShrinkFactor) -> Bool {
   match a {
     UnitShrink =>
       match b { UnitShrink => true, _ => false }
@@ -283,7 +283,7 @@ fn compose_sub_value_relations(arg_rel: SubValueRelation, callee_rel: SubValueRe
   }
 }
 
-fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
+fn sub_value_to_call_pattern(relation: SubValueRelation) -> std.computation.CallPattern? {
   match relation {
     StrictSubValue { field: f, factor: _ }    => Present { value: ChildAccessorCall { accessor: f.field_name } }
     IteratedSubValue { field: f }             => Present { value: ChildAccessorCall { accessor: f.field_name } }
@@ -304,31 +304,31 @@ fn sub_value_to_call_pattern(relation: SubValueRelation) -> CallPattern? {
   }
 }
 
-fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
+fn sub_value_to_lowering_target(relation: SubValueRelation) -> std.computation.LoweringTarget? {
   match relation {
     StrictSubValue { field: f, factor: fac } =>
-      Present { value: LoweringTarget {
+      Present { value: std.computation.LoweringTarget {
         primitive: Descend,
         bound: tree_size_bound(param: f.field_name),
         evidence: Strict,
         factor: Present { value: fac }
       }}
     IteratedSubValue { field: f } =>
-      Present { value: LoweringTarget {
+      Present { value: std.computation.LoweringTarget {
         primitive: Fold,
         bound: CollectionSize { param: f.field_name },
         evidence: Strict,
         factor: none
       }}
     ArithmeticDescent { param: p, factor: fac } =>
-      Present { value: LoweringTarget {
+      Present { value: std.computation.LoweringTarget {
         primitive: Repeat,
         bound: ArithmeticParam { param: p },
         evidence: Strict,
         factor: Present { value: fac }
       }}
     PreservedValue =>
-      Present { value: LoweringTarget {
+      Present { value: std.computation.LoweringTarget {
         primitive: Repeat,
         bound: Forever,
         evidence: NonIncreasing,
@@ -336,7 +336,7 @@ fn sub_value_to_lowering_target(relation: SubValueRelation) -> LoweringTarget? {
       }}
 
     NonIncreasingValue =>
-      Present { value: LoweringTarget {
+      Present { value: std.computation.LoweringTarget {
         primitive: Repeat,
         bound: Forever,
         evidence: NonIncreasing,
@@ -558,7 +558,7 @@ fn catamorphism_bound(param: String, nesting_depth: Int) -> CostBound {
   }
 }
 
-fn derive_bound(param: String, branches: Int, factor: ShrinkFactor, work_exponent: Int) -> CostBound {
+fn derive_bound(param: String, branches: Int, factor: std.computation.ShrinkFactor, work_exponent: Int) -> CostBound {
   if branches < 1 { ErrorBound }
   else {
     match bounded_int_pow_exponent(k: work_exponent) {

@@ -1,20 +1,20 @@
 module test.claim.roadmap_workflow_progress_witness_test
 
 
-data fixture_verification_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
+data fixture_verification_head: std.types.CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as std.types.CommitSha
 
-fn fixture_verification_subject() -> VerificationSubject {
-  VerificationSubject {
-    node_identity: "node-1" as NonEmptyStr as RoadmapNodeIdentity,
+fn fixture_verification_subject() -> gunbc.roadmap_verification_receipt.VerificationSubject {
+  gunbc.roadmap_verification_receipt.VerificationSubject {
+    node_identity: "node-1" as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeIdentity,
     criteria_digest: content_hash_atom(value: "workflow-progress-fixture"),
     attempt_key: "feedfacefeedface",
-    branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
+    branch: "dispatch/node-1-afeedfacefeedface" as std.types.NonEmptyStr,
     head_sha: fixture_verification_head,
     change_window_identity: git_diff_window_absent_identity(),
   }
 }
 
-fn fixture_verification_selection() -> CurrentVerificationSelectionObservation {
+fn fixture_verification_selection() -> gunbc.roadmap_verification_receipt.CurrentVerificationSelectionObservation {
   SelectionObserved {
     head: fixture_verification_head,
     window_identity: git_diff_window_absent_identity(),
@@ -23,9 +23,9 @@ fn fixture_verification_selection() -> CurrentVerificationSelectionObservation {
 
 fn fixture_evidence(
   events: String,
-  process: WorkerProcessEvidence,
-) -> WorkflowAttemptEvidence {
-  WorkflowAttemptEvidence {
+  process: gunbc.worker_lifecycle.WorkerProcessEvidence,
+) -> gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
+  gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
     node_id: "node-1",
     attempt_key: "feedfacefeedface",
     branch: "dispatch/node-1-afeedfacefeedface",
@@ -45,19 +45,19 @@ fn fixture_evidence(
     verification_selection: fixture_verification_selection(),
     verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
-      subject: RoadmapPublicationSubject {
+      subject: gunbc.roadmap_publish.RoadmapPublicationSubject {
         node_id: "node-1",
         attempt_key: "feedfacefeedface",
-        repository: Repository {
+        repository: extdeps.github.github.Repository {
           owner: "gunb-ai",
           name: "gunbc",
           full_name: "gunb-ai/gunbc",
           private: false,
           default_branch: "main",
         },
-        branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
-        expected_base: "main" as NonEmptyStr,
-        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
+        branch: "dispatch/node-1-afeedfacefeedface" as std.types.NonEmptyStr,
+        expected_base: "main" as std.types.NonEmptyStr,
+        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as std.types.CommitSha,
       },
     },
     publication_source: ReceiptSourceAbsent,
@@ -65,7 +65,7 @@ fn fixture_evidence(
 }
 
 fn segment_state(
-  segments: List<WorkflowSegment>,
+  segments: List<gunbc.roadmap_workflow_stage.WorkflowSegment>,
   key: String,
 ) -> String {
   fold(segments, init: "", f: fn(acc, segment) {
@@ -80,7 +80,7 @@ fn segment_state(
 test fn admitted_running_attempt_projects_ordered_evidence() -> Bool {
   let progress = workflow_attempt_progress(evidence: fixture_evidence(
     events: "{\"type\":\"thread.started\",\"thread_id\":\"t\"}\n{\"type\":\"turn.started\"}\n",
-    process: WorkerProcessRunning { command: "node" as NonEmptyStr },
+    process: WorkerProcessRunning { command: "node" as std.types.NonEmptyStr },
   ))
   count(progress.segments) == 7
     && segment_state(progress.segments, "environment") == "complete"
@@ -198,7 +198,7 @@ test fn completed_event_with_unobserved_process_refuses() -> Bool {
 
 data admission_receipt_positional_identity_note: String = "review 44032 RED. The admission receipt is READ BACK FROM DISK, so nothing guarantees the bytes came from dispatch_environment_admission_json — a corrupt, truncated, or foreign file is exactly the case the projection must survive. The forgery below is well-formed JSON that declares status refused at the top level while carrying an admitted status in a nested member; the former two-string_contains scan matched both fragments and read it as admitted. Note the emitter's own escaping already prevented the narrower attack (a quoted reason cannot reproduce a raw fragment), which is why the fixture is a raw document rather than a round-trip: the vulnerability was never in the emitter, it was in identifying a document by scanning it. Positional identity refuses this because a nested value cannot occupy the document prefix, and the paired green keeps the real emitter's admitted receipt admitted so the witness discriminates rather than rejecting everything."
 
-fn admission_receipt_for(admission: DispatchEnvironmentAdmission) -> String {
+fn admission_receipt_for(admission: gunbc.roadmap_dispatch_environment.DispatchEnvironmentAdmission) -> String {
   dispatch_environment_admission_json(admission: admission)
 }
 
@@ -275,7 +275,7 @@ test fn forged_admission_receipt_cannot_complete_environment() -> Bool {
     events: "",
     process: WorkerProcessAbsent,
   )
-  let forged = WorkflowAttemptEvidence {
+  let forged = gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
     node_id: base.node_id,
     attempt_key: base.attempt_key,
     branch: base.branch,
@@ -305,7 +305,7 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
     events: "",
     process: WorkerProcessAbsent,
   )
-  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+  let progress = workflow_attempt_progress(evidence: gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
     node_id: base.node_id,
     attempt_key: base.attempt_key,
     branch: base.branch,
@@ -333,7 +333,7 @@ test fn persisted_staging_failure_precedes_empty_event_stream() -> Bool {
 }
 
 test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
-  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+  let progress = workflow_attempt_progress(evidence: gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
     node_id: "legacy",
     attempt_key: "",
     branch: "dispatch/legacy",
@@ -353,19 +353,19 @@ test fn legacy_attempt_refuses_unobserved_early_stages() -> Bool {
     verification_selection: SelectionAbsent,
     verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
-      subject: RoadmapPublicationSubject {
+      subject: gunbc.roadmap_publish.RoadmapPublicationSubject {
         node_id: "node-1",
         attempt_key: "feedfacefeedface",
-        repository: Repository {
+        repository: extdeps.github.github.Repository {
           owner: "gunb-ai",
           name: "gunbc",
           full_name: "gunb-ai/gunbc",
           private: false,
           default_branch: "main",
         },
-        branch: "dispatch/node-1-afeedfacefeedface" as NonEmptyStr,
-        expected_base: "main" as NonEmptyStr,
-        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
+        branch: "dispatch/node-1-afeedfacefeedface" as std.types.NonEmptyStr,
+        expected_base: "main" as std.types.NonEmptyStr,
+        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as std.types.CommitSha,
       },
     },
     publication_source: ReceiptSourceAbsent,
@@ -386,7 +386,7 @@ test fn readable_but_invalid_admission_receipt_refuses_progress() -> Bool {
     events: "{\"type\":\"turn.completed\",\"usage\":{}}\n",
     process: WorkerProcessExited { exit_code: 0, last_command: "node" },
   )
-  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+  let progress = workflow_attempt_progress(evidence: gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
     node_id: base.node_id,
     attempt_key: base.attempt_key,
     branch: base.branch,
@@ -467,11 +467,11 @@ test fn roadmap_workflow_progress_keystone_holds() -> Bool {
 
 data publication_projection_witness_note: String = "THE VERTICAL SPECIMEN, WITH ITS NEGATIVE HALF, AND THE NEGATIVE HALF IS WHY IT EXISTS. A claim that a bound receipt paints the lamp green proves the happy path and nothing else; it stays green under the exact defect this lane was rewritten to remove, which is a consumer that finds a receipt at a path and trusts what it finds.\\n\\nSO THE SPECIMEN IS ONE RECEIPT READ TWICE. Written for head H, it completes the row whose subject is H, and it does NOT complete the row whose subject is H2 - it refuses there, naming expected_head as the field that differs. That is the review loop's real shape: a worker pushes a correction while a receipt for the earlier head is still on disk, and every downstream obligation is about the new commit.\\n\\nAND THE SUBJECT ITSELF CAN BE MISSING, which is a fifth reading rather than a phrasing of pending. An attempt whose head could not be read has nothing to compare a receipt against, so the lamp refuses and says so - never `pending`, which a reader would take for `not published yet`."
 
-data pub_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe"
-data pub_other: CommitSha = "d00dd00dd00dd00dd00dd00dd00dd00dd00dd00d"
-data pub_branch: NonEmptyStr = "dispatch/node-1-afeedfacefeedface" as NonEmptyStr
+data pub_head: std.types.CommitSha = "cafecafecafecafecafecafecafecafecafecafe"
+data pub_other: std.types.CommitSha = "d00dd00dd00dd00dd00dd00dd00dd00dd00dd00d"
+data pub_branch: std.types.NonEmptyStr = "dispatch/node-1-afeedfacefeedface" as std.types.NonEmptyStr
 
-data pub_repository: Repository = Repository {
+data pub_repository: extdeps.github.github.Repository = extdeps.github.github.Repository {
   owner: "gunb-ai",
   name: "gunbc",
   full_name: "gunb-ai/gunbc",
@@ -479,31 +479,31 @@ data pub_repository: Repository = Repository {
   default_branch: "main",
 }
 
-fn pub_subject(head: CommitSha) -> RoadmapPublicationSubject {
-  RoadmapPublicationSubject {
+fn pub_subject(head: std.types.CommitSha) -> gunbc.roadmap_publish.RoadmapPublicationSubject {
+  gunbc.roadmap_publish.RoadmapPublicationSubject {
     node_id: "node-1",
     attempt_key: "feedfacefeedface",
     repository: pub_repository,
     branch: pub_branch,
-    expected_base: "main" as NonEmptyStr,
+    expected_base: "main" as std.types.NonEmptyStr,
     expected_head: head,
   }
 }
 
-fn pub_pull(sha: CommitSha) -> PullRequest {
-  PullRequest {
+fn pub_pull(sha: std.types.CommitSha) -> extdeps.github.pulls.PullRequest {
+  extdeps.github.pulls.PullRequest {
     number: 7552,
     title: "publication slice",
     body: none,
     state: Open,
-    html_url: "https://github.com/gunb-ai/gunbc/pull/7552" as NonEmptyStr,
-    user: GitHubUser { login: "someone", id: 1, type: User },
-    head: PullRequestRef {
+    html_url: "https://github.com/gunb-ai/gunbc/pull/7552" as std.types.NonEmptyStr,
+    user: extdeps.github.github.GitHubUser { login: "someone", id: 1, type: User },
+    head: extdeps.github.pulls.PullRequestRef {
       ref: pub_branch as String,
       sha: sha,
       label: "head",
     },
-    base: PullRequestRef { ref: "main", sha: pub_other, label: "base" },
+    base: extdeps.github.pulls.PullRequestRef { ref: "main", sha: pub_other, label: "base" },
     created_at: "2026-08-01T00:00:00Z",
     updated_at: "2026-08-01T00:00:00Z",
     merged_at: none,
@@ -511,16 +511,16 @@ fn pub_pull(sha: CommitSha) -> PullRequest {
   }
 }
 
-fn pub_receipt_for(subject_head: CommitSha, pull_sha: CommitSha) -> String {
+fn pub_receipt_for(subject_head: std.types.CommitSha, pull_sha: std.types.CommitSha) -> String {
   publication_receipt_json(
     receipt: publication_receipt_of(
       subject: pub_subject(head: subject_head),
       outcome: adjudicate_publication(
         pulls: PullRequestsRead { pulls: [pub_pull(sha: pull_sha)] },
         remotes: RemoteBranchesRead { branches: [] },
-        remote: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+        remote: "https://github.com/gunb-ai/gunbc.git" as std.types.NonEmptyStr,
         branch: pub_branch,
-        expected_base: "main" as NonEmptyStr,
+        expected_base: "main" as std.types.NonEmptyStr,
         expected_head: subject_head,
       ),
     ),
@@ -528,11 +528,11 @@ fn pub_receipt_for(subject_head: CommitSha, pull_sha: CommitSha) -> String {
 }
 
 fn publication_segment_of(
-  subject: PublicationSubjectObservation,
-  source: PublicationReceiptSource,
-) -> WorkflowSegment {
+  subject: gunbc.roadmap_publish.PublicationSubjectObservation,
+  source: gunbc.roadmap_publish.PublicationReceiptSource,
+) -> gunbc.roadmap_workflow_stage.WorkflowSegment {
   let base = fixture_evidence(events: "", process: WorkerProcessAbsent)
-  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+  let progress = workflow_attempt_progress(evidence: gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
     node_id: base.node_id,
     attempt_key: base.attempt_key,
     branch: base.branch,
@@ -552,7 +552,7 @@ fn publication_segment_of(
     publication_subject: subject,
     publication_source: source,
   })
-  fold(progress.segments, init: WorkflowSegment {
+  fold(progress.segments, init: gunbc.roadmap_workflow_stage.WorkflowSegment {
     kind: PublicationWorkflowSegment,
     state: WorkflowSegmentPending,
     detail: "no publication segment was projected",
@@ -562,8 +562,8 @@ fn publication_segment_of(
 }
 
 fn publication_state_at(
-  subject_head: CommitSha,
-  source: PublicationReceiptSource,
+  subject_head: std.types.CommitSha,
+  source: gunbc.roadmap_publish.PublicationReceiptSource,
 ) -> String {
   workflow_segment_state_key(
     state: publication_segment_of(

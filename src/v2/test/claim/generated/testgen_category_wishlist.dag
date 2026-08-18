@@ -49,9 +49,9 @@ type TestgenOracleBasis
   | RefinementProjectionWitness
 
 type TestgenWishlistRow {
-  generator: Generator<TestgenConcept>
+  generator: Generator<v2.lens.testgen.TestgenConcept>
   oracle: TestgenOracleBasis
-  dispatch_key: Symbol
+  dispatch_key: v2.std.node.Symbol
 }
 fn wishlist_type_construction_generator() -> Generator<TestgenConcept> {
   Generator {

@@ -17,7 +17,7 @@ fn body_lowering_bool_node(pass: Bool) -> Node {
   }
 }
 
-fn body_lowering_normalized_module() -> Optional<NormalizedTree> {
+fn body_lowering_normalized_module() -> Optional<v2.compiler.normalized_tree.NormalizedTree> {
   let lm = dag_language_model()
   match tokenize(
     text: body_lowering_add_module_source,
@@ -130,7 +130,7 @@ fn body_lowering_arrow_token_holds() -> Bool {
   }
 }
 
-fn body_lower_collect_atoms(root: Node, acc: List<Symbol>) -> List<Symbol> {
+fn body_lower_collect_atoms(root: Node, acc: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   let acc1 = match node_atom_identity_optional(node: root) {
     Present { value: id } => Cons { head: id, tail: acc }
     Absent => acc
@@ -309,7 +309,7 @@ fn body_lowering_normalize_accepts() -> Bool {
   }
 }
 
-fn body_lowering_tree_contains_atom(root: Node, wanted: Symbol) -> Bool {
+fn body_lowering_tree_contains_atom(root: Node, wanted: v2.std.node.Symbol) -> Bool {
   match node_atom_identity_optional(node: root) {
     Present { value: id } =>
       if id == wanted {
@@ -340,7 +340,7 @@ fn body_lowering_fixture_resolves() -> Bool {
   }
 }
 
-fn body_lowering_transform_operand_identities(arrow: Node) -> List<Symbol> {
+fn body_lowering_transform_operand_identities(arrow: Node) -> List<v2.std.node.Symbol> {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
       match body.kind {
@@ -396,7 +396,7 @@ fn body_lowering_normalized_operator_is_plus() -> Bool {
   }
 }
 
-fn body_lower_arrow_operand_identity(arrow: Node, index: Int) -> Optional<Symbol> {
+fn body_lower_arrow_operand_identity(arrow: Node, index: Int) -> Optional<v2.std.node.Symbol> {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
       match list_at_optional(xs: body.children, index: index) {
@@ -545,7 +545,7 @@ fn body_lowering_domain_operand2_match() -> Bool {
   }
 }
 
-fn body_lower_arrow_domain_first_binding(arrow: Node) -> Optional<Symbol> {
+fn body_lower_arrow_domain_first_binding(arrow: Node) -> Optional<v2.std.node.Symbol> {
   if count(arrow.children) >= 1 {
     match first(arrow.children) {
       Present { value: e0 } =>
@@ -609,7 +609,7 @@ fn body_lowering_normalized_operand1_lexeme_is_x() -> Bool {
   }
 }
 
-fn body_lowering_operand_equals(arrow: Node, index: Int, wanted: Symbol) -> Bool {
+fn body_lowering_operand_equals(arrow: Node, index: Int, wanted: v2.std.node.Symbol) -> Bool {
   match body_lower_arrow_operand_identity(arrow: arrow, index: index) {
     Present { value: id } => id == wanted
     Absent => false
@@ -732,18 +732,18 @@ fn body_lowering_normalize_yields_arrow() -> Bool {
   }
 }
 
-data claim_body_lowering_normalize_add_resolves: TestClaim = EqualsClaim {
+data claim_body_lowering_normalize_add_resolves: v2.std.verification.TestClaim = EqualsClaim {
   label: "manual/body-lowering-normalize: census add module normalizes then resolves",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_bool_node(pass: body_lowering_normalized_resolves()),
   rhs: body_lowering_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_body_lowering_normalize_add_yields_arrow: TestClaim = EqualsClaim {
+data claim_body_lowering_normalize_add_yields_arrow: v2.std.verification.TestClaim = EqualsClaim {
   label: "manual/body-lowering-normalize: census add module normalizes fn_decl to Arrow with Transform body",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: body_lowering_bool_node(pass: body_lowering_normalize_yields_arrow()),
   rhs: body_lowering_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

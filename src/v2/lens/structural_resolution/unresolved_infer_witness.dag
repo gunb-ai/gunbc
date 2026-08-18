@@ -1,10 +1,10 @@
 module v2.test.lens_structural_resolution.unresolved_infer_witness
 
 
-data sr_infer_claim_hash: Hash = sr_infer_claim_hash
+data sr_infer_claim_hash: v2.std.node.Hash = sr_infer_claim_hash
 
-fn sr_infer_claim_atom(s: Symbol) -> Node {
-  Node {
+fn sr_infer_claim_atom(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -13,22 +13,22 @@ fn sr_infer_claim_atom(s: Symbol) -> Node {
 
 data sr_infer_use: Node = sr_infer_claim_atom(s: ^sr_infer_use_symbol)
 
-data sr_infer_decl: Node = Node {
+data sr_infer_decl: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_infer_use }
+    v2.std.node.Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_infer_use }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data sr_infer_dependency: DependencyView = DependencyView {
+data sr_infer_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: sr_infer_decl,
   dependent: sr_infer_use,
   kind: BindsTo,
   usage_site: sr_infer_use
 }
 
-fn sr_infer_resolved_facts() -> InferredFacts {
+fn sr_infer_resolved_facts() -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^sr_infer_type_symbol,
     algebra_symbol: ^sr_infer_algebra_symbol,
@@ -36,11 +36,11 @@ fn sr_infer_resolved_facts() -> InferredFacts {
   )
 }
 
-fn sr_infer_usage_site_witness() -> Optional<InferredFacts> {
+fn sr_infer_usage_site_witness() -> Optional<v2.compiler.infer.InferredFacts> {
   optional_absent()
 }
 
-fn sr_infer_claim_fact_map() -> Map<Node, InferredFacts> {
+fn sr_infer_claim_fact_map() -> Map<Node, v2.compiler.infer.InferredFacts> {
   let resolved = sr_infer_resolved_facts()
   Map {
     lookup: fn(key) {
@@ -53,18 +53,18 @@ fn sr_infer_claim_fact_map() -> Map<Node, InferredFacts> {
   }
 }
 
-fn sr_infer_claim_tree() -> InferredTree {
-  InferredTree {
+fn sr_infer_claim_tree() -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: sr_infer_decl,
     facts: sr_infer_claim_fact_map()
   }
 }
 
-data unresolved_infer_witness_claim: LensStructuralResolutionClaim = LensStructuralResolutionClaim {
+data unresolved_infer_witness_claim: v2.test.lens_structural_resolution.claim_carrier.LensStructuralResolutionClaim = v2.test.lens_structural_resolution.claim_carrier.LensStructuralResolutionClaim {
   input: sr_infer_claim_tree(),
-  expected: StructuralResolutionFact {
+  expected: v2.lens.structural_resolution.StructuralResolutionFact {
     dependencies: [
-      ClassifiedDependencyView {
+      v2.std.dependency.ClassifiedDependencyView {
         dependency: sr_infer_dependency,
         classification: FactsLookupMiss
       }

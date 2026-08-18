@@ -1,14 +1,14 @@
 module v2.test.claim.byte_cardinality_grounding
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type Byte = Refined<List<Int>>
 
-fn byte_from_bits(bits: List<Int>, at: Locus) -> Outcome<Byte> {
+fn byte_from_bits(bits: List<Int>, at: v2.std.diagnostic.Locus) -> Outcome<Byte> {
   refine(
     base: bits,
-    by: Validation {
+    by: v2.std.refinement.Validation {
       reason: ^byte_must_be_8_bits,
       admits: fn(items) { length(xs: items) == 8 }
     },
@@ -16,7 +16,7 @@ fn byte_from_bits(bits: List<Int>, at: Locus) -> Outcome<Byte> {
   )
 }
 
-fn byte_locus() -> Locus { port_locus(port: ^byte_cardinality_grounding) }
+fn byte_locus() -> v2.std.diagnostic.Locus { port_locus(port: ^byte_cardinality_grounding) }
 
 fn eight_bits() -> List<Int> { [1, 0, 1, 0, 1, 0, 1, 0] }
 fn seven_bits() -> List<Int> { [1, 0, 1, 0, 1, 0, 1] }

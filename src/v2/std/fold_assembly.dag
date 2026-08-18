@@ -25,7 +25,7 @@ type ApplyResult {
   rest: FreeMonoid<Node>
 }
 type ApplyEdgesAcc {
-  edges: FreeMonoid<Edge>
+  edges: FreeMonoid<v2.std.node.Edge>
   rest: FreeMonoid<Node>
 }
 

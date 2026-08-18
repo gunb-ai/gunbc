@@ -1,13 +1,13 @@
 module v2.test.execution.emit_on_demand_field_access_family_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data emit_on_demand_field_access_family_note: String = "Witness-realization lane 2 (witness_family_fanout), consolidated to ONE-BUILD grain (std.emit_on_demand witness_family_build_grain_ruling, merry-pike-487 fan-out): the singleton family's crate builds ONCE per corpus pass. The single wet receipt is emit_on_demand_field_access_native_one_build_holds: one root, both keys evicted up front; primary cold then warm (octet 9), the eval-anchored agreement AND the wrong-fixture semantic-mismatch RED (wrong-field subject over the primary build) run WARM on the same build, then the wrong-field alt tree colds in the SAME root with the flipped octet 1. Formerly ~7 crate builds per pass; now 2. Wet tests run before pure share-on-hit in the aggregate (eval-call memo ordering trap). Pure receipts unchanged."
 
 data field_access_family_cache_root: String = "/tmp/gunbc_emit_on_demand_field_access"
 data field_access_family_emitter: String = "v2.compiler.emit"
-data field_access_family_provider: CacheProvider = provider_row(
+data field_access_family_provider: std.materialization_ladder.CacheProvider = provider_row(
   id: "emit-on-demand-field-access",
   scope: [],
   coverage: CoversAllComputations,
@@ -15,7 +15,7 @@ data field_access_family_provider: CacheProvider = provider_row(
   retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 1000000) } }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
 )
 
-fn field_access_family_native_key_for(tree: InferredTree) -> ContentHash {
+fn field_access_family_native_key_for(tree: v2.compiler.infer.InferredTree) -> std.content_hash.ContentHash {
   emit_on_demand_key(
     closure_digest: inferred_tree_digest(tree: tree),
     emitter_identity: field_access_family_emitter,
@@ -24,19 +24,19 @@ fn field_access_family_native_key_for(tree: InferredTree) -> ContentHash {
   )
 }
 
-fn field_access_family_primary_tree() -> Outcome<InferredTree> {
+fn field_access_family_primary_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   emit_field_eval_producer_tree()
 }
 
-fn field_access_family_alt_tree() -> Outcome<InferredTree> {
+fn field_access_family_alt_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   emit_field_eval_alt_descent_producer_tree()
 }
 
-fn field_access_family_test_store() -> ArtifactStore {
+fn field_access_family_test_store() -> std.artifact_store.ArtifactStore {
   match store_over_provider(provider: field_access_family_provider) {
     StoreReady { store: s } => s
     StoreRefusedRetention { provider_id: _, declared: _ } =>
-      ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
+      std.artifact_store.ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
   }
 }
 
@@ -97,7 +97,7 @@ test fn emit_on_demand_field_access_schedule_refuses_unreadable_budget_holds() -
   }
 }
 
-fn field_access_family_fixture_inputs() -> Inputs {
+fn field_access_family_fixture_inputs() -> v2.compiler.eval.Inputs {
   inputs_for_emit_host(
     claim_input_root: emit_field_eval_subgraph_node,
     expected_eval_root: emit_field_eval_subgraph_node,
@@ -107,7 +107,7 @@ fn field_access_family_fixture_inputs() -> Inputs {
 
 fn field_access_family_cached_run_with_source(
   workspace: String,
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   source: Medium<String>,
   expect_compile_skipped: Bool,
   expected_octet: Int
@@ -136,7 +136,7 @@ fn field_access_family_cache_root_for(test_id: String) -> String {
   concat(field_access_family_cache_root, "/", test_id)
 }
 
-fn field_access_cached_agreement_pass(workspace: String, tree: InferredTree) -> Bool {
+fn field_access_cached_agreement_pass(workspace: String, tree: v2.compiler.infer.InferredTree) -> Bool {
   emit_field_eval_verdict_is_pass(
     run: run_test_claim_from_source_emit_vs_eval_cached(
       subject: emit_field_eval_subject(tree: tree),
@@ -148,7 +148,7 @@ fn field_access_cached_agreement_pass(workspace: String, tree: InferredTree) -> 
   )
 }
 
-fn field_access_cached_wrong_fixture_mismatch(workspace: String, tree: InferredTree) -> Bool {
+fn field_access_cached_wrong_fixture_mismatch(workspace: String, tree: v2.compiler.infer.InferredTree) -> Bool {
   emit_field_eval_verdict_is_semantic_mismatch(
     run: run_test_claim_from_source_emit_vs_eval_cached(
       subject: emit_field_eval_wrong_fixture_subject(tree: tree),
@@ -162,7 +162,7 @@ fn field_access_cached_wrong_fixture_mismatch(workspace: String, tree: InferredT
 
 fn field_access_family_cached_run_checks(
   workspace: String,
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   expect_compile_skipped: Bool,
   expected_octet: Int
 ) -> Bool {
@@ -181,7 +181,7 @@ fn field_access_family_cached_run_checks(
 
 fn field_access_family_cached_cold_then_warm(
   workspace: String,
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   expected_octet: Int
 ) -> Bool {
   match emit(tree: tree, target: rust_field_access_target_model_staging()) {

@@ -1,45 +1,45 @@
 module v2.test.execution.c_add_emit_host_run
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn c_run_probe_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^c_emit_host_run_probe } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn c_run_inputs() -> Inputs {
+fn c_run_inputs() -> v2.compiler.eval.Inputs {
   inputs_root_only(root: c_run_probe_node())
 }
 
 fn c_run_source() -> Medium<String> {
-  Medium { carried: c_source_text, fidelity: Lossless }
+  extdeps.communication.medium.Medium { carried: c_source_text, fidelity: Lossless }
 }
 
 fn c_expected_add_stdout_octets() -> List<Int> {
   [0, 5, 0, 0, 0]
 }
 
-fn c_fixed_source_row(source_text: String) -> EmitHostRuntimeRow {
-  EmitHostRuntimeRow {
-    transport: HostTransportDescriptor {
+fn c_fixed_source_row(source_text: String) -> v2.std.host_transport.EmitHostRuntimeRow {
+  v2.std.host_transport.EmitHostRuntimeRow {
+    transport: v2.std.host_transport.HostTransportDescriptor {
       identity: ^c_emit_host_run_probe_fixed,
       workspace: [
-        WorkspaceFile {
+        v2.std.host_transport.WorkspaceFile {
           path: "fixture.c",
           content: FixedText { text: source_text }
         }
       ],
       build: [
-        ProcessInvocation {
+        v2.std.host_transport.ProcessInvocation {
           program: HostToolProgram { executable: "cc" },
           args: [LiteralArg { text: "fixture.c" }, LiteralArg { text: "-o" }, LiteralArg { text: "fixture" }]
         }
       ],
-      run: ProcessInvocation {
+      run: v2.std.host_transport.ProcessInvocation {
         program: ProducedProgram { path: "fixture" },
         args: []
       },

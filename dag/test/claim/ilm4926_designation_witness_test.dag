@@ -112,47 +112,47 @@ test fn w_red_an_identified_socket_body_with_a_land_pattern_would_permit_emissio
     reason: "any reason at all",
     next_authority_to_consult: none,
   }
-  let complete = AttachmentStanding {
-    socket_body: SocketBodyStanding {
+  let complete = extdeps.cpu_attachment.ilm4926.AttachmentStanding {
+    socket_body: extdeps.cpu_attachment.ilm4926.SocketBodyStanding {
       vendor_identity: cited,
       orderable_part_number: cited,
       board_land_pattern: cited,
     },
-    retention_assembly: ConstituentStanding {
+    retention_assembly: extdeps.cpu_attachment.ilm4926.ConstituentStanding {
       vendor_identity: cited,
       orderable_part_number: cited,
     },
-    mounting_hardware: ConstituentStanding {
+    mounting_hardware: extdeps.cpu_attachment.ilm4926.ConstituentStanding {
       vendor_identity: cited,
       orderable_part_number: cited,
     },
   }
-  let no_land_pattern = AttachmentStanding {
-    socket_body: SocketBodyStanding {
+  let no_land_pattern = extdeps.cpu_attachment.ilm4926.AttachmentStanding {
+    socket_body: extdeps.cpu_attachment.ilm4926.SocketBodyStanding {
       vendor_identity: cited,
       orderable_part_number: cited,
       board_land_pattern: missing,
     },
-    retention_assembly: ConstituentStanding {
+    retention_assembly: extdeps.cpu_attachment.ilm4926.ConstituentStanding {
       vendor_identity: cited,
       orderable_part_number: cited,
     },
-    mounting_hardware: ConstituentStanding {
+    mounting_hardware: extdeps.cpu_attachment.ilm4926.ConstituentStanding {
       vendor_identity: cited,
       orderable_part_number: cited,
     },
   }
-  let unnamed_socket = AttachmentStanding {
-    socket_body: SocketBodyStanding {
+  let unnamed_socket = extdeps.cpu_attachment.ilm4926.AttachmentStanding {
+    socket_body: extdeps.cpu_attachment.ilm4926.SocketBodyStanding {
       vendor_identity: missing,
       orderable_part_number: missing,
       board_land_pattern: cited,
     },
-    retention_assembly: ConstituentStanding {
+    retention_assembly: extdeps.cpu_attachment.ilm4926.ConstituentStanding {
       vendor_identity: cited,
       orderable_part_number: cited,
     },
-    mounting_hardware: ConstituentStanding {
+    mounting_hardware: extdeps.cpu_attachment.ilm4926.ConstituentStanding {
       vendor_identity: cited,
       orderable_part_number: cited,
     },
@@ -215,7 +215,7 @@ test fn w_no_carried_part_claims_to_be_the_socket_body() -> Bool {
 // RED control: the official arm is reachable, so the claim above is a measurement and not a
 // vacuous truth about a predicate that can never be true.
 test fn w_red_an_official_attestation_would_register_as_one() -> Bool {
-  let official = PartNumberCandidate {
+  let official = extdeps.cpu_attachment.ilm4926.PartNumberCandidate {
     part_number: "SOME-PART",
     vendor: lotes,
     claimed_referent: ClaimedSocketBody,

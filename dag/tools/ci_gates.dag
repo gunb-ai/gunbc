@@ -1,11 +1,11 @@
 module tools.ci_gates
 
 
-fn exit_ok(e: ProcessExit) -> Bool {
+fn exit_ok(e: std.process.ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
 }
 
-fn run_spec_gate(g: Gate) -> ProcessExit {
+fn run_spec_gate(g: gunbc.ci_gate.Gate) -> std.process.ProcessExit {
   match g {
     EmitHostGate => run_emit_host_ci_gate()
     CheapClaimPoolGate => run_cheap_claim_pool_ci_gate()
@@ -27,16 +27,16 @@ fn run_spec_gate(g: Gate) -> ProcessExit {
   }
 }
 
-fn run_gate_list(gates: List<Gate>) -> ProcessExit {
+fn run_gate_list(gates: List<gunbc.ci_gate.Gate>) -> std.process.ProcessExit {
   fold(gates, init: ExitSuccess, f: fn(acc, g) {
     if exit_ok(e: acc) { run_spec_gate(g: g) } else { acc }
   })
 }
 
-func run_ci_gates_sequential(spec: CiSpec) -> ProcessExit {
+func run_ci_gates_sequential(spec: gunbc.ci_spec.CiSpec) -> std.process.ProcessExit {
   run_gate_list(gates: spec.gates)
 }
 
-func main() -> ProcessExit {
+func main() -> std.process.ProcessExit {
   run_gate_list(gates: gunbc_ci_gates)
 }

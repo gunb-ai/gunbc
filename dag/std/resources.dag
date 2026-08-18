@@ -20,7 +20,7 @@ resource Filesystem {
   }
 
   capability read {
-    input { path: TextFilePath }
+    input { path: std.types.TextFilePath }
     output { content: String }
   }
 
@@ -50,7 +50,7 @@ resource Clock {
 
   capability now {
     input {}
-    output { timestamp: Timestamp }
+    output { timestamp: std.types.Timestamp }
   }
 
 }
@@ -72,7 +72,7 @@ resource Entropy {
   release {}
 
   capability read_bytes {
-    input { count: ByteSize }
+    input { count: std.measure.ByteSize }
     output { octets: List<std.integer.UInt8> }
   }
 }

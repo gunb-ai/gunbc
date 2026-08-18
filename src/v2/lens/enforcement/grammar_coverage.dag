@@ -3,7 +3,7 @@ module v2.lens.enforcement.grammar_coverage
 
 type GrammarCoverageParseVerdict
   = ParsedClean
-  | ParseRejected { stage: String, reason: Symbol }
+  | ParseRejected { stage: String, reason: v2.std.node.Symbol }
 
 type GrammarCoverageFileReceipt {
   rel_path: String
@@ -12,7 +12,7 @@ type GrammarCoverageFileReceipt {
 
 type GrammarCoverageRejectedRow {
   stage: String
-  reason: Symbol
+  reason: v2.std.node.Symbol
   count: Int
 }
 

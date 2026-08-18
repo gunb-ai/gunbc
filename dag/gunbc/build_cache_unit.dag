@@ -1,7 +1,7 @@
 module gunbc.build_cache_unit
 
 
-data build_cache_unit_scope_disposition: Disposition = SingleAuthority
+data build_cache_unit_scope_disposition: std.disposition.Disposition = SingleAuthority
 
 data build_cache_unit_authority_note: String = "THE UNIT IS DERIVED FROM THE INSTANCE, WHICH IS THE WHOLE POINT. A hand-written unit beside a declared BuildCacheInstance is two representations of one deployment, and they drift in the direction that is hardest to notice: the declaration says what we meant and the unit says what runs, so an observation checked against the declaration passes while the host does something else. Rendering the unit FROM the instance means a disagreement has nowhere to live (DESIGN section 5, construction over validation) — the same move placement made when observed_cgroup went inside EndpointOwnerContext.\n\nWHAT THE RENDER IS GROUNDED ON. Not invention: a live sudo capture of srv1's running CI server on 2026-08-01, and the ctrl-sccache.service unit that already manages the SESSION instance on srv1 and srv2. Every line below either comes from a field of the instance or is a constant that capture showed present. The captured CI environment was exactly SCCACHE_DIR, SCCACHE_ERROR_LOG, SCCACHE_IDLE_TIMEOUT=0, SCCACHE_SERVER_UDS, SCCACHE_START_SERVER=1 and a SCCACHE_STARTUP_NOTIFY temp path — and that last one is the tell that no unit exists: it is created by connect_or_start on a first cache-miss compile, so the server was born from a runner's compile rather than started by systemd.\n\nTHE UID IS LOAD-BEARING AND IS NOT A HOST CONSTANT. ctrl-sccache.service's own header records why: the UDS is created srwxr-xr-x, so connect() requires write and only the owning uid may connect; a cross-uid client fails SILENTLY and falls back to a per-container server, which is a cache miss that looks like a cache. The captured CI server runs as ghrunner while the session server on the same host runs as briansrls, so the principal genuinely differs per INSTANCE on one host and must stay a field rather than a per-host constant."
 
@@ -9,7 +9,7 @@ data systemd_medium_as_string_note: String = "THE UNIT IS STILL A List<String>, 
 
 data absent_capacity_omits_the_line_note: String = "AN ABSENT CAPACITY OMITS THE LINE; IT DOES NOT RENDER A DEFAULT. BuildCacheInstance.intended_capacity is optional, and CI's is deliberately Absent because the live 10 GiB is sccache's own built-in default rather than a number anybody chose. The live capture SETTLED that this is the right reading: srv1's running CI server carries NO SCCACHE_CACHE_SIZE in its environment at all, so 10 GiB is genuinely a default and not a decision recorded elsewhere.\n\nRendering `SCCACHE_CACHE_SIZE=10G` for an Absent capacity would therefore fabricate a decision nobody made and, worse, FREEZE it: once the number is written into a generated unit it becomes indistinguishable from an intended one, and the tracked gap silently closes without anyone choosing a value. Omitting the line preserves the same behaviour the host has today — sccache applies its own default — while leaving the absence visible in the instance where it can still be counted. This is the one place in the render where doing less is the fail-closed choice."
 
-fn sccache_endpoint_env_line(instance: BuildCacheInstance) -> String {
+fn sccache_endpoint_env_line(instance: gunbc.build_cache_instance.BuildCacheInstance) -> String {
   match instance.endpoint {
     SccacheServerUnixSocket { path: p } =>
       concat("Environment=SCCACHE_SERVER_UDS=", p as String)
@@ -18,7 +18,7 @@ fn sccache_endpoint_env_line(instance: BuildCacheInstance) -> String {
   }
 }
 
-fn capacity_env_lines(instance: BuildCacheInstance) -> List<String> {
+fn capacity_env_lines(instance: gunbc.build_cache_instance.BuildCacheInstance) -> List<String> {
   match instance.intended_capacity {
     Absent => []
     Present { value: b } =>
@@ -26,13 +26,13 @@ fn capacity_env_lines(instance: BuildCacheInstance) -> List<String> {
   }
 }
 
-fn build_cache_unit_name(instance: BuildCacheInstance) -> NonEmptyStr {
+fn build_cache_unit_name(instance: gunbc.build_cache_instance.BuildCacheInstance) -> std.types.NonEmptyStr {
   instance.intended_unit
 }
 
 data unit_ordering_note: String = "THE ORDERING LINES ARE THE PHASE-3 REBIRTH GUARD, AND THEY ARE AN INTERIM RATHER THAN A WALL. A runner that starts before a managed cache exists will connect-or-start on its first cache-miss compile and adopt whatever cgroup it is in — which is exactly how srv1's server came to live in slot srv1-10 and how srv2's and srv3's came to live in active ones. Requires= plus After= on the runner template makes systemd refuse to start a runner whose cache unit failed, and orders it after the cache on boot.\n\nWHAT IT DOES NOT DO, stated so it is not read as the fix: systemd ordering constrains the BOOT and START path only. It does not prevent a runner already running from outliving a stopped cache unit, and it does not make a bad birth impossible — a runner started by hand with systemctl --no-block, or a cache unit that starts and then dies, both leave the window open. The construction-side answer is the activation admission in gunbc.runner_activation, which refuses to yield an enable command at all without a bound readiness receipt. These lines are defence in depth beneath that, with a bounded runway: they retire when activation withdrawal lands, so that a cache unit going away withdraws the admission that licensed the runners depending on it rather than merely failing to order them."
 
-fn runner_ordering_dropin_lines(instance: BuildCacheInstance) -> List<String> {
+fn runner_ordering_dropin_lines(instance: gunbc.build_cache_instance.BuildCacheInstance) -> List<String> {
   [
     "[Unit]",
     concat("Requires=", instance.intended_unit as String),
@@ -40,7 +40,7 @@ fn runner_ordering_dropin_lines(instance: BuildCacheInstance) -> List<String> {
   ]
 }
 
-fn render_build_cache_unit(instance: BuildCacheInstance) -> List<String> {
+fn render_build_cache_unit(instance: gunbc.build_cache_instance.BuildCacheInstance) -> List<String> {
   concat(
     [
       "[Unit]",
@@ -77,7 +77,7 @@ data foreground_supervision_note: String = "ExecStart IS BARE, AND THE ENV ASSIG
 // THE COMPILE-POOL SLICE, RENDERED FROM THE SAME AUTHORITY THAT SIZES IT. The slice's memory ceiling is not a number this module chooses: gunbc.fleet_host_budget derives it through compile_pool_bytes_for from extdeps.jobserver's jobserver_build_pool_bytes, the same cited knob that bounds build concurrency, so the pool holds exactly the compiles the jobserver admits. Taking the size as a parameter here rather than computing one keeps that single authority intact — this module renders, it does not decide.
 //
 // memory.max and memory.high are both set from it. max is the hard ceiling that actually bounds the cgroup; high is a throttling watermark the kernel permits to be exceeded. gunbc.host_compile_pool's readiness check compares the OBSERVED memory.max against the derived size for the same reason, so the render and the check agree on which of the two is the bound.
-fn render_compile_pool_slice(slice_unit: NonEmptyStr, sized: ByteSize) -> List<String> {
+fn render_compile_pool_slice(slice_unit: std.types.NonEmptyStr, sized: std.measure.ByteSize) -> List<String> {
   [
     "[Unit]",
     concat(concat("Description=gunbc managed compile pool ", slice_unit as String), " (parents every cache-miss compiler)"),

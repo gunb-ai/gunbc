@@ -1,7 +1,7 @@
 module gunbc.plans.idea_machine
 
 
-fn idea_machine_body() -> List<MarkdownBlock> {
+fn idea_machine_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** planning tracker · **DESIGN.md + carriers are authority** (§6). A task's real state is its branch/PR, not this file. Linked from `ROADMAP.md` §6 *idea → idea compiler*. No prior plan doc existed — the landed commits + carriers are the only authority; this collects them."),
     p(text: "**Carrier facts verified against the live tree 2026-06-21.** Re-check receipts before acting."),
@@ -42,7 +42,7 @@ fn idea_machine_body() -> List<MarkdownBlock> {
   ]
 }
 
-data idea_machine_plan: Plan = Plan {
+data idea_machine_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "idea-machine",
   title: "Plan — idea → idea compiler (the idea-machine)",
   body: idea_machine_body(),

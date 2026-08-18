@@ -18,7 +18,7 @@ data solarized_version: String = "1.0.0beta2"
 
 type SolarizedLadderStep {
   name: String
-  color: Srgb8
+  color: extdeps.color.srgb.Srgb8
 }
 
 type SolarizedBaseModePair {

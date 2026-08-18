@@ -46,7 +46,7 @@ service claim_executor.Executor {
       bin_path: std.types.FilePath
       source_roots: List<String>
       plan_entry: String
-      plan_function: PlanFunction
+      plan_function: gunbc.cli_invoke.PlanFunction
       notice_title: String?
     }
     output {

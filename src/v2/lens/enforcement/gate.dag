@@ -60,9 +60,9 @@ type IntentVerdict {
   self_application: LegVerdict
 }
 
-type ReceiptLookup = ReceiptFound { value: EnrollmentDiscoveryReceipt } | ReceiptAbsent
+type ReceiptLookup = ReceiptFound { value: v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt } | ReceiptAbsent
 
-type ContractLookup = ContractFound { value: LensContract } | ContractAbsent
+type ContractLookup = ContractFound { value: v2.lens.enforcement.contract.LensContract } | ContractAbsent
 
 fn leg_holds(l: LegVerdict) -> Bool {
   match l {

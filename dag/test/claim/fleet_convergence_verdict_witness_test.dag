@@ -3,12 +3,12 @@ module test.claim.fleet_convergence_verdict_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn no_receipts() -> List<ConvergeCliReceipt> {
+fn no_receipts() -> List<gunbc.fleet_converge_cli.ConvergeCliReceipt> {
   []
 }
 
-fn converged_receipt(host: String) -> ConvergeCliReceipt {
-  ConvergeCliReceipt { host: host, applied: 0, drifted: 0, verdict: VerdictConverged, reason: none }
+fn converged_receipt(host: String) -> gunbc.fleet_converge_cli.ConvergeCliReceipt {
+  gunbc.fleet_converge_cli.ConvergeCliReceipt { host: host, applied: 0, drifted: 0, verdict: VerdictConverged, reason: none }
 }
 
 // THE LAW: the live fleet, with its one real producer cell and zero knob receipts, is
@@ -35,7 +35,7 @@ test fn knob_receipts_alone_cannot_converge_the_fleet() -> Bool {
 
 // An empty enrollment is an observation gap, never a vacuously converged fleet.
 test fn empty_fleet_refuses_convergence() -> Bool {
-  let empty: List<HostEnrollmentIntent> = []
+  let empty: List<gunbc.host_assimilation_program.HostEnrollmentIntent> = []
   match fleet_convergence_verdict(enrollments: empty, receipts: no_receipts()) {
     FleetNotConverged { standings: ss } => length(ss) == 0
     FleetConverged { host_count: _ } => false
@@ -55,7 +55,7 @@ test fn knob_standing_three_arms_discriminate() -> Bool {
     }
     && match host_knob_standing(
       host: operator_host_srv1,
-      receipts: [ConvergeCliReceipt {
+      receipts: [gunbc.fleet_converge_cli.ConvergeCliReceipt {
         host: operator_host_srv1 as String,
         applied: 0,
         drifted: 1,
@@ -86,11 +86,11 @@ test fn cell_standings_discriminate_and_only_converged_counts() -> Bool {
 test fn duplicate_receipts_for_one_host_are_ambiguity_never_a_pick() -> Bool {
   let a = converged_receipt(host: "srv5")
   let b = converged_receipt(host: "srv5")
-  match host_knob_standing(host: "srv5" as HostIdentity, receipts: [a, b]) {
+  match host_knob_standing(host: "srv5" as product.placement_supply.HostIdentity, receipts: [a, b]) {
     KnobNotConverged { host: _, reason: r } => string_contains(s: r, pattern: "ambiguous")
     _ => false
   }
-    && match host_knob_standing(host: "srv5" as HostIdentity, receipts: [a]) {
+    && match host_knob_standing(host: "srv5" as product.placement_supply.HostIdentity, receipts: [a]) {
       KnobConverged { host: _ } => true
       _ => false
     }

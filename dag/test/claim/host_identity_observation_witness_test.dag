@@ -2,14 +2,14 @@ module test.claim.host_identity_observation_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn srv1_os_target() -> NodeControlPlane {
+fn srv1_os_target() -> gunbc.host_effect.NodeControlPlane {
   HostOs { node: srv1_host }
 }
 
-fn require_dns_label(raw: String) -> DnsLabel {
+fn require_dns_label(raw: String) -> extdeps.dns.domain_name.DnsLabel {
   match parse_dns_label_raw(raw: raw) {
     Ok { value: label } => label
-    Err { value: _ } => "unreachable" as DnsLabel
+    Err { value: _ } => "unreachable" as extdeps.dns.domain_name.DnsLabel
   }
 }
 
@@ -29,8 +29,8 @@ test fn witness_hostname_read_resolves_typed_cell_not_shell_script() -> Bool {
 }
 
 test fn witness_hostname_set_argv_is_typed_not_concat() -> Bool {
-  hostname_set_operation_argv_matches_authority(desired: "srv9" as DnsLabel)
-    && join(hostname_set_operation_argv(desired: "srv9" as DnsLabel), " ") == "hostnamectl set-hostname srv9"
+  hostname_set_operation_argv_matches_authority(desired: "srv9" as extdeps.dns.domain_name.DnsLabel)
+    && join(hostname_set_operation_argv(desired: "srv9" as extdeps.dns.domain_name.DnsLabel), " ") == "hostnamectl set-hostname srv9"
 }
 
 test fn witness_hostname_set_resolves_typed_cell_not_shell_script() -> Bool {
@@ -38,8 +38,8 @@ test fn witness_hostname_set_resolves_typed_cell_not_shell_script() -> Bool {
     target: srv1_os_target(),
     effect: SetHostnameCas {
       hostnamectl_path: host_identity_hostnamectl_path,
-      base: "localhost" as DnsLabel,
-      desired: "srv9" as DnsLabel,
+      base: "localhost" as extdeps.dns.domain_name.DnsLabel,
+      desired: "srv9" as extdeps.dns.domain_name.DnsLabel,
     },
   ) {
     HostnameOnHost { node: _, hostnamectl_path: _, base: _, desired: _ } => true
@@ -50,7 +50,7 @@ test fn witness_hostname_set_resolves_typed_cell_not_shell_script() -> Bool {
 test fn witness_hostname_set_privileged_argv_matches_fleet_grant() -> Bool {
   hostname_set_privileged_operation_argv_matches_fleet_grant(
     hostnamectl_path: host_identity_hostnamectl_path,
-    desired: "srv9" as DnsLabel,
+    desired: "srv9" as extdeps.dns.domain_name.DnsLabel,
   )
 }
 
@@ -58,11 +58,11 @@ test fn witness_hostname_set_cas_refuses_base_mismatch() -> Bool {
   match hostname_set_cas(
     hostnamectl_path: host_identity_hostnamectl_path,
     transport: LocalShell,
-    base: "altrad8ud-1l2t-1" as DnsLabel,
-    desired: operator_host_srv1 as DnsLabel,
+    base: "altrad8ud-1l2t-1" as extdeps.dns.domain_name.DnsLabel,
+    desired: operator_host_srv1 as extdeps.dns.domain_name.DnsLabel,
   ) {
     HostnameSetCasBaseMismatch { observed: o, base: b } =>
-      o == "localhost" && b == "altrad8ud-1l2t-1" as DnsLabel
+      o == "localhost" && b == "altrad8ud-1l2t-1" as extdeps.dns.domain_name.DnsLabel
     _ => false
   }
 }
@@ -141,7 +141,7 @@ test fn witness_srv2_persisted_base_records_typo_hostname() -> Bool {
 }
 
 test fn witness_design_intent_conflation_red() -> Bool {
-  let wrong_row = HostIdentityObservationRow {
+  let wrong_row = gunbc.host_identity_observation.HostIdentityObservationRow {
     short_hostname_raw: operator_host_srv1,
     probed_at: "2026-07-02",
   }
@@ -225,7 +225,7 @@ test fn witness_desired_hostname_comes_from_allocation_not_slot_spelling() -> Bo
 }
 
 test fn witness_unallocated_fleet_slot_has_no_hostname() -> Bool {
-  match canonical_hostname_for_fleet_slot(fleet_slot: "srv9" as HostIdentity) {
+  match canonical_hostname_for_fleet_slot(fleet_slot: "srv9" as product.placement_supply.HostIdentity) {
     Absent => true
     Present { value: _ } => false
   }
@@ -294,7 +294,7 @@ test fn witness_conflict_plan_has_no_effect_script_structural_no_shell() -> Bool
           let verdict = host_identity_precondition_verdict(base: base, observed: obs, desired: desired)
           let plan = host_identity_plan_from_verdict(
             verdict: verdict,
-            base: deployed_intent_observed_short_hostname(d: base) as DnsLabel,
+            base: deployed_intent_observed_short_hostname(d: base) as extdeps.dns.domain_name.DnsLabel,
             desired: desired.desired_hostname_short,
           )
           match host_identity_apply_gated(
@@ -315,7 +315,7 @@ test fn witness_conflict_plan_has_no_effect_script_structural_no_shell() -> Bool
 }
 
 test fn witness_converge_from_base_conflict_is_none_red() -> Bool {
-  let target = HostIdentityAssimilationTarget {
+  let target = gunbc.host_identity_assimilation.HostIdentityAssimilationTarget {
     fleet_slot: gunbc_srv1_deployed_intent_v0_persisted.fleet_slot,
     target_host: srv1_host,
     control_plane: srv1_os_target(),
@@ -332,7 +332,7 @@ test fn witness_converge_from_base_conflict_is_none_red() -> Bool {
             target: target,
             desired: desired,
             precondition_obs: obs,
-            probed_at: "2026-07-02" as NonEmptyStr,
+            probed_at: "2026-07-02" as std.types.NonEmptyStr,
           ) {
             Absent => true
             Present { value: _ } => false
@@ -347,7 +347,7 @@ data host_identity_mutation_marker: String = "host-identity-mutation-marker-9c2e
 
 test fn witness_unprivileged_refusal_no_shell() -> Bool {
   let plan = ApplyPlan {
-    base: deployed_intent_observed_short_hostname(d: gunbc_srv1_deployed_intent_v0_persisted) as DnsLabel,
+    base: deployed_intent_observed_short_hostname(d: gunbc_srv1_deployed_intent_v0_persisted) as extdeps.dns.domain_name.DnsLabel,
     desired: require_dns_label(raw: operator_host_srv1 as String),
   }
   match host_identity_apply_gated(

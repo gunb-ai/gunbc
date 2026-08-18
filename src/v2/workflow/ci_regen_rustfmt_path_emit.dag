@@ -6,14 +6,14 @@ data ci_regen_rustfmt_path_emit_authority_note: String = "Foreign-executor shell
 
 data ci_regen_rustfmt_path_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ regen rustfmt-PATH run-step emission was rejected by v2.compiler.emit_orchestration; this marker is not valid workflow shell, so the committed ci.yml drift gate goes red rather than a hand-spelled fallback masking the refusal (DESIGN 5: refuse, never widen)\n"
 
-data ci_regen_ensure_rustfmt_path_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_regen_ensure_rustfmt_path_script — foreign-executor PATH ensure for regen_stage0 on hosts with a cargo shim and no CARGO_HOME/bin (receipt CI #7290 srv3-03); control flow is If/Predicate/Exit/Let via orch bash-emit; leaf test -x / command -v / export PATH / dirname strings remain until FileExists + session-EnvExport (PR2b) or the regen job shares isolate+pin by construction; DISSOLVES WHEN rustfmt resolution is a typed toolchain probe on host_effect_apply rather than emitted bash (#5828 / ROADMAP 6-shell-slice0)")
+data ci_regen_ensure_rustfmt_path_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_regen_ensure_rustfmt_path_script — foreign-executor PATH ensure for regen_stage0 on hosts with a cargo shim and no CARGO_HOME/bin (receipt CI #7290 srv3-03); control flow is If/Predicate/Exit/Let via orch bash-emit; leaf test -x / command -v / export PATH / dirname strings remain until FileExists + session-EnvExport (PR2b) or the regen job shares isolate+pin by construction; DISSOLVES WHEN rustfmt resolution is a typed toolchain probe on host_effect_apply rather than emitted bash (#5828 / ROADMAP 6-shell-slice0)")
 
 data ci_regen_ensure_rustfmt_path_note: String = "Prepend a locatable rustfmt dir onto PATH before regen_stage0's standalone rustfmt spawn (hosts that expose a cargo shim without CARGO_HOME/bin — receipt CI #7290 srv3-03). Probe order: CARGO_HOME/bin, /opt/cargo/bin, HOME/.cargo/bin, rustup which; refuse if still absent."
 
-data ci_regen_rustfmt_unpinned_frontier: UnpinnedToolFrontierRow = UnpinnedToolFrontierRow {
+data ci_regen_rustfmt_unpinned_frontier: gunbc.tool_readiness.UnpinnedToolFrontierRow = gunbc.tool_readiness.UnpinnedToolFrontierRow {
   tool: rustfmt_cli_tool,
   reason: "The current foreign-executor handler can establish presence but cannot author a stable expected executable identity until toolchain-rust-hermetic provisions rustfmt into the declared repo-local root.",
-  trigger: DeclarationRef {
+  trigger: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_regen_rustfmt_path_emit",
     decl_name: "ci_regen_ensure_rustfmt_path_script",
     field: WholeDeclaration
@@ -78,22 +78,22 @@ fn ci_regen_rustfmt_rustup_which_assign() -> String {
   )
 }
 
-data ci_regen_ensure_rustfmt_path_shell_emit_scaffold: Disposition = Scaffold {
+data ci_regen_ensure_rustfmt_path_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_regen_rustfmt_path_emit",
     decl_name: "ci_regen_ensure_rustfmt_path_script",
     field: WholeDeclaration
   }
 }
 
-fn ci_regen_rustfmt_exit_zero(command: String) -> Predicate {
+fn ci_regen_rustfmt_exit_zero(command: String) -> v2.std.orchestration.Predicate {
   ExitZero { run: orch_bash_run(command: command) }
 }
 
-fn ci_regen_rustfmt_command_v_ok() -> Predicate {
+fn ci_regen_rustfmt_command_v_ok() -> v2.std.orchestration.Predicate {
   ExitZero {
-    run: Run {
+    run: v2.std.orchestration.Run {
       command: ci_regen_rustfmt_command_v(),
       env: [],
       redirect: Present { value: DiscardAll },
@@ -102,22 +102,22 @@ fn ci_regen_rustfmt_command_v_ok() -> Predicate {
   }
 }
 
-fn ci_regen_rustfmt_command_v_missing() -> Predicate {
+fn ci_regen_rustfmt_command_v_missing() -> v2.std.orchestration.Predicate {
   Not { inner: ci_regen_rustfmt_command_v_ok() }
 }
 
-fn ci_regen_rustfmt_export_step(command: String) -> PipelineStep {
+fn ci_regen_rustfmt_export_step(command: String) -> v2.std.orchestration.PipelineStep {
   orch_bash_do(command: command)
 }
 
-fn ci_regen_rustfmt_one_step(command: String) -> Pipeline {
-  Pipeline {
+fn ci_regen_rustfmt_one_step(command: String) -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [ci_regen_rustfmt_export_step(command: command)],
     on_failure: FailFast
   }
 }
 
-fn ci_regen_rustfmt_probe_cargo_home_step() -> PipelineStep {
+fn ci_regen_rustfmt_probe_cargo_home_step() -> v2.std.orchestration.PipelineStep {
   If {
     cond: And {
       lhs: StrNonempty { operand: "\"$CARGO_HOME\"" },
@@ -128,7 +128,7 @@ fn ci_regen_rustfmt_probe_cargo_home_step() -> PipelineStep {
   }
 }
 
-fn ci_regen_rustfmt_probe_opt_cargo_step() -> PipelineStep {
+fn ci_regen_rustfmt_probe_opt_cargo_step() -> v2.std.orchestration.PipelineStep {
   If {
     cond: And {
       lhs: ci_regen_rustfmt_command_v_missing(),
@@ -139,7 +139,7 @@ fn ci_regen_rustfmt_probe_opt_cargo_step() -> PipelineStep {
   }
 }
 
-fn ci_regen_rustfmt_probe_home_cargo_step() -> PipelineStep {
+fn ci_regen_rustfmt_probe_home_cargo_step() -> v2.std.orchestration.PipelineStep {
   If {
     cond: And {
       lhs: ci_regen_rustfmt_command_v_missing(),
@@ -150,9 +150,9 @@ fn ci_regen_rustfmt_probe_home_cargo_step() -> PipelineStep {
   }
 }
 
-fn ci_regen_rustfmt_rustup_which_bind_step() -> PipelineStep {
+fn ci_regen_rustfmt_rustup_which_bind_step() -> v2.std.orchestration.PipelineStep {
   Do {
-    run: Run {
+    run: v2.std.orchestration.Run {
       command: ci_regen_rustfmt_rustup_which_assign(),
       env: [],
       redirect: Present { value: DiscardErr },
@@ -161,7 +161,7 @@ fn ci_regen_rustfmt_rustup_which_bind_step() -> PipelineStep {
   }
 }
 
-fn ci_regen_rustfmt_dirname_rf_step() -> PipelineStep {
+fn ci_regen_rustfmt_dirname_rf_step() -> v2.std.orchestration.PipelineStep {
   Let {
     name: "RF_DIR",
     value: ExprCmdSubst {
@@ -171,8 +171,8 @@ fn ci_regen_rustfmt_dirname_rf_step() -> PipelineStep {
   }
 }
 
-fn ci_regen_rustfmt_probe_rustup_then() -> Pipeline {
-  Pipeline {
+fn ci_regen_rustfmt_probe_rustup_then() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [
       ci_regen_rustfmt_rustup_which_bind_step(),
       If {
@@ -180,7 +180,7 @@ fn ci_regen_rustfmt_probe_rustup_then() -> Pipeline {
           lhs: StrNonempty { operand: "\"$RF\"" },
           rhs: ci_regen_rustfmt_exit_zero(command: ci_regen_rustfmt_test_x_rf)
         },
-        then_: Pipeline {
+        then_: v2.std.orchestration.Pipeline {
           steps: [
             ci_regen_rustfmt_dirname_rf_step(),
             ci_regen_rustfmt_export_step(command: ci_regen_rustfmt_export_rf_dir_path)
@@ -194,7 +194,7 @@ fn ci_regen_rustfmt_probe_rustup_then() -> Pipeline {
   }
 }
 
-fn ci_regen_rustfmt_probe_rustup_step() -> PipelineStep {
+fn ci_regen_rustfmt_probe_rustup_step() -> v2.std.orchestration.PipelineStep {
   If {
     cond: ci_regen_rustfmt_command_v_missing(),
     then_: ci_regen_rustfmt_probe_rustup_then(),
@@ -202,10 +202,10 @@ fn ci_regen_rustfmt_probe_rustup_step() -> PipelineStep {
   }
 }
 
-fn ci_regen_rustfmt_require_step() -> PipelineStep {
+fn ci_regen_rustfmt_require_step() -> v2.std.orchestration.PipelineStep {
   If {
     cond: ci_regen_rustfmt_command_v_missing(),
-    then_: Pipeline {
+    then_: v2.std.orchestration.Pipeline {
       steps: [
         orch_bash_do(command: ci_regen_rustfmt_error_echo()),
         Exit { status: "1" }
@@ -216,8 +216,8 @@ fn ci_regen_rustfmt_require_step() -> PipelineStep {
   }
 }
 
-fn ci_regen_ensure_rustfmt_path_intent() -> Pipeline {
-  Pipeline {
+fn ci_regen_ensure_rustfmt_path_intent() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [
       orch_bash_comment_line(text: dissolution_description(condition: ci_regen_ensure_rustfmt_path_shell_emit_dissolution_trigger)),
       orch_bash_comment_line(text: ci_regen_ensure_rustfmt_path_note),

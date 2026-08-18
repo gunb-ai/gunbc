@@ -2,7 +2,7 @@ module v2.test.claim.self_host.native_agreement_test
 
 
 test fn native_agreement_divergence_format_holds() -> Bool {
-  let d = NativeAgreementDivergence {
+  let d = v2.std.native_agreement.NativeAgreementDivergence {
     member_id: "meet",
     interpreted_value: "1",
     native_value: "0"
@@ -15,7 +15,7 @@ test fn native_agreement_failure_receipt_empty_when_clean_holds() -> Bool {
 }
 
 test fn native_agreement_failure_receipt_names_divergence_holds() -> Bool {
-  let d = NativeAgreementDivergence {
+  let d = v2.std.native_agreement.NativeAgreementDivergence {
     member_id: "join",
     interpreted_value: "1",
     native_value: "0"

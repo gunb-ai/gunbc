@@ -5,15 +5,15 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data witness_note: String = "Terminal-wire acceptance for the observation P2 prerequisite. These rows discriminate exact ECMA-48 bytes and the next-state transition for every cursor action, including downgrade and contradiction arms. The renderer supplies text; project_terminal_write is the sole owner of CR, LF, and erase-line control spelling."
 
-fn addressable() -> RenderCapability {
-  RenderCapability { color: false, tier: Ascii, cursor_addressable: true }
+fn addressable() -> std.render.RenderCapability {
+  std.render.RenderCapability { color: false, tier: Ascii, cursor_addressable: true }
 }
 
-fn nonaddressable() -> RenderCapability {
-  RenderCapability { color: false, tier: Ascii, cursor_addressable: false }
+fn nonaddressable() -> std.render.RenderCapability {
+  std.render.RenderCapability { color: false, tier: Ascii, cursor_addressable: false }
 }
 
-fn projected_is(p: TerminalWriteProjection, bytes: String, next: DynamicLineState) -> Bool {
+fn projected_is(p: extdeps.render.terminal.TerminalWriteProjection, bytes: String, next: extdeps.render.terminal.DynamicLineState) -> Bool {
   match p {
     TerminalWriteProjected { bytes: b, next: n } => b == bytes && n == next
     TerminalWriteRefused { cause: _ } => false

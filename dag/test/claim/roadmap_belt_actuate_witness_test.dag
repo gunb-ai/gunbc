@@ -3,11 +3,11 @@ module test.claim.roadmap_belt_actuate_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn roadmap_belt_actuate_nid(s: String) -> RoadmapNodeId { s }
+fn roadmap_belt_actuate_nid(s: String) -> gunbc.roadmap_model.RoadmapNodeId { s }
 
-fn ready_node(id: String) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_RWT4XRCGS4GR90YZXK0Y" as RoadmapNodeIdentity,
+fn ready_node(id: String) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_RWT4XRCGS4GR90YZXK0Y" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: roadmap_belt_actuate_nid(s: id),
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
@@ -18,8 +18,8 @@ fn ready_node(id: String) -> RoadmapNode {
   }
 }
 
-fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSession {
-  DispatchLiveSession {
+fn live_session(node_id: String, verdict: std.upsert_decision.ObservationVerdict) -> gunbc.roadmap_dispatch_actuator.DispatchLiveSession {
+  gunbc.roadmap_dispatch_actuator.DispatchLiveSession {
     session_name: "gunbc-dispatch-{node_id}",
     node_id: node_id,
     windows: 1,
@@ -32,9 +32,9 @@ fn live_session(node_id: String, verdict: ObservationVerdict) -> DispatchLiveSes
 
 fn live_session_with_process(
   node_id: String,
-  process: WorkerProcessEvidence,
-) -> DispatchLiveSession {
-  DispatchLiveSession {
+  process: gunbc.worker_lifecycle.WorkerProcessEvidence,
+) -> gunbc.roadmap_dispatch_actuator.DispatchLiveSession {
+  gunbc.roadmap_dispatch_actuator.DispatchLiveSession {
     session_name: "gunbc-dispatch-{node_id}",
     node_id: node_id,
     windows: 1,
@@ -46,7 +46,7 @@ fn live_session_with_process(
   }
 }
 
-fn is_exec_ok(o: BeltExecOutcome) -> Bool {
+fn is_exec_ok(o: gunbc.roadmap_belt_actuate.BeltExecOutcome) -> Bool {
   match o {
     ExecOk { stdout: _ } => true
     ExecFailed { program: _, exit_code: _, stderr: _ } => false
@@ -54,7 +54,7 @@ fn is_exec_ok(o: BeltExecOutcome) -> Bool {
   }
 }
 
-fn exec_ok_stdout_contains(o: BeltExecOutcome, pattern: String) -> Bool {
+fn exec_ok_stdout_contains(o: gunbc.roadmap_belt_actuate.BeltExecOutcome, pattern: String) -> Bool {
   match o {
     ExecOk { stdout: out } => string_contains(s: out, pattern: pattern)
     ExecFailed { program: _, exit_code: _, stderr: _ } => false
@@ -62,7 +62,7 @@ fn exec_ok_stdout_contains(o: BeltExecOutcome, pattern: String) -> Bool {
   }
 }
 
-fn is_exec_failed(o: BeltExecOutcome) -> Bool {
+fn is_exec_failed(o: gunbc.roadmap_belt_actuate.BeltExecOutcome) -> Bool {
   match o {
     ExecFailed { program: _, exit_code: _, stderr: _ } => true
     ExecOk { stdout: _ } => false
@@ -70,7 +70,7 @@ fn is_exec_failed(o: BeltExecOutcome) -> Bool {
   }
 }
 
-fn is_exec_refused(o: BeltExecOutcome) -> Bool {
+fn is_exec_refused(o: gunbc.roadmap_belt_actuate.BeltExecOutcome) -> Bool {
   match o {
     ExecRefused { program: _, reason: _ } => true
     ExecOk { stdout: _ } => false
@@ -78,14 +78,14 @@ fn is_exec_refused(o: BeltExecOutcome) -> Bool {
   }
 }
 
-fn is_spawn_failed(o: BeltSpawnOutcome) -> Bool {
+fn is_spawn_failed(o: gunbc.roadmap_belt_actuate.BeltSpawnOutcome) -> Bool {
   match o {
     SpawnFailed { node_id: _, step: _, detail: _, provider: _ } => true
     Spawned { node_id: _, session_name: _, provider: _ } => false
   }
 }
 
-fn is_teardown_failed(o: BeltTeardownOutcome) -> Bool {
+fn is_teardown_failed(o: gunbc.roadmap_belt_actuate.BeltTeardownOutcome) -> Bool {
   match o {
     TeardownFailed { session_name: _, detail: _ } => true
     ReapedSession { session_name: _ } => false
@@ -146,15 +146,15 @@ test fn witness_exec_all_fails_on_later_step() -> Bool {
 test fn witness_named_exec_steps_locate_the_first_failure() -> Bool {
   match belt_exec_steps(
     steps: [
-      BeltExecStep {
+      gunbc.roadmap_belt_actuate.BeltExecStep {
         step: "prepare",
         command: host_exec_argv(program: "/usr/bin/true", args: []),
       },
-      BeltExecStep {
+      gunbc.roadmap_belt_actuate.BeltExecStep {
         step: "tmux-event-pipe",
         command: host_exec_argv(program: "/usr/bin/false", args: []),
       },
-      BeltExecStep {
+      gunbc.roadmap_belt_actuate.BeltExecStep {
         step: "provider-start",
         command: host_exec_argv(program: "/usr/bin/true", args: []),
       },
@@ -178,14 +178,14 @@ test fn witness_teardown_member_refuses_desired_shape() -> Bool {
   is_teardown_failed(o: belt_actuate_teardown_member(m: m))
 }
 
-fn observe_live_count(o: BeltObserve) -> Int {
+fn observe_live_count(o: gunbc.roadmap_belt_actuate.BeltObserve) -> Int {
   match o {
     Observed { live: live } => count(live)
     ObserveRefused { reason: _ } => -1
   }
 }
 
-fn is_observe_refused(o: BeltObserve) -> Bool {
+fn is_observe_refused(o: gunbc.roadmap_belt_actuate.BeltObserve) -> Bool {
   match o {
     ObserveRefused { reason: _ } => true
     Observed { live: _ } => false
@@ -292,7 +292,7 @@ test fn witness_uuid_rfc4122_shape() -> Bool {
     && uuid_char(u: u, i: 19) == "8"
 }
 
-fn is_node_found(l: BeltNodeLookup) -> Bool {
+fn is_node_found(l: gunbc.roadmap_belt_actuate.BeltNodeLookup) -> Bool {
   match l {
     NodeFound { node: _ } => true
     NodeMissing => false
@@ -308,9 +308,9 @@ test fn witness_find_node_misses() -> Bool {
   !is_node_found(l: belt_find_node_in(nodes: [ready_node(id: "a"), ready_node(id: "b")], node_id: "z"))
 }
 
-fn owned_node(id: String, owner: String) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_F2RWDMNTDKS0ZR1P4VNZ" as RoadmapNodeIdentity,
+fn owned_node(id: String, owner: String) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_F2RWDMNTDKS0ZR1P4VNZ" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: roadmap_belt_actuate_nid(s: id),
     line: DerivableLine { prs: [1], title: id, description: "" },
     carriers: [],
@@ -321,7 +321,7 @@ fn owned_node(id: String, owner: String) -> RoadmapNode {
   }
 }
 
-fn found_owner(l: BeltNodeLookup) -> String {
+fn found_owner(l: gunbc.roadmap_belt_actuate.BeltNodeLookup) -> String {
   match l {
     NodeFound { node: n } => n.owner
     NodeMissing => ""
@@ -347,7 +347,7 @@ test fn witness_node_session_running_is_live() -> Bool {
   match belt_node_session_liveness(
     live: [live_session_with_process(
       node_id: "a",
-      process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
+      process: WorkerProcessRunning { command: "codex" as std.types.NonEmptyStr },
     )],
     node_id: "a",
   ) {
@@ -360,7 +360,7 @@ test fn witness_node_session_absent_is_not_live() -> Bool {
   match belt_node_session_liveness(
     live: [live_session_with_process(
       node_id: "a",
-      process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
+      process: WorkerProcessRunning { command: "codex" as std.types.NonEmptyStr },
     )],
     node_id: "b",
   ) {
@@ -402,7 +402,7 @@ test fn witness_session_liveness_is_four_valued() -> Bool {
   let running = belt_node_session_liveness(
     live: [live_session_with_process(
       node_id: "a",
-      process: WorkerProcessRunning { command: "codex" as NonEmptyStr },
+      process: WorkerProcessRunning { command: "codex" as std.types.NonEmptyStr },
     )],
     node_id: "a",
   )
@@ -445,7 +445,7 @@ test fn witness_dispatch_result_refusals_not_ok() -> Bool {
     && !belt_dispatch_result_ok(r: DispatchSpawnFailed { node_id: "a", step: "git", detail: "x", provider: "codex" })
 }
 
-fn status_label_glued_to_ok(r: BeltDispatchResult) -> Bool {
+fn status_label_glued_to_ok(r: gunbc.roadmap_belt_actuate.BeltDispatchResult) -> Bool {
   let ok = belt_dispatch_result_ok(r: r)
   let label_in_ok_set = any(belt_dispatch_ok_status_labels(), l => l == belt_dispatch_status_label(r: r))
   ok == label_in_ok_set
@@ -544,7 +544,7 @@ fn d4_wire_contract_labels() -> List<String> {
   ]
 }
 
-fn d4_exemplars_reconcile(exemplars: List<BeltDispatchResult>) -> Bool {
+fn d4_exemplars_reconcile(exemplars: List<gunbc.roadmap_belt_actuate.BeltDispatchResult>) -> Bool {
   map(exemplars, r => belt_dispatch_status_label(r: r)) == d4_wire_contract_labels()
 }
 
@@ -553,7 +553,7 @@ test fn witness_exemplar_roster_reconciles_variant_set() -> Bool {
     && belt_dispatch_all_status_labels() == d4_wire_contract_labels()
 }
 
-fn d4_exemplars_missing_one() -> List<BeltDispatchResult> {
+fn d4_exemplars_missing_one() -> List<gunbc.roadmap_belt_actuate.BeltDispatchResult> {
   [
     DispatchSpawned { node_id: "a", session_name: "s", provider: "codex" },
     DispatchAlreadyLive { node_id: "a", session_name: "s" },
@@ -568,14 +568,14 @@ test fn witness_exemplar_roster_missing_variant_reds() -> Bool {
   !d4_exemplars_reconcile(exemplars: d4_exemplars_missing_one())
 }
 
-fn preflight_refused_step(p: BeltClaudePreflight) -> String {
+fn preflight_refused_step(p: gunbc.roadmap_belt_actuate.BeltClaudePreflight) -> String {
   match p {
     ClaudePreflightRefused { step: st, detail: _ } => st
     ClaudePreflightOk => ""
   }
 }
 
-fn preflight_ok(p: BeltClaudePreflight) -> Bool {
+fn preflight_ok(p: gunbc.roadmap_belt_actuate.BeltClaudePreflight) -> Bool {
   match p {
     ClaudePreflightOk => true
     ClaudePreflightRefused { step: _, detail: _ } => false
@@ -586,7 +586,7 @@ fn seeded_trust_config() -> String {
   "\{\"projects\":\{\"/opt/x/worktrees\":\{\"hasTrustDialogAccepted\":true\}\}\}"
 }
 
-fn preflight_with_config(config: String) -> BeltClaudePreflight {
+fn preflight_with_config(config: String) -> gunbc.roadmap_belt_actuate.BeltClaudePreflight {
   belt_claude_preflight_decision(
     claude_on_path: true,
     home: "/home/u",
@@ -649,7 +649,7 @@ test fn witness_preflight_ok_on_enriched_entry() -> Bool {
   ))
 }
 
-fn codex_preflight_refused_step(p: BeltCodexPreflight) -> String {
+fn codex_preflight_refused_step(p: gunbc.roadmap_belt_actuate.BeltCodexPreflight) -> String {
   match p {
     CodexPreflightRefused { step: st, detail: _ } => st
     CodexPreflightOk { auth_method: _ } => ""
@@ -771,11 +771,11 @@ data oracle_refs_execution_note: String = "This witness exists because its subje
 test fn oracle_refs_projection_runs_and_selects_pinnable_scopes() -> Bool {
   let claim_contract = gunbc_claim_execution_contract(
     entry: "dag/test/claim/probe_witness_test.dag" as std.types.FilePath,
-    function: "probe_holds" as NonEmptyStr,
+    function: "probe_holds" as std.types.NonEmptyStr,
   )
   let claim_refs = belt_oracle_refs_for_contract(contract: claim_contract)
   let cargo_refs = belt_oracle_refs_for_contract(
-    contract: cargo_test_execution_contract(filter: "roadmap_" as NonEmptyStr),
+    contract: cargo_test_execution_contract(filter: "roadmap_" as std.types.NonEmptyStr),
   )
   let unspecified_refs = belt_oracle_refs_for_contract(
     contract: ExecutionContractUnspecified,
@@ -793,21 +793,21 @@ test fn oracle_refs_projection_runs_and_selects_pinnable_scopes() -> Bool {
 
 data unreadable_receipt_refuses_note: String = "review 45271, updated for exact-head wiring. The belt now observes the worktree head before reading a receipt, so an instance with no attempt filesystem cannot reach the unreadable-receipt arm through a failed legacy read alone. This witness instead drives the real fn against srv2 preview where neither the node nor the worktree exist, and asserts verification defers with an exact-head or missing-node reason rather than actuating against an unobserved subject."
 
-data fixture_verification_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
+data fixture_verification_head: std.types.CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as std.types.CommitSha
 
-fn fixture_verification_subject(node_id: String) -> VerificationSubject {
-  VerificationSubject {
-    node_identity: node_id as NonEmptyStr as RoadmapNodeIdentity,
+fn fixture_verification_subject(node_id: String) -> gunbc.roadmap_verification_receipt.VerificationSubject {
+  gunbc.roadmap_verification_receipt.VerificationSubject {
+    node_identity: node_id as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeIdentity,
     criteria_digest: content_hash_atom(value: "belt-actuate-fixture"),
     attempt_key: "feedfacefeedface",
-    branch: join(["dispatch/", node_id, "-afeedfacefeedface"], "") as NonEmptyStr,
+    branch: join(["dispatch/", node_id, "-afeedfacefeedface"], "") as std.types.NonEmptyStr,
     head_sha: fixture_verification_head,
     change_window_identity: git_diff_window_absent_identity(),
   }
 }
 
-fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
-  workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+fn completed_attempt_progress(node_id: String) -> gunbc.roadmap_workflow_progress.WorkflowAttemptProgress {
+  workflow_attempt_progress(evidence: gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
     node_id: node_id,
     attempt_key: "feedfacefeedface",
     branch: join(["dispatch/", node_id, "-afeedfacefeedface"], ""),
@@ -830,19 +830,19 @@ fn completed_attempt_progress(node_id: String) -> WorkflowAttemptProgress {
     },
     verification_source: VerificationReceiptAbsent,
     publication_subject: PublicationSubjectObserved {
-      subject: RoadmapPublicationSubject {
+      subject: gunbc.roadmap_publish.RoadmapPublicationSubject {
         node_id: "pub-fixture-node",
         attempt_key: "feedfacefeedface",
-        repository: Repository {
+        repository: extdeps.github.github.Repository {
           owner: "gunb-ai",
           name: "gunbc",
           full_name: "gunb-ai/gunbc",
           private: false,
           default_branch: "main",
         },
-        branch: "dispatch/pub-fixture-node-afeedfacefeedface" as NonEmptyStr,
-        expected_base: "main" as NonEmptyStr,
-        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
+        branch: "dispatch/pub-fixture-node-afeedfacefeedface" as std.types.NonEmptyStr,
+        expected_base: "main" as std.types.NonEmptyStr,
+        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as std.types.CommitSha,
       },
     },
     publication_source: ReceiptSourceAbsent,
@@ -887,7 +887,7 @@ test fn verify_without_observable_subject_defers_instead_of_rerunning() -> Bool 
 test fn agent_incomplete_attempt_defers_verification() -> Bool {
   match belt_verify_attempt_for_instance(
     instance: srv2_preview_dashboard_instance(),
-    progress: workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+    progress: workflow_attempt_progress(evidence: gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
       node_id: "belt-verify-running-node",
       attempt_key: "feedfacefeedface",
       branch: "dispatch/belt-verify-running-node-afeedfacefeedface",
@@ -907,19 +907,19 @@ test fn agent_incomplete_attempt_defers_verification() -> Bool {
       verification_selection: SelectionAbsent,
       verification_source: VerificationReceiptAbsent,
       publication_subject: PublicationSubjectObserved {
-        subject: RoadmapPublicationSubject {
+        subject: gunbc.roadmap_publish.RoadmapPublicationSubject {
           node_id: "pub-fixture-node",
           attempt_key: "feedfacefeedface",
-          repository: Repository {
+          repository: extdeps.github.github.Repository {
             owner: "gunb-ai",
             name: "gunbc",
             full_name: "gunb-ai/gunbc",
             private: false,
             default_branch: "main",
           },
-          branch: "dispatch/pub-fixture-node-afeedfacefeedface" as NonEmptyStr,
-          expected_base: "main" as NonEmptyStr,
-          expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
+          branch: "dispatch/pub-fixture-node-afeedfacefeedface" as std.types.NonEmptyStr,
+          expected_base: "main" as std.types.NonEmptyStr,
+          expected_head: "cafecafecafecafecafecafecafecafecafecafe" as std.types.CommitSha,
         },
       },
       publication_source: ReceiptSourceAbsent,
@@ -990,7 +990,7 @@ test fn known_spawn_workdirs_resolve_to_distinct_instances() -> Bool {
 data belt_tick_decouple_witness_note: String = "RED control (operator P1, 2026-08-02): a tmux-list refusal must NOT zero the verify pass. The defect class was belt_tick returning empty verify_outcomes on ObserveRefused — an absorbing fallback that made the whole tick look like verification never ran. The witness constructs the post-fix shape synthetically: spawn_pass is Refused while verify_pass is still Recorded when verify outcomes exist."
 
 test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
-  let result = BeltTickResult {
+  let result = gunbc.roadmap_belt_actuate.BeltTickResult {
     observe_refused: true,
     observe_refusal_reason: "belt_observe: tmux ls failed; session containers are unknowable",
     reconcile: belt_tick_empty_reconcile(state: Running),
@@ -1020,7 +1020,7 @@ test fn observe_refused_spawn_does_not_zero_verify_pass() -> Bool {
 }
 
 test fn observe_refused_with_empty_verify_is_deferred_not_recorded() -> Bool {
-  let result = BeltTickResult {
+  let result = gunbc.roadmap_belt_actuate.BeltTickResult {
     observe_refused: true,
     observe_refusal_reason: "tmux refused",
     reconcile: belt_tick_empty_reconcile(state: Running),
@@ -1065,7 +1065,7 @@ test fn verification_presentation_unreadable_receipt_is_blocked() -> Bool {
 
 test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() -> Bool {
   let receipt = belt_tick_receipt_from_result(
-    result: BeltTickResult {
+    result: gunbc.roadmap_belt_actuate.BeltTickResult {
       observe_refused: true,
       observe_refusal_reason: "belt_observe: tmux ls failed; session containers are unknowable",
       reconcile: belt_tick_empty_reconcile(state: Running),
@@ -1091,7 +1091,7 @@ test fn verification_presentation_decouples_verify_from_spawn_observe_refusal() 
 }
 
 test fn verification_presentation_verify_refused_is_blocked() -> Bool {
-  let receipt = BeltTickReceipt {
+  let receipt = gunbc.roadmap_belt_actuate.BeltTickReceipt {
     observed_at: "2026-08-02T02:00:00Z",
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
@@ -1106,7 +1106,7 @@ test fn verification_presentation_verify_refused_is_blocked() -> Bool {
 }
 
 test fn verification_presentation_verify_failed_is_failed() -> Bool {
-  let receipt = BeltTickReceipt {
+  let receipt = gunbc.roadmap_belt_actuate.BeltTickReceipt {
     observed_at: "2026-08-02T02:00:00Z",
     spawn_pass: BeltPassRecorded,
     teardown_pass: BeltPassRecorded,
@@ -1205,8 +1205,8 @@ fn footprint_obs(
   present: Bool,
   writable: Bool,
   searchable: Bool,
-) -> BeltFootprintObservation {
-  BeltFootprintObservation {
+) -> gunbc.roadmap_belt_actuate.BeltFootprintObservation {
+  gunbc.roadmap_belt_actuate.BeltFootprintObservation {
     member: member,
     path: join(["/opt/gunbc/", member], ""),
     present: present,
@@ -1215,7 +1215,7 @@ fn footprint_obs(
   }
 }
 
-fn footprint_refusal_step(admission: BeltFootprintAdmission) -> String {
+fn footprint_refusal_step(admission: gunbc.roadmap_belt_actuate.BeltFootprintAdmission) -> String {
   match admission {
     FootprintAdmitted => "admitted"
     FootprintRefused { step: st, detail: _ } => st
@@ -1276,46 +1276,46 @@ test fn witness_footprint_roots_cover_both_belt_write_targets() -> Bool {
 
 data belt_publish_producer_witness_note: String = "THE PRODUCER'S DECISION, EXERCISED WITHOUT A NETWORK OR A FILESYSTEM. belt_publish_attempt_for_instance performs three effects - read the existing receipt, observe the two remote surfaces, write the judgment - and every branch it takes is decided by belt_publish_gate and belt_publish_write_outcome, both pure. That split is what makes these claims possible at all: an arm that fires when a receipt on disk turns out to be about another attempt would otherwise be reachable only by arranging that state on a real host.\\n\\nTHE GATE'S JOB IS TO DECIDE WHETHER TO OBSERVE. Three of the five outcomes are settled by what is already on disk, and none of them should cost a GitHub read or risk overwriting evidence. The claims below pin each: a receipt for this exact subject halts as already-recorded, an undecodable one halts rather than being replaced, one about another subject halts rather than being corrected, and only genuine absence proceeds.\\n\\nTHE SUBJECT IS BUILT FROM AN OBSERVED HEAD OR NOT AT ALL. An attempt whose worktree head cannot be read has no subject, so the producer defers with the reason rather than adjudicating against a branch name - which is the lookup this whole lane replaced."
 
-data belt_pub_head: CommitSha = "1111111111111111111111111111111111111111"
-data belt_pub_other_head: CommitSha = "2222222222222222222222222222222222222222"
+data belt_pub_head: std.types.CommitSha = "1111111111111111111111111111111111111111"
+data belt_pub_other_head: std.types.CommitSha = "2222222222222222222222222222222222222222"
 
-fn belt_pub_subject(head: CommitSha, node_id: String) -> RoadmapPublicationSubject {
-  RoadmapPublicationSubject {
+fn belt_pub_subject(head: std.types.CommitSha, node_id: String) -> gunbc.roadmap_publish.RoadmapPublicationSubject {
+  gunbc.roadmap_publish.RoadmapPublicationSubject {
     node_id: node_id,
     attempt_key: "feedfacefeedface",
-    repository: Repository {
+    repository: extdeps.github.github.Repository {
       owner: "gunb-ai",
       name: "gunbc",
       full_name: "gunb-ai/gunbc",
       private: false,
       default_branch: "main",
     },
-    branch: "dispatch/belt-pub-node-afeedfacefeedface" as NonEmptyStr,
-    expected_base: "main" as NonEmptyStr,
+    branch: "dispatch/belt-pub-node-afeedfacefeedface" as std.types.NonEmptyStr,
+    expected_base: "main" as std.types.NonEmptyStr,
     expected_head: head,
   }
 }
 
-fn belt_pub_receipt(head: CommitSha, node_id: String) -> String {
+fn belt_pub_receipt(head: std.types.CommitSha, node_id: String) -> String {
   publication_receipt_json(
     receipt: publication_receipt_of(
       subject: belt_pub_subject(head: head, node_id: node_id),
       outcome: adjudicate_publication(
         pulls: PullRequestsRead {
           pulls: [
-            PullRequest {
+            extdeps.github.pulls.PullRequest {
               number: 1234,
               title: "a change",
               body: none,
               state: Open,
-              html_url: "https://github.com/gunb-ai/gunbc/pull/1234" as NonEmptyStr,
-              user: GitHubUser { login: "someone", id: 1, type: User },
-              head: PullRequestRef {
+              html_url: "https://github.com/gunb-ai/gunbc/pull/1234" as std.types.NonEmptyStr,
+              user: extdeps.github.github.GitHubUser { login: "someone", id: 1, type: User },
+              head: extdeps.github.pulls.PullRequestRef {
                 ref: "dispatch/belt-pub-node-afeedfacefeedface",
                 sha: head,
                 label: "head",
               },
-              base: PullRequestRef { ref: "main", sha: belt_pub_other_head, label: "base" },
+              base: extdeps.github.pulls.PullRequestRef { ref: "main", sha: belt_pub_other_head, label: "base" },
               created_at: "2026-08-01T00:00:00Z",
               updated_at: "2026-08-01T00:00:00Z",
               merged_at: none,
@@ -1324,16 +1324,16 @@ fn belt_pub_receipt(head: CommitSha, node_id: String) -> String {
           ],
         },
         remotes: RemoteBranchesRead { branches: [] },
-        remote: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
-        branch: "dispatch/belt-pub-node-afeedfacefeedface" as NonEmptyStr,
-        expected_base: "main" as NonEmptyStr,
+        remote: "https://github.com/gunb-ai/gunbc.git" as std.types.NonEmptyStr,
+        branch: "dispatch/belt-pub-node-afeedfacefeedface" as std.types.NonEmptyStr,
+        expected_base: "main" as std.types.NonEmptyStr,
         expected_head: head,
       ),
     ),
   )
 }
 
-fn belt_pub_gate_key(gate: BeltPublishGate) -> String {
+fn belt_pub_gate_key(gate: gunbc.roadmap_belt_actuate.BeltPublishGate) -> String {
   match gate {
     PublishProceed => "proceed"
     PublishHalted { outcome } =>
@@ -1471,9 +1471,9 @@ test fn a_failed_write_reports_loss_rather_than_the_outcome_it_computed() -> Boo
     outcome: adjudicate_publication(
       pulls: PullRequestsRead { pulls: [] },
       remotes: RemoteBranchesRead { branches: [] },
-      remote: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
-      branch: "dispatch/belt-pub-node-afeedfacefeedface" as NonEmptyStr,
-      expected_base: "main" as NonEmptyStr,
+      remote: "https://github.com/gunb-ai/gunbc.git" as std.types.NonEmptyStr,
+      branch: "dispatch/belt-pub-node-afeedfacefeedface" as std.types.NonEmptyStr,
+      expected_base: "main" as std.types.NonEmptyStr,
       expected_head: belt_pub_head,
     ),
   )
@@ -1511,7 +1511,7 @@ test fn a_failed_write_reports_loss_rather_than_the_outcome_it_computed() -> Boo
   }
 }
 
-fn subject_key(observation: PublicationSubjectObservation) -> String {
+fn subject_key(observation: gunbc.roadmap_publish.PublicationSubjectObservation) -> String {
   match observation {
     PublicationSubjectObserved { subject } => subject.expected_head as String
     PublicationSubjectUnobserved { reason: _ } => ""
@@ -1561,16 +1561,16 @@ test fn a_zero_exit_with_no_revision_is_unobserved_not_an_empty_head() -> Bool {
 
 data unsettled_receipt_must_not_freeze_the_row_note: String = "THE CLAIM THAT PINS THE IDEMPOTENCE KEY, and the defect it would have caught. The obvious key is `a receipt exists for this head`, and under it the belt's FIRST observation of a head - which normally happens before the worker has pushed - records branch-not-published and then halts on its own record forever. The row would report `not published` for the rest of the attempt's life, and the halt would be caused by the very receipt that observed the absence.\\n\\nSo the pair below drives the gate with two receipts for the SAME subject, differing only in what the remote showed: a bound one halts, an unpublished one proceeds. A gate keyed on existence rather than on settlement returns already-recorded for both, and this goes red."
 
-fn belt_pub_unpublished_receipt(head: CommitSha, node_id: String) -> String {
+fn belt_pub_unpublished_receipt(head: std.types.CommitSha, node_id: String) -> String {
   publication_receipt_json(
     receipt: publication_receipt_of(
       subject: belt_pub_subject(head: head, node_id: node_id),
       outcome: adjudicate_publication(
         pulls: PullRequestsRead { pulls: [] },
         remotes: RemoteBranchesRead { branches: [] },
-        remote: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
-        branch: "dispatch/belt-pub-node-afeedfacefeedface" as NonEmptyStr,
-        expected_base: "main" as NonEmptyStr,
+        remote: "https://github.com/gunb-ai/gunbc.git" as std.types.NonEmptyStr,
+        branch: "dispatch/belt-pub-node-afeedfacefeedface" as std.types.NonEmptyStr,
+        expected_base: "main" as std.types.NonEmptyStr,
         expected_head: head,
       ),
     ),
@@ -1641,12 +1641,12 @@ test fn witness_unobserved_receipt_names_its_cause() -> Bool {
 
 // Handback items 3 and 4 (review artifact 51237).
 
-fn dup_running() -> DispatchLiveSession {
+fn dup_running() -> gunbc.roadmap_dispatch_actuator.DispatchLiveSession {
   live_session_with_process(
-    node_id: "a", process: WorkerProcessRunning { command: "codex" as NonEmptyStr })
+    node_id: "a", process: WorkerProcessRunning { command: "codex" as std.types.NonEmptyStr })
 }
 
-fn dup_stale() -> DispatchLiveSession {
+fn dup_stale() -> gunbc.roadmap_dispatch_actuator.DispatchLiveSession {
   live_session_with_process(
     node_id: "a", process: WorkerProcessExited { exit_code: 0, last_command: "codex" })
 }
@@ -1669,7 +1669,7 @@ test fn witness_multiplicity_verdict_is_order_independent() -> Bool {
     _ => false })
 }
 
-fn witness_oid_or_refuse(hex: String) -> GitObjectId? {
+fn witness_oid_or_refuse(hex: String) -> extdeps.git.object_store.GitObjectId? {
   git_object_id_from_untagged_hex(hex: hex)
 }
 
@@ -1716,7 +1716,7 @@ test fn witness_revision_admission_fold_drives_all_three_arms() -> Bool {
 test fn witness_tick_partition_is_lifecycle_aware_not_presence_aware() -> Bool {
   let part = belt_tick_classify_sessions(live: [
     live_session_with_process(
-      node_id: "run", process: WorkerProcessRunning { command: "codex" as NonEmptyStr }),
+      node_id: "run", process: WorkerProcessRunning { command: "codex" as std.types.NonEmptyStr }),
     live_session_with_process(
       node_id: "dead", process: WorkerProcessExited { exit_code: 0, last_command: "codex" }),
     live_session(node_id: "unknown", verdict: Converged),
@@ -1750,7 +1750,7 @@ test fn witness_tick_defers_every_non_running_class() -> Bool {
 test fn witness_tick_multiplicity_is_a_node_fact() -> Bool {
   let part = belt_tick_classify_sessions(live: [
     live_session_with_process(
-      node_id: "a", process: WorkerProcessRunning { command: "codex" as NonEmptyStr }),
+      node_id: "a", process: WorkerProcessRunning { command: "codex" as std.types.NonEmptyStr }),
     live_session_with_process(
       node_id: "a", process: WorkerProcessExited { exit_code: 0, last_command: "codex" }),
   ])

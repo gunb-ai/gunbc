@@ -1,7 +1,7 @@
 module v2.test.workflow.host_discovered_owned_data_manifest
 
 
-data host_owned_data_discovery_receipt: OwnedDataDiscoveryReceipt = OwnedDataDiscoveryReceipt {
+data host_owned_data_discovery_receipt: v2.compiler.discovery_enumeration.OwnedDataDiscoveryReceipt = v2.compiler.discovery_enumeration.OwnedDataDiscoveryReceipt {
   unified_claim_arm_count: 0,
   bool_witness_claim_arm_count: 0,
   illegal_other_init_count: 0,
@@ -9,4 +9,4 @@ data host_owned_data_discovery_receipt: OwnedDataDiscoveryReceipt = OwnedDataDis
   transport_projection_complete: false
 }
 
-data host_discovered_owned_decls: List<OwnedDataDeclRecord> = []
+data host_discovered_owned_decls: List<v2.compiler.discovery_enumeration.OwnedDataDeclRecord> = []

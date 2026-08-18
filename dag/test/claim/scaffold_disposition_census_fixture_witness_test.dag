@@ -23,7 +23,7 @@ fn qualified_names_of(facts: List<v2.std.decl_index.DeclFact>) -> List<String> {
   v2.std.algebra.list_map(xs: facts, f: fn(f) { f.qualified_name })
 }
 
-fn qualified_names_of_rows(rows: List<ExpectedScaffoldCensusRow>) -> List<String> {
+fn qualified_names_of_rows(rows: List<test.fixture.scaffold_disposition_census.expected_classification.ExpectedScaffoldCensusRow>) -> List<String> {
   v2.std.algebra.list_map(xs: rows, f: fn(r) { r.qualified_name })
 }
 

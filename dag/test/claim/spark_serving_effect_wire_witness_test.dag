@@ -1,7 +1,7 @@
 module test.claim.spark_serving_effect_wire_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // EVERY VARIANT REACHES ITS OWN ARM. Removing the wildcard is only half the fix; the other half is
 // that the twelve bare names really are variant PATTERNS. A bare lowercase-or-not name in pattern

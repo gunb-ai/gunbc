@@ -28,9 +28,9 @@ data seed_growth_forward_freeze_policy_note: String = "FORWARD-FREEZE POLICY (en
 data seed_growth_justification_roster_note: String = "CLOSED ROSTER of every SeedGrowthJustification row in the corpus. G1 joins new/modified hand items against this list. Rows are authored beside the obligation they declare; the roster is derived by enumeration, never by grep. Today: stage0_rust_observation_seed_growth_justification (gunbc.stage0_rust_host_observation) and observation_scoped_run_seed_growth_justification (gunbc.roadmap_authority). Each new justification adds one row here AND one data row in its owning module."
 
 // UNCITABLE ITEMS (prose-only until std.decl_ref gains ImplMethod). stage0_rust_observation_seed_growth_justification documents one: impl std::fmt::Display for Stage0CargoBinManifestParseRefusal in v1_compiler.cli_run — seven hand items, six citable DeclarationRef rows. G1 reports uncitable_items separately; they do NOT satisfy the forward-freeze enumeration via DeclarationRef alone.
-data seed_growth_admission_join_scaffold: Disposition = Scaffold {
+data seed_growth_admission_join_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.seed_growth_admission",
     decl_name: "seed_growth_join_declarations",
     field: WholeDeclaration
@@ -39,9 +39,9 @@ data seed_growth_admission_join_scaffold: Disposition = Scaffold {
 
 data seed_growth_admission_join_scaffold_note: String = "SCAFFOLD — seed_growth_join_declarations is NOT an enrolled admission gate until rust_item_host_observation supplies diff DeclarationRef candidates. Joining the roster against itself is a tautology and must not green as completeness admission (review 49332). Dissolve-on: diff population carrier lands and enrolls join against merge-base candidates."
 
-data seed_growth_g0_census_host_scaffold: Disposition = Scaffold {
+data seed_growth_g0_census_host_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.rust_item_identity",
     decl_name: "rust_item_host_observation_scaffold_note",
     field: WholeDeclaration
@@ -52,21 +52,21 @@ data seed_growth_g0_census_host_scaffold_note: String = "SCAFFOLD — scripts/ru
 
 data seed_growth_admission_g0_population_note: String = "G0 CENSUS HOST (scripts/rust_item_census.py — SCAFFOLD, see seed_growth_g0_census_host_scaffold). Item-grain population is measured at execution from git-tracked .rs files; generated-vs-hand is derived from gunbc.stage0_emit_plan_generated generated_stage0_files and gunbc.generated_artifact artifact_path — unclassified stage0/src paths refuse. This note does NOT pin numeric literals (DESIGN §3 stale-citation class); run the script at HEAD for the live receipt. Supersedes cli_run_hollowing_plan §0 prose dated 2026-07-23. G1 compares merge-base diff against SeedGrowthJustification rows once rust_item_host_observation supplies DeclarationRef candidates."
 
-fn seed_growth_justification_roster() -> List<SeedGrowthJustification> {
+fn seed_growth_justification_roster() -> List<gunbc.seed_growth.SeedGrowthJustification> {
   [
     stage0_rust_observation_seed_growth_justification,
     observation_scoped_run_seed_growth_justification()
   ]
 }
 
-fn seed_growth_justification_well_formed(j: SeedGrowthJustification) -> Bool {
+fn seed_growth_justification_well_formed(j: gunbc.seed_growth.SeedGrowthJustification) -> Bool {
   j.reason != ""
     && j.trigger != ""
     && j.current_boundary != ""
     && length(xs: j.hand_authored_declarations) > 0
 }
 
-fn seed_growth_roster_all_declarations() -> List<DeclarationRef> {
+fn seed_growth_roster_all_declarations() -> List<std.decl_ref.DeclarationRef> {
   list_append(
     left: stage0_rust_observation_seed_growth_justification.hand_authored_declarations,
     right: observation_scoped_run_seed_growth_justification().hand_authored_declarations
@@ -93,8 +93,8 @@ fn seed_growth_uncitable_item_keys() -> List<String> {
 }
 
 fn seed_growth_find_stale(
-  roster: List<DeclarationRef>,
-  candidates: List<DeclarationRef>
+  roster: List<std.decl_ref.DeclarationRef>,
+  candidates: List<std.decl_ref.DeclarationRef>
 ) -> List<String> {
   filter(
     xs: roster,
@@ -104,7 +104,7 @@ fn seed_growth_find_stale(
 }
 
 fn seed_growth_join_declarations(
-  candidates: List<DeclarationRef>
+  candidates: List<std.decl_ref.DeclarationRef>
 ) -> SeedGrowthAdmissionVerdict {
   let roster = seed_growth_roster_all_declarations()
   let unjustified = filter(

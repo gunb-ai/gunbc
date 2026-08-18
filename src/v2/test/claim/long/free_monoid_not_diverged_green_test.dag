@@ -1,7 +1,7 @@
 module v2.test.long.free_monoid_not_diverged_green
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data free_monoid_key: String = "std/algebra.dag:FreeMonoid"
 

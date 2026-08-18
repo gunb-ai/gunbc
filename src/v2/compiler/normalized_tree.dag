@@ -11,15 +11,15 @@ type NormalizedTree sole_constructor {
 
 data normalized_tree_admission_rung_note: String = "Rung: ACCEPTED REFINEMENT WITH EXECUTING REFUSAL, not structural impossibility. The invalid state -- a root carrying wrapper-retention diagnostics presented as normalized -- remains describable; what changed is that admit_normalized_tree is the sole constructor, so no Accepted program reaches the carrier while holding retention evidence. Next-rung trigger: the retention disposition riding in the carrier's own type rather than being decided at the door."
 
-fn normalized_tree_retention_diagnostic(root: Node) -> Diagnostic {
-  Diagnostic {
+fn normalized_tree_retention_diagnostic(root: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^normalized_tree_reason_wrapper_retention_not_normalized,
     at: node_locus(node: root),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn admit_normalized_tree(root: Node, diagnostics: Diagnostics) -> Outcome<NormalizedTree> {
+fn admit_normalized_tree(root: Node, diagnostics: v2.std.diagnostic.Diagnostics) -> Outcome<NormalizedTree> {
   if body_lowering_diagnostics_carry_wrapper_retention(d: diagnostics) {
     Rejected {
       diagnostics: rejected_with_pending(
@@ -57,7 +57,7 @@ fn normalized_tree_roots_to_nodes(roots: FreeMonoid<NormalizedTree>) -> FreeMono
 // attached once at the end.
 fn admit_normalized_roots(
   roots: FreeMonoid<Node>,
-  diagnostics: Diagnostics
+  diagnostics: v2.std.diagnostic.Diagnostics
 ) -> Outcome<FreeMonoid<NormalizedTree>> {
   match fold_list(
     xs: roots,

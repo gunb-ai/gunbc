@@ -66,16 +66,16 @@ data stage0_source_identity_supply_scaffold_note: String = "DECLARED SCAFFOLD. s
 
 data stage0_source_identity_non_seed_refusal_note: String = "The authored body is explicitly Unavailable: absence of the native source-side realization flows as a typed refusal through planning and artifact generation, and is structurally incapable of producing bytes for main_wet to write."
 
-data stage0_source_identity_supply_disposition: Disposition = Scaffold {
+data stage0_source_identity_supply_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.stage0_emit_plan",
     decl_name: "stage0_emission_source_identities_host",
     field: WholeDeclaration
   }
 }
 
-data stage0_source_identity_supply_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "dissolve-on: generated_artifact_gate accepts a v2.compiler.source_authority.ModuleStorageIndex; then stage0_emission_source_identities_host and its Rust interpreter arm delete, and stage0_emission_plan_from_source consumes the supplied index projection directly.")
+data stage0_source_identity_supply_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: generated_artifact_gate accepts a v2.compiler.source_authority.ModuleStorageIndex; then stage0_emission_source_identities_host and its Rust interpreter arm delete, and stage0_emission_plan_from_source consumes the supplied index projection directly.")
 
 data stage0_source_identity_supply_hand_rust_receipt: String = "HAND-RUST GATE — one checkable EXPLICIT-DEFERRAL receipt for this declared source-supply scaffold and its execution evidence. WHAT GROWS: src/v1/stage0/src/cli_run.rs adds the Stage0EmissionSourceIdentity transport, cache, and stage0_emission_source_identities; src/v1/stage0/src/v1_interpreter.rs adds the matching builtin arm; src/v1/stage0/src/bin/regen_stage0.rs adds the second-direction exact-set RED and repoints its projection-reader test; src/v1/stage0/src/module_path_index/index.rs adds the source-binding parser witness. At this increment, `git diff --numstat origin/main -- src/v1/stage0/src/bin/regen_stage0.rs src/v1/stage0/src/cli_run.rs src/v1/stage0/src/module_path_index/index.rs src/v1/stage0/src/v1_interpreter.rs` reports 37/17, 65/0, 11/0, and 46/0 respectively, and the same four-file diff piped to `grep -cE '^\\+.*\\bfn '` reports 3: this is counted hand-Rust growth including tests, not a flat-census claim. EXPLICIT DEFERRAL: ROADMAP node v1-zero-hand-maintained-rust, modeled as ZeroHandMaintainedRust in gunbc.v1_deletion_plan.v1_exit_finish_lines. CONCRETE DISSOLUTION: when generated_artifact_gate accepts v2.compiler.source_authority.ModuleStorageIndex, the Rust transport, cache, and interpreter arm delete and stage0_emission_plan_from_source consumes the index projection directly, exactly as stage0_source_identity_supply_dissolution_trigger states; the two Rust tests remain only until their asserted seams are expressed as substrate witnesses."
 

@@ -14,7 +14,7 @@ type SemVerConstraint = VersionConstraint
 
 type SemVerIdentifier
   = SemVerNumericIdentifier { value: std.integer.NonNegativeInt }
-  | SemVerAlphanumericIdentifier { label: NonEmptyStr }
+  | SemVerAlphanumericIdentifier { label: std.types.NonEmptyStr }
 
 type SemVerVersion {
   major: std.integer.NonNegativeInt

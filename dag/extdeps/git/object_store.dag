@@ -295,8 +295,8 @@ type GitObjectFormat
   | GitObjectFormatSha256
 
 type GitObjectId
-  = GitSha1ObjectId { digest: Sha1Digest }
-  | GitSha256ObjectId { digest: Sha256Digest }
+  = GitSha1ObjectId { digest: std.content_hash.Sha1Digest }
+  | GitSha256ObjectId { digest: std.content_hash.Sha256Digest }
 
 data git_object_id_text_note: String = "THE VALIDATING CONSTRUCTORS. A bare string cast into Sha1Digest or Sha256Digest admits any string: before these existed, a consumer casting text into one could produce a GitSha1ObjectId carrying \"x\", a 64-digit value labelled sha1, or arbitrary non-hex, and every one of those typechecked as a Git object id (review 2026-07-30, on the merge-admission wire parser that did exactly this). Family is not enough — LENGTH and SYNTAX are what make an object id an object id, and they differ per family, which is precisely why the discriminant exists.
 
@@ -405,7 +405,7 @@ type Commit {
 type AnnotatedTag {
   target: GitObjectId
   target_type: ObjectType
-  name: NonEmptyStr
+  name: std.types.NonEmptyStr
   tagger: GitAuthor
   message: Bytes
 }
@@ -444,7 +444,7 @@ type GitCanonicalHashInputOutcome
 
 type GitHashObjectObservationProducer
   = GitHashObjectCliExecuted {
-      attempt: NonEmptyStr,
+      attempt: std.types.NonEmptyStr,
       exit_code: std.integer.NonNegativeInt,
       stdout_oid: GitObjectId,
     }
@@ -452,7 +452,7 @@ type GitHashObjectObservationProducer
 
 type GitContentAddressReceipt
   = GitHashObjectObserved {
-      git_version: NonEmptyStr,
+      git_version: std.types.NonEmptyStr,
       object_format: GitObjectFormat,
       canonical_input: Bytes,
       observed_oid: GitObjectId,
@@ -469,9 +469,9 @@ type StoredObject {
 }
 
 type GitUnavailableObject
-  = GitPromisorObjectUnavailable { oid: GitObjectId, promisor: NonEmptyStr }
+  = GitPromisorObjectUnavailable { oid: GitObjectId, promisor: std.types.NonEmptyStr }
   | GitUnexpectedObjectMissing { oid: GitObjectId }
-  | GitCorruptObject { oid: GitObjectId, reason: NonEmptyStr }
+  | GitCorruptObject { oid: GitObjectId, reason: std.types.NonEmptyStr }
 
 type GitUnavailableObjectFold<R> {
   promisor: fn(GitObjectId, NonEmptyStr) -> R
@@ -508,9 +508,9 @@ fn git_unavailable_object_oid(
 
 type ObjectLookupResult
   = ObjectFound { stored: StoredObject }
-  | ObjectPromisorUnavailable { oid: GitObjectId, promisor: NonEmptyStr }
+  | ObjectPromisorUnavailable { oid: GitObjectId, promisor: std.types.NonEmptyStr }
   | ObjectUnexpectedlyMissing { oid: GitObjectId }
-  | ObjectCorrupt { oid: GitObjectId, reason: NonEmptyStr }
+  | ObjectCorrupt { oid: GitObjectId, reason: std.types.NonEmptyStr }
   | ObjectRepositoryInvalid { cause: GitRepositoryDecodeRefusal }
 
 type GitRefName = NonEmptyStr where brand("GitRefName")
@@ -600,7 +600,7 @@ type GitRepositoryDecodeRefusal
   | GitRepositoryPointerCorrupt {
       origin: GitRepositoryPointerOrigin,
       target: GitObjectId,
-      reason: NonEmptyStr,
+      reason: std.types.NonEmptyStr,
     }
   | GitRepositoryPointerKindMismatch {
       origin: GitRepositoryPointerOrigin,
@@ -711,7 +711,7 @@ fn git_object_id_raw_octets(oid: GitObjectId) -> List<std.integer.UInt8>? {
 }
 
 type GitTreeEntryCanonicalParts {
-  mode: NonEmptyStr
+  mode: std.types.NonEmptyStr
   name: GitTreeEntryName
   oid: GitObjectId
 }
@@ -1545,16 +1545,16 @@ fn git_resolve_direct_ref(repo: GitRepositoryState, name: GitRefName) -> RefReso
 }
 
 type GitTreeWireEntry {
-  mode: NonEmptyStr
-  object_type: NonEmptyStr
+  mode: std.types.NonEmptyStr
+  object_type: std.types.NonEmptyStr
   oid: GitObjectId
   name: GitTreeWireName
 }
 
 type GitTreeDecodeRefusal
   = GitTreeModeObjectMismatch {
-      mode: NonEmptyStr,
-      object_type: NonEmptyStr,
+      mode: std.types.NonEmptyStr,
+      object_type: std.types.NonEmptyStr,
       name: GitTreeWireName,
     }
   | GitTreeEntryNameRefused {
@@ -1969,7 +1969,7 @@ fn git_decode_object_id_text(
 
 type GitLsTreeZRefusal
   = GitLsTreeZFramingRefused { cause: GitNulQuartetRefusal }
-  | GitLsTreeZHeaderNonAscii { field: NonEmptyStr }
+  | GitLsTreeZHeaderNonAscii { field: std.types.NonEmptyStr }
   | GitLsTreeZObjectIdRefused { cause: GitObjectIdTextRefusal }
   | GitLsTreeZEntryRefused { cause: GitTreeDecodeRefusal }
 
@@ -2069,7 +2069,7 @@ fn git_decode_ls_tree_z(
 
 type GitIndexStageDecodeOutcome
   = GitIndexStageDecoded { stage: GitIndexStage }
-  | GitIndexStageRefused { text: NonEmptyStr }
+  | GitIndexStageRefused { text: std.types.NonEmptyStr }
 
 fn git_decode_index_stage(text: NonEmptyStr) -> GitIndexStageDecodeOutcome {
   if text == "0" {
@@ -2087,10 +2087,10 @@ fn git_decode_index_stage(text: NonEmptyStr) -> GitIndexStageDecodeOutcome {
 
 type GitLsFilesStageZRefusal
   = GitLsFilesStageZFramingRefused { cause: GitNulQuartetRefusal }
-  | GitLsFilesStageZHeaderNonAscii { field: NonEmptyStr }
-  | GitLsFilesStageZModeRefused { mode: NonEmptyStr }
+  | GitLsFilesStageZHeaderNonAscii { field: std.types.NonEmptyStr }
+  | GitLsFilesStageZModeRefused { mode: std.types.NonEmptyStr }
   | GitLsFilesStageZObjectIdRefused { cause: GitObjectIdTextRefusal }
-  | GitLsFilesStageZStageRefused { stage: NonEmptyStr }
+  | GitLsFilesStageZStageRefused { stage: std.types.NonEmptyStr }
   | GitLsFilesStageZPathRefused { cause: GitPathDecodeRefusal }
 
 type GitLsFilesStageZDecodeOutcome
@@ -2322,7 +2322,7 @@ fn git_project_repository(
 }
 
 type GitR0ReadBackObservation {
-  git_version: NonEmptyStr
+  git_version: std.types.NonEmptyStr
   object_format: GitObjectFormat
   tree_oid: GitObjectId
   tree_entries: List<GitTreeWireEntry>

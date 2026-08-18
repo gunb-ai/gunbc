@@ -1,8 +1,8 @@
 module tools.parse_witness_transport
 
 
-fn parse_witness_bin() -> WitnessBin {
-  WitnessBin {
+fn parse_witness_bin() -> tools.host_prelude.WitnessBin {
+  tools.host_prelude.WitnessBin {
     var_name: "PARSE_WITNESS",
     bin_name: "parse_witness",
     features: "text_lookup_work_counter"

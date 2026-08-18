@@ -1,8 +1,8 @@
 module extdeps.rustup
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "rust-lang.github.io/rustup/"
   }
@@ -10,13 +10,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type RustChannel = Stable | Beta | Nightly
 
-data rustup_install_url: NonEmptyStr = "https://rustup.rs"
+data rustup_install_url: std.types.NonEmptyStr = "https://rustup.rs"
 
 data default_channel: RustChannel = Stable
 
-data rustup_docs: NonEmptyStr = "https://rust-lang.github.io/rustup/"
+data rustup_docs: std.types.NonEmptyStr = "https://rust-lang.github.io/rustup/"
 
-data rustup_component_authority_note: NonEmptyStr = "Components, cited to the rustup book's Components concept page rather than minted here. The load-bearing fact this vocabulary exists to carry is that a component is a property of a TOOLCHAIN, not of a machine: rustup installs each component into one toolchain directory, and the ~/.cargo/bin entries are shims that dispatch to whichever toolchain is active. So 'is rustfmt installed on this host' is not a well-formed question — two toolchains on one host routinely disagree, and the shim resolves through exactly one of them. Any consumer that asks the host-shaped question gets a true-sounding answer to a question it did not mean."
+data rustup_component_authority_note: std.types.NonEmptyStr = "Components, cited to the rustup book's Components concept page rather than minted here. The load-bearing fact this vocabulary exists to carry is that a component is a property of a TOOLCHAIN, not of a machine: rustup installs each component into one toolchain directory, and the ~/.cargo/bin entries are shims that dispatch to whichever toolchain is active. So 'is rustfmt installed on this host' is not a well-formed question — two toolchains on one host routinely disagree, and the shim resolves through exactly one of them. Any consumer that asks the host-shaped question gets a true-sounding answer to a question it did not mean."
 
 type RustupComponent
   = Rustfmt
@@ -25,7 +25,7 @@ type RustupComponent
   | RustAnalyzer
   | RustDocs
 
-fn rustup_component_name(c: RustupComponent) -> NonEmptyStr {
+fn rustup_component_name(c: RustupComponent) -> std.types.NonEmptyStr {
   match c {
     Rustfmt => "rustfmt"
     Clippy => "clippy"

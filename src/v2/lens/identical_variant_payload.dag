@@ -17,7 +17,7 @@ fn identical_variant_payload_unrealized_verdict() -> LensVerdict {
 
 type IdenticalVariantPayloadFact {
   type_locus: Node
-  verdict: LensVerdict
+  verdict: v2.std.lens_verdict.LensVerdict
 }
 
 fn identical_variant_payload_fact_for_type(type_node: Node) -> IdenticalVariantPayloadFact {

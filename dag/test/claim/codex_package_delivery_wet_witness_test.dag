@@ -11,8 +11,8 @@ fn committed_codex_lock_text() -> String {
   filesystem_read(path: codex_runtime_lock_path as String).content
 }
 
-fn committed_admitted_codex_runtime_source() -> AdmittedCodexRuntimeSource {
-  AdmittedCodexRuntimeSource {
+fn committed_admitted_codex_runtime_source() -> gunbc.package_delivery.AdmittedCodexRuntimeSource {
+  gunbc.package_delivery.AdmittedCodexRuntimeSource {
     manifest_bytes: filesystem_read(path: codex_runtime_manifest_path as String).content,
     lock_bytes: committed_codex_lock_text(),
   }
@@ -38,7 +38,7 @@ test fn acquire_required_codex_tarball_sha512_matches_lock() -> Bool {
           } else {
             match acquire_and_admit_registry_artifact(
               artifact: artifact,
-              lock_node_key: "node_modules/@openai/codex" as NonEmptyStr,
+              lock_node_key: "node_modules/@openai/codex" as std.types.NonEmptyStr,
               dest_dir: staging.path,
             ) {
               RegistryArtifactAdmitted { staged } =>

@@ -57,16 +57,16 @@ fn artifact_ref_for_subject(subject: BuildSubject) -> GitRefName {
 // LeaseLostToProducer is distinguished from every refusal because its remedy differs completely. Losing the race is a SUCCESS of the protocol: the subject is being produced, and the caller's correct move is to attach and wait. A refusal is a deficit, and the caller's correct move is to surface it. Fusing them would make a healthy race look like a failure and would make every attach path indistinguishable from a broken store.
 type LeaseRefusalCause
   = LeaseStoreInvalid { detail: String }
-  | LeaseRefNameAmbiguous { name: GitRefName }
-  | LeaseRefSymbolicCycle { name: GitRefName }
-  | LeaseObjectFormatMismatch { oid: GitObjectId }
-  | LeaseTargetUnavailable { oid: GitObjectId }
-  | LeaseTargetKindRefused { oid: GitObjectId }
-  | LeaseCreateNotModeled { name: GitRefName }
+  | LeaseRefNameAmbiguous { name: extdeps.git.object_store.GitRefName }
+  | LeaseRefSymbolicCycle { name: extdeps.git.object_store.GitRefName }
+  | LeaseObjectFormatMismatch { oid: extdeps.git.object_store.GitObjectId }
+  | LeaseTargetUnavailable { oid: extdeps.git.object_store.GitObjectId }
+  | LeaseTargetKindRefused { oid: extdeps.git.object_store.GitObjectId }
+  | LeaseCreateNotModeled { name: extdeps.git.object_store.GitRefName }
 
 type LeaseOutcome
-  = LeaseAcquired { name: GitRefName, holder: GitObjectId }
-  | LeaseLostToProducer { name: GitRefName, holder: GitObjectId }
+  = LeaseAcquired { name: extdeps.git.object_store.GitRefName, holder: extdeps.git.object_store.GitObjectId }
+  | LeaseLostToProducer { name: extdeps.git.object_store.GitRefName, holder: extdeps.git.object_store.GitObjectId }
   | LeaseRefused { cause: LeaseRefusalCause }
 
 // THE ONE HONEST GAP, named rather than papered over. Acquiring a lease that nobody holds is a CREATE -- in Git, update-ref with an empty expected-old, which refuses if the ref already exists -- and that is a different transition from advancing a ref whose current value is known. The modeled transition in the upstream object store proves the advance case only; a ref that is absent returns its own arm and there is no create-only decision to consume.

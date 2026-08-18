@@ -22,7 +22,7 @@ type ActivityView
   = NoActiveWork
   | ActiveWork {
       summary: String
-      obligations: List<WorkflowSegment>
+      obligations: List<gunbc.roadmap_workflow_stage.WorkflowSegment>
       remaining_obligation_count: Int
       current_activity: String
       attention: ActivityAttention
@@ -51,7 +51,7 @@ data work_attempt_facts_note: String = "The EXACT constructor over typed attempt
 
 type WorkAttemptFacts
   = NoActiveAttempt
-  | ActiveAttempt { progress: WorkflowAttemptProgress }
+  | ActiveAttempt { progress: gunbc.roadmap_workflow_progress.WorkflowAttemptProgress }
   | AttemptUnobservable { reason: String }
 
 data one_progress_authority_note: String = "ActiveAttempt carries the progress projection ALONE (operator blocker 3, 2026-08-01): the first cut also took process and current_activity as separate parameters, which made disagreement writable — a caller could pass a progress whose reconciliation was derived under WorkerProcessRunning while asserting WorkerProcessExited beside it. WorkflowAttemptProgress already carries process (the shared worker_lifecycle evidence) and provider (whose provider_execution_activity IS the canonical current-activity projection), so the seam reads both from the one carrier and the fork is unwritable."

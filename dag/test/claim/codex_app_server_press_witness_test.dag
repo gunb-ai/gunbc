@@ -28,29 +28,29 @@ data fixture_live_exhausted_multibucket_path: String = "dag/test/fixture/provide
 data fixture_digest_hex: String = "c86dec3d635d6bfd980084080eaf4caeb8e8093210eebc5833921ab2b1b754172e8422d39207a0fc9cea989ab557df11138309e630b10d75d094e8eb762b4547"
 
 
-fn fixture_digest() -> Sha512Digest? {
+fn fixture_digest() -> std.content_hash.Sha512Digest? {
   sha512_hex_digest(hex: fixture_digest_hex)
 }
 
-fn fixture_bundle_from_digest(digest: Sha512Digest) -> CodexRuntimeBundle {
+fn fixture_bundle_from_digest(digest: std.content_hash.Sha512Digest) -> gunbc.package_delivery.CodexRuntimeBundle {
   let id = as_content_hash_sha512(digest: digest)
-  let target = CodexNpmRuntimeTarget {
-    os: "linux" as NonEmptyStr,
-    cpu: "arm64" as NonEmptyStr,
+  let target = gunbc.package_delivery.CodexNpmRuntimeTarget {
+    os: "linux" as std.types.NonEmptyStr,
+    cpu: "arm64" as std.types.NonEmptyStr,
   }
-  let tree = PackageMaterializedTreeReceipt {
+  let tree = gunbc.package_delivery.PackageMaterializedTreeReceipt {
     entries: [],
     tree_identity: id,
   }
-  CodexRuntimeBundle {
+  gunbc.package_delivery.CodexRuntimeBundle {
     root: "/tmp/codex-runtime-fixture" as std.types.FilePath,
-    native_executable_rel: "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" as NonEmptyStr,
-    wrapper_executable_rel: "node_modules/@openai/codex/bin/codex.js" as NonEmptyStr,
-    platform_package_rel: "node_modules/@openai/codex-linux-arm64" as NonEmptyStr,
+    native_executable_rel: "node_modules/@openai/codex-linux-arm64/vendor/aarch64-unknown-linux-musl/bin/codex" as std.types.NonEmptyStr,
+    wrapper_executable_rel: "node_modules/@openai/codex/bin/codex.js" as std.types.NonEmptyStr,
+    platform_package_rel: "node_modules/@openai/codex-linux-arm64" as std.types.NonEmptyStr,
     target: target,
     admitted_packages: [],
     admitted_package_set_identity: id,
-    receipt: CodexRuntimeBundleReceipt {
+    receipt: gunbc.package_delivery.CodexRuntimeBundleReceipt {
       manifest_digest: digest,
       lock_digest: digest,
       target: target,
@@ -58,9 +58,9 @@ fn fixture_bundle_from_digest(digest: Sha512Digest) -> CodexRuntimeBundle {
       admitted_package_set_identity: id,
       materialized_tree: tree,
       native_executable_digest: digest,
-      toolchain: CodexBuildToolchainReceipt {
-        npm_cli_version: "10.9.8" as NonEmptyStr,
-        node_version: "v22.0.0" as NonEmptyStr,
+      toolchain: gunbc.package_delivery.CodexBuildToolchainReceipt {
+        npm_cli_version: "10.9.8" as std.types.NonEmptyStr,
+        node_version: "v22.0.0" as std.types.NonEmptyStr,
       },
       protocol_schema_identity: id,
       receipt_identity: id,
@@ -68,14 +68,14 @@ fn fixture_bundle_from_digest(digest: Sha512Digest) -> CodexRuntimeBundle {
   }
 }
 
-fn fixture_process_receipt() -> ProviderProcessReceipt {
-  ProviderProcessReceipt {
+fn fixture_process_receipt() -> gunbc.codex_app_server_press.ProviderProcessReceipt {
+  gunbc.codex_app_server_press.ProviderProcessReceipt {
     exit: ProviderProcessObservationFailed,
     wire: none,
   }
 }
 
-fn fixture_preflight_subject() -> CodexAccountPreflightSubject? {
+fn fixture_preflight_subject() -> gunbc.codex_app_server_press.CodexAccountPreflightSubject? {
   match fixture_digest() {
     Absent => none
     Present { value: digest } =>
@@ -87,7 +87,7 @@ fn fixture_preflight_subject() -> CodexAccountPreflightSubject? {
             value: preflight_subject_from_bundle(
               bundle: fixture_bundle_from_digest(digest: digest),
               binding: binding,
-              probe_key: "probe-fixture-1" as ProviderProbeKey,
+              probe_key: "probe-fixture-1" as gunbc.codex_app_server_press.ProviderProbeKey,
               codex_home: "/tmp/gunbc-codex-home-fixture" as std.types.FilePath,
             ),
           }
@@ -190,13 +190,13 @@ test fn preflight_subject_without_turn_never_displays_as_running_or_finished() -
 test fn failed_unclassified_cannot_authorize_recovery() -> Bool {
   let unknown = ProviderTurnFailed {
     cause: ProviderNativeCauseUnknown {
-      evidence: "malformed app-server line retained as evidence" as NonEmptyStr,
+      evidence: "malformed app-server line retained as evidence" as std.types.NonEmptyStr,
     },
   }
   let classified_retryable = ProviderTurnFailed {
     cause: ProviderNativeCauseClassified {
       class: RetryableTransient,
-      evidence: "provider-native retryable class with retained evidence" as NonEmptyStr,
+      evidence: "provider-native retryable class with retained evidence" as std.types.NonEmptyStr,
     },
   }
   automatic_recovery_authorized(disposition: unknown) == false
@@ -218,7 +218,7 @@ test fn account_ready_wire_status_is_not_turn_started_or_dispatch_accepted() -> 
     Absent => false
     Present { value: subject } =>
       let outcome = CodexPressAccountReady {
-        receipt: CodexAccountStandingReceipt {
+        receipt: gunbc.codex_app_server_press.CodexAccountStandingReceipt {
           subject: subject,
           standing: standing,
           wire_evidence: none,
@@ -404,8 +404,8 @@ test fn quota_refusal_caption_is_quota_exhausted_not_accepted() -> Bool {
     Absent => false
     Present { value: subject } =>
       let outcome = CodexPressRefused {
-        reason: "codex quota exhausted at account/rateLimits/read" as NonEmptyStr,
-        receipt: CodexAccountStandingReceipt {
+        reason: "codex quota exhausted at account/rateLimits/read" as std.types.NonEmptyStr,
+        receipt: gunbc.codex_app_server_press.CodexAccountStandingReceipt {
           subject: subject,
           standing: account_standing_summary_from_evidence(evidence: evidence),
           wire_evidence: none,
@@ -552,8 +552,8 @@ test fn login_required_wire_status_is_not_accepted_or_turn_started() -> Bool {
     Absent => false
     Present { value: subject } =>
       let outcome = CodexPressLoginRequired {
-        reason: "codex app-server account trip requires login" as NonEmptyStr,
-        receipt: CodexAccountStandingReceipt {
+        reason: "codex app-server account trip requires login" as std.types.NonEmptyStr,
+        receipt: gunbc.codex_app_server_press.CodexAccountStandingReceipt {
           subject: subject,
           standing: account_standing_summary_from_evidence(evidence: evidence),
           wire_evidence: none,

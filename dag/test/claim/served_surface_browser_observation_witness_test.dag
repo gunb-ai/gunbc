@@ -9,15 +9,15 @@ test fn witness_run_owns_one_execution_identity() -> Bool {
     && environment.playwright_build == playwright_1_62_1
     && environment.browser_binary_provenance == PlaywrightManagedChromiumDownload
     && environment.container_userland == Debian12Bookworm
-    && environment.container_visible_host_kernel == ContainerVisibleHostKernel {
-      visible_release: "6.8.0-124-generic" as LinuxKernelRelease,
+    && environment.container_visible_host_kernel == gunbc.served_surface_browser_observation.ContainerVisibleHostKernel {
+      visible_release: "6.8.0-124-generic" as gunbc.served_surface_browser_observation.LinuxKernelRelease,
     }
     && environment.architecture == Aarch64
     && environment.presentation_mode == HeadlessPresentation
     && environment.launch_configuration == PlaywrightDefaultChromiumLaunch {
       executable_path: "/session-home/.cache/ms-playwright/chromium-1234/chrome-linux/chrome" as std.types.FilePath,
     }
-    && run.observed_on == "2026-08-01T04:58:15Z" as Rfc3339Timestamp
+    && run.observed_on == "2026-08-01T04:58:15Z" as extdeps.time.rfc3339.Rfc3339Timestamp
 }
 
 test fn witness_connection_refusal_is_exact_specimen() -> Bool {
@@ -75,7 +75,7 @@ test fn witness_bodied_502_retains_network_document() -> Bool {
   }
     && presentation.navigation == NavigationReturnedHttpResponse { status: 502 }
     && presentation.document == NetworkResponsePresentedDocument {
-      final_url: local_http_url(locator: "127.0.0.1:43821/body" as NonEmptyStr),
+      final_url: local_http_url(locator: "127.0.0.1:43821/body" as std.types.NonEmptyStr),
     }
 }
 

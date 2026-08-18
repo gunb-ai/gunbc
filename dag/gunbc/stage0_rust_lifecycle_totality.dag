@@ -107,7 +107,7 @@ fn exact_role_without_disposition_paths(
   )
 }
 
-fn row_has_ill_formed_maintenance_disposition(row: RustSourceLifecycleRow) -> Bool {
+fn row_has_ill_formed_maintenance_disposition(row: gunbc.stage0_rust_source_lifecycle_scaffold.RustSourceLifecycleRow) -> Bool {
   any(
     xs: row.maintenance_dispositions,
     predicate: fn(disposition) {
@@ -127,7 +127,7 @@ fn exact_ill_formed_maintenance_disposition_paths() -> List<String> {
 }
 
 fn lifecycle_totality_receipt(
-  observation: RustSourceHostObservation
+  observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation
 ) -> LifecycleTotalityReceipt {
   match observation {
     RustManifestObserved {
@@ -238,11 +238,11 @@ fn lifecycle_totality_witness_observation(extra_paths: List<String>) -> RustMani
   let classified = derived_file_grain_classified_repo_paths()
   RustManifestObserved {
     repository_revision: "witness-deadbeef",
-    manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+    manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
     tracked_rust_repo_paths: list_concat_unique(acc: classified, items: extra_paths),
     prior_tracked_rust_repo_paths: classified,
     cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
   }
 }
 
-data lifecycle_totality_retirement_trigger_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: RetirementTrigger carrier lands in gunbc.stage0_rust_source_lifecycle_scaffold and C1 derives exact disposition_without_retirement_trigger_paths via that single authority; LifecycleTotalityRetirementTriggerUnmodeled retires in favor of the real carrier")
+data lifecycle_totality_retirement_trigger_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: RetirementTrigger carrier lands in gunbc.stage0_rust_source_lifecycle_scaffold and C1 derives exact disposition_without_retirement_trigger_paths via that single authority; LifecycleTotalityRetirementTriggerUnmodeled retires in favor of the real carrier")

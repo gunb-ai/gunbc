@@ -1,98 +1,98 @@
 module extdeps.cloud.gcp.mock_corpus
 
 
-data gcloud_auth_mock_case_login: PublishedMockCase = PublishedMockCase {
+data gcloud_auth_mock_case_login: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "gcloud.Auth.Login",
   service: "gcloud.Auth",
   operation: "Login",
   case_id: 0
 }
 
-data gcloud_auth_mock_case_read_adc: PublishedMockCase = PublishedMockCase {
+data gcloud_auth_mock_case_read_adc: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "gcloud.Auth.ReadADC",
   service: "gcloud.Auth",
   operation: "ReadADC",
   case_id: 0
 }
 
-data oauth2_google_mock_case_refresh: PublishedMockCase = PublishedMockCase {
+data oauth2_google_mock_case_refresh: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "oauth2.Google.Refresh",
   service: "oauth2.Google",
   operation: "Refresh",
   case_id: 0
 }
 
-data shell_gcloud_mock_case_auth_print_access_token: PublishedMockCase = PublishedMockCase {
+data shell_gcloud_mock_case_auth_print_access_token: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "shell.GCloud.AuthPrintAccessToken",
   service: "shell.GCloud",
   operation: "AuthPrintAccessToken",
   case_id: 0
 }
 
-data gcp_iam_mock_case_generate_access_token: PublishedMockCase = PublishedMockCase {
+data gcp_iam_mock_case_generate_access_token: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "gcp.IAM.GenerateAccessToken",
   service: "gcp.IAM",
   operation: "GenerateAccessToken",
   case_id: 0
 }
 
-data gcp_resource_manager_mock_case_get_iam_policy: PublishedMockCase = PublishedMockCase {
+data gcp_resource_manager_mock_case_get_iam_policy: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "gcp.ResourceManager.GetIamPolicy",
   service: "gcp.ResourceManager",
   operation: "GetIamPolicy",
   case_id: 0
 }
 
-data gcp_resource_manager_mock_case_set_iam_policy: PublishedMockCase = PublishedMockCase {
+data gcp_resource_manager_mock_case_set_iam_policy: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "gcp.ResourceManager.SetIamPolicy",
   service: "gcp.ResourceManager",
   operation: "SetIamPolicy",
   case_id: 0
 }
 
-data gcp_secret_manager_mock_case_access_version: PublishedMockCase = PublishedMockCase {
+data gcp_secret_manager_mock_case_access_version: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "gcp.SecretManager.AccessVersion",
   service: "gcp.SecretManager",
   operation: "AccessVersion",
   case_id: 0
 }
 
-data gcp_secret_manager_mock_case_create_secret: PublishedMockCase = PublishedMockCase {
+data gcp_secret_manager_mock_case_create_secret: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "gcp.SecretManager.CreateSecret",
   service: "gcp.SecretManager",
   operation: "CreateSecret",
   case_id: 0
 }
 
-data gcp_secret_manager_mock_case_add_version: PublishedMockCase = PublishedMockCase {
+data gcp_secret_manager_mock_case_add_version: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "gcp.SecretManager.AddVersion",
   service: "gcp.SecretManager",
   operation: "AddVersion",
   case_id: 0
 }
 
-data gcp_sts_mock_case_exchange: PublishedMockCase = PublishedMockCase {
+data gcp_sts_mock_case_exchange: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "gcp.STS.Exchange",
   service: "gcp.STS",
   operation: "Exchange",
   case_id: 0
 }
 
-data github_oidc_mock_case_get_token: PublishedMockCase = PublishedMockCase {
+data github_oidc_mock_case_get_token: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "github.OIDC.GetToken",
   service: "github.OIDC",
   operation: "GetToken",
   case_id: 0
 }
 
-data gcp_metadata_mock_case_get_identity_token: PublishedMockCase = PublishedMockCase {
+data gcp_metadata_mock_case_get_identity_token: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "gcp.Metadata.GetIdentityToken",
   service: "gcp.Metadata",
   operation: "GetIdentityToken",
   case_id: 0
 }
 
-data gcp_published_mock_corpus: List<PublishedMockCase> = [
+data gcp_published_mock_corpus: List<std.hermetic_replay.PublishedMockCase> = [
   gcloud_auth_mock_case_login,
   gcloud_auth_mock_case_read_adc,
   oauth2_google_mock_case_refresh,

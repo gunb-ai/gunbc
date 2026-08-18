@@ -4,7 +4,7 @@ module v2.lens.common.algebraic_composition
 type EffectClassification {}
 
 type IdempotencyVerdict
-  = AlgebraicIdempotenceProven { law: Witness<InferredFacts> }
+  = AlgebraicIdempotenceProven { law: Witness<v2.compiler.infer.InferredFacts> }
   | RequiresAlgebraWitness
 
 type OwnershipMode
@@ -18,7 +18,7 @@ type ParallelismRelation
   = DataDependent
   | EffectCoupled
   | BarrierCoupled
-  | UnresolvedCoupling { diagnostic: Diagnostic }
+  | UnresolvedCoupling { diagnostic: v2.std.diagnostic.Diagnostic }
 
 type ParallelismKindPolicy
   = KnownParallelismRelation { relation: ParallelismRelation }

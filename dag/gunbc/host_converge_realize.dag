@@ -5,7 +5,7 @@ type ConvergeKnobInterpretVerdict =
     KnobUnimplemented { knob_name: String, target_kind: String, reason: String }
   | KnobEffect { knob_name: String, effect_script: String }
 
-fn converge_target_kind_label(t: ConvergeTarget) -> String {
+fn converge_target_kind_label(t: gunbc.host_converge.ConvergeTarget) -> String {
   match t {
     SliceProperty { unit: _, property: _, apply_value: _, expected_effective: _ } => "SliceProperty"
     PerSlotMemoryCap { dropin_path: _, instance_glob: _, property: _, bytes_value: _ } => "PerSlotMemoryCap"
@@ -28,7 +28,7 @@ fn converge_target_kind_label(t: ConvergeTarget) -> String {
 
 data converge_knob_unimplemented_reason_prefix: String = "host_converge_realize: ConvergeKnob interpreter frontier — fail-closed Unimplemented per knob target; no free-form imperative arm (host-effect Phase D / shell-emission slice 2)"
 
-fn converge_knob_unimplemented_reason(knob: ConvergeKnob) -> String {
+fn converge_knob_unimplemented_reason(knob: gunbc.host_converge.ConvergeKnob) -> String {
   concat(
     concat(
       concat(
@@ -41,15 +41,15 @@ fn converge_knob_unimplemented_reason(knob: ConvergeKnob) -> String {
   )
 }
 
-fn interpret_converge_knob(knob: ConvergeKnob) -> ConvergeKnobInterpretVerdict {
+fn interpret_converge_knob(knob: gunbc.host_converge.ConvergeKnob) -> ConvergeKnobInterpretVerdict {
   match knob.target {
     PerSlotMemoryCap { dropin_path: dp, instance_glob: _, property: prop, bytes_value: bv } =>
       KnobEffect {
         knob_name: knob.name,
         effect_script: cap_upsert_script(m: desired_cap_member(
-          dropin_path: dp as NonEmptyStr,
-          property: prop as NonEmptyStr,
-          bytes_value: bv as NonEmptyStr,
+          dropin_path: dp as std.types.NonEmptyStr,
+          property: prop as std.types.NonEmptyStr,
+          bytes_value: bv as std.types.NonEmptyStr,
         )),
       }
     _ =>
@@ -67,7 +67,7 @@ type ConvergeHostInterpretResult =
 
 data converge_host_no_knobs_reason: String = "host_converge_realize: HostConverge has zero knobs; fail-closed — refusing fabricated ConvergePlanApplied without knob work"
 
-fn interpret_host_converge(host_converge: HostConverge) -> ConvergeHostInterpretResult {
+fn interpret_host_converge(host_converge: gunbc.host_converge.HostConverge) -> ConvergeHostInterpretResult {
   if host_converge.knobs.length() == 0 {
     ConvergeHostRefused { reason: converge_host_no_knobs_reason }
   } else {

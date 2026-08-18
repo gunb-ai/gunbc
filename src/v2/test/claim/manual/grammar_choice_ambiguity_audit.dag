@@ -35,7 +35,7 @@ fn witness_dag_grammar_validate_accepts() -> Bool {
   }
 }
 
-fn witness_dag_first_choice_ambiguity_production() -> Symbol {
+fn witness_dag_first_choice_ambiguity_production() -> v2.std.node.Symbol {
   match list_at_optional(
     xs: grammar_choice_ambiguity_roster(root: dag_grammar_root()),
     index: 0

@@ -1,11 +1,11 @@
 module v2.std.project_to_core_predicate
 
 
-fn project_to_core_axis_is_core(name: Symbol) -> Bool {
+fn project_to_core_axis_is_core(name: v2.std.node.Symbol) -> Bool {
   model_core_primitive_fact_axis_is_core(axis: name)
 }
 
-fn project_to_core_axis_is_surface(name: Symbol) -> Bool {
+fn project_to_core_axis_is_surface(name: v2.std.node.Symbol) -> Bool {
   model_core_primitive_fact_axis_is_surface(axis: name)
 }
 
@@ -13,7 +13,7 @@ fn project_to_core_init(n: Node) -> Node {
   node_rebuild(n: n, children: [])
 }
 
-fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
+fn project_to_core_step(acc: Node, edge: v2.std.node.Edge, child: Node) -> Node {
   let projected_target = if count(edge.target.children) == 0 { edge.target } else { child }
   match edge.label {
     Named { name: edge_name } =>
@@ -24,7 +24,7 @@ fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
           n: acc,
           children: list_snoc_item(
             xs: acc.children,
-            item: Edge { label: edge.label, target: projected_target }
+            item: v2.std.node.Edge { label: edge.label, target: projected_target }
           )
         )
       }
@@ -33,14 +33,14 @@ fn project_to_core_step(acc: Node, edge: Edge, child: Node) -> Node {
         n: acc,
         children: list_snoc_item(
           xs: acc.children,
-          item: Edge { label: edge.label, target: projected_target }
+          item: v2.std.node.Edge { label: edge.label, target: projected_target }
         )
       )
   }
 }
 
 fn project_to_core_algebra() -> NodeFold<Node> {
-  NodeFold {
+  v2.std.node.NodeFold {
     init: project_to_core_init,
     step: project_to_core_step
   }
@@ -54,7 +54,7 @@ fn project_to_core_has_core_fact_init(_: Node) -> Bool {
   false
 }
 
-fn project_to_core_has_core_fact_step(acc: Bool, edge: Edge, child: Bool) -> Bool {
+fn project_to_core_has_core_fact_step(acc: Bool, edge: v2.std.node.Edge, child: Bool) -> Bool {
   match edge.label {
     Named { name: edge_name } =>
       if project_to_core_axis_is_surface(name: edge_name) {
@@ -67,7 +67,7 @@ fn project_to_core_has_core_fact_step(acc: Bool, edge: Edge, child: Bool) -> Boo
 }
 
 fn project_to_core_has_core_fact_algebra() -> NodeFold<Bool> {
-  NodeFold {
+  v2.std.node.NodeFold {
     init: project_to_core_has_core_fact_init,
     step: project_to_core_has_core_fact_step
   }

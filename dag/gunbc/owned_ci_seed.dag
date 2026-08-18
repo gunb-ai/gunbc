@@ -1,9 +1,9 @@
 module gunbc.owned_ci_seed
 
 
-data owned_ci_control_plane_seed_scaffold: Disposition = Scaffold {
+data owned_ci_control_plane_seed_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.owned_ci_seed",
     decl_name: "owned_ci_seed_repo_owner",
     field: WholeDeclaration

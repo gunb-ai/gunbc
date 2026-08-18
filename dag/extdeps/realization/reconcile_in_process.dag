@@ -2,17 +2,17 @@ module extdeps.realization.reconcile_in_process
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
   }
 }
 
-data parse_cache_id: CacheInterfaceId = "parse_cache"
-data typed_module_cache_id: CacheInterfaceId = "typed_module_cache"
+data parse_cache_id: std.cache_identity.CacheInterfaceId = "parse_cache"
+data typed_module_cache_id: std.cache_identity.CacheInterfaceId = "typed_module_cache"
 
-data parse_cache_facts: CacheInterfaceCatalogFacts = {
+data parse_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: parse_cache_id
   backing_surface: "gunbc-cli-run-parse-in-process"
   transport_encoding: CatalogOpaqueStringEncoding
@@ -57,7 +57,7 @@ data parse_cache_facts: CacheInterfaceCatalogFacts = {
   ]
 }
 
-data typed_module_cache_facts: CacheInterfaceCatalogFacts = {
+data typed_module_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: typed_module_cache_id
   backing_surface: "gunbc-cli-run-typed-module-in-process"
   transport_encoding: CatalogOpaqueStringEncoding

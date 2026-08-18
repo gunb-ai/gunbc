@@ -29,11 +29,11 @@ test fn srv4_never_dhcps_the_link_local_nic() -> Bool {
   }
 }
 
-data no_source_env: UefiShellEnvironment = UefiShellEnvironment {
+data no_source_env: extdeps.firmware.uefi_shell.UefiShellEnvironment = extdeps.firmware.uefi_shell.UefiShellEnvironment {
   mappings: [],
   boot_options: [],
   interfaces: [
-    UefiNetworkInterface { name: "eth0", media: MediaDisconnected, ipv4: "0.0.0.0" },
+    extdeps.firmware.uefi_shell.UefiNetworkInterface { name: "eth0", media: MediaDisconnected, ipv4: "0.0.0.0" },
   ],
 }
 

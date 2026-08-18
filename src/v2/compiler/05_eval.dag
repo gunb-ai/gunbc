@@ -2,10 +2,10 @@ module v2.compiler.eval
 
 
 type InterpretationCacheAuthority {
-  runtime_identity: Symbol,
-  interpretation: InterpretationAlgebra,
-  semantics_digest: Hash,
-  structure_witness: InterpretationStructureWitness
+  runtime_identity: v2.std.node.Symbol,
+  interpretation: v2.std.runtime.InterpretationAlgebra,
+  semantics_digest: v2.std.node.Hash,
+  structure_witness: v2.std.runtime.InterpretationStructureWitness
 }
 
 type Inputs {
@@ -45,15 +45,15 @@ fn inputs_for_emit_host(
 }
 
 type EffectIoEvalBundle {
-  backend: EffectIoResourceBackend
-  store: EffectIoFixtureStore
-  handlers: EffectHandlerBinding
-  receipt_log: EffectReceiptLog
+  backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend
+  store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore
+  handlers: v2.std.runtime.EffectHandlerBinding
+  receipt_log: v2.std.runtime.EffectReceiptLog
 }
 
 type EffectIoYieldOutcome {
   bundle: EffectIoEvalBundle
-  value: RuntimeValue
+  value: v2.std.runtime.RuntimeValue
 }
 
 type EffectIoEvalContext
@@ -347,13 +347,13 @@ fn eval_context_interpretation(context: EvalContext) -> InterpretationAlgebra {
 
 type TestClaimTypedInput<T> {
   evaluator_input: T
-  evaluator_pin: Symbol
+  evaluator_pin: v2.std.node.Symbol
 }
 
 type TestClaimEvalSubject<T> {
-  claim: TestClaim
+  claim: v2.std.verification.TestClaim
   context: EvalContext
-  tree: InferredTree
+  tree: v2.compiler.infer.InferredTree
   input: TestClaimTypedInput<T>
 }
 
@@ -398,8 +398,8 @@ type EvalFoldState {
   node: Node
   progress: EvalProgress
   structural: Outcome<Node>
-  child_values: Outcome<List<RuntimeValue>>
-  value: Outcome<RuntimeValue>
+  child_values: Outcome<List<v2.std.runtime.RuntimeValue>>
+  value: Outcome<v2.std.runtime.RuntimeValue>
 }
 
 type EvalProgress
@@ -693,13 +693,13 @@ fn inferred_tree_digest(tree: InferredTree) -> Hash {
 
 type InterpretationCacheDigestAuthority
   = InterpretationCacheRegistered {
-      runtime_identity: Symbol,
-      semantics_witness: Hash
+      runtime_identity: v2.std.node.Symbol,
+      semantics_witness: v2.std.node.Hash
     }
   | InterpretationCacheIneligible {
-      runtime_identity: Symbol,
-      registry_witness: Hash,
-      structure_digest: Hash
+      runtime_identity: v2.std.node.Symbol,
+      registry_witness: v2.std.node.Hash,
+      structure_digest: v2.std.node.Hash
     }
 
 fn test_claim_interpretation_cache_digest_authority(context: EvalContext) -> InterpretationCacheDigestAuthority {
@@ -913,8 +913,8 @@ fn control_transfer_value(
 
 type RuntimeValueAcceptanceWitness {
   resolved_type: Witness<Node>
-  inhabitance: Witness<InferredFacts>
-  canonical: Witness<InferredFacts>
+  inhabitance: Witness<v2.compiler.infer.InferredFacts>
+  canonical: Witness<v2.compiler.infer.InferredFacts>
 }
 
 fn eval_runtime_value_acceptance_witness(
@@ -1122,7 +1122,7 @@ fn eval_type_node_atom(
 
 type EvalParamBindAcc {
   idx: Int
-  acc: Outcome<EvaluationEnvironment>
+  acc: Outcome<v2.std.runtime.EvaluationEnvironment>
 }
 
 fn eval_bind_param_edge_step(

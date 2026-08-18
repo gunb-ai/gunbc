@@ -9,7 +9,7 @@ module gunbc.test.claim.body_lowering_refusal_scope_test
 // live-file subject through the refusal cause. The subject it uses (logic) is a real roster member
 // outside the execution batch, so the assertion is about the shipped roster and not a synthetic one.
 
-fn cause_of(s: BodyLoweringObservationStanding) -> Symbol {
+fn cause_of(s: gunbc.tools.body_lowering_population_probe.BodyLoweringObservationStanding) -> v2.std.node.Symbol {
   match s {
     SubjectUnmeasured { cause: c } => c
     SubjectObserved { stage: _ } => ^unexpected_observed
@@ -17,11 +17,11 @@ fn cause_of(s: BodyLoweringObservationStanding) -> Symbol {
   }
 }
 
-data non_batch_subject: BodyLoweringSubject = BodyLoweringSubject { label: ^logic, realization: LiveFileSubject { path: "src/v2/std/logic.dag" } }
+data non_batch_subject: gunbc.tools.body_lowering_population_probe.BodyLoweringSubject = gunbc.tools.body_lowering_population_probe.BodyLoweringSubject { label: ^logic, realization: LiveFileSubject { path: "src/v2/std/logic.dag" } }
 
-data batch_subject: BodyLoweringSubject = BodyLoweringSubject { label: ^optional, realization: LiveFileSubject { path: "src/v2/std/optional.dag" } }
+data batch_subject: gunbc.tools.body_lowering_population_probe.BodyLoweringSubject = gunbc.tools.body_lowering_population_probe.BodyLoweringSubject { label: ^optional, realization: LiveFileSubject { path: "src/v2/std/optional.dag" } }
 
-data specimen_subject: BodyLoweringSubject = BodyLoweringSubject { label: ^vacuity_bare_expression_specimens, realization: UnauthoredSpecimenClass }
+data specimen_subject: gunbc.tools.body_lowering_population_probe.BodyLoweringSubject = gunbc.tools.body_lowering_population_probe.BodyLoweringSubject { label: ^vacuity_bare_expression_specimens, realization: UnauthoredSpecimenClass }
 
 test fn census_refusal_does_not_reach_a_non_batch_subject_RED() -> Bool {
   cause_of(s: refusal_standing_of(s: non_batch_subject, cause: ^census_refused_at_world)) == ^not_selected_into_execution_batch

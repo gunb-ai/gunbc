@@ -10,13 +10,13 @@ Per-clause sourcing (audited 2026-08-02, session quick-swift-501, against PR #75
 WHAT REMAINS OUTSIDE THIS FILE'S AUTHORITY: acceptance of the roadmap node itself is a gunbc.roadmap_model RoadmapAcceptanceReceipt, authored by the operator (roadmap_acceptance_receipt_note names accepted_by as evidence, not a worker action); this audit does not accept the node and does not claim to, and it is not itself the node's closing contract. It gives a human reviewer, or a future execution-derived contract, something concrete to check against instead of prose."
 
 type ClauseVerdict
-  = NotDelivered { reason: NonEmptyStr }
-  | PartiallyDelivered { reason: NonEmptyStr, evidence: NonEmptyStr }
-  | Delivered { witness_module: NonEmptyStr, witness_fn: NonEmptyStr, evidence: NonEmptyStr }
+  = NotDelivered { reason: std.types.NonEmptyStr }
+  | PartiallyDelivered { reason: std.types.NonEmptyStr, evidence: std.types.NonEmptyStr }
+  | Delivered { witness_module: std.types.NonEmptyStr, witness_fn: std.types.NonEmptyStr, evidence: std.types.NonEmptyStr }
 
 type FrontierClause {
-  id: NonEmptyStr
-  statement: NonEmptyStr
+  id: std.types.NonEmptyStr
+  statement: std.types.NonEmptyStr
   verdict: ClauseVerdict
 }
 

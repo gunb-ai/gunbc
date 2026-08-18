@@ -2,8 +2,8 @@ module v2.lens.determinism
 
 
 type DeterminismRoot {
-  signature: Symbol,
-  source: DeclarationRef,
+  signature: v2.std.node.Symbol,
+  source: std.decl_ref.DeclarationRef,
   citation: String
 }
 

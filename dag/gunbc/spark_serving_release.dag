@@ -16,17 +16,17 @@ module gunbc.spark_serving_release
 // another, a serving configuration that matches neither. Hashing the closure makes "srv5 and srv6
 // run the same thing" a single comparison instead of a conjunction someone can weaken one arm at
 // a time.
-type RuntimeArtifactIdentity { closure_digest: NonEmptyStr }
+type RuntimeArtifactIdentity { closure_digest: std.types.NonEmptyStr }
 
-type ServingConfigurationIdentity { configuration_digest: NonEmptyStr }
+type ServingConfigurationIdentity { configuration_digest: std.types.NonEmptyStr }
 
 type OllamaRuntime {}
 
 type SparkServingRuntimeKind = OllamaRuntime
 
 type SparkServingBindListen {
-  host: NonEmptyStr
-  port: Port
+  host: std.types.NonEmptyStr
+  port: std.types.Port
 }
 
 fn spark_serving_runtime_kind_wire(runtime: SparkServingRuntimeKind) -> String {
@@ -87,11 +87,11 @@ fn spark_serving_configuration_identity(
 // authority, so neither can be written. Memory is not a bare number: it carries its quantity, and
 // reusing the measure carrier is what lets this budget be compared against the host RAM figures
 // the fleet already models rather than against a same-shaped Int that happens to mean bytes.
-type InferenceCapacityPolicy { max_model_len: std.nat.Nat  shared_memory_budget_bytes: ByteSize }
+type InferenceCapacityPolicy { max_model_len: std.nat.Nat  shared_memory_budget_bytes: std.measure.ByteSize }
 
 type SparkServingRelease {
   runtime: RuntimeArtifactIdentity
-  model: ModelArtifact
+  model: gunbc.model_artifact.ModelArtifact
 }
 
 type SparkServingServingPolicy {
@@ -109,7 +109,7 @@ type SparkServingServingPolicy {
 // Fnv1a64Structural rather than the ContentHash union, per the family-grounding rule the same way
 // GateRosterHash and v2.std.node.Hash carry it: a union-typed carrier re-opens the cross-family
 // comparison that grounding closed.
-type SparkServingReleaseIdentity { digest: Fnv1a64Structural }
+type SparkServingReleaseIdentity { digest: std.content_hash.Fnv1a64Structural }
 
 // The seed is the injective rendering the identity is taken over. Every field appears, each behind
 // its own name, so two releases differing in any single input produce different seed text and
@@ -160,9 +160,9 @@ type SparkServingOccurrence {
 type SparkServingPrerequisite
   = HostIdentityBindingAdmitted { host: product.placement_supply.HostIdentity }
   | ManagedHostAccessGrounded { host: product.placement_supply.HostIdentity }
-  | PrerequisiteAbsent { host: product.placement_supply.HostIdentity, requirement: NonEmptyStr, cause: NonEmptyStr }
+  | PrerequisiteAbsent { host: product.placement_supply.HostIdentity, requirement: std.types.NonEmptyStr, cause: std.types.NonEmptyStr }
 
-type SparkServingRefusal { subject: NonEmptyStr  cause: NonEmptyStr }
+type SparkServingRefusal { subject: std.types.NonEmptyStr  cause: std.types.NonEmptyStr }
 
 // THE NO-OP IS STRUCTURAL. SparkServingAlreadyConverged CARRIES NO EFFECT PLAN, so a converged
 // host has no constructor by which to write, restart, reinstall, or rotate anything. That is
@@ -195,7 +195,7 @@ type SparkServingObservation
 type SparkServingReconciliation
   = SparkServingAlreadyConverged { converged_release: SparkServingReleaseIdentity }
   | SparkServingInstallRequired { subject: product.placement_supply.HostIdentity, desired_release: SparkServingReleaseIdentity }
-  | SparkServingDeltaRequired { plan_subject: NonEmptyStr }
+  | SparkServingDeltaRequired { plan_subject: std.types.NonEmptyStr }
   | SparkServingRefused { first: SparkServingRefusal, more: List<SparkServingRefusal> }
 
 data no_absent_prerequisite: SparkServingRefusal? = none
@@ -350,8 +350,8 @@ fn spark_occurrences_share_release(a: SparkServingOccurrence, b: SparkServingOcc
 type SparkServingPlanRow {
   host: product.placement_supply.HostIdentity
   reconciliation: SparkServingReconciliation
-  contract: ServingRequirementRefusal?
-  shortfall: EscalationShortfall
+  contract: gunbc.spark_serving_realization.ServingRequirementRefusal?
+  shortfall: gunbc.spark_serving_realization.EscalationShortfall
 }
 
 // Head-plus-tail: a plan over zero hosts has no constructor. "Nothing to do" and "no host was
@@ -359,7 +359,7 @@ type SparkServingPlanRow {
 // precisely the conflation that made first install unreachable one type up.
 type SparkServingPlan
   = ServingPlanned { first: SparkServingPlanRow, more: List<SparkServingPlanRow> }
-  | ServingPlanNotAttempted { cause: NonEmptyStr }
+  | ServingPlanNotAttempted { cause: std.types.NonEmptyStr }
 
 // The deployment target for a Spark serving unit under the named automation account. The actor is a
 // PARAMETER rather than a constant because the same plan computed for root is the control that
@@ -429,10 +429,10 @@ fn plan_row_applicable(row: SparkServingPlanRow) -> Bool {
 type SparkServingPlanVerdict
   = ServingNoChangeRequired
   | ServingReadyToApply
-  | ServingRealizationInadmissible { cause: NonEmptyStr }
-  | ServingBlockedOnPrivilege { first_missing: NonEmptyStr }
-  | ServingBlockedOnObservation { cause: NonEmptyStr }
-  | ServingEvidenceMismatch { cause: NonEmptyStr }
+  | ServingRealizationInadmissible { cause: std.types.NonEmptyStr }
+  | ServingBlockedOnPrivilege { first_missing: std.types.NonEmptyStr }
+  | ServingBlockedOnObservation { cause: std.types.NonEmptyStr }
+  | ServingEvidenceMismatch { cause: std.types.NonEmptyStr }
 
 // THE CONTRACT IS CHECKED BEFORE ANYTHING ELSE. An inadmissible realization makes every downstream
 // answer moot: there is no point reporting that its privilege cost is already covered.

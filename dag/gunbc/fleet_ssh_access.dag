@@ -57,9 +57,9 @@ fn fleet_automation_privkey_sm_access_url() -> String {
 }
 
 type SecretOwner {
-  secret: SecretRef
-  accessor_sa: ServiceAccountEmail
-  binding_provenance: NonEmptyStr
+  secret: extdeps.cloud.gcp.secret_ref.SecretRef
+  accessor_sa: extdeps.cloud.gcp.gcp.ServiceAccountEmail
+  binding_provenance: std.types.NonEmptyStr
 }
 
 data fleet_automation_privkey_owner: SecretOwner = SecretOwner {
@@ -69,8 +69,8 @@ data fleet_automation_privkey_owner: SecretOwner = SecretOwner {
 }
 
 type SshAccessPrincipal {
-  posix_account: FleetPosixAccountKey
-  public_key: SshPublicKey
+  posix_account: gunbc.fleet_posix_accounts.FleetPosixAccountKey
+  public_key: extdeps.ssh.SshPublicKey
 }
 
 data operator_ssh_principal: SshAccessPrincipal = SshAccessPrincipal {

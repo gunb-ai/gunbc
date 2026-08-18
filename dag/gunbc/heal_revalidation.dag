@@ -2,74 +2,74 @@ module gunbc.heal_revalidation
 
 
 type HealOutcome
-  = HealNoChange { head: CommitSha }
+  = HealNoChange { head: std.types.CommitSha }
   | HealProduced {
-      prior_head: CommitSha,
-      healed_head: CommitSha,
+      prior_head: std.types.CommitSha,
+      healed_head: std.types.CommitSha,
       changed_artifacts: List<String>
     }
   | HealAuthorCommitRequired {
-      head: CommitSha,
+      head: std.types.CommitSha,
       author_commit_paths: List<String>
     }
 
 type HealDispatchOutcome
-  = HealDispatchPending { healed_head: CommitSha }
+  = HealDispatchPending { healed_head: std.types.CommitSha }
   | HealDispatchAccepted {
-      healed_head: CommitSha,
-      run: NonEmptyStr
+      healed_head: std.types.CommitSha,
+      run: std.types.NonEmptyStr
     }
   | HealDispatchRefused {
-      healed_head: CommitSha,
-      cause: NonEmptyStr
+      healed_head: std.types.CommitSha,
+      cause: std.types.NonEmptyStr
     }
 
 type PriorRunDisposition
-  = PriorRunStillCurrent { head: CommitSha }
+  = PriorRunStillCurrent { head: std.types.CommitSha }
   | SupersededByHealedHead {
-      prior_head: CommitSha,
-      healed_head: CommitSha
+      prior_head: std.types.CommitSha,
+      healed_head: std.types.CommitSha
     }
 
 type HealRevalidationState
-  = HealRevalidationNotRequired { head: CommitSha }
+  = HealRevalidationNotRequired { head: std.types.CommitSha }
   | HealRevalidationRequired {
-      prior_head: CommitSha,
-      healed_head: CommitSha,
+      prior_head: std.types.CommitSha,
+      healed_head: std.types.CommitSha,
       changed_artifacts: List<String>,
       dispatch: HealDispatchOutcome
     }
   | HealRevalidationCoverageObserved {
-      prior_head: CommitSha,
-      healed_head: CommitSha,
+      prior_head: std.types.CommitSha,
+      healed_head: std.types.CommitSha,
       changed_artifacts: List<String>,
-      coverage: CheckCoverage
+      coverage: gunbc.merge_admission.CheckCoverage
     }
 
 type HealRevalidationAdmissionVerdict
-  = HealRevalidationAdmittedNoChange { head: CommitSha }
-  | HealRevalidationAdmittedExactCoverage { healed_head: CommitSha }
-  | HealRevalidationDeniedRequired { healed_head: CommitSha, dispatch: HealDispatchOutcome }
+  = HealRevalidationAdmittedNoChange { head: std.types.CommitSha }
+  | HealRevalidationAdmittedExactCoverage { healed_head: std.types.CommitSha }
+  | HealRevalidationDeniedRequired { healed_head: std.types.CommitSha, dispatch: HealDispatchOutcome }
   | HealRevalidationDeniedCoverage {
-      healed_head: CommitSha,
-      coverage: CheckCoverage
+      healed_head: std.types.CommitSha,
+      coverage: gunbc.merge_admission.CheckCoverage
     }
 
 type WorkflowDispatchPreflight
   = OrdinaryWorkflowDispatch {
-      checkout_head: CommitSha,
-      run_subject_head: CommitSha
+      checkout_head: std.types.CommitSha,
+      run_subject_head: std.types.CommitSha
     }
-  | HealWorkflowDispatchSubjectMatched { expected_head: CommitSha }
+  | HealWorkflowDispatchSubjectMatched { expected_head: std.types.CommitSha }
   | HealWorkflowDispatchCheckoutMismatch {
-      expected_head: CommitSha,
-      checkout_head: CommitSha,
-      run_subject_head: CommitSha
+      expected_head: std.types.CommitSha,
+      checkout_head: std.types.CommitSha,
+      run_subject_head: std.types.CommitSha
     }
   | HealWorkflowDispatchRunSubjectMismatch {
-      expected_head: CommitSha,
-      checkout_head: CommitSha,
-      run_subject_head: CommitSha
+      expected_head: std.types.CommitSha,
+      checkout_head: std.types.CommitSha,
+      run_subject_head: std.types.CommitSha
     }
 
 // This module and the CI workflow close the in-repository model/realization loop: a produced heal explicitly dispatches a new run and exact-head coverage is required. The external dashboard readout that historically treated an absent run as ok, and its separate aggregate conflation of Cancelled superseded runs with failed runs, live outside this repository and are not fixed or claimed fixed here.

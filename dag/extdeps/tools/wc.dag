@@ -41,15 +41,15 @@ service wc.ByteCount {
 
 type FileByteCountRead
   = FileByteCountObserved { count: Int }
-  | FileByteCountUnavailable { reason: NonEmptyStr }
+  | FileByteCountUnavailable { reason: std.types.NonEmptyStr }
 
 type FileByteCountVerification
   = FileByteCountMatches
   | FileByteCountDiffers {
       observed_count: Int,
-      expected: ByteSize,
+      expected: std.measure.ByteSize,
     }
-  | FileByteCountVerificationUnavailable { reason: NonEmptyStr }
+  | FileByteCountVerificationUnavailable { reason: std.types.NonEmptyStr }
 
 fn file_byte_count_via_wc(path: std.types.FilePath) -> FileByteCountRead {
   let read = wc.ByteCount.File(path: path)

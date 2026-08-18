@@ -3,7 +3,7 @@ module test.claim.bmc_redfish_grounding
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data example_srv2_redfish_system: RedfishSystemInventory = redfish_system_inventory(
+data example_srv2_redfish_system: extdeps.bmc.types.RedfishSystemInventory = redfish_system_inventory(
   model: "ALTRAD8UD-1L2T",
   manufacturer: Present { value: "ASRockRack" },
   processor_model: "Ampere(R) Altra(R) Processor",
@@ -14,7 +14,7 @@ data example_srv2_redfish_system: RedfishSystemInventory = redfish_system_invent
   logical_processor_count: Present { value: hardware_thread_count(128) }
 )
 
-data example_srv2_sensor_power: RedfishChassisSensorCollection = RedfishChassisSensorCollection {
+data example_srv2_sensor_power: extdeps.bmc.types.RedfishChassisSensorCollection = extdeps.bmc.types.RedfishChassisSensorCollection {
   chassis_id: asrock_altrad8ud_redfish_chassis_id,
   sensors: [
     PowerSensor {
@@ -28,7 +28,7 @@ data example_srv2_sensor_power: RedfishChassisSensorCollection = RedfishChassisS
   ],
 }
 
-data example_srv2_telemetry: BmcTelemetrySnapshot = BmcTelemetrySnapshot {
+data example_srv2_telemetry: extdeps.bmc.types.BmcTelemetrySnapshot = extdeps.bmc.types.BmcTelemetrySnapshot {
   system: example_srv2_redfish_system,
   power: none,
   thermal: none,
@@ -50,9 +50,9 @@ test fn bmc_redfish_grounding_holds() -> Bool {
     }
 }
 
-data example_srv_power_unread: RedfishPowerSubsystem = RedfishPowerSubsystem {
+data example_srv_power_unread: extdeps.bmc.types.RedfishPowerSubsystem = extdeps.bmc.types.RedfishPowerSubsystem {
   controls: [
-    RedfishPowerControl {
+    extdeps.bmc.types.RedfishPowerControl {
       member_id: "0",
       name: Present { value: "total_power" },
       power_consumed_watts: none,
@@ -61,7 +61,7 @@ data example_srv_power_unread: RedfishPowerSubsystem = RedfishPowerSubsystem {
   ],
 }
 
-data example_srv_telemetry_power_unread: BmcTelemetrySnapshot = BmcTelemetrySnapshot {
+data example_srv_telemetry_power_unread: extdeps.bmc.types.BmcTelemetrySnapshot = extdeps.bmc.types.BmcTelemetrySnapshot {
   system: example_srv2_redfish_system,
   power: Present { value: example_srv_power_unread },
   thermal: none,

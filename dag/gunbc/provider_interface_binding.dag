@@ -8,10 +8,10 @@ type ProviderControlInterface
 
 type ProviderInterfaceBinding {
   interface: ProviderControlInterface
-  transport: CodexAppServerTransport
-  executable: CodexAppServerExecutable
-  runtime_identity: ContentHash
-  protocol_schema_identity: ContentHash
+  transport: extdeps.llm.codex_app_server.CodexAppServerTransport
+  executable: extdeps.llm.codex_app_server.CodexAppServerExecutable
+  runtime_identity: std.content_hash.ContentHash
+  protocol_schema_identity: std.content_hash.ContentHash
 }
 
 type ProviderInterfaceResolution
@@ -20,7 +20,7 @@ type ProviderInterfaceResolution
     }
   | RequiredProviderInterfaceUnavailable {
       interface: ProviderControlInterface
-      reason: NonEmptyStr
+      reason: std.types.NonEmptyStr
     }
 
 fn project_codex_app_server_stdio_binding(

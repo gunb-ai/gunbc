@@ -1,7 +1,7 @@
 module v2.lens.interface_summary
 
 
-fn decl_kind_to_export_kind(kind: ItemKind) -> ExportKind? {
+fn decl_kind_to_export_kind(kind: v2.std.decl_index.ItemKind) -> std.interface_summary.ExportKind? {
   match kind {
     FnItem => Present { value: ExportFn }
     FuncItem => Present { value: ExportFn }
@@ -12,15 +12,15 @@ fn decl_kind_to_export_kind(kind: ItemKind) -> ExportKind? {
   }
 }
 
-fn signature_fingerprint_of_node(node: Node) -> SignatureFingerprint {
+fn signature_fingerprint_of_node(node: Node) -> std.interface_summary.SignatureFingerprint {
   content_hash_atom(value: content_hash(n: node).digest as String)
 }
 
-fn export_entry_from_decl_fact(fact: DeclFact) -> ExportEntry? {
+fn export_entry_from_decl_fact(fact: v2.std.decl_index.DeclFact) -> std.interface_summary.ExportEntry? {
   match decl_kind_to_export_kind(kind: fact.kind) {
     Present { value: kind } =>
       Present {
-        value: ExportEntry {
+        value: std.interface_summary.ExportEntry {
           name: fact.name,
           kind: kind,
           contract: signature_contract(
@@ -32,7 +32,7 @@ fn export_entry_from_decl_fact(fact: DeclFact) -> ExportEntry? {
   }
 }
 
-fn export_entries_for_rel_path(rel_path: String, facts: List<DeclFact>) -> List<ExportEntry> {
+fn export_entries_for_rel_path(rel_path: String, facts: List<v2.std.decl_index.DeclFact>) -> List<std.interface_summary.ExportEntry> {
   fold(facts, init: std.algebra.Empty, f: fn(acc, fact) {
     if fact.rel_path == rel_path {
       match export_entry_from_decl_fact(fact: fact) {
@@ -46,12 +46,12 @@ fn export_entries_for_rel_path(rel_path: String, facts: List<DeclFact>) -> List<
 }
 
 fn interface_summary_for_module_path(
-  module_path: NonEmptyStr,
+  module_path: std.types.NonEmptyStr,
   rel_path: String,
-  facts: List<DeclFact>
-) -> InterfaceSummary {
+  facts: List<v2.std.decl_index.DeclFact>
+) -> std.interface_summary.InterfaceSummary {
   let exports = export_entries_for_rel_path(rel_path: rel_path, facts: facts)
-  InterfaceSummary {
+  std.interface_summary.InterfaceSummary {
     module_path: module_path,
     exports: exports,
     interface_hash: interface_summary_rollup(exports: exports)
@@ -59,9 +59,9 @@ fn interface_summary_for_module_path(
 }
 
 fn interface_summaries_from_facts(
-  modules: List<ModuleDeclarationFact>,
-  facts: List<DeclFact>
-) -> List<InterfaceSummary> {
+  modules: List<v2.lens.module_graph.ModuleDeclarationFact>,
+  facts: List<v2.std.decl_index.DeclFact>
+) -> List<std.interface_summary.InterfaceSummary> {
   fold(modules, init: std.algebra.Empty, f: fn(acc, mod_fact) {
     list_snoc_item(
       xs: acc,
@@ -74,7 +74,7 @@ fn interface_summaries_from_facts(
   })
 }
 
-fn interface_summaries_live(pool_roots: List<String>) -> List<InterfaceSummary> {
+fn interface_summaries_live(pool_roots: List<String>) -> List<std.interface_summary.InterfaceSummary> {
   interface_summaries_from_facts(
     modules: module_declaration_facts_live(pool_roots: pool_roots),
     facts: export_signature_facts(pool_roots: pool_roots)
@@ -82,9 +82,9 @@ fn interface_summaries_live(pool_roots: List<String>) -> List<InterfaceSummary> 
 }
 
 fn interface_hash_for_module_path(
-  summaries: List<InterfaceSummary>,
+  summaries: List<std.interface_summary.InterfaceSummary>,
   module_path: String
-) -> InterfaceHash? {
+) -> std.interface_summary.InterfaceHash? {
   fold(summaries, init: optional_absent(), f: fn(found, summary) {
     match found {
       Present { value: _ } => found
@@ -99,7 +99,7 @@ fn interface_hash_for_module_path(
 
 fn direct_import_modules(
   rel_path: String,
-  edges: List<ImportResolutionFact>
+  edges: List<v2.lens.module_graph.ImportResolutionFact>
 ) -> List<String> {
   fold(edges, init: std.algebra.Empty, f: fn(acc, edge) {
     if edge.path == rel_path {
@@ -112,9 +112,9 @@ fn direct_import_modules(
 
 fn import_interface_hashes_for_module(
   rel_path: String,
-  edges: List<ImportResolutionFact>,
-  summaries: List<InterfaceSummary>
-) -> List<InterfaceHash>? {
+  edges: List<v2.lens.module_graph.ImportResolutionFact>,
+  summaries: List<std.interface_summary.InterfaceSummary>
+) -> List<std.interface_summary.InterfaceHash>? {
   fold(
     direct_import_modules(rel_path: rel_path, edges: edges),
     init: Present { value: std.algebra.Empty },
@@ -134,10 +134,10 @@ fn import_interface_hashes_for_module(
 
 fn module_key_for_rel_path(
   rel_path: String,
-  module_path: NonEmptyStr,
-  source_hash: ContentHash,
+  module_path: std.types.NonEmptyStr,
+  source_hash: std.content_hash.ContentHash,
   pool_roots: List<String>
-) -> ModuleKey? {
+) -> std.interface_summary.ModuleKey? {
   let summaries = interface_summaries_live(pool_roots: pool_roots)
   let edges = import_resolution_facts_live(
     pool_roots: pool_roots,
@@ -161,9 +161,9 @@ fn module_key_for_rel_path(
 }
 
 fn interface_summary_for_module(
-  module_path: NonEmptyStr,
+  module_path: std.types.NonEmptyStr,
   pool_roots: List<String>
-) -> InterfaceSummary? {
+) -> std.interface_summary.InterfaceSummary? {
   fold(interface_summaries_live(pool_roots: pool_roots), init: optional_absent(), f: fn(found, summary) {
     match found {
       Present { value: _ } => found
@@ -176,6 +176,6 @@ fn interface_summary_for_module(
   })
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

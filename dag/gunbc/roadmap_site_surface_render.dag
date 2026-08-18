@@ -1,11 +1,11 @@
 module gunbc.roadmap_site_surface_render
 
 
-data roadmap_site_health_path: NonEmptyStr = "/healthz"
-data roadmap_site_roadmap_url_path: NonEmptyStr = "/ROADMAP.md"
-data roadmap_site_dispatch_url_path: NonEmptyStr = "/target/roadmap-dispatch.json"
-data roadmap_site_daily_url_path: NonEmptyStr = "/"
-data roadmap_site_full_url_path: NonEmptyStr = "/roadmap"
+data roadmap_site_health_path: std.types.NonEmptyStr = "/healthz"
+data roadmap_site_roadmap_url_path: std.types.NonEmptyStr = "/ROADMAP.md"
+data roadmap_site_dispatch_url_path: std.types.NonEmptyStr = "/target/roadmap-dispatch.json"
+data roadmap_site_daily_url_path: std.types.NonEmptyStr = "/"
+data roadmap_site_full_url_path: std.types.NonEmptyStr = "/roadmap"
 data roadmap_site_service_name: String = "gunbc-roadmap"
 
 data page_render_refusal_prefix: String = "page render refused: "
@@ -14,28 +14,28 @@ fn page_render_refusal_body(reason: String) -> String {
   join([page_render_refusal_prefix, reason, "\n"], "")
 }
 
-fn site_artifact_digest(body: String) -> Fnv1a64Structural {
-  content_hash_atom(value: body as NonEmptyStr)
+fn site_artifact_digest(body: String) -> std.content_hash.Fnv1a64Structural {
+  content_hash_atom(value: body as std.types.NonEmptyStr)
 }
 
-fn served_page_body(page: Fragment) -> String {
+fn served_page_body(page: std.markup.Fragment) -> String {
   match try_serialize_html_source(node: page) {
     EmitOk { html: h } => h
     EmitRejected { reason: r } => page_render_refusal_body(reason: r)
   }
 }
 
-fn served_surface_digest_kv(url_path: NonEmptyStr, body: String) -> JsonKeyValue {
+fn served_surface_digest_kv(url_path: std.types.NonEmptyStr, body: String) -> extdeps.languages.json.emit.JsonKeyValue {
   json_kv(key: url_path as String, value: json_string(s: site_artifact_digest(body: body).digest as String))
 }
 
 fn healthz_surface_members(
-  roadmap: RoadmapSiteSurfaceArtifact,
-  dispatch: RoadmapSiteSurfaceArtifact,
-  daily: RoadmapSiteSurfaceArtifact,
-  full: RoadmapSiteSurfaceArtifact,
-  dispatch_js: RoadmapSiteSurfaceArtifact,
-) -> List<JsonKeyValue> {
+  roadmap: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
+  dispatch: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
+  daily: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
+  full: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
+  dispatch_js: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
+) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   [
     json_kv(key: "status", value: json_string(s: "ok")),
     json_kv(key: "service", value: json_string(s: roadmap_site_service_name)),
@@ -52,11 +52,11 @@ fn healthz_surface_members(
 data healthz_surface_members_note: String = "THE SURFACE MEMBERS ARE FACTORED OUT SO THE SERVED DOCUMENT AND THE BUNDLE'S OWN healthz_body CANNOT DRIFT. The served /healthz body is these members PLUS the running process's release identity (gunbc.running_release_identity); the bundle's retained healthz_body is these members alone. One member list, two documents differing by exactly the launch-identity members — never two spellings of the surface, which is the dual-representation DESIGN section 3 forbids and which would let the deploy's freshness comparison go green against a document the route does not serve."
 
 fn healthz_body_from_surface_artifacts(
-  roadmap: RoadmapSiteSurfaceArtifact,
-  dispatch: RoadmapSiteSurfaceArtifact,
-  daily: RoadmapSiteSurfaceArtifact,
-  full: RoadmapSiteSurfaceArtifact,
-  dispatch_js: RoadmapSiteSurfaceArtifact,
+  roadmap: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
+  dispatch: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
+  daily: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
+  full: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
+  dispatch_js: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
 ) -> String {
   serialize_json(v: json_object(members: healthz_surface_members(
     roadmap: roadmap,
@@ -68,13 +68,13 @@ fn healthz_body_from_surface_artifacts(
 }
 
 fn healthz_body_with_release_identity(
-  roadmap: RoadmapSiteSurfaceArtifact,
-  dispatch: RoadmapSiteSurfaceArtifact,
-  daily: RoadmapSiteSurfaceArtifact,
-  full: RoadmapSiteSurfaceArtifact,
-  dispatch_js: RoadmapSiteSurfaceArtifact,
-  release_revision: CommitSha,
-  surface_bundle_identity: Fnv1a64Structural,
+  roadmap: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
+  dispatch: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
+  daily: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
+  full: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
+  dispatch_js: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact,
+  release_revision: std.types.CommitSha,
+  surface_bundle_identity: std.content_hash.Fnv1a64Structural,
 ) -> String {
   serialize_json(v: json_object(members: list_append(
     healthz_surface_members(

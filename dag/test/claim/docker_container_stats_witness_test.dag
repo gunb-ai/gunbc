@@ -3,7 +3,7 @@ module test.claim.docker_container_stats_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data sample_cpu_usage: CpuUsage = CpuUsage {
+data sample_cpu_usage: extdeps.docker.container_stats.CpuUsage = extdeps.docker.container_stats.CpuUsage {
   total_usage: nanosecond(1234567890)
   percpu_usage: [nanosecond(1000000), nanosecond(234567890)]
   usage_in_kernelmode: nanosecond(100000000)
@@ -17,18 +17,18 @@ data sample_memory_stats: extdeps.docker.container_stats.MemoryStats = extdeps.d
   failcnt: none
 }
 
-data sample_cpu_stats: CpuStats = CpuStats {
+data sample_cpu_stats: extdeps.docker.container_stats.CpuStats = extdeps.docker.container_stats.CpuStats {
   cpu_usage: sample_cpu_usage
   system_cpu_usage: nanosecond(9876543210)
   online_cpus: 4
   cpu_percent: none
 }
 
-data sample_pids_stats: PidStats = PidStats {
+data sample_pids_stats: extdeps.docker.container_stats.PidStats = extdeps.docker.container_stats.PidStats {
   current: 25
 }
 
-data sample_network_stats: NetworkStats = NetworkStats {
+data sample_network_stats: extdeps.docker.container_stats.NetworkStats = extdeps.docker.container_stats.NetworkStats {
   rx_bytes: byte_size(1024000)
   rx_packets: 256
   rx_errors: 0
@@ -39,11 +39,11 @@ data sample_network_stats: NetworkStats = NetworkStats {
   tx_dropped: 0
 }
 
-data sample_networks: Networks = Networks {
+data sample_networks: extdeps.docker.container_stats.Networks = extdeps.docker.container_stats.Networks {
   interfaces: [extdeps.docker.container_stats.DockerContainerNetworkInterfaceStats { name: "eth0", stats: sample_network_stats }]
 }
 
-data sample_container_stats: ContainerStats = ContainerStats {
+data sample_container_stats: extdeps.docker.container_stats.ContainerStats = extdeps.docker.container_stats.ContainerStats {
   read: "2026-06-23T15:30:00Z"
   pids_stats: Present { value: sample_pids_stats }
   blkio_stats: none
@@ -52,7 +52,7 @@ data sample_container_stats: ContainerStats = ContainerStats {
   networks: Present { value: sample_networks }
 }
 
-data sample_host_config: HostConfig = HostConfig {
+data sample_host_config: extdeps.docker.container_inspect.HostConfig = extdeps.docker.container_inspect.HostConfig {
   cpu_shares: none
   memory: Present { value: byte_size(2147483648) }
   memory_reservation: none
@@ -76,7 +76,7 @@ data sample_host_config: HostConfig = HostConfig {
   device_requests: none
 }
 
-data sample_container_config: ContainerConfig = ContainerConfig {
+data sample_container_config: extdeps.docker.container_inspect.ContainerConfig = extdeps.docker.container_inspect.ContainerConfig {
   hostname: "mycontainer"
   domainname: none
   user: "root"
@@ -98,7 +98,7 @@ data sample_container_config: ContainerConfig = ContainerConfig {
   network_disabled: false
 }
 
-data sample_container_state: ContainerStateDetail = ContainerStateDetail {
+data sample_container_state: extdeps.docker.container_inspect.ContainerStateDetail = extdeps.docker.container_inspect.ContainerStateDetail {
   status: Running
   running: true
   paused: false
@@ -112,7 +112,7 @@ data sample_container_state: ContainerStateDetail = ContainerStateDetail {
   finished_at: none
 }
 
-data sample_network_settings: NetworkSettings = NetworkSettings {
+data sample_network_settings: extdeps.docker.container_inspect.NetworkSettings = extdeps.docker.container_inspect.NetworkSettings {
   bridge: "docker0"
   gateway: "172.17.0.1"
   ip_address: "172.17.0.2"
@@ -121,7 +121,7 @@ data sample_network_settings: NetworkSettings = NetworkSettings {
   networks: none
 }
 
-data sample_container_inspect: ContainerInspect = ContainerInspect {
+data sample_container_inspect: extdeps.docker.container_inspect.ContainerInspect = extdeps.docker.container_inspect.ContainerInspect {
   id: "abc123def456"
   created: "2026-06-23T15:25:00Z"
   path: none
@@ -176,7 +176,7 @@ test fn container_inspect_cpu_period_extracts_from_host_config() -> Bool {
 }
 
 test fn container_inspect_memory_limit_returns_absent_when_no_host_config() -> Bool {
-  let inspect_no_hc = ContainerInspect {
+  let inspect_no_hc = extdeps.docker.container_inspect.ContainerInspect {
     id: "test"
     created: "2026-06-23T00:00:00Z"
     path: none

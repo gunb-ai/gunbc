@@ -3,16 +3,16 @@ module test.claim.native_scm_interaction_contract_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn receipt_for(scenario: NativeScmScenario) -> NativeScmReceipt {
+fn receipt_for(scenario: test.claim.native_scm_interaction_scenario_fixture.NativeScmScenario) -> gunbc.native_scm_interaction_contract.NativeScmReceipt {
   native_scm_receipt_for(scenario: scenario)
 }
 
-fn primary_label(receipt: NativeScmReceipt) -> String {
+fn primary_label(receipt: gunbc.native_scm_interaction_contract.NativeScmReceipt) -> String {
   native_scm_primary_label(primary: receipt.primary)
 }
 
-fn fixture_compatibility_projection() -> CompatibilityProjectionReceipt {
-  CompatibilityProjectionReceipt {
+fn fixture_compatibility_projection() -> gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
+  gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {
     realization: "git-r0",
     target: "refs/heads/main",
     generation_evidence: "git-generation-fixture",
@@ -21,7 +21,7 @@ fn fixture_compatibility_projection() -> CompatibilityProjectionReceipt {
     advance: CompatibilityAdvanceUnavailable {
       cause: "C0 witness does not establish an executing transition",
     },
-    fidelity: CompatibilityFidelityProfile {
+    fidelity: gunbc.scm_compatibility_shape.CompatibilityFidelityProfile {
       endpoint_state: CompatibilityFidelityPreserved,
       upstream_change_evidence: CompatibilityFidelityUnavailable {
         cause: "C0 fixture does not carry authored-change evidence",
@@ -149,7 +149,7 @@ test fn witness_equal_labels_keep_structurally_distinct_choices() -> Bool {
   let receipt = receipt_for(scenario: TwoLegitimateMeaningsNeedChoice)
   let duplicate = match receipt.primary {
     ChoiceRequired { question, continuation } =>
-      NativeScmReceipt {
+      gunbc.native_scm_interaction_contract.NativeScmReceipt {
         identity: receipt.identity,
         transition: receipt.transition,
         review: receipt.review,
@@ -159,11 +159,11 @@ test fn witness_equal_labels_keep_structurally_distinct_choices() -> Bool {
         projections: receipt.projections,
         primary: ChoiceRequired {
           question: question,
-          continuation: NativeScmContinuation {
+          continuation: gunbc.native_scm_interaction_contract.NativeScmContinuation {
             proposal: continuation.proposal,
-            options: NativeScmContinuationOptions {
+            options: gunbc.native_scm_interaction_contract.NativeScmContinuationOptions {
               first_option: continuation.options.first_option,
-              second_option: NativeScmContinuationOption {
+              second_option: gunbc.native_scm_interaction_contract.NativeScmContinuationOption {
                 label: continuation.options.first_option.label,
                 result_preview: "a different result hidden behind the same choice",
                 resume_token: "resume-duplicate-choice",

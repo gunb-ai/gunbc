@@ -2,14 +2,14 @@ module gunbc.workflow_escalation
 
 
 type WorkflowEscalation {
-  escalation_id: NonEmptyStr
-  rationale: NonEmptyStr
+  escalation_id: std.types.NonEmptyStr
+  rationale: std.types.NonEmptyStr
   destructive: Bool
 }
 
 type WorkflowApprovalState
   = PendingApproval { escalation: WorkflowEscalation }
-  | ApprovalGranted { escalation_id: NonEmptyStr, granted_by: NonEmptyStr }
+  | ApprovalGranted { escalation_id: std.types.NonEmptyStr, granted_by: std.types.NonEmptyStr }
 
 type WorkflowStepDisposition
   = StepRunnable

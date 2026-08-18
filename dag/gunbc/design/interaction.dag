@@ -80,7 +80,7 @@ type BehaviorRow {
   element: ElementId
   verb: InteractionVerb
   response: Response
-  timing: TimingToken
+  timing: gunbc.design.material.TimingToken
 }
 
 type InteractiveElement {
@@ -129,11 +129,11 @@ That is why a detent carries a position and how it is REACHED rather than a dura
 
 type DetentReach
   = AtRest
-  | ByTrigger { cause: InteractionCause }
+  | ByTrigger { cause: gunbc.design.interaction_cause.InteractionCause }
 
 type DetentTravel
   = NoTravel
-  | Travel { token: ScaleToken }
+  | Travel { token: gunbc.design.scale.ScaleToken }
 
 data detent_carries_position_only_note: String = "A detent carries POSITION and how it is reached, and deliberately NOT a duration — the word means a resting notch, not a movement. The weight of an edge lives on the BehaviorRow that causes it (element × verb × response × timing), so each fact has exactly one home: the table says where the control sits, the row says how heavily it gets there. Putting an entry timing here as well would have been the same fact in two places, and the usual outcome of that is a table and a row disagreeing while both look authoritative."
 

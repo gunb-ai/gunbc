@@ -25,7 +25,7 @@ module v2.compiler.self_host.promotion_admission
 // under its own name so the deficit stays countable.
 type ObservedVerdict<T>
   = Observed { value: T }
-  | ObservationUnavailable { cause: Symbol }
+  | ObservationUnavailable { cause: v2.std.node.Symbol }
 
 type EquivalenceOutcome
   = BehaviorAgrees
@@ -37,7 +37,7 @@ type FaultOutcome
 
 type BuildOutcome
   = BuildGreen
-  | BuildFailed { cause: Symbol }
+  | BuildFailed { cause: v2.std.node.Symbol }
 
 // A corpus is a NAME plus the population that name stands for. Carrying the name
 // alone made the label decorative in exactly the way an unjoined field always is: two
@@ -63,8 +63,8 @@ type BehavioralCorpus {
 // that moved. Without the subject field a receipt is just an assertion, and the
 // candidate could be admitted on evidence gathered about something else.
 type BehavioralEquivalenceReceipt {
-  subject: GenerationIdentity
-  oracle: GenerationIdentity
+  subject: v2.compiler.self_host.generation.GenerationIdentity
+  oracle: v2.compiler.self_host.generation.GenerationIdentity
   corpus: BehavioralCorpus
   cases_compared: Int
   outcome: ObservedVerdict<EquivalenceOutcome>
@@ -75,20 +75,20 @@ type BehavioralEquivalenceReceipt {
 // consumer green by execution PLUS a discriminating input that goes red when the
 // behavior is wrong.
 type DiscriminatingFaultReceipt {
-  subject: GenerationIdentity
+  subject: v2.compiler.self_host.generation.GenerationIdentity
   corpus: BehavioralCorpus
   planted_fault: String
   outcome: ObservedVerdict<FaultOutcome>
 }
 
 type BuildReceipt {
-  subject: GenerationIdentity
+  subject: v2.compiler.self_host.generation.GenerationIdentity
   outcome: ObservedVerdict<BuildOutcome>
 }
 
 type GenerationProvenanceReceipt {
-  subject: GenerationIdentity
-  producer: GenerationIdentity
+  subject: v2.compiler.self_host.generation.GenerationIdentity
+  producer: v2.compiler.self_host.generation.GenerationIdentity
 }
 
 // The evidence bundle for ONE promotion. Candidate and successor each carry their
@@ -96,8 +96,8 @@ type GenerationProvenanceReceipt {
 // the candidate produced builds" are different facts, and a compiler that builds but
 // cannot reproduce itself has not self-hosted.
 type SelfHostCandidate {
-  candidate: CandidateGeneration
-  successor: SuccessorGeneration
+  candidate: v2.compiler.self_host.generation.CandidateGeneration
+  successor: v2.compiler.self_host.generation.SuccessorGeneration
   candidate_build: BuildReceipt
   successor_build: BuildReceipt
   candidate_equivalence: BehavioralEquivalenceReceipt
@@ -164,21 +164,21 @@ fn fault_receipt_from_observation(
 }
 
 type PromotionRefusalCause
-  = StaleReceiptSubject { receipt: Symbol, axis: Symbol }
-  | ReceiptObservationUnavailable { receipt: Symbol, cause: Symbol }
-  | BuildNotGreen { receipt: Symbol }
-  | BehaviorDivergedFromOracle { receipt: Symbol, at_case: String }
+  = StaleReceiptSubject { receipt: v2.std.node.Symbol, axis: v2.std.node.Symbol }
+  | ReceiptObservationUnavailable { receipt: v2.std.node.Symbol, cause: v2.std.node.Symbol }
+  | BuildNotGreen { receipt: v2.std.node.Symbol }
+  | BehaviorDivergedFromOracle { receipt: v2.std.node.Symbol, at_case: String }
   | DiscriminatingFaultNotCaught { at_case: String }
-  | EmptyBehavioralCorpus { receipt: Symbol }
-  | ProvenanceNotDeclaredProducer { receipt: Symbol }
-  | PromotionArtifactNotMaterialized { receipt: Symbol }
-  | OracleNotDeclaredSeed { receipt: Symbol }
+  | EmptyBehavioralCorpus { receipt: v2.std.node.Symbol }
+  | ProvenanceNotDeclaredProducer { receipt: v2.std.node.Symbol }
+  | PromotionArtifactNotMaterialized { receipt: v2.std.node.Symbol }
+  | OracleNotDeclaredSeed { receipt: v2.std.node.Symbol }
   | SuccessorNotProducedByCandidate
-  | CorpusMismatchAcrossReceipts { receipt: Symbol }
-  | CorpusPopulationMismatch { receipt: Symbol, expected: Int, compared: Int }
+  | CorpusMismatchAcrossReceipts { receipt: v2.std.node.Symbol }
+  | CorpusPopulationMismatch { receipt: v2.std.node.Symbol, expected: Int, compared: Int }
 
 type PromotionOutcome
-  = Promoted { successor: SuccessorGeneration, cases_compared: Int }
+  = Promoted { successor: v2.compiler.self_host.generation.SuccessorGeneration, cases_compared: Int }
   | PromotionRefused { causes: List<PromotionRefusalCause> }
 
 fn stale_causes_for(

@@ -1,16 +1,16 @@
 module v2.test.manual.cpp_add_emit_translate
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 data cpp_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
-data cpp_add_target_profile: Node = Node {
+data cpp_add_target_profile: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^cpp_add_target_profile_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data cpp_add_int_primitive_facts: CppIntegerPrimitiveFacts = cpp_signed_integer_facts(
+data cpp_add_int_primitive_facts: v2.extdeps.languages.cpp.CppIntegerPrimitiveFacts = cpp_signed_integer_facts(
   spelling: Int,
   surface_spelling: ^cpp_surface_spelling_int,
   target_profile: cpp_target_profile
@@ -28,9 +28,9 @@ data cpp_add_int_width_node: Node = cpp_add_int_primitive_facts.width_fact
 
 data cpp_add_int_spelling_node: Node = cpp_signed_integer_spelling_node(spelling: Int)
 
-data cpp_add_target_model: TargetModel = cpp_target_model()
+data cpp_add_target_model: v2.std.compilers.target_model.TargetModel = cpp_target_model()
 
-data cpp_add_poisoned_authority_target_model: TargetModel = TargetModel {
+data cpp_add_poisoned_authority_target_model: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
   bundle: cpp_target_model_node(target_profile: cpp_target_profile),
   lex: cpp_lex(),
@@ -40,13 +40,13 @@ data cpp_add_poisoned_authority_target_model: TargetModel = TargetModel {
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-data cpp_add_empty_translation_rules_bundle: Node = Node {
+data cpp_add_empty_translation_rules_bundle: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data cpp_add_missing_translation_rules_target: TargetModel = TargetModel {
+data cpp_add_missing_translation_rules_target: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
   bundle: cpp_add_empty_translation_rules_bundle,
   lex: cpp_lex(),
@@ -76,15 +76,15 @@ test fn cpp_add_serialize_reject_receipt_holds() -> Bool {
 fn cpp_add_canonical_grounding(
   node: Node,
   algebra: Node
-) -> CanonicalGrounding {
-  CanonicalGrounding {
+) -> v2.std.constraints.CanonicalGrounding {
+  v2.std.constraints.CanonicalGrounding {
     node: node,
-    witness: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
+    witness: v2.std.constraints.CanonicalGroundingWitness {
+      structural: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_being_canonical,
         evidence: algebra
       },
-      closedness: StructuralPropertyWitness {
+      closedness: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_candidate_set_closedness,
         evidence: node
       }
@@ -92,7 +92,7 @@ fn cpp_add_canonical_grounding(
   }
 }
 
-fn cpp_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
+fn cpp_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == cpp_add_emitted_root {
     Holds {
       value: cpp_add_canonical_grounding(
@@ -186,7 +186,7 @@ fn cpp_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
     }
   } else {
     Violates {
-      diagnostic: Diagnostic {
+      diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^cpp_add_grounding_miss,
         at: node_locus(node: node),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -195,7 +195,7 @@ fn cpp_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   }
 }
 
-fn cpp_add_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
+fn cpp_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   match cpp_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -210,11 +210,11 @@ fn cpp_add_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
   }
 }
 
-fn cpp_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn cpp_add_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   cpp_add_inferred_facts_for(node: key)
 }
 
-data cpp_add_inferred_tree: InferredTree = InferredTree {
+data cpp_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: cpp_add_emitted_root,
   facts: Map {
     lookup: cpp_add_facts_lookup
@@ -225,7 +225,7 @@ fn anchor_cpp_add_emit_accepts() -> Outcome<Medium<String>> {
   emit(tree: cpp_add_inferred_tree, target: cpp_add_target_model)
 }
 
-fn anchor_cpp_add_compile_inferred_accepts() -> Outcome<CompileOutput> {
+fn anchor_cpp_add_compile_inferred_accepts() -> Outcome<v2.compiler.compile.CompileOutput> {
   compile_inferred(
     inferred: cpp_add_inferred_tree,
     mode: TranslateTo { target: cpp_add_poisoned_authority_target_model }
@@ -241,7 +241,7 @@ test fn cpp_add_emit_receipt_holds() -> Bool {
   }
 }
 
-data cpp_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_cpp_add_compile_inferred_accepts()
+data cpp_add_compile_inferred_receipt: Outcome<v2.compiler.compile.CompileOutput> = anchor_cpp_add_compile_inferred_accepts()
 
 test fn cpp_add_compile_inferred_receipt_holds() -> Bool {
   match cpp_add_compile_inferred_receipt {

@@ -5,10 +5,10 @@ module v2.std.grammar_choice_ambiguity
 data grammar_choice_ambiguity_row_authority_note: String = "GrammarChoiceAmbiguityRow is the grammar-analysis authority for FIRST-set choice overlap facts. Compiler parse stage and frontier probe receipts import this module — not v2.compiler.parse — so probe instrumentation does not pull the parse implementation into generic receipt consumers."
 
 type GrammarChoiceAmbiguityRow {
-  production: Symbol
-  left_first_terminals: FreeMonoid<Symbol>
-  right_first_terminals: FreeMonoid<Symbol>
-  overlap_terminals: FreeMonoid<Symbol>
+  production: v2.std.node.Symbol
+  left_first_terminals: FreeMonoid<v2.std.node.Symbol>
+  right_first_terminals: FreeMonoid<v2.std.node.Symbol>
+  overlap_terminals: FreeMonoid<v2.std.node.Symbol>
   both_nullable: Bool
 }
 

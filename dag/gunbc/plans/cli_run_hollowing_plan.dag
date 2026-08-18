@@ -1,7 +1,7 @@
 module gunbc.plans.cli_run_hollowing_plan
 
 
-fn cli_run_hollowing_plan_body() -> List<MarkdownBlock> {
+fn cli_run_hollowing_plan_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** high-level hollowing map (operator-directed rework of closed #7074) · **DESIGN.md + the carriers remain the authority** (DESIGN §6). **`dag/gunbc/plans/cli_run_hollowing_plan.dag` is the authority**; `docs/plans/cli-run-hollowing-plan.md` is its generated projection (PlanArtifact). Linked from [seed-shrink-census.md](seed-shrink-census.md) Chunk **F** (dissolution sign-off unit for `cli_run.rs`, not a live whole-file LOC) and [v2-self-hosting.md](v2-self-hosting.md) Wave 4 kernel story — cite those for sequencing; **§0 below is the live scale receipt**; this doc answers *what the file does* and *how each chunk dies*."),
     quote(blocks: [
@@ -169,7 +169,7 @@ fn cli_run_hollowing_plan_body() -> List<MarkdownBlock> {
   ]
 }
 
-data cli_run_hollowing_plan: Plan = Plan {
+data cli_run_hollowing_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "cli-run-hollowing-plan",
   title: "Plan — cli_run.rs hollowing map (Chunk F)",
   body: cli_run_hollowing_plan_body(),

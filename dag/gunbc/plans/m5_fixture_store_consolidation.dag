@@ -1,7 +1,7 @@
 module gunbc.plans.m5_fixture_store_consolidation
 
 
-fn m5_fixture_store_consolidation_body() -> List<MarkdownBlock> {
+fn m5_fixture_store_consolidation_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "Node: `node://adhoc-3efc6449-ec5` · MODEL-FIRST SPIKE (escalate before load-bearing). Anchor: DESIGN.md §2 (one concept, every scale — Realization pattern), §3 (single authority, interface↔transport split), §5 (fail-closed). `ROADMAP.md` §2 *Minimal work — caching by realization*."),
     h2(text: "1. The fork"),
@@ -138,7 +138,7 @@ fn m5_fixture_store_consolidation_body() -> List<MarkdownBlock> {
   ]
 }
 
-data m5_fixture_store_consolidation_plan: Plan = Plan {
+data m5_fixture_store_consolidation_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "m5-fixture-store-consolidation",
   title: "M5 — Fixture-store consolidation onto one Realization kernel",
   body: m5_fixture_store_consolidation_body(),

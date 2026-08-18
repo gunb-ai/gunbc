@@ -3,19 +3,19 @@ module gunbc.ci_deploy_access
 
 
 type PrivilegedCommand {
-  grant: PosixSudoGrant
+  grant: gunbc.fleet_posix_accounts.PosixSudoGrant
 }
 
 type DeployAccess {
-  principal: GroundedPosixPrincipal
-  host: ComputeHost
-  transport: HostEffectTransport
+  principal: gunbc.fleet_posix_accounts.GroundedPosixPrincipal
+  host: gunbc.fleet_intent.ComputeHost
+  transport: gunbc.host_effect.HostEffectTransport
   privileged_commands: List<PrivilegedCommand>
 }
 
 type DeployAccessJobPrincipalRefusal {
-  job_user: NonEmptyStr
-  runner: DeployRunnerPrincipal
+  job_user: std.types.NonEmptyStr
+  runner: gunbc.fleet_posix_accounts.DeployRunnerPrincipal
 }
 
 type DeployAccessOrRefusal
@@ -23,13 +23,13 @@ type DeployAccessOrRefusal
   | DeployAccessJobPrincipalRefused { refusal: DeployAccessJobPrincipalRefusal }
 
 type DeployAccessActor {
-  observed_name: NonEmptyStr
+  observed_name: std.types.NonEmptyStr
   sudo_granted: Bool
 }
 
 type DeployAuthorizationQuery {
-  expected_principal: NonEmptyStr
-  envelope: Envelope
+  expected_principal: std.types.NonEmptyStr
+  envelope: std.effect_grant.Envelope
 }
 
 data deploy_access_frame: Frame = Frame { name: "deploy", kind: SharedStateFrame }

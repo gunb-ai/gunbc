@@ -3,11 +3,11 @@ module test.claim.roadmap_dispatch_actuator
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn roadmap_dispatch_actuator_nid(s: String) -> RoadmapNodeId { s }
+fn roadmap_dispatch_actuator_nid(s: String) -> gunbc.roadmap_model.RoadmapNodeId { s }
 
-fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as RoadmapNodeIdentity,
+fn sized_derivable(id: String, prs: List<Int>, title: String) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_R2PE6DBK7RVVR2NHNQN0" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: roadmap_dispatch_actuator_nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
@@ -18,15 +18,15 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   }
 }
 
-fn fixture_section(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapSection {
-  RoadmapSection {
+fn fixture_section(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> gunbc.roadmap_document.RoadmapSection {
+  gunbc.roadmap_document.RoadmapSection {
     title: "Test",
-    elements: [Group { group: SectionGroup { label: "test", nodes: nodes, edges: edges } }],
+    elements: [std.algebra.Group { group: gunbc.roadmap_model.SectionGroup { label: "test", nodes: nodes, edges: edges } }],
   }
 }
 
-fn fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDocument {
-  RoadmapDocument {
+fn fixture_doc(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> gunbc.roadmap_document.RoadmapDocument {
+  gunbc.roadmap_document.RoadmapDocument {
     preamble: [],
     lead_lanes: [],
     sections: [fixture_section(nodes: nodes, edges: edges)],
@@ -130,7 +130,7 @@ test fn witness_probe_bridge_ineligible_standing_refuses_actuator_selection() ->
     Absent => false
     Present { value: executable } =>
       match resolve_dispatch_selection(
-        inventory: ProviderInventory {
+        inventory: gunbc.dispatch_selection.ProviderInventory {
           offers: [
             fixture_codex_offer_with_standing(
               instance: instance,
@@ -143,7 +143,7 @@ test fn witness_probe_bridge_ineligible_standing_refuses_actuator_selection() ->
                   process_fingerprint: fixture_codex_process_fingerprint_standing(),
                 ).instance,
                 bundle: provider_standing_bundle_from_codex_dashboard_probes(
-                  observation: CodexProviderDashboardProbeObservation {
+                  observation: gunbc.provider_standing_probe_bridge.CodexProviderDashboardProbeObservation {
                     state_root: CodexStateRootPresent,
                     runtime: ProviderDashboardExecProbeReported {
                       succeeded: true,
@@ -195,7 +195,7 @@ test fn witness_fixture_codex_fingerprint_is_historical_npm_shim_receipt() -> Bo
     node_sizing: Unsized,
   ) {
     DispatchSelectionResolved { receipt } =>
-      resolved_process_fingerprint(resolved: receipt.resolved_selection) == ("node" as NonEmptyStr)
+      resolved_process_fingerprint(resolved: receipt.resolved_selection) == ("node" as std.types.NonEmptyStr)
     DispatchSelectionRefused { node_sizing: _, requested_selection: _, reason: _ } => false
   }
 }
@@ -219,7 +219,7 @@ test fn witness_codex_argv_is_unattended_but_sandboxed() -> Bool {
 }
 
 fn codex_tmux_command_shape_holds(
-  cmds: DispatchSpawnCommands,
+  cmds: gunbc.roadmap_dispatch_actuator.DispatchSpawnCommands,
   codex_executable: String,
 ) -> Bool {
   let create_wire = join(cmds.tmux_spawn.args, separator: "\0")
@@ -266,7 +266,7 @@ test fn witness_selected_provider_shapes_codex_tmux_command() -> Bool {
   }
 }
 
-fn lab_instance_command_shape_holds(commands: DispatchSpawnCommands, lab: HostDashboardInstance) -> Bool {
+fn lab_instance_command_shape_holds(commands: gunbc.roadmap_dispatch_actuator.DispatchSpawnCommands, lab: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> Bool {
   match dashboard_instance_provider_executable(instance: lab) {
     Absent => false
     Present { value: codex_path } => {
@@ -429,7 +429,7 @@ test fn witness_tmux_ls_parse_filters_prefix() -> Bool {
 test fn witness_not_ready_node_refused() -> Bool {
   let parent = sized_derivable(id: "parent", prs: [100], title: "Parent")
   let child = sized_derivable(id: "child", prs: [200], title: "Child")
-  let edges = [RoadmapEdge { child: roadmap_dispatch_actuator_nid(s: "child"), parent: roadmap_dispatch_actuator_nid(s: "parent") }]
+  let edges = [gunbc.roadmap_model.RoadmapEdge { child: roadmap_dispatch_actuator_nid(s: "child"), parent: roadmap_dispatch_actuator_nid(s: "parent") }]
   let doc = fixture_doc(nodes: [parent, child], edges: edges)
   let ready = next_spawnable(doc: doc, merged: [])
   match classify_dispatch_request_for_process_fingerprint(
@@ -471,7 +471,7 @@ test fn witness_live_lease_refused() -> Bool {
   let node = sized_derivable(id: "leased-node", prs: [11], title: "Leased")
   let doc = fixture_doc(nodes: [node], edges: [])
   let ready = next_spawnable(doc: doc, merged: [])
-  let entries = [TmuxLsEntry { session_name: "gunbc-dispatch-leased-node", windows: 1 }]
+  let entries = [extdeps.tmux.TmuxLsEntry { session_name: "gunbc-dispatch-leased-node", windows: 1 }]
   match classify_dispatch_request_for_process_fingerprint(
     node: node,
     ready: ready,
@@ -559,7 +559,7 @@ test fn witness_name_only_observation_not_converged() -> Bool {
   match classify_tmux_session(
     scope: scope,
     obs: SessionNameObserved {
-      session_name: "gunbc-dispatch-name-only" as NonEmptyStr,
+      session_name: "gunbc-dispatch-name-only" as std.types.NonEmptyStr,
       windows: 1,
     },
   ) {
@@ -577,9 +577,9 @@ test fn witness_foreign_process_fingerprint_is_conflict() -> Bool {
   match classify_dispatch_lease_upsert(
     scope: scope,
     obs: SessionObserved {
-      session_name: "gunbc-dispatch-foreign-proc" as NonEmptyStr,
+      session_name: "gunbc-dispatch-foreign-proc" as std.types.NonEmptyStr,
       windows: 1,
-      process_fingerprint: "foreign-shell" as NonEmptyStr,
+      process_fingerprint: "foreign-shell" as std.types.NonEmptyStr,
     },
   ) {
     UpsertClassification { verdict: Conflict, decision: Refuse { reason: _ } } => true
@@ -598,8 +598,8 @@ test fn witness_fingerprint_scaffold_marker_present() -> Bool {
 test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
   let worktree_args = shape_git_worktree_add_argv(
     path: "/opt/gunbc/dispatch-worktrees/bound-node" as std.types.FilePath,
-    branch: "dispatch/bound-node" as NonEmptyStr,
-    remote_ref: "origin/main" as GitRef,
+    branch: "dispatch/bound-node" as std.types.NonEmptyStr,
+    remote_ref: "origin/main" as std.types.GitRef,
   )
   let bound_worktree = git_worktree_add_argv(
     worktree_path: "/opt/gunbc/dispatch-worktrees/bound-node",
@@ -634,7 +634,7 @@ test fn witness_host_exec_argv_shapes_bound_to_extdeps() -> Bool {
     cwd: "/opt/gunbc/dispatch-worktrees/bound-node",
     prompt: "brief",
     reasoning_effort: ReasoningHigh,
-    spec: CodexExecSpec {
+    spec: extdeps.llm.cli.CodexExecSpec {
       sandbox: CodexWorkspaceWrite,
       approval: CodexApprovalNever,
       json_events: true,
@@ -678,8 +678,8 @@ test fn witness_session_lease_shape_reused() -> Bool {
   session_lease_reuses_process_port_classifier_shape()
 }
 
-fn ticket_fixture_node() -> RoadmapNode {
-  gunbc.roadmap_authority.ticket_wi(identity: "rnfx_QSK1R8XNYS14GRZEVM6C", id: "ticket-fixture", done: false, t: TicketFields {
+fn ticket_fixture_node() -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_authority.ticket_wi(identity: "rnfx_QSK1R8XNYS14GRZEVM6C", id: "ticket-fixture", done: false, t: gunbc.roadmap_status.TicketFields {
     headline: "Fixture Headline",
     brief: "A short brief.",
     displaced_cost: "the real displaced cost",

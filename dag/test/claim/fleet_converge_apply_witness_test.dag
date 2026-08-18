@@ -2,11 +2,11 @@ module test.claim.fleet_converge_apply_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn fixture_srv3_host_converge() -> HostConverge {
-  HostConverge {
+fn fixture_srv3_host_converge() -> gunbc.host_converge.HostConverge {
+  gunbc.host_converge.HostConverge {
     identity: operator_host_srv3,
     knobs: [
-      ConvergeKnob {
+      gunbc.host_converge.ConvergeKnob {
         slice: GunbcSlice,
         name: "pinned_tree_sha",
         desired: gunbc_pinned_tree_desired_label,
@@ -73,7 +73,7 @@ test fn witness_emit_artifact_transport_rejects_shell_command() -> Bool {
   !fleet_converge_apply_result_converged(r: converge_apply(
     policy: ConvergePolicyDerived { hosts: [fixture_srv3_host_converge()] },
     transport: EmitArtifactThenThinRun {
-      bootstrap: BootstrapFragment { script: "true" },
+      bootstrap: gunbc.host_effect.BootstrapFragment { script: "true" },
       invocation: fleet_converge_thin_invocation(host: operator_host_srv3),
     }
   ))

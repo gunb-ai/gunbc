@@ -10,8 +10,8 @@ data host_disk_observation_authority_disposition: Disposition = SingleAuthority
 // host_disk_observed_producer returns DiskUnobserved with a located reason — never fabricated df output.
 
 type HostDiskObservation
-  = DiskObserved { free_bytes: ByteSize, observed_on: NonEmptyStr }
-  | DiskObservationRefused { detail: NonEmptyStr }
+  = DiskObserved { free_bytes: std.measure.ByteSize, observed_on: std.types.NonEmptyStr }
+  | DiskObservationRefused { detail: std.types.NonEmptyStr }
   | DiskUnobserved { reason: String }
 
 fn host_disk_observed_producer(host: product.placement_supply.HostIdentity) -> HostDiskObservation {

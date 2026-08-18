@@ -4,17 +4,17 @@ module v2.test.emit.semantic_decl_serialize_parity
 data bool_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
 
 fn bool_coproduct() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Disj },
     children: [
-      Edge { label: Named { name: ^True }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } },
-      Edge { label: Named { name: ^False }, target: Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } }
+      v2.std.node.Edge { label: Named { name: ^True }, target: v2.std.node.Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } },
+      v2.std.node.Edge { label: Named { name: ^False }, target: v2.std.node.Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence } }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn serialize_surface_with_target(surface: Node, rules: Node, target: TargetModel) -> Outcome<String> {
+fn serialize_surface_with_target(surface: Node, rules: Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<String> {
   bind_outcome(
     o: grammar_relation_row_for_emitted(rules: rules, emitted: surface),
     f: fn(row) {
@@ -36,8 +36,8 @@ fn serialize_surface_with_target(surface: Node, rules: Node, target: TargetModel
   )
 }
 
-fn bool_serialize_target(lex: LexRules, bindings: Map<Symbol, String>) -> TargetModel {
-  TargetModel {
+fn bool_serialize_target(lex: v2.std.compilers.lexing.LexRules, bindings: Map<v2.std.node.Symbol, String>) -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: target_model_type_conj_node(
       children: [
@@ -55,7 +55,7 @@ fn bool_serialize_target(lex: LexRules, bindings: Map<Symbol, String>) -> Target
   }
 }
 
-fn bool_text_with_target(target: TargetModel) -> Outcome<String> {
+fn bool_text_with_target(target: v2.std.compilers.target_model.TargetModel) -> Outcome<String> {
   bind_outcome(
     o: semantic_decl_emission_from_target(target: rust_target_model()),
     f: fn(emission) {

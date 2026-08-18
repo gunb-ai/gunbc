@@ -4,22 +4,22 @@ module gunbc.nbd_proxy_virtual_media_install
 
 type OsInstallActuatorStep
   = ActuatorNbdProxyServe {
-      endpoint: BmcwebNbdProxyEndpointVariant
+      endpoint: extdeps.bmc.webui.nbd_proxy.BmcwebNbdProxyEndpointVariant
       slot: Int
       index: Int
-      export: NbdProxyServeInterface
+      export: extdeps.bmc.webui.nbd_proxy.NbdProxyServeInterface
     }
   | ActuatorRedfishInsertMedia
   | ActuatorPxeNetworkBootStaging
   | ActuatorFirmwareUpdate
   | ActuatorBootOnce {
-      target: RedfishBootSourceOverrideTarget
-      enabled: RedfishBootSourceOverrideEnabled
+      target: extdeps.bmc.types.RedfishBootSourceOverrideTarget
+      enabled: extdeps.bmc.types.RedfishBootSourceOverrideEnabled
     }
-  | ActuatorForceRestart { reset_type: RedfishResetType }
+  | ActuatorForceRestart { reset_type: extdeps.bmc.types.RedfishResetType }
 
 type OsInstallActuatorPlan {
-  mechanism: OsInstallMechanism
+  mechanism: gunbc.os_install_mechanism.OsInstallMechanism
   steps: List<OsInstallActuatorStep>
 }
 
@@ -93,11 +93,11 @@ data srv3_nbd_proxy_export_placeholder: NbdProxyServeInterface = NbdProxyServeIn
 // The actuator plan carries the refusal rather than erasing it: a host whose firmware justifies
 // no delivery mechanism has no actuator step sequence, and must not be handed a plausible one.
 type OsInstallActuatorPlanRefusal
-  = ActuatorMechanismRefused { cause: OsInstallMechanismRefusalCause }
+  = ActuatorMechanismRefused { cause: gunbc.os_install_mechanism.OsInstallMechanismRefusalCause }
   | ActuatorStepsUnrealized { refusals: List<ActuatorStepRefusal> }
 
 type OsInstallActuatorPlanStanding
-  = ActuatorPlanReady { plan: OsInstallActuatorPlan, intents: List<HostEffectIntent> }
+  = ActuatorPlanReady { plan: OsInstallActuatorPlan, intents: List<gunbc.host_effect.HostEffectIntent> }
   | ActuatorPlanRefused { cause: OsInstallActuatorPlanRefusal }
 
 fn os_install_actuator_plan_standing_for(
@@ -134,11 +134,11 @@ type ActuatorStepRefusal
   = ActuatorStepRealizationAbsent { step: OsInstallActuatorStep }
 
 type ActuatorStepRealization
-  = ActuatorStepReady { intent: HostEffectIntent }
+  = ActuatorStepReady { intent: gunbc.host_effect.HostEffectIntent }
   | ActuatorStepRefused { cause: ActuatorStepRefusal }
 
 type ActuatorPlanRealization
-  = ActuatorPlanRealized { intents: List<HostEffectIntent> }
+  = ActuatorPlanRealized { intents: List<gunbc.host_effect.HostEffectIntent> }
   | ActuatorPlanUnrealized { refusals: List<ActuatorStepRefusal> }
 
 // Accumulates every unrealized step rather than stopping at the first: which effects are missing

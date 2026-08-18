@@ -2,9 +2,9 @@ module std.witness_purpose
 
 
 type WitnessResourceBound
-  = EvalWallTimeBound { bound: Millisecond }
-  | EvalThreadCpuBound { bound: Millisecond }
-  | PeakMemoryBound { bound: ByteSize }
+  = EvalWallTimeBound { bound: std.measure.Millisecond }
+  | EvalThreadCpuBound { bound: std.measure.Millisecond }
+  | PeakMemoryBound { bound: std.measure.ByteSize }
 
 data witness_purpose_resource_contract_note: String = "ResourceContract bound is axis-typed: wall/cpu limits are Millisecond; peak memory is ByteSize (std.measure). A single Millisecond field on all axes was state-space conflation — PeakMemory with a millisecond bound was writable. Aligns with discrete_cost derivation section 10 bound: Measure; full Measure coproduct lands when the cost consumer derives bounds."
 
@@ -14,9 +14,9 @@ data witness_purpose_terminating_one_shot_frontier_note: String = "TerminatingOn
 
 type WitnessPurpose
   = BehavioralDiscriminator
-  | BoundaryCrossing { modeled_boundary: DeclarationRef, chosen_input: ContentHash }
-  | PopulationTotality { population: DeclarationRef }
-  | ExternalFidelity { effect: DeclarationRef }
+  | BoundaryCrossing { modeled_boundary: std.decl_ref.DeclarationRef, chosen_input: std.content_hash.ContentHash }
+  | PopulationTotality { population: std.decl_ref.DeclarationRef }
+  | ExternalFidelity { effect: std.decl_ref.DeclarationRef }
   | ResourceContract { bound: WitnessResourceBound }
 
 type TerminatingOneShotFrontier

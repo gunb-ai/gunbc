@@ -11,11 +11,11 @@ type CostValuationBinding {
 }
 
 type CostEvaluationRefusal
-  = MissingSizeBinding { variable: SizeVariable, at: Locus }
-  | DuplicateSizeBinding { variable: SizeVariable, at: Locus }
-  | UnmodeledEffectCost { operation: DeclarationRef, at: Locus }
-  | IntegerLogarithmUnavailable { base: v2.std.nat.Nat, argument: SizeExpr, at: Locus }
-  | ExpressionRefused { cause: CostExprRefusalCause, at: Locus }
+  = MissingSizeBinding { variable: SizeVariable, at: v2.std.diagnostic.Locus }
+  | DuplicateSizeBinding { variable: SizeVariable, at: v2.std.diagnostic.Locus }
+  | UnmodeledEffectCost { operation: std.decl_ref.DeclarationRef, at: v2.std.diagnostic.Locus }
+  | IntegerLogarithmUnavailable { base: v2.std.nat.Nat, argument: v2.lens.cost.expr.SizeExpr, at: v2.std.diagnostic.Locus }
+  | ExpressionRefused { cause: v2.lens.cost.expr.CostExprRefusalCause, at: v2.std.diagnostic.Locus }
 
 data cost_evaluation_nonempty_note: String = "The nonempty carrier (std.algebra FreeSemigroup) in the refused arm is load-bearing, not decoration: a refusal carrying no cause is a nonsense state, and the free-semigroup head field makes it unwritable rather than merely unlikely - construction over validation, DESIGN section 5. Do not weaken the field to List."
 

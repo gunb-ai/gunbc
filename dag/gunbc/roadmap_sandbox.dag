@@ -3,7 +3,7 @@ module gunbc.roadmap_sandbox
 
 data roadmap_sandbox_note: String = "The /sandbox design surface (P4): the register at every depth plus every component in every state, all DERIVED from the same authorities the live surfaces use, so the sandbox is a faithful mirror, never a hand mock. Roles are shown under BOTH themes at once (literal material paints inline — the one place a literal color is right, because it is DISPLAYING the role->material authority under two projections simultaneously, which var(--role) cannot do). The component gallery renders dispatch_button_component's states one-for-one; the terminal instances are exactly the wire vocabulary (totality is the P0 property, re-witnessed here as gallery coverage). The live section is one pressable instance per wire arm that POSTs /sandbox/echo?status=LABEL and renders through the SAME client program the real button uses — so every state is exercisable without dispatching a session, and the sandbox cannot drift from production render."
 
-fn sandbox_rules() -> List<BuildRule> {
+fn sandbox_rules() -> List<gunbc.design.material.BuildRule> {
   [
     StaticRule { selector: ClassSelector { name: "sandbox" }, decls: [
       decl(prop: Padding, value: scale_pair(a: space_16, b: space_24)),
@@ -77,7 +77,7 @@ fn sandbox_rules() -> List<BuildRule> {
 
 data fixture_frame_width_note: String = "The three fixture frames simulate the falsifier's declared viewports (wide 1680 / medium 1024 / narrow 480) as max-width containers so the operator reads all three compositions on one screen without resizing. The px literals are DIAGNOSTIC viewport dimensions, not design lengths — they name external screen widths, which is why they do not route through gunbc.design.scale (whose tokens are the page's own spatial vocabulary); the untokened-length census scopes to roadmap_instance_rules() and these sandbox-only rules are its declared out-of-scope neighbor."
 
-fn fixture_frame_rules() -> List<BuildRule> {
+fn fixture_frame_rules() -> List<gunbc.design.material.BuildRule> {
   [
     StaticRule { selector: RawSelector { text: ".sandbox-work-row" }, decls: [
       decl(prop: MaxWidth, value: "none"),
@@ -103,8 +103,8 @@ fn sandbox_css() -> String {
   join([roadmap_css(), serialize_rules(rules: concat(sandbox_rules(), fixture_frame_rules()))], "\n")
 }
 
-fn role_swatch(theme: Theme, role: ThemeRole) -> Fragment {
-  Element {
+fn role_swatch(theme: gunbc.design.theme.Theme, role: gunbc.design.theme.ThemeRole) -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "span",
     attributes: [
       attr(name: "class", value: "swatch" ),
@@ -115,7 +115,7 @@ fn role_swatch(theme: Theme, role: ThemeRole) -> Fragment {
   }
 }
 
-fn role_row(role: ThemeRole) -> Fragment {
+fn role_row(role: gunbc.design.theme.ThemeRole) -> std.markup.Fragment {
   el_class("div", "swatch-row", [
     role_swatch(theme: night_theme, role: role),
     role_swatch(theme: day_theme, role: role),
@@ -124,26 +124,26 @@ fn role_row(role: ThemeRole) -> Fragment {
   ])
 }
 
-fn roles_section() -> Fragment {
+fn roles_section() -> std.markup.Fragment {
   el_class("section", "sandbox-roles",
     concat([ el("h2", [ txt("roles — night / day") ]) ],
       map(theme_roles, r => role_row(role: r))))
 }
 
-fn scale_token_row(t: ScaleToken) -> Fragment {
+fn scale_token_row(t: gunbc.design.scale.ScaleToken) -> std.markup.Fragment {
   el_class("div", "token-row", [
     el_class("span", "token-name", [ txt(t.name) ]),
     el_class("span", "token-value", [ txt(scale_value_wire(v: t.value)) ]),
   ])
 }
 
-fn scale_group(label: String, tokens: List<ScaleToken>) -> Fragment {
+fn scale_group(label: String, tokens: List<gunbc.design.scale.ScaleToken>) -> std.markup.Fragment {
   el_class("div", "scale-group",
     concat([ el_class("h3", "group-label", [ txt(label) ]) ],
       map(tokens, t => scale_token_row(t: t))))
 }
 
-fn scales_section() -> Fragment {
+fn scales_section() -> std.markup.Fragment {
   el_class("section", "sandbox-scales", [
     el("h2", [ txt("scales") ]),
     scale_group(label: "spacing", tokens: spacing_scale),
@@ -153,7 +153,7 @@ fn scales_section() -> Fragment {
   ])
 }
 
-fn gallery_states() -> List<ComponentState> {
+fn gallery_states() -> List<gunbc.design.component.ComponentState> {
   concat([dispatch_idle_state, dispatch_requested_state], dispatch_button_terminal_states())
 }
 
@@ -161,8 +161,8 @@ data gallery_arm_sublabel_note: String = "The caption collapse (W1d) makes band 
 
 data band_chip_note: String = "The auditioner's live preview (W1f visibility fix, operator report 2026-07-24: 'the swatches button doesn't seem to do anything' — the toggle worked, proven by execution in a DOM-stub harness, but nothing NEAR it consumed the band vars; the roles section beside it paints theme literals by design). Five chips filled from var(--band-*) sit beside the control, so a set flip repaints the strip in the same glance that clicked it. Keys derive from workspace_band_paints — the chip strip cannot drift from the band vocabulary."
 
-fn band_chip(key: String) -> Fragment {
-  Element {
+fn band_chip(key: String) -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "span",
     attributes: [
       attr(name: "class", value: "band-chip" ),
@@ -172,15 +172,15 @@ fn band_chip(key: String) -> Fragment {
   }
 }
 
-fn gallery_cell(button: Fragment, arm: String) -> Fragment {
+fn gallery_cell(button: std.markup.Fragment, arm: String) -> std.markup.Fragment {
   el_class("div", "gallery-cell", [ button, el_class("span", "gallery-arm", [ txt(arm) ]) ])
 }
 
-fn gallery_instance(state: ComponentState) -> Fragment {
+fn gallery_instance(state: gunbc.design.component.ComponentState) -> std.markup.Fragment {
   let cls = dispatch_state_class(state: state)
   let full = if cls == "" { "dispatch-btn" } else { join(["dispatch-btn ", cls], "") }
   gallery_cell(
-    button: Element {
+    button: extdeps.browser.Element {
       tag: "button",
       attributes: [
         attr(name: "class", value: full ),
@@ -193,14 +193,14 @@ fn gallery_instance(state: ComponentState) -> Fragment {
   )
 }
 
-fn gallery_section() -> Fragment {
+fn gallery_section() -> std.markup.Fragment {
   el_class("section", "sandbox-gallery", [
     el("h2", [ txt("dispatch button — every state (static)") ]),
     el_class("div", "gallery-row", map(gallery_states(), s => gallery_instance(state: s))),
   ])
 }
 
-fn live_instance(wire_label: String) -> Fragment {
+fn live_instance(wire_label: String) -> std.markup.Fragment {
   gallery_cell(
     button: el_attrs("button", [
       attr(name: "class", value: join(["dispatch-btn ", sandbox_live_class], "") ),
@@ -211,7 +211,7 @@ fn live_instance(wire_label: String) -> Fragment {
   )
 }
 
-fn live_section() -> Fragment {
+fn live_section() -> std.markup.Fragment {
   el_class("section", "sandbox-live", [
     el("h2", [ txt("live — press to exercise each wire arm (POST /sandbox/echo)") ]),
     el_class("div", "gallery-row", map(belt_dispatch_all_status_labels(), l => live_instance(wire_label: l))),
@@ -220,20 +220,20 @@ fn live_section() -> Fragment {
 
 data sandbox_work_row_fixture_note: String = "The A2 composition fixture (operator blocker 6): the falsifier specimen row — long headline, seven obligations with Environment/Workspace/Agent complete, session-present/process-exited evidence, four remaining — rendered by the REAL render_work_row at the three declared falsifier widths, plus the refused-arm specimen with its located reason. Server-rendered from constructed views, so the operator critiques the exact production composition without live data, and a seam or renderer change moves these frames in the same deploy that moves the dashboard."
 
-fn fixture_specimen_segments() -> List<WorkflowSegment> {
+fn fixture_specimen_segments() -> List<gunbc.roadmap_workflow_stage.WorkflowSegment> {
   [
-    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "admission receipt readable" },
-    WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "worktree created" },
-    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "turn.completed and process exit 0" },
-    WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
-    WorkflowSegment { kind: PublicationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
-    WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
-    WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "admission receipt readable" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "worktree created" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "turn.completed and process exit 0" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: PublicationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
   ]
 }
 
-fn fixture_specimen_view(node_id: String, activity: ActivityView) -> WorkRowView {
-  WorkRowView {
+fn fixture_specimen_view(node_id: String, activity: gunbc.roadmap_presentation.ActivityView) -> gunbc.roadmap_presentation.WorkRowView {
+  gunbc.roadmap_presentation.WorkRowView {
     node_id: node_id,
     headline: "Record which generator actually produced each result",
     summary: none,
@@ -247,7 +247,7 @@ fn fixture_specimen_view(node_id: String, activity: ActivityView) -> WorkRowView
   }
 }
 
-fn fixture_active_view() -> WorkRowView {
+fn fixture_active_view() -> gunbc.roadmap_presentation.WorkRowView {
   fixture_specimen_view(node_id: "sandbox-specimen-active", activity: activity_view_from_parts(
     segments: fixture_specimen_segments(),
     remaining: 4,
@@ -255,26 +255,26 @@ fn fixture_active_view() -> WorkRowView {
     current_activity: "Worked for 6m 34s"))
 }
 
-fn fixture_refused_view() -> WorkRowView {
+fn fixture_refused_view() -> gunbc.roadmap_presentation.WorkRowView {
   fixture_specimen_view(node_id: "sandbox-specimen-refused", activity: activity_view_from_parts(
     segments: [
-      WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-      WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
+      gunbc.roadmap_workflow_stage.WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+      gunbc.roadmap_workflow_stage.WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
     ],
     remaining: 6,
     process: WorkerProcessExited { exit_code: 0, last_command: "codex" },
     current_activity: ""))
 }
 
-fn fixture_row_li(view: WorkRowView) -> Fragment {
-  Element {
+fn fixture_row_li(view: gunbc.roadmap_presentation.WorkRowView) -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "li",
     attributes: node_li_attributes(view: view),
     children: render_work_row(view: view),
   }
 }
 
-fn fixture_frame(label: String, cls: String) -> Fragment {
+fn fixture_frame(label: String, cls: String) -> std.markup.Fragment {
   el_class("div", join(["fixture-frame ", cls], ""), [
     el_class("h3", "group-label", [ txt(label) ]),
     el("ul", [
@@ -284,7 +284,7 @@ fn fixture_frame(label: String, cls: String) -> Fragment {
   ])
 }
 
-fn work_row_fixture_section() -> Fragment {
+fn work_row_fixture_section() -> std.markup.Fragment {
   el_class("section", "sandbox-work-row", [
     el("h2", [ txt("work row — falsifier specimen at three widths (static)") ]),
     fixture_frame(label: "wide · 1680", cls: "fixture-wide"),
@@ -295,8 +295,8 @@ fn work_row_fixture_section() -> Fragment {
 
 data sandbox_family_fixture_note: String = "The A3 composition fixture (the #7589 deferred receipt): one declared family rendered by the REAL grouping path — band_entries folds the constructed rows against the typed WorkFamilyDecl/WorkFamilyMemberFact facts, workspace_entries_ul paints the result — so the exhibit shows exactly what production shows: the family claim stated once in the group head with the member count, member rows carrying only their subjects (the full headline is provably absent — the subject swap runs through family_subject_row, not a display trick), and an undeclared neighbour row keeping its own headline outside the group. All rows are routine (OpenLifecycle + SchedulingReady + NoActiveWork), so the frame also exhibits the A3 chip collapse: no open chips, no hollow activity. Constructed views rather than the live closing-contract family, for the same reason the A2 fixture constructs its specimen: the exhibit must stay byte-stable across roadmap edits so the three width frames compare composition, not data drift."
 
-fn fixture_ready_view(node_id: String, headline: String) -> WorkRowView {
-  WorkRowView {
+fn fixture_ready_view(node_id: String, headline: String) -> gunbc.roadmap_presentation.WorkRowView {
+  gunbc.roadmap_presentation.WorkRowView {
     node_id: node_id,
     headline: headline,
     summary: none,
@@ -310,22 +310,22 @@ fn fixture_ready_view(node_id: String, headline: String) -> WorkRowView {
   }
 }
 
-fn fixture_family_decl() -> WorkFamilyDecl {
-  WorkFamilyDecl {
+fn fixture_family_decl() -> gunbc.roadmap_presentation.WorkFamilyDecl {
+  gunbc.roadmap_presentation.WorkFamilyDecl {
     id: "sandbox-family",
     claim: "Every startable node carries a closing contract",
   }
 }
 
-fn fixture_family_members() -> List<WorkFamilyMemberFact> {
+fn fixture_family_members() -> List<gunbc.roadmap_presentation.WorkFamilyMemberFact> {
   [
-    WorkFamilyMemberFact { family_id: "sandbox-family", task_node: "sandbox-family-a", subject: "dag_compile_clean_gate" },
-    WorkFamilyMemberFact { family_id: "sandbox-family", task_node: "sandbox-family-b", subject: "affected_set_falsifier" },
-    WorkFamilyMemberFact { family_id: "sandbox-family", task_node: "sandbox-family-c", subject: "regen_floor_skip_witness" },
+    gunbc.roadmap_presentation.WorkFamilyMemberFact { family_id: "sandbox-family", task_node: "sandbox-family-a", subject: "dag_compile_clean_gate" },
+    gunbc.roadmap_presentation.WorkFamilyMemberFact { family_id: "sandbox-family", task_node: "sandbox-family-b", subject: "affected_set_falsifier" },
+    gunbc.roadmap_presentation.WorkFamilyMemberFact { family_id: "sandbox-family", task_node: "sandbox-family-c", subject: "regen_floor_skip_witness" },
   ]
 }
 
-fn fixture_family_rows() -> List<WorkRowView> {
+fn fixture_family_rows() -> List<gunbc.roadmap_presentation.WorkRowView> {
   [
     fixture_ready_view(node_id: "sandbox-family-a", headline: "Declare the closing contract for dag_compile_clean_gate"),
     fixture_ready_view(node_id: "sandbox-family-b", headline: "Declare the closing contract for affected_set_falsifier"),
@@ -334,7 +334,7 @@ fn fixture_family_rows() -> List<WorkRowView> {
   ]
 }
 
-fn family_fixture_frame(label: String, cls: String) -> Fragment {
+fn family_fixture_frame(label: String, cls: String) -> std.markup.Fragment {
   el_class("div", join(["fixture-frame ", cls], ""), [
     el_class("h3", "group-label", [ txt(label) ]),
     workspace_entries_ul(
@@ -348,7 +348,7 @@ fn family_fixture_frame(label: String, cls: String) -> Fragment {
   ])
 }
 
-fn family_fixture_section() -> Fragment {
+fn family_fixture_section() -> std.markup.Fragment {
   el_class("section", "sandbox-family-fixture", [
     el("h2", [ txt("family grouping — claim stated once, members carry subjects (static)") ]),
     family_fixture_frame(label: "wide · 1680", cls: "fixture-wide"),
@@ -359,19 +359,19 @@ fn family_fixture_section() -> Fragment {
 
 data instrument_labs_section_note: String = "ONE CONTEXTUAL ENTRY, ON THE PAGE WHERE STUDIES LIVE, rather than three raw links in every shared header (review ruling, 2026-08-06). A header nav put development routes on the daily workspace and the roadmap, where they are noise to everyone not building the instrument. The sandbox is already the page for studies, so the labs belong here with a sentence saying what each one is for — and the rows come from gunbc.roadmap_component.instrument_lab_links, the same declaration the router builds its route specs from, so a link that resolves nowhere is caught by execution rather than by clicking."
 
-fn instrument_lab_entry(l: InstrumentLabLink) -> Fragment {
+fn instrument_lab_entry(l: gunbc.roadmap_component.InstrumentLabLink) -> std.markup.Fragment {
   el("li", [ el_attrs("a", [ attr(name: "href", value: l.path) ], [ txt(l.label) ]) ])
 }
 
-fn instrument_labs_section() -> Fragment {
+fn instrument_labs_section() -> std.markup.Fragment {
   el("section", [
     el("h2", [ txt("instrument labs") ]),
     el("ul", map(instrument_lab_links, l => instrument_lab_entry(l: l))),
   ])
 }
 
-fn sandbox_page() -> Fragment {
-  Element {
+fn sandbox_page() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "html",
     attributes: [],
     children: [

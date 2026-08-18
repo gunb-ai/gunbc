@@ -25,7 +25,7 @@ data frontier_probe_empty_ingest_refusal_note: String = "An empty ingest is the 
 
 type FrontierProbeCoverageGate
   = FrontierProbeCoveragePermitted
-  | FrontierProbeCoverageBlocked { coverage: SourceRootCoverage }
+  | FrontierProbeCoverageBlocked { coverage: v2.compiler.source_authority.SourceRootCoverage }
 
 data frontier_probe_subject_digest_mismatch_reason: Symbol = ^frontier_probe_subject_digest_mismatch
 
@@ -33,13 +33,13 @@ data frontier_probe_ingest_subject_note: String = "Single ingest authority for f
 
 type FrontierProbeIngestSubject
   = FrontierProbeDiscoveredClosureSubject {
-      closure: FrontierProbeDiscoveredClosure,
-      coverage: SourceRootCoverage,
+      closure: v2.compiler.source_authority.FrontierProbeDiscoveredClosure,
+      coverage: v2.compiler.source_authority.SourceRootCoverage,
       ingest_read_count: Int
     }
   | FrontierProbeFixture {
-      ingest: SourceRootIngest,
-      admission: Admission
+      ingest: v2.compiler.source_authority.SourceRootIngest,
+      admission: v2.compiler.name_resolve.Admission
     }
 
 fn frontier_probe_subject_digest_mismatch_diagnostic() -> Diagnostic {

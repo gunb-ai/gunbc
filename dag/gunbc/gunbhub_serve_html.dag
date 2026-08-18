@@ -1,8 +1,8 @@
 module gunbc.gunbhub_serve_html
 
 
-fn sample_html_page() -> Fragment {
-  Element {
+fn sample_html_page() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "p",
     attributes: [],
     children: [ FragmentText { content: "gunbhub" } ],

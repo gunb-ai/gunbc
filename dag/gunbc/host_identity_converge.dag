@@ -57,9 +57,9 @@ fn host_identity_precondition_is_conflict(verdict: HostIdentityLeafVerdict) -> B
 }
 
 type HostIdentityPlan
-  = ApplyPlan { base: DnsLabel, desired: DnsLabel }
+  = ApplyPlan { base: extdeps.dns.domain_name.DnsLabel, desired: extdeps.dns.domain_name.DnsLabel }
   | NoopPlan
-  | ConflictPlan { verdict: HostIdentityLeafVerdict }
+  | ConflictPlan { verdict: gunbc.host_identity_knob.HostIdentityLeafVerdict }
 
 fn host_identity_plan_from_verdict(
   verdict: HostIdentityLeafVerdict,

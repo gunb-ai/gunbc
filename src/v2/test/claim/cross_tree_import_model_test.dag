@@ -1,26 +1,26 @@
 module v2.test.claim.cross_tree_import_model
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data both_roots: SourceRootSet = [V2Tree, DagTree]
+data both_roots: v2.std.cross_tree.import_model.SourceRootSet = [V2Tree, DagTree]
 
-data dag_only_roots: SourceRootSet = [DagTree]
+data dag_only_roots: v2.std.cross_tree.import_model.SourceRootSet = [DagTree]
 
-data dag_std_to_v2_std_edge: CrossTreeImport = CrossTreeImport {
+data dag_std_to_v2_std_edge: v2.std.cross_tree.import_model.CrossTreeImport = v2.std.cross_tree.import_model.CrossTreeImport {
   from_tree: DagTree,
   from_module: "dag.std.freeMonoid",
   to_tree: V2Tree,
   to_module: "v2.std.algebra"
 }
 
-data dag_std_to_v2_compiler_edge: CrossTreeImport = CrossTreeImport {
+data dag_std_to_v2_compiler_edge: v2.std.cross_tree.import_model.CrossTreeImport = v2.std.cross_tree.import_model.CrossTreeImport {
   from_tree: DagTree,
   from_module: "dag.std.freeMonoid",
   to_tree: V2Tree,
   to_module: "v2.compiler.tokenize"
 }
 
-data v2_workflow_to_dag_std_edge: CrossTreeImport = CrossTreeImport {
+data v2_workflow_to_dag_std_edge: v2.std.cross_tree.import_model.CrossTreeImport = v2.std.cross_tree.import_model.CrossTreeImport {
   from_tree: V2Tree,
   from_module: "v2.workflow.ci_floor_plan",
   to_tree: DagTree,

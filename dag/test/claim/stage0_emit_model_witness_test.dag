@@ -40,8 +40,8 @@ test fn w_emit_naming_rule() -> Bool {
   stage0_module_emit_filename(module_path: "gunbc.stage0_emit_model") == "gunbc_stage0_emit_model.rs"
 }
 
-fn fixture_source_identity(module_path: String, storage_path: String) -> Stage0SourceModuleIdentity {
-  Stage0SourceModuleIdentity {
+fn fixture_source_identity(module_path: String, storage_path: String) -> gunbc.stage0_emit_plan.Stage0SourceModuleIdentity {
+  gunbc.stage0_emit_plan.Stage0SourceModuleIdentity {
     module_path: module_path,
     storage_path: storage_path,
     source_tree: V1SourceTree,
@@ -49,7 +49,7 @@ fn fixture_source_identity(module_path: String, storage_path: String) -> Stage0S
   }
 }
 
-data fixture_source_identities: List<Stage0SourceModuleIdentity> = [
+data fixture_source_identities: List<gunbc.stage0_emit_plan.Stage0SourceModuleIdentity> = [
   fixture_source_identity(module_path: "std.algebra", storage_path: "src/v1/std/algebra.dag"),
   fixture_source_identity(module_path: "v1.compiler.emit_rust", storage_path: "src/v1/compiler/emit_rust.dag")
 ]
@@ -107,7 +107,7 @@ test fn w_output_path_collision_refuses_before_projection() -> Bool {
 
 test fn w_source_identity_unavailable_refuses_before_plan_rows() -> Bool {
   match stage0_emission_plan_from_source(identities: [
-    Stage0SourceModuleIdentity {
+    gunbc.stage0_emit_plan.Stage0SourceModuleIdentity {
       module_path: "std.unavailable",
       storage_path: "src/v1/std/unavailable.dag",
       source_tree: V1SourceTree,

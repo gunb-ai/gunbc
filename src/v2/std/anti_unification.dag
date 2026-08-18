@@ -1,9 +1,9 @@
 module v2.std.anti_unification
 
 
-data anti_unification_hole_symbol: Symbol = ^HOLE
+data anti_unification_hole_symbol: v2.std.node.Symbol = ^HOLE
 
-fn hole_kind() -> NodeKind {
+fn hole_kind() -> v2.std.node.NodeKind {
   TypeNode { connective: Atom { identity: anti_unification_hole_symbol } }
 }
 fn hole_node() -> Node {
@@ -17,7 +17,7 @@ fn is_leaf(n: Node) -> Bool {
   is_empty(xs: n.children)
 }
 
-fn edge_labels_eq(ea: Edge, eb: Edge) -> Bool {
+fn edge_labels_eq(ea: v2.std.node.Edge, eb: v2.std.node.Edge) -> Bool {
   ea.label == eb.label
 }
 fn children_aligned(a: Node, b: Node) -> Bool {
@@ -25,10 +25,10 @@ fn children_aligned(a: Node, b: Node) -> Bool {
     && zip_eq(a: a.children, b: b.children, eq: fn(ea, eb) { edge_labels_eq(ea: ea, eb: eb) })
 }
 
-fn anti_unify_edge(ea: Edge, eb: Edge) -> Edge {
-  Edge { label: ea.label, target: anti_unify(a: ea.target, b: eb.target) }
+fn anti_unify_edge(ea: v2.std.node.Edge, eb: v2.std.node.Edge) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: ea.label, target: anti_unify(a: ea.target, b: eb.target) }
 }
-fn anti_unify_children(a: FreeMonoid<Edge>, b: FreeMonoid<Edge>) -> FreeMonoid<Edge> {
+fn anti_unify_children(a: FreeMonoid<v2.std.node.Edge>, b: FreeMonoid<v2.std.node.Edge>) -> FreeMonoid<v2.std.node.Edge> {
   zip_map(a: a, b: b, f: fn(ea, eb) { anti_unify_edge(ea: ea, eb: eb) })
 }
 
@@ -64,7 +64,7 @@ fn anti_unify(a: Node, b: Node) -> Node {
   }
 }
 
-fn extract_fillings_edge(te: Edge, ee: Edge) -> FreeMonoid<Node> {
+fn extract_fillings_edge(te: v2.std.node.Edge, ee: v2.std.node.Edge) -> FreeMonoid<Node> {
   extract_fillings(template: te.target, element: ee.target)
 }
 fn extract_fillings(template: Node, element: Node) -> FreeMonoid<Node> {

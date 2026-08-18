@@ -2,25 +2,25 @@ module v2.test.std_grounding.terminal_gate
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 fn terminal_gate_empty_bytes() -> List<Byte> {
   []
 }
 
-fn terminal_gate_receipt(status: HostVerdictSurfaceExecutionStatus) -> PerTargetTestClaimReceipt {
-  PerTargetTestClaimReceipt {
-    host_run: EmitHostRunReceipt {
+fn terminal_gate_receipt(status: v2.std.grounding.HostVerdictSurfaceExecutionStatus) -> v2.std.grounding.PerTargetTestClaimReceipt {
+  v2.std.grounding.PerTargetTestClaimReceipt {
+    host_run: v2.std.host_run.EmitHostRunReceipt {
       target: rust_target_model(),
       source_text: "",
-      exit: HostExit {
-        outcome: Accepted { value: Holds { value: ExitOk { code: 0 } }, diagnostics: None }
+      exit: v2.std.host_run.HostExit {
+        outcome: Accepted { value: Holds { value: v2.std.host_run.ExitOk { code: 0 } }, diagnostics: None }
       },
       logical_run: Accepted {
-        value: HostLogicalRun { stdout: HostRunStdout { bytes: terminal_gate_empty_bytes() } },
+        value: v2.std.host_run.HostLogicalRun { stdout: v2.std.host_run.HostRunStdout { bytes: terminal_gate_empty_bytes() } },
         diagnostics: None
       },
       stderr_bytes: terminal_gate_empty_bytes(),
-      build_log: BuildLog { lines: [] },
+      build_log: v2.std.host_run.BuildLog { lines: [] },
       compile_skipped: false
     },
     execution_status: status,

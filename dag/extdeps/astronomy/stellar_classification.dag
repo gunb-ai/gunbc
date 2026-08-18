@@ -17,7 +17,7 @@ type TemperatureRange
   | OpenAbove { min_k: Int }
 
 type SpectralClass {
-  code: NonEmptyStr
+  code: std.types.NonEmptyStr
   temperature: TemperatureRange
   vega_chromaticity: String
   d65_chromaticity: String

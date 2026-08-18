@@ -3,19 +3,19 @@ module test.claim.repo_atlas_projection_witness
 
 data repo_atlas_witness_note: String = "THE FIXTURES ARE AUTHORED, THE POPULATIONS ARE CONTROLLED, AND THE ORACLES ARE INDEPENDENT OF THE MEASUREMENT. Every count asserted below comes from a planted input — one planted collision, one path planted at two modules, one departed path — not from measuring the live tree and pinning what it happened to say (DESIGN 5, the test-oracle ruling). The live corpus appears in exactly one claim, and there the subject IS the live population's breadth, which is the one case that ruling admits."
 
-fn atlas_fixture_comparison() -> AtlasComparison {
-  AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot }
+fn atlas_fixture_comparison() -> gunbc.repo_atlas_projection.AtlasComparison {
+  gunbc.repo_atlas_projection.AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot }
 }
 
-fn atlas_fixture_observation(diff: GitDiffNameStatusParseOutcome) -> AtlasChangeObservation {
+fn atlas_fixture_observation(diff: extdeps.git.GitDiffNameStatusParseOutcome) -> gunbc.repo_atlas_projection.AtlasChangeObservation {
   AtlasComparisonObserved { comparison: atlas_fixture_comparison(), diff: diff }
 }
 
-fn atlas_fixture_module(name: String, path: String) -> ModuleDeclarationFact {
-  ModuleDeclarationFact { module: name, path: path }
+fn atlas_fixture_module(name: String, path: String) -> v2.lens.module_graph.ModuleDeclarationFact {
+  v2.lens.module_graph.ModuleDeclarationFact { module: name, path: path }
 }
 
-fn atlas_fixture_pool() -> List<ModuleDeclarationFact> {
+fn atlas_fixture_pool() -> List<v2.lens.module_graph.ModuleDeclarationFact> {
   [
     atlas_fixture_module(name: "fixture.alpha", path: "dag/fixture/alpha.dag"),
     atlas_fixture_module(name: "fixture.beta", path: "dag/fixture/beta.dag"),
@@ -25,7 +25,7 @@ fn atlas_fixture_pool() -> List<ModuleDeclarationFact> {
 
 data atlas_shared_path: String = "dag/fixture/shared.dag"
 
-fn atlas_multi_seed_pool() -> List<ModuleDeclarationFact> {
+fn atlas_multi_seed_pool() -> List<v2.lens.module_graph.ModuleDeclarationFact> {
   [
     atlas_fixture_module(name: "fixture.first_of_shared", path: atlas_shared_path),
     atlas_fixture_module(name: "fixture.second_of_shared", path: atlas_shared_path),
@@ -34,8 +34,8 @@ fn atlas_multi_seed_pool() -> List<ModuleDeclarationFact> {
 }
 
 test fn atlas_address_is_a_pure_function_of_identity() -> Bool {
-  let once = atlas_address_of_module(identity: ModuleIdentity { name: "fixture.alpha" })
-  let twice = atlas_address_of_module(identity: ModuleIdentity { name: "fixture.alpha" })
+  let once = atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
+  let twice = atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
   atlas_address_eq(a: once, b: twice)
 }
 
@@ -44,33 +44,33 @@ data atlas_shuffle_note: String = "ACCEPTANCE 2. The same three identities in tw
 test fn atlas_address_is_invariant_under_input_order() -> Bool {
   let forward = map(
     [
-      ModuleIdentity { name: "fixture.alpha" },
-      ModuleIdentity { name: "fixture.beta" },
-      ModuleIdentity { name: "fixture.gamma" },
+      v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" },
+      v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" },
+      v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" },
     ],
     m => atlas_address_of_module(identity: m))
   let reversed = map(
     [
-      ModuleIdentity { name: "fixture.gamma" },
-      ModuleIdentity { name: "fixture.beta" },
-      ModuleIdentity { name: "fixture.alpha" },
+      v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" },
+      v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" },
+      v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" },
     ],
     m => atlas_address_of_module(identity: m))
-  let a = atlas_address_of_module(identity: ModuleIdentity { name: "fixture.alpha" })
-  let g = atlas_address_of_module(identity: ModuleIdentity { name: "fixture.gamma" })
+  let a = atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
+  let g = atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" })
   forward.length() == 3
     && reversed.length() == 3
-    && atlas_address_eq(a: a, b: atlas_address_of_module(identity: ModuleIdentity { name: "fixture.alpha" }))
-    && atlas_address_eq(a: g, b: atlas_address_of_module(identity: ModuleIdentity { name: "fixture.gamma" }))
+    && atlas_address_eq(a: a, b: atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" }))
+    && atlas_address_eq(a: g, b: atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" }))
 }
 
 data atlas_unrelated_addition_note: String = "ACCEPTANCE 3. Adding an unrelated module to the population must move no existing module. Asserted by computing an address from a one-module world and again from a three-module world: the address function never receives the population at all, so this holds by construction — and the claim exists so that a future refactor which STARTS passing the population reds here instead of silently re-addressing the atlas."
 
 test fn adding_an_unrelated_module_moves_no_existing_module() -> Bool {
-  let alone = atlas_address_of_module(identity: ModuleIdentity { name: "fixture.alpha" })
+  let alone = atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
   let crowded_cells = atlas_cells_of_modules(
     identities: atlas_module_identities(nodes: atlas_fixture_pool()))
-  let still = atlas_address_of_module(identity: ModuleIdentity { name: "fixture.alpha" })
+  let still = atlas_address_of_module(identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
   atlas_address_eq(a: alone, b: still) && crowded_cells.length() > 0
 }
 
@@ -82,8 +82,8 @@ data atlas_collide_left: String = "bisect.add"
 data atlas_collide_right: String = "v2.test.manual.generic_instantiation_runtime"
 
 test fn two_distinct_identities_colliding_share_one_cell() -> Bool {
-  let left = ModuleIdentity { name: atlas_collide_left }
-  let right = ModuleIdentity { name: atlas_collide_right }
+  let left = v2.lens.module_impact_query.ModuleIdentity { name: atlas_collide_left }
+  let right = v2.lens.module_impact_query.ModuleIdentity { name: atlas_collide_right }
   let cells = atlas_cells_of_modules(identities: [left, right])
   atlas_collide_left != atlas_collide_right
     && atlas_cell_index(identity: left) == atlas_cell_index(identity: right)
@@ -149,7 +149,7 @@ data atlas_comparison_identity_claim_note: String = "A projected overlay must ca
 test fn a_projected_overlay_carries_its_comparison_endpoints() -> Bool {
   let overlay = atlas_change_overlay(
     observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
-      GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
     ] }),
     nodes: atlas_fixture_pool())
   match overlay {
@@ -174,12 +174,12 @@ test fn ring_table_sums_to_the_declared_cell_space() -> Bool {
 test fn every_address_falls_inside_the_ring_table() -> Bool {
   let addresses = map(
     [
-      ModuleIdentity { name: "fixture.alpha" },
-      ModuleIdentity { name: "fixture.beta" },
-      ModuleIdentity { name: "fixture.gamma" },
-      ModuleIdentity { name: "fixture.collide.left" },
-      ModuleIdentity { name: "gunbc.roadmap_component" },
-      ModuleIdentity { name: "std.markup" },
+      v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" },
+      v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" },
+      v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" },
+      v2.lens.module_impact_query.ModuleIdentity { name: "fixture.collide.left" },
+      v2.lens.module_impact_query.ModuleIdentity { name: "gunbc.roadmap_component" },
+      v2.lens.module_impact_query.ModuleIdentity { name: "std.markup" },
     ],
     m => atlas_address_of_module(identity: m))
   all(addresses, a => a.ring >= 0 && a.ring < 16 && a.slot >= 0)
@@ -190,15 +190,15 @@ data atlas_multi_seed_claim_note: String = "ACCEPTANCE 5. One changed path resol
 test fn one_path_resolving_to_several_modules_marks_all_of_them() -> Bool {
   let overlay = atlas_change_overlay(
     observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
-      GitDiffStatusEntry { status: DiffModifiedStatus, path: atlas_shared_path, old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: atlas_shared_path, old_path: Absent },
     ] }),
     nodes: atlas_multi_seed_pool())
   match overlay {
     AtlasChangesProjected { comparison: _, marks: marks, unprojected: unprojected } =>
       marks.length() == 2
         && unprojected.length() == 0
-        && atlas_module_is_marked(marks: marks, identity: ModuleIdentity { name: "fixture.first_of_shared" })
-        && atlas_module_is_marked(marks: marks, identity: ModuleIdentity { name: "fixture.second_of_shared" })
+        && atlas_module_is_marked(marks: marks, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.first_of_shared" })
+        && atlas_module_is_marked(marks: marks, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.second_of_shared" })
     AtlasChangeOverlayRefused { cause: _ } => false
     AtlasChangeNotObserved => false
   }
@@ -209,7 +209,7 @@ data atlas_departed_claim_note: String = "ACCEPTANCE 6. A deleted path, and a re
 test fn a_deleted_path_is_never_resolved_against_the_head() -> Bool {
   let overlay = atlas_change_overlay(
     observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
-      GitDiffStatusEntry {
+      extdeps.git.GitDiffStatusEntry {
         status: DiffDeletedStatus,
         path: "dag/fixture/alpha.dag",
         old_path: Absent
@@ -232,7 +232,7 @@ test fn a_deleted_path_is_never_resolved_against_the_head() -> Bool {
 test fn a_renamed_old_path_departs_while_its_new_path_projects() -> Bool {
   let overlay = atlas_change_overlay(
     observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
-      GitDiffStatusEntry {
+      extdeps.git.GitDiffStatusEntry {
         status: DiffRenamedStatus { similarity: percent(count: 96) },
         path: "dag/fixture/beta.dag",
         old_path: Present { value: "dag/fixture/departed.dag" }
@@ -242,7 +242,7 @@ test fn a_renamed_old_path_departs_while_its_new_path_projects() -> Bool {
   match overlay {
     AtlasChangesProjected { comparison: _, marks: marks, unprojected: unprojected } =>
       marks.length() == 1
-        && atlas_module_is_marked(marks: marks, identity: ModuleIdentity { name: "fixture.beta" })
+        && atlas_module_is_marked(marks: marks, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" })
         && unprojected.length() == 1
         && all(unprojected, u => match u {
              DepartedPathPriorIdentityUnavailable { path: p, status: _ } => p == "dag/fixture/departed.dag"
@@ -256,7 +256,7 @@ test fn a_renamed_old_path_departs_while_its_new_path_projects() -> Bool {
 test fn a_path_declaring_no_module_is_counted_not_dropped() -> Bool {
   let overlay = atlas_change_overlay(
     observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
-      GitDiffStatusEntry { status: DiffAddedStatus, path: "README.md", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: DiffAddedStatus, path: "README.md", old_path: Absent },
     ] }),
     nodes: atlas_fixture_pool())
   match overlay {
@@ -277,8 +277,8 @@ data atlas_refusal_claim_note: String = "ACCEPTANCE 7. Each untrustworthy observ
 test fn an_unmerged_entry_refuses_the_whole_overlay() -> Bool {
   let overlay = atlas_change_overlay(
     observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
-      GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
-      GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/beta.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/beta.dag", old_path: Absent },
     ] }),
     nodes: atlas_fixture_pool())
   match overlay {
@@ -294,8 +294,8 @@ test fn an_unmerged_entry_refuses_the_whole_overlay() -> Bool {
 test fn a_pairing_broken_entry_refuses_the_whole_overlay() -> Bool {
   let overlay = atlas_change_overlay(
     observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
-      GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
-      GitDiffStatusEntry { status: DiffPairingBrokenStatus, path: "dag/fixture/gamma.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: DiffPairingBrokenStatus, path: "dag/fixture/gamma.dag", old_path: Absent },
     ] }),
     nodes: atlas_fixture_pool())
   match overlay {
@@ -311,8 +311,8 @@ test fn a_pairing_broken_entry_refuses_the_whole_overlay() -> Bool {
 test fn an_unknown_status_refuses_the_whole_overlay() -> Bool {
   let overlay = atlas_change_overlay(
     observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
-      GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
-      GitDiffStatusEntry {
+      extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry {
         status: DiffUnknownGitStatus { raw: "Z9" },
         path: "dag/fixture/gamma.dag",
         old_path: Absent
@@ -334,7 +334,7 @@ test fn a_truncated_diff_observation_refuses_the_whole_overlay() -> Bool {
     observation: atlas_fixture_observation(diff: GitDiffNameStatusTruncated {
       pending: AwaitingSinglePath { status: DiffModifiedStatus },
       entries: [
-        GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+        extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
       ]
     }),
     nodes: atlas_fixture_pool())
@@ -353,20 +353,20 @@ data atlas_ordinary_statuses_note: String = "The refusal arms above are only hon
 test fn copied_and_type_changed_entries_still_project() -> Bool {
   let overlay = atlas_change_overlay(
     observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
-      GitDiffStatusEntry {
+      extdeps.git.GitDiffStatusEntry {
         status: DiffCopiedStatus { similarity: percent(count: 80) },
         path: "dag/fixture/alpha.dag",
         old_path: Present { value: "dag/fixture/beta.dag" }
       },
-      GitDiffStatusEntry { status: DiffTypeChangedStatus, path: "dag/fixture/gamma.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: DiffTypeChangedStatus, path: "dag/fixture/gamma.dag", old_path: Absent },
     ] }),
     nodes: atlas_fixture_pool())
   match overlay {
     AtlasChangesProjected { comparison: _, marks: marks, unprojected: unprojected } =>
       marks.length() == 2
         && unprojected.length() == 0
-        && atlas_module_is_marked(marks: marks, identity: ModuleIdentity { name: "fixture.alpha" })
-        && atlas_module_is_marked(marks: marks, identity: ModuleIdentity { name: "fixture.gamma" })
+        && atlas_module_is_marked(marks: marks, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" })
+        && atlas_module_is_marked(marks: marks, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" })
     AtlasChangeOverlayRefused { cause: _ } => false
     AtlasChangeNotObserved => false
   }
@@ -376,11 +376,11 @@ data atlas_copied_source_note: String = "A COPIED entry's old_path still exists 
 
 data atlas_impact_claim_note: String = "ACCEPTANCE 8 and 9. No impact mark exists without a reading, and a provisional reading cannot present as exact."
 
-fn atlas_fixture_reading(standing_is_exact: Bool) -> ImpactReading {
-  ImpactReading {
+fn atlas_fixture_reading(standing_is_exact: Bool) -> v2.lens.module_impact_query.ImpactReading {
+  v2.lens.module_impact_query.ImpactReading {
     direction: DependentsOf,
-    seeds: [ModuleIdentity { name: "fixture.alpha" }],
-    reached: [ModuleIdentity { name: "fixture.beta" }],
+    seeds: [v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" }],
+    reached: [v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" }],
     explanation: [],
     standing: if standing_is_exact { ExactForGraphSubject } else { ProvisionalForObservedPool },
     causes: []
@@ -390,14 +390,14 @@ fn atlas_fixture_reading(standing_is_exact: Bool) -> ImpactReading {
 test fn no_module_is_impacted_when_no_reading_was_computed() -> Bool {
   atlas_module_is_impacted(
     overlay: AtlasImpactNotComputed,
-    identity: ModuleIdentity { name: "fixture.beta" }) == false
+    identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" }) == false
     && atlas_impact_is_exact(overlay: AtlasImpactNotComputed) == false
 }
 
 test fn a_reading_marks_exactly_its_reached_set() -> Bool {
   let overlay = atlas_impact_from_reading(reading: atlas_fixture_reading(standing_is_exact: true))
-  atlas_module_is_impacted(overlay: overlay, identity: ModuleIdentity { name: "fixture.beta" })
-    && atlas_module_is_impacted(overlay: overlay, identity: ModuleIdentity { name: "fixture.gamma" }) == false
+  atlas_module_is_impacted(overlay: overlay, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" })
+    && atlas_module_is_impacted(overlay: overlay, identity: v2.lens.module_impact_query.ModuleIdentity { name: "fixture.gamma" }) == false
 }
 
 test fn a_provisional_reading_cannot_render_as_exact() -> Bool {
@@ -410,9 +410,9 @@ test fn a_provisional_reading_cannot_render_as_exact() -> Bool {
 data atlas_empty_reached_note: String = "The discriminating pair for the empty-observation narrow: a reading whose reached set is empty is NOT the same state as no reading at all. Both mark nothing, so a Bool-only consumer cannot tell them apart — which is exactly why the arms are distinct and why this claim asserts the ARM rather than the marking."
 
 test fn an_empty_reached_set_is_not_the_same_state_as_no_reading() -> Bool {
-  let empty_reading = ImpactReading {
+  let empty_reading = v2.lens.module_impact_query.ImpactReading {
     direction: DependentsOf,
-    seeds: [ModuleIdentity { name: "fixture.alpha" }],
+    seeds: [v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" }],
     reached: [],
     explanation: [],
     standing: ExactForGraphSubject,
@@ -436,7 +436,7 @@ test fn a_snapshot_composes_the_four_facts_without_substitution() -> Bool {
     subject: AtlasSubjectUnobserved,
     nodes: atlas_fixture_pool(),
     observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
-      GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
     ] }),
     impact: AtlasImpactNotComputed)
   let structure_present = atlas_snapshot_occupant_total(snapshot: snapshot) == 3
@@ -459,7 +459,7 @@ test fn a_refused_overlay_leaves_the_structure_plane_intact() -> Bool {
     subject: AtlasSubjectUnobserved,
     nodes: atlas_fixture_pool(),
     observation: atlas_fixture_observation(diff: GitDiffNameStatusComplete { entries: [
-      GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+      extdeps.git.GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
     ] }),
     impact: AtlasImpactNotComputed)
   let refused = match snapshot.changes {

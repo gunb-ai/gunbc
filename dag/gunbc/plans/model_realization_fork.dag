@@ -1,7 +1,7 @@
 module gunbc.plans.model_realization_fork
 
 
-fn model_realization_fork_body() -> List<MarkdownBlock> {
+fn model_realization_fork_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** audit (done) + grounding order · **DESIGN.md + carriers are authority** (this *is* the DESIGN open thread, §1/§2/§7). Linked from `ROADMAP.md §0` and [fail-closed-lockdown.md](fail-closed-lockdown.md) §3a."),
     p(text: "**Verified against the live tree 2026-06-21** (two evidence-backed audits). Line numbers are receipts."),
@@ -50,7 +50,7 @@ fn model_realization_fork_body() -> List<MarkdownBlock> {
   ]
 }
 
-data model_realization_fork_plan: Plan = Plan {
+data model_realization_fork_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "model-realization-fork",
   title: "Plan — model↔realization fork (the root of the fail-open problem)",
   body: model_realization_fork_body(),

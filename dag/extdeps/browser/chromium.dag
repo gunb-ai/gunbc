@@ -1,15 +1,15 @@
 module extdeps.browser.chromium
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "chromium.googlesource.com/chromium/src/+/782af9cb30a53f54487e5d2e44738645a8ec457c"
   }
 }
 
-data chromium_net_error_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data chromium_net_error_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "chromium.googlesource.com/chromium/src/+/782af9cb30a53f54487e5d2e44738645a8ec457c/net/base/net_error_list.h"
   }
@@ -20,9 +20,9 @@ type Chromium
 
 data chromium: Chromium = ChromiumProject
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.browser.chromium",
       decl_name: "chromium",
       field: WholeDeclaration
@@ -32,8 +32,8 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: [extdeps.browser.chromium.chromium_net_error_authority]
 }
 
-type ChromiumVersion = NonEmptyStr where brand("ChromiumVersion")
-type ChromiumSourceRevision = NonEmptyStr where brand("ChromiumSourceRevision")
+type ChromiumVersion = std.types.NonEmptyStr where brand("ChromiumVersion")
+type ChromiumSourceRevision = std.types.NonEmptyStr where brand("ChromiumSourceRevision")
 
 type ChromiumSourceIdentity
   = ChromiumSourceRevisionObserved { revision: ChromiumSourceRevision }
@@ -59,4 +59,4 @@ type ChromiumInternalDocument
 type ChromiumInternalUrl
   = | ChromiumWebDataErrorUrl
 
-data chromium_identity_boundary_note: NonEmptyStr = "ChromiumBuild names the Chromium project build grounded by its reported version. The tested binary did not report its source revision, so ChromiumSourceRevisionUnobserved keeps that identity gap explicit; the pinned authority revision grounds the modeled Chromium vocabulary but is not attributed to the binary. ChromiumBuild is not a Google Chrome, Opera, Edge, or Playwright identity. ChromiumWebDataErrorUrl denotes the exact chrome-error://chromewebdata/ internal URL observed by the downstream receipt without reclassifying the binary as another browser distribution." as NonEmptyStr
+data chromium_identity_boundary_note: std.types.NonEmptyStr = "ChromiumBuild names the Chromium project build grounded by its reported version. The tested binary did not report its source revision, so ChromiumSourceRevisionUnobserved keeps that identity gap explicit; the pinned authority revision grounds the modeled Chromium vocabulary but is not attributed to the binary. ChromiumBuild is not a Google Chrome, Opera, Edge, or Playwright identity. ChromiumWebDataErrorUrl denotes the exact chrome-error://chromewebdata/ internal URL observed by the downstream receipt without reclassifying the binary as another browser distribution." as std.types.NonEmptyStr

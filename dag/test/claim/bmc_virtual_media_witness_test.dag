@@ -1,7 +1,7 @@
 module test.claim.bmc_virtual_media
 
 
-fn configfs_write_value_for(ops: List<ConfigfsOp>, path_suffix: String) -> String {
+fn configfs_write_value_for(ops: List<extdeps.linux.usb_gadget.ConfigfsOp>, path_suffix: String) -> String {
   fold(ops, init: "", f: (acc, op) => match op {
     ConfigfsWriteAttr { path: p, value: v } =>
       if string_contains(s: p as String, pattern: path_suffix) { v } else { acc }

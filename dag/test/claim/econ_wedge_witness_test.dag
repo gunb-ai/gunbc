@@ -3,40 +3,40 @@ module test.claim.econ_wedge_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data gitlab_fy2026_gross_margin_bp_low: BasisPoint = basis_point(8735)
+data gitlab_fy2026_gross_margin_bp_low: std.measure.BasisPoint = basis_point(8735)
 
-data gitlab_fy2026_gross_margin_bp_high: BasisPoint = basis_point(8737)
+data gitlab_fy2026_gross_margin_bp_high: std.measure.BasisPoint = basis_point(8737)
 
-data rollins_fy2025_operating_margin_bp_low: BasisPoint = basis_point(1930)
+data rollins_fy2025_operating_margin_bp_low: std.measure.BasisPoint = basis_point(1930)
 
-data rollins_fy2025_operating_margin_bp_high: BasisPoint = basis_point(1931)
+data rollins_fy2025_operating_margin_bp_high: std.measure.BasisPoint = basis_point(1931)
 
-data chemed_fy2025_operating_margin_bp_low: BasisPoint = basis_point(1336)
+data chemed_fy2025_operating_margin_bp_low: std.measure.BasisPoint = basis_point(1336)
 
-data chemed_fy2025_operating_margin_bp_high: BasisPoint = basis_point(1337)
+data chemed_fy2025_operating_margin_bp_high: std.measure.BasisPoint = basis_point(1337)
 
-data github_hetzner_wedge_assumptions: WedgeAssumptions = WedgeAssumptions {
+data github_hetzner_wedge_assumptions: gunbc.econ.knowable_wedge.WedgeAssumptions = gunbc.econ.knowable_wedge.WedgeAssumptions {
   runner_utilization_bp: basis_point(10000),
   amortization_months: amortization_months(60),
   eur_to_usd_numerator: 109,
   eur_to_usd_denominator: 100,
 }
 
-data github_hetzner_zero_utilization_assumptions: WedgeAssumptions = WedgeAssumptions {
+data github_hetzner_zero_utilization_assumptions: gunbc.econ.knowable_wedge.WedgeAssumptions = gunbc.econ.knowable_wedge.WedgeAssumptions {
   runner_utilization_bp: basis_point(0),
   amortization_months: amortization_months(60),
   eur_to_usd_numerator: 109,
   eur_to_usd_denominator: 100,
 }
 
-data hetzner_ax41_usd_floor_fixture: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {
+data hetzner_ax41_usd_floor_fixture: extdeps.pricing.hetzner_dedicated.HetznerDedicatedServerPriceRow = extdeps.pricing.hetzner_dedicated.HetznerDedicatedServerPriceRow {
   server_type: hetzner_ax41_1_ltd_price.server_type,
   server_type_wire_label: hetzner_ax41_1_ltd_price.server_type_wire_label,
   cpu: hetzner_ax41_1_ltd_price.cpu,
   cpu_description: hetzner_ax41_1_ltd_price.cpu_description,
   memory_bytes: hetzner_ax41_1_ltd_price.memory_bytes,
   storage_bytes: hetzner_ax41_1_ltd_price.storage_bytes,
-  monthly: MoneyPerMonth {
+  monthly: std.measure.MoneyPerMonth {
     amount: hetzner_ax41_1_ltd_price.monthly.amount,
     currency: Usd,
   },
@@ -44,29 +44,29 @@ data hetzner_ax41_usd_floor_fixture: HetznerDedicatedServerPriceRow = HetznerDed
   pricing_citation: "witness-fixture#usd-floor-currency-mismatch",
 }
 
-data github_hetzner_wedge_floor_usd_per_minute: MoneyPerMinute = MoneyPerMinute {
+data github_hetzner_wedge_floor_usd_per_minute: std.measure.MoneyPerMinute = std.measure.MoneyPerMinute {
   amount: money_amount_micro(count: 237),
   currency: Usd,
 }
 
-data github_hetzner_wedge_spread_usd_per_minute: MoneyPerMinute = MoneyPerMinute {
+data github_hetzner_wedge_spread_usd_per_minute: std.measure.MoneyPerMinute = std.measure.MoneyPerMinute {
   amount: money_amount_micro(count: 5763),
   currency: Usd,
 }
 
-data github_tiny_umbrella_fixture: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
+data github_tiny_umbrella_fixture: extdeps.pricing.github_actions.GithubActionsRunnerPriceRow = extdeps.pricing.github_actions.GithubActionsRunnerPriceRow {
   billing_sku: github_actions_linux_2core_price.billing_sku,
   sku_wire_label: github_actions_linux_2core_price.sku_wire_label,
   vcpus: github_actions_linux_2core_price.vcpus,
   cpu_architecture: github_actions_linux_2core_price.cpu_architecture,
-  per_minute: MoneyPerMinute {
+  per_minute: std.measure.MoneyPerMinute {
     amount: money_amount_micro(count: 1),
     currency: Usd,
   },
   pricing_citation: "witness-fixture#floor-exceeds-umbrella",
 }
 
-data github_zero_vcpu_runner_fixture: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {
+data github_zero_vcpu_runner_fixture: extdeps.pricing.github_actions.GithubActionsRunnerPriceRow = extdeps.pricing.github_actions.GithubActionsRunnerPriceRow {
   billing_sku: github_actions_linux_2core_price.billing_sku,
   sku_wire_label: github_actions_linux_2core_price.sku_wire_label,
   vcpus: hardware_thread_count(0),
@@ -99,7 +99,7 @@ test fn w_gitlab_gross_margin_envelope_red_on_perturbed_gross_profit() -> Bool {
       )
       match derive_margin_envelope_from_filed_facts(
         revenue: gitlab_fy2026_revenue,
-        profit: FiledMonetaryFact {
+        profit: extdeps.sec.facts.FiledMonetaryFact {
           element: gitlab_fy2026_gross_profit.element,
           amount: Filed { amount: perturbed },
           citation: gitlab_fy2026_gross_profit.citation,

@@ -10,7 +10,7 @@ type ResidueReason
   | UnrecognizedSiblingArm
 
 type GroundingVerdict
-  = Reference { authority: DeclarationRef }
+  = Reference { authority: std.decl_ref.DeclarationRef }
   | ReferenceUri
   | ReferencePath
   | Role

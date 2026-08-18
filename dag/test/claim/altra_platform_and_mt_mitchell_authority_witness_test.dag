@@ -127,7 +127,7 @@ test fn w_the_named_board_layout_document_is_access_gated() -> Bool {
 // flips the answer, so the false above is a fact about Ampere's gate rather than a constant.
 test fn w_a_public_layout_document_would_read_as_reachable() -> Bool {
   let planted = [
-    PlatformReferencedDocument {
+    extdeps.cpu.ampere_altra_platform_hw_design.platform.PlatformReferencedDocument {
       title: "Altra PCB Layout Guidelines",
       cited_by_section: "planted control, not a document this repository holds",
       reach: ReferencedDocumentPublic,
@@ -220,7 +220,7 @@ test fn w_the_two_specifications_target_different_memory_generations() -> Bool {
 // --- RED controls: each goes red if the modelled fact stops discriminating ---
 
 test fn w_red_fabricated_architecture_option_fails_the_channel_join() -> Bool {
-  let fabricated = MtMitchellArchitectureOption {
+  let fabricated = extdeps.ocp.mt_mitchell.platform.MtMitchellArchitectureOption {
     socket_count: 2,
     ddr_channels_per_socket: 12,
     dimm_slot_total: 30,

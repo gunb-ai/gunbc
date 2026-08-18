@@ -14,8 +14,8 @@ data create_dispatch_version_fidelity_note: String = "Create Workflow Dispatch h
 
 type WorkflowDispatchReceipt {
   workflow_run_id: Int
-  run_url: NonEmptyStr
-  html_url: NonEmptyStr
+  run_url: std.types.NonEmptyStr
+  html_url: std.types.NonEmptyStr
 }
 
 service github.Workflows {

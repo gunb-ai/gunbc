@@ -1,7 +1,7 @@
 module v2.test.realization_vocabulary_containment.scanner.planted_leak
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data planted_leak_scan_roots: List<String> = [
   "src/v2/test/fixture/realization_vocab_scan/leak"

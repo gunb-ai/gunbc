@@ -11,7 +11,7 @@ type ChangeKind
 type Change {
   kind: ChangeKind
   subject: Node
-  at: Path
+  at: v2.std.node.Path
 }
 
 type ChangeSet {
@@ -24,27 +24,27 @@ type DependencyEndpoint
 
 type AffectedDependency {
   change: Change
-  dependency: DependencyView
+  dependency: v2.std.dependency.DependencyView
   target: DependencyEndpoint
 }
 
 type AffectedExclusion {
   change: Change
-  dependency: DependencyView
+  dependency: v2.std.dependency.DependencyView
   usage_site: Node
-  changed_dimension: Symbol
+  changed_dimension: v2.std.node.Symbol
 }
 
 type AffectedSetEvidence
-  = AffectedSetReason { reason: Symbol }
-  | AffectedSetDiagnostics { diagnostics: NonEmptyDiagnostics }
+  = AffectedSetReason { reason: v2.std.node.Symbol }
+  | AffectedSetDiagnostics { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
 
 type AffectedSet
   = AffectedSetProduced {
       changes: ChangeSet,
       affected: List<AffectedDependency>,
       exclusions: List<AffectedExclusion>,
-      restricted_to: List<DependencyKind>
+      restricted_to: List<v2.std.dependency.DependencyKind>
     }
   | AffectedSetFailClosed {
       changes: ChangeSet,
@@ -53,6 +53,6 @@ type AffectedSet
 
 type RecomputePlan {
   affected: AffectedSet
-  layers: List<ReadinessLayer>
-  diagnostic: Outcome<Symbol>
+  layers: List<v2.std.dependency.ReadinessLayer>
+  diagnostic: Outcome<v2.std.node.Symbol>
 }

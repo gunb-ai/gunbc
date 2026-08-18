@@ -7,15 +7,15 @@ type DeclarationIdentity {
   qualified_name: String
   name: String
   rel_path: String
-  kind: ItemKind
+  kind: v2.std.decl_index.ItemKind
 }
 
 type DeclarationRefResolution
   = DeclarationRefResolved { declaration_identity: DeclarationIdentity }
-  | DeclarationRefModuleAbsent { reference: DeclarationRef }
-  | DeclarationRefDeclarationAbsent { reference: DeclarationRef }
-  | DeclarationRefFieldAbsent { reference: DeclarationRef }
-  | DeclarationRefAmbiguous { reference: DeclarationRef, candidates: List<DeclarationIdentity> }
+  | DeclarationRefModuleAbsent { reference: std.decl_ref.DeclarationRef }
+  | DeclarationRefDeclarationAbsent { reference: std.decl_ref.DeclarationRef }
+  | DeclarationRefFieldAbsent { reference: std.decl_ref.DeclarationRef }
+  | DeclarationRefAmbiguous { reference: std.decl_ref.DeclarationRef, candidates: List<DeclarationIdentity> }
 
 fn declaration_identity_from_fact(fact: DeclFact) -> DeclarationIdentity {
   DeclarationIdentity {

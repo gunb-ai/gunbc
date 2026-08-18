@@ -1,7 +1,7 @@
 module gunbc.plans.affected_set_self_confirmation
 
 
-fn affected_set_self_confirmation_body() -> List<MarkdownBlock> {
+fn affected_set_self_confirmation_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** 7933B follow-on (operator recut 2026-08-06). 7933A lands the broad stop-line first; this plan is the durable authority shape."),
     h2(text: "7933B — true self-confirmation"),
@@ -14,7 +14,7 @@ fn affected_set_self_confirmation_body() -> List<MarkdownBlock> {
   ]
 }
 
-data affected_set_self_confirmation_plan: Plan = Plan {
+data affected_set_self_confirmation_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "affected-set-self-confirmation",
   title: "Plan — affected-set true self-confirmation (7933B)",
   body: affected_set_self_confirmation_body(),

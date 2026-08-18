@@ -3,17 +3,17 @@ module test.claim.input_envelope_admission
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data test_envelope: InputEnvelope = BoundedInput {
+data test_envelope: gunbc.ci_input_envelope.InputEnvelope = BoundedInput {
   bounds: [
-    InputBound { axis: WitnessCount, max: Measure { count: 100 } },
-    InputBound { axis: SourceNodeCount, max: Measure { count: 10000 } },
+    gunbc.ci_input_envelope.InputBound { axis: WitnessCount, max: std.measure.Measure { count: 100 } },
+    gunbc.ci_input_envelope.InputBound { axis: SourceNodeCount, max: std.measure.Measure { count: 10000 } },
   ]
 }
 
 test fn admitted_when_actual_at_envelope() -> Bool {
   let actual = [
-    InputBound { axis: WitnessCount, max: Measure { count: 100 } },
-    InputBound { axis: SourceNodeCount, max: Measure { count: 10000 } },
+    gunbc.ci_input_envelope.InputBound { axis: WitnessCount, max: std.measure.Measure { count: 100 } },
+    gunbc.ci_input_envelope.InputBound { axis: SourceNodeCount, max: std.measure.Measure { count: 10000 } },
   ]
   match input_admitted(envelope: test_envelope, actual: actual) {
     Admitted => true
@@ -24,8 +24,8 @@ test fn admitted_when_actual_at_envelope() -> Bool {
 
 test fn refused_when_actual_over_envelope() -> Bool {
   let actual = [
-    InputBound { axis: WitnessCount, max: Measure { count: 101 } },
-    InputBound { axis: SourceNodeCount, max: Measure { count: 10000 } },
+    gunbc.ci_input_envelope.InputBound { axis: WitnessCount, max: std.measure.Measure { count: 101 } },
+    gunbc.ci_input_envelope.InputBound { axis: SourceNodeCount, max: std.measure.Measure { count: 10000 } },
   ]
   match input_admitted(envelope: test_envelope, actual: actual) {
     RefusedOverEnvelope { axis: a } => a == WitnessCount
@@ -36,7 +36,7 @@ test fn refused_when_actual_over_envelope() -> Bool {
 
 test fn refused_when_actual_axis_not_declared() -> Bool {
   let actual = [
-    InputBound { axis: CorpusNodeCount, max: Measure { count: 1 } },
+    gunbc.ci_input_envelope.InputBound { axis: CorpusNodeCount, max: std.measure.Measure { count: 1 } },
   ]
   match input_admitted(envelope: test_envelope, actual: actual) {
     RefusedOverEnvelope { axis: a } => a == CorpusNodeCount
@@ -47,7 +47,7 @@ test fn refused_when_actual_axis_not_declared() -> Bool {
 
 test fn refused_undeclared_when_envelope_unknown() -> Bool {
   let actual = [
-    InputBound { axis: WitnessCount, max: Measure { count: 1 } },
+    gunbc.ci_input_envelope.InputBound { axis: WitnessCount, max: std.measure.Measure { count: 1 } },
   ]
   match input_admitted(envelope: EnvelopeUnknown, actual: actual) {
     RefusedUndeclared => true
@@ -58,10 +58,10 @@ test fn refused_undeclared_when_envelope_unknown() -> Bool {
 
 test fn red_on_revert_bound_change() -> Bool {
   let at_limit = [
-    InputBound { axis: WitnessCount, max: Measure { count: 100 } },
+    gunbc.ci_input_envelope.InputBound { axis: WitnessCount, max: std.measure.Measure { count: 100 } },
   ]
   let one_over = [
-    InputBound { axis: WitnessCount, max: Measure { count: 101 } },
+    gunbc.ci_input_envelope.InputBound { axis: WitnessCount, max: std.measure.Measure { count: 101 } },
   ]
   let at_admitted = match input_admitted(envelope: test_envelope, actual: at_limit) {
     Admitted => true

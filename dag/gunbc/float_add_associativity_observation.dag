@@ -1,18 +1,18 @@
 module gunbc.float_add_associativity_observation
 
 
-data float_add_associativity_cited_standard: Ieee754Standard = ieee_754_2019
+data float_add_associativity_cited_standard: extdeps.standards.ieee_754_2019.Ieee754Standard = ieee_754_2019
 
 data float_add_associativity_observation_note: String = "Observing-layer execution receipt for Float add associativity under the IEEE 754 standard modeled in extdeps.standards.ieee_754_2019. Witness magnitudes derive from host execution via observe_float_add_associativity_triple, not hand-authored fold results. The associativity verdict shape lives in std.algebra_law; this module records only the observed folds and assembled receipt."
 
 data float_add_operation_identity_grounding_gap_note: String = "GROUNDING GAP (honest prerequisite, not a string nickname): Float addition is not structurally referenceable as a DeclarationRef today. This slice binds associativity evidence to AssociativityOperationSubject.AssociativityFloatAdd — the closed coproduct variant naming kernel Float plus BinOp.Add — until primitive_identity supplies a joinable operation DeclarationRef."
 
-data float_add_associativity_subject: AssociativityOperationSubject = AssociativityFloatAdd {}
+data float_add_associativity_subject: std.algebra_law.AssociativityOperationSubject = AssociativityFloatAdd {}
 
 fn observe_float_add_associativity_triple(a: Float, b: Float, c: Float) -> AssociativityCounterexampleWitness<Float> {
   let left = (a + b) + c
   let right = a + (b + c)
-  AssociativityCounterexampleWitness {
+  std.algebra_law.AssociativityCounterexampleWitness {
     left_operand: a,
     middle_operand: b,
     right_operand: c,
@@ -21,7 +21,7 @@ fn observe_float_add_associativity_triple(a: Float, b: Float, c: Float) -> Assoc
   }
 }
 
-data float_add_associativity_refuted: AssociativityRefutationReceipt<Float> = AssociativityRefutationReceipt {
+data float_add_associativity_refuted: AssociativityRefutationReceipt<Float> = std.algebra_law.AssociativityRefutationReceipt {
   subject: float_add_associativity_subject,
   witness: observe_float_add_associativity_triple(
     a: 10000000000000000.0,

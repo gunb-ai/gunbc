@@ -3,11 +3,11 @@ module gunbc.roadmap_document
 
 type RoadmapSection {
   title: String
-  elements: List<SectionElement>
+  elements: List<gunbc.roadmap_model.SectionElement>
 }
 
 type RoadmapDocument {
-  preamble: List<MarkdownBlock>
+  preamble: List<std.markdown.MarkdownBlock>
   lead_lanes: List<RoadmapSection>
   sections: List<RoadmapSection>
 }

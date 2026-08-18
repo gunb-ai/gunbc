@@ -3,8 +3,8 @@ module v2.workflow.bash_emit
 
 type BashEmitStmt {
   node: Node
-  production_binding: Symbol
-  rule_name: Symbol
+  production_binding: v2.std.node.Symbol
+  rule_name: v2.std.node.Symbol
 }
 
 type BashEmitSpecial

@@ -11,12 +11,12 @@ data dirty_tree_hex: String = "b8084eb2bd437b9b3fb503996604d4d0d45ede1a"
 data blob_hex: String = "2d964d3995eb862e98255555d858bb970bac1b99"
 data pack_sha256_hex: String = "c145cdcad67185c86b487c5d1e9caed689a5b4efd4c8512268ea6f4ae085e47b"
 
-fn witness_toolchain() -> ToolchainRequirement {
-  ToolchainRequirement { name: "rustup" as NonEmptyStr, version: "1.89.0" as NonEmptyStr }
+fn witness_toolchain() -> extdeps.toolchain.types.ToolchainRequirement {
+  extdeps.toolchain.types.ToolchainRequirement { name: "rustup" as std.types.NonEmptyStr, version: "1.89.0" as std.types.NonEmptyStr }
 }
 
-fn witness_target(gnu_abi: Bool) -> TargetTriple {
-  TargetTriple {
+fn witness_target(gnu_abi: Bool) -> extdeps.toolchain.types.TargetTriple {
+  extdeps.toolchain.types.TargetTriple {
     arch: X86_64,
     vendor: UnknownVendor,
     os: Linux,
@@ -24,7 +24,7 @@ fn witness_target(gnu_abi: Bool) -> TargetTriple {
   }
 }
 
-fn witness_oid(hex: String) -> GitObjectId? {
+fn witness_oid(hex: String) -> extdeps.git.object_store.GitObjectId? {
   git_object_id_from_untagged_hex(hex: hex)
 }
 
@@ -35,10 +35,10 @@ fn witness_subject_full(
   gnu_abi: Bool,
   features: List<String>,
   package: String,
-  cargo_target: CargoTarget,
+  cargo_target: extdeps.cargo.CargoTarget,
   profile: String,
   rustflags: List<String>,
-) -> BuildSubject? {
+) -> gunbc.devboot.subject.BuildSubject? {
   match witness_oid(hex: tree_hex) {
     Absent => none
     Present { value: oid } =>
@@ -54,7 +54,7 @@ fn witness_subject_full(
         linker: none,
         sysroot: none,
         cargo_config: [],
-        platform_c_library: GnuLibc { version: "2.36" as NonEmptyStr },
+        platform_c_library: GnuLibc { version: "2.36" as std.types.NonEmptyStr },
       ) {
         SubjectRefused { cause } => none
         SubjectAdmitted { subject } => Present { value: subject }
@@ -62,7 +62,7 @@ fn witness_subject_full(
   }
 }
 
-fn witness_subject(tree_hex: String, gnu_abi: Bool, features: List<String>) -> BuildSubject? {
+fn witness_subject(tree_hex: String, gnu_abi: Bool, features: List<String>) -> gunbc.devboot.subject.BuildSubject? {
   witness_subject_full(
     tree_hex: tree_hex,
     gnu_abi: gnu_abi,
@@ -74,7 +74,7 @@ fn witness_subject(tree_hex: String, gnu_abi: Bool, features: List<String>) -> B
   )
 }
 
-fn witness_subject_digest(tree_hex: String, gnu_abi: Bool, features: List<String>) -> ContentHash? {
+fn witness_subject_digest(tree_hex: String, gnu_abi: Bool, features: List<String>) -> std.content_hash.ContentHash? {
   match witness_subject(tree_hex: tree_hex, gnu_abi: gnu_abi, features: features) {
     Absent => none
     Present { value: subject } => Present { value: build_subject_digest(subject: subject) }
@@ -88,7 +88,7 @@ type DigestComparison
   | BothPresentDifferent
   | ComparisonUnavailable
 
-fn compare_optional_digests(left: ContentHash?, right: ContentHash?) -> DigestComparison {
+fn compare_optional_digests(left: std.content_hash.ContentHash?, right: std.content_hash.ContentHash?) -> DigestComparison {
   match left {
     Absent => ComparisonUnavailable
     Present { value: l } =>
@@ -104,7 +104,7 @@ fn compare_optional_digests(left: ContentHash?, right: ContentHash?) -> DigestCo
   }
 }
 
-fn digests_are_equal(left: ContentHash?, right: ContentHash?) -> Bool {
+fn digests_are_equal(left: std.content_hash.ContentHash?, right: std.content_hash.ContentHash?) -> Bool {
   match compare_optional_digests(left: left, right: right) {
     BothPresentEqual => true
     BothPresentDifferent => false
@@ -112,7 +112,7 @@ fn digests_are_equal(left: ContentHash?, right: ContentHash?) -> Bool {
   }
 }
 
-fn digests_are_different(left: ContentHash?, right: ContentHash?) -> Bool {
+fn digests_are_different(left: std.content_hash.ContentHash?, right: std.content_hash.ContentHash?) -> Bool {
   match compare_optional_digests(left: left, right: right) {
     BothPresentEqual => false
     BothPresentDifferent => true
@@ -204,7 +204,7 @@ test fn the_product_being_built_participates_in_identity() -> Bool {
     )
 }
 
-fn optional_digest(subject: BuildSubject?) -> ContentHash? {
+fn optional_digest(subject: gunbc.devboot.subject.BuildSubject?) -> std.content_hash.ContentHash? {
   match subject {
     Absent => none
     Present { value: s } => Present { value: build_subject_digest(subject: s) }
@@ -273,7 +273,7 @@ test fn duplicate_feature_refuses() -> Bool {
         linker: none,
         sysroot: none,
         cargo_config: [],
-        platform_c_library: GnuLibc { version: "2.36" as NonEmptyStr },
+        platform_c_library: GnuLibc { version: "2.36" as std.types.NonEmptyStr },
       ) {
         SubjectAdmitted { subject } => false
         SubjectRefused { cause } =>
@@ -301,7 +301,7 @@ test fn empty_feature_name_refuses() -> Bool {
         linker: none,
         sysroot: none,
         cargo_config: [],
-        platform_c_library: GnuLibc { version: "2.36" as NonEmptyStr },
+        platform_c_library: GnuLibc { version: "2.36" as std.types.NonEmptyStr },
       ) {
         SubjectAdmitted { subject } => false
         SubjectRefused { cause } =>
@@ -335,7 +335,7 @@ fn empty_profile_refuses() -> Bool {
         linker: none,
         sysroot: none,
         cargo_config: [],
-        platform_c_library: GnuLibc { version: "2.36" as NonEmptyStr },
+        platform_c_library: GnuLibc { version: "2.36" as std.types.NonEmptyStr },
       ) {
         SubjectAdmitted { subject } => false
         SubjectRefused { cause } =>
@@ -363,7 +363,7 @@ fn empty_rustflag_refuses() -> Bool {
         linker: none,
         sysroot: none,
         cargo_config: [],
-        platform_c_library: GnuLibc { version: "2.36" as NonEmptyStr },
+        platform_c_library: GnuLibc { version: "2.36" as std.types.NonEmptyStr },
       ) {
         SubjectAdmitted { subject } => false
         SubjectRefused { cause } =>
@@ -375,7 +375,7 @@ fn empty_rustflag_refuses() -> Bool {
   }
 }
 
-fn witness_artifact(for_subject: BuildSubject) -> StoredArtifact? {
+fn witness_artifact(for_subject: gunbc.devboot.subject.BuildSubject) -> gunbc.devboot.outcome.StoredArtifact? {
   match witness_oid(hex: blob_hex) {
     Absent => none
     Present { value: blob } =>
@@ -383,7 +383,7 @@ fn witness_artifact(for_subject: BuildSubject) -> StoredArtifact? {
         Absent => none
         Present { value: digest } =>
           Present {
-            value: StoredArtifact {
+            value: gunbc.devboot.outcome.StoredArtifact {
               subject_digest: build_subject_digest(subject: for_subject),
               blob_oid: blob,
               sha256: digest,
@@ -394,11 +394,11 @@ fn witness_artifact(for_subject: BuildSubject) -> StoredArtifact? {
   }
 }
 
-fn witness_record(for_subject: BuildSubject) -> StoredArtifactRecord? {
+fn witness_record(for_subject: gunbc.devboot.subject.BuildSubject) -> gunbc.devboot.outcome.StoredArtifactRecord? {
   match witness_artifact(for_subject: for_subject) {
     Absent => none
     Present { value: artifact } =>
-      Present { value: StoredArtifactRecord { subject: for_subject, artifact: artifact } }
+      Present { value: gunbc.devboot.outcome.StoredArtifactRecord { subject: for_subject, artifact: artifact } }
   }
 }
 
@@ -478,20 +478,20 @@ test fn a_matching_record_without_bytes_does_not_reuse() -> Bool {
 data split_axes_doc: String = "THE STATE THE FUSED SUM COULD NOT SAY. Execution Produced with artifact Missing is a real and common situation -- the build ran and succeeded, the bytes were later pruned -- and under a single outcome sum it could only be expressed by overwriting the success, destroying the record that the build had ever run.\\n\\nBoth halves are asserted here: the status is simultaneously a settled Produced execution AND not retrievable. A collapse back into one axis makes one of the two conjuncts unrepresentable and this row goes red."
 
 fn witness_status(
-  subject: BuildSubject,
+  subject: gunbc.devboot.subject.BuildSubject,
   id: String,
-  execution: BuildExecutionOutcome,
-  availability: ArtifactAvailability,
-) -> DevbootWorkStatus {
-  DevbootWorkStatus {
-    work_id: id as NonEmptyStr as DevbootWorkId,
+  execution: gunbc.devboot.outcome.BuildExecutionOutcome,
+  availability: gunbc.devboot.outcome.ArtifactAvailability,
+) -> gunbc.devboot.outcome.DevbootWorkStatus {
+  gunbc.devboot.outcome.DevbootWorkStatus {
+    work_id: id as std.types.NonEmptyStr as gunbc.devboot.outcome.DevbootWorkId,
     subject: subject,
     execution: execution,
     availability: availability,
   }
 }
 
-fn produced_but_missing_status_holds(subject: BuildSubject) -> Bool {
+fn produced_but_missing_status_holds(subject: gunbc.devboot.subject.BuildSubject) -> Bool {
   let status = witness_status(
     subject: subject,
     id: "w-1",
@@ -536,7 +536,7 @@ test fn only_observed_available_bytes_permit_retrieval() -> Bool {
   }
 }
 
-fn failed_build_status_holds(subject: BuildSubject) -> Bool {
+fn failed_build_status_holds(subject: gunbc.devboot.subject.BuildSubject) -> Bool {
   let status = witness_status(
     subject: subject,
     id: "w-2",
@@ -560,7 +560,7 @@ test fn an_interrupted_build_is_not_settled() -> Bool {
 
 data devboot_membership_witness_doc: String = "THE STORE ROOT IS ENSURED, AND THESE ROWS SAY WHAT THAT BUYS. It projects the gunbc.host_layout authority rather than respelling the path; it reaches the apply order, so a deploy converges it; and its teardown REFUSES, so no retract can remove it.\\n\\nThe third row is the one the incident earned. Wiring this root into the OWNED roster made a lab twin's retract remove the production artifact store -- caught by the twin disjointness claims, which is why those claims were left exactly as they were. A hazard caught once by a claim about something else deserves a control of its own, so the refusal is asserted directly here rather than left to depend on two tests that are really about twins."
 
-fn devboot_ensured_step_projects_layout(acc: Int, step: DeploymentDependencyStep) -> Int {
+fn devboot_ensured_step_projects_layout(acc: Int, step: gunbc.live_deploy.spec.DeploymentDependencyStep) -> Int {
   match step.subject {
     EnsuredHostDirectory { path, owner } =>
       if (path as String) == (srv1_devboot_artifact_store_root as String) { acc + 1 } else { acc }
@@ -578,7 +578,7 @@ test fn the_devboot_store_root_is_an_ensured_host_resource_projecting_the_layout
 
 fn same_path(a: String, b: String) -> Bool { a == b }
 
-fn step_is_devboot_root(step: DeploymentStep) -> Bool {
+fn step_is_devboot_root(step: gunbc.live_deploy.spec.DeploymentStep) -> Bool {
   match step {
     Dependency { step: dep } =>
       same_path(a: ensured_subject_identity(subject: dep.subject) as String, b: srv1_devboot_artifact_store_root as String)

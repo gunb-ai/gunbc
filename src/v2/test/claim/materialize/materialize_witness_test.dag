@@ -1,9 +1,9 @@
 module v2.test.materialize.materialize_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn atom(sym: Symbol) -> Node {
+fn atom(sym: v2.std.node.Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
 }
 
@@ -11,8 +11,8 @@ fn conj2(a: Node, b: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^left }, target: a },
-      Edge { label: Named { name: ^right }, target: b }
+      v2.std.node.Edge { label: Named { name: ^left }, target: a },
+      v2.std.node.Edge { label: Named { name: ^right }, target: b }
     ]
   )
 }
@@ -46,7 +46,7 @@ test fn distinct_fixture_all_distinct() -> Bool {
   materialize_distinct_computation_count(root: distinct_fixture()) == 3
 }
 
-fn witness_plan_schedule() -> List<List<Runnable>> {
+fn witness_plan_schedule() -> List<List<std.realization_schedule.Runnable>> {
   [
     [RunnableSingleClaim {
       entry: "src/v2/test/claim/materialize/materialize_witness_test.dag"
@@ -59,9 +59,9 @@ fn witness_plan_schedule() -> List<List<Runnable>> {
 test fn node_content_hash_is_realization_plan_target() -> Bool {
   let root = dup_fixture()
   let other = distinct_fixture()
-  let plan = RealizationPlan {
+  let plan = std.realization_schedule.RealizationPlan {
     target: content_hash(n: root)
-    objective: RealizationObjective { goals: [] }
+    objective: std.realization_schedule.RealizationObjective { goals: [] }
     schedule: witness_plan_schedule()
     total: cost_account_predicted_zero()
   }

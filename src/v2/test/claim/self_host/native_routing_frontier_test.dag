@@ -3,9 +3,9 @@ module v2.test.claim.self_host.native_routing_frontier_test
 
 fn synthetic_routed_row(
   observation_family: String,
-  observations: List<ParityObservation>
-) -> NativeRoutingFrontierRow {
-  NativeRoutingFrontierRow {
+  observations: List<v2.compiler.self_host.parity_window.ParityObservation>
+) -> v2.compiler.self_host.native_routing_frontier.NativeRoutingFrontierRow {
+  v2.compiler.self_host.native_routing_frontier.NativeRoutingFrontierRow {
     subject: family_subject(
       module_path: "v2.test.synthetic.routed_admission_probe",
       decl_name: "routed_admission_subject"
@@ -19,9 +19,9 @@ fn synthetic_routed_row(
   }
 }
 
-fn probe_green(family: String, id: String, seq: Int) -> ParityObservation {
+fn probe_green(family: String, id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
   WindowObserved {
-    receipt: ParityWindowReceipt {
+    receipt: v2.compiler.self_host.parity_window.ParityWindowReceipt {
       family: family,
       cadence_window_id: id,
       agreement_green: true,
@@ -31,9 +31,9 @@ fn probe_green(family: String, id: String, seq: Int) -> ParityObservation {
   }
 }
 
-fn probe_red(family: String, id: String, seq: Int) -> ParityObservation {
+fn probe_red(family: String, id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
   WindowObserved {
-    receipt: ParityWindowReceipt {
+    receipt: v2.compiler.self_host.parity_window.ParityWindowReceipt {
       family: family,
       cadence_window_id: id,
       agreement_green: false,
@@ -99,7 +99,7 @@ test fn witness_routed_row_with_refused_evidence_denies_native() -> Bool {
     ) == false)
 }
 
-fn frontier_verdict_is_revert_required(v: ParityMonitorVerdict) -> Bool {
+fn frontier_verdict_is_revert_required(v: v2.compiler.self_host.parity_window.ParityMonitorVerdict) -> Bool {
   match v {
     ParityHolding { family: _, consecutive_green: _ } => false
     ParityRevertRequired { family: _, red_window_id: _ } => true
@@ -167,7 +167,7 @@ test fn witness_post_flip_red_window_latches_revert() -> Bool {
     meet_join_local_observations(),
     [
       WindowObserved {
-        receipt: ParityWindowReceipt {
+        receipt: v2.compiler.self_host.parity_window.ParityWindowReceipt {
           family: "meet_join",
           cadence_window_id: "main-29963619401",
           agreement_green: false,
@@ -181,7 +181,7 @@ test fn witness_post_flip_red_window_latches_revert() -> Bool {
     with_red,
     [
       WindowObserved {
-        receipt: ParityWindowReceipt {
+        receipt: v2.compiler.self_host.parity_window.ParityWindowReceipt {
           family: "meet_join",
           cadence_window_id: "later-green",
           agreement_green: true,

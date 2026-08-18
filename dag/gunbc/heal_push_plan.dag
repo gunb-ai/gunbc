@@ -33,19 +33,19 @@ type HealPushRefusalCause
   | ManagedCredentialSubjectMismatch
 
 type HealPushBindingSite {
-  checkout_step: DeclarationRef
-  input: NonEmptyStr?
-  observed_kind: YamlValueKind?
+  checkout_step: std.decl_ref.DeclarationRef
+  input: std.types.NonEmptyStr?
+  observed_kind: extdeps.languages.yaml.types.YamlValueKind?
 }
 
 type HealPushFailure {
   cause: HealPushRefusalCause
-  missing: GitHubPermissionAxis?
+  missing: extdeps.github.app.GitHubPermissionAxis?
   site: HealPushBindingSite?
 }
 
 type HealPushRefusal {
-  paths: List<RepositoryPath>
+  paths: List<extdeps.github.effect.RepositoryPath>
   failures: List<HealPushFailure>
 }
 
@@ -79,11 +79,11 @@ type HealPushPlan
       refused: List<gunbc.generated_artifact.GeneratedArtifact>
       cause: HealPushRefusal
     }
-  | HealPushPlanInconsistent { refused_paths: List<RepositoryPath> }
+  | HealPushPlanInconsistent { refused_paths: List<extdeps.github.effect.RepositoryPath> }
 
 type RefusalDerivation
   = RefusalDerived { refusal: HealPushRefusal }
-  | RefusalDerivationInconsistent { refused_paths: List<RepositoryPath> }
+  | RefusalDerivationInconsistent { refused_paths: List<extdeps.github.effect.RepositoryPath> }
 
 fn capability_failure(c: CredentialCapability) -> HealPushFailure? {
   match c {
@@ -354,12 +354,12 @@ fn author_residual_exact(refusal: HealPushRefusal) -> Bool {
 }
 
 type HealPushRemediation
-  = HealAutomatically { paths: List<RepositoryPath> }
-  | AuthorCommitRequired { paths: List<RepositoryPath>, causes: List<HealPushRefusalCause> }
+  = HealAutomatically { paths: List<extdeps.github.effect.RepositoryPath> }
+  | AuthorCommitRequired { paths: List<extdeps.github.effect.RepositoryPath>, causes: List<HealPushRefusalCause> }
   | MachineRepairRequired { causes: List<HealPushRefusalCause> }
   | ProviderObservationRequired { causes: List<HealPushRefusalCause> }
   | HealNothingToRemediate
-  | HealPlanInconsistent { refused_paths: List<RepositoryPath> }
+  | HealPlanInconsistent { refused_paths: List<extdeps.github.effect.RepositoryPath> }
 
 fn remediation_for_refusal(refusal: HealPushRefusal) -> HealPushRemediation {
   let machine = filter(refusal.failures, f => failure_is_machine_owned(f: f))

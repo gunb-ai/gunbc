@@ -1,21 +1,21 @@
 module v2.test.claim.realization_runner_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data runner_test_a_node: Node = Node {
+data runner_test_a_node: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^runner_test_a } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data runner_test_b_node: Node = Node {
+data runner_test_b_node: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^runner_test_b } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data runner_test_a_to_b: DependencyView = DependencyView {
+data runner_test_a_to_b: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: runner_test_a_node,
   dependent: runner_test_b_node,
   kind: DataDependsOn,
@@ -24,17 +24,17 @@ data runner_test_a_to_b: DependencyView = DependencyView {
 
 data runner_test_nodes: List<Node> = [runner_test_a_node, runner_test_b_node]
 
-data runner_test_dependencies: List<DependencyView> = [runner_test_a_to_b]
+data runner_test_dependencies: List<v2.std.dependency.DependencyView> = [runner_test_a_to_b]
 
-data runner_test_first_batch: ExecutorBatch = ExecutorBatch {
+data runner_test_first_batch: v2.workflow.executor.ExecutorBatch = v2.workflow.executor.ExecutorBatch {
   jobs: [executor_job_for_node(node: runner_test_a_node)]
 }
 
-data runner_test_second_batch: ExecutorBatch = ExecutorBatch {
+data runner_test_second_batch: v2.workflow.executor.ExecutorBatch = v2.workflow.executor.ExecutorBatch {
   jobs: [executor_job_for_node(node: runner_test_b_node)]
 }
 
-data runner_test_batches: List<ExecutorBatch> = [
+data runner_test_batches: List<v2.workflow.executor.ExecutorBatch> = [
   runner_test_first_batch,
   runner_test_second_batch
 ]
@@ -92,7 +92,7 @@ test fn witness_runner_schedule_matches_executor_batches() -> Bool {
 }
 
 test fn witness_runner_blocks_when_prerequisite_missing() -> Bool {
-  let batch = ExecutorBatch {
+  let batch = v2.workflow.executor.ExecutorBatch {
     jobs: [executor_job_for_node(node: runner_test_b_node)]
   }
   match runner_dispatch_batch(
@@ -106,40 +106,40 @@ test fn witness_runner_blocks_when_prerequisite_missing() -> Bool {
   }
 }
 
-data graph_hash_c: ContentHash = content_hash_of_value(value: "hash_c" as NonEmptyStr)
-data graph_hash_a: ContentHash = content_hash_of_value(value: "hash_a" as NonEmptyStr)
-data graph_hash_b: ContentHash = content_hash_of_value(value: "hash_b" as NonEmptyStr)
-data graph_hash_root: ContentHash = content_hash_of_value(value: "hash_root" as NonEmptyStr)
-data graph_hash_store_node: ContentHash = content_hash_of_value(value: "hash_store_node" as NonEmptyStr)
-data graph_hash_dangling_root: ContentHash = content_hash_of_value(value: "hash_dangling_root" as NonEmptyStr)
-data graph_hash_never_encoded: ContentHash = content_hash_of_value(value: "hash_never_encoded" as NonEmptyStr)
-data graph_hash_absent: ContentHash = content_hash_of_value(value: "hash_absent" as NonEmptyStr)
+data graph_hash_c: std.content_hash.ContentHash = content_hash_of_value(value: "hash_c" as std.types.NonEmptyStr)
+data graph_hash_a: std.content_hash.ContentHash = content_hash_of_value(value: "hash_a" as std.types.NonEmptyStr)
+data graph_hash_b: std.content_hash.ContentHash = content_hash_of_value(value: "hash_b" as std.types.NonEmptyStr)
+data graph_hash_root: std.content_hash.ContentHash = content_hash_of_value(value: "hash_root" as std.types.NonEmptyStr)
+data graph_hash_store_node: std.content_hash.ContentHash = content_hash_of_value(value: "hash_store_node" as std.types.NonEmptyStr)
+data graph_hash_dangling_root: std.content_hash.ContentHash = content_hash_of_value(value: "hash_dangling_root" as std.types.NonEmptyStr)
+data graph_hash_never_encoded: std.content_hash.ContentHash = content_hash_of_value(value: "hash_never_encoded" as std.types.NonEmptyStr)
+data graph_hash_absent: std.content_hash.ContentHash = content_hash_of_value(value: "hash_absent" as std.types.NonEmptyStr)
 
-data graph_artifact_row_c: NodeKeyedGraphRow = NodeKeyedGraphRow {
+data graph_artifact_row_c: v2.workflow.realization_runner.NodeKeyedGraphRow = v2.workflow.realization_runner.NodeKeyedGraphRow {
   content_hash: graph_hash_c,
   encoded_length: byte_size(count: 7),
   child_refs: []
 }
 
-data graph_artifact_row_a: NodeKeyedGraphRow = NodeKeyedGraphRow {
+data graph_artifact_row_a: v2.workflow.realization_runner.NodeKeyedGraphRow = v2.workflow.realization_runner.NodeKeyedGraphRow {
   content_hash: graph_hash_a,
   encoded_length: byte_size(count: 3),
   child_refs: [graph_hash_c]
 }
 
-data graph_artifact_row_b: NodeKeyedGraphRow = NodeKeyedGraphRow {
+data graph_artifact_row_b: v2.workflow.realization_runner.NodeKeyedGraphRow = v2.workflow.realization_runner.NodeKeyedGraphRow {
   content_hash: graph_hash_b,
   encoded_length: byte_size(count: 5),
   child_refs: [graph_hash_c]
 }
 
-data graph_artifact_row_root: NodeKeyedGraphRow = NodeKeyedGraphRow {
+data graph_artifact_row_root: v2.workflow.realization_runner.NodeKeyedGraphRow = v2.workflow.realization_runner.NodeKeyedGraphRow {
   content_hash: graph_hash_root,
   encoded_length: byte_size(count: 10),
   child_refs: [graph_hash_a, graph_hash_b]
 }
 
-data graph_artifact_diamond: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact {
+data graph_artifact_diamond: v2.workflow.realization_runner.NodeKeyedGraphArtifact = v2.workflow.realization_runner.NodeKeyedGraphArtifact {
   rows: [
     graph_artifact_row_c,
     graph_artifact_row_a,
@@ -147,13 +147,13 @@ data graph_artifact_diamond: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact {
     graph_artifact_row_root
   ],
   entries: [
-    NodeKeyedGraphArtifactEntry { store_node: graph_hash_store_node, value_root: graph_hash_root }
+    v2.workflow.realization_runner.NodeKeyedGraphArtifactEntry { store_node: graph_hash_store_node, value_root: graph_hash_root }
   ]
 }
 
-data graph_artifact_dangling: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact {
+data graph_artifact_dangling: v2.workflow.realization_runner.NodeKeyedGraphArtifact = v2.workflow.realization_runner.NodeKeyedGraphArtifact {
   rows: [
-    NodeKeyedGraphRow {
+    v2.workflow.realization_runner.NodeKeyedGraphRow {
       content_hash: graph_hash_dangling_root,
       encoded_length: byte_size(count: 4),
       child_refs: [graph_hash_never_encoded]
@@ -162,7 +162,7 @@ data graph_artifact_dangling: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact {
   entries: []
 }
 
-data graph_artifact_duplicated: NodeKeyedGraphArtifact = NodeKeyedGraphArtifact {
+data graph_artifact_duplicated: v2.workflow.realization_runner.NodeKeyedGraphArtifact = v2.workflow.realization_runner.NodeKeyedGraphArtifact {
   rows: [graph_artifact_row_c, graph_artifact_row_c],
   entries: []
 }
@@ -192,7 +192,7 @@ test fn witness_graph_artifact_total_matches_fully_reachable_root() -> Bool {
 test fn witness_graph_artifact_entry_binds_value_root() -> Bool {
   match node_keyed_graph_entry_value_bytes(
     artifact: graph_artifact_diamond,
-    entry: NodeKeyedGraphArtifactEntry { store_node: graph_hash_store_node, value_root: graph_hash_b }
+    entry: v2.workflow.realization_runner.NodeKeyedGraphArtifactEntry { store_node: graph_hash_store_node, value_root: graph_hash_b }
   ) {
     NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
       byte_size_count(b: bytes) == 12

@@ -3,11 +3,11 @@ module std.realization_measurement
 
 type RealizationMeasureEffect
   = ObserveElapsedAtSubject {
-      subject: ContentHash
+      subject: std.content_hash.ContentHash
       work_shape: String
     }
   | ObservePeakResidentAtSubject {
-      subject: ContentHash
+      subject: std.content_hash.ContentHash
       work_shape: String
     }
 
@@ -49,7 +49,7 @@ fn time_measure_list_total<S>(times: List<Measure<Time, S, std.nat.Nat>>) -> Mea
 }
 
 type ConcurrentMemoryPeakSample {
-  peak: ByteSize
+  peak: std.measure.ByteSize
   concurrency: Int
 }
 

@@ -39,7 +39,7 @@ fn ensured_subject_identity(subject: EnsuredSubject) -> std.types.NonEmptyStr {
 
 type DeploymentArtifactStep {
   kind: OwnedArtifactKind
-  path: NonEmptyStr
+  path: std.types.NonEmptyStr
 }
 
 type DeploymentDependencyStep {

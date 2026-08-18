@@ -1,9 +1,9 @@
 module test.claim.os_install_deduction
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_autoinstall_with_storage: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
+data witness_autoinstall_with_storage: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload = extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload {
   autoinstall_version: 1,
   delivery: NoCloudLocal,
   fully_automated: true,
@@ -17,7 +17,7 @@ data witness_autoinstall_with_storage: UbuntuAutoinstallPayload = UbuntuAutoinst
   storage_policy: StoragePolicyDirectLayout,
 }
 
-data witness_autoinstall_without_storage: UbuntuAutoinstallPayload = UbuntuAutoinstallPayload {
+data witness_autoinstall_without_storage: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload = extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload {
   autoinstall_version: 1,
   delivery: NoCloudLocal,
   fully_automated: true,
@@ -96,10 +96,10 @@ test fn removing_storage_policy_flips_ready_to_boot_witness() -> Bool {
 }
 
 test fn nocloud_net_seed_is_incomplete_for_actuator_path() -> Bool {
-  let net_payload = UbuntuAutoinstallPayload {
+  let net_payload = extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload {
     autoinstall_version: 1,
     delivery: NoCloudNet {
-      seed_url: Uri {
+      seed_url: extdeps.uri.Uri {
         scheme: Https,
         locator: "install.srv3.lan/ubuntu-24.04/autoinstall/",
       },
@@ -146,11 +146,11 @@ test fn direct_layout_emits_storage_yaml() -> Bool {
 
 test fn kvm_storage_screen_with_incomplete_preflight_awaits_storage() -> Bool {
   match runtime_verdict_from_kvm_attestation(
-    attestation: KvmOperatorAttestation {
+    attestation: gunbc.os_install_deduction.KvmOperatorAttestation {
       target: operator_host_srv3,
       observed_screen: SubiquityStorageScreen,
       observed_at: "2026-07-02T23:00:00Z",
-      attested_by: "operator" as NonEmptyStr,
+      attested_by: "operator" as std.types.NonEmptyStr,
     },
     preflight: AutoinstallIncompleteNotBootable,
   ) {
@@ -160,7 +160,7 @@ test fn kvm_storage_screen_with_incomplete_preflight_awaits_storage() -> Bool {
 }
 
 test fn non_automated_is_not_unattended_ready() -> Bool {
-  let manual_payload = UbuntuAutoinstallPayload {
+  let manual_payload = extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload {
     autoinstall_version: 1,
     delivery: NoCloudLocal,
     fully_automated: false,
@@ -182,11 +182,11 @@ test fn non_automated_is_not_unattended_ready() -> Bool {
 
 test fn kvm_firmware_setup_is_weak_idle_observation() -> Bool {
   match runtime_verdict_from_kvm_attestation(
-    attestation: KvmOperatorAttestation {
+    attestation: gunbc.os_install_deduction.KvmOperatorAttestation {
       target: operator_host_srv3,
       observed_screen: FirmwareSetup,
       observed_at: "2026-07-02T23:00:00Z",
-      attested_by: "operator" as NonEmptyStr,
+      attested_by: "operator" as std.types.NonEmptyStr,
     },
     preflight: CompleteForUnattended,
   ) {
@@ -197,11 +197,11 @@ test fn kvm_firmware_setup_is_weak_idle_observation() -> Bool {
 
 test fn kvm_login_prompt_is_weak_not_os_installed() -> Bool {
   match runtime_verdict_from_kvm_attestation(
-    attestation: KvmOperatorAttestation {
+    attestation: gunbc.os_install_deduction.KvmOperatorAttestation {
       target: operator_host_srv3,
       observed_screen: LoginPrompt,
       observed_at: "2026-07-02T23:00:00Z",
-      attested_by: "operator" as NonEmptyStr,
+      attested_by: "operator" as std.types.NonEmptyStr,
     },
     preflight: CompleteForUnattended,
   ) {

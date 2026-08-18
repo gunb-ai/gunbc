@@ -1,6 +1,6 @@
 module v2.std.determinism
 type DeterminismFact {
-  signature: Symbol,
+  signature: v2.std.node.Symbol,
   classification: std.determinism.Determinism
 }
 

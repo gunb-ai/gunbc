@@ -5,26 +5,26 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data managed_directory_witness_note: String = "The derivation is witnessed on SYNTHETIC principals rather than on the fleet roster, so these stay true when srv1's service account changes — which it is scheduled to, when the dashboard runtime stops being the operator's personal account. What is under test is the RULE (dependents plus uid/gid comparison determine the mode), not srv1's current answer; the srv1 answer is witnessed separately in test.claim.live_deploy.emit against the emitted script. The three class witnesses are the load-bearing ones: they prove the mode WIDENS when a dependent is genuinely added and only then, which is the property that makes deriving better than choosing. The octal witnesses cover the serializer independently, including the special-bits digit that no caller sets today — an unset digit rendered by computation rather than by assumption is the difference between 0750 and 2750 the day setgid is needed."
 
-fn owner_user() -> PosixUser {
-  PosixUser { name: "svc", uid: 4000, gid: 4000,
+fn owner_user() -> extdeps.access.posix.PosixUser {
+  extdeps.access.posix.PosixUser { name: "svc", uid: 4000, gid: 4000,
   shell: LoginShellUnobserved,
 }
 }
 
-fn group_mate_user() -> PosixUser {
-  PosixUser { name: "peer", uid: 4001, gid: 4000,
+fn group_mate_user() -> extdeps.access.posix.PosixUser {
+  extdeps.access.posix.PosixUser { name: "peer", uid: 4001, gid: 4000,
   shell: LoginShellUnobserved,
 }
 }
 
-fn stranger_user() -> PosixUser {
-  PosixUser { name: "outsider", uid: 4002, gid: 4002,
+fn stranger_user() -> extdeps.access.posix.PosixUser {
+  extdeps.access.posix.PosixUser { name: "outsider", uid: 4002, gid: 4002,
   shell: LoginShellUnobserved,
 }
 }
 
-fn dir_with(dependents: List<DirectoryDependent>) -> ManagedDirectory {
-  ManagedDirectory {
+fn dir_with(dependents: List<gunbc.managed_directory.DirectoryDependent>) -> gunbc.managed_directory.ManagedDirectory {
+  gunbc.managed_directory.ManagedDirectory {
     member: "synthetic",
     path: "/synthetic/root",
     owner: owner_user(),
@@ -33,7 +33,7 @@ fn dir_with(dependents: List<DirectoryDependent>) -> ManagedDirectory {
   }
 }
 
-fn class_label(c: DependentClass) -> String {
+fn class_label(c: gunbc.managed_directory.DependentClass) -> String {
   match c {
     OwnerClass => "owner"
     GroupClass => "group"
@@ -55,24 +55,24 @@ test fn witness_unrelated_principal_is_other_class() -> Bool {
 
 test fn witness_sole_owner_dependent_derives_0700() -> Bool {
   let d = dir_with(dependents: [
-    DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] },
+    gunbc.managed_directory.DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] },
   ])
   managed_directory_mode_octal(d: d) == "0700"
 }
 
 test fn witness_group_reader_widens_to_0750() -> Bool {
   let d = dir_with(dependents: [
-    DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] },
-    DirectoryDependent { who: group_mate_user(), needs: [Read, Execute] },
+    gunbc.managed_directory.DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] },
+    gunbc.managed_directory.DirectoryDependent { who: group_mate_user(), needs: [Read, Execute] },
   ])
   managed_directory_mode_octal(d: d) == "0750"
 }
 
 test fn witness_unrelated_reader_widens_to_0755() -> Bool {
   let d = dir_with(dependents: [
-    DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] },
-    DirectoryDependent { who: group_mate_user(), needs: [Read, Execute] },
-    DirectoryDependent { who: stranger_user(), needs: [Read, Execute] },
+    gunbc.managed_directory.DirectoryDependent { who: owner_user(), needs: [Read, Write, Execute] },
+    gunbc.managed_directory.DirectoryDependent { who: group_mate_user(), needs: [Read, Execute] },
+    gunbc.managed_directory.DirectoryDependent { who: stranger_user(), needs: [Read, Execute] },
   ])
   managed_directory_mode_octal(d: d) == "0755"
 }
@@ -83,18 +83,18 @@ test fn witness_no_dependents_derives_no_permission() -> Bool {
 
 test fn witness_verbs_union_within_a_class() -> Bool {
   let d = dir_with(dependents: [
-    DirectoryDependent { who: owner_user(), needs: [Read] },
-    DirectoryDependent { who: owner_user(), needs: [Write] },
+    gunbc.managed_directory.DirectoryDependent { who: owner_user(), needs: [Read] },
+    gunbc.managed_directory.DirectoryDependent { who: owner_user(), needs: [Write] },
   ])
   let perms = managed_directory_permissions(d: d)
   perms.mode.owner.read && perms.mode.owner.write && !perms.mode.owner.execute
 }
 
 test fn witness_octal_renders_special_bits_digit() -> Bool {
-  let mode = FileMode {
-    owner: PermissionBits { read: true, write: true, execute: true },
-    group: PermissionBits { read: true, write: false, execute: true },
-    other: PermissionBits { read: false, write: false, execute: false },
+  let mode = extdeps.access.posix.FileMode {
+    owner: extdeps.access.posix.PermissionBits { read: true, write: true, execute: true },
+    group: extdeps.access.posix.PermissionBits { read: true, write: false, execute: true },
+    other: extdeps.access.posix.PermissionBits { read: false, write: false, execute: false },
     setuid: false,
     setgid: true,
     sticky: false,

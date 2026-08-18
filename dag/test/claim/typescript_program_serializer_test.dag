@@ -3,8 +3,8 @@ module test.claim.typescript_program_serializer
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn minimal_add_program() -> TsProgram {
-  TsProgram {
+fn minimal_add_program() -> extdeps.languages.typescript.program.TsProgram {
+  extdeps.languages.typescript.program.TsProgram {
     ts_nocheck: false,
     header_lines: [],
     statements: [
@@ -20,8 +20,8 @@ fn minimal_add_program() -> TsProgram {
   }
 }
 
-fn regex_literal_program() -> TsProgram {
-  TsProgram {
+fn regex_literal_program() -> extdeps.languages.typescript.program.TsProgram {
+  extdeps.languages.typescript.program.TsProgram {
     ts_nocheck: false,
     header_lines: [],
     statements: [
@@ -39,7 +39,7 @@ test fn typescript_program_serialize_regex_holds() -> Bool {
 }
 
 test fn typescript_program_serialize_arrow_expr_body_holds() -> Bool {
-  serialize_typescript_program(p: TsProgram {
+  serialize_typescript_program(p: extdeps.languages.typescript.program.TsProgram {
     ts_nocheck: false,
     header_lines: [],
     statements: [
@@ -66,7 +66,7 @@ test fn typescript_program_serialize_arrow_expr_body_holds() -> Bool {
 }
 
 test fn typescript_program_serialize_create_server_fragment_holds() -> Bool {
-  let src = serialize_typescript_program(p: TsProgram {
+  let src = serialize_typescript_program(p: extdeps.languages.typescript.program.TsProgram {
     ts_nocheck: true,
     header_lines: ["test"],
     statements: [
@@ -96,16 +96,16 @@ test fn typescript_program_serialize_create_server_fragment_holds() -> Bool {
 
 data operator_precedence_witness_note: String = "The printer's grouping proven by SERIALIZED TEXT, not by reading the table, because the defect these witnesses close was invisible in the model and visible only in the output. Each assertion is a whole-string equality, which is the strongest available discrimination here: a printer that stopped grouping reds the three grouping witnesses, and a printer that grouped indiscriminately reds the three bare witnesses, so neither direction of regression can pass. The two grouping shapes are the exact shapes found live in gunbc.roadmap_component on 2026-07-30 — a conditional and a disjunction as the right operand of a concatenation — rather than invented ones, so the RED is the real defect rather than a strawman."
 
-fn precedence_const_program(value: TsExpr) -> TsProgram {
-  TsProgram {
+fn precedence_const_program(value: extdeps.languages.typescript.program.TsExpr) -> extdeps.languages.typescript.program.TsProgram {
+  extdeps.languages.typescript.program.TsProgram {
     ts_nocheck: false,
     header_lines: [],
     statements: [ts_const(name: "x", value: value)],
   }
 }
 
-fn precedence_stmt_program(expr: TsExpr) -> TsProgram {
-  TsProgram {
+fn precedence_stmt_program(expr: extdeps.languages.typescript.program.TsExpr) -> extdeps.languages.typescript.program.TsProgram {
+  extdeps.languages.typescript.program.TsProgram {
     ts_nocheck: false,
     header_lines: [],
     statements: [ts_expr_stmt(expr: expr)],
@@ -226,8 +226,8 @@ data try_serialization_receipt_note: String = "THE TRY ARM'S OWN EXECUTION RECEI
 
 Three fixtures, each naming what would survive without it: the exact bytes of a try/catch; a nested try inside a catch, because serialize_ts_stmt_body routes Try back through serialize_ts_stmt and a missing arm there is a silent structural change; and a try whose body is a bare expression statement rather than a block, which is the shape that would emit an unbraced clause the grammar does not permit."
 
-fn try_program(body: TsStmt, catch_param: String, handler: TsStmt) -> TsProgram {
-  TsProgram {
+fn try_program(body: extdeps.languages.typescript.program.TsStmt, catch_param: String, handler: extdeps.languages.typescript.program.TsStmt) -> extdeps.languages.typescript.program.TsProgram {
+  extdeps.languages.typescript.program.TsProgram {
     ts_nocheck: false,
     header_lines: [],
     statements: [ts_try(body: body, catch_param: catch_param, handler: handler)],

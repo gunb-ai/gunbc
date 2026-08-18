@@ -1,10 +1,10 @@
 module v2.test.extdeps_shape_transport_policy.lens_unit.policy_leak_cargo_build
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data policy_leak_cargo_build_argv_facts: List<ExtdepsTransportArgvFact> = [
-  ExtdepsTransportArgvFact {
+data policy_leak_cargo_build_argv_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact> = [
+  v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact {
     module: extdeps_cargo_build_module,
     service: "cargo.Build",
     operation: "Build",
@@ -14,7 +14,7 @@ data policy_leak_cargo_build_argv_facts: List<ExtdepsTransportArgvFact> = [
   }
 ]
 
-data policy_leak_cargo_build_fusion_facts: List<ExtdepsTransportFusionFact> = []
+data policy_leak_cargo_build_fusion_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsTransportFusionFact> = []
 
 test fn policy_leak_cargo_build_is_red_holds() -> Bool {
   extdeps_shape_transport_policy_violation_count(

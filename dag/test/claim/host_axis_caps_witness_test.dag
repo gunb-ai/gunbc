@@ -1,16 +1,16 @@
 module test.claim.host_axis_caps
 
 
-data path20: NonEmptyStr = gunbc_runner_per_slot_dropin_path as NonEmptyStr
-data path30: NonEmptyStr = gunbc_runner_per_slot_swap_dropin_path as NonEmptyStr
-data foreign_path: NonEmptyStr = "/etc/systemd/system/actions-runner@.service.d/99-foreign.conf"
-data mem_max: NonEmptyStr = "MemoryMax"
-data swap_max: NonEmptyStr = "MemorySwapMax"
-data bytes16g: NonEmptyStr = "17179869184"
-data bytes32g: NonEmptyStr = "34359738368"
-data bytes8g: NonEmptyStr = "8589934592"
+data path20: std.types.NonEmptyStr = gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr
+data path30: std.types.NonEmptyStr = gunbc_runner_per_slot_swap_dropin_path as std.types.NonEmptyStr
+data foreign_path: std.types.NonEmptyStr = "/etc/systemd/system/actions-runner@.service.d/99-foreign.conf"
+data mem_max: std.types.NonEmptyStr = "MemoryMax"
+data swap_max: std.types.NonEmptyStr = "MemorySwapMax"
+data bytes16g: std.types.NonEmptyStr = "17179869184"
+data bytes32g: std.types.NonEmptyStr = "34359738368"
+data bytes8g: std.types.NonEmptyStr = "8589934592"
 
-fn srv_caps_desired() -> List<CapMember> {
+fn srv_caps_desired() -> List<gunbc.host_axis_caps.CapMember> {
   [
     desired_cap_member(dropin_path: path20, property: mem_max, bytes_value: bytes16g),
     desired_cap_member(dropin_path: path30, property: swap_max, bytes_value: bytes32g),
@@ -31,7 +31,7 @@ test fn caps_idempotence_zero_effects() -> Bool {
 test fn caps_perturb_names_exactly_the_drifted_row() -> Bool {
   let d = srv_caps_desired()
   let observed = [
-    CapMember { dropin_path: path20, content: cap_dropin_content(property: mem_max, bytes_value: bytes8g) },
+    gunbc.host_axis_caps.CapMember { dropin_path: path20, content: cap_dropin_content(property: mem_max, bytes_value: bytes8g) },
     desired_cap_member(dropin_path: path30, property: swap_max, bytes_value: bytes32g),
   ]
   caps_upsert_count(desired: d, observed: observed) == 1
@@ -42,7 +42,7 @@ test fn caps_perturb_names_exactly_the_drifted_row() -> Bool {
 
 test fn caps_foreign_occupant_refuses_never_deletes() -> Bool {
   let d = srv_caps_desired()
-  let foreign = CapMember { dropin_path: foreign_path, content: "[Service]\nMemoryMax=1\n" }
+  let foreign = gunbc.host_axis_caps.CapMember { dropin_path: foreign_path, content: "[Service]\nMemoryMax=1\n" }
   let observed = [
     desired_cap_member(dropin_path: path20, property: mem_max, bytes_value: bytes16g),
     desired_cap_member(dropin_path: path30, property: swap_max, bytes_value: bytes32g),
@@ -66,7 +66,7 @@ test fn caps_content_is_derived_not_handspelled() -> Bool {
     && cap_dropin_content(property: mem_max, bytes_value: bytes8g) != cap_dropin_content(property: mem_max, bytes_value: bytes16g)
 }
 
-data shadow_unit: NonEmptyStr = "actions-runner@srv1-01.service"
+data shadow_unit: std.types.NonEmptyStr = "actions-runner@srv1-01.service"
 
 test fn control_shadow_residue_teardowns_owned_unit() -> Bool {
   let observed = [control_shadow_unit(unit: shadow_unit)]

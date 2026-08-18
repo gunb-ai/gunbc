@@ -252,8 +252,8 @@ fn sql_fold_create_table_body_emitted(
 }
 
 type SqlFoldCreateTableBundle {
-  production_binding: Symbol,
-  relation_rule: Symbol,
+  production_binding: v2.std.node.Symbol,
+  relation_rule: v2.std.node.Symbol,
   emitted: Node,
 }
 

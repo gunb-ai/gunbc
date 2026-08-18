@@ -33,5 +33,5 @@ type SqlTransportConfig {
   statement_kind: SqlStatementKind
   parameter_style: SqlParameterStyle
   transaction_mode: SqlTransactionMode
-  result_format: WireFormat
+  result_format: std.serialization.WireFormat
 }

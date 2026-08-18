@@ -2,13 +2,13 @@ module test.claim.extdeps_version_semver
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn semver_identity_1_2_3() -> SemVerIdentity { "1.2.3" }
-fn semver_constraint_caret() -> SemVerConstraint { "^1.2" }
-fn semver_identity_1_0_0() -> SemVerIdentity { "1.0.0" }
-fn semver_constraint_one() -> SemVerConstraint { "1" }
+fn semver_identity_1_2_3() -> extdeps.version.semver.SemVerIdentity { "1.2.3" }
+fn semver_constraint_caret() -> extdeps.version.semver.SemVerConstraint { "^1.2" }
+fn semver_identity_1_0_0() -> extdeps.version.semver.SemVerIdentity { "1.0.0" }
+fn semver_constraint_one() -> extdeps.version.semver.SemVerConstraint { "1" }
 
-fn semver_1_0_0() -> SemVerVersion {
-  SemVerVersion {
+fn semver_1_0_0() -> extdeps.version.semver.SemVerVersion {
+  extdeps.version.semver.SemVerVersion {
     major: 1,
     minor: 0,
     patch: 0,
@@ -17,8 +17,8 @@ fn semver_1_0_0() -> SemVerVersion {
   }
 }
 
-fn semver_1_0_0_alpha() -> SemVerVersion {
-  SemVerVersion {
+fn semver_1_0_0_alpha() -> extdeps.version.semver.SemVerVersion {
+  extdeps.version.semver.SemVerVersion {
     major: 1,
     minor: 0,
     patch: 0,
@@ -27,8 +27,8 @@ fn semver_1_0_0_alpha() -> SemVerVersion {
   }
 }
 
-fn semver_1_0_0_alpha_1() -> SemVerVersion {
-  SemVerVersion {
+fn semver_1_0_0_alpha_1() -> extdeps.version.semver.SemVerVersion {
+  extdeps.version.semver.SemVerVersion {
     major: 1,
     minor: 0,
     patch: 0,
@@ -37,8 +37,8 @@ fn semver_1_0_0_alpha_1() -> SemVerVersion {
   }
 }
 
-fn semver_1_0_0_alpha_0() -> SemVerVersion {
-  SemVerVersion {
+fn semver_1_0_0_alpha_0() -> extdeps.version.semver.SemVerVersion {
+  extdeps.version.semver.SemVerVersion {
     major: 1,
     minor: 0,
     patch: 0,
@@ -47,8 +47,8 @@ fn semver_1_0_0_alpha_0() -> SemVerVersion {
   }
 }
 
-fn semver_1_0_0_build_1() -> SemVerVersion {
-  SemVerVersion {
+fn semver_1_0_0_build_1() -> extdeps.version.semver.SemVerVersion {
+  extdeps.version.semver.SemVerVersion {
     major: 1,
     minor: 0,
     patch: 0,
@@ -119,8 +119,8 @@ test fn w_semver_compare_pre_release_longer_set_greater() -> Bool {
 }
 
 test fn w_semver_compare_major_minor_patch() -> Bool {
-  let older = SemVerVersion { major: 1, minor: 2, patch: 3, pre_release: [], build: [] }
-  let newer = SemVerVersion { major: 1, minor: 2, patch: 4, pre_release: [], build: [] }
+  let older = extdeps.version.semver.SemVerVersion { major: 1, minor: 2, patch: 3, pre_release: [], build: [] }
+  let newer = extdeps.version.semver.SemVerVersion { major: 1, minor: 2, patch: 4, pre_release: [], build: [] }
   match semver_compare(a: older, b: newer) {
     Less =>
       match semver_compare(a: newer, b: older) {

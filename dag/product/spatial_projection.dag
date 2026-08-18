@@ -23,8 +23,8 @@ module product.spatial_projection
 // Neither is wholly in front of the other, so no single back-to-front ordering of whole rooms is
 // correct, and there is no arm here that picks one anyway.
 type SceneRefusal
-  = SceneProjectionRefused { cause: ProjectionRefusal }
-  | DepthOrderAmbiguous { nearer_candidate: RoomIdentity, farther_candidate: RoomIdentity }
+  = SceneProjectionRefused { cause: std.planar_projection.ProjectionRefusal }
+  | DepthOrderAmbiguous { nearer_candidate: product.placement_supply.RoomIdentity, farther_candidate: product.placement_supply.RoomIdentity }
 
 type SceneConstruction<T>
   = SceneReady { value: T }
@@ -36,14 +36,14 @@ type SceneConstruction<T>
 // page bounding box IS recomputed on demand, because it is a pure function of the corners and a
 // stored copy could go stale.
 type ProjectedRoom {
-  identity: RoomIdentity
-  corner_images: List<ViewPoint2>
+  identity: product.placement_supply.RoomIdentity
+  corner_images: List<std.planar_projection.ViewPoint2>
   nearest: Int
   farthest: Int
 }
 
 type ProjectedScene sole_constructor {
-  view: ProjectionView
+  view: std.planar_projection.ProjectionView
   rooms: List<ProjectedRoom>
 }
 
@@ -66,7 +66,7 @@ fn space_corners(s: EnclosedSpace) -> List<Point3> {
 // refusal is retained and every later point is skipped, so the reported cause is the first one that
 // actually occurred rather than the last.
 type CornerAcc {
-  images: List<ViewPoint2>
+  images: List<std.planar_projection.ViewPoint2>
   nearest: Int
   farthest: Int
   started: Bool

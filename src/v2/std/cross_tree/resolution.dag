@@ -1,7 +1,7 @@
 module v2.std.cross_tree.resolution
 type SourceRootBinding {
-  module: QualifiedName
-  root: SourceRootRef
+  module: v2.std.qualified_name.QualifiedName
+  root: v2.std.cross_tree.import_model.SourceRootRef
 }
 
 type SourceRootIndex = FreeMonoid<SourceRootBinding>
@@ -19,7 +19,7 @@ fn source_root_index_insert(
 }
 
 type SourceRootLookup
-  = SourceRootResolved { root: SourceRootRef }
+  = SourceRootResolved { root: v2.std.cross_tree.import_model.SourceRootRef }
   | SourceRootAbsent
   | SourceRootAmbiguous
 

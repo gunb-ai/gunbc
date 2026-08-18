@@ -5,13 +5,13 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data replay_store: String = "rest-outcome"
 data probe_path: String = "dag/test/fixture/rest_exchange_replay_probe.dag"
-data probe_target: Uri = Uri {
+data probe_target: extdeps.uri.Uri = extdeps.uri.Uri {
   scheme: Https
   locator: "rest-replay.invalid/answer"
 }
 
-fn probe_invocation(operation: String) -> RestBoundOperationInvocation {
-  RestBoundOperationInvocation {
+fn probe_invocation(operation: String) -> extdeps.transports.rest.RestBoundOperationInvocation {
+  extdeps.transports.rest.RestBoundOperationInvocation {
     at: v2.std.operation_argv.OperationRef {
       path: probe_path
       service: "test.RestReplay"
@@ -19,18 +19,18 @@ fn probe_invocation(operation: String) -> RestBoundOperationInvocation {
     }
     method: GET
     target: probe_target
-    input_digest: Fnv1a64Structural { digest: "0000000000000000" }
+    input_digest: std.content_hash.Fnv1a64Structural { digest: "0000000000000000" }
     auth_identity: RestUnauthenticated
   }
 }
 
-fn replay_frame(fixtures: List<RestExchangeFixture>) -> v2.std.witness_evaluation.WitnessEvaluationFrame {
+fn replay_frame(fixtures: List<extdeps.transports.rest.RestExchangeFixture>) -> v2.std.witness_evaluation.WitnessEvaluationFrame {
   v2.std.witness_evaluation.WitnessEvaluationFrame {
-    envelope: Envelope {
-      frame: Frame { name: "rest-replay-witness", kind: SharedStateFrame }
-      grants: [Grant {
+    envelope: std.effect_grant.Envelope {
+      frame: std.materialization_ladder.Frame { name: "rest-replay-witness", kind: SharedStateFrame }
+      grants: [std.effect_grant.Grant {
         verb: Read
-        root: NamespacePosition {
+        root: std.effect_grant.NamespacePosition {
           tree: ServiceOpTree { service: "test.RestReplay" }
           path: []
         }
@@ -42,15 +42,15 @@ fn replay_frame(fixtures: List<RestExchangeFixture>) -> v2.std.witness_evaluatio
   }
 }
 
-fn fixture_for(operation: String, observation: RestExchangeObservation) -> RestExchangeFixture {
-  RestExchangeFixture {
+fn fixture_for(operation: String, observation: extdeps.transports.rest.RestExchangeObservation) -> extdeps.transports.rest.RestExchangeFixture {
+  extdeps.transports.rest.RestExchangeFixture {
     store: replay_store
     invocation: probe_invocation(operation: operation)
     observation: observation
   }
 }
 
-fn denied_observation() -> RestExchangeObservation {
+fn denied_observation() -> extdeps.transports.rest.RestExchangeObservation {
   RestResponseObserved {
     status: 401
     body: RestBodyRead { body: "{\"message\":\"denied\"}" }

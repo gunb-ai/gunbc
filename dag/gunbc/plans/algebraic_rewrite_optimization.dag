@@ -1,7 +1,7 @@
 module gunbc.plans.algebraic_rewrite_optimization
 
 
-fn algebraic_rewrite_optimization_body() -> List<MarkdownBlock> {
+fn algebraic_rewrite_optimization_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** design spec · **POST-STABILITY EXPANSION** (operator 2026-06-21: budget-gate validation holds the stability §3 for now; this rewrite-*construction* design is relocated to **`ROADMAP.md` §5**, homed with self-hosting — IR-rewrite/canonicalization is most natural once `.dag` is the self-hosted truth). Do not build the rewrite catalog in the stability window; the cost-lens *foundation* (#5437 `symbolic_max` + per-fn subject) stays in-window as §3 budget-gate plumbing. **DESIGN.md + the carriers remain the authority** (DESIGN §6). A rule's real state is its branch/PR + the rule-row carrier."),
     h2(text: "0. What this is — and what it is NOT"),
@@ -166,7 +166,7 @@ fn algebraic_rewrite_optimization_body() -> List<MarkdownBlock> {
   ]
 }
 
-data algebraic_rewrite_optimization_plan: Plan = Plan {
+data algebraic_rewrite_optimization_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "algebraic-rewrite-optimization",
   title: "Plan — algorithmic-cost reduction by construction (rewrite suboptimal patterns)",
   body: algebraic_rewrite_optimization_body(),

@@ -7,7 +7,7 @@ type CompilationUnitId = NonEmptyStr where brand("CompilationUnitId")
 
 type PartitionProvenance
   = HandExplicit
-  | PolicyDerived { policy: DeclarationRef }
+  | PolicyDerived { policy: std.decl_ref.DeclarationRef }
 
 type ModuleDagEdge {
   from: ModuleId
@@ -15,7 +15,7 @@ type ModuleDagEdge {
 }
 
 type ModuleTypeDefinitionRow {
-  identity: Symbol
+  identity: v2.std.node.Symbol
   definition: Node
 }
 

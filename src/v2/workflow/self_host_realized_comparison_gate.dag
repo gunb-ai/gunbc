@@ -17,7 +17,7 @@ func self_host_realized_comparison_reads_real_bytes_gate_holds() -> Bool {
   srfc_emit_realized()
     && run_gunbc_claims(
       source_roots: witness_layer_roots,
-      claims: [ClaimRun { entry: srfc_gate_test_entry, function: srfc_provenance_witness }]
+      claims: [tools.host_prelude.ClaimRun { entry: srfc_gate_test_entry, function: srfc_provenance_witness }]
     )
 }
 

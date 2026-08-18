@@ -3,10 +3,10 @@ module test.claim.commit_check_demand_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
-fn demand_decl(module_path: String, decl_name: String) -> DeclarationRef {
-  DeclarationRef {
-    module_path: module_path as NonEmptyStr,
-    decl_name: decl_name as NonEmptyStr,
+fn demand_decl(module_path: String, decl_name: String) -> std.decl_ref.DeclarationRef {
+  std.decl_ref.DeclarationRef {
+    module_path: module_path as std.types.NonEmptyStr,
+    decl_name: decl_name as std.types.NonEmptyStr,
     field: WholeDeclaration
   }
 }
@@ -15,10 +15,10 @@ fn complete_discovery(
   entry: String,
   module_path: String,
   declaration_names: List<String>,
-) -> EntryDeclarationDiscovery {
+) -> gunbc.commit_workflow.EntryDeclarationDiscovery {
   DiscoveryComplete {
     entry: entry,
-    module_path: module_path as NonEmptyStr,
+    module_path: module_path as std.types.NonEmptyStr,
     declarations: map(
       declaration_names,
       name => demand_decl(module_path: module_path, decl_name: name)
@@ -29,7 +29,7 @@ fn complete_discovery(
 fn synthetic_witness_check(
   entry: String,
   check_fns: List<String>,
-) -> CommitCheckKind {
+) -> gunbc.commit_workflow.CommitCheckKind {
   CommitWitnessClaim {
     entry: entry,
     check_fns: check_fns,
@@ -38,11 +38,11 @@ fn synthetic_witness_check(
   }
 }
 
-fn synthetic_enrollment(check: CommitCheckKind) -> CommitCheckEnrollment {
-  CommitCheckEnrollment { check: check, surfaces: [] }
+fn synthetic_enrollment(check: gunbc.commit_workflow.CommitCheckKind) -> gunbc.commit_workflow.CommitCheckEnrollment {
+  gunbc.commit_workflow.CommitCheckEnrollment { check: check, surfaces: [] }
 }
 
-fn check_is_gate(check: CommitCheckKind) -> Bool {
+fn check_is_gate(check: gunbc.commit_workflow.CommitCheckKind) -> Bool {
   match check {
     CommitSpecGate { gate: _ } => true
     CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => false
@@ -50,7 +50,7 @@ fn check_is_gate(check: CommitCheckKind) -> Bool {
   }
 }
 
-fn check_is_witness(check: CommitCheckKind) -> Bool {
+fn check_is_witness(check: gunbc.commit_workflow.CommitCheckKind) -> Bool {
   match check {
     CommitSpecGate { gate: _ } => false
     CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => true
@@ -58,7 +58,7 @@ fn check_is_witness(check: CommitCheckKind) -> Bool {
   }
 }
 
-fn check_is_fmt(check: CommitCheckKind) -> Bool {
+fn check_is_fmt(check: gunbc.commit_workflow.CommitCheckKind) -> Bool {
   match check {
     CommitSpecGate { gate: _ } => false
     CommitWitnessClaim { entry: _, check_fns: _, kind: _, span: _ } => false
@@ -66,7 +66,7 @@ fn check_is_fmt(check: CommitCheckKind) -> Bool {
   }
 }
 
-fn check_is_file_grain_witness(check: CommitCheckKind) -> Bool {
+fn check_is_file_grain_witness(check: gunbc.commit_workflow.CommitCheckKind) -> Bool {
   match check {
     CommitWitnessClaim { entry: _, check_fns, kind: _, span: _ } =>
       check_fns.count() == 0
@@ -75,7 +75,7 @@ fn check_is_file_grain_witness(check: CommitCheckKind) -> Bool {
   }
 }
 
-fn live_file_grain_discoveries() -> List<EntryDeclarationDiscovery> {
+fn live_file_grain_discoveries() -> List<gunbc.commit_workflow.EntryDeclarationDiscovery> {
   [
     complete_discovery(
       entry: "src/v2/test/claim/execution/bind_eval_by_execution_test.dag",
@@ -156,7 +156,7 @@ fn live_file_grain_discoveries() -> List<EntryDeclarationDiscovery> {
 }
 
 fn discovery_entry_matches(
-  discovery: EntryDeclarationDiscovery,
+  discovery: gunbc.commit_workflow.EntryDeclarationDiscovery,
   entry: String,
 ) -> Bool {
   match discovery {
@@ -167,8 +167,8 @@ fn discovery_entry_matches(
 }
 
 fn demand_row_matches_complete_discovery(
-  row: EnrollmentWitnessDemand,
-  discoveries: List<EntryDeclarationDiscovery>,
+  row: gunbc.commit_workflow.EnrollmentWitnessDemand,
+  discoveries: List<gunbc.commit_workflow.EntryDeclarationDiscovery>,
 ) -> Bool {
   match row.check {
     CommitWitnessClaim { entry, check_fns: _, kind: _, span: _ } =>
@@ -198,8 +198,8 @@ fn demand_row_matches_complete_discovery(
 }
 
 fn qualified_rows_match_complete_discoveries(
-  rows: List<EnrollmentWitnessDemand>,
-  discoveries: List<EntryDeclarationDiscovery>,
+  rows: List<gunbc.commit_workflow.EnrollmentWitnessDemand>,
+  discoveries: List<gunbc.commit_workflow.EntryDeclarationDiscovery>,
 ) -> Bool {
   rows.count() == discoveries.count()
     && fold(rows, init: true, f: fn(acc, row) {
@@ -358,7 +358,7 @@ test fn commit_check_demand_unowned_discovery_is_roster_ambiguous() -> Bool {
     ]
   ) {
     DemandRosterAmbiguous { cause } =>
-      cause == ("declaration discovery has no owning witness enrollment" as NonEmptyStr)
+      cause == ("declaration discovery has no owning witness enrollment" as std.types.NonEmptyStr)
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
     DemandAmbiguous { check: _, cause: _ } => false
@@ -407,7 +407,7 @@ test fn commit_check_demand_empty_complete_discovery_is_missing() -> Bool {
   ) {
     DemandMissing { check: failed, cause } =>
       commit_check_kind_eq(a: failed, b: check)
-        && cause == ("complete witness discovery contains no declarations" as NonEmptyStr)
+        && cause == ("complete witness discovery contains no declarations" as std.types.NonEmptyStr)
     DemandQualified { rows: _ } => false
     DemandAmbiguous { check: _, cause: _ } => false
     DemandIncomplete { check: _, cause: _ } => false
@@ -515,13 +515,13 @@ test fn commit_check_demand_incomplete_discovery_stays_incomplete() -> Bool {
     discoveries: [
       DiscoveryIncomplete {
         entry: "dag/test/claim/incomplete_test.dag",
-        cause: "source scan refused" as NonEmptyStr
+        cause: "source scan refused" as std.types.NonEmptyStr
       }
     ]
   ) {
     DemandIncomplete { check: failed, cause } =>
       commit_check_kind_eq(a: failed, b: check)
-        && cause == ("source scan refused" as NonEmptyStr)
+        && cause == ("source scan refused" as std.types.NonEmptyStr)
     DemandQualified { rows: _ } => false
     DemandMissing { check: _, cause: _ } => false
     DemandAmbiguous { check: _, cause: _ } => false
@@ -581,8 +581,8 @@ test fn commit_check_demand_roster_and_expansion_set_equality_has_teeth() -> Boo
     synthetic_enrollment(check: gate),
     synthetic_enrollment(check: fmt)
   ]
-  let gate_row = EnrollmentWitnessDemand { check: gate, declarations: [] }
-  let fmt_row = EnrollmentWitnessDemand { check: fmt, declarations: [] }
+  let gate_row = gunbc.commit_workflow.EnrollmentWitnessDemand { check: gate, declarations: [] }
+  let fmt_row = gunbc.commit_workflow.EnrollmentWitnessDemand { check: fmt, declarations: [] }
   let complete = [
     demand_decl(module_path: "test.claim.expansion", decl_name: "a_holds"),
     demand_decl(module_path: "test.claim.expansion", decl_name: "b_holds")
@@ -606,10 +606,10 @@ test fn commit_check_demand_rejects_non_whole_discovery() -> Bool {
     entry: "dag/test/claim/wrong_identity_test.dag",
     check_fns: ["holds"]
   )
-  let wrong_field = DeclarationRef {
-    module_path: "test.claim.wrong_identity" as NonEmptyStr,
-    decl_name: "holds" as NonEmptyStr,
-    field: NamedField { field_name: "body" as NonEmptyStr }
+  let wrong_field = std.decl_ref.DeclarationRef {
+    module_path: "test.claim.wrong_identity" as std.types.NonEmptyStr,
+    decl_name: "holds" as std.types.NonEmptyStr,
+    field: NamedField { field_name: "body" as std.types.NonEmptyStr }
   }
   declaration_ref_lists_eq(left: [wrong_field], right: [wrong_field])
     && match project_enrollment_witness_demands_unchecked(
@@ -617,7 +617,7 @@ test fn commit_check_demand_rejects_non_whole_discovery() -> Bool {
     discoveries: [
       DiscoveryComplete {
         entry: "dag/test/claim/wrong_identity_test.dag",
-        module_path: "test.claim.wrong_identity" as NonEmptyStr,
+        module_path: "test.claim.wrong_identity" as std.types.NonEmptyStr,
         declarations: [wrong_field]
       }
     ]
@@ -644,7 +644,7 @@ test fn commit_check_demand_rejects_wrong_module_discovery() -> Bool {
     discoveries: [
       DiscoveryComplete {
         entry: "dag/test/claim/wrong_module_test.dag",
-        module_path: "test.claim.supplied_module" as NonEmptyStr,
+        module_path: "test.claim.supplied_module" as std.types.NonEmptyStr,
         declarations: [wrong_module]
       }
     ]

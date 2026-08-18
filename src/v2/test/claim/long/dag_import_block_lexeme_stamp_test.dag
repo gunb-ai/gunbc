@@ -1,7 +1,7 @@
 module v2.test.long.dag_import_block_lexeme_stamp
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data dag_lex_stamp_source: String = "module v2.test.lexeme_probe\nimport v2.std.algebra { Cons, Empty }\n"
 
@@ -40,13 +40,13 @@ fn dag_lex_stamp_find_import_node(tree: Node) -> Optional<Node> {
   }
 }
 
-fn dag_lex_stamp_block_idents() -> Outcome<List<Symbol>> {
+fn dag_lex_stamp_block_idents() -> Outcome<List<v2.std.node.Symbol>> {
   bind_outcome(
     o: dag_lex_stamp_parse_tree(),
     f: fn(tree) {
       match dag_lex_stamp_find_import_node(tree: tree) {
         Absent =>
-          outcome_rejected(Diagnostic {
+          outcome_rejected(v2.std.diagnostic.Diagnostic {
             reason: ^dag_import_block_lexeme_stamp_no_import,
             at: port_locus(port: ^dag_import_block_lexeme_stamp_probe),
             correction: Unavailable { reason: ExternalContractUnknown }

@@ -1,7 +1,7 @@
 module v2.test.manual.inhabitant_neutralization
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn inhabitant_neutralization_python_int_std_projection_holds() -> Bool {
   match inhabitant_std_projection_symbol(inhabitant: python_int_inhabitant_node()) {
@@ -199,12 +199,12 @@ test fn inhabitant_neutralization_03_ingest_regression_guard_holds() -> Bool {
 
 
 
-data claim_inhabitant_neutralization_module_compiles: TestClaim = CompilesClaim {
+data claim_inhabitant_neutralization_module_compiles: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/inhabitant_neutralization: module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: python_emitted_add_fn_node(),
   expected_value: python_emitted_add_fn_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
 

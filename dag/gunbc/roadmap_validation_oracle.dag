@@ -9,7 +9,7 @@ data validation_oracle_declaration_scan_note: String = "The declaration count is
 
 type ValidationOracleRef {
   entry: std.types.FilePath
-  function: NonEmptyStr
+  function: std.types.NonEmptyStr
 }
 
 data validation_oracle_observation_note: String = "Three arms because three remedies. OracleFound carries the identity that the pin is adjudicated against. OracleMissing means the entry source was obtained and the contract's function is NOT declared in it, or the source could not be obtained at all; the host's own reason travels in `detail` rather than being reclassified here. Those two causes share an arm deliberately and the sharing is bounded: neither can green, both stop the line, and the located detail says which one happened. What is NOT claimed is that this arm distinguishes a deleted file from an unreadable one — the Filesystem.Read surface reports success plus a message and exposes no typed absence, so inventing that distinction from an error string would be a classification this module cannot decide. dissolve-on: feature:filesystem-read-typed-absence — the read surface carries absent as its own arm, and OracleMissing splits along it. OracleAmbiguous is the count>1 state above."
@@ -19,7 +19,7 @@ data validation_oracle_unpinned_dependency_note: String = "review 45278, and the
 type OracleObservation
   = OracleFound {
       oracle: ValidationOracleRef,
-      identity: Fnv1a64Structural,
+      identity: std.content_hash.Fnv1a64Structural,
     }
   | OracleMissing {
       oracle: ValidationOracleRef,
@@ -200,7 +200,7 @@ fn validation_oracle_scopes(
 // A contract may declare several validations, so the pinned fact is one identity over the ORDERED set of their oracles, folded left with content_hash_combine_structural under a tag. One digest rather than a list keeps the persisted pin a single value with a single home, and ordering is the contract's own declaration order, which is already the order the validations run in — so the fold introduces no ordering decision of its own. Any oracle moving moves the combined identity, which is the property the pin needs; WHICH one moved is recovered from the per-oracle observations carried beside the refusal, not from the digest.
 type OracleSetObservation
   = OracleSetObserved {
-      identity: ContentHash,
+      identity: std.content_hash.ContentHash,
       observations: List<OracleObservation>,
     }
   | OracleSetIncomplete {
@@ -299,14 +299,14 @@ type ValidationRefusalCause
       imports: List<String>,
     }
   | ValidationOracleMoved {
-      expected: ContentHash,
-      observed: ContentHash,
+      expected: std.content_hash.ContentHash,
+      observed: std.content_hash.ContentHash,
     }
   | ValidationOracleCrossFamilyIdentityIncomparable {
-      expected: ContentHash,
-      observed: ContentHash,
+      expected: std.content_hash.ContentHash,
+      observed: std.content_hash.ContentHash,
     }
-  | ValidationOraclePinUnrecorded { channel: NonEmptyStr }
+  | ValidationOraclePinUnrecorded { channel: std.types.NonEmptyStr }
   | ValidationPinReceiptUnreadable { detail: String }
   | ValidationCommandUnrealized
   | ValidationCommandRefused {
@@ -314,7 +314,7 @@ type ValidationRefusalCause
       reason: String,
     }
   | ValidationChangeWindowRefused {
-      cause: ChangeWindowPreparationRefusal,
+      cause: gunbc.git_diff_change_window.ChangeWindowPreparationRefusal,
     }
 
 data validation_not_run_note: String = "review 45271. ValidationNotRun exists so that the ABSENCE of a receipt stops being a state the verification seam has to interpret. The seam previously asked `is the receipt text empty` and got `\"\"` from three different worlds — no file, an unreadable file, and an empty one — then RAN THE VALIDATION AND OVERWROTE whatever was there. Absent and unreadable have opposite correct actions (run it; stop and do not touch the evidence), so collapsing them let an I/O fault regenerate a verdict against a worktree the agent may have moved since. The fix is construction rather than a better classifier, because the Filesystem.Read surface exposes no typed absence and deciding it from an error string would be a guess: dispatch WRITES this verdict beside the attempt during state initialization, exactly as it already writes an empty provider-events.jsonl so that stream's absence is meaningful. After that, a receipt is always present, so a failed read is unambiguously a fault and refuses. The Verify lamp reads this as pending — which makes its pending state evidence-backed rather than inferred from nothing."
@@ -323,7 +323,7 @@ type ValidationVerdict
   = ValidationNotRun
   | ValidationPassed {
       command: String,
-      oracle_identity: ContentHash,
+      oracle_identity: std.content_hash.ContentHash,
     }
   | ValidationFailed {
       command: String,
@@ -443,7 +443,7 @@ fn validation_oracle_pin_refusal_cause(
 }
 
 type ValidationOracleGate
-  = ValidationOracleAdmitted { identity: ContentHash }
+  = ValidationOracleAdmitted { identity: std.content_hash.ContentHash }
   | ValidationOracleGateRefused { cause: ValidationRefusalCause }
 
 data validation_oracle_gate_note: String = "The one place a validation run becomes permitted. It is a GATE rather than a check beside the runner because the run is an effect: the only way to reach the exec is through an Admitted answer carrying the identity that admitted it, so there is no code path that runs the declared command with an unsatisfied pin. That is weaker than making the bad state unwritable in the type system and it is not claimed to be more — a caller could ignore this fn — but it removes the shape where a run happens first and its pin is consulted afterwards, which is the shape that greens an agent's edits to its own witness."

@@ -20,25 +20,25 @@ type LlmTaskClass
 
 type ReviewDisposition
   = ReviewAccepted
-  | ReviewRejected { reason: NonEmptyStr }
-  | ReviewEscalated { reason: NonEmptyStr }
+  | ReviewRejected { reason: std.types.NonEmptyStr }
+  | ReviewEscalated { reason: std.types.NonEmptyStr }
 
 type LlmTokenUsage {
-  input: TokenCount
-  cached_input: TokenCount
-  output: TokenCount
+  input: std.measure.TokenCount
+  cached_input: std.measure.TokenCount
+  output: std.measure.TokenCount
 }
 
 data llm_usage_observation_note: String = "Usage is a three-state observation, never a zero default. An attempt whose provider reported no usage is NOT an attempt that consumed nothing: conflating the two is the absorbing-fallback shape DESIGN section 5 forbids, one level down -- bottom-as-answer standing in for bottom-as-ignorance. So LlmUsageUnobserved carries a located reason and every economic derivation over it refuses, while the attempt itself and its disposition remain fully readable. Execution is not refused because accounting is missing."
 
 type LlmUsageObservation
   = LlmUsageObserved { usage: LlmTokenUsage }
-  | LlmUsageUnobserved { reason: NonEmptyStr }
+  | LlmUsageUnobserved { reason: std.types.NonEmptyStr }
 
 type PrefixCacheObservation
-  = PrefixCacheHit { reused: TokenCount }
+  = PrefixCacheHit { reused: std.measure.TokenCount }
   | PrefixCacheMiss
-  | PrefixCacheUnobserved { reason: NonEmptyStr }
+  | PrefixCacheUnobserved { reason: std.types.NonEmptyStr }
 
 data llm_concurrency_grain_note: String = "Admitted sessions and active sequences are separate observations because they are separate facts: sixteen review agents do not ordinarily decode at once -- most are cloning, compiling, waiting on witnesses or on review. A server sustaining four active sequences can therefore admit considerably more than four agent sessions. Reporting either number as the other is the measurement error that makes a concurrency sweep unreadable, so the receipt records both and derives neither."
 
@@ -50,38 +50,38 @@ type ConcurrencyObservation {
 data llm_phase_duration_note: String = "Durations are optional per phase and stay on Nanosecond, the canonical exact elapsed-time carrier (std.measure nanosecond_millisecond_projection_note: measurement, ordering, joining and attribution must retain Nanosecond; millisecond is presentation only). Queue delay is recorded beside prefill and decode because time-to-first-token under load is the quantity a concurrency sweep is actually buying, and a receipt that stored only decode would make a queue-bound host look fast."
 
 type AttemptPhaseDurations {
-  queue: Nanosecond?
-  prefill: Nanosecond?
-  decode: Nanosecond?
+  queue: std.measure.Nanosecond?
+  prefill: std.measure.Nanosecond?
+  decode: std.measure.Nanosecond?
 }
 
 data llm_substrate_identity_note: String = "The receipt binds the substrate revision that produced the task, not only the model that answered it. Escalation rate is endogenous to TWO independent variables -- the local model improving, and gunbc's own construction guarantees making tasks need less judgment -- and both push it down. Without the substrate identity on the economic receipt a falling escalation rate is credited to whichever variable was being worked on at the time, and the 'progressively smaller models suffice' thesis is a claim about the SECOND one, so it cannot be measured without this field."
 
 type SubstrateIdentity {
-  compiler_revision: NonEmptyStr
-  authority_snapshot: NonEmptyStr
+  compiler_revision: std.types.NonEmptyStr
+  authority_snapshot: std.types.NonEmptyStr
 }
 
 type LlmAttemptReceipt {
-  attempt_identity: NonEmptyStr
+  attempt_identity: std.types.NonEmptyStr
   task_class: LlmTaskClass
 
-  prompt_policy_identity: NonEmptyStr
-  context_policy_identity: NonEmptyStr
+  prompt_policy_identity: std.types.NonEmptyStr
+  context_policy_identity: std.types.NonEmptyStr
   substrate: SubstrateIdentity
 
   requested_model: RequestedModelIdentity
   resolved_model: ResolvedModelIdentity
-  model_artifact_identity: NonEmptyStr
-  serving_runtime_identity: NonEmptyStr
-  machine_opportunity_identity: NonEmptyStr
+  model_artifact_identity: std.types.NonEmptyStr
+  serving_runtime_identity: std.types.NonEmptyStr
+  machine_opportunity_identity: std.types.NonEmptyStr
 
   concurrency: ConcurrencyObservation
   prefix_cache: PrefixCacheObservation
 
   usage: LlmUsageObservation
   durations: AttemptPhaseDurations
-  wall_energy: Joule?
+  wall_energy: std.measure.Joule?
 
   disposition: ReviewDisposition
 }

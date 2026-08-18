@@ -11,8 +11,8 @@ module gunbc.devboot.subject
 //
 // IT IS CARGO'S OWN TARGET NOTION, NOT A MINTED PRODUCT ENUM. Cargo already decides what a package can produce, and CargoTarget carries exactly that closed vocabulary -- library, binary, test, example, benchmark, each with its name where a name distinguishes it. Coining a devboot-local list of products would be a second authority over a concept upstream already owns, and it would have to be edited every time a new binary appears; the cargo target does not, because the name is a field rather than a variant.
 type BuildProduct {
-  package: NonEmptyStr
-  target: CargoTarget
+  package: std.types.NonEmptyStr
+  target: extdeps.cargo.CargoTarget
 }
 
 // THE SETTINGS OUTSIDE THE SOURCE THAT STILL CHANGE THE BYTES. Source, toolchain, target and profile do not determine an artifact on their own: a codegen flag, a different linker, a substituted sysroot, or a cargo configuration entry each change what comes out while every other axis stays identical. A key blind to them would hand a requester an artifact built under settings it did not ask for, and the divergence would be invisible precisely because every named axis agreed.
@@ -21,25 +21,25 @@ type BuildProduct {
 //
 // WHAT THIS CARRIER IS NOT: a claim of hermeticity. It is one exact environment identity, which is the alternative the ruling permits -- the requester states the environment and the digest binds it. Facts genuinely outside it, such as a build script reading the ambient host, are not silently absorbed here; they remain unmodeled and are named in the residue rather than pretended into this record.
 type CargoConfigEntry {
-  key: NonEmptyStr
+  key: std.types.NonEmptyStr
   value: String
 }
 
 type BuildEnvironmentSpec {
-  rustflags: List<NonEmptyStr>
-  linker: NonEmptyStr?
-  sysroot: NonEmptyStr?
+  rustflags: List<std.types.NonEmptyStr>
+  linker: std.types.NonEmptyStr?
+  sysroot: std.types.NonEmptyStr?
   cargo_config: List<CargoConfigEntry>
-  platform_c_library: PlatformCLibrary
+  platform_c_library: extdeps.gnu.libc.PlatformCLibrary
 }
 
 type BuildSubject {
-  tree_oid: GitObjectId
+  tree_oid: extdeps.git.object_store.GitObjectId
   product: BuildProduct
-  toolchain: ToolchainRequirement
-  target: TargetTriple
-  profile: NonEmptyStr
-  features: List<NonEmptyStr>
+  toolchain: extdeps.toolchain.types.ToolchainRequirement
+  target: extdeps.toolchain.types.TargetTriple
+  profile: std.types.NonEmptyStr
+  features: List<std.types.NonEmptyStr>
   environment: BuildEnvironmentSpec
 }
 

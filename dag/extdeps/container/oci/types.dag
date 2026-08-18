@@ -21,11 +21,11 @@ data goos_windows_wire: String = "windows"
 data goos_darwin_wire: String = "darwin"
 
 type ImageConfigGoarchParse
-  = ImageConfigGoarchKnown { value: Architecture }
+  = ImageConfigGoarchKnown { value: extdeps.toolchain.types.Architecture }
   | ImageConfigGoarchUnknown { wire: String }
 
 type ImageConfigGoosParse
-  = ImageConfigGoosKnown { value: Os }
+  = ImageConfigGoosKnown { value: extdeps.toolchain.types.Os }
   | ImageConfigGoosUnknown { wire: String }
 
 type ImageConfigGoarchLabel
@@ -84,7 +84,7 @@ fn image_config_goos_label(os: Os) -> ImageConfigGoosLabel {
 type ContainerPortProtocol = Tcp | Udp
 
 type ContainerExposedPort {
-  port: Port
+  port: std.types.Port
   protocol: ContainerPortProtocol
 }
 
@@ -120,7 +120,7 @@ fn runtime_mount_kind_label(kind: RuntimeMountKind) -> String {
 
 type RuntimeMountSource
   = MountBindSource { host_path: std.types.FilePath }
-  | MountSymbolicSource { label: NonEmptyStr }
+  | MountSymbolicSource { label: std.types.NonEmptyStr }
 
 fn runtime_mount_source_label(source: RuntimeMountSource) -> String {
   match source {
@@ -137,7 +137,7 @@ type OciMediaType
   | OciImageLayerV1TarGzip
   | OciImageIndexV1
   | OciDescriptorV1
-  | OciMediaTypeOther { raw: NonEmptyStr }
+  | OciMediaTypeOther { raw: std.types.NonEmptyStr }
 
 data oci_media_type_manifest_v1_wire: String = "application/vnd.oci.image.manifest.v1+json"
 data oci_media_type_config_v1_wire: String = "application/vnd.oci.image.config.v1+json"

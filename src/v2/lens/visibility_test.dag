@@ -1,31 +1,31 @@
 module v2.test.lens_visibility.visibility_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data mod_public_api: QualifiedName = Cons { head: ^public_api, tail: Empty }
-data mod_private_impl: QualifiedName = Cons { head: ^private_impl, tail: Empty }
-data mod_public_util: QualifiedName = Cons { head: ^public_util, tail: Empty }
-data mod_unknown_dep: QualifiedName = Cons { head: ^unknown_dep, tail: Empty }
+data mod_public_api: v2.std.qualified_name.QualifiedName = Cons { head: ^public_api, tail: Empty }
+data mod_private_impl: v2.std.qualified_name.QualifiedName = Cons { head: ^private_impl, tail: Empty }
+data mod_public_util: v2.std.qualified_name.QualifiedName = Cons { head: ^public_util, tail: Empty }
+data mod_unknown_dep: v2.std.qualified_name.QualifiedName = Cons { head: ^unknown_dep, tail: Empty }
 
-data no_imports: List<QualifiedName> = []
+data no_imports: List<v2.std.qualified_name.QualifiedName> = []
 
-data red_facts: List<ModuleVisibilityFact> = [
-  ModuleVisibilityFact { module: mod_public_api,   public: true,  imports: [mod_private_impl] },
-  ModuleVisibilityFact { module: mod_private_impl, public: false, imports: no_imports }
+data red_facts: List<v2.lens.visibility.ModuleVisibilityFact> = [
+  v2.lens.visibility.ModuleVisibilityFact { module: mod_public_api,   public: true,  imports: [mod_private_impl] },
+  v2.lens.visibility.ModuleVisibilityFact { module: mod_private_impl, public: false, imports: no_imports }
 ]
 
-data green_facts: List<ModuleVisibilityFact> = [
-  ModuleVisibilityFact { module: mod_public_api,  public: true, imports: [mod_public_util] },
-  ModuleVisibilityFact { module: mod_public_util, public: true, imports: no_imports }
+data green_facts: List<v2.lens.visibility.ModuleVisibilityFact> = [
+  v2.lens.visibility.ModuleVisibilityFact { module: mod_public_api,  public: true, imports: [mod_public_util] },
+  v2.lens.visibility.ModuleVisibilityFact { module: mod_public_util, public: true, imports: no_imports }
 ]
 
-data failclosed_facts: List<ModuleVisibilityFact> = [
-  ModuleVisibilityFact { module: mod_public_api, public: true, imports: [mod_unknown_dep] }
+data failclosed_facts: List<v2.lens.visibility.ModuleVisibilityFact> = [
+  v2.lens.visibility.ModuleVisibilityFact { module: mod_public_api, public: true, imports: [mod_unknown_dep] }
 ]
 
-data private_importer_facts: List<ModuleVisibilityFact> = [
-  ModuleVisibilityFact { module: mod_private_impl, public: false, imports: [mod_unknown_dep] }
+data private_importer_facts: List<v2.lens.visibility.ModuleVisibilityFact> = [
+  v2.lens.visibility.ModuleVisibilityFact { module: mod_private_impl, public: false, imports: [mod_unknown_dep] }
 ]
 
 test fn leak_caught_public_imports_private() -> Bool {

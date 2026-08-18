@@ -44,9 +44,9 @@ type ReachabilityEndpoint
 // revision answered a missing DESTINATION with a variant named for a missing start, which reads as a
 // fail-closed refusal while pointing the reader at the wrong argument.
 type ConnectivityRefusal
-  = OpeningRoomMissing { identity: RoomIdentity }
-  | OpeningJoinsRoomToItself { identity: RoomIdentity }
-  | OpeningRoomsShareNoWall { first: RoomIdentity, second: RoomIdentity }
+  = OpeningRoomMissing { identity: product.placement_supply.RoomIdentity }
+  | OpeningJoinsRoomToItself { identity: product.placement_supply.RoomIdentity }
+  | OpeningRoomsShareNoWall { first: product.placement_supply.RoomIdentity, second: product.placement_supply.RoomIdentity }
   | OpeningOutsideSharedWall {
       opening: OpeningIdentity,
       along_low: Int,
@@ -60,7 +60,7 @@ type ConnectivityRefusal
     }
   | OpeningHasNoArea { opening: OpeningIdentity }
   | OpeningDeclaredTwice { opening: OpeningIdentity }
-  | ReachabilityEndpointMissing { identity: RoomIdentity, role: ReachabilityEndpoint }
+  | ReachabilityEndpointMissing { identity: product.placement_supply.RoomIdentity, role: ReachabilityEndpoint }
 
 type ConnectivityConstruction<T>
   = ConnectivityReady { value: T }
@@ -72,8 +72,8 @@ type ConnectivityConstruction<T>
 // the world frame, which is shared by every space in a world.
 type Opening {
   identity: OpeningIdentity
-  first: RoomIdentity
-  second: RoomIdentity
+  first: product.placement_supply.RoomIdentity
+  second: product.placement_supply.RoomIdentity
   along_low: Int
   along_high: Int
   sill: Int

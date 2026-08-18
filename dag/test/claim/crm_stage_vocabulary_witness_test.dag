@@ -38,9 +38,9 @@ test fn w_red_salesforce_default_roster_is_refused_not_fabricated() -> Bool {
   }
 }
 
-data synthetic_cited_roster: SalesforceDefaultStageRoster = DefaultStageRosterCited {
+data synthetic_cited_roster: extdeps.crm.salesforce_opportunity.SalesforceDefaultStageRoster = DefaultStageRosterCited {
   rows: [
-    SalesforceOpportunityStageRow {
+    extdeps.crm.salesforce_opportunity.SalesforceOpportunityStageRow {
       master_label: "Witness Stage",
       api_name: "WitnessStage",
       default_probability_bp: basis_point(count: 6000),

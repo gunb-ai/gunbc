@@ -3,7 +3,7 @@ module test.claim.time_scale_factor_derivation
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn factor_is(s: Scale, expected: std.nat.Nat) -> Bool {
+fn factor_is(s: std.measure.Scale, expected: std.nat.Nat) -> Bool {
   match time_scale_factor_seconds(s: s) {
     Present { value: n } => n == expected
     Absent => false

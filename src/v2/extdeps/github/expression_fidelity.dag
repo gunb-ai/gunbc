@@ -6,7 +6,7 @@ fn gha_expression_modeled_fidelity_node() -> Node {
 }
 
 fn gha_expression_roundtrip_fidelity_quotient_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -19,7 +19,7 @@ fn gha_expression_roundtrip_fidelity_quotient_node() -> Node {
 }
 
 fn gha_expression_roundtrip_target_model_bundle() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -33,8 +33,8 @@ fn gha_expression_roundtrip_target_model_bundle() -> Node {
 
 data gha_expression_roundtrip_authority_source: String = "extdeps.github.expressions core roundtrip fidelity quotient"
 
-fn gha_expression_roundtrip_target_model() -> TargetModel {
-  TargetModel {
+fn gha_expression_roundtrip_target_model() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: gha_expression_roundtrip_target_model_bundle(),
     lex: VoidLexRules,

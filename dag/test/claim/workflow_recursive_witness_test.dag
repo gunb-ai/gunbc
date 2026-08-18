@@ -38,7 +38,7 @@ fn review_tree_blocks() -> VerdictTree {
 }
 
 type WorkflowLawWitness {
-  law_tag: NonEmptyStr
+  law_tag: std.types.NonEmptyStr
   verified: Bool
 }
 

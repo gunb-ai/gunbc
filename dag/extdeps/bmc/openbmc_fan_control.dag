@@ -47,13 +47,13 @@ fn openbmc_collection_from_values<T>(
 }
 
 type OpenBmcStepwiseController {
-  minimum_duty: Percent
-  zone_failsafe_duty: Percent
-  sensor_failsafe_duty: Percent
-  positive_hysteresis: CelsiusDelta
-  negative_hysteresis: CelsiusDelta
-  readings: List<Celsius>
-  outputs: List<Percent>
+  minimum_duty: std.measure.Percent
+  zone_failsafe_duty: std.measure.Percent
+  sensor_failsafe_duty: std.measure.Percent
+  positive_hysteresis: std.measure.CelsiusDelta
+  negative_hysteresis: std.measure.CelsiusDelta
+  readings: List<std.measure.Celsius>
+  outputs: List<std.measure.Percent>
 }
 
 fn openbmc_fan_config_desired_json(desired: OpenBmcFanConfigDesired) -> String {
@@ -85,8 +85,8 @@ fn openbmc_fan_config_desired_json(desired: OpenBmcFanConfigDesired) -> String {
 }
 
 type OpenBmcFanController {
-  name: NonEmptyStr
-  inputs: List<NonEmptyStr>
+  name: std.types.NonEmptyStr
+  inputs: List<std.types.NonEmptyStr>
 }
 
 type OpenBmcFanConfigObservation {
@@ -99,7 +99,7 @@ type OpenBmcFanConfigObservationResult
   | OpenBmcFanConfigObservationRefused { reason: String }
 
 type OpenBmcPathResult
-  = OpenBmcPathObserved { path: NonEmptyStr }
+  = OpenBmcPathObserved { path: std.types.NonEmptyStr }
   | OpenBmcPathRefused { reason: String }
 
 type OpenBmcBoolResult
@@ -107,11 +107,11 @@ type OpenBmcBoolResult
   | OpenBmcBoolRefused { reason: String }
 
 type OpenBmcByteSizeResult
-  = OpenBmcByteSizeObserved { value: ByteSize }
+  = OpenBmcByteSizeObserved { value: std.measure.ByteSize }
   | OpenBmcByteSizeRefused { reason: String }
 
 type OpenBmcInstantResult
-  = OpenBmcInstantObserved { observed_at: EpochMs }
+  = OpenBmcInstantObserved { observed_at: std.types.EpochMs }
   | OpenBmcInstantRefused { reason: String }
 
 fn openbmc_path_result(
@@ -783,7 +783,7 @@ fn openbmc_zone_failsafe(
 
 type OpenBmcSensorServicesResult
   = OpenBmcSensorServicesObserved {
-      services: OpenBmcCollection<NonEmptyStr>,
+      services: OpenBmcCollection<std.types.NonEmptyStr>,
     }
   | OpenBmcSensorServicesRefused { reason: String }
 
@@ -817,17 +817,17 @@ type OpenBmcTachThresholdSource
   | OpenBmcCriticalLowThreshold
 
 type OpenBmcTachHealth
-  = OpenBmcTachThresholdUnstated { sensor: NonEmptyStr, reason: String }
+  = OpenBmcTachThresholdUnstated { sensor: std.types.NonEmptyStr, reason: String }
   | OpenBmcTachBelowThreshold {
-      sensor: NonEmptyStr,
-      reading_rpm: RevolutionsPerMinute,
-      minimum_rpm: RevolutionsPerMinute,
+      sensor: std.types.NonEmptyStr,
+      reading_rpm: std.measure.RevolutionsPerMinute,
+      minimum_rpm: std.measure.RevolutionsPerMinute,
       source: OpenBmcTachThresholdSource,
     }
   | OpenBmcTachAtOrAboveThreshold {
-      sensor: NonEmptyStr,
-      reading_rpm: RevolutionsPerMinute,
-      minimum_rpm: RevolutionsPerMinute,
+      sensor: std.types.NonEmptyStr,
+      reading_rpm: std.measure.RevolutionsPerMinute,
+      minimum_rpm: std.measure.RevolutionsPerMinute,
       source: OpenBmcTachThresholdSource,
     }
 
@@ -846,7 +846,7 @@ type OpenBmcTachHealthResult
   | OpenBmcTachHealthRefused { reason: String }
 
 type OpenBmcDigestResult
-  = OpenBmcDigestObserved { digest: Digest }
+  = OpenBmcDigestObserved { digest: extdeps.crypto.hash.Digest }
   | OpenBmcDigestRefused { reason: String }
 
 fn openbmc_object_mapper_services_rec(
@@ -1141,7 +1141,7 @@ type OpenBmcIntegerResult
   | OpenBmcIntegerRefused { reason: String }
 
 type OpenBmcStringResult
-  = OpenBmcStringObserved { value: NonEmptyStr }
+  = OpenBmcStringObserved { value: std.types.NonEmptyStr }
   | OpenBmcStringRefused { reason: String }
 
 type OpenBmcIntegerListResult

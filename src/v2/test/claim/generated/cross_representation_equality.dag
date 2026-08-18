@@ -1,14 +1,14 @@
 module v2.test.generated.cross_representation_equality
 
 
-fn reference_cross_representation_equality_anchor() -> GeneratedAnchorKey {
+fn reference_cross_representation_equality_anchor() -> v2.std.verification.GeneratedAnchorKey {
   cross_representation_equality_anchor(
     modeled_coproduct: ^Bool,
     native_realization: cross_repr_native_value_bool
   )
 }
 
-fn generated_cross_representation_equality_claim() -> Outcome<TestClaim> {
+fn generated_cross_representation_equality_claim() -> Outcome<v2.std.verification.TestClaim> {
   testgen_emit_cross_representation_equality_claim(anchor: reference_cross_representation_equality_anchor())
 }
 
@@ -31,7 +31,7 @@ fn witness_cross_representation_uses_generated_anchor() -> Bool {
   }
 }
 
-fn anchor_is_straddle(a: ClaimAnchorKey, modeled: Symbol, native: Symbol) -> Bool {
+fn anchor_is_straddle(a: v2.std.verification.ClaimAnchorKey, modeled: v2.std.node.Symbol, native: v2.std.node.Symbol) -> Bool {
   match a {
     GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: mc, native_realization: nr } } =>
       (mc == modeled) && (nr == native)
@@ -39,7 +39,7 @@ fn anchor_is_straddle(a: ClaimAnchorKey, modeled: Symbol, native: Symbol) -> Boo
   }
 }
 
-fn roster_covers_straddle(modeled: Symbol, native: Symbol) -> Bool {
+fn roster_covers_straddle(modeled: v2.std.node.Symbol, native: v2.std.node.Symbol) -> Bool {
   fold(
     testgen_scheduled_cross_representation_equality_generators(),
     init: false,
@@ -47,7 +47,7 @@ fn roster_covers_straddle(modeled: Symbol, native: Symbol) -> Bool {
   )
 }
 
-fn roster_covers_genuine_straddle(modeled: Symbol, native: Symbol) -> Bool {
+fn roster_covers_genuine_straddle(modeled: v2.std.node.Symbol, native: v2.std.node.Symbol) -> Bool {
   (length(xs: coproduct_arm_keys(type_name: modeled)) > 0)
     && roster_covers_straddle(modeled: modeled, native: native)
 }

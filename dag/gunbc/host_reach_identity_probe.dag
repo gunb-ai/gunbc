@@ -52,7 +52,7 @@ type ReachProbeOutcome
 
 type HostReachIdentityProbeReceipt {
   host: product.placement_supply.HostIdentity
-  probed_at: NonEmptyStr
+  probed_at: std.types.NonEmptyStr
   requested_principal: String
   outcome: ReachProbeOutcome
 }
@@ -78,7 +78,7 @@ type HostReachIdentityProbeReceipt {
 type ProbeRunProvenance {
   workflow_run_id: Int
   job_id: String
-  probed_at: NonEmptyStr
+  probed_at: std.types.NonEmptyStr
   head_branch: String
 }
 

@@ -1,7 +1,7 @@
 module v2.test.claim.bash_command_fold
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data bash_fold_golden_note: String = "Goldens below are hand-authored expected bytes, deliberately independent of extdeps.languages.bash.program serialize_stmt and of the grammar rows/segment spellings. Each fold test compares bash_emit (row-emit) against its golden only (PR #6467 ci_cargo_eagain_retry_core_golden pattern)."
 
@@ -44,79 +44,79 @@ data bash_fold_subshell_golden: String = "('true')"
 data bash_fold_subshell_multi_golden: String = "('true'; 'false')"
 data bash_fold_subshell_nested_golden: String = "('true' && 'false')"
 
-fn bash_fold_command_stmt(node: Node) -> BashEmitStmt {
-  BashEmitStmt {
+fn bash_fold_command_stmt(node: Node) -> v2.workflow.bash_emit.BashEmitStmt {
+  v2.workflow.bash_emit.BashEmitStmt {
     node: node,
     production_binding: ^bash_production_fold_command,
     rule_name: ^bash_relation_rule_fold_command
   }
 }
 
-fn bash_fold_assign_stmt(node: Node) -> BashEmitStmt {
-  BashEmitStmt {
+fn bash_fold_assign_stmt(node: Node) -> v2.workflow.bash_emit.BashEmitStmt {
+  v2.workflow.bash_emit.BashEmitStmt {
     node: node,
     production_binding: ^bash_production_fold_assign,
     rule_name: ^bash_relation_rule_fold_assign
   }
 }
 
-fn bash_fold_exit_stmt(node: Node) -> BashEmitStmt {
-  BashEmitStmt {
+fn bash_fold_exit_stmt(node: Node) -> v2.workflow.bash_emit.BashEmitStmt {
+  v2.workflow.bash_emit.BashEmitStmt {
     node: node,
     production_binding: ^bash_production_fold_exit,
     rule_name: ^bash_relation_rule_fold_exit
   }
 }
 
-fn bash_fold_and_then_stmt(node: Node) -> BashEmitStmt {
-  BashEmitStmt {
+fn bash_fold_and_then_stmt(node: Node) -> v2.workflow.bash_emit.BashEmitStmt {
+  v2.workflow.bash_emit.BashEmitStmt {
     node: node,
     production_binding: ^bash_production_fold_and_then,
     rule_name: ^bash_relation_rule_fold_and_then
   }
 }
 
-fn bash_fold_or_else_stmt(node: Node) -> BashEmitStmt {
-  BashEmitStmt {
+fn bash_fold_or_else_stmt(node: Node) -> v2.workflow.bash_emit.BashEmitStmt {
+  v2.workflow.bash_emit.BashEmitStmt {
     node: node,
     production_binding: ^bash_production_fold_or_else,
     rule_name: ^bash_relation_rule_fold_or_else
   }
 }
 
-fn bash_fold_pipe_stmt(node: Node) -> BashEmitStmt {
-  BashEmitStmt {
+fn bash_fold_pipe_stmt(node: Node) -> v2.workflow.bash_emit.BashEmitStmt {
+  v2.workflow.bash_emit.BashEmitStmt {
     node: node,
     production_binding: ^bash_production_fold_pipe,
     rule_name: ^bash_relation_rule_fold_pipe
   }
 }
 
-fn bash_fold_subshell_stmt(node: Node) -> BashEmitStmt {
-  BashEmitStmt {
+fn bash_fold_subshell_stmt(node: Node) -> v2.workflow.bash_emit.BashEmitStmt {
+  v2.workflow.bash_emit.BashEmitStmt {
     node: node,
     production_binding: ^bash_production_fold_subshell,
     rule_name: ^bash_relation_rule_fold_subshell
   }
 }
 
-fn bash_fold_if_stmt(node: Node) -> BashEmitStmt {
-  BashEmitStmt {
+fn bash_fold_if_stmt(node: Node) -> v2.workflow.bash_emit.BashEmitStmt {
+  v2.workflow.bash_emit.BashEmitStmt {
     node: node,
     production_binding: ^bash_production_fold_if,
     rule_name: ^bash_relation_rule_fold_if
   }
 }
 
-fn bash_fold_with_redir_stmt(node: Node) -> BashEmitStmt {
-  BashEmitStmt {
+fn bash_fold_with_redir_stmt(node: Node) -> v2.workflow.bash_emit.BashEmitStmt {
+  v2.workflow.bash_emit.BashEmitStmt {
     node: node,
     production_binding: ^bash_production_fold_with_redir,
     rule_name: ^bash_relation_rule_fold_with_redir
   }
 }
 
-fn bash_fold_direct_serialize_matches_golden(emitted: Node, target: TargetModel, golden: String) -> Bool {
+fn bash_fold_direct_serialize_matches_golden(emitted: Node, target: v2.std.compilers.target_model.TargetModel, golden: String) -> Bool {
   match target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == golden) && (d == None)

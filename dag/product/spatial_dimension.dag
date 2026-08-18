@@ -60,7 +60,7 @@ type RoomDimensionRendering =
 // A dimension fact is never loose: it names the room it belongs to and the axis it measures, so a
 // refusal receipt can say WHICH dimension of WHICH room was insufficient.
 type RoomDimensionKnowledge {
-  room: RoomIdentity
+  room: product.placement_supply.RoomIdentity
   axis: RoomDimensionAxis
   standing: RoomDimensionStanding
 }

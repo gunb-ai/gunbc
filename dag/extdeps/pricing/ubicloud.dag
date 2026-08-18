@@ -14,10 +14,10 @@ data ubicloud_pricing_provenance_note: String = "Per-minute managed-runner price
 type UbicloudRunnerPricingTier = PremiumX64 | Arm64
 
 type UbicloudRunnerPriceRow {
-  catalog: UbicloudRunnerCatalogRow
+  catalog: extdeps.cloud.ubicloud.UbicloudRunnerCatalogRow
   tier: UbicloudRunnerPricingTier
-  per_minute: MoneyPerMinute
-  pricing_citation: NonEmptyStr
+  per_minute: std.measure.MoneyPerMinute
+  pricing_citation: std.types.NonEmptyStr
 }
 
 data ubicloud_premium_standard_2_price: UbicloudRunnerPriceRow = UbicloudRunnerPriceRow {

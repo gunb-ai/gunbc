@@ -1,9 +1,9 @@
 module v2.test.claim.complexity.accumulator_copy_roster_gate
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
-fn accumulator_copy_roster_gate_entry_live_tree_disposition() -> LiveTreeDisposition {
+fn accumulator_copy_roster_gate_entry_live_tree_disposition() -> v2.std.live_tree.LiveTreeDisposition {
   ReadsLiveTree
 }
 

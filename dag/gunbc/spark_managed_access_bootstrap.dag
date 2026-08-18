@@ -22,22 +22,22 @@ module gunbc.spark_managed_access_bootstrap
 // it. BootstrapRequired carries the account it is missing rather than a flag, because the next step
 // needs to name an occurrence and a flag would make the reader re-derive it.
 type SparkManagedAccessStanding
-  = ManagedAccessGrounded { occurrence: PosixAccountOccurrence }
+  = ManagedAccessGrounded { occurrence: gunbc.fleet_posix_accounts.PosixAccountOccurrence }
   | ManagedAccessBootstrapRequired {
-      host: HostIdentity
-      missing: PosixAccountOccurrence
-      bootstrap_transport: PosixAccountOccurrence
+      host: product.placement_supply.HostIdentity
+      missing: gunbc.fleet_posix_accounts.PosixAccountOccurrence
+      bootstrap_transport: gunbc.fleet_posix_accounts.PosixAccountOccurrence
     }
-  | ManagedAccessUnobserved { host: HostIdentity }
+  | ManagedAccessUnobserved { host: product.placement_supply.HostIdentity }
 
 // THE OBSERVED INPUT, at the grain the probe actually measures: one host, one principal, one
 // authentication outcome, one privilege outcome. Deliberately NOT a host-grained record with a field
 // per capability -- that shape lets an observation of one principal satisfy a question about
 // another, which is the single defect that would make every conclusion below unsound.
 type PrincipalReachObservation {
-  host: HostIdentity
-  principal_login_name: NonEmptyStr
-  credential_identity: ContentHash
+  host: product.placement_supply.HostIdentity
+  principal_login_name: std.types.NonEmptyStr
+  credential_identity: std.content_hash.ContentHash
   authenticated: Bool
   holds_any_passwordless_grant: Bool
 }
@@ -117,11 +117,11 @@ fn derive_spark_managed_access_standing(
 // what makes privilege an OUTPUT of the plan rather than an input to it: nobody asks "does this need
 // root" -- the plan is derived, and whether it contains a privileged effect is then a fact about it.
 type SparkBootstrapEffect
-  = CreateManagedAccount { occurrence: PosixAccountOccurrence, login: NonEmptyStr }
-  | InstallFleetAuthorizedKey { occurrence: PosixAccountOccurrence, public_material_identity: ContentHash }
-  | ProveKeyOnlyAuthentication { occurrence: PosixAccountOccurrence }
-  | InstallNarrowPrivilegeGrant { occurrence: PosixAccountOccurrence, grant: NonEmptyStr }
-  | CreateNoLoginServiceIdentity { occurrence: PosixAccountOccurrence, login: NonEmptyStr }
+  = CreateManagedAccount { occurrence: gunbc.fleet_posix_accounts.PosixAccountOccurrence, login: std.types.NonEmptyStr }
+  | InstallFleetAuthorizedKey { occurrence: gunbc.fleet_posix_accounts.PosixAccountOccurrence, public_material_identity: std.content_hash.ContentHash }
+  | ProveKeyOnlyAuthentication { occurrence: gunbc.fleet_posix_accounts.PosixAccountOccurrence }
+  | InstallNarrowPrivilegeGrant { occurrence: gunbc.fleet_posix_accounts.PosixAccountOccurrence, grant: std.types.NonEmptyStr }
+  | CreateNoLoginServiceIdentity { occurrence: gunbc.fleet_posix_accounts.PosixAccountOccurrence, login: std.types.NonEmptyStr }
 
 // Whether an effect can be performed by the bootstrap transport itself or needs privilege it does
 // not hold. Derived per effect from what the effect DOES, not assigned per plan: creating an account
@@ -143,8 +143,8 @@ fn bootstrap_effect_requires_privilege(effect: SparkBootstrapEffect) -> Bool {
 // derives no effects is a contradiction, and representing it would let a caller report a plan while
 // holding nothing to apply.
 type SparkBootstrapPlan {
-  host: HostIdentity
-  transport: PosixAccountOccurrence
+  host: product.placement_supply.HostIdentity
+  transport: gunbc.fleet_posix_accounts.PosixAccountOccurrence
   first: SparkBootstrapEffect
   more: List<SparkBootstrapEffect>
 }
@@ -196,10 +196,10 @@ fn derive_spark_bootstrap_plan(
 type SparkBootstrapAuthorization
   = BootstrapProceedsUnprivileged { plan: SparkBootstrapPlan }
   | OperatorBootstrapCredentialRequired {
-      host: HostIdentity
+      host: product.placement_supply.HostIdentity
       first_privileged: SparkBootstrapEffect
       more_privileged: List<SparkBootstrapEffect>
-      secret_purpose: NonEmptyStr
+      secret_purpose: std.types.NonEmptyStr
     }
 
 fn authorize_spark_bootstrap(plan: SparkBootstrapPlan) -> SparkBootstrapAuthorization {

@@ -201,6 +201,6 @@ fn retained_rust_kernel_wall_holds_live() -> Bool {
   retained_rust_kernel_wall_holds()
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

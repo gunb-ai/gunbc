@@ -10,7 +10,7 @@ type ArrowBodyFormAdmissionMirror
   | ArrowBodyFormAdmissionRedNoDirectAtom
   | ArrowBodyFormAdmissionRedNoComputationBody
 
-fn classify_arrow_body_form_red_no_direct_atom(target: Node) -> ArrowBodyForm {
+fn classify_arrow_body_form_red_no_direct_atom(target: Node) -> v2.std.node.ArrowBodyForm {
   match target.kind {
     TypeNode { connective: Atom { identity: _ } } => UnsupportedArrowBody
     TypeNode { connective: Conj } => RecordConstructBody
@@ -19,7 +19,7 @@ fn classify_arrow_body_form_red_no_direct_atom(target: Node) -> ArrowBodyForm {
   }
 }
 
-fn classify_arrow_body_form_red_no_computation_body(target: Node) -> ArrowBodyForm {
+fn classify_arrow_body_form_red_no_computation_body(target: Node) -> v2.std.node.ArrowBodyForm {
   match target.kind {
     TypeNode { connective: Atom { identity: _ } } => DirectAtomBody
     TypeNode { connective: Conj } => RecordConstructBody
@@ -115,7 +115,7 @@ fn arrow_body_form_eval_int_literal_optional(lexeme: String) -> Optional<Node> {
   }
 }
 
-fn arrow_body_form_eval_runtime_int_equals(value: RuntimeValue, n: Int) -> Bool {
+fn arrow_body_form_eval_runtime_int_equals(value: v2.std.runtime.RuntimeValue, n: Int) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
       match integer_signed_i32_le_bytes_to_int(bytes: p.bytes) {
@@ -126,7 +126,7 @@ fn arrow_body_form_eval_runtime_int_equals(value: RuntimeValue, n: Int) -> Bool 
   }
 }
 
-fn arrow_body_form_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn arrow_body_form_eval_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   optional_present(value: claim_inferred_facts_from_nodes(
     resolved: key,
     algebra: arrow_body_form_eval_int_type_node(),
@@ -134,45 +134,45 @@ fn arrow_body_form_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
   ))
 }
 
-fn arrow_body_form_eval_admitted_tree(root: Node) -> InferredTree {
-  InferredTree {
+fn arrow_body_form_eval_admitted_tree(root: Node) -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: root,
     facts: Map { lookup: arrow_body_form_eval_facts_lookup }
   }
 }
 
 fn arrow_body_form_eval_nullary_call_node(callee: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
-    children: [Edge { label: Positional, target: callee }]
+    children: [v2.std.node.Edge { label: Positional, target: callee }]
   }
 }
 
 fn arrow_body_form_eval_unary_call_node(callee: Node, arg: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: callee },
-      Edge { label: Positional, target: arg }
+      v2.std.node.Edge { label: Positional, target: callee },
+      v2.std.node.Edge { label: Positional, target: arg }
     ]
   }
 }
 
 fn arrow_body_form_eval_binary_call_node(callee: Node, left: Node, right: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: callee },
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
+      v2.std.node.Edge { label: Positional, target: callee },
+      v2.std.node.Edge { label: Positional, target: left },
+      v2.std.node.Edge { label: Positional, target: right }
     ]
   }
 }
 
-fn arrow_body_form_eval_call_outcome_for_call(call: Node) -> Outcome<RuntimeValue> {
+fn arrow_body_form_eval_call_outcome_for_call(call: Node) -> Outcome<v2.std.runtime.RuntimeValue> {
   eval(
     tree: arrow_body_form_eval_admitted_tree(root: call),
     interpretation: v2_evaluator_interpretation(),

@@ -2,13 +2,13 @@ module gunbc.busybox_bmc_build
 
 
 type BusyboxCrossBuildPlan {
-  source_url: Uri
-  source_tarball: NonEmptyStr
-  build_dir: NonEmptyStr
-  cross_compile: NonEmptyStr
-  kernel_arch: NonEmptyStr
-  extra_cflags: NonEmptyStr
-  output_path: NonEmptyStr
+  source_url: extdeps.uri.Uri
+  source_tarball: std.types.NonEmptyStr
+  build_dir: std.types.NonEmptyStr
+  cross_compile: std.types.NonEmptyStr
+  kernel_arch: std.types.NonEmptyStr
+  extra_cflags: std.types.NonEmptyStr
+  output_path: std.types.NonEmptyStr
 }
 
 data bmc_busybox_build_plan: BusyboxCrossBuildPlan = BusyboxCrossBuildPlan {

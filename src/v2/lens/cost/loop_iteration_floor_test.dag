@@ -1,24 +1,24 @@
 module v2.test.lens_cost.loop_iteration_floor
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data loop_iteration_floor_body: Node = Node {
+data loop_iteration_floor_body: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^loop_iteration_floor_body_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data loop_iteration_floor_measure: Node = Node {
+data loop_iteration_floor_measure: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^loop_iteration_floor_measure_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data loop_iteration_floor_input: Node = Node {
+data loop_iteration_floor_input: Node = v2.std.node.Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: loop_iteration_floor_body },
-    Edge { label: Named { name: ^loop_bound_edge }, target: loop_iteration_floor_measure }
+    v2.std.node.Edge { label: Positional, target: loop_iteration_floor_body },
+    v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: loop_iteration_floor_measure }
   ],
   occurrence_id: SyntheticOccurrence
 }

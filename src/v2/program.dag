@@ -1,8 +1,8 @@
 module v2.program
 
 
-fn program_atom(s: Symbol) -> Node {
-  Node {
+fn program_atom(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -25,17 +25,17 @@ fn program_unit_type() -> Node {
   effect_io_pure_unit_type_node()
 }
 
-fn program_bool_value(is_true: Bool) -> RuntimeValue {
+fn program_bool_value(is_true: Bool) -> v2.std.runtime.RuntimeValue {
   if is_true {
     RuntimePrimitive {
-      value: RuntimePrimitiveValue {
+      value: v2.std.runtime.RuntimePrimitiveValue {
         primitive_type: program_bool_type(),
         bytes: [program_byte()]
       }
     }
   } else {
     RuntimePrimitive {
-      value: RuntimePrimitiveValue {
+      value: v2.std.runtime.RuntimePrimitiveValue {
         primitive_type: program_bool_type(),
         bytes: Empty
       }
@@ -43,18 +43,18 @@ fn program_bool_value(is_true: Bool) -> RuntimeValue {
   }
 }
 
-fn program_int_one_value() -> RuntimeValue {
+fn program_int_one_value() -> v2.std.runtime.RuntimeValue {
   RuntimePrimitive {
-    value: RuntimePrimitiveValue {
+    value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: program_i64_type(),
       bytes: [program_byte()]
     }
   }
 }
 
-fn program_unit_value() -> RuntimeValue {
+fn program_unit_value() -> v2.std.runtime.RuntimeValue {
   RuntimeUnit {
-    value: RuntimeUnitValue {
+    value: v2.std.runtime.RuntimeUnitValue {
       unit_type: program_unit_type()
     }
   }
@@ -76,13 +76,13 @@ fn program_kw_false() -> Node {
   dag_type_atom_node(identity: ^dag_token_kw_false)
 }
 
-data program_locator_literal: Node = Node {
+data program_locator_literal: Node = v2.std.node.Node {
   kind: ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data program_payload_literal: Node = Node {
+data program_payload_literal: Node = v2.std.node.Node {
   kind: ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -106,13 +106,13 @@ fn program_termination_proof() -> v2.std.cardinality.TerminationProof {
   }
 }
 
-fn program_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn program_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   if node == program_literal_one() {
     Accepted { value: program_int_one_value(), diagnostics: None }
   } else if node == program_literal_two() {
     Accepted {
       value: RuntimePrimitive {
-        value: RuntimePrimitiveValue {
+        value: v2.std.runtime.RuntimePrimitiveValue {
           primitive_type: program_i64_type(),
           bytes: [program_byte(), program_byte()]
         }
@@ -152,8 +152,8 @@ fn program_nth_child(node: Node, wanted: Int) -> Outcome<Node> {
 
 fn program_choose_branch(
   node: Node,
-  condition: RuntimeValue,
-  _env: EvaluationEnvironment
+  condition: v2.std.runtime.RuntimeValue,
+  _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<Node> {
   if count(node.children) == 3 {
     if program_runtime_bool_true(value: condition) {
@@ -176,7 +176,7 @@ fn program_choose_branch(
   }
 }
 
-fn program_runtime_bool_true(value: RuntimeValue) -> Bool {
+fn program_runtime_bool_true(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
       (p.primitive_type == program_bool_type()) && (count(p.bytes) == 1)
@@ -184,7 +184,7 @@ fn program_runtime_bool_true(value: RuntimeValue) -> Bool {
   }
 }
 
-fn program_runtime_bool_false(value: RuntimeValue) -> Bool {
+fn program_runtime_bool_false(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
       (p.primitive_type == program_bool_type()) && (count(p.bytes) == 0)
@@ -194,9 +194,9 @@ fn program_runtime_bool_false(value: RuntimeValue) -> Bool {
 
 fn program_reject_primitive(
   node: Node,
-  _args: List<RuntimeValue>,
-  _env: EvaluationEnvironment
-) -> Outcome<RuntimeValue> {
+  _args: List<v2.std.runtime.RuntimeValue>,
+  _env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   Rejected {
     diagnostics: diagnostics_singleton(
       d: eval_diagnostic(reason: ^program_primitive_rejected, node: node)
@@ -204,7 +204,7 @@ fn program_reject_primitive(
   }
 }
 
-fn program_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+fn program_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
   Rejected {
     diagnostics: diagnostics_singleton(
       d: eval_diagnostic(reason: ^program_primitive_rejected, node: node)
@@ -213,26 +213,26 @@ fn program_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<Control
 }
 
 fn program_bind_value(
-  _key: EnvironmentBindingKey,
-  _value: RuntimeValue,
-  env: EvaluationEnvironment
-) -> Outcome<EvaluationEnvironment> {
+  _key: v2.std.runtime.EnvironmentBindingKey,
+  _value: v2.std.runtime.RuntimeValue,
+  env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
   Accepted { value: env, diagnostics: None }
 }
 
-fn program_interpretation() -> InterpretationAlgebra {
-  InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: program_allocate_literal },
-    transform: TransformInterpreter { call_primitive: program_reject_primitive },
-    branch: BranchInterpreter { choose_branch: program_choose_branch },
-    loop: LoopInterpreter { step_loop: program_step_loop },
-    bind: BindInterpreter { bind_value: program_bind_value },
-    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+fn program_interpretation() -> v2.std.runtime.InterpretationAlgebra {
+  v2.std.runtime.InterpretationAlgebra {
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: program_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: program_reject_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: program_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: program_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: program_bind_value },
+    match: v2.std.runtime.MatchInterpreter { choose_arm: runtime_reject_match_arm }
   }
 }
 
-fn program_structure_witness() -> InterpretationStructureWitness {
-  InterpretationStructureWitness {
+fn program_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
+  v2.std.runtime.InterpretationStructureWitness {
     allocate_literal: ^program_allocate_literal_sym,
     call_primitive: ^program_reject_primitive_sym,
     choose_branch: ^program_choose_branch_sym,
@@ -242,7 +242,7 @@ fn program_structure_witness() -> InterpretationStructureWitness {
   }
 }
 
-fn program_context_with_effect_io() -> EvalContext {
+fn program_context_with_effect_io() -> v2.compiler.eval.EvalContext {
   eval_context_with_effect_io(
     runtime_identity: ^program_runtime_id,
     interpretation: program_interpretation(),
@@ -252,7 +252,7 @@ fn program_context_with_effect_io() -> EvalContext {
   )
 }
 
-fn program_facts_for(node: Node) -> InferredFacts {
+fn program_facts_for(node: Node) -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: program_unit_type(),
@@ -260,7 +260,7 @@ fn program_facts_for(node: Node) -> InferredFacts {
   )
 }
 
-fn program_facts_lookup(node: Node) -> Optional<InferredFacts> {
+fn program_facts_lookup(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   if node == program_pick_if_branch_with_effect_io {
     optional_present(value: program_facts_for(node: program_pick_if_branch_with_effect_io))
   } else if node == program_effect_io_roundtrip {
@@ -278,14 +278,14 @@ fn program_facts_lookup(node: Node) -> Optional<InferredFacts> {
   }
 }
 
-fn program_tree(root: Node) -> InferredTree {
-  InferredTree {
+fn program_tree(root: Node) -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: root,
     facts: Map { lookup: program_facts_lookup }
   }
 }
 
-fn program_eval_root(root: Node) -> Outcome<RuntimeValue> {
+fn program_eval_root(root: Node) -> Outcome<v2.std.runtime.RuntimeValue> {
   eval_with_context(
     tree: program_tree(root: root),
     context: program_context_with_effect_io(),
@@ -301,14 +301,14 @@ fn program_branch_effect_io_holds() -> Bool {
 }
 
 fn program_pick_if_call(callee: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Transform },
-    children: [Edge { label: Positional, target: callee }],
+    children: [v2.std.node.Edge { label: Positional, target: callee }],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn program_pick_if_arrow_facts_lookup(node: Node) -> Optional<InferredFacts> {
+fn program_pick_if_arrow_facts_lookup(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   optional_present(value: claim_inferred_facts_from_nodes(
       resolved: node,
       algebra: program_i64_type(),
@@ -316,8 +316,8 @@ fn program_pick_if_arrow_facts_lookup(node: Node) -> Optional<InferredFacts> {
     ))
 }
 
-fn program_pick_if_arrow_tree(callee: Node) -> InferredTree {
-  InferredTree {
+fn program_pick_if_arrow_tree(callee: Node) -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: callee,
     facts: Map { lookup: program_pick_if_arrow_facts_lookup }
   }
@@ -344,7 +344,7 @@ data program_run_branch_gate: Node = program_kw_true()
 
 data program_run_io_step: Node = program_effect_io_roundtrip
 
-data program_run_branch_to_io: DependencyView = DependencyView {
+data program_run_branch_to_io: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: program_run_branch_gate,
   dependent: program_run_io_step,
   kind: DataDependsOn,
@@ -353,7 +353,7 @@ data program_run_branch_to_io: DependencyView = DependencyView {
 
 data program_run_nodes: List<Node> = [program_run_branch_gate, program_run_io_step]
 
-data program_run_dependencies: List<DependencyView> = [program_run_branch_to_io]
+data program_run_dependencies: List<v2.std.dependency.DependencyView> = [program_run_branch_to_io]
 
 fn program_runtime_run_holds() -> Bool {
   match runtime_run(
@@ -376,8 +376,8 @@ fn program_runs_holds() -> Bool {
     && program_runtime_run_holds()
 }
 
-data unified_claim_program_runs: UnifiedTestClaim = BoolWitnessClaim {
-  witness: BoolWitness {
+data unified_claim_program_runs: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
+  witness: v2.std.verification.BoolWitness {
     entry: "src/v2/program.dag",
     function: program_runs_holds
   }

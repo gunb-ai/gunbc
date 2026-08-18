@@ -7,9 +7,9 @@ type Verdict<Subj, T>
       actual: Outcome<T>,
       falsification: Optional<FalsificationReceipt<Subj, T>>
     }
-  | BuildFailed { actual: Outcome<T>, diagnostic: Diagnostic }
-  | RunFailed { actual: Outcome<T>, diagnostic: Diagnostic }
-  | Deferred { actual: Outcome<T>, diagnostic: Diagnostic }
+  | BuildFailed { actual: Outcome<T>, diagnostic: v2.std.diagnostic.Diagnostic }
+  | RunFailed { actual: Outcome<T>, diagnostic: v2.std.diagnostic.Diagnostic }
+  | Deferred { actual: Outcome<T>, diagnostic: v2.std.diagnostic.Diagnostic }
 
 fn verdict_semantic_mismatch<Subj, T>(
   actual: Outcome<T>,

@@ -3,7 +3,7 @@ module v2.std.witness
 
 type Witness<C>
   = Holds { value: C }
-  | Violates { diagnostic: Diagnostic }
+  | Violates { diagnostic: v2.std.diagnostic.Diagnostic }
 
 fn witness_from_optional<T>(opt: Optional<T>, absent: Diagnostic) -> Witness<T> {
   match opt {
@@ -13,10 +13,10 @@ fn witness_from_optional<T>(opt: Optional<T>, absent: Diagnostic) -> Witness<T> 
 }
 
 type StructuralPropertyWitness {
-  property: Symbol
+  property: v2.std.node.Symbol
   evidence: Node
 }
 type HomomorphismWitness {
-  rule: Symbol
+  rule: v2.std.node.Symbol
   evidence: Node
 }

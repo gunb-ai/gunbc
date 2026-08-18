@@ -6,15 +6,15 @@ type SizeVariable {
 }
 
 type PolynomialDegree {
-  predecessor_after_linear: NonZeroNat
+  predecessor_after_linear: v2.std.cardinality.NonZeroNat
 }
 
 type PolyLogExponent {
-  predecessor_after_log: NonZeroNat
+  predecessor_after_log: v2.std.cardinality.NonZeroNat
 }
 
 type ExponentialBase {
-  predecessor_after_one: NonZeroNat
+  predecessor_after_one: v2.std.cardinality.NonZeroNat
 }
 
 type SymbolicCost
@@ -27,7 +27,7 @@ type SymbolicCost
   | FactorialCost { variable: SizeVariable }
   | SumCost { lhs: SymbolicCost, rhs: SymbolicCost }
   | ProductCost { lhs: SymbolicCost, rhs: SymbolicCost }
-  | UnknownCost { diagnostic: Diagnostic }
+  | UnknownCost { diagnostic: v2.std.diagnostic.Diagnostic }
 
 type AsymptoticClass
   = ClassConstant

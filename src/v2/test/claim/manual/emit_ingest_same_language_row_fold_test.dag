@@ -1,21 +1,21 @@
 module v2.test.manual.emit_ingest_same_language_row_fold
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn emit_ingest_fold_row_with_emitted(row: Node, emitted: Node) -> Outcome<Node> {
   bind_outcome(
     o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {
       outcome_accepted(
-        value: Node {
+        value: v2.std.node.Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge {
+            v2.std.node.Edge {
               label: Named { name: ^grammar_relation_field_emitted },
               target: emitted
             },
-            Edge {
+            v2.std.node.Edge {
               label: Named { name: ^grammar_relation_field_tokens },
               target: tokens_root
             }
@@ -28,17 +28,17 @@ fn emit_ingest_fold_row_with_emitted(row: Node, emitted: Node) -> Outcome<Node> 
 }
 
 fn emit_ingest_fold_rules_table(dag_row: Node, python_row: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^emit_ingest_fold_row_label_dag }, target: dag_row },
-      Edge { label: Named { name: ^emit_ingest_fold_row_label_python }, target: python_row }
+      v2.std.node.Edge { label: Named { name: ^emit_ingest_fold_row_label_dag }, target: dag_row },
+      v2.std.node.Edge { label: Named { name: ^emit_ingest_fold_row_label_python }, target: python_row }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn emit_ingest_fold_row_token_spine_classes(row: Node) -> Outcome<List<Symbol>> {
+fn emit_ingest_fold_row_token_spine_classes(row: Node) -> Outcome<List<v2.std.node.Symbol>> {
   bind_outcome(
     o: find_named_child(root: row, name: ^grammar_relation_field_tokens),
     f: fn(tokens_root) {

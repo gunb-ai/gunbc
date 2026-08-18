@@ -4,11 +4,11 @@ module v2.lens.enforcement.cost_coverage
 
 type CostCoverageIngestVerdict
   = IngestParsedClean
-  | IngestRejected { stage: String, reason: Symbol }
+  | IngestRejected { stage: String, reason: v2.std.node.Symbol }
 
 type CostCoverageFnVerdict
-  = FnCostKnown { asymptotic_class: AsymptoticClass }
-  | FnCostUnknown { reason: Symbol }
+  = FnCostKnown { asymptotic_class: v2.lens.cost.AsymptoticClass }
+  | FnCostUnknown { reason: v2.std.node.Symbol }
   | FnBodyParseTreeOpaque
   | FnBodyNotLocated
 

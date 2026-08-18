@@ -3,25 +3,25 @@ module test.claim.runner_connectivity_recovery_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn act_ts(s: String) -> Timestamp {
-  s as Timestamp
+fn act_ts(s: String) -> std.types.Timestamp {
+  s as std.types.Timestamp
 }
 
 data witness_note: String = "Discriminating witnesses for the runner remote-lease recovery controller (PR B). Models the acquire-job wedge: local systemd active while GitHub registration is offline/absent. Acceptance path: before local active + remote offline -> Replace once -> after new incarnation + remote online -> rerun Noop. RED controls refuse naive watchdog shapes (busy restart, stale observation, fleet fanout while degraded). No wet actuation — plan and verified postcondition only."
 
-fn fixture_slot(host: HostIdentity, index: Int) -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: host, slot_index: index }
+fn fixture_slot(host: product.placement_supply.HostIdentity, index: Int) -> gunbc.build_cache_instance.RunnerSlotIdentity {
+  gunbc.build_cache_instance.RunnerSlotIdentity { host: host, slot_index: index }
 }
 
-fn fixture_incarnation(slot: RunnerSlotIdentity, pid: Int, start: String) -> RunnerLocalIncarnation {
-  RunnerLocalIncarnation {
+fn fixture_incarnation(slot: gunbc.build_cache_instance.RunnerSlotIdentity, pid: Int, start: String) -> gunbc.runner_connectivity_recovery.RunnerLocalIncarnation {
+  gunbc.runner_connectivity_recovery.RunnerLocalIncarnation {
     slot: slot,
     process: ProcessIdentity {
-      boot_id: "boot-a" as NonEmptyStr,
+      boot_id: "boot-a" as std.types.NonEmptyStr,
       pid: pid,
-      start_time: start as NonEmptyStr,
+      start_time: start as std.types.NonEmptyStr,
     },
-    unit: "actions-runner@srv1-01.service" as NonEmptyStr,
+    unit: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
   }
 }
 
@@ -29,7 +29,7 @@ fn fixture_labels() -> List<String> {
   ["self-hosted", "linux", "arm64", "gunbc-heavy"]
 }
 
-fn remote_offline_evidence() -> RemoteRegistrationEvidence {
+fn remote_offline_evidence() -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence {
   RemoteRegistrationObserved {
     registration: RunnerRemoteOffline,
     registration_id: "",
@@ -37,10 +37,10 @@ fn remote_offline_evidence() -> RemoteRegistrationEvidence {
   }
 }
 
-fn remote_online_evidence(labels: List<String>) -> RemoteRegistrationEvidence {
+fn remote_online_evidence(labels: List<String>) -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence {
   RemoteRegistrationObserved {
     registration: RunnerRemoteOnline {
-      runner_name: "actions-runner@srv1-01.service" as NonEmptyStr,
+      runner_name: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
       labels: labels,
     },
     registration_id: "reg-1",
@@ -48,36 +48,36 @@ fn remote_online_evidence(labels: List<String>) -> RemoteRegistrationEvidence {
   }
 }
 
-fn remote_busy_evidence() -> RemoteRegistrationEvidence {
+fn remote_busy_evidence() -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence {
   RemoteRegistrationObserved {
-    registration: RunnerRemoteBusy { detail: "job assigned" as NonEmptyStr },
+    registration: RunnerRemoteBusy { detail: "job assigned" as std.types.NonEmptyStr },
     registration_id: "",
     grade: ObservedEvidence,
   }
 }
 
-fn wedged_broker_progress() -> BrokerProgressObservation {
+fn wedged_broker_progress() -> gunbc.runner_broker_progress_watchdog.BrokerProgressObservation {
   BrokerProgressSilent {
     silence_seconds: runner_broker_progress_silence_bound_seconds,
     grade: ObservedEvidence,
   }
 }
 
-fn wedged_worker_observation() -> RunnerWorkerObservation {
+fn wedged_worker_observation() -> gunbc.runner_broker_progress_watchdog.RunnerWorkerObservation {
   RunnerWorkerAbsent { grade: ObservedEvidence }
 }
 
-fn wedged_snapshot(act_at: Timestamp) -> RunnerSlotConnectivitySnapshot {
+fn wedged_snapshot(act_at: std.types.Timestamp) -> gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
   let slot = fixture_slot(host: operator_host_srv1, index: 1)
   let inc = fixture_incarnation(slot: slot, pid: 4242, start: "80000000")
-  RunnerSlotConnectivitySnapshot {
+  gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: slot,
-    local: RunnerLocalObservation {
+    local: gunbc.runner_connectivity_recovery.RunnerLocalObservation {
       incarnation: inc,
       systemd_active: true,
       observed_at: act_at,
     },
-    remote: RunnerRemoteObservation {
+    remote: gunbc.runner_connectivity_recovery.RunnerRemoteObservation {
       evidence: remote_offline_evidence(),
       observed_at: act_at,
       control_plane_error_burst: false,
@@ -90,17 +90,17 @@ fn wedged_snapshot(act_at: Timestamp) -> RunnerSlotConnectivitySnapshot {
   }
 }
 
-fn connected_snapshot(act_at: Timestamp, pid: Int, start: String) -> RunnerSlotConnectivitySnapshot {
+fn connected_snapshot(act_at: std.types.Timestamp, pid: Int, start: String) -> gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
   let slot = fixture_slot(host: operator_host_srv1, index: 1)
   let inc = fixture_incarnation(slot: slot, pid: pid, start: start)
-  RunnerSlotConnectivitySnapshot {
+  gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: slot,
-    local: RunnerLocalObservation {
+    local: gunbc.runner_connectivity_recovery.RunnerLocalObservation {
       incarnation: inc,
       systemd_active: true,
       observed_at: act_at,
     },
-    remote: RunnerRemoteObservation {
+    remote: gunbc.runner_connectivity_recovery.RunnerRemoteObservation {
       evidence: remote_online_evidence(labels: fixture_labels()),
       observed_at: act_at,
       control_plane_error_burst: false,
@@ -147,10 +147,10 @@ test fn remotely_busy_slot_refuses_restart() -> Bool {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let slot = fixture_slot(host: operator_host_srv1, index: 2)
   let inc = fixture_incarnation(slot: slot, pid: 1111, start: "70000000")
-  let snap = RunnerSlotConnectivitySnapshot {
+  let snap = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: slot,
-    local: RunnerLocalObservation { incarnation: inc, systemd_active: true, observed_at: act },
-    remote: RunnerRemoteObservation {
+    local: gunbc.runner_connectivity_recovery.RunnerLocalObservation { incarnation: inc, systemd_active: true, observed_at: act },
+    remote: gunbc.runner_connectivity_recovery.RunnerRemoteObservation {
       evidence: remote_busy_evidence(),
       observed_at: act,
       control_plane_error_burst: false,
@@ -192,7 +192,7 @@ test fn stale_observation_refuses_restart() -> Bool {
 test fn degraded_fleet_allows_only_canary_replace() -> Bool {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let s1 = wedged_snapshot(act_at: act)
-  let s2 = RunnerSlotConnectivitySnapshot {
+  let s2 = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: fixture_slot(host: operator_host_srv1, index: 2),
     local: s1.local,
     remote: s1.remote,
@@ -237,14 +237,14 @@ test fn srv3_reach_refused_while_srv1_continues() -> Bool {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let srv1 = wedged_snapshot(act_at: act)
   let srv3_slot = fixture_slot(host: operator_host_srv3, index: 1)
-  let srv3 = RunnerSlotConnectivitySnapshot {
+  let srv3 = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: srv3_slot,
-    local: RunnerLocalObservation {
+    local: gunbc.runner_connectivity_recovery.RunnerLocalObservation {
       incarnation: fixture_incarnation(slot: srv3_slot, pid: 2222, start: "60000000"),
       systemd_active: true,
       observed_at: act,
     },
-    remote: RunnerRemoteObservation {
+    remote: gunbc.runner_connectivity_recovery.RunnerRemoteObservation {
       evidence: remote_offline_evidence(),
       observed_at: act,
       control_plane_error_burst: false,
@@ -281,12 +281,12 @@ test fn postcondition_verifies_new_incarnation_and_remote_online() -> Bool {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let slot = fixture_slot(host: operator_host_srv1, index: 1)
   let prior = fixture_incarnation(slot: slot, pid: 4242, start: "80000000")
-  let after_local = RunnerLocalObservation {
+  let after_local = gunbc.runner_connectivity_recovery.RunnerLocalObservation {
     incarnation: fixture_incarnation(slot: slot, pid: 5151, start: "91000000"),
     systemd_active: true,
     observed_at: act,
   }
-  let after_remote = RunnerRemoteObservation {
+  let after_remote = gunbc.runner_connectivity_recovery.RunnerRemoteObservation {
     evidence: remote_online_evidence(labels: fixture_labels()),
     observed_at: act,
     control_plane_error_burst: false,
@@ -307,12 +307,12 @@ test fn postcondition_fails_when_prior_process_survives() -> Bool {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let slot = fixture_slot(host: operator_host_srv1, index: 1)
   let prior = fixture_incarnation(slot: slot, pid: 4242, start: "80000000")
-  let after_local = RunnerLocalObservation {
+  let after_local = gunbc.runner_connectivity_recovery.RunnerLocalObservation {
     incarnation: prior,
     systemd_active: true,
     observed_at: act,
   }
-  let after_remote = RunnerRemoteObservation {
+  let after_remote = gunbc.runner_connectivity_recovery.RunnerRemoteObservation {
     evidence: remote_online_evidence(labels: fixture_labels()),
     observed_at: act,
     control_plane_error_burst: false,
@@ -346,10 +346,10 @@ test fn rerun_after_successful_replace_is_noop() -> Bool {
 test fn control_plane_burst_classifies_degraded() -> Bool {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let snap = connected_snapshot(act_at: act, pid: 1, start: "1")
-  let burst = RunnerSlotConnectivitySnapshot {
+  let burst = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: snap.slot,
     local: snap.local,
-    remote: RunnerRemoteObservation {
+    remote: gunbc.runner_connectivity_recovery.RunnerRemoteObservation {
       evidence: remote_offline_evidence(),
       observed_at: act,
       control_plane_error_burst: true,
@@ -369,7 +369,7 @@ test fn control_plane_burst_classifies_degraded() -> Bool {
 test fn fleet_plan_enforces_per_host_replace_cap() -> Bool {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let s1 = wedged_snapshot(act_at: act)
-  let s2 = RunnerSlotConnectivitySnapshot {
+  let s2 = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: fixture_slot(host: operator_host_srv1, index: 2),
     local: s1.local,
     remote: s1.remote,
@@ -379,7 +379,7 @@ test fn fleet_plan_enforces_per_host_replace_cap() -> Bool {
     confirmed_at: act,
     last_restart_at: Absent,
   }
-  let s3 = RunnerSlotConnectivitySnapshot {
+  let s3 = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: fixture_slot(host: operator_host_srv1, index: 3),
     local: s1.local,
     remote: s1.remote,
@@ -414,10 +414,10 @@ test fn offline_with_recent_broker_progress_refuses_replace() -> Bool {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let slot = fixture_slot(host: operator_host_srv1, index: 4)
   let inc = fixture_incarnation(slot: slot, pid: 3333, start: "50000000")
-  let snap = RunnerSlotConnectivitySnapshot {
+  let snap = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: slot,
-    local: RunnerLocalObservation { incarnation: inc, systemd_active: true, observed_at: act },
-    remote: RunnerRemoteObservation {
+    local: gunbc.runner_connectivity_recovery.RunnerLocalObservation { incarnation: inc, systemd_active: true, observed_at: act },
+    remote: gunbc.runner_connectivity_recovery.RunnerRemoteObservation {
       evidence: remote_offline_evidence(),
       observed_at: act,
       control_plane_error_burst: false,

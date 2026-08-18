@@ -14,8 +14,8 @@ type SessionResidency
 data session_residency_evidence_note: String = "THE VERDICT AND THE EVIDENCE FOR IT ARE DIFFERENT FACTS, and collapsing them is what made the first draft of this module unable to say what it knew. That draft answered only HostsInteractiveSessions | NoInteractiveSessions, so 'srv2 was counted running nineteen session containers this morning' and 'the operator states srv3 has none, because nobody could log in to check' produced the identical row. The asymmetry then had to live in prose beside the function, where no consumer and no witness can read it.\n\nIT MATTERS BECAUSE THE TWO NEGATIVE ARMS GRANT CAPACITY. A host classified session-free is charged no reservation and is admitted more runner slots, so the difference between a counted zero and an unobserved zero is the difference between a derived width and a borrowed premise — the same distinction gunbc.ci_floor_measurement enforces when it refuses to lend one host's overhead measurement to another. SessionsOperatorDeclaredAbsent is an override, honestly named as one; SessionsObservedAbsent is a receipt; and SessionsUnobserved is neither, which is why it charges."
 
 type SessionResidencyEvidence
-  = SessionsObservedPresent { observed_on: NonEmptyStr, container_count: Int }
-  | SessionsObservedAbsent { observed_on: NonEmptyStr }
+  = SessionsObservedPresent { observed_on: std.types.NonEmptyStr, container_count: Int }
+  | SessionsObservedAbsent { observed_on: std.types.NonEmptyStr }
   | SessionsOperatorDeclaredAbsent { reason: String }
   | SessionsUnobserved { reason: String }
 

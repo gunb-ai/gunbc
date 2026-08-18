@@ -1,37 +1,37 @@
 module v2.test.lens_synthesis.synthesis_gap_polynomial
 
 
-data synthesis_gap_poly_leaf: Node = Node {
+data synthesis_gap_poly_leaf: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_gap_poly_atom_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data synthesis_gap_poly_body: Node = Node {
+data synthesis_gap_poly_body: Node = v2.std.node.Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: synthesis_gap_poly_leaf }
+    v2.std.node.Edge { label: Positional, target: synthesis_gap_poly_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data synthesis_gap_poly_inner: Node = Node {
+data synthesis_gap_poly_inner: Node = v2.std.node.Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Positional, target: synthesis_gap_poly_body }
+    v2.std.node.Edge { label: Positional, target: synthesis_gap_poly_body }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data synthesis_gap_poly_input: Node = Node {
+data synthesis_gap_poly_input: Node = v2.std.node.Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge { label: Positional, target: synthesis_gap_poly_inner }
+    v2.std.node.Edge { label: Positional, target: synthesis_gap_poly_inner }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data synthesis_gap_poly_sentinel: Node = Node {
+data synthesis_gap_poly_sentinel: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_gap_poly_sentinel_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -49,15 +49,15 @@ fn synthesis_gap_poly_rhs() -> Node {
   }
 }
 
-data claim_synthesis_gap_polynomial: TestClaim = EqualsClaim {
+data claim_synthesis_gap_polynomial: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_synthesis/synthesis_gap_polynomial: polynomial cost emits non-empty synthesis advisory",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: synthesis_gap_poly_input,
   rhs: synthesis_gap_poly_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-fn synthesis_gap_poly_known_reason_node(realization: ComplexityBound) -> Node {
+fn synthesis_gap_poly_known_reason_node(realization: v2.lens.complexity.ComplexityBound) -> Node {
   match assess_decision_tree(n: synthesis_gap_poly_input, realization: realization) {
     SynthesisGap { realization_cost: _, lower_bound: _, report: r } =>
       match r.reason {
@@ -78,10 +78,10 @@ fn synthesis_gap_poly_first_reason_node() -> Node {
   }
 }
 
-data claim_synthesis_gap_poly_decision_tree_reason: TestClaim = EqualsClaim {
+data claim_synthesis_gap_poly_decision_tree_reason: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_synthesis/synthesis_gap_polynomial: report reason is SynthesisGapDecisionTree",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: synthesis_gap_poly_input,
   rhs: synthesis_gap_poly_first_reason_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

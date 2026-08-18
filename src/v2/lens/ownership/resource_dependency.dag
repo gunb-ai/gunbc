@@ -30,9 +30,9 @@ fn ownership_claim_tree() -> InferredTree {
 }
 
 type LensOwnershipClaim {
-  input: InferredTree
-  expected: OwnershipFact
-  actual: Witness<OwnershipFact>
+  input: v2.compiler.infer.InferredTree
+  expected: v2.lens.ownership.OwnershipFact
+  actual: Witness<v2.lens.ownership.OwnershipFact>
 }
 
 data ownership_resource_dependency_claim: LensOwnershipClaim = LensOwnershipClaim {

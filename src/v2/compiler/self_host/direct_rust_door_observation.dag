@@ -6,10 +6,10 @@ data direct_rust_door_observation_note: String = "PURE FIRST-FAILURE PROJECTION 
 data direct_rust_door_observation_measured_note: String = "MEASURED 2026-08-04 on main, and unchanged by the consolidation: assembly ACCEPTS, inference ACCEPTS, mint over the hand-authored fixture inferred tree ACCEPTS, and mint over the real infer(assemble(ingest)) REJECTS. Every stage passes in isolation; only the real composition fails, at emission."
 
 type DirectRustDoorObservation
-  = AssemblyRefused { reason: Symbol }
-  | InferenceRefused { reason: Symbol }
-  | CandidateRejected { reason: Symbol }
-  | ReceiptRefused { reason: Symbol }
+  = AssemblyRefused { reason: v2.std.node.Symbol }
+  | InferenceRefused { reason: v2.std.node.Symbol }
+  | CandidateRejected { reason: v2.std.node.Symbol }
+  | ReceiptRefused { reason: v2.std.node.Symbol }
   | EmittedSourceMismatch
   | SeedEmitterReachable
   | WrongProducer

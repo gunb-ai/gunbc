@@ -6,26 +6,26 @@ module test.claim.realize_kernel
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_store_id: CacheInterfaceId = "realize-kernel-witness-store"
-data subject_digest_a: ContentHash = content_hash_of_value(value: "realize-kernel-witness-subject-a")
-data content_v1: ContentHash = content_hash_of_value(value: "realize-kernel-witness-content-v1")
-data content_v2: ContentHash = content_hash_of_value(value: "realize-kernel-witness-content-v2")
-data receipt_digest_v: ExecutionReceiptDigest = execution_receipt_digest_of_value(
-  value: "realize-kernel-witness-receipt-digest" as NonEmptyStr
+data witness_store_id: std.cache_identity.CacheInterfaceId = "realize-kernel-witness-store"
+data subject_digest_a: std.content_hash.ContentHash = content_hash_of_value(value: "realize-kernel-witness-subject-a")
+data content_v1: std.content_hash.ContentHash = content_hash_of_value(value: "realize-kernel-witness-content-v1")
+data content_v2: std.content_hash.ContentHash = content_hash_of_value(value: "realize-kernel-witness-content-v2")
+data receipt_digest_v: std.cache_identity.ExecutionReceiptDigest = execution_receipt_digest_of_value(
+  value: "realize-kernel-witness-receipt-digest" as std.types.NonEmptyStr
 )
 
-fn mk_receipt(content: ContentHash) -> CachedArtifactReceipt<ContentHash> {
-  CachedArtifactReceipt {
-    artifact: ArtifactIdentity {
+fn mk_receipt(content: std.content_hash.ContentHash) -> CachedArtifactReceipt<std.content_hash.ContentHash> {
+  std.cache_interface.CachedArtifactReceipt {
+    artifact: std.cache_interface.ArtifactIdentity {
       subject_digest: subject_digest_a,
       artifact_kind: resolved_graph_artifact_kind,
     },
-    backend_key: BackendCacheKey {
+    backend_key: std.cache_interface.BackendCacheKey {
       store: witness_store_id,
       key: CasContentDigest { digest: subject_digest_a },
     },
     producer: InternalExecution {
-      receipt: ExecutionReceiptRef { receipt_digest: receipt_digest_v },
+      receipt: std.cache_interface.ExecutionReceiptRef { receipt_digest: receipt_digest_v },
     },
     content_digest: content,
   }
@@ -88,16 +88,16 @@ test fn witness_purity_conflict_rejects_overwrite() -> Bool {
 
 test fn execution_receipt_digest_minted_is_computed_content_hash() -> Bool {
   let minted = execution_receipt_digest_of_value(
-    value: "realize-kernel-witness-receipt-digest" as NonEmptyStr
+    value: "realize-kernel-witness-receipt-digest" as std.types.NonEmptyStr
   )
-  minted.digest == content_hash_of_value(value: "realize-kernel-witness-receipt-digest" as NonEmptyStr)
+  minted.digest == content_hash_of_value(value: "realize-kernel-witness-receipt-digest" as std.types.NonEmptyStr)
 }
 
 test fn execution_receipt_digest_hollow_string_literal_brand_is_not_minted_record() -> Bool {
   let minted = execution_receipt_digest_of_value(
-    value: "realize-kernel-witness-receipt-digest" as NonEmptyStr
+    value: "realize-kernel-witness-receipt-digest" as std.types.NonEmptyStr
   )
-  minted.digest != content_hash_of_value(value: "not-the-receipt-label" as NonEmptyStr)
+  minted.digest != content_hash_of_value(value: "not-the-receipt-label" as std.types.NonEmptyStr)
 }
 
 test fn witness_write_over_rejected_hit_composes_reason() -> Bool {

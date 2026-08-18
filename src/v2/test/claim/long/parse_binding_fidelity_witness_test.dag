@@ -1,7 +1,7 @@
 module v2.test.long.parse_binding_fidelity_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data parse_binding_fidelity_long_note: String = "Cadence: two module-ingest binding fidelity tests. Exceeds per-PR 5s fast-lane budget; explicitly enrolled in commit_workflow.dag for long-lane CI. Fixture split: parse/parse_binding_fidelity_test.dag (3 cross-file/fail-closed per-PR tests) — see parse_binding_fidelity_fast_note."
 

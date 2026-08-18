@@ -20,16 +20,16 @@ fn probe_entry() -> String {
   "src/v2/test/claim/long/synthetic_freeze_probe_test.dag"
 }
 
-fn probe_frozen_roster() -> List<FrozenPathDeferral> {
+fn probe_frozen_roster() -> List<gunbc.witness_deferral_freeze.FrozenPathDeferral> {
   [
-    FrozenPathDeferral {
+    gunbc.witness_deferral_freeze.FrozenPathDeferral {
       entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag",
       functions: ["already_frozen_holds"]
     }
   ]
 }
 
-fn probe_standing(entry: String, function: String, frozen: List<FrozenPathDeferral>) -> WitnessExecutionStanding {
+fn probe_standing(entry: String, function: String, frozen: List<gunbc.witness_deferral_freeze.FrozenPathDeferral>) -> std.witness_admission.WitnessExecutionStanding {
   witness_path_policy_execution_standing_in(
     entry: entry,
     function: function,
@@ -40,7 +40,7 @@ fn probe_standing(entry: String, function: String, frozen: List<FrozenPathDeferr
   )
 }
 
-fn standing_is_unclassified_path_deferral(r: WitnessExecutionStanding) -> Bool {
+fn standing_is_unclassified_path_deferral(r: std.witness_admission.WitnessExecutionStanding) -> Bool {
   match r {
     UnclassifiedPathDeferral { entry: _, function: _ } => true
     UnexecutedDeferredWitness { entry: _, function: _ } => false
@@ -49,7 +49,7 @@ fn standing_is_unclassified_path_deferral(r: WitnessExecutionStanding) -> Bool {
   }
 }
 
-fn standing_is_unexecuted_deferred(r: WitnessExecutionStanding) -> Bool {
+fn standing_is_unexecuted_deferred(r: std.witness_admission.WitnessExecutionStanding) -> Bool {
   match r {
     UnexecutedDeferredWitness { entry: _, function: _ } => true
     UnclassifiedPathDeferral { entry: _, function: _ } => false
@@ -58,7 +58,7 @@ fn standing_is_unexecuted_deferred(r: WitnessExecutionStanding) -> Bool {
   }
 }
 
-fn standing_is_legacy_frozen(r: WitnessExecutionStanding) -> Bool {
+fn standing_is_legacy_frozen(r: std.witness_admission.WitnessExecutionStanding) -> Bool {
   match r {
     LegacyFrozenPathDeferral { entry: _, function: _ } => true
     UnexecutedDeferredWitness { entry: _, function: _ } => false
@@ -170,9 +170,9 @@ test fn witness_deferral_freeze_join_is_by_identity_not_by_entry() -> Bool {
     )
 }
 
-fn probe_discovered_population() -> List<ScheduleWitnessEntry> {
+fn probe_discovered_population() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   [
-    ScheduleWitnessEntry {
+    std.realization_schedule.ScheduleWitnessEntry {
       entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag",
       function: "already_frozen_holds",
       kind: CorpusWitnessKind
@@ -190,7 +190,7 @@ test fn witness_deferral_freeze_live_rows_join_the_discovered_population() -> Bo
 test fn witness_deferral_freeze_departed_row_fails_the_join() -> Bool {
   !frozen_path_deferrals_all_discovered(
     rows: [
-      FrozenPathDeferral {
+      gunbc.witness_deferral_freeze.FrozenPathDeferral {
         entry: "src/v2/test/claim/long/departed_test.dag",
         functions: ["departed_holds"]
       }
@@ -201,13 +201,13 @@ test fn witness_deferral_freeze_departed_row_fails_the_join() -> Bool {
 
 test fn witness_deferral_freeze_empty_function_list_is_malformed() -> Bool {
   !frozen_path_deferral_row_well_formed(
-    row: FrozenPathDeferral {
+    row: gunbc.witness_deferral_freeze.FrozenPathDeferral {
       entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag",
       functions: []
     }
   )
     && frozen_path_deferral_row_well_formed(
-      row: FrozenPathDeferral {
+      row: gunbc.witness_deferral_freeze.FrozenPathDeferral {
         entry: "src/v2/test/claim/long/synthetic_freeze_probe_test.dag",
         functions: ["x_holds"]
       }

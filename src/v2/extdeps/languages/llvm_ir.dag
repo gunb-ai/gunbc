@@ -15,14 +15,14 @@ type LlvmType
   | LabelType
   | TokenType
   | MetadataType
-  | IntegerType { bits: NonZeroNat }
+  | IntegerType { bits: v2.std.cardinality.NonZeroNat }
   | FloatingType { kind: FloatKind }
   | PointerType { address_space: v2.std.nat.Nat }
-  | VectorType { element: LlvmType, count: NonZeroNat, scalable: VectorScaling }
+  | VectorType { element: LlvmType, count: v2.std.cardinality.NonZeroNat, scalable: VectorScaling }
   | ArrayType { element: LlvmType, count: v2.std.nat.Nat }
   | StructType { fields: List<LlvmType>, packed: StructPacking }
   | FunctionType { result: LlvmType, params: List<LlvmType>, var_arg: VarArg }
-  | NamedType { name: Symbol }
+  | NamedType { name: v2.std.node.Symbol }
 
 type VectorScaling
   = FixedVector
@@ -45,14 +45,14 @@ type LlvmConstant
   | ZeroInitializer { ty: LlvmType }
   | UndefValue { ty: LlvmType }
   | PoisonValue { ty: LlvmType }
-  | BlockAddress { function: Symbol, block: Symbol }
-  | GlobalAddress { name: Symbol }
+  | BlockAddress { function: v2.std.node.Symbol, block: v2.std.node.Symbol }
+  | GlobalAddress { name: v2.std.node.Symbol }
   | ConstantExpr { op: ConstExprOpcode, operands: List<LlvmConstant>, result_type: LlvmType }
 
 type LlvmValue
-  = LocalRef { name: Symbol }
+  = LocalRef { name: v2.std.node.Symbol }
   | ConstantOperand { constant: LlvmConstant }
-  | GlobalRef { name: Symbol }
+  | GlobalRef { name: v2.std.node.Symbol }
 
 type BinaryOpcode
   = OpAdd | OpSub | OpMul | OpUDiv | OpSDiv | OpURem | OpSRem
@@ -85,18 +85,18 @@ type ConstExprOpcode
 
 type PhiIncoming {
   value: LlvmValue
-  block: Symbol
+  block: v2.std.node.Symbol
 }
 
 type PhiNode {
-  result: Symbol
+  result: v2.std.node.Symbol
   result_type: LlvmType
   incomings: List<PhiIncoming>
 }
 
 type SwitchCase {
   match_value: LlvmConstant
-  target: Symbol
+  target: v2.std.node.Symbol
 }
 
 type CallArgument {
@@ -106,7 +106,7 @@ type CallArgument {
 
 type CallResult
   = VoidCall
-  | ValueCall { name: Symbol, result_type: LlvmType }
+  | ValueCall { name: v2.std.node.Symbol, result_type: LlvmType }
 
 type LandingPadCleanup
   = IsCleanup
@@ -156,37 +156,37 @@ type AtomicRmwOp
 
 type LlvmInstruction
   = Binary {
-      result: Symbol
+      result: v2.std.node.Symbol
       result_type: LlvmType
       op: BinaryOpcode
       lhs: LlvmValue
       rhs: LlvmValue
     }
   | Conversion {
-      result: Symbol
+      result: v2.std.node.Symbol
       result_type: LlvmType
       op: ConversionOpcode
       value: LlvmValue
     }
   | IntCompare {
-      result: Symbol
+      result: v2.std.node.Symbol
       predicate: IntPredicate
       lhs: LlvmValue
       rhs: LlvmValue
     }
   | FloatCompare {
-      result: Symbol
+      result: v2.std.node.Symbol
       predicate: FloatPredicate
       lhs: LlvmValue
       rhs: LlvmValue
     }
   | Alloca {
-      result: Symbol
+      result: v2.std.node.Symbol
       allocated_type: LlvmType
       element_count: LlvmValue
     }
   | Load {
-      result: Symbol
+      result: v2.std.node.Symbol
       result_type: LlvmType
       pointer: LlvmValue
       ordering: LoadAtomicity
@@ -197,20 +197,20 @@ type LlvmInstruction
       ordering: StoreAtomicity
     }
   | GetElementPtr {
-      result: Symbol
+      result: v2.std.node.Symbol
       source_type: LlvmType
       base: LlvmValue
       indices: List<LlvmValue>
     }
   | AtomicRmw {
-      result: Symbol
+      result: v2.std.node.Symbol
       op: AtomicRmwOp
       pointer: LlvmValue
       operand: LlvmValue
       ordering: AtomicRmwOrdering
     }
   | CmpXchg {
-      result: Symbol
+      result: v2.std.node.Symbol
       pointer: LlvmValue
       compare_value: LlvmValue
       new_value: LlvmValue
@@ -221,35 +221,35 @@ type LlvmInstruction
       ordering: FenceOrdering
     }
   | ExtractValue {
-      result: Symbol
+      result: v2.std.node.Symbol
       aggregate: LlvmValue
       indices: List<Int>
     }
   | InsertValue {
-      result: Symbol
+      result: v2.std.node.Symbol
       aggregate: LlvmValue
       element: LlvmValue
       indices: List<Int>
     }
   | ExtractElement {
-      result: Symbol
+      result: v2.std.node.Symbol
       vector: LlvmValue
       index: LlvmValue
     }
   | InsertElement {
-      result: Symbol
+      result: v2.std.node.Symbol
       vector: LlvmValue
       element: LlvmValue
       index: LlvmValue
     }
   | ShuffleVector {
-      result: Symbol
+      result: v2.std.node.Symbol
       first: LlvmValue
       second: LlvmValue
       mask: LlvmValue
     }
   | Select {
-      result: Symbol
+      result: v2.std.node.Symbol
       condition: LlvmValue
       if_true: LlvmValue
       if_false: LlvmValue
@@ -260,33 +260,33 @@ type LlvmInstruction
       result: CallResult
     }
   | Freeze {
-      result: Symbol
+      result: v2.std.node.Symbol
       value: LlvmValue
     }
   | FNeg {
-      result: Symbol
+      result: v2.std.node.Symbol
       result_type: LlvmType
       operand: LlvmValue
     }
   | VaArg {
-      result: Symbol
+      result: v2.std.node.Symbol
       result_type: LlvmType
       va_list: LlvmValue
       arg_type: LlvmType
     }
   | LandingPad {
-      result: Symbol
+      result: v2.std.node.Symbol
       result_type: LlvmType
       is_cleanup: LandingPadCleanup
       clauses: List<LandingClause>
     }
   | CatchPad {
-      result: Symbol
+      result: v2.std.node.Symbol
       catch_switch: LlvmValue
       args: List<LlvmValue>
     }
   | CleanupPad {
-      result: Symbol
+      result: v2.std.node.Symbol
       parent_pad: LlvmValue
       args: List<LlvmValue>
     }
@@ -314,36 +314,36 @@ type StoreAtomicity
 type Terminator
   = RetVoid
   | RetValue { value: LlvmValue }
-  | UnconditionalBr { target: Symbol }
-  | ConditionalBr { condition: LlvmValue, if_true: Symbol, if_false: Symbol }
-  | Switch { value: LlvmValue, default_target: Symbol, cases: List<SwitchCase> }
-  | IndirectBr { address: LlvmValue, possible_targets: List<Symbol> }
+  | UnconditionalBr { target: v2.std.node.Symbol }
+  | ConditionalBr { condition: LlvmValue, if_true: v2.std.node.Symbol, if_false: v2.std.node.Symbol }
+  | Switch { value: LlvmValue, default_target: v2.std.node.Symbol, cases: List<SwitchCase> }
+  | IndirectBr { address: LlvmValue, possible_targets: List<v2.std.node.Symbol> }
   | Unreachable
   | Invoke {
       callee: LlvmValue
       arguments: List<CallArgument>
       result: CallResult
-      normal_target: Symbol
-      unwind_target: Symbol
+      normal_target: v2.std.node.Symbol
+      unwind_target: v2.std.node.Symbol
     }
   | CallBr {
       callee: LlvmValue
       arguments: List<CallArgument>
       result: CallResult
-      fallthrough: Symbol
-      indirect_targets: List<Symbol>
+      fallthrough: v2.std.node.Symbol
+      indirect_targets: List<v2.std.node.Symbol>
     }
   | Resume { value: LlvmValue }
-  | CatchSwitch { result: Symbol, parent_pad: LlvmValue, handlers: List<Symbol>, unwind: UnwindDest }
+  | CatchSwitch { result: v2.std.node.Symbol, parent_pad: LlvmValue, handlers: List<v2.std.node.Symbol>, unwind: UnwindDest }
   | CleanupRet { cleanup_pad: LlvmValue, unwind: UnwindDest }
-  | CatchRet { catch_pad: LlvmValue, successor: Symbol }
+  | CatchRet { catch_pad: LlvmValue, successor: v2.std.node.Symbol }
 
 type UnwindDest
   = UnwindToCaller
-  | UnwindToLabel { target: Symbol }
+  | UnwindToLabel { target: v2.std.node.Symbol }
 
 type BasicBlock {
-  label: Symbol
+  label: v2.std.node.Symbol
   phis: List<PhiNode>
   body: List<LlvmInstruction>
   terminator: Terminator
@@ -368,11 +368,11 @@ type FunctionBody
 
 type FunctionParameter {
   ty: LlvmType
-  name: Symbol
+  name: v2.std.node.Symbol
 }
 
 type LlvmFunction {
-  name: Symbol
+  name: v2.std.node.Symbol
   result_type: LlvmType
   parameters: List<FunctionParameter>
   var_arg: VarArg
@@ -389,7 +389,7 @@ type GlobalInitializer
   | InitializedWith { constant: LlvmConstant }
 
 type LlvmGlobal {
-  name: Symbol
+  name: v2.std.node.Symbol
   value_type: LlvmType
   mutability: GlobalMutability
   linkage: Linkage
@@ -398,13 +398,13 @@ type LlvmGlobal {
 }
 
 type NamedStructDef {
-  name: Symbol
+  name: v2.std.node.Symbol
   definition: LlvmType
 }
 
 type LlvmModule {
-  data_layout: Symbol
-  target_triple: Symbol
+  data_layout: v2.std.node.Symbol
+  target_triple: v2.std.node.Symbol
   named_structs: List<NamedStructDef>
   globals: List<LlvmGlobal>
   functions: List<LlvmFunction>
@@ -485,15 +485,15 @@ type LlvmFloatKind
   | LlvmDoubleFloat
 
 type LlvmIntegerPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   bits: LlvmIntegerBits
-  std_projection: Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type LlvmFloatPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   kind: LlvmFloatKind
-  std_projection: Symbol
+  std_projection: v2.std.node.Symbol
 }
 data llvm_facts_i32: LlvmIntegerPrimitiveFacts = LlvmIntegerPrimitiveFacts {
   surface_spelling: ^llvm_surface_spelling_i32,

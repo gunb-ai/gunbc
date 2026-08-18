@@ -126,7 +126,7 @@ data ticket_brief_budget_note: String = "The brief bound (operator's ticket mode
 data ticket_brief_word_budget: Int = 100
 
 type BriefBudgetViolation {
-  node: RoadmapNodeId
+  node: gunbc.roadmap_model.RoadmapNodeId
   words: Int
 }
 

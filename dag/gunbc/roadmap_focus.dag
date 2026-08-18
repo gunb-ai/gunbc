@@ -18,7 +18,7 @@ fn focus_admits_owner(focus: RoadmapFocus, owner: String) -> Bool {
   }
 }
 
-fn focus_admits_node(focus: RoadmapFocus, n: RoadmapNode) -> Bool {
+fn focus_admits_node(focus: RoadmapFocus, n: gunbc.roadmap_model.RoadmapNode) -> Bool {
   focus_admits_owner(focus: focus, owner: n.owner)
 }
 
@@ -26,14 +26,14 @@ data focus_prerequisite_closure_note: String = "A FOCUS MUST BE CLOSED UNDER PRE
 
 fn focus_lane_nodes(
   focus: RoadmapFocus,
-  nodes: List<RoadmapNode>,
-) -> List<RoadmapNode> {
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+) -> List<gunbc.roadmap_model.RoadmapNode> {
   nodes |> filter(n => focus_admits_node(focus: focus, n: n))
 }
 
-fn roadmap_dependency_graph(edges: List<RoadmapEdge>) -> CallGraph {
-  CallGraph {
-    edges: edges |> map(e => GraphEdge {
+fn roadmap_dependency_graph(edges: List<gunbc.roadmap_model.RoadmapEdge>) -> std.graph.CallGraph {
+  std.graph.CallGraph {
+    edges: edges |> map(e => std.graph.GraphEdge {
       caller: e.parent as String,
       callee: e.child as String,
     }),
@@ -42,8 +42,8 @@ fn roadmap_dependency_graph(edges: List<RoadmapEdge>) -> CallGraph {
 
 fn focus_prerequisite_ids(
   focus: RoadmapFocus,
-  nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+  edges: List<gunbc.roadmap_model.RoadmapEdge>,
 ) -> List<String> {
   let names = nodes |> map(n => n.node as String)
   let graph = roadmap_dependency_graph(edges: edges)
@@ -65,9 +65,9 @@ fn focus_prerequisite_ids(
 
 fn focus_visible_nodes(
   focus: RoadmapFocus,
-  nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
-) -> List<RoadmapNode> {
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+  edges: List<gunbc.roadmap_model.RoadmapEdge>,
+) -> List<gunbc.roadmap_model.RoadmapNode> {
   match focus {
     NoFocus => nodes
     FocusOnOwners { label: _, owners: _ } =>
@@ -81,9 +81,9 @@ fn focus_visible_nodes(
 // An edge survives only when BOTH endpoints do. A dependency edge pointing at a hidden node would render as a prerequisite the reader cannot see and cannot act on — worse than omitting it, because it implies the page is complete while pointing off the edge of it. Dropping the edge keeps the visible subgraph internally consistent: everything named on the page is on the page. The cross-lane prerequisite is not lost, it is declared in the authority and returns the moment the focus clears, which is precisely the property that makes filtering safe here and unsafe as an edit.
 fn focus_visible_edges(
   focus: RoadmapFocus,
-  nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
-) -> List<RoadmapEdge> {
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+  edges: List<gunbc.roadmap_model.RoadmapEdge>,
+) -> List<gunbc.roadmap_model.RoadmapEdge> {
   let visible = focus_visible_nodes(focus: focus, nodes: nodes, edges: edges)
   edges |> filter(e =>
     any(visible, n => (n.node as String) == (e.child as String))
@@ -92,8 +92,8 @@ fn focus_visible_edges(
 
 fn focus_hidden_node_count(
   focus: RoadmapFocus,
-  nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+  edges: List<gunbc.roadmap_model.RoadmapEdge>,
 ) -> Int {
   count(nodes) - count(focus_visible_nodes(focus: focus, nodes: nodes, edges: edges))
 }
@@ -116,9 +116,9 @@ data focus_carrier_retention_note: String = "HIDING A NODE MUST NOT ORPHAN ITS D
 
 fn focus_hidden_nodes(
   focus: RoadmapFocus,
-  nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
-) -> List<RoadmapNode> {
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+  edges: List<gunbc.roadmap_model.RoadmapEdge>,
+) -> List<gunbc.roadmap_model.RoadmapNode> {
   let visible = focus_visible_nodes(focus: focus, nodes: nodes, edges: edges)
   nodes |> filter(n => !any(visible, v => (v.node as String) == (n.node as String)))
 }
@@ -129,8 +129,8 @@ fn append_distinct(acc: List<String>, p: String) -> List<String> {
 
 fn focus_hidden_carrier_paths(
   focus: RoadmapFocus,
-  nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+  edges: List<gunbc.roadmap_model.RoadmapEdge>,
 ) -> List<String> {
   fold(
     focus_hidden_nodes(focus: focus, nodes: nodes, edges: edges),
@@ -145,8 +145,8 @@ fn focus_hidden_carrier_paths(
 
 fn focus_hidden_carrier_links(
   focus: RoadmapFocus,
-  nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+  edges: List<gunbc.roadmap_model.RoadmapEdge>,
 ) -> String {
   join(
     map(
@@ -159,8 +159,8 @@ fn focus_hidden_carrier_links(
 
 fn focus_pulled_in_summary(
   focus: RoadmapFocus,
-  nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+  edges: List<gunbc.roadmap_model.RoadmapEdge>,
 ) -> String {
   let pulled = focus_prerequisite_ids(focus: focus, nodes: nodes, edges: edges)
   if count(pulled) == 0 {
@@ -178,8 +178,8 @@ fn focus_pulled_in_summary(
 
 fn focus_notice(
   focus: RoadmapFocus,
-  nodes: List<RoadmapNode>,
-  edges: List<RoadmapEdge>,
+  nodes: List<gunbc.roadmap_model.RoadmapNode>,
+  edges: List<gunbc.roadmap_model.RoadmapEdge>,
 ) -> String {
   match focus {
     NoFocus => ""

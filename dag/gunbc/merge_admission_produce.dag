@@ -126,7 +126,7 @@ fn render_gate_roster_hash_wire(hash: GateRosterHash) -> String {
 }
 
 type MergeTargetTreeHashObservation
-  = MergeTargetTreeHashOk { hash: GitObjectId }
+  = MergeTargetTreeHashOk { hash: extdeps.git.object_store.GitObjectId }
   | MergeTargetTreeHashRefused { ref: String, cause: String }
 
 fn merge_target_tree_hash_show_tree_refusal_cause(stderr: String) -> String {

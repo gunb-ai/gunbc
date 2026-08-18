@@ -1,12 +1,12 @@
 module v2.test.claim.shell_emission_authorization_test
 
 
-fn empty_roster() -> List<ShellEmissionRosterEntry> {
+fn empty_roster() -> List<v2.std.execution_surface.ShellEmissionRosterEntry> {
   []
 }
 
-fn all_absent_gate() -> RuntimeAvailabilityGate {
-  RuntimeAvailabilityGate {
+fn all_absent_gate() -> v2.std.execution_surface.RuntimeAvailabilityGate {
+  v2.std.execution_surface.RuntimeAvailabilityGate {
     gunbc_binary: Absent,
     typed_transport: Absent,
     plan_interpreter: Absent
@@ -42,7 +42,7 @@ test fn bootstrap_window_with_absent_gate_authorizes() -> Bool {
 }
 
 test fn bootstrap_window_with_unknown_availability_refuses() -> Bool {
-  let gate = RuntimeAvailabilityGate {
+  let gate = v2.std.execution_surface.RuntimeAvailabilityGate {
     gunbc_binary: Absent,
     typed_transport: Unknown { cause: "probe not run" },
     plan_interpreter: Absent
@@ -76,7 +76,7 @@ test fn steady_state_without_roster_entry_refuses() -> Bool {
 
 test fn steady_state_with_matching_roster_entry_authorizes() -> Bool {
   let roster = [
-    ShellEmissionRosterEntry {
+    v2.std.execution_surface.ShellEmissionRosterEntry {
       site: ^live_deploy_apply,
       roster_key: "live_deploy_apply",
       dissolution: unbound_dissolution(description: "dissolve-on: live_deploy typed-effect reshape (slice 3)")
@@ -98,7 +98,7 @@ test fn steady_state_with_matching_roster_entry_authorizes() -> Bool {
 
 test fn steady_state_roster_entry_for_other_site_still_refuses() -> Bool {
   let roster = [
-    ShellEmissionRosterEntry {
+    v2.std.execution_surface.ShellEmissionRosterEntry {
       site: ^live_deploy_apply,
       roster_key: "live_deploy_apply",
       dissolution: unbound_dissolution(description: "dissolve-on: live_deploy typed-effect reshape (slice 3)")

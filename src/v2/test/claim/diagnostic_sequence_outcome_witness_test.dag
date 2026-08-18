@@ -1,21 +1,21 @@
 module v2.test.claim.diagnostic_sequence_outcome_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data short_circuit_policy: StageDiagnosticPolicy = StageDiagnosticPolicy { accumulation: ShortCircuit }
-data accumulate_policy: StageDiagnosticPolicy = StageDiagnosticPolicy { accumulation: Accumulate }
+data short_circuit_policy: v2.std.diagnostic.StageDiagnosticPolicy = v2.std.diagnostic.StageDiagnosticPolicy { accumulation: ShortCircuit }
+data accumulate_policy: v2.std.diagnostic.StageDiagnosticPolicy = v2.std.diagnostic.StageDiagnosticPolicy { accumulation: Accumulate }
 
-fn diagnostic_a() -> Diagnostic {
-  Diagnostic {
+fn diagnostic_a() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^sequence_outcome_witness_reason_a
     at: port_locus(port: ^sequence_outcome_witness_port_a)
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn diagnostic_b() -> Diagnostic {
-  Diagnostic {
+fn diagnostic_b() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^sequence_outcome_witness_reason_b
     at: port_locus(port: ^sequence_outcome_witness_port_b)
     correction: Unavailable { reason: ExternalContractUnknown }

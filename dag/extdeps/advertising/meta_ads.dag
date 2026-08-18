@@ -29,8 +29,8 @@ type MetaBillingEvent
 
 type MetaBillingEventRow {
   event: MetaBillingEvent
-  wire_value: NonEmptyStr
-  citation: NonEmptyStr
+  wire_value: std.types.NonEmptyStr
+  citation: std.types.NonEmptyStr
 }
 
 // billing_event is the published API enum naming what the advertiser is CHARGED for; wire values verbatim from the anchor reference. It is a separate axis from optimization_goal (optimize delivery for one event while being billed on another) -- fusing the two would misstate the documented interface, so the optimization-goal roster lands as its own row below.
@@ -124,8 +124,8 @@ type MetaBidStrategy
 
 type MetaBidStrategyRow {
   strategy: MetaBidStrategy
-  wire_value: NonEmptyStr
-  citation: NonEmptyStr
+  wire_value: std.types.NonEmptyStr
+  citation: std.types.NonEmptyStr
 }
 
 data meta_strategy_lowest_cost_without_cap: MetaBidStrategyRow = MetaBidStrategyRow {

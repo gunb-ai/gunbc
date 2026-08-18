@@ -15,9 +15,9 @@ data fixture_missing_unified: String = "1:memory:/legacy.path\n"
 
 data fixture_hierarchy_zero_nonempty_controller: String = "0:cpu:/sys/fs/cgroup\n"
 
-data cgroup_mount_root: FilePathParts = FilePathParts { segments: ["sys", "fs", "cgroup"] }
+data cgroup_mount_root: std.types.FilePathParts = std.types.FilePathParts { segments: ["sys", "fs", "cgroup"] }
 
-data cgroup_walk_var: NonEmptyStr = "d" as NonEmptyStr
+data cgroup_walk_var: std.types.NonEmptyStr = "d" as std.types.NonEmptyStr
 
 data cgroup_shell_witness_note: String = "Compile-time witnesses route through v2.extdeps.languages.bash_proc_self_cgroup bash_membership_assign_from_content (read_unified_cgroup_membership then outcome lowering). Executing shell fixtures for missing/ambiguous/malformed/observed live in test.claim.proc_self_cgroup_real_execution_witness (bin_witness_wet_entries). PERMANENT CROSS-REALIZATION FIXTURE LAW: unified_membership_outcome_tag_from_content(fixture) must equal the executed Bash realization outcome tag for the same fixture; mutation sketches below prove drift in either implementation reds."
 
@@ -132,7 +132,7 @@ test fn proc_self_cgroup_hierarchy_zero_nonempty_controller_not_unified_holds() 
 
 test fn proc_self_cgroup_unified_v2_requires_empty_controller_field_holds() -> Bool {
   !proc_self_cgroup_is_unified_v2_line(
-    hierarchy_id: "0" as NonEmptyStr,
+    hierarchy_id: "0" as std.types.NonEmptyStr,
     controller_list: "cpu",
   )
 }
@@ -242,10 +242,10 @@ test fn bash_assign_from_source_preserves_refusal_markers_holds() -> Bool {
     && string_contains(s: cmd, pattern: "cgroup_membership=ambiguous")
 }
 
-data cgroup_locate_spec: NearestAncestorContaining = NearestAncestorContaining {
-  start: PathRefStart { name: cgroup_walk_var },
+data cgroup_locate_spec: std.path_intent.NearestAncestorContaining = std.path_intent.NearestAncestorContaining {
+  start: std.path_intent.PathRefStart { name: cgroup_walk_var },
   stop_before: cgroup_mount_root,
-  relative_entry: FilePathParts { segments: ["memory.peak"] },
+  relative_entry: std.types.FilePathParts { segments: ["memory.peak"] },
   expected_kind: RegularFile,
 }
 

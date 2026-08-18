@@ -1,17 +1,17 @@
 module test.claim.serving_privilege_derivation_witness_test
 
 
-fn automation() -> SystemPrincipal {
-  NamedPrincipal { login: "gunbc-automation" as NonEmptyStr }
+fn automation() -> gunbc.spark_serving_realization.SystemPrincipal {
+  NamedPrincipal { login: "gunbc-automation" as std.types.NonEmptyStr }
 }
 
-fn target_as(actor: SystemPrincipal) -> ServingDeploymentTarget {
-  ServingDeploymentTarget {
+fn target_as(actor: gunbc.spark_serving_realization.SystemPrincipal) -> gunbc.spark_serving_realization.ServingDeploymentTarget {
+  gunbc.spark_serving_realization.ServingDeploymentTarget {
     actor: actor,
-    unit_name: "gunbc-inference.service" as NonEmptyStr,
-    unit_path: "/etc/systemd/system/gunbc-inference.service" as NonEmptyStr,
-    staged_unit_path: "/home/gunbc-automation/gunbc-inference.service" as NonEmptyStr,
-    runtime_package: "ollama" as NonEmptyStr,
+    unit_name: "gunbc-inference.service" as std.types.NonEmptyStr,
+    unit_path: "/etc/systemd/system/gunbc-inference.service" as std.types.NonEmptyStr,
+    staged_unit_path: "/home/gunbc-automation/gunbc-inference.service" as std.types.NonEmptyStr,
+    runtime_package: "ollama" as std.types.NonEmptyStr,
   }
 }
 
@@ -105,46 +105,46 @@ test fn red_control_non_escalating_effects_contribute_no_grant_line() -> Bool {
 // and the plan is applicable with no administrator credential. This is DERIVED here, not asserted:
 // nothing in the model says "serving needs no privilege".
 test fn w_user_unit_serving_needs_no_new_privilege_against_the_observed_grant() -> Bool {
-  let target = target_as(NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
-  let observed = automation_grants(commands: ["/usr/bin/loginctl enable-linger gunbc-automation" as NonEmptyStr])
+  let target = target_as(NamedPrincipal { login: "gunbc-automation" as std.types.NonEmptyStr })
+  let observed = automation_grants(commands: ["/usr/bin/loginctl enable-linger gunbc-automation" as std.types.NonEmptyStr])
   applicable_without_administrator(shortfall: escalation_shortfall(
-    realization: UserUnitRealization, subject_host: "srv5", expected_credential: content_hash_of_value(value: "fleet-automation-key" as NonEmptyStr), target: target, observed: observed))
+    realization: UserUnitRealization, subject_host: "srv5", expected_credential: content_hash_of_value(value: "fleet-automation-key" as std.types.NonEmptyStr), target: target, observed: observed))
 }
 
 // THE DISCRIMINATING CONTROL. Same realization, same actor, an observed grant population that does
 // NOT hold linger -- the state a freshly built Spark is in. It must report the missing command
 // rather than proceeding, or the join above is measuring nothing.
 test fn w_the_same_install_is_refused_when_linger_is_not_granted() -> Bool {
-  let target = target_as(NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
+  let target = target_as(NamedPrincipal { login: "gunbc-automation" as std.types.NonEmptyStr })
   !applicable_without_administrator(shortfall: escalation_shortfall(
     realization: UserUnitRealization, subject_host: "srv5",
-    expected_credential: content_hash_of_value(value: "fleet-automation-key" as NonEmptyStr), target: target,
+    expected_credential: content_hash_of_value(value: "fleet-automation-key" as std.types.NonEmptyStr), target: target,
     observed: automation_grants(commands: [])))
 }
 
 // AN UNOBSERVED GRANT POPULATION IS NOT AN EMPTY ONE. Reading "we could not see the grants" as
 // "there are none" would authorize an install the real host refuses.
 test fn w_an_unobserved_grant_population_does_not_authorize_the_install() -> Bool {
-  let target = target_as(NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
+  let target = target_as(NamedPrincipal { login: "gunbc-automation" as std.types.NonEmptyStr })
   !applicable_without_administrator(shortfall: escalation_shortfall(
     realization: UserUnitRealization, subject_host: "srv5",
-    expected_credential: content_hash_of_value(value: "fleet-automation-key" as NonEmptyStr), target: target,
-    observed: GrantPopulationUnobserved { host: "srv5", principal: "gunbc-automation" as NonEmptyStr, cause: "sudo -n -l could not be reached" as NonEmptyStr }))
+    expected_credential: content_hash_of_value(value: "fleet-automation-key" as std.types.NonEmptyStr), target: target,
+    observed: GrantPopulationUnobserved { host: "srv5", principal: "gunbc-automation" as std.types.NonEmptyStr, cause: "sudo -n -l could not be reached" as std.types.NonEmptyStr }))
 }
 
 // THE PACKAGED RUNTIME STILL COSTS ROOT, which is what proves the closure effect changed the
 // derivation rather than the derivation being insensitive to it.
 test fn w_the_packaged_runtime_still_requires_escalation() -> Bool {
-  effect_requires_escalation(effect: InstallRuntimePackage, actor: NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
-    && !effect_requires_escalation(effect: InstallOwnedRuntimeClosure, actor: NamedPrincipal { login: "gunbc-automation" as NonEmptyStr })
+  effect_requires_escalation(effect: InstallRuntimePackage, actor: NamedPrincipal { login: "gunbc-automation" as std.types.NonEmptyStr })
+    && !effect_requires_escalation(effect: InstallOwnedRuntimeClosure, actor: NamedPrincipal { login: "gunbc-automation" as std.types.NonEmptyStr })
 }
 
 
-fn automation_grants(commands: List<NonEmptyStr>) -> ObservedGrantPopulation {
+fn automation_grants(commands: List<std.types.NonEmptyStr>) -> gunbc.spark_serving_realization.ObservedGrantPopulation {
   GrantPopulationObserved {
     host: "srv5",
-    principal: "gunbc-automation" as NonEmptyStr,
-    credential_identity: content_hash_of_value(value: "fleet-automation-key" as NonEmptyStr),
+    principal: "gunbc-automation" as std.types.NonEmptyStr,
+    credential_identity: content_hash_of_value(value: "fleet-automation-key" as std.types.NonEmptyStr),
     commands: commands,
   }
 }

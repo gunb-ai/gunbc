@@ -2,11 +2,11 @@ module v2.test.lens_structural_resolution.binds_to_resolved
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-data sr_claim_hash: Hash = sr_claim_hash
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data sr_claim_hash: v2.std.node.Hash = sr_claim_hash
 
-fn sr_claim_atom(s: Symbol) -> Node {
-  Node {
+fn sr_claim_atom(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -15,22 +15,22 @@ fn sr_claim_atom(s: Symbol) -> Node {
 
 data sr_use: Node = sr_claim_atom(s: ^sr_use_symbol)
 
-data sr_decl: Node = Node {
+data sr_decl: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_use }
+    v2.std.node.Edge { label: Named { name: ^dependency_binds_to_edge }, target: sr_use }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data sr_dependency: DependencyView = DependencyView {
+data sr_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: sr_decl,
   dependent: sr_use,
   kind: BindsTo,
   usage_site: sr_use
 }
 
-fn sr_claim_facts() -> InferredFacts {
+fn sr_claim_facts() -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^sr_type_symbol,
     algebra_symbol: ^sr_algebra_symbol,
@@ -38,7 +38,7 @@ fn sr_claim_facts() -> InferredFacts {
   )
 }
 
-fn sr_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
+fn sr_claim_fact_map(facts: v2.compiler.infer.InferredFacts) -> Map<Node, v2.compiler.infer.InferredFacts> {
   Map {
     lookup: fn(_) {
       Present { value: facts }
@@ -46,19 +46,19 @@ fn sr_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
   }
 }
 
-fn sr_claim_tree() -> InferredTree {
+fn sr_claim_tree() -> v2.compiler.infer.InferredTree {
   let facts = sr_claim_facts()
-  InferredTree {
+  v2.compiler.infer.InferredTree {
     root: sr_decl,
     facts: sr_claim_fact_map(facts: facts)
   }
 }
 
-data binds_to_resolved_claim: LensStructuralResolutionClaim = LensStructuralResolutionClaim {
+data binds_to_resolved_claim: v2.test.lens_structural_resolution.claim_carrier.LensStructuralResolutionClaim = v2.test.lens_structural_resolution.claim_carrier.LensStructuralResolutionClaim {
   input: sr_claim_tree(),
-  expected: StructuralResolutionFact {
+  expected: v2.lens.structural_resolution.StructuralResolutionFact {
     dependencies: [
-      ClassifiedDependencyView {
+      v2.std.dependency.ClassifiedDependencyView {
         dependency: sr_dependency,
         classification: BindingResolved
       }

@@ -16,7 +16,7 @@ type GeneratedProjectionPathsRefusal
       first_source: GeneratedProjectionPathSource,
       duplicate_source: GeneratedProjectionPathSource
     }
-  | GeneratedProjectionStage0PlanRefused { cause: Stage0EmissionPlanRefusalCause }
+  | GeneratedProjectionStage0PlanRefused { cause: gunbc.stage0_emit_plan.Stage0EmissionPlanRefusalCause }
 
 type GeneratedProjectionPathsOutcome
   = GeneratedProjectionPathsAccepted { paths: List<String> }

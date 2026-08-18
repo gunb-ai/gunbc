@@ -23,7 +23,7 @@ type HostStandupPhase
   | Assimilation { phase: HostStandupAssimilationPhase }
 
 type PhaseDisposition
-  = ModeledCompose { authorities: List<DeclarationRef> }
+  = ModeledCompose { authorities: List<std.decl_ref.DeclarationRef> }
   | DeclaredGap {
       interim_realization: String
       refusal: String
@@ -31,9 +31,9 @@ type PhaseDisposition
 
 type HostStandupStep {
   phase: HostStandupPhase
-  label: NonEmptyStr
+  label: std.types.NonEmptyStr
   disposition: PhaseDisposition
-  effect_evidence: IdempotencyEvidence
+  effect_evidence: std.effects.IdempotencyEvidence
 }
 
 type GapLedgerRow {
@@ -60,9 +60,9 @@ type AssimilationObligation {
 
 type GreenPlacePinCoherentWitness
   = GreenPlaceFromGunbcGate {
-      noop_satisfied_authority: DeclarationRef
-      marker_satisfied_authority: DeclarationRef
-      desired_pin_authority: DeclarationRef
+      noop_satisfied_authority: std.decl_ref.DeclarationRef
+      marker_satisfied_authority: std.decl_ref.DeclarationRef
+      desired_pin_authority: std.decl_ref.DeclarationRef
       gate_verdict: Bool
     }
   | GreenPlacePinRefused { reason: String }

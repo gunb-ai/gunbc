@@ -3,27 +3,27 @@ module test.claim.roadmap_forecast_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn assumptions_with_cap(max_concurrent: Int) -> ScheduleForecastAssumptions {
-  ScheduleForecastAssumptions {
-    worker_concurrency_cap: BeltCapacity { max_concurrent: max_concurrent },
-    review_cycle_count: ReviewCycleCount { count: positive_measure_count(predecessor: 0) },
-    operator_merge_latency: OperatorMergeLatencyAssumption { duration: millisecond(count: 5) },
+fn assumptions_with_cap(max_concurrent: Int) -> gunbc.roadmap_forecast.ScheduleForecastAssumptions {
+  gunbc.roadmap_forecast.ScheduleForecastAssumptions {
+    worker_concurrency_cap: gunbc.roadmap_belt.BeltCapacity { max_concurrent: max_concurrent },
+    review_cycle_count: gunbc.roadmap_forecast.ReviewCycleCount { count: positive_measure_count(predecessor: 0) },
+    operator_merge_latency: gunbc.roadmap_forecast.OperatorMergeLatencyAssumption { duration: millisecond(count: 5) },
     belt_slot_occupancy: end_to_end_belt_slot_occupancy_assumption,
   }
 }
 
-fn assumptions() -> ScheduleForecastAssumptions {
+fn assumptions() -> gunbc.roadmap_forecast.ScheduleForecastAssumptions {
   assumptions_with_cap(max_concurrent: 3)
 }
 
-fn anchor() -> ForecastAnchorObservation {
-  ForecastAnchorObservation { observed_at: 1000 }
+fn anchor() -> gunbc.roadmap_forecast.ForecastAnchorObservation {
+  gunbc.roadmap_forecast.ForecastAnchorObservation { observed_at: 1000 }
 }
 
-fn sized_node(id: String, cell: SizingCell) -> RoadmapNode {
-  RoadmapNode {
-    identity: concat("fixture-", id) as RoadmapNodeIdentity,
-    node: id as RoadmapNodeId,
+fn sized_node(id: String, cell: gunbc.roadmap_forecast.SizingCell) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: concat("fixture-", id) as gunbc.roadmap_model.RoadmapNodeIdentity,
+    node: id as gunbc.roadmap_model.RoadmapNodeId,
     line: PlainLine { content: id },
     carriers: [],
     sizing: Sized {
@@ -38,9 +38,9 @@ fn sized_node(id: String, cell: SizingCell) -> RoadmapNode {
   }
 }
 
-fn unsized_node(id: String) -> RoadmapNode {
-  let base = sized_node(id: id, cell: SizingCell { intricacy: IntricacyLow, volume: VolumeSmall })
-  RoadmapNode {
+fn unsized_node(id: String) -> gunbc.roadmap_model.RoadmapNode {
+  let base = sized_node(id: id, cell: gunbc.roadmap_forecast.SizingCell { intricacy: IntricacyLow, volume: VolumeSmall })
+  gunbc.roadmap_model.RoadmapNode {
     identity: base.identity,
     node: base.node,
     line: base.line,
@@ -52,9 +52,9 @@ fn unsized_node(id: String) -> RoadmapNode {
   }
 }
 
-fn observation(id: String, cell: SizingCell, duration_ms: Int) -> CycleTimeObservation {
-  CycleTimeObservation {
-    node: id as RoadmapNodeId,
+fn observation(id: String, cell: gunbc.roadmap_forecast.SizingCell, duration_ms: Int) -> gunbc.roadmap_forecast.CycleTimeObservation {
+  gunbc.roadmap_forecast.CycleTimeObservation {
+    node: id as gunbc.roadmap_model.RoadmapNodeId,
     sizing_cell: cell,
     pull_number: duration_ms,
     cycle_time: millisecond(count: duration_ms),
@@ -64,11 +64,11 @@ fn observation(id: String, cell: SizingCell, duration_ms: Int) -> CycleTimeObser
   }
 }
 
-fn fixture_cell() -> SizingCell {
-  SizingCell { intricacy: IntricacyMedium, volume: VolumeMedium }
+fn fixture_cell() -> gunbc.roadmap_forecast.SizingCell {
+  gunbc.roadmap_forecast.SizingCell { intricacy: IntricacyMedium, volume: VolumeMedium }
 }
 
-fn fixture_observations() -> List<CycleTimeObservation> {
+fn fixture_observations() -> List<gunbc.roadmap_forecast.CycleTimeObservation> {
   [
     observation(id: "history-a", cell: fixture_cell(), duration_ms: 10),
     observation(id: "history-b", cell: fixture_cell(), duration_ms: 20),
@@ -94,15 +94,15 @@ test fn witness_cited_acceptance_pr_history_joins_without_refusal() -> Bool {
 test fn witness_live_calibration_keeps_small_sample_intervals() -> Bool {
   let observations = accepted_cycle_time_observations(builds: roadmap_cycle_time_observation_builds())
   let low_small = calibrate_cell(
-    cell: SizingCell { intricacy: IntricacyLow, volume: VolumeSmall },
+    cell: gunbc.roadmap_forecast.SizingCell { intricacy: IntricacyLow, volume: VolumeSmall },
     observations: observations,
   )
   let medium_medium = calibrate_cell(
-    cell: SizingCell { intricacy: IntricacyMedium, volume: VolumeMedium },
+    cell: gunbc.roadmap_forecast.SizingCell { intricacy: IntricacyMedium, volume: VolumeMedium },
     observations: observations,
   )
   let high_medium = calibrate_cell(
-    cell: SizingCell { intricacy: IntricacyHigh, volume: VolumeMedium },
+    cell: gunbc.roadmap_forecast.SizingCell { intricacy: IntricacyHigh, volume: VolumeMedium },
     observations: observations,
   )
   match low_small {
@@ -220,7 +220,7 @@ test fn witness_fully_calibrated_graph_derives_three_point_critical_path() -> Bo
   let c = sized_node(id: "c", cell: fixture_cell())
   let result = schedule_forecast(
     nodes: [a, b, c],
-    edges: [RoadmapEdge { child: b.node, parent: a.node }],
+    edges: [gunbc.roadmap_model.RoadmapEdge { child: b.node, parent: a.node }],
     observations: fixture_observations(),
     history_refusals: [],
     population_exclusions: [],
@@ -385,7 +385,7 @@ test fn witness_unsized_node_refuses() -> Bool {
 test fn witness_empty_calibration_cell_refuses() -> Bool {
   let n = sized_node(
     id: "missing-cell",
-    cell: SizingCell { intricacy: IntricacyHigh, volume: VolumeSmall },
+    cell: gunbc.roadmap_forecast.SizingCell { intricacy: IntricacyHigh, volume: VolumeSmall },
   )
   match schedule_forecast(
     nodes: [n],
@@ -418,8 +418,8 @@ test fn witness_dependency_cycle_refuses() -> Bool {
   match schedule_forecast(
     nodes: [a, b],
     edges: [
-      RoadmapEdge { child: a.node, parent: b.node },
-      RoadmapEdge { child: b.node, parent: a.node },
+      gunbc.roadmap_model.RoadmapEdge { child: a.node, parent: b.node },
+      gunbc.roadmap_model.RoadmapEdge { child: b.node, parent: a.node },
     ],
     observations: fixture_observations(),
     history_refusals: [],
@@ -445,7 +445,7 @@ test fn witness_dependency_cycle_refuses() -> Bool {
 
 test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
   let a = sized_node(id: "projection-a", cell: fixture_cell())
-  let observed: CycleTimeObservation = first(fixture_observations())
+  let observed: gunbc.roadmap_forecast.CycleTimeObservation = first(fixture_observations())
   match schedule_forecast(
     nodes: [a],
     edges: [],
@@ -457,7 +457,7 @@ test fn witness_forecast_cannot_promote_into_observation_position() -> Bool {
   ) {
     ScheduleForecastRefused { refusals: _ } => false
     ScheduleForecastKnown { forecast } => {
-      let projected: ScheduleForecast = forecast
+      let projected: gunbc.roadmap_forecast.ScheduleForecast = forecast
       millisecond_count(m: observed.cycle_time) == 10
         && projected.anchor.observed_at == anchor().observed_at
     }

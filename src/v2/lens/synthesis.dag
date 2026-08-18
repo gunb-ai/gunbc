@@ -10,22 +10,22 @@ type LowerBoundTechnique
 
 type DeclaredRelationBound {
   technique: LowerBoundTechnique
-  lower_bound: ComplexityBound
-  relation_locus: Locus
+  lower_bound: v2.lens.complexity.ComplexityBound
+  relation_locus: v2.std.diagnostic.Locus
 }
 
 type SynthesisOutcome
   = SynthesisGap {
-      realization_cost: ComplexityBound
+      realization_cost: v2.lens.complexity.ComplexityBound
       lower_bound: DeclaredRelationBound
-      report: Report
+      report: v2.std.report.Report
     }
   | SynthesisOptimal {
-      realization_cost: ComplexityBound
+      realization_cost: v2.lens.complexity.ComplexityBound
       lower_bound: DeclaredRelationBound
     }
   | SynthesisNoTechnique {
-      diagnostic: Diagnostic
+      diagnostic: v2.std.diagnostic.Diagnostic
     }
 
 fn synthesis_no_technique_diagnostic(n: Node) -> Diagnostic {

@@ -31,14 +31,14 @@ fn parallelism_claim_tree() -> InferredTree {
 }
 
 type LensParallelismClaim {
-  input: InferredTree
-  expected: ParallelismFact
-  actual: Witness<ParallelismFact>
+  input: v2.compiler.infer.InferredTree
+  expected: v2.lens.parallelism.ParallelismFact
+  actual: Witness<v2.lens.parallelism.ParallelismFact>
 }
 
 type LensParallelismSubjectRosterContract {
   run: TestClaimRun<Node, RuntimeValue>
-  unsupported_rows: List<Symbol>
+  unsupported_rows: List<v2.std.node.Symbol>
 }
 
 data parallelism_data_dependency_claim: LensParallelismClaim = LensParallelismClaim {

@@ -5,57 +5,57 @@ module gunbc.host_effect_realize
 type TypedReconcileKind = TypedReconcileFetch | TypedReconcileRemaster
 
 type ResolvedHostEffectCell =
-    ShellOnHost { node: ComputeHost, script: RetainedShellScript }
-  | RedfishOnBmc { node: ComputeHost, action: RedfishSystemAction }
-  | ConvergeOnHost { node: ComputeHost, host_converge: HostConverge }
-  | TypedReconcileOnHost { node: ComputeHost, kind: TypedReconcileKind }
-  | OsInstallActuatorToolchainOnHost { node: ComputeHost }
-  | ProvisionBuildCacheOnHost { node: ComputeHost, catalog_id: String }
-  | ProvisionCodexRuntimeOnHost { node: ComputeHost }
-  | HostnameOnHost { node: ComputeHost, hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
-  | HostnameReadOnHost { node: ComputeHost }
+    ShellOnHost { node: gunbc.fleet_intent.ComputeHost, script: gunbc.retained_shell_script.RetainedShellScript }
+  | RedfishOnBmc { node: gunbc.fleet_intent.ComputeHost, action: extdeps.bmc.types.RedfishSystemAction }
+  | ConvergeOnHost { node: gunbc.fleet_intent.ComputeHost, host_converge: gunbc.host_converge.HostConverge }
+  | TypedReconcileOnHost { node: gunbc.fleet_intent.ComputeHost, kind: TypedReconcileKind }
+  | OsInstallActuatorToolchainOnHost { node: gunbc.fleet_intent.ComputeHost }
+  | ProvisionBuildCacheOnHost { node: gunbc.fleet_intent.ComputeHost, catalog_id: String }
+  | ProvisionCodexRuntimeOnHost { node: gunbc.fleet_intent.ComputeHost }
+  | HostnameOnHost { node: gunbc.fleet_intent.ComputeHost, hostnamectl_path: std.types.NonEmptyStr, base: extdeps.dns.domain_name.DnsLabel, desired: extdeps.dns.domain_name.DnsLabel }
+  | HostnameReadOnHost { node: gunbc.fleet_intent.ComputeHost }
   | NbdProxySessionOnHost {
-      node: ComputeHost,
-      intent: NbdProxyServeTransportIntent,
-      lease_key: NonEmptyStr,
+      node: gunbc.fleet_intent.ComputeHost,
+      intent: extdeps.bmc.webui.nbd_proxy_serve.NbdProxyServeTransportIntent,
+      lease_key: std.types.NonEmptyStr,
     }
   | CodexSupervisedWorkerTurnOnHost {
-      node: ComputeHost,
-      intent: CodexAppServerStdioSessionIntent,
-      lease_key: NonEmptyStr,
+      node: gunbc.fleet_intent.ComputeHost,
+      intent: extdeps.llm.codex_app_server_stdio_session.CodexAppServerStdioSessionIntent,
+      lease_key: std.types.NonEmptyStr,
     }
-  | ReceiptEmitOnHost { node: ComputeHost, lines: List<String> }
-  | BootOnceReadBackSleepOnHost { node: ComputeHost }
-  | SeededInstallMediaToolchainOnHost { node: ComputeHost }
-  | BmcwebSessionLoginOnHost { node: ComputeHost }
-  | BmcwebTokenExtractOnHost { node: ComputeHost }
-  | EffectivePrincipalReadOnHost { node: ComputeHost, read: EffectivePosixPrincipalRead }
-  | SudoNopasswdExecuteProbeOnHost { node: ComputeHost, probe: SudoNopasswdExecuteProbeShape }
-  | SudoNopasswdGrantListProbeOnHost { node: ComputeHost, probe: SudoNopasswdGrantListProbeShape }
-  | LiveDeployApplyOnHost { node: ComputeHost, spec: DeploymentSpec, candidate: CandidateRelease }
-  | LiveDeployRetractOnHost { node: ComputeHost, spec: DeploymentSpec }
-  | LiveDeployEnsureDependencyOnHost { node: ComputeHost, dep: DeploymentDependencyStep }
-  | LiveDeployDigestReadbackOnHost { node: ComputeHost, port: Int }
-  | EnsureActionsRunnerReleaseOnHost { node: ComputeHost, runner_release: ActionsRunnerRelease }
+  | ReceiptEmitOnHost { node: gunbc.fleet_intent.ComputeHost, lines: List<String> }
+  | BootOnceReadBackSleepOnHost { node: gunbc.fleet_intent.ComputeHost }
+  | SeededInstallMediaToolchainOnHost { node: gunbc.fleet_intent.ComputeHost }
+  | BmcwebSessionLoginOnHost { node: gunbc.fleet_intent.ComputeHost }
+  | BmcwebTokenExtractOnHost { node: gunbc.fleet_intent.ComputeHost }
+  | EffectivePrincipalReadOnHost { node: gunbc.fleet_intent.ComputeHost, read: extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead }
+  | SudoNopasswdExecuteProbeOnHost { node: gunbc.fleet_intent.ComputeHost, probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdExecuteProbeShape }
+  | SudoNopasswdGrantListProbeOnHost { node: gunbc.fleet_intent.ComputeHost, probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape }
+  | LiveDeployApplyOnHost { node: gunbc.fleet_intent.ComputeHost, spec: gunbc.live_deploy.spec.DeploymentSpec, candidate: gunbc.live_deploy.candidate.CandidateRelease }
+  | LiveDeployRetractOnHost { node: gunbc.fleet_intent.ComputeHost, spec: gunbc.live_deploy.spec.DeploymentSpec }
+  | LiveDeployEnsureDependencyOnHost { node: gunbc.fleet_intent.ComputeHost, dep: gunbc.live_deploy.spec.DeploymentDependencyStep }
+  | LiveDeployDigestReadbackOnHost { node: gunbc.fleet_intent.ComputeHost, port: Int }
+  | EnsureActionsRunnerReleaseOnHost { node: gunbc.fleet_intent.ComputeHost, runner_release: extdeps.github.actions_runner.ActionsRunnerRelease }
   | EnsureRunnerSlotDirectoryOnHost {
-      node: ComputeHost,
-      slot: RunnerSlotIdentity,
-      artifact: ActionsRunnerBinaryArtifact,
+      node: gunbc.fleet_intent.ComputeHost,
+      slot: gunbc.build_cache_instance.RunnerSlotIdentity,
+      artifact: extdeps.github.actions_runner.ActionsRunnerBinaryArtifact,
     }
-  | EnsureRunnerJitWrapperOnHost { node: ComputeHost, host_label: NonEmptyStr }
-  | EnsureRunnerSystemdTemplateOnHost { node: ComputeHost, host_label: NonEmptyStr }
-  | EnsureRunnerMemoryCapsOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
-  | ActivateRunnerSlotOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
+  | EnsureRunnerJitWrapperOnHost { node: gunbc.fleet_intent.ComputeHost, host_label: std.types.NonEmptyStr }
+  | EnsureRunnerSystemdTemplateOnHost { node: gunbc.fleet_intent.ComputeHost, host_label: std.types.NonEmptyStr }
+  | EnsureRunnerMemoryCapsOnHost { node: gunbc.fleet_intent.ComputeHost, slot: gunbc.build_cache_instance.RunnerSlotIdentity }
+  | ActivateRunnerSlotOnHost { node: gunbc.fleet_intent.ComputeHost, slot: gunbc.build_cache_instance.RunnerSlotIdentity }
   | ReplaceRunnerIncarnationOnHost {
-      node: ComputeHost,
-      from: LocalRunnerSlotIncarnation,
-      cause: RunnerReplacementCause,
+      node: gunbc.fleet_intent.ComputeHost,
+      from: gunbc.runner_incarnation.LocalRunnerSlotIncarnation,
+      cause: gunbc.runner_lifecycle.RunnerReplacementCause,
     }
-  | ObserveRunnerLocalStateOnHost { node: ComputeHost, slot: RunnerSlotIdentity }
+  | ObserveRunnerLocalStateOnHost { node: gunbc.fleet_intent.ComputeHost, slot: gunbc.build_cache_instance.RunnerSlotIdentity }
   | ObserveGitHubRunnerRegistrationOnHost {
-      node: ComputeHost,
-      slot: RunnerSlotIdentity,
-      organization: NonEmptyStr,
+      node: gunbc.fleet_intent.ComputeHost,
+      slot: gunbc.build_cache_instance.RunnerSlotIdentity,
+      organization: std.types.NonEmptyStr,
     }
   | IncompatibleCell { reason: String }
 

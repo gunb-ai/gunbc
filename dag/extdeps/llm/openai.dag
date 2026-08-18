@@ -52,7 +52,7 @@ type FunctionCall {
 
 type OpenAiToolCallType
   = OpenAiToolCallFunction
-  | OpenAiToolCallTypeOther { raw: NonEmptyStr }
+  | OpenAiToolCallTypeOther { raw: std.types.NonEmptyStr }
 
 data openai_tool_call_function_wire: String = "function"
 
@@ -208,7 +208,7 @@ data structural_coverage_gap_openai_chat_message_additive_tool_calls: List<Cover
 
 type OpenAiResponsesOutputContentType
   = OpenAiResponsesOutputText
-  | OpenAiResponsesOutputContentTypeOther { raw: NonEmptyStr }
+  | OpenAiResponsesOutputContentTypeOther { raw: std.types.NonEmptyStr }
 
 data openai_responses_output_text_wire: String = "output_text"
 
@@ -226,7 +226,7 @@ fn openai_responses_output_content_type_label(kind: OpenAiResponsesOutputContent
 
 type OpenAiResponsesOutputItemType
   = OpenAiResponsesOutputMessage
-  | OpenAiResponsesOutputItemTypeOther { raw: NonEmptyStr }
+  | OpenAiResponsesOutputItemTypeOther { raw: std.types.NonEmptyStr }
 
 data openai_responses_output_message_wire: String = "message"
 
@@ -249,7 +249,7 @@ type OpenAiResponsesStatus
   | OpenAiResponsesStatusIncomplete
   | OpenAiResponsesStatusCancelled
   | OpenAiResponsesStatusQueued
-  | OpenAiResponsesStatusOther { raw: NonEmptyStr }
+  | OpenAiResponsesStatusOther { raw: std.types.NonEmptyStr }
 
 data openai_responses_status_completed_wire: String = "completed"
 data openai_responses_status_failed_wire: String = "failed"
@@ -284,7 +284,7 @@ type OpenAiResponsesOutputItemStatus
   = OpenAiResponsesOutputItemInProgress
   | OpenAiResponsesOutputItemCompleted
   | OpenAiResponsesOutputItemIncomplete
-  | OpenAiResponsesOutputItemStatusOther { raw: NonEmptyStr }
+  | OpenAiResponsesOutputItemStatusOther { raw: std.types.NonEmptyStr }
 
 fn parse_openai_responses_output_item_status(raw: String) -> OpenAiResponsesOutputItemStatus {
   if raw == openai_responses_status_in_progress_wire { OpenAiResponsesOutputItemInProgress }

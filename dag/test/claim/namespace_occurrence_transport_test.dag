@@ -630,8 +630,8 @@ test fn w_namespace_occurrence_transport_preserves_graph_allocator() -> Bool {
 }
 
 type AncestoredDeclarationFixture {
-  entry: OccurrenceIndexEntry
-  declaration: DeclarationOccurrence
+  entry: std.occurrence_identity.OccurrenceIndexEntry
+  declaration: std.occurrence_identity.DeclarationOccurrence
 }
 
 fn fixture_ancestored_declaration(

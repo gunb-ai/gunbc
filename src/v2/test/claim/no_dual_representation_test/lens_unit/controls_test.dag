@@ -1,7 +1,7 @@
 module v2.test.no_dual_representation_test.lens_unit.controls
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn same_symbol_equality_is_red() -> Bool {
   dual_rep_violation_count_from_scans(scans: [synthetic_same_symbol_scan()]) == 1

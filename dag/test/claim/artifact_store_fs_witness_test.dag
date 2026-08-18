@@ -8,8 +8,8 @@ data artifact_store_fs_witness_note: String = "P2 host-transport witnesses: the 
 data fs_store_root: String = "/tmp/gunbc_artifact_store_witness"
 data non_scratch_store_root: String = "/tmp/other_scratch"
 
-fn stored_key(toolchain: String) -> ContentHash {
-  artifact_key_hash(key: ArtifactKey {
+fn stored_key(toolchain: String) -> std.content_hash.ContentHash {
+  artifact_key_hash(key: std.artifact_store.ArtifactKey {
     closure_digest: content_hash_atom(value: "fs-transport-closure-fixture"),
     emitter_identity: "v1-seed",
     target_language: "rust",
@@ -94,8 +94,8 @@ data artifact_store_fs_eviction_witness_note: String = "The budget-enforcement r
 
 data eviction_store_root: String = "/tmp/gunbc_artifact_store_eviction_witness"
 
-fn eviction_key(tag: String) -> ContentHash {
-  artifact_key_hash(key: ArtifactKey {
+fn eviction_key(tag: String) -> std.content_hash.ContentHash {
+  artifact_key_hash(key: std.artifact_store.ArtifactKey {
     closure_digest: content_hash_atom(value: tag),
     emitter_identity: "v1-seed",
     target_language: "rust",
@@ -103,11 +103,11 @@ fn eviction_key(tag: String) -> ContentHash {
   })
 }
 
-fn eviction_probe_store() -> ArtifactStore {
-  ArtifactStore { budget: byte_size(count: 60), next_ordinal: 1, rows: [] }
+fn eviction_probe_store() -> std.artifact_store.ArtifactStore {
+  std.artifact_store.ArtifactStore { budget: byte_size(count: 60), next_ordinal: 1, rows: [] }
 }
 
-fn fs_list_contains(entries: List<String>, key: ContentHash) -> Bool {
+fn fs_list_contains(entries: List<String>, key: std.content_hash.ContentHash) -> Bool {
   entries |> any(e => string_contains(e, key))
 }
 

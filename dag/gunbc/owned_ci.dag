@@ -13,7 +13,7 @@ data owned_ci_default_lease: Second = second(count: 3600)
 
 type QueueLease {
   holder: String
-  expires_at: NumericDate
+  expires_at: extdeps.auth.jwt.NumericDate
 }
 
 fn owned_ci_default_lease_seconds_count() -> Int {
@@ -31,9 +31,9 @@ type CheckPublicationState
   = CheckPublicationNotStarted
   | CheckPublicationQueued { check_run_id: Int? }
   | CheckPublicationInProgress { check_run_id: Int }
-  | CheckPublicationCompleted { check_run_id: Int, conclusion: CheckConclusion }
-  | CheckPublicationPending { local_conclusion: CheckConclusion, details_url: NonEmptyStr }
-  | CheckPublicationFailed { cause: NonEmptyStr, local_conclusion: CheckConclusion }
+  | CheckPublicationCompleted { check_run_id: Int, conclusion: extdeps.github.checks.CheckConclusion }
+  | CheckPublicationPending { local_conclusion: extdeps.github.checks.CheckConclusion, details_url: std.types.NonEmptyStr }
+  | CheckPublicationFailed { cause: std.types.NonEmptyStr, local_conclusion: extdeps.github.checks.CheckConclusion }
 
 fn owned_ci_state_root(workspace_root: String) -> String {
   concat(workspace_root, concat("/", owned_ci_state_root_rel))
@@ -131,7 +131,7 @@ fn owned_ci_queue_claimed_rel_dir() -> String {
 
 type PrPollGithubReadAdmission
   = PrPollGithubReadAdmitted
-  | PrPollGithubReadRefused { cause: NonEmptyStr }
+  | PrPollGithubReadRefused { cause: std.types.NonEmptyStr }
 
 fn owned_ci_pr_poll_missing_github_token_cause() -> NonEmptyStr {
   "GITHUB_TOKEN required for owned-ci poll (fail-closed: cannot discover PR subjects without GitHub read)" as NonEmptyStr
@@ -157,18 +157,18 @@ fn owned_ci_pr_poll_github_read_admission(token_observation: String?) -> PrPollG
 type QueueLeaseExpiryDecision
   = LeaseClockExpired
   | LeaseClockNotExpired
-  | LeaseClockRefused { cause: NonEmptyStr }
+  | LeaseClockRefused { cause: std.types.NonEmptyStr }
 
 type QueueLeaseReclaimDecision
   = ReclaimExpiredLease
   | RetainActiveLease
-  | LeaseReclaimRefused { cause: NonEmptyStr }
+  | LeaseReclaimRefused { cause: std.types.NonEmptyStr }
 
 type QueueLeaseValidityDecision
   = LeaseValidForHolder
   | LeaseInvalidHolder
   | LeaseExpiredForHolder
-  | LeaseValidityRefused { cause: NonEmptyStr }
+  | LeaseValidityRefused { cause: std.types.NonEmptyStr }
 
 fn queue_lease_expiry_decision(lease: QueueLease, now: NumericDate) -> QueueLeaseExpiryDecision {
   match lease.expires_at {

@@ -54,8 +54,8 @@ fn observe_local_tree_revision(repo: std.types.FilePath) -> GitObjectId? {
 // comparison could not be made and why — it is unobserved-GRADE for the fold, never
 // satisfied (leg-f ruling shape).
 type FleetRevisionStanding
-  = RevisionConverged { revision: GitObjectId }
-  | RevisionDrifted { desired: GitObjectId, local: GitObjectId }
+  = RevisionConverged { revision: extdeps.git.object_store.GitObjectId }
+  | RevisionDrifted { desired: extdeps.git.object_store.GitObjectId, local: extdeps.git.object_store.GitObjectId }
   | RevisionUnobserved { cause: String }
 
 fn fleet_revision_standing(repo: std.types.FilePath) -> FleetRevisionStanding {

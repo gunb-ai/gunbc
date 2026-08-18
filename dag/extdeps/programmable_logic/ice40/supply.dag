@@ -121,7 +121,7 @@ data all_configuration_modes: List<Ice40ConfigurationMode> = [
 // plausible output in its smallest form: two plausible volts where the answer is "do not connect
 // this". The arms are separate so no consumer can read a bound off the second one.
 type RailRequirement
-  = OperatingWindow { minimum: Millivolt, maximum: Millivolt }
+  = OperatingWindow { minimum: std.measure.Millivolt, maximum: std.measure.Millivolt }
   | MustBeLeftUnconnected
 
 fn requirement_admits(r: RailRequirement, v: Millivolt) -> Bool {
@@ -166,10 +166,10 @@ fn nvcm_supply_requirement(m: Ice40ConfigurationMode) -> RailRequirement {
 // bank driving LVCMOS 3.3 must sit in 3.14 to 3.46. A board that satisfied only the wide bound
 // would be a board whose outputs are out of spec while every rail check passed.
 type Ice40IoStandardSupply {
-  standard_name: NonEmptyStr
-  minimum: Millivolt
-  typical: Millivolt
-  maximum: Millivolt
+  standard_name: std.types.NonEmptyStr
+  minimum: std.measure.Millivolt
+  typical: std.measure.Millivolt
+  maximum: std.measure.Millivolt
 }
 
 data ice40_lvcmos33_supply: Ice40IoStandardSupply = Ice40IoStandardSupply {

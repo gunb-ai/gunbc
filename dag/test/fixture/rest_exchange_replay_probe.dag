@@ -7,7 +7,7 @@ service test.RestReplay {
   operation Observe {
     output {
       message: String from "message"
-      observed: RestOutcome
+      observed: extdeps.transports.rest.RestOutcome
     }
     readonly
     transport rest { method: GET, path: "/answer" }
@@ -16,7 +16,7 @@ service test.RestReplay {
   operation Sibling {
     output {
       message: String from "message"
-      observed: RestOutcome
+      observed: extdeps.transports.rest.RestOutcome
     }
     readonly
     transport rest { method: GET, path: "/answer" }

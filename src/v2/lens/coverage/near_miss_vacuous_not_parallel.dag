@@ -1,7 +1,7 @@
 module v2.test.lens_coverage.near_miss_vacuous_not_parallel
 
 
-data near_miss_vacuous_node: Node = Node {
+data near_miss_vacuous_node: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^near_miss_vacuous_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -15,7 +15,7 @@ fn near_miss_vacuous_not_parallel_claim_rhs() -> Node {
   if near_miss_vacuous_not_parallel_claim_holds() {
     near_miss_vacuous_node
   } else {
-    Node {
+    v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -23,10 +23,10 @@ fn near_miss_vacuous_not_parallel_claim_rhs() -> Node {
   }
 }
 
-data claim_near_miss_vacuous_not_parallel: TestClaim = EqualsClaim {
+data claim_near_miss_vacuous_not_parallel: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_coverage/near_miss_vacuous_not_parallel: VacuousArm not ParallelAuthority",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: near_miss_vacuous_node,
   rhs: near_miss_vacuous_not_parallel_claim_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

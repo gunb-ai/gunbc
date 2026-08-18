@@ -1,7 +1,7 @@
 module v2.test.std.reducible
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn classify_leaf_empty_is_unknown() -> Bool {
   verdict_eq(
@@ -34,7 +34,7 @@ fn verdict_eq_discriminates_variants() -> Bool {
     )
 }
 
-fn mixed_verdicts_unknown_absorbs_leftmost() -> List<ReduceVerdict> {
+fn mixed_verdicts_unknown_absorbs_leftmost() -> List<std.reducible.ReduceVerdict> {
   [
     Reduced { last_parts: 1 },
     Unknown { missing: "latch-axis" },

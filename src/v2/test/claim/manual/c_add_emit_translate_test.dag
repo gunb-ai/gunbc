@@ -1,30 +1,30 @@
 module v2.test.manual.c_add_emit_translate
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data c_add_int_inhabitant: Node = c_int_inhabitant_node()
 
 data c_add_emitted_root: Node = c_emitted_add_fn_node()
 
-data c_add_wrong_emitted_root: Node = Node {
+data c_add_wrong_emitted_root: Node = v2.std.node.Node {
   kind: TypeNode { connective: Arrow },
   children: [
-    Edge { label: Positional, target: c_add_int_inhabitant },
-    Edge { label: Positional, target: c_add_int_inhabitant }
+    v2.std.node.Edge { label: Positional, target: c_add_int_inhabitant },
+    v2.std.node.Edge { label: Positional, target: c_add_int_inhabitant }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data c_add_target_model: TargetModel = c_target_model()
+data c_add_target_model: v2.std.compilers.target_model.TargetModel = c_target_model()
 
-data c_add_empty_translation_rules_bundle: Node = Node {
+data c_add_empty_translation_rules_bundle: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data c_add_missing_translation_rules_target: TargetModel = TargetModel {
+data c_add_missing_translation_rules_target: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
   bundle: c_add_empty_translation_rules_bundle,
   lex: c_lex(),
@@ -34,15 +34,15 @@ data c_add_missing_translation_rules_target: TargetModel = TargetModel {
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-fn c_add_canonical_grounding(node: Node, algebra: Node) -> CanonicalGrounding {
-  CanonicalGrounding {
+fn c_add_canonical_grounding(node: Node, algebra: Node) -> v2.std.constraints.CanonicalGrounding {
+  v2.std.constraints.CanonicalGrounding {
     node: node,
-    witness: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
+    witness: v2.std.constraints.CanonicalGroundingWitness {
+      structural: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_being_canonical,
         evidence: algebra
       },
-      closedness: StructuralPropertyWitness {
+      closedness: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_candidate_set_closedness,
         evidence: node
       }
@@ -50,7 +50,7 @@ fn c_add_canonical_grounding(node: Node, algebra: Node) -> CanonicalGrounding {
   }
 }
 
-fn c_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
+fn c_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == c_add_emitted_root {
     Holds { value: c_add_canonical_grounding(node: node, algebra: node) }
   } else if node == c_add_int_inhabitant {
@@ -59,7 +59,7 @@ fn c_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
     Holds { value: c_add_canonical_grounding(node: node, algebra: c_add_int_inhabitant) }
   } else {
     Violates {
-      diagnostic: Diagnostic {
+      diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^c_add_grounding_miss,
         at: node_locus(node: node),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -68,7 +68,7 @@ fn c_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   }
 }
 
-fn c_add_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
+fn c_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   match c_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -83,11 +83,11 @@ fn c_add_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
   }
 }
 
-fn c_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn c_add_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   c_add_inferred_facts_for(node: key)
 }
 
-data c_add_inferred_tree: InferredTree = InferredTree {
+data c_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: c_add_emitted_root,
   facts: Map { lookup: c_add_facts_lookup }
 }
@@ -134,7 +134,7 @@ test fn c_add_serialize_rejects_missing_translation_rules_holds() -> Bool {
 }
 
 test fn c_add_emit_wrong_node_refuses_holds() -> Bool {
-  let wrong_tree = InferredTree {
+  let wrong_tree = v2.compiler.infer.InferredTree {
     root: c_add_wrong_emitted_root,
     facts: Map { lookup: c_add_facts_lookup }
   }

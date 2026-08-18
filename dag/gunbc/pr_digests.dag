@@ -6,7 +6,7 @@ type MergeReadinessVerdict
   | NotReady { first_reason: String, more_reasons: List<String> }
 
 type AttachedUrl {
-  url: NonEmptyStr
+  url: std.types.NonEmptyStr
   container: AttachedUrlContainer
   context: AttachedUrlTextContext
 }

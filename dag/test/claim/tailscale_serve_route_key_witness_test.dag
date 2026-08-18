@@ -13,25 +13,25 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_t
 
 data tailscale_route_key_witness_note: String = "Step-1 discriminating controls for extdeps.tailscale.serve TailscaleServeRouteKey. The load-bearing law: same listener x mount + different backend is a re-point (Modified), never Remove+Add. A key that embeds backend classifies that drift as different keys and produces teardown+reinstall — the membership_reconcile failure mode the design note names."
 
-fn tailscale_route_subject(endpoint: TailscaleServeEndpoint) -> TailscaleServeRouteSubject {
+fn tailscale_route_subject(endpoint: extdeps.tailscale.serve.TailscaleServeEndpoint) -> extdeps.tailscale.serve.TailscaleServeRouteSubject {
   tailscale_serve_route_subject(
     scope: tailscale_serve_scope(node: srv1_tailscale_endpoint),
     endpoint: endpoint,
   )
 }
 
-fn tailscale_endpoint_value_eq(a: TailscaleServeRouteSubject, b: TailscaleServeRouteSubject) -> Bool {
+fn tailscale_endpoint_value_eq(a: extdeps.tailscale.serve.TailscaleServeRouteSubject, b: extdeps.tailscale.serve.TailscaleServeRouteSubject) -> Bool {
   a.endpoint.https_port == b.endpoint.https_port
     && tailscale_serve_mount_eq(a: a.endpoint.mount, b: b.endpoint.mount)
     && a.endpoint.backend as String == b.endpoint.backend as String
 }
 
-fn tailscale_endpoint_ownership(_: TailscaleServeRouteSubject) -> Ownership? {
+fn tailscale_endpoint_ownership(_: extdeps.tailscale.serve.TailscaleServeRouteSubject) -> gunbc.ownership.Ownership? {
   Present { value: Owned }
 }
 
-fn retired_flattened_serve_flags_key(subject: TailscaleServeRouteSubject) -> NonEmptyStr {
-  join(tailscale_serve_endpoint_flags(endpoint: subject.endpoint), " ") as NonEmptyStr
+fn retired_flattened_serve_flags_key(subject: extdeps.tailscale.serve.TailscaleServeRouteSubject) -> std.types.NonEmptyStr {
+  join(tailscale_serve_endpoint_flags(endpoint: subject.endpoint), " ") as std.types.NonEmptyStr
 }
 
 fn retired_flattened_serve_flags_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool {
@@ -43,8 +43,8 @@ data retired_flattened_serve_flags_key_relation: KeyRelation<RetiredFlattenedSer
   key_eq: retired_flattened_serve_flags_key_eq,
 )
 
-fn tailscale_enable_argv_identity_key(subject: TailscaleServeRouteSubject) -> NonEmptyStr {
-  join(tailscale_serve_enable_argv(endpoint: subject.endpoint), " ") as NonEmptyStr
+fn tailscale_enable_argv_identity_key(subject: extdeps.tailscale.serve.TailscaleServeRouteSubject) -> std.types.NonEmptyStr {
+  join(tailscale_serve_enable_argv(endpoint: subject.endpoint), " ") as std.types.NonEmptyStr
 }
 
 fn tailscale_enable_argv_identity_key_eq(a: std.types.NonEmptyStr, b: std.types.NonEmptyStr) -> std.types.Bool {
@@ -104,7 +104,7 @@ test fn w_route_key_backend_repoint_is_modified_not_remove_add() -> Bool {
     && gunbc.membership_reconcile.membership_removal_count(plan: plan) == 0
 }
 
-fn tailscale_enable_argv_endpoint_state_of(subject: TailscaleServeRouteSubject) -> NonEmptyStr {
+fn tailscale_enable_argv_endpoint_state_of(subject: extdeps.tailscale.serve.TailscaleServeRouteSubject) -> std.types.NonEmptyStr {
   subject.endpoint.backend
 }
 
@@ -112,7 +112,7 @@ fn tailscale_enable_argv_endpoint_state_eq(a: std.types.NonEmptyStr, b: std.type
   a == b
 }
 
-data tailscale_enable_argv_resource_relation: KeyedResourceRelation<TailscaleEnableArgvIdentityKeyRelation, TailscaleServeRouteSubject, GlobalKeyScope, NonEmptyStr, NonEmptyStr> = KeyedResourceRelation {
+data tailscale_enable_argv_resource_relation: KeyedResourceRelation<TailscaleEnableArgvIdentityKeyRelation, TailscaleServeRouteSubject, GlobalKeyScope, NonEmptyStr, NonEmptyStr> = std.key_relation.KeyedResourceRelation {
   key: tailscale_enable_argv_identity_key_relation,
   state: std.key_relation.StateRelation {
     state_of: tailscale_enable_argv_endpoint_state_of,
@@ -180,14 +180,14 @@ test fn membership_label_is_not_rendered_argv() -> std.types.Bool {
 
 data w_per_device_scope_preserves_distinct_nodes_note: String = "THE SCOPE DEFECT NO EXISTING WITNESS COULD SEE. Two tailnet devices may each own the same listener×mount route; GlobalKeyScope collapses them into one ScopedKey — the identity-collapse class the twin witnesses name when one deployment's teardown deletes another's live resource. This control must go red against GlobalKeyScope and green only after TailscaleServeScope lands."
 
-fn srv1_root_route_subject() -> TailscaleServeRouteSubject {
+fn srv1_root_route_subject() -> extdeps.tailscale.serve.TailscaleServeRouteSubject {
   tailscale_serve_route_subject(
     scope: tailscale_serve_scope(node: srv1_tailscale_endpoint),
     endpoint: root_endpoint(backend: "8080"),
   )
 }
 
-fn srv2_root_route_subject() -> TailscaleServeRouteSubject {
+fn srv2_root_route_subject() -> extdeps.tailscale.serve.TailscaleServeRouteSubject {
   tailscale_serve_route_subject(
     scope: tailscale_serve_scope(node: srv2_tailscale_endpoint),
     endpoint: root_endpoint(backend: "8080"),
@@ -200,7 +200,7 @@ test fn w_per_device_scope_preserves_distinct_nodes_same_route() -> Bool {
   !key_relation_scoped_key_eq(relation: tailscale_serve_route_key_relation, a: key_a, b: key_b)
 }
 
-fn global_collapse_route_key_of(subject: TailscaleServeRouteSubject) -> TailscaleServeRouteKey {
+fn global_collapse_route_key_of(subject: extdeps.tailscale.serve.TailscaleServeRouteSubject) -> extdeps.tailscale.serve.TailscaleServeRouteKey {
   tailscale_serve_route_key(endpoint: subject.endpoint)
 }
 

@@ -32,14 +32,14 @@ type HumanInterventionIdentity = NonEmptyStr where brand("HumanInterventionIdent
 // remaining inhabitant, at which point the arm retires and the field is a DeclarationRef
 // again — this time with something real behind it.
 type InterventionCompletionEvidence
-  = DischargedAt { evidence: DeclarationRef }
+  = DischargedAt { evidence: std.decl_ref.DeclarationRef }
   | NoDischargeSiteModeled
 
 type HumanIntervention {
   identity: HumanInterventionIdentity
   frequency: HumanInterventionFrequency
-  subject: NonEmptyStr
-  instruction: NonEmptyStr
+  subject: std.types.NonEmptyStr
+  instruction: std.types.NonEmptyStr
   completion_evidence: InterventionCompletionEvidence
 }
 

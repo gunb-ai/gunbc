@@ -1,5 +1,5 @@
 module v2.test.manual.json_number_integer_lexeme_anchor
 
 
-data json_anchor_integer_zero: JsonNumberIntegerLexemeWitness = JsonNumberIntegerZeroWitness
-data json_anchor_integer_nonzero: JsonNumberIntegerLexemeWitness = JsonNumberIntegerNonZeroLeadingDigitWithDigitRunWitness
+data json_anchor_integer_zero: v2.extdeps.formats.json.JsonNumberIntegerLexemeWitness = JsonNumberIntegerZeroWitness
+data json_anchor_integer_nonzero: v2.extdeps.formats.json.JsonNumberIntegerLexemeWitness = JsonNumberIntegerNonZeroLeadingDigitWithDigitRunWitness

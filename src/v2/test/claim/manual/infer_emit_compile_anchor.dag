@@ -2,13 +2,13 @@ module v2.test.manual.infer_emit_compile_anchor
 
 
 
-data anchor_stub_empty_conj: Node = Node {
+data anchor_stub_empty_conj: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data anchor_stub_target_model: TargetModel = TargetModel {
+data anchor_stub_target_model: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
   bundle: anchor_stub_empty_conj,
   lex: VoidLexRules,
@@ -18,12 +18,12 @@ data anchor_stub_target_model: TargetModel = TargetModel {
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-data anchor_stub_source: Medium<String> = Medium { carried: std.algebra.Empty, fidelity: Lossless }
-data anchor_stub_inferred_facts: InferredFacts = claim_inferred_facts_from_nodes(
+data anchor_stub_source: Medium<String> = extdeps.communication.medium.Medium { carried: std.algebra.Empty, fidelity: Lossless }
+data anchor_stub_inferred_facts: v2.compiler.infer.InferredFacts = claim_inferred_facts_from_nodes(
   resolved: anchor_stub_empty_conj,
   algebra: anchor_stub_empty_conj,
   descent: Violates {
-    diagnostic: Diagnostic {
+    diagnostic: v2.std.diagnostic.Diagnostic {
       reason: ^anchor_stub_descent_not_derived,
       at: node_locus(node: anchor_stub_empty_conj),
       correction: Unavailable { reason: ExternalContractUnknown }
@@ -31,18 +31,18 @@ data anchor_stub_inferred_facts: InferredFacts = claim_inferred_facts_from_nodes
   }
 )
 
-data anchor_stub_empty_facts_map: Map<Node, InferredFacts> = Map {
+data anchor_stub_empty_facts_map: Map<Node, v2.compiler.infer.InferredFacts> = Map {
   lookup: fn(_) {
     Absent
   }
 }
 
-data anchor_stub_inferred_tree: InferredTree = InferredTree {
+data anchor_stub_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: anchor_stub_empty_conj,
   facts: anchor_stub_empty_facts_map
 }
 
-fn anchor_infer_rejects() -> Outcome<InferredTree> {
+fn anchor_infer_rejects() -> Outcome<v2.compiler.infer.InferredTree> {
   infer(tree: anchor_stub_empty_conj)
 }
 
@@ -57,7 +57,7 @@ fn anchor_emit_accepts() -> Outcome<Medium<String>> {
   anchor_rust_add_emit_accepts()
 }
 
-fn anchor_compile_inferred_accepts() -> Outcome<CompileOutput> {
+fn anchor_compile_inferred_accepts() -> Outcome<v2.compiler.compile.CompileOutput> {
   compile_inferred(
     inferred: rust_add_inferred_tree,
     mode: TranslateTo { target: rust_add_target_model }

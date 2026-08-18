@@ -1,7 +1,7 @@
 module v2.test.manual.posix_output_capture
 
 
-data empty_captured_pipes: CapturedOutputPipes = CapturedOutputPipes {
+data empty_captured_pipes: v2.extdeps.posix.CapturedOutputPipes = v2.extdeps.posix.CapturedOutputPipes {
   stdout: Empty,
   stderr: Empty
 }
@@ -22,18 +22,18 @@ fn claim_input(ok: Bool) -> Node {
   }
 }
 
-data claim_captured_output_pipes_stdout_empty: TestClaim = EqualsClaim {
+data claim_captured_output_pipes_stdout_empty: v2.std.verification.TestClaim = EqualsClaim {
   label: "manual/posix: CapturedOutputPipes.stdout is independently empty",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_input(ok: witness_captured_pipes_stdout_is_empty()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_captured_output_pipes_stderr_empty: TestClaim = EqualsClaim {
+data claim_captured_output_pipes_stderr_empty: v2.std.verification.TestClaim = EqualsClaim {
   label: "manual/posix: CapturedOutputPipes.stderr is independently empty",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_input(ok: witness_captured_pipes_stderr_is_empty()),
   rhs: stub_empty_conj,
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

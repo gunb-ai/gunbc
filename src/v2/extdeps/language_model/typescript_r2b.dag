@@ -2,16 +2,16 @@ module v2.test.language_model.typescript_r2b
 
 fn typescript_r2b_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: ^typescript_r2b_claim_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^typescript_r2b_claim_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => Node { kind: TypeNode { connective: Atom { identity: ^typescript_r2b_claim_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^typescript_r2b_claim_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-data claim_typescript_r2b_fixture_pair_wired: TestClaim = EqualsClaim {
+data claim_typescript_r2b_fixture_pair_wired: v2.std.verification.TestClaim = EqualsClaim {
   label: "language_model/typescript_r2b: fixture references bigint algebra inhabitance + runtime sources",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: typescript_r2b_claim_bool_atom(b: true),
@@ -22,17 +22,17 @@ data claim_typescript_r2b_fixture_pair_wired: TestClaim = EqualsClaim {
       && typescript_r2b_fixture().happy.source == typescript_r2b_runtime_happy_fixture_source
       && typescript_r2b_fixture().falsification.source == typescript_r2b_runtime_falsification_fixture_source
   ),
-  classification: TestClassification { tier: Tier1, layer: Boundary }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }
-fn typescript_r2b_pending_verification_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn typescript_r2b_pending_verification_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^typescript_r2b_pending_verification_reason,
     at: Textual { file: ^typescript_r2b_pending_verification_reason, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
-data typescript_r2b_verification_run_receipt_default: LeafModelVerificationRunReceipt = LeafModelVerificationRunReceipt {
+data typescript_r2b_verification_run_receipt_default: v2.std.leaf_model_verification.LeafModelVerificationRunReceipt = v2.std.leaf_model_verification.LeafModelVerificationRunReceipt {
   claim_id: leaf_model_claim_ts_r2b_bigint_beyond_safe_integer,
   happy_verdict: verdict_fail(
     actual: outcome_rejected(d: typescript_r2b_pending_verification_diagnostic())
@@ -42,12 +42,12 @@ data typescript_r2b_verification_run_receipt_default: LeafModelVerificationRunRe
   )
 }
 
-data claim_typescript_r2b_verification_receipt_shape: TestClaim = EqualsClaim {
+data claim_typescript_r2b_verification_receipt_shape: v2.std.verification.TestClaim = EqualsClaim {
   label: "language_model/typescript_r2b: verification receipt carriers happy + falsification verdict slots",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: typescript_r2b_claim_bool_atom(
     b: typescript_r2b_verification_run_receipt_default.claim_id == leaf_model_claim_ts_r2b_bigint_beyond_safe_integer
   ),
   rhs: typescript_r2b_claim_bool_atom(b: true),
-  classification: TestClassification { tier: Tier1, layer: Boundary }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }

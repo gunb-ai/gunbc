@@ -9,9 +9,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type LinuxX86BootImage {
-  kernel_digest: NonEmptyStr,
+  kernel_digest: std.types.NonEmptyStr,
   cmdline: List<String>,
-  init: FreestandingPayloadRef,
+  init: extdeps.boot.freestanding_payload.FreestandingPayloadRef,
 }
 
 type BootImageOutcome

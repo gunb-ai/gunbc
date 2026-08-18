@@ -5,15 +5,15 @@ data cache_retention_axes_note: String = "THE DISCRIMINATING CONTROLS for the re
 
 data lru_ttl_unrepresentability_note: String = "WHERE THE LRU AND TTL HALVES ARE ACTUALLY CLOSED, stated here because an earlier draft of this file got it wrong in a way worth recording. That draft carried two functions named lru_without_capacity and ttl_without_capacity whose bodies were BYTE-IDENTICAL - both just CapacityUnobserved - so the names claimed a property no value in the test carried, and neither test could have failed for the reason its name gave. The real closure is at two different layers and NEITHER is a predicate over a planted retention value. (1) LRU is unrepresentable as a capacity claim: at_capacity nests inside the CapacityBounded arm, so ReplaceExisting { strategy: LeastRecentlyUsed } cannot be stated beside CapacityUnobserved or CapacityUnbounded at all - a type-level property, which is exactly why no test here exercises it and why the old fused axis needed one. (2) TTL is not on this axis: TtlExpiry lives on KeyDerivationFacts invalidation_triggers, so a TTL fact cannot reach a capacity verdict by any path. What remains testable is the predicate below - that an unobserved capacity does not satisfy a bounded role - plus the per-row dispositions, which are checked by each row consumer rather than restated here."
 
-fn capacity_not_established() -> ProviderRetention {
-  ProviderRetention {
+fn capacity_not_established() -> std.cache_interface.ProviderRetention {
+  std.cache_interface.ProviderRetention {
     release_policy: ReleasedNever,
     capacity: CapacityUnobserved
   }
 }
 
-fn scope_exit_byte_bounded_refuse_new() -> ProviderRetention {
-  ProviderRetention {
+fn scope_exit_byte_bounded_refuse_new() -> std.cache_interface.ProviderRetention {
+  std.cache_interface.ProviderRetention {
     release_policy: ReleasedAtProviderScopeExit,
     capacity: CapacityBounded {
       limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 268435456) } },
@@ -22,8 +22,8 @@ fn scope_exit_byte_bounded_refuse_new() -> ProviderRetention {
   }
 }
 
-fn scope_exit_runtime_derived_replace_existing() -> ProviderRetention {
-  ProviderRetention {
+fn scope_exit_runtime_derived_replace_existing() -> std.cache_interface.ProviderRetention {
+  std.cache_interface.ProviderRetention {
     release_policy: ReleasedAtProviderScopeExit,
     capacity: CapacityBounded {
       limit: EntryCountCapacity {
@@ -82,11 +82,11 @@ test fn refuse_new_store_is_distinct_from_replacement() -> Bool {
 }
 
 test fn unbounded_and_unobserved_capacity_are_different_states() -> Bool {
-  let known_unbounded = ProviderRetention {
+  let known_unbounded = std.cache_interface.ProviderRetention {
     release_policy: ReleasedNever,
     capacity: CapacityUnbounded
   }
-  let not_established = ProviderRetention {
+  let not_established = std.cache_interface.ProviderRetention {
     release_policy: ReleasedNever,
     capacity: CapacityUnobserved
   }
@@ -103,7 +103,7 @@ test fn unbounded_and_unobserved_capacity_are_different_states() -> Bool {
 data scope_exit_role_discrimination_note: String = "THE CONTROL THE FIRST CUT LACKED (operator ruling 2026-08-06). Its only negative cell used ReleasedNever, so it never exercised the case that actually matters: a scope-released provider whose capacity is unbounded or unobserved. That value satisfies GROWTH boundedness - the frame ends, so storage ends - and satisfies CAPACITY boundedness not at all. One overloaded predicate would have admitted it to a byte-budget role, which is exactly the promoted-eval-memo obligation PR 2 owes. These two cells hold the predicates apart at the one point they disagree."
 
 test fn scope_release_with_unbounded_capacity_bounds_growth_but_not_capacity() -> Bool {
-  let r = ProviderRetention {
+  let r = std.cache_interface.ProviderRetention {
     release_policy: ReleasedAtProviderScopeExit,
     capacity: CapacityUnbounded
   }
@@ -113,7 +113,7 @@ test fn scope_release_with_unbounded_capacity_bounds_growth_but_not_capacity() -
 }
 
 test fn scope_release_with_unobserved_capacity_bounds_growth_but_not_capacity() -> Bool {
-  let r = ProviderRetention {
+  let r = std.cache_interface.ProviderRetention {
     release_policy: ReleasedAtProviderScopeExit,
     capacity: CapacityUnobserved
   }
@@ -123,7 +123,7 @@ test fn scope_release_with_unobserved_capacity_bounds_growth_but_not_capacity() 
 }
 
 test fn an_entry_count_ceiling_is_not_a_byte_budget() -> Bool {
-  let r = ProviderRetention {
+  let r = std.cache_interface.ProviderRetention {
     release_policy: ReleasedAtProviderScopeExit,
     capacity: CapacityBounded {
       limit: EntryCountCapacity { limit: ExactLimit { value: 1000000 } },
@@ -134,7 +134,7 @@ test fn an_entry_count_ceiling_is_not_a_byte_budget() -> Bool {
 }
 
 test fn an_unobserved_byte_ceiling_is_not_a_byte_budget() -> Bool {
-  let r = ProviderRetention {
+  let r = std.cache_interface.ProviderRetention {
     release_policy: ReleasedNever,
     capacity: CapacityBounded {
       limit: ByteCapacity { limit: EffectiveLimitUnobserved },

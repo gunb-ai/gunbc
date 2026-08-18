@@ -3,14 +3,14 @@ module test.claim.scm_compatibility_pijul_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn pijul_fixture_observation() -> PijulReadBackObservation {
-  PijulReadBackObservation {
+fn pijul_fixture_observation() -> extdeps.pijul.PijulReadBackObservation {
+  extdeps.pijul.PijulReadBackObservation {
     pijul_version: pijul_upstream_version,
     projection: pijul_r0_fixture_projection(),
   }
 }
 
-fn pijul_fixture_binding() -> PijulCompatibilityBindingOutcome {
+fn pijul_fixture_binding() -> gunbc.scm_compatibility.pijul.PijulCompatibilityBindingOutcome {
   pijul_compatibility_bind(
     projection: pijul_r0_fixture_projection(),
     target: "main",
@@ -112,8 +112,8 @@ test fn witness_pijul_readback_identity_comes_from_observation() -> Bool {
       match pijul_compatibility_bind(
         projection: pijul_r0_fixture_projection(),
         target: "main",
-        read_back: PijulReadBackObservation {
-          pijul_version: PijulUpstreamVersion {
+        read_back: extdeps.pijul.PijulReadBackObservation {
+          pijul_version: extdeps.pijul.PijulUpstreamVersion {
             major: 1,
             minor: 0,
             patch: 0,
@@ -143,7 +143,7 @@ test fn witness_pijul_unavailable_readback_refuses_binding() -> Bool {
   match pijul_compatibility_bind(
     projection: pijul_r0_fixture_projection(),
     target: "main",
-    read_back: PijulReadBackObservation {
+    read_back: extdeps.pijul.PijulReadBackObservation {
       pijul_version: pijul_upstream_version,
       projection: PijulInaccessibleProjection {
         reason: "fixture unavailable",
@@ -162,9 +162,9 @@ test fn witness_pijul_readback_identity_changes_with_observed_state() -> Bool {
     channels: repository.channels
       |> map(channel =>
         if channel.name == "main" || channel.name == "review" {
-          PijulChannel {
+          extdeps.pijul.PijulChannel {
             name: channel.name,
-            state_identity: PijulChannelStateIdentity {
+            state_identity: extdeps.pijul.PijulChannelStateIdentity {
               state: pijul_state_partial,
               changes: channel.state_identity.changes,
               producer: channel.state_identity.producer,
@@ -181,7 +181,7 @@ test fn witness_pijul_readback_identity_changes_with_observed_state() -> Bool {
       match pijul_compatibility_bind(
         projection: other_projection,
         target: "main",
-        read_back: PijulReadBackObservation {
+        read_back: extdeps.pijul.PijulReadBackObservation {
           pijul_version: pijul_upstream_version,
           projection: other_projection,
         },

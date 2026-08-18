@@ -9,9 +9,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type JobserverConfig {
-  margin: HardwareThreadCount
-  mem_reserve: ByteSize
-  mib_per_job: ByteSize
+  margin: std.measure.HardwareThreadCount
+  mem_reserve: std.measure.ByteSize
+  mib_per_job: std.measure.ByteSize
 }
 
 fn derive_jobserver_tokens(nproc: HardwareThreadCount, mem_total: ByteSize, cfg: JobserverConfig) -> HardwareThreadCount {

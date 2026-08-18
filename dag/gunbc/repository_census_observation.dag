@@ -58,8 +58,8 @@ type RepositoryPopulation {
   repository: RepositoryIdentity
   first_source_root: SourceRootIdentity
   additional_source_roots: List<SourceRootIdentity>
-  inclusion_rule: DeclarationRef
-  exclusion_rule: DeclarationRef?
+  inclusion_rule: std.decl_ref.DeclarationRef
+  exclusion_rule: std.decl_ref.DeclarationRef?
 }
 
 fn repository_census_source_roots(population: RepositoryPopulation) -> List<SourceRootIdentity> {
@@ -115,9 +115,9 @@ data repository_census_method_run_note: String = "THE NAME IS DELIBERATELY WEAK 
 data repository_census_output_identity_removed_note: String = "output_identity IS DELETED, and it was a parallel representation of the rows (operator ruling 2026-08-04). The receipt carried the content address of what the method produced while the observation separately carried rows, and nothing whatsoever bound them: a caller could state that the classifier produced output X and attach rows Y. The observation address hashed both, which looks like it reconciles them and does not — HASHING A CONTRADICTION DOES NOT RESOLVE IT, it just gives the contradiction a stable name. The output is now the rows themselves: the observation constructor DERIVES rows_identity from the rows it stores, so there is exactly one representation of what was produced and no second one to disagree with it. A producer-side receipt can later establish that a given method run produced a given rows_identity, which is a claim about the world that belongs to whoever observed the run — not a field a caller fills in beside the output."
 
 type CensusMethodRunIdentity {
-  classifier: DeclarationRef
-  classifier_revision: MeasurementRevision
-  invocation_identity: Fnv1a64Structural
+  classifier: std.decl_ref.DeclarationRef
+  classifier_revision: gunbc.guarantee_measurement.MeasurementRevision
+  invocation_identity: std.content_hash.Fnv1a64Structural
 }
 
 fn census_method_run_identity(method: CensusMethodRunIdentity) -> Fnv1a64Structural {
@@ -145,8 +145,8 @@ data repository_census_domain_fact_note: String = "The measured value is carried
 
 type CensusObservedRow sole_constructor {
   subject: CensusSubjectKey
-  fact: Fnv1a64Structural
-  identity: Fnv1a64Structural
+  fact: std.content_hash.Fnv1a64Structural
+  identity: std.content_hash.Fnv1a64Structural
 }
 
 fn census_observed_row(
@@ -173,10 +173,10 @@ data repository_census_observation_note: String = "The fact, and only the fact. 
 
 type RepositoryCensusObservation sole_constructor {
   population: RepositoryPopulation
-  observed_at_revision: MeasurementRevision
+  observed_at_revision: gunbc.guarantee_measurement.MeasurementRevision
   method_run: CensusMethodRunIdentity
   rows: List<CensusObservedRow>
-  rows_identity: Fnv1a64Structural
+  rows_identity: std.content_hash.Fnv1a64Structural
 }
 
 fn census_rows_identity(rows: List<CensusObservedRow>) -> Fnv1a64Structural {

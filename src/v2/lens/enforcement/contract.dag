@@ -2,22 +2,22 @@ module v2.lens.enforcement.contract
 
 
 type LensContract {
-  entry: LensRegistryEntryV0
-  mode: EnforcementMode
-  claimed_scope: ScopeRoster
-  consumer_witness: ConsumerWitnessBinding
+  entry: v2.lens.registry.LensRegistryEntryV0
+  mode: v2.lens.enforcement.vocab.EnforcementMode
+  claimed_scope: v2.lens.enforcement.vocab.ScopeRoster
+  consumer_witness: v2.lens.enforcement.vocab.ConsumerWitnessBinding
   exemptions: List<String>
-  boundary: ConstructionJustification
+  boundary: v2.lens.common.construction_justification.ConstructionJustification
 }
 
 type EnrollmentDiscoveryReceipt {
-  contract_id: LensIdV0
-  discovered_subject_names: SubjectRoster
-  scope_satisfaction: ScopeSatisfaction
-  consumer_enrolled: ConsumerKind
-  consumer_entry_identity: ReceiptRef
-  red_control_status: RedControlStatus
-  self_application_status: SelfApplicationStatus
+  contract_id: v2.lens.registry.LensIdV0
+  discovered_subject_names: v2.lens.enforcement.vocab.SubjectRoster
+  scope_satisfaction: v2.lens.enforcement.vocab.ScopeSatisfaction
+  consumer_enrolled: v2.lens.enforcement.vocab.ConsumerKind
+  consumer_entry_identity: v2.lens.enforcement.vocab.ReceiptRef
+  red_control_status: v2.lens.enforcement.vocab.RedControlStatus
+  self_application_status: v2.lens.enforcement.vocab.SelfApplicationStatus
 }
 
 data lens_contract_cost: LensContract = {

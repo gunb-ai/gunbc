@@ -7,12 +7,12 @@ type ImportVisibility
   | ImportHidden
 
 type Import {
-  target: QualifiedName
+  target: v2.std.qualified_name.QualifiedName
   visibility: ImportVisibility
 }
 
 type ResolutionSubject {
-  name: QualifiedName
+  name: v2.std.qualified_name.QualifiedName
 }
 
 type Admission {
@@ -21,21 +21,21 @@ type Admission {
 }
 
 type AdmittedSubject {
-  namespace: Namespace
-  subject_root: NormalizedTree
+  namespace: v2.compiler.resolve.Namespace
+  subject_root: v2.compiler.normalized_tree.NormalizedTree
 }
 
 type AdmissionState
   = AdmissionAccepted {
-      bindings: Map<Symbol, Symbol>,
-      origins: Map<Symbol, QualifiedName>
+      bindings: Map<v2.std.node.Symbol, v2.std.node.Symbol>,
+      origins: Map<v2.std.node.Symbol, v2.std.qualified_name.QualifiedName>
     }
-  | AdmissionRejected { diagnostics: NonEmptyDiagnostics }
+  | AdmissionRejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
 
 type ModuleRootValidateState
-  = ModuleRootsValid { seen: FreeMonoid<QualifiedName>, diagnostics: Diagnostics }
-  | ModuleRootsDuplicate { diagnostics: Diagnostics }
-  | ModuleRootsProjectionRejected { diagnostics: NonEmptyDiagnostics }
+  = ModuleRootsValid { seen: FreeMonoid<v2.std.qualified_name.QualifiedName>, diagnostics: v2.std.diagnostic.Diagnostics }
+  | ModuleRootsDuplicate { diagnostics: v2.std.diagnostic.Diagnostics }
+  | ModuleRootsProjectionRejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
 
 type ModuleRootNameFindState
   = ModuleRootNameNotFound
@@ -56,10 +56,10 @@ fn resolve_diagnostics(reason: Symbol) -> NonEmptyDiagnostics {
 
 // module_root_find refuses with the exact QualifiedName sought — rendered as a dotted string on the Textual diagnostic file locus (§3: structural QN is identity; dotted form is projection for display). ModuleRootLookup is the structural authority; diagnostics project from ModuleRootMissing rather than parsing display text back.
 type ModuleRootLookup
-  = ModuleRootFound { root: NormalizedTree }
-  | ModuleRootMissing { requested: QualifiedName }
-  | ModuleRootAmbiguous { requested: QualifiedName }
-  | ModuleRootLookupRejected { diagnostics: NonEmptyDiagnostics }
+  = ModuleRootFound { root: v2.compiler.normalized_tree.NormalizedTree }
+  | ModuleRootMissing { requested: v2.std.qualified_name.QualifiedName }
+  | ModuleRootAmbiguous { requested: v2.std.qualified_name.QualifiedName }
+  | ModuleRootLookupRejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
 
 fn resolve_module_not_found_diagnostic_from_missing(
   requested: QualifiedName
@@ -95,7 +95,7 @@ fn collect_import_decl_nodes(n: Node, acc: FreeMonoid<Node>) -> FreeMonoid<Node>
 }
 
 type ImportRowsState
-  = ImportRowsFailed { reason: Symbol }
+  = ImportRowsFailed { reason: v2.std.node.Symbol }
   | ImportRowsOk { rows: List<Import> }
 
 fn import_rows_from_parsed_module(root: Node) -> ImportRowsState {
@@ -345,7 +345,7 @@ fn try_admitted_export_binding(e: Edge) -> DeclaredBinding? {
 }
 
 type AdmitExportsFold {
-  origin: QualifiedName
+  origin: v2.std.qualified_name.QualifiedName
   state: AdmissionState
   at_conj: Bool
 }

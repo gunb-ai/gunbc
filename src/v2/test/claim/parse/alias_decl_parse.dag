@@ -38,8 +38,8 @@ fn alias_decl_find_node(tree: Node) -> Optional<Node> {
   }
 }
 
-fn alias_decl_expected_row() -> AliasBindingRow {
-  AliasBindingRow {
+fn alias_decl_expected_row() -> v2.std.namespace_alias.AliasBindingRow {
+  v2.std.namespace_alias.AliasBindingRow {
     binding: ^NodeAlias,
     target: qualified_name_from_dotted_string(dotted: "v2.std.node.Node")
   }

@@ -7,8 +7,8 @@ type ProcessSemantics = PosixProcess | WindowsProcess | HybridWslGuest
 
 type OperatingSystemSurface {
   kernel: KernelFamily
-  distro_or_product: NonEmptyStr?
-  version: NonEmptyStr?
+  distro_or_product: std.types.NonEmptyStr?
+  version: std.types.NonEmptyStr?
   filesystem_semantics: FileSystemSemantics
   process_semantics: ProcessSemantics
 }
@@ -28,30 +28,30 @@ type LibcFamily = GnuGlibc | Ucrt | LibSystem
 
 type UbuntuDistributionCatalogRow {
   distribution: UbuntuDistribution
-  release_label: NonEmptyStr
-  kernel_version: NonEmptyStr
+  release_label: std.types.NonEmptyStr
+  kernel_version: std.types.NonEmptyStr
   package_manager: OsPackageManager
   libc: LibcFamily
-  libc_version: NonEmptyStr?
-  security_maintenance_until: NonEmptyStr
+  libc_version: std.types.NonEmptyStr?
+  security_maintenance_until: std.types.NonEmptyStr
 }
 
 type WindowsDistributionCatalogRow {
   distribution: WindowsDistribution
-  release_label: NonEmptyStr
-  os_build: NonEmptyStr
+  release_label: std.types.NonEmptyStr
+  os_build: std.types.NonEmptyStr
   package_manager: OsPackageManager
   libc: LibcFamily
-  libc_version: NonEmptyStr?
-  end_of_servicing: NonEmptyStr
+  libc_version: std.types.NonEmptyStr?
+  end_of_servicing: std.types.NonEmptyStr
 }
 
 type MacosDistributionCatalogRow {
   distribution: MacosDistribution
-  release_label: NonEmptyStr
-  darwin_version: NonEmptyStr?
+  release_label: std.types.NonEmptyStr
+  darwin_version: std.types.NonEmptyStr?
   package_manager: OsPackageManager
   libc: LibcFamily
-  libc_version: NonEmptyStr?
-  annual_release_label: NonEmptyStr
+  libc_version: std.types.NonEmptyStr?
+  annual_release_label: std.types.NonEmptyStr
 }

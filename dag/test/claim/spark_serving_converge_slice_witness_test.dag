@@ -1,9 +1,9 @@
 module test.claim.spark_serving_converge_slice_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_host_srv5: NonEmptyStr = "srv5" as NonEmptyStr
+data witness_host_srv5: std.types.NonEmptyStr = "srv5" as std.types.NonEmptyStr
 
 test fn linger_slice_noop_when_linger_already_enabled() -> Bool {
   spark_serving_linger_slice_noop_when_converged(linger_enabled: true)
@@ -120,7 +120,7 @@ test fn linger_slice_bundle_refuses_smuggled_v1_without_typed_rows() -> Bool {
       match fleet_converge_plan_artifact_hash(artifact: artifact) {
         Present { value: hex } =>
           !fleet_converge_plan_artifact_bundle_admits(
-            artifact: FleetConvergePlanArtifact {
+            artifact: gunbc.fleet_converge_plan.FleetConvergePlanArtifact {
               subject: artifact.subject,
               prior_generation: artifact.prior_generation,
               plan_lease: artifact.plan_lease,
@@ -223,7 +223,7 @@ test fn spark_target_absent_while_executing_refuses_rather_than_widening() -> Bo
 
 test fn spark_target_unrecognized_refuses_even_when_only_observing() -> Bool {
   match spark_converge_target_selection_of(
-    raw: Present { value: "srv7" as NonEmptyStr },
+    raw: Present { value: "srv7" as std.types.NonEmptyStr },
     execute_apply: false,
   ) {
     SparkConvergeTargetRefused { reason: _ } => true
@@ -245,7 +245,7 @@ test fn spark_target_absent_while_observing_covers_all_enrolled_sparks() -> Bool
 // so the refusals above are not a blanket refusal that would make the wall vacuous.
 test fn spark_target_named_selects_exactly_that_host_under_execution() -> Bool {
   match spark_converge_target_selection_of(
-    raw: Present { value: "srv6" as NonEmptyStr },
+    raw: Present { value: "srv6" as std.types.NonEmptyStr },
     execute_apply: true,
   ) {
     SparkConvergeTargetSingle { host: h } => h == operator_host_srv6

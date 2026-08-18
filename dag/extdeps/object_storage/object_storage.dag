@@ -14,20 +14,20 @@ type StorageArchitecture
   | ObjectStorage
 
 type ObjectContainer {
-  name: NonEmptyStr
+  name: std.types.NonEmptyStr
 }
 
 type ObjectId {
-  value: NonEmptyStr
+  value: std.types.NonEmptyStr
 }
 
 type ObjectMetadataEntry {
-  key: NonEmptyStr
+  key: std.types.NonEmptyStr
   value: String
 }
 
 type ObjectAttributes {
-  size: ByteSize
+  size: std.measure.ByteSize
   metadata: List<ObjectMetadataEntry>
 }
 

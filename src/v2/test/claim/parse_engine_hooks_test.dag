@@ -1,7 +1,7 @@
 module v2.test.claim.parse_engine_hooks_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn parse_engine_hooks_symbols_match_grammar_productions() -> Bool {
   (parse_engine_match_arm_body_production == ^dag_production_match_arm_body)

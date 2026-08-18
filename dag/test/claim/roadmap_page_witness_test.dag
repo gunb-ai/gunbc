@@ -39,7 +39,7 @@ test fn witness_authority_page_preserves_multi_parent_dependencies() -> Bool {
 }
 
 fn empty_doc_html() -> String {
-  let empty = RoadmapDocument { preamble: [], lead_lanes: [], sections: [] }
+  let empty = gunbc.roadmap_document.RoadmapDocument { preamble: [], lead_lanes: [], sections: [] }
   match try_serialize_html_source(node: roadmap_page(doc: empty, merged: [])) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
@@ -114,7 +114,7 @@ test fn witness_daily_leads_operational_not_narrative() -> Bool {
 fn depth_chain_html(fuel: Int) -> String {
   let parent = gunbc.roadmap_authority.authored(identity: "rnfx_716835YJMPRW9JAC4H1Z", id: "p", done: false, content: "parent-node")
   let child = gunbc.roadmap_authority.authored(identity: "rnfx_DY971T4PDGRTPY6WDHDR", id: "c", done: false, content: "child-node-title")
-  let edge = RoadmapEdge { child: child.node, parent: parent.node }
+  let edge = gunbc.roadmap_model.RoadmapEdge { child: child.node, parent: parent.node }
   match try_serialize_html_source(node: nodes_ul(items: [parent], nodes: [parent, child], edges: [edge], merged: [], fuel: fuel)) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
@@ -144,25 +144,25 @@ test fn witness_depth_cap_fails_honest() -> Bool {
     && !string_contains(s: expanded, pattern: "depth limit")
 }
 
-fn dispatch_doc_html_for(rn: RoadmapNode) -> String {
-  let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
-  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+fn dispatch_doc_html_for(rn: gunbc.roadmap_model.RoadmapNode) -> String {
+  let sec = gunbc.roadmap_document.RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
+  let doc = gunbc.roadmap_document.RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
   match try_serialize_html_source(node: roadmap_page(doc: doc, merged: [])) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }
 }
 
-fn dispatch_doc_html_for_with_merged(rn: RoadmapNode, merged: List<Int>) -> String {
-  let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
-  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+fn dispatch_doc_html_for_with_merged(rn: gunbc.roadmap_model.RoadmapNode, merged: List<Int>) -> String {
+  let sec = gunbc.roadmap_document.RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
+  let doc = gunbc.roadmap_document.RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
   match try_serialize_html_source(node: roadmap_page(doc: doc, merged: merged)) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }
 }
 
-fn ready_dispatch_node() -> RoadmapNode {
+fn ready_dispatch_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_authority.authored_wi(identity: "rnfx_7KPP33Y7P6BH9CBVKZ03", id: "disp1",
     done: false,
     content: "dispatch-me",
@@ -171,14 +171,14 @@ fn ready_dispatch_node() -> RoadmapNode {
     repo: "gunbc")
 }
 
-fn unsized_open_dispatch_node() -> RoadmapNode {
+fn unsized_open_dispatch_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_authority.authored(identity: "rnfx_324RFH775DGZZMVETPT6", id: "disp-unsized", done: false, content: "observe-only")
 }
 
-fn signed_off_dispatch_node() -> RoadmapNode {
+fn signed_off_dispatch_node() -> gunbc.roadmap_model.RoadmapNode {
   let base = ready_dispatch_node()
-  RoadmapNode {
-    identity: "rnfx_08P5JSFSS1NH1YY20PWV" as RoadmapNodeIdentity,
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_08P5JSFSS1NH1YY20PWV" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: base.node,
     line: base.line,
     carriers: base.carriers,
@@ -189,9 +189,9 @@ fn signed_off_dispatch_node() -> RoadmapNode {
   }
 }
 
-fn dispatch_doc_page(rn: RoadmapNode) -> Fragment {
-  let sec = RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
-  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+fn dispatch_doc_page(rn: gunbc.roadmap_model.RoadmapNode) -> std.markup.Fragment {
+  let sec = gunbc.roadmap_document.RoadmapSection { title: "Belt", elements: [ section_group(label: "", nodes: [rn], edges: []) ] }
+  let doc = gunbc.roadmap_document.RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
   roadmap_page(doc: doc, merged: [])
 }
 
@@ -239,10 +239,10 @@ test fn witness_page_script_census_clean() -> Bool {
   page_script_census(page: dispatch_doc_page(rn: ready_dispatch_node())).length() == 0
 }
 
-fn hand_inline_script_page() -> Fragment {
-  Element { tag: "body", attributes: [], children: [
+fn hand_inline_script_page() -> std.markup.Fragment {
+  extdeps.browser.Element { tag: "body", attributes: [], children: [
     dispatch_client_script(),
-    Element { tag: "script", attributes: [], children: [ FragmentText { content: "alert('rogue')" } ] },
+    extdeps.browser.Element { tag: "script", attributes: [], children: [ FragmentText { content: "alert('rogue')" } ] },
   ] }
 }
 
@@ -251,10 +251,10 @@ test fn witness_inline_hand_script_reds() -> Bool {
   v.length() == 1 && all(v, x => x.kind == "inline-js" && x.detail == "alert('rogue')")
 }
 
-fn rogue_src_script_page() -> Fragment {
-  Element { tag: "body", attributes: [], children: [
+fn rogue_src_script_page() -> std.markup.Fragment {
+  extdeps.browser.Element { tag: "body", attributes: [], children: [
     dispatch_client_script(),
-    Element { tag: "script", attributes: [ attr(name: "src", value: "https://evil.example/x.js" ) ], children: [] },
+    extdeps.browser.Element { tag: "script", attributes: [ attr(name: "src", value: "https://evil.example/x.js" ) ], children: [] },
   ] }
 }
 
@@ -313,14 +313,14 @@ fn blocked_dispatch_workspace_html() -> String {
     volume: VolumeSmall,
     repo: "gunbc")
   let edges = [
-    RoadmapEdge { child: blocked.node, parent: policy_blocker.node },
-    RoadmapEdge { child: blocked.node, parent: model_blocker.node },
+    gunbc.roadmap_model.RoadmapEdge { child: blocked.node, parent: policy_blocker.node },
+    gunbc.roadmap_model.RoadmapEdge { child: blocked.node, parent: model_blocker.node },
   ]
-  let sec = RoadmapSection {
+  let sec = gunbc.roadmap_document.RoadmapSection {
     title: "Belt",
     elements: [ section_group(label: "", nodes: [policy_blocker, model_blocker, blocked], edges: edges) ],
   }
-  let doc = RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
+  let doc = gunbc.roadmap_document.RoadmapDocument { preamble: [], lead_lanes: [], sections: [sec] }
   match try_serialize_html_source(node: roadmap_daily_workspace_page(doc: doc, merged: [])) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
@@ -343,7 +343,7 @@ test fn witness_upcoming_node_preserves_multi_parent_dependencies() -> Bool {
   )
 }
 
-fn superseded_dispatch_node() -> RoadmapNode {
+fn superseded_dispatch_node() -> gunbc.roadmap_model.RoadmapNode {
   gunbc.roadmap_authority.superseded(identity: "rnfx_8MRNSMQ6RXCDT2FC8ZKY", id: "disp1", by: "successor-lane", content: "dispatch-me")
 }
 
@@ -365,8 +365,8 @@ test fn witness_ticket_rows_render_structured() -> Bool {
     && string_contains(s: h, pattern: "href=\"https://github.com/gunb-ai/gunbc/blob/main/docs/plans/roadmap-workspace-ux-plan.md\"")
 }
 
-fn long_brief_fixture() -> RoadmapNode {
-  gunbc.roadmap_authority.ticket_row(identity: "rnfx_J87HN1XAW9JEHR4KTWC0", id: "brief-overrun-fixture", done: false, t: TicketFields {
+fn long_brief_fixture() -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_authority.ticket_row(identity: "rnfx_J87HN1XAW9JEHR4KTWC0", id: "brief-overrun-fixture", done: false, t: gunbc.roadmap_status.TicketFields {
     headline: "fixture",
     brief: "w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w w",
     displaced_cost: "",
@@ -399,7 +399,7 @@ test fn witness_style_child_combinator_unescaped() -> Bool {
 }
 
 test fn witness_raw_text_close_guard_refuses() -> Bool {
-  let bad = Element {
+  let bad = extdeps.browser.Element {
     tag: "style",
     attributes: [],
     children: [ FragmentText { content: "a \{ color: red } </style><p>escaped</p>" } ],
@@ -436,7 +436,7 @@ test fn witness_authority_leads_within_budget() -> Bool {
   roadmap_authority_lead_budget_violations().length() == 0
 }
 
-fn overlong_lead_node() -> RoadmapNode {
+fn overlong_lead_node() -> gunbc.roadmap_model.RoadmapNode {
   let chunk = "a lead with no separator so the whole line stands "
   gunbc.roadmap_authority.authored(identity: "rnfx_FKEE5NQSZN982W3TF9SS", id: "overlong-lead",
     done: false,
@@ -492,7 +492,7 @@ fn parity_specimen_view(activity: gunbc.roadmap_presentation.ActivityView) -> gu
 
 fn parity_row_html(activity: gunbc.roadmap_presentation.ActivityView) -> String {
   let view = parity_specimen_view(activity: activity)
-  match try_serialize_html_source(node: Element {
+  match try_serialize_html_source(node: extdeps.browser.Element {
     tag: "li",
     attributes: gunbc.roadmap_page.node_li_attributes(view: view),
     children: gunbc.roadmap_page.render_work_row(view: view),

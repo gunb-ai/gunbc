@@ -14,7 +14,7 @@ data fixture_exclude: List<String> = []
 data imported_provider: String = "test.fixture.module_graph_edge_source.provider_imported"
 data referenced_provider: String = "test.fixture.module_graph_edge_source.provider_referenced"
 
-fn fixture_edges() -> List<ModuleDependencyEdge> {
+fn fixture_edges() -> List<v2.lens.module_graph.ModuleDependencyEdge> {
   dependency_resolution_facts_live(
     pool_roots: fixture_roots,
     importer_roots: fixture_roots,
@@ -22,7 +22,7 @@ fn fixture_edges() -> List<ModuleDependencyEdge> {
   )
 }
 
-fn fixture_import_facts() -> List<ImportResolutionFact> {
+fn fixture_import_facts() -> List<v2.lens.module_graph.ImportResolutionFact> {
   import_resolution_facts_live(
     pool_roots: fixture_roots,
     importer_roots: fixture_roots,
@@ -30,7 +30,7 @@ fn fixture_import_facts() -> List<ImportResolutionFact> {
   )
 }
 
-fn fixture_reference_facts() -> List<ImportResolutionFact> {
+fn fixture_reference_facts() -> List<v2.lens.module_graph.ImportResolutionFact> {
   reference_derived_import_resolution_facts_live(
     pool_roots: fixture_roots,
     importer_roots: fixture_roots,
@@ -38,11 +38,11 @@ fn fixture_reference_facts() -> List<ImportResolutionFact> {
   )
 }
 
-fn targets_of(edges: List<ModuleDependencyEdge>) -> List<String> {
+fn targets_of(edges: List<v2.lens.module_graph.ModuleDependencyEdge>) -> List<String> {
   fold(edges, init: [], f: fn(acc, e) { concat(acc, [e.target_module]) })
 }
 
-fn fact_targets(facts: List<ImportResolutionFact>) -> List<String> {
+fn fact_targets(facts: List<v2.lens.module_graph.ImportResolutionFact>) -> List<String> {
   fold(facts, init: [], f: fn(acc, f) { concat(acc, [f.import_module]) })
 }
 

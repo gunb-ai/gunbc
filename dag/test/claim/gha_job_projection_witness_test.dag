@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data gha_job_projection_witness_note: String = "THE CONSTRUCTION-LEVEL WALL AGAINST FUTURE INERT Job FIELDS, and the reason it is one synthetic all-fields job rather than a per-field assertion against ci.yml. job_yaml silently dropped four of the Job type's emittable fields (see job_field_projection_completeness_note); a per-field check against the real workflows could not have caught any of them, because every Job in the corpus sets those fields to none — so the real artifacts are indistinguishable from an emitter that ignores the fields entirely. The only discriminating subject is a job that POPULATES every optional field, which is why one is constructed here. Two directions are asserted and both are load-bearing: all_fields_job proves each populated fact reaches the emitted yaml (a new dropped field reds), and minimal_job proves an absent field emits NO key (a projection that started emitting an empty `outputs: {}` or a bare `name:` also reds). Without the second direction the first is satisfiable by unconditionally emitting every key. This is validation, not construction — DESIGN §5's preference is a model from which the projection is derived so a dropped field is unwritable, and that is not reachable while job_yaml is a hand-written fold over named fields; until it is, this witness is the residue mechanism and it is enrolled rather than inert. A field ADDED to Job without being added here and to job_yaml is the gap this cannot close: it fails open on additions, which is why the note on the emitter side carries the field roster explicitly."
 
-fn probe_step() -> Step {
+fn probe_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: "probe" },
     id: none,
@@ -19,8 +19,8 @@ fn probe_step() -> Step {
   }
 }
 
-fn all_fields_job() -> Job {
-  Job {
+fn all_fields_job() -> extdeps.github.actions.Job {
+  extdeps.github.actions.Job {
     id: "all_fields",
     name: Present { value: "Every Optional Field Populated" },
     runner: HostedRunner { label: UbuntuLatest },
@@ -38,7 +38,7 @@ fn all_fields_job() -> Job {
       }
     },
     permissions: Present {
-      value: WorkflowPermissions {
+      value: extdeps.github.actions.WorkflowPermissions {
         contents: Present { value: PermRead },
         pull_requests: none,
         issues: none,
@@ -49,8 +49,8 @@ fn all_fields_job() -> Job {
   }
 }
 
-fn minimal_job() -> Job {
-  Job {
+fn minimal_job() -> extdeps.github.actions.Job {
+  extdeps.github.actions.Job {
     id: "minimal",
     name: none,
     runner: HostedRunner { label: UbuntuLatest },
@@ -111,8 +111,8 @@ test fn queue_max_emits_the_queue_key() -> Bool {
     && string_contains(s: y, pattern: "cancel-in-progress: false")
 }
 
-fn queue_not_max_job() -> Job {
-  Job {
+fn queue_not_max_job() -> extdeps.github.actions.Job {
+  extdeps.github.actions.Job {
     id: "queue_not_max",
     name: none,
     runner: HostedRunner { label: UbuntuLatest },
@@ -134,8 +134,8 @@ fn queue_not_max_job() -> Job {
   }
 }
 
-fn queue_max_only_job() -> Job {
-  Job {
+fn queue_max_only_job() -> extdeps.github.actions.Job {
+  extdeps.github.actions.Job {
     id: "queue_max_only",
     name: none,
     runner: HostedRunner { label: UbuntuLatest },
@@ -165,7 +165,7 @@ test fn queue_max_and_queue_not_max_no_longer_serialize_identically() -> Bool {
 }
 
 test fn scalar_concurrency_group_still_projects_as_a_bare_string() -> Bool {
-  let j = Job {
+  let j = extdeps.github.actions.Job {
     id: "scalar",
     name: none,
     runner: HostedRunner { label: UbuntuLatest },

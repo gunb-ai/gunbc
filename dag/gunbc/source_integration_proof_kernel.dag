@@ -12,48 +12,48 @@ type KernelContextTransportReceipt = NonEmptyStr where brand("KernelContextTrans
 type KernelCommutingSquareReceipt = NonEmptyStr where brand("KernelCommutingSquareReceipt")
 
 type KernelFact {
-  key: LandingFactHandle
+  key: gunbc.source_integration_landing_spine.LandingFactHandle
   value: KernelFactValue
 }
 
 type KernelGroundedDelta {
-  key: LandingFactHandle
+  key: gunbc.source_integration_landing_spine.LandingFactHandle
   before: KernelFactValue
   after: KernelFactValue
-  scope: LandingScopeHandle
-  grounding_claim: LandingRequiredClaim
+  scope: gunbc.source_integration_landing_spine.LandingScopeHandle
+  grounding_claim: gunbc.source_integration_landing_spine.LandingRequiredClaim
 }
 
 type KernelDirectAuthoredTransformation {
-  proposal: LandingProposalContract
-  ready_evidence: LandingReadyEvidenceReceipt
+  proposal: gunbc.source_integration_landing_spine.LandingProposalContract
+  ready_evidence: gunbc.source_integration_landing_spine.LandingReadyEvidenceReceipt
   delta: List<KernelGroundedDelta>
 }
 
 type KernelContextTransport {
-  occurrence: LandingProposalOccurrenceId
-  authored_parent: LandingAcceptedStateHandle
-  transported_parent: LandingAcceptedStateHandle
+  occurrence: gunbc.source_integration_landing_spine.LandingProposalOccurrenceId
+  authored_parent: gunbc.source_integration_landing_spine.LandingAcceptedStateHandle
+  transported_parent: gunbc.source_integration_landing_spine.LandingAcceptedStateHandle
   receipt: KernelContextTransportReceipt
 }
 
 type KernelCommutingSquare {
-  first: LandingProposalOccurrenceId
-  second: LandingProposalOccurrenceId
-  equivalence: LandingEquivalenceHandle
+  first: gunbc.source_integration_landing_spine.LandingProposalOccurrenceId
+  second: gunbc.source_integration_landing_spine.LandingProposalOccurrenceId
+  equivalence: gunbc.source_integration_landing_spine.LandingEquivalenceHandle
   receipt: KernelCommutingSquareReceipt
 }
 
 type KernelInvariant {
   identity: KernelInvariantHandle
-  claims: List<LandingRequiredClaim>
+  claims: List<gunbc.source_integration_landing_spine.LandingRequiredClaim>
   procedure: KernelProcedureHandle
 }
 
 type KernelInferenceProcedure {
   identity: KernelProcedureHandle
-  consumes: List<LandingFactHandle>
-  produces: List<LandingFactHandle>
+  consumes: List<gunbc.source_integration_landing_spine.LandingFactHandle>
+  produces: List<gunbc.source_integration_landing_spine.LandingFactHandle>
 }
 
 type KernelInferenceRound {
@@ -72,7 +72,7 @@ type KernelFiniteBounds {
 }
 
 type KernelCandidateGenerationSpec {
-  accepted_parent: LandingAcceptedStateHandle
+  accepted_parent: gunbc.source_integration_landing_spine.LandingAcceptedStateHandle
   accepted_facts: List<KernelFact>
   first_transformation: KernelDirectAuthoredTransformation
   remaining_transformations: List<KernelDirectAuthoredTransformation>
@@ -83,7 +83,7 @@ type KernelCandidateGenerationSpec {
   procedures: List<KernelInferenceProcedure>
   inference_schedule: List<KernelInferenceRound>
   invariants: List<KernelInvariant>
-  equivalence: LandingEquivalenceHandle
+  equivalence: gunbc.source_integration_landing_spine.LandingEquivalenceHandle
   bounds: KernelFiniteBounds
 }
 
@@ -109,16 +109,16 @@ type KernelRefusalKind
 
 type KernelRefusal {
   kind: KernelRefusalKind
-  locus: NonEmptyStr
+  locus: std.types.NonEmptyStr
   occurrences: Int
 }
 
 type KernelCandidateGenerator
   = KernelTransformationGenerator {
-      occurrence: LandingProposalOccurrenceId,
+      occurrence: gunbc.source_integration_landing_spine.LandingProposalOccurrenceId,
     }
   | KernelContextTransportGenerator {
-      occurrence: LandingProposalOccurrenceId,
+      occurrence: gunbc.source_integration_landing_spine.LandingProposalOccurrenceId,
       receipt: KernelContextTransportReceipt,
     }
   | KernelCanonicalizationGenerator {
@@ -133,7 +133,7 @@ type KernelCandidateGenerator
     }
 
 type KernelCandidateClass {
-  accepted_parent: LandingAcceptedStateHandle
+  accepted_parent: gunbc.source_integration_landing_spine.LandingAcceptedStateHandle
   generators: List<KernelCandidateGenerator>
 }
 
@@ -390,8 +390,8 @@ fn kernel_candidate_generation_admitted(
 }
 
 type KernelClosureCertificate {
-  kind: LandingClosureCertificateKind
-  receipt: ContentHash
+  kind: gunbc.source_integration_landing_spine.LandingClosureCertificateKind
+  receipt: std.content_hash.ContentHash
 }
 
 type KernelAcceptanceCapability

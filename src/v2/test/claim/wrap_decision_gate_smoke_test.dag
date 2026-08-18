@@ -2,9 +2,9 @@ module v2.test.claim.wrap_decision_gate_smoke
 
 
 test fn wrap_decision_gate_smoke_bundle_absent_inapplicable() -> Bool {
-  let target = TargetModel {
+  let target = v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
-    bundle: Node {
+    bundle: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence

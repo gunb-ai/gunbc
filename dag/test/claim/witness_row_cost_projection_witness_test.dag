@@ -3,60 +3,60 @@ module test.claim.witness_row_cost_projection
 
 data witness_row_cost_projection_note: String = "Executing REDs for the #5 ObservationEvent join projection (N+1 per entry). (1) DeclarationSegment key/grain totality lives in observation_model_witness_test. (2) Two modeled events → one exact TSV row. (3) Missing or multiple parent resolve events REFUSE the row set. (4) W2 Ambient suppress does not delete the complete receipt row. (5) Declaration-/module-nested resolve phases do NOT count as the entry-level parent (collision RED — review 43409). Resolve wall is entry-level/shared — repeated as a column, never divided, never summed N times as a corpus total. Role classification is witness_cost_event_role (typed extract), not is_* Bool filters."
 
-fn sample_decl(name: String) -> DeclarationRef {
-  DeclarationRef {
-    module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
-    decl_name: name as NonEmptyStr,
+fn sample_decl(name: String) -> std.decl_ref.DeclarationRef {
+  std.decl_ref.DeclarationRef {
+    module_path: "test.claim.witness_row_cost_projection" as std.types.NonEmptyStr,
+    decl_name: name as std.types.NonEmptyStr,
     field: WholeDeclaration
   }
 }
 
-fn sample_entry() -> NonEmptyStr {
-  "dag/test/claim/witness_row_cost_projection_witness_test.dag" as NonEmptyStr
+fn sample_entry() -> std.types.NonEmptyStr {
+  "dag/test/claim/witness_row_cost_projection_witness_test.dag" as std.types.NonEmptyStr
 }
 
-fn witness_wall_ns(count: std.nat.Nat) -> Nanosecond {
+fn witness_wall_ns(count: std.nat.Nat) -> std.measure.Nanosecond {
   millisecond_to_nanosecond(m: millisecond(count: count))
 }
 
-fn witness_wall_ms(count: std.nat.Nat) -> Nanosecond {
+fn witness_wall_ms(count: std.nat.Nat) -> std.measure.Nanosecond {
   witness_wall_ns(count: count)
 }
 
-fn witness_eval_ms(count: std.nat.Nat) -> List<TimedMeasurement> {
+fn witness_eval_ms(count: std.nat.Nat) -> List<std.observation.TimedMeasurement> {
   observation_durations_wall(elapsed: witness_wall_ns(count: count))
 }
 
-fn witness_eval_ns(count: std.nat.Nat) -> List<TimedMeasurement> {
+fn witness_eval_ns(count: std.nat.Nat) -> List<std.observation.TimedMeasurement> {
   observation_durations_wall(elapsed: nanosecond(count: count))
 }
 
-fn witness_eval_cpu_and_wall(cpu_ms: std.nat.Nat, wall_ms: std.nat.Nat) -> List<TimedMeasurement> {
+fn witness_eval_cpu_and_wall(cpu_ms: std.nat.Nat, wall_ms: std.nat.Nat) -> List<std.observation.TimedMeasurement> {
   observation_durations_cpu_and_wall(
     cpu: witness_wall_ns(count: cpu_ms),
     wall: witness_wall_ns(count: wall_ms)
   )
 }
 
-fn witness_wall_ms_count(wall: Nanosecond) -> std.nat.Nat {
+fn witness_wall_ms_count(wall: std.measure.Nanosecond) -> std.nat.Nat {
   millisecond_count(m: nanosecond_to_millisecond_floor(n: wall))
 }
 
-fn row_clock_ns(row: WitnessCostReceiptRow, basis: ClockBasis) -> std.nat.Nat {
+fn row_clock_ns(row: gunbc.witness_row_cost.WitnessCostReceiptRow, basis: std.measure.ClockBasis) -> std.nat.Nat {
   match observation_duration_of(durations: row.eval, basis: basis) {
     MeasuredValue { value: v } => nanosecond_count(n: v)
     MeasuredUnavailable { cause: _ } => 0
   }
 }
 
-fn row_clock_is_unavailable(row: WitnessCostReceiptRow, basis: ClockBasis) -> Bool {
+fn row_clock_is_unavailable(row: gunbc.witness_row_cost.WitnessCostReceiptRow, basis: std.measure.ClockBasis) -> Bool {
   match observation_duration_of(durations: row.eval, basis: basis) {
     MeasuredValue { value: _ } => false
     MeasuredUnavailable { cause: _ } => true
   }
 }
 
-fn row_wall_ms_count(row: WitnessCostReceiptRow) -> std.nat.Nat {
+fn row_wall_ms_count(row: gunbc.witness_row_cost.WitnessCostReceiptRow) -> std.nat.Nat {
   millisecond_count(m: nanosecond_to_millisecond_floor(n: nanosecond(count: row_clock_ns(row: row, basis: WallClock))))
 }
 
@@ -66,7 +66,7 @@ fn two_events_project_one_exact_tsv_row_holds() -> Bool {
   let resolve = witness_wall_ms(count: 100)
   let eval_wall = witness_wall_ms(count: 20)
   let eval = witness_eval_ms(count: 20)
-  let events: List<ObservationEvent> = [
+  let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: resolve),
     witness_cost_declaration_event(entry: entry, declaration: decl, eval: eval, outcome: Done)
   ]
@@ -97,7 +97,7 @@ fn two_events_project_one_exact_tsv_row_holds() -> Bool {
 fn missing_parent_resolve_refuses_holds() -> Bool {
   let entry = sample_entry()
   let decl = sample_decl(name: "orphan_witness")
-  let events: List<ObservationEvent> = [
+  let events: List<std.observation.ObservationEvent> = [
     witness_cost_declaration_event(
       entry: entry,
       declaration: decl,
@@ -107,7 +107,7 @@ fn missing_parent_resolve_refuses_holds() -> Bool {
   ]
   match project_witness_cost_receipt(events: events) {
     WitnessCostProjectionRefused { cause: c } =>
-      c != ("silent" as NonEmptyStr)
+      c != ("silent" as std.types.NonEmptyStr)
     WitnessCostProjectionComplete { rows: _ } => false
   }
 }
@@ -115,7 +115,7 @@ fn missing_parent_resolve_refuses_holds() -> Bool {
 fn multiple_parent_resolve_refuses_holds() -> Bool {
   let entry = sample_entry()
   let decl = sample_decl(name: "ambiguous_parent")
-  let events: List<ObservationEvent> = [
+  let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 100)),
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 200)),
     witness_cost_declaration_event(
@@ -127,7 +127,7 @@ fn multiple_parent_resolve_refuses_holds() -> Bool {
   ]
   match project_witness_cost_receipt(events: events) {
     WitnessCostProjectionRefused { cause: c } =>
-      c == ("multiple parent resolve-phase events for an entry (refuse; never silently pick)" as NonEmptyStr)
+      c == ("multiple parent resolve-phase events for an entry (refuse; never silently pick)" as std.types.NonEmptyStr)
     WitnessCostProjectionComplete { rows: _ } => false
   }
 }
@@ -137,7 +137,7 @@ fn resolve_wall_is_shared_not_divided_holds() -> Bool {
   let d1 = sample_decl(name: "w1")
   let d2 = sample_decl(name: "w2")
   let resolve = witness_wall_ms(count: 100)
-  let events: List<ObservationEvent> = [
+  let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: resolve),
     witness_cost_declaration_event(entry: entry, declaration: d1, eval: witness_eval_ms(count: 10), outcome: Done),
     witness_cost_declaration_event(entry: entry, declaration: d2, eval: witness_eval_ms(count: 30), outcome: Done)
@@ -158,19 +158,19 @@ fn refused_outcome_distinct_from_failed_in_projection_holds() -> Bool {
   let entry = sample_entry()
   let d_refused = sample_decl(name: "refused_w")
   let d_failed = sample_decl(name: "failed_w")
-  let events: List<ObservationEvent> = [
+  let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 50)),
     witness_cost_declaration_event(
       entry: entry,
       declaration: d_refused,
       eval: witness_eval_ms(count: 5),
-      outcome: Refused { diagnostic: "typed refuse" as NonEmptyStr }
+      outcome: Refused { diagnostic: "typed refuse" as std.types.NonEmptyStr }
     ),
     witness_cost_declaration_event(
       entry: entry,
       declaration: d_failed,
       eval: witness_eval_ms(count: 5),
-      outcome: Failed { error: "boom" as NonEmptyStr, output: "" }
+      outcome: Failed { error: "boom" as std.types.NonEmptyStr, output: "" }
     )
   ]
   match project_witness_cost_receipt(events: events) {
@@ -179,7 +179,7 @@ fn refused_outcome_distinct_from_failed_in_projection_holds() -> Bool {
       count(rows) == 2 &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          Refused { diagnostic: d } => d == ("typed refuse" as NonEmptyStr)
+          Refused { diagnostic: d } => d == ("typed refuse" as std.types.NonEmptyStr)
           Failed { error: _, output: _ } => false
           Done => false
           TimedOut { basis: _, budget: _, elapsed: _ } => false
@@ -189,7 +189,7 @@ fn refused_outcome_distinct_from_failed_in_projection_holds() -> Bool {
       ) &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          Failed { error: e, output: _ } => e == ("boom" as NonEmptyStr)
+          Failed { error: e, output: _ } => e == ("boom" as std.types.NonEmptyStr)
           Refused { diagnostic: _ } => false
           Done => false
           TimedOut { basis: _, budget: _, elapsed: _ } => false
@@ -211,11 +211,11 @@ fn w2_ambient_suppress_retains_complete_receipt_row_holds() -> Bool {
     eval: eval,
     outcome: Done
   )
-  let events: List<ObservationEvent> = [
+  let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: resolve),
     witness_event
   ]
-  let basis = AttentionBasis {
+  let basis = std.observation.AttentionBasis {
     average: millisecond(count: 1000),
     maximum: millisecond(count: 5000)
   }
@@ -254,10 +254,10 @@ fn malformed_nested_resolve_event_refuses_holds() -> Bool {
   )
   let module_resolve = witness_cost_module_resolve_event(
     entry: entry,
-    module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
+    module_path: "test.claim.witness_row_cost_projection" as std.types.NonEmptyStr,
     resolve: witness_wall_ms(count: 888)
   )
-  let events: List<ObservationEvent> = [
+  let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 100)),
     nested,
     module_resolve,
@@ -310,7 +310,7 @@ fn typed_event_role_extract_classifies_entry_and_declaration_holds() -> Bool {
 fn duplicate_declaration_identity_refuses_holds() -> Bool {
   let entry = sample_entry()
   let decl = sample_decl("duplicate")
-  let events: List<ObservationEvent> = [
+  let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 10)),
     witness_cost_declaration_event(entry: entry, declaration: decl, eval: witness_eval_ms(count: 1), outcome: Done),
     witness_cost_declaration_event(entry: entry, declaration: decl, eval: witness_eval_ms(count: 2), outcome: Done)
@@ -325,11 +325,11 @@ fn duplicate_declaration_identity_refuses_holds() -> Bool {
 fn non_concluded_timing_event_refuses_holds() -> Bool {
   let concluded = witness_cost_seed_done_event(
     entry: sample_entry(),
-    module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
-    function: "begun_only" as NonEmptyStr,
+    module_path: "test.claim.witness_row_cost_projection" as std.types.NonEmptyStr,
+    function: "begun_only" as std.types.NonEmptyStr,
     eval: witness_eval_ms(count: 1)
   )
-  let begun = ObservationEvent {
+  let begun = std.observation.ObservationEvent {
     subject: concluded.subject,
     transition: Begin,
     durations: concluded.durations,
@@ -347,21 +347,21 @@ fn non_concluded_timing_event_refuses_holds() -> Bool {
 
 fn native_seed_events_preserve_order_outcome_and_perturbation_holds() -> Bool {
   let entry = sample_entry()
-  let events: List<ObservationEvent> = [
+  let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 100)),
     witness_cost_seed_refused_event(
       entry: entry,
-      module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
-      function: "first_refused" as NonEmptyStr,
+      module_path: "test.claim.witness_row_cost_projection" as std.types.NonEmptyStr,
+      function: "first_refused" as std.types.NonEmptyStr,
       eval: witness_eval_ms(count: 7),
-      diagnostic: "typed refusal" as NonEmptyStr
+      diagnostic: "typed refusal" as std.types.NonEmptyStr
     ),
     witness_cost_seed_failed_event(
       entry: entry,
-      module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
-      function: "second_failed" as NonEmptyStr,
+      module_path: "test.claim.witness_row_cost_projection" as std.types.NonEmptyStr,
+      function: "second_failed" as std.types.NonEmptyStr,
       eval: witness_eval_ms(count: 19),
-      error: "runtime failure" as NonEmptyStr
+      error: "runtime failure" as std.types.NonEmptyStr
     )
   ]
   match project_witness_cost_receipt(events: events) {
@@ -376,7 +376,7 @@ fn native_seed_events_preserve_order_outcome_and_perturbation_holds() -> Bool {
       ) == 26 &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          Refused { diagnostic: d } => d == ("typed refusal" as NonEmptyStr)
+          Refused { diagnostic: d } => d == ("typed refusal" as std.types.NonEmptyStr)
           Done => false
           Failed { error: _, output: _ } => false
           TimedOut { basis: _, budget: _, elapsed: _ } => false
@@ -386,7 +386,7 @@ fn native_seed_events_preserve_order_outcome_and_perturbation_holds() -> Bool {
       ) &&
       fold(rows, init: false, f: (acc, row) =>
         acc || match row.outcome {
-          Failed { error: e, output: _ } => e == ("runtime failure" as NonEmptyStr)
+          Failed { error: e, output: _ } => e == ("runtime failure" as std.types.NonEmptyStr)
           Done => false
           Refused { diagnostic: _ } => false
           TimedOut { basis: _, budget: _, elapsed: _ } => false
@@ -403,7 +403,7 @@ fn exact_nanosecond_projection_and_same_millisecond_order_holds() -> Bool {
   let one = sample_decl(name: "one_ns")
   let sub_ms = sample_decl(name: "sub_ms")
   let one_ms = sample_decl(name: "one_ms")
-  let events: List<ObservationEvent> = [
+  let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: nanosecond(count: 7)),
     witness_cost_declaration_event(
       entry: entry,
@@ -452,12 +452,12 @@ fn exact_nanosecond_projection_and_same_millisecond_order_holds() -> Bool {
 
 fn seed_timed_out_event_carries_the_pair_and_is_not_failed_holds() -> Bool {
   let entry = sample_entry()
-  let events: List<ObservationEvent> = [
+  let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 100)),
     witness_cost_seed_timed_out_event(
       entry: entry,
-      module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
-      function: "killed_at_deadline" as NonEmptyStr,
+      module_path: "test.claim.witness_row_cost_projection" as std.types.NonEmptyStr,
+      function: "killed_at_deadline" as std.types.NonEmptyStr,
       eval: witness_eval_ms(count: 900794),
       basis: WallClock,
       budget: millisecond(count: 900000),
@@ -488,8 +488,8 @@ fn timed_out_red_control_is_neither_done_nor_failed_holds() -> Bool {
   let entry = sample_entry()
   let killed = witness_cost_seed_timed_out_event(
     entry: entry,
-    module_path: "test.claim.witness_row_cost_projection" as NonEmptyStr,
-    function: "killed" as NonEmptyStr,
+    module_path: "test.claim.witness_row_cost_projection" as std.types.NonEmptyStr,
+    function: "killed" as std.types.NonEmptyStr,
     eval: witness_eval_ms(count: 5),
     basis: CpuClock,
     budget: millisecond(count: 4),
@@ -517,7 +517,7 @@ fn timed_out_red_control_is_neither_done_nor_failed_holds() -> Bool {
 fn row_carries_both_clocks_and_does_not_confuse_them_holds() -> Bool {
   let entry = sample_entry()
   let decl = sample_decl(name: "two_clock_witness")
-  let events: List<ObservationEvent> = [
+  let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 100)),
     witness_cost_declaration_event(
       entry: entry,
@@ -544,7 +544,7 @@ fn row_carries_both_clocks_and_does_not_confuse_them_holds() -> Bool {
 fn wall_only_row_reports_cpu_absent_rather_than_zero_holds() -> Bool {
   let entry = sample_entry()
   let decl = sample_decl(name: "wall_only_witness")
-  let events: List<ObservationEvent> = [
+  let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 100)),
     witness_cost_declaration_event(
       entry: entry,
@@ -569,12 +569,12 @@ fn wall_only_row_reports_cpu_absent_rather_than_zero_holds() -> Bool {
 fn eval_with_no_wall_clock_refuses_rather_than_projecting_holds() -> Bool {
   let entry = sample_entry()
   let decl = sample_decl(name: "cpu_only_witness")
-  let events: List<ObservationEvent> = [
+  let events: List<std.observation.ObservationEvent> = [
     witness_cost_entry_resolve_event(entry: entry, resolve: witness_wall_ms(count: 100)),
     witness_cost_declaration_event(
       entry: entry,
       declaration: decl,
-      eval: [TimedMeasurement { basis: CpuClock, elapsed: MeasuredValue { value: witness_wall_ms(count: 3) } }],
+      eval: [std.observation.TimedMeasurement { basis: CpuClock, elapsed: MeasuredValue { value: witness_wall_ms(count: 3) } }],
       outcome: Done
     )
   ]
@@ -585,9 +585,9 @@ fn eval_with_no_wall_clock_refuses_rather_than_projecting_holds() -> Bool {
 }
 
 fn two_readings_of_one_clock_refuse_rather_than_picking_holds() -> Bool {
-  let ambiguous: List<TimedMeasurement> = [
-    TimedMeasurement { basis: WallClock, elapsed: MeasuredValue { value: witness_wall_ms(count: 40) } },
-    TimedMeasurement { basis: WallClock, elapsed: MeasuredValue { value: witness_wall_ms(count: 90) } }
+  let ambiguous: List<std.observation.TimedMeasurement> = [
+    std.observation.TimedMeasurement { basis: WallClock, elapsed: MeasuredValue { value: witness_wall_ms(count: 40) } },
+    std.observation.TimedMeasurement { basis: WallClock, elapsed: MeasuredValue { value: witness_wall_ms(count: 90) } }
   ]
   match observation_duration_of(durations: ambiguous, basis: WallClock) {
     MeasuredValue { value: _ } => false

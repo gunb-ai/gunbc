@@ -25,14 +25,14 @@ fn seed_witness_repository(repo: std.types.FilePath) -> Bool {
 }
 
 fn commit_witness_side(repo: std.types.FilePath, branch: String, content: String) -> Bool {
-  let branched = git.Core.CheckoutNewBranchAtInRepo(repo: repo, branch: branch, start_point: "base" as GitRef).exit_code
+  let branched = git.Core.CheckoutNewBranchAtInRepo(repo: repo, branch: branch, start_point: "base" as std.types.GitRef).exit_code
   let written = write_witness_file(repo: repo, name: "unclaimed.txt", content: content)
   let staged = git.Core.AddAllInRepo(repo: repo).exit_code
   let committed = git.Core.CommitInRepo(repo: repo, message: branch).exit_code
   branched == 0 && written && staged == 0 && committed == 0
 }
 
-fn refusals_contain_unmerged_index(refusals: List<CommitWriterRefusal>) -> Bool {
+fn refusals_contain_unmerged_index(refusals: List<gunbc.commit_workflow.CommitWriterRefusal>) -> Bool {
   match refusals {
     Empty => false
     Cons { head: CommitWriterUnmergedIndexRefusal { path: _, stages: _ }, tail: _ } => true
@@ -40,7 +40,7 @@ fn refusals_contain_unmerged_index(refusals: List<CommitWriterRefusal>) -> Bool 
   }
 }
 
-fn refusals_contain_conflict_marker_text(refusals: List<CommitWriterRefusal>) -> Bool {
+fn refusals_contain_conflict_marker_text(refusals: List<gunbc.commit_workflow.CommitWriterRefusal>) -> Bool {
   match refusals {
     Empty => false
     Cons { head: CommitWriterConflictMarkerTextRefusal { location: _ }, tail: _ } => true

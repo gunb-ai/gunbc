@@ -19,7 +19,7 @@ type RealizationPhase
 
 type RealizationAttemptStanding
   = V2TranslateSerialized { emitted_nonempty: Bool }
-  | V2RealizationRefused { phase: RealizationPhase, exact_cause: Symbol, located: String }
+  | V2RealizationRefused { phase: RealizationPhase, exact_cause: v2.std.node.Symbol, located: String }
 
 type EntryRealizationAttempt {
   entry: String

@@ -18,7 +18,7 @@ data fleet_converge_service_unit_name: String = "ctrl-fleet-converge.service"
 data fleet_converge_timer_unit_name: String = "ctrl-fleet-converge.timer"
 data fleet_converge_timer_on_calendar: String = "*:0/15"
 data fleet_converge_timer_cadence_retired_note: String = "RETIRED (operator directive 2026-08-13, sleek-heron-218): the *:0/15 unattended cadence is no longer installed by live_deploy membership or CI self-install. Fleet convergence is on-demand via the emitted .github/workflows/fleet-converge.yml plan/apply workflow with content-addressed plan artifacts and CAS apply. Unit content rows remain for teardown of legacy hosts and witness regression controls only."
-data fleet_converge_timer_randomized_delay: Second = second(count: 90)
+data fleet_converge_timer_randomized_delay: std.measure.Second = second(count: 90)
 data fleet_converge_binary_path: String = "/opt/gunbc/bin/gunbc"
 data fleet_converge_env_file_path: String = "/etc/gunbc/fleet-converge.env"
 
@@ -26,9 +26,9 @@ data fleet_converge_env_file_path: String = "/etc/gunbc/fleet-converge.env"
 // emitted through grammar rows — the medium-as-string shape the shell→intent lane's
 // containment exists to stop spreading. Tolerated only while this module is tests-only
 // (no production emitter consumes it); the typed row below carries the dissolution.
-data fleet_converge_unit_text_scaffold: Disposition = Scaffold {
+data fleet_converge_unit_text_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.emit",
     decl_name: "live_deploy_emit_shell_dissolution_trigger",
     field: WholeDeclaration,
@@ -55,9 +55,9 @@ data fleet_converge_unit_text_scaffold: Disposition = Scaffold {
 // at all). Dissolving this to the single emit authority is therefore a b1 correctness
 // requirement for srv2–srv4, not merely DRY; patching "User=root" here in isolation is
 // declined because the missing WorkingDirectory makes this body wrong regardless of principal.
-data fleet_converge_unit_body_fork_disposition: Disposition = Scaffold {
+data fleet_converge_unit_body_fork_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.emit",
     decl_name: "emit_fleet_converge_service_unit_doc",
     field: WholeDeclaration,

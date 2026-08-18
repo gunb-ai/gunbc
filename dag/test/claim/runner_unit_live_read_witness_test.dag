@@ -10,7 +10,7 @@ fn fixture_unit() -> String {
   "actions-runner@srv1-01.service"
 }
 
-fn fixture_memory_max_target() -> ConvergeTarget {
+fn fixture_memory_max_target() -> gunbc.host_converge.ConvergeTarget {
   PerSlotMemoryCap {
     dropin_path: gunbc_runner_per_slot_dropin_path,
     instance_glob: runner_instance_glob(host: fixture_host()),
@@ -19,7 +19,7 @@ fn fixture_memory_max_target() -> ConvergeTarget {
   }
 }
 
-fn fixture_swap_max_target() -> ConvergeTarget {
+fn fixture_swap_max_target() -> gunbc.host_converge.ConvergeTarget {
   PerSlotMemoryCap {
     dropin_path: gunbc_runner_per_slot_swap_dropin_path,
     instance_glob: runner_instance_glob(host: fixture_host()),
@@ -28,8 +28,8 @@ fn fixture_swap_max_target() -> ConvergeTarget {
   }
 }
 
-fn matching_swap_max_row() -> RunnerUnitLiveReadRow {
-  RunnerUnitLiveReadRow {
+fn matching_swap_max_row() -> gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
+  gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
     unit: fixture_unit(),
     memory_max_raw: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
     memory_swap_max_raw: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)),
@@ -39,7 +39,7 @@ fn matching_swap_max_row() -> RunnerUnitLiveReadRow {
   }
 }
 
-fn fixture_high_target() -> ConvergeTarget {
+fn fixture_high_target() -> gunbc.host_converge.ConvergeTarget {
   PerSlotMemoryCap {
     dropin_path: gunbc_runner_per_slot_high_dropin_path,
     instance_glob: runner_instance_glob(host: fixture_host()),
@@ -48,8 +48,8 @@ fn fixture_high_target() -> ConvergeTarget {
   }
 }
 
-fn matching_high_row() -> RunnerUnitLiveReadRow {
-  RunnerUnitLiveReadRow {
+fn matching_high_row() -> gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
+  gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
     unit: fixture_unit(),
     memory_max_raw: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
     memory_swap_max_raw: to_string(byte_size_count(b: gunbc_runner_slot_desired().memory_swap_max)),
@@ -59,8 +59,8 @@ fn matching_high_row() -> RunnerUnitLiveReadRow {
   }
 }
 
-fn matching_memory_max_row() -> RunnerUnitLiveReadRow {
-  RunnerUnitLiveReadRow {
+fn matching_memory_max_row() -> gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
+  gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
     unit: fixture_unit(),
     memory_max_raw: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
     memory_swap_max_raw: "0",
@@ -70,8 +70,8 @@ fn matching_memory_max_row() -> RunnerUnitLiveReadRow {
   }
 }
 
-fn drift_memory_max_row() -> RunnerUnitLiveReadRow {
-  RunnerUnitLiveReadRow {
+fn drift_memory_max_row() -> gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
+  gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
     unit: fixture_unit(),
     memory_max_raw: "30000000000",
     memory_swap_max_raw: "0",

@@ -1,7 +1,7 @@
 module test.claim.retained_shell_script_witness
 
 
-data srvn_takeover_ref: DeclarationRef = DeclarationRef {
+data srvn_takeover_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.plans.fleet_subsumption_manual_gaps",
   decl_name: "fleet_subsumption_manual_gaps_plan",
   field: WholeDeclaration,
@@ -17,7 +17,7 @@ test fn witness_retained_transport_mints_from_record() -> Bool {
 }
 
 test fn witness_converter_preserves_body() -> Bool {
-  let rss = RetainedShellScript {
+  let rss = gunbc.retained_shell_script.RetainedShellScript {
     body: "systemctl daemon-reload",
     reason: "witness: record -> transport",
     dissolves_to: srvn_takeover_ref,

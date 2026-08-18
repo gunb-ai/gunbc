@@ -1,8 +1,8 @@
 module v2.test.claim.realize_advisory_soundness_test
 
 
-fn obs(known: Bool, derived: Int, observed: Int) -> AdvisoryObservation {
-  AdvisoryObservation {
+fn obs(known: Bool, derived: Int, observed: Int) -> v2.workflow.realize_advisory_soundness.AdvisoryObservation {
+  v2.workflow.realize_advisory_soundness.AdvisoryObservation {
     entry: "synthetic_entry.dag",
     subject_function: "synthetic_fn",
     derived_bytes_known: known,

@@ -29,15 +29,15 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 type WorkflowRunEvent {
   activity: String
 
-  run_id: NonEmptyStr
+  run_id: std.types.NonEmptyStr
   workflow_name: String
-  workflow_id: NonEmptyStr
+  workflow_id: std.types.NonEmptyStr
   workflow_path: String
-  conclusion: WorkflowRunConclusion
-  html_url: NonEmptyStr
-  run_started_at: NonEmptyStr
+  conclusion: extdeps.github.workflow_runs.WorkflowRunConclusion
+  html_url: std.types.NonEmptyStr
+  run_started_at: std.types.NonEmptyStr
 
-  head_sha: CommitSha
+  head_sha: std.types.CommitSha
   head_branch: String
   head_repository_full_name: String
 
@@ -54,7 +54,7 @@ type WorkflowRunEventObservation
   | WorkflowRunEventPayloadReadRefused { path: String, cause: String }
 
 type WorkflowRunEventMember
-  = WorkflowRunEventMemberFound { value: JsonValue }
+  = WorkflowRunEventMemberFound { value: extdeps.languages.json.emit.JsonValue }
   | WorkflowRunEventMemberFailed { observation: WorkflowRunEventObservation }
 
 fn workflow_run_event_member_at(v: JsonValue, key: String) -> WorkflowRunEventMember {

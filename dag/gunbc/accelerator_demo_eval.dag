@@ -10,7 +10,7 @@ fn eval_relu_mul_add_elem_at_index(ai: Int, bi: Int, ci: Int) -> Int {
 }
 
 fn eval_pure_map_at_indices(
-  ops: List<ElementwiseArrayOp>,
+  ops: List<gunbc.accelerator_demo_program.ElementwiseArrayOp>,
   a: List<Int>,
   b: List<Int>,
   c: List<Int>,
@@ -45,7 +45,7 @@ fn eval_pure_map_at_indices(
 }
 
 fn eval_accelerator_program(
-  program: AcceleratorDemoProgram,
+  program: gunbc.accelerator_demo_program.AcceleratorDemoProgram,
   a: List<Int>,
   b: List<Int>,
   c: List<Int>

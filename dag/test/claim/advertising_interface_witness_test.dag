@@ -3,7 +3,7 @@ module test.claim.advertising_interface_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data synthetic_unavailable_rate: AdPriceDetermination = RateUnavailable {
+data synthetic_unavailable_rate: extdeps.advertising.types.AdPriceDetermination = RateUnavailable {
   cause: "witness-fixture -- synthetic unavailability, not a vendor fact",
 }
 

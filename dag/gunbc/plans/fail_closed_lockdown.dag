@@ -1,7 +1,7 @@
 module gunbc.plans.fail_closed_lockdown
 
 
-fn fail_closed_lockdown_body() -> List<MarkdownBlock> {
+fn fail_closed_lockdown_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** audit + lock-down checklist · **DESIGN.md + carriers are authority** (§6 no parallel ledger); each item dissolves into a wired CI gate when it lands. Linked from `ROADMAP.md §0`."),
     p(text: "**Verified against the live tree 2026-06-21.** Named symbols are receipts; re-check before acting."),
@@ -83,7 +83,7 @@ fn fail_closed_lockdown_body() -> List<MarkdownBlock> {
   ]
 }
 
-data fail_closed_lockdown_plan: Plan = Plan {
+data fail_closed_lockdown_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "fail-closed-lockdown",
   title: "Plan — Fail-closed lock-down (make fail-open physically impossible to write)",
   body: fail_closed_lockdown_body(),

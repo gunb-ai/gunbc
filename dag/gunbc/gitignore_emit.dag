@@ -1,7 +1,7 @@
 module gunbc.gitignore_emit
 
 
-fn artifact_pattern(a: IgnoreArtifact) -> String {
+fn artifact_pattern(a: gunbc.gitignore_model.IgnoreArtifact) -> String {
   match a {
     CargoTargetDir => "/target/"
     CargoTargetCodexDir => "/target-codex/"
@@ -58,7 +58,7 @@ fn artifact_pattern(a: IgnoreArtifact) -> String {
   }
 }
 
-fn producer_display(p: Producer) -> String {
+fn producer_display(p: gunbc.gitignore_model.Producer) -> String {
   match p {
     Derivable { kind: CargoArtifacts } => "Cargo build artifacts (from cargo)"
     Derivable { kind: CargoCacheLocal } => "Cargo cache (local CARGO_HOME) (from tool/rust)"
@@ -89,7 +89,7 @@ fn producer_display(p: Producer) -> String {
   }
 }
 
-fn producer_rationale_line(p: Producer) -> String {
+fn producer_rationale_line(p: gunbc.gitignore_model.Producer) -> String {
   match p {
     Derivable { kind: CargoArtifacts } => "Reproducible from source via cargo build"
     Derivable { kind: CargoCacheLocal } => "Local Cargo cache may include git checkouts; not project state"
@@ -120,19 +120,19 @@ fn producer_rationale_line(p: Producer) -> String {
   }
 }
 
-data gitignore_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+data gitignore_protocol: std.layout.LayoutProtocol = std.layout.LayoutProtocol { indent_unit: "" }
 
-fn gitignore_comment_line(text: String) -> Doc {
+fn gitignore_comment_line(text: String) -> std.layout.Doc {
   let prefix = config_comment_prefix(format: gitignore_format)
   let line = if text == "" { prefix } else { concat(concat(prefix, " "), text) }
   doc_line_of(text: line)
 }
 
-fn gitignore_section_header(title: String) -> Doc {
+fn gitignore_section_header(title: String) -> std.layout.Doc {
   gitignore_comment_line(text: concat("--- ", concat(title, " ---")))
 }
 
-fn group_doc(g: IgnoreGroup) -> Doc {
+fn group_doc(g: gunbc.gitignore_model.IgnoreGroup) -> std.layout.Doc {
   let header = gitignore_section_header(title: producer_display(p: g.producer))
   let rationale = producer_rationale_line(p: g.producer)
   let rat_doc = if rationale == "" { DocEmpty } else { gitignore_comment_line(text: rationale) }
@@ -140,7 +140,7 @@ fn group_doc(g: IgnoreGroup) -> Doc {
   doc_concat(parts: append([header, rat_doc], items: pattern_docs))
 }
 
-fn gitignore_header_doc() -> Doc {
+fn gitignore_header_doc() -> std.layout.Doc {
   doc_concat(parts: [
     gitignore_comment_line(text: "gunbc .gitignore — generated from dag/gunbc/gitignore_authority.dag — do not hand-edit."),
     gitignore_comment_line(text: ""),
@@ -149,14 +149,14 @@ fn gitignore_header_doc() -> Doc {
   ])
 }
 
-fn groups_doc(groups: List<IgnoreGroup>) -> Doc {
+fn groups_doc(groups: List<gunbc.gitignore_model.IgnoreGroup>) -> std.layout.Doc {
   doc_concat(parts: fold(groups, init: [], f: fn(acc, g) {
     let gd = group_doc(g: g)
     if count(acc) == 0 { [gd] } else { append(acc, items: [doc_blank(), gd]) }
   }))
 }
 
-fn project_gitignore_to_doc(groups: List<IgnoreGroup>) -> Doc {
+fn project_gitignore_to_doc(groups: List<gunbc.gitignore_model.IgnoreGroup>) -> std.layout.Doc {
   doc_concat(parts: [gitignore_header_doc(), groups_doc(groups: groups), doc_blank(), generated_artifacts_section_doc()])
 }
 
@@ -168,7 +168,7 @@ fn gitignore_drifted(committed: String) -> Bool {
   !(committed == expected_gitignore())
 }
 
-fn group_patterns(g: IgnoreGroup) -> List<String> {
+fn group_patterns(g: gunbc.gitignore_model.IgnoreGroup) -> List<String> {
   fold(g.artifacts, init: [], f: fn(acc, a) { concat(acc, [artifact_pattern(a: a)]) })
 }
 
@@ -185,7 +185,7 @@ fn non_committed_artifacts() -> List<gunbc.generated_artifact.GeneratedArtifact>
   filter(generated_artifact_registry, a => !artifact_is_committed(a: a))
 }
 
-fn generated_artifacts_section_doc() -> Doc {
+fn generated_artifacts_section_doc() -> std.layout.Doc {
   let header = gitignore_section_header(title: "Generated artifacts (gitignored-by-default, derived from generated_artifact_registry)")
   let rationale = gitignore_comment_line(text: "Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).")
   let pattern_docs = map(non_committed_artifacts(), a => doc_line_of(text: generated_artifact_ignore_pattern(a: a)))

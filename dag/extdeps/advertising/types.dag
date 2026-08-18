@@ -12,5 +12,5 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data ad_price_determination_note: String = "Auction ad platforms publish the pricing MECHANISM, not a rate card: the amount charged per billable event is determined per-auction and no citable numeric rate exists upstream. AuctionDetermined is therefore the true upstream fact (an answer, with the mechanism page as its citation), while RateUnavailable marks a figure the vendor DOES publish but this fetch could not read (ignorance) -- the DESIGN section 5 distinction between top-as-answer and top-as-ignorance, kept as two typed arms so neither can masquerade as the other. A listed-rate arm is deliberately absent: neither modeled vendor publishes a citable numeric rate today, and that arm is minted when the first citable listed figure appears, never before -- a fabricated plausible rate from training data is exactly the wrong answer, and a vendor rate is precisely the kind of fact that goes stale."
 
 type AdPriceDetermination
-  = AuctionDetermined { mechanism_citation: NonEmptyStr }
-  | RateUnavailable { cause: NonEmptyStr }
+  = AuctionDetermined { mechanism_citation: std.types.NonEmptyStr }
+  | RateUnavailable { cause: std.types.NonEmptyStr }

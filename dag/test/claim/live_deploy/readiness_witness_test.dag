@@ -12,12 +12,12 @@ data witness_ssh_mock_stdout: String = "mock ssh stdin script executed"
 // NON-convergence against a host that is not answering, so the identity they carry is never the reason
 // they refuse. Declaring it here rather than in deploy_release_fixture keeps gunbc.live_deploy.candidate's
 // import closure off every other deploy witness that only needs a sha.
-fn witness_expected_surface_identity() -> Fnv1a64Structural {
-  Fnv1a64Structural { digest: "0123456789abcdef" as NonEmptyStr }
+fn witness_expected_surface_identity() -> std.content_hash.Fnv1a64Structural {
+  std.content_hash.Fnv1a64Structural { digest: "0123456789abcdef" as std.types.NonEmptyStr }
 }
 
-fn witness_candidate_release() -> CandidateRelease {
-  CandidateRelease {
+fn witness_candidate_release() -> gunbc.live_deploy.candidate.CandidateRelease {
+  gunbc.live_deploy.candidate.CandidateRelease {
     revision: deploy_witness_release_revision,
     expected_surface_identity: witness_expected_surface_identity(),
   }
@@ -49,7 +49,7 @@ test fn witness_healthz_bad_body_not_groundable() -> Bool {
 test fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
   !healthz_body_groundable(body: witness_ssh_mock_stdout)
     && match ground_service_ready_from_healthz(
-      read: HealthzEffectiveRead {
+      read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
         body: witness_ssh_mock_stdout,
         probe_error: "",
       },
@@ -85,7 +85,7 @@ test fn witness_transport_probe_targets_localhost_healthz() -> Bool {
 
 test fn witness_accept_no_response_probe_fails_fast_not_hangs() -> Bool {
   match ground_service_ready_from_healthz(
-    read: HealthzEffectiveRead {
+    read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead {
       body: "",
       probe_error: "curl: (28) Operation timed out after 5000 milliseconds with 0 bytes received",
     },
@@ -112,7 +112,7 @@ test fn witness_transport_get_probe_over_ssh_does_not_ground_mock_stdout() -> Bo
   let port = deployment_plan_listen_port(spec: deployment_spec_srv1())
   let read = live_deploy_healthz_get_for_port(
     port: port,
-    transport: SshShell { ssh_host: "srv1" as NonEmptyStr },
+    transport: SshShell { ssh_host: "srv1" as std.types.NonEmptyStr },
   )
   !reconciliation_converged(
     r: reconcile_service_ready_read(
@@ -185,7 +185,7 @@ test fn witness_bounded_poll_max_attempts_derived_from_bound_over_cadence() -> B
 }
 
 test fn witness_service_not_ready_refusal_shape_matches_contract() -> Bool {
-  let reason = service_not_ready_reason(refusal: ServiceNotReady {
+  let reason = service_not_ready_reason(refusal: gunbc.live_deploy.service_ready.ServiceNotReady {
     unit: live_deploy_service_ready_unit_authority,
     endpoint: live_deploy_service_ready_endpoint_authority,
     waited: live_deploy_service_ready_poll_bound,

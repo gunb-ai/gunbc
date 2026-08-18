@@ -31,7 +31,7 @@ test fn w_interlock_emits_expected_bytes_through_the_generic_fold() -> Bool {
 // through a helper that yields an empty node when derivation fails, and an empty row cannot match
 // anything — so a silent derivation failure would surface only as a distant row-not-found. This
 // asserts the fallback is UNREACHABLE rather than trusting that it is.
-fn row_derives(lhs: Symbol, emitted: Node) -> Bool {
+fn row_derives(lhs: v2.std.node.Symbol, emitted: Node) -> Bool {
   match verilog_relation_row_for(lhs: lhs, emitted: emitted) {
     Holds { value: _ } => true
     Violates { diagnostic: _ } => false
@@ -149,7 +149,7 @@ test fn w_port_population_changes_only_the_port_region() -> Bool {
 // an ordered table pretending to be a relation. An earlier version of this control asserted a
 // production COUNT, which proves nothing about order and is a literal measured from the same
 // tree it checks.
-fn emit_with(productions: List<FormalProduction>, emitted: Node) -> String {
+fn emit_with(productions: List<v2.std.grammar.FormalProduction>, emitted: Node) -> String {
   match verilog_relation_row_for_productions(productions: productions, lhs: ^verilog_production_ansi_module_decl, emitted: emitted) {
     Holds { value: row } =>
       match target_serialize_relation_row_from_model_bounded(

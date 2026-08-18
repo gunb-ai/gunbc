@@ -3,80 +3,80 @@ module test.claim.repository_census_observation_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn census_witness_decl(name: String) -> DeclarationRef {
+fn census_witness_decl(name: String) -> std.decl_ref.DeclarationRef {
   decl_ref(module_path: "test.claim.repository_census_observation_witness", decl_name: name)
 }
 
-data census_witness_revision: MeasurementRevision = GitRevision {
+data census_witness_revision: gunbc.guarantee_measurement.MeasurementRevision = GitRevision {
   commit: "64aed6007e0000000000000000000000000000ff",
 }
 
-data census_witness_later_revision: MeasurementRevision = GitRevision {
+data census_witness_later_revision: gunbc.guarantee_measurement.MeasurementRevision = GitRevision {
   commit: "b12027cd940000000000000000000000000000ff",
 }
 
-fn census_witness_digest(seed: String) -> Fnv1a64Structural {
-  content_hash_atom(value: seed as NonEmptyStr)
+fn census_witness_digest(seed: String) -> std.content_hash.Fnv1a64Structural {
+  content_hash_atom(value: seed as std.types.NonEmptyStr)
 }
 
-fn census_witness_method() -> CensusMethodRunIdentity {
-  CensusMethodRunIdentity {
+fn census_witness_method() -> gunbc.repository_census_observation.CensusMethodRunIdentity {
+  gunbc.repository_census_observation.CensusMethodRunIdentity {
     classifier: census_witness_decl(name: "census_witness_classifier"),
     classifier_revision: census_witness_revision,
     invocation_identity: census_witness_digest(seed: "invocation-alpha"),
   }
 }
 
-data census_witness_repo_wide_population: RepositoryPopulation = RepositoryPopulation {
-  repository: "gunbc" as RepositoryIdentity,
-  first_source_root: "dag" as SourceRootIdentity,
-  additional_source_roots: ["src/v2" as SourceRootIdentity],
+data census_witness_repo_wide_population: gunbc.repository_census_observation.RepositoryPopulation = gunbc.repository_census_observation.RepositoryPopulation {
+  repository: "gunbc" as gunbc.repository_census_observation.RepositoryIdentity,
+  first_source_root: "dag" as gunbc.repository_census_observation.SourceRootIdentity,
+  additional_source_roots: ["src/v2" as gunbc.repository_census_observation.SourceRootIdentity],
   inclusion_rule: census_witness_decl(name: "census_witness_inclusion_rule"),
   exclusion_rule: Absent,
 }
 
-data census_witness_dag_only_population: RepositoryPopulation = RepositoryPopulation {
-  repository: "gunbc" as RepositoryIdentity,
-  first_source_root: "dag" as SourceRootIdentity,
+data census_witness_dag_only_population: gunbc.repository_census_observation.RepositoryPopulation = gunbc.repository_census_observation.RepositoryPopulation {
+  repository: "gunbc" as gunbc.repository_census_observation.RepositoryIdentity,
+  first_source_root: "dag" as gunbc.repository_census_observation.SourceRootIdentity,
   additional_source_roots: [],
   inclusion_rule: census_witness_decl(name: "census_witness_inclusion_rule"),
   exclusion_rule: Absent,
 }
 
-data census_witness_two_roots_population: RepositoryPopulation = RepositoryPopulation {
-  repository: "gunbc" as RepositoryIdentity,
-  first_source_root: "a" as SourceRootIdentity,
-  additional_source_roots: ["b" as SourceRootIdentity],
+data census_witness_two_roots_population: gunbc.repository_census_observation.RepositoryPopulation = gunbc.repository_census_observation.RepositoryPopulation {
+  repository: "gunbc" as gunbc.repository_census_observation.RepositoryIdentity,
+  first_source_root: "a" as gunbc.repository_census_observation.SourceRootIdentity,
+  additional_source_roots: ["b" as gunbc.repository_census_observation.SourceRootIdentity],
   inclusion_rule: census_witness_decl(name: "census_witness_inclusion_rule"),
   exclusion_rule: Absent,
 }
 
-data census_witness_one_joined_root_population: RepositoryPopulation = RepositoryPopulation {
-  repository: "gunbc" as RepositoryIdentity,
-  first_source_root: "a,b" as SourceRootIdentity,
+data census_witness_one_joined_root_population: gunbc.repository_census_observation.RepositoryPopulation = gunbc.repository_census_observation.RepositoryPopulation {
+  repository: "gunbc" as gunbc.repository_census_observation.RepositoryIdentity,
+  first_source_root: "a,b" as gunbc.repository_census_observation.SourceRootIdentity,
   additional_source_roots: [],
   inclusion_rule: census_witness_decl(name: "census_witness_inclusion_rule"),
   exclusion_rule: Absent,
 }
 
-fn census_witness_row(subject: String, fact_seed: String) -> CensusObservedRow {
+fn census_witness_row(subject: String, fact_seed: String) -> gunbc.repository_census_observation.CensusObservedRow {
   census_observed_row(
-    subject: subject as CensusSubjectKey,
+    subject: subject as gunbc.repository_census_observation.CensusSubjectKey,
     fact: census_witness_digest(seed: fact_seed),
   )
 }
 
-data census_witness_rows: List<CensusObservedRow> = [
+data census_witness_rows: List<gunbc.repository_census_observation.CensusObservedRow> = [
   census_witness_row(subject: "dag/std/algebra.dag", fact_seed: "residue-kind=shell"),
   census_witness_row(subject: "dag/std/measure.dag", fact_seed: "residue-kind=shell"),
 ]
 
-data census_witness_reclassified_rows: List<CensusObservedRow> = [
+data census_witness_reclassified_rows: List<gunbc.repository_census_observation.CensusObservedRow> = [
   census_witness_row(subject: "dag/std/algebra.dag", fact_seed: "residue-kind=typescript"),
   census_witness_row(subject: "dag/std/measure.dag", fact_seed: "residue-kind=shell"),
 ]
 
-fn census_witness_baseline() -> RepositoryCensusObservation {
+fn census_witness_baseline() -> gunbc.repository_census_observation.RepositoryCensusObservation {
   repository_census_observation(
     population: census_witness_repo_wide_population,
     observed_at_revision: census_witness_revision,
@@ -222,21 +222,21 @@ test fn witness_the_same_measurement_at_a_later_revision_is_a_new_observation() 
 test fn witness_every_method_run_field_reaches_the_identity() -> Bool {
   let baseline = census_method_run_identity(method: census_witness_method())
   let other_classifier = census_method_run_identity(
-    method: CensusMethodRunIdentity {
+    method: gunbc.repository_census_observation.CensusMethodRunIdentity {
       classifier: census_witness_decl(name: "census_witness_other_classifier"),
       classifier_revision: census_witness_revision,
       invocation_identity: census_witness_digest(seed: "invocation-alpha"),
     },
   )
   let other_revision = census_method_run_identity(
-    method: CensusMethodRunIdentity {
+    method: gunbc.repository_census_observation.CensusMethodRunIdentity {
       classifier: census_witness_decl(name: "census_witness_classifier"),
       classifier_revision: census_witness_later_revision,
       invocation_identity: census_witness_digest(seed: "invocation-alpha"),
     },
   )
   let other_invocation = census_method_run_identity(
-    method: CensusMethodRunIdentity {
+    method: gunbc.repository_census_observation.CensusMethodRunIdentity {
       classifier: census_witness_decl(name: "census_witness_classifier"),
       classifier_revision: census_witness_revision,
       invocation_identity: census_witness_digest(seed: "invocation-beta"),
@@ -252,7 +252,7 @@ test fn witness_two_runs_of_one_classifier_at_one_revision_stay_distinct_observa
   let second_run = repository_census_observation(
     population: census_witness_repo_wide_population,
     observed_at_revision: census_witness_revision,
-    method_run: CensusMethodRunIdentity {
+    method_run: gunbc.repository_census_observation.CensusMethodRunIdentity {
       classifier: census_witness_decl(name: "census_witness_classifier"),
       classifier_revision: census_witness_revision,
       invocation_identity: census_witness_digest(seed: "invocation-beta"),
@@ -267,28 +267,28 @@ test fn witness_every_population_field_reaches_the_identity() -> Bool {
     population: census_witness_repo_wide_population,
   )
   let other_repository = repository_census_population_identity(
-    population: RepositoryPopulation {
-      repository: "other-repo" as RepositoryIdentity,
-      first_source_root: "dag" as SourceRootIdentity,
-      additional_source_roots: ["src/v2" as SourceRootIdentity],
+    population: gunbc.repository_census_observation.RepositoryPopulation {
+      repository: "other-repo" as gunbc.repository_census_observation.RepositoryIdentity,
+      first_source_root: "dag" as gunbc.repository_census_observation.SourceRootIdentity,
+      additional_source_roots: ["src/v2" as gunbc.repository_census_observation.SourceRootIdentity],
       inclusion_rule: census_witness_decl(name: "census_witness_inclusion_rule"),
       exclusion_rule: Absent,
     },
   )
   let other_inclusion = repository_census_population_identity(
-    population: RepositoryPopulation {
-      repository: "gunbc" as RepositoryIdentity,
-      first_source_root: "dag" as SourceRootIdentity,
-      additional_source_roots: ["src/v2" as SourceRootIdentity],
+    population: gunbc.repository_census_observation.RepositoryPopulation {
+      repository: "gunbc" as gunbc.repository_census_observation.RepositoryIdentity,
+      first_source_root: "dag" as gunbc.repository_census_observation.SourceRootIdentity,
+      additional_source_roots: ["src/v2" as gunbc.repository_census_observation.SourceRootIdentity],
       inclusion_rule: census_witness_decl(name: "census_witness_other_inclusion_rule"),
       exclusion_rule: Absent,
     },
   )
   let with_exclusion = repository_census_population_identity(
-    population: RepositoryPopulation {
-      repository: "gunbc" as RepositoryIdentity,
-      first_source_root: "dag" as SourceRootIdentity,
-      additional_source_roots: ["src/v2" as SourceRootIdentity],
+    population: gunbc.repository_census_observation.RepositoryPopulation {
+      repository: "gunbc" as gunbc.repository_census_observation.RepositoryIdentity,
+      first_source_root: "dag" as gunbc.repository_census_observation.SourceRootIdentity,
+      additional_source_roots: ["src/v2" as gunbc.repository_census_observation.SourceRootIdentity],
       inclusion_rule: census_witness_decl(name: "census_witness_inclusion_rule"),
       exclusion_rule: Present {
         value: census_witness_decl(name: "census_witness_exclusion_rule"),

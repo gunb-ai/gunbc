@@ -10,26 +10,26 @@ type SchedulerBlockedEvidence
 
 type SchedulerPlan
   = SchedulerPlanComplete {
-      layers: List<ReadinessLayer>,
+      layers: List<v2.std.dependency.ReadinessLayer>,
       scheduled: List<Node>
     }
   | SchedulerPlanRunnable {
       frontier: RunnableFrontier,
       scheduled: List<Node>,
       remaining: List<Node>,
-      layers: List<ReadinessLayer>
+      layers: List<v2.std.dependency.ReadinessLayer>
     }
   | SchedulerPlanBlocked {
       evidence: SchedulerBlockedEvidence,
       scheduled: List<Node>,
       remaining: List<Node>,
-      layers: List<ReadinessLayer>
+      layers: List<v2.std.dependency.ReadinessLayer>
     }
 
 type SchedulerRunState {
   scheduled: List<Node>
   remaining: List<Node>
-  layers: List<ReadinessLayer>
+  layers: List<v2.std.dependency.ReadinessLayer>
   frontier: RunnableFrontier
 }
 

@@ -30,14 +30,14 @@ fn stream_of(lines: List<String>) -> String {
   join(lines, "\n")
 }
 
-fn selected_path_or_empty(selection: CargoArtifactSelection) -> String {
+fn selected_path_or_empty(selection: extdeps.cargo_message.CargoArtifactSelection) -> String {
   match extdeps.cargo_message.cargo_artifact_selected_path(selection: selection) {
     Present { value: p } => p
     Absent => ""
   }
 }
 
-fn select_from(lines: List<String>, target_name: String) -> CargoArtifactSelection {
+fn select_from(lines: List<String>, target_name: String) -> extdeps.cargo_message.CargoArtifactSelection {
   extdeps.cargo_message.cargo_select_artifact_executable(
     stdout: stream_of(lines: lines),
     target_name: target_name

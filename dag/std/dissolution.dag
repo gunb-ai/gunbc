@@ -13,7 +13,7 @@ type DissolutionStatus
   | DissolutionPending
   | DissolutionFired
 
-fn dissolution_trigger_ref(trigger: DissolutionTrigger) -> DeclarationRef {
+fn dissolution_trigger_ref(trigger: DissolutionTrigger) -> std.decl_ref.DeclarationRef {
   match trigger {
     DeclarationAppears { ref: r } => r
   }
@@ -21,7 +21,7 @@ fn dissolution_trigger_ref(trigger: DissolutionTrigger) -> DeclarationRef {
 
 fn dissolution_status(
   condition: DissolutionCondition,
-  present_decls: List<DeclarationRef>,
+  present_decls: List<std.decl_ref.DeclarationRef>,
 ) -> DissolutionStatus {
   match condition {
     BoundDissolution { trigger: t } =>
@@ -36,7 +36,7 @@ fn dissolution_status(
   }
 }
 
-fn bound_dissolution(ref: DeclarationRef) -> DissolutionCondition {
+fn bound_dissolution(ref: std.decl_ref.DeclarationRef) -> DissolutionCondition {
   BoundDissolution { trigger: DeclarationAppears { ref: ref } }
 }
 
@@ -45,7 +45,7 @@ fn bound_dissolution(ref: DeclarationRef) -> DissolutionCondition {
 // the downstream well-formedness guards had to be restored to catch what the
 // cast was assumed to prevent. The permitted string payload lives inside
 // UnboundDissolution; it does not cross this authority boundary untyped.
-fn unbound_dissolution(description: NonEmptyStr) -> DissolutionCondition {
+fn unbound_dissolution(description: std.types.NonEmptyStr) -> DissolutionCondition {
   UnboundDissolution { description: description }
 }
 

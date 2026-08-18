@@ -153,10 +153,10 @@ fn node_is_frontier_done(n: RoadmapNode) -> Bool {
 }
 
 type SpawnFrontier {
-  ready: List<RoadmapNode>
-  upcoming: List<RoadmapNode>
-  done: List<RoadmapNode>
-  superseded: List<RoadmapNode>
+  ready: List<gunbc.roadmap_model.RoadmapNode>
+  upcoming: List<gunbc.roadmap_model.RoadmapNode>
+  done: List<gunbc.roadmap_model.RoadmapNode>
+  superseded: List<gunbc.roadmap_model.RoadmapNode>
 }
 
 fn spawn_frontier(doc: RoadmapDocument, merged: List<Int>) -> SpawnFrontier {

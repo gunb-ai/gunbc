@@ -29,13 +29,13 @@ fn workload_class_cpu_weight(wc: WorkloadClass) -> Int {
 type RunnerHostDeployment {
   identity: product.placement_supply.HostIdentity
   runner_count: Int
-  runner_slice_cap: ByteSize
-  per_runner_memory_cap: ByteSize
-  per_runner_memory_swap_cap: ByteSize
-  per_runner_memory_high_cap: ByteSize
+  runner_slice_cap: std.measure.ByteSize
+  per_runner_memory_cap: std.measure.ByteSize
+  per_runner_memory_swap_cap: std.measure.ByteSize
+  per_runner_memory_high_cap: std.measure.ByteSize
   per_runner_tasks_max: Int
-  build_tokens: HardwareThreadCount
-  runner: RunnerSpec
+  build_tokens: std.measure.HardwareThreadCount
+  runner: extdeps.github.actions.RunnerSpec
   workload_class: WorkloadClass
 }
 
@@ -52,7 +52,7 @@ type DeploymentAccumulator {
 }
 
 type SessionSliceResolution
-  = SessionSliceResolved { bytes: ByteSize, per_session_cap: ByteSize, concurrency: Int }
+  = SessionSliceResolved { bytes: std.measure.ByteSize, per_session_cap: std.measure.ByteSize, concurrency: Int }
   | SessionSliceUnresolved { reason: String }
 
 fn resolve_regime1_slice(c: ByteSize, n: Int) -> SessionSliceResolution {
@@ -121,7 +121,7 @@ fn host_fixed_overhead_bytes(o: HostFixedOverhead) -> ByteSize {
 
 // host_fixed_overhead_bytes maps Unmeasured to ZERO BYTES, and that arm is a fail-open this module must not consume directly. Zero overhead makes a host look like it has its entire RAM available for runners, which is the most permissive possible answer to a question nobody answered — the absorbing fallback in the input to a conservation wall. The arm is retained because the function is a total projection and callers legitimately fold over it, but accumulate_conservation_deployment refuses on Unmeasured BEFORE reaching it (host_overhead_or_refusal), so the zero is unreachable on the plan path. Retained rather than deleted because deleting it would only move the totality problem to every caller.
 type HostOverheadResolution
-  = HostOverheadResolved { bytes: ByteSize }
+  = HostOverheadResolved { bytes: std.measure.ByteSize }
   | HostOverheadUnresolved { reason: String }
 
 fn host_overhead_or_refusal(host: HostIdentity, o: HostFixedOverhead) -> HostOverheadResolution {
@@ -155,7 +155,7 @@ data host_session_slice_source_note: String = "WHICH HOSTS OWE A SESSIONS RESERV
 data host_session_slice_refuses_rather_than_charging_zero_note: String = "AN UNSIZED SESSION SLICE ON A SESSION HOST REFUSES, because the alternative is the bug this change exists to remove, re-entering through a different door. The first draft of this function returned byte_size(0) whenever the reservation mode could not produce a number — SessionAggregateUnmeasured, SessionOperatingPointUnset, SessionReservationModeUnset — which reads as 'sessions cost nothing' and is exactly the unconditional zero that let srv1 and srv2 score as though 20GiB of reservation were free. Fixing the WHERE (a host carries sessions) while leaving the HOW MUCH silently zero would have moved the defect rather than closed it.\n\nThe distinction the arms preserve: a host with NO session instance genuinely owes nothing, and SessionSliceNotApplicable says so. A host that DOES carry one and cannot size it is unknown, not free, and SessionSliceUnsized refuses the whole plan with a located reason. Those are different states and one of them is safe.\n\nToday every arm resolves — the declared Regime-2 aggregate is present — so this refusal is dormant. It is written anyway because the mode is one edit from unmeasured and the cost of the fail-open version is a fleet that overcommits its two tightest hosts while every wall returns true."
 
 type HostSessionSliceResolution
-  = SessionSliceCharged { bytes: ByteSize }
+  = SessionSliceCharged { bytes: std.measure.ByteSize }
   | SessionSliceNotApplicable
   | SessionSliceUnsized { reason: String }
 
@@ -210,7 +210,7 @@ data host_usable_ram_note: String = "CONSERVATION IS CHECKED AGAINST OS-USABLE R
 // gives: a fabricated premise under correct arithmetic is the worst place for an absorbing
 // fallback, because the wall returns true and the machine OOMs.
 type HostUsableRamResolution
-  = HostUsableRamResolved { bytes: ByteSize }
+  = HostUsableRamResolved { bytes: std.measure.ByteSize }
   | HostUsableRamUnresolved { reason: String }
 
 
@@ -351,7 +351,7 @@ fn effective_runners_per_host() -> RunnersPerHostResolution {
 type SessionHostReservation {
   identity: product.placement_supply.HostIdentity
   session_count: Int
-  per_session_reservation: ByteSize
+  per_session_reservation: std.measure.ByteSize
   workload_class: WorkloadClass
 }
 
@@ -359,7 +359,7 @@ type SessionReservationPlan
   = SessionReservationDerived {
       hosts: List<SessionHostReservation>,
       fleet_concurrent_sessions: Int,
-      per_session_reservation: ByteSize,
+      per_session_reservation: std.measure.ByteSize,
       coverage_count: Int,
       sample_count: Int
     }
@@ -399,9 +399,9 @@ data gunbc_ci_count_field_measure_followup: Disposition = Scaffold {
 
 
 type OperatingPointRow {
-  per_session_cap: ByteSize
+  per_session_cap: std.measure.ByteSize
   session_concurrency: Int
-  sessions_slice: ByteSize
+  sessions_slice: std.measure.ByteSize
   coverage_count: Int
   sample_count: Int
 }

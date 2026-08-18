@@ -38,7 +38,7 @@ WHAT FOLLOWS, and what does not. Event name is not the discriminator: an exact r
 (3) FixtureExplicitRoster is untouched by this wall. Those patterns name control fixtures consumed by other witnesses rather than witnesses claiming their own coverage, so the has-a-consumer question is answered elsewhere; if that class ever grows a witness of its own it inherits exactly this defect, and the arm is written so extending it is one predicate."
 
 type FrozenPathDeferral {
-  entry: NonEmptyStr
+  entry: std.types.NonEmptyStr
   functions: List<String>
 }
 

@@ -102,10 +102,10 @@ type CatalogProviderRole
   | ExactByteBudgetRole
 
 type CatalogProviderEligibility
-  = ProviderEligible { role: CatalogProviderRole, provider: CacheProvider }
+  = ProviderEligible { role: CatalogProviderRole, provider: std.materialization_ladder.CacheProvider }
   | ProviderIneligible {
       role: CatalogProviderRole,
-      interface: CacheInterfaceId,
+      interface: std.cache_identity.CacheInterfaceId,
       reason: CatalogProjectionRefusalReason
     }
 

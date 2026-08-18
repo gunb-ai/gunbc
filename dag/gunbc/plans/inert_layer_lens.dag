@@ -1,7 +1,7 @@
 module gunbc.plans.inert_layer_lens
 
 
-fn inert_layer_lens_body() -> List<MarkdownBlock> {
+fn inert_layer_lens_body() -> List<std.markdown.MarkdownBlock> {
   [
     quote(blocks: [
       p(text: "A lens that reports declared concepts (carriers, fns, whole modules) that are **modeled but unreached from any live run-root** — DESIGN §6's \"the machinery exists but nothing gates on it,\" made *observable* and eventually fail-closed. The dangerous subset, and the reason for the lens, is the **load-bearing-but-unwired** layer: a richly-structured carrier that *looks* like it drives behavior and drives none. DESIGN refs: §3 (single authority — generalizes the #5433 inert-lens backstop, does not fork it), §5 (fail-closed; construction over validation), §6 (lens as residue; coverage-by-illusion), §7 (recursion — the compiler's own dead model is a substrate fact)."),
@@ -125,7 +125,7 @@ fn inert_layer_lens_body() -> List<MarkdownBlock> {
   ]
 }
 
-data inert_layer_lens_plan: Plan = Plan {
+data inert_layer_lens_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "inert-layer-lens",
   title: "The inert-layer lens — modeled but unreached",
   body: inert_layer_lens_body(),

@@ -54,7 +54,7 @@ data predicate_int_ne_note: String = "IntNe \{ lhs, rhs \} is the integer inequa
 
 type EscalationLevel {
   detect: Predicate
-  warning: EmitDirective
+  warning: v2.std.diagnostic.EmitDirective
   env: FreeMonoid<EnvBinding>
 }
 
@@ -75,7 +75,7 @@ type PipelineStep
   | Comment { text: String }
   | Exit { status: String }
   | If { cond: Predicate, then_: Pipeline, else_: Optional<Pipeline> }
-  | For { binder: Symbol, over: ValueSource, body: Pipeline }
+  | For { binder: v2.std.node.Symbol, over: ValueSource, body: Pipeline }
   | While { cond: Predicate, body: Pipeline }
   | Retry {
       body: Pipeline,

@@ -1,7 +1,7 @@
 module gunbc.plans.testgen_oracle
 
 
-fn testgen_oracle_body() -> List<MarkdownBlock> {
+fn testgen_oracle_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** audit + direction · **DESIGN.md + carriers are authority** (§6). Linked from `ROADMAP.md` §4 *Testgen as the bug-class oracle*. (Was a §0 lock-down subject — its output is now floor-discovered, #5434.) The operator's frame: testgen is the answer to *\"how do we prevent the next CLASS of bugs, and how do they relate to structure?\"* — cover a class by **generating witnesses from the declared structure**, not one hand-written witness per bug. That is the construction principle (§0) applied to test coverage: instance-by-instance witnesses are validation; a generator over structure is construction."),
     p(text: "**Verified against the live tree 2026-06-21.** Receipts below; re-check before acting."),
@@ -90,7 +90,7 @@ fn testgen_oracle_body() -> List<MarkdownBlock> {
   ]
 }
 
-data testgen_oracle_plan: Plan = Plan {
+data testgen_oracle_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "testgen-oracle",
   title: "Plan — testgen as the bug-class oracle (coverage by construction)",
   body: testgen_oracle_body(),

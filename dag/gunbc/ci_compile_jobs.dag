@@ -5,14 +5,14 @@ type DerivedCompileJobs
   = CompileJobs { count: Int }
   | CompileJobsRefuse { reason: String }
 
-fn gunbc_ci_compile_hardware_threads() -> HardwareThreadCount {
+fn gunbc_ci_compile_hardware_threads() -> std.measure.HardwareThreadCount {
   altra_max_m12830_catalog.threads
 }
 
 fn ci_compile_jobs_for(
-  measurement: CompileJobMeasurement,
-  hardware_threads: HardwareThreadCount,
-  memory_budget: ByteSize,
+  measurement: gunbc.ci_compile_measurement.CompileJobMeasurement,
+  hardware_threads: std.measure.HardwareThreadCount,
+  memory_budget: std.measure.ByteSize,
   force_serial: Bool
 ) -> DerivedCompileJobs {
   if force_serial {
@@ -38,7 +38,7 @@ fn ci_compile_jobs_for(
   }
 }
 
-fn ci_compile_jobs(memory_budget: ByteSize, force_serial: Bool) -> DerivedCompileJobs {
+fn ci_compile_jobs(memory_budget: std.measure.ByteSize, force_serial: Bool) -> DerivedCompileJobs {
   ci_compile_jobs_for(
     measurement: gunbc_ci_compile_measurement,
     hardware_threads: gunbc_ci_compile_hardware_threads(),

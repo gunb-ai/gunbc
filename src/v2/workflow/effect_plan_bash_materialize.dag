@@ -8,7 +8,7 @@ type BashShellExecutablePosition
   | HostEnvVar { name: String }
 
 type BashBoundOperationInvocation {
-  invocation: BoundOperationInvocation
+  invocation: v2.std.operation_argv.BoundOperationInvocation
   executable_position: BashShellExecutablePosition
 }
 
@@ -46,15 +46,15 @@ type EffectPlanBashUnsupportedStep
   | UnsupportedCall
 
 type EffectPlanBashRefusalCause
-  = UnsupportedFailurePolicy { policy: FailurePolicy }
+  = UnsupportedFailurePolicy { policy: v2.std.orchestration.FailurePolicy }
   | UnsupportedEffectPlanStep { kind: EffectPlanBashUnsupportedStep }
-  | OperationArgvRefused { cause: ArgvRefusalCause }
+  | OperationArgvRefused { cause: v2.std.operation_argv.ArgvRefusalCause }
   | ArgumentContainsNul { argument_index: Int }
-  | BashGrammarEmissionRefused { diagnostics: NonEmptyDiagnostics }
+  | BashGrammarEmissionRefused { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
 
 type EffectPlanBashRefusal {
   step_index: Int
-  operation: Optional<OperationRef>
+  operation: Optional<v2.std.operation_argv.OperationRef>
   cause: EffectPlanBashRefusalCause
 }
 

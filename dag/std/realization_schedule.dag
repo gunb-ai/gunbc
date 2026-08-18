@@ -216,7 +216,7 @@ fn floor_worker_observation_outcome(observation: FloorWorkerObservation) -> Floo
   }
 }
 
-type FloorWorkerObservationReceiptPath = NonEmptyStr where brand("FloorWorkerObservationReceiptPath")
+type FloorWorkerObservationReceiptPath = std.types.NonEmptyStr where brand("FloorWorkerObservationReceiptPath")
 
 data floor_worker_observation_receipt_path: FloorWorkerObservationReceiptPath = "target/floor-worker-observation-receipt.tsv"
 
@@ -263,7 +263,7 @@ fn runnable_resource_profile(
   heavy_whole_tree_resolve: Bool,
   spawns_host_compiler: Bool,
   memory: RunnableMemoryClass,
-  execution_mode: ExecutionMode
+  execution_mode: std.execution_mode.ExecutionMode
 ) -> RunnableResourceProfile {
   RunnableResourceProfile {
     heavy_whole_tree_resolve: heavy_whole_tree_resolve

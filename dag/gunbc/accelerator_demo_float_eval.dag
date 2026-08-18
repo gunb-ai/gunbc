@@ -14,7 +14,7 @@ fn eval_float_relu_mul_add_elem_at_index(ai: Float, bi: Float, ci: Float) -> Flo
 }
 
 fn eval_float_pure_map_at_indices(
-  ops: List<ElementwiseArrayOp>,
+  ops: List<gunbc.accelerator_demo_program.ElementwiseArrayOp>,
   a: List<Float>,
   b: List<Float>,
   c: List<Float>,
@@ -49,7 +49,7 @@ fn eval_float_pure_map_at_indices(
 }
 
 fn eval_accelerator_program_float(
-  program: AcceleratorDemoProgram,
+  program: gunbc.accelerator_demo_program.AcceleratorDemoProgram,
   a: List<Float>,
   b: List<Float>,
   c: List<Float>

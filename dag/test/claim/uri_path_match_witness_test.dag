@@ -1,21 +1,21 @@
 module test.claim.uri_path_match_witness
 
 
-fn tpl(raw: String) -> PathTemplate {
+fn tpl(raw: String) -> std.http_path.PathTemplate {
   match parse_path_template(raw: raw) {
     ParsedPathTemplate { template: t } => t
-    MalformedPathTemplate { raw: _, segment: _, reason: _ } => PathTemplate { tokens: [] }
+    MalformedPathTemplate { raw: _, segment: _, reason: _ } => std.http_path.PathTemplate { tokens: [] }
   }
 }
 
-fn matched(m: PathTemplateMatch) -> Bool {
+fn matched(m: extdeps.uri_path.PathTemplateMatch) -> Bool {
   match m {
     PathMatched { params: _ } => true
     PathNotMatched => false
   }
 }
 
-fn param_value(m: PathTemplateMatch, name: String) -> String {
+fn param_value(m: extdeps.uri_path.PathTemplateMatch, name: String) -> String {
   match m {
     PathNotMatched => ""
     PathMatched { params: ps } =>

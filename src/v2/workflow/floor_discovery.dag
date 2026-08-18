@@ -4,11 +4,11 @@ module v2.workflow.floor_discovery
 data floor_discovery_exact_subject_note: String = "The exact subject for the cross-worker discovery result. `tested_commit` and `tested_tree` are two different Git facts: the commit names the revision selected for execution, while the GitObjectId is that commit's tree object. The seed formerly stored `git rev-parse HEAD` in a String field named tested_tree, so a commit id inhabited a tree-named coordinate and a consumer could not distinguish same commit/different tree metadata from an exact source-tree binding. Source roots and execution-authority roots remain ordered semantic lists here; a digest is DERIVED only for the storage/request identity and is never carried beside the lists as a caller-asserted duplicate. Naming-authority and tool identities use the existing Fnv1a64Structural family, matching the floor snapshot's current byte/structural identity realization. This is deliberately floor-discovery grain, not a new generic compute subject beside the execution-spine lane and not the gated WalkPlan executor state machine."
 
 type FloorDiscoveryCommitId sole_constructor {
-  object_id: GitObjectId
+  object_id: extdeps.git.object_store.GitObjectId
 }
 
 type FloorDiscoveryTreeId sole_constructor {
-  object_id: GitObjectId
+  object_id: extdeps.git.object_store.GitObjectId
 }
 
 fn floor_discovery_commit_id(object_id: GitObjectId) -> FloorDiscoveryCommitId {
@@ -24,8 +24,8 @@ type FloorDiscoverySubject {
   tested_tree: FloorDiscoveryTreeId
   source_roots: List<String>
   execution_authority_source_roots: List<String>
-  naming_authority_identity: Fnv1a64Structural
-  tool_identity: Fnv1a64Structural
+  naming_authority_identity: std.content_hash.Fnv1a64Structural
+  tool_identity: std.content_hash.Fnv1a64Structural
 }
 
 type FloorDiscoveryRequest {
@@ -33,21 +33,21 @@ type FloorDiscoveryRequest {
   scan_dirs: List<String>
   exclude_substrings: List<String>
   discovery_scope_dirs: List<String>
-  execution_mode: ExecutionMode
+  execution_mode: std.execution_mode.ExecutionMode
 }
 
 type FloorDiscoverySubjectMismatch
-  = FloorDiscoveryTestedCommitMismatch { expected: GitObjectId, observed: GitObjectId }
-  | FloorDiscoveryTestedTreeMismatch { expected: GitObjectId, observed: GitObjectId }
+  = FloorDiscoveryTestedCommitMismatch { expected: extdeps.git.object_store.GitObjectId, observed: extdeps.git.object_store.GitObjectId }
+  | FloorDiscoveryTestedTreeMismatch { expected: extdeps.git.object_store.GitObjectId, observed: extdeps.git.object_store.GitObjectId }
   | FloorDiscoverySourceRootsMismatch { expected: List<String>, observed: List<String> }
   | FloorDiscoveryExecutionAuthorityRootsMismatch { expected: List<String>, observed: List<String> }
   | FloorDiscoveryNamingAuthorityMismatch {
-      expected: Fnv1a64Structural,
-      observed: Fnv1a64Structural
+      expected: std.content_hash.Fnv1a64Structural,
+      observed: std.content_hash.Fnv1a64Structural
     }
   | FloorDiscoveryToolIdentityMismatch {
-      expected: Fnv1a64Structural,
-      observed: Fnv1a64Structural
+      expected: std.content_hash.Fnv1a64Structural,
+      observed: std.content_hash.Fnv1a64Structural
     }
 
 type FloorDiscoverySubjectBinding
@@ -110,7 +110,7 @@ type FloorDiscoveryRequestMismatch
   | FloorDiscoveryScanDirsMismatch { expected: List<String>, observed: List<String> }
   | FloorDiscoveryExclusionsMismatch { expected: List<String>, observed: List<String> }
   | FloorDiscoveryScopeMismatch { expected: List<String>, observed: List<String> }
-  | FloorDiscoveryExecutionModeMismatch { expected: ExecutionMode, observed: ExecutionMode }
+  | FloorDiscoveryExecutionModeMismatch { expected: std.execution_mode.ExecutionMode, observed: std.execution_mode.ExecutionMode }
 
 type FloorDiscoveryRequestBinding
   = FloorDiscoveryRequestBound { request: FloorDiscoveryRequest }
@@ -243,7 +243,7 @@ type FloorDiscoveryRow {
   label: String
   entry: String
   function: String
-  reads_live_tree: LiveTreeDisposition
+  reads_live_tree: v2.std.live_tree.LiveTreeDisposition
 }
 
 type FloorDiscoverySidecarKind

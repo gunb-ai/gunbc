@@ -41,13 +41,13 @@ fn fleet_timer_installed_path(unit_name: String) -> String {
 // a renamed unit cannot leave a stale plan behind. `install -m 0644` then daemon-reload
 // then enable --now; the final step is the INDEPENDENT POST-EFFECT READBACK (`systemctl
 // is-enabled`), because an apply's success criterion is never its exit code.
-fn fleet_timer_install_commands() -> List<ArgvCommand> {
+fn fleet_timer_install_commands() -> List<extdeps.exec.command.ArgvCommand> {
   [
-    ArgvCommand { argv: ["sudo", "-n", "install", "-m", "0644", fleet_timer_staged_path(unit_name: fleet_converge_service_unit_name), fleet_timer_installed_path(unit_name: fleet_converge_service_unit_name)] },
-    ArgvCommand { argv: ["sudo", "-n", "install", "-m", "0644", fleet_timer_staged_path(unit_name: fleet_converge_timer_unit_name), fleet_timer_installed_path(unit_name: fleet_converge_timer_unit_name)] },
-    ArgvCommand { argv: ["sudo", "-n", "systemctl", "daemon-reload"] },
-    ArgvCommand { argv: ["sudo", "-n", "systemctl", "enable", "--now", fleet_converge_timer_unit_name] },
-    ArgvCommand { argv: ["systemctl", "is-enabled", fleet_converge_timer_unit_name] },
+    extdeps.exec.command.ArgvCommand { argv: ["sudo", "-n", "install", "-m", "0644", fleet_timer_staged_path(unit_name: fleet_converge_service_unit_name), fleet_timer_installed_path(unit_name: fleet_converge_service_unit_name)] },
+    extdeps.exec.command.ArgvCommand { argv: ["sudo", "-n", "install", "-m", "0644", fleet_timer_staged_path(unit_name: fleet_converge_timer_unit_name), fleet_timer_installed_path(unit_name: fleet_converge_timer_unit_name)] },
+    extdeps.exec.command.ArgvCommand { argv: ["sudo", "-n", "systemctl", "daemon-reload"] },
+    extdeps.exec.command.ArgvCommand { argv: ["sudo", "-n", "systemctl", "enable", "--now", fleet_converge_timer_unit_name] },
+    extdeps.exec.command.ArgvCommand { argv: ["systemctl", "is-enabled", fleet_converge_timer_unit_name] },
   ]
 }
 
@@ -63,7 +63,7 @@ fn fleet_timer_install_commands() -> List<ArgvCommand> {
 // `sudo -n true`, which tests BLANKET sudo — `true` is not among the six exact granted
 // commands, so a correctly bootstrapped host still refused the probe. The grant set is
 // exact-argv; only -l discriminates 'has the dropin' without exercising a real grant.
-fn fleet_timer_install_prerequisite_refusal(why: String) -> ProcessExit {
+fn fleet_timer_install_prerequisite_refusal(why: String) -> std.process.ProcessExit {
   exit_failure(reason: join([
     "fleet_timer_self_install: PrerequisiteAbsent — sudoers dropin gunbc-deploy not effective for this account (",
     why,
@@ -75,10 +75,10 @@ fn fleet_timer_install_prerequisite_refusal(why: String) -> ProcessExit {
 // authority, then run the derived argv plan locally. Fails closed on the first refusing
 // step (run_shell_commands short-circuits); a staging write failure refuses before any
 // systemd state changes.
-func fleet_timer_self_install_wet() -> ProcessExit
+func fleet_timer_self_install_wet() -> std.process.ProcessExit
   uses net: Network
 {
-  let hn = run_shell_command_capture(command: ArgvCommand { argv: ["hostname", "-s"] }, transport: LocalExec)
+  let hn = run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["hostname", "-s"] }, transport: LocalExec)
   let this_host = trim(s: hn.stdout)
   let route_ok = match fleet_timer_install_route(host: this_host) {
     TimerViaSelfInstall { host: _ } => true
@@ -96,12 +96,12 @@ func fleet_timer_self_install_wet() -> ProcessExit
       "' whose modeled route is not TimerViaSelfInstall (srv1 is owned by live_deploy membership; a self-install there would fork ownership). Re-dispatch until a self-install host picks the job up.",
     ], ""))
   } else {
-  let sudo_probe = run_shell_command_capture(command: ArgvCommand { argv: ["sudo", "-n", "-l"] }, transport: LocalExec)
+  let sudo_probe = run_shell_command_capture(command: extdeps.exec.command.ArgvCommand { argv: ["sudo", "-n", "-l"] }, transport: LocalExec)
   if !sudo_probe.success {
     fleet_timer_install_prerequisite_refusal(why: trim(s: sudo_probe.stderr))
   } else {
   let mk = run_shell_commands(
-    commands: [ArgvCommand { argv: ["mkdir", "-p", fleet_timer_stage_dir] }],
+    commands: [extdeps.exec.command.ArgvCommand { argv: ["mkdir", "-p", fleet_timer_stage_dir] }],
     transport: LocalExec,
   )
   match mk {
@@ -168,9 +168,9 @@ data fleet_timer_install_sudoers_requirement: TimerInstallSudoersRequirement = T
 // state matches what the model would have produced. A hunk means the hand-work was
 // drift in substance too, and the hunk is its receipt. No further hand-applied host
 // state lands from here; a thing convergence cannot yet do is a typed, located finding.
-data fleet_sudoers_bootstrap_scaffold: Disposition = Scaffold {
+data fleet_sudoers_bootstrap_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.fleet_converge_timer_install",
     decl_name: "fleet_sudoers_bootstrap_receipts",
     field: WholeDeclaration,

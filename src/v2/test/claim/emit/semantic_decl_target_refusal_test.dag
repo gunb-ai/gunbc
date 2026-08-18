@@ -1,20 +1,20 @@
 module v2.test.emit.semantic_decl_target_refusal
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data semantic_decl_target_refusal_enrollment_note: String = "Enrolled via witness_discovery_scan_dirs (src/v2/test/claim/emit/) at F7 Inc1 ready — CI-gated fail-closed refusal receipt for unwired targets."
 
 fn sdtr_empty_conj() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
-fn sdtr_variant_edge(name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: sdtr_empty_conj() }
+fn sdtr_variant_edge(name: v2.std.node.Symbol) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: sdtr_empty_conj() }
 }
 
 fn sdtr_bool_coproduct() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Disj },
     children: [ sdtr_variant_edge(name: ^True), sdtr_variant_edge(name: ^False) ],
     occurrence_id: SyntheticOccurrence

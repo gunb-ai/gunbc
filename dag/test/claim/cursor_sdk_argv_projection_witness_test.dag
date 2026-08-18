@@ -1,10 +1,10 @@
 module test.claim.cursor_sdk_argv_projection_witness_test
 
 
-data witness_key: NonEmptyStr = "synthetic-not-a-real-key" as NonEmptyStr
+data witness_key: std.types.NonEmptyStr = "synthetic-not-a-real-key" as std.types.NonEmptyStr
 
-fn witness_invocation(auth: CursorAuth) -> CursorInvocation {
-  CursorInvocation {
+fn witness_invocation(auth: extdeps.llm.cursor_cli.CursorAuth) -> extdeps.llm.cursor_cli.CursorInvocation {
+  extdeps.llm.cursor_cli.CursorInvocation {
     auth: auth,
     model: cursor_model_auto,
     mode: CursorDefaultEditMode,
@@ -13,7 +13,7 @@ fn witness_invocation(auth: CursorAuth) -> CursorInvocation {
     force: false,
     trust_workspace: true,
     workspace: "/srv/attempt" as std.types.FilePath,
-    prompt: "do the work" as NonEmptyStr,
+    prompt: "do the work" as std.types.NonEmptyStr,
   }
 }
 

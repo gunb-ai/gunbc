@@ -1,7 +1,7 @@
 module gunbc.plan_registry_batch_b
 
 
-data batch_b_plans: List<Plan> = [
+data batch_b_plans: List<gunbc.plan.Plan> = [
   algebraic_rewrite_optimization_plan,
   dag_v2_defork_audit_plan,
   v2_self_hosting_plan,

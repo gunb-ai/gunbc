@@ -1,15 +1,15 @@
 module extdeps.network.ipv6
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "www.rfc-editor.org/rfc/rfc4291",
   }
 }
 
-data ipv6_text_representation_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data ipv6_text_representation_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "www.rfc-editor.org/rfc/rfc5952",
   }
@@ -17,7 +17,7 @@ data ipv6_text_representation_authority: ExternalAuthority = ExternalAuthority {
 
 data ipv6_grounding_note: String = "Structured IPv6 address (RFC 4291 §2.5): eight 16-bit groups. The group is the grounded unit — a 0..65535 bound modeled with the same `Int where range` refinement std.types.Port uses (reuses the bound idiom, not a fresh nickname), parallel to extdeps.network.ipv4's octet. STAGED CODEC (deliberate, §6): the TYPE and constructor are grounded, but the string codec (canonical text form, RFC 5952 — lowercase hex groups with :: run-length compression) is NOT built here. It is a decode/encode over extdeps.numeric.base16 (the cited hex authority — render via its int-to-hex, parse via a reverse-fold over base16_digit_rows), and there are ZERO IPv6 addresses in the fleet today, so building a wire parser now would be building for a host that does not diverge. The codec lands when a real v6 address needs (de)serializing — dissolution trigger below. This keeps IpAddress an HONESTLY CLOSED coproduct (an IP is v4 or v6) with a grounded v6 arm, without an anemic string or a speculative parser."
 
-data ipv6_text_codec_staged_frontier_rows: List<FrontierRow> = [
+data ipv6_text_codec_staged_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.network.ipv6", decl_name: "Ipv6Address"),
     reason: "Ipv6Address has no RFC 5952 string parse/render yet; it reuses extdeps.numeric.base16 (render) and a reverse-fold over base16_digit_rows (parse), with :: compression",

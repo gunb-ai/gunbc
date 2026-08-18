@@ -15,7 +15,7 @@ data pre_push_check_only_note: String = "Pre-push gates refuse with a fix recipe
 
 data pre_push_fmt_recipe_defork_note: String = "CargoFmtCheck previously carried a pre-baked fail_recipe field holding a byte-identical copy of the row in gunbc.githooks_pre_push_emit — one string, two authorities (DESIGN section 3). The payload is deleted rather than repointed: a failure message is not a property of WHICH gate fired, it is a projection of the outcome that gate OBSERVED, so pre_push_fmt_outcome_recipe derives it from the exit status through the single authority in gunbc.local_tidy_spec. A pre-baked recipe on the binding is precisely what let a could-not-run outcome render a drift remedy."
 
-fn pre_push_fmt_outcome(status: Int) -> LocalTidyFmtOutcome {
+fn pre_push_fmt_outcome(status: Int) -> gunbc.local_tidy_spec.LocalTidyFmtOutcome {
   local_tidy_fmt_outcome_of_exit_status(program: "cargo", status: status)
 }
 

@@ -4,9 +4,9 @@ module test.claim.proc_self_cgroup_real_execution_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data cgroup_mount_root: FilePathParts = FilePathParts { segments: ["sys", "fs", "cgroup"] }
+data cgroup_mount_root: std.types.FilePathParts = std.types.FilePathParts { segments: ["sys", "fs", "cgroup"] }
 
-data cgroup_walk_var: NonEmptyStr = "d" as NonEmptyStr
+data cgroup_walk_var: std.types.NonEmptyStr = "d" as std.types.NonEmptyStr
 
 data fixture_unified_colon_in_path: String = "0::/user.slice/job:build/session.scope\n"
 
@@ -30,7 +30,7 @@ fn run_membership_assign_shell_fails(body: String, marker: String, content: Stri
   let result = shell.Exec.Run(
     script: retained_runtime(
       body: shell_exec_via_bash(body: concat("set -euo pipefail\n", body)),
-      reason: "proc_self_cgroup membership refusal shell witness" as NonEmptyStr,
+      reason: "proc_self_cgroup membership refusal shell witness" as std.types.NonEmptyStr,
     ),
     expect: OutcomeIsData,
   )
@@ -58,7 +58,7 @@ fn run_membership_assign_observed(dir: String, content: String, expected_abs: St
       body: shell_exec_via_bash(
         body: concat("set -euo pipefail\n", concat(body, "\nprintf '%s' \"$d\""))
       ),
-      reason: "proc_self_cgroup membership observed shell witness" as NonEmptyStr,
+      reason: "proc_self_cgroup membership observed shell witness" as std.types.NonEmptyStr,
     ),
     expect: OutcomeIsData,
   )

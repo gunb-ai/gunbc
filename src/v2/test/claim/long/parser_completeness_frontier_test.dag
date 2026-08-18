@@ -1,17 +1,17 @@
 module v2.test.long.parser_completeness_frontier
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data parser_frontier_module_artifact: Artifact = Artifact {
+data parser_frontier_module_artifact: v2.std.artifact.Artifact = v2.std.artifact.Artifact {
   kind: SourceFile,
   id: ^parser_frontier_module_artifact,
   file_path: "src/v2/pilot/parser_frontier_pilot.dag"
 }
 
-fn parser_frontier_ingest_for(src: String) -> SourceRootIngest {
+fn parser_frontier_ingest_for(src: String) -> v2.compiler.source_authority.SourceRootIngest {
   Cons {
-    head: DagSourceReadWitness {
-      source: Medium { carried: src, fidelity: Lossless },
+    head: v2.compiler.source_authority.DagSourceReadWitness {
+      source: extdeps.communication.medium.Medium { carried: src, fidelity: Lossless },
       artifact: parser_frontier_module_artifact,
       compilation_unit: ^parser_frontier_pilot_cu,
       source_root: V2Tree
@@ -20,9 +20,9 @@ fn parser_frontier_ingest_for(src: String) -> SourceRootIngest {
   }
 }
 
-fn parser_frontier_admission() -> Admission {
-  Admission {
-    subject: ResolutionSubject {
+fn parser_frontier_admission() -> v2.compiler.name_resolve.Admission {
+  v2.compiler.name_resolve.Admission {
+    subject: v2.compiler.name_resolve.ResolutionSubject {
       name: Cons { head: ^parser_frontier_pilot, tail: std.algebra.Empty }
     },
     imports: Empty

@@ -1,7 +1,7 @@
 module v2.test.emit.conditional_delimiting
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data conditional_delimiting_scope_note: String = "SCOPE: conditional only. The loop half was withdrawn from this slice after execution showed it regressed rust_loop_emit_one_accepts, and the reason is a finding rather than an oversight: Rust's value-producing loop is `loop { break v; }`, so it needs a break token and a terminator, which an open/close pair cannot express. The staging spelling `loop { break ` smuggles exactly those, the same way the conditional smuggled its close. Modeling loop delimiting therefore needs a shape that carries break and terminator, and claiming an open/close discipline for it would have been the same under-modeling one level over. TargetLoopShape is left untouched."
 
@@ -22,9 +22,9 @@ data conditional_closed_golden: String = "if x { y } else { x }"
 // would pass silently.
 data conditional_self_delimiting_golden: String = "if x { y } else { x"
 
-fn cld_lex() -> LexRules {
+fn cld_lex() -> v2.std.compilers.lexing.LexRules {
   ModeledLexRules {
-    root: LexRuleSet {
+    root: v2.std.compilers.lexing.LexRuleSet {
       rules: list_append(
         left: rust_fn_add_lex_rules().rules,
         right: [
@@ -36,8 +36,8 @@ fn cld_lex() -> LexRules {
   }
 }
 
-fn cld_target() -> TargetModel {
-  TargetModel {
+fn cld_target() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     lex: cld_lex(),
     produced_decl_support: rust_target_model().produced_decl_support,
     bundle: rust_target_model().bundle,
@@ -48,7 +48,7 @@ fn cld_target() -> TargetModel {
   }
 }
 
-fn cld_conditional() -> TargetValueExpression {
+fn cld_conditional() -> v2.std.compilers.target_model.TargetValueExpression {
   target_value_expression_conditional(
     condition: target_value_expression_binding_ref(binding: ^rust_binding_param_x),
     then_arm: target_value_expression_binding_ref(binding: ^rust_binding_param_y),
@@ -56,8 +56,8 @@ fn cld_conditional() -> TargetValueExpression {
   )
 }
 
-fn cld_projection_with(conditional_form: TargetConditionalShape) -> TargetValueExpressionProjection {
-  TargetValueExpressionProjection {
+fn cld_projection_with(conditional_form: v2.std.compilers.target_model.TargetConditionalShape) -> v2.std.compilers.target_model.TargetValueExpressionProjection {
+  v2.std.compilers.target_model.TargetValueExpressionProjection {
     conditional_form: conditional_form,
     binding_ref_form: rust_value_expression_projection().binding_ref_form,
     primitive_apply_form: rust_value_expression_projection().primitive_apply_form,
@@ -74,7 +74,7 @@ fn cld_projection_with(conditional_form: TargetConditionalShape) -> TargetValueE
   }
 }
 
-fn cld_delimiting_for(delimiting_closed: Bool) -> ConditionalDelimiting {
+fn cld_delimiting_for(delimiting_closed: Bool) -> v2.std.compilers.target_model.ConditionalDelimiting {
   if delimiting_closed {
     ConditionalClosedByToken { close_token: ^rust_token_rbrace }
   } else {
@@ -82,8 +82,8 @@ fn cld_delimiting_for(delimiting_closed: Bool) -> ConditionalDelimiting {
   }
 }
 
-fn cld_conditional_form_with(delimiting_closed: Bool) -> TargetConditionalShape {
-  TargetConditionalShape {
+fn cld_conditional_form_with(delimiting_closed: Bool) -> v2.std.compilers.target_model.TargetConditionalShape {
+  v2.std.compilers.target_model.TargetConditionalShape {
     if_token: ^rust_token_kw_if,
     then_token: ^rust_token_lbrace,
     else_token: ^rust_token_unwired_else,
@@ -91,7 +91,7 @@ fn cld_conditional_form_with(delimiting_closed: Bool) -> TargetConditionalShape 
   }
 }
 
-fn cld_emit(projection: TargetValueExpressionProjection) -> Outcome<String> {
+fn cld_emit(projection: v2.std.compilers.target_model.TargetValueExpressionProjection) -> Outcome<String> {
   match target_value_expression_to_concrete_tokens(
     expr: cld_conditional(),
     projection: projection,
@@ -142,7 +142,7 @@ test fn production_rust_conditional_declares_a_close() -> Bool {
   }
 }
 
-fn cld_bundle_with(discriminant: Symbol) -> Node {
+fn cld_bundle_with(discriminant: v2.std.node.Symbol) -> Node {
   target_model_type_conj_node(
     children: [
       target_model_named_edge(
@@ -165,7 +165,7 @@ fn cld_bundle_with(discriminant: Symbol) -> Node {
   )
 }
 
-fn cld_decodes(discriminant: Symbol) -> Bool {
+fn cld_decodes(discriminant: v2.std.node.Symbol) -> Bool {
   match decode_conditional_shape_bundle(bundle: cld_bundle_with(discriminant: discriminant)) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

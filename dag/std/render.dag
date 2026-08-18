@@ -2,10 +2,10 @@ module std.render
 
 
 type SpanStyle {
-  color: SemanticColor?
+  color: std.symbols.SemanticColor?
   bold: Bool
   italic: Bool
-  symbol: SymbolId?
+  symbol: std.symbols.SymbolId?
 }
 
 type RenderMode = Standard | Dynamic | Compact
@@ -30,7 +30,7 @@ type RenderFrame {
 
 type RenderCapability {
   color: Bool
-  tier: Tier
+  tier: std.symbols.Tier
   cursor_addressable: Bool
 }
 

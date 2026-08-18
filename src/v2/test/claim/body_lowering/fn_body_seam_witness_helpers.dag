@@ -19,7 +19,7 @@ fn fn_body_seam_parsed_add_module() -> Optional<Node> {
   }
 }
 
-fn fn_body_seam_find_production_under_children(root: Node, emitted: Symbol) -> Optional<Node> {
+fn fn_body_seam_find_production_under_children(root: Node, emitted: v2.std.node.Symbol) -> Optional<Node> {
   fold(root.children, init: Absent, f: fn(acc, e) {
     match acc {
       Present { value: _ } => acc
@@ -28,7 +28,7 @@ fn fn_body_seam_find_production_under_children(root: Node, emitted: Symbol) -> O
   })
 }
 
-fn fn_body_seam_find_production(root: Node, emitted: Symbol) -> Optional<Node> {
+fn fn_body_seam_find_production(root: Node, emitted: v2.std.node.Symbol) -> Optional<Node> {
   match parse_production_emitted_identity_optional(node: root) {
     Present { value: id } =>
       if id == emitted {

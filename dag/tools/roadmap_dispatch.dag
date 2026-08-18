@@ -3,7 +3,7 @@ module tools.roadmap_dispatch
 
 data roadmap_dispatch_output_path: String = "target/roadmap-dispatch.json"
 
-func main() -> ProcessExit {
+func main() -> std.process.ProcessExit {
   let w = Filesystem.Write(path: roadmap_dispatch_output_path, content: roadmap_dispatch_file_content())
   if w.success {
     ExitSuccess

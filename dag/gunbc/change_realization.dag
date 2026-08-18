@@ -21,10 +21,10 @@ fn address_continuity<A>(from: A, to: A, address_eq: fn(A, A) -> Bool) -> Addres
 data staged_intermediate_srv4_specimen_note: String = "The LIVE specimen that makes declared intermediates a requirement rather than a nicety: srv4's build-cache server died with its cgroup, never unlinked its socket, and ran uncached for weeks because nobody modeled the intermediate state. gunbc.build_cache_instance already says IN PROSE that a managed unit must clear a stale endpoint on start — and a sentence in prose is the one place no machine can read it (DESIGN §4c: any machine-consumed fact belongs in a typed carrier). StagedIntermediates is that sentence given a carrier. Emptiness is unrepresentable by construction (head + tail, not a List that could be []), because a staged replacement whose intermediate list is empty is precisely the srv4 state: a transition that believed it had nothing to retire."
 
 type StagedIntermediate
-  = RetirePriorEndpoint { endpoint: NonEmptyStr }
-  | UnlinkStalePath { path: NonEmptyStr }
-  | StopPriorUnit { unit: NonEmptyStr }
-  | DrainPriorConsumers { description: NonEmptyStr }
+  = RetirePriorEndpoint { endpoint: std.types.NonEmptyStr }
+  | UnlinkStalePath { path: std.types.NonEmptyStr }
+  | StopPriorUnit { unit: std.types.NonEmptyStr }
+  | DrainPriorConsumers { description: std.types.NonEmptyStr }
 
 type StagedIntermediates {
   first: StagedIntermediate
@@ -48,7 +48,7 @@ type ChangeRealization
 data change_classification_refusal_note: String = "A staged replacement whose intermediates were never declared REFUSES; it does not fall back to an in-place update and it does not proceed with an empty plan. Both fallbacks are the absorbing fallback DESIGN §5 forbids, and the second is the srv4 outcome exactly. The refusal is typed and LOCATED — it carries subject_label, the identity of the resource whose intermediates are missing, so a refusal points at a thing rather than merely reporting that something somewhere is undeclared so the deficit is countable and ranks for fixing, rather than having its frequency zeroed by a silent widen."
 
 type ChangeRefusalCause
-  = StagedReplacementIntermediatesUndeclared { subject_label: NonEmptyStr }
+  = StagedReplacementIntermediatesUndeclared { subject_label: std.types.NonEmptyStr }
 
 type ChangeRealizationClassification
   = ChangeRealized { realization: ChangeRealization }

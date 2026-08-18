@@ -7,18 +7,18 @@ module gunbc.roadmap_site_surface_witness
 // outside the producer to carry it, which is the drift this control exists to exclude.
 data witness_stale_artifact_digest_hex: String = "0000000000000000"
 
-fn fresh_surface_read_grounds_for_bundle(bundle: RoadmapSiteSurfaceBundle) -> Bool {
+fn fresh_surface_read_grounds_for_bundle(bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle) -> Bool {
   fresh_surface_read_grounds(
     bundle: bundle,
-    read: HealthzEffectiveRead { body: bundle.healthz_body, probe_error: "" },
+    read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead { body: bundle.healthz_body, probe_error: "" },
   )
 }
 
-fn witness_stale_roadmap_artifact(bundle: RoadmapSiteSurfaceBundle) -> RoadmapSiteSurfaceArtifact {
-  RoadmapSiteSurfaceArtifact {
+fn witness_stale_roadmap_artifact(bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle) -> gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact {
+  gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceArtifact {
     url_path: bundle.roadmap_md.url_path,
     body: bundle.roadmap_md.body,
-    digest: Fnv1a64Structural { digest: witness_stale_artifact_digest_hex as NonEmptyStr },
+    digest: std.content_hash.Fnv1a64Structural { digest: witness_stale_artifact_digest_hex as std.types.NonEmptyStr },
   }
 }
 
@@ -37,8 +37,8 @@ fn witness_stale_roadmap_artifact(bundle: RoadmapSiteSurfaceBundle) -> RoadmapSi
 // expected identity while serving a stale artifact map — which is the case readiness.dag's
 // readiness_compares_the_candidate_note names as needing its own control.
 fn witness_stale_healthz_body_for_bundle(
-  bundle: RoadmapSiteSurfaceBundle,
-  release_revision: CommitSha,
+  bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
+  release_revision: std.types.CommitSha,
 ) -> String {
   healthz_body_with_release_identity(
     roadmap: witness_stale_roadmap_artifact(bundle: bundle),
@@ -52,8 +52,8 @@ fn witness_stale_healthz_body_for_bundle(
 }
 
 fn stale_surface_read_does_not_ground_for_bundle(
-  bundle: RoadmapSiteSurfaceBundle,
-  release_revision: CommitSha,
+  bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
+  release_revision: std.types.CommitSha,
 ) -> Bool {
   let stale_body = witness_stale_healthz_body_for_bundle(
     bundle: bundle,
@@ -61,7 +61,7 @@ fn stale_surface_read_does_not_ground_for_bundle(
   )
   stale_surface_read_does_not_ground(bundle: bundle, stale_body: stale_body)
     && match ground_service_ready_from_healthz_with_bundle(
-      read: HealthzEffectiveRead { body: stale_body, probe_error: "" },
+      read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead { body: stale_body, probe_error: "" },
       bundle: bundle,
       expected_revision: release_revision,
       expected_surface_identity: bundle.bundle_identity,
@@ -78,8 +78,8 @@ fn stale_surface_read_does_not_ground_for_bundle(
 }
 
 fn reconcile_grounds_healthy_fixture_read_for_bundle(
-  bundle: RoadmapSiteSurfaceBundle,
-  release_revision: CommitSha,
+  bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
+  release_revision: std.types.CommitSha,
 ) -> Bool {
   reconciliation_converged(
     r: reconcile_service_ready_read_for_bundle(
@@ -93,8 +93,8 @@ fn reconcile_grounds_healthy_fixture_read_for_bundle(
 }
 
 fn service_ready_once_converges_on_healthy_fixture_for_bundle(
-  bundle: RoadmapSiteSurfaceBundle,
-  release_revision: CommitSha,
+  bundle: gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle,
+  release_revision: std.types.CommitSha,
 ) -> Bool {
   reconciliation_converged(
     r: live_deploy_service_ready_once_for_bundle(
@@ -109,7 +109,7 @@ fn service_ready_once_converges_on_healthy_fixture_for_bundle(
 // the deploy witnesses share is declared in test.claim.live_deploy.deploy_release_fixture, deliberately
 // under dag/test/ so no production module can name it. Threading it in as a parameter keeps that
 // containment intact and keeps this module free of a second synthetic sha that could drift from it.
-fn roadmap_site_surface_readiness_group_holds(release_revision: CommitSha) -> Bool {
+fn roadmap_site_surface_readiness_group_holds(release_revision: std.types.CommitSha) -> Bool {
   let live = live_roadmap_site_surface_bundle()
   let bundle = live.bundle
   healthz_round_trip_receipt_holds(bundle: bundle)

@@ -3,17 +3,17 @@ module test.claim.cache_purity_verdict
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn sample_violation() -> CachePurityViolation {
-  CachePurityViolation {
+fn sample_violation() -> extdeps.realization.cache_purity.CachePurityViolation {
+  extdeps.realization.cache_purity.CachePurityViolation {
     content_key: as_content_hash_structural(
-      structural: structural_content_hash(digest: "deadbeefdeadbeef" as Fnv1a64StructuralDigestHex),
+      structural: structural_content_hash(digest: "deadbeefdeadbeef" as std.content_hash.Fnv1a64StructuralDigestHex),
     ),
     unkeyed_axis: "session_intern_state",
     warm_digest: as_content_hash_structural(
-      structural: structural_content_hash(digest: "1111111111111111" as Fnv1a64StructuralDigestHex),
+      structural: structural_content_hash(digest: "1111111111111111" as std.content_hash.Fnv1a64StructuralDigestHex),
     ),
     cold_digest: as_content_hash_structural(
-      structural: structural_content_hash(digest: "2222222222222222" as Fnv1a64StructuralDigestHex),
+      structural: structural_content_hash(digest: "2222222222222222" as std.content_hash.Fnv1a64StructuralDigestHex),
     ),
   }
 }

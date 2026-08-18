@@ -8,11 +8,11 @@ data substrate_key_source_homonym_note: String = "Renamed from KeySource (P3a-1 
 data key_source_representation_note: String = "v2's SubstrateKeySource is the SUBSTRATE key representation (interned Symbol), the K instantiation of the single std.effects.EffectShape<K> authority for the Node-witness harness -- NOT a fork of std.effects. The verb/cause/idempotency algebra is imported from std; only the key REPRESENTATION differs (Symbol here, String in std's REST derivation). The String/Symbol unification is deferred to the grants key/target re-grounding (docs/plans/effect-namespace-grants.md), never crossed at this seam. dissolve-on = grants grounds key/target on the containment tree (QualifiedName)."
 
 type SubstrateKeySource
-  = PathParam { param: Symbol }
-  | InputField { field: Symbol }
+  = PathParam { param: v2.std.node.Symbol }
+  | InputField { field: v2.std.node.Symbol }
 
 type IdempotentOperationRef {
-  callable: Symbol
+  callable: v2.std.node.Symbol
 }
 
 type ComposableIdempotentOperationSubject
@@ -23,7 +23,7 @@ type ComposableIdempotentOperationSubject
 
 type IdempotentOperationSubject
   = Composable(ComposableIdempotentOperationSubject)
-  | LabelOnlyIdempotentInhabitance { shape: EffectShape<SubstrateKeySource>, label: Symbol }
+  | LabelOnlyIdempotentInhabitance { shape: EffectShape<SubstrateKeySource>, label: v2.std.node.Symbol }
 
 data sample_state: Node = Node {
   kind: TypeNode { connective: Atom { identity: ^sample_state_value } },

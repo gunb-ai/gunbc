@@ -8,10 +8,10 @@ type ReadonlyGetCase {
   path: String
 }
 
-fn derived_op(name: String, method: std.types.HttpMethod, path: PathTemplate) -> DerivedOpEffect {
+fn derived_op(name: String, method: std.types.HttpMethod, path: std.http_path.PathTemplate) -> std.effects.DerivedOpEffect {
   match derive_op_effect(operation_name: name, method: method, path: path) {
     DerivedEffect { effect: e } => e
-    MalformedPathInput => DerivedOpEffect {
+    MalformedPathInput => std.effects.DerivedOpEffect {
       operation_name: name,
       method: method,
       path_template: path,
@@ -72,14 +72,14 @@ fn derived_raw_modifier_unknown(name: String, method: std.types.HttpMethod, raw:
   }
 }
 
-fn is_read(shape: EffectShape<KeySource>) -> Bool {
+fn is_read(shape: EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
     ReadEffect => true
     _ => false
   }
 }
 
-fn is_create(shape: EffectShape<KeySource>) -> Bool {
+fn is_create(shape: EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
     CreateEffect { cause: cause } => true
     _ => false
@@ -88,7 +88,7 @@ fn is_create(shape: EffectShape<KeySource>) -> Bool {
 
 data keyless_fallback_witness_note: String = "Discriminating control for the PostAlways state-space conflation (std.effects.keyless_fallback_cause_note). Pre-fix, derive_effect_shape answered CreateEffect{PostAlways} for a real POST AND for a keyless PUT/PATCH/DELETE, so this projection was inexpressible and the originating method was lost. These rows go RED if the two causes ever collapse back together, and the negative arms prove the method is genuinely carried rather than defaulted."
 
-fn derived_cause_is_keyless_with_method(shape: EffectShape<KeySource>, expected: std.types.HttpMethod) -> Bool {
+fn derived_cause_is_keyless_with_method(shape: EffectShape<std.effects.KeySource>, expected: std.types.HttpMethod) -> Bool {
   match shape {
     CreateEffect { cause: cause } =>
       match cause {
@@ -107,7 +107,7 @@ fn derived_cause_is_keyless_with_method(shape: EffectShape<KeySource>, expected:
   }
 }
 
-fn derived_cause_is_post_always(shape: EffectShape<KeySource>) -> Bool {
+fn derived_cause_is_post_always(shape: EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
     CreateEffect { cause: cause } =>
       match cause {
@@ -141,30 +141,30 @@ fn derived_raw_cause_is_post_always(name: String, method: std.types.HttpMethod, 
   }
 }
 
-fn is_upsert(shape: EffectShape<KeySource>) -> Bool {
+fn is_upsert(shape: EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
     UpsertEffect { key_source: key_source } => true
     _ => false
   }
 }
 
-fn is_delete(shape: EffectShape<KeySource>) -> Bool {
+fn is_delete(shape: EffectShape<std.effects.KeySource>) -> Bool {
   match shape {
     DeleteEffect { key_source: key_source } => true
     _ => false
   }
 }
 
-fn op_lattice_read(name: String) -> OperationEffect {
-  OperationEffect {
+fn op_lattice_read(name: String) -> std.effects.OperationEffect {
+  std.effects.OperationEffect {
     operation_name: name,
     shape: ReadEffect,
     evidence: LatticeEffect { shape: ReadEffect }
   }
 }
 
-fn op_non_idempotent(name: String) -> OperationEffect {
-  OperationEffect {
+fn op_non_idempotent(name: String) -> std.effects.OperationEffect {
+  std.effects.OperationEffect {
     operation_name: name,
     shape: CreateEffect { cause: PostAlways },
     evidence: NonIdempotent {
@@ -387,7 +387,7 @@ test fn effects_create_if_absent_modifier_witnesses() -> Bool {
     ParsedPathTemplate { template: secrets_path } =>
       match parse_path_template(raw: "/versions") {
         ParsedPathTemplate { template: versions_path } =>
-          let op = DerivedOpEffect {
+          let op = std.effects.DerivedOpEffect {
             operation_name: "create_secret",
             method: POST,
             path_template: secrets_path,
@@ -395,7 +395,7 @@ test fn effects_create_if_absent_modifier_witnesses() -> Bool {
           }
           let agrees = check_modifier_vs_derivation(op: op, declared_idempotent: true, declared_readonly: false)
           let disagrees = check_modifier_vs_derivation(op: op, declared_idempotent: false, declared_readonly: false)
-          let always_op = DerivedOpEffect {
+          let always_op = std.effects.DerivedOpEffect {
             operation_name: "add_version",
             method: POST,
             path_template: versions_path,

@@ -55,8 +55,8 @@ type ObjectType = BlobObj | TreeObj | CommitObj | TagObj
 
 type GitAuthor {
   name: String
-  email: Email
-  timestamp: Timestamp
+  email: std.types.Email
+  timestamp: std.types.Timestamp
 }
 
 type GitBranch {
@@ -67,13 +67,13 @@ type GitBranch {
 
 type GitRemote {
   name: String
-  url: NonEmptyStr
+  url: std.types.NonEmptyStr
   fetch_refspec: String
 }
 
 type GitWorktreeHead
   = WorktreeOnBranch { branch: GitBranch }
-  | WorktreeDetached { sha: CommitSha }
+  | WorktreeDetached { sha: std.types.CommitSha }
 
 type GitWorktree {
   path: std.types.FilePath
@@ -102,11 +102,11 @@ type DiffHunk {
 
 type GitDiffChangeStatus
   = DiffAddedStatus
-  | DiffCopiedStatus { similarity: Percent }
+  | DiffCopiedStatus { similarity: std.measure.Percent }
   | DiffDeletedStatus
   | DiffModifiedStatus
   | DiffPairingBrokenStatus
-  | DiffRenamedStatus { similarity: Percent }
+  | DiffRenamedStatus { similarity: std.measure.Percent }
   | DiffTypeChangedStatus
   | DiffUnmergedStatus
   | DiffUnknownGitStatus { raw: String }
@@ -274,7 +274,7 @@ data git_ls_remote_external_authority_anchor: ExternalAuthority = ExternalAuthor
 data advertised_ref_note: String = "WHY THIS EXISTS BESIDE RemoteBranches, which already lists remote branches. RemoteBranches runs `git branch -r`, whose output is ref NAMES and nothing else, and it reads the local remote-tracking refs rather than asking the remote. Neither property is a defect in it - it answers `which remote branches does this clone know about` - but it cannot answer `what commit is the remote branch AT`, and a consumer that needs an exact head therefore cannot be built on it at all. `git ls-remote --heads` is the ref-advertisement protocol reading: it contacts the remote and returns object id plus full ref name per line, which is the pair an exact-head judgment needs.\\n\\nThe two are kept separate rather than one being widened because they answer different questions with different freshness: `branch -r` is local and offline, ls-remote is a network read that can fail on its own. Collapsing them would make every name listing pay a network round trip and inherit its failure modes."
 
 type AdvertisedRef {
-  object_id: CommitSha
+  object_id: std.types.CommitSha
   ref_name: String
 }
 

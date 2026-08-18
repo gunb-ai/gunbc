@@ -2,40 +2,40 @@ module test.claim.build_latency_actions_collect_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data fixture_window: NonEmptyStr = "controlled fixture: two hosts, one build job each, success only" as NonEmptyStr
+data fixture_window: std.types.NonEmptyStr = "controlled fixture: two hosts, one build job each, success only" as std.types.NonEmptyStr
 
-fn fixture_jobs() -> List<ActionsBuildJobObservation> {
+fn fixture_jobs() -> List<gunbc.build_cache_latency_probe.ActionsBuildJobObservation> {
   [
-    ActionsBuildJobObservation {
-      run_id: "run-a" as NonEmptyStr,
-      job_id: "job-a" as NonEmptyStr,
-      runner_name: "srv1-01" as NonEmptyStr,
-      job_name: "build" as NonEmptyStr,
-      conclusion: "success" as NonEmptyStr,
+    gunbc.build_cache_latency_probe.ActionsBuildJobObservation {
+      run_id: "run-a" as std.types.NonEmptyStr,
+      job_id: "job-a" as std.types.NonEmptyStr,
+      runner_name: "srv1-01" as std.types.NonEmptyStr,
+      job_name: "build" as std.types.NonEmptyStr,
+      conclusion: "success" as std.types.NonEmptyStr,
       duration: millisecond(count: 600000),
     },
-    ActionsBuildJobObservation {
-      run_id: "run-b" as NonEmptyStr,
-      job_id: "job-b" as NonEmptyStr,
-      runner_name: "srv2-03" as NonEmptyStr,
-      job_name: "build" as NonEmptyStr,
-      conclusion: "success" as NonEmptyStr,
+    gunbc.build_cache_latency_probe.ActionsBuildJobObservation {
+      run_id: "run-b" as std.types.NonEmptyStr,
+      job_id: "job-b" as std.types.NonEmptyStr,
+      runner_name: "srv2-03" as std.types.NonEmptyStr,
+      job_name: "build" as std.types.NonEmptyStr,
+      conclusion: "success" as std.types.NonEmptyStr,
       duration: millisecond(count: 240000),
     },
-    ActionsBuildJobObservation {
-      run_id: "run-c" as NonEmptyStr,
-      job_id: "job-c" as NonEmptyStr,
-      runner_name: "srv1-02" as NonEmptyStr,
-      job_name: "lint" as NonEmptyStr,
-      conclusion: "success" as NonEmptyStr,
+    gunbc.build_cache_latency_probe.ActionsBuildJobObservation {
+      run_id: "run-c" as std.types.NonEmptyStr,
+      job_id: "job-c" as std.types.NonEmptyStr,
+      runner_name: "srv1-02" as std.types.NonEmptyStr,
+      job_name: "lint" as std.types.NonEmptyStr,
+      conclusion: "success" as std.types.NonEmptyStr,
       duration: millisecond(count: 1000),
     },
-    ActionsBuildJobObservation {
-      run_id: "run-d" as NonEmptyStr,
-      job_id: "job-d" as NonEmptyStr,
-      runner_name: "srv1-04" as NonEmptyStr,
-      job_name: "build" as NonEmptyStr,
-      conclusion: "failure" as NonEmptyStr,
+    gunbc.build_cache_latency_probe.ActionsBuildJobObservation {
+      run_id: "run-d" as std.types.NonEmptyStr,
+      job_id: "job-d" as std.types.NonEmptyStr,
+      runner_name: "srv1-04" as std.types.NonEmptyStr,
+      job_name: "build" as std.types.NonEmptyStr,
+      conclusion: "failure" as std.types.NonEmptyStr,
       duration: millisecond(count: 900000),
     },
   ]
@@ -63,14 +63,14 @@ test fn witness_population_fold_groups_by_host_and_filters_job_name() -> Bool {
 }
 
 test fn witness_runner_name_maps_to_host_prefix() -> Bool {
-  match host_from_runner_name(runner: "srv3-07" as NonEmptyStr) {
+  match host_from_runner_name(runner: "srv3-07" as std.types.NonEmptyStr) {
     Present { value: h } => (h as String) == "srv3"
     Absent => false
   }
 }
 
 test fn witness_unknown_runner_name_yields_no_host() -> Bool {
-  match host_from_runner_name(runner: "github-hosted" as NonEmptyStr) {
+  match host_from_runner_name(runner: "github-hosted" as std.types.NonEmptyStr) {
     Present { value: _ } => false
     Absent => true
   }

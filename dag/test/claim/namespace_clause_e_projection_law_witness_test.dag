@@ -30,8 +30,8 @@ fn contract_witness_declaration_alt() -> std.occurrence_identity.OccurrenceId {
 fn contract_witness_provenance(
   reference_occurrence: std.occurrence_identity.OccurrenceId,
   declaration_occurrence: std.occurrence_identity.OccurrenceId,
-) -> CrossFileBindingProvenance {
-  CrossFileBindingProvenance {
+) -> std.occurrence_binding_candidates.CrossFileBindingProvenance {
+  std.occurrence_binding_candidates.CrossFileBindingProvenance {
     reference_occurrence: reference_occurrence,
     declaration_occurrence: declaration_occurrence,
     consumer_file: contract_witness_consumer_file(),
@@ -42,8 +42,8 @@ fn contract_witness_provenance(
 fn contract_witness_provider(
   reference_occurrence: std.occurrence_identity.OccurrenceId,
   declaration_occurrence: std.occurrence_identity.OccurrenceId,
-) -> BoundReferenceProvider {
-  BoundReferenceProvider {
+) -> std.occurrence_binding_candidates.BoundReferenceProvider {
+  std.occurrence_binding_candidates.BoundReferenceProvider {
     reference_occurrence: reference_occurrence,
     declaration_occurrence: declaration_occurrence,
     consumer_module: "app.consumer",
@@ -51,18 +51,18 @@ fn contract_witness_provider(
   }
 }
 
-fn contract_witness_file_dependency() -> DirectFileDependency {
-  DirectFileDependency {
+fn contract_witness_file_dependency() -> std.occurrence_binding_candidates.DirectFileDependency {
+  std.occurrence_binding_candidates.DirectFileDependency {
     consumer_file: contract_witness_consumer_file(),
     provider_file: contract_witness_provider_file(),
   }
 }
 
 fn contract_witness_production(
-  provenances: List<CrossFileBindingProvenance>,
-  dependencies: List<DirectFileDependency>,
-  providers: List<BoundReferenceProvider>,
-) -> ReferenceDerivedClauseEProduction {
+  provenances: List<std.occurrence_binding_candidates.CrossFileBindingProvenance>,
+  dependencies: List<std.occurrence_binding_candidates.DirectFileDependency>,
+  providers: List<std.occurrence_binding_candidates.BoundReferenceProvider>,
+) -> std.occurrence_binding_candidates.ReferenceDerivedClauseEProduction {
   ReferenceDerivedClauseEProductionReady {
     projection: ReferenceDerivedDependencyProjectionReady {
       binding_provenance: provenances,
@@ -73,7 +73,7 @@ fn contract_witness_production(
   }
 }
 
-fn contract_witness_controlled_production() -> ReferenceDerivedClauseEProduction {
+fn contract_witness_controlled_production() -> std.occurrence_binding_candidates.ReferenceDerivedClauseEProduction {
   contract_witness_production(
     provenances: [
       contract_witness_provenance(
@@ -214,7 +214,7 @@ test fn witness_substrate_refuses_two_file_dependencies() -> Bool {
       ],
       dependencies: [
         contract_witness_file_dependency(),
-        DirectFileDependency {
+        std.occurrence_binding_candidates.DirectFileDependency {
           consumer_file: contract_witness_consumer_file(),
           provider_file: "app/other_provider.dag",
         },
@@ -285,7 +285,7 @@ test fn witness_substrate_refuses_projection_inconsistent_with_bound_population(
         ),
       ],
       dependencies: [
-        DirectFileDependency {
+        std.occurrence_binding_candidates.DirectFileDependency {
           consumer_file: contract_witness_consumer_file(),
           provider_file: "app/wrong_provider.dag",
         },
@@ -346,7 +346,7 @@ test fn witness_substrate_refuses_file_path_missing() -> Bool {
     production: ReferenceDerivedClauseEProductionReady {
       projection: ReferenceDerivedDependencyProjectionFileRefused {
         first_failure: CrossFileBindingProvenanceProjectionFilePathMissing {
-          module_path: "app.missing" as NonEmptyStr,
+          module_path: "app.missing" as std.types.NonEmptyStr,
         },
         more_failures: [],
       },

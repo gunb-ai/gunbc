@@ -76,8 +76,8 @@ test fn bmcweb_session_login_argv_uses_curl_authority_not_inline_secret() -> Boo
 }
 
 fn witness_bmcweb_session_login_argv_semantic_surface_holds() -> Bool {
-  let body = "/tmp/bmcweb-login.json" as NonEmptyStr
-  let response = "/tmp/bmcweb-login-response.json" as NonEmptyStr
+  let body = "/tmp/bmcweb-login.json" as std.types.NonEmptyStr
+  let response = "/tmp/bmcweb-login-response.json" as std.types.NonEmptyStr
   let curl_args = bmcweb_session_login_curl_args(
     bmc_host: asrock_srv3_live_bmc_host,
     request_body_file: body,

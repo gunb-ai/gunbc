@@ -27,8 +27,8 @@ test fn witness_setup_token_capture_refuses_multiple_candidates() -> Bool {
     candidate_count: 2,
     token: Present { value: "sk-ant-oat01-test" },
     format: SetupTokenFormatMeasured {
-      format: ClaudeSetupTokenFormatMeasured {
-        token_prefix: "sk-ant-oat01-" as NonEmptyStr,
+      format: extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenFormatMeasured {
+        token_prefix: "sk-ant-oat01-" as std.types.NonEmptyStr,
         min_length: character_count(count: 20),
         max_length: character_count(count: 200),
       },
@@ -44,8 +44,8 @@ test fn witness_setup_token_capture_admits_single_candidate() -> Bool {
     candidate_count: 1,
     token: Present { value: "sk-ant-oat01-abcdefghijklmnopqrstuvwxyz" },
     format: SetupTokenFormatMeasured {
-      format: ClaudeSetupTokenFormatMeasured {
-        token_prefix: "sk-ant-oat01-" as NonEmptyStr,
+      format: extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenFormatMeasured {
+        token_prefix: "sk-ant-oat01-" as std.types.NonEmptyStr,
         min_length: character_count(count: 20),
         max_length: character_count(count: 200),
       },
@@ -56,10 +56,10 @@ test fn witness_setup_token_capture_admits_single_candidate() -> Bool {
   }
 }
 
-fn witness_setup_token_format_measured() -> ClaudeSetupTokenFormatObservation {
+fn witness_setup_token_format_measured() -> extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenFormatObservation {
   SetupTokenFormatMeasured {
-    format: ClaudeSetupTokenFormatMeasured {
-      token_prefix: "sk-ant-oat01-" as NonEmptyStr,
+    format: extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenFormatMeasured {
+      token_prefix: "sk-ant-oat01-" as std.types.NonEmptyStr,
       min_length: character_count(count: 20),
       max_length: character_count(count: 200),
     },
@@ -71,11 +71,11 @@ test fn witness_setup_token_capture_refuses_format_unobserved() -> Bool {
     candidate_count: 1,
     token: Present { value: "sk-ant-oat01-abcdefghijklmnopqrstuvwxyz" },
     format: SetupTokenFormatUnobserved {
-      reason: "pinned executable format not yet measured" as NonEmptyStr,
+      reason: "pinned executable format not yet measured" as std.types.NonEmptyStr,
     },
   ) {
     SetupTokenCaptureRefusedFormatUnobserved { reason } =>
-      reason == ("pinned executable format not yet measured" as NonEmptyStr)
+      reason == ("pinned executable format not yet measured" as std.types.NonEmptyStr)
     _ => false
   }
 }
@@ -114,16 +114,16 @@ test fn witness_setup_token_capture_refuses_malformed_length() -> Bool {
 }
 
 test fn witness_paired_probe_native_limit_encoding() -> Bool {
-  let seven_day_opus = "seven_day_opus" as NonEmptyStr
-  let five_hour = "five_hour" as NonEmptyStr
+  let seven_day_opus = "seven_day_opus" as std.types.NonEmptyStr
+  let five_hour = "five_hour" as std.types.NonEmptyStr
   let bundle = claude_enrollment_standing_bundle_from_paired_probe_verdict(
     auth_succeeded: true,
     observed_native_limit_keys: [seven_day_opus, five_hour],
-    auth_failure_reason: "unused" as NonEmptyStr,
-    credential_label: "managed-enrollment" as NonEmptyStr,
+    auth_failure_reason: "unused" as std.types.NonEmptyStr,
+    credential_label: "managed-enrollment" as std.types.NonEmptyStr,
   )
   let subject = claude_enrollment_limit_subject(
-    credential_label: "managed-enrollment" as NonEmptyStr,
+    credential_label: "managed-enrollment" as std.types.NonEmptyStr,
     native_key: seven_day_opus,
   )
   bundle.authentication == AuthenticationAuthenticated
@@ -134,7 +134,7 @@ test fn witness_paired_probe_native_limit_encoding() -> Bool {
         credential: LimitCredentialLabel { label },
         native_key,
       } =>
-        label == ("managed-enrollment" as NonEmptyStr)
+        label == ("managed-enrollment" as std.types.NonEmptyStr)
           && native_key == seven_day_opus
       _ => false
     }
@@ -142,9 +142,9 @@ test fn witness_paired_probe_native_limit_encoding() -> Bool {
 
 test fn witness_rejected_credential_emits_reconnect_action() -> Bool {
   match claude_enrollment_action_for_credential_standing(
-    standing: ClaudeCredentialRejected { reason: "token revoked" as NonEmptyStr },
+    standing: ClaudeCredentialRejected { reason: "token revoked" as std.types.NonEmptyStr },
   ) {
-    ReconnectClaude { cause } => cause == ("token revoked" as NonEmptyStr)
+    ReconnectClaude { cause } => cause == ("token revoked" as std.types.NonEmptyStr)
     ConnectClaude => false
     EnrollmentActionNotRequired => false
   }
@@ -197,19 +197,19 @@ test fn witness_cold_start_admits_isolated_context() -> Bool {
 }
 
 test fn witness_credential_write_back_refuses_unchanged_digest() -> Bool {
-  let digest = ClaudeAmbientOAuthArtifactDigest {
-    digest: "sha256:deadbeef" as NonEmptyStr,
+  let digest = gunbc.claude_setup_token_enrollment.ClaudeAmbientOAuthArtifactDigest {
+    digest: "sha256:deadbeef" as std.types.NonEmptyStr,
   }
   match admit_ambient_oauth_home_write_back(
     observation: Present {
-      value: ClaudeAmbientOAuthArtifactObservationPair {
+      value: gunbc.claude_setup_token_enrollment.ClaudeAmbientOAuthArtifactObservationPair {
         before_use: digest,
         after_use: digest,
       },
     },
   ) {
     AmbientOAuthWriteBackRefusedUnchanged { digest: observed } =>
-      observed.digest == ("sha256:deadbeef" as NonEmptyStr)
+      observed.digest == ("sha256:deadbeef" as std.types.NonEmptyStr)
     _ => false
   }
 }
@@ -217,18 +217,18 @@ test fn witness_credential_write_back_refuses_unchanged_digest() -> Bool {
 test fn witness_credential_write_back_admits_changed_digest() -> Bool {
   match admit_ambient_oauth_home_write_back(
     observation: Present {
-      value: ClaudeAmbientOAuthArtifactObservationPair {
-        before_use: ClaudeAmbientOAuthArtifactDigest {
-          digest: "sha256:before" as NonEmptyStr,
+      value: gunbc.claude_setup_token_enrollment.ClaudeAmbientOAuthArtifactObservationPair {
+        before_use: gunbc.claude_setup_token_enrollment.ClaudeAmbientOAuthArtifactDigest {
+          digest: "sha256:before" as std.types.NonEmptyStr,
         },
-        after_use: ClaudeAmbientOAuthArtifactDigest {
-          digest: "sha256:after" as NonEmptyStr,
+        after_use: gunbc.claude_setup_token_enrollment.ClaudeAmbientOAuthArtifactDigest {
+          digest: "sha256:after" as std.types.NonEmptyStr,
         },
       },
     },
   ) {
     AmbientOAuthWriteBackAdmitted { prior: _, observed: observed } =>
-      observed.digest == ("sha256:after" as NonEmptyStr)
+      observed.digest == ("sha256:after" as std.types.NonEmptyStr)
     _ => false
   }
 }
@@ -250,20 +250,20 @@ test fn witness_setup_token_standing_is_rotation_unobserved_by_default() -> Bool
 
 test fn witness_enrollment_placement_refuses_unbound_operator_choices() -> Bool {
   match admit_enrollment_placement(
-    choices: ClaudeEnrollmentOperatorChoices {
+    choices: gunbc.claude_setup_token_enrollment.ClaudeEnrollmentOperatorChoices {
       enrollment_host: Absent,
       run_as_principal: Absent,
       gcp_project: Absent,
       secret_id_or_create_authorization: Absent,
       account_label: Absent,
     },
-    claude_runtime: ClaudeEnrollmentRuntimeBinding {
-      executable: "claude" as NonEmptyStr,
-      version_pin: "pinned" as NonEmptyStr,
+    claude_runtime: gunbc.claude_setup_token_enrollment.ClaudeEnrollmentRuntimeBinding {
+      executable: "claude" as std.types.NonEmptyStr,
+      version_pin: "pinned" as std.types.NonEmptyStr,
     },
-    sdk_runtime: ClaudeEnrollmentRuntimeBinding {
-      executable: "claude-agent-sdk" as NonEmptyStr,
-      version_pin: "0.3.220" as NonEmptyStr,
+    sdk_runtime: gunbc.claude_setup_token_enrollment.ClaudeEnrollmentRuntimeBinding {
+      executable: "claude-agent-sdk" as std.types.NonEmptyStr,
+      version_pin: "0.3.220" as std.types.NonEmptyStr,
     },
   ) {
     EnrollmentPlacementRefusedUnbound { missing_axes } =>
@@ -275,22 +275,22 @@ test fn witness_enrollment_placement_refuses_unbound_operator_choices() -> Bool 
 test fn witness_enrollment_workflow_refuses_host_effects_scaffold() -> Bool {
   match admit_enrollment_workflow_start(
     placement_admission: admit_enrollment_placement(
-      choices: ClaudeEnrollmentOperatorChoices {
-        enrollment_host: Present { value: "enrollment-host.example" as NonEmptyStr },
-        run_as_principal: Present { value: "claude-enrollment" as NonEmptyStr },
-        gcp_project: Present { value: "operator-selected-project" as NonEmptyStr },
+      choices: gunbc.claude_setup_token_enrollment.ClaudeEnrollmentOperatorChoices {
+        enrollment_host: Present { value: "enrollment-host.example" as std.types.NonEmptyStr },
+        run_as_principal: Present { value: "claude-enrollment" as std.types.NonEmptyStr },
+        gcp_project: Present { value: "operator-selected-project" as std.types.NonEmptyStr },
         secret_id_or_create_authorization: Present {
-          value: "operator-selected-secret" as NonEmptyStr,
+          value: "operator-selected-secret" as std.types.NonEmptyStr,
         },
-        account_label: Present { value: "operator-selected-label" as NonEmptyStr },
+        account_label: Present { value: "operator-selected-label" as std.types.NonEmptyStr },
       },
-      claude_runtime: ClaudeEnrollmentRuntimeBinding {
-        executable: "claude" as NonEmptyStr,
-        version_pin: "pinned" as NonEmptyStr,
+      claude_runtime: gunbc.claude_setup_token_enrollment.ClaudeEnrollmentRuntimeBinding {
+        executable: "claude" as std.types.NonEmptyStr,
+        version_pin: "pinned" as std.types.NonEmptyStr,
       },
-      sdk_runtime: ClaudeEnrollmentRuntimeBinding {
-        executable: "claude-agent-sdk" as NonEmptyStr,
-        version_pin: "0.3.220" as NonEmptyStr,
+      sdk_runtime: gunbc.claude_setup_token_enrollment.ClaudeEnrollmentRuntimeBinding {
+        executable: "claude-agent-sdk" as std.types.NonEmptyStr,
+        version_pin: "0.3.220" as std.types.NonEmptyStr,
       },
     ),
   ) {
@@ -302,29 +302,29 @@ test fn witness_enrollment_workflow_refuses_host_effects_scaffold() -> Bool {
 test fn witness_exact_secret_version_binding_admits_write_and_readback() -> Bool {
   match admit_exact_secret_version_binding(
     target: EnrollmentSecretTargetSpecified {
-      project: "operator-selected-project" as NonEmptyStr,
-      secret: "operator-selected-secret" as NonEmptyStr,
+      project: "operator-selected-project" as std.types.NonEmptyStr,
+      secret: "operator-selected-secret" as std.types.NonEmptyStr,
     },
-    write: EnrollmentSecretWritten { version: "7" as NonEmptyStr },
+    write: EnrollmentSecretWritten { version: "7" as std.types.NonEmptyStr },
     readback: EnrollmentSecretReadBackOk {
-      version: "7" as NonEmptyStr,
-      private_content_identity: "sha256:managed-token" as NonEmptyStr,
+      version: "7" as std.types.NonEmptyStr,
+      private_content_identity: "sha256:managed-token" as std.types.NonEmptyStr,
       digest_matches: true,
     },
   ) {
     ExactSecretVersionBindingAdmitted { binding } =>
-      binding.version == ("7" as NonEmptyStr)
-        && binding.private_content_identity == ("sha256:managed-token" as NonEmptyStr)
+      binding.version == ("7" as std.types.NonEmptyStr)
+        && binding.private_content_identity == ("sha256:managed-token" as std.types.NonEmptyStr)
     _ => false
   }
 }
 
 test fn witness_writer_lease_refuses_concurrent_holder() -> Bool {
   match admit_enrollment_writer_lease(
-    holder: "host-b" as NonEmptyStr,
+    holder: "host-b" as std.types.NonEmptyStr,
     holder_epoch: 1,
-    incumbent_holder: Present { value: "host-a" as NonEmptyStr },
-    incumbent_version: Present { value: "7" as NonEmptyStr },
+    incumbent_holder: Present { value: "host-a" as std.types.NonEmptyStr },
+    incumbent_version: Present { value: "7" as std.types.NonEmptyStr },
     incumbent_epoch: Present { value: 2 },
   ) {
     EnrollmentLeaseRefusedConcurrent {
@@ -332,8 +332,8 @@ test fn witness_writer_lease_refuses_concurrent_holder() -> Bool {
       incumbent_binding_version,
       incumbent_epoch,
     } =>
-      incumbent_holder == ("host-a" as NonEmptyStr)
-        && incumbent_binding_version == ("7" as NonEmptyStr)
+      incumbent_holder == ("host-a" as std.types.NonEmptyStr)
+        && incumbent_binding_version == ("7" as std.types.NonEmptyStr)
         && incumbent_epoch == 2
     _ => false
   }
@@ -341,34 +341,34 @@ test fn witness_writer_lease_refuses_concurrent_holder() -> Bool {
 
 test fn witness_writer_lease_refuses_newer_binding() -> Bool {
   match admit_enrollment_writer_lease_against_binding(
-    holder: "host-a" as NonEmptyStr,
+    holder: "host-a" as std.types.NonEmptyStr,
     holder_epoch: 1,
     incumbent_holder: Absent,
-    incumbent_version: "9" as NonEmptyStr,
+    incumbent_version: "9" as std.types.NonEmptyStr,
     incumbent_epoch: Absent,
-    attempted_version: "8" as NonEmptyStr,
+    attempted_version: "8" as std.types.NonEmptyStr,
     incumbent_version_is_newer: true,
   ) {
     EnrollmentLeaseRefusedNewerBindingExists {
       incumbent_version,
       attempted_version,
     } =>
-      incumbent_version == ("9" as NonEmptyStr)
-        && attempted_version == ("8" as NonEmptyStr)
+      incumbent_version == ("9" as std.types.NonEmptyStr)
+        && attempted_version == ("8" as std.types.NonEmptyStr)
     _ => false
   }
 }
 
 test fn witness_writer_lease_grants_absent_incumbent() -> Bool {
   match admit_enrollment_writer_lease(
-    holder: "host-a" as NonEmptyStr,
+    holder: "host-a" as std.types.NonEmptyStr,
     holder_epoch: 1,
     incumbent_holder: Absent,
     incumbent_version: Absent,
     incumbent_epoch: Absent,
   ) {
     EnrollmentLeaseGranted { holder, epoch } =>
-      holder == ("host-a" as NonEmptyStr) && epoch == 1
+      holder == ("host-a" as std.types.NonEmptyStr) && epoch == 1
     _ => false
   }
 }
@@ -395,7 +395,7 @@ test fn witness_setup_token_challenge_extracts_https_url_from_sentence() -> Bool
   let pane = concat(
     concat("Open https://claude.ai/oauth/verify in your browser", "\n"),
     concat(concat("Enter this code", "\n"), "ABCD-1234"),
-  ) as RenderedTerminalText
+  ) as std.types.RenderedTerminalText
   match parse_setup_token_challenge_from_terminal(pane: pane) {
     SetupTokenChallengeParsed {
       challenge: ClaudeSetupTokenBrowserChallenge {
@@ -403,7 +403,7 @@ test fn witness_setup_token_challenge_extracts_https_url_from_sentence() -> Bool
         user_code: _,
       },
     } =>
-      uri == "https://claude.ai/oauth/verify" as NonEmptyStr
+      uri == "https://claude.ai/oauth/verify" as std.types.NonEmptyStr
     SetupTokenChallengeParseRefused { reason: _ } => false
   }
 }
@@ -412,7 +412,7 @@ test fn witness_setup_token_challenge_refuses_url_line_without_token() -> Bool {
   let pane = concat(
     concat("Openhttps://claude.ai/oauth/verify", "\n"),
     concat(concat("Enter this code", "\n"), "ABCD-1234"),
-  ) as RenderedTerminalText
+  ) as std.types.RenderedTerminalText
   match parse_setup_token_challenge_from_terminal(pane: pane) {
     SetupTokenChallengeParseRefused { reason: _ } => true
     SetupTokenChallengeParsed { challenge: _ } => false

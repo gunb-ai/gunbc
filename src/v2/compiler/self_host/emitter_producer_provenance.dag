@@ -88,7 +88,7 @@ fn emission_qualifications_list_contains(
 
 type EmissionBuildResult
   = BuildGreen
-  | BuildRefused { cause: Symbol }
+  | BuildRefused { cause: v2.std.node.Symbol }
 
 type RealizedEmitterClosure {
   emitter_module_paths: List<String>
@@ -115,12 +115,12 @@ fn behavioral_probe_binding_eq(left: BehavioralProbeBinding, right: BehavioralPr
 
 type ProducerEmissionReceipt {
   module_path: String
-  module_source_digest: Hash
-  emitter_source_digest: Hash
+  module_source_digest: v2.std.node.Hash
+  emitter_source_digest: v2.std.node.Hash
   producer: EmitterProducer
   qualifications: List<EmissionQualification>
-  rust_target_model_digest: Hash
-  emitted_source_digest: Hash
+  rust_target_model_digest: v2.std.node.Hash
+  emitted_source_digest: v2.std.node.Hash
   build_result: EmissionBuildResult
   behavioral_probe: BehavioralProbeBinding
   realized_closure: RealizedEmitterClosure
@@ -190,7 +190,7 @@ data v2_emitter_in_seed_emit_rust_closure: String = "V2Emitter* producer mint re
 
 type EmitterProducerMintAdmission
   = ProducerMintAdmitted
-  | ProducerMintRefused { cause: Symbol }
+  | ProducerMintRefused { cause: v2.std.node.Symbol }
 
 data emitter_producer_mint_admission_note: String = "🟢 Canonical admission fold over EmitterProducer (review 44579 predicate-dissolution): emitter_producer_mint_admission is the ONLY total match classifying producer×realized_closure admissibility — mint_producer_emission_receipt consumes this surface; no parallel hand-rolled Bool admissibility predicates."
 
@@ -233,7 +233,7 @@ data behavioral_equivalent_without_bound_probe: String = "BehavioralEquivalent r
 
 type BehavioralProbeAdmission
   = BehavioralProbeConsistent
-  | BehavioralProbeRefused { cause: Symbol }
+  | BehavioralProbeRefused { cause: v2.std.node.Symbol }
 
 fn behavioral_probe_qualification_admission(
   probe: BehavioralProbeBinding,

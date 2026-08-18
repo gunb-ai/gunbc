@@ -1,8 +1,8 @@
 module extdeps.tcgplayer.pricing
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.tcgplayer.com/reference/pricing_getproductprices-1"
   }
@@ -18,9 +18,9 @@ type ProductPriceRow {
   subTypeName: String?
 }
 
-data tcgplayer_pricing_money_measure_grounding_disposition: Disposition = Scaffold {
+data tcgplayer_pricing_money_measure_grounding_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.tcgplayer.pricing",
     decl_name: "ProductPriceRow",
     field: WholeDeclaration
@@ -50,7 +50,7 @@ service tcgplayer.Pricing {
   operation GetProductPrices {
     input {
       bearer_token: Secret
-      product_ids: NonEmptyStr
+      product_ids: std.types.NonEmptyStr
     }
     output {
       market_price: Float? from "results/0/marketPrice"

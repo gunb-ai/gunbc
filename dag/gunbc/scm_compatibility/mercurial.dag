@@ -6,31 +6,31 @@ data mercurial_compatibility_binding_note: NonEmptyStr = "The Mercurial R1 handl
 data mercurial_compatibility_read_back_identity_note: NonEmptyStr = "A MercurialCompatibilityReceipt is constructible by this handler only after mercurial_assess_read_back proves that the independently decoded observation equals repository. The common read-back handle therefore fingerprints that complete decoded repository state plus observed_by; it never treats the observer label itself as the state identity."
 
 type MercurialCompatibilityReceipt {
-  target: MercurialNamedBranchName
-  portable_history: List<MercurialNodeId>
-  target_history: List<MercurialNodeId>
-  repository: MercurialRepositoryState
-  projection: MercurialRepositoryProjection
-  read_back: MercurialReadBackObservation
-  advance: MercurialConditionalAdvanceCapability
+  target: extdeps.mercurial.MercurialNamedBranchName
+  portable_history: List<extdeps.mercurial.MercurialNodeId>
+  target_history: List<extdeps.mercurial.MercurialNodeId>
+  repository: extdeps.mercurial.MercurialRepositoryState
+  projection: extdeps.mercurial.MercurialRepositoryProjection
+  read_back: extdeps.mercurial.MercurialReadBackObservation
+  advance: extdeps.mercurial.MercurialConditionalAdvanceCapability
 }
 
 type MercurialCompatibilityRefusal
   = MercurialCompatibilityDecodeRejected {
-      cause: MercurialProjectionRefusal,
+      cause: extdeps.mercurial.MercurialProjectionRefusal,
     }
-  | MercurialCompatibilityRepositoryUnavailable { reason: NonEmptyStr }
+  | MercurialCompatibilityRepositoryUnavailable { reason: std.types.NonEmptyStr }
   | MercurialCompatibilityTargetMissing {
-      target: MercurialNamedBranchName,
+      target: extdeps.mercurial.MercurialNamedBranchName,
     }
-  | MercurialCompatibilityReadBackMismatch { observed_by: NonEmptyStr }
+  | MercurialCompatibilityReadBackMismatch { observed_by: std.types.NonEmptyStr }
   | MercurialCompatibilityReadBackInvalid {
-      observed_by: NonEmptyStr,
-      cause: MercurialProjectionRefusal,
+      observed_by: std.types.NonEmptyStr,
+      cause: extdeps.mercurial.MercurialProjectionRefusal,
     }
   | MercurialCompatibilityReadBackUnavailable {
-      observed_by: NonEmptyStr,
-      reason: NonEmptyStr,
+      observed_by: std.types.NonEmptyStr,
+      reason: std.types.NonEmptyStr,
     }
 
 type MercurialCompatibilityBindingOutcome

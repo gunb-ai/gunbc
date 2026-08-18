@@ -14,11 +14,11 @@ fn target_decl(module_path: String, decl_name: String) -> DeclarationRef {
 }
 
 type ProviderContractTarget {
-  cache: CacheInterfaceId
-  cache_row: DeclarationRef
-  consumer_seam: DeclarationRef
+  cache: std.cache_identity.CacheInterfaceId
+  cache_row: std.decl_ref.DeclarationRef
+  consumer_seam: std.decl_ref.DeclarationRef
   reason: String
-  dissolution: DissolutionCondition
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 data materialization_provider_targets: List<ProviderContractTarget> = [

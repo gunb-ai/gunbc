@@ -1,7 +1,7 @@
 module v2.test.grounding_go.sg_claims
 
 fn go_g2_claim_fail_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^go_g2_claim_fail_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -20,15 +20,15 @@ fn go_g2_source_carrier_eq(a: Node, b: Node) -> Bool {
   content_hash(n: a) == content_hash(n: b)
 }
 
-fn go_g2_sg1_symbol_evidence() -> GroundingEvidenceSchema {
+fn go_g2_sg1_symbol_evidence() -> v2.std.grounding.GroundingEvidenceSchema {
   Sg1Evidence { source_carrier: symbol_kernel_type_node() }
 }
 
-fn go_g2_sg2_absence_evidence() -> GroundingEvidenceSchema {
+fn go_g2_sg2_absence_evidence() -> v2.std.grounding.GroundingEvidenceSchema {
   Sg2Evidence { source_carrier: symbol_kernel_type_node() }
 }
 
-fn go_g2_sg5_absence_evidence() -> GroundingEvidenceSchema {
+fn go_g2_sg5_absence_evidence() -> v2.std.grounding.GroundingEvidenceSchema {
   Sg5Evidence { source_carrier: symbol_kernel_type_node() }
 }
 
@@ -105,12 +105,12 @@ fn go_g2_sg5_collection_realization_absence_holds() -> Bool {
     }
 }
 
-data claim_go_g2_sg1_atom_realizations_executable: TestClaim = EqualsClaim {
+data claim_go_g2_sg1_atom_realizations_executable: v2.std.verification.TestClaim = EqualsClaim {
   label: "Go G.2 SG-1 atom realization evidence is executable through run_test_claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: go_g2_executable_claim_input(ok: go_g2_sg1_atom_realizations_hold()),
   rhs: eval_add_subgraph(),
-  classification: TestClassification { tier: Tier1, layer: Integration }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Integration }
 }
 
 data subject_go_g2_sg1_atom_realizations: TestClaimEvalSubject<Node> = eval_test_claim_subject(
@@ -124,12 +124,12 @@ data run_go_g2_sg1_atom_realizations: TestClaimRun<Node, RuntimeValue> = run_tes
   subject: subject_go_g2_sg1_atom_realizations
 )
 
-data claim_go_g2_g1_3_fact_registry_executable: TestClaim = EqualsClaim {
+data claim_go_g2_g1_3_fact_registry_executable: v2.std.verification.TestClaim = EqualsClaim {
   label: "Go G.2 G.1.3 fact bundle registry folds through fail-closed insert",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: go_g2_executable_claim_input(ok: go_g2_g1_3_fact_registry_accepts()),
   rhs: eval_add_subgraph(),
-  classification: TestClassification { tier: Tier1, layer: Integration }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Integration }
 }
 
 data subject_go_g2_g1_3_fact_registry: TestClaimEvalSubject<Node> = eval_test_claim_subject(
@@ -143,12 +143,12 @@ data run_go_g2_g1_3_fact_registry: TestClaimRun<Node, RuntimeValue> = run_test_c
   subject: subject_go_g2_g1_3_fact_registry
 )
 
-data claim_go_g2_sg2_projection_absence_executable: TestClaim = EqualsClaim {
+data claim_go_g2_sg2_projection_absence_executable: v2.std.verification.TestClaim = EqualsClaim {
   label: "Go G.2 SG-2 evidence records absent type-expression projection edge fail-closed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: go_g2_executable_claim_input(ok: go_g2_sg2_projection_absence_holds()),
   rhs: eval_add_subgraph(),
-  classification: TestClassification { tier: Tier1, layer: Integration }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Integration }
 }
 
 data subject_go_g2_sg2_projection_absence: TestClaimEvalSubject<Node> = eval_test_claim_subject(
@@ -162,12 +162,12 @@ data run_go_g2_sg2_projection_absence: TestClaimRun<Node, RuntimeValue> = run_te
   subject: subject_go_g2_sg2_projection_absence
 )
 
-data claim_go_g2_sg5_collection_absence_executable: TestClaim = EqualsClaim {
+data claim_go_g2_sg5_collection_absence_executable: v2.std.verification.TestClaim = EqualsClaim {
   label: "Go G.2 SG-5 evidence records absent collection realization edge fail-closed",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: go_g2_executable_claim_input(ok: go_g2_sg5_collection_realization_absence_holds()),
   rhs: eval_add_subgraph(),
-  classification: TestClassification { tier: Tier1, layer: Integration }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Integration }
 }
 
 data subject_go_g2_sg5_collection_absence: TestClaimEvalSubject<Node> = eval_test_claim_subject(

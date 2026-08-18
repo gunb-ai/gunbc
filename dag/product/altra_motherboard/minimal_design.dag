@@ -122,7 +122,7 @@ type MemoryConfiguration {
 // set, which becomes a refusal below rather than a nearest admitted value. This is the direction
 // the old shape could not fail in — a count could only ever be admissible, because it was chosen
 // from the admissible type in the first place.
-fn admitted_channel_count(n: Int) -> ActiveDdrChannelCount? {
+fn admitted_channel_count(n: Int) -> extdeps.cpu.ampere_altra_memory_controller.ActiveDdrChannelCount? {
   fold([OneChannel, TwoChannels, FourChannels, SixChannels, EightChannels], init: none, f: fn(acc, c) {
     match acc {
       Present { value: v } => Present { value: v }

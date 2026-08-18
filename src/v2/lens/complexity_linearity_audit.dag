@@ -3,9 +3,9 @@ module v2.lens.complexity_linearity_audit
 
 data complexity_linearity_debt_row_reason: String = "closed-coproduct wildcard arm classified migration-debt (not kernel-permanent): the match is over a closed coproduct and the wildcard hides arms a total match would surface"
 
-data complexity_linearity_debt_row_dissolve: DissolutionCondition = unbound_dissolution(description: "the site's wildcard arm migrates to a total match; row deletes (roster-wide, the construction justification dissolves to SubstrateMandatoryTag)")
+data complexity_linearity_debt_row_dissolve: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the site's wildcard arm migrates to a total match; row deletes (roster-wide, the construction justification dissolves to SubstrateMandatoryTag)")
 
-fn debt_row(unit: String) -> FrontierRow {
+fn debt_row(unit: String) -> std.roster_frontier.FrontierRow {
   frontier_row_path(
     path: unit,
     reason: complexity_linearity_debt_row_reason,
@@ -13,7 +13,7 @@ fn debt_row(unit: String) -> FrontierRow {
   )
 }
 
-data complexity_linearity_migration_debt_roster: List<FrontierRow> = [
+data complexity_linearity_migration_debt_roster: List<std.roster_frontier.FrontierRow> = [
   debt_row(unit: "src/v2/compiler/05_eval.dag::eval_branch_node_eval"),
   debt_row(unit: "src/v2/compiler/05_eval.dag::eval_loop_node"),
   debt_row(unit: "src/v2/compiler/05_eval.dag::eval_match_node_eval"),
@@ -185,6 +185,6 @@ fn complexity_linearity_syntactic_site_fired_live(site: String) -> Bool {
   complexity_linearity_syntactic_site_fired(site: site)
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }

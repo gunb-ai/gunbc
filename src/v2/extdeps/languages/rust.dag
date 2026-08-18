@@ -31,16 +31,16 @@ type RustIntegerCarrier {
 }
 
 type RustIntegerPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   overflow_disposition: RustIntegerOverflowDisposition<RustIntegerCarrier>
-  std_projection: Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type RustFloatPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   width: RustFloatWidth
-  ieee754_binary: Symbol
-  std_projection: Symbol
+  ieee754_binary: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type RustNonIntegerScalar
@@ -51,10 +51,10 @@ type RustNonIntegerScalar
   | NonIntegerNeverScalar
 
 type RustNonIntegerPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   scalar: RustNonIntegerScalar
-  std_projection: Symbol
-  representation: Symbol
+  std_projection: v2.std.node.Symbol
+  representation: v2.std.node.Symbol
 }
 
 type RustReferenceKind
@@ -62,7 +62,7 @@ type RustReferenceKind
   | Exclusive
 
 type NamedSegment {
-  id: Symbol
+  id: v2.std.node.Symbol
 }
 
 type PubInPath {
@@ -76,7 +76,7 @@ type RustVisibility
 
 type RustReference {
   kind: RustReferenceKind
-  lifetime: Symbol
+  lifetime: v2.std.node.Symbol
   referent: Node
 }
 
@@ -98,9 +98,9 @@ type RustIntegerOverflowDisposition<IRCarrier> {
 }
 
 type RustGrammarRelationRow {
-  production: GrammarProduction
+  production: v2.std.grammar.GrammarProduction
   emitted: Node
-  tokens: List<ConcreteSyntaxToken>
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
 type RustModelCoreLawKey
@@ -777,7 +777,7 @@ fn rust_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 
 type RustGramBuild1State
   = RustGramBuild1StateInit
-  | RustGramBuild1StateReady { expr: GrammarExpr }
+  | RustGramBuild1StateReady { expr: v2.std.grammar.GrammarExpr }
 
 fn rust_grammar_sequence_from_concrete_tokens(tokens: List<ConcreteSyntaxToken>) -> GrammarExpr {
   match fold_list(
@@ -1355,10 +1355,10 @@ fn rust_hash_set_supplemental_generic_bound_contracts() -> Map<TargetDeriveTrait
 }
 
 type RustSupplementalGenericBoundContractCoverageBlocker {
-  derive_trait: ReprGroundingDeriveTrait
-  requirements: Set<RequiredTraitWitness>
-  authority: ExternalAuthority
-  coverage: RustSupplementalGenericBoundContractCoverageDisposition
+  derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait
+  requirements: Set<v2.std.compilers.target_model.RequiredTraitWitness>
+  authority: extdeps.external_authority.ExternalAuthority
+  coverage: extdeps.languages.rust.derive_contracts.RustSupplementalGenericBoundContractCoverageDisposition
 }
 
 fn rust_hash_set_eq_hash_supplemental_generic_bound_requirements(

@@ -10,22 +10,22 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type CpuStats {
   cpu_usage: CpuUsage
-  system_cpu_usage: Nanosecond
+  system_cpu_usage: std.measure.Nanosecond
   online_cpus: std.nat.Nat
   cpu_percent: Float?
 }
 
 type CpuUsage {
-  total_usage: Nanosecond
-  percpu_usage: List<Nanosecond>?
-  usage_in_kernelmode: Nanosecond
-  usage_in_usermode: Nanosecond
+  total_usage: std.measure.Nanosecond
+  percpu_usage: List<std.measure.Nanosecond>?
+  usage_in_kernelmode: std.measure.Nanosecond
+  usage_in_usermode: std.measure.Nanosecond
 }
 
 type MemoryStats {
-  usage: ByteSize
-  max_usage: ByteSize
-  limit: ByteSize
+  usage: std.measure.ByteSize
+  max_usage: std.measure.ByteSize
+  limit: std.measure.ByteSize
   failcnt: std.nat.Nat?
 }
 
@@ -34,7 +34,7 @@ type PidStats {
 }
 
 type ContainerStats {
-  read: Timestamp
+  read: std.types.Timestamp
   pids_stats: PidStats?
   blkio_stats: BlkioStats?
   cpu_stats: CpuStats
@@ -56,11 +56,11 @@ type BlkioValue {
 }
 
 type NetworkStats {
-  rx_bytes: ByteSize
+  rx_bytes: std.measure.ByteSize
   rx_packets: std.nat.Nat
   rx_errors: std.nat.Nat
   rx_dropped: std.nat.Nat
-  tx_bytes: ByteSize
+  tx_bytes: std.measure.ByteSize
   tx_packets: std.nat.Nat
   tx_errors: std.nat.Nat
   tx_dropped: std.nat.Nat

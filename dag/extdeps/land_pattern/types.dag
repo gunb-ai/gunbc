@@ -25,18 +25,18 @@ data land_pattern_note: String = "THIS MODULE CARRIES MECHANICAL CANDIDATES. IT 
 type SurfaceMountLandGeometry
   = DualRowLandGeometry {
       lands_per_row: std.nat.Nat
-      pitch: Micrometer
-      row_span_centre_to_centre: Micrometer
-      land_length: Micrometer
-      land_width: Micrometer
+      pitch: std.measure.Micrometer
+      row_span_centre_to_centre: std.measure.Micrometer
+      land_length: std.measure.Micrometer
+      land_width: std.measure.Micrometer
     }
   | QuadRowLandGeometry {
       lands_per_side: std.nat.Nat
-      pitch: Micrometer
-      side_span_centre_to_centre: Micrometer
-      land_length: Micrometer
-      land_width: Micrometer
-      thermal_land_side: Micrometer?
+      pitch: std.measure.Micrometer
+      side_span_centre_to_centre: std.measure.Micrometer
+      land_length: std.measure.Micrometer
+      land_width: std.measure.Micrometer
+      thermal_land_side: std.measure.Micrometer?
     }
 
 fn peripheral_land_count(g: SurfaceMountLandGeometry) -> std.nat.Nat {
@@ -58,9 +58,9 @@ fn land_pattern_pitch(g: SurfaceMountLandGeometry) -> Micrometer {
 // 08/2024 — which move independently of the datasheet's own revision, so citing only the
 // datasheet would leave a correction to the mechanical drawing invisible.
 type PackageDrawingRef {
-  drawing_number: NonEmptyStr
-  revision_date: NonEmptyStr
-  reprinted_in: ExternalAuthority
+  drawing_number: std.types.NonEmptyStr
+  revision_date: std.types.NonEmptyStr
+  reprinted_in: extdeps.external_authority.ExternalAuthority
 }
 
 // THE BODY, AND ONLY THE BODY. This is named for what it holds after an earlier revision called it
@@ -74,19 +74,19 @@ type PackageDrawingRef {
 // The vendor's own min and max are kept because the drawings state extents that way and print no
 // nominal; a single number would be a figure this repository invented by averaging.
 type PackageBodyDimensions {
-  designator: NonEmptyStr
+  designator: std.types.NonEmptyStr
   drawing: PackageDrawingRef
   terminal_count: std.nat.Nat
-  terminal_pitch: Micrometer
-  body_length_min: Micrometer
-  body_length_max: Micrometer
-  body_width_min: Micrometer
-  body_width_max: Micrometer
-  height_max: Micrometer
+  terminal_pitch: std.measure.Micrometer
+  body_length_min: std.measure.Micrometer
+  body_length_max: std.measure.Micrometer
+  body_width_min: std.measure.Micrometer
+  body_width_max: std.measure.Micrometer
+  height_max: std.measure.Micrometer
 }
 
 type VendorRecommendedLandPattern {
-  package_designator: NonEmptyStr
+  package_designator: std.types.NonEmptyStr
   drawing: PackageDrawingRef
   geometry: SurfaceMountLandGeometry
 }
@@ -102,7 +102,7 @@ type BoardAttachmentStyle
 // SURFACE-MOUNT GEOMETRY HAS AN ESTABLISHED ARM BECAUSE THE GEOMETRY EXISTS TO PUT IN IT.
 type SurfaceMountPatternStanding
   = SurfaceMountPatternEstablished { pattern: VendorRecommendedLandPattern }
-  | SurfaceMountPatternNotEstablished { what_is_missing: NonEmptyStr }
+  | SurfaceMountPatternNotEstablished { what_is_missing: std.types.NonEmptyStr }
 
 // AND THIS IS A RECORD RATHER THAN A COPRODUCT, WHICH IS THE WHOLE POINT. An earlier revision gave
 // through-hole parts a standing whose only success arm carried a VendorRecommendedLandPattern —
@@ -114,7 +114,7 @@ type SurfaceMountPatternStanding
 // carrier serves a part whose ATTACHMENT STYLE is itself unread, since a success arm cannot be
 // chosen before the style is known.
 type MountingPatternObligation {
-  what_is_missing: NonEmptyStr
+  what_is_missing: std.types.NonEmptyStr
 }
 
 // COUNT AND PITCH AND DESIGNATOR DO NOT ESTABLISH THE PIN MAP, and a pattern that matches on all
@@ -130,15 +130,15 @@ type MountingPatternObligation {
 // in this repository is admissible for footprint realization right now. That is the honest state
 // and it is stated in the type rather than in prose.
 type TerminalIndexingObligation {
-  what_is_missing: NonEmptyStr
+  what_is_missing: std.types.NonEmptyStr
 }
 
 // A CANDIDATE IS FREELY CONSTRUCTIBLE AND CARRIES NO CLAIM. It says a vendor publishes these
 // mechanical facts for this part number. It does NOT say the part suits any role, and it is not
 // what a footprint realization may consume — only the admitted form below is.
 type PartMechanicalCandidate {
-  ordering_part_number: NonEmptyStr
-  vendor: Vendor<Hardware>
+  ordering_part_number: std.types.NonEmptyStr
+  vendor: Vendor<extdeps.hardware.Hardware>
   body: PackageBodyDimensions
   land_pattern: VendorRecommendedLandPattern
   terminal_indexing: TerminalIndexingObligation
@@ -149,8 +149,8 @@ type PartMechanicalCandidate {
 // reader's expectation of what a part like this usually is. The upstream authority EXISTS and is
 // citable whether or not anyone here has read it; what is unestablished is the geometry.
 type CatalogPartIdentity {
-  ordering_part_number: NonEmptyStr
-  vendor: Vendor<Hardware>
+  ordering_part_number: std.types.NonEmptyStr
+  vendor: Vendor<extdeps.hardware.Hardware>
   board_pattern: MountingPatternObligation
 }
 
@@ -159,9 +159,9 @@ type CatalogPartIdentity {
 // neighbouring package on the same datasheet. A device offered in two packages prints two of each,
 // and nothing about a record's field names stops the wrong pair from being bound together.
 type LandPatternDisagreement
-  = PatternDesignatorDiffersFromPackage { pattern_designator: NonEmptyStr, package_designator: NonEmptyStr }
+  = PatternDesignatorDiffersFromPackage { pattern_designator: std.types.NonEmptyStr, package_designator: std.types.NonEmptyStr }
   | LandCountDiffersFromTerminalCount { lands: std.nat.Nat, terminals: std.nat.Nat }
-  | LandPitchDiffersFromTerminalPitch { land_pitch: Micrometer, terminal_pitch: Micrometer }
+  | LandPitchDiffersFromTerminalPitch { land_pitch: std.measure.Micrometer, terminal_pitch: std.measure.Micrometer }
 
 fn land_pattern_disagreements(p: PartMechanicalCandidate) -> List<LandPatternDisagreement> {
   let designator_cause = if (p.land_pattern.package_designator as String) == (p.body.designator as String) {
@@ -193,7 +193,7 @@ fn land_pattern_disagreements(p: PartMechanicalCandidate) -> List<LandPatternDis
 
 type CandidateRefusal
   = MechanicalDisagreement { cause: LandPatternDisagreement }
-  | TerminalIndexingUnestablished { what_is_missing: NonEmptyStr }
+  | TerminalIndexingUnestablished { what_is_missing: std.types.NonEmptyStr }
 
 type CandidateRefusalSet {
   first: CandidateRefusal

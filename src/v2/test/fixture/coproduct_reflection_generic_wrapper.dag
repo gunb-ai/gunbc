@@ -2,7 +2,7 @@ module v2.test.fixture.coproduct_reflection_generic_wrapper
 
 
 fn nullary_reflection_through_generic_wrapper<T>(
-  type_name: Symbol,
+  type_name: v2.std.node.Symbol,
   discriminant_of: fn(T) -> Symbol
 ) -> Outcome<List<T>> {
   coproduct_nullary_inhabitants(

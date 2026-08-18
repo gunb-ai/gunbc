@@ -1,7 +1,7 @@
 module gunbc.plans.resolver_type_name_collision_wall
 
 
-fn resolver_type_name_collision_wall_body() -> List<MarkdownBlock> {
+fn resolver_type_name_collision_wall_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "Status: **MODEL — SIGNED (parent bright-stag, 2026-06-23).** The model (mechanism + Q2 policy + activation) is signed; **no resolver edit lands** until the §4 grounding de-fork is clean — the resolver guard is a separate, operator-gated future PR that lands on the de-forked tree. This document is the signed model; §3/§4 record the final ruling."),
     p(text: "Owner: jolly-ant-231 (deepest resolver context from the A1 diagnosis). Capstone of the std de-fork lane. Q2 evidence: `docs/plans/dag-v2-defork-audit.md` §2A (executed distribution)."),
@@ -112,7 +112,7 @@ fn resolver_type_name_collision_wall_body() -> List<MarkdownBlock> {
   ]
 }
 
-data resolver_type_name_collision_wall_plan: Plan = Plan {
+data resolver_type_name_collision_wall_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "resolver-type-name-collision-wall",
   title: "Resolver type-name-collision wall (§5 construction wall) — model-before-implement",
   body: resolver_type_name_collision_wall_body(),

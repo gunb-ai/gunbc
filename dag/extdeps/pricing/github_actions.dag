@@ -21,11 +21,11 @@ type GithubActionsBillingSku
 
 type GithubActionsRunnerPriceRow {
   billing_sku: GithubActionsBillingSku
-  sku_wire_label: NonEmptyStr
-  vcpus: HardwareThreadCount
-  cpu_architecture: Architecture
-  per_minute: MoneyPerMinute
-  pricing_citation: NonEmptyStr
+  sku_wire_label: std.types.NonEmptyStr
+  vcpus: std.measure.HardwareThreadCount
+  cpu_architecture: extdeps.toolchain.types.Architecture
+  per_minute: std.measure.MoneyPerMinute
+  pricing_citation: std.types.NonEmptyStr
 }
 
 data github_actions_linux_slim_price: GithubActionsRunnerPriceRow = GithubActionsRunnerPriceRow {

@@ -1,35 +1,35 @@
 module test.claim.pcb_stackup_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data stackup_authority: DeclarationRef = DeclarationRef {
+data stackup_authority: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "test.claim.pcb_stackup_witness",
   decl_name: "four_layer",
   field: WholeDeclaration,
 }
 
-data single_layer_authority: DeclarationRef = DeclarationRef {
+data single_layer_authority: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "test.claim.pcb_stackup_witness",
   decl_name: "single_layer",
   field: WholeDeclaration,
 }
 
-data half_ounce: CopperLayer = CopperLayer { function: SignalLayer, thickness: micrometer(count: 17) }
-data half_ounce_ground: CopperLayer = CopperLayer { function: GroundPlane, thickness: micrometer(count: 17) }
-data half_ounce_power: CopperLayer = CopperLayer { function: PowerPlane, thickness: micrometer(count: 17) }
-data one_ounce: CopperLayer = CopperLayer { function: SignalLayer, thickness: micrometer(count: 35) }
+data half_ounce: product.pcb.stackup.CopperLayer = product.pcb.stackup.CopperLayer { function: SignalLayer, thickness: micrometer(count: 17) }
+data half_ounce_ground: product.pcb.stackup.CopperLayer = product.pcb.stackup.CopperLayer { function: GroundPlane, thickness: micrometer(count: 17) }
+data half_ounce_power: product.pcb.stackup.CopperLayer = product.pcb.stackup.CopperLayer { function: PowerPlane, thickness: micrometer(count: 17) }
+data one_ounce: product.pcb.stackup.CopperLayer = product.pcb.stackup.CopperLayer { function: SignalLayer, thickness: micrometer(count: 35) }
 
-data core_100um: DielectricLayer = DielectricLayer { thickness: micrometer(count: 100), material: "FR-4" }
+data core_100um: product.pcb.stackup.DielectricLayer = product.pcb.stackup.DielectricLayer { thickness: micrometer(count: 100), material: "FR-4" }
 
 // A four-copper-layer board: signal / ground / power / signal, the ordinary controlled-impedance
 // arrangement. Authored as top plus three plies, which is the only shape the type admits.
-data four_layer: Stackup = Stackup {
+data four_layer: product.pcb.stackup.Stackup = product.pcb.stackup.Stackup {
   top: half_ounce,
   plies: [
-    StackupPly { dielectric: core_100um, copper: half_ounce_ground },
-    StackupPly { dielectric: core_100um, copper: half_ounce_power },
-    StackupPly { dielectric: core_100um, copper: half_ounce },
+    product.pcb.stackup.StackupPly { dielectric: core_100um, copper: half_ounce_ground },
+    product.pcb.stackup.StackupPly { dielectric: core_100um, copper: half_ounce_power },
+    product.pcb.stackup.StackupPly { dielectric: core_100um, copper: half_ounce },
   ],
 }
 
@@ -48,7 +48,7 @@ test fn w_copper_always_exceeds_dielectric_by_one() -> Bool {
 
 // The degenerate board: one copper layer, no dielectric, no plies. Legal by construction and worth
 // pinning, because a model that required a ply would have made a single-sided board unwritable.
-data single_layer: Stackup = Stackup { top: one_ounce, plies: [] }
+data single_layer: product.pcb.stackup.Stackup = product.pcb.stackup.Stackup { top: one_ounce, plies: [] }
 
 test fn w_a_single_sided_board_is_representable() -> Bool {
   stackup_copper_layer_count(s: single_layer) == 1
@@ -67,12 +67,12 @@ test fn w_symmetric_profile_is_recognised() -> Bool {
 // RED control: symmetry is a real measurement, not a predicate that always agrees. Thickening one
 // outer layer alone unbalances the board about its neutral axis, which is the warp condition
 // fabricators refuse, and the predicate must see it.
-data asymmetric: Stackup = Stackup {
+data asymmetric: product.pcb.stackup.Stackup = product.pcb.stackup.Stackup {
   top: one_ounce,
   plies: [
-    StackupPly { dielectric: core_100um, copper: half_ounce_ground },
-    StackupPly { dielectric: core_100um, copper: half_ounce_power },
-    StackupPly { dielectric: core_100um, copper: half_ounce },
+    product.pcb.stackup.StackupPly { dielectric: core_100um, copper: half_ounce_ground },
+    product.pcb.stackup.StackupPly { dielectric: core_100um, copper: half_ounce_power },
+    product.pcb.stackup.StackupPly { dielectric: core_100um, copper: half_ounce },
   ],
 }
 
@@ -82,12 +82,12 @@ test fn w_red_an_unbalanced_profile_is_refused() -> Bool {
 
 // A signal layer needs a reference plane for its return current. Counting planes is not counting
 // layers, so an all-signal board must report zero planes even though it has four of them.
-data all_signal: Stackup = Stackup {
+data all_signal: product.pcb.stackup.Stackup = product.pcb.stackup.Stackup {
   top: half_ounce,
   plies: [
-    StackupPly { dielectric: core_100um, copper: half_ounce },
-    StackupPly { dielectric: core_100um, copper: half_ounce },
-    StackupPly { dielectric: core_100um, copper: half_ounce },
+    product.pcb.stackup.StackupPly { dielectric: core_100um, copper: half_ounce },
+    product.pcb.stackup.StackupPly { dielectric: core_100um, copper: half_ounce },
+    product.pcb.stackup.StackupPly { dielectric: core_100um, copper: half_ounce },
   ],
 }
 
@@ -101,8 +101,8 @@ test fn w_plane_count_is_not_layer_count() -> Bool {
 
 // A mixed layer counts as a plane, because it carries reference copper even though it also routes.
 test fn w_a_mixed_layer_counts_as_reference_copper() -> Bool {
-  stackup_plane_layer_count(s: Stackup {
-    top: CopperLayer { function: MixedSignalAndPlane, thickness: micrometer(count: 17) },
+  stackup_plane_layer_count(s: product.pcb.stackup.Stackup {
+    top: product.pcb.stackup.CopperLayer { function: MixedSignalAndPlane, thickness: micrometer(count: 17) },
     plies: [],
   }) == 1
 }
@@ -137,15 +137,15 @@ test fn w_a_single_layer_board_is_not_refused_for_lacking_a_plane() -> Bool {
   }
 }
 
-data zero_copper: CopperLayer = CopperLayer { function: SignalLayer, thickness: micrometer(count: 0) }
-data zero_dielectric: DielectricLayer = DielectricLayer { thickness: micrometer(count: 0), material: "FR-4" }
+data zero_copper: product.pcb.stackup.CopperLayer = product.pcb.stackup.CopperLayer { function: SignalLayer, thickness: micrometer(count: 0) }
+data zero_dielectric: product.pcb.stackup.DielectricLayer = product.pcb.stackup.DielectricLayer { thickness: micrometer(count: 0), material: "FR-4" }
 
 // RED control: every cause is reported, not the first. A board that is unphysical in three ways at
 // once must come back with three causes, or an author fixes one and returns for the next.
 test fn w_red_all_refusal_causes_are_counted_not_just_the_first() -> Bool {
-  let broken = Stackup {
+  let broken = product.pcb.stackup.Stackup {
     top: zero_copper,
-    plies: [StackupPly { dielectric: zero_dielectric, copper: zero_copper }],
+    plies: [product.pcb.stackup.StackupPly { dielectric: zero_dielectric, copper: zero_copper }],
   }
   match admit_stackup(s: broken, authority: stackup_authority) {
     StackupAdmitted { admitted: _ } => false
@@ -156,9 +156,9 @@ test fn w_red_all_refusal_causes_are_counted_not_just_the_first() -> Bool {
 // A zero-thickness dielectric alone is caught, so the multi-cause result above is a real conjunction
 // rather than one rule firing three times.
 test fn w_red_a_zero_thickness_dielectric_alone_is_refused() -> Bool {
-  let shorted = Stackup {
+  let shorted = product.pcb.stackup.Stackup {
     top: half_ounce,
-    plies: [StackupPly { dielectric: zero_dielectric, copper: half_ounce_ground }],
+    plies: [product.pcb.stackup.StackupPly { dielectric: zero_dielectric, copper: half_ounce_ground }],
   }
   match admit_stackup(s: shorted, authority: stackup_authority) {
     StackupAdmitted { admitted: _ } => false

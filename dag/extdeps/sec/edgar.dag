@@ -18,23 +18,23 @@ type EdgarErrorEnvelope {
 }
 
 type CompanyConceptResponse {
-  cik: Cik
+  cik: extdeps.sec.types.Cik
   taxonomy: String
   tag: String
   label: String
   description: String?
   entityName: String
-  units: Map<String, List<XbrlFact>>
+  units: Map<String, List<extdeps.sec.types.XbrlFact>>
 }
 
 type CompanyFactsTaxonomyFacts {
   label: String?
   description: String?
-  units: Map<String, List<XbrlFact>>
+  units: Map<String, List<extdeps.sec.types.XbrlFact>>
 }
 
 type CompanyFactsResponse {
-  cik: Cik
+  cik: extdeps.sec.types.Cik
   entityName: String
   facts: Map<String, Map<String, CompanyFactsTaxonomyFacts>>
 }

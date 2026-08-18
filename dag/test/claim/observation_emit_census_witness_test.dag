@@ -1,6 +1,6 @@
 module test.claim.observation_emit_census_witness_test
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data witness_note: String = "P3 census hygiene, executable against the live seed (docs/plans/progress-observation-design.md section 5). A census that is not checked against the code it censuses is coverage-by-illusion — an inert lens is itself a lie. So every rostered marker is held against the seed file it names: a marker that has vanished reds (the roster went stale, the site was renamed or deleted without re-census), and a frontier row must carry a real, non-empty dissolve-on so the debt stays prioritizable rather than open-ended. Migrated sites keep their marker strings so the roster cannot go stale, and each has a RED that the raw byte shape is gone from the seed."
 
@@ -9,7 +9,7 @@ fn census_source(path: String) -> String {
   r.content
 }
 
-fn census_marker_present(site: CensusedEmitSite) -> Bool {
+fn census_marker_present(site: gunbc.observation_emit_census.CensusedEmitSite) -> Bool {
   string_contains(s: census_source(path: site.source_file), pattern: site.marker)
 }
 
@@ -19,11 +19,11 @@ test fn w_every_rostered_marker_still_exists_in_the_seed() -> Bool {
 }
 
 test fn w_roster_staleness_check_discriminates() -> Bool {
-  let bogus = CensusedEmitSite {
-    marker: "[this-marker-does-not-exist-in-the-seed]" as NonEmptyStr,
-    source_file: "src/v1/stage0/src/bin/claim_executor.rs" as NonEmptyStr,
+  let bogus = gunbc.observation_emit_census.CensusedEmitSite {
+    marker: "[this-marker-does-not-exist-in-the-seed]" as std.types.NonEmptyStr,
+    source_file: "src/v1/stage0/src/bin/claim_executor.rs" as std.types.NonEmptyStr,
     disposition: CountedFrontierSite {
-      reason: "control" as NonEmptyStr,
+      reason: "control" as std.types.NonEmptyStr,
       dissolution: unbound_dissolution(description: "control")
     }
   }

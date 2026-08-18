@@ -9,7 +9,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // forbids, at the seam furthest from the model. The arms are typed now, and this witness executes
 // all three of them, because an arm nothing calls is a claim rather than a behaviour.
 
-fn is_emitted(e: BoardEmission<SpiceProjectionRefusal>) -> Bool {
+fn is_emitted(e: BoardEmission<product.compute_board.spice_projection.SpiceProjectionRefusal>) -> Bool {
   match e {
     BoardEmitted { source: s } => s != ""
     BoardArticleNotAdmitted { causes: _ } => false
@@ -30,13 +30,13 @@ test fn w_the_production_article_emits_through_every_entry() -> Bool {
 // AN INCOHERENT BOARD REACHES THE ADMISSION ARM, not the target arm. The two are separated
 // because their remedies are opposite — fix the board, or fix the target binding — and an entry
 // that reported both as one refusal would tell a caller nothing about which.
-data undriven_control: DigitalControlIntent = DigitalControlIntent {
+data undriven_control: product.compute_board.digital_control.DigitalControlIntent = product.compute_board.digital_control.DigitalControlIntent {
   block_name: power_interlock_article.digital_control.block_name,
   signals: power_interlock_article.digital_control.signals,
   equations: [],
 }
 
-data incoherent_article: BoardPowerInterfaceArticle = BoardPowerInterfaceArticle {
+data incoherent_article: product.compute_board.article.BoardPowerInterfaceArticle = product.compute_board.article.BoardPowerInterfaceArticle {
   identity: power_interlock_article.identity,
   analog: power_interlock_article.analog,
   model_bindings: power_interlock_article.model_bindings,
@@ -90,9 +90,9 @@ test fn w_the_admission_causes_cross_the_boundary_intact() -> Bool {
 // is the fixture measuring nothing dressed as the fixture disagreeing. Derived, the only way to
 // break it is to delete the terminal it drops, and that fails loudly: nothing floats, SPICE
 // renders, and the test reports BoardEmitted where it demanded a refusal.
-fn without_filter_high_terminal(nets: List<ElectricalNet>) -> List<ElectricalNet> {
+fn without_filter_high_terminal(nets: List<product.electrical.connectivity.ElectricalNet>) -> List<product.electrical.connectivity.ElectricalNet> {
   fold(nets, init: [], f: fn(acc, net) {
-    concat(acc, [ElectricalNet {
+    concat(acc, [product.electrical.connectivity.ElectricalNet {
       identity: net.identity,
       members: fold(net.members, init: [], f: fn(macc, m) {
         if (component_local_label(c: m.component) == "pg_filt") && ((m.terminal as String) == "1") {
@@ -105,19 +105,19 @@ fn without_filter_high_terminal(nets: List<ElectricalNet>) -> List<ElectricalNet
   })
 }
 
-fn terminal_member_count(nets: List<ElectricalNet>) -> Int {
+fn terminal_member_count(nets: List<product.electrical.connectivity.ElectricalNet>) -> Int {
   fold(nets, init: 0, f: fn(acc, net) {
     fold(net.members, init: acc, f: fn(macc, _m) { macc + 1 })
   })
 }
 
-data floating_analog: AnalogCircuitIntent = AnalogCircuitIntent {
+data floating_analog: product.compute_board.analog.AnalogCircuitIntent = product.compute_board.analog.AnalogCircuitIntent {
   title: power_interlock_article.analog.title,
   components: power_interlock_article.analog.components,
   nets: without_filter_high_terminal(nets: power_interlock_article.analog.nets),
 }
 
-data floating_article: BoardPowerInterfaceArticle = BoardPowerInterfaceArticle {
+data floating_article: product.compute_board.article.BoardPowerInterfaceArticle = product.compute_board.article.BoardPowerInterfaceArticle {
   identity: power_interlock_article.identity,
   analog: floating_analog,
   model_bindings: power_interlock_article.model_bindings,
@@ -174,9 +174,9 @@ test fn w_every_target_cause_crosses_the_boundary() -> Bool {
     article: power_interlock_article,
     realization: interlock_device_realization,
     assignments: [
-      DevicePinAssignment { signal: conditioned_good_signal, pin: "5" },
-      DevicePinAssignment { signal: fault_signal, pin: "2" },
-      DevicePinAssignment { signal: power_permit_signal, pin: "3" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: conditioned_good_signal, pin: "5" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: fault_signal, pin: "2" },
+      product.compute_board.device_binding.DevicePinAssignment { signal: power_permit_signal, pin: "3" },
     ]
   ) {
     BoardEmitted { source: _ } => false

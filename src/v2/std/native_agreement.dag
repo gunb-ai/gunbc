@@ -19,7 +19,7 @@ fn octet_display(octet: Int) -> String {
   }
 }
 
-fn runtime_value_discriminant_octet(value: RuntimeValue) -> Optional<Int> {
+fn runtime_value_discriminant_octet(value: v2.std.runtime.RuntimeValue) -> Optional<Int> {
   match value {
     RuntimePrimitive {
       value: RuntimePrimitiveValue { bytes: bytes, primitive_type: _ }
@@ -29,7 +29,7 @@ fn runtime_value_discriminant_octet(value: RuntimeValue) -> Optional<Int> {
   }
 }
 
-fn runtime_value_octet_label(value: RuntimeValue) -> String {
+fn runtime_value_octet_label(value: v2.std.runtime.RuntimeValue) -> String {
   match runtime_value_discriminant_octet(value: value) {
     Present { value: octet } => octet_display(octet: octet)
     Absent => "?"

@@ -6,7 +6,7 @@ data fixture_cargo_toml: String = "[package]\nname = \"emit_host_fixture\"\nvers
 
 data typed_smoke_doc: String = "run_rust_smoke and run_python_smoke are runtime-present sites: gunbc invokes each step, so per the shell-emission-model rule they are typed service operations (shell.Mktemp/Mkdir/Remove, Filesystem.Write for the heredoc bodies, cargo.Build.BuildManifest, python.Interpreter.RunFile, gunbc.WitnessBin.Run), never serialized bash. The former wc -c byte-count check strengthened to CONTENT equality: the fixtures emit NUL bytes precisely because printable output could pass a count check with wrong content; the expected string is built in-substrate from the same stdout_byte_count authority (repeat_string of from_code_point(0)), and NULs survive the transport's trailing-whitespace trim. Cleanup runs unconditionally (the old set -e script leaked the tempdir on mid-script failure). run_go_smoke, run_ts_smoke, and run_node_http_serve_smoke provision missing toolchains under WORKDIR before the smoke body (go.dev tarball; nodejs.org official linux tarball — npx ships in the same bin/) so self-hosted runners without a fleet-wide node install still pass emit_host_gate_passes."
 
-data emit_host_node_bootstrap_shell_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: emit_host_node_bootstrap_script — concat-interpolated bash fragment (curl/tar nodejs.org linux tarball into WORKDIR/nodeboot) spliced into run_ts_smoke and run_node_http_serve_smoke via toolchain_provision_shell_exec; transport scaffold parallel to run_go_smoke's inline go.dev tarball provision. DISSOLVES WHEN emit_host TS/node smokes route through typed extdeps ops like run_rust_smoke/run_python_smoke (shell.Mktemp/Mkdir, modeled curl/tar or node runtime provision row) and this string carrier retires from dag/tools/emit_host_transport.dag.")
+data emit_host_node_bootstrap_shell_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: emit_host_node_bootstrap_script — concat-interpolated bash fragment (curl/tar nodejs.org linux tarball into WORKDIR/nodeboot) spliced into run_ts_smoke and run_node_http_serve_smoke via toolchain_provision_shell_exec; transport scaffold parallel to run_go_smoke's inline go.dev tarball provision. DISSOLVES WHEN emit_host TS/node smokes route through typed extdeps ops like run_rust_smoke/run_python_smoke (shell.Mktemp/Mkdir, modeled curl/tar or node runtime provision row) and this string carrier retires from dag/tools/emit_host_transport.dag.")
 
 data emit_host_node_bootstrap_script: String = "if ! command -v node >/dev/null 2>&1; then\n  NODEBOOT=\"$WORKDIR/nodeboot\"\n  mkdir -p \"$NODEBOOT\"\n  ARCH=$(uname -m)\n  case \"$ARCH\" in aarch64|arm64) NODEARCH=arm64 ;; x86_64|amd64) NODEARCH=x64 ;; *) exit 1 ;; esac\n  curl -fsSL \"https://nodejs.org/dist/v22.22.3/node-v22.22.3-linux-$NODEARCH.tar.xz\" | tar -xJ -C \"$NODEBOOT\" --strip-components=1\n  PATH=\"$NODEBOOT/bin:$PATH\"\n  export PATH\nfi\n"
 
@@ -62,19 +62,19 @@ fn run_node_http_serve_smoke() -> Bool {
 }
 
 fn c_run_probe_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^c_emit_host_run_probe } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn c_run_inputs() -> Inputs {
+fn c_run_inputs() -> v2.compiler.eval.Inputs {
   inputs_root_only(root: c_run_probe_node())
 }
 
 fn c_run_source() -> Medium<String> {
-  Medium { carried: c_source_text, fidelity: Lossless }
+  extdeps.communication.medium.Medium { carried: c_source_text, fidelity: Lossless }
 }
 
 fn c_expected_add_stdout_octets() -> List<Int> {

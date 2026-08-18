@@ -89,7 +89,7 @@ fn paint_alpha(m: Material, alpha_pct: Int) -> String {
 
 type TimingToken {
   name: String
-  duration_ms: Milliseconds
+  duration_ms: std.types.Milliseconds
   easing: String
 }
 
@@ -185,7 +185,7 @@ fn trigger_is_state_class(t: MotionTrigger) -> Bool {
 }
 
 type CssDecl {
-  prop: CssPropertyName
+  prop: extdeps.languages.css.properties.CssPropertyName
   value: String
 }
 
@@ -206,9 +206,9 @@ type TriggerShape
   | ContainerHas { container: String, target: String }
 
 type BuildRule
-  = StaticRule { selector: SelectorSubject, decls: List<CssDecl> }
+  = StaticRule { selector: extdeps.languages.css.selectors.SelectorSubject, decls: List<CssDecl> }
   | ResponseRule {
-      subject: SelectorSubject,
+      subject: extdeps.languages.css.selectors.SelectorSubject,
       shape: TriggerShape,
       trigger: MotionTrigger,
       transition_props: String,

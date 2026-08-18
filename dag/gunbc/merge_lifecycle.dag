@@ -9,7 +9,7 @@ data merge_lifecycle_window_note: String = "The interleaving witness enumerates 
 
 type PrIdentity {
   number: Int
-  head_sha: CommitSha
+  head_sha: std.types.CommitSha
   squash_tag: String
 }
 
@@ -19,15 +19,15 @@ type LifecycleEvent
   | RosterBump
 
 type VerifiedRun {
-  tree: GitObjectId
-  roster: GateRosterHash
+  tree: extdeps.git.object_store.GitObjectId
+  roster: gunbc.merge_admission.GateRosterHash
 }
 
 type LifecycleState {
-  main_tip: GitObjectId
-  current_roster: GateRosterHash
+  main_tip: extdeps.git.object_store.GitObjectId
+  current_roster: gunbc.merge_admission.GateRosterHash
   verified: List<VerifiedRun>
-  receipts: List<MergeAdmissionReceipt>
+  receipts: List<gunbc.merge_admission.MergeAdmissionReceipt>
   unverified_tip_seen: Bool
 }
 

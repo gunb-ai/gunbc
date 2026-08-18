@@ -1,11 +1,11 @@
 module v2.test.manual.target_operation_grounding_emit_typescript
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn op_grounding_test_lex() -> LexRules {
+fn op_grounding_test_lex() -> v2.std.compilers.lexing.LexRules {
   ModeledLexRules {
-    root: LexRuleSet {
+    root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
         ts_lex_rule(token_class: ^op_grounding_token_plus, text: " + "),
         ts_lex_rule(token_class: ^op_grounding_token_minus, text: " - "),
@@ -17,15 +17,15 @@ fn op_grounding_test_lex() -> LexRules {
 }
 
 fn op_grounding_test_bundle() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn op_grounding_test_model() -> TargetModel {
-  TargetModel {
+fn op_grounding_test_model() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: op_grounding_test_bundle(),
     lex: op_grounding_test_lex(),
@@ -36,7 +36,7 @@ fn op_grounding_test_model() -> TargetModel {
   }
 }
 
-fn op_grounding_realization_row(operation: CanonicalOperation, token: Symbol) -> Node {
+fn op_grounding_realization_row(operation: v2.std.compilers.target_model.CanonicalOperation, token: v2.std.node.Symbol) -> Node {
   target_operator_realization_node(
     operation: operation,
     shape: InfixToken { token: token }
@@ -69,7 +69,7 @@ fn op_grounding_catalog_sub_only() -> Node {
   )
 }
 
-fn op_grounding_binary_expr(operation: CanonicalOperation) -> TargetValueExpression {
+fn op_grounding_binary_expr(operation: v2.std.compilers.target_model.CanonicalOperation) -> v2.std.compilers.target_model.TargetValueExpression {
   target_value_expression_primitive_apply(
     operation: operation,
     operands: [
@@ -79,7 +79,7 @@ fn op_grounding_binary_expr(operation: CanonicalOperation) -> TargetValueExpress
   )
 }
 
-fn op_grounding_emit(operation: CanonicalOperation, catalog: Node) -> Outcome<String> {
+fn op_grounding_emit(operation: v2.std.compilers.target_model.CanonicalOperation, catalog: Node) -> Outcome<String> {
   bind_outcome(
     o: target_value_expression_primitive_apply_to_concrete_tokens(
       expr: op_grounding_binary_expr(operation: operation),
@@ -135,7 +135,7 @@ test fn op_grounding_catalog_miss_rejects() -> Bool {
   }
 }
 
-fn op_grounding_wire_roundtrips(operation: CanonicalOperation) -> Bool {
+fn op_grounding_wire_roundtrips(operation: v2.std.compilers.target_model.CanonicalOperation) -> Bool {
   canonical_operation_wire_matches_operation(
     wire: target_model_canonical_operation_wire_node(operation: operation),
     operation: operation
@@ -159,7 +159,7 @@ test fn op_grounding_wire_roundtrips_all() -> Bool {
     op_grounding_wire_roundtrips(operation: canonical_operation_op_ne())
 }
 
-fn op_grounding_wire_rejects(produced: CanonicalOperation, probed: CanonicalOperation) -> Bool {
+fn op_grounding_wire_rejects(produced: v2.std.compilers.target_model.CanonicalOperation, probed: v2.std.compilers.target_model.CanonicalOperation) -> Bool {
   canonical_operation_wire_matches_operation(
     wire: target_model_canonical_operation_wire_node(operation: produced),
     operation: probed
@@ -173,11 +173,11 @@ test fn op_grounding_wire_discriminates() -> Bool {
     !op_grounding_wire_rejects(produced: canonical_operation_op_eq(), probed: canonical_operation_op_ne())
 }
 
-fn op_grounding_ordering_eq(a: Ordering, b: Ordering) -> Bool {
+fn op_grounding_ordering_eq(a: std.algebra.Ordering, b: std.algebra.Ordering) -> Bool {
   discriminant(v: a) == discriminant(v: b)
 }
 
-fn op_grounding_ordering_list_eq(left: List<Ordering>, right: List<Ordering>) -> Bool {
+fn op_grounding_ordering_list_eq(left: List<std.algebra.Ordering>, right: List<std.algebra.Ordering>) -> Bool {
   zip_eq(a: left, b: right, eq: fn(x, y) { op_grounding_ordering_eq(a: x, b: y) })
 }
 

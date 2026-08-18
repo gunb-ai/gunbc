@@ -4,7 +4,7 @@ module v2.test.lens_mock_totality.github_mock_totality
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedGithubMock {
-  tag: Symbol
+  tag: v2.std.node.Symbol
 }
 
 data github_red_omit_keys: List<String> = ["github.Pulls.ListReviews"]

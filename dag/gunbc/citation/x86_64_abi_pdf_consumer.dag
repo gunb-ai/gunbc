@@ -13,21 +13,21 @@ type X86_64AbiPdfPinRefusalCause
 
 type X86_64AbiPdfCitationRungDisposition = BelowDigestMatchedRung { cause: X86_64AbiPdfPinRefusalCause }
 
-type X86_64AbiPdfValidatedDigestConstruction = X86_64AbiPdfValidatedDigestConstructed(Sha256Digest) | X86_64AbiPdfValidatedDigestHexRefused { hex: String, cause: X86_64AbiPdfWetReceiptHexRefusalCause }
+type X86_64AbiPdfValidatedDigestConstruction = X86_64AbiPdfValidatedDigestConstructed(std.content_hash.Sha256Digest) | X86_64AbiPdfValidatedDigestHexRefused { hex: String, cause: X86_64AbiPdfWetReceiptHexRefusalCause }
 
-type X86_64AbiPdfRetrievalObservationConstruction = X86_64AbiPdfRetrievalObserved(CitationRetrievalObservation) | X86_64AbiPdfRetrievalDigestHexRefused { hex: String, cause: X86_64AbiPdfWetReceiptHexRefusalCause }
+type X86_64AbiPdfRetrievalObservationConstruction = X86_64AbiPdfRetrievalObserved(std.citation.CitationRetrievalObservation) | X86_64AbiPdfRetrievalDigestHexRefused { hex: String, cause: X86_64AbiPdfWetReceiptHexRefusalCause }
 
 type X86_64AbiPdfExpectedDigestConstruction = X86_64AbiPdfExpectedDigestUnavailable { cause: X86_64AbiPdfPinRefusalCause }
 
-type X86_64AbiPdfCitationSelectorRefusalCause = X86_64AbiPdfCitationSelectorFragmentRefused { cause: NavigableUriRefusalCause } | X86_64AbiPdfCitationSelectorSafeSequenceRefused { cause: PdfProfileRefusalCause }
+type X86_64AbiPdfCitationSelectorRefusalCause = X86_64AbiPdfCitationSelectorFragmentRefused { cause: extdeps.standards.rfc_8118.NavigableUriRefusalCause } | X86_64AbiPdfCitationSelectorSafeSequenceRefused { cause: gunbc.citation.pdf_safe_profile.PdfProfileRefusalCause }
 
-type X86_64AbiPdfCitationSelectorConstruction = X86_64AbiPdfCitationSelectorConstructed(CitationSelector) | X86_64AbiPdfCitationSelectorRefused { cause: X86_64AbiPdfCitationSelectorRefusalCause }
+type X86_64AbiPdfCitationSelectorConstruction = X86_64AbiPdfCitationSelectorConstructed(std.citation.CitationSelector) | X86_64AbiPdfCitationSelectorRefused { cause: X86_64AbiPdfCitationSelectorRefusalCause }
 
-type X86_64AbiPdfNavigableUriProjection = X86_64AbiPdfNavigableUriProjected { uri: Uri } | X86_64AbiPdfNavigableUriRefused { cause: NavigableUriSafeRefusalCause }
+type X86_64AbiPdfNavigableUriProjection = X86_64AbiPdfNavigableUriProjected { uri: extdeps.uri.Uri } | X86_64AbiPdfNavigableUriRefused { cause: gunbc.citation.pdf_safe_profile.NavigableUriSafeRefusalCause }
 
-type X86_64AbiPdfPinConstruction = X86_64AbiPdfPinConstructed(Pin<CitedRepresentationIdentity>) | X86_64AbiPdfPinRefused { cause: X86_64AbiPdfPinRefusalCause }
+type X86_64AbiPdfPinConstruction = X86_64AbiPdfPinConstructed(Pin<std.citation.CitedRepresentationIdentity>) | X86_64AbiPdfPinRefused { cause: X86_64AbiPdfPinRefusalCause }
 
-type X86_64AbiCitationFactConstruction = X86_64AbiCitationFactConstructed(RecordedFact<CitationRecordedFact<CitationSelector>>) | X86_64AbiCitationFactRefused { pin: X86_64AbiPdfPinConstruction, selector: X86_64AbiPdfCitationSelectorConstruction }
+type X86_64AbiCitationFactConstruction = X86_64AbiCitationFactConstructed(RecordedFact<CitationRecordedFact<std.citation.CitationSelector>>) | X86_64AbiCitationFactRefused { pin: X86_64AbiPdfPinConstruction, selector: X86_64AbiPdfCitationSelectorConstruction }
 
 type X86_64AbiEvidenceLinkConstruction = X86_64AbiEvidenceLinkConstructed(EvidenceLink<CitationRecordedFact<CitationSelector>, ClaimId, ExternalAuthority, NonEmptyStr, ReadBackProbe>) | X86_64AbiEvidenceLinkRefused { fact: X86_64AbiCitationFactConstruction }
 

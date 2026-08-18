@@ -1,8 +1,8 @@
 module extdeps.filesystem.ntfs
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "learn.microsoft.com/en-us/openspecs/windows_protocols/ms-fscc/"
   }
@@ -14,7 +14,7 @@ type NtfsEntryType
   | SymlinkReparse
   | MountPointReparse
 
-fn ntfs_entry_kind(t: NtfsEntryType) -> EntryKind {
+fn ntfs_entry_kind(t: NtfsEntryType) -> std.filesystem.types.EntryKind {
   match t {
     NormalFile         => RegularFile
     NtfsDirectory      => Directory

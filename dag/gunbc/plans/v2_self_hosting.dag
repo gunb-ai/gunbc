@@ -1,7 +1,7 @@
 module gunbc.plans.v2_self_hosting
 
 
-fn v2_self_hosting_body() -> List<MarkdownBlock> {
+fn v2_self_hosting_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** planning tracker for the **Weak Self Host -> Strong Self Host** program (operator-signed 2026-07-11, manager: sharp-bee-290) · **DESIGN.md + the carriers remain the authority** (DESIGN §6). A task's real state is its branch/PR, not this file. Linked from `ROADMAP.md` §1 *Get off v1*. **THE 27-ROW ROSTER CARRIER IS DELETED** (`src/v2/compiler/self_host/frontier.dag`, cut 2026-08-17): it was a hand-authored denominator that no consumer derived, and DESIGN §3's delete-first ruling says a superseded authority comes out at the root rather than being maintained while it dies. This doc is the wave sequencer only; **it no longer has a roster carrier to point at**, and the per-module dispositions it used to defer to must be re-derived from the emitter rather than re-authored. Surviving self-host authorities: `v2.compiler.self_host.emitter_producer_provenance` (which producer emitted a module), `v2.compiler.self_host.stage0_crate_layout` (crate partition), `v2.compiler.self_host.v2_emitter_direct_rust_door_contract` (the emit door). Related: [namespace-resolution-design.md](namespace-resolution-design.md) · [general-body-producer-design.md](general-body-producer-design.md) · [s2-v2-self-emit-direction.md](s2-v2-self-emit-direction.md) · [decl-emission-defork-design.md](decl-emission-defork-design.md) · [dag-v2-defork-audit.md](dag-v2-defork-audit.md) · [seed-shrink-census.md](seed-shrink-census.md) · [typescript-gap-census.md](typescript-gap-census.md) · [emitted-crate-partition-design.md](emitted-crate-partition-design.md) · [c-linkage-unit-realization-design.md](c-linkage-unit-realization-design.md) (the C realization of the same target-agnostic `CompilationUnit` shape self-host emission is built on — the 2nd realization, staffed to stress-test that the shape doesn't cement Rust's acyclic-linkage assumption)."),
     quote(blocks: [
@@ -65,7 +65,7 @@ fn v2_self_hosting_body() -> List<MarkdownBlock> {
   ]
 }
 
-data v2_self_hosting_plan: Plan = Plan {
+data v2_self_hosting_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "v2-self-hosting",
   title: "Plan — v2 self-hosting",
   body: v2_self_hosting_body(),

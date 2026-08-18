@@ -46,7 +46,7 @@ type RealizationVocabGrandfatheredEdgeRow {
   edge: RealizationVocabImportEdge
   debt_class: RealizationVocabDebtClass
   reason: String
-  dissolution: DissolutionCondition
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 data realization_vocab_grandfathered_edge_roster: List<RealizationVocabGrandfatheredEdgeRow> = [

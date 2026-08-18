@@ -26,20 +26,20 @@ data output_source_indices: ArtifactOutputId = "source_indices"
 data output_compile_clean_diagnostic_union: ArtifactOutputId = "compile_clean_diagnostic_union"
 
 type DeclaredInput {
-  ref: NonEmptyStr
-  digest: Fnv1a64Structural
+  ref: std.types.NonEmptyStr
+  digest: std.content_hash.Fnv1a64Structural
 }
 
 data materialization_provider_request_construction_note: String = "The request is a COPRODUCT, not a freely-filled record (codex review 44175, DESIGN section 5 correctness-by-construction): a record carrying both the kind discriminator and a caller-supplied required_outputs list left the illegal state WRITABLE — a resolve request with an empty output roster would let provider_admit accept an artifact lacking the compile-clean diagnostic union, and helper constructors that merely offer the right shape do not forbid the wrong one. Here the caller can only name a request FAMILY; kind, declared inputs, and required outputs are all DERIVED from the variant through request_fold, so an under-specified obligation roster cannot be expressed at all. A new family is a new variant, and the fold's totality makes every derivation a type error until it is answered."
 
 type ArtifactRequest
-  = ParseModuleRequest { source_digest: Fnv1a64Structural, compiler: DeclaredInput }
+  = ParseModuleRequest { source_digest: std.content_hash.Fnv1a64Structural, compiler: DeclaredInput }
   | TypecheckModuleRequest {
-      source_digest: Fnv1a64Structural,
-      direct_import_interfaces: List<InterfaceHash>,
+      source_digest: std.content_hash.Fnv1a64Structural,
+      direct_import_interfaces: List<std.interface_summary.InterfaceHash>,
       compiler: DeclaredInput
     }
-  | ResolveClosureRequest { closure_digest: Fnv1a64Structural, compiler: DeclaredInput }
+  | ResolveClosureRequest { closure_digest: std.content_hash.Fnv1a64Structural, compiler: DeclaredInput }
 
 fn request_fold<T>(
   req: ArtifactRequest,
@@ -147,8 +147,8 @@ data materialization_provider_payload_binding_note: String = "Why a carried outp
 
 type CarriedOutput {
   id: ArtifactOutputId
-  digest: Fnv1a64Structural
-  bytes: ByteSize
+  digest: std.content_hash.Fnv1a64Structural
+  bytes: std.measure.ByteSize
 }
 
 fn carried_output_digest(o: CarriedOutput) -> Fnv1a64Structural {
@@ -174,8 +174,8 @@ fn carried_outputs_digest(outputs: List<CarriedOutput>) -> ContentHash {
 data materialization_provider_artifact_construction_note: String = "The artifact is a COPRODUCT WITH REQUIRED PER-KIND PARTS (operator review, blocker 2), and this is a DIFFERENT fix from the digest-preimage work above — they are complementary. The preimage construction closed FORGERY: a producer can no longer CLAIM an output it does not carry, because the roster is the digest's preimage. What stayed open was OMISSION: while carried_outputs was a plain list, a resolved-graph artifact that simply LACKED the compile-clean diagnostic union was still WRITABLE — it merely got refused at the door. Section 5 says making the state unwritable beats catching it, which is the same argument this module already used on the request side when required_outputs became a coproduct (review 44175); applying it there and not here was inconsistent. So a complete artifact names its parts as REQUIRED FIELDS: ResolvedGraphArtifact cannot be constructed without its union, TypedModuleArtifact cannot drop its diagnostics, ParsedArtifact cannot drop its parse diagnostics. Note what did NOT change: a part is still (digest, bytes), never a payload — this contract still holds no bytes, so per-kind fields cost it nothing it was not already holding. Two further consequences follow from the derivation invariant. First, the part's ID is no longer carried: an ArtifactPart is (digest, bytes) and its id comes from its POSITION in the variant, so a mislabelled part is unwritable too — one more caller-asserted fact removed rather than checked. Second, v1's incomplete disk artifacts still have to be REPRESENTABLE, because refusing them is this contract's first named consumer target; they decode to the explicit LegacyIncompleteArtifact variant, which is the only shape carrying a free List<CarriedOutput>. So incompleteness is a NAMED VARIANT rather than a missing list element, artifact_completeness stays live (it is what LegacyIncompleteArtifact is measured by, and it is reached), and the day the resolved_graph FORMAT_VERSION persists the union, that variant is what deletes."
 
 type ArtifactPart {
-  digest: Fnv1a64Structural
-  bytes: ByteSize
+  digest: std.content_hash.Fnv1a64Structural
+  bytes: std.measure.ByteSize
 }
 
 fn positioned_part(id: ArtifactOutputId, part: ArtifactPart) -> CarriedOutput {
@@ -184,24 +184,24 @@ fn positioned_part(id: ArtifactOutputId, part: ArtifactPart) -> CarriedOutput {
 
 type MaterializedArtifact
   = ParsedArtifact {
-      request_key: ContentHash,
+      request_key: std.content_hash.ContentHash,
       parse_tree: ArtifactPart,
       parse_diagnostics: ArtifactPart
     }
   | TypedModuleArtifact {
-      request_key: ContentHash,
+      request_key: std.content_hash.ContentHash,
       typed_module_interface: ArtifactPart,
       typecheck_diagnostics: ArtifactPart
     }
   | ResolvedGraphArtifact {
-      request_key: ContentHash,
+      request_key: std.content_hash.ContentHash,
       resolved_graph: ArtifactPart,
       source_indices: ArtifactPart,
       compile_clean_diagnostic_union: ArtifactPart
     }
   | LegacyIncompleteArtifact {
-      kind: ArtifactKindId,
-      request_key: ContentHash,
+      kind: std.cache_identity.ArtifactKindId,
+      request_key: std.content_hash.ContentHash,
       carried_outputs: List<CarriedOutput>
     }
 
@@ -308,9 +308,9 @@ data materialization_provider_binding_note: String = "request_artifact_binding i
 
 type RequestArtifactBinding
   = BindingOk
-  | BindingKindMismatch { requested: ArtifactKindId, found: ArtifactKindId }
-  | BindingWrongArtifact { key: ContentHash, found_key: ContentHash }
-  | BindingWrongContent { recorded: ContentHash, observed: ContentHash }
+  | BindingKindMismatch { requested: std.cache_identity.ArtifactKindId, found: std.cache_identity.ArtifactKindId }
+  | BindingWrongArtifact { key: std.content_hash.ContentHash, found_key: std.content_hash.ContentHash }
+  | BindingWrongContent { recorded: std.content_hash.ContentHash, observed: std.content_hash.ContentHash }
   | BindingIncomplete { missing: List<ArtifactOutputId> }
 
 fn request_artifact_binding(
@@ -355,27 +355,27 @@ fn binding_identity_grade(b: RequestArtifactBinding) -> ComputationIdentity {
 
 type ProviderProbe
   = ProbeAbsent
-  | ProbeFound { artifact: MaterializedArtifact, observed_digest: ContentHash }
+  | ProbeFound { artifact: MaterializedArtifact, observed_digest: std.content_hash.ContentHash }
 
 type ProviderLookup
-  = ProviderHit { artifact: MaterializedArtifact, identity: ComputationIdentity }
-  | ProviderMiss { key: ContentHash }
-  | ProviderRefusedKindMismatch { key: ContentHash, requested: ArtifactKindId, found: ArtifactKindId }
-  | ProviderRefusedWrongArtifact { key: ContentHash, found_key: ContentHash }
-  | ProviderRefusedWrongContent { key: ContentHash, recorded: ContentHash, observed: ContentHash }
-  | ProviderRefusedCrossFamilyContentHash { key: ContentHash, family: HashFamily }
-  | ProviderRefusedIncomplete { key: ContentHash, missing: List<ArtifactOutputId> }
+  = ProviderHit { artifact: MaterializedArtifact, identity: std.computation_identity.ComputationIdentity }
+  | ProviderMiss { key: std.content_hash.ContentHash }
+  | ProviderRefusedKindMismatch { key: std.content_hash.ContentHash, requested: std.cache_identity.ArtifactKindId, found: std.cache_identity.ArtifactKindId }
+  | ProviderRefusedWrongArtifact { key: std.content_hash.ContentHash, found_key: std.content_hash.ContentHash }
+  | ProviderRefusedWrongContent { key: std.content_hash.ContentHash, recorded: std.content_hash.ContentHash, observed: std.content_hash.ContentHash }
+  | ProviderRefusedCrossFamilyContentHash { key: std.content_hash.ContentHash, family: std.content_hash.HashFamily }
+  | ProviderRefusedIncomplete { key: std.content_hash.ContentHash, missing: List<ArtifactOutputId> }
 
 type Fnv1a64StructuralAdmission
-  = Fnv1a64StructuralAdmitted { digest: Fnv1a64Structural }
-  | CrossFamilyContentHashRefused { family: HashFamily }
+  = Fnv1a64StructuralAdmitted { digest: std.content_hash.Fnv1a64Structural }
+  | CrossFamilyContentHashRefused { family: std.content_hash.HashFamily }
 
 type ResolveClosureRequestKeyOutcome
-  = ResolveClosureRequestKeyReady { key: ContentHash }
+  = ResolveClosureRequestKeyReady { key: std.content_hash.ContentHash }
   | ResolveClosureRequestKeyRefused { lookup: ProviderLookup }
 
 type ResolvedGraphPartsSemanticDigestOutcome
-  = ResolvedGraphPartsSemanticDigestReady { digest: ContentHash }
+  = ResolvedGraphPartsSemanticDigestReady { digest: std.content_hash.ContentHash }
   | ResolvedGraphPartsSemanticDigestRefused { lookup: ProviderLookup }
 
 fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup {
@@ -402,12 +402,12 @@ fn provider_serve(req: ArtifactRequest, probe: ProviderProbe) -> ProviderLookup 
 }
 
 type ProviderAdmission
-  = ProviderAdmitted { store: ArtifactStore, evicted: List<ContentHash> }
-  | ProviderRefusedKindMismatchWrite { requested: ArtifactKindId, found: ArtifactKindId }
-  | ProviderRefusedWrongArtifactWrite { key: ContentHash, found_key: ContentHash }
-  | ProviderRefusedWrongContentWrite { recorded: ContentHash, observed: ContentHash }
+  = ProviderAdmitted { store: std.artifact_store.ArtifactStore, evicted: List<std.content_hash.ContentHash> }
+  | ProviderRefusedKindMismatchWrite { requested: std.cache_identity.ArtifactKindId, found: std.cache_identity.ArtifactKindId }
+  | ProviderRefusedWrongArtifactWrite { key: std.content_hash.ContentHash, found_key: std.content_hash.ContentHash }
+  | ProviderRefusedWrongContentWrite { recorded: std.content_hash.ContentHash, observed: std.content_hash.ContentHash }
   | ProviderRefusedIncompleteWrite { missing: List<ArtifactOutputId> }
-  | ProviderBudgetExhausted { needed: ByteSize, budget: ByteSize }
+  | ProviderBudgetExhausted { needed: std.measure.ByteSize, budget: std.measure.ByteSize }
 
 data materialization_provider_fit_authority_note: String = "The budget fit test has ONE authority, and it is store_put's (PR 7406, merged 2026-07-29). This function used to re-implement it — compare artifact bytes against store.budget, and only then call store_put — which was a second representation of a rule the store now carries by construction: store_put runs the fit test BEFORE any eviction and answers StorePutDidNotFit, so the destructive oversized path is unwritable there rather than guarded here. Keeping the local comparison would have made ProviderBudgetExhausted reachable by two different judgements that could drift apart, and would have left store_put's own refusal arm unreachable from this door — an inert arm, which section 5 counts as a lie. So the check is DELETED and ProviderBudgetExhausted is now DERIVED from store_put's refusal, carrying the needed/budget the store itself reported."
 

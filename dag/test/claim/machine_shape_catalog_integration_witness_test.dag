@@ -3,17 +3,17 @@ module test.claim.machine_shape_catalog_integration_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data ampere_domain: DomainId = "ampere-altra-max" as DomainId
-data ampere_l1_level: LevelId = "l1d" as LevelId
-data ampere_l2_level: LevelId = "l2" as LevelId
-data ampere_l3_level: LevelId = "l3" as LevelId
+data ampere_domain: std.machine_shape.DomainId = "ampere-altra-max" as std.machine_shape.DomainId
+data ampere_l1_level: std.machine_shape.LevelId = "l1d" as std.machine_shape.LevelId
+data ampere_l2_level: std.machine_shape.LevelId = "l2" as std.machine_shape.LevelId
+data ampere_l3_level: std.machine_shape.LevelId = "l3" as std.machine_shape.LevelId
 
 data ampere_l1_bytes_per_core: std.nat.Nat = 65536
 data ampere_l2_bytes_per_core: std.nat.Nat = 1048576
 data ampere_l3_bytes: std.nat.Nat = 16777216
 data ampere_cache_line_bytes: std.nat.Nat = 64
 
-fn cpu_catalog_shape() -> MachineShape {
+fn cpu_catalog_shape() -> std.machine_shape.MachineShape {
   match cpu_shape_from_catalog(input: FromCpuModelCatalog {
     domain: ampere_domain,
     l1_level: ampere_l1_level,
@@ -22,7 +22,7 @@ fn cpu_catalog_shape() -> MachineShape {
     row: altra_max_m12830_catalog,
   }) {
     MachineShapeOk { shape: s } => s
-    _ => MachineShape { domains: [], edges: [] }
+    _ => std.machine_shape.MachineShape { domains: [], edges: [] }
   }
 }
 

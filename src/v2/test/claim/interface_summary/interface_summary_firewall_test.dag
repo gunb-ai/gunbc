@@ -1,11 +1,11 @@
 module v2.test.claim.interface_summary.interface_summary_firewall
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data firewall_fixture_roots: List<String> = ["src/v2/test/fixture/interface_summary"]
 
-fn export_fingerprint_for_gate(module_path: NonEmptyStr) -> ContentHash? {
+fn export_fingerprint_for_gate(module_path: std.types.NonEmptyStr) -> std.content_hash.ContentHash? {
   match interface_summary_for_module(
     module_path: module_path,
     pool_roots: firewall_fixture_roots
@@ -76,7 +76,7 @@ test fn export_signature_facts_host_scaffold_receipt_cites_dissolution_authoriti
 
 test fn interface_summary_import_unresolved_refuses_module_key_hashes() -> Bool {
   let edges = [
-    ImportResolutionFact {
+    v2.lens.module_graph.ImportResolutionFact {
       path: "src/mod.dag",
       import_module: "missing.other",
       target_declared: true

@@ -17,7 +17,7 @@ type ComputationDemandFact {
 }
 
 data empty_computation_demand_facts: List<ComputationDemandFact> = []
-data empty_duplicate_computation_violations: List<LadderVerdict> = []
+data empty_duplicate_computation_violations: List<std.materialization_ladder.LadderVerdict> = []
 data empty_computation_key_tokens: List<String> = []
 
 fn computation_placement_flag(token: String) -> Bool {
@@ -172,11 +172,11 @@ fn computation_demand_group_admissible(group: List<ComputationDemandFact>) -> Bo
   }
 }
 
-fn authored_duplication_lca(key: String) -> List<Frame> {
-  [Frame { name: key, kind: SharedStateFrame }]
+fn authored_duplication_lca(key: String) -> List<std.materialization_ladder.Frame> {
+  [std.materialization_ladder.Frame { name: key, kind: SharedStateFrame }]
 }
 
-fn duplicate_computation_violations(facts: List<ComputationDemandFact>) -> List<LadderVerdict> {
+fn duplicate_computation_violations(facts: List<ComputationDemandFact>) -> List<std.materialization_ladder.LadderVerdict> {
   fold_list(
     xs: distinct_computation_keys(facts: facts),
     empty: empty_duplicate_computation_violations,
@@ -203,6 +203,6 @@ fn duplicate_computation_clean_holds(facts: List<ComputationDemandFact>) -> Bool
   duplicate_computation_violation_count(facts: facts) == 0
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

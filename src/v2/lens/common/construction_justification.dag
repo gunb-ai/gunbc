@@ -4,9 +4,9 @@ module v2.lens.common.construction_justification
 
 type ConstructionClass
 
-  = WallNow { mechanism: ConstructionMechanism, authority: DeclarationRef }
+  = WallNow { mechanism: std.disposition.ConstructionMechanism, authority: std.decl_ref.DeclarationRef }
 
-  | WallAfterGrounding { dissolves_to: ConstructionMechanism }
+  | WallAfterGrounding { dissolves_to: std.disposition.ConstructionMechanism }
 
   | RatchetForever
 

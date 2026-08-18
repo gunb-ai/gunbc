@@ -131,7 +131,7 @@ fn callee_text_is_known_carrier(text: String) -> Bool {
 
 type AtomCollectState {
   node: Node
-  atoms: List<Symbol>
+  atoms: List<v2.std.node.Symbol>
 }
 
 fn atom_collect_init(n: Node) -> AtomCollectState {
@@ -335,7 +335,7 @@ fn literal_path_carriers_from_atoms(
 
 type CarrierScanState {
   node: Node
-  carriers: List<LiveReadCarrier>
+  carriers: List<v2.std.live_read.LiveReadCarrier>
   param_names: List<String>
 }
 
@@ -553,7 +553,7 @@ type LiveReadSelectionRequest {
 
 type LiveReadSelectionManifestRow {
   key: String
-  projection: LiveReadSelectionProjection
+  projection: v2.std.live_read.LiveReadSelectionProjection
 }
 
 data empty_manifest_rows: List<LiveReadSelectionManifestRow> = []
@@ -959,7 +959,7 @@ data g2_root_binding_law: String = "THE ROOT IS ONE BOUND DECLARATION, NOT THREE
 data empty_module_declaration_fact_list: List<ModuleDeclarationFact> = []
 
 type G2RootBinding
-  = G2RootBound { entry_path: String, entry_module: String, decl: FnArrowDecl }
+  = G2RootBound { entry_path: String, entry_module: String, decl: v2.std.fn_index.FnArrowDecl }
   | G2RootUnbound { cause: String }
 
 fn module_facts_for_path(path: String, nodes: List<ModuleDeclarationFact>) -> List<ModuleDeclarationFact> {

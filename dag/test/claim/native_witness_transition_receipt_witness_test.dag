@@ -9,9 +9,9 @@ fn planted_receipt(
   identity: String,
   merge_commit: String,
   evaluated_head: String,
-) -> NativeSelectedWitnessTransitionReceipt {
-  NativeSelectedWitnessTransitionReceipt {
-    node: identity as RoadmapNodeIdentity,
+) -> gunbc.native_witness_transition_receipt.NativeSelectedWitnessTransitionReceipt {
+  gunbc.native_witness_transition_receipt.NativeSelectedWitnessTransitionReceipt {
+    node: identity as gunbc.roadmap_model.RoadmapNodeIdentity,
     landed_pull_request: 1,
     landed_merge_commit: merge_commit,
     evaluated_head: evaluated_head,
@@ -22,7 +22,7 @@ fn planted_receipt(
   }
 }
 
-fn standing_is_before_landing(standing: TransitionEvidenceStanding) -> Bool {
+fn standing_is_before_landing(standing: gunbc.native_witness_transition_receipt.TransitionEvidenceStanding) -> Bool {
   match standing {
     EvidenceExecutedBeforeLanding { evaluated_head: _, landed_merge_commit: _ } => true
     EvidenceExecutedAtLandedCommit => false
@@ -30,7 +30,7 @@ fn standing_is_before_landing(standing: TransitionEvidenceStanding) -> Bool {
 }
 
 fn standing_names_both_commits(
-  standing: TransitionEvidenceStanding,
+  standing: gunbc.native_witness_transition_receipt.TransitionEvidenceStanding,
   expected_head: String,
   expected_merge: String,
 ) -> Bool {
@@ -81,7 +81,7 @@ test fn a_fabricated_subject_identity_joins_no_declared_node() -> Bool {
 }
 
 fn citation_names_the_imported_evidence_symbol(
-  receipt: NativeSelectedWitnessTransitionReceipt,
+  receipt: gunbc.native_witness_transition_receipt.NativeSelectedWitnessTransitionReceipt,
 ) -> Bool {
   let cited_module = receipt.executed_evidence.module_path as String
   let cited_decl = receipt.executed_evidence.decl_name as String
@@ -92,9 +92,9 @@ fn citation_names_the_imported_evidence_symbol(
 fn receipt_citing(
   module_path: String,
   decl_name: String,
-) -> NativeSelectedWitnessTransitionReceipt {
-  NativeSelectedWitnessTransitionReceipt {
-    node: "rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C" as RoadmapNodeIdentity,
+) -> gunbc.native_witness_transition_receipt.NativeSelectedWitnessTransitionReceipt {
+  gunbc.native_witness_transition_receipt.NativeSelectedWitnessTransitionReceipt {
+    node: "rn_2I5K7M9O1Q3R6T8V0W2X4Y7Z9A1C" as gunbc.roadmap_model.RoadmapNodeIdentity,
     landed_pull_request: 1,
     landed_merge_commit: "1ebff27f1e538a06edbaf6a1871bff4c10887b39",
     evaluated_head: "2f9e780e6d2130680c4d9fb49739bf0c6cc7c746",

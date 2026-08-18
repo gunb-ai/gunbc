@@ -1,7 +1,7 @@
 module gunbc.plans.wiring_liveness_preflight
 
 
-fn wiring_liveness_preflight_body() -> List<MarkdownBlock> {
+fn wiring_liveness_preflight_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** design + direction · **DESIGN.md + carriers are authority** (§6). Linked from `ROADMAP.md` §4 *Testgen as the bug-class oracle*. Sibling of [testgen-oracle.md](testgen-oracle.md) (the bug-class→mechanism map): this is the **wiring** class worked out in full, and the first real consumer of the affected-set frontier."),
     p(text: "**Verified against the live tree 2026-06-23.** Receipts inline; re-check before acting."),
@@ -60,7 +60,7 @@ fn wiring_liveness_preflight_body() -> List<MarkdownBlock> {
   ]
 }
 
-data wiring_liveness_preflight_plan: Plan = Plan {
+data wiring_liveness_preflight_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "wiring-liveness-preflight",
   title: "Plan — wiring-liveness: the input→output dependence oracle + the execution preflight",
   body: wiring_liveness_preflight_body(),

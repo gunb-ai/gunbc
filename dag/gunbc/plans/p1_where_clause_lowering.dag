@@ -1,7 +1,7 @@
 module gunbc.plans.p1_where_clause_lowering
 
 
-fn p1_where_clause_lowering_body() -> List<MarkdownBlock> {
+fn p1_where_clause_lowering_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** scoping (P1 from docs/plans/cardinality-refinement.md). **DESIGN.md + carriers are authority** (§6). Verified against the live tree 2026-06-22; line numbers are receipts, re-check before acting."),
     h2(text: "0. Thesis — P1 is LOWERING, not parsing"),
@@ -39,7 +39,7 @@ fn p1_where_clause_lowering_body() -> List<MarkdownBlock> {
   ]
 }
 
-data p1_where_clause_lowering_plan: Plan = Plan {
+data p1_where_clause_lowering_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "p1-where-clause-lowering",
   title: "Plan — P1: `where`-clause surface (lowering the parsed predicate to a refinement)",
   body: p1_where_clause_lowering_body(),

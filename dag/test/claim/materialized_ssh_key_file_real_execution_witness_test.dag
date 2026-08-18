@@ -9,7 +9,7 @@ fn stat_octal_mode(path: String) -> String {
   let result = shell.Exec.Run(
     script: retained_runtime(
       body: concat("stat -c %a ", path),
-      reason: "materialized ssh key bracket witness octal mode stat" as NonEmptyStr,
+      reason: "materialized ssh key bracket witness octal mode stat" as std.types.NonEmptyStr,
     ),
     expect: OutcomeIsData,
   )
@@ -17,7 +17,7 @@ fn stat_octal_mode(path: String) -> String {
 }
 
 test fn witness_ssh_key_bracket_write_owner_only_shreds_and_not_under_target() -> Bool {
-  let identity = "witness-bracket-key" as NonEmptyStr
+  let identity = "witness-bracket-key" as std.types.NonEmptyStr
   let secret = "synthetic-ssh-private-key-material" as Secret
   let outcome = with_materialized_ssh_key_file(
     identity_file_name: identity,

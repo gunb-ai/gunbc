@@ -1,12 +1,12 @@
 module v2.test.claim.symbol_index.containment
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn si_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
+fn si_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> Node {
   fold_list_node(
     xs: segments,
     item_node: fn(sym) {
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
         occurrence_id: SyntheticOccurrence
@@ -17,9 +17,9 @@ fn si_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
 
 fn si_module_root(
   qn_spine: Node,
-  exports: List<Edge>
+  exports: List<v2.std.node.Edge>
 ) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: concat(
       [
@@ -38,18 +38,18 @@ fn si_module_root(
   }
 }
 
-fn si_type_with_variants(type_sym: Symbol, variants: List<Symbol>) -> Edge {
-  Edge {
+fn si_type_with_variants(type_sym: v2.std.node.Symbol, variants: List<v2.std.node.Symbol>) -> v2.std.node.Edge {
+  v2.std.node.Edge {
     label: Named { name: type_sym },
-    target: Node {
+    target: v2.std.node.Node {
       kind: TypeNode {
         connective: Disj
       },
       children: fold(variants, init: [], f: fn(acc, variant_sym) {
         concat(acc, [
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: variant_sym },
-            target: Node {
+            target: v2.std.node.Node {
               kind: TypeNode { connective: Atom { identity: variant_sym } },
               children: [],
               occurrence_id: SyntheticOccurrence
@@ -62,7 +62,7 @@ fn si_type_with_variants(type_sym: Symbol, variants: List<Symbol>) -> Edge {
   }
 }
 
-data si_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+data si_module_qn: FreeMonoid<v2.std.node.Symbol> = qualified_name_from_dotted_string(
   dotted: "v2.test.symbol_index_pilot"
 )
 
@@ -74,12 +74,12 @@ data si_module_root_node: Node = si_module_root(
   ]
 )
 
-data si_index: SymbolIndex = symbol_index_fill_module_root(
+data si_index: v2.std.symbol_index.SymbolIndex = symbol_index_fill_module_root(
   index: empty_symbol_index(),
   root: si_module_root_node
 )
 
-data si_unique_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+data si_unique_module_qn: FreeMonoid<v2.std.node.Symbol> = qualified_name_from_dotted_string(
   dotted: "v2.test.symbol_index_unique"
 )
 
@@ -90,12 +90,12 @@ data si_unique_module_root_node: Node = si_module_root(
   ]
 )
 
-data si_unique_index: SymbolIndex = symbol_index_fill_module_root(
+data si_unique_index: v2.std.symbol_index.SymbolIndex = symbol_index_fill_module_root(
   index: empty_symbol_index(),
   root: si_unique_module_root_node
 )
 
-data si_unique_index_containment_only: SymbolIndex = symbol_index_fill_containment_node(
+data si_unique_index_containment_only: v2.std.symbol_index.SymbolIndex = symbol_index_fill_containment_node(
   index: empty_symbol_index(),
   path: si_unique_module_qn,
   node: si_unique_module_root_node
@@ -269,28 +269,28 @@ test fn symbol_index_variant_visibility_equivalence_holds() -> Bool {
   }
 }
 
-data si_shadow_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+data si_shadow_module_qn: FreeMonoid<v2.std.node.Symbol> = qualified_name_from_dotted_string(
   dotted: "v2.test.symbol_index_shadow"
 )
 
-data si_shadow_outer_node: Node = Node {
+data si_shadow_outer_node: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^ShadowDup } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data si_shadow_inner_node: Node = Node {
+data si_shadow_inner_node: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^ShadowDup } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data si_shadow_nested_qn: FreeMonoid<Symbol> = qualified_name_snoc(
+data si_shadow_nested_qn: FreeMonoid<v2.std.node.Symbol> = qualified_name_snoc(
   qn: si_shadow_module_qn,
   segment: ^Nested
 )
 
-data si_shadow_index: SymbolIndex = symbol_index_insert(
+data si_shadow_index: v2.std.symbol_index.SymbolIndex = symbol_index_insert(
   index: symbol_index_insert(
     index: empty_symbol_index(),
     qualified_path: qualified_name_snoc(qn: si_shadow_module_qn, segment: ^ShadowDup),
@@ -324,16 +324,16 @@ test fn symbol_index_lexical_lookup_chain_unique_hit_holds() -> Bool {
   }
 }
 
-data si_orphan_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+data si_orphan_module_qn: FreeMonoid<v2.std.node.Symbol> = qualified_name_from_dotted_string(
   dotted: "v2.test.symbol_index_orphan"
 )
 
 data si_orphan_module_root_node: Node = si_module_root(
   qn_spine: si_qn_spine(segments: si_orphan_module_qn),
   exports: [
-    Edge {
+    v2.std.node.Edge {
       label: Named { name: ^OrphanPilotOnly },
-      target: Node {
+      target: v2.std.node.Node {
         kind: TypeNode { connective: Atom { identity: ^OrphanPilotOnly } },
         children: [],
         occurrence_id: SyntheticOccurrence
@@ -342,7 +342,7 @@ data si_orphan_module_root_node: Node = si_module_root(
   ]
 )
 
-data si_multi_root_index: SymbolIndex = symbol_index_fill_module_roots(
+data si_multi_root_index: v2.std.symbol_index.SymbolIndex = symbol_index_fill_module_roots(
   index: empty_symbol_index(),
   roots: Cons {
     head: si_module_root_node,
@@ -361,12 +361,12 @@ test fn symbol_index_global_unique_lookup_resolves_globally_unique_holds() -> Bo
 }
 
 test fn symbol_index_global_unique_lookup_ambiguous_leaf_holds() -> Bool {
-  let yes_a = Node {
+  let yes_a = v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^Yes } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
-  let yes_b = Node {
+  let yes_b = v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^Yes } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -406,7 +406,7 @@ test fn symbol_index_fill_marks_duplicate_leaf_ambiguous_holds() -> Bool {
 }
 
 test fn symbol_index_track_global_bare_idempotent_on_same_node_holds() -> Bool {
-  let bound = Node {
+  let bound = v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^OrphanPilotOnly } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -420,18 +420,18 @@ test fn symbol_index_track_global_bare_idempotent_on_same_node_holds() -> Bool {
   }
 }
 
-data si_alias_module_qn: FreeMonoid<Symbol> = qualified_name_from_dotted_string(
+data si_alias_module_qn: FreeMonoid<v2.std.node.Symbol> = qualified_name_from_dotted_string(
   dotted: "v2.test.symbol_index_alias"
 )
 
-data si_alias_target_node: Node = Node {
+data si_alias_target_node: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^AliasTargetType } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-fn si_alias_decl_node(binding: Symbol, target_qn: QualifiedName) -> Node {
-  Node {
+fn si_alias_decl_node(binding: v2.std.node.Symbol, target_qn: v2.std.qualified_name.QualifiedName) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -440,7 +440,7 @@ fn si_alias_decl_node(binding: Symbol, target_qn: QualifiedName) -> Node {
       ),
       dag_named_edge(
         name: ^dag_surface_alias_decl_binding,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: binding } },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -455,13 +455,13 @@ fn si_alias_decl_node(binding: Symbol, target_qn: QualifiedName) -> Node {
   }
 }
 
-fn si_alias_decl_wrapped(binding: Symbol, target_qn: QualifiedName) -> Node {
-  Node {
+fn si_alias_decl_wrapped(binding: v2.std.node.Symbol, target_qn: v2.std.qualified_name.QualifiedName) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
         name: ^grammar_production_identity_node_projection,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: ^dag_surface_alias_decl } },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -476,7 +476,7 @@ fn si_alias_decl_wrapped(binding: Symbol, target_qn: QualifiedName) -> Node {
   }
 }
 
-data si_alias_target_qn: FreeMonoid<Symbol> = qualified_name_snoc(
+data si_alias_target_qn: FreeMonoid<v2.std.node.Symbol> = qualified_name_snoc(
   qn: si_alias_module_qn,
   segment: ^AliasTargetType
 )
@@ -484,11 +484,11 @@ data si_alias_target_qn: FreeMonoid<Symbol> = qualified_name_snoc(
 data si_alias_module_root_node: Node = si_module_root(
   qn_spine: si_qn_spine(segments: si_alias_module_qn),
   exports: [
-    Edge {
+    v2.std.node.Edge {
       label: Named { name: ^AliasTargetType },
       target: si_alias_target_node
     },
-    Edge {
+    v2.std.node.Edge {
       label: Named { name: ^dag_surface_top_level_item },
       target: si_alias_decl_wrapped(
         binding: ^AliasBinding,
@@ -498,7 +498,7 @@ data si_alias_module_root_node: Node = si_module_root(
   ]
 )
 
-data si_alias_index: SymbolIndex = symbol_index_fill_module_root(
+data si_alias_index: v2.std.symbol_index.SymbolIndex = symbol_index_fill_module_root(
   index: empty_symbol_index(),
   root: si_alias_module_root_node
 )
@@ -522,7 +522,7 @@ test fn symbol_index_alias_unresolved_target_red_control_holds() -> Bool {
   let root = si_module_root(
     qn_spine: si_qn_spine(segments: si_alias_module_qn),
     exports: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^dag_surface_top_level_item },
         target: si_alias_decl_wrapped(
           binding: ^OrphanAlias,

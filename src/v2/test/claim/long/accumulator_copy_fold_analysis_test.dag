@@ -1,6 +1,6 @@
 module v2.test.long.accumulator_copy_fold_analysis
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data quadratic_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
 
@@ -36,7 +36,7 @@ data projection_call_carrier_snippet: String = "module projcar\n\nfn f(xs: List<
 
 data multiline_unregistered_snippet: String = "module unreg\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    mystery_op(a: acc, b: x)\n  })\n}\n"
 
-fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
+fn ingest(source_text: String, file: v2.std.node.Symbol) -> Optional<Node> {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match v2.compiler.tokenize.tokenize(text: source_text, file: file, rules: lm.lex) {
     Rejected { diagnostics: _ } => Absent
@@ -52,7 +52,7 @@ fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
   }
 }
 
-fn findings_of(source_text: String, file: Symbol) -> Optional<List<v2.lens.complexity_accumulator_copy.Finding>> {
+fn findings_of(source_text: String, file: v2.std.node.Symbol) -> Optional<List<v2.lens.complexity_accumulator_copy.Finding>> {
   match ingest(source_text: source_text, file: file) {
     Absent => Absent
     Present { value: tree } => Present { value: v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_findings(root: tree) }
@@ -168,46 +168,46 @@ test fn computed_let_mentioning_carrier_refuses_at_unregistered_use() -> Bool {
   }
 }
 
-fn edge_list_prepend(item: Edge, xs: List<Edge>) -> List<Edge> {
+fn edge_list_prepend(item: v2.std.node.Edge, xs: List<v2.std.node.Edge>) -> List<v2.std.node.Edge> {
   Cons { head: item, tail: xs }
 }
 
-fn no_edges() -> List<Edge> {
+fn no_edges() -> List<v2.std.node.Edge> {
   std.algebra.Empty
 }
 
 fn opaque_head_node() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
-fn edge_target_is_mystery(e: Edge) -> Bool {
+fn edge_target_is_mystery(e: v2.std.node.Edge) -> Bool {
   match v2.std.grammar.node_atom_identity_optional(node: e.target) {
     Present { value: id } => id == ^mystery_op
     Absent => false
   }
 }
 
-fn edge_is_seq_left(e: Edge) -> Bool {
+fn edge_is_seq_left(e: v2.std.node.Edge) -> Bool {
   match e.label {
     Named { name: nm } => nm == ^grammar_sequence_left_node_projection
     Positional => false
   }
 }
 
-fn rebuilt_edge(e: Edge) -> Edge {
+fn rebuilt_edge(e: v2.std.node.Edge) -> v2.std.node.Edge {
   if edge_is_seq_left(e: e) {
     if edge_target_is_mystery(e: e) {
-      Edge { label: e.label, target: opaque_head_node() }
+      v2.std.node.Edge { label: e.label, target: opaque_head_node() }
     } else {
-      Edge { label: e.label, target: break_mystery_head(n: e.target) }
+      v2.std.node.Edge { label: e.label, target: break_mystery_head(n: e.target) }
     }
   } else {
-    Edge { label: e.label, target: break_mystery_head(n: e.target) }
+    v2.std.node.Edge { label: e.label, target: break_mystery_head(n: e.target) }
   }
 }
 
 fn break_mystery_head(n: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: n.kind,
     children: v2.std.algebra.list_reverse(xs: fold(n.children, init: no_edges(), f: fn(acc, e) {
       edge_list_prepend(item: rebuilt_edge(e: e), xs: acc)

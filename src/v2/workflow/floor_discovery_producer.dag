@@ -4,14 +4,14 @@ module v2.workflow.floor_discovery_producer
 
 
 type FloorDiscoveryProducerResult
-  = FloorDiscoveryAccepted { rows: List<FloorDiscoveryRow> }
+  = FloorDiscoveryAccepted { rows: List<v2.workflow.floor_discovery.FloorDiscoveryRow> }
   | FloorDiscoveryRefused { reason: String }
 
 type FloorDiscoveryWalkState {
-  rows: List<FloorDiscoveryRow>
+  rows: List<v2.workflow.floor_discovery.FloorDiscoveryRow>
   walk_failures: Int
   walk_failure_path: Optional<String>
-  sidecar_violations: List<FloorDiscoverySidecarViolation>
+  sidecar_violations: List<v2.workflow.floor_discovery.FloorDiscoverySidecarViolation>
   disposition_refusal: Optional<String>
 }
 
@@ -195,7 +195,7 @@ fn floor_discovery_disposition_row_variant(line: String) -> Optional<LiveTreeDis
 type FloorDiscoveryDispositionFoldState {
   refusal: Optional<String>
   declared: Bool
-  disposition: Optional<LiveTreeDisposition>
+  disposition: Optional<v2.std.live_tree.LiveTreeDisposition>
 }
 
 fn floor_discovery_disposition_fold_zero() -> FloorDiscoveryDispositionFoldState {
@@ -266,7 +266,7 @@ fn floor_discovery_disposition_fold_line(
 }
 
 type FloorDiscoveryEntryLiveTreeOutcome
-  = EntryLiveTreeResolved { disposition: LiveTreeDisposition }
+  = EntryLiveTreeResolved { disposition: v2.std.live_tree.LiveTreeDisposition }
   | EntryLiveTreeDispositionRefused { reason: String }
 
 fn floor_discovery_resolve_entry_live_tree(

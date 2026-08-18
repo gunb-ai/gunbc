@@ -37,49 +37,49 @@ fn census_entry_path_matches_emit_on_demand_family_grain(entry: String) -> Bool 
     || census_entry_path_matches_emit_host_execution_family(entry: entry)
 }
 
-fn census_pending_interpreted_retained(entry: String) -> WitnessExecutionDisposition {
+fn census_pending_interpreted_retained(entry: String) -> v2.std.witness_execution_routing.WitnessExecutionDisposition {
   InterpretedRetained {
     reason: BulkFlipPendingCensusIncomplete,
     dissolution: unbound_dissolution(description: "srvN cssl sweep receipt names first-error class for this entry; row flips to NativeRouted or EmitIneligible in bulk flip PR (ROADMAP 2a section 3)")
   }
 }
 
-fn census_emit_on_demand_family_grain(entry: String) -> WitnessExecutionDisposition {
+fn census_emit_on_demand_family_grain(entry: String) -> v2.std.witness_execution_routing.WitnessExecutionDisposition {
   InterpretedRetained {
     reason: EmitOnDemandFamilyGrain,
     dissolution: unbound_dissolution(description: "native_routing_frontier flips owning family to NativeRouted with warm per-PR agreement receipt; entry-grain row derives NativeRouted from family membership")
   }
 }
 
-fn census_host_fed_ceiling_retained(entry: String) -> WitnessExecutionDisposition {
+fn census_host_fed_ceiling_retained(entry: String) -> v2.std.witness_execution_routing.WitnessExecutionDisposition {
   InterpretedRetained {
     reason: HostFedCeiling,
     dissolution: unbound_dissolution(description: "native host-effect transport lane retires host_fed ceiling; row reclassifies from InterpretedRetained")
   }
 }
 
-fn census_reads_live_tree_carrier_retained(entry: String) -> WitnessExecutionDisposition {
+fn census_reads_live_tree_carrier_retained(entry: String) -> v2.std.witness_execution_routing.WitnessExecutionDisposition {
   InterpretedRetained {
     reason: RetainedReadsLiveTreeCarrier,
     dissolution: unbound_dissolution(description: "G2 live-read classification + native host-effect transport retire ReadsLiveTree carrier rows")
   }
 }
 
-fn census_long_lane_ineligible(entry: String) -> WitnessExecutionDisposition {
+fn census_long_lane_ineligible(entry: String) -> v2.std.witness_execution_routing.WitnessExecutionDisposition {
   EmitIneligible {
     cause: LongLaneScheduled,
     detail: "exceeds per-PR 5s fast-lane eval budget; scheduled falsifier/long-lane consumer only"
   }
 }
 
-fn census_offline_recipe_ineligible(entry: String) -> WitnessExecutionDisposition {
+fn census_offline_recipe_ineligible(entry: String) -> v2.std.witness_execution_routing.WitnessExecutionDisposition {
   EmitIneligible {
     cause: OfflineLocalRecipe,
     detail: "operator-ruled offline; explicit local claim_batch recipe is the executing consumer"
   }
 }
 
-fn census_disposition_for_entry(entry: String) -> WitnessExecutionDisposition {
+fn census_disposition_for_entry(entry: String) -> v2.std.witness_execution_routing.WitnessExecutionDisposition {
   if census_entry_path_matches_long_lane(entry: entry) {
     census_long_lane_ineligible(entry: entry)
   } else if census_entry_path_matches_offline_recipe(entry: entry) {

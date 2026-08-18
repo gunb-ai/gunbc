@@ -1,7 +1,7 @@
 module v2.test.long.lattice_coexistence_debt
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data lattice_key: String = "std/algebra.dag:Lattice"
 

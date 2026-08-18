@@ -34,22 +34,22 @@ data nat_semiring_rung6_post_emit_law_preservation_runtime_value_rows: List<Test
   run_phase1_nat_semiring_rung6_python_mul_annihilator_emit_equals_eval
 ]
 
-fn run_nat_semiring_rung56_eval() -> CorpusEvalReport {
-  CorpusEvalReport {
+fn run_nat_semiring_rung56_eval() -> v2.test.workflow.testclaim_corpus_runner.CorpusEvalReport {
+  v2.test.workflow.testclaim_corpus_runner.CorpusEvalReport {
     entries: corpus_entries_from_node_runtime_value_runs(
       runs: nat_semiring_rung6_post_emit_law_preservation_runtime_value_rows
     )
   }
 }
 
-fn nat_semiring_rung56_report_has_evidence(report: CorpusEvalReport) -> Bool {
+fn nat_semiring_rung56_report_has_evidence(report: v2.test.workflow.testclaim_corpus_runner.CorpusEvalReport) -> Bool {
   match is_empty(xs: report.entries) {
     true => false
     false => true
   }
 }
 
-fn nat_semiring_rung6_gate(report: CorpusEvalReport) -> Bool {
+fn nat_semiring_rung6_gate(report: v2.test.workflow.testclaim_corpus_runner.CorpusEvalReport) -> Bool {
   if nat_semiring_rung56_report_has_evidence(report: report) {
     let tally = corpus_report_tally(r: report)
     tally.fail == Zero && tally.deferred == Zero && tally.pass != Zero

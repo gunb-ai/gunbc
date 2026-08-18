@@ -33,7 +33,7 @@ test fn witness_selector_wire_red() -> Bool {
     && selector_subject_wire(s: ClassSelector { name: "x" }) == ".x"
 }
 
-fn d5_sample_subjects() -> List<SelectorSubject> {
+fn d5_sample_subjects() -> List<extdeps.languages.css.selectors.SelectorSubject> {
   [
     ClassSelector { name: "status" },
     ElementSelector { tag: "body" },

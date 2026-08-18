@@ -11,26 +11,26 @@ Await and Accept realize as StateRule rather than ResponseRule for a structural 
 
 The sound toggle joins the roster because it is a control, and the register's coverage law does not exempt small ones — an unresponsive mute button would be precisely the dead hover the law exists to forbid. It gets travel and brightening and no sound of its own: a mute control that clicked when you muted it would be arguing with you."
 
-data roadmap_elements: List<InteractiveElement> = [
-  InteractiveElement { element: DispatchBtnElement, verbs: [Approach, Dispatch, Await, Accept] },
-  InteractiveElement { element: SoundToggleElement, verbs: [Approach, Dispatch] },
-  InteractiveElement { element: DisclosureElement, verbs: [Approach, Enter] },
+data roadmap_elements: List<gunbc.design.interaction.InteractiveElement> = [
+  gunbc.design.interaction.InteractiveElement { element: DispatchBtnElement, verbs: [Approach, Dispatch, Await, Accept] },
+  gunbc.design.interaction.InteractiveElement { element: SoundToggleElement, verbs: [Approach, Dispatch] },
+  gunbc.design.interaction.InteractiveElement { element: DisclosureElement, verbs: [Approach, Enter] },
 ]
 
 data roadmap_timing_assignment_note: String = "Which clock each verb runs on, reusing the existing scale rather than minting near-misses (operator, 2026-07-24). APPROACH runs on reveal_deliberate (160 ms): an approach is a reveal — the control coming toward the hand — and the earlier 90 ms on the brighten row was the press clock borrowed for a gesture that is not a press. DISPATCH runs on respond_fast (90 ms), the press-acknowledge clock, because engagement must land under the finger and anything slower reads as lag. AWAIT also runs on respond_fast: the control latching down when the request leaves is an engagement, not a reveal. ACCEPT runs on settle_spring, which is restore_gentle's 240 ms carrying the overshoot curve — the only mint, and only on the easing axis."
 
-data roadmap_behaviors: List<BehaviorRow> = [
-  BehaviorRow { element: DispatchBtnElement, verb: Approach, response: Brighten, timing: reveal_deliberate },
-  BehaviorRow { element: DispatchBtnElement, verb: Approach, response: Lift, timing: reveal_deliberate },
-  BehaviorRow { element: DispatchBtnElement, verb: Dispatch, response: Receipt, timing: respond_fast },
-  BehaviorRow { element: DispatchBtnElement, verb: Dispatch, response: Depress, timing: respond_fast },
-  BehaviorRow { element: DispatchBtnElement, verb: Await, response: Depress, timing: respond_fast },
-  BehaviorRow { element: DispatchBtnElement, verb: Accept, response: Settle, timing: settle_spring },
-  BehaviorRow { element: DisclosureElement, verb: Approach, response: Brighten, timing: reveal_deliberate },
-  BehaviorRow { element: DisclosureElement, verb: Enter, response: Turn, timing: respond_fast },
-  BehaviorRow { element: SoundToggleElement, verb: Approach, response: Brighten, timing: reveal_deliberate },
-  BehaviorRow { element: SoundToggleElement, verb: Approach, response: Lift, timing: reveal_deliberate },
-  BehaviorRow { element: SoundToggleElement, verb: Dispatch, response: Depress, timing: respond_fast },
+data roadmap_behaviors: List<gunbc.design.interaction.BehaviorRow> = [
+  gunbc.design.interaction.BehaviorRow { element: DispatchBtnElement, verb: Approach, response: Brighten, timing: reveal_deliberate },
+  gunbc.design.interaction.BehaviorRow { element: DispatchBtnElement, verb: Approach, response: Lift, timing: reveal_deliberate },
+  gunbc.design.interaction.BehaviorRow { element: DispatchBtnElement, verb: Dispatch, response: Receipt, timing: respond_fast },
+  gunbc.design.interaction.BehaviorRow { element: DispatchBtnElement, verb: Dispatch, response: Depress, timing: respond_fast },
+  gunbc.design.interaction.BehaviorRow { element: DispatchBtnElement, verb: Await, response: Depress, timing: respond_fast },
+  gunbc.design.interaction.BehaviorRow { element: DispatchBtnElement, verb: Accept, response: Settle, timing: settle_spring },
+  gunbc.design.interaction.BehaviorRow { element: DisclosureElement, verb: Approach, response: Brighten, timing: reveal_deliberate },
+  gunbc.design.interaction.BehaviorRow { element: DisclosureElement, verb: Enter, response: Turn, timing: respond_fast },
+  gunbc.design.interaction.BehaviorRow { element: SoundToggleElement, verb: Approach, response: Brighten, timing: reveal_deliberate },
+  gunbc.design.interaction.BehaviorRow { element: SoundToggleElement, verb: Approach, response: Lift, timing: reveal_deliberate },
+  gunbc.design.interaction.BehaviorRow { element: SoundToggleElement, verb: Dispatch, response: Depress, timing: respond_fast },
 ]
 
 data roadmap_detent_note: String = "The dispatch button's detent table — the mechanical spec the CSS is DERIVED from, pinned as data because a transition that connects two equal transforms is inert (gunbc.design.interaction.detent_table_note).
@@ -45,17 +45,17 @@ data detent_pressed: String = "pressed"
 data detent_requested: String = "requested"
 data detent_accepted: String = "accepted"
 
-data roadmap_dispatch_detents: List<Detent> = concat(
+data roadmap_dispatch_detents: List<gunbc.design.interaction.Detent> = concat(
   house_pointer_detents(rest_state: detent_rest, hover_state: detent_hover, pressed_state: detent_pressed),
   [
-    Detent {
+    gunbc.design.interaction.Detent {
       state: detent_requested,
       reach: ByTrigger { cause: ObservedStateEntered { state_name: dispatch_class_requested } },
       travel: NoTravel,
       scale_per_mille: hold_scale_per_mille,
       turn_deg: 0,
     },
-    Detent {
+    gunbc.design.interaction.Detent {
       state: detent_accepted,
       reach: ByTrigger { cause: ObservedStateEntered { state_name: dispatch_class_ok } },
       travel: NoTravel,
@@ -66,9 +66,9 @@ data roadmap_dispatch_detents: List<Detent> = concat(
 
 data disclosure_detent_rest: String = "disclosure-rest"
 
-data roadmap_disclosure_detents: List<Detent> = [
-  Detent { state: disclosure_detent_rest, reach: AtRest, travel: NoTravel, scale_per_mille: rest_scale_per_mille, turn_deg: 0 },
-  Detent {
+data roadmap_disclosure_detents: List<gunbc.design.interaction.Detent> = [
+  gunbc.design.interaction.Detent { state: disclosure_detent_rest, reach: AtRest, travel: NoTravel, scale_per_mille: rest_scale_per_mille, turn_deg: 0 },
+  gunbc.design.interaction.Detent {
     state: disclosure_open_class,
     reach: ByTrigger { cause: ObservedStateEntered { state_name: disclosure_open_class } },
     travel: NoTravel,
@@ -77,23 +77,23 @@ data roadmap_disclosure_detents: List<Detent> = [
   },
 ]
 
-data roadmap_sound_toggle_detents: List<Detent> = house_pointer_detents(
+data roadmap_sound_toggle_detents: List<gunbc.design.interaction.Detent> = house_pointer_detents(
   rest_state: detent_rest,
   hover_state: detent_hover,
   pressed_state: detent_pressed,
 )
 
-data roadmap_detent_edges: List<DetentEdge> = [
-  DetentEdge { from_state: detent_rest, to_state: detent_hover },
-  DetentEdge { from_state: detent_hover, to_state: detent_pressed },
-  DetentEdge { from_state: detent_rest, to_state: detent_pressed },
-  DetentEdge { from_state: detent_pressed, to_state: detent_requested },
-  DetentEdge { from_state: detent_requested, to_state: detent_accepted },
+data roadmap_detent_edges: List<gunbc.design.interaction.DetentEdge> = [
+  gunbc.design.interaction.DetentEdge { from_state: detent_rest, to_state: detent_hover },
+  gunbc.design.interaction.DetentEdge { from_state: detent_hover, to_state: detent_pressed },
+  gunbc.design.interaction.DetentEdge { from_state: detent_rest, to_state: detent_pressed },
+  gunbc.design.interaction.DetentEdge { from_state: detent_pressed, to_state: detent_requested },
+  gunbc.design.interaction.DetentEdge { from_state: detent_requested, to_state: detent_accepted },
 ]
 
 data dispatch_brighten_neutral_note: String = "Approach emphasis on the FILLED instrument is band-neutral (operator ruling 2026-07-24): the earlier target was var(--focus) — brass — and brass is hue-ambiguous next to the band fills (on mint it reads venom-adjacent brown, on venom it reads mint-adjacent yellow-green), so hover appeared to INVERT the state colors. The theme's ink (var(--text)) is the one color that reads as pure emphasis on every fill under both themes, so approach = ink ring + the existing lift, and never a hue that could be mistaken for a band. Brass remains the focus material elsewhere (the review mark); this retarget is the instrument's own row."
 
-fn dispatch_btn_brighten_rules(timing: TimingToken) -> List<BuildRule> {
+fn dispatch_btn_brighten_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   map(approach_triggers(), t =>
     ResponseRule {
       subject: ClassSelector { name: "dispatch-btn" },
@@ -108,15 +108,15 @@ fn dispatch_btn_brighten_rules(timing: TimingToken) -> List<BuildRule> {
 
 data dispatch_state_family_note: String = "The dispatch instrument's state family — the SINGLE authority for the state-class-to-band mapping (composition slice 1). Before this roster the mapping was spelled at three sites: the style's four per-state paint StaticRules, the receipt rules' four hand call sites, and the base rule's inline invite vars — the same fact three times, which is exactly the fork the round-5 flash grew in. The roster order is the emission order (rest first), pinned by the byte oracle. A presentation state the button can wear that is missing from this roster has no selector anywhere downstream — the realize folds and the census both walk this list, so joining the family IS the single edit."
 
-data dispatch_state_family: StateFamily = StateFamily {
+data dispatch_state_family: gunbc.design.state_response.StateFamily = gunbc.design.state_response.StateFamily {
   component_class: "dispatch-btn",
   var_prefix: "band-",
   members: [
-    StateFamilyMember { binding: RestBinding, key: "invite" },
-    StateFamilyMember { binding: StateClassBinding { class_name: dispatch_class_requested }, key: "in-progress" },
-    StateFamilyMember { binding: StateClassBinding { class_name: dispatch_class_ok }, key: "ok" },
-    StateFamilyMember { binding: StateClassBinding { class_name: dispatch_class_refused }, key: "fail" },
-    StateFamilyMember { binding: StateClassBinding { class_name: dispatch_class_loud }, key: "loud" },
+    gunbc.design.state_response.StateFamilyMember { binding: RestBinding, key: "invite" },
+    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: dispatch_class_requested }, key: "in-progress" },
+    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: dispatch_class_ok }, key: "ok" },
+    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: dispatch_class_refused }, key: "fail" },
+    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: dispatch_class_loud }, key: "loud" },
   ],
 }
 
@@ -124,24 +124,24 @@ data dispatch_sound_constant_ratchet_note: String = "RULING ROW (composition sli
 
 data dispatch_stateful_channels_note: String = "The dispatch instrument's stateful-channel table (composition slice 1) — every channel through which state reaches the operator, each carrying its scope BY TYPE: PerStateFamily rows are realized by the state_response folds (rest paints into the base rule and the per-state blocks; the press response multiplied across the family), ConstantByLaw rows name the recorded ruling that signed their constancy — the approach ring's band-neutrality (dispatch_brighten_neutral_note, operator 2026-07-24) and the sound ratchet (dispatch_sound_constant_ratchet_note). A response row with neither scope is unwritable: the table's element type has no third arm. Channel order within the rest group is the base rule's authored decl order (ink, fill, border), pinned by the byte oracle."
 
-data dispatch_stateful_channels: List<ChannelScope> = [
+data dispatch_stateful_channels: List<gunbc.design.state_response.ChannelScope> = [
   PerStateFamily { channel: RestChannel { prop: Color, role: InkVar } },
   PerStateFamily { channel: RestChannel { prop: Background, role: FillVar } },
   PerStateFamily { channel: RestChannel { prop: BorderColor, role: FillVar } },
   PerStateFamily { channel: ResponseChannel { trigger: OnActive, prop: Background, role: PressedVar, transition_props: "background-color" } },
   ConstantByLaw {
     channel_name: "approach-emphasis",
-    ruling: DeclarationRef { module_path: "gunbc.roadmap_interaction", decl_name: "dispatch_brighten_neutral_note", field: WholeDeclaration },
+    ruling: std.decl_ref.DeclarationRef { module_path: "gunbc.roadmap_interaction", decl_name: "dispatch_brighten_neutral_note", field: WholeDeclaration },
   },
   ConstantByLaw {
     channel_name: "engage-sound",
-    ruling: DeclarationRef { module_path: "gunbc.roadmap_interaction", decl_name: "dispatch_sound_constant_ratchet_note", field: WholeDeclaration },
+    ruling: std.decl_ref.DeclarationRef { module_path: "gunbc.roadmap_interaction", decl_name: "dispatch_sound_constant_ratchet_note", field: WholeDeclaration },
   },
 ]
 
 data dispatch_receipt_family_note: String = "The press receipt realizes PER STATE FAMILY (round-5 fix, re-derived through the state_response fold in composition slice 1): the first cut was one constant on the base selector — the invite press fill for every state the button can wear — so pressing an orange fault pill flashed deep green. A press deepens the material it presses: the press-fill channel is authored ONCE in dispatch_stateful_channels as a function of state, and family_response_rules multiplies it across the roster — each member's selector targets ITS band's derived pressed var, the rest member on the base selector. The four hand call sites this replaces were byte-identical under the fold (digest oracle), and the family-preservation witness in the tactile suite holds a RED against any cross-family press returning."
 
-fn dispatch_btn_receipt_rules(timing: TimingToken) -> List<BuildRule> {
+fn dispatch_btn_receipt_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   family_response_rules(f: dispatch_state_family, channels: dispatch_stateful_channels, timing: timing)
 }
 
@@ -149,7 +149,7 @@ data detent_realization_note: String = "Every transform rule is READ from the de
 
 AtRest emits a StaticRule because the resting transform is the property's base value — it must be DECLARED for a transition to have somewhere to return to, and it carries no timing because arriving at rest is governed by the edge that leaves the other state."
 
-fn detent_rules(class_name: String, detents: List<Detent>, state: String, timing: TimingToken) -> List<BuildRule> {
+fn detent_rules(class_name: String, detents: List<gunbc.design.interaction.Detent>, state: String, timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   match detent_named(detents: detents, state: state) {
     Absent => []
     Present { value: d } => {
@@ -172,17 +172,17 @@ fn detent_rules(class_name: String, detents: List<Detent>, state: String, timing
   }
 }
 
-fn control_lift_rules(class_name: String, detents: List<Detent>, timing: TimingToken) -> List<BuildRule> {
+fn control_lift_rules(class_name: String, detents: List<gunbc.design.interaction.Detent>, timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   concat(
     detent_rules(class_name: class_name, detents: detents, state: detent_rest, timing: timing),
     detent_rules(class_name: class_name, detents: detents, state: detent_hover, timing: timing))
 }
 
-fn control_depress_rules(class_name: String, detents: List<Detent>, timing: TimingToken) -> List<BuildRule> {
+fn control_depress_rules(class_name: String, detents: List<gunbc.design.interaction.Detent>, timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   detent_rules(class_name: class_name, detents: detents, state: detent_pressed, timing: timing)
 }
 
-fn dispatch_btn_hold_rules(timing: TimingToken) -> List<BuildRule> {
+fn dispatch_btn_hold_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   detent_rules(
     class_name: "dispatch-btn",
     detents: roadmap_dispatch_detents,
@@ -190,7 +190,7 @@ fn dispatch_btn_hold_rules(timing: TimingToken) -> List<BuildRule> {
     timing: timing)
 }
 
-fn dispatch_btn_settle_rules(timing: TimingToken) -> List<BuildRule> {
+fn dispatch_btn_settle_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   detent_rules(
     class_name: "dispatch-btn",
     detents: roadmap_dispatch_detents,
@@ -198,7 +198,7 @@ fn dispatch_btn_settle_rules(timing: TimingToken) -> List<BuildRule> {
     timing: timing)
 }
 
-fn disclosure_brighten_rules(timing: TimingToken) -> List<BuildRule> {
+fn disclosure_brighten_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   map(approach_triggers(), t =>
     ResponseRule {
       subject: ElementSelector { tag: "summary" },
@@ -211,13 +211,13 @@ fn disclosure_brighten_rules(timing: TimingToken) -> List<BuildRule> {
     })
 }
 
-fn disclosure_turn_rules(timing: TimingToken) -> List<BuildRule> {
+fn disclosure_turn_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   concat(
     detent_rules(class_name: disclosure_mark_class, detents: roadmap_disclosure_detents, state: disclosure_detent_rest, timing: timing),
     detent_rules(class_name: disclosure_mark_class, detents: roadmap_disclosure_detents, state: disclosure_open_class, timing: timing))
 }
 
-fn roadmap_realize_behavior(row: BehaviorRow) -> RealizedBehavior {
+fn roadmap_realize_behavior(row: gunbc.design.interaction.BehaviorRow) -> gunbc.site.moodboard.RealizedBehavior {
   let e = row.element
   let r = response_key(r: row.response)
   let v = verb_key(v: row.verb)
@@ -268,7 +268,7 @@ fn roadmap_realize_behavior(row: BehaviorRow) -> RealizedBehavior {
   }
 }
 
-fn sound_toggle_brighten_rules(timing: TimingToken) -> List<BuildRule> {
+fn sound_toggle_brighten_rules(timing: gunbc.design.material.TimingToken) -> List<gunbc.design.material.BuildRule> {
   map(approach_triggers(), t =>
     ResponseRule {
       subject: ClassSelector { name: sound_toggle_class },
@@ -281,7 +281,7 @@ fn sound_toggle_brighten_rules(timing: TimingToken) -> List<BuildRule> {
     })
 }
 
-fn roadmap_unrealized_behaviors(rows: List<BehaviorRow>) -> List<RealizedBehavior> {
+fn roadmap_unrealized_behaviors(rows: List<gunbc.design.interaction.BehaviorRow>) -> List<gunbc.site.moodboard.RealizedBehavior> {
   fold(rows, init: [], f: (acc, row) => match roadmap_realize_behavior(row: row) {
     RealizedRules { rules: _ } => acc
     UnrealizedBehavior { element, verb, response } =>
@@ -289,13 +289,13 @@ fn roadmap_unrealized_behaviors(rows: List<BehaviorRow>) -> List<RealizedBehavio
   })
 }
 
-fn roadmap_behavior_rules(rows: List<BehaviorRow>) -> List<BuildRule> {
+fn roadmap_behavior_rules(rows: List<gunbc.design.interaction.BehaviorRow>) -> List<gunbc.design.material.BuildRule> {
   fold(rows, init: [], f: (acc, row) => match roadmap_realize_behavior(row: row) {
     RealizedRules { rules } => concat(acc, rules)
     UnrealizedBehavior { element: _, verb: _, response: _ } => acc
   })
 }
 
-fn roadmap_dispatch_detent_defects() -> List<DetentEdgeDefect> {
+fn roadmap_dispatch_detent_defects() -> List<gunbc.design.interaction.DetentEdgeDefect> {
   detent_edge_defects(detents: roadmap_dispatch_detents, edges: roadmap_detent_edges)
 }

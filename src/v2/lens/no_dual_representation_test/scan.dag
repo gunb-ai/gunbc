@@ -19,7 +19,7 @@ type DualRepDataInit {
 
 type DualRepFnFact {
   name: String
-  params: List<Symbol>
+  params: List<v2.std.node.Symbol>
   output: Node
 }
 

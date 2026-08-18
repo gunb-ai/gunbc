@@ -1,5 +1,5 @@
 module v2.test.manual.machine_code_model_core_anchor
 
 
-data mc_anchor_core: ModelCore = machine_code_model_core()
+data mc_anchor_core: v2.std.model_core.ModelCore = machine_code_model_core()
 data mc_anchor_int32_facts: Node = mc_integer_facts_node(facts: mc_facts_int32)

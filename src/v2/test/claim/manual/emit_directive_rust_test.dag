@@ -1,28 +1,28 @@
 module v2.test.manual.emit_directive_rust
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn emit_directive_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn emit_directive_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   optional_absent()
 }
 
-data emit_directive_rust_error_example: EmitDirective = EmitDirective {
+data emit_directive_rust_error_example: v2.std.diagnostic.EmitDirective = v2.std.diagnostic.EmitDirective {
   severity: SeverityError,
   message: "build verification failed"
 }
 
-data emit_directive_rust_warning_example: EmitDirective = EmitDirective {
+data emit_directive_rust_warning_example: v2.std.diagnostic.EmitDirective = v2.std.diagnostic.EmitDirective {
   severity: SeverityWarning,
   message: "build verification failed"
 }
 
-data emit_directive_rust_other_example: EmitDirective = EmitDirective {
+data emit_directive_rust_other_example: v2.std.diagnostic.EmitDirective = v2.std.diagnostic.EmitDirective {
   severity: SeverityError,
   message: "cache corruption"
 }
 
-data emit_directive_rust_quoted_example: EmitDirective = EmitDirective {
+data emit_directive_rust_quoted_example: v2.std.diagnostic.EmitDirective = v2.std.diagnostic.EmitDirective {
   severity: SeverityError,
   message: "say \"hi\""
 }
@@ -31,9 +31,9 @@ data emit_directive_rust_error_expected: String = "eprintln!(\"build verificatio
 data emit_directive_rust_other_expected: String = "eprintln!(\"cache corruption\")"
 data emit_directive_rust_quoted_expected: String = "eprintln!(\"say \\\"hi\\\"\")"
 
-fn emit_directive_rust_emit(d: EmitDirective) -> Outcome<Medium<String>> {
+fn emit_directive_rust_emit(d: v2.std.diagnostic.EmitDirective) -> Outcome<Medium<String>> {
   emit(
-    tree: InferredTree {
+    tree: v2.compiler.infer.InferredTree {
       root: rust_emit_directive_emitted_call,
       facts: Map { lookup: emit_directive_facts_lookup }
     },
@@ -41,9 +41,9 @@ fn emit_directive_rust_emit(d: EmitDirective) -> Outcome<Medium<String>> {
   )
 }
 
-fn emit_directive_bash_emit(d: EmitDirective) -> Outcome<Medium<String>> {
+fn emit_directive_bash_emit(d: v2.std.diagnostic.EmitDirective) -> Outcome<Medium<String>> {
   emit(
-    tree: InferredTree {
+    tree: v2.compiler.infer.InferredTree {
       root: emit_directive_bash_emitted_command,
       facts: Map { lookup: emit_directive_facts_lookup }
     },

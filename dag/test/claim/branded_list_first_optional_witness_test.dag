@@ -1,11 +1,11 @@
 module test.claim.branded_list_first_optional_witness
 
 
-fn hash_list() -> List<ContentHash> {
-  [content_hash_of_value(value: "a" as NonEmptyStr)]
+fn hash_list() -> List<std.content_hash.ContentHash> {
+  [content_hash_of_value(value: "a" as std.types.NonEmptyStr)]
 }
 
-fn empty_hash_list() -> List<ContentHash> {
+fn empty_hash_list() -> List<std.content_hash.ContentHash> {
   []
 }
 
@@ -22,7 +22,7 @@ test fn branded_list_first_content_hash_method_nonempty() -> Bool {
     Present { value: h } =>
       match h {
         Fnv1a64(left) =>
-          match content_hash_of_value(value: "a" as NonEmptyStr) {
+          match content_hash_of_value(value: "a" as std.types.NonEmptyStr) {
             Fnv1a64(right) => content_hash_eq_structural(left: left, right: right)
             Sha256Hash(_) => false
             Sha1Hash(_) => false
@@ -62,7 +62,7 @@ test fn branded_list_first_content_hash_pipe_nonempty() -> Bool {
     Present { value: h } =>
       match h {
         Fnv1a64(left) =>
-          match content_hash_of_value(value: "a" as NonEmptyStr) {
+          match content_hash_of_value(value: "a" as std.types.NonEmptyStr) {
             Fnv1a64(right) => content_hash_eq_structural(left: left, right: right)
             Sha256Hash(_) => false
             Sha1Hash(_) => false

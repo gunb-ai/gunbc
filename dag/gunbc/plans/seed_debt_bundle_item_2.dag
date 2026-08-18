@@ -1,7 +1,7 @@
 module gunbc.plans.seed_debt_bundle_item_2
 
 
-fn seed_debt_bundle_item_2_body() -> List<MarkdownBlock> {
+fn seed_debt_bundle_item_2_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** design-first (2026-06-28). Parent `stern-moth-225` phase-0 metrics bundle, **item 2**. **#5894 scope:** lands `gunbc.compile_source_model` + pure `.dag` floor witness only — no emitter flip, no exemption retirement, no `regen --verify` flip. Parse-cursor grounding deferred to emit-migration (jolly-cat / #5873 sequencing). Work-item `adhoc-8521769b-288`."),
     h2(text: "0. Verdict — HAND_MAINTAINED exemptions vs authority models"),
@@ -43,7 +43,7 @@ fn seed_debt_bundle_item_2_body() -> List<MarkdownBlock> {
   ]
 }
 
-data seed_debt_bundle_item_2_plan: Plan = Plan {
+data seed_debt_bundle_item_2_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "seed-debt-bundle-item-2",
   title: "Seed-only debt bundle item 2 — CLI dep-pool authority model (#5894)",
   body: seed_debt_bundle_item_2_body(),

@@ -5,8 +5,8 @@ type IntegerValueSet
   = IntegerValueSetUnbounded
   | IntegerValueSetInterval { interval: Node }
 
-fn integer_value_set_atom(id: Symbol) -> Node {
-  Node {
+fn integer_value_set_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -14,10 +14,10 @@ fn integer_value_set_atom(id: Symbol) -> Node {
 }
 
 fn integer_unbounded_value_set_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^integer_value_set_field_kind },
         target: integer_value_set_atom(id: ^integer_value_set_kind_unbounded)
       }
@@ -27,14 +27,14 @@ fn integer_unbounded_value_set_node() -> Node {
 }
 
 fn integer_interval_value_set_node(interval: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^integer_value_set_field_kind },
         target: integer_value_set_atom(id: ^integer_value_set_kind_interval)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^integer_value_set_field_interval },
         target: interval
       }
@@ -43,8 +43,8 @@ fn integer_interval_value_set_node(interval: Node) -> Node {
 }
 }
 
-fn integer_value_set_decode_invalid_diagnostic(source_carrier: Node) -> Diagnostic {
-  Diagnostic {
+fn integer_value_set_decode_invalid_diagnostic(source_carrier: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^integer_value_set_decode_invalid,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }

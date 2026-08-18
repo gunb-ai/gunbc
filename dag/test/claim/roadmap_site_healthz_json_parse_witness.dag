@@ -1,7 +1,7 @@
 module test.claim.roadmap_site_healthz_json_parse_witness
 
 
-func roadmap_site_healthz_json_parse_witness() -> ProcessExit {
+func roadmap_site_healthz_json_parse_witness() -> std.process.ProcessExit {
   let body = roadmap_site_healthz_body()
   let ok = roadmap_site_healthz_json_string_parses(body: body)
     && roadmap_site_healthz_json_string_parses(body: concat(body, "\n"))

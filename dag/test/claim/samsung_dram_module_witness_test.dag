@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // organization axes changed to the shape the label does not carry. It exists so
 // that "32 GiB DDR4 is realizable" cannot be read off capacity alone: on DDR4 that
 // capacity is reachable only because rank_count and chip_width put it there.
-data control_32g_1rx8: DramModuleCatalogRow = DramModuleCatalogRow {
+data control_32g_1rx8: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types.DramModuleCatalogRow {
   part_number: "CONTROL-32G-1RX8-DDR4",
   manufacturer: samsung,
   generation: dram_generation_ddr4,
@@ -19,7 +19,7 @@ data control_32g_1rx8: DramModuleCatalogRow = DramModuleCatalogRow {
 }
 
 test fn row_axes_match_the_labelled_module_organization() -> Bool {
-  m386a4g40dm0_cpb_catalog.part_number == ("M386A4G40DM0-CPB" as NonEmptyStr)
+  m386a4g40dm0_cpb_catalog.part_number == ("M386A4G40DM0-CPB" as std.types.NonEmptyStr)
     && m386a4g40dm0_cpb_catalog.buffering == LoadReduced
     && bit_width_count(b: m386a4g40dm0_cpb_catalog.chip_width) == 4
     && m386a4g40dm0_cpb_catalog.rank_count == 4

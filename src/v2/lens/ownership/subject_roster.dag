@@ -2,7 +2,7 @@ module v2.test.lens_ownership.subject_roster
 
 
 fn ownership_claim_pass_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^lens_ownership_claim_pass_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -10,7 +10,7 @@ fn ownership_claim_pass_node() -> Node {
 }
 
 fn ownership_claim_fail_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^lens_ownership_claim_fail_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -25,12 +25,12 @@ fn ownership_claim_input(ok: Bool) -> Node {
   }
 }
 
-data claim_lens_ownership_resource_dependency: TestClaim = EqualsClaim {
+data claim_lens_ownership_resource_dependency: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_ownership resource dependency witness passes through run_test_claim",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ownership_claim_input(ok: ownership_resource_dependency_claim_passes),
   rhs: ownership_claim_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
 data subject_lens_ownership_resource_dependency: TestClaimEvalSubject<Node> = eval_test_claim_subject(
@@ -44,7 +44,7 @@ data lens_ownership_subject_rows: List<TestClaimEvalSubject<Node>> = [
   subject_lens_ownership_resource_dependency
 ]
 
-data lens_ownership_family_claim_ids: List<Symbol> = [
+data lens_ownership_family_claim_ids: List<v2.std.node.Symbol> = [
   ^claim_lens_ownership_resource_dependency
 ]
 

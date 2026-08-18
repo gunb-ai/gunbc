@@ -59,7 +59,7 @@ fn render_readme(tools: List<ReadmeTool>) -> String {
 }
 
 func readme(tools: List<ReadmeTool>) -> { written: Bool }
-  uses fs: Filesystem(mode: ReadWrite)
+  uses fs: v2.extdeps.file_system.Filesystem(mode: ReadWrite)
 {
   content = render_readme(tools: tools)
   result = content_upsert(content: content, path: "README.md")

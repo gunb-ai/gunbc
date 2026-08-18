@@ -2,16 +2,16 @@ module v2.extdeps.runtimes.v2_effect_io_host
 
 
 type EffectIoHostFileContext {
-  filesystem: Filesystem
-  effects: ModeledFileEffects
+  filesystem: v2.extdeps.file_system.Filesystem
+  effects: v2.extdeps.file_system.ModeledFileEffects
 }
 
 type EffectIoHostHttpContext {
-  authority: UriAuthority
+  authority: v2.std.network.UriAuthority
 }
 
 type EffectIoHostStorageContext {
-  bucket: Symbol
+  bucket: v2.std.node.Symbol
 }
 
 type EffectIoHostBackendContext
@@ -20,22 +20,22 @@ type EffectIoHostBackendContext
   | HostStorageContext { context: EffectIoHostStorageContext }
 
 type EffectIoHostHandlerBundle {
-  declared_backend: EffectIoResourceBackend
+  declared_backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend
   backend_context: EffectIoHostBackendContext
-  mode: ExecutionMode
-  envelope: Envelope
-  fixture: EffectIoFixtureStore
-  handlers: EffectHandlerBinding
+  mode: std.execution_mode.ExecutionMode
+  envelope: std.effect_grant.Envelope
+  fixture: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore
+  handlers: v2.std.runtime.EffectHandlerBinding
 }
 
 type V4EffectIoHostRuntime {
-  bundle_identity: Symbol
-  declared_backend: EffectIoResourceBackend
+  bundle_identity: v2.std.node.Symbol
+  declared_backend: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceBackend
   backend_context: EffectIoHostBackendContext
-  mode: ExecutionMode
-  envelope: Envelope
-  fixture_store: EffectIoFixtureStore
-  handlers: EffectHandlerBinding
+  mode: std.execution_mode.ExecutionMode
+  envelope: std.effect_grant.Envelope
+  fixture_store: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore
+  handlers: v2.std.runtime.EffectHandlerBinding
 }
 
 data effect_io_host_read_dispatch_note: String = "P-C per-grant binding (docs/plans/effect-namespace-grants.md line 62): read dispatch selects real-transport vs replay by the COVERING Read grant's HandlerBinding (covering_grant), NOT by re-reading the per-process ExecutionMode. Mode is consumed exactly once, at envelope construction (effect_io_host_envelope), where it picks the wet (RealTransport) or hermetic (Replay) preset; from there the envelope's grants are the sole authority (§3). An uncovered read is a located refusal (NoCoveringGrant -> effect_io_host_read_outside_grant), fail-closed. FRONTIER (operator-approved 2026-07-22): the Replay grant carries a fixture_store String identity, but the replay handler still resolves the concrete store from the passed EffectIoFixtureStore object rather than from that String -- the per-grant store-string resolution is the declared follow-on."

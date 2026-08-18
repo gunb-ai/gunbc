@@ -3,44 +3,44 @@ module gunbc.fleet_show_effective_read
 
 
 type RunnerSliceCapLiveReadRow {
-  slice_unit: NonEmptyStr
+  slice_unit: std.types.NonEmptyStr
   memory_max_raw: String
-  probed_at: NonEmptyStr
+  probed_at: std.types.NonEmptyStr
 }
 
 type RunnerSliceCapLiveRead {
-  slice_unit: NonEmptyStr
-  memory_max: SystemdCgroupMemoryLimit
-  probed_at: NonEmptyStr
+  slice_unit: std.types.NonEmptyStr
+  memory_max: extdeps.systemd.SystemdCgroupMemoryLimit
+  probed_at: std.types.NonEmptyStr
 }
 
 type RunnerWidthLiveReadRow {
-  instance_glob: NonEmptyStr
+  instance_glob: std.types.NonEmptyStr
   active_count_raw: String
-  probed_at: NonEmptyStr
+  probed_at: std.types.NonEmptyStr
 }
 
 type RunnerWidthLiveRead {
-  instance_glob: NonEmptyStr
+  instance_glob: std.types.NonEmptyStr
   active_count: Int
-  probed_at: NonEmptyStr
+  probed_at: std.types.NonEmptyStr
 }
 
 type OomPressureLimitLiveReadRow {
-  slice_unit: NonEmptyStr
+  slice_unit: std.types.NonEmptyStr
   pressure_limit_raw: String
-  probed_at: NonEmptyStr
+  probed_at: std.types.NonEmptyStr
 }
 
 type OomPressureLimitLiveRead {
-  slice_unit: NonEmptyStr
-  pressure_limit: Percent
-  probed_at: NonEmptyStr
+  slice_unit: std.types.NonEmptyStr
+  pressure_limit: std.measure.Percent
+  probed_at: std.types.NonEmptyStr
 }
 
 type FleetRunnerUnitsLiveRead {
   host: product.placement_supply.HostIdentity
-  units: List<RunnerUnitMemoryLiveRead>
+  units: List<gunbc.runner_unit_live_read.RunnerUnitMemoryLiveRead>
 }
 
 type FleetHostEffectiveReadReceipt {
@@ -53,10 +53,10 @@ type FleetHostEffectiveReadReceipt {
 type FleetHostEffectiveReadGroundedReceipt {
   host: product.placement_supply.HostIdentity
   effective: FleetHostEffectiveReadReceipt
-  runner_slice_cap_read: ShowEffectiveRead<RunnerSliceCapEffectiveness>
+  runner_slice_cap_read: ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness>
   runner_units_read: ShowEffectiveRead<FleetRunnerUnitsLiveRead>
   runner_width_read: ShowEffectiveRead<RunnerWidthLiveRead>
-  probed_at: NonEmptyStr
+  probed_at: std.types.NonEmptyStr
 }
 
 data gunbc_fleet_show_effective_read_scope_disposition: Disposition = std.disposition.Terminal {

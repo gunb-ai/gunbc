@@ -1,13 +1,13 @@
 module gunbc.plans.merge_admission_gate_shape_proposal
 
 
-fn status_block() -> MarkdownBlock {
+fn status_block() -> std.markdown.MarkdownBlock {
   quote(blocks: [
     p(text: "**Status: gate-shape SIGNED OFF by loyal-bee-794 (2026-06-29)** — substrate predicate in gunbc.merge_admission (PR #5973). Actuator consumption (ci_failure_class wiring) is a separate follow-on PR, authored READY but HELD on GatingComputedDeferred until operator sign-off + ci_failure_class prerequisites. Activation is NOT flipped here."),
   ])
 }
 
-fn section_proposed_actuator() -> List<MarkdownBlock> {
+fn section_proposed_actuator() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "1. Approved actuator shape (follow-on PR — READY but HELD)"),
     p(text: "Merge admission is merge-time policy, orthogonal to per-commit floor gates. The actuator consumes a MergeAdmissionReceipt and live merge-target facts; it does NOT add a new gunbc.ci_gate variant."),
@@ -48,7 +48,7 @@ fn section_proposed_actuator() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_signoff() -> List<MarkdownBlock> {
+fn section_signoff() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "2. Sign-off state"),
     ul(items: [
@@ -59,11 +59,11 @@ fn section_signoff() -> List<MarkdownBlock> {
   ]
 }
 
-fn merge_admission_gate_shape_proposal_body() -> List<MarkdownBlock> {
+fn merge_admission_gate_shape_proposal_body() -> List<std.markdown.MarkdownBlock> {
   concat([status_block()], concat(section_proposed_actuator(), section_signoff()))
 }
 
-data merge_admission_gate_shape_proposal_plan: Plan = Plan {
+data merge_admission_gate_shape_proposal_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "merge-admission-gate-shape-proposal",
   title: "[SIGNED OFF] Merge-admission gate shape — predicate landed, actuator follow-on HELD",
   body: merge_admission_gate_shape_proposal_body(),

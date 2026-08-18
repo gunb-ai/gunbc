@@ -3,10 +3,10 @@ module test.claim.live_deploy.deploy_release_fixture
 
 data deploy_release_fixture_note: String = "ONE FIXTURE REVISION FOR EVERY DEPLOY WITNESS, DECLARED HERE AND NOWHERE ELSE. The launch revision is now an input to the emitted unit, the readiness comparison, and the apply fold, so every deploy witness needs one — and a per-file constant would be the same fact spelled once per test file, which is the dual representation DESIGN section 3 forbids applied to the witness corpus. A golden that pins ExecStart would then be pinned against one file's spelling while a sibling asserted another, and the two could drift without either failing.\\n\\nIT LIVES UNDER dag/test/ SO IT CANNOT REACH PRODUCTION. A fixture sha declared beside the emitter would sit on the same import surface the deploy path uses; here the only modules that can name it are witnesses. The production path has no constant revision at all — it observes one — which is the property that keeps a plausible-looking placeholder from ever being emitted at a real host.\\n\\nTHE VALUES ARE VALID BY SHAPE AND OBVIOUSLY SYNTHETIC BY CONTENT. Each is 40 lowercase hex digits, so it passes the same validation a real object name does and the witnesses exercise the accepting path rather than a shape the validator would reject for the wrong reason. None of them is a commit in this repository, so a receipt quoting one cannot be mistaken for a real deploy."
 
-data deploy_witness_release_revision: CommitSha = "0123456789abcdef0123456789abcdef01234567"
+data deploy_witness_release_revision: std.types.CommitSha = "0123456789abcdef0123456789abcdef01234567"
 
-data deploy_witness_other_release_revision: CommitSha = "89abcdef0123456789abcdef0123456789abcdef"
+data deploy_witness_other_release_revision: std.types.CommitSha = "89abcdef0123456789abcdef0123456789abcdef"
 
-data deploy_witness_third_release_revision: CommitSha = "fedcba9876543210fedcba9876543210fedcba98"
+data deploy_witness_third_release_revision: std.types.CommitSha = "fedcba9876543210fedcba9876543210fedcba98"
 
 data deploy_witness_distinct_revisions_note: String = "THREE, BECAUSE THE DISCRIMINATING CASES NEED THREE. Two suffice for 'the process reports a different release than the one I installed'; the third is for the ordered case the ruling names — launched as A, disk becomes B, a later candidate C — where a witness must show that the process still answers A while two other revisions are in play. Reusing one revision for two roles would let a witness pass because the values happened to coincide rather than because the mechanism held."

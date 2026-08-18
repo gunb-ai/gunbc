@@ -1,6 +1,6 @@
 module v2.test.manual.branch_infer_fail_open_audit
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn branch_infer_fail_open_audit_body() -> Node {
   dag_pick_if_body_from_arms(

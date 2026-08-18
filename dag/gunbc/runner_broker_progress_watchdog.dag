@@ -30,17 +30,17 @@ data runner_watchdog_diagnostic_read_scaffold: Disposition = Scaffold {
 
 type ConnectivityEvidenceGrade
   = ObservedEvidence
-  | OperatorDeclaredEvidence { reason: NonEmptyStr }
+  | OperatorDeclaredEvidence { reason: std.types.NonEmptyStr }
 
 type RunnerRemoteRegistration
-  = RunnerRemoteOnline { runner_name: NonEmptyStr, labels: List<String> }
+  = RunnerRemoteOnline { runner_name: std.types.NonEmptyStr, labels: List<String> }
   | RunnerRemoteOffline
   | RunnerRemoteAbsent
-  | RunnerRemoteBusy { detail: NonEmptyStr }
+  | RunnerRemoteBusy { detail: std.types.NonEmptyStr }
 
 type HostReachAdmission
   = HostReachAdmitted
-  | HostReachRefused { host: HostIdentity, reason: NonEmptyStr }
+  | HostReachRefused { host: product.placement_supply.HostIdentity, reason: std.types.NonEmptyStr }
 
 type BrokerProgressEvent
   = AcquireAttempt
@@ -52,19 +52,19 @@ type BrokerProgressEvent
 type BrokerProgressObservation
   = BrokerProgressObserved {
       last_event: BrokerProgressEvent,
-      last_at: Timestamp,
+      last_at: std.types.Timestamp,
       grade: ConnectivityEvidenceGrade,
     }
   | BrokerProgressSilent {
-      silence_seconds: Duration,
+      silence_seconds: std.types.Duration,
       grade: ConnectivityEvidenceGrade,
     }
-  | BrokerProgressUnobserved { reason: NonEmptyStr }
+  | BrokerProgressUnobserved { reason: std.types.NonEmptyStr }
 
 type RunnerWorkerObservation
-  = RunnerWorkerAlive { detail: NonEmptyStr, grade: ConnectivityEvidenceGrade }
+  = RunnerWorkerAlive { detail: std.types.NonEmptyStr, grade: ConnectivityEvidenceGrade }
   | RunnerWorkerAbsent { grade: ConnectivityEvidenceGrade }
-  | RunnerWorkerUnobserved { reason: NonEmptyStr }
+  | RunnerWorkerUnobserved { reason: std.types.NonEmptyStr }
 
 type RemoteRegistrationEvidence
   = RemoteRegistrationObserved {
@@ -74,17 +74,17 @@ type RemoteRegistrationEvidence
     }
   | RemoteRegistrationOperatorDeclared {
       registration: RunnerRemoteRegistration,
-      reason: NonEmptyStr,
+      reason: std.types.NonEmptyStr,
     }
-  | RemoteRegistrationUnobserved { reason: NonEmptyStr }
-  | RemoteRegistrationRefused { reason: NonEmptyStr }
+  | RemoteRegistrationUnobserved { reason: std.types.NonEmptyStr }
+  | RemoteRegistrationRefused { reason: std.types.NonEmptyStr }
 
 type RunnerWatchdogVerdict
   = WatchdogHealthy
-  | WatchdogRetrying { silence_seconds: Duration }
-  | WatchdogWedged { silence_seconds: Duration }
+  | WatchdogRetrying { silence_seconds: std.types.Duration }
+  | WatchdogWedged { silence_seconds: std.types.Duration }
   | WatchdogBusy
-  | WatchdogRefused { reason: NonEmptyStr }
+  | WatchdogRefused { reason: std.types.NonEmptyStr }
 
 type RunnerWatchdogInputs {
   remote: RemoteRegistrationEvidence
@@ -95,10 +95,10 @@ type RunnerWatchdogInputs {
 }
 
 type RunnerRepairDecisionReceipt {
-  slot: RunnerSlotIdentity
+  slot: gunbc.build_cache_instance.RunnerSlotIdentity
   local_process: ProcessIdentity
   remote_registration_id: String
-  act_at: Timestamp
+  act_at: std.types.Timestamp
 }
 
 fn remote_registration_is_connected(reg: RunnerRemoteRegistration) -> Bool {
@@ -294,8 +294,8 @@ fn process_identity_matches_receipt(
 }
 
 type RunnerDiagnosticReadPath
-  = DiagnosticFileEnumeration { path: NonEmptyStr }
-  | DiagnosticShellPipelineRefused { attempted: NonEmptyStr, reason: NonEmptyStr }
+  = DiagnosticFileEnumeration { path: std.types.NonEmptyStr }
+  | DiagnosticShellPipelineRefused { attempted: std.types.NonEmptyStr, reason: std.types.NonEmptyStr }
 
 fn refuses_shell_pipeline_diagnostic_read(attempted: NonEmptyStr) -> RunnerDiagnosticReadPath {
   DiagnosticShellPipelineRefused {

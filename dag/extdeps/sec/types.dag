@@ -19,18 +19,18 @@ fn cik_digit_width() -> Int {
 }
 
 type Cik {
-  digits: NonEmptyStr
+  digits: std.types.NonEmptyStr
 }
 
 type StockTicker {
-  symbol: NonEmptyStr
+  symbol: std.types.NonEmptyStr
 }
 
 type StockExchange
   = Nasdaq
   | Nyse
   | NyseAmerican
-  | OtherExchange { mic: NonEmptyStr }
+  | OtherExchange { mic: std.types.NonEmptyStr }
 
 fn stock_exchange_label(ex: StockExchange) -> String {
   match ex {
@@ -45,7 +45,7 @@ type FilingForm
   = AnnualReport
   | QuarterlyReport
   | CurrentReport
-  | OtherFilingForm { form: NonEmptyStr }
+  | OtherFilingForm { form: std.types.NonEmptyStr }
 
 fn filing_form_wire(form: FilingForm) -> String {
   match form {
@@ -70,7 +70,7 @@ type XbrlTaxonomy
   | IfrsFull
   | Srt
   | Ecd
-  | OtherTaxonomy { name: NonEmptyStr }
+  | OtherTaxonomy { name: std.types.NonEmptyStr }
 
 fn xbrl_taxonomy_wire(taxonomy: XbrlTaxonomy) -> String {
   match taxonomy {
@@ -95,7 +95,7 @@ fn parse_xbrl_taxonomy(raw: String) -> XbrlTaxonomy? {
 
 type XbrlConceptRef {
   taxonomy: XbrlTaxonomy
-  tag: NonEmptyStr
+  tag: std.types.NonEmptyStr
 }
 
 // ISO 8601 calendar date (YYYY-MM-DD) on SEC XBRL fact rows — upstream JSON keys include filed, start, end, and frame period bounds on companyfacts/companyconcept responses.
@@ -117,8 +117,8 @@ data issuer_registrant_name_note: String = "registrant_name is EDGAR's NAME OF R
 
 type IssuerCatalogRow {
   cik: Cik
-  registrant_name: NonEmptyStr
+  registrant_name: std.types.NonEmptyStr
   primary_ticker: StockTicker
   exchange: StockExchange
-  vendor: Vendor<Securities>
+  vendor: Vendor<extdeps.securities.Securities>
 }

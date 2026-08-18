@@ -1,8 +1,8 @@
 module extdeps.tools.grep
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.gnu.org/software/grep/manual/grep.html"
   }
@@ -16,7 +16,7 @@ data grep_cli_tool: CliTool = CliTool {
 
 service grep.Grep {
   operation MatchesFixedString {
-    input { pattern: NonEmptyStr, path: NonEmptyStr }
+    input { pattern: std.types.NonEmptyStr, path: std.types.NonEmptyStr }
     output { matches: Bool from "exit_success" }
     readonly
     transport shell { argv: ["grep", "-qF", "{pattern}", "{path}"] }

@@ -7,7 +7,7 @@ type JsSitePage {
   id: JsSitePageId
   path: String
   tsx_fn_name: String
-  node: Fragment
+  node: std.markup.Fragment
 }
 
 fn js_site_nav_link(href: String, label: String) -> Fragment {

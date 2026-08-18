@@ -5,14 +5,14 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data srv3_nbd_proxy_port: Int = 10809
 
-data remaster_work_scope: FileTreeScope = FileTreeScope {
-  root_path: "/tmp/gunbc-remaster-work" as NonEmptyStr,
+data remaster_work_scope: gunbc.file_access.FileTreeScope = gunbc.file_access.FileTreeScope {
+  root_path: "/tmp/gunbc-remaster-work" as std.types.NonEmptyStr,
 }
 
-data nbd_proxy_scope: ProcessPortScope = ProcessPortScope {
+data nbd_proxy_scope: gunbc.session_lease.ProcessPortScope = gunbc.session_lease.ProcessPortScope {
   listen_port: srv3_nbd_proxy_port,
-  expected_owner_label: "gunbc-nbd-proxy" as NonEmptyStr,
-  expected_process_fingerprint: "gunbc-nbd-proxy" as NonEmptyStr,
+  expected_owner_label: "gunbc-nbd-proxy" as std.types.NonEmptyStr,
+  expected_process_fingerprint: "gunbc-nbd-proxy" as std.types.NonEmptyStr,
 }
 
 test fn foreign_process_on_10809_is_conflict_not_kill() -> Bool {
@@ -21,8 +21,8 @@ test fn foreign_process_on_10809_is_conflict_not_kill() -> Bool {
     obs: PortObserved {
       observed_port: srv3_nbd_proxy_port,
       pid: 424242,
-      cmdline: "foreign-nbdkit" as NonEmptyStr,
-      process_fingerprint: "foreign-nbdkit" as NonEmptyStr,
+      cmdline: "foreign-nbdkit" as std.types.NonEmptyStr,
+      process_fingerprint: "foreign-nbdkit" as std.types.NonEmptyStr,
     },
   ) {
     UpsertClassification { verdict: Conflict, decision: Refuse { reason: _ } } => true
@@ -37,9 +37,9 @@ test fn stale_matching_process_on_10809_drains_then_starts() -> Bool {
     obs: PortObservedStaleExpected {
       observed_port: srv3_nbd_proxy_port,
       pid: 99999,
-      cmdline: "gunbc-nbd-proxy" as NonEmptyStr,
-      process_fingerprint: "gunbc-nbd-proxy" as NonEmptyStr,
-      stale_reason: "prior-generation lease holder" as NonEmptyStr,
+      cmdline: "gunbc-nbd-proxy" as std.types.NonEmptyStr,
+      process_fingerprint: "gunbc-nbd-proxy" as std.types.NonEmptyStr,
+      stale_reason: "prior-generation lease holder" as std.types.NonEmptyStr,
     },
   ) {
     UpsertClassification {
@@ -57,8 +57,8 @@ test fn expected_process_on_10809_is_converged_noop() -> Bool {
     obs: PortObserved {
       observed_port: srv3_nbd_proxy_port,
       pid: 12345,
-      cmdline: "gunbc-nbd-proxy" as NonEmptyStr,
-      process_fingerprint: "gunbc-nbd-proxy" as NonEmptyStr,
+      cmdline: "gunbc-nbd-proxy" as std.types.NonEmptyStr,
+      process_fingerprint: "gunbc-nbd-proxy" as std.types.NonEmptyStr,
     },
   ) {
     UpsertClassification { verdict: Converged, decision: Noop } => true
@@ -67,7 +67,7 @@ test fn expected_process_on_10809_is_converged_noop() -> Bool {
 }
 
 test fn outside_namespace_chmod_is_refused() -> Bool {
-  let outside = "/etc/passwd" as NonEmptyStr
+  let outside = "/etc/passwd" as std.types.NonEmptyStr
   !path_within_file_tree_scope(scope: remaster_work_scope, path: outside)
     && match classify_file_access_upsert(scope: remaster_work_scope, obs: PathOutsideNamespace) {
       UpsertClassification { verdict: _, decision: Refuse { reason: _ } } => true
@@ -76,12 +76,12 @@ test fn outside_namespace_chmod_is_refused() -> Bool {
 }
 
 test fn substring_trap_path_fails_prefix_containment() -> Bool {
-  let trap = "/attacker/tmp/gunbc-remaster-work/x" as NonEmptyStr
+  let trap = "/attacker/tmp/gunbc-remaster-work/x" as std.types.NonEmptyStr
   !path_within_file_tree_scope(scope: remaster_work_scope, path: trap)
 }
 
 test fn dotdot_path_rejected_by_containment() -> Bool {
-  let escape = "/tmp/gunbc-remaster-work/../etc/passwd" as NonEmptyStr
+  let escape = "/tmp/gunbc-remaster-work/../etc/passwd" as std.types.NonEmptyStr
   !path_within_file_tree_scope(scope: remaster_work_scope, path: escape)
 }
 

@@ -2,13 +2,13 @@ module test.claim.filesystem_entry_kind_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn is_other(k: EntryKind) -> Bool {
+fn is_other(k: std.filesystem.types.EntryKind) -> Bool {
   match k { Other => true  _ => false }
 }
-fn is_regular(k: EntryKind) -> Bool {
+fn is_regular(k: std.filesystem.types.EntryKind) -> Bool {
   match k { RegularFile => true  _ => false }
 }
-fn is_symlink(k: EntryKind) -> Bool {
+fn is_symlink(k: std.filesystem.types.EntryKind) -> Bool {
   match k { Symlink => true  _ => false }
 }
 

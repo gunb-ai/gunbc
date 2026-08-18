@@ -40,11 +40,11 @@ type ShieldIdentity = NonEmptyStr where brand("ShieldIdentity")
 // observed one names who observed it.
 type ChassisBondStanding
   = ChassisBondProposed
-  | ChassisBondObserved { observer: NonEmptyStr }
+  | ChassisBondObserved { observer: std.types.NonEmptyStr }
 
 type ElectricalBond
-  = PowerReturnConnection { domain: NetIdentity, terminal: ElectricalTerminalRef }
-  | SignalReferenceConnection { signal_class: NetIdentity, terminal: ElectricalTerminalRef }
+  = PowerReturnConnection { domain: product.electrical.connectivity.NetIdentity, terminal: product.electrical.connectivity.ElectricalTerminalRef }
+  | SignalReferenceConnection { signal_class: product.electrical.connectivity.NetIdentity, terminal: product.electrical.connectivity.ElectricalTerminalRef }
   | ChassisBond {
       board_feature: BoardFeatureIdentity,
       chassis_feature: ChassisFeatureIdentity,
@@ -86,8 +86,8 @@ type PlatformFirmwareRole
 // firmware and the board CPLD logic are the first: Ampere publishes SCP firmware and the CPLD is
 // board-specific, and neither has a cited module here yet.
 type PlatformRoleUpstream
-  = UpstreamCited { subject: DeclarationRef }
-  | UpstreamNotModelledHere { reason: NonEmptyStr }
+  = UpstreamCited { subject: std.decl_ref.DeclarationRef }
+  | UpstreamNotModelledHere { reason: std.types.NonEmptyStr }
 
 fn platform_firmware_role_upstream(role: PlatformFirmwareRole) -> PlatformRoleUpstream {
   match role {
@@ -127,9 +127,9 @@ type HostFirmwareStartPreconditionKind
 // ordinary case — this one does not own its boot storage — and saying so explicitly is different
 // from omitting the row, which would read as "no such precondition exists".
 type PreconditionEstablishment
-  = EstablishedByBoardSignal { signal: SignalName }
+  = EstablishedByBoardSignal { signal: product.compute_board.digital_control.SignalName }
   | EstablishedByPlatformComponent { role: PlatformFirmwareRole }
-  | NotEstablishedByThisArticle { owner: NonEmptyStr }
+  | NotEstablishedByThisArticle { owner: std.types.NonEmptyStr }
 
 type HostFirmwareStartPrecondition {
   kind: HostFirmwareStartPreconditionKind
@@ -143,18 +143,18 @@ type HostFirmwareStartPrecondition {
 // obtain.
 type DevelopmentImageTrust
   = DevelopmentUnsigned
-  | DevelopmentTestKey { key_identity: NonEmptyStr }
+  | DevelopmentTestKey { key_identity: std.types.NonEmptyStr }
 
 type ProductionSigningStanding
-  = ProductionSigningUnavailable { reason: NonEmptyStr }
-  | ProductionSigningAvailable { authority: NonEmptyStr }
+  = ProductionSigningUnavailable { reason: std.types.NonEmptyStr }
+  | ProductionSigningAvailable { authority: std.types.NonEmptyStr }
 
 // The SPI-NOR boundary is first-class rather than generic "BIOS flash" prose because its access
 // and write-protection policy has had real security consequences on this exact processor family.
 // Update access, write protection and recovery are therefore separate declared facts.
 type FirmwareWriteProtection
-  = WriteProtectionUnmodelled { reason: NonEmptyStr }
-  | HardwareWriteProtect { control: NonEmptyStr }
+  = WriteProtectionUnmodelled { reason: std.types.NonEmptyStr }
+  | HardwareWriteProtect { control: std.types.NonEmptyStr }
 
 type PlatformFirmwareContract {
   start_preconditions: List<HostFirmwareStartPrecondition>
@@ -181,23 +181,23 @@ type PhysicalRealizationPendingCause
 
 type PhysicalRealizationStanding
   = PhysicalRealizationPending { causes: List<PhysicalRealizationPendingCause> }
-  | PhysicalRealizationAdmitted { outline: NonEmptyStr }
+  | PhysicalRealizationAdmitted { outline: std.types.NonEmptyStr }
 
 type ManufacturingRealizationStanding
-  = ManufacturingProfileUnselected { pending: NonEmptyStr }
-  | ManufacturingProfileSelected { fabricator: NonEmptyStr, authority: ExternalAuthority }
+  = ManufacturingProfileUnselected { pending: std.types.NonEmptyStr }
+  | ManufacturingProfileSelected { fabricator: std.types.NonEmptyStr, authority: extdeps.external_authority.ExternalAuthority }
 
 type BoardArticleIdentity {
-  name: NonEmptyStr
-  revision: NonEmptyStr
+  name: std.types.NonEmptyStr
+  revision: std.types.NonEmptyStr
 }
 
 type BoardPowerInterfaceArticle {
   identity: BoardArticleIdentity
-  analog: AnalogCircuitIntent
-  model_bindings: List<ComponentModelBinding>
-  reference_net: NetIdentity
-  digital_control: DigitalControlIntent
+  analog: product.compute_board.analog.AnalogCircuitIntent
+  model_bindings: List<product.compute_board.analog.ComponentModelBinding>
+  reference_net: product.electrical.connectivity.NetIdentity
+  digital_control: product.compute_board.digital_control.DigitalControlIntent
   bonds: List<ElectricalBond>
   platform_firmware: PlatformFirmwareContract
   physical: PhysicalRealizationStanding

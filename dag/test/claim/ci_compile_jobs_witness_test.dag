@@ -7,29 +7,29 @@ fn join_space(xs: List<String>) -> String {
   fold(xs, init: "", f: (acc, p) => if acc == "" { p } else { concat(concat(acc, " "), p) })
 }
 
-fn jobs_count_or(d: DerivedCompileJobs, default: Int) -> Int {
+fn jobs_count_or(d: gunbc.ci_compile_jobs.DerivedCompileJobs, default: Int) -> Int {
   match d {
     CompileJobs { count: c } => c
     CompileJobsRefuse { reason: _ } => default
   }
 }
 
-fn jobs_is_refuse(d: DerivedCompileJobs) -> Bool {
+fn jobs_is_refuse(d: gunbc.ci_compile_jobs.DerivedCompileJobs) -> Bool {
   match d {
     CompileJobsRefuse { reason: _ } => true
     CompileJobs { count: _ } => false
   }
 }
 
-fn sample_measured() -> CompileJobMeasurement {
+fn sample_measured() -> gunbc.ci_compile_measurement.CompileJobMeasurement {
   measured_with_pids(p: 4096)
 }
 
-fn measured_with_pids(p: Int) -> CompileJobMeasurement {
+fn measured_with_pids(p: Int) -> gunbc.ci_compile_measurement.CompileJobMeasurement {
   CompileJobMeasured { per_rustc_peak: hypothetical_peak(), procs_per_job: 3, pids_budget: p }
 }
 
-fn hypothetical_peak() -> ByteSize {
+fn hypothetical_peak() -> std.measure.ByteSize {
   byte_size(2100028416)
 }
 

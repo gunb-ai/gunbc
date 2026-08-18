@@ -18,7 +18,7 @@ data mktemp_path_is_untrimmed_note: String = "shell.Mktemp.Dir models path as Fi
 data digest_identity_claim_is_permanent_note: String = "the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file DOES NOT RETIRE, and this note exists because it will one day look redundant. Today it is the only claim in this file that fails when the producer digests the WRONG REAL FILE: materialization, the carried path, and the refusal arms all stay green under that mutation, because none of them is a function of which file was read. ObservedArtifactDigest is sole_constructor over a validated digest and carries no referent, so wrong-file is writable at the mint and invisible to every consumer downstream of it — forgery-from-text is closed, forgery-from-a-different-real-file is not. RUNG, HONESTLY: mechanically preventable, and this claim IS the mechanism — not a backstop to a construction wall, because no such wall exists here. Three were proposed and all three were measured and abandoned, which is why the rung is stated rather than promised. Sealing the mint to an observation binding digest to subject would make 39 hermetic claims unconstructible across two lanes; sealing this producer's input is worse, because Sha512FileObservation is an extdeps type with 35 construction sites and two production consumers (gunbc.package_delivery, gunbc.provider_wire_evidence) that have no stake in this lane and would pay for a guarantee they did not ask for; and a narrower sealed observation closes the production hole only to require an admitted test-construction path, which is the escape hatch DESIGN §5 forbids wearing a better name. The circle is not an accident of these carriers: wrong-file is unforgeable only if an observation cannot be hand-authored, and every hermetic arm exists BECAUSE it can be. NEXT-RUNG TRIGGER, and it is the repository's already-tracked one rather than a coined local one: DESIGN §4b unforgeable construction for carrier-borne invariants, whose candidate wall sole_constructor is recorded as UNVERIFIED for generic refinement carriers and construction forms. This lane is downstream of that wall, not a reason for it. If it lands, this claim becomes the executed evidence that the higher rung stays real (§4b dissolution-on-climb: production machinery dissolves, discriminating evidence stays enrolled) — deleting it then would recreate specification-without-execution one rung up."
 
 type BuiltFixture
-  = BuiltFixture { outcome: ArtifactMaterializationOutcome }
+  = BuiltFixture { outcome: gunbc.self_host_artifact_materialization.ArtifactMaterializationOutcome }
   | FixtureSetupRefused { cause: String }
 
 fn build_fixture_once(target_name: String) -> BuiltFixture {
@@ -134,7 +134,7 @@ test fn the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file() -> B
 data crate_main_variant: String = "fn main() \{ println!(\"gunbc artifact axis fixture, second program\"); \}\n"
 
 type TwoBuilds
-  = TwoBuilds { first: GeneratedArtifactIdentity, second: GeneratedArtifactIdentity }
+  = TwoBuilds { first: v2.compiler.self_host.generation.GeneratedArtifactIdentity, second: v2.compiler.self_host.generation.GeneratedArtifactIdentity }
   | TwoBuildsSetupRefused { cause: String }
 
 // MEASURED, and it is why both claims below build in ONE directory. A Rust debug binary

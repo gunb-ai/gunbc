@@ -1,7 +1,7 @@
 module std.state_durability
 
 
-data state_durability_boundary_contract: Disposition = Terminal {
+data state_durability_boundary_contract: std.disposition.Disposition = Terminal {
   reason: "Desired world-state lifetime is explicit before realization: RuntimeLifetimeOnly or DurableAcross named lifecycle boundaries. The closed boundary coproduct prevents a generic Persistent label from standing in for service restart, control-plane restart, host restart, power loss, software replacement, or factory reset."
 }
 
@@ -88,7 +88,7 @@ type StateRealizationIdentity {
 // about the whole class -- caller-asserted linkage retires when the namespace
 // lane lands its content-addressed SymbolIndex subtree digest -- so copying the
 // sentence per row would be the same prose duplication this migration removes.
-data symbol_index_subtree_digest_dissolution: DissolutionCondition = unbound_dissolution(description: "namespace content-addressed SymbolIndex subtree digest")
+data symbol_index_subtree_digest_dissolution: std.dissolution.DissolutionCondition = unbound_dissolution(description: "namespace content-addressed SymbolIndex subtree digest")
 
 type StateDefinitionLinkage
   = CallerAssertedDefinitionLinkage {
@@ -241,7 +241,7 @@ type StateDurabilityCapabilityVersion {
 type StatePerturbationGeneration =
   Int where range(min: 1), brand("StatePerturbationGeneration")
 
-type StateDurabilityInstant = EpochMs
+type StateDurabilityInstant = std.types.EpochMs
 
 type StateDurabilityAdmission<Target, ReadbackSubject> {
   target: Target

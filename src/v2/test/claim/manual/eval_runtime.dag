@@ -7,7 +7,7 @@ fn eval_byte() -> Byte {
 }
 
 fn eval_i64_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^eval_i64_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -15,24 +15,24 @@ fn eval_i64_node() -> Node {
 }
 
 fn eval_algebra_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^eval_algebra_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-data eval_two_literal: Node = Node {
+data eval_two_literal: Node = v2.std.node.Node {
   kind: ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data eval_add_subgraph_node: Node = Node {
+data eval_add_subgraph_node: Node = v2.std.node.Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: eval_two_literal },
-    Edge { label: Positional, target: eval_two_literal }
+    v2.std.node.Edge { label: Positional, target: eval_two_literal },
+    v2.std.node.Edge { label: Positional, target: eval_two_literal }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -41,20 +41,20 @@ fn eval_add_subgraph() -> Node {
   eval_add_subgraph_node
 }
 
-fn eval_runtime_value(bytes: List<Byte>) -> RuntimeValue {
+fn eval_runtime_value(bytes: List<Byte>) -> v2.std.runtime.RuntimeValue {
   RuntimePrimitive {
-    value: RuntimePrimitiveValue {
+    value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: eval_i64_node(),
       bytes: bytes
     }
   }
 }
 
-fn eval_two_value() -> RuntimeValue {
+fn eval_two_value() -> v2.std.runtime.RuntimeValue {
   eval_runtime_value(bytes: [eval_byte(), eval_byte()])
 }
 
-fn eval_five_value() -> RuntimeValue {
+fn eval_five_value() -> v2.std.runtime.RuntimeValue {
   eval_runtime_value(
     bytes: [
       eval_byte(),
@@ -66,11 +66,11 @@ fn eval_five_value() -> RuntimeValue {
   )
 }
 
-fn eval_allocate_literal(_node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn eval_allocate_literal(_node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   Accepted { value: eval_two_value(), diagnostics: None }
 }
 
-fn eval_arg_is_two_literal(value: RuntimeValue) -> Bool {
+fn eval_arg_is_two_literal(value: v2.std.runtime.RuntimeValue) -> Bool {
   match value {
     RuntimePrimitive { value: p } =>
       (p.primitive_type == eval_i64_node()) && (count(p.bytes) == 2)
@@ -78,11 +78,11 @@ fn eval_arg_is_two_literal(value: RuntimeValue) -> Bool {
   }
 }
 
-fn eval_args_absent_diagnostic() -> Diagnostic {
+fn eval_args_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
   eval_diagnostic(reason: ^eval_args_not_two_literals, node: eval_add_subgraph_node)
 }
 
-fn eval_args_are_two_literals(args: List<RuntimeValue>) -> Bool {
+fn eval_args_are_two_literals(args: List<v2.std.runtime.RuntimeValue>) -> Bool {
   if count(args) == 2 {
     match list_nth(xs: args, wanted: 0, absent: eval_args_absent_diagnostic()) {
       Holds { value: left } =>
@@ -101,9 +101,9 @@ fn eval_args_are_two_literals(args: List<RuntimeValue>) -> Bool {
 
 fn eval_call_primitive(
   _node: Node,
-  args: List<RuntimeValue>,
-  _env: EvaluationEnvironment
-) -> Outcome<RuntimeValue> {
+  args: List<v2.std.runtime.RuntimeValue>,
+  _env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   if eval_args_are_two_literals(args: args) {
     Accepted { value: eval_five_value(), diagnostics: None }
   } else {
@@ -115,66 +115,66 @@ fn eval_call_primitive(
   }
 }
 
-fn eval_choose_branch(_node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+fn eval_choose_branch(_node: Node, _value: v2.std.runtime.RuntimeValue, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<Node> {
   Accepted { value: eval_add_subgraph(), diagnostics: None }
 }
 
-fn eval_step_loop(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+fn eval_step_loop(_node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
   Accepted { value: Continue { value: eval_five_value() }, diagnostics: None }
 }
 
 fn eval_bind_value(
-  _key: EnvironmentBindingKey,
-  _value: RuntimeValue,
-  env: EvaluationEnvironment
-) -> Outcome<EvaluationEnvironment> {
+  _key: v2.std.runtime.EnvironmentBindingKey,
+  _value: v2.std.runtime.RuntimeValue,
+  env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
   Accepted { value: env, diagnostics: None }
 }
 
-fn eval_represent_result(value: RuntimeValue) -> Outcome<RuntimeValue> {
+fn eval_represent_result(value: v2.std.runtime.RuntimeValue) -> Outcome<v2.std.runtime.RuntimeValue> {
   Accepted { value: value, diagnostics: None }
 }
 
-fn eval_allocate(value: RuntimeValue) -> Outcome<RuntimeValue> {
+fn eval_allocate(value: v2.std.runtime.RuntimeValue) -> Outcome<v2.std.runtime.RuntimeValue> {
   Accepted { value: value, diagnostics: None }
 }
 
-fn eval_example_call(_call: EvaluationCall, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
+fn eval_example_call(_call: v2.std.runtime.EvaluationCall, _frame: v2.std.runtime.EvaluationFrame) -> Outcome<v2.std.runtime.ControlTransfer> {
   Accepted { value: Return { value: eval_five_value() }, diagnostics: None }
 }
 
-fn eval_return_value(value: RuntimeValue, _frame: EvaluationFrame) -> Outcome<ControlTransfer> {
+fn eval_return_value(value: v2.std.runtime.RuntimeValue, _frame: v2.std.runtime.EvaluationFrame) -> Outcome<v2.std.runtime.ControlTransfer> {
   Accepted { value: Return { value: value }, diagnostics: None }
 }
 
-fn eval_transfer(_control: ControlTransfer, frame: EvaluationFrame) -> Outcome<EvaluationFrame> {
+fn eval_transfer(_control: v2.std.runtime.ControlTransfer, frame: v2.std.runtime.EvaluationFrame) -> Outcome<v2.std.runtime.EvaluationFrame> {
   Accepted { value: frame, diagnostics: None }
 }
 
-fn eval_interpretation_algebra() -> InterpretationAlgebra {
-  InterpretationAlgebra {
-    value: ValueInterpreter {
+fn eval_interpretation_algebra() -> v2.std.runtime.InterpretationAlgebra {
+  v2.std.runtime.InterpretationAlgebra {
+    value: v2.std.runtime.ValueInterpreter {
       allocate_literal: eval_allocate_literal
     },
-    transform: TransformInterpreter {
+    transform: v2.std.runtime.TransformInterpreter {
       call_primitive: eval_call_primitive
     },
-    branch: BranchInterpreter {
+    branch: v2.std.runtime.BranchInterpreter {
       choose_branch: eval_choose_branch
     },
-    loop: LoopInterpreter {
+    loop: v2.std.runtime.LoopInterpreter {
       step_loop: eval_step_loop
     },
-    bind: BindInterpreter {
+    bind: v2.std.runtime.BindInterpreter {
       bind_value: eval_bind_value
     },
-    match: MatchInterpreter {
+    match: v2.std.runtime.MatchInterpreter {
       choose_arm: runtime_reject_match_arm
     }
   }
 }
 
-fn eval_example_diagnostic(n: Node) -> Diagnostic {
+fn eval_example_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
   eval_diagnostic(reason: ^eval_descent_not_derived, node: n)
 }
 
@@ -185,7 +185,7 @@ fn eval_termination_proof() -> v2.std.cardinality.TerminationProof {
   }
 }
 
-fn eval_facts_for_node(node: Node) -> InferredFacts {
+fn eval_facts_for_node(node: Node) -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: eval_i64_node(),
@@ -193,7 +193,7 @@ fn eval_facts_for_node(node: Node) -> InferredFacts {
   )
 }
 
-fn eval_fact_lookup(node: Node) -> Optional<InferredFacts> {
+fn eval_fact_lookup(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   if node == eval_two_literal {
     optional_present(value: eval_facts_for_node(node: eval_two_literal))
   } else if node == eval_add_subgraph_node {
@@ -203,8 +203,8 @@ fn eval_fact_lookup(node: Node) -> Optional<InferredFacts> {
   }
 }
 
-fn eval_inferred_tree() -> InferredTree {
-  InferredTree {
+fn eval_inferred_tree() -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: eval_add_subgraph(),
     facts: Map {
       lookup: eval_fact_lookup
@@ -212,7 +212,7 @@ fn eval_inferred_tree() -> InferredTree {
   }
 }
 
-fn eval_actual() -> Outcome<RuntimeValue> {
+fn eval_actual() -> Outcome<v2.std.runtime.RuntimeValue> {
   eval(
     tree: eval_inferred_tree(),
     interpretation: eval_interpretation_algebra(),
@@ -220,8 +220,8 @@ fn eval_actual() -> Outcome<RuntimeValue> {
   )
 }
 
-fn eval_empty_environment() -> EvaluationEnvironment {
-  EvaluationEnvironment {
+fn eval_empty_environment() -> v2.std.runtime.EvaluationEnvironment {
+  v2.std.runtime.EvaluationEnvironment {
     bindings: empty_map()
   }
 }
@@ -241,8 +241,8 @@ data witness_eval_call_primitive_rejects_bad_args: Bool = match eval_call_primit
   _ => false
 }
 
-fn eval_interpretation_structure_witness() -> InterpretationStructureWitness {
-  InterpretationStructureWitness {
+fn eval_interpretation_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
+  v2.std.runtime.InterpretationStructureWitness {
     allocate_literal: ^eval_allocate_literal_sym,
     call_primitive: ^eval_call_primitive_sym,
     choose_branch: ^eval_choose_branch_sym,
@@ -252,7 +252,7 @@ fn eval_interpretation_structure_witness() -> InterpretationStructureWitness {
   }
 }
 
-fn eval_context() -> EvalContext {
+fn eval_context() -> v2.compiler.eval.EvalContext {
   eval_context_with_semantics(
     runtime_identity: ^eval_interpretation_pin,
     interpretation: eval_interpretation_algebra(),
@@ -260,12 +260,12 @@ fn eval_context() -> EvalContext {
   )
 }
 
-data claim_eval_test_claim_route: TestClaim = EqualsClaim {
+data claim_eval_test_claim_route: v2.std.verification.TestClaim = EqualsClaim {
   label: "eval routes TestClaim through runtime interpretation",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: eval_add_subgraph(),
   rhs: eval_add_subgraph(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
 data subject_eval_test_claim_route: TestClaimEvalSubject<Node> = eval_test_claim_subject(

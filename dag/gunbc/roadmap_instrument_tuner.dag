@@ -3,11 +3,11 @@ module gunbc.roadmap_instrument_tuner
 
 data instrument_tuner_note: String = "THE OPERABLE V1-DELETION TUNER at /sandbox/instrument/tuner — the declared follow-on to the static study. The study at /sandbox/instrument renders one server-side camera state with no client program; this page loads the modeled client asset from gunbc.roadmap_component so the camera persists in localStorage, finish-line selection follows the production roadmap's parity rule, wheel and arrow keys admit one detent per admitted threshold (distant depth labels decompose into adjacent steps), and the depth/mode controls actually drive the pre-rendered reading rows. The world is still V0's live derived program view; only the camera is local instrument state."
 
-fn cls(name: String) -> SelectorSubject {
+fn cls(name: String) -> extdeps.languages.css.selectors.SelectorSubject {
   ClassSelector { name: name }
 }
 
-fn tuner_control_rules() -> List<BuildRule> {
+fn tuner_control_rules() -> List<gunbc.design.material.BuildRule> {
   [
     StaticRule {
       selector: cls(name: instrument_depth_btn_class),
@@ -69,19 +69,19 @@ fn instrument_tuner_css() -> String {
   join([instrument_css(), serialize_rules(rules: tuner_control_rules())], "\n")
 }
 
-fn all_focus_subjects() -> List<FocusSubject> {
+fn all_focus_subjects() -> List<gunbc.design.instrument_camera.FocusSubject> {
   concat(
     [NoSubjectSelected],
     v1_exit_finish_lines() |> map(s => focus_finish_line(l: s.line)),
   )
 }
 
-fn cameras_for_focus(f: FocusSubject) -> List<ProgramCamera> {
+fn cameras_for_focus(f: gunbc.design.instrument_camera.FocusSubject) -> List<gunbc.design.instrument_camera.ProgramCamera> {
   flat_map(program_depths(), d =>
-    map(program_modes(), m => ProgramCamera { depth: d, mode: m, focus: f }))
+    map(program_modes(), m => gunbc.design.instrument_camera.ProgramCamera { depth: d, mode: m, focus: f }))
 }
 
-fn all_cameras() -> List<ProgramCamera> {
+fn all_cameras() -> List<gunbc.design.instrument_camera.ProgramCamera> {
   flat_map(all_focus_subjects(), f => cameras_for_focus(f: f))
 }
 
@@ -90,7 +90,7 @@ fn instrument_tuner_camera_population_joined() -> Bool {
     && count(all_focus_subjects()) == 1 + count(v1_exit_finish_lines())
 }
 
-fn remaining_text(r: RemainingShape) -> String {
+fn remaining_text(r: gunbc.roadmap_program_view.RemainingShape) -> String {
   join([
     "depth ", to_string(r.sequential_depth),
     " · open fronts ", to_string(r.open_fronts),
@@ -101,7 +101,7 @@ fn remaining_text(r: RemainingShape) -> String {
   ], "")
 }
 
-fn render_reading(label: String, r: ProgramReading) -> Fragment {
+fn render_reading(label: String, r: gunbc.design.instrument_audition.ProgramReading) -> std.markup.Fragment {
   match r {
     ReadingNoSubject => fragment_row(cells: [ fragment_cell(s: label), fragment_cell(s: "no subject selected") ])
     ReadingProgramShape { remaining } =>
@@ -137,7 +137,7 @@ fn render_reading(label: String, r: ProgramReading) -> Fragment {
   }
 }
 
-fn reading_row(view: V1DeletionProgramView, camera: ProgramCamera) -> Fragment {
+fn reading_row(view: gunbc.roadmap_program_view.V1DeletionProgramView, camera: gunbc.design.instrument_camera.ProgramCamera) -> std.markup.Fragment {
   let key = camera_wire(c: camera)
   let label = join([program_depth_key(d: camera.depth), " / ", program_mode_key(m: camera.mode)], "")
   let initial = camera_wire(c: camera_initial) == key
@@ -155,7 +155,7 @@ fn reading_row(view: V1DeletionProgramView, camera: ProgramCamera) -> Fragment {
   ])
 }
 
-fn depth_button(d: ProgramDepth) -> Fragment {
+fn depth_button(d: gunbc.design.instrument_camera.ProgramDepth) -> std.markup.Fragment {
   el_attrs("button", [
     attr(name: "type", value: "button"),
     attr(name: "class", value: instrument_depth_btn_class),
@@ -163,7 +163,7 @@ fn depth_button(d: ProgramDepth) -> Fragment {
   ], [ txt(join([to_string(program_depth_index(d: d)), " · ", program_depth_key(d: d)], "")) ])
 }
 
-fn mode_button(m: ProgramMode) -> Fragment {
+fn mode_button(m: gunbc.design.instrument_camera.ProgramMode) -> std.markup.Fragment {
   el_attrs("button", [
     attr(name: "type", value: "button"),
     attr(name: "class", value: instrument_mode_btn_class),
@@ -171,7 +171,7 @@ fn mode_button(m: ProgramMode) -> Fragment {
   ], [ txt(program_mode_key(m: m)) ])
 }
 
-fn subject_row(spec: V1FinishLineSpec) -> Fragment {
+fn subject_row(spec: gunbc.v1_deletion_plan.V1FinishLineSpec) -> std.markup.Fragment {
   let key = v1_finish_line_key(l: spec.line)
   el_attrs("li", [
     attr(name: "class", value: instrument_subject_class),
@@ -184,7 +184,7 @@ fn subject_row(spec: V1FinishLineSpec) -> Fragment {
   ])
 }
 
-fn controls_section() -> Fragment {
+fn controls_section() -> std.markup.Fragment {
   el("section", [
     el("h2", [ txt("camera controls") ]),
     instrument_note(s: "Wheel and arrow keys admit one detent per threshold crossing; distant depth labels decompose into adjacent steps. Mode buttons switch reading projection."),
@@ -193,7 +193,7 @@ fn controls_section() -> Fragment {
   ])
 }
 
-fn subjects_section() -> Fragment {
+fn subjects_section() -> std.markup.Fragment {
   el("section", [
     el("h2", [ txt("finish lines") ]),
     instrument_note(s: "Selection follows the production roadmap: click the row, keyboard focus with focus-visible, re-select to clear, Escape clears. Controls on the row do not move selection."),
@@ -201,7 +201,7 @@ fn subjects_section() -> Fragment {
   ])
 }
 
-fn readings_section(view: V1DeletionProgramView) -> Fragment {
+fn readings_section(view: gunbc.roadmap_program_view.V1DeletionProgramView) -> std.markup.Fragment {
   el("section", [
     el("h2", [ txt("reading") ]),
     instrument_note(s: "One row per camera state, pre-rendered from the live derived world. The client program reveals the row that matches the persistent camera."),
@@ -209,7 +209,7 @@ fn readings_section(view: V1DeletionProgramView) -> Fragment {
   ])
 }
 
-fn tuner_main(view: V1DeletionProgramView) -> Fragment {
+fn tuner_main(view: gunbc.roadmap_program_view.V1DeletionProgramView) -> std.markup.Fragment {
   el_class("main", instrument_tuner_root_class, [
     controls_section(),
     subjects_section(),
@@ -217,15 +217,15 @@ fn tuner_main(view: V1DeletionProgramView) -> Fragment {
   ])
 }
 
-fn tuner_refusal_page(causes: List<String>) -> Fragment {
+fn tuner_refusal_page(causes: List<String>) -> std.markup.Fragment {
   el_class("main", instrument_tuner_root_class, concat(
     [ el_class("div", instrument_refusal_class, [ txt("program view refused — the tuner draws nothing rather than a smaller program") ]) ],
     map(causes, c => el_class("div", instrument_refusal_class, [ txt(c) ])),
   ))
 }
 
-fn instrument_tuner_page() -> Fragment {
-  Element {
+fn instrument_tuner_page() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "html",
     attributes: [ attr(name: "lang", value: "en") ],
     children: [

@@ -3,13 +3,13 @@ module test.claim.observation_instant_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn at(domain: ClockDomain, basis: ClockBasis, ns: std.nat.Nat) -> ObservationInstant {
-  ObservationInstant { domain: domain, basis: basis, since_origin: nanosecond(count: ns) }
+fn at(domain: std.measure.ClockDomain, basis: std.measure.ClockBasis, ns: std.nat.Nat) -> std.measure.ObservationInstant {
+  std.measure.ObservationInstant { domain: domain, basis: basis, since_origin: nanosecond(count: ns) }
 }
 
-fn worker(id: NonEmptyStr) -> ClockDomain { ProcessMonotonic { process: id } }
+fn worker(id: std.types.NonEmptyStr) -> std.measure.ClockDomain { ProcessMonotonic { process: id } }
 
-fn is_incomparable(o: InstantOrder) -> Bool {
+fn is_incomparable(o: std.measure.InstantOrder) -> Bool {
   match o { InstantIncomparable { left: _, right: _ } => true, _ => false }
 }
 

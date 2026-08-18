@@ -15,40 +15,40 @@ data emit_on_demand_host_concurrent_same_key_note: String = "Concurrent same-key
 data emit_on_demand_host_seed_deferral_note: String = "Pure Bootstrap receipt for the bounded existing HAND-RUST boundary: no new Rust file or parallel key authority is admitted. This seed observation/apply arm is explicitly deferred to ROADMAP row 'Make native materialization the shared execution kernel' (docs/plans/witness-realization-plan.md P3/P6) and the concrete dag/gunbc/v1_deletion_plan.dag ^witness_realization_kernel deletion row. Delete it when the self-emitted transport consumes ResolvedBuildContext and the dispatcher-change, environment-change, and cold/warm agreement witnesses stay green with the Rust helpers removed."
 
 type ObservedToolIdentity {
-  tool_name: NonEmptyStr
-  observed_identity: ContentHash
+  tool_name: std.types.NonEmptyStr
+  observed_identity: std.content_hash.ContentHash
 }
 
 type ObservedToolIdentityLookup
   = ObservedToolIdentityFound { row: ObservedToolIdentity }
-  | ObservedToolIdentityMissing { tool_name: NonEmptyStr }
-  | ObservedToolIdentityDuplicate { tool_name: NonEmptyStr, count: std.integer.NonNegativeInt }
+  | ObservedToolIdentityMissing { tool_name: std.types.NonEmptyStr }
+  | ObservedToolIdentityDuplicate { tool_name: std.types.NonEmptyStr, count: std.integer.NonNegativeInt }
 
 type ResolvedBuildContext {
   observed_tool_identities: List<ObservedToolIdentity>
-  environment_identity: ContentHash
-  cargo_configuration_identity: ContentHash
+  environment_identity: std.content_hash.ContentHash
+  cargo_configuration_identity: std.content_hash.ContentHash
 }
 
 type EmitHostStructuralIdentityOutcome
-  = EmitHostStructuralIdentityPresent { structural: Fnv1a64Structural }
+  = EmitHostStructuralIdentityPresent { structural: std.content_hash.Fnv1a64Structural }
   | EmitHostStructuralIdentityRefusedCrypto {
-      component: NonEmptyStr
-      identity: ContentHash
+      component: std.types.NonEmptyStr
+      identity: std.content_hash.ContentHash
     }
 
 type ResolvedBuildContextIdentityOutcome
-  = ResolvedBuildContextIdentityPresent { identity: ContentHash }
+  = ResolvedBuildContextIdentityPresent { identity: std.content_hash.ContentHash }
   | ResolvedBuildContextIdentityRefusedCrypto {
-      component: NonEmptyStr
-      identity: ContentHash
+      component: std.types.NonEmptyStr
+      identity: std.content_hash.ContentHash
     }
 
 type ToolchainIdentityOutcome
-  = ToolchainIdentityPresent { identity: ContentHash }
+  = ToolchainIdentityPresent { identity: std.content_hash.ContentHash }
   | ToolchainIdentityRefusedCrypto {
-      component: NonEmptyStr
-      identity: ContentHash
+      component: std.types.NonEmptyStr
+      identity: std.content_hash.ContentHash
     }
 
 data emit_host_structural_identity_refusal_note: String = "emit_host_structural_identity_outcome refuses cryptographic ContentHash families at the structural projection boundary (review 45661). Sha256Hash, Sha1Hash, and Sha512Hash cannot collapse to a shared fnv1a64 sentinel — that was an absorbing fallback hiding distinct digests behind one cache key. Structural-only inputs proceed; crypto arms return EmitHostStructuralIdentityRefusedCrypto with component and identity (family is derived via content_hash_family, not stored in parallel — review 45721)."

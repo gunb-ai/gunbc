@@ -1,7 +1,7 @@
 module gunbc.plans.structural_quadratic_wall_coverage_audit
 
 
-fn structural_quadratic_wall_coverage_audit_body() -> List<MarkdownBlock> {
+fn structural_quadratic_wall_coverage_audit_body() -> List<std.markdown.MarkdownBlock> {
   [
     quote(blocks: [
       p(text: "Coverage audit + execution receipt (DELIVERABLE 1 of the structural-quadratic-wall lane), authored FIRST so the wall decision is *determined by the census, not searched* (the expressibility-frontier discipline: partition into wall / lens-residue / review BEFORE building enforcement). Goal of the lane: make the OBVIOUS, DECIDABLE bad complexity shapes fail-closed. NON-goals (stated by the brief): a general complexity oracle, and a cost-inference algebra. DESIGN refs: SS1 (displaced cost = time), SS5 (fail-closed; construction over validation; the \"never\" trap), SS6 (lenses are residue; coverage-by-illusion; the purity trap). This is the concrete instance-census under [expressibility-frontier](expressibility-frontier.md)'s \"algorithmic complexity\" column."),
@@ -53,7 +53,7 @@ fn structural_quadratic_wall_coverage_audit_body() -> List<MarkdownBlock> {
   ]
 }
 
-data structural_quadratic_wall_coverage_audit_plan: Plan = Plan {
+data structural_quadratic_wall_coverage_audit_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "structural-quadratic-wall-coverage-audit",
   title: "Structural-quadratic wall -- coverage audit and execution receipt",
   body: structural_quadratic_wall_coverage_audit_body(),

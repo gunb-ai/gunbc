@@ -4,24 +4,24 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data runner_activation_wall_doc: String = "The acceptance controls for the activation wall. Each one names a state the fleet was actually in on 2026-08-01 and asserts that it cannot yield an enable command: srv1's endpoint owned from a RETIRED slot, srv2's and srv3's from ACTIVE ones, srv4's absent behind a stale socket, and every host's placement unknown before it was read. The point of the set is that a runner may be activated only against an exact desired instance whose endpoint is held by the managed unit — not against a responsive daemon, not against a host that merely enrolled."
 
-fn srv1_deploy_fixture() -> RunnerHostDeploy {
+fn srv1_deploy_fixture() -> gunbc.runner_host_deploy.RunnerHostDeploy {
   srv4_runner_host_deploy
 }
 
-fn ready_instance_fixture(host: HostIdentity) -> BuildCacheInstance {
+fn ready_instance_fixture(host: product.placement_supply.HostIdentity) -> gunbc.build_cache_instance.BuildCacheInstance {
   ci_cache_instance(host: host)
 }
 
 fn owner_fixture() -> gunbc.build_cache_instance.ProcessIdentity {
   gunbc.build_cache_instance.ProcessIdentity {
-    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as NonEmptyStr,
+    boot_id: "73c8153e-0e0e-4480-a36c-bc7560c50e8b" as std.types.NonEmptyStr,
     pid: 4242,
-    start_time: "80000000" as NonEmptyStr,
+    start_time: "80000000" as std.types.NonEmptyStr,
   }
 }
 
-fn fully_verified_ready(host: HostIdentity, unit: NonEmptyStr) -> BuildCacheInstanceReady {
-  BuildCacheInstanceReady {
+fn fully_verified_ready(host: product.placement_supply.HostIdentity, unit: std.types.NonEmptyStr) -> gunbc.runner_activation.BuildCacheInstanceReady {
+  gunbc.runner_activation.BuildCacheInstanceReady {
     instance: ready_instance_fixture(host: host),
     owner: owner_fixture(),
     managed_unit: unit,
@@ -34,8 +34,8 @@ fn fully_verified_ready(host: HostIdentity, unit: NonEmptyStr) -> BuildCacheInst
   }
 }
 
-fn ready_pool_fixture() -> HostCompilePoolReady {
-  HostCompilePoolReady {
+fn ready_pool_fixture() -> gunbc.runner_activation.HostCompilePoolReady {
+  gunbc.runner_activation.HostCompilePoolReady {
     host: "srv4",
     slice_unit: gunbc_managed_compile_pool_slice,
     pool_declared: true,
@@ -43,14 +43,14 @@ fn ready_pool_fixture() -> HostCompilePoolReady {
   }
 }
 
-fn yields_command(outcome: RunnerCommandOrRefusal) -> Bool {
+fn yields_command(outcome: gunbc.runner_host_deploy.RunnerCommandOrRefusal) -> Bool {
   match outcome {
     RunnerCommandReady { command: _ } => true
     RunnerCommandRefused { host_label: _, reason: _ } => false
   }
 }
 
-fn activation_for(cache_ready: BuildCacheInstanceReady, pool_ready: HostCompilePoolReady) -> RunnerCommandOrRefusal {
+fn activation_for(cache_ready: gunbc.runner_activation.BuildCacheInstanceReady, pool_ready: gunbc.runner_activation.HostCompilePoolReady) -> gunbc.runner_host_deploy.RunnerCommandOrRefusal {
   let d = srv1_deploy_fixture()
   runner_activate_command(
     admission: admit_runner_activation(
@@ -63,10 +63,10 @@ fn activation_for(cache_ready: BuildCacheInstanceReady, pool_ready: HostCompileP
 
 test fn witness_exact_desired_instance_with_managed_owner_activates() -> Bool {
   let d = srv1_deploy_fixture()
-  let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
+  let intended = ready_instance_fixture(host: d.host_label as product.placement_supply.HostIdentity).intended_unit
   yields_command(
     outcome: activation_for(
-      cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: intended),
+      cache_ready: fully_verified_ready(host: d.host_label as product.placement_supply.HostIdentity, unit: intended),
       pool_ready: ready_pool_fixture(),
     ),
   )
@@ -79,8 +79,8 @@ test fn witness_bare_host_admission_cannot_yield_an_enable_command() -> Bool {
   let d = srv1_deploy_fixture()
   let unready = admit_runner_activation(
     host_admission: admit_runner_host(deploy: d),
-    cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: "wrong.service" as NonEmptyStr),
-    pool_ready: HostCompilePoolReady {
+    cache_ready: fully_verified_ready(host: d.host_label as product.placement_supply.HostIdentity, unit: "wrong.service" as std.types.NonEmptyStr),
+    pool_ready: gunbc.runner_activation.HostCompilePoolReady {
       host: "srv4",
       slice_unit: gunbc_managed_compile_pool_slice,
       pool_declared: false,
@@ -99,13 +99,13 @@ test fn witness_absent_endpoint_cannot_admit_activation() -> Bool {
 test fn witness_runner_owned_cannot_admit_activation_either_lifecycle() -> Bool {
   let retired = placement_admits_activation(
     placement: ServerRunnerOwned {
-      slot: RunnerSlotIdentity { host: "srv1", slot_index: 10 },
+      slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv1", slot_index: 10 },
       lifecycle: RetiredRunnerSlot,
     },
   )
   let desired = placement_admits_activation(
     placement: ServerRunnerOwned {
-      slot: RunnerSlotIdentity { host: "srv2", slot_index: 5 },
+      slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: "srv2", slot_index: 5 },
       lifecycle: DesiredRunnerSlot,
     },
   )
@@ -114,10 +114,10 @@ test fn witness_runner_owned_cannot_admit_activation_either_lifecycle() -> Bool 
 
 test fn witness_unknown_unsupervised_and_ambiguous_cannot_admit_activation() -> Bool {
   let unknown = placement_admits_activation(
-    placement: ServerPlacementUnknown { detail: "unreadable" as NonEmptyStr },
+    placement: ServerPlacementUnknown { detail: "unreadable" as std.types.NonEmptyStr },
   )
   let unsupervised = placement_admits_activation(
-    placement: ServerUnsupervised { cgroup: "/system.slice/other.service" as NonEmptyStr },
+    placement: ServerUnsupervised { cgroup: "/system.slice/other.service" as std.types.NonEmptyStr },
   )
   let ambiguous = observation_admits_activation(
     observed: EndpointOwnershipAmbiguous {
@@ -128,7 +128,7 @@ test fn witness_unknown_unsupervised_and_ambiguous_cannot_admit_activation() -> 
   let unreachable = observation_admits_activation(
     observed: EndpointObservationUnavailable {
       instance: ready_instance_fixture(host: "srv4"),
-      reason: ReachRefused { detail: "Permission denied (publickey)" as NonEmptyStr },
+      reason: ReachRefused { detail: "Permission denied (publickey)" as std.types.NonEmptyStr },
     },
   )
   (unknown == false) && (unsupervised == false) && (ambiguous == false) && (unreachable == false)
@@ -147,10 +147,10 @@ test fn witness_receipt_from_another_host_is_refused() -> Bool {
 
 test fn witness_unready_compile_pool_refuses_even_with_a_managed_owner() -> Bool {
   let d = srv1_deploy_fixture()
-  let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
+  let intended = ready_instance_fixture(host: d.host_label as product.placement_supply.HostIdentity).intended_unit
   let declared_not_observed = activation_for(
-    cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: intended),
-    pool_ready: HostCompilePoolReady {
+    cache_ready: fully_verified_ready(host: d.host_label as product.placement_supply.HostIdentity, unit: intended),
+    pool_ready: gunbc.runner_activation.HostCompilePoolReady {
       host: "srv4",
       slice_unit: gunbc_managed_compile_pool_slice,
       pool_declared: true,
@@ -162,9 +162,9 @@ test fn witness_unready_compile_pool_refuses_even_with_a_managed_owner() -> Bool
 
 test fn witness_partially_verified_instance_refuses() -> Bool {
   let d = srv1_deploy_fixture()
-  let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
-  let partial = BuildCacheInstanceReady {
-    instance: ready_instance_fixture(host: d.host_label as HostIdentity),
+  let intended = ready_instance_fixture(host: d.host_label as product.placement_supply.HostIdentity).intended_unit
+  let partial = gunbc.runner_activation.BuildCacheInstanceReady {
+    instance: ready_instance_fixture(host: d.host_label as product.placement_supply.HostIdentity),
     owner: owner_fixture(),
     managed_unit: intended,
     endpoint_verified: true,
@@ -183,11 +183,11 @@ test fn witness_materializing_a_slot_does_not_activate_it() -> Bool {
   let d = srv1_deploy_fixture()
   let install = runner_host_installer_command(
     admission: admit_runner_host(deploy: d),
-    installer_path: "/opt/actions-runner/install.sh" as NonEmptyStr,
-    pem_src_path: "/etc/gunbc/app.pem" as NonEmptyStr,
+    installer_path: "/opt/actions-runner/install.sh" as std.types.NonEmptyStr,
+    pem_src_path: "/etc/gunbc/app.pem" as std.types.NonEmptyStr,
   )
   let activate = activation_for(
-    cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: "not-the-intended.service" as NonEmptyStr),
+    cache_ready: fully_verified_ready(host: d.host_label as product.placement_supply.HostIdentity, unit: "not-the-intended.service" as std.types.NonEmptyStr),
     pool_ready: ready_pool_fixture(),
   )
   yields_command(outcome: install) && (yields_command(outcome: activate) == false)
@@ -197,11 +197,11 @@ data pool_receipt_binding_doc: String = "The controls review 46581 forced. The c
 
 test fn witness_a_pool_receipt_from_another_host_is_refused() -> Bool {
   let d = srv1_deploy_fixture()
-  let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
+  let intended = ready_instance_fixture(host: d.host_label as product.placement_supply.HostIdentity).intended_unit
   yields_command(
     outcome: activation_for(
-      cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: intended),
-      pool_ready: HostCompilePoolReady {
+      cache_ready: fully_verified_ready(host: d.host_label as product.placement_supply.HostIdentity, unit: intended),
+      pool_ready: gunbc.runner_activation.HostCompilePoolReady {
         host: "srv2",
         slice_unit: gunbc_managed_compile_pool_slice,
         pool_declared: true,
@@ -213,13 +213,13 @@ test fn witness_a_pool_receipt_from_another_host_is_refused() -> Bool {
 
 test fn witness_a_pool_receipt_naming_another_slice_is_refused() -> Bool {
   let d = srv1_deploy_fixture()
-  let intended = ready_instance_fixture(host: d.host_label as HostIdentity).intended_unit
+  let intended = ready_instance_fixture(host: d.host_label as product.placement_supply.HostIdentity).intended_unit
   yields_command(
     outcome: activation_for(
-      cache_ready: fully_verified_ready(host: d.host_label as HostIdentity, unit: intended),
-      pool_ready: HostCompilePoolReady {
-        host: d.host_label as HostIdentity,
-        slice_unit: "some-other.slice" as NonEmptyStr,
+      cache_ready: fully_verified_ready(host: d.host_label as product.placement_supply.HostIdentity, unit: intended),
+      pool_ready: gunbc.runner_activation.HostCompilePoolReady {
+        host: d.host_label as product.placement_supply.HostIdentity,
+        slice_unit: "some-other.slice" as std.types.NonEmptyStr,
         pool_declared: true,
         pool_observed: true,
       },

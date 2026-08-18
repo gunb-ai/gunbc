@@ -69,7 +69,7 @@ type DecimalMagnitude
 type IntegerIntervalBound
   = IntegerConcreteZero
   | IntegerConcreteBound { sign: IntegerBoundSign, magnitude: DecimalNonZeroMagnitude }
-  | IntegerPointerWidthBound { signedness: Signedness, endpoint: IntegerRangeEndpoint }
+  | IntegerPointerWidthBound { signedness: std.integer.Signedness, endpoint: IntegerRangeEndpoint }
 
 type IntegerIntervalSpec {
   inclusive_min: IntegerIntervalBound

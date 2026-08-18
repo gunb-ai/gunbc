@@ -1,7 +1,7 @@
 module v2.test.claim.enforcement_inventory_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data enforcement_inventory_witness_offline_note: String = "Operator-ruled OFFLINE (review 47569): seven *_live tests call lens_enforcement_inventory_live which reads decl_facts over the whole corpus. Excluded from per-PR discovery via witness_exclusion_frontier row enforcement_inventory_witness_test.dag (OfflineLocalRecipe, same dissolve_on as enforcement_live_witness_test.dag). Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/enforcement_inventory_witness_test.dag --functions <csv>. Two frontier-reconciliation tests (enforcement_live specimen + row-count) are cheap but share this file grain."
 

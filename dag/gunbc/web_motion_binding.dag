@@ -63,7 +63,7 @@ fn permission_method_exposure_key(e: PermissionMethodExposure) -> String {
 }
 
 type PermissionObservation
-  = PermissionObservedAs { state: PermissionState }
+  = PermissionObservedAs { state: extdeps.w3c.device_orientation_and_motion.PermissionState }
   | PermissionObservationUnobserved
 
 fn permission_observation_key(p: PermissionObservation) -> String {
@@ -83,7 +83,7 @@ type MotionStreamState
   | StreamActivatedNoReading
   | StreamNoEventsObserved
   | StreamHollowEventsObserved { count: Int }
-  | StreamReadingsObserved { count: Int, peak_milli_m_per_s2: Int, sample_interval_ms: Milliseconds }
+  | StreamReadingsObserved { count: Int, peak_milli_m_per_s2: Int, sample_interval_ms: std.types.Milliseconds }
   | StreamUnobserved
 
 fn stream_state_key(s: MotionStreamState) -> String {
@@ -147,7 +147,7 @@ fn provider_removes_gravity(p: WebMotionProvider) -> Bool {
 }
 
 type WebMotionObservation {
-  host: HostRealization
+  host: gunbc.host_realization.HostRealization
   provider: WebMotionProvider
   browsing_context: BrowsingContextPosition
   secure_context: SecureContextState
@@ -159,7 +159,7 @@ type WebMotionObservation {
   permission_method: PermissionMethodExposure
   permission: PermissionObservation
   stream: MotionStreamState
-  observation_window_ms: Milliseconds
+  observation_window_ms: std.types.Milliseconds
 }
 
 data reachability_note: String = "REACHABILITY IS DERIVED, AND ITS DEFAULT IS UNRESOLVED RATHER THAN UNREACHABLE. Only an observed reading makes motion reachable. Only an EXACT observed obstacle makes it unreachable, and the obstacle is carried so the remedy is named — a blocked policy is fixed by delegating a feature, a denied permission by asking, an unexposed interface by a different engine, a refused connection by a different machine or backend. Everything else is unresolved: not a soft no, but the absence of a verdict. The distinction is the whole point of the carrier, because the failure that produced it was exactly a probe reporting unresolved as absent."

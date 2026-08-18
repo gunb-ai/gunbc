@@ -3,7 +3,7 @@ module test.claim.bmc_onboarding_lifecycle
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn phase_tag(p: BmcOnboardingPhase) -> Int {
+fn phase_tag(p: gunbc.bmc_onboarding.BmcOnboardingPhase) -> Int {
   match p {
     FactoryDefault => 0
     CredentialsRotated => 1
@@ -12,7 +12,7 @@ fn phase_tag(p: BmcOnboardingPhase) -> Int {
   }
 }
 
-fn next_tag(p: BmcOnboardingPhase) -> Int {
+fn next_tag(p: gunbc.bmc_onboarding.BmcOnboardingPhase) -> Int {
   match bmc_onboarding_next_phase(phase: p) {
     Present { value: q } => phase_tag(p: q)
     Absent => -1
@@ -26,7 +26,7 @@ test fn bmc_onboarding_lifecycle_is_linear_dag() -> Bool {
     && next_tag(p: FabricJoined) == -1
 }
 
-fn posture_tag(p: BmcCredentialPosture) -> Int {
+fn posture_tag(p: gunbc.bmc_onboarding.BmcCredentialPosture) -> Int {
   match p {
     FactoryPublished => 0
     RotatedSecretManaged => 1
@@ -34,7 +34,7 @@ fn posture_tag(p: BmcCredentialPosture) -> Int {
   }
 }
 
-fn posture_is_keyless(p: BmcCredentialPosture) -> Bool {
+fn posture_is_keyless(p: gunbc.bmc_onboarding.BmcCredentialPosture) -> Bool {
   match p {
     FactoryPublished => false
     RotatedSecretManaged => false
@@ -65,7 +65,7 @@ test fn bmc_plan_steady_state_is_keyless_wif() -> Bool {
     && string_contains(s: emit_bmc_token_smoke_workflow_yaml(), pattern: "id-token: write")
 }
 
-fn prev_next_is_identity(p: BmcOnboardingPhase) -> Bool {
+fn prev_next_is_identity(p: gunbc.bmc_onboarding.BmcOnboardingPhase) -> Bool {
   match bmc_onboarding_next_phase(phase: p) {
     Present { value: nxt } =>
       match bmc_onboarding_prev_phase(phase: nxt) {
@@ -76,7 +76,7 @@ fn prev_next_is_identity(p: BmcOnboardingPhase) -> Bool {
   }
 }
 
-fn next_prev_is_identity(p: BmcOnboardingPhase) -> Bool {
+fn next_prev_is_identity(p: gunbc.bmc_onboarding.BmcOnboardingPhase) -> Bool {
   match bmc_onboarding_prev_phase(phase: p) {
     Present { value: prv } =>
       match bmc_onboarding_next_phase(phase: prv) {
@@ -104,7 +104,7 @@ test fn bmc_onboard_then_decom_recovers_factory_phase() -> Bool {
   (decom_after_install == FactoryDefault) && (install_after_decom == FabricJoined)
 }
 
-fn factory_at(p: BmcOnboardingPhase) -> BmcLifecycleState {
+fn factory_at(p: gunbc.bmc_onboarding.BmcOnboardingPhase) -> gunbc.bmc_onboarding.BmcLifecycleState {
   match p {
     FactoryDefault => bmc_factory_state()
     CredentialsRotated => bmc_install_step(s: bmc_factory_state())
@@ -119,9 +119,9 @@ test fn bmc_decom_roundtrips_canonical_on_named_quotient() -> Bool {
     && bmc_transition_roundtrips_on_quotient(s: factory_at(p: OsInstalled))
 }
 
-fn decom_step_broken(s: BmcLifecycleState) -> BmcLifecycleState {
+fn decom_step_broken(s: gunbc.bmc_onboarding.BmcLifecycleState) -> gunbc.bmc_onboarding.BmcLifecycleState {
   match bmc_onboarding_prev_phase(phase: s.phase) {
-    Present { value: prv } => BmcLifecycleState {
+    Present { value: prv } => gunbc.bmc_onboarding.BmcLifecycleState {
       phase: prv,
       credential: bmc_phase_credential_posture(phase: prv),
       secret_epoch: s.secret_epoch,
@@ -131,7 +131,7 @@ fn decom_step_broken(s: BmcLifecycleState) -> BmcLifecycleState {
   }
 }
 
-fn transition_does_not_roundtrip_on_quotient(s: BmcLifecycleState) -> Bool {
+fn transition_does_not_roundtrip_on_quotient(s: gunbc.bmc_onboarding.BmcLifecycleState) -> Bool {
   let recovered = bmc_recoverable_quotient(s: decom_step_broken(s: bmc_install_step(s: s)))
   let original = bmc_recoverable_quotient(s: s)
   !(recovered == original)
@@ -171,7 +171,7 @@ test fn credential_probe_maps_to_correct_phase() -> Bool {
     }
     && match bmc_credential_probe_to_phase(
       probe: CredentialAccessUpsertRequired {
-        plan: GoogleCloudInteractiveAuthenticationRequired {},
+        plan: gunbc.auth.access_token_source.GoogleCloudInteractiveAuthenticationRequired {},
       },
     ) {
       Absent => true

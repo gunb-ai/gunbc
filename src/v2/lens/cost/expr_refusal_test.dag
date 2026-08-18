@@ -1,19 +1,19 @@
 module v2.test.lens_cost.expr_refusal
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data expr_refusal_log_leaf: Node = Node {
+data expr_refusal_log_leaf: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^expr_refusal_log_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data expr_refusal_log_variable: SizeVariable = SizeVariable {
+data expr_refusal_log_variable: v2.lens.cost.SizeVariable = v2.lens.cost.SizeVariable {
   source: expr_refusal_log_leaf
 }
 
-data expr_refusal_effect_operation: DeclarationRef = DeclarationRef {
+data expr_refusal_effect_operation: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "v2.lens.cost",
   decl_name: "cost_lens",
   field: WholeDeclaration

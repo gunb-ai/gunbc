@@ -7,25 +7,25 @@ type ExtdepsTransportKind
 
 type ExtdepsShapeTransportPolicyViolation
   = PolicyLiteralInArgv {
-      module: QualifiedName
+      module: v2.std.qualified_name.QualifiedName
       service: String
       operation: String
       argv_token: String
     }
   | TransportFusionFork {
-      module: QualifiedName
+      module: v2.std.qualified_name.QualifiedName
       service_a: String
       service_b: String
       endpoint_key: String
     }
   | DeadParamInArgv {
-      module: QualifiedName
+      module: v2.std.qualified_name.QualifiedName
       service: String
       operation: String
       param_name: String
     }
   | EmbeddedPolicyLiteralInData {
-      module: QualifiedName
+      module: v2.std.qualified_name.QualifiedName
       data_name: String
       field_name: String
       literal_value: String
@@ -34,7 +34,7 @@ type ExtdepsShapeTransportPolicyViolation
 data empty_extdeps_shape_transport_policy_violations: List<ExtdepsShapeTransportPolicyViolation> = []
 
 type ExtdepsTransportArgvFact {
-  module: QualifiedName
+  module: v2.std.qualified_name.QualifiedName
   service: String
   operation: String
   transport_kind: ExtdepsTransportKind
@@ -43,21 +43,21 @@ type ExtdepsTransportArgvFact {
 }
 
 type ExtdepsTransportFusionFact {
-  module: QualifiedName
+  module: v2.std.qualified_name.QualifiedName
   endpoint_key: String
   service_a: String
   service_b: String
 }
 
 type ExtdepsOperationInputFact {
-  module: QualifiedName
+  module: v2.std.qualified_name.QualifiedName
   service: String
   operation: String
   param_name: String
 }
 
 type ExtdepsOperationArgvProjection {
-  module: QualifiedName
+  module: v2.std.qualified_name.QualifiedName
   service: String
   operation: String
   input_facts: List<ExtdepsOperationInputFact>
@@ -65,7 +65,7 @@ type ExtdepsOperationArgvProjection {
 }
 
 type ExtdepsEmbeddedPolicyLiteralFact {
-  module: QualifiedName
+  module: v2.std.qualified_name.QualifiedName
   data_name: String
   field_name: String
   literal_value: String

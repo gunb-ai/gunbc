@@ -2,11 +2,11 @@ module gunbc.v1_complexity_decl_classification_types
 
 
 type V1ComplexityDeclRole
-  = AuthorityOf { capability: ComplexityCapabilityId }
-  | HelperOf { capability: ComplexityCapabilityId }
-  | LegacyHazardOf { hazard: V1ComplexityResidueId, of_capability: ComplexityCapabilityId }
-  | LegacyRealizationOf { realization: V1ComplexityResidueId, of_capability: ComplexityCapabilityId }
-  | DeliberatelyOutOfScope { reason: NonEmptyStr }
+  = AuthorityOf { capability: gunbc.v1_complexity_capability_census.ComplexityCapabilityId }
+  | HelperOf { capability: gunbc.v1_complexity_capability_census.ComplexityCapabilityId }
+  | LegacyHazardOf { hazard: gunbc.v1_complexity_capability_census.V1ComplexityResidueId, of_capability: gunbc.v1_complexity_capability_census.ComplexityCapabilityId }
+  | LegacyRealizationOf { realization: gunbc.v1_complexity_capability_census.V1ComplexityResidueId, of_capability: gunbc.v1_complexity_capability_census.ComplexityCapabilityId }
+  | DeliberatelyOutOfScope { reason: std.types.NonEmptyStr }
 
 type V1ComplexityDeclClassification {
   decl_name: String

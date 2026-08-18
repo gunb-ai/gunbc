@@ -10,9 +10,9 @@ data bash_membership_refuse_missing_body: String = "echo \"[calibration] cgroup_
 data bash_membership_refuse_ambiguous_body: String = "echo \"[calibration] cgroup_membership=ambiguous\" >&2; exit 1"
 
 fn bash_membership_assign_from_record(
-  record: ProcPidCgroupMembershipRecord,
-  walk_var: NonEmptyStr,
-  mount_root: FilePathParts,
+  record: extdeps.linux.proc_self_cgroup.ProcPidCgroupMembershipRecord,
+  walk_var: std.types.NonEmptyStr,
+  mount_root: std.types.FilePathParts,
 ) -> String {
   match record {
     CurrentCgroupObserved { relative_path: rel } =>
@@ -30,8 +30,8 @@ fn bash_membership_assign_from_record(
 
 fn bash_membership_assign_from_content(
   content: String,
-  walk_var: NonEmptyStr,
-  mount_root: FilePathParts,
+  walk_var: std.types.NonEmptyStr,
+  mount_root: std.types.FilePathParts,
 ) -> String {
   bash_membership_assign_from_record(
     record: read_unified_cgroup_membership(content: content),
@@ -42,23 +42,23 @@ fn bash_membership_assign_from_content(
 
 data bash_membership_realization_note: String = "Bash realization for extdeps.linux.proc_self_cgroup unified-hierarchy membership. bash_membership_assign_from_content lowers read_unified_cgroup_membership outcomes to shell text. bash_membership_assign_from_source is the foreign-executor transport: a runtime scan over cgroup_source that mirrors the parser's refusal/observed semantics for wet witnesses. The semantic parser lives in extdeps.linux.proc_self_cgroup; procfs path literal is extdeps.linux.procfs ProcSelfCgroup; this module owns target spelling only."
 
-data bash_membership_runtime_scan_shell_emit_scaffold: Disposition = Scaffold {
+data bash_membership_runtime_scan_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.extdeps.languages.bash_proc_self_cgroup",
     decl_name: "bash_membership_assign_from_source",
     field: WholeDeclaration
   }
 }
 
-data bash_membership_runtime_scan_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: bash_membership_assign_from_source — foreign-executor runtime scan over extdeps.linux.procfs ProcSelfCgroup; semantic parser is extdeps.linux.proc_self_cgroup read_unified_cgroup_membership. DISSOLVES WHEN shell→intent Phase 2 binds cgroup membership observation through host_effect_apply without medium-as-string concat.")
+data bash_membership_runtime_scan_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: bash_membership_assign_from_source — foreign-executor runtime scan over extdeps.linux.procfs ProcSelfCgroup; semantic parser is extdeps.linux.proc_self_cgroup read_unified_cgroup_membership. DISSOLVES WHEN shell→intent Phase 2 binds cgroup membership observation through host_effect_apply without medium-as-string concat.")
 
 fn bash_membership_outcome_tag_from_execution(
   success: Bool,
   stderr: String,
   stdout: String,
-  mount_root: FilePathParts,
-) -> UnifiedMembershipOutcomeTag {
+  mount_root: std.types.FilePathParts,
+) -> extdeps.linux.proc_self_cgroup.UnifiedMembershipOutcomeTag {
   if !success && string_contains(s: stderr, pattern: "cgroup_membership=malformed") {
     OutcomeTagMalformed
   } else if !success && string_contains(s: stderr, pattern: "cgroup_membership=missing") {
@@ -76,7 +76,7 @@ fn bash_membership_outcome_tag_from_execution(
           s: abs,
           start: root_len,
           end: string_length(s: abs),
-        ) as NonEmptyStr,
+        ) as std.types.NonEmptyStr,
       }
     } else {
       OutcomeTagMalformed
@@ -91,7 +91,7 @@ fn bash_membership_cross_realization_law_holds(
   success: Bool,
   stderr: String,
   stdout: String,
-  mount_root: FilePathParts,
+  mount_root: std.types.FilePathParts,
 ) -> Bool {
   unified_membership_outcome_tag_eq(
     a: unified_membership_outcome_tag(
@@ -114,8 +114,8 @@ fn bash_membership_runtime_scan_body_drift_sketch(cgroup_source: String) -> Stri
 
 fn bash_membership_assign_from_source_drift_sketch(
   cgroup_source: String,
-  walk_var: NonEmptyStr,
-  mount_root: FilePathParts,
+  walk_var: std.types.NonEmptyStr,
+  mount_root: std.types.FilePathParts,
 ) -> String {
   concat(
     "{ ",
@@ -146,8 +146,8 @@ fn bash_membership_runtime_scan_body(cgroup_source: String) -> String {
 
 fn bash_membership_assign_from_source(
   cgroup_source: String,
-  walk_var: NonEmptyStr,
-  mount_root: FilePathParts,
+  walk_var: std.types.NonEmptyStr,
+  mount_root: std.types.FilePathParts,
 ) -> String {
   concat(
     "{ ",

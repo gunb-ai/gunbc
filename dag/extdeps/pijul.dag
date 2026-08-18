@@ -157,9 +157,9 @@ type PijulRecordedChange {
   identity: PijulChangeIdentity
   dependencies: List<PijulDependency>
   actions: List<PijulChangeAction>
-  authors: List<NonEmptyStr>
-  message: NonEmptyStr
-  recorded_at: Timestamp
+  authors: List<std.types.NonEmptyStr>
+  message: std.types.NonEmptyStr
+  recorded_at: std.types.Timestamp
 }
 
 type PijulGraphVertex {
@@ -288,7 +288,7 @@ type PijulRepositoryProjection
       missing_vertices: List<PijulVertexId>,
       missing_paths: List<PijulPath>,
     }
-  | PijulInaccessibleProjection { reason: NonEmptyStr }
+  | PijulInaccessibleProjection { reason: std.types.NonEmptyStr }
 
 type PijulRepositoryProjectionFold<R> {
   complete: fn(PijulRepositoryState) -> R
@@ -377,7 +377,7 @@ type PijulProjectionRefusal
       right: PijulChannelName,
     }
   | PijulCurrentChannelMissing { channel: PijulChannelName }
-  | PijulInaccessible { reason: NonEmptyStr }
+  | PijulInaccessible { reason: std.types.NonEmptyStr }
 
 type PijulRepositoryDecodeOutcome
   = PijulDecoded { repository: PijulDecodedRepository }
@@ -1207,7 +1207,7 @@ type PijulLogHashSetDecodeOutcome
   | PijulLogHashSetDecodeRefused { cause: PijulLogWireRefusal }
 
 type PijulPrefixedLine {
-  value: NonEmptyStr
+  value: std.types.NonEmptyStr
 }
 
 fn pijul_prefixed_lines(
@@ -1629,7 +1629,7 @@ fn pijul_plan_delivery(
 }
 
 type PijulConditionalAdvanceCapability
-  = PijulConditionalAdvanceUnavailable { reason: NonEmptyStr }
+  = PijulConditionalAdvanceUnavailable { reason: std.types.NonEmptyStr }
 
 fn pijul_r0_conditional_advance() -> PijulConditionalAdvanceCapability {
   PijulConditionalAdvanceUnavailable {

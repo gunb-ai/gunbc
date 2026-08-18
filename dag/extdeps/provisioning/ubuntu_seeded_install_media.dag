@@ -11,12 +11,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 type UbuntuSeededInstallMediaFlavor = | UbuntuLiveServerSeeded
 
 type UbuntuSeededInstallMediaArtifactRow {
-  stock_artifact: UbuntuInstallMediaArtifactRow
-  autoinstall: UbuntuAutoinstallPayload
-  autoinstall_user_data_body: NonEmptyStr
-  grub_kernel_cmdline: NonEmptyStr
-  nocloud_dir_on_iso: NonEmptyStr
-  content_hash: ContentHash
+  stock_artifact: extdeps.provisioning.ubuntu_install_media.UbuntuInstallMediaArtifactRow
+  autoinstall: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload
+  autoinstall_user_data_body: std.types.NonEmptyStr
+  grub_kernel_cmdline: std.types.NonEmptyStr
+  nocloud_dir_on_iso: std.types.NonEmptyStr
+  content_hash: std.content_hash.ContentHash
 }
 
 // The ds= NoCloud seedfrom carries a ';' (e.g. ds=nocloud;s=<path>). In a grub.cfg linux line ';' is grub's command separator, so the arg MUST be double-quoted or grub truncates the cmdline at ';' and the kernel never sees s=<seedfrom> — autoinstall then falls to interactive. These builders emit grub cmdline strings (injected by the remaster sed), so they quote the ds arg here; the List<KernelCmdlineArg> grub path quotes structurally in grub_cmdline_arg_render.

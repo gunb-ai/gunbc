@@ -3,15 +3,15 @@ module gunbc.cursor_sdk_provider_standing
 
 data cursor_sdk_provider_standing_note: String = "Produces a six-axis ProviderStandingBundle for Cursor SDK local from modeled auth probe + typed capability gaps. Account headroom is LimitCapabilityGapUnobservable — never LimitObservedAvailable. AuthenticationAuthenticated is derived from probe only, never authored. Coordinates arm names with gunbc.provider_standing (valiant-stag-845 / PR 7926)."
 
-data cursor_sdk_entitlement_unobserved_reason: NonEmptyStr = "entitlement surface not observed for Cursor SDK local in this slice" as NonEmptyStr
+data cursor_sdk_entitlement_unobserved_reason: std.types.NonEmptyStr = "entitlement surface not observed for Cursor SDK local in this slice" as std.types.NonEmptyStr
 
-data cursor_sdk_tool_environment_unobserved_reason: NonEmptyStr = "tool environment not observed for Cursor SDK local in this slice" as NonEmptyStr
+data cursor_sdk_tool_environment_unobserved_reason: std.types.NonEmptyStr = "tool environment not observed for Cursor SDK local in this slice" as std.types.NonEmptyStr
 
-data cursor_sdk_installation_unobserved_reason: NonEmptyStr = "cursor-sdk-local-package-provisioned capability gap — @cursor/sdk not admitted on deployed host" as NonEmptyStr
+data cursor_sdk_installation_unobserved_reason: std.types.NonEmptyStr = "cursor-sdk-local-package-provisioned capability gap — @cursor/sdk not admitted on deployed host" as std.types.NonEmptyStr
 
 fn cursor_sdk_authentication_standing_from_probe(
-  probe: CursorSdkAuthProbeResult,
-) -> ProviderAuthenticationStanding {
+  probe: gunbc.cursor_sdk_auth_probe.CursorSdkAuthProbeResult,
+) -> gunbc.provider_standing.ProviderAuthenticationStanding {
   match probe {
     CursorSdkAuthProbeAuthenticated => AuthenticationAuthenticated
     CursorSdkAuthProbeCredentialsRejected { code: _ } => AuthenticationCredentialsAbsent
@@ -25,11 +25,11 @@ fn cursor_sdk_authentication_standing_from_probe(
               reason: concat(
                 "unrecognised terminal error code: ",
                 raw,
-              ) as NonEmptyStr,
+              ) as std.types.NonEmptyStr,
             }
           _ =>
             AuthenticationStandingUnobserved {
-              reason: "unrecognised terminal error code" as NonEmptyStr,
+              reason: "unrecognised terminal error code" as std.types.NonEmptyStr,
             }
         }
       }
@@ -38,16 +38,16 @@ fn cursor_sdk_authentication_standing_from_probe(
   }
 }
 
-fn cursor_sdk_local_limit_observation() -> ProviderLimitObservation {
+fn cursor_sdk_local_limit_observation() -> gunbc.provider_standing.ProviderLimitObservation {
   LimitCapabilityGapUnobservable {
     reason: cursor_sdk_local_limit_standing_reason,
   }
 }
 
 fn cursor_sdk_local_provider_standing_from_auth_probe(
-  probe: CursorSdkAuthProbeResult,
-) -> ProviderStandingBundle {
-  ProviderStandingBundle {
+  probe: gunbc.cursor_sdk_auth_probe.CursorSdkAuthProbeResult,
+) -> gunbc.provider_standing.ProviderStandingBundle {
+  gunbc.provider_standing.ProviderStandingBundle {
     installation: InstallationStandingUnobserved {
       reason: cursor_sdk_installation_unobserved_reason,
     },
@@ -64,7 +64,7 @@ fn cursor_sdk_local_provider_standing_from_auth_probe(
 }
 
 fn cursor_sdk_local_provider_standing_has_usage_capability_gap(
-  standing: ProviderStandingBundle,
+  standing: gunbc.provider_standing.ProviderStandingBundle,
 ) -> Bool {
   fold(
     standing.limits,

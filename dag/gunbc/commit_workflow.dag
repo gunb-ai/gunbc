@@ -9,22 +9,22 @@ type CommitWriter
   | IntegrationCommit
 
 type CommitWriterArtifactClassificationReceipt sole_constructor {
-  path: GitPath
-  indexed_oid: GitObjectId
-  artifact: Artifact
+  path: extdeps.git.object_store.GitPath
+  indexed_oid: extdeps.git.object_store.GitObjectId
+  artifact: v2.std.artifact.Artifact
 }
 
 type CommitWriterArtifactClassificationFailure
-  = CommitWriterArtifactNotTracked { artifact: Artifact }
+  = CommitWriterArtifactNotTracked { artifact: v2.std.artifact.Artifact }
   | CommitWriterArtifactPathDoesNotMatch {
-      artifact: Artifact,
+      artifact: v2.std.artifact.Artifact,
       provenance_file_path: String,
     }
 
 type CommitWriterObservedBlobClassification
   = CommitWriterBlobTextDecoded {
       text: String,
-      marker_grammar: GitEffectiveConflictMarkerGrammar,
+      marker_grammar: extdeps.git.object_store.GitEffectiveConflictMarkerGrammar,
       artifact: CommitWriterArtifactClassificationReceipt,
     }
   | CommitWriterBlobNonTextClassified {
@@ -32,7 +32,7 @@ type CommitWriterObservedBlobClassification
     }
   | CommitWriterBlobTextUnclaimed {
       text: String,
-      marker_grammar: GitEffectiveConflictMarkerGrammar,
+      marker_grammar: extdeps.git.object_store.GitEffectiveConflictMarkerGrammar,
     }
   | CommitWriterBlobNonTextUnclaimed
   | CommitWriterBlobArtifactClassificationRefused {
@@ -47,16 +47,16 @@ type CommitWriterBlobClassificationReceipt sole_constructor {
 }
 
 type CommitWriterStagedBlobObservation {
-  path: GitPath
-  indexed_oid: GitObjectId
-  content_oid: GitObjectId
+  path: extdeps.git.object_store.GitPath
+  indexed_oid: extdeps.git.object_store.GitObjectId
+  content_oid: extdeps.git.object_store.GitObjectId
   classification: CommitWriterBlobClassificationReceipt
 }
 
 type CompleteStagedCommitObservation {
-  index: List<GitIndexEntry>
+  index: List<extdeps.git.object_store.GitIndexEntry>
   blobs: List<CommitWriterStagedBlobObservation>
-  module_storage: List<ModuleStorageBinding>
+  module_storage: List<v2.compiler.source_authority.ModuleStorageBinding>
 }
 
 type ExactIndexBlobCoverageReceipt sole_constructor {
@@ -65,7 +65,7 @@ type ExactIndexBlobCoverageReceipt sole_constructor {
 }
 
 type ConflictMarkerLocation {
-  path: GitPath
+  path: extdeps.git.object_store.GitPath
   begin_line: Int
   separator_line: Int
   end_line: Int
@@ -83,37 +83,37 @@ type ConflictMarkerParseFold {
 
 type CommitWriterRefusal
   = CommitWriterUnmergedIndexRefusal {
-      path: GitPath,
-      stages: List<GitIndexStage>
+      path: extdeps.git.object_store.GitPath,
+      stages: List<extdeps.git.object_store.GitIndexStage>
     }
-  | CommitWriterMissingBlobObservationRefusal { path: GitPath, indexed_oid: GitObjectId }
-  | CommitWriterExtraBlobObservationRefusal { path: GitPath, indexed_oid: GitObjectId }
-  | CommitWriterDuplicateBlobObservationRefusal { path: GitPath, count: Int }
-  | CommitWriterDuplicateNormalIndexEntryRefusal { path: GitPath, count: Int }
+  | CommitWriterMissingBlobObservationRefusal { path: extdeps.git.object_store.GitPath, indexed_oid: extdeps.git.object_store.GitObjectId }
+  | CommitWriterExtraBlobObservationRefusal { path: extdeps.git.object_store.GitPath, indexed_oid: extdeps.git.object_store.GitObjectId }
+  | CommitWriterDuplicateBlobObservationRefusal { path: extdeps.git.object_store.GitPath, count: Int }
+  | CommitWriterDuplicateNormalIndexEntryRefusal { path: extdeps.git.object_store.GitPath, count: Int }
   | CommitWriterIndexBlobIdentityMismatchRefusal {
-      path: GitPath,
-      index_oid: GitObjectId,
-      observed_index_oid: GitObjectId,
+      path: extdeps.git.object_store.GitPath,
+      index_oid: extdeps.git.object_store.GitObjectId,
+      observed_index_oid: extdeps.git.object_store.GitObjectId,
     }
   | CommitWriterBlobContentMismatchRefusal {
-      path: GitPath,
-      indexed_oid: GitObjectId,
-      content_oid: GitObjectId,
+      path: extdeps.git.object_store.GitPath,
+      indexed_oid: extdeps.git.object_store.GitObjectId,
+      content_oid: extdeps.git.object_store.GitObjectId,
     }
   | CommitWriterBlobClassificationUnavailableRefusal {
-      path: GitPath,
+      path: extdeps.git.object_store.GitPath,
       cause: String,
     }
   | CommitWriterArtifactPathMismatchRefusal {
-      path: GitPath,
+      path: extdeps.git.object_store.GitPath,
       provenance_file_path: String,
     }
   | CommitWriterArtifactObjectMismatchRefusal {
-      path: GitPath,
-      blob_indexed_oid: GitObjectId,
-      provenance_indexed_oid: GitObjectId,
+      path: extdeps.git.object_store.GitPath,
+      blob_indexed_oid: extdeps.git.object_store.GitObjectId,
+      provenance_indexed_oid: extdeps.git.object_store.GitObjectId,
     }
-  | CommitWriterArtifactUntrackedRefusal { path: GitPath, artifact: Artifact }
+  | CommitWriterArtifactUntrackedRefusal { path: extdeps.git.object_store.GitPath, artifact: v2.std.artifact.Artifact }
   | CommitWriterConflictMarkerTextRefusal {
       location: ConflictMarkerLocation
     }
@@ -235,7 +235,7 @@ type CommitWriterBindingOwner
   | CommitWriterDashboardInfrastructureOperatorOwner
 
 type CommitWriterBindingDependency {
-  capability: Symbol
+  capability: v2.std.node.Symbol
 }
 
 data commit_writer_complete_staged_index_blob_observation_transport: CommitWriterBindingDependency = CommitWriterBindingDependency {
@@ -972,8 +972,8 @@ type CommitWorkflowSurface
   | FalsifierCadenceJob
 
 type CommitCheckKind
-  = CommitSpecGate { gate: Gate }
-  | CommitWitnessClaim { entry: String, check_fns: List<String>, kind: WitnessKind, span: WitnessSpan }
+  = CommitSpecGate { gate: gunbc.ci_gate.Gate }
+  | CommitWitnessClaim { entry: String, check_fns: List<String>, kind: std.realization_schedule.WitnessKind, span: std.realization_schedule.WitnessSpan }
   | CommitCargoFmtCheck
 
 type CommitCheckEnrollment {
@@ -984,33 +984,33 @@ type CommitCheckEnrollment {
 type EntryDeclarationDiscovery
   = DiscoveryComplete {
       entry: String,
-      module_path: NonEmptyStr,
-      declarations: List<DeclarationRef>
+      module_path: std.types.NonEmptyStr,
+      declarations: List<std.decl_ref.DeclarationRef>
     }
-  | DiscoveryIncomplete { entry: String, cause: NonEmptyStr }
+  | DiscoveryIncomplete { entry: String, cause: std.types.NonEmptyStr }
 
 type EnrollmentWitnessDemand {
   check: CommitCheckKind
-  declarations: List<DeclarationRef>
+  declarations: List<std.decl_ref.DeclarationRef>
 }
 
 type EnrollmentDemandOutcome
   = DemandQualified { rows: List<EnrollmentWitnessDemand> }
-  | DemandMissing { check: CommitCheckKind, cause: NonEmptyStr }
-  | DemandAmbiguous { check: CommitCheckKind, cause: NonEmptyStr }
-  | DemandIncomplete { check: CommitCheckKind, cause: NonEmptyStr }
-  | DemandRosterAmbiguous { cause: NonEmptyStr }
+  | DemandMissing { check: CommitCheckKind, cause: std.types.NonEmptyStr }
+  | DemandAmbiguous { check: CommitCheckKind, cause: std.types.NonEmptyStr }
+  | DemandIncomplete { check: CommitCheckKind, cause: std.types.NonEmptyStr }
+  | DemandRosterAmbiguous { cause: std.types.NonEmptyStr }
 
 type SingleEnrollmentDemandOutcome
   = SingleDemandQualified { row: EnrollmentWitnessDemand }
-  | SingleDemandMissing { cause: NonEmptyStr }
-  | SingleDemandAmbiguous { cause: NonEmptyStr }
-  | SingleDemandIncomplete { cause: NonEmptyStr }
+  | SingleDemandMissing { cause: std.types.NonEmptyStr }
+  | SingleDemandAmbiguous { cause: std.types.NonEmptyStr }
+  | SingleDemandIncomplete { cause: std.types.NonEmptyStr }
 
 type NamedDeclarationDemandOutcome
-  = NamedDeclarationsQualified { declarations: List<DeclarationRef> }
-  | NamedDeclarationMissing { cause: NonEmptyStr }
-  | NamedDeclarationAmbiguous { cause: NonEmptyStr }
+  = NamedDeclarationsQualified { declarations: List<std.decl_ref.DeclarationRef> }
+  | NamedDeclarationMissing { cause: std.types.NonEmptyStr }
+  | NamedDeclarationAmbiguous { cause: std.types.NonEmptyStr }
 
 type DuplicateCommitCheck
   = NoDuplicateCommitCheck

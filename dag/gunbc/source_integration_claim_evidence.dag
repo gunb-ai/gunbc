@@ -2,7 +2,7 @@ module gunbc.source_integration_claim_evidence
 
 
 type SourceBindingFact {
-  bound: RunKey
+  bound: std.types.RunKey
   source_read: v2.compiler.source_authority.DagSourceReadWitness
   binding: OccurrenceBinding<std.occurrence_identity.OccurrenceId>
 }

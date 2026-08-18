@@ -3,8 +3,8 @@ module extdeps.memory.microchip_at24cm02
 
 // Datasheet DS20006197. The anchor records where this part's mechanical authority lives; the
 // document's geometry is not transcribed in this module.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/AT24CM02-2-Mbit-I2C-Serial-EEPROM-DS20006197.pdf"
   }
@@ -12,17 +12,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data at24cm02_note: String = "THE DOCUMENT EXISTS AND ITS GEOMETRY IS NOT TRANSCRIBED, AND THIS ROW CARRIES ONLY THE FIRST OF THOSE. Datasheet DS20006197 is served at the recorded locator and publishes recommended land patterns beside its package outlines, so the facts this row owes are published rather than unobtainable. Nothing about the part's capacity, interface or package is recorded here, because recording any of it would mean supplying it from expectation. WHY THIS ROW IS NOT A SELECTION: Ampere's Mt. Jade reference names this part for a firmware EEPROM role, which is a reference-design precedent — a relation between a part and a particular board, and therefore a product-layer fact that belongs with the board that consumes it. An upstream module knows nothing about our board and must not carry a justification for it."
 
-data at24cm02: CatalogPartIdentity = CatalogPartIdentity {
+data at24cm02: extdeps.land_pattern.types.CatalogPartIdentity = extdeps.land_pattern.types.CatalogPartIdentity {
   ordering_part_number: "AT24CM02",
   vendor: microchip_technology,
-  board_pattern: MountingPatternObligation {
+  board_pattern: extdeps.land_pattern.types.MountingPatternObligation {
     what_is_missing: "the package outline and recommended land pattern that datasheet DS20006197 publishes in its packaging information section, together with the ordering variant's package designator. None of it is transcribed here",
   },
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.memory.microchip_at24cm02",
       decl_name: "at24cm02",
       field: WholeDeclaration

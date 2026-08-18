@@ -7,7 +7,7 @@ data network_grounding_witness_home_note: String = "Consolidated green-by-execut
 
 data ipv4_address_witness_note: String = "Green-by-execution proof for the structured IPv4 leaf (extdeps.network.ipv4), the witness the dissolution trigger dissolve_on_ipv4_address_anemic_brand requires. Proves parse recovers the four octets from wire text, render is its inverse (round-trip both ways), and — the fail-closed half — malformed input REFUSES with a typed, located Ipv4ParseError (wrong octet count, out-of-range, non-numeric), never a fabricated address. The discriminating controls are the three distinct refusal shapes: a parser that fabricated on bad input would return Ipv4Parsed and red these."
 
-fn ipv4_or_none(text: String) -> Ipv4Address? {
+fn ipv4_or_none(text: String) -> extdeps.network.ipv4.Ipv4Address? {
   match parse_ipv4_address(text: text) {
     Ipv4Parsed { address: a } => Present { value: a }
     Ipv4ParseFailed { error: _ } => none
@@ -71,9 +71,9 @@ test fn ipv4_valid_and_invalid_discriminate() -> Bool {
 
 data network_address_host_witness_note: String = "Green-by-execution proof for the address+host leaves of extdeps/network: the IpAddress = V4 | V6 coproduct, NetworkHost = ByName | ByAddress (reusing the grounded HostName + IpAddress), and SocketAddress (reusing std.types.Port). The load-bearing control is ip_v6_render_refuses_not_fabricates: the v6 string codec is staged, so render_ip_address on a v6 value must return Absent — a parser/renderer that fabricated a v6 string would red this. Loopback is checked on both arms (127.0.0.1 and ::1) so the coproduct's two arms are both exercised."
 
-fn srv2_hostname() -> HostName {
-  HostName {
-    name: DomainName { labels: ["srv2" as DnsLabel] },
+fn srv2_hostname() -> extdeps.dns.domain_name.HostName {
+  extdeps.dns.domain_name.HostName {
+    name: extdeps.dns.domain_name.DomainName { labels: ["srv2" as extdeps.dns.domain_name.DnsLabel] },
     qualification: PartiallyQualified,
   }
 }
@@ -132,11 +132,11 @@ test fn socket_address_pairs_host_and_port() -> Bool {
 
 data network_reach_witness_note: String = "Green-by-execution proof for extdeps.network.reach — the network-reach model independent of shell transport. The load-bearing §5 control is fabric_tunnel_refuses_realization: FabricTunnel is the intended long-term reach that does NOT work yet, so its realizability MUST be ReachRefused{FabricTunnelNotOperational}; a model that let it fall through as realizable would red this. DirectLan and a non-empty ProxyJump are realizable; an empty-chain ProxyJump refuses by construction (a jump with no hops is a modeling error, not a direct reach). reach_target extracts the ultimate target across all three arms. Together these prove the interim srv3-via-srv2 ProxyJump is a realizable, cited config while the fabric it stands in for stays honestly refused."
 
-fn reach_srv2() -> NetworkHost {
+fn reach_srv2() -> extdeps.network.endpoint.NetworkHost {
   host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 188))
 }
 
-fn reach_srv3() -> NetworkHost {
+fn reach_srv3() -> extdeps.network.endpoint.NetworkHost {
   host_by_ipv4(addr: ipv4_address(octet1: 192, octet2: 168, octet3: 1, octet4: 221))
 }
 

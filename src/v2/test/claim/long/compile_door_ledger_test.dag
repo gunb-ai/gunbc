@@ -1,7 +1,7 @@
 module v2.test.long.compile_door_ledger
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data compile_door_ledger_witness_note: String = "PR-2 ledger receipt: the door_real_module_probe frontier receipts re-pinned THROUGH the AuditOnly ledger machinery — one typed counted row per subject path, shared module-graph census, per-row import closure fed into the door ingest, aggregated into the cause histogram (the burn-down list). Two DISTINCT correctly-attributed frontier causes over one real affected set: std.determinism reds at parse_grammar_choice_overlap_residue (the packaged parse() fork the admission pre-parse uses — determinism.dag's DeterminismAxis coproduct, added by #6551 Determinism Phase A, trips the known grammar-choice-overlap residue that parse() rejects and parse_production tolerates; MigrationOwned, dissolves with the packaged/parse_production reconciliation); std.error_primitives and std.bit both red at resolve_reason_unbound_symbol (generics / shared self-host critical path). resolve_ambiguous_export zeroed by the NamespaceOnlyY default (#6546 subject admit_named_exports skip). FRONTIER MOVE (2026-07-14): determinism previously redded at fact_density_hollow_alias_locus (a lens cause); #6551's coproduct moved its refusal EARLIER to the packaged-parse fork, so it no longer reaches the lens — the fact_density lens frontier is now covered by crisp-newt-633's dedicated fact_density witnesses, not here. This receipt tracks the real current frontier (specific causes, still discriminating), not a broadened pass."
 
@@ -15,7 +15,7 @@ data affected_set_paths: List<String> = [
   "dag/std/bit.dag"
 ]
 
-fn affected_rows() -> List<DoorLedgerRow> {
+fn affected_rows() -> List<v2.workflow.compile_door_ledger.DoorLedgerRow> {
   door_ledger(paths: affected_set_paths, pool_roots: ledger_pool_roots)
 }
 

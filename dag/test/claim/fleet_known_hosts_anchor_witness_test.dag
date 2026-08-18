@@ -4,36 +4,36 @@ module test.claim.fleet_known_hosts_anchor_witness_test
 // The constructor is partial, so a fixture must decide what an unsafe id means. Refusing to a
 // distinguishable sentinel rather than a plausible-looking default keeps a construction failure from
 // silently becoming a passing comparison between two identical fallbacks.
-fn attempt(raw: String) -> FleetSshAttemptIdentity {
+fn attempt(raw: String) -> gunbc.fleet_known_hosts_anchor.FleetSshAttemptIdentity {
   match fleet_ssh_attempt_identity(raw: raw) {
     Present { value: a } => a
-    Absent => "REFUSED-UNSAFE-ATTEMPT-ID" as FleetSshAttemptIdentity
+    Absent => "REFUSED-UNSAFE-ATTEMPT-ID" as gunbc.fleet_known_hosts_anchor.FleetSshAttemptIdentity
   }
 }
 
-fn row(host: String, endpoint: String, key: String) -> KnownHostKeyRow {
-  KnownHostKeyRow {
-    host: host as HostIdentity,
+fn row(host: String, endpoint: String, key: String) -> gunbc.fleet_host_key_enrollment.KnownHostKeyRow {
+  gunbc.fleet_host_key_enrollment.KnownHostKeyRow {
+    host: host as product.placement_supply.HostIdentity,
     endpoint: endpoint,
     key_type: "ssh-ed25519",
     public_key_base64: key,
     sha256_fingerprint: concat("SHA256:", key),
-    provenance: ScannedFirstContact { scanned_from: "synthetic fixture" as NonEmptyStr },
+    provenance: ScannedFirstContact { scanned_from: "synthetic fixture" as std.types.NonEmptyStr },
   }
 }
 
 // The SAME registry authored in two orders. These are one set of trusted keys, so they must be one
 // registry -- and before canonicalization they were two, because the identity was a function of the
 // list's traversal rather than of the enrollments it denotes.
-fn forward_rows() -> List<KnownHostKeyRow> {
+fn forward_rows() -> List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow> {
   [row(host: "a", endpoint: "alpha", key: "AAAA"), row(host: "b", endpoint: "bravo", key: "BBBB"), row(host: "c", endpoint: "charlie", key: "CCCC")]
 }
 
-fn reversed_rows() -> List<KnownHostKeyRow> {
+fn reversed_rows() -> List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow> {
   [row(host: "c", endpoint: "charlie", key: "CCCC"), row(host: "b", endpoint: "bravo", key: "BBBB"), row(host: "a", endpoint: "alpha", key: "AAAA")]
 }
 
-fn identities_agree(left: List<KnownHostKeyRow>, right: List<KnownHostKeyRow>) -> Bool {
+fn identities_agree(left: List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>, right: List<gunbc.fleet_host_key_enrollment.KnownHostKeyRow>) -> Bool {
   match compare_content_hash(
     left: canonical_known_hosts_identity(rows: left),
     right: canonical_known_hosts_identity(rows: right),

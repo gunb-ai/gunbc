@@ -10,7 +10,7 @@ fn probe_bin_path(tmp_dir: String) -> String {
   concat(tmp_dir, "/probe_bin")
 }
 
-fn claim_executor_readiness(root: String) -> WitnessBinReadiness {
+fn claim_executor_readiness(root: String) -> tools.host_prelude.WitnessBinReadiness {
   witness_bin_ensure_built_typed(
     root: root,
     bin: witness_bin(var_name: "CLAIM_EXECUTOR", bin_name: claim_executor_bin_name)
@@ -74,14 +74,14 @@ fn readiness_probe_path(tmp_dir: String) -> String {
   concat(tmp_dir, "/readiness_probe_bin")
 }
 
-fn readiness_refusal_locates(readiness: WitnessBinReadiness, path: String, reason: WitnessBinRefusalReason) -> Bool {
+fn readiness_refusal_locates(readiness: tools.host_prelude.WitnessBinReadiness, path: String, reason: tools.host_prelude.WitnessBinRefusalReason) -> Bool {
   match readiness {
     WitnessBinReady { path: _ } => false
     WitnessBinRefused { bin_name: _, path: p, reason: r } => p == path && r == reason
   }
 }
 
-fn readiness_is_ready_at(readiness: WitnessBinReadiness, path: String) -> Bool {
+fn readiness_is_ready_at(readiness: tools.host_prelude.WitnessBinReadiness, path: String) -> Bool {
   match readiness {
     WitnessBinReady { path: p } => p == path
     WitnessBinRefused { bin_name: _, path: _, reason: _ } => false

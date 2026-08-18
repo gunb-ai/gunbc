@@ -1,40 +1,40 @@
 module v2.test.execution.emit_host_transport_wire
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn wire_probe_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^emit_host_wire_probe } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn wire_inputs() -> Inputs {
+fn wire_inputs() -> v2.compiler.eval.Inputs {
   inputs_root_only(root: wire_probe_node())
 }
 
 fn wire_source() -> Medium<String> {
-  Medium { carried: rust_source_text, fidelity: Lossless }
+  extdeps.communication.medium.Medium { carried: rust_source_text, fidelity: Lossless }
 }
 
-fn wire_fixed_main_row(main_text: String) -> EmitHostRuntimeRow {
-  EmitHostRuntimeRow {
-    transport: HostTransportDescriptor {
+fn wire_fixed_main_row(main_text: String) -> v2.std.host_transport.EmitHostRuntimeRow {
+  v2.std.host_transport.EmitHostRuntimeRow {
+    transport: v2.std.host_transport.HostTransportDescriptor {
       identity: ^emit_host_wire_probe_fixed_main,
       workspace: [
-        WorkspaceFile {
+        v2.std.host_transport.WorkspaceFile {
           path: "Cargo.toml",
           content: FixedText { text: rust_emit_host_cargo_manifest }
         },
-        WorkspaceFile {
+        v2.std.host_transport.WorkspaceFile {
           path: "src/main.rs",
           content: FixedText { text: main_text }
         }
       ],
       build: [],
-      run: ProcessInvocation {
+      run: v2.std.host_transport.ProcessInvocation {
         program: HostToolProgram { executable: "cargo" },
         args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
       },
@@ -44,18 +44,18 @@ fn wire_fixed_main_row(main_text: String) -> EmitHostRuntimeRow {
   }
 }
 
-fn wire_escaping_row() -> EmitHostRuntimeRow {
-  EmitHostRuntimeRow {
-    transport: HostTransportDescriptor {
+fn wire_escaping_row() -> v2.std.host_transport.EmitHostRuntimeRow {
+  v2.std.host_transport.EmitHostRuntimeRow {
+    transport: v2.std.host_transport.HostTransportDescriptor {
       identity: ^emit_host_wire_probe_escaping,
       workspace: [
-        WorkspaceFile {
+        v2.std.host_transport.WorkspaceFile {
           path: "../escape.rs",
           content: FixedText { text: "fn main() {}" }
         }
       ],
       build: [],
-      run: ProcessInvocation {
+      run: v2.std.host_transport.ProcessInvocation {
         program: HostToolProgram { executable: "cargo" },
         args: [LiteralArg { text: "run" }, LiteralArg { text: "--quiet" }]
       },

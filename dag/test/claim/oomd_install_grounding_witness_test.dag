@@ -2,20 +2,20 @@ module test.claim.oomd_install_grounding_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn test_thresholds() -> OomdGroundingThresholds {
-  OomdGroundingThresholds {
+fn test_thresholds() -> gunbc.oomd_install.OomdGroundingThresholds {
+  gunbc.oomd_install.OomdGroundingThresholds {
     per_session_cap: byte_size(10737418240),
     parent_slice_cap: SessionAggregateMeasured { bytes: byte_size(21474836480) },
     pressure_limit: percent(60),
   }
 }
 
-fn good_membership() -> SliceMembershipSignal {
-  SliceMembershipSignal { sessions_in_slice: 5, sessions_legacy_flat: 0 }
+fn good_membership() -> gunbc.oomd_install.SliceMembershipSignal {
+  gunbc.oomd_install.SliceMembershipSignal { sessions_in_slice: 5, sessions_legacy_flat: 0 }
 }
 
-fn good_read() -> OomdEffectiveRead {
-  OomdEffectiveRead {
+fn good_read() -> gunbc.oomd_install.OomdEffectiveRead {
+  gunbc.oomd_install.OomdEffectiveRead {
     slice_present: true,
     unit_active: Active,
     unit_file_state: UnitEnabled,
@@ -28,8 +28,8 @@ fn good_read() -> OomdEffectiveRead {
   }
 }
 
-fn slice_absent_read() -> OomdEffectiveRead {
-  OomdEffectiveRead {
+fn slice_absent_read() -> gunbc.oomd_install.OomdEffectiveRead {
+  gunbc.oomd_install.OomdEffectiveRead {
     slice_present: false,
     unit_active: Active,
     unit_file_state: UnitEnabled,
@@ -42,8 +42,8 @@ fn slice_absent_read() -> OomdEffectiveRead {
   }
 }
 
-fn inactive_read() -> OomdEffectiveRead {
-  OomdEffectiveRead {
+fn inactive_read() -> gunbc.oomd_install.OomdEffectiveRead {
+  gunbc.oomd_install.OomdEffectiveRead {
     slice_present: true,
     unit_active: Inactive,
     unit_file_state: UnitEnabled,
@@ -56,8 +56,8 @@ fn inactive_read() -> OomdEffectiveRead {
   }
 }
 
-fn disabled_read() -> OomdEffectiveRead {
-  OomdEffectiveRead {
+fn disabled_read() -> gunbc.oomd_install.OomdEffectiveRead {
+  gunbc.oomd_install.OomdEffectiveRead {
     slice_present: true,
     unit_active: Active,
     unit_file_state: UnitDisabled,
@@ -70,8 +70,8 @@ fn disabled_read() -> OomdEffectiveRead {
   }
 }
 
-fn auto_pressure_read() -> OomdEffectiveRead {
-  OomdEffectiveRead {
+fn auto_pressure_read() -> gunbc.oomd_install.OomdEffectiveRead {
+  gunbc.oomd_install.OomdEffectiveRead {
     slice_present: true,
     unit_active: Active,
     unit_file_state: UnitEnabled,
@@ -84,8 +84,8 @@ fn auto_pressure_read() -> OomdEffectiveRead {
   }
 }
 
-fn wrong_per_session_cap_read() -> OomdEffectiveRead {
-  OomdEffectiveRead {
+fn wrong_per_session_cap_read() -> gunbc.oomd_install.OomdEffectiveRead {
+  gunbc.oomd_install.OomdEffectiveRead {
     slice_present: true,
     unit_active: Active,
     unit_file_state: UnitEnabled,
@@ -98,8 +98,8 @@ fn wrong_per_session_cap_read() -> OomdEffectiveRead {
   }
 }
 
-fn unbounded_per_session_cap_read() -> OomdEffectiveRead {
-  OomdEffectiveRead {
+fn unbounded_per_session_cap_read() -> gunbc.oomd_install.OomdEffectiveRead {
+  gunbc.oomd_install.OomdEffectiveRead {
     slice_present: true,
     unit_active: Active,
     unit_file_state: UnitEnabled,
@@ -112,8 +112,8 @@ fn unbounded_per_session_cap_read() -> OomdEffectiveRead {
   }
 }
 
-fn wrong_parent_slice_cap_read() -> OomdEffectiveRead {
-  OomdEffectiveRead {
+fn wrong_parent_slice_cap_read() -> gunbc.oomd_install.OomdEffectiveRead {
+  gunbc.oomd_install.OomdEffectiveRead {
     slice_present: true,
     unit_active: Active,
     unit_file_state: UnitEnabled,
@@ -126,8 +126,8 @@ fn wrong_parent_slice_cap_read() -> OomdEffectiveRead {
   }
 }
 
-fn wrong_pressure_limit_read() -> OomdEffectiveRead {
-  OomdEffectiveRead {
+fn wrong_pressure_limit_read() -> gunbc.oomd_install.OomdEffectiveRead {
+  gunbc.oomd_install.OomdEffectiveRead {
     slice_present: true,
     unit_active: Active,
     unit_file_state: UnitEnabled,
@@ -140,8 +140,8 @@ fn wrong_pressure_limit_read() -> OomdEffectiveRead {
   }
 }
 
-fn oomctl_unmanaged_read() -> OomdEffectiveRead {
-  OomdEffectiveRead {
+fn oomctl_unmanaged_read() -> gunbc.oomd_install.OomdEffectiveRead {
+  gunbc.oomd_install.OomdEffectiveRead {
     slice_present: true,
     unit_active: Active,
     unit_file_state: UnitEnabled,
@@ -154,35 +154,35 @@ fn oomctl_unmanaged_read() -> OomdEffectiveRead {
   }
 }
 
-fn unmeasured_aggregate_thresholds() -> OomdGroundingThresholds {
-  OomdGroundingThresholds {
+fn unmeasured_aggregate_thresholds() -> gunbc.oomd_install.OomdGroundingThresholds {
+  gunbc.oomd_install.OomdGroundingThresholds {
     per_session_cap: byte_size(10737418240),
     parent_slice_cap: SessionAggregateUnmeasured,
     pressure_limit: percent(60),
   }
 }
 
-fn all_legacy_membership() -> SliceMembershipSignal {
-  SliceMembershipSignal { sessions_in_slice: 0, sessions_legacy_flat: 5 }
+fn all_legacy_membership() -> gunbc.oomd_install.SliceMembershipSignal {
+  gunbc.oomd_install.SliceMembershipSignal { sessions_in_slice: 0, sessions_legacy_flat: 5 }
 }
 
-fn empty_host_membership() -> SliceMembershipSignal {
-  SliceMembershipSignal { sessions_in_slice: 0, sessions_legacy_flat: 0 }
+fn empty_host_membership() -> gunbc.oomd_install.SliceMembershipSignal {
+  gunbc.oomd_install.SliceMembershipSignal { sessions_in_slice: 0, sessions_legacy_flat: 0 }
 }
 
-fn partial_migration_membership() -> SliceMembershipSignal {
-  SliceMembershipSignal { sessions_in_slice: 3, sessions_legacy_flat: 2 }
+fn partial_migration_membership() -> gunbc.oomd_install.SliceMembershipSignal {
+  gunbc.oomd_install.SliceMembershipSignal { sessions_in_slice: 3, sessions_legacy_flat: 2 }
 }
 
-fn membership_check_passes(m: SliceMembershipSignal) -> Bool {
+fn membership_check_passes(m: gunbc.oomd_install.SliceMembershipSignal) -> Bool {
   match membership_grounding_check(m: m) {
     GroundingPass => true
     GroundingFail { reason: _ } => false
   }
 }
 
-fn all_legacy_read() -> OomdEffectiveRead {
-  OomdEffectiveRead {
+fn all_legacy_read() -> gunbc.oomd_install.OomdEffectiveRead {
+  gunbc.oomd_install.OomdEffectiveRead {
     slice_present: true,
     unit_active: Active,
     unit_file_state: UnitEnabled,
@@ -195,8 +195,8 @@ fn all_legacy_read() -> OomdEffectiveRead {
   }
 }
 
-fn empty_host_read() -> OomdEffectiveRead {
-  OomdEffectiveRead {
+fn empty_host_read() -> gunbc.oomd_install.OomdEffectiveRead {
+  gunbc.oomd_install.OomdEffectiveRead {
     slice_present: true,
     unit_active: Active,
     unit_file_state: UnitEnabled,
@@ -209,8 +209,8 @@ fn empty_host_read() -> OomdEffectiveRead {
   }
 }
 
-fn partial_migration_read() -> OomdEffectiveRead {
-  OomdEffectiveRead {
+fn partial_migration_read() -> gunbc.oomd_install.OomdEffectiveRead {
+  gunbc.oomd_install.OomdEffectiveRead {
     slice_present: true,
     unit_active: Active,
     unit_file_state: UnitEnabled,
@@ -223,7 +223,7 @@ fn partial_migration_read() -> OomdEffectiveRead {
   }
 }
 
-fn grounding_is_enforced(g: std.realization_reconcile.Grounding<OomdEnforcementEvidence>) -> Bool {
+fn grounding_is_enforced(g: std.realization_reconcile.Grounding<gunbc.ci_floor_measurement.OomdEnforcementEvidence>) -> Bool {
   match g {
     Grounds { evidence: e } =>
       match e {
@@ -234,7 +234,7 @@ fn grounding_is_enforced(g: std.realization_reconcile.Grounding<OomdEnforcementE
   }
 }
 
-fn grounds(read: OomdEffectiveRead) -> Bool {
+fn grounds(read: gunbc.oomd_install.OomdEffectiveRead) -> Bool {
   grounding_is_enforced(g: ground_oomd_from_read(read: read, req: test_thresholds()))
 }
 
@@ -256,11 +256,11 @@ test fn witness_unmeasured_aggregate_fails_closed() -> Bool {
   !grounding_is_enforced(g: ground_oomd_from_read(read: good_read(), req: unmeasured_aggregate_thresholds()))
 }
 
-fn managed_observed_read() -> ShowEffectiveRead<OomdEffectiveRead> {
+fn managed_observed_read() -> ShowEffectiveRead<gunbc.oomd_install.OomdEffectiveRead> {
   ReadObserved { value: good_read() }
 }
 
-fn is_enforced(e: OomdEnforcementEvidence) -> Bool {
+fn is_enforced(e: gunbc.ci_floor_measurement.OomdEnforcementEvidence) -> Bool {
   match e {
     OomdEnforced => true
     OomdUnverified => false

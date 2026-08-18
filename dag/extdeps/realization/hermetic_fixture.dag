@@ -2,17 +2,17 @@ module extdeps.realization.hermetic_fixture
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
   }
 }
 
-data hermetic_fixture_file_store_id: CacheInterfaceId = "hermetic_fixture_file_store"
-data hermetic_fixture_in_process_id: CacheInterfaceId = "hermetic_fixture_in_process"
+data hermetic_fixture_file_store_id: std.cache_identity.CacheInterfaceId = "hermetic_fixture_file_store"
+data hermetic_fixture_in_process_id: std.cache_identity.CacheInterfaceId = "hermetic_fixture_in_process"
 
-data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
+data hermetic_fixture_file_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: hermetic_fixture_file_store_id
   backing_surface: "gunbc-recorded-fixture-on-disk"
   transport_encoding: CatalogCasContentEncoding
@@ -57,7 +57,7 @@ data hermetic_fixture_file_facts: CacheInterfaceCatalogFacts = {
   ]
 }
 
-data hermetic_fixture_in_process_facts: CacheInterfaceCatalogFacts = {
+data hermetic_fixture_in_process_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: hermetic_fixture_in_process_id
   backing_surface: "gunbc-effect-io-fixture-in-memory"
   transport_encoding: CatalogCasContentEncoding

@@ -3,15 +3,15 @@ module test.claim.deploy_revision_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data sha_older: CommitSha = "1111111111111111111111111111111111111111"
-data sha_newer: CommitSha = "2222222222222222222222222222222222222222"
+data sha_older: std.types.CommitSha = "1111111111111111111111111111111111111111"
+data sha_newer: std.types.CommitSha = "2222222222222222222222222222222222222222"
 
-data all_relations: List<DeployRevisionRelation> = [
+data all_relations: List<gunbc.live_deploy.revision.DeployRevisionRelation> = [
   SameRevision,
   DeployedIsAncestor,
   CandidateIsAncestor,
   UnrelatedHistories,
-  RelationUnverifiable { cause: "probe failed" as NonEmptyStr },
+  RelationUnverifiable { cause: "probe failed" as std.types.NonEmptyStr },
 ]
 
 test fn deployed_ancestor_of_candidate_advances() -> Bool {
@@ -50,7 +50,7 @@ test fn unrelated_histories_refuse() -> Bool {
 }
 
 test fn unverifiable_relation_refuses_and_keeps_its_cause() -> Bool {
-  let why = "no persisted revision on host" as NonEmptyStr
+  let why = "no persisted revision on host" as std.types.NonEmptyStr
   match classify_deploy_revision(relation: RelationUnverifiable { cause: why }) {
     RevisionRefused { cause: c } => c == why
     _ => false

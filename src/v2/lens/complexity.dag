@@ -27,15 +27,15 @@ type SizeIndexedAsymptoticClass
   = SizedLogClass
   | SizedLinearClass
   | SizedLinearithmicClass
-  | SizedPolynomialClass { degree: PolynomialDegree }
-  | SizedPolyLogClass { exponent: PolyLogExponent }
+  | SizedPolynomialClass { degree: v2.lens.cost.PolynomialDegree }
+  | SizedPolyLogClass { exponent: v2.lens.cost.PolyLogExponent }
   | SizedExponentialClass
   | SizedFactorialClass
 
 type ComplexityBound
   = ConstantComplexity
   | SizedComplexity { class: SizeIndexedAsymptoticClass, variables: ComplexityVariables }
-  | UnknownComplexity { diagnostic: Diagnostic }
+  | UnknownComplexity { diagnostic: v2.std.diagnostic.Diagnostic }
 
 fn unknown_complexity() -> ComplexityBound {
   UnknownComplexity { diagnostic: complexity_projection_diagnostic() }

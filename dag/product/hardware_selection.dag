@@ -5,14 +5,14 @@ module product.hardware_selection
 
 type HardwareAxes {
   throughput: Int
-  capacity: ByteSize
-  bandwidth: Bandwidth
-  power: Watt
-  cost: MoneyAmountMicro
+  capacity: std.measure.ByteSize
+  bandwidth: std.measure.Bandwidth
+  power: std.measure.Watt
+  cost: std.measure.MoneyAmountMicro
 }
 
 type Platform {
-  label: NonEmptyStr
+  label: std.types.NonEmptyStr
   memory_channels: Int
   slots_per_channel: Int
   max_data_rate_mts: Int
@@ -43,11 +43,11 @@ fn min_int(a: Int, b: Int) -> Int {
 }
 
 type MemoryConfig {
-  module: DramModuleCatalogRow
-  jedec: JedecDdrGenerationCatalogRow
+  module: extdeps.memory.types.DramModuleCatalogRow
+  jedec: extdeps.memory.types.JedecDdrGenerationCatalogRow
   dimms_per_channel: Int
-  power_per_chip: Milliwatt
-  price_per_stick: MoneyAmountMicro
+  power_per_chip: std.measure.Milliwatt
+  price_per_stick: std.measure.MoneyAmountMicro
 }
 
 fn memory_stick_count(platform: Platform, cfg: MemoryConfig) -> Int {
@@ -86,28 +86,28 @@ fn memory_cost(platform: Platform, cfg: MemoryConfig) -> MoneyAmountMicro {
 }
 
 type CpuCandidate {
-  catalog: CpuModelCatalogRow
-  typical_draw: Watt
-  price: MoneyAmountMicro
+  catalog: extdeps.cpu.types.CpuModelCatalogRow
+  typical_draw: std.measure.Watt
+  price: std.measure.MoneyAmountMicro
   aggregate_throughput: Int
 }
 
 type Motherboard {
-  label: NonEmptyStr
-  socket: CpuSocket
+  label: std.types.NonEmptyStr
+  socket: extdeps.cpu.types.CpuSocket
   memory_channels: Int
   max_dimms_per_channel: Int
-  idle_draw: Watt
-  price: MoneyAmountMicro
+  idle_draw: std.measure.Watt
+  price: std.measure.MoneyAmountMicro
 }
 
 type EfficiencyRating = Plus80 | Bronze | Silver | Gold | Platinum | Titanium
 
 type PsuModel {
-  label: NonEmptyStr
-  max_output: Watt
+  label: std.types.NonEmptyStr
+  max_output: std.measure.Watt
   efficiency: EfficiencyRating
-  price: MoneyAmountMicro
+  price: std.measure.MoneyAmountMicro
 }
 
 fn efficiency_percent(e: EfficiencyRating) -> Int {

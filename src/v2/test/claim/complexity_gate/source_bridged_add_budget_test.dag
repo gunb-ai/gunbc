@@ -1,7 +1,7 @@
 module v2.test.complexity_gate.source_bridged_add_budget
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn table_fixture_add_cost_lens_holds(body: Node) -> Bool {
   match cost_lens(n: body) {
@@ -12,12 +12,12 @@ fn table_fixture_add_cost_lens_holds(body: Node) -> Bool {
 
 fn table_fixture_add_tightened_budget_fails_dominance(
   body: Node,
-  row: LensSubjectComplexityBudgetRow
+  row: v2.test.complexity_gate.subject_complexity_budget_roster.LensSubjectComplexityBudgetRow
 ) -> Bool {
   let computed = complexity_lens(n: body)
   !complexity_bound_dominates(
     a: ConstantComplexity,
-    b: linear_complexity(size_var: SizeVariable { source: body })
+    b: linear_complexity(size_var: v2.lens.cost.SizeVariable { source: body })
   )
   && complexity_bound_dominates(
     a: complexity_declared_budget_for_row(row: row, body: body),

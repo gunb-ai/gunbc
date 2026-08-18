@@ -2,8 +2,8 @@ module test.claim.host_swap_backing
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn stats_fixture(total_bytes: Int) -> SwapStats {
-  SwapStats {
+fn stats_fixture(total_bytes: Int) -> extdeps.tools.free.SwapStats {
+  extdeps.tools.free.SwapStats {
     total: byte_size(total_bytes),
     used: byte_size(0),
     free: byte_size(total_bytes),

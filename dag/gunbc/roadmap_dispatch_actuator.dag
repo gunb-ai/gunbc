@@ -40,10 +40,10 @@ fn dispatch_cli_to_provider_kind(provider: DispatchCliProvider) -> ProviderKind 
 type DispatchActuatorSelection
   = DispatchActuatorSelectionOk {
       provider: DispatchCliProvider
-      effort: ReasoningEffort
-      process_fingerprint: NonEmptyStr
+      effort: extdeps.llm.cli.ReasoningEffort
+      process_fingerprint: std.types.NonEmptyStr
     }
-  | DispatchActuatorSelectionRefused { reason: NonEmptyStr }
+  | DispatchActuatorSelectionRefused { reason: std.types.NonEmptyStr }
 
 data dispatch_actuator_selection_note: String = "The actuator's sole projection of gunbc.dispatch_selection for legacy call sites. Refusal propagates typed — no Codex substitute, no ReasoningMedium default, no actuator-local process fingerprint (DESIGN §5; review 47676). Process fingerprints are consumed from the selection kernel via resolved_process_fingerprint, never re-declared here (DESIGN §3)."
 
@@ -159,27 +159,27 @@ data dispatch_brief_fields_invariant_note: String = "DispatchBriefFields contain
 data dispatch_brief_slot_note: String = "The template's workflow slots are REAL fields when the node is a TicketLine (remodel W2: the template was always the spec of the schema — its slot names became TicketFields), and honest stubs only on the legacy prose frontier: a legacy row's brief still repeats the title where a fact should be, which is exactly the burn-down pressure W2-bulk answers. A ticket node's brief carries its own displaced cost, current state, first slice, RED, scope, and hand-back conditions; paths come from the node's carriers."
 
 type TmuxSessionScope {
-  session_name: NonEmptyStr
-  expected_owner_label: NonEmptyStr
-  expected_process_fingerprint: NonEmptyStr
+  session_name: std.types.NonEmptyStr
+  expected_owner_label: std.types.NonEmptyStr
+  expected_process_fingerprint: std.types.NonEmptyStr
 }
 
 type TmuxSessionObservation
   = SessionAbsent
   | SessionNameObserved {
-      session_name: NonEmptyStr
+      session_name: std.types.NonEmptyStr
       windows: Int
     }
   | SessionObserved {
-      session_name: NonEmptyStr
+      session_name: std.types.NonEmptyStr
       windows: Int
-      process_fingerprint: NonEmptyStr
+      process_fingerprint: std.types.NonEmptyStr
     }
   | SessionObservedStaleExpected {
-      session_name: NonEmptyStr
+      session_name: std.types.NonEmptyStr
       windows: Int
-      process_fingerprint: NonEmptyStr
-      stale_reason: NonEmptyStr
+      process_fingerprint: std.types.NonEmptyStr
+      stale_reason: std.types.NonEmptyStr
     }
   | SessionInaccessible
 
@@ -194,16 +194,16 @@ type DispatchRequestGate
       worktree_path: String
       branch_name: String
       brief: String
-      reasoning_effort: ReasoningEffort
+      reasoning_effort: extdeps.llm.cli.ReasoningEffort
     }
-  | DispatchRefused { reason: NonEmptyStr }
+  | DispatchRefused { reason: std.types.NonEmptyStr }
 
 type DispatchLiveSession {
   session_name: String
   node_id: String
   windows: Int
-  lease_verdict: ObservationVerdict
-  worker: WorkerObservation
+  lease_verdict: std.upsert_decision.ObservationVerdict
+  worker: gunbc.worker_lifecycle.WorkerObservation
 }
 
 data dispatch_provider_instance_note: String = "The configured provider instance is known from the actuator plan, not guessed from one process command. dispatch_provider_instance_for is total over the same closed DispatchCliProvider choice that owns argv and expected process fingerprint: Claude consumes claude_cli_program; Codex consumes codex_cli_program. The tmux observation does not read hostname, version, state/auth directory, credential storage, or service identity, so each stays explicitly Unobserved; filling any from deployment prose would fabricate live evidence. A later provider-instance probe replaces those arms independently."
@@ -998,8 +998,8 @@ fn codex_spawn_argv_for_instance(
 
 type DispatchProviderInnerArgv
   = DispatchProviderInnerArgvReady { argv: List<String> }
-  | CodexProviderExecutableAbsent { reason: NonEmptyStr }
-  | CursorProviderSpawnUnwired { reason: NonEmptyStr }
+  | CodexProviderExecutableAbsent { reason: std.types.NonEmptyStr }
+  | CursorProviderSpawnUnwired { reason: std.types.NonEmptyStr }
 
 data cursor_provider_spawn_unwired_reason: NonEmptyStr = "cursor dispatch inner argv is not wired on this actuator path" as NonEmptyStr
 
@@ -1328,7 +1328,7 @@ data dispatch_spawn_plan_note: String = "review 44113. Building the spawn plan c
 
 type DispatchSpawnPlan
   = DispatchSpawnReady { commands: DispatchSpawnCommands }
-  | DispatchSpawnRefused { step: NonEmptyStr, detail: String }
+  | DispatchSpawnRefused { step: std.types.NonEmptyStr, detail: String }
 
 type DispatchSpawnCommands {
   worktree_add: HostExecArgv
@@ -1849,8 +1849,8 @@ fn dispatch_live_sessions_from_entries(
 data dispatch_attempt_refs_note: String = "U3 (result surfacing): the attempt branches ARE the results ledger — every spawn mints dispatch/<node>-a<key> (U1), so listing refs/heads/dispatch/ observes every attempt ever made, including pre-attempt-grain LEGACY branches (attempt_key empty — the operator's accidental ts-authority-converge spawn is one), which are real attempts and render as such, never filtered as noise. Parse discriminates by the LAST -a segment being exactly 16 chars (the content-hash key width); a node id that itself ends in -a<16 chars> would misparse — accepted and named, not papered over: node ids are roadmap-authored and none has that shape. Empty-node branches are rejected before constructing DispatchAttemptRef, whose node and branch are non-empty by construction; malformed debris cannot invalidate the whole attempts projection. v0 renders branch NAMES (copyable, true), never tree links that would be dead until a push — a dead link is a fabricated result; the PR half lands when push/PR state is observed, not guessed."
 
 type DispatchAttemptRef {
-  node_id: NonEmptyStr
-  branch: NonEmptyStr
+  node_id: std.types.NonEmptyStr
+  branch: std.types.NonEmptyStr
   attempt_key: String
 }
 

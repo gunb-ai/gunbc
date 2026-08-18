@@ -3,12 +3,12 @@ module gunbc.host_identity_adopt
 
 type HostIdentityAdoptReceipt {
   host: product.placement_supply.HostIdentity
-  key: HostIdentityKnobKey
+  key: gunbc.host_identity_knob.HostIdentityKnobKey
   observed_short_hostname: String
-  probed_at: NonEmptyStr
+  probed_at: std.types.NonEmptyStr
   transport_label: String
-  model_hash: ContentHash
-  deployed_intent: DeployedIntentV0
+  model_hash: std.content_hash.ContentHash
+  deployed_intent: gunbc.deployed_intent_v0.DeployedIntentV0
   read_converged: Bool
 }
 

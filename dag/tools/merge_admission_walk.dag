@@ -9,11 +9,11 @@ data merge_admission_pr_number_deferred_note: String = "MergeAdmissionReceiptV2.
 
 data merge_admission_current_main_cold_baseline_note: String = "CURRENT-MAIN BEFORE RECEIPT (not the stale pre-unification estimate): GitHub Actions run 30671526012, job 91291716818, head ddbc5fd6aa, 2026-07-31. The cold stamp process occupied 94.26s from the floor group's final receipt at 23:28:39.602Z through ExitSuccess at 23:30:13.861Z. The separate gate step occupied 102.87s from its step start at 23:30:16.977Z through ExitSuccess at 23:31:59.849Z. Combined merge-admission cold-process wall was therefore 197.13s per PR on that current-main receipt. The after number must come from this PR's own on-success receipt; no projected saving is asserted here."
 
-data merge_admission_fetch_stall_deadline_seconds: Seconds = 240
+data merge_admission_fetch_stall_deadline_seconds: std.types.Seconds = 240
 
 data merge_admission_fetch_deadline_note: String = "Stage 2 reserves five minutes for the whole postcondition population and gives FetchNoTags a stricter typed 240-second no-progress deadline. The git transport binds that value to http.lowSpeedTime with a one-byte-per-second floor, so a stalled remote read returns through FetchNoTags's located failure result while time remains to write the stage receipt; the 60-minute workflow wrapper is not the fetch watchdog."
 
-fn read_tested_subject(root: String, attempt_id: WalkAttemptId) -> TestedSubject? {
+fn read_tested_subject(root: String, attempt_id: gunbc.merge_admission_subject.WalkAttemptId) -> gunbc.merge_admission_subject.TestedSubject? {
   let read = Filesystem.Read(
     path: merge_admission_tested_subject_path(root: root, attempt_id: attempt_id)
   )
@@ -24,7 +24,7 @@ fn read_tested_subject(root: String, attempt_id: WalkAttemptId) -> TestedSubject
   }
 }
 
-fn read_floor_receipt(root: String, attempt_id: WalkAttemptId) -> MergeAdmissionReceiptV2? {
+fn read_floor_receipt(root: String, attempt_id: gunbc.merge_admission_subject.WalkAttemptId) -> gunbc.merge_admission.MergeAdmissionReceiptV2? {
   let read = Filesystem.Read(
     path: merge_admission_floor_receipt_path(root: root, attempt_id: attempt_id)
   )
@@ -44,7 +44,7 @@ func stamp_tested_floor() -> Bool {
         Absent => false
         Present { value: subject } =>
           let _pr_number_note = merge_admission_pr_number_deferred_note
-          let receipt = MergeAdmissionReceiptV2 {
+          let receipt = gunbc.merge_admission.MergeAdmissionReceiptV2 {
             attempt_id: attempt_id,
             pr_number: none,
             tested_head_sha: subject.head_sha,
@@ -96,9 +96,9 @@ func refresh_wire_path() -> std.types.FilePath {
 
 data merge_admission_refresh_ratchet_off_widening_note: String = "DECLARED SCAFFOLD (review 47596 finding 3): the final else arm of merge_target_refresh returns MergeTargetRefreshed WITHOUT consuming the classifier verdict whenever merge_freshness_verdict_is_consumed_to_block() is false — the shadow-phase ratchet the operator's fleet-gating policy requires before a mechanism may red unrelated PRs. While the ratchet is off, the verdict is still computed and the RefreshVerdictDenied arm stays type-live, but stage 2 cannot deny on staleness; this is a visible, bounded widening, not a silent fail-open. Dissolution trigger: the merge_freshness_verdict_is_consumed_to_block flip in gunbc.ci_failure_class — the same commit that turns the flag on deletes this else arm (verdict match becomes unconditional) and this row with it."
 
-data merge_admission_refresh_ratchet_off_widening_disposition: Disposition = Scaffold {
+data merge_admission_refresh_ratchet_off_widening_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.ci_failure_class",
     decl_name: "merge_freshness_verdict_is_consumed_to_block",
     field: WholeDeclaration
@@ -106,7 +106,7 @@ data merge_admission_refresh_ratchet_off_widening_disposition: Disposition = Sca
 }
 
 func merge_target_refresh() -> MergeTargetRefresh {
-  let parts = git_remote_ref_parts(ref: merge_admission_merge_base_ref as GitRef)
+  let parts = git_remote_ref_parts(ref: merge_admission_merge_base_ref as std.types.GitRef)
   let fetched = git.Core.FetchNoTags(
     remote: parts.remote,
     ref: parts.ref_name,
@@ -125,7 +125,7 @@ func merge_target_refresh() -> MergeTargetRefresh {
             match read_floor_receipt(root: root, attempt_id: attempt_id) {
               Absent => MergeTargetRefreshRefused { cause: RefreshFloorReceiptWireMissing }
               Present { value: receipt } =>
-                match observe_merge_target_tree_hash(ref: merge_admission_merge_base_ref as GitRef) {
+                match observe_merge_target_tree_hash(ref: merge_admission_merge_base_ref as std.types.GitRef) {
                   MergeTargetTreeHashRefused { ref: _, cause: cause } =>
                     MergeTargetRefreshRefused { cause: RefreshTargetTreeObservationRefused { cause: cause } }
                   MergeTargetTreeHashOk { hash: current_tree } =>

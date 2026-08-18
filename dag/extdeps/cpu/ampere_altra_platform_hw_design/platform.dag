@@ -229,8 +229,8 @@ fn altra_has_native_hot_plug_controller() -> Bool {
 // it is exactly the fabricated-plausible-output failure), and an absent fact is
 // one no ruling and no access can produce from this document.
 type MechanicalFactAvailability
-  = StatedInRunningText { section: NonEmptyStr }
-  | StatedOnlyInsideFigure { figure: NonEmptyStr }
+  = StatedInRunningText { section: std.types.NonEmptyStr }
+  | StatedOnlyInsideFigure { figure: std.types.NonEmptyStr }
   | AbsentFromDocument
 
 // THIS DOCUMENT'S OWN PUBLICATION STATUS, carried here beside its other facts
@@ -387,11 +387,11 @@ fn bibliography_lists_a_package_mechanical_document() -> Bool {
 // obligations with different owners, and a roster of bare titles cannot tell them apart.
 type ReferencedDocumentReach
   = ReferencedDocumentPublic
-  | ReferencedDocumentAccessGated { gate: NonEmptyStr }
+  | ReferencedDocumentAccessGated { gate: std.types.NonEmptyStr }
 
 type PlatformReferencedDocument {
-  title: NonEmptyStr
-  cited_by_section: NonEmptyStr
+  title: std.types.NonEmptyStr
+  cited_by_section: std.types.NonEmptyStr
   reach: ReferencedDocumentReach
 }
 

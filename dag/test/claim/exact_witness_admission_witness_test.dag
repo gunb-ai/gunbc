@@ -17,7 +17,7 @@ data fixture_entry: String = "dag/test/claim/synthetic_admission_witness_test.da
 data fixture_expected_red_function: String = "fixture_expected_red_holds"
 data fixture_green_sibling_function: String = "fixture_ordinary_green_holds"
 
-fn fixture_exact_admission_rows() -> List<ExplicitWitnessAdmission> {
+fn fixture_exact_admission_rows() -> List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission> {
   [
     known_red_probe(
       entry: fixture_entry,
@@ -30,7 +30,7 @@ fn fixture_exact_admission_rows() -> List<ExplicitWitnessAdmission> {
   ]
 }
 
-fn fixture_file_grain_admission_rows() -> List<ExplicitWitnessAdmission> {
+fn fixture_file_grain_admission_rows() -> List<gunbc.explicit_witness_admission.ExplicitWitnessAdmission> {
   [
     known_red_probe(
       entry: fixture_entry,
@@ -82,7 +82,7 @@ test fn ci_layer_roots_probe_roster_is_the_union_of_corpus_and_v1_envelope() -> 
   length(xs: known_red_probe_roster()) == (length(xs: known_red_probe_corpus_roster()) + length(xs: known_red_probe_v1_envelope_roster()))
 }
 
-fn synthetic_admission(f: String) -> ExplicitWitnessAdmission {
+fn synthetic_admission(f: String) -> gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
   known_red_probe(
     entry: "dag/test/claim/synthetic_admission_witness_test.dag",
     f: f,
@@ -106,8 +106,8 @@ test fn red_control_duplicate_admission_rows_red() -> Bool {
 test fn red_control_admission_with_non_executing_cadence_reds() -> Bool {
   explicit_witness_admissions_well_formed_in(
     rows: [
-      ExplicitWitnessAdmission {
-        witness: ScheduleWitnessEntry {
+      gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
+        witness: std.realization_schedule.ScheduleWitnessEntry {
           entry: "dag/test/claim/synthetic_admission_witness_test.dag",
           function: "a_holds",
           kind: CorpusWitnessKind
@@ -142,9 +142,9 @@ data live_row_claims_are_population_independent_note: String = "every_live_admis
 
 data axis_separation_witness_note: String = "THE AXIS-SEPARATION CLAIM, and the synthetic pair is the whole content of it. Polarity used to be read off the cadence, so the two facts could not disagree and any assertion about them was a tautology. These rows make them disagree on purpose: one row is expected-RED on a NON-quarantine cadence, the other is expected-HOLDS on the quarantine cadence. If anything still derives polarity from the cadence, exactly one of the two assertions below flips. The live-population claims that follow are universals and hold at any roster size — the discrimination lives here, in rows nobody can green by fixing a lane."
 
-fn synthetic_long_lane_cadence_but_expected_red() -> ExplicitWitnessAdmission {
-  ExplicitWitnessAdmission {
-    witness: ScheduleWitnessEntry {
+fn synthetic_long_lane_cadence_but_expected_red() -> gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
+  gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
+    witness: std.realization_schedule.ScheduleWitnessEntry {
       entry: "dag/test/claim/synthetic_admission_witness_test.dag",
       function: "a_holds",
       kind: CorpusWitnessKind
@@ -157,9 +157,9 @@ fn synthetic_long_lane_cadence_but_expected_red() -> ExplicitWitnessAdmission {
   }
 }
 
-fn synthetic_quarantine_cadence_but_expected_holds() -> ExplicitWitnessAdmission {
-  ExplicitWitnessAdmission {
-    witness: ScheduleWitnessEntry {
+fn synthetic_quarantine_cadence_but_expected_holds() -> gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
+  gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
+    witness: std.realization_schedule.ScheduleWitnessEntry {
       entry: "dag/test/claim/synthetic_admission_witness_test.dag",
       function: "b_holds",
       kind: CorpusWitnessKind
@@ -190,7 +190,7 @@ test fn eval_budget_is_independent_of_cadence_and_of_expected_verdict() -> Bool 
 
 data long_budget_union_note: String = "The scheduler ceiling reads the UNION, so a row that declares its own long budget is covered without appearing on the long-lane BATCH roster. The second clause is what makes that a real separation rather than a renaming: a declared-long row is genuinely absent from the batch roster, so it occupies one schedule position, not two. The union is an IDENTITY SET, and the counting clause below is stated as one-occurrence-per-declared-row rather than as a sum of the two input lengths — a sum is only correct while the inputs happen to be disjoint, which is a property of today's population and not of the mechanism, so it would go quietly wrong exactly when a row starts reaching the ceiling through both inputs."
 
-fn long_budget_union_occurrences(w: ScheduleWitnessEntry) -> Int {
+fn long_budget_union_occurrences(w: std.realization_schedule.ScheduleWitnessEntry) -> Int {
   fold(witness_long_eval_budget_entries(), init: 0, f: fn(n, x) {
     if schedule_witness_entry_eq(a: x, b: w) { n + 1 } else { n }
   })
@@ -210,8 +210,8 @@ test fn declared_long_budget_reaches_the_ceiling_roster_without_the_batch_roster
 
 data long_budget_identity_set_control_note: String = "THE DISCRIMINATING CONTROL FOR THE DEDUP, and it drives the union fold with PLANTED inputs rather than observing the live one. A control that reads only the live union cannot see the dedup at all: today's two inputs are disjoint, so deleting the membership check changes nothing observable and the control passes either way — measured, not assumed (removing the check left both live clauses green). The plant supplies the overlap the population does not currently have, so the first clause fails the moment the fold stops joining on identity. Third clause is the negative pole: a row on neither input is absent, so membership is not answering true for everything. Fourth: a genuinely distinct row is kept, so the dedup is not collapsing on something coarser than identity."
 
-fn synthetic_union_row(f: String) -> ScheduleWitnessEntry {
-  ScheduleWitnessEntry {
+fn synthetic_union_row(f: String) -> std.realization_schedule.ScheduleWitnessEntry {
+  std.realization_schedule.ScheduleWitnessEntry {
     entry: "dag/test/claim/synthetic_admission_witness_test.dag",
     function: f,
     kind: CorpusWitnessKind
@@ -219,9 +219,9 @@ fn synthetic_union_row(f: String) -> ScheduleWitnessEntry {
 }
 
 fn planted_union_occurrences(
-  batch: List<ScheduleWitnessEntry>,
-  declared: List<ScheduleWitnessEntry>,
-  w: ScheduleWitnessEntry
+  batch: List<std.realization_schedule.ScheduleWitnessEntry>,
+  declared: List<std.realization_schedule.ScheduleWitnessEntry>,
+  w: std.realization_schedule.ScheduleWitnessEntry
 ) -> Int {
   fold(
     witness_long_eval_budget_union_in(batch: batch, declared: declared),
@@ -259,7 +259,7 @@ data both_axes_on_one_row_note: String = "every_declared_long_budget_row_is_also
 
 data budget_partition_witness_note: String = "THE RECUT CLAIM. Two facts have to hold together and neither alone is enough: the two batches must PARTITION the lane (every known-red corpus row on exactly one side, nothing invented, nothing dropped) and each side must be HOMOGENEOUS in declared budget. A partition alone would be satisfied by any split, including the mixed batch this replaces; homogeneity alone would be satisfied by dropping every row that does not fit. The population is derived, so these hold at any roster size including an empty long side."
 
-fn budget_partition_side_count(xs: List<ScheduleWitnessEntry>) -> Int {
+fn budget_partition_side_count(xs: List<std.realization_schedule.ScheduleWitnessEntry>) -> Int {
   length(xs: xs)
 }
 
@@ -320,7 +320,7 @@ test fn each_budget_roster_is_homogeneous_in_declared_budget() -> Bool {
 
 data pre_verdict_roster_witness_note: String = "known_red_pre_verdict_refusal_roster must be a STRICT SUBSET of the known-red roster and must not swallow it, because it is the only population allowed to turn a corpus-level refuse — which carries no per-witness outcome — into agreement. If it ever equals the known-red roster, the narrowing this claim exists to hold has been undone and any resolve failure in a known-red batch reports every quarantine as holding again. The synthetic pair below is the discrimination: the same predicate answers true for a declared pre-verdict row and false for an ordinary known-red row, so the live subset relation is a decision rather than a predicate that never matches."
 
-fn synthetic_pre_verdict_row() -> ExplicitWitnessAdmission {
+fn synthetic_pre_verdict_row() -> gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
   known_red_probe_expecting(
     entry: "dag/test/claim/synthetic_admission_witness_test.dag",
     f: "cannot_resolve_at_all",
@@ -335,7 +335,7 @@ fn synthetic_pre_verdict_row() -> ExplicitWitnessAdmission {
   )
 }
 
-fn synthetic_assertion_false_row() -> ExplicitWitnessAdmission {
+fn synthetic_assertion_false_row() -> gunbc.explicit_witness_admission.ExplicitWitnessAdmission {
   known_red_probe_expecting(
     entry: "dag/test/claim/synthetic_admission_witness_test.dag",
     f: "runs_and_returns_false",

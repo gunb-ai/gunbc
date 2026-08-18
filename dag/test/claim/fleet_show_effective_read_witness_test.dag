@@ -154,7 +154,7 @@ test fn witness_infinity_slice_read_cannot_converge() -> Bool {
 
 test fn witness_empty_slice_read_is_read_absent() -> Bool {
   match show_effective_read_from_slice_cap_row(
-    row: RunnerSliceCapLiveReadRow {
+    row: gunbc.fleet_show_effective_read.RunnerSliceCapLiveReadRow {
       slice_unit: "system-actions-runner.slice",
       memory_max_raw: "",
       probed_at: "2026-07-03",
@@ -215,7 +215,7 @@ test fn witness_runner_slot_enforcement_committed_is_fail_closed() -> Bool {
 
 fn witness_show_property_local_read_holds() -> Bool {
   match systemctl_show_property_read_local(
-    unit: "actions-runner@srv1-01.service" as NonEmptyStr,
+    unit: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
     property: MemoryMax,
   ) {
     SystemdPropertyCaptured { value: v } => v == "8589934592"
@@ -225,7 +225,7 @@ fn witness_show_property_local_read_holds() -> Bool {
 
 test fn witness_transport_reads_use_show_property_authority() -> Bool {
   systemctl_show_property_operation_argv_matches_transport(
-    unit: "system-actions-runner.slice" as NonEmptyStr,
+    unit: "system-actions-runner.slice" as std.types.NonEmptyStr,
     property: MemoryMax,
   )
     && witness_show_property_local_read_holds()
@@ -233,7 +233,7 @@ test fn witness_transport_reads_use_show_property_authority() -> Bool {
 
 test fn witness_show_property_injection_metachar_refused() -> Bool {
   match systemctl_show_property_operation_argv(
-    unit: "foo\"; rm -rf /" as NonEmptyStr,
+    unit: "foo\"; rm -rf /" as std.types.NonEmptyStr,
     property: MemoryMax,
   ) {
     ArgvMaterialized { argv: argv } =>

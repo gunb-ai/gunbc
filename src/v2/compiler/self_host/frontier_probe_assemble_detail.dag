@@ -152,8 +152,8 @@ fn all_overlap_residue_non_empty_diagnostics(d: NonEmptyDiagnostics) -> Bool {
 // delete this queue-merge path; then refuse on evidence deficit instead of narrowing.
 
 type OverlapQueueMergeAcc {
-  stages: FreeMonoid<ParseStageDiagnostic>
-  row_queue: FreeMonoid<GrammarChoiceAmbiguityRow>
+  stages: FreeMonoid<v2.compiler.parse_diagnostic.ParseStageDiagnostic>
+  row_queue: FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
 }
 
 fn overlap_row_queue_tail_after_pop(

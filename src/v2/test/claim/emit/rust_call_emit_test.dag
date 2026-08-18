@@ -1,25 +1,25 @@
 module v2.test.emit.rust_call_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_call_fold_canonical_source_text: String = "fn add(x: i32, y: i32) -> i32 { fold_call(x, y, |acc, h| { acc + h }) }"
 
 data rust_call_fold_swapped_source_text: String = "fn add(x: i32, y: i32) -> i32 { fold_call(x, y, |acc, h| { h + acc }) }"
 
-fn rust_call_type_atom(id: Symbol) -> Node {
+fn rust_call_type_atom(id: v2.std.node.Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Atom { identity: id } },
     children: []
   )
 }
 
-fn rust_call_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn rust_call_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
-fn rust_call_positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+fn rust_call_positional(target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Positional, target: target }
 }
 
 fn rust_call_add_domain_conj() -> Node {
@@ -38,7 +38,7 @@ fn rust_call_add_domain_conj() -> Node {
   )
 }
 
-fn rust_call_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> Node {
+fn rust_call_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.std.node.Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
@@ -146,23 +146,23 @@ fn rust_call_helper_arrow() -> Node {
 
 data rust_call_helper_body_fixture: Node = rust_call_helper_body()
 
-data rust_call_eval_arg_literal: Node = Node {
+data rust_call_eval_arg_literal: Node = v2.std.node.Node {
   kind: ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data rust_call_helper_eval_subgraph: Node = Node {
+data rust_call_helper_eval_subgraph: Node = v2.std.node.Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: rust_call_eval_arg_literal },
-    Edge { label: Positional, target: rust_call_eval_arg_literal }
+    v2.std.node.Edge { label: Positional, target: rust_call_eval_arg_literal },
+    v2.std.node.Edge { label: Positional, target: rust_call_eval_arg_literal }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-fn rust_call_target_model(authority_source_text: String) -> TargetModel {
-  TargetModel {
+fn rust_call_target_model(authority_source_text: String) -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_target_model_bundle_core(),
     lex: rust_call_lex(),
@@ -173,12 +173,12 @@ fn rust_call_target_model(authority_source_text: String) -> TargetModel {
   }
 }
 
-fn rust_call_facts_miss(key: Node) -> Optional<InferredFacts> {
+fn rust_call_facts_miss(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   optional_absent()
 }
 
-fn rust_call_inferred_tree_for(root: Node) -> InferredTree {
-  InferredTree {
+fn rust_call_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: root,
     facts: Map { lookup: rust_call_facts_miss }
   }

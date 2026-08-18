@@ -2,16 +2,16 @@ module extdeps.realization.compile_stage_memo
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
   }
 }
 
-data compile_stage_memo_id: CacheInterfaceId = "compile_stage_memo_cache"
+data compile_stage_memo_id: std.cache_identity.CacheInterfaceId = "compile_stage_memo_cache"
 
-data compile_stage_memo_facts: CacheInterfaceCatalogFacts = {
+data compile_stage_memo_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: compile_stage_memo_id
   backing_surface: "gunbc-v2-compile-stage-in-process"
   transport_encoding: CatalogCasContentEncoding

@@ -3,17 +3,17 @@ module tools.self_host_03_normalize_declared_source_refs
 
 data sn_declared_source_refs_doc: String = "declared_source_refs for the 03_normalize behavioral witness only (review 41433 fix): this list opts src/v2/compiler/03_normalize.dag's witness entry into the cli_run.rs affected-set selection axis (docs/plans/declared-source-ref-selection-design.md §4-5, §5.1 flagship). Homed in its OWN module, imported only by dag/test/claim/self_host_03_normalize_behavioral_witness_test.dag — not by tools.self_host_module_behavioral_transport_roster, which all 16 frontier witness entries share. cli_run.rs's declared_source_ref scan is closure-wide (every file in a witness entry's transitive import closure), so a declared_source_refs list living in the shared roster would leak this selection axis onto all 16 entries; a dedicated per-entry module keeps the axis scoped to 03_normalize alone, matching the roster row's module_path/shim_lib_rel/shim_writes/driver_rel exactly."
 
-data sn_source_ref: SourceRef = source_ref_for_storage_path(path: "src/v2/compiler/03_normalize.dag")
+data sn_source_ref: v2.compiler.source_authority.SourceRef = source_ref_for_storage_path(path: "src/v2/compiler/03_normalize.dag")
 
-data sn_shim_lib_ref: SourceRef = source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/lib.rs")
+data sn_shim_lib_ref: v2.compiler.source_authority.SourceRef = source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/lib.rs")
 
-data sn_shim_driver_ref: SourceRef = source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/witness_main.rs")
+data sn_shim_driver_ref: v2.compiler.source_authority.SourceRef = source_ref_for_storage_path(path: "dag/tools/self_host_03_normalize_shims/witness_main.rs")
 
 data sn_declared_source_refs_completeness_note: String = "Hand-verified completeness (docs/plans/declared-source-ref-selection-design.md §5.1 flagship): every storage path this transport reads is listed in declared_source_refs — emitter .dag, shim lib, witness driver, and each curated shim write source. Widening opt-in past this row waits on effect_reach census join admission. The five shared-std shim writes (algebra, collection, diagnostic, node, integer) now resolve to dag/tools/self_host_std_bridge_shims/ rather than this row's own shim dir (the de-fork: one bridge, not one copy per row), so the selection axis follows the file that actually drives the receipt — a declared ref pointing at a no-longer-consumed copy would read as covered while the real input went unselected."
 
 data sn_declared_source_refs_authority_gap_note: String = "KNOWN INCOMPLETE, and NOT a read-completeness bug: declared_source_refs lists what this transport READS, so it does not list src/v2/std/*.dag — the authority the shared std bridge mirrors. A widening of v2.std.diagnostic therefore does not select this witness even though it can break it, which is exactly how the Locus struct-to-coproduct drift stayed invisible until a wet falsifier run days later. Closing it needs a correctness-dependency axis (authority -> mirror) distinct from the read axis; the shim-surface wall is the intended mechanism and the medium decision (char-fold lens vs seed bin vs declared surface rows) is open. Until then this gap is stated here rather than papered over by adding authority paths to a list whose contract is reads."
 
-data declared_source_refs: List<SourceRef> = [
+data declared_source_refs: List<v2.compiler.source_authority.SourceRef> = [
   sn_source_ref,
   sn_shim_lib_ref,
   sn_shim_driver_ref,

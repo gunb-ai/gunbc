@@ -5,33 +5,33 @@ module extdeps.runtime.abi.sysv_amd64
 // register/syscall calling-convention facts. Citation consumer receipts (pin, selector,
 // evidence links, wet observations) live in gunbc.citation.x86_64_abi_pdf_consumer.
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf"
   }
 }
 
-data x86_64_abi_specification: NonEmptyStr = "System V AMD64 ABI"
+data x86_64_abi_specification: std.types.NonEmptyStr = "System V AMD64 ABI"
 
-data x86_64_abi_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
-  declaration: DeclarationRef {
+data x86_64_abi_subject_ref: extdeps.external_authority.ExternalSubjectRef = extdeps.external_authority.ExternalSubjectRef {
+  declaration: std.decl_ref.DeclarationRef {
     module_path: "extdeps.runtime.abi.sysv_amd64",
     decl_name: "x86_64_abi_specification",
     field: WholeDeclaration,
   },
 }
 
-data x86_64_abi_pdf_identity: CitedRepresentationIdentity = cited_representation_identity(
+data x86_64_abi_pdf_identity: std.citation.CitedRepresentationIdentity = cited_representation_identity(
   source: x86_64_abi_subject_ref,
   access_route: extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri,
   byte_domain: RawResponseBody,
 )
 
 // Document cover: Draft Version 0.99.6, dated July 2 2012 — NOT the filename 0.99. VersionIdentity carries the edition string 0.99.6.
-data x86_64_abi_pdf_draft_version: VersionIdentity = "0.99.6" as VersionIdentity
+data x86_64_abi_pdf_draft_version: extdeps.version.VersionIdentity = "0.99.6" as extdeps.version.VersionIdentity
 
-data x86_64_abi_application_pdf: MediaType = MediaType {
+data x86_64_abi_application_pdf: extdeps.http.server.MediaType = extdeps.http.server.MediaType {
   top_level: TopLevelApplication,
   subtype: "pdf",
   parameters: [],
@@ -41,16 +41,16 @@ data x86_64_abi_syscall_convention_authoritative_page: std.integer.PositiveInt =
 
 type Amd64Gpr = Rdi | Rsi | Rdx | R10 | R8 | R9 | Rax | Rcx
 
-data amd64_inhabitant_rdi: ArchitecturalRegister = Rdi
-data amd64_inhabitant_rsi: ArchitecturalRegister = Rsi
-data amd64_inhabitant_rdx: ArchitecturalRegister = Rdx
-data amd64_inhabitant_r10: ArchitecturalRegister = R10
-data amd64_inhabitant_r8: ArchitecturalRegister = R8
-data amd64_inhabitant_r9: ArchitecturalRegister = R9
-data amd64_inhabitant_rax: ArchitecturalRegister = Rax
-data amd64_inhabitant_rcx: ArchitecturalRegister = Rcx
+data amd64_inhabitant_rdi: std.abi.ArchitecturalRegister = Rdi
+data amd64_inhabitant_rsi: std.abi.ArchitecturalRegister = Rsi
+data amd64_inhabitant_rdx: std.abi.ArchitecturalRegister = Rdx
+data amd64_inhabitant_r10: std.abi.ArchitecturalRegister = R10
+data amd64_inhabitant_r8: std.abi.ArchitecturalRegister = R8
+data amd64_inhabitant_r9: std.abi.ArchitecturalRegister = R9
+data amd64_inhabitant_rax: std.abi.ArchitecturalRegister = Rax
+data amd64_inhabitant_rcx: std.abi.ArchitecturalRegister = Rcx
 
-data sysv_amd64_linux_syscall_convention: CallingConvention = {
+data sysv_amd64_linux_syscall_convention: std.abi.CallingConvention = {
   arg0: amd64_inhabitant_rdi,
   arg1: amd64_inhabitant_rsi,
   arg2: amd64_inhabitant_rdx,
@@ -61,7 +61,7 @@ data sysv_amd64_linux_syscall_convention: CallingConvention = {
   return_value: amd64_inhabitant_rax,
 }
 
-data sysv_amd64_wrong_arg3_convention: CallingConvention = {
+data sysv_amd64_wrong_arg3_convention: std.abi.CallingConvention = {
   arg0: amd64_inhabitant_rdi,
   arg1: amd64_inhabitant_rsi,
   arg2: amd64_inhabitant_rdx,

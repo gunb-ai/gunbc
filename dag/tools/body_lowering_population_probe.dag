@@ -16,7 +16,7 @@ type BodyLoweringSubjectRealization
   | UnauthoredSpecimenClass
 
 type BodyLoweringSubject {
-  label: Symbol,
+  label: v2.std.node.Symbol,
   realization: BodyLoweringSubjectRealization,
 }
 
@@ -34,12 +34,12 @@ data body_lowering_subject_roster: List<BodyLoweringSubject> = [
 data body_lowering_observation_standing_note: String = "STANDING IS THREE STATES BECAUSE THE TWO-STATE READING IS THE DEFECT. Observed and absent cannot carry this population: a subject dropped for cost, a subject whose run was interrupted by a budget, and a subject genuinely measured are three different epistemic positions with three different remedies, and collapsing the first two into absence is the empty-observation narrow — it renders 'we did not look' as 'there is nothing there'.\n\nSubjectInterrupted is separate from SubjectUnmeasured rather than a cause of it, and node is why: its probe exceeded 900s. That is an interruption plus a measured lower bound on cost, so it says something real about the subject's expense while saying nothing about its stage. An unmeasured subject carries no such bound. Merging them would discard the only quantitative fact the interrupted row has."
 
 type BodyLoweringObservationStanding
-  = SubjectObserved { stage: FrontendStage }
-  | SubjectUnmeasured { cause: Symbol }
+  = SubjectObserved { stage: gunbc.tools.frontier_ingestion_probe.FrontendStage }
+  | SubjectUnmeasured { cause: v2.std.node.Symbol }
   | SubjectInterrupted { receipt: String }
 
 type BodyLoweringSubjectStanding {
-  label: Symbol,
+  label: v2.std.node.Symbol,
   standing: BodyLoweringObservationStanding,
 }
 

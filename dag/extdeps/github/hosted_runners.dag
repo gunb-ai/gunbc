@@ -14,12 +14,12 @@ data github_hosted_runner_catalog_citation_note: String = "Cited 2026-07-11 from
 type RepoVisibility = PublicRepo | PrivateRepo
 
 type GithubHostedRunnerCatalogRow {
-  runs_on_label: RunnerLabel
+  runs_on_label: extdeps.github.actions.RunnerLabel
   visibility: RepoVisibility
-  vcpus: HardwareThreadCount
-  memory_bytes: ByteSize
-  storage_bytes: ByteSize
-  cpu_architecture: Architecture
+  vcpus: std.measure.HardwareThreadCount
+  memory_bytes: std.measure.ByteSize
+  storage_bytes: std.measure.ByteSize
+  cpu_architecture: extdeps.toolchain.types.Architecture
 }
 
 data github_hosted_ubuntu_slim_public_catalog: GithubHostedRunnerCatalogRow = GithubHostedRunnerCatalogRow {

@@ -2,16 +2,16 @@ module v2.test.language_model.python_cross_runtime_drift
 
 fn python_cross_runtime_drift_claim_bool_atom(b: Bool) -> Node {
   match b {
-    true => Node { kind: TypeNode { connective: Atom { identity: ^python_cross_runtime_drift_claim_bool_true } }, children: [],
+    true => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^python_cross_runtime_drift_claim_bool_true } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
-    false => Node { kind: TypeNode { connective: Atom { identity: ^python_cross_runtime_drift_claim_bool_false } }, children: [],
+    false => v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^python_cross_runtime_drift_claim_bool_false } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
   }
 }
 
-fn python_cross_runtime_drift_probe_is_wired(p: LeafModelCrossRuntimeDriftProbe) -> Bool {
+fn python_cross_runtime_drift_probe_is_wired(p: v2.std.leaf_model_verification.LeafModelCrossRuntimeDriftProbe) -> Bool {
   p.claim_id == leaf_model_claim_python_cross_runtime_drift_arbitrary_precision
     && p.arbitrary_precision_fact == ^python_repr_int_arbitrary_precision
     && p.fixed_width_rust_fact == ^rust_repr_integer_twos_complement
@@ -23,26 +23,26 @@ fn python_cross_runtime_drift_probe_is_wired(p: LeafModelCrossRuntimeDriftProbe)
     && p.expected_divergence.actual == python_cross_runtime_drift_fixed_width_value
 }
 
-fn python_cross_runtime_drift_probe_diverges(p: LeafModelCrossRuntimeDriftProbe) -> Bool {
+fn python_cross_runtime_drift_probe_diverges(p: v2.std.leaf_model_verification.LeafModelCrossRuntimeDriftProbe) -> Bool {
   p.expected_divergence.expected != p.expected_divergence.actual
 }
 
-data claim_python_cross_runtime_drift_probe_wired: TestClaim = EqualsClaim {
+data claim_python_cross_runtime_drift_probe_wired: v2.std.verification.TestClaim = EqualsClaim {
   label: "language_model/python_cross_runtime_drift: probe wires drift claim id + per-target sources + ValueDiff divergence anchor",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_cross_runtime_drift_claim_bool_atom(b: true),
   rhs: python_cross_runtime_drift_claim_bool_atom(
     b: python_cross_runtime_drift_probe_is_wired(p: python_cross_runtime_drift_probe())
   ),
-  classification: TestClassification { tier: Tier1, layer: Boundary }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }
 
-data claim_python_cross_runtime_drift_is_positive_divergence: TestClaim = EqualsClaim {
+data claim_python_cross_runtime_drift_is_positive_divergence: v2.std.verification.TestClaim = EqualsClaim {
   label: "language_model/python_cross_runtime_drift: arbitrary-precision value diverges from fixed-width value (drift is real)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: python_cross_runtime_drift_claim_bool_atom(b: true),
   rhs: python_cross_runtime_drift_claim_bool_atom(
     b: python_cross_runtime_drift_probe_diverges(p: python_cross_runtime_drift_probe())
   ),
-  classification: TestClassification { tier: Tier1, layer: Boundary }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Boundary }
 }

@@ -1,7 +1,7 @@
 module gunbc.plans.ci_floor_fractal_gantt
 
 
-fn ci_floor_fractal_gantt_body() -> List<MarkdownBlock> {
+fn ci_floor_fractal_gantt_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** measurement doc + infrastructure PR — on top of the #5747 (name-resolution memoisation) + #5757 (Value::Record HashMap→sorted-Vec) baseline. **DESIGN.md + the carriers remain the authority** — this doc is a timestamped profiling receipt, not a fact ledger. Its dissolution trigger is the realization_measurement_loop plan landing a durable `.dag`-native Gantt carrier that supersedes this prose receipt."),
     p(text: "**Owner:** valiant-deer-861 (CI profiling lane under calm-carp-204). Linked from `ROADMAP.md` §1 *CI as the substrate integration dogfood* and from the realization_measurement_loop plan's Phase-0 measurement keystone."),
@@ -95,7 +95,7 @@ fn ci_floor_fractal_gantt_body() -> List<MarkdownBlock> {
   ]
 }
 
-data ci_floor_fractal_gantt_plan: Plan = Plan {
+data ci_floor_fractal_gantt_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "ci-floor-fractal-gantt",
   title: "CI floor fractal Gantt — profiling receipt on #5757 baseline",
   body: ci_floor_fractal_gantt_body(),

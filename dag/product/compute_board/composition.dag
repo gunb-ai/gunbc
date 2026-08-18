@@ -9,8 +9,8 @@ data composition_note: String = "THE EARNED-ELEMENT FOLD: given a contract and a
 // is no 'general good practice' arm, because that is the arm through which an unjustified part
 // enters and then never leaves.
 type ComponentJustification
-  = DischargesCapability { capability: BoardCapability }
-  | ImposedByComponent { by: NonEmptyStr, requirement: NonEmptyStr, authority: ExternalAuthority }
+  = DischargesCapability { capability: product.compute_board.intent.BoardCapability }
+  | ImposedByComponent { by: std.types.NonEmptyStr, requirement: std.types.NonEmptyStr, authority: extdeps.external_authority.ExternalAuthority }
 
 // Core counts ride std.measure's HardwareThreadCount on BOTH sides of the comparison, because
 // a core count is a hardware thread count and that carrier already exists — extdeps.cpu.types
@@ -28,8 +28,8 @@ type ComponentJustification
 // provision answers to the quantity. They are different questions and a component can get one
 // right while getting the other wrong.
 type CapabilityProvision
-  = ProvidesCores { cores: HardwareThreadCount }
-  | ProvidesMemoryCapacity { capacity: ByteSize }
+  = ProvidesCores { cores: std.measure.HardwareThreadCount }
+  | ProvidesMemoryCapacity { capacity: std.measure.ByteSize }
   | ProvidesNetworkPaths { paths: std.nat.Nat }
   | ProvidesBootStoragePaths { paths: std.nat.Nat }
   | ProvidesManagement { power_control: Bool, console: Bool, recovery: Bool }
@@ -40,8 +40,8 @@ type CapabilityProvision
   | ProvidesMechanicalEnvelope
 
 type ComponentInstance {
-  designator: NonEmptyStr
-  part: NonEmptyStr
+  designator: std.types.NonEmptyStr
+  part: std.types.NonEmptyStr
   justifications: List<ComponentJustification>
   provisions: List<CapabilityProvision>
 }
@@ -217,23 +217,23 @@ fn unearned_components(components: List<ComponentInstance>) -> List<ComponentIns
 // routed DDR yet' — which is precisely the state-space conflation that lets the blocking one
 // stop ranking for attention.
 type CollateralRefusal
-  = PackageContactMapUnavailable { subject: NonEmptyStr }
-  | ReferenceBoardCollateralUnavailable { subject: NonEmptyStr }
-  | FootprintAuthorityUnavailable { part: NonEmptyStr }
-  | ElectricalModelUnavailable { part: NonEmptyStr }
-  | MemoryTopologyNotEstablished { reason: NonEmptyStr }
+  = PackageContactMapUnavailable { subject: std.types.NonEmptyStr }
+  | ReferenceBoardCollateralUnavailable { subject: std.types.NonEmptyStr }
+  | FootprintAuthorityUnavailable { part: std.types.NonEmptyStr }
+  | ElectricalModelUnavailable { part: std.types.NonEmptyStr }
+  | MemoryTopologyNotEstablished { reason: std.types.NonEmptyStr }
 
 type DesignIncompleteRefusal
-  = PublishedAuthorityNotIngested { document: NonEmptyStr }
-  | RequiredCapabilityUnsatisfied { capability: BoardCapability }
-  | UnearnedComponentPresent { designator: NonEmptyStr }
+  = PublishedAuthorityNotIngested { document: std.types.NonEmptyStr }
+  | RequiredCapabilityUnsatisfied { capability: product.compute_board.intent.BoardCapability }
+  | UnearnedComponentPresent { designator: std.types.NonEmptyStr }
   | PackageContactPopulationIncomplete { expected: Int, resolved: Int }
-  | DuplicatePackageContact { designator: NonEmptyStr }
-  | IncompleteDifferentialPolarityPair { pair: NonEmptyStr }
+  | DuplicatePackageContact { designator: std.types.NonEmptyStr }
+  | IncompleteDifferentialPolarityPair { pair: std.types.NonEmptyStr }
 
 type ManufacturingRefusal
-  = FabricatorStackupUnconfirmed { fabricator: NonEmptyStr }
-  | ManufacturingCapabilityMismatch { feature: NonEmptyStr }
+  = FabricatorStackupUnconfirmed { fabricator: std.types.NonEmptyStr }
+  | ManufacturingCapabilityMismatch { feature: std.types.NonEmptyStr }
 
 // Readiness is a PRODUCT of the three families, never a single verdict flag. A board can be
 // simultaneously blocked upstream and incomplete downstream, and a reader that receives one

@@ -8,8 +8,8 @@ type DagSourcePatch {
 
 fn serialize_diff_as_source_patch(
   root: Node,
-  diff: Diff,
-  canonical_source_target: TargetModel
+  diff: v2.std.node.Diff,
+  canonical_source_target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<DagSourcePatch> {
   bind_outcome(
     o: target_serialize_source_from_model(target: canonical_source_target, emitted: root),
@@ -32,9 +32,9 @@ fn serialize_diff_as_source_patch(
   )
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallNow {
     mechanism: RealizationDispatch,
-    authority: DeclarationRef { module_path: "v2.compiler.translate", decl_name: "target_serialize_source_from_model", field: WholeDeclaration }
+    authority: std.decl_ref.DeclarationRef { module_path: "v2.compiler.translate", decl_name: "target_serialize_source_from_model", field: WholeDeclaration }
   }
 }

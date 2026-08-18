@@ -28,7 +28,7 @@ type VacuityEvidenceSubject
 
 type VacuityEvidenceRecord {
   subject: VacuityEvidenceSubject
-  transport: TestClaimTransportMode
+  transport: v2.std.verification.TestClaimTransportMode
   lhs_provenance: TestClaimOperandProvenance
   rhs_provenance: TestClaimOperandProvenance
   operands_structurally_equal: Bool

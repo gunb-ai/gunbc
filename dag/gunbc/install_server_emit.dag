@@ -10,14 +10,14 @@ fn network_address_of_cidr(cidr: String) -> String {
   }
 }
 
-fn install_plan_network_boot_chain(plan: Srv3OsInstallPlan) -> NetworkBootChain? {
+fn install_plan_network_boot_chain(plan: gunbc.os_install.Srv3OsInstallPlan) -> extdeps.provisioning.network_boot.NetworkBootChain? {
   match plan.delivery {
     NetworkBoot { delivery: d } => Present { value: d.chain }
     VirtualMediaIso { autoinstall: _ } => Absent
   }
 }
 
-fn install_server_boot_steering(spec: InstallServerSpec) -> List<DnsmasqDirective> {
+fn install_server_boot_steering(spec: gunbc.os_install.InstallServerSpec) -> List<extdeps.formats.dnsmasq.DnsmasqDirective> {
   let arch = spec.plan.host_architecture
   match install_plan_network_boot_chain(plan: spec.plan) {
     Absent => [DnsmasqComment { text: "install-server emit refused: plan delivery is not network-boot (solver chose virtual-media path)" }]
@@ -49,7 +49,7 @@ fn install_server_boot_steering(spec: InstallServerSpec) -> List<DnsmasqDirectiv
   }
 }
 
-fn install_server_dnsmasq_directives(spec: InstallServerSpec) -> List<DnsmasqDirective> {
+fn install_server_dnsmasq_directives(spec: gunbc.os_install.InstallServerSpec) -> List<extdeps.formats.dnsmasq.DnsmasqDirective> {
   concat(
     [
       DnsmasqComment { text: "gunbc install-server proxyDHCP UEFI HTTP-boot, generated from dag/gunbc/os_install.dag, do not hand-edit" },
@@ -60,6 +60,6 @@ fn install_server_dnsmasq_directives(spec: InstallServerSpec) -> List<DnsmasqDir
   )
 }
 
-fn install_server_dnsmasq_conf(spec: InstallServerSpec) -> String {
+fn install_server_dnsmasq_conf(spec: gunbc.os_install.InstallServerSpec) -> String {
   serialize_dnsmasq(directives: install_server_dnsmasq_directives(spec: spec))
 }

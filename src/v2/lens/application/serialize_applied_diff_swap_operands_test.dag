@@ -1,18 +1,18 @@
 module v2.test.lens_application.serialize_applied_diff_swap_operands
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data serialize_loop_body_edit: Edit = Edit {
-  at: Path { steps: [^arrow_body_edge] },
+data serialize_loop_body_edit: v2.std.node.Edit = v2.std.node.Edit {
+  at: v2.std.node.Path { steps: [^arrow_body_edge] },
   replacement: dag_loop_body_wrong_value_node()
 }
 
-data serialize_loop_body_diff: Diff = Diff {
+data serialize_loop_body_diff: v2.std.node.Diff = v2.std.node.Diff {
   edits: [serialize_loop_body_edit]
 }
 
-data serialize_loop_target: TargetModel = dag_loop_target_model()
+data serialize_loop_target: v2.std.compilers.target_model.TargetModel = dag_loop_target_model()
 
 fn serialize_loop_before_after_differ() -> Bool {
   match target_serialize_source_from_model(
@@ -31,7 +31,7 @@ fn serialize_loop_before_after_differ() -> Bool {
   }
 }
 
-data serialize_add_target: TargetModel = dag_target_model()
+data serialize_add_target: v2.std.compilers.target_model.TargetModel = dag_target_model()
 
 fn serialize_add_serializer_determinism_holds() -> Bool {
   match target_serialize_source_from_model(

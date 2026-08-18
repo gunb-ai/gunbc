@@ -3,9 +3,9 @@ module v2.test.lens_complexity.typescript_type_alias_task
 
 type LensComplexityClaim {
   input: Node
-  expected_cost: SymbolicCost
-  expected_complexity: ComplexityBound
-  falsification: Diagnostic
+  expected_cost: v2.lens.cost.SymbolicCost
+  expected_complexity: v2.lens.complexity.ComplexityBound
+  falsification: v2.std.diagnostic.Diagnostic
 }
 
 data ts_task_complexity_input: Node = Node {

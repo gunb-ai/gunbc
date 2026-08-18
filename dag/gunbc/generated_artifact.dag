@@ -18,9 +18,9 @@ type GeneratedArtifact
   | Stage0CratePartitionGeneratedDagArtifact
   | Stage0EmitPlanGeneratedDagArtifact
   | V1InterpreterDispatchGeneratedRsArtifact
-  | AutoinstallUserDataArtifact { spec: HostAutoinstall }
-  | ProxyDhcpDnsmasqArtifact { spec: InstallServerSpec }
-  | PlanArtifact { plan: Plan }
+  | AutoinstallUserDataArtifact { spec: gunbc.os_install.HostAutoinstall }
+  | ProxyDhcpDnsmasqArtifact { spec: gunbc.os_install.InstallServerSpec }
+  | PlanArtifact { plan: gunbc.plan.Plan }
 
 data generated_artifact_registry: List<GeneratedArtifact> = concat(
   concat(

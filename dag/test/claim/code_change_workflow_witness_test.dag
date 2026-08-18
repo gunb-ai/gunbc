@@ -3,27 +3,27 @@ module test.claim.code_change_workflow_witness_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_repo: NonEmptyStr = "gunb-ai/gunbc"
-data witness_pr_url: NonEmptyStr = "https://github.com/gunb-ai/gunbc/pull/1"
-data witness_head_sha: CommitSha = "abc1234def5678901234567890abcd1234567890"
-data witness_merged_at: Timestamp = "2026-06-18T01:00:00Z"
-data witness_node: ProcessNodeId = "session-calm-swift-738"
-data witness_change_ref: NonEmptyStr = "change-1"
+data witness_repo: std.types.NonEmptyStr = "gunb-ai/gunbc"
+data witness_pr_url: std.types.NonEmptyStr = "https://github.com/gunb-ai/gunbc/pull/1"
+data witness_head_sha: std.types.CommitSha = "abc1234def5678901234567890abcd1234567890"
+data witness_merged_at: std.types.Timestamp = "2026-06-18T01:00:00Z"
+data witness_node: gunbc.process_algebra.ProcessNodeId = "session-calm-swift-738"
+data witness_change_ref: std.types.NonEmptyStr = "change-1"
 
-fn witness_github_pr(draft: Bool, state: PullRequestState, merged_at: Timestamp?) -> extdeps.github.pulls.PullRequest {
+fn witness_github_pr(draft: Bool, state: extdeps.github.pulls.PullRequestState, merged_at: std.types.Timestamp?) -> extdeps.github.pulls.PullRequest {
   extdeps.github.pulls.PullRequest {
     number: 1,
     title: "witness",
     body: none,
     state: state,
     html_url: witness_pr_url,
-    user: GitHubUser { login: "bot", id: 1, type: extdeps.github.github.User },
-    head: PullRequestRef {
+    user: extdeps.github.github.GitHubUser { login: "bot", id: 1, type: extdeps.github.github.User },
+    head: extdeps.github.pulls.PullRequestRef {
       ref: "feature",
       sha: witness_head_sha,
       label: "gunb-ai:feature",
     },
-    base: PullRequestRef {
+    base: extdeps.github.pulls.PullRequestRef {
       ref: "main",
       sha: "def456789012345678901234567890abcdef12",
       label: "gunb-ai:main",
@@ -35,21 +35,21 @@ fn witness_github_pr(draft: Bool, state: PullRequestState, merged_at: Timestamp?
   }
 }
 
-fn witness_github_ctx(draft: Bool, state: PullRequestState, merged_at: Timestamp?) -> CodeChangeGithubPrContext {
-  CodeChangeGithubPrContext {
+fn witness_github_ctx(draft: Bool, state: extdeps.github.pulls.PullRequestState, merged_at: std.types.Timestamp?) -> gunbc.code_change_workflow.CodeChangeGithubPrContext {
+  gunbc.code_change_workflow.CodeChangeGithubPrContext {
     pr: witness_github_pr(draft: draft, state: state, merged_at: merged_at),
   }
 }
 
-fn witness_binding() -> CodeChangeBinding {
-  CodeChangeBinding {
+fn witness_binding() -> gunbc.code_change_workflow.CodeChangeBinding {
+  gunbc.code_change_workflow.CodeChangeBinding {
     node_id: witness_node,
     change_ref: witness_change_ref,
   }
 }
 
-fn witness_active_facts(active: CodeChangeActiveStage) -> CodeChangeFacts {
-  CodeChangeFacts {
+fn witness_active_facts(active: gunbc.code_change_workflow.CodeChangeActiveStage) -> gunbc.code_change_workflow.CodeChangeFacts {
+  gunbc.code_change_workflow.CodeChangeFacts {
     binding: witness_binding(),
     stage: CodeChangeActive { stage: active },
     head_sha: Present { value: witness_head_sha },
@@ -60,8 +60,8 @@ fn witness_active_facts(active: CodeChangeActiveStage) -> CodeChangeFacts {
   }
 }
 
-fn witness_terminal_facts(terminal: CodeChangeTerminalStage) -> CodeChangeFacts {
-  CodeChangeFacts {
+fn witness_terminal_facts(terminal: gunbc.code_change_workflow.CodeChangeTerminalStage) -> gunbc.code_change_workflow.CodeChangeFacts {
+  gunbc.code_change_workflow.CodeChangeFacts {
     binding: witness_binding(),
     stage: CodeChangeTerminal { stage: terminal },
     head_sha: Present { value: witness_head_sha },
@@ -72,8 +72,8 @@ fn witness_terminal_facts(terminal: CodeChangeTerminalStage) -> CodeChangeFacts 
   }
 }
 
-fn witness_tally_green() -> MergeReadinessTally {
-  MergeReadinessTally {
+fn witness_tally_green() -> gunbc.review_verdict.MergeReadinessTally {
+  gunbc.review_verdict.MergeReadinessTally {
     repo: witness_repo,
     pr_number: 1,
     head_sha: witness_head_sha,
@@ -87,7 +87,7 @@ fn witness_tally_green() -> MergeReadinessTally {
 
 fn witness_terminal_stages_refuse() -> Bool {
   match decide_code_change_transition(
-    request: CodeChangeTransitionRequest {
+    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
       facts: witness_terminal_facts(terminal: ChangeMerged),
       event: MarkReadyForReview,
       github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
@@ -103,7 +103,7 @@ fn witness_terminal_stages_refuse() -> Bool {
 
 fn witness_draft_blocks_mark_ready() -> Bool {
   match decide_code_change_transition(
-    request: CodeChangeTransitionRequest {
+    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
       facts: witness_active_facts(active: ChangeOpen),
       event: MarkReadyForReview,
       github_pr: Present { value: witness_github_ctx(draft: true, state: Open, merged_at: none) },
@@ -119,7 +119,7 @@ fn witness_draft_blocks_mark_ready() -> Bool {
 
 fn witness_merge_ready_requires_policy() -> Bool {
   match decide_code_change_transition(
-    request: CodeChangeTransitionRequest {
+    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
       facts: witness_active_facts(active: ChangeUnderReview),
       event: RecordMergeReady,
       github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
@@ -135,7 +135,7 @@ fn witness_merge_ready_requires_policy() -> Bool {
 
 fn witness_missing_tally_blocks_merge_ready() -> Bool {
   match decide_code_change_transition(
-    request: CodeChangeTransitionRequest {
+    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
       facts: witness_active_facts(active: ChangeUnderReview),
       event: RecordMergeReady,
       github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
@@ -151,7 +151,7 @@ fn witness_missing_tally_blocks_merge_ready() -> Bool {
 
 fn witness_missing_digest_blocks_merge_ready() -> Bool {
   match decide_code_change_transition(
-    request: CodeChangeTransitionRequest {
+    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
       facts: witness_active_facts(active: ChangeUnderReview),
       event: RecordMergeReady,
       github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
@@ -165,8 +165,8 @@ fn witness_missing_digest_blocks_merge_ready() -> Bool {
   }
 }
 
-fn witness_tally_stale_head() -> MergeReadinessTally {
-  MergeReadinessTally {
+fn witness_tally_stale_head() -> gunbc.review_verdict.MergeReadinessTally {
+  gunbc.review_verdict.MergeReadinessTally {
     repo: witness_repo,
     pr_number: 1,
     head_sha: "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
@@ -180,7 +180,7 @@ fn witness_tally_stale_head() -> MergeReadinessTally {
 
 fn witness_stale_tally_head_sha_blocks() -> Bool {
   match decide_code_change_transition(
-    request: CodeChangeTransitionRequest {
+    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
       facts: witness_active_facts(active: ChangeUnderReview),
       event: RecordMergeReady,
       github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
@@ -194,8 +194,8 @@ fn witness_stale_tally_head_sha_blocks() -> Bool {
   }
 }
 
-fn witness_tally_request_changes() -> MergeReadinessTally {
-  MergeReadinessTally {
+fn witness_tally_request_changes() -> gunbc.review_verdict.MergeReadinessTally {
+  gunbc.review_verdict.MergeReadinessTally {
     repo: witness_repo,
     pr_number: 1,
     head_sha: witness_head_sha,
@@ -207,8 +207,8 @@ fn witness_tally_request_changes() -> MergeReadinessTally {
   }
 }
 
-fn witness_tally_blocking_findings() -> MergeReadinessTally {
-  MergeReadinessTally {
+fn witness_tally_blocking_findings() -> gunbc.review_verdict.MergeReadinessTally {
+  gunbc.review_verdict.MergeReadinessTally {
     repo: witness_repo,
     pr_number: 1,
     head_sha: witness_head_sha,
@@ -220,8 +220,8 @@ fn witness_tally_blocking_findings() -> MergeReadinessTally {
   }
 }
 
-fn witness_tally_not_mergeable_clean() -> MergeReadinessTally {
-  MergeReadinessTally {
+fn witness_tally_not_mergeable_clean() -> gunbc.review_verdict.MergeReadinessTally {
+  gunbc.review_verdict.MergeReadinessTally {
     repo: witness_repo,
     pr_number: 1,
     head_sha: witness_head_sha,
@@ -235,7 +235,7 @@ fn witness_tally_not_mergeable_clean() -> MergeReadinessTally {
 
 fn witness_tally_request_changes_blocks() -> Bool {
   match decide_code_change_transition(
-    request: CodeChangeTransitionRequest {
+    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
       facts: witness_active_facts(active: ChangeUnderReview),
       event: RecordMergeReady,
       github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
@@ -251,7 +251,7 @@ fn witness_tally_request_changes_blocks() -> Bool {
 
 fn witness_tally_blocking_findings_blocks() -> Bool {
   match decide_code_change_transition(
-    request: CodeChangeTransitionRequest {
+    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
       facts: witness_active_facts(active: ChangeUnderReview),
       event: RecordMergeReady,
       github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
@@ -267,7 +267,7 @@ fn witness_tally_blocking_findings_blocks() -> Bool {
 
 fn witness_tally_not_mergeable_clean_blocks() -> Bool {
   match decide_code_change_transition(
-    request: CodeChangeTransitionRequest {
+    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
       facts: witness_active_facts(active: ChangeUnderReview),
       event: RecordMergeReady,
       github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
@@ -283,7 +283,7 @@ fn witness_tally_not_mergeable_clean_blocks() -> Bool {
 
 fn witness_merge_ready_green_with_policy() -> Bool {
   match decide_code_change_transition(
-    request: CodeChangeTransitionRequest {
+    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
       facts: witness_active_facts(active: ChangeUnderReview),
       event: RecordMergeReady,
       github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },
@@ -299,7 +299,7 @@ fn witness_merge_ready_green_with_policy() -> Bool {
 
 fn witness_digest_not_ready_blocks() -> Bool {
   match decide_code_change_transition(
-    request: CodeChangeTransitionRequest {
+    request: gunbc.code_change_workflow.CodeChangeTransitionRequest {
       facts: witness_active_facts(active: ChangeUnderReview),
       event: RecordMergeReady,
       github_pr: Present { value: witness_github_ctx(draft: false, state: Open, merged_at: none) },

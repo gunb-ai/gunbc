@@ -13,7 +13,7 @@ data spark_serving_converge_realize_authority_note: String = "Seam 2 realization
 // Ordering is load-bearing for these effects (write the unit file, reload the manager, enable the
 // unit), and a fused argv erases it.
 type SparkServingInstallRemoteCommandsVerdict =
-    SparkServingInstallRemoteCommandsPresent { operations: List<RemoteOperation> }
+    SparkServingInstallRemoteCommandsPresent { operations: List<gunbc.remote_operation.RemoteOperation> }
   | SparkServingInstallRemoteCommandsRefused { reason: String }
 
 fn spark_serving_admit_portable_remote_argv(raws: List<String>) -> SparkServingInstallRemoteCommandsVerdict {

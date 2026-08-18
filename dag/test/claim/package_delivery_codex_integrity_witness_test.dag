@@ -61,14 +61,14 @@ test fn npm_registry_artifact_derives_exact_pin_from_native_integrity() -> Bool 
         decoded: NpmSingleSha512Integrity { digest: digest },
       ) {
         NpmRegistryIntegrityAdmitted { integrity } => {
-          let artifact = NpmRegistryArtifact {
-            package: PackageCoordinate {
-              ecosystem: NpmRegistry { registry: "https://registry.npmjs.org/" as NonEmptyStr },
-              name: "@anthropic-ai/claude-agent-sdk" as NonEmptyStr,
+          let artifact = extdeps.npm.NpmRegistryArtifact {
+            package: extdeps.package.PackageCoordinate {
+              ecosystem: extdeps.npm.NpmRegistry { registry: "https://registry.npmjs.org/" as std.types.NonEmptyStr },
+              name: "@anthropic-ai/claude-agent-sdk" as std.types.NonEmptyStr,
             },
-            version: "0.1.0" as NonEmptyStr,
-            resolved: NpmResolvedRegistryArtifact {
-              locator: "https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk/-/claude-agent-sdk-0.1.0.tgz" as NonEmptyStr,
+            version: "0.1.0" as std.types.NonEmptyStr,
+            resolved: extdeps.npm.NpmResolvedRegistryArtifact {
+              locator: "https://registry.npmjs.org/@anthropic-ai/claude-agent-sdk/-/claude-agent-sdk-0.1.0.tgz" as std.types.NonEmptyStr,
             },
             expected_integrity: integrity,
           }

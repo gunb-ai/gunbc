@@ -1,7 +1,7 @@
 module v2.test.long.source_bridged_pipeline_bridge_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data source_bridged_pipeline_bridge_long_note: String = "Full tokenize→parse→normalize→resolve bridge exceeds the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note)."
 

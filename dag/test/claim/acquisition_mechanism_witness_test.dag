@@ -3,24 +3,24 @@ module test.claim.acquisition_mechanism_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn acquisition_witness_floor_equals(f: AcquisitionCostForecast, expected: std.nat.Nat) -> Bool {
+fn acquisition_witness_floor_equals(f: gunbc.econ.acquisition.AcquisitionCostForecast, expected: std.nat.Nat) -> Bool {
   match acquisition_forecast_cost_floor_micros(forecast: f) {
     Present { value: v } => v == expected
     Absent => false
   }
 }
 
-data two_usd_per_click: MoneyOnce = MoneyOnce {
+data two_usd_per_click: std.measure.MoneyOnce = std.measure.MoneyOnce {
   amount: money_amount_micro(count: 2000000),
   currency: Usd,
 }
 
-data click_to_customer_scenario: AcquisitionScenario = AcquisitionScenario {
+data click_to_customer_scenario: gunbc.econ.acquisition.AcquisitionScenario = gunbc.econ.acquisition.AcquisitionScenario {
   entry_stage_label: "click",
   entry_unit_cost: two_usd_per_click,
   steps: [
-    AcquisitionStageStep { stage_label: "lead", assumed_rate: ConversionRate { num: 1, denom: 10 } },
-    AcquisitionStageStep { stage_label: "customer", assumed_rate: ConversionRate { num: 1, denom: 4 } },
+    gunbc.econ.acquisition.AcquisitionStageStep { stage_label: "lead", assumed_rate: gunbc.econ.acquisition.ConversionRate { num: 1, denom: 10 } },
+    gunbc.econ.acquisition.AcquisitionStageStep { stage_label: "customer", assumed_rate: gunbc.econ.acquisition.ConversionRate { num: 1, denom: 4 } },
   ],
 }
 
@@ -37,11 +37,11 @@ test fn w_two_step_funnel_composes_exact_fraction_and_cost() -> Bool {
   }
 }
 
-data indivisible_scenario: AcquisitionScenario = AcquisitionScenario {
+data indivisible_scenario: gunbc.econ.acquisition.AcquisitionScenario = gunbc.econ.acquisition.AcquisitionScenario {
   entry_stage_label: "click",
-  entry_unit_cost: MoneyOnce { amount: money_amount_micro(count: 1000000), currency: Usd },
+  entry_unit_cost: std.measure.MoneyOnce { amount: money_amount_micro(count: 1000000), currency: Usd },
   steps: [
-    AcquisitionStageStep { stage_label: "signup", assumed_rate: ConversionRate { num: 3, denom: 7 } },
+    gunbc.econ.acquisition.AcquisitionStageStep { stage_label: "signup", assumed_rate: gunbc.econ.acquisition.ConversionRate { num: 3, denom: 7 } },
   ],
 }
 
@@ -66,9 +66,9 @@ test fn w_red_unknown_scenario_refuses() -> Bool {
 
 test fn w_red_zero_entry_unit_cost_refuses() -> Bool {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
-    scenario: AcquisitionScenario {
+    scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
-      entry_unit_cost: MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd },
+      entry_unit_cost: std.measure.MoneyOnce { amount: money_amount_micro(count: 0), currency: Usd },
       steps: click_to_customer_scenario.steps,
     },
   }) {
@@ -79,7 +79,7 @@ test fn w_red_zero_entry_unit_cost_refuses() -> Bool {
 
 test fn w_red_empty_funnel_refuses() -> Bool {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
-    scenario: AcquisitionScenario {
+    scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: two_usd_per_click,
       steps: [],
@@ -92,12 +92,12 @@ test fn w_red_empty_funnel_refuses() -> Bool {
 
 test fn w_red_zero_numerator_refuses_naming_the_stage() -> Bool {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
-    scenario: AcquisitionScenario {
+    scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: two_usd_per_click,
       steps: [
-        AcquisitionStageStep { stage_label: "lead", assumed_rate: ConversionRate { num: 1, denom: 10 } },
-        AcquisitionStageStep { stage_label: "customer", assumed_rate: ConversionRate { num: 0, denom: 4 } },
+        gunbc.econ.acquisition.AcquisitionStageStep { stage_label: "lead", assumed_rate: gunbc.econ.acquisition.ConversionRate { num: 1, denom: 10 } },
+        gunbc.econ.acquisition.AcquisitionStageStep { stage_label: "customer", assumed_rate: gunbc.econ.acquisition.ConversionRate { num: 0, denom: 4 } },
       ],
     },
   }) {
@@ -109,11 +109,11 @@ test fn w_red_zero_numerator_refuses_naming_the_stage() -> Bool {
 
 test fn w_red_zero_cohort_refuses_naming_the_stage() -> Bool {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
-    scenario: AcquisitionScenario {
+    scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: two_usd_per_click,
       steps: [
-        AcquisitionStageStep { stage_label: "lead", assumed_rate: ConversionRate { num: 1, denom: 0 } },
+        gunbc.econ.acquisition.AcquisitionStageStep { stage_label: "lead", assumed_rate: gunbc.econ.acquisition.ConversionRate { num: 1, denom: 0 } },
       ],
     },
   }) {
@@ -125,11 +125,11 @@ test fn w_red_zero_cohort_refuses_naming_the_stage() -> Bool {
 
 test fn w_red_rate_above_unity_refuses_naming_the_stage() -> Bool {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
-    scenario: AcquisitionScenario {
+    scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: two_usd_per_click,
       steps: [
-        AcquisitionStageStep { stage_label: "lead", assumed_rate: ConversionRate { num: 5, denom: 4 } },
+        gunbc.econ.acquisition.AcquisitionStageStep { stage_label: "lead", assumed_rate: gunbc.econ.acquisition.ConversionRate { num: 5, denom: 4 } },
       ],
     },
   }) {
@@ -139,10 +139,10 @@ test fn w_red_rate_above_unity_refuses_naming_the_stage() -> Bool {
   }
 }
 
-data zero_converted_forecast_fixture: AcquisitionCostForecast = AcquisitionCostForecast {
+data zero_converted_forecast_fixture: gunbc.econ.acquisition.AcquisitionCostForecast = gunbc.econ.acquisition.AcquisitionCostForecast {
   entry_stage_label: "click",
   outcome_stage_label: "customer",
-  composed_rate: ConversionRate { num: 0, denom: 1 },
+  composed_rate: gunbc.econ.acquisition.ConversionRate { num: 0, denom: 1 },
   entry_unit_cost: two_usd_per_click,
 }
 
@@ -155,12 +155,12 @@ test fn w_red_floor_projection_refuses_hand_built_zero_converted_forecast() -> B
 
 test fn w_red_first_invalid_stage_wins() -> Bool {
   match derive_acquisition_cost_forecast(input: AcquisitionScenarioDeclared {
-    scenario: AcquisitionScenario {
+    scenario: gunbc.econ.acquisition.AcquisitionScenario {
       entry_stage_label: "click",
       entry_unit_cost: two_usd_per_click,
       steps: [
-        AcquisitionStageStep { stage_label: "lead", assumed_rate: ConversionRate { num: 0, denom: 10 } },
-        AcquisitionStageStep { stage_label: "customer", assumed_rate: ConversionRate { num: 0, denom: 4 } },
+        gunbc.econ.acquisition.AcquisitionStageStep { stage_label: "lead", assumed_rate: gunbc.econ.acquisition.ConversionRate { num: 0, denom: 10 } },
+        gunbc.econ.acquisition.AcquisitionStageStep { stage_label: "customer", assumed_rate: gunbc.econ.acquisition.ConversionRate { num: 0, denom: 4 } },
       ],
     },
   }) {

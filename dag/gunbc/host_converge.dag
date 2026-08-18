@@ -64,7 +64,7 @@ type GreenPlaceReadinessMarker {
 }
 
 type SpawnRetryBackstop {
-  cadence: Second
+  cadence: std.measure.Second
   role: String
 }
 

@@ -27,7 +27,7 @@ type InterpretedRetainedReason
 
 type WitnessExecutionDisposition
   = NativeRouted
-  | InterpretedRetained { reason: InterpretedRetainedReason, dissolution: DissolutionCondition }
+  | InterpretedRetained { reason: InterpretedRetainedReason, dissolution: std.dissolution.DissolutionCondition }
   | EmitIneligible { cause: EmitIneligibleCause, detail: String }
 
 type WitnessExecutionLeg

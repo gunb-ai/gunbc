@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data focus_witness_note: String = "Focus is a VIEW, so the property that matters is not what it shows but what it cannot do: it must never be able to lose work. These claims pin the two ways a filtered projection goes wrong. First, the filter must be a partition and not an edit — visible plus hidden equals the whole declared set, so a node cannot fall out of both and vanish from the roadmap entirely; that is checked by arithmetic against the same list the filter runs over, not by trusting the filter. Second, the page must not read as a shorter roadmap — the notice carries a DERIVED count, so a reader who forgot the focus was set is told what is missing rather than shown a plausible-looking complete page.\n\nThe RED control is the one that would otherwise rot: clearing the focus must restore every node. Without it, a filter that silently dropped nodes on BOTH paths would still satisfy an is-subset check and still look correct on the focused page."
 
-fn all_nodes() -> List<RoadmapNode> {
+fn all_nodes() -> List<gunbc.roadmap_model.RoadmapNode> {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
       active_roadmap_nodes_for_accepted(accepted: accepted)
@@ -14,7 +14,7 @@ fn all_nodes() -> List<RoadmapNode> {
   }
 }
 
-fn active_roadmap_edges() -> List<RoadmapEdge> {
+fn active_roadmap_edges() -> List<gunbc.roadmap_model.RoadmapEdge> {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjected { ids: accepted } =>
       active_roadmap_edges_for_accepted(accepted: accepted)
@@ -22,7 +22,7 @@ fn active_roadmap_edges() -> List<RoadmapEdge> {
   }
 }
 
-fn visible() -> List<RoadmapNode> {
+fn visible() -> List<gunbc.roadmap_model.RoadmapNode> {
   focus_visible_nodes(focus: roadmap_focus_selection, nodes: all_nodes(), edges: active_roadmap_edges())
 }
 
@@ -79,17 +79,17 @@ test fn unfocused_projection_emits_no_notice() -> Bool {
 // The discriminator is synthetic because a live-focus assertion would contradict the carrier's own promise that changing or clearing the focus is a one-row view edit. A claim like `count(pulled) > 0` against roadmap_focus_selection fails the moment the focus is set to NoFocus, or to a lane that legitimately has no cross-owner prerequisite — reporting a defect where none exists and making the focus row un-editable in practice. The fixture below owns its two lanes and its transitive cross-lane edge, so it holds no matter what the live focus is set to, and it exercises TRANSITIVITY (b3 pulls b2 pulls b1) which is the part manual inspection misses.
 //
 // The live-tree claim beside it is stated conditionally: whatever the current focus is, no visible node may have a hidden prerequisite. That invariant is true under every focus including NoFocus, so it constrains the projection without pinning the selection.
-fn fx(id: String, owner: String) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_J1Y305CV88R38QJXQFCY" as RoadmapNodeIdentity,
+fn fx(id: String, owner: String) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_J1Y305CV88R38QJXQFCY" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: id,
-    line: TicketLine { done: false, ticket: TicketFields {
+    line: TicketLine { done: false, ticket: gunbc.roadmap_status.TicketFields {
       headline: "fixture", brief: "fixture", displaced_cost: "fixture",
       current_state: "fixture", first_slice: "fixture", red_control: "fixture",
       out_of_scope: "fixture", handback: "fixture",
       updates: [], authored_on: "", last_verified_on: "",
     } },
-    carriers: [Pointer { label: "authority", path: "DESIGN.md" }],
+    carriers: [gunbc.roadmap_model.Pointer { label: "authority", path: "DESIGN.md" }],
     sizing: Sized { intricacy: IntricacyMedium, volume: VolumeMedium, repo: "gunbc", acceptance: ManualAcceptance },
     execution: ExecutionContractUnspecified,
     owner: owner,
@@ -97,7 +97,7 @@ fn fx(id: String, owner: String) -> RoadmapNode {
   }
 }
 
-fn fixture_nodes() -> List<RoadmapNode> {
+fn fixture_nodes() -> List<gunbc.roadmap_model.RoadmapNode> {
   [
     fx(id: "a1", owner: "lane-a"),
     fx(id: "b1", owner: "lane-b"),
@@ -106,15 +106,15 @@ fn fixture_nodes() -> List<RoadmapNode> {
   ]
 }
 
-fn fixture_edges() -> List<RoadmapEdge> {
+fn fixture_edges() -> List<gunbc.roadmap_model.RoadmapEdge> {
   [
-    RoadmapEdge { child: "a1", parent: "b3" },
-    RoadmapEdge { child: "b3", parent: "b2" },
-    RoadmapEdge { child: "b2", parent: "b1" },
+    gunbc.roadmap_model.RoadmapEdge { child: "a1", parent: "b3" },
+    gunbc.roadmap_model.RoadmapEdge { child: "b3", parent: "b2" },
+    gunbc.roadmap_model.RoadmapEdge { child: "b2", parent: "b1" },
   ]
 }
 
-fn fixture_focus() -> RoadmapFocus {
+fn fixture_focus() -> gunbc.roadmap_focus.RoadmapFocus {
   FocusOnOwners { label: "lane a", owners: ["lane-a"] }
 }
 

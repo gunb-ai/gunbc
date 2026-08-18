@@ -3,14 +3,14 @@ module v2.test.claim.wrap_decision_predicate
 
 data wrap_decision_predicate_note: String = "Derisk witnesses for rc-ownership-wrap-decision-design.md: wrap_decision_gate is the single authority for Rc/Box/owned type wrapping at ONE emit position, and wrap_decision_flow_gate is the single authority over a producer/consumer PAIR, refusing disagreement. UseSiteVerdict enrolled (owned-at-all-sites). RED, position surface: omit Diagnostics param row -> param witness rejects; add silent default wrap on WrapGateInapplicable -> bundle_absent witness fails. RED, flow surface (measured, non-uniform): force wrap_decision_gates_agree to true -> over_wrap, under_wrap and distinct_reference_layers witnesses red while missing_row and both accept controls stay green; make wrap_decisions_equal layer-blind -> distinct_reference_layers alone reds. A witness set that reds together says less than one whose profile names which witness guards which arm."
 
-fn wrap_decision_sg_rc_target() -> TargetModel {
+fn wrap_decision_sg_rc_target() -> v2.std.compilers.target_model.TargetModel {
   rust_sg2_type_expr_target_model()
 }
 
-fn wrap_decision_bundle_absent_target() -> TargetModel {
-  TargetModel {
+fn wrap_decision_bundle_absent_target() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
-    bundle: Node {
+    bundle: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -23,10 +23,10 @@ fn wrap_decision_bundle_absent_target() -> TargetModel {
   }
 }
 
-fn wrap_decision_partial_bundle_target() -> TargetModel {
-  TargetModel {
+fn wrap_decision_partial_bundle_target() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
-    bundle: Node {
+    bundle: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
         rust_named_edge(
@@ -47,9 +47,9 @@ fn wrap_decision_partial_bundle_target() -> TargetModel {
 }
 
 fn wrap_decision_gate_is_by_value(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node,
-  use_site: TargetOwnershipUseSite
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> Bool {
   match wrap_decision_gate(
     target: target,
@@ -65,9 +65,9 @@ fn wrap_decision_gate_is_by_value(
 }
 
 fn wrap_decision_gate_is_rc_reference(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node,
-  use_site: TargetOwnershipUseSite
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> Bool {
   wrap_decision_gate_is_reference_layer(
     target: target,
@@ -78,9 +78,9 @@ fn wrap_decision_gate_is_rc_reference(
 }
 
 fn wrap_decision_gate_is_box_reference(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node,
-  use_site: TargetOwnershipUseSite
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> Bool {
   wrap_decision_gate_is_reference_layer(
     target: target,
@@ -91,10 +91,10 @@ fn wrap_decision_gate_is_box_reference(
 }
 
 fn wrap_decision_gate_is_reference_layer(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node,
-  use_site: TargetOwnershipUseSite,
-  layer: TargetReferenceLayer
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
+  layer: v2.std.compilers.target_model.TargetReferenceLayer
 ) -> Bool {
   match wrap_decision_gate(
     target: target,
@@ -110,9 +110,9 @@ fn wrap_decision_gate_is_reference_layer(
 }
 
 fn wrap_decision_gate_rejects(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node,
-  use_site: TargetOwnershipUseSite
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> Bool {
   match wrap_decision_gate(
     target: target,
@@ -125,9 +125,9 @@ fn wrap_decision_gate_rejects(
 }
 
 fn wrap_decision_gate_is_inapplicable(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node,
-  use_site: TargetOwnershipUseSite
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> Bool {
   match wrap_decision_gate(
     target: target,
@@ -231,10 +231,10 @@ test fn wrap_decision_node_struct_field_is_box() -> Bool {
 // agreement and inapplicable witnesses are the positive controls that stop a refuse-always
 // implementation from earning a degenerate pass on the refusal half.
 fn wrap_decision_flow_rejects(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node,
-  producer_site: TargetOwnershipUseSite,
-  consumer_site: TargetOwnershipUseSite
+  producer_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
+  consumer_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> Bool {
   match wrap_decision_flow_gate(
     target: target,
@@ -248,10 +248,10 @@ fn wrap_decision_flow_rejects(
 }
 
 fn wrap_decision_flow_is_by_value(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node,
-  producer_site: TargetOwnershipUseSite,
-  consumer_site: TargetOwnershipUseSite
+  producer_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
+  consumer_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> Bool {
   match wrap_decision_flow_gate(
     target: target,
@@ -265,10 +265,10 @@ fn wrap_decision_flow_is_by_value(
 }
 
 fn wrap_decision_flow_is_inapplicable(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node,
-  producer_site: TargetOwnershipUseSite,
-  consumer_site: TargetOwnershipUseSite
+  producer_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
+  consumer_site: v2.std.compilers.target_model.TargetOwnershipUseSite
 ) -> Bool {
   match wrap_decision_flow_gate(
     target: target,

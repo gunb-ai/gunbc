@@ -1,9 +1,9 @@
 module v2.test.manual.swift_language_model_anchor
 
 
-type swift_anchor_language_model = LanguageModel
+type swift_anchor_language_model = v2.std.language_model.LanguageModel
 
 data swift_anchor_primitive: swift_anchor_language_model = swift_primitive_language_model()
-data swift_anchor_core: ModelCore = swift_primitive_model_core()
+data swift_anchor_core: v2.std.model_core.ModelCore = swift_primitive_model_core()
 data swift_anchor: swift_anchor_language_model = swift_language_model()
-data swift_anchor_model_core: ModelCore = swift_model_core()
+data swift_anchor_model_core: v2.std.model_core.ModelCore = swift_model_core()

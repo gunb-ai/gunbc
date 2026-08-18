@@ -87,14 +87,14 @@ fn signoff_by(s: Signoff) -> String {
   }
 }
 
-fn pr_merged(pr: PullRequest) -> Bool {
+fn pr_merged(pr: extdeps.github.pulls.PullRequest) -> Bool {
   match pr.merged_at {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-fn merged_pr_numbers(prs: List<PullRequest>) -> List<Int> {
+fn merged_pr_numbers(prs: List<extdeps.github.pulls.PullRequest>) -> List<Int> {
   prs |> filter(pr => pr_merged(pr: pr)) |> map(pr => pr.number)
 }
 
@@ -161,6 +161,6 @@ fn item_drifted(item: RoadmapItem, committed_box: Bool, merged: List<Int>) -> Bo
   }
 }
 
-fn item_drifts_against_prs(item: RoadmapItem, committed_box: Bool, prs: List<PullRequest>) -> Bool {
+fn item_drifts_against_prs(item: RoadmapItem, committed_box: Bool, prs: List<extdeps.github.pulls.PullRequest>) -> Bool {
   item_drifted(item: item, committed_box: committed_box, merged: merged_pr_numbers(prs: prs))
 }

@@ -2,7 +2,7 @@ module v2.extdeps.languages.bash_orchestration_emit
 
 
 fn bash_orchestration_emit_registry_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       bash_named_edge(
@@ -78,9 +78,9 @@ fn bash_orchestration_emit_registry_node() -> Node {
   }
 }
 
-fn bash_orchestration_medium_authority() -> TargetModel {
+fn bash_orchestration_medium_authority() -> v2.std.compilers.target_model.TargetModel {
   target_model_make_with_emit_transforms(
-    bundle: Node {
+    bundle: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [
         bash_named_edge(
@@ -98,23 +98,23 @@ fn bash_orchestration_medium_authority() -> TargetModel {
   )
 }
 
-fn bash_orch_run_env_tail(env: FreeMonoid<EnvBinding>) -> FreeMonoid<EnvBinding> {
+fn bash_orch_run_env_tail(env: FreeMonoid<v2.std.orchestration.EnvBinding>) -> FreeMonoid<v2.std.orchestration.EnvBinding> {
   match list_tail(xs: env) {
     TailFound { tail: t } => t
     TailAbsent => []
   }
 }
 
-fn bash_orch_run_env_tail_command(env: FreeMonoid<EnvBinding>, command: String) -> String {
+fn bash_orch_run_env_tail_command(env: FreeMonoid<v2.std.orchestration.EnvBinding>, command: String) -> String {
   concat(bash_env_prefix(env: bash_orch_run_env_tail(env: env)), command)
 }
 
-fn bash_orch_run_env_plan(r: Run) -> OrchRunEmitPlan {
+fn bash_orch_run_env_plan(r: v2.std.orchestration.Run) -> v2.std.orchestration_emit.OrchRunEmitPlan {
   match list_head(xs: r.env) {
     HeadFound { value: b } =>
       match b {
         EnvSet { name: n, value: v } =>
-          OrchRunEmitPlan {
+          v2.std.orchestration_emit.OrchRunEmitPlan {
             construct_tag: orch_construct_run_env_prefixed,
             target: bash_stmt_env_prefixed_target_model(
               name: n,
@@ -123,7 +123,7 @@ fn bash_orch_run_env_plan(r: Run) -> OrchRunEmitPlan {
             )
           }
         EnvUnset { name: n } =>
-          OrchRunEmitPlan {
+          v2.std.orchestration_emit.OrchRunEmitPlan {
             construct_tag: orch_construct_run_env_unset,
             target: bash_stmt_env_unset_target_model(
               name: n,
@@ -132,15 +132,15 @@ fn bash_orch_run_env_plan(r: Run) -> OrchRunEmitPlan {
           }
       }
     HeadAbsent =>
-      OrchRunEmitPlan {
+      v2.std.orchestration_emit.OrchRunEmitPlan {
         construct_tag: orch_construct_run_rawline,
         target: bash_fold_raw_line_target_model(text: r.command)
       }
   }
 }
 
-fn bash_orchestration_emit_medium() -> OrchestrationEmitMedium {
-  OrchestrationEmitMedium {
+fn bash_orchestration_emit_medium() -> v2.std.orchestration_emit.OrchestrationEmitMedium {
+  v2.std.orchestration_emit.OrchestrationEmitMedium {
     authority: bash_orchestration_medium_authority(),
     realize_run_rawline: bash_fold_raw_line_target_model,
     run_env_plan: bash_orch_run_env_plan,

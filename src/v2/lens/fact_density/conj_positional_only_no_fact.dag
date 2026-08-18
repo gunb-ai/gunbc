@@ -1,16 +1,16 @@
 module v2.test.lens_fact_density.conj_positional_only_no_fact
 
 
-data conj_positional_only_child: Node = Node {
+data conj_positional_only_child: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^conj_positional_only_child_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data conj_positional_only_input: Node = Node {
+data conj_positional_only_input: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Positional, target: conj_positional_only_child }
+    v2.std.node.Edge { label: Positional, target: conj_positional_only_child }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -23,7 +23,7 @@ fn conj_positional_only_no_fact_claim_rhs() -> Node {
   if conj_positional_only_no_fact_claim_holds() {
     conj_positional_only_input
   } else {
-    Node {
+    v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -31,10 +31,10 @@ fn conj_positional_only_no_fact_claim_rhs() -> Node {
   }
 }
 
-data claim_conj_positional_only_no_fact: TestClaim = EqualsClaim {
+data claim_conj_positional_only_no_fact: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_fact_density/conj_positional_only: positional-only conj is NoFact",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: conj_positional_only_input,
   rhs: conj_positional_only_no_fact_claim_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

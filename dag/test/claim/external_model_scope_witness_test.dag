@@ -5,9 +5,9 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data external_model_scope_witness_note: String = "RED and GREEN controls for the external_model_scope_decision KERNEL, in exactly the operator-verdict shapes (gunbc#7556): RED = a generic browser module declaring a Chromium subject scope while carrying Chrome | Firefox | Safari concrete rows is incoherent; GREEN = a shared navigation shape plus separate Chromium and Firefox modules plus a downstream support roster is coherent. These are controls of the decision kernel over DECLARED facts — not proof of an admission wall (the kernel's honesty boundary is external_model_scope_decision_kernel_note; the mechanical wall witnessed here is scope PRESENCE: the frozen-manifest cover accounting below). Plus the staged-enrollment accounting for gunbc.extdeps_scope_frontier's frozen legacy manifest."
 
-fn subject(module_path: String, decl_name: String) -> ExternalSubjectRef {
-  ExternalSubjectRef {
-    declaration: DeclarationRef {
+fn subject(module_path: String, decl_name: String) -> extdeps.external_authority.ExternalSubjectRef {
+  extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: module_path,
       decl_name: decl_name,
       field: WholeDeclaration
@@ -15,35 +15,35 @@ fn subject(module_path: String, decl_name: String) -> ExternalSubjectRef {
   }
 }
 
-fn coverage_row(module_path: String, decl_name: String) -> DeclarationRef {
-  DeclarationRef { module_path: module_path, decl_name: decl_name, field: WholeDeclaration }
+fn coverage_row(module_path: String, decl_name: String) -> std.decl_ref.DeclarationRef {
+  std.decl_ref.DeclarationRef { module_path: module_path, decl_name: decl_name, field: WholeDeclaration }
 }
 
-fn synthetic_scope(subject_ref: ExternalSubjectRef, locator: String) -> ExternalModelScope {
-  ExternalModelScope {
+fn synthetic_scope(subject_ref: extdeps.external_authority.ExternalSubjectRef, locator: String) -> extdeps.external_authority.ExternalModelScope {
+  extdeps.external_authority.ExternalModelScope {
     subject: subject_ref,
-    first_citation: ExternalAuthority {
-      uri: Uri { scheme: Https, locator: locator }
+    first_citation: extdeps.external_authority.ExternalAuthority {
+      uri: extdeps.uri.Uri { scheme: Https, locator: locator }
     },
     further_citations: []
   }
 }
 
-fn decision_incoherent_with_count(d: ScopeDecision, n: Int) -> Bool {
+fn decision_incoherent_with_count(d: extdeps.external_authority.ScopeDecision, n: Int) -> Bool {
   match d {
     ScopeCoherent => false
     ScopeIncoherent { finding_count: c, findings: _ } => c == n
   }
 }
 
-fn decision_coherent(d: ScopeDecision) -> Bool {
+fn decision_coherent(d: extdeps.external_authority.ScopeDecision) -> Bool {
   match d {
     ScopeCoherent => true
     ScopeIncoherent { finding_count: _, findings: _ } => false
   }
 }
 
-fn finding_is_foreign(f: ScopeFinding) -> Bool {
+fn finding_is_foreign(f: extdeps.external_authority.ScopeFinding) -> Bool {
   match f {
     ForeignSubjectRow { module: _, declared: _, foreign: _ } => true
     ConsumerCoverageInUpstream { module: _, coverage_row: _ } => false
@@ -52,8 +52,8 @@ fn finding_is_foreign(f: ScopeFinding) -> Bool {
 
 data red_control_note: String = "The first red control is exactly the gunbc#7556 shape: one generic browser module, a Chromium subject scope, and Chrome | Firefox | Safari concrete product rows — three independently governed subjects in one module, incoherent with one located ForeignSubjectRow per foreign subject. Subjects are symbolic DeclarationRefs into the one-module-per-subject file map DESIGN §3 names."
 
-fn red_generic_browser_module() -> DeclaredScopeFacts {
-  DeclaredScopeFacts {
+fn red_generic_browser_module() -> extdeps.external_authority.DeclaredScopeFacts {
+  extdeps.external_authority.DeclaredScopeFacts {
     module: "extdeps.browser",
     scope: synthetic_scope(
       subject_ref: subject(module_path: "extdeps.browser.chromium", decl_name: "chromium"),
@@ -82,7 +82,7 @@ test fn red_generic_browser_module_findings_are_all_foreign_subject_rows() -> Bo
 }
 
 test fn red_consumer_coverage_in_upstream_incoherent() -> Bool {
-  let m = DeclaredScopeFacts {
+  let m = extdeps.external_authority.DeclaredScopeFacts {
     module: "extdeps.browser.chromium",
     scope: synthetic_scope(
       subject_ref: subject(module_path: "extdeps.browser.chromium", decl_name: "chromium"),
@@ -100,9 +100,9 @@ test fn red_consumer_coverage_in_upstream_incoherent() -> Bool {
 
 data green_control_note: String = "The green control is the decomposed portfolio: a shared navigation-shape module with no product rows, one module per implementation subject (Chromium, Firefox), and the coverage state carried by a DownstreamSupportRoster in the product/workflow layer rather than by any upstream module."
 
-fn green_portfolio() -> List<DeclaredScopeFacts> {
+fn green_portfolio() -> List<extdeps.external_authority.DeclaredScopeFacts> {
   [
-    DeclaredScopeFacts {
+    extdeps.external_authority.DeclaredScopeFacts {
       module: "extdeps.whatwg.html_navigation",
       scope: synthetic_scope(
         subject_ref: subject(module_path: "extdeps.whatwg.html_navigation", decl_name: "whatwg_html_standard"),
@@ -111,7 +111,7 @@ fn green_portfolio() -> List<DeclaredScopeFacts> {
       product_fact_subjects: [],
       consumer_coverage_rows: []
     },
-    DeclaredScopeFacts {
+    extdeps.external_authority.DeclaredScopeFacts {
       module: "extdeps.browser.chromium",
       scope: synthetic_scope(
         subject_ref: subject(module_path: "extdeps.browser.chromium", decl_name: "chromium"),
@@ -120,7 +120,7 @@ fn green_portfolio() -> List<DeclaredScopeFacts> {
       product_fact_subjects: [subject(module_path: "extdeps.browser.chromium", decl_name: "chromium")],
       consumer_coverage_rows: []
     },
-    DeclaredScopeFacts {
+    extdeps.external_authority.DeclaredScopeFacts {
       module: "extdeps.browser.firefox",
       scope: synthetic_scope(
         subject_ref: subject(module_path: "extdeps.browser.firefox", decl_name: "firefox"),
@@ -132,8 +132,8 @@ fn green_portfolio() -> List<DeclaredScopeFacts> {
   ]
 }
 
-fn green_downstream_roster() -> DownstreamSupportRoster {
-  DownstreamSupportRoster {
+fn green_downstream_roster() -> extdeps.external_authority.DownstreamSupportRoster {
+  extdeps.external_authority.DownstreamSupportRoster {
     module: "gunbc.served_surface_browser_support",
     coverage_rows: [
       coverage_row(module_path: "gunbc.served_surface_browser_support", decl_name: "chromium_observed_receipt"),
@@ -151,13 +151,13 @@ test fn green_decomposed_portfolio_with_downstream_roster_coherent() -> Bool {
 test fn adopted_vendor_scopes_coherent_by_execution() -> Bool {
   let ms_subject = extdeps.vendor.microsoft.extdeps_model_scope.subject
   let at_subject = extdeps.vendor.atlassian.extdeps_model_scope.subject
-  let ms = DeclaredScopeFacts {
+  let ms = extdeps.external_authority.DeclaredScopeFacts {
     module: "extdeps.vendor.microsoft",
     scope: extdeps.vendor.microsoft.extdeps_model_scope,
     product_fact_subjects: [ms_subject],
     consumer_coverage_rows: []
   }
-  let at = DeclaredScopeFacts {
+  let at = extdeps.external_authority.DeclaredScopeFacts {
     module: "extdeps.vendor.atlassian",
     scope: extdeps.vendor.atlassian.extdeps_model_scope,
     product_fact_subjects: [at_subject],
@@ -222,11 +222,11 @@ test fn green_scope_placement_admits_carrier_and_machinery_additions() -> Bool {
 
 data base_split_witness_note: String = "Controls for the placement KERNEL, and an explicit statement of what they do NOT cover. They exercise scope_placement_membership_verdict and scope_placement_freeze_verdict over hand-authored observations, so they pin the verdict shape in both directions: an unrostered path in the judged set refuses and names itself, a rostered one admits, and every unreadable-observation arm refuses rather than skipping. WHAT THEY CANNOT SEE (stated because an earlier draft of this note claimed otherwise): these fns are pure in the observation handed to them, so no assertion here can distinguish WHICH BASE produced that observation — the base is bound one frame above, in run_extdeps_scope_placement_gate_body, and a regression that fed the membership arm scope_placement_added_paths (the freeze base) instead of scope_placement_change_added_paths would leave every witness in this file green. The base wiring is covered by EXECUTION of the wet gate, not from here: with the session_dashboard roster row removed so the freeze population carries an unrostered file while the change adds none, the gate returns ExitSuccess under the split wiring and refuses under the old single-base wiring — that perturbation is the discriminating receipt, and it is recorded in the PR rather than encoded here because it requires mutating the roster and a live git observation. Closing that hole in-corpus needs a structural reader over the call graph (a lens asserting which observation fn feeds which arm), which is the honest next step and is not built."
 
-fn exit_reason_of(e: ProcessExit) -> String {
+fn exit_reason_of(e: std.process.ProcessExit) -> String {
   scope_placement_failure_reason(exit: e)
 }
 
-fn exit_is_success(e: ProcessExit) -> Bool {
+fn exit_is_success(e: std.process.ProcessExit) -> Bool {
   match e { ExitSuccess => true  _ => false }
 }
 
@@ -288,7 +288,7 @@ fn synthetic_manifest_add_diff() -> String {
   ], "\n")
 }
 
-fn remove_only_exit_is_success(observation: ManifestLineObservation) -> Bool {
+fn remove_only_exit_is_success(observation: gunbc.extdeps_scope_frontier.ManifestLineObservation) -> Bool {
   match manifest_remove_only_exit(observation: observation) {
     ExitSuccess => true
     _ => false

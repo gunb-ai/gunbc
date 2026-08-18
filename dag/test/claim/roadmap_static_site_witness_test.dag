@@ -3,8 +3,8 @@ module test.claim.roadmap_static_site_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn fixture_site_artifact_digest(body: String) -> ContentHash {
-  content_hash_atom(value: body as NonEmptyStr)
+fn fixture_site_artifact_digest(body: String) -> std.content_hash.ContentHash {
+  content_hash_atom(value: body as std.types.NonEmptyStr)
 }
 
 test fn witness_site_artifact_model_populated() -> Bool {

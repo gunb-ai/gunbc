@@ -32,7 +32,7 @@ data pyright_profile_l1: PyrightConfig = PyrightConfig {
 }
 
 type PyrightDiagnosticRule {
-  code_id: Symbol
+  code_id: v2.std.node.Symbol
   rule_name: String
 }
 data pyright_diagnostic_rules: List<PyrightDiagnosticRule> = [

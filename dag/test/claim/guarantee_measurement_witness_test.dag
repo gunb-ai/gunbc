@@ -3,42 +3,42 @@ module test.claim.guarantee_measurement_witness_test
 
 data guarantee_measurement_witness_scope_note: String = "SYNTHETIC ROWS ONLY, by the Stage 0 charter: these witnesses prove the protocol - construction, exactly-one resolution, the refusing joins, digest determinism, and the verdict/ignorance separation - against rows invented here. No probe executes, no real class population exists yet, and nothing below says anything about the compiler. When ladder-probe-corpus lands real rows, its receipts execute through THIS vocabulary and these synthetic witnesses stay as the protocol's regression controls. The unwritability half of the node's red_control (a receipt missing an identity component) is construction-by-required-fields: it cannot be witnessed from inside a compiling program, and its corpus-wide enforcement measurement belongs to the record-construction census class, stated in the module's receipt_identity_note rather than faked here."
 
-fn synth_path(id: String) -> GuaranteePath {
-  GuaranteePath {
-    id: id as GuaranteePathId,
+fn synth_path(id: String) -> gunbc.guarantee_measurement.GuaranteePath {
+  gunbc.guarantee_measurement.GuaranteePath {
+    id: id as gunbc.guarantee_measurement.GuaranteePathId,
     subject_grain: SyntheticProgram,
     acceptance_boundary: CompileAccept,
-    realization_target: EmittedTarget { language: "rust" as GuaranteeTargetName },
+    realization_target: EmittedTarget { language: "rust" as gunbc.guarantee_measurement.GuaranteeTargetName },
   }
 }
 
-fn synth_interp_path(id: String) -> GuaranteePath {
-  GuaranteePath {
-    id: id as GuaranteePathId,
+fn synth_interp_path(id: String) -> gunbc.guarantee_measurement.GuaranteePath {
+  gunbc.guarantee_measurement.GuaranteePath {
+    id: id as gunbc.guarantee_measurement.GuaranteePathId,
     subject_grain: SyntheticProgram,
     acceptance_boundary: RuntimeRun,
     realization_target: InterpreterRealization,
   }
 }
 
-fn synth_phase_path(id: String, boundary: AcceptanceBoundary) -> GuaranteePath {
-  GuaranteePath {
-    id: id as GuaranteePathId,
+fn synth_phase_path(id: String, boundary: gunbc.guarantee_measurement.AcceptanceBoundary) -> gunbc.guarantee_measurement.GuaranteePath {
+  gunbc.guarantee_measurement.GuaranteePath {
+    id: id as gunbc.guarantee_measurement.GuaranteePathId,
     subject_grain: SyntheticProgram,
     acceptance_boundary: boundary,
     realization_target: InterpreterRealization,
   }
 }
 
-fn synth_receipt(path_id: String) -> GuaranteeMeasurementReceipt {
-  GuaranteeMeasurementReceipt {
-    class: "call-shape" as GuaranteeClassId,
-    path: path_id as GuaranteePathId,
-    probe: "call-shape-mislabel-red" as GuaranteeProbeId,
-    subject_revision: GitRevision { commit: "0000000000000000000000000000000000000000" as CommitSha },
-    harness_revision: GitRevision { commit: "1111111111111111111111111111111111111111" as CommitSha },
-    probe_set_digest: probe_set_digest(probe_ids: ["call-shape-mislabel-red" as GuaranteeProbeId]),
-    observed: RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr, count: 1 },
+fn synth_receipt(path_id: String) -> gunbc.guarantee_measurement.GuaranteeMeasurementReceipt {
+  gunbc.guarantee_measurement.GuaranteeMeasurementReceipt {
+    class: "call-shape" as gunbc.guarantee_measurement.GuaranteeClassId,
+    path: path_id as gunbc.guarantee_measurement.GuaranteePathId,
+    probe: "call-shape-mislabel-red" as gunbc.guarantee_measurement.GuaranteeProbeId,
+    subject_revision: GitRevision { commit: "0000000000000000000000000000000000000000" as std.types.CommitSha },
+    harness_revision: GitRevision { commit: "1111111111111111111111111111111111111111" as std.types.CommitSha },
+    probe_set_digest: probe_set_digest(probe_ids: ["call-shape-mislabel-red" as gunbc.guarantee_measurement.GuaranteeProbeId]),
+    observed: RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr, count: 1 },
   }
 }
 
@@ -79,12 +79,12 @@ test fn resolution_is_exactly_one_across_all_three_outcomes() -> Bool {
     synth_phase_path(id: "c-eval", boundary: InferToEval),
     synth_phase_path(id: "c-translate", boundary: InferToTranslate),
   ]
-  let resolved = match resolve_guarantee_path(paths: paths, wanted: "a" as GuaranteePathId) {
+  let resolved = match resolve_guarantee_path(paths: paths, wanted: "a" as gunbc.guarantee_measurement.GuaranteePathId) {
     PathResolved { path: p } => (p.id as String) == "a"
     PathUnknown { wanted: _ } => false
     PathDuplicate { wanted: _, matches: _ } => false
   }
-  let unknown = match resolve_guarantee_path(paths: paths, wanted: "zzz" as GuaranteePathId) {
+  let unknown = match resolve_guarantee_path(paths: paths, wanted: "zzz" as gunbc.guarantee_measurement.GuaranteePathId) {
     PathResolved { path: _ } => false
     PathUnknown { wanted: w } => (w as String) == "zzz"
     PathDuplicate { wanted: _, matches: _ } => false
@@ -93,8 +93,8 @@ test fn resolution_is_exactly_one_across_all_three_outcomes() -> Bool {
 }
 
 test fn duplicate_class_id_reds_uniqueness() -> Bool {
-  let clean = ["call-shape" as GuaranteeClassId, "method-existence" as GuaranteeClassId]
-  let dirty = ["call-shape" as GuaranteeClassId, "call-shape" as GuaranteeClassId]
+  let clean = ["call-shape" as gunbc.guarantee_measurement.GuaranteeClassId, "method-existence" as gunbc.guarantee_measurement.GuaranteeClassId]
+  let dirty = ["call-shape" as gunbc.guarantee_measurement.GuaranteeClassId, "call-shape" as gunbc.guarantee_measurement.GuaranteeClassId]
   guarantee_class_ids_unique(ids: clean) && !guarantee_class_ids_unique(ids: dirty)
 }
 
@@ -105,19 +105,19 @@ test fn duplicate_path_id_reds_uniqueness() -> Bool {
 }
 
 test fn probe_set_digest_is_input_determined() -> Bool {
-  let one = [ "p1" as GuaranteeProbeId, "p2" as GuaranteeProbeId ]
-  let same = [ "p1" as GuaranteeProbeId, "p2" as GuaranteeProbeId ]
-  let fewer = [ "p1" as GuaranteeProbeId ]
-  let reordered = [ "p2" as GuaranteeProbeId, "p1" as GuaranteeProbeId ]
+  let one = [ "p1" as gunbc.guarantee_measurement.GuaranteeProbeId, "p2" as gunbc.guarantee_measurement.GuaranteeProbeId ]
+  let same = [ "p1" as gunbc.guarantee_measurement.GuaranteeProbeId, "p2" as gunbc.guarantee_measurement.GuaranteeProbeId ]
+  let fewer = [ "p1" as gunbc.guarantee_measurement.GuaranteeProbeId ]
+  let reordered = [ "p2" as gunbc.guarantee_measurement.GuaranteeProbeId, "p1" as gunbc.guarantee_measurement.GuaranteeProbeId ]
   ((probe_set_digest(probe_ids: one) as String) == (probe_set_digest(probe_ids: same) as String))
     && !((probe_set_digest(probe_ids: one) as String) == (probe_set_digest(probe_ids: fewer) as String))
     && !((probe_set_digest(probe_ids: one) as String) == (probe_set_digest(probe_ids: reordered) as String))
 }
 
-fn obs_count_view(o: ProbeObservation) -> Int {
+fn obs_count_view(o: gunbc.guarantee_measurement.ProbeObservation) -> Int {
   probe_observation_fold(
     o: o,
-    fold: ProbeObservationFold {
+    fold: gunbc.guarantee_measurement.ProbeObservationFold {
       refused: fn(_, c) { c },
       accepted_clean: 90,
       accepted_counted: fn(_, c) { c },
@@ -128,20 +128,20 @@ fn obs_count_view(o: ProbeObservation) -> Int {
 }
 
 test fn fold_discriminates_every_arm_and_carries_payloads() -> Bool {
-  obs_count_view(o: RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr, count: 7 }) == 7
+  obs_count_view(o: RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr, count: 7 }) == 7
     && obs_count_view(o: AcceptedClean) == 90
-    && obs_count_view(o: AcceptedCounted { diagnostic_class: "MethodExistenceUndecided" as NonEmptyStr, count: 3 }) == 3
-    && obs_count_view(o: ExecutionDiverged { description: "emit accepted what the interpreter refused" as NonEmptyStr }) == 91
-    && obs_count_view(o: ProbeNotRunnable { cause: "harness build failed" as NonEmptyStr }) == 92
+    && obs_count_view(o: AcceptedCounted { diagnostic_class: "MethodExistenceUndecided" as std.types.NonEmptyStr, count: 3 }) == 3
+    && obs_count_view(o: ExecutionDiverged { description: "emit accepted what the interpreter refused" as std.types.NonEmptyStr }) == 91
+    && obs_count_view(o: ProbeNotRunnable { cause: "harness build failed" as std.types.NonEmptyStr }) == 92
 }
 
 test fn not_runnable_is_ignorance_never_a_verdict() -> Bool {
   let verdicts = [
-    RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as NonEmptyStr, count: 1 },
+    RefusedTyped { diagnostic_class: "CallArgumentNameUnknown" as std.types.NonEmptyStr, count: 1 },
     AcceptedClean,
-    AcceptedCounted { diagnostic_class: "MethodExistenceUndecided" as NonEmptyStr, count: 3 },
-    ExecutionDiverged { description: "emit reordered what the interpreter refused" as NonEmptyStr },
+    AcceptedCounted { diagnostic_class: "MethodExistenceUndecided" as std.types.NonEmptyStr, count: 3 },
+    ExecutionDiverged { description: "emit reordered what the interpreter refused" as std.types.NonEmptyStr },
   ]
-  let ignorance = ProbeNotRunnable { cause: "harness build failed" as NonEmptyStr }
+  let ignorance = ProbeNotRunnable { cause: "harness build failed" as std.types.NonEmptyStr }
   all(verdicts, v => observed_is_verdict(o: v)) && !observed_is_verdict(o: ignorance)
 }

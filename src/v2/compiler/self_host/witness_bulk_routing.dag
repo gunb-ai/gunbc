@@ -5,7 +5,7 @@ data witness_bulk_routing_note: String = "Entry-grain bulk-native routing machin
 
 type WitnessEntryRoutingRow {
   entry: String
-  disposition: WitnessExecutionDisposition
+  disposition: v2.std.witness_execution_routing.WitnessExecutionDisposition
 }
 
 type WitnessEntryRoutingPartition {

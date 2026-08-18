@@ -6,7 +6,7 @@ data spark_serving_runtime_archive_admission_receipt_provenance_note: String = "
 data spark_serving_runtime_archive_admission_receipt_note: String = "Executor-local release-archive admission receipt. gunbc.package_delivery.materialize_spark_serving_ollama_runtime_bundle writes via write_spark_serving_runtime_archive_admission_receipt after digest admission; wet observation reads spark_serving_runtime_receipt_wire_path via spark_serving_runtime_receipt_probe_words over SSH and still requires independent /api/version agreement — never re-derives the cited release-asset digest from desired state alone. Missing or unreadable receipt on an active unit refuses rather than collapsing to SparkServingReadbackAbsent."
 
 type SparkServingRuntimeArchiveAdmissionReceipt {
-  release_asset_digest_hex: NonEmptyStr
+  release_asset_digest_hex: std.types.NonEmptyStr
 }
 
 data spark_serving_executor_home: std.types.FilePath = "/home/gunbc-automation" as std.types.FilePath

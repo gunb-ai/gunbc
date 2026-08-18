@@ -1,7 +1,7 @@
 module tools.build
 
 
-func build_all() -> { overall_success: Bool, summary: Summary, report: String, build_stderr: String, test_stderr: String, clippy_stderr: String } {
+func build_all() -> { overall_success: Bool, summary: std.types.Summary, report: String, build_stderr: String, test_stderr: String, clippy_stderr: String } {
 
   build = cargo.Build.Build(extra_args: ["--all-targets"])
 

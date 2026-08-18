@@ -11,7 +11,7 @@ fn symbol_is_kernel_ambient(s: Symbol) -> Bool {
 }
 
 type SourceSpecReadFact
-  = NamedFieldFacts { density: NonZeroNat }
+  = NamedFieldFacts { density: v2.std.cardinality.NonZeroNat }
   | KernelAmbientAtom
   | NoFact
   | NotATypeCarrier

@@ -12,7 +12,7 @@ test fn witness_service_ready_endpoint_authority() -> Bool {
 }
 
 test fn witness_service_not_ready_reason_is_located() -> Bool {
-  let reason = service_not_ready_reason(refusal: ServiceNotReady {
+  let reason = service_not_ready_reason(refusal: gunbc.live_deploy.service_ready.ServiceNotReady {
     unit: gunbc_roadmap_unit_name,
     endpoint: roadmap_site_health_path,
     waited: second(count: 1),

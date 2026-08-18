@@ -3,8 +3,8 @@ module gunbc.deployed_intent_v0
 
 type DeployedIntentV0 {
   fleet_slot: product.placement_supply.HostIdentity
-  target_host: ComputeHost
-  observation: HostIdentityObservation
+  target_host: gunbc.fleet_intent.ComputeHost
+  observation: gunbc.host_identity_observation.HostIdentityObservation
 }
 
 data gunbc_deployed_intent_v0_scope_disposition: Disposition = std.disposition.Terminal {

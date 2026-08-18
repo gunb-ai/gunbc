@@ -1,16 +1,16 @@
 module v2.test.emit.fold_call_closure_fixture
 
 
-fn fold_fixture_atom(id: Symbol) -> Node {
+fn fold_fixture_atom(id: v2.std.node.Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
 }
 
-fn fold_fixture_positional(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+fn fold_fixture_positional(target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Positional, target: target }
 }
 
-fn fold_fixture_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn fold_fixture_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
 fn fold_fixture_param_domain_conj() -> Node {
@@ -33,7 +33,7 @@ fn fold_fixture_empty_domain_conj() -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [])
 }
 
-fn fold_fixture_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> Node {
+fn fold_fixture_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.std.node.Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
@@ -68,7 +68,7 @@ fn fold_fixture_closure_arrow(left_operand: Symbol, right_operand: Symbol) -> No
   )
 }
 
-fn fold_fixture_closure_arrow_sub(left_operand: Symbol, right_operand: Symbol) -> Node {
+fn fold_fixture_closure_arrow_sub(left_operand: v2.std.node.Symbol, right_operand: v2.std.node.Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Arrow },
     children: [
@@ -127,7 +127,7 @@ fn fold_fixture_arrow_with_body(domain: Node, body: Node) -> Node {
   )
 }
 
-fn fold_fixture_param_arrow_with_closure(left_operand: Symbol, right_operand: Symbol) -> Node {
+fn fold_fixture_param_arrow_with_closure(left_operand: v2.std.node.Symbol, right_operand: v2.std.node.Symbol) -> Node {
   fold_fixture_arrow_with_body(
     domain: fold_fixture_param_domain_conj(),
     body: fold_fixture_call_body(
@@ -138,7 +138,7 @@ fn fold_fixture_param_arrow_with_closure(left_operand: Symbol, right_operand: Sy
   )
 }
 
-fn fold_fixture_host_arrow_with_closure(left_operand: Symbol, right_operand: Symbol) -> Node {
+fn fold_fixture_host_arrow_with_closure(left_operand: v2.std.node.Symbol, right_operand: v2.std.node.Symbol) -> Node {
   fold_fixture_arrow_with_body(
     domain: fold_fixture_empty_domain_conj(),
     body: fold_fixture_call_body(

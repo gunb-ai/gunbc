@@ -13,13 +13,13 @@ test fn free_output_witnesses() -> Bool {
     available: byte_size(count: 3072000000),
   }
 
-  let swap_stats = SwapStats {
+  let swap_stats = extdeps.tools.free.SwapStats {
     total: byte_size(count: 2048000000),
     used: byte_size(count: 0),
     free: byte_size(count: 2048000000),
   }
 
-  let output = FreeOutput {
+  let output = extdeps.tools.free.FreeOutput {
     memory: memory_stats,
     swap: swap_stats,
   }

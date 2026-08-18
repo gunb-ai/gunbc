@@ -24,24 +24,24 @@ fn usd_whole_dollars_count(m: UsdWholeDollars) -> std.nat.Nat {
 
 // XBRL facts are either duration-typed (start and end bound a flow, e.g. income-statement lines) or instant-typed (a single as-of date, e.g. balance and commitment amounts; the upstream companyconcept row simply omits start). The period is a closed sum so a half-specified period is unwritable (DESIGN section 5, correctness by construction) rather than two optional date fields.
 type FiledPeriod
-  = FiledDuration { start: EdgarCalendarDate, end: EdgarCalendarDate }
-  | FiledInstant { as_of: EdgarCalendarDate }
+  = FiledDuration { start: extdeps.sec.types.EdgarCalendarDate, end: extdeps.sec.types.EdgarCalendarDate }
+  | FiledInstant { as_of: extdeps.sec.types.EdgarCalendarDate }
 
 type FiledFactCitation {
-  accession: NonEmptyStr
+  accession: std.types.NonEmptyStr
   fiscal_year: Int
-  fiscal_period: NonEmptyStr
-  form: FilingForm
+  fiscal_period: std.types.NonEmptyStr
+  form: extdeps.sec.types.FilingForm
   period: FiledPeriod
-  filed_date: EdgarCalendarDate
+  filed_date: extdeps.sec.types.EdgarCalendarDate
 }
 
 type FiledAmount
   = Filed { amount: UsdWholeDollars }
-  | Unfiled { cause: NonEmptyStr }
+  | Unfiled { cause: std.types.NonEmptyStr }
 
 type FiledMonetaryFact {
-  element: NonEmptyStr
+  element: std.types.NonEmptyStr
   amount: FiledAmount
   citation: FiledFactCitation
 }
@@ -76,10 +76,10 @@ fn signed_usd_value(v: SignedUsdWholeDollars) -> Int {
 
 type FiledSignedAmount
   = FiledSigned { value: SignedUsdWholeDollars }
-  | UnfiledSigned { cause: NonEmptyStr }
+  | UnfiledSigned { cause: std.types.NonEmptyStr }
 
 type FiledSignedMonetaryFact {
-  element: NonEmptyStr
+  element: std.types.NonEmptyStr
   amount: FiledSignedAmount
   citation: FiledFactCitation
 }

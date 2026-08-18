@@ -3,8 +3,8 @@ module extdeps.memory.macronix_mx25l25673g
 
 // The publisher's own datasheet attachment. The anchor records where this part's mechanical
 // authority lives; the document's geometry is not transcribed in this module.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.mxic.com.tw/Lists/Datasheet/Attachments/9137/MX25L25673G, 3V, 256Mb, v1.9.pdf"
   }
@@ -12,17 +12,17 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data mx25l25673g_note: String = "THE REVISION IN THIS LOCATOR WAS READ FROM THE PUBLISHED ATTACHMENT NAME, NOT FROM A COVER PAGE, and the distinction is recorded because it is exactly the kind of shortcut that later reads as a citation. The attachment is named for revision v1.9; a reader who opens it and finds a different revision is correcting a filename-derived claim, not a document-derived one. No package, capacity or interface fact is recorded here. WHY THIS ROW IS NOT A SELECTION: Ampere's Mt. Jade reference names this part for a firmware store, which is a reference-design precedent — a relation between a part and a particular board, and so a product-layer fact carried with that board rather than inside an upstream module."
 
-data mx25l25673g: CatalogPartIdentity = CatalogPartIdentity {
+data mx25l25673g: extdeps.land_pattern.types.CatalogPartIdentity = extdeps.land_pattern.types.CatalogPartIdentity {
   ordering_part_number: "MX25L25673G",
   vendor: macronix,
-  board_pattern: MountingPatternObligation {
+  board_pattern: extdeps.land_pattern.types.MountingPatternObligation {
     what_is_missing: "the package outline and recommended land pattern that the MX25L25673G datasheet publishes for the ordering variant's package, none of which is transcribed here",
   },
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.memory.macronix_mx25l25673g",
       decl_name: "mx25l25673g",
       field: WholeDeclaration

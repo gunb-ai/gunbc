@@ -12,19 +12,19 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 type InstallSource
   = SourceCoreutils
   | SourceRustup
-  | SourceBrew { formula: NonEmptyStr }
-  | SourceApt { package: NonEmptyStr }
+  | SourceBrew { formula: std.types.NonEmptyStr }
+  | SourceApt { package: std.types.NonEmptyStr }
   | SourceGitHubRelease {
-      repo: NonEmptyStr
-      tag: NonEmptyStr
-      asset_aarch64: NonEmptyStr
-      asset_x86_64: NonEmptyStr
-      install_path: NonEmptyStr
+      repo: std.types.NonEmptyStr
+      tag: std.types.NonEmptyStr
+      asset_aarch64: std.types.NonEmptyStr
+      asset_x86_64: std.types.NonEmptyStr
+      install_path: std.types.NonEmptyStr
     }
 
 type CliTool {
-  name: NonEmptyStr
-  min_version: VersionConstraint?
+  name: std.types.NonEmptyStr
+  min_version: extdeps.version.VersionConstraint?
   installable_via: List<InstallSource>
 }
 

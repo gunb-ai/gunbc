@@ -12,7 +12,7 @@ data bool_primitive_facts: BoolPrimitiveFacts = BoolPrimitiveFacts {
   width: BoolWidthFact {},
   encoding: BoolEncodingFact {}
 }
-data bool_boolean_algebra: BooleanAlgebra<Bool> = BooleanAlgebra {
+data bool_boolean_algebra: BooleanAlgebra<Bool> = std.algebra.BooleanAlgebra {
   meet: fn(a, b) {
     match a {
       True => b
@@ -36,23 +36,23 @@ data bool_boolean_algebra: BooleanAlgebra<Bool> = BooleanAlgebra {
 }
 
 fn bool_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^bool_node_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn bool_fact_atom(id: Symbol) -> Node {
-  Node {
+fn bool_fact_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn bool_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn bool_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
 fn bool_width_fact_node(width: BoolWidthFact) -> Node {
@@ -66,7 +66,7 @@ fn bool_encoding_fact_node(encoding: BoolEncodingFact) -> Node {
 }
 
 fn bool_primitive_facts_node(facts: BoolPrimitiveFacts) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       bool_named_edge(

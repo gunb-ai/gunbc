@@ -46,8 +46,8 @@ type NetworkBootRequirement
 // axis, so a false claim has to be told four times rather than once.
 type NetworkBootRequirementEvidence {
   requirement: NetworkBootRequirement
-  observation: DeclarationRef
-  observed_at: EpochMs
+  observation: std.decl_ref.DeclarationRef
+  observed_at: std.types.EpochMs
 }
 
 type NetworkBootDeliveryEstablishment {
@@ -77,28 +77,28 @@ type FirmwareTransitionRequirement
 
 type FirmwareTransitionStanding
   = FirmwareTransitionEstablished {
-      from: BmcFirmwareVersion,
-      to: BmcFirmwareVersion,
-      artifact: DeclarationRef,
+      from: extdeps.bmc.capability.BmcFirmwareVersion,
+      to: extdeps.bmc.capability.BmcFirmwareVersion,
+      artifact: std.decl_ref.DeclarationRef,
     }
   | FirmwareTransitionUnestablished { missing: List<FirmwareTransitionRequirement> }
   | FirmwareTransitionAmbiguous { candidates: Int }
 
 type OsInstallMechanismRefusalCause
-  = InstallFirmwareEvidenceAbsent { endpoint: BmcEndpoint }
-  | InstallFirmwareVersionUncatalogued { firmware: BmcFirmwareVersion }
-  | InstallFirmwareVersionAmbiguous { firmware: BmcFirmwareVersion, count: Int }
-  | InstallNoBootSourceOverride { firmware: BmcFirmwareVersion }
+  = InstallFirmwareEvidenceAbsent { endpoint: std.bmc.BmcEndpoint }
+  | InstallFirmwareVersionUncatalogued { firmware: extdeps.bmc.capability.BmcFirmwareVersion }
+  | InstallFirmwareVersionAmbiguous { firmware: extdeps.bmc.capability.BmcFirmwareVersion, count: Int }
+  | InstallNoBootSourceOverride { firmware: extdeps.bmc.capability.BmcFirmwareVersion }
   | InstallNoVirtualMediaAndNetworkBootUnestablished {
-      firmware: BmcFirmwareVersion,
+      firmware: extdeps.bmc.capability.BmcFirmwareVersion,
       missing: List<NetworkBootRequirement>,
     }
   | InstallFirmwareTransitionUnestablished {
-      firmware: BmcFirmwareVersion,
+      firmware: extdeps.bmc.capability.BmcFirmwareVersion,
       missing: List<FirmwareTransitionRequirement>,
     }
   | InstallFirmwareTransitionAmbiguous {
-      firmware: BmcFirmwareVersion,
+      firmware: extdeps.bmc.capability.BmcFirmwareVersion,
       candidates: Int,
     }
 
@@ -287,7 +287,7 @@ fn install_boot_target_for(mechanism: OsInstallMechanism) -> RedfishBootSourceOv
 // board-default CD target to EVERY host including srv4, whose firmware justifies no delivery
 // mechanism at all — a live contradiction between the evidence model and the onboarding model.
 type InstallBootTargetStanding
-  = InstallBootTargetSelected { target: RedfishBootSourceOverrideTarget }
+  = InstallBootTargetSelected { target: extdeps.bmc.types.RedfishBootSourceOverrideTarget }
   | InstallBootTargetRefused { cause: OsInstallMechanismRefusalCause }
 
 fn install_boot_target_standing_for(solution: OsInstallMechanismSolution) -> InstallBootTargetStanding {

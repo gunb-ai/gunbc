@@ -103,7 +103,7 @@ type DependencyFoldState {
   dependencies: List<DependencyView>
 }
 
-fn classify_named_edge_usage(parent: Node, sym: Symbol) -> DependencyKind {
+fn classify_named_edge_usage(parent: Node, sym: v2.std.node.Symbol) -> DependencyKind {
   if sym == ^dependency_binds_to_edge {
     match parent.kind {
       ComputationNode { behavior: Bind } => Contains
@@ -118,14 +118,14 @@ fn classify_named_edge_usage(parent: Node, sym: Symbol) -> DependencyKind {
   }
 }
 
-fn classify_node_edge_usage(parent: Node, edge: Edge) -> DependencyKind {
+fn classify_node_edge_usage(parent: Node, edge: v2.std.node.Edge) -> DependencyKind {
   match edge.label {
     Named { name: sym } => classify_named_edge_usage(parent: parent, sym: sym)
     Positional => Contains
   }
 }
 
-fn dependency_view_for_edge(parent: Node, edge: Edge) -> DependencyView {
+fn dependency_view_for_edge(parent: Node, edge: v2.std.node.Edge) -> DependencyView {
   let kind = classify_node_edge_usage(parent: parent, edge: edge)
   DependencyView {
     source: parent,
@@ -146,7 +146,7 @@ fn dependency_fold_init(n: Node) -> DependencyFoldState {
   }
 }
 
-fn dependency_fold_step(acc: DependencyFoldState, edge: Edge, child_state: DependencyFoldState) -> DependencyFoldState {
+fn dependency_fold_step(acc: DependencyFoldState, edge: v2.std.node.Edge, child_state: DependencyFoldState) -> DependencyFoldState {
   DependencyFoldState {
     current: acc.current,
     dependencies: append_dependency_views(
@@ -157,7 +157,7 @@ fn dependency_fold_step(acc: DependencyFoldState, edge: Edge, child_state: Depen
 }
 
 fn dependency_fold_algebra() -> NodeFold<DependencyFoldState> {
-  NodeFold {
+  v2.std.node.NodeFold {
     init: dependency_fold_init,
     step: dependency_fold_step
   }
@@ -194,7 +194,7 @@ fn readiness_fold_init(n: Node) -> ReadinessFoldState {
   }
 }
 
-fn ready_set_fold_step(acc: ReadinessFoldState, _edge: Edge, child_state: ReadinessFoldState) -> ReadinessFoldState {
+fn ready_set_fold_step(acc: ReadinessFoldState, _edge: v2.std.node.Edge, child_state: ReadinessFoldState) -> ReadinessFoldState {
   ReadinessFoldState {
     current: acc.current,
     ready: append_nodes(left: acc.ready, right: child_state.ready),
@@ -203,7 +203,7 @@ fn ready_set_fold_step(acc: ReadinessFoldState, _edge: Edge, child_state: Readin
 }
 
 fn ready_set_algebra() -> NodeFold<ReadinessFoldState> {
-  NodeFold {
+  v2.std.node.NodeFold {
     init: readiness_fold_init,
     step: ready_set_fold_step
   }
@@ -238,7 +238,7 @@ fn topological_layers_fold_init(n: Node) -> ReadinessFoldState {
   }
 }
 
-fn topological_layers_fold_step(acc: ReadinessFoldState, _edge: Edge, child_state: ReadinessFoldState) -> ReadinessFoldState {
+fn topological_layers_fold_step(acc: ReadinessFoldState, _edge: v2.std.node.Edge, child_state: ReadinessFoldState) -> ReadinessFoldState {
   ReadinessFoldState {
     current: acc.current,
     ready: append_nodes(left: acc.ready, right: child_state.ready),
@@ -247,7 +247,7 @@ fn topological_layers_fold_step(acc: ReadinessFoldState, _edge: Edge, child_stat
 }
 
 fn topological_layers_algebra() -> NodeFold<ReadinessFoldState> {
-  NodeFold {
+  v2.std.node.NodeFold {
     init: topological_layers_fold_init,
     step: topological_layers_fold_step
   }

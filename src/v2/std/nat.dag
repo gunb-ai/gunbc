@@ -72,9 +72,9 @@ data nat_semiring: CommutativeSemiring<Nat> = CommutativeSemiring {
 }
 
 type NatAlgebraLawObligation {
-  algebra: Symbol
-  inhabitant: Symbol
-  law: Symbol
+  algebra: v2.std.node.Symbol
+  inhabitant: v2.std.node.Symbol
+  law: v2.std.node.Symbol
 }
 
 fn nat_declared_algebra_law_obligations() -> List<NatAlgebraLawObligation> {

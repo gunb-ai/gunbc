@@ -1,8 +1,8 @@
 module extdeps.sec.edgar_rest
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.sec.gov/edgar/sec-api-documentation"
   }
@@ -18,7 +18,7 @@ service sec.Edgar {
 
   operation GetCompanyFacts {
     input {
-      cik_path_segment: NonEmptyStr
+      cik_path_segment: std.types.NonEmptyStr
     }
     output {
       entity_name: String from "entityName"
@@ -37,9 +37,9 @@ service sec.Edgar {
 
   operation GetCompanyConcept {
     input {
-      cik_path_segment: NonEmptyStr
-      taxonomy: NonEmptyStr
-      concept_tag: NonEmptyStr
+      cik_path_segment: std.types.NonEmptyStr
+      taxonomy: std.types.NonEmptyStr
+      concept_tag: std.types.NonEmptyStr
     }
     output {
       entity_name: String from "entityName"

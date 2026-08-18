@@ -1,7 +1,7 @@
 module gunbc.plans.bounded_input_cost_envelope_scheduling
 
 
-fn bounded_input_cost_envelope_scheduling_body() -> List<MarkdownBlock> {
+fn bounded_input_cost_envelope_scheduling_body() -> List<std.markdown.MarkdownBlock> {
   [
     BlockquoteBlock { blocks: [
       p(text: "**Interim update (2026-07-12, CI-debug lane):** the static per-runnable predicted-peak rows and `spawn_width_cap` this doc's interim formulas referenced were DELETED by the adaptive-memory-governor ruling (operator 2026-07-12) — width admission now lives in the v1 seed AIMD governor (`memory_governor.rs`), whose own dissolve-on is this doc's P2: graph-derived Predicted `CostAccount.space`. The `spawn_width = floor(budget / max_runnable_predicted_space)` rows below describe the P2+ destination, not the current tree; the governor is the loud, counted interim between the deleted hand-pins and that derivation."),
@@ -111,7 +111,7 @@ fn bounded_input_cost_envelope_scheduling_body() -> List<MarkdownBlock> {
   ]
 }
 
-data bounded_input_cost_envelope_scheduling_plan: Plan = Plan {
+data bounded_input_cost_envelope_scheduling_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "bounded-input-cost-envelope-scheduling",
   title: "Bounded-input / cost-envelope scheduling — operator-signed design",
   body: bounded_input_cost_envelope_scheduling_body(),

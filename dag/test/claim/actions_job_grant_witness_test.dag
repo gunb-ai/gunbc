@@ -1,8 +1,8 @@
 module test.claim.actions_job_grant_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn live_heal_push_authority() -> GitHubCredentialAuthority {
+fn live_heal_push_authority() -> gunbc.auth.github_credential.GitHubCredentialAuthority {
   match push_binding_authority(resolution: live_heal_push_binding_resolution) {
     Present { value: a } => a
     Absent => ActionsJobCredential { grant: fork_origin_grant() }
@@ -10,17 +10,17 @@ fn live_heal_push_authority() -> GitHubCredentialAuthority {
 }
 
 fn grant_with(
-  contents: PermissionLevel?,
-  origin: PullRequestOrigin,
-  policy: ActionsRepositoryPolicyObservation
-) -> EffectiveActionsJobGrant {
-  EffectiveActionsJobGrant {
+  contents: extdeps.github.actions.PermissionLevel?,
+  origin: extdeps.github.actions_token.PullRequestOrigin,
+  policy: extdeps.github.actions_token.ActionsRepositoryPolicyObservation
+) -> extdeps.github.actions_token.EffectiveActionsJobGrant {
+  extdeps.github.actions_token.EffectiveActionsJobGrant {
     workflow: ci_heal_effective_grant.workflow,
     job: ci_heal_effective_grant.job,
     event: PullRequestEvent,
     origin: origin,
     repository_policy: policy,
-    permissions: WorkflowPermissions {
+    permissions: extdeps.github.actions.WorkflowPermissions {
       contents: contents,
       pull_requests: none,
       issues: none,
@@ -31,56 +31,56 @@ fn grant_with(
 }
 
 fn contents_resolution(
-  contents: PermissionLevel?,
-  origin: PullRequestOrigin,
-  policy: ActionsRepositoryPolicyObservation
-) -> ActionsGrantResolution {
+  contents: extdeps.github.actions.PermissionLevel?,
+  origin: extdeps.github.actions_token.PullRequestOrigin,
+  policy: extdeps.github.actions_token.ActionsRepositoryPolicyObservation
+) -> extdeps.github.actions_token.ActionsGrantResolution {
   effective_actions_grant(
     grant: grant_with(contents: contents, origin: origin, policy: policy),
     name: ContentsAxis
   )
 }
 
-fn is_none(r: ActionsGrantResolution) -> Bool {
+fn is_none(r: extdeps.github.actions_token.ActionsGrantResolution) -> Bool {
   match r { ActionsGrantNone => true  _ => false }
 }
 
-fn is_write(r: ActionsGrantResolution) -> Bool {
+fn is_write(r: extdeps.github.actions_token.ActionsGrantResolution) -> Bool {
   match r {
     ActionsGrantResolved { access } => match access { AppAccessWrite => true  _ => false }
     _ => false
   }
 }
 
-fn is_read(r: ActionsGrantResolution) -> Bool {
+fn is_read(r: extdeps.github.actions_token.ActionsGrantResolution) -> Bool {
   match r {
     ActionsGrantResolved { access } => match access { AppAccessRead => true  _ => false }
     _ => false
   }
 }
 
-fn is_fork_policy_unobserved(r: ActionsGrantResolution) -> Bool {
+fn is_fork_policy_unobserved(r: extdeps.github.actions_token.ActionsGrantResolution) -> Bool {
   match r { ActionsGrantForkPolicyUnobserved => true  _ => false }
 }
 
-fn is_scope_unavailable(r: ActionsGrantResolution) -> Bool {
+fn is_scope_unavailable(r: extdeps.github.actions_token.ActionsGrantResolution) -> Bool {
   match r { ActionsGrantScopeUnavailable => true  _ => false }
 }
 
-fn is_axis_not_modeled(r: ActionsGrantResolution) -> Bool {
+fn is_axis_not_modeled(r: extdeps.github.actions_token.ActionsGrantResolution) -> Bool {
   match r { ActionsGrantAxisNotModeled => true  _ => false }
 }
 
-data same_repo_policy: ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyUnobserved
-data fork_policy_denies: ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyObserved {
+data same_repo_policy: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyUnobserved
+data fork_policy_denies: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyObserved {
   visibility: PrivateRepository,
   send_write_tokens_to_fork_pull_requests: false
 }
-data fork_policy_allows: ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyObserved {
+data fork_policy_allows: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyObserved {
   visibility: PrivateRepository,
   send_write_tokens_to_fork_pull_requests: true
 }
-data public_fork_policy_allows: ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyObserved {
+data public_fork_policy_allows: extdeps.github.actions_token.ActionsRepositoryPolicyObservation = ActionsRepositoryPolicyObserved {
   visibility: PublicRepository,
   send_write_tokens_to_fork_pull_requests: true
 }
@@ -150,10 +150,10 @@ test fn witness_undeclarable_axis_may_still_be_granted() -> Bool {
 // authorizing a write the live token does not carry.
 test fn witness_intrinsic_read_grant_refuses_a_write_request() -> Bool {
   let g = grant_with(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
-  match actions_job_capability(grant: g, required: GitHubAppPermission { name: MetadataAxis, access: AppAccessRead }) {
+  match actions_job_capability(grant: g, required: extdeps.github.app.GitHubAppPermission { name: MetadataAxis, access: AppAccessRead }) {
     CredentialGrants => true
     _ => false
-  } && match actions_job_capability(grant: g, required: GitHubAppPermission { name: MetadataAxis, access: AppAccessWrite }) {
+  } && match actions_job_capability(grant: g, required: extdeps.github.app.GitHubAppPermission { name: MetadataAxis, access: AppAccessWrite }) {
     CredentialScopeNotGranted { missing: _ } => true
     _ => false
   }
@@ -207,16 +207,16 @@ test fn witness_cited_access_levels_are_not_uniformly_read_write() -> Bool {
     && actions_access_set_admits(set: axis_allowed_actions_access(axis: ContentsAxis), access: AppAccessRead)
 }
 
-data workflow_effect: GitHubEffect = AdvanceRepositoryBranch {
+data workflow_effect: extdeps.github.effect.GitHubEffect = AdvanceRepositoryBranch {
   repository: gunbc_repository,
-  branch: GitBranchRef { name: "refs/heads/attempt" },
-  changed_paths: [RepositoryPath { value: ".github/workflows/ci.yml" }]
+  branch: extdeps.github.effect.GitBranchRef { name: "refs/heads/attempt" },
+  changed_paths: [extdeps.github.effect.RepositoryPath { value: ".github/workflows/ci.yml" }]
 }
 
-data ordinary_effect: GitHubEffect = AdvanceRepositoryBranch {
+data ordinary_effect: extdeps.github.effect.GitHubEffect = AdvanceRepositoryBranch {
   repository: gunbc_repository,
-  branch: GitBranchRef { name: "refs/heads/attempt" },
-  changed_paths: [RepositoryPath { value: ".gitignore" }]
+  branch: extdeps.github.effect.GitBranchRef { name: "refs/heads/attempt" },
+  changed_paths: [extdeps.github.effect.RepositoryPath { value: ".gitignore" }]
 }
 
 test fn witness_fork_pull_request_cannot_advance_any_branch() -> Bool {
@@ -236,7 +236,7 @@ test fn witness_fork_pull_request_cannot_advance_any_branch() -> Bool {
   )
 }
 
-fn checkout_variant(rows: List<YamlKeyValue>) -> Step {
+fn checkout_variant(rows: List<extdeps.languages.yaml.types.YamlKeyValue>) -> extdeps.github.actions.Step {
   UsesStep {
     name: Present { value: "Checkout" },
     id: none,
@@ -293,7 +293,7 @@ test fn witness_persist_credentials_false_unbinds_the_push_credential() -> Bool 
 
 test fn witness_heal_condition_and_origin_share_one_binding() -> Bool {
   let no_dependabot_clause = heal_origin_binding(
-    guard: HealOriginGuard { exclude_dependabot: false }
+    guard: gunbc.ci_heal_credential.HealOriginGuard { exclude_dependabot: false }
   )
   string_contains(s: ci_regen_heal_if, pattern: "github.event_name == 'pull_request'")
     && string_contains(s: ci_regen_heal_if, pattern: "github.event.pull_request.head.repo.full_name == github.repository")
@@ -374,13 +374,13 @@ test fn witness_malformed_checkout_input_is_not_reported_as_duplicated() -> Bool
 }
 
 test fn witness_invalid_declared_access_refuses_rather_than_capping() -> Bool {
-  let id_token_read = EffectiveActionsJobGrant {
+  let id_token_read = extdeps.github.actions_token.EffectiveActionsJobGrant {
     workflow: ci_heal_effective_grant.workflow,
     job: ci_heal_effective_grant.job,
     event: PullRequestEvent,
     origin: SameRepositoryOrigin,
     repository_policy: ActionsRepositoryPolicyUnobserved,
-    permissions: WorkflowPermissions {
+    permissions: extdeps.github.actions.WorkflowPermissions {
       contents: none,
       pull_requests: none,
       issues: none,

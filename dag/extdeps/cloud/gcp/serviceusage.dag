@@ -1,8 +1,8 @@
 module extdeps.cloud.gcp.serviceusage
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "cloud.google.com/service-usage/docs/reference/rest/v1/services/batchEnable"
   }
@@ -22,7 +22,7 @@ service gcp.ServiceUsage {
   operation BatchEnableServices {
     input {
       access_token: Secret
-      project_id: GcpProjectId
+      project_id: extdeps.cloud.gcp.gcp.GcpProjectId
       service_ids: List<String>
     }
     output { operation_name: String from "name" }

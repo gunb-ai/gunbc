@@ -3,25 +3,25 @@ module v2.test.claim.effect_reach_test
 
 data sn_source_rel_path: String = "src/v2/compiler/03_normalize.dag"
 
-data fixture_transport_facts: List<ModuleImportFact> = [
-  ModuleImportFact {
+data fixture_transport_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact {
     module: "fix.witness",
     imports: ["fix.transport", "fix.std_logic"]
   },
-  ModuleImportFact { module: "fix.transport", imports: ["fix.harness"] },
-  ModuleImportFact { module: "fix.harness", imports: [] }
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.transport", imports: ["fix.harness"] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.harness", imports: [] }
 ]
 
-data fixture_severed_facts: List<ModuleImportFact> = [
-  ModuleImportFact { module: "fix.witness", imports: ["fix.std_logic"] }
+data fixture_severed_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.witness", imports: ["fix.std_logic"] }
 ]
 
-data fixture_hermetic_facts: List<ModuleImportFact> = [
-  ModuleImportFact { module: "fix.hermetic_witness", imports: ["fix.std_logic"] }
+data fixture_hermetic_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.hermetic_witness", imports: ["fix.std_logic"] }
 ]
 
-data fixture_path_data_inits: List<DataInitDecl> = [
-  DataInitDecl {
+data fixture_path_data_inits: List<v2.std.data_index.DataInitDecl> = [
+  v2.std.data_index.DataInitDecl {
     qualified_name: "fix.transport.sn_source_rel",
     module: "fix.transport",
     name: "sn_source_rel",
@@ -29,14 +29,14 @@ data fixture_path_data_inits: List<DataInitDecl> = [
   }
 ]
 
-data fixture_empty_data_inits: List<DataInitDecl> = []
+data fixture_empty_data_inits: List<v2.std.data_index.DataInitDecl> = []
 
-data fixture_prose_facts: List<ModuleImportFact> = [
-  ModuleImportFact { module: "fix.prose_witness", imports: ["fix.std_logic"] }
+data fixture_prose_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.prose_witness", imports: ["fix.std_logic"] }
 ]
 
-data fixture_prose_doc_inits: List<DataInitDecl> = [
-  DataInitDecl {
+data fixture_prose_doc_inits: List<v2.std.data_index.DataInitDecl> = [
+  v2.std.data_index.DataInitDecl {
     qualified_name: "fix.prose_witness.witness_doc",
     module: "fix.prose_witness",
     name: "witness_doc",
@@ -44,22 +44,22 @@ data fixture_prose_doc_inits: List<DataInitDecl> = [
   }
 ]
 
-data fixture_concat_path_facts: List<ModuleImportFact> = [
-  ModuleImportFact {
+data fixture_concat_path_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact {
     module: "fix.concat_witness",
     imports: ["fix.concat_transport", "fix.std_logic"]
   },
-  ModuleImportFact { module: "fix.concat_transport", imports: [] }
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.concat_transport", imports: [] }
 ]
 
-data fixture_concat_path_data_inits: List<DataInitDecl> = [
-  DataInitDecl {
+data fixture_concat_path_data_inits: List<v2.std.data_index.DataInitDecl> = [
+  v2.std.data_index.DataInitDecl {
     qualified_name: "fix.concat_transport.sn_path_prefix",
     module: "fix.concat_transport",
     name: "sn_path_prefix",
     literal_fp: "str:\"src/\""
   },
-  DataInitDecl {
+  v2.std.data_index.DataInitDecl {
     qualified_name: "fix.concat_transport.sn_path_suffix",
     module: "fix.concat_transport",
     name: "sn_path_suffix",
@@ -67,7 +67,7 @@ data fixture_concat_path_data_inits: List<DataInitDecl> = [
   }
 ]
 
-fn transport_classification() -> EffectReachClassification {
+fn transport_classification() -> v2.std.effect_reach.EffectReachClassification {
   effect_reach_classification_from_facts(
     entry_module: "fix.witness",
     facts: fixture_transport_facts,
@@ -143,12 +143,12 @@ test fn effect_reach_concat_built_path_frontier_not_classified_holds() -> Bool {
   witness_frontier_concat_built_path_not_classified()
 }
 
-data live_03_normalize_facts: List<ModuleImportFact> = [
-  ModuleImportFact {
+data live_03_normalize_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact {
     module: "test.claim.self_host_03_normalize_behavioral_witness",
     imports: ["tools.self_host_module_behavioral_transport_roster"]
   },
-  ModuleImportFact {
+  v2.lens.witness_cost_locality.ModuleImportFact {
     module: "tools.self_host_module_behavioral_transport_roster",
     imports: [
       "tools.self_host_curated_seed_linked_harness",
@@ -158,7 +158,7 @@ data live_03_normalize_facts: List<ModuleImportFact> = [
       "v2.std.text"
     ]
   },
-  ModuleImportFact {
+  v2.lens.witness_cost_locality.ModuleImportFact {
     module: "tools.self_host_curated_seed_linked_harness",
     imports: [
       "extdeps.shell",
@@ -175,8 +175,8 @@ data live_03_normalize_facts: List<ModuleImportFact> = [
   }
 ]
 
-data live_03_normalize_data_inits: List<DataInitDecl> = [
-  DataInitDecl {
+data live_03_normalize_data_inits: List<v2.std.data_index.DataInitDecl> = [
+  v2.std.data_index.DataInitDecl {
     qualified_name: "tools.self_host_module_behavioral_transport_roster.compiler_module_behavioral_transport_roster",
     module: "tools.self_host_module_behavioral_transport_roster",
     name: "compiler_module_behavioral_transport_roster",

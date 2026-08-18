@@ -1,20 +1,20 @@
 module v2.test.execution.typescript_import_emit_by_execution
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data ts_import_canonical_source_text: String = "import { Cons, Empty } from \"v2/std/algebra\";"
 
-fn ts_import_symbol_atom(sym: Symbol) -> Node {
-  Node {
+fn ts_import_symbol_atom(sym: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn ts_import_block_node(names: List<Symbol>) -> Node {
-  Node {
+fn ts_import_block_node(names: List<v2.std.node.Symbol>) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: fold_list(
       xs: names,
@@ -22,7 +22,7 @@ fn ts_import_block_node(names: List<Symbol>) -> Node {
       cons: fn(acc, sym) {
         list_append(
           left: acc,
-          right: [Edge { label: Positional, target: ts_import_symbol_atom(sym: sym) }]
+          right: [v2.std.node.Edge { label: Positional, target: ts_import_symbol_atom(sym: sym) }]
         )
       }
     ),
@@ -30,23 +30,23 @@ fn ts_import_block_node(names: List<Symbol>) -> Node {
   }
 }
 
-fn ts_import_qn_node(segments: List<Symbol>) -> Node {
+fn ts_import_qn_node(segments: List<v2.std.node.Symbol>) -> Node {
   fold_list_node(xs: segments, item_node: fn(sym) { ts_import_symbol_atom(sym: sym) })
 }
 
-fn ts_import_carrier_node(segments: List<Symbol>, names: List<Symbol>) -> Node {
-  Node {
+fn ts_import_carrier_node(segments: List<v2.std.node.Symbol>, names: List<v2.std.node.Symbol>) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^dag_surface_import_decl },
         target: ts_import_symbol_atom(sym: ^dag_surface_import_decl)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^dag_surface_import_decl_qualified_name },
         target: ts_import_qn_node(segments: segments)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^dag_surface_import_decl_block },
         target: ts_import_block_node(names: names)
       }
@@ -55,15 +55,15 @@ fn ts_import_carrier_node(segments: List<Symbol>, names: List<Symbol>) -> Node {
   }
 }
 
-fn ts_import_missing_qn_carrier_node(names: List<Symbol>) -> Node {
-  Node {
+fn ts_import_missing_qn_carrier_node(names: List<v2.std.node.Symbol>) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^dag_surface_import_decl },
         target: ts_import_symbol_atom(sym: ^dag_surface_import_decl)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^dag_surface_import_decl_block },
         target: ts_import_block_node(names: names)
       }
@@ -72,7 +72,7 @@ fn ts_import_missing_qn_carrier_node(names: List<Symbol>) -> Node {
   }
 }
 
-fn ts_import_binding_spellings() -> Map<Symbol, String> {
+fn ts_import_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(
       map_insert(
@@ -91,8 +91,8 @@ fn ts_import_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn ts_import_witness_target_model() -> TargetModel {
-  TargetModel {
+fn ts_import_witness_target_model() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_lex(),
@@ -103,7 +103,7 @@ fn ts_import_witness_target_model() -> TargetModel {
   }
 }
 
-fn ts_import_qualified_name_symbols(qn: QualifiedName) -> List<Symbol> {
+fn ts_import_qualified_name_symbols(qn: v2.std.qualified_name.QualifiedName) -> List<v2.std.node.Symbol> {
   match qn {
     Empty => std.algebra.Empty
     Cons { head: h, tail: t } =>
@@ -111,7 +111,7 @@ fn ts_import_qualified_name_symbols(qn: QualifiedName) -> List<Symbol> {
   }
 }
 
-fn ts_import_name_symbols_from_block(block: Node) -> Outcome<List<Symbol>> {
+fn ts_import_name_symbols_from_block(block: Node) -> Outcome<List<v2.std.node.Symbol>> {
   fold(
     node_positional_child_targets(node: block),
     init: outcome_accepted(value: std.algebra.Empty),
@@ -133,7 +133,7 @@ fn ts_import_name_symbols_from_block(block: Node) -> Outcome<List<Symbol>> {
   )
 }
 
-fn ts_import_value_from_carrier(carrier: Node) -> Outcome<TargetImport> {
+fn ts_import_value_from_carrier(carrier: Node) -> Outcome<v2.std.compilers.target_model.TargetImport> {
   bind_outcome(
     o: find_named_child(root: carrier, name: ^dag_surface_import_decl_qualified_name),
     f: fn(qn_node) {
@@ -147,7 +147,7 @@ fn ts_import_value_from_carrier(carrier: Node) -> Outcome<TargetImport> {
                 o: ts_import_name_symbols_from_block(block: block),
                 f: fn(names) {
                   outcome_accepted(
-                    value: TargetImport {
+                    value: v2.std.compilers.target_model.TargetImport {
                       path_segments: ts_import_qualified_name_symbols(qn: qn),
                       names: names
                     }

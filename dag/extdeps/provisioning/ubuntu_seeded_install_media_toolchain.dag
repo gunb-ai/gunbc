@@ -9,7 +9,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type InstallMediaRemasterToolchainRequirement {
-  required_tools: List<CliTool>
+  required_tools: List<extdeps.tools.CliTool>
 }
 
 data install_media_remaster_toolchain_requirement: InstallMediaRemasterToolchainRequirement = InstallMediaRemasterToolchainRequirement {

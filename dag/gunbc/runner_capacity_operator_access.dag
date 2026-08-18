@@ -14,17 +14,17 @@ data runner_capacity_width_authority_note: String = "WIDTH AUTHORITY = activated
 data srv3_slot_installation_parent_probe_note: String = "AUTHORITATIVE: vivid-eagle-131 read-only in-band observation 2026-08-07 (srv2->ubuntu@192.168.1.221). Mapped in gunbc.runner_incarnation vivid_eagle_srv3_slot_installation_observation. 01..05 active; 06/07/08 materialized-not-active. No further probe needed."
 
 type RunnerCapacityActionClass
-  = RunnerCapacityAddSlots { host: HostIdentity }
-  | RunnerCapacityRecoverHost { host: HostIdentity }
+  = RunnerCapacityAddSlots { host: product.placement_supply.HostIdentity }
+  | RunnerCapacityRecoverHost { host: product.placement_supply.HostIdentity }
 
 type RunnerCapacityExecutionTarget
   = RunnerCapacityExecuteInBand {
-      host_label: NonEmptyStr
-      transport: HostEffectTransport
+      host_label: std.types.NonEmptyStr
+      transport: gunbc.host_effect.HostEffectTransport
     }
   | RunnerCapacityExecuteHostedRemote {
-      host: HostIdentity
-      transport: HostEffectTransport
+      host: product.placement_supply.HostIdentity
+      transport: gunbc.host_effect.HostEffectTransport
       reason: String
     }
 
@@ -59,19 +59,19 @@ type RunnerCapacitySlotAddPrivilegeOperation
   | PrivOpSystemdUnitStart {}
 
 type RunnerCapacityInBandTransportBinding {
-  github_actions_host_label: NonEmptyStr
-  transport: HostEffectTransport
+  github_actions_host_label: std.types.NonEmptyStr
+  transport: gunbc.host_effect.HostEffectTransport
 }
 
 type RunnerCapacityInBandAdmissionProbes {
-  effective_principal_read: EffectivePosixPrincipalRead
-  sudo_grant_list_probe: SudoNopasswdGrantListProbeShape
+  effective_principal_read: extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead
+  sudo_grant_list_probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape
 }
 
 type RunnerCapacityHostInBandAdmissionRequirement {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   transport_binding: RunnerCapacityInBandTransportBinding
-  executing_principal: NonEmptyStr
+  executing_principal: std.types.NonEmptyStr
   required_operations: List<RunnerCapacitySlotAddPrivilegeOperation>
   probes: RunnerCapacityInBandAdmissionProbes
 }
@@ -121,10 +121,10 @@ fn runner_capacity_host_in_band_admission_requirement(host: HostIdentity) -> Run
 
 type InBandPrivilegeObservation
   = PrivilegeObserved {
-      observed_on: NonEmptyStr
-      host: HostIdentity
-      principal: NonEmptyStr
-      sudo_grant_summary: NonEmptyStr
+      observed_on: std.types.NonEmptyStr
+      host: product.placement_supply.HostIdentity
+      principal: std.types.NonEmptyStr
+      sudo_grant_summary: std.types.NonEmptyStr
     }
   | PrivilegeUnobserved { reason: String }
 
@@ -157,9 +157,9 @@ data srv1_already_converged_caps_control_note: String = "srv1 acceptance row 6 c
 
 type RunnerCapacityHostAdmissionVerdict
   = InBandAdmissionRequirementDocumented { requirement: RunnerCapacityHostInBandAdmissionRequirement }
-  | InBandPrivilegeUnobserved { host: HostIdentity, reason: String }
-  | InBandPrivilegeInsufficient { host: HostIdentity, detail: NonEmptyStr, missing: NonEmptyStr }
-  | OrgRosterReadScopeUnverified { host: HostIdentity, reason: String }
+  | InBandPrivilegeUnobserved { host: product.placement_supply.HostIdentity, reason: String }
+  | InBandPrivilegeInsufficient { host: product.placement_supply.HostIdentity, detail: std.types.NonEmptyStr, missing: std.types.NonEmptyStr }
+  | OrgRosterReadScopeUnverified { host: product.placement_supply.HostIdentity, reason: String }
 
 data runner_capacity_org_roster_scope_note: String = "Acceptance rows 5/6/8 require a live org self-hosted-runner roster read. GET /orgs/gunb-ai/actions/runners returns 403 for some session tokens; in-band runner job tokens may differ. Until scope is verified in-band, roster-dependent convergence refuses — never fabricates registrations."
 

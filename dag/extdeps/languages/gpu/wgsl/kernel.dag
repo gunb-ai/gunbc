@@ -1,14 +1,14 @@
 module extdeps.languages.gpu.wgsl.kernel
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.w3.org/TR/WGSL/"
   }
 }
 
-data wgsl_kernel_target_medium_name: NonEmptyStr = "wgsl-compute-relu-mul-add"
+data wgsl_kernel_target_medium_name: std.types.NonEmptyStr = "wgsl-compute-relu-mul-add"
 
 data wgsl_relu_mul_add_int_kernel_source: String = "@group(0) @binding(0) var<storage, read> a: array<i32>;\n@group(0) @binding(1) var<storage, read> b: array<i32>;\n@group(0) @binding(2) var<storage, read> c: array<i32>;\n@group(0) @binding(3) var<storage, read_write> result: array<i32>;\n@compute @workgroup_size(64)\nfn main(@builtin(global_invocation_id) gid: vec3<u32>) {\n  let i = gid.x;\n  result[i] = max(a[i] * b[i] + c[i], 0);\n}\n"
 
@@ -20,7 +20,7 @@ type WgslKernelEmitSurface {
 }
 
 fn wgsl_kernel_medium(surface: WgslKernelEmitSurface) -> Medium<WgslKernelEmitSurface> {
-  Medium {
+  extdeps.communication.medium.Medium {
     carried: surface
     fidelity: Lossless
   }
@@ -75,18 +75,18 @@ fn wgsl_relu_mul_add_float_kernel_execute(
   [pure_dag_seam_unreachable_float()]
 }
 
-data wgsl_kernel_int_execution_host_realization_marker: Disposition = Scaffold {
+data wgsl_kernel_int_execution_host_realization_marker: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.gpu.wgsl.kernel",
     decl_name: "wgsl_relu_mul_add_int_kernel_execute",
     field: WholeDeclaration
   }
 }
 
-data wgsl_kernel_float_execution_host_realization_marker: Disposition = Scaffold {
+data wgsl_kernel_float_execution_host_realization_marker: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.gpu.wgsl.kernel",
     decl_name: "wgsl_relu_mul_add_float_kernel_execute",
     field: WholeDeclaration
@@ -94,18 +94,18 @@ data wgsl_kernel_float_execution_host_realization_marker: Disposition = Scaffold
 }
 
 
-data wgsl_relu_mul_add_int_kernel_source_grammar_scaffold_marker: Disposition = Scaffold {
+data wgsl_relu_mul_add_int_kernel_source_grammar_scaffold_marker: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.gpu.wgsl.kernel",
     decl_name: "wgsl_relu_mul_add_int_kernel_source",
     field: WholeDeclaration
   }
 }
 
-data wgsl_relu_mul_add_float_kernel_source_grammar_scaffold_marker: Disposition = Scaffold {
+data wgsl_relu_mul_add_float_kernel_source_grammar_scaffold_marker: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.gpu.wgsl.kernel",
     decl_name: "wgsl_relu_mul_add_float_kernel_source",
     field: WholeDeclaration

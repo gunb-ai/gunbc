@@ -1,6 +1,6 @@
 module v2.test.host_language_transport_script.lens_unit.transport_script_position
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data path_dag: String = "dag/tools/dag_compile_clean_transport.dag"
 data path_emit: String = "dag/tools/emit_host_transport.dag"
@@ -8,25 +8,25 @@ data fn_clean: String = "run_clean_tree_compile"
 data fn_go: String = "run_go_smoke"
 data fn_bad: String = "run_bad_literal_smoke"
 
-data fact_computed: TransportScriptPositionFact = TransportScriptPositionFact {
+data fact_computed: v2.lens.host_language_transport_script.TransportScriptPositionFact = v2.lens.host_language_transport_script.TransportScriptPositionFact {
   path: path_dag,
   function: fn_clean,
   shape: ComputedApplication
 }
 
-data fact_bare_literal: TransportScriptPositionFact = TransportScriptPositionFact {
+data fact_bare_literal: v2.lens.host_language_transport_script.TransportScriptPositionFact = v2.lens.host_language_transport_script.TransportScriptPositionFact {
   path: path_emit,
   function: fn_bad,
   shape: BareStringLiteral
 }
 
-data fact_let_bound: TransportScriptPositionFact = TransportScriptPositionFact {
+data fact_let_bound: v2.lens.host_language_transport_script.TransportScriptPositionFact = v2.lens.host_language_transport_script.TransportScriptPositionFact {
   path: path_emit,
   function: fn_go,
   shape: LetBoundStringLiteral
 }
 
-data fact_interp_literals: TransportScriptPositionFact = TransportScriptPositionFact {
+data fact_interp_literals: v2.lens.host_language_transport_script.TransportScriptPositionFact = v2.lens.host_language_transport_script.TransportScriptPositionFact {
   path: path_emit,
   function: fn_bad,
   shape: StringInterpLiteralsOnly

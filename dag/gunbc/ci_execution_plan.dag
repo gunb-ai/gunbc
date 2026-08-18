@@ -9,21 +9,21 @@ type CiExecutionStage
   | CiFloorStage
 
 type CiExecutionSubject
-  = PushToMain { head_sha: CommitSha, base_tree_hash: GitObjectId }
+  = PushToMain { head_sha: std.types.CommitSha, base_tree_hash: extdeps.git.object_store.GitObjectId }
   | PullRequestToMain {
       pr_number: Int,
-      head_sha: CommitSha,
+      head_sha: std.types.CommitSha,
       base_ref: String,
-      base_tree_hash: GitObjectId,
+      base_tree_hash: extdeps.git.object_store.GitObjectId,
       head_repo_full_name: String,
     }
-  | OperatorRerun { head_sha: CommitSha, base_ref: String, base_tree_hash: GitObjectId }
-  | ForkPullRequestRefused { pr_number: Int, head_repo_full_name: String, reason: NonEmptyStr }
+  | OperatorRerun { head_sha: std.types.CommitSha, base_ref: String, base_tree_hash: extdeps.git.object_store.GitObjectId }
+  | ForkPullRequestRefused { pr_number: Int, head_repo_full_name: String, reason: std.types.NonEmptyStr }
 
 type CiExecutionPlan {
   subject: CiExecutionSubject
   stages: List<CiExecutionStage>
-  check_name: NonEmptyStr
+  check_name: std.types.NonEmptyStr
   owner: String
   repo: String
   floor_plan_entry: String

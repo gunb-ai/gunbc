@@ -9,11 +9,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type CasObjectId {
-  hash: ContentHash
+  hash: std.content_hash.ContentHash
 }
 
 type CasAddressingConfig {
   container: ObjectContainer
-  key_derivation: KeyDerivationClass
-  write_mode: CacheWriteSemantics
+  key_derivation: std.cache_interface.KeyDerivationClass
+  write_mode: std.cache_interface.CacheWriteSemantics
 }

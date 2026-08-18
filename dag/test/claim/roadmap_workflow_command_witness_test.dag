@@ -47,7 +47,7 @@ test fn witness_legacy_attempt_cannot_satisfy_obligations() -> Bool {
 }
 
 test fn legacy_attempt_projects_as_supersedable_not_fault() -> Bool {
-  let progress = workflow_attempt_progress(evidence: WorkflowAttemptEvidence {
+  let progress = workflow_attempt_progress(evidence: gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
     node_id: "legacy-node",
     attempt_key: "",
     branch: "dispatch/legacy-node",
@@ -88,7 +88,7 @@ test fn lineage_and_turn_labels_are_human_readable() -> Bool {
     attempt_key: "feedfacefeedface",
     reason: "pre-receipt attempt",
   }, ordinal: 2) == "Attempt 2 — started fresh; supersedes feedface… (pre-receipt attempt)"
-    && worker_turn_row_label(turn: WorkerTurn {
+    && worker_turn_row_label(turn: gunbc.roadmap_workflow_command.WorkerTurn {
       turn_key: "turn0001",
       attempt_key: "feedfacefeedface",
       consumed_feedback: "F-1",

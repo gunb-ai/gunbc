@@ -1,49 +1,49 @@
 module extdeps.llm.mock_corpus
 
 
-data llm_openai_mock_case_chat_completion: PublishedMockCase = PublishedMockCase {
+data llm_openai_mock_case_chat_completion: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "llm.OpenAI.ChatCompletion",
   service: "llm.OpenAI",
   operation: "ChatCompletion",
   case_id: 0
 }
 
-data llm_openai_mock_case_responses: PublishedMockCase = PublishedMockCase {
+data llm_openai_mock_case_responses: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "llm.OpenAI.Responses",
   service: "llm.OpenAI",
   operation: "Responses",
   case_id: 0
 }
 
-data llm_anthropic_mock_case_messages: PublishedMockCase = PublishedMockCase {
+data llm_anthropic_mock_case_messages: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "llm.Anthropic.Messages",
   service: "llm.Anthropic",
   operation: "Messages",
   case_id: 0
 }
 
-data llm_anthropic_mock_case_cli_prompt: PublishedMockCase = PublishedMockCase {
+data llm_anthropic_mock_case_cli_prompt: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "llm.Anthropic.CliPrompt",
   service: "llm.Anthropic",
   operation: "CliPrompt",
   case_id: 0
 }
 
-data llm_codex_mock_case_review: PublishedMockCase = PublishedMockCase {
+data llm_codex_mock_case_review: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "llm.Codex.Review",
   service: "llm.Codex",
   operation: "Review",
   case_id: 0
 }
 
-data llm_gemini_mock_case_cli_prompt: PublishedMockCase = PublishedMockCase {
+data llm_gemini_mock_case_cli_prompt: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "llm.Gemini.CliPrompt",
   service: "llm.Gemini",
   operation: "CliPrompt",
   case_id: 0
 }
 
-data llm_published_mock_corpus: List<PublishedMockCase> = [
+data llm_published_mock_corpus: List<std.hermetic_replay.PublishedMockCase> = [
   llm_openai_mock_case_chat_completion,
   llm_openai_mock_case_responses,
   llm_anthropic_mock_case_messages,

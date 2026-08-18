@@ -2,9 +2,9 @@ module test.claim.extdeps_version_base
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn identity_1_0_0() -> VersionIdentity { "1.0.0" }
-fn identity_2_0_0() -> VersionIdentity { "2.0.0" }
-fn constraint_ge_1() -> VersionConstraint { ">= 1.0.0" }
+fn identity_1_0_0() -> extdeps.version.VersionIdentity { "1.0.0" }
+fn identity_2_0_0() -> extdeps.version.VersionIdentity { "2.0.0" }
+fn constraint_ge_1() -> extdeps.version.VersionConstraint { ">= 1.0.0" }
 
 fn mk_equal() -> std.algebra.Ordering { std.algebra.Equal }
 

@@ -1,7 +1,7 @@
 module v2.test.formats.spice_rc_ngspice_oracle
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn spice_rc_tran_emit_ngspice_nonempty_holds() -> Bool {
   let text = spice_emit_ngspice(netlist: spice_rc_tran_deck)

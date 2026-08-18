@@ -11,8 +11,8 @@ type CarrierCost {
 }
 
 type CarrierDeclaration {
-  collection: Symbol
-  carrier: Symbol
+  collection: v2.std.node.Symbol
+  carrier: v2.std.node.Symbol
   update_persistence: UpdateVersionPersistence
   cost: CarrierCost
 }
@@ -35,8 +35,8 @@ type NameDomain = TypeNames | VariantNames | FieldNames
 
 type NameInterningDeclaration {
   domain: NameDomain
-  authority: Symbol
-  representation: Symbol
+  authority: v2.std.node.Symbol
+  representation: v2.std.node.Symbol
 }
 
 data type_name_interning: NameInterningDeclaration = {

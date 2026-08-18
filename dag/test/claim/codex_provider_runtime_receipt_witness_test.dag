@@ -2,21 +2,21 @@ module test.claim.codex_provider_runtime_receipt_witness
 
 
 test fn witness_runtime_receipt_derives_three_roots_and_honest_fingerprint() -> Bool {
-  let host = "srv1" as HostIdentity
+  let host = "srv1" as product.placement_supply.HostIdentity
   match codex_bundled_executable_for_srv1() {
     Absent => false
     Present { value: executable } =>
       match derive_codex_provider_runtime_receipt(
         host: host,
         bundled_executable: executable,
-        bundle_receipt_identity_hex: "abc123" as NonEmptyStr,
+        bundle_receipt_identity_hex: "abc123" as std.types.NonEmptyStr,
       ) {
         Absent => false
         Present { value: receipt } =>
           codex_provider_runtime_receipt_converges_three_roots(receipt: receipt)
             && receipt.bundled_executable == executable
-            && receipt.version_marker == codex_runtime_version_identity_marker() as NonEmptyStr
-            && receipt.bundle_receipt_identity_hex == ("abc123" as NonEmptyStr)
+            && receipt.version_marker == codex_runtime_version_identity_marker() as std.types.NonEmptyStr
+            && receipt.bundle_receipt_identity_hex == ("abc123" as std.types.NonEmptyStr)
             && match receipt.process_fingerprint {
               CodexProcessFingerprintUnobserved { reason: _ } => true
               _ => false
@@ -37,9 +37,9 @@ test fn witness_runtime_receipt_refuses_unknown_host() -> Bool {
     Absent => true
     Present { value: executable } =>
       derive_codex_provider_runtime_receipt(
-        host: "unknown-host" as HostIdentity,
+        host: "unknown-host" as product.placement_supply.HostIdentity,
         bundled_executable: executable,
-        bundle_receipt_identity_hex: "abc123" as NonEmptyStr,
+        bundle_receipt_identity_hex: "abc123" as std.types.NonEmptyStr,
       ) == none
   }
 }

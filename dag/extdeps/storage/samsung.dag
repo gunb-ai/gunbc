@@ -1,43 +1,43 @@
 module extdeps.storage.samsung
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Samsung_970_EVO"
   }
 }
 
-fn samsung_970_evo_plus(part_number: NonEmptyStr, capacity_bytes: ByteSize) -> NvmeDeviceCatalogRow {
-  NvmeDeviceCatalogRow {
+fn samsung_970_evo_plus(part_number: std.types.NonEmptyStr, capacity_bytes: std.measure.ByteSize) -> extdeps.storage.types.NvmeDeviceCatalogRow {
+  extdeps.storage.types.NvmeDeviceCatalogRow {
     part_number: part_number,
     manufacturer: samsung,
     capacity_bytes: capacity_bytes,
-    pcie_link: PcieLink { generation: Gen3, lane_count: 4 },
+    pcie_link: extdeps.storage.types.PcieLink { generation: Gen3, lane_count: 4 },
     form_factor: M2_2280,
     sequential_read: bandwidth(3500000000),
     sequential_write: bandwidth(3300000000),
   }
 }
 
-data samsung_970_evo_plus_2tb_catalog: NvmeDeviceCatalogRow = samsung_970_evo_plus(
+data samsung_970_evo_plus_2tb_catalog: extdeps.storage.types.NvmeDeviceCatalogRow = samsung_970_evo_plus(
   part_number: "MZ-V7S2T0BW",
   capacity_bytes: byte_size(2000398934016),
 )
 
-fn samsung_970_evo(part_number: NonEmptyStr, capacity_bytes: ByteSize) -> NvmeDeviceCatalogRow {
-  NvmeDeviceCatalogRow {
+fn samsung_970_evo(part_number: std.types.NonEmptyStr, capacity_bytes: std.measure.ByteSize) -> extdeps.storage.types.NvmeDeviceCatalogRow {
+  extdeps.storage.types.NvmeDeviceCatalogRow {
     part_number: part_number,
     manufacturer: samsung,
     capacity_bytes: capacity_bytes,
-    pcie_link: PcieLink { generation: Gen3, lane_count: 4 },
+    pcie_link: extdeps.storage.types.PcieLink { generation: Gen3, lane_count: 4 },
     form_factor: M2_2280,
     sequential_read: bandwidth(3400000000),
     sequential_write: bandwidth(2300000000),
   }
 }
 
-data samsung_970_evo_500gb_catalog: NvmeDeviceCatalogRow = samsung_970_evo(
+data samsung_970_evo_500gb_catalog: extdeps.storage.types.NvmeDeviceCatalogRow = samsung_970_evo(
   part_number: "MZ-V7E500BW",
   capacity_bytes: byte_size(500107862016),
 )

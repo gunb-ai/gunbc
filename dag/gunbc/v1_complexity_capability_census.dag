@@ -109,18 +109,18 @@ type CapabilityRetirementTrigger
 data disposition_states_note: String = "Six arms across two work-states, corrected from the previous revision on two operator findings. FIRST: AvailableInSharedSubstrate previously projected as DISCHARGED, which understated C4 — the census's own finding is that v2 has not consumed std.graph / std.termination / std.computation / std.induction, so the work changed from migration to INTEGRATION but did not disappear. It is now IntegrationOwed and projects as owed. SECOND: DeliberatelyRetired previously belonged to none of the three partitions, so the exhaustiveness witness was green only because no row inhabited that arm — green-by-vacancy, which is the inert-check class this repository names. Retirement now splits by whether work remains: RetirementOwed (the replacement has not executed yet, so retiring now would delete a live capability) versus Retired (the obligation is discharged). Every arm, inhabited or not, carries a controlled fixture in the witness."
 
 type ComplexityCapabilityDisposition
-  = CompleteInV2 { carrier: DeclarationRef, note: NonEmptyStr }
-  | IntegrationOwed { substrate_carrier: DeclarationRef, phase: ParityPhase, note: NonEmptyStr }
-  | MigrationOwed { destination: CostMigrationDestination, producer: CapabilityFactProducer, phase: ParityPhase, note: NonEmptyStr }
-  | SupersededByBetterModel { superseded_by: DeclarationRef, note: NonEmptyStr }
-  | RetirementOwed { trigger: CapabilityRetirementTrigger, note: NonEmptyStr }
-  | Retired { reason: NonEmptyStr }
+  = CompleteInV2 { carrier: std.decl_ref.DeclarationRef, note: std.types.NonEmptyStr }
+  | IntegrationOwed { substrate_carrier: std.decl_ref.DeclarationRef, phase: ParityPhase, note: std.types.NonEmptyStr }
+  | MigrationOwed { destination: CostMigrationDestination, producer: CapabilityFactProducer, phase: ParityPhase, note: std.types.NonEmptyStr }
+  | SupersededByBetterModel { superseded_by: std.decl_ref.DeclarationRef, note: std.types.NonEmptyStr }
+  | RetirementOwed { trigger: CapabilityRetirementTrigger, note: std.types.NonEmptyStr }
+  | Retired { reason: std.types.NonEmptyStr }
 
 data disposition_construction_note: String = "Every arm's routing metadata is a typed identity, not a non-empty string. A destination is a CostMigrationDestination drawn from the signed ruling (the legacy oracle is absent from that vocabulary, so a row migrating INTO v1.compiler.complexity cannot be written); a phase is a ParityPhase; a retirement trigger names the superseding capability as a ComplexityCapabilityId; a carrier is a DeclarationRef that resolves through v2.std.decl_ref_resolution. The previous revision claimed non-empty payloads made an unjustified disposition unwritable — the operator's correction is exact: a non-empty string proves only that someone typed something. What is unwritable now is a row routed to a module the ruling never named, or to a phase that does not exist, or citing a declaration that does not resolve."
 
 type V1ComplexityInventoryRow {
   item: V1ComplexityInventoryItem
-  v1_carrier: DeclarationRef
+  v1_carrier: std.decl_ref.DeclarationRef
   disposition: ComplexityCapabilityDisposition
 }
 

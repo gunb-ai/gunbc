@@ -1,7 +1,7 @@
 module v2.test.long.namespace_graft_normalize_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data namespace_graft_normalize_long_note: String = "§10 commit 2 normalize graft execution witnesses (long lane): tokenize→parse_module→normalize paths exceed per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note). Fast-lane synthetic receipts remain in namespace_graft graft_shape, marker_strip, and zero_metadata test files. Local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/namespace_graft_normalize_witness_test.dag --functions csv."
 

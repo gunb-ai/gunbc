@@ -1,16 +1,16 @@
 module v2.test.extdeps.spice_rc_passive_deck_claims
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn spice_rc_passive_deck_named_node_holds(node: NodeRef, expected: String) -> Bool {
+fn spice_rc_passive_deck_named_node_holds(node: v2.extdeps.formats.spice.NodeRef, expected: String) -> Bool {
   match node {
     Named { node: NamedNode { name: name } } => name == expected
     _ => false
   }
 }
 
-fn spice_rc_passive_deck_first_resistor_holds(body: List<DeckStatement>) -> Bool {
+fn spice_rc_passive_deck_first_resistor_holds(body: List<v2.extdeps.formats.spice.DeckStatement>) -> Bool {
   match list_at_optional(xs: body, index: 0) {
     Present {
       value: DeckComponent {
@@ -33,7 +33,7 @@ fn spice_rc_passive_deck_first_resistor_holds(body: List<DeckStatement>) -> Bool
   }
 }
 
-fn spice_rc_passive_deck_second_capacitor_holds(body: List<DeckStatement>) -> Bool {
+fn spice_rc_passive_deck_second_capacitor_holds(body: List<v2.extdeps.formats.spice.DeckStatement>) -> Bool {
   match list_at_optional(xs: body, index: 1) {
     Present {
       value: DeckComponent {
@@ -59,7 +59,7 @@ fn spice_rc_passive_deck_second_capacitor_holds(body: List<DeckStatement>) -> Bo
   }
 }
 
-fn spice_rc_passive_deck_op_directive_holds(body: List<DeckStatement>) -> Bool {
+fn spice_rc_passive_deck_op_directive_holds(body: List<v2.extdeps.formats.spice.DeckStatement>) -> Bool {
   match list_at_optional(xs: body, index: 2) {
     Present {
       value: DeckDirective {

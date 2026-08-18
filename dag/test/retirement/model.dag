@@ -23,8 +23,8 @@ module test.retirement.model
 // invite exactly the compile-only ambiguity this cutover removes.
 type RetainedLegacyRustTestModule {
   source_file: String
-  purpose: NonEmptyStr
-  dissolution: DissolutionCondition
+  purpose: std.types.NonEmptyStr
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 fn retained_module_source_file(m: RetainedLegacyRustTestModule) -> String {

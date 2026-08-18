@@ -21,20 +21,20 @@ data dag_rec_source_text: String = "fn mk() -> Rec { Rec { v: 9 } }"
 data dag_field_access_source_text: String = "fn get(r: Rec) -> Int { r.v }"
 
 type DagGrammarRelationRow {
-  production: FormalProduction
+  production: v2.std.grammar.FormalProduction
   emitted: Node
-  tokens: List<ConcreteSyntaxToken>
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
 type DagBodiedFnFamilySpec {
-  inhabitant_field: Symbol
+  inhabitant_field: v2.std.node.Symbol
   emitted_fn: Node
   grammar_row: DagGrammarRelationRow
-  source_literal: Symbol
-  production_binding: Symbol
+  source_literal: v2.std.node.Symbol
+  production_binding: v2.std.node.Symbol
   authority_source_text: String
-  relation_rule: Symbol
-  scaffold: TargetBodiedArrowStatementScaffold
+  relation_rule: v2.std.node.Symbol
+  scaffold: v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold
 }
 
 fn dag_concrete_tokens() -> List<ConcreteSyntaxToken> {

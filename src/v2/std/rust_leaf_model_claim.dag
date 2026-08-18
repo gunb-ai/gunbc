@@ -12,17 +12,17 @@ data rust_leaf_phase1_algebra_carrier_ordered_ring: AlgebraCarrier = AlgebraCarr
 
 type RustClaimSubject
   = RustPrimitiveTypeSubject { primitive: RustPrimitive }
-  | RustAlgebraInhabitanceSubject { inhabitance_decl: AlgebraInhabitanceDecl }
+  | RustAlgebraInhabitanceSubject { inhabitance_decl: v2.std.model_core.AlgebraInhabitanceDecl }
   | RustAtomRealizationSubject { atom: Node }
 
   | RustAtomRealizationProjectionMismatchSubject {
       atom: Node
-      declared_type_form: Symbol
-      exercised_value_form: Symbol
+      declared_type_form: v2.std.node.Symbol
+      exercised_value_form: v2.std.node.Symbol
     }
   | RustCollectionRealizationSubject { collection: Node }
-  | RustGrammarProductionSubject { production: GrammarProduction }
-  | RustLexRuleSubject { rule: LexRule }
+  | RustGrammarProductionSubject { production: v2.std.grammar.GrammarProduction }
+  | RustLexRuleSubject { rule: v2.std.compilers.lexing.LexRule }
 
 type Rustc_ErrorCode_Phase1
   = E0107
@@ -36,18 +36,18 @@ data rust_leaf_phase1_err_e0423: Rustc_ErrorCode_Phase1 = E0423
 data rust_leaf_phase1_err_e0599: Rustc_ErrorCode_Phase1 = E0599
 
 type RustClaimExpectation
-  = RustcAcceptsExpectation { invocation_form: TargetInvocation }
+  = RustcAcceptsExpectation { invocation_form: v2.std.leaf_model_verification.TargetInvocation }
   | RustcRejectsExpectation {
-      invocation_form: TargetInvocation
+      invocation_form: v2.std.leaf_model_verification.TargetInvocation
       expected_error_code: Rustc_ErrorCode_Phase1
     }
   | RustRuntimeBehaviorExpectation {
-      invocation_form: TargetInvocation
-      expected_outcome: RuntimeOutcome
+      invocation_form: v2.std.leaf_model_verification.TargetInvocation
+      expected_outcome: v2.std.runtime.RuntimeOutcome
     }
   | RustEmitProjectionEqualityExpectation {
       atom_realization_row: Node
       type_emit_must_change: Bool
       value_emit_must_change: Bool
     }
-  | RustGrammarRoundTripExpectation { production: GrammarProduction }
+  | RustGrammarRoundTripExpectation { production: v2.std.grammar.GrammarProduction }

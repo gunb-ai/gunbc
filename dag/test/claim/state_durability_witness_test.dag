@@ -6,7 +6,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 type FixtureTarget = NonEmptyStr where brand("FixtureTarget")
 
 type FixtureReadbackSubject {
-  path: NonEmptyStr
+  path: std.types.NonEmptyStr
 }
 
 data fixture_target: FixtureTarget = "fixture-host" as FixtureTarget

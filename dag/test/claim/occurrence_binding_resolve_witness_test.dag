@@ -8,8 +8,8 @@ fn obr_fixture_span(file: String, start: Int, end: Int) -> std.types.SourceSpan 
 fn obr_fixture_path(
   ancestors: List<std.occurrence_identity.OccurrenceId>,
   terminal: std.occurrence_identity.OccurrenceId
-) -> OccurrenceContainmentPath {
-  OccurrenceContainmentPath {
+) -> std.occurrence_identity.OccurrenceContainmentPath {
+  std.occurrence_identity.OccurrenceContainmentPath {
     ancestors: ancestors,
     terminal: terminal,
   }
@@ -19,10 +19,10 @@ fn obr_fixture_index_entry(
   occurrence: std.occurrence_identity.OccurrenceId,
   authored_name: String,
   span: std.types.SourceSpan,
-  containment: OccurrenceContainmentPath
-) -> OccurrenceIndexEntry {
-  OccurrenceIndexEntry {
-    projection: OccurrenceProjection {
+  containment: std.occurrence_identity.OccurrenceContainmentPath
+) -> std.occurrence_identity.OccurrenceIndexEntry {
+  std.occurrence_identity.OccurrenceIndexEntry {
+    projection: std.occurrence_identity.OccurrenceProjection {
       occurrence: occurrence,
       authored_name: authored_name,
       diagnostic_span: span,
@@ -31,7 +31,7 @@ fn obr_fixture_index_entry(
   }
 }
 
-fn obr_supplied_population_transport() -> OccurrenceTransport {
+fn obr_supplied_population_transport() -> std.occurrence_identity.OccurrenceTransport {
   let span = obr_fixture_span(file: "supplied.dag", start: 1, end: 2)
   let lexical_a = std.occurrence_identity.OccurrenceId { value: 10 }
   let lexical_b = std.occurrence_identity.OccurrenceId { value: 11 }
@@ -58,8 +58,8 @@ fn obr_supplied_population_transport() -> OccurrenceTransport {
     ancestors: [std.occurrence_identity.OccurrenceId { value: 5 }],
     terminal: type_ref,
   )
-  OccurrenceTransport {
-    index: OccurrenceIndex {
+  std.occurrence_identity.OccurrenceTransport {
+    index: std.occurrence_identity.OccurrenceIndex {
       entries: [
         obr_fixture_index_entry(
           occurrence: lexical_a,
@@ -94,19 +94,19 @@ fn obr_supplied_population_transport() -> OccurrenceTransport {
       ],
     },
     declarations: [
-      DeclarationOccurrence {
+      std.occurrence_identity.DeclarationOccurrence {
         occurrence: lexical_a,
         containment: lexical_a_path,
         category: LexicalValueOccurrence,
         diagnostic_span: span,
       },
-      DeclarationOccurrence {
+      std.occurrence_identity.DeclarationOccurrence {
         occurrence: lexical_b,
         containment: lexical_b_path,
         category: LexicalValueOccurrence,
         diagnostic_span: span,
       },
-      DeclarationOccurrence {
+      std.occurrence_identity.DeclarationOccurrence {
         occurrence: type_decl,
         containment: type_decl_path,
         category: TypeOccurrence,
@@ -114,13 +114,13 @@ fn obr_supplied_population_transport() -> OccurrenceTransport {
       },
     ],
     references: [
-      ReferenceOccurrence {
+      std.occurrence_identity.ReferenceOccurrence {
         occurrence: lexical_ref,
         containment: lexical_ref_path,
         category: LexicalValueOccurrence,
         diagnostic_span: span,
       },
-      ReferenceOccurrence {
+      std.occurrence_identity.ReferenceOccurrence {
         occurrence: type_ref,
         containment: type_ref_path,
         category: TypeOccurrence,
@@ -252,14 +252,14 @@ test fn occurrence_binding_resolve_direct_fold_is_the_single_decision_authority_
   }
 }
 
-fn obr_duplicate_index_transport() -> OccurrenceTransport {
+fn obr_duplicate_index_transport() -> std.occurrence_identity.OccurrenceTransport {
   let transport = obr_supplied_population_transport()
   let entry = transport.index.entries |> first
   match entry {
     Absent => transport
     Present { value: duplicate } =>
-      OccurrenceTransport {
-        index: OccurrenceIndex {
+      std.occurrence_identity.OccurrenceTransport {
+        index: std.occurrence_identity.OccurrenceIndex {
           entries: [duplicate, duplicate],
         },
         declarations: transport.declarations,

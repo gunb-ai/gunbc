@@ -34,7 +34,7 @@ fn resource_occurrence_eq(left: ResourceOccurrenceId, right: ResourceOccurrenceI
 }
 
 type HostResourceIdentity {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   occurrence: ResourceOccurrenceId
 }
 

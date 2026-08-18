@@ -2,10 +2,10 @@ module test.claim.reviewer_source_witness_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_policy_id: NonEmptyStr = "sec-1"
-data witness_policy_version: NonEmptyStr = "v2"
-data witness_jane_qa: NonEmptyStr = "jane-qa"
-data witness_policy_string: NonEmptyStr = "policy"
+data witness_policy_id: std.types.NonEmptyStr = "sec-1"
+data witness_policy_version: std.types.NonEmptyStr = "v2"
+data witness_jane_qa: std.types.NonEmptyStr = "jane-qa"
+data witness_policy_string: std.types.NonEmptyStr = "policy"
 
 fn witness_agent_claude_is_llm() -> Bool {
   match reviewer_source(reviewer: AgentReviewer { provider: Claude }) {
@@ -42,7 +42,7 @@ fn witness_unattributed_policy_string_is_unattributed() -> Bool {
 fn witness_policy_reviewer_is_policy() -> Bool {
   match reviewer_source(
     reviewer: PolicyReviewer {
-      policy: PolicyRef { id: witness_policy_id, version: witness_policy_version }
+      policy: gunbc.review_verdict.PolicyRef { id: witness_policy_id, version: witness_policy_version }
     }
   ) {
     Policy => true

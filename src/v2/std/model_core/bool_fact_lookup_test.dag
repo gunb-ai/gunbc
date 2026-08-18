@@ -2,7 +2,7 @@ module v2.test.std_model_core.bool_fact_lookup
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 fn bool_lookup_width_ok(vw: Node) -> Bool {
   content_hash(n: vw) == content_hash(n: bool_width_fact_node(width: bool_primitive_facts.width))
 }

@@ -81,7 +81,7 @@ The two are separate fields. The product is what a person installed and what a r
 data host_realization_identity_note: String = "Every identity here is a symbolic reference to the authority that owns it, never a name string, so a host is a join over real modules rather than over spellings (DESIGN §3 cite-the-symbol). The unresolved arm is a NAMED variant carrying its own cause rather than a bare optional, because there are several distinct reasons an identity goes unresolved and collapsing them into one absent value is the state-space conflation DESIGN's failure-mode list names first: a reduced User-Agent that reports a frozen literal, a probe that never asked, and a platform that publishes no such identity are three different situations with three different remedies, and only the first is fixed by reading UA Client Hints."
 
 type ResolvedRef
-  = RefResolved { declaration: DeclarationRef }
+  = RefResolved { declaration: std.decl_ref.DeclarationRef }
   | RefReducedByPolicy { reported: String }
   | RefNotProbed
   | RefUnpublishedByPlatform
@@ -105,12 +105,12 @@ fn resolved_ref_key(r: ResolvedRef) -> String {
 }
 
 type HostRealization {
-  platform: ExternalSubjectRef
+  platform: extdeps.external_authority.ExternalSubjectRef
   platform_revision: ResolvedRef
   device_identity: ResolvedRef
   role: HostRole
   container_kind: ApplicationContainerKind
-  container_product: DeclarationRef
+  container_product: std.decl_ref.DeclarationRef
   container_product_build: ResolvedRef
   runtime_engine: ResolvedRef
   runtime_engine_build: ResolvedRef

@@ -4,7 +4,7 @@ module gunbc.hostname_set
 type HostnameSetCasOutcome
   = HostnameSetCasApplied
   | HostnameSetCasReadRefused { reason: String }
-  | HostnameSetCasBaseMismatch { observed: String, base: DnsLabel }
+  | HostnameSetCasBaseMismatch { observed: String, base: extdeps.dns.domain_name.DnsLabel }
   | HostnameSetCasApplyFailed { stderr: String }
 
 fn hostname_set_operation_argv(desired: DnsLabel) -> List<String> {

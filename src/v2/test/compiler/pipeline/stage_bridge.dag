@@ -14,7 +14,7 @@ fn pipeline_find_arrow_in_module(root: Node) -> Optional<Node> {
   }
 }
 
-fn pipeline_arrow_body_has_behavior(root: Node, wanted: Behavior) -> Bool {
+fn pipeline_arrow_body_has_behavior(root: Node, wanted: v2.std.node.Behavior) -> Bool {
   match pipeline_find_arrow_in_module(root: root) {
     Absent => false
     Present { value: arrow } =>
@@ -29,7 +29,7 @@ fn pipeline_arrow_body_has_behavior(root: Node, wanted: Behavior) -> Bool {
   }
 }
 
-fn pipeline_token_stream_has_lexeme(stream: TokenStream, lexeme: String) -> Bool {
+fn pipeline_token_stream_has_lexeme(stream: v2.std.compilers.lexing.TokenStream, lexeme: String) -> Bool {
   fold(
     token_stream_all(stream: stream),
     init: false,
@@ -39,12 +39,12 @@ fn pipeline_token_stream_has_lexeme(stream: TokenStream, lexeme: String) -> Bool
   )
 }
 
-fn pipeline_tokenize_source(source: String, file: Symbol) -> Outcome<TokenStream> {
+fn pipeline_tokenize_source(source: String, file: v2.std.node.Symbol) -> Outcome<v2.std.compilers.lexing.TokenStream> {
   let lm = dag_language_model()
   tokenize(text: source, file: file, rules: lm.lex)
 }
 
-fn pipeline_parse_tree_from_tokens(tokens: TokenStream) -> Outcome<Node> {
+fn pipeline_parse_tree_from_tokens(tokens: v2.std.compilers.lexing.TokenStream) -> Outcome<Node> {
   match parse_module(tokens: tokens, grammar: dag_language_model().grammar) {
     Accepted { value: artifact, diagnostics: d } =>
       outcome_with_diagnostics(value: artifact.tree, diagnostics: d)
@@ -52,7 +52,7 @@ fn pipeline_parse_tree_from_tokens(tokens: TokenStream) -> Outcome<Node> {
   }
 }
 
-fn pipeline_parse_source(source: String, file: Symbol) -> Outcome<Node> {
+fn pipeline_parse_source(source: String, file: v2.std.node.Symbol) -> Outcome<Node> {
   bind_outcome(
     o: pipeline_tokenize_source(source: source, file: file),
     f: fn(tokens) {
@@ -61,7 +61,7 @@ fn pipeline_parse_source(source: String, file: Symbol) -> Outcome<Node> {
   )
 }
 
-fn pipeline_normalize_source(source: String, file: Symbol) -> Outcome<NormalizedTree> {
+fn pipeline_normalize_source(source: String, file: v2.std.node.Symbol) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   bind_outcome(
     o: pipeline_parse_source(source: source, file: file),
     f: fn(parse_tree) {
@@ -70,7 +70,7 @@ fn pipeline_normalize_source(source: String, file: Symbol) -> Outcome<Normalized
   )
 }
 
-fn pipeline_resolved_source(source: String, file: Symbol) -> Outcome<Node> {
+fn pipeline_resolved_source(source: String, file: v2.std.node.Symbol) -> Outcome<Node> {
   bind_outcome(
     o: pipeline_normalize_source(source: source, file: file),
     f: fn(normalized) {
@@ -79,14 +79,14 @@ fn pipeline_resolved_source(source: String, file: Symbol) -> Outcome<Node> {
   )
 }
 
-fn pipeline_inferred_arrow_from_resolved(resolved: Node) -> Outcome<InferredTree> {
+fn pipeline_inferred_arrow_from_resolved(resolved: Node) -> Outcome<v2.compiler.infer.InferredTree> {
   match pipeline_find_arrow_in_module(root: resolved) {
     Present { value: arrow } => infer(tree: arrow)
     Absent => infer(tree: resolved)
   }
 }
 
-fn pipeline_inferred_source(source: String, file: Symbol) -> Outcome<InferredTree> {
+fn pipeline_inferred_source(source: String, file: v2.std.node.Symbol) -> Outcome<v2.compiler.infer.InferredTree> {
   bind_outcome(
     o: pipeline_resolved_source(source: source, file: file),
     f: fn(resolved) {
@@ -102,7 +102,7 @@ fn pipeline_outcome_is_accepted(o: Outcome<Node>) -> Bool {
   }
 }
 
-fn pipeline_inferred_outcome_is_accepted(o: Outcome<InferredTree>) -> Bool {
+fn pipeline_inferred_outcome_is_accepted(o: Outcome<v2.compiler.infer.InferredTree>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

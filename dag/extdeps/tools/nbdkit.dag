@@ -1,14 +1,14 @@
 module extdeps.tools.nbdkit
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "libguestfs.org/nbdkit.1.html"
   }
 }
 
-data nbdkit_pinned_version: VersionConstraint = ">= 1.34"
+data nbdkit_pinned_version: extdeps.version.VersionConstraint = ">= 1.34"
 
 data nbdkit_cli_tool: CliTool = CliTool {
   name: "nbdkit",

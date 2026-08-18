@@ -6,26 +6,26 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data typed_module_cache_capacity_witness_note: String = "Executes the modelled cap derivation that extdeps.realization.reconcile_in_process now cites as its RuntimeDerivedLimit authority. The load-bearing cell is unreadable_budget_refuses_rather_than_defaulting: the seed's previous unwrap_or(CEIL) turned an unknown budget into the MOST PERMISSIVE cap available and OOM-killed the full witness corpus twice, so the discriminating question is not whether a cap is produced but whether the refusal survives. Both clamp directions are pinned because a one-sided clamp would look correct on the ordinary budget and fail exactly at the extremes the clamp exists for."
 
 // 300 entries exactly: 300 * 3 MiB = 943718400 bytes, comfortably inside the band.
-fn ordinary_budget() -> HostBudgetResolution {
+fn ordinary_budget() -> gunbc.host_budget_source.HostBudgetResolution {
   HostBudgetResolved {
     source: BudgetSourceCgroupMemoryMax { cgroup_dir: "/sys/fs/cgroup" },
     bytes: byte_size(count: 943718400)
   }
 }
 
-fn tiny_budget() -> HostBudgetResolution {
+fn tiny_budget() -> gunbc.host_budget_source.HostBudgetResolution {
   HostBudgetResolved { source: BudgetSourceMemTotal, bytes: byte_size(count: 1048576) }
 }
 
-fn huge_budget() -> HostBudgetResolution {
+fn huge_budget() -> gunbc.host_budget_source.HostBudgetResolution {
   HostBudgetResolved { source: BudgetSourceMemTotal, bytes: byte_size(count: 107374182400) }
 }
 
-fn unreadable_budget() -> HostBudgetResolution {
+fn unreadable_budget() -> gunbc.host_budget_source.HostBudgetResolution {
   HostBudgetUnreadable { reason: "no modelled source answered on this platform" }
 }
 
-fn cap_entries_or(c: TypedModuleCacheCap, fallback: Int) -> Int {
+fn cap_entries_or(c: gunbc.typed_module_cache_capacity.TypedModuleCacheCap, fallback: Int) -> Int {
   match c {
     CapEntries { entries: n } => n
     CapEntryRefused { reason: _ } => fallback

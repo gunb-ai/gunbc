@@ -2,7 +2,7 @@ module v2.test.manual.target_model_operator_lookup_dissolution
 
 
 fn operator_lookup_dissolution_probe_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^operator_lookup_dissolution_probe } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -10,7 +10,7 @@ fn operator_lookup_dissolution_probe_node() -> Node {
 }
 
 fn operator_lookup_dissolution_pass_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^operator_lookup_dissolution_pass } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -18,7 +18,7 @@ fn operator_lookup_dissolution_pass_node() -> Node {
 }
 
 fn operator_lookup_dissolution_fail_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^operator_lookup_dissolution_fail } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -34,14 +34,14 @@ fn operator_lookup_dissolution_claim_input(ok: Bool) -> Node {
 }
 
 fn operator_catalog_with_malformed_and_valid_rows() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^target_operator_realization_row_edge },
         target: operator_lookup_dissolution_probe_node()
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^target_operator_realization_row_edge },
         target: ts_add_operator_realization_row()
       }
@@ -62,7 +62,7 @@ fn operator_lookup_known_op_accepts() -> Bool {
 
 fn operator_lookup_empty_catalog_rejects_miss() -> Bool {
   match target_operator_realization_catalog_lookup(
-    catalog: Node {
+    catalog: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -84,28 +84,28 @@ fn operator_catalog_with_malformed_row_skips_accepts_valid() -> Bool {
   }
 }
 
-data claim_operator_lookup_accepts: TestClaim = CompilesClaim {
+data claim_operator_lookup_accepts: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/operator_lookup_dissolution: target_operator_realization_catalog_lookup accepts known OpAdd row",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: operator_lookup_dissolution_claim_input(ok: operator_lookup_known_op_accepts()),
   expected_value: operator_lookup_dissolution_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_operator_lookup_miss: TestClaim = CompilesClaim {
+data claim_operator_lookup_miss: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/operator_lookup_dissolution: empty operator catalog rejects miss",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: operator_lookup_dissolution_claim_input(ok: operator_lookup_empty_catalog_rejects_miss()),
   expected_value: operator_lookup_dissolution_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_operator_catalog_malformed_row_skips: TestClaim = CompilesClaim {
+data claim_operator_catalog_malformed_row_skips: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/operator_lookup_dissolution: Conj catalog with malformed row skips it, accepts valid row (fail-open witness)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: operator_lookup_dissolution_claim_input(
     ok: operator_catalog_with_malformed_row_skips_accepts_valid()
   ),
   expected_value: operator_lookup_dissolution_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

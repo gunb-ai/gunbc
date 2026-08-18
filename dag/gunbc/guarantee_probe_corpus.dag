@@ -109,9 +109,9 @@ data v2_frontier_red_probe: GuaranteeProbeId = "v2-self-grounding-frontier-value
 data v2_frontier_green_probe: GuaranteeProbeId = "v2-self-grounding-frontier-derived-green" as GuaranteeProbeId
 
 type ProbeExpectation
-  = ExpectBlockingRefusal { diagnostic_class: NonEmptyStr }
+  = ExpectBlockingRefusal { diagnostic_class: std.types.NonEmptyStr }
   | ExpectZeroDiagnostics
-  | ExpectAcceptedCounted { diagnostic_class: NonEmptyStr }
+  | ExpectAcceptedCounted { diagnostic_class: std.types.NonEmptyStr }
 
 type ProbeExpectationFold<R> {
   blocking_refusal: fn(NonEmptyStr) -> R
@@ -239,9 +239,9 @@ fn synthetic_infer_eval_subject_revision_from_node(node: Node) -> MeasurementRev
 
 type DarkSuiteWitnessDisposition
   = MigratedToEnrolledDagProbe {
-      rust_witness: NonEmptyStr,
-      dag_probes: List<GuaranteeProbeId>,
-      rust_retained_until: NonEmptyStr,
+      rust_witness: std.types.NonEmptyStr,
+      dag_probes: List<gunbc.guarantee_measurement.GuaranteeProbeId>,
+      rust_retained_until: std.types.NonEmptyStr,
     }
 
 data guarantee_probe_dark_suite_disposition_note: String = "Slice 1 MIGRATES landed wall REDs into enrolled .dag probes without dissolving the dark Rust suite (gap-analysis sec 11 item 9 operator ruling): each row names the executing .dag probe(s), the retained Rust witness they replace on the floor, and the finite-classification gate that must disposition the Rust copy before deletion. MIGRATE never duplicate means one enrolled measurement authority per class — not silent parallel maintenance forever."
@@ -277,28 +277,28 @@ fn guarantee_probe_dark_suite_dispositions() -> List<DarkSuiteWitnessDisposition
 }
 
 type GuaranteeProbeRow {
-  probe: GuaranteeProbeId
-  class: GuaranteeClassId
-  path: GuaranteePathId
+  probe: gunbc.guarantee_measurement.GuaranteeProbeId
+  class: gunbc.guarantee_measurement.GuaranteeClassId
+  path: gunbc.guarantee_measurement.GuaranteePathId
   expectation: ProbeExpectation
 }
 
 type V1CompileProbeRow {
-  probe: GuaranteeProbeId
-  class: GuaranteeClassId
+  probe: gunbc.guarantee_measurement.GuaranteeProbeId
+  class: gunbc.guarantee_measurement.GuaranteeClassId
   expectation: ProbeExpectation
 }
 
 type V2InferEvalProbeRow {
-  probe: GuaranteeProbeId
-  class: GuaranteeClassId
+  probe: gunbc.guarantee_measurement.GuaranteeProbeId
+  class: gunbc.guarantee_measurement.GuaranteeClassId
   expectation: ProbeExpectation
 }
 
 type ProbeRowResolution
   = ProbeRowResolved { row: GuaranteeProbeRow }
-  | ProbeRowUnknown { wanted: GuaranteeProbeId }
-  | ProbeRowDuplicate { wanted: GuaranteeProbeId, matches: Int }
+  | ProbeRowUnknown { wanted: gunbc.guarantee_measurement.GuaranteeProbeId }
+  | ProbeRowDuplicate { wanted: gunbc.guarantee_measurement.GuaranteeProbeId, matches: Int }
 
 fn guarantee_probe_rows() -> List<GuaranteeProbeRow> {
   [

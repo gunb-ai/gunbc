@@ -206,7 +206,7 @@ data ampere_altra_avl_authority: extdeps.external_authority.ExternalAuthority = 
   }
 }
 
-data ampere_altra_avl_current_issue: NonEmptyStr = "1.15 (December 2025)"
+data ampere_altra_avl_current_issue: std.types.NonEmptyStr = "1.15 (December 2025)"
 
 // THE MODULE'S OWN ROSTER OF CATALOG ROWS, for the same reason as the AMD side: one authority for
 // "every Ampere processor modelled here", edited beside the rows it names.

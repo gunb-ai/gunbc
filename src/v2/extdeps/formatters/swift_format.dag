@@ -33,7 +33,7 @@ type SwiftFormatOrderedImports {
 }
 
 type SwiftFormatConfig {
-  version: Outcome<ExactOneInt>
+  version: Outcome<v2.std.refinement.ExactOneInt>
   line_length: Outcome<v2.std.refinement.PositiveInt>
   indentation: SwiftFormatIndentation,
   tab_width: Outcome<v2.std.refinement.PositiveInt>

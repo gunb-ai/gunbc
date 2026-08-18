@@ -4,7 +4,7 @@ module test.claim.orthogonal_topology_witness
 
 // The rooms this witness builds are millimetre-framed, which is what makes reading their heights
 // as millimetres true rather than assumed.
-fn mm_registry() -> SpatialFrameRegistry {
+fn mm_registry() -> std.spatial_frame.SpatialFrameRegistry {
   match register_frame(r: empty_frame_registry(), identity: room(), length_scale: Milli) {
     FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
     FrameRegistrationRefused { cause: _ } => empty_frame_registry()
@@ -13,18 +13,18 @@ fn mm_registry() -> SpatialFrameRegistry {
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn room() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
-fn building() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
+fn room() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
+fn building() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
 
-fn p2(x: Int, y: Int) -> Point2 { point2(frame: room(), x: x, y: y) }
-fn p3(x: Int, y: Int, z: Int) -> Point3 { point3(frame: room(), x: x, y: y, z: z) }
+fn p2(x: Int, y: Int) -> std.affine_space.Point2 { point2(frame: room(), x: x, y: y) }
+fn p3(x: Int, y: Int, z: Int) -> std.affine_space.Point3 { point3(frame: room(), x: x, y: y, z: z) }
 
 // FIXTURES ARE THREADED AS CONSTRUCTIONS, never unwrapped through a fallback. An unwrap helper
 // needs something to return when the mint refuses, and every candidate is a fabrication: a
 // sentinel space would make a claim pass or fail for a reason unrelated to what it tests, and a
 // recursive retry would hang. So the constructions travel and every claim matches them - a fixture
 // that stops minting reds the witness at the fixture, which is the honest failure.
-fn space_ctor(vertices: List<Point2>, low: Int, high: Int) -> OrthogonalConstruction<EnclosedSpace> {
+fn space_ctor(vertices: List<std.affine_space.Point2>, low: Int, high: Int) -> OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace> {
   match orthogonal_loop2(vertices: vertices) {
     OrthogonalRefused { cause: c } => OrthogonalRefused { cause: c }
     OrthogonalReady { value: l } =>
@@ -35,7 +35,7 @@ fn space_ctor(vertices: List<Point2>, low: Int, high: Int) -> OrthogonalConstruc
   }
 }
 
-fn sequence_spaces(cs: List<OrthogonalConstruction<EnclosedSpace>>) -> OrthogonalConstruction<List<EnclosedSpace>> {
+fn sequence_spaces(cs: List<OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>>) -> OrthogonalConstruction<List<std.orthogonal_topology.EnclosedSpace>> {
   let folded = fold(cs, init: OrthogonalReady { value: [] }, f: (acc, c) =>
     match acc {
       OrthogonalRefused { cause: r } => OrthogonalRefused { cause: r }
@@ -54,19 +54,19 @@ fn sequence_spaces(cs: List<OrthogonalConstruction<EnclosedSpace>>) -> Orthogona
 // An L-shaped footprint: a 4000x3000 rectangle with a 2000x1000 bite taken out of the far corner.
 // Every claim below uses this rather than a rectangle deliberately - a rectangle's area agrees with
 // its bounding box, so it cannot tell a derived area from an authored width-times-depth.
-fn l_shape() -> List<Point2> {
+fn l_shape() -> List<std.affine_space.Point2> {
   [p2(x: 0, y: 0), p2(x: 4000, y: 0), p2(x: 4000, y: 2000), p2(x: 2000, y: 2000), p2(x: 2000, y: 3000), p2(x: 0, y: 3000)]
 }
 
-fn l_space() -> OrthogonalConstruction<EnclosedSpace> { space_ctor(vertices: l_shape(), low: 0, high: 2400) }
+fn l_space() -> OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace> { space_ctor(vertices: l_shape(), low: 0, high: 2400) }
 
-fn rect_ctor(x0: Int, y0: Int, x1: Int, y1: Int, low: Int, high: Int) -> OrthogonalConstruction<EnclosedSpace> {
+fn rect_ctor(x0: Int, y0: Int, x1: Int, y1: Int, low: Int, high: Int) -> OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace> {
   space_ctor(vertices: [p2(x: x0, y: y0), p2(x: x1, y: y0), p2(x: x1, y: y1), p2(x: x0, y: y1)], low: low, high: high)
 }
 
 // Every projection below answers -1 on a refusal rather than a plausible number, so a claim can
 // never pass because a fixture or an operation refused - the two outcomes are distinguishable.
-fn area_of(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
+fn area_of(c: OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>) -> Int {
   match c {
     OrthogonalRefused { cause: _ } => 0 - 1
     OrthogonalReady { value: s } =>
@@ -77,7 +77,7 @@ fn area_of(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
   }
 }
 
-fn volume_of(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
+fn volume_of(c: OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>) -> Int {
   match c {
     OrthogonalRefused { cause: _ } => 0 - 1
     OrthogonalReady { value: s } =>
@@ -91,7 +91,7 @@ fn volume_of(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
 // THE HEIGHT NOW ARRIVES IN A FRAME, so reading it as a millimetre count is a projection that can
 // refuse: an unregistered frame has no quantum and yields no length at all. The sentinel keeps its
 // meaning - a height nobody can state is as much a failure as a space that would not construct.
-fn height_of(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
+fn height_of(c: OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>) -> Int {
   match c {
     OrthogonalRefused { cause: _ } => 0 - 1
     OrthogonalReady { value: s } =>
@@ -106,21 +106,21 @@ fn height_of(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
   }
 }
 
-fn wall_count(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
+fn wall_count(c: OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>) -> Int {
   match c {
     OrthogonalRefused { cause: _ } => 0 - 1
     OrthogonalReady { value: s } => length(space_walls(s: s))
   }
 }
 
-fn face_count(c: OrthogonalConstruction<EnclosedSpace>) -> Int {
+fn face_count(c: OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>) -> Int {
   match c {
     OrthogonalRefused { cause: _ } => 0 - 1
     OrthogonalReady { value: s } => shell_face_count(s: space_shell(s: s))
   }
 }
 
-fn located(c: OrthogonalConstruction<EnclosedSpace>, p: Point3) -> Int {
+fn located(c: OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>, p: std.affine_space.Point3) -> Int {
   match c {
     OrthogonalRefused { cause: _ } => 0 - 1
     OrthogonalReady { value: s } =>
@@ -136,7 +136,7 @@ fn located(c: OrthogonalConstruction<EnclosedSpace>, p: Point3) -> Int {
   }
 }
 
-fn pairwise(ca: OrthogonalConstruction<EnclosedSpace>, cb: OrthogonalConstruction<EnclosedSpace>, want_adjacency: Bool) -> Int {
+fn pairwise(ca: OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>, cb: OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>, want_adjacency: Bool) -> Int {
   match ca {
     OrthogonalRefused { cause: _ } => 0 - 1
     OrthogonalReady { value: a } =>
@@ -151,11 +151,11 @@ fn pairwise(ca: OrthogonalConstruction<EnclosedSpace>, cb: OrthogonalConstructio
   }
 }
 
-fn overlaps(ca: OrthogonalConstruction<EnclosedSpace>, cb: OrthogonalConstruction<EnclosedSpace>) -> Int {
+fn overlaps(ca: OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>, cb: OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>) -> Int {
   pairwise(ca: ca, cb: cb, want_adjacency: false)
 }
 
-fn adjacent(ca: OrthogonalConstruction<EnclosedSpace>, cb: OrthogonalConstruction<EnclosedSpace>) -> Int {
+fn adjacent(ca: OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>, cb: OrthogonalConstruction<std.orthogonal_topology.EnclosedSpace>) -> Int {
   pairwise(ca: ca, cb: cb, want_adjacency: true)
 }
 
@@ -331,7 +331,7 @@ test fn complex_refuses_members_in_different_frames() -> Bool {
 // multiply micrometre counts and call the product square millimetres - wrong by a factor of a
 // million, from arithmetic that is right. The millimetre frame is the positive control on the
 // same space, so the frame decides the outcome rather than the fold refusing everything.
-fn micro_registry() -> SpatialFrameRegistry {
+fn micro_registry() -> std.spatial_frame.SpatialFrameRegistry {
   match register_frame(r: empty_frame_registry(), identity: room(), length_scale: Micro) {
     FrameRegistered { frame: f } => registry_with(r: empty_frame_registry(), f: f)
     FrameRegistrationRefused { cause: _ } => empty_frame_registry()

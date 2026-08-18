@@ -14,7 +14,7 @@ fn dispatch_event_pipe_intent(tee_program: String, events_path: String) -> Node 
 }
 
 type PipePaneEmission
-  = PipeEmitted { command: TmuxPipeCommand }
+  = PipeEmitted { command: extdeps.tmux.TmuxPipeCommand }
   | PipeEmitRefused { detail: String }
 
 data dispatch_event_pipe_emit_refusal_note: String = "review 44113. The first version of this module answered a serializer Rejected with a TmuxPipeCommand carrying a non-executable poison marker. That was wrong in the way DESIGN 5 names precisely: a refusal that still produces a valid effect request is a widen wearing a refusal's clothes — the actuator could not tell it apart from a successful serialization, so an un-emittable intent still reached tmux as a command, and the serializer's own diagnostics were discarded on the way. The emission is now a typed sum. A refusal carries its located detail and has NO arm that yields a command, so dispatching one is unwritable rather than merely unlikely; the spawn plan above refuses whole and the belt surfaces it as SpawnFailed at the step that could not be built."

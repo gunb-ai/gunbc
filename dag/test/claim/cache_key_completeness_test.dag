@@ -19,8 +19,8 @@ test fn witness_live_resolved_graph_derives_toolchain() -> Bool {
   catalog_has_vendor_only_key_inputs(inputs: inputs) && (inputs.length() == 2)
 }
 
-fn sound_cited_facts() -> CatalogKeyDerivationFacts {
-  CatalogKeyDerivationFacts {
+fn sound_cited_facts() -> extdeps.cache.types.CatalogKeyDerivationFacts {
+  extdeps.cache.types.CatalogKeyDerivationFacts {
     key_inputs: NativeInternal { cited_inputs: [RustcInvocation, ToolchainSpec] },
     overwritable: false,
     prefix_fallback_allowed: false,
@@ -30,8 +30,8 @@ fn sound_cited_facts() -> CatalogKeyDerivationFacts {
   }
 }
 
-fn undercited_native_facts() -> CatalogKeyDerivationFacts {
-  CatalogKeyDerivationFacts {
+fn undercited_native_facts() -> extdeps.cache.types.CatalogKeyDerivationFacts {
+  extdeps.cache.types.CatalogKeyDerivationFacts {
     key_inputs: NativeInternal { cited_inputs: [UpsertSubject] },
     overwritable: false,
     prefix_fallback_allowed: false,
@@ -41,8 +41,8 @@ fn undercited_native_facts() -> CatalogKeyDerivationFacts {
   }
 }
 
-fn hand_authored_facts() -> CatalogKeyDerivationFacts {
-  CatalogKeyDerivationFacts {
+fn hand_authored_facts() -> extdeps.cache.types.CatalogKeyDerivationFacts {
+  extdeps.cache.types.CatalogKeyDerivationFacts {
     key_inputs: HandAuthored { cited_inputs: [UpsertSubject] },
     overwritable: false,
     prefix_fallback_allowed: false,
@@ -52,8 +52,8 @@ fn hand_authored_facts() -> CatalogKeyDerivationFacts {
   }
 }
 
-fn no_promise_native_facts() -> CatalogKeyDerivationFacts {
-  CatalogKeyDerivationFacts {
+fn no_promise_native_facts() -> extdeps.cache.types.CatalogKeyDerivationFacts {
+  extdeps.cache.types.CatalogKeyDerivationFacts {
     key_inputs: NativeInternal { cited_inputs: [UpsertSubject] },
     overwritable: false,
     prefix_fallback_allowed: false,

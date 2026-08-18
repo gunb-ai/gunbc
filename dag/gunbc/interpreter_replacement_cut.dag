@@ -5,7 +5,7 @@ data interpreter_replacement_cut_note: String = "THE FIRST PRODUCTION Replacemen
 
 data interpreter_cut_identity: gunbc.replacement_cut.ReplacementCutId = "cut-v1-interpreter" as gunbc.replacement_cut.ReplacementCutId
 
-fn nes(s: String) -> NonEmptyStr { s as NonEmptyStr }
+fn nes(s: String) -> std.types.NonEmptyStr { s as std.types.NonEmptyStr }
 
 fn consumer(name: String, disposition: gunbc.replacement_cut.ConsumerDisposition) -> gunbc.replacement_cut.BoundaryConsumer {
   gunbc.replacement_cut.BoundaryConsumer { consumer: nes(s: name), disposition: disposition }
@@ -114,7 +114,7 @@ fn interpreter_cut_consumers() -> List<gunbc.replacement_cut.BoundaryConsumer> {
   )
 }
 
-fn interpreter_cut_region() -> List<NonEmptyStr> {
+fn interpreter_cut_region() -> List<std.types.NonEmptyStr> {
   [
     nes(s: "v1_compiler.v1_interpreter"),
     nes(s: "v1_compiler.v1_interpreter_dispatch_generated"),

@@ -4,7 +4,7 @@ module v2.extdeps.formatters.lean4_format
 type Lean4NameValue
 type Lean4SyntaxValue
 type Lean4NatValue = v2.std.nat.Nat
-fn lean4_format_authoritative_locus() -> Locus {
+fn lean4_format_authoritative_locus() -> v2.std.diagnostic.Locus {
   port_locus(port: ^lean4_format_authoritative_locus_port)
 }
 
@@ -74,11 +74,11 @@ fn lean4_nat_peano_from_non_negative_int(value: Int) -> v2.std.nat.Nat {
   }
 }
 
-fn lean4_nat_materialize_non_negative_int(value: Int, at: Locus) -> Outcome<v2.std.nat.Nat> {
+fn lean4_nat_materialize_non_negative_int(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<v2.std.nat.Nat> {
   if value < 0 {
     Rejected {
       diagnostics: diagnostics_singleton(
-        d: Diagnostic {
+        d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_out_of_range,
           at: at,
           correction: Unavailable { reason: UserInputBoundary }
@@ -88,7 +88,7 @@ fn lean4_nat_materialize_non_negative_int(value: Int, at: Locus) -> Outcome<v2.s
   } else if value > lean4_nat_max_materializable() {
     Rejected {
       diagnostics: diagnostics_singleton(
-        d: Diagnostic {
+        d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_exceeds_ceiling,
           at: at,
           correction: Unavailable { reason: UserInputBoundary }
@@ -103,11 +103,11 @@ fn lean4_nat_materialize_non_negative_int(value: Int, at: Locus) -> Outcome<v2.s
   }
 }
 
-fn make_lean4_nat_value(value: Int, at: Locus) -> Outcome<Lean4NatValue> {
+fn make_lean4_nat_value(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<Lean4NatValue> {
   if value < 0 {
     Rejected {
       diagnostics: diagnostics_singleton(
-        d: Diagnostic {
+        d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_out_of_range,
           at: at,
           correction: Unavailable { reason: UserInputBoundary }
@@ -117,7 +117,7 @@ fn make_lean4_nat_value(value: Int, at: Locus) -> Outcome<Lean4NatValue> {
   } else if value > lean4_nat_max_materializable() {
     Rejected {
       diagnostics: diagnostics_singleton(
-        d: Diagnostic {
+        d: v2.std.diagnostic.Diagnostic {
           reason: ^lean4_nat_exceeds_ceiling,
           at: at,
           correction: Unavailable { reason: UserInputBoundary }

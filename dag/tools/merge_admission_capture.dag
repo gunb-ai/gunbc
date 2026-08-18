@@ -6,7 +6,7 @@ data merge_admission_capture_profile_note: String = "This wet capture entry impo
 
 data merge_admission_capture_refusal_wire_note: String = "TYPED CAUSE ACROSS THE CLAIM BOUNDARY (review 47517, §5). The pre-walk transport's channel is a Bool claim result, which cannot carry the refusal cause — so the capture core returns the typed sum below, and the Bool projection durably writes the labeled cause to target/merge-admission-capture-refusal.txt (the floor-population-budget-refusal.txt pattern) BEFORE returning false; claim_executor's run_pre_walk_execution reads that wire into its located PRE-WALK-REFUSED line. The wire is best-effort-cleared at capture start so a stale cause from a prior attempt cannot masquerade as this attempt's; a false result with no wire is itself a distinct reported state (child died before writing), never silently folded into a generic failure."
 
-fn env_var(name: NonEmptyStr) -> String? {
+fn env_var(name: std.types.NonEmptyStr) -> String? {
   let env = shell.Env.Get(name: name)
   match env.value {
     Present { value: raw } =>
@@ -16,7 +16,7 @@ fn env_var(name: NonEmptyStr) -> String? {
   }
 }
 
-fn capture_walk_attempt_id() -> WalkAttemptId? {
+fn capture_walk_attempt_id() -> gunbc.merge_admission_subject.WalkAttemptId? {
   match env_var(name: "GUNBC_WALK_ATTEMPT_ID") {
     Present { value: explicit } => compose_explicit_walk_attempt_id(explicit: explicit)
     Absent =>
@@ -39,11 +39,11 @@ fn capture_walk_attempt_id() -> WalkAttemptId? {
   }
 }
 
-fn tested_checkout_base_ref(event_name: String) -> GitRef {
+fn tested_checkout_base_ref(event_name: String) -> std.types.GitRef {
   if (event_name == "pull_request") || (event_name == "merge_group") {
-    "HEAD^1" as GitRef
+    "HEAD^1" as std.types.GitRef
   } else {
-    "HEAD" as GitRef
+    "HEAD" as std.types.GitRef
   }
 }
 
@@ -108,7 +108,7 @@ func tested_subject_capture() -> TestedSubjectCapture {
                 if !ready.success {
                   TestedSubjectCaptureRefused { cause: CaptureAttemptDirCreateRefused }
                 } else {
-                  let subject = TestedSubject {
+                  let subject = gunbc.merge_admission_subject.TestedSubject {
                     attempt_id: attempt_id,
                     head_sha: head.sha,
                     base_ref: merge_admission_merge_base_ref,

@@ -81,9 +81,9 @@ test fn typed_claim_batch_pooled_argv_shape_holds() -> Bool {
   claim_batch_claims_argv(
     source_roots: ["dag", "src/v2"],
     claims: [
-      ClaimRun { entry: "a.dag", function: "f1" },
-      ClaimRun { entry: "a.dag", function: "f2" },
-      ClaimRun { entry: "b.dag", function: "g" }
+      tools.host_prelude.ClaimRun { entry: "a.dag", function: "f1" },
+      tools.host_prelude.ClaimRun { entry: "a.dag", function: "f2" },
+      tools.host_prelude.ClaimRun { entry: "b.dag", function: "g" }
     ]
   ) == [
     "--source-root", "dag", "--source-root", "src/v2",

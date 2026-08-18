@@ -121,7 +121,7 @@ type CsvHeaderNamesNotRequiredUniqueByRfc4180Witness {}
 type CsvDuplicateHeaderNamePolicyConsumerDefinedWitness {}
 
 type CsvDocument {
-  grammar_schema: GrammarSchema,
+  grammar_schema: v2.std.grammar.GrammarSchema,
   dialect: CsvDialect,
   numeric_lexeme_profile: CsvNumericLexemeProfile,
   unique_name_profile: CsvUniqueNameProfile,

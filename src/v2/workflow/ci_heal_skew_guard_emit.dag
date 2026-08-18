@@ -45,8 +45,8 @@ data ci_heal_skew_pipe_operator: String = " | "
 
 data ci_heal_skew_pipe_residue_note: String = "🟡 dissolve-on: ci_heal_skew_pipe_operator — THE PIPE OPERATOR IS THE LAST TARGET-LANGUAGE TOKEN THIS MODULE SPELLS, AND CLOSING IT IS A SUBSTRATE DECISION, NOT A LOCAL ONE. Both operands are now cited argv shapes and both are joined by one local ci_heal_skew_shell_line, so what remains hand-spelled is the two-character bash operator between them. It cannot be sourced from the grammar that already models it: extdeps.languages.bash bash_pipe_phrase spells the ` | ` token, but that vocabulary is confined to the emit layer by v2.lens.realization_vocabulary_containment (LANDED #6854) and importing it HERE — a v2.workflow intent module — is precisely the leak that lens exists to red. So the honest options are exactly two, and both edit files DESIGN.md names load-bearing: a Pipe variant on v2.std.orchestration's PipelineStep, or a producer/consumer composition on Run, either way with an arm in v2.compiler.emit_orchestration. This module's brief explicitly directed 'do NOT build a new carrier', and the project spirit requires escalating before touching a load-bearing stage under a brief that predates the relevant model decision, so the token stays here, named and counted, rather than being smuggled in as a substrate change nobody asked for. DISSOLVES WHEN that carrier lands and this fn renders the composition structurally; the shape is already factored (ci_heal_skew_piped_command takes producer_argv and consumer_argv, so the call sites do not change when the body does)."
 
-fn ci_heal_skew_git_run(argv: List<String>) -> Run {
-  Run {
+fn ci_heal_skew_git_run(argv: List<String>) -> v2.std.orchestration.Run {
+  v2.std.orchestration.Run {
     command: ci_heal_skew_shell_line(argv: argv),
     env: [],
     redirect: Absent,
@@ -54,8 +54,8 @@ fn ci_heal_skew_git_run(argv: List<String>) -> Run {
   }
 }
 
-fn ci_heal_skew_git_run_redirected(argv: List<String>, r: RedirectSpec) -> Run {
-  Run {
+fn ci_heal_skew_git_run_redirected(argv: List<String>, r: v2.std.orchestration.RedirectSpec) -> v2.std.orchestration.Run {
+  v2.std.orchestration.Run {
     command: ci_heal_skew_shell_line(argv: argv),
     env: [],
     redirect: Present { value: r },
@@ -63,13 +63,13 @@ fn ci_heal_skew_git_run_redirected(argv: List<String>, r: RedirectSpec) -> Run {
   }
 }
 
-fn ci_heal_skew_git_step(argv: List<String>) -> PipelineStep {
+fn ci_heal_skew_git_step(argv: List<String>) -> v2.std.orchestration.PipelineStep {
   Do { run: ci_heal_skew_git_run(argv: argv) }
 }
 
-fn ci_heal_skew_diag(text: String) -> PipelineStep {
+fn ci_heal_skew_diag(text: String) -> v2.std.orchestration.PipelineStep {
   Do {
-    run: Run {
+    run: v2.std.orchestration.Run {
       command: concat("echo \"", concat(text, "\"")),
       env: [],
       redirect: Present { value: StdoutAndStderr },
@@ -78,9 +78,9 @@ fn ci_heal_skew_diag(text: String) -> PipelineStep {
   }
 }
 
-fn ci_heal_skew_diag_list(var_name: String) -> PipelineStep {
+fn ci_heal_skew_diag_list(var_name: String) -> v2.std.orchestration.PipelineStep {
   Do {
-    run: Run {
+    run: v2.std.orchestration.Run {
       command: concat(
         concat("echo \"$", concat(var_name, "\" ")),
         ci_heal_skew_indent_commit_list
@@ -92,9 +92,9 @@ fn ci_heal_skew_diag_list(var_name: String) -> PipelineStep {
   }
 }
 
-fn ci_heal_skew_stdout(text: String) -> PipelineStep {
+fn ci_heal_skew_stdout(text: String) -> v2.std.orchestration.PipelineStep {
   Do {
-    run: Run {
+    run: v2.std.orchestration.Run {
       command: concat("echo \"", concat(text, "\"")),
       env: [],
       redirect: Absent,
@@ -107,7 +107,7 @@ fn ci_heal_skew_fetch_argv(ref_spelling: String) -> List<String> {
   ["git", "fetch", "--quiet", "origin", ref_spelling]
 }
 
-fn ci_heal_skew_fetch_quiet_ok(ref_spelling: String) -> Predicate {
+fn ci_heal_skew_fetch_quiet_ok(ref_spelling: String) -> v2.std.orchestration.Predicate {
   ExitZero {
     run: ci_heal_skew_git_run_redirected(
       argv: ci_heal_skew_fetch_argv(ref_spelling: ref_spelling),
@@ -116,13 +116,13 @@ fn ci_heal_skew_fetch_quiet_ok(ref_spelling: String) -> Predicate {
   }
 }
 
-fn ci_heal_skew_empty_pipeline() -> Pipeline {
-  Pipeline { steps: [], on_failure: FailFast }
+fn ci_heal_skew_empty_pipeline() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline { steps: [], on_failure: FailFast }
 }
 
 data ci_heal_skew_tolerated_fetch_note: String = "A TOLERATED FETCH IS A BOTH-ARMS-EMPTY If, NOT `|| true`. The prior cut spelled the provenance fetch as `A 2>/dev/null || B 2>/dev/null || true` — hand-authored shell whose whole purpose is 'attempt, and do not fail the step'. Modeled, that is exactly one If whose condition is the attempt and whose arms are both empty: v2.std.orchestration's pipeline_steps_empty_arm_note blesses this shape by name ('a both-empty If is a real run-the-condition, discard-the-outcome intent, not dead code, and is never refused'), and orch_emit_if_step spells an empty arm as the bash no-op `:`. Behaviour is preserved exactly — the condition runs, its outcome is discarded, the step continues — with the failure tolerance now structural instead of a trailing `|| true` nobody can typecheck. The refusal that MATTERS is not skipped: the following rev-parse --verify decides whether the revision actually resolved, so an unfetchable provenance still fails closed there."
 
-fn ci_heal_skew_tolerated_fetch_step(cond: Predicate) -> PipelineStep {
+fn ci_heal_skew_tolerated_fetch_step(cond: v2.std.orchestration.Predicate) -> v2.std.orchestration.PipelineStep {
   If {
     cond: cond,
     then_: ci_heal_skew_empty_pipeline(),
@@ -130,7 +130,7 @@ fn ci_heal_skew_tolerated_fetch_step(cond: Predicate) -> PipelineStep {
   }
 }
 
-fn ci_heal_skew_provenance_fetch_step() -> PipelineStep {
+fn ci_heal_skew_provenance_fetch_step() -> v2.std.orchestration.PipelineStep {
   ci_heal_skew_tolerated_fetch_step(
     cond: Or {
       lhs: ci_heal_skew_fetch_quiet_ok(ref_spelling: ci_heal_skew_built_from_ref),
@@ -139,7 +139,7 @@ fn ci_heal_skew_provenance_fetch_step() -> PipelineStep {
   )
 }
 
-fn ci_heal_skew_unresolvable_provenance_step() -> PipelineStep {
+fn ci_heal_skew_unresolvable_provenance_step() -> v2.std.orchestration.PipelineStep {
   If {
     cond: Not {
       inner: ExitZero {
@@ -149,7 +149,7 @@ fn ci_heal_skew_unresolvable_provenance_step() -> PipelineStep {
         )
       }
     },
-    then_: Pipeline {
+    then_: v2.std.orchestration.Pipeline {
       steps: [
         ci_heal_skew_diag(text: "heal refused: cannot resolve the revision the release binary was built from"),
         ci_heal_skew_diag(text: "  wanted: $BUILT_FROM (github.sha — the ref the build job compiled)"),
@@ -162,14 +162,14 @@ fn ci_heal_skew_unresolvable_provenance_step() -> PipelineStep {
   }
 }
 
-fn ci_heal_skew_git_cmdsubst_bind(var_name: String, args: List<String>) -> PipelineStep {
+fn ci_heal_skew_git_cmdsubst_bind(var_name: String, args: List<String>) -> v2.std.orchestration.PipelineStep {
   Let {
     name: var_name,
     value: ExprCmdSubst { callee: "git", args: args }
   }
 }
 
-fn ci_heal_skew_seed_ahead_bind(var_name: String) -> PipelineStep {
+fn ci_heal_skew_seed_ahead_bind(var_name: String) -> v2.std.orchestration.PipelineStep {
   ci_heal_skew_git_cmdsubst_bind(
     var_name: var_name,
     args: shape_git_rev_list_ahead_path_limited_args(
@@ -179,7 +179,7 @@ fn ci_heal_skew_seed_ahead_bind(var_name: String) -> PipelineStep {
   )
 }
 
-fn ci_heal_skew_conflicts_bind() -> PipelineStep {
+fn ci_heal_skew_conflicts_bind() -> v2.std.orchestration.PipelineStep {
   ci_heal_skew_git_cmdsubst_bind(
     var_name: ci_heal_skew_conflicts_var,
     args: shape_git_diff_unmerged_args()
@@ -208,7 +208,7 @@ fn ci_heal_skew_excluded_pathspec_words() -> List<String> {
   )
 }
 
-fn ci_heal_skew_authored_conflicts_bind() -> PipelineStep {
+fn ci_heal_skew_authored_conflicts_bind() -> v2.std.orchestration.PipelineStep {
   ci_heal_skew_git_cmdsubst_bind(
     var_name: ci_heal_skew_authored_conflicts_var,
     args: shape_git_diff_unmerged_pathspec_args(
@@ -231,9 +231,9 @@ fn ci_heal_skew_piped_command(producer_argv: List<String>, consumer_argv: List<S
   )
 }
 
-fn ci_heal_skew_resolve_step(sink_argv: List<String>) -> PipelineStep {
+fn ci_heal_skew_resolve_step(sink_argv: List<String>) -> v2.std.orchestration.PipelineStep {
   Do {
-    run: Run {
+    run: v2.std.orchestration.Run {
       command: ci_heal_skew_piped_command(
         producer_argv: shape_git_diff_unmerged_nul_argv(),
         consumer_argv: shape_xargs_null_delimited_argv(sink_argv: sink_argv)
@@ -245,8 +245,8 @@ fn ci_heal_skew_resolve_step(sink_argv: List<String>) -> PipelineStep {
   }
 }
 
-fn ci_heal_skew_authored_conflict_refusal() -> Pipeline {
-  Pipeline {
+fn ci_heal_skew_authored_conflict_refusal() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [
       ci_heal_skew_diag(text: "heal refused: binary/source revision skew, and the remedy CONFLICTS in authored files"),
       ci_heal_skew_diag(text: "  conflicting paths:"),
@@ -275,9 +275,9 @@ fn ci_heal_skew_admission_check_argv() -> List<String> {
   ]
 }
 
-fn ci_heal_skew_admission_check_step() -> PipelineStep {
+fn ci_heal_skew_admission_check_step() -> v2.std.orchestration.PipelineStep {
   Do {
-    run: Run {
+    run: v2.std.orchestration.Run {
       command: ci_heal_skew_shell_line(argv: ci_heal_skew_admission_check_argv()),
       env: [],
       redirect: Absent,
@@ -286,15 +286,15 @@ fn ci_heal_skew_admission_check_step() -> PipelineStep {
   }
 }
 
-fn ci_heal_skew_still_unmerged_bind() -> PipelineStep {
+fn ci_heal_skew_still_unmerged_bind() -> v2.std.orchestration.PipelineStep {
   ci_heal_skew_git_cmdsubst_bind(
     var_name: ci_heal_skew_still_unmerged_var,
     args: shape_git_diff_unmerged_args()
   )
 }
 
-fn ci_heal_skew_unmerged_index_refusal() -> Pipeline {
-  Pipeline {
+fn ci_heal_skew_unmerged_index_refusal() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [
       ci_heal_skew_diag(text: "heal refused: the index still carries unmerged stages after resolution; refusing to commit"),
       ci_heal_skew_diag(text: "  still-unmerged paths:"),
@@ -307,8 +307,8 @@ fn ci_heal_skew_unmerged_index_refusal() -> Pipeline {
   }
 }
 
-fn ci_heal_skew_conflict_arm() -> Pipeline {
-  Pipeline {
+fn ci_heal_skew_conflict_arm() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [
       ci_heal_skew_conflicts_bind(),
       ci_heal_skew_authored_conflicts_bind(),
@@ -340,8 +340,8 @@ fn ci_heal_skew_conflict_arm() -> Pipeline {
   }
 }
 
-fn ci_heal_skew_still_skewed_refusal() -> Pipeline {
-  Pipeline {
+fn ci_heal_skew_still_skewed_refusal() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [
       ci_heal_skew_diag(text: "heal refused: still skewed after merging $BUILT_FROM"),
       ci_heal_skew_diag(text: "  this arm should be unreachable — merging BUILT_FROM makes it an ancestor of HEAD, so the seed-ahead set is empty by construction. Reaching it means that invariant broke; do not re-run, investigate."),
@@ -351,8 +351,8 @@ fn ci_heal_skew_still_skewed_refusal() -> Pipeline {
   }
 }
 
-fn ci_heal_skew_remedy_arm() -> Pipeline {
-  Pipeline {
+fn ci_heal_skew_remedy_arm() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [
       ci_heal_skew_diag(text: "heal: binary/source revision skew — the branch head lacks these seed (src/v1) commits:"),
       ci_heal_skew_diag_list(var_name: ci_heal_skew_ahead_var),
@@ -386,8 +386,8 @@ fn ci_heal_skew_remedy_arm() -> Pipeline {
   }
 }
 
-fn ci_heal_binary_source_skew_guard_intent() -> Pipeline {
-  Pipeline {
+fn ci_heal_binary_source_skew_guard_intent() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [
       Let {
         name: "BUILT_FROM",

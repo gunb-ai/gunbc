@@ -1,9 +1,9 @@
 module v2.test.lens_testgen.dag_input_surface
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn language_behavior_generator_uses_conj_dag_input(g: Generator<TestgenConcept>) -> Bool {
+fn language_behavior_generator_uses_conj_dag_input(g: Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
   match g.slot {
     LanguageBehaviorEquivalence { subject, mock } =>
       subject == lbe_subject_conj_dag_surface() &&
@@ -17,7 +17,7 @@ fn language_behavior_generator_uses_conj_dag_input(g: Generator<TestgenConcept>)
   }
 }
 
-fn language_behavior_generator_uses_disj_dag_input(g: Generator<TestgenConcept>) -> Bool {
+fn language_behavior_generator_uses_disj_dag_input(g: Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
   match g.slot {
     LanguageBehaviorEquivalence { subject, mock } =>
       subject == lbe_subject_disj_dag_surface() &&
@@ -31,7 +31,7 @@ fn language_behavior_generator_uses_disj_dag_input(g: Generator<TestgenConcept>)
   }
 }
 
-fn language_behavior_generator_uses_transform_dag_input(g: Generator<TestgenConcept>) -> Bool {
+fn language_behavior_generator_uses_transform_dag_input(g: Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
   match g.slot {
     LanguageBehaviorEquivalence { subject, mock } =>
       subject == lbe_subject_transform_dag_surface() &&
@@ -45,7 +45,7 @@ fn language_behavior_generator_uses_transform_dag_input(g: Generator<TestgenConc
   }
 }
 
-fn language_behavior_generator_uses_dag_input(g: Generator<TestgenConcept>) -> Bool {
+fn language_behavior_generator_uses_dag_input(g: Generator<v2.lens.testgen.TestgenConcept>) -> Bool {
   language_behavior_generator_uses_conj_dag_input(g: g) ||
     language_behavior_generator_uses_disj_dag_input(g: g) ||
     language_behavior_generator_uses_transform_dag_input(g: g)
@@ -76,7 +76,7 @@ test fn bootstrap_generator_has_conj_dag_input_surface() -> Bool {
   match bootstrap_claim_generator_for_manual_anchor(key: ManualLbeConjDagSurface) {
     Accepted { value: g, diagnostics: _ } =>
       g.kind == TestClaimCompilesClaimVariant &&
-        g.classification == TestClassification { tier: Tier1, layer: Unit } &&
+        g.classification == v2.std.verification.TestClassification { tier: Tier1, layer: Unit } &&
         g.anchor == manual_claim_anchor(anchor: ManualLbeConjDagSurface) &&
         language_behavior_generator_uses_conj_dag_input(g: g)
     Rejected { diagnostics: _ } => false

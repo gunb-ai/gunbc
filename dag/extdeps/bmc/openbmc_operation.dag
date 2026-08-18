@@ -13,47 +13,47 @@ data openbmc_busctl_authority: ExternalAuthority = extdeps_external_authority_an
 data openbmc_operation_authority_anchor_scaffold_note: String = "SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads an aliased anchor as absent, so the literal anchor grounds its projection while openbmc_busctl_authority remains the semantic authority name. This copy dissolves with the host seam under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus witness."
 
 type OpenBmcOperation
-  = OpenBmcReadFile { path: NonEmptyStr }
-  | OpenBmcResolvePath { path: NonEmptyStr }
-  | OpenBmcParentDirectory { path: NonEmptyStr }
-  | OpenBmcSystemdIsActive { service: NonEmptyStr }
-  | OpenBmcSystemdRestart { service: NonEmptyStr }
-  | OpenBmcZoneFailsafe { zone_path: NonEmptyStr }
-  | OpenBmcSensorServices { sensor_path: NonEmptyStr }
-  | OpenBmcSensorValue { service: NonEmptyStr, sensor_path: NonEmptyStr }
+  = OpenBmcReadFile { path: std.types.NonEmptyStr }
+  | OpenBmcResolvePath { path: std.types.NonEmptyStr }
+  | OpenBmcParentDirectory { path: std.types.NonEmptyStr }
+  | OpenBmcSystemdIsActive { service: std.types.NonEmptyStr }
+  | OpenBmcSystemdRestart { service: std.types.NonEmptyStr }
+  | OpenBmcZoneFailsafe { zone_path: std.types.NonEmptyStr }
+  | OpenBmcSensorServices { sensor_path: std.types.NonEmptyStr }
+  | OpenBmcSensorValue { service: std.types.NonEmptyStr, sensor_path: std.types.NonEmptyStr }
   | OpenBmcSensorThreshold {
-      service: NonEmptyStr,
-      sensor_path: NonEmptyStr,
+      service: std.types.NonEmptyStr,
+      sensor_path: std.types.NonEmptyStr,
       threshold: OpenBmcThresholdProperty,
     }
   | OpenBmcFanConfigScalar {
-      config_path: NonEmptyStr,
+      config_path: std.types.NonEmptyStr,
       query: OpenBmcFanConfigQuery,
     }
-  | OpenBmcFanConfigValidate { config_path: NonEmptyStr }
+  | OpenBmcFanConfigValidate { config_path: std.types.NonEmptyStr }
   | OpenBmcFanConfigVerify {
-      config_path: NonEmptyStr,
+      config_path: std.types.NonEmptyStr,
       desired: OpenBmcFanConfigDesired,
     }
-  | OpenBmcPathIsWritable { path: NonEmptyStr }
-  | OpenBmcPathExists { path: NonEmptyStr }
-  | OpenBmcPathIsNonemptyFile { path: NonEmptyStr }
-  | OpenBmcDiskUsageKib { path: NonEmptyStr }
-  | OpenBmcFileSha256 { path: NonEmptyStr }
+  | OpenBmcPathIsWritable { path: std.types.NonEmptyStr }
+  | OpenBmcPathExists { path: std.types.NonEmptyStr }
+  | OpenBmcPathIsNonemptyFile { path: std.types.NonEmptyStr }
+  | OpenBmcDiskUsageKib { path: std.types.NonEmptyStr }
+  | OpenBmcFileSha256 { path: std.types.NonEmptyStr }
   | OpenBmcUtcTimestamp
-  | OpenBmcMakeDirectory { path: NonEmptyStr, parents: Bool }
-  | OpenBmcRemoveDirectory { path: NonEmptyStr }
-  | OpenBmcRemoveFile { path: NonEmptyStr }
+  | OpenBmcMakeDirectory { path: std.types.NonEmptyStr, parents: Bool }
+  | OpenBmcRemoveDirectory { path: std.types.NonEmptyStr }
+  | OpenBmcRemoveFile { path: std.types.NonEmptyStr }
   | OpenBmcCopyFilePreservingMetadata {
-      source_path: NonEmptyStr,
-      destination_path: NonEmptyStr,
+      source_path: std.types.NonEmptyStr,
+      destination_path: std.types.NonEmptyStr,
     }
   | OpenBmcRenameReplace {
-      source_path: NonEmptyStr,
-      destination_path: NonEmptyStr,
+      source_path: std.types.NonEmptyStr,
+      destination_path: std.types.NonEmptyStr,
     }
   | OpenBmcSynchronizeFilesystems
-  | OpenBmcWaitSeconds { duration: Second }
+  | OpenBmcWaitSeconds { duration: std.measure.Second }
 
 type OpenBmcFanConfigQuery
   = OpenBmcStepwiseCount
@@ -76,13 +76,13 @@ type OpenBmcThresholdProperty
   | OpenBmcCriticalLow
 
 type OpenBmcFanConfigDesired {
-  minimum_duty: Percent
-  zone_failsafe_duty: Percent
-  sensor_failsafe_duty: Percent
-  positive_hysteresis: CelsiusDelta
-  negative_hysteresis: CelsiusDelta
-  readings: List<Celsius>
-  outputs: List<Percent>
-  fan_controller_name: NonEmptyStr
-  fan_inputs: List<NonEmptyStr>
+  minimum_duty: std.measure.Percent
+  zone_failsafe_duty: std.measure.Percent
+  sensor_failsafe_duty: std.measure.Percent
+  positive_hysteresis: std.measure.CelsiusDelta
+  negative_hysteresis: std.measure.CelsiusDelta
+  readings: List<std.measure.Celsius>
+  outputs: List<std.measure.Percent>
+  fan_controller_name: std.types.NonEmptyStr
+  fan_inputs: List<std.types.NonEmptyStr>
 }

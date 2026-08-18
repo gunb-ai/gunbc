@@ -3,7 +3,7 @@ module v2.test.manual.sql_create_table_fold_runner
 
 data sql_fold_test_entry: String = "src/v2/test/claim/sql_create_table_fold_test.dag"
 
-fn sql_create_table_fold_plan() -> List<List<Runnable>> {
+fn sql_create_table_fold_plan() -> List<List<std.realization_schedule.Runnable>> {
   [
     [
       RunnableSingleClaim {

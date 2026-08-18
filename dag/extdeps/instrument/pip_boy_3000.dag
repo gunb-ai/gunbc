@@ -77,8 +77,8 @@ fn pip_boy_3000_setting_label(s: PipBoy3000Setting) -> NonEmptyStr {
 
 type PipBoy3000SettingRow {
   setting: PipBoy3000Setting
-  manual_wording: NonEmptyStr
-  authority: ExternalAuthority
+  manual_wording: std.types.NonEmptyStr
+  authority: extdeps.external_authority.ExternalAuthority
 }
 
 data display_timeout_row: PipBoy3000SettingRow = PipBoy3000SettingRow {

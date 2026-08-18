@@ -1,24 +1,24 @@
 module extdeps.bmc.redfish
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "dmtf.org/standards/redfish"
   }
 }
 
-fn redfish_memory_summary_from_gib(total_gib: Gibibyte) -> RedfishMemorySummary {
-  RedfishMemorySummary { total_memory_bytes: gibibyte_to_byte_size(g: total_gib) }
+fn redfish_memory_summary_from_gib(total_gib: std.measure.Gibibyte) -> extdeps.bmc.types.RedfishMemorySummary {
+  extdeps.bmc.types.RedfishMemorySummary { total_memory_bytes: gibibyte_to_byte_size(g: total_gib) }
 }
 
 fn redfish_processor_summary(
-  model: NonEmptyStr,
+  model: std.types.NonEmptyStr,
   processor_count: Int,
-  core_count: HardwareThreadCount,
-  logical_processor_count: HardwareThreadCount?
-) -> RedfishProcessorSummary {
-  RedfishProcessorSummary {
+  core_count: std.measure.HardwareThreadCount,
+  logical_processor_count: std.measure.HardwareThreadCount?
+) -> extdeps.bmc.types.RedfishProcessorSummary {
+  extdeps.bmc.types.RedfishProcessorSummary {
     model: model,
     processor_count: processor_count,
     core_count: core_count,
@@ -27,16 +27,16 @@ fn redfish_processor_summary(
 }
 
 fn redfish_system_inventory(
-  model: NonEmptyStr,
-  manufacturer: NonEmptyStr?,
-  processor_model: NonEmptyStr,
+  model: std.types.NonEmptyStr,
+  manufacturer: std.types.NonEmptyStr?,
+  processor_model: std.types.NonEmptyStr,
   processor_count: Int,
-  processor_core_count: HardwareThreadCount,
-  total_memory_gib: Gibibyte,
-  power_state: RedfishPowerState,
-  logical_processor_count: HardwareThreadCount?
-) -> RedfishSystemInventory {
-  RedfishSystemInventory {
+  processor_core_count: std.measure.HardwareThreadCount,
+  total_memory_gib: std.measure.Gibibyte,
+  power_state: extdeps.bmc.types.RedfishPowerState,
+  logical_processor_count: std.measure.HardwareThreadCount?
+) -> extdeps.bmc.types.RedfishSystemInventory {
+  extdeps.bmc.types.RedfishSystemInventory {
     model: model,
     manufacturer: manufacturer,
     serial_number: none,
@@ -51,7 +51,7 @@ fn redfish_system_inventory(
   }
 }
 
-fn redfish_power_consumed_total_watts(controls: List<RedfishPowerControl>) -> Watt? {
+fn redfish_power_consumed_total_watts(controls: List<extdeps.bmc.types.RedfishPowerControl>) -> std.measure.Watt? {
   fold(
     controls,
     init: Absent,
@@ -67,7 +67,7 @@ fn redfish_power_consumed_total_watts(controls: List<RedfishPowerControl>) -> Wa
   )
 }
 
-fn redfish_sensors_power_total_watts(sensors: List<RedfishSensorReading>) -> Watt? {
+fn redfish_sensors_power_total_watts(sensors: List<extdeps.bmc.types.RedfishSensorReading>) -> std.measure.Watt? {
   fold(
     sensors,
     init: Absent,
@@ -88,7 +88,7 @@ fn redfish_sensors_power_total_watts(sensors: List<RedfishSensorReading>) -> Wat
   )
 }
 
-fn bmc_telemetry_power_consumed_watts(snapshot: BmcTelemetrySnapshot) -> Watt? {
+fn bmc_telemetry_power_consumed_watts(snapshot: extdeps.bmc.types.BmcTelemetrySnapshot) -> std.measure.Watt? {
   match snapshot.power {
     Present { value: p } =>
       match redfish_power_consumed_total_watts(controls: p.controls) {
@@ -107,7 +107,7 @@ fn bmc_telemetry_power_consumed_watts(snapshot: BmcTelemetrySnapshot) -> Watt? {
   }
 }
 
-fn redfish_primary_power_control(power: RedfishPowerSubsystem) -> RedfishPowerControl? {
+fn redfish_primary_power_control(power: extdeps.bmc.types.RedfishPowerSubsystem) -> extdeps.bmc.types.RedfishPowerControl? {
   fold(
     power.controls,
     init: Absent,
@@ -119,8 +119,8 @@ fn redfish_primary_power_control(power: RedfishPowerSubsystem) -> RedfishPowerCo
   )
 }
 
-fn bmc_ground_host_observations(snapshot: BmcTelemetrySnapshot) -> BmcGroundedHostObservations {
-  BmcGroundedHostObservations {
+fn bmc_ground_host_observations(snapshot: extdeps.bmc.types.BmcTelemetrySnapshot) -> extdeps.bmc.types.BmcGroundedHostObservations {
+  extdeps.bmc.types.BmcGroundedHostObservations {
     processor_model: snapshot.system.processor.model,
     processor_core_count: snapshot.system.processor.core_count,
     total_memory_bytes: snapshot.system.memory.total_memory_bytes,
@@ -128,6 +128,6 @@ fn bmc_ground_host_observations(snapshot: BmcTelemetrySnapshot) -> BmcGroundedHo
   }
 }
 
-fn redfish_system_total_memory_bytes(inv: RedfishSystemInventory) -> ByteSize {
+fn redfish_system_total_memory_bytes(inv: extdeps.bmc.types.RedfishSystemInventory) -> std.measure.ByteSize {
   inv.memory.total_memory_bytes
 }

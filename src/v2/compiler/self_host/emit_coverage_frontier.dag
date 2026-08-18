@@ -7,10 +7,10 @@ data emit_coverage_frontier_two_axis_note: String = "TWO AXES, do not conflate (
 
 type EmitCoverageDisposition
   = SelfEmittedNative { backing_entry: String, backing_function: String }
-  | InterpreterRetained { reason: String, dissolution: DissolutionCondition }
+  | InterpreterRetained { reason: String, dissolution: std.dissolution.DissolutionCondition }
 
 type EmitCoverageFrontierRow {
-  subject: DeclarationRef
+  subject: std.decl_ref.DeclarationRef
   witness_entry: String
   witness_function: String
   disposition: EmitCoverageDisposition

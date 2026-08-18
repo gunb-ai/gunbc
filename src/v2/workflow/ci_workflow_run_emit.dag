@@ -39,8 +39,8 @@ data ci_pin_rustup_cargo_bin_missing_command: String = "if [ -z \"$CARGO_BIN\" ]
 
 data ci_pin_rustup_echo_cargo_bin_command: String = "echo \"CARGO_BIN=$CARGO_BIN\" >> \"$GITHUB_ENV\""
 
-fn ci_workflow_run(command: String) -> Run {
-  Run {
+fn ci_workflow_run(command: String) -> v2.std.orchestration.Run {
+  v2.std.orchestration.Run {
     command: command,
     env: [],
     redirect: Absent,
@@ -48,11 +48,11 @@ fn ci_workflow_run(command: String) -> Run {
   }
 }
 
-fn ci_workflow_do(command: String) -> PipelineStep {
+fn ci_workflow_do(command: String) -> v2.std.orchestration.PipelineStep {
   Do { run: ci_workflow_run(command: command) }
 }
 
-fn ci_workflow_run_emit_pipeline(p: Pipeline) -> String {
+fn ci_workflow_run_emit_pipeline(p: v2.std.orchestration.Pipeline) -> String {
   match orch_emit_pipeline(p: p, medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: d } =>
       match d {
@@ -70,8 +70,8 @@ fn ci_isolate_cargo_build_jobs_command(build_jobs_count: Int) -> String {
   )
 }
 
-fn ci_isolate_toolchain_intent(build_jobs_count: Int) -> Pipeline {
-  Pipeline {
+fn ci_isolate_toolchain_intent(build_jobs_count: Int) -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [
       ci_workflow_do(command: ci_isolate_rm_rustup_cargo_command),
       ci_workflow_do(command: ci_isolate_echo_home_command),
@@ -89,8 +89,8 @@ fn ci_isolate_toolchain_script(build_jobs_count: Int) -> String {
   ci_workflow_run_emit_pipeline(p: ci_isolate_toolchain_intent(build_jobs_count: build_jobs_count))
 }
 
-fn ci_native_cache_root_intent() -> Pipeline {
-  Pipeline {
+fn ci_native_cache_root_intent() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [
       ci_workflow_do(command: ci_native_cache_root_toolchain_segment_capture_command),
       ci_workflow_do(command: ci_native_cache_root_toolchain_segment_transform_command),
@@ -109,16 +109,16 @@ fn ci_native_cache_root_script() -> String {
   )
 }
 
-data ci_native_cache_root_shell_emit_scaffold: Disposition = Scaffold {
+data ci_native_cache_root_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_workflow_run_emit",
     decl_name: "ci_native_cache_root_script",
     field: WholeDeclaration
   }
 }
 
-data ci_native_cache_root_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)")
+data ci_native_cache_root_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)")
 
 data ci_native_cache_fabricated_segment_literal: String = "toolchain-unresolved"
 
@@ -137,8 +137,8 @@ fn ci_isolate_toolchain_script_excludes_segment_derivation(isolate_script: Strin
     !string_contains(s: isolate_script, pattern: ci_native_cache_fabricated_segment_literal)
 }
 
-fn ci_pin_rustup_default_intent() -> Pipeline {
-  Pipeline {
+fn ci_pin_rustup_default_intent() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [
       ci_workflow_do(command: ci_pin_rustup_default_command()),
       ci_workflow_do(command: ci_pin_rustup_cargo_bin_resolve_command),

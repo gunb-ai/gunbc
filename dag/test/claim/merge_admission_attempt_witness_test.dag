@@ -5,37 +5,37 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data attempt_a_raw: String = "12345-1-ci"
 data attempt_b_raw: String = "12345-2-ci"
-data head_sha_fx: CommitSha = "abc1234def5678901234567890abcd1234567890"
-data other_head_sha_fx: CommitSha = "0000000111111112222222233333333444444445"
+data head_sha_fx: std.types.CommitSha = "abc1234def5678901234567890abcd1234567890"
+data other_head_sha_fx: std.types.CommitSha = "0000000111111112222222233333333444444445"
 
-fn attempt_a() -> WalkAttemptId {
+fn attempt_a() -> gunbc.merge_admission_subject.WalkAttemptId {
   match walk_attempt_id(raw: attempt_a_raw) {
     Present { value: id } => id
-    Absent => "unreachable-fixture" as WalkAttemptId
+    Absent => "unreachable-fixture" as gunbc.merge_admission_subject.WalkAttemptId
   }
 }
 
-fn attempt_b() -> WalkAttemptId {
+fn attempt_b() -> gunbc.merge_admission_subject.WalkAttemptId {
   match walk_attempt_id(raw: attempt_b_raw) {
     Present { value: id } => id
-    Absent => "unreachable-fixture" as WalkAttemptId
+    Absent => "unreachable-fixture" as gunbc.merge_admission_subject.WalkAttemptId
   }
 }
 
-fn base_tree_fx() -> GitObjectId {
+fn base_tree_fx() -> extdeps.git.object_store.GitObjectId {
   merge_admission_witness_git_tree(label: "tree-base-current")
 }
 
-fn base_tree_stale_fx() -> GitObjectId {
+fn base_tree_stale_fx() -> extdeps.git.object_store.GitObjectId {
   merge_admission_witness_git_tree(label: "tree-base-stale")
 }
 
-fn roster_fx() -> GateRosterHash {
+fn roster_fx() -> gunbc.merge_admission.GateRosterHash {
   merge_admission_witness_gate_roster(label: "roster-current")
 }
 
-fn subject_fx(attempt: WalkAttemptId, tree: GitObjectId, head: CommitSha) -> TestedSubject {
-  TestedSubject {
+fn subject_fx(attempt: gunbc.merge_admission_subject.WalkAttemptId, tree: extdeps.git.object_store.GitObjectId, head: std.types.CommitSha) -> gunbc.merge_admission_subject.TestedSubject {
+  gunbc.merge_admission_subject.TestedSubject {
     attempt_id: attempt,
     head_sha: head,
     base_ref: "origin/main",
@@ -43,8 +43,8 @@ fn subject_fx(attempt: WalkAttemptId, tree: GitObjectId, head: CommitSha) -> Tes
   }
 }
 
-fn receipt_fx(attempt: WalkAttemptId, tree: GitObjectId, head: CommitSha) -> MergeAdmissionReceiptV2 {
-  MergeAdmissionReceiptV2 {
+fn receipt_fx(attempt: gunbc.merge_admission_subject.WalkAttemptId, tree: extdeps.git.object_store.GitObjectId, head: std.types.CommitSha) -> gunbc.merge_admission.MergeAdmissionReceiptV2 {
+  gunbc.merge_admission.MergeAdmissionReceiptV2 {
     attempt_id: attempt,
     pr_number: Present { value: 7470 },
     tested_head_sha: head,
@@ -64,14 +64,14 @@ test fn matching_attempt_and_subject_with_fresh_base_admits() -> Bool {
   ) { MergeAdmitted => true  _ => false }
 }
 
-fn synthetic_changed_roster_hash() -> ContentHash {
+fn synthetic_changed_roster_hash() -> std.content_hash.ContentHash {
   gate_roster_content_hash(roster: reverse(commit_gate_roster))
 }
 
 data roster_staleness_control_recut_note: String = "RECUT AFTER #7591 INVALIDATED #7583. The 2026-08-01 incident motivates the roster-identity law, but this control does not reconstruct that incident by execution. Its alternative revision reverses the exact live enrollments: identical members and surfaces, still unique and otherwise valid, but with a different order-sensitive roster hash. Order participates in roster identity even though it does not affect roster validity, so a source-only reordering is a real roster revision that refuses every in-flight admission minted under the prior order. It names no particular production gate and asserts no historical roster content. The prior control named PublicationPlacementGate; that coupled the regression control to one volatile roster member's continued existence, and the member's operator-ordered deletion invalidated the entire PR from a direction its original evidence did not watch. A control for a roster-identity law must exercise the SHAPE of a roster change, never a particular member, or its lifetime is bounded by the least stable thing it mentions. A description of a control's shape must live with that control or derive from it, so an implementation change cannot leave a remote carrier describing evidence that no longer executes. The discriminator proves staleness rather than malformedness: the alternative-revision receipt refuses against the live revision and the identical receipt admits when that alternative revision is supplied as current. The live-revision receipt also admits, so an always-admit or always-refuse implementation fails a control."
 
-fn synthetic_changed_roster_receipt() -> MergeAdmissionReceiptV2 {
-  MergeAdmissionReceiptV2 {
+fn synthetic_changed_roster_receipt() -> gunbc.merge_admission.MergeAdmissionReceiptV2 {
+  gunbc.merge_admission.MergeAdmissionReceiptV2 {
     attempt_id: attempt_a(),
     pr_number: Present { value: 7544 },
     tested_head_sha: head_sha_fx,
@@ -117,7 +117,7 @@ test fn synthetic_changed_roster_receipt_admits_when_revision_is_current() -> Bo
 }
 
 test fn current_roster_receipt_admits_against_live_roster() -> Bool {
-  let receipt = MergeAdmissionReceiptV2 {
+  let receipt = gunbc.merge_admission.MergeAdmissionReceiptV2 {
     attempt_id: attempt_a(),
     pr_number: Present { value: 7544 },
     tested_head_sha: head_sha_fx,
@@ -153,7 +153,7 @@ test fn foreign_attempt_refuses_as_wrong_attempt() -> Bool {
 }
 
 test fn wrong_attempt_precedes_every_other_refusal() -> Bool {
-  let r = MergeAdmissionReceiptV2 {
+  let r = gunbc.merge_admission.MergeAdmissionReceiptV2 {
     attempt_id: attempt_b(),
     pr_number: none,
     tested_head_sha: other_head_sha_fx,
@@ -228,7 +228,7 @@ test fn wire_v2_roundtrips_all_fields_with_pr() -> Bool {
 }
 
 test fn wire_v2_roundtrips_without_pr() -> Bool {
-  let r = MergeAdmissionReceiptV2 {
+  let r = gunbc.merge_admission.MergeAdmissionReceiptV2 {
     attempt_id: attempt_a(),
     pr_number: none,
     tested_head_sha: head_sha_fx,
@@ -267,7 +267,7 @@ test fn receipt_wire_with_a_trailing_line_refuses() -> Bool {
 }
 
 test fn receipt_wire_with_a_malformed_pr_line_refuses_the_whole_receipt() -> Bool {
-  let no_pr = render_receipt_wire_v2(receipt: MergeAdmissionReceiptV2 {
+  let no_pr = render_receipt_wire_v2(receipt: gunbc.merge_admission.MergeAdmissionReceiptV2 {
     attempt_id: attempt_a(),
     pr_number: none,
     tested_head_sha: head_sha_fx,

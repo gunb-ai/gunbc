@@ -12,10 +12,10 @@ type ProviderCauseClass
 type ProviderTurnCause
   = ProviderNativeCauseClassified {
       class: ProviderCauseClass
-      evidence: NonEmptyStr
+      evidence: std.types.NonEmptyStr
     }
   | ProviderNativeCauseUnknown {
-      evidence: NonEmptyStr
+      evidence: std.types.NonEmptyStr
     }
 
 type ProviderTurnDisposition

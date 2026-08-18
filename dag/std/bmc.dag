@@ -6,6 +6,6 @@ type BmcProtocol = Redfish | Ipmi
 type BmcFirmwareFamily = | OpenBmc
 
 type BmcEndpoint {
-  host: NonEmptyStr
+  host: std.types.NonEmptyStr
   protocol: BmcProtocol
 }

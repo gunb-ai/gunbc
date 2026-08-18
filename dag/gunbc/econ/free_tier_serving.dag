@@ -6,14 +6,14 @@ data free_tier_serving_derive_not_store_note: String = "Both reads here are DERI
 data free_tier_floor_semantics_note: String = "The bottom-up result is deliberately a FLOOR: box rent for storage capacity (times replica count), with egress admitted against a DECLARED per-box monthly allowance. It excludes operations labor, offsite backup, support, and abuse handling. The egress allowance is an assumption rather than a row fact because the cited Hetzner rows do not yet carry a traffic-allowance field; dissolve-on: citing Hetzner traffic terms into extdeps.pricing.hetzner_dedicated, at which point the allowance argument collapses onto the row. Compute is not a constraint at free-SCM envelopes (git-shaped operations are millisecond-scale against 12-32 hardware threads per box); the moment a CI product is bundled, metered compute becomes the dominant axis -- the cited receipt is GitLab's own free-tier fence (400 compute minutes per month, and a pricing-page FAQ attributing card-verification to cryptomining abuse of free minutes)."
 
 type FreeTierUserEnvelope {
-  storage_bytes_per_user: ByteSize
-  monthly_egress_bytes_per_user: ByteSize
+  storage_bytes_per_user: std.measure.ByteSize
+  monthly_egress_bytes_per_user: std.measure.ByteSize
 }
 
 type FreeTierServingAssumptions {
   user_count: std.nat.Nat
   replica_count: std.nat.Nat
-  per_box_monthly_egress_allowance: ByteSize
+  per_box_monthly_egress_allowance: std.measure.ByteSize
 }
 
 type FreeTierServingAssumptionsInput
@@ -30,7 +30,7 @@ type FreeTierServingRefusalCause
 
 type FreeTierServingFloor {
   box_count: std.nat.Nat
-  monthly_floor: MoneyPerMonth
+  monthly_floor: std.measure.MoneyPerMonth
 }
 
 type FreeTierServingFloorResult

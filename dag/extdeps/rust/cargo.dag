@@ -2,8 +2,8 @@ module extdeps.cargo
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "doc.rust-lang.org/cargo/"
   }
@@ -26,7 +26,7 @@ fn rust_edition_str(edition: RustEdition) -> String {
 
 data default_rust_edition: RustEdition = Edition2021
 
-data min_cargo_version: CargoToolVersionFloor = ">= 1.56"
+data min_cargo_version: extdeps.cargo_version.CargoToolVersionFloor = ">= 1.56"
 
 type CargoPackage {
   name: String
@@ -51,25 +51,25 @@ type CargoTarget
   | Example { name: String }
   | Bench { name: String }
 
-fn cargo_target_source_path(target: CargoTarget, package_name: String) -> FilePathParts {
+fn cargo_target_source_path(target: CargoTarget, package_name: String) -> std.types.FilePathParts {
   match target {
-    Lib => FilePathParts { segments: ["src", "lib.rs"] }
+    Lib => std.types.FilePathParts { segments: ["src", "lib.rs"] }
     Bin { name: name } =>
       if name == package_name {
-        FilePathParts { segments: ["src", "main.rs"] }
+        std.types.FilePathParts { segments: ["src", "main.rs"] }
       } else {
-        FilePathParts { segments: ["src", "bin", concat(name, ".rs")] }
+        std.types.FilePathParts { segments: ["src", "bin", concat(name, ".rs")] }
       }
-    CargoTest { name: name } => FilePathParts { segments: ["tests", concat(name, ".rs")] }
-    Example { name: name } => FilePathParts { segments: ["examples", concat(name, ".rs")] }
-    Bench { name: name } => FilePathParts { segments: ["benches", concat(name, ".rs")] }
+    CargoTest { name: name } => std.types.FilePathParts { segments: ["tests", concat(name, ".rs")] }
+    Example { name: name } => std.types.FilePathParts { segments: ["examples", concat(name, ".rs")] }
+    Bench { name: name } => std.types.FilePathParts { segments: ["benches", concat(name, ".rs")] }
   }
 }
 
-fn rust_module_candidate_paths(stem: String) -> List<FilePathParts> {
+fn rust_module_candidate_paths(stem: String) -> List<std.types.FilePathParts> {
   [
-    FilePathParts { segments: ["src", concat(stem, ".rs")] },
-    FilePathParts { segments: ["src", stem, "mod.rs"] }
+    std.types.FilePathParts { segments: ["src", concat(stem, ".rs")] },
+    std.types.FilePathParts { segments: ["src", stem, "mod.rs"] }
   ]
 }
 

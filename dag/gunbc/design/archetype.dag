@@ -23,8 +23,8 @@ type SurfaceArchetype {
   posture: ReadingPosture
   content_shape: ContentShape
   liveness: Liveness
-  verbs: List<InteractionVerb>
-  role_demand: List<ThemeRole>
+  verbs: List<gunbc.design.interaction.InteractionVerb>
+  role_demand: List<gunbc.design.theme.ThemeRole>
 }
 
 data dashboard_verb_admission_note: String = "Await and Accept join the dashboard's admitted verbs, and the archetype is exactly where that belongs rather than being a formality to satisfy: the archetype's whole claim is that a surface with Live content and an Operational posture has a DIFFERENT interaction vocabulary from a reference page, and machine-caused state is the clearest case of it. A static reference surface answers fingers only; a live operational surface answers a machine that reports back, so admitting these two verbs here is what makes the roadmap's latched-and-released control admissible while keeping the same verbs inadmissible on a surface that declares itself static — the cross-check runs both directions, so a verb used but not declared reds exactly as a verb declared but unused does."

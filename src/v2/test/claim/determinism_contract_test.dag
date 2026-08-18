@@ -1,17 +1,17 @@
 module v2.test.claim.determinism_contract_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn example_root() -> DeclarationRef {
-  DeclarationRef {
+fn example_root() -> std.decl_ref.DeclarationRef {
+  std.decl_ref.DeclarationRef {
     module_path: "std.resources",
     decl_name: "Clock",
     field: WholeDeclaration
   }
 }
 
-fn det_is_deterministic(c: Determinism) -> Bool {
+fn det_is_deterministic(c: std.determinism.Determinism) -> Bool {
   match c {
     Deterministic => true
     NonDeterministic { source: _ } => false
@@ -55,7 +55,7 @@ test fn determinism_compose_nondet_right_propagates() -> Bool {
 }
 
 test fn determinism_fact_binds_signature_and_classification() -> Bool {
-  let fact = DeterminismFact {
+  let fact = v2.std.determinism.DeterminismFact {
     signature: ^emit_export_set,
     classification: Deterministic
   }

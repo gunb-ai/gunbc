@@ -1,12 +1,12 @@
 module v2.test.algebra_laws.field_patch_monoid
 
 fn fp_pass_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^fp_pass_sym } }, children: [],
+  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^fp_pass_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 fn fp_fail_node() -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: ^fp_fail_sym } }, children: [],
+  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: ^fp_fail_sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
@@ -48,82 +48,82 @@ data witness_monoid_right_identity: Bool = apply_field_patch(base: false, patch:
 
 data witness_monoid_right_bias: Bool = apply_field_patch(base: true, patch: fp_monoid_op(left: Override { value: true }, right: Override { value: false })) == false
 
-data claim_left_identity: TestClaim = CompilesClaim {
+data claim_left_identity: v2.std.verification.TestClaim = CompilesClaim {
   label: "field_patch/compose: Inherit is left identity",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fp_ok(b: witness_left_identity),
   expected_value: fp_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_right_identity: TestClaim = CompilesClaim {
+data claim_right_identity: v2.std.verification.TestClaim = CompilesClaim {
   label: "field_patch/compose: Inherit is right identity",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fp_ok(b: witness_right_identity),
   expected_value: fp_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_right_bias: TestClaim = CompilesClaim {
+data claim_right_bias: v2.std.verification.TestClaim = CompilesClaim {
   label: "field_patch/compose: right Override wins over left Override (later layer)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fp_ok(b: witness_right_bias),
   expected_value: fp_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_associativity: TestClaim = CompilesClaim {
+data claim_associativity: v2.std.verification.TestClaim = CompilesClaim {
   label: "field_patch/compose: right-biased composition is associative",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fp_ok(b: witness_associativity),
   expected_value: fp_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_inherit_preserves: TestClaim = CompilesClaim {
+data claim_inherit_preserves: v2.std.verification.TestClaim = CompilesClaim {
   label: "field_patch/apply: Inherit preserves base field value",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fp_ok(b: witness_inherit_preserves),
   expected_value: fp_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_override_replaces: TestClaim = CompilesClaim {
+data claim_override_replaces: v2.std.verification.TestClaim = CompilesClaim {
   label: "field_patch/apply: Override replaces base field value",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fp_ok(b: witness_override_replaces),
   expected_value: fp_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_monoid_identity_preserves: TestClaim = CompilesClaim {
+data claim_monoid_identity_preserves: v2.std.verification.TestClaim = CompilesClaim {
   label: "field_patch/monoid: identity element preserves base (Monoid witness)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fp_ok(b: witness_monoid_identity_preserves),
   expected_value: fp_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_monoid_left_identity: TestClaim = CompilesClaim {
+data claim_monoid_left_identity: v2.std.verification.TestClaim = CompilesClaim {
   label: "field_patch/monoid: op(identity, p) == p (Monoid witness left identity)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fp_ok(b: witness_monoid_left_identity),
   expected_value: fp_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_monoid_right_identity: TestClaim = CompilesClaim {
+data claim_monoid_right_identity: v2.std.verification.TestClaim = CompilesClaim {
   label: "field_patch/monoid: op(p, identity) == p (Monoid witness right identity)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fp_ok(b: witness_monoid_right_identity),
   expected_value: fp_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_monoid_right_bias: TestClaim = CompilesClaim {
+data claim_monoid_right_bias: v2.std.verification.TestClaim = CompilesClaim {
   label: "field_patch/monoid: op(Override, Override) right-biased (later layer wins)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: fp_ok(b: witness_monoid_right_bias),
   expected_value: fp_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

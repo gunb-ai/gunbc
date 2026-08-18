@@ -9,9 +9,9 @@ data power_distribution_note: String = "WHAT THE BOARD SUPPLIES, CHECKED AGAINST
 // could not express that distinction at all — two rails both reading 3300 would look identical
 // whether they were one supply or two, which is precisely the constraint the vendor states.
 type BoardSupplyRail {
-  rail: Ice40SupplyRail
-  net: NetIdentity
-  nominal: Millivolt
+  rail: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail
+  net: product.electrical.connectivity.NetIdentity
+  nominal: std.measure.Millivolt
 }
 
 // A BANK EITHER DRIVES A STANDARD OR IS UNUSED, and those are different electrical obligations
@@ -21,7 +21,7 @@ type BoardSupplyRail {
 // bank was not expressible — and a constraint about a state the model cannot represent is a
 // constraint that cannot fire, which is exactly how it came to be enrolled and inert.
 type BankUse
-  = BankDrivesStandard { standard: Ice40IoStandardSupply }
+  = BankDrivesStandard { standard: extdeps.programmable_logic.ice40.supply.Ice40IoStandardSupply }
   | BankUnused
 
 // A BANK IS ASSIGNED A USE, and that is a design decision with an electrical consequence. The use
@@ -32,17 +32,17 @@ type BankUse
 type BankAssignment {
   bank: Int
   use: BankUse
-  supplied_by: NetIdentity
+  supplied_by: product.electrical.connectivity.NetIdentity
 }
 
 // Rails the board deliberately does not build. Named rather than absent, because a rail missing
 // from the list because nobody thought about it and a rail missing because the vendor says to
 // leave it unconnected are different states with different remedies.
 type BoardPowerIntent {
-  configuration_mode: Ice40ConfigurationMode
+  configuration_mode: extdeps.programmable_logic.ice40.supply.Ice40ConfigurationMode
   rails: List<BoardSupplyRail>
   banks: List<BankAssignment>
-  deliberately_unconnected: List<Ice40SupplyRail>
+  deliberately_unconnected: List<extdeps.programmable_logic.ice40.supply.Ice40SupplyRail>
 }
 
 // EVERY REFUSAL NAMES THE RAIL AND BOTH SIDES OF THE COMPARISON. A refusal saying only "out of
@@ -56,14 +56,14 @@ type BoardPowerIntent {
 // under its own cause, but a board could declare core deliberately unconnected and thereby
 // silence that one, and an unanswerable constraint must not read as a satisfied constraint.
 type PowerRefusal
-  = RailOutsideDeviceWindow { rail: Ice40SupplyRail, supplied: Millivolt, minimum: Millivolt, maximum: Millivolt }
-  | RailBuiltForAnUnconnectedPin { rail: Ice40SupplyRail, supplied: Millivolt }
-  | RequiredRailNotBuilt { rail: Ice40SupplyRail }
-  | BankStandardOutsideRailWindow { bank: Int, standard_name: NonEmptyStr, supplied: Millivolt, minimum: Millivolt, maximum: Millivolt }
-  | BankSuppliedByNoDeclaredRail { bank: Int, net: NetIdentity }
-  | LikeVoltageRailsOnSeparateSupplies { left: Ice40SupplyRail, right: Ice40SupplyRail, voltage: Millivolt }
-  | UnusedBankNotTiedToCore { bank: Int, net: NetIdentity, core_net: NetIdentity }
-  | UnusedBankCoreRailNotBuilt { bank: Int, core_rail: Ice40SupplyRail }
+  = RailOutsideDeviceWindow { rail: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail, supplied: std.measure.Millivolt, minimum: std.measure.Millivolt, maximum: std.measure.Millivolt }
+  | RailBuiltForAnUnconnectedPin { rail: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail, supplied: std.measure.Millivolt }
+  | RequiredRailNotBuilt { rail: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail }
+  | BankStandardOutsideRailWindow { bank: Int, standard_name: std.types.NonEmptyStr, supplied: std.measure.Millivolt, minimum: std.measure.Millivolt, maximum: std.measure.Millivolt }
+  | BankSuppliedByNoDeclaredRail { bank: Int, net: product.electrical.connectivity.NetIdentity }
+  | LikeVoltageRailsOnSeparateSupplies { left: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail, right: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail, voltage: std.measure.Millivolt }
+  | UnusedBankNotTiedToCore { bank: Int, net: product.electrical.connectivity.NetIdentity, core_net: product.electrical.connectivity.NetIdentity }
+  | UnusedBankCoreRailNotBuilt { bank: Int, core_rail: extdeps.programmable_logic.ice40.supply.Ice40SupplyRail }
 
 type PowerAdmission
   = PowerIntentAdmitted { intent: BoardPowerIntent }

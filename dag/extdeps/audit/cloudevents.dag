@@ -28,7 +28,7 @@ type AuditOutcome
 
 type AuditActor {
   kind: AuditActorKind
-  id: NonEmptyStr
+  id: std.types.NonEmptyStr
 }
 
 type AuditEventField {
@@ -44,11 +44,11 @@ type AuditEventRecord {
   subject: CloudEventSubject
   actor: AuditActor
   outcome: AuditOutcome
-  time: Timestamp
+  time: std.types.Timestamp
   fields: List<AuditEventField>
 }
 
 type AuditEventEmissionTarget {
-  stream_name: NonEmptyStr
+  stream_name: std.types.NonEmptyStr
   events: List<AuditEventRecord>
 }

@@ -4,10 +4,10 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data compile_pool_producer_doc: String = "THE DERIVATION'S ACCEPTANCE SET. The load-bearing witness is the first one: against the fleet's ACTUAL declared topology, the derivation refuses on every host, which is the correct answer today and the one a hand-written all-true receipt would have silently contradicted. The rest assert that each not-ready reason is reachable and distinct, because five reasons that cannot be told apart are one reason with five names."
 
-fn observed_slice(name: String) -> CompilePoolObservation {
+fn observed_slice(name: String) -> gunbc.host_compile_pool.CompilePoolObservation {
   CompilePoolSliceObserved {
-    slice_unit: name as NonEmptyStr,
-    limits: CgroupMemoryLimits {
+    slice_unit: name as std.types.NonEmptyStr,
+    limits: gunbc.build_cache_instance.CgroupMemoryLimits {
       memory_max: byte_size(4096),
       memory_high: byte_size(0),
       memory_current: byte_size(0),
@@ -15,14 +15,14 @@ fn observed_slice(name: String) -> CompilePoolObservation {
   }
 }
 
-fn sized() -> CompilePoolResolution {
+fn sized() -> gunbc.fleet_host_budget.CompilePoolResolution {
   CompilePoolDerived { bytes: byte_size(1024) }
 }
 
 fn readiness_for(
-  placement: CompilePoolPlacement,
-  sizing: CompilePoolResolution,
-  observed: CompilePoolObservation,
+  placement: gunbc.fleet_host_budget.CompilePoolPlacement,
+  sizing: gunbc.fleet_host_budget.CompilePoolResolution,
+  observed: gunbc.host_compile_pool.CompilePoolObservation,
 ) -> Bool {
   receipt_admits_pool(
     receipt: compile_pool_ready_receipt(
@@ -76,7 +76,7 @@ test fn witness_an_unobservable_pool_is_not_ready() -> Bool {
     placement: CompilePoolSliceDeclared { slice_unit: gunbc_managed_compile_pool_slice as String },
     sizing: sized(),
     observed: CompilePoolObservationUnavailable {
-      reason: ReachRefused { detail: "Permission denied (publickey)" as NonEmptyStr },
+      reason: ReachRefused { detail: "Permission denied (publickey)" as std.types.NonEmptyStr },
     },
   ) == false
 }
@@ -124,7 +124,7 @@ test fn witness_a_slice_below_the_derived_size_is_not_ready() -> Bool {
     sizing: sized(),
     observed: CompilePoolSliceObserved {
       slice_unit: gunbc_managed_compile_pool_slice,
-      limits: CgroupMemoryLimits {
+      limits: gunbc.build_cache_instance.CgroupMemoryLimits {
         memory_max: byte_size(512),
         memory_high: byte_size(512),
         memory_current: byte_size(0),

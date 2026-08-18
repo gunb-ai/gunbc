@@ -1,8 +1,8 @@
 module v2.std.grounding
 type PerLanguageFactBundleKey {
   subject_carrier: Node
-  target: TargetModel
-  fact_axis: ModelCorePrimitiveFactAxis
+  target: v2.std.compilers.target_model.TargetModel
+  fact_axis: v2.std.model_core.ModelCorePrimitiveFactAxis
 }
 
 type PerLanguageFactBundleEntry {
@@ -15,7 +15,7 @@ type PerLanguageFactBundleRegistry {
 }
 
 type PerLanguageFactBundleSpecFactsFoldState {
-  spec_facts: Map<Symbol, Node>
+  spec_facts: Map<v2.std.node.Symbol, Node>
   saw_fact: Bool
 }
 
@@ -228,7 +228,7 @@ fn hollow_alias_governance_bar() -> HollowAliasGovernanceBar {
 
 type GroundingEvidenceSchema
   = Sg1Evidence { source_carrier: Node }
-  | Sg1bEvidence { source_carrier: Node, boundary_site: FunctionBoundarySite }
+  | Sg1bEvidence { source_carrier: Node, boundary_site: v2.std.compilers.target_model.FunctionBoundarySite }
   | Sg2Evidence { source_carrier: Node }
   | Sg5Evidence { source_carrier: Node }
 

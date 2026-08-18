@@ -2,11 +2,11 @@ module v2.extdeps.coordination
 
 
 type LanguageRef {
-  identity: Symbol
+  identity: v2.std.node.Symbol
 }
 
 type FrameworkRef {
-  identity: Symbol
+  identity: v2.std.node.Symbol
 }
 
 type FrameworkBinding
@@ -14,12 +14,12 @@ type FrameworkBinding
   | NoFramework
 
 type EndpointRef {
-  identity: Symbol
+  identity: v2.std.node.Symbol
 }
 
 type Endpoint {
   identity: EndpointRef,
-  address: NetworkAddress,
+  address: v2.std.network.NetworkAddress,
   language: LanguageRef,
   framework: FrameworkBinding
 }
@@ -102,7 +102,7 @@ fn wire_contract_obligation_table_t4_8() -> List<CoordinationEffectObligation> {
 }
 
 type BindRef {
-  identity: Symbol
+  identity: v2.std.node.Symbol
 }
 
 type CoordinationBind {

@@ -22,8 +22,8 @@ data ingested_match_swapped_arms_module_source: String = "module m\n\nfn classic
 data ingested_id_module_source: String = "module m\n\nfn id(x: Int) -> Int { x }\n"
 data ingested_zero_module_source: String = "module m\n\nfn zero() -> Int { 0 }\n"
 
-fn ingested_fixture_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
-  Diagnostic {
+fn ingested_fixture_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -43,7 +43,7 @@ fn ingested_find_arrow_in_module(root: Node) -> Optional<Node> {
   }
 }
 
-fn ingested_resolved_module_from_source(source: String, file: Symbol) -> Outcome<Node> {
+fn ingested_resolved_module_from_source(source: String, file: v2.std.node.Symbol) -> Outcome<Node> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: source, file: file, rules: lm.lex),
@@ -63,7 +63,7 @@ fn ingested_resolved_module_from_source(source: String, file: Symbol) -> Outcome
   )
 }
 
-fn ingested_arrow_from_source(source: String, file: Symbol) -> Outcome<Node> {
+fn ingested_arrow_from_source(source: String, file: v2.std.node.Symbol) -> Outcome<Node> {
   bind_outcome(
     o: ingested_resolved_module_from_source(source: source, file: file),
     f: fn(resolved) {
@@ -182,7 +182,7 @@ fn ingested_zero_arrow_with_body() -> Outcome<Node> {
   )
 }
 
-fn ingested_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
+fn ingested_add_decl_node(fn_name: v2.std.node.Symbol) -> Outcome<Node> {
   bind_outcome(
     o: ingested_add_arrow_with_body(),
     f: fn(arrow_with_body) {
@@ -190,7 +190,7 @@ fn ingested_add_decl_node(fn_name: Symbol) -> Outcome<Node> {
         value: node_synthetic(
           kind: TypeNode { connective: Conj },
           children: [
-            Edge {
+            v2.std.node.Edge {
               label: Named { name: fn_name },
               target: arrow_with_body
             }

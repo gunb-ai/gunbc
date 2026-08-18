@@ -3,11 +3,11 @@ module test.claim.live_deploy.running_release_identity_witness_test
 
 data witness_subject_note: String = "THE PROPERTY UNDER TEST IS THAT A DEPLOY CANNOT GREEN AGAINST A PROCESS IT DID NOT INSTALL, and every witness here is written to fail if that stops holding. The mechanism is small — the running process states which release it was launched as, and readiness compares that statement against the release this invocation admitted — so the witnesses are correspondingly small and each isolates one way the comparison could go wrong.\\n\\nWhat makes them discriminating rather than decorative: the healthy case and every refusal case are built from the SAME producer (healthz_body_with_release_identity) differing in exactly one input. A refusal that fired because the fixture was malformed in some incidental way would also fire on the healthy fixture, and the healthy fixture is asserted to ground. So each red is attributable to the one axis it varies."
 
-fn witness_bundle() -> RoadmapSiteSurfaceBundle {
+fn witness_bundle() -> gunbc.roadmap_site_surface_types.RoadmapSiteSurfaceBundle {
   materialize_live_roadmap_site_surface_bundle()
 }
 
-fn healthz_body_at_revision(revision: CommitSha) -> String {
+fn healthz_body_at_revision(revision: std.types.CommitSha) -> String {
   healthz_body_at_revision_and_surface(
     revision: revision,
     surface_bundle_identity: witness_bundle().bundle_identity,
@@ -15,8 +15,8 @@ fn healthz_body_at_revision(revision: CommitSha) -> String {
 }
 
 fn healthz_body_at_revision_and_surface(
-  revision: CommitSha,
-  surface_bundle_identity: Fnv1a64Structural,
+  revision: std.types.CommitSha,
+  surface_bundle_identity: std.content_hash.Fnv1a64Structural,
 ) -> String {
   let bundle = witness_bundle()
   healthz_body_with_release_identity(
@@ -30,7 +30,7 @@ fn healthz_body_at_revision_and_surface(
   )
 }
 
-fn ground_body_against(body: String, expected_revision: CommitSha) -> Grounding<ServiceReadyEvidence> {
+fn ground_body_against(body: String, expected_revision: std.types.CommitSha) -> Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence> {
   ground_body_against_surface(
     body: body,
     expected_revision: expected_revision,
@@ -40,25 +40,25 @@ fn ground_body_against(body: String, expected_revision: CommitSha) -> Grounding<
 
 fn ground_body_against_surface(
   body: String,
-  expected_revision: CommitSha,
-  expected_surface_identity: Fnv1a64Structural,
-) -> Grounding<ServiceReadyEvidence> {
+  expected_revision: std.types.CommitSha,
+  expected_surface_identity: std.content_hash.Fnv1a64Structural,
+) -> Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence> {
   ground_service_ready_from_healthz_with_bundle(
-    read: HealthzEffectiveRead { body: body, probe_error: "" },
+    read: gunbc.roadmap_site_surface_types.HealthzEffectiveRead { body: body, probe_error: "" },
     bundle: witness_bundle(),
     expected_revision: expected_revision,
     expected_surface_identity: expected_surface_identity,
   )
 }
 
-fn grounding_refuses(g: Grounding<ServiceReadyEvidence>) -> Bool {
+fn grounding_refuses(g: Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence>) -> Bool {
   match g {
     DoesNotGround { reason: _ } => true
     Grounds { evidence: _ } => false
   }
 }
 
-fn grounding_refusal_mentions(g: Grounding<ServiceReadyEvidence>, fragment: String) -> Bool {
+fn grounding_refusal_mentions(g: Grounding<gunbc.live_deploy.readiness.ServiceReadyEvidence>, fragment: String) -> Bool {
   match g {
     DoesNotGround { reason: why } => string_contains(s: why, pattern: fragment)
     Grounds { evidence: _ } => false
@@ -112,7 +112,7 @@ data two_surface_controls_note: String = "TWO CONTROLS, BECAUSE THERE ARE TWO IN
 
 test fn witness_correct_artifacts_with_wrong_bundle_identity_refuses() -> Bool {
   let expected_surface = witness_bundle().bundle_identity
-  let wrong_identity = Fnv1a64Structural { digest: "abcdef0123456789" as NonEmptyStr }
+  let wrong_identity = std.content_hash.Fnv1a64Structural { digest: "abcdef0123456789" as std.types.NonEmptyStr }
   let body = healthz_body_at_revision_and_surface(
     revision: deploy_witness_release_revision,
     surface_bundle_identity: wrong_identity,

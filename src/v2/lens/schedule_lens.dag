@@ -15,21 +15,21 @@ type ScheduleLensViolation
 
 data schedule_lens_module: String = "v2.lens.schedule_lens"
 
-fn schedule_lens_compile_gate_in_first_batch_reason(expected: String) -> Symbol {
+fn schedule_lens_compile_gate_in_first_batch_reason(expected: String) -> v2.std.node.Symbol {
   symbol_intern_lexeme(lexeme: "schedule_lens_compile_gate_in_first_batch:" + expected)
 }
 
-fn schedule_lens_compile_gate_not_second_reason(expected: String) -> Symbol {
+fn schedule_lens_compile_gate_not_second_reason(expected: String) -> v2.std.node.Symbol {
   symbol_intern_lexeme(lexeme: "schedule_lens_compile_gate_not_second:" + expected)
 }
 
-fn schedule_lens_batch_has_any_cheap_gate(batch: List<Runnable>, cheap_gate_labels: List<String>) -> Bool {
+fn schedule_lens_batch_has_any_cheap_gate(batch: List<std.realization_schedule.Runnable>, cheap_gate_labels: List<String>) -> Bool {
   fold(cheap_gate_labels, init: false, f: fn(found, label) {
     found || schedule_batch_contains_label(batch: batch, target: label)
   })
 }
 
-fn schedule_lens_violation_diagnostic(kind: ScheduleLensViolation) -> Diagnostic {
+fn schedule_lens_violation_diagnostic(kind: ScheduleLensViolation) -> v2.std.diagnostic.Diagnostic {
   let module_file = lens_verdict_module_file(module_name: schedule_lens_module)
   match kind {
     EmptySchedule =>
@@ -96,10 +96,10 @@ fn schedule_lens_violation_diagnostic(kind: ScheduleLensViolation) -> Diagnostic
 }
 
 fn schedule_lens_verdict_for_ci_floor_ordinary(
-  plan: RealizationPlan<Runnable>,
+  plan: RealizationPlan<std.realization_schedule.Runnable>,
   compile_gate_fn: String,
   cheap_gate_labels: List<String>
-) -> LensVerdict {
+) -> v2.std.lens_verdict.LensVerdict {
   if plan.schedule.count() == 0 {
     Violation {
       diagnostic: schedule_lens_violation_diagnostic(kind: EmptySchedule)
@@ -152,40 +152,40 @@ fn schedule_lens_verdict_for_ci_floor_ordinary(
   }
 }
 
-fn on_success_runnable_is_admitted(runnable: Runnable) -> Bool {
+fn on_success_runnable_is_admitted(runnable: std.realization_schedule.Runnable) -> Bool {
   match on_success_runnable_disposition(runnable: runnable) {
     OnSuccessRunnableAdmitted => true
     _ => false
   }
 }
 
-fn on_success_stage_is_admitted(stage: List<Runnable>) -> Bool {
+fn on_success_stage_is_admitted(stage: List<std.realization_schedule.Runnable>) -> Bool {
   fold(stage, init: true, f: fn(admitted, runnable) {
     admitted && on_success_runnable_is_admitted(runnable: runnable)
   })
 }
 
-fn on_success_stages_are_admitted(stages: List<List<Runnable>>) -> Bool {
+fn on_success_stages_are_admitted(stages: List<List<std.realization_schedule.Runnable>>) -> Bool {
   fold(stages, init: true, f: fn(admitted, stage) {
     admitted && on_success_stage_is_admitted(stage: stage)
   })
 }
 
-fn runnable_occurs_in(runnable: Runnable, runnables: List<Runnable>) -> Bool {
+fn runnable_occurs_in(runnable: std.realization_schedule.Runnable, runnables: List<std.realization_schedule.Runnable>) -> Bool {
   fold(runnables, init: false, f: fn(found, candidate) {
     found || runnable_eq(left: runnable, right: candidate)
   })
 }
 
-fn runnable_occurs_in_stages(runnable: Runnable, stages: List<List<Runnable>>) -> Bool {
+fn runnable_occurs_in_stages(runnable: std.realization_schedule.Runnable, stages: List<List<std.realization_schedule.Runnable>>) -> Bool {
   fold(stages, init: false, f: fn(found, stage) {
     found || runnable_occurs_in(runnable: runnable, runnables: stage)
   })
 }
 
 fn on_success_stage_has_duplicate(
-  stage: List<Runnable>,
-  later_stages: List<List<Runnable>>
+  stage: List<std.realization_schedule.Runnable>,
+  later_stages: List<List<std.realization_schedule.Runnable>>
 ) -> Bool {
   if stage.count() == 0 {
     false
@@ -200,7 +200,7 @@ fn on_success_stage_has_duplicate(
   }
 }
 
-fn on_success_stages_have_duplicate(stages: List<List<Runnable>>) -> Bool {
+fn on_success_stages_have_duplicate(stages: List<List<std.realization_schedule.Runnable>>) -> Bool {
   if stages.count() == 0 {
     false
   } else if on_success_stage_has_duplicate(
@@ -214,8 +214,8 @@ fn on_success_stages_have_duplicate(stages: List<List<Runnable>>) -> Bool {
 }
 
 fn on_success_stages_eq(
-  actual: List<List<Runnable>>,
-  expected: List<List<Runnable>>
+  actual: List<List<std.realization_schedule.Runnable>>,
+  expected: List<List<std.realization_schedule.Runnable>>
 ) -> Bool {
   if actual.count() != expected.count() {
     false
@@ -235,11 +235,11 @@ data walk_plan_schedule_lens_note: String = "The WalkPlan schedule lens owns the
 
 fn walk_plan_schedule_lens_verdict_for_ci_floor<F>(
   plan: WalkPlan<F>,
-  ordinary_plan: RealizationPlan<Runnable>,
-  expected_on_success_stages: List<List<Runnable>>,
+  ordinary_plan: RealizationPlan<std.realization_schedule.Runnable>,
+  expected_on_success_stages: List<List<std.realization_schedule.Runnable>>,
   compile_gate_fn: String,
   cheap_gate_labels: List<String>
-) -> LensVerdict {
+) -> v2.std.lens_verdict.LensVerdict {
   if !schedule_eq(left: plan.batches, right: ordinary_plan.schedule) {
     Violation {
       diagnostic: schedule_lens_violation_diagnostic(kind: OrdinaryProjectionMismatch)
@@ -277,6 +277,6 @@ fn walk_plan_schedule_lens_verdict_for_ci_floor<F>(
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

@@ -4,15 +4,15 @@ module test.claim.source_integration_landing_spine_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn p0_claim(
-  id: NonEmptyStr,
-  target: NonEmptyStr,
-  bound: NonEmptyStr,
-) -> LandingRequiredClaim {
-  Claim {
+  id: std.types.NonEmptyStr,
+  target: std.types.NonEmptyStr,
+  bound: std.types.NonEmptyStr,
+) -> gunbc.source_integration_landing_spine.LandingRequiredClaim {
+  std.claim_evidence.Claim {
     id: id,
     subject: "rename-worker-and-update-callers",
     target: target,
-    proposition: LandingGuaranteeProposition {
+    proposition: gunbc.source_integration_landing_spine.LandingGuaranteeProposition {
       statement: id,
     },
     scope: "source-and-public-behavior",
@@ -20,7 +20,7 @@ fn p0_claim(
   }
 }
 
-fn p0_builds_claim() -> LandingRequiredClaim {
+fn p0_builds_claim() -> gunbc.source_integration_landing_spine.LandingRequiredClaim {
   p0_claim(
     id: "builds",
     target: "accepted-main",
@@ -28,7 +28,7 @@ fn p0_builds_claim() -> LandingRequiredClaim {
   )
 }
 
-fn p0_behavior_claim() -> LandingRequiredClaim {
+fn p0_behavior_claim() -> gunbc.source_integration_landing_spine.LandingRequiredClaim {
   p0_claim(
     id: "preserves-public-behavior",
     target: "accepted-main",
@@ -37,10 +37,10 @@ fn p0_behavior_claim() -> LandingRequiredClaim {
 }
 
 fn p0_proposal_with(
-  submitted_at: Timestamp,
-  guarantees: LandingRequiredClaims,
-) -> LandingProposalContract {
-  LandingProposalContract {
+  submitted_at: std.types.Timestamp,
+  guarantees: gunbc.source_integration_landing_spine.LandingRequiredClaims,
+) -> gunbc.source_integration_landing_spine.LandingProposalContract {
+  gunbc.source_integration_landing_spine.LandingProposalContract {
     occurrence: "proposal-50-agent-fixture",
     attempt: "proposal-50-agent-fixture-attempt-1",
     target: "accepted-main",
@@ -56,10 +56,10 @@ fn p0_proposal_with(
   }
 }
 
-fn p0_proposal() -> LandingProposalContract {
+fn p0_proposal() -> gunbc.source_integration_landing_spine.LandingProposalContract {
   p0_proposal_with(
     submitted_at: "2026-07-29T08:00:00Z",
-    guarantees: LandingRequiredClaims {
+    guarantees: gunbc.source_integration_landing_spine.LandingRequiredClaims {
       first: p0_builds_claim(),
       remaining: [p0_behavior_claim()],
     },
@@ -67,8 +67,8 @@ fn p0_proposal() -> LandingProposalContract {
 }
 
 fn p0_fact_claim(
-  fact: RecordedFact<LandingEvidenceFact>,
-  claim: LandingRequiredClaim,
+  fact: RecordedFact<gunbc.source_integration_landing_spine.LandingEvidenceFact>,
+  claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
 ) -> Bool {
   fact.value.claim == claim
     && fact.value.proposal == p0_proposal().occurrence
@@ -76,7 +76,7 @@ fn p0_fact_claim(
 
 fn p0_rule_claim(
   rule: std.claim_evidence.InferenceRuleId,
-  claim: LandingRequiredClaim,
+  claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
 ) -> Bool {
   rule == "p0-observation-supports-exact-guarantee"
     && claim.subject == p0_proposal().transformation
@@ -84,30 +84,30 @@ fn p0_rule_claim(
 
 fn p0_authority_claim(
   authority: gunbc.source_integration_landing_spine.LandingEvidenceAuthorityHandle,
-  claim: LandingRequiredClaim,
+  claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
 ) -> Bool {
   authority == "p0-independent-validator"
     && claim.target == p0_proposal().target
 }
 
 fn p0_provenance_claim(
-  provenance: EvidenceProvenance,
-  claim: LandingRequiredClaim,
+  provenance: std.claim_evidence.EvidenceProvenance,
+  claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
 ) -> Bool {
   provenance.agent == "p0-validator"
     && claim.bound == (p0_proposal().attempt as gunbc.source_integration_landing_spine.LandingClaimBound)
 }
 
 fn p0_freshness_claim(
-  freshness: EvidenceFreshness<LandingRequiredClaim>,
-  claim: LandingRequiredClaim,
+  freshness: EvidenceFreshness<gunbc.source_integration_landing_spine.LandingRequiredClaim>,
+  claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
 ) -> Bool {
   freshness.maximum_conclusion == claim
 }
 
 fn p0_fidelity_claim(
   fidelity: EvidenceFidelity<gunbc.source_integration_landing_spine.LandingFidelityBoundaryHandle>,
-  claim: LandingRequiredClaim,
+  claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
 ) -> Bool {
   fidelity.boundary == "p0-lossless-guarantee"
     && count(fidelity.losses) == 0
@@ -116,7 +116,7 @@ fn p0_fidelity_claim(
 
 fn p0_independence_claim(
   independence: gunbc.source_integration_landing_spine.LandingEvidenceIndependenceHandle,
-  claim: LandingRequiredClaim,
+  claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
   direction: std.claim_evidence.EvidenceDirection,
 ) -> Bool {
   independence == "p0-independent-probe"
@@ -125,15 +125,15 @@ fn p0_independence_claim(
 }
 
 fn p0_link_relation(
-  link: LandingEvidenceLink,
-  claim: LandingRequiredClaim,
+  link: gunbc.source_integration_landing_spine.LandingEvidenceLink,
+  claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
 ) -> Bool {
   link.fact.value.claim == claim
     && link.freshness.maximum_conclusion == claim
 }
 
-fn p0_admission_policy() -> LandingEvidenceAdmissionPolicy {
-  EvidenceAdmissionPolicy {
+fn p0_admission_policy() -> gunbc.source_integration_landing_spine.LandingEvidenceAdmissionPolicy {
+  std.claim_evidence.EvidenceAdmissionPolicy {
     fact_claim: p0_fact_claim,
     inference_rule_claim: p0_rule_claim,
     authority_claim: p0_authority_claim,
@@ -146,14 +146,14 @@ fn p0_admission_policy() -> LandingEvidenceAdmissionPolicy {
 }
 
 fn p0_link(
-  claim: LandingRequiredClaim,
+  claim: gunbc.source_integration_landing_spine.LandingRequiredClaim,
   direction: std.claim_evidence.EvidenceDirection,
-  authority: NonEmptyStr,
-) -> LandingEvidenceLink {
+  authority: std.types.NonEmptyStr,
+) -> gunbc.source_integration_landing_spine.LandingEvidenceLink {
   std.claim_evidence.EvidenceLink {
-    fact: RecordedFact {
+    fact: std.claim_evidence.RecordedFact {
       id: concat("fact-", claim.id as String) as std.claim_evidence.RecordedFactId,
-      value: LandingEvidenceFact {
+      value: gunbc.source_integration_landing_spine.LandingEvidenceFact {
         proposal: p0_proposal().occurrence,
         observation: concat("observed-", claim.id as String),
         claim: claim,
@@ -162,16 +162,16 @@ fn p0_link(
     direction: direction,
     inference_rule: "p0-observation-supports-exact-guarantee",
     authority: authority,
-    provenance: EvidenceProvenance {
+    provenance: std.claim_evidence.EvidenceProvenance {
       entity: "p0-validation-result",
       activity: "p0-validate-proposal",
       agent: "p0-validator",
     },
-    freshness: EvidenceFreshness {
+    freshness: std.claim_evidence.EvidenceFreshness {
       maximum_conclusion: claim,
       basis: "the observation is bound to this proposal attempt",
     },
-    fidelity: EvidenceFidelity {
+    fidelity: std.claim_evidence.EvidenceFidelity {
       boundary: "p0-lossless-guarantee",
       losses: [],
     },
@@ -179,7 +179,7 @@ fn p0_link(
   }
 }
 
-fn p0_support(claim: LandingRequiredClaim) -> LandingEvidenceLink {
+fn p0_support(claim: gunbc.source_integration_landing_spine.LandingRequiredClaim) -> gunbc.source_integration_landing_spine.LandingEvidenceLink {
   p0_link(
     claim: claim,
     direction: EvidenceSupports,
@@ -187,7 +187,7 @@ fn p0_support(claim: LandingRequiredClaim) -> LandingEvidenceLink {
   )
 }
 
-fn p0_challenge(claim: LandingRequiredClaim) -> LandingEvidenceLink {
+fn p0_challenge(claim: gunbc.source_integration_landing_spine.LandingRequiredClaim) -> gunbc.source_integration_landing_spine.LandingEvidenceLink {
   p0_link(
     claim: claim,
     direction: EvidenceChallenges,
@@ -195,7 +195,7 @@ fn p0_challenge(claim: LandingRequiredClaim) -> LandingEvidenceLink {
   )
 }
 
-fn p0_ready_evidence() -> LandingReadyEvidenceReceipt {
+fn p0_ready_evidence() -> gunbc.source_integration_landing_spine.LandingReadyEvidenceReceipt {
   match landing_evidence_readiness(
     proposal: p0_proposal(),
     policy: "p0-exact-guarantee-policy",
@@ -218,20 +218,20 @@ fn p0_ready_evidence() -> LandingReadyEvidenceReceipt {
 }
 
 fn p0_result(
-  handle: NonEmptyStr,
-  preview: NonEmptyStr,
-) -> LandingResultClass {
-  LandingResultClass {
+  handle: std.types.NonEmptyStr,
+  preview: std.types.NonEmptyStr,
+) -> gunbc.source_integration_landing_spine.LandingResultClass {
+  gunbc.source_integration_landing_spine.LandingResultClass {
     result: handle,
     preview: preview,
   }
 }
 
 fn p0_refusal(
-  kind: LandingRefusalKind,
-  reason: NonEmptyStr,
-) -> LandingRefusal {
-  LandingRefusal {
+  kind: gunbc.source_integration_landing_spine.LandingRefusalKind,
+  reason: std.types.NonEmptyStr,
+) -> gunbc.source_integration_landing_spine.LandingRefusal {
+  gunbc.source_integration_landing_spine.LandingRefusal {
     kind: kind,
     locus: "proposal-50-agent-fixture",
     occurrences: 1,
@@ -245,36 +245,36 @@ fn p0_refusal(
 
 fn p0_continuation(
   kind: gunbc.source_integration_landing_spine.LandingMachineContinuationKind,
-  status: NonEmptyStr,
-) -> LandingMachineContinuation {
-  LandingMachineContinuation {
+  status: std.types.NonEmptyStr,
+) -> gunbc.source_integration_landing_spine.LandingMachineContinuation {
+  gunbc.source_integration_landing_spine.LandingMachineContinuation {
     handle: "p0-machine-continuation",
     kind: kind,
     status: status,
   }
 }
 
-fn p0_closure_evidence() -> LandingClosureEvidence {
-  LandingClosureEvidence {
-    capture_completeness: LandingCaptureCompletenessReceipt {
+fn p0_closure_evidence() -> gunbc.source_integration_landing_spine.LandingClosureEvidence {
+  gunbc.source_integration_landing_spine.LandingClosureEvidence {
+    capture_completeness: gunbc.source_integration_landing_spine.LandingCaptureCompletenessReceipt {
       receipt: content_hash_of_value(value: "capture-completeness-receipt"),
     },
-    affected_scope: LandingAffectedScopeReceipt {
+    affected_scope: gunbc.source_integration_landing_spine.LandingAffectedScopeReceipt {
       receipt: content_hash_of_value(value: "affected-scope-receipt"),
     },
-    rule_closure: LandingRuleClosureReceipt {
+    rule_closure: gunbc.source_integration_landing_spine.LandingRuleClosureReceipt {
       receipt: content_hash_of_value(value: "rule-closure-receipt"),
     },
-    candidate_generation: LandingCandidateGenerationReceipt {
+    candidate_generation: gunbc.source_integration_landing_spine.LandingCandidateGenerationReceipt {
       receipt: content_hash_of_value(value: "candidate-generation-receipt"),
     },
-    admissibility: LandingAdmissibilityReceipt {
+    admissibility: gunbc.source_integration_landing_spine.LandingAdmissibilityReceipt {
       receipt: content_hash_of_value(value: "admissibility-receipt"),
     },
-    equivalence_quotient: LandingEquivalenceQuotientReceipt {
+    equivalence_quotient: gunbc.source_integration_landing_spine.LandingEquivalenceQuotientReceipt {
       receipt: content_hash_of_value(value: "equivalence-quotient-receipt"),
     },
-    multiplicity: LandingMultiplicityReceipt {
+    multiplicity: gunbc.source_integration_landing_spine.LandingMultiplicityReceipt {
       receipt: content_hash_of_value(value: "multiplicity-receipt"),
     },
   }
@@ -282,12 +282,12 @@ fn p0_closure_evidence() -> LandingClosureEvidence {
 
 fn p0_closed_receipt(
   candidates: gunbc.source_integration_landing_spine.LandingCandidateSpace,
-) -> LandingClosedResultSpaceReceipt {
-  LandingClosedResultSpaceReceipt {
-    subject: LandingClosureSubject {
+) -> gunbc.source_integration_landing_spine.LandingClosedResultSpaceReceipt {
+  gunbc.source_integration_landing_spine.LandingClosedResultSpaceReceipt {
+    subject: gunbc.source_integration_landing_spine.LandingClosureSubject {
       ready_evidence: p0_ready_evidence(),
       admission_contract: "p0-admission-contract",
-      read_back_authority: LandingIndependentReadBackAuthorityReceipt {
+      read_back_authority: gunbc.source_integration_landing_spine.LandingIndependentReadBackAuthorityReceipt {
         observer: "independent-read-back",
         admission_contract: "p0-admission-contract",
         established_by: "fixture-admission-authority",
@@ -325,11 +325,11 @@ fn p0_closed_one() -> gunbc.source_integration_landing_spine.LandingClosedOneRec
   }
 }
 
-fn p0_admitted() -> LandingAdmittedResult {
+fn p0_admitted() -> gunbc.source_integration_landing_spine.LandingAdmittedResult {
   let semantic = p0_closed_one()
   match landing_admitted_result(
     admission: LandingAdmitted {
-      receipt: LandingAdmissionReceipt {
+      receipt: gunbc.source_integration_landing_spine.LandingAdmissionReceipt {
         semantic: semantic,
         authority: "fixture-author",
         receipt: content_hash_of_value(value: "admission-receipt-42"),
@@ -342,11 +342,11 @@ fn p0_admitted() -> LandingAdmittedResult {
 }
 
 fn p0_transition(
-  admitted: LandingAdmittedResult,
-  identity: NonEmptyStr,
-  result: NonEmptyStr,
-) -> LandingTransitionReceipt {
-  LandingTransitionReceipt {
+  admitted: gunbc.source_integration_landing_spine.LandingAdmittedResult,
+  identity: std.types.NonEmptyStr,
+  result: std.types.NonEmptyStr,
+) -> gunbc.source_integration_landing_spine.LandingTransitionReceipt {
+  gunbc.source_integration_landing_spine.LandingTransitionReceipt {
     admitted: admitted,
     identity: identity,
     resulting_state: result,
@@ -441,7 +441,7 @@ test fn witness_p0_omitted_guarantee_blocks() -> Bool {
 test fn witness_p0_duplicate_requirement_blocks() -> Bool {
   let duplicate = p0_proposal_with(
     submitted_at: "2026-07-29T08:00:00Z",
-    guarantees: LandingRequiredClaims {
+    guarantees: gunbc.source_integration_landing_spine.LandingRequiredClaims {
       first: p0_builds_claim(),
       remaining: [p0_builds_claim()],
     },
@@ -676,14 +676,14 @@ test fn witness_p0_closed_many_owns_material_alternatives() -> Bool {
     handle: "second-result",
     preview: "The original name remains as a separate function.",
   )
-  let options = LandingNormativeOptions {
-    first_option: LandingNormativeOption {
+  let options = gunbc.source_integration_landing_spine.LandingNormativeOptions {
+    first_option: gunbc.source_integration_landing_spine.LandingNormativeOption {
       label: "use this result",
       preview: first.preview,
       resume_hint: "same-non-authoritative-hint",
       alternative: LandingSelectResult { result: first },
     },
-    second_option: LandingNormativeOption {
+    second_option: gunbc.source_integration_landing_spine.LandingNormativeOption {
       label: "use this result",
       preview: second.preview,
       resume_hint: "same-non-authoritative-hint",
@@ -759,10 +759,10 @@ test fn witness_p0_closed_many_owns_material_alternatives() -> Bool {
 fn p0_incomplete_closure_stays_machine_owned(
   missing: gunbc.source_integration_landing_spine.LandingClosureCertificateKind,
 ) -> Bool {
-  let subject = LandingClosureSubject {
+  let subject = gunbc.source_integration_landing_spine.LandingClosureSubject {
     ready_evidence: p0_ready_evidence(),
     admission_contract: "p0-admission-contract",
-    read_back_authority: LandingIndependentReadBackAuthorityReceipt {
+    read_back_authority: gunbc.source_integration_landing_spine.LandingIndependentReadBackAuthorityReceipt {
       observer: "independent-read-back",
       admission_contract: "p0-admission-contract",
       established_by: "fixture-admission-authority",
@@ -844,7 +844,7 @@ test fn witness_p0_cross_paired_read_back_refuses() -> Bool {
     result: "state-42",
   )
   match landing_independent_read_back(
-    observation: LandingReadBackObservation {
+    observation: gunbc.source_integration_landing_spine.LandingReadBackObservation {
       transition: transition,
       observed_state: "state-from-another-transition",
       authority: "independent-read-back",
@@ -856,7 +856,7 @@ test fn witness_p0_cross_paired_read_back_refuses() -> Bool {
     LandingReadBackAuthorityRefused { observation: _ } => false
   }
     && match landing_independent_read_back(
-      observation: LandingReadBackObservation {
+      observation: gunbc.source_integration_landing_spine.LandingReadBackObservation {
         transition: transition,
         observed_state: "state-42",
         authority: "caller-invented-different-reader",
@@ -884,7 +884,7 @@ test fn witness_p0_cross_paired_projection_refuses() -> Bool {
       )
       match landing_projection_of_transition(
         transition: transition,
-        binding: LandingCompatibilityTargetBinding {
+        binding: gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding {
           semantic_target: "another-semantic-target",
           native_target: projection.target,
           receipt: content_hash_of_value(value: "semantic-native-target-binding"),
@@ -910,7 +910,7 @@ test fn witness_p0_projection_from_another_transition_refuses_commit() -> Bool {
     identity: "transition-second",
     result: "state-second",
   )
-  let observation = LandingReadBackObservation {
+  let observation = gunbc.source_integration_landing_spine.LandingReadBackObservation {
     transition: first,
     observed_state: "state-first",
     authority: "independent-read-back",
@@ -924,7 +924,7 @@ test fn witness_p0_projection_from_another_transition_refuses_commit() -> Bool {
       )
       match landing_projection_of_transition(
         transition: second,
-        binding: LandingCompatibilityTargetBinding {
+        binding: gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding {
           semantic_target: "accepted-main",
           native_target: projection.target,
           receipt: content_hash_of_value(value: "semantic-native-target-binding"),
@@ -959,7 +959,7 @@ test fn witness_p0_unique_admitted_commit_lands_with_bound_git_projection() -> B
     identity: "transition-42",
     result: "state-42",
   )
-  let observation = LandingReadBackObservation {
+  let observation = gunbc.source_integration_landing_spine.LandingReadBackObservation {
     transition: transition,
     observed_state: "state-42",
     authority: "independent-read-back",
@@ -973,7 +973,7 @@ test fn witness_p0_unique_admitted_commit_lands_with_bound_git_projection() -> B
       )
       match landing_projection_of_transition(
         transition: transition,
-        binding: LandingCompatibilityTargetBinding {
+        binding: gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding {
           semantic_target: "accepted-main",
           native_target: projection.target,
           receipt: content_hash_of_value(value: "semantic-native-target-binding"),
@@ -1012,7 +1012,7 @@ test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
     identity: "transition-42",
     result: "state-42",
   )
-  let observation = LandingReadBackObservation {
+  let observation = gunbc.source_integration_landing_spine.LandingReadBackObservation {
     transition: transition,
     observed_state: "state-42",
     authority: "independent-read-back",
@@ -1020,7 +1020,7 @@ test fn witness_p0_projection_failure_after_commit_stays_landed() -> Bool {
   let failed = LandingProjectionFailed {
     transition: transition,
     realization: "git-r0",
-    target: LandingCompatibilityTargetBinding {
+    target: gunbc.source_integration_landing_spine.LandingCompatibilityTargetBinding {
       semantic_target: "accepted-main",
       native_target: "refs/heads/main",
       receipt: content_hash_of_value(value: "semantic-native-target-binding"),
@@ -1203,7 +1203,7 @@ fn p0_primary_message_is_plain(message: String) -> Bool {
 }
 
 test fn witness_p0_audience_projection_is_separate_from_internal_cause() -> Bool {
-  let refusal = LandingRefusal {
+  let refusal = gunbc.source_integration_landing_spine.LandingRefusal {
     kind: LandingPermanentEffectFailure,
     locus: "private-node-42",
     occurrences: 1,
@@ -1237,19 +1237,19 @@ test fn witness_p0_audience_projection_is_separate_from_internal_cause() -> Bool
 fn p0_timestamps_are_inert_and_stress_is_explicit() -> Bool {
   let early = p0_proposal_with(
     submitted_at: "2026-07-29T08:00:00Z",
-    guarantees: LandingRequiredClaims {
+    guarantees: gunbc.source_integration_landing_spine.LandingRequiredClaims {
       first: p0_builds_claim(),
       remaining: [p0_behavior_claim()],
     },
   )
   let late = p0_proposal_with(
     submitted_at: "2026-07-29T09:00:00Z",
-    guarantees: LandingRequiredClaims {
+    guarantees: gunbc.source_integration_landing_spine.LandingRequiredClaims {
       first: p0_builds_claim(),
       remaining: [p0_behavior_claim()],
     },
   )
-  let stress: LandingStressProfile = gunbc_landing_stress_profile
+  let stress: gunbc.source_integration_landing_spine.LandingStressProfile = gunbc_landing_stress_profile
   early.occurrence == late.occurrence
     && early.target == late.target
     && early.submitted_at != late.submitted_at

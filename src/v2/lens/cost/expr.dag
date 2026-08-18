@@ -9,11 +9,11 @@ type SizeExpr
   | SizeMax { left: SizeExpr, right: SizeExpr }
 
 type CostExprRefusalCause
-  = UnboundedIteration { at: Locus }
-  | UngroundedLogArgument { argument: SizeExpr, at: Locus }
-  | InvalidLogBase { base: v2.std.nat.Nat, at: Locus }
-  | UnmodeledEffect { operation: DeclarationRef, at: Locus }
-  | UnresolvedSize { variable: SizeVariable, at: Locus }
+  = UnboundedIteration { at: v2.std.diagnostic.Locus }
+  | UngroundedLogArgument { argument: SizeExpr, at: v2.std.diagnostic.Locus }
+  | InvalidLogBase { base: v2.std.nat.Nat, at: v2.std.diagnostic.Locus }
+  | UnmodeledEffect { operation: std.decl_ref.DeclarationRef, at: v2.std.diagnostic.Locus }
+  | UnresolvedSize { variable: SizeVariable, at: v2.std.diagnostic.Locus }
 
 type CostExpr
   = CostConst { value: v2.std.nat.Nat }
@@ -22,7 +22,7 @@ type CostExpr
   | CostMax { left: CostExpr, right: CostExpr }
   | CostSum { binder: SizeVariable, upper: SizeExpr, body: CostExpr }
   | CostLog { base: v2.std.nat.Nat, argument: SizeExpr }
-  | CostEffect { operation: DeclarationRef }
+  | CostEffect { operation: std.decl_ref.DeclarationRef }
   | CostRefused { cause: CostExprRefusalCause }
 
 fn size_const(value: v2.std.nat.Nat) -> SizeExpr {

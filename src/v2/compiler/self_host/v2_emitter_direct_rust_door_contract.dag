@@ -82,11 +82,11 @@ data direct_rust_door_missing_rule_unavailable_cause: Symbol = ^direct_rust_door
 
 type DirectRustDoorLeafResult
   = LeafEstablished
-  | LeafRefused { cause: Symbol }
-  | LeafNotReached { cause: Symbol }
+  | LeafRefused { cause: v2.std.node.Symbol }
+  | LeafNotReached { cause: v2.std.node.Symbol }
 
 type DirectRustDoorProductionGroup {
-  emission: ProvenancedRustEmissionObservation
+  emission: v2.compiler.self_host.candidate_generation.ProvenancedRustEmissionObservation
   missing_rule: DirectRustDoorAdmission
 }
 
@@ -112,7 +112,7 @@ fn direct_rust_door_production_group() -> DirectRustDoorProductionGroup {
 // TWO result carriers, because the ARTIFACT axes and the PIPELINE axis answer different questions. Once an artifact exists, an artifact-grain axis can only establish or refuse — there is no third state, and giving it one would mean a consumer inside the ArtifactProduced arm has to handle a variant that arm cannot produce. The first such consumer did exactly that and mapped the unreachable variant onto a domain cause (a source mismatch, a wrong producer), so a future break in the invariant would have reported a defect that did not occur — the state-space laundering this whole group exists to remove. DirectRustDoorArtifactLeafResult is therefore the narrow carrier assessed against an artifact, and DirectRustDoorLeafResult is the wide one carrying the additional LeafNotReached that only a pre-artifact stage can produce. Widening happens in exactly one place, direct_rust_door_artifact_leaf, where the stage that stopped is in hand.
 type DirectRustDoorArtifactLeafResult
   = ArtifactLeafEstablished
-  | ArtifactLeafRefused { cause: Symbol }
+  | ArtifactLeafRefused { cause: v2.std.node.Symbol }
 
 fn direct_rust_door_artifact_assessment(
   artifact: ProvenancedRustArtifact,

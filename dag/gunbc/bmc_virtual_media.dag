@@ -2,15 +2,15 @@ module gunbc.bmc_virtual_media
 
 
 type BmcVirtualMediaPlan {
-  bmc_host: NonEmptyStr
-  bmc_ssh_target: NonEmptyStr
-  srv1_host: NonEmptyStr
-  iso_path: NonEmptyStr
-  export_name: NonEmptyStr
-  nbd_port: Port
-  nbd_device: NonEmptyStr
-  udc: NonEmptyStr
-  nbd_config_path: NonEmptyStr
+  bmc_host: std.types.NonEmptyStr
+  bmc_ssh_target: std.types.NonEmptyStr
+  srv1_host: std.types.NonEmptyStr
+  iso_path: std.types.NonEmptyStr
+  export_name: std.types.NonEmptyStr
+  nbd_port: std.types.Port
+  nbd_device: std.types.NonEmptyStr
+  udc: std.types.NonEmptyStr
+  nbd_config_path: std.types.NonEmptyStr
 }
 
 data srv4_virtual_media_source: VirtualMediaSource = VirtualMediaSource {

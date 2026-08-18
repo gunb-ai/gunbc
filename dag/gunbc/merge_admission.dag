@@ -23,10 +23,10 @@ fn gate_roster_hash_from_structural(structural: Fnv1a64Structural) -> GateRoster
 
 type MergeAdmissionReceipt {
   pr_number: Int?
-  head_sha: CommitSha
-  base_tree_hash: GitObjectId
+  head_sha: std.types.CommitSha
+  base_tree_hash: extdeps.git.object_store.GitObjectId
   gate_roster_hash: GateRosterHash
-  conclusion: CheckConclusion
+  conclusion: extdeps.github.checks.CheckConclusion
 }
 
 type AdmissionPolicy
@@ -292,37 +292,37 @@ fn merge_admission_witness_gate_roster(label: NonEmptyStr) -> GateRosterHash {
 data current_gate_roster_hash: GateRosterHash = gate_roster_content_hash(roster: commit_gate_roster)
 
 type CoveredGateConclusion {
-  gate: ContentHash
-  conclusion: CheckConclusion
+  gate: std.content_hash.ContentHash
+  conclusion: extdeps.github.checks.CheckConclusion
 }
 
 type CheckCoverage
   = CheckCoverageAbsent {
-      required_head: CommitSha,
-      required_roster: ContentHash
+      required_head: std.types.CommitSha,
+      required_roster: std.content_hash.ContentHash
     }
   | CheckCoverageRunning {
-      head: CommitSha,
-      roster: ContentHash,
-      run: NonEmptyStr
+      head: std.types.CommitSha,
+      roster: std.content_hash.ContentHash,
+      run: std.types.NonEmptyStr
     }
   | CheckCoverageStopped {
-      head: CommitSha,
-      roster: ContentHash,
+      head: std.types.CommitSha,
+      roster: std.content_hash.ContentHash,
       completed: List<CoveredGateConclusion>,
-      unexecuted: List<ContentHash>,
-      cause: NonEmptyStr
+      unexecuted: List<std.content_hash.ContentHash>,
+      cause: std.types.NonEmptyStr
     }
   | CheckCoverageComplete {
-      head: CommitSha,
-      roster: ContentHash,
+      head: std.types.CommitSha,
+      roster: std.content_hash.ContentHash,
       conclusions: List<CoveredGateConclusion>
     }
   | CheckCoverageStale {
-      observed_head: CommitSha,
-      required_head: CommitSha,
-      observed_roster: ContentHash,
-      required_roster: ContentHash
+      observed_head: std.types.CommitSha,
+      required_head: std.types.CommitSha,
+      observed_roster: std.content_hash.ContentHash,
+      required_roster: std.content_hash.ContentHash
     }
 
 data check_coverage_subject_universe_note: String = "CHECK COVERAGE IS A TOTAL CLASSIFICATION OVER AN EXPLICIT SUBJECT UNIVERSE (operator mandate 2026-08-01). The subject is (required PR head, required gate-roster identity, nonempty required gate population). No check runs is CheckCoverageAbsent, never an empty list that all() can call green. A run still executing is Running. A dependency stop is Stopped and carries both the completed and UNEXECUTED populations plus a cause, so batch-1 drift stopping the witness batches cannot masquerade as a witness verdict. Complete is the only arm admission examines for success. Stale carries both observed and required identities; it is not repaired by relabeling the observation. Adding a coverage state requires a new coproduct arm and turns every exhaustive consumer red until classified — unclassified is structurally unavailable."
@@ -333,27 +333,27 @@ data check_coverage_external_consumer_adoption_receipt_in_flight: String = "ADOP
 
 type CheckCoverageAdmissionVerdict
   = CheckCoverageAdmitted
-  | CheckCoverageDeniedAbsent { required_head: CommitSha, required_roster: ContentHash }
-  | CheckCoverageDeniedRunning { head: CommitSha, roster: ContentHash, run: NonEmptyStr }
+  | CheckCoverageDeniedAbsent { required_head: std.types.CommitSha, required_roster: std.content_hash.ContentHash }
+  | CheckCoverageDeniedRunning { head: std.types.CommitSha, roster: std.content_hash.ContentHash, run: std.types.NonEmptyStr }
   | CheckCoverageDeniedStopped {
-      head: CommitSha,
-      roster: ContentHash,
+      head: std.types.CommitSha,
+      roster: std.content_hash.ContentHash,
       completed: List<CoveredGateConclusion>,
-      unexecuted: List<ContentHash>,
-      cause: NonEmptyStr
+      unexecuted: List<std.content_hash.ContentHash>,
+      cause: std.types.NonEmptyStr
     }
   | CheckCoverageDeniedStale {
-      observed_head: CommitSha,
-      required_head: CommitSha,
-      observed_roster: ContentHash,
-      required_roster: ContentHash
+      observed_head: std.types.CommitSha,
+      required_head: std.types.CommitSha,
+      observed_roster: std.content_hash.ContentHash,
+      required_roster: std.content_hash.ContentHash
     }
-  | CheckCoverageDeniedHeadMismatch { observed: CommitSha, required: CommitSha }
-  | CheckCoverageDeniedRosterMismatch { observed: ContentHash, required: ContentHash }
+  | CheckCoverageDeniedHeadMismatch { observed: std.types.CommitSha, required: std.types.CommitSha }
+  | CheckCoverageDeniedRosterMismatch { observed: std.content_hash.ContentHash, required: std.content_hash.ContentHash }
   | CheckCoverageDeniedEmptyRequiredPopulation
-  | CheckCoverageDeniedDuplicateRequiredGate { gate: ContentHash }
-  | CheckCoverageDeniedExecutionCardinality { gate: ContentHash, observed_count: Int }
-  | CheckCoverageDeniedGateFailed { gate: ContentHash, conclusion: CheckConclusion }
+  | CheckCoverageDeniedDuplicateRequiredGate { gate: std.content_hash.ContentHash }
+  | CheckCoverageDeniedExecutionCardinality { gate: std.content_hash.ContentHash, observed_count: Int }
+  | CheckCoverageDeniedGateFailed { gate: std.content_hash.ContentHash, conclusion: extdeps.github.checks.CheckConclusion }
 
 fn gate_identity_count(gates: List<ContentHash>, gate: ContentHash) -> Int {
   fold(gates, init: 0, f: fn(acc, row) {
@@ -578,12 +578,12 @@ data merge_admission_attempt_scope_note: String = "ATTEMPT SCOPE (ruling 2026-07
 data git_object_id_grounding_note: String = "The tested base tree is a GitObjectId, not a ContentHash. DESIGN's own §3 residue records that ContentHash is one brand over two unrelated hash families (structural fnv1a64 fingerprints and cited cryptographic digests) with no modeled discriminant; a Git tree object id is a THIRD domain, and admitting it into the same brand would let a gate-roster structural fingerprint inhabit the tested-tree field and typecheck. extdeps.git.object_store.GitObjectId is the existing single authority and already models the SHA-1/SHA-256 repository-format transition, so this grounds on it rather than minting a GitTreeOid nickname beside it (§3). Equality and the validating textual constructors live THERE, not here: both are generic Git behaviour, and holding them in this consumer was a fork this module briefly carried (review 2026-07-30)."
 
 type MergeAdmissionReceiptV2 {
-  attempt_id: WalkAttemptId
+  attempt_id: gunbc.merge_admission_subject.WalkAttemptId
   pr_number: Int?
-  tested_head_sha: CommitSha
-  tested_base_tree_hash: GitObjectId
+  tested_head_sha: std.types.CommitSha
+  tested_base_tree_hash: extdeps.git.object_store.GitObjectId
   gate_roster_hash: GateRosterHash
-  conclusion: CheckConclusion
+  conclusion: extdeps.github.checks.CheckConclusion
 }
 
 data merge_admission_subject_binding_note: String = "THE GATE CONSUMES THE CAPTURED SUBJECT, not merely a self-describing receipt (review 2026-07-30). The v2 receipt carried tested_head_sha from the start, and nothing read it: the classifier checked attempt, conclusion, base, roster, so a receipt was free to RESTATE which subject it allegedly certified and be believed. The subject is captured before the floor runs and is the independent fact; the receipt is the floor's claim about it. Three bindings are therefore required BEFORE any freshness question — same attempt, same head, same base tree — and a mismatch is MergeDeniedSubjectMismatch, its own state: the receipt is well-formed and from this attempt, but it describes work on something other than what was captured, which is neither staleness (a fact about the world moving) nor a wrong attempt (a fact about which run). Asking whether such a receipt's base is current would be answering a question about the wrong subject, which is exactly why WrongAttempt is first and SubjectMismatch is second."

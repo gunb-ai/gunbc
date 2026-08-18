@@ -23,9 +23,9 @@ data floor_component_receipt_artifact_name: String = "floor-component-receipt"
 data floor_component_failure_mode_edge_note: String = "WHY THE MODE RIDES BESIDE THE OUTCOME INSTEAD OF BEING RECOVERED FROM IT. floor_component_outcome_of_failure_mode is deliberately many-to-one: Infra and WitnessRed BOTH map to Failed, because both are a component that broke and ObservationOutcome is the right grain for the observation record. But they are not the same fault and they do not route to the same place — Infra is the fleet's (a runner died, a toolchain went missing), WitnessRed is the witness owner's (a claim is genuinely false). A consumer holding only the Failed arm cannot tell them apart, so it either routes both to one owner or re-derives the class by sniffing the diagnostic prose, which is the string-classification this module already refuses at the seed boundary. The mode therefore rides ON THE ROW, at row grain, and std.observation is NOT widened: ObservationOutcome stays the canonical record of WHAT the transition was, and the mode records WHICH declared failure vocabulary produced it. The two are derived from ONE tag in one place (floor_component_row_of_failure_mode), so they cannot disagree — a row whose mode says Infra while its outcome says Done is not constructible through the seed path. ModeUnrecorded is the honest arm for the tag-built constructor, which is handed an outcome directly and genuinely never saw a mode; the seed path never produces it."
 
 type FloorComponentRow {
-  event: ObservationEvent
+  event: std.observation.ObservationEvent
   witnesses: Nat
-  failure_mode: FloorComponentFailureMode
+  failure_mode: gunbc.floor_component_receipt_document.FloorComponentFailureMode
 }
 
 fn floor_component_subject(run_id: NonEmptyStr, index: Nat, label: NonEmptyStr) -> ObservationSubject {

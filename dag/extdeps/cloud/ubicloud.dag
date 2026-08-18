@@ -26,11 +26,11 @@ type UbicloudRunnerType
 
 type UbicloudRunnerCatalogRow {
   runner_type: UbicloudRunnerType
-  runs_on_label: NonEmptyStr
-  vcpus: HardwareThreadCount
-  memory_bytes: ByteSize
-  disk_bytes: ByteSize
-  cpu_architecture: Architecture
+  runs_on_label: std.types.NonEmptyStr
+  vcpus: std.measure.HardwareThreadCount
+  memory_bytes: std.measure.ByteSize
+  disk_bytes: std.measure.ByteSize
+  cpu_architecture: extdeps.toolchain.types.Architecture
 }
 
 data ubicloud_standard_2_catalog: UbicloudRunnerCatalogRow = UbicloudRunnerCatalogRow {

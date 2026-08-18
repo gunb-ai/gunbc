@@ -1,7 +1,7 @@
 module v2.test.workflow.lens_idempotency_family_eval
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn idempotency_control_empty_resolves() -> Bool {
   match idempotency_witness(tree: idempotency_claim_tree(), dependencies: []) {
@@ -22,7 +22,7 @@ type LensFamilyEvalReport {
   entries: List<LensFamilyEvalEntry>
 }
 
-fn lens_family_eval_report_tally(r: LensFamilyEvalReport) -> VerdictTally {
+fn lens_family_eval_report_tally(r: LensFamilyEvalReport) -> v2.std.verdict.VerdictTally {
   fold(r.entries, init: verdict_tally_empty, f: fn(acc, e) {
     verdict_tally_add(t: acc, v: test_claim_run_verdict(run: e.run))
   })

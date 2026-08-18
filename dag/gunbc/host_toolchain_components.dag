@@ -6,8 +6,8 @@ data toolchain_completeness_authority_note: String = "B3's toolchain-completenes
 data toolchain_requirement_derivation_note: String = "The requirement is derived from the gate that needs it, carried as a DeclarationRef rather than a label, so a component nothing requires cannot accumulate here and the reason a component is required stays pointable. Today there is exactly one row: the self-host realized-comparison gate emits Rust and formats it, so it needs rustfmt. Clippy is deliberately NOT a row — it was removed from CI 2026-07-08 as zero-signal under a crate-wide allow, and adding it here because it is a familiar component would be requiring something no consumer needs."
 
 type ToolchainComponentRequirement {
-  component: RustupComponent
-  required_by: DeclarationRef
+  component: extdeps.rustup.RustupComponent
+  required_by: std.decl_ref.DeclarationRef
 }
 
 data floor_gate_component_requirements: List<ToolchainComponentRequirement> = [
@@ -23,9 +23,9 @@ data floor_gate_component_requirements: List<ToolchainComponentRequirement> = [
 
 // What a probe can honestly report: WHICH toolchain the job principal's shim resolves to, and which components THAT toolchain carries. The principal is named on the row because it is not the same account that owns the runner unit — srv2's unit runs as root while workflow steps deprivilege to ghrunner via CTRL_RUNNER_JOB_USER — and a completeness reading taken as the wrong user is a reading of the wrong toolchain. This is the field an earlier draft of this module would have omitted, and omitting it is how the host-shaped question sneaks back in.
 type ResolvedToolchain {
-  principal: NonEmptyStr
-  toolchain: NonEmptyStr
-  components: List<RustupComponent>
+  principal: std.types.NonEmptyStr
+  toolchain: std.types.NonEmptyStr
+  components: List<extdeps.rustup.RustupComponent>
 }
 
 fn resolved_toolchain_has(t: ResolvedToolchain, c: RustupComponent) -> Bool {
@@ -148,8 +148,8 @@ data toolchain_ensure_apply_scaffold: Disposition = Scaffold {
 data spawn_reachability_is_a_second_condition_note: String = "A CORRECTION to this module, found by execution after the hand-install and before any of it was believed. Installing the component into the resolving toolchain is NECESSARY and is NOT SUFFICIENT, and the two conditions must not be fused into one cell. Read live on srv2 2026-07-25: the runner unit declares no PATH, so it inherits systemd's default (/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/snap/bin), which does not contain /home/ghrunner/.cargo/bin at all. A child spawned with that environment cannot find rustfmt no matter which components are installed, and `spawn rustfmt: No such file or directory` is precisely a PATH-lookup failure rather than a component-missing failure — a component-missing shim produces a rustup diagnostic instead. A ghrunner LOGIN shell does resolve it, because the profile adds the cargo bin directory, so the observed outcome depends on which of those two environments the gate's spawn inherits. That is not observable from a host read at all; it is a property of the job step, and answering it needs a probe INSIDE a job. So the honest state is: the component condition is now Converged on srv2 and the reachability condition is UNOBSERVED, and 'will the gate find rustfmt' is therefore UnknownRefused. Recording this as a second axis rather than letting completeness stand in for it is the same discipline the module was built to enforce, applied to the module itself — a completeness cell reported as the answer would be a value green because the condition under which it MEANS the gate works was assumed, which is the exact error this file opens by describing."
 
 type ComponentSpawnReachability
-  = ReachableOnSpawnPath { path_source: NonEmptyStr }
-  | NotReachableOnSpawnPath { inherited_path: NonEmptyStr }
+  = ReachableOnSpawnPath { path_source: std.types.NonEmptyStr }
+  | NotReachableOnSpawnPath { inherited_path: std.types.NonEmptyStr }
 
 fn gate_finds_component_verdict(
   completeness: ObservationVerdict,

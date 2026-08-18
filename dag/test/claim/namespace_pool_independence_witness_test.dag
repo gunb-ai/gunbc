@@ -30,8 +30,8 @@ fn npi_witness_declaration_alt() -> std.occurrence_identity.OccurrenceId {
 fn npi_witness_provenance(
   reference_occurrence: std.occurrence_identity.OccurrenceId,
   declaration_occurrence: std.occurrence_identity.OccurrenceId,
-) -> CrossFileBindingProvenance {
-  CrossFileBindingProvenance {
+) -> std.occurrence_binding_candidates.CrossFileBindingProvenance {
+  std.occurrence_binding_candidates.CrossFileBindingProvenance {
     reference_occurrence: reference_occurrence,
     declaration_occurrence: declaration_occurrence,
     consumer_file: npi_witness_consumer_file(),
@@ -42,8 +42,8 @@ fn npi_witness_provenance(
 fn npi_witness_provider(
   reference_occurrence: std.occurrence_identity.OccurrenceId,
   declaration_occurrence: std.occurrence_identity.OccurrenceId,
-) -> BoundReferenceProvider {
-  BoundReferenceProvider {
+) -> std.occurrence_binding_candidates.BoundReferenceProvider {
+  std.occurrence_binding_candidates.BoundReferenceProvider {
     reference_occurrence: reference_occurrence,
     declaration_occurrence: declaration_occurrence,
     consumer_module: "app.consumer",
@@ -51,18 +51,18 @@ fn npi_witness_provider(
   }
 }
 
-fn npi_witness_file_dependency() -> DirectFileDependency {
-  DirectFileDependency {
+fn npi_witness_file_dependency() -> std.occurrence_binding_candidates.DirectFileDependency {
+  std.occurrence_binding_candidates.DirectFileDependency {
     consumer_file: npi_witness_consumer_file(),
     provider_file: cross_file_clause_e_fixture_provider_file(),
   }
 }
 
 fn npi_witness_projection(
-  provenances: List<CrossFileBindingProvenance>,
-  dependencies: List<DirectFileDependency>,
-  providers: List<BoundReferenceProvider>,
-) -> ReferenceDerivedDependencyProjection {
+  provenances: List<std.occurrence_binding_candidates.CrossFileBindingProvenance>,
+  dependencies: List<std.occurrence_binding_candidates.DirectFileDependency>,
+  providers: List<std.occurrence_binding_candidates.BoundReferenceProvider>,
+) -> std.occurrence_binding_candidates.ReferenceDerivedDependencyProjection {
   ReferenceDerivedDependencyProjectionReady {
     binding_provenance: provenances,
     file_dependencies: dependencies,
@@ -70,7 +70,7 @@ fn npi_witness_projection(
   }
 }
 
-fn npi_witness_baseline_projection() -> ReferenceDerivedDependencyProjection {
+fn npi_witness_baseline_projection() -> std.occurrence_binding_candidates.ReferenceDerivedDependencyProjection {
   npi_witness_projection(
     provenances: [
       npi_witness_provenance(
@@ -97,8 +97,8 @@ fn npi_witness_baseline_projection() -> ReferenceDerivedDependencyProjection {
 }
 
 fn npi_projection_for_assembled_closure(
-  closure: AssembledCrossFileBindingClosure,
-) -> ReferenceDerivedDependencyProjection? {
+  closure: std.occurrence_binding_candidates.AssembledCrossFileBindingClosure,
+) -> std.occurrence_binding_candidates.ReferenceDerivedDependencyProjection? {
   match reference_derived_dependency_projection_for_assembled_closure(closure: closure) {
     AssembledClosureDependencyProjectionReady { projection: projection } =>
       Present { value: projection }
@@ -107,7 +107,7 @@ fn npi_projection_for_assembled_closure(
 }
 
 fn npi_pool_perturbation_preserves_full_carrier(
-  unrelated_loaded_provider: CrossFileBindingClosureRow,
+  unrelated_loaded_provider: std.occurrence_binding_candidates.CrossFileBindingClosureRow,
 ) -> Bool {
   let baseline_closure = cross_file_clause_e_fixture_baseline_assembled_closure()
   let perturbed_closure = cross_file_clause_e_fixture_perturbed_assembled_closure(
@@ -143,7 +143,7 @@ test fn unrelated_loaded_unrelated_spellings_preserves_full_carrier_holds() -> B
 
 fn npi_reference_occurrence_in_transport(
   occurrence: std.occurrence_identity.OccurrenceId,
-  references: List<ReferenceOccurrence>,
+  references: List<std.occurrence_identity.ReferenceOccurrence>,
 ) -> Bool {
   fold(
     references,
@@ -152,7 +152,7 @@ fn npi_reference_occurrence_in_transport(
   )
 }
 
-fn npi_colliding_decoy_row() -> CrossFileBindingClosureRow {
+fn npi_colliding_decoy_row() -> std.occurrence_binding_candidates.CrossFileBindingClosureRow {
   cross_file_clause_e_fixture_unrelated_loaded_provider_row(
     declaration_authored_name: "helper",
     module_dotted: "app.decoy",
@@ -320,7 +320,7 @@ test fn red_bound_population_mismatch_holds() -> Bool {
         reference_occurrence: npi_witness_ref_one(),
         declaration_occurrence: npi_witness_declaration(),
       ),
-      BoundReferenceProvider {
+      std.occurrence_binding_candidates.BoundReferenceProvider {
         reference_occurrence: npi_witness_ref_two(),
         declaration_occurrence: npi_witness_declaration(),
         consumer_module: "app.other",
@@ -355,7 +355,7 @@ test fn red_file_dependency_mismatch_holds() -> Bool {
     ],
     file_dependencies: [
       npi_witness_file_dependency(),
-      DirectFileDependency {
+      std.occurrence_binding_candidates.DirectFileDependency {
         consumer_file: npi_witness_consumer_file(),
         provider_file: "app/unrelated.dag",
       },

@@ -10,7 +10,7 @@ type ExecutorBatch {
 }
 
 type ExecutorBlockedEvidence
-  = ExecutorSchedulerBlocked { evidence: SchedulerBlockedEvidence }
+  = ExecutorSchedulerBlocked { evidence: v2.workflow.scheduler.SchedulerBlockedEvidence }
   | ExecutorEmptyFrontier {}
 
 type ExecutorRunPlan

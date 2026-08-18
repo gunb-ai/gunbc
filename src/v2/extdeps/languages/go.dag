@@ -55,7 +55,7 @@ type GoExportStatus
 
 type GoChannel {
   direction: GoChannelDirection
-  element_type_ref: Symbol
+  element_type_ref: v2.std.node.Symbol
 }
 
 type GoCost {
@@ -64,8 +64,8 @@ type GoCost {
 }
 
 type GoGrammarRelationRow {
-  production: GrammarProduction
-  tokens: List<ConcreteSyntaxToken>
+  production: v2.std.grammar.GrammarProduction
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
 type GoBuiltinIntegerArithmeticOverflow
@@ -83,42 +83,42 @@ type GoIntKind
 
 type GoIntegerPrimitiveFacts
   = GoSignedIntegerPrimitiveFacts {
-      surface_spelling: Symbol
+      surface_spelling: v2.std.node.Symbol
       width: SignedIntWidth
-      encoding: Symbol
-      std_projection: Symbol
+      encoding: v2.std.node.Symbol
+      std_projection: v2.std.node.Symbol
     }
   | GoUnsignedIntegerPrimitiveFacts {
-      surface_spelling: Symbol
+      surface_spelling: v2.std.node.Symbol
       width: UnsignedIntWidth
-      encoding: Symbol
-      std_projection: Symbol
+      encoding: v2.std.node.Symbol
+      std_projection: v2.std.node.Symbol
     }
 
 type GoFloatPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   width: GoFloatWidth
-  ieee754_binary: Symbol
-  std_projection: Symbol
+  ieee754_binary: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type GoComplexPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   width: GoComplexWidth
-  component_ieee754_binary: Symbol
-  std_projection: Symbol
+  component_ieee754_binary: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type GoBoolPrimitiveFacts {
-  surface_spelling: Symbol
-  encoding: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  encoding: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type GoStringPrimitiveFacts {
-  surface_spelling: Symbol
-  encoding: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  encoding: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 data go_source_text: String = "func add(x int, y int) int { return x + y }"
@@ -1585,7 +1585,7 @@ fn go_formal_productions() -> List<FormalProduction> {
 
 type GoGramBuild1State
   = GoGramBuild1StateInit
-  | GoGramBuild1StateReady { expr: GrammarExpr }
+  | GoGramBuild1StateReady { expr: v2.std.grammar.GrammarExpr }
 
 fn go_grammar_sequence_from_token_classes() -> GrammarExpr {
   match fold_list(

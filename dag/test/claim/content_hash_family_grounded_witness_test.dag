@@ -5,28 +5,28 @@ data witness_note: String = "feature:content-hash-family-grounded Phase A — fa
 
 data witness_sha256_hex: String = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 
-fn witness_sha256_row() -> Sha256Digest {
-  Sha256Digest { hex: witness_sha256_hex as Sha256DigestHex }
+fn witness_sha256_row() -> std.content_hash.Sha256Digest {
+  std.content_hash.Sha256Digest { hex: witness_sha256_hex as std.content_hash.Sha256DigestHex }
 }
 
-fn witness_oci_sha256_row() -> OciContentDigest {
+fn witness_oci_sha256_row() -> extdeps.container.oci.digest.OciContentDigest {
   oci_content_digest_from_validated_sha256(
-    digest: Sha256Digest { hex: witness_sha256_hex as Sha256DigestHex },
+    digest: std.content_hash.Sha256Digest { hex: witness_sha256_hex as std.content_hash.Sha256DigestHex },
   )
 }
-data tool_pin_fixture: Pin<CliTool> = Pin {
-  subject: CliTool {
+data tool_pin_fixture: Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
+  subject: extdeps.tools.CliTool {
     name: "cargo",
     min_version: Absent,
     installable_via: [SourceApt],
   },
-  version: "1.93.0" as VersionIdentity,
-  expected_identity: content_hash_of_value(value: "cargo-structural-identity" as NonEmptyStr),
+  version: "1.93.0" as extdeps.version.VersionIdentity,
+  expected_identity: content_hash_of_value(value: "cargo-structural-identity" as std.types.NonEmptyStr),
   selection: ExactPin,
 }
 
-data structural_a: ContentHash = content_hash_of_value(value: "fp-a" as NonEmptyStr)
-data structural_b: ContentHash = content_hash_of_value(value: "fp-b" as NonEmptyStr)
+data structural_a: std.content_hash.ContentHash = content_hash_of_value(value: "fp-a" as std.types.NonEmptyStr)
+data structural_b: std.content_hash.ContentHash = content_hash_of_value(value: "fp-b" as std.types.NonEmptyStr)
 
 test fn content_hash_from_structural_digest_refuses_non_fingerprint_labels() -> Bool {
   match content_hash_from_structural_digest(digest: "hash_c") {
@@ -182,7 +182,7 @@ test fn pin_integrity_uses_structural_family() -> Bool {
 
 test fn oci_descriptor_accepts_sha256_digest() -> Bool {
   match accept_descriptor(
-    d: OciDescriptor {
+    d: extdeps.container.oci.descriptor.OciDescriptor {
       mediaType: media_type_oci_image_layer_v1_tar_gzip,
       digest: witness_oci_sha256_row(),
       size: 1,
@@ -318,8 +318,8 @@ test fn git_sha1_object_id_maps_to_sha1_family() -> Bool {
       match git_object_id_content_hash(oid: oid) {
         Sha1Hash(d) => content_hash_eq_sha1(
           left: d,
-          right: Sha1Digest {
-            hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904" as Sha1DigestHex,
+          right: std.content_hash.Sha1Digest {
+            hex: "4b825dc642cb6eb9a060e54bf8d69288fbee4904" as std.content_hash.Sha1DigestHex,
           },
         )
         Fnv1a64(_) => false

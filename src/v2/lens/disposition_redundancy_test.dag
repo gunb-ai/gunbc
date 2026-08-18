@@ -1,29 +1,29 @@
 module v2.test.lens_disposition_redundancy.disposition_redundancy_test
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
-data redundancy_present_successor_locator: DeclarationRef = DeclarationRef {
+data redundancy_present_successor_locator: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "std.disposition",
   decl_name: "Disposition",
   field: NamedField { field_name: "marker" }
 }
 
-data redundancy_red_scaffold: Disposition = Scaffold {
+data redundancy_red_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "std.disposition",
     decl_name: "Disposition",
     field: NamedField { field_name: "marker" }
   }
 }
 
-data redundancy_red_dispositions: List<Disposition> = [redundancy_red_scaffold]
-data redundancy_present_with_successor: List<DeclarationRef> = [redundancy_present_successor_locator]
-data redundancy_present_empty: List<DeclarationRef> = []
+data redundancy_red_dispositions: List<std.disposition.Disposition> = [redundancy_red_scaffold]
+data redundancy_present_with_successor: List<std.decl_ref.DeclarationRef> = [redundancy_present_successor_locator]
+data redundancy_present_empty: List<std.decl_ref.DeclarationRef> = []
 
-data redundancy_region1_real_successor_present: List<DeclarationRef> = [
-  DeclarationRef {
+data redundancy_region1_real_successor_present: List<std.decl_ref.DeclarationRef> = [
+  std.decl_ref.DeclarationRef {
     module_path: "extdeps.llm.anthropic",
     decl_name: "AnthropicTextBlock",
     field: NamedField { field_name: "cache_control" }
@@ -62,14 +62,14 @@ test fn redundancy_region1_fires_when_a_real_mark_successor_present() -> Bool {
   ) == 1
 }
 
-data redundancy_region_bytes_marks: List<Disposition> = [
+data redundancy_region_bytes_marks: List<std.disposition.Disposition> = [
   bytes_seam_host_realization_marker,
   utf8_decode_bytes_host_realization_marker,
   base64_group_fill_carrier_debt_marker
 ]
 
-data redundancy_region_bytes_synthetic_present: List<DeclarationRef> = [
-  DeclarationRef {
+data redundancy_region_bytes_synthetic_present: List<std.decl_ref.DeclarationRef> = [
+  std.decl_ref.DeclarationRef {
     module_path: "std.bytes",
     decl_name: "builtin_function_registry",
     field: WholeDeclaration
@@ -94,7 +94,7 @@ test fn redundancy_region_bytes_fires_on_builtin_registry_present() -> Bool {
   ) == 2
 }
 
-data redundancy_region_budget_marks: List<Disposition> = [
+data redundancy_region_budget_marks: List<std.disposition.Disposition> = [
   gunbc_ci_managed_host_fixed_overhead_disposition,
   gunbc_ci_legacy_host_fixed_overhead_disposition,
   gunbc_ci_concurrent_runs_conservative_high_disposition
@@ -102,7 +102,7 @@ data redundancy_region_budget_marks: List<Disposition> = [
 
 data redundancy_region_budget_split_note: String = "The budget region tracked ONE fixed-overhead scaffold bound to gunbc_ci_per_service_overhead until 2026-08-05, when that number split into a measured bound for the managed hosts and an operator allowance for the legacy pair (gunbc.ci_floor_measurement gunbc_ci_host_fixed_overhead_kind_note). Two facts, two closure conditions, two successors — so the region carries both marks and the locator below names the MANAGED successor specifically.\n\nThat specificity is the point of the control rather than an accident of which one was picked: with both marks in the region and only one successor present, a lens that ignored the bind and merely counted scaffolds would report 2 and fail. The expectation stays 1, so the test still discriminates bind-matching from mark-counting — which is the property the original single-mark version could not distinguish."
 
-data redundancy_region_budget_per_service_overhead_locator: DeclarationRef = DeclarationRef {
+data redundancy_region_budget_per_service_overhead_locator: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.ci_floor_measurement",
   decl_name: "gunbc_ci_managed_host_quiescent_meminfo_read",
   field: WholeDeclaration
@@ -126,15 +126,15 @@ test fn redundancy_region_budget_fires_on_per_service_overhead_present() -> Bool
   ) == 1
 }
 
-data redundancy_region_rust_gates_marks: List<Disposition> = [
+data redundancy_region_rust_gates_marks: List<std.disposition.Disposition> = [
   consumed_input_closure_concept_note,
   unit_must_run_failclosed_note,
   unit_must_run_staged_note,
   should_run_gates_coverage_note
 ]
 
-data redundancy_region_rust_gates_synthetic_present: List<DeclarationRef> = [
-  DeclarationRef {
+data redundancy_region_rust_gates_synthetic_present: List<std.decl_ref.DeclarationRef> = [
+  std.decl_ref.DeclarationRef {
     module_path: "tools.rust_stage0_gates",
     decl_name: "per_unit_test_selector",
     field: WholeDeclaration
@@ -159,13 +159,13 @@ test fn redundancy_region_rust_gates_fires_on_staged_selector_present() -> Bool 
   ) == 1
 }
 
-data redundancy_region_entropy_marks: List<Disposition> = [
+data redundancy_region_entropy_marks: List<std.disposition.Disposition> = [
   entropy_count_bytes_unit_debt,
   entropy_transport_linux_gnu_only
 ]
 
-data redundancy_region_entropy_bytesize_present: List<DeclarationRef> = [
-  DeclarationRef {
+data redundancy_region_entropy_bytesize_present: List<std.decl_ref.DeclarationRef> = [
+  std.decl_ref.DeclarationRef {
     module_path: "std.measure",
     decl_name: "ByteSize",
     field: WholeDeclaration
@@ -190,12 +190,12 @@ test fn redundancy_region_entropy_fires_on_bytesize_present() -> Bool {
   ) == 1
 }
 
-data redundancy_region_bmc_marks: List<Disposition> = [
+data redundancy_region_bmc_marks: List<std.disposition.Disposition> = [
   bmc_onboard_secret_on_disk_debt,
 ]
 
-data redundancy_region_bmc_all_successors_present: List<DeclarationRef> = [
-  DeclarationRef {
+data redundancy_region_bmc_all_successors_present: List<std.decl_ref.DeclarationRef> = [
+  std.decl_ref.DeclarationRef {
     module_path: "extdeps.filesystem.filesystem_io",
     decl_name: "Filesystem",
     field: WholeDeclaration
@@ -220,18 +220,18 @@ test fn redundancy_region_bmc_fires_on_all_successors_present() -> Bool {
   ) == 1
 }
 
-data redundancy_region_runner_placement_marks: List<Disposition> = [
+data redundancy_region_runner_placement_marks: List<std.disposition.Disposition> = [
   gunbc_ci_cpu_weight_unit_modeling_marker,
   gunbc_ci_count_field_measure_followup
 ]
 
-data redundancy_region_runner_placement_measure_present: List<DeclarationRef> = [
-  DeclarationRef {
+data redundancy_region_runner_placement_measure_present: List<std.decl_ref.DeclarationRef> = [
+  std.decl_ref.DeclarationRef {
     module_path: "std.measure",
     decl_name: "Measure",
     field: WholeDeclaration
   },
-  DeclarationRef {
+  std.decl_ref.DeclarationRef {
     module_path: "std.measure",
     decl_name: "HardwareThreadCount",
     field: WholeDeclaration
@@ -256,18 +256,18 @@ test fn redundancy_region_runner_placement_fires_on_measure_present() -> Bool {
   ) == 2
 }
 
-data redundancy_region_fleet_converge_marks: List<Disposition> = [
+data redundancy_region_fleet_converge_marks: List<std.disposition.Disposition> = [
   gunbc_ci_regime2_aggregate_dissolution_marker,
   gunbc_host_converge_runner_sessions_coupling_marker
 ]
 
-data redundancy_region_fleet_converge_successors_present: List<DeclarationRef> = [
-  DeclarationRef {
+data redundancy_region_fleet_converge_successors_present: List<std.decl_ref.DeclarationRef> = [
+  std.decl_ref.DeclarationRef {
     module_path: "extdeps.jobserver",
     decl_name: "jobserver_build_pool_bytes",
     field: WholeDeclaration
   },
-  DeclarationRef {
+  std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_converge",
     decl_name: "HostConverge",
     field: WholeDeclaration
@@ -292,7 +292,7 @@ test fn redundancy_region_fleet_converge_fires_on_successors_present() -> Bool {
   ) == 2
 }
 
-data redundancy_region_deconflation_terminal_marks: List<Disposition> = [
+data redundancy_region_deconflation_terminal_marks: List<std.disposition.Disposition> = [
   gunbc_ci_footprint_granularity_disposition,
   gunbc_ci_footprint_bridge_disposition,
   gunbc_ci_budget_tree_deconfliction_disposition,

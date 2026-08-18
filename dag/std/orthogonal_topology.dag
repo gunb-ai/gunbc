@@ -50,12 +50,12 @@ type ClosedShell sole_constructor {
 }
 
 // Total: a prism IS a closed shell, so there is nothing here to refuse and the return type says so.
-fn closed_shell_of_prism(prism: OrthogonalPrism3) -> ClosedShell {
+fn closed_shell_of_prism(prism: std.orthogonal_geometry.OrthogonalPrism3) -> ClosedShell {
   ClosedShell { prism: prism }
 }
 
-fn shell_prism(s: ClosedShell) -> OrthogonalPrism3 { s.prism }
-fn shell_frame(s: ClosedShell) -> CoordinateFrameIdentity { prism3_frame(p: s.prism) }
+fn shell_prism(s: ClosedShell) -> std.orthogonal_geometry.OrthogonalPrism3 { s.prism }
+fn shell_frame(s: ClosedShell) -> std.coordinate_frame.CoordinateFrameIdentity { prism3_frame(p: s.prism) }
 
 fn shell_walls(s: ClosedShell) -> List<ShellWall> {
   let lo = signed_frame_component_count(c: prism3_low(p: s.prism))
@@ -83,9 +83,9 @@ fn enclosed_space(shell: ClosedShell) -> EnclosedSpace {
 }
 
 fn space_shell(s: EnclosedSpace) -> ClosedShell { s.shell }
-fn space_frame(s: EnclosedSpace) -> CoordinateFrameIdentity { shell_frame(s: s.shell) }
-fn space_footprint(s: EnclosedSpace) -> OrthogonalLoop2 { prism3_footprint(p: s.shell.prism) }
-fn space_height(registry: SpatialFrameRegistry, s: EnclosedSpace) -> FrameExtent { prism3_height(registry: registry, p: s.shell.prism) }
+fn space_frame(s: EnclosedSpace) -> std.coordinate_frame.CoordinateFrameIdentity { shell_frame(s: s.shell) }
+fn space_footprint(s: EnclosedSpace) -> std.orthogonal_geometry.OrthogonalLoop2 { prism3_footprint(p: s.shell.prism) }
+fn space_height(registry: std.spatial_frame.SpatialFrameRegistry, s: EnclosedSpace) -> std.spatial_frame.FrameExtent { prism3_height(registry: registry, p: s.shell.prism) }
 fn space_walls(s: EnclosedSpace) -> List<ShellWall> { shell_walls(s: s.shell) }
 
 // EQUALITY IS OVER THE REGION, NOT THE VERTEX LIST. Two spaces are the same when they occupy the
@@ -125,19 +125,19 @@ fn space_eq(a: EnclosedSpace, b: EnclosedSpace) -> Bool {
 // set of edges determines the cycle and therefore the region; and an edge is an UNORDERED pair of
 // endpoints, so writing the loop backwards produces the same set. Rotating the start vertex does
 // not change which edges exist either. One structural fact covers both cases.
-fn same_undirected_edge(a: LoopEdge, b: LoopEdge) -> Bool {
+fn same_undirected_edge(a: std.orthogonal_geometry.LoopEdge, b: std.orthogonal_geometry.LoopEdge) -> Bool {
   (point2_same_position(a: a.start, b: b.start) && point2_same_position(a: a.end, b: b.end))
     || (point2_same_position(a: a.start, b: b.end) && point2_same_position(a: a.end, b: b.start))
 }
 
-fn count_edge(edges: List<LoopEdge>, wanted: LoopEdge) -> Int {
+fn count_edge(edges: List<std.orthogonal_geometry.LoopEdge>, wanted: std.orthogonal_geometry.LoopEdge) -> Int {
   fold(edges, init: 0, f: (acc, e) => if same_undirected_edge(a: e, b: wanted) { acc + 1 } else { acc })
 }
 
 // Multiplicity is compared, not mere membership: two loops can draw on the same set of distinct
 // edges while traversing one of them a different number of times, and a membership test would call
 // those equal.
-fn loops_describe_same_region(a: List<Point2>, b: List<Point2>) -> Bool {
+fn loops_describe_same_region(a: List<std.affine_space.Point2>, b: List<std.affine_space.Point2>) -> Bool {
   if length(a) != length(b) {
     false
   } else {
@@ -154,7 +154,7 @@ fn loops_describe_same_region(a: List<Point2>, b: List<Point2>) -> Bool {
 // CheckedInt and the FIRST crossing wins - a partial sum plus a default would be the fabricated
 // plausible output DESIGN section 5 forbids, and it would be a plausible AREA, which is worse than
 // an implausible one because nothing downstream would question it.
-fn shoelace_term(e: LoopEdge) -> CheckedInt {
+fn shoelace_term(e: std.orthogonal_geometry.LoopEdge) -> std.checked_arithmetic.CheckedInt {
   let a = checked_int_multiply(a: point2_x(p: e.start), b: point2_y(p: e.end))
   let b = checked_int_multiply(a: point2_x(p: e.end), b: point2_y(p: e.start))
   match a {
@@ -167,7 +167,7 @@ fn shoelace_term(e: LoopEdge) -> CheckedInt {
   }
 }
 
-fn shoelace_double_area(l: OrthogonalLoop2) -> CheckedInt {
+fn shoelace_double_area(l: std.orthogonal_geometry.OrthogonalLoop2) -> std.checked_arithmetic.CheckedInt {
   fold(loop_edges(vertices: loop2_vertices(l: l)), init: CheckedIntReady { value: 0 }, f: (acc, e) =>
     match acc {
       CheckedIntOverflow { cause: c } => CheckedIntOverflow { cause: c }
@@ -182,14 +182,14 @@ fn shoelace_double_area(l: OrthogonalLoop2) -> CheckedInt {
 // THE MILLIMETRE GUARD FOR THE METRIC FOLDS. The extents answer in the frame; these do not, so
 // they must not run on a frame they cannot label. An unregistered frame refuses for the same
 // reason it does in std.euclidean_geometry: no declared quantum means no unit to check against.
-fn metric_frame_is_millimetre(registry: SpatialFrameRegistry, identity: CoordinateFrameIdentity) -> Bool {
+fn metric_frame_is_millimetre(registry: std.spatial_frame.SpatialFrameRegistry, identity: std.coordinate_frame.CoordinateFrameIdentity) -> Bool {
   match frame_length_scale(r: registry, identity: identity) {
     Absent => false
     Present { value: sc } => scales_agree(a: sc, b: Milli)
   }
 }
 
-fn loop2_area(registry: SpatialFrameRegistry, l: OrthogonalLoop2) -> OrthogonalConstruction<SquareMillimeter> {
+fn loop2_area(registry: std.spatial_frame.SpatialFrameRegistry, l: std.orthogonal_geometry.OrthogonalLoop2) -> OrthogonalConstruction<std.measure.SquareMillimeter> {
   if !metric_frame_is_millimetre(registry: registry, identity: l.frame) {
     OrthogonalRefused { cause: MillimetreFrameRequiredForMetric { frame: l.frame } }
   } else {
@@ -204,7 +204,7 @@ fn loop2_area(registry: SpatialFrameRegistry, l: OrthogonalLoop2) -> OrthogonalC
   }
 }
 
-fn space_floor_area(registry: SpatialFrameRegistry, s: EnclosedSpace) -> OrthogonalConstruction<SquareMillimeter> {
+fn space_floor_area(registry: std.spatial_frame.SpatialFrameRegistry, s: EnclosedSpace) -> OrthogonalConstruction<std.measure.SquareMillimeter> {
   loop2_area(registry: registry, l: space_footprint(s: s))
 }
 
@@ -229,7 +229,7 @@ fn space_floor_area(registry: SpatialFrameRegistry, s: EnclosedSpace) -> Orthogo
 // was worth finding, because the control was first written claiming otherwise and a mutation of
 // both arms left it green. What the fix delivers is that this function no longer fabricates a
 // zero; what it does not deliver is an executed proof of these arms.
-fn space_height_millimetres(registry: SpatialFrameRegistry, s: EnclosedSpace) -> OrthogonalConstruction<Millimeter> {
+fn space_height_millimetres(registry: std.spatial_frame.SpatialFrameRegistry, s: EnclosedSpace) -> OrthogonalConstruction<std.measure.Millimeter> {
   match space_height(registry: registry, s: s) {
     ExtentFrameUnregistered { identity: f } =>
       OrthogonalRefused { cause: MillimetreFrameRequiredForMetric { frame: f } }
@@ -242,7 +242,7 @@ fn space_height_millimetres(registry: SpatialFrameRegistry, s: EnclosedSpace) ->
   }
 }
 
-fn space_volume(registry: SpatialFrameRegistry, s: EnclosedSpace) -> OrthogonalConstruction<CubicMillimeter> {
+fn space_volume(registry: std.spatial_frame.SpatialFrameRegistry, s: EnclosedSpace) -> OrthogonalConstruction<std.measure.CubicMillimeter> {
   match space_floor_area(registry: registry, s: s) {
     OrthogonalRefused { cause: c } => OrthogonalRefused { cause: c }
     OrthogonalReady { value: area } =>
@@ -261,10 +261,10 @@ fn space_volume(registry: SpatialFrameRegistry, s: EnclosedSpace) -> OrthogonalC
   }
 }
 
-fn square_millimeter_count_as_int(m: SquareMillimeter) -> Int { square_millimeter_count(m: m) }
-fn millimeter_count_as_int(m: Millimeter) -> Int { millimeter_count(m: m) }
+fn square_millimeter_count_as_int(m: std.measure.SquareMillimeter) -> Int { square_millimeter_count(m: m) }
+fn millimeter_count_as_int(m: std.measure.Millimeter) -> Int { millimeter_count(m: m) }
 
-fn cubic_millimeter_count_as_int(m: CubicMillimeter) -> Int { cubic_millimeter_count(m: m) }
+fn cubic_millimeter_count_as_int(m: std.measure.CubicMillimeter) -> Int { cubic_millimeter_count(m: m) }
 
 // CONTAINMENT IS THREE-VALUED, and collapsing it to a Bool would destroy the distinction a consumer
 // most needs. A point ON the boundary is on a wall: it is not in the interior and it is not
@@ -298,7 +298,7 @@ type EdgeInts {
   ey: Int
 }
 
-fn scaled_edges(l: OrthogonalLoop2, scale: Int) -> List<EdgeInts> {
+fn scaled_edges(l: std.orthogonal_geometry.OrthogonalLoop2, scale: Int) -> List<EdgeInts> {
   reverse(fold(loop_edges(vertices: loop2_vertices(l: l)), init: [], f: (acc, e) =>
     concat([EdgeInts {
       sx: point2_x(p: e.start) * scale,
@@ -338,7 +338,7 @@ fn location_from_edges(edges: List<EdgeInts>, px: Int, py: Int) -> PointLocation
   }
 }
 
-fn point_location_in_loop(l: OrthogonalLoop2, px: Int, py: Int) -> PointLocation2 {
+fn point_location_in_loop(l: std.orthogonal_geometry.OrthogonalLoop2, px: Int, py: Int) -> PointLocation2 {
   location_from_edges(edges: scaled_edges(l: l, scale: 1), px: px, py: py)
 }
 
@@ -347,7 +347,7 @@ type PointLocation3
   | PointOnSpaceBoundary
   | PointOutsideSpace
 
-fn space_locate_point(s: EnclosedSpace, p: Point3) -> OrthogonalConstruction<PointLocation3> {
+fn space_locate_point(s: EnclosedSpace, p: std.affine_space.Point3) -> OrthogonalConstruction<PointLocation3> {
   if !coordinate_frame_identity_eq(a: space_frame(s: s), b: p.frame) {
     OrthogonalRefused { cause: OrthogonalFrameMismatch { expected: space_frame(s: s), observed: p.frame } }
   } else {
@@ -403,7 +403,7 @@ fn space_locate_point(s: EnclosedSpace, p: Point3) -> OrthogonalConstruction<Poi
 // and it is bounded by construction rather than by a limit anyone has to remember. Dissolve-on: a
 // sorted coordinate sweep makes the adjacency search linear if a consumer ever brings footprints
 // where this shows up in a measurement.
-fn loop_axis_coords(l: OrthogonalLoop2, want_x: Bool) -> List<Int> {
+fn loop_axis_coords(l: std.orthogonal_geometry.OrthogonalLoop2, want_x: Bool) -> List<Int> {
   reverse(fold(loop2_vertices(l: l), init: [], f: (acc, v) =>
     concat([if want_x { point2_x(p: v) } else { point2_y(p: v) }], acc)))
 }
@@ -439,7 +439,7 @@ fn strictly_inside_scaled(edges: List<EdgeInts>, px: Int, py: Int) -> Bool {
   }
 }
 
-fn footprints_overlap(a: OrthogonalLoop2, b: OrthogonalLoop2) -> Bool {
+fn footprints_overlap(a: std.orthogonal_geometry.OrthogonalLoop2, b: std.orthogonal_geometry.OrthogonalLoop2) -> Bool {
   let a_edges = scaled_edges(l: a, scale: 2)
   let b_edges = scaled_edges(l: b, scale: 2)
   let xs = concat(loop_axis_coords(l: a, want_x: true), loop_axis_coords(l: b, want_x: true))
@@ -618,7 +618,7 @@ fn complex_space_count(c: SpaceComplex) -> Int { length(c.spaces) }
 // The total volume of a complex is a sum the members cannot double-count, because admission already
 // proved they do not overlap. That is the payoff of the wall being at the mint rather than here:
 // this fold is a sum, not a sum plus an inclusion-exclusion correction nobody would get right.
-fn complex_total_volume(registry: SpatialFrameRegistry, c: SpaceComplex) -> OrthogonalConstruction<CubicMillimeter> {
+fn complex_total_volume(registry: std.spatial_frame.SpatialFrameRegistry, c: SpaceComplex) -> OrthogonalConstruction<std.measure.CubicMillimeter> {
   fold(c.spaces, init: OrthogonalReady { value: cubic_millimeter(count: 0) }, f: (acc, s) =>
     match acc {
       OrthogonalRefused { cause: r } => OrthogonalRefused { cause: r }

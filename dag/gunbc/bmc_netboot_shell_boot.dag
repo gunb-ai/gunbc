@@ -1,19 +1,19 @@
 module gunbc.bmc_netboot_shell_boot
 
 
-data tftp_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data tftp_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc1350"
   }
 }
 
 // The tftp transfer semantics this boot path relies on (both busybox tftpd serving and the UEFI shell tftp command fetching) are owned by RFC 1350 (TFTP protocol revision 2) — a distinct upstream from the UEFI Shell 2.2 spec, which owns only the shell command surface.
-data shell_boot_local_kernel: NonEmptyStr = "fs0:\\vmlinuz"
-data shell_boot_local_initrd: NonEmptyStr = "fs0:\\initrd"
+data shell_boot_local_kernel: std.types.NonEmptyStr = "fs0:\\vmlinuz"
+data shell_boot_local_initrd: std.types.NonEmptyStr = "fs0:\\initrd"
 
-fn bmc_tftpd_serve_command(plan: BmcNetbootServePlan) -> ArgvCommand {
-  ArgvCommand {
+fn bmc_tftpd_serve_command(plan: gunbc.bmc_netboot_serve.BmcNetbootServePlan) -> extdeps.exec.command.ArgvCommand {
+  extdeps.exec.command.ArgvCommand {
     argv: [
       join([plan.netboot_dir as String, "/busybox"], ""),
       "udpsvd", "-E", "0.0.0.0", "69",
@@ -23,7 +23,7 @@ fn bmc_tftpd_serve_command(plan: BmcNetbootServePlan) -> ArgvCommand {
   }
 }
 
-fn shell_boot_kernel_cmdline(plan: BmcNetbootServePlan) -> List<KernelCmdlineArg> {
+fn shell_boot_kernel_cmdline(plan: gunbc.bmc_netboot_serve.BmcNetbootServePlan) -> List<extdeps.firmware.kernel_cmdline.KernelCmdlineArg> {
   [
     KernelKeyValue { key: "initrd", value: "\\initrd" },
     KernelKeyValue { key: "ip", value: "dhcp" },
@@ -33,7 +33,7 @@ fn shell_boot_kernel_cmdline(plan: BmcNetbootServePlan) -> List<KernelCmdlineArg
   ]
 }
 
-fn bmc_netboot_shell_boot_commands(plan: BmcNetbootServePlan) -> List<UefiShellCommand> {
+fn bmc_netboot_shell_boot_commands(plan: gunbc.bmc_netboot_serve.BmcNetbootServePlan) -> List<extdeps.firmware.uefi_shell.UefiShellCommand> {
   [
     Ifconfig { action: IfconfigSetDhcp { interface: plan.boot_interface } },
     Ping { host: plan.bmc_host },
@@ -43,4 +43,4 @@ fn bmc_netboot_shell_boot_commands(plan: BmcNetbootServePlan) -> List<UefiShellC
   ]
 }
 
-data srv4_shell_boot_commands: List<UefiShellCommand> = bmc_netboot_shell_boot_commands(plan: srv4_bmc_netboot_serve_plan)
+data srv4_shell_boot_commands: List<extdeps.firmware.uefi_shell.UefiShellCommand> = bmc_netboot_shell_boot_commands(plan: srv4_bmc_netboot_serve_plan)

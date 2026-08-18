@@ -1,7 +1,7 @@
 module tools.cheap_claim_pool_gate
 
 
-func run_cheap_claim_pool_gate_body() -> ProcessExit {
+func run_cheap_claim_pool_gate_body() -> std.process.ProcessExit {
   return if run_cheap_claim_pool() {
     ExitSuccess
   } else {
@@ -11,10 +11,10 @@ func run_cheap_claim_pool_gate_body() -> ProcessExit {
   }
 }
 
-func main() -> ProcessExit {
+func main() -> std.process.ProcessExit {
   run_cheap_claim_pool_gate_body()
 }
 
-func run_cheap_claim_pool_ci_gate() -> ProcessExit {
+func run_cheap_claim_pool_ci_gate() -> std.process.ProcessExit {
   run_cheap_claim_pool_gate_body()
 }

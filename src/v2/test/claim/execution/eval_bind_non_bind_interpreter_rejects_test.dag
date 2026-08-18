@@ -1,15 +1,15 @@
 module v2.test.claim.execution.eval_bind_non_bind_interpreter_rejects
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn eval_bind_node_eval_rejects_value_interpreter_holds() -> Bool {
-  let node = Node {
+  let node = v2.std.node.Node {
     kind: ComputationNode { behavior: Bind },
     occurrence_id: SyntheticOccurrence,
     children: []
   }
-  let tree = InferredTree {
+  let tree = v2.compiler.infer.InferredTree {
     root: node,
     facts: Map {
       lookup: fn(n) {
@@ -22,7 +22,7 @@ test fn eval_bind_node_eval_rejects_value_interpreter_holds() -> Bool {
     tree: tree,
     interpretation: eval_default_interpretation(),
     interpreter: ValueRuntimeInterpreter {
-      interpreter: ValueInterpreter {
+      interpreter: v2.std.runtime.ValueInterpreter {
         allocate_literal: v2_eval_allocate_literal
       }
     },

@@ -4,8 +4,8 @@ module v2.lens.cost.summary
 data complexity_summary_pr1_scope_note: String = "PR1 carrier: work and span only — output_sizes, peak_space, effect_demand, and certainty deferred to later C2 slices. Span discrimination at this layer is STRUCTURAL: summary_sequential emits CostAdd while summary_parallel emits CostMax over the same operands; sequential.span != parallel.span compares constructors, not evaluated magnitudes. The semantic reading (sequential span 2 versus parallel span 1 on equal unit work) arrives when Lane A concrete CostExpr evaluation lands — not claimed here."
 
 type ComplexitySummary {
-  work: CostExpr
-  span: CostExpr
+  work: v2.lens.cost.expr.CostExpr
+  span: v2.lens.cost.expr.CostExpr
 }
 
 fn summary_sequential(left: ComplexitySummary, right: ComplexitySummary) -> ComplexitySummary {

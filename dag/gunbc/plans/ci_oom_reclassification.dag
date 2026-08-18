@@ -1,7 +1,7 @@
 module gunbc.plans.ci_oom_reclassification
 
 
-fn ci_oom_reclassification_body() -> List<MarkdownBlock> {
+fn ci_oom_reclassification_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "One-line: a lone `exit-137` fails closed to `Structural` (correct in isolation — one `ProcessExit` cannot tell a co-residence/contention OOM from a structural memory-runaway), but the green-on-main freshness mechanism ([ci-merge-freshness.md](ci-merge-freshness.md) §3/§6) cannot consume that verdict to BLOCK merges until a consumer can reclassify a *contention* OOM back to `Infra`. This doc is the model-only design of that consumer — the **hard prerequisite (a)** ci-merge-freshness §6 names for the LIVE flip. The build is deferred (§6)."),
     h2(text: "1. The gap — why a lone exit-137 must fail closed, and why that blocks the flip"),
@@ -39,7 +39,7 @@ fn ci_oom_reclassification_body() -> List<MarkdownBlock> {
   ]
 }
 
-data ci_oom_reclassification_plan: Plan = Plan {
+data ci_oom_reclassification_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "ci-oom-reclassification",
   title: "CI OOM reclassification — the green-on-main LIVE-flip prerequisite (cross-run clustering consumer)",
   body: ci_oom_reclassification_body(),

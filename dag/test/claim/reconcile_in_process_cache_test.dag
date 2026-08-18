@@ -4,7 +4,7 @@ module test.claim.reconcile_in_process_cache
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data shared_subject_digest: ContentHash = content_hash_of_value(value: "reconcile-in-process-witness-shared-subject-digest")
+data shared_subject_digest: std.content_hash.ContentHash = content_hash_of_value(value: "reconcile-in-process-witness-shared-subject-digest")
 test fn witness_parse_cache_is_in_process_hand_authored() -> Bool {
   let row = cache_interface_facts_from_catalog(row: parse_cache_facts)
   (catalog_key_derivation_classification(kd: parse_cache_facts.key_derivation) == HandAuthoredString)
@@ -43,7 +43,7 @@ test fn witness_in_process_siblings_share_locality_not_key_class() -> Bool {
 }
 
 test fn witness_parse_source_routes_to_parse_cache_backend() -> Bool {
-  let id = ArtifactIdentity {
+  let id = std.cache_interface.ArtifactIdentity {
     subject_digest: shared_subject_digest,
     artifact_kind: parse_source_artifact_kind,
   }
@@ -52,7 +52,7 @@ test fn witness_parse_source_routes_to_parse_cache_backend() -> Bool {
 }
 
 test fn witness_typed_module_routes_to_typed_module_cache_backend() -> Bool {
-  let id = ArtifactIdentity {
+  let id = std.cache_interface.ArtifactIdentity {
     subject_digest: shared_subject_digest,
     artifact_kind: typed_module_artifact_kind,
   }
@@ -61,7 +61,7 @@ test fn witness_typed_module_routes_to_typed_module_cache_backend() -> Bool {
 }
 
 test fn witness_resolved_graph_routes_to_disk_backend() -> Bool {
-  let id = ArtifactIdentity {
+  let id = std.cache_interface.ArtifactIdentity {
     subject_digest: shared_subject_digest,
     artifact_kind: resolved_graph_artifact_kind,
   }

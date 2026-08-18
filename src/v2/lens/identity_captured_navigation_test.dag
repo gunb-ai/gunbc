@@ -1,28 +1,28 @@
 module v2.test.lens_identity_captured_navigation
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data discoverable_witness_note: String = "Discovery-enrolled sibling to v2.lens.identity_captured_navigation.roster_gate_test (which is OFFLINE per identity_captured_navigation_roster_gate_exclusion_note in gunbc.ci_layer_roots - its file_gate fns read real corpus files via filesystem_read at runtime, invisible to resolve-closure attribution) and to the S6 fast-lane budget that REDs a genuine snippet-parse witness (dag_language_model()+tokenize+parse_module costs >5s even on a five-line snippet - measured directly: run 29305270533, EvalBudgetExceeded at ~5001ms on every source_findings-based witness previously placed here). Rather than parsing real source text, these witnesses hand-construct the exact synthetic Node shape identity_navigation_findings_at/classify_identity_match read - the same technique v2.lens.complexity_accumulator_copy_test.dag uses (a bare Atom fixture) generalized to the Conj-wrapper-with-two-named-edges production shape (mirrors v2.extdeps.languages.dag's own dag_grammar_atom/emit_grammar_relation_row helpers). This keeps the witness in the microsecond range while still exercising the real detection function end-to-end (identity_captured_navigation_findings), not a mocked stand-in."
 
-fn synth_atom(id: Symbol) -> Node {
-  Node {
+fn synth_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn synth_named_edge(name: Symbol, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn synth_named_edge(name: v2.std.node.Symbol, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
-fn synth_positional_edge(target: Node) -> Edge {
-  Edge { label: Positional, target: target }
+fn synth_positional_edge(target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Positional, target: target }
 }
 
-fn synth_conj(children: List<Edge>) -> Node {
-  Node {
+fn synth_conj(children: List<v2.std.node.Edge>) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: children,
     occurrence_id: SyntheticOccurrence
@@ -30,7 +30,7 @@ fn synth_conj(children: List<Edge>) -> Node {
 }
 
 // synth_production mirrors the real grammar's TypeNode{Conj} wrapper (v2.extdeps.languages.dag emit_grammar_relation_row / parse_production_emitted_identity_optional+parse_production_captured_child_optional): a Conj node with exactly one ^grammar_production_identity_node_projection-named edge to an Atom carrying the emitted symbol, and exactly one ^grammar_production_captured_node_projection-named edge to the real captured value subtree - the two-edge shape this whole lens exists to police the navigation of.
-fn synth_production(emitted: Symbol, captured: Node) -> Node {
+fn synth_production(emitted: v2.std.node.Symbol, captured: Node) -> Node {
   synth_conj([
     synth_named_edge(name: ^grammar_production_identity_node_projection, target: synth_atom(id: emitted)),
     synth_named_edge(name: ^grammar_production_captured_node_projection, target: captured)
@@ -44,7 +44,7 @@ fn synth_sequence(left: Node, right: Node) -> Node {
   ])
 }
 
-fn synth_mentions(mentions: List<Symbol>) -> Node {
+fn synth_mentions(mentions: List<v2.std.node.Symbol>) -> Node {
   synth_conj(list_map(xs: mentions, f: fn(sym) { synth_positional_edge(target: synth_atom(id: sym)) }))
 }
 
@@ -53,11 +53,11 @@ fn synth_arg(value_expr: Node) -> Node {
   synth_production(emitted: ^dag_surface_arg, captured: synth_production(emitted: ^dag_surface_primary_expr, captured: value_expr))
 }
 
-fn synth_name_value_expr(name_sym: Symbol) -> Node {
+fn synth_name_value_expr(name_sym: v2.std.node.Symbol) -> Node {
   synth_conj([synth_named_edge(name: ^grammar_sequence_left_node_projection, target: synth_atom(id: name_sym))])
 }
 
-fn synth_identity_navigation_call(name_sym: Symbol) -> Node {
+fn synth_identity_navigation_call(name_sym: v2.std.node.Symbol) -> Node {
   let root_arg = synth_arg(value_expr: synth_name_value_expr(name_sym: ^dag_surface_root))
   let name_arg = synth_arg(value_expr: synth_name_value_expr(name_sym: name_sym))
   let call_value_expr = synth_conj([
@@ -77,7 +77,7 @@ fn synth_match_expr(scrutinee: Node, arms: Node) -> Node {
   synth_production(emitted: ^dag_surface_match_expr, captured: captured)
 }
 
-fn findings_for(scrutinee_name_sym: Symbol, mentions: List<Symbol>) -> List<v2.lens.identity_captured_navigation.Finding> {
+fn findings_for(scrutinee_name_sym: v2.std.node.Symbol, mentions: List<v2.std.node.Symbol>) -> List<v2.lens.identity_captured_navigation.Finding> {
   let scrutinee = synth_identity_navigation_call(name_sym: scrutinee_name_sym)
   let arms = synth_mentions(mentions: mentions)
   let root = synth_match_expr(scrutinee: scrutinee, arms: arms)

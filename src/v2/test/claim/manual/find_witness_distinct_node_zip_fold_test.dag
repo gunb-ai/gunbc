@@ -1,153 +1,153 @@
 module v2.test.manual.find_witness_distinct_node_zip_fold
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 fn distinct_source_leaf() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^distinct_zip_source_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn distinct_target_leaf() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^distinct_zip_source_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn distinct_wrong_leaf() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^distinct_zip_wrong_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn distinct_source_add_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: distinct_source_leaf() },
-      Edge { label: Positional, target: distinct_source_leaf() },
-      Edge { label: Positional, target: distinct_source_leaf() }
+      v2.std.node.Edge { label: Positional, target: distinct_source_leaf() },
+      v2.std.node.Edge { label: Positional, target: distinct_source_leaf() },
+      v2.std.node.Edge { label: Positional, target: distinct_source_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn distinct_target_add_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: distinct_target_leaf() },
-      Edge { label: Positional, target: distinct_target_leaf() },
-      Edge { label: Positional, target: distinct_target_leaf() }
+      v2.std.node.Edge { label: Positional, target: distinct_target_leaf() },
+      v2.std.node.Edge { label: Positional, target: distinct_target_leaf() },
+      v2.std.node.Edge { label: Positional, target: distinct_target_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn distinct_wrong_arity_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: distinct_wrong_leaf() },
-      Edge { label: Positional, target: distinct_wrong_leaf() }
+      v2.std.node.Edge { label: Positional, target: distinct_wrong_leaf() },
+      v2.std.node.Edge { label: Positional, target: distinct_wrong_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn distinct_wrong_subtree_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: distinct_wrong_arity_node() },
-      Edge { label: Positional, target: distinct_target_leaf() },
-      Edge { label: Positional, target: distinct_target_leaf() }
+      v2.std.node.Edge { label: Positional, target: distinct_wrong_arity_node() },
+      v2.std.node.Edge { label: Positional, target: distinct_target_leaf() },
+      v2.std.node.Edge { label: Positional, target: distinct_target_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn distinct_source_nested_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: distinct_source_add_node() },
-      Edge { label: Positional, target: distinct_source_leaf() }
+      v2.std.node.Edge { label: Positional, target: distinct_source_add_node() },
+      v2.std.node.Edge { label: Positional, target: distinct_source_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 fn distinct_target_nested_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: distinct_target_add_node() },
-      Edge { label: Positional, target: distinct_target_leaf() }
+      v2.std.node.Edge { label: Positional, target: distinct_target_add_node() },
+      v2.std.node.Edge { label: Positional, target: distinct_target_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
-fn distinct_closedness() -> StructuralPropertyWitness {
-  StructuralPropertyWitness {
+fn distinct_closedness() -> v2.std.witness.StructuralPropertyWitness {
+  v2.std.witness.StructuralPropertyWitness {
     property: ^distinct_zip_closed_candidates,
     evidence: distinct_target_add_node()
   }
 }
-fn distinct_exact_predicate() -> PreservationPredicate {
-  PreservationPredicate {
+fn distinct_exact_predicate() -> v2.std.find_witness.PreservationPredicate {
+  v2.std.find_witness.PreservationPredicate {
     algebra: distinct_source_add_node(),
     preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
   }
 }
-fn distinct_candidate_set() -> CandidateSet {
-  CandidateSet {
+fn distinct_candidate_set() -> v2.std.find_witness.CandidateSet {
+  v2.std.find_witness.CandidateSet {
     candidates: [distinct_target_add_node()],
     closedness: distinct_closedness()
   }
 }
-fn distinct_wrong_arity_candidate_set() -> CandidateSet {
-  CandidateSet {
+fn distinct_wrong_arity_candidate_set() -> v2.std.find_witness.CandidateSet {
+  v2.std.find_witness.CandidateSet {
     candidates: [distinct_wrong_arity_node()],
     closedness: distinct_closedness()
   }
 }
-fn distinct_wrong_subtree_candidate_set() -> CandidateSet {
-  CandidateSet {
+fn distinct_wrong_subtree_candidate_set() -> v2.std.find_witness.CandidateSet {
+  v2.std.find_witness.CandidateSet {
     candidates: [distinct_wrong_subtree_node()],
     closedness: distinct_closedness()
   }
 }
-fn distinct_nested_predicate() -> PreservationPredicate {
-  PreservationPredicate {
+fn distinct_nested_predicate() -> v2.std.find_witness.PreservationPredicate {
+  v2.std.find_witness.PreservationPredicate {
     algebra: distinct_source_nested_node(),
     preservation_rule: ^preservation_rule_exact_structural_equality_zip_fold
   }
 }
-fn distinct_nested_candidate_set() -> CandidateSet {
-  CandidateSet {
+fn distinct_nested_candidate_set() -> v2.std.find_witness.CandidateSet {
+  v2.std.find_witness.CandidateSet {
     candidates: [distinct_target_nested_node()],
     closedness: distinct_closedness()
   }
 }
-fn distinct_valid_witness() -> StructuralPropertyWitness {
-  StructuralPropertyWitness {
+fn distinct_valid_witness() -> v2.std.witness.StructuralPropertyWitness {
+  v2.std.witness.StructuralPropertyWitness {
     property: ^preservation_rule_exact_structural_equality_zip_fold,
     evidence: distinct_target_add_node()
   }
 }
-fn rejected_for_no_candidate(o: Outcome<FindWitnessResult>) -> Bool {
+fn rejected_for_no_candidate(o: Outcome<v2.std.find_witness.FindWitnessResult>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: r } => r.head.reason == ^find_witness_reason_no_candidate
   }
 }
-fn quality_is_exact(q: CoercionQuality) -> Bool {
+fn quality_is_exact(q: v2.std.coercion.CoercionQuality) -> Bool {
   match q {
     Exact => true
     Identity => false
     Widened => false
   }
 }
-fn quality_is_identity(q: CoercionQuality) -> Bool {
+fn quality_is_identity(q: v2.std.coercion.CoercionQuality) -> Bool {
   match q {
     Identity => true
     Exact => false
@@ -197,17 +197,17 @@ test data witness_find_witness_nested_distinct_node_accepts: Bool = match find_w
   Accepted { value: fw, diagnostics: _ } => fw.candidate == distinct_target_nested_node()
   Rejected { diagnostics: _ } => false
 }
-fn distinct_grounding() -> CanonicalGrounding {
-  CanonicalGrounding {
+fn distinct_grounding() -> v2.std.constraints.CanonicalGrounding {
+  v2.std.constraints.CanonicalGrounding {
     node: distinct_source_add_node(),
-    witness: CanonicalGroundingWitness {
+    witness: v2.std.constraints.CanonicalGroundingWitness {
       structural: distinct_valid_witness(),
       closedness: distinct_closedness()
     }
   }
 }
-fn distinct_coercion_candidates() -> CoercionCandidateSet {
-  CoercionCandidateSet { set: distinct_candidate_set() }
+fn distinct_coercion_candidates() -> v2.std.coercion.CoercionCandidateSet {
+  v2.std.coercion.CoercionCandidateSet { set: distinct_candidate_set() }
 }
 test data witness_coercion_fold_distinct_node_accepts: Bool = match coercion_fold(
   source: distinct_grounding(),

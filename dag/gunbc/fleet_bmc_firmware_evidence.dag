@@ -8,23 +8,23 @@ module gunbc.fleet_bmc_firmware_evidence
 // authenticated Redfish read, which is the fabricated-plausible-output failure applied to
 // provenance (DESIGN §5).
 type BmcFirmwareAttestation {
-  endpoint: BmcEndpoint
-  firmware: BmcFirmwareVersion
-  attested_by: NonEmptyStr
-  attested_at: EpochMs
+  endpoint: std.bmc.BmcEndpoint
+  firmware: extdeps.bmc.capability.BmcFirmwareVersion
+  attested_by: std.types.NonEmptyStr
+  attested_at: std.types.EpochMs
 }
 
 // Three states, not two: an endpoint with no evidence is its own arm. Absence of evidence is
 // not evidence of the shipped default — that conflation is the defect this module exists to
 // close (DESIGN, state-space conflation).
 type BmcFirmwareEvidence
-  = BmcFirmwareEvidenceObserved { observation: BmcFirmwareObservation }
+  = BmcFirmwareEvidenceObserved { observation: extdeps.bmc.capability.BmcFirmwareObservation }
   | BmcFirmwareEvidenceAttested { attestation: BmcFirmwareAttestation }
-  | BmcFirmwareEvidenceUnobserved { endpoint: BmcEndpoint }
+  | BmcFirmwareEvidenceUnobserved { endpoint: std.bmc.BmcEndpoint }
 
 type BmcFirmwareVersionStanding
-  = BmcFirmwareVersionEstablished { firmware: BmcFirmwareVersion }
-  | BmcFirmwareVersionUnestablished { endpoint: BmcEndpoint }
+  = BmcFirmwareVersionEstablished { firmware: extdeps.bmc.capability.BmcFirmwareVersion }
+  | BmcFirmwareVersionUnestablished { endpoint: std.bmc.BmcEndpoint }
 
 fn bmc_firmware_evidence_endpoint(evidence: BmcFirmwareEvidence) -> BmcEndpoint {
   match evidence {
@@ -46,10 +46,10 @@ fn bmc_firmware_evidence_version(evidence: BmcFirmwareEvidence) -> BmcFirmwareVe
 }
 
 type BmcFirmwareCapabilityStanding
-  = BmcFirmwareCapabilityResolved { row: BmcFirmwareCapabilityRow }
-  | BmcFirmwareCapabilityEvidenceAbsent { endpoint: BmcEndpoint }
-  | BmcFirmwareCapabilityVersionUncatalogued { firmware: BmcFirmwareVersion }
-  | BmcFirmwareCapabilityVersionAmbiguous { firmware: BmcFirmwareVersion, count: Int }
+  = BmcFirmwareCapabilityResolved { row: extdeps.bmc.capability.BmcFirmwareCapabilityRow }
+  | BmcFirmwareCapabilityEvidenceAbsent { endpoint: std.bmc.BmcEndpoint }
+  | BmcFirmwareCapabilityVersionUncatalogued { firmware: extdeps.bmc.capability.BmcFirmwareVersion }
+  | BmcFirmwareCapabilityVersionAmbiguous { firmware: extdeps.bmc.capability.BmcFirmwareVersion, count: Int }
 
 // host -> host firmware evidence -> capability row. There is no arm that reaches a board-level
 // shipped default: an unobserved endpoint and an uncatalogued version each refuse with the

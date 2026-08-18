@@ -35,7 +35,7 @@ type LandingAudienceAction = NonEmptyStr where brand("LandingAudienceAction")
 type LandingAudienceStatus = NonEmptyStr where brand("LandingAudienceStatus")
 
 type LandingGuaranteeProposition {
-  statement: NonEmptyStr
+  statement: std.types.NonEmptyStr
 }
 
 type LandingEvidenceFact {
@@ -85,7 +85,7 @@ type LandingProposalContract {
   dependencies: List<LandingProposalOccurrenceId>
   atomicity: LandingAtomicity
   submit_authority: LandingActorAuthorityHandle
-  submitted_at: Timestamp
+  submitted_at: std.types.Timestamp
 }
 
 fn landing_native_identity(
@@ -100,7 +100,7 @@ fn landing_native_identity(
 type LandingStressProfile {
   agents_per_developer: std.integer.PositiveInt
   overlapping_proposals: std.integer.PositiveInt
-  validation_path: Minute
+  validation_path: std.measure.Minute
 }
 
 data gunbc_landing_stress_profile: LandingStressProfile = LandingStressProfile {
@@ -133,7 +133,7 @@ type LandingEvidenceBlock
     }
   | LandingEvidenceRefused {
       claim: LandingRequiredClaim,
-      refusals: List<EvidenceAdmissionRefusal>,
+      refusals: List<std.claim_evidence.EvidenceAdmissionRefusal>,
     }
 
 type LandingEvidenceReadiness
@@ -277,7 +277,7 @@ type LandingNormativeAlternative
 type LandingNormativeOption {
   label: LandingAudienceLabel
   preview: LandingAudiencePreview
-  resume_hint: NonEmptyStr
+  resume_hint: std.types.NonEmptyStr
   alternative: LandingNormativeAlternative
 }
 
@@ -289,8 +289,8 @@ type LandingNormativeOptions {
 
 type LandingCandidateSpace
   = LandingNoResultClasses {
-      incompatible_core: NonEmptyStr,
-      counterexample: NonEmptyStr,
+      incompatible_core: std.types.NonEmptyStr,
+      counterexample: std.types.NonEmptyStr,
     }
   | LandingOneResultClass {
       result: LandingResultClass,
@@ -304,7 +304,7 @@ type LandingIndependentReadBackAuthorityReceipt {
   observer: LandingObservationAuthorityHandle
   admission_contract: LandingAdmissionContractHandle
   established_by: LandingActorAuthorityHandle
-  receipt: ContentHash
+  receipt: std.content_hash.ContentHash
 }
 
 type LandingClosureSubject {
@@ -315,13 +315,13 @@ type LandingClosureSubject {
   candidates: LandingCandidateSpace
 }
 
-type LandingCaptureCompletenessReceipt { receipt: ContentHash }
-type LandingAffectedScopeReceipt { receipt: ContentHash }
-type LandingRuleClosureReceipt { receipt: ContentHash }
-type LandingCandidateGenerationReceipt { receipt: ContentHash }
-type LandingAdmissibilityReceipt { receipt: ContentHash }
-type LandingEquivalenceQuotientReceipt { receipt: ContentHash }
-type LandingMultiplicityReceipt { receipt: ContentHash }
+type LandingCaptureCompletenessReceipt { receipt: std.content_hash.ContentHash }
+type LandingAffectedScopeReceipt { receipt: std.content_hash.ContentHash }
+type LandingRuleClosureReceipt { receipt: std.content_hash.ContentHash }
+type LandingCandidateGenerationReceipt { receipt: std.content_hash.ContentHash }
+type LandingAdmissibilityReceipt { receipt: std.content_hash.ContentHash }
+type LandingEquivalenceQuotientReceipt { receipt: std.content_hash.ContentHash }
+type LandingMultiplicityReceipt { receipt: std.content_hash.ContentHash }
 
 type LandingClosureEvidence {
   capture_completeness: LandingCaptureCompletenessReceipt
@@ -354,7 +354,7 @@ type LandingClosureAttempt
   | LandingClosureIncomplete {
       subject: LandingClosureSubject,
       missing: LandingClosureCertificateKind,
-      cause: NonEmptyStr,
+      cause: std.types.NonEmptyStr,
     }
 
 type LandingRefusalKind
@@ -369,13 +369,13 @@ type LandingRefusalKind
 
 type LandingRefusal {
   kind: LandingRefusalKind
-  locus: NonEmptyStr
+  locus: std.types.NonEmptyStr
   occurrences: std.integer.PositiveInt
-  internal_cause: NonEmptyStr
+  internal_cause: std.types.NonEmptyStr
   plain_reason: LandingAudienceReason
   responsible_party: LandingAudienceParty
   next_action: LandingAudienceAction
-  receipt: ContentHash
+  receipt: std.content_hash.ContentHash
 }
 
 fn landing_native_refusal(
@@ -445,7 +445,7 @@ type LandingClosedManyReceipt {
 
 type LandingChoiceContinuation {
   prior: LandingClosedManyReceipt
-  selected: NativeScmSelectedContinuationOption
+  selected: gunbc.native_scm_interaction_contract.NativeScmSelectedContinuationOption
   processing: LandingResumedSemanticProcessing
 }
 
@@ -474,7 +474,7 @@ type LandingChoiceResolution
     }
   | LandingChoiceNotOffered {
       prior: LandingClosedManyReceipt,
-      choice: NativeScmContinuationChoice,
+      choice: gunbc.native_scm_interaction_contract.NativeScmContinuationChoice,
     }
 
 fn landing_alternative_for_choice(
@@ -547,10 +547,10 @@ type LandingUnclosedCause
     }
   | LandingClosureCertificateMissing {
       certificate: LandingClosureCertificateKind,
-      cause: NonEmptyStr,
+      cause: std.types.NonEmptyStr,
     }
   | LandingSearchBoundExhausted {
-      cause: NonEmptyStr,
+      cause: std.types.NonEmptyStr,
     }
 
 type LandingUnclosedDisposition
@@ -572,8 +572,8 @@ type LandingClosedOneReceipt {
 type LandingSemanticResultSpace
   = LandingClosedZero {
       closed_space: LandingClosedResultSpaceReceipt,
-      incompatible_core: NonEmptyStr,
-      counterexample: NonEmptyStr,
+      incompatible_core: std.types.NonEmptyStr,
+      counterexample: std.types.NonEmptyStr,
       disposition: LandingClosedZeroDisposition,
     }
   | LandingClosedOne {
@@ -738,7 +738,7 @@ fn landing_blocked_evidence_result(
 type LandingAdmissionReceipt {
   semantic: LandingClosedOneReceipt
   authority: LandingActorAuthorityHandle
-  receipt: ContentHash
+  receipt: std.content_hash.ContentHash
 }
 
 type LandingAdmissionDecision
@@ -869,14 +869,14 @@ fn landing_independent_read_back(
 
 type LandingCompatibilityTargetBinding {
   semantic_target: LandingTargetHandle
-  native_target: CompatibilityTargetHandle
+  native_target: gunbc.scm_compatibility_shape.CompatibilityTargetHandle
   receipt: LandingTargetBindingReceipt
 }
 
 type LandingProjectionOfAcceptedTransition {
   transition: LandingTransitionReceipt
   binding: LandingCompatibilityTargetBinding
-  projection: CompatibilityProjectionReceipt
+  projection: gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt
 }
 
 type LandingProjectionRelation
@@ -884,7 +884,7 @@ type LandingProjectionRelation
       receipt: LandingProjectionOfAcceptedTransition,
     }
   | LandingProjectionBindingRefused {
-      cause: NonEmptyStr,
+      cause: std.types.NonEmptyStr,
     }
 
 fn landing_projection_of_transition(
@@ -918,15 +918,15 @@ type LandingProjectionStatus
     }
   | LandingProjectionPending {
       transition: LandingTransitionReceipt,
-      realization: CompatibilityRealizationHandle,
+      realization: gunbc.scm_compatibility_shape.CompatibilityRealizationHandle,
       target: LandingCompatibilityTargetBinding,
-      cause: NonEmptyStr,
+      cause: std.types.NonEmptyStr,
     }
   | LandingProjectionFailed {
       transition: LandingTransitionReceipt,
-      realization: CompatibilityRealizationHandle,
+      realization: gunbc.scm_compatibility_shape.CompatibilityRealizationHandle,
       target: LandingCompatibilityTargetBinding,
-      cause: NonEmptyStr,
+      cause: std.types.NonEmptyStr,
     }
 
 type LandingProjectionStatusFold<R> {
@@ -999,7 +999,7 @@ type LandingCommitAssembly
       committed: LandingCommittedTransition,
     }
   | LandingCommitRelationRefused {
-      cause: NonEmptyStr,
+      cause: std.types.NonEmptyStr,
     }
 
 fn landing_committed_transition(
@@ -1069,7 +1069,7 @@ type LandingSpineReceipt
 
 type LandingUserBoundary
   = LandingTerminal {
-      outcome: NativeScmTerminalOutcome,
+      outcome: gunbc.native_scm_interaction_contract.NativeScmTerminalOutcome,
     }
   | LandingMachineOwned {
       status: LandingAudienceStatus,

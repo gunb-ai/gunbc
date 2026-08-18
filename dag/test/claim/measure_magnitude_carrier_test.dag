@@ -10,7 +10,7 @@ test fn measure_nat_magnitude_roundtrip_holds() -> Bool {
 }
 
 fn signed_microvolts(n: Int) -> Measure<ElectricPotential, Micro, Int> {
-  Measure { count: n }
+  std.measure.Measure { count: n }
 }
 
 fn signed_microvolts_count(v: Measure<ElectricPotential, Micro, Int>) -> Int {

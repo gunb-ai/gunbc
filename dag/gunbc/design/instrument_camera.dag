@@ -135,7 +135,7 @@ fn focus_subject_key(f: FocusSubject) -> String {
   }
 }
 
-fn focus_finish_line(l: V1FinishLine) -> FocusSubject {
+fn focus_finish_line(l: gunbc.v1_deletion_plan.V1FinishLine) -> FocusSubject {
   FinishLineFocused { line_key: v1_finish_line_key(l: l) }
 }
 
@@ -172,7 +172,7 @@ fn camera_seek_depth(c: ProgramCamera, target: ProgramDepth) -> ProgramCamera {
 }
 
 data wheel_detent_threshold_px: Int = 80
-data wheel_gesture_reset_interval: Millisecond = millisecond(count: 120)
+data wheel_gesture_reset_interval: std.measure.Millisecond = millisecond(count: 120)
 
 type WheelIntegrator {
   travel_px: Int

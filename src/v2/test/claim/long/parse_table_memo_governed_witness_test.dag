@@ -1,19 +1,19 @@
 module v2.test.long.parse_table_memo_governed_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // Governed memo door receipts: Memoize verdict consumed at parse_table_lookup/insert (non-Memoize refuses store); warm==cold content-hash purity on the bisect fixture; RED on bypass insert (Recompute carrier with hand-populated entries). Door fns parse_table_memo_lookup_refuses_store / parse_table_memo_insert_refused are the direct oracle — witnesses call them, not map shape alone. parse_table_memo_door_order_independent composes insert-then-lookup and lookup-then-insert (Case A: seed ParseTableMemo must not serve/populate on non-Memoize — v1_interpreter.rs gated). reconcile-as-lookup-path is the next increment.
-fn governed_witness_probe_key() -> ParsePositionKey {
-  ParsePositionKey { position: 0, production: ^governed_witness_probe_prod }
+fn governed_witness_probe_key() -> v2.compiler.parse.ParsePositionKey {
+  v2.compiler.parse.ParsePositionKey { position: 0, production: ^governed_witness_probe_prod }
 }
 
-fn governed_witness_dummy_entry() -> ParseMemoEntry {
+fn governed_witness_dummy_entry() -> v2.compiler.parse.ParseMemoEntry {
   ParseMemoRejected { diagnostics: [] }
 }
 
-fn parse_table_recompute_fixture() -> ParseTable {
+fn parse_table_recompute_fixture() -> v2.compiler.parse.ParseTable {
   let base = parse_table_empty()
-  ParseTableRealization {
+  v2.compiler.parse.ParseTableRealization {
     artifact_kind: base.artifact_kind,
     provider_id: base.provider_id,
     materialization: Recompute,
@@ -28,9 +28,9 @@ fn parse_table_recompute_fixture() -> ParseTable {
   }
 }
 
-fn parse_table_memoize_fixture() -> ParseTable {
+fn parse_table_memoize_fixture() -> v2.compiler.parse.ParseTable {
   let base = parse_table_empty()
-  ParseTableRealization {
+  v2.compiler.parse.ParseTableRealization {
     artifact_kind: base.artifact_kind,
     provider_id: base.provider_id,
     materialization: Memoize,
@@ -83,7 +83,7 @@ fn witness_door_order_independent_for_recompute_table() -> Bool {
     && witness_door_lookup_then_insert_refused_for_recompute_table()
 }
 
-fn parse_table_entries_contain_key(table: ParseTable, key: ParsePositionKey) -> Bool {
+fn parse_table_entries_contain_key(table: v2.compiler.parse.ParseTable, key: v2.compiler.parse.ParsePositionKey) -> Bool {
   match v2.std.collection.map_get(m: table.entries, key: key) {
     Accepted { value: Present { value: _ } } => true
     Accepted { value: Absent } => false
@@ -91,7 +91,7 @@ fn parse_table_entries_contain_key(table: ParseTable, key: ParsePositionKey) -> 
   }
 }
 
-fn parse_table_memo_store_well_formed_at(table: ParseTable, key: ParsePositionKey) -> Bool {
+fn parse_table_memo_store_well_formed_at(table: v2.compiler.parse.ParseTable, key: v2.compiler.parse.ParsePositionKey) -> Bool {
   match materialization_allows_memo_store(m: table.materialization) {
     true => true
     false => !parse_table_entries_contain_key(table: table, key: key)
@@ -101,7 +101,7 @@ fn parse_table_memo_store_well_formed_at(table: ParseTable, key: ParsePositionKe
 fn witness_bypass_store_reds_non_memoize_carrier() -> Bool {
   let key = governed_witness_probe_key()
   let base = parse_table_recompute_fixture()
-  let bypass = ParseTableRealization {
+  let bypass = v2.compiler.parse.ParseTableRealization {
     artifact_kind: base.artifact_kind,
     provider_id: base.provider_id,
     materialization: Recompute,

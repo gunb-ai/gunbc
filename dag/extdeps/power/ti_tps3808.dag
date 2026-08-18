@@ -3,8 +3,8 @@ module extdeps.power.ti_tps3808
 
 // The TPS3808 datasheet, read 2026-08-14 for its mechanical pages only. The package drawing it
 // reprints is DBV0006A, stamped 4214840/G, 08/2024.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.ti.com/lit/ds/symlink/tps3808.pdf"
   }
@@ -12,13 +12,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data ti_tps3808_note: String = "THIS ROW IS A MECHANICAL CANDIDATE AND NOT A SELECTED PART. Nothing here says the device suits any board role; a selection is a functional-compatibility join done at the product layer, and this row supplies only the package authority that join consumes. WHAT THIS MODULE CARRIES AND WHAT IT DOES NOT. The TPS3808 is a supply voltage supervisor, and this row carries NONE of that: no threshold, no delay, no supply range. It carries the part's mechanical facts — the package body dimensions and the vendor's recommended land pattern — because those are the facts that were read from the document. A row naming a supervisor while carrying no supervision fact would be thin if it claimed to be a device model; it does not. It is the answer to one question, which is what a board has to etch to mount this part, and a later reader adding the electrical facts is adding to a cited row rather than correcting an invented one. THE PITCH IS AN ARITHMETIC READING OF THE DRAWING, and is recorded as such rather than taken from a family memory: the body drawing prints 1.9 across two pitches and the land pattern prints 0.95 twice, and 2 x 0.95 = 1.9, so the two pages of one drawing agree and neither number was supplied by the reader."
 
-data tps3808_dbv0006a_drawing: PackageDrawingRef = PackageDrawingRef {
+data tps3808_dbv0006a_drawing: extdeps.land_pattern.types.PackageDrawingRef = extdeps.land_pattern.types.PackageDrawingRef {
   drawing_number: "4214840/G",
   revision_date: "08/2024",
   reprinted_in: extdeps_external_authority_anchor,
 }
 
-data tps3808_dbv0006a_body: PackageBodyDimensions = PackageBodyDimensions {
+data tps3808_dbv0006a_body: extdeps.land_pattern.types.PackageBodyDimensions = extdeps.land_pattern.types.PackageBodyDimensions {
   designator: "DBV0006A",
   drawing: tps3808_dbv0006a_drawing,
   terminal_count: 6,
@@ -30,7 +30,7 @@ data tps3808_dbv0006a_body: PackageBodyDimensions = PackageBodyDimensions {
   height_max: micrometer(count: 1450),
 }
 
-data tps3808_dbv0006a_land_pattern: VendorRecommendedLandPattern = VendorRecommendedLandPattern {
+data tps3808_dbv0006a_land_pattern: extdeps.land_pattern.types.VendorRecommendedLandPattern = extdeps.land_pattern.types.VendorRecommendedLandPattern {
   package_designator: "DBV0006A",
   drawing: tps3808_dbv0006a_drawing,
   geometry: DualRowLandGeometry {
@@ -42,19 +42,19 @@ data tps3808_dbv0006a_land_pattern: VendorRecommendedLandPattern = VendorRecomme
   },
 }
 
-data tps3808g01dbvr: PartMechanicalCandidate = PartMechanicalCandidate {
+data tps3808g01dbvr: extdeps.land_pattern.types.PartMechanicalCandidate = extdeps.land_pattern.types.PartMechanicalCandidate {
   ordering_part_number: "TPS3808G01DBVR",
   vendor: texas_instruments,
   body: tps3808_dbv0006a_body,
   land_pattern: tps3808_dbv0006a_land_pattern,
-  terminal_indexing: TerminalIndexingObligation {
+  terminal_indexing: extdeps.land_pattern.types.TerminalIndexingObligation {
     what_is_missing: "the pin-one location, the numbering direction, the top-versus-bottom view convention the drawing is stated in, the terminal-to-land identity relation and the electrical role of any exposed pad, for package DBV0006A. None of those were transcribed and this repository carries no pin-map model to receive them, so this candidate cannot be admitted for footprint realization and a consumer cannot mistake matching counts and pitch for a known pin map",
   },
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.power.ti_tps3808",
       decl_name: "tps3808g01dbvr",
       field: WholeDeclaration

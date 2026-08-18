@@ -10,13 +10,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type DockerCeAptRepo {
-  keyring_url: NonEmptyStr
-  keyring_path: NonEmptyStr
-  keyring_fingerprint: NonEmptyStr
-  repo_base: NonEmptyStr
-  suite: NonEmptyStr
-  component: NonEmptyStr
-  arch: NonEmptyStr
+  keyring_url: std.types.NonEmptyStr
+  keyring_path: std.types.NonEmptyStr
+  keyring_fingerprint: std.types.NonEmptyStr
+  repo_base: std.types.NonEmptyStr
+  suite: std.types.NonEmptyStr
+  component: std.types.NonEmptyStr
+  arch: std.types.NonEmptyStr
 }
 
 // Docker's apt signing-key fingerprint is a PUBLISHED fact (docs.docker.com/engine/install/ubuntu: 9DC8 5822 9FC7 DD38 854A E2D8 8D81 803C 0EBF CD88). A keyring fetched by blind curl is a supply-chain fail-open — the install script verifies the imported key's fingerprint against the pinned row and refuses on mismatch, the same posture as sccache's pinned release digests.

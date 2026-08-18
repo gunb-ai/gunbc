@@ -11,27 +11,27 @@ type ExclusionKey {
 }
 
 type EditDimension {
-  edit: Edit
+  edit: v2.std.node.Edit
   dimension: AffectedDimension
 }
 
 type ExclusionProof
-  = EmptyDimensionDelta { subject: Path }
+  = EmptyDimensionDelta { subject: v2.std.node.Path }
 
 type PropagationExclusionProof
   = DimensionNotRead { usage_site: Node, changed_dimension: AffectedDimension }
 
 type BoundaryExclusionProof
-  = UnchangedPureBoundary { content_hash: Hash }
+  = UnchangedPureBoundary { content_hash: v2.std.node.Hash }
 
 type BoundaryExclusion {
-  edit: Edit
+  edit: v2.std.node.Edit
   proof: BoundaryExclusionProof
 }
 
 type FailClosedReason
-  = ReasonSymbol { reason: Symbol }
-  | ReasonDiagnostics { diagnostics: NonEmptyDiagnostics }
+  = ReasonSymbol { reason: v2.std.node.Symbol }
+  | ReasonDiagnostics { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
 
 type FrontierDecision
   = Rerun
@@ -45,33 +45,33 @@ type ReExecFrontier
   | FailClosed { reason: FailClosedReason }
 
 type HashReceipt
-  = HashUnchangedPure { content_hash: Hash }
+  = HashUnchangedPure { content_hash: v2.std.node.Hash }
   | HashChanged
-  | HashUnknown { reason: Symbol }
+  | HashUnknown { reason: v2.std.node.Symbol }
 
 type BoundaryReceipt
   = BoundaryPruned { proof: BoundaryExclusionProof }
   | BoundaryExpands
-  | BoundaryUnknown { reason: Symbol }
+  | BoundaryUnknown { reason: v2.std.node.Symbol }
 
 type ChangedDimensionReceipt
   = ChangedDimensions { first: AffectedDimension, rest: List<AffectedDimension> }
-  | ChangedDimensionsUnknown { reason: Symbol }
+  | ChangedDimensionsUnknown { reason: v2.std.node.Symbol }
 
 type PropagationReceipt
   = Propagates
   | DoesNotPropagate { proof: PropagationExclusionProof }
-  | PropagationUnknown { reason: Symbol }
+  | PropagationUnknown { reason: v2.std.node.Symbol }
 
 type FrontierDependency {
-  dependency: DependencyView
-  target: DependencyEndpoint
+  dependency: v2.std.dependency.DependencyView
+  target: v2.std.change.DependencyEndpoint
 }
 
 type FrontierReceipt
   = FrontierProduced { dependencies: List<FrontierDependency> }
-  | FrontierUnknown { reason: Symbol }
-  | FrontierRejected { diagnostic: Diagnostic }
+  | FrontierUnknown { reason: v2.std.node.Symbol }
+  | FrontierRejected { diagnostic: v2.std.diagnostic.Diagnostic }
 
 type AffectedFrontierRead {
   proven_transitive_dependency_frontier: fn(Dag, EditDimension) -> FrontierReceipt
@@ -95,19 +95,19 @@ type AffectedPostEditDagRead {
 type AffectedFoldAcc {
   dag: Dag
   frontier: ReExecFrontier
-  pending: Diagnostics
+  pending: v2.std.diagnostic.Diagnostics
 }
 
 type AffectedSetFoldAcc
   = AffectedSetActive {
       dag: Dag,
-      changes: ChangeSet,
-      affected: List<AffectedDependency>,
-      exclusions: List<AffectedExclusion>
+      changes: v2.std.change.ChangeSet,
+      affected: List<v2.std.change.AffectedDependency>,
+      exclusions: List<v2.std.change.AffectedExclusion>
     }
   | AffectedSetFailed {
-      changes: ChangeSet,
-      evidence: AffectedSetEvidence
+      changes: v2.std.change.ChangeSet,
+      evidence: v2.std.change.AffectedSetEvidence
     }
 
 type RerunNodeSet
@@ -115,7 +115,7 @@ type RerunNodeSet
       nodes: List<Node>
     }
   | RerunNodeSetFailClosed {
-      evidence: AffectedSetEvidence
+      evidence: v2.std.change.AffectedSetEvidence
     }
 
 type AffectedSetReading {
@@ -1224,12 +1224,12 @@ type MetaProcessKind
 
 type RepoProcess {
   kind: RepoProcessKind
-  identity: Symbol
+  identity: v2.std.node.Symbol
 }
 
 type RepoProcessUniverse
   = UniverseComplete { processes: List<RepoProcess> }
-  | UniverseIncomplete { uncovered_kind: Symbol, reason: FailClosedReason }
+  | UniverseIncomplete { uncovered_kind: v2.std.node.Symbol, reason: FailClosedReason }
 
 data affected_set_reflect_gate_type: Symbol = ^Gate
 data affected_set_reflect_meta_process_kind_type: Symbol = ^MetaProcessKind

@@ -8,24 +8,24 @@ type EffectIoResourceBackend
 
 type EffectIoResourceLocator {
   backend: EffectIoResourceBackend
-  identity: Hash
+  identity: v2.std.node.Hash
 }
 
 type EffectIoFixtureStore {
   backend: EffectIoResourceBackend
-  entries: Map<Hash, RuntimeValue>
+  entries: Map<v2.std.node.Hash, v2.std.runtime.RuntimeValue>
 }
 
 type EffectIoPureHandlerBundle {
   fixture_store: EffectIoFixtureStore
-  handlers: EffectHandlerBinding
+  handlers: v2.std.runtime.EffectHandlerBinding
 }
 
 type V4EffectIoPureRuntime {
-  bundle_identity: Symbol
+  bundle_identity: v2.std.node.Symbol
   declared_backend: EffectIoResourceBackend
   fixture_store: EffectIoFixtureStore
-  handlers: EffectHandlerBinding
+  handlers: v2.std.runtime.EffectHandlerBinding
 }
 
 fn effect_io_pure_unit_type_node() -> Node {

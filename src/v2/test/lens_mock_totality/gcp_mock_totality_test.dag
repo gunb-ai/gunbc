@@ -4,7 +4,7 @@ module v2.test.lens_mock_totality.gcp_mock_totality
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedGcpMock {
-  tag: Symbol
+  tag: v2.std.node.Symbol
 }
 
 data gcp_red_omit_keys: List<String> = ["gcp.SecretManager.AddVersion"]

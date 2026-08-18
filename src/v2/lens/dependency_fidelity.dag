@@ -5,7 +5,7 @@ data law_note: String = "dependency-fidelity §2: correctness = declared depende
 
 type FidelityDiscrepancy
   = UnreachedDeclaredInput { declaration: Node }
-  | UnreachedDeclaredOutput { arm: Symbol }
+  | UnreachedDeclaredOutput { arm: v2.std.node.Symbol }
   | UnderClaimedEdge { source: Node, dependent: Node }
   | OverClaimedCoupling { left: Node, right: Node }
 

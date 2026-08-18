@@ -1,7 +1,7 @@
 module v2.lens.identity_captured_navigation.analyze
 
 
-fn named_child_optional(cap: Node, name: Symbol) -> Optional<Node> {
+fn named_child_optional(cap: Node, name: v2.std.node.Symbol) -> Optional<Node> {
   match find_named_child(root: cap, name: name) {
     Accepted { value: c, diagnostics: _ } => Present { value: c }
     Rejected { diagnostics: _ } => Absent
@@ -16,7 +16,7 @@ fn sequence_right_node(cap: Node) -> Optional<Node> {
   named_child_optional(cap: cap, name: ^grammar_sequence_right_node_projection)
 }
 
-fn find_capture(root: Node, emitted: Symbol) -> Optional<Node> {
+fn find_capture(root: Node, emitted: v2.std.node.Symbol) -> Optional<Node> {
   match parse_subtree_find_production_captured(root: root, emitted: emitted) {
     ParseSubtreeFound { captured: c } => Present { value: c }
     ParseSubtreeAbsent => Absent
@@ -28,7 +28,7 @@ fn capture_list_prepend(item: Node, xs: List<Node>) -> List<Node> {
 }
 
 // collect_direct_captures walks n.children only until it hits a node whose OWN production identity equals the target emitted symbol - it does not descend past a match, so it finds exactly the direct (non-nested) occurrences of a production, matching the technique v2.lens.complexity_accumulator_copy.analyze uses to read a call's own args (^dag_surface_arg) without wandering into a nested call's args.
-fn collect_direct_captures(n: Node, emitted: Symbol, acc: List<Node>) -> List<Node> {
+fn collect_direct_captures(n: Node, emitted: v2.std.node.Symbol, acc: List<Node>) -> List<Node> {
   match parse_production_emitted_identity_optional(node: n) {
     Present { value: id } =>
       if id == emitted {
@@ -60,29 +60,29 @@ fn primary_expr_capture(node: Node) -> Optional<Node> {
   }
 }
 
-fn sequence_left_symbol(cap: Node) -> Optional<Symbol> {
+fn sequence_left_symbol(cap: Node) -> Optional<v2.std.node.Symbol> {
   match sequence_left_node(cap: cap) {
     Absent => Absent
     Present { value: left } => node_atom_identity_optional(node: left)
   }
 }
 
-fn symbol_list_prepend(item: Symbol, xs: List<Symbol>) -> List<Symbol> {
+fn symbol_list_prepend(item: v2.std.node.Symbol, xs: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   Cons { head: item, tail: xs }
 }
 
-fn symbol_list_length(xs: List<Symbol>) -> Int {
+fn symbol_list_length(xs: List<v2.std.node.Symbol>) -> Int {
   fold(xs, init: 0, f: fn(acc, s) { acc + 1 })
 }
 
-fn edge_is_identity_projection(e: Edge) -> Bool {
+fn edge_is_identity_projection(e: v2.std.node.Edge) -> Bool {
   match e.label {
     Named { name: nm } => nm == ^grammar_production_identity_node_projection
     Positional => false
   }
 }
 
-fn collect_value_identifiers_into(n: Node, acc: List<Symbol>) -> List<Symbol> {
+fn collect_value_identifiers_into(n: Node, acc: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   let here = match node_atom_identity_optional(node: n) {
     Present { value: id } =>
       if dag_lex_token_symbol(sym: id) { acc } else { symbol_list_prepend(item: id, xs: acc) }
@@ -101,7 +101,7 @@ data mention_scan_note: String = "collect_value_identifiers_into skips ^grammar_
 
 data node_source_symbol_note: String = "The dag surface grammar stamps a caret-literal's referenced identifier (dag_grammar_caret_symbol_expr's right-hand terminal) with StampClass, not StampLexeme (src/v2/extdeps/languages/dag.dag), so node_atom_identity_optional on that terminal returns only the generic ^dag_token_ident token-CLASS symbol for every caret literal, never the specific text - a real grammar limitation this lens does not touch (out of scope: dag.dag's parse/identity machinery). node_source_symbol recovers the actual referenced identifier out-of-band via the same span/provenance machinery std.diagnostic's Locus and std.provenance's SpanIndex already provide for diagnostics: look up the node's minted occurrence in the SpanIndex, resolve it to a Textual\{file, extent: ByteRange\} locus, slice the original source text, and intern the slice as a Symbol. A synthetic (unminted) node or a non-textual/non-byte-range locus fail-closed to Absent - never a fabricated symbol."
 
-fn node_source_symbol(node: Node, span_index: SpanIndex, source_text: String) -> Optional<Symbol> {
+fn node_source_symbol(node: Node, span_index: v2.std.provenance.SpanIndex, source_text: String) -> Optional<v2.std.node.Symbol> {
   match node.occurrence_id {
     SyntheticOccurrence => Absent
     MintedOccurrence { id: occ_id } =>
@@ -122,7 +122,7 @@ fn node_source_symbol(node: Node, span_index: SpanIndex, source_text: String) ->
 }
 
 // primary_expr's grammar is a Choice: caret_symbol_expr = Sequence(caret_terminal, ident_terminal) for an atom literal like ^foo, vs primary_expr_core's plain-identifier case = Sequence(ident_lexeme, suffix) for a call head like find_named_child - the SAME sequence shape, but the symbol lives on the LEFT for a plain identifier and the RIGHT for a caret-prefixed atom literal (the left is the caret token itself, dag_lex_token_symbol-true). arg_value_symbol reads the left first and, when it is literally ^dag_token_caret, resolves the right - the atom literal's real referenced symbol - via node_source_symbol (see node_source_symbol_note) rather than returning the caret token's own class symbol.
-fn caret_literal_right_symbol(value_expr: Node, span_index: SpanIndex, source_text: String) -> Optional<Symbol> {
+fn caret_literal_right_symbol(value_expr: Node, span_index: v2.std.provenance.SpanIndex, source_text: String) -> Optional<v2.std.node.Symbol> {
   match sequence_right_node(cap: value_expr) {
     Absent => Absent
     Present { value: right } => node_source_symbol(node: right, span_index: span_index, source_text: source_text)
@@ -131,17 +131,17 @@ fn caret_literal_right_symbol(value_expr: Node, span_index: SpanIndex, source_te
 
 fn value_expr_symbol_from_left(
   value_expr: Node,
-  left_id: Symbol,
-  span_index: SpanIndex,
+  left_id: v2.std.node.Symbol,
+  span_index: v2.std.provenance.SpanIndex,
   source_text: String
-) -> Optional<Symbol> {
+) -> Optional<v2.std.node.Symbol> {
   match left_id == ^dag_token_caret {
     true => caret_literal_right_symbol(value_expr: value_expr, span_index: span_index, source_text: source_text)
     false => Present { value: left_id }
   }
 }
 
-fn arg_value_symbol(arg_capture: Node, span_index: SpanIndex, source_text: String) -> Optional<Symbol> {
+fn arg_value_symbol(arg_capture: Node, span_index: v2.std.provenance.SpanIndex, source_text: String) -> Optional<v2.std.node.Symbol> {
   match find_capture(root: arg_capture, emitted: ^dag_surface_primary_expr) {
     Absent => Absent
     Present { value: value_expr } =>
@@ -165,9 +165,9 @@ fn call_args_in_order(call_capture: Node) -> List<Node> {
 fn arg_nth_value_symbol(
   call_capture: Node,
   index: Int,
-  span_index: SpanIndex,
+  span_index: v2.std.provenance.SpanIndex,
   source_text: String
-) -> Optional<Symbol> {
+) -> Optional<v2.std.node.Symbol> {
   match list_at_optional(xs: call_args_in_order(call_capture: call_capture), index: index) {
     Absent => Absent
     Present { value: arg_cap } =>
@@ -207,7 +207,7 @@ fn no_identity_navigation_call() -> Optional<Node> {
 
 fn scrutinee_identity_navigation_call(
   scrutinee: Node,
-  span_index: SpanIndex,
+  span_index: v2.std.provenance.SpanIndex,
   source_text: String
 ) -> Optional<Node> {
   match find_capture(root: scrutinee, emitted: ^dag_surface_primary_expr) {
@@ -233,12 +233,12 @@ fn scrutinee_identity_navigation_call(
   }
 }
 
-fn count_symbol(xs: List<Symbol>, needle: Symbol) -> Int {
+fn count_symbol(xs: List<v2.std.node.Symbol>, needle: v2.std.node.Symbol) -> Int {
   fold(xs, init: 0, f: fn(acc, s) { if s == needle { acc + 1 } else { acc } })
 }
 
 // Name-agnostic shape check (see identity_captured_navigation_wall_note): mentions is every value-reference identifier inside the guarding match's arm region. Removing every ^Absent (the legitimate empty-Optional literal a Rejected arm returns) and exactly one ^node_atom_identity_optional (the sanctioned reduction) should leave EXACTLY one mention - the binder passed as that reduction's sole argument. Zero reductions with a non-Absent mention present means the raw identity node was referenced without ever being reduced (the bare-return escape shape); more than one leftover mention after one reduction means something besides the reduction's own argument escaped; more than one reduction is an ambiguous shape this lens refuses rather than guesses at.
-fn empty_symbol_list() -> List<Symbol> {
+fn empty_symbol_list() -> List<v2.std.node.Symbol> {
   std.algebra.Empty
 }
 
@@ -264,13 +264,13 @@ fn suspect_identity_navigation_finding(
   }
 }
 
-fn unclassifiable_identity_navigation_finding(match_node: Node, cause: Symbol) -> Optional<Finding> {
+fn unclassifiable_identity_navigation_finding(match_node: Node, cause: v2.std.node.Symbol) -> Optional<Finding> {
   Present {
     value: v2.lens.identity_captured_navigation.Unclassifiable { at: match_node, cause: cause }
   }
 }
 
-fn classify_identity_match(source_node: Node, match_node: Node, mentions: List<Symbol>) -> Optional<Finding> {
+fn classify_identity_match(source_node: Node, match_node: Node, mentions: List<v2.std.node.Symbol>) -> Optional<Finding> {
   let non_absent = fold(mentions, init: empty_symbol_list(), f: fn(acc, s) {
     if s == ^Absent { acc } else { symbol_list_prepend(item: s, xs: acc) }
   })
@@ -312,7 +312,7 @@ fn classify_identity_match(source_node: Node, match_node: Node, mentions: List<S
   }
 }
 
-fn identity_navigation_findings_at(node: Node, span_index: SpanIndex, source_text: String) -> List<Finding> {
+fn identity_navigation_findings_at(node: Node, span_index: v2.std.provenance.SpanIndex, source_text: String) -> List<Finding> {
   match parse_production_emitted_identity_optional(node: node) {
     Present { value: emitted } =>
       if emitted == ^dag_surface_match_expr {
@@ -358,7 +358,7 @@ fn identity_navigation_findings_at(node: Node, span_index: SpanIndex, source_tex
   }
 }
 
-fn identity_navigation_scan(node: Node, span_index: SpanIndex, source_text: String, acc: List<Finding>) -> List<Finding> {
+fn identity_navigation_scan(node: Node, span_index: v2.std.provenance.SpanIndex, source_text: String, acc: List<Finding>) -> List<Finding> {
   let here = list_append(
     left: acc,
     right: identity_navigation_findings_at(node: node, span_index: span_index, source_text: source_text)
@@ -368,7 +368,7 @@ fn identity_navigation_scan(node: Node, span_index: SpanIndex, source_text: Stri
   })
 }
 
-fn identity_captured_navigation_findings(root: Node, span_index: SpanIndex, source_text: String) -> List<Finding> {
+fn identity_captured_navigation_findings(root: Node, span_index: v2.std.provenance.SpanIndex, source_text: String) -> List<Finding> {
   identity_navigation_scan(node: root, span_index: span_index, source_text: source_text, acc: std.algebra.Empty)
 }
 
@@ -386,7 +386,7 @@ fn finding_is_refusal(f: Finding) -> Bool {
   }
 }
 
-fn finding_refusal_cause(f: Finding) -> Optional<Symbol> {
+fn finding_refusal_cause(f: Finding) -> Optional<v2.std.node.Symbol> {
   match f {
     Suspect { violation: _ } => Absent
     v2.lens.identity_captured_navigation.Unclassifiable { at: _, cause: c } => Present { value: c }

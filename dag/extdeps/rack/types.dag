@@ -21,9 +21,9 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 type RackCatalogRow {
-  model: NonEmptyStr
-  manufacturer: Vendor<Hardware>
-  rack_units: RackUnit
+  model: std.types.NonEmptyStr
+  manufacturer: Vendor<extdeps.hardware.Hardware>
+  rack_units: std.measure.RackUnit
   post_count: Int
   open_frame: Bool
 }

@@ -10,7 +10,7 @@ data carriage_kind_distinction_note: String = "TWO STATUSES MAP TO ONE DISPOSITI
 // verdict: the only input is whether the document is publicly published.
 type UpstreamFactCarriage
   = FactsMayBeCarried
-  | FactsBarredDocumentNotPublic { gate: NonEmptyStr }
+  | FactsBarredDocumentNotPublic { gate: std.types.NonEmptyStr }
 
 fn upstream_fact_carriage(status: DocumentPublicationStatus) -> UpstreamFactCarriage {
   match status {

@@ -59,7 +59,7 @@ type World sole_constructor {
   rooms: List<PlacedSpace>
 }
 
-fn room_identity_eq(a: RoomIdentity, b: RoomIdentity) -> Bool {
+fn room_identity_eq(a: product.placement_supply.RoomIdentity, b: product.placement_supply.RoomIdentity) -> Bool {
   (a as String) == (b as String)
 }
 
@@ -67,7 +67,7 @@ fn world_rooms(w: World) -> List<PlacedSpace> { w.rooms }
 
 fn world_room_count(w: World) -> Int { length(w.rooms) }
 
-fn find_room(rooms: List<PlacedSpace>, identity: RoomIdentity) -> PlacedSpace? {
+fn find_room(rooms: List<PlacedSpace>, identity: product.placement_supply.RoomIdentity) -> PlacedSpace? {
   fold(rooms, init: none, f: (acc, r) =>
     match acc {
       Present { value: found } => Present { value: found }
@@ -80,7 +80,7 @@ type DuplicateScan {
   duplicate: product.placement_supply.RoomIdentity?
 }
 
-fn first_duplicate_identity(rooms: List<PlacedSpace>) -> RoomIdentity? {
+fn first_duplicate_identity(rooms: List<PlacedSpace>) -> product.placement_supply.RoomIdentity? {
   let scanned = fold(rooms, init: DuplicateScan { seen: [], duplicate: none }, f: (acc, r) =>
     match acc.duplicate {
       Present { value: d } => DuplicateScan { seen: acc.seen, duplicate: Present { value: d } }
@@ -95,7 +95,7 @@ fn first_duplicate_identity(rooms: List<PlacedSpace>) -> RoomIdentity? {
   scanned.duplicate
 }
 
-fn room_spaces(rooms: List<PlacedSpace>) -> List<EnclosedSpace> {
+fn room_spaces(rooms: List<PlacedSpace>) -> List<std.orthogonal_topology.EnclosedSpace> {
   reverse(fold(rooms, init: [], f: (acc, r) => concat([r.space], acc)))
 }
 
@@ -113,14 +113,14 @@ fn world(rooms: List<PlacedSpace>) -> WorldConstruction<World> {
   }
 }
 
-fn world_complex(w: World) -> WorldConstruction<SpaceComplex> {
+fn world_complex(w: World) -> WorldConstruction<std.orthogonal_topology.SpaceComplex> {
   match space_complex(spaces: room_spaces(rooms: w.rooms)) {
     OrthogonalRefused { cause: c } => WorldRefused { cause: WorldGeometryRefused { cause: c } }
     OrthogonalReady { value: c } => WorldReady { value: c }
   }
 }
 
-fn world_total_volume(registry: SpatialFrameRegistry, w: World) -> WorldConstruction<CubicMillimeter> {
+fn world_total_volume(registry: std.spatial_frame.SpatialFrameRegistry, w: World) -> WorldConstruction<std.measure.CubicMillimeter> {
   match world_complex(w: w) {
     WorldRefused { cause: c } => WorldRefused { cause: c }
     WorldReady { value: complex } =>
@@ -153,7 +153,7 @@ type ApplyAcc {
   refusal: WorldRefusal?
 }
 
-fn without_identity(rooms: List<PlacedSpace>, identity: RoomIdentity) -> List<PlacedSpace> {
+fn without_identity(rooms: List<PlacedSpace>, identity: product.placement_supply.RoomIdentity) -> List<PlacedSpace> {
   reverse(fold(rooms, init: [], f: (acc, r) =>
     if room_identity_eq(a: r.identity, b: identity) { acc } else { concat([r], acc) }))
 }
@@ -163,7 +163,7 @@ fn without_identity(rooms: List<PlacedSpace>, identity: RoomIdentity) -> List<Pl
 // [hall, kitchen] when only kitchen changed, and any consumer that folds the world - a projection, a
 // serialization, a receipt - would see a change with no hunk behind it. The band's thesis is that
 // the change IS the representation, and an unrepresented reorder is precisely the violation of it.
-fn replace_identity(rooms: List<PlacedSpace>, identity: RoomIdentity, space: EnclosedSpace) -> List<PlacedSpace> {
+fn replace_identity(rooms: List<PlacedSpace>, identity: product.placement_supply.RoomIdentity, space: std.orthogonal_topology.EnclosedSpace) -> List<PlacedSpace> {
   reverse(fold(rooms, init: [], f: (acc, r) =>
     if room_identity_eq(a: r.identity, b: identity) {
       concat([PlacedSpace { identity: identity, space: space }], acc)

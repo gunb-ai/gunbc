@@ -7,7 +7,7 @@ type OsInstallActuateWorkflowStep
   | WorkflowBmcCredentialProbeAndResolve
   | WorkflowBmcwebSessionLogin
   | WorkflowNbdProxyServe
-  | WorkflowOperatorApproval { escalation: WorkflowEscalation }
+  | WorkflowOperatorApproval { escalation: gunbc.workflow_escalation.WorkflowEscalation }
   | WorkflowBootOnceCd
   | WorkflowSolConsoleCapture
 

@@ -39,14 +39,14 @@ data mt_jade_excluded_non_normative_appendices: List<ExcludedNonNormativeAppendi
 ]
 
 type MtJadeReferencePlatform {
-  marketing_name: NonEmptyStr
+  marketing_name: std.types.NonEmptyStr
   revision: MtJadeSpecificationRevision
-  version_label: NonEmptyStr
-  publication_date: SpecificationDocumentDate
-  contributor: Vendor<Hardware>
-  specification_license: OcpSpecificationLicense
-  contribution_license: OcpContributionLicense
-  excluded_appendices: List<ExcludedNonNormativeAppendix>
+  version_label: std.types.NonEmptyStr
+  publication_date: extdeps.publication.SpecificationDocumentDate
+  contributor: Vendor<extdeps.hardware.Hardware>
+  specification_license: extdeps.ocp.publication.OcpSpecificationLicense
+  contribution_license: extdeps.ocp.publication.OcpContributionLicense
+  excluded_appendices: List<extdeps.ocp.publication.ExcludedNonNormativeAppendix>
 }
 
 data mt_jade_reference_platform: MtJadeReferencePlatform = MtJadeReferencePlatform {

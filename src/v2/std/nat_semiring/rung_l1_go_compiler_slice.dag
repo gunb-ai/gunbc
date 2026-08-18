@@ -5,8 +5,8 @@ data go_l1_nat_semiring_rung2_l1_host_gate: String = "UNREALIZED — no host gat
 
 data go_l1_nat_semiring_rung2_l1_receipt_schema: String = "go_l1_compiler_slice_receipt_v1 — schema name only; no emitter is bound while go_l1_nat_semiring_rung2_l1_host_gate is UNREALIZED."
 
-fn l1_go_receipt_atom(sym: Symbol) -> Node {
-  Node {
+fn l1_go_receipt_atom(sym: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -15,10 +15,10 @@ fn l1_go_receipt_atom(sym: Symbol) -> Node {
 
 data phase1_l1_go_compiler_slice_subject_slice_binding: Node = l1_go_receipt_atom(sym: ^go_l1_nat_semiring_rung2)
 
-data phase1_nat_semiring_l1_go_compiler_slice_subject: Node = Node {
+data phase1_nat_semiring_l1_go_compiler_slice_subject: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
+    v2.std.node.Edge {
       label: Named { name: ^l1_go_receipt_slice_edge },
       target: phase1_l1_go_compiler_slice_subject_slice_binding
     }
@@ -26,20 +26,20 @@ data phase1_nat_semiring_l1_go_compiler_slice_subject: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn phase1_l1_go_compiler_slice_claim(label: String) -> TestClaim {
+fn phase1_l1_go_compiler_slice_claim(label: String) -> v2.std.verification.TestClaim {
   CompilesClaim {
     label: label,
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: phase1_nat_semiring_l1_go_compiler_slice_subject,
     expected_value: phase1_nat_semiring_l1_go_compiler_slice_subject,
-    classification: TestClassification { tier: Tier3, layer: Integration }
+    classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
   }
 }
 
-data claim_phase1_nat_semiring_l1_go_compiler_slice_compile: TestClaim = phase1_l1_go_compiler_slice_claim(
+data claim_phase1_nat_semiring_l1_go_compiler_slice_compile: v2.std.verification.TestClaim = phase1_l1_go_compiler_slice_claim(
   label: "fixture=phase1/nat_semiring rung=l1 target=go slice=^go_l1_nat_semiring_rung2 predicate=R-L1-go-compiler-slice-compile"
 )
 
-data phase1_nat_semiring_l1_go_compiler_slice_claim_rows: List<TestClaim> = [
+data phase1_nat_semiring_l1_go_compiler_slice_claim_rows: List<v2.std.verification.TestClaim> = [
   claim_phase1_nat_semiring_l1_go_compiler_slice_compile
 ]

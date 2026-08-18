@@ -1,27 +1,27 @@
 module extdeps.bmc.access
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.dmtf.org/standards/redfish"
   }
 }
 
-data redfish_privilege_object: NonEmptyStr = "redfish"
+data redfish_privilege_object: std.types.NonEmptyStr = "redfish"
 
-fn redfish_privilege_permission(privilege: RedfishPrivilege) -> Permission {
-  Permission { operation: redfish_privilege_wire(p: privilege), object: redfish_privilege_object }
+fn redfish_privilege_permission(privilege: extdeps.bmc.types.RedfishPrivilege) -> extdeps.access.rbac.Permission {
+  extdeps.access.rbac.Permission { operation: redfish_privilege_wire(p: privilege), object: redfish_privilege_object }
 }
 
-fn redfish_privilege_assignment(privilege: RedfishPrivilege, role: RedfishAccountRole) -> PermissionAssignment {
-  PermissionAssignment {
+fn redfish_privilege_assignment(privilege: extdeps.bmc.types.RedfishPrivilege, role: extdeps.bmc.types.RedfishAccountRole) -> extdeps.access.rbac.PermissionAssignment {
+  extdeps.access.rbac.PermissionAssignment {
     permission: redfish_privilege_permission(privilege: privilege),
     role: redfish_account_role_wire(role: role),
   }
 }
 
-data redfish_rbac_policy: RbacPolicy = RbacPolicy {
+data redfish_rbac_policy: extdeps.access.rbac.RbacPolicy = extdeps.access.rbac.RbacPolicy {
   users: [],
   roles: [
     redfish_account_role_wire(role: AccountRoleAdministrator),

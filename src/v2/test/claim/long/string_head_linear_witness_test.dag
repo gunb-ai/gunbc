@@ -1,9 +1,9 @@
 module v2.test.long.string_head_linear_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
-data shlw_file_anchor: Symbol = ^shlw_file_anchor
+data shlw_file_anchor: v2.std.node.Symbol = ^shlw_file_anchor
 
 data shlw_logic_path: String = "dag/std/logic.dag"
 
@@ -38,14 +38,14 @@ data shlw_trunc_quarter_path: String = "src/v2/test/fixture/census_path_trunc/qu
 data shlw_trunc_half_path: String = "src/v2/test/fixture/census_path_trunc/half.txt"
 data shlw_trunc_full_path: String = "src/v2/test/fixture/census_path_trunc/full.txt"
 
-fn shlw_first_token_lexeme(tokens: List<Token>) -> String {
+fn shlw_first_token_lexeme(tokens: List<v2.std.compilers.lexing.Token>) -> String {
   match list_at_optional(xs: tokens, index: 0) {
     Absent => std.algebra.Empty
     Present { value: tok } => tok.lexeme
   }
 }
 
-fn shlw_tokens_match_pinned_oracle(tokens: List<Token>) -> Bool {
+fn shlw_tokens_match_pinned_oracle(tokens: List<v2.std.compilers.lexing.Token>) -> Bool {
   (length(xs: tokens) == shlw_purity_token_count)
     && (shlw_first_token_lexeme(tokens: tokens) == shlw_purity_lexeme)
 }

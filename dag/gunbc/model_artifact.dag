@@ -27,20 +27,20 @@ module gunbc.model_artifact
 // the artifact is keyed by digest: a base named `gpt-oss:20b` is a base whose bytes can move, and a
 // lineage built on moving pointers records a story rather than a fact.
 type ModelArtifactProvenance
-  = PulledFromUpstream { publisher: NonEmptyStr, reference: OllamaModelRef }
+  = PulledFromUpstream { publisher: std.types.NonEmptyStr, reference: extdeps.ollama.api.OllamaModelRef }
   | DerivedByTuning {
-      base_identity: ContentHash
-      dataset_identity: ContentHash
-      run_identity: NonEmptyStr
+      base_identity: std.content_hash.ContentHash
+      dataset_identity: std.content_hash.ContentHash
+      run_identity: std.types.NonEmptyStr
     }
 
 // A MODEL ARTIFACT: identity first, provenance beside it, reference LAST and explicitly demoted to a
 // label. The field order is not cosmetic -- it is the claim that two artifacts are the same exactly
 // when their identities match, whatever they happen to be called.
 type ModelArtifact sole_constructor {
-  identity: ContentHash
+  identity: std.content_hash.ContentHash
   provenance: ModelArtifactProvenance
-  serving_label: NonEmptyStr
+  serving_label: std.types.NonEmptyStr
 }
 
 // Sealed, and minted only from a digest that an endpoint actually returned. A caller cannot author a
@@ -105,8 +105,8 @@ fn model_artifact_from_tuning_run(
 // into a spurious drift, while collapsing it into "same" would be the fail-open.
 type ModelArtifactAgreement
   = ArtifactIdentical
-  | ArtifactDiffers { desired: ContentHash, loaded: ContentHash }
-  | ArtifactIncomparable { cause: NonEmptyStr }
+  | ArtifactDiffers { desired: std.content_hash.ContentHash, loaded: std.content_hash.ContentHash }
+  | ArtifactIncomparable { cause: std.types.NonEmptyStr }
 
 fn compare_model_artifact(desired: ModelArtifact, loaded: ModelArtifact) -> ModelArtifactAgreement {
   match compare_content_hash(left: desired.identity, right: loaded.identity) {

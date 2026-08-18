@@ -1,31 +1,31 @@
 module v2.test.lens_cost.loop_linear
 
 
-data loop_linear_body_leaf: Node = Node {
+data loop_linear_body_leaf: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^loop_linear_body_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data loop_linear_measure_leaf: Node = Node {
+data loop_linear_measure_leaf: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^loop_linear_measure_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data loop_linear_body: Node = Node {
+data loop_linear_body: Node = v2.std.node.Node {
   kind: ComputationNode { behavior: Transform },
   children: [
-    Edge { label: Positional, target: loop_linear_body_leaf }
+    v2.std.node.Edge { label: Positional, target: loop_linear_body_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data loop_linear_input: Node = Node {
+data loop_linear_input: Node = v2.std.node.Node {
   kind: ComputationNode { behavior: Loop },
   children: [
-    Edge { label: Positional, target: loop_linear_body },
-    Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_measure_leaf }
+    v2.std.node.Edge { label: Positional, target: loop_linear_body },
+    v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: loop_linear_measure_leaf }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -45,7 +45,7 @@ fn loop_linear_claim_rhs() -> Node {
   if loop_linear_claim_holds() {
     loop_linear_input
   } else {
-    Node {
+    v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -53,10 +53,10 @@ fn loop_linear_claim_rhs() -> Node {
   }
 }
 
-data claim_loop_linear: TestClaim = EqualsClaim {
+data claim_loop_linear: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_cost/loop_linear: loop with loop_bound_edge projects iterative linear cost",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: loop_linear_input,
   rhs: loop_linear_claim_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

@@ -10,9 +10,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type NbdExport {
-  export_name: NonEmptyStr
-  backing_path: NonEmptyStr
-  port: Port
+  export_name: std.types.NonEmptyStr
+  backing_path: std.types.NonEmptyStr
+  port: std.types.Port
   read_only: Bool
 }
 
@@ -44,10 +44,10 @@ fn nbd_server_command(config_path: NonEmptyStr) -> ArgvCommand {
 }
 
 type NbdClientAttach {
-  server: NonEmptyStr
-  port: Port
-  export_name: NonEmptyStr
-  device: NonEmptyStr
+  server: std.types.NonEmptyStr
+  port: std.types.Port
+  export_name: std.types.NonEmptyStr
+  device: std.types.NonEmptyStr
 }
 
 fn nbd_client_attach_command(attach: NbdClientAttach) -> ArgvCommand {

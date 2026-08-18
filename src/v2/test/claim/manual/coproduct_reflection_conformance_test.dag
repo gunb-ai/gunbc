@@ -1,11 +1,11 @@
 module v2.test.manual.coproduct_reflection_conformance
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data reflect_connective_type: Symbol = ^Connective
-data reflect_behavior_type: Symbol = ^Behavior
-data reflect_imported_derive_trait_type: Symbol = ^ReprGroundingDeriveTrait
+data reflect_connective_type: v2.std.node.Symbol = ^Connective
+data reflect_behavior_type: v2.std.node.Symbol = ^Behavior
+data reflect_imported_derive_trait_type: v2.std.node.Symbol = ^ReprGroundingDeriveTrait
 
 type NullaryReflectionRequestedA
   = NullaryReflectionRequestedAFirst
@@ -15,27 +15,27 @@ type NullaryReflectionContextB
   = NullaryReflectionContextBFirst
   | NullaryReflectionContextBSecond
 
-fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
+fn symbol_eq(a: v2.std.node.Symbol, b: v2.std.node.Symbol) -> Bool {
   a == b
 }
 
-fn behavior_discriminant(value: Behavior) -> Symbol {
+fn behavior_discriminant(value: v2.std.node.Behavior) -> v2.std.node.Symbol {
   discriminant(v: value)
 }
 
-fn connective_discriminant(value: Connective) -> Symbol {
+fn connective_discriminant(value: v2.std.node.Connective) -> v2.std.node.Symbol {
   discriminant(v: value)
 }
 
 fn imported_derive_trait_discriminant(
-  value: ReprGroundingDeriveTrait
-) -> Symbol {
+  value: std.trait_derive_shape.ReprGroundingDeriveTrait
+) -> v2.std.node.Symbol {
   discriminant(v: value)
 }
 
 fn imported_derive_trait_discriminants(
-  inhabitants: List<ReprGroundingDeriveTrait>
-) -> List<Symbol> {
+  inhabitants: List<std.trait_derive_shape.ReprGroundingDeriveTrait>
+) -> List<v2.std.node.Symbol> {
   fold_list(
     xs: inhabitants,
     empty: std.algebra.Empty,
@@ -65,7 +65,7 @@ test fn witness_nullary_reflection_accepts_imported_named_coproduct_through_gene
 
 fn nullary_reflection_context_b_discriminant(
   value: NullaryReflectionContextB
-) -> Symbol {
+) -> v2.std.node.Symbol {
   discriminant(v: value)
 }
 
@@ -95,7 +95,7 @@ test fn witness_connective_behavior_arm_sets_are_distinct() -> Bool {
   )
 }
 
-fn nullary_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol> {
+fn nullary_inhabitant_discriminants(inhabitants: List<v2.std.node.Behavior>) -> List<v2.std.node.Symbol> {
   fold_list(
     xs: inhabitants,
     empty: std.algebra.Empty,
@@ -103,13 +103,13 @@ fn nullary_inhabitant_discriminants(inhabitants: List<Behavior>) -> List<Symbol>
   )
 }
 
-fn symbol_in_list(sym: Symbol, xs: List<Symbol>) -> Bool {
+fn symbol_in_list(sym: v2.std.node.Symbol, xs: List<v2.std.node.Symbol>) -> Bool {
   fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || symbol_eq(a: x, b: sym) })
 }
 
 fn all_inhabitant_discriminants_are_reflected_arms(
-  inhabitants: List<Behavior>,
-  arm_keys: List<Symbol>
+  inhabitants: List<v2.std.node.Behavior>,
+  arm_keys: List<v2.std.node.Symbol>
 ) -> Bool {
   fold_list(xs: inhabitants, empty: true, cons: fn(acc, v) {
     acc && symbol_in_list(sym: discriminant(v: v), xs: arm_keys)

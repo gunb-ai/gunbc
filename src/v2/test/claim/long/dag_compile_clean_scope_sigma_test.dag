@@ -1,10 +1,10 @@
 module v2.test.long.dag_compile_clean_scope_sigma_test
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data corpus_scope_subject_path: String = "dag/tools/dag_compile_clean_scope.dag"
 
-data corpus_sigma_anchor: Symbol = ^fn_family_corpus_anchor
+data corpus_sigma_anchor: v2.std.node.Symbol = ^fn_family_corpus_anchor
 
 fn corpus_subject_trees() -> List<Node> {
   let lm = dag_language_model()

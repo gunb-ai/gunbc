@@ -5,18 +5,18 @@ data oracle_fixture_note: String = "The fixtures model the exact situation this 
 
 data oracle_entry_path: std.types.FilePath = "src/v2/compiler/self_host/frontier_witness_test.dag" as std.types.FilePath
 
-data oracle_function_name: NonEmptyStr = "frontier_generator_attribution_holds" as NonEmptyStr
+data oracle_function_name: std.types.NonEmptyStr = "frontier_generator_attribution_holds" as std.types.NonEmptyStr
 
-data oracle_dispatch_revision: VersionIdentity = "a07d1b73f8" as VersionIdentity
+data oracle_dispatch_revision: extdeps.version.VersionIdentity = "a07d1b73f8" as extdeps.version.VersionIdentity
 
-fn oracle_ref() -> ValidationOracleRef {
-  ValidationOracleRef {
+fn oracle_ref() -> gunbc.roadmap_validation_oracle.ValidationOracleRef {
+  gunbc.roadmap_validation_oracle.ValidationOracleRef {
     entry: oracle_entry_path,
     function: oracle_function_name,
   }
 }
 
-fn oracle_contract() -> WorkItemExecutionContract {
+fn oracle_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
   ExecutionContract {
     validations: [
       GunbcClaimValidation {
@@ -58,7 +58,7 @@ fn witness_source_with_duplicate_declaration() -> String {
   ], "")
 }
 
-fn observe_witness(source_readable: Bool, source: String) -> List<OracleObservation> {
+fn observe_witness(source_readable: Bool, source: String) -> List<gunbc.roadmap_validation_oracle.OracleObservation> {
   [
     validation_oracle_observe_from_source(
       oracle: oracle_ref(),
@@ -71,23 +71,23 @@ fn observe_witness(source_readable: Bool, source: String) -> List<OracleObservat
 
 data pinned_identity_authority_note: String = "The fixture derives the pinned identity through validation_oracle_set_observe — the SAME fold the dispatch side records and the verification side recomputes — rather than re-spelling the digest here. An earlier version of this fixture pinned a single source digest while the gate adjudicated the tagged set fold, so the clean case refused: the fixture had quietly become a second definition of the identity, which is the fork these witnesses exist to catch. The unobservable arm returns a deliberately foreign value so that, if it were ever reached, every assertion below fails loudly instead of comparing two fabrications."
 
-fn identity_of_source(source: String) -> ContentHash {
+fn identity_of_source(source: String) -> std.content_hash.ContentHash {
   match validation_oracle_set_observe(
     observations: observe_witness(source_readable: true, source: source),
   ) {
     OracleSetObserved { identity, observations: _ } => identity
     OracleSetIncomplete { blocking: _, observations: _ } =>
       as_content_hash_structural(
-        structural: content_hash_atom(value: "fixture-oracle-was-not-observable" as NonEmptyStr),
+        structural: content_hash_atom(value: "fixture-oracle-was-not-observable" as std.types.NonEmptyStr),
       )
   }
 }
 
-fn pinned_identity() -> ContentHash {
+fn pinned_identity() -> std.content_hash.ContentHash {
   identity_of_source(source: witness_source_at_dispatch())
 }
 
-fn gate_for(source_readable: Bool, source: String) -> ValidationOracleGate {
+fn gate_for(source_readable: Bool, source: String) -> gunbc.roadmap_validation_oracle.ValidationOracleGate {
   validation_oracle_gate(
     contract: oracle_contract(),
     observations: observe_witness(
@@ -101,7 +101,7 @@ fn gate_for(source_readable: Bool, source: String) -> ValidationOracleGate {
   )
 }
 
-fn gate_refusal_key(gate: ValidationOracleGate) -> String {
+fn gate_refusal_key(gate: gunbc.roadmap_validation_oracle.ValidationOracleGate) -> String {
   match gate {
     ValidationOracleAdmitted { identity: _ } => "admitted"
     ValidationOracleGateRefused { cause } =>
@@ -300,7 +300,7 @@ test fn unpinned_dependency_detail_names_the_uncovered_modules() -> Bool {
 test fn cargo_test_validation_refuses_as_unpinnable() -> Bool {
   match validation_oracle_gate(
     contract: ExecutionContract {
-      validations: [CargoTestValidation { filter: "roadmap_" as NonEmptyStr }],
+      validations: [CargoTestValidation { filter: "roadmap_" as std.types.NonEmptyStr }],
       extra_capabilities: [],
     },
     observations: [],
@@ -531,7 +531,7 @@ test fn a_verdict_forged_with_an_unknown_escape_is_undecodable() -> Bool {
 
 data verdict_key_agreement_note: String = "validation_verdict_key is the emitter's authority for a verdict's wire key, and validation_receipt_verdict_keys is the reader's list of the keys it accepts. Those are two surfaces over one fact and they can drift: adding a fifth ValidationVerdict variant updates the emitter by exhaustiveness, because the match must gain an arm, but the reader's list is an ordinary data row that nothing forces anyone to extend - so the emitter would write a receipt its own reader refuses, and the failure would surface as an undecodable verdict rather than as a missing case. This pins them to each other by round-tripping every verdict the emitter can produce, which is the same shape as witness_json_text_parse_agrees_with_lexeme_surface_on_exponents: the forked surfaces are the thing under test, not either surface alone."
 
-fn verdict_round_trips(verdict: ValidationVerdict) -> Bool {
+fn verdict_round_trips(verdict: gunbc.roadmap_validation_oracle.ValidationVerdict) -> Bool {
   decodes_as(
     receipt: validation_receipt_json(verdict: verdict, observations: []),
     expected: validation_verdict_key(verdict: verdict),
@@ -583,8 +583,8 @@ data cross_family_pin_refusal_note: String = "Cross-family incomparable is NOT o
 test fn cross_family_pin_refusal_is_distinct_from_oracle_moved() -> Bool {
   let expected = content_hash_of_value(value: "pinned-structural-oracle")
   let observed = as_content_hash_cryptographic(
-    digest: Sha256Digest {
-      hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" as Sha256DigestHex,
+    digest: std.content_hash.Sha256Digest {
+      hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" as std.content_hash.Sha256DigestHex,
     },
   )
   let cause = validation_oracle_pin_refusal_cause(
@@ -609,21 +609,21 @@ test fn cross_family_pin_refusal_is_distinct_from_oracle_moved() -> Bool {
 
 data verify_lamp_note: String = "The lamp is the seam where the distinction has to survive, because it is what a human actually looks at. These assert the three verdicts land on three DIFFERENT segment states and that an absent receipt still reads pending — the last one being the property the old hardcoded lamp had for free and that a receipt-reading lamp could easily lose, since the tempting shortcut is to paint Verify from the agent's own completion."
 
-data verify_fixture_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
+data verify_fixture_head: std.types.CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as std.types.CommitSha
 
-fn verify_fixture_subject() -> VerificationSubject {
-  VerificationSubject {
-    node_identity: "rnfx-verify-lamp" as NonEmptyStr as RoadmapNodeIdentity,
+fn verify_fixture_subject() -> gunbc.roadmap_verification_receipt.VerificationSubject {
+  gunbc.roadmap_verification_receipt.VerificationSubject {
+    node_identity: "rnfx-verify-lamp" as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeIdentity,
     criteria_digest: content_hash_atom(value: "verify-lamp-criteria"),
     attempt_key: "feedfacefeedface",
-    branch: "dispatch/v1-emitter-fixed-point-afeedfacefeedface" as NonEmptyStr,
+    branch: "dispatch/v1-emitter-fixed-point-afeedfacefeedface" as std.types.NonEmptyStr,
     head_sha: verify_fixture_head,
     change_window_identity: git_diff_window_absent_identity(),
   }
 }
 
-fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
-  WorkflowAttemptEvidence {
+fn verify_lamp_evidence(receipt: String) -> gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
+  gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
     node_id: "v1-emitter-fixed-point",
     attempt_key: "feedfacefeedface",
     branch: "dispatch/v1-emitter-fixed-point-afeedfacefeedface",
@@ -650,19 +650,19 @@ fn verify_lamp_evidence(receipt: String) -> WorkflowAttemptEvidence {
       VerificationReceiptPresent { text: receipt }
     },
     publication_subject: PublicationSubjectObserved {
-      subject: RoadmapPublicationSubject {
+      subject: gunbc.roadmap_publish.RoadmapPublicationSubject {
         node_id: "pub-fixture-node",
         attempt_key: "feedfacefeedface",
-        repository: Repository {
+        repository: extdeps.github.github.Repository {
           owner: "gunb-ai",
           name: "gunbc",
           full_name: "gunb-ai/gunbc",
           private: false,
           default_branch: "main",
         },
-        branch: "dispatch/pub-fixture-node-afeedfacefeedface" as NonEmptyStr,
-        expected_base: "main" as NonEmptyStr,
-        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as CommitSha,
+        branch: "dispatch/pub-fixture-node-afeedfacefeedface" as std.types.NonEmptyStr,
+        expected_base: "main" as std.types.NonEmptyStr,
+        expected_head: "cafecafecafecafecafecafecafecafecafecafe" as std.types.CommitSha,
       },
     },
     publication_source: ReceiptSourceAbsent,
@@ -682,19 +682,19 @@ fn verify_lamp_state(receipt: String) -> String {
   })
 }
 
-fn receipt_for(verdict: ValidationVerdict) -> String {
+fn receipt_for(verdict: gunbc.roadmap_validation_oracle.ValidationVerdict) -> String {
   verification_receipt_json(
-    receipt: VerificationReceipt {
+    receipt: gunbc.roadmap_verification_receipt.VerificationReceipt {
       subject: verify_fixture_subject(),
       oracle_identity: pinned_identity(),
       executions: [
-        ValidationExecution {
+        gunbc.roadmap_verification_receipt.ValidationExecution {
           validation: GunbcClaimValidation {
             entry: "dag/test/claim/roadmap_validation_oracle_witness_test.dag" as std.types.FilePath,
-            function: "verify_lamp_stays_pending_without_a_receipt" as NonEmptyStr,
+            function: "verify_lamp_stays_pending_without_a_receipt" as std.types.NonEmptyStr,
           },
-          command: ModeledValidationCommand {
-            label: "gunbc-claim" as NonEmptyStr,
+          command: gunbc.roadmap_execution_contract.ModeledValidationCommand {
+            label: "gunbc-claim" as std.types.NonEmptyStr,
             program: "/opt/gunbc/bin/gunbc" as std.types.FilePath,
             args: ["run", "--claim-run"],
           },
@@ -762,8 +762,8 @@ test fn verify_lamp_shows_a_refusal_as_refused_not_failed() -> Bool {
 test fn verify_lamp_shows_cross_family_refusal_as_refused_not_moved() -> Bool {
   let expected = content_hash_of_value(value: "pinned-structural-oracle")
   let observed = as_content_hash_cryptographic(
-    digest: Sha256Digest {
-      hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" as Sha256DigestHex,
+    digest: std.content_hash.Sha256Digest {
+      hex: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" as std.content_hash.Sha256DigestHex,
     },
   )
   verify_lamp_state(receipt: receipt_for(

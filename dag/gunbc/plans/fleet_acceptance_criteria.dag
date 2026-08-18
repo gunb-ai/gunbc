@@ -1,7 +1,7 @@
 module gunbc.plans.fleet_acceptance_criteria
 
 
-fn fac_rule() -> List<MarkdownBlock> {
+fn fac_rule() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "Home: ROADMAP §2 (compute fabric). Every §2 node's **Accept:** line summarizes a checklist here; this doc is the checklist, the node is the summary, and ROADMAP.md is generated from both — one authority, two zoom levels (operator-set, 2026-07-02)."),
     quote(blocks: [p(text: "A roadmap item is not complete because its algebra exists. It is complete only when a **named consumer** uses it on the **live path** and produces a **receipt**.")]),
@@ -29,7 +29,7 @@ fn fac_rule() -> List<MarkdownBlock> {
   ]
 }
 
-fn fac_keyed_delta_fold() -> List<MarkdownBlock> {
+fn fac_keyed_delta_fold() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "2-keyed-delta-fold — required tier T2 (wired)"),
     p(text: "The fold/diff carrier does NOT close because a generic algebra exists. It closes only when `gunbc.host_converge` computes a real converge patch through it. T4 arrives only via 2-converge-reland. Complete only when ALL hold:"),
@@ -49,7 +49,7 @@ fn fac_keyed_delta_fold() -> List<MarkdownBlock> {
   ]
 }
 
-fn fac_live_read_seam() -> List<MarkdownBlock> {
+fn fac_live_read_seam() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "2-live-read-seam — required tier T3/T4 (read side live on both hosts)"),
     p(text: "The first slice (one srv2 unit's memory knobs, node 2-live-read-runner-memory) is its own narrow node and may close alone; it does NOT close the full seam. The full seam is complete only when:"),
@@ -66,7 +66,7 @@ fn fac_live_read_seam() -> List<MarkdownBlock> {
   ]
 }
 
-fn fac_converge_reland() -> List<MarkdownBlock> {
+fn fac_converge_reland() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "2-converge-reland — required tier T4 (live apply + independent read-back)"),
     p(text: "Complete only when this end-to-end flow runs on a real host. Target: srv2, one real runner unit or the runner template drop-in; knobs `MemoryMax`, `MemoryHigh`, `MemorySwapMax` (preferred also: jobserver tokens). Names like the committed-base snapshot and the override edit layer are the #6096 re-land design's intent — no such carriers exist in-tree yet; the effective base is `host_converge`'s `ConvergeKnob` rows, never `fleet_intent` (physical inventory)."),
@@ -87,7 +87,7 @@ fn fac_converge_reland() -> List<MarkdownBlock> {
   ]
 }
 
-fn fac_runner_allocation_v0() -> List<MarkdownBlock> {
+fn fac_runner_allocation_v0() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "2-runner-allocation-v0 — required tier T4, held by T5 (the operational milestone)"),
     p(text: "This is the milestone that says: **srv1/srv2 are no longer hand-configured for runner allocation.** Complete only when both hosts are configured through the model and read back:"),
@@ -105,7 +105,7 @@ fn fac_runner_allocation_v0() -> List<MarkdownBlock> {
   ]
 }
 
-fn fac_host_admission() -> List<MarkdownBlock> {
+fn fac_host_admission() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "2-host-admission — Σ-accounting, both modes enforceable"),
     ol(items: [
@@ -119,7 +119,7 @@ fn fac_host_admission() -> List<MarkdownBlock> {
   ]
 }
 
-fn fac_periodic_actuation() -> List<MarkdownBlock> {
+fn fac_periodic_actuation() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "2-periodic-actuation — required tier T5"),
     p(text: "A timer existing is not acceptance. Complete only when the timer catches or corrects real drift according to per-knob policy:"),
@@ -133,7 +133,7 @@ fn fac_periodic_actuation() -> List<MarkdownBlock> {
   ]
 }
 
-fn fac_strictlease_labels() -> List<MarkdownBlock> {
+fn fac_strictlease_labels() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "2-strictlease + 2-shape-labels + 2-provider-offer — dispatch without a scheduler"),
     ol(items: [
@@ -148,7 +148,7 @@ fn fac_strictlease_labels() -> List<MarkdownBlock> {
   ]
 }
 
-fn fac_service_receipt() -> List<MarkdownBlock> {
+fn fac_service_receipt() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "2-service-receipt — required tier T4"),
     p(text: "Complete only when a real service on srv1/srv2 is applied AND retracted:"),
@@ -161,7 +161,7 @@ fn fac_service_receipt() -> List<MarkdownBlock> {
   ]
 }
 
-fn fac_compile_clean_sharding() -> List<MarkdownBlock> {
+fn fac_compile_clean_sharding() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "2-compile-clean-shard-b — the floor consumes the shards"),
     p(text: "Shard A's partition/composition proof + one exemplar is a first receipt, NOT \"compile-clean is sharded\". Complete only when:"),
@@ -175,7 +175,7 @@ fn fac_compile_clean_sharding() -> List<MarkdownBlock> {
   ]
 }
 
-fn fac_completion_summary() -> List<MarkdownBlock> {
+fn fac_completion_summary() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "What \"complete\" honestly means today"),
     p(text: "Rails (honestly completable now): CD target-host proof first slice · privilege refusal before mutation · runner memory live-read carrier first slice · mechanism inventory baseline · resolver profile receipt · compile-clean shard algebra/exemplar."),
@@ -183,7 +183,7 @@ fn fac_completion_summary() -> List<MarkdownBlock> {
   ]
 }
 
-fn fleet_acceptance_criteria_body() -> List<MarkdownBlock> {
+fn fleet_acceptance_criteria_body() -> List<std.markdown.MarkdownBlock> {
   concat(fac_rule(),
   concat(fac_keyed_delta_fold(),
   concat(fac_live_read_seam(),
@@ -196,7 +196,7 @@ fn fleet_acceptance_criteria_body() -> List<MarkdownBlock> {
   concat(fac_compile_clean_sharding(), fac_completion_summary()))))))))))
 }
 
-data fleet_acceptance_criteria_plan: Plan = Plan {
+data fleet_acceptance_criteria_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "fleet-acceptance-criteria",
   title: "Fleet acceptance criteria — completion tiers and per-node operational acceptance",
   body: fleet_acceptance_criteria_body(),

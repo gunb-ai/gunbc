@@ -17,7 +17,7 @@ type RunnerMemoryCapVerifyReceipt {
   host: product.placement_supply.HostIdentity
   tally: RunnerMemoryCapVerifyTally
   knob_count: Int
-  verdict: ConvergeVerdict
+  verdict: gunbc.host_converge.ConvergeVerdict
 }
 
 fn runner_memory_cap_probe_unit(host: HostIdentity) -> NonEmptyStr {

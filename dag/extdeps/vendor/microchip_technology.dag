@@ -2,8 +2,8 @@ module extdeps.vendor.microchip_technology
 
 
 // Read 2026-08-14. Both the vendor's legal page and EDGAR refused this session's fetches.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Microchip_Technology"
   }
@@ -11,11 +11,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data microchip_technology_registrant_note: String = "Read 2026-08-14: an American publicly traded semiconductor corporation headquartered in Chandler, Arizona. The stronger authority for a registrant name is its own filing and this corpus reaches EDGAR directly for the SCM issuer rows; data.sec.gov refused every fetch performed from this session with HTTP 403, and microchip.com's own legal-information page returned HTTP 403 as well, so the weaker-but-read authority is cited rather than a stronger one asserted unread."
 
-data microchip_technology: Vendor<Hardware> = Vendor { legal_name: "Microchip Technology Incorporated" }
+data microchip_technology: Vendor<extdeps.hardware.Hardware> = Vendor { legal_name: "Microchip Technology Incorporated" }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.vendor.microchip_technology",
       decl_name: "microchip_technology",
       field: WholeDeclaration

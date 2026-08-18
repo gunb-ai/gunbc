@@ -7,18 +7,18 @@ data instrument_sandbox_witness_note: String = "RESHAPED AROUND THE PRODUCTION J
 
 data mechanism_half_note: String = "THE MECHANISM HALF, and the split is measured rather than aesthetic. Every claim below is a property of the register's own gates — which role the projection derives, whether emission is granted, whether a refused role can paint, whether the emission variable lands inside each theme block — and each measured 0-2ms by execution (claim_batch attribution, 2026-08-05). None of them renders the served page or reads the live program view, which is why they are cheap and why they belong per-PR: the 2026-08-04 admission ruling holds that the mechanism half of a live-population subject is NEVER the part that gets deferred. The page-rendering and live-view claims measured 5074ms thread-CPU together, exceeded the fast-lane budget, and moved to dag/test/claim/long/instrument_sandbox_live_witness_test.dag with a declared ceiling and a named executing consumer — not deleted, and not left in a directory that quietly removes them from discovery. Read that file's header for the cost attribution and the dissolve-on that brings these back together."
 
-fn emission_var_ref(i: AuditionIntensity) -> String {
+fn emission_var_ref(i: gunbc.design.instrument_audition.AuditionIntensity) -> String {
   concat("--", concat(audition_emission_var(i: i), ":"))
 }
 
-fn emission_is_none_for(role: SalienceRole, i: AuditionIntensity) -> Bool {
+fn emission_is_none_for(role: gunbc.design.salience.SalienceRole, i: gunbc.design.instrument_audition.AuditionIntensity) -> Bool {
   string_contains(
     s: instrument_emission_root_css_for(role: role),
     pattern: concat(emission_var_ref(i: i), " none"),
   )
 }
 
-fn admission_grants(role: SalienceRole, i: AuditionIntensity) -> Bool {
+fn admission_grants(role: gunbc.design.salience.SalienceRole, i: gunbc.design.instrument_audition.AuditionIntensity) -> Bool {
   match admit_audition(i: i, role: role, subject_key: audition_subject_key()) {
     AuditionAdmitted { intensity, emission, attraction, displacement_px } => true
     AuditionEmissionRefused { intensity, grant } => false
@@ -87,29 +87,29 @@ fn witness_the_press_response_is_a_bounded_translation() -> Bool {
 
 data program_grain_fixture_note: String = "A PLANTED VIEW, because this claim's oracle must be independent of the live roadmap. The fixture's PROGRAM remaining and its one FINISH LINE's remaining are deliberately different numbers (open_fronts 7 versus 1, startable_now 5 versus 0), so a reader that collapses program grain onto outcome grain is caught by VALUE and not merely by variant — asserting the variant alone would still pass if some future arm returned a program-shaped reading built from the line's own shape. Cheap by construction: the record is built directly rather than derived through program_view, so this mechanism claim costs microseconds and stays per-PR while the live half runs on the falsifier lane."
 
-fn fixture_line_remaining() -> RemainingShape {
-  RemainingShape {
+fn fixture_line_remaining() -> gunbc.roadmap_program_view.RemainingShape {
+  gunbc.roadmap_program_view.RemainingShape {
     sequential_depth: 1, open_fronts: 1, startable_now: 0, in_flight: 0,
     dependency_held: 0, contract_held: 0, unsized: 0,
   }
 }
 
-fn fixture_program_remaining() -> RemainingShape {
-  RemainingShape {
+fn fixture_program_remaining() -> gunbc.roadmap_program_view.RemainingShape {
+  gunbc.roadmap_program_view.RemainingShape {
     sequential_depth: 9, open_fronts: 7, startable_now: 5, in_flight: 0,
     dependency_held: 0, contract_held: 0, unsized: 0,
   }
 }
 
-fn fixture_view() -> V1DeletionProgramView {
-  V1DeletionProgramView {
+fn fixture_view() -> gunbc.roadmap_program_view.V1DeletionProgramView {
+  gunbc.roadmap_program_view.V1DeletionProgramView {
     finish_lines: [
-      FinishLineView {
+      gunbc.roadmap_program_view.FinishLineView {
         line: CompilerFixedPoint,
         key: "compiler-fixed-point",
         name: "Compiler fixed point",
         claim: "fixture",
-        node: "fixture-node" as RoadmapNodeId,
+        node: "fixture-node" as gunbc.roadmap_model.RoadmapNodeId,
         accepted: false,
         contributing_fronts: [NamespacePDeriveFront],
         remaining: fixture_line_remaining(),
@@ -122,8 +122,8 @@ fn fixture_view() -> V1DeletionProgramView {
   }
 }
 
-fn focused_camera(m: ProgramMode, d: ProgramDepth) -> ProgramCamera {
-  ProgramCamera { depth: d, mode: m, focus: FinishLineFocused { line_key: "compiler-fixed-point" } }
+fn focused_camera(m: gunbc.design.instrument_camera.ProgramMode, d: gunbc.design.instrument_camera.ProgramDepth) -> gunbc.design.instrument_camera.ProgramCamera {
+  gunbc.design.instrument_camera.ProgramCamera { depth: d, mode: m, focus: FinishLineFocused { line_key: "compiler-fixed-point" } }
 }
 
 data program_grain_witness_note: String = "The claim review 48719 found missing. With a subject FOCUSED, the program detent must still read the whole program's shape — before the fix read_camera_at routed a focused DepthProgram into read_line_view, whose DepthProgram arm was byte-identical to its DepthOutcome one, so the page rendered outcome-grain numbers under a program label. This reds on that exact behaviour: it demands the program's own remaining (open_fronts 7), which the collapsed reader could not produce because it only ever saw the line's 1."

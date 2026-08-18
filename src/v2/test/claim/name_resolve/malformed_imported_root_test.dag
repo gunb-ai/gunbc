@@ -5,7 +5,7 @@ fn malformed_qn_node() -> Node {
   fold_list_node(
     xs: Cons { head: ^malformed_seg, tail: Empty },
     item_node: fn(sym) {
-      Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
+      v2.std.node.Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
     }
@@ -13,7 +13,7 @@ fn malformed_qn_node() -> Node {
 }
 
 fn malformed_root_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -24,9 +24,9 @@ fn malformed_root_node() -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: malformed_qn_node()
       ),
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: ^malformed_child_sym } },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -37,18 +37,18 @@ fn malformed_root_node() -> Node {
 }
 }
 
-fn malformed_entry_name() -> QualifiedName {
+fn malformed_entry_name() -> v2.std.qualified_name.QualifiedName {
   Cons { head: ^malformed_seg, tail: Empty }
 }
 
-fn roots_with_malformed_entry() -> Outcome<FreeMonoid<NormalizedTree>> {
+fn roots_with_malformed_entry() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   bind_outcome(o: admit_normalized_tree(root: malformed_root_node(), diagnostics: None), f: fn(a) {
     outcome_accepted(value: Cons { head: a, tail: Empty })
   })
 }
 
-fn import_edge_for_malformed() -> Import {
-  Import { target: malformed_entry_name(), visibility: ImportVisible }
+fn import_edge_for_malformed() -> v2.compiler.name_resolve.Import {
+  v2.compiler.name_resolve.Import { target: malformed_entry_name(), visibility: ImportVisible }
 }
 
 fn initial_admission_state() -> AdmissionState {

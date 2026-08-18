@@ -20,7 +20,7 @@ type RustItemKind
 type RustItemIdentity {
   repo_path: std.types.FilePath
   kind: RustItemKind
-  name: NonEmptyStr
+  name: std.types.NonEmptyStr
   impl_subject: String
   start_line: Int
   loc: Int
@@ -28,15 +28,15 @@ type RustItemIdentity {
 
 type RustItemDeclField
   = RustItemWhole
-  | RustItemNamedField { field_name: NonEmptyStr }
+  | RustItemNamedField { field_name: std.types.NonEmptyStr }
   | RustItemImplMethod {
-      impl_subject: NonEmptyStr,
-      method_name: NonEmptyStr
+      impl_subject: std.types.NonEmptyStr,
+      method_name: std.types.NonEmptyStr
     }
 
 type RustItemDeclarationRef {
-  module_path: NonEmptyStr
-  decl_name: NonEmptyStr
+  module_path: std.types.NonEmptyStr
+  decl_name: std.types.NonEmptyStr
   field: RustItemDeclField
 }
 

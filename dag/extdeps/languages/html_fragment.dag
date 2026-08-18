@@ -1,13 +1,13 @@
 module extdeps.languages.html_fragment
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "html.spec.whatwg.org/"
   }
 }
 
-fn serialize_fragment(frag: Fragment) -> String {
+fn serialize_fragment(frag: std.markup.Fragment) -> String {
   serialize_fragment_with(frag: frag, medium: html_markup_medium())
 }

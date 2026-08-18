@@ -3,7 +3,7 @@ module v2.test.lens_application.apply_lens_introspect_rejection_is_advisory
 
 data apply_lens_mode_root: Node = claim_atom_node(s: ^apply_lens_mode_symbol)
 
-fn apply_lens_mode_tree() -> InferredTree {
+fn apply_lens_mode_tree() -> v2.compiler.infer.InferredTree {
   claim_inferred_tree(
     root: apply_lens_mode_root,
     facts: claim_inferred_facts(
@@ -14,13 +14,13 @@ fn apply_lens_mode_tree() -> InferredTree {
   )
 }
 
-fn apply_lens_mode_rejecting_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
+fn apply_lens_mode_rejecting_gate(_tree: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
   outcome_rejected(
     compile_lens_gate_rejected_diagnostic(at: port_locus(port: ^apply_lens_mode_gate_at))
   )
 }
 
-data apply_lens_mode_rejecting_lens: CompileLens = CompileLens { gate: apply_lens_mode_rejecting_gate }
+data apply_lens_mode_rejecting_lens: v2.compiler.compile.CompileLens = v2.compiler.compile.CompileLens { gate: apply_lens_mode_rejecting_gate }
 
 fn apply_lens_mode_gate_rejects_enforce() -> Bool {
   match apply_compile_lens(
@@ -40,7 +40,7 @@ fn introspect_witness_violates_reason_matches(w: Witness<Node>) -> Bool {
   }
 }
 
-fn introspect_diagnostics_head_reason_matches(od: Diagnostics) -> Bool {
+fn introspect_diagnostics_head_reason_matches(od: v2.std.diagnostic.Diagnostics) -> Bool {
   match od {
     Some { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
     None => false
@@ -68,7 +68,7 @@ fn apply_lens_introspect_rejection_is_advisory_claim_rhs() -> Node {
   if apply_lens_introspect_rejection_is_advisory_claim_holds() {
     apply_lens_mode_root
   } else {
-    Node {
+    v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -76,10 +76,10 @@ fn apply_lens_introspect_rejection_is_advisory_claim_rhs() -> Node {
   }
 }
 
-data claim_apply_lens_introspect_rejection_is_advisory: TestClaim = EqualsClaim {
+data claim_apply_lens_introspect_rejection_is_advisory: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_application/apply_lens_introspect_rejection_is_advisory: Introspect accepts gate rejection as advisory; head reason forwarded from original rejection",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: apply_lens_mode_root,
   rhs: apply_lens_introspect_rejection_is_advisory_claim_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

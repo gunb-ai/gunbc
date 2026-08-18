@@ -2,21 +2,21 @@ module v2.extdeps.languages.typescript
 
 
 type TsNumberPrimitiveFacts {
-  surface_spelling: Symbol
-  ieee754_binary: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  ieee754_binary: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type TsBigIntPrimitiveFacts {
-  surface_spelling: Symbol
-  std_projection: Symbol
-  encoding: Symbol
+  surface_spelling: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
+  encoding: v2.std.node.Symbol
 }
 
 type TsBooleanPrimitiveFacts {
-  surface_spelling: Symbol
-  std_projection: Symbol
-  encoding: Symbol
+  surface_spelling: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
+  encoding: v2.std.node.Symbol
 }
 
 type TsEcma262NumericPrimitiveFactsUnion
@@ -24,9 +24,9 @@ type TsEcma262NumericPrimitiveFactsUnion
   | TsNumericFactsBigInt { facts: TsBigIntPrimitiveFacts }
 
 type TsGrammarRelationRow {
-  production: FormalProduction
+  production: v2.std.grammar.FormalProduction
   emitted: Node
-  tokens: List<ConcreteSyntaxToken>
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
 data ts_task_type_alias_source_text: String = "type Task = { id: TaskId, title: string, status: TaskStatus };"
@@ -596,7 +596,7 @@ fn ts_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 
 type TsGramBuild1State
   = TsGramBuild1StateInit
-  | TsGramBuild1StateReady { expr: GrammarExpr }
+  | TsGramBuild1StateReady { expr: v2.std.grammar.GrammarExpr }
 
 fn ts_grammar_sequence_from_token_classes() -> GrammarExpr {
   match fold_list(
@@ -2914,10 +2914,10 @@ fn ts_grammar_canonical_symbols() -> Set<Symbol> {
 }
 
 type TsStringPrimitiveFacts {
-  surface_spelling: Symbol
-  encoding: Symbol
-  std_projection: Symbol
-  code_unit_inhabitant: Symbol
+  surface_spelling: v2.std.node.Symbol
+  encoding: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
+  code_unit_inhabitant: v2.std.node.Symbol
 }
 data ts_facts_string: TsStringPrimitiveFacts = TsStringPrimitiveFacts {
   surface_spelling: ^ts_surface_spelling_string,

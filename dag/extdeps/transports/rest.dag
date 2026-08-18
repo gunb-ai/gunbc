@@ -2,21 +2,21 @@ module extdeps.transports.rest
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc9110"
   }
 }
 
-data rest_basic_auth_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data rest_basic_auth_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc7617"
   }
 }
 
-data rest_transport_fidelity: TransportFidelity = TransportFidelity { depth: L, hermetic: false }
+data rest_transport_fidelity: std.fidelity.TransportFidelity = std.fidelity.TransportFidelity { depth: L, hermetic: false }
 
 type TlsPosture
   = VerifyPeer
@@ -112,7 +112,7 @@ fn rest_bound_invocation_eq(a: RestBoundOperationInvocation, b: RestBoundOperati
 
 fn rest_fixture_scan(
   fixtures: List<RestExchangeFixture>,
-  store: NonEmptyStr,
+  store: std.types.NonEmptyStr,
   invocation: RestBoundOperationInvocation,
   scan: RestFixtureScan,
 ) -> RestFixtureScan {
@@ -141,7 +141,7 @@ fn rest_fixture_scan(
 
 fn rest_exchange_fixture_lookup(
   fixtures: List<RestExchangeFixture>,
-  store: NonEmptyStr,
+  store: std.types.NonEmptyStr,
   invocation: RestBoundOperationInvocation,
 ) -> RestFixtureLookup {
   let scan = rest_fixture_scan(
@@ -174,8 +174,8 @@ fn rest_method_verb(method: std.types.HttpMethod) -> std.effect_grant.Verb {
   }
 }
 
-fn rest_operation_position(at: OperationRef) -> NamespacePosition {
-  NamespacePosition {
+fn rest_operation_position(at: v2.std.operation_argv.OperationRef) -> std.effect_grant.NamespacePosition {
+  std.effect_grant.NamespacePosition {
     tree: ServiceOpTree { service: at.service },
     path: [at.operation],
   }
@@ -185,7 +185,7 @@ type RestHandlerSelection
   = RestHandlerSelected { binding: std.effect_grant.HandlerBinding }
   | RestHandlerUncovered { invocation: RestBoundOperationInvocation }
 
-fn rest_handler_selection(env: Envelope, invocation: RestBoundOperationInvocation) -> RestHandlerSelection {
+fn rest_handler_selection(env: std.effect_grant.Envelope, invocation: RestBoundOperationInvocation) -> RestHandlerSelection {
   match covering_grant(
     env: env,
     verb: rest_method_verb(method: invocation.method),
@@ -206,7 +206,7 @@ type RestExchangeResolution
 data rest_exchange_resolution_note: String = "THE SINGLE HANDLER-BINDING AND LOOKUP DECISION. Runtime code asks this function what the frame's existing effect grant selected; it does not re-read Hermetic/Wet and does not implement its own first-match. RealTransport asks the host HTTP client for a RestExchangeObservation. Replay names a fixture store and reaches the three-valued exact-invocation lookup above. Missing, ambiguous and uncovered are distinct refusals, and none has a real-transport fallback arm."
 
 fn rest_exchange_resolution(
-  env: Envelope,
+  env: std.effect_grant.Envelope,
   fixtures: List<RestExchangeFixture>,
   invocation: RestBoundOperationInvocation,
 ) -> RestExchangeResolution {
@@ -216,7 +216,7 @@ fn rest_exchange_resolution(
       RealTransport => RestRealExchangeRequired
       Replay { fixture_store } => match rest_exchange_fixture_lookup(
         fixtures: fixtures,
-        store: fixture_store as NonEmptyStr,
+        store: fixture_store as std.types.NonEmptyStr,
         invocation: invocation,
       ) {
         RestFixtureFound { observation } => RestReplayExchangeFound { observation: observation }
@@ -227,6 +227,6 @@ fn rest_exchange_resolution(
   }
 }
 
-data rest_auth_scheme_dissolve_on: DissolutionCondition = unbound_dissolution(description: "a REST realization selects its auth by matching RestAuthScheme rather than reading auth by shape (config-level Bearer/Header via svc_auth, transport-level BasicCredentials via the inline auth_basic record); until then the type is forward-looking scaffolding with no matching consumer")
+data rest_auth_scheme_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "a REST realization selects its auth by matching RestAuthScheme rather than reading auth by shape (config-level Bearer/Header via svc_auth, transport-level BasicCredentials via the inline auth_basic record); until then the type is forward-looking scaffolding with no matching consumer")
 
-data rest_target_form_dissolve_on: DissolutionCondition = unbound_dissolution(description: "a REST realization matches RestTargetForm rather than reaching absolute-form targeting through an empty config base plus a full-URL path template; until then the interp/emit concat of base_url and path is the only realization and the type has no matching consumer")
+data rest_target_form_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "a REST realization matches RestTargetForm rather than reaching absolute-form targeting through an empty config base plus a full-URL path template; until then the interp/emit concat of base_url and path is the only realization and the type has no matching consumer")

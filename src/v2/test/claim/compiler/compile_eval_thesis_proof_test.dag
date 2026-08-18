@@ -1,7 +1,7 @@
 module v2.test.claim.compiler.compile_eval_thesis_proof
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn compile_eval_thesis_termination_proof() -> v2.std.cardinality.TerminationProof {
   v2.std.cardinality.TerminationProof {
@@ -10,7 +10,7 @@ fn compile_eval_thesis_termination_proof() -> v2.std.cardinality.TerminationProo
   }
 }
 
-fn compile_eval_thesis_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn compile_eval_thesis_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   if key == v2_eval_bool_literal_pin {
     optional_present(value: claim_inferred_facts_from_nodes(
         resolved: v2_eval_bool_literal_pin,
@@ -28,8 +28,8 @@ fn compile_eval_thesis_facts_lookup(key: Node) -> Optional<InferredFacts> {
   }
 }
 
-fn compile_eval_thesis_inferred(root: Node) -> InferredTree {
-  InferredTree {
+fn compile_eval_thesis_inferred(root: Node) -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: root,
     facts: Map {
       lookup: compile_eval_thesis_facts_lookup

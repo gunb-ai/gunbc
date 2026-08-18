@@ -1,15 +1,15 @@
 module v2.std.generic_instantiation
 type GenericSubstitution = Map<String, Node>
 
-data generic_substitution_bind_once_port: Symbol = generic_substitution_bind_once_port
-data generic_substitution_bind_conflict: Symbol = generic_substitution_bind_conflict
+data generic_substitution_bind_once_port: v2.std.node.Symbol = generic_substitution_bind_once_port
+data generic_substitution_bind_conflict: v2.std.node.Symbol = generic_substitution_bind_conflict
 
 fn empty_generic_substitution() -> GenericSubstitution {
   empty_map()
 }
 
-fn generic_substitution_bind_conflict_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn generic_substitution_bind_conflict_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^generic_substitution_bind_conflict,
     at: port_locus(port: ^generic_substitution_bind_once_port),
     correction: Unavailable { reason: ExternalContractUnknown }

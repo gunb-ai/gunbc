@@ -27,7 +27,7 @@ type Pep440PreRelease {
 
 type Pep440LocalSegment
   = Pep440LocalNumeric { value: std.integer.NonNegativeInt }
-  | Pep440LocalLexicographic { label: NonEmptyStr }
+  | Pep440LocalLexicographic { label: std.types.NonEmptyStr }
 
 type Pep440ReleaseSegments {
   first: std.integer.NonNegativeInt

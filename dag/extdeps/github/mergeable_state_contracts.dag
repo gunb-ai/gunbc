@@ -1,14 +1,14 @@
 module extdeps.github.mergeable_state_contracts
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/graphql/reference/enums#mergeablestate"
   }
 }
 
-data mergeable_state_wire_contract: CoproductWireContract = {
+data mergeable_state_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: "MergeableState",
   encoding: StringVariant { naming: ScreamingSnakeCase }
 }

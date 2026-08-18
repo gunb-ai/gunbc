@@ -109,7 +109,7 @@ test fn scaffold_observed_ratchet_red_control_newly_unclassified_reds() -> Bool 
   match rust_source_manifest_state_verdict(
     observation: RustManifestObserved {
       repository_revision: "deadbeef",
-      manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+      manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
       tracked_rust_repo_paths: [
         "src/v1/stage0/src/unclassified.rs",
         "src/v1/stage0/src/cli_run.rs",
@@ -149,7 +149,7 @@ test fn scaffold_observed_refuses_missing_host_evidence_fields() -> Bool {
   match rust_source_manifest_state_verdict(
     observation: RustManifestObserved {
       repository_revision: "",
-      manifest_content_identity: Fnv1a64Structural { digest: "beef000000000000" },
+      manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "beef000000000000" },
       tracked_rust_repo_paths: [],
       prior_tracked_rust_repo_paths: [],
       cargo_bin_repo_paths: []
@@ -171,7 +171,7 @@ test fn scaffold_observed_cargo_path_untracked_reds() -> Bool {
   match rust_source_manifest_state_verdict(
     observation: RustManifestObserved {
       repository_revision: "deadbeef",
-      manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+      manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
       tracked_rust_repo_paths: ["src/v1/stage0/src/cli_run.rs"],
       prior_tracked_rust_repo_paths: ["src/v1/stage0/src/cli_run.rs"],
       cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
@@ -186,7 +186,7 @@ test fn scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition() -> 
   match rust_source_manifest_state_verdict(
     observation: RustManifestObserved {
       repository_revision: "deadbeef",
-      manifest_content_identity: Fnv1a64Structural { digest: "abc1230000000000" },
+      manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
       tracked_rust_repo_paths: ["src/v1/stage0/src/synthetic_cargo_bin.rs"],
       prior_tracked_rust_repo_paths: ["src/v1/stage0/src/synthetic_cargo_bin.rs"],
       cargo_bin_repo_paths: ["src/v1/stage0/src/synthetic_cargo_bin.rs"]
@@ -231,11 +231,11 @@ test fn scaffold_observed_manifest_parse_refusal_surfaces_typed_cause() -> Bool 
 // downstream well-formedness guard defends -- and this control has to reach it
 // through the gap in order to keep proving the guard works (DESIGN 4b(4):
 // production machinery dissolves on a climb, the evidence stays enrolled).
-fn synthetic_nonliteral_text(text: String) -> NonEmptyStr {
+fn synthetic_nonliteral_text(text: String) -> std.types.NonEmptyStr {
   concat(text, "")
 }
 
-fn synthetic_empty_condition(text: String) -> DissolutionCondition {
+fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionCondition {
   unbound_dissolution(description: synthetic_nonliteral_text(text: text))
 }
 

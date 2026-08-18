@@ -2,8 +2,8 @@ module test.claim.markdown_markup_xss_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn sample_readme_doc() -> MarkdownDocument {
-  MarkdownDocument {
+fn sample_readme_doc() -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: [
       HeadingBlock {
         level: H1,
@@ -21,7 +21,7 @@ fn sample_readme_doc() -> MarkdownDocument {
       },
       UnorderedListBlock {
         items: [
-          MarkdownListItem {
+          std.markdown.MarkdownListItem {
             blocks: [
               ParagraphBlock {
                 inlines: [
@@ -36,7 +36,7 @@ fn sample_readme_doc() -> MarkdownDocument {
               },
             ],
           },
-          MarkdownListItem {
+          std.markdown.MarkdownListItem {
             blocks: [
               ParagraphBlock {
                 inlines: [
@@ -82,18 +82,18 @@ test fn witness_markdown_uses_one_serialize_fragment_fold() -> Bool {
 }
 
 test fn witness_ordered_list_serializes() -> Bool {
-  let doc = MarkdownDocument {
+  let doc = std.markdown.MarkdownDocument {
     blocks: [
       OrderedListBlock {
         items: [
-          MarkdownListItem {
+          std.markdown.MarkdownListItem {
             blocks: [
               ParagraphBlock {
                 inlines: [ TextInline { text: "one" } ],
               },
             ],
           },
-          MarkdownListItem {
+          std.markdown.MarkdownListItem {
             blocks: [
               ParagraphBlock {
                 inlines: [ TextInline { text: "two" } ],
@@ -111,7 +111,7 @@ test fn witness_ordered_list_serializes() -> Bool {
 }
 
 test fn witness_image_serializes() -> Bool {
-  let doc = MarkdownDocument {
+  let doc = std.markdown.MarkdownDocument {
     blocks: [
       ParagraphBlock {
         inlines: [
@@ -128,7 +128,7 @@ test fn witness_image_serializes() -> Bool {
 }
 
 test fn witness_heading_levels_map_to_tags() -> Bool {
-  let doc = MarkdownDocument {
+  let doc = std.markdown.MarkdownDocument {
     blocks: [
       HeadingBlock { level: H2, inlines: [ TextInline { text: "sub" } ] },
     ],
@@ -139,8 +139,8 @@ test fn witness_heading_levels_map_to_tags() -> Bool {
   }
 }
 
-fn javascript_link_doc() -> MarkdownDocument {
-  MarkdownDocument {
+fn javascript_link_doc() -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: [
       ParagraphBlock {
         inlines: [
@@ -154,8 +154,8 @@ fn javascript_link_doc() -> MarkdownDocument {
   }
 }
 
-fn data_image_doc() -> MarkdownDocument {
-  MarkdownDocument {
+fn data_image_doc() -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: [
       ParagraphBlock {
         inlines: [
@@ -224,7 +224,7 @@ test fn witness_relative_link_accepted() -> Bool {
 }
 
 test fn witness_https_link_serializes() -> Bool {
-  let doc = MarkdownDocument {
+  let doc = std.markdown.MarkdownDocument {
     blocks: [
       ParagraphBlock {
         inlines: [
@@ -244,7 +244,7 @@ test fn witness_https_link_serializes() -> Bool {
 }
 
 test fn witness_req_a_hostile_href_still_emits_with_escaping() -> Bool {
-  let doc = MarkdownDocument {
+  let doc = std.markdown.MarkdownDocument {
     blocks: [
       ParagraphBlock {
         inlines: [

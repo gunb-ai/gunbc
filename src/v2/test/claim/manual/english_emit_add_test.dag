@@ -1,11 +1,11 @@
 module v2.test.manual.english_emit_add
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data english_emit_add_emitted_root: Node = english_add_fn_emitted_node()
 
-data english_emit_add_target_model: TargetModel = english_add_fn_target_model()
+data english_emit_add_target_model: v2.std.compilers.target_model.TargetModel = english_add_fn_target_model()
 
 data english_emit_add_noun_inhabitant: Node = english_noun_inhabitant_node()
 
@@ -14,15 +14,15 @@ data english_emit_add_noun_facts_node: Node = english_noun_facts_node()
 fn english_emit_add_canonical_grounding(
   node: Node,
   algebra: Node
-) -> CanonicalGrounding {
-  CanonicalGrounding {
+) -> v2.std.constraints.CanonicalGrounding {
+  v2.std.constraints.CanonicalGrounding {
     node: node,
-    witness: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
+    witness: v2.std.constraints.CanonicalGroundingWitness {
+      structural: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_being_canonical,
         evidence: algebra
       },
-      closedness: StructuralPropertyWitness {
+      closedness: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_candidate_set_closedness,
         evidence: node
       }
@@ -30,7 +30,7 @@ fn english_emit_add_canonical_grounding(
   }
 }
 
-fn english_emit_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
+fn english_emit_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == english_emit_add_emitted_root {
     Holds {
       value: english_emit_add_canonical_grounding(
@@ -75,7 +75,7 @@ fn english_emit_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrou
     }
   } else {
     Violates {
-      diagnostic: Diagnostic {
+      diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^english_emit_add_grounding_miss,
         at: node_locus(node: node),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -84,7 +84,7 @@ fn english_emit_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrou
   }
 }
 
-fn english_emit_add_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
+fn english_emit_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   match english_emit_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -99,11 +99,11 @@ fn english_emit_add_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
   }
 }
 
-fn english_emit_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn english_emit_add_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   english_emit_add_inferred_facts_for(node: key)
 }
 
-data english_emit_add_inferred_tree: InferredTree = InferredTree {
+data english_emit_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: english_emit_add_emitted_root,
   facts: Map {
     lookup: english_emit_add_facts_lookup
@@ -149,7 +149,7 @@ fn english_emit_add_grammar_inverse_holds() -> Bool {
   }
 }
 
-fn english_emit_add_ingest_parse(source: Medium<String>) -> Outcome<ParseTree> {
+fn english_emit_add_ingest_parse(source: Medium<String>) -> Outcome<v2.std.grammar.ParseTree> {
   match tokenize(
     text: source.carried,
     file: ^english_emit_add_round_trip_fixture_file,
@@ -161,7 +161,7 @@ fn english_emit_add_ingest_parse(source: Medium<String>) -> Outcome<ParseTree> {
   }
 }
 
-fn english_emit_add_identity_edge_matches(e: Edge, expected: Node) -> Bool {
+fn english_emit_add_identity_edge_matches(e: v2.std.node.Edge, expected: Node) -> Bool {
   match e.label {
     Named { name: n } =>
       (n == ^grammar_production_identity_node_projection) && (e.target == expected)

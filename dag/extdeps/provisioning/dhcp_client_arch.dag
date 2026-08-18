@@ -1,8 +1,8 @@
 module extdeps.provisioning.dhcp_client_arch
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "datatracker.ietf.org/doc/html/rfc4578#section-2.1"
   }
@@ -25,7 +25,7 @@ fn dhcp_processor_architecture_code(a: DhcpProcessorArchitecture) -> Int {
   }
 }
 
-fn legacy_bios_processor_architecture(arch: Architecture) -> DhcpProcessorArchitecture? {
+fn legacy_bios_processor_architecture(arch: extdeps.toolchain.types.Architecture) -> DhcpProcessorArchitecture? {
   match arch {
     X86_64 => Present { value: BiosX86 }
     X86 => Present { value: BiosX86 }
@@ -41,7 +41,7 @@ fn legacy_bios_processor_architecture(arch: Architecture) -> DhcpProcessorArchit
   }
 }
 
-fn uefi_processor_architecture(arch: Architecture) -> DhcpProcessorArchitecture? {
+fn uefi_processor_architecture(arch: extdeps.toolchain.types.Architecture) -> DhcpProcessorArchitecture? {
   match arch {
     X86_64 => Present { value: UefiX86_64 }
     Aarch64 => Present { value: UefiArm64 }
@@ -57,7 +57,7 @@ fn uefi_processor_architecture(arch: Architecture) -> DhcpProcessorArchitecture?
   }
 }
 
-fn http_boot_processor_architecture(arch: Architecture) -> DhcpProcessorArchitecture? {
+fn http_boot_processor_architecture(arch: extdeps.toolchain.types.Architecture) -> DhcpProcessorArchitecture? {
   match arch {
     X86_64 => Present { value: HttpBootX86_64 }
     Aarch64 => Present { value: HttpBootArm64 }
@@ -73,7 +73,7 @@ fn http_boot_processor_architecture(arch: Architecture) -> DhcpProcessorArchitec
   }
 }
 
-fn dhcp_client_processor_architecture(arch: Architecture, mode: ClientNetworkBootMode) -> DhcpProcessorArchitecture? {
+fn dhcp_client_processor_architecture(arch: extdeps.toolchain.types.Architecture, mode: extdeps.provisioning.network_boot.ClientNetworkBootMode) -> DhcpProcessorArchitecture? {
   match mode {
     LegacyBiosPxe { tftp_root: _ } => legacy_bios_processor_architecture(arch: arch)
     UefiPxe { tftp_root: _ } => uefi_processor_architecture(arch: arch)

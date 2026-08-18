@@ -3,23 +3,23 @@ module test.claim.check_coverage_admission_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data required_head: CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-data prior_head: CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-data required_roster: ContentHash = content_hash_of_value(value: "check-coverage-required-roster")
-data prior_roster: ContentHash = content_hash_of_value(value: "check-coverage-prior-roster")
-data gate_a: ContentHash = content_hash_of_value(value: "check-coverage-gate-a")
-data gate_b: ContentHash = content_hash_of_value(value: "check-coverage-gate-b")
-data required_gates: List<ContentHash> = [gate_a, gate_b]
+data required_head: std.types.CommitSha = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+data prior_head: std.types.CommitSha = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+data required_roster: std.content_hash.ContentHash = content_hash_of_value(value: "check-coverage-required-roster")
+data prior_roster: std.content_hash.ContentHash = content_hash_of_value(value: "check-coverage-prior-roster")
+data gate_a: std.content_hash.ContentHash = content_hash_of_value(value: "check-coverage-gate-a")
+data gate_b: std.content_hash.ContentHash = content_hash_of_value(value: "check-coverage-gate-b")
+data required_gates: List<std.content_hash.ContentHash> = [gate_a, gate_b]
 
-fn passed(gate: ContentHash) -> CoveredGateConclusion {
-  CoveredGateConclusion { gate: gate, conclusion: Success }
+fn passed(gate: std.content_hash.ContentHash) -> gunbc.merge_admission.CoveredGateConclusion {
+  gunbc.merge_admission.CoveredGateConclusion { gate: gate, conclusion: Success }
 }
 
-fn failed(gate: ContentHash) -> CoveredGateConclusion {
-  CoveredGateConclusion { gate: gate, conclusion: Failure }
+fn failed(gate: std.content_hash.ContentHash) -> gunbc.merge_admission.CoveredGateConclusion {
+  gunbc.merge_admission.CoveredGateConclusion { gate: gate, conclusion: Failure }
 }
 
-fn admits(coverage: CheckCoverage) -> Bool {
+fn admits(coverage: gunbc.merge_admission.CheckCoverage) -> Bool {
   check_coverage_admits(
     coverage: coverage,
     required_head: required_head,

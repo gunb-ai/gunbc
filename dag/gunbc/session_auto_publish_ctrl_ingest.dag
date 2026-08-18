@@ -10,8 +10,8 @@ type CtrlPublicationIngestAuthority sole_constructor {
 
 type PublicationRequest sole_constructor {
   requester: String
-  expected_remote_head: CommitSha
-  produced_head: CommitSha
+  expected_remote_head: std.types.CommitSha
+  produced_head: std.types.CommitSha
 }
 
 fn authenticate_ctrl_publication_ingest(

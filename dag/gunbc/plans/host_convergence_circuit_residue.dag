@@ -1,14 +1,14 @@
 module gunbc.plans.host_convergence_circuit_residue
 
 
-fn hccr_intro() -> List<MarkdownBlock> {
+fn hccr_intro() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "Host-convergence circuit brief (steps 0-3). This is the AcceptedWithResidue receipt for the session that landed P0 + the P1 loop-close LOGIC. It records what is proven, and the counted debts that remain — including one named §5 hazard the next session must NOT trip on."),
     quote(blocks: [p(text: "P1's four receipts were the non-negotiable bar. Their HERMETIC floor is delivered and GREEN. The LIVE-on-srv1 arms are operator one-liners gated on the P1a/P1b live wiring below.")]),
   ]
 }
 
-fn hccr_done() -> List<MarkdownBlock> {
+fn hccr_done() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "Landed"),
     h3(text: "P0 — paper transport deleted, wall tightened (GREEN)"),
@@ -33,7 +33,7 @@ fn hccr_done() -> List<MarkdownBlock> {
   ]
 }
 
-fn hccr_hazard() -> List<MarkdownBlock> {
+fn hccr_hazard() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "CLOSED hazard (the §5 fail-open P1a had to walk past) + the remaining landmine"),
     p(text: "CLOSED: realize_converge_in_process used to ground a ConvergePlanApplied evidence with a HARDCODED exit_code 0 and NO execution — dead only because everything refused. P1a replaced it with a real run_shell_transport call grounded on the actual exit (fail-closed on nonzero). The fabricated success is gone."),
@@ -41,7 +41,7 @@ fn hccr_hazard() -> List<MarkdownBlock> {
   ]
 }
 
-fn hccr_residue() -> List<MarkdownBlock> {
+fn hccr_residue() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "Counted residue"),
     ol(items: [
@@ -55,13 +55,13 @@ fn hccr_residue() -> List<MarkdownBlock> {
   ]
 }
 
-fn host_convergence_circuit_residue_body() -> List<MarkdownBlock> {
+fn host_convergence_circuit_residue_body() -> List<std.markdown.MarkdownBlock> {
   concat(hccr_intro(),
   concat(hccr_done(),
   concat(hccr_hazard(), hccr_residue())))
 }
 
-data host_convergence_circuit_residue_plan: Plan = Plan {
+data host_convergence_circuit_residue_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "host-convergence-circuit-residue",
   title: "Host-convergence circuit — P0 + P1-core landed; P1a/P1b/live + P2 + P3 residue (2026-07-23)",
   body: host_convergence_circuit_residue_body(),

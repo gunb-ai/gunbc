@@ -3,7 +3,7 @@ module gunbc.hostname_allocation
 
 type HostnameAllocation {
   fleet_slot: product.placement_supply.HostIdentity
-  canonical_hostname: DnsLabel
+  canonical_hostname: extdeps.dns.domain_name.DnsLabel
 }
 
 data gunbc_hostname_allocation_scope_disposition: Disposition = Terminal {
@@ -17,7 +17,7 @@ data gunbc_hostname_allocation_injectivity_disposition: Disposition = Terminal {
 type HostnameAllocationRosterVerdict
   = HostnameAllocationRosterConsistent
   | FleetSlotAllocatedTwice { fleet_slot: product.placement_supply.HostIdentity }
-  | CanonicalHostnameClaimedTwice { canonical_hostname: DnsLabel }
+  | CanonicalHostnameClaimedTwice { canonical_hostname: extdeps.dns.domain_name.DnsLabel }
 
 type HostnameAllocationRosterScan {
   seen_slots: Map<String, Bool>

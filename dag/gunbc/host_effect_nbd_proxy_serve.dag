@@ -41,10 +41,10 @@ fn host_effect_nbd_proxy_serve_session_scope(intent: NbdProxyServeTransportInten
 }
 
 type NbdProxyServeSessionBinding {
-  intent: NbdProxyServeTransportIntent
-  lease_key: NonEmptyStr
-  scope: ProcessPortScope
-  policy: TemporalEffectPolicy
+  intent: extdeps.bmc.webui.nbd_proxy_serve.NbdProxyServeTransportIntent
+  lease_key: std.types.NonEmptyStr
+  scope: gunbc.session_lease.ProcessPortScope
+  policy: std.temporal_effect.TemporalEffectPolicy
 }
 
 fn host_effect_nbd_proxy_serve_session_binding(

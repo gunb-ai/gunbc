@@ -1,7 +1,7 @@
 module v2.test.claim.identity_captured_navigation.roster_gate
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn roster_dag_language_model_zero_suspects_within_ratchet() -> Bool {
   v2.lens.identity_captured_navigation.roster_gate.file_gate(path: "src/v2/extdeps/languages/dag.dag", refusal_ceiling: 0)

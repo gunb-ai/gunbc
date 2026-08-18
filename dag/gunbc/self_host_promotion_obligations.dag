@@ -19,9 +19,9 @@ module gunbc.self_host_promotion_obligations
 // build directory. The producer-provenance obligation gates DECLARING n/27, not
 // producing it, and the numerator is 0 with nothing currently able to promote.
 type PromotionObligation {
-  subject: DeclarationRef
-  claim_at_risk: NonEmptyStr
-  condition: DissolutionCondition
+  subject: std.decl_ref.DeclarationRef
+  claim_at_risk: std.types.NonEmptyStr
+  condition: std.dissolution.DissolutionCondition
 }
 
 // THE SIX DECLARED AXES DO NOT DETERMINE THE ARTIFACT. A Rust debug binary embeds its

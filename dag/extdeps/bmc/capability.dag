@@ -20,12 +20,12 @@ type BmcCapability
   | CapabilitySerialConsole
 
 type BmcFirmwareVersion {
-  family: BmcFirmwareFamily
-  version: FirmwareSemanticVersion
+  family: std.bmc.BmcFirmwareFamily
+  version: extdeps.firmware.types.FirmwareSemanticVersion
 }
 
 type BmcFirmwareVersionParse
-  = BmcFirmwareVersionParsed { version: FirmwareSemanticVersion }
+  = BmcFirmwareVersionParsed { version: extdeps.firmware.types.FirmwareSemanticVersion }
   | BmcFirmwareVersionRefused { wire: String }
 
 fn bmc_firmware_version_from_wire(wire: String) -> BmcFirmwareVersionParse {
@@ -60,7 +60,7 @@ fn bmc_firmware_version_from_wire(wire: String) -> BmcFirmwareVersionParse {
 }
 
 type BmcFirmwareTrack {
-  family: BmcFirmwareFamily
+  family: std.bmc.BmcFirmwareFamily
   major_version: std.nat.Nat
 }
 
@@ -69,10 +69,10 @@ type BmcFirmwareIntent
   | BmcFirmwareTrackRequired { track: BmcFirmwareTrack }
 
 type BmcFirmwareObservation {
-  endpoint: BmcEndpoint
+  endpoint: std.bmc.BmcEndpoint
   firmware: BmcFirmwareVersion
   evidence_scope: BmcEvidenceTemporalScope
-  observed_at: EpochMs
+  observed_at: std.types.EpochMs
 }
 
 type BmcFirmwareIntentObservationVerdict

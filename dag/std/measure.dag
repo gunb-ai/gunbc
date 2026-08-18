@@ -923,10 +923,10 @@ data clock_basis_authority_reachability_note: String = "WHY THIS CARRIER LIVES I
 
 data measure_clock_basis_seed_entry_note: String = "Two nullary constructors exist so the v1 seed can hand a ClockBasis across the interpreter boundary WITHOUT building a Value in Rust — the same discipline millisecond(count:) and nanosecond(count:) already carry at this seam, and the reason gunbc.witness_row_cost's seed notes give for it: a carrier assembled on the Rust side is a second copy of this module's shape, and it drifts silently. WHICH one the seed calls is chosen by matching its own typed BudgetKind, so the clock is never recovered from a label string; the function name is a symbol the seed selects, not prose it parses. They dissolve with the seed transport itself, on the witness-realization lane's trigger — when a realized runner enforces the deadline, it constructs the outcome here directly and has nothing to marshal."
 
-fn clock_basis_label(b: ClockBasis) -> NonEmptyStr {
+fn clock_basis_label(b: ClockBasis) -> std.types.NonEmptyStr {
   match b {
-    CpuClock => "thread-CPU" as NonEmptyStr
-    WallClock => "wall" as NonEmptyStr
+    CpuClock => "thread-CPU" as std.types.NonEmptyStr
+    WallClock => "wall" as std.types.NonEmptyStr
   }
 }
 
@@ -980,9 +980,9 @@ fn signed_square_millimeter_count(m: SignedSquareMillimeter) -> Int {
   measure_count(m)
 }
 
-data amortization_months_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: ground as calendar-month Duration sibling to billing_month_as_hour_count (one month-count authority for billing amortization + hourly divisor), or fold into extdeps.forex/pricing month facts when a second consumer appears — do not mint a third month wrapper.")
+data amortization_months_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: ground as calendar-month Duration sibling to billing_month_as_hour_count (one month-count authority for billing amortization + hourly divisor), or fold into extdeps.forex/pricing month facts when a second consumer appears — do not mint a third month wrapper.")
 
-data basis_point_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: Ratio<Scale> carrier unifying Percent and BasisPoint as two scales of one Dimensionless authority, with bp_to_percent/percent_to_bp derive relations enforced at call sites — else a third dimensionless-ratio use-case mints a third nickname.")
+data basis_point_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: Ratio<Scale> carrier unifying Percent and BasisPoint as two scales of one Dimensionless authority, with bp_to_percent/percent_to_bp derive relations enforced at call sites — else a third dimensionless-ratio use-case mints a third nickname.")
 
 // WHICH ORIGIN a reading was taken against, and it is a DIFFERENT axis from ClockBasis rather than a
 // finer spelling of it. ClockBasis says which KIND of clock produced a duration (cpu or wall);

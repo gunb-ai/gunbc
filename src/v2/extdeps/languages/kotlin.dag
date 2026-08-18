@@ -37,7 +37,7 @@ type KotlinScalar
   | NothingScalar
 
 type KotlinIntegerPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   width: KotlinIntWidth
   overflow: KotlinIntegerOverflowUnspecified
   representation: KotlinRuntimeRepresentation
@@ -58,7 +58,7 @@ type KotlinOrderedRingIntegerFacts
     }
 
 type KotlinFloatPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   width: KotlinFloatWidth
   value_format: KotlinFloatValueFormat
   representation: KotlinRuntimeRepresentation
@@ -71,14 +71,14 @@ type KotlinNonNumericValueFact
   | ControlFlowInhabitanceFact { inhabitance: KotlinControlFlowInhabitance }
 
 type KotlinNonNumericPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   scalar: KotlinScalar
   value_fact: KotlinNonNumericValueFact
 }
 
 type KotlinGrammarRelationRow {
-  head: ConcreteSyntaxToken
-  tail: List<ConcreteSyntaxToken>
+  head: v2.std.compilers.target_model.ConcreteSyntaxToken
+  tail: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 fn kotlin_integer_overflow_unspecified_marker() -> KotlinIntegerOverflowUnspecified {
   KotlinIntegerOverflowUnspecified {}

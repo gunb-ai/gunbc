@@ -24,7 +24,7 @@ type CadenceSchedulingRow {
 
 type EvaluatedScopeFact
   = EvaluatedScopeAbsent { reason: String }
-  | EvaluatedScopePresent { roster: ScopeRoster }
+  | EvaluatedScopePresent { roster: v2.lens.enforcement.vocab.ScopeRoster }
 
 type SubjectPopulationCounts {
   discovered: Int
@@ -41,14 +41,14 @@ type LensEnforcementApplication {
   standing_intent_id: String
   support: LensEnforcementSupport
   cadence_rows: List<CadenceSchedulingRow>
-  required_scope: ScopeRoster
-  claimed_scope: ScopeRoster
+  required_scope: v2.lens.enforcement.vocab.ScopeRoster
+  claimed_scope: v2.lens.enforcement.vocab.ScopeRoster
   evaluated_scope: EvaluatedScopeFact
   subject_counts: SubjectPopulationCounts
 }
 
 type LensEnforcementInventoryRow {
-  lens_id: LensIdV0
+  lens_id: v2.lens.registry.LensIdV0
   consumer_unbound: Bool
   has_enrollment_discovery_receipt: Bool
   applications: List<LensEnforcementApplication>
@@ -534,12 +534,12 @@ fn inventory_row_evaluated_scope_absent(row: LensEnforcementInventoryRow) -> Boo
   })
 }
 
-type WitnessExclusionLookup = ExclusionRowFound { value: WitnessExclusionRow } | ExclusionRowAbsent
+type WitnessExclusionLookup = ExclusionRowFound { value: gunbc.ci_layer_roots.WitnessExclusionRow } | ExclusionRowAbsent
 
 type WitnessAdmissionInventoryRow {
   witness_entry: String
   exclusion: WitnessExclusionLookup
-  primary_cadence: WitnessConsumerCadence
+  primary_cadence: std.witness_admission.WitnessConsumerCadence
   cadence_rows: List<CadenceSchedulingRow>
 }
 

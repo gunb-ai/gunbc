@@ -3,7 +3,7 @@ module test.claim.transport_fidelity
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn test_class_is_hermetic(c: TestClass) -> Bool {
+fn test_class_is_hermetic(c: std.fidelity.TestClass) -> Bool {
   match c {
     Hermetic => true
     Unit => false
@@ -11,7 +11,7 @@ fn test_class_is_hermetic(c: TestClass) -> Bool {
   }
 }
 
-fn test_class_is_integration(c: TestClass) -> Bool {
+fn test_class_is_integration(c: std.fidelity.TestClass) -> Bool {
   match c {
     Integration => true
     Unit => false
@@ -19,7 +19,7 @@ fn test_class_is_integration(c: TestClass) -> Bool {
   }
 }
 
-fn test_class_is_unit(c: TestClass) -> Bool {
+fn test_class_is_unit(c: std.fidelity.TestClass) -> Bool {
   match c {
     Unit => true
     Hermetic => false

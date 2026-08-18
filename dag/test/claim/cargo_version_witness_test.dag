@@ -8,7 +8,7 @@ test fn w_stage0_default_package_version() -> Bool {
 }
 
 test fn w_package_version_field_renders() -> Bool {
-  let pkg = CargoPackage {
+  let pkg = extdeps.cargo.CargoPackage {
     name: "demo",
     version: "2.4.6",
     edition: Edition2021,
@@ -18,11 +18,11 @@ test fn w_package_version_field_renders() -> Bool {
 }
 
 test fn w_registry_dep_version_requirements() -> Bool {
-  let serde = CargoDependency {
+  let serde = extdeps.cargo.CargoDependency {
     name: "serde",
     source: RegistryDep { version: "1", features: ["derive", "rc"] }
   }
-  let stacker = CargoDependency {
+  let stacker = extdeps.cargo.CargoDependency {
     name: "stacker",
     source: RegistryDep { version: "0.1", features: [] }
   }
@@ -52,7 +52,7 @@ test fn w_min_cargo_version_grounded() -> Bool {
   min_cargo_version == ">= 1.56"
 }
 
-fn dep_requirement_one() -> CargoVersionRequirement { "1" }
+fn dep_requirement_one() -> extdeps.cargo_version.CargoVersionRequirement { "1" }
 
 test fn w_tool_floor_distinct_from_dep_requirement() -> Bool {
   min_cargo_version != dep_requirement_one()

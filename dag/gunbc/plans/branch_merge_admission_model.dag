@@ -1,13 +1,13 @@
 module gunbc.plans.branch_merge_admission_model
 
 
-fn status_block() -> MarkdownBlock {
+fn status_block() -> std.markdown.MarkdownBlock {
   quote(blocks: [
     p(text: "**Status: design sketch (checkpoint 0)** — model frame for operator review BEFORE any substrate edit. Design-first; NO enforcement flip in this doc. Authored as a .dag Plan and NOT yet enrolled as a generated docs/plans md (no PlanArtifact, no plan_registry entry, no roadmap node) — enrollment is checkpoint 1; until then this module is reviewable from its own source. (The precedent this deferral formerly cited, gunbc.plans.commit_workflow, was DELETED 2026-07-25 when its own dissolution trigger fired — its checkpoints landed and gunbc.commit_workflow is the roster authority the handlers project from.) DESIGN refs: §1 (reduce convention to necessity — a merge policy is a substrate fact, not a GitHub setting bolted on the side), §2 (Realization — one RepoStandard authority, N transport handlers), §3 (single authority; the merge step currently punted to the operator's repo-admin half is the layer-inversion tell), §5 (construction over validation; the decidability trichotomy), §6 (priced in displaced cost, not elegance). Companion: this MODELS the options that gunbc.plans.ci_merge_freshness names as a decision record, and is the merge-side complement to gunbc.plans.ci_process_end_to_end (which is CI performance, not admission). Do NOT disturb the carrier gunbc.commit_workflow (#5940). The former companion instruction — do not disturb the #5924 pre-push emit — is RETIRED as an instruction of THIS sketch, because the sketch that issued the freeze (gunbc.plans.commit_workflow) was deleted 2026-07-25. Pre-push scope is decided by the GitPrePushHook enrollments on commit_gate_roster in gunbc.commit_workflow and by the dispositions recorded there; it is not governed by a freeze note in a neighbouring sketch."),
   ])
 }
 
-fn section_0() -> List<MarkdownBlock> {
+fn section_0() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "0. Grounded today — receipts from the live repo"),
     p(text: "This is not speculative. The stale-green class reddened main at least three times (gunbc.plans.ci_merge_freshness records #5429/#5445/#5453; the recent case is #5933, reddened by #5943 removing a field on a base #5933's CI never saw). The probe below reads the actual gunb-ai/gunbc settings via the GitHub API and shows the gap is live config, not lore:"),
@@ -46,7 +46,7 @@ fn section_0() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_1() -> List<MarkdownBlock> {
+fn section_1() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "1. The invariant, and why it breaks under squash-merge"),
     p(text: "The property the operator wants is: a PR that goes into main green keeps main green. It holds if and only if green was computed on the exact tree that becomes main, atomically with the merge. Squash-merge is the reason that is not automatic: the merged tree is the squash of the PR diff applied to CURRENT main AT MERGE TIME, producing one new commit. So the tree that becomes main is constructed at merge against whatever main is then — never the base the PR's CI ran against, and never re-validated."),
@@ -59,7 +59,7 @@ fn section_1() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_2() -> List<MarkdownBlock> {
+fn section_2() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "2. §3 spine — three facts, one authority, reuse not re-coin"),
     p(text: "The same separation gunbc.commit_workflow already applies to the CI/pre-push side, extended to the merge step: (a) interface shape = the RepoStandard (desired settings + admission rule); (b) transport = the GitHub Rulesets API and PATCH /repos, one realization handler of N; (c) business policy = the admission predicate. The merge step is the one fact currently OUTSIDE the model (ci_merge_freshness calls it the operator's repo-admin half) — pulling it in dissolves the inversion."),
@@ -84,7 +84,7 @@ fn section_2() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_3() -> List<MarkdownBlock> {
+fn section_3() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "3. Model sketch — the merge-admission authority"),
     p(text: "Single authority the drift gate and the reconciler both derive from:"),
@@ -98,7 +98,7 @@ fn section_3() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_4() -> List<MarkdownBlock> {
+fn section_4() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "4. The simulation — before/after green-to-red as DATA, options COMPUTED"),
     p(text: "Per the operator: encode the situation and let a witness compute which policies survive, rather than argue in prose. The scenario is two events as data: PR-X earns a receipt against base B0 with roster R0 (green); then PR-Y lands removing a field, advancing main to B1 (roster still R0). A separate scenario isolates the criteria case: main tree unchanged (B0) but roster advances R0 to R1. A witness (a test fn in a _test.dag, floor-enrolled by naming) runs each candidate AdmissionPolicy over both scenarios and asserts which are total — admit nothing that reds main:"),
@@ -116,7 +116,7 @@ fn section_4() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_5() -> List<MarkdownBlock> {
+fn section_5() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "5. Realization — GitHub API hookup, and why it is idempotent"),
     p(text: "Probed read-only on 2026-06-29. The legacy branch-protection API is dead to our integration (403 not accessible); the modern Rulesets API — which supersedes it and is where merge-queue config also lives — reads fine. So the handler targets rulesets, not branch protection:"),
@@ -134,7 +134,7 @@ fn section_5() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_6() -> List<MarkdownBlock> {
+fn section_6() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "6. Sequencing, decidability, and the purity-trap guards"),
     ul(items: [
@@ -148,7 +148,7 @@ fn section_6() -> List<MarkdownBlock> {
   ]
 }
 
-fn branch_merge_admission_model_body() -> List<MarkdownBlock> {
+fn branch_merge_admission_model_body() -> List<std.markdown.MarkdownBlock> {
   concat([status_block()],
     concat(section_0(),
       concat(section_1(),
@@ -158,7 +158,7 @@ fn branch_merge_admission_model_body() -> List<MarkdownBlock> {
               concat(section_5(), section_6())))))))
 }
 
-data branch_merge_admission_model_plan: Plan = Plan {
+data branch_merge_admission_model_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "branch-merge-admission-model",
   title: "[SKETCH] Branch & merge-admission model — green-stays-green by construction + repo-standard drift gate",
   body: branch_merge_admission_model_body(),

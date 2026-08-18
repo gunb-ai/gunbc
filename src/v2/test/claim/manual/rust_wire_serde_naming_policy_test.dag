@@ -54,21 +54,21 @@ test fn witness_rust_wire_serde_naming_discriminates() -> Bool {
 }
 
 data unified_claim_rust_wire_serde_screaming_snake: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
-  witness: BoolWitness {
+  witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/rust_wire_serde_naming_policy_test.dag",
     function: witness_rust_wire_serde_screaming_snake_holds
   }
 }
 
 data unified_claim_rust_wire_serde_snake_case: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
-  witness: BoolWitness {
+  witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/rust_wire_serde_naming_policy_test.dag",
     function: witness_rust_wire_serde_snake_case_holds
   }
 }
 
 data unified_claim_rust_wire_serde_naming_discriminates: v2.std.verification.UnifiedTestClaim = BoolWitnessClaim {
-  witness: BoolWitness {
+  witness: v2.std.verification.BoolWitness {
     entry: "src/v2/test/claim/manual/rust_wire_serde_naming_policy_test.dag",
     function: witness_rust_wire_serde_naming_discriminates
   }

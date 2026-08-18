@@ -9,39 +9,39 @@ type WorkUnitId = NonEmptyStr where brand("WorkUnitId")
 type ProviderIdentity = NonEmptyStr where brand("ProviderIdentity")
 
 type MemoryDevice {
-  capacity: ByteSize
-  memory_kind: MemoryKind
-  bandwidth: Bandwidth?
+  capacity: std.measure.ByteSize
+  memory_kind: extdeps.memory.types.MemoryKind
+  bandwidth: std.measure.Bandwidth?
 }
 
 type StorageMount {
-  mount_path: NonEmptyStr
-  device: StorageDevice
-  lifecycle: PersistenceKind
+  mount_path: std.types.NonEmptyStr
+  device: extdeps.storage.types.StorageDevice
+  lifecycle: extdeps.storage.types.PersistenceKind
 }
 
 type ProcessorKind
-  = CpuProcessor { cpu: CpuFacts }
-  | GpuProcessor { gpu: GpuFacts }
-  | AcceleratorProcessor { accelerator: AcceleratorFacts }
+  = CpuProcessor { cpu: extdeps.cpu.types.CpuFacts }
+  | GpuProcessor { gpu: extdeps.gpu.types.GpuFacts }
+  | AcceleratorProcessor { accelerator: extdeps.gpu.types.AcceleratorFacts }
 
 type ExecutionSurface {
-  os: OperatingSystemSurface
+  os: std.os.types.OperatingSystemSurface
   isolation: IsolationBoundary
   container_runtime: ContainerRuntime?
-  toolchains: List<ToolchainCapability>
+  toolchains: List<extdeps.toolchain.types.ToolchainCapability>
   mounted_storage: List<StorageMount>
-  network: List<NetworkInterface>
+  network: List<product.network_topology.NetworkInterface>
 }
 
 type ComputeHost {
   identity: product.placement_supply.HostIdentity
-  baseboard: ServerBaseboard?
-  bmc_intent: BmcControlPlaneIntent?
+  baseboard: extdeps.boards.types.ServerBaseboard?
+  bmc_intent: gunbc.bmc_intent.BmcControlPlaneIntent?
   processors: List<ProcessorKind>
   memory: List<MemoryDevice>
-  storage: List<StorageDevice>
-  network_interfaces: List<NetworkInterface>
+  storage: List<extdeps.storage.types.StorageDevice>
+  network_interfaces: List<product.network_topology.NetworkInterface>
 }
 
 fn compute_host_primary_cpu(host: ComputeHost) -> CpuFacts? {
@@ -91,7 +91,7 @@ type PerformanceReceipt {
   sample_count: Int
   measurement_context: ExecutionSurface
   confidence: MeasurementConfidence
-  cache_state_summary: NonEmptyStr?
+  cache_state_summary: std.types.NonEmptyStr?
 }
 
 data host_v1_interpreter_provider: ProviderIdentity = "host:v1-interpreter"
@@ -248,9 +248,9 @@ data srv3_host: ComputeHost = ComputeHost {
 }
 type FleetHostMemoryPopulationDeferral {
   host: product.placement_supply.HostIdentity
-  bmc_host: NonEmptyStr
-  cause: NonEmptyStr
-  dissolution: DissolutionCondition
+  bmc_host: std.types.NonEmptyStr
+  cause: std.types.NonEmptyStr
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 data srv4_memory_population_deferral: FleetHostMemoryPopulationDeferral = FleetHostMemoryPopulationDeferral {

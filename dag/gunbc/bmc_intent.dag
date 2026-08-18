@@ -2,17 +2,17 @@ module gunbc.bmc_intent
 
 
 type BmcFanAcousticPolicy {
-  cooling_engaged_by_temperature: Celsius
-  cooling_engaged_duty_floor: Percent
-  emergency_full_duty_at_or_below: Celsius
+  cooling_engaged_by_temperature: std.measure.Celsius
+  cooling_engaged_duty_floor: std.measure.Percent
+  emergency_full_duty_at_or_below: std.measure.Celsius
 }
 
 data bmc_fan_acoustic_policy_reframe_note: String = "Acoustic safety here is engage-cooling-early, not minimize-duty-until-late. The empirical basis (fleet incident 2026-07-30): holding a low duty across a wide band and only ramping near the emergency zone lets the SoC climb hot, and the controller then panics to maximum duty — the loudest outcome. So the policy asserts the curve has engaged substantial cooling (cooling_engaged_duty_floor) by a moderate control temperature (cooling_engaged_by_temperature), which keeps the chip steady-cool and inaudible, and rejects the idle-until-panic shape by construction. It is NOT a low-duty ceiling: a curve that stays quiet by staying idle fails this policy."
 
 type BmcFanThermalGuard {
-  processor_rollback_temperature: Celsius
-  component_rollback_temperature: Celsius
-  required_component_sensors: List<NonEmptyStr>
+  processor_rollback_temperature: std.measure.Celsius
+  component_rollback_temperature: std.measure.Celsius
+  required_component_sensors: List<std.types.NonEmptyStr>
 }
 
 fn bmc_intent_fan_curve_duty_at(curve: BmcFanCurve, reading: Celsius) -> Percent {
@@ -75,16 +75,16 @@ fn bmc_fan_curve_effectively_reaches_full_duty_before(
 }
 
 type BmcFanPolicyIntent {
-  durability: StateDurabilityIntent
-  curve: BmcFanCurve
-  required_tach_inputs: List<NonEmptyStr>
+  durability: std.state_durability.StateDurabilityIntent
+  curve: extdeps.bmc.types.BmcFanCurve
+  required_tach_inputs: List<std.types.NonEmptyStr>
   acoustic_policy: BmcFanAcousticPolicy
   thermal_guard: BmcFanThermalGuard
-  processor_thermal_limits: ProcessorThermalLimits
+  processor_thermal_limits: extdeps.cpu.types.ProcessorThermalLimits
 }
 
 type BmcControlPlaneIntent {
-  firmware: BmcFirmwareIntent
+  firmware: extdeps.bmc.capability.BmcFirmwareIntent
   fan_policy: BmcFanPolicyIntent
 }
 

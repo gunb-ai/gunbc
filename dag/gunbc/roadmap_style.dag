@@ -29,8 +29,8 @@ data band_paint_note: String = "The instrument's band materials (remodel W1c/W1g
 
 type BandPaint {
   key: String
-  fill: Swatch
-  ink: Swatch
+  fill: gunbc.design.palette.Swatch
+  ink: gunbc.design.palette.Swatch
 }
 
 data workspace_chosen_set_note: String = "GRADUATION (operator choice 2026-07-24, after auditioning live: 'okabe-ito actually looks pretty good — could we use that somehow?'): okabe-ito is the workspace's chosen band set. The default paints ARE the audition derivation — fills from the okabe mapping rows, inks picked per fill by the WCAG kernel (black wins every light fill; the graduated-default witness raises the bar to AA normal text, which every pairing clears). island-pastel demotes to a one-click audition option, built over its for-use completion so venom and the in-family inks stay modeled — and the kernel derivation REPRODUCES the old hand ink rows exactly (mint-ink wins on mint, ivory on venom), which is the in-family rule shown to be derivable rather than hand-held. Flipping the choice back is this one fn body plus the toggle defaults."
@@ -78,7 +78,7 @@ type AuditionFillRow {
 
 type AuditionSet {
   set_name: String
-  set: SwatchSet
+  set: gunbc.design.palette.SwatchSet
   fills: List<AuditionFillRow>
 }
 

@@ -1,7 +1,7 @@
 module v2.test.manual.rust_grammar_structure
 
 
-fn rust_grammar_structure_satisfied(lm: LanguageModel) -> Bool {
+fn rust_grammar_structure_satisfied(lm: v2.std.language_model.LanguageModel) -> Bool {
   lex_rule_set_token_class_member(rules: rust_lex_rules(), token_class: ^rust_token_kw_let) &&
     lex_rule_set_token_class_member(rules: rust_lex_rules(), token_class: ^rust_token_kw_else) &&
     rust_formal_production_list_has_lhs(
@@ -31,7 +31,7 @@ fn rust_grammar_structure_satisfied(lm: LanguageModel) -> Bool {
     grammar_carries_symbol(grammar: lm.grammar, sym: ^rust_production_return_expr)
 }
 
-fn rust_grammar_structure_outcome_satisfied(lm: Outcome<LanguageModel>) -> Bool {
+fn rust_grammar_structure_outcome_satisfied(lm: Outcome<v2.std.language_model.LanguageModel>) -> Bool {
   match lm {
     Accepted { value: model, diagnostics: _ } =>
       rust_grammar_structure_satisfied(lm: model)

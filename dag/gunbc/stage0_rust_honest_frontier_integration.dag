@@ -5,8 +5,8 @@ data stage0_rust_honest_frontier_integration_note: String = "Lane C integration 
 
 type HonestFrontierIntegrationReceipt
   = HonestFrontierIntegrationDerived {
-      lifecycle: LifecycleTotalityReceipt,
-      reachability: ProductReachabilityReceipt,
+      lifecycle: gunbc.stage0_rust_lifecycle_totality.LifecycleTotalityReceipt,
+      reachability: gunbc.stage0_rust_product_reachability.ProductReachabilityReceipt,
       hand_maintained_product_reachable_paths: List<String>,
       hand_maintained_reachability_refused_paths: List<String>
     }

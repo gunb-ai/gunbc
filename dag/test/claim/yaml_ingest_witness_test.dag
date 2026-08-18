@@ -2,7 +2,7 @@ module test.claim.yaml_ingest_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn round_trips(v: YamlValue) -> Bool {
+fn round_trips(v: extdeps.languages.yaml.types.YamlValue) -> Bool {
   let original = serialize_yaml(v: v)
   match ingest_yaml_source(src: original) {
     IngestedYaml { value: reparsed } => serialize_yaml(v: reparsed) == original

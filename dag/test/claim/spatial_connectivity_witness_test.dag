@@ -3,9 +3,9 @@ module test.claim.spatial_connectivity_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn site() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
+fn site() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
 
-fn box(x0: Int, y0: Int, x1: Int, y1: Int) -> EnclosedSpace? {
+fn box(x0: Int, y0: Int, x1: Int, y1: Int) -> std.orthogonal_topology.EnclosedSpace? {
   match orthogonal_loop2(vertices: [
     point2(frame: site(), x: x0, y: y0),
     point2(frame: site(), x: x1, y: y0),
@@ -21,14 +21,14 @@ fn box(x0: Int, y0: Int, x1: Int, y1: Int) -> EnclosedSpace? {
   }
 }
 
-fn placed(name: String, x0: Int, y0: Int, x1: Int, y1: Int) -> PlacedSpace? {
+fn placed(name: String, x0: Int, y0: Int, x1: Int, y1: Int) -> product.spatial_world.PlacedSpace? {
   match box(x0: x0, y0: y0, x1: x1, y1: y1) {
     Absent => none
-    Present { value: s } => Present { value: PlacedSpace { identity: (name as RoomIdentity), space: s } }
+    Present { value: s } => Present { value: product.spatial_world.PlacedSpace { identity: (name as product.placement_supply.RoomIdentity), space: s } }
   }
 }
 
-fn collect(rooms: List<PlacedSpace?>) -> List<PlacedSpace>? {
+fn collect(rooms: List<product.spatial_world.PlacedSpace?>) -> List<product.spatial_world.PlacedSpace>? {
   fold(rooms, init: Present { value: [] }, f: (acc, r) =>
     match acc {
       Absent => none
@@ -40,7 +40,7 @@ fn collect(rooms: List<PlacedSpace?>) -> List<PlacedSpace>? {
     })
 }
 
-fn world_of(rooms: List<PlacedSpace?>) -> World? {
+fn world_of(rooms: List<product.spatial_world.PlacedSpace?>) -> product.spatial_world.World? {
   match collect(rooms: rooms) {
     Absent => none
     Present { value: got } =>
@@ -53,7 +53,7 @@ fn world_of(rooms: List<PlacedSpace?>) -> World? {
 
 // Three rooms in a row along X. kitchen | hall | study, each meeting its neighbour on a
 // north-south wall. kitchen and study do NOT touch.
-fn terrace() -> World? {
+fn terrace() -> product.spatial_world.World? {
   world_of(rooms: [
     placed(name: "kitchen", x0: 0, y0: 0, x1: 3000, y1: 4000),
     placed(name: "hall", x0: 3000, y0: 0, x1: 5000, y1: 4000),
@@ -61,11 +61,11 @@ fn terrace() -> World? {
   ])
 }
 
-fn door(name: String, a: String, b: String, along_low: Int, along_high: Int) -> Opening {
-  Opening {
-    identity: (name as OpeningIdentity),
-    first: (a as RoomIdentity),
-    second: (b as RoomIdentity),
+fn door(name: String, a: String, b: String, along_low: Int, along_high: Int) -> product.spatial_connectivity.Opening {
+  product.spatial_connectivity.Opening {
+    identity: (name as product.spatial_connectivity.OpeningIdentity),
+    first: (a as product.placement_supply.RoomIdentity),
+    second: (b as product.placement_supply.RoomIdentity),
     along_low: along_low,
     along_high: along_high,
     sill: 0,
@@ -73,7 +73,7 @@ fn door(name: String, a: String, b: String, along_low: Int, along_high: Int) -> 
   }
 }
 
-fn plan_of(openings: List<Opening>) -> OpeningPlan? {
+fn plan_of(openings: List<product.spatial_connectivity.Opening>) -> product.spatial_connectivity.OpeningPlan? {
   match terrace() {
     Absent => none
     Present { value: w } =>
@@ -84,7 +84,7 @@ fn plan_of(openings: List<Opening>) -> OpeningPlan? {
   }
 }
 
-fn plan_refusal(openings: List<Opening>) -> ConnectivityRefusal? {
+fn plan_refusal(openings: List<product.spatial_connectivity.Opening>) -> product.spatial_connectivity.ConnectivityRefusal? {
   match terrace() {
     Absent => none
     Present { value: w } =>
@@ -95,14 +95,14 @@ fn plan_refusal(openings: List<Opening>) -> ConnectivityRefusal? {
   }
 }
 
-fn connected(openings: List<Opening>, from: String, to: String) -> Bool {
+fn connected(openings: List<product.spatial_connectivity.Opening>, from: String, to: String) -> Bool {
   match terrace() {
     Absent => false
     Present { value: w } =>
       match plan_of(openings: openings) {
         Absent => false
         Present { value: p } =>
-          match rooms_are_connected(w: w, p: p, from: (from as RoomIdentity), to: (to as RoomIdentity)) {
+          match rooms_are_connected(w: w, p: p, from: (from as product.placement_supply.RoomIdentity), to: (to as product.placement_supply.RoomIdentity)) {
             ConnectivityRefused { cause: _ } => false
             ConnectivityReady { value: b } => b
           }
@@ -197,10 +197,10 @@ test fn a_door_running_past_the_shared_wall_refuses_with_both_extents() -> Bool 
 // The wall is 2400 high, so a door reaching 2600 does not fit in it. The vertical direction is
 // checked against the same shared region as the horizontal one.
 test fn a_door_taller_than_the_shared_wall_refuses() -> Bool {
-  match plan_refusal(openings: [Opening {
-    identity: ("d1" as OpeningIdentity),
-    first: ("kitchen" as RoomIdentity),
-    second: ("hall" as RoomIdentity),
+  match plan_refusal(openings: [product.spatial_connectivity.Opening {
+    identity: ("d1" as product.spatial_connectivity.OpeningIdentity),
+    first: ("kitchen" as product.placement_supply.RoomIdentity),
+    second: ("hall" as product.placement_supply.RoomIdentity),
     along_low: 1000,
     along_high: 1900,
     sill: 0,
@@ -265,7 +265,7 @@ test fn two_openings_with_one_identity_refuse() -> Bool {
   }
 }
 
-fn endpoint_role_is(c: ConnectivityRefusal, name: String, start_expected: Bool) -> Bool {
+fn endpoint_role_is(c: product.spatial_connectivity.ConnectivityRefusal, name: String, start_expected: Bool) -> Bool {
   match c {
     ReachabilityEndpointMissing { identity: i, role: r } =>
       (i as String) == name
@@ -284,7 +284,7 @@ test fn reachability_from_a_room_the_world_does_not_have_refuses() -> Bool {
       match plan_of(openings: []) {
         Absent => false
         Present { value: p } =>
-          match reachable_from(w: w, p: p, start: ("cellar" as RoomIdentity)) {
+          match reachable_from(w: w, p: p, start: ("cellar" as product.placement_supply.RoomIdentity)) {
             ConnectivityReady { value: _ } => false
             ConnectivityRefused { cause: c } => endpoint_role_is(c: c, name: "cellar", start_expected: true)
           }
@@ -303,7 +303,7 @@ test fn a_missing_destination_is_named_as_a_destination_not_a_start() -> Bool {
       match plan_of(openings: []) {
         Absent => false
         Present { value: p } =>
-          match rooms_are_connected(w: w, p: p, from: ("kitchen" as RoomIdentity), to: ("cellar" as RoomIdentity)) {
+          match rooms_are_connected(w: w, p: p, from: ("kitchen" as product.placement_supply.RoomIdentity), to: ("cellar" as product.placement_supply.RoomIdentity)) {
             ConnectivityReady { value: _ } => false
             ConnectivityRefused { cause: c } => endpoint_role_is(c: c, name: "cellar", start_expected: false)
           }
@@ -318,7 +318,7 @@ test fn a_missing_source_is_named_as_a_start_not_a_destination() -> Bool {
       match plan_of(openings: []) {
         Absent => false
         Present { value: p } =>
-          match rooms_are_connected(w: w, p: p, from: ("cellar" as RoomIdentity), to: ("kitchen" as RoomIdentity)) {
+          match rooms_are_connected(w: w, p: p, from: ("cellar" as product.placement_supply.RoomIdentity), to: ("kitchen" as product.placement_supply.RoomIdentity)) {
             ConnectivityReady { value: _ } => false
             ConnectivityRefused { cause: c } => endpoint_role_is(c: c, name: "cellar", start_expected: true)
           }

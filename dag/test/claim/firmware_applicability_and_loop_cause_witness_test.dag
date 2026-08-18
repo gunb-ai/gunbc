@@ -81,7 +81,7 @@ test fn the_rom_packaging_is_applicable_with_no_readable_bmc_version() -> Bool {
   }
 }
 
-data srv4_e588_signature: HostBootStallSignature = HostBootStallSignature {
+data srv4_e588_signature: gunbc.host_boot_supervision.HostBootStallSignature = gunbc.host_boot_supervision.HostBootStallSignature {
   host: "srv4",
   last_checkpoint: "P012",
   error_code: Present { value: "E588" },
@@ -128,7 +128,7 @@ test fn the_same_signature_without_the_intervention_is_confounded() -> Bool {
 // supervisor verdict inferred from silence.
 test fn no_error_code_after_a_clean_stop_is_unobserved_not_attributed() -> Bool {
   match host_boot_loop_cause(
-    signature: HostBootStallSignature {
+    signature: gunbc.host_boot_supervision.HostBootStallSignature {
       host: "srv4",
       last_checkpoint: "P012",
       error_code: Absent,

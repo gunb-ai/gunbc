@@ -1,7 +1,7 @@
 module v2.test.long.fallback_arm_census_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data fallback_arm_census_long_note: String = "W2 fallback-arm census corpus grain (docs/plans/fallback-arm-census.md, 2026-07-25): host-seamed MatchPattern::Wildcard walk over witness_layer_roots — Class C long-lane (decl_facts corpus walk exceeds per-PR 5s fast-lane budget). Enrolled on falsifier_substrate_long_lane_entries (nightly falsifier batch 6). Per-PR fixture-wall coverage: fallback_arm_census_planted_test.dag (AnswersOnOpen / Refuses / ClassifierUnknown / CompletesClosedTotal / DeclaredInterim). Zero production behavior change — register and route only."
 

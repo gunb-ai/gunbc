@@ -1,14 +1,14 @@
 module extdeps.boot.emit
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html"
   }
 }
 
-data pixel_writer_payload_digest_label: NonEmptyStr = "freestanding-elf64-slice-0.5"
+data pixel_writer_payload_digest_label: std.types.NonEmptyStr = "freestanding-elf64-slice-0.5"
 
 data freestanding_load_vaddr: Int = 4194304
 
@@ -24,8 +24,8 @@ data pixel_writer_code_bytes: List<Int> = [
   244,
 ]
 
-fn freestanding_elf_ident() -> ElfIdent {
-  ElfIdent {
+fn freestanding_elf_ident() -> extdeps.formats.elf.types.ElfIdent {
+  extdeps.formats.elf.types.ElfIdent {
     mag0: elf_mag0,
     mag1: elf_mag1,
     mag2: elf_mag2,
@@ -38,8 +38,8 @@ fn freestanding_elf_ident() -> ElfIdent {
   }
 }
 
-fn freestanding_elf64_ehdr(code_bytes: List<Int>) -> Elf64Ehdr {
-  Elf64Ehdr {
+fn freestanding_elf64_ehdr(code_bytes: List<Int>) -> extdeps.formats.elf.types.Elf64Ehdr {
+  extdeps.formats.elf.types.Elf64Ehdr {
     ident: freestanding_elf_ident(),
     file_type: EtExec,
     machine: EmX86_64,
@@ -57,8 +57,8 @@ fn freestanding_elf64_ehdr(code_bytes: List<Int>) -> Elf64Ehdr {
   }
 }
 
-fn freestanding_pt_load_phdr(code_bytes: List<Int>) -> Elf64Phdr {
-  Elf64Phdr {
+fn freestanding_pt_load_phdr(code_bytes: List<Int>) -> extdeps.formats.elf.segments.Elf64Phdr {
+  extdeps.formats.elf.segments.Elf64Phdr {
     segment_type: PtLoad,
     flags: pf_r + pf_x,
     offset: freestanding_code_file_offset,
@@ -80,17 +80,17 @@ fn emit_freestanding_elf64(code_bytes: List<Int>) -> List<Int> {
   )
 }
 
-fn freestanding_payload_digest(_bytes: List<Int>, _entry: Int) -> NonEmptyStr {
+fn freestanding_payload_digest(_bytes: List<Int>, _entry: Int) -> std.types.NonEmptyStr {
   pixel_writer_payload_digest_label
 }
 
-fn emit_pixel_writer_payload() -> FreestandingPayloadRef {
+fn emit_pixel_writer_payload() -> extdeps.boot.freestanding_payload.FreestandingPayloadRef {
   let code = pixel_writer_code_bytes
   let bytes = emit_freestanding_elf64(code)
   let entry = freestanding_load_vaddr
   EmittedPayload {
     digest: freestanding_payload_digest(bytes, entry),
-    entry: EntryPoint { virtual_address: entry },
+    entry: std.exec_format.EntryPoint { virtual_address: entry },
   }
 }
 

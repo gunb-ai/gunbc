@@ -5,7 +5,7 @@ type CostAxis = ChangeTime | RunTime
 type Representation = TermChain | TypeForest | ImportGraph | DeclForest
 
 type LinearityRule {
-  name: Symbol
+  name: v2.std.node.Symbol
   axis: CostAxis
   representation: Representation
   detect: fn(FreeMonoid<Node>) -> Bool

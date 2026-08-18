@@ -8,15 +8,15 @@ type InterpreterDispatchForm
   | MethodCall
   | ServiceDispatch
   | NativeSpecial
-  | UnknownForm { label: NonEmptyStr }
+  | UnknownForm { label: std.types.NonEmptyStr }
 
 type InterpreterPrimitiveArmId {
-  identity: NonEmptyStr
+  identity: std.types.NonEmptyStr
 }
 
 type ArmEnumeration
   = AuthoredInRoster
-  | DeclaredHere { dissolution: DissolutionCondition }
+  | DeclaredHere { dissolution: std.dissolution.DissolutionCondition }
 
 type InterpreterDispatchEmitSite
   = EvalBuiltinInnerSite
@@ -31,9 +31,9 @@ type InterpreterDispatchEmitSite
 type InterpreterPrimitiveDispatchArm {
   arm: InterpreterPrimitiveArmId
   form: InterpreterDispatchForm
-  authored_spelling: NonEmptyStr
-  realization_module: NonEmptyStr
-  dispatch_symbol: NonEmptyStr
+  authored_spelling: std.types.NonEmptyStr
+  realization_module: std.types.NonEmptyStr
+  dispatch_symbol: std.types.NonEmptyStr
   dispatch_emit_site: InterpreterDispatchEmitSite
   enumeration: ArmEnumeration
 }
@@ -1922,12 +1922,12 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
 }
 
 type SeedScaffoldDisposition {
-  scaffold: NonEmptyStr
-  realization_module: NonEmptyStr
-  carried_symbols: List<NonEmptyStr>
+  scaffold: std.types.NonEmptyStr
+  realization_module: std.types.NonEmptyStr
+  carried_symbols: List<std.types.NonEmptyStr>
   net_added_lines: Int
-  target_roadmap_node: NonEmptyStr
-  deletion_condition: NonEmptyStr
+  target_roadmap_node: std.types.NonEmptyStr
+  deletion_condition: std.types.NonEmptyStr
 }
 
 fn v1_interpreter_roster_seed_scaffold() -> SeedScaffoldDisposition {

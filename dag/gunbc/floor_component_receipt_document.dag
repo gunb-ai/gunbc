@@ -18,20 +18,20 @@ data receipt_member_head_sha: String = "head_sha"
 data floor_component_receipt_subject_note: String = "THE SUBJECT IS WHAT MAKES THE RECEIPT ATTRIBUTABLE, and its absence is the gap this row closes. A receipt that says only `here are some component outcomes` cannot answer the one question its consumer must ask before rendering it: IS THIS ABOUT THE RUN I AM LOOKING AT. Without a subject the alert downloads an artifact named floor-component-receipt from a run id it was given and trusts the association, so a stale artifact, a mismatched run-id parameter, or an artifact from a different workflow entirely all render as the current state of the current run with no way to notice.\n\nThe subject binds four facts: the workflow identity, the GitHub run id, the head SHA, and the receipt schema revision. Workflow and run id answer WHICH RUN; head SHA answers WHICH TREE, which is the fact an operator actually acts on and which a run id alone does not give; the schema revision answers WHETHER THIS READER UNDERSTANDS IT, and it is part of the subject rather than a sibling field because a document whose schema this reader does not know is not a document with an unreadable body — it is a document about something this reader cannot speak about at all."
 
 type FloorComponentReceiptSubject {
-  schema: NonEmptyStr
-  workflow_name: NonEmptyStr
-  run_id: NonEmptyStr
-  head_sha: CommitSha
+  schema: std.types.NonEmptyStr
+  workflow_name: std.types.NonEmptyStr
+  run_id: std.types.NonEmptyStr
+  head_sha: std.types.CommitSha
 }
 
 type FloorComponentReceiptDocument {
   subject: FloorComponentReceiptSubject
   component_count: Int
-  components: List<JsonValue>
-  unsuccessful_components: List<JsonValue>
+  components: List<extdeps.languages.json.emit.JsonValue>
+  unsuccessful_components: List<extdeps.languages.json.emit.JsonValue>
   unsuccessful_summaries: List<ComponentAlertSummary>
   component_summaries: List<ComponentAlertSummary>
-  run_terminal: JsonValue
+  run_terminal: extdeps.languages.json.emit.JsonValue
 }
 
 data floor_component_receipt_component_grain_note: String = "COMPONENTS ARE CARRIED AT JSON GRAIN INSIDE THE DOCUMENT, AND THAT IS A DECLARED BOUNDARY RATHER THAN LAZINESS. The document's own identity — subject, counts, which components were unsuccessful — is fully typed and fully round-tripped, because that is what the consumer decides on. A component's INTERIOR is a projection of std.observation.ObservationEvent, whose decoding is a separate and larger obligation: ObservationEvent carries transitions, outcomes with per-variant payloads, measured walls with unavailability causes, and a clock basis, and a half-decoding of it here would be a second, weaker representation of a coproduct that already has an authority — the §3 fork this module's own member-name note argues against.\n\nWHAT THAT COSTS, STATED PLAINLY: a component whose interior is malformed is not caught by this decoder. It is caught by the consumer that reads a field it needs, and that consumer must answer an absent field rather than defaulting it. DISSOLVE-ON: gunbc.floor_component_receipt gains a total ObservationEvent decoder — the reverse of floor_component_row_json — at which point components become List<FloorComponentRow> here and this note deletes. Until then the honest claim is that the document is typed and the component interiors are transported, not that the whole receipt is validated."
@@ -41,7 +41,7 @@ type FloorComponentReceiptDecoding
   | ReceiptNotJson { detail: String }
   | ReceiptMemberAbsent { member: String }
   | ReceiptMemberMalformed { member: String, detail: String }
-  | ReceiptSchemaUnknown { observed: String, expected: NonEmptyStr }
+  | ReceiptSchemaUnknown { observed: String, expected: std.types.NonEmptyStr }
   | ReceiptComponentCountMismatch { declared: String, decoded: Int }
   | ReceiptUnsuccessfulComponentIdentityNotUnique { count: Int }
   | ReceiptUnsuccessfulPopulationMismatch { listed: Int, derived: Int }
@@ -80,7 +80,7 @@ fn receipt_text_at(v: JsonValue, key: String) -> ReceiptText {
 }
 
 type ReceiptElements
-  = ReceiptElementsFound { elements: List<JsonValue> }
+  = ReceiptElementsFound { elements: List<extdeps.languages.json.emit.JsonValue> }
   | ReceiptElementsFailed { decoding: FloorComponentReceiptDecoding }
 
 fn receipt_array_at(v: JsonValue, key: String) -> ReceiptElements {
@@ -110,7 +110,7 @@ fn receipt_array_at(v: JsonValue, key: String) -> ReceiptElements {
 data receipt_required_member_not_null_note: String = "AN ABSENT OR DUPLICATED REQUIRED MEMBER REFUSES; IT DOES NOT BECOME JsonNull. The earlier helper collapsed absent, duplicated and structurally-invalid into the same null value, which is the ⊥-as-answer conflation DESIGN names: `the receipt says the cold control is null` and `I could not read what the receipt says about the cold control` are different states, and the first is a claim about the floor while the second is a claim about the decoder. The alert renders per-component state from these, so a decoder that answers null for an unreadable member produces an issue body asserting something about a run that nothing in the receipt supports.\n\nThe affected-set control and the selection degradation are REQUIRED members and are decoded as such. A member that is genuinely present and genuinely null still decodes to null, which is a fact the receipt stated; an ABSENT member is a defect in the writer.\n\nTHAT SENTENCE WAS NOT TRUE WHEN IT WAS FIRST WRITTEN, and the gap it papered over was real. gunbc.floor_component_receipt emitted selection_degradation only when a selection snapshot existed and omitted the member entirely otherwise, so this decoder would have refused documents its own writer still produced on the no-selection path — encode-then-decode broken for the exact case claim_executor takes when no selection ran (review 49594). The writer now emits an explicit null on that path, so the claim holds by construction rather than by assertion, and the round trip is witnessed in both directions."
 
 type ReceiptValue
-  = ReceiptValueFound { value: JsonValue }
+  = ReceiptValueFound { value: extdeps.languages.json.emit.JsonValue }
   | ReceiptValueFailed { decoding: FloorComponentReceiptDecoding }
 
 fn receipt_required_value_at(v: JsonValue, key: String) -> ReceiptValue {
@@ -226,7 +226,7 @@ fn floor_component_outcome_tag(o: ObservationOutcome) -> String {
 data component_outcome_wire_note: String = "THE WIRE OUTCOME VOCABULARY HAS ONE AUTHORITY, AND IT IS SEVEN TAGS, NOT SIX. floor_component_outcome_tag covers the six ObservationOutcome arms; the writer also emits `not_concluded` for a row whose transition never reached Concluded, and that seventh tag lived as a bare literal at the writer with no reader able to name it. A decoder validating against the six-arm table would have refused a receipt the floor itself produces.\\n\\nComponentOutcomeRead is that distinction and nothing more. It is NOT a second outcome vocabulary — the concluded arm carries the real ObservationOutcome authority inside it, and the tag table below delegates to floor_component_outcome_tag rather than restating the six names. What it adds is the one fact ObservationOutcome cannot express, which is its own absence, and that fact already exists upstream as ObservationTransition.Concluded; this is its projection onto the wire. Writer and reader now share the table, so a tag the writer can emit is a tag the reader can name, by construction rather than by both being edited together."
 
 type ComponentOutcomeRead
-  = ComponentConcluded { outcome: ObservationOutcome }
+  = ComponentConcluded { outcome: std.observation.ObservationOutcome }
   | ComponentNotConcluded
 
 data floor_component_outcome_wire_not_concluded_tag: String = "not_concluded"
@@ -293,7 +293,7 @@ data component_alert_summary_note: String = "THE STRICT TYPED PROJECTION OF THE 
 
 type ComponentAlertSummary {
   index: std.nat.Nat
-  label: NonEmptyStr
+  label: std.types.NonEmptyStr
   outcome: ComponentOutcomeRead
   failure_mode: FloorComponentFailureMode
 }
@@ -691,9 +691,9 @@ data floor_component_receipt_subject_match_note: String = "THE ALERT REFUSES A R
 
 type ReceiptSubjectMatch
   = ReceiptSubjectMatches
-  | ReceiptSubjectRunIdMismatch { receipt: NonEmptyStr, event: NonEmptyStr }
-  | ReceiptSubjectWorkflowMismatch { receipt: NonEmptyStr, event: String }
-  | ReceiptSubjectHeadShaMismatch { receipt: CommitSha, event: CommitSha }
+  | ReceiptSubjectRunIdMismatch { receipt: std.types.NonEmptyStr, event: std.types.NonEmptyStr }
+  | ReceiptSubjectWorkflowMismatch { receipt: std.types.NonEmptyStr, event: String }
+  | ReceiptSubjectHeadShaMismatch { receipt: std.types.CommitSha, event: std.types.CommitSha }
 
 fn floor_component_receipt_subject_matches_event(
   subject: FloorComponentReceiptSubject,

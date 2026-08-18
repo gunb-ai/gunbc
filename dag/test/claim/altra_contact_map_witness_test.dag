@@ -29,8 +29,8 @@ test fn w_differential_pairs_are_complete_in_the_ingested_map() -> Bool {
 
 // RED CONTROL: a dropped _N/_M mate must refuse classification, not downgrade to single-ended.
 test fn w_dropped_differential_leg_surfaces_incomplete_polarity() -> Bool {
-  let rows: List<Table4PinRow> = [
-    Table4PinRow { designator: "Z1", signal_name: "DDR4_CLK_0_P" },
+  let rows: List<extdeps.cpu.ampere_altra_package.Table4PinRow> = [
+    extdeps.cpu.ampere_altra_package.Table4PinRow { designator: "Z1", signal_name: "DDR4_CLK_0_P" },
   ]
   match differential_pair_standing(contacts: contacts_from_table4(rows: rows)) {
     IncompleteDifferentialPair { pair: _, member_count: _ } => true
@@ -40,8 +40,8 @@ test fn w_dropped_differential_leg_surfaces_incomplete_polarity() -> Bool {
 
 // Positive control: active-low _N names with no _P mate remain single-ended, not incomplete.
 test fn w_active_low_n_suffix_stays_single_ended() -> Bool {
-  let rows: List<Table4PinRow> = [
-    Table4PinRow { designator: "Z2", signal_name: "DDR4_ADDR_14_WE_N" },
+  let rows: List<extdeps.cpu.ampere_altra_package.Table4PinRow> = [
+    extdeps.cpu.ampere_altra_package.Table4PinRow { designator: "Z2", signal_name: "DDR4_ADDR_14_WE_N" },
   ]
   let contacts = contacts_from_table4(rows: rows)
   match differential_pair_standing(contacts: contacts) {

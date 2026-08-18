@@ -39,9 +39,9 @@ fn data_decl_type_facts(pool_roots: List<String>) -> List<DataDeclTypeFact> {
   data_decl_type_facts(pool_roots: pool_roots)
 }
 
-data export_signature_facts_host_scaffold_dissolution_trigger: Disposition = Scaffold {
+data export_signature_facts_host_scaffold_dissolution_trigger: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "std.interface_summary",
     decl_name: "interface_summary_v0_dissolution_trigger",
     field: WholeDeclaration

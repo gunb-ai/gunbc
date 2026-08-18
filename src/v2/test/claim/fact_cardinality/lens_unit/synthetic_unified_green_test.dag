@@ -1,15 +1,15 @@
 module v2.test.fact_cardinality.lens_unit.synthetic_unified_green
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data synthetic_unified_dag: FactCardinalityDeclFact = FactCardinalityDeclFact {
+data synthetic_unified_dag: v2.lens.fact_cardinality.FactCardinalityDeclFact = v2.lens.fact_cardinality.FactCardinalityDeclFact {
   rel_path_decl_key: "std/algebra.dag:Lattice",
   tree: Dag,
   content_hash: "7e31b580ce38306e"
 }
 
-data synthetic_unified_v2: FactCardinalityDeclFact = FactCardinalityDeclFact {
+data synthetic_unified_v2: v2.lens.fact_cardinality.FactCardinalityDeclFact = v2.lens.fact_cardinality.FactCardinalityDeclFact {
   rel_path_decl_key: "std/algebra.dag:Lattice",
   tree: V2,
   content_hash: "7e31b580ce38306e"

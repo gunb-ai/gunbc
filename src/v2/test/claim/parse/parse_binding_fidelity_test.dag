@@ -1,7 +1,7 @@
 module v2.test.parse.parse_binding_fidelity
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn pbf_graft_module_root(root: Node) -> Node {
   match module_header_containment_graft(root: root) {
@@ -10,11 +10,11 @@ fn pbf_graft_module_root(root: Node) -> Node {
   }
 }
 
-fn pbf_qn_node(seg: Symbol) -> Node {
+fn pbf_qn_node(seg: v2.std.node.Symbol) -> Node {
   fold_list_node(
     xs: Cons { head: seg, tail: Empty },
     item_node: fn(sym) {
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
         occurrence_id: SyntheticOccurrence
@@ -23,8 +23,8 @@ fn pbf_qn_node(seg: Symbol) -> Node {
   )
 }
 
-fn pbf_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node {
-  Node {
+fn pbf_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, export_atom: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -35,9 +35,9 @@ fn pbf_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node
         name: ^dag_surface_module_header_qualified_name,
         target: pbf_qn_node(seg: seg)
       ),
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: export_sym },
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -49,7 +49,7 @@ fn pbf_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node
 }
 
 fn pbf_subject_with_import_use() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -60,9 +60,9 @@ fn pbf_subject_with_import_use() -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: pbf_qn_node(seg: ^pbf_subject_seg)
       ),
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^pbf_import_use_sym },
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_imported_decl } },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -73,7 +73,7 @@ fn pbf_subject_with_import_use() -> Node {
   }
 }
 
-fn pbf_cross_file_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+fn pbf_cross_file_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: Cons {
     head: pbf_graft_module_root(root: pbf_subject_with_import_use()),
@@ -99,12 +99,12 @@ fn pbf_cross_file_import_resolves() -> Bool {
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
       roots: admitted_roots,
-      admission: Admission {
-        subject: ResolutionSubject {
+      admission: v2.compiler.name_resolve.Admission {
+        subject: v2.compiler.name_resolve.ResolutionSubject {
           name: Cons { head: ^pbf_subject_seg, tail: Empty }
         },
         imports: Cons {
-          head: Import {
+          head: v2.compiler.name_resolve.Import {
             target: Cons { head: ^pbf_imported_seg, tail: Empty },
             visibility: ImportVisible
           },
@@ -122,12 +122,12 @@ fn pbf_cross_file_import_resolves() -> Bool {
 }
 
 fn pbf_unbound_atom_tree() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_unbound_sym } },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -153,7 +153,7 @@ fn pbf_resolve_unbound_symbol_rejects() -> Bool {
 }
 
 fn pbf_subject_with_ambiguous_import_use() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -164,9 +164,9 @@ fn pbf_subject_with_ambiguous_import_use() -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: pbf_qn_node(seg: ^pbf_subject_seg)
       ),
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^pbf_ambiguous_export_sym },
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: ^pbf_ambiguous_export_sym } },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -177,7 +177,7 @@ fn pbf_subject_with_ambiguous_import_use() -> Node {
   }
 }
 
-fn pbf_ambiguous_import_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+fn pbf_ambiguous_import_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: Cons {
     head: pbf_graft_module_root(root: pbf_subject_with_ambiguous_import_use()),
@@ -212,17 +212,17 @@ fn pbf_ambiguous_export_rejects() -> Bool {
     match resolve_with_admission_policy(
       lm: dag_language_model_surface_empty_prelude(),
       roots: admitted,
-      admission: Admission {
-        subject: ResolutionSubject {
+      admission: v2.compiler.name_resolve.Admission {
+        subject: v2.compiler.name_resolve.ResolutionSubject {
           name: Cons { head: ^pbf_subject_seg, tail: Empty }
         },
         imports: Cons {
-          head: Import {
+          head: v2.compiler.name_resolve.Import {
             target: Cons { head: ^pbf_ambiguous_import_a_seg, tail: Empty },
             visibility: ImportVisible
           },
           tail: Cons {
-            head: Import {
+            head: v2.compiler.name_resolve.Import {
               target: Cons { head: ^pbf_ambiguous_import_b_seg, tail: Empty },
               visibility: ImportVisible
             },

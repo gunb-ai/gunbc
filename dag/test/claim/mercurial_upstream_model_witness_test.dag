@@ -1,8 +1,8 @@
 module test.claim.mercurial_upstream_model_witness
 
 
-fn repeated_mercurial_node_id(octet: std.integer.UInt8) -> MercurialNodeId {
-  MercurialNodeId {
+fn repeated_mercurial_node_id(octet: std.integer.UInt8) -> extdeps.mercurial.MercurialNodeId {
+  extdeps.mercurial.MercurialNodeId {
     octet00: octet,
     octet01: octet,
     octet02: octet,
@@ -26,40 +26,40 @@ fn repeated_mercurial_node_id(octet: std.integer.UInt8) -> MercurialNodeId {
   }
 }
 
-data hg_c0: MercurialNodeId = repeated_mercurial_node_id(octet: 17)
-data hg_c1: MercurialNodeId = repeated_mercurial_node_id(octet: 34)
-data hg_c2: MercurialNodeId = repeated_mercurial_node_id(octet: 51)
-data hg_missing_c: MercurialNodeId = repeated_mercurial_node_id(octet: 68)
+data hg_c0: extdeps.mercurial.MercurialNodeId = repeated_mercurial_node_id(octet: 17)
+data hg_c1: extdeps.mercurial.MercurialNodeId = repeated_mercurial_node_id(octet: 34)
+data hg_c2: extdeps.mercurial.MercurialNodeId = repeated_mercurial_node_id(octet: 51)
+data hg_missing_c: extdeps.mercurial.MercurialNodeId = repeated_mercurial_node_id(octet: 68)
 
-data hg_manifest: MercurialNodeId = repeated_mercurial_node_id(octet: 170)
-data hg_file_regular: MercurialNodeId = repeated_mercurial_node_id(octet: 187)
-data hg_file_executable: MercurialNodeId = repeated_mercurial_node_id(octet: 204)
-data hg_file_symlink: MercurialNodeId = repeated_mercurial_node_id(octet: 221)
-data hg_file_missing: MercurialNodeId = repeated_mercurial_node_id(octet: 238)
-data hg_file_undeclared: MercurialNodeId = repeated_mercurial_node_id(octet: 255)
+data hg_manifest: extdeps.mercurial.MercurialNodeId = repeated_mercurial_node_id(octet: 170)
+data hg_file_regular: extdeps.mercurial.MercurialNodeId = repeated_mercurial_node_id(octet: 187)
+data hg_file_executable: extdeps.mercurial.MercurialNodeId = repeated_mercurial_node_id(octet: 204)
+data hg_file_symlink: extdeps.mercurial.MercurialNodeId = repeated_mercurial_node_id(octet: 221)
+data hg_file_missing: extdeps.mercurial.MercurialNodeId = repeated_mercurial_node_id(octet: 238)
+data hg_file_undeclared: extdeps.mercurial.MercurialNodeId = repeated_mercurial_node_id(octet: 255)
 
-data hg_path_regular: MercurialPath = MercurialPath {
+data hg_path_regular: extdeps.mercurial.MercurialPath = extdeps.mercurial.MercurialPath {
   octets: [115, 114, 99, 47, 109, 97, 105, 110, 46, 100, 97, 103]
 }
-data hg_path_executable: MercurialPath = MercurialPath {
+data hg_path_executable: extdeps.mercurial.MercurialPath = extdeps.mercurial.MercurialPath {
   octets: [98, 105, 110, 47, 114, 117, 110]
 }
-data hg_path_symlink: MercurialPath = MercurialPath {
+data hg_path_symlink: extdeps.mercurial.MercurialPath = extdeps.mercurial.MercurialPath {
   octets: [255, 46, 108, 105, 110, 107]
 }
-data hg_path_subrepo: MercurialPath = MercurialPath {
+data hg_path_subrepo: extdeps.mercurial.MercurialPath = extdeps.mercurial.MercurialPath {
   octets: [118, 101, 110, 100, 111, 114]
 }
 
-fn fixture_file_revisions() -> List<MercurialFileRevision> {
+fn fixture_file_revisions() -> List<extdeps.mercurial.MercurialFileRevision> {
   [
-    MercurialFileRevision {
+    extdeps.mercurial.MercurialFileRevision {
       node: hg_file_regular,
       parents: MercurialNoParents,
       copy: MercurialNotCopied,
       content: octets_bytes(o: [109, 97, 105, 110]),
     },
-    MercurialFileRevision {
+    extdeps.mercurial.MercurialFileRevision {
       node: hg_file_executable,
       parents: MercurialOneParent { parent: hg_file_regular },
       copy: MercurialCopiedFrom {
@@ -68,7 +68,7 @@ fn fixture_file_revisions() -> List<MercurialFileRevision> {
       },
       content: octets_bytes(o: [114, 117, 110]),
     },
-    MercurialFileRevision {
+    extdeps.mercurial.MercurialFileRevision {
       node: hg_file_symlink,
       parents: MercurialNoParents,
       copy: MercurialNotCopied,
@@ -77,21 +77,21 @@ fn fixture_file_revisions() -> List<MercurialFileRevision> {
   ]
 }
 
-fn fixture_manifest_wire() -> MercurialManifestWire {
-  MercurialManifestWire {
+fn fixture_manifest_wire() -> extdeps.mercurial.MercurialManifestWire {
+  extdeps.mercurial.MercurialManifestWire {
     node: hg_manifest,
     entries: [
-      MercurialManifestWireEntry {
+      extdeps.mercurial.MercurialManifestWireEntry {
         path: hg_path_regular,
         file_revision: hg_file_regular,
         flag: "",
       },
-      MercurialManifestWireEntry {
+      extdeps.mercurial.MercurialManifestWireEntry {
         path: hg_path_executable,
         file_revision: hg_file_executable,
         flag: "x",
       },
-      MercurialManifestWireEntry {
+      extdeps.mercurial.MercurialManifestWireEntry {
         path: hg_path_symlink,
         file_revision: hg_file_symlink,
         flag: "l",
@@ -100,9 +100,9 @@ fn fixture_manifest_wire() -> MercurialManifestWire {
   }
 }
 
-fn fixture_changesets() -> List<MercurialChangeset> {
+fn fixture_changesets() -> List<extdeps.mercurial.MercurialChangeset> {
   [
-    MercurialChangeset {
+    extdeps.mercurial.MercurialChangeset {
       node: hg_c0,
       manifest: hg_manifest,
       parents: MercurialNoParents,
@@ -112,7 +112,7 @@ fn fixture_changesets() -> List<MercurialChangeset> {
       authored_at: "provenance-only-0",
       description: "root",
     },
-    MercurialChangeset {
+    extdeps.mercurial.MercurialChangeset {
       node: hg_c1,
       manifest: hg_manifest,
       parents: MercurialOneParent { parent: hg_c0 },
@@ -122,7 +122,7 @@ fn fixture_changesets() -> List<MercurialChangeset> {
       authored_at: "provenance-only-1",
       description: "left",
     },
-    MercurialChangeset {
+    extdeps.mercurial.MercurialChangeset {
       node: hg_c2,
       manifest: hg_manifest,
       parents: MercurialOneParent { parent: hg_c0 },
@@ -135,45 +135,45 @@ fn fixture_changesets() -> List<MercurialChangeset> {
   ]
 }
 
-fn local_revisions_a() -> List<MercurialLocalRevisionEntry> {
+fn local_revisions_a() -> List<extdeps.mercurial.MercurialLocalRevisionEntry> {
   [
-    MercurialLocalRevisionEntry {
-      revision: MercurialLocalRevision { value: 0 },
+    extdeps.mercurial.MercurialLocalRevisionEntry {
+      revision: extdeps.mercurial.MercurialLocalRevision { value: 0 },
       changeset: hg_c0,
     },
-    MercurialLocalRevisionEntry {
-      revision: MercurialLocalRevision { value: 1 },
+    extdeps.mercurial.MercurialLocalRevisionEntry {
+      revision: extdeps.mercurial.MercurialLocalRevision { value: 1 },
       changeset: hg_c1,
     },
-    MercurialLocalRevisionEntry {
-      revision: MercurialLocalRevision { value: 2 },
+    extdeps.mercurial.MercurialLocalRevisionEntry {
+      revision: extdeps.mercurial.MercurialLocalRevision { value: 2 },
       changeset: hg_c2,
     },
   ]
 }
 
-fn local_revisions_b() -> List<MercurialLocalRevisionEntry> {
+fn local_revisions_b() -> List<extdeps.mercurial.MercurialLocalRevisionEntry> {
   [
-    MercurialLocalRevisionEntry {
-      revision: MercurialLocalRevision { value: 17 },
+    extdeps.mercurial.MercurialLocalRevisionEntry {
+      revision: extdeps.mercurial.MercurialLocalRevision { value: 17 },
       changeset: hg_c0,
     },
-    MercurialLocalRevisionEntry {
-      revision: MercurialLocalRevision { value: 4 },
+    extdeps.mercurial.MercurialLocalRevisionEntry {
+      revision: extdeps.mercurial.MercurialLocalRevision { value: 4 },
       changeset: hg_c1,
     },
-    MercurialLocalRevisionEntry {
-      revision: MercurialLocalRevision { value: 9 },
+    extdeps.mercurial.MercurialLocalRevisionEntry {
+      revision: extdeps.mercurial.MercurialLocalRevision { value: 9 },
       changeset: hg_c2,
     },
   ]
 }
 
 fn fixture_projection_contents_with_local_revisions(
-  local_revisions: List<MercurialLocalRevisionEntry>,
-) -> MercurialRepositoryProjectionContents {
-  MercurialRepositoryProjectionContents {
-    requirements: MercurialRepositoryRequirements {
+  local_revisions: List<extdeps.mercurial.MercurialLocalRevisionEntry>,
+) -> extdeps.mercurial.MercurialRepositoryProjectionContents {
+  extdeps.mercurial.MercurialRepositoryProjectionContents {
+    requirements: extdeps.mercurial.MercurialRepositoryRequirements {
       tokens: ["revlogv1", "store", "fncache", "dotencode"],
     },
     file_revisions: fixture_file_revisions(),
@@ -181,24 +181,24 @@ fn fixture_projection_contents_with_local_revisions(
     changesets: fixture_changesets(),
     local_revisions: local_revisions,
     heads: [
-      MercurialHead { changeset: hg_c1 },
-      MercurialHead { changeset: hg_c2 },
+      extdeps.mercurial.MercurialHead { changeset: hg_c1 },
+      extdeps.mercurial.MercurialHead { changeset: hg_c2 },
     ],
     bookmarks: [
-      MercurialBookmark { name: "main", target: hg_c1 },
+      extdeps.mercurial.MercurialBookmark { name: "main", target: hg_c1 },
     ],
     tags: [
-      MercurialTag { name: "v0", target: hg_c0, source: MercurialVersionedTag },
-      MercurialTag { name: "scratch", target: hg_c2, source: MercurialLocalTag },
+      extdeps.mercurial.MercurialTag { name: "v0", target: hg_c0, source: MercurialVersionedTag },
+      extdeps.mercurial.MercurialTag { name: "scratch", target: hg_c2, source: MercurialLocalTag },
     ],
     phases: [
-      MercurialPhaseWireEntry { changeset: hg_c0, phase: "public" },
-      MercurialPhaseWireEntry { changeset: hg_c1, phase: "draft" },
-      MercurialPhaseWireEntry { changeset: hg_c2, phase: "secret" },
+      extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c0, phase: "public" },
+      extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c1, phase: "draft" },
+      extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c2, phase: "secret" },
     ],
     publishing: MercurialNonPublishingServer,
     subrepositories: [
-      MercurialSubrepository {
+      extdeps.mercurial.MercurialSubrepository {
         path: hg_path_subrepo,
         source: "https://example.invalid/vendor",
         revision: "portable-upstream-revision",
@@ -206,7 +206,7 @@ fn fixture_projection_contents_with_local_revisions(
     ],
     evolution: MercurialEvolutionMarkers {
       markers: [
-        MercurialObsolescenceMarker {
+        extdeps.mercurial.MercurialObsolescenceMarker {
           predecessor: hg_c1,
           successors: [hg_c2],
           operation: "rebase",
@@ -217,8 +217,8 @@ fn fixture_projection_contents_with_local_revisions(
 }
 
 fn fixture_projection_with_local_revisions(
-  local_revisions: List<MercurialLocalRevisionEntry>,
-) -> MercurialRepositoryProjection {
+  local_revisions: List<extdeps.mercurial.MercurialLocalRevisionEntry>,
+) -> extdeps.mercurial.MercurialRepositoryProjection {
   MercurialPartialProjection {
     contents: fixture_projection_contents_with_local_revisions(
       local_revisions: local_revisions,
@@ -229,28 +229,28 @@ fn fixture_projection_with_local_revisions(
   }
 }
 
-fn fixture_projection_contents() -> MercurialRepositoryProjectionContents {
+fn fixture_projection_contents() -> extdeps.mercurial.MercurialRepositoryProjectionContents {
   fixture_projection_contents_with_local_revisions(
     local_revisions: local_revisions_a(),
   )
 }
 
-fn mercurial_r0_fixture_projection() -> MercurialRepositoryProjection {
+fn mercurial_r0_fixture_projection() -> extdeps.mercurial.MercurialRepositoryProjection {
   fixture_projection_with_local_revisions(local_revisions: local_revisions_a())
 }
 
-fn fixture_projection() -> MercurialRepositoryProjection {
+fn fixture_projection() -> extdeps.mercurial.MercurialRepositoryProjection {
   mercurial_r0_fixture_projection()
 }
 
 fn projection_with_phases(
-  projection: MercurialRepositoryProjection,
-  phases: List<MercurialPhaseWireEntry>,
-) -> MercurialRepositoryProjection {
+  projection: extdeps.mercurial.MercurialRepositoryProjection,
+  phases: List<extdeps.mercurial.MercurialPhaseWireEntry>,
+) -> extdeps.mercurial.MercurialRepositoryProjection {
   mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
-      MercurialRepositoryProjectionContents {
+      extdeps.mercurial.MercurialRepositoryProjectionContents {
         requirements: contents.requirements,
         file_revisions: contents.file_revisions,
         manifests: contents.manifests,
@@ -269,13 +269,13 @@ fn projection_with_phases(
 }
 
 fn projection_with_file_revisions(
-  projection: MercurialRepositoryProjection,
-  file_revisions: List<MercurialFileRevision>,
-) -> MercurialRepositoryProjection {
+  projection: extdeps.mercurial.MercurialRepositoryProjection,
+  file_revisions: List<extdeps.mercurial.MercurialFileRevision>,
+) -> extdeps.mercurial.MercurialRepositoryProjection {
   mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
-      MercurialRepositoryProjectionContents {
+      extdeps.mercurial.MercurialRepositoryProjectionContents {
         requirements: contents.requirements,
         file_revisions: file_revisions,
         manifests: contents.manifests,
@@ -294,13 +294,13 @@ fn projection_with_file_revisions(
 }
 
 fn projection_with_evolution(
-  projection: MercurialRepositoryProjection,
-  evolution: MercurialEvolutionMetadata,
-) -> MercurialRepositoryProjection {
+  projection: extdeps.mercurial.MercurialRepositoryProjection,
+  evolution: extdeps.mercurial.MercurialEvolutionMetadata,
+) -> extdeps.mercurial.MercurialRepositoryProjection {
   mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
-      MercurialRepositoryProjectionContents {
+      extdeps.mercurial.MercurialRepositoryProjectionContents {
         requirements: contents.requirements,
         file_revisions: contents.file_revisions,
         manifests: contents.manifests,
@@ -319,13 +319,13 @@ fn projection_with_evolution(
 }
 
 fn projection_with_manifests(
-  projection: MercurialRepositoryProjection,
-  manifests: List<MercurialManifestWire>,
-) -> MercurialRepositoryProjection {
+  projection: extdeps.mercurial.MercurialRepositoryProjection,
+  manifests: List<extdeps.mercurial.MercurialManifestWire>,
+) -> extdeps.mercurial.MercurialRepositoryProjection {
   mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
-      MercurialRepositoryProjectionContents {
+      extdeps.mercurial.MercurialRepositoryProjectionContents {
         requirements: contents.requirements,
         file_revisions: contents.file_revisions,
         manifests: manifests,
@@ -344,13 +344,13 @@ fn projection_with_manifests(
 }
 
 fn projection_with_changesets(
-  projection: MercurialRepositoryProjection,
-  changesets: List<MercurialChangeset>,
-) -> MercurialRepositoryProjection {
+  projection: extdeps.mercurial.MercurialRepositoryProjection,
+  changesets: List<extdeps.mercurial.MercurialChangeset>,
+) -> extdeps.mercurial.MercurialRepositoryProjection {
   mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
-      MercurialRepositoryProjectionContents {
+      extdeps.mercurial.MercurialRepositoryProjectionContents {
         requirements: contents.requirements,
         file_revisions: contents.file_revisions,
         manifests: contents.manifests,
@@ -369,13 +369,13 @@ fn projection_with_changesets(
 }
 
 fn projection_with_heads(
-  projection: MercurialRepositoryProjection,
-  heads: List<MercurialHead>,
-) -> MercurialRepositoryProjection {
+  projection: extdeps.mercurial.MercurialRepositoryProjection,
+  heads: List<extdeps.mercurial.MercurialHead>,
+) -> extdeps.mercurial.MercurialRepositoryProjection {
   mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
-      MercurialRepositoryProjectionContents {
+      extdeps.mercurial.MercurialRepositoryProjectionContents {
         requirements: contents.requirements,
         file_revisions: contents.file_revisions,
         manifests: contents.manifests,
@@ -394,13 +394,13 @@ fn projection_with_heads(
 }
 
 fn projection_with_local_revisions(
-  projection: MercurialRepositoryProjection,
-  local_revisions: List<MercurialLocalRevisionEntry>,
-) -> MercurialRepositoryProjection {
+  projection: extdeps.mercurial.MercurialRepositoryProjection,
+  local_revisions: List<extdeps.mercurial.MercurialLocalRevisionEntry>,
+) -> extdeps.mercurial.MercurialRepositoryProjection {
   mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
-      MercurialRepositoryProjectionContents {
+      extdeps.mercurial.MercurialRepositoryProjectionContents {
         requirements: contents.requirements,
         file_revisions: contents.file_revisions,
         manifests: contents.manifests,
@@ -419,13 +419,13 @@ fn projection_with_local_revisions(
 }
 
 fn projection_with_publishing(
-  projection: MercurialRepositoryProjection,
-  publishing: MercurialPublishingBehavior,
-) -> MercurialRepositoryProjection {
+  projection: extdeps.mercurial.MercurialRepositoryProjection,
+  publishing: extdeps.mercurial.MercurialPublishingBehavior,
+) -> extdeps.mercurial.MercurialRepositoryProjection {
   mercurial_projection_map_contents(
     projection: projection,
     map_contents: fn(contents) {
-      MercurialRepositoryProjectionContents {
+      extdeps.mercurial.MercurialRepositoryProjectionContents {
         requirements: contents.requirements,
         file_revisions: contents.file_revisions,
         manifests: contents.manifests,
@@ -443,7 +443,7 @@ fn projection_with_publishing(
   )
 }
 
-fn mercurial_fixture_repository() -> MercurialRepositoryState? {
+fn mercurial_fixture_repository() -> extdeps.mercurial.MercurialRepositoryState? {
   match mercurial_decode_projection(projection: fixture_projection()) {
     MercurialDecoded { repository } => Present { value: repository }
     MercurialDecodeRefused { cause: _ } => Absent
@@ -463,7 +463,7 @@ test fn witness_mercurial_upstream_authority_is_version_pinned() -> Bool {
 
 test fn witness_mercurial_wire_identity_decodes_to_structural_node() -> Bool {
   match mercurial_decode_node_identity(
-    observation: MercurialNodeIdentityObservation {
+    observation: extdeps.mercurial.MercurialNodeIdentityObservation {
       role: MercurialChangesetNodeIdentity,
       text: "1111111111111111111111111111111111111111",
     },
@@ -475,19 +475,19 @@ test fn witness_mercurial_wire_identity_decodes_to_structural_node() -> Bool {
 
 test fn witness_mercurial_wire_identity_refuses_noncanonical_text() -> Bool {
   let short = mercurial_decode_node_identity(
-    observation: MercurialNodeIdentityObservation {
+    observation: extdeps.mercurial.MercurialNodeIdentityObservation {
       role: MercurialChangesetNodeIdentity,
       text: "x",
     },
   )
   let non_hex = mercurial_decode_node_identity(
-    observation: MercurialNodeIdentityObservation {
+    observation: extdeps.mercurial.MercurialNodeIdentityObservation {
       role: MercurialChangesetNodeIdentity,
       text: "gggggggggggggggggggggggggggggggggggggggg",
     },
   )
   let uppercase = mercurial_decode_node_identity(
-    observation: MercurialNodeIdentityObservation {
+    observation: extdeps.mercurial.MercurialNodeIdentityObservation {
       role: MercurialChangesetNodeIdentity,
       text: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     },
@@ -544,7 +544,7 @@ test fn witness_mercurial_inaccessible_projection_cannot_carry_repository_facts(
   let mapped = mercurial_projection_map_contents(
     projection: inaccessible,
     map_contents: fn(contents) {
-      MercurialRepositoryProjectionContents {
+      extdeps.mercurial.MercurialRepositoryProjectionContents {
         requirements: contents.requirements,
         file_revisions: fixture_file_revisions(),
         manifests: contents.manifests,
@@ -587,7 +587,7 @@ test fn witness_mercurial_fixture_decodes_and_projects_without_loss() -> Bool {
       let projected = mercurial_project_repository(repository: repository)
       match mercurial_assess_read_back(
         expected: repository,
-        observation: MercurialReadBackObservation {
+        observation: extdeps.mercurial.MercurialReadBackObservation {
           projection: projected,
           observed_by: "bounded projection round-trip control",
         },
@@ -613,7 +613,7 @@ test fn witness_mercurial_readback_assessment_rejects_perturbed_observation() ->
       )
       match mercurial_assess_read_back(
         expected: repository,
-        observation: MercurialReadBackObservation {
+        observation: extdeps.mercurial.MercurialReadBackObservation {
           projection: perturbed,
           observed_by: "perturbed read-back RED",
         },
@@ -682,7 +682,7 @@ test fn witness_mercurial_copy_metadata_stays_on_file_revision() -> Bool {
 test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
   let projection = fixture_projection()
   let projection_contents = fixture_projection_contents()
-  let broken = MercurialFileRevision {
+  let broken = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_executable,
     parents: MercurialOneParent { parent: hg_file_regular },
     copy: MercurialCopiedFrom {
@@ -717,7 +717,7 @@ test fn witness_mercurial_undeclared_copy_source_refuses() -> Bool {
 test fn witness_mercurial_declared_missing_copy_source_stays_partial_not_fabricated() -> Bool {
   let projection = fixture_projection()
   let projection_contents = fixture_projection_contents()
-  let partial = MercurialFileRevision {
+  let partial = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_executable,
     parents: MercurialOneParent { parent: hg_file_regular },
     copy: MercurialCopiedFrom {
@@ -779,11 +779,11 @@ test fn witness_mercurial_named_branch_bookmark_and_heads_do_not_collapse() -> B
       let contents = repository.contents
       mercurial_named_branch_changesets(repository: repository, branch: "default") == [hg_c0, hg_c1, hg_c2]
         && contents.heads == [
-          MercurialHead { changeset: hg_c1 },
-          MercurialHead { changeset: hg_c2 },
+          extdeps.mercurial.MercurialHead { changeset: hg_c1 },
+          extdeps.mercurial.MercurialHead { changeset: hg_c2 },
         ]
         && contents.bookmarks == [
-          MercurialBookmark { name: "main", target: hg_c1 },
+          extdeps.mercurial.MercurialBookmark { name: "main", target: hg_c1 },
         ]
   }
 }
@@ -846,8 +846,8 @@ test fn witness_mercurial_missing_phase_refuses() -> Bool {
   let invalid = projection_with_phases(
     projection: fixture_projection(),
     phases: [
-      MercurialPhaseWireEntry { changeset: hg_c0, phase: "public" },
-      MercurialPhaseWireEntry { changeset: hg_c1, phase: "draft" },
+      extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c0, phase: "public" },
+      extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c1, phase: "draft" },
     ],
   )
   match mercurial_decode_projection(projection: invalid) {
@@ -862,10 +862,10 @@ test fn witness_mercurial_duplicate_phase_refuses() -> Bool {
   let invalid = projection_with_phases(
     projection: fixture_projection(),
     phases: [
-      MercurialPhaseWireEntry { changeset: hg_c0, phase: "public" },
-      MercurialPhaseWireEntry { changeset: hg_c1, phase: "draft" },
-      MercurialPhaseWireEntry { changeset: hg_c1, phase: "secret" },
-      MercurialPhaseWireEntry { changeset: hg_c2, phase: "secret" },
+      extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c0, phase: "public" },
+      extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c1, phase: "draft" },
+      extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c1, phase: "secret" },
+      extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c2, phase: "secret" },
     ],
   )
   match mercurial_decode_projection(projection: invalid) {
@@ -880,9 +880,9 @@ test fn witness_mercurial_phase_monotonicity_violation_refuses() -> Bool {
   let invalid = projection_with_phases(
     projection: fixture_projection(),
     phases: [
-      MercurialPhaseWireEntry { changeset: hg_c0, phase: "draft" },
-      MercurialPhaseWireEntry { changeset: hg_c1, phase: "public" },
-      MercurialPhaseWireEntry { changeset: hg_c2, phase: "secret" },
+      extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c0, phase: "draft" },
+      extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c1, phase: "public" },
+      extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c2, phase: "secret" },
     ],
   )
   match mercurial_decode_projection(projection: invalid) {
@@ -920,10 +920,10 @@ test fn witness_mercurial_unknown_manifest_flag_refuses() -> Bool {
   let invalid = projection_with_manifests(
     projection: fixture_projection(),
     manifests: [
-      MercurialManifestWire {
+      extdeps.mercurial.MercurialManifestWire {
         node: hg_manifest,
         entries: [
-          MercurialManifestWireEntry {
+          extdeps.mercurial.MercurialManifestWireEntry {
             path: hg_path_regular,
             file_revision: hg_file_regular,
             flag: "git-executable",
@@ -942,7 +942,7 @@ test fn witness_mercurial_unknown_manifest_flag_refuses() -> Bool {
 test fn witness_mercurial_unknown_phase_refuses() -> Bool {
   let invalid = projection_with_phases(
     projection: fixture_projection(),
-    phases: [MercurialPhaseWireEntry { changeset: hg_c2, phase: "published" }],
+    phases: [extdeps.mercurial.MercurialPhaseWireEntry { changeset: hg_c2, phase: "published" }],
   )
   match mercurial_decode_projection(projection: invalid) {
     MercurialDecodeRefused { cause: _ } => true
@@ -953,7 +953,7 @@ test fn witness_mercurial_unknown_phase_refuses() -> Bool {
 
 test fn witness_mercurial_missing_parent_refuses() -> Bool {
   let projection_contents = fixture_projection_contents()
-  let broken = MercurialChangeset {
+  let broken = extdeps.mercurial.MercurialChangeset {
     node: hg_c2,
     manifest: hg_manifest,
     parents: MercurialOneParent { parent: hg_missing_c },
@@ -979,7 +979,7 @@ test fn witness_mercurial_missing_parent_refuses() -> Bool {
 
 test fn witness_mercurial_duplicate_changeset_parent_refuses() -> Bool {
   let projection_contents = fixture_projection_contents()
-  let duplicate_parent = MercurialChangeset {
+  let duplicate_parent = extdeps.mercurial.MercurialChangeset {
     node: hg_c2,
     manifest: hg_manifest,
     parents: MercurialTwoParents { first: hg_c0, second: hg_c0 },
@@ -1006,7 +1006,7 @@ test fn witness_mercurial_duplicate_changeset_parent_refuses() -> Bool {
 
 test fn witness_mercurial_changeset_self_parent_refuses_as_cycle() -> Bool {
   let projection_contents = fixture_projection_contents()
-  let self_parent = MercurialChangeset {
+  let self_parent = extdeps.mercurial.MercurialChangeset {
     node: hg_c2,
     manifest: hg_manifest,
     parents: MercurialOneParent { parent: hg_c2 },
@@ -1032,7 +1032,7 @@ test fn witness_mercurial_changeset_self_parent_refuses_as_cycle() -> Bool {
 }
 
 test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
-  let cycle_left = MercurialChangeset {
+  let cycle_left = extdeps.mercurial.MercurialChangeset {
     node: hg_c1,
     manifest: hg_manifest,
     parents: MercurialOneParent { parent: hg_c2 },
@@ -1042,7 +1042,7 @@ test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
     authored_at: "provenance-only-1",
     description: "left",
   }
-  let cycle_right = MercurialChangeset {
+  let cycle_right = extdeps.mercurial.MercurialChangeset {
     node: hg_c2,
     manifest: hg_manifest,
     parents: MercurialOneParent { parent: hg_c1 },
@@ -1055,7 +1055,7 @@ test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
   let invalid = projection_with_changesets(
     projection: fixture_projection(),
     changesets: [
-      MercurialChangeset {
+      extdeps.mercurial.MercurialChangeset {
         node: hg_c0,
         manifest: hg_manifest,
         parents: MercurialNoParents,
@@ -1078,13 +1078,13 @@ test fn witness_mercurial_multi_revision_changeset_cycle_refuses() -> Bool {
 }
 
 test fn witness_mercurial_file_revision_cycle_refuses() -> Bool {
-  let cycle_regular = MercurialFileRevision {
+  let cycle_regular = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_regular,
     parents: MercurialOneParent { parent: hg_file_executable },
     copy: MercurialNotCopied,
     content: octets_bytes(o: [109, 97, 105, 110]),
   }
-  let cycle_executable = MercurialFileRevision {
+  let cycle_executable = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_executable,
     parents: MercurialOneParent { parent: hg_file_regular },
     copy: MercurialCopiedFrom {
@@ -1098,7 +1098,7 @@ test fn witness_mercurial_file_revision_cycle_refuses() -> Bool {
     file_revisions: [
       cycle_regular,
       cycle_executable,
-      MercurialFileRevision {
+      extdeps.mercurial.MercurialFileRevision {
         node: hg_file_symlink,
         parents: MercurialNoParents,
         copy: MercurialNotCopied,
@@ -1116,7 +1116,7 @@ test fn witness_mercurial_file_revision_cycle_refuses() -> Bool {
 }
 
 test fn witness_mercurial_duplicate_file_revision_parent_refuses() -> Bool {
-  let duplicate_parent = MercurialFileRevision {
+  let duplicate_parent = extdeps.mercurial.MercurialFileRevision {
     node: hg_file_executable,
     parents: MercurialTwoParents {
       first: hg_file_regular,
@@ -1156,7 +1156,7 @@ test fn witness_mercurial_observed_non_head_refuses() -> Bool {
     projection: MercurialCompleteProjection {
       contents: fixture_projection_contents(),
     },
-    heads: [MercurialHead { changeset: hg_c0 }],
+    heads: [extdeps.mercurial.MercurialHead { changeset: hg_c0 }],
   )
   match mercurial_decode_projection(projection: invalid) {
     MercurialDecodeRefused {
@@ -1170,7 +1170,7 @@ test fn witness_mercurial_observed_non_head_refuses() -> Bool {
 
 test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_children() -> Bool {
   let changesets = [
-    MercurialChangeset {
+    extdeps.mercurial.MercurialChangeset {
       node: hg_c0,
       manifest: hg_manifest,
       parents: MercurialNoParents,
@@ -1180,7 +1180,7 @@ test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_chil
       authored_at: "provenance-only-0",
       description: "default root",
     },
-    MercurialChangeset {
+    extdeps.mercurial.MercurialChangeset {
       node: hg_c1,
       manifest: hg_manifest,
       parents: MercurialOneParent { parent: hg_c0 },
@@ -1190,7 +1190,7 @@ test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_chil
       authored_at: "provenance-only-1",
       description: "feature bridge",
     },
-    MercurialChangeset {
+    extdeps.mercurial.MercurialChangeset {
       node: hg_c2,
       manifest: hg_manifest,
       parents: MercurialOneParent { parent: hg_c1 },
@@ -1210,8 +1210,8 @@ test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_chil
   let complete = projection_with_heads(
     projection: with_changesets,
     heads: [
-      MercurialHead { changeset: hg_c1 },
-      MercurialHead { changeset: hg_c2 },
+      extdeps.mercurial.MercurialHead { changeset: hg_c1 },
+      extdeps.mercurial.MercurialHead { changeset: hg_c2 },
     ],
   )
   match mercurial_decode_projection(projection: complete) {
@@ -1220,10 +1220,10 @@ test fn witness_mercurial_branch_head_uses_same_branch_descendants_not_only_chil
   }
 }
 
-fn fixture_projection_with_closed_right_head() -> MercurialRepositoryProjection {
+fn fixture_projection_with_closed_right_head() -> extdeps.mercurial.MercurialRepositoryProjection {
   let closed = fixture_changesets() |> map(changeset =>
     if changeset.node == hg_c2 {
-      MercurialChangeset {
+      extdeps.mercurial.MercurialChangeset {
         node: changeset.node,
         manifest: changeset.manifest,
         parents: changeset.parents,
@@ -1248,7 +1248,7 @@ fn fixture_projection_with_closed_right_head() -> MercurialRepositoryProjection 
 test fn witness_mercurial_closed_branch_head_is_excluded_from_open_heads() -> Bool {
   let complete = projection_with_heads(
     projection: fixture_projection_with_closed_right_head(),
-    heads: [MercurialHead { changeset: hg_c1 }],
+    heads: [extdeps.mercurial.MercurialHead { changeset: hg_c1 }],
   )
   match mercurial_decode_projection(projection: complete) {
     MercurialDecoded { repository: _ } => true
@@ -1260,8 +1260,8 @@ test fn witness_mercurial_closed_branch_head_cannot_be_reported_as_open() -> Boo
   let invalid = projection_with_heads(
     projection: fixture_projection_with_closed_right_head(),
     heads: [
-      MercurialHead { changeset: hg_c1 },
-      MercurialHead { changeset: hg_c2 },
+      extdeps.mercurial.MercurialHead { changeset: hg_c1 },
+      extdeps.mercurial.MercurialHead { changeset: hg_c2 },
     ],
   )
   match mercurial_decode_projection(projection: invalid) {
@@ -1277,7 +1277,7 @@ test fn witness_mercurial_closed_branch_head_cannot_be_reported_as_open() -> Boo
 test fn witness_mercurial_partial_capture_does_not_invent_exact_head_set() -> Bool {
   let with_missing_head = projection_with_heads(
     projection: fixture_projection(),
-    heads: [MercurialHead { changeset: hg_missing_c }],
+    heads: [extdeps.mercurial.MercurialHead { changeset: hg_missing_c }],
   )
   let partial = match with_missing_head {
     MercurialPartialProjection {
@@ -1301,7 +1301,7 @@ test fn witness_mercurial_partial_capture_does_not_invent_exact_head_set() -> Bo
 
 test fn witness_mercurial_two_parent_merge_decodes_with_derived_head() -> Bool {
   let projection_contents = fixture_projection_contents()
-  let merge = MercurialChangeset {
+  let merge = extdeps.mercurial.MercurialChangeset {
     node: hg_c2,
     manifest: hg_manifest,
     parents: MercurialTwoParents { first: hg_c0, second: hg_c1 },
@@ -1320,7 +1320,7 @@ test fn witness_mercurial_two_parent_merge_decodes_with_derived_head() -> Bool {
   )
   let with_head = projection_with_heads(
     projection: with_merge,
-    heads: [MercurialHead { changeset: hg_c2 }],
+    heads: [extdeps.mercurial.MercurialHead { changeset: hg_c2 }],
   )
   match mercurial_decode_projection(projection: with_head) {
     MercurialDecoded { repository: _ } => true
@@ -1332,12 +1332,12 @@ test fn witness_mercurial_duplicate_local_revision_refuses() -> Bool {
   let invalid = projection_with_local_revisions(
     projection: fixture_projection(),
     local_revisions: [
-      MercurialLocalRevisionEntry {
-        revision: MercurialLocalRevision { value: 0 },
+      extdeps.mercurial.MercurialLocalRevisionEntry {
+        revision: extdeps.mercurial.MercurialLocalRevision { value: 0 },
         changeset: hg_c0,
       },
-      MercurialLocalRevisionEntry {
-        revision: MercurialLocalRevision { value: 0 },
+      extdeps.mercurial.MercurialLocalRevisionEntry {
+        revision: extdeps.mercurial.MercurialLocalRevision { value: 0 },
         changeset: hg_c1,
       },
     ],

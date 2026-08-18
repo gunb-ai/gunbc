@@ -22,17 +22,17 @@ type RuntimeRoot {
 
 type RuntimeMount {
   destination: std.types.FilePath
-  source: RuntimeMountSource?
-  mount_type: RuntimeMountKind?
+  source: extdeps.container.oci.types.RuntimeMountSource?
+  mount_type: extdeps.container.oci.types.RuntimeMountKind?
   options: List<String>?
 }
 
 type RuntimeBundleConfig {
-  ociVersion: OciRuntimeVersion
+  ociVersion: extdeps.container.oci.types.OciRuntimeVersion
   process: RuntimeProcess?
   root: RuntimeRoot?
   mounts: List<RuntimeMount>?
-  linux: LinuxPlatform?
+  linux: extdeps.container.oci.linux.LinuxPlatform?
 }
 
 type RuntimeConfigRejectReason

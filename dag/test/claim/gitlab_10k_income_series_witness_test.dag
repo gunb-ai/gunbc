@@ -3,19 +3,19 @@ module test.claim.gitlab_10k_income_series_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data gitlab_gross_margin_series_band_low_bp: BasisPoint = basis_point(8700)
+data gitlab_gross_margin_series_band_low_bp: std.measure.BasisPoint = basis_point(8700)
 
-data gitlab_gross_margin_series_band_high_bp: BasisPoint = basis_point(8999)
+data gitlab_gross_margin_series_band_high_bp: std.measure.BasisPoint = basis_point(8999)
 
 fn w_year_cross_foots(
-  revenue: FiledMonetaryFact,
-  cost_of_revenue: FiledMonetaryFact,
-  gross_profit: FiledMonetaryFact,
-  selling_and_marketing: FiledMonetaryFact,
-  research_and_development: FiledMonetaryFact,
-  general_and_administrative: FiledMonetaryFact,
-  operating_expenses_total: FiledMonetaryFact,
-  operating_income: FiledSignedMonetaryFact
+  revenue: extdeps.sec.facts.FiledMonetaryFact,
+  cost_of_revenue: extdeps.sec.facts.FiledMonetaryFact,
+  gross_profit: extdeps.sec.facts.FiledMonetaryFact,
+  selling_and_marketing: extdeps.sec.facts.FiledMonetaryFact,
+  research_and_development: extdeps.sec.facts.FiledMonetaryFact,
+  general_and_administrative: extdeps.sec.facts.FiledMonetaryFact,
+  operating_expenses_total: extdeps.sec.facts.FiledMonetaryFact,
+  operating_income: extdeps.sec.facts.FiledSignedMonetaryFact
 ) -> Bool {
   match filed_amount(fact: revenue) {
     Present { value: rev } =>
@@ -67,7 +67,7 @@ fn w_year_cross_foots(
   }
 }
 
-fn w_filed_count_increases(prev: FiledMonetaryFact, next: FiledMonetaryFact) -> Bool {
+fn w_filed_count_increases(prev: extdeps.sec.facts.FiledMonetaryFact, next: extdeps.sec.facts.FiledMonetaryFact) -> Bool {
   match filed_amount(fact: prev) {
     Present { value: p } =>
       match filed_amount(fact: next) {
@@ -79,10 +79,10 @@ fn w_filed_count_increases(prev: FiledMonetaryFact, next: FiledMonetaryFact) -> 
 }
 
 fn w_share_of_revenue_declines(
-  numer_prev: FiledMonetaryFact,
-  revenue_prev: FiledMonetaryFact,
-  numer_next: FiledMonetaryFact,
-  revenue_next: FiledMonetaryFact
+  numer_prev: extdeps.sec.facts.FiledMonetaryFact,
+  revenue_prev: extdeps.sec.facts.FiledMonetaryFact,
+  numer_next: extdeps.sec.facts.FiledMonetaryFact,
+  revenue_next: extdeps.sec.facts.FiledMonetaryFact
 ) -> Bool {
   match filed_amount(fact: numer_prev) {
     Present { value: np } =>
@@ -103,7 +103,7 @@ fn w_share_of_revenue_declines(
   }
 }
 
-fn w_gross_margin_in_series_band(revenue: FiledMonetaryFact, gross_profit: FiledMonetaryFact) -> Bool {
+fn w_gross_margin_in_series_band(revenue: extdeps.sec.facts.FiledMonetaryFact, gross_profit: extdeps.sec.facts.FiledMonetaryFact) -> Bool {
   match derive_margin_envelope_from_filed_facts(
     revenue: revenue,
     profit: gross_profit,
@@ -119,7 +119,7 @@ fn w_gross_margin_in_series_band(revenue: FiledMonetaryFact, gross_profit: Filed
   }
 }
 
-fn filed_negative_magnitude(fact: FiledSignedMonetaryFact) -> std.nat.Nat? {
+fn filed_negative_magnitude(fact: extdeps.sec.facts.FiledSignedMonetaryFact) -> std.nat.Nat? {
   match filed_signed_value(fact: fact) {
     Present { value: v } =>
       match v {
@@ -130,14 +130,14 @@ fn filed_negative_magnitude(fact: FiledSignedMonetaryFact) -> std.nat.Nat? {
   }
 }
 
-fn w_filed_negative(fact: FiledSignedMonetaryFact) -> Bool {
+fn w_filed_negative(fact: extdeps.sec.facts.FiledSignedMonetaryFact) -> Bool {
   match filed_negative_magnitude(fact: fact) {
     Present { value: _ } => true
     _ => false
   }
 }
 
-fn w_negative_magnitude_shrinks(prev: FiledSignedMonetaryFact, next: FiledSignedMonetaryFact) -> Bool {
+fn w_negative_magnitude_shrinks(prev: extdeps.sec.facts.FiledSignedMonetaryFact, next: extdeps.sec.facts.FiledSignedMonetaryFact) -> Bool {
   match filed_negative_magnitude(fact: prev) {
     Present { value: p } =>
       match filed_negative_magnitude(fact: next) {
@@ -148,14 +148,14 @@ fn w_negative_magnitude_shrinks(prev: FiledSignedMonetaryFact, next: FiledSigned
   }
 }
 
-fn w_filed_count_equals(fact: FiledMonetaryFact, expected: std.nat.Nat) -> Bool {
+fn w_filed_count_equals(fact: extdeps.sec.facts.FiledMonetaryFact, expected: std.nat.Nat) -> Bool {
   match filed_amount(fact: fact) {
     Present { value: a } => usd_whole_dollars_count(m: a) == expected
     _ => false
   }
 }
 
-fn w_due_within_year_le_total(due: FiledMonetaryFact, total: FiledMonetaryFact) -> Bool {
+fn w_due_within_year_le_total(due: extdeps.sec.facts.FiledMonetaryFact, total: extdeps.sec.facts.FiledMonetaryFact) -> Bool {
   match filed_amount(fact: due) {
     Present { value: d } =>
       match filed_amount(fact: total) {
@@ -436,7 +436,7 @@ test fn w_red_perturbed_operating_income_breaks_cross_foot() -> Bool {
     research_and_development: gitlab_fy2026_research_and_development,
     general_and_administrative: gitlab_fy2026_general_and_administrative,
     operating_expenses_total: gitlab_fy2026_operating_expenses,
-    operating_income: FiledSignedMonetaryFact {
+    operating_income: extdeps.sec.facts.FiledSignedMonetaryFact {
       element: gitlab_fy2026_operating_income_loss.element,
       amount: FiledSigned { value: signed_usd_negative(magnitude_count: 70481001) },
       citation: gitlab_fy2026_operating_income_loss.citation,
@@ -460,7 +460,7 @@ test fn w_red_reversed_share_pair_not_declining() -> Bool {
 test fn w_red_perturbed_gross_profit_leaves_margin_band() -> Bool {
   !w_gross_margin_in_series_band(
     revenue: gitlab_fy2024_revenue,
-    gross_profit: FiledMonetaryFact {
+    gross_profit: extdeps.sec.facts.FiledMonetaryFact {
       element: gitlab_fy2024_gross_profit.element,
       amount: Filed { amount: usd_whole_dollars(count: 530198000) },
       citation: gitlab_fy2024_gross_profit.citation,

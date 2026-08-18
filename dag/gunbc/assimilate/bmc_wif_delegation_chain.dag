@@ -82,10 +82,10 @@ fn bmc_wif_bootstrap_bindings() -> List<GcpBinding> {
 }
 
 type CredentialDelegationStep
-  = GhaOidcIssuance { audience: NonEmptyStr, designated_job: NonEmptyStr }
-  | WifTokenExchange { pool: WifPool, provider: WifProvider, attribute_condition: NonEmptyStr }
-  | ServiceAccountImpersonation { impersonated_sa: ServiceAccountEmail, granted_roles: List<String> }
-  | SecretVersionAccess { secret_ref: SecretRef }
+  = GhaOidcIssuance { audience: std.types.NonEmptyStr, designated_job: std.types.NonEmptyStr }
+  | WifTokenExchange { pool: extdeps.cloud.gcp.gcp.WifPool, provider: extdeps.cloud.gcp.gcp.WifProvider, attribute_condition: std.types.NonEmptyStr }
+  | ServiceAccountImpersonation { impersonated_sa: extdeps.cloud.gcp.gcp.ServiceAccountEmail, granted_roles: List<String> }
+  | SecretVersionAccess { secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef }
 
 type WifDelegationChain {
   steps: List<CredentialDelegationStep>
@@ -119,9 +119,9 @@ data bmc_wif_canary_delegation_chain: WifDelegationChain = bmc_wif_delegation_ch
 
 type Srv3CredentialPathOption
   = OperatorOneHourToken
-  | ActorPinnedWorkflowDispatch { allowed_actor: NonEmptyStr }
-  | DedicatedActuatorIdentity { note: NonEmptyStr }
-  | ExistingAssimilatorSaBinding { legacy_grant: SecretAccessGrant }
+  | ActorPinnedWorkflowDispatch { allowed_actor: std.types.NonEmptyStr }
+  | DedicatedActuatorIdentity { note: std.types.NonEmptyStr }
+  | ExistingAssimilatorSaBinding { legacy_grant: gunbc.auth.secret_access_grant.SecretAccessGrant }
 
 data srv3_credential_path_options: List<Srv3CredentialPathOption> = [
   OperatorOneHourToken,

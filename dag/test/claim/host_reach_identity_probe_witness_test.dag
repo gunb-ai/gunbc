@@ -3,7 +3,7 @@ module test.claim.host_reach_identity_probe_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn fixture_subject() -> HostEnrollmentIntent {
+fn fixture_subject() -> gunbc.host_assimilation_program.HostEnrollmentIntent {
   fleet_subsumption_enrollments.first()
 }
 
@@ -88,7 +88,7 @@ test fn committed_probe_receipts_feed_producers_and_grow_coverage() -> Bool {
       Present { value: v } => v == Converged
       _ => false
     }
-    && match host_reach_identity_probe_receipt_for(host: "no-such-host" as HostIdentity) {
+    && match host_reach_identity_probe_receipt_for(host: "no-such-host" as product.placement_supply.HostIdentity) {
       Present { value: _ } => false
       _ => true
     }
@@ -120,9 +120,9 @@ test fn observe_host_phase_routes_by_label_and_stays_fail_closed() -> Bool {
 // observation, two cells (§2) — and the two Inaccessible-projecting arms remain
 // distinguishable at the receipt's outcome grain.
 test fn one_receipt_feeds_both_cells() -> Bool {
-  let r = HostReachIdentityProbeReceipt {
+  let r = gunbc.host_reach_identity_probe.HostReachIdentityProbeReceipt {
     host: operator_host_srv1,
-    probed_at: "witness-fixture" as NonEmptyStr,
+    probed_at: "witness-fixture" as std.types.NonEmptyStr,
     requested_principal: "gunbc-fleet",
     outcome: ProbeReachable { observed_short_hostname: host_identity_desired_short_hostname(host: operator_host_srv1), observed_principal: "gunbc-fleet" },
   }

@@ -3,8 +3,8 @@ module v2.lens.unit_modeling
 
 
 type UnitFieldRow {
-  field: Symbol
-  carrier: Symbol
+  field: v2.std.node.Symbol
+  carrier: v2.std.node.Symbol
 }
 
 data unit_field_rows: List<UnitFieldRow> = [

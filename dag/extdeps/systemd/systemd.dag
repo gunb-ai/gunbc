@@ -61,7 +61,7 @@ data systemd_tasks_current_property: NonEmptyStr = systemd_unit_property_wire(pr
 
 type SystemdCgroupMemoryLimit
   = MemoryLimitUnbounded
-  | MemoryLimitBytes { bytes: ByteSize }
+  | MemoryLimitBytes { bytes: std.measure.ByteSize }
   | MemoryLimitAbsent
 
 fn parse_systemd_memory_limit_show(raw: String) -> SystemdCgroupMemoryLimit {
@@ -132,6 +132,6 @@ fn systemd_unit_active_state_wire_label(s: SystemdUnitActiveState) -> String {
 }
 
 type SystemdUnitStatus {
-  name: NonEmptyStr
+  name: std.types.NonEmptyStr
   active_state: SystemdUnitActiveState
 }

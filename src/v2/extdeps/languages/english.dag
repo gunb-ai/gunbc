@@ -7,19 +7,19 @@ type Determiner
 
 type FormalNounPhrase {
   determiner: Determiner
-  head: Symbol
+  head: v2.std.node.Symbol
 }
 
 type FormalSentence
-  = SvoSentence   { subject: FormalNounPhrase, verb: Symbol, object: FormalNounPhrase }
-  | CopulaSentence { subject: FormalNounPhrase, copula: Symbol, complement: FormalNounPhrase }
+  = SvoSentence   { subject: FormalNounPhrase, verb: v2.std.node.Symbol, object: FormalNounPhrase }
+  | CopulaSentence { subject: FormalNounPhrase, copula: v2.std.node.Symbol, complement: FormalNounPhrase }
 
 type EnglishLexRules {
-  rules: LexRules
+  rules: v2.std.compilers.lexing.LexRules
 }
 
 type EnglishGrammar {
-  grammar: ParseGrammar
+  grammar: v2.std.grammar.ParseGrammar
 }
 
 type EnglishFidelityFeature
@@ -442,9 +442,9 @@ fn english_add_fn_formal_production() -> FormalProduction {
 }
 
 type EnglishGrammarRelationRow {
-  production: FormalProduction
+  production: v2.std.grammar.FormalProduction
   emitted: Node
-  tokens: List<ConcreteSyntaxToken>
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
 fn english_add_fn_relation_row() -> EnglishGrammarRelationRow {

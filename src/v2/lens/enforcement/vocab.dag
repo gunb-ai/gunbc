@@ -2,7 +2,7 @@ module v2.lens.enforcement.vocab
 
 
 type SubjectRoster {
-  entries: List<QualifiedName>
+  entries: List<v2.std.qualified_name.QualifiedName>
 }
 
 type ScopeRoster {
@@ -21,7 +21,7 @@ type ConsumerRequirement
   | Exact { kind: ConsumerKind }
 
 type ConsumerWitnessBinding
-  = BoundConsumerWitness { witness: ScheduleWitnessEntry }
+  = BoundConsumerWitness { witness: std.realization_schedule.ScheduleWitnessEntry }
   | NoConsumerWitness
 
 type NarrowingReason

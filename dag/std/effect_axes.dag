@@ -9,11 +9,11 @@ type EffectRegion
   | FrameScratch
   | UnclassifiedRegion
 
-data region_substrate_closure_root: NamespacePosition = filesystem_position(path: ["closure"])
-data region_repo_root: NamespacePosition = filesystem_position(path: ["repo"])
-data region_frame_scratch_root: NamespacePosition = filesystem_position(path: ["scratch"])
+data region_substrate_closure_root: std.effect_grant.NamespacePosition = filesystem_position(path: ["closure"])
+data region_repo_root: std.effect_grant.NamespacePosition = filesystem_position(path: ["repo"])
+data region_frame_scratch_root: std.effect_grant.NamespacePosition = filesystem_position(path: ["scratch"])
 
-fn classify_region(root: NamespacePosition) -> EffectRegion {
+fn classify_region(root: std.effect_grant.NamespacePosition) -> EffectRegion {
   if position_under(target: root, root: region_substrate_closure_root) {
     SubstrateClosure
   } else if position_under(target: root, root: region_repo_root) {
@@ -25,7 +25,7 @@ fn classify_region(root: NamespacePosition) -> EffectRegion {
   }
 }
 
-fn read_grant_replayable(g: Grant) -> Bool {
+fn read_grant_replayable(g: std.effect_grant.Grant) -> Bool {
   match g.binding {
     Replay { fixture_store: s } => true
     RealTransport =>
@@ -38,7 +38,7 @@ fn read_grant_replayable(g: Grant) -> Bool {
   }
 }
 
-fn write_grant_isolated(g: Grant) -> Bool {
+fn write_grant_isolated(g: std.effect_grant.Grant) -> Bool {
   match classify_region(root: g.root) {
     FrameScratch => true
     SubstrateClosure => false
@@ -47,7 +47,7 @@ fn write_grant_isolated(g: Grant) -> Bool {
   }
 }
 
-fn read_grant_intersects_live_tree(g: Grant) -> Bool {
+fn read_grant_intersects_live_tree(g: std.effect_grant.Grant) -> Bool {
   match g.binding {
     Replay { fixture_store: s } => false
     RealTransport =>
@@ -60,7 +60,7 @@ fn read_grant_intersects_live_tree(g: Grant) -> Bool {
   }
 }
 
-fn grants_all_read_replayable(grants: List<Grant>) -> Bool {
+fn grants_all_read_replayable(grants: List<std.effect_grant.Grant>) -> Bool {
   if grants.count() == 0 {
     true
   } else {
@@ -74,7 +74,7 @@ fn grants_all_read_replayable(grants: List<Grant>) -> Bool {
   }
 }
 
-fn grants_all_write_isolated(grants: List<Grant>) -> Bool {
+fn grants_all_write_isolated(grants: List<std.effect_grant.Grant>) -> Bool {
   if grants.count() == 0 {
     true
   } else {
@@ -88,7 +88,7 @@ fn grants_all_write_isolated(grants: List<Grant>) -> Bool {
   }
 }
 
-fn grants_any_read_intersects_live_tree(grants: List<Grant>) -> Bool {
+fn grants_any_read_intersects_live_tree(grants: List<std.effect_grant.Grant>) -> Bool {
   if grants.count() == 0 {
     false
   } else {
@@ -102,14 +102,14 @@ fn grants_any_read_intersects_live_tree(grants: List<Grant>) -> Bool {
   }
 }
 
-fn envelope_replayable(env: Envelope) -> Bool {
+fn envelope_replayable(env: std.effect_grant.Envelope) -> Bool {
   grants_all_read_replayable(grants: env.grants)
 }
 
-fn envelope_isolated(env: Envelope) -> Bool {
+fn envelope_isolated(env: std.effect_grant.Envelope) -> Bool {
   grants_all_write_isolated(grants: env.grants)
 }
 
-fn envelope_live_tree_intersects(env: Envelope) -> Bool {
+fn envelope_live_tree_intersects(env: std.effect_grant.Envelope) -> Bool {
   grants_any_read_intersects_live_tree(grants: env.grants)
 }

@@ -10,7 +10,7 @@ func observe_host_short_wet() -> String
 {
   trim(
     s: run_shell_command_capture(
-      command: ArgvCommand { argv: ["hostname", "-s"] },
+      command: extdeps.exec.command.ArgvCommand { argv: ["hostname", "-s"] },
       transport: LocalExec,
     ).stdout,
   )
@@ -23,36 +23,36 @@ func observe_generation_store_wet() -> Int?
   fleet_converge_generation_from_store_content(store_present: read.success, content: read.content)
 }
 
-func observe_timer_members_wet() -> List<TimerRetirementMember>
+func observe_timer_members_wet() -> List<gunbc.fleet_converge_plan.TimerRetirementMember>
   uses net: Network
 {
   let legacy = timer_retirement_observed_legacy_srv1()
   filter(legacy, m =>
     run_shell_command_capture(
-      command: ArgvCommand { argv: ["test", "-f", concat("/etc/systemd/system/", m.unit_name as String)] },
+      command: extdeps.exec.command.ArgvCommand { argv: ["test", "-f", concat("/etc/systemd/system/", m.unit_name as String)] },
       transport: LocalExec,
     ).success
   )
 }
 
-func observe_cap_members_wet() -> List<CapMember>
+func observe_cap_members_wet() -> List<gunbc.host_axis_caps.CapMember>
   uses net: Network
 {
   flat_map(caps_managed_dropin_paths, path => {
     let read = Filesystem.Read(path: path as String)
     if read.success {
-      [CapMember { dropin_path: path, content: read.content }]
+      [gunbc.host_axis_caps.CapMember { dropin_path: path, content: read.content }]
     } else {
       []
     }
   })
 }
 
-func fleet_converge_plan_wet() -> ProcessExit
+func fleet_converge_plan_wet() -> std.process.ProcessExit
   uses net: Network
 {
   let host_short = observe_host_short_wet()
-  let host = host_short as NonEmptyStr
+  let host = host_short as std.types.NonEmptyStr
   match observe_generation_store_wet() {
     Absent =>
       exit_failure(reason: "fleet_converge_plan: generation store unreadable or corrupt — refuse, do not coerce to 0")
@@ -83,7 +83,7 @@ func fleet_converge_plan_wet() -> ProcessExit
             rows: artifact.spark_serving_typed_actions,
           )
           let mkdir = run_shell_commands(
-            commands: [ArgvCommand { argv: ["mkdir", "-p", fleet_converge_plan_artifact_dir] }],
+            commands: [extdeps.exec.command.ArgvCommand { argv: ["mkdir", "-p", fleet_converge_plan_artifact_dir] }],
             transport: LocalExec,
           )
           match mkdir {
@@ -125,9 +125,9 @@ func fleet_converge_plan_wet() -> ProcessExit
                 && w_spark_wire.success {
                 run_shell_commands(
                   commands: [
-                    ArgvCommand { argv: ["chmod", "0755", fleet_converge_plan_apply_shell_path] },
-                    ArgvCommand { argv: ["cat", fleet_converge_plan_body_path] },
-                    ArgvCommand { argv: ["cat", fleet_converge_plan_content_hash_path] },
+                    extdeps.exec.command.ArgvCommand { argv: ["chmod", "0755", fleet_converge_plan_apply_shell_path] },
+                    extdeps.exec.command.ArgvCommand { argv: ["cat", fleet_converge_plan_body_path] },
+                    extdeps.exec.command.ArgvCommand { argv: ["cat", fleet_converge_plan_content_hash_path] },
                   ],
                   transport: LocalExec,
                 )
@@ -143,7 +143,7 @@ func fleet_converge_plan_wet() -> ProcessExit
   }
 }
 
-func fleet_converge_apply_wet() -> ProcessExit
+func fleet_converge_apply_wet() -> std.process.ProcessExit
   uses net: Network
 {
   let read_plan = Filesystem.Read(path: fleet_converge_plan_body_path)
@@ -167,7 +167,7 @@ func fleet_converge_apply_wet() -> ProcessExit
     exit_failure(reason: "fleet_converge_apply: plan artifact missing — run plan first")
   } else {
     let host_short = observe_host_short_wet()
-    let observed_host = trim(s: read_host.content) as NonEmptyStr
+    let observed_host = trim(s: read_host.content) as std.types.NonEmptyStr
     match fleet_converge_parse_nonneg_generation_text(content: read_prior.content) {
       Absent =>
         exit_failure(reason: "fleet_converge_apply: prior_generation artifact corrupt — refuse, do not coerce to 0")
@@ -213,7 +213,7 @@ func fleet_converge_apply_wet() -> ProcessExit
               } else {
                 run_shell_commands(
                   commands: [
-                    ArgvCommand {
+                    extdeps.exec.command.ArgvCommand {
                       argv: [
                         "bash",
                         "-c",

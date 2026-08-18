@@ -1,9 +1,9 @@
 module v2.test.lens_structural_resolution.module_import_out_of_scope
 
-data sr_mod_claim_hash: Hash = sr_mod_claim_hash
+data sr_mod_claim_hash: v2.std.node.Hash = sr_mod_claim_hash
 
-fn sr_mod_claim_atom(s: Symbol) -> Node {
-  Node {
+fn sr_mod_claim_atom(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -12,35 +12,35 @@ fn sr_mod_claim_atom(s: Symbol) -> Node {
 
 data sr_mod_imported: Node = sr_mod_claim_atom(s: ^sr_mod_child_symbol)
 
-data sr_mod_root: Node = Node {
+data sr_mod_root: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge { label: Named { name: ^dependency_module_import_edge }, target: sr_mod_imported }
+    v2.std.node.Edge { label: Named { name: ^dependency_module_import_edge }, target: sr_mod_imported }
   ],
   occurrence_id: SyntheticOccurrence
 }
 
-data sr_mod_dependency: DependencyView = DependencyView {
+data sr_mod_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: sr_mod_root,
   dependent: sr_mod_imported,
   kind: ModuleDependsOn,
   usage_site: sr_mod_imported
 }
 
-fn sr_mod_canonical_witness(resolved: Node) -> CanonicalGroundingWitness {
-  CanonicalGroundingWitness {
-    structural: StructuralPropertyWitness {
+fn sr_mod_canonical_witness(resolved: Node) -> v2.std.constraints.CanonicalGroundingWitness {
+  v2.std.constraints.CanonicalGroundingWitness {
+    structural: v2.std.witness.StructuralPropertyWitness {
       property: ^constraint_property_being_canonical,
       evidence: resolved
     },
-    closedness: StructuralPropertyWitness {
+    closedness: v2.std.witness.StructuralPropertyWitness {
       property: ^constraint_property_candidate_set_closedness,
       evidence: resolved
     }
   }
 }
 
-fn sr_mod_claim_facts() -> InferredFacts {
+fn sr_mod_claim_facts() -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^sr_mod_type_symbol,
     algebra_symbol: ^sr_mod_algebra_symbol,
@@ -48,7 +48,7 @@ fn sr_mod_claim_facts() -> InferredFacts {
   )
 }
 
-fn sr_mod_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
+fn sr_mod_claim_fact_map(facts: v2.compiler.infer.InferredFacts) -> Map<Node, v2.compiler.infer.InferredFacts> {
   Map {
     lookup: fn(_) {
       Present { value: facts }
@@ -56,19 +56,19 @@ fn sr_mod_claim_fact_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
   }
 }
 
-fn sr_mod_claim_tree() -> InferredTree {
+fn sr_mod_claim_tree() -> v2.compiler.infer.InferredTree {
   let facts = sr_mod_claim_facts()
-  InferredTree {
+  v2.compiler.infer.InferredTree {
     root: sr_mod_root,
     facts: sr_mod_claim_fact_map(facts: facts)
   }
 }
 
-data module_import_out_of_scope_claim: LensStructuralResolutionClaim = LensStructuralResolutionClaim {
+data module_import_out_of_scope_claim: v2.test.lens_structural_resolution.claim_carrier.LensStructuralResolutionClaim = v2.test.lens_structural_resolution.claim_carrier.LensStructuralResolutionClaim {
   input: sr_mod_claim_tree(),
-  expected: StructuralResolutionFact {
+  expected: v2.lens.structural_resolution.StructuralResolutionFact {
     dependencies: [
-      ClassifiedDependencyView {
+      v2.std.dependency.ClassifiedDependencyView {
         dependency: sr_mod_dependency,
         classification: OutOfScopeDependencyKind
       }

@@ -10,11 +10,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type ShapeFromCatalogInput
   = FromGpuModelCatalog {
-      domain: DomainId
-      register_level: LevelId
-      shared_level: LevelId
-      device_level: LevelId
-      row: GpuModelCatalogRow
+      domain: std.machine_shape.DomainId
+      register_level: std.machine_shape.LevelId
+      shared_level: std.machine_shape.LevelId
+      device_level: std.machine_shape.LevelId
+      row: extdeps.gpu.types.GpuModelCatalogRow
     }
 
 fn memory_level_from_gpu_device_dram(level_id: LevelId, row: GpuModelCatalogRow) -> MemoryLevel {

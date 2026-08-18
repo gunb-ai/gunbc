@@ -19,7 +19,7 @@ data canonical_html_spellings: MarkupBracket = MarkupBracket {
 }
 
 type HtmlIngestResult
-  = IngestedNode { node: Fragment }
+  = IngestedNode { node: std.markup.Fragment }
   | IngestRejected { reason: String }
 
 type HtmlSplitResult {
@@ -37,7 +37,7 @@ type HtmlCloseState {
 }
 
 type HtmlAttrFoldState {
-  attributes: List<Attribute>
+  attributes: List<std.markup.Attribute>
   pending_name: String
   is_value: Bool
   rejected: Bool
@@ -45,11 +45,11 @@ type HtmlAttrFoldState {
 }
 
 type HtmlParseOneResult
-  = ParsedOne { node: Fragment, rest: String }
+  = ParsedOne { node: std.markup.Fragment, rest: String }
   | ParseOneRejected { reason: String }
 
 type HtmlChildrenResult
-  = ParsedChildren { nodes: List<Fragment> }
+  = ParsedChildren { nodes: List<std.markup.Fragment> }
   | ChildrenRejected { reason: String }
 
 fn html_count_str(s: String, pattern: String) -> Int {

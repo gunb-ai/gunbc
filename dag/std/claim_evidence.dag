@@ -36,12 +36,12 @@ type EvidenceProvenance {
 
 type EvidenceFreshness<C> {
   maximum_conclusion: C
-  basis: NonEmptyStr
+  basis: std.types.NonEmptyStr
 }
 
 type EvidenceFidelity<Boundary> {
   boundary: Boundary
-  losses: List<NonEmptyStr>
+  losses: List<std.types.NonEmptyStr>
 }
 
 type EvidenceDirection
@@ -79,7 +79,7 @@ type EvidenceInsufficiency<F, C, Independence> {
   claim: C
   inference_rule: InferenceRuleId
   probe_independence: Independence
-  reason: NonEmptyStr
+  reason: std.types.NonEmptyStr
 }
 
 type EvidenceInference<F, C, A, FidelityBoundary, Independence>

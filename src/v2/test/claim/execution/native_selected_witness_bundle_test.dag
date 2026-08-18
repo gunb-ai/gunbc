@@ -80,9 +80,9 @@ fn selected_logic_workspace(test_id: String, plan: SelectedWitnessPlan) -> Strin
 }
 
 type SelectedLogicVerdicts {
-  meet: SelectedWitnessVerdict
-  join: SelectedWitnessVerdict
-  complement: SelectedWitnessVerdict
+  meet: std.selected_witness_bundle.SelectedWitnessVerdict
+  join: std.selected_witness_bundle.SelectedWitnessVerdict
+  complement: std.selected_witness_bundle.SelectedWitnessVerdict
 }
 
 fn selected_verdict_for_byte(actual: Optional<Byte>, expected_octet: Int) -> SelectedWitnessVerdict {
@@ -299,9 +299,9 @@ fn selected_logic_equivalence_rows(
 }
 
 type SelectedBundleNativeObservation {
-  cold: EmitHostRunReceipt
-  warm: EmitHostRunReceipt
-  warm_wall: NanosecondDuration
+  cold: v2.std.host_run.EmitHostRunReceipt
+  warm: v2.std.host_run.EmitHostRunReceipt
+  warm_wall: std.verification.NanosecondDuration
 }
 
 fn observe_selected_bundle_native(

@@ -1,22 +1,22 @@
 module v2.test.claim.translate_underived_refusal
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data translate_underived_refusal_note: String = "Discriminating witnesses for v2-translate-underived-refusal. gunbc#7485 made infer surface GroundingNotDerived on the Accepted path, but 06_translate's projection-absent coerce fallback swallowed canonical_grounding_for_node's Rejected arm and continued via translate_type_fold_init — and ComputationNode leaves bypassed grounding entirely. Eval already refuses via inferred_facts_for_eval; translate must agree at the same class minimum. translate_grounding_derived_gate routes Holds through canonical_grounding_from_inferred_facts and propagates its typed rejection; Violates (lookup miss) remains the orch-emit compatibility frontier (review 46789). translate_grounding_derived_gate_at_producer applies that gate at producer entry; translate_derived_parent_underived_child_gate re-applies it on every fold attach; translate_grounding_derived_gate_subtree covers bodied-arrow/import shortcuts and translate_projection_absent_bodied_arrow_fold_init (review 46681, review 46766). Synthetic empty-facts trees remain on the named orch-emit frontier until v2-inferred-tree-completeness."
 
-fn translate_refused_canonical_grounding(d: NonEmptyDiagnostics) -> Bool {
+fn translate_refused_canonical_grounding(d: v2.std.diagnostic.NonEmptyDiagnostics) -> Bool {
   d.head.reason == ^infer_grounding_not_derived
 }
 
-data translate_underived_value_specimen: Node = Node {
+data translate_underived_value_specimen: Node = v2.std.node.Node {
   kind: ComputationNode { behavior: Value },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 fn translate_underived_conj_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -24,7 +24,7 @@ fn translate_underived_conj_node() -> Node {
 }
 
 fn translate_underived_disj_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Disj },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -35,7 +35,7 @@ fn translate_underived_value_node() -> Node {
   translate_underived_value_specimen
 }
 
-fn translate_underived_value_specimen_facts() -> Optional<InferredFacts> {
+fn translate_underived_value_specimen_facts() -> Optional<v2.compiler.infer.InferredFacts> {
   match infer(tree: translate_underived_value_specimen) {
     Accepted { value: tree, diagnostics: _ } =>
       tree.facts.lookup(translate_underived_value_specimen)
@@ -48,12 +48,12 @@ fn translate_mixed_tree_root() -> Node {
     n: rust_add_emitted_root,
     children: list_snoc_item(
       xs: rust_add_emitted_root.children,
-      item: Edge { label: Positional, target: translate_underived_value_specimen }
+      item: v2.std.node.Edge { label: Positional, target: translate_underived_value_specimen }
     )
   )
 }
 
-fn translate_mixed_tree_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn translate_mixed_tree_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
     translate_underived_value_specimen_facts()
   } else if content_hash(n: key) == content_hash(n: translate_mixed_tree_root()) {
@@ -63,12 +63,12 @@ fn translate_mixed_tree_facts_lookup(key: Node) -> Optional<InferredFacts> {
   }
 }
 
-data translate_mixed_derived_root_underived_child_tree: InferredTree = InferredTree {
+data translate_mixed_derived_root_underived_child_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: translate_mixed_tree_root(),
   facts: Map { lookup: translate_mixed_tree_facts_lookup }
 }
 
-fn translate_absent_parent_underived_child_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn translate_absent_parent_underived_child_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
     translate_underived_value_specimen_facts()
   } else {
@@ -76,7 +76,7 @@ fn translate_absent_parent_underived_child_facts_lookup(key: Node) -> Optional<I
   }
 }
 
-data translate_absent_parent_underived_child_tree: InferredTree = InferredTree {
+data translate_absent_parent_underived_child_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: translate_mixed_tree_root(),
   facts: Map { lookup: translate_absent_parent_underived_child_facts_lookup }
 }
@@ -86,19 +86,19 @@ fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
     n: python_emitted_add_fn_node(),
     children: list_snoc_item(
       xs: python_emitted_add_fn_node().children,
-      item: Edge { label: Positional, target: translate_underived_value_specimen }
+      item: v2.std.node.Edge { label: Positional, target: translate_underived_value_specimen }
     )
   )
 }
 
-fn translate_bodyless_emission_root_facts_for(node: Node) -> Optional<InferredFacts> {
+fn translate_bodyless_emission_root_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   match infer(tree: python_emitted_add_fn_node()) {
     Accepted { value: tree, diagnostics: _ } => tree.facts.lookup(node)
     Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
-fn translate_bodyless_emission_root_with_poison_child_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn translate_bodyless_emission_root_with_poison_child_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
     translate_underived_value_specimen_facts()
   } else if content_hash(n: key) == content_hash(n: translate_bodyless_emission_root_with_poison_child_root()) {
@@ -108,7 +108,7 @@ fn translate_bodyless_emission_root_with_poison_child_facts_lookup(key: Node) ->
   }
 }
 
-data translate_bodyless_emission_root_with_poison_child_tree: InferredTree = InferredTree {
+data translate_bodyless_emission_root_with_poison_child_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: translate_bodyless_emission_root_with_poison_child_root(),
   facts: Map { lookup: translate_bodyless_emission_root_with_poison_child_facts_lookup }
 }
@@ -122,7 +122,7 @@ fn translate_bodied_arrow_shortcut_root() -> Outcome<Node> {
           n: arrow,
           children: list_snoc_item(
             xs: arrow.children,
-            item: Edge {
+            item: v2.std.node.Edge {
               label: Positional,
               target: translate_underived_value_specimen
             }
@@ -133,7 +133,7 @@ fn translate_bodied_arrow_shortcut_root() -> Outcome<Node> {
   )
 }
 
-fn translate_bodied_arrow_shortcut_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn translate_bodied_arrow_shortcut_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
     translate_underived_value_specimen_facts()
   } else {
@@ -141,12 +141,12 @@ fn translate_bodied_arrow_shortcut_facts_lookup(key: Node) -> Optional<InferredF
   }
 }
 
-fn translate_bodied_arrow_shortcut_underived_descendant_tree() -> Outcome<InferredTree> {
+fn translate_bodied_arrow_shortcut_underived_descendant_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   bind_outcome(
     o: translate_bodied_arrow_shortcut_root(),
     f: fn(root) {
       outcome_accepted(
-        value: InferredTree {
+        value: v2.compiler.infer.InferredTree {
           root: root,
           facts: Map { lookup: translate_bodied_arrow_shortcut_facts_lookup }
         }
@@ -160,10 +160,10 @@ fn translate_projection_absent_fold_bodied_arrow_wrapped_root() -> Outcome<Node>
     o: translate_bodied_arrow_shortcut_root(),
     f: fn(arrow) {
       outcome_accepted(
-        value: Node {
+        value: v2.std.node.Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge { label: Positional, target: arrow }
+            v2.std.node.Edge { label: Positional, target: arrow }
           ],
           occurrence_id: SyntheticOccurrence
         }
@@ -172,12 +172,12 @@ fn translate_projection_absent_fold_bodied_arrow_wrapped_root() -> Outcome<Node>
   )
 }
 
-fn translate_projection_absent_fold_bodied_arrow_underived_descendant_tree() -> Outcome<InferredTree> {
+fn translate_projection_absent_fold_bodied_arrow_underived_descendant_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   bind_outcome(
     o: translate_projection_absent_fold_bodied_arrow_wrapped_root(),
     f: fn(root) {
       outcome_accepted(
-        value: InferredTree {
+        value: v2.compiler.infer.InferredTree {
           root: root,
           facts: Map { lookup: translate_bodied_arrow_shortcut_facts_lookup }
         }
@@ -191,7 +191,7 @@ fn translate_underived_grammar_match_atom_node() -> Node {
 }
 
 fn translate_underived_grammar_match_bundle() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       rust_named_edge(
@@ -211,7 +211,7 @@ fn translate_underived_grammar_match_bundle() -> Node {
   }
 }
 
-data translate_underived_grammar_match_target: TargetModel = TargetModel {
+data translate_underived_grammar_match_target: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
   bundle: translate_underived_grammar_match_bundle(),
   lex: rust_pick_lex(),
@@ -221,7 +221,7 @@ data translate_underived_grammar_match_target: TargetModel = TargetModel {
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-fn translate_refuses_underived_root_for_target(root: Node, target: TargetModel) -> Bool {
+fn translate_refuses_underived_root_for_target(root: Node, target: v2.std.compilers.target_model.TargetModel) -> Bool {
   match infer(tree: root) {
     Rejected { diagnostics: _ } => false
     Accepted { value: tree, diagnostics: _ } =>

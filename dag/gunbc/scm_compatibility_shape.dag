@@ -69,8 +69,8 @@ fn compatibility_read_back_handle(
 
 type CompatibilityFidelityDisposition
   = CompatibilityFidelityPreserved
-  | CompatibilityFidelityDowngraded { cause: NonEmptyStr }
-  | CompatibilityFidelityUnavailable { cause: NonEmptyStr }
+  | CompatibilityFidelityDowngraded { cause: std.types.NonEmptyStr }
+  | CompatibilityFidelityUnavailable { cause: std.types.NonEmptyStr }
 
 type CompatibilityFidelityDispositionFold<R> {
   preserved: fn() -> R
@@ -104,15 +104,15 @@ type CompatibilityFidelityProfile {
 type CompatibilityAdvanceGuarantee
   = CompatibilityExactCompareAndAdvance
   | CompatibilityNamedConditionalAdvance {
-      authority: NonEmptyStr,
-      contract: NonEmptyStr,
+      authority: std.types.NonEmptyStr,
+      contract: std.types.NonEmptyStr,
     }
 
 type CompatibilityAdvanceCapability
   = CompatibilityAdvanceModeled {
       guarantee: CompatibilityAdvanceGuarantee,
     }
-  | CompatibilityAdvanceUnavailable { cause: NonEmptyStr }
+  | CompatibilityAdvanceUnavailable { cause: std.types.NonEmptyStr }
 
 type CompatibilityAdvanceCapabilityFold<R> {
   modeled: fn(CompatibilityAdvanceGuarantee) -> R

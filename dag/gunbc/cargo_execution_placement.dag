@@ -23,24 +23,24 @@ module gunbc.cargo_execution_placement
 // acquires a remote realization.
 
 type CargoPlacement
-  = LocalRunner { cargo_path: NonEmptyStr }
-  | RemoteBuilder { service: NonEmptyStr }
+  = LocalRunner { cargo_path: std.types.NonEmptyStr }
+  | RemoteBuilder { service: std.types.NonEmptyStr }
 
 // A subject's placement requirement is a property OF THE SUBJECT, not a preference.
 // A witness that clones the live workspace, regenerates artifacts in the clone and
 // requires a real compile refusal is bound to the machine holding that workspace; a
 // subject whose inputs are fully content-addressed is not.
 type CargoSubjectPlacementRequirement
-  = RequiresLocalWorkspace { required_by: DeclarationRef }
+  = RequiresLocalWorkspace { required_by: std.decl_ref.DeclarationRef }
   | RelocatableSubject
 
 type CargoPlacementRefusalCause
-  = RemoteBuilderCannotServeLocalWorkspace { service: NonEmptyStr }
-  | RemoteBuilderRealizationUnbound { service: NonEmptyStr }
+  = RemoteBuilderCannotServeLocalWorkspace { service: std.types.NonEmptyStr }
+  | RemoteBuilderRealizationUnbound { service: std.types.NonEmptyStr }
   | CargoExecutableUnobserved { observation: String }
 
 type CargoPlacementDecision
-  = PlacementAdmitted { cargo_path: NonEmptyStr }
+  = PlacementAdmitted { cargo_path: std.types.NonEmptyStr }
   | PlacementRefused { cause: CargoPlacementRefusalCause }
 
 // The whole point of the carrier: this is a total function from (subject, placement) to

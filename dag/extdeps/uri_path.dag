@@ -1,8 +1,8 @@
 module extdeps.uri_path
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc3986#section-3.3"
   }
@@ -85,7 +85,7 @@ fn match_path_segments(path_only: String) -> List<String> {
   }
 }
 
-fn match_path_tokens(tokens: List<UrlPathToken>, segs: List<String>) -> PathTemplateMatch {
+fn match_path_tokens(tokens: List<std.http_path.UrlPathToken>, segs: List<String>) -> PathTemplateMatch {
   match tokens |> first {
     Absent =>
       match segs |> first {
@@ -106,7 +106,7 @@ fn match_path_tokens(tokens: List<UrlPathToken>, segs: List<String>) -> PathTemp
                   if seg == "" {
                     PathNotMatched
                   } else {
-                    PathMatched { params: concat([PathParamBinding { name: n, value: seg }], ps) }
+                    PathMatched { params: concat([std.http_path.PathParamBinding { name: n, value: seg }], ps) }
                   }
               }
           }
@@ -114,7 +114,7 @@ fn match_path_tokens(tokens: List<UrlPathToken>, segs: List<String>) -> PathTemp
   }
 }
 
-fn match_path_template(template: PathTemplate, path: String) -> PathTemplateMatch {
+fn match_path_template(template: std.http_path.PathTemplate, path: String) -> PathTemplateMatch {
   let path_only = match path |> split(delimiter: "?") |> first {
     Present { value: p } => p
     Absent => path
@@ -129,14 +129,14 @@ fn parse_path_template(raw: String) -> PathTemplateParseResult {
   }
   let segments = path_only |> split(delimiter: "/") |> filter(s => s != "")
   match segments |> first {
-    Absent => ParsedPathTemplate { template: PathTemplate { tokens: [] } }
+    Absent => ParsedPathTemplate { template: std.http_path.PathTemplate { tokens: [] } }
     Present { value: first_seg } =>
       match parse_segment_tokens(seg: first_seg) {
         MalformedPathSegment { segment: s, reason: r } =>
           MalformedPathTemplate { raw: raw, segment: s, reason: r }
         ParsedSegmentTokens { tokens: first_tokens } => {
           let parsed = fold(segments |> skip(1),
-            init: ParsedPathTemplate { template: PathTemplate { tokens: first_tokens } },
+            init: ParsedPathTemplate { template: std.http_path.PathTemplate { tokens: first_tokens } },
             f: (acc, seg) => match acc {
               MalformedPathTemplate => acc
               ParsedPathTemplate { template: path } =>
@@ -145,7 +145,7 @@ fn parse_path_template(raw: String) -> PathTemplateParseResult {
                     MalformedPathTemplate { raw: raw, segment: s, reason: r }
                   ParsedSegmentTokens { tokens: seg_tokens } =>
                     ParsedPathTemplate {
-                      template: PathTemplate { tokens: concat(path.tokens, seg_tokens) }
+                      template: std.http_path.PathTemplate { tokens: concat(path.tokens, seg_tokens) }
                     }
                 }
             }

@@ -1,6 +1,6 @@
 module v2.test.claim.vacuity_consumer_witness
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data vacuity_consumer_witness_long_lane_split_note: String = "The four corpus-ingesting witnesses formerly in this file (fixture_ingest_is_accepted_by_execution, derived_equals_classified_sites, shadows_reconcile_with_admitted_exceptions, real_test_fn_gap_stays_unknown_by_execution — the lens_contract_vacuity.consumer_witness mandate-item-5 binding) moved to src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag (operator 5-second rule, 2026-07-12; long_lane_exclusion_note in gunbc.ci_layer_roots) after CI run 30731820103 measured them at 88996ms/32423ms/29754ms/(unmeasured, also over budget) against the 5000ms fast-lane ceiling — see vacuity_consumer_witness_long_lane_note there for the full receipt. The two witnesses below do not call the corpus-ingest path (vacuity_consumer_witness_live_derived_sites) and measured 6ms/19ms, so they stay discovered per-PR rather than moving with the slow group."
 
@@ -14,7 +14,7 @@ test fn vacuity_consumer_witness_fixture_module_reached_by_direct_call() -> Bool
 test fn vacuity_consumer_witness_pr7614_shape_red_control_classifies_proven_duplicate() -> Bool {
   vacuity_evidence_eq(
     a: classify_vacuity_same_eval_record(
-      record: VacuityEvidenceRecord {
+      record: v2.lens.vacuity.VacuityEvidenceRecord {
         subject: EqualityOperands,
         transport: EvalOnly,
         lhs_provenance: LiveSurfaceSnapshot,

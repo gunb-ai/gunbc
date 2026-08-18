@@ -21,16 +21,16 @@ type UbuntuInstallMediaMirrorHost
 
 type UbuntuInstallMediaMirrorRow {
   host: UbuntuInstallMediaMirrorHost
-  locator: NonEmptyStr
+  locator: std.types.NonEmptyStr
 }
 
 type UbuntuInstallMediaArtifactRow {
   distribution: NobleNumbat2404Lts
-  point_release: NonEmptyStr
+  point_release: std.types.NonEmptyStr
   architecture: UbuntuInstallMediaArchitecture
   flavor: UbuntuInstallMediaFlavor
-  content_sha256: Sha256
-  sha256sums_authority: ExternalAuthority
+  content_sha256: std.types.Sha256
+  sha256sums_authority: extdeps.external_authority.ExternalAuthority
 }
 
 fn ubuntu_install_media_architecture_wire(arch: UbuntuInstallMediaArchitecture) -> NonEmptyStr {

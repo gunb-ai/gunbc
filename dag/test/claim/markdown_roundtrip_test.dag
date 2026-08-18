@@ -2,19 +2,19 @@ module test.claim.markdown_roundtrip
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn roundtrip_core_doc() -> MarkdownDocument {
-  MarkdownDocument {
+fn roundtrip_core_doc() -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: [
       HeadingBlock { level: H1, inlines: [ TextInline { text: "Roadmap" } ] },
       ParagraphBlock { inlines: [ TextInline { text: "Status of the work." } ] },
       HeadingBlock { level: H2, inlines: [ TextInline { text: "Tasks" } ] },
       TaskListBlock {
         items: [
-          MarkdownTaskItem {
+          std.markdown.MarkdownTaskItem {
             state: Checked,
             blocks: [ ParagraphBlock { inlines: [ TextInline { text: "done item" } ] } ],
           },
-          MarkdownTaskItem {
+          std.markdown.MarkdownTaskItem {
             state: Unchecked,
             blocks: [ ParagraphBlock { inlines: [ TextInline { text: "todo item" } ] } ],
           },
@@ -22,14 +22,14 @@ fn roundtrip_core_doc() -> MarkdownDocument {
       },
       UnorderedListBlock {
         items: [
-          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "alpha" } ] } ] },
-          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "beta" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "alpha" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "beta" } ] } ] },
         ],
       },
       OrderedListBlock {
         items: [
-          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "first" } ] } ] },
-          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "second" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "first" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "second" } ] } ] },
         ],
       },
       CodeBlock { code: "let x = 1;\n" },
@@ -41,8 +41,8 @@ test fn witness_roundtrip_core() -> Bool {
   ingest_markdown_source(src: serialize_markdown_source(doc: roundtrip_core_doc())) == roundtrip_core_doc()
 }
 
-fn spellings_override(bullet: String, separator: String) -> MarkdownSpellings {
-  MarkdownSpellings {
+fn spellings_override(bullet: String, separator: String) -> extdeps.languages.markdown.MarkdownSpellings {
+  extdeps.languages.markdown.MarkdownSpellings {
     heading_marker: commonmark_gfm_spellings.heading_marker,
     heading_sep: commonmark_gfm_spellings.heading_sep,
     unordered_bullet: bullet,
@@ -71,11 +71,11 @@ fn spellings_override(bullet: String, separator: String) -> MarkdownSpellings {
   }
 }
 
-fn perturbed_bullet_spellings() -> MarkdownSpellings {
+fn perturbed_bullet_spellings() -> extdeps.languages.markdown.MarkdownSpellings {
   spellings_override(bullet: "+ ", separator: commonmark_gfm_spellings.block_separator)
 }
 
-fn perturbed_separator_spellings() -> MarkdownSpellings {
+fn perturbed_separator_spellings() -> extdeps.languages.markdown.MarkdownSpellings {
   spellings_override(bullet: commonmark_gfm_spellings.unordered_bullet, separator: "\n---\n")
 }
 
@@ -103,8 +103,8 @@ test fn witness_core_advertised_lossless() -> Bool {
   }
 }
 
-fn frontier_emphasis_doc() -> MarkdownDocument {
-  MarkdownDocument {
+fn frontier_emphasis_doc() -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: [
       ParagraphBlock {
         inlines: [

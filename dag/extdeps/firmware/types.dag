@@ -73,17 +73,17 @@ type FirmwareImageKind
 // ON the release row so an unappliable push is refused from the catalog,
 // not discovered from a vendor shell script after the upload.
 type FirmwareReleaseRow {
-  board: BaseboardModel
+  board: extdeps.boards.types.BaseboardModel
   target: FirmwareTarget
   version: FirmwareSemanticVersion
-  released_on: EpochMs
+  released_on: std.types.EpochMs
   image_kind: FirmwareImageKind
-  image_uri: Uri
-  image_bytes: ByteSize
-  image_digest: Digest?
-  release_notes: NonEmptyStr
+  image_uri: extdeps.uri.Uri
+  image_bytes: std.measure.ByteSize
+  image_digest: extdeps.crypto.hash.Digest?
+  release_notes: std.types.NonEmptyStr
   prerequisite: FirmwarePrerequisite
-  authority: ExternalAuthority
+  authority: extdeps.external_authority.ExternalAuthority
 }
 
 // A release is not universally applicable to its own board. Vendor packaging
@@ -129,20 +129,20 @@ type FirmwareApplicabilityVerdict
 // evidence contradicted would read exactly like one it supported.
 type FirmwarePushOutcome
   = PushAcceptedByTarget
-  | PushRefusedByTarget { diagnostic: NonEmptyStr }
+  | PushRefusedByTarget { diagnostic: std.types.NonEmptyStr }
 
 // On gating_target:
 // The prerequisite is a property of the PACKAGING, not of the release: the
 // same version applied as an Instant Flash ROM never passes through the BMC
 // and so has no gating target at all. image_kind is carried for that reason.
 type FirmwarePrerequisiteObservation {
-  board: BaseboardModel
+  board: extdeps.boards.types.BaseboardModel
   subject: FirmwareTarget
   image_kind: FirmwareImageKind
   gating_target: FirmwareTarget
   gating_version: FirmwareSemanticVersion
   outcome: FirmwarePushOutcome
-  observed_at: EpochMs
+  observed_at: std.types.EpochMs
 }
 
 // Two executed pushes BOUND a threshold; they do not locate it. Refused at

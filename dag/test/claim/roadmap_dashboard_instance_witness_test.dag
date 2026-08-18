@@ -39,7 +39,7 @@ test fn dashboard_tmux_server_is_namespaced_off_production() -> Bool {
     ]
 }
 
-fn instance_anchor_ref(i: HostDashboardInstance) -> String {
+fn instance_anchor_ref(i: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> String {
   match i.source_seed {
     DashboardGitBundle {
       controller_repo: _,
@@ -52,8 +52,8 @@ fn instance_anchor_ref(i: HostDashboardInstance) -> String {
 }
 
 fn plan_binds_instance_paths(
-  plan: List<DashboardInstanceProvisionOp>,
-  instance: HostDashboardInstance,
+  plan: List<gunbc.roadmap_dashboard_instance.DashboardInstanceProvisionOp>,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> Bool {
   let source_bound = any(plan, op => match op {
     DashboardEnsureSourceRepo { origin, repo, anchor_ref: _ } =>
@@ -120,8 +120,8 @@ fn plan_binds_instance_paths(
 }
 
 fn plan_binds_source_ref_translation(
-  plan: List<DashboardInstanceProvisionOp>,
-  instance: HostDashboardInstance,
+  plan: List<gunbc.roadmap_dashboard_instance.DashboardInstanceProvisionOp>,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> Bool {
   any(plan, op => match op {
     DashboardEnsureLocalOrigin {
@@ -156,8 +156,8 @@ fn lab_observed(
   source_revision_observed: Bool,
   source_revision_current: Bool,
   health_current: Bool,
-) -> DashboardInstanceObserved {
-  DashboardInstanceObserved {
+) -> gunbc.roadmap_dashboard_instance.DashboardInstanceObserved {
+  gunbc.roadmap_dashboard_instance.DashboardInstanceObserved {
     observation_refusals: [],
     root_present: true,
     ownership_marker_present: true,
@@ -285,7 +285,7 @@ test fn dashboard_reconcile_refuses_unreadable_source_revision() -> Bool {
 }
 
 test fn dashboard_bundle_is_required_for_convergence() -> Bool {
-  let observed = DashboardInstanceObserved {
+  let observed = gunbc.roadmap_dashboard_instance.DashboardInstanceObserved {
     observation_refusals: [],
     root_present: true,
     ownership_marker_present: true,
@@ -348,7 +348,7 @@ test fn dashboard_source_capture_has_no_manual_await_step() -> Bool {
 }
 
 test fn dashboard_reconcile_refuses_unmarked_existing_source() -> Bool {
-  let observed = DashboardInstanceObserved {
+  let observed = gunbc.roadmap_dashboard_instance.DashboardInstanceObserved {
     observation_refusals: [],
     root_present: true,
     ownership_marker_present: false,
@@ -380,8 +380,8 @@ test fn dashboard_reconcile_refuses_unmarked_existing_source() -> Bool {
 }
 
 fn retract_plan_is_safe(
-  plan: List<DashboardInstanceRetractOp>,
-  instance: HostDashboardInstance,
+  plan: List<gunbc.roadmap_dashboard_instance.DashboardInstanceRetractOp>,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> Bool {
   count(plan) == 5
     && any(plan, op => match op {
@@ -434,9 +434,9 @@ test fn dashboard_retract_refuses_production_existing_repo() -> Bool {
 }
 
 // THE CLAIM THAT GOES RED IF THE HOST FACTS ARE RE-PINNED, and it has to be built from synthetic values to say anything at all. srv1 and srv2 run the same layout convention, so their rows carry byte-identical strings; asserting that srv2's instance holds srv2's serve binary is therefore true whether the constructor reads the layout argument or ignores it and substitutes srv1's row. Every value-comparison against the real instances is blind to exactly the defect this change fixes.\n\nSo the layout below names paths no host row carries. If the constructor propagates its argument, the instance holds them; if anyone re-pins a literal — the state it was in before this change — that field reverts to srv1's row and this claim fails on it. The final three conjuncts assert non-equality with the srv1 rows explicitly, so the failure names which fact regressed rather than reporting a bare false.
-fn witness_synthetic_layout() -> GunbcHostLayout {
-  GunbcHostLayout {
-    host_identity: "witness-host" as NonEmptyStr,
+fn witness_synthetic_layout() -> gunbc.host_layout.GunbcHostLayout {
+  gunbc.host_layout.GunbcHostLayout {
+    host_identity: "witness-host" as std.types.NonEmptyStr,
     gunbc_serve_binary: "/witness/bin/gunbc" as std.types.FilePath,
     roadmap_codex_home: "/witness/codex-home" as std.types.FilePath,
     controller_repo: "/witness/controller-repo" as std.types.FilePath,
@@ -444,14 +444,14 @@ fn witness_synthetic_layout() -> GunbcHostLayout {
   }
 }
 
-fn witness_synthetic_instance() -> HostDashboardInstance {
+fn witness_synthetic_instance() -> gunbc.roadmap_dashboard_instance.HostDashboardInstance {
   isolated_dashboard_instance(
-    instance_id: "witness-synthetic" as NonEmptyStr,
+    instance_id: "witness-synthetic" as std.types.NonEmptyStr,
     layout: witness_synthetic_layout(),
     root: "/witness/root" as std.types.FilePath,
-    serve_function: "witness_handler" as NonEmptyStr,
+    serve_function: "witness_handler" as std.types.NonEmptyStr,
     listen_port: 19999,
-    source_anchor_ref: "refs/heads/witness-anchor" as NonEmptyStr,
+    source_anchor_ref: "refs/heads/witness-anchor" as std.types.NonEmptyStr,
     actuation: DashboardActuating,
     provision_transport: DashboardLocalProvision,
   )
@@ -567,8 +567,8 @@ test fn dashboard_instance_model_keystone_holds() -> Bool {
 
 // TWO PATHS THE PLAN VERIFIED WITHOUT EVER CREATING, both found by running the thing rather than reading it. The provider state root: DashboardVerifyProviderAuth reads it, nothing made it, so the only command that can populate it failed with 'that path does not exist' before any OAuth began — an operator hitting a CLI error instead of a typed refusal. The serve binary: instances used to BORROW production's, which is why no install step existed; making each instance own its own closed a retract hazard and left the install with no owner.\n\nBoth claims are stated as containment in the plan rather than as a count, because a count says the plan has sixteen things and nothing about whether the right two are among them. Each asserts the op targets the INSTANCE's own path — a plan that ensured some other instance's binary would satisfy a count and fail here.
 fn plan_ensures_provider_state_root(
-  plan: List<DashboardInstanceProvisionOp>,
-  instance: HostDashboardInstance,
+  plan: List<gunbc.roadmap_dashboard_instance.DashboardInstanceProvisionOp>,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> Bool {
   any(plan, op => match op {
     DashboardEnsureProviderStateRoot { path } =>
@@ -578,8 +578,8 @@ fn plan_ensures_provider_state_root(
 }
 
 fn plan_ensures_serve_binary(
-  plan: List<DashboardInstanceProvisionOp>,
-  instance: HostDashboardInstance,
+  plan: List<gunbc.roadmap_dashboard_instance.DashboardInstanceProvisionOp>,
+  instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance,
 ) -> Bool {
   any(plan, op => match op {
     DashboardEnsureServeBinary { controller_repo: _, built_binary: _, path } =>
@@ -619,8 +619,8 @@ test fn derived_codex_home_matches_the_authenticated_directory() -> Bool {
 }
 
 // THE CLAIM THAT SEPARATES 'NOT THERE' FROM 'COULD NOT LOOK'. Both observations carry identical Bools — every presence field false — and they differ only in whether a probe refused. Before the refusal channel existed they were the same value, so a transport failure derived a full Apply plan: create the root, clone the source, install the service. Every one of those operations against a host whose state was never read.\n\nThe pairing is what makes it discriminating. Asserting only that a refused observation refuses would pass in a world where EVERYTHING refuses; asserting only that an absent observation plans would pass in a world where nothing does. Holding the Bools identical and varying just the channel isolates the single fact under test, and the claim fails the moment reconcile reads a field before the channel.\n\nThis is the operator-facing harm, not a modeling nicety: told a state root is absent, a human creates it — which is a real action taken on a fact nobody established.
-fn observed_all_absent(refusals: List<String>) -> DashboardInstanceObserved {
-  DashboardInstanceObserved {
+fn observed_all_absent(refusals: List<String>) -> gunbc.roadmap_dashboard_instance.DashboardInstanceObserved {
+  gunbc.roadmap_dashboard_instance.DashboardInstanceObserved {
     observation_refusals: refusals,
     root_present: false,
     ownership_marker_present: false,
@@ -664,21 +664,21 @@ test fn a_refused_observation_never_derives_a_plan() -> Bool {
 
 // THE DISCRIMINATORS FOR HOST-SHARED DISPATCH STATE, built around a counterfactual rather than around the declared slots alone. Asserting only that srv1-live and srv1-green agree would pass for a reason that has nothing to do with the law: both are authored correctly, so the assertion cannot tell a working law from an absent one. witness_production_slot takes the two dispatch roots as parameters, so the SAME constructor produces the agreeing slot and the slot that keeps its own attempt-state root, and the pair goes green and red respectively off one definition.\n\nThe red control is the shape the outage actually had: a production slot deriving dispatch roots under its own instance root. That is what put a teardown of live dispatch evidence on the per-push cutover path, and it is what must never typecheck-and-pass again. The lab control is its mirror — a host-shared root handed to an instance-owned lab breaks the isolation labs exist for, so consistency must refuse that direction too.
 fn witness_production_slot(
-  instance_id: NonEmptyStr,
+  instance_id: std.types.NonEmptyStr,
   root: std.types.FilePath,
-  scope: DispatchStateScope,
-  host_identity: NonEmptyStr,
-) -> HostDashboardInstance {
+  scope: gunbc.roadmap_dashboard_instance.DispatchStateScope,
+  host_identity: std.types.NonEmptyStr,
+) -> gunbc.roadmap_dashboard_instance.HostDashboardInstance {
   let binary = dashboard_instance_child(root: root, child: "bin/gunbc")
-  HostDashboardInstance {
+  gunbc.roadmap_dashboard_instance.HostDashboardInstance {
     instance_id: instance_id,
     host_identity: host_identity,
     provision_parent_root: "/opt" as std.types.FilePath,
     instance_root: root,
     local_origin_root: dashboard_instance_child(root: root, child: "gunbc"),
-    local_origin_publish_ref: "refs/heads/main" as NonEmptyStr,
+    local_origin_publish_ref: "refs/heads/main" as std.types.NonEmptyStr,
     repo_root: dashboard_instance_child(root: root, child: "gunbc"),
-    dispatch_base_ref: "origin/main" as NonEmptyStr,
+    dispatch_base_ref: "origin/main" as std.types.NonEmptyStr,
     dispatch_state_scope: scope,
     execution_environment: dashboard_execution_environment(serve_binary: binary),
     provider_state: DashboardExistingProviderState {
@@ -690,38 +690,38 @@ fn witness_production_slot(
       ),
     },
     serve_binary: binary,
-    serve_function: "witness_handler" as NonEmptyStr,
-    listen_host: "0.0.0.0" as NonEmptyStr,
+    serve_function: "witness_handler" as std.types.NonEmptyStr,
+    listen_host: "0.0.0.0" as std.types.NonEmptyStr,
     listen_port: 18081,
     tmux_server: DefaultTmuxServer,
     actuation: DashboardActuating,
-    provision_transport: DashboardSshProvision { host: "srv1" as NonEmptyStr },
-    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as NonEmptyStr },
+    provision_transport: DashboardSshProvision { host: "srv1" as std.types.NonEmptyStr },
+    source_seed: DashboardExistingRepo { anchor_ref: "origin/main" as std.types.NonEmptyStr },
   }
 }
 
-fn witness_agreeing_slot() -> HostDashboardInstance {
+fn witness_agreeing_slot() -> gunbc.roadmap_dashboard_instance.HostDashboardInstance {
   witness_production_slot(
-    instance_id: "srv1-witness-agreeing" as NonEmptyStr,
+    instance_id: "srv1-witness-agreeing" as std.types.NonEmptyStr,
     root: "/opt/gunbc-witness" as std.types.FilePath,
     scope: DispatchStateHostShared {
       worktree_root: srv1_dispatch_worktree_root,
       attempt_state_root: srv1_dispatch_attempt_state_root,
     },
-    host_identity: "srv1" as NonEmptyStr,
+    host_identity: "srv1" as std.types.NonEmptyStr,
   )
 }
 
-fn witness_slot_keeping_its_own_dispatch_state() -> HostDashboardInstance {
+fn witness_slot_keeping_its_own_dispatch_state() -> gunbc.roadmap_dashboard_instance.HostDashboardInstance {
   let root = "/opt/gunbc-witness" as std.types.FilePath
   witness_production_slot(
-    instance_id: "srv1-witness-own-state" as NonEmptyStr,
+    instance_id: "srv1-witness-own-state" as std.types.NonEmptyStr,
     root: root,
     scope: DispatchStateHostShared {
       worktree_root: dashboard_instance_child(root: root, child: "dispatch-worktrees"),
       attempt_state_root: dashboard_instance_child(root: root, child: "attempt-state"),
     },
-    host_identity: "srv1" as NonEmptyStr,
+    host_identity: "srv1" as std.types.NonEmptyStr,
   )
 }
 
@@ -776,13 +776,13 @@ data different_host_shared_slots_are_valid_note: String = "The finding-3 red: tw
 test fn host_shared_slots_on_different_hosts_are_consistent() -> Bool {
   let live = srv1_live_dashboard_instance()
   let other_host = witness_production_slot(
-    instance_id: "srv2-witness-live" as NonEmptyStr,
+    instance_id: "srv2-witness-live" as std.types.NonEmptyStr,
     root: "/opt/gunbc" as std.types.FilePath,
     scope: DispatchStateHostShared {
       worktree_root: srv1_dispatch_worktree_root,
       attempt_state_root: srv1_dispatch_attempt_state_root,
     },
-    host_identity: "srv2" as NonEmptyStr,
+    host_identity: "srv2" as std.types.NonEmptyStr,
   )
   dashboard_instances_dispatch_state_is_consistent(a: live, b: other_host)
     && !dashboard_instances_dispatch_state_is_consistent(

@@ -7,16 +7,16 @@ fn probe_shell() -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [])
 }
 
-fn unrelated_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn unrelated_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^frontier_three_state_unrelated_reason,
     at: Textual { file: ^frontier_three_state_probe_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
   }
 }
 
-fn retained_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn retained_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^body_lowering_reason_wrapper_retained_emitted,
     at: Textual { file: ^frontier_three_state_probe_file, extent: WholeFile },
     correction: Unavailable { reason: UserInputBoundary }
@@ -25,7 +25,7 @@ fn retained_diagnostic() -> Diagnostic {
 
 fn rejected_outcome() -> Outcome<Node> {
   Rejected {
-    diagnostics: NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: Empty }
+    diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: Empty }
   }
 }
 
@@ -44,7 +44,7 @@ fn retention_behind_a_pending_diagnostic() -> Outcome<Node> {
   Accepted {
     value: probe_shell(),
     diagnostics: Some {
-      diagnostics: NonEmptyDiagnostics {
+      diagnostics: v2.std.diagnostic.NonEmptyDiagnostics {
         head: unrelated_diagnostic(),
         tail: Cons { head: retained_diagnostic(), tail: Empty }
       }
@@ -52,7 +52,7 @@ fn retention_behind_a_pending_diagnostic() -> Outcome<Node> {
   }
 }
 
-fn disposition_name(o: Outcome<Node>) -> Symbol {
+fn disposition_name(o: Outcome<Node>) -> v2.std.node.Symbol {
   match body_lower_outcome_frontier_disposition(o: o) {
     BodyLoweringLowered => ^disposition_lowered
     BodyLoweringWrapperRetained { reason: _ } => ^disposition_wrapper_retained
@@ -60,7 +60,7 @@ fn disposition_name(o: Outcome<Node>) -> Symbol {
   }
 }
 
-fn rejected_disposition_keeps_its_reason() -> Symbol {
+fn rejected_disposition_keeps_its_reason() -> v2.std.node.Symbol {
   match body_lower_outcome_frontier_disposition(o: rejected_outcome()) {
     BodyLoweringRejected { diagnostics: ne } => ne.head.reason
     BodyLoweringWrapperRetained { reason: _ } => ^not_rejected

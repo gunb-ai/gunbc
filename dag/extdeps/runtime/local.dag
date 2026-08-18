@@ -10,7 +10,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type LocalDevRuntime {
-  adc_env_var: NonEmptyStr
+  adc_env_var: std.types.NonEmptyStr
 }
 
 data local_dev_runtime: LocalDevRuntime = {

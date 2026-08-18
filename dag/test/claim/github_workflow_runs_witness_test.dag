@@ -3,7 +3,7 @@ module test.claim.github_workflow_runs_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data sample_run: WorkflowRun = WorkflowRun {
+data sample_run: extdeps.github.workflow_runs.WorkflowRun = extdeps.github.workflow_runs.WorkflowRun {
   id: 12345678
   name: "CI"
   head_sha: "abc123def456abc123def456abc123def456abc123"
@@ -16,7 +16,7 @@ data sample_run: WorkflowRun = WorkflowRun {
   updated_at: "2026-06-23T10:15:00Z"
 }
 
-data sample_run_list: WorkflowRunList = WorkflowRunList {
+data sample_run_list: extdeps.github.workflow_runs.WorkflowRunList = extdeps.github.workflow_runs.WorkflowRunList {
   total_count: 1
   workflow_runs: [sample_run]
 }

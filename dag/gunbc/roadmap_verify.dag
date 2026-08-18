@@ -16,12 +16,12 @@ type VerificationOutcome
     }
   | VerificationFailed {
       node_id: String,
-      label: NonEmptyStr,
+      label: std.types.NonEmptyStr,
       detail: String,
     }
   | VerificationRefused {
       node_id: String,
-      label: NonEmptyStr,
+      label: std.types.NonEmptyStr,
       reason: String,
     }
   | VerificationNodeNotFound {
@@ -225,10 +225,10 @@ type VerificationExit
 type LegacySingleValidationVerificationReceipt {
   node_id: String
   attempt_key: String
-  host: NonEmptyStr
+  host: std.types.NonEmptyStr
   worktree: std.types.FilePath
-  revision: NonEmptyStr
-  validation_label: NonEmptyStr
+  revision: std.types.NonEmptyStr
+  validation_label: std.types.NonEmptyStr
   command_wire: String
   exit: VerificationExit
   evidence: String

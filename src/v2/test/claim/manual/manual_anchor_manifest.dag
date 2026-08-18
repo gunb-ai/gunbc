@@ -1,36 +1,36 @@
 module v2.test.manual.manual_anchor_manifest
 
 
-data manual_anchor_tc_conj: ManualAnchorKey = ManualTcConjEmpty
+data manual_anchor_tc_conj: v2.std.verification.ManualAnchorKey = ManualTcConjEmpty
 
-data manual_anchor_tc_disj: ManualAnchorKey = ManualTcDisjEmpty
+data manual_anchor_tc_disj: v2.std.verification.ManualAnchorKey = ManualTcDisjEmpty
 
-data manual_anchor_tc_arrow: ManualAnchorKey = ManualTcArrowTwoConj
+data manual_anchor_tc_arrow: v2.std.verification.ManualAnchorKey = ManualTcArrowTwoConj
 
-data manual_anchor_tc_cardinality: ManualAnchorKey = ManualTcCardinalityEmpty
+data manual_anchor_tc_cardinality: v2.std.verification.ManualAnchorKey = ManualTcCardinalityEmpty
 
-data manual_anchor_tc_instantiation: ManualAnchorKey = ManualTcInstantiationEmpty
+data manual_anchor_tc_instantiation: v2.std.verification.ManualAnchorKey = ManualTcInstantiationEmpty
 
-data manual_anchor_tc_arrow_empty: ManualAnchorKey = ManualTcArrowEmpty
+data manual_anchor_tc_arrow_empty: v2.std.verification.ManualAnchorKey = ManualTcArrowEmpty
 
-data manual_anchor_tc_transform_empty: ManualAnchorKey = ManualTcTransformEmpty
+data manual_anchor_tc_transform_empty: v2.std.verification.ManualAnchorKey = ManualTcTransformEmpty
 
-data manual_anchor_tc_branch_empty: ManualAnchorKey = ManualTcBranchEmpty
+data manual_anchor_tc_branch_empty: v2.std.verification.ManualAnchorKey = ManualTcBranchEmpty
 
-data manual_anchor_tc_loop_empty: ManualAnchorKey = ManualTcLoopEmpty
+data manual_anchor_tc_loop_empty: v2.std.verification.ManualAnchorKey = ManualTcLoopEmpty
 
-data manual_anchor_tc_bind_zero_children: ManualAnchorKey = ManualTcBindZeroChildren
+data manual_anchor_tc_bind_zero_children: v2.std.verification.ManualAnchorKey = ManualTcBindZeroChildren
 
-data manual_anchor_tc_conj_equals_refl: ManualAnchorKey = ManualTcConjEqualsRefl
+data manual_anchor_tc_conj_equals_refl: v2.std.verification.ManualAnchorKey = ManualTcConjEqualsRefl
 
-data manual_anchor_nat_add_left_identity: ManualAnchorKey = ManualNatAddLeftIdentity
+data manual_anchor_nat_add_left_identity: v2.std.verification.ManualAnchorKey = ManualNatAddLeftIdentity
 
-data manual_anchor_nat_add_right_identity: ManualAnchorKey = ManualNatAddRightIdentity
+data manual_anchor_nat_add_right_identity: v2.std.verification.ManualAnchorKey = ManualNatAddRightIdentity
 
-data manual_anchor_nat_add_associativity: ManualAnchorKey = ManualNatAddAssociativity
+data manual_anchor_nat_add_associativity: v2.std.verification.ManualAnchorKey = ManualNatAddAssociativity
 
-data manual_anchor_nat_mul_left_identity: ManualAnchorKey = ManualNatMulLeftIdentity
+data manual_anchor_nat_mul_left_identity: v2.std.verification.ManualAnchorKey = ManualNatMulLeftIdentity
 
-data manual_anchor_nat_mul_annihilator: ManualAnchorKey = ManualNatMulAnnihilator
+data manual_anchor_nat_mul_annihilator: v2.std.verification.ManualAnchorKey = ManualNatMulAnnihilator
 
-data manual_anchor_nat_mul_associativity: ManualAnchorKey = ManualNatMulAssociativity
+data manual_anchor_nat_mul_associativity: v2.std.verification.ManualAnchorKey = ManualNatMulAssociativity

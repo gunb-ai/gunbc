@@ -833,22 +833,22 @@ data byte_offset_cache_digest_max_limbs: Int = 9
 data byte_offset_cache_digest_overflow_limbs: Int = 4
 
 type ByteOffsetCacheDigestAuthority
-  = ByteOffsetWithinCeiling { digest: Fnv1a64Structural }
+  = ByteOffsetWithinCeiling { digest: std.content_hash.Fnv1a64Structural }
   | ByteOffsetOverCeiling {
-      within_ceiling_digest: Fnv1a64Structural,
+      within_ceiling_digest: std.content_hash.Fnv1a64Structural,
       quotient: Int
     }
   | ByteOffsetCacheDigestIneligible {
-      within_ceiling_digest: Fnv1a64Structural,
+      within_ceiling_digest: std.content_hash.Fnv1a64Structural,
       boundary_tag: Symbol,
       residual_quotient: Int
     }
 
 type ByteOffsetCacheKey
-  = ByteOffsetCacheEligible { digest: Fnv1a64Structural }
+  = ByteOffsetCacheEligible { digest: std.content_hash.Fnv1a64Structural }
   | ByteOffsetCacheIneligible {
       boundary_tag: Symbol,
-      witness: Fnv1a64Structural
+      witness: std.content_hash.Fnv1a64Structural
     }
 
 fn byte_limb_hash_peano_digest(limb: Int) -> Fnv1a64Structural {

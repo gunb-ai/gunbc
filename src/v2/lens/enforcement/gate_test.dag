@@ -1,19 +1,19 @@
 module v2.test.lens_enforcement.gate_test
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data live_tree_disposition_note: String = "ReadsLiveTree by G1 carrier-closure honesty, not because these witnesses read the tree: the fixture-driven Question-Zero tests below feed synthetic facts, but enforcement.gate imports v2.lens.module_graph (a live_read_carrier_homes_v0 carrier home), so the loader closure can reach live-read code and a SubstrateInputsOnly stamp is a lying stamp under lying_substrate_inputs_only_stamp_census. Re-stamp to SubstrateInputsOnly only after the module_graph pure/live split (pure vocabulary central, *_live producers in a v2.lens.module_graph.live periphery with the carrier roster repointed) lands in the floor lane."
 
-data synthetic_intent: StandingIntent = {
+data synthetic_intent: v2.lens.enforcement.standing_intent.StandingIntent = {
   id: "synthetic.parallelism.repo-wide",
   property: LensFamily { lens: Parallelism },
   displaced_cost: "synthetic fixture cost",
   mechanism_class: "synthetic mechanism",
   recurring: true,
   receiptable: true,
-  desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  required_subjects: SubjectRoster { entries: [] },
+  desired_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [] },
   default_mode: v2.lens.enforcement.vocab.Blocking,
   required_consumer: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster },
   self_application_required: true,
@@ -21,27 +21,27 @@ data synthetic_intent: StandingIntent = {
   fallback_when_unavailable: v2.lens.enforcement.standing_intent.Refuse
 }
 
-data synthetic_contract: LensContract = {
+data synthetic_contract: v2.lens.enforcement.contract.LensContract = {
   entry: lens_registry_v0_parallelism,
   mode: v2.lens.enforcement.vocab.Blocking,
-  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification { class: RatchetForever }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: RatchetForever }
 }
 
-data synthetic_contract_audit_only: LensContract = {
+data synthetic_contract_audit_only: v2.lens.enforcement.contract.LensContract = {
   entry: lens_registry_v0_parallelism,
   mode: AuditOnly,
-  claimed_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: ConstructionJustification { class: RatchetForever }
+  boundary: v2.lens.common.construction_justification.ConstructionJustification { class: RatchetForever }
 }
 
-data synthetic_receipt_good: EnrollmentDiscoveryReceipt = {
+data synthetic_receipt_good: v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt = {
   contract_id: Parallelism,
-  discovered_subject_names: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
+  discovered_subject_names: v2.lens.enforcement.vocab.SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
   scope_satisfaction: ScopeCovers,
   consumer_enrolled: EnrolledInFloorRoster,
   consumer_entry_identity: NoReceiptRef,
@@ -49,11 +49,11 @@ data synthetic_receipt_good: EnrollmentDiscoveryReceipt = {
   self_application_status: LensModuleFunctionObserved
 }
 
-data synthetic_receipt_narrow: EnrollmentDiscoveryReceipt = {
+data synthetic_receipt_narrow: v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt = {
   contract_id: Parallelism,
-  discovered_subject_names: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
+  discovered_subject_names: v2.lens.enforcement.vocab.SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
   scope_satisfaction: ScopeNarrowed {
-    missing: ScopeRoster { roots: ["dag", "src/v1"] },
+    missing: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1"] },
     reason: ExternalRuntimeOnly { reason: "synthetic off-substrate gap" }
   },
   consumer_enrolled: EnrolledInFloorRoster,
@@ -62,9 +62,9 @@ data synthetic_receipt_narrow: EnrollmentDiscoveryReceipt = {
   self_application_status: LensModuleFunctionObserved
 }
 
-data synthetic_receipt_redfail: EnrollmentDiscoveryReceipt = {
+data synthetic_receipt_redfail: v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt = {
   contract_id: Parallelism,
-  discovered_subject_names: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
+  discovered_subject_names: v2.lens.enforcement.vocab.SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
   scope_satisfaction: ScopeCovers,
   consumer_enrolled: EnrolledInFloorRoster,
   consumer_entry_identity: NoReceiptRef,
@@ -72,9 +72,9 @@ data synthetic_receipt_redfail: EnrollmentDiscoveryReceipt = {
   self_application_status: LensModuleFunctionObserved
 }
 
-data synthetic_receipt_witness_only: EnrollmentDiscoveryReceipt = {
+data synthetic_receipt_witness_only: v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt = {
   contract_id: Parallelism,
-  discovered_subject_names: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
+  discovered_subject_names: v2.lens.enforcement.vocab.SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
   scope_satisfaction: ScopeCovers,
   consumer_enrolled: WitnessOnly,
   consumer_entry_identity: NoReceiptRef,
@@ -82,15 +82,15 @@ data synthetic_receipt_witness_only: EnrollmentDiscoveryReceipt = {
   self_application_status: LensModuleFunctionObserved
 }
 
-data synthetic_intent_with_subject: StandingIntent = {
+data synthetic_intent_with_subject: v2.lens.enforcement.standing_intent.StandingIntent = {
   id: "synthetic.parallelism.with-subject",
   property: LensFamily { lens: Parallelism },
   displaced_cost: "synthetic fixture cost",
   mechanism_class: "synthetic mechanism",
   recurring: true,
   receiptable: true,
-  desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  required_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
+  desired_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.subject_alpha")] },
   default_mode: v2.lens.enforcement.vocab.Blocking,
   required_consumer: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster },
   self_application_required: true,
@@ -98,15 +98,15 @@ data synthetic_intent_with_subject: StandingIntent = {
   fallback_when_unavailable: v2.lens.enforcement.standing_intent.Refuse
 }
 
-data synthetic_intent_missing_subject: StandingIntent = {
+data synthetic_intent_missing_subject: v2.lens.enforcement.standing_intent.StandingIntent = {
   id: "synthetic.parallelism.missing-subject",
   property: LensFamily { lens: Parallelism },
   displaced_cost: "synthetic fixture cost",
   mechanism_class: "synthetic mechanism",
   recurring: true,
   receiptable: true,
-  desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  required_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.not_discovered")] },
+  desired_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "synthetic.fixture.not_discovered")] },
   default_mode: v2.lens.enforcement.vocab.Blocking,
   required_consumer: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster },
   self_application_required: true,
@@ -114,15 +114,15 @@ data synthetic_intent_missing_subject: StandingIntent = {
   fallback_when_unavailable: v2.lens.enforcement.standing_intent.Refuse
 }
 
-data synthetic_intent_permuted_subject: StandingIntent = {
+data synthetic_intent_permuted_subject: v2.lens.enforcement.standing_intent.StandingIntent = {
   id: "synthetic.parallelism.permuted-subject",
   property: LensFamily { lens: Parallelism },
   displaced_cost: "synthetic fixture cost",
   mechanism_class: "synthetic mechanism",
   recurring: true,
   receiptable: true,
-  desired_scope: ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
-  required_subjects: SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "fixture.synthetic.subject_alpha")] },
+  desired_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
+  required_subjects: v2.lens.enforcement.vocab.SubjectRoster { entries: [qualified_name_from_dotted_string(dotted: "fixture.synthetic.subject_alpha")] },
   default_mode: v2.lens.enforcement.vocab.Blocking,
   required_consumer: v2.lens.enforcement.vocab.Exact { kind: EnrolledInFloorRoster },
   self_application_required: true,
@@ -130,12 +130,12 @@ data synthetic_intent_permuted_subject: StandingIntent = {
   fallback_when_unavailable: v2.lens.enforcement.standing_intent.Refuse
 }
 
-data synthetic_contracts: List<LensContract> = [synthetic_contract]
-data synthetic_contracts_audit_only: List<LensContract> = [synthetic_contract_audit_only]
-data receipts_good: List<EnrollmentDiscoveryReceipt> = [synthetic_receipt_good]
-data receipts_narrow: List<EnrollmentDiscoveryReceipt> = [synthetic_receipt_narrow]
-data receipts_redfail: List<EnrollmentDiscoveryReceipt> = [synthetic_receipt_redfail]
-data receipts_witness_only: List<EnrollmentDiscoveryReceipt> = [synthetic_receipt_witness_only]
+data synthetic_contracts: List<v2.lens.enforcement.contract.LensContract> = [synthetic_contract]
+data synthetic_contracts_audit_only: List<v2.lens.enforcement.contract.LensContract> = [synthetic_contract_audit_only]
+data receipts_good: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt> = [synthetic_receipt_good]
+data receipts_narrow: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt> = [synthetic_receipt_narrow]
+data receipts_redfail: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt> = [synthetic_receipt_redfail]
+data receipts_witness_only: List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt> = [synthetic_receipt_witness_only]
 
 test fn subjects_leg_discriminates() -> Bool {
   return leg_holds(l: intent_family_verdict(intent: synthetic_intent_with_subject, contracts: synthetic_contracts, receipts: receipts_good).subjects_covered)

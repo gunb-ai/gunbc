@@ -10,41 +10,41 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // weak evidence; it is no evidence, and it reads exactly like success.
 data posix_principal_allocation_control_note: String = "Every control here names an arm the legacy witnesses cannot reach: the two new semantic principals, the allocation standing, and the grounding outcome. The central claim under test is that one fleet principal may wear different host-local labels and different numeric identities on two hosts while remaining one principal with one policy -- and that nothing can present an unallocated or unobserved account as grounded."
 
-data spark5: HostIdentity = "srv5" as HostIdentity
-data spark6: HostIdentity = "srv6" as HostIdentity
+data spark5: product.placement_supply.HostIdentity = "srv5" as product.placement_supply.HostIdentity
+data spark6: product.placement_supply.HostIdentity = "srv6" as product.placement_supply.HostIdentity
 
-fn occurrence(host: HostIdentity, key: FleetPosixAccountKey) -> PosixAccountOccurrence {
-  PosixAccountOccurrence { host: host, principal: key }
+fn occurrence(host: product.placement_supply.HostIdentity, key: gunbc.fleet_posix_accounts.FleetPosixAccountKey) -> gunbc.fleet_posix_accounts.PosixAccountOccurrence {
+  gunbc.fleet_posix_accounts.PosixAccountOccurrence { host: host, principal: key }
 }
 
 // Two DELIBERATELY DIFFERENT arbitrary labels and two different numeric identities for the SAME
 // semantic principal. The words carry no role, host, product or location -- that is the property
 // under test, and any code that assumes a global static username fails against these immediately.
-fn alloc(host: HostIdentity, name: PosixLoginName, uid: Int) -> PosixAccountAllocation {
-  PosixAccountAllocation {
+fn alloc(host: product.placement_supply.HostIdentity, name: extdeps.access.posix.PosixLoginName, uid: Int) -> gunbc.fleet_posix_accounts.PosixAccountAllocation {
+  gunbc.fleet_posix_accounts.PosixAccountAllocation {
     occurrence: occurrence(host: host, key: FleetAccountAutomation),
     local_name: name,
     uid: uid,
     gid: uid,
     domain: HostLocalIdentityDomain { host: host },
-    name_scheme: "arbitrary-word-v1" as NameSchemeIdentity,
+    name_scheme: "arbitrary-word-v1" as gunbc.fleet_posix_accounts.NameSchemeIdentity,
     name_attempt: 0,
   }
 }
 
-fn observed(a: PosixAccountAllocation, name: PosixLoginName, uid: Int) -> PosixAccountObservation {
-  PosixAccountObservation {
+fn observed(a: gunbc.fleet_posix_accounts.PosixAccountAllocation, name: extdeps.access.posix.PosixLoginName, uid: Int) -> gunbc.fleet_posix_accounts.PosixAccountObservation {
+  gunbc.fleet_posix_accounts.PosixAccountObservation {
     occurrence: a.occurrence,
-    observed_user: PosixUser { name: name, uid: uid, gid: uid,
+    observed_user: extdeps.access.posix.PosixUser { name: name, uid: uid, gid: uid,
   shell: LoginShellUnobserved,
 },
-    effect_receipt: process_receipt(label: "id-probe" as NonEmptyStr, exit_status: 0),
-    raw_output_identity: content_hash_atom(value: "observed-account" as NonEmptyStr),
+    effect_receipt: process_receipt(label: "id-probe" as std.types.NonEmptyStr, exit_status: 0),
+    raw_output_identity: content_hash_atom(value: "observed-account" as std.types.NonEmptyStr),
     observed_at: "2026-08-09T06:00:00Z",
   }
 }
 
-fn grounded_name(o: GroundedPosixPrincipalOutcome) -> NonEmptyStr? {
+fn grounded_name(o: gunbc.fleet_posix_accounts.GroundedPosixPrincipalOutcome) -> std.types.NonEmptyStr? {
   match o {
     PrincipalGrounded { principal: p } => Present { value: p.posix.name }
     PrincipalRequiresHostScope { principal: _ } => none
@@ -56,7 +56,7 @@ fn grounded_name(o: GroundedPosixPrincipalOutcome) -> NonEmptyStr? {
 }
 
 
-fn outcome_is_drift(o: GroundedPosixPrincipalOutcome) -> Bool {
+fn outcome_is_drift(o: gunbc.fleet_posix_accounts.GroundedPosixPrincipalOutcome) -> Bool {
   match o {
     PrincipalDrifted { allocation: _, first: _, more: _ } => true
     PrincipalGrounded { principal: _ } => false
@@ -67,7 +67,7 @@ fn outcome_is_drift(o: GroundedPosixPrincipalOutcome) -> Bool {
   }
 }
 
-fn requirements_forbid_domain_meaning(r: NameRequirements) -> Bool {
+fn requirements_forbid_domain_meaning(r: gunbc.fleet_posix_accounts.NameRequirements) -> Bool {
   match r.intent.semantic_content {
     EncodesNoDomainMeaning => true
     EncodesAuthorityMeaning { authority: _ } => false
@@ -77,7 +77,7 @@ fn requirements_forbid_domain_meaning(r: NameRequirements) -> Bool {
 // The axis split made real: an automation label is BOTH pronounceable (a human factor) and free of
 // domain meaning (a semantic-content fact). The earlier fused coproduct could not express that pair
 // at all, which is how a false exclusion hides in a taxonomy that reads fine.
-fn requirements_are_pronounceable(r: NameRequirements) -> Bool {
+fn requirements_are_pronounceable(r: gunbc.fleet_posix_accounts.NameRequirements) -> Bool {
   match r.intent.human_factors {
     Pronounceable => true
     Opaque => false
@@ -86,7 +86,7 @@ fn requirements_are_pronounceable(r: NameRequirements) -> Bool {
   }
 }
 
-fn requirements_are_independent_per_occurrence(r: NameRequirements) -> Bool {
+fn requirements_are_independent_per_occurrence(r: gunbc.fleet_posix_accounts.NameRequirements) -> Bool {
   match r.intent.uniformity {
     IndependentPerOccurrence => true
     EqualWithinScope { scope: _ } => false
@@ -100,21 +100,21 @@ fn requirements_are_independent_per_occurrence(r: NameRequirements) -> Bool {
 // asserted explicitly, because two Absent answers would also compare unequal to nothing and the
 // claim would pass while proving the opposite of what it says.
 test fn witness_one_principal_wears_different_local_names_and_uids() -> Bool {
-  let a5 = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
-  let a6 = alloc(host: spark6, name: "cobalt" as PosixLoginName, uid: 1732)
+  let a5 = alloc(host: spark5, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500)
+  let a6 = alloc(host: spark6, name: "cobalt" as extdeps.access.posix.PosixLoginName, uid: 1732)
   let g5 = ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
     standing: AccountAllocated { allocation: a5 },
-    observation: Present { value: observed(a: a5, name: "lumen" as PosixLoginName, uid: 1500) },
+    observation: Present { value: observed(a: a5, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500) },
   )
   let g6 = ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
     standing: AccountAllocated { allocation: a6 },
-    observation: Present { value: observed(a: a6, name: "cobalt" as PosixLoginName, uid: 1732) },
+    observation: Present { value: observed(a: a6, name: "cobalt" as extdeps.access.posix.PosixLoginName, uid: 1732) },
   )
-  let n5 = match grounded_name(o: g5) { Present { value: v } => v, Absent => "none" as NonEmptyStr }
-  let n6 = match grounded_name(o: g6) { Present { value: v } => v, Absent => "none" as NonEmptyStr }
-  let both_grounded = n5 != "none" as NonEmptyStr && n6 != "none" as NonEmptyStr
+  let n5 = match grounded_name(o: g5) { Present { value: v } => v, Absent => "none" as std.types.NonEmptyStr }
+  let n6 = match grounded_name(o: g6) { Present { value: v } => v, Absent => "none" as std.types.NonEmptyStr }
+  let both_grounded = n5 != "none" as std.types.NonEmptyStr && n6 != "none" as std.types.NonEmptyStr
   let same_principal = a5.occurrence.principal == a6.occurrence.principal
   both_grounded && n5 != n6 && a5.uid != a6.uid && same_principal
 }
@@ -142,7 +142,7 @@ test fn witness_unallocated_principal_cannot_ground() -> Bool {
 // Optional return would have collapsed these two, and they have different remedies: one needs an
 // allocation decision, the other needs the apply to actually run.
 test fn witness_allocated_but_unobserved_is_its_own_state() -> Bool {
-  let a = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
+  let a = alloc(host: spark5, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500)
   match ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
     standing: AccountAllocated { allocation: a },
@@ -161,16 +161,16 @@ test fn witness_allocated_but_unobserved_is_its_own_state() -> Bool {
 // silent acceptance and never rounded to absence. Two shapes: the label differs, and the number
 // differs. The uid case matters most, because an inode records the number.
 test fn witness_observation_contradicting_allocation_is_drift() -> Bool {
-  let a = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
+  let a = alloc(host: spark5, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500)
   let name_drift = ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
     standing: AccountAllocated { allocation: a },
-    observation: Present { value: observed(a: a, name: "somethingelse" as PosixLoginName, uid: 1500) },
+    observation: Present { value: observed(a: a, name: "somethingelse" as extdeps.access.posix.PosixLoginName, uid: 1500) },
   )
   let uid_drift = ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
     standing: AccountAllocated { allocation: a },
-    observation: Present { value: observed(a: a, name: "lumen" as PosixLoginName, uid: 1999) },
+    observation: Present { value: observed(a: a, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1999) },
   )
   outcome_is_drift(o: name_drift) && outcome_is_drift(o: uid_drift)
 }
@@ -179,8 +179,8 @@ test fn witness_observation_contradicting_allocation_is_drift() -> Bool {
 // the occurrence, not the spelling; a name is a host-local handle and nothing more.
 // identical label AND identical number, still two distinct occurrences
 test fn witness_same_label_on_two_hosts_does_not_merge_identities() -> Bool {
-  let a5 = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
-  let a6 = alloc(host: spark6, name: "lumen" as PosixLoginName, uid: 1500)
+  let a5 = alloc(host: spark5, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500)
+  let a6 = alloc(host: spark6, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500)
   a5.local_name == a6.local_name
     && a5.uid == a6.uid
     && a5.occurrence.host != a6.occurrence.host
@@ -257,12 +257,12 @@ test fn witness_host_scoped_principals_refuse_the_hostless_accessor() -> Bool {
 // srv5 observation could ground srv6's allocation, which is the copied-receipt failure at account
 // grain.
 test fn witness_observation_from_another_host_is_drift() -> Bool {
-  let a5 = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
-  let a6 = alloc(host: spark6, name: "lumen" as PosixLoginName, uid: 1500)
+  let a5 = alloc(host: spark5, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500)
+  let a6 = alloc(host: spark6, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500)
   outcome_is_drift(o: ground_posix_principal(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
     standing: AccountAllocated { allocation: a5 },
-    observation: Present { value: observed(a: a6, name: "lumen" as PosixLoginName, uid: 1500) },
+    observation: Present { value: observed(a: a6, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500) },
   ))
 }
 
@@ -275,21 +275,21 @@ test fn witness_service_realization_is_unselected() -> Bool {
   }
 }
 
-fn receipted(a: PosixAccountAllocation, name: PosixLoginName, uid: Int) -> PosixAccountObservation {
-  PosixAccountObservation {
+fn receipted(a: gunbc.fleet_posix_accounts.PosixAccountAllocation, name: extdeps.access.posix.PosixLoginName, uid: Int) -> gunbc.fleet_posix_accounts.PosixAccountObservation {
+  gunbc.fleet_posix_accounts.PosixAccountObservation {
     occurrence: a.occurrence,
-    observed_user: PosixUser { name: name, uid: uid, gid: uid,
+    observed_user: extdeps.access.posix.PosixUser { name: name, uid: uid, gid: uid,
   shell: LoginShellUnobserved,
 },
-    effect_receipt: process_receipt(label: "id-probe" as NonEmptyStr, exit_status: 0),
-    raw_output_identity: content_hash_atom(value: "uid=1500(lumen)" as NonEmptyStr),
+    effect_receipt: process_receipt(label: "id-probe" as std.types.NonEmptyStr, exit_status: 0),
+    raw_output_identity: content_hash_atom(value: "uid=1500(lumen)" as std.types.NonEmptyStr),
     observed_at: "2026-08-09T06:00:00Z",
   }
 }
 
-fn access_obs(a: PosixAccountAllocation, pw_refused: Bool, priv_ok: Bool) -> PosixAccessObservation {
-  PosixAccessObservation {
-    account: receipted(a: a, name: "lumen" as PosixLoginName, uid: 1500),
+fn access_obs(a: gunbc.fleet_posix_accounts.PosixAccountAllocation, pw_refused: Bool, priv_ok: Bool) -> gunbc.fleet_posix_accounts.PosixAccessObservation {
+  gunbc.fleet_posix_accounts.PosixAccessObservation {
+    account: receipted(a: a, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500),
     observed_authorized_keys: [],
     password_login_refused: pw_refused,
     privileged_probe_succeeded: priv_ok,
@@ -301,7 +301,7 @@ fn access_obs(a: PosixAccountAllocation, pw_refused: Bool, priv_ok: Bool) -> Pos
 // sudoers was never installed still read as fully subsumed. Here the account grounds and the access
 // outcome still refuses, twice, for two different reasons.
 test fn witness_account_grounded_does_not_imply_access_grounded() -> Bool {
-  let a = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
+  let a = alloc(host: spark5, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500)
   let standing = AccountAllocated { allocation: a }
   let intent = fleet_principal_intent(key: FleetAccountAutomation)
   let still_passworded = ground_host_access(
@@ -341,7 +341,7 @@ test fn witness_account_grounded_does_not_imply_access_grounded() -> Bool {
 // observation claims. The account layer refuses first, so a fabricated key population or a claimed
 // privileged probe cannot manufacture subsumption for an account nobody allocated.
 test fn witness_unallocated_cannot_reach_access_grounding() -> Bool {
-  let a = alloc(host: spark5, name: "lumen" as PosixLoginName, uid: 1500)
+  let a = alloc(host: spark5, name: "lumen" as extdeps.access.posix.PosixLoginName, uid: 1500)
   match ground_host_access(
     intent: fleet_principal_intent(key: FleetAccountAutomation),
     standing: spark_automation_allocation_standing(host: spark5),

@@ -202,7 +202,7 @@ fn branch_current_of_magnitude(magnitude: Current) -> BranchCurrent {
   }
 }
 
-data timeseries_passive_fold_step_locus: Symbol = ^timeseries_passive_fold_step
+data timeseries_passive_fold_step_locus: v2.std.node.Symbol = ^timeseries_passive_fold_step
 
 type CircuitPrimitiveKind
   = MapStep

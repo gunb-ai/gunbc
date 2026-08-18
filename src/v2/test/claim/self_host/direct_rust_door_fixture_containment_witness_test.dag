@@ -27,9 +27,9 @@ test fn fixture_cargo_green_advance_is_not_behaviorally_equivalent() -> Bool {
   ) {
     Accepted { value: artifact, diagnostics: _ } =>
       match advance_written_synthetic_emitted_artifact_cargo_green(
-        written: WrittenSyntheticEmittedArtifact {
+        written: v2.compiler.self_host.fixture_synthetic_emission.WrittenSyntheticEmittedArtifact {
           artifact: artifact,
-          write: RustWorkspaceWriteReceipt {
+          write: v2.compiler.self_host.candidate_generation.RustWorkspaceWriteReceipt {
             workspace_dir: "hermetic_fixture/containment",
             manifest_path: "hermetic_fixture/containment/Cargo.toml",
             main_rs_path: "hermetic_fixture/containment/src/lib.rs",

@@ -2,22 +2,22 @@ module test.claim.render_surface_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data plain_cap: RenderCapability = RenderCapability {
+data plain_cap: std.render.RenderCapability = std.render.RenderCapability {
   color: false, tier: Ascii, cursor_addressable: false
 }
 
-fn plain_span(text: String) -> Span {
-  Span { text: text, style: SpanStyle { color: none, bold: false, italic: false, symbol: none } }
+fn plain_span(text: String) -> std.render.Span {
+  std.render.Span { text: text, style: std.render.SpanStyle { color: none, bold: false, italic: false, symbol: none } }
 }
 
 fn one_line_frame(text: String) -> std.render.RenderFrame {
   std.render.RenderFrame {
-    lines: [Line { spans: [plain_span(text: text)], indent: 0, max_width: none }],
+    lines: [std.render.Line { spans: [plain_span(text: text)], indent: 0, max_width: none }],
     cursor_action: Append
   }
 }
 
-data sample_doc: Document = Document {
+data sample_doc: std.render.Document = std.render.Document {
   blocks: [
     std.render.Group { title: "host effects", frame: one_line_frame(text: "[file] read foo.dag") },
     std.render.Leaf { frame: one_line_frame(text: "PASS some_witness") }
@@ -25,14 +25,14 @@ data sample_doc: Document = Document {
 }
 
 test fn w_detect_github() -> Bool {
-  match detect_target(env: SurfaceEnv { github_actions: true }) {
+  match detect_target(env: extdeps.render.surface.SurfaceEnv { github_actions: true }) {
     GithubActions => true
     PlainTerminal => false
   }
 }
 
 test fn w_detect_plain() -> Bool {
-  match detect_target(env: SurfaceEnv { github_actions: false }) {
+  match detect_target(env: extdeps.render.surface.SurfaceEnv { github_actions: false }) {
     PlainTerminal => true
     GithubActions => false
   }

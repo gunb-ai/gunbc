@@ -1,8 +1,8 @@
 module extdeps.uri_validation
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "url.spec.whatwg.org/"
   }
@@ -45,7 +45,7 @@ type RejectedUrl {
   reason: RejectedUrlScheme
 }
 
-fn find_first_rejected_url(node: Fragment) -> RejectedUrl? {
+fn find_first_rejected_url(node: std.markup.Fragment) -> RejectedUrl? {
   match node {
     FragmentText { content: _ } => Absent
     RawNode { content: _ } => Absent

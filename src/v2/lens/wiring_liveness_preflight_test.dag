@@ -1,10 +1,10 @@
 module v2.test.lens_wiring_liveness.wiring_liveness_preflight_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn wlp_atom(identity: Symbol) -> Node {
-  Node {
+fn wlp_atom(identity: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -16,9 +16,9 @@ fn wlp_mid() -> Node { wlp_atom(identity: ^wlp_mid) }
 fn wlp_in() -> Node { wlp_atom(identity: ^wlp_input) }
 fn wlp_dangling() -> Node { wlp_atom(identity: ^wlp_dangling_input) }
 
-fn wlp_edge(source: Node, dependent: Node) -> FrontierDependency {
-  FrontierDependency {
-    dependency: DependencyView {
+fn wlp_edge(source: Node, dependent: Node) -> v2.lens.affected_set.FrontierDependency {
+  v2.lens.affected_set.FrontierDependency {
+    dependency: v2.std.dependency.DependencyView {
       source: source,
       dependent: dependent,
       kind: Contains,
@@ -28,22 +28,22 @@ fn wlp_edge(source: Node, dependent: Node) -> FrontierDependency {
   }
 }
 
-fn wlp_slice() -> List<FrontierDependency> {
+fn wlp_slice() -> List<v2.lens.affected_set.FrontierDependency> {
   [
     wlp_edge(source: wlp_out(), dependent: wlp_mid()),
     wlp_edge(source: wlp_mid(), dependent: wlp_in())
   ]
 }
 
-fn wlp_live_obligation() -> FrontierWiringObligation {
-  FrontierWiringObligation { output: wlp_out(), declared_input: wlp_in() }
+fn wlp_live_obligation() -> v2.lens.wiring_liveness_preflight.FrontierWiringObligation {
+  v2.lens.wiring_liveness_preflight.FrontierWiringObligation { output: wlp_out(), declared_input: wlp_in() }
 }
 
-fn wlp_dead_obligation() -> FrontierWiringObligation {
-  FrontierWiringObligation { output: wlp_out(), declared_input: wlp_dangling() }
+fn wlp_dead_obligation() -> v2.lens.wiring_liveness_preflight.FrontierWiringObligation {
+  v2.lens.wiring_liveness_preflight.FrontierWiringObligation { output: wlp_out(), declared_input: wlp_dangling() }
 }
 
-fn wlp_is_failclosed(frontier: ReExecFrontier) -> Bool {
+fn wlp_is_failclosed(frontier: v2.lens.affected_set.ReExecFrontier) -> Bool {
   match frontier {
     FailClosed { reason: _ } => true
     ChangedSubgraphFrontier { boundary_exclusions: _, decisions: _ } => false

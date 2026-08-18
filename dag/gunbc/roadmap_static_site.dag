@@ -8,17 +8,17 @@ type SiteArtifactKind
 
 type SiteArtifact {
   kind: SiteArtifactKind
-  url_path: NonEmptyStr
+  url_path: std.types.NonEmptyStr
   body: String
-  digest: Fnv1a64Structural
+  digest: std.content_hash.Fnv1a64Structural
 }
 
 type WebServiceShape {
-  cpu: Millicore
-  memory: Mebibyte
-  port: Port
+  cpu: std.measure.Millicore
+  memory: std.measure.Mebibyte
+  port: std.types.Port
   stateless: Bool
-  health_path: NonEmptyStr
+  health_path: std.types.NonEmptyStr
 }
 
 type DomainRoute {

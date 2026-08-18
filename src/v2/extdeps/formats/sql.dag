@@ -18,9 +18,9 @@ type SqlDataType
   | SqlTypeBigInt
   | SqlTypeReal
   | SqlTypeDoublePrecision
-  | SqlTypeNumeric { precision: NonZeroNat, scale: v2.std.nat.Nat }
-  | SqlTypeCharacter { length: NonZeroNat }
-  | SqlTypeCharacterVarying { length: NonZeroNat }
+  | SqlTypeNumeric { precision: v2.std.cardinality.NonZeroNat, scale: v2.std.nat.Nat }
+  | SqlTypeCharacter { length: v2.std.cardinality.NonZeroNat }
+  | SqlTypeCharacterVarying { length: v2.std.cardinality.NonZeroNat }
   | SqlTypeCharacterLargeObject
   | SqlTypeDate
   | SqlTypeTime
@@ -86,22 +86,22 @@ type SqlMigrationScript {
 }
 
 type SqlMigrationEmissionTarget {
-  grammar_schema: GrammarSchema,
+  grammar_schema: v2.std.grammar.GrammarSchema,
   database_name: String,
   migrations: List<SqlMigrationScript>,
 }
 
 type SqlIntegerPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
 }
 
 type SqlFloatPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
 }
 
 type SqlNonNumericPrimitiveFacts {
-  surface_spelling: Symbol
-  representation: Symbol
+  surface_spelling: v2.std.node.Symbol
+  representation: v2.std.node.Symbol
 }
 
 data sql_facts_smallint: SqlIntegerPrimitiveFacts = SqlIntegerPrimitiveFacts {

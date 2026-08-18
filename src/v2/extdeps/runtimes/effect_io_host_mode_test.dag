@@ -1,30 +1,30 @@
 module v2.test.runtimes.effect_io_host_mode
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn mode_resource_arg(bytes: List<Byte>) -> RuntimeValue {
+fn mode_resource_arg(bytes: List<Byte>) -> v2.std.runtime.RuntimeValue {
   RuntimePrimitive {
-    value: RuntimePrimitiveValue {
+    value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: effect_io_pure_unit_type_node(),
       bytes: bytes
     }
   }
 }
 
-fn mode_resource_a() -> RuntimeValue {
+fn mode_resource_a() -> v2.std.runtime.RuntimeValue {
   mode_resource_arg(bytes: [])
 }
 
-fn mode_resource_b() -> RuntimeValue {
+fn mode_resource_b() -> v2.std.runtime.RuntimeValue {
   mode_resource_arg(bytes: [Byte { bits: [true] }])
 }
 
-fn mode_payload() -> RuntimeValue {
+fn mode_payload() -> v2.std.runtime.RuntimeValue {
   mode_resource_arg(bytes: [Byte { bits: [true] }, Byte { bits: [false] }])
 }
 
-fn mode_populated_http_fixture() -> EffectIoFixtureStore {
+fn mode_populated_http_fixture() -> v2.extdeps.runtimes.v2_effect_io_pure.EffectIoFixtureStore {
   let store0 = effect_io_pure_empty_fixture_store(backend: HttpResourceBackend)
   match effect_io_pure_locator_from_args(backend: HttpResourceBackend, args: [mode_resource_a()]) {
     Holds { value: locator } =>
@@ -33,7 +33,7 @@ fn mode_populated_http_fixture() -> EffectIoFixtureStore {
   }
 }
 
-fn mode_host_read(runtime: V4EffectIoHostRuntime, arg: RuntimeValue) -> Outcome<RuntimeValue> {
+fn mode_host_read(runtime: v2.extdeps.runtimes.v2_effect_io_host.V4EffectIoHostRuntime, arg: v2.std.runtime.RuntimeValue) -> Outcome<v2.std.runtime.RuntimeValue> {
   let handler = effect_handler_for_kind(binding: runtime.handlers, kind: ReadResource)
   effect_io_pure_invoke_handler(handler: handler, request: effect_io_pure_read_request(args: [arg]))
 }

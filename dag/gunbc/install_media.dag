@@ -13,7 +13,7 @@ type SeededInstallMediaPlan
 
 fn classify_seeded_install_media(
   obs: SeededInstallMediaObservation,
-) -> ObservationVerdict {
+) -> std.upsert_decision.ObservationVerdict {
   match obs {
     MediaAbsent => Absent
     MediaConverged => Converged
@@ -35,7 +35,7 @@ fn classify_seeded_install_media_upsert(
   obs: SeededInstallMediaObservation,
 ) -> std.upsert_decision.UpsertClassification<SeededInstallMediaPlan> {
   let verdict = classify_seeded_install_media(obs: obs)
-  UpsertClassification {
+  std.upsert_decision.UpsertClassification {
     verdict: verdict,
     decision: decision_for_seeded_install_media_obs(obs: obs),
   }

@@ -39,13 +39,13 @@ type KvmObservedScreen
   | SubiquityStorageScreen
   | SubiquityInstalling
   | LoginPrompt
-  | ErrorScreen { summary: NonEmptyStr }
+  | ErrorScreen { summary: std.types.NonEmptyStr }
 
 type KvmOperatorAttestation {
   target: product.placement_supply.HostIdentity
   observed_screen: KvmObservedScreen
-  observed_at: Timestamp
-  attested_by: NonEmptyStr
+  observed_at: std.types.Timestamp
+  attested_by: std.types.NonEmptyStr
 }
 
 fn fold_nbd_proxy_os_install_preflight_verdict(

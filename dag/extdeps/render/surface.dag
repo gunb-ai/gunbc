@@ -2,8 +2,8 @@ module extdeps.render.surface
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/actions/using-workflows/workflow-commands-for-github-actions#grouping-log-lines"
   }
@@ -52,7 +52,7 @@ fn group_open_line(syntax: GroupSyntax, title: String) -> String {
   concat(syntax.open_prefix, concat(title, syntax.open_suffix))
 }
 
-fn serialize_block(block: Block, target: RenderTarget, cap: RenderCapability) -> String {
+fn serialize_block(block: std.render.Block, target: RenderTarget, cap: std.render.RenderCapability) -> String {
   match block {
     Leaf { frame: f } => serialize_frame(frame: f, cap: cap)
     Group { title: t, frame: f } => {
@@ -67,7 +67,7 @@ fn serialize_block(block: Block, target: RenderTarget, cap: RenderCapability) ->
   }
 }
 
-fn serialize_document(doc: Document, target: RenderTarget, cap: RenderCapability) -> String {
+fn serialize_document(doc: std.render.Document, target: RenderTarget, cap: std.render.RenderCapability) -> String {
   let rendered = map(doc.blocks, b => serialize_block(block: b, target: target, cap: cap))
   join(rendered, "\n")
 }

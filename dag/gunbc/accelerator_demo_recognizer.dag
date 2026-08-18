@@ -1,7 +1,7 @@
 module gunbc.accelerator_demo_recognizer
 
 
-fn recognize_accelerator_program(program: AcceleratorDemoProgram) -> AcceleratorRecognitionOutcome {
+fn recognize_accelerator_program(program: gunbc.accelerator_demo_program.AcceleratorDemoProgram) -> gunbc.accelerator_demo_plan.AcceleratorRecognitionOutcome {
   recognize_accelerator_program_with_contract(
     program: program,
     contract: std.numerical_contract.integer_exact_contract(),
@@ -10,10 +10,10 @@ fn recognize_accelerator_program(program: AcceleratorDemoProgram) -> Accelerator
 }
 
 fn recognize_accelerator_program_with_contract(
-  program: AcceleratorDemoProgram,
-  contract: NumericalContract,
+  program: gunbc.accelerator_demo_program.AcceleratorDemoProgram,
+  contract: std.numerical_contract.NumericalContract,
   insist_on_fma_fused_kernel: Bool
-) -> AcceleratorRecognitionOutcome {
+) -> gunbc.accelerator_demo_plan.AcceleratorRecognitionOutcome {
   match program {
     PureElementwiseMap { ops: ops } =>
       if gunbc.accelerator_demo_program.pure_elementwise_ops_shape_recognizable(ops: ops) {

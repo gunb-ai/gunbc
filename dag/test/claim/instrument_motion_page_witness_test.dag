@@ -5,8 +5,8 @@ data witness_subject_note: String = "THE MOTION LAB'S VERTICAL SLICE, exercised 
 
 WHAT THE RED CONTROLS DISCRIMINATE. The reduced wire is asserted to DIFFER from the full wire and to be exactly the at-rest frame: if a future edit made reduced motion a client-side opt-out, both wires would be equal and the first control reds. The client program is asserted to contain no arithmetic library call: if the physics ever migrated into the renderer, Math. would appear and the second control reds. And the shipped full wire is asserted to respect the modelled travel bound at every frame, so a page that shipped an unbounded sequence reds even though the model that decided it is green."
 
-fn fixture_request(method: std.types.HttpMethod, path: String) -> ServeHttpRequest {
-  ServeHttpRequest { method: method, path: path, body: "" }
+fn fixture_request(method: std.types.HttpMethod, path: String) -> extdeps.http.server.ServeHttpRequest {
+  extdeps.http.server.ServeHttpRequest { method: method, path: path, body: "" }
 }
 
 fn motion_page_body() -> String {
@@ -47,7 +47,7 @@ test fn witness_motion_page_renders_through_its_route() -> Bool {
 
 data nonempty_wire_note: String = "EVERY WIRE ASSERTION CHECKS THE WIRE IS NON-EMPTY BEFORE CHECKING THE PAGE CARRIES IT (review finding, 2026-08-07). string_contains(anything, \"\") is true, so a control written as contains(html, wire) passes on a page that ships nothing the moment the wire collapses to the empty string. That is not a hypothetical: the helper this file used to call answered a refused sequence with an empty list, and these three claims would all have gone green over an empty attribute. Each claim now reaches the wire only through a settled sequence, and asserts the wire is non-empty in the same breath."
 
-fn page_ships_full_wire(t: SyntheticTapStrength) -> Bool {
+fn page_ships_full_wire(t: gunbc.capability_binding.SyntheticTapStrength) -> Bool {
   match sequence_for(t: t, m: MotionFull) {
     BobSequenceRefused { cause: _, frames_emitted: _, budget_allowed: _ } => false
     BobSequenceSettled { frames: fs } => {
@@ -116,7 +116,7 @@ test fn witness_the_shipped_sequence_moves_decays_and_settles() -> Bool {
 
 data first_movement_note: String = "The first NON-ZERO displacement in the sequence, because a knock pushes the plate away from the hand. Reading the first non-zero rather than the second frame keeps the claim about the physics rather than about how many frames precede the first visible pixel."
 
-fn frames_first_movement_is_downward(fs: List<BobFrame>) -> Bool {
+fn frames_first_movement_is_downward(fs: List<gunbc.design.instrument_bob.BobFrame>) -> Bool {
   fold(fs, init: 0, f: (acc, x) => if acc == 0 { x.displacement_px } else { acc }) < 0
 }
 

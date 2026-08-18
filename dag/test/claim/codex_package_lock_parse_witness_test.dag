@@ -87,11 +87,11 @@ test fn selected_node_with_install_script_refuses() -> Bool {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_wrapper_lookup(graph: graph) {
         CodexWrapperUnique { node, artifact } => {
-          let with_script = CodexPackageLockNode {
+          let with_script = gunbc.package_delivery.CodexPackageLockNode {
             key: node.key,
             selection: node.selection,
-            metadata: NpmLockNodeMetadata {
-              flags: NpmLockNodeFlags {
+            metadata: extdeps.npm.NpmLockNodeMetadata {
+              flags: extdeps.npm.NpmLockNodeFlags {
                 dev: node.metadata.flags.dev,
                 optional: node.metadata.flags.optional,
                 dev_optional: node.metadata.flags.dev_optional,
@@ -105,9 +105,9 @@ test fn selected_node_with_install_script_refuses() -> Bool {
           match admit_codex_selected_node(
             node: with_script,
             artifact: artifact,
-            lock_node_key: "node_modules/@openai/codex" as NonEmptyStr,
+            lock_node_key: "node_modules/@openai/codex" as std.types.NonEmptyStr,
             expect_optional: false,
-            expect_version: "0.146.0" as NonEmptyStr,
+            expect_version: "0.146.0" as std.types.NonEmptyStr,
             expect_os: none,
             expect_cpu: none,
           ) {
@@ -132,18 +132,18 @@ test fn selected_node_wrong_version_keeps_key_but_refuses() -> Bool {
     CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
       match codex_wrapper_lookup(graph: graph) {
         CodexWrapperUnique { node, artifact } => {
-          let wrong = NpmRegistryArtifact {
+          let wrong = extdeps.npm.NpmRegistryArtifact {
             package: artifact.package,
-            version: "0.145.0" as NonEmptyStr,
+            version: "0.145.0" as std.types.NonEmptyStr,
             resolved: artifact.resolved,
             expected_integrity: artifact.expected_integrity,
           }
           match admit_codex_selected_node(
             node: node,
             artifact: wrong,
-            lock_node_key: "node_modules/@openai/codex" as NonEmptyStr,
+            lock_node_key: "node_modules/@openai/codex" as std.types.NonEmptyStr,
             expect_optional: false,
-            expect_version: "0.146.0" as NonEmptyStr,
+            expect_version: "0.146.0" as std.types.NonEmptyStr,
             expect_os: none,
             expect_cpu: none,
           ) {
@@ -166,9 +166,9 @@ test fn selected_node_wrong_optional_keeps_key_but_refuses() -> Bool {
           match admit_codex_selected_node(
             node: node,
             artifact: artifact,
-            lock_node_key: "node_modules/@openai/codex" as NonEmptyStr,
+            lock_node_key: "node_modules/@openai/codex" as std.types.NonEmptyStr,
             expect_optional: true,
-            expect_version: "0.146.0" as NonEmptyStr,
+            expect_version: "0.146.0" as std.types.NonEmptyStr,
             expect_os: none,
             expect_cpu: none,
           ) {
@@ -202,9 +202,9 @@ test fn selected_platform_wrong_os_keeps_key_but_refuses() -> Bool {
                     artifact: artifact,
                     lock_node_key: lock_node_key,
                     expect_optional: true,
-                    expect_version: "0.146.0-linux-arm64" as NonEmptyStr,
-                    expect_os: Present { value: "darwin" as NonEmptyStr },
-                    expect_cpu: Present { value: "arm64" as NonEmptyStr },
+                    expect_version: "0.146.0-linux-arm64" as std.types.NonEmptyStr,
+                    expect_os: Present { value: "darwin" as std.types.NonEmptyStr },
+                    expect_cpu: Present { value: "arm64" as std.types.NonEmptyStr },
                   ) {
                     CodexSelectedNodeIdentityRefused { lock_node_key: _, cause: _ } => true
                     _ => false
@@ -221,11 +221,11 @@ test fn selected_platform_wrong_os_keeps_key_but_refuses() -> Bool {
 
 test fn non_registry_locator_refuses_before_fetch() -> Bool {
   match admit_codex_registry_artifact_locator(
-    locator: "https://evil.example/codex.tgz" as NonEmptyStr,
+    locator: "https://evil.example/codex.tgz" as std.types.NonEmptyStr,
   ) {
     CodexRegistryLocatorRefused { locator: _, cause: _ } =>
       match admit_codex_registry_artifact_locator(
-        locator: "https://registry.npmjs.org/@openai/codex/-/codex-0.146.0.tgz" as NonEmptyStr,
+        locator: "https://registry.npmjs.org/@openai/codex/-/codex-0.146.0.tgz" as std.types.NonEmptyStr,
       ) {
         CodexRegistryLocatorAdmitted { locator: _ } => true
         CodexRegistryLocatorRefused { locator: _, cause: _ } => false

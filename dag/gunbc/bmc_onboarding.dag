@@ -183,11 +183,11 @@ fn bmc_decom_to_factory_state(s: BmcLifecycleState) -> BmcLifecycleState {
 }
 
 type BmcOnboardingPlan {
-  bmc: BmcEndpoint
-  redfish_system_id: NonEmptyStr
-  factory_login: FactoryLogin
-  secret_name: NonEmptyStr
-  rotated_account_role: RedfishAccountRole
+  bmc: std.bmc.BmcEndpoint
+  redfish_system_id: std.types.NonEmptyStr
+  factory_login: std.credentials.FactoryLogin
+  secret_name: std.types.NonEmptyStr
+  rotated_account_role: extdeps.bmc.types.RedfishAccountRole
   start_phase: BmcOnboardingPhase
 }
 
@@ -217,8 +217,8 @@ data srv4_onboarding_plan: BmcOnboardingPlan = altra_onboarding_plan(bmc_host: "
 type BmcCredentialProbeResult
   = FactoryCredentialActive
   | RotatedCredentialActive
-  | CredentialAccessUpsertRequired { plan: AccessEnsurePlan }
-  | CredentialEnsureRefused { reason: NonEmptyStr }
+  | CredentialAccessUpsertRequired { plan: gunbc.auth.access_token_source.AccessEnsurePlan }
+  | CredentialEnsureRefused { reason: std.types.NonEmptyStr }
   | CredentialStateUnknown { reason: String }
 
 fn bmc_credential_probe_to_phase(probe: BmcCredentialProbeResult) -> BmcOnboardingPhase? {

@@ -1,7 +1,7 @@
 module gunbc.plans.ci_humming
 
 
-fn ci_humming_body() -> List<MarkdownBlock> {
+fn ci_humming_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "Home: ROADMAP §1 (CI as the substrate integration dogfood). This is the **▸ NOW — host-operation on `.dag`** milestone made concrete: placement, runner deployment, and caps are hand-managed and off-fabric today; this plan migrates them onto the modeled budget + carrier and uses that to un-throttle CI."),
     p(text: "**GOAL.** CI fast (low wall-clock per PR) + high throughput (many PRs concurrent) + reliable (no reds / OOM / flakes) — and all three falling *out* of a single modeled budget consumed by a verified-effective apply, never a hand-picked number (§2/§5)."),
@@ -64,7 +64,7 @@ fn ci_humming_body() -> List<MarkdownBlock> {
   ]
 }
 
-data ci_humming_plan: Plan = Plan {
+data ci_humming_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "ci-humming",
   title: "CI humming — throughput, wall-clock, reliability (the single CI-operations authority)",
   body: ci_humming_body(),

@@ -1,11 +1,11 @@
 module v2.extdeps.runtimes.v2_evaluator
 
 type V4EvaluatorRuntime {
-  runtime_identity: Symbol
-  core: ModelCore
-  values: ValueRepresentationModel
-  execution: ExecutionSemantics
-  boundary: ResourceEffectBoundary
+  runtime_identity: v2.std.node.Symbol
+  core: v2.std.model_core.ModelCore
+  values: v2.std.runtime.ValueRepresentationModel
+  execution: v2.std.runtime.ExecutionSemantics
+  boundary: v2.std.runtime.ResourceEffectBoundary
 }
 
 fn v2_eval_unit_type_node() -> Node {

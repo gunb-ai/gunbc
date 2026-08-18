@@ -1,7 +1,7 @@
 module gunbc.plans.realization_measurement_loop
 
 
-fn realization_measurement_loop_body() -> List<MarkdownBlock> {
+fn realization_measurement_loop_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** stable coordination plan · dispatch workers per phase · **DESIGN.md + the carriers remain the authority** — this doc is a worker-dispatch tracker, not a fact ledger, and each phase dissolves into a mark on its carrier when it lands (DESIGN §6 \"no parallel-ledger docs\"). A phase's real state is its branch/PR, not this file (mirrors `ROADMAP.md`)."),
     p(text: "**Owner:** unowned (original coordinator `zesty-deer-479` archived 2026-06-21) — operator-coordinated; consolidates the formerly-separate quick-ant-298 dependency-ordered roadmap (single authority, no fork). Linked from `ROADMAP.md` §2 *Minimal work — caching by realization*."),
@@ -175,7 +175,7 @@ fn realization_measurement_loop_body() -> List<MarkdownBlock> {
   ]
 }
 
-data realization_measurement_loop_plan: Plan = Plan {
+data realization_measurement_loop_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "realization-measurement-loop",
   title: "Plan — Realization & Measurement: closing the cost → schedule loop (+ infra onto `.dag`)",
   body: realization_measurement_loop_body(),

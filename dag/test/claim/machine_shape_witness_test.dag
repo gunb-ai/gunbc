@@ -3,24 +3,24 @@ module test.claim.machine_shape_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data rtx5090_domain: DomainId = "rtx5090" as DomainId
-data rtx5090_register_level: LevelId = "sm-register-file" as LevelId
-data rtx5090_shared_level: LevelId = "sm-shared-memory" as LevelId
-data rtx5090_device_level: LevelId = "device-dram" as LevelId
+data rtx5090_domain: std.machine_shape.DomainId = "rtx5090" as std.machine_shape.DomainId
+data rtx5090_register_level: std.machine_shape.LevelId = "sm-register-file" as std.machine_shape.LevelId
+data rtx5090_shared_level: std.machine_shape.LevelId = "sm-shared-memory" as std.machine_shape.LevelId
+data rtx5090_device_level: std.machine_shape.LevelId = "device-dram" as std.machine_shape.LevelId
 
-data dangling_domain: DomainId = "missing-domain" as DomainId
+data dangling_domain: std.machine_shape.DomainId = "missing-domain" as std.machine_shape.DomainId
 
-data rtx5090_pcie_link: PcieLink = PcieLink { generation: Gen4, lane_count: 16 }
+data rtx5090_pcie_link: extdeps.storage.types.PcieLink = extdeps.storage.types.PcieLink { generation: Gen4, lane_count: 16 }
 
-data m5_domain: DomainId = "apple-m5-gpu" as DomainId
-data m5_register_level: LevelId = "sm-register-file" as LevelId
-data m5_shared_level: LevelId = "sm-shared-memory" as LevelId
-data m5_device_level: LevelId = "device-dram" as LevelId
+data m5_domain: std.machine_shape.DomainId = "apple-m5-gpu" as std.machine_shape.DomainId
+data m5_register_level: std.machine_shape.LevelId = "sm-register-file" as std.machine_shape.LevelId
+data m5_shared_level: std.machine_shape.LevelId = "sm-shared-memory" as std.machine_shape.LevelId
+data m5_device_level: std.machine_shape.LevelId = "device-dram" as std.machine_shape.LevelId
 
 data rtx5090_sm_shared_bytes: std.nat.Nat = 102400
 data rtx5090_sm_register_bytes: std.nat.Nat = 262144
 
-fn shape_from_rtx5090_catalog() -> MachineShape {
+fn shape_from_rtx5090_catalog() -> std.machine_shape.MachineShape {
   match gpu_shape_from_catalog(input: FromGpuModelCatalog {
     domain: rtx5090_domain,
     register_level: rtx5090_register_level,
@@ -29,7 +29,7 @@ fn shape_from_rtx5090_catalog() -> MachineShape {
     row: nvidia_rtx_5090_catalog,
   }) {
     MachineShapeOk { shape: s } => s
-    MachineShapeRefused { cause: _ } => MachineShape { domains: [], edges: [] }
+    MachineShapeRefused { cause: _ } => std.machine_shape.MachineShape { domains: [], edges: [] }
   }
 }
 
@@ -54,7 +54,7 @@ test fn minimal_grant_is_single_domain() -> Bool {
   machine_shape_is_single_domain(shape: shape_from_rtx5090_catalog())
 }
 
-fn shape_from_m5_catalog() -> MachineShape {
+fn shape_from_m5_catalog() -> std.machine_shape.MachineShape {
   match gpu_shape_from_catalog(input: FromGpuModelCatalog {
     domain: m5_domain,
     register_level: m5_register_level,
@@ -63,7 +63,7 @@ fn shape_from_m5_catalog() -> MachineShape {
     row: apple_m5_gpu_catalog,
   }) {
     MachineShapeOk { shape: s } => s
-    MachineShapeRefused { cause: _ } => MachineShape { domains: [], edges: [] }
+    MachineShapeRefused { cause: _ } => std.machine_shape.MachineShape { domains: [], edges: [] }
   }
 }
 
@@ -88,7 +88,7 @@ test fn pcie_interconnect_link_derives_bandwidth() -> Bool {
 
 test fn red_dangling_domain_refuses() -> Bool {
   let good = shape_from_rtx5090_catalog()
-  let bad = MachineShape {
+  let bad = std.machine_shape.MachineShape {
     domains: good.domains
     edges: [
       LinkEdge {
@@ -106,8 +106,8 @@ test fn red_dangling_domain_refuses() -> Bool {
 }
 
 test fn red_dangling_level_refuses() -> Bool {
-  let bad_level: LevelId = "missing-level" as LevelId
-  let bad = MachineShape {
+  let bad_level: std.machine_shape.LevelId = "missing-level" as std.machine_shape.LevelId
+  let bad = std.machine_shape.MachineShape {
     domains: shape_from_rtx5090_catalog().domains
     edges: [
       SharedLevelEdge {

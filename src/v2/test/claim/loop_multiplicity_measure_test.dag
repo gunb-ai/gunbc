@@ -1,10 +1,10 @@
 module v2.test.claim.loop_multiplicity_measure
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn lmm_atom(s: Symbol) -> Node {
-  Node {
+fn lmm_atom(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -12,51 +12,51 @@ fn lmm_atom(s: Symbol) -> Node {
 }
 
 fn lmm_loop_with_measure(measure: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: lmm_atom(s: ^lmm_body_lit) },
-      Edge { label: Named { name: ^loop_bound_edge }, target: measure }
+      v2.std.node.Edge { label: Positional, target: lmm_atom(s: ^lmm_body_lit) },
+      v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: measure }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn lmm_loop_without_measure() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: lmm_atom(s: ^lmm_body_lit) }
+      v2.std.node.Edge { label: Positional, target: lmm_atom(s: ^lmm_body_lit) }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn lmm_conj_measure(a: Node, b: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^lmm_dim_left }, target: a },
-      Edge { label: Named { name: ^lmm_dim_right }, target: b }
+      v2.std.node.Edge { label: Named { name: ^lmm_dim_left }, target: a },
+      v2.std.node.Edge { label: Named { name: ^lmm_dim_right }, target: b }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-data lmm_registry: List<MeasureDescentFact> = [
-  MeasureDescentFact {
+data lmm_registry: List<v2.std.cardinality.MeasureDescentFact> = [
+  v2.std.cardinality.MeasureDescentFact {
     measure: ^lmm_strict_dim,
     evidence: Strict,
     citation: "test fixture: a strictly descending dimension"
   },
-  MeasureDescentFact {
+  v2.std.cardinality.MeasureDescentFact {
     measure: ^lmm_non_increasing_dim,
     evidence: NonIncreasing,
     citation: "test fixture: a non-increasing dimension"
   }
 ]
 
-fn lmm_is_proven(m: Multiplicity) -> Bool {
+fn lmm_is_proven(m: v2.std.cardinality.Multiplicity) -> Bool {
   match m {
     ProvenTermination { proof: _ } => true
     RequiresTerminationProof => false
@@ -64,7 +64,7 @@ fn lmm_is_proven(m: Multiplicity) -> Bool {
   }
 }
 
-fn lmm_is_refused(m: Multiplicity) -> Bool {
+fn lmm_is_refused(m: v2.std.cardinality.Multiplicity) -> Bool {
   match m {
     RequiresTerminationProof => true
     ProvenTermination { proof: _ } => false
@@ -72,7 +72,7 @@ fn lmm_is_refused(m: Multiplicity) -> Bool {
   }
 }
 
-fn lmm_proven_strict_dimension(m: Multiplicity) -> Symbol {
+fn lmm_proven_strict_dimension(m: v2.std.cardinality.Multiplicity) -> v2.std.node.Symbol {
   match m {
     ProvenTermination { proof } => proof.strict.measured
     RequiresTerminationProof => ^lmm_no_proof
@@ -80,7 +80,7 @@ fn lmm_proven_strict_dimension(m: Multiplicity) -> Symbol {
   }
 }
 
-fn lmm_proven_non_increasing_count(m: Multiplicity) -> Int {
+fn lmm_proven_non_increasing_count(m: v2.std.cardinality.Multiplicity) -> Int {
   match m {
     ProvenTermination { proof } => count(proof.non_increasing)
     RequiresTerminationProof => 0 - 1
@@ -154,7 +154,7 @@ fn lmm_termination_holds(w: Witness<v2.std.cardinality.TerminationProof>) -> Boo
   }
 }
 
-fn lmm_loop_bound_termination_holds(w: Witness<LoopBound>) -> Bool {
+fn lmm_loop_bound_termination_holds(w: Witness<v2.std.cardinality.LoopBound>) -> Bool {
   match w {
     Holds { value: bound } => lmm_termination_holds(w: bound.termination)
     Violates { diagnostic: _ } => false
@@ -171,11 +171,11 @@ test fn live_registry_proves_loop_measure() -> Bool {
 
 test fn nested_unproven_loop_still_poisons_the_fold() -> Bool {
   let inner = lmm_loop_with_measure(measure: lmm_atom(s: ^lmm_unregistered_dim))
-  let outer = Node {
+  let outer = v2.std.node.Node {
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: inner },
-      Edge {
+      v2.std.node.Edge { label: Positional, target: inner },
+      v2.std.node.Edge {
         label: Named { name: ^loop_bound_edge },
         target: lmm_atom(s: ^dag_loop_measure_sym)
       }

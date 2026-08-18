@@ -37,7 +37,7 @@ data fleet_multi_principal_probe_receipt_path: String = "target/fleet-multi-prin
 // ONE LEG, and every option it carries derived from the sealed context rather than assembled here.
 // The words go through portable_remote_words, so a command this probe cannot transport safely
 // refuses before the leg rather than being quoted into something the remote shell may re-split.
-fn probe_leg(context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext, host: String, principal: String, raw_words: std.types.List<String>) -> SshSessionExecResult? {
+fn probe_leg(context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext, host: String, principal: String, raw_words: std.types.List<String>) -> extdeps.ssh.session.SshSessionExecResult? {
   match gunbc.fleet_known_hosts_anchor.portable_remote_words(raws: raw_words) {
     Absent => none
     Present { value: words } => Present {

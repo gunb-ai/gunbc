@@ -3,7 +3,7 @@ module test.claim.runner_broker_progress_watchdog_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn remote_offline() -> RemoteRegistrationEvidence {
+fn remote_offline() -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence {
   RemoteRegistrationObserved {
     registration: RunnerRemoteOffline,
     registration_id: "",
@@ -11,10 +11,10 @@ fn remote_offline() -> RemoteRegistrationEvidence {
   }
 }
 
-fn remote_online() -> RemoteRegistrationEvidence {
+fn remote_online() -> gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence {
   RemoteRegistrationObserved {
     registration: RunnerRemoteOnline {
-      runner_name: "actions-runner@srv1-01.service" as NonEmptyStr,
+      runner_name: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
       labels: ["self-hosted"],
     },
     registration_id: "reg-1",
@@ -41,7 +41,7 @@ test fn offline_with_recent_broker_progress_is_retrying() -> Bool {
     remote: remote_offline(),
     broker: BrokerProgressObserved {
       last_event: AcquireAttempt,
-      last_at: "2026-08-06T20:00:00Z" as Timestamp,
+      last_at: "2026-08-06T20:00:00Z" as std.types.Timestamp,
       grade: ObservedEvidence,
     },
     worker: RunnerWorkerAbsent { grade: ObservedEvidence },
@@ -79,7 +79,7 @@ test fn worker_alive_is_busy_noop_state() -> Bool {
       grade: ObservedEvidence,
     },
     worker: RunnerWorkerAlive {
-      detail: "Runner.Worker executing job" as NonEmptyStr,
+      detail: "Runner.Worker executing job" as std.types.NonEmptyStr,
       grade: ObservedEvidence,
     },
   ) {
@@ -94,10 +94,10 @@ test fn worker_alive_is_busy_noop_state() -> Bool {
 test fn unreadable_remote_evidence_refuses() -> Bool {
   match classify_runner_watchdog_verdict(
     remote: RemoteRegistrationRefused {
-      reason: "org runner roster credential unreadable" as NonEmptyStr,
+      reason: "org runner roster credential unreadable" as std.types.NonEmptyStr,
     },
-    broker: BrokerProgressUnobserved { reason: "n/a" as NonEmptyStr },
-    worker: RunnerWorkerUnobserved { reason: "n/a" as NonEmptyStr },
+    broker: BrokerProgressUnobserved { reason: "n/a" as std.types.NonEmptyStr },
+    worker: RunnerWorkerUnobserved { reason: "n/a" as std.types.NonEmptyStr },
   ) {
     WatchdogRefused { reason: _ } => true
     WatchdogHealthy => false
@@ -150,7 +150,7 @@ test fn wedged_predicate_requires_grace_and_no_worker() -> Bool {
 
 test fn shell_pipeline_diagnostic_read_refuses_sigpipe_class() -> Bool {
   match refuses_shell_pipeline_diagnostic_read(
-    attempted: "ls /var/log/actions-runner | head -1" as NonEmptyStr,
+    attempted: "ls /var/log/actions-runner | head -1" as std.types.NonEmptyStr,
   ) {
     DiagnosticShellPipelineRefused { attempted: _, reason: _ } => true
     _ => false
@@ -158,13 +158,13 @@ test fn shell_pipeline_diagnostic_read_refuses_sigpipe_class() -> Bool {
 }
 
 test fn reobservation_refuses_when_local_process_changed() -> Bool {
-  let act = "2026-08-06T20:00:00Z" as Timestamp
-  let receipt = RunnerRepairDecisionReceipt {
-    slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 },
+  let act = "2026-08-06T20:00:00Z" as std.types.Timestamp
+  let receipt = gunbc.runner_broker_progress_watchdog.RunnerRepairDecisionReceipt {
+    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 },
     local_process: ProcessIdentity {
-      boot_id: "boot-a" as NonEmptyStr,
+      boot_id: "boot-a" as std.types.NonEmptyStr,
       pid: 4242,
-      start_time: "80000000" as NonEmptyStr,
+      start_time: "80000000" as std.types.NonEmptyStr,
     },
     remote_registration_id: "reg-1",
     act_at: act,
@@ -172,9 +172,9 @@ test fn reobservation_refuses_when_local_process_changed() -> Bool {
   reobservation_refuses_mutation(
     receipt: receipt,
     fresh_local_process: ProcessIdentity {
-      boot_id: "boot-a" as NonEmptyStr,
+      boot_id: "boot-a" as std.types.NonEmptyStr,
       pid: 5151,
-      start_time: "91000000" as NonEmptyStr,
+      start_time: "91000000" as std.types.NonEmptyStr,
     },
     fresh_remote: remote_offline(),
     fresh_worker: RunnerWorkerAbsent { grade: ObservedEvidence },
@@ -187,13 +187,13 @@ test fn reobservation_refuses_when_local_process_changed() -> Bool {
 }
 
 test fn reobservation_refuses_when_remote_recovered() -> Bool {
-  let act = "2026-08-06T20:00:00Z" as Timestamp
-  let receipt = RunnerRepairDecisionReceipt {
-    slot: RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 },
+  let act = "2026-08-06T20:00:00Z" as std.types.Timestamp
+  let receipt = gunbc.runner_broker_progress_watchdog.RunnerRepairDecisionReceipt {
+    slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 },
     local_process: ProcessIdentity {
-      boot_id: "boot-a" as NonEmptyStr,
+      boot_id: "boot-a" as std.types.NonEmptyStr,
       pid: 4242,
-      start_time: "80000000" as NonEmptyStr,
+      start_time: "80000000" as std.types.NonEmptyStr,
     },
     remote_registration_id: "reg-1",
     act_at: act,

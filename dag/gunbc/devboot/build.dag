@@ -114,7 +114,7 @@ fn digest_field(acc: DigestScan, part: String) -> DigestScan {
 }
 
 type FileSha256Outcome
-  = FileSha256Present { digest: Sha256Digest }
+  = FileSha256Present { digest: std.content_hash.Sha256Digest }
   | FileSha256CommandFailed { exit_code: Int, stderr: String }
   | FileSha256PathUnreadable { path: String }
 
@@ -147,7 +147,7 @@ fn render_sha256_digest(digest: Sha256Digest) -> String {
 // WHAT A CALLER RECEIVES. An artifact is a path plus the digest that binds it, and both are present or the outcome is a refusal -- there is no arm carrying a path whose bytes were never checked, because that arm is how a stale binary passed for a produced one once already.
 type BuiltArtifact {
   path: String
-  sha256: Sha256Digest
+  sha256: std.content_hash.Sha256Digest
 }
 
 // THE RECEIPT IS WHERE PROCESS IDENTITY LIVES. Which host produced the bytes, which executable did it, what the invocation was: all of it is real and worth keeping, and none of it may reach the artifact's identity. A key that carries the producing host means the same tree built on two machines is two subjects, so the second caller rebuilds what the first already produced and the dedup this service exists for silently stops happening. So these facts are reported and never keyed.
@@ -162,13 +162,13 @@ type BuildRefusal
   | WorktreeNotSnapshotted { refusal: SnapshotRefused }
   | ToolchainNotObserved { refusal: ToolchainObservationRefused }
   | SourceTreeOidUnusable { hex: String }
-  | SubjectNotAdmitted { cause: BuildSubjectRefusalCause }
+  | SubjectNotAdmitted { cause: gunbc.devboot.subject.BuildSubjectRefusalCause }
   | ProducerUnreachable { detail: String }
-  | ProducerDidNotAnswer { waited: Second }
+  | ProducerDidNotAnswer { waited: std.measure.Second }
   | ProducerRefusedRequest { detail: String }
   | SubjectMismatch { requested: String, produced: String }
   | ArtifactNotRetrievable { detail: String }
-  | ArtifactDigestMismatch { expected: Sha256Digest, observed: Sha256Digest }
+  | ArtifactDigestMismatch { expected: std.content_hash.Sha256Digest, observed: std.content_hash.Sha256Digest }
 
 type BuildOutcome
   = Built { program_subject: String, artifact: BuiltArtifact, receipt: BuildReceipt }
@@ -729,7 +729,7 @@ type ProducerHome {
 }
 
 type ServeReport
-  = ServeProduced { token: String, sha256: Sha256Digest }
+  = ServeProduced { token: String, sha256: std.content_hash.Sha256Digest }
   | ServeRefused { token: String, detail: String }
 
 type RequestEntryOutcome

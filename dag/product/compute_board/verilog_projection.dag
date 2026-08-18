@@ -21,15 +21,15 @@ data verilog_projection_note: String = "THE VERILOG PROJECTION, NOW A MAPPING RA
 // still be illegal downstream. Dissolve-on: a substrate string-to-character projection, at which
 // point this becomes the positive grammar test and the forbidden roster is deleted.
 type VerilogProjectionRefusal
-  = SignalSpellingUnbound { signal: NonEmptyStr }
-  | SignalSpellingNotAdmissible { signal: NonEmptyStr, spelling: String }
-  | DuplicateSignalBinding { signal: NonEmptyStr }
-  | TargetEmissionRefused { reason: Symbol }
+  = SignalSpellingUnbound { signal: std.types.NonEmptyStr }
+  | SignalSpellingNotAdmissible { signal: std.types.NonEmptyStr, spelling: String }
+  | DuplicateSignalBinding { signal: std.types.NonEmptyStr }
+  | TargetEmissionRefused { reason: v2.std.node.Symbol }
 
 // The receipt carries the article identity so an emission is traceable to the root that produced
 // it, rather than being an anonymous string two different articles could both have produced.
 type VerilogEmissionReceipt {
-  source_article: BoardArticleIdentity
+  source_article: product.compute_board.article.BoardArticleIdentity
   source: String
 }
 
@@ -42,8 +42,8 @@ type VerilogProjection
 // string would have nothing to put in the tree. Logical identity, target identity and target
 // spelling are three facts and this row is where they are joined.
 type VerilogBinding {
-  signal: SignalName
-  symbol: Symbol
+  signal: product.compute_board.digital_control.SignalName
+  symbol: v2.std.node.Symbol
   spelling: String
 }
 

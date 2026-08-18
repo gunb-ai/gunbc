@@ -96,8 +96,8 @@ fn socket_termination_as_package_termination(t: SocketTermination) -> ProcessorP
 // socket cannot be authored without naming the mount it presents, which is the completeness a
 // separate join table would have had to check for.
 type ProcessorCoolingMount {
-  platform_owner: Vendor<Hardware>
-  designation: NonEmptyStr
+  platform_owner: Vendor<extdeps.hardware.Hardware>
+  designation: std.types.NonEmptyStr
 }
 
 fn cooling_mount_eq(a: ProcessorCoolingMount, b: ProcessorCoolingMount) -> Bool {
@@ -105,7 +105,7 @@ fn cooling_mount_eq(a: ProcessorCoolingMount, b: ProcessorCoolingMount) -> Bool 
 }
 
 type CpuSocket {
-  platform_owner: Vendor<Hardware>
+  platform_owner: Vendor<extdeps.hardware.Hardware>
 
   termination: SocketTermination
   contact_count: Int
@@ -132,52 +132,52 @@ fn cpu_socket_eq(a: CpuSocket, b: CpuSocket) -> Bool {
 }
 
 type CpuL1CacheGeometry {
-  data_capacity_per_core: ByteSize
-  instruction_capacity_per_core: ByteSize
-  line_size: ByteSize
+  data_capacity_per_core: std.measure.ByteSize
+  instruction_capacity_per_core: std.measure.ByteSize
+  line_size: std.measure.ByteSize
 }
 
 type CpuL2CacheGeometry {
-  capacity_per_core: ByteSize
-  line_size: ByteSize
+  capacity_per_core: std.measure.ByteSize
+  line_size: std.measure.ByteSize
 }
 
 type CpuL3CacheGeometry {
-  capacity: ByteSize
-  line_size: ByteSize
+  capacity: std.measure.ByteSize
+  line_size: std.measure.ByteSize
 }
 
 // A SOCKET FACT CITES ITS SOURCE THE SAME WAY A CACHE FACT DOES. The termination is the axis this
 // corpus already got wrong once -- AM5 carried PGA because 1718 looked right beside it -- and the
 // defect survived precisely because nothing tied the claim to a document anyone could check.
 type SocketFactCitation {
-  field: NonEmptyStr
-  authority: ExternalAuthority
+  field: std.types.NonEmptyStr
+  authority: extdeps.external_authority.ExternalAuthority
 }
 
 type CacheGeometryCitation {
-  field: NonEmptyStr
-  authority: ExternalAuthority
+  field: std.types.NonEmptyStr
+  authority: extdeps.external_authority.ExternalAuthority
 }
 
 type ProcessorThermalLimits {
-  maximum_continuous_junction_temperature: Celsius
-  thermal_throttle_temperature: Celsius
-  thermal_shutdown_temperature: Celsius
-  authority: ExternalAuthority
+  maximum_continuous_junction_temperature: std.measure.Celsius
+  thermal_throttle_temperature: std.measure.Celsius
+  thermal_shutdown_temperature: std.measure.Celsius
+  authority: extdeps.external_authority.ExternalAuthority
 }
 
 type CpuModelCatalogRow {
-  model_number: NonEmptyStr
-  oem_listing_id: NonEmptyStr?
+  model_number: std.types.NonEmptyStr
+  oem_listing_id: std.types.NonEmptyStr?
   vendor: Vendor<extdeps.hardware.Hardware>
-  architecture: Architecture
+  architecture: extdeps.toolchain.types.Architecture
   cores: Int
-  threads: HardwareThreadCount
-  nominal_sustained_per_thread_hz: Hertz
+  threads: std.measure.HardwareThreadCount
+  nominal_sustained_per_thread_hz: std.measure.Hertz
   socket: CpuSocket
   socket_citations: List<SocketFactCitation>
-  tdp_watts: Watt
+  tdp_watts: std.measure.Watt
   l1_cache: CpuL1CacheGeometry
   l1_cache_citations: List<CacheGeometryCitation>
   l2_cache: CpuL2CacheGeometry
@@ -187,7 +187,7 @@ type CpuModelCatalogRow {
 }
 
 type CpuDeploymentFacts {
-  sustained_per_thread_hz: Hertz
+  sustained_per_thread_hz: std.measure.Hertz
 }
 
 type CpuFacts {

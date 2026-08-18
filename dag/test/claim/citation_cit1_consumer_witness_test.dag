@@ -64,7 +64,7 @@ test fn x86_64_abi_syscall_page_28_does_not_authorize_convention_claim_RED() -> 
 }
 
 test fn x86_64_abi_pdf_draft_edition_is_0_99_6() -> Bool {
-  x86_64_abi_pdf_draft_version == ("0.99.6" as VersionIdentity)
+  x86_64_abi_pdf_draft_version == ("0.99.6" as extdeps.version.VersionIdentity)
 }
 
 test fn x86_64_abi_version_cover_uri_uses_page_one() -> Bool {
@@ -76,7 +76,7 @@ test fn x86_64_abi_version_cover_uri_uses_page_one() -> Bool {
 }
 
 test fn x86_64_abi_authority_locator_is_refspecs() -> Bool {
-  x86_64_abi_pdf_base_locator_probe() == ("refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf" as NonEmptyStr)
+  x86_64_abi_pdf_base_locator_probe() == ("refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf" as std.types.NonEmptyStr)
 }
 test fn x86_64_abi_syscall_convention_uri_uses_physical_page_125() -> Bool {
   match x86_64_abi_pdf_syscall_navigable_uri_projection() {
@@ -88,7 +88,7 @@ test fn x86_64_abi_syscall_convention_uri_uses_physical_page_125() -> Bool {
 
 test fn x86_64_abi_consumer_refuses_unencodable_nameddest_navigable_uri() -> Bool {
   match x86_64_abi_pdf_navigable_uri_from_nameddest_scalar_code_points(
-    name: "plant" as NonEmptyStr,
+    name: "plant" as std.types.NonEmptyStr,
     code_points: witness_unencodable_scalar_code_points,
   ) {
     X86_64AbiPdfNavigableUriRefused {
@@ -104,7 +104,7 @@ test fn x86_64_abi_consumer_refuses_unencodable_nameddest_navigable_uri() -> Boo
 test fn x86_64_abi_syscall_citation_selector_conforms_to_rfc_8118() -> Bool {
   match x86_64_abi_pdf_syscall_fragment_selector() {
     X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
-      s.value == ("page=125" as NonEmptyStr)
+      s.value == ("page=125" as std.types.NonEmptyStr)
         && s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
         && s.conforms_to.uri.locator != extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri.locator
     _ => false
@@ -114,7 +114,7 @@ test fn x86_64_abi_syscall_citation_selector_conforms_to_rfc_8118() -> Bool {
 test fn x86_64_abi_syscall_selector_value_is_page_125() -> Bool {
   match x86_64_abi_pdf_syscall_fragment_selector() {
     X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
-      s.value == ("page=125" as NonEmptyStr)
+      s.value == ("page=125" as std.types.NonEmptyStr)
     _ => false
   }
 }
@@ -138,7 +138,7 @@ test fn x86_64_abi_syscall_selector_conforms_not_abi_pdf_locator() -> Bool {
 test fn x86_64_abi_syscall_page_28_selector_does_not_match_authoritative_claim_RED() -> Bool {
   match x86_64_abi_pdf_fragment_selector_from_page(page: 28) {
     X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
-      s.value != ("page=125" as NonEmptyStr)
+      s.value != ("page=125" as std.types.NonEmptyStr)
     _ => false
   }
 }

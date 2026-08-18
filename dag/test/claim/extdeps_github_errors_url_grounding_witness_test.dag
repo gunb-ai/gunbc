@@ -2,10 +2,10 @@ module test.claim.extdeps_github_errors_url_grounding_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data sample_docs_url: NonEmptyStr = "https://docs.github.com/rest"
+data sample_docs_url: std.types.NonEmptyStr = "https://docs.github.com/rest"
 
 test fn w_github_error_shape_documentation_url_grounded() -> Bool {
-  let row = GitHubErrorShape {
+  let row = extdeps.github.errors.GitHubErrorShape {
     message: "Not Found",
     documentation_url: Present { value: sample_docs_url },
   }
@@ -23,7 +23,7 @@ test fn w_github_error_example_inhabits_url() -> Bool {
 }
 
 test fn w_github_error_shape_absent_documentation_url() -> Bool {
-  let row = GitHubErrorShape {
+  let row = extdeps.github.errors.GitHubErrorShape {
     message: "Server Error",
     documentation_url: none,
   }

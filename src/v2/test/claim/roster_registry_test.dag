@@ -11,16 +11,16 @@ module v2.test.claim.roster_registry_test
 // downstream well-formedness guard defends, so this control has to reach it
 // through the gap to keep proving the guard works (DESIGN 4b(4): production
 // machinery dissolves on a climb, the evidence stays enrolled).
-fn synthetic_nonliteral_text(text: String) -> NonEmptyStr {
+fn synthetic_nonliteral_text(text: String) -> std.types.NonEmptyStr {
   concat(text, "")
 }
 
-fn synthetic_empty_condition(text: String) -> DissolutionCondition {
+fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionCondition {
   unbound_dissolution(description: synthetic_nonliteral_text(text: text))
 }
 
-fn synthetic_registration(membership: GroupMembership) -> RosterRegistration {
-  RosterRegistration {
+fn synthetic_registration(membership: gunbc.roster_registry.GroupMembership) -> gunbc.roster_registry.RosterRegistration {
+  gunbc.roster_registry.RosterRegistration {
     roster: roster_decl(module_path: "v2.test.synthetic", decl_name: "synthetic_roster"),
     unit_kind: "synthetic unit",
     membership: membership
@@ -28,7 +28,7 @@ fn synthetic_registration(membership: GroupMembership) -> RosterRegistration {
 }
 
 
-fn nickname_registration() -> RosterRegistration {
+fn nickname_registration() -> gunbc.roster_registry.RosterRegistration {
   synthetic_registration(
     membership: DeclaredFrontier { reason: "", dissolution: unbound_dissolution(description: "nickname-class control: the reason axis is the writable one") }
   )
@@ -43,7 +43,7 @@ test fn roster_registry_enrolls_known_rosters() -> Bool {
 }
 
 
-fn empty_trigger_registration() -> RosterRegistration {
+fn empty_trigger_registration() -> gunbc.roster_registry.RosterRegistration {
   synthetic_registration(
     membership: DeclaredFrontier {
       reason: "a reason without a trigger is not a frontier row",

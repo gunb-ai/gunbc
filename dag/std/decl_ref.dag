@@ -15,17 +15,17 @@ data decl_ref_constructor_authority_note: String = "The constructors live HERE, 
 
 fn decl_ref(module_path: String, decl_name: String) -> DeclarationRef {
   DeclarationRef {
-    module_path: module_path as NonEmptyStr,
-    decl_name: decl_name as NonEmptyStr,
+    module_path: module_path as std.types.NonEmptyStr,
+    decl_name: decl_name as std.types.NonEmptyStr,
     field: WholeDeclaration,
   }
 }
 
 fn decl_field_ref(module_path: String, decl_name: String, field_name: String) -> DeclarationRef {
   DeclarationRef {
-    module_path: module_path as NonEmptyStr,
-    decl_name: decl_name as NonEmptyStr,
-    field: NamedField { field_name: field_name as NonEmptyStr },
+    module_path: module_path as std.types.NonEmptyStr,
+    decl_name: decl_name as std.types.NonEmptyStr,
+    field: NamedField { field_name: field_name as std.types.NonEmptyStr },
   }
 }
 

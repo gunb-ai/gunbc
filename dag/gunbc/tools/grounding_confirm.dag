@@ -32,7 +32,7 @@ fn enriched_user(f: GroundingFinding) -> String {
   "enclosing_concept: {f.enclosing}\nfield: {f.field}\ndeclared_type: {f.declared_type}\ncoincides_with: {f.coincides_with}\ntarget_kind: {f.target_kind}\ntarget_structure: {f.target_structure}"
 }
 
-fn candidate_message(body: String) -> List<AnthropicChatMessage> {
+fn candidate_message(body: String) -> List<extdeps.llm.anthropic.AnthropicChatMessage> {
   [UserMessage { content: [UserTextBlock { text: body }] }]
 }
 

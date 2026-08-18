@@ -9,18 +9,18 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type MemoryMetric {
-  key: NonEmptyStr
-  value: Kibibyte
+  key: std.types.NonEmptyStr
+  value: std.measure.Kibibyte
 }
 
 type ProcMeminfo {
-  mem_total: Kibibyte
-  mem_free: Kibibyte
-  mem_available: Kibibyte
-  buffers: Kibibyte
-  cached: Kibibyte
-  swap_total: Kibibyte
-  swap_free: Kibibyte
+  mem_total: std.measure.Kibibyte
+  mem_free: std.measure.Kibibyte
+  mem_available: std.measure.Kibibyte
+  buffers: std.measure.Kibibyte
+  cached: std.measure.Kibibyte
+  swap_total: std.measure.Kibibyte
+  swap_free: std.measure.Kibibyte
   all_metrics: List<MemoryMetric>
 }
 

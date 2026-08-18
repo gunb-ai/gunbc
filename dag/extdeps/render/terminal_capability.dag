@@ -2,8 +2,8 @@ module extdeps.render.terminal_capability
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/isatty.html"
   }
@@ -36,7 +36,7 @@ fn color_for(env: TerminalEnvironment) -> Bool {
   }
 }
 
-fn tier_for(env: TerminalEnvironment) -> Tier {
+fn tier_for(env: TerminalEnvironment) -> std.symbols.Tier {
   if env.dumb_term {
     Ascii
   } else if env.is_tty {
@@ -46,8 +46,8 @@ fn tier_for(env: TerminalEnvironment) -> Tier {
   }
 }
 
-fn detect_capability(env: TerminalEnvironment) -> RenderCapability {
-  RenderCapability {
+fn detect_capability(env: TerminalEnvironment) -> std.render.RenderCapability {
+  std.render.RenderCapability {
     color: color_for(env: env),
     tier: tier_for(env: env),
     cursor_addressable: cursor_addressable_for(env: env)

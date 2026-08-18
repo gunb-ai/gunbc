@@ -34,16 +34,16 @@ type SupervisorRunState
 // can be changed. Storing 306 in a field named "interval" would present a
 // measurement as a setting, and the next reader would try to edit it.
 type SupervisorIntervalKnowledge
-  = IntervalDeclared { interval: Second }
-  | IntervalMeasured { interval: Second, samples: std.nat.Nat, observed_at: EpochMs }
+  = IntervalDeclared { interval: std.measure.Second }
+  | IntervalMeasured { interval: std.measure.Second, samples: std.nat.Nat, observed_at: std.types.EpochMs }
   | IntervalUnknown
 
 type HostBootSupervisorObservation {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   supervisor: HostBootSupervisor
   run_state: SupervisorRunState
   interval: SupervisorIntervalKnowledge
-  observed_at: EpochMs
+  observed_at: std.types.EpochMs
 }
 
 // Boot progress as the host itself reports it on the serial console, which
@@ -53,8 +53,8 @@ type HostBootSupervisorObservation {
 // and error code. A model that consumes only BootProgress cannot see any of
 // this, which is why the console codes are first-class here.
 type HostBootCode
-  = HostBootCheckpoint { code: NonEmptyStr }
-  | HostBootError { code: NonEmptyStr }
+  = HostBootCheckpoint { code: std.types.NonEmptyStr }
+  | HostBootError { code: std.types.NonEmptyStr }
 
 // On last_checkpoint:
 // The last checkpoint reached before the failure.
@@ -67,11 +67,11 @@ type HostBootCode
 // is an event; a repeating identical signature is a deterministic fault,
 // and the two justify different responses.
 type HostBootStallSignature {
-  host: HostIdentity
-  last_checkpoint: NonEmptyStr
-  error_code: NonEmptyStr?
+  host: product.placement_supply.HostIdentity
+  last_checkpoint: std.types.NonEmptyStr
+  error_code: std.types.NonEmptyStr?
   observed_cycles: std.nat.Nat
-  observed_at: EpochMs
+  observed_at: std.types.EpochMs
 }
 
 // The host emitted an error and restarted itself. No supervisor involved.
@@ -83,7 +83,7 @@ type HostBootStallSignature {
 // This arm exists because it was the real state of knowledge for an hour,
 // and collapsing it into either neighbour would have been a guess.
 type HostBootLoopCause
-  = HostSelfResetOnError { code: NonEmptyStr }
+  = HostSelfResetOnError { code: std.types.NonEmptyStr }
   | SupervisorForcedReset { supervisor: HostBootSupervisor }
   | LoopCauseConfounded { candidates: List<HostBootSupervisor> }
   | LoopCauseUnobserved

@@ -1,14 +1,14 @@
 module v2.test.extdeps.formats.spice_passive_projection
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn spice_resistor_projects_resistor_passive_topology_holds() -> Bool {
   let component = Resistor {
     name: "1",
-    n_plus: Named { node: NamedNode { name: "n1" } },
+    n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "n1" } },
     n_minus: Ground,
-    value: SpiceValue { lexeme: "1000" }
+    value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1000" }
   }
   match passive_spec_from_component(component: component) {
     Present { value: ResistorPassive { topology: topo } } => topo.name == "1"
@@ -19,9 +19,9 @@ test fn spice_resistor_projects_resistor_passive_topology_holds() -> Bool {
 test fn spice_capacitor_projects_capacitor_passive_arm_holds() -> Bool {
   let component = Capacitor {
     name: "1",
-    n_plus: Named { node: NamedNode { name: "n2" } },
+    n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "n2" } },
     n_minus: Ground,
-    value: SpiceValue { lexeme: "1e-6" }
+    value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1e-6" }
   }
   match passive_spec_from_component(component: component) {
     Present { value: CapacitorPassive { topology: _ } } => true
@@ -32,9 +32,9 @@ test fn spice_capacitor_projects_capacitor_passive_arm_holds() -> Bool {
 test fn spice_inductor_projects_inductor_passive_arm_holds() -> Bool {
   let component = Inductor {
     name: "l1",
-    n_plus: Named { node: NamedNode { name: "n3" } },
+    n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "n3" } },
     n_minus: Ground,
-    value: SpiceValue { lexeme: "1e-3" }
+    value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1e-3" }
   }
   match passive_spec_from_component(component: component) {
     Present { value: InductorPassive { topology: _ } } => true
@@ -45,9 +45,9 @@ test fn spice_inductor_projects_inductor_passive_arm_holds() -> Bool {
 test fn passive_topology_preserves_component_name_holds() -> Bool {
   let component = Resistor {
     name: "r9",
-    n_plus: Named { node: NamedNode { name: "n9" } },
+    n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "n9" } },
     n_minus: Ground,
-    value: SpiceValue { lexeme: "47" }
+    value: v2.extdeps.formats.spice.SpiceValue { lexeme: "47" }
   }
   match passive_topology_from_component(component: component) {
     Present { value: topo } => topo.name == "r9"

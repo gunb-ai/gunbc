@@ -2,16 +2,16 @@ module extdeps.realization.resolved_graph
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
   }
 }
 
-data resolved_graph_cache_faithful_probe_support_dissolve_trigger: Disposition = Scaffold {
+data resolved_graph_cache_faithful_probe_support_dissolve_trigger: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.realization.resolved_graph",
     decl_name: "resolved_graph_cache_faithful_probe_support",
     field: WholeDeclaration
@@ -20,11 +20,11 @@ data resolved_graph_cache_faithful_probe_support_dissolve_trigger: Disposition =
 
 data resolved_graph_cache_faithful_probe_support: String = "dissolve-on: resolved_graph_cache FORMAT_VERSION >= 2 — faithful probe support lands when the cache format persists per-output digests and byte sizes for resolved_graph/source_indices, so the transport can build a faithful probe instead of refusing the v1 seam."
 
-data resolved_graph_cache_cap_bytes: ByteSize = byte_size(count: 10737418240)
+data resolved_graph_cache_cap_bytes: std.measure.ByteSize = byte_size(count: 10737418240)
 
-data resolved_graph_cache_id: CacheInterfaceId = "resolved_graph_cache"
+data resolved_graph_cache_id: std.cache_identity.CacheInterfaceId = "resolved_graph_cache"
 
-data resolved_graph_cache_facts: CacheInterfaceCatalogFacts = {
+data resolved_graph_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: resolved_graph_cache_id
   backing_surface: "gunbc-resolved-graph-per-host-cache"
   transport_encoding: CatalogCasContentEncoding

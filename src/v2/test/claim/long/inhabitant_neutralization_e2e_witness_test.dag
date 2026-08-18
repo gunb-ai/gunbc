@@ -1,7 +1,7 @@
 module v2.test.long.inhabitant_neutralization_e2e_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data inhabitant_neutralization_e2e_long_note: String = "Offline/long disposition for inhabitant cross-language e2e + translate/emit refusal poles (review 43557): these were never per-PR enrolled and must not use if-false orphan pins (DESIGN §5 specification-without-execution). They live under test/claim/long/ (OfflineLocalRecipe) as real test fns — local recipe / future falsifier enrollment, never fabricated reachability. Dissolve-on: re-enroll per-PR when measured under gunbc_ci_fast_lane_witness_eval_budget, or delete as duplicate of a faster mechanism receipt."
 

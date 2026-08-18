@@ -59,7 +59,7 @@ fn role_var(r: ThemeRole) -> String {
 
 type RoleAssignment {
   role: ThemeRole
-  material: Material
+  material: gunbc.design.material.Material
   alpha_pct: Int
 }
 

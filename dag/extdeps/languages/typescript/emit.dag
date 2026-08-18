@@ -1,8 +1,8 @@
 module extdeps.languages.typescript.emit
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.typescriptlang.org/docs/handbook/"
   }
@@ -25,7 +25,7 @@ data ts_container_templates: Map<String, String> = {
   "boolean_algebra": "boolean"
 }
 
-data ts_simple_method_specs: List<SimpleMethodSpec> = [
+data ts_simple_method_specs: List<std.emit_model.SimpleMethodSpec> = [
   { method_name: "count",           template: "\{recv\}.length",                              wraps_result: false },
   { method_name: "join",            template: "\{recv\}.join(\{arg\})",                       wraps_result: false },
   { method_name: "split",           template: "\{recv\}.split(\{arg\})",                      wraps_result: false },

@@ -747,7 +747,7 @@ fn dashboard_apply_provision_op(
 }
 
 type DashboardProvisionStepReceipt {
-  kind: NonEmptyStr
+  kind: std.types.NonEmptyStr
   target: String
   success: Bool
   detail: String
@@ -855,12 +855,12 @@ fn dashboard_production_snapshots_equal(
 data dashboard_production_peer_note: String = "PRODUCTION IS A PEER ON THE APPLYING HOST, and until this type existed the parameter forced every apply to name one whether the host had one or not. Both uses assume locality without saying so: the isolation check compares owned paths on one filesystem, and the liveness read-back curls 127.0.0.1 at production's declared port. Passing a remote instance satisfies neither — it compares this machine's paths against another machine's declarations, then probes a loopback port nobody here is serving.\\n\\nThat is exactly how srv2's first apply failed. srv1-live was passed as production because the parameter demanded an instance; its repo_root happened to exist here as a hand-made symlink so the git half of the probe SUCCEEDED, and the refusal surfaced only as a curl connection error against port 8080 — a true message about a check that should never have run. The remedy for that refusal is not to start a server; it is to stop claiming srv1 is a peer of anything on srv2.\\n\\nNoProductionPeer is a DECLARATION, not a skipped check. A host with no production dashboard has nothing to be disjoint from and nothing whose liveness could be disturbed, so both obligations are discharged by the shape of the argument rather than silently bypassed inside the checks — and the reading below stays type-distinct across before and after, so an apply cannot pair a real snapshot with an absent one and call the difference untouched."
 
 type DashboardProductionPeer
-  = ProductionPeer { instance: HostDashboardInstance }
-  | NoProductionPeer { host: NonEmptyStr }
+  = ProductionPeer { instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance }
+  | NoProductionPeer { host: std.types.NonEmptyStr }
 
 type DashboardProductionReading
   = ProductionRead { snapshot: DashboardProductionSnapshot }
-  | ProductionUnpeered { host: NonEmptyStr }
+  | ProductionUnpeered { host: std.types.NonEmptyStr }
 
 fn dashboard_peer_isolation_ok(
   instance: HostDashboardInstance,
@@ -1102,18 +1102,18 @@ data preflight_provider_deadlock_note: String = "A FRESH HOST COULD NOT REACH TH
 
 type DashboardApplyPreflightResult
   = DashboardApplyPreflightReady {
-      instance_id: NonEmptyStr,
-      source_revision: CommitSha,
+      instance_id: std.types.NonEmptyStr,
+      source_revision: std.types.CommitSha,
     }
   | DashboardApplyPreflightBootstrapPending {
-      instance_id: NonEmptyStr,
-      source_revision: CommitSha,
+      instance_id: std.types.NonEmptyStr,
+      source_revision: std.types.CommitSha,
       state_root: std.types.FilePath,
       remediation: String,
     }
   | DashboardApplyPreflightRefused {
-      instance_id: NonEmptyStr,
-      step: NonEmptyStr,
+      instance_id: std.types.NonEmptyStr,
+      step: std.types.NonEmptyStr,
       detail: String,
     }
 
@@ -1287,7 +1287,7 @@ type DashboardBootstrapPreflight
   = DashboardBootstrapReady { bootstrap_root: std.types.FilePath }
   | DashboardBootstrapRefused {
       bootstrap_root: std.types.FilePath,
-      reason: NonEmptyStr,
+      reason: std.types.NonEmptyStr,
     }
   | DashboardBootstrapUnobserved {
       path: std.types.FilePath,
@@ -1620,13 +1620,13 @@ fn dashboard_apply_preflight_json_value(
 
 type DashboardInstanceApplyResult
   = DashboardApplyConverged {
-      instance_id: NonEmptyStr,
+      instance_id: std.types.NonEmptyStr,
       receipts: List<DashboardProvisionStepReceipt>,
-      observed: DashboardInstanceObserved,
+      observed: gunbc.roadmap_dashboard_instance.DashboardInstanceObserved,
     }
   | DashboardApplyRefused {
-      instance_id: NonEmptyStr,
-      step: NonEmptyStr,
+      instance_id: std.types.NonEmptyStr,
+      step: std.types.NonEmptyStr,
       detail: String,
       receipts: List<DashboardProvisionStepReceipt>,
     }
@@ -2031,7 +2031,7 @@ type DashboardProviderReadiness
       remediation: String,
     }
   | ProviderReadinessRefused {
-      stage: NonEmptyStr,
+      stage: std.types.NonEmptyStr,
       reason: String,
     }
 

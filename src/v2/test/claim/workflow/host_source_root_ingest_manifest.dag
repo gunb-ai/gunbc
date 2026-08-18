@@ -3,7 +3,7 @@ module v2.test.workflow.host_source_root_ingest_manifest
 
 data host_source_root_ingest_content_hash: String = ""
 
-data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageReceipt = SourceRootProvenanceCoverageReceipt {
+data host_source_root_ingest_coverage_receipt: v2.compiler.source_authority.SourceRootProvenanceCoverageReceipt = v2.compiler.source_authority.SourceRootProvenanceCoverageReceipt {
   ingest_read_count: 0,
   produced_row_count: 0,
   discovered_source_refs_digest: DiscoveredSourceRefsDigestUnavailable {
@@ -14,12 +14,12 @@ data host_source_root_ingest_coverage_receipt: SourceRootProvenanceCoverageRecei
   coverage: SourceRootManifestAbsent
 }
 
-data host_source_root_ingest: SourceRootIngest = Empty
+data host_source_root_ingest: v2.compiler.source_authority.SourceRootIngest = Empty
 
-data host_source_root_closure_refs: List<SourceRef> = Empty
+data host_source_root_closure_refs: List<v2.compiler.source_authority.SourceRef> = Empty
 
-data host_compiler_closure_admission: Admission = Admission {
-  subject: ResolutionSubject {
+data host_compiler_closure_admission: v2.compiler.name_resolve.Admission = v2.compiler.name_resolve.Admission {
+  subject: v2.compiler.name_resolve.ResolutionSubject {
     name: Cons {
       head: ^v2,
       tail: Cons { head: ^compiler, tail: Cons { head: ^compile, tail: Empty } }
@@ -28,10 +28,10 @@ data host_compiler_closure_admission: Admission = Admission {
   imports: Empty
 }
 
-data frontier_probe_entry_source_ref: SourceRef = SourceRef {
+data frontier_probe_entry_source_ref: v2.compiler.source_authority.SourceRef = v2.compiler.source_authority.SourceRef {
   path: "",
   source_root: DagTree,
-  content_hash: Fnv1a64(Fnv1a64Structural { digest: "0000000000000000" })
+  content_hash: Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "0000000000000000" })
 }
 
 data frontier_probe_entry_module_path: String = ""

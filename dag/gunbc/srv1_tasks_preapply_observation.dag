@@ -24,7 +24,7 @@ type Srv1TasksAncestorRead {
 
 type Srv1TasksUnitObservation
   = Srv1TasksUnitObserved {
-      unit: NonEmptyStr
+      unit: std.types.NonEmptyStr
       tasks_max_effective: String
       tasks_current: String
       control_group: String
@@ -32,7 +32,7 @@ type Srv1TasksUnitObservation
       pids_current_raw: String
       ancestor: Srv1TasksAncestorRead
     }
-  | Srv1TasksUnitObservationRefused { unit: NonEmptyStr, cause: String }
+  | Srv1TasksUnitObservationRefused { unit: std.types.NonEmptyStr, cause: String }
 
 type Srv1TasksPreApplyReceipt
   = Srv1TasksPreApplyObserved {

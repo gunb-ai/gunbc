@@ -1,48 +1,48 @@
 module v2.test.claim.c_compilation_unit_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_mod_a: ModuleId = "mod.a" as NonEmptyStr
-data witness_mod_b: ModuleId = "mod.b" as NonEmptyStr
-data witness_mod_c: ModuleId = "mod.c" as NonEmptyStr
-data witness_mod_a1: ModuleId = "mod.a1" as NonEmptyStr
-data witness_mod_a2: ModuleId = "mod.a2" as NonEmptyStr
+data witness_mod_a: v2.std.compilers.compilation_unit.ModuleId = "mod.a" as std.types.NonEmptyStr
+data witness_mod_b: v2.std.compilers.compilation_unit.ModuleId = "mod.b" as std.types.NonEmptyStr
+data witness_mod_c: v2.std.compilers.compilation_unit.ModuleId = "mod.c" as std.types.NonEmptyStr
+data witness_mod_a1: v2.std.compilers.compilation_unit.ModuleId = "mod.a1" as std.types.NonEmptyStr
+data witness_mod_a2: v2.std.compilers.compilation_unit.ModuleId = "mod.a2" as std.types.NonEmptyStr
 
-data witness_unit_one: CompilationUnitId = "cu-one" as CompilationUnitId
-data witness_unit_two: CompilationUnitId = "cu-two" as CompilationUnitId
+data witness_unit_one: v2.std.compilers.compilation_unit.CompilationUnitId = "cu-one" as v2.std.compilers.compilation_unit.CompilationUnitId
+data witness_unit_two: v2.std.compilers.compilation_unit.CompilationUnitId = "cu-two" as v2.std.compilers.compilation_unit.CompilationUnitId
 
-data hostile_parent_dir: CompilationUnitId = "../peer" as CompilationUnitId
-data hostile_slash: CompilationUnitId = "a/b" as CompilationUnitId
-data hostile_backslash: CompilationUnitId = "a\\b" as CompilationUnitId
-data hostile_quote: CompilationUnitId = "a\"b" as CompilationUnitId
-data hostile_newline: CompilationUnitId = "a\nb" as CompilationUnitId
-data hostile_cr: CompilationUnitId = "a\u{000d}b" as CompilationUnitId
-data hostile_nul: CompilationUnitId = "a\u{0000}b" as CompilationUnitId
-data hostile_dot: CompilationUnitId = "." as CompilationUnitId
-data hostile_dotdot: CompilationUnitId = ".." as CompilationUnitId
-data hostile_percent: CompilationUnitId = "a%b" as CompilationUnitId
-data hostile_high_codepoint: CompilationUnitId = "aéb" as CompilationUnitId
-data collide_left: CompilationUnitId = "a/b" as CompilationUnitId
-data collide_right: CompilationUnitId = "a%00002fb" as CompilationUnitId
-data witness_unit_a: CompilationUnitId = "cu-a" as CompilationUnitId
-data witness_unit_b: CompilationUnitId = "cu-b" as CompilationUnitId
+data hostile_parent_dir: v2.std.compilers.compilation_unit.CompilationUnitId = "../peer" as v2.std.compilers.compilation_unit.CompilationUnitId
+data hostile_slash: v2.std.compilers.compilation_unit.CompilationUnitId = "a/b" as v2.std.compilers.compilation_unit.CompilationUnitId
+data hostile_backslash: v2.std.compilers.compilation_unit.CompilationUnitId = "a\\b" as v2.std.compilers.compilation_unit.CompilationUnitId
+data hostile_quote: v2.std.compilers.compilation_unit.CompilationUnitId = "a\"b" as v2.std.compilers.compilation_unit.CompilationUnitId
+data hostile_newline: v2.std.compilers.compilation_unit.CompilationUnitId = "a\nb" as v2.std.compilers.compilation_unit.CompilationUnitId
+data hostile_cr: v2.std.compilers.compilation_unit.CompilationUnitId = "a\u{000d}b" as v2.std.compilers.compilation_unit.CompilationUnitId
+data hostile_nul: v2.std.compilers.compilation_unit.CompilationUnitId = "a\u{0000}b" as v2.std.compilers.compilation_unit.CompilationUnitId
+data hostile_dot: v2.std.compilers.compilation_unit.CompilationUnitId = "." as v2.std.compilers.compilation_unit.CompilationUnitId
+data hostile_dotdot: v2.std.compilers.compilation_unit.CompilationUnitId = ".." as v2.std.compilers.compilation_unit.CompilationUnitId
+data hostile_percent: v2.std.compilers.compilation_unit.CompilationUnitId = "a%b" as v2.std.compilers.compilation_unit.CompilationUnitId
+data hostile_high_codepoint: v2.std.compilers.compilation_unit.CompilationUnitId = "aéb" as v2.std.compilers.compilation_unit.CompilationUnitId
+data collide_left: v2.std.compilers.compilation_unit.CompilationUnitId = "a/b" as v2.std.compilers.compilation_unit.CompilationUnitId
+data collide_right: v2.std.compilers.compilation_unit.CompilationUnitId = "a%00002fb" as v2.std.compilers.compilation_unit.CompilationUnitId
+data witness_unit_a: v2.std.compilers.compilation_unit.CompilationUnitId = "cu-a" as v2.std.compilers.compilation_unit.CompilationUnitId
+data witness_unit_b: v2.std.compilers.compilation_unit.CompilationUnitId = "cu-b" as v2.std.compilers.compilation_unit.CompilationUnitId
 
-data witness_type_struct_a: Symbol = ^witness_cu_struct_a
-data witness_type_struct_b: Symbol = ^witness_cu_struct_b
-data witness_type_point: Symbol = ^witness_cu_point
-data witness_type_int: Symbol = ^witness_cu_int
-data witness_fn_use_point: Symbol = ^witness_cu_use_point
+data witness_type_struct_a: v2.std.node.Symbol = ^witness_cu_struct_a
+data witness_type_struct_b: v2.std.node.Symbol = ^witness_cu_struct_b
+data witness_type_point: v2.std.node.Symbol = ^witness_cu_point
+data witness_type_int: v2.std.node.Symbol = ^witness_cu_int
+data witness_fn_use_point: v2.std.node.Symbol = ^witness_cu_use_point
 
-fn witness_type_atom(sym: Symbol) -> Node {
+fn witness_type_atom(sym: v2.std.node.Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
 }
 
-fn witness_struct_field_by_value(sym: Symbol) -> Node {
+fn witness_struct_field_by_value(sym: v2.std.node.Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^member },
         target: witness_type_atom(sym: sym),
       }
@@ -50,20 +50,20 @@ fn witness_struct_field_by_value(sym: Symbol) -> Node {
   )
 }
 
-fn witness_struct_field_by_pointer(sym: Symbol) -> Node {
+fn witness_struct_field_by_pointer(sym: v2.std.node.Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^next },
         target: node_synthetic(
           kind: TypeNode { connective: Arrow },
           children: [
-            Edge {
+            v2.std.node.Edge {
               label: Named { name: ^domain },
               target: witness_type_atom(sym: sym),
             },
-            Edge {
+            v2.std.node.Edge {
               label: Named { name: ^codomain },
               target: witness_type_atom(sym: witness_type_int),
             }
@@ -78,7 +78,7 @@ fn witness_point_struct_conj_body() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^x },
         target: witness_type_atom(sym: witness_type_int),
       }
@@ -92,11 +92,11 @@ fn witness_fn_taking_point_by_value() -> Node {
       connective: Arrow,
     },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^domain },
         target: witness_type_atom(sym: witness_type_point),
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^codomain },
         target: witness_type_atom(sym: witness_type_int),
       }
@@ -108,22 +108,22 @@ fn witness_exports_for_c() -> List<Node> {
   [witness_fn_taking_point_by_value()]
 }
 
-fn witness_type_defs_for_c() -> List<ModuleTypeDefinitionRow> {
+fn witness_type_defs_for_c() -> List<v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow> {
   [
-    ModuleTypeDefinitionRow {
+    v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow {
       identity: witness_type_point,
       definition: witness_point_struct_conj_body(),
     }
   ]
 }
 
-fn witness_triangle_dag() -> ModuleDag {
-  ModuleDag {
+fn witness_triangle_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
+  v2.std.compilers.compilation_unit.ModuleDag {
     modules: [witness_mod_a, witness_mod_b, witness_mod_c],
     edges: [
-      ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
-      ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
-      ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
+      v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
+      v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
+      v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
     ],
     exports: empty_map()
       |> map_insert(witness_mod_a, Empty)
@@ -136,19 +136,19 @@ fn witness_triangle_dag() -> ModuleDag {
   }
 }
 
-fn witness_two_unit_assignment() -> Map<ModuleId, CompilationUnitId> {
+fn witness_two_unit_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
   empty_map()
     |> map_insert(witness_mod_a, witness_unit_one)
     |> map_insert(witness_mod_b, witness_unit_one)
     |> map_insert(witness_mod_c, witness_unit_two)
 }
 
-fn witness_mutual_recursive_dag() -> ModuleDag {
-  ModuleDag {
+fn witness_mutual_recursive_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
+  v2.std.compilers.compilation_unit.ModuleDag {
     modules: [witness_mod_a, witness_mod_b],
     edges: [
-      ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
-      ModuleDagEdge { from: witness_mod_b, to: witness_mod_a },
+      v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
+      v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_b, to: witness_mod_a },
     ],
     exports: empty_map()
       |> map_insert(witness_mod_a, Empty)
@@ -159,14 +159,14 @@ fn witness_mutual_recursive_dag() -> ModuleDag {
   }
 }
 
-fn witness_module_scc_split_assignment() -> Map<ModuleId, CompilationUnitId> {
+fn witness_module_scc_split_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
   empty_map()
     |> map_insert(witness_mod_a, witness_unit_a)
     |> map_insert(witness_mod_b, witness_unit_b)
 }
 
-fn witness_by_value_type_cycle_dag() -> ModuleDag {
-  ModuleDag {
+fn witness_by_value_type_cycle_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
+  v2.std.compilers.compilation_unit.ModuleDag {
     modules: [witness_mod_a, witness_mod_b],
     edges: [],
     exports: empty_map()
@@ -176,7 +176,7 @@ fn witness_by_value_type_cycle_dag() -> ModuleDag {
       |> map_insert(
         witness_mod_a,
         [
-          ModuleTypeDefinitionRow {
+          v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow {
             identity: witness_type_struct_a,
             definition: witness_struct_field_by_value(sym: witness_type_struct_b),
           }
@@ -185,7 +185,7 @@ fn witness_by_value_type_cycle_dag() -> ModuleDag {
       |> map_insert(
         witness_mod_b,
         [
-          ModuleTypeDefinitionRow {
+          v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow {
             identity: witness_type_struct_b,
             definition: witness_struct_field_by_value(sym: witness_type_struct_a),
           }
@@ -194,12 +194,12 @@ fn witness_by_value_type_cycle_dag() -> ModuleDag {
   }
 }
 
-fn witness_by_value_type_cycle_assignment() -> Map<ModuleId, CompilationUnitId> {
+fn witness_by_value_type_cycle_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
   witness_module_scc_split_assignment()
 }
 
-fn witness_pointer_type_cycle_dag() -> ModuleDag {
-  ModuleDag {
+fn witness_pointer_type_cycle_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
+  v2.std.compilers.compilation_unit.ModuleDag {
     modules: [witness_mod_a, witness_mod_b],
     edges: [],
     exports: empty_map()
@@ -209,7 +209,7 @@ fn witness_pointer_type_cycle_dag() -> ModuleDag {
       |> map_insert(
         witness_mod_a,
         [
-          ModuleTypeDefinitionRow {
+          v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow {
             identity: witness_type_struct_a,
             definition: witness_struct_field_by_pointer(sym: witness_type_struct_b),
           }
@@ -218,7 +218,7 @@ fn witness_pointer_type_cycle_dag() -> ModuleDag {
       |> map_insert(
         witness_mod_b,
         [
-          ModuleTypeDefinitionRow {
+          v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow {
             identity: witness_type_struct_b,
             definition: witness_struct_field_by_pointer(sym: witness_type_struct_a),
           }
@@ -227,16 +227,16 @@ fn witness_pointer_type_cycle_dag() -> ModuleDag {
   }
 }
 
-fn witness_pointer_type_cycle_assignment() -> Map<ModuleId, CompilationUnitId> {
+fn witness_pointer_type_cycle_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
   witness_module_scc_split_assignment()
 }
 
-fn witness_link_cyclic_dag() -> ModuleDag {
-  ModuleDag {
+fn witness_link_cyclic_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
+  v2.std.compilers.compilation_unit.ModuleDag {
     modules: [witness_mod_a1, witness_mod_a2, witness_mod_b],
     edges: [
-      ModuleDagEdge { from: witness_mod_a1, to: witness_mod_b },
-      ModuleDagEdge { from: witness_mod_b, to: witness_mod_a2 },
+      v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_a1, to: witness_mod_b },
+      v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_b, to: witness_mod_a2 },
     ],
     exports: empty_map()
       |> map_insert(witness_mod_a1, Empty)
@@ -249,14 +249,14 @@ fn witness_link_cyclic_dag() -> ModuleDag {
   }
 }
 
-fn witness_link_cyclic_assignment() -> Map<ModuleId, CompilationUnitId> {
+fn witness_link_cyclic_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
   empty_map()
     |> map_insert(witness_mod_a1, witness_unit_a)
     |> map_insert(witness_mod_a2, witness_unit_a)
     |> map_insert(witness_mod_b, witness_unit_b)
 }
 
-fn witness_partition_fold_two_units() -> List<CompilationUnit> {
+fn witness_partition_fold_two_units() -> List<v2.std.compilers.compilation_unit.CompilationUnit> {
   match c_partition_fold_outcome(
     module_dag: witness_triangle_dag(),
     assignment: witness_two_unit_assignment()

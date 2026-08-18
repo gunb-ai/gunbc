@@ -1,12 +1,12 @@
 module v2.test.rung_3_4_common
 
-data rung34_emit_host_rust_target_model: TargetModel = rust_target_model_staging()
+data rung34_emit_host_rust_target_model: v2.std.compilers.target_model.TargetModel = rust_target_model_staging()
 
 fn rung34_algebra_evidence_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^rung34_algebra_evidence_axis },
         target: claim_atom_node(s: ^rung34_inferred_algebra_symbol)
       }
@@ -24,8 +24,8 @@ fn rung34_descent_witness() -> Witness<v2.std.cardinality.TerminationProof> {
   }
 }
 
-fn rung34_inferred_tree(root: Node) -> InferredTree {
-  InferredTree {
+fn rung34_inferred_tree(root: Node) -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: root,
     facts: Map {
       lookup: fn(n) {
@@ -42,10 +42,10 @@ fn rung34_inferred_tree(root: Node) -> InferredTree {
 }
 
 fn rung34_roundtrip_input(fixture_subject: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^rung34_roundtrip_module_axis },
         target: fixture_subject
       }
@@ -54,7 +54,7 @@ fn rung34_roundtrip_input(fixture_subject: Node) -> Node {
 }
 }
 
-fn rung34_test_claim_subject(claim: TestClaim, evaluator_input: Node) -> TestClaimEvalSubject<Node> {
+fn rung34_test_claim_subject(claim: v2.std.verification.TestClaim, evaluator_input: Node) -> TestClaimEvalSubject<Node> {
   eval_test_claim_subject(
     claim: claim,
     context: eval_context(),
@@ -63,7 +63,7 @@ fn rung34_test_claim_subject(claim: TestClaim, evaluator_input: Node) -> TestCla
   )
 }
 
-fn rung34_roundtrip_run(claim: TestClaim, fixture_subject: Node) -> TestClaimRun<Node, RuntimeValue> {
+fn rung34_roundtrip_run(claim: v2.std.verification.TestClaim, fixture_subject: Node) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim(
     subject: rung34_test_claim_subject(
       claim: claim,
@@ -73,7 +73,7 @@ fn rung34_roundtrip_run(claim: TestClaim, fixture_subject: Node) -> TestClaimRun
 }
 
 fn rung34_emit_vs_eval_run(
-  claim: TestClaim,
+  claim: v2.std.verification.TestClaim,
   fixture_subject: Node
 ) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_emit_vs_eval(

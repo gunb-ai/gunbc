@@ -57,7 +57,7 @@ test fn w_rollins_operating_margin_red_on_perturbed_operating_income() -> Bool {
       let perturbed = usd_whole_dollars(count: usd_whole_dollars_count(oi) + 1000000)
       match derive_gross_margin_ratio_from_facts(
         revenue: rollins_fy2025_revenue,
-        gross_profit: FiledMonetaryFact { element: rollins_fy2025_operating_income.element, amount: Filed { amount: perturbed }, citation: rollins_fy2025_operating_income.citation }
+        gross_profit: extdeps.sec.facts.FiledMonetaryFact { element: rollins_fy2025_operating_income.element, amount: Filed { amount: perturbed }, citation: rollins_fy2025_operating_income.citation }
       ) {
         Present { value: ratio } =>
           !gross_margin_ratio_in_band(
@@ -78,7 +78,7 @@ test fn w_chemed_operating_margin_red_on_perturbed_operating_income() -> Bool {
       let perturbed = usd_whole_dollars(count: usd_whole_dollars_count(oi) + 1000000)
       match derive_gross_margin_ratio_from_facts(
         revenue: chemed_fy2025_revenue,
-        gross_profit: FiledMonetaryFact { element: chemed_fy2025_operating_income.element, amount: Filed { amount: perturbed }, citation: chemed_fy2025_operating_income.citation }
+        gross_profit: extdeps.sec.facts.FiledMonetaryFact { element: chemed_fy2025_operating_income.element, amount: Filed { amount: perturbed }, citation: chemed_fy2025_operating_income.citation }
       ) {
         Present { value: ratio } =>
           !gross_margin_ratio_in_band(

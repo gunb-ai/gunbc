@@ -1,36 +1,36 @@
 module v2.test.runtimes.effect_io_handler_claims
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn effect_io_claim_resource_arg(bytes: List<Byte>) -> RuntimeValue {
+fn effect_io_claim_resource_arg(bytes: List<Byte>) -> v2.std.runtime.RuntimeValue {
   RuntimePrimitive {
-    value: RuntimePrimitiveValue {
+    value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: effect_io_pure_unit_type_node(),
       bytes: bytes
     }
   }
 }
 
-fn effect_io_claim_resource_a() -> RuntimeValue {
+fn effect_io_claim_resource_a() -> v2.std.runtime.RuntimeValue {
   effect_io_claim_resource_arg(bytes: [])
 }
 
-fn effect_io_claim_resource_b() -> RuntimeValue {
+fn effect_io_claim_resource_b() -> v2.std.runtime.RuntimeValue {
   effect_io_claim_resource_arg(bytes: [Byte { bits: [true] }])
 }
 
-fn effect_io_claim_unrepresentable_arg() -> RuntimeValue {
+fn effect_io_claim_unrepresentable_arg() -> v2.std.runtime.RuntimeValue {
   RuntimeUnit {
-    value: RuntimeUnitValue {
+    value: v2.std.runtime.RuntimeUnitValue {
       unit_type: effect_io_pure_unit_type_node()
     }
   }
 }
 
-fn effect_io_claim_payload() -> RuntimeValue {
+fn effect_io_claim_payload() -> v2.std.runtime.RuntimeValue {
   RuntimeUnit {
-    value: RuntimeUnitValue {
+    value: v2.std.runtime.RuntimeUnitValue {
       unit_type: effect_io_pure_unit_type_node()
     }
   }

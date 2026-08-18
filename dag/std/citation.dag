@@ -14,8 +14,8 @@ data citation_sha256_pin_rung_note: String = "citation_exact_pin accepts Sha256D
 
 // Expected identity (Pin.expected_identity, authored) and observed identity (ObservedCitedRepresentation.observed_identity, wet-adapter minted) are independent facts. reconcile_citation_representation maximum conclusion is supplied-equals-supplied digest equality after identity join — the wet adapter mint is convention, not independent production evidence. A mock that echoes the expected pin into the observation arm passes only when bytes genuinely match; the echo itself is not verification. CitationVerificationReceipt names the join explicitly.
 type CitedRepresentationIdentity {
-  source: ExternalSubjectRef
-  access_route: Uri
+  source: extdeps.external_authority.ExternalSubjectRef
+  access_route: extdeps.uri.Uri
   byte_domain: RepresentationByteDomain
 }
 
@@ -33,13 +33,13 @@ type RepresentationByteDomain
 // Names WHICH BYTES are hashed — not which algorithm. RawResponseBody is the exact octet sequence received after transfer decoding and before interpretation. Later domains (DecodedContent, RenderedText, ExtractedPageContent) are reserved for CIT-1+ profiles; CIT-0 admits the type names only.
 type ObservedCitedRepresentation {
   identity: CitedRepresentationIdentity
-  media_type: MediaType
-  observed_identity: Sha256Digest
+  media_type: extdeps.http.server.MediaType
+  observed_identity: std.content_hash.Sha256Digest
 }
 
 type CitationRepresentationReconciliation
   = RepresentationMatch
-  | RepresentationMismatch { expected: Sha256Digest, observed: Sha256Digest }
+  | RepresentationMismatch { expected: std.content_hash.Sha256Digest, observed: std.content_hash.Sha256Digest }
   | RepresentationIdentityIncomparable {
       expected: CitedRepresentationIdentity,
       observed: CitedRepresentationIdentity,
@@ -47,8 +47,8 @@ type CitationRepresentationReconciliation
   | ObservationMissing
 
 type CitationVerificationRefusalCause
-  = RequestLocatorMismatch { expected: Uri, observed: Uri }
-  | HttpStatusNotSuccessful { status: HttpStatus }
+  = RequestLocatorMismatch { expected: extdeps.uri.Uri, observed: extdeps.uri.Uri }
+  | HttpStatusNotSuccessful { status: std.types.HttpStatus }
   | ResponseObservedWithoutRepresentationObservation {
       observation: CitationRetrievalObservation,
     }
@@ -80,14 +80,14 @@ type CitationVerificationReceipt<Selector> {
 }
 
 type FragmentSelector {
-  conforms_to: ExternalAuthority
-  value: NonEmptyStr
+  conforms_to: extdeps.external_authority.ExternalAuthority
+  value: std.types.NonEmptyStr
 }
 
 type TextQuoteSelector {
-  exact: NonEmptyStr
-  prefix: NonEmptyStr?
-  suffix: NonEmptyStr?
+  exact: std.types.NonEmptyStr
+  prefix: std.types.NonEmptyStr?
+  suffix: std.types.NonEmptyStr?
 }
 
 data citation_refusal_cause_note: String = "Every refusal cause is a typed coproduct arm carrying modeled values, not prose — the PinRefusalCause precedent in extdeps.pin. Causes are countable by class so migration frontiers burn down visibly."
@@ -99,7 +99,7 @@ type SelectorRefusalCause
   = TextPositionEndBeforeStart { start: std.integer.NonNegativeInt, end: std.integer.NonNegativeInt }
 
 type CitationAccessRefusalCause
-  = HttpAccessRefused { status: HttpStatus }
+  = HttpAccessRefused { status: std.types.HttpStatus }
 
 // CitationUnreachableCause arms are class-countable transport failures. TransportUnreachable is NOT an unclassifiable catch-all — it means a transport-layer failure outside DNS, TLS handshake, connection refused, and request timeout. Unclassifiable observations must land on a separate explicit arm when the transport observation layer lands.
 type CitationUnreachableCause
@@ -263,35 +263,35 @@ fn citation_target<Selector>(
 }
 
 type CitationRetrievalRequest {
-  locator: Uri
+  locator: extdeps.uri.Uri
 }
 
 type CitationRetrievalObservation
   = RepresentationRetrieved {
       request: CitationRetrievalRequest,
-      observed_at: EpochMs,
-      http_status: HttpStatus,
+      observed_at: std.types.EpochMs,
+      http_status: std.types.HttpStatus,
       observed: ObservedCitedRepresentation,
     }
   | ResponseObservedWithoutRepresentation {
       request: CitationRetrievalRequest,
-      observed_at: EpochMs,
-      http_status: HttpStatus,
+      observed_at: std.types.EpochMs,
+      http_status: std.types.HttpStatus,
     }
   | CitationAccessRefused {
       request: CitationRetrievalRequest,
-      observed_at: EpochMs,
+      observed_at: std.types.EpochMs,
       cause: CitationAccessRefusalCause,
     }
   | CitationUnreachable {
       request: CitationRetrievalRequest,
-      observed_at: EpochMs,
+      observed_at: std.types.EpochMs,
       cause: CitationUnreachableCause,
     }
   | CitationRateLimited {
       request: CitationRetrievalRequest,
-      observed_at: EpochMs,
-      retry_after: Second?,
+      observed_at: std.types.EpochMs,
+      retry_after: std.measure.Second?,
     }
 
 fn citation_verification_outcome_from_reconciliation<Selector>(
@@ -406,7 +406,7 @@ fn verify_citation_representation<Selector>(
 
 type CitationArtifactLayer
   = ObservingProductLayer
-  | UpstreamModuleLayer { module_path: NonEmptyStr }
+  | UpstreamModuleLayer { module_path: std.types.NonEmptyStr }
 
 type CitationLayerAdmission
   = CitationLayerAdmitted

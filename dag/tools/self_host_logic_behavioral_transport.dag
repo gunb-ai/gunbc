@@ -11,7 +11,7 @@ data slb_logic_source_rel: String = "dag/std/logic.dag"
 
 data slb_driver_main_source: String = "use v1_compiled::std_logic as emitted;\nuse v1_compiler::std_logic as seed;\n\nfn eq(e: emitted::Classical, s: seed::Classical) -> bool {\n    matches!(\n        (e, s),\n        (emitted::Classical::True, seed::Classical::True)\n            | (emitted::Classical::False, seed::Classical::False)\n    )\n}\n\nfn main() {\n    let inject_fault = std::env::args().any(|a| a == \"--inject-fault\");\n    let vals = [emitted::Classical::True, emitted::Classical::False];\n    let svals = [seed::Classical::True, seed::Classical::False];\n    let mut all_pass = true;\n    let mut cases = 0;\n\n    for i in 0..2 {\n        let call_on = if inject_fault && i == 0 { vals[1] } else { vals[i] };\n        let er = emitted::classical_not(call_on);\n        let sr = seed::classical_not(svals[i]);\n        let ok = eq(er, sr);\n        println!(\"not({:?}) emitted={:?} seed={:?} eq={}\", vals[i], er, sr, ok);\n        all_pass = all_pass && ok;\n        cases += 1;\n    }\n\n    for i in 0..2 {\n        for j in 0..2 {\n            let er = emitted::classical_and(vals[i], vals[j]);\n            let sr = seed::classical_and(svals[i], svals[j]);\n            let ok = eq(er, sr);\n            println!(\"and({:?},{:?}) emitted={:?} seed={:?} eq={}\", vals[i], vals[j], er, sr, ok);\n            all_pass = all_pass && ok;\n            cases += 1;\n\n            let er2 = emitted::classical_or(vals[i], vals[j]);\n            let sr2 = seed::classical_or(svals[i], svals[j]);\n            let ok2 = eq(er2, sr2);\n            println!(\"or({:?},{:?}) emitted={:?} seed={:?} eq={}\", vals[i], vals[j], er2, sr2, ok2);\n            all_pass = all_pass && ok2;\n            cases += 1;\n        }\n    }\n\n    println!(\"SELF_HOST_LOGIC_CASES_COMPARED: {}\", cases);\n\n    if all_pass {\n        println!(\"SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: PASS\");\n        std::process::exit(0);\n    } else {\n        println!(\"SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: FAIL\");\n        std::process::exit(1);\n    }\n}\n"
 
-data slb_scaffold_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: slb_driver_main_source + slb_cargo_toml — the hand-written Rust equivalence-comparison driver (imports emitted v1_compiled::std_logic and seed v1_compiler::std_logic, walks the Classical truth table, --inject-fault RED control) and its driver-crate manifest, both String carriers. These are the meta-harness scaffold for the weak self-host receipt, not a forked emit path: the module content under test (dag/std/logic.dag) is read live and emitted by the real gunbc binary; only the seed-vs-emitted oracle around it is authored by hand. Static config/driver strings handed to typed host ops (not modeled-emit-fn output spliced through string ops). DISSOLVES WHEN a modeled self-host behavioral-equivalence harness producer emits the comparison driver + manifest (parallel to emit_host_transport's typed-op migration) — retire these two string carriers then.")
+data slb_scaffold_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: slb_driver_main_source + slb_cargo_toml — the hand-written Rust equivalence-comparison driver (imports emitted v1_compiled::std_logic and seed v1_compiler::std_logic, walks the Classical truth table, --inject-fault RED control) and its driver-crate manifest, both String carriers. These are the meta-harness scaffold for the weak self-host receipt, not a forked emit path: the module content under test (dag/std/logic.dag) is read live and emitted by the real gunbc binary; only the seed-vs-emitted oracle around it is authored by hand. Static config/driver strings handed to typed host ops (not modeled-emit-fn output spliced through string ops). DISSOLVES WHEN a modeled self-host behavioral-equivalence harness producer emits the comparison driver + manifest (parallel to emit_host_transport's typed-op migration) — retire these two string carriers then.")
 
 data slb_receipt_pass_marker: String = "SELF_HOST_LOGIC_BEHAVIORAL_RECEIPT: PASS"
 
@@ -35,8 +35,8 @@ fn slb_cases_marker() -> String {
   concat("SELF_HOST_LOGIC_CASES_COMPARED: ", to_string(slb_corpus_cases))
 }
 
-fn slb_corpus() -> BehavioralCorpus {
-  BehavioralCorpus {
+fn slb_corpus() -> v2.compiler.self_host.promotion_admission.BehavioralCorpus {
+  v2.compiler.self_host.promotion_admission.BehavioralCorpus {
     identity: slb_corpus_identity,
     expected_cases: slb_corpus_cases
   }
@@ -81,7 +81,7 @@ fn slb_cargo_toml(root: String) -> String {
 // Catching the fault now requires the driver to REPORT the divergence it was made to
 // find, over the declared corpus. A nonzero exit with no such report is unavailable,
 // not caught.
-fn slb_comparison_observation() -> BehavioralComparisonObservation {
+fn slb_comparison_observation() -> v2.compiler.self_host.promotion_admission.BehavioralComparisonObservation {
   let root = git.Inspect.Toplevel()
   let logic_read = Filesystem.Read(path: slb_repo_path(root: root.path, rel: slb_logic_source_rel))
 
@@ -167,7 +167,7 @@ fn slb_comparison_observation() -> BehavioralComparisonObservation {
     ObservationUnavailable { cause: ^slb_fault_run_unreported }
   }
 
-  BehavioralComparisonObservation {
+  v2.compiler.self_host.promotion_admission.BehavioralComparisonObservation {
     corpus: slb_corpus(),
     cases_compared: slb_corpus_cases,
     build: build_verdict,

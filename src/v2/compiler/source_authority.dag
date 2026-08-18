@@ -5,24 +5,24 @@ module v2.compiler.source_authority
 data source_authority_module_note: String = "Wave 2 Gate-A flip lane: v2.compiler.source_authority is the cross-tree ingest and round-trip authority (parse→normalize→resolve→serialize laws over DagSourceReadWitness / SourceRootIngest). Curated seed-linked scaffold defers full tree behavioral oracle until emitter Rc/Optional coherence (#6775) greens rustc on the closure."
 
 type DagSourceAst {
-  tree: ParseTree
+  tree: v2.std.grammar.ParseTree
 }
 
 type NormalizedDagSourceAst {
-  tree: NormalizedTree
+  tree: v2.compiler.normalized_tree.NormalizedTree
 }
 
 type DagSemanticIr {
-  tree: ResolvedTree
+  tree: v2.compiler.resolve.ResolvedTree
 }
 
 type DagSourceReadWitness {
   source: Medium<String>
-  artifact: Artifact
+  artifact: v2.std.artifact.Artifact
 
-  compilation_unit: Symbol
+  compilation_unit: v2.std.node.Symbol
 
-  source_root: SourceRootRef
+  source_root: v2.std.cross_tree.import_model.SourceRootRef
 }
 
 type SourceRootIngest = FreeMonoid<DagSourceReadWitness>
@@ -43,7 +43,7 @@ type DiscoveredSourceRefsDigestUnavailableCause
   = DiscoveredSourceRefsDigestNoRefList { reason: String }
 
 type DiscoveredSourceRefsDigest
-  = DiscoveredSourceRefsDigestFromList { digest: Fnv1a64Structural }
+  = DiscoveredSourceRefsDigestFromList { digest: std.content_hash.Fnv1a64Structural }
   | DiscoveredSourceRefsDigestUnavailable {
       cause: DiscoveredSourceRefsDigestUnavailableCause
     }
@@ -144,8 +144,8 @@ fn source_root_overflow_never_empty_population_holds(
 
 type SourceIrArtifactProvenance {
   node: Node
-  artifact: Artifact
-  span_index: SpanIndex
+  artifact: v2.std.artifact.Artifact
+  span_index: v2.std.provenance.SpanIndex
 }
 
 data source_ref_authority_note: String = "Stage 0 of docs/plans/ingest-manifest-source-ref-carrier-design.md §6: the typed reference to a STORAGE REALIZATION. Declared here, with the path⇄module binding authority, because both the ingest-manifest rows and the later Phase-3 host-effect boundary must consume ONE spelling — established before it has two consumers rather than reconciled after them (§3).
@@ -166,14 +166,14 @@ dissolve-on: the v1 tokenizer being next touched or deleted, at which point the 
 
 type SourceStorageIdentity {
   path: String
-  source_root: SourceRootRef
+  source_root: v2.std.cross_tree.import_model.SourceRootRef
 }
 
 // Storage realization identity for a manifest SourceRef row: path plus source_root only. Content hash is a separate observation layered on SourceRef. Closure population uniqueness is enforced at storage identity; two rows sharing storage but disagreeing on content_hash is a typed storage-hash conflict, not two valid refs.
 type SourceRef {
   path: String
-  source_root: SourceRootRef
-  content_hash: ContentHash
+  source_root: v2.std.cross_tree.import_model.SourceRootRef
+  content_hash: std.content_hash.ContentHash
 }
 
 fn source_storage_identity_from_ref(ref: SourceRef) -> SourceStorageIdentity {
@@ -202,7 +202,7 @@ fn source_storage_identity_digest(storage: SourceStorageIdentity) -> Fnv1a64Stru
 }
 
 type SourceRefContentHashStructural
-  = SourceRefContentHashStructuralOk { digest: Fnv1a64Structural }
+  = SourceRefContentHashStructuralOk { digest: std.content_hash.Fnv1a64Structural }
   | SourceRefContentHashStructuralNonFnv1a64
 
 fn source_ref_content_hash_structural(hash: ContentHash) -> SourceRefContentHashStructural {
@@ -225,7 +225,7 @@ fn source_ref_identity_digest_from_structural(
 }
 
 type SourceRefListDigestBuild
-  = SourceRefListDigestOk { digest: Fnv1a64Structural }
+  = SourceRefListDigestOk { digest: std.content_hash.Fnv1a64Structural }
   | SourceRefListDigestNonStructuralRefused { path: String }
 
 data source_ref_list_digest_seed: String = "source-ref-closure-list"
@@ -483,13 +483,13 @@ fn source_ref_content_hash_mismatch_diagnostic(
 type SourceRefReadResult
   = SourceRefReadAccepted {
       witness: DagSourceReadWitness,
-      observed_hash: ContentHash
+      observed_hash: std.content_hash.ContentHash
     }
   | SourceRefFilesystemReadRefused { ref: SourceRef, error: String }
   | SourceRefReadHashMismatch {
       ref: SourceRef,
-      expected: ContentHash,
-      observed: ContentHash
+      expected: std.content_hash.ContentHash,
+      observed: std.content_hash.ContentHash
     }
 
 data source_ref_read_result_note: String = "Single filesystem observation for a SourceRef read-through. Accepted carries the witness and the observed hash from the SAME read. Refused and HashMismatch never perform a second read to reconstruct failure detail."
@@ -604,16 +604,16 @@ fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> Outcome<SourceR
 data module_storage_binding_authority_note: String = "Phase 1 of docs/plans/module-identity-storage-binding-design.md §2: a module is a node (containment subtree); a file is ONE storage realization of module content (§2 Realization). The path⇄module binding is therefore DERIVED at parse — the compiler parsed the files and knows which modules came out — never authored. This is the single home for that fact. It once shared the job with 27 hand-authored FrontierQualifiedModuleBinding rows in the self-host frontier module, kept in step by a standing parity witness; those rows and that witness are deleted with the frontier roster, so the duality this sentence used to describe as an interim is closed and the host-side build_module_path_index is now the only other projection. Task 4 repointed the host producer through v1_compiler_parse (src/v1/stage0/src/module_path_index); DeclarationScanned deleted. Scope is the LIVE 1:1 binding the tree enforces today; many-to-many (fragment identity/order, several-modules-one-file) is a NAMED DEFERRAL until a consumer prices it (§6), never a silent assumption. What lands now is the provenance coproduct, so zero-file produced modules are representable honestly rather than pretending they came from parse."
 
 type ModuleStorageProvenance
-  = ParsedFromSource { artifact: Artifact, span_index: SpanIndex }
-  | ProducedByBehavior { producer: Symbol }
+  = ParsedFromSource { artifact: v2.std.artifact.Artifact, span_index: v2.std.provenance.SpanIndex }
+  | ProducedByBehavior { producer: v2.std.node.Symbol }
 
 data module_storage_host_parse_note: String = "Task 4 (module-identity-storage-binding-design.md Phase 1): the host producer build_module_path_index (src/v1/stage0/src/module_path_index) routes through v1_compiler_parse::parse — the same bootstrap parse path the in-graph oracle uses at the module-name grain — so host rows are ParsedFromSource, not a parallel substring scan. DeclarationScanned was deleted with this repoint: it existed only to record honestly that extract_module_path never parsed; keeping it after the repoint would be a second way to say the same thing (§3). Bootstrap host emission records ident_span byte ranges in span_index via span_index_record; full OccurrenceId mint parity with v2.compiler.parse's stamp pipeline is a named follow-on (dissolve-on: v1 bootstrap parse stamps NodeOccurrenceId the way parse_production_prepared does)."
 
 // Host manifest emission (discover_source_root_ingest --emit-module-binding-manifest) records the module declaration's ident_span as a FromSource Textual locus in span_index. The v2.std.node.OccurrenceId is keyed by the span start offset within the file — deterministic and sufficient for binding-authority consumers that only need file⇄module, not full occurrence navigation. It is NOT the v2 parse stamp's minted occurrence graph; conflating the two would fabricate stamps the bootstrap parser never produced (§5).
 type ModuleStorageBinding {
-  module: QualifiedName
+  module: v2.std.qualified_name.QualifiedName
   provenance: ModuleStorageProvenance
-  source_root: SourceRootRef
+  source_root: v2.std.cross_tree.import_model.SourceRootRef
 }
 
 type ModuleStorageIndex = FreeMonoid<ModuleStorageBinding>
@@ -623,7 +623,7 @@ type ModuleStorageFoldState
       bindings: ModuleStorageIndex
     }
   | ModuleStorageFoldFailed {
-      diagnostics: NonEmptyDiagnostics
+      diagnostics: v2.std.diagnostic.NonEmptyDiagnostics
     }
 
 type SourceAstEqual {
@@ -643,7 +643,7 @@ type NormalizedSourceAstEqual {
 
 type DeterministicDagSourceSerializerLaw {
   canonical_section: String
-  declared_fidelity: DecodeFidelity
+  declared_fidelity: extdeps.communication.medium.DecodeFidelity
 }
 
 type NormalizedDagSourceParsePrintLaw {
@@ -1197,10 +1197,10 @@ fn source_ir_node_artifact_provenance(
 
 type NodeArtifactProvenanceFoldState
   = NodeArtifactProvenanceFoldOk {
-      provenance: FreeMonoid<NodeArtifactProvenance>
+      provenance: FreeMonoid<v2.std.artifact.NodeArtifactProvenance>
     }
   | NodeArtifactProvenanceFoldFailed {
-      diagnostics: NonEmptyDiagnostics
+      diagnostics: v2.std.diagnostic.NonEmptyDiagnostics
     }
 
 fn node_artifact_provenance_fold_step(

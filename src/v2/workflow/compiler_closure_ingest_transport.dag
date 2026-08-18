@@ -27,7 +27,7 @@ fn closure_manifest_emit_args(entry: String, manifest_dir: String) -> List<Strin
 fn run_closure_ingest_overlay_claims(
   root: String,
   manifest_dir: String,
-  claims: List<ClaimRun>
+  claims: List<tools.host_prelude.ClaimRun>
 ) -> Bool {
   let emitted = gunbc.WitnessBin.Run(
     workdir: root,
@@ -63,7 +63,7 @@ fn run_closure_boundary_overlay_claims(
     run_gunbc_claims(
       source_roots: concat(witness_layer_roots, [manifest_dir]),
       claims: [
-        ClaimRun {
+        tools.host_prelude.ClaimRun {
           entry: closure_boundary_test_entry,
           function: closure_boundary_witness
         }
@@ -78,8 +78,8 @@ func run_compiler_closure_ingest_gate_ready(root: String) -> Bool {
     let pre_overlay = run_gunbc_claims(
       source_roots: witness_layer_roots,
       claims: [
-        ClaimRun { entry: closure_test_entry, function: closure_witness_layer_roots },
-        ClaimRun { entry: closure_gap4_entry, function: closure_gap4_witness }
+        tools.host_prelude.ClaimRun { entry: closure_test_entry, function: closure_witness_layer_roots },
+        tools.host_prelude.ClaimRun { entry: closure_gap4_entry, function: closure_gap4_witness }
       ]
     )
     if pre_overlay {
@@ -93,9 +93,9 @@ func run_compiler_closure_ingest_gate_ready(root: String) -> Bool {
             root: root,
             manifest_dir: manifest_dir.path,
             claims: [
-              ClaimRun { entry: closure_test_entry, function: closure_witness_module_count },
-              ClaimRun { entry: closure_test_entry, function: closure_witness_receipt },
-              ClaimRun { entry: closure_test_entry, function: closure_overflow_witness }
+              tools.host_prelude.ClaimRun { entry: closure_test_entry, function: closure_witness_module_count },
+              tools.host_prelude.ClaimRun { entry: closure_test_entry, function: closure_witness_receipt },
+              tools.host_prelude.ClaimRun { entry: closure_test_entry, function: closure_overflow_witness }
             ]
           )
           let boundary_dir = shell.Mktemp.DirWithTemplate(

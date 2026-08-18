@@ -1,23 +1,23 @@
 module v2.test.emit.rust_field_access_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_field_access_emit_root: Node = dag_field_access_arrow_with_body_fixture
 
 fn rust_field_access_emit_wrong_field_body() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Transform },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: ^dag_token_dot)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: ^dag_binding_param_r)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: dag_type_atom_node(identity: ^dag_binding_pick_lit_one)
       }
@@ -34,18 +34,18 @@ fn rust_field_access_emit_wrong_field_root() -> Node {
   )
 }
 
-fn rust_field_access_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
+fn rust_field_access_emit_facts_miss(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   optional_absent()
 }
 
-fn rust_field_access_emit_inferred_tree_for(root: Node) -> InferredTree {
-  InferredTree {
+fn rust_field_access_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: root,
     facts: Map { lookup: rust_field_access_emit_facts_miss }
   }
 }
 
-fn rust_field_access_emit_from_root(root: Node, target: TargetModel) -> Outcome<Medium<String>> {
+fn rust_field_access_emit_from_root(root: Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
   emit(tree: rust_field_access_emit_inferred_tree_for(root: root), target: target)
 }
 

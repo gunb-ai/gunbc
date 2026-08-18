@@ -4,22 +4,22 @@ module v2.lens.affected_set.corpus_dependency_view
 data corpus_dependency_view_resolve_budget: Minute = minute(count: 90)
 
 type CorpusDependencyViewResolvePhaseMark {
-  frontend_done: Millisecond
-  normalize_done: Millisecond
-  reconcile_done: Millisecond
-  view_build_done: Millisecond
+  frontend_done: std.measure.Millisecond
+  normalize_done: std.measure.Millisecond
+  reconcile_done: std.measure.Millisecond
+  view_build_done: std.measure.Millisecond
 }
 
 type CorpusDependencyViewMeasurementVerdict
   = Completed {
-      resolve_wall: Millisecond,
-      view_build_wall: Millisecond,
+      resolve_wall: std.measure.Millisecond,
+      view_build_wall: std.measure.Millisecond,
       edge_count: Int,
       decl_count: Int
     }
   | WallPricedAbort {
-      aborted_wall: Millisecond
-      budget: Minute
+      aborted_wall: std.measure.Millisecond
+      budget: std.measure.Minute
       phase_marks: CorpusDependencyViewResolvePhaseMark
       last_phase: String
     }

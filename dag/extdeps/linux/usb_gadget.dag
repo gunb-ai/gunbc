@@ -10,31 +10,31 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type MassStorageLun {
-  backing_device: NonEmptyStr
+  backing_device: std.types.NonEmptyStr
   cdrom: Bool
   read_only: Bool
   removable: Bool
 }
 
 type UsbGadget {
-  config_root: NonEmptyStr
-  name: NonEmptyStr
-  id_vendor: NonEmptyStr
-  id_product: NonEmptyStr
-  manufacturer: NonEmptyStr
-  product: NonEmptyStr
-  serial: NonEmptyStr
-  config_label: NonEmptyStr
+  config_root: std.types.NonEmptyStr
+  name: std.types.NonEmptyStr
+  id_vendor: std.types.NonEmptyStr
+  id_product: std.types.NonEmptyStr
+  manufacturer: std.types.NonEmptyStr
+  product: std.types.NonEmptyStr
+  serial: std.types.NonEmptyStr
+  config_label: std.types.NonEmptyStr
   lun: MassStorageLun
-  udc: NonEmptyStr
+  udc: std.types.NonEmptyStr
 }
 
 type ConfigfsOp
-  = ConfigfsMkdir { path: NonEmptyStr }
-  | ConfigfsWriteAttr { path: NonEmptyStr, value: String }
-  | ConfigfsSymlink { target: NonEmptyStr, link: NonEmptyStr }
-  | ConfigfsRemoveLink { link: NonEmptyStr }
-  | ConfigfsRmdir { path: NonEmptyStr }
+  = ConfigfsMkdir { path: std.types.NonEmptyStr }
+  | ConfigfsWriteAttr { path: std.types.NonEmptyStr, value: String }
+  | ConfigfsSymlink { target: std.types.NonEmptyStr, link: std.types.NonEmptyStr }
+  | ConfigfsRemoveLink { link: std.types.NonEmptyStr }
+  | ConfigfsRmdir { path: std.types.NonEmptyStr }
 
 fn usb_gadget_dir(gadget: UsbGadget) -> NonEmptyStr {
   join([gadget.config_root as String, "/", gadget.name as String], "") as NonEmptyStr

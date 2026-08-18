@@ -6,21 +6,21 @@ module gunbc.bmc_fan_converge
 data bmc_fan_atomic_transaction_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: replace the phase-partial mutation refusal when one atomically published content-addressed backup manifest binds manifest identity, exact target and stable BMC identity, firmware, config path, before/backup digests, and creation generation; restore proves the manifest identity, restored-byte digest, controller readback, and bounded thermal/tach monitoring receipt. Until then the live actuator is observation-only and cannot mutate.")
 
 type BmcFanConvergeTarget {
-  host: ComputeHost
-  board: BaseboardModel
-  onboarding: BmcOnboardingPlan
-  projection: BmcFanPolicyProjectionCapability?
-  durability_generation: StatePerturbationGeneration
-  durability_evidence_construction: BmcFanDurabilityEvidenceConstruction?
-  durability_evidence: List<BmcFanDurabilityEvidence>
+  host: gunbc.fleet_intent.ComputeHost
+  board: extdeps.boards.types.BaseboardModel
+  onboarding: gunbc.bmc_onboarding.BmcOnboardingPlan
+  projection: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability?
+  durability_generation: std.state_durability.StatePerturbationGeneration
+  durability_evidence_construction: gunbc.fleet_bmc_state.BmcFanDurabilityEvidenceConstruction?
+  durability_evidence: List<gunbc.bmc_fan_projection.BmcFanDurabilityEvidence>
   ssh_identity: BmcFanSshIdentityAdmission
-  credential_ref: SecretRef
+  credential_ref: extdeps.cloud.gcp.secret_ref.SecretRef
 }
 
 type BmcFanSshIdentityAdmission {
-  target: HostIdentity
-  known_hosts_path: NonEmptyStr
-  expected_machine_id_path: NonEmptyStr
+  target: product.placement_supply.HostIdentity
+  known_hosts_path: std.types.NonEmptyStr
+  expected_machine_id_path: std.types.NonEmptyStr
 }
 
 fn bmc_fan_exact_target_admission_matches(
@@ -53,11 +53,11 @@ fn bmc_fan_cooling_refusal_reason(verdict: CoolingCatalogVerdict) -> String {
 }
 
 type BmcFanTypedObservationPlan {
-  config_path: NonEmptyStr
-  controller_service: NonEmptyStr
-  controller_zone_path: NonEmptyStr
-  tach_sensors: List<NonEmptyStr>
-  temperature_sensors: List<NonEmptyStr>
+  config_path: std.types.NonEmptyStr
+  controller_service: std.types.NonEmptyStr
+  controller_zone_path: std.types.NonEmptyStr
+  tach_sensors: List<std.types.NonEmptyStr>
+  temperature_sensors: List<std.types.NonEmptyStr>
 }
 
 fn bmc_fan_typed_observation_plan(
@@ -121,22 +121,22 @@ data srv4_bmc_fan_converge_target: BmcFanConvergeTarget = BmcFanConvergeTarget {
 }
 
 type BmcFanLiveObservation {
-  policy: BmcFanPolicyObservation
-  persistence: BmcConfigPersistenceObservation
-  zone_control_path: NonEmptyStr
+  policy: extdeps.bmc.types.BmcFanPolicyObservation
+  persistence: extdeps.bmc.types.BmcConfigPersistenceObservation
+  zone_control_path: std.types.NonEmptyStr
   zone_failsafe_active: Bool
-  active_config_digest: Digest
-  tach_health: List<OpenBmcTachHealth>
+  active_config_digest: extdeps.crypto.hash.Digest
+  tach_health: List<extdeps.bmc.openbmc_fan_control.OpenBmcTachHealth>
   temperatures: List<BmcFanTemperatureObservation>
 }
 
 type BmcFanTemperatureObservation {
-  sensor: NonEmptyStr
+  sensor: std.types.NonEmptyStr
   value: BmcFanTemperatureValueResult
 }
 
 type BmcFanTemperatureValueResult
-  = BmcFanTemperatureObserved { value: Celsius }
+  = BmcFanTemperatureObserved { value: std.measure.Celsius }
   | BmcFanTemperatureAbsent
   | BmcFanTemperatureRefused { reason: String }
 
@@ -145,9 +145,9 @@ type BmcFanLiveObservationResult
   | BmcFanLiveObservationRefused { reason: String }
 
 type BmcFanLiveIdentity {
-  firmware: BmcFirmwareVersion
-  machine: NonEmptyStr
-  stable_machine_id: NonEmptyStr
+  firmware: extdeps.bmc.capability.BmcFirmwareVersion
+  machine: std.types.NonEmptyStr
+  stable_machine_id: std.types.NonEmptyStr
 }
 
 type BmcFanLiveIdentityResult
@@ -160,46 +160,46 @@ type BmcFanRequestedAction
   | BmcFanRollbackPrevious
 
 type ParsedCurveSteps
-  = CurveStepsParsed { steps: List<BmcFanCurveStep> }
+  = CurveStepsParsed { steps: List<extdeps.bmc.types.BmcFanCurveStep> }
   | CurveStepsParseRefused { reason: String }
 
 type ParsedFanCurve
-  = FanCurveParsed { curve: BmcFanCurve }
+  = FanCurveParsed { curve: extdeps.bmc.types.BmcFanCurve }
   | FanCurveParseRefused { reason: String }
 
 type ParsedFanControllerShape
-  = FanControllerShapeParsed { shape: BmcFanControllerShape }
+  = FanControllerShapeParsed { shape: extdeps.bmc.types.BmcFanControllerShape }
   | FanControllerShapeParseRefused { reason: String }
 
 type BmcFanObservedPartsResult
   = BmcFanObservedParts {
-      selected_config_path: NonEmptyStr,
-      board_config_path: NonEmptyStr,
-      controller_service: NonEmptyStr,
-      controller_binary: NonEmptyStr,
-      zone_control_path: NonEmptyStr,
+      selected_config_path: std.types.NonEmptyStr,
+      board_config_path: std.types.NonEmptyStr,
+      controller_service: std.types.NonEmptyStr,
+      controller_binary: std.types.NonEmptyStr,
+      zone_control_path: std.types.NonEmptyStr,
       zone_failsafe_active: Bool,
       writable: Bool,
       upper_override_present: Bool,
-      available_bytes: ByteSize,
-      observed_at: EpochMs,
-      overlay: LinuxOverlayObservation,
-      config: OpenBmcFanConfigObservation,
-      config_digest: Digest,
-      tach_health: List<OpenBmcTachHealth>,
+      available_bytes: std.measure.ByteSize,
+      observed_at: std.types.EpochMs,
+      overlay: extdeps.filesystem.linux.LinuxOverlayObservation,
+      config: extdeps.bmc.openbmc_fan_control.OpenBmcFanConfigObservation,
+      config_digest: extdeps.crypto.hash.Digest,
+      tach_health: List<extdeps.bmc.openbmc_fan_control.OpenBmcTachHealth>,
       temperatures: List<BmcFanTemperatureObservation>,
     }
   | BmcFanObservedPartsRefused { reason: String }
 
 type BmcFanBackupManifest {
-  target: HostIdentity
-  stable_bmc_identity: NonEmptyStr
-  firmware: BmcFirmwareVersion
-  config_path: NonEmptyStr
-  before_digest: Digest
-  backup_digest: Digest
-  creation_generation: StatePerturbationGeneration
-  created_at: EpochMs
+  target: product.placement_supply.HostIdentity
+  stable_bmc_identity: std.types.NonEmptyStr
+  firmware: extdeps.bmc.capability.BmcFirmwareVersion
+  config_path: std.types.NonEmptyStr
+  before_digest: extdeps.crypto.hash.Digest
+  backup_digest: extdeps.crypto.hash.Digest
+  creation_generation: std.state_durability.StatePerturbationGeneration
+  created_at: std.types.EpochMs
 }
 
 fn bmc_firmware_family_content_hash(
@@ -283,17 +283,17 @@ fn bmc_fan_backup_manifest(
 
 type BmcFanAppliedReceipt {
   backup_manifest: BmcFanBackupManifest
-  projected_digest: Digest
-  post_publication_active_digest: Digest
-  post_restart_active_digest: Digest
-  monitoring: BmcFanMonitoringReceipt
+  projected_digest: extdeps.crypto.hash.Digest
+  post_publication_active_digest: extdeps.crypto.hash.Digest
+  post_restart_active_digest: extdeps.crypto.hash.Digest
+  monitoring: gunbc.bmc_fan_monitor.BmcFanMonitoringReceipt
 }
 
 type BmcFanRestoredReceipt {
   backup_manifest: BmcFanBackupManifest
-  restored_digest: Digest
-  post_restart_active_digest: Digest
-  monitoring: BmcFanMonitoringReceipt
+  restored_digest: extdeps.crypto.hash.Digest
+  post_restart_active_digest: extdeps.crypto.hash.Digest
+  monitoring: gunbc.bmc_fan_monitor.BmcFanMonitoringReceipt
 }
 
 fn bmc_fan_backup_manifest_matches_request(
@@ -320,26 +320,26 @@ type BmcFanTypedMutationResult
     }
   | BmcFanAppliedWithCleanupDebt {
       receipt: BmcFanAppliedReceipt,
-      cleanup_debt: NonEmptyStr,
+      cleanup_debt: std.types.NonEmptyStr,
     }
   | BmcFanRestoredAndVerified {
       receipt: BmcFanRestoredReceipt,
     }
   | BmcFanRestoredWithCleanupDebt {
       receipt: BmcFanRestoredReceipt,
-      cleanup_debt: NonEmptyStr,
+      cleanup_debt: std.types.NonEmptyStr,
     }
   | BmcFanApplyFailedAndRestored {
-      apply_reason: NonEmptyStr,
+      apply_reason: std.types.NonEmptyStr,
       receipt: BmcFanRestoredReceipt,
     }
   | BmcFanApplyFailedAndRestoreFailed {
-      apply_reason: NonEmptyStr,
-      restore_reason: NonEmptyStr,
+      apply_reason: std.types.NonEmptyStr,
+      restore_reason: std.types.NonEmptyStr,
       backup_manifest: BmcFanBackupManifest,
     }
   | BmcFanNoEffectRefused {
-      reason: NonEmptyStr,
+      reason: std.types.NonEmptyStr,
     }
 
 fn bmc_fan_observation_value(lines: List<String>, key: String) -> String? {
@@ -561,7 +561,7 @@ fn bmc_fan_observe_temperatures(
 }
 
 type BmcFanTachHealthListResult
-  = BmcFanTachHealthListObserved { values: List<OpenBmcTachHealth> }
+  = BmcFanTachHealthListObserved { values: List<extdeps.bmc.openbmc_fan_control.OpenBmcTachHealth> }
   | BmcFanTachHealthListRefused { reason: String }
 
 fn bmc_fan_observe_tach_health_rec(

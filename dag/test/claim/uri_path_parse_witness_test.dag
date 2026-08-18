@@ -75,7 +75,7 @@ test fn witness_malformed_discriminates_from_valid() -> Bool {
 }
 
 test fn witness_render_path_template_binds_params() -> Bool {
-  let template = PathTemplate {
+  let template = std.http_path.PathTemplate {
     tokens: [
       LiteralToken { text: "/vm/" },
       ParamToken { name: "slot" },
@@ -86,8 +86,8 @@ test fn witness_render_path_template_binds_params() -> Bool {
   render_path_template(
     template: template,
     params: [
-      PathParamBinding { name: "slot", value: "0" },
-      PathParamBinding { name: "index", value: "0" },
+      std.http_path.PathParamBinding { name: "slot", value: "0" },
+      std.http_path.PathParamBinding { name: "index", value: "0" },
     ],
   ) == "/vm/0/0"
 }

@@ -58,7 +58,7 @@ test fn witness_inert_probes_keep_their_evidence() -> Bool {
 
 // An unaudited transport must be treated as tainted, not as clean. This is the fail-closed default and it is where the criterion earns most of its value, because the classified probes are a handful and the unclassified ones are everything else.
 test fn witness_unclassified_probe_is_treated_as_tainted() -> Bool {
-  let unaudited = ReadBackProbe {
+  let unaudited = gunbc.readback_independence.ReadBackProbe {
     label: "hypothetical unaudited transport",
     subject: "some subject",
     effect_on_subject: ProbeEffectUnknown { reason: "nobody has audited this transport yet" },
@@ -115,21 +115,21 @@ test fn witness_roster_names_the_cited_incident() -> Bool {
 data answers_without_subject_control_doc: String = "THE CONTROL FOR THE FOURTH ARM (operator review, post-merge). sccache --show-stats was classified ProbeMayEstablish on a diagnosis that was later measured false: the claim was that any sccache invocation auto-starts a server, so the read created the subject it reported. Private-endpoint controls took the listener count 0 to 0 across --show-stats while a real compile took it 0 to 1. The first correction rewrote the mechanism prose but LEFT THE ARM, bridging the gap with the phrase 'still may-establish in the sense that matters here' — which is the state-space conflation this module exists to forbid, committed inside the module itself. Subject-creation and answer-without-subject are different facts about a transport and they carry different remedies: the first is a probe to REPLACE, the second is a probe to GROUND behind an independent existence check. The two witnesses below pin both halves — that the new arm still corrects a positive verdict (so the safety property did not regress with the reclassification), and that the arms remain DISTINGUISHABLE (so a future edit cannot quietly collapse them back)."
 
 test fn witness_answers_without_subject_still_corrects_a_positive() -> Bool {
-  let probe = ReadBackProbe {
+  let probe = gunbc.readback_independence.ReadBackProbe {
     label: "answers-without-subject probe",
     subject: "subject that the probe cannot establish",
     effect_on_subject: ProbeAnswersWithoutSubject {
-      mechanism: "returns a well-formed positive answer whether or not the subject exists" as NonEmptyStr,
+      mechanism: "returns a well-formed positive answer whether or not the subject exists" as std.types.NonEmptyStr,
     },
   }
   readback_probe_is_independent(p: probe) == false
     && !readback_evidence_gate_accepts(p: probe, verdict: Converged)
 }
 
-fn probe_effect_arm_tag(effect: ProbeEffectOnSubject) -> String {
+fn probe_effect_arm_tag(effect: gunbc.readback_independence.ProbeEffectOnSubject) -> String {
   probe_effect_on_subject_fold(
     effect: effect,
-    fold: ProbeEffectOnSubjectFold {
+    fold: gunbc.readback_independence.ProbeEffectOnSubjectFold {
       inert: "inert",
       may_establish: fn(_) { "creates" },
       answers_without_subject: fn(_) { "answers" },
@@ -140,10 +140,10 @@ fn probe_effect_arm_tag(effect: ProbeEffectOnSubject) -> String {
 
 test fn witness_the_two_non_independent_arms_stay_distinguishable() -> Bool {
   let creates = probe_effect_arm_tag(
-    effect: ProbeMayEstablish { mechanism: "starts the daemon it reports on" as NonEmptyStr },
+    effect: ProbeMayEstablish { mechanism: "starts the daemon it reports on" as std.types.NonEmptyStr },
   )
   let answers = probe_effect_arm_tag(
-    effect: ProbeAnswersWithoutSubject { mechanism: "answers positively with no subject" as NonEmptyStr },
+    effect: ProbeAnswersWithoutSubject { mechanism: "answers positively with no subject" as std.types.NonEmptyStr },
   )
   creates == "creates" && answers == "answers" && (creates == answers) == false
 }

@@ -1,10 +1,10 @@
 module v2.test.lens_wiring_liveness.wiring_liveness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn wl_atom(identity: Symbol) -> Node {
-  Node {
+fn wl_atom(identity: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -16,20 +16,20 @@ fn wl_input_leaf() -> Node {
 }
 
 fn wl_mid_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^wiring_liveness_mid } },
     children: [
-      Edge { label: Positional, target: wl_input_leaf() }
+      v2.std.node.Edge { label: Positional, target: wl_input_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn wl_output_tree() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^wiring_liveness_output_field }, target: wl_mid_node() }
+      v2.std.node.Edge { label: Named { name: ^wiring_liveness_output_field }, target: wl_mid_node() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -57,11 +57,11 @@ fn wl_reflected_dependency_kind() -> Node {
   resolve_type_node(type_name: ^DependencyKind)
 }
 
-fn wl_edge_target(e: Edge) -> Node {
+fn wl_edge_target(e: v2.std.node.Edge) -> Node {
   e.target
 }
 
-fn wl_first_field_reachable(root: Node, edges: List<Edge>) -> Bool {
+fn wl_first_field_reachable(root: Node, edges: List<v2.std.node.Edge>) -> Bool {
   match list_at_optional(xs: edges, index: 0) {
     Present { value: e } => wiring_input_is_wired(output: root, declared_input: wl_edge_target(e: e))
     Absent => false

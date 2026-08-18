@@ -1,7 +1,7 @@
 module v2.test.workflow.lens_unused_parameters_family_eval
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn lens_unused_parameters_family_gate() -> Bool {
   unused_parameters_binds_to_edge_claim_passes

@@ -35,9 +35,9 @@ data ollama_gpt_oss_feature_introduction_floor: OllamaSemanticVersion = ollama_s
 data ollama_gpt_oss_feature_introduction_citation: NonEmptyStr = "https://github.com/ollama/ollama/releases/tag/v0.11.0" as NonEmptyStr
 
 type OllamaModelSupportRow {
-  model: OllamaModelRef
+  model: extdeps.ollama.api.OllamaModelRef
   minimum_runtime: OllamaSemanticVersion
-  introduction_citation: NonEmptyStr
+  introduction_citation: std.types.NonEmptyStr
 }
 
 data ollama_gpt_oss_20b_model_ref: OllamaModelRef = OllamaModelRef {
@@ -60,7 +60,7 @@ type OllamaModelSupportVerdict
       observed: OllamaSemanticVersion,
       minimum: OllamaSemanticVersion,
     }
-  | OllamaModelSupportUnobserved { cause: NonEmptyStr }
+  | OllamaModelSupportUnobserved { cause: std.types.NonEmptyStr }
   | OllamaModelSupportUncatalogued { model_wire: String }
 
 fn ollama_model_ref_eq(a: OllamaModelRef, b: OllamaModelRef) -> Bool {
@@ -153,11 +153,11 @@ type OllamaTargetPlatform = OllamaNvidiaGb10Spark | OllamaTargetPlatformUncatalo
 
 type OllamaPlatformSupportRow {
   platform: OllamaTargetPlatform
-  architecture: OllamaLinuxArchitecture
-  required_variant: OllamaLinuxAssetVariant
-  gpu_support: OllamaGpuSupportRow
-  minimum_nvidia_driver: OllamaNvidiaDriverVersion
-  binary_release: OllamaBinaryRelease
+  architecture: extdeps.ollama.binary_release.OllamaLinuxArchitecture
+  required_variant: extdeps.ollama.binary_release.OllamaLinuxAssetVariant
+  gpu_support: extdeps.ollama.gpu_support.OllamaGpuSupportRow
+  minimum_nvidia_driver: extdeps.ollama.gpu_support.OllamaNvidiaDriverVersion
+  binary_release: extdeps.ollama.binary_release.OllamaBinaryRelease
 }
 
 data ollama_gb10_linux_arm64_support_row: OllamaPlatformSupportRow = OllamaPlatformSupportRow {
@@ -173,9 +173,9 @@ data ollama_platform_support_catalog: List<OllamaPlatformSupportRow> = [ollama_g
 
 type OllamaPlatformSupportVerdict
   = OllamaPlatformSupportApplicable
-  | OllamaPlatformSupportUnmet { cause: NonEmptyStr }
-  | OllamaPlatformSupportUnobserved { cause: NonEmptyStr }
-  | OllamaPlatformSupportUncatalogued { cause: NonEmptyStr }
+  | OllamaPlatformSupportUnmet { cause: std.types.NonEmptyStr }
+  | OllamaPlatformSupportUnobserved { cause: std.types.NonEmptyStr }
+  | OllamaPlatformSupportUncatalogued { cause: std.types.NonEmptyStr }
 
 fn ollama_platform_support_verdict(
   binary_release: OllamaBinaryRelease,
@@ -243,9 +243,9 @@ fn ollama_runtime_model_compatibility_verdict(
 
 type OllamaRuntimeAdmissionVerdict
   = OllamaRuntimeAdmissionApplicable
-  | OllamaRuntimeAdmissionUnmet { cause: NonEmptyStr }
-  | OllamaRuntimeAdmissionUnobserved { cause: NonEmptyStr }
-  | OllamaRuntimeAdmissionUncatalogued { cause: NonEmptyStr }
+  | OllamaRuntimeAdmissionUnmet { cause: std.types.NonEmptyStr }
+  | OllamaRuntimeAdmissionUnobserved { cause: std.types.NonEmptyStr }
+  | OllamaRuntimeAdmissionUncatalogued { cause: std.types.NonEmptyStr }
 
 fn ollama_runtime_admission_verdict(
   binary_release: OllamaBinaryRelease,

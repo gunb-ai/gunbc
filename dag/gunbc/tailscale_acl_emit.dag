@@ -1,15 +1,15 @@
 module gunbc.tailscale_acl_emit
 
 
-fn selector_array_json(items: List<TailscaleAclSelector>) -> JsonValue {
+fn selector_array_json(items: List<extdeps.tailscale.acl.TailscaleAclSelector>) -> extdeps.languages.json.emit.JsonValue {
   json_array(elements: items |> map(s => json_string(s: render_tailscale_acl_selector(s: s))))
 }
 
-fn string_array_json(items: List<NonEmptyStr>) -> JsonValue {
+fn string_array_json(items: List<std.types.NonEmptyStr>) -> extdeps.languages.json.emit.JsonValue {
   json_array(elements: items |> map(s => json_string(s: s)))
 }
 
-fn grant_json(g: TailscaleGrant) -> JsonValue {
+fn grant_json(g: extdeps.tailscale.acl.TailscaleGrant) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: [
     json_kv(key: "src", value: selector_array_json(items: g.src)),
     json_kv(key: "dst", value: selector_array_json(items: g.dst)),
@@ -17,7 +17,7 @@ fn grant_json(g: TailscaleGrant) -> JsonValue {
   ])
 }
 
-fn ssh_rule_json(r: TailscaleSshRule) -> JsonValue {
+fn ssh_rule_json(r: extdeps.tailscale.acl.TailscaleSshRule) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: [
     json_kv(key: "action", value: json_string(s: r.action)),
     json_kv(key: "src", value: selector_array_json(items: r.src)),
@@ -26,18 +26,18 @@ fn ssh_rule_json(r: TailscaleSshRule) -> JsonValue {
   ])
 }
 
-fn node_attr_json(n: TailscaleNodeAttr) -> JsonValue {
+fn node_attr_json(n: extdeps.tailscale.acl.TailscaleNodeAttr) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: [
     json_kv(key: "target", value: string_array_json(items: n.target)),
     json_kv(key: "attr", value: string_array_json(items: n.attr)),
   ])
 }
 
-fn tag_owner_json(row: TailscaleTagOwnerRow) -> JsonKeyValue {
+fn tag_owner_json(row: extdeps.tailscale.acl.TailscaleTagOwnerRow) -> extdeps.languages.json.emit.JsonKeyValue {
   json_kv(key: row.tag, value: string_array_json(items: row.owners))
 }
 
-fn tailscale_acl_policy_json(policy: TailscaleAclPolicy) -> JsonValue {
+fn tailscale_acl_policy_json(policy: extdeps.tailscale.acl.TailscaleAclPolicy) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: [
     json_kv(key: "grants", value: json_array(elements: policy.grants |> map(g => grant_json(g: g)))),
     json_kv(key: "ssh", value: json_array(elements: policy.ssh |> map(r => ssh_rule_json(r: r)))),

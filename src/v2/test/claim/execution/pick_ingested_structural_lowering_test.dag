@@ -1,7 +1,7 @@
 module v2.test.execution.pick_ingested_structural_lowering
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data pick_ingested_source: String = "module m\n\nfn pick() -> Int { if true { 1 } else { 2 } }\n"
 
@@ -15,8 +15,8 @@ data pick2_ingested_false_source: String = "module m\n\nfn pick() -> Int { if fa
 
 data pick2_ingested_swapped_source: String = "module m\n\nfn pick() -> Int { if true { 4 } else { 3 } }\n"
 
-fn pick_eval_atom(s: Symbol) -> Node {
-  Node {
+fn pick_eval_atom(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: s } },
     occurrence_id: SyntheticOccurrence,
     children: []
@@ -27,8 +27,8 @@ fn pick_eval_int_type_node() -> Node {
   pick_eval_atom(s: ^dag_binding_type_int)
 }
 
-fn pick_eval_runtime_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
+fn pick_eval_runtime_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^pick_eval_runtime_rejected,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -42,7 +42,7 @@ fn pick_eval_int_literal_optional(lexeme: String) -> Optional<Node> {
   }
 }
 
-fn pick_ingested_normalized_module_from_source(source: String) -> Outcome<NormalizedTree> {
+fn pick_ingested_normalized_module_from_source(source: String) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   let lm = dag_language_model()
   bind_outcome(
     o: tokenize(text: source, file: ^pick_ingested_source_file, rules: lm.lex),
@@ -221,27 +221,27 @@ fn pick_ingested_arrow_from_source(source: String) -> Outcome<Node> {
 }
 
 fn pick_eval_pick_call(callee: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: callee }
+      v2.std.node.Edge { label: Positional, target: callee }
     ]
   }
 }
 
 fn pick_eval_tree_root(call: Node, expected: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Named { name: ^pick_eval_actual }, target: call },
-      Edge { label: Named { name: ^pick_eval_expected }, target: expected }
+      v2.std.node.Edge { label: Named { name: ^pick_eval_actual }, target: call },
+      v2.std.node.Edge { label: Named { name: ^pick_eval_expected }, target: expected }
     ]
   }
 }
 
-fn pick_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn pick_eval_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   optional_present(value: claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: pick_eval_int_type_node(),
@@ -249,8 +249,8 @@ fn pick_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
     ))
 }
 
-fn pick_eval_admitted_tree(root: Node) -> InferredTree {
-  InferredTree {
+fn pick_eval_admitted_tree(root: Node) -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: root,
     facts: Map {
       lookup: pick_eval_facts_lookup
@@ -258,27 +258,27 @@ fn pick_eval_admitted_tree(root: Node) -> InferredTree {
   }
 }
 
-fn pick_eval_inferred_run_tree(call: Node, expected: Node) -> Outcome<InferredTree> {
+fn pick_eval_inferred_run_tree(call: Node, expected: Node) -> Outcome<v2.compiler.infer.InferredTree> {
   let root = pick_eval_tree_root(call: call, expected: expected)
   outcome_accepted(value: pick_eval_admitted_tree(root: root))
 }
 
-fn pick_eval_claim(input: Node, expected: Node) -> TestClaim {
+fn pick_eval_claim(input: Node, expected: Node) -> v2.std.verification.TestClaim {
   CompilesClaim {
     label: "execution/pick-ingested: if_expr→Branch structural lowering + eval-equals on default v2_evaluator",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     input: input,
     expected_value: expected,
-    classification: TestClassification { tier: Tier1, layer: Unit }
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
   }
 }
 
 fn pick_eval_subject(
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   input: Node,
   expected: Node
 ) -> TestClaimEvalSubject<Node> {
-  TestClaimEvalSubject {
+  v2.compiler.eval.TestClaimEvalSubject {
     claim: pick_eval_claim(input: input, expected: expected),
     context: eval_context_v4_evaluator(),
     tree: tree,

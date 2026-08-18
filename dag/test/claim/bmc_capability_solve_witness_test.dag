@@ -9,11 +9,11 @@ test fn firmware_wire_version_is_parsed_before_track_matching() -> Bool {
       match bmc_firmware_version_from_wire(wire: "3.22.0") {
         BmcFirmwareVersionParsed { version: parsed } =>
           bmc_firmware_version_matches_track(
-            firmware: BmcFirmwareVersion {
+            firmware: extdeps.bmc.capability.BmcFirmwareVersion {
               family: OpenBmc,
               version: parsed,
             },
-            track: BmcFirmwareTrack {
+            track: extdeps.bmc.capability.BmcFirmwareTrack {
               family: OpenBmc,
               major_version: 3,
             },
@@ -25,12 +25,12 @@ test fn firmware_wire_version_is_parsed_before_track_matching() -> Bool {
 }
 
 test fn firmware_intent_match_crosses_as_typed_disposition() -> Bool {
-  let observation = BmcFirmwareObservation {
-    endpoint: BmcEndpoint {
+  let observation = extdeps.bmc.capability.BmcFirmwareObservation {
+    endpoint: std.bmc.BmcEndpoint {
       host: "192.0.2.1",
       protocol: Redfish,
     },
-    firmware: BmcFirmwareVersion {
+    firmware: extdeps.bmc.capability.BmcFirmwareVersion {
       family: OpenBmc,
       version: firmware_semantic_version(
         major: 3,
@@ -43,7 +43,7 @@ test fn firmware_intent_match_crosses_as_typed_disposition() -> Bool {
   }
   match bmc_firmware_observation_intent_verdict(
     intent: BmcFirmwareTrackRequired {
-      track: BmcFirmwareTrack {
+      track: extdeps.bmc.capability.BmcFirmwareTrack {
         family: OpenBmc,
         major_version: 3,
       },
@@ -53,7 +53,7 @@ test fn firmware_intent_match_crosses_as_typed_disposition() -> Bool {
     BmcFirmwareIntentSatisfied =>
       match bmc_firmware_observation_intent_verdict(
         intent: BmcFirmwareTrackRequired {
-          track: BmcFirmwareTrack {
+          track: extdeps.bmc.capability.BmcFirmwareTrack {
             family: OpenBmc,
             major_version: 2,
           },
@@ -105,8 +105,8 @@ test fn srv3_install_mechanism_is_nbd_proxy_after_dry_run() -> Bool {
 }
 
 test fn nbd_proxy_vm_capable_row_solves() -> Bool {
-  let nbd_proxy_only_row = BmcFirmwareCapabilityRow {
-    firmware: BmcFirmwareVersion {
+  let nbd_proxy_only_row = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
+    firmware: extdeps.bmc.capability.BmcFirmwareVersion {
       family: OpenBmc,
       version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
     },
@@ -125,8 +125,8 @@ test fn nbd_proxy_vm_capable_row_solves() -> Bool {
 }
 
 test fn redfish_vm_preferred_over_nbd_proxy() -> Bool {
-  let both_vm_row = BmcFirmwareCapabilityRow {
-    firmware: BmcFirmwareVersion {
+  let both_vm_row = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
+    firmware: extdeps.bmc.capability.BmcFirmwareVersion {
       family: OpenBmc,
       version: firmware_semantic_version(major: 4, minor: 0, patch: 0),
     },
@@ -145,8 +145,8 @@ test fn redfish_vm_preferred_over_nbd_proxy() -> Bool {
 }
 
 test fn vm_capable_firmware_row_flips_to_update_path() -> Bool {
-  let update_only_row = BmcFirmwareCapabilityRow {
-    firmware: BmcFirmwareVersion {
+  let update_only_row = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
+    firmware: extdeps.bmc.capability.BmcFirmwareVersion {
       family: OpenBmc,
       version: firmware_semantic_version(major: 1, minor: 0, patch: 0),
     },
@@ -157,8 +157,8 @@ test fn vm_capable_firmware_row_flips_to_update_path() -> Bool {
       CapabilityFirmwareUpdate,
     ],
   }
-  let vm_capable_row = BmcFirmwareCapabilityRow {
-    firmware: BmcFirmwareVersion {
+  let vm_capable_row = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
+    firmware: extdeps.bmc.capability.BmcFirmwareVersion {
       family: OpenBmc,
       version: firmware_semantic_version(major: 3, minor: 0, patch: 0),
     },
@@ -180,8 +180,8 @@ test fn vm_capable_firmware_row_flips_to_update_path() -> Bool {
 }
 
 test fn update_only_row_without_vm_catalog_falls_to_pxe() -> Bool {
-  let update_only_row = BmcFirmwareCapabilityRow {
-    firmware: BmcFirmwareVersion {
+  let update_only_row = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
+    firmware: extdeps.bmc.capability.BmcFirmwareVersion {
       family: OpenBmc,
       version: firmware_semantic_version(major: 1, minor: 0, patch: 0),
     },
@@ -199,8 +199,8 @@ test fn update_only_row_without_vm_catalog_falls_to_pxe() -> Bool {
 }
 
 test fn node_with_virtual_media_solves_direct() -> Bool {
-  let vm_row = BmcFirmwareCapabilityRow {
-    firmware: BmcFirmwareVersion {
+  let vm_row = extdeps.bmc.capability.BmcFirmwareCapabilityRow {
+    firmware: extdeps.bmc.capability.BmcFirmwareVersion {
       family: OpenBmc,
       version: firmware_semantic_version(major: 3, minor: 0, patch: 0),
     },

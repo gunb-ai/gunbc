@@ -10,15 +10,15 @@ fn srv3_memory_high_knob_name() -> String {
   "per_slot_memory_high_bytes"
 }
 
-fn srv3_host_converge_from_standup_policy() -> HostConverge? {
+fn srv3_host_converge_from_standup_policy() -> gunbc.host_converge.HostConverge? {
   host_converge_from_policy(policy: host_standup_fleet_converge_policy(), host: operator_host_srv3)
 }
 
-fn srv3_memory_knob(host: HostConverge, name: String) -> ConvergeKnob? {
+fn srv3_memory_knob(host: gunbc.host_converge.HostConverge, name: String) -> gunbc.host_converge.ConvergeKnob? {
   converge_knob_by_name(host: host, name: name)
 }
 
-fn last_runner_slice_knob_name(knobs: List<ConvergeKnob>) -> String {
+fn last_runner_slice_knob_name(knobs: List<gunbc.host_converge.ConvergeKnob>) -> String {
   fold(knobs, init: "", f: (acc, k) => match k.slice {
     GunbcSlice => acc
     RunnerSlice => k.name

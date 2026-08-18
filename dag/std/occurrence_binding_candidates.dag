@@ -152,12 +152,12 @@ type DeclarationExposureGrounding
 
 fn occurrence_containment_parent_scope(
   ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>
-) -> OccurrenceContainmentPath? {
+) -> std.occurrence_identity.OccurrenceContainmentPath? {
   match reverse(ancestors) {
     Empty => none
     Cons { head: parent_terminal, tail: parent_ancestors_reversed } =>
       Present {
-        value: OccurrenceContainmentPath {
+        value: std.occurrence_identity.OccurrenceContainmentPath {
           ancestors: reverse(parent_ancestors_reversed),
           terminal: parent_terminal,
         },
@@ -166,8 +166,8 @@ fn occurrence_containment_parent_scope(
 }
 
 fn declaration_exposure_module_local_member(
-  module_path: NonEmptyStr,
-  containment: OccurrenceContainmentPath
+  module_path: std.types.NonEmptyStr,
+  containment: std.occurrence_identity.OccurrenceContainmentPath
 ) -> DeclarationExposure {
   match occurrence_containment_parent_scope(ancestors: containment.ancestors) {
     Absent =>
@@ -183,8 +183,8 @@ fn declaration_exposure_module_local_member(
 }
 
 fn declaration_exposure_namespace_structural_root(
-  module_path: NonEmptyStr,
-  containment: OccurrenceContainmentPath,
+  module_path: std.types.NonEmptyStr,
+  containment: std.occurrence_identity.OccurrenceContainmentPath,
 ) -> DeclarationExposure {
   match occurrence_containment_parent_scope(
     ancestors: containment.ancestors,
@@ -204,8 +204,8 @@ fn declaration_exposure_namespace_structural_root(
 }
 
 fn declaration_exposure_from_containment(
-  module_path: NonEmptyStr,
-  containment: OccurrenceContainmentPath,
+  module_path: std.types.NonEmptyStr,
+  containment: std.occurrence_identity.OccurrenceContainmentPath,
   grounding: DeclarationExposureGrounding
 ) -> DeclarationExposure {
   match grounding {
@@ -346,9 +346,9 @@ fn authored_order_by_occurrence_build(
 }
 
 fn ordinal_of_occurrence(
-  order_by_occurrence: Map<Int, AuthoredTokenOrdinal>,
+  order_by_occurrence: Map<Int, std.occurrence_identity.AuthoredTokenOrdinal>,
   occurrence: std.occurrence_identity.OccurrenceId
-) -> AuthoredTokenOrdinal? {
+) -> std.occurrence_identity.AuthoredTokenOrdinal? {
   map_get(order_by_occurrence, occurrence.value)
 }
 
@@ -360,9 +360,9 @@ fn exposure_of_occurrence(
 }
 
 fn module_exposure_declaration_missing_path_refusal(
-  module_by_occurrence: Map<Int, NonEmptyStr>,
+  module_by_occurrence: Map<Int, std.types.NonEmptyStr>,
   exposure_by_occurrence: Map<Int, DeclarationExposure>,
-  declaration: DeclarationOccurrence
+  declaration: std.occurrence_identity.DeclarationOccurrence
 ) -> OccurrenceModulePathIndexRefusal? {
   match map_get(exposure_by_occurrence, declaration.occurrence.value) {
     Absent => none
@@ -385,8 +385,8 @@ fn module_exposure_declaration_missing_path_refusal(
 }
 
 fn reference_missing_module_path_refusal(
-  module_by_occurrence: Map<Int, NonEmptyStr>,
-  reference: ReferenceOccurrence
+  module_by_occurrence: Map<Int, std.types.NonEmptyStr>,
+  reference: std.occurrence_identity.ReferenceOccurrence
 ) -> OccurrenceModulePathIndexRefusal? {
   match map_get(module_by_occurrence, reference.occurrence.value) {
     Absent =>
@@ -400,8 +400,8 @@ fn reference_missing_module_path_refusal(
 }
 
 fn module_paths_validate_transport(
-  transport: ValidatedOccurrenceTransport,
-  module_by_occurrence: Map<Int, NonEmptyStr>,
+  transport: std.occurrence_identity.ValidatedOccurrenceTransport,
+  module_by_occurrence: Map<Int, std.types.NonEmptyStr>,
   exposure_by_occurrence: Map<Int, DeclarationExposure>
 ) -> OccurrenceModulePathIndexRefusal? {
   let declaration_refusal = fold(
@@ -438,14 +438,14 @@ fn module_paths_validate_transport(
 }
 
 fn module_of_occurrence(
-  module_by_occurrence: Map<Int, NonEmptyStr>,
+  module_by_occurrence: Map<Int, std.types.NonEmptyStr>,
   occurrence: std.occurrence_identity.OccurrenceId
-) -> NonEmptyStr? {
+) -> std.types.NonEmptyStr? {
   map_get(module_by_occurrence, occurrence.value)
 }
 
 fn exposure_validate_transport_declarations(
-  declarations: List<DeclarationOccurrence>,
+  declarations: List<std.occurrence_identity.DeclarationOccurrence>,
   exposure_by_occurrence: Map<Int, DeclarationExposure>
 ) -> DeclarationExposureIndexRefusal? {
   fold(
@@ -469,7 +469,7 @@ fn exposure_validate_transport_declarations(
 }
 
 fn authored_order_validate_transport_occurrence(
-  order_by_occurrence: Map<Int, AuthoredTokenOrdinal>,
+  order_by_occurrence: Map<Int, std.occurrence_identity.AuthoredTokenOrdinal>,
   occurrence: std.occurrence_identity.OccurrenceId
 ) -> AuthoredOrderIndexRefusal? {
   match map_get(order_by_occurrence, occurrence.value) {
@@ -484,8 +484,8 @@ fn authored_order_validate_transport_occurrence(
 }
 
 fn authored_order_validate_transport(
-  transport: ValidatedOccurrenceTransport,
-  order_by_occurrence: Map<Int, AuthoredTokenOrdinal>
+  transport: std.occurrence_identity.ValidatedOccurrenceTransport,
+  order_by_occurrence: Map<Int, std.occurrence_identity.AuthoredTokenOrdinal>
 ) -> AuthoredOrderIndexRefusal? {
   let declaration_refusal = fold(
     transport.declarations,
@@ -522,8 +522,8 @@ fn authored_order_validate_transport(
 data occurrence_module_sibling_exposure_note: String = "ModuleExposure arm of the DeclarationExposure authority (namespace-unique-on-chain-operational-plan.md 2, rule 1): a declaration is exposed as a module sibling only when its DeclarationExposure is ModuleExposure for the same module as the reference, the declaration's AuthoredTokenOrdinal is strictly before the reference's ordinal (rule 4 — never a declaration below the occurrence), and both module paths are present for projection. OccurrenceCategory is not consulted. LexicalExposure and RootExposure are decided on their own arms — never by falling through to a raw containment-prefix test. Index build refuses MissingDeclarationExposure / MissingAuthoredOrderRow before any reference is answered, so Absent ordinal/exposure arms below are defensive dead code, never a silent Unbound."
 
 fn declaration_lexically_exposed(
-  exposing_scope: OccurrenceContainmentPath,
-  reference: ReferenceOccurrence
+  exposing_scope: std.occurrence_identity.OccurrenceContainmentPath,
+  reference: std.occurrence_identity.ReferenceOccurrence
 ) -> Bool {
   occurrence_containment_path_is_prefix_of(
     prefix: exposing_scope,
@@ -532,11 +532,11 @@ fn declaration_lexically_exposed(
 }
 
 fn declaration_module_sibling_exposed(
-  declaration: DeclarationOccurrence,
-  reference: ReferenceOccurrence,
-  exposure_module: NonEmptyStr,
-  module_by_occurrence: Map<Int, NonEmptyStr>,
-  order_by_occurrence: Map<Int, AuthoredTokenOrdinal>
+  declaration: std.occurrence_identity.DeclarationOccurrence,
+  reference: std.occurrence_identity.ReferenceOccurrence,
+  exposure_module: std.types.NonEmptyStr,
+  module_by_occurrence: Map<Int, std.types.NonEmptyStr>,
+  order_by_occurrence: Map<Int, std.occurrence_identity.AuthoredTokenOrdinal>
 ) -> Bool {
   match ordinal_of_occurrence(
     order_by_occurrence: order_by_occurrence,
@@ -566,11 +566,11 @@ fn declaration_module_sibling_exposed(
 }
 
 fn declaration_exposed_on_reference_chain(
-  declaration: DeclarationOccurrence,
-  reference: ReferenceOccurrence,
-  module_by_occurrence: Map<Int, NonEmptyStr>,
+  declaration: std.occurrence_identity.DeclarationOccurrence,
+  reference: std.occurrence_identity.ReferenceOccurrence,
+  module_by_occurrence: Map<Int, std.types.NonEmptyStr>,
   exposure_by_occurrence: Map<Int, DeclarationExposure>,
-  order_by_occurrence: Map<Int, AuthoredTokenOrdinal>
+  order_by_occurrence: Map<Int, std.occurrence_identity.AuthoredTokenOrdinal>
 ) -> Bool {
   match exposure_of_occurrence(
     exposure_by_occurrence: exposure_by_occurrence,
@@ -608,10 +608,10 @@ type OccurrenceCandidateIndex {
 }
 
 fn declarations_by_name_insert(
-  acc: Map<String, List<DeclarationOccurrence>>,
+  acc: Map<String, List<std.occurrence_identity.DeclarationOccurrence>>,
   name: String,
-  declaration: DeclarationOccurrence
-) -> Map<String, List<DeclarationOccurrence>> {
+  declaration: std.occurrence_identity.DeclarationOccurrence
+) -> Map<String, List<std.occurrence_identity.DeclarationOccurrence>> {
   match map_get(acc, name) {
     Absent => map_insert(acc, name, [declaration])
     Present { value: existing } =>
@@ -638,8 +638,8 @@ type DeclarationsByNameFold
     }
 
 fn declarations_by_name_build(
-  entries_by_id: Map<Int, OccurrenceIndexEntry>,
-  declarations: List<DeclarationOccurrence>
+  entries_by_id: Map<Int, std.occurrence_identity.OccurrenceIndexEntry>,
+  declarations: List<std.occurrence_identity.DeclarationOccurrence>
 ) -> DeclarationsByNameBuild {
   let fold_result = fold(
     declarations,
@@ -681,7 +681,7 @@ type OccurrenceCandidateIndexBuild
   | OccurrenceCandidateIndexDeclarationBucketRefused { occurrence: std.occurrence_identity.OccurrenceId }
 
 fn occurrence_candidate_index_build(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   inputs: OccurrenceBindingCandidateInputs
 ) -> OccurrenceCandidateIndexBuild {
   match occurrence_transport_validate(transport: transport) {
@@ -759,7 +759,7 @@ data occurrence_candidate_cardinality_note: String = "candidate_occurrence_ids_f
 
 fn candidate_occurrence_ids_for_reference(
   index: OccurrenceCandidateIndex,
-  reference: ReferenceOccurrence
+  reference: std.occurrence_identity.ReferenceOccurrence
 ) -> List<std.occurrence_identity.OccurrenceId> {
   match map_get(index.entries_by_id, reference.occurrence.value) {
     Absent => []
@@ -1074,7 +1074,7 @@ data module_path_file_row_note: String = "ModulePathFileRow is the parser-embedd
 
 data module_path_file_row_dissolution_note: String = "See module_path_file_row_dissolution_note_dissolve_on for the lifecycle condition this row's rationale accompanies."
 
-data module_path_file_row_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: cross-file binding production consumes ModuleStorageBinding rows from v2.compiler.source_authority (module_storage_binding_module_dotted × module_storage_binding_file_path) on OrdinaryLoadedCompilationClosure; ModulePathFileRow, ModulePathFileIndex, and this note delete in the completing change. Until then parser-walk supplies rows with ParsedFromSource provenance only.")
+data module_path_file_row_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "Dissolve-on: cross-file binding production consumes ModuleStorageBinding rows from v2.compiler.source_authority (module_storage_binding_module_dotted × module_storage_binding_file_path) on OrdinaryLoadedCompilationClosure; ModulePathFileRow, ModulePathFileIndex, and this note delete in the completing change. Until then parser-walk supplies rows with ParsedFromSource provenance only.")
 
 type ModulePathFileRow {
   module_path: std.types.NonEmptyStr
@@ -1190,7 +1190,7 @@ type CrossFileBindingProvenance {
 
 fn file_for_module_path(
   module_files: Map<String, std.types.FilePath>,
-  module_path: NonEmptyStr
+  module_path: std.types.NonEmptyStr
 ) -> std.types.FilePath? {
   map_get(module_files, module_path as String)
 }
@@ -1499,8 +1499,8 @@ fn reference_derived_dependency_projection(
 data reference_derived_dependency_binding_reference_filter_note: String = "Clause-(e) structural walks bind only reference categories that occurrence_category_clause_e_dependency_inducing_verdict classifies as OccurrenceCategoryClauseEDependencyInducing. TypeOccurrence references are N2's resolve_type_reference_containment_binding lane — parser-produced return-type annotations must not refuse the whole population when Int is not module-declared. Parser witnesses that need per-name resolution already avoid whole-transport walks for this reason; production assembled-closure projection applies the same boundary here."
 
 fn reference_derived_dependency_binding_references(
-  references: List<ReferenceOccurrence>
-) -> List<ReferenceOccurrence> {
+  references: List<std.occurrence_identity.ReferenceOccurrence>
+) -> List<std.occurrence_identity.ReferenceOccurrence> {
   let build = fold(
     references,
     init: ReferenceDerivedDependencyBindingReferenceBuild { references_reversed: [] },
@@ -1523,9 +1523,9 @@ type ReferenceDerivedDependencyBindingReferenceBuild {
 }
 
 fn structural_binding_walk_selected_references(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   inputs: OccurrenceBindingCandidateInputs,
-  references: List<ReferenceOccurrence>
+  references: List<std.occurrence_identity.ReferenceOccurrence>
 ) -> StructuralBindingWalk {
   match occurrence_candidate_index_build(transport: transport, inputs: inputs) {
     OccurrenceCandidateIndexTransportRefused { refusal: refusal } =>
@@ -1564,7 +1564,7 @@ fn structural_binding_walk_selected_references(
 }
 
 fn structural_binding_walk(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   inputs: OccurrenceBindingCandidateInputs
 ) -> StructuralBindingWalk {
   structural_binding_walk_selected_references(
@@ -1582,7 +1582,7 @@ type OccurrenceIdRemapState {
 }
 
 fn occurrence_id_remap_state_with_fresh_map(
-  allocator: OccurrenceIdAllocator
+  allocator: std.occurrence_identity.OccurrenceIdAllocator
 ) -> OccurrenceIdRemapState {
   OccurrenceIdRemapState {
     allocator: allocator,
@@ -1625,7 +1625,7 @@ type OccurrenceAncestorRemapBuild {
 }
 
 fn remap_containment_path(
-  path: OccurrenceContainmentPath,
+  path: std.occurrence_identity.OccurrenceContainmentPath,
   state: OccurrenceIdRemapState
 ) -> OccurrenceContainmentRemapResult {
   let ancestors_build = fold(
@@ -1647,7 +1647,7 @@ fn remap_containment_path(
     state: ancestors_build.state,
   )
   OccurrenceContainmentRemapResult {
-    path: OccurrenceContainmentPath {
+    path: std.occurrence_identity.OccurrenceContainmentPath {
       ancestors: reverse(ancestors_build.ancestors),
       terminal: terminal_remapped.id,
     },
@@ -1676,7 +1676,7 @@ type OccurrenceReferenceRekeyBuild {
 }
 
 fn rekey_occurrence_transport(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   state: OccurrenceIdRemapState
 ) -> OccurrenceTransportRekeyResult {
   let index_build = fold(
@@ -1693,8 +1693,8 @@ fn rekey_occurrence_transport(
       )
       OccurrenceIndexRekeyBuild {
         entries_reversed: concat([
-          OccurrenceIndexEntry {
-            projection: OccurrenceProjection {
+          std.occurrence_identity.OccurrenceIndexEntry {
+            projection: std.occurrence_identity.OccurrenceProjection {
               occurrence: remapped_occ.id,
               authored_name: entry.projection.authored_name,
               diagnostic_span: entry.projection.diagnostic_span,
@@ -1723,7 +1723,7 @@ fn rekey_occurrence_transport(
       )
       OccurrenceDeclarationRekeyBuild {
         declarations_reversed: concat([
-          DeclarationOccurrence {
+          std.occurrence_identity.DeclarationOccurrence {
             occurrence: remapped_occ.id,
             containment: remapped_containment.path,
             category: declaration.category,
@@ -1751,7 +1751,7 @@ fn rekey_occurrence_transport(
       )
       OccurrenceReferenceRekeyBuild {
         references_reversed: concat([
-          ReferenceOccurrence {
+          std.occurrence_identity.ReferenceOccurrence {
             occurrence: remapped_occ.id,
             containment: remapped_containment.path,
             category: reference.category,
@@ -1763,8 +1763,8 @@ fn rekey_occurrence_transport(
     },
   )
   OccurrenceTransportRekeyResult {
-    transport: OccurrenceTransport {
-      index: OccurrenceIndex { entries: reverse(index_build.entries_reversed) },
+    transport: std.occurrence_identity.OccurrenceTransport {
+      index: std.occurrence_identity.OccurrenceIndex { entries: reverse(index_build.entries_reversed) },
       declarations: reverse(declarations_build.declarations_reversed),
       references: reverse(references_build.references_reversed),
     },
@@ -1889,11 +1889,11 @@ fn rekey_occurrence_binding_inputs(
 }
 
 fn merge_occurrence_transports(
-  left: OccurrenceTransport,
-  right: OccurrenceTransport
-) -> OccurrenceTransport {
-  OccurrenceTransport {
-    index: OccurrenceIndex {
+  left: std.occurrence_identity.OccurrenceTransport,
+  right: std.occurrence_identity.OccurrenceTransport
+) -> std.occurrence_identity.OccurrenceTransport {
+  std.occurrence_identity.OccurrenceTransport {
+    index: std.occurrence_identity.OccurrenceIndex {
       entries: concat(left.index.entries, right.index.entries),
     },
     declarations: concat(left.declarations, right.declarations),
@@ -1902,9 +1902,9 @@ fn merge_occurrence_transports(
 }
 
 fn cross_file_binding_closure_row(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   inputs: OccurrenceBindingCandidateInputs,
-  module_path: NonEmptyStr,
+  module_path: std.types.NonEmptyStr,
   file_path: std.types.FilePath
 ) -> CrossFileBindingClosureRow {
   CrossFileBindingClosureRow {
@@ -2041,8 +2041,8 @@ fn assemble_cross_file_binding_closure(
       }
     ModulePathFileIndexReady { entries: _ } =>
       AssembledCrossFileBindingClosureReady {
-        transport: OccurrenceTransport {
-          index: OccurrenceIndex { entries: reverse(assembled.entries_reversed) },
+        transport: std.occurrence_identity.OccurrenceTransport {
+          index: std.occurrence_identity.OccurrenceIndex { entries: reverse(assembled.entries_reversed) },
           declarations: reverse(assembled.declarations_reversed),
           references: reverse(assembled.references_reversed),
         },
@@ -2267,9 +2267,9 @@ type ReferenceBindingProjection
 data resolve_type_reference_containment_binding_note: String = "N2 typed entry (gunbc.type_reference_containment_binding slice 1): refuses non-TypeOccurrence references at the API boundary before candidate enumeration — category is part of the binding contract, not an after-the-fact filter. TypeOccurrence references delegate to resolve_reference_binding_via_structural_candidates unchanged."
 
 fn resolve_type_reference_containment_binding(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   inputs: OccurrenceBindingCandidateInputs,
-  reference: ReferenceOccurrence
+  reference: std.occurrence_identity.ReferenceOccurrence
 ) -> ReferenceBindingProjection {
   match reference.category {
     TypeOccurrence =>
@@ -2289,9 +2289,9 @@ fn resolve_type_reference_containment_binding(
 data resolve_reference_via_structural_candidates_note: String = "THE P2a entry point. It builds the exact candidate population for one reference from the precomputed index (candidate_occurrence_ids_for_reference) and hands that population to std.occurrence_binding_resolve.resolve_reference_occurrence_binding as supplied_candidates -- P1's fold over occurrence_binding_from_candidates is the only cardinality decision in this path. Only the OccurrenceBound arm is projected into a BoundReferenceProvider; Unbound and Ambiguous are surfaced as their own typed, located outcomes so a caller can never mistake 'no edge' for 'one edge'."
 
 fn resolve_reference_via_structural_candidates(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   index: OccurrenceCandidateIndex,
-  reference: ReferenceOccurrence
+  reference: std.occurrence_identity.ReferenceOccurrence
 ) -> ReferenceBindingProjection {
   let candidates = candidate_occurrence_ids_for_reference(
     index: index,
@@ -2345,9 +2345,9 @@ fn resolve_reference_via_structural_candidates(
 }
 
 fn resolve_reference_binding_via_structural_candidates(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   inputs: OccurrenceBindingCandidateInputs,
-  reference: ReferenceOccurrence
+  reference: std.occurrence_identity.ReferenceOccurrence
 ) -> ReferenceBindingProjection {
   match occurrence_candidate_index_build(transport: transport, inputs: inputs) {
     OccurrenceCandidateIndexTransportRefused { refusal: refusal } =>
@@ -2370,9 +2370,9 @@ fn resolve_reference_binding_via_structural_candidates(
 }
 
 fn resolve_all_references_via_structural_candidates(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   index: OccurrenceCandidateIndex,
-  references: List<ReferenceOccurrence>
+  references: List<std.occurrence_identity.ReferenceOccurrence>
 ) -> List<ReferenceBindingProjection> {
   references |> map(reference => resolve_reference_via_structural_candidates(
     transport: transport,
@@ -2430,26 +2430,26 @@ type Section13PopulationLawRosterVerdict
   | Section13PopulationLawRosterRefusedDeferredMissingTrigger
 
 fn section13_executing_receipt(
-  module_path: NonEmptyStr,
-  decl_name: NonEmptyStr
-) -> DeclarationRef {
-  DeclarationRef {
+  module_path: std.types.NonEmptyStr,
+  decl_name: std.types.NonEmptyStr
+) -> std.decl_ref.DeclarationRef {
+  std.decl_ref.DeclarationRef {
     module_path: module_path,
     decl_name: decl_name,
     field: WholeDeclaration,
   }
 }
 
-fn section13_collector_dedup_dissolve_on() -> DeclarationRef {
-  DeclarationRef {
-    module_path: "std.occurrence_binding_candidates" as NonEmptyStr,
-    decl_name: "occurrence_safe_collector_dedup_receipt" as NonEmptyStr,
+fn section13_collector_dedup_dissolve_on() -> std.decl_ref.DeclarationRef {
+  std.decl_ref.DeclarationRef {
+    module_path: "std.occurrence_binding_candidates" as std.types.NonEmptyStr,
+    decl_name: "occurrence_safe_collector_dedup_receipt" as std.types.NonEmptyStr,
     field: WholeDeclaration,
   }
 }
 
-fn section13_witness_module_path() -> NonEmptyStr {
-  "test.claim.occurrence_binding_candidates_witness_test" as NonEmptyStr
+fn section13_witness_module_path() -> std.types.NonEmptyStr {
+  "test.claim.occurrence_binding_candidates_witness_test" as std.types.NonEmptyStr
 }
 
 data section13_population_law_roster: List<Section13PopulationLawRosterRow> = [
@@ -2458,7 +2458,7 @@ data section13_population_law_roster: List<Section13PopulationLawRosterRow> = [
     evidence: Section13PopulationLawExecuting {
       receipt: section13_executing_receipt(
         module_path: section13_witness_module_path(),
-        decl_name: "module_scope_sibling_is_visible_holds" as NonEmptyStr,
+        decl_name: "module_scope_sibling_is_visible_holds" as std.types.NonEmptyStr,
       ),
     },
   },
@@ -2467,7 +2467,7 @@ data section13_population_law_roster: List<Section13PopulationLawRosterRow> = [
     evidence: Section13PopulationLawExecuting {
       receipt: section13_executing_receipt(
         module_path: section13_witness_module_path(),
-        decl_name: "sibling_match_arm_not_visible_holds" as NonEmptyStr,
+        decl_name: "sibling_match_arm_not_visible_holds" as std.types.NonEmptyStr,
       ),
     },
   },
@@ -2476,7 +2476,7 @@ data section13_population_law_roster: List<Section13PopulationLawRosterRow> = [
     evidence: Section13PopulationLawExecuting {
       receipt: section13_executing_receipt(
         module_path: section13_witness_module_path(),
-        decl_name: "nested_lexical_only_inside_scope_holds" as NonEmptyStr,
+        decl_name: "nested_lexical_only_inside_scope_holds" as std.types.NonEmptyStr,
       ),
     },
   },
@@ -2485,7 +2485,7 @@ data section13_population_law_roster: List<Section13PopulationLawRosterRow> = [
     evidence: Section13PopulationLawExecuting {
       receipt: section13_executing_receipt(
         module_path: section13_witness_module_path(),
-        decl_name: "declaration_below_occurrence_not_visible_holds" as NonEmptyStr,
+        decl_name: "declaration_below_occurrence_not_visible_holds" as std.types.NonEmptyStr,
       ),
     },
   },
@@ -2494,7 +2494,7 @@ data section13_population_law_roster: List<Section13PopulationLawRosterRow> = [
     evidence: Section13PopulationLawExecuting {
       receipt: section13_executing_receipt(
         module_path: section13_witness_module_path(),
-        decl_name: "same_text_distinct_identities_is_ambiguous_holds" as NonEmptyStr,
+        decl_name: "same_text_distinct_identities_is_ambiguous_holds" as std.types.NonEmptyStr,
       ),
     },
   },
@@ -2548,7 +2548,7 @@ fn section13_population_law_id_eq(
 
 data section13_module_path_is_symbolic_note: String = "Interim oracle only: refuses DeclarationRef.module_path strings that look positional (contain '/' or '.dag'). This is a §5 heuristic standing where a type should stand — the same class occurrence_module_path_convergence_note names. It is NOT the long-term authority for symbolic vs positional module identity."
 
-fn section13_module_path_is_symbolic(module_path: NonEmptyStr) -> Bool {
+fn section13_module_path_is_symbolic(module_path: std.types.NonEmptyStr) -> Bool {
   let path = module_path as String
   !string_contains(s: path, pattern: "/")
     && !string_contains(s: path, pattern: ".dag")
@@ -2645,9 +2645,9 @@ fn section13_first_uncovered_law(
 }
 
 fn section13_observation_joins_receipt(
-  receipt: DeclarationRef,
+  receipt: std.decl_ref.DeclarationRef,
   observations: List<Section13ExactHeadExecutionObservation>,
-  required_head: CommitSha
+  required_head: std.types.CommitSha
 ) -> Bool? {
   fold(
     observations,
@@ -2671,7 +2671,7 @@ fn section13_observation_joins_receipt(
 fn section13_adjudicate_row(
   row: Section13PopulationLawRosterRow,
   observations: List<Section13ExactHeadExecutionObservation>,
-  required_head: CommitSha
+  required_head: std.types.CommitSha
 ) -> Section13PopulationLawRosterVerdict {
   match row.evidence {
     Section13PopulationLawExecuting { receipt: receipt } =>
@@ -2707,7 +2707,7 @@ fn section13_adjudicate_row(
 
 fn section13_population_law_roster_adjudicate(
   observations: List<Section13ExactHeadExecutionObservation>,
-  required_head: CommitSha
+  required_head: std.types.CommitSha
 ) -> Section13PopulationLawRosterVerdict {
   let rows = section13_population_law_roster
   match section13_first_duplicate_law(rows: rows) {
@@ -2738,7 +2738,7 @@ fn section13_population_law_roster_adjudicate(
 
 fn section13_population_law_roster_denominator_holds(
   observations: List<Section13ExactHeadExecutionObservation>,
-  required_head: CommitSha
+  required_head: std.types.CommitSha
 ) -> Bool {
   match section13_population_law_roster_adjudicate(
     observations: observations,
@@ -2749,4 +2749,4 @@ fn section13_population_law_roster_denominator_holds(
   }
 }
 
-data section13_module_path_is_symbolic_dissolve_on: DissolutionCondition = unbound_dissolution(description: "feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling i")
+data section13_module_path_is_symbolic_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "feature:module-path-qualified-name — DISSOLVE-ON: DeclarationRef.module_path / OccurrenceModulePathRow.module_path become v2.std.qualified_name.QualifiedName (same trigger as occurrence_module_path_convergence_note / std.observation observation_segment_grounding_note); then positional file-path inhabitance is unwritable, this string-grep oracle deletes, and section13_adjudicate_row stops calling i")

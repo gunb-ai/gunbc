@@ -5,12 +5,12 @@ module gunbc.roadmap_verification_receipt
 data verification_subject_note: String = "ONE VERIFICATION QUESTION HAS ONE SUBJECT. A verdict is about one durable roadmap node identity under one criteria revision, in one attempt and branch, at one committed head, against one exact change-window identity. None of those six fields is Optional: a receipt that cannot name any one of them cannot state which question it answered and therefore cannot be constructed as VerificationReceipt. The node's durable identity is RoadmapNodeIdentity rather than its editable slug; criteria_digest is the Fnv1a64Structural value derived by gunbc.roadmap_model node_criteria_digest; head_sha is std.types CommitSha rather than an anonymous revision string; change_window_identity is the Fnv1a64Structural content hash over target, target_generation, base, head, and relation from gunbc.git_diff_change_window (git_diff_window_absent_identity when the contract does not consume an affected-set window).\n\nTHE HEAD IS OBSERVED, NOT INFERRED FROM THE BRANCH. A branch is a moving publication handle and remains in the subject because it locates the attempt's line of work. The committed head is the verification identity: head A and head B in the same attempt are different subjects, so findings against A can coexist with a later green receipt for B without either overwriting or impersonating the other. When the target branch advances but head stays fixed, change_window_identity moves with target_generation and base, so an old receipt for (B1, H) cannot answer (B2, H)."
 
 type VerificationSubject {
-  node_identity: RoadmapNodeIdentity
-  criteria_digest: Fnv1a64Structural
+  node_identity: gunbc.roadmap_model.RoadmapNodeIdentity
+  criteria_digest: std.content_hash.Fnv1a64Structural
   attempt_key: String
-  branch: NonEmptyStr
-  head_sha: CommitSha
-  change_window_identity: Fnv1a64Structural
+  branch: std.types.NonEmptyStr
+  head_sha: std.types.CommitSha
+  change_window_identity: std.content_hash.Fnv1a64Structural
 }
 
 data current_verification_selection_note: String = "Recut A mutable pointer: after the belt derives the exact six-field verification question it publishes which head and change_window_identity are current. The dashboard reads this before addressing any immutable receipt. It is not verification evidence and may be replaced whenever the belt selects a new window for the same head."
@@ -18,8 +18,8 @@ data current_verification_selection_note: String = "Recut A mutable pointer: aft
 data current_verification_selection_schema: NonEmptyStr = "roadmap-verification-current-selection/v1"
 
 type CurrentVerificationSelection {
-  head_sha: CommitSha
-  change_window_identity: Fnv1a64Structural
+  head_sha: std.types.CommitSha
+  change_window_identity: std.content_hash.Fnv1a64Structural
 }
 
 type CurrentVerificationSelectionObservation
@@ -28,8 +28,8 @@ type CurrentVerificationSelectionObservation
   | SelectionUnreadable { cause: String }
   | SelectionMalformed { cause: String }
   | SelectionObserved {
-      head: CommitSha,
-      window_identity: Fnv1a64Structural,
+      head: std.types.CommitSha,
+      window_identity: std.content_hash.Fnv1a64Structural,
     }
 
 type VerificationSelectionPublishOutcome
@@ -46,9 +46,9 @@ type ExactVerificationReceiptSource
 
 type LegacyExactHeadVerificationReceipt {
   subject: VerificationSubject
-  oracle_identity: ContentHash
+  oracle_identity: std.content_hash.ContentHash
   executions: List<ValidationExecution>
-  verdict: ValidationVerdict
+  verdict: gunbc.roadmap_validation_oracle.ValidationVerdict
 }
 
 type VerificationReceiptText
@@ -537,8 +537,8 @@ fn belt_verification_decision(
 
 // AN EXECUTION RECORDS THE DECLARED OPERATION, THE REALIZED COMMAND, AND THE PROCESS EVIDENCE AS STRUCTURE. ValidationOperation is the existing semantic validation authority; ModeledValidationCommand keeps program and argv separate instead of persisting a shell sentence; exit_code, stdout and stderr preserve the three observations without rendering them into explanatory prose. A command that never ran contributes no ValidationExecution — its reason belongs to the existing ValidationRefused verdict. This is why executions is a list: a contract may declare several validations, and one summary command string cannot honestly describe all of them.
 type ValidationExecution {
-  validation: ValidationOperation
-  command: ModeledValidationCommand
+  validation: gunbc.roadmap_execution_contract.ValidationOperation
+  command: gunbc.roadmap_execution_contract.ModeledValidationCommand
   exit_code: Int
   stdout: String
   stderr: String
@@ -548,9 +548,9 @@ data verification_receipt_note: String = "THE RECEIPT KEEPS THE QUESTION, THE PI
 
 type VerificationReceipt {
   subject: VerificationSubject
-  oracle_identity: ContentHash
+  oracle_identity: std.content_hash.ContentHash
   executions: List<ValidationExecution>
-  verdict: ValidationVerdict
+  verdict: gunbc.roadmap_validation_oracle.ValidationVerdict
 }
 
 data verification_subject_match_note: String = "A READABLE RECEIPT ABOUT ANOTHER SUBJECT IS NOT EVIDENCE. The comparison is total over all six required fields and returns the first differing field with both values, mirroring gunbc.roadmap_publish publication_receipt_subject_match. In particular, an old head's passed receipt cannot move the lamp for a new head merely because node, criteria, attempt and branch still agree; nor can an old window identity answer after the target branch advances."
@@ -558,7 +558,7 @@ data verification_subject_match_note: String = "A READABLE RECEIPT ABOUT ANOTHER
 type VerificationSubjectMatch
   = VerificationSubjectMatches
   | VerificationSubjectDiffers {
-      field: NonEmptyStr,
+      field: std.types.NonEmptyStr,
       expected: String,
       found: String,
     }
@@ -629,7 +629,7 @@ type VerificationReceiptSource
 type VerificationEvidence
   = VerificationEvidenceForSubject { receipt: VerificationReceipt }
   | VerificationEvidenceForAnotherSubject {
-      field: NonEmptyStr,
+      field: std.types.NonEmptyStr,
       expected: String,
       found: String,
     }

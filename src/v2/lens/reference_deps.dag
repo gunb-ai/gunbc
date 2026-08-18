@@ -12,7 +12,7 @@ type ReferenceResolutionFact {
 type ReferenceIngestRefusal {
   path: String
   stage: String
-  reason: Symbol
+  reason: v2.std.node.Symbol
 }
 
 type ReferenceResolutionCensus {

@@ -24,8 +24,8 @@ type GoogleAdsBillableUnit
 
 type GoogleAdsBillableUnitRow {
   unit: GoogleAdsBillableUnit
-  unit_wire_label: NonEmptyStr
-  citation: NonEmptyStr
+  unit_wire_label: std.types.NonEmptyStr
+  citation: std.types.NonEmptyStr
 }
 
 // The four cost units the bid-strategy page names, wire labels verbatim: cost-per-click (CPC) for clicks, cost-per-thousand impressions (CPM) and cost-per-thousand viewable impressions (vCPM) for impressions, and cost-per-view (CPV) for video views. Conversions are an OPTIMIZATION target in Google's model (Target CPA, Target ROAS, Maximize Conversions), not a fifth billable unit on this page -- the strategy roster below carries those names; fusing the two axes would misstate the documented interface.

@@ -27,11 +27,11 @@ data primitive_fold_list_spelling_fork_note: String = "Named finding — SPELLIN
 
 // Named finding — first two-realizations-one-name specimen: lookup has eval_method_call short-circuit AND an algebra template arm; the short-circuit shadows the algebra arm. Better join specimen than index_by for SurfaceJoinsTwoIdentities / realization reconciliation. keys and values DO have algebra template arms — determinism undetectability is about the lens view of unqualified symbols, not absence of algebra arms.
 type PrimitiveIdentity {
-  slug: NonEmptyStr
+  slug: std.types.NonEmptyStr
 }
 
 type PrimitiveSemanticContract {
-  canonical_name: NonEmptyStr
+  canonical_name: std.types.NonEmptyStr
 }
 
 type PrimitiveDefinition {
@@ -41,13 +41,13 @@ type PrimitiveDefinition {
 
 type InvocationForm
   = FreeCall
-  | MethodCall { receiver_domain: NonEmptyStr }
+  | MethodCall { receiver_domain: std.types.NonEmptyStr }
   | OperatorCall
 
 type PrimitiveInvocationSurface {
   primitive: PrimitiveIdentity
   form: InvocationForm
-  authored_symbol: NonEmptyStr
+  authored_symbol: std.types.NonEmptyStr
 }
 
 type RealizationTarget
@@ -58,12 +58,12 @@ type RealizationTarget
 type PrimitiveRealization {
   primitive: PrimitiveIdentity
   target: RealizationTarget
-  handler: DeclarationRef
+  handler: std.decl_ref.DeclarationRef
 }
 
 type PrimitiveCostFact {
   primitive: PrimitiveIdentity
-  cost: CostShape
+  cost: std.algebra.CostShape
 }
 
 type TraversalOrder
@@ -90,8 +90,8 @@ type PrimitiveSurfaceCensusProvenance
 
 type PrimitiveSurfaceRow {
   authority: PrimitiveSurfaceAuthority
-  authored_symbol: NonEmptyStr
-  authority_ref: DeclarationRef
+  authored_symbol: std.types.NonEmptyStr
+  authority_ref: std.decl_ref.DeclarationRef
   primitive: PrimitiveIdentity?
   provenance: PrimitiveSurfaceCensusProvenance
 }
@@ -99,22 +99,22 @@ type PrimitiveSurfaceRow {
 type PrimitiveJoinViolation
   = SurfaceMissingPrimitiveIdentity {
       authority: PrimitiveSurfaceAuthority
-      authored_symbol: NonEmptyStr
+      authored_symbol: std.types.NonEmptyStr
     }
   | SurfaceJoinsTwoIdentities {
       authority: PrimitiveSurfaceAuthority
-      authored_symbol: NonEmptyStr
+      authored_symbol: std.types.NonEmptyStr
       first: PrimitiveIdentity
       second: PrimitiveIdentity
     }
   | IncompatibleInvocationAssignment {
-      authored_symbol: NonEmptyStr
+      authored_symbol: std.types.NonEmptyStr
       first: PrimitiveIdentity
       second: PrimitiveIdentity
     }
   | RealizationNamesUnknownPrimitive {
       target: RealizationTarget
-      handler: DeclarationRef
+      handler: std.decl_ref.DeclarationRef
     }
   | DuplicateSemanticDefinition { identity: PrimitiveIdentity }
 
@@ -176,7 +176,7 @@ fn surface_row(
 
 type PrimitiveSurfaceAliasBinding {
   authority: PrimitiveSurfaceAuthority
-  authored_symbol: NonEmptyStr
+  authored_symbol: std.types.NonEmptyStr
   identity: PrimitiveIdentity
 }
 

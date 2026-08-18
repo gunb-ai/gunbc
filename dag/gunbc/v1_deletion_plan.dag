@@ -13,7 +13,7 @@ type V1FinishLineSpec {
   line: V1FinishLine
   name: String
   claim: String
-  node: RoadmapNodeId
+  node: gunbc.roadmap_model.RoadmapNodeId
 }
 
 fn v1_exit_node_id(s: String) -> RoadmapNodeId { s }

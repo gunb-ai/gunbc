@@ -1,31 +1,31 @@
 module v2.test.claim.interface_summary.typed_module_key
 
 
-data purpose_note: NonEmptyStr = "RED controls proving each term of typed_module_key is load-bearing: vary compiler_identity alone -> key changes; vary interface_key alone -> key changes; drop neither -> extends the interface key. Synthetic inputs only; no store, no live tree."
+data purpose_note: std.types.NonEmptyStr = "RED controls proving each term of typed_module_key is load-bearing: vary compiler_identity alone -> key changes; vary interface_key alone -> key changes; drop neither -> extends the interface key. Synthetic inputs only; no store, no live tree."
 
-fn synthetic_interface_hash() -> InterfaceHash {
+fn synthetic_interface_hash() -> std.interface_summary.InterfaceHash {
   interface_summary_rollup(exports: [])
 }
 
-fn interface_key_a() -> ModuleKey {
+fn interface_key_a() -> std.interface_summary.ModuleKey {
   module_key(
     source_hash: content_hash_atom(value: "module-source-a"),
     direct_import_interface_hashes: [synthetic_interface_hash()]
   )
 }
 
-fn interface_key_b() -> ModuleKey {
+fn interface_key_b() -> std.interface_summary.ModuleKey {
   module_key(
     source_hash: content_hash_atom(value: "module-source-b"),
     direct_import_interface_hashes: [synthetic_interface_hash()]
   )
 }
 
-fn compiler_id_x() -> ContentHash {
+fn compiler_id_x() -> std.content_hash.ContentHash {
   content_hash_atom(value: "compiler-identity-x")
 }
 
-fn compiler_id_y() -> ContentHash {
+fn compiler_id_y() -> std.content_hash.ContentHash {
   content_hash_atom(value: "compiler-identity-y")
 }
 

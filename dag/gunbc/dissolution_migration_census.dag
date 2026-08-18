@@ -33,9 +33,9 @@ type LifecycleResidueClass
   | NarrativeOnly
 
 type LifecycleResidueRow {
-  ref: DeclarationRef
+  ref: std.decl_ref.DeclarationRef
   class: LifecycleResidueClass
-  rationale: NonEmptyStr
+  rationale: std.types.NonEmptyStr
 }
 
 fn residue_row(

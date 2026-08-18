@@ -28,19 +28,19 @@ type LinuxFilesystemKind
   = LinuxOverlayFs
   | LinuxSquashFs
   | LinuxJffs2
-  | OtherLinuxFilesystem { mount_type: NonEmptyStr }
+  | OtherLinuxFilesystem { mount_type: std.types.NonEmptyStr }
 
 // LinuxFilesystemKind is the upstream /proc/mounts filesystem-type wire axis needed to distinguish an overlay mount from squashfs/JFFS2 backing storage. It is not std.os.types.FileSystemSemantics, whose Posix/Ntfs/Apfs/WslPathTranslation arms describe cross-platform path and process semantics. Linux mount-type names are an open kernel/userspace vocabulary, so OtherLinuxFilesystem preserves the exact unrecognized wire value and cannot be mistaken for any persistence-relevant known arm.
 type LinuxMountObservation {
-  source: NonEmptyStr
-  target: NonEmptyStr
+  source: std.types.NonEmptyStr
+  target: std.types.NonEmptyStr
   filesystem: LinuxFilesystemKind
 }
 
 type LinuxOverlayObservation {
   merged_mount: LinuxMountObservation
-  lower_directory: NonEmptyStr
-  upper_directory: NonEmptyStr
+  lower_directory: std.types.NonEmptyStr
+  upper_directory: std.types.NonEmptyStr
   lower_backing_mount: LinuxMountObservation
   upper_backing_mount: LinuxMountObservation
 }
@@ -78,10 +78,10 @@ type LinuxOverlayParseRefusal
   | LinuxOverlayRootIsNotOverlay
   | LinuxOverlayLowerDirectoryMissing
   | LinuxOverlayUpperDirectoryMissing
-  | LinuxOverlayMultipleLowerDirectoriesUnsupported { wire: NonEmptyStr }
-  | LinuxOverlayDirectoryNotAbsolute { path: NonEmptyStr }
-  | LinuxOverlayLowerBackingMountMissing { directory: NonEmptyStr }
-  | LinuxOverlayUpperBackingMountMissing { directory: NonEmptyStr }
+  | LinuxOverlayMultipleLowerDirectoriesUnsupported { wire: std.types.NonEmptyStr }
+  | LinuxOverlayDirectoryNotAbsolute { path: std.types.NonEmptyStr }
+  | LinuxOverlayLowerBackingMountMissing { directory: std.types.NonEmptyStr }
+  | LinuxOverlayUpperBackingMountMissing { directory: std.types.NonEmptyStr }
 
 type LinuxOverlayParse
   = LinuxOverlayParsed { observation: LinuxOverlayObservation }

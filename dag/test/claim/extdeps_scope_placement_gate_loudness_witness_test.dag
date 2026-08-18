@@ -9,15 +9,15 @@ fn read_manifest_rows() -> List<String> {
   )
 }
 
-fn exit_reason_of(e: ProcessExit) -> String {
+fn exit_reason_of(e: std.process.ProcessExit) -> String {
   scope_placement_failure_reason(exit: e)
 }
 
-fn exit_is_failure(e: ProcessExit) -> Bool {
+fn exit_is_failure(e: std.process.ProcessExit) -> Bool {
   match e { ExitSuccess => false  _ => true }
 }
 
-fn reason_names_all(exit: ProcessExit, markers: List<String>) -> Bool {
+fn reason_names_all(exit: std.process.ProcessExit, markers: List<String>) -> Bool {
   let reason = exit_reason_of(e: exit)
   reason != "" && all(markers, m => string_contains(s: reason, pattern: m))
 }

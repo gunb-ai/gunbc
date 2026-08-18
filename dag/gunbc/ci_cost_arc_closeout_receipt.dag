@@ -10,8 +10,8 @@ type AffectedSelection
 type AffectedCiCostAuditSubject {
   harvest: HarvestKind,
   github_actions_run_id: std.nat.Nat,
-  head_commit: NonEmptyStr,
-  job_name: NonEmptyStr,
+  head_commit: std.types.NonEmptyStr,
+  job_name: std.types.NonEmptyStr,
   selection: AffectedSelection,
 }
 
@@ -30,7 +30,7 @@ type NativeFleetSettle
 // how ClosedSkipProofLanded outlived the evidence it names.
 type WarmHitSettle
   = ClosedSkipProofLanded {}
-  | SkipProofWithdrawn { reason: NonEmptyStr }
+  | SkipProofWithdrawn { reason: std.types.NonEmptyStr }
 
 type RetentionSettle
   = ClosedReject {}

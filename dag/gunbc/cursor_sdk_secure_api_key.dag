@@ -5,11 +5,11 @@ data cursor_sdk_secure_api_key_note: String = "API key materializes INTO the SDK
 
 type CursorSdkSecureApiKeyInput
   = CursorSdkSecureApiKeyReady {
-      secret_ref: SecretRef
+      secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef
       credential: Secret
-      materialization: CursorSdkApiKeyMaterialization
+      materialization: extdeps.llm.cursor_sdk.CursorSdkApiKeyMaterialization
     }
-  | CursorSdkSecureApiKeyInputRefused { reason: NonEmptyStr }
+  | CursorSdkSecureApiKeyInputRefused { reason: std.types.NonEmptyStr }
 
 fn cursor_sdk_secure_api_key_from_secret_ref(
   secret_ref: SecretRef,

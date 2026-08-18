@@ -1,16 +1,16 @@
 module extdeps.memory.sk_hynix
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/DDR4_SDRAM"
   }
 }
 
-data stick_capacity_bytes: ByteSize = byte_size(17179869184)
+data stick_capacity_bytes: std.measure.ByteSize = byte_size(17179869184)
 
-data hma82gr7afr4n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
+data hma82gr7afr4n_vk_catalog: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types.DramModuleCatalogRow {
   part_number: "HMA82GR7AFR4N-VK",
   manufacturer: sk_hynix,
   generation: dram_generation_ddr4,
@@ -23,7 +23,7 @@ data hma82gr7afr4n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
   rank_count: 1,
 }
 
-data hma82gr7afr8n_vk_catalog: DramModuleCatalogRow = DramModuleCatalogRow {
+data hma82gr7afr8n_vk_catalog: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types.DramModuleCatalogRow {
   part_number: "HMA82GR7AFR8N-VK",
   manufacturer: sk_hynix,
   generation: dram_generation_ddr4,

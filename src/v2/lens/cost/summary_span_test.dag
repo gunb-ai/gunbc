@@ -1,20 +1,20 @@
 module v2.test.lens_cost.summary_span
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn unit_cost_expr() -> CostExpr {
+fn unit_cost_expr() -> v2.lens.cost.expr.CostExpr {
   cost_const(value: Succ { prev: Zero })
 }
 
-fn unit_complexity_summary() -> ComplexitySummary {
-  ComplexitySummary {
+fn unit_complexity_summary() -> v2.lens.cost.summary.ComplexitySummary {
+  v2.lens.cost.summary.ComplexitySummary {
     work: unit_cost_expr(),
     span: unit_cost_expr()
   }
 }
 
-fn triple_sequential_shape() -> ComplexitySummary {
+fn triple_sequential_shape() -> v2.lens.cost.summary.ComplexitySummary {
   summary_sequential(
     left: unit_complexity_summary(),
     right: summary_sequential(
@@ -24,7 +24,7 @@ fn triple_sequential_shape() -> ComplexitySummary {
   )
 }
 
-fn triple_parallel_shape() -> ComplexitySummary {
+fn triple_parallel_shape() -> v2.lens.cost.summary.ComplexitySummary {
   summary_parallel(
     left: unit_complexity_summary(),
     right: summary_parallel(
@@ -34,7 +34,7 @@ fn triple_parallel_shape() -> ComplexitySummary {
   )
 }
 
-fn is_pair_of_unit_costs(expr: CostExpr) -> Bool {
+fn is_pair_of_unit_costs(expr: v2.lens.cost.expr.CostExpr) -> Bool {
   match expr {
     CostAdd {
       left: CostConst { value: Succ { prev: Zero } },
@@ -44,7 +44,7 @@ fn is_pair_of_unit_costs(expr: CostExpr) -> Bool {
   }
 }
 
-fn is_triple_of_unit_costs(expr: CostExpr) -> Bool {
+fn is_triple_of_unit_costs(expr: v2.lens.cost.expr.CostExpr) -> Bool {
   match expr {
     CostAdd {
       left: CostConst { value: Succ { prev: Zero } },

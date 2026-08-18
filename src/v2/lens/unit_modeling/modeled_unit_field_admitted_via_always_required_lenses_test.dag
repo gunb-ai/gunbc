@@ -1,18 +1,18 @@
 module v2.test.lens_unit_modeling.modeled_unit_field_admitted_via_always_required_lenses
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data unit_ar_pass_carrier_target: Node = Node {
+data unit_ar_pass_carrier_target: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^ByteSize } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data unit_ar_pass_root: Node = Node {
+data unit_ar_pass_root: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
+    v2.std.node.Edge {
       label: Named { name: ^ram_bytes },
       target: unit_ar_pass_carrier_target
     }
@@ -22,7 +22,7 @@ data unit_ar_pass_root: Node = Node {
 
 data unit_ar_pass_authority: Node = claim_atom_node(s: ^unit_ar_pass_symbol)
 
-fn unit_ar_pass_tree() -> InferredTree {
+fn unit_ar_pass_tree() -> v2.compiler.infer.InferredTree {
   claim_inferred_tree(
     root: unit_ar_pass_root,
     facts: claim_inferred_facts(

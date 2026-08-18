@@ -1,7 +1,7 @@
 module gunbc.plans.emission_ingestion_inverse
 
 
-fn emission_ingestion_inverse_body() -> List<MarkdownBlock> {
+fn emission_ingestion_inverse_body() -> List<std.markdown.MarkdownBlock> {
   [
     quote(blocks: [
       p(text: "Plan doc for two roadmap items: the **§0 realization-vocabulary containment guard** (stability-window construction wall) and the **§6 emission=ingestion⁻¹-past-syntax** intent layer (expansion). Both come from one audit, triggered by an anemic CI helper. DESIGN refs: §3 (single authority; transport vs intent), §4 (`emit = serialize_target ∘ translate`, one grammar read both directions; N+M not N×M), §5 (fail-closed; construction over validation), §6 (idea→idea; Medium<R>), §7 (round-trip fixed point)."),
@@ -111,7 +111,7 @@ fn emission_ingestion_inverse_body() -> List<MarkdownBlock> {
   ]
 }
 
-data emission_ingestion_inverse_plan: Plan = Plan {
+data emission_ingestion_inverse_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "emission-ingestion-inverse",
   title: "Emission = Ingestion⁻¹ — extending the row-driven inverse past syntax to the intent layer",
   body: emission_ingestion_inverse_body(),

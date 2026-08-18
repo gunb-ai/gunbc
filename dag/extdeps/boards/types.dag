@@ -13,14 +13,14 @@ type BaseboardModel = | AsrockRackAltrad8ud1l2t
 
 type BaseboardCatalogRow {
   model: BaseboardModel
-  model_label: NonEmptyStr
+  model_label: std.types.NonEmptyStr
   vendor: Vendor<extdeps.hardware.Hardware>
-  bmc_firmware: BmcFirmwareFamily
+  bmc_firmware: std.bmc.BmcFirmwareFamily
 }
 
 type ServerBaseboard {
   catalog: BaseboardCatalogRow
-  bmc: BmcEndpoint
+  bmc: std.bmc.BmcEndpoint
 }
 
 // The documented DIMM populations for a board. A population that is not on
@@ -28,13 +28,13 @@ type ServerBaseboard {
 // unsupported configuration whose failure proves nothing about the modules.
 type DimmPopulation {
   board: BaseboardModel
-  slots: List<NonEmptyStr>
-  authority: ExternalAuthority
+  slots: List<std.types.NonEmptyStr>
+  authority: extdeps.external_authority.ExternalAuthority
 }
 
 type PopulationAdmission
   = PopulationSupported
-  | PopulationUnsupported { slots: List<NonEmptyStr> }
+  | PopulationUnsupported { slots: List<std.types.NonEmptyStr> }
 
 fn slot_occurrence_count(slots: List<NonEmptyStr>, slot: NonEmptyStr) -> Int {
   fold(slots, init: 0, f: (acc, s) => if s == slot { acc + 1 } else { acc })

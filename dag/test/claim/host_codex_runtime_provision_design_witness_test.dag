@@ -86,7 +86,7 @@ test fn design_witness_shell_output_unrecognized_refuses_fail_closed() -> Bool {
 
 test fn design_witness_shell_verdict_materialization_failed_not_identity_mismatch() -> Bool {
   match provision_codex_runtime_verdict_from_shell(
-    host: "srv1" as HostIdentity,
+    host: "srv1" as product.placement_supply.HostIdentity,
     success: false,
     stdout: join(
       [
@@ -107,7 +107,7 @@ test fn design_witness_shell_verdict_materialization_failed_not_identity_mismatc
 
 test fn design_witness_shell_verdict_refuses_identity_mismatch() -> Bool {
   match provision_codex_runtime_verdict_from_shell(
-    host: "srv1" as HostIdentity,
+    host: "srv1" as product.placement_supply.HostIdentity,
     success: false,
     stdout: "CodexRuntimeProvisionReceipt: read_back=FAILED identity not realized\ncodex-cli 0.133.0",
     stderr: "",
@@ -119,7 +119,7 @@ test fn design_witness_shell_verdict_refuses_identity_mismatch() -> Bool {
 
 test fn design_witness_shell_verdict_ensure_failure_is_mismatch_not_absent() -> Bool {
   match provision_codex_runtime_verdict_from_shell(
-    host: "srv1" as HostIdentity,
+    host: "srv1" as product.placement_supply.HostIdentity,
     success: false,
     stdout: join(
       [
@@ -140,7 +140,7 @@ test fn design_witness_shell_verdict_ensure_failure_is_mismatch_not_absent() -> 
 
 test fn design_witness_shell_verdict_unrecognized_output_not_identity_mismatch() -> Bool {
   match provision_codex_runtime_verdict_from_shell(
-    host: "srv1" as HostIdentity,
+    host: "srv1" as product.placement_supply.HostIdentity,
     success: false,
     stdout: "ssh: connection timed out",
     stderr: "",

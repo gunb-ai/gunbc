@@ -62,22 +62,22 @@ data gunbc_ci_corpus_envelope: InputEnvelope = BoundedInput {
   bounds: [
     InputBound {
       axis: WitnessCount,
-      max: Measure { count: 2000 }
+      max: std.measure.Measure { count: 2000 }
     },
     InputBound {
       axis: SourceNodeCount,
-      max: Measure { count: 500000 }
+      max: std.measure.Measure { count: 500000 }
     },
     InputBound {
       axis: CorpusNodeCount,
-      max: Measure { count: 5000000 }
+      max: std.measure.Measure { count: 5000000 }
     },
   ]
 }
 
-data gunbc_ci_corpus_envelope_ceiling_scaffold: Disposition = Scaffold {
+data gunbc_ci_corpus_envelope_ceiling_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.plans.input_envelope_roadmap",
     decl_name: "input_envelope_roadmap_plan",
     field: WholeDeclaration

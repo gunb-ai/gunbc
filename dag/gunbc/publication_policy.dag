@@ -12,7 +12,7 @@ type SubtreePublishRule {
 }
 
 type PublicationPolicy {
-  version: NonEmptyStr
+  version: std.types.NonEmptyStr
   default_disposition: PublicationDisposition
   rules: List<SubtreePublishRule>
 }

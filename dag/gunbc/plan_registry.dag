@@ -1,7 +1,7 @@
 module gunbc.plan_registry
 
 
-data all_plans: List<Plan> = concat(
+data all_plans: List<gunbc.plan.Plan> = concat(
   [idea_machine_plan],
   concat(batch_b_plans,
   concat(batch_c_plans,

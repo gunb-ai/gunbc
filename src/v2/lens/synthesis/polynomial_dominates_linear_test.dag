@@ -1,14 +1,14 @@
 module v2.test.lens_synthesis.polynomial_dominates_linear
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-data synthesis_poly_x: Node = Node {
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data synthesis_poly_x: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_poly_x_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data synthesis_poly_y: Node = Node {
+data synthesis_poly_y: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_poly_y_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -17,10 +17,10 @@ data synthesis_poly_y: Node = Node {
 test fn polynomial_dominates_linear_claim_holds() -> Bool {
   symbolic_cost_dominates(
     a: PolynomialCost {
-      variable: SizeVariable { source: synthesis_poly_x },
-      degree: PolynomialDegree { predecessor_after_linear: NonZeroNat { prev: Zero } }
+      variable: v2.lens.cost.SizeVariable { source: synthesis_poly_x },
+      degree: v2.lens.cost.PolynomialDegree { predecessor_after_linear: v2.std.cardinality.NonZeroNat { prev: Zero } }
     },
-    b: LinearCost { variable: SizeVariable { source: synthesis_poly_y } }
+    b: LinearCost { variable: v2.lens.cost.SizeVariable { source: synthesis_poly_y } }
   )
 }
 

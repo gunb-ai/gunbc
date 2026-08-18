@@ -36,15 +36,15 @@ fn color_transition_prop(prop: String) -> String {
   }
 }
 
-fn decl_is_color(d: CssDecl) -> Bool {
+fn decl_is_color(d: gunbc.design.material.CssDecl) -> Bool {
   color_transition_prop(prop: css_property_wire(p: d.prop)).length() > 0
 }
 
-fn decl_is_role_themed(d: CssDecl) -> Bool {
+fn decl_is_role_themed(d: gunbc.design.material.CssDecl) -> Bool {
   decl_is_color(d: d) && string_contains(s: d.value, pattern: "var(--")
 }
 
-fn decl_is_literal_color(d: CssDecl) -> Bool {
+fn decl_is_literal_color(d: gunbc.design.material.CssDecl) -> Bool {
   decl_is_color(d: d) && !string_contains(s: d.value, pattern: "var(--")
 }
 
@@ -52,7 +52,7 @@ fn contains_prop(props: List<String>, prop: String) -> Bool {
   fold(props, init: false, f: (acc, p) => acc || p == prop)
 }
 
-fn themed_props_of(decls: List<CssDecl>) -> List<String> {
+fn themed_props_of(decls: List<gunbc.design.material.CssDecl>) -> List<String> {
   fold(decls, init: [], f: (acc, d) =>
     if decl_is_role_themed(d: d) {
       let tp = color_transition_prop(prop: css_property_wire(p: d.prop))
@@ -64,7 +64,7 @@ fn themed_props_of(decls: List<CssDecl>) -> List<String> {
 
 data state_class_census_reach_note: String = "Both censuses reach state-class responses with no new arm, and that is the payoff of landing the still-until-touched amendment as a TRIGGER variant rather than a second rule shape. A new BuildRule variant would have left these two readers with their old arms while the emitter grew a shape — the wall silently ceasing to cover part of the surface it claims to cover, coverage by illusion in the one mechanism whose whole job is coverage. Because a detent is an ordinary ResponseRule carrying a different suffix, an unthemed colour or a raw pixel in a state's declarations is censused exactly as it is anywhere else, and rule_selector keeps reporting the base selector because that is the subject a census locates a violation ON."
 
-fn rule_selector(rule: BuildRule) -> String {
+fn rule_selector(rule: gunbc.design.material.BuildRule) -> String {
   match rule {
     StaticRule { selector, decls: _ } => selector_subject_wire(s: selector)
     ResponseRule { subject, shape, trigger: _, transition_props: _, timing: _, base_decls: _, response_decls: _ } =>
@@ -72,7 +72,7 @@ fn rule_selector(rule: BuildRule) -> String {
   }
 }
 
-fn rule_decls(rule: BuildRule) -> List<CssDecl> {
+fn rule_decls(rule: gunbc.design.material.BuildRule) -> List<gunbc.design.material.CssDecl> {
   match rule {
     StaticRule { selector: _, decls } => decls
     ResponseRule { subject: _, shape: _, trigger: _, transition_props: _, timing: _, base_decls, response_decls } =>
@@ -98,7 +98,7 @@ fn merge_pair(pairs: List<ReframePair>, selector: String, props: List<String>) -
   }
 }
 
-fn reframe_pairs(rules: List<BuildRule>) -> List<ReframePair> {
+fn reframe_pairs(rules: List<gunbc.design.material.BuildRule>) -> List<ReframePair> {
   fold(rules, init: [], f: (acc, r) => {
     let props = themed_props_of(decls: rule_decls(rule: r))
     if props.length() == 0 {
@@ -109,7 +109,7 @@ fn reframe_pairs(rules: List<BuildRule>) -> List<ReframePair> {
   })
 }
 
-fn unthemed_color_decls(rules: List<BuildRule>) -> List<UnthemedColorDecl> {
+fn unthemed_color_decls(rules: List<gunbc.design.material.BuildRule>) -> List<UnthemedColorDecl> {
   fold(rules, init: [], f: (acc, r) =>
     fold(rule_decls(rule: r), init: acc, f: (inner, d) =>
       if decl_is_literal_color(d: d) {
@@ -131,7 +131,7 @@ fn value_has_raw_length(value: String) -> Bool {
   string_contains(s: value, pattern: "px") || string_contains(s: value, pattern: "'")
 }
 
-fn untokened_length_decls(rules: List<BuildRule>) -> List<UntokenedLengthDecl> {
+fn untokened_length_decls(rules: List<gunbc.design.material.BuildRule>) -> List<UntokenedLengthDecl> {
   fold(rules, init: [], f: (acc, r) =>
     fold(rule_decls(rule: r), init: acc, f: (inner, d) =>
       if value_has_raw_length(value: d.value) {
@@ -141,7 +141,7 @@ fn untokened_length_decls(rules: List<BuildRule>) -> List<UntokenedLengthDecl> {
       }))
 }
 
-fn reframe_transition_value(props: List<String>, t: TimingToken) -> String {
+fn reframe_transition_value(props: List<String>, t: gunbc.design.material.TimingToken) -> String {
   join(map(props, p => join([p, " ", to_string(t.duration_ms), "ms ", t.easing], "")), ", ")
 }
 
@@ -149,7 +149,7 @@ fn reframe_selector(selector: String) -> String {
   concat("html.reframing ", selector)
 }
 
-fn reframe_css(rules: List<BuildRule>) -> String {
+fn reframe_css(rules: List<gunbc.design.material.BuildRule>) -> String {
   let pairs = reframe_pairs(rules: rules)
   if pairs.length() == 0 {
     ""
@@ -175,8 +175,8 @@ fn alternate_scheme_query() -> String {
   join(["(prefers-color-scheme: ", day_theme.scheme, ")"], "")
 }
 
-fn reframe_watcher_program() -> TsProgram {
-  TsProgram {
+fn reframe_watcher_program() -> extdeps.languages.typescript.program.TsProgram {
+  extdeps.languages.typescript.program.TsProgram {
     ts_nocheck: false,
     header_lines: [
       "gunb.ai theme reframe watcher — emitted from gunbc.design.theme_transition",

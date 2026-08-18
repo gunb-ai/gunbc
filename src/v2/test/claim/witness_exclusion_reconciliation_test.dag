@@ -19,16 +19,16 @@ test fn witness_exclusion_frontier_reconciliation_holds() -> Bool {
 // downstream well-formedness guard defends, so this control has to reach it
 // through the gap to keep proving the guard works (DESIGN 4b(4): production
 // machinery dissolves on a climb, the evidence stays enrolled).
-fn synthetic_nonliteral_text(text: String) -> NonEmptyStr {
+fn synthetic_nonliteral_text(text: String) -> std.types.NonEmptyStr {
   concat(text, "")
 }
 
-fn synthetic_empty_condition(text: String) -> DissolutionCondition {
+fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionCondition {
   unbound_dissolution(description: synthetic_nonliteral_text(text: text))
 }
 
-fn synthetic_row(pattern: String) -> WitnessExclusionRow {
-  WitnessExclusionRow {
+fn synthetic_row(pattern: String) -> gunbc.ci_layer_roots.WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: pattern,
     classification: DiscoverySelection,
     reason: "synthetic",
@@ -46,7 +46,7 @@ test fn witness_exclusion_red_control_discovery_selection_row_reds() -> Bool {
 test fn witness_exclusion_red_control_bare_nickname_row_reds() -> Bool {
   witness_exclusion_rows_well_formed(
     rows: [
-      WitnessExclusionRow {
+      gunbc.ci_layer_roots.WitnessExclusionRow {
         pattern: "synthetic_nickname.dag",
         classification: OfflineLocalRecipe,
         reason: "",
@@ -59,7 +59,7 @@ test fn witness_exclusion_red_control_bare_nickname_row_reds() -> Bool {
 test fn witness_exclusion_red_control_unbacked_bin_wet_row_reds() -> Bool {
   witness_exclusion_explicit_roster_rows_consistent(
     rows: [
-      WitnessExclusionRow {
+      gunbc.ci_layer_roots.WitnessExclusionRow {
         pattern: "no_such_entry_anywhere.dag",
         classification: BinWitnessWet,
         reason: "synthetic",
@@ -75,7 +75,7 @@ test fn witness_exclusion_red_control_unbacked_bin_wet_row_reds() -> Bool {
 test fn witness_exclusion_red_control_unbacked_rehomed_row_reds() -> Bool {
   witness_exclusion_explicit_roster_rows_consistent(
     rows: [
-      WitnessExclusionRow {
+      gunbc.ci_layer_roots.WitnessExclusionRow {
         pattern: "no_such_rehomed_entry.dag",
         classification: FalsifierRehomedBinWet,
         reason: "synthetic",
@@ -91,7 +91,7 @@ test fn witness_exclusion_red_control_unbacked_rehomed_row_reds() -> Bool {
 test fn witness_exclusion_red_control_unbacked_substrate_long_lane_row_reds() -> Bool {
   witness_exclusion_explicit_roster_rows_consistent(
     rows: [
-      WitnessExclusionRow {
+      gunbc.ci_layer_roots.WitnessExclusionRow {
         pattern: "no_such_substrate_long_entry.dag",
         classification: FalsifierSubstrateLongLane,
         reason: "synthetic",
@@ -111,7 +111,7 @@ test fn witness_exclusion_frontier_carries_no_quarantine_row_holds() -> Bool {
 test fn witness_exclusion_red_control_quarantine_row_in_path_carrier_reds() -> Bool {
   witness_exclusion_rows_well_formed(
     rows: [
-      WitnessExclusionRow {
+      gunbc.ci_layer_roots.WitnessExclusionRow {
         pattern: "synthetic_quarantined_file_test.dag",
         classification: QuarantineProbeExpectRed,
         reason: "synthetic",
@@ -169,8 +169,8 @@ test fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_note_names_wi
   )
 }
 
-fn synthetic_wet_lane_row(dissolution: DissolutionCondition) -> WitnessExclusionRow {
-  WitnessExclusionRow {
+fn synthetic_wet_lane_row(dissolution: std.dissolution.DissolutionCondition) -> gunbc.ci_layer_roots.WitnessExclusionRow {
+  gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "synthetic_wet_lane_third_spelling_test.dag",
     classification: OfflineLocalRecipe,
     reason: "synthetic",

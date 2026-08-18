@@ -6,28 +6,28 @@ data device_binding_note: String = "THE PIN CHAIN, AND THE COPIED STRING IT EXIS
 // A logical signal to a package position. The pin is the package's own designator, carried as
 // authored: whether it exists is the roster's answer, not this type's.
 type DevicePinAssignment {
-  signal: SignalName
-  pin: NonEmptyStr
+  signal: product.compute_board.digital_control.SignalName
+  pin: std.types.NonEmptyStr
 }
 
 // The device a board article is implemented on. Device, package and roster travel together
 // because a pin roster is a fact about a (device, package) pair rather than about either alone,
 // and a binding checked against the wrong package's roster is checked against nothing.
 type ProgrammableDeviceRealization {
-  device: Ice40Device
-  package_carrier: Ice40Package
-  banks: Ice40BankPopulation
-  roster: IcestormPackagePinRoster
+  device: extdeps.programmable_logic.ice40.subject.Ice40Device
+  package_carrier: extdeps.programmable_logic.ice40.subject.Ice40Package
+  banks: extdeps.programmable_logic.ice40.subject.Ice40BankPopulation
+  roster: extdeps.toolchain.icestorm.subject.IcestormPackagePinRoster
 }
 
 type PinChainRefusal
-  = PinNotOnPackage { signal: NonEmptyStr, pin: NonEmptyStr }
-  | PinAssignedToSeveralSignals { pin: NonEmptyStr }
-  | SignalAssignedToSeveralPins { signal: NonEmptyStr }
-  | AssignedSignalNotDeclared { signal: NonEmptyStr }
-  | DeclaredSignalHasNoPin { signal: NonEmptyStr }
-  | SignalHasNoTargetSpelling { signal: NonEmptyStr }
-  | ConstraintNotEmittable { reason: NonEmptyStr }
+  = PinNotOnPackage { signal: std.types.NonEmptyStr, pin: std.types.NonEmptyStr }
+  | PinAssignedToSeveralSignals { pin: std.types.NonEmptyStr }
+  | SignalAssignedToSeveralPins { signal: std.types.NonEmptyStr }
+  | AssignedSignalNotDeclared { signal: std.types.NonEmptyStr }
+  | DeclaredSignalHasNoPin { signal: std.types.NonEmptyStr }
+  | SignalHasNoTargetSpelling { signal: std.types.NonEmptyStr }
+  | ConstraintNotEmittable { reason: std.types.NonEmptyStr }
 
 type PinChainRefusalSet {
   first: PinChainRefusal
@@ -35,9 +35,9 @@ type PinChainRefusalSet {
 }
 
 type PinConstraintReceipt {
-  source_article: BoardArticleIdentity
-  device: NonEmptyStr
-  package_designator: NonEmptyStr
+  source_article: product.compute_board.article.BoardArticleIdentity
+  device: std.types.NonEmptyStr
+  package_designator: std.types.NonEmptyStr
   source: String
 }
 
@@ -111,8 +111,8 @@ fn assignment_refusals(
 // source order, which is also the only ordering available that does not depend on where a repeat
 // happens to be noticed.
 type CollisionScan {
-  seen_pins: List<NonEmptyStr>
-  seen_signals: List<NonEmptyStr>
+  seen_pins: List<std.types.NonEmptyStr>
+  seen_signals: List<std.types.NonEmptyStr>
   out: List<PinChainRefusal>
 }
 

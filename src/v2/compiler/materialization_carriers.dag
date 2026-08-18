@@ -105,8 +105,8 @@ fn compile_stage_memo_materialization() -> Materialization {
 }
 
 type CachedStageRealization {
-  provider_id: CacheInterfaceId
-  materialization: Materialization
+  provider_id: std.cache_identity.CacheInterfaceId
+  materialization: std.realization.Materialization
 }
 
 fn cached_stage_realization() -> CachedStageRealization {

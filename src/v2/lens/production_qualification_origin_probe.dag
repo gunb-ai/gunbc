@@ -32,7 +32,7 @@ type ProductionEvidenceGrounding
 
 type DerivedProductionQualificationMintSiteRow {
   qualified_name: String
-  qualification_axis: EmissionQualification
+  qualification_axis: v2.compiler.self_host.emitter_producer_provenance.EmissionQualification
   evidence_origin: ProductionQualificationOrigin
 }
 
@@ -123,7 +123,7 @@ fn maybe_snoc_site_row(
 
 type AtomCollectState {
   node: Node
-  atoms: List<Symbol>
+  atoms: List<v2.std.node.Symbol>
 }
 
 fn atom_collect_init(n: Node) -> AtomCollectState {

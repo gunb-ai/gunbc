@@ -1,24 +1,24 @@
 module v2.test.claim.enforcement.lens_module_gate_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
-data lens_module_gate_fixture_facts: List<ModuleDeclarationFact> = [
-  ModuleDeclarationFact { module: "v2.lens.alpha_fixture", path: "src/v2/lens/alpha_fixture.dag" },
-  ModuleDeclarationFact { module: "v2.lens.synthetic_redundant_lens", path: "src/v2/lens/synthetic_redundant_lens.dag" }
+data lens_module_gate_fixture_facts: List<v2.lens.module_graph.ModuleDeclarationFact> = [
+  v2.lens.module_graph.ModuleDeclarationFact { module: "v2.lens.alpha_fixture", path: "src/v2/lens/alpha_fixture.dag" },
+  v2.lens.module_graph.ModuleDeclarationFact { module: "v2.lens.synthetic_redundant_lens", path: "src/v2/lens/synthetic_redundant_lens.dag" }
 ]
 
 data lens_module_gate_fixture_bound: List<String> = ["v2.lens.alpha_fixture"]
 
-data lens_module_gate_fixture_surfaces: List<LensInvariantSurface> = [
-  LensInvariantSurface {
+data lens_module_gate_fixture_surfaces: List<v2.lens.enforcement.lens_module_gate.LensInvariantSurface> = [
+  v2.lens.enforcement.lens_module_gate.LensInvariantSurface {
     module: "v2.lens.alpha_fixture",
     projection: ProjectionNodeDag,
     verdict_authority: VerdictLensVerdict,
     remedy: RemedyShare,
     admission: GenuinelyNewInvariant
   },
-  LensInvariantSurface {
+  v2.lens.enforcement.lens_module_gate.LensInvariantSurface {
     module: "v2.lens.synthetic_redundant_lens",
     projection: ProjectionNodeDag,
     verdict_authority: VerdictLensVerdict,
@@ -27,8 +27,8 @@ data lens_module_gate_fixture_surfaces: List<LensInvariantSurface> = [
   }
 ]
 
-data lens_module_gate_genuinely_new_surface: List<LensInvariantSurface> = [
-  LensInvariantSurface {
+data lens_module_gate_genuinely_new_surface: List<v2.lens.enforcement.lens_module_gate.LensInvariantSurface> = [
+  v2.lens.enforcement.lens_module_gate.LensInvariantSurface {
     module: "v2.lens.alpha_fixture",
     projection: ProjectionNodeDag,
     verdict_authority: VerdictVacuityEvidence,

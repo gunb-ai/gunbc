@@ -1,19 +1,19 @@
 module gunbc.tools.card_intake
 
 
-data tcgplayer_client_id_source: CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_CLIENT_ID" }
+data tcgplayer_client_id_source: std.credentials.CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_CLIENT_ID" }
 
-data tcgplayer_client_secret_source: CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_CLIENT_SECRET" }
+data tcgplayer_client_secret_source: std.credentials.CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_CLIENT_SECRET" }
 
-data tcgplayer_store_key_source: CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_STORE_KEY" }
+data tcgplayer_store_key_source: std.credentials.CredentialSource = std.credentials.EnvVar { name: "TCGPLAYER_STORE_KEY" }
 
 data default_recognition_model: String = "claude-sonnet-4-6-20250929"
 
 data default_high_value_threshold_usd: Float = 50.0
 
-data tcgplayer_money_measure_grounding_disposition: Disposition = Scaffold {
+data tcgplayer_money_measure_grounding_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.tools.card_intake",
     decl_name: "default_high_value_threshold_usd",
     field: WholeDeclaration
@@ -186,7 +186,7 @@ func intake_binder(
 func list_card_sku(
   client_id: String,
   client_secret: Secret,
-  store_key: NonEmptyStr,
+  store_key: std.types.NonEmptyStr,
   sku_id: Int,
   price: Float,
   quantity: Int

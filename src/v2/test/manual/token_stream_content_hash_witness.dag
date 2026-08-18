@@ -1,14 +1,14 @@
 module v2.test.manual.token_stream_content_hash_witness
 
 
-fn token_hash_step(acc: Hash, t: Token) -> Hash {
+fn token_hash_step(acc: v2.std.node.Hash, t: v2.std.compilers.lexing.Token) -> v2.std.node.Hash {
   combine_hash(
     a: acc,
     b: combine_hash(a: symbol_identity_digest(sym: t.class), b: symbol_identity_digest(sym: symbol_intern_lexeme(lexeme: t.lexeme)))
   )
 }
 
-fn token_stream_content_hash(stream: TokenStream) -> Hash {
+fn token_stream_content_hash(stream: v2.std.compilers.lexing.TokenStream) -> v2.std.node.Hash {
   fold(
     token_stream_all(stream: stream),
     init: symbol_identity_digest(sym: ^token_stream_content_hash_seed),
@@ -16,7 +16,7 @@ fn token_stream_content_hash(stream: TokenStream) -> Hash {
   )
 }
 
-fn token_stream_content_hash_for_path(path: String) -> Optional<Hash> {
+fn token_stream_content_hash_for_path(path: String) -> Optional<v2.std.node.Hash> {
   let lm = dag_language_model()
   let source_text = filesystem_read(path: path).content
   match tokenize(text: source_text, file: ^token_stream_content_hash_file_anchor, rules: lm.lex) {
@@ -25,10 +25,10 @@ fn token_stream_content_hash_for_path(path: String) -> Optional<Hash> {
   }
 }
 
-fn witness_token_stream_content_hash_tiny() -> Optional<Hash> {
+fn witness_token_stream_content_hash_tiny() -> Optional<v2.std.node.Hash> {
   token_stream_content_hash_for_path(path: "src/v2/std/witness.dag")
 }
 
-fn witness_token_stream_content_hash_small() -> Optional<Hash> {
+fn witness_token_stream_content_hash_small() -> Optional<v2.std.node.Hash> {
   token_stream_content_hash_for_path(path: "dag/std/execution_mode.dag")
 }

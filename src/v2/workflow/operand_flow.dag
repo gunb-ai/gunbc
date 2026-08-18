@@ -29,7 +29,7 @@ fn dependency_carries_operand(kind: DependencyKind) -> Bool {
 
 type OperandRootFacts
   = OperandRoot { root: Node }
-  | OperandRootUnresolved { edge: DependencyView }
+  | OperandRootUnresolved { edge: v2.std.dependency.DependencyView }
 
 fn operand_root(edge: DependencyView) -> OperandRootFacts {
   if dependency_carries_operand(kind: edge.kind) {
@@ -40,13 +40,13 @@ fn operand_root(edge: DependencyView) -> OperandRootFacts {
 }
 
 type OperandFlowRefusalCause
-  = OperandFlowNoOperand { edge: DependencyView }
-  | OperandFlowFootprintMissingRow { missing: ContentHash }
-  | OperandFlowFootprintUnsettled { pending: List<ContentHash> }
+  = OperandFlowNoOperand { edge: v2.std.dependency.DependencyView }
+  | OperandFlowFootprintMissingRow { missing: std.content_hash.ContentHash }
+  | OperandFlowFootprintUnsettled { pending: List<std.content_hash.ContentHash> }
 
 type OperandFlowRow
-  = OperandFlow { edge: DependencyView, operand: ContentHash, footprint: ByteSize }
-  | OperandFlowRefused { edge: DependencyView, cause: OperandFlowRefusalCause }
+  = OperandFlow { edge: v2.std.dependency.DependencyView, operand: std.content_hash.ContentHash, footprint: std.measure.ByteSize }
+  | OperandFlowRefused { edge: v2.std.dependency.DependencyView, cause: OperandFlowRefusalCause }
 
 fn operand_flow_for_edge(artifact: NodeKeyedGraphArtifact, edge: DependencyView) -> OperandFlowRow {
   match operand_root(edge: edge) {

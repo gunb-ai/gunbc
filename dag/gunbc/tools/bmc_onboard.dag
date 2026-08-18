@@ -4,9 +4,9 @@ module gunbc.tools.bmc_onboard
 data bmc_onboard_netrc_path: String = "/tmp/bmc_onboard_netrc"
 data bmc_onboard_pwbody_path: String = "/tmp/bmc_onboard_pwbody.json"
 
-data bmc_onboard_secret_on_disk_debt: Disposition = Scaffold {
+data bmc_onboard_secret_on_disk_debt: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.filesystem.filesystem_io",
     decl_name: "Filesystem",
     field: WholeDeclaration
@@ -14,9 +14,9 @@ data bmc_onboard_secret_on_disk_debt: Disposition = Scaffold {
 }
 
 
-data bmc_credential_length_chars_unit_debt: Disposition = Scaffold {
+data bmc_credential_length_chars_unit_debt: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "std.measure",
     decl_name: "Measure",
     field: WholeDeclaration
@@ -55,7 +55,7 @@ fn gcp_secret_full_name(project: String, secret_id: String) -> String {
   concat("projects/", concat(project, concat("/secrets/", secret_id)))
 }
 
-fn onboarding_secret_id(plan: BmcOnboardingPlan) -> NonEmptyStr {
+fn onboarding_secret_id(plan: gunbc.bmc_onboarding.BmcOnboardingPlan) -> std.types.NonEmptyStr {
   plan.secret_name
 }
 
@@ -67,7 +67,7 @@ fn write_netrc(host: String, account: String, password: String) -> Bool {
   Filesystem.Write(path: bmc_onboard_netrc_path, content: netrc_content(host: host, account: account, password: password)).success
 }
 
-func bmc_rotate_credential(plan: BmcOnboardingPlan, new_credential: Secret) -> ProcessExit
+func bmc_rotate_credential(plan: gunbc.bmc_onboarding.BmcOnboardingPlan, new_credential: Secret) -> std.process.ProcessExit
   uses net: Network
 {
   let host = plan.bmc.host
@@ -87,9 +87,9 @@ func bmc_rotate_credential(plan: BmcOnboardingPlan, new_credential: Secret) -> P
 
   rot = redfish.Http.SetAccountPassword(
     bmc_host: host,
-    netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+    netrc_file: bmc_onboard_netrc_path as std.types.NonEmptyStr,
     account_id: account,
-    request_body_file: bmc_onboard_pwbody_path as NonEmptyStr
+    request_body_file: bmc_onboard_pwbody_path as std.types.NonEmptyStr
   )
   if rot.success == false {
     return exit_failure(reason: rot.body)
@@ -103,7 +103,7 @@ func bmc_rotate_credential(plan: BmcOnboardingPlan, new_credential: Secret) -> P
   }
 }
 
-func bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSource, credential: Secret) -> ProcessExit
+func bmc_store_and_rotate(plan: gunbc.bmc_onboarding.BmcOnboardingPlan, token_source: gunbc.auth.access_token_source.AccessTokenSource, credential: Secret) -> std.process.ProcessExit
   uses net: Network
 {
   let payload_b64 = encode_sm_access_version_payload_wire(credential: credential)
@@ -154,7 +154,7 @@ func bmc_store_and_rotate(plan: BmcOnboardingPlan, token_source: AccessTokenSour
   }
 }
 
-func bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> ProcessExit
+func bmc_assimilate_credential(plan: gunbc.bmc_onboarding.BmcOnboardingPlan, token_source: gunbc.auth.access_token_source.AccessTokenSource) -> std.process.ProcessExit
   uses net: Network
 {
   let host = plan.bmc.host
@@ -176,7 +176,7 @@ func bmc_assimilate_credential(plan: BmcOnboardingPlan, token_source: AccessToke
   return bmc_store_and_rotate(plan: plan, token_source: token_source, credential: mint_bmc_credential())
 }
 
-func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> BmcCredentialProbeResult
+func bmc_probe_credential_phase(plan: gunbc.bmc_onboarding.BmcOnboardingPlan, token_source: gunbc.auth.access_token_source.AccessTokenSource) -> gunbc.bmc_onboarding.BmcCredentialProbeResult
   uses net: Network
 {
   let host = plan.bmc.host
@@ -223,7 +223,7 @@ func bmc_probe_credential_phase(plan: BmcOnboardingPlan, token_source: AccessTok
   }
 }
 
-func bmc_converge_credential(plan: BmcOnboardingPlan, token_source: AccessTokenSource) -> ProcessExit
+func bmc_converge_credential(plan: gunbc.bmc_onboarding.BmcOnboardingPlan, token_source: gunbc.auth.access_token_source.AccessTokenSource) -> std.process.ProcessExit
   uses net: Network
 {
   root_resp = redfish.Http.GetServiceRoot(bmc_host: plan.bmc.host)
@@ -246,19 +246,19 @@ func bmc_converge_credential(plan: BmcOnboardingPlan, token_source: AccessTokenS
   }
 }
 
-func srv3_probe_credential_phase() -> BmcCredentialProbeResult
+func srv3_probe_credential_phase() -> gunbc.bmc_onboarding.BmcCredentialProbeResult
   uses net: Network
 {
   bmc_probe_credential_phase(plan: srv3_onboarding_plan, token_source: GcloudPrintToken)
 }
 
-func srv3_converge_credential() -> ProcessExit
+func srv3_converge_credential() -> std.process.ProcessExit
   uses net: Network
 {
   bmc_converge_credential(plan: srv3_onboarding_plan, token_source: GcloudPrintToken)
 }
 
-func srv4_converge_credential() -> ProcessExit
+func srv4_converge_credential() -> std.process.ProcessExit
   uses net: Network
 {
   bmc_converge_credential(plan: srv4_onboarding_plan, token_source: GcloudPrintToken)

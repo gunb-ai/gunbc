@@ -1,7 +1,7 @@
 module v2.test.manual.generic_instantiation_runtime
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type Rec { v: Int }
 

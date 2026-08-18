@@ -57,12 +57,12 @@ test fn w_synthetic_path_additivity_rejects_fabricated_both_open_count() -> Bool
   match bach_double_slit_path_additivity_first_minimum_verdict {
     PathAdditivityRefutationAtBand { receipt: canonical_receipt } => {
       let witness = canonical_receipt.witness
-      let fabricated = PathAdditivityCounterexampleWitness {
+      let fabricated = gunbc.physics.bach_double_slit_path_additivity.PathAdditivityCounterexampleWitness {
         left_alternative_count: witness.left_alternative_count,
         right_alternative_count: witness.right_alternative_count,
         both_open_observed_count: path_additivity_witness_classical_additive_prediction(witness: witness),
       }
-      let bad_receipt = PathAdditivityRefutationReceipt {
+      let bad_receipt = gunbc.physics.bach_double_slit_path_additivity.PathAdditivityRefutationReceipt {
         subject: path_additivity_subject,
         witness: fabricated,
         location: canonical_receipt.location,
@@ -82,12 +82,12 @@ test fn w_synthetic_path_additivity_rejects_corrupted_left_count() -> Bool {
   match bach_double_slit_path_additivity_first_minimum_verdict {
     PathAdditivityRefutationAtBand { receipt: canonical_receipt } => {
       let witness = canonical_receipt.witness
-      let fabricated = PathAdditivityCounterexampleWitness {
+      let fabricated = gunbc.physics.bach_double_slit_path_additivity.PathAdditivityCounterexampleWitness {
         left_alternative_count: witness.left_alternative_count + 1,
         right_alternative_count: witness.right_alternative_count,
         both_open_observed_count: witness.both_open_observed_count,
       }
-      let bad_receipt = PathAdditivityRefutationReceipt {
+      let bad_receipt = gunbc.physics.bach_double_slit_path_additivity.PathAdditivityRefutationReceipt {
         subject: path_additivity_subject,
         witness: fabricated,
         location: canonical_receipt.location,
@@ -106,12 +106,12 @@ test fn w_synthetic_path_additivity_rejects_corrupted_left_count() -> Bool {
 test fn w_synthetic_path_additivity_rejects_additive_equal_observed() -> Bool {
   match bach_double_slit_path_additivity_first_minimum_verdict {
     PathAdditivityRefutationAtBand { receipt: canonical_receipt } => {
-      let fabricated = PathAdditivityCounterexampleWitness {
+      let fabricated = gunbc.physics.bach_double_slit_path_additivity.PathAdditivityCounterexampleWitness {
         left_alternative_count: 10,
         right_alternative_count: 10,
         both_open_observed_count: 20,
       }
-      let bad_receipt = PathAdditivityRefutationReceipt {
+      let bad_receipt = gunbc.physics.bach_double_slit_path_additivity.PathAdditivityRefutationReceipt {
         subject: path_additivity_subject,
         witness: fabricated,
         location: canonical_receipt.location,

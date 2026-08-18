@@ -1,7 +1,7 @@
 module gunbc.plan_registry_batch_c
 
 
-data batch_c_plans: List<Plan> = [
+data batch_c_plans: List<gunbc.plan.Plan> = [
   axiom_syllogism_lens_plan,
   invert_hand_maintained_plan,
   fail_closed_lockdown_plan,

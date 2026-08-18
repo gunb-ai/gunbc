@@ -2,15 +2,15 @@ module gunbc.auth.patterns
 
 
 type AuthRuntime
-  = GitHubActions { runtime: GitHubActionsRuntime }
-  | GcpMetadata { runtime: MetadataRuntime }
-  | LocalDev { runtime: LocalDevRuntime }
+  = GitHubActions { runtime: extdeps.github.actions.GitHubActionsRuntime }
+  | GcpMetadata { runtime: extdeps.cloud.gcp.sts.MetadataRuntime }
+  | LocalDev { runtime: extdeps.runtime.local.LocalDevRuntime }
 
 type CredentialChainOutcome
-  = CredentialChainReady { token: AccessToken }
+  = CredentialChainReady { token: std.types.AccessToken }
   | CredentialChainWireDecodeRefused {
-      identity_cause: SmResolvedVersionIdentityRefusal?
-      payload_cause: SmAccessVersionPayloadRefusal?
+      identity_cause: extdeps.cloud.gcp.secret_manager.SmResolvedVersionIdentityRefusal?
+      payload_cause: extdeps.cloud.gcp.secret_manager.SmAccessVersionPayloadRefusal?
     }
 
 pattern acquire_subject_token(

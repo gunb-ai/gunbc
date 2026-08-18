@@ -13,7 +13,7 @@ type LoweringRefusalReason
   | UnsupportedNumericalDomain
 
 type LoweringFidelityVerdict
-  = LoweringAccepted { fidelity: DecodeFidelity }
+  = LoweringAccepted { fidelity: extdeps.communication.medium.DecodeFidelity }
   | LoweringRefused { reason: LoweringRefusalReason }
 
 fn decode_fidelity_for_contract(contract: NumericalContract) -> DecodeFidelity {

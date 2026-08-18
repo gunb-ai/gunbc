@@ -12,17 +12,17 @@ type DevbootWorkId = NonEmptyStr where brand("DevbootWorkId")
 //
 // subject_digest travels with the artifact as an INDEX, so a candidate can be found. It is not what decides whether the candidate is the right one; see the record below.
 type StoredArtifact {
-  subject_digest: ContentHash
-  blob_oid: GitObjectId
-  sha256: Sha256Digest
-  bytes: ByteSize
+  subject_digest: std.content_hash.ContentHash
+  blob_oid: extdeps.git.object_store.GitObjectId
+  sha256: std.content_hash.Sha256Digest
+  bytes: std.measure.ByteSize
 }
 
 // THE FULL TYPED REQUEST, STORED BESIDE THE BYTES, and the reason it exists is that a digest is an index rather than a proof. A structural hash admits collisions; if reuse were decided by comparing digests, two different subjects that happened to collide would trade artifacts, and the failure would be silent, rare, and unreproducible -- a caller would receive a binary built for something else with every visible signal agreeing.
 //
 // Storing the subject makes the decision procedure lookup, retrieve, then COMPARE: the digest narrows the store to a candidate, and exact structural equality over the whole subject decides. A collision then costs a failed comparison and a redundant build, which is an efficiency loss rather than a correctness one. That is the whole point of the split -- the expensive-but-exact check runs once per candidate, not once per stored artifact, so exactness costs nothing at scale.
 type StoredArtifactRecord {
-  subject: BuildSubject
+  subject: gunbc.devboot.subject.BuildSubject
   artifact: StoredArtifact
 }
 
@@ -56,13 +56,13 @@ type BuildExecutionOutcome
 type ArtifactAvailability
   = ArtifactAvailable { artifact: StoredArtifact }
   | ArtifactMissing
-  | ArtifactCorrupt { expected: Sha256Digest, observed: Sha256Digest }
+  | ArtifactCorrupt { expected: std.content_hash.Sha256Digest, observed: std.content_hash.Sha256Digest }
   | ArtifactUnreadable { detail: String }
 
 // What a status query answers: the two independent axes together, plus the request's own identity. A caller reads execution to learn whether the build ever ran and how it went, and availability to learn whether it can fetch bytes this moment. Neither answer is derived from the other.
 type DevbootWorkStatus {
   work_id: DevbootWorkId
-  subject: BuildSubject
+  subject: gunbc.devboot.subject.BuildSubject
   execution: BuildExecutionOutcome
   availability: ArtifactAvailability
 }
@@ -115,7 +115,7 @@ fn record_matches_request(record: StoredArtifactRecord, requested: BuildSubject)
 type ReuseDecision
   = ReuseGranted { artifact: StoredArtifact }
   | ReuseNoCandidate
-  | ReuseSubjectMismatch { candidate_digest: ContentHash, requested_digest: ContentHash }
+  | ReuseSubjectMismatch { candidate_digest: std.content_hash.ContentHash, requested_digest: std.content_hash.ContentHash }
   | ReuseUnavailable { availability: ArtifactAvailability }
 
 // ONE FOLD, TWO WAYS OF ESTABLISHING THE MATCH, because the callers genuinely differ in what they hold and must not differ in what they DECIDE. A caller with a reconstructed record compares subject values directly. The live producer holds a rendering read out of the store, and compares that against the rendering of the request -- injective, so equal renderings mean equal subjects -- because a value cannot be reconstructed from storage without a parser that could disagree with the writer.

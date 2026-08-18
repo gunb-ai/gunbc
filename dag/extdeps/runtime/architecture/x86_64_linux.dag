@@ -2,16 +2,16 @@ module extdeps.runtime.architecture.x86_64_linux
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "refspecs.linuxfoundation.org/elf/x86_64-abi-0.99.pdf"
   }
 }
 
-data x86_64_stack_grows_down: StackLayout = { grows_down: true }
+data x86_64_stack_grows_down: std.abi.StackLayout = { grows_down: true }
 
-data x86_64_general_purpose_registers: List<ArchitecturalRegister> = [
+data x86_64_general_purpose_registers: List<std.abi.ArchitecturalRegister> = [
   amd64_inhabitant_rdi,
   amd64_inhabitant_rsi,
   amd64_inhabitant_rdx,
@@ -22,7 +22,7 @@ data x86_64_general_purpose_registers: List<ArchitecturalRegister> = [
   amd64_inhabitant_rcx,
 ]
 
-data x86_64_linux_architecture_profile: ArchitectureProfile = {
+data x86_64_linux_architecture_profile: extdeps.toolchain.architecture_profile.ArchitectureProfile = {
   architecture: X86_64,
   word_width: bit_width(64),
   pointer_width: bit_width(64),
@@ -34,7 +34,7 @@ data x86_64_linux_architecture_profile: ArchitectureProfile = {
   stack_layout: x86_64_stack_grows_down,
 }
 
-data x86_64_linux_deployment_target: DeploymentTarget = {
+data x86_64_linux_deployment_target: extdeps.toolchain.architecture_profile.DeploymentTarget = {
   profile: x86_64_linux_architecture_profile,
   invocation: SyscallAbiSurface { abi: linux_x86_64_syscall_abi },
 }

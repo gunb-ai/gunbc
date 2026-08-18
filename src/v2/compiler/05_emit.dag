@@ -2,17 +2,17 @@ module v2.compiler.emit
 
 
 fn serialize_source_for_emitted(
-  emitted: TargetNodeTree,
-  target: TargetModel
+  emitted: v2.compiler.translate.TargetNodeTree,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Medium<String>> {
   target_serialize_source_from_model(target: target, emitted: emitted)
 }
-fn serialize_target(tree: TargetNodeTree, target: TargetModel) -> Outcome<Medium<String>> {
+fn serialize_target(tree: v2.compiler.translate.TargetNodeTree, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
   serialize_source_for_emitted(emitted: tree, target: target)
 }
 fn emit(
-  tree: InferredTree,
-  target: TargetModel
+  tree: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: translate(tree: tree, target: target),

@@ -24,16 +24,16 @@ type BoardCapability
 // A requirement is the capability PLUS the quantity that makes it checkable. An unquantified
 // requirement cannot refuse anything, which is how a contract decays into a wish list.
 type CapabilityRequirement
-  = ComputeCores { minimum_cores: HardwareThreadCount }
-  | MemoryCapacity { minimum_capacity: ByteSize }
+  = ComputeCores { minimum_cores: std.measure.HardwareThreadCount }
+  | MemoryCapacity { minimum_capacity: std.measure.ByteSize }
   | NetworkPaths { minimum_paths: std.nat.Nat }
   | BootStoragePaths { minimum_paths: std.nat.Nat }
   | RemoteManagement { power_control: Bool, console: Bool, recovery: Bool }
-  | PowerInputBoundary { boundary: NonEmptyStr }
-  | CoolingBoundary { boundary: NonEmptyStr }
+  | PowerInputBoundary { boundary: std.types.NonEmptyStr }
+  | CoolingBoundary { boundary: std.types.NonEmptyStr }
   | FirmwareInterfaceSurface { boot_flash: Bool, write_protect: Bool, recovery_path: Bool }
   | ManufactureAndBringUp { programming_surface: Bool, test_access: Bool }
-  | MechanicalEnvelope { envelope: NonEmptyStr }
+  | MechanicalEnvelope { envelope: std.types.NonEmptyStr }
 
 fn requirement_capability(r: CapabilityRequirement) -> BoardCapability {
   match r {
@@ -75,7 +75,7 @@ fn capability_eq(a: BoardCapability, b: BoardCapability) -> Bool {
 }
 
 type ComputeBoardIntent {
-  workload: NonEmptyStr
+  workload: std.types.NonEmptyStr
   requirements: List<CapabilityRequirement>
 }
 

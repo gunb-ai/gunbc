@@ -8,7 +8,7 @@ data ci_heal_dispatch_workflow_id: String = "ci.yml"
 
 data ci_heal_dispatch_authority_note: String = "The heal job does not mint a gh-api shell call. It invokes the modeled github.Workflows.CreateDispatch operation, whose REST transport is the realization handler. The dispatch ref remains the PR branch because GitHub's endpoint requires a branch/tag ref; expected_healed_sha travels separately as the immutable input and the run refuses unless BOTH its GitHub check subject (github.sha) and checkout name it. GITHUB_TOKEN is resolved solely by the service's auth_source; CreateDispatch has no unused caller-supplied auth_token input and this tool passes no empty sentinel."
 
-fn required_env(name: NonEmptyStr) -> String? {
+fn required_env(name: std.types.NonEmptyStr) -> String? {
   let observed = shell.Env.Get(name: name)
   match observed.value {
     Present { value: raw } =>
@@ -17,13 +17,13 @@ fn required_env(name: NonEmptyStr) -> String? {
   }
 }
 
-func main() -> ProcessExit {
+func main() -> std.process.ProcessExit {
   let branch = match required_env(name: "GUNBC_HEAL_BRANCH_REF") {
     Present { value: value } => value
     Absent => return exit_failure(reason: "HealDispatchRefused: GUNBC_HEAL_BRANCH_REF is absent")
   }
   let healed_head = match required_env(name: "GUNBC_HEALED_HEAD") {
-    Present { value: value } => value as CommitSha
+    Present { value: value } => value as std.types.CommitSha
     Absent => return exit_failure(reason: "HealDispatchRefused: GUNBC_HEALED_HEAD is absent")
   }
   let receipt = github.Workflows.CreateDispatch(

@@ -39,7 +39,7 @@ type ArtifactKind
 type SourceEntry {
   path: std.types.FilePath
   content: String
-  module_name: NonEmptyStr?
+  module_name: std.types.NonEmptyStr?
 }
 
 type ChangeKind
@@ -54,8 +54,8 @@ type ChangeKind
 
 type BootstrapChangeClassification {
   kind: ChangeKind
-  target_type: NonEmptyStr
-  field_name: NonEmptyStr?
+  target_type: std.types.NonEmptyStr
+  field_name: std.types.NonEmptyStr?
   has_default: Bool
   affects_stages: List<CompilerStage>
 }
@@ -70,8 +70,8 @@ type BootstrapPlan {
 }
 
 type FixedPointCheck {
-  pass1_hash: ContentHash
-  pass2_hash: ContentHash
+  pass1_hash: std.content_hash.ContentHash
+  pass2_hash: std.content_hash.ContentHash
   converged: Bool
   diff_files: List<std.types.FilePath>
 }
@@ -88,15 +88,15 @@ type PropagationRule
 
 type FieldPropagation {
   stage: CompilerStage
-  field_name: NonEmptyStr
+  field_name: std.types.NonEmptyStr
   rule: PropagationRule
 }
 
 type TransformContract {
-  transform_name: NonEmptyStr
+  transform_name: std.types.NonEmptyStr
   stage: CompilerStage
-  preserved_fields: List<NonEmptyStr>
-  recomputed_fields: List<NonEmptyStr>
+  preserved_fields: List<std.types.NonEmptyStr>
+  recomputed_fields: List<std.types.NonEmptyStr>
 }
 
 fn classify_strategy(change: BootstrapChangeClassification) -> BootstrapStrategy {

@@ -2,7 +2,7 @@ module v2.test.manual.tokenize_linear_receipt
 
 
 data tlr_path: String = "src/v1/01_tokenize.dag"
-data tlr_anchor: Symbol = ^tlr_anchor
+data tlr_anchor: v2.std.node.Symbol = ^tlr_anchor
 
 data tlr_trunc_eighth_path: String = "src/v2/test/fixture/census_path_trunc/eighth.txt"
 data tlr_trunc_quarter_path: String = "src/v2/test/fixture/census_path_trunc/quarter.txt"

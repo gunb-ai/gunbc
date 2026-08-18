@@ -15,51 +15,51 @@ type ProviderLimitDispatchDraw
   | LimitDispatchDrawAccount { credential: ProviderLimitCredentialIdentity }
   | LimitDispatchDrawModel {
       credential: ProviderLimitCredentialIdentity,
-      model: NonEmptyStr,
+      model: std.types.NonEmptyStr,
     }
   | LimitDispatchDrawNativeBucket {
       credential: ProviderLimitCredentialIdentity,
-      native_key: NonEmptyStr,
+      native_key: std.types.NonEmptyStr,
     }
 
 type ProviderLimitCredentialIdentity
   = LimitCredentialUnspecified
-  | LimitCredentialLabel { label: NonEmptyStr }
+  | LimitCredentialLabel { label: std.types.NonEmptyStr }
 
 type ProviderLimitSubject
   = ProviderAccountLimit { credential: ProviderLimitCredentialIdentity }
-  | ProviderWorkspaceLimit { workspace_account: NonEmptyStr }
+  | ProviderWorkspaceLimit { workspace_account: std.types.NonEmptyStr }
   | ProviderModelLimit {
       credential: ProviderLimitCredentialIdentity,
-      model: NonEmptyStr,
+      model: std.types.NonEmptyStr,
     }
   | ProviderNativeLimitBucket {
       credential: ProviderLimitCredentialIdentity,
-      native_key: NonEmptyStr,
+      native_key: std.types.NonEmptyStr,
     }
 
 type ProviderInstallationStanding
-  = InstallationStandingUnobserved { reason: NonEmptyStr }
+  = InstallationStandingUnobserved { reason: std.types.NonEmptyStr }
   | InstallationExecutableMissing
-  | InstallationVersionDrift { observed: NonEmptyStr, expected: NonEmptyStr }
+  | InstallationVersionDrift { observed: std.types.NonEmptyStr, expected: std.types.NonEmptyStr }
   | InstallationReady
 
 type ProviderAuthenticationStanding
-  = AuthenticationStandingUnobserved { reason: NonEmptyStr }
+  = AuthenticationStandingUnobserved { reason: std.types.NonEmptyStr }
   | AuthenticationCredentialsAbsent
   | AuthenticationRecordedUnverified
   | AuthenticationProfilePresentTokenAbsent {
-      subscription_tier: NonEmptyStr,
-      token_source: NonEmptyStr,
+      subscription_tier: std.types.NonEmptyStr,
+      token_source: std.types.NonEmptyStr,
     }
-  | AuthenticationRefreshFailed { reason: NonEmptyStr }
+  | AuthenticationRefreshFailed { reason: std.types.NonEmptyStr }
   | AuthenticationExpired
   | AuthenticationAuthenticated
 
 type ProviderEntitlementObservation
-  = EntitlementObservationUnobserved { reason: NonEmptyStr }
+  = EntitlementObservationUnobserved { reason: std.types.NonEmptyStr }
   | EntitlementObservedAvailable
-  | EntitlementRejected { reason: NonEmptyStr }
+  | EntitlementRejected { reason: std.types.NonEmptyStr }
 
 data limit_subject_unobserved_note: String = "AN UNMEASURED SUBJECT IS NOT AN UNMEASURED WORLD (review 51237, gunbc#8166). LimitObservationUnobserved blocks EVERY draw, which is right when nothing is known about any limit — the observation carries no subject because there is no subject to carry. It is wrong the moment one bucket decodes and a sibling does not: the codex bucket failing to decode does not make a measured, available codex_bengalfox bucket unmeasured, and refusing a draw that names the sibling refuses work on evidence that concerns a different subject.\n\nThat is still a fail-closed error rather than a fail-open one, which is exactly why it is easy to miss and worth naming: over-refusal reads as caution while it silently prices out capacity the observation proved was there.\n\nSo this arm carries the subject the producer already had. It routes through limit_subject_covers_dispatch_draw like every other subject-bearing arm, which means it blocks a draw naming that bucket, and it still blocks Unspecified and Automatic draws — those cover every native bucket, so an unmeasured bucket refuses whenever the draw does not say which bucket it consults. Precision where the draw names a subject; fail-closed where it does not.\n\nThe distinction from LimitCapabilityGapUnobservable is that the gap arm means the capability cannot be observed AT ALL on this surface (it returns false — a permanently unobservable axis must not block forever), while this arm means a specific observable subject was not measured on this trip."
 
@@ -68,51 +68,51 @@ data provider_native_limit_cause_note: String = "THE CAUSE IS NOT THE SUBJECT, A
 data provider_limit_reset_note: String = "AN UNOBSERVED RESET IS NOT AN IMMEDIATE ONE, AND IT WAS PREVIOUSLY NEITHER — it was nothing at all. CodexBucketUnavailableUntilReset decodes resetsAt from the wire and the projection dropped it on the floor, so an arm literally named UntilReset could not say until when. A consumer deciding whether to wait or to route elsewhere needs exactly that, and the previous answer was to guess.\n\nThe absent arm is not a defect to remove: resetsAt is optional upstream, so exhausted-with-no-stated-reset is a state the wire can produce. Carrying it as LimitResetInstantUnobserved keeps the retry decision explicit instead of letting a missing timestamp read as zero — zero being the BEST possible reset and therefore the worst available default."
 
 type ProviderNativeLimitCause
-  = NativeCauseReported { token: NonEmptyStr }
+  = NativeCauseReported { token: std.types.NonEmptyStr }
   | NativeCauseUnreported
 
 type ProviderLimitReset
-  = LimitResetAt { at: EpochSecs }
+  = LimitResetAt { at: std.types.EpochSecs }
   | LimitResetInstantUnobserved
 
 type ProviderLimitObservation
-  = LimitObservationUnobserved { reason: NonEmptyStr }
-  | LimitCapabilityGapUnobservable { reason: NonEmptyStr }
+  = LimitObservationUnobserved { reason: std.types.NonEmptyStr }
+  | LimitCapabilityGapUnobservable { reason: std.types.NonEmptyStr }
   | LimitSubjectUnobserved {
       subject: ProviderLimitSubject,
-      native_token: NonEmptyStr,
-      reason: NonEmptyStr,
+      native_token: std.types.NonEmptyStr,
+      reason: std.types.NonEmptyStr,
     }
   | LimitObservedAvailable { subject: ProviderLimitSubject }
   | LimitWarning {
       subject: ProviderLimitSubject,
-      native_token: NonEmptyStr,
-      utilization_basis_points: BasisPoint,
+      native_token: std.types.NonEmptyStr,
+      utilization_basis_points: std.measure.BasisPoint,
     }
   | LimitRejected {
       subject: ProviderLimitSubject,
-      native_token: NonEmptyStr,
-      reason: NonEmptyStr,
+      native_token: std.types.NonEmptyStr,
+      reason: std.types.NonEmptyStr,
     }
   | LimitUnavailableUntilReset {
       subject: ProviderLimitSubject,
       cause: ProviderNativeLimitCause,
       reset: ProviderLimitReset,
-      reason: NonEmptyStr,
+      reason: std.types.NonEmptyStr,
     }
-  | LimitExhausted { subject: ProviderLimitSubject, native_token: NonEmptyStr }
-  | LimitRateLimited { subject: ProviderLimitSubject, native_token: NonEmptyStr }
+  | LimitExhausted { subject: ProviderLimitSubject, native_token: std.types.NonEmptyStr }
+  | LimitRateLimited { subject: ProviderLimitSubject, native_token: std.types.NonEmptyStr }
 
 type ProviderTurnOutcome
-  = TurnOutcomeUnobserved { reason: NonEmptyStr }
+  = TurnOutcomeUnobserved { reason: std.types.NonEmptyStr }
   | TurnNotStarted
   | TurnSucceeded
-  | TurnFailed { reason: NonEmptyStr }
-  | TurnRefused { reason: NonEmptyStr }
+  | TurnFailed { reason: std.types.NonEmptyStr }
+  | TurnRefused { reason: std.types.NonEmptyStr }
 
 type ProviderToolEnvironmentStanding
-  = ToolEnvironmentStandingUnobserved { reason: NonEmptyStr }
-  | ToolEnvironmentUnavailable { reason: NonEmptyStr }
+  = ToolEnvironmentStandingUnobserved { reason: std.types.NonEmptyStr }
+  | ToolEnvironmentUnavailable { reason: std.types.NonEmptyStr }
   | ToolEnvironmentReady
 
 type ProviderStandingBundle {
@@ -125,12 +125,12 @@ type ProviderStandingBundle {
 }
 
 type ProviderStandingObservationFact {
-  provider: ProviderInstance
+  provider: extdeps.llm.cli_lifecycle.ProviderInstance
   bundle: ProviderStandingBundle
 }
 
 type ProviderStanding
-  = ProviderStandingUnobserved { reason: NonEmptyStr }
+  = ProviderStandingUnobserved { reason: std.types.NonEmptyStr }
   | ProviderStandingFromFact {
       fact: RecordedFact<ProviderStandingObservationFact>,
     }

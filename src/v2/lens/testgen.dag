@@ -7,22 +7,22 @@ module v2.lens.testgen
 
 type TypeConstructionSubject
 
-  = ConnectiveKernel { connective: Connective }
-  | BehaviorValueSubject { behavior: Behavior }
+  = ConnectiveKernel { connective: v2.std.node.Connective }
+  | BehaviorValueSubject { behavior: v2.std.node.Behavior }
 
-type AlgebraLawSubject { algebra: Symbol, inhabitant: Symbol, law: Symbol }
+type AlgebraLawSubject { algebra: v2.std.node.Symbol, inhabitant: v2.std.node.Symbol, law: v2.std.node.Symbol }
 
-type AlgebraLawCase { anchor: ClaimAnchorKey, subject: AlgebraLawSubject }
+type AlgebraLawCase { anchor: v2.std.verification.ClaimAnchorKey, subject: AlgebraLawSubject }
 
 type LensApplicabilitySubject {
-  lens: Symbol
+  lens: v2.std.node.Symbol
   program: Node
 }
 
-type BidirectionalRoundtripSubject { language: Symbol, production: Symbol }
+type BidirectionalRoundtripSubject { language: v2.std.node.Symbol, production: v2.std.node.Symbol }
 
 type FrozenLanguageBehaviorSnapshot {
-  language: Symbol
+  language: v2.std.node.Symbol
   input_node: Node
   expected_value: Node
 }
@@ -33,7 +33,7 @@ type LanguageBehaviorIoMock {
 
 type LanguageBehaviorEquivalenceSubject {
   subject: TypeConstructionSubject
-  language: Symbol
+  language: v2.std.node.Symbol
 }
 
 type RefinementPreservationSubject {
@@ -45,9 +45,9 @@ type TestgenConcept
 
   = TypeConstruction { subject: TypeConstructionSubject }
   | AlgebraLaw { subject: AlgebraLawSubject }
-  | DiagnosticExhaustiveness { coproduct_type: Symbol, omitted_variant: Symbol }
+  | DiagnosticExhaustiveness { coproduct_type: v2.std.node.Symbol, omitted_variant: v2.std.node.Symbol }
 
-  | CrossRepresentationEquality { modeled_coproduct: Symbol, native_realization: Symbol }
+  | CrossRepresentationEquality { modeled_coproduct: v2.std.node.Symbol, native_realization: v2.std.node.Symbol }
   | LensApplicability { subject: LensApplicabilitySubject }
   | BidirectionalRoundtrip { subject: BidirectionalRoundtripSubject }
   | LanguageBehaviorEquivalence {
@@ -57,15 +57,15 @@ type TestgenConcept
   | RefinementPreservation { subject: RefinementPreservationSubject }
 
 type Generator<C> {
-  kind: TestClaimCoproductVariant
-  classification: TestClassification
-  anchor: ClaimAnchorKey
+  kind: v2.std.verification.TestClaimCoproductVariant
+  classification: v2.std.verification.TestClassification
+  anchor: v2.std.verification.ClaimAnchorKey
   slot: C
-  provenance: GeneratorProvenance
+  provenance: v2.std.artifact.GeneratorProvenance
   profile_metadata: GeneratorProfile
 }
 
-type GeneratorProfile { profile_ref: Symbol }
+type GeneratorProfile { profile_ref: v2.std.node.Symbol }
 
 data testgen_lens_file_path: String = "src/v2/lens/testgen.dag"
 
@@ -151,8 +151,8 @@ fn generator_provenance(id: GeneratorId) -> GeneratorProvenance {
 }
 
 type CorpusEntry {
-  path: AbsolutePath
-  body: FileBody
+  path: v2.extdeps.file_system.AbsolutePath
+  body: v2.extdeps.file_system.FileBody
 }
 
 type CorpusTraversalScope
@@ -177,10 +177,10 @@ type CorpusTraversalPolicy {
 }
 
 type CorpusEnumerationRequest {
-  filesystem: Filesystem
-  root: AbsolutePath
-  operations: FileSystemOperations
-  resolution: FileKindResolutionPolicy
+  filesystem: v2.extdeps.file_system.Filesystem
+  root: v2.extdeps.file_system.AbsolutePath
+  operations: v2.extdeps.file_system.FileSystemOperations
+  resolution: v2.extdeps.file_system.FileKindResolutionPolicy
   traversal: CorpusTraversalPolicy
 }
 
@@ -195,7 +195,7 @@ type CorpusEntryIngestor = fn(CorpusEntry) -> CorpusEntryIngestResult
 type CorpusLensReadResult<C> = Outcome<C>
 
 type CorpusLensReader<C> {
-  lens: Symbol
+  lens: v2.std.node.Symbol
   read: fn(Node) -> CorpusLensReadResult<C>
 }
 
@@ -1042,8 +1042,8 @@ fn testgen_non_algebra_law_scheduled_slot_diagnostic() -> Diagnostic {
 }
 
 type NatAlgebraLawScheduleRow {
-  obligation: NatAlgebraLawObligation
-  anchor: ManualAnchorKey
+  obligation: v2.std.nat.NatAlgebraLawObligation
+  anchor: v2.std.verification.ManualAnchorKey
 }
 
 fn algebra_law_subject_from_nat_obligation(o: NatAlgebraLawObligation) -> AlgebraLawSubject {
@@ -1691,7 +1691,7 @@ fn testgen_scheduled_generators_roster_holds() -> Bool {
 }
 
 type TestgenRunReceipt {
-  profile_ref: Symbol
+  profile_ref: v2.std.node.Symbol
   generators: List<Generator<TestgenConcept>>
 }
 

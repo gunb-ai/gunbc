@@ -1,20 +1,20 @@
 module extdeps.memory
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Computer_memory"
   }
 }
 
-fn memory_population_row_bytes(row: MemoryPopulationRow) -> ByteSize {
+fn memory_population_row_bytes(row: extdeps.memory.types.MemoryPopulationRow) -> std.measure.ByteSize {
   byte_size(
     byte_size_count(row.module.capacity_bytes) * row.stick_count,
   )
 }
 
-fn host_memory_population_nominal_bytes(pop: HostMemoryPopulation) -> ByteSize {
+fn host_memory_population_nominal_bytes(pop: extdeps.memory.types.HostMemoryPopulation) -> std.measure.ByteSize {
   byte_size(
     pop.rows
       |> fold(

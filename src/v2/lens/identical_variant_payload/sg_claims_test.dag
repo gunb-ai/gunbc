@@ -1,10 +1,10 @@
 module v2.test.lens_identical_variant_payload.sg_claims
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 data ivp_witness_type_node: Node = claim_atom_node(s: ^ivp_witness_type_symbol)
 data ivp_witness_module: String = "v2.lens.identical_variant_payload"
 
-fn ivp_verdict_is_unrealized(verdict: LensVerdict) -> Bool {
+fn ivp_verdict_is_unrealized(verdict: v2.std.lens_verdict.LensVerdict) -> Bool {
   match verdict {
     Unrealized { diagnostic: _ } => true
     _ => false
@@ -17,7 +17,7 @@ test fn witness_ivp_unrealized_green_on_fact() -> Bool {
   )
 }
 
-fn ivp_sample_holds() -> LensVerdict {
+fn ivp_sample_holds() -> v2.std.lens_verdict.LensVerdict {
   Holds
 }
 

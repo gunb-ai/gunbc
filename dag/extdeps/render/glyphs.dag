@@ -9,9 +9,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type SymbolEntry {
-  id: SymbolId
-  glyphs: TierGlyphs
-  color: SemanticColor
+  id: std.symbols.SymbolId
+  glyphs: extdeps.render.tier_glyphs.TierGlyphs
+  color: std.symbols.SemanticColor
 }
 
 data standard_symbols: List<SymbolEntry> = [
@@ -125,7 +125,7 @@ data reward_animals: List<TierGlyphs> = [
 
 type RewardPick {
   idx: Int
-  found: TierGlyphs?
+  found: extdeps.render.tier_glyphs.TierGlyphs?
 }
 
 fn reward_animal_at(index: Int, tier: Tier) -> String? {

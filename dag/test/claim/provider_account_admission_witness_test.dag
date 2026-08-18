@@ -42,7 +42,7 @@ test fn many_decodes_and_keeps_its_total() -> Bool {
 
 data observation_does_not_promote_note: String = "THE PROMOTION THIS CLAIM EXISTS TO PREVENT. CodexPersistenceObservedLoginOnly used to map to ConcurrentBindingSafe, which admits any session count whatsoever, on the strength of seventeen sessions observed on one host for three days. The observation's own note in extdeps.llm.codex_auth says in the same paragraph that it establishes neither that a refresh exchange happens at all nor how simultaneous cold starts behave.\\n\\nSo the discriminating pair is: a binding AT the observed ceiling is admitted, and a binding ONE ABOVE it is refused with the ceiling named. Under the old mapping both were admitted and the second was the unearned one. The third conjunct pins that ConcurrentBindingSafe is not reachable from any codex persistence value, which is what keeps the proven-safe arm honest until the two-host experiment discharges it."
 
-fn admission_for(count: Int) -> AccountBindingAdmission {
+fn admission_for(count: Int) -> gunbc.provider_account.AccountBindingAdmission {
   match session_concurrency_of_count(raw: count) {
     ConcurrencyRefused { raw: _, reason: _ } =>
       BindingRefusedUnknownDiscipline {
@@ -127,14 +127,14 @@ test fn fleet_evidence_row_matches_the_observation() -> Bool {
 }
 
 // THE CLAIM THAT WOULD NOT COMPILE BEFORE, AND THE ONE THAT WOULD NOT COMPILE AFTER. Every instance's provider state now carries an admitted binding, so reading one back is possible at all — under the previous shape there was no field to read. And the wall works in the other direction too: a DashboardExistingProviderState written without a binding is a type error, which is the construction property stated as a compile fact rather than as a note.\n\nAll three live instances are checked rather than one, because the bypass was in the SHARED constructor and a claim against a single instance would pass while a second declaration wrote the field by hand.
-fn instance_binding_is_single_session(instance: HostDashboardInstance) -> Bool {
+fn instance_binding_is_single_session(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> Bool {
   match instance.provider_state {
     DashboardExistingProviderState { root: _, executable: _, binding } =>
       session_concurrency_total(concurrency: binding.concurrency) == 1
   }
 }
 
-fn instance_binding_names_the_roadmap_account(instance: HostDashboardInstance) -> Bool {
+fn instance_binding_names_the_roadmap_account(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> Bool {
   match instance.provider_state {
     DashboardExistingProviderState { root: _, executable: _, binding } =>
       match binding.selection {

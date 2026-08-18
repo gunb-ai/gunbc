@@ -5,7 +5,7 @@ module v2.test.lens_mock_totality.filesystem_mock_totality
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedFilesystemMock {
-  tag: Symbol
+  tag: v2.std.node.Symbol
 }
 
 data filesystem_red_omit_keys: List<String> = ["Filesystem.Read"]

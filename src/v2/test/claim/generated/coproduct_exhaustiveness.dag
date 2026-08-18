@@ -1,11 +1,11 @@
 module v2.test.generated.coproduct_exhaustiveness
 
 
-fn reference_coproduct_exhaustiveness_anchor() -> GeneratedAnchorKey {
+fn reference_coproduct_exhaustiveness_anchor() -> v2.std.verification.GeneratedAnchorKey {
   coproduct_exhaustiveness_anchor(coproduct_type: ^TestClaim, omitted_variant: ^DiagnosticClaim)
 }
 
-fn generated_coproduct_exhaustiveness_claim() -> Outcome<TestClaim> {
+fn generated_coproduct_exhaustiveness_claim() -> Outcome<v2.std.verification.TestClaim> {
   testgen_emit_coproduct_exhaustiveness_claim(anchor: reference_coproduct_exhaustiveness_anchor())
 }
 
@@ -36,7 +36,7 @@ fn witness_coproduct_exhaustiveness_generated_anchor() -> Bool {
   }
 }
 
-fn anchor_is(a: ClaimAnchorKey, coproduct_type: Symbol, omitted_variant: Symbol) -> Bool {
+fn anchor_is(a: v2.std.verification.ClaimAnchorKey, coproduct_type: v2.std.node.Symbol, omitted_variant: v2.std.node.Symbol) -> Bool {
   match a {
     GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: ct, omitted_variant: ov } } =>
       (ct == coproduct_type) && (ov == omitted_variant)
@@ -44,7 +44,7 @@ fn anchor_is(a: ClaimAnchorKey, coproduct_type: Symbol, omitted_variant: Symbol)
   }
 }
 
-fn roster_covers(coproduct_type: Symbol, omitted_variant: Symbol) -> Bool {
+fn roster_covers(coproduct_type: v2.std.node.Symbol, omitted_variant: v2.std.node.Symbol) -> Bool {
   fold(
     testgen_scheduled_coproduct_exhaustiveness_generators(),
     init: false,
@@ -52,7 +52,7 @@ fn roster_covers(coproduct_type: Symbol, omitted_variant: Symbol) -> Bool {
   )
 }
 
-fn roster_covers_all_arms_of(coproduct_type: Symbol) -> Bool {
+fn roster_covers_all_arms_of(coproduct_type: v2.std.node.Symbol) -> Bool {
   let arms = coproduct_arm_keys(type_name: coproduct_type)
   (length(xs: arms) > 0)
     && fold(arms, init: true, f: fn(acc, arm) {

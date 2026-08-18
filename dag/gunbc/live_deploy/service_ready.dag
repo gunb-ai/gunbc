@@ -26,9 +26,9 @@ type UnitDiagnosis =
 data live_deploy_unit_diagnosis_coproduct_note: String = "UnitDiagnosis is a coproduct, not a String with a reserved 'unavailable' value, and the distinction is the whole point of the field. A sentinel string makes 'nothing was captured' and 'the unit literally emitted the sentinel text' the SAME representation -- an illegal state that is representable, and one an equality test would silently misclassify the day a captured stdout happened to match. That is precisely the state-space conflation this module's diagnosis note invokes against folding unit_diagnosis into last_probe, so encoding absence as a magic string here would have contradicted the field's own reason for existing (caught in review of PR 7038, review 41182). Absence is a variant; rendering matches on it; no comparison against a magic value exists anywhere."
 
 type ServiceNotReady {
-  unit: NonEmptyStr
-  endpoint: NonEmptyStr
-  waited: Second
+  unit: std.types.NonEmptyStr
+  endpoint: std.types.NonEmptyStr
+  waited: std.measure.Second
   last_probe: String
   unit_diagnosis: UnitDiagnosis
 }

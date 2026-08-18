@@ -31,11 +31,11 @@ type AltraPlatformHwDesignRevision = AltraPlatformHwDesignRev1_00
 type HeldSpecificationSupersessionStanding
   = HeldRevisionIsCurrentPublicCopy
   | NewerRevisionExistsUnretrieved {
-      newer_version_label: NonEmptyStr,
-      newer_publication_date: SpecificationDocumentDate,
-      index_authority: ExternalAuthority,
-      held_version_label: NonEmptyStr,
-      detail: NonEmptyStr,
+      newer_version_label: std.types.NonEmptyStr,
+      newer_publication_date: extdeps.publication.SpecificationDocumentDate,
+      index_authority: extdeps.external_authority.ExternalAuthority,
+      held_version_label: std.types.NonEmptyStr,
+      detail: std.types.NonEmptyStr,
     }
 
 data altra_platform_hw_design_title: NonEmptyStr = "Ampere Altra Platform Hardware Design Specification"
@@ -61,11 +61,11 @@ data altra_platform_hw_design_supersession_standing: HeldSpecificationSupersessi
 }
 
 type AltraPlatformHwDesignSpecification {
-  title: NonEmptyStr
+  title: std.types.NonEmptyStr
   revision: AltraPlatformHwDesignRevision
-  version_label: NonEmptyStr
-  publication_date: SpecificationDocumentDate
-  publisher: Vendor<Hardware>
+  version_label: std.types.NonEmptyStr
+  publication_date: extdeps.publication.SpecificationDocumentDate
+  publisher: Vendor<extdeps.hardware.Hardware>
   supersession_standing: HeldSpecificationSupersessionStanding
 }
 

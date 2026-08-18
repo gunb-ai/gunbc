@@ -1,22 +1,22 @@
 module v2.test.emit.rust_conditional_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_conditional_emit_swapped_source_text: String = "fn one_or_two() -> i32 { if true { 2 } else { 1 } }"
 
-fn rust_conditional_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
+fn rust_conditional_emit_facts_miss(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   optional_absent()
 }
 
-fn rust_conditional_emit_inferred_tree_for(root: Node) -> InferredTree {
-  InferredTree {
+fn rust_conditional_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: root,
     facts: Map { lookup: rust_conditional_emit_facts_miss }
   }
 }
 
-fn rust_conditional_emit_producer_inferred_tree() -> Outcome<InferredTree> {
+fn rust_conditional_emit_producer_inferred_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_pick_if_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
@@ -27,7 +27,7 @@ fn rust_conditional_emit_producer_inferred_tree() -> Outcome<InferredTree> {
   }
 }
 
-fn rust_conditional_emit_swapped_producer_inferred_tree() -> Outcome<InferredTree> {
+fn rust_conditional_emit_swapped_producer_inferred_tree() -> Outcome<v2.compiler.infer.InferredTree> {
   match table_fixture_pick_if_arrow_with_body_swapped_arms() {
     Accepted { value: root, diagnostics: d } =>
       Accepted {
@@ -38,7 +38,7 @@ fn rust_conditional_emit_swapped_producer_inferred_tree() -> Outcome<InferredTre
   }
 }
 
-fn rust_conditional_emit_from_tree(target: TargetModel) -> Outcome<Medium<String>> {
+fn rust_conditional_emit_from_tree(target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
     o: rust_conditional_emit_producer_inferred_tree(),
     f: fn(tree) {
@@ -47,7 +47,7 @@ fn rust_conditional_emit_from_tree(target: TargetModel) -> Outcome<Medium<String
   )
 }
 
-fn rust_conditional_emit_from_swapped_tree(target: TargetModel) -> Outcome<Medium<String>> {
+fn rust_conditional_emit_from_swapped_tree(target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
   bind_outcome(
     o: rust_conditional_emit_swapped_producer_inferred_tree(),
     f: fn(tree) {

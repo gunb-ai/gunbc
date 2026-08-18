@@ -1,19 +1,19 @@
 module v2.test.graph_invariant.reach_repair_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data reach_repair_surgical_body_edit: Edit = Edit {
-  at: Path { steps: [^arrow_body_edge] },
+data reach_repair_surgical_body_edit: v2.std.node.Edit = v2.std.node.Edit {
+  at: v2.std.node.Path { steps: [^arrow_body_edge] },
   replacement: dag_loop_body_node()
 }
 
-data reach_repair_surgical_body_diff: Diff = Diff {
+data reach_repair_surgical_body_diff: v2.std.node.Diff = v2.std.node.Diff {
   edits: [reach_repair_surgical_body_edit]
 }
 
-fn rr_atom(identity: Symbol) -> Node {
-  Node {
+fn rr_atom(identity: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -25,8 +25,8 @@ fn rr_mid() -> Node { rr_atom(identity: ^rr_mid) }
 fn rr_in() -> Node { rr_atom(identity: ^rr_input) }
 fn rr_dangling() -> Node { rr_atom(identity: ^rr_dangling) }
 
-fn rr_edge(source: Node, dependent: Node) -> DependencyView {
-  DependencyView {
+fn rr_edge(source: Node, dependent: Node) -> v2.std.dependency.DependencyView {
+  v2.std.dependency.DependencyView {
     source: source,
     dependent: dependent,
     kind: Contains,
@@ -34,21 +34,21 @@ fn rr_edge(source: Node, dependent: Node) -> DependencyView {
   }
 }
 
-fn rr_live_slice() -> List<DependencyView> {
+fn rr_live_slice() -> List<v2.std.dependency.DependencyView> {
   [
     rr_edge(source: rr_out(), dependent: rr_mid()),
     rr_edge(source: rr_mid(), dependent: rr_in())
   ]
 }
 
-fn rr_dead_projection() -> GraphReachProjection {
-  GraphReachProjection {
+fn rr_dead_projection() -> v2.lens.common.graph_invariant.GraphReachProjection {
+  v2.lens.common.graph_invariant.GraphReachProjection {
     edges: rr_live_slice(),
     roots: [rr_out()]
   }
 }
 
-fn rr_dead_wire_diagnostic() -> Diagnostic {
+fn rr_dead_wire_diagnostic() -> v2.std.diagnostic.Diagnostic {
   graph_reach_unreachable_diagnostic(
     reason: ^graph_invariant_reach_repair_witness,
     root: rr_out(),
@@ -57,7 +57,7 @@ fn rr_dead_wire_diagnostic() -> Diagnostic {
   )
 }
 
-fn rr_correction_is_suggested(c: Correction) -> Bool {
+fn rr_correction_is_suggested(c: v2.std.diagnostic.Correction) -> Bool {
   match c {
     Suggested { node: _ } => true
     Unavailable { reason: _ } => false
@@ -78,7 +78,7 @@ test fn witness_apply_correction_reruns_satisfied() -> Bool {
   match graph_reach_apply_diagnostic_correction(root: rr_out(), d: d) {
     Accepted { value: patched, diagnostics: _ } =>
       graph_invariant_reaches(
-        projection: GraphReachProjection {
+        projection: v2.lens.common.graph_invariant.GraphReachProjection {
           edges: dependency_lens(root: patched),
           roots: [patched]
         },
@@ -91,13 +91,13 @@ test fn witness_apply_correction_reruns_satisfied() -> Bool {
 test fn witness_wrong_correction_stays_violated() -> Bool {
   match apply_diff(
     root: rr_out(),
-    d: Diff {
+    d: v2.std.node.Diff {
       edits: [graph_reach_root_replacement_edit(repaired: rr_wrong_correction())]
     }
   ) {
     Accepted { value: patched, diagnostics: _ } =>
       graph_invariant_reaches(
-        projection: GraphReachProjection {
+        projection: v2.lens.common.graph_invariant.GraphReachProjection {
           edges: dependency_lens(root: patched),
           roots: [patched]
         },

@@ -3,10 +3,10 @@ module v2.test.self_host.direct_rust_door_group_algebra
 
 data direct_rust_door_group_algebra_note: String = "FAST lane: discriminates the direct-rust-door group ALGEBRA over PLANTED observations, paying ZERO production walks — no ingest, assemble, infer, or emit runs here. This is the cheap half of the composition pilot: the one canonical heavy root in long/direct_rust_door_production_group_test.dag establishes what production actually does, and these controls establish what the group does with any observation it is handed. Splitting them is what keeps the expensive walk to ONE PER GROUP CONSTRUCTION while the group behaviour stays fully discriminated. That is a claim about the walk per construction and about there being ONE production implementation authority --- it is NOT a claim about the schedule, which today constructs the group TWICE because an expensive-and-known-red root must join two rosters to earn its budget. schedule_occurrence_multiplicity_test measures that and reds at 2."
 
-fn planted_emission_rejected() -> ProvenancedRustEmissionObservation {
+fn planted_emission_rejected() -> v2.compiler.self_host.candidate_generation.ProvenancedRustEmissionObservation {
   EmissionRejected {
     diagnostics: diagnostics_singleton(
-      d: Diagnostic {
+      d: v2.std.diagnostic.Diagnostic {
         reason: ^direct_rust_door_group_algebra_planted_emission_refusal,
         at: port_locus(port: ^direct_rust_door_group_algebra),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -17,10 +17,10 @@ fn planted_emission_rejected() -> ProvenancedRustEmissionObservation {
 
 fn planted_artifact(
   source_text: String,
-  producer: EmitterProducer,
-  closure: RealizedEmitterClosure,
-  qualifications: List<EmissionQualification>
-) -> ProvenancedRustEmissionObservation {
+  producer: v2.compiler.self_host.emitter_producer_provenance.EmitterProducer,
+  closure: v2.compiler.self_host.emitter_producer_provenance.RealizedEmitterClosure,
+  qualifications: List<v2.compiler.self_host.emitter_producer_provenance.EmissionQualification>
+) -> v2.compiler.self_host.candidate_generation.ProvenancedRustEmissionObservation {
   match mint_producer_emission_receipt(
     module_path: direct_rust_door_module_path,
     producer: producer,
@@ -31,8 +31,8 @@ fn planted_artifact(
   ) {
     Present { value: receipt } =>
       ArtifactProduced {
-        artifact: ProvenancedRustArtifact {
-          source: Medium { carried: source_text, fidelity: Lossless },
+        artifact: v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact {
+          source: extdeps.communication.medium.Medium { carried: source_text, fidelity: Lossless },
           emitted: rust_fixture_emitted_add_fn,
           producer_receipt: receipt
         }
@@ -41,7 +41,7 @@ fn planted_artifact(
   }
 }
 
-fn planted_artifact_with_source(source_text: String) -> ProvenancedRustEmissionObservation {
+fn planted_artifact_with_source(source_text: String) -> v2.compiler.self_host.candidate_generation.ProvenancedRustEmissionObservation {
   planted_artifact(
     source_text: source_text,
     producer: V2EmitterInterpreted,
@@ -50,7 +50,7 @@ fn planted_artifact_with_source(source_text: String) -> ProvenancedRustEmissionO
   )
 }
 
-fn missing_rule_established() -> DirectRustDoorAdmission {
+fn missing_rule_established() -> v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorAdmission {
   DirectRustDoorEstablished
 }
 
@@ -144,9 +144,9 @@ test fn missing_rule_leaf_projects_its_admission() -> Bool {
   established && refused
 }
 
-fn planted_diag() -> NonEmptyDiagnostics {
+fn planted_diag() -> v2.std.diagnostic.NonEmptyDiagnostics {
   diagnostics_singleton(
-    d: Diagnostic {
+    d: v2.std.diagnostic.Diagnostic {
       reason: ^direct_rust_door_group_algebra_planted_stage_refusal,
       at: port_locus(port: ^direct_rust_door_group_algebra),
       correction: Unavailable { reason: ExternalContractUnknown }
@@ -155,8 +155,8 @@ fn planted_diag() -> NonEmptyDiagnostics {
 }
 
 fn leaf_not_reached_cause_is(
-  leaf: DirectRustDoorLeafResult,
-  wanted: Symbol
+  leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorLeafResult,
+  wanted: v2.std.node.Symbol
 ) -> Bool {
   match leaf {
     LeafNotReached { cause } => cause == wanted
@@ -165,7 +165,7 @@ fn leaf_not_reached_cause_is(
   }
 }
 
-fn leaf_refused(leaf: DirectRustDoorLeafResult) -> Bool {
+fn leaf_refused(leaf: v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorLeafResult) -> Bool {
   match leaf {
     LeafRefused { cause: _ } => true
     LeafEstablished => false
@@ -173,7 +173,7 @@ fn leaf_refused(leaf: DirectRustDoorLeafResult) -> Bool {
   }
 }
 
-fn group_of(emission: ProvenancedRustEmissionObservation) -> DirectRustDoorProductionGroup {
+fn group_of(emission: v2.compiler.self_host.candidate_generation.ProvenancedRustEmissionObservation) -> v2.compiler.self_host.v2_emitter_direct_rust_door_contract.DirectRustDoorProductionGroup {
   direct_rust_door_group_from_observations(
     emission: emission,
     missing_rule: missing_rule_established()
@@ -229,7 +229,7 @@ test fn v2_producer_with_seed_reachable_closure_is_unmintable() -> Bool {
     qualifications: source_produced_qualifications,
     build_result: BuildRefused { cause: ^direct_rust_door_group_algebra_planted_build },
     behavioral_probe: BehavioralProbeUnbound,
-    realized_closure: RealizedEmitterClosure {
+    realized_closure: v2.compiler.self_host.emitter_producer_provenance.RealizedEmitterClosure {
       emitter_module_paths: ["v1.compiler.emit_rust"]
     }
   ) {
@@ -331,7 +331,7 @@ test fn seed_reachable_closure_refuses_the_seed_absence_leaf() -> Bool {
     emission: planted_artifact(
       source_text: direct_rust_door_expected_source,
       producer: V1SeedEmitter,
-      closure: RealizedEmitterClosure {
+      closure: v2.compiler.self_host.emitter_producer_provenance.RealizedEmitterClosure {
         emitter_module_paths: ["v1.compile", "v1.compiler.emit_rust"]
       },
       qualifications: source_produced_qualifications
@@ -345,9 +345,9 @@ test fn seed_reachable_closure_refuses_the_seed_absence_leaf() -> Bool {
 data behavioral_probe_promotion_wall_note: String = "CONTROLS for the probe/qualification admission wall (operator finding 2026-08-05). BehavioralProbeUnbound previously DESCRIBED the absence of behavioral evidence without preventing the strongest behavioral qualification from sitting beside it — mint reconciled producer against closure but not qualifications against the probe, and the behavioral advance read build result and qualifications and never looked at the probe. These rows fix both directions at once: the legal pre-behavior receipts must stay mintable (walling them would make an ordinary source-produced or cargo-green receipt unwritable, which is a worse defect than the one being closed), and the promotion must refuse through BOTH doors, direct mint and advance. The last row is the positive control: with a BOUND probe the existing advance path is still reachable, so the wall is discriminating rather than blanket. NOT claimed here: that the Boolean advance argument is itself executed evidence — that remains the separate executed-verdict obligation, and this wall only makes the Unbound state non-promotable. The negative fixture above changed WITH this wall: it used to plant behavioral_equivalent_qualifications to exercise a missing SourceProduced, which the wall now makes unmintable, so it plants an empty qualification list — still missing SourceProduced, and legal."
 
 fn probe_mint(
-  qualifications: List<EmissionQualification>,
-  probe: BehavioralProbeBinding
-) -> Optional<ProducerEmissionReceipt> {
+  qualifications: List<v2.compiler.self_host.emitter_producer_provenance.EmissionQualification>,
+  probe: v2.compiler.self_host.emitter_producer_provenance.BehavioralProbeBinding
+) -> Optional<v2.compiler.self_host.emitter_producer_provenance.ProducerEmissionReceipt> {
   mint_producer_emission_receipt(
     module_path: direct_rust_door_module_path,
     producer: V2EmitterInterpreted,
@@ -359,8 +359,8 @@ fn probe_mint(
 }
 
 fn probe_mint_succeeds(
-  qualifications: List<EmissionQualification>,
-  probe: BehavioralProbeBinding
+  qualifications: List<v2.compiler.self_host.emitter_producer_provenance.EmissionQualification>,
+  probe: v2.compiler.self_host.emitter_producer_provenance.BehavioralProbeBinding
 ) -> Bool {
   match probe_mint(qualifications: qualifications, probe: probe) {
     Present { value: _ } => true

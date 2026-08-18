@@ -6,7 +6,7 @@ data spark_serving_readback_parse_note: String = "Grammar-owned readback decoder
 type SparkServingReadbackField
   = SparkServingReadbackAbsent
   | SparkServingReadbackPresent { value: String }
-  | SparkServingReadbackRefused { cause: NonEmptyStr }
+  | SparkServingReadbackRefused { cause: std.types.NonEmptyStr }
 
 fn spark_serving_json_member_string(lookup: JsonMemberLookup) -> String? {
   match lookup {
@@ -71,7 +71,7 @@ fn spark_serving_parse_version_json(stdout: String) -> SparkServingReadbackField
 
 type SparkServingTagsModelSearch
   = SparkServingTagsModelSearchOk { repository: String, digest: String }
-  | SparkServingTagsModelSearchRefused { cause: NonEmptyStr }
+  | SparkServingTagsModelSearchRefused { cause: std.types.NonEmptyStr }
 
 fn spark_serving_model_wire_matches(want_wire: String, observed: String) -> Bool {
   observed == want_wire
@@ -118,7 +118,7 @@ type SparkServingTagsModelFold
   = SparkServingTagsModelFoldEmpty
   | SparkServingTagsModelFoldOne { repository: String, digest: String }
   | SparkServingTagsModelFoldMany { count: Int }
-  | SparkServingTagsModelFoldRefused { cause: NonEmptyStr }
+  | SparkServingTagsModelFoldRefused { cause: std.types.NonEmptyStr }
 
 fn spark_serving_tags_model_fold_not_object_refused() -> SparkServingTagsModelFold {
   SparkServingTagsModelFoldRefused {

@@ -1,20 +1,20 @@
 module test.claim.floor_component_receipt_witness_test
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data fcr_witness_note: String = "Executing consumer for gunbc.floor_component_receipt. THE PAIR IS THE PROOF: the receipt built from run 30509024051's real component states must report the affected-set cold control VERIFIED (it concluded Done over 5217 witnesses) while still naming the silent-pick gate as the failed component — and the same projection must report NOT verified when that control itself is red, absent, or ambiguous. Either direction alone is satisfiable by a broken projection: always-verified reproduces the alert defect this module exists to kill, always-unverified reproduces the hardcoded 'cold control is dark' story it replaces."
 
-data fcr_run_id: NonEmptyStr = "30509024051" as NonEmptyStr
+data fcr_run_id: std.types.NonEmptyStr = "30509024051" as std.types.NonEmptyStr
 
-data fcr_workflow_name: NonEmptyStr = "affected-set-falsifier" as NonEmptyStr
+data fcr_workflow_name: std.types.NonEmptyStr = "affected-set-falsifier" as std.types.NonEmptyStr
 
-data fcr_head_sha: CommitSha = "0123456789abcdef0123456789abcdef01234567" as CommitSha
+data fcr_head_sha: std.types.CommitSha = "0123456789abcdef0123456789abcdef01234567" as std.types.CommitSha
 
-fn fcr_control_row_with(outcome_tag: NonEmptyStr, detail: NonEmptyStr) -> FloorComponentRow? {
+fn fcr_control_row_with(outcome_tag: std.types.NonEmptyStr, detail: std.types.NonEmptyStr) -> gunbc.floor_component_receipt.FloorComponentRow? {
   floor_component_row(
     run_id: fcr_run_id,
     index: 1,
-    label: "discovery-corpus predict-only" as NonEmptyStr,
+    label: "discovery-corpus predict-only" as std.types.NonEmptyStr,
     witnesses: 5217,
     outcome_tag: outcome_tag,
     detail: detail,
@@ -26,15 +26,15 @@ fn fcr_control_row_with(outcome_tag: NonEmptyStr, detail: NonEmptyStr) -> FloorC
   )
 }
 
-data fcr_silent_pick_diagnostic: NonEmptyStr = "resolution_divergence_silent_pick_gate_keystone_holds: witness receipt wall budget exceeded: 900001ms elapsed > 900000ms whole-receipt budget" as NonEmptyStr
+data fcr_silent_pick_diagnostic: std.types.NonEmptyStr = "resolution_divergence_silent_pick_gate_keystone_holds: witness receipt wall budget exceeded: 900001ms elapsed > 900000ms whole-receipt budget" as std.types.NonEmptyStr
 
-fn fcr_silent_pick_row() -> FloorComponentRow? {
+fn fcr_silent_pick_row() -> gunbc.floor_component_receipt.FloorComponentRow? {
   floor_component_row(
     run_id: fcr_run_id,
     index: 4,
-    label: "discovery-corpus silent-pick gate" as NonEmptyStr,
+    label: "discovery-corpus silent-pick gate" as std.types.NonEmptyStr,
     witnesses: 1,
-    outcome_tag: "refused" as NonEmptyStr,
+    outcome_tag: "refused" as std.types.NonEmptyStr,
     detail: fcr_silent_pick_diagnostic,
     basis: WallClock,
     budget: millisecond(count: 0),
@@ -44,14 +44,14 @@ fn fcr_silent_pick_row() -> FloorComponentRow? {
   )
 }
 
-fn fcr_timed_out_row() -> FloorComponentRow? {
+fn fcr_timed_out_row() -> gunbc.floor_component_receipt.FloorComponentRow? {
   floor_component_row(
     run_id: fcr_run_id,
     index: 4,
-    label: "discovery-corpus silent-pick gate" as NonEmptyStr,
+    label: "discovery-corpus silent-pick gate" as std.types.NonEmptyStr,
     witnesses: 1,
-    outcome_tag: "timed_out" as NonEmptyStr,
-    detail: "unused by the TimedOut arm" as NonEmptyStr,
+    outcome_tag: "timed_out" as std.types.NonEmptyStr,
+    detail: "unused by the TimedOut arm" as std.types.NonEmptyStr,
     basis: WallClock,
     budget: millisecond(count: 900000),
     elapsed: millisecond(count: 900766),
@@ -60,14 +60,14 @@ fn fcr_timed_out_row() -> FloorComponentRow? {
   )
 }
 
-fn fcr_expect_red_row(index: Nat) -> FloorComponentRow? {
+fn fcr_expect_red_row(index: Nat) -> gunbc.floor_component_receipt.FloorComponentRow? {
   floor_component_row(
     run_id: fcr_run_id,
     index: index,
-    label: "discovery-corpus expect_red" as NonEmptyStr,
+    label: "discovery-corpus expect_red" as std.types.NonEmptyStr,
     witnesses: 6,
-    outcome_tag: "done" as NonEmptyStr,
-    detail: "expect_red still-red OK" as NonEmptyStr,
+    outcome_tag: "done" as std.types.NonEmptyStr,
+    detail: "expect_red still-red OK" as std.types.NonEmptyStr,
     basis: WallClock,
     budget: millisecond(count: 0),
     elapsed: millisecond(count: 0),
@@ -76,7 +76,7 @@ fn fcr_expect_red_row(index: Nat) -> FloorComponentRow? {
   )
 }
 
-fn fcr_rows_of(opts: List<FloorComponentRow?>) -> List<FloorComponentRow> {
+fn fcr_rows_of(opts: List<gunbc.floor_component_receipt.FloorComponentRow?>) -> List<gunbc.floor_component_receipt.FloorComponentRow> {
   fold(opts, init: [], f: (acc, o) =>
     match o {
       Absent => acc
@@ -84,13 +84,13 @@ fn fcr_rows_of(opts: List<FloorComponentRow?>) -> List<FloorComponentRow> {
     })
 }
 
-fn fcr_all_present(opts: List<FloorComponentRow?>) -> Bool {
+fn fcr_all_present(opts: List<gunbc.floor_component_receipt.FloorComponentRow?>) -> Bool {
   count(fcr_rows_of(opts: opts)) == count(opts)
 }
 
-fn fcr_real_run_rows() -> List<FloorComponentRow> {
+fn fcr_real_run_rows() -> List<gunbc.floor_component_receipt.FloorComponentRow> {
   fcr_rows_of(opts: [
-    fcr_control_row_with(outcome_tag: "done" as NonEmptyStr, detail: "5217 witnesses" as NonEmptyStr),
+    fcr_control_row_with(outcome_tag: "done" as std.types.NonEmptyStr, detail: "5217 witnesses" as std.types.NonEmptyStr),
     fcr_expect_red_row(index: 2),
     fcr_expect_red_row(index: 3),
     fcr_silent_pick_row()
@@ -123,10 +123,10 @@ test fn fcr_red_control_unknown_tags_fail_closed() -> Bool {
   let bad_outcome = floor_component_row(
     run_id: fcr_run_id,
     index: 1,
-    label: "x" as NonEmptyStr,
+    label: "x" as std.types.NonEmptyStr,
     witnesses: 1,
-    outcome_tag: "probably_fine" as NonEmptyStr,
-    detail: "d" as NonEmptyStr,
+    outcome_tag: "probably_fine" as std.types.NonEmptyStr,
+    detail: "d" as std.types.NonEmptyStr,
     basis: WallClock,
     budget: millisecond(count: 0),
     elapsed: millisecond(count: 0),
@@ -135,16 +135,16 @@ test fn fcr_red_control_unknown_tags_fail_closed() -> Bool {
   )
   (match bad_outcome { Absent => true  Present { value: _ } => false })
     && fcr_all_present(opts: [
-         fcr_control_row_with(outcome_tag: "done" as NonEmptyStr, detail: "ok" as NonEmptyStr)
+         fcr_control_row_with(outcome_tag: "done" as std.types.NonEmptyStr, detail: "ok" as std.types.NonEmptyStr)
        ])
 }
 
 test fn fcr_refused_is_distinct_from_failed() -> Bool {
   let refused_rows = fcr_rows_of(opts: [
-    fcr_control_row_with(outcome_tag: "refused" as NonEmptyStr, detail: "provenance gap" as NonEmptyStr)
+    fcr_control_row_with(outcome_tag: "refused" as std.types.NonEmptyStr, detail: "provenance gap" as std.types.NonEmptyStr)
   ])
   let failed_rows = fcr_rows_of(opts: [
-    fcr_control_row_with(outcome_tag: "failed" as NonEmptyStr, detail: "provenance gap" as NonEmptyStr)
+    fcr_control_row_with(outcome_tag: "failed" as std.types.NonEmptyStr, detail: "provenance gap" as std.types.NonEmptyStr)
   ])
   let refused_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: refused_rows)
   let failed_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: failed_rows)
@@ -155,11 +155,11 @@ test fn fcr_refused_is_distinct_from_failed() -> Bool {
     && !(refused_doc == failed_doc)
 }
 
-fn fcr_mode_row(mode: NonEmptyStr) -> FloorComponentRow? {
+fn fcr_mode_row(mode: std.types.NonEmptyStr) -> gunbc.floor_component_receipt.FloorComponentRow? {
   floor_component_row_of_failure_mode(
     run_id: fcr_run_id,
     index: 4,
-    label: "discovery-corpus silent-pick gate" as NonEmptyStr,
+    label: "discovery-corpus silent-pick gate" as std.types.NonEmptyStr,
     witnesses: 1,
     failure_mode: mode,
     detail: fcr_silent_pick_diagnostic,
@@ -167,21 +167,21 @@ fn fcr_mode_row(mode: NonEmptyStr) -> FloorComponentRow? {
   )
 }
 
-fn fcr_not_concluded_mode_row(mode: NonEmptyStr, detail: NonEmptyStr) -> FloorComponentRow? {
+fn fcr_not_concluded_mode_row(mode: std.types.NonEmptyStr, detail: std.types.NonEmptyStr) -> gunbc.floor_component_receipt.FloorComponentRow? {
   floor_component_row_not_concluded(
     run_id: fcr_run_id,
     index: 7,
-    label: "discovery-corpus wet self-host" as NonEmptyStr,
+    label: "discovery-corpus wet self-host" as std.types.NonEmptyStr,
     failure_mode: mode,
     detail: detail
   )
 }
 
-fn fcr_not_concluded_outcome_is(mode: NonEmptyStr, expected_outcome: String) -> Bool {
+fn fcr_not_concluded_outcome_is(mode: std.types.NonEmptyStr, expected_outcome: String) -> Bool {
   let rows = fcr_rows_of(opts: [
     fcr_not_concluded_mode_row(
       mode: mode,
-      detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
+      detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as std.types.NonEmptyStr
     )
   ])
   count(rows) == 1
@@ -191,7 +191,7 @@ fn fcr_not_concluded_outcome_is(mode: NonEmptyStr, expected_outcome: String) -> 
        )
 }
 
-fn fcr_mode_outcome_is(mode: NonEmptyStr, expected_outcome: String) -> Bool {
+fn fcr_mode_outcome_is(mode: std.types.NonEmptyStr, expected_outcome: String) -> Bool {
   let rows = fcr_rows_of(opts: [fcr_mode_row(mode: mode)])
   count(rows) == 1
     && string_contains(
@@ -201,64 +201,64 @@ fn fcr_mode_outcome_is(mode: NonEmptyStr, expected_outcome: String) -> Bool {
 }
 
 test fn fcr_failure_mode_maps_to_the_distinguishing_outcomes() -> Bool {
-  fcr_mode_outcome_is(mode: "none" as NonEmptyStr, expected_outcome: "done")
-    && fcr_mode_outcome_is(mode: "BudgetExceeded" as NonEmptyStr, expected_outcome: "refused")
-    && fcr_mode_outcome_is(mode: "HostDependencyAbsent" as NonEmptyStr, expected_outcome: "refused")
-    && fcr_mode_outcome_is(mode: "Infra" as NonEmptyStr, expected_outcome: "failed")
-    && fcr_mode_outcome_is(mode: "WitnessRed" as NonEmptyStr, expected_outcome: "failed")
+  fcr_mode_outcome_is(mode: "none" as std.types.NonEmptyStr, expected_outcome: "done")
+    && fcr_mode_outcome_is(mode: "BudgetExceeded" as std.types.NonEmptyStr, expected_outcome: "refused")
+    && fcr_mode_outcome_is(mode: "HostDependencyAbsent" as std.types.NonEmptyStr, expected_outcome: "refused")
+    && fcr_mode_outcome_is(mode: "Infra" as std.types.NonEmptyStr, expected_outcome: "failed")
+    && fcr_mode_outcome_is(mode: "WitnessRed" as std.types.NonEmptyStr, expected_outcome: "failed")
 }
 
 test fn fcr_not_reached_mode_is_skipped_not_failed() -> Bool {
-  fcr_mode_outcome_is(mode: "not_reached" as NonEmptyStr, expected_outcome: "skipped")
+  fcr_mode_outcome_is(mode: "not_reached" as std.types.NonEmptyStr, expected_outcome: "skipped")
 }
 
 data fcr_run_incomplete_note: String = "run_incomplete rows are pending (ComponentNotConcluded), not skipped. Skipped claims the walk produced a verdict of none; pending claims no verdict exists yet because the receipt was written mid-run. not_reached remains skipped: the plan concluded and deliberately skipped the tail. The modes must stay distinct so a SIGKILL checkpoint is not misread as a stop-policy skip."
 
 test fn fcr_run_incomplete_mode_is_pending_not_skipped() -> Bool {
-  fcr_not_concluded_outcome_is(mode: "run_incomplete" as NonEmptyStr, expected_outcome: "pending")
-    && !fcr_not_concluded_outcome_is(mode: "run_incomplete" as NonEmptyStr, expected_outcome: "skipped")
+  fcr_not_concluded_outcome_is(mode: "run_incomplete" as std.types.NonEmptyStr, expected_outcome: "pending")
+    && !fcr_not_concluded_outcome_is(mode: "run_incomplete" as std.types.NonEmptyStr, expected_outcome: "skipped")
 }
 
 test fn fcr_deadline_reached_is_refused_not_skipped() -> Bool {
-  fcr_mode_outcome_is(mode: "deadline_reached" as NonEmptyStr, expected_outcome: "refused")
-    && !fcr_mode_outcome_is(mode: "deadline_reached" as NonEmptyStr, expected_outcome: "skipped")
+  fcr_mode_outcome_is(mode: "deadline_reached" as std.types.NonEmptyStr, expected_outcome: "refused")
+    && !fcr_mode_outcome_is(mode: "deadline_reached" as std.types.NonEmptyStr, expected_outcome: "skipped")
 }
 
 test fn fcr_deadline_reached_is_distinct_from_both_skipped_causes() -> Bool {
-  let incomplete_detail = "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
-  fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == "deadline_reached"
-    && !(fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == fcr_mode_of(mode: "not_reached" as NonEmptyStr))
-    && !(fcr_mode_of(mode: "deadline_reached" as NonEmptyStr) == fcr_not_concluded_mode_of(mode: "run_incomplete" as NonEmptyStr, detail: incomplete_detail))
+  let incomplete_detail = "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as std.types.NonEmptyStr
+  fcr_mode_of(mode: "deadline_reached" as std.types.NonEmptyStr) == "deadline_reached"
+    && !(fcr_mode_of(mode: "deadline_reached" as std.types.NonEmptyStr) == fcr_mode_of(mode: "not_reached" as std.types.NonEmptyStr))
+    && !(fcr_mode_of(mode: "deadline_reached" as std.types.NonEmptyStr) == fcr_not_concluded_mode_of(mode: "run_incomplete" as std.types.NonEmptyStr, detail: incomplete_detail))
 }
 
-fn fcr_not_concluded_mode_of(mode: NonEmptyStr, detail: NonEmptyStr) -> String {
+fn fcr_not_concluded_mode_of(mode: std.types.NonEmptyStr, detail: std.types.NonEmptyStr) -> String {
   let rows = fcr_rows_of(opts: [fcr_not_concluded_mode_row(mode: mode, detail: detail)])
   fold(rows, init: "no-row", f: (acc, r) => floor_component_failure_mode_tag(m: r.failure_mode))
 }
 
 test fn fcr_run_incomplete_is_a_distinct_mode_from_not_reached() -> Bool {
-  let detail = "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
-  fcr_not_concluded_mode_of(mode: "run_incomplete" as NonEmptyStr, detail: detail) == "run_incomplete"
-    && !(fcr_not_concluded_mode_of(mode: "run_incomplete" as NonEmptyStr, detail: detail) == fcr_mode_of(mode: "not_reached" as NonEmptyStr))
+  let detail = "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as std.types.NonEmptyStr
+  fcr_not_concluded_mode_of(mode: "run_incomplete" as std.types.NonEmptyStr, detail: detail) == "run_incomplete"
+    && !(fcr_not_concluded_mode_of(mode: "run_incomplete" as std.types.NonEmptyStr, detail: detail) == fcr_mode_of(mode: "not_reached" as std.types.NonEmptyStr))
 }
 
 test fn fcr_red_control_unmodelled_failure_mode_refuses_never_widens() -> Bool {
-  let unknown = fcr_mode_row(mode: "SomeNewModeAddedLater" as NonEmptyStr)
-  let budget = fcr_mode_row(mode: "BudgetExceeded" as NonEmptyStr)
+  let unknown = fcr_mode_row(mode: "SomeNewModeAddedLater" as std.types.NonEmptyStr)
+  let budget = fcr_mode_row(mode: "BudgetExceeded" as std.types.NonEmptyStr)
   (match unknown { Absent => true  Present { value: _ } => false })
     && (match budget { Absent => false  Present { value: _ } => true })
 }
 
 data fcr_failure_mode_edge_note: String = "The row-grain failure-mode edge, and the collapse it exists to undo. floor_component_outcome_of_failure_mode maps Infra and WitnessRed onto the SAME ObservationOutcome (Failed), which is right for the observation record and wrong for anyone deciding what to do next: a dead runner and a genuinely false claim are different faults with different owners. Before the edge, a consumer holding the Failed arm could only tell them apart by reading the diagnostic prose — the string classification the seed boundary already refuses. The pair below asserts BOTH halves of the property, because either alone is satisfiable by a broken projection: the outcomes must still agree (both Failed — the edge did not fork the observation record) AND the modes must differ (Infra vs WitnessRed — the edge actually recovers the distinction). A projection that renamed the outcomes apart would pass a modes-differ check while breaking the record; one that dropped the mode would pass an outcomes-agree check while restoring the blindness."
 
-fn fcr_mode_of(mode: NonEmptyStr) -> String {
+fn fcr_mode_of(mode: std.types.NonEmptyStr) -> String {
   let rows = fcr_rows_of(opts: [fcr_mode_row(mode: mode)])
   fold(rows, init: "no-row", f: (acc, r) => floor_component_failure_mode_tag(m: r.failure_mode))
 }
 
 test fn fcr_infra_and_witness_red_share_an_outcome_but_not_a_mode() -> Bool {
-  let infra_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "Infra" as NonEmptyStr)])
-  let red_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "WitnessRed" as NonEmptyStr)])
+  let infra_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "Infra" as std.types.NonEmptyStr)])
+  let red_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "WitnessRed" as std.types.NonEmptyStr)])
   let infra_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: infra_rows)
   let red_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: red_rows)
   count(infra_rows) == 1
@@ -271,20 +271,20 @@ test fn fcr_infra_and_witness_red_share_an_outcome_but_not_a_mode() -> Bool {
 }
 
 test fn fcr_failure_mode_edge_agrees_with_the_outcome_mapping() -> Bool {
-  fcr_mode_of(mode: "none" as NonEmptyStr) == "none"
-    && fcr_mode_of(mode: "BudgetExceeded" as NonEmptyStr) == "BudgetExceeded"
-    && fcr_mode_of(mode: "Infra" as NonEmptyStr) == "Infra"
-    && fcr_mode_of(mode: "WitnessRed" as NonEmptyStr) == "WitnessRed"
-    && fcr_mode_of(mode: "StaleKnownRed" as NonEmptyStr) == "StaleKnownRed"
-    && fcr_mode_of(mode: "ExpectedRedEvidenceAbsent" as NonEmptyStr) == "ExpectedRedEvidenceAbsent"
-    && fcr_mode_of(mode: "not_reached" as NonEmptyStr) == "not_reached"
+  fcr_mode_of(mode: "none" as std.types.NonEmptyStr) == "none"
+    && fcr_mode_of(mode: "BudgetExceeded" as std.types.NonEmptyStr) == "BudgetExceeded"
+    && fcr_mode_of(mode: "Infra" as std.types.NonEmptyStr) == "Infra"
+    && fcr_mode_of(mode: "WitnessRed" as std.types.NonEmptyStr) == "WitnessRed"
+    && fcr_mode_of(mode: "StaleKnownRed" as std.types.NonEmptyStr) == "StaleKnownRed"
+    && fcr_mode_of(mode: "ExpectedRedEvidenceAbsent" as std.types.NonEmptyStr) == "ExpectedRedEvidenceAbsent"
+    && fcr_mode_of(mode: "not_reached" as std.types.NonEmptyStr) == "not_reached"
 }
 
 data fcr_stale_known_red_note: String = "A known-red witness that starts PASSING and a witness that regresses are opposite events with opposite remedies — delete the now-stale admission row, versus fix the code. This asserts the receipt keeps them apart in BOTH directions: StaleKnownRed carries its own mode AND its own outcome, so it can neither be read as an ordinary WitnessRed in the alert's class signature nor be mistaken for a component that is fine. The Done clause is the load-bearing half: an expected-red row that silently went green must not be admitted as success, or the roster accumulates rows nobody revisits."
 
 test fn fcr_stale_known_red_is_a_refusal_distinct_from_witness_red_and_from_done() -> Bool {
-  let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as NonEmptyStr)])
-  let red_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "WitnessRed" as NonEmptyStr)])
+  let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as std.types.NonEmptyStr)])
+  let red_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "WitnessRed" as std.types.NonEmptyStr)])
   let stale_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: stale_rows)
   let red_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: red_rows)
   count(stale_rows) == 1
@@ -298,9 +298,9 @@ test fn fcr_stale_known_red_is_a_refusal_distinct_from_witness_red_and_from_done
 data fcr_pre_verdict_unverified_note: String = "The THIRD arm on this axis, and it must be distinguishable from BOTH of the others because all three demand different actions. StaleKnownRed says an executed row passed — DELETE the admission. ExpectedRedEvidenceAbsent says a rostered row produced no observation — make it RUN. ExpectedRedPreVerdictUnverified says the row stopped as declared, before any verdict, and nothing yet proves it stopped for the DECLARED REASON — the remedy is neither delete nor rerun but carrying the typed phase and cause across the execution boundary. It renders as refused, never done: a declaration classifies a stop, it does not verify one, and rendering it green was the defect this arm replaces."
 
 test fn fcr_pre_verdict_unverified_is_a_refusal_distinct_from_both_siblings() -> Bool {
-  let unverified_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedPreVerdictUnverified" as NonEmptyStr)])
-  let absent_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedEvidenceAbsent" as NonEmptyStr)])
-  let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as NonEmptyStr)])
+  let unverified_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedPreVerdictUnverified" as std.types.NonEmptyStr)])
+  let absent_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedEvidenceAbsent" as std.types.NonEmptyStr)])
+  let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as std.types.NonEmptyStr)])
   let unverified_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: unverified_rows)
   let absent_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: absent_rows)
   let stale_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: stale_rows)
@@ -315,8 +315,8 @@ test fn fcr_pre_verdict_unverified_is_a_refusal_distinct_from_both_siblings() ->
 data fcr_expected_red_evidence_absent_note: String = "The COVERAGE half of the same axis, and the discrimination is that it is neither of its neighbours: not done (a batch whose admitted red control produced no observation is not a batch that is fine), and not StaleKnownRed (nobody observed the witness passing — nobody observed it at all), so the two refusals must render differently or the alert cannot tell delete-the-row from make-the-row-run. Absence establishing neither agreement nor failure is exactly why it needs its own mode rather than being folded into either verdict arm."
 
 test fn fcr_expected_red_evidence_absent_is_a_refusal_distinct_from_stale_and_from_done() -> Bool {
-  let absent_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedEvidenceAbsent" as NonEmptyStr)])
-  let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as NonEmptyStr)])
+  let absent_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "ExpectedRedEvidenceAbsent" as std.types.NonEmptyStr)])
+  let stale_rows = fcr_rows_of(opts: [fcr_mode_row(mode: "StaleKnownRed" as std.types.NonEmptyStr)])
   let absent_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: absent_rows)
   let stale_doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: stale_rows)
   count(absent_rows) == 1
@@ -328,7 +328,7 @@ test fn fcr_expected_red_evidence_absent_is_a_refusal_distinct_from_stale_and_fr
 
 test fn fcr_red_control_tag_built_row_records_no_mode_rather_than_guessing() -> Bool {
   let rows = fcr_rows_of(opts: [
-    fcr_control_row_with(outcome_tag: "done" as NonEmptyStr, detail: "ok" as NonEmptyStr)
+    fcr_control_row_with(outcome_tag: "done" as std.types.NonEmptyStr, detail: "ok" as std.types.NonEmptyStr)
   ])
   let doc = floor_component_receipt_document(workflow_name: fcr_workflow_name, run_id: fcr_run_id, head_sha: fcr_head_sha, rows: rows)
   count(rows) == 1
@@ -345,7 +345,7 @@ test fn fcr_receipt_decodes_through_the_strict_reader() -> Bool {
     head_sha: fcr_head_sha,
     rows: fcr_real_run_rows()
   )
-  match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as NonEmptyStr) {
+  match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as std.types.NonEmptyStr) {
     ReceiptDecoded { document: d } => (d.subject.run_id as String) == (fcr_run_id as String)
     _ => false
   }
@@ -358,7 +358,7 @@ data fcr_legacy_receipt_without_run_terminal: String = "{\"schema\":\"floor-comp
 test fn fcr_legacy_receipt_without_run_terminal_member_decodes() -> Bool {
   match floor_component_receipt_decode_with(
     text: fcr_legacy_receipt_without_run_terminal,
-    expected_schema: floor_component_receipt_schema as NonEmptyStr
+    expected_schema: floor_component_receipt_schema as std.types.NonEmptyStr
   ) {
     ReceiptDecoded { document: d } =>
       (d.subject.run_id as String) == "30509024051"
@@ -371,10 +371,10 @@ data fcr_incomplete_checkpoint_round_trip_note: String = "The incomplete checkpo
 
 test fn fcr_incomplete_checkpoint_receipt_decodes_through_the_strict_reader() -> Bool {
   let rows = fcr_rows_of(opts: [
-    fcr_control_row_with(outcome_tag: "done" as NonEmptyStr, detail: "batch 1 concluded" as NonEmptyStr),
+    fcr_control_row_with(outcome_tag: "done" as std.types.NonEmptyStr, detail: "batch 1 concluded" as std.types.NonEmptyStr),
     fcr_not_concluded_mode_row(
-      mode: "run_incomplete" as NonEmptyStr,
-      detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
+      mode: "run_incomplete" as std.types.NonEmptyStr,
+      detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as std.types.NonEmptyStr
     )
   ])
   let doc = floor_component_receipt_document_incomplete(
@@ -382,11 +382,11 @@ test fn fcr_incomplete_checkpoint_receipt_decodes_through_the_strict_reader() ->
     run_id: fcr_run_id,
     head_sha: fcr_head_sha,
     rows: rows,
-    run_terminal_cause: "run_incomplete" as NonEmptyStr,
+    run_terminal_cause: "run_incomplete" as std.types.NonEmptyStr,
     concluded_count: 1,
     pending_from_index: 2
   )
-  match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as NonEmptyStr) {
+  match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as std.types.NonEmptyStr) {
     ReceiptDecoded { document: d } =>
       (d.subject.run_id as String) == (fcr_run_id as String)
         && string_contains(s: doc, pattern: "\"disposition\": \"incomplete\"")
@@ -398,10 +398,10 @@ test fn fcr_incomplete_checkpoint_receipt_decodes_through_the_strict_reader() ->
 
 test fn fcr_incomplete_checkpoint_receipt_reencodes_through_document_encoder() -> Bool {
   let rows = fcr_rows_of(opts: [
-    fcr_control_row_with(outcome_tag: "done" as NonEmptyStr, detail: "batch 1 concluded" as NonEmptyStr),
+    fcr_control_row_with(outcome_tag: "done" as std.types.NonEmptyStr, detail: "batch 1 concluded" as std.types.NonEmptyStr),
     fcr_not_concluded_mode_row(
-      mode: "run_incomplete" as NonEmptyStr,
-      detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as NonEmptyStr
+      mode: "run_incomplete" as std.types.NonEmptyStr,
+      detail: "batch not concluded — checkpoint written while the run was still in progress; this component's fate is unknown at write time" as std.types.NonEmptyStr
     )
   ])
   let doc = floor_component_receipt_document_incomplete(
@@ -409,15 +409,15 @@ test fn fcr_incomplete_checkpoint_receipt_reencodes_through_document_encoder() -
     run_id: fcr_run_id,
     head_sha: fcr_head_sha,
     rows: rows,
-    run_terminal_cause: "run_incomplete" as NonEmptyStr,
+    run_terminal_cause: "run_incomplete" as std.types.NonEmptyStr,
     concluded_count: 1,
     pending_from_index: 2
   )
-  match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as NonEmptyStr) {
+  match floor_component_receipt_decode_with(text: doc, expected_schema: floor_component_receipt_schema as std.types.NonEmptyStr) {
     ReceiptDecoded { document: d } =>
       match floor_component_receipt_decode_with(
         text: floor_component_receipt_document_text(doc: d),
-        expected_schema: floor_component_receipt_schema as NonEmptyStr
+        expected_schema: floor_component_receipt_schema as std.types.NonEmptyStr
       ) {
         ReceiptDecoded { document: roundtrip } =>
           (roundtrip.subject.run_id as String) == (fcr_run_id as String)

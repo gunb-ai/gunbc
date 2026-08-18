@@ -15,10 +15,10 @@ module tools.prose_row_introduction_gate
 // the verdict `nothing was introduced`; rendering it as one is the empty-observation narrow, which is
 // strictly worse than the widen DESIGN 5 already forbids because it is silently uncovered rather than
 // merely expensive.
-fn prose_row_gate_observation() -> ProseRowDiffObservation {
+fn prose_row_gate_observation() -> gunbc.prose_row_frontier.ProseRowDiffObservation {
   let diff = git.Core.DiffUnified0(
-    base: "origin/main" as GitRef,
-    head: "HEAD" as GitRef,
+    base: "origin/main" as std.types.GitRef,
+    head: "HEAD" as std.types.GitRef,
     range: ThreeDot,
   )
   if diff.success {
@@ -30,7 +30,7 @@ fn prose_row_gate_observation() -> ProseRowDiffObservation {
   }
 }
 
-fn prose_row_refusal_reason(refused: List<ProseRowRef>, residue: List<ProseRowRef>) -> String {
+fn prose_row_refusal_reason(refused: List<gunbc.prose_row_frontier.ProseRowRef>, residue: List<gunbc.prose_row_frontier.ProseRowRef>) -> String {
   let residue_count = residue |> count
   concat(
     "prose row introduction gate: THIS CHANGE introduces prose-only data NAME_note: String declaration(s) under a path whose prose has already been migrated to authored // annotations (gunbc.prose_row_frontier prose_row_migration_scope). Move the irreducible rationale into a leading // block above the declaration it explains, and put any date, review id, PR number, SHA, status, count or dissolution condition in a typed carrier (DESIGN section 4c). Refused: ",
@@ -49,7 +49,7 @@ fn prose_row_refusal_reason(refused: List<ProseRowRef>, residue: List<ProseRowRe
 // synthetic diffs hermetically instead of exercising a lookalike. A verdict that could only be reached
 // through an effect would force its controls to either mock the effect or test a copy of the rule, and
 // a copy of the rule is the fork this repository spends its time removing.
-fn prose_row_introduction_verdict(observation: ProseRowDiffObservation) -> ProcessExit {
+fn prose_row_introduction_verdict(observation: gunbc.prose_row_frontier.ProseRowDiffObservation) -> std.process.ProcessExit {
   match observation {
     ProseRowDiffUnreadable { reason: reason } => exit_failure(
       reason: concat("prose row introduction gate: ", concat(reason, " — refusing, never skipping (DESIGN section 5)"))
@@ -87,11 +87,11 @@ data prose_row_receipt_path: String = "target/prose-row-introduction-receipt.tsv
 // residue is durable and located but reaches the run log only when the gate also refuses, where the
 // counts ride the refusal reason above. DISSOLVE-ON: an executor receipt channel for a passing gate;
 // then this write becomes that channel's projection and the file goes away.
-fn prose_row_receipt_row(row: ProseRowRef, disposition: String) -> String {
+fn prose_row_receipt_row(row: gunbc.prose_row_frontier.ProseRowRef, disposition: String) -> String {
   concat(disposition, concat("\t", concat(row.path, concat("\t", row.decl_name))))
 }
 
-fn prose_row_receipt_content(observation: ProseRowDiffObservation) -> String {
+fn prose_row_receipt_content(observation: gunbc.prose_row_frontier.ProseRowDiffObservation) -> String {
   match observation {
     ProseRowDiffUnreadable { reason: reason } =>
       concat("disposition\tpath\tdecl_name\nunreadable\t\t", reason)
@@ -130,7 +130,7 @@ fn prose_row_receipt_content(observation: ProseRowDiffObservation) -> String {
 // own error. The alternative considered and rejected was creating the directory: that turns a missing
 // scratch dir into a silent success and puts this gate back where it started, guessing about state it
 // did not observe. In CI `target/` always exists because the release build precedes the floor.
-func run_prose_row_introduction_gate_body() -> ProcessExit {
+func run_prose_row_introduction_gate_body() -> std.process.ProcessExit {
   let observation = prose_row_gate_observation()
   let written = Filesystem.Write(
     path: prose_row_receipt_path,
@@ -158,7 +158,7 @@ func run_prose_row_introduction_gate_body() -> ProcessExit {
 // gate's ProcessExit to Bool, so without a companion a refusal reads as `returned Bool(false)` and
 // names neither the offending row nor the residue. This projects the SAME verdict rather than deciding
 // again, so there is never a second refusal authority to disagree with the first.
-fn prose_row_failure_reason(exit: ProcessExit) -> String {
+fn prose_row_failure_reason(exit: std.process.ProcessExit) -> String {
   match exit {
     ExitSuccess => ""
     ExitFailure { code: _, reason: reason } => reason
@@ -169,10 +169,10 @@ func prose_row_gate_failure_receipt() -> String {
   prose_row_failure_reason(exit: run_prose_row_introduction_gate_body())
 }
 
-func main() -> ProcessExit {
+func main() -> std.process.ProcessExit {
   run_prose_row_introduction_gate_body()
 }
 
-func run_prose_row_introduction_gate() -> ProcessExit {
+func run_prose_row_introduction_gate() -> std.process.ProcessExit {
   run_prose_row_introduction_gate_body()
 }

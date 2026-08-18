@@ -2,8 +2,8 @@ module extdeps.access.posix_effective_principal
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/whoami.html"
   }
@@ -20,7 +20,7 @@ type EffectivePosixPrincipalReadOutcome {
   stderr: String
 }
 
-type EffectivePosixPrincipalName nominal_opaque = NonEmptyStr
+type EffectivePosixPrincipalName nominal_opaque = std.types.NonEmptyStr
 
 type EffectivePosixPrincipalObservation {
   read: EffectivePosixPrincipalRead
@@ -45,13 +45,13 @@ fn effective_posix_principal_observation(
   } else {
     EffectivePosixPrincipalObserved { observation: EffectivePosixPrincipalObservation {
       read: outcome.read,
-      effective_name: (name as NonEmptyStr) as EffectivePosixPrincipalName,
+      effective_name: (name as std.types.NonEmptyStr) as EffectivePosixPrincipalName,
     } }
   }
 }
 
 fn effective_posix_principal_name(
   observation: EffectivePosixPrincipalObservation,
-) -> NonEmptyStr {
-  observation.effective_name as NonEmptyStr
+) -> std.types.NonEmptyStr {
+  observation.effective_name as std.types.NonEmptyStr
 }

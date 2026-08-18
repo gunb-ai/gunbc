@@ -2,10 +2,10 @@ module v2.lens.application
 
 
 type DeclarationId {
-  path: Path
+  path: v2.std.node.Path
 }
 type NodeId {
-  path: Path
+  path: v2.std.node.Path
 }
 type SourceSpan
 
@@ -142,8 +142,8 @@ fn replace_edge_target(e: Edge, replacement: Node) -> Edge {
 }
 
 type PathSplit {
-  init: List<Symbol>
-  last: Symbol
+  init: List<v2.std.node.Symbol>
+  last: v2.std.node.Symbol
   first: Bool
 }
 
@@ -197,7 +197,7 @@ fn rebuild_node_with_child(root: Node, name: Symbol, child: Node) -> Outcome<Nod
 
 type AncestorFrame {
   ancestor: Node
-  step: Symbol
+  step: v2.std.node.Symbol
 }
 
 type AncestorWalk {
@@ -388,7 +388,7 @@ fn apply_lens_enforce<Output, Budget, Projected>(
 
 type ReportDiagnosticsFold {
   started: Bool
-  acc: NonEmptyDiagnostics
+  acc: v2.std.diagnostic.NonEmptyDiagnostics
 }
 
 fn advisory_reports_empty_diagnostic(at: Node) -> Diagnostic {

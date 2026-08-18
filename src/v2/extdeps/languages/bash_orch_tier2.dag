@@ -1,7 +1,7 @@
 module v2.extdeps.languages.bash_orch_tier2
 
 
-fn bash_orch_procedure_tokens() -> List<ConcreteSyntaxToken> {
+fn bash_orch_procedure_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_procedure_name },
     FixedToken { token_class: ^bash_token_orch_procedure_open },
@@ -18,7 +18,7 @@ fn bash_orch_procedure_source_text(name: String, body: String) -> String {
   concat(name, concat("() {\n  ", concat(body, "\n}")))
 }
 
-fn bash_orch_procedure_lex() -> LexRules {
+fn bash_orch_procedure_lex() -> v2.std.compilers.lexing.LexRules {
   phrase_to_lex_rules(p: phrase([
     span(text: "() {\n  ", class: ^bash_token_orch_procedure_open),
     span(text: "\n}", class: ^bash_token_orch_procedure_close)
@@ -34,14 +34,14 @@ fn bash_orch_procedure_translation_rules_node() -> Node {
   )
 }
 
-fn bash_orch_procedure_binding_spellings(name: String, body: String) -> Map<Symbol, String> {
+fn bash_orch_procedure_binding_spellings(name: String, body: String) -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(empty_map(), ^bash_orch_procedure_name, name),
     ^bash_orch_procedure_body, body
   )
 }
 
-fn bash_orch_procedure_target_model(name: String, body: String) -> TargetModel {
+fn bash_orch_procedure_target_model(name: String, body: String) -> v2.std.compilers.target_model.TargetModel {
   bash_make_bound_tokens_target_model(
     rules: bash_orch_procedure_translation_rules_node(),
     source_literal: ^bash_orch_procedure_source_literal,
@@ -53,7 +53,7 @@ fn bash_orch_procedure_target_model(name: String, body: String) -> TargetModel {
   )
 }
 
-fn bash_orch_call_tokens() -> List<ConcreteSyntaxToken> {
+fn bash_orch_call_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_orch_call_spelling }
   ]
@@ -67,7 +67,7 @@ fn bash_orch_call_source_text(spelling: String) -> String {
   spelling
 }
 
-fn bash_orch_call_lex(spelling: String) -> LexRules {
+fn bash_orch_call_lex(spelling: String) -> v2.std.compilers.lexing.LexRules {
   phrase_to_lex_rules(p: phrase([
     span(text: spelling, class: ^bash_token_orch_raw)
   ]))
@@ -82,11 +82,11 @@ fn bash_orch_call_translation_rules_node() -> Node {
   )
 }
 
-fn bash_orch_call_binding_spellings(spelling: String) -> Map<Symbol, String> {
+fn bash_orch_call_binding_spellings(spelling: String) -> Map<v2.std.node.Symbol, String> {
   map_insert(empty_map(), ^bash_orch_call_spelling, spelling)
 }
 
-fn bash_orch_call_target_model(spelling: String) -> TargetModel {
+fn bash_orch_call_target_model(spelling: String) -> v2.std.compilers.target_model.TargetModel {
   bash_make_bound_tokens_target_model(
     rules: bash_orch_call_translation_rules_node(),
     source_literal: ^bash_orch_call_source_literal,
@@ -98,22 +98,22 @@ fn bash_orch_call_target_model(spelling: String) -> TargetModel {
   )
 }
 
-fn orch_procedure_target_model(name: String, body: String) -> TargetModel {
+fn orch_procedure_target_model(name: String, body: String) -> v2.std.compilers.target_model.TargetModel {
   bash_orch_procedure_target_model(name: name, body: body)
 }
 
-fn orch_call_target_model(callee: String, args_spelling: String) -> TargetModel {
+fn orch_call_target_model(callee: String, args_spelling: String) -> v2.std.compilers.target_model.TargetModel {
   bash_orch_call_target_model(spelling: concat(callee, concat(" ", args_spelling)))
 }
 
-fn orch_cmdsubst_assign_target_model(name: String, body: String) -> TargetModel {
+fn orch_cmdsubst_assign_target_model(name: String, body: String) -> v2.std.compilers.target_model.TargetModel {
   bash_stmt_assign_target_model(
     name: name,
     value: concat("\"$(", concat(body, ")\""))
   )
 }
 
-fn orch_cmdsubst_assign_call_target_model(name: String, callee: String, args_spelling: String) -> TargetModel {
+fn orch_cmdsubst_assign_call_target_model(name: String, callee: String, args_spelling: String) -> v2.std.compilers.target_model.TargetModel {
   let call = orch_call_target_model(callee: callee, args_spelling: args_spelling)
   let cmdsubst = bash_word_cmdsubst_target_model(body: call.authority_source_text)
   bash_stmt_assign_target_model(
@@ -122,13 +122,13 @@ fn orch_cmdsubst_assign_call_target_model(name: String, callee: String, args_spe
   )
 }
 
-fn orch_cmdsubst_assign_raw_target_model(name: String, body: String) -> TargetModel {
+fn orch_cmdsubst_assign_raw_target_model(name: String, body: String) -> v2.std.compilers.target_model.TargetModel {
   bash_stmt_assign_target_model(
     name: name,
     value: bash_word_cmdsubst_source_text(body: body)
   )
 }
 
-fn orch_let_assign_target_model(name: String, value: String) -> TargetModel {
+fn orch_let_assign_target_model(name: String, value: String) -> v2.std.compilers.target_model.TargetModel {
   bash_stmt_assign_target_model(name: name, value: value)
 }

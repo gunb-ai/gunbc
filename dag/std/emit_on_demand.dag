@@ -49,7 +49,7 @@ fn emit_on_demand_key(
 }
 
 type EmitOnDemandCacheReceipt {
-  key: ContentHash
+  key: std.content_hash.ContentHash
   compile_skipped: Bool
 }
 
@@ -77,15 +77,15 @@ fn materialization_for_lookup(lookup: EmitOnDemandLookup) -> Materialization {
 type InterpreterSurvivingRole {
   id: String
   purpose: String
-  dissolution: DissolutionCondition
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 type InterpreterWetSurfaceMembership
-  = NodeTreeDerived { authority: DeclarationRef }
+  = NodeTreeDerived { authority: std.decl_ref.DeclarationRef }
   | DeclaredFrontier {
-      authorities: List<DeclarationRef>,
+      authorities: List<std.decl_ref.DeclarationRef>,
       reason: String,
-      dissolution: DissolutionCondition
+      dissolution: std.dissolution.DissolutionCondition
     }
 
 type InterpreterWetSurface {

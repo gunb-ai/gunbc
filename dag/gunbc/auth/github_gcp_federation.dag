@@ -15,18 +15,18 @@ module gunbc.auth.github_gcp_federation
 data federation_authority_note: String = "One federation, many consuming domains. A domain that federates supplies only what is genuinely its own -- its service account, its secret population, its role set -- and reads the pool, provider, issuer, attribute mapping, project and principal-set construction from here. The prior arrangement forced a second domain to choose between importing a bmc_ symbol for a repository-level fact and copying the literal; copying is how the second authority gets minted, and the copy is invisible afterwards because both sides read correct."
 
 // ── The GCP project the fleet's secrets live in ───────────────────────────────────────────
-data fleet_secrets_project_id: GcpProjectId = "gunbai-secrets"
+data fleet_secrets_project_id: extdeps.cloud.gcp.gcp.GcpProjectId = "gunbai-secrets"
 
 data fleet_secrets_project_number: String = "582015116396"
 
 // ── The workload identity pool and provider for this repository ───────────────────────────
-data github_wif_pool_id: NonEmptyStr = "github-actions"
+data github_wif_pool_id: std.types.NonEmptyStr = "github-actions"
 
-data github_wif_pool_display_name: NonEmptyStr = "GitHub Actions OIDC"
+data github_wif_pool_display_name: std.types.NonEmptyStr = "GitHub Actions OIDC"
 
-data github_wif_provider_id: NonEmptyStr = "github-oidc"
+data github_wif_provider_id: std.types.NonEmptyStr = "github-oidc"
 
-data github_wif_issuer_uri: NonEmptyStr = "https://token.actions.githubusercontent.com"
+data github_wif_issuer_uri: std.types.NonEmptyStr = "https://token.actions.githubusercontent.com"
 
 data github_wif_attribute_mapping: Map<String, String> = {
   "google.subject": "assertion.sub",
@@ -38,14 +38,14 @@ data github_wif_attribute_mapping: Map<String, String> = {
 // this module cannot disagree with it.
 data federated_github_repo: String = gunbc_repository.full_name
 
-data github_wif_pool: WifPool = WifPool {
+data github_wif_pool: extdeps.cloud.gcp.gcp.WifPool = extdeps.cloud.gcp.gcp.WifPool {
   name: github_wif_pool_id
   project: fleet_secrets_project_id as String
   display_name: Present { value: github_wif_pool_display_name }
   disabled: false
 }
 
-data github_wif_provider: WifProvider = WifProvider {
+data github_wif_provider: extdeps.cloud.gcp.gcp.WifProvider = extdeps.cloud.gcp.gcp.WifProvider {
   name: github_wif_provider_id
   pool: github_wif_pool_id
   issuer_uri: github_wif_issuer_uri
@@ -75,6 +75,6 @@ fn github_wif_attribute_condition() -> String {
 // This is the shape that lets a new domain federate without editing anything here, and it is why
 // the Spark population must not reach for the BMC assimilator: a domain's principal is its own
 // fact, and borrowing one makes the lender's domain the authority for the borrower's work.
-fn federated_service_account_member(email: ServiceAccountEmail) -> String {
+fn federated_service_account_member(email: extdeps.cloud.gcp.gcp.ServiceAccountEmail) -> String {
   concat("serviceAccount:", email as String)
 }

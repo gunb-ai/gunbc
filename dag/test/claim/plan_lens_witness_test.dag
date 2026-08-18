@@ -5,12 +5,12 @@ module test.claim.plan_lens_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn plan_with_trigger() -> Plan {
-  Plan { slug: "x", title: "x", body: [], retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "delete when X is witnessed") } }
+fn plan_with_trigger() -> gunbc.plan.Plan {
+  gunbc.plan.Plan { slug: "x", title: "x", body: [], retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "delete when X is witnessed") } }
 }
 
-fn plan_without_trigger() -> Plan {
-  Plan { slug: "y", title: "y", body: [], retirement: PlanHasNoRetirement }
+fn plan_without_trigger() -> gunbc.plan.Plan {
+  gunbc.plan.Plan { slug: "y", title: "y", body: [], retirement: PlanHasNoRetirement }
 }
 
 // Reaches the empty condition through the NON-LITERAL path. The literal form is
@@ -18,20 +18,20 @@ fn plan_without_trigger() -> Plan {
 // refinement at non-literal positions is still deferred, and that gap is what
 // plan_has_retirement's nonempty check defends -- so this control must go
 // through the gap to keep proving the check works (DESIGN 4b(4)).
-fn synthetic_nonliteral_text(text: String) -> NonEmptyStr {
+fn synthetic_nonliteral_text(text: String) -> std.types.NonEmptyStr {
   concat(text, "")
 }
 
-fn synthetic_empty_condition(text: String) -> DissolutionCondition {
+fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionCondition {
   unbound_dissolution(description: synthetic_nonliteral_text(text: text))
 }
 
-fn plan_with_empty_retirement() -> Plan {
-  Plan { slug: "w", title: "w", body: [], retirement: PlanRetiresWhen { condition: synthetic_empty_condition(text: "") } }
+fn plan_with_empty_retirement() -> gunbc.plan.Plan {
+  gunbc.plan.Plan { slug: "w", title: "w", body: [], retirement: PlanRetiresWhen { condition: synthetic_empty_condition(text: "") } }
 }
 
-fn plan_untitled() -> Plan {
-  Plan { slug: "z", title: "", body: [], retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "t") } }
+fn plan_untitled() -> gunbc.plan.Plan {
+  gunbc.plan.Plan { slug: "z", title: "", body: [], retirement: PlanRetiresWhen { condition: unbound_dissolution(description: "t") } }
 }
 
 test fn every_registered_plan_has_retirement() -> Bool {

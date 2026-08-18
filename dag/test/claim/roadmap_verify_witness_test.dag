@@ -26,14 +26,14 @@ test fn the_two_lab_instances_really_do_straddle_the_transport_split() -> Bool {
 
 data binding_law_note: String = "THE THREE-SITE DISAGREEMENT, pinned at the one authority that now decides it. gunbc.roadmap_authority read any ExecutionContract as bound; gunbc.roadmap_verify read an empty validation list as unbound; gunbc.roadmap_dispatch_environment refused it. Empty contracts are constructible, so the disagreement was reachable — a node bound to one would leave the acceptance frontier while remaining unverifiable and undispatchable.\\n\\nThe empty contract is the discriminating input, and the closure keeps it distinct from the unspecified one because their remedies differ: author a contract, versus fix the one you authored. A Bool-only authority would have collapsed them and taken dispatch_environment's located diagnostics with it."
 
-fn empty_contract() -> WorkItemExecutionContract {
+fn empty_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
   ExecutionContract { validations: [], extra_capabilities: [] }
 }
 
-fn one_validation_contract() -> WorkItemExecutionContract {
+fn one_validation_contract() -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
   gunbc_claim_execution_contract(
     entry: "dag/test/claim/roadmap_verify_witness_test.dag" as std.types.FilePath,
-    function: "roadmap_verify_keystone_holds" as NonEmptyStr,
+    function: "roadmap_verify_keystone_holds" as std.types.NonEmptyStr,
   )
 }
 
@@ -77,7 +77,7 @@ test fn refusal_and_failure_and_unbound_all_exit_failure() -> Bool {
   let refused = match verification_process_exit(
     outcome: VerificationRefused {
       node_id: "n",
-      label: "gunbc-claim" as NonEmptyStr,
+      label: "gunbc-claim" as std.types.NonEmptyStr,
       reason: "transport refused",
     },
   ) {
@@ -87,7 +87,7 @@ test fn refusal_and_failure_and_unbound_all_exit_failure() -> Bool {
   let failed = match verification_process_exit(
     outcome: VerificationFailed {
       node_id: "n",
-      label: "gunbc-claim" as NonEmptyStr,
+      label: "gunbc-claim" as std.types.NonEmptyStr,
       detail: "exited 1",
     },
   ) {
@@ -105,14 +105,14 @@ test fn refusal_and_failure_and_unbound_all_exit_failure() -> Bool {
 
 data receipt_binds_the_facts_note: String = "THE FOUR FACTS THAT MAKE A VERIFICATION CHECKABLE, and none of which the first cut carried. An outcome says pass or fail; it does not say which tree, at which revision, on which machine, running which realized command — so a verification that ran on the wrong host against the wrong tree produced a value indistinguishable from a correct one. That is exactly what happened.\\n\\nThe receipt is asserted through its serialized form rather than field by field, because the serialization is what a Publication step or an operator actually reads. A field that exists in the type and is dropped by the projection would pass a field-wise claim and fail this one."
 
-fn sample_receipt() -> LegacySingleValidationVerificationReceipt {
-  LegacySingleValidationVerificationReceipt {
+fn sample_receipt() -> gunbc.roadmap_verify.LegacySingleValidationVerificationReceipt {
+  gunbc.roadmap_verify.LegacySingleValidationVerificationReceipt {
     node_id: "shell-typed-invocation",
     attempt_key: "a1b2c3",
-    host: "srv1" as NonEmptyStr,
+    host: "srv1" as std.types.NonEmptyStr,
     worktree: "/srv/attempts/shell-typed-invocation-aa1b2c3" as std.types.FilePath,
-    revision: "deadbeefcafe" as NonEmptyStr,
-    validation_label: "gunbc-claim" as NonEmptyStr,
+    revision: "deadbeefcafe" as std.types.NonEmptyStr,
+    validation_label: "gunbc-claim" as std.types.NonEmptyStr,
     command_wire: "/opt/gunbc/bin/gunbc run --claim-run",
     exit: ExitObserved { code: 0 },
     evidence: "true",
@@ -133,13 +133,13 @@ data unobserved_exit_note: String = "A process that never ran has no exit code, 
 
 test fn unobserved_exit_never_serializes_as_zero() -> Bool {
   let j = legacy_single_validation_verification_receipt_json(
-    receipt: LegacySingleValidationVerificationReceipt {
+    receipt: gunbc.roadmap_verify.LegacySingleValidationVerificationReceipt {
       node_id: "n",
       attempt_key: "k",
-      host: "srv1" as NonEmptyStr,
+      host: "srv1" as std.types.NonEmptyStr,
       worktree: "/w" as std.types.FilePath,
-      revision: "r" as NonEmptyStr,
-      validation_label: "gunbc-claim" as NonEmptyStr,
+      revision: "r" as std.types.NonEmptyStr,
+      validation_label: "gunbc-claim" as std.types.NonEmptyStr,
       command_wire: "gunbc run",
       exit: ExitNotObserved { reason: "transport refused" },
       evidence: "",
@@ -155,7 +155,7 @@ test fn refusal_blocks_the_environment_and_does_not_warrant_dispatch() -> Bool {
   let blocked = match dispatch_disposition_for(
     outcome: VerificationRefused {
       node_id: "n",
-      label: "gunbc-claim" as NonEmptyStr,
+      label: "gunbc-claim" as std.types.NonEmptyStr,
       reason: "transport to srv1 refused",
     },
   ) {
@@ -166,7 +166,7 @@ test fn refusal_blocks_the_environment_and_does_not_warrant_dispatch() -> Bool {
   let warranted = match dispatch_disposition_for(
     outcome: VerificationFailed {
       node_id: "n",
-      label: "gunbc-claim" as NonEmptyStr,
+      label: "gunbc-claim" as std.types.NonEmptyStr,
       detail: "exited 1",
     },
   ) {

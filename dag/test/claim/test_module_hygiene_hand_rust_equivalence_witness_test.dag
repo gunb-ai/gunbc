@@ -23,7 +23,7 @@ test fn test_module_hygiene_file_grain_empty_function_holds() -> Bool {
 
 test fn test_module_hygiene_file_grain_expand_refuses_empty_test_decls() -> Bool {
   match expand_explicit_pairs_or_refuse(inputs: [
-    ExplicitExpandInput {
+    gunbc.test_module_hygiene.ExplicitExpandInput {
       entry: "empty_grain_test.dag",
       function: "",
       content: "module empty_grain\n\nfn plain_only() -> Bool { true }\n"

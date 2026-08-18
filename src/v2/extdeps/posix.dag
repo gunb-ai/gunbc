@@ -65,19 +65,19 @@ fn make_signal_num(value: Int, at: Locus) -> Outcome<SignalNum> {
 }
 
 type PosixArgument {
-  bytes: PosixByteString
+  bytes: v2.extdeps.file_system.PosixByteString
 }
 
 type PosixEnvironmentName {
-  bytes: PosixByteString
+  bytes: v2.extdeps.file_system.PosixByteString
 }
 
 type PosixEnvironmentValue {
-  bytes: PosixByteString
+  bytes: v2.extdeps.file_system.PosixByteString
 }
 
 type Command {
-  program: AbsolutePath
+  program: v2.extdeps.file_system.AbsolutePath
   argv0: PosixArgument
   args: List<PosixArgument>
   env: Map<PosixEnvironmentName, PosixEnvironmentValue>
@@ -121,7 +121,7 @@ type ProcessTable
 
 type ProcessResources {
   table: ProcessTable
-  filesystem: Filesystem
+  filesystem: v2.extdeps.file_system.Filesystem
 }
 
 type CapturedByteStream = FreeMonoid<Byte>

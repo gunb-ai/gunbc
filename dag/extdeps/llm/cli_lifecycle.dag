@@ -31,13 +31,13 @@ fn provider_kind_label(kind: ProviderKind) -> String {
 }
 
 type ProviderInstanceField
-  = ProviderInstanceFieldObserved { value: NonEmptyStr }
-  | ProviderInstanceFieldUnobserved { reason: NonEmptyStr }
+  = ProviderInstanceFieldObserved { value: std.types.NonEmptyStr }
+  | ProviderInstanceFieldUnobserved { reason: std.types.NonEmptyStr }
 
 type ProviderInstance {
   kind: ProviderKind
   host: ProviderInstanceField
-  executable: NonEmptyStr
+  executable: std.types.NonEmptyStr
   observed_version: ProviderInstanceField
   state_directory: ProviderInstanceField
   credential_storage_method: ProviderInstanceField
@@ -45,18 +45,18 @@ type ProviderInstance {
 }
 
 type ProviderReadiness
-  = ProviderReadinessUnobserved { reason: NonEmptyStr }
+  = ProviderReadinessUnobserved { reason: std.types.NonEmptyStr }
   | ProviderExecutableMissing
-  | ProviderVersionDrift { observed: NonEmptyStr, expected: NonEmptyStr }
+  | ProviderVersionDrift { observed: std.types.NonEmptyStr, expected: std.types.NonEmptyStr }
   | ProviderSetupRequired
   | ProviderCredentialsAbsent
   | ProviderCredentialsRecordedUnverified
   | ProviderAccessTokenExpired
-  | ProviderRefreshFailed { reason: NonEmptyStr }
+  | ProviderRefreshFailed { reason: std.types.NonEmptyStr }
   | ProviderAuthenticated
   | ProviderQuotaExhausted
   | ProviderRateLimited
-  | ProviderRequestRefused { reason: NonEmptyStr }
+  | ProviderRequestRefused { reason: std.types.NonEmptyStr }
 
 fn provider_readiness_label(readiness: ProviderReadiness) -> String {
   match readiness {
@@ -76,10 +76,10 @@ fn provider_readiness_label(readiness: ProviderReadiness) -> String {
 }
 
 type ToolExecutionReadiness
-  = ToolExecutionReadinessUnobserved { reason: NonEmptyStr }
+  = ToolExecutionReadinessUnobserved { reason: std.types.NonEmptyStr }
   | SandboxHandlerMissing
   | SandboxOsPolicyMissing
-  | SandboxProbeFailed { reason: NonEmptyStr }
+  | SandboxProbeFailed { reason: std.types.NonEmptyStr }
   | SandboxShellSucceeded
 
 fn tool_execution_readiness_label(readiness: ToolExecutionReadiness) -> String {

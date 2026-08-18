@@ -3,7 +3,7 @@ module v2.extdeps.github.gha_fold_pilot_emit
 
 type GhaPilotStepEmit
   = GhaPilotRunEmit { run: String }
-  | GhaPilotUsesEmit { uses: ActionRef }
+  | GhaPilotUsesEmit { uses: extdeps.github.actions.ActionRef }
 
 fn optional_is_absent<T>(opt: Optional<T>) -> Bool {
   match opt {

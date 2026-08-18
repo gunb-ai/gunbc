@@ -2,28 +2,28 @@ module test.claim.ci_failure_class_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn class_is_infra(c: FloorFailureClass) -> Bool {
+fn class_is_infra(c: gunbc.ci_failure_class.FloorFailureClass) -> Bool {
   match c {
     Infra { signature: _ } => true
     Structural { reason: _ } => false
   }
 }
 
-fn class_is_structural(c: FloorFailureClass) -> Bool {
+fn class_is_structural(c: gunbc.ci_failure_class.FloorFailureClass) -> Bool {
   match c {
     Infra { signature: _ } => false
     Structural { reason: _ } => true
   }
 }
 
-fn outcome_is_structural(o: FloorOutcome) -> Bool {
+fn outcome_is_structural(o: gunbc.ci_failure_class.FloorOutcome) -> Bool {
   match o {
     NoFailure => false
     FloorFailed { class: c } => class_is_structural(c: c)
   }
 }
 
-fn outcome_is_no_failure(o: FloorOutcome) -> Bool {
+fn outcome_is_no_failure(o: gunbc.ci_failure_class.FloorOutcome) -> Bool {
   match o {
     NoFailure => true
     FloorFailed { class: _ } => false
@@ -40,11 +40,11 @@ fn reason_blocks_merge(reason: String) -> Bool {
     && floor_exit_blocks_merge(e: ExitFailure { code: 1, reason: reason })
 }
 
-fn list_len(xs: List<InfraSignature>) -> Int {
+fn list_len(xs: List<gunbc.ci_failure_class.InfraSignature>) -> Int {
   fold(xs, init: 0, f: fn(acc, _) { acc + 1 })
 }
 
-fn list_has_signature(xs: List<InfraSignature>, target: InfraSignature) -> Bool {
+fn list_has_signature(xs: List<gunbc.ci_failure_class.InfraSignature>, target: gunbc.ci_failure_class.InfraSignature) -> Bool {
   fold(xs, init: false, f: fn(acc, sig) { acc || (sig == target) })
 }
 

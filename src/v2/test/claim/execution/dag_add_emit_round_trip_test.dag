@@ -2,23 +2,23 @@ module v2.test.execution.dag_add_emit_round_trip
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 data dag_add_emitted_root: Node = dag_fixture_emitted_add_fn
 
-data dag_add_target_model: TargetModel = dag_target_model()
+data dag_add_target_model: v2.std.compilers.target_model.TargetModel = dag_target_model()
 
 fn dag_add_canonical_grounding(
   node: Node,
   algebra: Node
-) -> CanonicalGrounding {
-  CanonicalGrounding {
+) -> v2.std.constraints.CanonicalGrounding {
+  v2.std.constraints.CanonicalGrounding {
     node: node,
-    witness: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
+    witness: v2.std.constraints.CanonicalGroundingWitness {
+      structural: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_being_canonical,
         evidence: algebra
       },
-      closedness: StructuralPropertyWitness {
+      closedness: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_candidate_set_closedness,
         evidence: node
       }
@@ -26,7 +26,7 @@ fn dag_add_canonical_grounding(
   }
 }
 
-fn dag_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
+fn dag_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == dag_fixture_emitted_add_fn {
     Holds {
       value: dag_add_canonical_grounding(
@@ -57,7 +57,7 @@ fn dag_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
     }
   } else {
     Violates {
-      diagnostic: Diagnostic {
+      diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^dag_add_grounding_miss,
         at: node_locus(node: node),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -66,7 +66,7 @@ fn dag_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   }
 }
 
-fn dag_add_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
+fn dag_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   match dag_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -81,11 +81,11 @@ fn dag_add_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
   }
 }
 
-fn dag_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn dag_add_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   dag_add_inferred_facts_for(node: key)
 }
 
-data dag_add_inferred_tree: InferredTree = InferredTree {
+data dag_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: dag_add_emitted_root,
   facts: Map {
     lookup: dag_add_facts_lookup
@@ -98,7 +98,7 @@ fn anchor_dag_add_emit_accepts() -> Outcome<Medium<String>> {
 
 data dag_add_emit_receipt: Outcome<Medium<String>> = anchor_dag_add_emit_accepts()
 
-fn dag_add_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
+fn dag_add_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> Bool {
   match q {
     Exact => true
     Identity => true
@@ -158,7 +158,7 @@ test fn dag_add_domain_coerce_accepts_holds() -> Bool {
 
 test fn dag_add_domain_translate_accepts_holds() -> Bool {
   match translate_emitted_node(
-    tree: InferredTree {
+    tree: v2.compiler.infer.InferredTree {
       root: dag_arrow_domain_conj_node(),
       facts: Map { lookup: dag_add_facts_lookup }
     },

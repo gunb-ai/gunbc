@@ -1,19 +1,19 @@
 module std.materialization_ladder
 
 
-data materialization_ladder_frame_path_predicate_contract: Disposition = Terminal {
+data materialization_ladder_frame_path_predicate_contract: std.disposition.Disposition = Terminal {
   reason: "Structural coproduct/path readers over Frame/FrameKind (frame_eq, frame_path_*, declared_emergent_prefix, string_list_contains) — closed by the ladder's declared frame variants; discriminating corpus: dag/test/claim/materialization_ladder_witness_test.dag."
 }
 
-data materialization_ladder_provider_tier_predicate_contract: Disposition = Terminal {
+data materialization_ladder_provider_tier_predicate_contract: std.disposition.Disposition = Terminal {
   reason: "Structural coproduct readers over ProviderTier/CacheProvider (provider_is_*, provider_covers_identity, tier_axes, addressing_spans_isolation) — closed by declared tier/keying variants; not interim scaffolds."
 }
 
-data materialization_ladder_verdict_predicate_contract: Disposition = Terminal {
+data materialization_ladder_verdict_predicate_contract: std.disposition.Disposition = Terminal {
   reason: "Structural coproduct readers over LadderVerdict (ladder_verdict_is_*, verdict_is_*, materialization_ladder_holds, group_* helpers) — closed by declared verdict variants; witnesses cover every arm."
 }
 
-data materialization_ladder_value_binding_predicate_contract: Disposition = Terminal {
+data materialization_ladder_value_binding_predicate_contract: std.disposition.Disposition = Terminal {
   reason: "Structural coproduct readers over ValueMaterialization/AccessMode (value_verdict_is_*, value_materialization_*, access_is_*) — closed by the value-tier vocabulary; discriminating corpus: materialization_ladder_witness_test value_* cells."
 }
 
@@ -136,12 +136,12 @@ fn addressing_spans_isolation(a: ProviderAddressing) -> Bool {
 // by its frame, but that is NOT a general peak-memory guarantee for the frame's
 // interior — the 2026-07-10 20GiB incident happened inside a live scope — so
 // the capacity fact travels beside it rather than being implied away.
-fn scope_released_retention(capacity: CapacityPolicy) -> ProviderRetention {
-  ProviderRetention { release_policy: ReleasedAtProviderScopeExit, capacity: capacity }
+fn scope_released_retention(capacity: std.cache_interface.CapacityPolicy) -> std.cache_interface.ProviderRetention {
+  std.cache_interface.ProviderRetention { release_policy: ReleasedAtProviderScopeExit, capacity: capacity }
 }
 
-fn persistent_retention(capacity: CapacityPolicy) -> ProviderRetention {
-  ProviderRetention { release_policy: ReleasedNever, capacity: capacity }
+fn persistent_retention(capacity: std.cache_interface.CapacityPolicy) -> std.cache_interface.ProviderRetention {
+  std.cache_interface.ProviderRetention { release_policy: ReleasedNever, capacity: capacity }
 }
 
 fn provider_row(
@@ -149,7 +149,7 @@ fn provider_row(
   scope: List<Frame>,
   coverage: CacheCoverage,
   tier: ProviderTier,
-  retention: ProviderRetention
+  retention: std.cache_interface.ProviderRetention
 ) -> CacheProvider {
   CacheProvider { id: id, scope: scope, coverage: coverage, tier: tier, retention: retention }
 }
@@ -441,7 +441,7 @@ type RefusedProvider {
   reason: RetentionRefusalReason
 }
 
-fn retention_admission(r: ProviderRetention) -> RetentionAdmission {
+fn retention_admission(r: std.cache_interface.ProviderRetention) -> RetentionAdmission {
   match r.release_policy {
     ReleasedAtProviderScopeExit => RetentionAdmitted
     ReleasedNever => capacity_admission(c: r.capacity)
@@ -449,7 +449,7 @@ fn retention_admission(r: ProviderRetention) -> RetentionAdmission {
   }
 }
 
-fn capacity_admission(c: CapacityPolicy) -> RetentionAdmission {
+fn capacity_admission(c: std.cache_interface.CapacityPolicy) -> RetentionAdmission {
   match c {
     CapacityUnbounded => RetentionRefused { reason: RetentionUnbounded }
     CapacityBounded { limit: _, at_capacity: _ } => RetentionAdmitted
@@ -457,7 +457,7 @@ fn capacity_admission(c: CapacityPolicy) -> RetentionAdmission {
   }
 }
 
-fn retention_is_admitted(r: ProviderRetention) -> Bool {
+fn retention_is_admitted(r: std.cache_interface.ProviderRetention) -> Bool {
   match retention_admission(r: r) {
     RetentionAdmitted => true
     RetentionRefused { reason: _ } => false
@@ -613,7 +613,7 @@ fn ladder_verdict_is_green(v: LadderVerdict) -> Bool {
   }
 }
 
-fn ladder_verdict_prescribes(v: LadderVerdict) -> Materialization {
+fn ladder_verdict_prescribes(v: LadderVerdict) -> std.realization.Materialization {
   match v {
     RefusedNatureConflict { identity: _ } => Recompute
     AuthoredDuplication { identity: _, lca: _, site_count: _ } => Share

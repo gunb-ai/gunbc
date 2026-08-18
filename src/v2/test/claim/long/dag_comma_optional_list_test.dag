@@ -1,7 +1,7 @@
 module v2.test.long.dag_comma_optional_list
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn parses(src: String) -> Bool {
   let lm = dag_language_model()

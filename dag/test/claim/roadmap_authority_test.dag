@@ -3,44 +3,44 @@ module test.claim.roadmap_authority
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn nodes() -> List<RoadmapNode> { declared_roadmap_nodes() }
-fn edges() -> List<RoadmapEdge> { declared_roadmap_edges() }
-fn active_nodes() -> List<RoadmapNode> {
+fn nodes() -> List<gunbc.roadmap_model.RoadmapNode> { declared_roadmap_nodes() }
+fn edges() -> List<gunbc.roadmap_model.RoadmapEdge> { declared_roadmap_edges() }
+fn active_nodes() -> List<gunbc.roadmap_model.RoadmapNode> {
   match live_accepted_node_ids() {
     Present { value: accepted } => active_roadmap_nodes_for_accepted(accepted: accepted)
     Absent => []
   }
 }
-fn active_edges() -> List<RoadmapEdge> {
+fn active_edges() -> List<gunbc.roadmap_model.RoadmapEdge> {
   match live_accepted_node_ids() {
     Present { value: accepted } => active_roadmap_edges_for_accepted(accepted: accepted)
     Absent => []
   }
 }
 
-fn live_accepted_node_ids() -> List<RoadmapNodeId>? {
+fn live_accepted_node_ids() -> List<gunbc.roadmap_model.RoadmapNodeId>? {
   match accepted_roadmap_node_ids_projection() {
     AcceptedRoadmapNodeIdsProjected { ids: ids } => Present { value: ids }
     AcceptedRoadmapNodeIdsProjectionRefused { detail: _ } => Absent
   }
 }
 
-fn tnid(s: String) -> RoadmapNodeId { s }
-fn tchash(s: String) -> Fnv1a64Structural { content_hash_atom(value: s as NonEmptyStr) }
+fn tnid(s: String) -> gunbc.roadmap_model.RoadmapNodeId { s }
+fn tchash(s: String) -> std.content_hash.Fnv1a64Structural { content_hash_atom(value: s as std.types.NonEmptyStr) }
 
-fn digest_or_zero(rn: RoadmapNode) -> Fnv1a64Structural {
+fn digest_or_zero(rn: gunbc.roadmap_model.RoadmapNode) -> std.content_hash.Fnv1a64Structural {
   match node_criteria_digest(rn: rn) {
     Present { value } => value
     Absent => tchash(s: "0000000000000000")
   }
 }
 
-fn declared_node(id: String) -> List<RoadmapNode> {
+fn declared_node(id: String) -> List<gunbc.roadmap_model.RoadmapNode> {
   nodes() |> filter(n => n.node == id)
 }
 
-fn receipt_fixture(node: String, digest: Fnv1a64Structural) -> RoadmapAcceptanceReceipt {
-  RoadmapAcceptanceReceipt {
+fn receipt_fixture(node: String, digest: std.content_hash.Fnv1a64Structural) -> gunbc.roadmap_model.RoadmapAcceptanceReceipt {
+  gunbc.roadmap_model.RoadmapAcceptanceReceipt {
     node: tnid(s: node),
     criteria_digest: digest,
     red_control: RedControlExecuted {
@@ -54,8 +54,8 @@ fn receipt_fixture(node: String, digest: Fnv1a64Structural) -> RoadmapAcceptance
   }
 }
 
-fn evidenceless_receipt_fixture(rn: RoadmapNode) -> RoadmapAcceptanceReceipt {
-  RoadmapAcceptanceReceipt {
+fn evidenceless_receipt_fixture(rn: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_model.RoadmapAcceptanceReceipt {
+  gunbc.roadmap_model.RoadmapAcceptanceReceipt {
     node: rn.node,
     criteria_digest: digest_or_zero(rn: rn),
     red_control: RedControlNotRun,
@@ -65,8 +65,8 @@ fn evidenceless_receipt_fixture(rn: RoadmapNode) -> RoadmapAcceptanceReceipt {
   }
 }
 
-fn undelivered_receipt_fixture(rn: RoadmapNode) -> RoadmapAcceptanceReceipt {
-  RoadmapAcceptanceReceipt {
+fn undelivered_receipt_fixture(rn: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_model.RoadmapAcceptanceReceipt {
+  gunbc.roadmap_model.RoadmapAcceptanceReceipt {
     node: rn.node,
     criteria_digest: digest_or_zero(rn: rn),
     red_control: RedControlExecuted {
@@ -80,15 +80,15 @@ fn undelivered_receipt_fixture(rn: RoadmapNode) -> RoadmapAcceptanceReceipt {
   }
 }
 
-fn id_exists(id: RoadmapNodeId) -> Bool {
+fn id_exists(id: gunbc.roadmap_model.RoadmapNodeId) -> Bool {
   nodes() |> any(n => n.node == id)
 }
 
-fn id_count(id: RoadmapNodeId) -> Int {
+fn id_count(id: gunbc.roadmap_model.RoadmapNodeId) -> Int {
   nodes() |> filter(n => n.node == id) |> count
 }
 
-fn active_id_exists(id: RoadmapNodeId) -> Bool {
+fn active_id_exists(id: gunbc.roadmap_model.RoadmapNodeId) -> Bool {
   active_nodes() |> any(n => n.node == id)
 }
 
@@ -104,9 +104,9 @@ fn node_count_with_carrier_path(path: String) -> Int {
   nodes() |> filter(n => n.carriers |> any(p => p.path == path)) |> count
 }
 
-fn mechanical_graph() -> CallGraph {
-  CallGraph {
-    edges: edges() |> map(e => GraphEdge {
+fn mechanical_graph() -> std.graph.CallGraph {
+  std.graph.CallGraph {
+    edges: edges() |> map(e => std.graph.GraphEdge {
       caller: e.parent as String,
       callee: e.child as String,
     }),
@@ -117,7 +117,7 @@ fn node_names() -> List<String> {
   nodes() |> map(n => n.node as String)
 }
 
-fn ticket_fields_complete(ticket: TicketFields) -> Bool {
+fn ticket_fields_complete(ticket: gunbc.roadmap_status.TicketFields) -> Bool {
   !(ticket.headline == "")
         && !(ticket.brief == "")
         && !(ticket.displaced_cost == "")
@@ -128,7 +128,7 @@ fn ticket_fields_complete(ticket: TicketFields) -> Bool {
         && !(ticket.handback == "")
 }
 
-fn active_node_admissible(n: RoadmapNode) -> Bool {
+fn active_node_admissible(n: gunbc.roadmap_model.RoadmapNode) -> Bool {
   !item_is_done(item: n.line, merged: [])
     && !signoff_is_present(s: n.signoff)
     && match line_ticket(item: n.line) {
@@ -144,12 +144,12 @@ fn active_node_admissible(n: RoadmapNode) -> Bool {
   }
 }
 
-fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_8E5PG4F7CAZ148VZ8MNY" as RoadmapNodeIdentity,
+fn red_fixture(line: gunbc.roadmap_status.RoadmapItem, signoff: gunbc.roadmap_status.Signoff) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_8E5PG4F7CAZ148VZ8MNY" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: "red-fixture",
     line: line,
-    carriers: [Pointer { label: "authority", path: "DESIGN.md" }],
+    carriers: [gunbc.roadmap_model.Pointer { label: "authority", path: "DESIGN.md" }],
     sizing: Sized {
       intricacy: IntricacyMedium,
       volume: VolumeMedium,
@@ -162,10 +162,10 @@ fn red_fixture(line: RoadmapItem, signoff: Signoff) -> RoadmapNode {
   }
 }
 
-fn red_ticket(done: Bool) -> RoadmapItem {
+fn red_ticket(done: Bool) -> gunbc.roadmap_status.RoadmapItem {
   TicketLine {
     done: done,
-    ticket: TicketFields {
+    ticket: gunbc.roadmap_status.TicketFields {
       headline: "planted completed-row RED",
       brief: "Every required field is populated so only the forbidden completion or acceptance state can reject this fixture.",
       displaced_cost: "none",
@@ -281,7 +281,7 @@ test fn witness_receipt_for_unknown_node_accepts_nothing() -> Bool {
 
 data acceptance_receipt_continuity_witness_note: String = "THE WALL AGAINST SILENT RECEIPT DELETION (acceptance_receipt_continuity_wall_note). roadmap_acceptance_event_history loads from dag/gunbc/roadmap_acceptance_event_history.jsonl; roadmap_acceptance_receipts projects live receipts only. Live git-observed integrity executes in test.claim.roadmap_receipt_continuity_live_witness (ReadsLiveTree, bin_witness_wet_entries). RED controls in test.claim.roadmap_receipt_continuity_acceptance plant deleted events, prefix law, empty-prior bypass discriminant, digest-field mutation, wrong prior digest, revocation while live, duplicate revocations, exact revocation admit, criteria rewrite, git-refusal observation, and typed projection refusal chain."
 
-fn live_acceptance_event_history() -> List<RoadmapAcceptanceEvent> {
+fn live_acceptance_event_history() -> List<gunbc.roadmap_model.RoadmapAcceptanceEvent> {
   match roadmap_acceptance_event_history_load() {
     RoadmapAcceptanceEventHistoryLoaded { events: events } => events
     RoadmapAcceptanceEventHistoryLoadRefused { detail: _ } => []
@@ -309,10 +309,10 @@ test fn witness_explicit_revocation_authorizes_vanished_receipt() -> Bool {
   let current = concat(prior, [
     AcceptanceRevoked {
       exact_prior_receipt: receipt,
-      disposition: AcceptanceNodeReopensActiveFrontier {},
-      reason: "fixture revocation witness" as NonEmptyStr,
-      revoked_by: "operator" as NonEmptyStr,
-      revoked_on: "2026-08-04" as NonEmptyStr,
+      disposition: gunbc.roadmap_model.AcceptanceNodeReopensActiveFrontier {},
+      reason: "fixture revocation witness" as std.types.NonEmptyStr,
+      revoked_by: "operator" as std.types.NonEmptyStr,
+      revoked_on: "2026-08-04" as std.types.NonEmptyStr,
     },
   ])
   acceptance_history_extends_prior(prior: prior, current: current)
@@ -341,7 +341,7 @@ test fn witness_accepted_parent_discharges_active_dependency() -> Bool {
     && edge_exists(child: "2-scm-p0-landing-spine", parent: "2-claim-indexed-evidence")
 }
 
-fn exit_line_bound_to(l: V1FinishLine, node: String) -> Bool {
+fn exit_line_bound_to(l: gunbc.v1_deletion_plan.V1FinishLine, node: String) -> Bool {
   let matches = v1_exit_finish_lines()
     |> filter(s => v1_finish_line_key(l: s.line) == v1_finish_line_key(l: l))
   count(matches) == 1 && all(matches, s => s.node == node && id_exists(id: s.node))
@@ -651,7 +651,7 @@ test fn witness_projection_is_active_only() -> Bool {
 
 data execution_frontier_witness_note: String = "The execution-contract frontier is a COUNT, and these claims pin both of its halves. Before the first binding the count was zero — dispatch_environment_admit refused on every node, so nothing below Env in the workflow had ever executed end to end and the whole seven-segment strip was unreachable in production. A binding is therefore the gate for every downstream receipt, and an unwitnessed one could regress to zero silently (the way it already did once, when the 2026-07-27 authority refresh deleted the node that carried the prior contract and no claim noticed). The first claim proves the bound node yields a real contract rather than the fail-closed variant; the second proves the platform/task capability JOIN actually happens at admission — 8 fixed dispatch mechanics plus the one capability this contract's validation derives — which is the fact that turns a contract into an admissible environment; the third is the frontier itself, and it is the RED-shaped one: it fails if a binding is lost AND it fails if a second node is bound without this roster being updated, so the count in roadmap_execution_contract_frontier_note cannot silently drift from the authority it describes."
 
-fn bound_execution_contract_for(id: String) -> WorkItemExecutionContract {
+fn bound_execution_contract_for(id: String) -> gunbc.roadmap_execution_contract.WorkItemExecutionContract {
   match nodes()
     |> filter(n => (n.node as String) == id)
     |> map(n => n.execution)

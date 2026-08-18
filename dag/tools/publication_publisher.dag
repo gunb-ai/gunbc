@@ -10,14 +10,14 @@ type SessionPublicationPosture
   | SoleModeledPublisher { session: ModeledSessionId }
 
 type AdmittedPublicProjection {
-  plan: PublicProjectionPlan
-  admission: ChangeLocalAdmissionOutcome
-  decisions: List<PublicationDecisionReceipt>
+  plan: gunbc.public_projection.PublicProjectionPlan
+  admission: gunbc.publication_admission_delta.ChangeLocalAdmissionOutcome
+  decisions: List<gunbc.publication_decision.PublicationDecisionReceipt>
 }
 
 type PublicationAuthority {
   publisher_session: ModeledSessionId
-  authority_id: PublicationAuthorityId
+  authority_id: gunbc.publication_decision.PublicationAuthorityId
   projection: AdmittedPublicProjection
 }
 

@@ -73,9 +73,9 @@ type ReferenceBindingObservation
     }
 
 fn structural_binding_resolution_from_candidates(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs,
-  reference: ReferenceOccurrence,
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
+  reference: std.occurrence_identity.ReferenceOccurrence,
 ) -> StructuralBindingResolution {
   match occurrence_candidate_index_build(transport: transport, inputs: inputs) {
     OccurrenceCandidateIndexReady { index: index } =>

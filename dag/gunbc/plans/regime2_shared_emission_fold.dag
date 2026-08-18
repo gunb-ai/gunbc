@@ -1,7 +1,7 @@
 module gunbc.plans.regime2_shared_emission_fold
 
 
-fn regime2_shared_emission_fold_body() -> List<MarkdownBlock> {
+fn regime2_shared_emission_fold_body() -> List<std.markdown.MarkdownBlock> {
   [
     BlockquoteBlock { blocks: [p(text: "Kills the boutique `*_emit.dag` proliferation by collapsing the **pure-projection** serializers (`serialize_yaml`, `serialize_gitignore`, `serialize_runner_deploy`) into **one** fold of a protocol over a shared emission model. DESIGN refs: §2 (no duplicated layout logic — one concept, every format), §3 (single authority — the layout primitive lives once in `std`), §4 (the destination is emission = ingestion⁻¹; this is the seed-layer, forward-only *subset* of it), §5 (emit-only formats have no round-trip oracle — be honest at the boundary), §6 (DFS the concept DAG before minting; price the work as the displaced boutique-duplication pain, not elegance).")] },
     h2(text: "1. The two regimes (why this is a clean split, not a fork)"),
@@ -56,7 +56,7 @@ fn regime2_shared_emission_fold_body() -> List<MarkdownBlock> {
   ]
 }
 
-data regime2_shared_emission_fold_plan: Plan = Plan {
+data regime2_shared_emission_fold_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "regime2-shared-emission-fold",
   title: "Regime-2 emission: one shared fold for the pure-projection formats",
   body: regime2_shared_emission_fold_body(),

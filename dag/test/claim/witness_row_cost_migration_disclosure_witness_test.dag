@@ -24,17 +24,17 @@ fn just_below_threshold_is_not_mandatory_holds() -> Bool {
   }
 }
 
-fn sample_decl(name: String) -> DeclarationRef {
-  DeclarationRef {
-    module_path: "test.claim.witness_row_cost_migration_disclosure" as NonEmptyStr,
-    decl_name: name as NonEmptyStr,
+fn sample_decl(name: String) -> std.decl_ref.DeclarationRef {
+  std.decl_ref.DeclarationRef {
+    module_path: "test.claim.witness_row_cost_migration_disclosure" as std.types.NonEmptyStr,
+    decl_name: name as std.types.NonEmptyStr,
     field: WholeDeclaration
   }
 }
 
-fn sample_row(name: String, eval_ms: std.nat.Nat) -> WitnessCostReceiptRow {
-  WitnessCostReceiptRow {
-    entry: "dag/test/claim/witness_row_cost_migration_disclosure_witness_test.dag" as NonEmptyStr,
+fn sample_row(name: String, eval_ms: std.nat.Nat) -> gunbc.witness_row_cost.WitnessCostReceiptRow {
+  gunbc.witness_row_cost.WitnessCostReceiptRow {
+    entry: "dag/test/claim/witness_row_cost_migration_disclosure_witness_test.dag" as std.types.NonEmptyStr,
     declaration: sample_decl(name: name),
     eval: observation_durations_wall(
       elapsed: millisecond_to_nanosecond(m: millisecond(count: eval_ms))
@@ -46,7 +46,7 @@ fn sample_row(name: String, eval_ms: std.nat.Nat) -> WitnessCostReceiptRow {
 }
 
 fn rows_filter_and_count_agree_and_are_located_holds() -> Bool {
-  let rows: List<WitnessCostReceiptRow> = [
+  let rows: List<gunbc.witness_row_cost.WitnessCostReceiptRow> = [
     sample_row(name: "fast_row", eval_ms: 12),
     sample_row(name: "slow_row", eval_ms: 2500),
     sample_row(name: "at_cap_row", eval_ms: 5000)
@@ -54,11 +54,11 @@ fn rows_filter_and_count_agree_and_are_located_holds() -> Bool {
   let mandatory = witness_row_cost_mandatory_migration_rows(rows: rows)
   witness_row_cost_mandatory_migration_count(rows: rows) == 2 &&
     count_where(xs: mandatory, predicate: row => true) == 2 &&
-    for_all(xs: mandatory, predicate: row => row.declaration.decl_name != ("fast_row" as NonEmptyStr))
+    for_all(xs: mandatory, predicate: row => row.declaration.decl_name != ("fast_row" as std.types.NonEmptyStr))
 }
 
 fn zero_over_threshold_rows_counts_zero_holds() -> Bool {
-  let rows: List<WitnessCostReceiptRow> = [sample_row(name: "fast_row", eval_ms: 12)]
+  let rows: List<gunbc.witness_row_cost.WitnessCostReceiptRow> = [sample_row(name: "fast_row", eval_ms: 12)]
   witness_row_cost_mandatory_migration_count(rows: rows) == 0
 }
 

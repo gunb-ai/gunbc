@@ -3,15 +3,15 @@ module test.claim.orthogonal_geometry_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn room() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
-fn building() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
+fn room() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
+fn building() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
 
-fn p2(x: Int, y: Int) -> Point2 { point2(frame: room(), x: x, y: y) }
+fn p2(x: Int, y: Int) -> std.affine_space.Point2 { point2(frame: room(), x: x, y: y) }
 
 // Both frames these tests draw in are millimetre frames, which is exactly the fact the readers
 // used to assume and now have to be told. Registering them is what keeps every length assertion
 // below meaning what it always meant.
-fn mm_registry() -> SpatialFrameRegistry {
+fn mm_registry() -> std.spatial_frame.SpatialFrameRegistry {
   let r0 = empty_frame_registry()
   let r1 = match register_frame(r: r0, identity: room(), length_scale: Milli) {
     FrameRegistered { frame: f } => registry_with(r: r0, f: f)
@@ -26,7 +26,7 @@ fn mm_registry() -> SpatialFrameRegistry {
 // An extent measures a stated number of millimetres. Every arm other than the one that projects
 // answers false, so an unregistered frame or a non-millimetre frame fails the assertion rather
 // than being quietly read as a count.
-fn extent_is_mm(e: FrameExtent, want: std.nat.Nat) -> Bool {
+fn extent_is_mm(e: std.spatial_frame.FrameExtent, want: std.nat.Nat) -> Bool {
   match e {
     ExtentFrameUnregistered { identity: _ } => false
     ExtentInFrame { length: l } =>
@@ -36,12 +36,12 @@ fn extent_is_mm(e: FrameExtent, want: std.nat.Nat) -> Bool {
       }
   }
 }
-fn p3(x: Int, y: Int, z: Int) -> Point3 { point3(frame: room(), x: x, y: y, z: z) }
+fn p3(x: Int, y: Int, z: Int) -> std.affine_space.Point3 { point3(frame: room(), x: x, y: y, z: z) }
 
 // EVERY NEGATIVE CONTROL BELOW HAS A POSITIVE SIBLING IN THE SAME WITNESS. A mint that refused
 // everything would satisfy the refusal half of each pair, and that failure mode is invisible to a
 // refusal-only control - the same gap that let SPATIAL-2 ship a wall which did not exist.
-fn refusal_is_extent_not_positive(r: OrthogonalConstruction<AxisAlignedBox3>, axis: Axis3) -> Bool {
+fn refusal_is_extent_not_positive(r: OrthogonalConstruction<std.orthogonal_geometry.AxisAlignedBox3>, axis: std.euclidean_geometry.Axis3) -> Bool {
   match r {
     OrthogonalReady { value: _ } => false
     OrthogonalRefused { cause: c } =>
@@ -52,7 +52,7 @@ fn refusal_is_extent_not_positive(r: OrthogonalConstruction<AxisAlignedBox3>, ax
   }
 }
 
-fn axis3_same(a: Axis3, b: Axis3) -> Bool {
+fn axis3_same(a: std.euclidean_geometry.Axis3, b: std.euclidean_geometry.Axis3) -> Bool {
   match a {
     Axis3X => match b { Axis3X => true  Axis3Y => false Axis3Z => false }
     Axis3Y => match b { Axis3X => false Axis3Y => true  Axis3Z => false }
@@ -60,7 +60,7 @@ fn axis3_same(a: Axis3, b: Axis3) -> Bool {
   }
 }
 
-fn axis_direction_same(a: AxisDirection3, b: AxisDirection3) -> Bool {
+fn axis_direction_same(a: std.euclidean_geometry.AxisDirection3, b: std.euclidean_geometry.AxisDirection3) -> Bool {
   match a {
     PositiveX => match b { PositiveX => true _ => false }
     NegativeX => match b { NegativeX => true _ => false }
@@ -312,9 +312,9 @@ test fn plane_surface_and_prism_hold() -> Bool {
 // Read as micrometres it answers. Read as millimetres it REFUSES rather than dividing, because
 // this reader is not a converter: the caller asked what the shape measures, not for a change of
 // unit, and a 500 um pitch has no whole-millimetre answer at all.
-fn board() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 77) }
+fn board() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 77) }
 
-fn micro_registry() -> SpatialFrameRegistry {
+fn micro_registry() -> std.spatial_frame.SpatialFrameRegistry {
   let r0 = empty_frame_registry()
   match register_frame(r: r0, identity: board(), length_scale: Micro) {
     FrameRegistered { frame: f } => registry_with(r: r0, f: f)

@@ -29,16 +29,16 @@ type CursorSdkLocalWorkspace {
 }
 
 type CursorSdkLocalCredential
-  = CursorSdkApiKeySecretRef { secret_ref: SecretRef }
+  = CursorSdkApiKeySecretRef { secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef }
 
 data cursor_sdk_credential_note: String = "API key materializes INTO the SDK call (Agent.create / Agent.prompt apiKey or CURSOR_API_KEY at process env), NEVER into argv. CursorApiKeySecretRef is the automation path; CursorLocalLoginRef is interactive-only and refuses at SDK local binding. Contrast extdeps.llm.cursor_cli CursorApiKeyArgument which puts --api-key on argv for the legacy CLI — that path is not the SDK local interface."
 
 type CursorSdkApiKeyMaterialization
   = CursorSdkApiKeyFromSecretRef {
-      secret_ref: SecretRef
+      secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef
     }
   | CursorSdkApiKeyFromEnvironment {
-      env_var: NonEmptyStr
+      env_var: std.types.NonEmptyStr
     }
 
 fn cursor_sdk_materialize_api_key(
@@ -59,9 +59,9 @@ data cursor_sdk_argv_projection_note: String = "SDK local credential delivery is
 type CursorSdkCredentialProjection
   = CursorSdkCredentialProjected {
       argv: List<String>,
-      environment: List<CursorEnvBinding>,
+      environment: List<extdeps.llm.cursor_cli.CursorEnvBinding>,
     }
-  | CursorSdkCredentialProjectionRefused { reason: NonEmptyStr }
+  | CursorSdkCredentialProjectionRefused { reason: std.types.NonEmptyStr }
 
 fn cursor_sdk_project_materialization(
   materialization: CursorSdkApiKeyMaterialization,
@@ -116,9 +116,9 @@ fn cursor_sdk_projection_binds_environment(
 
 type CursorSdkLocalInvocation {
   credential: CursorSdkLocalCredential
-  model_id: CursorModelId
+  model_id: extdeps.llm.cursor_cli.CursorModelId
   workspace: CursorSdkLocalWorkspace
-  prompt: NonEmptyStr
+  prompt: std.types.NonEmptyStr
 }
 
 fn cursor_sdk_local_invocation(

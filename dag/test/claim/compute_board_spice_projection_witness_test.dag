@@ -6,45 +6,45 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // SYNTHETIC FIXTURES, sized to the boundaries they cross and no larger. Nothing here is a
 // realistic-looking circuit chosen for verisimilitude: each fixture is the smallest one that
 // crosses exactly one modelled boundary, per the witness-cost rule.
-data fixture_identity: NonEmptyStr = "synthetic fixture rev 0"
+data fixture_identity: std.types.NonEmptyStr = "synthetic fixture rev 0"
 
-data rail_net: NetIdentity = net_identity(design: fixture_design, local_identity: "rail")
+data rail_net: product.electrical.connectivity.NetIdentity = net_identity(design: fixture_design, local_identity: "rail")
 
-data return_net: NetIdentity = net_identity(design: fixture_design, local_identity: "rtn")
+data return_net: product.electrical.connectivity.NetIdentity = net_identity(design: fixture_design, local_identity: "rtn")
 
-data sense_resistor: ElectricalComponentInstance = ResistorInstance {
+data sense_resistor: product.compute_board.analog.ElectricalComponentInstance = ResistorInstance {
   identity: component_instance_identity(design: fixture_design, local_identity: "sense"),
   part: "series sense resistor",
-  positive_terminal: "1" as TerminalIdentity,
-  negative_terminal: "2" as TerminalIdentity,
-  resistance: Measure { count: 10 },
+  positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
+  negative_terminal: "2" as product.electrical.connectivity.TerminalIdentity,
+  resistance: std.measure.Measure { count: 10 },
 }
 
-data decoupling_capacitor: ElectricalComponentInstance = CapacitorInstance {
+data decoupling_capacitor: product.compute_board.analog.ElectricalComponentInstance = CapacitorInstance {
   identity: component_instance_identity(design: fixture_design, local_identity: "decap"),
   part: "bulk decoupling capacitor",
-  positive_terminal: "1" as TerminalIdentity,
-  negative_terminal: "2" as TerminalIdentity,
-  capacitance: Measure { count: 100 },
+  positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
+  negative_terminal: "2" as product.electrical.connectivity.TerminalIdentity,
+  capacitance: std.measure.Measure { count: 100 },
 }
 
-data rail_supply: ElectricalComponentInstance = IndependentVoltageSourceInstance {
+data rail_supply: product.compute_board.analog.ElectricalComponentInstance = IndependentVoltageSourceInstance {
   identity: component_instance_identity(design: fixture_design, local_identity: "rail_src"),
   part: "standby rail source",
-  positive_terminal: "1" as TerminalIdentity,
-  negative_terminal: "2" as TerminalIdentity,
-  potential_difference: Measure { count: 12 },
+  positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
+  negative_terminal: "2" as product.electrical.connectivity.TerminalIdentity,
+  potential_difference: std.measure.Measure { count: 12 },
 }
 
-fn nets_for(components: List<ElectricalComponentInstance>) -> List<ElectricalNet> {
+fn nets_for(components: List<product.compute_board.analog.ElectricalComponentInstance>) -> List<product.electrical.connectivity.ElectricalNet> {
   [
-    ElectricalNet {
+    product.electrical.connectivity.ElectricalNet {
       identity: rail_net,
       members: fold(components, init: [], f: fn(acc, c) {
         append(acc, items: [terminal_ref(component: c.identity, terminal: c.positive_terminal)])
       }),
     },
-    ElectricalNet {
+    product.electrical.connectivity.ElectricalNet {
       identity: return_net,
       members: fold(components, init: [], f: fn(acc, c) {
         append(acc, items: [terminal_ref(component: c.identity, terminal: c.negative_terminal)])
@@ -53,36 +53,36 @@ fn nets_for(components: List<ElectricalComponentInstance>) -> List<ElectricalNet
   ]
 }
 
-fn circuit_with(components: List<ElectricalComponentInstance>) -> AnalogCircuitIntent {
-  AnalogCircuitIntent {
+fn circuit_with(components: List<product.compute_board.analog.ElectricalComponentInstance>) -> product.compute_board.analog.AnalogCircuitIntent {
+  product.compute_board.analog.AnalogCircuitIntent {
     title: "standby rail slice",
     components: components,
     nets: nets_for(components: components),
   }
 }
 
-fn ideal_binding(c: ElectricalComponentInstance) -> ComponentModelBinding {
-  ComponentModelBinding {
+fn ideal_binding(c: product.compute_board.analog.ElectricalComponentInstance) -> product.compute_board.analog.ComponentModelBinding {
+  product.compute_board.analog.ComponentModelBinding {
     component: c.identity,
     standing: ElectricalModelCited { model_card: "ideal lumped passive at declared fidelity", fidelity: IdealLumped },
   }
 }
 
-fn absent_binding(c: ElectricalComponentInstance) -> ComponentModelBinding {
-  ComponentModelBinding { component: c.identity, standing: ElectricalModelAbsent }
+fn absent_binding(c: product.compute_board.analog.ElectricalComponentInstance) -> product.compute_board.analog.ComponentModelBinding {
+  product.compute_board.analog.ComponentModelBinding { component: c.identity, standing: ElectricalModelAbsent }
 }
 
-fn subcircuit_binding(c: ElectricalComponentInstance) -> ComponentModelBinding {
-  ComponentModelBinding {
+fn subcircuit_binding(c: product.compute_board.analog.ElectricalComponentInstance) -> product.compute_board.analog.ComponentModelBinding {
+  product.compute_board.analog.ComponentModelBinding {
     component: c.identity,
     standing: ElectricalModelCited { model_card: "vendor ESR/ESL subcircuit", fidelity: VendorSubcircuit },
   }
 }
 
 fn project(
-  components: List<ElectricalComponentInstance>,
-  bindings: List<ComponentModelBinding>
-) -> SpiceProjection {
+  components: List<product.compute_board.analog.ElectricalComponentInstance>,
+  bindings: List<product.compute_board.analog.ComponentModelBinding>
+) -> product.compute_board.spice_projection.SpiceProjection {
   project_analog_to_spice(
     article_identity: fixture_identity,
     intent: circuit_with(components: components),
@@ -115,12 +115,12 @@ test fn w_modelled_circuit_emits_expected_deck_bytes() -> Bool {
 
 // PERTURB EXACTLY ONE TYPED VALUE and the deck must change. This is what makes the byte equality
 // above an oracle rather than a pinned constant: the emission is a function of the model.
-data perturbed_resistor: ElectricalComponentInstance = ResistorInstance {
+data perturbed_resistor: product.compute_board.analog.ElectricalComponentInstance = ResistorInstance {
   identity: component_instance_identity(design: fixture_design, local_identity: "sense"),
   part: "series sense resistor",
-  positive_terminal: "1" as TerminalIdentity,
-  negative_terminal: "2" as TerminalIdentity,
-  resistance: Measure { count: 47 },
+  positive_terminal: "1" as product.electrical.connectivity.TerminalIdentity,
+  negative_terminal: "2" as product.electrical.connectivity.TerminalIdentity,
+  resistance: std.measure.Measure { count: 47 },
 }
 
 test fn w_one_perturbed_value_changes_the_deck() -> Bool {
@@ -215,11 +215,11 @@ test fn w_missing_binding_is_not_an_absent_model() -> Bool {
 // positive terminals, so the negative terminals sit on no net; the projection refuses rather
 // than defaulting them to the reference node and emitting a deck that simulates cleanly and
 // describes a different board.
-data floating_circuit: AnalogCircuitIntent = AnalogCircuitIntent {
+data floating_circuit: product.compute_board.analog.AnalogCircuitIntent = product.compute_board.analog.AnalogCircuitIntent {
   title: "standby rail slice",
   components: [sense_resistor],
   nets: [
-    ElectricalNet {
+    product.electrical.connectivity.ElectricalNet {
       identity: rail_net,
       members: [terminal_ref(component: sense_resistor.identity, terminal: sense_resistor.positive_terminal)],
     },
@@ -282,12 +282,12 @@ test fn w_duplicate_model_binding_refuses_in_either_order() -> Bool {
 // modelled one — the exact failure the module's note claims to prevent for floating terminals,
 // left open for shorted ones. The positive control below shares every fixture except the extra
 // net, so the refusal is attributable to the short and nothing else.
-fn shorted_circuit() -> AnalogCircuitIntent {
-  AnalogCircuitIntent {
+fn shorted_circuit() -> product.compute_board.analog.AnalogCircuitIntent {
+  product.compute_board.analog.AnalogCircuitIntent {
     title: "standby rail slice",
     components: [sense_resistor],
     nets: append(nets_for(components: [sense_resistor]), items: [
-      ElectricalNet {
+      product.electrical.connectivity.ElectricalNet {
         identity: net_identity(design: fixture_design, local_identity: "shorting_net"),
         members: [terminal_ref(component: sense_resistor.identity, terminal: sense_resistor.positive_terminal)],
       },

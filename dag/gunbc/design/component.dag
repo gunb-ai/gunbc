@@ -35,14 +35,14 @@ fn state_kind_ok(k: ComponentStateKind) -> Bool {
 type ComponentState {
   key: String
   kind: ComponentStateKind
-  role: ThemeRole
+  role: gunbc.design.theme.ThemeRole
 }
 
 type Component {
   name: String
-  element: ElementId
-  verbs: List<InteractionVerb>
-  base_roles: List<ThemeRole>
+  element: gunbc.design.interaction.ElementId
+  verbs: List<gunbc.design.interaction.InteractionVerb>
+  base_roles: List<gunbc.design.theme.ThemeRole>
   states: List<ComponentState>
 }
 

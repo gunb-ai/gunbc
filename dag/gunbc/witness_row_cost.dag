@@ -20,16 +20,16 @@ data witness_cost_event_role_note: String = "WitnessCostEventRole is the single 
 
 
 type WitnessRowCostDatedBasis {
-  clock: ClockBasis
-  eval: Millisecond
+  clock: std.measure.ClockBasis
+  eval: std.measure.Millisecond
   run_ref: String
 }
 
 type WitnessRowCostVerdict
   = WithinBasis
-  | DriftExceeded { observed: Millisecond, basis: Millisecond }
+  | DriftExceeded { observed: std.measure.Millisecond, basis: std.measure.Millisecond }
   | BasisAbsent
-  | BasisClockMismatch { observed: ClockBasis, basis: ClockBasis }
+  | BasisClockMismatch { observed: std.measure.ClockBasis, basis: std.measure.ClockBasis }
 
 data witness_row_cost_clock_mismatch_note: String = "THE WALL THIS WHOLE LANE EXISTS TO BUILD. A drift verdict compares an observed duration against a dated one, and before the clock became data nothing in the types said the two were read from the same clock — so comparing a thread-CPU figure against a wall baseline typechecked, produced a confident WithinBasis or DriftExceeded, and was wrong in a way no test could distinguish from right. That is not hypothetical: the fast-lane cap is enforced on thread CPU while every cost receipt recorded wall, and four sessions spent an evening comparing 1005 against 5004 and 2507 against 5003 without either number being incorrect. BasisClockMismatch is a FOURTH ARM and not a Bool collapse, for the same reason std.content_hash compare_content_hash answers ContentHashCrossFamilyIncomparable rather than false: an incomparable pair is neither within nor exceeding, and rendering it as either invents a verdict. It is also not BasisAbsent — a basis IS present, it is simply measured on a different clock, and the remedy differs (seed the missing basis versus fix the producer that handed over the wrong clock). WHY THE THRESHOLD SIDE STAYS WALL: operator ruling 2026-08-05 closed the witness-grain denominator as WALL, with thread CPU retained as the REMEDY DISCRIMINATOR rather than a second threshold arm — high wall with high CPU is algorithm or repeated evaluation, high wall with low CPU is waiting, I/O, subprocess or scheduling. So a CPU-clocked basis row is not forbidden by this type, it is simply not what the witness threshold is stated on, and handing one to this comparator against a wall observation now REFUSES instead of answering. WHERE THIS WALL RUNS, stated so the rung is neither inflated nor understated (DESIGN section 4b). It is reached in the witness corpus by dag/test/claim/witness_row_cost_drift_witness_test.dag AND on the production falsifier cadence, which is the half that took a second pass: the seed's write_witness_row_cost_drift_receipt_at used to call only witness_row_cost_exceeds_basis, the bare ratio predicate, and rebuild DriftExceeded / WithinBasis / BasisAbsent as Rust string literals -- a second representation of this sum, and one the clock never crossed, so a cross-clock pair on the cadence would still have answered. That comparison was correct at the time only because both sides happened to be wall, which is a fact about the producers rather than a property of the mechanism, and nothing about its greenness depended on the mechanism being right. It now calls witness_row_cost_seed_verdict_dated / _undated and RENDERS THE ARM THE AUTHORITY NAMED, the basis files carry a required per-row clock cell (an unstated or unmodelled clock refuses at parse, never defaults to wall), and the Rust arm reconstruction is DELETED rather than kept beside this module -- a climb dissolves the lower-rung production machinery it obsoletes. Proven end to end by claim_executor's drift_verdicts_come_from_the_authority_and_a_cross_clock_basis_refuses, which asserts the refusal on BOTH sides of the 2x ratio so it is decided by the clock and not by the magnitude, and which is the only consumer that crosses this Rust seam at all: the .dag witnesses cannot reach it and the parser tests only show the cell is read. THE ONE ARM STILL DECIDED SEED-SIDE is ObservationAbsent, for a row that never executed, and deliberately: an absent OBSERVATION has no counterpart in this sum, so giving it one would let a row with no measurement reach a comparator at all."
 
@@ -71,7 +71,7 @@ fn witness_row_cost_migration_threshold_ms() -> Nat {
 
 type MigrationDisclosureVerdict
   = BelowMigrationThreshold
-  | MandatoryMigration { observed: Millisecond, threshold: Millisecond }
+  | MandatoryMigration { observed: std.measure.Millisecond, threshold: std.measure.Millisecond }
 
 fn witness_row_cost_migration_verdict(observed: Millisecond) -> MigrationDisclosureVerdict {
   let threshold = millisecond(count: witness_row_cost_migration_threshold_ms())
@@ -286,12 +286,12 @@ fn witness_cost_unique_resolve_wall(
 }
 
 type WitnessCostReceiptRow {
-  entry: NonEmptyStr
-  declaration: DeclarationRef
-  eval: List<TimedMeasurement>
-  resolve: Nanosecond
-  warm: Nanosecond
-  outcome: ObservationOutcome
+  entry: std.types.NonEmptyStr
+  declaration: std.decl_ref.DeclarationRef
+  eval: List<std.observation.TimedMeasurement>
+  resolve: std.measure.Nanosecond
+  warm: std.measure.Nanosecond
+  outcome: std.observation.ObservationOutcome
 }
 
 data witness_cost_row_eval_clocks_note: String = "The row's eval term carries EVERY clock the occurrence was measured on, each tagged, rather than one untagged number. WALL IS REQUIRED AND CPU IS NOT: the projection still refuses a witness whose wall figure is MeasuredUnavailable, because wall is what the witness threshold is stated on (operator ruling 2026-08-05) and a threshold with no measurement is the fabricated-plausible-output DESIGN section 5 forbids. Thread CPU rides beside it as the REMEDY DISCRIMINATOR, which is the only reason a second clock earns a column: a slow row with high CPU is algorithm or repeated evaluation, a slow row with low CPU is waiting, I/O, subprocess or scheduling, and one clock cannot tell an author which fix applies. Its absence is therefore an honest gap in what a producer sampled, not a refusal — the seed's run_claim_measured reads both from one run so production rows carry both, while a producer that genuinely sampled only wall says so by omission and observation_duration_of answers MeasuredUnavailable with that cause rather than a zero. The resolve and warm terms stay bare Nanosecond and stay WALL: an entry resolve is wall by construction (it is dominated by I/O the CPU clock cannot see) and witness_decomposition_does_not_reduce_entry_cost_note is the standing ruling that it is a different grain from this row entirely."
@@ -299,7 +299,7 @@ data witness_cost_row_eval_clocks_note: String = "The row's eval term carries EV
 
 type WitnessCostProjection
   = WitnessCostProjectionComplete { rows: List<WitnessCostReceiptRow> }
-  | WitnessCostProjectionRefused { cause: NonEmptyStr }
+  | WitnessCostProjectionRefused { cause: std.types.NonEmptyStr }
 
 fn witness_cost_project_one_witness(
   events: List<ObservationEvent>,

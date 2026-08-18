@@ -48,8 +48,8 @@ service sha512sum.Sha512 {
 }
 
 type Sha512FileObservation
-  = Sha512FileObserved { digest: Sha512Digest }
-  | Sha512FileObservationRefused { cause: NonEmptyStr }
+  = Sha512FileObserved { digest: std.content_hash.Sha512Digest }
+  | Sha512FileObservationRefused { cause: std.types.NonEmptyStr }
 
 fn sha512sum_observe_file(path: std.types.FilePath) -> Sha512FileObservation {
   let read = sha512sum.Sha512.DigestFile(path: path)

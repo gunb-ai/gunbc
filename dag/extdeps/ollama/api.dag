@@ -73,8 +73,8 @@ data ollama_default_port: Port = 11434
 // variant -- and a single string would hide the join the way every other anemic leaf in this corpus
 // did before decomposition.
 type OllamaModelRef {
-  name: NonEmptyStr
-  tag: NonEmptyStr
+  name: std.types.NonEmptyStr
+  tag: std.types.NonEmptyStr
 }
 
 fn ollama_model_ref_wire(ref: OllamaModelRef) -> String {
@@ -91,7 +91,7 @@ fn ollama_model_ref_wire(ref: OllamaModelRef) -> String {
 // version, never the moving `latest` alias -- applied to a different upstream.
 type OllamaModelDigest {
   ref: OllamaModelRef
-  digest: Sha256Digest
+  digest: std.content_hash.Sha256Digest
 }
 
 // The bridge from wire hex to a typed digest. Partial and refusing, never fabricating: an

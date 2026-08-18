@@ -9,8 +9,8 @@ data srv3_actuator_virtual_media_iso_install_path: NonEmptyStr = srv3_seeded_ubu
 
 type AutoinstallSeedDeliveryRefusal {
   install_server_count: Int
-  seed_url: NonEmptyStr
-  refusal: NonEmptyStr
+  seed_url: std.types.NonEmptyStr
+  refusal: std.types.NonEmptyStr
 }
 
 fn srv3_autoinstall_seed_delivery_refusal() -> AutoinstallSeedDeliveryRefusal? {

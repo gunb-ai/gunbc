@@ -4,17 +4,17 @@ module gunbc.runner_capacity_plan
 data runner_capacity_plan_authority_note: String = "SINGLE AUTHORITY for RunnerCapacity plan actions and stable slot identities. requested_width, admission, and observed_width are SEPARATE facts — count equality is a POSTCONDITION, never a refusal. Five observed against seven requested yields EXACTLY two RunnerSlotAdd actions (06 and 07), not a circular controller that waits for a receipt before planning actuation. Connectivity repair folds into the same plan: active+offline or active+absent becomes RunnerIncarnationReplace; roster unavailable refuses destructive actions."
 
 type RunnerCapacityAction
-  = RunnerSlotAdd { to: RunnerSlotIdentity }
-  | RunnerSlotChange { from: RunnerSlotIdentity, to: RunnerSlotIdentity }
-  | RunnerSlotRemove { from: RunnerSlotIdentity }
-  | RunnerIncarnationReplace { slot: RunnerSlotIdentity, cause: String }
+  = RunnerSlotAdd { to: gunbc.build_cache_instance.RunnerSlotIdentity }
+  | RunnerSlotChange { from: gunbc.build_cache_instance.RunnerSlotIdentity, to: gunbc.build_cache_instance.RunnerSlotIdentity }
+  | RunnerSlotRemove { from: gunbc.build_cache_instance.RunnerSlotIdentity }
+  | RunnerIncarnationReplace { slot: gunbc.build_cache_instance.RunnerSlotIdentity, cause: String }
 
 type WidthAdmission
   = WidthAdmitted { width: Int }
   | WidthRefused { requested: Int, cause: String }
 
 type RunnerCapacityHostPlan {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   requested_width: Int
   admission: WidthAdmission
   observed_width: Int

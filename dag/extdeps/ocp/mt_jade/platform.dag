@@ -12,9 +12,9 @@ data platform_note: String = "PLATFORM FACTS FROM THE PUBLIC OCP MT. JADE SPECIF
 // SECTION 7.2 AND 7.3 CARRY THE BOARD ENVELOPE AND SOCKET DESIGNATION. Micrometres are used so
 // 479.36 mm is exact rather than rounded — the specification quotes 428 mm by 479.36 mm.
 type MtJadeMotherboardMechanical {
-  outline_width: Micrometer
-  outline_depth: Micrometer
-  cpu_socket_designation: NonEmptyStr
+  outline_width: std.measure.Micrometer
+  outline_depth: std.measure.Micrometer
+  cpu_socket_designation: std.types.NonEmptyStr
   processor_socket_count: Int
   ddr4_dimms_total: Int
 }
@@ -164,20 +164,20 @@ type ClockTreeNodeRole
   | CrystalReferenceInput
 
 type ClockTreeNode {
-  ordering_part_number: NonEmptyStr
-  vendor_label: NonEmptyStr
+  ordering_part_number: std.types.NonEmptyStr
+  vendor_label: std.types.NonEmptyStr
   role: ClockTreeNodeRole
-  output_frequency: Hertz?
-  consumers: List<NonEmptyStr>
+  output_frequency: std.measure.Hertz?
+  consumers: List<std.types.NonEmptyStr>
 }
 
 // THE CPLD'S TIMER CLOCKS ARE NOT A PURCHASED PART ROW. Section 7.10.1 states the CPLD divides a
 // board 50 MHz oscillator into two 25 MHz synchronous processor timer clocks; modelling that as
 // an ordering part number would invent a component the specification does not name.
 type CpldDerivedClock {
-  input_frequency: Hertz
-  output_frequency: Hertz
-  consumers: List<NonEmptyStr>
+  input_frequency: std.measure.Hertz
+  output_frequency: std.measure.Hertz
+  consumers: List<std.types.NonEmptyStr>
 }
 
 data mt_jade_cpld_timer_clock: CpldDerivedClock = CpldDerivedClock {
@@ -268,10 +268,10 @@ type ReferencePartRole
   | ProgrammableClockGenerator
 
 type MtJadeReferencePartRow {
-  ordering_part_number: NonEmptyStr
-  vendor_label: NonEmptyStr
+  ordering_part_number: std.types.NonEmptyStr
+  vendor_label: std.types.NonEmptyStr
   role: ReferencePartRole
-  authority: ExternalAuthority
+  authority: extdeps.external_authority.ExternalAuthority
 }
 
 // THE OCP REFERENCE-PART ROW NAMES AST2500 IN PROSE; THE CHIP FACTS LIVE IN THE ASPEED

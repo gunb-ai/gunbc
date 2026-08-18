@@ -1,24 +1,24 @@
 module v2.test.emit.produced_decl_support_preserved
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data produced_decl_support_preserved_note: String = "Regression control for a defect the mechanical field addition introduced and the green corpus could not show: augmenters reconstruct a TargetModel field-by-field, and the inserted produced_decl_support was reset to ProducedDeclUnwired rather than copied from the source. With every target unwired the reset is a no-op, so nothing reds; the moment a target is WIRED an ordinary augmentation silently erases its rendering capability. Preservation is proven by EXECUTING the renderer after augmentation, because equality over function values is not available - a comparison could not have caught this. Both augmenters are driven with NONEMPTY input deliberately: each returns its argument unchanged on empty input, so an empty-input control would pass without ever reaching the reconstruction that carries the defect."
 
-fn pdp_marker_token_class() -> Symbol {
+fn pdp_marker_token_class() -> v2.std.node.Symbol {
   ^pdp_renderer_executed_marker
 }
 
-fn pdp_render(decl: Node) -> Outcome<TargetBodiedArrowStatementScaffold> {
+fn pdp_render(decl: Node) -> Outcome<v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold> {
   outcome_accepted(
-    TargetBodiedArrowStatementScaffold {
+    v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold {
       prefix: [FixedToken { token_class: pdp_marker_token_class() }],
       suffix: []
     }
   )
 }
 
-fn pdp_wired_support() -> ProducedDeclSupport {
+fn pdp_wired_support() -> v2.std.compilers.target_model.ProducedDeclSupport {
   ProducedDeclWired {
     render: pdp_render,
     scaffold_relation_rule_name: ^pdp_relation_rule,
@@ -26,8 +26,8 @@ fn pdp_wired_support() -> ProducedDeclSupport {
   }
 }
 
-fn pdp_target_with(support: ProducedDeclSupport) -> TargetModel {
-  TargetModel {
+fn pdp_target_with(support: v2.std.compilers.target_model.ProducedDeclSupport) -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: support,
     bundle: rust_target_model().bundle,
     lex: rust_target_model().lex,
@@ -40,7 +40,7 @@ fn pdp_target_with(support: ProducedDeclSupport) -> TargetModel {
 
 // Preservation is proven by EXECUTION: the surviving renderer is called and its
 // output inspected. A field comparison is unavailable over function values.
-fn pdp_renderer_executes(target: TargetModel) -> Bool {
+fn pdp_renderer_executes(target: v2.std.compilers.target_model.TargetModel) -> Bool {
   match target.produced_decl_support {
     ProducedDeclUnwired => false
     ProducedDeclWired {
@@ -63,7 +63,7 @@ fn pdp_renderer_executes(target: TargetModel) -> Bool {
   }
 }
 
-fn pdp_after_value_semantics(support: ProducedDeclSupport) -> Bool {
+fn pdp_after_value_semantics(support: v2.std.compilers.target_model.ProducedDeclSupport) -> Bool {
   match target_model_augment_value_semantics_carriers(
     target: pdp_target_with(support: support),
     extra_atoms: [^pdp_extra_atom]
@@ -74,8 +74,8 @@ fn pdp_after_value_semantics(support: ProducedDeclSupport) -> Bool {
   }
 }
 
-fn pdp_ownership_row() -> TargetUseSiteOwnershipRealization {
-  TargetUseSiteOwnershipRealization {
+fn pdp_ownership_row() -> v2.std.compilers.target_model.TargetUseSiteOwnershipRealization {
+  v2.std.compilers.target_model.TargetUseSiteOwnershipRealization {
     source_carrier: target_model_type_atom_node(identity: ^pdp_carrier),
     source_projection: UseSiteOwnershipExactCarrier,
     use_site: OwnershipAtFunctionReturn,
@@ -84,7 +84,7 @@ fn pdp_ownership_row() -> TargetUseSiteOwnershipRealization {
   }
 }
 
-fn pdp_after_use_site_ownership(support: ProducedDeclSupport) -> Bool {
+fn pdp_after_use_site_ownership(support: v2.std.compilers.target_model.ProducedDeclSupport) -> Bool {
   match target_model_augment_use_site_ownership_catalog(
     target: pdp_target_with(support: support),
     derived_rows: [pdp_ownership_row()]

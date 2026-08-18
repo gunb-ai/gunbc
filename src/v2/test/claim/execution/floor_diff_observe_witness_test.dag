@@ -1,7 +1,7 @@
 module v2.test.execution.floor_diff_observe_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_ci_policy_observation_succeeds() -> Bool {
   match floor_observe_git_diff_unified_for_ci() {

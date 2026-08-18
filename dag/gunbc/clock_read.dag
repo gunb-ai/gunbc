@@ -1,18 +1,18 @@
 module gunbc.clock_read
 
 
-fn clock_now_probed_at() -> NonEmptyStr? {
+fn clock_now_probed_at() -> std.types.NonEmptyStr? {
   let result = Clock.Now()
   if result.timestamp == "" {
     none
   } else {
-    Present { value: result.timestamp as NonEmptyStr }
+    Present { value: result.timestamp as std.types.NonEmptyStr }
   }
 }
 
-fn clock_now_probed_at_or_unknown() -> NonEmptyStr {
+fn clock_now_probed_at_or_unknown() -> std.types.NonEmptyStr {
   match clock_now_probed_at() {
     Present { value: ts } => ts
-    Absent => "unknown" as NonEmptyStr
+    Absent => "unknown" as std.types.NonEmptyStr
   }
 }

@@ -37,8 +37,8 @@ type FloorRunCgroupPeakReceipt
   = FloorRunCgroupPeakMeasured {
       run_id: String,
       runner_unit: String,
-      cgroup_peak: ByteSize,
-      armed_memory_high: ByteSize,
+      cgroup_peak: std.measure.ByteSize,
+      armed_memory_high: std.measure.ByteSize,
       floor_outcome: String,
     }
   | FloorRunCgroupPeakUnmeasured
@@ -110,7 +110,7 @@ fn witness_runner_cgroup_cap_lt_dashboard_session_cap() -> Bool {
 }
 
 type JobCgroupPeakMeasurement
-  = JobCgroupPeakMeasured { cgroup_peak: ByteSize }
+  = JobCgroupPeakMeasured { cgroup_peak: std.measure.ByteSize }
   | JobCgroupPeakUnmeasured
 
 type CiJobPeak {
@@ -149,11 +149,11 @@ data gunbc_ci_per_session_peak_samples: List<ByteSize> = [
 
 
 type SessionOperatingPoint
-  = SessionOperatingPointSet { per_session_cap: ByteSize, session_concurrency: Int }
+  = SessionOperatingPointSet { per_session_cap: std.measure.ByteSize, session_concurrency: Int }
   | SessionOperatingPointUnset
 
 type SessionAggregateReservation
-  = SessionAggregateMeasured { bytes: ByteSize }
+  = SessionAggregateMeasured { bytes: std.measure.ByteSize }
   | SessionAggregateUnmeasured
 
 type OomdEnforcementEvidence
@@ -162,12 +162,12 @@ type OomdEnforcementEvidence
 
 
 type RunnerSliceCapEffectiveness
-  = CapEffective { bytes: ByteSize }
+  = CapEffective { bytes: std.measure.ByteSize }
   | CapUnbounded
 
 type SessionReservationMode
   = Regime1WorstCase { point: SessionOperatingPoint }
-  | Regime2AggregateOomd { oomd_eviction_ceiling: ByteSize, session_concurrency: Int, aggregate_reservation: SessionAggregateReservation }
+  | Regime2AggregateOomd { oomd_eviction_ceiling: std.measure.ByteSize, session_concurrency: Int, aggregate_reservation: SessionAggregateReservation }
   | SessionReservationModeUnset
 
 data gunbc_ci_session_reservation_mode: SessionReservationMode = Regime2AggregateOomd {
@@ -193,8 +193,8 @@ data gunbc_ci_footprint_granularity_disposition: Disposition = Terminal { reason
 data gunbc_ci_footprint_bridge_disposition: Disposition = Terminal { reason: "Deferred unification path (acknowledged, not attempted): INTER-run whole-run peak is plausibly governor-width x measured per-worker residency + base, so the INTER-run footprint could eventually derive from within-run measured receipts (the executor's [measurement]/[governor] lines) - the real single authority. Held back deliberately: derive only from measured receipts, never from authored predictions (the retired width-fold constants are the cautionary receipt)." }
 
 type HostFixedOverhead
-  = HostFixedOverheadMeasured { bytes: ByteSize, provenance: NonEmptyStr }
-  | HostFixedOverheadAllowance { bytes: ByteSize, reason: NonEmptyStr }
+  = HostFixedOverheadMeasured { bytes: std.measure.ByteSize, provenance: std.types.NonEmptyStr }
+  | HostFixedOverheadAllowance { bytes: std.measure.ByteSize, reason: std.types.NonEmptyStr }
   | HostFixedOverheadUnmeasured
 
 data gunbc_ci_host_fixed_overhead_kind_note: String = "THREE ARMS BECAUSE THERE ARE THREE FACTS, and the row that stood here fused two of them under the name of the third. gunbc_ci_host_fixed_overhead was a single fleet-wide HostFixedOverheadMeasured carrying exactly 17179869184 bytes — 2^34, a round power of two — and its Scaffold bound to gunbc_ci_per_service_overhead, a declaration that HAS NEVER EXISTED anywhere in the corpus. So the constructor asserted a measurement, the provenance pointed at a row nobody wrote, and no reader could tell the difference between the two. That is rung inflation (DESIGN 4b) in the budget's own input: a carrier named for the top rung while occupying the bottom, and an inflated class never ranks for climbing.\n\nMEASURED means an observation produced it and the row says which one — the provenance field is required, not optional, for exactly the reason the SEC citation rule is: for a measured fact the provenance IS the grounding, so an arm that could omit it is a fail-open invitation. ALLOWANCE means an operator granted headroom for a deployment the model does not describe, which is a DIFFERENT KIND OF FACT, not a weaker measurement — it is honest, it is load-bearing, and it must never be reported as measured. UNMEASURED stays the fail-closed floor.\n\nWhy per-host rather than one fleet number: srv1 and srv2 carry hand-built deployments this corpus never modeled (the session dashboard instances of gunbc.build_cache_instance among them), so their allowance is a real operator judgement about unmodeled residents. srv3 and srv4 were stood up through the modeled path and have an observation. One number could only have been the maximum of the two, which silently taxes the managed hosts for the legacy ones' mess — 10.4 GiB per host of memory the budget refused to spend because two other machines are untidy."
@@ -203,10 +203,10 @@ data gunbc_ci_host_memavailable_observation_note: String = "THE OBSERVATION THAT
 
 type HostMemAvailableObservation {
   host: product.placement_supply.HostIdentity
-  run_id: NonEmptyStr
-  runner_unit: NonEmptyStr
-  host_total: ByteSize
-  mem_available: ByteSize
+  run_id: std.types.NonEmptyStr
+  runner_unit: std.types.NonEmptyStr
+  host_total: std.measure.ByteSize
+  mem_available: std.measure.ByteSize
 }
 
 data gunbc_ci_srv3_memavailable_high_water: HostMemAvailableObservation = HostMemAvailableObservation {
@@ -268,8 +268,8 @@ data gunbc_ci_legacy_host_fixed_overhead_disposition: Disposition = Scaffold {
 }
 
 type HostUsableRam
-  = HostUsableRamMeasured { bytes: ByteSize, provenance: NonEmptyStr }
-  | HostUsableRamConservativeLowerBound { bytes: ByteSize, basis: NonEmptyStr }
+  = HostUsableRamMeasured { bytes: std.measure.ByteSize, provenance: std.types.NonEmptyStr }
+  | HostUsableRamConservativeLowerBound { bytes: std.measure.ByteSize, basis: std.types.NonEmptyStr }
   | HostUsableRamUnmeasured
 
 data gunbc_ci_host_usable_ram_kind_note: String = "OS-USABLE RAM IS A PER-HOST FACT AND WAS STORED AS A FLEET CONSTANT, which is the same grain defect gunbc_ci_host_fixed_overhead_kind_note repaired for overhead — so this carrier is deliberately that carrier's shape rather than a new invention.\n\nCORRECTION, AND IT IS THE POINT OF THIS PARAGRAPH. An earlier revision of this note said a 2026-08-11 DIMM replacement had raised memory on part of the fleet, that gunbc.ci_runner_placement host_usable_ram_note's trigger had therefore fired, and that the four hosts no longer shared one usable-RAM figure. THE REPLACEMENT WAS ATTEMPTED AND DID NOT WORK (operator, 2026-08-12). srv3 and srv4 retain their original 8 x 16 GiB population, no host's memory changed, and that trigger has NOT fired. The claim was written from an in-flight operator report before any observation existed to confirm it, and it was wrong — which is exactly the failure this carrier's own arms are built to make visible, landing in the prose instead of the data.\n\nWHAT THE GRAIN RESTS ON INSTEAD, none of it contingent on any DIMM moving: placement folded over per-host offers while reading RAM from gunbc.ci_fleet gunbc_ci_host, a synthetic machine on a Q64-30 that is not a member of that fold; two sibling budget trees checked nominal DIMM capacity while placement checked OS-usable, so both could report conservation green against different ceilings; and an unclassified host silently borrowed a figure rather than refusing. Those were defects on the day they were written and remain so with the population unchanged. A per-host fact belongs at per-host grain whether or not the hosts currently differ — the fleet-wide shape was wrong because it could not EXPRESS a difference, not because one had appeared.\n\nTHREE ARMS BECAUSE THERE ARE THREE FACTS. MEASURED means a read of THIS host produced the number and the row names the read. CONSERVATIVE LOWER BOUND means no such read exists and the carried figure is known not to exceed the host's real usable RAM, with basis stating why. UNMEASURED is the fail-closed floor for a host nobody classified.\n\nTHE MIDDLE ARM IS A BOUND AND NOT A SUBSTITUTION, and this survives the correction above rather than depending on it. The four hosts do share a board and a population today, so an equivalence argument is available — but equivalence IMPLIES the bound, so the bound is the weaker and safer claim, and it is the one the conservation wall actually needs. Naming the arm for equivalence would license the move the wall cannot survive: carrying a reading from a host with MORE memory onto one with less. Nothing in a substitution-shaped type forbids that; the bound's name does. The safety property is monotonicity, and it should not have to be re-argued every time the fleet's uniformity changes.\n\nWHY ALL FOUR ARE BOUNDS AND NONE IS MEASURED: no MemTotal read exists for any host in this fleet. The closest receipt is gunbc_ci_srv3_memavailable_high_water, whose host_total is MemTotal-shaped but was captured as an arm-time line from a memory governor rather than a read taken to answer this question, and only on srv3.\n\nDissolving these is CHEAPER THAN THE FIXED-OVERHEAD ROW BESIDE THEM and must not be confused with it. That row needs a QUIESCENT read because it estimates non-reclaimable residency from MemAvailable, which moves with load. MemTotal does not: the kernel reports total usable RAM after firmware and kernel reservations, so an ordinary read while the host serves work is a complete answer. One read per host, taken any time, promotes that host's row to MEASURED and leaves the others untouched — which is the entire point of the grain."

@@ -1,7 +1,7 @@
 module gunbc.plans.interpreter_kernel_d
 
 
-fn interpreter_kernel_d_body() -> List<MarkdownBlock> {
+fn interpreter_kernel_d_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** model-and-witness + seam classification landed (#6229 / session deep-crab-542). Parent seed burn-down **HAND kernel D**. **Original slice:** `gunbc.interpreter_kernel_model` + `interpreter_kernel_model_witnesses` — no `v1_interpreter.rs` emit flip, no `regen --verify` flip. **Follow-on (landed #6217):** `rest_transport_facts` · `wire_value_serialize` dissolved as pure fact-projection into `cli_run.rs` — pinned roster now 2 host-physics files."),
     h2(text: "0. Verdict — pure-eval authority vs pinned host-physics"),
@@ -38,7 +38,7 @@ fn interpreter_kernel_d_body() -> List<MarkdownBlock> {
   ]
 }
 
-data interpreter_kernel_d_plan: Plan = Plan {
+data interpreter_kernel_d_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "interpreter-kernel-d",
   title: "HAND kernel D — v1_interpreter pure-eval authority + pinned host-physics",
   body: interpreter_kernel_d_body(),

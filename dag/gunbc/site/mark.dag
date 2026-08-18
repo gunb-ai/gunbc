@@ -58,8 +58,8 @@ fn all_forks_rejoin(nodes: List<MarkNode>, edges: List<MarkEdge>, source: String
       })
 }
 
-fn svg_el(tag: String, attributes: List<Attribute>) -> Fragment {
-  Element { tag: tag, attributes: attributes, children: [] }
+fn svg_el(tag: String, attributes: List<std.markup.Attribute>) -> std.markup.Fragment {
+  extdeps.browser.Element { tag: tag, attributes: attributes, children: [] }
 }
 
 fn node_class(n: MarkNode) -> String {
@@ -70,7 +70,7 @@ fn halo_class(n: MarkNode) -> String {
   if n.sink { "mark-halo mark-halo-sink" } else { "mark-halo" }
 }
 
-fn mark_edge_lines(nodes: List<MarkNode>, edges: List<MarkEdge>) -> List<Fragment> {
+fn mark_edge_lines(nodes: List<MarkNode>, edges: List<MarkEdge>) -> List<std.markup.Fragment> {
   map(edges, e => {
     let from = node_by_key(nodes: nodes, key: e.from_key)
     let to = node_by_key(nodes: nodes, key: e.to_key)
@@ -85,7 +85,7 @@ fn mark_edge_lines(nodes: List<MarkNode>, edges: List<MarkEdge>) -> List<Fragmen
   })
 }
 
-fn mark_node_halos(nodes: List<MarkNode>) -> List<Fragment> {
+fn mark_node_halos(nodes: List<MarkNode>) -> List<std.markup.Fragment> {
   map(nodes, n =>
     svg_el(tag: "circle", attributes: [
       attr(name: "cx", value: to_string(n.x)),
@@ -95,7 +95,7 @@ fn mark_node_halos(nodes: List<MarkNode>) -> List<Fragment> {
     ]))
 }
 
-fn mark_node_points(nodes: List<MarkNode>) -> List<Fragment> {
+fn mark_node_points(nodes: List<MarkNode>) -> List<std.markup.Fragment> {
   map(nodes, n =>
     svg_el(tag: "circle", attributes: [
       attr(name: "cx", value: to_string(n.x)),
@@ -105,10 +105,10 @@ fn mark_node_points(nodes: List<MarkNode>) -> List<Fragment> {
     ]))
 }
 
-fn render_mark(depth: Int) -> Fragment {
+fn render_mark(depth: Int) -> std.markup.Fragment {
   let edges = if depth >= 1 { mark_edge_lines(nodes: mark_nodes, edges: mark_edges) } else { [] }
   let halos = if depth >= 3 { mark_node_halos(nodes: mark_nodes) } else { [] }
-  Element {
+  extdeps.browser.Element {
     tag: "svg",
     attributes: [
       attr(name: "viewBox", value: "0 0 120 72"),

@@ -57,7 +57,7 @@ fn stackup_ply_thickness(p: StackupPly) -> Int {
   micrometer_count(m: p.dielectric.thickness) + micrometer_count(m: p.copper.thickness)
 }
 
-fn stackup_total_thickness(s: Stackup) -> Micrometer {
+fn stackup_total_thickness(s: Stackup) -> std.measure.Micrometer {
   let top = micrometer_count(m: s.top.thickness)
   let below = fold_list(
     xs: s.plies,
@@ -158,13 +158,13 @@ fn stackup_refusal_causes(s: Stackup) -> List<StackupRefusalCause> {
   zero_copper + zero_dielectric + no_reference
 }
 
-fn mint_admitted_stackup(s: Stackup, authority: DeclarationRef) -> StackupAdmission
+fn mint_admitted_stackup(s: Stackup, authority: std.decl_ref.DeclarationRef) -> StackupAdmission
   admit_callers: [
     decl_ref(module_path: "product.pcb.stackup", decl_name: "admit_stackup"),
   ]
   = StackupAdmitted { admitted: AdmittedStackup { stackup: s, authority: authority } }
 
-fn admit_stackup(s: Stackup, authority: DeclarationRef) -> StackupAdmission {
+fn admit_stackup(s: Stackup, authority: std.decl_ref.DeclarationRef) -> StackupAdmission {
   let causes = stackup_refusal_causes(s: s)
   if count(causes) > 0 {
     StackupRefused { causes: causes }
@@ -173,7 +173,7 @@ fn admit_stackup(s: Stackup, authority: DeclarationRef) -> StackupAdmission {
   }
 }
 
-fn admitted_stackup_authority(a: AdmittedStackup) -> DeclarationRef {
+fn admitted_stackup_authority(a: AdmittedStackup) -> std.decl_ref.DeclarationRef {
   a.authority
 }
 
@@ -207,6 +207,6 @@ fn admitted_stackup_body(a: AdmittedStackup) -> Stackup {
 // stackup is fit to reason about and not yet proven orderable.
 //
 // THE ONLY ROUTE FROM A STACKUP TO AN ESTABLISHED CAPABILITY.
-fn establish_stackup_capability(a: AdmittedStackup) -> PcbCapabilityStanding {
+fn establish_stackup_capability(a: AdmittedStackup) -> product.pcb.world.PcbCapabilityStanding {
   capability_established(authority: a.authority)
 }

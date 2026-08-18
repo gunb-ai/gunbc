@@ -1,7 +1,7 @@
 module gunbc.plans.fold_ergonomics
 
 
-fn fold_ergonomics_body() -> List<MarkdownBlock> {
+fn fold_ergonomics_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** charter + ranked focus · **DESIGN.md + the carriers remain the authority** (DESIGN §6). A task's real state is its branch/PR, not this file. Linked from `ROADMAP.md` ✦ *Ergonomics LANE*."),
     p(text: "**Carrier facts below were gathered by two tree-wide sweeps (fold inventory + non-fold-residue/friction), 2026-06-22. Re-grep the live counts before acting — they rot.**"),
@@ -36,7 +36,7 @@ fn fold_ergonomics_body() -> List<MarkdownBlock> {
   ]
 }
 
-data fold_ergonomics_plan: Plan = Plan {
+data fold_ergonomics_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "fold-ergonomics",
   title: "Plan — fold ergonomics: make the fold the path of least resistance",
   body: fold_ergonomics_body(),

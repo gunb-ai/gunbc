@@ -2,14 +2,14 @@ module test.claim.layout_render_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data flat_proto: LayoutProtocol = LayoutProtocol { indent_unit: "" }
-data yaml_proto: LayoutProtocol = LayoutProtocol { indent_unit: "  " }
+data flat_proto: std.layout.LayoutProtocol = std.layout.LayoutProtocol { indent_unit: "" }
+data yaml_proto: std.layout.LayoutProtocol = std.layout.LayoutProtocol { indent_unit: "  " }
 
-fn flat_doc() -> Doc {
+fn flat_doc() -> std.layout.Doc {
   doc_concat(parts: [doc_line_of(text: "a"), doc_line_of(text: "b")])
 }
 
-fn nested_doc(levels: Int) -> Doc {
+fn nested_doc(levels: Int) -> std.layout.Doc {
   doc_concat(parts: [
     doc_text(text: "root:"),
     DocLine,

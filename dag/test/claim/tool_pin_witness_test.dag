@@ -3,31 +3,31 @@ module test.claim.tool_pin_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data cargo_identity: ContentHash = content_hash_of_value(value: "sha256-cargo-1930-aarch64" as NonEmptyStr)
-data other_identity: ContentHash = content_hash_of_value(value: "sha256-cargo-1920-aarch64" as NonEmptyStr)
+data cargo_identity: std.content_hash.ContentHash = content_hash_of_value(value: "sha256-cargo-1930-aarch64" as std.types.NonEmptyStr)
+data other_identity: std.content_hash.ContentHash = content_hash_of_value(value: "sha256-cargo-1920-aarch64" as std.types.NonEmptyStr)
 
-data cargo_tool: CliTool = CliTool {
+data cargo_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "cargo",
   min_version: Absent,
   installable_via: [SourceApt],
 }
 
-data jq_tool: CliTool = CliTool {
+data jq_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "jq",
   min_version: Absent,
   installable_via: [SourceApt],
 }
 
-data authored_pin: Pin<CliTool> = Pin {
+data authored_pin: Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
   subject: cargo_tool,
-  version: "1.93.0" as VersionIdentity,
+  version: "1.93.0" as extdeps.version.VersionIdentity,
   expected_identity: cargo_identity,
   selection: ExactPin,
 }
 
-data tracked_pin: Pin<CliTool> = Pin {
+data tracked_pin: Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
   subject: jq_tool,
-  version: "1.7.1" as VersionIdentity,
+  version: "1.7.1" as extdeps.version.VersionIdentity,
   expected_identity: cargo_identity,
   selection: TrackedChannel {
     channel: "latest",
@@ -91,13 +91,13 @@ test fn tracked_pin_refuses_even_when_identity_matches() -> Bool {
   }
 }
 
-data legacy_ranged_tool: CliTool = CliTool {
+data legacy_ranged_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "curl",
-  min_version: Present { value: ">= 7.68" as VersionConstraint },
+  min_version: Present { value: ">= 7.68" as extdeps.version.VersionConstraint },
   installable_via: [SourceApt { package: "curl" }],
 }
 
-data legacy_unversioned_tool: CliTool = CliTool {
+data legacy_unversioned_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
   name: "jq",
   min_version: Absent,
   installable_via: [SourceApt { package: "jq" }],
@@ -137,9 +137,9 @@ test fn unversioned_legacy_tool_refuses_as_absent() -> Bool {
 
 // The (key_of, value_eq) bundle P2 hands to gunbc.membership_reconcile. key_is_identity_so_a_version_bump_is_a_modify pins the identity-vs-content split that spine's authority note requires: the key stays the tool name across a version bump, so the hunk is Modified and the ensure re-upserts in place rather than tearing the tool down and reinstalling it. RED CONTROL value_eq_covers_digest_not_only_version fails if value_eq compares only the version string — a rebuilt binary at the same declared version would then compare equal and the ensure would never re-upsert, which is the exact silent-staleness this lane exists to close.
 test fn key_is_identity_so_a_version_bump_is_a_modify() -> Bool {
-  let bumped = Pin {
+  let bumped = extdeps.pin.Pin {
     subject: cargo_tool,
-    version: "1.94.0" as VersionIdentity,
+    version: "1.94.0" as extdeps.version.VersionIdentity,
     expected_identity: other_identity,
     selection: ExactPin,
   }
@@ -148,9 +148,9 @@ test fn key_is_identity_so_a_version_bump_is_a_modify() -> Bool {
 }
 
 test fn value_eq_covers_digest_not_only_version() -> Bool {
-  let same_version_new_binary = Pin {
+  let same_version_new_binary = extdeps.pin.Pin {
     subject: cargo_tool,
-    version: "1.93.0" as VersionIdentity,
+    version: "1.93.0" as extdeps.version.VersionIdentity,
     expected_identity: other_identity,
     selection: ExactPin,
   }
@@ -160,9 +160,9 @@ test fn value_eq_covers_digest_not_only_version() -> Bool {
 data selection_is_reconcile_content_note: String = "Added after review 44329, which found pin_value_eq comparing only version and expected_identity while ignoring selection. That was a real reconcile gap, not a style point: membership_reconcile treats value_eq as presence-plus-content, so a pin whose refresh POLICY changed — ExactPin flipped to TrackedChannel, a different channel, a different window — produced no Modified hunk and would never re-upsert. The refresh policy is exactly the content this lane exists to carry, so omitting it from equality silently exempted the feature from reconciliation. RED CONTROLS below cover all three shapes of that change; each fails if value_eq ignores selection again."
 
 test fn value_eq_detects_exact_to_tracked_flip() -> Bool {
-  let flipped = Pin {
+  let flipped = extdeps.pin.Pin {
     subject: cargo_tool,
-    version: "1.93.0" as VersionIdentity,
+    version: "1.93.0" as extdeps.version.VersionIdentity,
     expected_identity: cargo_identity,
     selection: TrackedChannel { channel: "stable", refresh_window_days: 30 },
   }
@@ -170,9 +170,9 @@ test fn value_eq_detects_exact_to_tracked_flip() -> Bool {
 }
 
 test fn value_eq_detects_channel_change() -> Bool {
-  let other_channel = Pin {
+  let other_channel = extdeps.pin.Pin {
     subject: jq_tool,
-    version: "1.7.1" as VersionIdentity,
+    version: "1.7.1" as extdeps.version.VersionIdentity,
     expected_identity: cargo_identity,
     selection: TrackedChannel { channel: "beta", refresh_window_days: 30 },
   }
@@ -180,9 +180,9 @@ test fn value_eq_detects_channel_change() -> Bool {
 }
 
 test fn value_eq_detects_refresh_window_change() -> Bool {
-  let wider_window = Pin {
+  let wider_window = extdeps.pin.Pin {
     subject: jq_tool,
-    version: "1.7.1" as VersionIdentity,
+    version: "1.7.1" as extdeps.version.VersionIdentity,
     expected_identity: cargo_identity,
     selection: TrackedChannel { channel: "latest", refresh_window_days: 90 },
   }
@@ -190,9 +190,9 @@ test fn value_eq_detects_refresh_window_change() -> Bool {
 }
 
 test fn value_eq_still_holds_for_identical_pins() -> Bool {
-  let same = Pin {
+  let same = extdeps.pin.Pin {
     subject: jq_tool,
-    version: "1.7.1" as VersionIdentity,
+    version: "1.7.1" as extdeps.version.VersionIdentity,
     expected_identity: cargo_identity,
     selection: TrackedChannel { channel: "latest", refresh_window_days: 30 },
   }
@@ -210,22 +210,22 @@ data second_subject_double_bound_row_finding_note: String = "review 44886, and i
 
 data pin_channel_restates_subject_reference_finding_note: String = "THE FINDING THIS SECOND SUBJECT EARNED, which is the actual argument for having one. A generic's second consumer is supposed to expose where the dimension was shaped around its first consumer, and it did. ActionRef.ref is a moving GitHub major tag (v5 tracks the latest 5.x), so it is a CONSTRAINT-like reference, not an identity — which is why Pin<ActionRef> is sound where Pin<OciDescriptor> was not, and why version 5.0.1 above is a SELECTION satisfying that reference rather than a restatement of it. That is the same requirement-versus-selection distinction already defended for CliTool.min_version, and it holds here for the same reason. But it does NOT extend to the selection axis: had this pin been written with TrackedChannel { channel: \"v5\" }, the channel string would RESTATE subject.ref, two writable fields holding one fact — the same duplication shape review 44850 rejected on the identity axis, one axis over. The tell is that PinSelection.TrackedChannel.channel is subject-agnostic while the channel it names may already live ON the subject: for a CliTool the channel is external (latest), for an ActionRef it IS subject.ref. So channel is arguably a subject PROJECTION wearing the shape of a generic field. Not fixed here, and deliberately not papered over with a caveat: the fix is either a projection on each instantiation (the cli_tool_pin_key_of shape, which is where subject-specific projections already belong) or a selection variant that names no channel of its own, and choosing between those is dimension surgery that wants its own review rather than a rider on a witness. dissolve-on: feature:pin-selection-channel-projection. Until then this witness uses ExactPin, which has no channel field and therefore cannot exhibit the duplication."
 
-data action_ref_pinned_identity: ContentHash = content_hash_of_value(value: "sha256-checkout-v5-commit" as NonEmptyStr)
+data action_ref_pinned_identity: std.content_hash.ContentHash = content_hash_of_value(value: "sha256-checkout-v5-commit" as std.types.NonEmptyStr)
 
-data action_ref_other_identity: ContentHash = content_hash_of_value(value: "sha256-checkout-v5-other-commit" as NonEmptyStr)
+data action_ref_other_identity: std.content_hash.ContentHash = content_hash_of_value(value: "sha256-checkout-v5-other-commit" as std.types.NonEmptyStr)
 
 data action_ref_synthetic_identity_note: String = "The two identities above are OBVIOUSLY synthetic and deliberately so, in the same style as cargo_identity at the top of this module. Writing a real 40-hex commit SHA here and calling it actions/upload-artifact@v2 would fabricate an upstream fact inside a fail-closed carrier — the failure admit_legacy_cli_tool's own note forbids — and it would ALSO create a second authority for that SHA the day the lane pins the action for real. What this witness proves is structural (the dimension admits the subject, and refuses on mismatch); it makes no claim about upstream truth, so a value that could never be mistaken for a real digest is the honest fixture."
 
-data checkout_pin: Pin<ActionRef> = Pin {
+data checkout_pin: Pin<extdeps.github.actions.ActionRef> = extdeps.pin.Pin {
   subject: checkout_action,
-  version: "5.0.1" as VersionIdentity,
+  version: "5.0.1" as extdeps.version.VersionIdentity,
   expected_identity: action_ref_pinned_identity,
   selection: ExactPin,
 }
 
-data checkout_pin_disagreeing: Pin<ActionRef> = Pin {
+data checkout_pin_disagreeing: Pin<extdeps.github.actions.ActionRef> = extdeps.pin.Pin {
   subject: checkout_action,
-  version: "5.0.1" as VersionIdentity,
+  version: "5.0.1" as extdeps.version.VersionIdentity,
   expected_identity: action_ref_other_identity,
   selection: ExactPin,
 }

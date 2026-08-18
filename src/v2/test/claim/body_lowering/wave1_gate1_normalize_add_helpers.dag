@@ -16,7 +16,7 @@ fn wave1_gate1_find_arrow_in_module(root: Node) -> Optional<Node> {
   }
 }
 
-fn wave1_gate1_normalized_module_from_source(source: String, file: Symbol) -> Optional<Node> {
+fn wave1_gate1_normalized_module_from_source(source: String, file: v2.std.node.Symbol) -> Optional<Node> {
   let lm = dag_language_model()
   match tokenize(text: source, file: file, rules: lm.lex) {
     Rejected { diagnostics: _ } => Absent

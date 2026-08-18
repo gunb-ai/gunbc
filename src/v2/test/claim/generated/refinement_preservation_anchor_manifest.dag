@@ -1,4 +1,4 @@
 module v2.test.generated.refinement_preservation_anchor_manifest
 
 
-data manual_anchor_refinement_nonempty_list_base: ManualAnchorKey = ManualRefinementNonEmptyListBase
+data manual_anchor_refinement_nonempty_list_base: v2.std.verification.ManualAnchorKey = ManualRefinementNonEmptyListBase

@@ -1,7 +1,7 @@
 module v2.test.claim.staging
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn s_double(n: Int) -> Outcome<Int> { outcome_accepted(value: n * 2) }
 fn s_inc(n: Int) -> Outcome<Int> { outcome_accepted(value: n + 1) }

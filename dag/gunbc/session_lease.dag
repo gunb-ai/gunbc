@@ -6,8 +6,8 @@ module gunbc.session_lease
 
 type ProcessPortScope {
   listen_port: Int
-  expected_owner_label: NonEmptyStr
-  expected_process_fingerprint: NonEmptyStr
+  expected_owner_label: std.types.NonEmptyStr
+  expected_process_fingerprint: std.types.NonEmptyStr
 }
 
 type ProcessPortObservation
@@ -15,15 +15,15 @@ type ProcessPortObservation
   | PortObserved {
       observed_port: Int
       pid: Int
-      cmdline: NonEmptyStr
-      process_fingerprint: NonEmptyStr
+      cmdline: std.types.NonEmptyStr
+      process_fingerprint: std.types.NonEmptyStr
     }
   | PortObservedStaleExpected {
       observed_port: Int
       pid: Int
-      cmdline: NonEmptyStr
-      process_fingerprint: NonEmptyStr
-      stale_reason: NonEmptyStr
+      cmdline: std.types.NonEmptyStr
+      process_fingerprint: std.types.NonEmptyStr
+      stale_reason: std.types.NonEmptyStr
     }
   | PortInaccessible
 

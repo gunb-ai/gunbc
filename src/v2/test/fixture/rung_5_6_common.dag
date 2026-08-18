@@ -1,7 +1,7 @@
 module v2.test.rung_5_6_common
 
 
-data rung56_emit_host_python_target_model: TargetModel = TargetModel {
+data rung56_emit_host_python_target_model: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
   bundle: rung34_emit_host_rust_target_model.bundle,
   lex: VoidLexRules,
@@ -11,7 +11,7 @@ data rung56_emit_host_python_target_model: TargetModel = TargetModel {
   runtime_row: python_runtime_row()
 }
 
-data rung56_emit_host_go_target_model: TargetModel = TargetModel {
+data rung56_emit_host_go_target_model: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
   bundle: rung34_emit_host_rust_target_model.bundle,
   lex: VoidLexRules,
@@ -22,9 +22,9 @@ data rung56_emit_host_go_target_model: TargetModel = TargetModel {
 }
 
 fn rung56_emit_vs_eval_run(
-  claim: TestClaim,
+  claim: v2.std.verification.TestClaim,
   fixture_subject: Node,
-  target: TargetModel
+  target: v2.std.compilers.target_model.TargetModel
 ) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: rung34_test_claim_subject(claim: claim, evaluator_input: fixture_subject),

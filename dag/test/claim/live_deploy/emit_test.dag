@@ -14,9 +14,9 @@ fn witness_retract_script() -> String {
   live_deploy_retract_script_for(spec: deployment_spec_srv1())
 }
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn spec_artifact_kind_count(spec: DeploymentSpec, kind: OwnedArtifactKind) -> Int {
+fn spec_artifact_kind_count(spec: gunbc.live_deploy.spec.DeploymentSpec, kind: gunbc.live_deploy.spec.OwnedArtifactKind) -> Int {
   count(filter(spec.steps, step => match step {
     ArtifactStep { step: art } => art.kind == kind
     Dependency { step: _ } => false
@@ -43,7 +43,7 @@ test fn witness_slot_and_route_specs_make_preflip_mapping_mutation_unwritable() 
     && count(route.steps) == 1
 }
 
-fn retiring_slot_stops_only_runtime_and_preserves_reusable_dispatch_state(spec: DeploymentSpec) -> Bool {
+fn retiring_slot_stops_only_runtime_and_preserves_reusable_dispatch_state(spec: gunbc.live_deploy.spec.DeploymentSpec) -> Bool {
   let retiring = deployment_retiring_slot_spec(spec: spec)
   spec_artifact_kind_count(spec: retiring, kind: SystemdUnit) == 1
     && spec_artifact_kind_count(spec: retiring, kind: BeltTimerUnit) == 1
@@ -138,10 +138,10 @@ test fn witness_tailnet_url_absent_not_fabricated() -> Bool {
 
 test fn witness_dependency_ensure_is_idempotent() -> Bool {
   let tailscale = deployment_ensure_dependency_script(
-    dep: DeploymentDependencyStep { kind: TailscalePackage, subject: EnsuredPackage { package: package_tailscale } }
+    dep: gunbc.live_deploy.spec.DeploymentDependencyStep { kind: TailscalePackage, subject: EnsuredPackage { package: package_tailscale } }
   )
   let tmux = deployment_ensure_dependency_script(
-    dep: DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } }
+    dep: gunbc.live_deploy.spec.DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } }
   )
   string_contains(s: tailscale, pattern: "dpkg -s tailscale")
     && string_contains(s: tailscale, pattern: "apt-get install --yes tailscale")
@@ -386,7 +386,7 @@ test fn witness_dependency_graph_emit_frontier_binds_orch_emit_pipeline() -> Boo
 data emit_poison_backstop_witness_note: String = "GOLDEN-INDEPENDENT backstop (calm-ferret pass-2 flag 2): the emit-level poison markers (teardown-dependency-unreachable, wholesale-refused) are the defense-in-depth backstop to the PRIMARY typed refusal (the EffectsOrRefusal SUM, proven golden-independent by w_effects_refuses_wholesale_on_any_refusal in the spine test). But the poison backstops are golden-DEPENDENT — a regen while a refusal was buggily active could commit a poisoned golden and the drift gate would then pass. These two witnesses call the refusal producers directly and assert the marker is present, golden-INDEPENDENT, so a golden-absorption can never hide that the arm still refuses loudly."
 
 test fn witness_teardown_dependency_arm_refuses_golden_independent() -> Bool {
-  let steps = emit_deploy_teardown_dependency_refusal(dep: DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } })
+  let steps = emit_deploy_teardown_dependency_refusal(dep: gunbc.live_deploy.spec.DeploymentDependencyStep { kind: TmuxPackage, subject: EnsuredPackage { package: package_tmux } })
   count(steps) == 1
     && any(steps, s => match s {
          Do { run: r } => string_contains(s: r.command, pattern: "__GUNBC_DEPLOY_UNREACHABLE__")
@@ -402,9 +402,9 @@ test fn witness_wholesale_refused_poison_carries_marker() -> Bool {
 
 test fn witness_deploy_access_job_principal_refused_poison_golden_independent() -> Bool {
   let poison = deploy_access_job_principal_refused_emit_poison(
-    refusal: DeployAccessJobPrincipalRefusal {
-      job_user: "runner" as NonEmptyStr,
-      runner: DeployRunnerPrincipal { unit_user: "root", job_user: "runner" as NonEmptyStr },
+    refusal: gunbc.ci_deploy_access.DeployAccessJobPrincipalRefusal {
+      job_user: "runner" as std.types.NonEmptyStr,
+      runner: gunbc.fleet_posix_accounts.DeployRunnerPrincipal { unit_user: "root", job_user: "runner" as std.types.NonEmptyStr },
     }
   )
   string_contains(s: poison, pattern: "__GUNBC_DEPLOY_ACCESS_REFUSED__")
@@ -418,7 +418,7 @@ test fn witness_apply_script_access_ready_not_deploy_access_poison() -> Bool {
 
 data twin_on_one_host_witness_note: String = "THE CLAIM THAT WAS UNWRITABLE BEFORE THIS CHANGE, and it is the whole point of it. deployment_owned_steps and deployment_service_config took no arguments, so there was exactly one deployment in the model and a second one on the SAME machine could not be constructed at all — not merely inconvenient, unexpressible. That is what proved host was the wrong axis: if the only thing that varies is which host, then two deployments on one host is a contradiction, and a model that makes it a contradiction has fused two independent facts.\\n\\nSo the test is the twin. Same target — one machine, one ssh host, one package manager — and a different instance, and every owned path, the unit, the tailscale mapping and the port must come out disjoint. srv1_lab is a real declared instance rather than a synthetic one, so this also states that the two dashboards already declared today CAN both be deployed, which was false an hour ago.\\n\\nThe conjunct that would survive a bad fix is the target equality. Without it the claim passes trivially if someone makes the twin differ by host, which is precisely the abstraction this replaces."
 
-fn srv1_twin_spec() -> DeploymentSpec {
+fn srv1_twin_spec() -> gunbc.live_deploy.spec.DeploymentSpec {
   deployment_spec_for(
     instance: srv1_lab_dashboard_instance(),
     target: deployment_srv1_target(),
@@ -426,7 +426,7 @@ fn srv1_twin_spec() -> DeploymentSpec {
   )
 }
 
-fn spec_owned_paths(spec: DeploymentSpec) -> List<String> {
+fn spec_owned_paths(spec: gunbc.live_deploy.spec.DeploymentSpec) -> List<String> {
   deployment_owned_steps_retract_order(spec: spec) |> map(s => s.path as String)
 }
 
@@ -542,7 +542,7 @@ test fn teardown_disposition_separates_owned_from_ensured() -> Bool {
   }
   let package = match deployment_step_teardown_disposition(
     step: Dependency {
-      step: DeploymentDependencyStep { kind: TailscalePackage, subject: EnsuredPackage { package: package_tailscale } },
+      step: gunbc.live_deploy.spec.DeploymentDependencyStep { kind: TailscalePackage, subject: EnsuredPackage { package: package_tailscale } },
     },
   ) {
     TeardownActs => false
@@ -572,9 +572,9 @@ test fn twin_and_production_configure_disjoint_tailscale_endpoints() -> Bool {
 
 data unobserved_client_refuses_before_emission_note: String = "THE VERSION WALL, AND THE REASON IT SITS AT EMISSION RATHER THAN IN THE SCRIPT. Scoped `serve <flags> off` arrived in tailscale client 1.52, so it is a fact about the binary installed on a host, not about tailscale. srv1 is measured at 1.98.3 and its target row records the measurement; no other fleet host has been measured, and asserting the capability for them from srv1 would be the same uncited generalization this whole change is repairing.\\n\\nAn in-script guard would have been the weaker answer: it puts a stop-the-line arm back among the teardowns, which is precisely the shape that once aborted every retract before it removed anything, and it only fires after the operator has already run the script. Refusing to EMIT means the dangerous artifact does not exist.\\n\\nThe claim needs all three arms because the failure mode is a two-into-one collapse. Unobserved and unsupported are DIFFERENT states — one host was never looked at, the other was looked at and cannot do it — and the tempting simplification is to treat unobserved as either capable (fail-open, the original defect) or as unsupported (which would silently misreport a host nobody has measured). Asserting that both refuse, that their refusals differ, and that the measured host still emits a real retract is what pins all three apart."
 
-fn unmeasured_client_target() -> DeploymentHostTarget {
+fn unmeasured_client_target() -> gunbc.live_deploy.spec.DeploymentHostTarget {
   let t = deployment_srv1_target()
-  DeploymentHostTarget {
+  gunbc.live_deploy.spec.DeploymentHostTarget {
     host: t.host,
     ssh_host: t.ssh_host,
     tailscale_endpoint: t.tailscale_endpoint,
@@ -584,21 +584,21 @@ fn unmeasured_client_target() -> DeploymentHostTarget {
   }
 }
 
-fn preserve_removal_client_target() -> DeploymentHostTarget {
+fn preserve_removal_client_target() -> gunbc.live_deploy.spec.DeploymentHostTarget {
   let t = deployment_srv1_target()
-  DeploymentHostTarget {
+  gunbc.live_deploy.spec.DeploymentHostTarget {
     host: t.host,
     ssh_host: t.ssh_host,
     tailscale_endpoint: t.tailscale_endpoint,
     tailnet_domain: t.tailnet_domain,
     os_package_manager: t.os_package_manager,
     tailscale_client: tailscale_scoped_removal_capability(
-      observed: SemVerVersion { major: 1, minor: 40, patch: 0, pre_release: [], build: [] },
+      observed: extdeps.version.semver.SemVerVersion { major: 1, minor: 40, patch: 0, pre_release: [], build: [] },
     ),
   }
 }
 
-fn spec_with_target(target: DeploymentHostTarget) -> DeploymentSpec {
+fn spec_with_target(target: gunbc.live_deploy.spec.DeploymentHostTarget) -> gunbc.live_deploy.spec.DeploymentSpec {
   deployment_spec_for(
     instance: srv1_live_dashboard_instance(),
     target: target,

@@ -44,7 +44,7 @@ type GenerationAxis
 // relabel arbitrary text as a digest — the exact move content_hash's constructor note
 // forbids.
 type ObservedArtifactDigest sole_constructor {
-  observed: Sha512Digest
+  observed: std.content_hash.Sha512Digest
 }
 
 fn observed_artifact_digest(observed: Sha512Digest) -> ObservedArtifactDigest {
@@ -75,11 +75,11 @@ type GeneratedArtifactIdentity
 // reproducibility oracle. Registered as an obligation with its trigger in
 // gunbc.self_host_promotion_obligations.
 type GenerationIdentity {
-  producer_compiler: Hash
-  source_closure: Hash
-  target_model: Hash
-  toolchain: Hash
-  build_configuration: Hash
+  producer_compiler: v2.std.node.Hash
+  source_closure: v2.std.node.Hash
+  target_model: v2.std.node.Hash
+  toolchain: v2.std.node.Hash
+  build_configuration: v2.std.node.Hash
   materialized_artifact: GeneratedArtifactIdentity
 }
 
@@ -104,7 +104,7 @@ type SuccessorGeneration {
 
 type SourceClosureMember {
   identity: String
-  content: Hash
+  content: v2.std.node.Hash
 }
 
 type SourceClosureRoster {
@@ -224,7 +224,7 @@ fn source_closure_roster_fold(roster: SourceClosureRoster) -> Hash {
 }
 
 type SourceClosureAxisOutcome
-  = SourceClosureAxisDigest { digest: Hash }
+  = SourceClosureAxisDigest { digest: v2.std.node.Hash }
   | SourceClosureAxisRefused { verdict: RosterOrderVerdict }
 
 fn source_closure_axis_digest(roster: SourceClosureRoster) -> SourceClosureAxisOutcome {

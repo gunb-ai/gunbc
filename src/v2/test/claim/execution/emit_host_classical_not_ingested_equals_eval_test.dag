@@ -52,7 +52,7 @@ fn ingested_arrow_from_source(source: String) -> Outcome<Node> {
     }
   )
 }
-fn ingested_canonical_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
+fn ingested_canonical_inferred_tree_from_source(source: String) -> Outcome<v2.compiler.infer.InferredTree> {
   bind_outcome(
     o: ingested_arrow_from_source(source: source),
     f: fn(arrow) {
@@ -62,9 +62,9 @@ fn ingested_canonical_inferred_tree_from_source(source: String) -> Outcome<Infer
 }
 
 fn ingested_classical_not_staging_facts_lookup(
-  canonical: InferredTree,
+  canonical: v2.compiler.infer.InferredTree,
   key: Node
-) -> Optional<InferredFacts> {
+) -> Optional<v2.compiler.infer.InferredFacts> {
   match inferred_facts_witness_for_node(tree: canonical, node: key) {
     Holds { value: facts } =>
       Present { value: facts }
@@ -73,7 +73,7 @@ fn ingested_classical_not_staging_facts_lookup(
   }
 }
 
-fn ingested_staging_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
+fn ingested_staging_inferred_tree_from_source(source: String) -> Outcome<v2.compiler.infer.InferredTree> {
   bind_outcome(
     o: ingested_arrow_from_source(source: source),
     f: fn(arrow) {
@@ -81,7 +81,7 @@ fn ingested_staging_inferred_tree_from_source(source: String) -> Outcome<Inferre
         o: infer(tree: arrow),
         f: fn(inferred) {
           outcome_accepted(
-            value: InferredTree {
+            value: v2.compiler.infer.InferredTree {
               root: inferred.root,
               facts: Map {
                 lookup: fn(key) {
@@ -96,12 +96,12 @@ fn ingested_staging_inferred_tree_from_source(source: String) -> Outcome<Inferre
   )
 }
 
-fn ingested_emit_shape_frontier_tree_from_source(source: String) -> Outcome<InferredTree> {
+fn ingested_emit_shape_frontier_tree_from_source(source: String) -> Outcome<v2.compiler.infer.InferredTree> {
   bind_outcome(
     o: ingested_arrow_from_source(source: source),
     f: fn(arrow) {
       outcome_accepted(
-        value: InferredTree {
+        value: v2.compiler.infer.InferredTree {
           root: arrow,
           facts: Map {
             lookup: fn(_key) {
@@ -114,7 +114,7 @@ fn ingested_emit_shape_frontier_tree_from_source(source: String) -> Outcome<Infe
   )
 }
 
-fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> Outcome<InferredTree> {
+fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> Outcome<v2.compiler.infer.InferredTree> {
   bind_outcome(
     o: ingested_arrow_from_source(source: source),
     f: fn(arrow) {
@@ -122,7 +122,7 @@ fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> Outcome<I
         o: infer(tree: arrow),
         f: fn(inferred) {
           outcome_accepted(
-            value: InferredTree {
+            value: v2.compiler.infer.InferredTree {
               root: inferred.root,
               facts: Map {
                 lookup: fn(key) {
@@ -137,7 +137,7 @@ fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> Outcome<I
   )
 }
 
-fn ingested_inferred_tree_from_source(source: String) -> Outcome<InferredTree> {
+fn ingested_inferred_tree_from_source(source: String) -> Outcome<v2.compiler.infer.InferredTree> {
   ingested_staging_inferred_tree_from_source(source: source)
 }
 
@@ -155,8 +155,8 @@ fn ingested_classical_not_eval_subgraph_canonical() -> Node {
   )
 }
 
-fn ingested_classical_not_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
-  Diagnostic {
+fn ingested_classical_not_diagnostic(reason: v2.std.node.Symbol, node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -185,7 +185,7 @@ fn ingested_arrow_has_match_body(source: String) -> Bool {
   }
 }
 
-fn ingested_classical_not_generic_facts(node: Node) -> InferredFacts {
+fn ingested_classical_not_generic_facts(node: Node) -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
@@ -198,28 +198,28 @@ fn ingested_classical_not_generic_facts(node: Node) -> InferredFacts {
   )
 }
 
-fn ingested_classical_not_composed_facts(key: Node) -> InferredFacts {
+fn ingested_classical_not_composed_facts(key: Node) -> v2.compiler.infer.InferredFacts {
   ingested_classical_not_generic_facts(node: key)
 }
 
-fn ingested_classical_not_octet_value(n: Int) -> RuntimeValue {
+fn ingested_classical_not_octet_value(n: Int) -> v2.std.runtime.RuntimeValue {
   RuntimePrimitive {
-    value: RuntimePrimitiveValue {
+    value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: rust_emit_host_runtime_primitive_type_node(),
       bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
     }
   }
 }
 
-fn ingested_classical_not_bool_true(value: RuntimeValue) -> Bool {
+fn ingested_classical_not_bool_true(value: v2.std.runtime.RuntimeValue) -> Bool {
   value == ingested_classical_not_octet_value(n: 1)
 }
 
-fn ingested_classical_not_bool_false(value: RuntimeValue) -> Bool {
+fn ingested_classical_not_bool_false(value: v2.std.runtime.RuntimeValue) -> Bool {
   value == ingested_classical_not_octet_value(n: 0)
 }
 
-fn ingested_classical_not_allocate_literal(node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn ingested_classical_not_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == ^dag_token_kw_true {
@@ -240,9 +240,9 @@ fn ingested_classical_not_allocate_literal(node: Node, _env: EvaluationEnvironme
 
 fn ingested_classical_not_call_primitive(
   node: Node,
-  _args: List<RuntimeValue>,
-  _env: EvaluationEnvironment
-) -> Outcome<RuntimeValue> {
+  _args: List<v2.std.runtime.RuntimeValue>,
+  _env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   outcome_rejected(
     d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_call_primitive_miss, node: node)
   )
@@ -250,8 +250,8 @@ fn ingested_classical_not_call_primitive(
 
 fn ingested_classical_not_choose_branch(
   node: Node,
-  _value: RuntimeValue,
-  _env: EvaluationEnvironment
+  _value: v2.std.runtime.RuntimeValue,
+  _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<Node> {
   outcome_rejected(
     d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_branch_miss, node: node)
@@ -260,18 +260,18 @@ fn ingested_classical_not_choose_branch(
 
 fn ingested_classical_not_step_loop(
   node: Node,
-  _env: EvaluationEnvironment
-) -> Outcome<ControlTransfer> {
+  _env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.ControlTransfer> {
   outcome_rejected(
     d: ingested_classical_not_diagnostic(reason: ^ingested_classical_not_loop_miss, node: node)
   )
 }
 
 fn ingested_classical_not_bind_value(
-  _key: EnvironmentBindingKey,
-  _value: RuntimeValue,
-  env: EvaluationEnvironment
-) -> Outcome<EvaluationEnvironment> {
+  _key: v2.std.runtime.EnvironmentBindingKey,
+  _value: v2.std.runtime.RuntimeValue,
+  env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
   outcome_accepted(value: env)
 }
 
@@ -297,8 +297,8 @@ fn ingested_classical_not_arm_body_node(arm_wire: Node) -> Outcome<Node> {
 
 fn ingested_classical_not_choose_arm(
   node: Node,
-  scrutinee: RuntimeValue,
-  _env: EvaluationEnvironment
+  scrutinee: v2.std.runtime.RuntimeValue,
+  _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<Node> {
   if ingested_classical_not_bool_true(value: scrutinee) {
     match ingested_classical_not_nth_arm_wire(node: node, wanted: 1) {
@@ -319,19 +319,19 @@ fn ingested_classical_not_choose_arm(
   }
 }
 
-fn ingested_classical_not_interpretation() -> InterpretationAlgebra {
-  InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: ingested_classical_not_allocate_literal },
-    transform: TransformInterpreter { call_primitive: ingested_classical_not_call_primitive },
-    branch: BranchInterpreter { choose_branch: ingested_classical_not_choose_branch },
-    loop: LoopInterpreter { step_loop: ingested_classical_not_step_loop },
-    bind: BindInterpreter { bind_value: ingested_classical_not_bind_value },
-    match: MatchInterpreter { choose_arm: ingested_classical_not_choose_arm }
+fn ingested_classical_not_interpretation() -> v2.std.runtime.InterpretationAlgebra {
+  v2.std.runtime.InterpretationAlgebra {
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: ingested_classical_not_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: ingested_classical_not_call_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: ingested_classical_not_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: ingested_classical_not_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: ingested_classical_not_bind_value },
+    match: v2.std.runtime.MatchInterpreter { choose_arm: ingested_classical_not_choose_arm }
   }
 }
 
-fn ingested_classical_not_structure_witness() -> InterpretationStructureWitness {
-  InterpretationStructureWitness {
+fn ingested_classical_not_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
+  v2.std.runtime.InterpretationStructureWitness {
     allocate_literal: ^ingested_classical_not_allocate_literal_sym,
     call_primitive: ^ingested_classical_not_call_primitive_sym,
     choose_branch: ^ingested_classical_not_choose_branch_sym,
@@ -341,7 +341,7 @@ fn ingested_classical_not_structure_witness() -> InterpretationStructureWitness 
   }
 }
 
-fn ingested_classical_not_context() -> EvalContext {
+fn ingested_classical_not_context() -> v2.compiler.eval.EvalContext {
   eval_context_with_semantics(
     runtime_identity: ^ingested_classical_not_interpretation_pin,
     interpretation: ingested_classical_not_interpretation(),
@@ -349,17 +349,17 @@ fn ingested_classical_not_context() -> EvalContext {
   )
 }
 
-fn ingested_classical_not_claim(rhs_result_node: Node) -> TestClaim {
+fn ingested_classical_not_claim(rhs_result_node: Node) -> v2.std.verification.TestClaim {
   EqualsClaim {
     label: "Wave1 exit: ingested classical_not emit-host == eval (true scrutinee → false)",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     lhs: rhs_result_node,
     rhs: rhs_result_node,
-    classification: TestClassification { tier: Tier3, layer: Integration }
+    classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
   }
 }
 
-fn ingested_classical_not_subject(tree: InferredTree, subgraph: Node) -> TestClaimEvalSubject<Node> {
+fn ingested_classical_not_subject(tree: v2.compiler.infer.InferredTree, subgraph: Node) -> TestClaimEvalSubject<Node> {
   eval_test_claim_subject(
     claim: ingested_classical_not_claim(rhs_result_node: subgraph),
     context: ingested_classical_not_context(),
@@ -368,7 +368,7 @@ fn ingested_classical_not_subject(tree: InferredTree, subgraph: Node) -> TestCla
   )
 }
 
-fn ingested_classical_not_run(tree: InferredTree, subgraph: Node) -> TestClaimRun<Node, RuntimeValue> {
+fn ingested_classical_not_run(tree: v2.compiler.infer.InferredTree, subgraph: Node) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: ingested_classical_not_subject(tree: tree, subgraph: subgraph),
     target: rust_classical_not_ingested_target_model_staging()
@@ -542,7 +542,7 @@ fn ingested_classical_not_match_only_param_body_fixture() -> Node {
 
 fn ingested_classical_not_arrow_empty_domain_fixture() -> Node {
   dag_arrow_with_body_node(
-    domain: Node {
+    domain: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence

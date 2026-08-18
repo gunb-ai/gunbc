@@ -36,7 +36,7 @@ type ExtentConstruction
   = ExtentReady { frame: ClockFrame, extent: OccurrenceExtent }
   | ExtentRefused { cause: std.types.NonEmptyStr }
 
-fn nanosecond_le(a: Nanosecond, b: Nanosecond) -> Bool {
+fn nanosecond_le(a: std.measure.Nanosecond, b: std.measure.Nanosecond) -> Bool {
   nanosecond_count(n: a) <= nanosecond_count(n: b)
 }
 
@@ -45,8 +45,8 @@ fn nanosecond_le(a: Nanosecond, b: Nanosecond) -> Bool {
 // rather than producing a width.
 fn occurrence_extent(
   occurrence: std.observation.OccurrenceId,
-  begin: ObservationInstant,
-  end: ObservationInstant,
+  begin: std.measure.ObservationInstant,
+  end: std.measure.ObservationInstant,
 ) -> ExtentConstruction {
   match compare_instants(a: begin, b: end) {
     InstantIncomparable { left: _, right: _ } =>
@@ -60,8 +60,8 @@ fn occurrence_extent(
 
 fn extent_from_ordered(
   occurrence: std.observation.OccurrenceId,
-  begin: ObservationInstant,
-  end: ObservationInstant,
+  begin: std.measure.ObservationInstant,
+  end: std.measure.ObservationInstant,
 ) -> ExtentConstruction {
   match closed_interval(low: begin.since_origin, high: end.since_origin, le: nanosecond_le) {
     IntervalRefused { reason: r } => ExtentRefused { cause: r }

@@ -2,21 +2,21 @@ module extdeps.runtime.api.darwin
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "developer.apple.com/documentation/macos-release-notes/macos-15-release-notes"
   }
 }
 
-data libsystem_read: ApiEntry = ApiEntry { symbol: "read", module: "libSystem" }
-data libsystem_write: ApiEntry = ApiEntry { symbol: "write", module: "libSystem" }
-data libsystem_open: ApiEntry = ApiEntry { symbol: "open", module: "libSystem" }
-data libsystem_mmap: ApiEntry = ApiEntry { symbol: "mmap", module: "libSystem" }
-data libsystem_execve: ApiEntry = ApiEntry { symbol: "execve", module: "libSystem" }
-data libsystem_exit: ApiEntry = ApiEntry { symbol: "exit", module: "libSystem" }
+data libsystem_read: std.os.invocation.ApiEntry = std.os.invocation.ApiEntry { symbol: "read", module: "libSystem" }
+data libsystem_write: std.os.invocation.ApiEntry = std.os.invocation.ApiEntry { symbol: "write", module: "libSystem" }
+data libsystem_open: std.os.invocation.ApiEntry = std.os.invocation.ApiEntry { symbol: "open", module: "libSystem" }
+data libsystem_mmap: std.os.invocation.ApiEntry = std.os.invocation.ApiEntry { symbol: "mmap", module: "libSystem" }
+data libsystem_execve: std.os.invocation.ApiEntry = std.os.invocation.ApiEntry { symbol: "execve", module: "libSystem" }
+data libsystem_exit: std.os.invocation.ApiEntry = std.os.invocation.ApiEntry { symbol: "exit", module: "libSystem" }
 
-data macos_libsystem_exports: List<ApiEntry> = [
+data macos_libsystem_exports: List<std.os.invocation.ApiEntry> = [
   libsystem_read,
   libsystem_write,
   libsystem_open,
@@ -25,11 +25,11 @@ data macos_libsystem_exports: List<ApiEntry> = [
   libsystem_exit,
 ]
 
-data macos_libsystem_boundary: LibraryApiBoundary = {
+data macos_libsystem_boundary: std.os.invocation.LibraryApiBoundary = {
   exports: macos_libsystem_exports,
 }
 
-data macos_15_library_api_surface: StableInvocationSurface = LibraryApiBoundarySurface {
+data macos_15_library_api_surface: std.os.invocation.StableInvocationSurface = LibraryApiBoundarySurface {
   boundary: macos_libsystem_boundary,
 }
 

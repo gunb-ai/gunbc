@@ -19,12 +19,12 @@ type InstallMediaFetchObservation
   = InstallMediaFetchAbsent
   | InstallMediaFetchVerified
   | InstallMediaFetchHashMismatch
-  | InstallMediaFetchVerifyInfraFailure { reason: NonEmptyStr }
+  | InstallMediaFetchVerifyInfraFailure { reason: std.types.NonEmptyStr }
 
 type InstallMediaFetchReconcileOutcome
-  = InstallMediaFetchAlreadyPresent { path: NonEmptyStr }
-  | InstallMediaFetchFetched { path: NonEmptyStr, mirror_url: NonEmptyStr }
-  | InstallMediaFetchRefused { reason: NonEmptyStr }
+  = InstallMediaFetchAlreadyPresent { path: std.types.NonEmptyStr }
+  | InstallMediaFetchFetched { path: std.types.NonEmptyStr, mirror_url: std.types.NonEmptyStr }
+  | InstallMediaFetchRefused { reason: std.types.NonEmptyStr }
 
 data refusal_shape_doc: String = "DESIGN §5 refusal-shape fix (cursor review, PR #6596): the fetch reconcile path now matches Sha256VerifyVerdict directly instead of collapsing it through a Bool predicate, so a mktemp/checksum-write infra failure stays distinguishable from a genuine digest mismatch (InstallMediaFetchVerifyInfraFailure vs InstallMediaFetchHashMismatch), and a post-download shell.Move.File failure aborts with its own typed refusal instead of falling through the mirror fold to a misleading 'all mirrors unreachable'. The Bool-collapsing install_media_hash_matches helper was deleted (cursor review, PR #6596) - its two wet witnesses now assert on observe_install_media_fetch's Sha256VerifyVerdict-derived outcome directly, so no predicate-dissolution surface remains anywhere in this module."
 

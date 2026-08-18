@@ -3,9 +3,9 @@ module test.claim.served_surface_browser_artifact_integrity_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
-fn screenshot_artifact_matches_live_bytes(artifact: ScreenshotArtifact) -> Bool {
+fn screenshot_artifact_matches_live_bytes(artifact: gunbc.served_surface_browser_observation.ScreenshotArtifact) -> Bool {
   let digest = sha256sum_verify_via_shell(
-    path: artifact.path as NonEmptyStr,
+    path: artifact.path as std.types.NonEmptyStr,
     expected_digest: artifact.digest.hex)
   let bytes = file_byte_count_via_wc(path: artifact.path as String as std.types.FilePath)
   digest == Sha256Matches

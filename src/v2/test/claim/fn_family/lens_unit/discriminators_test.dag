@@ -1,21 +1,21 @@
 module v2.test.fn_family.lens_unit.discriminators_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn atom_node(id: Symbol) -> Node {
+fn atom_node(id: v2.std.node.Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
 }
 
-fn edge_of(k: Node) -> Edge {
-  Edge { label: Positional, target: k }
+fn edge_of(k: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Positional, target: k }
 }
 
-fn no_edges() -> List<Edge> {
+fn no_edges() -> List<v2.std.node.Edge> {
   []
 }
 
-fn kids_to_edges(kids: List<Node>) -> List<Edge> {
+fn kids_to_edges(kids: List<Node>) -> List<v2.std.node.Edge> {
   fold_list(
     xs: kids,
     empty: no_edges(),
@@ -30,7 +30,7 @@ fn conj_of(kids: List<Node>) -> Node {
   )
 }
 
-fn family_member(leaf: Symbol) -> Node {
+fn family_member(leaf: v2.std.node.Symbol) -> Node {
   conj_of(kids: [atom_node(id: ^shared_head), conj_of(kids: [atom_node(id: leaf), atom_node(id: ^shared_tail)])])
 }
 
@@ -95,7 +95,7 @@ fn parse_wrapped_fn_decl(body: Node) -> Node {
   )
 }
 
-fn fn_decl_marked_subtree(leaf: Symbol) -> Node {
+fn fn_decl_marked_subtree(leaf: v2.std.node.Symbol) -> Node {
   parse_wrapped_fn_decl(body: conj_of(kids: [atom_node(id: leaf), atom_node(id: ^shared_tail)]))
 }
 
@@ -130,7 +130,7 @@ test fn witness_disjoint_decls_quiet_through_linearity_registry() -> Bool {
   ]) == false
 }
 
-fn two_slot_member(s1: Symbol, s2: Symbol) -> Node {
+fn two_slot_member(s1: v2.std.node.Symbol, s2: v2.std.node.Symbol) -> Node {
   conj_of(kids: [atom_node(id: ^shared_head), conj_of(kids: [atom_node(id: s1), atom_node(id: s2)])])
 }
 

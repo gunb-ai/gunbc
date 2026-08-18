@@ -15,7 +15,7 @@ data front_door_admissions_note: String = "The standing the front door reports i
 
 data front_door_dogfooding_cost_receipt_note: String = "MEASURED COST OF CONSUMING THIS READING PER PR, and why the per-PR CI consumer was withdrawn (2026-08-09). A PR-close delivery check was built on this front door and run on real pull requests; it is closed unmerged at gunbc#8064, branch head afc52ff39ffc5405e61ede484ceb32a31cd0288c, which is the quarry pointer for the mechanism and its witnesses. Three facts it measured are kept because they price the displaced cost that declaration-grain consumption would remove, and none of them is recoverable by re-reading this module. ONE: on ten ordinary subjects, eight modification-only diffs rendered DeclarationGrainUnavailable, so the module grain named in front_door_disclosure_note is not a rare edge but the common case for ordinary edits. TWO: the delivery step cost five minutes thirty-five seconds of wall on the ordinary PR path, measured as a CI step interval rather than locally (a full front-door resolve exceeds a session container lifetime, so a local timing is not obtainable and any local figure would be a guess). THREE: splitting the fold so that a diff with no added paths takes a declaration census and never builds the corpus-wide edge index is the correct shape and was not sufficient — the resolve of this module's own closure is paid before any census begins. The operator's criterion was that a non-negligible common-path cost closes the consumer rather than levying a permanent CI tax for a mostly-undecidable report, and five minutes thirty-five seconds fired it. What was withdrawn is the per-PR step, NOT the acceptance question it asked, which is whether anything consumes what a change built; that question survives for humans and for the eventual lens suite. Dissolve-on: a cheap exact-subject fact pack makes the reading consumable inside a warm budget, at which point these figures become the before side of its receipt rather than a standing caution."
 
-data front_door_admissions: List<ReferenceDerivedClosureAdmission> = [
+data front_door_admissions: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> = [
   ReferenceDerivedClosureUnavailable {
     capability: UnrelatedLoadedFileExcluded,
     trigger: P2aPoolIndependentDependencyProjection7515
@@ -26,11 +26,11 @@ data front_door_admissions: List<ReferenceDerivedClosureAdmission> = [
   },
 ]
 
-fn front_door_nodes() -> List<ModuleDeclarationFact> {
+fn front_door_nodes() -> List<v2.lens.module_graph.ModuleDeclarationFact> {
   module_declaration_facts_live(pool_roots: front_door_pool_roots)
 }
 
-fn front_door_edges() -> List<ModuleDependencyEdge> {
+fn front_door_edges() -> List<v2.lens.module_graph.ModuleDependencyEdge> {
   dependency_resolution_facts_live(
     pool_roots: front_door_pool_roots,
     importer_roots: front_door_importer_roots,
@@ -38,7 +38,7 @@ fn front_door_edges() -> List<ModuleDependencyEdge> {
   )
 }
 
-fn front_door_import_facts() -> List<ImportResolutionFact> {
+fn front_door_import_facts() -> List<v2.lens.module_graph.ImportResolutionFact> {
   import_resolution_facts_live(
     pool_roots: front_door_pool_roots,
     importer_roots: front_door_importer_roots,
@@ -46,9 +46,9 @@ fn front_door_import_facts() -> List<ImportResolutionFact> {
   )
 }
 
-fn dependents_of_module(module_name: String) -> ImpactReading {
+fn dependents_of_module(module_name: String) -> v2.lens.module_impact_query.ImpactReading {
   module_impact_reading(
-    seeds: [ModuleIdentity { name: module_name }],
+    seeds: [v2.lens.module_impact_query.ModuleIdentity { name: module_name }],
     direction: DependentsOf,
     edges: front_door_edges(),
     nodes: front_door_nodes(),
@@ -57,9 +57,9 @@ fn dependents_of_module(module_name: String) -> ImpactReading {
   )
 }
 
-fn dependencies_of_module(module_name: String) -> ImpactReading {
+fn dependencies_of_module(module_name: String) -> v2.lens.module_impact_query.ImpactReading {
   module_impact_reading(
-    seeds: [ModuleIdentity { name: module_name }],
+    seeds: [v2.lens.module_impact_query.ModuleIdentity { name: module_name }],
     direction: DependenciesOf,
     edges: front_door_edges(),
     nodes: front_door_nodes(),
@@ -68,7 +68,7 @@ fn dependencies_of_module(module_name: String) -> ImpactReading {
   )
 }
 
-fn dependents_of_path(path: String) -> ImpactReading {
+fn dependents_of_path(path: String) -> v2.lens.module_impact_query.ImpactReading {
   module_impact_reading(
     seeds: impact_seeds_for_path(nodes: front_door_nodes(), path: path),
     direction: DependentsOf,
@@ -79,7 +79,7 @@ fn dependents_of_path(path: String) -> ImpactReading {
   )
 }
 
-fn render_standing(reading: ImpactReading) -> String {
+fn render_standing(reading: v2.lens.module_impact_query.ImpactReading) -> String {
   match reading.standing {
     ExactForGraphSubject => "ExactForGraphSubject"
     ProvisionalForObservedPool => "ProvisionalForObservedPool — observed pool only; pool independence not established"
@@ -89,7 +89,7 @@ fn render_standing(reading: ImpactReading) -> String {
   }
 }
 
-fn render_cause(cause: ImpactStandingCause) -> String {
+fn render_cause(cause: v2.lens.module_impact_query.ImpactStandingCause) -> String {
   match cause {
     UndeclaredTargetModule { dependent_module, target_module } =>
       "    undeclared-target  {dependent_module.name} -> {target_module}"
@@ -98,7 +98,7 @@ fn render_cause(cause: ImpactStandingCause) -> String {
   }
 }
 
-fn render_cycle(cycle: ImpactCycle) -> String {
+fn render_cycle(cycle: v2.lens.module_impact_query.ImpactCycle) -> String {
   match cycle {
     ImpactImportAcyclicityViolation { members } =>
       "    IMPORT-ACYCLICITY VIOLATION: {render_modules(modules: members)}"
@@ -107,7 +107,7 @@ fn render_cycle(cycle: ImpactCycle) -> String {
   }
 }
 
-fn render_modules(modules: List<ModuleIdentity>) -> String {
+fn render_modules(modules: List<v2.lens.module_impact_query.ModuleIdentity>) -> String {
   fold_list(
     xs: modules,
     empty: "",
@@ -137,8 +137,8 @@ fn render_lines(lines: List<String>) -> String {
 
 fn render_reading(
   subject: String,
-  reading: ImpactReading,
-  nodes: List<ModuleDeclarationFact>
+  reading: v2.lens.module_impact_query.ImpactReading,
+  nodes: List<v2.lens.module_graph.ModuleDeclarationFact>
 ) -> String {
   let reached_lines = list_reverse(xs: fold_list(
     xs: reading.reached,
@@ -213,7 +213,7 @@ fn dependents_of_path_report() -> String {
 
 data changed_surface_front_door_note: String = "CAPSULE 2 applied consumer, reworked under the operator ruling 2026-08-08. Changed paths AND departed paths both come from v2.workflow.floor_diff_observe, the existing single authority for the CI diff observation - this adds no second diff producer. Deletions are no longer discarded: a departed path becomes a ResolveInBase subject, which cannot resolve against the head population and therefore lands as a typed BaseGraphUnavailable unresolved subject, contaminating the outcome to Partial. A diff-observation FAILURE refuses with the observation's own reason and computes NO impact - it never widens to the whole corpus. Run: gunbc run --source-root dag --source-root src/v2 --entry dag/tools/module_impact_query_front_door.dag --function changed_surface_impact_report"
 
-fn render_changed_path_seeds(row: ChangedPathSeeds) -> String {
+fn render_changed_path_seeds(row: v2.lens.module_impact_query.ChangedPathSeeds) -> String {
   if any(xs: row.seeds, predicate: fn(_) { true }) {
     "    {row.path}  ->  {render_modules(modules: row.seeds)}"
   } else {
@@ -221,7 +221,7 @@ fn render_changed_path_seeds(row: ChangedPathSeeds) -> String {
   }
 }
 
-fn render_unresolved_subject(subject: UnresolvedSubject) -> String {
+fn render_unresolved_subject(subject: v2.lens.module_impact_query.UnresolvedSubject) -> String {
   match subject.cause {
     NoModuleDeclaredAtPath =>
       "    {subject.path}  —  no module declared at this path in the observed pool"
@@ -230,7 +230,7 @@ fn render_unresolved_subject(subject: UnresolvedSubject) -> String {
   }
 }
 
-fn render_skip_authority(authority: SkipAuthority) -> String {
+fn render_skip_authority(authority: v2.lens.module_impact_query.SkipAuthority) -> String {
   match authority {
     SkipAuthorityGranted { affected: _ } =>
       "GRANTED — the answer is exact and whole for this subject"
@@ -246,7 +246,7 @@ fn render_skip_authority(authority: SkipAuthority) -> String {
   }
 }
 
-fn render_outcome(outcome: ChangedSurfaceImpactOutcome) -> String {
+fn render_outcome(outcome: v2.lens.module_impact_query.ChangedSurfaceImpactOutcome) -> String {
   match outcome {
     ChangedSurfaceRefused { reason } =>
       "change impact REFUSED — no impact computed and NOTHING widened to the whole corpus. reason: {reason}"
@@ -285,7 +285,7 @@ fn render_outcome(outcome: ChangedSurfaceImpactOutcome) -> String {
   }
 }
 
-fn front_door_changed_surface_outcome() -> ChangedSurfaceImpactOutcome {
+fn front_door_changed_surface_outcome() -> v2.lens.module_impact_query.ChangedSurfaceImpactOutcome {
   match floor_observe_git_diff_name_status_for_ci() {
     NameStatusDiffFail { reason } => ChangedSurfaceRefused { reason: reason }
     NameStatusDiffOk { changed_paths, departed_paths } =>

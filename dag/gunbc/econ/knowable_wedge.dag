@@ -7,8 +7,8 @@ data knowable_wedge_note: String = "Knowable wedge = publicly cited umbrella pri
 data wedge_fx_assumption_frontier: String = "eur_to_usd_numerator/denominator are explicitly declared WedgeAssumptions inputs (refuses ExchangeRateUnknown on zero denominator), not cited extdeps facts. dissolve-on: extdeps.forex authority + MoneyRate<From,To> carrier when a second FX consumer appears."
 
 type WedgeAssumptions {
-  runner_utilization_bp: BasisPoint
-  amortization_months: AmortizationMonths
+  runner_utilization_bp: std.measure.BasisPoint
+  amortization_months: std.measure.AmortizationMonths
   eur_to_usd_numerator: std.nat.Nat
   eur_to_usd_denominator: std.nat.Nat
 }
@@ -29,13 +29,13 @@ type KnowableWedgeRefusalCause
   | FloorExceedsUmbrella
 
 type RunnerCostFloorResult
-  = RunnerCostFloorDerived { floor: MoneyPerMinute }
+  = RunnerCostFloorDerived { floor: std.measure.MoneyPerMinute }
   | RunnerCostFloorRefused { cause: KnowableWedgeRefusalCause }
 
 type KnowableWedgeDerived {
-  umbrella_per_minute: MoneyPerMinute
-  cost_floor_per_minute: MoneyPerMinute
-  wedge_per_minute: MoneyPerMinute
+  umbrella_per_minute: std.measure.MoneyPerMinute
+  cost_floor_per_minute: std.measure.MoneyPerMinute
+  wedge_per_minute: std.measure.MoneyPerMinute
 }
 
 type KnowableWedgeResult

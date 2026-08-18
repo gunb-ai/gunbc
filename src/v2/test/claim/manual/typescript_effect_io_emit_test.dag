@@ -1,9 +1,9 @@
 module v2.test.manual.typescript_effect_io_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn effect_io_binding_spellings() -> Map<Symbol, String> {
+fn effect_io_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(empty_map(), ^effect_io_binding_path, "ioPath"),
     ^effect_io_binding_content,
@@ -11,8 +11,8 @@ fn effect_io_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn effect_io_target_model() -> TargetModel {
-  TargetModel {
+fn effect_io_target_model() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_fn_add_lex(),
@@ -23,7 +23,7 @@ fn effect_io_target_model() -> TargetModel {
   }
 }
 
-fn ts_effect_write_call_expr() -> TargetValueExpression {
+fn ts_effect_write_call_expr() -> v2.std.compilers.target_model.TargetValueExpression {
   target_value_expression_effect_apply(
     effect_kind_discriminant: ^WriteResource,
     operands: [
@@ -33,7 +33,7 @@ fn ts_effect_write_call_expr() -> TargetValueExpression {
   )
 }
 
-fn ts_effect_read_call_expr() -> TargetValueExpression {
+fn ts_effect_read_call_expr() -> v2.std.compilers.target_model.TargetValueExpression {
   target_value_expression_effect_apply(
     effect_kind_discriminant: ^ReadResource,
     operands: [
@@ -42,7 +42,7 @@ fn ts_effect_read_call_expr() -> TargetValueExpression {
   )
 }
 
-fn emit_effect_call_source(expr: TargetValueExpression) -> Outcome<Medium<String>> {
+fn emit_effect_call_source(expr: v2.std.compilers.target_model.TargetValueExpression) -> Outcome<Medium<String>> {
   bind_outcome(
     o: target_value_expression_to_concrete_tokens(
       expr: expr,

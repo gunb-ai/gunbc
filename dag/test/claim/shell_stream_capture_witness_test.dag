@@ -1,9 +1,9 @@
 module test.claim.shell_stream_capture
 
 
-data witness_seed_stdout_complete_max_bytes_fixture: ByteSize = byte_size(count: 8388608)
+data witness_seed_stdout_complete_max_bytes_fixture: std.measure.ByteSize = byte_size(count: 8388608)
 
-data witness_seed_stderr_tail_bytes_fixture: ByteSize = byte_size(count: 16384)
+data witness_seed_stderr_tail_bytes_fixture: std.measure.ByteSize = byte_size(count: 16384)
 
 data witness_seed_limit_authority_note: String = "Fixture limits mirror v1_interpreter bounded_shell_host_drain DEFAULT_SHELL_* — enforced in Rust only; this witness exercises predicate shape, not a second constant authority."
 

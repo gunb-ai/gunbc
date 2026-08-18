@@ -4,8 +4,8 @@ module gunbc.digest_render
 type PullRequestDigestSubject {
   number: Int
   title: String
-  url: NonEmptyStr
-  state: PullRequestState
+  url: std.types.NonEmptyStr
+  state: extdeps.github.pulls.PullRequestState
   draft: Bool
   head_sha: String
   base_ref: String

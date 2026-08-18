@@ -11,7 +11,7 @@ type ShardObservationSide
 
 type ShardDoorDisposition
   = DetailedCauseObserved {
-      located_reason: Symbol,
+      located_reason: v2.std.node.Symbol,
       chain_length: Int,
       symbols_differing_from_head: Int,
       first_differing_symbol: String

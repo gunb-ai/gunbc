@@ -13,45 +13,45 @@ type EcmascriptCost {
 }
 
 type EcmascriptGrammarRelationRow {
-  production: FormalProduction
+  production: v2.std.grammar.FormalProduction
   emitted: Node
-  tokens: List<ConcreteSyntaxToken>
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
 type EcmascriptNumberPrimitiveFacts {
-  surface_spelling: Symbol
-  machine_representation: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  machine_representation: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type EcmascriptBigIntPrimitiveFacts {
-  surface_spelling: Symbol
-  encoding: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  encoding: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type EcmascriptBooleanPrimitiveFacts {
-  surface_spelling: Symbol
-  encoding: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  encoding: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type EcmascriptStringPrimitiveFacts {
-  surface_spelling: Symbol
-  encoding: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  encoding: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type EcmascriptSymbolPrimitiveFacts {
-  surface_spelling: Symbol
-  encoding: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  encoding: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type EcmascriptSingletonPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   kind: EcmascriptSingletonKind
-  std_projection: Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 data ecmascript_source_text: String = "function add(x, y) { return x + y; }"
@@ -689,7 +689,7 @@ fn ecmascript_formal_epsilon_grammar_expr() -> GrammarExpr {
 
 type EcmascriptFormalRhsToExprState
   = EcmascriptFormalRhsToExprUninitialized
-  | EcmascriptFormalRhsToExprReady { expr: GrammarExpr }
+  | EcmascriptFormalRhsToExprReady { expr: v2.std.grammar.GrammarExpr }
 
 fn ecmascript_formal_rhs_to_grammar_expr(rhs: List<FormalGrammarSymbol>) -> GrammarExpr {
   match fold_list(
@@ -714,7 +714,7 @@ fn ecmascript_formal_rhs_to_grammar_expr(rhs: List<FormalGrammarSymbol>) -> Gram
 
 type EcmascriptFormalAltChoiceState
   = EcmascriptFormalAltChoiceUninitialized
-  | EcmascriptFormalAltChoiceReady { expr: GrammarExpr }
+  | EcmascriptFormalAltChoiceReady { expr: v2.std.grammar.GrammarExpr }
 
 fn ecmascript_formal_alternatives_to_choice_expr(alts: List<List<FormalGrammarSymbol>>) -> GrammarExpr {
   match fold_list(

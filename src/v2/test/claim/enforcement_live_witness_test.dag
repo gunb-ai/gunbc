@@ -1,7 +1,7 @@
 module v2.test.claim.enforcement_live_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 test fn enforcement_consistency_gate_holds() -> Bool {
   enforcement_consistency_live() && all_intents_admissible(intents: standing_intent_registry)
@@ -17,7 +17,7 @@ test fn complexity_repo_wide_verdict_matches_roadmap() -> Bool {
     && leg_holds(l: v.self_application)
 }
 
-data synthetic_binding_witness: ScheduleWitnessEntry = {
+data synthetic_binding_witness: std.realization_schedule.ScheduleWitnessEntry = {
   entry: "src/v2/test/claim/synthetic_enforcement_probe_test.dag",
   function: "synthetic_probe_holds",
   kind: CorpusWitnessKind
@@ -57,21 +57,21 @@ test fn empty_facts_feed_reds_subjects_leg() -> Bool {
   )
 }
 
-fn red_status_is_failed_to_flip(s: RedControlStatus) -> Bool {
+fn red_status_is_failed_to_flip(s: v2.lens.enforcement.vocab.RedControlStatus) -> Bool {
   match s {
     RedControlFailedToFlip => true
     _ => false
   }
 }
 
-fn red_status_is_passed(s: RedControlStatus) -> Bool {
+fn red_status_is_passed(s: v2.lens.enforcement.vocab.RedControlStatus) -> Bool {
   match s {
     RedControlPassed => true
     _ => false
   }
 }
 
-fn red_status_is_absent(s: RedControlStatus) -> Bool {
+fn red_status_is_absent(s: v2.lens.enforcement.vocab.RedControlStatus) -> Bool {
   match s {
     RedControlAbsent => true
     _ => false
@@ -89,21 +89,21 @@ test fn only_cost_contract_carries_red_control_probe() -> Bool {
     && red_status_is_absent(s: red_control_status_for_contract(contract: lens_contract_schedule_lens))
 }
 
-fn self_status_is_observed(s: SelfApplicationStatus) -> Bool {
+fn self_status_is_observed(s: v2.lens.enforcement.vocab.SelfApplicationStatus) -> Bool {
   match s {
     LensModuleFunctionObserved => true
     _ => false
   }
 }
 
-fn self_status_is_absent(s: SelfApplicationStatus) -> Bool {
+fn self_status_is_absent(s: v2.lens.enforcement.vocab.SelfApplicationStatus) -> Bool {
   match s {
     SelfApplicationAbsent => true
     _ => false
   }
 }
 
-data synthetic_self_fn_fact: DeclFact = {
+data synthetic_self_fn_fact: v2.std.decl_index.DeclFact = {
   qualified_name: "lens.cost.cost_lens",
   name: "cost_lens",
   kind: FnItem,
@@ -111,7 +111,7 @@ data synthetic_self_fn_fact: DeclFact = {
   rel_path: "src/v2/lens/cost.dag"
 }
 
-data synthetic_other_fn_fact: DeclFact = {
+data synthetic_other_fn_fact: v2.std.decl_index.DeclFact = {
   qualified_name: "workflow.other_fn",
   name: "other_fn",
   kind: FnItem,
@@ -119,7 +119,7 @@ data synthetic_other_fn_fact: DeclFact = {
   rel_path: "src/v2/workflow/other.dag"
 }
 
-data synthetic_self_type_fact: DeclFact = {
+data synthetic_self_type_fact: v2.std.decl_index.DeclFact = {
   qualified_name: "lens.cost.some_cost_type",
   name: "some_cost_type",
   kind: TypeItem,
@@ -139,7 +139,7 @@ test fn self_application_liveness_discriminates() -> Bool {
     )
 }
 
-data synthetic_skeleton_fact: DeclFact = {
+data synthetic_skeleton_fact: v2.std.decl_index.DeclFact = {
   qualified_name: "synthetic.skeleton_fn",
   name: "skeleton_fn",
   kind: FnItem,
@@ -147,7 +147,7 @@ data synthetic_skeleton_fact: DeclFact = {
   rel_path: "src/v2/synthetic_skeleton.dag"
 }
 
-data synthetic_computation_fact: DeclFact = {
+data synthetic_computation_fact: v2.std.decl_index.DeclFact = {
   qualified_name: "synthetic.computation_fn",
   name: "computation_fn",
   kind: FnItem,
@@ -155,7 +155,7 @@ data synthetic_computation_fact: DeclFact = {
   rel_path: "src/v2/synthetic_computation.dag"
 }
 
-data synthetic_type_fact: DeclFact = {
+data synthetic_type_fact: v2.std.decl_index.DeclFact = {
   qualified_name: "synthetic.some_type",
   name: "some_type",
   kind: TypeItem,
@@ -163,7 +163,7 @@ data synthetic_type_fact: DeclFact = {
   rel_path: "dag/synthetic_type.dag"
 }
 
-data synthetic_facts: List<DeclFact> = [
+data synthetic_facts: List<v2.std.decl_index.DeclFact> = [
   synthetic_skeleton_fact,
   synthetic_computation_fact,
   synthetic_type_fact
@@ -182,11 +182,11 @@ test fn totality_judged_plus_unavailable_equals_fn_items() -> Bool {
     && (judged_plus_unavailable == fn_item_count_of(facts: synthetic_facts))
 }
 
-fn fact_has_qualified_name(fact: DeclFact, name: String) -> Bool {
+fn fact_has_qualified_name(fact: v2.std.decl_index.DeclFact, name: String) -> Bool {
   fact.qualified_name == name
 }
 
-fn facts_contain_qualified_name(facts: List<DeclFact>, name: String) -> Bool {
+fn facts_contain_qualified_name(facts: List<v2.std.decl_index.DeclFact>, name: String) -> Bool {
   fold(facts, init: false, f: fn(acc, fact) {
     acc || fact_has_qualified_name(fact: fact, name: name)
   })

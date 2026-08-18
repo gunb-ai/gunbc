@@ -3,7 +3,7 @@ module std.determinism
 
 type Determinism
   = Deterministic
-  | NonDeterministic { source: DeclarationRef }
+  | NonDeterministic { source: std.decl_ref.DeclarationRef }
 
 fn determinism_from_perturbation(verdict: std.perturbation.PerturbationVerdict, reached: DeclarationRef) -> Determinism {
   match verdict {

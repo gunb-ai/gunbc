@@ -13,39 +13,39 @@ type PythonCost {
 }
 
 type PythonGrammarRelationRow {
-  production: FormalProduction
+  production: v2.std.grammar.FormalProduction
   emitted: Node
-  tokens: List<ConcreteSyntaxToken>
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
 type PythonIntegerPrimitiveFacts {
-  surface_spelling: Symbol
-  encoding: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  encoding: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type PythonFloatPrimitiveFacts {
-  surface_spelling: Symbol
-  machine_representation: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  machine_representation: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type PythonComplexPrimitiveFacts {
-  surface_spelling: Symbol
-  component_machine_representation: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  component_machine_representation: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type PythonBoolPrimitiveFacts {
-  surface_spelling: Symbol
-  encoding: Symbol
-  std_projection: Symbol
+  surface_spelling: v2.std.node.Symbol
+  encoding: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type PythonSingletonPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   kind: PythonSingletonKind
-  std_projection: Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 data python_integer_algebra_inhabitance_python_facts_int: AlgebraInhabitanceDecl = python_integer_algebra_inhabitance(facts: python_facts_int)
@@ -872,7 +872,7 @@ fn python_formal_epsilon_grammar_expr() -> GrammarExpr {
 
 type PythonFormalRhsToExprState
   = PythonFormalRhsToExprUninitialized
-  | PythonFormalRhsToExprReady { expr: GrammarExpr }
+  | PythonFormalRhsToExprReady { expr: v2.std.grammar.GrammarExpr }
 
 fn python_formal_rhs_to_grammar_expr(rhs: List<FormalGrammarSymbol>) -> GrammarExpr {
   match fold_list(
@@ -897,7 +897,7 @@ fn python_formal_rhs_to_grammar_expr(rhs: List<FormalGrammarSymbol>) -> GrammarE
 
 type PythonFormalAltChoiceState
   = PythonFormalAltChoiceUninitialized
-  | PythonFormalAltChoiceReady { expr: GrammarExpr }
+  | PythonFormalAltChoiceReady { expr: v2.std.grammar.GrammarExpr }
 
 fn python_formal_alternatives_to_choice_expr(alts: List<List<FormalGrammarSymbol>>) -> GrammarExpr {
   match fold_list(

@@ -1,13 +1,13 @@
 module v2.test.claim.use_site_verdict_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn bare_occurrence_node() -> Node {
   node_synthetic(kind: ComputationNode { behavior: Value }, children: [])
 }
 
-fn round_trips(verdict: UseSiteVerdict) -> Bool {
+fn round_trips(verdict: v2.compiler.use_site_verdict.UseSiteVerdict) -> Bool {
   let decorated = attach_use_site_verdict(node: bare_occurrence_node(), verdict: verdict)
   match use_site_verdict_lookup(node: decorated) {
     VerdictFound { verdict: found } => use_site_verdict_eq(a: found, b: verdict)
@@ -15,7 +15,7 @@ fn round_trips(verdict: UseSiteVerdict) -> Bool {
   }
 }
 
-fn use_site_verdict_eq(a: UseSiteVerdict, b: UseSiteVerdict) -> Bool {
+fn use_site_verdict_eq(a: v2.compiler.use_site_verdict.UseSiteVerdict, b: v2.compiler.use_site_verdict.UseSiteVerdict) -> Bool {
   match a {
     MoveWhole => match b { MoveWhole => true, _ => false }
     Borrow => match b { Borrow => true, _ => false }

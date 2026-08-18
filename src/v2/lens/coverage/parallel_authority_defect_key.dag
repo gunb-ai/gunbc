@@ -1,14 +1,14 @@
 module v2.test.lens_coverage.parallel_authority_defect_key
 
 
-data parallel_authority_node: Node = Node {
+data parallel_authority_node: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^parallel_authority_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data expected_parallel_authority_acceptance: CoverageDefectAcceptance = {
-  concern: CoverageDefectAcceptanceKey { lens: ParallelAuthority }
+data expected_parallel_authority_acceptance: v2.lens.coverage.CoverageDefectAcceptance = {
+  concern: v2.lens.coverage.CoverageDefectAcceptanceKey { lens: ParallelAuthority }
 }
 
 fn parallel_authority_defect_key_claim_holds() -> Bool {
@@ -19,7 +19,7 @@ fn parallel_authority_defect_key_claim_rhs() -> Node {
   if parallel_authority_defect_key_claim_holds() {
     parallel_authority_node
   } else {
-    Node {
+    v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -27,10 +27,10 @@ fn parallel_authority_defect_key_claim_rhs() -> Node {
   }
 }
 
-data claim_parallel_authority_defect_key: TestClaim = EqualsClaim {
+data claim_parallel_authority_defect_key: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_coverage/parallel_authority_defect_key: ParallelAuthority acceptance key",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: parallel_authority_node,
   rhs: parallel_authority_defect_key_claim_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

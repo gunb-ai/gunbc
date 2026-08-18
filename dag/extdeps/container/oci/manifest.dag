@@ -10,16 +10,16 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type ImageManifest {
   schemaVersion: Int
-  mediaType: OciMediaType
-  config: OciDescriptor
-  layers: List<OciDescriptor>
+  mediaType: extdeps.container.oci.types.OciMediaType
+  config: extdeps.container.oci.descriptor.OciDescriptor
+  layers: List<extdeps.container.oci.descriptor.OciDescriptor>
 }
 
 type ManifestRejectReason
   = WrongSchemaVersion { got: Int, expected: Int }
-  | WrongMediaType { got: OciMediaType, expected: OciMediaType }
+  | WrongMediaType { got: extdeps.container.oci.types.OciMediaType, expected: extdeps.container.oci.types.OciMediaType }
   | ConfigDescriptorRejected { detail: String }
-  | LayerDescriptorRejected { index: Int, reason: DescriptorRejectReason }
+  | LayerDescriptorRejected { index: Int, reason: extdeps.container.oci.descriptor.DescriptorRejectReason }
   | LayerMissing { index: Int }
   | EmptyLayers
 

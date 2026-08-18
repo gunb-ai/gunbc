@@ -80,11 +80,11 @@ type JsonSchema
       properties: Optional<Map<String, JsonSchema>>,
       required: Optional<Set<String>>,
       items: Optional<JsonSchema>,
-      additional_keywords: Map<JsonSchemaAdditionalKeywordKey, JsonSchemaCarrierValue>,
+      additional_keywords: Map<JsonSchemaAdditionalKeywordKey, v2.extdeps.formats.json.JsonSchemaCarrierValue>,
     }
 
 type JsonSchemaInterpretation {
-  json_document: JsonDocument,
+  json_document: v2.extdeps.formats.json.JsonDocument,
   schema: JsonSchema,
 }
 

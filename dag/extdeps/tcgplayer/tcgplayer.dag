@@ -1,16 +1,16 @@
 module extdeps.tcgplayer.tcgplayer
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.tcgplayer.com/docs/getting-started"
   }
 }
 
-data production_api_base: NonEmptyStr = "https://api.tcgplayer.com"
+data production_api_base: std.types.NonEmptyStr = "https://api.tcgplayer.com"
 
-data api_contract_version: NonEmptyStr = "v1.39.0"
+data api_contract_version: std.types.NonEmptyStr = "v1.39.0"
 
 data structural_coverage_gap_versioned_paths: List<String> = [
   "upstream resource paths accept an optional /[VERSION]/ prefix (current v1.39.0); the modeled",
@@ -25,7 +25,7 @@ type TcgplayerTokenResponse {
   userName: String?
 }
 
-data structural_coverage_gap_token_response_residual: List<CoverageClosureEntry> = [
+data structural_coverage_gap_token_response_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "TcgplayerTokenResponse" },
@@ -41,7 +41,7 @@ type TcgplayerErrorEnvelope {
   errors: List<String>
 }
 
-data client_credentials_grant_type: NonEmptyStr = "client_credentials"
+data client_credentials_grant_type: std.types.NonEmptyStr = "client_credentials"
 
 service tcgplayer.Auth {
   config {

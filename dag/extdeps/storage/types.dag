@@ -49,17 +49,17 @@ type NvmeFormFactor =
   | AddInCard
 
 type NvmeDeviceCatalogRow {
-  part_number: NonEmptyStr
+  part_number: std.types.NonEmptyStr
   manufacturer: Vendor<extdeps.hardware.Hardware>
 
-  capacity_bytes: ByteSize
+  capacity_bytes: std.measure.ByteSize
 
   pcie_link: PcieLink
 
   form_factor: NvmeFormFactor
 
-  sequential_read: Bandwidth
-  sequential_write: Bandwidth
+  sequential_read: std.measure.Bandwidth
+  sequential_write: std.measure.Bandwidth
 }
 
 type PersistenceKind = Ephemeral | Persistent | CachedMirror
@@ -69,15 +69,15 @@ type StorageMedium = Nvme | Ssd | Hdd | NetworkAttached | EphemeralFs
 type StorageDevice
   = NvmeDevice {
       catalog: NvmeDeviceCatalogRow
-      serial: NonEmptyStr?
+      serial: std.types.NonEmptyStr?
       persistence: PersistenceKind
     }
   | BareDevice {
-      capacity: ByteSize
+      capacity: std.measure.ByteSize
       medium: StorageMedium
-      serial: NonEmptyStr?
-      read_bandwidth: Bandwidth?
-      write_bandwidth: Bandwidth?
+      serial: std.types.NonEmptyStr?
+      read_bandwidth: std.measure.Bandwidth?
+      write_bandwidth: std.measure.Bandwidth?
       persistence: PersistenceKind
     }
 

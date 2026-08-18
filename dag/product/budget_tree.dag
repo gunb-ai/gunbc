@@ -61,7 +61,7 @@ fn admit_claims(node: BudgetNode) -> AdmissionState<Memory, One> {
 type BudgetReconciliation =
     AllSatisfied { realized: List<BudgetClaim> }
   | Evicted { kept: List<BudgetClaim>, evicted: List<BudgetClaim> }
-  | GuaranteedShortfall { shortfall: ByteSize }
+  | GuaranteedShortfall { shortfall: std.measure.ByteSize }
 
 fn claims_of_priority(claims: List<BudgetClaim>, p: BudgetPriority) -> List<BudgetClaim> {
   filter(claims, c => c.priority == p)
@@ -78,7 +78,7 @@ fn ordered_by_priority(claims: List<BudgetClaim>) -> List<BudgetClaim> {
 }
 
 type AdmitState {
-  used: ByteSize
+  used: std.measure.ByteSize
   kept: List<BudgetClaim>
   evicted: List<BudgetClaim>
 }

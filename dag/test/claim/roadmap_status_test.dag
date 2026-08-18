@@ -2,8 +2,8 @@ module test.claim.roadmap_status
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_user: GitHubUser = { login: "gunbai-bot", id: 1, type: extdeps.github.github.User }
-data witness_ref: PullRequestRef = { ref: "feature", sha: "deadbeef", label: "gunb:feature" }
+data witness_user: extdeps.github.github.GitHubUser = { login: "gunbai-bot", id: 1, type: extdeps.github.github.User }
+data witness_ref: extdeps.github.pulls.PullRequestRef = { ref: "feature", sha: "deadbeef", label: "gunb:feature" }
 
 data pr_5445: extdeps.github.pulls.PullRequest = {
   number: 5445,
@@ -34,20 +34,20 @@ data pr_open_9999: extdeps.github.pulls.PullRequest = {
   draft: false,
 }
 
-fn is_drifted(v: DriftVerdict) -> Bool {
+fn is_drifted(v: gunbc.roadmap_status.DriftVerdict) -> Bool {
   match v { Drifted => true  Clean => false  Underivable => false }
 }
-fn is_clean(v: DriftVerdict) -> Bool {
+fn is_clean(v: gunbc.roadmap_status.DriftVerdict) -> Bool {
   match v { Clean => true  Drifted => false  Underivable => false }
 }
-fn is_underivable(v: DriftVerdict) -> Bool {
+fn is_underivable(v: gunbc.roadmap_status.DriftVerdict) -> Bool {
   match v { Underivable => true  Drifted => false  Clean => false }
 }
 
-fn derivable_item(prs: List<Int>, title: String) -> RoadmapItem {
+fn derivable_item(prs: List<Int>, title: String) -> gunbc.roadmap_status.RoadmapItem {
   DerivableLine { prs: prs, title: title, description: "" }
 }
-fn authored_status_fixture(done: Bool, content: String) -> RoadmapItem {
+fn authored_status_fixture(done: Bool, content: String) -> gunbc.roadmap_status.RoadmapItem {
   AuthoredLine { done: done, content: content }
 }
 

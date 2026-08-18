@@ -3,7 +3,7 @@ module extdeps.docker.endpoint
 
 data docker_default_endpoint: String = "unix:///var/run/docker.sock"
 
-data endpoint_string_type_frontier_rows: List<FrontierRow> = [
+data endpoint_string_type_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.docker.endpoint", decl_name: "docker_default_endpoint"),
     reason: "docker_default_endpoint is typed String but the module imports Uri; endpoint should be grounded as Uri variant (anemic-leaf — bare String cannot encode union of schemes, socket paths, host:port; same file uses Uri for authority anchor)",
@@ -11,8 +11,8 @@ data endpoint_string_type_frontier_rows: List<FrontierRow> = [
   )
 ]
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.docker.com/engine/api/v1.47"
   }

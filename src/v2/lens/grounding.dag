@@ -2,7 +2,7 @@ module v2.lens.grounding
 
 
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: RatchetForever
 }
 
@@ -28,7 +28,7 @@ fn norm_head(s: String) -> List<Int> {
   })
 }
 
-fn char_eq(a: Char, b: Char) -> Bool {
+fn char_eq(a: std.types.Char, b: std.types.Char) -> Bool {
   a == b
 }
 
@@ -61,7 +61,7 @@ fn name_whole_coincides(field: String, concept_name: String) -> Bool {
   norm_whole(s: field) == norm_whole(s: concept_name)
 }
 
-fn is_meta_model_substrate_layer(layer: LayerPrefix) -> Bool {
+fn is_meta_model_substrate_layer(layer: v2.std.layer.LayerPrefix) -> Bool {
   match layer {
     LayerPrefixStd => true
     LayerPrefixCompiler => false
@@ -89,7 +89,7 @@ fn is_meta_self_coincidence(
 
 fn compute_layer_excluded(
   field: String,
-  matched: QualifiedConcept
+  matched: v2.std.concept_index.QualifiedConcept
 ) -> Bool {
   is_meta_self_coincidence(
     field: field,
@@ -141,19 +141,19 @@ fn sibling_decode_optional_present(node: Node) -> Bool {
   }
 }
 
-fn matched_fields(name: String, idx: List<QualifiedConcept>) -> List<FieldRef> {
+fn matched_fields(name: String, idx: List<v2.std.concept_index.QualifiedConcept>) -> List<v2.std.concept_index.FieldRef> {
   fold(idx, init: [], f: fn(acc, qc) {
     if qc.concept.name == name { qc.concept.fields } else { acc }
   })
 }
 
-fn render_members(fields: List<FieldRef>) -> String {
+fn render_members(fields: List<v2.std.concept_index.FieldRef>) -> String {
   fold(fields, init: "", f: fn(acc, fr) {
     if acc == "" { "{fr.field}: {fr.type_name}" } else { "{acc}, {fr.field}: {fr.type_name}" }
   })
 }
 
-fn target_kind_of(fields: List<FieldRef>) -> String {
+fn target_kind_of(fields: List<v2.std.concept_index.FieldRef>) -> String {
   if is_empty(xs: fields) {
     "Unstructured (no named members in the index -- a string alias / opaque / external registry; verify openness with the judge)"
   } else {
@@ -164,11 +164,11 @@ fn target_kind_of(fields: List<FieldRef>) -> String {
 fn first_coincident_target(
   field: String,
   enclosing: String,
-  index: List<ConceptByName>
-) -> QualifiedConcept {
-  fold(index, init: QualifiedConcept {
+  index: List<v2.std.concept_index.ConceptByName>
+) -> v2.std.concept_index.QualifiedConcept {
+  fold(index, init: v2.std.concept_index.QualifiedConcept {
     qualified_name: "",
-    concept: ConceptStruct { name: "", fields: [] }
+    concept: v2.std.concept_index.ConceptStruct { name: "", fields: [] }
   }, f: fn(acc, bucket) {
     if acc.qualified_name != "" {
       acc
@@ -189,12 +189,12 @@ fn first_coincident_target(
 }
 
 fn entry_from_match(
-  enclosing_qc: QualifiedConcept,
+  enclosing_qc: v2.std.concept_index.QualifiedConcept,
   decl_node: Node,
   field: String,
   declared_type: String,
-  matched: QualifiedConcept,
-  all_concepts: List<QualifiedConcept>,
+  matched: v2.std.concept_index.QualifiedConcept,
+  all_concepts: List<v2.std.concept_index.QualifiedConcept>,
   excluded: Bool
 ) -> GroundingWorklistEntry {
   let mf = matched_fields(name: matched.concept.name, idx: all_concepts)
@@ -214,9 +214,9 @@ fn entry_from_match(
 }
 
 fn candidates_of_decl(
-  decl: ConceptDecl,
-  index: List<ConceptByName>,
-  all_concepts: List<QualifiedConcept>,
+  decl: v2.std.concept_index.ConceptDecl,
+  index: List<v2.std.concept_index.ConceptByName>,
+  all_concepts: List<v2.std.concept_index.QualifiedConcept>,
   acc0: List<GroundingWorklistEntry>
 ) -> List<GroundingWorklistEntry> {
   let enclosing_qc = concept_from_decl(decl: decl)
@@ -254,8 +254,8 @@ fn candidates_of_decl(
 }
 
 fn candidates_from_decls(
-  decls: List<ConceptDecl>,
-  all_concepts: List<QualifiedConcept>
+  decls: List<v2.std.concept_index.ConceptDecl>,
+  all_concepts: List<v2.std.concept_index.QualifiedConcept>
 ) -> List<GroundingWorklistEntry> {
   let index = build_concept_name_index(idx: all_concepts)
   fold(decls, init: [], f: fn(acc, decl) {
@@ -263,7 +263,7 @@ fn candidates_from_decls(
   })
 }
 
-fn candidates_over_decls(decls: List<ConceptDecl>) -> List<GroundingWorklistEntry> {
+fn candidates_over_decls(decls: List<v2.std.concept_index.ConceptDecl>) -> List<GroundingWorklistEntry> {
   let all_concepts = enumerate_concepts_from_decls(decls: decls)
   filter_layer_included(
     rows: candidates_from_decls(decls: decls, all_concepts: all_concepts)
@@ -281,9 +281,9 @@ fn filter_layer_included(rows: List<GroundingWorklistEntry>) -> List<GroundingWo
 }
 
 fn decl_has_layer_included_candidate(
-  decl: ConceptDecl,
-  index: List<ConceptByName>,
-  all_concepts: List<QualifiedConcept>
+  decl: v2.std.concept_index.ConceptDecl,
+  index: List<v2.std.concept_index.ConceptByName>,
+  all_concepts: List<v2.std.concept_index.QualifiedConcept>
 ) -> Bool {
   let enclosing_qc = concept_from_decl(decl: decl)
   fold(enclosing_qc.concept.fields, init: false, f: fn(found, fr) {
@@ -309,7 +309,7 @@ fn decl_has_layer_included_candidate(
   })
 }
 
-fn has_any_layer_included_candidate_from_decls(decls: List<ConceptDecl>) -> Bool {
+fn has_any_layer_included_candidate_from_decls(decls: List<v2.std.concept_index.ConceptDecl>) -> Bool {
   let all_concepts = enumerate_concepts_from_decls(decls: decls)
   let index = build_concept_name_index(idx: all_concepts)
   fold(decls, init: false, f: fn(found, decl) {

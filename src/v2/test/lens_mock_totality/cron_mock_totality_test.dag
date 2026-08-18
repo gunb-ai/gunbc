@@ -4,7 +4,7 @@ module v2.test.lens_mock_totality.cron_mock_totality
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedCronMock {
-  tag: Symbol
+  tag: v2.std.node.Symbol
 }
 
 data cron_red_omit_keys: List<String> = ["cron.Tab.Replace"]

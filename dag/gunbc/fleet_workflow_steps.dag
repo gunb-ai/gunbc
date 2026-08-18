@@ -18,7 +18,7 @@ module gunbc.fleet_workflow_steps
 // a cross-job artifact-transfer vocabulary to express that would be borrowing an architecture it
 // does not have.
 
-fn ci_checkout_step() -> Step {
+fn ci_checkout_step() -> extdeps.github.actions.Step {
   UsesStep {
     name: Present { value: "Checkout" },
     id: none,
@@ -33,7 +33,7 @@ fn ci_checkout_step() -> Step {
   }
 }
 
-fn ci_prelude_steps_with_checkout(checkout: Step, exact_head_preflight: List<Step>) -> List<Step> {
+fn ci_prelude_steps_with_checkout(checkout: extdeps.github.actions.Step, exact_head_preflight: List<extdeps.github.actions.Step>) -> List<extdeps.github.actions.Step> {
   [
     checkout,
   ] |> concat(exact_head_preflight) |> concat([
@@ -87,11 +87,11 @@ fn ci_prelude_steps_with_checkout(checkout: Step, exact_head_preflight: List<Ste
   ])
 }
 
-fn ci_prelude_steps() -> List<Step> {
+fn ci_prelude_steps() -> List<extdeps.github.actions.Step> {
   ci_prelude_steps_with_checkout(checkout: ci_checkout_step(), exact_head_preflight: [])
 }
 
-fn ci_isolate_toolchain_step() -> Step {
+fn ci_isolate_toolchain_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: "Isolate toolchain dirs" },
     id: none,
@@ -105,7 +105,7 @@ fn ci_isolate_toolchain_step() -> Step {
   }
 }
 
-fn ci_native_cache_root_step() -> Step {
+fn ci_native_cache_root_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: ci_native_cache_derive_step_name },
     id: none,
@@ -153,7 +153,7 @@ fn ci_cargo_build_jobs_count() -> Int {
 // HAND-WRITE THE STRING, AND NOTHING HERE BINDS IT TO THE ID -- that re-opens the class. If a
 // condition ever consumes either id, restore the constant first and derive both sides from it.
 // (Class and history: tidy-pike-117, 2026-08-15; consumer census verified at this head.)
-fn ci_release_build_step() -> Step {
+fn ci_release_build_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: "Build release bins (claim_executor + gunbc)" },
     id: Present { value: "release_build" },
@@ -167,7 +167,7 @@ fn ci_release_build_step() -> Step {
   }
 }
 
-fn ci_release_bins_pack_step() -> Step {
+fn ci_release_bins_pack_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: "Pack release bins for cross-job handoff (tar keeps exec bits)" },
     id: none,
@@ -181,7 +181,7 @@ fn ci_release_bins_pack_step() -> Step {
   }
 }
 
-fn ci_release_bins_upload_step() -> Step {
+fn ci_release_bins_upload_step() -> extdeps.github.actions.Step {
   UsesStep {
     name: Present { value: "Upload release-bins artifact" },
     id: none,
@@ -202,7 +202,7 @@ fn ci_release_bins_upload_step() -> Step {
   }
 }
 
-fn ci_release_bins_download_step() -> Step {
+fn ci_release_bins_download_step() -> extdeps.github.actions.Step {
   UsesStep {
     name: Present { value: "Download release-bins artifact" },
     id: none,
@@ -217,7 +217,7 @@ fn ci_release_bins_download_step() -> Step {
   }
 }
 
-fn ci_release_bins_unpack_verify_step() -> Step {
+fn ci_release_bins_unpack_verify_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: "Unpack + verify release bins (claim_executor --verify-build-artifacts; fail-closed)" },
     id: Present { value: "release_bins" },
@@ -231,7 +231,7 @@ fn ci_release_bins_unpack_verify_step() -> Step {
   }
 }
 
-fn ci_fleet_wif_auth_step() -> Step {
+fn ci_fleet_wif_auth_step() -> extdeps.github.actions.Step {
   UsesStep {
     name: Present { value: "WIF auth (OIDC -> fleet-cloud-convergence SA, access token only)" },
     id: Present { value: "wif_auth" },
@@ -251,7 +251,7 @@ fn ci_fleet_wif_auth_step() -> Step {
   }
 }
 
-fn ci_fleet_key_agent_step() -> Step {
+fn ci_fleet_key_agent_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: "Materialize fleet key in-run (SM versions/1 pinned -> RUNNER_TEMP 0600 -> ssh-agent -> wipe file)" },
     id: none,
@@ -267,7 +267,7 @@ fn ci_fleet_key_agent_step() -> Step {
   }
 }
 
-fn ci_fleet_key_agent_cleanup_step() -> Step {
+fn ci_fleet_key_agent_cleanup_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: "Kill the in-run ssh-agent (key never outlives the job)" },
     id: none,
@@ -283,7 +283,7 @@ fn ci_fleet_key_agent_cleanup_step() -> Step {
 
 data ci_native_cache_derive_step_name: String = "Derive native-cache root (rustc-version segment; after setup-rust-toolchain)"
 
-fn ci_native_cache_root_step() -> Step {
+fn ci_native_cache_root_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: ci_native_cache_derive_step_name },
     id: none,
@@ -299,7 +299,7 @@ fn ci_native_cache_root_step() -> Step {
 
 data ci_native_cache_prelude_order_bridge_note: String = "Adjacency-as-proxy ordering witness (not a structural Step-order predicate): ci_native_cache_prelude_order_bridge builds the setup-rust HOME env line immediately followed by the native-cache step name at the emitter's six-space yaml indent. witness_prelude_native_cache_root_step_follows_setup_rust asserts expected_ci_yml/falsifier_yml contain that substring. The real invariant is only that segment derivation runs after setup-rust-toolchain installs rustc; this check over-constrains to textual adjacency and can false-RED on a legitimate step inserted between setup-rust and native-cache, emitter yaml reformatting, or setup-rust gaining fields after HOME — but not false-green if ordering regresses. A hand-rolled match on Step would be the structural alternative; non-fold-residue forbids the wildcard arms that predicate would need (receipt: nfr floor on 14bc815db4). Dissolves when prelude ordering is witnessed without coproduct-residue match arms."
 
-fn ci_prelude_steps_with_checkout(checkout: Step, exact_head_preflight: List<Step>) -> List<Step> {
+fn ci_prelude_steps_with_checkout(checkout: extdeps.github.actions.Step, exact_head_preflight: List<extdeps.github.actions.Step>) -> List<extdeps.github.actions.Step> {
   [
     checkout,
   ] |> concat(exact_head_preflight) |> concat([
@@ -355,7 +355,7 @@ fn ci_prelude_steps_with_checkout(checkout: Step, exact_head_preflight: List<Ste
 
 data ci_release_bins_artifact_name: String = "release-bins"
 
-fn ci_release_bins_pack_step() -> Step {
+fn ci_release_bins_pack_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: "Pack release bins for cross-job handoff (tar keeps exec bits)" },
     id: none,
@@ -371,7 +371,7 @@ fn ci_release_bins_pack_step() -> Step {
 
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
-data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
+data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: std.types.Duration = 15
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests retained-kernel execution gate step budget. Originally a compile-contract gate (operator ruling 2026-08-05, PR A / fierce-heron-177): reordered after the release build and switched to cargo test --release --no-run so v1-compiler compiles once per job. --no-run removed 2026-08-11 with the suite cutover; the crate shrank from 98 modules / 740 tests to the 9 declared retained modules / 30 tests, which execute rather than only compile. Warm runs should complete in seconds once the release artifact is warm; 15m retains the prior cold-host envelope without raising the cap."
 

@@ -2,8 +2,8 @@ module test.claim.markdown_source_emit
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn sample_doc() -> MarkdownDocument {
-  MarkdownDocument {
+fn sample_doc() -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: [
       HeadingBlock { level: H1, inlines: [ TextInline { text: "Roadmap" } ] },
       ParagraphBlock {
@@ -18,17 +18,17 @@ fn sample_doc() -> MarkdownDocument {
       },
       TaskListBlock {
         items: [
-          MarkdownTaskItem {
+          std.markdown.MarkdownTaskItem {
             state: Checked,
             blocks: [ ParagraphBlock { inlines: [ TextInline { text: "done item" } ] } ],
           },
-          MarkdownTaskItem {
+          std.markdown.MarkdownTaskItem {
             state: Unchecked,
             blocks: [
               ParagraphBlock { inlines: [ TextInline { text: "todo item" } ] },
               UnorderedListBlock {
                 items: [
-                  MarkdownListItem {
+                  std.markdown.MarkdownListItem {
                     blocks: [ ParagraphBlock { inlines: [ TextInline { text: "subnote" } ] } ],
                   },
                 ],
@@ -39,7 +39,7 @@ fn sample_doc() -> MarkdownDocument {
       },
       UnorderedListBlock {
         items: [
-          MarkdownListItem {
+          std.markdown.MarkdownListItem {
             blocks: [
               ParagraphBlock {
                 inlines: [
@@ -54,24 +54,24 @@ fn sample_doc() -> MarkdownDocument {
       },
       OrderedListBlock {
         items: [
-          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "one" } ] } ] },
-          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "two" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "one" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "two" } ] } ] },
         ],
       },
       CodeBlock { code: "let x = 1;\n" },
       TableBlock {
-        header: MarkdownTableRow {
+        header: std.markdown.MarkdownTableRow {
           cells: [
-            MarkdownTableCell { inlines: [ TextInline { text: "h1" } ] },
-            MarkdownTableCell { inlines: [ TextInline { text: "h2" } ] },
+            std.markdown.MarkdownTableCell { inlines: [ TextInline { text: "h1" } ] },
+            std.markdown.MarkdownTableCell { inlines: [ TextInline { text: "h2" } ] },
           ],
         },
         alignments: [ AlignNone, AlignCenter ],
         rows: [
-          MarkdownTableRow {
+          std.markdown.MarkdownTableRow {
             cells: [
-              MarkdownTableCell { inlines: [ TextInline { text: "a" } ] },
-              MarkdownTableCell { inlines: [ TextInline { text: "b" } ] },
+              std.markdown.MarkdownTableCell { inlines: [ TextInline { text: "a" } ] },
+              std.markdown.MarkdownTableCell { inlines: [ TextInline { text: "b" } ] },
             ],
           },
         ],
@@ -121,8 +121,8 @@ test fn witness_exact_bytes() -> Bool {
   serialize_markdown_source(doc: sample_doc()) == expected_markdown()
 }
 
-fn code_only_doc(code: String) -> MarkdownDocument {
-  MarkdownDocument { blocks: [ CodeBlock { code: code } ] }
+fn code_only_doc(code: String) -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument { blocks: [ CodeBlock { code: code } ] }
 }
 
 test fn witness_code_block_closing_fence_on_own_line() -> Bool {
@@ -131,8 +131,8 @@ test fn witness_code_block_closing_fence_on_own_line() -> Bool {
   (no_nl == "```\nlet x = 1;\n```\n") && (no_nl == with_nl)
 }
 
-fn perturbed_bullet_spellings() -> MarkdownSpellings {
-  MarkdownSpellings {
+fn perturbed_bullet_spellings() -> extdeps.languages.markdown.MarkdownSpellings {
+  extdeps.languages.markdown.MarkdownSpellings {
     heading_marker: commonmark_gfm_spellings.heading_marker,
     heading_sep: commonmark_gfm_spellings.heading_sep,
     unordered_bullet: "+ ",
@@ -161,12 +161,12 @@ fn perturbed_bullet_spellings() -> MarkdownSpellings {
   }
 }
 
-fn tiny_list_doc() -> MarkdownDocument {
-  MarkdownDocument {
+fn tiny_list_doc() -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: [
       UnorderedListBlock {
         items: [
-          MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "x" } ] } ] },
+          std.markdown.MarkdownListItem { blocks: [ ParagraphBlock { inlines: [ TextInline { text: "x" } ] } ] },
         ],
       },
     ],

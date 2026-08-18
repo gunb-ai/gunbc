@@ -44,7 +44,7 @@ data s1_closure_paths: List<String> = [
   "src/v2/std/witness.dag"
 ]
 
-fn s1_file_parses(lex: LexRules, validated: ValidatedGrammarRoot, path: String) -> Bool {
+fn s1_file_parses(lex: v2.std.compilers.lexing.LexRules, validated: v2.std.grammar.ValidatedGrammarRoot, path: String) -> Bool {
   let source = filesystem_read(path: path).content
   match tokenize(text: source, file: ^s1_closure_file_anchor, rules: lex) {
     Rejected { diagnostics: _ } => false

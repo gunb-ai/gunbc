@@ -50,18 +50,18 @@ data esp_boot_structure_authority: ExternalAuthority = ExternalAuthority {
 type InstallMediaRemasterProbeVerdict
   = InstallMediaRemasterProbeValid
   | InstallMediaRemasterProbeStale
-  | InstallMediaRemasterProbeInfraFailure { reason: NonEmptyStr }
+  | InstallMediaRemasterProbeInfraFailure { reason: std.types.NonEmptyStr }
 
 type InstallMediaRemasterObservation
   = InstallMediaRemasterAbsent
   | InstallMediaRemasterValid
   | InstallMediaRemasterStale
-  | InstallMediaRemasterVerifyInfraFailure { reason: NonEmptyStr }
+  | InstallMediaRemasterVerifyInfraFailure { reason: std.types.NonEmptyStr }
 
 type InstallMediaRemasterOutcome
-  = InstallMediaRemasterAlreadyPresent { path: NonEmptyStr }
-  | InstallMediaRemasterRemastered { path: NonEmptyStr }
-  | InstallMediaRemasterRefused { reason: NonEmptyStr }
+  = InstallMediaRemasterAlreadyPresent { path: std.types.NonEmptyStr }
+  | InstallMediaRemasterRemastered { path: std.types.NonEmptyStr }
+  | InstallMediaRemasterRefused { reason: std.types.NonEmptyStr }
 
 fn install_media_remaster_sidecar_path(final_path: NonEmptyStr) -> NonEmptyStr {
   concat(final_path as String, ".gunbc-content-hash") as NonEmptyStr

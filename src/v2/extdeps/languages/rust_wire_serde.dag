@@ -117,9 +117,9 @@ fn rust_ws_lex() -> LexRules {
 }
 
 type RustWireSerdeGrammarRow {
-  production: GrammarProduction
+  production: v2.std.grammar.GrammarProduction
   emitted: Node
-  tokens: List<ConcreteSyntaxToken>
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
 fn rust_ws_grammar_terminal(token_class: Symbol) -> GrammarExpr {
@@ -128,7 +128,7 @@ fn rust_ws_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 
 type RustWireSerdeGramBuildState
   = RustWireSerdeGramBuildInit
-  | RustWireSerdeGramBuildReady { expr: GrammarExpr }
+  | RustWireSerdeGramBuildReady { expr: v2.std.grammar.GrammarExpr }
 
 fn rust_ws_grammar_sequence_from_tokens(tokens: List<ConcreteSyntaxToken>) -> GrammarExpr {
   match fold_list(

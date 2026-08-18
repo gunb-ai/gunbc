@@ -1,23 +1,23 @@
 module v2.test.manual.emit_directive_gha
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn emit_directive_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn emit_directive_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   optional_absent()
 }
 
-data emit_directive_gha_error_example: EmitDirective = EmitDirective {
+data emit_directive_gha_error_example: v2.std.diagnostic.EmitDirective = v2.std.diagnostic.EmitDirective {
   severity: SeverityError,
   message: "build verification failed"
 }
 
-data emit_directive_gha_warning_example: EmitDirective = EmitDirective {
+data emit_directive_gha_warning_example: v2.std.diagnostic.EmitDirective = v2.std.diagnostic.EmitDirective {
   severity: SeverityWarning,
   message: "build verification failed"
 }
 
-data emit_directive_gha_other_example: EmitDirective = EmitDirective {
+data emit_directive_gha_other_example: v2.std.diagnostic.EmitDirective = v2.std.diagnostic.EmitDirective {
   severity: SeverityError,
   message: "cache corruption"
 }
@@ -26,9 +26,9 @@ data emit_directive_gha_error_expected: String = "'echo' '::error::build verific
 data emit_directive_gha_warning_expected: String = "'echo' '::warning::build verification failed' >&2"
 data emit_directive_gha_other_expected: String = "'echo' '::error::cache corruption' >&2"
 
-fn emit_directive_gha_emit(d: EmitDirective) -> Outcome<Medium<String>> {
+fn emit_directive_gha_emit(d: v2.std.diagnostic.EmitDirective) -> Outcome<Medium<String>> {
   emit(
-    tree: InferredTree {
+    tree: v2.compiler.infer.InferredTree {
       root: emit_directive_bash_emitted_command,
       facts: Map { lookup: emit_directive_facts_lookup }
     },
@@ -36,9 +36,9 @@ fn emit_directive_gha_emit(d: EmitDirective) -> Outcome<Medium<String>> {
   )
 }
 
-fn emit_directive_bash_emit(d: EmitDirective) -> Outcome<Medium<String>> {
+fn emit_directive_bash_emit(d: v2.std.diagnostic.EmitDirective) -> Outcome<Medium<String>> {
   emit(
-    tree: InferredTree {
+    tree: v2.compiler.infer.InferredTree {
       root: emit_directive_bash_emitted_command,
       facts: Map { lookup: emit_directive_facts_lookup }
     },

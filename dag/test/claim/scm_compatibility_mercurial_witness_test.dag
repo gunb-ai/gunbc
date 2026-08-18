@@ -3,14 +3,14 @@ module test.claim.scm_compatibility_mercurial_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn mercurial_fixture_observation() -> MercurialReadBackObservation {
-  MercurialReadBackObservation {
+fn mercurial_fixture_observation() -> extdeps.mercurial.MercurialReadBackObservation {
+  extdeps.mercurial.MercurialReadBackObservation {
     projection: mercurial_r0_fixture_projection(),
     observed_by: "mercurial-r1-independent-fixture",
   }
 }
 
-fn mercurial_fixture_binding() -> MercurialCompatibilityBindingOutcome {
+fn mercurial_fixture_binding() -> gunbc.scm_compatibility.mercurial.MercurialCompatibilityBindingOutcome {
   mercurial_compatibility_bind(
     projection: mercurial_r0_fixture_projection(),
     target: "default",
@@ -110,7 +110,7 @@ test fn witness_mercurial_unavailable_readback_refuses_binding() -> Bool {
   match mercurial_compatibility_bind(
     projection: mercurial_r0_fixture_projection(),
     target: "default",
-    read_back: MercurialReadBackObservation {
+    read_back: extdeps.mercurial.MercurialReadBackObservation {
       projection: MercurialInaccessibleProjection {
         reason: "fixture unavailable",
       },
@@ -133,7 +133,7 @@ test fn witness_mercurial_readback_identity_changes_with_observed_state() -> Boo
       match mercurial_compatibility_bind(
         projection: other_projection,
         target: "default",
-        read_back: MercurialReadBackObservation {
+        read_back: extdeps.mercurial.MercurialReadBackObservation {
           projection: other_projection,
           observed_by: "mercurial-r1-independent-fixture",
         },

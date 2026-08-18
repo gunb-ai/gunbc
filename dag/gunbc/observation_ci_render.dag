@@ -86,9 +86,9 @@ fn ci_glyph(id: SymbolId, tier: Tier) -> String {
 }
 
 type RenderedLine {
-  glyph: SymbolId
+  glyph: std.symbols.SymbolId
   text: String
-  attention: AttentionLevel
+  attention: std.observation.AttentionLevel
 }
 
 type LinePlacement
@@ -249,13 +249,13 @@ fn ci_event_line(event: ObservationEvent, basis: AttentionBasis) -> RenderedLine
 }
 
 type HeartbeatSample {
-  elapsed: Millisecond
-  active: ObservationSubject
+  elapsed: std.measure.Millisecond
+  active: std.observation.ObservationSubject
   entry_index: std.nat.Nat
   entry_total: std.nat.Nat
-  rss: Measured<ByteSize>
-  swap: Measured<ByteSize>
-  pressure: Measured<BasisPoint>
+  rss: Measured<std.measure.ByteSize>
+  swap: Measured<std.measure.ByteSize>
+  pressure: Measured<std.measure.BasisPoint>
 }
 
 // Law 2: the heartbeat carries IDENTITY, not just vitals — and identity comes first in the sentence, vitals last. The ordering is the whole point. A reader scanning a wall of heartbeats needs to know WHAT is running; the memory numbers only matter once they know that. The captured crawl window is the counter-example in the record: sixty heartbeats that named no subject at all while one module typechecked for ten minutes, so the operator could see the process was alive and could not see what it was doing.
@@ -365,7 +365,7 @@ type FloorRunSummary {
   entries_total: std.nat.Nat
   refusals: std.nat.Nat
   failures: std.nat.Nat
-  wall: Millisecond
+  wall: std.measure.Millisecond
 }
 
 fn ci_run_summary_glyph(summary: FloorRunSummary) -> SymbolId {
@@ -430,7 +430,7 @@ data observation_ci_render_disposition: Disposition = Terminal {
 // routine event below the declared grain updates its batch's rollup and produces NO line, so the
 // console carries batch transitions, dwell heartbeats, and anomalies at their exact leaf subject.
 type RoutineProjection
-  = FoldedIntoRollup { at: ObservationSubject }
+  = FoldedIntoRollup { at: std.observation.ObservationSubject }
   | EmittedAtLeaf { reason: LeafEmissionReason }
 
 // Why an event still reached the console, as a named state rather than a fall-through. Three of the

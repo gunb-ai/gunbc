@@ -33,8 +33,8 @@ data codex_token_durability_note: String = "THREE TOKENS IN ONE FILE WITH LIFETI
 type CodexOpaqueToken = NonEmptyStr where brand("CodexOpaqueToken")
 
 type CodexOAuthTokens {
-  id_token: JwtCompactSerialization
-  access_token: JwtCompactSerialization
+  id_token: extdeps.auth.jwt.JwtCompactSerialization
+  access_token: extdeps.auth.jwt.JwtCompactSerialization
   refresh_token: CodexOpaqueToken
   account_id: extdeps.uuid.Uuid
 }
@@ -45,7 +45,7 @@ type CodexAuthFile
       last_refresh: extdeps.time.rfc3339.Rfc3339Timestamp,
     }
   | CodexApiKeyAuth {
-      api_key: NonEmptyStr,
+      api_key: std.types.NonEmptyStr,
     }
 
 data codex_state_root_isolation_note: String = "CODEX_HOME IS THE ISOLATION MECHANISM, AND IT IS CODEX'S, NOT OURS. The CLI resolves auth.json, config, logs and session state beneath whatever CODEX_HOME names, defaulting to ~/.codex — so two invocations with different CODEX_HOME values authenticate as different accounts with no interference, and that capability exists whether or not anyone builds a naming scheme on it.\\n\\nThe distinction matters for where a multi-account model lives. The MECHANISM belongs here because codex owns it; a convention for what to call the roots is a downstream choice that this module must not encode. Anything reading a state root path out of this module would be reading somebody's naming policy as though the CLI required it.\\n\\nObserved on srv2: three roots coexist under one user account, and seventeen concurrent sessions bind to one of them with no cross-talk to the others."
@@ -78,9 +78,9 @@ data codex_observed_refresh_rotation: CodexRefreshRotationSemantics = CodexRotat
 
 // THE PRIVATE CLAIM NAMESPACE, which is the one part of the id_token that genuinely belongs to OpenAI. Everything else in that token is RFC 7519 or OIDC Core; the object at https://api.openai.com/auth is theirs, and URI-namespacing it is exactly what OIDC Core section 5.1.2 prescribes for claims outside the standard set.\n\nMODELING organizations AS MEMBERSHIPS RATHER THAN IDS IS THE LOAD-BEARING CHOICE. The observed token carries two, each with id, title, role and is_default — so the credential is not scoped to 'an account' but to a set of memberships with distinct authority. A dispatch that assumed one organization would silently run under whichever the provider defaults to, and nothing downstream could name which. Anything deciding where work runs has to be able to say the organization, and cannot unless the membership is represented.\n\nThe subscription window is three timestamps rather than a Bool because active_until and last_checked answer different questions: when entitlement lapses, versus how stale the provider's own view of it is. A single is_active flag would collapse 'expired' into 'not recently checked'.\n\nplan_type stays a NonEmptyStr deliberately. The observed value is pro, but the set of plan names is OpenAI's product surface rather than a specification, and a closed enum here would refuse a legitimate token the day a plan is renamed or added — the wrong failure for a field read only to display entitlement.
 type CodexOrganizationMembership {
-  id: NonEmptyStr
+  id: std.types.NonEmptyStr
   title: String
-  role: NonEmptyStr
+  role: std.types.NonEmptyStr
   is_default: Bool
 }
 
@@ -92,17 +92,17 @@ type CodexSubscriptionWindow {
 
 type CodexOpenAiAuthClaim {
   chatgpt_account_id: extdeps.uuid.Uuid
-  chatgpt_user_id: NonEmptyStr
-  user_id: NonEmptyStr
-  plan_type: NonEmptyStr
+  chatgpt_user_id: std.types.NonEmptyStr
+  user_id: std.types.NonEmptyStr
+  plan_type: std.types.NonEmptyStr
   subscription: CodexSubscriptionWindow
   organizations: List<CodexOrganizationMembership>
-  groups: List<NonEmptyStr>
+  groups: List<std.types.NonEmptyStr>
 }
 
 // The codex id_token is the OIDC claim set plus OpenAI's private namespace, composed rather than redeclared. Its issuer is https://auth.openai.com and its observed lifetime is 3600 seconds — recorded as a row because it is the number that decides how often a long-running host must refresh, and reading it from a live token would be reading the instance rather than the contract.
 type CodexIdToken {
-  oidc: OidcIdTokenClaims
+  oidc: extdeps.auth.oidc.OidcIdTokenClaims
   openai_auth: CodexOpenAiAuthClaim
 }
 
@@ -115,7 +115,7 @@ data codex_id_token_observed_lifetime: Second = second(count: 3600)
 data codex_observed_profile_note: String = "WHAT ONE TOKEN CARRIED IS NOT WHAT THE STANDARD REQUIRES, and separating the two is the whole point of this row. The extdeps.auth.jwt and extdeps.auth.oidc types were first written by reading the codex id_token observed on srv2 on 2026-07-30 and marking every claim it contained as mandatory. That produced two modules that named IETF and OIDF documents as their authority while actually encoding one sample from one provider on one day — the precise failure the extdeps citation duty exists to prevent, because a reader would take this vendor's grant as the specification's demand.\\n\\nThe specs now say what they say: RFC 7519's registered claims are all optional, OIDC Core requires five in an ID Token and makes auth_time, acr, amr, azp, nonce and sid optional, and the standard claims arrive only with the scope that asks for them. This profile records, separately and as an OBSERVATION, which of those optional claims this provider's token was seen to carry.\\n\\nWHY IT IS WORTH KEEPING RATHER THAN DELETING: a consumer reading a codex credential needs to know whether acr is reliably there before writing code that depends on it, and the answer is a fact about OpenAI's issuer rather than about OIDC. Recording it as an observation with its date and version means a later reader can tell that it was measured rather than promised, and can re-measure it. It is the same distinction CodexPersistenceObservedLoginOnly draws for refresh behaviour: an observation that survived one workload is not a contract, and it must not be spelled like one."
 
 type CodexObservedClaimPresence {
-  claim: NonEmptyStr
+  claim: std.types.NonEmptyStr
   observed_present: Bool
 }
 

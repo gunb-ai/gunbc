@@ -34,21 +34,21 @@ fn bcfg_target_word(target: BcfgTarget) -> String {
 
 type UefiIfconfigAction
   = IfconfigList
-  | IfconfigSetDhcp { interface: NonEmptyStr }
-  | IfconfigSetStatic { interface: NonEmptyStr, address: NonEmptyStr, netmask: NonEmptyStr, gateway: NonEmptyStr }
+  | IfconfigSetDhcp { interface: std.types.NonEmptyStr }
+  | IfconfigSetStatic { interface: std.types.NonEmptyStr, address: std.types.NonEmptyStr, netmask: std.types.NonEmptyStr, gateway: std.types.NonEmptyStr }
 
 type UefiShellCommand
   = BcfgDump { target: BcfgTarget }
-  | BcfgAdd { target: BcfgTarget, index: Int, file: NonEmptyStr, description: NonEmptyStr }
+  | BcfgAdd { target: BcfgTarget, index: Int, file: std.types.NonEmptyStr, description: std.types.NonEmptyStr }
   | BcfgMove { target: BcfgTarget, from_index: Int, to_index: Int }
   | BcfgRemove { target: BcfgTarget, index: Int }
   | MapDevices { refresh: Bool }
   | ConnectRecursive
   | ListDevices
   | Ifconfig { action: UefiIfconfigAction }
-  | Ping { host: NonEmptyStr }
-  | Tftp { interface: NonEmptyStr, server: NonEmptyStr, remote_file: NonEmptyStr, local_file: NonEmptyStr }
-  | ExecuteEfi { path: NonEmptyStr, cmdline: List<KernelCmdlineArg> }
+  | Ping { host: std.types.NonEmptyStr }
+  | Tftp { interface: std.types.NonEmptyStr, server: std.types.NonEmptyStr, remote_file: std.types.NonEmptyStr, local_file: std.types.NonEmptyStr }
+  | ExecuteEfi { path: std.types.NonEmptyStr, cmdline: List<extdeps.firmware.kernel_cmdline.KernelCmdlineArg> }
   | Reset { mode: UefiResetMode }
 
 fn uefi_shell_command_line(cmd: UefiShellCommand) -> String {
@@ -100,14 +100,14 @@ type UefiMediaState
   | MediaDisconnected
 
 type UefiNetworkInterface {
-  name: NonEmptyStr
+  name: std.types.NonEmptyStr
   media: UefiMediaState
-  ipv4: NonEmptyStr
+  ipv4: std.types.NonEmptyStr
 }
 
 type UefiBootOption {
   index: Int
-  variable: NonEmptyStr
+  variable: std.types.NonEmptyStr
   description: String
   device_path: String
   optional: Bool
@@ -116,7 +116,7 @@ type UefiBootOption {
 type UefiDeviceMapping {
   fs_alias: String
   block_aliases: String
-  device_path: NonEmptyStr
+  device_path: std.types.NonEmptyStr
 }
 
 data uefi_ipv4_unspecified: String = "0.0.0.0"

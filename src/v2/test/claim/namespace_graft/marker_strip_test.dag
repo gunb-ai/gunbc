@@ -3,15 +3,15 @@ module v2.test.claim.namespace_graft.marker_strip_test
 
 data marker_strip_note: String = "Discriminating witness (operator ruling msg_0f14dee1): stripping ^dag_surface_module provenance shell must not change symbol_index fill semantics — position/extent/QN live only on the Named containment spine. Resolve comparison lands after resolve dissolve (commits 4-5); this witness pins fill/census path first."
 
-fn ms_sym_node(sym: Symbol) -> Node {
-  Node {
+fn ms_sym_node(sym: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn ms_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
+fn ms_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> Node {
   fold_list_node(
     xs: segments,
     item_node: fn(sym) { ms_sym_node(sym: sym) }
@@ -19,10 +19,10 @@ fn ms_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
 }
 
 fn ms_pre_graft_module_root(
-  qn: QualifiedName,
-  body_edges: List<Edge>
+  qn: v2.std.qualified_name.QualifiedName,
+  body_edges: List<v2.std.node.Edge>
 ) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: concat(
       [
@@ -41,23 +41,23 @@ fn ms_pre_graft_module_root(
   }
 }
 
-data ms_module_qn: QualifiedName = qualified_name_from_dotted_string(
+data ms_module_qn: v2.std.qualified_name.QualifiedName = qualified_name_from_dotted_string(
   dotted: "v2.test.namespace_graft.marker"
 )
 
 data ms_pre_graft_root: Node = ms_pre_graft_module_root(
   qn: ms_module_qn,
   body_edges: [
-    Edge {
+    v2.std.node.Edge {
       label: Named { name: ^MsPilotType },
-      target: Node {
+      target: v2.std.node.Node {
         kind: TypeNode { connective: Disj },
         children: [
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^MsYes },
             target: ms_sym_node(sym: ^MsYes)
           },
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^MsNo },
             target: ms_sym_node(sym: ^MsNo)
           }
@@ -75,7 +75,7 @@ data ms_grafted_root: Node = match module_header_containment_graft(root: ms_pre_
 
 data ms_stripped_root: Node = namespace_graft_strip_provenance_marker(root: ms_grafted_root)
 
-fn ms_fill_index(root: Node) -> SymbolIndex {
+fn ms_fill_index(root: Node) -> v2.std.symbol_index.SymbolIndex {
   symbol_index_fill_containment_node(
     index: empty_symbol_index(),
     path: Empty,
@@ -84,9 +84,9 @@ fn ms_fill_index(root: Node) -> SymbolIndex {
 }
 
 fn ms_lookup_pair_eq(
-  marked: SymbolIndex,
-  stripped: SymbolIndex,
-  path: QualifiedName
+  marked: v2.std.symbol_index.SymbolIndex,
+  stripped: v2.std.symbol_index.SymbolIndex,
+  path: v2.std.qualified_name.QualifiedName
 ) -> Bool {
   match symbol_index_lookup(index: marked, qualified_path: path) {
     Present { value: marked_node } =>
@@ -123,7 +123,7 @@ test fn namespace_graft_marker_strip_fill_equivalent_holds() -> Bool {
   ms_marker_strip_fill_equivalent_holds()
 }
 
-data claim_namespace_graft_marker_strip_fill_equivalent: TestClaim = EqualsClaim {
+data claim_namespace_graft_marker_strip_fill_equivalent: v2.std.verification.TestClaim = EqualsClaim {
   label: "namespace_graft: stripping provenance marker leaves symbol_index fill unchanged",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: ms_sym_node(sym: ^ms_bool_true),
@@ -134,5 +134,5 @@ data claim_namespace_graft_marker_strip_fill_equivalent: TestClaim = EqualsClaim
       ^ms_bool_false
     }
   ),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

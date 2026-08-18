@@ -62,12 +62,12 @@ fn member_subject(f: StateFamily, m: StateFamilyMember) -> SelectorSubject {
 }
 
 type StateChannel
-  = RestChannel { prop: CssPropertyName, role: StateVarRole }
-  | ResponseChannel { trigger: MotionTrigger, prop: CssPropertyName, role: StateVarRole, transition_props: String }
+  = RestChannel { prop: extdeps.languages.css.properties.CssPropertyName, role: StateVarRole }
+  | ResponseChannel { trigger: gunbc.design.material.MotionTrigger, prop: extdeps.languages.css.properties.CssPropertyName, role: StateVarRole, transition_props: String }
 
 type ChannelScope
   = PerStateFamily { channel: StateChannel }
-  | ConstantByLaw { channel_name: String, ruling: DeclarationRef }
+  | ConstantByLaw { channel_name: String, ruling: std.decl_ref.DeclarationRef }
 
 fn rest_member(f: StateFamily) -> StateFamilyMember? {
   f.members |> filter(m => match m.binding { RestBinding => true StateClassBinding { class_name: _ } => false }) |> first

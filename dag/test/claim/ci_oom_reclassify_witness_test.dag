@@ -2,11 +2,11 @@ module test.claim.ci_oom_reclassify_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn bare_137_outcome() -> FloorOutcome {
+fn bare_137_outcome() -> gunbc.ci_failure_class.FloorOutcome {
   classify_floor_exit(e: ExitFailure { code: 137, reason: "Process completed with exit code 137." })
 }
 
-fn outcome_is_infra(o: FloorOutcome) -> Bool {
+fn outcome_is_infra(o: gunbc.ci_failure_class.FloorOutcome) -> Bool {
   match o {
     NoFailure => false
     FloorFailed { class: c } => match c {
@@ -16,7 +16,7 @@ fn outcome_is_infra(o: FloorOutcome) -> Bool {
   }
 }
 
-fn outcome_is_structural(o: FloorOutcome) -> Bool {
+fn outcome_is_structural(o: gunbc.ci_failure_class.FloorOutcome) -> Bool {
   match o {
     NoFailure => false
     FloorFailed { class: c } => match c {
@@ -26,19 +26,19 @@ fn outcome_is_structural(o: FloorOutcome) -> Bool {
   }
 }
 
-fn confirmed_cgroup_oom() -> OomKillObservation {
+fn confirmed_cgroup_oom() -> gunbc.ci_oom_reclassify.OomKillObservation {
   observe_oom_kill(cgroup: oom_kill_from_cgroup_counter(oom_kill_count: 1), oomd: oom_kill_from_oomd_journal(oomd_kill_record_count: 0))
 }
 
-fn confirmed_oomd_oom() -> OomKillObservation {
+fn confirmed_oomd_oom() -> gunbc.ci_oom_reclassify.OomKillObservation {
   observe_oom_kill(cgroup: oom_kill_from_cgroup_counter(oom_kill_count: 0), oomd: oom_kill_from_oomd_journal(oomd_kill_record_count: 1))
 }
 
-fn no_oom() -> OomKillObservation {
+fn no_oom() -> gunbc.ci_oom_reclassify.OomKillObservation {
   observe_oom_kill(cgroup: oom_kill_from_cgroup_counter(oom_kill_count: 0), oomd: oom_kill_from_oomd_journal(oomd_kill_record_count: 0))
 }
 
-fn clustered_simultaneous() -> ClusteringEvidence {
+fn clustered_simultaneous() -> gunbc.ci_oom_reclassify.ClusteringEvidence {
   Clustered { signal: SimultaneousMultiJobDeath { job_count: 3 } }
 }
 

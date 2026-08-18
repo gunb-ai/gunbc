@@ -9,8 +9,8 @@ type LeanDeclarationKind
   | LeanAxiom
 
 type LeanName {
-  namespace: List<Symbol>
-  local: Symbol
+  namespace: List<v2.std.node.Symbol>
+  local: v2.std.node.Symbol
 }
 
 type LeanLevel
@@ -18,7 +18,7 @@ type LeanLevel
   | LeanLevelSucc { predecessor: LeanLevelRef }
   | LeanLevelMax { left: LeanLevelRef, right: LeanLevelRef }
   | LeanLevelIMax { left: LeanLevelRef, right: LeanLevelRef }
-  | LeanLevelParam { name: Symbol }
+  | LeanLevelParam { name: v2.std.node.Symbol }
 
 type LeanLevelRef {
   name: LeanName
@@ -138,7 +138,7 @@ type LeanOverflowSemanticsAdmission
   = LeanOverflowAccepted { semantics: LeanAdmittedOverflowSemantics }
   | LeanOverflowRefused {
       observed: IntegerOverflowSemantics<LeanOverflowRaiseEffect>,
-      reason: Symbol
+      reason: v2.std.node.Symbol
     }
 
 data lean_overflow_parse_continuation_note: String = "DECLARED SCAFFOLD parser continuation defect (review calm-badger-682 msg_e83789a9, msg_4683ea0a): authority src/v1/02_parse.dag parse_let — both arms omit skip_newlines before parse_expr after ExpectEq (typed EatConsumed and untyped EatUnchanged), so any let initializer continued on the next line begins with Newline and fails parse_expr prefix with expected expression, found Newline; parse_return is a suspected sibling (same parse_expr-after-keyword shape, not yet executed). skip_newlines is the pervasive idiom in 02_parse.dag; absence here is omission not grammar. CI reproduced on lean_overflow_semantics_witness_note and lean_catalog_fixed_width_overflow. Multiline generic record data is ordinary corpus-wide; multiline-ness alone and variant-vs-record RHS are refuted discriminators. Single-line initializers until v1 lane lands the parser fix. Dissolve-on: v1 parse_let and parse_return skip newlines after = / keyword, then restore multi-line witnesses."
@@ -189,12 +189,12 @@ fn lean_overflow_raise_effect_tag(effect: LeanOverflowRaiseEffect) -> Symbol {
 }
 
 type LeanAdmittedBitWidth sole_constructor {
-  width: BitWidth
+  width: std.measure.BitWidth
 }
 
 type LeanBitWidthAdmission
   = LeanBitWidthAccepted { width: LeanAdmittedBitWidth }
-  | LeanBitWidthRefused { width: BitWidth }
+  | LeanBitWidthRefused { width: std.measure.BitWidth }
 
 type LeanIntegerWidth
   = LeanFixedWidth { width: LeanAdmittedBitWidth }
@@ -202,18 +202,18 @@ type LeanIntegerWidth
 
 type LeanScalar
   = LeanIntegerScalar {
-      signedness: Signedness,
+      signedness: std.integer.Signedness,
       width: LeanIntegerWidth,
       overflow: LeanAdmittedOverflowSemantics
     }
-  | LeanWidthAdmissionRefused { width: BitWidth }
+  | LeanWidthAdmissionRefused { width: std.measure.BitWidth }
   | LeanOverflowAdmissionRefused { semantics: IntegerOverflowSemantics<LeanOverflowRaiseEffect> }
   | BoolScalar
 
 type LeanPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   scalar: LeanScalar
-  representation: Symbol
+  representation: v2.std.node.Symbol
 }
 
 fn lean_primitive_facts_for_catalog_width(

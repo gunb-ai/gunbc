@@ -1,8 +1,8 @@
 module extdeps.git.inspect
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs"
   }
@@ -52,7 +52,7 @@ service git.Inspect {
   operation HeadCommit {
     input {}
     output {
-      sha: CommitSha from "stdout"
+      sha: std.types.CommitSha from "stdout"
       success: Bool from "exit_success"
     }
     readonly
@@ -100,9 +100,9 @@ service git.Inspect {
   }
 
   operation MergeBase {
-    input { left: GitRef, right: GitRef }
+    input { left: std.types.GitRef, right: std.types.GitRef }
     output {
-      sha: CommitSha from "stdout"
+      sha: std.types.CommitSha from "stdout"
       success: Bool from "exit_success"
       stderr: String from "stderr"
     }
@@ -116,7 +116,7 @@ service git.Inspect {
   }
 
   operation ListTreePathsAtRevision {
-    input { ref: GitRef }
+    input { ref: std.types.GitRef }
     output {
       paths_nul: String from "stdout"
       success: Bool from "exit_success"
@@ -131,7 +131,7 @@ service git.Inspect {
   }
 
   operation ShowTree {
-    input { ref: GitRef }
+    input { ref: std.types.GitRef }
     output {
       tree: String from "stdout"
       success: Bool from "exit_success"

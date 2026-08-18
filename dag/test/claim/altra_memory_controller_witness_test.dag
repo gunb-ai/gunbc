@@ -1,7 +1,7 @@
 module test.claim.altra_memory_controller_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // THE CENTRAL CLAIM, and the one the board-down question turns on: every module class this
 // controller admits carries a register or a buffer, and NONE is unbuffered. Asserted over the
@@ -21,21 +21,21 @@ test fn w_every_admitted_module_class_is_buffered() -> Bool {
 // AND THE DISCRIMINATING CONTROL: an unbuffered class is genuinely refused, not merely absent
 // from a list nothing checks. Without this the claim above is satisfied by any list.
 test fn w_an_unbuffered_module_class_is_refused() -> Bool {
-  !altra_admits_module_class(c: DramModuleClass { buffering: Unbuffered, stacking: MonolithicDie })
-    && !altra_admits_module_class(c: DramModuleClass { buffering: Unbuffered, stacking: ThreeDimensionalStacked })
-    && altra_admits_module_class(c: DramModuleClass { buffering: Registered, stacking: MonolithicDie })
+  !altra_admits_module_class(c: extdeps.memory.types.DramModuleClass { buffering: Unbuffered, stacking: MonolithicDie })
+    && !altra_admits_module_class(c: extdeps.memory.types.DramModuleClass { buffering: Unbuffered, stacking: ThreeDimensionalStacked })
+    && altra_admits_module_class(c: extdeps.memory.types.DramModuleClass { buffering: Registered, stacking: MonolithicDie })
 }
 
 // THE STACKING AXIS EARNS ITS EXISTENCE HERE. A registered monolithic module and a registered 3DS
 // module are both admitted and are DIFFERENT values — which is unrepresentable if 3DS is folded
 // into the buffering enum. This is the regression control for that collapse.
 test fn w_stacking_is_independent_of_buffering() -> Bool {
-  let reg_mono = DramModuleClass { buffering: Registered, stacking: MonolithicDie }
-  let reg_3ds = DramModuleClass { buffering: Registered, stacking: ThreeDimensionalStacked }
+  let reg_mono = extdeps.memory.types.DramModuleClass { buffering: Registered, stacking: MonolithicDie }
+  let reg_3ds = extdeps.memory.types.DramModuleClass { buffering: Registered, stacking: ThreeDimensionalStacked }
   !dram_module_class_eq(a: reg_mono, b: reg_3ds)
     && altra_admits_module_class(c: reg_mono)
     && altra_admits_module_class(c: reg_3ds)
-    && !altra_admits_module_class(c: DramModuleClass { buffering: LoadReduced, stacking: ThreeDimensionalStacked })
+    && !altra_admits_module_class(c: extdeps.memory.types.DramModuleClass { buffering: LoadReduced, stacking: ThreeDimensionalStacked })
 }
 
 // THE WITHDRAWAL IS THE STANDING, not a missing entry. A board-down proposal must land on the

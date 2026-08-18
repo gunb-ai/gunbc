@@ -4,7 +4,7 @@ module v2.compiler.self_host.native_agreement_support
 fn native_agreement_divergence_from_run<Subj>(
   member_id: String,
   run: TestClaimRun<Subj, RuntimeValue>
-) -> Optional<NativeAgreementDivergence> {
+) -> Optional<v2.std.native_agreement.NativeAgreementDivergence> {
   match run.verdict {
     Pass => Absent
     SemanticMismatch {
@@ -14,7 +14,7 @@ fn native_agreement_divergence_from_run<Subj>(
       }
     } =>
       Present {
-        value: NativeAgreementDivergence {
+        value: v2.std.native_agreement.NativeAgreementDivergence {
           member_id: member_id,
           interpreted_value: runtime_value_octet_label(value: receipt.expected),
           native_value: runtime_value_octet_label(value: native_val)
@@ -22,7 +22,7 @@ fn native_agreement_divergence_from_run<Subj>(
       }
     SemanticMismatch { actual: _, falsification: Absent } =>
       Present {
-        value: NativeAgreementDivergence {
+        value: v2.std.native_agreement.NativeAgreementDivergence {
           member_id: member_id,
           interpreted_value: "?",
           native_value: "?"
@@ -30,7 +30,7 @@ fn native_agreement_divergence_from_run<Subj>(
       }
     BuildFailed { actual: _, diagnostic: _ } =>
       Present {
-        value: NativeAgreementDivergence {
+        value: v2.std.native_agreement.NativeAgreementDivergence {
           member_id: member_id,
           interpreted_value: "build_failed",
           native_value: "build_failed"
@@ -38,7 +38,7 @@ fn native_agreement_divergence_from_run<Subj>(
       }
     RunFailed { actual: _, diagnostic: _ } =>
       Present {
-        value: NativeAgreementDivergence {
+        value: v2.std.native_agreement.NativeAgreementDivergence {
           member_id: member_id,
           interpreted_value: "run_failed",
           native_value: "run_failed"
@@ -46,7 +46,7 @@ fn native_agreement_divergence_from_run<Subj>(
       }
     Deferred { actual: _, diagnostic: _ } =>
       Present {
-        value: NativeAgreementDivergence {
+        value: v2.std.native_agreement.NativeAgreementDivergence {
           member_id: member_id,
           interpreted_value: "deferred",
           native_value: "deferred"

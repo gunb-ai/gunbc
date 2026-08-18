@@ -8,7 +8,7 @@ type MyFold {
 }
 
 fn my_leaf() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^inline_leaf } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -16,7 +16,7 @@ fn my_leaf() -> Node {
 }
 
 fn inline_topdown_algebra() -> NodeFoldTopDown<MyFold, MyFold> {
-  NodeFoldTopDown {
+  v2.std.node.NodeFoldTopDown {
     init: fn(n, fold) {
       MyFold { origin: fold.origin, state: fold.state + 1, at_conj: true }
     },
@@ -39,18 +39,18 @@ fn use_inline_topdown() -> Int {
 
 data witness_inline_topdown_field_access: Bool = use_inline_topdown() == 8
 
-data claim_nodefold_topdown_inline_algebra_compiles: TestClaim = CompilesClaim {
+data claim_nodefold_topdown_inline_algebra_compiles: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/nodefold_topdown_inline_algebra: inline NodeFoldTopDown algebra compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: my_leaf(),
   expected_value: my_leaf(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_nodefold_topdown_inline_field_access: TestClaim = CompilesClaim {
+data claim_nodefold_topdown_inline_field_access: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/nodefold_topdown_inline_algebra: init lambda reads fold.origin/state/at_conj",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: my_leaf(),
   expected_value: my_leaf(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

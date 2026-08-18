@@ -16,7 +16,7 @@ type OpenAiErrorType
   | OpenAiRateLimitError
   | OpenAiApiError
   | OpenAiInsufficientQuota
-  | OpenAiErrorTypeOther { raw: NonEmptyStr }
+  | OpenAiErrorTypeOther { raw: std.types.NonEmptyStr }
 
 data openai_error_invalid_request_wire: String = "invalid_request_error"
 data openai_error_authentication_wire: String = "authentication_error"

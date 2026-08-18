@@ -1,7 +1,7 @@
 module gunbc.plans.ci_merge_freshness
 
 
-fn ci_merge_freshness_body() -> List<MarkdownBlock> {
+fn ci_merge_freshness_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "One-line: the fleet-red that hit `main` three times is **stale-green** — a PR validated against a base that pre-dates a newly-landed gate, then merged without re-validating against current `main`. The fix is a **merge-time freshness requirement** (a merge-policy change), not a new lens. This doc is the decision record so we don't re-litigate; the operator picks the option in §3."),
     h2(text: "1. Root cause — receipts (the #5429 timeline)"),
@@ -62,7 +62,7 @@ fn ci_merge_freshness_body() -> List<MarkdownBlock> {
   ]
 }
 
-data ci_merge_freshness_plan: Plan = Plan {
+data ci_merge_freshness_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "ci-merge-freshness",
   title: "CI merge-freshness — decision record (the stale-green root of the 3× fleet-red)",
   body: ci_merge_freshness_body(),

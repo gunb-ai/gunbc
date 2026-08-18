@@ -4,11 +4,11 @@ module std.filesystem
 
 type FileEntry {
   path: std.types.FilePath
-  kind: EntryKind
-  encoding: Encoding?
-  symlink_target: SymlinkTarget?
+  kind: std.filesystem.types.EntryKind
+  encoding: std.encoding.Encoding?
+  symlink_target: std.filesystem.types.SymlinkTarget?
   size: Int
-  mime: MimeType?
+  mime: std.types.MimeType?
 }
 
 type FileClassification = FileEntry

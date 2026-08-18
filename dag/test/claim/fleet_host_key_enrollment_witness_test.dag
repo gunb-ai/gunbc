@@ -11,13 +11,13 @@ test fn witness_empty_registry_yields_no_expectation_and_line_shape_is_exact() -
     Present { value: _ } => length(fleet_host_key_enrollments) > 0
     Absent => length(fleet_host_key_enrollments) == 0
   }
-    && known_hosts_line(k: KnownHostKeyRow {
-      host: "srv5" as HostIdentity,
+    && known_hosts_line(k: gunbc.fleet_host_key_enrollment.KnownHostKeyRow {
+      host: "srv5" as product.placement_supply.HostIdentity,
       endpoint: "192.168.1.222",
       key_type: "ssh-ed25519",
       public_key_base64: "AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE",
       sha256_fingerprint: "SHA256:fakefake",
-      provenance: ScannedFirstContact { scanned_from: "192.168.1.222 fixture" as NonEmptyStr },
+      provenance: ScannedFirstContact { scanned_from: "192.168.1.222 fixture" as std.types.NonEmptyStr },
     }) == "192.168.1.222 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFAKEFAKEFAKE"
 }
 

@@ -7,7 +7,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // receipt, and the three refusal shapes (wrong prefix, missing field, unknown verdict
 // label) all refuse rather than guessing a verdict.
 test fn witness_receipt_line_round_trips_and_refuses_malformed() -> Bool {
-  let r = ConvergeCliReceipt { host: "srv2", applied: 3, drifted: 1, verdict: VerdictConverged, reason: none }
+  let r = gunbc.fleet_converge_cli.ConvergeCliReceipt { host: "srv2", applied: 3, drifted: 1, verdict: VerdictConverged, reason: none }
   match parse_converge_receipt_line(line: converge_cli_receipt_line(r: r)) {
     Present { value: back } =>
       back.host == "srv2"
@@ -58,7 +58,7 @@ test fn witness_only_collected_rows_enter_the_fold_registry() -> Bool {
   let collected = [
     ReceiptCollected {
       host: "srv1",
-      receipt: ConvergeCliReceipt { host: "srv1", applied: 1, drifted: 0, verdict: VerdictConverged, reason: none },
+      receipt: gunbc.fleet_converge_cli.ConvergeCliReceipt { host: "srv1", applied: 1, drifted: 0, verdict: VerdictConverged, reason: none },
     },
     gunbc.fleet_receipt_collector.ReceiptAbsent { host: "srv2", cause: "No such file or directory" },
     ReceiptUnparseable { host: "srv3", line: "converge-receipt host=srv3 verdict=???" },
@@ -120,7 +120,7 @@ test fn witness_partial_collection_never_yields_fleet_converged() -> Bool {
   let rows = collected_receipts_only(collected: [
     ReceiptCollected {
       host: "srv1",
-      receipt: ConvergeCliReceipt { host: "srv1", applied: 1, drifted: 0, verdict: VerdictConverged, reason: none },
+      receipt: gunbc.fleet_converge_cli.ConvergeCliReceipt { host: "srv1", applied: 1, drifted: 0, verdict: VerdictConverged, reason: none },
     },
   ])
   match fleet_convergence_verdict(enrollments: fleet_subsumption_enrollments, receipts: rows) {

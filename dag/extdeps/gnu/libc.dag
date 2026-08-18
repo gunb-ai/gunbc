@@ -28,7 +28,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 type PlatformCLibrary
-  = GnuLibc { version: NonEmptyStr }
+  = GnuLibc { version: std.types.NonEmptyStr }
   | LibcUnobserved
 
 fn render_platform_c_library(library: PlatformCLibrary) -> String {

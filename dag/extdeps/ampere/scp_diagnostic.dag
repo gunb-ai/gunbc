@@ -53,11 +53,11 @@ type AmpereScpConsoleToken {
 // undecoded token is therefore impossible rather than merely discouraged.
 type AmpereDiagnosticMeaning
   = MeaningDecoded {
-      description: NonEmptyStr
-      authority: ExternalAuthority
+      description: std.types.NonEmptyStr
+      authority: extdeps.external_authority.ExternalAuthority
     }
   | MeaningUndecoded {
-      required_codebook: ExternalAuthority?
+      required_codebook: extdeps.external_authority.ExternalAuthority?
     }
 
 // The structured boot-progress interface, which is a DIFFERENT and richer
@@ -87,12 +87,12 @@ type AmpereBootStatus
 // "stage 4, failed" from an unverified byte split would manufacture a
 // semantic claim out of an arithmetic guess.
 type AmpereStructuredBootProgress {
-  raw: NonEmptyStr
+  raw: std.types.NonEmptyStr
   decoded_stage: AmpereBootStage?
   decoded_status: AmpereBootStatus?
   decoded_payload: std.nat.Nat?
-  decode_authority: ExternalAuthority?
-  observed_at: EpochMs
+  decode_authority: extdeps.external_authority.ExternalAuthority?
+  observed_at: std.types.EpochMs
 }
 
 // READING IS NOT ALWAYS OBSERVING. Several of these interfaces mutate the
@@ -109,7 +109,7 @@ type DiagnosticReadEffect
   | ReadClearsReportedEvent
 
 type AmpereDiagnosticInterface {
-  sysfs_attribute: NonEmptyStr
+  sysfs_attribute: std.types.NonEmptyStr
   read_effect: DiagnosticReadEffect
 }
 

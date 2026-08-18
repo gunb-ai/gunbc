@@ -1,9 +1,9 @@
 module v2.test.workflow.lens_subsumption_family_eval
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn subsumption_row_is_mechanical(row: DissolutionSubsumption) -> Bool {
+fn subsumption_row_is_mechanical(row: v2.lens.subsumption.DissolutionSubsumption) -> Bool {
   match row.verification {
     MechanicalReverification { test_claim: _ } => true
     ProducerStageDerivation { derivation_path: _ } => false
@@ -14,13 +14,13 @@ fn lens_subsumption_family_gate() -> Bool {
   subsumption_row_is_mechanical(row: rust_language_model_emit_subsumption)
     && subsumption_row_is_mechanical(row: affected_set_irt1_subsumption)
     && rust_language_model_emit_subsumption.subsumed_fixes.member(
-         DiffId { id: ^emit_rust_template_leaf_fix }
+         v2.lens.subsumption.DiffId { id: ^emit_rust_template_leaf_fix }
        )
     && rust_language_model_emit_subsumption.subsumed_fixes.member(
-         DiffId { id: ^emit_rust_name_dispatch_leaf_fix }
+         v2.lens.subsumption.DiffId { id: ^emit_rust_name_dispatch_leaf_fix }
        )
     && affected_set_irt1_subsumption.subsumed_fixes.member(
-         DiffId { id: ^affected_set_boundary_receipt_leaf_fix }
+         v2.lens.subsumption.DiffId { id: ^affected_set_boundary_receipt_leaf_fix }
        )
 }
 

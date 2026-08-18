@@ -21,10 +21,10 @@ type Gist {
   description: String?
   public: Bool
   files: Map<String, GistFile>
-  owner: GitHubUser
-  created_at: Timestamp
-  updated_at: Timestamp
-  html_url: NonEmptyStr
+  owner: extdeps.github.github.GitHubUser
+  created_at: std.types.Timestamp
+  updated_at: std.types.Timestamp
+  html_url: std.types.NonEmptyStr
 }
 
 service github.Gist {

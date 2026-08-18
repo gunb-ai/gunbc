@@ -1,7 +1,7 @@
 module v2.test.round_trip.dag_comment_wall_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data dag_comment_wall_executing_witness_note: String = "EXECUTING half of the comment wall, migrated from src/v1/tests/src/dag_comment_wall_test.rs (v1-test-migration, dag-comment-wall behavior family). The two fidelity rows below assert what the language model DECLARES; on their own they are a declaration, not a refusal — editing the tokenizer back to skipping comments leaves both green (DESIGN 4b rung honesty: a declared row establishes nothing about the acceptance path). These four probes assert what the compiler DOES: each sends a synthetic module through compile_dag_rust_emit_check, the same production compile path and same compile_clean_diagnostic_is_hard authority CI's compile-clean gate uses, reaching the same tokenizer and parser src/v1/tests/src/dag_comment_wall_test.rs drives through parse_with_table. The refusals are discriminating against the accepted control rather than against nothing: dag_comment_wall_clean_source_compiles and the line/block probes differ ONLY by the comment text, so a probe cannot go red for an unrelated defect in the fixture without the control going red with it, and re-admitting comment-skip flips both refusals green while the control stays green. slash_slash_inside_string_literal_accepted is proven twice over: this module's own literal must survive tokenization for the file to run at all, and the string probe compiles through the same path."
 

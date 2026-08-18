@@ -3,16 +3,16 @@ module test.claim.roadmap_document
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data audit_id: RoadmapNodeId = "fail-closed-audit"
-data status_id: RoadmapNodeId = "pr-checkbox-status"
-data child_id: RoadmapNodeId = "host-fed-status-bridge"
+data audit_id: gunbc.roadmap_model.RoadmapNodeId = "fail-closed-audit"
+data status_id: gunbc.roadmap_model.RoadmapNodeId = "pr-checkbox-status"
+data child_id: gunbc.roadmap_model.RoadmapNodeId = "host-fed-status-bridge"
 
-fn audit_node() -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_J19302B1RYEQZVMM6TG9" as RoadmapNodeIdentity,
+fn audit_node() -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_J19302B1RYEQZVMM6TG9" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: audit_id,
     line: AuthoredLine { done: true, content: "**fail-open audit**" },
-    carriers: [Pointer { label: "plan", path: "docs/plans/fail-closed-lockdown.md" }],
+    carriers: [gunbc.roadmap_model.Pointer { label: "plan", path: "docs/plans/fail-closed-lockdown.md" }],
     sizing: Unsized,
     execution: ExecutionContractUnspecified,
     owner: "",
@@ -20,9 +20,9 @@ fn audit_node() -> RoadmapNode {
   }
 }
 
-fn status_node() -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_AJ7G9SDD8FFX86WHFYQB" as RoadmapNodeIdentity,
+fn status_node() -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_AJ7G9SDD8FFX86WHFYQB" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: status_id,
     line: DerivableLine { prs: [5491], title: "**PR-checkbox status**", description: "" },
     carriers: [],
@@ -32,9 +32,9 @@ fn status_node() -> RoadmapNode {
     signoff: Unsigned,
   }
 }
-fn child_node() -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_ABYCNZ3BDSY98CHYC51T" as RoadmapNodeIdentity,
+fn child_node() -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_ABYCNZ3BDSY98CHYC51T" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: child_id,
     line: AuthoredLine { done: false, content: "**host-fed status bridge**" },
     carriers: [],
@@ -45,32 +45,32 @@ fn child_node() -> RoadmapNode {
   }
 }
 
-fn lockdown_section() -> RoadmapSection {
-  RoadmapSection {
+fn lockdown_section() -> gunbc.roadmap_document.RoadmapSection {
+  gunbc.roadmap_document.RoadmapSection {
     title: "0. Fail-closed lock-down",
     elements: [section_group(label: "", nodes: [audit_node()], edges: [])],
   }
 }
-fn expansion_section() -> RoadmapSection {
-  RoadmapSection {
+fn expansion_section() -> gunbc.roadmap_document.RoadmapSection {
+  gunbc.roadmap_document.RoadmapSection {
     title: "6. Expansion",
     elements: [section_group(
       label: "",
       nodes: [status_node(), child_node()],
-      edges: [RoadmapEdge { child: child_id, parent: status_id }],
+      edges: [gunbc.roadmap_model.RoadmapEdge { child: child_id, parent: status_id }],
     )],
   }
 }
 
-fn preamble() -> List<MarkdownBlock> {
+fn preamble() -> List<std.markdown.MarkdownBlock> {
   [
     HeadingBlock { level: H1, inlines: [TextInline { text: "ROADMAP" }] },
     ParagraphBlock { inlines: [TextInline { text: "Generated from .dag authority — do not hand-edit." }] },
   ]
 }
 
-fn authority() -> RoadmapDocument {
-  RoadmapDocument { preamble: preamble(), lead_lanes: [], sections: [lockdown_section(), expansion_section()] }
+fn authority() -> gunbc.roadmap_document.RoadmapDocument {
+  gunbc.roadmap_document.RoadmapDocument { preamble: preamble(), lead_lanes: [], sections: [lockdown_section(), expansion_section()] }
 }
 
 fn emit_roadmap(merged: List<Int>) -> String {

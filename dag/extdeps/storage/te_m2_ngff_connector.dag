@@ -14,13 +14,13 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data te_m2_ngff_note: String = "THIS ROW IS A CONNECTOR FAMILY, NOT AN ORDERING SELECTION, AND THE DIFFERENCE IS WHAT THE READ DOCUMENT SUPPORTS. The specification establishes 67 positions on 0.50 mm centres, surface-mount solder tails onto pads, and the stack-height and mid-plane variants it governs. It does NOT say which ordering part number is M-keyed: the key is a property of the individual part, carried on the per-part customer drawing, and this row carries no such drawing. SO THERE IS NO KEY FIELD HERE. An M2Key field would have had to be filled, and filling it from the design intent rather than from a document is precisely how an intent becomes indistinguishable from a fact. The M-key decision is real and was made at the product layer; what is missing is the part number that satisfies it. THE BOARD PATTERN IS OUTSTANDING, AND WHAT IS RECORDED ABOUT IT IS A FACT ABOUT THE DOCUMENT RATHER THAN ABOUT ANY READER: the specification publishes a recommended PCB layout as Figures 2 and 3, and defers to the per-part customer drawing where the two conflict, so the pattern exists and is published and is simply not transcribed here. Which fetches on which day did or did not yield text is an observation this repository made about its own tooling, and it belongs in the observing layer downstream rather than inside an upstream module."
 
 type M2ConnectorCatalogRow {
-  specification_number: NonEmptyStr
-  specification_revision: NonEmptyStr
-  vendor: Vendor<Hardware>
+  specification_number: std.types.NonEmptyStr
+  specification_revision: std.types.NonEmptyStr
+  vendor: Vendor<extdeps.hardware.Hardware>
   position_count: std.nat.Nat
-  contact_pitch: Micrometer
-  attachment: BoardAttachmentStyle
-  board_pattern: SurfaceMountPatternStanding
+  contact_pitch: std.measure.Micrometer
+  attachment: extdeps.land_pattern.types.BoardAttachmentStyle
+  board_pattern: extdeps.land_pattern.types.SurfaceMountPatternStanding
 }
 
 data m2_ngff_minicard_67_position: M2ConnectorCatalogRow = M2ConnectorCatalogRow {

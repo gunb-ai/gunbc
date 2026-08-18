@@ -12,8 +12,8 @@ data three_point_estimate_method_used: ThreePointEstimateMethod = three_point_es
 data resource_capacity_lower_bound_method_used: ResourceCapacityLowerBoundMethod = resource_capacity_lower_bound_method
 
 type SizingCell {
-  intricacy: Intricacy
-  volume: Volume
+  intricacy: gunbc.roadmap_model.Intricacy
+  volume: gunbc.roadmap_model.Volume
 }
 
 fn sizing_cell_eq(a: SizingCell, b: SizingCell) -> Bool {
@@ -29,7 +29,7 @@ fn sizing_cell_of(sizing: NodeSizing) -> SizingCell? {
 }
 
 type AcceptedNodePullLink {
-  node: RoadmapNodeId
+  node: gunbc.roadmap_model.RoadmapNodeId
   pull_number: Int
 }
 
@@ -68,28 +68,28 @@ type CycleTimeProvenance
 data cycle_time_provenance_note: String = "AcceptedRoadmapNodePullHistory measures PR open -> merge for nodes whose roadmap acceptance receipt is valid. DashboardWorkItemDispatchPullHistory is reserved as a distinct future provenance arm because dispatch -> merge measures a different interval; this slice constructs no value in that arm and calibration admits only accepted-roadmap observations. The two populations therefore cannot blend silently."
 
 type CycleTimeObservation {
-  node: RoadmapNodeId
+  node: gunbc.roadmap_model.RoadmapNodeId
   sizing_cell: SizingCell
   pull_number: Int
-  cycle_time: Millisecond
-  accepted_on: NonEmptyStr
-  source_url: NonEmptyStr
+  cycle_time: std.measure.Millisecond
+  accepted_on: std.types.NonEmptyStr
+  source_url: std.types.NonEmptyStr
   provenance: CycleTimeProvenance
 }
 
 type CycleTimeHistoryRefusal
-  = HistoryNodeMissing { node: RoadmapNodeId }
-  | HistoryNodeDuplicate { node: RoadmapNodeId }
-  | HistoryAcceptanceMissing { node: RoadmapNodeId }
-  | HistoryAcceptanceDuplicate { node: RoadmapNodeId }
-  | HistoryNodeUnsized { node: RoadmapNodeId }
-  | HistoryPullMissing { node: RoadmapNodeId, pull_number: Int }
-  | HistoryPullDuplicate { node: RoadmapNodeId, pull_number: Int }
-  | HistoryPullNotMergedAfterOpen { node: RoadmapNodeId, pull_number: Int }
+  = HistoryNodeMissing { node: gunbc.roadmap_model.RoadmapNodeId }
+  | HistoryNodeDuplicate { node: gunbc.roadmap_model.RoadmapNodeId }
+  | HistoryAcceptanceMissing { node: gunbc.roadmap_model.RoadmapNodeId }
+  | HistoryAcceptanceDuplicate { node: gunbc.roadmap_model.RoadmapNodeId }
+  | HistoryNodeUnsized { node: gunbc.roadmap_model.RoadmapNodeId }
+  | HistoryPullMissing { node: gunbc.roadmap_model.RoadmapNodeId, pull_number: Int }
+  | HistoryPullDuplicate { node: gunbc.roadmap_model.RoadmapNodeId, pull_number: Int }
+  | HistoryPullNotMergedAfterOpen { node: gunbc.roadmap_model.RoadmapNodeId, pull_number: Int }
   | HistoryAcceptanceCarrierLoadRefused { detail: String }
 
 type CycleTimePopulationExclusion
-  = BundledPullDelivery { pull_number: Int, nodes: List<RoadmapNodeId> }
+  = BundledPullDelivery { pull_number: Int, nodes: List<gunbc.roadmap_model.RoadmapNodeId> }
 
 type CycleTimeObservationBuild
   = CycleTimeObserved { observation: CycleTimeObservation }
@@ -216,9 +216,9 @@ fn cycle_time_population_exclusions(builds: List<CycleTimeObservationBuild>) -> 
 }
 
 type CycleTimeInterval {
-  minimum: Millisecond
-  median: Millisecond
-  maximum: Millisecond
+  minimum: std.measure.Millisecond
+  median: std.measure.Millisecond
+  maximum: std.measure.Millisecond
   sample_count: Int
 }
 
@@ -259,26 +259,26 @@ fn calibrate_cell(cell: SizingCell, observations: List<CycleTimeObservation>) ->
   }
 }
 
-type ForecastAnchorObservation { observed_at: EpochMs }
+type ForecastAnchorObservation { observed_at: std.types.EpochMs }
 
-type ReviewCycleCount { count: PositiveMeasureCount }
+type ReviewCycleCount { count: std.measure.PositiveMeasureCount }
 
-type OperatorMergeLatencyAssumption { duration: Millisecond }
+type OperatorMergeLatencyAssumption { duration: std.measure.Millisecond }
 
 type EndToEndBeltSlotOccupancyAssumption {}
 
 data end_to_end_belt_slot_occupancy_assumption: EndToEndBeltSlotOccupancyAssumption = EndToEndBeltSlotOccupancyAssumption {}
 
 type ScheduleForecastAssumptions {
-  worker_concurrency_cap: BeltCapacity
+  worker_concurrency_cap: gunbc.roadmap_belt.BeltCapacity
   review_cycle_count: ReviewCycleCount
   operator_merge_latency: OperatorMergeLatencyAssumption
   belt_slot_occupancy: EndToEndBeltSlotOccupancyAssumption
 }
 
 type ScenarioAdjustmentUnavailableCause
-  = ReviewCycleDurationUnobserved { declared_count: PositiveMeasureCount }
-  | OperatorMergeLatencyUnobserved { declared_latency: Millisecond }
+  = ReviewCycleDurationUnobserved { declared_count: std.measure.PositiveMeasureCount }
+  | OperatorMergeLatencyUnobserved { declared_latency: std.measure.Millisecond }
 
 type ScenarioAdjustment
   = AdjustmentUnavailable { causes: List<ScenarioAdjustmentUnavailableCause> }
@@ -290,7 +290,7 @@ fn scenario_adjustment(assumptions: ScheduleForecastAssumptions) -> ScenarioAdju
   ] }
 }
 
-type ForecastInstant { epoch_ms: EpochMs }
+type ForecastInstant { epoch_ms: std.types.EpochMs }
 
 type ForecastLowerBoundInterval {
   earliest: ForecastInstant
@@ -299,15 +299,15 @@ type ForecastLowerBoundInterval {
 }
 
 type NodeScheduleForecast {
-  node: RoadmapNodeId
+  node: gunbc.roadmap_model.RoadmapNodeId
   calibrated_cycle_time: CycleTimeInterval
   landing_lower_bound: ForecastLowerBoundInterval
 }
 
 type DurationEstimateInterval {
-  minimum: Millisecond
-  median: Millisecond
-  maximum: Millisecond
+  minimum: std.measure.Millisecond
+  median: std.measure.Millisecond
+  maximum: std.measure.Millisecond
 }
 
 type TotalWork { duration: DurationEstimateInterval }
@@ -321,9 +321,9 @@ type CapacityConstrainedMinimum {
 }
 
 type ParallelismHeadroomInterval {
-  minimum: FieldOfFractions<Millisecond>
-  median: FieldOfFractions<Millisecond>
-  maximum: FieldOfFractions<Millisecond>
+  minimum: FieldOfFractions<std.measure.Millisecond>
+  median: FieldOfFractions<std.measure.Millisecond>
+  maximum: FieldOfFractions<std.measure.Millisecond>
 }
 
 type ParallelismHeadroom { ratio: ParallelismHeadroomInterval }
@@ -339,7 +339,7 @@ type ScheduleForecast {
   anchor: ForecastAnchorObservation
   assumptions: ScheduleForecastAssumptions
   nodes: List<NodeScheduleForecast>
-  critical_path: List<RoadmapNodeId>
+  critical_path: List<gunbc.roadmap_model.RoadmapNodeId>
   calibration_population_exclusions: List<CycleTimePopulationExclusion>
   scenario_adjustment: ScenarioAdjustment
   lower_bounds: ScheduleLowerBounds
@@ -348,15 +348,15 @@ type ScheduleForecast {
 
 type CalibrationGap {
   cell: SizingCell
-  nodes: List<RoadmapNodeId>
+  nodes: List<gunbc.roadmap_model.RoadmapNodeId>
 }
 
 type ForecastRefusal
   = ForecastGraphEmpty
-  | DependencyCycle { nodes: List<RoadmapNodeId> }
-  | DependencyEndpointUnknown { nodes: List<RoadmapNodeId> }
-  | NodeUnsized { nodes: List<RoadmapNodeId> }
-  | CycleTimeObservationNonPositive { nodes: List<RoadmapNodeId> }
+  | DependencyCycle { nodes: List<gunbc.roadmap_model.RoadmapNodeId> }
+  | DependencyEndpointUnknown { nodes: List<gunbc.roadmap_model.RoadmapNodeId> }
+  | NodeUnsized { nodes: List<gunbc.roadmap_model.RoadmapNodeId> }
+  | CycleTimeObservationNonPositive { nodes: List<gunbc.roadmap_model.RoadmapNodeId> }
   | NoCalibrationSample {
       gaps: List<CalibrationGap>,
       population_exclusions: List<CycleTimePopulationExclusion>,
@@ -366,7 +366,7 @@ type ForecastRefusal
   | WorkerConcurrencyCapInvalid { declared_cap: Int }
   | CalibrationHistoryRefused { refusals: List<CycleTimeHistoryRefusal> }
   | ForecastRoadmapAuthorityRefused { detail: String }
-  | ForecastBuildRefused { node: RoadmapNodeId }
+  | ForecastBuildRefused { node: gunbc.roadmap_model.RoadmapNodeId }
 
 type ScheduleForecastResult
   = ScheduleForecastKnown { forecast: ScheduleForecast }
@@ -464,13 +464,13 @@ fn baseline_node_duration(
 }
 
 type PathEstimate {
-  duration: Millisecond
-  path: List<RoadmapNodeId>
+  duration: std.measure.Millisecond
+  path: List<gunbc.roadmap_model.RoadmapNodeId>
 }
 
 type PathEstimateResult
   = PathEstimated { estimate: PathEstimate }
-  | PathEstimateUnknown { node: RoadmapNodeId }
+  | PathEstimateUnknown { node: gunbc.roadmap_model.RoadmapNodeId }
 
 fn longer_path(a: PathEstimate, b: PathEstimate) -> PathEstimate {
   if millisecond_count(m: b.duration) > millisecond_count(m: a.duration) { b } else { a }
@@ -532,12 +532,12 @@ fn path_to_node(
 }
 
 type NodeForecastBuild
-  = NodeForecastBuilt { forecast: NodeScheduleForecast, median_path: List<RoadmapNodeId> }
-  | NodeForecastBuildRefused { node: RoadmapNodeId }
+  = NodeForecastBuilt { forecast: NodeScheduleForecast, median_path: List<gunbc.roadmap_model.RoadmapNodeId> }
+  | NodeForecastBuildRefused { node: gunbc.roadmap_model.RoadmapNodeId }
 
 type CriticalPathChoice {
-  median_epoch_ms: EpochMs
-  path: List<RoadmapNodeId>
+  median_epoch_ms: std.types.EpochMs
+  path: List<gunbc.roadmap_model.RoadmapNodeId>
 }
 
 fn forecast_instant(anchor: ForecastAnchorObservation, duration: Millisecond) -> ForecastInstant {

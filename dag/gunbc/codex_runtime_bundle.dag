@@ -5,16 +5,16 @@ data codex_runtime_bundle_note: String = "Release-bundled Codex runtime at codex
 
 data codex_native_app_server_probe_note: String = "Measured 2026-08-05 on linux/arm64: vendor/.../bin/codex app-server --stdio accepts NDJSON initialize and returns a JSON-RPC result. Prefer that native executable over the JS wrapper+Node path."
 
-fn codex_bundle_executable_path(bundle: CodexRuntimeBundle) -> std.types.FilePath {
+fn codex_bundle_executable_path(bundle: gunbc.package_delivery.CodexRuntimeBundle) -> std.types.FilePath {
   concat(bundle.root as String, concat("/", bundle.native_executable_rel as String)) as std.types.FilePath
 }
 
-fn codex_bundle_identity(bundle: CodexRuntimeBundle) -> ContentHash {
+fn codex_bundle_identity(bundle: gunbc.package_delivery.CodexRuntimeBundle) -> std.content_hash.ContentHash {
   bundle.receipt.receipt_identity
 }
 
 fn codex_bundle_admitted_packages(
-  bundle: CodexRuntimeBundle,
-) -> List<AdmittedPackageArtifactReceipt> {
+  bundle: gunbc.package_delivery.CodexRuntimeBundle,
+) -> List<gunbc.package_delivery.AdmittedPackageArtifactReceipt> {
   bundle.admitted_packages
 }

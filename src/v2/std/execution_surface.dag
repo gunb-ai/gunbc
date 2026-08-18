@@ -33,13 +33,13 @@ type ShellEmissionSiteId = Symbol
 type ShellEmissionRosterEntry {
   site: ShellEmissionSiteId
   roster_key: String
-  dissolution: DissolutionCondition
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 type ShellEmissionJustification
   = ForeignExecutorMandated { capability: ExecutorCapability }
   | BootstrapProvisioned { window: ProvisioningWindow, site: ShellEmissionSiteId }
-  | RosterException { roster_key: String, dissolution: DissolutionCondition }
+  | RosterException { roster_key: String, dissolution: std.dissolution.DissolutionCondition }
 
 type ShellEmissionRefusal
   = RuntimePresentRequiresTypedRealization { capability: ExecutorCapability }

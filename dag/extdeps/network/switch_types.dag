@@ -21,11 +21,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 type NetworkSwitchCatalogRow {
-  model: NonEmptyStr
-  manufacturer: Vendor<Hardware>
+  model: std.types.NonEmptyStr
+  manufacturer: Vendor<extdeps.hardware.Hardware>
   port_count: Int
-  port_speed: Bandwidth
+  port_speed: std.measure.Bandwidth
   fanless: Bool
-  switching_capacity: Bandwidth
-  max_power_draw: Milliwatt
+  switching_capacity: std.measure.Bandwidth
+  max_power_draw: std.measure.Milliwatt
 }

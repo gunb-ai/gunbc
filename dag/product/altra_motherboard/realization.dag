@@ -20,7 +20,7 @@ type BoardRequirementIdentity
   | DebugAccess
   | ProcessorSocketMount
   | ProcessorPackageFit
-  | MemoryModuleSocketPopulation { slot: DdrSlotIdentity }
+  | MemoryModuleSocketPopulation { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity }
 
 fn requirement_name(r: BoardRequirementIdentity) -> NonEmptyStr {
   match r {
@@ -79,21 +79,21 @@ fn functional_obligation_text(r: BoardRequirementIdentity) -> NonEmptyStr {
 // JUSTIFICATION IS A COPRODUCT WITH THREE ARMS THAT MUST NOT COLLAPSE.
 type RealizationJustification
   = ReferenceDesignPrecedent {
-      reference_design: DeclarationRef
-      authority: ExternalAuthority
+      reference_design: std.decl_ref.DeclarationRef
+      authority: extdeps.external_authority.ExternalAuthority
     }
   | RequirementsDerived {
-      requirements: DeclarationRef
-      evidence: DeclarationRef
+      requirements: std.decl_ref.DeclarationRef
+      evidence: std.decl_ref.DeclarationRef
     }
   | CandidateCompatibilityOnly {
-      candidate: DeclarationRef
-      obligations: NonEmptyStr
+      candidate: std.decl_ref.DeclarationRef
+      obligations: std.types.NonEmptyStr
     }
 
 type RequirementPartRealization {
   requirement: BoardRequirementIdentity
-  providers: List<NonEmptyStr>
+  providers: List<std.types.NonEmptyStr>
   justification: RealizationJustification
 }
 

@@ -2,7 +2,7 @@ module v2.test.manual.test_claim_cache_digest_sensitivity
 
 
 fn tcc_cache_pass_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^tcc_cache_pass_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -10,7 +10,7 @@ fn tcc_cache_pass_node() -> Node {
 }
 
 fn tcc_cache_fail_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^tcc_cache_fail_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -29,7 +29,7 @@ fn tcc_cache_eval_node_b() -> Node {
   claim_atom_node(s: ^tcc_cache_eval_b_sym)
 }
 
-fn tcc_cache_tree_facts_for_reason(reason: Symbol) -> InferredTree {
+fn tcc_cache_tree_facts_for_reason(reason: v2.std.node.Symbol) -> v2.compiler.infer.InferredTree {
   claim_inferred_tree(
     root: tcc_cache_root(),
     facts: claim_inferred_facts(
@@ -40,25 +40,25 @@ fn tcc_cache_tree_facts_for_reason(reason: Symbol) -> InferredTree {
   )
 }
 
-fn tcc_cache_eval_context() -> EvalContext {
+fn tcc_cache_eval_context() -> v2.compiler.eval.EvalContext {
   eval_context_v4_evaluator()
 }
 
-fn tcc_cache_stub_claim() -> TestClaim {
+fn tcc_cache_stub_claim() -> v2.std.verification.TestClaim {
   CompilesClaim {
     label: "manual/test_claim_cache: digest sensitivity scaffold",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-    classification: TestClassification { tier: Tier1, layer: Unit },
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     input: tcc_cache_pass_node(),
     expected_value: tcc_cache_pass_node()
   }
 }
 
 fn tcc_cache_subject(
-  tree: InferredTree,
+  tree: v2.compiler.infer.InferredTree,
   evaluator_input: Node
 ) -> TestClaimEvalSubject<Node> {
-  TestClaimEvalSubject {
+  v2.compiler.eval.TestClaimEvalSubject {
     claim: tcc_cache_stub_claim(),
     context: tcc_cache_eval_context(),
     tree: tree,
@@ -81,14 +81,14 @@ fn tcc_cache_facts_diagnostic_digest_differs() -> Bool {
   hash_a != hash_b
 }
 
-fn tcc_cache_diagnostic_claim(expected_reason: Symbol) -> TestClaim {
+fn tcc_cache_diagnostic_claim(expected_reason: v2.std.node.Symbol) -> v2.std.verification.TestClaim {
   DiagnosticClaim {
     label: "manual/test_claim_cache: diagnostic claim hash scaffold",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-    classification: TestClassification { tier: Tier1, layer: Unit },
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     input: tcc_cache_root(),
     expected_rejection: diagnostics_singleton(
-      d: Diagnostic {
+      d: v2.std.diagnostic.Diagnostic {
         reason: expected_reason,
         at: node_locus(node: tcc_cache_root()),
         correction: Unavailable { reason: AmbiguousIntent }
@@ -104,7 +104,7 @@ fn tcc_cache_compiles_equals_same_nodes_claim_hash_differs() -> Bool {
     c: CompilesClaim {
       label: "manual/test_claim_cache: compiles shape",
       anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
       input: node_x,
       expected_value: node_y
     }
@@ -112,7 +112,7 @@ fn tcc_cache_compiles_equals_same_nodes_claim_hash_differs() -> Bool {
     c: EqualsClaim {
       label: "manual/test_claim_cache: equals shape",
       anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
       lhs: node_x,
       rhs: node_y
     }
@@ -296,72 +296,72 @@ fn tcc_cache_byte_offset_exhausted_residual_37_double_digest_differs() -> Bool {
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: int_mul(a: tcc_cache_int_two, b: tcc_cache_byte_offset_pow_37())))
 }
 
-fn tcc_cache_runtime_unit() -> RuntimeValue {
+fn tcc_cache_runtime_unit() -> v2.std.runtime.RuntimeValue {
   RuntimeUnit {
-    value: RuntimeUnitValue { unit_type: v2_eval_unit_type_node() }
+    value: v2.std.runtime.RuntimeUnitValue { unit_type: v2_eval_unit_type_node() }
   }
 }
 
-fn tcc_stub_alloc_a(_node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn tcc_stub_alloc_a(_node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   Accepted { value: tcc_cache_runtime_unit(), diagnostics: None }
 }
 
 fn tcc_stub_call_b(
   _node: Node,
-  _args: List<RuntimeValue>,
-  _env: EvaluationEnvironment
-) -> Outcome<RuntimeValue> {
+  _args: List<v2.std.runtime.RuntimeValue>,
+  _env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   Accepted { value: tcc_cache_runtime_unit(), diagnostics: None }
 }
 
-fn tcc_interp_stub_allocate_body() -> InterpretationAlgebra {
-  InterpretationAlgebra {
-    value: ValueInterpreter {
+fn tcc_interp_stub_allocate_body() -> v2.std.runtime.InterpretationAlgebra {
+  v2.std.runtime.InterpretationAlgebra {
+    value: v2.std.runtime.ValueInterpreter {
       allocate_literal: tcc_stub_alloc_a
     },
-    transform: TransformInterpreter {
+    transform: v2.std.runtime.TransformInterpreter {
       call_primitive: v2_eval_call_primitive
     },
-    branch: BranchInterpreter {
+    branch: v2.std.runtime.BranchInterpreter {
       choose_branch: v2_eval_choose_branch
     },
-    loop: LoopInterpreter {
+    loop: v2.std.runtime.LoopInterpreter {
       step_loop: v2_eval_step_loop
     },
-    bind: BindInterpreter {
+    bind: v2.std.runtime.BindInterpreter {
       bind_value: v2_eval_bind_value
     },
-    match: MatchInterpreter {
+    match: v2.std.runtime.MatchInterpreter {
       choose_arm: runtime_reject_match_arm
     }
   }
 }
 
-fn tcc_interp_stub_call_body() -> InterpretationAlgebra {
-  InterpretationAlgebra {
-    value: ValueInterpreter {
+fn tcc_interp_stub_call_body() -> v2.std.runtime.InterpretationAlgebra {
+  v2.std.runtime.InterpretationAlgebra {
+    value: v2.std.runtime.ValueInterpreter {
       allocate_literal: v2_eval_allocate_literal
     },
-    transform: TransformInterpreter {
+    transform: v2.std.runtime.TransformInterpreter {
       call_primitive: tcc_stub_call_b
     },
-    branch: BranchInterpreter {
+    branch: v2.std.runtime.BranchInterpreter {
       choose_branch: v2_eval_choose_branch
     },
-    loop: LoopInterpreter {
+    loop: v2.std.runtime.LoopInterpreter {
       step_loop: v2_eval_step_loop
     },
-    bind: BindInterpreter {
+    bind: v2.std.runtime.BindInterpreter {
       bind_value: v2_eval_bind_value
     },
-    match: MatchInterpreter {
+    match: v2.std.runtime.MatchInterpreter {
       choose_arm: runtime_reject_match_arm
     }
   }
 }
 
-fn tcc_witness_stub_allocate_body() -> InterpretationStructureWitness {
-  InterpretationStructureWitness {
+fn tcc_witness_stub_allocate_body() -> v2.std.runtime.InterpretationStructureWitness {
+  v2.std.runtime.InterpretationStructureWitness {
     allocate_literal: ^tcc_stub_alloc_a_sym,
     call_primitive: ^v2_eval_call_primitive_sym,
     choose_branch: ^v2_eval_choose_branch_sym,
@@ -371,8 +371,8 @@ fn tcc_witness_stub_allocate_body() -> InterpretationStructureWitness {
   }
 }
 
-fn tcc_witness_stub_call_body() -> InterpretationStructureWitness {
-  InterpretationStructureWitness {
+fn tcc_witness_stub_call_body() -> v2.std.runtime.InterpretationStructureWitness {
+  v2.std.runtime.InterpretationStructureWitness {
     allocate_literal: ^v2_eval_allocate_literal_sym,
     call_primitive: ^tcc_stub_call_b_sym,
     choose_branch: ^v2_eval_choose_branch_sym,
@@ -410,36 +410,36 @@ fn tcc_cache_same_pin_different_executed_slot_digest_differs() -> Bool {
 // discriminating case is not vacuous).
 fn tcc_stub_choose_arm(
   _node: Node,
-  _value: RuntimeValue,
-  _env: EvaluationEnvironment
+  _value: v2.std.runtime.RuntimeValue,
+  _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<Node> {
   Accepted { value: tcc_cache_pass_node(), diagnostics: None }
 }
 
-fn tcc_interp_match_default_body() -> InterpretationAlgebra {
-  InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: v2_eval_allocate_literal },
-    transform: TransformInterpreter { call_primitive: v2_eval_call_primitive },
-    branch: BranchInterpreter { choose_branch: v2_eval_choose_branch },
-    loop: LoopInterpreter { step_loop: v2_eval_step_loop },
-    bind: BindInterpreter { bind_value: v2_eval_bind_value },
-    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+fn tcc_interp_match_default_body() -> v2.std.runtime.InterpretationAlgebra {
+  v2.std.runtime.InterpretationAlgebra {
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: v2_eval_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: v2_eval_call_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: v2_eval_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: v2_eval_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: v2_eval_bind_value },
+    match: v2.std.runtime.MatchInterpreter { choose_arm: runtime_reject_match_arm }
   }
 }
 
-fn tcc_interp_match_stub_body() -> InterpretationAlgebra {
-  InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: v2_eval_allocate_literal },
-    transform: TransformInterpreter { call_primitive: v2_eval_call_primitive },
-    branch: BranchInterpreter { choose_branch: v2_eval_choose_branch },
-    loop: LoopInterpreter { step_loop: v2_eval_step_loop },
-    bind: BindInterpreter { bind_value: v2_eval_bind_value },
-    match: MatchInterpreter { choose_arm: tcc_stub_choose_arm }
+fn tcc_interp_match_stub_body() -> v2.std.runtime.InterpretationAlgebra {
+  v2.std.runtime.InterpretationAlgebra {
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: v2_eval_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: v2_eval_call_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: v2_eval_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: v2_eval_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: v2_eval_bind_value },
+    match: v2.std.runtime.MatchInterpreter { choose_arm: tcc_stub_choose_arm }
   }
 }
 
-fn tcc_witness_match_default_body() -> InterpretationStructureWitness {
-  InterpretationStructureWitness {
+fn tcc_witness_match_default_body() -> v2.std.runtime.InterpretationStructureWitness {
+  v2.std.runtime.InterpretationStructureWitness {
     allocate_literal: ^v2_eval_allocate_literal_sym,
     call_primitive: ^v2_eval_call_primitive_sym,
     choose_branch: ^v2_eval_choose_branch_sym,
@@ -449,8 +449,8 @@ fn tcc_witness_match_default_body() -> InterpretationStructureWitness {
   }
 }
 
-fn tcc_witness_match_stub_body() -> InterpretationStructureWitness {
-  InterpretationStructureWitness {
+fn tcc_witness_match_stub_body() -> v2.std.runtime.InterpretationStructureWitness {
+  v2.std.runtime.InterpretationStructureWitness {
     allocate_literal: ^v2_eval_allocate_literal_sym,
     call_primitive: ^v2_eval_call_primitive_sym,
     choose_branch: ^v2_eval_choose_branch_sym,
@@ -496,14 +496,14 @@ fn tcc_cache_same_pin_match_only_slot_identical_digest_equal() -> Bool {
   digest_a == digest_b
 }
 
-fn tcc_cache_diagnostic_tail_bag_claim(label_suffix: String, tail: List<Diagnostic>) -> TestClaim {
+fn tcc_cache_diagnostic_tail_bag_claim(label_suffix: String, tail: List<v2.std.diagnostic.Diagnostic>) -> v2.std.verification.TestClaim {
   DiagnosticClaim {
     label: label_suffix,
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-    classification: TestClassification { tier: Tier1, layer: Unit },
+    classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     input: tcc_cache_root(),
-    expected_rejection: NonEmptyDiagnostics {
-      head: Diagnostic {
+    expected_rejection: v2.std.diagnostic.NonEmptyDiagnostics {
+      head: v2.std.diagnostic.Diagnostic {
         reason: ^tcc_cache_expected_diag_a,
         at: node_locus(node: tcc_cache_root()),
         correction: Unavailable { reason: AmbiguousIntent }
@@ -514,12 +514,12 @@ fn tcc_cache_diagnostic_tail_bag_claim(label_suffix: String, tail: List<Diagnost
 }
 
 fn tcc_cache_diagnostic_tail_permutation_claim_hash_invariant() -> Bool {
-  let diag_b = Diagnostic {
+  let diag_b = v2.std.diagnostic.Diagnostic {
     reason: ^tcc_cache_tail_diag_b,
     at: node_locus(node: tcc_cache_root()),
     correction: Unavailable { reason: AmbiguousIntent }
   }
-  let diag_c = Diagnostic {
+  let diag_c = v2.std.diagnostic.Diagnostic {
     reason: ^tcc_cache_tail_diag_c,
     at: node_locus(node: tcc_cache_root()),
     correction: Unavailable { reason: AmbiguousIntent }
@@ -543,10 +543,10 @@ fn tcc_cache_correction_variant_domain_claim_hash_differs() -> Bool {
     c: DiagnosticClaim {
       label: "manual/test_claim_cache: suggested vs unavailable correction domain",
       anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
       input: tcc_cache_root(),
       expected_rejection: diagnostics_singleton(
-        d: Diagnostic {
+        d: v2.std.diagnostic.Diagnostic {
           reason: ^tcc_cache_expected_diag_a,
           at: node_locus(node: tcc_cache_root()),
           correction: Suggested { node: ambiguous_tag_node }
@@ -557,10 +557,10 @@ fn tcc_cache_correction_variant_domain_claim_hash_differs() -> Bool {
     c: DiagnosticClaim {
       label: "manual/test_claim_cache: unavailable ambiguous intent correction",
       anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
       input: tcc_cache_root(),
       expected_rejection: diagnostics_singleton(
-        d: Diagnostic {
+        d: v2.std.diagnostic.Diagnostic {
           reason: ^tcc_cache_expected_diag_a,
           at: node_locus(node: tcc_cache_root()),
           correction: Unavailable { reason: AmbiguousIntent }
@@ -575,10 +575,10 @@ fn tcc_cache_locus_variant_domain_claim_hash_differs() -> Bool {
     c: DiagnosticClaim {
       label: "manual/test_claim_cache: node locus domain",
       anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
       input: tcc_cache_root(),
       expected_rejection: diagnostics_singleton(
-        d: Diagnostic {
+        d: v2.std.diagnostic.Diagnostic {
           reason: ^tcc_cache_expected_diag_a,
           at: node_locus(node: tcc_cache_root()),
           correction: Unavailable { reason: AmbiguousIntent }
@@ -589,10 +589,10 @@ fn tcc_cache_locus_variant_domain_claim_hash_differs() -> Bool {
     c: DiagnosticClaim {
       label: "manual/test_claim_cache: port locus domain",
       anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-      classification: TestClassification { tier: Tier1, layer: Unit },
+      classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
       input: tcc_cache_root(),
       expected_rejection: diagnostics_singleton(
-        d: Diagnostic {
+        d: v2.std.diagnostic.Diagnostic {
           reason: ^tcc_cache_expected_diag_a,
           at: port_locus(port: ^tcc_cache_root_sym),
           correction: Unavailable { reason: AmbiguousIntent }
@@ -610,192 +610,192 @@ fn tcc_cache_sensitivity_claim_input(ok: Bool) -> Node {
   }
 }
 
-data claim_test_claim_cache_facts_diagnostic_digest_differs: TestClaim = CompilesClaim {
+data claim_test_claim_cache_facts_diagnostic_digest_differs: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: same root, distinct facts-map lookup payloads yield distinct interpretation_hash",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_facts_diagnostic_digest_differs()),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_evaluator_input_digest_differs: TestClaim = CompilesClaim {
+data claim_test_claim_cache_evaluator_input_digest_differs: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: Node evaluator_input content_hash participates in interpretation_hash",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_evaluator_input_digest_differs()),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_variant_shape_claim_hash_differs: TestClaim = CompilesClaim {
+data claim_test_claim_cache_variant_shape_claim_hash_differs: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: TestClaim coproduct variant participates in claim_hash",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_compiles_equals_same_nodes_claim_hash_differs()),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_diagnostic_reason_claim_hash_differs: TestClaim = CompilesClaim {
+data claim_test_claim_cache_diagnostic_reason_claim_hash_differs: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: DiagnosticClaim expected reason participates in claim_hash",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_diagnostic_reason_claim_hash_differs()),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_diagnostic_tail_bag_order_invariant: TestClaim = CompilesClaim {
+data claim_test_claim_cache_diagnostic_tail_bag_order_invariant: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: DiagnosticClaim tail bag order does not change claim_hash",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_diagnostic_tail_permutation_claim_hash_invariant()),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_correction_variant_domain: TestClaim = CompilesClaim {
+data claim_test_claim_cache_correction_variant_domain: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: Correction coproduct domain tags separate claim_hash",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_correction_variant_domain_claim_hash_differs()),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_locus_variant_domain: TestClaim = CompilesClaim {
+data claim_test_claim_cache_locus_variant_domain: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: Locus coproduct domain tags separate claim_hash",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_locus_variant_domain_claim_hash_differs()),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_ineligible_interpretation_digest_differs: TestClaim = CompilesClaim {
+data claim_test_claim_cache_ineligible_interpretation_digest_differs: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: cache-ineligible interpretations separate by runtime_identity",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_ineligible_interpretation_digest_differs()),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_byte_offset_ceiling_digest_differs: TestClaim = CompilesClaim {
+data claim_test_claim_cache_byte_offset_ceiling_digest_differs: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: byte_offset exact ceiling does not alias over-ceiling remainder",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(
     ok: tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling()
   ),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_byte_offset_same_quotient_low_limbs: TestClaim = CompilesClaim {
+data claim_test_claim_cache_byte_offset_same_quotient_low_limbs: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: over-ceiling offsets with same quotient differ by low limbs",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(
     ok: tcc_cache_byte_offset_same_quotient_low_limbs_digest_differs()
   ),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_byte_offset_sign_over_ceiling: TestClaim = CompilesClaim {
+data claim_test_claim_cache_byte_offset_sign_over_ceiling: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: over-ceiling positive and negative magnitudes differ",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(ok: tcc_cache_byte_offset_sign_over_ceiling_digest_differs()),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_byte_offset_large_overflow_quotient: TestClaim = CompilesClaim {
+data claim_test_claim_cache_byte_offset_large_overflow_quotient: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: large post-ceiling quotients do not alias via limb-out-of-range",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(
     ok: tcc_cache_byte_offset_large_overflow_quotient_digest_differs()
   ),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_byte_offset_exhausted_residual_quotient: TestClaim = CompilesClaim {
+data claim_test_claim_cache_byte_offset_exhausted_residual_quotient: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: exhausted-residual quotients (256^19 vs 2*256^19) do not alias",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(
     ok: tcc_cache_byte_offset_exhausted_residual_quotient_digest_differs()
   ),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_byte_offset_exhausted_residual_adjacent_power: TestClaim = CompilesClaim {
+data claim_test_claim_cache_byte_offset_exhausted_residual_adjacent_power: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: exhausted-residual adjacent powers (256^19 vs 256^20) do not alias",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(
     ok: tcc_cache_byte_offset_exhausted_residual_adjacent_power_digest_differs()
   ),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_byte_offset_exhausted_residual_adjacent_power_21_22: TestClaim = CompilesClaim {
+data claim_test_claim_cache_byte_offset_exhausted_residual_adjacent_power_21_22: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: exhausted-residual adjacent powers (256^21 vs 256^22) do not alias",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(
     ok: tcc_cache_byte_offset_exhausted_residual_adjacent_power_21_22_digest_differs()
   ),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_byte_offset_exhausted_residual_21_double: TestClaim = CompilesClaim {
+data claim_test_claim_cache_byte_offset_exhausted_residual_21_double: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: exhausted-residual 256^21 vs 2*256^21 do not alias",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(
     ok: tcc_cache_byte_offset_exhausted_residual_21_double_digest_differs()
   ),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_byte_offset_exhausted_residual_29_double: TestClaim = CompilesClaim {
+data claim_test_claim_cache_byte_offset_exhausted_residual_29_double: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: exhausted-residual 256^29 vs 2*256^29 do not alias",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(
     ok: tcc_cache_byte_offset_exhausted_residual_29_double_digest_differs()
   ),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_byte_offset_exhausted_residual_37_double: TestClaim = CompilesClaim {
+data claim_test_claim_cache_byte_offset_exhausted_residual_37_double: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: exhausted-residual 256^37 vs 2*256^37 do not alias",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(
     ok: tcc_cache_byte_offset_exhausted_residual_37_double_digest_differs()
   ),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_same_pin_executed_slot_digest_differs: TestClaim = CompilesClaim {
+data claim_test_claim_cache_same_pin_executed_slot_digest_differs: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: same pin, different executed interpreter slots differ",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(
     ok: tcc_cache_same_pin_different_executed_slot_digest_differs()
   ),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_same_pin_match_only_slot_digest_differs: TestClaim = CompilesClaim {
+data claim_test_claim_cache_same_pin_match_only_slot_digest_differs: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: same pin, Match/choose_arm-only perturbation separates digest",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(
     ok: tcc_cache_same_pin_match_only_slot_digest_differs()
   ),
   expected_value: tcc_cache_pass_node()
 }
 
-data claim_test_claim_cache_same_pin_match_only_slot_identical_digest_equal: TestClaim = CompilesClaim {
+data claim_test_claim_cache_same_pin_match_only_slot_identical_digest_equal: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/test_claim_cache: same pin, identical Match/choose_arm on both sides keeps digest equal (negative control)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  classification: TestClassification { tier: Tier1, layer: Unit },
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
   input: tcc_cache_sensitivity_claim_input(
     ok: tcc_cache_same_pin_match_only_slot_identical_digest_equal()
   ),

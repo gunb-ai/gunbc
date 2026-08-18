@@ -20,9 +20,9 @@ type Argument {
   propositions: List<Proposition>
 }
 
-fn argument_inference_edges(a: Argument) -> List<GraphEdge> {
+fn argument_inference_edges(a: Argument) -> List<std.graph.GraphEdge> {
   a.propositions |> flat_map(p =>
-    p.premises |> map(prem => GraphEdge { caller: p.id, callee: prem })
+    p.premises |> map(prem => std.graph.GraphEdge { caller: p.id, callee: prem })
   )
 }
 
@@ -33,14 +33,14 @@ fn argument_node_ids(a: Argument) -> List<String> {
   )
 }
 
-fn argument_inference_graph(a: Argument) -> CallGraph {
-  CallGraph { edges: argument_inference_edges(a) }
+fn argument_inference_graph(a: Argument) -> std.graph.CallGraph {
+  std.graph.CallGraph { edges: argument_inference_edges(a) }
 }
 
 fn argument_reachable_from_axioms(a: Argument) -> Set<String> {
   let ids = argument_node_ids(a)
   let views = build_adjacency_views(names: ids, graph: argument_inference_graph(a))
-  let walked = a.axioms |> fold(init: DfsFinishAcc { visited: empty_set(), order: [] }, f: (acc, ax) =>
+  let walked = a.axioms |> fold(init: std.graph.DfsFinishAcc { visited: empty_set(), order: [] }, f: (acc, ax) =>
     dfs_finish_order(node: ax.id, adjacency: views.reverse, acc: acc)
   )
   walked.visited

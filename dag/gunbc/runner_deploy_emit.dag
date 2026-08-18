@@ -1,9 +1,9 @@
 module gunbc.runner_deploy_emit
 
 
-data runner_deploy_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+data runner_deploy_protocol: std.layout.LayoutProtocol = std.layout.LayoutProtocol { indent_unit: "" }
 
-data manifest_record_knobs: SerializationKnobs = {
+data manifest_record_knobs: std.languages.SerializationKnobs = {
   assign: "=",
   entry_separator: " ",
   open: "",
@@ -12,7 +12,7 @@ data manifest_record_knobs: SerializationKnobs = {
   value_quote: null
 }
 
-fn runner_labels_text(spec: RunnerSpec) -> String {
+fn runner_labels_text(spec: extdeps.github.actions.RunnerSpec) -> String {
   match spec {
     SelfHosted { labels: labels } =>
       fold(labels, init: "", f: (acc, l) => if acc == "" { l } else { concat(concat(acc, ","), l) })
@@ -21,7 +21,7 @@ fn runner_labels_text(spec: RunnerSpec) -> String {
   }
 }
 
-fn manifest_host_fields(h: RunnerHostDeployment) -> List<SerialField> {
+fn manifest_host_fields(h: gunbc.ci_runner_placement.RunnerHostDeployment) -> List<std.languages.SerialField> {
   [
     serial_field(key: "host", value: serial_scalar(text: h.identity)),
     serial_field(key: "runner_count", value: serial_scalar(text: to_string(h.runner_count))),
@@ -33,11 +33,11 @@ fn manifest_host_fields(h: RunnerHostDeployment) -> List<SerialField> {
   ]
 }
 
-fn manifest_host_doc(h: RunnerHostDeployment) -> Doc {
+fn manifest_host_doc(h: gunbc.ci_runner_placement.RunnerHostDeployment) -> std.layout.Doc {
   serialize_fields_doc(knobs: manifest_record_knobs, fields: manifest_host_fields(h: h))
 }
 
-fn runner_plan_doc() -> Doc {
+fn runner_plan_doc() -> std.layout.Doc {
   match runner_deployment_plan() {
     PlanUnsound { reason: reason } =>
       doc_line_of(text: concat("runner-deploy UNSOUND: ", reason))
@@ -49,7 +49,7 @@ fn runner_plan_doc() -> Doc {
   }
 }
 
-fn session_host_fields(h: SessionHostReservation) -> List<SerialField> {
+fn session_host_fields(h: gunbc.ci_runner_placement.SessionHostReservation) -> List<std.languages.SerialField> {
   [
     serial_field(key: "host", value: serial_scalar(text: h.identity)),
     serial_field(key: "sessions", value: serial_scalar(text: to_string(h.session_count))),
@@ -57,11 +57,11 @@ fn session_host_fields(h: SessionHostReservation) -> List<SerialField> {
   ]
 }
 
-fn session_host_doc(h: SessionHostReservation) -> Doc {
+fn session_host_doc(h: gunbc.ci_runner_placement.SessionHostReservation) -> std.layout.Doc {
   serialize_fields_doc(knobs: manifest_record_knobs, fields: session_host_fields(h: h))
 }
 
-fn session_plan_doc() -> Doc {
+fn session_plan_doc() -> std.layout.Doc {
   match session_reservation_plan() {
     SessionReservationUnsound { reason: reason } =>
       doc_line_of(text: concat("session-reservation UNSOUND: ", reason))
@@ -82,7 +82,7 @@ fn session_plan_doc() -> Doc {
   }
 }
 
-fn operating_row_fields(r: OperatingPointRow) -> List<SerialField> {
+fn operating_row_fields(r: gunbc.ci_runner_placement.OperatingPointRow) -> List<std.languages.SerialField> {
   [
     serial_field(key: "per_session_cap_bytes", value: serial_scalar(text: to_string(byte_size_count(b: r.per_session_cap)))),
     serial_field(key: "concurrency", value: serial_scalar(text: to_string(r.session_concurrency))),
@@ -91,7 +91,7 @@ fn operating_row_fields(r: OperatingPointRow) -> List<SerialField> {
   ]
 }
 
-fn operating_row_doc(r: OperatingPointRow) -> Doc {
+fn operating_row_doc(r: gunbc.ci_runner_placement.OperatingPointRow) -> std.layout.Doc {
   doc_concat(parts: [
     doc_text(text: "  "),
     serialize_fields_doc(knobs: manifest_record_knobs, fields: operating_row_fields(r: r)),
@@ -99,14 +99,14 @@ fn operating_row_doc(r: OperatingPointRow) -> Doc {
   ])
 }
 
-fn operating_curve_doc() -> Doc {
+fn operating_curve_doc() -> std.layout.Doc {
   doc_concat(parts: concat(
     [doc_line_of(text: "operating-curve (SESSION-side coverage only: operator selects one per-session operating point grounded in measured per-session peaks min 0.28 / median ~2.06 / max 8.27 GiB; sessions_slice = per_session_cap*concurrency. The per-host runner_count is budget-derived from runner_slice_cap and reported on the runner-deploy lines above, independent of this curve):")],
     map(operating_curve(), r => operating_row_doc(r: r))
   ))
 }
 
-fn session_slice_doc() -> Doc {
+fn session_slice_doc() -> std.layout.Doc {
   match gunbc_ci_session_reservation_mode {
     SessionReservationModeUnset =>
       doc_line_of(text: "session-slice UNSOUND: session reservation mode unset")
@@ -137,7 +137,7 @@ fn session_slice_doc() -> Doc {
   }
 }
 
-fn project_runner_deploy_to_doc() -> Doc {
+fn project_runner_deploy_to_doc() -> std.layout.Doc {
   doc_concat(parts: [
     runner_plan_doc(),
     session_slice_doc(),

@@ -28,14 +28,14 @@ data shared_pool_repair_requirement_note: String = "Blocking condition, not a de
 
 data shared_pool_encoding_control_note: String = "Executed control, not an argument from reading. Three encodings of ONE physical machine -- a CPU domain and a GPU domain sharing one 128 GiB pool -- are constructed and validated. Encodings A and B differ only in which domain the pool is authored under, which is arbitrary when the pool is system-owned. Encoding C is the shape an unwary author reaches for when SharedLevelEdge is not used at all: the pool appears under BOTH domains. If C validates, the carrier permits counting one physical pool twice, and nothing in the type forces the shared-pool encoding over the duplicated one."
 
-data cpu_domain: DomainId = "cpu" as DomainId
-data gpu_domain: DomainId = "gpu" as DomainId
-data pool_level: LevelId = "system-pool" as LevelId
+data cpu_domain: std.machine_shape.DomainId = "cpu" as std.machine_shape.DomainId
+data gpu_domain: std.machine_shape.DomainId = "gpu" as std.machine_shape.DomainId
+data pool_level: std.machine_shape.LevelId = "system-pool" as std.machine_shape.LevelId
 
 data pool_bytes: std.nat.Nat = 137438953472
 
-fn pool() -> MemoryLevel {
-  MemoryLevel {
+fn pool() -> std.machine_shape.MemoryLevel {
+  std.machine_shape.MemoryLevel {
     id: pool_level,
     capacity: byte_size(count: pool_bytes),
     transfer_grain: none,
@@ -44,33 +44,33 @@ fn pool() -> MemoryLevel {
   }
 }
 
-fn lanes(n: std.nat.Nat) -> ExecutionShape {
-  ExecutionShape { lane_count: hardware_thread_count(count: n), grouping: IndependentLanes }
+fn lanes(n: std.nat.Nat) -> std.machine_shape.ExecutionShape {
+  std.machine_shape.ExecutionShape { lane_count: hardware_thread_count(count: n), grouping: IndependentLanes }
 }
 
-fn domain(id: DomainId, n: std.nat.Nat, mem: List<MemoryLevel>) -> ExecutionDomain {
-  ExecutionDomain { id: id, execution: lanes(n: n), memory: mem }
+fn domain(id: std.machine_shape.DomainId, n: std.nat.Nat, mem: List<std.machine_shape.MemoryLevel>) -> std.machine_shape.ExecutionDomain {
+  std.machine_shape.ExecutionDomain { id: id, execution: lanes(n: n), memory: mem }
 }
 
 // A: the pool is authored under the CPU; the GPU shares it.
-fn encoding_pool_under_cpu() -> MachineShape {
-  MachineShape {
+fn encoding_pool_under_cpu() -> std.machine_shape.MachineShape {
+  std.machine_shape.MachineShape {
     domains: [domain(id: cpu_domain, n: 20, mem: [pool()]), domain(id: gpu_domain, n: 6144, mem: [])],
     edges: [SharedLevelEdge { owner: cpu_domain, sharer: gpu_domain, level: pool_level }],
   }
 }
 
 // B: the same machine, authored the other way round.
-fn encoding_pool_under_gpu() -> MachineShape {
-  MachineShape {
+fn encoding_pool_under_gpu() -> std.machine_shape.MachineShape {
+  std.machine_shape.MachineShape {
     domains: [domain(id: cpu_domain, n: 20, mem: []), domain(id: gpu_domain, n: 6144, mem: [pool()])],
     edges: [SharedLevelEdge { owner: gpu_domain, sharer: cpu_domain, level: pool_level }],
   }
 }
 
 // C: the pool authored under BOTH domains, with no shared edge -- the double count.
-fn encoding_pool_duplicated() -> MachineShape {
-  MachineShape {
+fn encoding_pool_duplicated() -> std.machine_shape.MachineShape {
+  std.machine_shape.MachineShape {
     domains: [
       domain(id: cpu_domain, n: 20, mem: [pool()]),
       domain(id: gpu_domain, n: 6144, mem: [pool()]),
@@ -79,7 +79,7 @@ fn encoding_pool_duplicated() -> MachineShape {
   }
 }
 
-fn shape_validates(s: MachineShape) -> Bool {
+fn shape_validates(s: std.machine_shape.MachineShape) -> Bool {
   match machine_shape_validate(shape: s) {
     MachineShapeOk { shape: _ } => true
     MachineShapeRefused { cause: _ } => false
@@ -87,7 +87,7 @@ fn shape_validates(s: MachineShape) -> Bool {
 }
 
 // The naive summation a capacity consumer reaches for: total installed memory across domains.
-fn summed_capacity_bytes(s: MachineShape) -> std.nat.Nat {
+fn summed_capacity_bytes(s: std.machine_shape.MachineShape) -> std.nat.Nat {
   fold(s.domains, init: 0, f: (acc, d) =>
     fold(d.memory, init: acc, f: (inner, m) => inner + byte_size_count(b: m.capacity)))
 }

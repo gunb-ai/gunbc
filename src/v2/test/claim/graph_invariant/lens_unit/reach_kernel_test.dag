@@ -1,10 +1,10 @@
 module v2.test.graph_invariant.lens_unit.reach_kernel_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn gi_atom(identity: Symbol) -> Node {
-  Node {
+fn gi_atom(identity: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -16,8 +16,8 @@ fn gi_mid() -> Node { gi_atom(identity: ^gi_mid) }
 fn gi_out() -> Node { gi_atom(identity: ^gi_output) }
 fn gi_dangling() -> Node { gi_atom(identity: ^gi_dangling) }
 
-fn gi_edge(source: Node, dependent: Node) -> DependencyView {
-  DependencyView {
+fn gi_edge(source: Node, dependent: Node) -> v2.std.dependency.DependencyView {
+  v2.std.dependency.DependencyView {
     source: source,
     dependent: dependent,
     kind: Contains,
@@ -25,7 +25,7 @@ fn gi_edge(source: Node, dependent: Node) -> DependencyView {
   }
 }
 
-fn gi_live_slice() -> List<DependencyView> {
+fn gi_live_slice() -> List<v2.std.dependency.DependencyView> {
   [
     gi_edge(source: gi_out(), dependent: gi_mid()),
     gi_edge(source: gi_mid(), dependent: gi_input())
@@ -41,7 +41,7 @@ test fn graph_reaches_dead_target() -> Bool {
 }
 
 test fn graph_invariant_universe_nonempty_flips_on_empty() -> Bool {
-  let inv = GraphReachProjection { edges: gi_live_slice(), roots: [gi_out()] }
+  let inv = v2.lens.common.graph_invariant.GraphReachProjection { edges: gi_live_slice(), roots: [gi_out()] }
   graph_invariant_reaches(projection: inv, target: gi_input())
     && (graph_invariant_reaches(projection: inv, target: gi_dangling()) == false)
 }
@@ -49,7 +49,7 @@ test fn graph_invariant_universe_nonempty_flips_on_empty() -> Bool {
 test fn graph_reach_add_edge_repair_wires_dead_input() -> Bool {
   let repaired = graph_reach_add_edge_repair(root: gi_out(), edge_target: gi_dangling())
   graph_invariant_reaches(
-    projection: GraphReachProjection {
+    projection: v2.lens.common.graph_invariant.GraphReachProjection {
       edges: dependency_lens(root: repaired),
       roots: [repaired]
     },

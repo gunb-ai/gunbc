@@ -3,15 +3,15 @@ module gunbc.test.claim.body_lowering_rejection_propagation_test
 
 data body_lowering_rejection_propagation_note: String = "THE DISCRIMINATING CONTROL for the deleted rejection catch. body_lower_finish_for_normalize used to match EVERY Rejected from body_lower_after_children and return a wrapper-retained Accepted instead, binding the rejection diagnostics to _ and discarding them — so a malformed form, a violated invariant and a genuinely unsupported one all left the seam looking like the same counted frontier state.\n\nThese two claims are the pair that separates them, and they are durable because both are invariants rather than observations of the present frontier: a form the lowering strategies REJECT must leave the seam Rejected carrying its own reason, and an emitted identity with no registered producer must STILL leave it Accepted carrying the retention reason. The first fails on the pre-repair implementation, which returned Accepted; the second fails on any over-correction that deletes the legitimate retention arm along with the catch. Neither claim mentions a specific std module, so neither inverts when the frontier moves.\n\nThe rejecting specimen is a pass-through production (^dag_surface_expr) carrying a production-identity child and NO captured child, which is exactly the shape body_lower_unwrap_pass_through refuses with ^body_lowering_reason_unsupported_form. The retaining specimen carries an identity no producer is registered for, which reaches the final arm of body_lower_production_emitted."
 
-fn atom_node(id: Symbol) -> Node {
+fn atom_node(id: v2.std.node.Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
 }
 
-fn emitted_shell(id: Symbol) -> Node {
+fn emitted_shell(id: v2.std.node.Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^grammar_production_identity_node_projection },
         target: atom_node(id: id)
       }
@@ -19,23 +19,23 @@ fn emitted_shell(id: Symbol) -> Node {
   )
 }
 
-fn diagnostic_reason(d: Diagnostic) -> Symbol {
+fn diagnostic_reason(d: v2.std.diagnostic.Diagnostic) -> v2.std.node.Symbol {
   d.reason
 }
 
-fn all_reasons(d: NonEmptyDiagnostics) -> List<Symbol> {
+fn all_reasons(d: v2.std.diagnostic.NonEmptyDiagnostics) -> List<v2.std.node.Symbol> {
   fold_list(xs: d.tail, empty: [diagnostic_reason(d: d.head)], cons: fn(acc, item) {
     concat(acc, [diagnostic_reason(d: item)])
   })
 }
 
-fn reasons_contain(reasons: List<Symbol>, sym: Symbol) -> Bool {
+fn reasons_contain(reasons: List<v2.std.node.Symbol>, sym: v2.std.node.Symbol) -> Bool {
   fold_list(xs: reasons, empty: false, cons: fn(acc, r) {
     acc || (r == sym)
   })
 }
 
-fn finish(id: Symbol) -> v2.std.diagnostic.Outcome<Node> {
+fn finish(id: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<Node> {
   let shell = emitted_shell(id: id)
   body_lower_finish_for_normalize(
     n: shell,
@@ -48,14 +48,14 @@ fn finish(id: Symbol) -> v2.std.diagnostic.Outcome<Node> {
 // The outcome ARM is rendered, never collapsed to an empty list: a claim that only asks
 // "does this reason list lack the retention reason" is satisfied by the wrong arm returning
 // nothing at all, which is the same vacuity the annotation witness had to close.
-fn rendered_arm(id: Symbol) -> String {
+fn rendered_arm(id: v2.std.node.Symbol) -> String {
   match finish(id: id) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => "REJECTED"
     v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => "ACCEPTED"
   }
 }
 
-fn accepted_reasons(id: Symbol) -> List<Symbol> {
+fn accepted_reasons(id: v2.std.node.Symbol) -> List<v2.std.node.Symbol> {
   match finish(id: id) {
     v2.std.diagnostic.Accepted { value: _, diagnostics: d } =>
       match d {

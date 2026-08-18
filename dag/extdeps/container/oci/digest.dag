@@ -1,16 +1,16 @@
 module extdeps.container.oci.digest
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/opencontainers/image-spec/blob/main/descriptor.md"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.container.oci.digest",
       decl_name: "OciContentDigest",
       field: WholeDeclaration
@@ -216,6 +216,6 @@ fn oci_sha256_content_digest(hex: String) -> OciContentDigest? {
   }
 }
 
-fn oci_content_digest_from_validated_sha256(digest: Sha256Digest) -> OciContentDigest {
+fn oci_content_digest_from_validated_sha256(digest: std.content_hash.Sha256Digest) -> OciContentDigest {
   OciSha256Digest(digest)
 }

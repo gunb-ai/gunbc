@@ -4,21 +4,21 @@ module product.compute_board.spice_projection
 data spice_projection_note: String = "SPICE AS A PROJECTION OF A LANGUAGE-NEUTRAL ANALOG INTENT. Every piece of SPICE spelling for this article lives in this module and nowhere upstream: the element letter, the node names, the reference node '0', and the magnitude SUFFIXES. That last one is the correction that mattered — an earlier revision carried value_lexeme: '10k' in the model, which is a SPICE spelling of a resistance, so the supposed authority was holding target syntax. The magnitude is now a typed measure and 'k' is derived here from the variant's declared scale. THE PRIOR SHAPE WAS WORSE THAN A STRAY STRING: the board article held a BoardSlice imported FROM this module, so the article depended on one of its own targets and 'the article feeds every interface' was true only because that interface had already decided what the article looked like. WHAT THIS MODULE REFUSES BEFORE EMITTING A BYTE: an element with no model binding at all, an element whose vendor model this profile cannot render, and a TERMINAL ON NO NET. That last refusal is not pedantry — a floating terminal and a grounded one are different circuits, and defaulting the first to the second emits a deck that simulates cleanly and describes a different board."
 
 type SpiceProjectionRefusal
-  = ElectricalModelUnavailable { part: NonEmptyStr }
-  | ModelFidelityNotEmittable { part: NonEmptyStr, model_card: NonEmptyStr }
-  | ComponentModelBindingMissing { part: NonEmptyStr }
-  | TerminalOnNoNet { part: NonEmptyStr }
-  | TerminalOnMultipleNets { part: NonEmptyStr }
-  | DuplicateModelBinding { component: NonEmptyStr }
-  | IdentityNotSpellableInTarget { component: NonEmptyStr }
-  | NetNotSpellableInTarget { net: NonEmptyStr }
+  = ElectricalModelUnavailable { part: std.types.NonEmptyStr }
+  | ModelFidelityNotEmittable { part: std.types.NonEmptyStr, model_card: std.types.NonEmptyStr }
+  | ComponentModelBindingMissing { part: std.types.NonEmptyStr }
+  | TerminalOnNoNet { part: std.types.NonEmptyStr }
+  | TerminalOnMultipleNets { part: std.types.NonEmptyStr }
+  | DuplicateModelBinding { component: std.types.NonEmptyStr }
+  | IdentityNotSpellableInTarget { component: std.types.NonEmptyStr }
+  | NetNotSpellableInTarget { net: std.types.NonEmptyStr }
 
 // The receipt carries the article identity, so an emission is traceable to the root that
 // produced it. Without this, two unrelated articles with equal extracted fields produce
 // indistinguishable output and 'one article feeds both projections' is a convention in a
 // witness rather than a property of the types.
 type SpiceEmissionReceipt {
-  source_article: BoardArticleIdentity
+  source_article: product.compute_board.article.BoardArticleIdentity
   source: String
 }
 

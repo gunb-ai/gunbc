@@ -94,7 +94,7 @@ type PartitionClosureDefect {
   target_module: String
   target_basename: String
   incomplete_authority: PartitionAuthorityId
-  remedy: NonEmptyStr
+  remedy: std.types.NonEmptyStr
 }
 
 // THE DENOMINATOR, carried on BOTH arms. A verdict that says "holds" without stating what it

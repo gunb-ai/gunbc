@@ -35,12 +35,12 @@ fn profile_fold_init(_n: Node) -> List<Int> {
   Cons { head: 1, tail: Empty }
 }
 
-fn profile_fold_step(acc: List<Int>, _edge: Edge, child_profile: List<Int>) -> List<Int> {
+fn profile_fold_step(acc: List<Int>, _edge: v2.std.node.Edge, child_profile: List<Int>) -> List<Int> {
   add_profiles(a: acc, b: shift_deeper(profile: child_profile))
 }
 
 fn profile_algebra() -> NodeFold<List<Int>> {
-  NodeFold {
+  v2.std.node.NodeFold {
     init: profile_fold_init,
     step: profile_fold_step
   }

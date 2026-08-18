@@ -1,8 +1,8 @@
 module extdeps.github.merge_state
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/graphql/reference/enums#mergestatestatus"
   }
@@ -18,7 +18,7 @@ type MergeStateStatus
   | Unknown
   | Unstable
 
-data merge_state_graphql_transport_frontier_rows: List<FrontierRow> = [
+data merge_state_graphql_transport_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.github.merge_state", decl_name: "MergeStateStatus"),
     reason: "MergeStateStatus|transport:graphql-only",

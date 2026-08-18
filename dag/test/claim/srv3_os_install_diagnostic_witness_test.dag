@@ -3,26 +3,26 @@ module test.claim.srv3_os_install_diagnostic
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn base_observations(
-  serve_process: NbdServeProcessObservation,
-  serve_port: NbdServePortObservation,
-  iso: IsoServeReadinessObservation,
-  redfish_boot_enabled: RedfishBootSourceOverrideEnabled,
-  elapsed_ms: Milliseconds,
-  sol: SolConsoleContentObservation,
-  router_table: Cr1000aDhcpLeaseTable,
-) -> OsInstallActuationObservations {
-  OsInstallActuationObservations {
+  serve_process: gunbc.srv3_os_install_diagnostic.NbdServeProcessObservation,
+  serve_port: gunbc.srv3_os_install_diagnostic.NbdServePortObservation,
+  iso: gunbc.srv3_os_install_diagnostic.IsoServeReadinessObservation,
+  redfish_boot_enabled: extdeps.bmc.types.RedfishBootSourceOverrideEnabled,
+  elapsed_ms: std.types.Milliseconds,
+  sol: gunbc.srv3_os_install_diagnostic.SolConsoleContentObservation,
+  router_table: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseTable,
+) -> gunbc.srv3_os_install_diagnostic.OsInstallActuationObservations {
+  gunbc.srv3_os_install_diagnostic.OsInstallActuationObservations {
     serve_process: serve_process,
     serve_port: serve_port,
     bmc_session: TokenPresent,
     iso_readiness: iso,
-    redfish_system: RedfishSystemBootObservation {
+    redfish_system: gunbc.srv3_os_install_diagnostic.RedfishSystemBootObservation {
       power_state: On,
       boot_override_enabled: redfish_boot_enabled,
       boot_override_target: BootTargetCd,
       boot_progress: BootProgressNone,
     },
-    virtual_media: BmcVirtualMediaObservation {
+    virtual_media: gunbc.srv3_os_install_diagnostic.BmcVirtualMediaObservation {
       inserted_or_connected: true,
       image_or_endpoint: Present { value: srv3_actuator_virtual_media_iso_install_path },
       connected_to_expected_port: true,
@@ -30,7 +30,7 @@ fn base_observations(
     },
     sol_console: sol,
     router_lease_table: router_table,
-    kvm: KvmObservation {
+    kvm: gunbc.srv3_os_install_diagnostic.KvmObservation {
       video_state: KvmUnknown,
       keyboard_accepted: true,
     },
@@ -38,14 +38,14 @@ fn base_observations(
   }
 }
 
-fn serve_ready_sol_silent_pre_boot_observations() -> OsInstallActuationObservations {
+fn serve_ready_sol_silent_pre_boot_observations() -> gunbc.srv3_os_install_diagnostic.OsInstallActuationObservations {
   base_observations(
     serve_process: ServeProcessesPresent,
     serve_port: ServePortListening { port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port, owner_matches_expected: true },
     iso: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
     redfish_boot_enabled: BootOverrideDisabled,
     elapsed_ms: 0,
-    sol: SolConsoleContentObservation {
+    sol: gunbc.srv3_os_install_diagnostic.SolConsoleContentObservation {
       bytes_captured: byte_size(0),
       duration_ms: 0,
       contains_grub: false,
@@ -68,7 +68,7 @@ test fn serve_absent_is_not_ready_to_boot() -> Bool {
       iso: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
       redfish_boot_enabled: BootOverrideDisabled,
       elapsed_ms: 0,
-      sol: SolConsoleContentObservation {
+      sol: gunbc.srv3_os_install_diagnostic.SolConsoleContentObservation {
         bytes_captured: byte_size(0),
         duration_ms: 0,
         contains_grub: false,
@@ -107,7 +107,7 @@ test fn boot_override_consumed_without_install_evidence() -> Bool {
       iso: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
       redfish_boot_enabled: BootOverrideDisabled,
       elapsed_ms: 120000,
-      sol: SolConsoleContentObservation {
+      sol: gunbc.srv3_os_install_diagnostic.SolConsoleContentObservation {
         bytes_captured: byte_size(0),
         duration_ms: 120000,
         contains_grub: false,
@@ -143,24 +143,24 @@ test fn only_bmc_static_lease_is_not_os_installed() -> Bool {
 test fn router_srv3_dynamic_lease_is_os_installed() -> Bool {
   let verdict = diagnose_os_install_actuation(
     intent: srv3_os_install_attempt_intent,
-    observations: OsInstallActuationObservations {
+    observations: gunbc.srv3_os_install_diagnostic.OsInstallActuationObservations {
       serve_process: ServeProcessesPresent,
       serve_port: ServePortListening { port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port, owner_matches_expected: true },
       bmc_session: TokenPresent,
       iso_readiness: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
-      redfish_system: RedfishSystemBootObservation {
+      redfish_system: gunbc.srv3_os_install_diagnostic.RedfishSystemBootObservation {
         power_state: On,
         boot_override_enabled: BootOverrideDisabled,
         boot_override_target: BootTargetNone,
         boot_progress: BootProgressOsRunning,
       },
-      virtual_media: BmcVirtualMediaObservation {
+      virtual_media: gunbc.srv3_os_install_diagnostic.BmcVirtualMediaObservation {
         inserted_or_connected: false,
         image_or_endpoint: Absent,
         connected_to_expected_port: false,
         bmc_session_valid: true,
       },
-      sol_console: SolConsoleContentObservation {
+      sol_console: gunbc.srv3_os_install_diagnostic.SolConsoleContentObservation {
         bytes_captured: byte_size(4096),
         duration_ms: 600000,
         contains_grub: false,
@@ -171,7 +171,7 @@ test fn router_srv3_dynamic_lease_is_os_installed() -> Bool {
         capture_available: true,
       },
       router_lease_table: srv3_post_install_lease_table_fixture,
-      kvm: KvmObservation {
+      kvm: gunbc.srv3_os_install_diagnostic.KvmObservation {
         video_state: KvmFirmwareMenu,
         keyboard_accepted: false,
       },
@@ -185,24 +185,24 @@ test fn router_srv3_dynamic_lease_is_os_installed() -> Bool {
 test fn kvm_frozen_alone_does_not_dominate_router_success() -> Bool {
   let verdict = diagnose_os_install_actuation(
     intent: srv3_os_install_attempt_intent,
-    observations: OsInstallActuationObservations {
+    observations: gunbc.srv3_os_install_diagnostic.OsInstallActuationObservations {
       serve_process: ServeProcessesPresent,
       serve_port: ServePortListening { port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port, owner_matches_expected: true },
       bmc_session: TokenPresent,
       iso_readiness: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
-      redfish_system: RedfishSystemBootObservation {
+      redfish_system: gunbc.srv3_os_install_diagnostic.RedfishSystemBootObservation {
         power_state: On,
         boot_override_enabled: BootOverrideDisabled,
         boot_override_target: BootTargetNone,
         boot_progress: BootProgressOsRunning,
       },
-      virtual_media: BmcVirtualMediaObservation {
+      virtual_media: gunbc.srv3_os_install_diagnostic.BmcVirtualMediaObservation {
         inserted_or_connected: false,
         image_or_endpoint: Absent,
         connected_to_expected_port: false,
         bmc_session_valid: true,
       },
-      sol_console: SolConsoleContentObservation {
+      sol_console: gunbc.srv3_os_install_diagnostic.SolConsoleContentObservation {
         bytes_captured: byte_size(0),
         duration_ms: 0,
         contains_grub: false,
@@ -213,7 +213,7 @@ test fn kvm_frozen_alone_does_not_dominate_router_success() -> Bool {
         capture_available: false,
       },
       router_lease_table: srv3_post_install_lease_table_fixture,
-      kvm: KvmObservation {
+      kvm: gunbc.srv3_os_install_diagnostic.KvmObservation {
         video_state: KvmFirmwareMenu,
         keyboard_accepted: false,
       },
@@ -232,7 +232,7 @@ test fn sol_silent_past_timeout_is_hung_or_inconclusive_not_success() -> Bool {
       iso: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
       redfish_boot_enabled: BootOverrideDisabled,
       elapsed_ms: srv3_install_hang_no_router_lease_ms,
-      sol: SolConsoleContentObservation {
+      sol: gunbc.srv3_os_install_diagnostic.SolConsoleContentObservation {
         bytes_captured: byte_size(0),
         duration_ms: srv3_install_hang_no_installer_progress_ms,
         contains_grub: false,
@@ -261,24 +261,24 @@ test fn serve_ready_pre_boot_is_ready_to_boot() -> Bool {
 test fn boot_once_armed_is_boot_attempt_in_progress() -> Bool {
   let verdict = diagnose_os_install_actuation(
     intent: srv3_os_install_attempt_intent,
-    observations: OsInstallActuationObservations {
+    observations: gunbc.srv3_os_install_diagnostic.OsInstallActuationObservations {
       serve_process: ServeProcessesPresent,
       serve_port: ServePortListening { port: extdeps.bmc.webui.nbd_proxy_serve.srv3_nbd_proxy_local_port, owner_matches_expected: true },
       bmc_session: TokenPresent,
       iso_readiness: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
-      redfish_system: RedfishSystemBootObservation {
+      redfish_system: gunbc.srv3_os_install_diagnostic.RedfishSystemBootObservation {
         power_state: On,
         boot_override_enabled: BootOverrideOnce,
         boot_override_target: BootTargetCd,
         boot_progress: BootProgressNone,
       },
-      virtual_media: BmcVirtualMediaObservation {
+      virtual_media: gunbc.srv3_os_install_diagnostic.BmcVirtualMediaObservation {
         inserted_or_connected: true,
         image_or_endpoint: Present { value: srv3_actuator_virtual_media_iso_install_path },
         connected_to_expected_port: true,
         bmc_session_valid: true,
       },
-      sol_console: SolConsoleContentObservation {
+      sol_console: gunbc.srv3_os_install_diagnostic.SolConsoleContentObservation {
         bytes_captured: byte_size(0),
         duration_ms: 0,
         contains_grub: false,
@@ -289,7 +289,7 @@ test fn boot_once_armed_is_boot_attempt_in_progress() -> Bool {
         capture_available: true,
       },
       router_lease_table: srv3_pre_install_lease_table,
-      kvm: KvmObservation {
+      kvm: gunbc.srv3_os_install_diagnostic.KvmObservation {
         video_state: KvmUnknown,
         keyboard_accepted: true,
       },
@@ -308,7 +308,7 @@ test fn autoinstall_running_fixture() -> Bool {
       iso: IsoPresent { observed_content_hash: srv3_seeded_install_media_content_hash },
       redfish_boot_enabled: BootOverrideDisabled,
       elapsed_ms: 1800000,
-      sol: SolConsoleContentObservation {
+      sol: gunbc.srv3_os_install_diagnostic.SolConsoleContentObservation {
         bytes_captured: byte_size(8192),
         duration_ms: 1800000,
         contains_grub: false,

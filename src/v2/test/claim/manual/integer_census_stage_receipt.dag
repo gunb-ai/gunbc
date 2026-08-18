@@ -2,7 +2,7 @@ module v2.test.manual.integer_census_stage_receipt
 
 
 data ics_path: String = "src/v2/std/integer.dag"
-data ics_anchor: Symbol = ^ics_anchor
+data ics_anchor: v2.std.node.Symbol = ^ics_anchor
 
 data ics_trunc_eighth_path: String = "src/v2/test/fixture/integer_census_trunc/eighth.txt"
 data ics_trunc_quarter_path: String = "src/v2/test/fixture/integer_census_trunc/quarter.txt"

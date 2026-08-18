@@ -57,11 +57,11 @@ test fn observed_fan_curve_is_validated_before_use() -> Bool {
 }
 
 test fn duty_curve_cannot_fall_after_reaching_full_duty() -> Bool {
-  let falling = BmcFanCurve {
+  let falling = extdeps.bmc.types.BmcFanCurve {
     control_sensor: "TEMP_SOC",
     steps: [
-      BmcFanCurveStep { at_or_above: celsius(90), duty: percent(100) },
-      BmcFanCurveStep { at_or_above: celsius(95), duty: percent(30) },
+      extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(90), duty: percent(100) },
+      extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(95), duty: percent(30) },
     ],
     minimum_duty: percent(30),
     sensor_unavailable_duty: percent(100),
@@ -82,10 +82,10 @@ test fn duty_curve_cannot_fall_after_reaching_full_duty() -> Bool {
 }
 
 test fn fan_curve_refuses_duty_above_full() -> Bool {
-  let above_full = BmcFanCurve {
+  let above_full = extdeps.bmc.types.BmcFanCurve {
     control_sensor: "TEMP_SOC",
     steps: [
-      BmcFanCurveStep { at_or_above: celsius(90), duty: percent(100) },
+      extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(90), duty: percent(100) },
     ],
     minimum_duty: percent(101),
     sensor_unavailable_duty: percent(100),
@@ -109,11 +109,11 @@ test fn fan_curve_refuses_duty_above_full() -> Bool {
 }
 
 test fn fan_curve_refuses_minimum_above_first_step() -> Bool {
-  let below_minimum = BmcFanCurve {
+  let below_minimum = extdeps.bmc.types.BmcFanCurve {
     control_sensor: "TEMP_SOC",
     steps: [
-      BmcFanCurveStep { at_or_above: celsius(90), duty: percent(30) },
-      BmcFanCurveStep { at_or_above: celsius(95), duty: percent(100) },
+      extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(90), duty: percent(30) },
+      extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(95), duty: percent(100) },
     ],
     minimum_duty: percent(40),
     sensor_unavailable_duty: percent(100),

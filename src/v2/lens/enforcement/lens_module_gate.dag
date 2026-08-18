@@ -2,7 +2,7 @@ module v2.lens.enforcement.lens_module_gate
 
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 type LensVerdictAuthority
   = VerdictLensVerdict
@@ -114,9 +114,9 @@ fn lens_module_gate_is_genuinely_new(surface: LensInvariantSurface) -> Bool {
 
 data lens_module_gate_surface_table_dissolution_note: String = "Central lens_module_gate_surface_for_lens_id match is a WallAfterGrounding scaffold: a parallel ledger of projection, verdict-authority, remedy, and admission per LensIdV0 beside lens_registry_v0."
 
-data lens_module_gate_surface_table_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVES WHEN each enrolled lens module declares its own invariant surface on-carrier (ConstructionJustification surface fields on the module or a LensRegistryEntryV0 extension) and lens_module_gate_surfaces reads those declarations instead of this central table — mark-on-carrier is authority. Until then the total match with no wildcard default forces a surface row on every new LensIdV0.")
+data lens_module_gate_surface_table_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVES WHEN each enrolled lens module declares its own invariant surface on-carrier (ConstructionJustification surface fields on the module or a LensRegistryEntryV0 extension) and lens_module_gate_surfaces reads those declarations instead of this central table — mark-on-carrier is authority. Until then the total match with no wildcard default forces a surface row on every new LensIdV0.")
 
-fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInvariantSurface {
+fn lens_module_gate_surface_for_lens_id(id: v2.lens.registry.LensIdV0, module: String) -> LensInvariantSurface {
   match id {
     Cost => LensInvariantSurface {
       module: module,
@@ -527,7 +527,7 @@ fn lens_module_gate_surface_for_lens_id(id: LensIdV0, module: String) -> LensInv
   }
 }
 
-fn lens_module_gate_surface_from_bound_entry(id: LensIdV0, path: String) -> LensInvariantSurface {
+fn lens_module_gate_surface_from_bound_entry(id: v2.lens.registry.LensIdV0, path: String) -> LensInvariantSurface {
   lens_module_gate_surface_for_lens_id(id: id, module: path)
 }
 
@@ -588,7 +588,7 @@ fn lens_module_gate_surface_for_module(
 }
 
 fn lens_module_gate_unenrolled_count_from_facts(
-  facts: List<ModuleDeclarationFact>,
+  facts: List<v2.lens.module_graph.ModuleDeclarationFact>,
   bound_module_paths: List<String>
 ) -> Int {
   lens_registry_completeness_unenrolled_count_from_facts(
@@ -598,7 +598,7 @@ fn lens_module_gate_unenrolled_count_from_facts(
 }
 
 fn lens_module_gate_unjustified_count_from_facts(
-  facts: List<ModuleDeclarationFact>,
+  facts: List<v2.lens.module_graph.ModuleDeclarationFact>,
   surfaces: List<LensInvariantSurface>
 ) -> Int {
   count_where(xs: facts, predicate: fn(fact) {
@@ -717,6 +717,6 @@ fn lens_module_gate_holds() -> Bool {
   lens_module_gate_blocking_holds()
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

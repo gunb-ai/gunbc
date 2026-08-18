@@ -25,7 +25,7 @@ module product.altra_motherboard.placement
 type BoardComponentRole
   = ProcessorSocket
   | ProcessorPackage
-  | MemoryModuleSlot { slot: DdrSlotIdentity }
+  | MemoryModuleSlot { slot: product.altra_motherboard.minimal_design.DdrSlotIdentity }
   | BoardControlCpld
   | BootFirmwareEeprom
   | FirmwareFlash
@@ -162,14 +162,14 @@ fn roles_equal(a: BoardComponentRole, b: BoardComponentRole) -> Bool {
 // DESIGN section 3 names -- but a name the namespace could resolve is decidable in principle, and a
 // sentence is not decidable at all.
 type ComponentEnvelopeStanding
-  = EnvelopeEstablished { envelope: PackageBodyEnvelope, source: DeclarationRef }
-  | EnvelopeNotEstablished { gap: FactAuthorityBlocker }
+  = EnvelopeEstablished { envelope: product.pcb.physical.PackageBodyEnvelope, source: std.decl_ref.DeclarationRef }
+  | EnvelopeNotEstablished { gap: product.altra_motherboard.attachment_stack.FactAuthorityBlocker }
 
 type PlannedComponent {
-  identity: NonEmptyStr
+  identity: std.types.NonEmptyStr
   role: BoardComponentRole
   envelope: ComponentEnvelopeStanding
-  origin: Point2
+  origin: std.affine_space.Point2
 }
 
 // EACH ARM, AND WHY IT IS ITS OWN ARM. ComponentEnvelopeNotEstablished carries the gap with the
@@ -182,13 +182,13 @@ type PlannedComponent {
 // The reference plan carried exactly that - four memory slots sharing one identity, harmless only
 // while their envelopes stayed outstanding, and a collision the moment they landed.
 type PlacementRefusal
-  = ComponentEnvelopeNotEstablished { component: NonEmptyStr, gap: FactAuthorityBlocker }
+  = ComponentEnvelopeNotEstablished { component: std.types.NonEmptyStr, gap: product.altra_motherboard.attachment_stack.FactAuthorityBlocker }
   | RequiredRoleUnfilled { role: BoardComponentRole }
-  | ComponentFillsNoRequiredRole { component: NonEmptyStr, role_named: NonEmptyStr }
-  | PlannedIdentityRepeated { component: NonEmptyStr }
+  | ComponentFillsNoRequiredRole { component: std.types.NonEmptyStr, role_named: std.types.NonEmptyStr }
+  | PlannedIdentityRepeated { component: std.types.NonEmptyStr }
   | RoleFilledMoreThanOnce { role: BoardComponentRole, fills: Int }
-  | PlanWasBuiltFromADifferentDesign { plan_design: DeclarationRef, admitted_against: DeclarationRef }
-  | RequiredFunctionWithoutJustifiedPartOnBoard { requirement: BoardRequirementIdentity }
+  | PlanWasBuiltFromADifferentDesign { plan_design: std.decl_ref.DeclarationRef, admitted_against: std.decl_ref.DeclarationRef }
+  | RequiredFunctionWithoutJustifiedPartOnBoard { requirement: product.altra_motherboard.realization.BoardRequirementIdentity }
 
 // WHICH DESIGN THIS PLAN WAS BUILT FROM, carried so that a projection cannot mix two boards. A
 // plan is derived from a design, and once several projections exist -- a scene, a fabrication
@@ -204,9 +204,9 @@ type PlacementRefusal
 // while wearing the name of one. What a real revision needs is a content hash of the design, which
 // std.content_hash already provides; that is a further step and it is not taken here.
 type BoardPlacementPlan {
-  frame: CoordinateFrameIdentity
-  outline: AxisAlignedRectangle2
-  design: DeclarationRef
+  frame: std.coordinate_frame.CoordinateFrameIdentity
+  outline: std.orthogonal_geometry.AxisAlignedRectangle2
+  design: std.decl_ref.DeclarationRef
   components: List<PlannedComponent>
 }
 
@@ -329,7 +329,7 @@ fn planned_identity_seen(seen: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
 }
 
 type IdentityScan {
-  seen: List<NonEmptyStr>
+  seen: List<std.types.NonEmptyStr>
   out: List<PlacementRefusal>
 }
 
@@ -630,8 +630,8 @@ fn altra_reference_plan() -> OrthogonalConstruction<BoardPlacementPlan> {
 // (nobody registered it / registering it was refused, and for a stated reason) and only one of
 // them is a defect in this function's own argument.
 type AltraFrameRegistryStanding
-  = FrameRegistryEstablished { registry: SpatialFrameRegistry }
-  | FrameRegistryRefused { cause: FrameRegistrationRefusal }
+  = FrameRegistryEstablished { registry: std.spatial_frame.SpatialFrameRegistry }
+  | FrameRegistryRefused { cause: std.spatial_frame.FrameRegistrationRefusal }
 
 fn altra_frame_registry() -> AltraFrameRegistryStanding {
   let r0 = empty_frame_registry()
@@ -682,9 +682,9 @@ fn parts_not_geometrically_checked(d: AltraMinimalMotherboard, d_ref: Declaratio
 // The scope is DERIVED from the count of unchecked parts, not authored beside it, so the complete
 // arm has no constructor reachable while anything is owed.
 type BoardBodyLayoutStanding
-  = BodyLayoutAdmittedOverEveryRequiredPart { article: BoardPhysicalArticle }
-  | BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: Int, geometry: PhysicalAdmission }
-  | BodyLayoutRefused { causes: PhysicalRefusalSet }
+  = BodyLayoutAdmittedOverEveryRequiredPart { article: product.pcb.physical.BoardPhysicalArticle }
+  | BodyLayoutCheckedOverEstablishedSubsetOnly { parts_still_owed: Int, geometry: product.pcb.physical.PhysicalAdmission }
+  | BodyLayoutRefused { causes: product.pcb.physical.PhysicalRefusalSet }
 
 fn board_body_layout_standing(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> BoardBodyLayoutStanding {
   let owed = parts_not_geometrically_checked(d: d, d_ref: d_ref, plan: plan)

@@ -1,11 +1,11 @@
 module gunbc.roadmap_model
 
 
-type RoadmapNodeId = NonEmptyStr where brand("RoadmapNodeId")
+type RoadmapNodeId = std.types.NonEmptyStr where brand("RoadmapNodeId")
 
 data roadmap_node_identity_law: String = "A roadmap node's identity is MINTED, never derived. Slug, title, criteria digest, containment position, dependency neighbourhood, declaration order and file position are FORBIDDEN identity inputs — the law std.occurrence_identity states for occurrences, generalized to an entity that must outlive the graph it is read from.\n\nThe law is reused; the TYPE deliberately is not. std.occurrence_identity.OccurrenceId is an ordinal from a per-graph allocator starting at zero, so it is unique only INSIDE one constructed graph: inserting a node at the front renumbers every node after it, and two concurrent branches mint the same next integer. That is positional identity wearing an allocator's clothes — right for occurrences within one parse, wrong for a work item that must survive edits, reordering, regeneration and independent branches. What occurrence identity deliberately does not claim is PERSISTENCE SCOPE, and that is precisely what a roadmap node needs.\n\nIdentity is a REQUIRED FIELD rather than a side registry keyed by slug. A registry beside the authority leaves a node authorable without identity, detectable only by a later witness — validation standing where construction was available (DESIGN 5), and two authorities that must be kept in step (DESIGN 3). As a field, a node without durable identity is unwritable, and the slug index is DERIVED from the nodes rather than independently authored, so the two can never disagree."
 
-type RoadmapNodeIdentity = NonEmptyStr where brand("RoadmapNodeIdentity")
+type RoadmapNodeIdentity = std.types.NonEmptyStr where brand("RoadmapNodeIdentity")
 
 type Pointer { label: String, path: String }
 
@@ -93,7 +93,7 @@ fn node_carrier_clean(rn: RoadmapNode, existing_docs: List<String>) -> Bool {
   all(rn.carriers, p => pointer_resolves(p: p, existing_docs: existing_docs))
 }
 
-fn node_status_drift(rn: RoadmapNode, committed_box: Bool, merged: List<Int>) -> DriftVerdict {
+fn node_status_drift(rn: RoadmapNode, committed_box: Bool, merged: List<Int>) -> gunbc.roadmap_status.DriftVerdict {
   signoff_drift(s: rn.signoff, committed_box: committed_box)
 }
 
@@ -112,20 +112,20 @@ type RoadmapAcceptanceReceipt {
   accepted_on: std.types.NonEmptyStr
 }
 
-fn roadmap_criteria_digest(t: TicketFields) -> Fnv1a64Structural {
+fn roadmap_criteria_digest(t: gunbc.roadmap_status.TicketFields) -> std.content_hash.Fnv1a64Structural {
   content_hash_tagged_structural(
     tag: "roadmap-acceptance-criteria-v1",
     payload: content_hash_combine_structural(
       left: content_hash_combine_structural(
-        left: content_hash_atom(value: t.brief as NonEmptyStr),
-        right: content_hash_atom(value: t.red_control as NonEmptyStr),
+        left: content_hash_atom(value: t.brief as std.types.NonEmptyStr),
+        right: content_hash_atom(value: t.red_control as std.types.NonEmptyStr),
       ),
-      right: content_hash_atom(value: t.handback as NonEmptyStr),
+      right: content_hash_atom(value: t.handback as std.types.NonEmptyStr),
     ),
   )
 }
 
-fn node_criteria_digest(rn: RoadmapNode) -> Fnv1a64Structural? {
+fn node_criteria_digest(rn: RoadmapNode) -> std.content_hash.Fnv1a64Structural? {
   match line_ticket(item: rn.line) {
     Present { value } => Present { value: roadmap_criteria_digest(t: value) }
     Absent => Absent
@@ -186,7 +186,7 @@ type AcceptanceHistoryIntegrityVerdict
   | AcceptanceHistoryIntegrityRefusedPriorPrefix { index: Int }
   | AcceptanceHistoryIntegrityRefusedPriorHistoryObservation { detail: String }
 
-fn red_control_evidence_eq(a: RedControlEvidence, b: RedControlEvidence) -> Bool {
+fn red_control_evidence_eq(a: gunbc.roadmap_status.RedControlEvidence, b: gunbc.roadmap_status.RedControlEvidence) -> Bool {
   match a {
     RedControlNotRun =>
       match b {
@@ -202,7 +202,7 @@ fn red_control_evidence_eq(a: RedControlEvidence, b: RedControlEvidence) -> Bool
   }
 }
 
-fn handback_evidence_eq(a: HandbackEvidence, b: HandbackEvidence) -> Bool {
+fn handback_evidence_eq(a: gunbc.roadmap_status.HandbackEvidence, b: gunbc.roadmap_status.HandbackEvidence) -> Bool {
   match a {
     HandbackNotDelivered =>
       match b {
@@ -218,7 +218,7 @@ fn handback_evidence_eq(a: HandbackEvidence, b: HandbackEvidence) -> Bool {
   }
 }
 
-fn non_empty_str_list_eq_ordered(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> Bool {
+fn non_empty_str_list_eq_ordered(a: List<std.types.NonEmptyStr>, b: List<std.types.NonEmptyStr>) -> Bool {
   if count(a) != count(b) {
     false
   } else if count(a) == 0 {
@@ -242,7 +242,7 @@ type DropFirstEventState {
   rest: List<RoadmapAcceptanceEvent>
 }
 
-fn drop_first_non_empty_str(items: List<NonEmptyStr>) -> List<NonEmptyStr> {
+fn drop_first_non_empty_str(items: List<std.types.NonEmptyStr>) -> List<std.types.NonEmptyStr> {
   fold(
     items,
     init: DropFirstStrState { skipped: false, rest: [] },
@@ -311,10 +311,10 @@ fn remove_exact_receipt(
   receipts |> filter(r => !acceptance_receipt_eq(a: r, b: receipt))
 }
 
-fn non_empty_str_list_digest(items: List<NonEmptyStr>) -> Fnv1a64Structural {
+fn non_empty_str_list_digest(items: List<std.types.NonEmptyStr>) -> std.content_hash.Fnv1a64Structural {
   fold(
     items,
-    init: content_hash_atom(value: "non-empty-str-list-v1" as NonEmptyStr),
+    init: content_hash_atom(value: "non-empty-str-list-v1" as std.types.NonEmptyStr),
     f: fn(acc, item) {
       content_hash_combine_structural(
         left: acc,
@@ -324,12 +324,12 @@ fn non_empty_str_list_digest(items: List<NonEmptyStr>) -> Fnv1a64Structural {
   )
 }
 
-fn red_control_evidence_digest(e: RedControlEvidence) -> Fnv1a64Structural {
+fn red_control_evidence_digest(e: gunbc.roadmap_status.RedControlEvidence) -> std.content_hash.Fnv1a64Structural {
   match e {
     RedControlNotRun =>
       content_hash_tagged_structural(
         tag: "roadmap-red-control-not-run-v1",
-        payload: content_hash_atom(value: "RedControlNotRun" as NonEmptyStr),
+        payload: content_hash_atom(value: "RedControlNotRun" as std.types.NonEmptyStr),
       )
     RedControlExecuted { witness_module, witness_fn, executed_on } =>
       content_hash_tagged_structural(
@@ -345,12 +345,12 @@ fn red_control_evidence_digest(e: RedControlEvidence) -> Fnv1a64Structural {
   }
 }
 
-fn handback_evidence_digest(e: HandbackEvidence) -> Fnv1a64Structural {
+fn handback_evidence_digest(e: gunbc.roadmap_status.HandbackEvidence) -> std.content_hash.Fnv1a64Structural {
   match e {
     HandbackNotDelivered =>
       content_hash_tagged_structural(
         tag: "roadmap-handback-not-delivered-v1",
-        payload: content_hash_atom(value: "HandbackNotDelivered" as NonEmptyStr),
+        payload: content_hash_atom(value: "HandbackNotDelivered" as std.types.NonEmptyStr),
       )
     HandbackDelivered { first_artifact, further_artifacts } =>
       content_hash_tagged_structural(
@@ -363,12 +363,12 @@ fn handback_evidence_digest(e: HandbackEvidence) -> Fnv1a64Structural {
   }
 }
 
-fn acceptance_receipt_digest(receipt: RoadmapAcceptanceReceipt) -> Fnv1a64Structural {
+fn acceptance_receipt_digest(receipt: RoadmapAcceptanceReceipt) -> std.content_hash.Fnv1a64Structural {
   content_hash_tagged_structural(
     tag: "roadmap-acceptance-receipt-v1",
     payload: content_hash_combine_structural(
       left: content_hash_combine_structural(
-        left: content_hash_atom(value: receipt.node as NonEmptyStr),
+        left: content_hash_atom(value: receipt.node as std.types.NonEmptyStr),
         right: content_hash_combine_structural(
           left: receipt.criteria_digest,
           right: red_control_evidence_digest(e: receipt.red_control),
@@ -387,17 +387,17 @@ fn acceptance_receipt_digest(receipt: RoadmapAcceptanceReceipt) -> Fnv1a64Struct
 
 fn acceptance_revocation_disposition_digest(
   disposition: AcceptanceRevocationDisposition,
-) -> Fnv1a64Structural {
+) -> std.content_hash.Fnv1a64Structural {
   match disposition {
     AcceptanceNodeReopensActiveFrontier {} =>
       content_hash_tagged_structural(
         tag: "roadmap-acceptance-reopens-active-frontier-v1",
-        payload: content_hash_atom(value: "AcceptanceNodeReopensActiveFrontier" as NonEmptyStr),
+        payload: content_hash_atom(value: "AcceptanceNodeReopensActiveFrontier" as std.types.NonEmptyStr),
       )
   }
 }
 
-fn acceptance_event_digest(event: RoadmapAcceptanceEvent) -> Fnv1a64Structural {
+fn acceptance_event_digest(event: RoadmapAcceptanceEvent) -> std.content_hash.Fnv1a64Structural {
   match event {
     AcceptanceRecorded { receipt } =>
       content_hash_tagged_structural(
@@ -424,10 +424,10 @@ fn acceptance_event_digest(event: RoadmapAcceptanceEvent) -> Fnv1a64Structural {
   }
 }
 
-fn acceptance_history_chain_digest(events: List<RoadmapAcceptanceEvent>) -> Fnv1a64Structural {
+fn acceptance_history_chain_digest(events: List<RoadmapAcceptanceEvent>) -> std.content_hash.Fnv1a64Structural {
   fold(
     events,
-    init: content_hash_atom(value: "roadmap-acceptance-history-v1" as NonEmptyStr),
+    init: content_hash_atom(value: "roadmap-acceptance-history-v1" as std.types.NonEmptyStr),
     f: fn(acc, event) {
       content_hash_combine_structural(
         left: acc,

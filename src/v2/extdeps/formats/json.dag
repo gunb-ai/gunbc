@@ -44,7 +44,7 @@ type JsonUniqueNameProfileFacts {
 }
 
 type JsonDocument {
-  grammar_schema: GrammarSchema,
+  grammar_schema: v2.std.grammar.GrammarSchema,
   unique_names: JsonUniqueNameProfileFacts,
   value: JsonSchemaCarrierValue,
 }

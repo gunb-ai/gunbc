@@ -25,38 +25,38 @@ type DimmClassSupport
 // materially weaker and differently-actionable fact.
 type SpecificPartQualification
   = ListedInVendorAvl {
-      avl_authority: ExternalAuthority
-      avl_issue: NonEmptyStr
+      avl_authority: extdeps.external_authority.ExternalAuthority
+      avl_issue: std.types.NonEmptyStr
     }
   | NotListedInVendorAvl {
-      avl_authority: ExternalAuthority
-      avl_issue: NonEmptyStr
+      avl_authority: extdeps.external_authority.ExternalAuthority
+      avl_issue: std.types.NonEmptyStr
     }
   | PartQualificationUnobserved
 
 // Did DDR training complete? This is the ONLY axis the 2026-08-11 BIOS
 // upgrade moved.
 type DdrTrainingOutcome
-  = TrainingOperational { dimm_mask: NonEmptyStr }
-  | TrainingFailed { detail: NonEmptyStr }
+  = TrainingOperational { dimm_mask: std.types.NonEmptyStr }
+  | TrainingFailed { detail: std.types.NonEmptyStr }
   | TrainingOutcomeUnobserved
 
 // Did the HOST actually boot? Downstream of training and independent of it.
 type HostBootOutcome
   = BootReachedOperatingSystem
-  | RepeatingFirmwareReset { token: NonEmptyStr, cycles: std.nat.Nat }
+  | RepeatingFirmwareReset { token: std.types.NonEmptyStr, cycles: std.nat.Nat }
   | BootStalledWithoutReset
   | BootOutcomeUnobserved
 
 type HostMemoryStanding {
-  host: HostIdentity
-  part_number: NonEmptyStr
-  population: List<NonEmptyStr>
+  host: product.placement_supply.HostIdentity
+  part_number: std.types.NonEmptyStr
+  population: List<std.types.NonEmptyStr>
   class_support: DimmClassSupport
   part_qualification: SpecificPartQualification
   training: DdrTrainingOutcome
   boot: HostBootOutcome
-  observed_at: EpochMs
+  observed_at: std.types.EpochMs
 }
 
 // The load-bearing negative. There is deliberately NO function deriving boot
@@ -85,15 +85,15 @@ data host_memory_qualification_note: String = "Written after the 2026-08-11 srv3
 type ExperimentVerdict
   = HypothesisSupported
   | HypothesisRefuted
-  | HypothesisWeakenedByIntervention { performed: NonEmptyStr, required: NonEmptyStr }
-  | ExperimentInconclusive { reason: NonEmptyStr }
+  | HypothesisWeakenedByIntervention { performed: std.types.NonEmptyStr, required: std.types.NonEmptyStr }
+  | ExperimentInconclusive { reason: std.types.NonEmptyStr }
 
 type CausalExperimentReceipt {
-  hypothesis: NonEmptyStr
-  intervention: NonEmptyStr
-  observation: NonEmptyStr
+  hypothesis: std.types.NonEmptyStr
+  intervention: std.types.NonEmptyStr
+  observation: std.types.NonEmptyStr
   verdict: ExperimentVerdict
-  observed_at: EpochMs
+  observed_at: std.types.EpochMs
 }
 
 data srv3_incident_experiments: List<CausalExperimentReceipt> = [

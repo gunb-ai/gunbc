@@ -18,7 +18,7 @@ module product.altra_motherboard.pcb_world
 // with a nonempty obligation, never an empty list. The outline constructing is
 // PartialPcbWorldReady — a preview, not an admitted board. A six-channel design has no plan on
 // this increment, so it refuses rather than borrowing the reference plan.
-fn intent_eq(a: DesignIntent, b: DesignIntent) -> Bool {
+fn intent_eq(a: product.altra_motherboard.minimal_design.DesignIntent, b: product.altra_motherboard.minimal_design.DesignIntent) -> Bool {
   match a {
     EngineeringBringUp => match b {
       EngineeringBringUp => true
@@ -31,20 +31,20 @@ fn intent_eq(a: DesignIntent, b: DesignIntent) -> Bool {
   }
 }
 
-fn slot_list_covers(xs: List<DdrSlotIdentity>, ys: List<DdrSlotIdentity>) -> Bool {
+fn slot_list_covers(xs: List<product.altra_motherboard.minimal_design.DdrSlotIdentity>, ys: List<product.altra_motherboard.minimal_design.DdrSlotIdentity>) -> Bool {
   fold(ys, init: true, f: fn(acc, p) {
     acc && fold(xs, init: false, f: fn(seen, q) { seen || ddr_slot_identity_eq(a: p, b: q) })
   })
 }
 
-fn topologies_eq(a: ActiveDdrTopology, b: ActiveDdrTopology) -> Bool {
+fn topologies_eq(a: product.altra_motherboard.minimal_design.ActiveDdrTopology, b: product.altra_motherboard.minimal_design.ActiveDdrTopology) -> Bool {
   let aslots = topology_slot_identities(t: a)
   let bslots = topology_slot_identities(t: b)
   list_length(items: aslots) == list_length(items: bslots)
     && slot_list_covers(xs: aslots, ys: bslots)
 }
 
-fn designs_eq(a: AltraMinimalMotherboard, b: AltraMinimalMotherboard) -> Bool {
+fn designs_eq(a: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, b: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> Bool {
   intent_eq(a: a.intent, b: b.intent)
     && topologies_eq(a: a.memory.topology, b: b.memory.topology)
     && a.pcie_lanes_broken_out == b.pcie_lanes_broken_out
@@ -58,13 +58,13 @@ fn mt_jade_reference_board_depth_um() -> Int {
   micrometer_count(m: mt_jade_motherboard_mechanical.outline_depth)
 }
 
-fn outline_copies_mt_jade_reference(o: AxisAlignedRectangle2) -> Bool {
+fn outline_copies_mt_jade_reference(o: std.orthogonal_geometry.AxisAlignedRectangle2) -> Bool {
   let hi = rectangle2_max(r: o)
   signed_frame_component_count(c: hi.x) == mt_jade_reference_board_width_um()
     && signed_frame_component_count(c: hi.y) == mt_jade_reference_board_depth_um()
 }
 
-fn cause_from_unresolved_role(r: BoardComponentRole, w: NonEmptyStr) -> PcbObligationCause {
+fn cause_from_unresolved_role(r: product.altra_motherboard.placement.BoardComponentRole, w: std.types.NonEmptyStr) -> product.pcb.world.PcbObligationCause {
   match r {
     ProcessorSocket => NamedAttachmentTypePartUnresolved { designation: ilm4926.designator, missing: w }
     ProcessorPackage => MissingDocument { what_is_missing: w }
@@ -83,7 +83,7 @@ fn cause_from_unresolved_role(r: BoardComponentRole, w: NonEmptyStr) -> PcbOblig
   }
 }
 
-fn cause_from_outstanding(c: PlannedComponent, g: FactAuthorityBlocker) -> PcbObligationCause {
+fn cause_from_outstanding(c: product.altra_motherboard.placement.PlannedComponent, g: product.altra_motherboard.attachment_stack.FactAuthorityBlocker) -> product.pcb.world.PcbObligationCause {
   match g {
     NeedsSomeoneToFindTheDocument { what_is_missing: w } =>
       cause_from_unresolved_role(r: c.role, w: w)
@@ -98,11 +98,11 @@ fn cause_from_outstanding(c: PlannedComponent, g: FactAuthorityBlocker) -> PcbOb
   }
 }
 
-fn obligations_from_plan(plan: BoardPlacementPlan) -> List<PcbComponentObligation> {
+fn obligations_from_plan(plan: product.altra_motherboard.placement.BoardPlacementPlan) -> List<product.pcb.world.PcbComponentObligation> {
   fold(plan.components, init: [], f: fn(acc, c) {
     match c.envelope {
       EnvelopeEstablished { envelope: _, source: _ } => acc
-      EnvelopeNotEstablished { gap: g } => concat(acc, [PcbComponentObligation {
+      EnvelopeNotEstablished { gap: g } => concat(acc, [product.pcb.world.PcbComponentObligation {
         identity: c.identity,
         origin: c.origin,
         cause: cause_from_outstanding(c: c, g: g),
@@ -111,7 +111,7 @@ fn obligations_from_plan(plan: BoardPlacementPlan) -> List<PcbComponentObligatio
   })
 }
 
-fn cause_from_attachment_blocker(g: FactAuthorityBlocker) -> PcbObligationCause {
+fn cause_from_attachment_blocker(g: product.altra_motherboard.attachment_stack.FactAuthorityBlocker) -> product.pcb.world.PcbObligationCause {
   match g {
     NeedsSomeoneToFindTheDocument { what_is_missing: w } =>
       MissingDocument { what_is_missing: w }
@@ -126,14 +126,14 @@ fn cause_from_attachment_blocker(g: FactAuthorityBlocker) -> PcbObligationCause 
   }
 }
 
-fn attachment_obligation_from_blocker(b: LayerBlocker) -> PcbAttachmentObligation {
-  PcbAttachmentObligation {
+fn attachment_obligation_from_blocker(b: product.altra_motherboard.attachment_stack.LayerBlocker) -> product.pcb.world.PcbAttachmentObligation {
+  product.pcb.world.PcbAttachmentObligation {
     layer: attachment_layer_name(l: b.layer),
     cause: cause_from_attachment_blocker(g: b.blocker),
   }
 }
 
-fn attachment_obligations() -> List<PcbAttachmentObligation> {
+fn attachment_obligations() -> List<product.pcb.world.PcbAttachmentObligation> {
   fold(open_blockers(), init: [], f: fn(acc, b) {
     concat(acc, [attachment_obligation_from_blocker(b: b)])
   })
@@ -144,7 +144,7 @@ fn attachment_obligations() -> List<PcbAttachmentObligation> {
 // count of what was NOT examined was projected, and the verdict on what WAS examined was thrown
 // away. Two established components overlapping is a hard failure of the only geometry this board
 // has actually done, and it must not be reported behind a word that means "so far so good".
-fn project_body_layout(s: BoardBodyLayoutStanding) -> PcbBodyLayoutStanding {
+fn project_body_layout(s: product.altra_motherboard.placement.BoardBodyLayoutStanding) -> product.pcb.world.PcbBodyLayoutStanding {
   match s {
     BodyLayoutAdmittedOverEveryRequiredPart { article: _ } =>
       PcbBodyLayoutAdmittedOverEveryRequiredPart
@@ -160,11 +160,11 @@ fn project_body_layout(s: BoardBodyLayoutStanding) -> PcbBodyLayoutStanding {
   }
 }
 
-fn envelope_reads_from_plan(plan: BoardPlacementPlan) -> List<EstablishedEnvelopeRead> {
+fn envelope_reads_from_plan(plan: product.altra_motherboard.placement.BoardPlacementPlan) -> List<product.pcb.world.EstablishedEnvelopeRead> {
   fold(plan.components, init: [], f: fn(acc, c) {
     match c.envelope {
       EnvelopeEstablished { envelope: _, source: s } =>
-        concat(acc, [EstablishedEnvelopeRead { identity: c.identity, source: s }])
+        concat(acc, [product.pcb.world.EstablishedEnvelopeRead { identity: c.identity, source: s }])
       EnvelopeNotEstablished { gap: _ } => acc
     }
   })
@@ -176,18 +176,18 @@ fn envelope_reads_from_plan(plan: BoardPlacementPlan) -> List<EstablishedEnvelop
 // predicate here. A cited body envelope on the plan must not read as functional establishment;
 // omitting an identity from that list would be the exact failure this projection is supposed to
 // make impossible.
-fn functional_obligations() -> List<PcbFunctionalObligation> {
+fn functional_obligations() -> List<product.pcb.world.PcbFunctionalObligation> {
   fold(board_functional_obligations(), init: [], f: fn(acc, f) {
-    concat(acc, [PcbFunctionalObligation {
+    concat(acc, [product.pcb.world.PcbFunctionalObligation {
       function: functional_requirement_name(f: f),
       cause: UnselectedPart { because: functional_requirement_reason(f: f) },
     }])
   })
 }
 
-fn physical_world_from_plan(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> PcbPhysicalWorld {
-  PcbPhysicalWorld {
-    board: PcbBoard { frame: plan.frame, outline: plan.outline },
+fn physical_world_from_plan(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, plan: product.altra_motherboard.placement.BoardPlacementPlan) -> product.pcb.world.PcbPhysicalWorld {
+  product.pcb.world.PcbPhysicalWorld {
+    board: product.pcb.world.PcbBoard { frame: plan.frame, outline: plan.outline },
     components: placeable_components(plan: plan),
     envelope_reads: envelope_reads_from_plan(plan: plan),
     obligations: obligations_from_plan(plan: plan),
@@ -201,20 +201,20 @@ fn physical_world_from_plan(d: AltraMinimalMotherboard, d_ref: DeclarationRef, p
   }
 }
 
-fn pcb_world_from_plan(d: AltraMinimalMotherboard, d_ref: DeclarationRef, plan: BoardPlacementPlan) -> PcbWorld {
+fn pcb_world_from_plan(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, plan: product.altra_motherboard.placement.BoardPlacementPlan) -> product.pcb.world.PcbWorld {
   pcb_world(
     design: plan.design,
-    electrical: PcbElectricalWorld {
+    electrical: product.pcb.world.PcbElectricalWorld {
       nets: capability_pending(what_is_owed: "a netlist joined to this board; electrical connectivity has not been modeled"),
     },
     physical: physical_world_from_plan(d: d, d_ref: d_ref, plan: plan),
-    manufacturing: PcbManufacturingWorld {
+    manufacturing: product.pcb.world.PcbManufacturingWorld {
       artifacts: capability_pending(what_is_owed: "manufacturing artifacts (gerber, drill, fab drawing); none have been emitted"),
     },
   )
 }
 
-fn altra_pcb_world_for(d: AltraMinimalMotherboard) -> PcbWorldConstruction<PcbWorld> {
+fn altra_pcb_world_for(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard) -> PcbWorldConstruction<product.pcb.world.PcbWorld> {
   if !designs_eq(a: d, b: altra_1p_minimum) {
     PcbWorldRefused { cause: PcbDesignPlanUnavailable { only_available: altra_1p_minimum_ref() } }
   } else {
@@ -230,11 +230,11 @@ fn altra_pcb_world_for(d: AltraMinimalMotherboard) -> PcbWorldConstruction<PcbWo
   }
 }
 
-fn altra_pcb_world() -> PcbWorldConstruction<PcbWorld> {
+fn altra_pcb_world() -> PcbWorldConstruction<product.pcb.world.PcbWorld> {
   altra_pcb_world_for(d: altra_1p_minimum)
 }
 
-fn design_mismatch_from_causes(cs: List<PlacementRefusal>) -> PcbWorldRefusal? {
+fn design_mismatch_from_causes(cs: List<product.altra_motherboard.placement.PlacementRefusal>) -> product.pcb.world.PcbWorldRefusal? {
   fold(cs, init: none, f: fn(acc, c) {
     match acc {
       Present { value: v } => Present { value: v }
@@ -256,7 +256,7 @@ fn design_mismatch_from_causes(cs: List<PlacementRefusal>) -> PcbWorldRefusal? {
 // THE DESIGN'S IDENTITY IS SUPPLIED BY WHOEVER READ IT. Passing plan.design here instead would
 // make the join compare the plan against itself -- a tautology, and a worse defect than the
 // hardcoded reference it replaced, because it can never fail.
-fn admit_pcb_world(d: AltraMinimalMotherboard, d_ref: DeclarationRef, w: PcbWorld) -> PcbWorldConstruction<PcbWorld> {
+fn admit_pcb_world(d: product.altra_motherboard.minimal_design.AltraMinimalMotherboard, d_ref: std.decl_ref.DeclarationRef, w: product.pcb.world.PcbWorld) -> PcbWorldConstruction<product.pcb.world.PcbWorld> {
   match altra_reference_plan() {
     OrthogonalRefused { cause: c } => PcbWorldRefused { cause: PcbBoardOutlineRefused { cause: c } }
     OrthogonalReady { value: plan } =>

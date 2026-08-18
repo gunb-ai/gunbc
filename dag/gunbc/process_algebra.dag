@@ -12,13 +12,13 @@ type DeclaredProcessNodeMode
   | Bucket
 
 type AttestationEvidence
-  = StructuralLensReceipt { lens_name: NonEmptyStr }
-  | IntegrationTestReceipt { test_name: NonEmptyStr, passed: Bool }
-  | ProseReceipt { text: NonEmptyStr }
+  = StructuralLensReceipt { lens_name: std.types.NonEmptyStr }
+  | IntegrationTestReceipt { test_name: std.types.NonEmptyStr, passed: Bool }
+  | ProseReceipt { text: std.types.NonEmptyStr }
 
 type Attestation {
   author: ProcessSessionId
-  text: NonEmptyStr
+  text: std.types.NonEmptyStr
   evidence: List<AttestationEvidence>
 }
 
@@ -46,17 +46,17 @@ type ClosureEligibilityEffect
 
 type ProcessOperationEffect {
   closure_effect: ClosureEligibilityEffect
-  external_effect: OperationEffect
+  external_effect: std.effects.OperationEffect
 }
 
 type ReopenAttestation {
-  reason: NonEmptyStr
+  reason: std.types.NonEmptyStr
   attestation: Attestation
 }
 
 type RegressionAttestation {
-  reason: NonEmptyStr
-  retracted_subtree_signature: NonEmptyStr
+  reason: std.types.NonEmptyStr
+  retracted_subtree_signature: std.types.NonEmptyStr
   attestation: Attestation
 }
 
@@ -113,7 +113,7 @@ type ProcessOperation
 
 type ProcessEvent {
   position: ProcessEventPosition
-  timestamp: Timestamp
+  timestamp: std.types.Timestamp
   operation: ProcessOperation
 }
 
@@ -121,11 +121,11 @@ type ProcessEventLog = FreeMonoid<ProcessEvent>
 
 type BucketDrainState
   = BucketNotDrained
-  | BucketDrained { drained_at: Timestamp }
+  | BucketDrained { drained_at: std.types.Timestamp }
 
 type ProcessCloseState
   = ProcessOpen
-  | ProcessClosed { closed_at: Timestamp }
+  | ProcessClosed { closed_at: std.types.Timestamp }
 
 type ProcessNodeDeclarationState
   = ProcessModeMissing

@@ -36,21 +36,21 @@ type OutlineExtent {
 }
 
 type PcbSceneRefusal
-  = PcbSceneWorldRefused { cause: PcbWorldRefusal }
-  | PcbSceneSubjectDropped { identity: NonEmptyStr }
+  = PcbSceneWorldRefused { cause: product.pcb.world.PcbWorldRefusal }
+  | PcbSceneSubjectDropped { identity: std.types.NonEmptyStr }
 
 type PcbSceneConstruction<T>
   = PcbSceneReady { value: T }
   | PcbSceneRefused { cause: PcbSceneRefusal }
 
 type PcbPlanViewScene sole_constructor {
-  world: PcbWorld
+  world: product.pcb.world.PcbWorld
   document: String
 }
 
 type AttachmentLabelAcc {
   index: Int
-  fragments: List<Fragment>
+  fragments: List<std.markup.Fragment>
 }
 
 fn pcb_plan_view_scene(world: PcbWorld, document: String) -> PcbPlanViewScene {

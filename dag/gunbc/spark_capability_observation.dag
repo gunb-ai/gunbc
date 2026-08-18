@@ -15,8 +15,8 @@ module gunbc.spark_capability_observation
 // conclusion I drew earlier in this lane before the credential was bound.
 
 type SparkCapabilitySubject {
-  host: HostIdentity
-  principal: NonEmptyStr
+  host: product.placement_supply.HostIdentity
+  principal: std.types.NonEmptyStr
 }
 
 // WHICH CAPABILITY, named once. Kept separate from the serving model's ServingRequirement because
@@ -55,9 +55,9 @@ fn spark_capability_label(capability: SparkServingCapability) -> String {
 // capability nobody probed can never satisfy a requirement, which is what keeps a partial sweep from
 // reading as a complete one.
 type CapabilityObservationOutcome
-  = CapabilityPresent { evidence: NonEmptyStr }
-  | CapabilityAbsent { evidence: NonEmptyStr }
-  | CapabilityObservationRefused { first: NonEmptyStr, more: List<NonEmptyStr> }
+  = CapabilityPresent { evidence: std.types.NonEmptyStr }
+  | CapabilityAbsent { evidence: std.types.NonEmptyStr }
+  | CapabilityObservationRefused { first: std.types.NonEmptyStr, more: List<std.types.NonEmptyStr> }
   | CapabilityUnobserved
 
 // THE OBSERVATION, carrying how it was obtained rather than only what it found. probe_effect is the
@@ -74,8 +74,8 @@ type SparkCapabilityObservation {
   subject: SparkCapabilitySubject
   capability: SparkServingCapability
   outcome: CapabilityObservationOutcome
-  probe_effect: ProbeEffectOnSubject
-  credential_identity: ContentHash
+  probe_effect: gunbc.readback_independence.ProbeEffectOnSubject
+  credential_identity: std.content_hash.ContentHash
 }
 
 // THE ADMISSION RULE. A Present outcome counts as evidence ONLY when the probe could not have

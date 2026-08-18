@@ -6,7 +6,7 @@ module test.claim.devboot_reuse_seams_witness
 //
 // The decisions are witnessed here and the transports are not, because the transports are git's and are cited to it. What this repository owns is which arm each observation maps to.
 
-fn probe_subject(profile: String) -> BuildSubject? {
+fn probe_subject(profile: String) -> gunbc.devboot.subject.BuildSubject? {
   match git_object_id_from_untagged_hex(hex: "8a472fff9e9000600e33cc3559ecfad4ba55e3a3") {
     Absent => none
     Present { value: tree } =>
@@ -17,7 +17,7 @@ fn probe_subject(profile: String) -> BuildSubject? {
             tree_oid: tree,
             package: "v1-compiler",
             cargo_target: Bin { name: "gunbc" },
-            toolchain: ToolchainRequirement { name: "rustc", version: "1.93.0" },
+            toolchain: extdeps.toolchain.types.ToolchainRequirement { name: "rustc", version: "1.93.0" },
             target: host,
             profile: profile,
             features: [],
@@ -25,7 +25,7 @@ fn probe_subject(profile: String) -> BuildSubject? {
             linker: none,
             sysroot: none,
             cargo_config: [],
-            platform_c_library: GnuLibc { version: "2.36" as NonEmptyStr },
+            platform_c_library: GnuLibc { version: "2.36" as std.types.NonEmptyStr },
           ) {
             SubjectRefused { cause } => none
             SubjectAdmitted { subject } => Present { value: subject }

@@ -2,13 +2,13 @@ module v2.test.workflow.testclaim_corpus_runner
 
 
 type BoolWitnessRun
-  = BoolWitnessRuntimeVerdict { witness: BoolWitness, result: Bool }
-  | BoolWitnessQueuedForHostTransport { witness: BoolWitness }
+  = BoolWitnessRuntimeVerdict { witness: v2.std.verification.BoolWitness, result: Bool }
+  | BoolWitnessQueuedForHostTransport { witness: v2.std.verification.BoolWitness }
 
 type UnifiedClaimRun
   = NodeCorpusRun { run: TestClaimRun<Node, RuntimeValue> }
-  | NodeCorpusUnresolvedRun { claim: TestClaim }
-  | NodeCorpusEmitVsEvalDeferredRun { claim: TestClaim, target: TargetModel }
+  | NodeCorpusUnresolvedRun { claim: v2.std.verification.TestClaim }
+  | NodeCorpusEmitVsEvalDeferredRun { claim: v2.std.verification.TestClaim, target: v2.std.compilers.target_model.TargetModel }
   | BoolWitnessRunReceipt { run: BoolWitnessRun }
 
 type CorpusEvalEntry {
@@ -20,13 +20,13 @@ type CorpusEvalReport {
 }
 
 type TestClaimSubjectRosterUnsupportedRow {
-  subject_family: Symbol
-  reason: Symbol
+  subject_family: v2.std.node.Symbol
+  reason: v2.std.node.Symbol
 }
 
 type TestClaimSubjectRosterFamilyReceipt {
-  subject_family: Symbol
-  run_family: Symbol
+  subject_family: v2.std.node.Symbol
+  run_family: v2.std.node.Symbol
   subjects: List<TestClaimEvalSubject<Node>>
   runs: List<TestClaimRun<Node, RuntimeValue>>
   unsupported_rows: List<TestClaimSubjectRosterUnsupportedRow>

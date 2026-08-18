@@ -1,39 +1,39 @@
 module v2.std.node_shape
 
 
-fn edge_shape(label: EdgeLabel, target: NodeShape) -> EdgeShape {
-  EdgeShape { label: label, target: target }
+fn edge_shape(label: v2.std.node.EdgeLabel, target: v2.std.node.NodeShape) -> v2.std.node.EdgeShape {
+  v2.std.node.EdgeShape { label: label, target: target }
 }
 
-fn named_edge_shape(name: Symbol, target: NodeShape) -> EdgeShape {
+fn named_edge_shape(name: v2.std.node.Symbol, target: v2.std.node.NodeShape) -> v2.std.node.EdgeShape {
   edge_shape(label: Named { name: name }, target: target)
 }
 
-fn positional_edge_shape(target: NodeShape) -> EdgeShape {
+fn positional_edge_shape(target: v2.std.node.NodeShape) -> v2.std.node.EdgeShape {
   edge_shape(label: Positional, target: target)
 }
 
-fn node_shape(kind: NodeKind, children: List<EdgeShape>) -> NodeShape {
-  NodeShape { kind: kind, children: children }
+fn node_shape(kind: v2.std.node.NodeKind, children: List<v2.std.node.EdgeShape>) -> v2.std.node.NodeShape {
+  v2.std.node.NodeShape { kind: kind, children: children }
 }
 
-fn type_shape(connective: Connective, children: List<EdgeShape>) -> NodeShape {
+fn type_shape(connective: v2.std.node.Connective, children: List<v2.std.node.EdgeShape>) -> v2.std.node.NodeShape {
   node_shape(kind: TypeNode { connective: connective }, children: children)
 }
 
-fn atom_shape(identity: Symbol) -> NodeShape {
+fn atom_shape(identity: v2.std.node.Symbol) -> v2.std.node.NodeShape {
   type_shape(connective: Atom { identity: identity }, children: [])
 }
 
-fn computation_shape(behavior: Behavior, children: List<EdgeShape>) -> NodeShape {
+fn computation_shape(behavior: v2.std.node.Behavior, children: List<v2.std.node.EdgeShape>) -> v2.std.node.NodeShape {
   node_shape(kind: ComputationNode { behavior: behavior }, children: children)
 }
 
-fn stamp_edge_shape(e: EdgeShape) -> Edge {
-  Edge { label: e.label, target: stamp_node_shape_synthetic(shape: e.target) }
+fn stamp_edge_shape(e: v2.std.node.EdgeShape) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: e.label, target: stamp_node_shape_synthetic(shape: e.target) }
 }
 
-fn stamp_edge_shape_list(shapes: List<EdgeShape>) -> List<Edge> {
+fn stamp_edge_shape_list(shapes: List<v2.std.node.EdgeShape>) -> List<v2.std.node.Edge> {
   fold_list(
     xs: shapes,
     empty: Empty,
@@ -43,7 +43,7 @@ fn stamp_edge_shape_list(shapes: List<EdgeShape>) -> List<Edge> {
   )
 }
 
-fn stamp_node_shape(shape: NodeShape, occurrence_id: NodeOccurrenceId) -> Node {
+fn stamp_node_shape(shape: v2.std.node.NodeShape, occurrence_id: v2.std.node.NodeOccurrenceId) -> Node {
   node_with_occurrence_id(
     kind: shape.kind,
     children: stamp_edge_shape_list(shapes: shape.children),
@@ -51,6 +51,6 @@ fn stamp_node_shape(shape: NodeShape, occurrence_id: NodeOccurrenceId) -> Node {
   )
 }
 
-fn stamp_node_shape_synthetic(shape: NodeShape) -> Node {
+fn stamp_node_shape_synthetic(shape: v2.std.node.NodeShape) -> Node {
   stamp_node_shape(shape: shape, occurrence_id: SyntheticOccurrence)
 }

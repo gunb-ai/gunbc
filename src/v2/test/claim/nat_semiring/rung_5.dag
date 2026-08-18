@@ -1,51 +1,51 @@
 module v2.test.nat_semiring.rung_5
 
 
-fn rung5_emit_law_equals_claim(label: String, law_input: Node) -> TestClaim {
+fn rung5_emit_law_equals_claim(label: String, law_input: Node) -> v2.std.verification.TestClaim {
   EqualsClaim {
     label: label,
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     lhs: law_input,
     rhs: law_input,
-    classification: TestClassification { tier: Tier3, layer: Integration }
+    classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
   }
 }
 
-data claim_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=rust law=add-left-identity predicate=R5-rust-emit-law-equals-eval", law_input: nat_add_left_identity_input )
+data claim_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=rust law=add-left-identity predicate=R5-rust-emit-law-equals-eval", law_input: nat_add_left_identity_input )
 
-data claim_phase1_nat_semiring_rung5_rust_add_right_identity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=rust law=add-right-identity predicate=R5-rust-emit-law-equals-eval", law_input: nat_add_right_identity_input )
+data claim_phase1_nat_semiring_rung5_rust_add_right_identity_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=rust law=add-right-identity predicate=R5-rust-emit-law-equals-eval", law_input: nat_add_right_identity_input )
 
-data claim_phase1_nat_semiring_rung5_rust_add_associativity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=rust law=add-associativity predicate=R5-rust-emit-law-equals-eval", law_input: nat_add_associativity_input )
+data claim_phase1_nat_semiring_rung5_rust_add_associativity_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=rust law=add-associativity predicate=R5-rust-emit-law-equals-eval", law_input: nat_add_associativity_input )
 
-data claim_phase1_nat_semiring_rung5_rust_mul_left_identity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=rust law=mul-left-identity predicate=R5-rust-emit-law-equals-eval", law_input: nat_mul_left_identity_input )
+data claim_phase1_nat_semiring_rung5_rust_mul_left_identity_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=rust law=mul-left-identity predicate=R5-rust-emit-law-equals-eval", law_input: nat_mul_left_identity_input )
 
-data claim_phase1_nat_semiring_rung5_rust_mul_annihilator_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=rust law=mul-annihilator predicate=R5-rust-emit-law-equals-eval", law_input: nat_mul_annihilator_input )
+data claim_phase1_nat_semiring_rung5_rust_mul_annihilator_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=rust law=mul-annihilator predicate=R5-rust-emit-law-equals-eval", law_input: nat_mul_annihilator_input )
 
-data claim_phase1_nat_semiring_rung5_rust_mul_associativity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=rust law=mul-associativity predicate=R5-rust-emit-law-equals-eval", law_input: nat_mul_associativity_input )
+data claim_phase1_nat_semiring_rung5_rust_mul_associativity_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=rust law=mul-associativity predicate=R5-rust-emit-law-equals-eval", law_input: nat_mul_associativity_input )
 
-data claim_phase1_nat_semiring_rung5_python_add_left_identity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=python law=add-left-identity predicate=R5-python-emit-law-equals-eval", law_input: nat_add_left_identity_input )
+data claim_phase1_nat_semiring_rung5_python_add_left_identity_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=python law=add-left-identity predicate=R5-python-emit-law-equals-eval", law_input: nat_add_left_identity_input )
 
-data claim_phase1_nat_semiring_rung5_python_add_right_identity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=python law=add-right-identity predicate=R5-python-emit-law-equals-eval", law_input: nat_add_right_identity_input )
+data claim_phase1_nat_semiring_rung5_python_add_right_identity_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=python law=add-right-identity predicate=R5-python-emit-law-equals-eval", law_input: nat_add_right_identity_input )
 
-data claim_phase1_nat_semiring_rung5_python_add_associativity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=python law=add-associativity predicate=R5-python-emit-law-equals-eval", law_input: nat_add_associativity_input )
+data claim_phase1_nat_semiring_rung5_python_add_associativity_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=python law=add-associativity predicate=R5-python-emit-law-equals-eval", law_input: nat_add_associativity_input )
 
-data claim_phase1_nat_semiring_rung5_python_mul_left_identity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=python law=mul-left-identity predicate=R5-python-emit-law-equals-eval", law_input: nat_mul_left_identity_input )
+data claim_phase1_nat_semiring_rung5_python_mul_left_identity_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=python law=mul-left-identity predicate=R5-python-emit-law-equals-eval", law_input: nat_mul_left_identity_input )
 
-data claim_phase1_nat_semiring_rung5_python_mul_annihilator_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=python law=mul-annihilator predicate=R5-python-emit-law-equals-eval", law_input: nat_mul_annihilator_input )
+data claim_phase1_nat_semiring_rung5_python_mul_annihilator_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=python law=mul-annihilator predicate=R5-python-emit-law-equals-eval", law_input: nat_mul_annihilator_input )
 
-data claim_phase1_nat_semiring_rung5_python_mul_associativity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=python law=mul-associativity predicate=R5-python-emit-law-equals-eval", law_input: nat_mul_associativity_input )
+data claim_phase1_nat_semiring_rung5_python_mul_associativity_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=python law=mul-associativity predicate=R5-python-emit-law-equals-eval", law_input: nat_mul_associativity_input )
 
-data claim_phase1_nat_semiring_rung5_go_add_left_identity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=go law=add-left-identity predicate=R5-go-emit-law-equals-eval", law_input: nat_add_left_identity_input )
+data claim_phase1_nat_semiring_rung5_go_add_left_identity_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=go law=add-left-identity predicate=R5-go-emit-law-equals-eval", law_input: nat_add_left_identity_input )
 
-data claim_phase1_nat_semiring_rung5_go_add_right_identity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=go law=add-right-identity predicate=R5-go-emit-law-equals-eval", law_input: nat_add_right_identity_input )
+data claim_phase1_nat_semiring_rung5_go_add_right_identity_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=go law=add-right-identity predicate=R5-go-emit-law-equals-eval", law_input: nat_add_right_identity_input )
 
-data claim_phase1_nat_semiring_rung5_go_add_associativity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=go law=add-associativity predicate=R5-go-emit-law-equals-eval", law_input: nat_add_associativity_input )
+data claim_phase1_nat_semiring_rung5_go_add_associativity_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=go law=add-associativity predicate=R5-go-emit-law-equals-eval", law_input: nat_add_associativity_input )
 
-data claim_phase1_nat_semiring_rung5_go_mul_left_identity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=go law=mul-left-identity predicate=R5-go-emit-law-equals-eval", law_input: nat_mul_left_identity_input )
+data claim_phase1_nat_semiring_rung5_go_mul_left_identity_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=go law=mul-left-identity predicate=R5-go-emit-law-equals-eval", law_input: nat_mul_left_identity_input )
 
-data claim_phase1_nat_semiring_rung5_go_mul_annihilator_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=go law=mul-annihilator predicate=R5-go-emit-law-equals-eval", law_input: nat_mul_annihilator_input )
+data claim_phase1_nat_semiring_rung5_go_mul_annihilator_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=go law=mul-annihilator predicate=R5-go-emit-law-equals-eval", law_input: nat_mul_annihilator_input )
 
-data claim_phase1_nat_semiring_rung5_go_mul_associativity_emit_equals_eval: TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=go law=mul-associativity predicate=R5-go-emit-law-equals-eval", law_input: nat_mul_associativity_input )
+data claim_phase1_nat_semiring_rung5_go_mul_associativity_emit_equals_eval: v2.std.verification.TestClaim = rung5_emit_law_equals_claim( label: "fixture=phase1/nat_semiring rung=5 target=go law=mul-associativity predicate=R5-go-emit-law-equals-eval", law_input: nat_mul_associativity_input )
 
 data run_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval: TestClaimRun<Node, RuntimeValue> = rung56_emit_vs_eval_run( claim: claim_phase1_nat_semiring_rung5_rust_add_left_identity_emit_equals_eval, fixture_subject: nat_add_left_identity_input, target: rung34_emit_host_rust_target_model )
 

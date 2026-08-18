@@ -2,7 +2,7 @@ module gunbc.uefi_boot_config
 
 
 type DesiredBootSource
-  = BootFromInstallMedia { efi_file: NonEmptyStr }
+  = BootFromInstallMedia { efi_file: std.types.NonEmptyStr }
   | BootFromPxeEntry { boot_index: Int }
 
 fn uefi_boot_config_commands(desired: DesiredBootSource) -> List<UefiShellCommand> {

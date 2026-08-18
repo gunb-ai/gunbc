@@ -13,8 +13,8 @@ type ElfIdent {
   mag1: Int
   mag2: Int
   mag3: Int
-  class: ElfClass
-  data: ElfDataEncoding
+  class: extdeps.formats.elf.primitives.ElfClass
+  data: extdeps.formats.elf.primitives.ElfDataEncoding
   version: Int
   osabi: Int
   abiversion: Int
@@ -22,8 +22,8 @@ type ElfIdent {
 
 type Elf64Ehdr {
   ident: ElfIdent
-  file_type: ElfFileType
-  machine: ElfMachine
+  file_type: extdeps.formats.elf.primitives.ElfFileType
+  machine: extdeps.formats.elf.primitives.ElfMachine
   version: Int
   entry: Int
   phoff: Int
@@ -40,7 +40,7 @@ type Elf64Ehdr {
 type ElfDecodeReason
   = Truncated { required_bytes: Int, available_bytes: Int }
   | InvalidElfMagic { mag0: Int, mag1: Int, mag2: Int, mag3: Int }
-  | ElfClassNotElf64 { class: ElfClass }
+  | ElfClassNotElf64 { class: extdeps.formats.elf.primitives.ElfClass }
   | UnsupportedElfClass { raw: Int }
   | UnsupportedElfData { raw: Int }
   | UnsupportedElfFileType { raw: Int }

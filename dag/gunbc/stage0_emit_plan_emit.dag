@@ -20,7 +20,7 @@ fn render_dag_string_list(xs: List<String>) -> String {
   concat("[\n", concat(render_dag_string_list_items(xs: xs), "\n]"))
 }
 
-fn render_stage0_emit_plan_generated_dag(rows: List<Stage0EmissionPlanRow>) -> String {
+fn render_stage0_emit_plan_generated_dag(rows: List<gunbc.stage0_emit_plan.Stage0EmissionPlanRow>) -> String {
   concat(
     "module gunbc.stage0_emit_plan_generated\n\n",
     "\n",
@@ -34,7 +34,7 @@ fn render_stage0_emit_plan_generated_dag(rows: List<Stage0EmissionPlanRow>) -> S
   )
 }
 
-fn stage0_emit_plan_generation_from_outcome(outcome: Stage0EmissionPlanOutcome) -> Stage0EmitPlanGenerationOutcome {
+fn stage0_emit_plan_generation_from_outcome(outcome: gunbc.stage0_emit_plan.Stage0EmissionPlanOutcome) -> Stage0EmitPlanGenerationOutcome {
   match outcome {
     Stage0EmissionPlanRefused { cause: _ } => Stage0EmitPlanGenerationRefused
     Stage0EmissionPlanAccepted { rows } => Stage0EmitPlanGenerated {

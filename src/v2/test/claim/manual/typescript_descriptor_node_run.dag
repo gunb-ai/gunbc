@@ -1,9 +1,9 @@
 module v2.test.manual.typescript_descriptor_node_run_support
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn typescript_descriptor_node_emit_host_fixture_inputs() -> Inputs {
+fn typescript_descriptor_node_emit_host_fixture_inputs() -> v2.compiler.eval.Inputs {
   inputs_for_emit_host(
     claim_input_root: stub_empty_conj,
     expected_eval_root: stub_empty_conj,
@@ -11,7 +11,7 @@ fn typescript_descriptor_node_emit_host_fixture_inputs() -> Inputs {
   )
 }
 
-fn typescript_descriptor_node_host_run_i32(target: TargetModel, source: Medium<String>) -> Outcome<Int> {
+fn typescript_descriptor_node_host_run_i32(target: v2.std.compilers.target_model.TargetModel, source: Medium<String>) -> Outcome<Int> {
   match run_emit_host(
     target: target,
     source: source,

@@ -29,22 +29,22 @@ type SolConsoleTransport
   | IpmiSol
 
 type SolConsoleCaptureIntent {
-  bmc_host: NonEmptyStr
+  bmc_host: std.types.NonEmptyStr
   transport: SolConsoleTransport
-  output_path: NonEmptyStr
+  output_path: std.types.NonEmptyStr
 }
 
 type SolConsoleCaptureOutcome
   = CaptureRunning
   | CaptureCompleted
-  | CaptureRefused { reason: NonEmptyStr }
+  | CaptureRefused { reason: std.types.NonEmptyStr }
 
 type SolConsoleCaptureReceipt {
-  bmc_host: NonEmptyStr
+  bmc_host: std.types.NonEmptyStr
   transport: SolConsoleTransport
-  log_path: NonEmptyStr
-  bytes_captured: ByteSize
-  duration_ms: Milliseconds
+  log_path: std.types.NonEmptyStr
+  bytes_captured: std.measure.ByteSize
+  duration_ms: std.types.Milliseconds
   outcome: SolConsoleCaptureOutcome
 }
 
@@ -74,12 +74,12 @@ data sol_console_capture_bash_emit_dissolution_trigger: Disposition = Scaffold {
 }
 
 type SolConsoleSendIntent {
-  bmc_host: NonEmptyStr
+  bmc_host: std.types.NonEmptyStr
   transport: SolConsoleTransport
-  username: NonEmptyStr
+  username: std.types.NonEmptyStr
   input: String
-  settle_seconds: Seconds
-  read_timeout_seconds: Seconds
+  settle_seconds: std.types.Seconds
+  read_timeout_seconds: std.types.Seconds
 }
 
 data sol_console_send_bash_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: sol_console_send — ipmitool/obmc-console interactive send composed as shell transport (medium-as-string, IPMI_PASSWORD via -E env); DISSOLVES WHEN host_effect_apply binds SolConsoleSend without concat-built runner glue and dag/extdeps/bmc/serial_console.dag retires its concat-built transport")

@@ -14,23 +14,23 @@ fn write_fake_sccache(dir_path: String, exit_code: String) -> Bool {
   let chmod = shell.Exec.Run(
     script: retained_runtime(
       body: concat("chmod +x ", path),
-      reason: "build-cache provision witness chmod +x fake sccache stub" as NonEmptyStr,
+      reason: "build-cache provision witness chmod +x fake sccache stub" as std.types.NonEmptyStr,
     ),
     expect: ExpectSuccess,
   )
   wrote.success && chmod.success
 }
 
-fn run_body(prelude: String, body: String) -> ShellExecObserved {
+fn run_body(prelude: String, body: String) -> gunbc.host_effect_realize.ShellExecObserved {
   let full = concat("set -euo pipefail\n", concat(prelude, body))
   let result = shell.Exec.Run(
     script: retained_runtime(
       body: shell_exec_via_bash(body: full),
-      reason: "build-cache provision witness body under fake failing sccache" as NonEmptyStr,
+      reason: "build-cache provision witness body under fake failing sccache" as std.types.NonEmptyStr,
     ),
     expect: OutcomeIsData,
   )
-  ShellExecObserved {
+  gunbc.host_effect_realize.ShellExecObserved {
     exit_code: result.exit_code,
     success: result.success,
     stdout: result.stdout,

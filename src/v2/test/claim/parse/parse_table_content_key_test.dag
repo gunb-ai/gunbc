@@ -1,10 +1,10 @@
 module v2.test.parse.parse_table_content_key
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn mk_table(grammar: Hash, tokens: Hash) -> ParseTable {
+fn mk_table(grammar: v2.std.node.Hash, tokens: v2.std.node.Hash) -> v2.compiler.parse.ParseTable {
   let base = parse_table_empty()
-  ParseTableRealization {
+  v2.compiler.parse.ParseTableRealization {
     artifact_kind: base.artifact_kind,
     provider_id: base.provider_id,
     materialization: base.materialization,
@@ -19,18 +19,18 @@ fn mk_table(grammar: Hash, tokens: Hash) -> ParseTable {
   }
 }
 
-fn grammar_one() -> Hash { symbol_identity_digest(sym: ^ctk_grammar_one) }
-fn grammar_two() -> Hash { symbol_identity_digest(sym: ^ctk_grammar_two) }
-fn tokens_one() -> Hash { symbol_identity_digest(sym: ^ctk_tokens_one) }
-fn tokens_two() -> Hash { symbol_identity_digest(sym: ^ctk_tokens_two) }
+fn grammar_one() -> v2.std.node.Hash { symbol_identity_digest(sym: ^ctk_grammar_one) }
+fn grammar_two() -> v2.std.node.Hash { symbol_identity_digest(sym: ^ctk_grammar_two) }
+fn tokens_one() -> v2.std.node.Hash { symbol_identity_digest(sym: ^ctk_tokens_one) }
+fn tokens_two() -> v2.std.node.Hash { symbol_identity_digest(sym: ^ctk_tokens_two) }
 
-fn table_g1_t1() -> ParseTable { mk_table(grammar: grammar_one(), tokens: tokens_one()) }
-fn table_g2_t1() -> ParseTable { mk_table(grammar: grammar_two(), tokens: tokens_one()) }
-fn table_g1_t2() -> ParseTable { mk_table(grammar: grammar_one(), tokens: tokens_two()) }
+fn table_g1_t1() -> v2.compiler.parse.ParseTable { mk_table(grammar: grammar_one(), tokens: tokens_one()) }
+fn table_g2_t1() -> v2.compiler.parse.ParseTable { mk_table(grammar: grammar_two(), tokens: tokens_one()) }
+fn table_g1_t2() -> v2.compiler.parse.ParseTable { mk_table(grammar: grammar_one(), tokens: tokens_two()) }
 
-fn key_p0_a() -> ParsePositionKey { ParsePositionKey { position: 0, production: ^ctk_prod_a } }
-fn key_p1_a() -> ParsePositionKey { ParsePositionKey { position: 1, production: ^ctk_prod_a } }
-fn key_p0_b() -> ParsePositionKey { ParsePositionKey { position: 0, production: ^ctk_prod_b } }
+fn key_p0_a() -> v2.compiler.parse.ParsePositionKey { v2.compiler.parse.ParsePositionKey { position: 0, production: ^ctk_prod_a } }
+fn key_p1_a() -> v2.compiler.parse.ParsePositionKey { v2.compiler.parse.ParsePositionKey { position: 1, production: ^ctk_prod_a } }
+fn key_p0_b() -> v2.compiler.parse.ParsePositionKey { v2.compiler.parse.ParsePositionKey { position: 0, production: ^ctk_prod_b } }
 
 test fn witness_subject_deterministic() -> Bool {
   let a = parse_table_subject(table: table_g1_t1(), key: key_p0_a())

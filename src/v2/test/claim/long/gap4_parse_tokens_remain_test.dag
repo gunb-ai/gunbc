@@ -1,9 +1,9 @@
 module v2.test.long.gap4_parse_tokens_remain
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data gap4_cached_lm: LanguageModel = dag_language_model()
+data gap4_cached_lm: v2.std.language_model.LanguageModel = dag_language_model()
 
 fn parses(src: String) -> Bool {
   let lm = gap4_cached_lm

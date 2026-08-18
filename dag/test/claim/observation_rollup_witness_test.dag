@@ -5,8 +5,8 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data rollup_witness_home_doc: String = "S1 of the display-grain lane: the fold that accumulates routine leaf events into their ancestor at a declared grain, so a batch emits one conclusion instead of one line per witness. These claims pin the two properties the fold exists for and the two it must NOT have. What it exists for: routine and anomaly classes both COUNT (a summary claiming `0 failed` is only trustworthy if failures were tallied on the same pass), and the ancestor is located by the containment path rather than by a second taxonomy. What it must not have: an event outside the rollup's subject is REFUSED rather than folded (which would inflate a batch with foreign work) or dropped (which would report an incomplete total as if it were complete), and a subject with no segment at the requested grain answers Absent rather than substituting the root."
 
-fn batch_subject() -> ObservationSubject {
-  ObservationSubject {
+fn batch_subject() -> std.observation.ObservationSubject {
+  std.observation.ObservationSubject {
     segments: [
       RunSegment { id: "run-1" },
       BatchSegment { index: 2, label: "discovery-corpus" },
@@ -14,8 +14,8 @@ fn batch_subject() -> ObservationSubject {
   }
 }
 
-fn leaf_subject(entry: NonEmptyStr) -> ObservationSubject {
-  ObservationSubject {
+fn leaf_subject(entry: std.types.NonEmptyStr) -> std.observation.ObservationSubject {
+  std.observation.ObservationSubject {
     segments: [
       RunSegment { id: "run-1" },
       BatchSegment { index: 2, label: "discovery-corpus" },
@@ -25,8 +25,8 @@ fn leaf_subject(entry: NonEmptyStr) -> ObservationSubject {
   }
 }
 
-fn foreign_leaf_subject() -> ObservationSubject {
-  ObservationSubject {
+fn foreign_leaf_subject() -> std.observation.ObservationSubject {
+  std.observation.ObservationSubject {
     segments: [
       RunSegment { id: "run-1" },
       BatchSegment { index: 3, label: "compile-clean-gate" },
@@ -35,8 +35,8 @@ fn foreign_leaf_subject() -> ObservationSubject {
   }
 }
 
-fn event_at(subject: ObservationSubject, transition: ObservationTransition) -> ObservationEvent {
-  ObservationEvent {
+fn event_at(subject: std.observation.ObservationSubject, transition: std.observation.ObservationTransition) -> std.observation.ObservationEvent {
+  std.observation.ObservationEvent {
     subject: subject,
     transition: transition,
     durations: observation_durations_wall(elapsed: nanosecond(count: 1000)),
@@ -44,8 +44,8 @@ fn event_at(subject: ObservationSubject, transition: ObservationTransition) -> O
   }
 }
 
-fn unmeasured_event_at(subject: ObservationSubject, transition: ObservationTransition) -> ObservationEvent {
-  ObservationEvent {
+fn unmeasured_event_at(subject: std.observation.ObservationSubject, transition: std.observation.ObservationTransition) -> std.observation.ObservationEvent {
+  std.observation.ObservationEvent {
     subject: subject,
     transition: transition,
     durations: observation_durations_wall_unavailable(cause: "synthetic fixture withholds the clock"),
@@ -84,7 +84,7 @@ test fn RED_a_wholly_unmeasured_batch_stays_unavailable_rather_than_reporting_ze
 }
 
 test fn peak_rss_keeps_the_maximum_reading_not_the_last_or_the_sum() -> Bool {
-  let big = ObservationEvent {
+  let big = std.observation.ObservationEvent {
     subject: leaf_subject(entry: "dag/big.dag"),
     transition: Concluded { outcome: Done },
     durations: observation_durations_wall(elapsed: nanosecond(count: 1000)),
@@ -104,7 +104,7 @@ test fn peak_rss_keeps_the_maximum_reading_not_the_last_or_the_sum() -> Bool {
   }
 }
 
-fn fold_events(rollup: ObservationRollup, events: List<ObservationEvent>) -> ObservationRollup {
+fn fold_events(rollup: std.observation.ObservationRollup, events: List<std.observation.ObservationEvent>) -> std.observation.ObservationRollup {
   fold(events, init: rollup, f: (acc, e) =>
     match observation_rollup_accept(rollup: acc, event: e) {
       RollupAccepted { rollup: r } => r

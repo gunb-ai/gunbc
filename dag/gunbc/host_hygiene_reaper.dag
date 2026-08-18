@@ -24,15 +24,15 @@ type CgroupOccupant
   | CgroupBuildCacheServerOccupant
 
 type ResidualSlotObservation {
-  unit: NonEmptyStr
-  unit_active_state: SystemdUnitActiveState
+  unit: std.types.NonEmptyStr
+  unit_active_state: extdeps.systemd.SystemdUnitActiveState
   occupant: CgroupOccupant
   has_control_override: Bool
 }
 
 type ReapRefusalCause
   = RefusalUnitActive
-  | RefusalBuildCacheServerOccupant { unit: NonEmptyStr }
+  | RefusalBuildCacheServerOccupant { unit: std.types.NonEmptyStr }
 
 type ResidualReapAction
   = NoActionNeeded

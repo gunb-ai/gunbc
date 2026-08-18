@@ -31,7 +31,7 @@ type AnthropicImageMediaType
   | ImagePng
   | ImageGif
   | ImageWebp
-  | AnthropicImageMediaTypeOther { raw: NonEmptyStr }
+  | AnthropicImageMediaTypeOther { raw: std.types.NonEmptyStr }
 
 data anthropic_image_jpeg_wire: String = "image/jpeg"
 data anthropic_image_png_wire: String = "image/png"

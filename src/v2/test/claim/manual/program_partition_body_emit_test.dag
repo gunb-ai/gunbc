@@ -1,7 +1,7 @@
 module v2.test.manual.program_partition_body_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn program_partition_node_list_member_seen(seen: List<Node>, needle: Node) -> Bool {
   any(xs: seen, predicate: fn(member) { member == needle })

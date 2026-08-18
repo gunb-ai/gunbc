@@ -1,14 +1,14 @@
 module extdeps.languages.simd.kernel
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "gcc.gnu.org/onlinedocs/gcc/Vector-Extensions.html"
   }
 }
 
-data simd_kernel_target_medium_name: NonEmptyStr = "simd-contiguous-loop"
+data simd_kernel_target_medium_name: std.types.NonEmptyStr = "simd-contiguous-loop"
 
 type SimdKernelBufferLayout
   = ContiguousSoa
@@ -20,7 +20,7 @@ type SimdKernelEmitSurface {
 }
 
 fn simd_kernel_medium(surface: SimdKernelEmitSurface) -> Medium<SimdKernelEmitSurface> {
-  Medium {
+  extdeps.communication.medium.Medium {
     carried: surface
     fidelity: Lossless
   }
@@ -84,7 +84,7 @@ fn contiguous_loop_elementwise_kernel(
 
 fn contiguous_loop_elementwise_float_kernel(
   op_codes: List<Int>,
-  fma_contraction_policy: FmaContractionPolicy,
+  fma_contraction_policy: std.numerical_contract.FmaContractionPolicy,
   a: List<Float>,
   b: List<Float>,
   c: List<Float>
@@ -92,18 +92,18 @@ fn contiguous_loop_elementwise_float_kernel(
   [pure_dag_seam_unreachable_float()]
 }
 
-data simd_kernel_int_execution_host_realization_marker: Disposition = Scaffold {
+data simd_kernel_int_execution_host_realization_marker: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.simd.kernel",
     decl_name: "contiguous_loop_elementwise_kernel",
     field: WholeDeclaration
   }
 }
 
-data simd_kernel_float_execution_host_realization_marker: Disposition = Scaffold {
+data simd_kernel_float_execution_host_realization_marker: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.simd.kernel",
     decl_name: "contiguous_loop_elementwise_float_kernel",
     field: WholeDeclaration

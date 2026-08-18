@@ -7,15 +7,15 @@ type DashboardActuationPosture
 
 type DashboardProvisionTransport
   = DashboardLocalProvision
-  | DashboardSshProvision { host: NonEmptyStr }
+  | DashboardSshProvision { host: std.types.NonEmptyStr }
 
 type DashboardSourceSeed
-  = DashboardExistingRepo { anchor_ref: NonEmptyStr }
+  = DashboardExistingRepo { anchor_ref: std.types.NonEmptyStr }
   | DashboardGitBundle {
       controller_repo: std.types.FilePath,
       staged_bundle: std.types.FilePath,
-      anchor_ref: NonEmptyStr,
-      history_remote: NonEmptyStr,
+      anchor_ref: std.types.NonEmptyStr,
+      history_remote: std.types.NonEmptyStr,
     }
 
 data provider_state_requires_admission_note: String = "THE ADMITTED BINDING IS A FIELD, NOT A CHECK SOMEONE MAY RUN. gunbc.provider_account models which account a credential belongs to and how many concurrent sessions its persistence behaviour can carry, and its admission function refuses the combinations that cannot hold — but this record used to carry only a root and an executable, so every instance in the fleet was built along a path that admission never saw. The model said the invalid architecture was unwritable while the constructor two files away wrote it four times.\\n\\nAdding the binding as a required field is what closes it. There is no default and no second constructor, so a provider state cannot come into existence without naming an admitted binding, and the account a deployment uses is no longer a bare path that happens to end in a directory name — it is a selection the admission agreed to.\\n\\nThe four declarations below bind ONE session each, which is what a serve process is, and take the total single-session path admitted_single_session_binding provides. That path cannot refuse, because a single session is admissible under every discipline resting on evidence; what it cannot do is accept an unobserved credential, since EvidencedSharingDiscipline has no unknown arm to pass it. A deployment wanting more than one session goes through the partial admission and must match its refusal."
@@ -24,7 +24,7 @@ type DashboardProviderStateBinding
   = DashboardExistingProviderState {
       root: std.types.FilePath,
       executable: std.types.FilePath?,
-      binding: AdmittedAccountBinding,
+      binding: gunbc.provider_account.AdmittedAccountBinding,
     }
 
 data dispatch_state_scope_note: String = "WHOSE STATE THE DISPATCH ROOTS ARE IS A DECLARATION, NOT AN INFERENCE, and it is the axis this record was missing when blue/green landed. An instance owns two roots a dispatch WRITES — the worktree root and the published attempt-state root — and until now both were derived from instance_root for every instance, which silently answered a question nobody had asked: that dispatch evidence belongs to the SLOT.\\n\\nFor an isolated lab that answer is right and load-bearing. A lab exists to be disjoint from production, and handing it the host-shared roots would let one lab's apply or retract disturb another lab's live worktrees and published attempts. For a production blue/green SLOT the same answer is wrong, and wrong in two directions at once. The cutover retracts the retiring slot, so slot-scoped roots put a teardown of live dispatch evidence on the per-push path — the empty-directory wall then refuses, correctly, and every main push reds (measured 2026-08-01: seven consecutive deploy jobs, alternating by candidate, both directions failing once each slot had served long enough to accumulate evidence). And because each slot reads its OWN roots, a flip moves the dashboard to a process that cannot see the attempts dispatched under its predecessor.\\n\\nThe defect is not that either answer is wrong. It is that ONE derivation answered for both kinds of instance, so the two could not disagree. Making it a field with no default means an instance cannot come into existence without stating which it is, and the two laws below read the declaration rather than guessing from instance_root, instance_id, or actuation posture — none of which separate a lab from a production slot, since labs and slots are both DashboardActuating.\\n\\nTHIS DOES NOT REOPEN isolated_instance_own_binary_note (operator ruling, 2026-07-30). That ruling is about serve_binary and its argument is mutual exclusion of PROCESSES: a lab testing a new seed must not overwrite the binary production executes, and retract tears Owned members down. Nothing here touches serve_binary, which stays instance-derived for labs and instance-declared for production under both scopes. The two rulings partition cleanly because they are about different members with opposite sharing requirements — the binary must NOT be shared because a retract would delete a running program, and the dispatch state MUST be shared across production slots because a flip would otherwise orphan live agent sessions."
@@ -33,8 +33,8 @@ data dispatch_state_scope_carries_its_roots_note: String = "THE SCOPE AND THE RO
 
 type DispatchStateScope
   = DispatchStateInstanceOwned {
-      worktree_child: NonEmptyStr,
-      attempt_state_child: NonEmptyStr,
+      worktree_child: std.types.NonEmptyStr,
+      attempt_state_child: std.types.NonEmptyStr,
     }
   | DispatchStateHostShared {
       worktree_root: std.types.FilePath,
@@ -42,22 +42,22 @@ type DispatchStateScope
     }
 
 type HostDashboardInstance {
-  instance_id: NonEmptyStr
-  host_identity: NonEmptyStr
+  instance_id: std.types.NonEmptyStr
+  host_identity: std.types.NonEmptyStr
   provision_parent_root: std.types.FilePath
   instance_root: std.types.FilePath
   local_origin_root: std.types.FilePath
-  local_origin_publish_ref: NonEmptyStr
+  local_origin_publish_ref: std.types.NonEmptyStr
   repo_root: std.types.FilePath
-  dispatch_base_ref: NonEmptyStr
+  dispatch_base_ref: std.types.NonEmptyStr
   dispatch_state_scope: DispatchStateScope
-  execution_environment: DispatchHostEnvironment
+  execution_environment: gunbc.roadmap_execution_contract.DispatchHostEnvironment
   provider_state: DashboardProviderStateBinding
   serve_binary: std.types.FilePath
-  serve_function: NonEmptyStr
-  listen_host: NonEmptyStr
-  listen_port: Port
-  tmux_server: TmuxServerScope
+  serve_function: std.types.NonEmptyStr
+  listen_host: std.types.NonEmptyStr
+  listen_port: std.types.Port
+  tmux_server: extdeps.tmux.TmuxServerScope
   actuation: DashboardActuationPosture
   provision_transport: DashboardProvisionTransport
   source_seed: DashboardSourceSeed
@@ -595,11 +595,11 @@ data provider_state_root_ensure_note: String = "THE MODEL VERIFIED AUTH AGAINST 
 type DashboardInstanceProvisionOp
   = DashboardHydrateControllerHistory {
       controller_repo: std.types.FilePath,
-      history_remote: NonEmptyStr,
+      history_remote: std.types.NonEmptyStr,
     }
   | DashboardPrepareGitBundle {
       controller_repo: std.types.FilePath,
-      anchor_ref: NonEmptyStr,
+      anchor_ref: std.types.NonEmptyStr,
     }
   | DashboardStageGitBundle {
       controller_repo: std.types.FilePath,
@@ -614,27 +614,27 @@ type DashboardInstanceProvisionOp
     }
   | DashboardEnsureOwnershipMarker {
       path: std.types.FilePath,
-      instance_id: NonEmptyStr,
+      instance_id: std.types.NonEmptyStr,
     }
   | DashboardEnsureLocalOrigin {
       bundle: std.types.FilePath,
       origin: std.types.FilePath,
-      source_ref: NonEmptyStr,
-      publish_ref: NonEmptyStr,
+      source_ref: std.types.NonEmptyStr,
+      publish_ref: std.types.NonEmptyStr,
     }
   | DashboardEnsureSourceRepo {
       origin: std.types.FilePath,
       repo: std.types.FilePath,
-      anchor_ref: NonEmptyStr,
+      anchor_ref: std.types.NonEmptyStr,
     }
   | DashboardEnsureService {
-      instance_id: NonEmptyStr,
+      instance_id: std.types.NonEmptyStr,
       binary: std.types.FilePath,
       workdir: std.types.FilePath,
-      handler: NonEmptyStr,
-      host: NonEmptyStr,
+      handler: std.types.NonEmptyStr,
+      host: std.types.NonEmptyStr,
       port: Int,
-      tmux_server: TmuxServerScope,
+      tmux_server: extdeps.tmux.TmuxServerScope,
     }
   | DashboardVerifyProviderRuntime {
       executable: std.types.FilePath,
@@ -644,7 +644,7 @@ type DashboardInstanceProvisionOp
       executable: std.types.FilePath,
       state_root: std.types.FilePath,
     }
-  | DashboardVerifyHealth { host: NonEmptyStr, port: Port }
+  | DashboardVerifyHealth { host: std.types.NonEmptyStr, port: std.types.Port }
 
 fn dashboard_instance_provision_plan(instance: HostDashboardInstance) -> List<DashboardInstanceProvisionOp> {
   let controller_source_ops = match instance.source_seed {
@@ -749,7 +749,7 @@ fn dashboard_instance_provider_verification_ops(
 }
 
 type DashboardInstanceProvisionPlanRow {
-  kind: NonEmptyStr
+  kind: std.types.NonEmptyStr
   target: String
   detail: String
 }
@@ -932,7 +932,7 @@ fn dashboard_source_seed_ready(
 type DashboardInstanceReconcile
   = DashboardInstanceConverged
   | DashboardInstanceApply { plan: List<DashboardInstanceProvisionOp> }
-  | DashboardInstanceRefused { reason: NonEmptyStr }
+  | DashboardInstanceRefused { reason: std.types.NonEmptyStr }
 
 // THE REFUSAL CHANNEL IS READ BEFORE ANY FIELD, because after a refused probe no field in the record is evidence. Every branch below reasons from Bools — origin present, source present, health current — and each of those is false when the probe could not run just as surely as when the thing is genuinely missing. Reaching them with an unread refusal means deriving a plan from an observation that never happened.\n\nThe order is the whole point. Placing this check second, after the ownership law, would already be too late for anything the ownership law consults; placing it first means a transport failure produces one refusal naming what could not be observed, rather than a confident Apply plan built to create files that may well already exist.\n\nIt refuses rather than retrying or widening. A probe that could not run is not a slow probe, and a reconcile that responded by planning the superset — create everything, it is safe if it already exists — would be the absorbing fallback wearing a plausible justification.
 fn dashboard_instance_reconcile(
@@ -991,8 +991,8 @@ fn dashboard_instance_reconcile(
 
 type DashboardInstanceRetractOp
   = DashboardStopService {
-      instance_id: NonEmptyStr,
-      tmux_server: TmuxServerScope,
+      instance_id: std.types.NonEmptyStr,
+      tmux_server: extdeps.tmux.TmuxServerScope,
     }
   | DashboardRefuseUnlessAttemptsEmpty { path: std.types.FilePath }
   | DashboardRemoveSourceRepo { path: std.types.FilePath }
@@ -1001,7 +1001,7 @@ type DashboardInstanceRetractOp
 
 type DashboardInstanceRetract
   = DashboardInstanceRetractPlan { plan: List<DashboardInstanceRetractOp> }
-  | DashboardInstanceRetractRefused { reason: NonEmptyStr }
+  | DashboardInstanceRetractRefused { reason: std.types.NonEmptyStr }
 
 data dashboard_instance_retract_note: String = "Retraction is modeled independently from provisioning and is deliberately narrower than recursive deletion. Existing-repo instances (including production) are not owned by this model and refuse retraction. Isolated bundle-seeded instances stop only their named service, refuse while any attempt worktree remains, remove the reproducible source clone and local origin, and preserve the staged bundle as the recovery anchor. Provider state is referenced secret state and is never in the retract plan."
 

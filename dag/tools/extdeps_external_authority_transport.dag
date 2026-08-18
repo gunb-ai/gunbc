@@ -7,15 +7,15 @@ data uri_witness_entry: String = "dag/test/claim/uri_witness_test.dag"
 
 data corpus_scan_entry: String = "src/v2/lens/mandatory_tag/corpus_scan_witness_test.dag"
 
-fn extdeps_external_authority_claims() -> List<ClaimRun> {
+fn extdeps_external_authority_claims() -> List<tools.host_prelude.ClaimRun> {
   [
-    ClaimRun { entry: uri_witness_entry, function: "uri_scheme_is_http_matches_https_holds" },
-    ClaimRun { entry: uri_witness_entry, function: "uri_scheme_is_http_rejects_file_holds" },
-    ClaimRun { entry: uri_witness_entry, function: "uri_is_url_https_projection_holds" },
-    ClaimRun { entry: uri_witness_entry, function: "uri_is_url_file_not_url_holds" },
-    ClaimRun { entry: corpus_scan_entry, function: "corpus_live_clean_tree_wall_holds" },
-    ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_missing_plant_reads_absent" },
-    ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_file_plant_reads_non_external_scheme" },
-    ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_real_anchor_reads_https" }
+    tools.host_prelude.ClaimRun { entry: uri_witness_entry, function: "uri_scheme_is_http_matches_https_holds" },
+    tools.host_prelude.ClaimRun { entry: uri_witness_entry, function: "uri_scheme_is_http_rejects_file_holds" },
+    tools.host_prelude.ClaimRun { entry: uri_witness_entry, function: "uri_is_url_https_projection_holds" },
+    tools.host_prelude.ClaimRun { entry: uri_witness_entry, function: "uri_is_url_file_not_url_holds" },
+    tools.host_prelude.ClaimRun { entry: corpus_scan_entry, function: "corpus_live_clean_tree_wall_holds" },
+    tools.host_prelude.ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_missing_plant_reads_absent" },
+    tools.host_prelude.ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_file_plant_reads_non_external_scheme" },
+    tools.host_prelude.ClaimRun { entry: corpus_scan_entry, function: "corpus_projection_real_anchor_reads_https" }
   ]
 }

@@ -26,7 +26,7 @@ type GcpRpcCode
   | GcpRpcCodeInternal
   | GcpRpcCodeUnavailable
   | GcpRpcCodeDataLoss
-  | GcpRpcCodeOther { raw: NonEmptyStr }
+  | GcpRpcCodeOther { raw: std.types.NonEmptyStr }
 
 data gcp_rpc_code_ok_wire: String = "OK"
 data gcp_rpc_code_cancelled_wire: String = "CANCELLED"

@@ -278,7 +278,7 @@ fn e0599_canonical_seven_module_log_labels_blob() -> String {
   })
 }
 
-fn e0599_write_blob(path: String, content: String, label: String) -> ProcessExit {
+fn e0599_write_blob(path: String, content: String, label: String) -> std.process.ProcessExit {
   if content == "" {
     exit_failure(reason: concat(label, ": refused empty export"))
   }
@@ -290,7 +290,7 @@ fn e0599_write_blob(path: String, content: String, label: String) -> ProcessExit
   }
 }
 
-fn e0599_write_message_pattern_rows_blob(out_path: String) -> ProcessExit {
+fn e0599_write_message_pattern_rows_blob(out_path: String) -> std.process.ProcessExit {
   e0599_write_blob(
     path: out_path,
     content: e0599_message_pattern_rows_blob(),
@@ -298,7 +298,7 @@ fn e0599_write_message_pattern_rows_blob(out_path: String) -> ProcessExit {
   )
 }
 
-fn e0599_write_root_family_labels_from_blob(blob: String, out_path: String) -> ProcessExit {
+fn e0599_write_root_family_labels_from_blob(blob: String, out_path: String) -> std.process.ProcessExit {
   if blob == "" {
     exit_failure(reason: "e0599_root_family_labels_from_blob: refused empty input blob")
   }
@@ -330,7 +330,7 @@ fn e0599_mechanistic_root_family_labels_blob() -> String {
   })
 }
 
-fn e0599_write_mechanistic_root_family_labels_blob(out_path: String) -> ProcessExit {
+fn e0599_write_mechanistic_root_family_labels_blob(out_path: String) -> std.process.ProcessExit {
   e0599_write_blob(
     path: out_path,
     content: e0599_mechanistic_root_family_labels_blob(),
@@ -338,7 +338,7 @@ fn e0599_write_mechanistic_root_family_labels_blob(out_path: String) -> ProcessE
   )
 }
 
-fn e0599_write_canonical_seven_module_log_labels_blob(out_path: String) -> ProcessExit {
+fn e0599_write_canonical_seven_module_log_labels_blob(out_path: String) -> std.process.ProcessExit {
   e0599_write_blob(
     path: out_path,
     content: e0599_canonical_seven_module_log_labels_blob(),

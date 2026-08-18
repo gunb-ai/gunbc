@@ -16,7 +16,7 @@ module gunbc.fleet_lifecycle_observation
 // than its owner.
 
 // Which endpoint the collector actually reached. Grounded on the address rather than a name: the address is the fact a router reservation also carries, so a consumer can require that evidence arrived from the endpoint reserved for the subject instead of from whatever answered to a hostname.
-type EndpointBindingIdentity { address: Ipv4Address }
+type EndpointBindingIdentity { address: extdeps.network.ipv4.Ipv4Address }
 
 // OUR OWN record of the execution, as distinct from what the tool printed about itself. The
 // envelope carries the tool's self-reported `rc`; this carries the exit status the dispatcher
@@ -25,7 +25,7 @@ type EndpointBindingIdentity { address: Ipv4Address }
 // self-reported field cannot express. `attempt` is the identity OF this execution, which is what
 // makes two runs against one subject distinguishable without appealing to list position.
 type ProcessReceipt {
-  attempt: Fnv1a64Structural
+  attempt: std.content_hash.Fnv1a64Structural
   exit_status: Int
 }
 
@@ -98,8 +98,8 @@ type FleetLifecycleObservation {
   subject: product.placement_supply.HostIdentity
   endpoint_binding: EndpointBindingIdentity
   execution_receipt: ProcessReceipt
-  envelope: FleetLifecycleEnvelope
-  raw_evidence_identity: ContentHash
+  envelope: extdeps.systems.nvidia_fleet_lifecycle.FleetLifecycleEnvelope
+  raw_evidence_identity: std.content_hash.ContentHash
   device_hardware_identity: DeviceHardwareIdentity?
 }
 
@@ -115,8 +115,8 @@ type EnvelopeHostPresentationEvidence
   = EnvelopeHostAgreesWithSubject
   | EnvelopeHostDisagreesWithSubject {
       subject: product.placement_supply.HostIdentity,
-      observed_host: NonEmptyStr,
-      expected_presentation: NonEmptyStr,
+      observed_host: std.types.NonEmptyStr,
+      expected_presentation: std.types.NonEmptyStr,
     }
 
 fn envelope_host_presentation_evidence(

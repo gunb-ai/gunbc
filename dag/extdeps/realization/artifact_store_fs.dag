@@ -17,21 +17,21 @@ fn artifact_fs_path(store_root: String, key: ContentHash) -> String {
 type ArtifactFsLookup
   = ArtifactFsHit { payload: String }
   | ArtifactFsMiss { path: String }
-  | ArtifactFsRefused { verb: Verb, target: NamespacePosition, frame: Frame }
+  | ArtifactFsRefused { verb: std.effect_grant.Verb, target: std.effect_grant.NamespacePosition, frame: std.materialization_ladder.Frame }
 
 type ArtifactFsPutResult
   = ArtifactFsPutOk
-  | ArtifactFsPutRefused { verb: Verb, target: NamespacePosition, frame: Frame }
+  | ArtifactFsPutRefused { verb: std.effect_grant.Verb, target: std.effect_grant.NamespacePosition, frame: std.materialization_ladder.Frame }
   | ArtifactFsPutFailed { path: String }
 
 type ArtifactFsDeleteResult
   = ArtifactFsDeleteOk
-  | ArtifactFsDeleteRefused { verb: Verb, target: NamespacePosition, frame: Frame }
+  | ArtifactFsDeleteRefused { verb: std.effect_grant.Verb, target: std.effect_grant.NamespacePosition, frame: std.materialization_ladder.Frame }
   | ArtifactFsDeleteFailed { path: String }
 
 type ArtifactFsListResult
   = ArtifactFsListOk { entries: List<String> }
-  | ArtifactFsListRefused { verb: Verb, target: NamespacePosition, frame: Frame }
+  | ArtifactFsListRefused { verb: std.effect_grant.Verb, target: std.effect_grant.NamespacePosition, frame: std.materialization_ladder.Frame }
   | ArtifactFsListFailed { path: String }
 
 func artifact_fs_put(store_root: String, key: ContentHash, payload: String) -> ArtifactFsPutResult {
@@ -113,9 +113,9 @@ data artifact_store_fs_consumer_frontier_note: String = "DECLARED ZERO-CONSUMER 
 data artifact_store_fs_eviction_note: String = "The eviction application half: std.artifact_store DECIDES what to evict (a pure fold returning the evicted keys in its receipt); this function APPLIES that decision to the persistent tier. It takes the EVICTED KEY LIST rather than a particular receipt type, so it composes with both carriers the store exposes — evict_until_within_budget's StorePutReceipt.evicted and store_put's StorePutAdmitted arm (the totality split that landed in PR 7406) — without this transport having to know which one the caller folded. The split is the section 2 pure-spec/host-effect seam - the store stays a pure fold with no filesystem reach, and every transport handler bound to it (this one; a remote CAS later) applies the same receipt. Per-key outcomes are TYPED AND KEPT, never reduced to a success Bool: a grant refusal becomes EvictionRefused carrying the verb/target/frame the transport reported, so a store whose evictions are being silently denied is COUNTABLE (eviction_refusal_count) rather than appearing to pack correctly while the disk grows. Deliberately NOT fail-fast on the first refusal: siblings continue and each records its own outcome, so one denied key does not hide the disposition of the rest - the stopped-line ledger shape, not an absorbing skip."
 
 type ArtifactEvictionStep
-  = EvictionDeleted { key: ContentHash }
-  | EvictionRefused { key: ContentHash, verb: Verb, target: NamespacePosition, frame: Frame }
-  | EvictionFailed { key: ContentHash, path: String }
+  = EvictionDeleted { key: std.content_hash.ContentHash }
+  | EvictionRefused { key: std.content_hash.ContentHash, verb: std.effect_grant.Verb, target: std.effect_grant.NamespacePosition, frame: std.materialization_ladder.Frame }
+  | EvictionFailed { key: std.content_hash.ContentHash, path: String }
 
 func evict_one(store_root: String, key: ContentHash) -> ArtifactEvictionStep {
   match artifact_fs_delete(store_root: store_root, key: key) {

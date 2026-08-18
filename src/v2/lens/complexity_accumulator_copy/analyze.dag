@@ -222,7 +222,7 @@ fn let_rhs_node(let_capture: Node) -> Optional<Node> {
 }
 
 type LetResolution
-  = LetJoinsCarriers { name: Symbol }
+  = LetJoinsCarriers { name: v2.std.node.Symbol }
   | LetBindsFact { binding: v2.lens.complexity_accumulator_copy.LetBinding }
   | LetUndecided
 

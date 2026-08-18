@@ -22,18 +22,18 @@ type JavaScalar
   | VoidScalar
 
 type JavaIntegerPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   signedness: JavaIntKind
   width: JavaIntWidth
   overflow_release: OverflowAction
-  std_projection: Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type JavaFloatPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   width: JavaFloatWidth
-  ieee754_binary: Symbol
-  std_projection: Symbol
+  ieee754_binary: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type JavaNonIntegerScalar
@@ -41,10 +41,10 @@ type JavaNonIntegerScalar
   | JavaNonIntegerScalarReserved
 
 type JavaNonIntegerPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   scalar: JavaNonIntegerScalar
-  std_projection: Symbol
-  representation: Symbol
+  std_projection: v2.std.node.Symbol
+  representation: v2.std.node.Symbol
 }
 
 type OverflowAction
@@ -52,9 +52,9 @@ type OverflowAction
   | TwoComplementWrap
 
 type JavaGrammarRelationRow {
-  production: GrammarProduction
+  production: v2.std.grammar.GrammarProduction
   emitted: Node
-  tokens: List<ConcreteSyntaxToken>
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
 type JavaModelCoreLawKey

@@ -9,75 +9,75 @@ data closure_cost_note: String = "COST FINDING, measured on this PR (2026-08-05)
 
 data green_by_vacancy_note: String = "The operator finding this file exists to answer. The previous revision's exhaustiveness check was green only because no row inhabited the DeliberatelyRetired arm — a check that would have failed the first time that declared arm was used. Fixtures below inhabit ALL SIX arms independently of the roster, so the partition is proven total over the type rather than over today's row set. Retired and SupersededByBetterModel have no roster row at all; they are proven here and nowhere else."
 
-fn fixture_complete() -> V1ComplexityInventoryRow {
-  V1ComplexityInventoryRow {
+fn fixture_complete() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
+  gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
     item: SemanticCapabilityItem { capability: AsymptoticClassAndDominance },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "classify_complexity"),
     disposition: CompleteInV2 {
       carrier: decl_ref(module_path: "v2.lens.cost", decl_name: "asymptotic_class_of_cost"),
-      note: "fixture" as NonEmptyStr
+      note: "fixture" as std.types.NonEmptyStr
     }
   }
 }
 
-fn fixture_integration() -> V1ComplexityInventoryRow {
-  V1ComplexityInventoryRow {
+fn fixture_integration() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
+  gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
     item: SemanticCapabilityItem { capability: CallGraphAndScc },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "build_scc_index"),
     disposition: IntegrationOwed {
       substrate_carrier: decl_ref(module_path: "std.graph", decl_name: "graph_multi_node_scc_members"),
       phase: ParityC4Interprocedural,
-      note: "fixture" as NonEmptyStr
+      note: "fixture" as std.types.NonEmptyStr
     }
   }
 }
 
-fn fixture_migration() -> V1ComplexityInventoryRow {
-  V1ComplexityInventoryRow {
+fn fixture_migration() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
+  gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
     item: LegacyHazardItem { hazard: SummaryEvictionHazard, of_capability: InterproceduralSummaryMemo },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "evict_summary"),
     disposition: MigrationOwed {
       destination: MigrateToV2LensCost,
       producer: FactsFromCostLens,
       phase: ParityC1ExpressionAuthority,
-      note: "fixture" as NonEmptyStr
+      note: "fixture" as std.types.NonEmptyStr
     }
   }
 }
 
-fn fixture_superseded() -> V1ComplexityInventoryRow {
-  V1ComplexityInventoryRow {
+fn fixture_superseded() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
+  gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
     item: SemanticCapabilityItem { capability: ParserProgressFactProduction },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "collect_parser_progress_edges"),
     disposition: SupersededByBetterModel {
       superseded_by: decl_ref(module_path: "std.termination", decl_name: "DescentEvidence"),
-      note: "fixture — uninhabited by the roster, proven here so the arm is not green-by-vacancy" as NonEmptyStr
+      note: "fixture — uninhabited by the roster, proven here so the arm is not green-by-vacancy" as std.types.NonEmptyStr
     }
   }
 }
 
-fn fixture_retirement_owed() -> V1ComplexityInventoryRow {
-  V1ComplexityInventoryRow {
+fn fixture_retirement_owed() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
+  gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
     item: LegacyRealizationItem { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "parser_state_expr_progress"),
     disposition: RetirementOwed {
       trigger: RetiresWhenReplacementExecutes { replacement: ParserProgressFactProduction },
-      note: "fixture" as NonEmptyStr
+      note: "fixture" as std.types.NonEmptyStr
     }
   }
 }
 
-fn fixture_retired() -> V1ComplexityInventoryRow {
-  V1ComplexityInventoryRow {
+fn fixture_retired() -> gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
+  gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow {
     item: LegacyRealizationItem { realization: ParserProgressV1WalkerRealization, of_capability: ParserProgressFactProduction },
     v1_carrier: decl_ref(module_path: "v1.compiler.complexity", decl_name: "parser_state_expr_progress"),
     disposition: Retired {
-      reason: "fixture — uninhabited by the roster, proven here so the arm is not green-by-vacancy" as NonEmptyStr
+      reason: "fixture — uninhabited by the roster, proven here so the arm is not green-by-vacancy" as std.types.NonEmptyStr
     }
   }
 }
 
-fn all_disposition_fixtures() -> List<V1ComplexityInventoryRow> {
+fn all_disposition_fixtures() -> List<gunbc.v1_complexity_capability_census.V1ComplexityInventoryRow> {
   [
     fixture_complete(),
     fixture_integration(),
@@ -89,7 +89,7 @@ fn all_disposition_fixtures() -> List<V1ComplexityInventoryRow> {
 }
 
 // The fixture list is load-bearing, not decoration: this folds over ALL SIX arm fixtures and asserts the set covers every one of the four work kinds. The enumerated per-arm check below states which arm maps where; this one states that the fixture SET is complete over the work-kind space, so an arm added without a fixture leaves a kind uncovered and reds here.
-fn fixture_kind_present(kind: CapabilityWorkKind) -> Bool {
+fn fixture_kind_present(kind: gunbc.v1_complexity_capability_census.CapabilityWorkKind) -> Bool {
   fold(all_disposition_fixtures(), init: false, f: (acc, c) =>
     acc || capability_work_kind(c: c) == kind)
 }
@@ -255,4 +255,4 @@ test fn w_cited_carrier_absence_is_structural_not_a_lookup_failure() -> Bool {
   }
 }
 
-data w_retirement_is_owed_until_replacement_dissolve_on: DissolutionCondition = unbound_dissolution(description: "the replacement for the v1 walker realization EXECUTES; retirement is owed, not due, because retiring before the replacement executes deletes a live capability, so the trigger is the replacement running green and not the migration row being authored")
+data w_retirement_is_owed_until_replacement_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the replacement for the v1 walker realization EXECUTES; retirement is owed, not due, because retiring before the replacement executes deletes a live capability, so the trigger is the replacement running green and not the migration row being authored")

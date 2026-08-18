@@ -17,7 +17,7 @@ type LexPattern
   = EmptyPattern
   | LiteralPattern { text: String }
   | KeywordPattern { text: String }
-  | CharPattern { char: Char }
+  | CharPattern { char: std.types.Char }
   | CharClassPattern { class: LexCharClass }
   | SequencePattern { left: LexPattern, right: LexPattern }
   | ChoicePattern { left: LexPattern, right: LexPattern }
@@ -29,9 +29,9 @@ type LexPattern
 data lex_rule_third_channel_note: String = "A lexeme reaches exactly one of three destinations, and the third exists because the other two are both wrong for a comment. TriviaRule consumes text and emits nothing, so a comment routed through it is invisible to every parser, lens, census, migration, and SCM operation — readable to humans and absent from the model. TokenRule emits into the SEMANTIC token stream, so a comment routed through it becomes something every parser must filter, perturbs token order, and sits in the path of occurrence allocation. AnnotationRule captures the lexeme as authored-source data that is real, addressable by authoring machinery, and absent from the semantic stream. See DESIGN 4c: source annotations are captured authored-source data, not semantic program data and not discarded trivia."
 
 type LexRule
-  = TokenRule { token_class: Symbol, pattern: LexPattern }
+  = TokenRule { token_class: v2.std.node.Symbol, pattern: LexPattern }
   | TriviaRule { pattern: LexPattern }
-  | AnnotationRule { annotation_class: Symbol, pattern: LexPattern }
+  | AnnotationRule { annotation_class: v2.std.node.Symbol, pattern: LexPattern }
 
 type LexRuleSet {
   rules: List<LexRule>
@@ -42,7 +42,7 @@ type LexRules
   | ModeledLexRules { root: LexRuleSet }
 
 type TokenSpan {
-  token_class: Symbol
+  token_class: v2.std.node.Symbol
   fragment: String
 }
 
@@ -89,9 +89,9 @@ fn phrase_to_source_text(p: LexicalPhrase) -> String {
 }
 
 type Token {
-  class: Symbol
+  class: v2.std.node.Symbol
   lexeme: Lexeme
-  file: Symbol
+  file: v2.std.node.Symbol
   start: Int
   end: Int
 }
@@ -141,10 +141,10 @@ data annotation_placement_reexport_note: String = "AnnotationPlacement is NOT de
 
 // Captured at the lexical boundary, before any structural subject is known — hence UNBOUND. It carries no identity of its own: binding it to a subject is the parser's job, and minting an identity for it would draw from the semantic occurrence allocator, which is exactly what DESIGN 4c forbids (adding a comment could then shift declaration identities in the same source and in later-parsed modules). Consecutive leading captures group into one ordered block at attachment; this row is one physical line.
 type UnboundSourceAnnotation {
-  annotation_class: Symbol
+  annotation_class: v2.std.node.Symbol
   lexeme: Lexeme
-  placement: AnnotationPlacement
-  file: Symbol
+  placement: std.source_annotation.AnnotationPlacement
+  file: v2.std.node.Symbol
   start: Int
   end: Int
 }

@@ -2,8 +2,8 @@ module test.claim.package_graph_witness_test
 
 
 type ProbeSelection {
-  name: NonEmptyStr
-  version: NonEmptyStr
+  name: std.types.NonEmptyStr
+  version: std.types.NonEmptyStr
 }
 
 type ProbeKind = ProbeRuntime | ProbeDev

@@ -2,37 +2,37 @@ module gunbc.bmc_converge
 
 
 type ApprovedBmcFirmwareArtifact {
-  firmware: BmcFirmwareVersion
-  board: BaseboardModel
-  image_uri: Uri
-  digest: Digest
+  firmware: extdeps.bmc.capability.BmcFirmwareVersion
+  board: extdeps.boards.types.BaseboardModel
+  image_uri: extdeps.uri.Uri
+  digest: extdeps.crypto.hash.Digest
 }
 
 type BmcFirmwareUpdatePlan {
-  host: HostIdentity
-  observed: BmcFirmwareObservation
+  host: product.placement_supply.HostIdentity
+  observed: extdeps.bmc.capability.BmcFirmwareObservation
   artifact: ApprovedBmcFirmwareArtifact
-  update_service: BmcUpdateServiceObservation
+  update_service: extdeps.bmc.types.BmcUpdateServiceObservation
 }
 
 type BmcFanPolicyApplyPlan {
-  host: HostIdentity
-  observed: BmcFanPolicyObservation
-  desired_curve: BmcFanCurve
-  config_path: NonEmptyStr
-  controller_service: NonEmptyStr
-  projection: BmcFanPolicyProjectionCapability
+  host: product.placement_supply.HostIdentity
+  observed: extdeps.bmc.types.BmcFanPolicyObservation
+  desired_curve: extdeps.bmc.types.BmcFanCurve
+  config_path: std.types.NonEmptyStr
+  controller_service: std.types.NonEmptyStr
+  projection: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability
 }
 
 type BmcFanConfigPersistenceApplyRefusalCause
   = BmcFanConfigPersistenceSubstrateNotGrounded
-  | BmcFanConfigPersistenceSubstrateUnsupported { detail: NonEmptyStr }
+  | BmcFanConfigPersistenceSubstrateUnsupported { detail: std.types.NonEmptyStr }
 
 type FanPolicySuitabilityRefusalCause
   = FanPolicyFirmwareMustConvergeBeforeRealizer
   | FanPolicyInstalledTachTopologyDiffersFromIntent
   | FanPolicyProjectionCapabilityRefused {
-      cause: BmcFanProjectionApplyRefusalCause,
+      cause: gunbc.bmc_fan_projection.BmcFanProjectionApplyRefusalCause,
     }
   | FanPolicyRealizerSubstrateUnobserved
   | FanPolicyPersistenceApplyRefused {

@@ -1,7 +1,7 @@
 module v2.test.long.fold_lowering
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data fold_lowering_witness_note: String = "Grounds the un-forked fold->Loop desugaring (v2.compiler.fold_lowering) by execution on REAL source, end-to-end through the census ingest (tokenize -> parse_module -> normalize). A surface fold parses as an ordinary call; after the StampLexeme grammar fix its callee carries its NAME (^fold) as an atom identity and the collection likewise (^xs) — the survival sub-facts are the RED control that a grammar regression (head stamped as the token class) breaks. The located fold-call subtree (the first primary_expr capture — the outermost fn-body expression) desugars to the canonical seam Loop, and the kept loop_multiplicity derives PROVEN termination from the fold-iteration measure — the same real derivation the foundation's loop witnesses use, now reached from a real parsed fold call rather than a hand-built loop. Two fail-closed red controls: a non-fold call (head ^g) refuses (never desugars a foreign call), and a fold call carrying no fn-literal iteration body refuses (never fabricates a loop). This is the desugaring the whole-tree body producer will run on every located fold call once corpus walking is affordable; the shape it emits is exactly what the accumulator-copy rule (M3) will key on."
 
@@ -11,7 +11,7 @@ data non_fold_snippet: String = "module g_probe\n\nfn f(xs: List<Int>) -> Int {\
 
 data bodyless_fold_snippet: String = "module bodyless_probe\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0)\n}\n"
 
-fn ingest(source_text: String, file: Symbol) -> Optional<Node> {
+fn ingest(source_text: String, file: v2.std.node.Symbol) -> Optional<Node> {
   let lm = dag_language_model()
   match tokenize(text: source_text, file: file, rules: lm.lex) {
     Rejected { diagnostics: _ } => Absent
@@ -34,14 +34,14 @@ fn locate_call(root: Node) -> Optional<Node> {
   }
 }
 
-fn ingest_and_locate(source_text: String, file: Symbol) -> Optional<Node> {
+fn ingest_and_locate(source_text: String, file: v2.std.node.Symbol) -> Optional<Node> {
   match ingest(source_text: source_text, file: file) {
     Absent => Absent
     Present { value: tree } => locate_call(root: tree)
   }
 }
 
-fn is_proven_termination(m: Multiplicity) -> Bool {
+fn is_proven_termination(m: v2.std.cardinality.Multiplicity) -> Bool {
   match m {
     ProvenTermination { proof: _ } => true
     RequiresTerminationProof => false
@@ -56,7 +56,7 @@ fn outcome_is_rejected(o: Outcome<Node>) -> Bool {
   }
 }
 
-fn collect_atom_identities(n: Node, acc: List<Symbol>) -> List<Symbol> {
+fn collect_atom_identities(n: Node, acc: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
   let acc1 = match node_atom_identity_optional(node: n) {
     Present { value: s } => Cons { head: s, tail: acc }
     Absent => acc
@@ -66,13 +66,13 @@ fn collect_atom_identities(n: Node, acc: List<Symbol>) -> List<Symbol> {
   })
 }
 
-fn symbol_in(needle: Symbol, xs: List<Symbol>) -> Bool {
+fn symbol_in(needle: v2.std.node.Symbol, xs: List<v2.std.node.Symbol>) -> Bool {
   fold(xs, init: false, f: fn(acc, s) {
     if acc { true } else { s == needle }
   })
 }
 
-fn fold_snippet_identities() -> List<Symbol> {
+fn fold_snippet_identities() -> List<v2.std.node.Symbol> {
   match ingest(source_text: fold_snippet, file: ^fold_probe_file) {
     Absent => std.algebra.Empty
     Present { value: tree } => collect_atom_identities(n: tree, acc: std.algebra.Empty)
@@ -143,7 +143,7 @@ test fn duplicate_carrier_edge_is_malformed() -> Bool {
             n: loop,
             children: list_snoc_item(
               xs: loop.children,
-              item: Edge { label: Named { name: ^loop_carrier_edge }, target: binder }
+              item: v2.std.node.Edge { label: Named { name: ^loop_carrier_edge }, target: binder }
             )
           ))
         Ambiguous => false

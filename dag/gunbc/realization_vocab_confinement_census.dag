@@ -232,11 +232,11 @@ fn confinement_capability_receipt(
 data confinement_ceiling_cause_note: String = "THE TWO WAYS TO HAVE NO CEILING ARE DIFFERENT FACTS AND THIS MODULE KEEPS THEM APART. Upstream now refuses a run mismatch by name rather than by answering none, and collapsing that back into one Optional here would absorb the located cause one line after it was produced — the producer would be countable and the consumer would not, which is the shape DESIGN section 5 forbids and the reason the upstream frontier dissolved. ReceiptUnavailable means the capability receipt never existed, so the classifier was never joined to its contract and there was nothing to present. CeilingRefused means a receipt DID exist and named a different classification run than the coverage carries, and it forwards both identities unchanged. A holder that only wants a ceiling still matches one arm; a holder reporting why there is none can now say which of the two happened."
 
 type ConfinementSurfaceCeiling
-  = ConfinementCeilingDerived { ceiling: CensusInferenceCeiling }
+  = ConfinementCeilingDerived { ceiling: gunbc.repository_census_coverage.CensusInferenceCeiling }
   | ConfinementCeilingReceiptUnavailable
   | ConfinementCeilingRefused {
-      coverage_classification_run_identity: Fnv1a64Structural
-      capability_method_run_identity: Fnv1a64Structural
+      coverage_classification_run_identity: std.content_hash.Fnv1a64Structural
+      capability_method_run_identity: std.content_hash.Fnv1a64Structural
     }
 
 fn confinement_surface_ceiling(revision: MeasurementRevision) -> ConfinementSurfaceCeiling {
@@ -264,9 +264,9 @@ fn confinement_surface_ceiling(revision: MeasurementRevision) -> ConfinementSurf
 data confinement_claim_note: String = "THE CLAIM IS A PRODUCT OF THE CEILING, NOT A NUMBER BESIDE IT. ConfinementSurfacePopulationObserved is sole_constructor and the only function returning one is confinement_surface_population_claim, which returns none unless a ceiling EXISTS — the capability receipt joined its contract to the executed classifier, and the ceiling joined that receipt to the coverage outcome — and unless that ceiling supports a semantic subject claim. So the population size is not something this module can state and then annotate with a caveat: where the chain does not join, there is no claim value to hold. The key count is derived from the observation rows at read time; the claim carries no count field of its own, so it cannot drift from the rows it summarizes."
 
 type ConfinementSurfacePopulationObserved sole_constructor {
-  observed_at_revision: MeasurementRevision
-  observation: RepositoryCensusObservation
-  ceiling: CensusInferenceCeiling
+  observed_at_revision: gunbc.guarantee_measurement.MeasurementRevision
+  observation: gunbc.repository_census_observation.RepositoryCensusObservation
+  ceiling: gunbc.repository_census_coverage.CensusInferenceCeiling
 }
 
 fn confinement_surface_population_claim(

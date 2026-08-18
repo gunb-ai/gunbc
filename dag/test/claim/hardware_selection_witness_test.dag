@@ -10,7 +10,7 @@ data altra8: product.hardware_selection.Platform = product.hardware_selection.Pl
   max_data_rate_mts: 3200
 }
 
-data stick_16g: ByteSize = std.measure.byte_size(count: 17179869184)
+data stick_16g: std.measure.ByteSize = std.measure.byte_size(count: 17179869184)
 
 data mod_1rx8_16g: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types.DramModuleCatalogRow {
   part_number: "GENERIC-16G-1RX8-3200",

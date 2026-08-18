@@ -1,15 +1,15 @@
 module gunbc.infer_occurrence_binding_scaffold
 
 
-data infer_occurrence_binding_v1_adapter_scaffold: Disposition = Scaffold {
+data infer_occurrence_binding_v1_adapter_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "std.occurrence_binding",
     decl_name: "occurrence_binding_from_candidates",
     field: WholeDeclaration
   }
 }
 
-data infer_occurrence_binding_v1_adapter_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: stage0 emits generic std.occurrence_binding BindingCandidate<N> with the required Clone/serde bounds; v1.compiler.infer_occurrence_binding deletes module_path_owner_binding_decide and delegates to occurrence_binding_from_candidates by execution. ROADMAP lane: namespace-binding-kernel.")
+data infer_occurrence_binding_v1_adapter_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: stage0 emits generic std.occurrence_binding BindingCandidate<N> with the required Clone/serde bounds; v1.compiler.infer_occurrence_binding deletes module_path_owner_binding_decide and delegates to occurrence_binding_from_candidates by execution. ROADMAP lane: namespace-binding-kernel.")
 
 data infer_occurrence_binding_v1_adapter_receipt_plan_anchor: String = "gunbc.roadmap_authority namespace-binding-kernel"

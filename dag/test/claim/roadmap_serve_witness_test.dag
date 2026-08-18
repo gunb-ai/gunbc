@@ -3,14 +3,14 @@ module test.claim.roadmap_serve_witness
 
 data live_table_or_empty_note: String = "Test-local extraction: a Refused build yields the EMPTY table, so every selection witness below goes RED (nothing selects) — the discriminating direction; the production path never does this (roadmap_serve_respond answers 500 on Refused)."
 
-fn live_table_or_empty() -> ServedRouteTable<RoadmapServeHandler> {
+fn live_table_or_empty() -> ServedRouteTable<gunbc.roadmap_serve.RoadmapServeHandler> {
   match roadmap_serve_route_table_build() {
     RoadmapServeTable { table: t } => t
-    RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => ServedRouteTable { routes: [] }
+    RoadmapServeTableRefused { raw: _, segment: _, reason: _ } => extdeps.http.server.ServedRouteTable { routes: [] }
   }
 }
 
-fn selects(method: std.types.HttpMethod, path: String, want: RoadmapServeHandler) -> Bool {
+fn selects(method: std.types.HttpMethod, path: String, want: gunbc.roadmap_serve.RoadmapServeHandler) -> Bool {
   match serve_select_route(table: live_table_or_empty(), method: method, path: path) {
     SelectedDynamic { handler: h, params: _ } => h == want
     SelectedStatic { route: _ } => false
@@ -101,8 +101,8 @@ test fn witness_dispatch_get_folds_405() -> Bool {
   }
 }
 
-fn fixture_request(method: std.types.HttpMethod, path: String) -> ServeHttpRequest {
-  ServeHttpRequest { method: method, path: path, body: "" }
+fn fixture_request(method: std.types.HttpMethod, path: String) -> extdeps.http.server.ServeHttpRequest {
+  extdeps.http.server.ServeHttpRequest { method: method, path: path, body: "" }
 }
 
 test fn witness_unknown_path_folds_404_response() -> Bool {
@@ -184,8 +184,8 @@ data malformed_literal_red_note: String = "The RED control for review 40286's se
 
 test fn witness_malformed_route_literal_refuses_table() -> Bool {
   let specs = [
-    RoadmapServeRouteSpec { method: GET, raw: "/ok", handler: HealthzHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/dispatch/\{node_id", handler: BeltDispatchHandler },
+    gunbc.roadmap_serve.RoadmapServeRouteSpec { method: GET, raw: "/ok", handler: HealthzHandler },
+    gunbc.roadmap_serve.RoadmapServeRouteSpec { method: GET, raw: "/dispatch/\{node_id", handler: BeltDispatchHandler },
   ]
   match roadmap_serve_build_from_specs(specs: specs) {
     RoadmapServeTableRefused { raw: r, segment: _, reason: _ } => r == "/dispatch/\{node_id"

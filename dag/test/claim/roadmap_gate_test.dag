@@ -2,18 +2,18 @@ module test.claim.roadmap_gate
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn mini_doc(node: RoadmapNode) -> RoadmapDocument {
-  RoadmapDocument {
+fn mini_doc(node: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_document.RoadmapDocument {
+  gunbc.roadmap_document.RoadmapDocument {
     preamble: [],
     lead_lanes: [],
-    sections: [RoadmapSection {
+    sections: [gunbc.roadmap_document.RoadmapSection {
       title: "Sign-off gate",
       elements: [section_group(label: "", nodes: [node], edges: [])],
     }],
   }
 }
 
-fn emit_node(node: RoadmapNode, merged: List<Int>) -> String {
+fn emit_node(node: gunbc.roadmap_model.RoadmapNode, merged: List<Int>) -> String {
   serialize_markdown_source(doc: project_roadmap_to_markdown(doc: mini_doc(node: node), merged: merged))
 }
 

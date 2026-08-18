@@ -1,7 +1,7 @@
 module v2.test.lens_fact_density.kernel_ambient_bool
 
 
-data kernel_ambient_bool_input: Node = Node {
+data kernel_ambient_bool_input: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^fact_density_kernel_ambient_bool } },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -15,7 +15,7 @@ fn kernel_ambient_bool_claim_rhs() -> Node {
   if kernel_ambient_bool_claim_holds() {
     kernel_ambient_bool_input
   } else {
-    Node {
+    v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -23,10 +23,10 @@ fn kernel_ambient_bool_claim_rhs() -> Node {
   }
 }
 
-data claim_kernel_ambient_bool: TestClaim = EqualsClaim {
+data claim_kernel_ambient_bool: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_fact_density/kernel_ambient_bool: kernel ambient bool atom",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: kernel_ambient_bool_input,
   rhs: kernel_ambient_bool_claim_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

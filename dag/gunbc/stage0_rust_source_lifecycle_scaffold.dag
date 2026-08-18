@@ -295,11 +295,11 @@ type RustSourceRole
   | Tooling
 
 type RustMaintenanceDisposition
-  = Generated { authority: DeclarationRef }
-  | EmitFrom { authority: DeclarationRef }
-  | DeleteWith { roadmap_node: RoadmapNodeId }
+  = Generated { authority: std.decl_ref.DeclarationRef }
+  | EmitFrom { authority: std.decl_ref.DeclarationRef }
+  | DeleteWith { roadmap_node: gunbc.roadmap_model.RoadmapNodeId }
   | RetainedKernel { reason: String }
-  | HandScaffold { reason: NonEmptyStr, dissolution: DissolutionCondition }
+  | HandScaffold { reason: std.types.NonEmptyStr, dissolution: std.dissolution.DissolutionCondition }
 
 type RustSourceLifecycleRow {
   path: String

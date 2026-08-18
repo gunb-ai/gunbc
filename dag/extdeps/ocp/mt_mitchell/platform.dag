@@ -31,8 +31,8 @@ data mt_mitchell_publication_status: DocumentPublicationStatus = PubliclyPublish
 }
 
 type OcpSpecificationRevisionRow {
-  revision: NonEmptyStr
-  publication_date: SpecificationDocumentDate
+  revision: std.types.NonEmptyStr
+  publication_date: extdeps.publication.SpecificationDocumentDate
 }
 
 data mt_mitchell_revision_table: List<OcpSpecificationRevisionRow> = [
@@ -187,7 +187,7 @@ fn inter_processor_link_socket(port: MtMitchellInterProcessorLinkPort) -> Int {
 // of the fact because a board built to this specification must provide the
 // module connector, not a BMC site.
 type MtMitchellBmcPlacement
-  = BmcOnDcScmModule { module_revision: NonEmptyStr }
+  = BmcOnDcScmModule { module_revision: std.types.NonEmptyStr }
 
 data mt_mitchell_bmc_part: NonEmptyStr = "ASPEED AST2600"
 

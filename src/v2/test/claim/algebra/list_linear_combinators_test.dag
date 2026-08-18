@@ -1,7 +1,7 @@
 module v2.test.claim.algebra.list_linear_combinators
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample() -> FreeMonoid<Int> {
   Cons { head: 1, tail: Cons { head: 2, tail: Cons { head: 3, tail: Empty } } }

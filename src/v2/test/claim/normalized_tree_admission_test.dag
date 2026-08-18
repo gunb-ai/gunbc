@@ -7,16 +7,16 @@ fn probe_shell() -> Node {
   node_synthetic(kind: TypeNode { connective: Conj }, children: [])
 }
 
-fn unrelated_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn unrelated_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^normalized_tree_probe_unrelated_reason,
     at: node_locus(node: probe_shell()),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn retention_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn retention_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^body_lowering_reason_wrapper_retained_emitted,
     at: node_locus(node: probe_shell()),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -34,7 +34,7 @@ test fn a_retained_root_is_refused_at_the_carrier_door() -> Bool {
   is_rejected(o: admit_normalized_tree(
     root: probe_shell(),
     diagnostics: Some {
-      diagnostics: NonEmptyDiagnostics { head: retention_diagnostic(), tail: [] }
+      diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: retention_diagnostic(), tail: [] }
     }
   ))
 }
@@ -43,7 +43,7 @@ test fn retention_is_found_past_the_diagnostic_head_RED() -> Bool {
   is_rejected(o: admit_normalized_tree(
     root: probe_shell(),
     diagnostics: Some {
-      diagnostics: NonEmptyDiagnostics {
+      diagnostics: v2.std.diagnostic.NonEmptyDiagnostics {
         head: unrelated_diagnostic(),
         tail: [retention_diagnostic()]
       }
@@ -59,7 +59,7 @@ test fn an_unrelated_diagnostic_does_not_refuse_RED() -> Bool {
   (is_rejected(o: admit_normalized_tree(
     root: probe_shell(),
     diagnostics: Some {
-      diagnostics: NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: [] }
+      diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: [] }
     }
   )) == false)
 }
@@ -79,7 +79,7 @@ test fn plural_admission_does_not_duplicate_shared_diagnostics_RED() -> Bool {
   match admit_normalized_roots(
     roots: two_probe_roots(),
     diagnostics: Some {
-      diagnostics: NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: [] }
+      diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: [] }
     }
   ) {
     Rejected { diagnostics: _ } => false
@@ -87,7 +87,7 @@ test fn plural_admission_does_not_duplicate_shared_diagnostics_RED() -> Bool {
       diagnostics_eq(
         a: d,
         b: Some {
-          diagnostics: NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: [] }
+          diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: unrelated_diagnostic(), tail: [] }
         }
       )
   }
@@ -97,7 +97,7 @@ test fn plural_admission_refuses_a_retained_batch() -> Bool {
   match admit_normalized_roots(
     roots: two_probe_roots(),
     diagnostics: Some {
-      diagnostics: NonEmptyDiagnostics { head: retention_diagnostic(), tail: [] }
+      diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: retention_diagnostic(), tail: [] }
     }
   ) {
     Rejected { diagnostics: _ } => true

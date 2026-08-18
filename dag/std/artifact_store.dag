@@ -4,15 +4,15 @@ module std.artifact_store
 data artifact_store_module_note: String = "Witness-realization plan P2 (pure-spec half): the content-addressed artifact store - the corpus's first CacheProvider whose eviction field is READ (memory-control audit F5: eviction was write-only; here it gates construction and drives packing). The store is modeled as a pure fold: get bumps recency, put packs to budget by least-recent eviction with every eviction COUNTED in the returned receipt (a failure arm must refuse or count, never widen - DESIGN section 5). Keying is ContentHash BY SHAPE: no mtime, no existence input exists to consult, so ExistenceKeyed is unwritable here (the #6352 wall by construction). The host transport (real artifact directory + build wiring) is P2's second half; this spec is its single authority. THAT DISSOLVE-ON HAS FIRED (2026-08-07). The budget parameter is gone: store_over_provider(provider) now DERIVES the ceiling from the provider's own CapacityBounded/ByteCapacity/ExactLimit, because a caller-supplied ByteSize beside a provider that declares its own capacity was two authorities for one fact, and the fixtures proved they contradicted - providers declaring EffectiveLimitUnobserved were handed exact budgets of 100 and 1000000 bytes and the store believed the caller. It also realized every bounded provider as least-recently-used regardless of what at_capacity said, so a RefuseNewStore row would silently have evicted. Each way the derivation can fail now has its own cause rather than one StoreRefusedRetention the caller must re-interpret."
 
 type ArtifactKey {
-  closure_digest: Fnv1a64Structural
-  emitter_identity: NonEmptyStr
-  target_language: NonEmptyStr
-  toolchain: NonEmptyStr
+  closure_digest: std.content_hash.Fnv1a64Structural
+  emitter_identity: std.types.NonEmptyStr
+  target_language: std.types.NonEmptyStr
+  toolchain: std.types.NonEmptyStr
 }
 
 type ArtifactRealizationInput {
-  identity: NonEmptyStr
-  content_digest: Fnv1a64Structural
+  identity: std.types.NonEmptyStr
+  content_digest: std.content_hash.Fnv1a64Structural
 }
 
 fn artifact_realization_input_digest(realization_input: ArtifactRealizationInput) -> Fnv1a64Structural {
@@ -52,13 +52,13 @@ fn artifact_key_hash(key: ArtifactKey) -> ContentHash {
 }
 
 type ArtifactRow {
-  key: ContentHash
-  artifact_bytes: ByteSize
+  key: std.content_hash.ContentHash
+  artifact_bytes: std.measure.ByteSize
   last_use_ordinal: Int
 }
 
 type ArtifactStore {
-  budget: ByteSize
+  budget: std.measure.ByteSize
   next_ordinal: Int
   rows: List<ArtifactRow>
 }
@@ -83,7 +83,7 @@ type StoreConstruction
   = StoreReady { store: ArtifactStore }
   | StoreRefusedRetention {
       provider_id: String,
-      declared: ProviderRetention,
+      declared: std.cache_interface.ProviderRetention,
       cause: StoreRefusalCause
     }
 
@@ -175,7 +175,7 @@ data no_evicted_keys: List<ContentHash> = []
 
 type StorePutReceipt {
   store: ArtifactStore
-  evicted: List<ContentHash>
+  evicted: List<std.content_hash.ContentHash>
 }
 
 fn least_recent_row(rows: List<ArtifactRow>) -> ArtifactRow? {
@@ -208,8 +208,8 @@ fn evict_until_within_budget(store: ArtifactStore, evicted: List<ContentHash>) -
 data store_put_totality_note: String = "store_put is TOTAL over its two real outcomes, and the fit test runs BEFORE any eviction (operator scope call, 2026-07-29; reproduction receipt on PR 7385). The prior signature returned a StorePutReceipt unconditionally, which conflated two states that need opposite remedies: an artifact LARGER than the whole budget fell into the eviction loop, evicted every legitimate row, then evicted ITSELF (the fresh row carries the highest ordinal, so it is the last victim), and returned a receipt whose evicted list contained the key the caller had just put — indistinguishable at the type level from 'stored, and these older ones were evicted'. Measured: 500 bytes into a 100-byte budget holding one valid 40-byte row returned TWO evictions and an empty store, so an oversized put was not merely mislabelled, it was DESTRUCTIVE — it discarded valid cached entries and stored nothing while reporting success. The repair is construction, not a louder report (DESIGN section 5): the fit test precedes eviction, so the destructive path is unwritable rather than detected after the damage, and the two outcomes are distinct VALUES rather than one value whose fields the caller must interpret. Because artifact_bytes <= budget is established before the loop runs, the fresh row can never be its own victim — the self-eviction is gone by construction, not by a guard inside the loop."
 
 type StorePutOutcome
-  = StorePutAdmitted { store: ArtifactStore, evicted: List<ContentHash> }
-  | StorePutDidNotFit { artifact_bytes: ByteSize, budget: ByteSize }
+  = StorePutAdmitted { store: ArtifactStore, evicted: List<std.content_hash.ContentHash> }
+  | StorePutDidNotFit { artifact_bytes: std.measure.ByteSize, budget: std.measure.ByteSize }
 
 fn store_put(store: ArtifactStore, key: ContentHash, artifact_bytes: ByteSize) -> StorePutOutcome {
   if measure_count(m: artifact_bytes) > measure_count(m: store.budget) {

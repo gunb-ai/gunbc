@@ -41,8 +41,8 @@ test fn witness_live_themes_clear_hardened_law() -> Bool {
   theme_contrast_ok(t: night_theme) && theme_contrast_ok(t: day_theme)
 }
 
-fn mud_theme() -> Theme {
-  Theme { name: "mud", scheme: "dark", assignments: [
+fn mud_theme() -> gunbc.design.theme.Theme {
+  gunbc.design.theme.Theme { name: "mud", scheme: "dark", assignments: [
     assign(role: CanvasRole, material: night_canvas),
     assign(role: SurfaceRole, material: night_canvas),
     assign(role: TextRole, material: night_canvas),

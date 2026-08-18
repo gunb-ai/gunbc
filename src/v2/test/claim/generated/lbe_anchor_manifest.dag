@@ -1,8 +1,8 @@
 module v2.test.generated.lbe_anchor_manifest
 
 
-data manual_anchor_lbe_conj_dag_surface: ManualAnchorKey = ManualLbeConjDagSurface
+data manual_anchor_lbe_conj_dag_surface: v2.std.verification.ManualAnchorKey = ManualLbeConjDagSurface
 
-data manual_anchor_lbe_disj_dag_surface: ManualAnchorKey = ManualLbeDisjDagSurface
+data manual_anchor_lbe_disj_dag_surface: v2.std.verification.ManualAnchorKey = ManualLbeDisjDagSurface
 
-data manual_anchor_lbe_transform_dag_surface: ManualAnchorKey = ManualLbeTransformDagSurface
+data manual_anchor_lbe_transform_dag_surface: v2.std.verification.ManualAnchorKey = ManualLbeTransformDagSurface

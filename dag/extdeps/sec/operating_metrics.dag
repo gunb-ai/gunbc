@@ -18,19 +18,19 @@ type DisclosedPercentRate
 
 type DollarBasedNetRetentionRow {
   rate: DisclosedPercentRate
-  citation: FiledFactCitation
+  citation: extdeps.sec.facts.FiledFactCitation
 }
 
 type ArrThresholdCustomerCountRow {
-  arr_threshold: UsdWholeDollars
+  arr_threshold: extdeps.sec.facts.UsdWholeDollars
   customer_count: Int
-  citation: FiledFactCitation
+  citation: extdeps.sec.facts.FiledFactCitation
 }
 
 // Issuers state platform reach in Item 1 as a floor ('more than N million registered users') -- the same lower-bound honesty as RateLowerBoundPercent: the filed claim is a floor, never an exact count, so the field name carries the floor semantics.
 type RegisteredUserCountRow {
   registered_user_count_floor: Int
-  citation: FiledFactCitation
+  citation: extdeps.sec.facts.FiledFactCitation
 }
 
 fn disclosed_rate_at_least(rate: DisclosedPercentRate, threshold_percent: Int) -> Bool {

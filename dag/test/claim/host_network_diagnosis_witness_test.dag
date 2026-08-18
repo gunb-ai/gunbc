@@ -67,7 +67,7 @@ fn witness_unconfigured_port_blames_config_not_physical() -> Bool {
 data witness_non_vacuity_note: String = "The non-vacuity control: a healthy host must diagnose healthy, or every conjunct above is satisfied by a fold that never reports success. Same configuration, carrier present."
 
 fn witness_healthy_host_diagnoses_healthy() -> Bool {
-  let healthy = InterfaceObservation {
+  let healthy = extdeps.netplan.netplan.InterfaceObservation {
     name: "enP3p3s0f1",
     mac: "48:21:0b:87:2d:64",
     admin: AdminUpConfigured,
@@ -81,7 +81,7 @@ fn witness_healthy_host_diagnoses_healthy() -> Bool {
 
 // A fleet-level reader that cannot reach the host must refuse rather than pick either decisive answer. Carrier is only knowable from the host, so an unobserved link is neither a configuration verdict nor a physical one — collapsing it into either would let an unreachable host be reported as a definite diagnosis, which is the absorbing fallback this lane keeps refusing.
 fn witness_unobserved_carrier_refuses_both_blames() -> Bool {
-  let unobserved = InterfaceObservation {
+  let unobserved = extdeps.netplan.netplan.InterfaceObservation {
     name: "enP3p3s0f1",
     mac: "48:21:0b:87:2d:64",
     admin: AdminUpConfigured,
@@ -98,7 +98,7 @@ fn witness_unobserved_carrier_refuses_both_blames() -> Bool {
 
 // The dry proof of the subsumption bar: a host whose configuration is present and applied diagnoses identically across a restart, because no input to the fold is runtime state. That is the property 'the network survives a power cycle' reduces to at the model layer, and it is dry-provable here precisely because the applier reads the file at boot rather than inheriting anything from the previous run. A host with NO configuration must fail the same bar — otherwise the bar would pass vacuously on the very case it exists to catch.
 fn witness_persistence_bar_discriminates() -> Bool {
-  let healthy = InterfaceObservation {
+  let healthy = extdeps.netplan.netplan.InterfaceObservation {
     name: "enP3p3s0f1",
     mac: "48:21:0b:87:2d:64",
     admin: AdminUpConfigured,
@@ -120,7 +120,7 @@ fn witness_network_axis_cell_refuses_and_counts() -> Bool {
       a: network_diagnosis_verdict(
         d: diagnose_host_network(
           config: Present { value: srv4_netplan_config },
-          observed: InterfaceObservation {
+          observed: extdeps.netplan.netplan.InterfaceObservation {
             name: "enP3p3s0f1",
             mac: "48:21:0b:87:2d:64",
             admin: AdminUpConfigured,

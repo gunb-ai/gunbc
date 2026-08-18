@@ -7,15 +7,15 @@ data fleet_shell_transport_scope_note: String = "SHELL TRANSPORT IS NOT NETWORK 
 
 type HostShellTransportObservation
   = ShellTransportSucceeded {
-      observed_on: NonEmptyStr
-      principal: NonEmptyStr
-      detail: NonEmptyStr
+      observed_on: std.types.NonEmptyStr
+      principal: std.types.NonEmptyStr
+      detail: std.types.NonEmptyStr
     }
   | ShellTransportReachRefused {
-      observed_on: NonEmptyStr
-      principal: NonEmptyStr
-      detail: NonEmptyStr
-      gap: NonEmptyStr
+      observed_on: std.types.NonEmptyStr
+      principal: std.types.NonEmptyStr
+      detail: std.types.NonEmptyStr
+      gap: std.types.NonEmptyStr
     }
   | ShellTransportUnobserved { reason: String }
 

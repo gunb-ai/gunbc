@@ -3,13 +3,13 @@ module test.claim.realization_measurement_keystone
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data sample_subject: ContentHash = content_hash_of_value(value: "witness-subject-realization-measurement-keystone")
-data sample_work_shape: WorkUnitId = "witness:realization_measurement_keystone"
-data sample_wall_time: NanosecondDuration = nanosecond_duration(count: 5000000)
-data sample_space_a: ByteSize = byte_size(count: 1024)
-data sample_space_b: ByteSize = byte_size(count: 2048)
+data sample_subject: std.content_hash.ContentHash = content_hash_of_value(value: "witness-subject-realization-measurement-keystone")
+data sample_work_shape: gunbc.fleet_intent.WorkUnitId = "witness:realization_measurement_keystone"
+data sample_wall_time: std.verification.NanosecondDuration = nanosecond_duration(count: 5000000)
+data sample_space_a: std.measure.ByteSize = byte_size(count: 1024)
+data sample_space_b: std.measure.ByteSize = byte_size(count: 2048)
 
-data sample_measure_effect: RealizationMeasureEffect = ObserveElapsedAtSubject {
+data sample_measure_effect: std.realization_measurement.RealizationMeasureEffect = ObserveElapsedAtSubject {
   subject: sample_subject
   work_shape: "realization_measurement_keystone_witnesses"
 }

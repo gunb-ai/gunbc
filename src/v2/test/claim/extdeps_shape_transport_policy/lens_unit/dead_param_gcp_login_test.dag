@@ -1,13 +1,13 @@
 module v2.test.extdeps_shape_transport_policy.lens_unit.dead_param_gcp_login
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data dead_param_gcp_login_service: String = "gcloud.Auth"
 data dead_param_gcp_login_operation: String = "Login"
 
-data dead_param_gcp_login_input_facts: List<ExtdepsOperationInputFact> = [
-  ExtdepsOperationInputFact {
+data dead_param_gcp_login_input_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsOperationInputFact> = [
+  v2.lens.extdeps_shape_transport_policy.ExtdepsOperationInputFact {
     module: extdeps_gcp_module,
     service: dead_param_gcp_login_service,
     operation: dead_param_gcp_login_operation,
@@ -15,8 +15,8 @@ data dead_param_gcp_login_input_facts: List<ExtdepsOperationInputFact> = [
   }
 ]
 
-data dead_param_gcp_login_argv_facts: List<ExtdepsTransportArgvFact> = [
-  ExtdepsTransportArgvFact {
+data dead_param_gcp_login_argv_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact> = [
+  v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact {
     module: extdeps_gcp_module,
     service: dead_param_gcp_login_service,
     operation: dead_param_gcp_login_operation,
@@ -24,7 +24,7 @@ data dead_param_gcp_login_argv_facts: List<ExtdepsTransportArgvFact> = [
     argv_index: 0,
     argv_token: "gcloud"
   },
-  ExtdepsTransportArgvFact {
+  v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact {
     module: extdeps_gcp_module,
     service: dead_param_gcp_login_service,
     operation: dead_param_gcp_login_operation,
@@ -32,7 +32,7 @@ data dead_param_gcp_login_argv_facts: List<ExtdepsTransportArgvFact> = [
     argv_index: 1,
     argv_token: "auth"
   },
-  ExtdepsTransportArgvFact {
+  v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact {
     module: extdeps_gcp_module,
     service: dead_param_gcp_login_service,
     operation: dead_param_gcp_login_operation,
@@ -40,7 +40,7 @@ data dead_param_gcp_login_argv_facts: List<ExtdepsTransportArgvFact> = [
     argv_index: 2,
     argv_token: "login"
   },
-  ExtdepsTransportArgvFact {
+  v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact {
     module: extdeps_gcp_module,
     service: dead_param_gcp_login_service,
     operation: dead_param_gcp_login_operation,

@@ -5,8 +5,8 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data dispatch_attempts_witness_note: String = "U3's receipts: the attempt-branch parse proven on real shapes (an attempt-grain branch round-trips node and key; a LEGACY pre-attempt-grain branch — the operator's accidental spawn class — parses with an empty key rather than filtering as noise; garbage refuses), the wire projection proven on synthetic observations both arms, and the client machinery pinned in the served asset. The round-trip witness closes the loop with U1: a branch MINTED by dispatch_branch_name must parse back to its own node and key — the two authorities cannot drift."
 
-fn attempt_fixture() -> DispatchAttemptRef {
-  DispatchAttemptRef { node_id: "5-regen-cutover", branch: "dispatch/5-regen-cutover-afeedfacefeedface", attempt_key: "feedfacefeedface" }
+fn attempt_fixture() -> gunbc.roadmap_dispatch_actuator.DispatchAttemptRef {
+  gunbc.roadmap_dispatch_actuator.DispatchAttemptRef { node_id: "5-regen-cutover", branch: "dispatch/5-regen-cutover-afeedfacefeedface", attempt_key: "feedfacefeedface" }
 }
 
 test fn attempts_parse_roundtrips_the_minted_branch() -> Bool {

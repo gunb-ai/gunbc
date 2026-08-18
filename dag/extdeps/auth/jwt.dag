@@ -35,7 +35,7 @@ type NumericDate
   = NumericDateWholeSeconds { seconds: Int }
   | NumericDateFractionalSeconds {
       whole_seconds: Int,
-      fractional_digits: NonEmptyStr,
+      fractional_digits: std.types.NonEmptyStr,
     }
 
 // The lifetime of two dates is only a whole number of seconds when BOTH are whole seconds, so the
@@ -55,7 +55,7 @@ type NumericDate
 // non-negative lifetime, and the honest answer is a refusal rather than a wrapped negative or a clamp
 // to zero — clamping would report a just-expired credential and a malformed one identically.
 type NumericDateLifetime
-  = LifetimeWholeSeconds { seconds: Second }
+  = LifetimeWholeSeconds { seconds: std.measure.Second }
   | LifetimeNotWholeSeconds { reason: String }
   | LifetimeExpiryPrecedesIssuance { issued_at: Int, expires_at: Int }
 
@@ -110,12 +110,12 @@ type JwtCompactSerialization = NonEmptyStr where brand("JwtCompactSerialization"
 // fleet actually observes are urn: — so reusing that type would refuse a conforming token. The scheme
 // is kept as decoded text rather than forced into an enum that does not span the space.
 type JwtStringOrUri
-  = JwtBareString { value: NonEmptyStr }
-  | JwtUriString { value: NonEmptyStr, scheme: NonEmptyStr }
+  = JwtBareString { value: std.types.NonEmptyStr }
+  | JwtUriString { value: std.types.NonEmptyStr, scheme: std.types.NonEmptyStr }
 
 type JwtStringOrUriDecode
   = StringOrUriDecoded { value: JwtStringOrUri }
-  | StringOrUriRefused { raw: NonEmptyStr, reason: String }
+  | StringOrUriRefused { raw: std.types.NonEmptyStr, reason: String }
 
 type JwtColonPosition
   = NoColonPresent
@@ -238,6 +238,6 @@ type JwtRegisteredClaims {
   expires_at: NumericDate?
   not_before: NumericDate?
   issued_at: NumericDate?
-  jwt_id: NonEmptyStr?
+  jwt_id: std.types.NonEmptyStr?
 }
 

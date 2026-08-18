@@ -16,7 +16,7 @@ data violation_kinds: List<String> = [
 type ExtdepsShapeTransportPolicyReceiptRow {
   label: String
   violation_kind: String
-  entry: QualifiedName
+  entry: v2.std.qualified_name.QualifiedName
   function: String
 }
 

@@ -1,17 +1,17 @@
 module v2.test.simulated_relationship.lens_unit.discriminators
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn atom(id: Symbol) -> Node {
+fn atom(id: v2.std.node.Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: id } }, children: [])
 }
 fn conj2(a: Node, b: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: a },
-      Edge { label: Positional, target: b }
+      v2.std.node.Edge { label: Positional, target: a },
+      v2.std.node.Edge { label: Positional, target: b }
     ]
   )
 }
@@ -19,9 +19,9 @@ fn conj3(a: Node, b: Node, c: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: a },
-      Edge { label: Positional, target: b },
-      Edge { label: Positional, target: c }
+      v2.std.node.Edge { label: Positional, target: a },
+      v2.std.node.Edge { label: Positional, target: b },
+      v2.std.node.Edge { label: Positional, target: c }
     ]
   )
 }

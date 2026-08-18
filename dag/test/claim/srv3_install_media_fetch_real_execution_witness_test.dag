@@ -6,12 +6,12 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data real_execution_home_doc: String = "These three witnesses drive real shell/filesystem effects (shell.Mktemp.Dir, Filesystem.Write, shell.Remove.RecursiveForce have no mock_response - dag/extdeps/shell/shell.dag - so they cannot run in CI's default Hermetic discovery corpus, dag/std/execution_mode.dag). Split out of srv3_install_media_fetch_witness_test.dag so that file's pure classification witnesses keep hermetic per-PR discovery; these three are excluded from discovery (gunbc.ci_layer_roots witness_exclusion_substrings) and re-enrolled as declared Wet explicit entries (bin_witness_wet_entries), same lane as the bin-execution witnesses."
 
 data install_media_fetch_fixture_content: String = "gunbc-fetch-fixture\n"
-data install_media_fetch_fixture_sha256: NonEmptyStr = "eaa07ba0ed4429e01ecb4a645b81efd5cc718c1b5a4d3e021a63bdecc89290ba" as NonEmptyStr
-data install_media_fetch_fixture_wrong_sha256: NonEmptyStr = "0000000000000000000000000000000000000000000000000000000000000000" as NonEmptyStr
+data install_media_fetch_fixture_sha256: std.types.NonEmptyStr = "eaa07ba0ed4429e01ecb4a645b81efd5cc718c1b5a4d3e021a63bdecc89290ba" as std.types.NonEmptyStr
+data install_media_fetch_fixture_wrong_sha256: std.types.NonEmptyStr = "0000000000000000000000000000000000000000000000000000000000000000" as std.types.NonEmptyStr
 
 test fn install_media_hash_matches_true_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
-  let path = concat(dir.path as String, "/fixture") as NonEmptyStr
+  let path = concat(dir.path as String, "/fixture") as std.types.NonEmptyStr
   let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
   let matched = observe_install_media_fetch(path: path, expected_hash: install_media_fetch_fixture_sha256) == InstallMediaFetchVerified
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
@@ -20,7 +20,7 @@ test fn install_media_hash_matches_true_by_real_execution() -> Bool {
 
 test fn install_media_hash_matches_false_on_wrong_hash_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
-  let path = concat(dir.path as String, "/fixture") as NonEmptyStr
+  let path = concat(dir.path as String, "/fixture") as std.types.NonEmptyStr
   let wrote = Filesystem.Write(path: path as String, content: install_media_fetch_fixture_content)
   let matched = observe_install_media_fetch(path: path, expected_hash: install_media_fetch_fixture_wrong_sha256) == InstallMediaFetchHashMismatch
   let cleaned = shell.Remove.RecursiveForce(path: dir.path)
@@ -29,8 +29,8 @@ test fn install_media_hash_matches_false_on_wrong_hash_by_real_execution() -> Bo
 
 test fn observe_install_media_fetch_covers_absent_verified_and_mismatch_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
-  let missing_path = concat(dir.path as String, "/does-not-exist") as NonEmptyStr
-  let present_path = concat(dir.path as String, "/present") as NonEmptyStr
+  let missing_path = concat(dir.path as String, "/does-not-exist") as std.types.NonEmptyStr
+  let present_path = concat(dir.path as String, "/present") as std.types.NonEmptyStr
   let wrote = Filesystem.Write(path: present_path as String, content: install_media_fetch_fixture_content)
   let absent_ok = observe_install_media_fetch(
     path: missing_path,

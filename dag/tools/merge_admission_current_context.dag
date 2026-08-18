@@ -2,7 +2,7 @@ module tools.merge_admission_current_context
 
 
 
-fn optional_env(name: NonEmptyStr) -> String? {
+fn optional_env(name: std.types.NonEmptyStr) -> String? {
   let observed = shell.Env.Get(name: name)
   match observed.value {
     Present { value: raw } =>
@@ -12,7 +12,7 @@ fn optional_env(name: NonEmptyStr) -> String? {
   }
 }
 
-fn merge_admission_context_walk_attempt_id() -> WalkAttemptId? {
+fn merge_admission_context_walk_attempt_id() -> gunbc.merge_admission_subject.WalkAttemptId? {
   match optional_env(name: "GUNBC_WALK_ATTEMPT_ID") {
     Present { value: explicit } => compose_explicit_walk_attempt_id(explicit: explicit)
     Absent =>
@@ -33,7 +33,7 @@ fn merge_admission_context_walk_attempt_id() -> WalkAttemptId? {
   }
 }
 
-fn denied_exit(verdict: MergeAdmissionVerdict) -> ProcessExit {
+fn denied_exit(verdict: gunbc.merge_admission.MergeAdmissionVerdict) -> std.process.ProcessExit {
   exit_failure(
     reason: concat(
       "merge_admission_current_context: blocked (",
@@ -42,7 +42,7 @@ fn denied_exit(verdict: MergeAdmissionVerdict) -> ProcessExit {
   )
 }
 
-func main() -> ProcessExit {
+func main() -> std.process.ProcessExit {
   let attempt = match merge_admission_context_walk_attempt_id() {
     Present { value: value } => value
     Absent => return exit_failure(reason: "merge_admission_current_context: walk attempt identity absent or invalid")
@@ -68,7 +68,7 @@ func main() -> ProcessExit {
     Present { value: value } => value
     Absent => return exit_failure(reason: "merge_admission_current_context: floor-receipt wire invalid")
   }
-  let fetch_parts = git_remote_ref_parts(ref: merge_admission_merge_base_ref as GitRef)
+  let fetch_parts = git_remote_ref_parts(ref: merge_admission_merge_base_ref as std.types.GitRef)
   let fetched = git.Core.FetchNoTags(
     remote: fetch_parts.remote,
     ref: fetch_parts.ref_name,
@@ -77,7 +77,7 @@ func main() -> ProcessExit {
   if !fetched.success {
     return exit_failure(reason: "merge_admission_current_context: current merge target fetch refused")
   }
-  let observed = git.Inspect.ShowTree(ref: merge_admission_merge_base_ref as GitRef)
+  let observed = git.Inspect.ShowTree(ref: merge_admission_merge_base_ref as std.types.GitRef)
   if !observed.success {
     return exit_failure(reason: "merge_admission_current_context: current merge target tree observation refused")
   }

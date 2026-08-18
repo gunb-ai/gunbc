@@ -2,7 +2,7 @@ module v2.lens.ownership
 
 
 type OwnershipFact {
-  dependencies: List<ClassifiedDependencyView<OwnershipMode>>
+  dependencies: List<ClassifiedDependencyView<v2.lens.common.algebraic_composition.OwnershipMode>>
 }
 
 fn ownership_classify(view: DependencyView) -> ClassifiedDependencyView<OwnershipMode> {

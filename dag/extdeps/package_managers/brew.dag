@@ -2,8 +2,8 @@ module extdeps.brew
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.brew.sh/"
   }
@@ -15,10 +15,10 @@ data brew_bin_apple_silicon: std.types.FilePath = "/opt/homebrew/bin"
 data brew_prefix_intel: std.types.FilePath = "/usr/local"
 data brew_bin_intel: std.types.FilePath = "/usr/local/bin"
 
-data formula_rust: NonEmptyStr = "rust"               
-data formula_coreutils: NonEmptyStr = "coreutils"     
-data formula_diffutils: NonEmptyStr = "diffutils"     
-data formula_grep: NonEmptyStr = "grep"               
+data formula_rust: std.types.NonEmptyStr = "rust"               
+data formula_coreutils: std.types.NonEmptyStr = "coreutils"     
+data formula_diffutils: std.types.NonEmptyStr = "diffutils"     
+data formula_grep: std.types.NonEmptyStr = "grep"               
 
-data brew_install_url: NonEmptyStr = "https://brew.sh"
-data brew_docs: NonEmptyStr = "https://docs.brew.sh/"
+data brew_install_url: std.types.NonEmptyStr = "https://brew.sh"
+data brew_docs: std.types.NonEmptyStr = "https://docs.brew.sh/"

@@ -29,6 +29,6 @@ fn doc_graph_clean_holds(plan_roots: List<String>) -> Bool {
   doc_graph_orphan_clean_holds(plan_roots: plan_roots) && doc_graph_dangling_clean_holds()
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

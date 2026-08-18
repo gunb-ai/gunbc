@@ -2,8 +2,8 @@ module extdeps.runtime.abi.aapcs64
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/ARM-software/abi-aa/blob/main/aapcs64/aapcs64.rst"
   }
@@ -11,15 +11,15 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type Aarch64Gpr = X0 | X1 | X2 | X3 | X4 | X5 | X8
 
-data aarch64_inhabitant_x0: ArchitecturalRegister = X0
-data aarch64_inhabitant_x1: ArchitecturalRegister = X1
-data aarch64_inhabitant_x2: ArchitecturalRegister = X2
-data aarch64_inhabitant_x3: ArchitecturalRegister = X3
-data aarch64_inhabitant_x4: ArchitecturalRegister = X4
-data aarch64_inhabitant_x5: ArchitecturalRegister = X5
-data aarch64_inhabitant_x8: ArchitecturalRegister = X8
+data aarch64_inhabitant_x0: std.abi.ArchitecturalRegister = X0
+data aarch64_inhabitant_x1: std.abi.ArchitecturalRegister = X1
+data aarch64_inhabitant_x2: std.abi.ArchitecturalRegister = X2
+data aarch64_inhabitant_x3: std.abi.ArchitecturalRegister = X3
+data aarch64_inhabitant_x4: std.abi.ArchitecturalRegister = X4
+data aarch64_inhabitant_x5: std.abi.ArchitecturalRegister = X5
+data aarch64_inhabitant_x8: std.abi.ArchitecturalRegister = X8
 
-data aapcs64_linux_syscall_convention: CallingConvention = {
+data aapcs64_linux_syscall_convention: std.abi.CallingConvention = {
   arg0: aarch64_inhabitant_x0,
   arg1: aarch64_inhabitant_x1,
   arg2: aarch64_inhabitant_x2,
@@ -30,7 +30,7 @@ data aapcs64_linux_syscall_convention: CallingConvention = {
   return_value: aarch64_inhabitant_x0,
 }
 
-data aapcs64_wrong_syscall_number_convention: CallingConvention = {
+data aapcs64_wrong_syscall_number_convention: std.abi.CallingConvention = {
   arg0: aarch64_inhabitant_x0,
   arg1: aarch64_inhabitant_x1,
   arg2: aarch64_inhabitant_x2,

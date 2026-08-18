@@ -50,7 +50,7 @@ fn kernel_provides_procfs(kernel: KernelFamily) -> Bool {
 
 type ProcfsAvailability
   = ProcfsAvailable
-  | ProcfsAbsentOnKernel { kernel: KernelFamily, path: ProcfsPath }
+  | ProcfsAbsentOnKernel { kernel: std.os.types.KernelFamily, path: ProcfsPath }
 
 fn procfs_availability(kernel: KernelFamily, path: ProcfsPath) -> ProcfsAvailability {
   if kernel_provides_procfs(kernel: kernel) {

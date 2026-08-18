@@ -35,12 +35,12 @@ data mt_mitchell_specification_license: OcpSpecificationLicense = Owfa1_0FinalSp
 data mt_mitchell_contribution_license: OcpContributionLicense = OcpContributionLicenseAgreement {}
 
 type MtMitchellReferencePlatform {
-  marketing_name: NonEmptyStr
+  marketing_name: std.types.NonEmptyStr
   revision: MtMitchellSpecificationRevision
-  version_label: NonEmptyStr
-  contributor: Vendor<Hardware>
-  specification_license: OcpSpecificationLicense
-  contribution_license: OcpContributionLicense
+  version_label: std.types.NonEmptyStr
+  contributor: Vendor<extdeps.hardware.Hardware>
+  specification_license: extdeps.ocp.publication.OcpSpecificationLicense
+  contribution_license: extdeps.ocp.publication.OcpContributionLicense
 }
 
 data mt_mitchell_reference_platform: MtMitchellReferencePlatform = MtMitchellReferencePlatform {

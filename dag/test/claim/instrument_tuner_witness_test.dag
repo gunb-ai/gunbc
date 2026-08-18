@@ -5,11 +5,11 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data instrument_tuner_witness_note: String = "The operable follow-on to the static study: a modeled TsProgram client, a served asset, pre-rendered reading rows keyed by camera_wire, and witnesses that join camera population to v1_exit_finish_lines rather than pinning a census literal. Model-layer detent integrator and seek-depth claims live in instrument_camera_witness; this file pins the client seam and HTML pre-render shape."
 
-fn fixture_view() -> V1DeletionProgramView {
-  V1DeletionProgramView {
+fn fixture_view() -> gunbc.roadmap_program_view.V1DeletionProgramView {
+  gunbc.roadmap_program_view.V1DeletionProgramView {
     finish_lines: [],
     fronts: [],
-    remaining: RemainingShape {
+    remaining: gunbc.roadmap_program_view.RemainingShape {
       sequential_depth: 0,
       open_fronts: 0,
       startable_now: 0,
@@ -65,7 +65,7 @@ fn witness_the_page_exposes_only_mvp_depth_controls() -> Bool {
 
 fn witness_exactly_one_initial_reading_row_is_visible_in_html() -> Bool {
   let initial_html = serialize_fragment(frag: reading_row(view: fixture_view(), camera: camera_initial))
-  let hidden_camera = ProgramCamera {
+  let hidden_camera = gunbc.design.instrument_camera.ProgramCamera {
     depth: DepthFront,
     mode: camera_initial.mode,
     focus: camera_initial.focus,

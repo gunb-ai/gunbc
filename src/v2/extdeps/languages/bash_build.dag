@@ -1,21 +1,21 @@
 module v2.extdeps.languages.bash_build
 
 
-fn bash_build_word_kinded(kind: Symbol, value: String) -> Node {
-  Node {
+fn bash_build_word_kinded(kind: v2.std.node.Symbol, value: String) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: kind } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: value } },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -34,19 +34,19 @@ fn bash_build_word_var(name: String) -> Node {
   bash_build_word_kinded(kind: ^bash_fold_word_kind_var, value: name)
 }
 
-fn bash_build_word_compound(kind: Symbol, payload: Node) -> Node {
-  Node {
+fn bash_build_word_compound(kind: v2.std.node.Symbol, payload: Node) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: kind } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
       },
-      Edge { label: Positional, target: payload }
+      v2.std.node.Edge { label: Positional, target: payload }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -60,8 +60,8 @@ fn bash_build_word_cmdsubst(body: Node) -> Node {
   bash_build_word_compound(kind: ^bash_fold_word_kind_cmdsubst, payload: body)
 }
 
-fn bash_build_stmt_tag(binding: Symbol) -> Node {
-  Node {
+fn bash_build_stmt_tag(binding: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: binding } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -69,35 +69,35 @@ fn bash_build_stmt_tag(binding: Symbol) -> Node {
 }
 
 fn bash_build_command_words_single(word: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: word }
+      v2.std.node.Edge { label: Positional, target: word }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn bash_build_command_words_pair(left: Node, right: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
+      v2.std.node.Edge { label: Positional, target: left },
+      v2.std.node.Edge { label: Positional, target: right }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn bash_build_command(words: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_command)
       },
-      Edge { label: Positional, target: words }
+      v2.std.node.Edge { label: Positional, target: words }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -149,16 +149,16 @@ fn bash_build_command_lit_var(lit: String, var_name: String) -> Node {
 }
 
 fn bash_build_exit(code: String) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_exit)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: code } },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -170,22 +170,22 @@ fn bash_build_exit(code: String) -> Node {
 }
 
 fn bash_build_assign(name: String, value: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_assign)
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: name } },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
       },
-      Edge { label: Positional, target: value }
+      v2.std.node.Edge { label: Positional, target: value }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -199,13 +199,13 @@ fn bash_build_assign_var(name: String, var_name: String) -> Node {
   bash_build_assign(name: name, value: bash_build_word_var(name: var_name))
 }
 
-fn bash_build_binary_stmt(binding: Symbol, left: Node, right: Node) -> Node {
-  Node {
+fn bash_build_binary_stmt(binding: v2.std.node.Symbol, left: Node, right: Node) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: bash_build_stmt_tag(binding: binding) },
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
+      v2.std.node.Edge { label: Positional, target: bash_build_stmt_tag(binding: binding) },
+      v2.std.node.Edge { label: Positional, target: left },
+      v2.std.node.Edge { label: Positional, target: right }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -236,98 +236,98 @@ fn bash_build_pipe(left: Node, right: Node) -> Node {
 }
 
 fn bash_build_stmt_list_single(stmt: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: stmt }
+      v2.std.node.Edge { label: Positional, target: stmt }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn bash_build_stmt_list_pair(left: Node, right: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: left },
-      Edge { label: Positional, target: right }
+      v2.std.node.Edge { label: Positional, target: left },
+      v2.std.node.Edge { label: Positional, target: right }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn bash_build_subshell(body: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_subshell)
       },
-      Edge { label: Positional, target: body }
+      v2.std.node.Edge { label: Positional, target: body }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn bash_build_if(cond: Node, body: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_if)
       },
-      Edge { label: Positional, target: cond },
-      Edge { label: Positional, target: body }
+      v2.std.node.Edge { label: Positional, target: cond },
+      v2.std.node.Edge { label: Positional, target: body }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn bash_build_with_redir(inner: Node, redir: Symbol) -> Node {
-  Node {
+fn bash_build_with_redir(inner: Node, redir: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_with_redir)
       },
-      Edge { label: Positional, target: inner },
-      Edge { label: Positional, target: bash_build_stmt_tag(binding: redir) }
+      v2.std.node.Edge { label: Positional, target: inner },
+      v2.std.node.Edge { label: Positional, target: bash_build_stmt_tag(binding: redir) }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn bash_build_with_redir_to_file(inner: Node, path: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_with_redir)
       },
-      Edge { label: Positional, target: inner },
-      Edge {
+      v2.std.node.Edge { label: Positional, target: inner },
+      v2.std.node.Edge {
         label: Positional,
         target: bash_build_stmt_tag(binding: ^bash_production_fold_redir_to_file)
       },
-      Edge { label: Positional, target: path }
+      v2.std.node.Edge { label: Positional, target: path }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn bash_build_negation(inner: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
         target: bash_build_stmt_tag(binding: ^bash_build_stmt_negation)
       },
-      Edge { label: Positional, target: inner }
+      v2.std.node.Edge { label: Positional, target: inner }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -410,10 +410,10 @@ fn bash_build_stmt_list_from_nodes(stmts: List<Node>) -> Node {
         index: 1
       )
     HeadAbsent =>
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
+          v2.std.node.Edge {
             label: Positional,
             target: bash_build_stmt_tag(binding: ^bash_build_refused_empty_stmt_list)
           }

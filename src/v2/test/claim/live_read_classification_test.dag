@@ -1,10 +1,10 @@
 module v2.test.claim.live_read_classification_test
 
 
-data fixture_carriers: List<LiveReadCarrierHome> = [
-  LiveReadCarrierHome { module: "fix.corpus_reader", kind: DeclFactsReflectionCarrier },
-  LiveReadCarrierHome { module: "fix.roster_gate", kind: FilesystemReadCarrier },
-  LiveReadCarrierHome { module: "fix.compile_scope", kind: ModuleDeclarationFactsCarrier }
+data fixture_carriers: List<v2.std.live_read.LiveReadCarrierHome> = [
+  v2.std.live_read.LiveReadCarrierHome { module: "fix.corpus_reader", kind: DeclFactsReflectionCarrier },
+  v2.std.live_read.LiveReadCarrierHome { module: "fix.roster_gate", kind: FilesystemReadCarrier },
+  v2.std.live_read.LiveReadCarrierHome { module: "fix.compile_scope", kind: ModuleDeclarationFactsCarrier }
 ]
 
 data fixture_unit_closure: List<String> = ["fix.entry", "fix.std_logic", "fix.std_text"]
@@ -15,34 +15,34 @@ data fixture_roster_gate_closure: List<String> = ["fix.witness", "fix.roster_gat
 
 data fixture_scope_closure: List<String> = ["fix.lever_entry", "fix.compile_scope"]
 
-data fixture_two_hop_facts: List<ModuleImportFact> = [
-  ModuleImportFact { module: "fix.entry", imports: ["fix.mid", "fix.std_logic"] },
-  ModuleImportFact { module: "fix.mid", imports: ["fix.corpus_reader"] },
-  ModuleImportFact { module: "fix.corpus_reader", imports: [] }
+data fixture_two_hop_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.entry", imports: ["fix.mid", "fix.std_logic"] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.mid", imports: ["fix.corpus_reader"] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.corpus_reader", imports: [] }
 ]
 
-data fixture_severed_facts: List<ModuleImportFact> = [
-  ModuleImportFact { module: "fix.entry", imports: ["fix.mid", "fix.std_logic"] },
-  ModuleImportFact { module: "fix.mid", imports: [] },
-  ModuleImportFact { module: "fix.corpus_reader", imports: [] }
+data fixture_severed_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.entry", imports: ["fix.mid", "fix.std_logic"] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.mid", imports: [] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.corpus_reader", imports: [] }
 ]
 
-data fixture_roster_gate_facts: List<ModuleImportFact> = [
-  ModuleImportFact { module: "fix.witness", imports: ["fix.roster_gate", "fix.std_logic"] },
-  ModuleImportFact { module: "fix.roster_gate", imports: [] }
+data fixture_roster_gate_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.witness", imports: ["fix.roster_gate", "fix.std_logic"] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.roster_gate", imports: [] }
 ]
 
-data fixture_roster_gate_severed_facts: List<ModuleImportFact> = [
-  ModuleImportFact { module: "fix.witness", imports: ["fix.std_logic"] },
-  ModuleImportFact { module: "fix.roster_gate", imports: [] }
+data fixture_roster_gate_severed_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.witness", imports: ["fix.std_logic"] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.roster_gate", imports: [] }
 ]
 
-data fixture_scope_facts: List<ModuleImportFact> = [
-  ModuleImportFact { module: "fix.lever_entry", imports: ["fix.compile_scope"] },
-  ModuleImportFact { module: "fix.compile_scope", imports: [] }
+data fixture_scope_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.lever_entry", imports: ["fix.compile_scope"] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.compile_scope", imports: [] }
 ]
 
-fn verdict_of(closure: List<String>) -> LiveReadClassification {
+fn verdict_of(closure: List<String>) -> v2.std.live_read.LiveReadClassification {
   live_read_classification(closure_modules: closure, carrier_homes: fixture_carriers)
 }
 
@@ -127,10 +127,10 @@ test fn g1_local_read_not_touched() -> Bool {
   )
 }
 
-data fixture_v0_two_hop_facts: List<ModuleImportFact> = [
-  ModuleImportFact { module: "fix.entry", imports: ["fix.mid"] },
-  ModuleImportFact { module: "fix.mid", imports: ["v2.std.decl_index"] },
-  ModuleImportFact { module: "v2.std.decl_index", imports: [] }
+data fixture_v0_two_hop_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.entry", imports: ["fix.mid"] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "fix.mid", imports: ["v2.std.decl_index"] },
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "v2.std.decl_index", imports: [] }
 ]
 
 test fn v0_registry_two_hop_decl_index_runtime_read() -> Bool {
@@ -142,8 +142,8 @@ test fn v0_registry_two_hop_decl_index_runtime_read() -> Bool {
   )
 }
 
-data roster_gate_corpus_facts: List<ModuleImportFact> = [
-  ModuleImportFact {
+data roster_gate_corpus_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact {
     module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
     imports: [
       "v2.lens.complexity_accumulator_copy.roster_gate",
@@ -152,14 +152,14 @@ data roster_gate_corpus_facts: List<ModuleImportFact> = [
       "v2.std.live_tree"
     ]
   },
-  ModuleImportFact {
+  v2.lens.witness_cost_locality.ModuleImportFact {
     module: "v2.lens.complexity_accumulator_copy.roster_gate",
     imports: []
   }
 ]
 
-data g2_union_corpus_facts: List<ModuleImportFact> = [
-  ModuleImportFact {
+data g2_union_corpus_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact {
     module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
     imports: [
       "v2.lens.complexity_accumulator_copy.roster_gate",
@@ -169,11 +169,11 @@ data g2_union_corpus_facts: List<ModuleImportFact> = [
       "v2.std.live_tree"
     ]
   },
-  ModuleImportFact {
+  v2.lens.witness_cost_locality.ModuleImportFact {
     module: "v2.lens.complexity_accumulator_copy.roster_gate",
     imports: []
   },
-  ModuleImportFact {
+  v2.lens.witness_cost_locality.ModuleImportFact {
     module: "tools.dag_compile_clean_scope",
     imports: []
   }
@@ -252,7 +252,7 @@ data live_read_selection_control_law: String = "WHY THESE THREE REPLACE THE UNIO
 The three controls below separate the states the single union test conflated: evidence present and negative (local), evidence absent (refuse), evidence present and imprecise (conservative runtime read). Planted declarations supply the coverage the live entry-closure cannot, so complete-facts cases are reachable here rather than waiting on the whole-tree manifest."
 
 fn selection_atom_node(lexeme: String) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -260,23 +260,23 @@ fn selection_atom_node(lexeme: String) -> Node {
 }
 
 fn selection_body_node(callee: String) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
-    children: [ Edge { label: Positional, target: selection_atom_node(lexeme: callee) } ],
+    children: [ v2.std.node.Edge { label: Positional, target: selection_atom_node(lexeme: callee) } ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-data selection_control_facts: List<ModuleImportFact> = [
-  ModuleImportFact {
+data selection_control_facts: List<v2.lens.witness_cost_locality.ModuleImportFact> = [
+  v2.lens.witness_cost_locality.ModuleImportFact {
     module: "synthetic.live_read_selection.entry",
     imports: [ "v2.compiler.self_host" ]
   },
-  ModuleImportFact { module: "v2.compiler.self_host", imports: [] }
+  v2.lens.witness_cost_locality.ModuleImportFact { module: "v2.compiler.self_host", imports: [] }
 ]
 
-fn selection_entry_seed_decl() -> FnArrowDecl {
-  FnArrowDecl {
+fn selection_entry_seed_decl() -> v2.std.fn_index.FnArrowDecl {
+  v2.std.fn_index.FnArrowDecl {
     qualified_name: "synthetic.live_read_selection.entry.seed",
     name: "seed",
     output: selection_body_node(callee: "carrier_fn"),
@@ -284,8 +284,8 @@ fn selection_entry_seed_decl() -> FnArrowDecl {
   }
 }
 
-fn selection_carrier_home_decl(callee: String) -> FnArrowDecl {
-  FnArrowDecl {
+fn selection_carrier_home_decl(callee: String) -> v2.std.fn_index.FnArrowDecl {
+  v2.std.fn_index.FnArrowDecl {
     qualified_name: "v2.compiler.self_host.carrier_fn",
     name: "carrier_fn",
     output: selection_body_node(callee: callee),
@@ -293,7 +293,7 @@ fn selection_carrier_home_decl(callee: String) -> FnArrowDecl {
   }
 }
 
-fn selection_projection_over(decls: List<FnArrowDecl>) -> LiveReadSelectionProjection {
+fn selection_projection_over(decls: List<v2.std.fn_index.FnArrowDecl>) -> v2.std.live_read.LiveReadSelectionProjection {
   live_read_selection_projection_from_facts(
     entry_module: "synthetic.live_read_selection.entry",
     facts: selection_control_facts,
@@ -302,21 +302,21 @@ fn selection_projection_over(decls: List<FnArrowDecl>) -> LiveReadSelectionProje
   )
 }
 
-fn projection_is_refused(p: LiveReadSelectionProjection) -> Bool {
+fn projection_is_refused(p: v2.std.live_read.LiveReadSelectionProjection) -> Bool {
   match p {
     LiveReadSelectionRefused { cause: c } => !string_is_empty(s: c)
     LiveReadSelectionClassified { classification: k } => classification_is_local(classification: k) && false
   }
 }
 
-fn projection_classification_is_local(p: LiveReadSelectionProjection) -> Bool {
+fn projection_classification_is_local(p: v2.std.live_read.LiveReadSelectionProjection) -> Bool {
   match p {
     LiveReadSelectionRefused { cause: _ } => false
     LiveReadSelectionClassified { classification: c } => classification_is_local(classification: c)
   }
 }
 
-fn projection_classification_has_runtime_read(p: LiveReadSelectionProjection) -> Bool {
+fn projection_classification_has_runtime_read(p: v2.std.live_read.LiveReadSelectionProjection) -> Bool {
   match p {
     LiveReadSelectionRefused { cause: _ } => false
     LiveReadSelectionClassified { classification: c } =>

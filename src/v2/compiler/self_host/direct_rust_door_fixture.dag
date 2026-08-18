@@ -9,26 +9,26 @@ data direct_rust_door_expected_source: String = rust_source_text
 
 data direct_rust_door_dag_module_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
 
-data direct_rust_door_ingest_artifact: Artifact = Artifact {
+data direct_rust_door_ingest_artifact: v2.std.artifact.Artifact = v2.std.artifact.Artifact {
   kind: SourceFile,
   id: ^direct_rust_door_ingest_artifact,
   file_path: "src/v2/compiler/self_host/direct_rust_door_ingest_fixture.dag"
 }
 
-data direct_rust_door_ingest_read: DagSourceReadWitness = DagSourceReadWitness {
-  source: Medium { carried: direct_rust_door_dag_module_source, fidelity: Lossless },
+data direct_rust_door_ingest_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
+  source: extdeps.communication.medium.Medium { carried: direct_rust_door_dag_module_source, fidelity: Lossless },
   artifact: direct_rust_door_ingest_artifact,
   compilation_unit: ^direct_rust_door_add_probe_cu,
   source_root: V2Tree
 }
 
-fn direct_rust_door_ingest() -> SourceRootIngest {
+fn direct_rust_door_ingest() -> v2.compiler.source_authority.SourceRootIngest {
   Cons { head: direct_rust_door_ingest_read, tail: Empty }
 }
 
-fn direct_rust_door_admission() -> Admission {
-  Admission {
-    subject: ResolutionSubject {
+fn direct_rust_door_admission() -> v2.compiler.name_resolve.Admission {
+  v2.compiler.name_resolve.Admission {
+    subject: v2.compiler.name_resolve.ResolutionSubject {
       name: Cons { head: ^add_probe, tail: Empty }
     },
     imports: Empty
@@ -42,15 +42,15 @@ fn direct_rust_door_i32_facts_node() -> Node {
 fn direct_rust_door_canonical_grounding(
   node: Node,
   algebra: Node
-) -> CanonicalGrounding {
-  CanonicalGrounding {
+) -> v2.std.constraints.CanonicalGrounding {
+  v2.std.constraints.CanonicalGrounding {
     node: node,
-    witness: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
+    witness: v2.std.constraints.CanonicalGroundingWitness {
+      structural: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_being_canonical,
         evidence: algebra
       },
-      closedness: StructuralPropertyWitness {
+      closedness: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_candidate_set_closedness,
         evidence: node
       }
@@ -58,7 +58,7 @@ fn direct_rust_door_canonical_grounding(
   }
 }
 
-fn direct_rust_door_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
+fn direct_rust_door_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == rust_fixture_emitted_add_fn {
     Holds {
       value: direct_rust_door_canonical_grounding(
@@ -180,7 +180,7 @@ fn direct_rust_door_canonical_grounding_for(node: Node) -> Witness<CanonicalGrou
     }
   } else {
     Violates {
-      diagnostic: Diagnostic {
+      diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^direct_rust_door_grounding_miss,
         at: node_locus(node: node),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -189,7 +189,7 @@ fn direct_rust_door_canonical_grounding_for(node: Node) -> Witness<CanonicalGrou
   }
 }
 
-fn direct_rust_door_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
+fn direct_rust_door_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   match direct_rust_door_canonical_grounding_for(node: node) {
     Violates { diagnostic: _ } => optional_absent()
     Holds { value: grounding } =>
@@ -197,7 +197,7 @@ fn direct_rust_door_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
         Violates { diagnostic: _ } => optional_absent()
         Holds { value: proof } =>
           optional_present(
-            value: InferredFacts {
+            value: v2.compiler.infer.InferredFacts {
               grounding: DerivedGrounding { grounding: grounding },
               descent: Holds { value: proof }
             }
@@ -206,18 +206,18 @@ fn direct_rust_door_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
   }
 }
 
-fn direct_rust_door_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn direct_rust_door_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   direct_rust_door_inferred_facts_for(node: key)
 }
 
-data direct_rust_door_inferred_tree: InferredTree = InferredTree {
+data direct_rust_door_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: rust_fixture_emitted_add_fn,
   facts: Map {
     lookup: direct_rust_door_facts_lookup
   }
 }
 
-fn direct_rust_door_target_model() -> TargetModel {
+fn direct_rust_door_target_model() -> v2.std.compilers.target_model.TargetModel {
   rust_target_model()
 }
 

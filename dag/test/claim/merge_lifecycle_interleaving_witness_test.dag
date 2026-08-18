@@ -5,25 +5,25 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data incident_fixture_note: String = "The two PRs of the 2026-07-16 main-red, as symbolic identities (real receipts cited in gunbc.merge_lifecycle.merge_lifecycle_incident_note: #6663 green run 29459154549, first union red run 29461044828, root fix #6701). pr_a is #6663 (the P0 field wall), pr_b is #6686 (the std.types import edge). Zero file overlap, both green in isolation, union red — the judge-x-evidence squash race."
 
-data pr_a: PrIdentity = PrIdentity {
+data pr_a: gunbc.merge_lifecycle.PrIdentity = gunbc.merge_lifecycle.PrIdentity {
   number: 6663,
   head_sha: "pr-6663-head-sha-fixture",
   squash_tag: "squash-pr-6663",
 }
 
-data pr_b: PrIdentity = PrIdentity {
+data pr_b: gunbc.merge_lifecycle.PrIdentity = gunbc.merge_lifecycle.PrIdentity {
   number: 6686,
   head_sha: "pr-6686-head-sha-fixture",
   squash_tag: "squash-pr-6686",
 }
 
-data pr_a_healed: PrIdentity = PrIdentity {
+data pr_a_healed: gunbc.merge_lifecycle.PrIdentity = gunbc.merge_lifecycle.PrIdentity {
   number: 6663,
   head_sha: "pr-6663-healed-head-sha-fixture",
   squash_tag: "squash-pr-6663-healed",
 }
 
-fn incident_trace() -> List<LifecycleEvent> {
+fn incident_trace() -> List<gunbc.merge_lifecycle.LifecycleEvent> {
   [
     RunPrCi { pr: pr_a },
     RunPrCi { pr: pr_b },
@@ -79,7 +79,7 @@ data heal_exact_head_discrimination_note: String = "The pair above differs only 
 
 data interleaving_alphabet_note: String = "Alphabet = both incident PRs' RunPrCi and MergePr, a same-number/different-head healed MergePr, plus RosterBump (criteria drift). MergePr(pr_b) is enabled only by pr_b's own receipts, and MergePr(pr_a_healed) only by evidence for that exact head, so the enumeration exercises fresh merges, stale merges, re-runs, double-merges, roster drift, and an auto-heal head transition in every order of length 4 — 6^4 = 1296 sequences, all enumerated, none sampled."
 
-fn interleaving_alphabet() -> List<LifecycleEvent> {
+fn interleaving_alphabet() -> List<gunbc.merge_lifecycle.LifecycleEvent> {
   [
     RunPrCi { pr: pr_a },
     RunPrCi { pr: pr_b },
@@ -90,7 +90,7 @@ fn interleaving_alphabet() -> List<LifecycleEvent> {
   ]
 }
 
-fn window_4_sequences() -> List<List<LifecycleEvent>> {
+fn window_4_sequences() -> List<List<gunbc.merge_lifecycle.LifecycleEvent>> {
   event_sequences_of_length_4(alphabet: interleaving_alphabet())
 }
 

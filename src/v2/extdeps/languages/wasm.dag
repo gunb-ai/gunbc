@@ -14,22 +14,22 @@ type WasmScalar
   | FloatScalar { width: WasmFloatWidth }
 
 type WasmIntegerPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   width: WasmIntWidth
-  std_projection: Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type WasmFloatPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   width: WasmFloatWidth
-  ieee754_binary: Symbol
-  std_projection: Symbol
+  ieee754_binary: v2.std.node.Symbol
+  std_projection: v2.std.node.Symbol
 }
 
 type WasmGrammarRelationRow {
-  production: GrammarProduction
+  production: v2.std.grammar.GrammarProduction
   emitted: Node
-  tokens: List<ConcreteSyntaxToken>
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 fn wasm_concrete_tokens() -> List<ConcreteSyntaxToken> {
   [

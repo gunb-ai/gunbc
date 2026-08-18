@@ -7,7 +7,7 @@ type ClosureScopeCountAuthority
       hand_count_at_withdrawal: Int,
       live_discovery_count_measured: Int,
       inert_consumer: String,
-      dissolution_trigger: Symbol
+      dissolution_trigger: v2.std.node.Symbol
     }
 
 type CompilerClosureScopeReceiptFrontierRow {

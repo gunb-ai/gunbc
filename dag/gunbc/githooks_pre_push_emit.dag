@@ -10,7 +10,7 @@ fn emit_pre_push_fmt_recipe_echo(outcome_recipe: String) -> String {
   concat("  echo \"[pre-push] ", concat(outcome_recipe, "\" >&2\n  exit 1\nfi\n"))
 }
 
-fn emit_local_tidy_line(check: LocalTidyCheck) -> String {
+fn emit_local_tidy_line(check: gunbc.commit_workflow.LocalTidyCheck) -> String {
   match check {
     LocalTidyCargoFmtCheck =>
       concat(

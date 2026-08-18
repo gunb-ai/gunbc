@@ -18,7 +18,7 @@ type OsInstallActuatorTieBreakPolicy
   | LeastLoadedHost
 
 type OsInstallActuatorSelection
-  = ActuatorSelected { host: ComputeHost }
+  = ActuatorSelected { host: gunbc.fleet_intent.ComputeHost }
   | ActuatorUnsatisfiable { reason: String }
 
 data os_install_actuator_requirement_kinds: List<OsInstallActuatorRequirementKind> = [

@@ -10,10 +10,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type GitHubTokenMetadataAuthority
-  = DeclaredGitHubTokenMetadata { scopes: List<GitHubScope>, expires_at: Timestamp? }
+  = DeclaredGitHubTokenMetadata { scopes: List<extdeps.github.github.GitHubScope>, expires_at: std.types.Timestamp? }
 
 type GitHubAuthSource {
-  credential_source: CredentialSource
+  credential_source: std.credentials.CredentialSource
   token_metadata: GitHubTokenMetadataAuthority
 }
 

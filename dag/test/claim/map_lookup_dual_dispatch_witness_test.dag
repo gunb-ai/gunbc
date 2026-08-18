@@ -25,7 +25,7 @@ data lookup_witness_contract_note: String = "lookup routes through the dual-disp
 
 test fn std_graph_build_adjacency_views_evaluates() -> Bool {
   let names = ["a", "b"]
-  let graph = CallGraph { edges: [GraphEdge { caller: "a", callee: "b" }] }
+  let graph = std.graph.CallGraph { edges: [std.graph.GraphEdge { caller: "a", callee: "b" }] }
   let views = build_adjacency_views(names: names, graph: graph)
   match map_get(views.forward, "a") {
     Present { value: ns } => ns == ["b"]

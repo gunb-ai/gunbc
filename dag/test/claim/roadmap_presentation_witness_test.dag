@@ -6,19 +6,19 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data presentation_witness_fixture_note: String = "Every witness here runs against CONSTRUCTED fixtures, never the live roadmap population — a live count or a live row is a moving target that turns a semantic claim into a snapshot transcription (the A1 lesson, and the standing fixtures-not-live-counts rule). The specimen fixture is the operator's falsifier row (docs/plans/roadmap-presentation-seam-design.md section 1): seven obligations with Environment/Workspace/Agent complete, four pending, worker process exited, session container present."
 
-fn fx_specimen_segments() -> List<WorkflowSegment> {
+fn fx_specimen_segments() -> List<gunbc.roadmap_workflow_stage.WorkflowSegment> {
   [
-    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "admission receipt readable" },
-    WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "worktree created" },
-    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "turn.completed and process exit 0" },
-    WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
-    WorkflowSegment { kind: PublicationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
-    WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
-    WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "admission receipt readable" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "worktree created" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "turn.completed and process exit 0" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: PublicationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
   ]
 }
 
-fn fx_specimen_activity() -> ActivityView {
+fn fx_specimen_activity() -> gunbc.roadmap_presentation.ActivityView {
   activity_view_from_parts(
     segments: fx_specimen_segments(),
     remaining: 4,
@@ -60,10 +60,10 @@ test fn witness_specimen_evidence_rows_carry_raw_facts_as_evidence() -> Bool {
 
 test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
   let segments = [
-    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentActive, detail: "" },
-    WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentActive, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentPending, detail: "" },
   ]
   match activity_view_from_parts(
     segments: segments,
@@ -84,8 +84,8 @@ test fn witness_agent_running_reads_as_working_not_completed() -> Bool {
 // A refusal is a first-class presentation state with its LOCATED reason, never a styling variant of progress (DESIGN 5: typed, located; the attention rule auto-expands it). The discriminating fixture puts the refusal mid-ledger; the view must surface the refusing obligation's own detail string, and a failed segment must rank as anomalous ActiveWork — the two are distinct states with distinct remedies, and a refused ledger outranks a failed one because the refusal names an evidence gap the failure count cannot explain.
 test fn witness_refused_segment_projects_located_reason() -> Bool {
   let segments = [
-    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentRefused, detail: "turn.completed with process unobserved: no exit was established" },
   ]
   match activity_view_from_parts(
     segments: segments,
@@ -106,7 +106,7 @@ test fn witness_refused_segment_projects_located_reason() -> Bool {
 
 test fn witness_failed_segment_is_anomalous_active_work() -> Bool {
   let segments = [
-    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentFailed, detail: "exit 1 before terminal event" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentFailed, detail: "exit 1 before terminal event" },
   ]
   match activity_view_from_parts(
     segments: segments,
@@ -179,13 +179,13 @@ test fn witness_unobservable_preserves_located_reason() -> Bool {
 
 test fn witness_all_complete_ledger_is_terminal_not_active() -> Bool {
   let segments = [
-    WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    WorkflowSegment { kind: PublicationWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
-    WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: EnvironmentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: WorkspaceWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: AgentWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: VerificationWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: PublicationWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: ReviewWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
+    gunbc.roadmap_workflow_stage.WorkflowSegment { kind: GoalAuditWorkflowSegment, state: WorkflowSegmentComplete, detail: "" },
   ]
   match activity_view_from_parts(
     segments: segments,
@@ -255,7 +255,7 @@ test fn witness_session_action_derives_from_observed_admission() -> Bool {
   allowed_ok && disallowed_ok && absent_ok
 }
 
-fn action_view_has_no_clear(v: ActionView) -> Bool {
+fn action_view_has_no_clear(v: gunbc.roadmap_presentation.ActionView) -> Bool {
   (match v.primary_action {
     Present { value: a } => match a.kind { ClearSessionAction => false DispatchAction => true }
     Absent => true
@@ -318,7 +318,7 @@ test fn witness_lifecycle_axes_discriminate() -> Bool {
 
 data supporting_facts_demotion_note: String = "Owner, sizing, and carriers are supporting facts for the disclosure region — present when declared, absent (not empty-labeled) when not. The integration witness drives work_row_view end-to-end on a fixture node and asserts the composed row: typed headline, honest Absent summary, the typed scheduling position with its complete blocker set, and the actions/facts composed from the same fixture."
 
-fn fx_row_nodes() -> List<RoadmapNode> {
+fn fx_row_nodes() -> List<gunbc.roadmap_model.RoadmapNode> {
   [
     gunbc.roadmap_authority.authored_wi(identity: "rnfx_A2PRES0000000000000006", id: "a2-row",
       done: false, content: "row headline — row brief", intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc"),
@@ -327,14 +327,14 @@ fn fx_row_nodes() -> List<RoadmapNode> {
   ]
 }
 
-fn fx_row_edges() -> List<RoadmapEdge> {
+fn fx_row_edges() -> List<gunbc.roadmap_model.RoadmapEdge> {
   [
     gunbc.roadmap_authority.edge(child: "a2-row", parent: "a2-parent-1"),
     gunbc.roadmap_authority.edge(child: "a2-row", parent: "a2-parent-2"),
   ]
 }
 
-fn fx_row(activity: ActivityView) -> WorkRowView {
+fn fx_row(activity: gunbc.roadmap_presentation.ActivityView) -> gunbc.roadmap_presentation.WorkRowView {
   let nodes = fx_row_nodes()
   match nodes.first() {
     Present { value: rn } =>
@@ -392,14 +392,14 @@ test fn witness_dependency_line_only_for_multi_blocker_upcoming() -> Bool {
 
 data active_before_ready_note: String = "The workspace grouping (operator blocker 6): a row with active or refused work belongs to the operator's attention band above every idle Ready row; CompletedWork stays in its scheduling bucket because a finished receipt is not work in flight; unobservable rows do not join the active band — unknowable never rounds to active any more than to absent."
 
-fn band_entry_row_count(entries: List<WorkBandEntry>) -> Int {
+fn band_entry_row_count(entries: List<gunbc.roadmap_presentation.WorkBandEntry>) -> Int {
   fold(entries, init: 0, f: (acc, e) => match e {
     BandRow { row: _ } => acc + 1
     BandFamily { family } => acc + count(family.rows)
   })
 }
 
-fn band_entry_has_active(entries: List<WorkBandEntry>) -> Bool {
+fn band_entry_has_active(entries: List<gunbc.roadmap_presentation.WorkBandEntry>) -> Bool {
   fold(entries, init: false, f: (acc, e) => acc || (match e {
     BandRow { row } => row_is_active_work(row: row)
     BandFamily { family } => fold(family.rows, init: false, f: (a, r) => a || row_is_active_work(row: r))
@@ -418,9 +418,9 @@ test fn witness_daily_workspace_surfaces_active_above_ready() -> Bool {
 }
 
 // The family-once receipts, all against constructed facts. Stated-once: two listed members plus one UNLISTED lookalike (its headline literally starts with the family claim prose) produce ONE BandFamily carrying the claim, member rows whose headlines are the typed SUBJECTS verbatim, and the lookalike as an ungrouped BandRow with its fused headline untouched — proving membership is the typed fact list, never a prefix scan, in both directions (a subject CONTAINING claim prose is not stripped; a headline MATCHING claim prose is not captured). Attention-outranks-taxonomy: a member with active work leaves for the Active band as an individual row while the group keeps only its remaining member. Missing decl: a member fact naming an undeclared family renders as its own ungrouped row (no fabricated header).
-fn fx_family_member_row(node_id: String, headline: String, activity: ActivityView) -> WorkRowView {
+fn fx_family_member_row(node_id: String, headline: String, activity: gunbc.roadmap_presentation.ActivityView) -> gunbc.roadmap_presentation.WorkRowView {
   let base = fx_row(activity: activity)
-  WorkRowView {
+  gunbc.roadmap_presentation.WorkRowView {
     node_id: node_id,
     headline: headline,
     summary: base.summary,
@@ -436,14 +436,14 @@ fn fx_family_member_row(node_id: String, headline: String, activity: ActivityVie
 
 fn fx_family_claim() -> String { "Write the closing check — one executable done-condition for each gated node below" }
 
-fn fx_family_decls() -> List<WorkFamilyDecl> {
-  [ WorkFamilyDecl { id: "closing-contract", claim: fx_family_claim() } ]
+fn fx_family_decls() -> List<gunbc.roadmap_presentation.WorkFamilyDecl> {
+  [ gunbc.roadmap_presentation.WorkFamilyDecl { id: "closing-contract", claim: fx_family_claim() } ]
 }
 
-fn fx_family_members() -> List<WorkFamilyMemberFact> {
+fn fx_family_members() -> List<gunbc.roadmap_presentation.WorkFamilyMemberFact> {
   [
-    WorkFamilyMemberFact { family_id: "closing-contract", task_node: "cc-a", subject: "Alpha subject" },
-    WorkFamilyMemberFact { family_id: "closing-contract", task_node: "cc-b", subject: join([fx_family_claim(), " nested in a subject"], "") },
+    gunbc.roadmap_presentation.WorkFamilyMemberFact { family_id: "closing-contract", task_node: "cc-a", subject: "Alpha subject" },
+    gunbc.roadmap_presentation.WorkFamilyMemberFact { family_id: "closing-contract", task_node: "cc-b", subject: join([fx_family_claim(), " nested in a subject"], "") },
   ]
 }
 

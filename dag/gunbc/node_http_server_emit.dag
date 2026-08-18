@@ -5,8 +5,8 @@ data node_http_server_emit_disposition_note: String = "DISPOSITION (P5, UI-model
 
 type NodeHttpStaticServerSpec {
   service_name: String
-  routes: ServedStaticRouteTable
-  listen: HttpServerListenConfig
+  routes: extdeps.http.server.ServedStaticRouteTable
+  listen: extdeps.http.server.HttpServerListenConfig
 }
 
 fn emit_http_method_label(method: std.types.HttpMethod) -> String {

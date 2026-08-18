@@ -1,8 +1,8 @@
 module v2.test.lens_common.infer_fixture
 
 
-fn claim_atom_node(s: Symbol) -> Node {
-  Node {
+fn claim_atom_node(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -10,19 +10,19 @@ fn claim_atom_node(s: Symbol) -> Node {
 }
 
 fn claim_canonical_grounding(
-  type_symbol: Symbol,
-  algebra_symbol: Symbol,
-) -> CanonicalGrounding {
+  type_symbol: v2.std.node.Symbol,
+  algebra_symbol: v2.std.node.Symbol,
+) -> v2.std.constraints.CanonicalGrounding {
   let resolved = claim_atom_node(s: type_symbol)
   let algebra = claim_atom_node(s: algebra_symbol)
-  CanonicalGrounding {
+  v2.std.constraints.CanonicalGrounding {
     node: resolved,
-    witness: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
+    witness: v2.std.constraints.CanonicalGroundingWitness {
+      structural: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_being_canonical,
         evidence: algebra
       },
-      closedness: StructuralPropertyWitness {
+      closedness: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_candidate_set_closedness,
         evidence: resolved
       }
@@ -31,10 +31,10 @@ fn claim_canonical_grounding(
 }
 
 fn claim_inferred_facts_witness(
-  grounding: CanonicalGrounding,
+  grounding: v2.std.constraints.CanonicalGrounding,
   descent: Witness<v2.std.cardinality.TerminationProof>
-) -> InferredFacts {
-  InferredFacts {
+) -> v2.compiler.infer.InferredFacts {
+  v2.compiler.infer.InferredFacts {
     grounding: DerivedGrounding { grounding: grounding },
     descent: descent
   }
@@ -44,16 +44,16 @@ fn claim_inferred_facts_from_nodes(
   resolved: Node,
   algebra: Node,
   descent: Witness<v2.std.cardinality.TerminationProof>
-) -> InferredFacts {
+) -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts_witness(
-    grounding: CanonicalGrounding {
+    grounding: v2.std.constraints.CanonicalGrounding {
       node: resolved,
-      witness: CanonicalGroundingWitness {
-        structural: StructuralPropertyWitness {
+      witness: v2.std.constraints.CanonicalGroundingWitness {
+        structural: v2.std.witness.StructuralPropertyWitness {
           property: ^constraint_property_being_canonical,
           evidence: algebra
         },
-        closedness: StructuralPropertyWitness {
+        closedness: v2.std.witness.StructuralPropertyWitness {
           property: ^constraint_property_candidate_set_closedness,
           evidence: resolved
         }
@@ -64,10 +64,10 @@ fn claim_inferred_facts_from_nodes(
 }
 
 fn claim_inferred_facts(
-  type_symbol: Symbol,
-  algebra_symbol: Symbol,
-  descent_symbol: Symbol,
-) -> InferredFacts {
+  type_symbol: v2.std.node.Symbol,
+  algebra_symbol: v2.std.node.Symbol,
+  descent_symbol: v2.std.node.Symbol,
+) -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts_witness(
     grounding: claim_canonical_grounding(
       type_symbol: type_symbol,
@@ -82,7 +82,7 @@ fn claim_inferred_facts(
   )
 }
 
-fn claim_inferred_facts_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
+fn claim_inferred_facts_map(facts: v2.compiler.infer.InferredFacts) -> Map<Node, v2.compiler.infer.InferredFacts> {
   Map {
     lookup: fn(_) {
       Present { value: facts }
@@ -90,13 +90,13 @@ fn claim_inferred_facts_map(facts: InferredFacts) -> Map<Node, InferredFacts> {
   }
 }
 
-fn claim_inferred_tree(root: Node, facts: InferredFacts) -> InferredTree {
-  InferredTree {
+fn claim_inferred_tree(root: Node, facts: v2.compiler.infer.InferredFacts) -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: root,
     facts: claim_inferred_facts_map(facts: facts)
   }
 }
 
-fn claim_inferred_facts_for_tree(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+fn claim_inferred_facts_for_tree(tree: v2.compiler.infer.InferredTree, node: Node) -> Witness<v2.compiler.infer.InferredFacts> {
   witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
 }

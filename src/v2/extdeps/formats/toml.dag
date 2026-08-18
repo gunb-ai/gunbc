@@ -53,10 +53,10 @@ type TomlDatetimeLexeme
   | TomlLocalTimeLexeme { lexeme: String }
 
 type TomlDateTimeValue
-  = TomlOffsetDateTimeValue { value: OffsetDateTime }
-  | TomlLocalDateTimeValue { value: LocalDateTime }
-  | TomlLocalDateValue { value: LocalDate }
-  | TomlLocalTimeValue { value: LocalTime }
+  = TomlOffsetDateTimeValue { value: v2.std.datetime.OffsetDateTime }
+  | TomlLocalDateTimeValue { value: v2.std.datetime.LocalDateTime }
+  | TomlLocalDateValue { value: v2.std.datetime.LocalDate }
+  | TomlLocalTimeValue { value: v2.std.datetime.LocalTime }
 
 type TomlDottedKeysDefineTablesFact {}
 
@@ -113,13 +113,13 @@ type TomlValue
   | TomlTableValue { table: TomlTable }
 
 type TomlDocument {
-  grammar_schema: GrammarSchema,
+  grammar_schema: v2.std.grammar.GrammarSchema,
   root: TomlRootTable,
   unique_names: TomlUniqueNameProfile,
 }
 
 type TomlParseAxis {
-  grammar_schema: GrammarSchema,
+  grammar_schema: v2.std.grammar.GrammarSchema,
   source_text: String,
   unique_names: TomlUniqueNameProfile,
 }

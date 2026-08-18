@@ -2,16 +2,16 @@ module extdeps.vendor.rollins
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=ROL"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.vendor.rollins",
       decl_name: "rollins",
       field: WholeDeclaration
@@ -21,4 +21,4 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data rollins: Vendor<Securities> = Vendor { legal_name: "Rollins, Inc." }
+data rollins: Vendor<extdeps.securities.Securities> = Vendor { legal_name: "Rollins, Inc." }

@@ -1,8 +1,8 @@
 module extdeps.tcgplayer.store
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.tcgplayer.com/reference/stores_updatestoreskuprice-1"
   }
@@ -31,7 +31,7 @@ service tcgplayer.Store {
   operation UpdateSkuPrice {
     input {
       bearer_token: Secret
-      store_key: NonEmptyStr
+      store_key: std.types.NonEmptyStr
       sku_id: Int
       price: Float
       channel_id: Int = 0
@@ -57,7 +57,7 @@ service tcgplayer.Store {
   operation IncrementSkuQuantity {
     input {
       bearer_token: Secret
-      store_key: NonEmptyStr
+      store_key: std.types.NonEmptyStr
       sku_id: Int
       quantity: Int
       channel_id: Int = 0
@@ -80,9 +80,9 @@ service tcgplayer.Store {
   }
 }
 
-data tcgplayer_store_money_measure_grounding_disposition: Disposition = Scaffold {
+data tcgplayer_store_money_measure_grounding_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.tcgplayer.store",
     decl_name: "UpdateSkuPrice",
     field: NamedField { field_name: "price" }

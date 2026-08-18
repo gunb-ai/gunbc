@@ -1,7 +1,7 @@
 module v2.test.emit.bool_literal_projection
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // Routes bool spelling through TargetBoolLiteralShape on each target projection. Emission tests
 // construct canonical TargetValueExprBoolLiteral values and prove spelling derives from the
@@ -13,52 +13,52 @@ data bool_literal_true_lower_golden: String = "true"
 data bool_literal_true_upper_golden: String = "TRUE"
 
 fn blp_probe_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^blp_emit_probe } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn blp_probe_inputs() -> Inputs {
+fn blp_probe_inputs() -> v2.compiler.eval.Inputs {
   inputs_root_only(root: blp_probe_node())
 }
 
 fn blp_probe_source() -> Medium<String> {
-  Medium { carried: "", fidelity: Lossless }
+  extdeps.communication.medium.Medium { carried: "", fidelity: Lossless }
 }
 
-fn blp_bool_literal_expr() -> TargetValueExpression {
+fn blp_bool_literal_expr() -> v2.std.compilers.target_model.TargetValueExpression {
   target_value_expression_bool_literal(value: true)
 }
 
-fn blp_dag_source_bool_form() -> TargetBoolLiteralShape {
+fn blp_dag_source_bool_form() -> v2.std.compilers.target_model.TargetBoolLiteralShape {
   dag_value_expression_projection().bool_literal_form
 }
 
-fn blp_canonical_only_bool_form() -> TargetBoolLiteralShape {
-  TargetBoolLiteralShape {
+fn blp_canonical_only_bool_form() -> v2.std.compilers.target_model.TargetBoolLiteralShape {
+  v2.std.compilers.target_model.TargetBoolLiteralShape {
     true_token: ^target_value_expression_bool_true,
     false_token: ^target_value_expression_bool_false
   }
 }
 
-fn blp_lower_bool_form() -> TargetBoolLiteralShape {
-  TargetBoolLiteralShape {
+fn blp_lower_bool_form() -> v2.std.compilers.target_model.TargetBoolLiteralShape {
+  v2.std.compilers.target_model.TargetBoolLiteralShape {
     true_token: ^blp_token_true_lower,
     false_token: ^blp_token_false_lower
   }
 }
 
-fn blp_upper_bool_form() -> TargetBoolLiteralShape {
-  TargetBoolLiteralShape {
+fn blp_upper_bool_form() -> v2.std.compilers.target_model.TargetBoolLiteralShape {
+  v2.std.compilers.target_model.TargetBoolLiteralShape {
     true_token: ^blp_token_true_upper,
     false_token: ^blp_token_false_upper
   }
 }
 
-fn blp_projection_with(bool_form: TargetBoolLiteralShape) -> TargetValueExpressionProjection {
-  TargetValueExpressionProjection {
+fn blp_projection_with(bool_form: v2.std.compilers.target_model.TargetBoolLiteralShape) -> v2.std.compilers.target_model.TargetValueExpressionProjection {
+  v2.std.compilers.target_model.TargetValueExpressionProjection {
     bool_literal_form: bool_form,
     binding_ref_form: rust_value_expression_projection().binding_ref_form,
     primitive_apply_form: rust_value_expression_projection().primitive_apply_form,
@@ -75,9 +75,9 @@ fn blp_projection_with(bool_form: TargetBoolLiteralShape) -> TargetValueExpressi
   }
 }
 
-fn blp_lex() -> LexRules {
+fn blp_lex() -> v2.std.compilers.lexing.LexRules {
   ModeledLexRules {
-    root: LexRuleSet {
+    root: v2.std.compilers.lexing.LexRuleSet {
       rules: list_append(
         left: rust_fn_add_lex_rules().rules,
         right: [
@@ -91,8 +91,8 @@ fn blp_lex() -> LexRules {
   }
 }
 
-fn blp_target() -> TargetModel {
-  TargetModel {
+fn blp_target() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: rust_target_model().bundle,
     lex: blp_lex(),
@@ -104,8 +104,8 @@ fn blp_target() -> TargetModel {
 }
 
 fn blp_emit(
-  target: TargetModel,
-  projection: TargetValueExpressionProjection,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: Node
 ) -> Outcome<String> {
   match target_value_expression_to_concrete_tokens(
@@ -126,7 +126,7 @@ fn blp_emit(
   }
 }
 
-fn blp_emits(bool_form: TargetBoolLiteralShape, golden: String) -> Bool {
+fn blp_emits(bool_form: v2.std.compilers.target_model.TargetBoolLiteralShape, golden: String) -> Bool {
   match blp_emit(
     target: blp_target(),
     projection: blp_projection_with(bool_form: bool_form),
@@ -145,8 +145,8 @@ test fn bool_spelling_is_derived_from_projection() -> Bool {
 }
 
 fn blp_production_emits(
-  target: TargetModel,
-  projection: TargetValueExpressionProjection,
+  target: v2.std.compilers.target_model.TargetModel,
+  projection: v2.std.compilers.target_model.TargetValueExpressionProjection,
   catalog: Node
 ) -> Bool {
   match blp_emit(target: target, projection: projection, catalog: catalog) {

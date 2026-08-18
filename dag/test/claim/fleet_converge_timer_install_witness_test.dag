@@ -55,6 +55,6 @@ test fn witness_timer_install_plan_derives_from_authority_and_ends_in_readback()
     }
 }
 
-fn last_command(cmds: List<ArgvCommand>) -> ArgvCommand? {
+fn last_command(cmds: List<extdeps.exec.command.ArgvCommand>) -> extdeps.exec.command.ArgvCommand? {
   fold(cmds, init: none, f: (acc, c) => Present { value: c })
 }

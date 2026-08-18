@@ -3,7 +3,7 @@ module v2.compiler.body_producer_forward
 data body_producer_forward_note: String = "General body producer forward fold (general-body-producer-design §3, wave2_prep_design §3): production-identity-keyed GrammarRelationRow selection at the normalize/body-producer seam — the forward reading of the same rows the emitter reads backward. First consumer of ObligationForwardDeterminism (exactly-one row per surface identity) and the production-identity selection helper grammar_relation_row_forward_production_selection. Behavior lowering (match/if/let/loop/…) dispatches through body_lower_fold in v2.compiler.body_lowering_fold until Slice 4 deletes that interim module wholesale. dissolve-on: body_lowering_fold.dag absent — this module owns the full forward slot-map apply."
 
 type BodyProducerForwardRow {
-  surface_identity: Symbol
+  surface_identity: v2.std.node.Symbol
 }
 
 data body_producer_forward_row_fn_decl: BodyProducerForwardRow = BodyProducerForwardRow {

@@ -5,19 +5,19 @@ type CostClass = OwnedMarginalZero | PerSecondBilled | Metered | DeveloperAttent
 
 type CostModel { cost_class: CostClass }
 
-type AvailabilityWindow { open: LogicalTime, close: LogicalTime? }
+type AvailabilityWindow { open: std.types.LogicalTime, close: std.types.LogicalTime? }
 
-type CostEstimate { model: CostModel, unit_price: MoneyAmountMicro, currency: CurrencyCode }
+type CostEstimate { model: CostModel, unit_price: std.measure.MoneyAmountMicro, currency: std.currency.CurrencyCode }
 
 type ComputeSupplyFacts {
-  physical: ComputeHost
-  execution: ExecutionSurface
+  physical: gunbc.fleet_intent.ComputeHost
+  execution: gunbc.fleet_intent.ExecutionSurface
   cost: CostModel?
-  observed_performance: List<PerformanceReceipt>
+  observed_performance: List<gunbc.fleet_intent.PerformanceReceipt>
 }
 
 type ComputeOffer {
-  provider: ProviderIdentity
+  provider: gunbc.fleet_intent.ProviderIdentity
   supply: ComputeSupplyFacts
   available_window: AvailabilityWindow
   cost_quote: CostEstimate?

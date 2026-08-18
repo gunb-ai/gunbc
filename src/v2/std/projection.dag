@@ -9,7 +9,7 @@ type ProjectionKind
   | DiagnosticProjection
 
 type Projection {
-  id: Symbol
+  id: v2.std.node.Symbol
   kind: ProjectionKind
   input: Node
   output_kind: ArtifactKind

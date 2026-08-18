@@ -24,20 +24,20 @@ fn probe_span(start: Int, end: Int) -> std.types.SourceSpan {
   std.types.SourceSpan { file: "probe.dag", start: start, end: end }
 }
 
-fn subject_f() -> AnnotationSubject {
-  AnnotationSubject { occurrence: std.occurrence_identity.OccurrenceId { value: 7 }, span: probe_span(start: 100, end: 200), module_root: false }
+fn subject_f() -> std.source_annotation.AnnotationSubject {
+  std.source_annotation.AnnotationSubject { occurrence: std.occurrence_identity.OccurrenceId { value: 7 }, span: probe_span(start: 100, end: 200), module_root: false }
 }
 
-fn subject_g() -> AnnotationSubject {
-  AnnotationSubject { occurrence: std.occurrence_identity.OccurrenceId { value: 9 }, span: probe_span(start: 300, end: 400), module_root: false }
+fn subject_g() -> std.source_annotation.AnnotationSubject {
+  std.source_annotation.AnnotationSubject { occurrence: std.occurrence_identity.OccurrenceId { value: 9 }, span: probe_span(start: 300, end: 400), module_root: false }
 }
 
-fn subjects() -> List<AnnotationSubject> {
+fn subjects() -> List<std.source_annotation.AnnotationSubject> {
   [subject_f(), subject_g()]
 }
 
-fn leading(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
-  NormalizedAnnotationCapture {
+fn leading(text: String, start: Int, end: Int) -> std.source_annotation.NormalizedAnnotationCapture {
+  std.source_annotation.NormalizedAnnotationCapture {
     text: text,
     origin: probe_span(start: start, end: end),
     placement: LeadingAfterLineIndent,
@@ -46,8 +46,8 @@ fn leading(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
   }
 }
 
-fn leading_after_blank(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
-  NormalizedAnnotationCapture {
+fn leading_after_blank(text: String, start: Int, end: Int) -> std.source_annotation.NormalizedAnnotationCapture {
+  std.source_annotation.NormalizedAnnotationCapture {
     text: text,
     origin: probe_span(start: start, end: end),
     placement: LeadingAfterLineIndent,
@@ -56,8 +56,8 @@ fn leading_after_blank(text: String, start: Int, end: Int) -> NormalizedAnnotati
   }
 }
 
-fn trailing(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
-  NormalizedAnnotationCapture {
+fn trailing(text: String, start: Int, end: Int) -> std.source_annotation.NormalizedAnnotationCapture {
+  std.source_annotation.NormalizedAnnotationCapture {
     text: text,
     origin: probe_span(start: start, end: end),
     placement: TrailingAfterSemanticToken,
@@ -66,7 +66,7 @@ fn trailing(text: String, start: Int, end: Int) -> NormalizedAnnotationCapture {
   }
 }
 
-fn captures() -> List<NormalizedAnnotationCapture> {
+fn captures() -> List<std.source_annotation.NormalizedAnnotationCapture> {
   [
     leading(text: "alpha", start: 10, end: 20),
     leading(text: "beta", start: 30, end: 40),
@@ -77,20 +77,20 @@ fn captures() -> List<NormalizedAnnotationCapture> {
   ]
 }
 
-fn attached_graph() -> SourceAnnotationGraph {
+fn attached_graph() -> std.source_annotation.SourceAnnotationGraph {
   annotation_attachment_result_graph(
     result: attach_annotations(captures: captures(), subjects: subjects())
   )
 }
 
-fn attached_refusals() -> List<AnnotationAttachmentRefusal> {
+fn attached_refusals() -> List<std.source_annotation.AnnotationAttachmentRefusal> {
   annotation_attachment_result_refusals(
     result: attach_annotations(captures: captures(), subjects: subjects())
   )
 }
 
 // Rows render to one delimited string rather than being indexed, because equality against a complete rendering fails on any extra, missing, reordered, or mis-merged row at once. Indexing element by element asserts only what the author remembered to index, and the failure this whole fold could plausibly produce is a row that should not be there.
-fn render_rows(graph: SourceAnnotationGraph) -> String {
+fn render_rows(graph: std.source_annotation.SourceAnnotationGraph) -> String {
   fold(
     source_annotation_graph_rows(graph: graph),
     init: "",
@@ -98,11 +98,11 @@ fn render_rows(graph: SourceAnnotationGraph) -> String {
   )
 }
 
-fn row_count(graph: SourceAnnotationGraph) -> Int {
+fn row_count(graph: std.source_annotation.SourceAnnotationGraph) -> Int {
   source_annotation_graph_rows(graph: graph) |> count
 }
 
-fn count_body_grain(refusals: List<AnnotationAttachmentRefusal>) -> Int {
+fn count_body_grain(refusals: List<std.source_annotation.AnnotationAttachmentRefusal>) -> Int {
   fold(
     refusals,
     init: 0,
@@ -115,7 +115,7 @@ fn count_body_grain(refusals: List<AnnotationAttachmentRefusal>) -> Int {
   )
 }
 
-fn count_trailing(refusals: List<AnnotationAttachmentRefusal>) -> Int {
+fn count_trailing(refusals: List<std.source_annotation.AnnotationAttachmentRefusal>) -> Int {
   fold(
     refusals,
     init: 0,
@@ -128,7 +128,7 @@ fn count_trailing(refusals: List<AnnotationAttachmentRefusal>) -> Int {
   )
 }
 
-fn count_unattached(refusals: List<AnnotationAttachmentRefusal>) -> Int {
+fn count_unattached(refusals: List<std.source_annotation.AnnotationAttachmentRefusal>) -> Int {
   fold(
     refusals,
     init: 0,

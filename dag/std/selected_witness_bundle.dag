@@ -4,19 +4,19 @@ module std.selected_witness_bundle
 data selected_witness_bundle_note: NonEmptyStr = "Selected-entry native execution authority (native-selected-witness-bundle, 2026-08-01). Selection and realization remain separate facts: SelectedWitnessPlan records the complete production-selected population; each member is either NativeSelected or a counted InterpreterFrontier row with a reason and dissolution trigger. A native bundle contains only NativeSelected members, runs them as direct calls in one process, and returns a typed receipt. InterpreterFrontier is coverage-preserving compatibility, never an uncounted skip. During cutover the interpreter is the equivalence oracle; a family enters native-consumed production only after every selected member has executed verdict equivalence and the family has a live discriminating RED. Native-vs-interpreter divergence is a hard refusal, never an auto-pick."
 
 type SelectedWitnessIdentity {
-  entry: NonEmptyStr
-  function: NonEmptyStr
-  subject_digest: Fnv1a64Structural
+  entry: std.types.NonEmptyStr
+  function: std.types.NonEmptyStr
+  subject_digest: std.content_hash.Fnv1a64Structural
 }
 
 type NativeRealizationIdentity {
-  family: NonEmptyStr
-  realization_digest: Fnv1a64Structural
+  family: std.types.NonEmptyStr
+  realization_digest: std.content_hash.Fnv1a64Structural
 }
 
 type NativeUnavailableCause
   = NativeRealizationAbsent
-  | NativeRealizationRefused { reason: NonEmptyStr }
+  | NativeRealizationRefused { reason: std.types.NonEmptyStr }
 
 type SelectedWitnessMember
   = NativeSelected {
@@ -26,22 +26,22 @@ type SelectedWitnessMember
   | InterpreterFrontier {
       witness: SelectedWitnessIdentity
       cause: NativeUnavailableCause
-      reason: NonEmptyStr
-      dissolution: DissolutionCondition
+      reason: std.types.NonEmptyStr
+      dissolution: std.dissolution.DissolutionCondition
     }
 
 type NativeBundleShardPolicy
-  = OneSelectedBundle { reason: NonEmptyStr }
-  | StableBundleShards { shard_count: Int, reason: NonEmptyStr }
+  = OneSelectedBundle { reason: std.types.NonEmptyStr }
+  | StableBundleShards { shard_count: Int, reason: std.types.NonEmptyStr }
 
 type SelectedWitnessPlan {
-  compiler_identity: Fnv1a64Structural
+  compiler_identity: std.content_hash.Fnv1a64Structural
   shard_policy: NativeBundleShardPolicy
   members: List<SelectedWitnessMember>
 }
 
 type NativeWitnessBundleIdentity {
-  structural_fingerprint: Fnv1a64Structural
+  structural_fingerprint: std.content_hash.Fnv1a64Structural
 }
 
 type NativeWitnessBundleMember {
@@ -51,7 +51,7 @@ type NativeWitnessBundleMember {
 
 type NativeWitnessBundle {
   identity: NativeWitnessBundleIdentity
-  compiler_identity: Fnv1a64Structural
+  compiler_identity: std.content_hash.Fnv1a64Structural
   members: List<NativeWitnessBundleMember>
 }
 
@@ -225,12 +225,12 @@ fn native_witness_bundle_from_plan(plan: SelectedWitnessPlan) -> NativeWitnessBu
 type NativeBundleAdmission
   = NativeBundleAdmitted { bundle: NativeWitnessBundle }
   | NativeBundleRefusedStaleCompiler {
-      bundle_compiler_identity: Fnv1a64Structural
-      current_compiler_identity: Fnv1a64Structural
+      bundle_compiler_identity: std.content_hash.Fnv1a64Structural
+      current_compiler_identity: std.content_hash.Fnv1a64Structural
     }
   | NativeBundleRefusedStalePlanCompiler {
-      plan_compiler_identity: Fnv1a64Structural
-      current_compiler_identity: Fnv1a64Structural
+      plan_compiler_identity: std.content_hash.Fnv1a64Structural
+      current_compiler_identity: std.content_hash.Fnv1a64Structural
     }
   | NativeBundleRefusedPlanIdentity {
       observed: NativeWitnessBundleIdentity
@@ -288,18 +288,18 @@ type SelectedWitnessVerdict
 
 type NativeBundleMemberEquivalence {
   witness: SelectedWitnessIdentity
-  family: NonEmptyStr
+  family: std.types.NonEmptyStr
   interpreted: SelectedWitnessVerdict
   native: SelectedWitnessVerdict
 }
 
 type NativeWitnessBundleExecutionReceipt {
   bundle_identity: NativeWitnessBundleIdentity
-  compiler_identity: Fnv1a64Structural
+  compiler_identity: std.content_hash.Fnv1a64Structural
   process_count: Int
   compile_skipped: Bool
-  native_wall_nanos: NanosecondDuration
-  interpreted_wall_nanos: NanosecondDuration
+  native_wall_nanos: std.verification.NanosecondDuration
+  interpreted_wall_nanos: std.verification.NanosecondDuration
   member_equivalence: List<NativeBundleMemberEquivalence>
   interpreter_frontier_count: Int
 }
@@ -308,7 +308,7 @@ data native_production_transition_no_fallback_note: NonEmptyStr = "CI-0 cutover 
 
 type NativeProductionTransitionVerdict
   = NativeProductionTransitionAccepted
-  | NativeProductionTransitionRefused { reason: NonEmptyStr }
+  | NativeProductionTransitionRefused { reason: std.types.NonEmptyStr }
 
 type NativeWitnessProductionTransitionReceipt {
   selected_count: Int
@@ -318,13 +318,13 @@ type NativeWitnessProductionTransitionReceipt {
   diverged_count: Int
   bundle_count: Int
   shard_count: Int
-  cold_compile_wall_nanos: NanosecondDuration
-  warm_artifact_hit_wall_nanos: NanosecondDuration
-  native_execution_wall_nanos: NanosecondDuration
-  interpreter_oracle_wall_nanos: NanosecondDuration
+  cold_compile_wall_nanos: std.verification.NanosecondDuration
+  warm_artifact_hit_wall_nanos: std.verification.NanosecondDuration
+  native_execution_wall_nanos: std.verification.NanosecondDuration
+  interpreter_oracle_wall_nanos: std.verification.NanosecondDuration
   fallback_count: Int
-  rss_peak_bytes: ByteSize
-  cgroup_peak_bytes: ByteSize
+  rss_peak_bytes: std.measure.ByteSize
+  cgroup_peak_bytes: std.measure.ByteSize
   verdict: NativeProductionTransitionVerdict
   planted_red_equivalent: Bool
 }
@@ -361,20 +361,20 @@ type NativeWitnessBundleExecutionVerdict
   = NativeBundleExecutionAccepted { receipt: NativeWitnessBundleExecutionReceipt }
   | NativeBundleExecutionRefusedNoNativeMembers
   | NativeBundleExecutionRefusedStaleCompiler {
-      receipt_compiler_identity: Fnv1a64Structural
-      current_compiler_identity: Fnv1a64Structural
+      receipt_compiler_identity: std.content_hash.Fnv1a64Structural
+      current_compiler_identity: std.content_hash.Fnv1a64Structural
     }
   | NativeBundleExecutionRefusedStalePlanCompiler {
-      plan_compiler_identity: Fnv1a64Structural
-      current_compiler_identity: Fnv1a64Structural
+      plan_compiler_identity: std.content_hash.Fnv1a64Structural
+      current_compiler_identity: std.content_hash.Fnv1a64Structural
     }
   | NativeBundleExecutionRefusedPlanIdentity {
       observed: NativeWitnessBundleIdentity
       required: NativeWitnessBundleIdentity
     }
   | NativeBundleExecutionRefusedMemberCoverage {
-      observed: Fnv1a64Structural
-      required: Fnv1a64Structural
+      observed: std.content_hash.Fnv1a64Structural
+      required: std.content_hash.Fnv1a64Structural
     }
   | NativeBundleExecutionRefusedFrontierCount { observed: Int, required: Int }
   | NativeBundleExecutionRefusedDivergence {
@@ -382,7 +382,7 @@ type NativeWitnessBundleExecutionVerdict
       interpreted: SelectedWitnessVerdict
       native: SelectedWitnessVerdict
     }
-  | NativeBundleExecutionRefusedMissingDiscriminatingRed { family: NonEmptyStr }
+  | NativeBundleExecutionRefusedMissingDiscriminatingRed { family: std.types.NonEmptyStr }
   | NativeBundleExecutionRefusedProcessCount { observed: Int }
   | NativeBundleExecutionRefusedWarmArtifactMiss
 
@@ -536,7 +536,7 @@ fn family_has_discriminating_red(
 
 type NativeBundleFamilyRedSearch
   = NativeBundleFamiliesHaveRed
-  | NativeBundleFamilyMissingRed { family: NonEmptyStr }
+  | NativeBundleFamilyMissingRed { family: std.types.NonEmptyStr }
 
 fn first_native_bundle_family_without_red(
   rows: List<NativeBundleMemberEquivalence>,

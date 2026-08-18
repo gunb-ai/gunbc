@@ -1,7 +1,7 @@
 module v2.test.emit.semantic_decl_profile_path_parity
 
 
-fn lex_literal(rules: LexRules, token_class: Symbol) -> Outcome<String> {
+fn lex_literal(rules: v2.std.compilers.lexing.LexRules, token_class: v2.std.node.Symbol) -> Outcome<String> {
   lex_rules_literal_for_class(rules: rules, token_class: token_class)
 }
 

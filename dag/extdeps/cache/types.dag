@@ -22,13 +22,13 @@ type CatalogProviderKeyEncoding
   | CargoFingerprintEncoding
 
 type CatalogProviderKey
-  = CatalogOpaqueStringKey { key: NonEmptyStr }
-  | SccacheInternalHash { digest: ContentHash }
-  | CatalogCasContentDigest { digest: ContentHash }
-  | CargoFingerprint { digest: ContentHash }
+  = CatalogOpaqueStringKey { key: std.types.NonEmptyStr }
+  | SccacheInternalHash { digest: std.content_hash.ContentHash }
+  | CatalogCasContentDigest { digest: std.content_hash.ContentHash }
+  | CargoFingerprint { digest: std.content_hash.ContentHash }
 
 type CatalogBackendCacheKey {
-  store: CacheInterfaceId
+  store: std.cache_identity.CacheInterfaceId
   key: CatalogProviderKey
 }
 
@@ -42,8 +42,8 @@ type CatalogKeyDerivationFacts {
   overwritable: Bool
   prefix_fallback_allowed: Bool
   content_verified_on_read: Bool
-  visibility_scope: VisibilityScope
-  invalidation_triggers: List<InvalidationTrigger>
+  visibility_scope: std.cache_interface.VisibilityScope
+  invalidation_triggers: List<std.cache_interface.InvalidationTrigger>
 }
 
 fn invalidation_triggers_on_toolchain_change(triggers: List<InvalidationTrigger>) -> Bool {
@@ -80,20 +80,20 @@ fn catalog_key_derivation_classification(kd: CatalogKeyDerivationFacts) -> KeyDe
 }
 
 type CacheInterfaceCatalogFacts {
-  identity: CacheInterfaceId
-  backing_surface: StorageSurface
+  identity: std.cache_identity.CacheInterfaceId
+  backing_surface: std.cache_interface.StorageSurface
   transport_encoding: CatalogProviderKeyEncoding
   key_derivation: CatalogKeyDerivationFacts
-  io: CacheInterfaceCatalogIoSemantics
-  placement: CacheInterfaceCatalogPlacement
-  evidence: List<CacheEvidence>
+  io: extdeps.cache.catalog_io.CacheInterfaceCatalogIoSemantics
+  placement: extdeps.cache.catalog_placement.CacheInterfaceCatalogPlacement
+  evidence: List<std.cache_interface.CacheEvidence>
 }
 
 type CatalogCachedArtifactReceipt<T> {
   artifact: ArtifactIdentity<T>
   backend_key: CatalogBackendCacheKey
   producer: ProducerReceipt<T>
-  content_digest: ContentHash
+  content_digest: std.content_hash.ContentHash
 }
 
 fn catalog_has_vendor_only_key_inputs(inputs: List<CatalogInputSurface>) -> Bool {

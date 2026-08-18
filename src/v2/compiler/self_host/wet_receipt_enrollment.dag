@@ -13,13 +13,13 @@ fn falsifier_self_host_wet_cadence_is_active() -> Bool {
   falsifier_self_host_wet_cadence_active
 }
 
-fn self_host_wet_entry(entry: String, f: String) -> ScheduleWitnessEntry {
-  ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
+fn self_host_wet_entry(entry: String, f: String) -> std.realization_schedule.ScheduleWitnessEntry {
+  std.realization_schedule.ScheduleWitnessEntry { entry: entry, function: f, kind: ExecutionWitnessKind }
 }
 
 data falsifier_self_host_wet_emit_class_note: String = "The second template row is NOT a per-module self-host receipt — it is the emit-CLASS receipt for the Gate-1 import-closure derivation (emit_import_closure_root). It enrolls as a template row rather than a SelfHostWetReceiptBinding because it is bound to no single module_path: it proves a property of the EMITTER (an import-free namespace module referencing a sibling cross-module emits cargo-compiling Rust) on a synthetic fixture, so no frontier row flips to gate it. It is required coverage, not redundancy: regen only exercises the seed corpus, which is import-based, so the self-host fixed point is unchanged by the pass and cannot witness this class."
 
-data falsifier_self_host_wet_template_entries: List<ScheduleWitnessEntry> = [
+data falsifier_self_host_wet_template_entries: List<std.realization_schedule.ScheduleWitnessEntry> = [
   self_host_wet_entry(
     entry: "dag/test/claim/self_host_logic_behavioral_witness_test.dag",
     f: "self_host_logic_behavioral_receipt_holds"
@@ -87,7 +87,7 @@ fn dispatch_bijection_real_roster_red_enrolled_on_falsifier_self_host_wet() -> B
 
 data falsifier_native_cache_cold_roster_note: String = "Cold-control roster (GUNBC_CI_NATIVE_CACHE_COLD_CONTROL falsifier step): COLD-VALID emit_host_*_equals_eval agreement legs — emit->build->run->equals-oracle with no compile_skipped assertion. Eleven entry files; meet_join enrolls both peer primaries (emit_host_meet_equals_eval_holds and emit_host_join_equals_eval_holds) so dissolving the former `_all_holds` umbrella does not drop join (review 43336). The one-build family aggregates must NOT run here: their warm legs assert compile_skipped=true, which the control deliberately falsifies (probe receipt 2026-07-21). Re-authored 2026-07-22 after the one-build migration (#7042) deleted the per-witness agreement/native_cold fns the prior roster named. Extended 2026-07-23 (neat-carp-312, Lane C) with filesystem_read/shell_exec_run, the two native host-effect transport families added alongside EmittedEffectFamily — same COLD-VALID shape, no compile_skipped assertion."
 
-data falsifier_native_cache_cold_entries: List<ScheduleWitnessEntry> = [
+data falsifier_native_cache_cold_entries: List<std.realization_schedule.ScheduleWitnessEntry> = [
   self_host_wet_entry(
     entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
     f: "emit_host_add_equals_eval_holds"
@@ -138,7 +138,7 @@ data falsifier_native_cache_cold_entries: List<ScheduleWitnessEntry> = [
   )
 ]
 
-fn falsifier_native_cache_cold_roster() -> List<ScheduleWitnessEntry> {
+fn falsifier_native_cache_cold_roster() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   falsifier_native_cache_cold_entries
 }
 
@@ -146,17 +146,17 @@ data emit_on_demand_family_cadence_note: String = "The seven emit-on-demand fami
 
 data falsifier_self_host_wet_known_red_note: String = "Wet expect_red quarantine for SelfEmitted module behavioral receipts that red on assemble (Phase-0 admission invariant, review #7199 2026-07-25): same mechanism as known_red_probe_entries but Wet-profiled — hermetic would refuse the host effect and lie about the red class. claim_executor expect_red-inverts the batch. Owner: #7199 falsifier lane / self-host assemble. Dissolve-on per row: local wet receipt greens under gunbc_falsifier_self_host_wet_receipt_wall_budget, the known-red entry deletes, and the SelfHostWetReceiptBinding restores to seed_emitter_behavioral_wet_module_bindings."
 
-data falsifier_self_host_wet_known_red_entries: List<ScheduleWitnessEntry> = seed_emitter_behavioral_wet_known_red_entries
+data falsifier_self_host_wet_known_red_entries: List<std.realization_schedule.ScheduleWitnessEntry> = seed_emitter_behavioral_wet_known_red_entries
 
 fn falsifier_self_host_wet_known_red_batch_enrolled() -> Bool {
   length(xs: falsifier_self_host_wet_known_red_entries) > 0
 }
 
-fn falsifier_self_host_wet_known_red_roster() -> List<ScheduleWitnessEntry> {
+fn falsifier_self_host_wet_known_red_roster() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   falsifier_self_host_wet_known_red_entries
 }
 
-fn schedule_entry_from_binding(b: SelfHostWetReceiptBinding) -> ScheduleWitnessEntry {
+fn schedule_entry_from_binding(b: v2.compiler.self_host.seed_emitter_behavioral_wet_module_bindings.SelfHostWetReceiptBinding) -> std.realization_schedule.ScheduleWitnessEntry {
   self_host_wet_entry(entry: b.entry, f: b.function)
 }
 
@@ -164,6 +164,6 @@ data wet_enrollment_roster_term_deleted_note: String = "The frontier-enrolled te
 
 That gate is retired rather than weakened: it claimed the roster enrolls nothing, and there is no roster left to enroll anything. What survives is the binding lookup itself (find_wet_receipt_binding, schedule_entry_from_binding), which is keyed on a module path and needs no roster to be asked."
 
-fn falsifier_self_host_wet_entries() -> List<ScheduleWitnessEntry> {
+fn falsifier_self_host_wet_entries() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   falsifier_self_host_wet_template_entries
 }

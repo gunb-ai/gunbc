@@ -1,7 +1,7 @@
 module v2.test.manual.branch_infer_if_then_else
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn branch_infer_arm_mismatch_body() -> Node {
   dag_pick_if_body_from_arms(

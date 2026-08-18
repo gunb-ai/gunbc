@@ -3,14 +3,14 @@ module v2.compiler.program_partition
 
 
 type ProgramPartition {
-  ambient: InferredTree
-  segment: ProgramSegment
+  ambient: v2.compiler.infer.InferredTree
+  segment: v2.std.program_segment.ProgramSegment
   root: Node
-  boundary: PartitionBoundaryPolicy
+  boundary: v2.std.program_segment.PartitionBoundaryPolicy
 }
 
 type PartitionUserSemanticType {
-  name: Symbol
+  name: v2.std.node.Symbol
   semantic: Node
 }
 

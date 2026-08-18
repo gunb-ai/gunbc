@@ -7,9 +7,9 @@ data readback_independence_asymmetry_note: String = "The correction is deliberat
 
 type ProbeEffectOnSubject
   = ProbeInert
-  | ProbeMayEstablish { mechanism: NonEmptyStr }
-  | ProbeAnswersWithoutSubject { mechanism: NonEmptyStr }
-  | ProbeEffectUnknown { reason: NonEmptyStr }
+  | ProbeMayEstablish { mechanism: std.types.NonEmptyStr }
+  | ProbeAnswersWithoutSubject { mechanism: std.types.NonEmptyStr }
+  | ProbeEffectUnknown { reason: std.types.NonEmptyStr }
 
 type ProbeEffectOnSubjectFold<R> {
   inert: R
@@ -31,8 +31,8 @@ fn probe_effect_on_subject_fold<R>(
 }
 
 type ReadBackProbe {
-  label: NonEmptyStr
-  subject: NonEmptyStr
+  label: std.types.NonEmptyStr
+  subject: std.types.NonEmptyStr
   effect_on_subject: ProbeEffectOnSubject
 }
 

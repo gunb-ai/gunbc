@@ -7,15 +7,15 @@ data auto_publish_incident_specimens_note: String = "SPECIMEN 1 (#7904): WIP aut
 
 type LocalCheckpoint
   = LocalCheckpointAbsent
-  | LocalCheckpointAt { local_commit: CommitSha }
+  | LocalCheckpointAt { local_commit: std.types.CommitSha }
 
 type RemoteBranchPublication
   = RemoteBranchPublicationAbsent
-  | RemoteBranchPublicationAt { remote_head: CommitSha }
+  | RemoteBranchPublicationAt { remote_head: std.types.CommitSha }
 
 type WorkerNotification
   = WorkerNotificationAbsent
-  | WorkerNotificationStamped { notified_head: CommitSha, notified_at: Timestamp }
+  | WorkerNotificationStamped { notified_head: std.types.CommitSha, notified_at: std.types.Timestamp }
 
 type SessionPublishState {
   local: LocalCheckpoint
@@ -180,7 +180,7 @@ type PublicationContext
   = PublicationContextScratchProbe
   | PublicationContextDashboardAutosave
   | PublicationContextArtifactHealer { repair_target: HealerRepairTarget }
-  | PublicationContextCtrlUserPublish { request: PublicationRequest }
+  | PublicationContextCtrlUserPublish { request: gunbc.session_auto_publish_ctrl_ingest.PublicationRequest }
   | PublicationContextUnknown
 
 type PublicationRefusalCause
@@ -317,7 +317,7 @@ fn adjudicate_healer_remote_publication(
 data publication_pipeline_note: String = "Slice-3 transport design (operator ruling 2026-08-07): expensive post-write validation moves OFF the synchronous git push subprocess path. No remote write until an exact PostWriteValidationReceipt exists. Three stages: PreparePublication — explicit user request via ctrl ingest, local candidate commit, expected remote head, candidate head, declared write set; ValidatePublicationCandidate — converge repo-local git integration, conflict/index/write-set checks, parse+format+compile the exact candidate, emit PostWriteValidationReceipt bound to candidate head + write-set digests + tool revisions; PublishValidatedCandidate — re-read local head, re-read remote head, require local head == validated candidate, require receipt subject == candidate, compare-and-swap remote head, push exact candidate. Timeout, missing receipt, or unknown observation means NO PUSH — not a degraded push. --no-verify disappears once the explicit path covers hook obligations; during transition it is admissible ONLY when an EquivalentPrePushReceipt proves those obligations for the exact candidate — the flag itself is never authority. Fast configuration convergence (core.hooksPath, merge driver, repo-local bindings) is invoked EXPLICITLY by prepare/validate rather than depending on an implicitly skipped hook."
 
 type PreparePublicationRecord {
-  request: PublicationRequest
+  request: gunbc.session_auto_publish_ctrl_ingest.PublicationRequest
   declared_write_paths: List<String>
 }
 
@@ -327,9 +327,9 @@ type PostWriteValidationVerdict
   | PostWriteValidationUnknown
 
 type PostWriteValidationReceipt {
-  candidate_head: CommitSha
-  declared_write_set_digest: Fnv1a64Structural
-  actual_write_set_digest: Fnv1a64Structural
+  candidate_head: std.types.CommitSha
+  declared_write_set_digest: std.content_hash.Fnv1a64Structural
+  actual_write_set_digest: std.content_hash.Fnv1a64Structural
   parser_revision: String
   formatter_revision: String
   compiler_revision: String
@@ -342,7 +342,7 @@ type ValidatePublicationCandidateRecord {
 }
 
 type EquivalentPrePushReceipt {
-  candidate_head: CommitSha
+  candidate_head: std.types.CommitSha
   hooks_path_converged: Bool
   merge_driver_converged: Bool
   repo_local_bindings_converged: Bool
@@ -352,7 +352,7 @@ type PublishValidatedCandidateAttempt {
   validate: ValidatePublicationCandidateRecord
   observed_remote_head: ObservedRemoteHead
   current_remote_head: ObservedRemoteHead
-  current_local_head: CommitSha?
+  current_local_head: std.types.CommitSha?
   index_cleanliness: IndexCleanliness
   unmerged_stage_count: CountObservation
   conflict_marker_count: CountObservation
@@ -365,7 +365,7 @@ type PublishValidatedCandidateAttempt {
 data default_deny_conjunction_note: String = "Slice 2 default-deny consumer. admit_remote_publication runs slice-1 policy first, then a conjunction of refusals. PostWriteValidationReceipt is exact-joined to PublicationRequest.produced_head and write-set digests — transferable green evidence from another head is refused. Shell transport must call this before any remote write; until then the conjunction is modeled and witnessed only. Slice-3 transport path: publication_pipeline_note."
 
 type ObservedRemoteHead
-  = RemoteHeadKnown { head: CommitSha }
+  = RemoteHeadKnown { head: std.types.CommitSha }
   | RemoteHeadObservationUnknown
 
 type IndexCleanliness
@@ -387,7 +387,7 @@ type RemotePublishAttempt {
   operation: RemotePublicationOperation
   observed_remote_head: ObservedRemoteHead
   current_remote_head: ObservedRemoteHead
-  current_local_head: CommitSha?
+  current_local_head: std.types.CommitSha?
   index_cleanliness: IndexCleanliness
   unmerged_stage_count: CountObservation
   conflict_marker_count: CountObservation

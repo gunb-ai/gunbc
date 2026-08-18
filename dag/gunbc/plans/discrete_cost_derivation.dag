@@ -1,7 +1,7 @@
 module gunbc.plans.discrete_cost_derivation
 
 
-fn discrete_cost_derivation_body() -> List<MarkdownBlock> {
+fn discrete_cost_derivation_body() -> List<std.markdown.MarkdownBlock> {
   [
     BlockquoteBlock { blocks: [
       p(text: "**Status: DRAFT for operator review (2026-08-04).** Design-note-first: **no code lands from this note.** It declares the carrier shapes, the authority ruling, the phase order, and the discriminating controls for deriving a *discrete work account* from a DAG section plus an input plus a realization. Every carrier and symbol named below was verified against the live tree at this revision; the four corrections in section 4 are things the tree says that the originating sketch did not."),
@@ -239,7 +239,7 @@ fn discrete_cost_derivation_body() -> List<MarkdownBlock> {
   ]
 }
 
-data discrete_cost_derivation_plan: Plan = Plan {
+data discrete_cost_derivation_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "discrete-cost-derivation",
   title: "Discrete cost derivation — the work account between symbolic cost and measured wall",
   body: discrete_cost_derivation_body(),

@@ -4,7 +4,7 @@ module gunbc.hand_lens_host_bridge_scaffold_watchdog
 type HostBridgeScaffoldRow {
   lens_module: String
   host_seam: String
-  dissolution_trigger: Disposition
+  dissolution_trigger: std.disposition.Disposition
 }
 
 data transport_script_position_scaffold_row: HostBridgeScaffoldRow = HostBridgeScaffoldRow {

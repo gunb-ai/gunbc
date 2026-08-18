@@ -1,29 +1,29 @@
 module extdeps.bmc
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Baseboard_management_controller"
   }
 }
 
-fn bmc_observed_processor_model(obs: BmcGroundedHostObservations) -> NonEmptyStr {
+fn bmc_observed_processor_model(obs: extdeps.bmc.types.BmcGroundedHostObservations) -> std.types.NonEmptyStr {
   obs.processor_model
 }
 
-fn bmc_observed_processor_core_count(obs: BmcGroundedHostObservations) -> HardwareThreadCount {
+fn bmc_observed_processor_core_count(obs: extdeps.bmc.types.BmcGroundedHostObservations) -> std.measure.HardwareThreadCount {
   obs.processor_core_count
 }
 
-fn bmc_observed_total_memory_bytes(obs: BmcGroundedHostObservations) -> ByteSize {
+fn bmc_observed_total_memory_bytes(obs: extdeps.bmc.types.BmcGroundedHostObservations) -> std.measure.ByteSize {
   obs.total_memory_bytes
 }
 
-fn bmc_observed_power_consumed_watts(obs: BmcGroundedHostObservations) -> Watt? {
+fn bmc_observed_power_consumed_watts(obs: extdeps.bmc.types.BmcGroundedHostObservations) -> std.measure.Watt? {
   obs.power_consumed_watts
 }
 
-fn bmc_ground_snapshot(snapshot: BmcTelemetrySnapshot) -> BmcGroundedHostObservations {
+fn bmc_ground_snapshot(snapshot: extdeps.bmc.types.BmcTelemetrySnapshot) -> extdeps.bmc.types.BmcGroundedHostObservations {
   bmc_ground_host_observations(snapshot: snapshot)
 }

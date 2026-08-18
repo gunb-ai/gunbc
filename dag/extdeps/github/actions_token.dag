@@ -204,12 +204,12 @@ fn fork_write_tokens_reachable(policy: ActionsRepositoryPolicyObservation) -> Bo
 }
 
 type EffectiveActionsJobGrant {
-  workflow: DeclarationRef
-  job: DeclarationRef
+  workflow: std.decl_ref.DeclarationRef
+  job: std.decl_ref.DeclarationRef
   event: GitHubWorkflowEvent
   origin: PullRequestOrigin
   repository_policy: ActionsRepositoryPolicyObservation
-  permissions: WorkflowPermissions
+  permissions: extdeps.github.actions.WorkflowPermissions
 }
 
 fn permission_level_access(level: PermissionLevel) -> GitHubAppPermissionAccess? {
@@ -275,13 +275,13 @@ fn declared_level_for_axis(perms: WorkflowPermissions, axis: GitHubPermissionAxi
 }
 
 type ActionsGrantResolution
-  = ActionsGrantResolved { access: GitHubAppPermissionAccess }
+  = ActionsGrantResolved { access: extdeps.github.app.GitHubAppPermissionAccess }
   | ActionsGrantNone
   | ActionsGrantScopeUnavailable
   | ActionsGrantAxisNotModeled
   | ActionsGrantDeclaredAccessInvalid {
-      axis: GitHubPermissionAxis
-      declared: GitHubAppPermissionAccess
+      axis: extdeps.github.app.GitHubPermissionAxis
+      declared: extdeps.github.app.GitHubAppPermissionAccess
       allowed: ActionsAccessSet
     }
   | ActionsGrantForkPolicyUnobserved

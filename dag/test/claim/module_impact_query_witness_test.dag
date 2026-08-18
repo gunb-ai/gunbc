@@ -14,7 +14,7 @@ data mod_a: v2.lens.module_impact_query.ModuleIdentity = v2.lens.module_impact_q
 data mod_b: v2.lens.module_impact_query.ModuleIdentity = v2.lens.module_impact_query.ModuleIdentity { name: "m.b" }
 data mod_c: v2.lens.module_impact_query.ModuleIdentity = v2.lens.module_impact_query.ModuleIdentity { name: "m.c" }
 
-data pool_independence_unavailable: List<ReferenceDerivedClosureAdmission> = [
+data pool_independence_unavailable: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> = [
   ReferenceDerivedClosureUnavailable {
     capability: UnrelatedLoadedFileExcluded,
     trigger: P2aPoolIndependentDependencyProjection7515
@@ -23,11 +23,11 @@ data pool_independence_unavailable: List<ReferenceDerivedClosureAdmission> = [
 
 data pool_independence_established_note: String = "ReferenceDerivedClosureAcceptanceReceipt is sole_constructor, so a consumer CANNOT fabricate an Established capability from outside the admission module - the wall refused this witness's first attempt to hand-build the receipt, which is exactly the point of the wall. The admission module's own `established` constructor is the only legitimate route, so the witness goes through it."
 
-data pool_independence_established: List<ReferenceDerivedClosureAdmission> = [
+data pool_independence_established: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> = [
   established(capability: UnrelatedLoadedFileExcluded),
 ]
 
-data unrelated_admission_only: List<ReferenceDerivedClosureAdmission> = [
+data unrelated_admission_only: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission> = [
   ReferenceDerivedClosureUnavailable {
     capability: RepeatedMentionsCollapseDependency,
     trigger: P2aReferenceDependencyProjection7515
@@ -46,7 +46,7 @@ data chain_import_facts: List<v2.lens.module_graph.ImportResolutionFact> = [
 
 fn chain_reading(
   seeds: List<v2.lens.module_impact_query.ModuleIdentity>,
-  admissions: List<ReferenceDerivedClosureAdmission>
+  admissions: List<gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAdmission>
 ) -> v2.lens.module_impact_query.ImpactReading {
   v2.lens.module_impact_query.module_impact_reading(
     seeds: seeds,
@@ -478,7 +478,7 @@ test fn witness_a_complete_but_pool_relative_outcome_withholds_skip_authority() 
 
 data differential_control_note: String = "OPERATOR ruling item 6. The production selector asks, per entry, whether any touched path lies in that entry's FORWARD dependency closure; this lane answers it once in reverse. The two must agree exactly over the same edge population: entry E's forward closure contains M if and only if E is among the reverse consumers of M. This witness asserts that biconditional in BOTH directions over every module in a fixture population — a one-directional check would pass on a reverse answer that silently narrows, which is the failure mode that matters when a selector decides what NOT to run."
 
-fn forward_closure_of(entry: ModuleIdentity) -> List<ModuleIdentity> {
+fn forward_closure_of(entry: v2.lens.module_impact_query.ModuleIdentity) -> List<v2.lens.module_impact_query.ModuleIdentity> {
   module_impact_reading(
     seeds: [entry],
     direction: DependenciesOf,
@@ -489,7 +489,7 @@ fn forward_closure_of(entry: ModuleIdentity) -> List<ModuleIdentity> {
   ).reached
 }
 
-fn reverse_consumers_of(target: ModuleIdentity) -> List<ModuleIdentity> {
+fn reverse_consumers_of(target: v2.lens.module_impact_query.ModuleIdentity) -> List<v2.lens.module_impact_query.ModuleIdentity> {
   module_impact_reading(
     seeds: [target],
     direction: DependentsOf,
@@ -500,16 +500,16 @@ fn reverse_consumers_of(target: ModuleIdentity) -> List<ModuleIdentity> {
   ).reached
 }
 
-fn module_in(xs: List<ModuleIdentity>, m: ModuleIdentity) -> Bool {
+fn module_in(xs: List<v2.lens.module_impact_query.ModuleIdentity>, m: v2.lens.module_impact_query.ModuleIdentity) -> Bool {
   any(xs: xs, predicate: fn(x) { x.name == m.name })
 }
 
-fn biconditional_holds_for(entry: ModuleIdentity, target: ModuleIdentity) -> Bool {
+fn biconditional_holds_for(entry: v2.lens.module_impact_query.ModuleIdentity, target: v2.lens.module_impact_query.ModuleIdentity) -> Bool {
   module_in(xs: forward_closure_of(entry: entry), m: target) ==
     module_in(xs: reverse_consumers_of(target: target), m: entry)
 }
 
-data differential_universe: List<ModuleIdentity> = [mod_a, mod_b, mod_c]
+data differential_universe: List<v2.lens.module_impact_query.ModuleIdentity> = [mod_a, mod_b, mod_c]
 
 test fn witness_reverse_agrees_with_forward_closure_in_both_directions() -> Bool {
   fold_list(

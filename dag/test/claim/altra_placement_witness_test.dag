@@ -394,7 +394,7 @@ fn every_role_established(template: BoardPlacementPlan) -> BoardPlacementPlan {
 
 type IndexedComponents {
   index: Int
-  out: List<PlannedComponent>
+  out: List<product.altra_motherboard.placement.PlannedComponent>
 }
 
 test fn w_a_complete_board_reaches_the_admitted_arm() -> Bool {

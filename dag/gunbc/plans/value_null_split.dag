@@ -1,7 +1,7 @@
 module gunbc.plans.value_null_split
 
 
-fn value_null_split_body() -> List<MarkdownBlock> {
+fn value_null_split_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** lane opened (keen-ferret-250) · **Parent:** model↔realization fork §3.2 · **DESIGN.md open thread** · Linked from [model-realization-fork.md](model-realization-fork.md) and [fail-closed-lockdown.md](fail-closed-lockdown.md) §4 tier-1."),
     p(text: "**Verified against the live tree 2026-07-26.** Census counts are receipts; re-check before acting."),
@@ -53,7 +53,7 @@ fn value_null_split_body() -> List<MarkdownBlock> {
   ]
 }
 
-data value_null_split_plan: Plan = Plan {
+data value_null_split_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "value-null-split",
   title: "Plan — Value::Null split (Optional / Witness / lookup-miss carriers)",
   body: value_null_split_body(),

@@ -2,10 +2,10 @@ module gunbc.auth.github_apps
 
 
 type DeclaredGitHubApp {
-  owner_login: NonEmptyStr
-  app_id: GitHubAppId
-  client_id: NonEmptyStr
-  slug: NonEmptyStr
+  owner_login: std.types.NonEmptyStr
+  app_id: extdeps.github.app.GitHubAppId
+  client_id: std.types.NonEmptyStr
+  slug: std.types.NonEmptyStr
 }
 
 data gunbai_bot_declared: DeclaredGitHubApp = DeclaredGitHubApp {
@@ -36,7 +36,7 @@ type ManagedGitHubAppKeyRole
   | RetiringSigningKey
 
 type ManagedGitHubAppKey {
-  fingerprint: GitHubAppPublicKeyFingerprint
+  fingerprint: extdeps.github.app.GitHubAppPublicKeyFingerprint
   role: ManagedGitHubAppKeyRole
 }
 
@@ -55,27 +55,27 @@ fn app_settings_permissions_locator(app: DeclaredGitHubApp) -> Uri {
 }
 
 type ObservedGitHubAppSigner {
-  app_id: GitHubAppId
-  secret_version: SecretRef
-  secret_content_hash: ContentHash
-  derived_public_fingerprint: GitHubAppPublicKeyFingerprint
-  github_registered_fingerprint: GitHubAppPublicKeyFingerprint
+  app_id: extdeps.github.app.GitHubAppId
+  secret_version: extdeps.cloud.gcp.secret_ref.SecretRef
+  secret_content_hash: std.content_hash.ContentHash
+  derived_public_fingerprint: extdeps.github.app.GitHubAppPublicKeyFingerprint
+  github_registered_fingerprint: extdeps.github.app.GitHubAppPublicKeyFingerprint
 }
 
 type SignerSealFailure
   = SignerNamesDifferentApp {
-      observed_app_id: GitHubAppId
-      declared_app_id: GitHubAppId
+      observed_app_id: extdeps.github.app.GitHubAppId
+      declared_app_id: extdeps.github.app.GitHubAppId
     }
   | SignerFingerprintNotRegistered {
-      derived: GitHubAppPublicKeyFingerprint
-      registered: GitHubAppPublicKeyFingerprint
+      derived: extdeps.github.app.GitHubAppPublicKeyFingerprint
+      registered: extdeps.github.app.GitHubAppPublicKeyFingerprint
     }
 
 type SignerCustody
   = SignerCustodyObserved { signer: ObservedGitHubAppSigner }
   | SignerMaterialAvailabilityUnobserved
-  | SignerMaterialAvailableForImport { source: SecretRef }
+  | SignerMaterialAvailableForImport { source: extdeps.cloud.gcp.secret_ref.SecretRef }
   | SignerKeyGenerationRequired
   | SignerReadbackFailed { cause: SignerSealFailure }
 
@@ -122,38 +122,38 @@ fn signer_seals_app(signer: ObservedGitHubAppSigner, app: DeclaredGitHubApp) -> 
 
 type GitHubAppPermissionChangeRequest {
   app: DeclaredGitHubApp
-  add: List<GitHubAppPermission>
-  settings_locator: Uri
-  reason: NonEmptyStr
+  add: List<extdeps.github.app.GitHubAppPermission>
+  settings_locator: extdeps.uri.Uri
+  reason: std.types.NonEmptyStr
 }
 
 type GitHubInstallationApprovalRequest {
   app: DeclaredGitHubApp
-  installation: GitHubAppInstallationId
-  accept: List<GitHubAppPermission>
-  installation_locator: Uri
-  reason: NonEmptyStr
+  installation: extdeps.github.app.GitHubAppInstallationId
+  accept: List<extdeps.github.app.GitHubAppPermission>
+  installation_locator: extdeps.uri.Uri
+  reason: std.types.NonEmptyStr
 }
 
 type InstallationReadbackCause
   = InstallationReadbackNotAttempted
-  | InstallationReadbackFailed { detail: NonEmptyStr }
+  | InstallationReadbackFailed { detail: std.types.NonEmptyStr }
 
 type GitHubAppControlPlaneState
-  = PermissionObservationRefused { app: DeclaredGitHubApp, duplicate: ObservedGitHubPermissionName }
+  = PermissionObservationRefused { app: DeclaredGitHubApp, duplicate: extdeps.github.app.ObservedGitHubPermissionName }
   | SignerCustodyUnresolved { app: DeclaredGitHubApp, custody: SignerCustody }
   | AppRegistrationUnobserved { app: DeclaredGitHubApp }
   | InstallationUnobserved { app: DeclaredGitHubApp, reason: InstallationReadbackCause }
   | AppRegistrationPermissionMissing { request: GitHubAppPermissionChangeRequest }
   | InstallationPermissionApprovalPending { request: GitHubInstallationApprovalRequest }
-  | InstallationGrantObserved { installation: GitHubAppInstallation }
+  | InstallationGrantObserved { installation: extdeps.github.app.GitHubAppInstallation }
 
 type ObservedInstallation
-  = InstallationReadback { installation: GitHubAppInstallation }
+  = InstallationReadback { installation: extdeps.github.app.GitHubAppInstallation }
   | InstallationReadbackUnavailable { cause: InstallationReadbackCause }
 
 type ObservedAppRegistration
-  = AppRegistrationReadback { app_id: GitHubAppId, requested_permissions: List<ObservedGitHubPermission> }
+  = AppRegistrationReadback { app_id: extdeps.github.app.GitHubAppId, requested_permissions: List<extdeps.github.app.ObservedGitHubPermission> }
   | AppRegistrationReadbackUnavailable
 
 fn registration_missing_permissions(
@@ -329,11 +329,11 @@ type ActionOwner
 type GitHubAppMachineAction
   = DiscoverSignerMaterial { app: DeclaredGitHubApp }
   | BindObservationProducer { required_observation: RequiredObservation }
-  | ImportSignerKeyVersion { app: DeclaredGitHubApp, source: SecretRef }
+  | ImportSignerKeyVersion { app: DeclaredGitHubApp, source: extdeps.cloud.gcp.secret_ref.SecretRef }
   | ReReadSignerCustody { app: DeclaredGitHubApp }
   | ReadBackAppRegistration { app: DeclaredGitHubApp }
   | ReadBackInstallation { app: DeclaredGitHubApp }
-  | RepairPermissionObservation { app: DeclaredGitHubApp, duplicate: ObservedGitHubPermissionName }
+  | RepairPermissionObservation { app: DeclaredGitHubApp, duplicate: extdeps.github.app.ObservedGitHubPermissionName }
 
 type GitHubAppOperatorAction
   = ApplyAppPermissionChange
@@ -341,8 +341,8 @@ type GitHubAppOperatorAction
   | GenerateAppSigningKey
 
 type ControlPlanePostcondition
-  = AppRegistrationRequestsPermissions { add: List<GitHubAppPermission> }
-  | InstallationHoldsPermissions { accept: List<GitHubAppPermission> }
+  = AppRegistrationRequestsPermissions { add: List<extdeps.github.app.GitHubAppPermission> }
+  | InstallationHoldsPermissions { accept: List<extdeps.github.app.GitHubAppPermission> }
   | AppHasRegisteredSigningKey { app: DeclaredGitHubApp }
 
 type RequiredObservation
@@ -351,7 +351,7 @@ type RequiredObservation
   | SignerFingerprintObservation
 
 type BoundObservationProducer {
-  producer: DeclarationRef
+  producer: std.decl_ref.DeclarationRef
 }
 
 type ObservationProducer
@@ -363,7 +363,7 @@ type GitHubAppNextAction
   | MachineActionRequired { action: GitHubAppMachineAction }
   | OperatorActionRequired {
       action: GitHubAppOperatorAction
-      locator: Uri
+      locator: extdeps.uri.Uri
       postcondition: ControlPlanePostcondition
       readback: BoundObservationProducer
     }

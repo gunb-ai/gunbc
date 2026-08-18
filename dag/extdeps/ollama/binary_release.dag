@@ -27,17 +27,17 @@ type OllamaLinuxArchitecture = OllamaLinuxArm64 | OllamaLinuxAmd64
 type OllamaLinuxAssetVariant = OllamaLinuxGenericCuda | OllamaLinuxJetPack5 | OllamaLinuxJetPack6
 
 type OllamaBinaryRelease {
-  version: NonEmptyStr
-  release_page: NonEmptyStr
+  version: std.types.NonEmptyStr
+  release_page: std.types.NonEmptyStr
   architecture: OllamaLinuxArchitecture
   variant: OllamaLinuxAssetVariant
-  archive_format: ArchiveFormat
-  distribution_suffix_style: ArchiveDistributionSuffixStyle
-  archive_layout_note: NonEmptyStr
-  executable_relative_path: NonEmptyStr
-  digest: Digest
-  published_at: NonEmptyStr
-  byte_size: ByteSize
+  archive_format: extdeps.archive.format.ArchiveFormat
+  distribution_suffix_style: extdeps.archive.format.ArchiveDistributionSuffixStyle
+  archive_layout_note: std.types.NonEmptyStr
+  executable_relative_path: std.types.NonEmptyStr
+  digest: extdeps.crypto.hash.Digest
+  published_at: std.types.NonEmptyStr
+  byte_size: std.measure.ByteSize
 }
 
 fn ollama_linux_arch_key(architecture: OllamaLinuxArchitecture) -> String {

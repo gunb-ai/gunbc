@@ -1,23 +1,23 @@
 module v2.test.execution.loop_round_trip
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data loop_emitted_root: Node = dag_fixture_emitted_loop_fn
-data loop_target_model: TargetModel = dag_loop_target_model()
+data loop_target_model: v2.std.compilers.target_model.TargetModel = dag_loop_target_model()
 
 fn loop_canonical_grounding(
   node: Node,
   algebra: Node
-) -> CanonicalGrounding {
-  CanonicalGrounding {
+) -> v2.std.constraints.CanonicalGrounding {
+  v2.std.constraints.CanonicalGrounding {
     node: node,
-    witness: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
+    witness: v2.std.constraints.CanonicalGroundingWitness {
+      structural: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_being_canonical,
         evidence: algebra
       },
-      closedness: StructuralPropertyWitness {
+      closedness: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_candidate_set_closedness,
         evidence: node
       }
@@ -25,7 +25,7 @@ fn loop_canonical_grounding(
   }
 }
 
-fn loop_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
+fn loop_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == dag_fixture_emitted_loop_fn {
     Holds {
       value: loop_canonical_grounding(node: node, algebra: node)
@@ -81,7 +81,7 @@ fn loop_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
     }
   } else {
     Violates {
-      diagnostic: Diagnostic {
+      diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^loop_grounding_miss,
         at: node_locus(node: node),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -96,7 +96,7 @@ fn loop_descent_witness_for(node: Node) -> Witness<v2.std.cardinality.Terminatio
   termination_proof_witness_for_node(n: node)
 }
 
-fn loop_round_trip_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
+fn loop_round_trip_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   match loop_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -111,11 +111,11 @@ fn loop_round_trip_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
   }
 }
 
-fn loop_round_trip_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn loop_round_trip_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   loop_round_trip_inferred_facts_for(node: key)
 }
 
-data loop_inferred_tree: InferredTree = InferredTree {
+data loop_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: loop_emitted_root,
   facts: Map {
     lookup: loop_round_trip_facts_lookup
@@ -128,7 +128,7 @@ fn loop_emit_accepts() -> Outcome<Medium<String>> {
 
 data loop_emit_receipt: Outcome<Medium<String>> = loop_emit_accepts()
 
-fn loop_coercion_quality_is_faithful(q: CoercionQuality) -> Bool {
+fn loop_coercion_quality_is_faithful(q: v2.std.coercion.CoercionQuality) -> Bool {
   match q {
     Exact => true
     Identity => true

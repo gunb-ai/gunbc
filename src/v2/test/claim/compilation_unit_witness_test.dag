@@ -1,21 +1,21 @@
 module v2.test.claim.compilation_unit_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_mod_a: ModuleId = "mod.a" as NonEmptyStr
-data witness_mod_b: ModuleId = "mod.b" as NonEmptyStr
-data witness_mod_c: ModuleId = "mod.c" as NonEmptyStr
+data witness_mod_a: v2.std.compilers.compilation_unit.ModuleId = "mod.a" as std.types.NonEmptyStr
+data witness_mod_b: v2.std.compilers.compilation_unit.ModuleId = "mod.b" as std.types.NonEmptyStr
+data witness_mod_c: v2.std.compilers.compilation_unit.ModuleId = "mod.c" as std.types.NonEmptyStr
 
-data witness_unit_one: CompilationUnitId = "cu-one" as CompilationUnitId
-data witness_unit_two: CompilationUnitId = "cu-two" as CompilationUnitId
-data witness_unit_all: CompilationUnitId = "cu-all" as CompilationUnitId
+data witness_unit_one: v2.std.compilers.compilation_unit.CompilationUnitId = "cu-one" as v2.std.compilers.compilation_unit.CompilationUnitId
+data witness_unit_two: v2.std.compilers.compilation_unit.CompilationUnitId = "cu-two" as v2.std.compilers.compilation_unit.CompilationUnitId
+data witness_unit_all: v2.std.compilers.compilation_unit.CompilationUnitId = "cu-all" as v2.std.compilers.compilation_unit.CompilationUnitId
 
-data witness_type_point: Symbol = ^witness_cu_point
-data witness_type_int: Symbol = ^witness_cu_int
-data witness_fn_use_point: Symbol = ^witness_cu_use_point
+data witness_type_point: v2.std.node.Symbol = ^witness_cu_point
+data witness_type_int: v2.std.node.Symbol = ^witness_cu_int
+data witness_fn_use_point: v2.std.node.Symbol = ^witness_cu_use_point
 
-fn witness_type_atom(sym: Symbol) -> Node {
+fn witness_type_atom(sym: v2.std.node.Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
 }
 
@@ -23,7 +23,7 @@ fn witness_point_struct_conj_body() -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^x },
         target: witness_type_atom(sym: witness_type_int),
       }
@@ -37,11 +37,11 @@ fn witness_fn_taking_point_by_value() -> Node {
       connective: Arrow,
     },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^domain },
         target: witness_type_atom(sym: witness_type_point),
       },
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^codomain },
         target: witness_type_atom(sym: witness_type_int),
       }
@@ -53,22 +53,22 @@ fn witness_exports_for_c() -> List<Node> {
   [witness_fn_taking_point_by_value()]
 }
 
-fn witness_type_defs_for_c() -> List<ModuleTypeDefinitionRow> {
+fn witness_type_defs_for_c() -> List<v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow> {
   [
-    ModuleTypeDefinitionRow {
+    v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow {
       identity: witness_type_point,
       definition: witness_point_struct_conj_body(),
     }
   ]
 }
 
-fn witness_triangle_dag() -> ModuleDag {
-  ModuleDag {
+fn witness_triangle_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
+  v2.std.compilers.compilation_unit.ModuleDag {
     modules: [witness_mod_a, witness_mod_b, witness_mod_c],
     edges: [
-      ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
-      ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
-      ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
+      v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
+      v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
+      v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
     ],
     exports: empty_map()
       |> map_insert(witness_mod_a, Empty)
@@ -81,12 +81,12 @@ fn witness_triangle_dag() -> ModuleDag {
   }
 }
 
-fn witness_chain_dag() -> ModuleDag {
-  ModuleDag {
+fn witness_chain_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
+  v2.std.compilers.compilation_unit.ModuleDag {
     modules: [witness_mod_a, witness_mod_b, witness_mod_c],
     edges: [
-      ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
-      ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
+      v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_a, to: witness_mod_b },
+      v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
     ],
     exports: empty_map()
       |> map_insert(witness_mod_a, Empty)
@@ -99,21 +99,21 @@ fn witness_chain_dag() -> ModuleDag {
   }
 }
 
-fn witness_two_unit_assignment() -> Map<ModuleId, CompilationUnitId> {
+fn witness_two_unit_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
   empty_map()
     |> map_insert(witness_mod_a, witness_unit_one)
     |> map_insert(witness_mod_b, witness_unit_one)
     |> map_insert(witness_mod_c, witness_unit_two)
 }
 
-fn witness_single_unit_assignment() -> Map<ModuleId, CompilationUnitId> {
+fn witness_single_unit_assignment() -> Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> {
   empty_map()
     |> map_insert(witness_mod_a, witness_unit_all)
     |> map_insert(witness_mod_b, witness_unit_all)
     |> map_insert(witness_mod_c, witness_unit_all)
 }
 
-fn witness_partition_fold_two_units() -> List<CompilationUnit> {
+fn witness_partition_fold_two_units() -> List<v2.std.compilers.compilation_unit.CompilationUnit> {
   partition_fold(
     module_dag: witness_triangle_dag(),
     assignment: witness_two_unit_assignment()
@@ -237,9 +237,9 @@ test fn witness_misderived_deps_would_fail_receipt() -> Bool {
 test fn witness_provenance_variants_distinct() -> Bool {
   let explicit = partition_provenance_hand_explicit()
   let derived = partition_provenance_policy_derived(
-    policy: DeclarationRef {
-      module_path: "v2.std.compilers.compilation_unit" as NonEmptyStr,
-      decl_name: "partition_fold" as NonEmptyStr,
+    policy: std.decl_ref.DeclarationRef {
+      module_path: "v2.std.compilers.compilation_unit" as std.types.NonEmptyStr,
+      decl_name: "partition_fold" as std.types.NonEmptyStr,
       field: WholeDeclaration,
     }
   )

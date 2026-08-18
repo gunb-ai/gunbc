@@ -14,8 +14,8 @@ data cursor_cli_program: String = "cursor-agent"
 
 // CURSOR AUTHENTICATES WITH A VALUE, WHICH MAKES IT THE EASY ONE. --api-key takes the key directly and CURSOR_API_KEY is the environment equivalent, so there is no interactive flow, no device code, no perishable artifact and no state root that must be minted before first use. A key placed in a secret store and materialized at the point of invocation is the whole mechanism.\n\nThat is a genuine structural difference from codex rather than a convenience. codex authenticates into a DIRECTORY — CODEX_HOME selects an isolated store containing tokens with an hour-long access lifetime and an opaque durable root — so switching accounts means switching state roots. Cursor carries the credential per invocation, so switching accounts is an argument. A model that assumed one isolation mechanism across providers would have to force one of them into the other's shape.\n\nA login subcommand also exists and writes into ~/.cursor, which is the interactive alternative. It is deliberately NOT modeled as the automation path: it produces host state that cannot be replicated from a secret store, which is exactly the property that makes codex's credential awkward to fleet-provision.
 type CursorAuth
-  = CursorApiKeyArgument { key: NonEmptyStr }
-  | CursorApiKeyEnvironment { key: NonEmptyStr }
+  = CursorApiKeyArgument { key: std.types.NonEmptyStr }
+  | CursorApiKeyEnvironment { key: std.types.NonEmptyStr }
 
 data cursor_api_key_env_var: NonEmptyStr = "CURSOR_API_KEY" as NonEmptyStr
 
@@ -82,14 +82,14 @@ type CursorInvocation {
   force: Bool
   trust_workspace: Bool
   workspace: std.types.FilePath
-  prompt: NonEmptyStr
+  prompt: std.types.NonEmptyStr
 }
 
 data cursor_invocation_carries_environment_note: String = "THE AUTH FIELD WAS NEVER READ, SO BOTH ARMS PRODUCED THE SAME PROCESS. shape_cursor_agent_argv built an argv and returned a List of String, and its accompanying note explained at length why the key is deliberately absent from that argv — which was true, and which meant a CursorApiKeyArgument invocation and a CursorApiKeyEnvironment invocation were byte-identical and equally credential-free. The safe arm was justified in prose and never realized: nothing set CURSOR_API_KEY, so an invocation shaped from either arm authenticates as nobody.\\n\\nThe missing piece is that an argv is not a process. A process is a program, an argv AND an environment, and a credential passed by environment is invisible in a model whose output stops at the argv — there was no field for it to appear in, so 'the key is not in the argv' was simultaneously the security property and the reason the mechanism did not work.\\n\\nSo the shape is the whole invocation. The argument arm puts the key in argv where the CLI accepts it and where every ps and audit log records it; the environment arm puts it in the environment and leaves argv clean. The two are now observably different values, which is what makes the safety claim checkable instead of decorative — a witness can assert that the environment arm leaks nothing into argv AND that it actually binds the variable, and neither assertion was expressible before."
 
 type CursorEnvBinding {
-  name: NonEmptyStr
-  value: NonEmptyStr
+  name: std.types.NonEmptyStr
+  value: std.types.NonEmptyStr
 }
 
 type CursorProcessInvocation {

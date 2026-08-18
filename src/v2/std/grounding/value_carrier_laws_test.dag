@@ -1,7 +1,7 @@
 module v2.test.std_grounding.value_carrier_laws
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn sharing_unobservable_list_holds() -> Bool {
   let shared = [1, 2, 3]
@@ -56,8 +56,8 @@ test fn declared_carriers_preserve_prior_versions_holds() -> Bool {
 }
 
 test fn storage_and_update_persistence_axes_coexist_holds() -> Bool {
-  let storage: PersistenceKind = Ephemeral
-  let update: UpdateVersionPersistence = PersistentUpdate
+  let storage: extdeps.storage.types.PersistenceKind = Ephemeral
+  let update: v2.std.value_carrier.UpdateVersionPersistence = PersistentUpdate
   (storage == Ephemeral) && (update == PersistentUpdate)
 }
 

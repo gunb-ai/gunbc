@@ -1,7 +1,7 @@
 module test.claim.filesystem_write_closure_scale_witness
 
 
-data filesystem_write_closure_scale_anchor: ResourceHandle = ResourceHandle {
+data filesystem_write_closure_scale_anchor: std.resources.ResourceHandle = std.resources.ResourceHandle {
   type: "filesystem",
   resource_id: "closure-scale-witness",
   key: "scale",

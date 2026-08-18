@@ -9,19 +9,19 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type YamlIngestResult
-  = IngestedYaml { value: YamlValue }
+  = IngestedYaml { value: extdeps.languages.yaml.types.YamlValue }
   | YamlIngestRejected { reason: String }
 
 type YamlBlockResult
-  = ParsedYamlBlock { value: YamlValue, next_index: Int }
+  = ParsedYamlBlock { value: extdeps.languages.yaml.types.YamlValue, next_index: Int }
   | YamlBlockRejected { reason: String }
 
 type YamlEntryResult
-  = ParsedYamlEntry { entry: YamlKeyValue, next_index: Int }
+  = ParsedYamlEntry { entry: extdeps.languages.yaml.types.YamlKeyValue, next_index: Int }
   | YamlEntryRejected { reason: String }
 
 type YamlSeqItemResult
-  = ParsedYamlSeqItem { value: YamlValue, next_index: Int }
+  = ParsedYamlSeqItem { value: extdeps.languages.yaml.types.YamlValue, next_index: Int }
   | YamlSeqItemRejected { reason: String }
 
 type YamlLiteralCollectResult {

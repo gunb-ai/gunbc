@@ -5,4 +5,4 @@ data host_module_binding_manifest_note: String = "COMMITTED STUB for the module-
 
 data host_module_binding_count: Int = 0
 
-data host_module_bindings: ModuleStorageIndex = Empty
+data host_module_bindings: v2.compiler.source_authority.ModuleStorageIndex = Empty

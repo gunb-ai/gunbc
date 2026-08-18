@@ -1,8 +1,8 @@
 module extdeps.accessibility.wcag_contrast
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.w3.org/TR/WCAG22/#dfn-relative-luminance"
   }
@@ -55,7 +55,7 @@ fn linearize_channel_scaled(c_scaled: Int) -> Int {
   }
 }
 
-fn rgb_scaled_luminance(rgb: RgbScaled) -> Int {
+fn rgb_scaled_luminance(rgb: extdeps.color.srgb.RgbScaled) -> Int {
   let rl = linearize_channel_scaled(c_scaled: rgb.r)
   let gl = linearize_channel_scaled(c_scaled: rgb.g)
   let bl = linearize_channel_scaled(c_scaled: rgb.b)
@@ -66,25 +66,25 @@ fn relative_luminance_scaled(hue: Int, sat_pct: Int, light_pct: Int) -> Int {
   rgb_scaled_luminance(rgb: hsl_to_rgb_scaled(hue: hue, sat_pct: sat_pct, light_pct: light_pct))
 }
 
-fn srgb8_relative_luminance_scaled_for_max(c: Srgb8, maxv: Int) -> Int {
+fn srgb8_relative_luminance_scaled_for_max(c: extdeps.color.srgb.Srgb8, maxv: Int) -> Int {
   rgb_scaled_luminance(rgb: srgb8_to_scaled_for_max(c: c, maxv: maxv))
 }
 
-fn srgb8_relative_luminance_scaled(c: Srgb8) -> Int? {
+fn srgb8_relative_luminance_scaled(c: extdeps.color.srgb.Srgb8) -> Int? {
   match srgb8_to_scaled(c: c) {
     Present { value: rgb } => Present { value: rgb_scaled_luminance(rgb: rgb) }
     Absent => none
   }
 }
 
-fn srgb8_contrast_ratio_x100_for_max(a: Srgb8, b: Srgb8, maxv: Int) -> Int {
+fn srgb8_contrast_ratio_x100_for_max(a: extdeps.color.srgb.Srgb8, b: extdeps.color.srgb.Srgb8, maxv: Int) -> Int {
   contrast_ratio_x100(
     lum_a_scaled: srgb8_relative_luminance_scaled_for_max(c: a, maxv: maxv),
     lum_b_scaled: srgb8_relative_luminance_scaled_for_max(c: b, maxv: maxv),
   )
 }
 
-fn srgb8_contrast_at_least_for_max(a: Srgb8, b: Srgb8, maxv: Int, threshold_hundredths: Int) -> Bool {
+fn srgb8_contrast_at_least_for_max(a: extdeps.color.srgb.Srgb8, b: extdeps.color.srgb.Srgb8, maxv: Int, threshold_hundredths: Int) -> Bool {
   contrast_at_least_hundredths(
     lum_a_scaled: srgb8_relative_luminance_scaled_for_max(c: a, maxv: maxv),
     lum_b_scaled: srgb8_relative_luminance_scaled_for_max(c: b, maxv: maxv),
@@ -92,7 +92,7 @@ fn srgb8_contrast_at_least_for_max(a: Srgb8, b: Srgb8, maxv: Int, threshold_hund
   )
 }
 
-fn srgb8_contrast_at_least(a: Srgb8, b: Srgb8, threshold_hundredths: Int) -> Bool {
+fn srgb8_contrast_at_least(a: extdeps.color.srgb.Srgb8, b: extdeps.color.srgb.Srgb8, threshold_hundredths: Int) -> Bool {
   match srgb8_relative_luminance_scaled(c: a) {
     Present { value: lum_a } => match srgb8_relative_luminance_scaled(c: b) {
       Present { value: lum_b } => contrast_at_least_hundredths(
@@ -131,7 +131,7 @@ fn hsl_contrast_ratio_x100(hue_a: Int, sat_a: Int, light_a: Int, hue_b: Int, sat
     lum_b_scaled: relative_luminance_scaled(hue: hue_b, sat_pct: sat_b, light_pct: light_b))
 }
 
-fn srgb8_contrast_ratio_x100(a: Srgb8, b: Srgb8) -> Int? {
+fn srgb8_contrast_ratio_x100(a: extdeps.color.srgb.Srgb8, b: extdeps.color.srgb.Srgb8) -> Int? {
   match srgb8_relative_luminance_scaled(c: a) {
     Present { value: lum_a } => match srgb8_relative_luminance_scaled(c: b) {
       Present { value: lum_b } => Present {

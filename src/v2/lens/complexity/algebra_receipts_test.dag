@@ -3,16 +3,16 @@ module v2.test.lens_complexity.algebra_receipts
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 type ComplexityProjectionClaim {
-  input_cost: SymbolicCost
-  expected_complexity: ComplexityBound
-  falsification: Diagnostic
+  input_cost: v2.lens.cost.SymbolicCost
+  expected_complexity: v2.lens.complexity.ComplexityBound
+  falsification: v2.std.diagnostic.Diagnostic
 }
 
 type ComplexityDominanceClaim {
-  lhs: ComplexityBound
-  rhs: ComplexityBound
+  lhs: v2.lens.complexity.ComplexityBound
+  rhs: v2.lens.complexity.ComplexityBound
   expected_dominates: Bool
-  falsification: Diagnostic
+  falsification: v2.std.diagnostic.Diagnostic
 }
 
 data algebra_receipts_x: Node = Node {

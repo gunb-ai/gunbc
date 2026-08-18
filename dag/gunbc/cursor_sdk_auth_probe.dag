@@ -6,12 +6,12 @@ data cursor_sdk_auth_probe_note: String = "Modeled SDK auth probe: classifies a 
 type CursorSdkAuthProbeResult
   = CursorSdkAuthProbeAuthenticated
   | CursorSdkAuthProbeCredentialsRejected {
-      code: CursorSdkErrorCode
+      code: extdeps.llm.cursor_sdk_errors.CursorSdkErrorCode
     }
   | CursorSdkAuthProbeTerminalNonAuthenticationError {
-      code: CursorSdkErrorCode
+      code: extdeps.llm.cursor_sdk_errors.CursorSdkErrorCode
     }
-  | CursorSdkAuthProbeUnclassified { reason: NonEmptyStr }
+  | CursorSdkAuthProbeUnclassified { reason: std.types.NonEmptyStr }
 
 fn cursor_sdk_auth_probe_from_reconcile(
   reconcile: CursorSdkStreamTerminalReconcile,

@@ -1,15 +1,15 @@
 module extdeps.github.pulls
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/rest/pulls/pulls"
   }
 }
 
-data github_cli_pull_merge_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data github_cli_pull_merge_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "cli.github.com/manual/gh_pr_merge"
   }
@@ -54,9 +54,9 @@ type PullTimingObservation {
 
 fn pull_timing_observation(
   pull_number: Int,
-  opened_at: EpochMs,
-  merged_at: EpochMs,
-  source_url: NonEmptyStr,
+  opened_at: std.types.EpochMs,
+  merged_at: std.types.EpochMs,
+  source_url: std.types.NonEmptyStr,
 ) -> PullTimingObservation {
   PullTimingObservation {
     pull_number: pull_number,
@@ -113,7 +113,7 @@ data github_cli_exact_head_merge_note: String = "GitHub CLI documents --match-he
 
 service github.CliPulls {
   operation ListOpenJson {
-    input { repo: NonEmptyStr }
+    input { repo: std.types.NonEmptyStr }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"
@@ -133,9 +133,9 @@ service github.CliPulls {
 
   operation SquashMergeExactHead {
     input {
-      repo: NonEmptyStr
+      repo: std.types.NonEmptyStr
       pull_number: Int
-      expected_head: CommitSha
+      expected_head: std.types.CommitSha
     }
     output {
       success: Bool from "exit_success"
@@ -175,7 +175,7 @@ service github.Pulls {
     }
     output {
       pulls: List<PullRequest>
-      outcome: RestOutcome
+      outcome: extdeps.transports.rest.RestOutcome
     }
     readonly
     transport rest {
@@ -269,14 +269,14 @@ service github.Pulls {
       owner: String
       repo: String
       pull_number: Int
-      commit_id: CommitSha
+      commit_id: std.types.CommitSha
       body: String
       event: ReviewEvent = Comment
       comments: Json
     }
     output {
       id: Int from "id"
-      html_url: NonEmptyStr from "html_url"
+      html_url: std.types.NonEmptyStr from "html_url"
     }
     transport rest {
       method: POST,
@@ -323,7 +323,7 @@ type PullReview {
   html_url: std.types.NonEmptyStr
 }
 
-data structural_coverage_gap_github_pull_review_response_residual: List<CoverageClosureEntry> = [
+data structural_coverage_gap_github_pull_review_response_residual: List<extdeps.coverage.CoverageClosureEntry> = [
   {
     facts: [
       Subject { path: "PullReview" },

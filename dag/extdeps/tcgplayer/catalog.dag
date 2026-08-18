@@ -16,7 +16,7 @@ type CatalogProduct {
   categoryId: Int
   groupId: Int
   url: String?
-  modifiedOn: Timestamp?
+  modifiedOn: std.types.Timestamp?
 }
 
 data structural_coverage_gap_catalog_product_residual: List<CoverageClosureEntry> = [

@@ -1,9 +1,9 @@
 module v2.test.manual.typescript_field_access_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn field_access_binding_spellings() -> Map<Symbol, String> {
+fn field_access_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(empty_map(), ^field_access_binding_object, "o"),
     ^field_access_binding_field,
@@ -11,8 +11,8 @@ fn field_access_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn field_access_target_model() -> TargetModel {
-  TargetModel {
+fn field_access_target_model() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_fn_add_lex(),
@@ -23,7 +23,7 @@ fn field_access_target_model() -> TargetModel {
   }
 }
 
-fn ts_field_access_expr() -> TargetValueExpression {
+fn ts_field_access_expr() -> v2.std.compilers.target_model.TargetValueExpression {
   target_value_expression_field_access(
     base: target_value_expression_binding_ref(binding: ^field_access_binding_object),
     field_name: ^field_access_binding_field

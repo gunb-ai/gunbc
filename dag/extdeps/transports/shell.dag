@@ -1,14 +1,14 @@
 module extdeps.transports.shell
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/utilities/V3_chap02.html"
   }
 }
 
-data shell_transport_fidelity: TransportFidelity = TransportFidelity { depth: S, hermetic: true }
+data shell_transport_fidelity: std.fidelity.TransportFidelity = std.fidelity.TransportFidelity { depth: S, hermetic: true }
 
 type ShellOutputChannel
   = Stdout

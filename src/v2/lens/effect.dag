@@ -2,7 +2,7 @@ module v2.lens.effect
 
 
 type EffectFact {
-  dependencies: List<ClassifiedDependencyView<EffectClassification>>
+  dependencies: List<ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification>>
 }
 
 fn effect_classify(

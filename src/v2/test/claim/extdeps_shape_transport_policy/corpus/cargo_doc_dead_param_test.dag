@@ -1,7 +1,7 @@
 module v2.test.extdeps_shape_transport_policy.corpus.cargo_doc_dead_param
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data cargo_doc_service: String = "cargo.Build"
 data cargo_doc_operation: String = "Doc"

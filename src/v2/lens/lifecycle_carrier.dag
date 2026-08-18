@@ -1,7 +1,7 @@
 module v2.lens.lifecycle_carrier
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // Membership is DECIDABLE -- a field's name and declared type are both readable
 // off the Node tree -- so this is not RatchetForever. It is not a wall today
@@ -9,7 +9,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // carry a given carrier type; the field stays writable and this gate is what
 // refuses it. It dissolves into SubstrateMandatoryTag when that capability
 // exists, at which point the raw form has no constructor and the gate deletes.
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
 }
 
@@ -20,7 +20,7 @@ data construction_justification: ConstructionJustification = ConstructionJustifi
 // `data x_dissolution_trigger: String = "..."` prose declaration is a different
 // population (DESIGN 4c modeling debt) and is not a record field, so it is
 // structurally outside this predicate rather than exempted by it.
-data lifecycle_field_name_rows: List<Symbol> = [
+data lifecycle_field_name_rows: List<v2.std.node.Symbol> = [
   ^dissolve_on,
   ^dissolves_on,
   ^dissolves_when,
@@ -36,7 +36,7 @@ data lifecycle_field_name_rows: List<Symbol> = [
 // reached per field edge corpus-wide -- so the map's O(1) lookup is bought with
 // eight inserts per query and is a pure loss at this size (DESIGN 6, bare
 // minimum cost: a proven cost-shape defect is fixed regardless of realized n).
-fn name_is_lifecycle_field(name: Symbol) -> Bool {
+fn name_is_lifecycle_field(name: v2.std.node.Symbol) -> Bool {
   fold(lifecycle_field_name_rows, init: false, f: fn(acc, nm) {
     acc || (nm == name)
   })
@@ -61,8 +61,8 @@ fn type_is_bare_string(target: Node) -> Bool {
   (nm == ^String) || (nm == ^NonEmptyStr)
 }
 
-fn lifecycle_carrier_diagnostic(carrier: Node) -> Diagnostic {
-  Diagnostic {
+fn lifecycle_carrier_diagnostic(carrier: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^lifecycle_carrier_raw_prose_field,
     at: node_locus(node: carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -73,7 +73,7 @@ fn lifecycle_carrier_diagnostic(carrier: Node) -> Diagnostic {
 // the same reason: the type test is a single symbol comparison on a node already
 // in hand, while the name test walks the row list. Only String and NonEmptyStr
 // fields ever reach the walk.
-fn field_lifecycle_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> {
+fn field_lifecycle_violation(carrier: Node, edge: v2.std.node.Edge) -> Optional<v2.std.diagnostic.Diagnostic> {
   match edge.label {
     Named { name: nm } =>
       if type_is_bare_string(target: edge.target) && name_is_lifecycle_field(name: nm) {
@@ -85,7 +85,7 @@ fn field_lifecycle_violation(carrier: Node, edge: Edge) -> Optional<Diagnostic> 
   }
 }
 
-fn carrier_first_lifecycle_violation(carrier: Node) -> Optional<Diagnostic> {
+fn carrier_first_lifecycle_violation(carrier: Node) -> Optional<v2.std.diagnostic.Diagnostic> {
   match carrier.kind {
     TypeNode { connective: _ } =>
       fold(carrier.children, init: optional_absent(), f: fn(acc, edge) {

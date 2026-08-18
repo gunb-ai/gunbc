@@ -5,7 +5,7 @@ type OccurrenceIdentityConsumerRedDebt {
   id: String
   required_receipt: String
   owner: String
-  dissolution: DissolutionCondition
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 type OccurrenceIdentityReceiptEnrollmentDebt {
@@ -13,7 +13,7 @@ type OccurrenceIdentityReceiptEnrollmentDebt {
   receipt_functions: List<String>
   owner: String
   cause: String
-  dissolution: DissolutionCondition
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 data occurrence_identity_consumer_red_debt_rehome_note: String = "PR 7530 rehomed five rows from namespace-canonical-binding to namespace-reference-derived-closure by their actual acceptance boundary. Four receipts are green by local execution in v1.tests.claim.occurrence_identity_debt_receipt_test, but their consumer debt rows remain until gunbc.ci_layer_roots.parser_transport_witness_entries exists on main and executes them per PR. rebuilt-reference-identity-preservation has a deliberately split load-bearing receipt: w_rebuilt_reference_identity_preservation_executes_holds proves identity reaches the canonical sidecar consumer, while the generated pipeline_occurrence_sidecar_serde_round_trip assertion proves the production compile/reconcile rebuild preserves the exact transport. occurrence_identity_receipt_enrollment_debts tracks both missing enrollment surfaces. inferred-target-anchor-identity still belongs to namespace-canonical-binding because its receipt cannot execute before the production projection sites switch over.\n\none-occurrence-collector-dedupe remains on namespace-reference-derived-closure but cannot yet climb: the rehome test asked whether it conceptually precedes production changeover and missed that no production occurrence-aware repeated-discovery collector exists to observe. merge_occurrence_transports concatenates complete authored transports and validation correctly refuses duplicate authored rows; std.occurrence_binding_resolve P1 correctly refuses duplicate supplied candidate ids; the open structural producer buckets each already-validated declaration once and exposes no repeated-observation seam. None is the collector this receipt requires. The retained row names that missing seam as its next-rung trigger rather than fabricating a test-local deduper."

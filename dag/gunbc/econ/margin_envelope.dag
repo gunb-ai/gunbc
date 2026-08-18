@@ -5,8 +5,8 @@ module gunbc.econ.margin_envelope
 type MarginKind = GrossMargin | OperatingMargin
 
 type MarginEnvelope {
-  margin_low_bp: BasisPoint
-  margin_high_bp: BasisPoint
+  margin_low_bp: std.measure.BasisPoint
+  margin_high_bp: std.measure.BasisPoint
 }
 
 type MarginEnvelopeRefusalCause

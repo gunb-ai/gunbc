@@ -16,11 +16,11 @@ type StructuralResolutionFact {
   dependencies: List<ClassifiedDependencyView<StructuralResolutionStatus>>
 }
 
-fn inferred_facts_for_node(tree: InferredTree, node: Node) -> Witness<InferredFacts> {
+fn inferred_facts_for_node(tree: v2.compiler.infer.InferredTree, node: Node) -> Witness<v2.compiler.infer.InferredFacts> {
   witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
 }
 
-fn status_for_binding_facts(usage_site_facts: Witness<InferredFacts>) -> StructuralResolutionStatus {
+fn status_for_binding_facts(usage_site_facts: Witness<v2.compiler.infer.InferredFacts>) -> StructuralResolutionStatus {
   match usage_site_facts {
     Violates { diagnostic: d } =>
       if d.reason == ^resolve_reason_unbound_symbol {
@@ -35,7 +35,7 @@ fn status_for_binding_facts(usage_site_facts: Witness<InferredFacts>) -> Structu
 }
 
 fn structural_resolution_dependency_kind_classifier() -> DependencyKindClassifier<StructuralResolutionKindPolicy> {
-  DependencyKindClassifier {
+  v2.std.dependency.DependencyKindClassifier {
     contains: OutOfScopeForStructuralResolution,
     binds_to: ReadsBindingFacts,
     type_depends_on: OutOfScopeForStructuralResolution,
@@ -56,7 +56,7 @@ fn structural_resolution_dependency_kind_classifier() -> DependencyKindClassifie
 
 fn structural_resolution_status_for_policy(
   policy: StructuralResolutionKindPolicy,
-  usage_site_facts: Witness<InferredFacts>
+  usage_site_facts: Witness<v2.compiler.infer.InferredFacts>
 ) -> StructuralResolutionStatus {
   match policy {
     ReadsBindingFacts => status_for_binding_facts(usage_site_facts: usage_site_facts)
@@ -65,8 +65,8 @@ fn structural_resolution_status_for_policy(
 }
 
 fn structural_resolution_status_for_view(
-  tree: InferredTree,
-  view: DependencyView
+  tree: v2.compiler.infer.InferredTree,
+  view: v2.std.dependency.DependencyView
 ) -> StructuralResolutionStatus {
   structural_resolution_status_for_policy(
     policy: classify_dependency_kind(
@@ -78,18 +78,18 @@ fn structural_resolution_status_for_view(
 }
 
 fn structural_resolution_classify(
-  tree: InferredTree,
-  view: DependencyView
+  tree: v2.compiler.infer.InferredTree,
+  view: v2.std.dependency.DependencyView
 ) -> ClassifiedDependencyView<StructuralResolutionStatus> {
-  ClassifiedDependencyView {
+  v2.std.dependency.ClassifiedDependencyView {
     dependency: view,
     classification: structural_resolution_status_for_view(tree: tree, view: view)
   }
 }
 
 fn structural_resolution_fact(
-  tree: InferredTree,
-  dependencies: List<DependencyView>
+  tree: v2.compiler.infer.InferredTree,
+  dependencies: List<v2.std.dependency.DependencyView>
 ) -> StructuralResolutionFact {
   StructuralResolutionFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
@@ -98,17 +98,17 @@ fn structural_resolution_fact(
   }
 }
 
-fn fact(tree: InferredTree, dependencies: List<DependencyView>) -> StructuralResolutionFact {
+fn fact(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> StructuralResolutionFact {
   structural_resolution_fact(tree: tree, dependencies: dependencies)
 }
 
-fn witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<StructuralResolutionFact> {
+fn witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<StructuralResolutionFact> {
   Holds {
     value: fact(tree: tree, dependencies: dependencies)
   }
 }
 
-fn at(tree: InferredTree) -> Witness<StructuralResolutionFact> {
+fn at(tree: v2.compiler.infer.InferredTree) -> Witness<StructuralResolutionFact> {
   witness(tree: tree, dependencies: dependency_lens(root: tree.root))
 }
 
@@ -153,6 +153,6 @@ fn fact_eq(a: StructuralResolutionFact, b: StructuralResolutionFact) -> Bool {
   bag_eq(xs: a.dependencies, ys: b.dependencies, eq: structural_resolution_classified_eq)
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

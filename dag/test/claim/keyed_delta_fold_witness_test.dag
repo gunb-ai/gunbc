@@ -19,7 +19,7 @@ fn fixture_key_eq(a: String, b: String) -> Bool {
 }
 
 fn fixture_row(label: String, payload: String) -> KeyedRow<String, FixtureVal> {
-  KeyedRow { row_key: label, value: fixture_val(payload: payload) }
+  std.keyed_row.KeyedRow { row_key: label, value: fixture_val(payload: payload) }
 }
 
 fn fixture_rows_a() -> List<KeyedRow<String, FixtureVal>> {

@@ -4,24 +4,24 @@ module tools.publication_push_shadow
 data publication_push_shadow_note: String = "Slice-1 shadow witness: read-only stopped-line-audit observer replaying observed public pushes through the modeled admission stack. Reports typed, located, counted refusals; does not green, gate, or mutate live push paths. Ordinary sessions still reach the public remote in this slice — the ledger sizes the enforcement stage."
 
 type ObservedPublicPush {
-  session: ModeledSessionId
+  session: tools.publication_publisher.ModeledSessionId
   head: String
-  push: PrePushStdinRow
-  candidate: PublicProjectionPlan
-  decisions: List<PublicationDecisionReceipt>
+  push: extdeps.git.hooks.PrePushStdinRow
+  candidate: gunbc.public_projection.PublicProjectionPlan
+  decisions: List<gunbc.publication_decision.PublicationDecisionReceipt>
 }
 
 type ShadowPushLedgerEntry
   = ShadowPushWouldAdmit {
-      session: ModeledSessionId
+      session: tools.publication_publisher.ModeledSessionId
       head: String
-      push: PrePushStdinRow
+      push: extdeps.git.hooks.PrePushStdinRow
     }
   | ShadowPushWouldRefuse {
-      session: ModeledSessionId
+      session: tools.publication_publisher.ModeledSessionId
       head: String
-      push: PrePushStdinRow
-      admission: PublicWriteAdmission
+      push: extdeps.git.hooks.PrePushStdinRow
+      admission: tools.publication_publisher.PublicWriteAdmission
     }
 
 fn shadow_push_admission(

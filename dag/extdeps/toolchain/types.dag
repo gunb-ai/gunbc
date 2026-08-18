@@ -47,20 +47,20 @@ type RuntimePlatform {
 
 type ToolchainEnvIsolation
   = SharedHomeAcrossJobs
-  | PerJobCargoHome { cargo_home_var: NonEmptyStr, rustup_home_var: NonEmptyStr }
+  | PerJobCargoHome { cargo_home_var: std.types.NonEmptyStr, rustup_home_var: std.types.NonEmptyStr }
   | HermeticContainer
 
 type BuildWrapperKind = CtrlBuild | BakedInImage | NoBuildWrapper
 
 type ToolchainCapability {
-  name: NonEmptyStr
-  version: NonEmptyStr
+  name: std.types.NonEmptyStr
+  version: std.types.NonEmptyStr
   env_isolation: ToolchainEnvIsolation
   build_wrapper: BuildWrapperKind?
-  linked_cache_interface: CacheInterfaceId?
+  linked_cache_interface: std.cache_identity.CacheInterfaceId?
 }
 
 type ToolchainRequirement {
-  name: NonEmptyStr
-  version: NonEmptyStr
+  name: std.types.NonEmptyStr
+  version: std.types.NonEmptyStr
 }

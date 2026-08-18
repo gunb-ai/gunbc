@@ -11,7 +11,7 @@ type GraphReachState {
 }
 
 type GraphReachProjection {
-  edges: List<DependencyView>
+  edges: List<v2.std.dependency.DependencyView>
   roots: List<Node>
 }
 

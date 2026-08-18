@@ -5,9 +5,9 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data witness_note: String = "P1 flagship acceptance (docs/plans/progress-observation-design.md section 5): re-render the CAPTURED crawl window of run 30044816605 through the escalation law and produce named activity where there was silence. The fixture below is not invented — every number is read off that run's log: the heartbeat at t=33m carried current=16107200512 swap=34359738368 psi_some_avg10=9.01 and named no subject, and the module the process was actually inside for the whole window, v2.compiler.normalized_tree, was disclosed only at walk end as typecheck-attribution ms=606984. The renderer is a pure function of the stream, which is exactly what makes replaying a real captured run possible."
 
-data crawl_run_id: NonEmptyStr = "30044816605" as NonEmptyStr
+data crawl_run_id: std.types.NonEmptyStr = "30044816605" as std.types.NonEmptyStr
 
-data crawl_quiet_module: NonEmptyStr = "v2.compiler.normalized_tree" as NonEmptyStr
+data crawl_quiet_module: std.types.NonEmptyStr = "v2.compiler.normalized_tree" as std.types.NonEmptyStr
 
 data crawl_module_wall_ms: Int = 606984
 
@@ -17,30 +17,30 @@ data crawl_heartbeat_swap_bytes: Int = 34359738368
 
 data crawl_heartbeat_pressure_bp: Int = 901
 
-fn crawl_entry_subject() -> ObservationSubject {
-  ObservationSubject {
+fn crawl_entry_subject() -> std.observation.ObservationSubject {
+  std.observation.ObservationSubject {
     segments: [
       RunSegment { id: crawl_run_id },
-      BatchSegment { index: 3, label: "witness discovery" as NonEmptyStr },
-      EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as NonEmptyStr }
+      BatchSegment { index: 3, label: "witness discovery" as std.types.NonEmptyStr },
+      EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as std.types.NonEmptyStr }
     ]
   }
 }
 
-fn crawl_leaf_subject() -> ObservationSubject {
-  ObservationSubject {
+fn crawl_leaf_subject() -> std.observation.ObservationSubject {
+  std.observation.ObservationSubject {
     segments: [
       RunSegment { id: crawl_run_id },
-      BatchSegment { index: 3, label: "witness discovery" as NonEmptyStr },
-      EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as NonEmptyStr },
+      BatchSegment { index: 3, label: "witness discovery" as std.types.NonEmptyStr },
+      EntrySegment { source_path: "dag/test/claim/virtual_media_unification_witness_test.dag" as std.types.NonEmptyStr },
       ModuleSegment { module_path: crawl_quiet_module },
-      PhaseSegment { name: "typecheck" as NonEmptyStr }
+      PhaseSegment { name: "typecheck" as std.types.NonEmptyStr }
     ]
   }
 }
 
-fn crawl_heartbeat() -> HeartbeatSample {
-  HeartbeatSample {
+fn crawl_heartbeat() -> gunbc.observation_ci_render.HeartbeatSample {
+  gunbc.observation_ci_render.HeartbeatSample {
     elapsed: millisecond(count: 1980000),
     active: crawl_leaf_subject(),
     entry_index: 214,
@@ -51,8 +51,8 @@ fn crawl_heartbeat() -> HeartbeatSample {
   }
 }
 
-fn crawl_basis() -> AttentionBasis {
-  AttentionBasis { average: millisecond(count: 1000), maximum: millisecond(count: 5000) }
+fn crawl_basis() -> std.observation.AttentionBasis {
+  std.observation.AttentionBasis { average: millisecond(count: 1000), maximum: millisecond(count: 5000) }
 }
 
 test fn w_human_units_replace_raw_byte_dumps() -> Bool {
@@ -112,21 +112,21 @@ test fn w_escalation_is_recursive_over_the_captured_window() -> Bool {
 }
 
 test fn w_outcome_lines_carry_durations() -> Bool {
-  let event = ObservationEvent {
+  let event = std.observation.ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Done },
     durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 230))),
-    rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
+    rss: MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
   string_contains(s: ci_event_line(event: event, basis: crawl_basis()).text, pattern: "in 230ms")
 }
 
 test fn w_sub_millisecond_duration_never_renders_as_zero() -> Bool {
-  let event = ObservationEvent {
+  let event = std.observation.ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Done },
     durations: observation_durations_wall(elapsed: nanosecond(count: 999999)),
-    rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
+    rss: MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
   let text = ci_event_line(event: event, basis: crawl_basis()).text
   string_contains(s: text, pattern: "in 999999ns") &&
@@ -134,11 +134,11 @@ test fn w_sub_millisecond_duration_never_renders_as_zero() -> Bool {
 }
 
 test fn w_refusal_never_renders_inside_a_collapsed_group() -> Bool {
-  let refusal = ObservationEvent {
+  let refusal = std.observation.ObservationEvent {
     subject: crawl_entry_subject(),
-    transition: Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as NonEmptyStr } },
+    transition: Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as std.types.NonEmptyStr } },
     durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 2472000))),
-    rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
+    rss: MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
   let line = ci_event_line(event: refusal, basis: crawl_basis())
   line.attention == Anomaly &&
@@ -146,11 +146,11 @@ test fn w_refusal_never_renders_inside_a_collapsed_group() -> Bool {
 }
 
 test fn w_routine_green_collapses_inside_a_group() -> Bool {
-  let green = ObservationEvent {
+  let green = std.observation.ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Done },
     durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 230))),
-    rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
+    rss: MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
   let line = ci_event_line(event: green, basis: crawl_basis())
   line.attention == Ambient &&
@@ -159,14 +159,14 @@ test fn w_routine_green_collapses_inside_a_group() -> Bool {
 }
 
 test fn w_failure_and_refusal_are_restated_at_the_end() -> Bool {
-  let summary = ci_run_summary_line(summary: FloorRunSummary {
+  let summary = ci_run_summary_line(summary: gunbc.observation_ci_render.FloorRunSummary {
     entries_complete: 213,
     entries_total: 602,
     refusals: 1,
     failures: 0,
     wall: millisecond(count: 2472000)
   })
-  let restate = ci_refusal_restate_line(subject: crawl_entry_subject(), diagnostic: "FLOOR-BATCH-OVER-BUDGET" as NonEmptyStr)
+  let restate = ci_refusal_restate_line(subject: crawl_entry_subject(), diagnostic: "FLOOR-BATCH-OVER-BUDGET" as std.types.NonEmptyStr)
   string_contains(s: summary.text, pattern: "213 of 602") &&
   string_contains(s: summary.text, pattern: "1 refused") &&
   summary.attention == Anomaly &&
@@ -176,7 +176,7 @@ test fn w_failure_and_refusal_are_restated_at_the_end() -> Bool {
 test fn w_relayed_diagnostic_cannot_mint_workflow_commands() -> Bool {
   let restate = ci_refusal_restate_line(
     subject: crawl_entry_subject(),
-    diagnostic: "budget exceeded\n::error::a child process said this" as NonEmptyStr
+    diagnostic: "budget exceeded\n::error::a child process said this" as std.types.NonEmptyStr
   )
   string_contains(s: restate.text, pattern: "\n| ::error::") &&
   !string_contains(s: restate.text, pattern: "\n::error::")
@@ -203,10 +203,10 @@ test fn w_escalation_emission_stays_bounded_under_unbounded_silence() -> Bool {
 }
 
 test fn w_run_summary_keeps_refused_and_failed_apart() -> Bool {
-  let refused_only = FloorRunSummary { entries_complete: 213, entries_total: 602, refusals: 1, failures: 0, wall: millisecond(count: 2472000) }
-  let failed_only = FloorRunSummary { entries_complete: 601, entries_total: 602, refusals: 0, failures: 1, wall: millisecond(count: 600000) }
-  let both = FloorRunSummary { entries_complete: 200, entries_total: 602, refusals: 2, failures: 3, wall: millisecond(count: 600000) }
-  let clean = FloorRunSummary { entries_complete: 602, entries_total: 602, refusals: 0, failures: 0, wall: millisecond(count: 600000) }
+  let refused_only = gunbc.observation_ci_render.FloorRunSummary { entries_complete: 213, entries_total: 602, refusals: 1, failures: 0, wall: millisecond(count: 2472000) }
+  let failed_only = gunbc.observation_ci_render.FloorRunSummary { entries_complete: 601, entries_total: 602, refusals: 0, failures: 1, wall: millisecond(count: 600000) }
+  let both = gunbc.observation_ci_render.FloorRunSummary { entries_complete: 200, entries_total: 602, refusals: 2, failures: 3, wall: millisecond(count: 600000) }
+  let clean = gunbc.observation_ci_render.FloorRunSummary { entries_complete: 602, entries_total: 602, refusals: 0, failures: 0, wall: millisecond(count: 600000) }
   ci_run_summary_glyph(summary: refused_only) == StatusRefused &&
   ci_run_summary_glyph(summary: failed_only) == NodeFailed &&
   ci_run_summary_glyph(summary: both) == NodeFailed &&
@@ -215,11 +215,11 @@ test fn w_run_summary_keeps_refused_and_failed_apart() -> Bool {
 }
 
 test fn w_unmeasured_duration_names_its_cause_rather_than_vanishing() -> Bool {
-  let event = ObservationEvent {
+  let event = std.observation.ObservationEvent {
     subject: crawl_entry_subject(),
     transition: Concluded { outcome: Done },
-    durations: observation_durations_wall_unavailable(cause: "clock unavailable in this leg" as NonEmptyStr),
-    rss: MeasuredUnavailable { cause: "not sampled per entry" as NonEmptyStr }
+    durations: observation_durations_wall_unavailable(cause: "clock unavailable in this leg" as std.types.NonEmptyStr),
+    rss: MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
   let line = ci_event_line(event: event, basis: crawl_basis())
   string_contains(s: line.text, pattern: "duration unmeasured: clock unavailable in this leg")
@@ -230,8 +230,8 @@ test fn w_unmeasured_duration_names_its_cause_rather_than_vanishing() -> Bool {
 // Batch-grain projection
 // ---------------------------------------------------------------------------
 
-fn proj_batch_subject() -> ObservationSubject {
-  ObservationSubject {
+fn proj_batch_subject() -> std.observation.ObservationSubject {
+  std.observation.ObservationSubject {
     segments: [
       RunSegment { id: "run-proj" },
       BatchSegment { index: 3, label: "witness discovery" },
@@ -239,8 +239,8 @@ fn proj_batch_subject() -> ObservationSubject {
   }
 }
 
-fn proj_leaf_subject(entry: NonEmptyStr) -> ObservationSubject {
-  ObservationSubject {
+fn proj_leaf_subject(entry: std.types.NonEmptyStr) -> std.observation.ObservationSubject {
+  std.observation.ObservationSubject {
     segments: [
       RunSegment { id: "run-proj" },
       BatchSegment { index: 3, label: "witness discovery" },
@@ -249,8 +249,8 @@ fn proj_leaf_subject(entry: NonEmptyStr) -> ObservationSubject {
   }
 }
 
-fn proj_event(subject: ObservationSubject, transition: ObservationTransition) -> ObservationEvent {
-  ObservationEvent {
+fn proj_event(subject: std.observation.ObservationSubject, transition: std.observation.ObservationTransition) -> std.observation.ObservationEvent {
+  std.observation.ObservationEvent {
     subject: subject,
     transition: transition,
     durations: observation_durations_wall(elapsed: nanosecond(count: 1500000)),
@@ -353,7 +353,7 @@ test fn w_RED_a_batch_carrying_a_failure_summarises_as_an_anomaly() -> Bool {
 // glyph, and an absent memory reading must not print as a measurement of zero.
 test fn w_the_seed_seam_renders_one_ascii_line_from_scalars() -> Bool {
   let line = ci_batch_summary_text(
-    batch_index: 2, batch_label: "witness discovery" as NonEmptyStr,
+    batch_index: 2, batch_label: "witness discovery" as std.types.NonEmptyStr,
     declared_population: 9015, passed: 5319, unaffected: 3731, deferred: 1078,
     failed: 0, work: nanosecond(count: 105994413000),
   )
@@ -369,12 +369,12 @@ test fn w_the_seed_seam_renders_one_ascii_line_from_scalars() -> Bool {
 // texts differ anyway. Assert the exact leading token in both directions instead.
 test fn w_RED_the_green_and_failed_summaries_carry_exactly_their_own_status_token() -> Bool {
   let green = ci_batch_summary_text(
-    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    batch_index: 1, batch_label: "b" as std.types.NonEmptyStr,
     declared_population: 3, passed: 3, unaffected: 0, deferred: 0,
     failed: 0, work: nanosecond(count: 1000),
   )
   let red = ci_batch_summary_text(
-    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    batch_index: 1, batch_label: "b" as std.types.NonEmptyStr,
     declared_population: 3, passed: 2, unaffected: 0, deferred: 0,
     failed: 1, work: nanosecond(count: 1000),
   )
@@ -387,12 +387,12 @@ test fn w_RED_the_green_and_failed_summaries_carry_exactly_their_own_status_toke
 // shipped version reported `0 refused` while 1,078 rows sat deferred in a category it did not carry.
 test fn w_RED_a_partition_that_misses_rows_says_so() -> Bool {
   let short = ci_batch_summary_text(
-    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    batch_index: 1, batch_label: "b" as std.types.NonEmptyStr,
     declared_population: 10, passed: 4, unaffected: 0, deferred: 0,
     failed: 0, work: nanosecond(count: 1000),
   )
   let exact = ci_batch_summary_text(
-    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    batch_index: 1, batch_label: "b" as std.types.NonEmptyStr,
     declared_population: 4, passed: 4, unaffected: 0, deferred: 0,
     failed: 0, work: nanosecond(count: 1000),
   )
@@ -402,7 +402,7 @@ test fn w_RED_a_partition_that_misses_rows_says_so() -> Bool {
 
 test fn w_RED_the_seed_summary_claims_no_peak_because_it_has_no_batch_scoped_one() -> Bool {
   let line = ci_batch_summary_text(
-    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    batch_index: 1, batch_label: "b" as std.types.NonEmptyStr,
     declared_population: 1, passed: 1, unaffected: 0, deferred: 0,
     failed: 0, work: nanosecond(count: 1000),
   )
@@ -412,7 +412,7 @@ test fn w_RED_the_seed_summary_claims_no_peak_because_it_has_no_batch_scoped_one
 // The seed supplies no refusal count, so a displayed `0 refused` would be a claim the fold looked.
 test fn w_RED_the_summary_does_not_claim_zero_refused_it_cannot_verify() -> Bool {
   let line = ci_batch_summary_text(
-    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    batch_index: 1, batch_label: "b" as std.types.NonEmptyStr,
     declared_population: 1, passed: 1, unaffected: 0, deferred: 0,
     failed: 0, work: nanosecond(count: 1000),
   )
@@ -421,7 +421,7 @@ test fn w_RED_the_summary_does_not_claim_zero_refused_it_cannot_verify() -> Bool
 
 test fn w_RED_the_summary_duration_is_labelled_work_not_elapsed_wall() -> Bool {
   let line = ci_batch_summary_text(
-    batch_index: 1, batch_label: "b" as NonEmptyStr,
+    batch_index: 1, batch_label: "b" as std.types.NonEmptyStr,
     declared_population: 2, passed: 2, unaffected: 0, deferred: 0,
     failed: 0, work: nanosecond(count: 5000000),
   )
@@ -434,7 +434,7 @@ test fn w_RED_the_summary_duration_is_labelled_work_not_elapsed_wall() -> Bool {
 // was calling a function with the wrong parameter and reading the resulting error as `false`.
 fn proj_grain_says_fold(verbose: Bool, quiet: Bool) -> Bool {
   match routine_rollup_grain_for(
-    verbosity: resolve_verbosity(env: VerbosityEnv { verbose: verbose, quiet: quiet })
+    verbosity: resolve_verbosity(env: gunbc.output_policy.VerbosityEnv { verbose: verbose, quiet: quiet })
   ) {
     Present { value: _ } => true
     Absent => false
@@ -453,7 +453,7 @@ test fn w_RED_verbose_does_not_fold_but_normal_and_quiet_do() -> Bool {
     && !routine_rollup_folds(verbose: true, quiet: false)
 }
 
-fn proj_folds_at_batch(e: ObservationEvent) -> Bool {
+fn proj_folds_at_batch(e: std.observation.ObservationEvent) -> Bool {
   match ci_routine_projection(event: e, grain: Present { value: BatchGrain }) {
     FoldedIntoRollup { at: _ } => true
     EmittedAtLeaf { reason: _ } => false
@@ -481,7 +481,7 @@ test fn w_RED_a_pass_folds_and_a_failure_does_not() -> Bool {
 test fn w_RED_deferred_rows_do_not_over_count_against_the_declared_population() -> Bool {
   let text = ci_batch_summary_text(
     batch_index: 0,
-    batch_label: "witness discovery" as NonEmptyStr,
+    batch_label: "witness discovery" as std.types.NonEmptyStr,
     declared_population: 9478,
     passed: 9478,
     unaffected: 0,
@@ -498,7 +498,7 @@ test fn w_RED_deferred_rows_do_not_over_count_against_the_declared_population() 
 test fn w_RED_a_real_partition_gap_still_reports_with_deferred_rows_present() -> Bool {
   let text = ci_batch_summary_text(
     batch_index: 0,
-    batch_label: "witness discovery" as NonEmptyStr,
+    batch_label: "witness discovery" as std.types.NonEmptyStr,
     declared_population: 10,
     passed: 4,
     unaffected: 1,

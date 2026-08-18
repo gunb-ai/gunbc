@@ -86,12 +86,12 @@ fn local_machine_shape_findings(n: Node, module_qn: Optional<QualifiedName>) -> 
 }
 
 type MachineShapeWalkCtx {
-  module_qn: Optional<QualifiedName>
+  module_qn: Optional<v2.std.qualified_name.QualifiedName>
 }
 
 type MachineShapeWalkResult {
-  module_qn: Optional<QualifiedName>
-  findings: List<Diagnostic>
+  module_qn: Optional<v2.std.qualified_name.QualifiedName>
+  findings: List<v2.std.diagnostic.Diagnostic>
 }
 
 fn machine_shape_walk_init(n: Node, ctx: MachineShapeWalkCtx) -> MachineShapeWalkResult {

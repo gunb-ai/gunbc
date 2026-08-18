@@ -1,8 +1,8 @@
 module v2.compiler.body_producer
 
 
-fn body_producer_diagnostic(reason: Symbol, n: Node) -> Diagnostic {
-  Diagnostic {
+fn body_producer_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -17,7 +17,7 @@ fn attach_arrow_body(arrow: Node, body: Node) -> Outcome<Node> {
           n: arrow,
           children: list_snoc_item(
             xs: arrow.children,
-            item: Edge {
+            item: v2.std.node.Edge {
               label: Named { name: ^arrow_body_edge },
               target: body
             }

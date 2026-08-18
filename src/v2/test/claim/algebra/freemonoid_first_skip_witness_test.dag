@@ -1,6 +1,6 @@
 module v2.test.claim.algebra.freemonoid_first_skip_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_list() -> FreeMonoid<Int> {
   Cons {

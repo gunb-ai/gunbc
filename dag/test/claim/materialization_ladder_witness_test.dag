@@ -11,12 +11,12 @@ fn step(name: String) -> std.materialization_ladder.Frame { std.materialization_
 fn retry(name: String) -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: name, kind: ReplayedFrame { attempts: 3 } } }
 fn fleet() -> std.materialization_ladder.Frame { std.materialization_ladder.Frame { name: "fleet", kind: UnboundedSiblingsFrame } }
 
-fn demand(identity: String, site: List<std.materialization_ladder.Frame>, nature: DemandNature) -> FrameDemand {
-  FrameDemand { identity: identity, site: site, nature: nature }
+fn demand(identity: String, site: List<std.materialization_ladder.Frame>, nature: std.materialization_ladder.DemandNature) -> std.materialization_ladder.FrameDemand {
+  std.materialization_ladder.FrameDemand { identity: identity, site: site, nature: nature }
 }
 
-fn root_content_provider(id: String) -> CacheProvider {
-  CacheProvider {
+fn root_content_provider(id: String) -> std.materialization_ladder.CacheProvider {
+  std.materialization_ladder.CacheProvider {
     id: id,
     scope: empty_frame_path,
     coverage: CoversAllComputations,
@@ -25,8 +25,8 @@ fn root_content_provider(id: String) -> CacheProvider {
   }
 }
 
-fn rust_reference_provider() -> CacheProvider {
-  CacheProvider {
+fn rust_reference_provider() -> std.materialization_ladder.CacheProvider {
+  std.materialization_ladder.CacheProvider {
     id: "rust-reference",
     scope: empty_frame_path,
     coverage: CoversAllComputations,
@@ -35,8 +35,8 @@ fn rust_reference_provider() -> CacheProvider {
   }
 }
 
-fn rust_clone_provider() -> CacheProvider {
-  CacheProvider {
+fn rust_clone_provider() -> std.materialization_ladder.CacheProvider {
+  std.materialization_ladder.CacheProvider {
     id: "rust-clone",
     scope: empty_frame_path,
     coverage: CoversAllComputations,
@@ -45,26 +45,26 @@ fn rust_clone_provider() -> CacheProvider {
   }
 }
 
-fn edge(access: AccessMode, site: String) -> ValueConsumerEdge {
-  ValueConsumerEdge { access: access, site: site }
+fn edge(access: std.materialization_ladder.AccessMode, site: String) -> std.materialization_ladder.ValueConsumerEdge {
+  std.materialization_ladder.ValueConsumerEdge { access: access, site: site }
 }
 
-fn usage(identity: String, consumers: List<ValueConsumerEdge>) -> ValueUsage {
-  ValueUsage { identity: identity, consumers: consumers }
+fn usage(identity: String, consumers: List<std.materialization_ladder.ValueConsumerEdge>) -> std.materialization_ladder.ValueUsage {
+  std.materialization_ladder.ValueUsage { identity: identity, consumers: consumers }
 }
 
-fn count_matching(vs: List<LadderVerdict>, matched: fn(LadderVerdict) -> Bool) -> Int {
+fn count_matching(vs: List<std.materialization_ladder.LadderVerdict>, matched: fn(LadderVerdict) -> Bool) -> Int {
   vs |> fold(init: 0, f: (acc, v) => if matched(v) { acc + 1 } else { acc })
 }
 
-fn two_steps_same_job() -> List<FrameDemand> {
+fn two_steps_same_job() -> List<std.materialization_ladder.FrameDemand> {
   [
     demand(identity: "cargo-release-build", site: [wf(), job(name: "ci"), step(name: "build-a")], nature: PureComputation),
     demand(identity: "cargo-release-build", site: [wf(), job(name: "ci"), step(name: "build-b")], nature: PureComputation)
   ]
 }
 
-fn three_jobs_same_build() -> List<FrameDemand> {
+fn three_jobs_same_build() -> List<std.materialization_ladder.FrameDemand> {
   [
     demand(identity: "cargo-release-build", site: [wf(), job(name: "ci"), step(name: "build")], nature: PureComputation),
     demand(identity: "cargo-release-build", site: [wf(), job(name: "ci_regen"), step(name: "build")], nature: PureComputation),
@@ -115,7 +115,7 @@ test fn obligation_without_provider_is_typed_refusal() -> Bool {
 }
 
 test fn provider_scope_too_narrow_is_refused() -> Bool {
-  let narrow = CacheProvider {
+  let narrow = std.materialization_ladder.CacheProvider {
     id: "job-local-cache",
     scope: [wf(), job(name: "ci")],
     coverage: CoversAllComputations,
@@ -131,7 +131,7 @@ test fn provider_scope_too_narrow_is_refused() -> Bool {
 }
 
 test fn existence_keyed_provider_is_refused() -> Bool {
-  let build_if_absent = CacheProvider {
+  let build_if_absent = std.materialization_ladder.CacheProvider {
     id: "build-if-absent",
     scope: empty_frame_path,
     coverage: CoversAllComputations,
@@ -146,7 +146,7 @@ test fn existence_keyed_provider_is_refused() -> Bool {
   count_matching(vs: vs, matched: v => verdict_is_refused_existence_keyed(v: v, provider_id: "build-if-absent")) == 1
 }
 
-fn single_demand_under_retry() -> List<FrameDemand> {
+fn single_demand_under_retry() -> List<std.materialization_ladder.FrameDemand> {
   [demand(identity: "expensive-stage", site: [wf(), retry(name: "install-retry"), step(name: "attempt")], nature: PureComputation)]
 }
 
@@ -166,7 +166,7 @@ test fn declared_replay_frame_obligates_up_front() -> Bool {
   refused && discharged
 }
 
-fn single_demand_under_fleet() -> List<FrameDemand> {
+fn single_demand_under_fleet() -> List<std.materialization_ladder.FrameDemand> {
   [demand(identity: "cargo-release-build", site: [fleet(), job(name: "run-2026-07-09"), step(name: "build")], nature: PureComputation)]
 }
 
@@ -184,7 +184,7 @@ test fn unbounded_siblings_frame_obligates_up_front() -> Bool {
   )
 }
 
-fn duplicated_measurement() -> List<FrameDemand> {
+fn duplicated_measurement() -> List<std.materialization_ladder.FrameDemand> {
   [
     demand(identity: "cgroup-peak-measurement", site: [wf(), job(name: "ci"), step(name: "measure")], nature: FreshEffect),
     demand(identity: "cgroup-peak-measurement", site: [wf(), job(name: "rust_tests"), step(name: "measure")], nature: FreshEffect)
@@ -205,7 +205,7 @@ test fn fresh_effect_duplication_is_exempt_not_cached() -> Bool {
   )
 }
 
-fn duplicated_world_read(declared: Bool) -> List<FrameDemand> {
+fn duplicated_world_read(declared: Bool) -> List<std.materialization_ladder.FrameDemand> {
   [
     demand(identity: "dns-lookup", site: [wf(), job(name: "ci"), step(name: "resolve")], nature: WorldRead { staleness_envelope_declared: declared }),
     demand(identity: "dns-lookup", site: [wf(), job(name: "rust_tests"), step(name: "resolve")], nature: WorldRead { staleness_envelope_declared: declared })
@@ -236,7 +236,7 @@ test fn single_pure_demand_is_accepted_recompute() -> Bool {
   accepted && materialization_ladder_holds(demands: one, providers: no_cache_providers, cost_floor_exempt: no_cost_floor_exemptions)
 }
 
-fn duplicated_trivial_step() -> List<FrameDemand> {
+fn duplicated_trivial_step() -> List<std.materialization_ladder.FrameDemand> {
   [
     demand(identity: "rustup-pin", site: [wf(), job(name: "ci"), step(name: "pin")], nature: PureComputation),
     demand(identity: "rustup-pin", site: [wf(), job(name: "ci_regen"), step(name: "pin")], nature: PureComputation),
@@ -246,8 +246,8 @@ fn duplicated_trivial_step() -> List<FrameDemand> {
 
 test fn zero_demand_pure_declaration_is_dead_computation() -> Bool {
   let declared = [
-    DeclaredComputation { identity: "unused-transform", frame: [wf(), job(name: "ci")], nature: PureComputation },
-    DeclaredComputation { identity: "cargo-release-build", frame: [wf(), job(name: "ci")], nature: PureComputation }
+    std.materialization_ladder.DeclaredComputation { identity: "unused-transform", frame: [wf(), job(name: "ci")], nature: PureComputation },
+    std.materialization_ladder.DeclaredComputation { identity: "cargo-release-build", frame: [wf(), job(name: "ci")], nature: PureComputation }
   ]
   let demands = [demand(identity: "cargo-release-build", site: [wf(), job(name: "ci"), step(name: "build")], nature: PureComputation)]
   let vs = ladder_zero_demand_verdicts(declared: declared, demands: demands)
@@ -257,8 +257,8 @@ test fn zero_demand_pure_declaration_is_dead_computation() -> Bool {
 
 test fn zero_demand_effect_is_the_use_not_dead() -> Bool {
   let declared = [
-    DeclaredComputation { identity: "deploy-dashboard", frame: [wf(), job(name: "deploy")], nature: IdempotentEffect },
-    DeclaredComputation { identity: "cgroup-peak-measurement", frame: [wf(), job(name: "ci")], nature: FreshEffect }
+    std.materialization_ladder.DeclaredComputation { identity: "deploy-dashboard", frame: [wf(), job(name: "deploy")], nature: IdempotentEffect },
+    std.materialization_ladder.DeclaredComputation { identity: "cgroup-peak-measurement", frame: [wf(), job(name: "ci")], nature: FreshEffect }
   ]
   let vs = ladder_zero_demand_verdicts(declared: declared, demands: [])
   let deploy_ok = count_matching(vs: vs, matched: v => verdict_is_accepted_effect_is_the_use(v: v, identity: "deploy-dashboard")) == 1
@@ -268,7 +268,7 @@ test fn zero_demand_effect_is_the_use_not_dead() -> Bool {
 
 data value_tier_witness_note: String = "Value-tier mirror witnesses: each asserts the refactored ladder verdict agrees cell-by-cell with v1.compiler.ownership semantics — make_decision (take_count = semantic_consumer_count: Consumed only), build_read_only_params (plurality = binding_fan_out: CarryAccess excluded; all access readonly), build_movable_set (borrows = whole_value_borrow_count: Read + Carry, NOT Project). The fold-accumulator case (carries + one take → demoted, v1 re-earns the move via FoldAccUnwrapProof) is asserted at the conservative pre-unwrap semantics."
 
-fn rust_value_providers() -> List<CacheProvider> {
+fn rust_value_providers() -> List<std.materialization_ladder.CacheProvider> {
   [rust_reference_provider(), rust_clone_provider()]
 }
 
@@ -387,8 +387,8 @@ test fn conflicting_natures_on_one_identity_are_refused() -> Bool {
 // eligibility. Before admission moved ahead of first(), the [ineligible,
 // eligible] ordering refused the group on the ineligible provider and never
 // reached the good one, so these two tests disagreed. They must now agree.
-fn unobserved_root_provider(id: String) -> CacheProvider {
-  CacheProvider {
+fn unobserved_root_provider(id: String) -> std.materialization_ladder.CacheProvider {
+  std.materialization_ladder.CacheProvider {
     id: id,
     scope: empty_frame_path,
     coverage: CoversAllComputations,
@@ -397,8 +397,8 @@ fn unobserved_root_provider(id: String) -> CacheProvider {
   }
 }
 
-fn unbounded_root_provider(id: String) -> CacheProvider {
-  CacheProvider {
+fn unbounded_root_provider(id: String) -> std.materialization_ladder.CacheProvider {
+  std.materialization_ladder.CacheProvider {
     id: id,
     scope: empty_frame_path,
     coverage: CoversAllComputations,

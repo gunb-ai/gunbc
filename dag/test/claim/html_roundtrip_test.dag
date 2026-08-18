@@ -3,17 +3,17 @@ module test.claim.html_roundtrip
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn roundtrip_core_node() -> Fragment {
-  Element {
+fn roundtrip_core_node() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "div",
     attributes: [],
     children: [
-      Element {
+      extdeps.browser.Element {
         tag: "p",
         attributes: [],
         children: [FragmentText { content: "hello & world" }],
       },
-      Element {
+      extdeps.browser.Element {
         tag: "a",
         attributes: [attr(name: "href", value: "https://example.com" )],
         children: [FragmentText { content: "link" }],
@@ -29,8 +29,8 @@ test fn witness_roundtrip_core() -> Bool {
   }
 }
 
-fn perturbed_spellings() -> MarkupBracket {
-  MarkupBracket {
+fn perturbed_spellings() -> std.markup.MarkupBracket {
+  std.markup.MarkupBracket {
     tag_open: canonical_html_spellings.tag_open,
     end_tag_open: canonical_html_spellings.end_tag_open,
     tag_close: canonical_html_spellings.tag_close,
@@ -40,8 +40,8 @@ fn perturbed_spellings() -> MarkupBracket {
   }
 }
 
-fn perturbed_node() -> Fragment {
-  Element {
+fn perturbed_node() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "a",
     attributes: [attr(name: "href", value: "/about" )],
     children: [FragmentText { content: "plain text" }],
@@ -56,8 +56,8 @@ test fn witness_roundtrip_under_perturbed_rows() -> Bool {
   }
 }
 
-fn attr_node() -> Fragment {
-  Element {
+fn attr_node() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "a",
     attributes: [attr(name: "href", value: "https://example.com" )],
     children: [FragmentText { content: "click" }],
@@ -82,7 +82,7 @@ test fn witness_core_advertised_lossless() -> Bool {
 }
 
 test fn witness_frontier_unsafe_href_rejected() -> Bool {
-  let serialized = serialize_html_source(node: Element {
+  let serialized = serialize_html_source(node: extdeps.browser.Element {
     tag: "a",
     attributes: [attr(name: "href", value: "javascript:alert(1)" )],
     children: [FragmentText { content: "x" }],
@@ -93,8 +93,8 @@ test fn witness_frontier_unsafe_href_rejected() -> Bool {
   }
 }
 
-fn adjacent_text_node() -> Fragment {
-  Element {
+fn adjacent_text_node() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "span",
     attributes: [],
     children: [

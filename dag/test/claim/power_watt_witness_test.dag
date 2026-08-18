@@ -2,11 +2,11 @@ module test.claim.power_watt
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn total_power_watts(components: List<Watt>) -> Watt {
+fn total_power_watts(components: List<std.measure.Watt>) -> std.measure.Watt {
   watt(count: fold(components, init: 0, f: (acc, w) => acc + watt_count(w: w)))
 }
 
-data example_component_draws: List<Watt> = [
+data example_component_draws: List<std.measure.Watt> = [
   watt(count: 166),
   watt(count: 3), watt(count: 3), watt(count: 3), watt(count: 3),
   watt(count: 3), watt(count: 3), watt(count: 3), watt(count: 3),

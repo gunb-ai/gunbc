@@ -1,8 +1,8 @@
 module extdeps.github.ci
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
   }
@@ -14,7 +14,7 @@ type GitHubActionsWorkflowExtension
   = GitHubActionsWorkflowYml
   | GitHubActionsWorkflowYaml
 
-type GitHubActionsWorkflowStemSegment = NonEmptyStr where brand("GitHubActionsWorkflowStemSegment")
+type GitHubActionsWorkflowStemSegment = std.types.NonEmptyStr where brand("GitHubActionsWorkflowStemSegment")
 
 type GitHubActionsWorkflowStem {
   segment: GitHubActionsWorkflowStemSegment

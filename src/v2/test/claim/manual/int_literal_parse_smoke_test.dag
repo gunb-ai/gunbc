@@ -1,7 +1,7 @@
 module v2.test.manual.int_literal_parse_smoke
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn int_literal_smoke_first_int_token_lexeme(source_text: String) -> Optional<String> {
   let lm = dag_language_model()

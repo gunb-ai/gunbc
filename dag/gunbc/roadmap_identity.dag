@@ -7,13 +7,13 @@ data roadmap_identity_lifecycle_note: String = "PERMANENT NON-REUSE NEEDS A TOMB
 
 type RoadmapIdentityRecord
   = ActiveIdentity {
-      identity: RoadmapNodeIdentity,
-      slug: RoadmapNodeId,
+      identity: gunbc.roadmap_model.RoadmapNodeIdentity,
+      slug: gunbc.roadmap_model.RoadmapNodeId,
     }
   | TombstonedIdentity {
-      identity: RoadmapNodeIdentity,
-      former_slug: RoadmapNodeId,
-      superseded_by: RoadmapNodeIdentity?,
+      identity: gunbc.roadmap_model.RoadmapNodeIdentity,
+      former_slug: gunbc.roadmap_model.RoadmapNodeId,
+      superseded_by: gunbc.roadmap_model.RoadmapNodeIdentity?,
     }
 
 data roadmap_tombstone_roster_note: String = "The first retirement landed 2026-07-31, in the same change that removed its node from declared_roadmap_nodes() — exactly the discipline this roster exists for (a retirement is a state, never a deletion; the failure mode is the 2026-07-27 authority refresh, when a node carrying the only execution contract was removed and nothing noticed). v2-phase-carriers was split by the post-merge verdict on gunbc#7489 into five staged nodes (self-grounding frontier, Translate refusal, inferred-tree completeness, per-kind derivation coverage, target realization gate); its identity is tombstoned with superseded_by naming the split's entry node, so historical links resolve and the identity can never be reused. The 2026-08-01 spine reconciliation (operator verdict on the guarantee lane) retired four more the same way, each superseded_by the recut's entry node: the three monolithic walls whose landed fragments merged at a different grain than the nodes described (floor-method-existence-wall -> method-established-surface-wall via gunbc#7484; floor-call-shape-wall -> call-label-and-surplus-wall via gunbc#7519; floor-inhabitance-wall -> declared-conformance-ground-fragment via gunbc#7484's counted advisory), and the monolithic acceptance door, split into mechanism-then-activation so the door's audit form lands with the carrier instead of after every wall (compiler-accepted-obligation-closure -> accepted-obligation-door-mechanism)."
@@ -82,7 +82,7 @@ fn record_is_active(r: RoadmapIdentityRecord) -> Bool {
 
 // Resolution is EXACTLY-ONE, not first-pick. A filter-map-first lookup answers a duplicate registry with a plausible first row, which is the fabricated-plausible-output arm DESIGN 5 forbids — and it fails at exactly the moment the registry is corrupt, when a confident wrong answer is worst. The three outcomes are distinct because their remedies are: a MISSING identity is an unknown reference; a DUPLICATE is a corrupt registry; found is found. Callers match the sum rather than unwrapping an Optional that cannot tell those apart.
 type RoadmapIdentityResolution
-  = IdentityResolved { identity: RoadmapNodeIdentity }
+  = IdentityResolved { identity: gunbc.roadmap_model.RoadmapNodeIdentity }
   | IdentityUnknown { slug: String }
   | IdentityAmbiguous { slug: String, matches: Int }
 

@@ -1,7 +1,7 @@
 module gunbc.plans.compute_envelope_model
 
 
-fn compute_envelope_model_body() -> List<MarkdownBlock> {
+fn compute_envelope_model_body() -> List<std.markdown.MarkdownBlock> {
   [
     quote(blocks: [
       p(text: "Plan doc. Resolves the §1 ROADMAP pointer **\"CI on compute fabric\"**. Co-owned: **warm-lark-306** (authoring + operator context) and **quick-ant-298** (§1 CI-floor lead; owns the spawn-width slice). CC **bright-stag-194** (ROADMAP owner + test-profile owner for the fan-out cap). DESIGN refs: §1 (time = cost/safety), §2 (Realization — the parallelization arm), §3 (single authority + the measured-peripheral split), §5 (fail-closed; *derive*, don't hand-set)."),
@@ -88,7 +88,7 @@ fn compute_envelope_model_body() -> List<MarkdownBlock> {
   ]
 }
 
-data compute_envelope_model_plan: Plan = Plan {
+data compute_envelope_model_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "compute-envelope-model",
   title: "Compute envelope — one authority for the CI fleet's resource dimensions",
   body: compute_envelope_model_body(),

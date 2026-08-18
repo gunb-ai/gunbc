@@ -18,7 +18,7 @@ type Uri {
   locator: std.types.NonEmptyStr
 }
 
-fn uri_https(locator: NonEmptyStr) -> Uri {
+fn uri_https(locator: std.types.NonEmptyStr) -> Uri {
   Uri {
     scheme: Https
     locator: locator
@@ -43,7 +43,7 @@ fn uri_is_url(uri: Uri) -> Bool {
   uri_scheme_is_http(s: uri.scheme)
 }
 
-fn uri_scheme_wire(s: UriScheme) -> NonEmptyStr {
+fn uri_scheme_wire(s: UriScheme) -> std.types.NonEmptyStr {
   match s {
     Http => "http://"
     Https => "https://"
@@ -57,7 +57,7 @@ fn uri_scheme_wire(s: UriScheme) -> NonEmptyStr {
   }
 }
 
-fn uri_wire(uri: Uri) -> NonEmptyStr {
+fn uri_wire(uri: Uri) -> std.types.NonEmptyStr {
   concat(uri_scheme_wire(s: uri.scheme), uri.locator)
 }
 
@@ -404,12 +404,12 @@ fn uri_percent_encode_code_point(cp: Int) -> UriPercentEncodeComponent {
     UriUnicodeScalarConstructed(validated) =>
       match uri_percent_encode_admitted_scalar_wire(scalar: validated) {
         UriPercentEncodeRefused { cause: cause } => UriPercentComponentRefused { cause: cause }
-        UriPercentEncodeBuilding { wire: wire } => UriPercentComponentEncoded(wire as NonEmptyStr)
+        UriPercentEncodeBuilding { wire: wire } => UriPercentComponentEncoded(wire as std.types.NonEmptyStr)
       }
   }
 }
 
-fn uri_percent_encode_component(value: NonEmptyStr) -> UriPercentEncodeComponent {
+fn uri_percent_encode_component(value: std.types.NonEmptyStr) -> UriPercentEncodeComponent {
   uri_percent_encode_code_points(code_points: (value as String) |> chars)
 }
 
@@ -478,7 +478,7 @@ fn uri_percent_encode_code_points(code_points: List<Int>) -> UriPercentEncodeCom
       Present { value: cause } => UriPercentComponentRefused { cause: cause }
       Absent =>
         UriPercentComponentEncoded(
-          join(uri_percent_encode_outcome_wires(outcomes: outcomes), "") as NonEmptyStr,
+          join(uri_percent_encode_outcome_wires(outcomes: outcomes), "") as std.types.NonEmptyStr,
         )
     }
   }

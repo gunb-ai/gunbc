@@ -10,24 +10,24 @@ data ci_stage0_partition_compile_gate_refusal_prefix: String = "__GUNBC_EFFECT_P
 
 data ci_stage0_partition_compile_gate_authority_note: String = "Build-job compile gate for all seven interim stage0 partition crates (v2.workflow.rust_crate_partition stage0_partition_crate_rows). One extdeps.cargo_build cargo.Build.Check per package_name, FailFast chain — interim backstop that cargo-checks every generated partition crate so a roster or emit drift cannot rot silently off main. Package list is declaration-derived from stage0_partition_package_names, never hand-listed in this emit module."
 
-data ci_stage0_partition_compile_gate_shell_emit_scaffold: Disposition = Scaffold {
+data ci_stage0_partition_compile_gate_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_stage0_partition_compile_gate_emit",
     decl_name: "ci_stage0_partition_compile_gate_script",
     field: WholeDeclaration
   }
 }
 
-data ci_stage0_partition_compile_gate_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_stage0_partition_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for seven partition-crate cargo.Build.Check invocations; DISSOLVES WHEN bash-emit (#5828 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operations — same de-fork as ci_v1_compiler_tests_compile_gate_script and ci_fmt_gate_line")
+data ci_stage0_partition_compile_gate_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_stage0_partition_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for seven partition-crate cargo.Build.Check invocations; DISSOLVES WHEN bash-emit (#5828 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operations — same de-fork as ci_v1_compiler_tests_compile_gate_script and ci_fmt_gate_line")
 
 fn ci_stage0_partition_compile_gate_extra_args(package_name: String) -> List<String> {
   ["-p", package_name]
 }
 
-fn ci_stage0_partition_compile_gate_check_step(package_name: String) -> BashBoundOperationInvocation {
+fn ci_stage0_partition_compile_gate_check_step(package_name: String) -> v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation {
   bash_bind_operation_invocation_host_env_executable(
-    at: OperationRef {
+    at: v2.std.operation_argv.OperationRef {
       path: ci_stage0_partition_compile_gate_cargo_path,
       service: ci_stage0_partition_compile_gate_cargo_service,
       operation: ci_stage0_partition_compile_gate_cargo_operation
@@ -42,20 +42,20 @@ fn ci_stage0_partition_compile_gate_check_step(package_name: String) -> BashBoun
   )
 }
 
-fn ci_stage0_partition_compile_gate_steps() -> List<EffectPlanStep<BashBoundOperationInvocation>> {
+fn ci_stage0_partition_compile_gate_steps() -> List<EffectPlanStep<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>> {
   stage0_partition_package_names()
     |> map(package_name => v2.std.effect_plan.Do { effect: ci_stage0_partition_compile_gate_check_step(package_name: package_name) })
 }
 
-fn ci_stage0_partition_compile_gate_intent() -> EffectPlan<BashBoundOperationInvocation> {
-  EffectPlan {
+fn ci_stage0_partition_compile_gate_intent() -> EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation> {
+  v2.std.effect_plan.EffectPlan {
     steps: ci_stage0_partition_compile_gate_steps(),
     on_failure: FailFast
   }
 }
 
 fn ci_stage0_partition_compile_gate_render(
-  plan: EffectPlan<BashBoundOperationInvocation>
+  plan: EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>
 ) -> String {
   match effect_plan_bash_materialize(plan: plan) {
     EffectPlanBashMaterialized { source: source } => source

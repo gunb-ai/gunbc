@@ -1,147 +1,147 @@
 module extdeps.git.mock_corpus
 
 
-data git_core_mock_case_current_branch: PublishedMockCase = PublishedMockCase {
+data git_core_mock_case_current_branch: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Core.CurrentBranch",
   service: "git.Core",
   operation: "CurrentBranch",
   case_id: 0
 }
 
-data git_core_mock_case_remote_branches: PublishedMockCase = PublishedMockCase {
+data git_core_mock_case_remote_branches: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Core.RemoteBranches",
   service: "git.Core",
   operation: "RemoteBranches",
   case_id: 0
 }
 
-data git_inspect_mock_case_merge_base: PublishedMockCase = PublishedMockCase {
+data git_inspect_mock_case_merge_base: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Inspect.MergeBase",
   service: "git.Inspect",
   operation: "MergeBase",
   case_id: 0
 }
 
-data git_inspect_mock_case_working_tree_status: PublishedMockCase = PublishedMockCase {
+data git_inspect_mock_case_working_tree_status: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Inspect.WorkingTreeStatus",
   service: "git.Inspect",
   operation: "WorkingTreeStatus",
   case_id: 0
 }
 
-data git_inspect_mock_case_ignored_files: PublishedMockCase = PublishedMockCase {
+data git_inspect_mock_case_ignored_files: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Inspect.IgnoredFiles",
   service: "git.Inspect",
   operation: "IgnoredFiles",
   case_id: 0
 }
 
-data git_inspect_mock_case_list_tree_paths_at_revision: PublishedMockCase = PublishedMockCase {
+data git_inspect_mock_case_list_tree_paths_at_revision: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Inspect.ListTreePathsAtRevision",
   service: "git.Inspect",
   operation: "ListTreePathsAtRevision",
   case_id: 0
 }
 
-data git_core_mock_case_ls_files: PublishedMockCase = PublishedMockCase {
+data git_core_mock_case_ls_files: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Core.LsFiles",
   service: "git.Core",
   operation: "LsFiles",
   case_id: 0
 }
 
-data git_core_mock_case_diff: PublishedMockCase = PublishedMockCase {
+data git_core_mock_case_diff: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Core.Diff",
   service: "git.Core",
   operation: "Diff",
   case_id: 0
 }
 
-data git_core_mock_case_diff_unified0: PublishedMockCase = PublishedMockCase {
+data git_core_mock_case_diff_unified0: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Core.DiffUnified0",
   service: "git.Core",
   operation: "DiffUnified0",
   case_id: 0
 }
 
-data git_core_mock_case_diff_name_only: PublishedMockCase = PublishedMockCase {
+data git_core_mock_case_diff_name_only: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Core.DiffNameOnly",
   service: "git.Core",
   operation: "DiffNameOnly",
   case_id: 0
 }
 
-data git_core_mock_case_diff_name_only_merge: PublishedMockCase = PublishedMockCase {
+data git_core_mock_case_diff_name_only_merge: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Core.DiffNameOnlyMerge",
   service: "git.Core",
   operation: "DiffNameOnlyMerge",
   case_id: 0
 }
 
-data git_core_mock_case_diff_name_status: PublishedMockCase = PublishedMockCase {
+data git_core_mock_case_diff_name_status: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Core.DiffNameStatus",
   service: "git.Core",
   operation: "DiffNameStatus",
   case_id: 0
 }
 
-data git_core_mock_case_rev_list: PublishedMockCase = PublishedMockCase {
+data git_core_mock_case_rev_list: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Core.RevList",
   service: "git.Core",
   operation: "RevList",
   case_id: 0
 }
 
-data git_core_mock_case_rev_list_before: PublishedMockCase = PublishedMockCase {
+data git_core_mock_case_rev_list_before: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Core.RevListBefore",
   service: "git.Core",
   operation: "RevListBefore",
   case_id: 0
 }
 
-data git_core_mock_case_show: PublishedMockCase = PublishedMockCase {
+data git_core_mock_case_show: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Core.Show",
   service: "git.Core",
   operation: "Show",
   case_id: 0
 }
 
-data git_inspect_mock_case_show_tree: PublishedMockCase = PublishedMockCase {
+data git_inspect_mock_case_show_tree: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Inspect.ShowTree",
   service: "git.Inspect",
   operation: "ShowTree",
   case_id: 0
 }
 
-data git_core_mock_case_fetch_no_tags: PublishedMockCase = PublishedMockCase {
+data git_core_mock_case_fetch_no_tags: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Core.FetchNoTags",
   service: "git.Core",
   operation: "FetchNoTags",
   case_id: 0
 }
 
-data git_core_mock_case_fetch_prune: PublishedMockCase = PublishedMockCase {
+data git_core_mock_case_fetch_prune: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Core.FetchPrune",
   service: "git.Core",
   operation: "FetchPrune",
   case_id: 0
 }
 
-data git_core_mock_case_head_commit_short: PublishedMockCase = PublishedMockCase {
+data git_core_mock_case_head_commit_short: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Core.HeadCommitShort",
   service: "git.Core",
   operation: "HeadCommitShort",
   case_id: 0
 }
 
-data git_inspect_mock_case_toplevel: PublishedMockCase = PublishedMockCase {
+data git_inspect_mock_case_toplevel: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "git.Inspect.Toplevel",
   service: "git.Inspect",
   operation: "Toplevel",
   case_id: 0
 }
 
-data git_published_mock_corpus: List<PublishedMockCase> = [
+data git_published_mock_corpus: List<std.hermetic_replay.PublishedMockCase> = [
   git_inspect_mock_case_toplevel,
   git_core_mock_case_current_branch,
   git_core_mock_case_remote_branches,

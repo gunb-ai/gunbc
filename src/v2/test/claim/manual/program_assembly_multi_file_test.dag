@@ -1,7 +1,7 @@
 module v2.test.manual.program_assembly_multi_file
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn pa_graft_module_root(root: Node) -> Node {
   match module_header_containment_graft(root: root) {
@@ -10,11 +10,11 @@ fn pa_graft_module_root(root: Node) -> Node {
   }
 }
 
-fn pa_qn_node(seg: Symbol) -> Node {
+fn pa_qn_node(seg: v2.std.node.Symbol) -> Node {
   fold_list_node(
     xs: Cons { head: seg, tail: Empty },
     item_node: fn(sym) {
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
         occurrence_id: SyntheticOccurrence
@@ -23,8 +23,8 @@ fn pa_qn_node(seg: Symbol) -> Node {
   )
 }
 
-fn pa_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node {
-  Node {
+fn pa_module_root(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol, export_atom: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -35,9 +35,9 @@ fn pa_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node 
         name: ^dag_surface_module_header_qualified_name,
         target: pa_qn_node(seg: seg)
       ),
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: export_sym },
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -49,7 +49,7 @@ fn pa_module_root(seg: Symbol, export_sym: Symbol, export_atom: Symbol) -> Node 
 }
 
 fn pa_subject_with_import_use() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -60,9 +60,9 @@ fn pa_subject_with_import_use() -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: pa_qn_node(seg: ^pa_subject_seg)
       ),
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^pa_import_use_sym },
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: ^pa_imported_decl } },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -73,7 +73,7 @@ fn pa_subject_with_import_use() -> Node {
   }
 }
 
-fn pa_cross_file_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+fn pa_cross_file_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: Cons {
     head: pa_graft_module_root(root: pa_subject_with_import_use()),
@@ -92,7 +92,7 @@ fn pa_cross_file_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
   )
 }
 
-fn pa_duplicate_module_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+fn pa_duplicate_module_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: Cons {
     head: pa_graft_module_root(
@@ -117,13 +117,13 @@ fn pa_duplicate_module_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
   )
 }
 
-fn pa_cross_file_admission() -> Admission {
-  Admission {
-    subject: ResolutionSubject {
+fn pa_cross_file_admission() -> v2.compiler.name_resolve.Admission {
+  v2.compiler.name_resolve.Admission {
+    subject: v2.compiler.name_resolve.ResolutionSubject {
       name: Cons { head: ^pa_subject_seg, tail: Empty }
     },
     imports: Cons {
-      head: Import {
+      head: v2.compiler.name_resolve.Import {
         target: Cons { head: ^pa_imported_seg, tail: Empty },
         visibility: ImportVisible
       },
@@ -162,34 +162,34 @@ test fn program_assembly_duplicate_module_roots_rejects() -> Bool {
   }
 }
 
-data pa_ingest_stub_source: Medium<String> = Medium { carried: "module pa_subject_seg", fidelity: Lossless }
-data pa_ingest_source_file_artifact: Artifact = Artifact {
+data pa_ingest_stub_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module pa_subject_seg", fidelity: Lossless }
+data pa_ingest_source_file_artifact: v2.std.artifact.Artifact = v2.std.artifact.Artifact {
   kind: SourceFile,
   id: ^pa_ingest_source_file_artifact,
   file_path: "src/v2/test/fixture/program_assembly/pa_ingest_peer.dag"
 }
 
-data pa_ingest_test_claim_artifact: Artifact = Artifact {
+data pa_ingest_test_claim_artifact: v2.std.artifact.Artifact = v2.std.artifact.Artifact {
   kind: TestClaimArtifact,
   id: ^pa_ingest_test_claim_artifact,
   file_path: "src/v2/test/fixture/pa_ingest_claim.dag"
 }
 
-data pa_ingest_source_file_read: DagSourceReadWitness = DagSourceReadWitness {
+data pa_ingest_source_file_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
   source: pa_ingest_stub_source,
   artifact: pa_ingest_source_file_artifact,
   compilation_unit: ^pa_ingest_peer_cu,
   source_root: V2Tree
 }
 
-data pa_ingest_non_source_read: DagSourceReadWitness = DagSourceReadWitness {
+data pa_ingest_non_source_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
   source: pa_ingest_stub_source,
   artifact: pa_ingest_test_claim_artifact,
   compilation_unit: ^pa_ingest_peer_cu,
   source_root: V2Tree
 }
 
-data pa_ingest_non_source_ingest: SourceRootIngest = Cons {
+data pa_ingest_non_source_ingest: v2.compiler.source_authority.SourceRootIngest = Cons {
   head: pa_ingest_non_source_read,
   tail: Empty
 }
@@ -197,8 +197,8 @@ data pa_ingest_non_source_ingest: SourceRootIngest = Cons {
 test fn program_assembly_ingest_non_source_file_rejects() -> Bool {
   match assemble_program_from_ingest(
     ingest: pa_ingest_non_source_ingest,
-    admission: Admission {
-      subject: ResolutionSubject {
+    admission: v2.compiler.name_resolve.Admission {
+      subject: v2.compiler.name_resolve.ResolutionSubject {
         name: Cons { head: ^pa_subject_seg, tail: Empty }
       },
       imports: Empty

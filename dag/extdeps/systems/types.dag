@@ -22,34 +22,34 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 type CpuCoreCluster {
-  microarchitecture: NonEmptyStr
-  core_count: HardwareThreadCount
+  microarchitecture: std.types.NonEmptyStr
+  core_count: std.measure.HardwareThreadCount
 }
 
 type NetworkPortMedium = WiredEthernet | WirelessLan | ShortRangeWireless | SmartNic
 
 type SystemNetworkPort {
   medium: NetworkPortMedium
-  product_name: NonEmptyStr?
-  bandwidth: Bandwidth?
+  product_name: std.types.NonEmptyStr?
+  bandwidth: std.measure.Bandwidth?
 }
 
 // A discrete CpuModelCatalogRow assumes a socketed, homogeneous-core part with cited per-level cache geometry (extdeps.cpu.types); a discrete GpuModelCatalogRow assumes a PCIe-attached card. Neither shape fits a single-package SoC that fuses a heterogeneous-core CPU cluster and a GPU behind one shared memory pool inside a sealed desktop enclosure with its own board-level NIC/storage/PSU facts -- forcing either would either fabricate cache geometry that is not cited anywhere, or silently drop the CPU/network/storage/power facts the product actually ships with. IntegratedComputeSystemCatalogRow is the system-grain shape for that class of product; it NESTS a GpuModelCatalogRow for the embedded GPU (the one piece that already has a grounded, reusable authority) rather than re-deriving GPU facts inline.
 type IntegratedComputeSystemCatalogRow {
   vendor: Vendor<extdeps.hardware.Hardware>
-  model: NonEmptyStr
-  soc_model: NonEmptyStr
-  cpu_architecture: Architecture
+  model: std.types.NonEmptyStr
+  soc_model: std.types.NonEmptyStr
+  cpu_architecture: extdeps.toolchain.types.Architecture
   cpu_core_clusters: List<CpuCoreCluster>
-  gpu: GpuModelCatalogRow
-  memory: MemoryFacts
-  memory_bus_width: BitWidth
-  memory_data_rate: Hertz
-  memory_bandwidth: Bandwidth
-  storage_capacity: ByteSize
+  gpu: extdeps.gpu.types.GpuModelCatalogRow
+  memory: extdeps.memory.types.MemoryFacts
+  memory_bus_width: std.measure.BitWidth
+  memory_data_rate: std.measure.Hertz
+  memory_bandwidth: std.measure.Bandwidth
+  storage_capacity: std.measure.ByteSize
   network_ports: List<SystemNetworkPort>
-  external_power_supply: Watt
-  soc_thermal_design_power: Watt
+  external_power_supply: std.measure.Watt
+  soc_thermal_design_power: std.measure.Watt
 }
 
 fn integrated_compute_system_cpu_core_count(row: IntegratedComputeSystemCatalogRow) -> Int {

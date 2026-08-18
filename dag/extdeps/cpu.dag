@@ -1,29 +1,29 @@
 module extdeps.cpu
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Central_processing_unit"
   }
 }
 
-fn cpu_vendor(cpu: CpuFacts) -> Vendor<extdeps.hardware.Hardware> {
+fn cpu_vendor(cpu: extdeps.cpu.types.CpuFacts) -> Vendor<extdeps.hardware.Hardware> {
   cpu.catalog.vendor
 }
 
-fn cpu_facts_cores(cpu: CpuFacts) -> Int {
+fn cpu_facts_cores(cpu: extdeps.cpu.types.CpuFacts) -> Int {
   cpu.catalog.cores
 }
 
-fn cpu_facts_threads(cpu: CpuFacts) -> HardwareThreadCount {
+fn cpu_facts_threads(cpu: extdeps.cpu.types.CpuFacts) -> std.measure.HardwareThreadCount {
   cpu.catalog.threads
 }
 
-fn cpu_facts_architecture(cpu: CpuFacts) -> Architecture {
+fn cpu_facts_architecture(cpu: extdeps.cpu.types.CpuFacts) -> extdeps.toolchain.types.Architecture {
   cpu.catalog.architecture
 }
 
-fn cpu_facts_sustained_per_thread_hz(cpu: CpuFacts) -> Hertz {
+fn cpu_facts_sustained_per_thread_hz(cpu: extdeps.cpu.types.CpuFacts) -> std.measure.Hertz {
   cpu.deployment.sustained_per_thread_hz
 }

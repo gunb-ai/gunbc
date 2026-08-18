@@ -3,7 +3,7 @@ module v2.std.symbol_index
 
 
 type GlobalBareBindingState
-  = GlobalBareUnique { node: Node, path: QualifiedName }
+  = GlobalBareUnique { node: Node, path: v2.std.qualified_name.QualifiedName }
   | GlobalBareAmbiguous
 
 type GlobalBareLookup
@@ -12,18 +12,18 @@ type GlobalBareLookup
   | GlobalBareLookupUnbound
 
 type LexicalBindingCandidate {
-  path: QualifiedName
+  path: v2.std.qualified_name.QualifiedName
   node: Node
 }
 
 type LexicalLookup
-  = LexicalHit { node: Node, path: QualifiedName }
+  = LexicalHit { node: Node, path: v2.std.qualified_name.QualifiedName }
   | LexicalAmbiguous { candidates: FreeMonoid<LexicalBindingCandidate> }
   | LexicalUnbound
 
 type SymbolIndex {
-  entries: Map<QualifiedName, Node>
-  global_bare: Map<Symbol, GlobalBareBindingState>
+  entries: Map<v2.std.qualified_name.QualifiedName, Node>
+  global_bare: Map<v2.std.node.Symbol, GlobalBareBindingState>
 }
 
 fn empty_symbol_index() -> SymbolIndex {

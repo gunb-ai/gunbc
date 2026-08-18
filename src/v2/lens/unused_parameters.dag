@@ -20,7 +20,7 @@ type UnusedParametersFact {
 }
 
 fn use_relation_dependency_kind_classifier() -> DependencyKindClassifier<UseRelation> {
-  DependencyKindClassifier {
+  v2.std.dependency.DependencyKindClassifier {
     contains: IsStructuralComposition,
     binds_to: IsUseOfDeclaration,
     type_depends_on: IsNonUseDependency,
@@ -39,12 +39,12 @@ fn use_relation_dependency_kind_classifier() -> DependencyKindClassifier<UseRela
   }
 }
 
-fn use_classify(view: DependencyView) -> ClassifiedDependencyView<UseRelation> {
+fn use_classify(view: v2.std.dependency.DependencyView) -> ClassifiedDependencyView<UseRelation> {
 
   classify_dependency_view(classifier: use_relation_dependency_kind_classifier(), view: view)
 }
 
-fn use_classification_fact(tree: InferredTree, dependencies: List<DependencyView>) -> UseClassificationFact {
+fn use_classification_fact(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> UseClassificationFact {
   UseClassificationFact {
     uses: fold(dependencies, init: [], f: fn(acc, view) {
       list_snoc_item(xs: acc, item: use_classify(view: view))
@@ -52,7 +52,7 @@ fn use_classification_fact(tree: InferredTree, dependencies: List<DependencyView
   }
 }
 
-fn use_classification_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<UseClassificationFact> {
+fn use_classification_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<UseClassificationFact> {
   Holds {
     value: use_classification_fact(tree: tree, dependencies: dependencies)
   }
@@ -110,11 +110,11 @@ fn rollup_unused(use_fact: UseClassificationFact) -> UnusedParametersFact {
   }
 }
 
-fn unused_parameters_fact(tree: InferredTree, dependencies: List<DependencyView>) -> UnusedParametersFact {
+fn unused_parameters_fact(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> UnusedParametersFact {
   rollup_unused(use_fact: use_classification_fact(tree: tree, dependencies: dependencies))
 }
 
-fn unused_parameters_witness(tree: InferredTree, dependencies: List<DependencyView>) -> Witness<UnusedParametersFact> {
+fn unused_parameters_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<UnusedParametersFact> {
   Holds {
     value: unused_parameters_fact(tree: tree, dependencies: dependencies)
   }
@@ -160,6 +160,6 @@ fn unused_parameters_fact_eq(a: UnusedParametersFact, b: UnusedParametersFact) -
   bag_eq(xs: a.unused, ys: b.unused, eq: unused_parameter_fact_eq)
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

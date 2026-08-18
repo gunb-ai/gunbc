@@ -3,13 +3,13 @@ module v2.lens.inert_carrier
 
 data inert_carrier_local_alias_roster_note: String = "Floor hygiene: roster LocalAlias for inert G1 fixture type in qualified_module_projection_stripped_fixture.dag (latent main gap; exposed by W1.2 broad affected set; not W3.1 reachability migration)."
 
-data inert_carrier_row_dissolve: DissolutionCondition = unbound_dissolution(description: "a live consumer reads the carrier; the stale-roster check then forces this row's deletion")
+data inert_carrier_row_dissolve: std.dissolution.DissolutionCondition = unbound_dissolution(description: "a live consumer reads the carrier; the stale-roster check then forces this row's deletion")
 
-fn inert_row(unit: String, reason: String) -> FrontierRow {
+fn inert_row(unit: String, reason: String) -> std.roster_frontier.FrontierRow {
   frontier_row_path(path: unit, reason: reason, dissolution: inert_carrier_row_dissolve)
 }
 
-data inert_carrier_roster: List<FrontierRow> = [
+data inert_carrier_roster: List<std.roster_frontier.FrontierRow> = [
   inert_row(unit: "DownstreamSupportRoster", reason: "modeled downstream coverage-roster carrier from the extdeps modeling preflight (#7571): it is the declared home for support/coverage rows that an upstream module may not carry, and the plan text names it, but no module constructs or reads one yet"),
   inert_row(unit: "CargoDependency", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
   inert_row(unit: "CargoPackage", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
@@ -81,6 +81,6 @@ fn inert_carrier_live_declared_count() -> Int {
   inert_carrier_declared_count()
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

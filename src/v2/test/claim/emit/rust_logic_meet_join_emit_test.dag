@@ -1,20 +1,20 @@
 module v2.test.emit.rust_logic_meet_join_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn meet_join_emit_facts_miss(key: Node) -> Optional<InferredFacts> {
+fn meet_join_emit_facts_miss(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   optional_absent()
 }
 
-fn meet_join_emit_tree_for(root: Node) -> InferredTree {
-  InferredTree {
+fn meet_join_emit_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: root,
     facts: Map { lookup: meet_join_emit_facts_miss }
   }
 }
 
-fn meet_join_emit_source_equals(root: Node, target: TargetModel, expected: String) -> Bool {
+fn meet_join_emit_source_equals(root: Node, target: v2.std.compilers.target_model.TargetModel, expected: String) -> Bool {
   match emit(tree: meet_join_emit_tree_for(root: root), target: target) {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == expected) && (d == None)
@@ -24,7 +24,7 @@ fn meet_join_emit_source_equals(root: Node, target: TargetModel, expected: Strin
 
 fn meet_join_emit_discriminates(
   root: Node,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   expected: String,
   wrong: String
 ) -> Bool {

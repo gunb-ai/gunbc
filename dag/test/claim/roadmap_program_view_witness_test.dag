@@ -3,8 +3,8 @@ module test.claim.roadmap_program_view_witness
 
 data roadmap_program_view_witness_note: String = "SMALL SYNTHETIC BUSINESS WITNESSES for gunbc.roadmap_program_view (operator verdict 2026-08-05): every oracle is PLANTED on a hand-authored fixture graph — never copied from the live roadmap tree (DESIGN section 5). Covers acceptance algebra (receipt moves primary constraint; accepted mid-chain collapses depth), dependency hold (unmet parents block startability), duplicate receipt and duplicate node identity refusal, in-flight overlay, merged-PR and contract non-acceptance, misspelled finish-line/gate refusal, proposed-plane absence, and derived front/constraint facts on the fixture. Live-corpus wiring — that the real roadmap authority projects and every finish line and gate resolves — is ONE separately classified receipt in test.claim.roadmap_program_view_live_corpus_receipt (falsifier substrate long lane), not counted here."
 
-fn fx_ticket(headline: String) -> TicketFields {
-  TicketFields {
+fn fx_ticket(headline: String) -> gunbc.roadmap_status.TicketFields {
+  gunbc.roadmap_status.TicketFields {
     headline: headline,
     brief: "fixture brief",
     displaced_cost: "fixture",
@@ -24,10 +24,10 @@ fn fx_node_custom(
   headline: String,
   bound: Bool,
   sized: Bool,
-) -> RoadmapNode {
-  RoadmapNode {
-    identity: concat("fx_", id) as RoadmapNodeIdentity,
-    node: id as RoadmapNodeId,
+) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: concat("fx_", id) as gunbc.roadmap_model.RoadmapNodeIdentity,
+    node: id as gunbc.roadmap_model.RoadmapNodeId,
     line: TicketLine { done: false, ticket: fx_ticket(headline: headline) },
     carriers: [],
     sizing: if sized {
@@ -41,10 +41,10 @@ fn fx_node_custom(
   }
 }
 
-fn fx_node(id: String, bound: Bool, sized: Bool) -> RoadmapNode {
-  RoadmapNode {
-    identity: concat("fx_", id) as RoadmapNodeIdentity,
-    node: id as RoadmapNodeId,
+fn fx_node(id: String, bound: Bool, sized: Bool) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: concat("fx_", id) as gunbc.roadmap_model.RoadmapNodeIdentity,
+    node: id as gunbc.roadmap_model.RoadmapNodeId,
     line: TicketLine { done: false, ticket: fx_ticket(headline: concat("Fixture: ", id)) },
     carriers: [],
     sizing: if sized {
@@ -58,10 +58,10 @@ fn fx_node(id: String, bound: Bool, sized: Bool) -> RoadmapNode {
   }
 }
 
-fn fx_pr_node(id: String) -> RoadmapNode {
-  RoadmapNode {
-    identity: concat("fx_", id) as RoadmapNodeIdentity,
-    node: id as RoadmapNodeId,
+fn fx_pr_node(id: String) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: concat("fx_", id) as gunbc.roadmap_model.RoadmapNodeIdentity,
+    node: id as gunbc.roadmap_model.RoadmapNodeId,
     line: DerivableLine { prs: [9999], title: concat("Fixture merged-PR node: ", id), description: "merged but never accepted" },
     carriers: [],
     sizing: Sized { intricacy: IntricacyLow, volume: VolumeSmall, repo: "gunbc", acceptance: PrsMerged },
@@ -71,11 +71,11 @@ fn fx_pr_node(id: String) -> RoadmapNode {
   }
 }
 
-fn fx_edge(child: String, parent: String) -> RoadmapEdge {
-  RoadmapEdge { child: child as RoadmapNodeId, parent: parent as RoadmapNodeId }
+fn fx_edge(child: String, parent: String) -> gunbc.roadmap_model.RoadmapEdge {
+  gunbc.roadmap_model.RoadmapEdge { child: child as gunbc.roadmap_model.RoadmapNodeId, parent: parent as gunbc.roadmap_model.RoadmapNodeId }
 }
 
-fn fx_nodes() -> List<RoadmapNode> {
+fn fx_nodes() -> List<gunbc.roadmap_model.RoadmapNode> {
   [
     fx_node(id: "fa", bound: true, sized: true),
     fx_node(id: "fb", bound: true, sized: true),
@@ -86,7 +86,7 @@ fn fx_nodes() -> List<RoadmapNode> {
   ]
 }
 
-fn fx_edges() -> List<RoadmapEdge> {
+fn fx_edges() -> List<gunbc.roadmap_model.RoadmapEdge> {
   [
     fx_edge(child: "fb", parent: "fa"),
     fx_edge(child: "fc", parent: "fb"),
@@ -96,51 +96,51 @@ fn fx_edges() -> List<RoadmapEdge> {
   ]
 }
 
-fn fx_lines() -> List<V1FinishLineSpec> {
-  [ V1FinishLineSpec {
+fn fx_lines() -> List<gunbc.v1_deletion_plan.V1FinishLineSpec> {
+  [ gunbc.v1_deletion_plan.V1FinishLineSpec {
       line: CompilerFixedPoint,
       name: "Fixture finish line",
       claim: "The fixture program completes.",
-      node: "fline" as RoadmapNodeId,
+      node: "fline" as gunbc.roadmap_model.RoadmapNodeId,
   } ]
 }
 
-fn fx_fronts() -> List<ConvergenceFrontSpec> {
+fn fx_fronts() -> List<gunbc.roadmap_program_view.ConvergenceFrontSpec> {
   [
-    ConvergenceFrontSpec {
+    gunbc.roadmap_program_view.ConvergenceFrontSpec {
       front: NamespacePDeriveFront,
       name: "Fixture front one",
       purpose: "fixture",
-      gates: [ "fc" as RoadmapNodeId ],
+      gates: [ "fc" as gunbc.roadmap_model.RoadmapNodeId ],
     },
-    ConvergenceFrontSpec {
+    gunbc.roadmap_program_view.ConvergenceFrontSpec {
       front: V2GenerationFront,
       name: "Fixture front two",
       purpose: "fixture",
-      gates: [ "fd" as RoadmapNodeId ],
+      gates: [ "fd" as gunbc.roadmap_model.RoadmapNodeId ],
     },
   ]
 }
 
-fn fx_receipt_for(n: RoadmapNode) -> RoadmapAcceptanceReceipt {
-  RoadmapAcceptanceReceipt {
+fn fx_receipt_for(n: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_model.RoadmapAcceptanceReceipt {
+  gunbc.roadmap_model.RoadmapAcceptanceReceipt {
     node: n.node,
     criteria_digest: roadmap_criteria_digest(t: fx_ticket(headline: concat("Fixture: ", n.node as String))),
     red_control: RedControlExecuted {
-      witness_module: "test.claim.roadmap_program_view_witness" as NonEmptyStr,
-      witness_fn: "fixture" as NonEmptyStr,
-      executed_on: "2026-08-02" as NonEmptyStr,
+      witness_module: "test.claim.roadmap_program_view_witness" as std.types.NonEmptyStr,
+      witness_fn: "fixture" as std.types.NonEmptyStr,
+      executed_on: "2026-08-02" as std.types.NonEmptyStr,
     },
     handback: HandbackDelivered {
-      first_artifact: "fixture-artifact" as NonEmptyStr,
+      first_artifact: "fixture-artifact" as std.types.NonEmptyStr,
       further_artifacts: [],
     },
-    accepted_by: "fixture" as NonEmptyStr,
-    accepted_on: "2026-08-02" as NonEmptyStr,
+    accepted_by: "fixture" as std.types.NonEmptyStr,
+    accepted_on: "2026-08-02" as std.types.NonEmptyStr,
   }
 }
 
-fn fx_view(receipts: List<RoadmapAcceptanceReceipt>, in_flight: List<String>) -> V1ProgramViewResult {
+fn fx_view(receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>, in_flight: List<String>) -> gunbc.roadmap_program_view.V1ProgramViewResult {
   program_view(
     lines: fx_lines(), fronts: fx_fronts(),
     nodes: fx_nodes(), edges: fx_edges(),
@@ -148,12 +148,12 @@ fn fx_view(receipts: List<RoadmapAcceptanceReceipt>, in_flight: List<String>) ->
   )
 }
 
-fn fx_derived(receipts: List<RoadmapAcceptanceReceipt>, in_flight: List<String>) -> V1DeletionProgramView {
+fn fx_derived(receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>, in_flight: List<String>) -> gunbc.roadmap_program_view.V1DeletionProgramView {
   match fx_view(receipts: receipts, in_flight: in_flight) {
     ProgramViewDerived { view } => view
-    ProgramViewRefused { causes: _ } => V1DeletionProgramView {
+    ProgramViewRefused { causes: _ } => gunbc.roadmap_program_view.V1DeletionProgramView {
       finish_lines: [], fronts: [],
-      remaining: RemainingShape {
+      remaining: gunbc.roadmap_program_view.RemainingShape {
         sequential_depth: 0 - 1, open_fronts: 0 - 1, startable_now: 0 - 1,
         in_flight: 0 - 1, dependency_held: 0 - 1, contract_held: 0 - 1, unsized: 0 - 1,
       },
@@ -162,7 +162,7 @@ fn fx_derived(receipts: List<RoadmapAcceptanceReceipt>, in_flight: List<String>)
   }
 }
 
-fn fx_line_view(receipts: List<RoadmapAcceptanceReceipt>, in_flight: List<String>) -> FinishLineView? {
+fn fx_line_view(receipts: List<gunbc.roadmap_model.RoadmapAcceptanceReceipt>, in_flight: List<String>) -> gunbc.roadmap_program_view.FinishLineView? {
   fx_derived(receipts: receipts, in_flight: in_flight).finish_lines |> first
 }
 
@@ -227,16 +227,16 @@ test fn witness_acceptance_moves_the_primary_constraint() -> Bool {
 
 test fn witness_red_misspelled_identities_refuse_with_located_causes() -> Bool {
   let bad_line = program_view(
-    lines: [ V1FinishLineSpec {
+    lines: [ gunbc.v1_deletion_plan.V1FinishLineSpec {
       line: CompilerFixedPoint, name: "typo", claim: "typo",
-      node: "fline-typo" as RoadmapNodeId,
+      node: "fline-typo" as gunbc.roadmap_model.RoadmapNodeId,
     } ],
     fronts: fx_fronts(), nodes: fx_nodes(), edges: fx_edges(), receipts: [], in_flight: [])
   let bad_gate = program_view(
     lines: fx_lines(),
-    fronts: [ ConvergenceFrontSpec {
+    fronts: [ gunbc.roadmap_program_view.ConvergenceFrontSpec {
       front: V2GenerationFront, name: "typo front", purpose: "typo",
-      gates: [ "fd-typo" as RoadmapNodeId ],
+      gates: [ "fd-typo" as gunbc.roadmap_model.RoadmapNodeId ],
     } ],
     nodes: fx_nodes(), edges: fx_edges(), receipts: [], in_flight: [])
   let line_refused = match bad_line {
@@ -325,20 +325,20 @@ test fn witness_unmet_parents_block_startability() -> Bool {
 }
 
 test fn witness_red_merged_prs_and_contracts_do_not_accept() -> Bool {
-  let bogus_receipt = RoadmapAcceptanceReceipt {
-    node: "fe" as RoadmapNodeId,
+  let bogus_receipt = gunbc.roadmap_model.RoadmapAcceptanceReceipt {
+    node: "fe" as gunbc.roadmap_model.RoadmapNodeId,
     criteria_digest: roadmap_criteria_digest(t: fx_ticket(headline: "Fixture: fe")),
     red_control: RedControlExecuted {
-      witness_module: "test.claim.roadmap_program_view_witness" as NonEmptyStr,
-      witness_fn: "fixture" as NonEmptyStr,
-      executed_on: "2026-08-02" as NonEmptyStr,
+      witness_module: "test.claim.roadmap_program_view_witness" as std.types.NonEmptyStr,
+      witness_fn: "fixture" as std.types.NonEmptyStr,
+      executed_on: "2026-08-02" as std.types.NonEmptyStr,
     },
     handback: HandbackDelivered {
-      first_artifact: "fixture-artifact" as NonEmptyStr,
+      first_artifact: "fixture-artifact" as std.types.NonEmptyStr,
       further_artifacts: [],
     },
-    accepted_by: "fixture" as NonEmptyStr,
-    accepted_on: "2026-08-02" as NonEmptyStr,
+    accepted_by: "fixture" as std.types.NonEmptyStr,
+    accepted_on: "2026-08-02" as std.types.NonEmptyStr,
   }
   let with_bogus = fx_line_view(receipts: [ bogus_receipt ], in_flight: [])
   match with_bogus {
@@ -380,7 +380,7 @@ test fn witness_fixture_every_front_contributes_to_some_line() -> Bool {
       lv.contributing_fronts |> any(c => program_front_key(front: c) == fv.key)))
 }
 
-fn probe_constraint_iff(lv: FinishLineView) -> Bool {
+fn probe_constraint_iff(lv: gunbc.roadmap_program_view.FinishLineView) -> Bool {
   match lv.constraint {
     Absent => lv.accepted
     Present { value: _ } => !lv.accepted

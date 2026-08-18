@@ -1,11 +1,11 @@
 module gunbc.srv3_boot_once_cd
 
 
-data srv3_boot_once_apply_read_back_sleep: Second = second(count: 45)
+data srv3_boot_once_apply_read_back_sleep: std.measure.Second = second(count: 45)
 
-data srv3_boot_once_cd_secret_debt: Disposition = Scaffold {
+data srv3_boot_once_cd_secret_debt: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.filesystem.filesystem_io",
     decl_name: "Filesystem",
     field: WholeDeclaration
@@ -15,19 +15,19 @@ data srv3_boot_once_cd_secret_debt: Disposition = Scaffold {
 data srv3_boot_cd_body_path: String = "/tmp/srv3_boot_cd_body.json"
 data srv3_reset_body_path: String = "/tmp/srv3_reset_body.json"
 
-data srv3_boot_cd_target: RedfishBootSourceOverrideTarget = BootTargetCd
-data srv3_boot_cd_enabled: RedfishBootSourceOverrideEnabled = BootOverrideOnce
-data srv3_boot_cd_mode: RedfishBootSourceOverrideMode = BootOverrideModeUefi
-data srv3_boot_cd_reset_type: RedfishResetType = ResetForceRestart
+data srv3_boot_cd_target: extdeps.bmc.types.RedfishBootSourceOverrideTarget = BootTargetCd
+data srv3_boot_cd_enabled: extdeps.bmc.types.RedfishBootSourceOverrideEnabled = BootOverrideOnce
+data srv3_boot_cd_mode: extdeps.bmc.types.RedfishBootSourceOverrideMode = BootOverrideModeUefi
+data srv3_boot_cd_reset_type: extdeps.bmc.types.RedfishResetType = ResetForceRestart
 
-fn srv3_boot_cd_override_mode_valid_for_arm64(mode: RedfishBootSourceOverrideMode) -> Bool {
+fn srv3_boot_cd_override_mode_valid_for_arm64(mode: extdeps.bmc.types.RedfishBootSourceOverrideMode) -> Bool {
   match mode {
     BootOverrideModeUefi => true
     BootOverrideModeLegacy => false
   }
 }
 
-fn srv3_boot_cd_override_mode_refusal(mode: RedfishBootSourceOverrideMode) -> String? {
+fn srv3_boot_cd_override_mode_refusal(mode: extdeps.bmc.types.RedfishBootSourceOverrideMode) -> String? {
   if srv3_boot_cd_override_mode_valid_for_arm64(mode: mode) {
     none
   } else {
@@ -37,19 +37,19 @@ fn srv3_boot_cd_override_mode_refusal(mode: RedfishBootSourceOverrideMode) -> St
   }
 }
 
-func srv3_boot_once_cd() -> ProcessExit
+func srv3_boot_once_cd() -> std.process.ProcessExit
   uses net: std.resources.Network
 {
   srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_default_approval)
 }
 
-func srv3_boot_once_cd_operator_approved() -> ProcessExit
+func srv3_boot_once_cd_operator_approved() -> std.process.ProcessExit
   uses net: std.resources.Network
 {
   srv3_boot_once_cd_gated(approval: srv3_boot_once_cd_operator_granted_approval)
 }
 
-func srv3_boot_once_cd_gated(approval: WorkflowApprovalState) -> ProcessExit
+func srv3_boot_once_cd_gated(approval: gunbc.workflow_escalation.WorkflowApprovalState) -> std.process.ProcessExit
   uses net: std.resources.Network
 {
   let disposition = srv3_boot_once_cd_workflow_disposition(approval: approval)
@@ -66,7 +66,7 @@ func srv3_boot_once_cd_gated(approval: WorkflowApprovalState) -> ProcessExit
   }
 }
 
-func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessExit
+func srv3_boot_once_cd_resolved(resolution: gunbc.srv3_bmc_credential_resolve.BmcCredentialResolution) -> std.process.ProcessExit
   uses net: std.resources.Network
 {
   let plan = srv3_onboarding_plan
@@ -110,9 +110,9 @@ func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessE
       }
       let patch = redfish.Http.SetBootSourceOverride(
         bmc_host: host,
-        netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+        netrc_file: bmc_onboard_netrc_path as std.types.NonEmptyStr,
         system_id: asrock_altrad8ud_redfish_system_id,
-        request_body_file: srv3_boot_cd_body_path as NonEmptyStr
+        request_body_file: srv3_boot_cd_body_path as std.types.NonEmptyStr
       )
       if patch.success == false {
         return exit_failure(reason: concat("boot-once-cd: PATCH boot override failed: ", patch.body))
@@ -126,9 +126,9 @@ func srv3_boot_once_cd_resolved(resolution: BmcCredentialResolution) -> ProcessE
 
       let rst = redfish.Http.ResetSystem(
         bmc_host: host,
-        netrc_file: bmc_onboard_netrc_path as NonEmptyStr,
+        netrc_file: bmc_onboard_netrc_path as std.types.NonEmptyStr,
         system_id: asrock_altrad8ud_redfish_system_id,
-        request_body_file: srv3_reset_body_path as NonEmptyStr
+        request_body_file: srv3_reset_body_path as std.types.NonEmptyStr
       )
       return if rst.success {
         ExitSuccess

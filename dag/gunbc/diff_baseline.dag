@@ -16,15 +16,15 @@ data diff_baseline_exact_replay_law: String = "Exact replay selects ExactReplayB
 data diff_baseline_source_conflict_law: String = "GUNBC_DIFF_WINDOW_PATH and GUNBC_CI_DIFF_BASE are independent baseline authorities. When both are set, resolve_diff_baseline refuses with BaselineSourceConflict rather than picking an order — the collision is typed evidence, not a silent precedence guess."
 
 type DiffBaseline
-  = MergeTarget { ref: GitRef }
+  = MergeTarget { ref: std.types.GitRef }
   | ExactReplayBoundary {
-      base: GitObjectId,
-      head: GitObjectId,
-      observed_relation: GitObservedMergeBase,
+      base: extdeps.git.object_store.GitObjectId,
+      head: extdeps.git.object_store.GitObjectId,
+      observed_relation: gunbc.git_diff_change_window.GitObservedMergeBase,
     }
-  | PushBefore { ref: GitRef }
-  | PushParent { ref: GitRef }
-  | OperatorOverride { ref: GitRef }
+  | PushBefore { ref: std.types.GitRef }
+  | PushParent { ref: std.types.GitRef }
+  | OperatorOverride { ref: std.types.GitRef }
 
 type PushBeforeInput
   = PushBeforeSha { sha: String }
@@ -37,7 +37,7 @@ type CiDiffEvent {
   base_ref: String?
   push_before: PushBeforeInput?
   head_sha: String?
-  diff_window: GitDiffWindowObservation?
+  diff_window: gunbc.git_diff_change_window.GitDiffWindowObservation?
 }
 
 type DiffBaselineResolution

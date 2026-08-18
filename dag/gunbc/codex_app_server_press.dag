@@ -15,7 +15,7 @@ type AccountTripDigestMode
   | AccountTripDigestRetainPrivateSha512
 
 type CodexRuntimeBundleReceiptRef {
-  receipt_identity: ContentHash
+  receipt_identity: std.content_hash.ContentHash
 }
 
 type ProviderProbeKey = NonEmptyStr
@@ -26,7 +26,7 @@ type AmbientCodexCredentialContext {
 
 type CodexAccountPreflightSubject {
   runtime: CodexRuntimeBundleReceiptRef
-  interface: ProviderInterfaceBinding
+  interface: gunbc.provider_interface_binding.ProviderInterfaceBinding
   probe_key: ProviderProbeKey
   credential: AmbientCodexCredentialContext
 }
@@ -47,8 +47,8 @@ data codex_credential_liveness_note: String = "account/read IS NOT credential li
 
 type CodexCredentialLiveness
   = CodexCredentialLive { bucket_count: Int }
-  | CodexCredentialDead { reason: NonEmptyStr }
-  | CodexCredentialLivenessUnobserved { reason: NonEmptyStr }
+  | CodexCredentialDead { reason: std.types.NonEmptyStr }
+  | CodexCredentialLivenessUnobserved { reason: std.types.NonEmptyStr }
 
 data codex_supervised_turn_delegation_note: String = "Supervised-runner execution lease, runner-written terminal receipt, and turn/start admission live in gunbc.codex_supervised_turn on std.temporal_effect HeldLease — not a forked session carrier in this module."
 
@@ -70,7 +70,7 @@ type AccountTripFrameDisposition
   | AccountTripLoginRequiredSignal
   | AccountTripQuotaSignal
   | AccountTripMissing
-  | AccountTripNativeCauseUnknown { message: NonEmptyStr }
+  | AccountTripNativeCauseUnknown { message: std.types.NonEmptyStr }
   | AccountTripNativeCauseNumericCode { code: Int }
   | AccountTripNativeCauseMessageUnreadable
 
@@ -87,28 +87,28 @@ type AccountStandingClassification
   | AccountStandingIncomplete
 
 type CodexRateLimitBucketVerdict
-  = CodexBucketCapacityAvailable { limit_id: NonEmptyStr }
+  = CodexBucketCapacityAvailable { limit_id: std.types.NonEmptyStr }
   | CodexBucketUnavailableUntilReset {
-      limit_id: NonEmptyStr
-      reached_type: NonEmptyStr?
-      resets_at: EpochSecs?
+      limit_id: std.types.NonEmptyStr
+      reached_type: std.types.NonEmptyStr?
+      resets_at: std.types.EpochSecs?
     }
-  | CodexBucketCapacityUnknown { limit_id: NonEmptyStr }
+  | CodexBucketCapacityUnknown { limit_id: std.types.NonEmptyStr }
 
 data codex_account_realm_note: String = "THE REALM IS THE FACT THE DISPOSITION THREW AWAY. disposition_from_account_read_result decodes `account` to AccountTripResultOk when the object is nonempty and stops there, so an apiKey account, a Bedrock account and a personal ChatGPT subscription all reach the same Ready. Those are three different credential realizations (extdeps.llm.codex_app_server codex_account_union_note), and a profile requiring personal ChatGPT OAuth is satisfied by exactly one of them.\n\nThis coproduct is the decode of that union, plus the states the wire can reach that the union does not name: a null or absent account, a `type` this pin does not recognize, and a plan string outside the cited enum. Every one of those is its own arm, because the remedies differ — log in, update the pin, refuse the profile.\n\nCodexChatgptRealm carries the decoded plan rather than a Bool because entitlement is NOT derivable here. Which plans entitle which work is gunbc policy and lives at the standing bridge; this module's job is to say truthfully what upstream reported."
 
 type CodexPlanTypeReading
-  = CodexPlanTypeObserved { plan: CodexPlanType }
-  | CodexPlanTypeUnrecognized { native: NonEmptyStr }
-  | CodexPlanTypeMalformed { cause: NonEmptyStr }
+  = CodexPlanTypeObserved { plan: extdeps.llm.codex_app_server.CodexPlanType }
+  | CodexPlanTypeUnrecognized { native: std.types.NonEmptyStr }
+  | CodexPlanTypeMalformed { cause: std.types.NonEmptyStr }
 
 type CodexAccountRealm
   = CodexApiKeyRealm
   | CodexAmazonBedrockRealm
   | CodexChatgptRealm { plan: CodexPlanTypeReading }
   | CodexAccountRealmAbsent
-  | CodexAccountRealmUnrecognizedType { native: NonEmptyStr }
-  | CodexAccountRealmUnobserved { reason: NonEmptyStr }
+  | CodexAccountRealmUnrecognizedType { native: std.types.NonEmptyStr }
+  | CodexAccountRealmUnobserved { reason: std.types.NonEmptyStr }
 
 fn codex_plan_type_from_wire(native: String) -> CodexPlanTypeReading {
   if native == "" {
@@ -246,8 +246,8 @@ type CodexAccountStandingEvidence {
   credential_liveness: CodexCredentialLiveness
   rate_limits: AccountTripResponseObservation
   rate_limit_buckets: List<CodexRateLimitBucketVerdict>
-  unknown_frame_digests: List<ContentHash>
-  stderr_digest: ContentHash?
+  unknown_frame_digests: List<std.content_hash.ContentHash>
+  stderr_digest: std.content_hash.ContentHash?
   classification: AccountStandingClassification
 }
 
@@ -263,13 +263,13 @@ type ProviderProcessExit
 
 type ProviderProcessReceipt {
   exit: ProviderProcessExit
-  wire: ProviderWireEvidenceReceipt?
+  wire: gunbc.provider_wire_evidence.ProviderWireEvidenceReceipt?
 }
 
 type CodexAccountStandingReceipt {
   subject: CodexAccountPreflightSubject
   standing: CodexAccountStandingSummary
-  wire_evidence: ProviderWireEvidenceReceipt?
+  wire_evidence: gunbc.provider_wire_evidence.ProviderWireEvidenceReceipt?
   process: ProviderProcessReceipt
 }
 
@@ -278,15 +278,15 @@ type CodexPressOutcome
       receipt: CodexAccountStandingReceipt
     }
   | CodexPressLoginRequired {
-      reason: NonEmptyStr
+      reason: std.types.NonEmptyStr
       receipt: CodexAccountStandingReceipt
     }
   | CodexPressUnavailable {
-      reason: NonEmptyStr
+      reason: std.types.NonEmptyStr
       process: ProviderProcessReceipt
     }
   | CodexPressRefused {
-      reason: NonEmptyStr
+      reason: std.types.NonEmptyStr
       receipt: CodexAccountStandingReceipt
     }
 
@@ -606,9 +606,9 @@ fn rate_limits_reached_type(snapshot: JsonValue) -> NonEmptyStr? {
 data rate_limit_id_reading_note: String = "THREE DISTINGUISHABLE WIRE STATES, NOT ONE (review 50532). This read previously collapsed absent-key, empty-string, and wrong-shape into one synthesized codex_default_rate_limit_id, which consumers could not tell from a real wire id of the same text — the DESIGN section 5 absorbing fallback (a failure arm must refuse, never widen). The harm is specific and this module's own account_standing_authenticated_rate_limits_readable_note already names it: downstream reads buckets BY limit_id, so a bucket whose real id was codex_bengalfox emitted under the fabricated id codex misattributes a sibling bucket's limits to the codex bucket — exactly the inverted failure that note warns produces fabricated-plausible account standing. Only ONE of the three states legitimately defaults: an ABSENT key is the backward-compatible rateLimits mirror shape, whose id is codex by the mirror's definition rather than by fabrication. An empty or non-string id is malformed wire and refuses. On refusal the caller emits NO bucket rather than one under a guessed name: every CodexRateLimitBucketVerdict variant requires a limit_id, so a malformed id cannot name a bucket at all, and emitting none is strictly safer than emitting one that a per-limit_id consumer will read as a different bucket."
 
 type CodexRateLimitIdReading
-  = CodexRateLimitIdObserved { limit_id: NonEmptyStr }
+  = CodexRateLimitIdObserved { limit_id: std.types.NonEmptyStr }
   | CodexRateLimitIdAbsentLegacyMirror
-  | CodexRateLimitIdMalformed { cause: NonEmptyStr }
+  | CodexRateLimitIdMalformed { cause: std.types.NonEmptyStr }
 
 fn rate_limits_snapshot_limit_id(snapshot: JsonValue) -> CodexRateLimitIdReading {
   match json_object_unique_member(
@@ -889,7 +889,7 @@ type AccountTripParseAcc {
   account_realm: CodexAccountRealm
   rate_limits: AccountTripResponseObservation
   rate_limit_buckets: List<CodexRateLimitBucketVerdict>
-  unknown_frame_digests: List<ContentHash>
+  unknown_frame_digests: List<std.content_hash.ContentHash>
   retention_failed: Bool
 }
 

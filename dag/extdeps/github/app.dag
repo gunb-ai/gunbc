@@ -29,11 +29,11 @@ type GitHubAppInstallationId { value: Int }
 type GitHubRepositoryId { value: Int }
 
 type GitHubAppRegistration {
-  owner: GitHubUser
+  owner: extdeps.github.github.GitHubUser
   app_id: GitHubAppId
-  client_id: NonEmptyStr
-  slug: NonEmptyStr
-  homepage: Uri?
+  client_id: std.types.NonEmptyStr
+  slug: std.types.NonEmptyStr
+  homepage: extdeps.uri.Uri?
 }
 
 type GitHubAppPermissionAccess
@@ -117,7 +117,7 @@ type GitHubAppPermission {
   access: GitHubAppPermissionAccess
 }
 
-type ObservedGitHubPermissionName { wire_name: NonEmptyStr }
+type ObservedGitHubPermissionName { wire_name: std.types.NonEmptyStr }
 
 type ObservedGitHubPermission {
   name: ObservedGitHubPermissionName
@@ -243,17 +243,17 @@ type GitHubAppRepositorySelectionMode
 type GitHubAppInstallation {
   installation_id: GitHubAppInstallationId
   app_id: GitHubAppId
-  app_slug: NonEmptyStr
-  html_url: Uri
-  account: GitHubUser
+  app_slug: std.types.NonEmptyStr
+  html_url: extdeps.uri.Uri
+  account: extdeps.github.github.GitHubUser
   repository_selection: GitHubAppRepositorySelectionMode
   permissions: List<ObservedGitHubPermission>
-  subscribed_events: List<NonEmptyStr>
+  subscribed_events: List<std.types.NonEmptyStr>
 }
 
 type GitHubInstallationRepositoryNarrowing
   = RepositoryNarrowingOmitted
-  | SelectedRepositoryNames { names: List<NonEmptyStr> }
+  | SelectedRepositoryNames { names: List<std.types.NonEmptyStr> }
   | SelectedRepositoryIds { ids: List<GitHubRepositoryId> }
 
 type GitHubInstallationPermissionNarrowing
@@ -268,7 +268,7 @@ type GitHubInstallationTokenRequest {
 
 type AuthoredPermissionProjection
   = AuthoredPermissions { permissions: List<GitHubAppPermission> }
-  | UnknownPermissionWireName { wire_name: NonEmptyStr }
+  | UnknownPermissionWireName { wire_name: std.types.NonEmptyStr }
 
 fn requested_permissions(
   narrowing: GitHubInstallationPermissionNarrowing,
@@ -319,7 +319,7 @@ fn permission_access_in(
 type PermissionNarrowingVerdict
   = NarrowingWithinInstallation
   | NarrowingExceedsInstallation
-  | NarrowingUnverifiable { unknown_wire_name: NonEmptyStr }
+  | NarrowingUnverifiable { unknown_wire_name: std.types.NonEmptyStr }
 
 fn permission_narrowing_verdict(
   narrowing: GitHubInstallationPermissionNarrowing,
@@ -368,9 +368,9 @@ type GitHubAppKeyFingerprintEncoding =
   | FingerprintBase64
 
 type GitHubAppPublicKeyFingerprint {
-  algorithm: HashAlgorithm
+  algorithm: extdeps.crypto.hash.HashAlgorithm
   encoding: GitHubAppKeyFingerprintEncoding
-  digest: NonEmptyStr
+  digest: std.types.NonEmptyStr
 }
 
 fn sha256_base64_key_fingerprint(digest: NonEmptyStr) -> GitHubAppPublicKeyFingerprint {

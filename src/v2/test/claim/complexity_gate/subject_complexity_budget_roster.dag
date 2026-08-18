@@ -9,19 +9,19 @@ type LensSubjectComplexityBudgetRow {
 fn complexity_declared_budget_for_row(
   row: LensSubjectComplexityBudgetRow,
   body: Node
-) -> ComplexityBound {
+) -> v2.lens.complexity.ComplexityBound {
   row.declared_budget(body: body)
 }
 
-fn complexity_declared_budget_constant(_body: Node) -> ComplexityBound {
+fn complexity_declared_budget_constant(_body: Node) -> v2.lens.complexity.ComplexityBound {
   ConstantComplexity
 }
 
-fn complexity_declared_budget_loop_linear(body: Node) -> ComplexityBound {
+fn complexity_declared_budget_loop_linear(body: Node) -> v2.lens.complexity.ComplexityBound {
   match loop_bound_witness_for_node(n: body) {
     Holds { value: bound } =>
       linear_complexity(
-        size_var: SizeVariable { source: loop_bound_measure(bound: bound) }
+        size_var: v2.lens.cost.SizeVariable { source: loop_bound_measure(bound: bound) }
       )
     Violates { diagnostic: _ } => unknown_complexity()
   }

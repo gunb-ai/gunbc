@@ -1,12 +1,12 @@
 module v2.test.claim.effect_plan_bash_materialize_test
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data effect_plan_bash_materialize_test_note: String = "Model-only Wave A executable model surface. These witnesses read real extdeps operation declarations, encode actual Bash grammar Nodes, and emit those Nodes through the grammar serializer. No production workflow imports the materializer. The poison cases live only here and discriminate every refusal arm requested by the charter."
 
-fn operation_ref(path: String, service: String, operation: String) -> OperationRef {
-  OperationRef {
+fn operation_ref(path: String, service: String, operation: String) -> v2.std.operation_argv.OperationRef {
+  v2.std.operation_argv.OperationRef {
     path: path,
     service: service,
     operation: operation
@@ -17,15 +17,15 @@ fn invocation(
   path: String,
   service: String,
   operation: String,
-  bindings: List<OperationInputBinding>
-) -> BashBoundOperationInvocation {
+  bindings: List<v2.std.operation_argv.OperationInputBinding>
+) -> v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation {
   bash_bind_operation_invocation(
     at: operation_ref(path: path, service: service, operation: operation),
     bindings: bindings
   )
 }
 
-fn id_invocation(operation: String) -> BashBoundOperationInvocation {
+fn id_invocation(operation: String) -> v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation {
   invocation(
     path: "dag/extdeps/tools/id.dag",
     service: "os.Id",
@@ -34,7 +34,7 @@ fn id_invocation(operation: String) -> BashBoundOperationInvocation {
   )
 }
 
-fn test_path_invocation(operation: String, path: String) -> BashBoundOperationInvocation {
+fn test_path_invocation(operation: String, path: String) -> v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation {
   invocation(
     path: "dag/extdeps/shell.dag",
     service: "shell.Test",
@@ -43,7 +43,7 @@ fn test_path_invocation(operation: String, path: String) -> BashBoundOperationIn
   )
 }
 
-fn show_property_invocation(bindings: List<OperationInputBinding>) -> BashBoundOperationInvocation {
+fn show_property_invocation(bindings: List<v2.std.operation_argv.OperationInputBinding>) -> v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation {
   invocation(
     path: "dag/extdeps/systemd/systemctl.dag",
     service: "systemd.Systemctl",
@@ -52,16 +52,16 @@ fn show_property_invocation(bindings: List<OperationInputBinding>) -> BashBoundO
   )
 }
 
-fn fail_fast_plan(steps: List<v2.std.effect_plan.EffectPlanStep<BashBoundOperationInvocation>>) -> EffectPlan<BashBoundOperationInvocation> {
-  EffectPlan { steps: steps, on_failure: FailFast }
+fn fail_fast_plan(steps: List<v2.std.effect_plan.EffectPlanStep<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>>) -> EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation> {
+  v2.std.effect_plan.EffectPlan { steps: steps, on_failure: FailFast }
 }
 
-fn one_step_plan(inv: BashBoundOperationInvocation) -> EffectPlan<BashBoundOperationInvocation> {
+fn one_step_plan(inv: v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation) -> EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation> {
   fail_fast_plan(steps: [Do { effect: inv }])
 }
 
 fn emitted_source_is(
-  plan: EffectPlan<BashBoundOperationInvocation>,
+  plan: EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>,
   expected: String
 ) -> Bool {
   match effect_plan_bash_materialize(plan: plan) {
@@ -71,8 +71,8 @@ fn emitted_source_is(
 }
 
 fn emitted_sources_differ(
-  left: EffectPlan<BashBoundOperationInvocation>,
-  right: EffectPlan<BashBoundOperationInvocation>
+  left: EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>,
+  right: EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>
 ) -> Bool {
   match effect_plan_bash_materialize(plan: left) {
     EffectPlanBashMaterialized { source: left_source } =>
@@ -86,7 +86,7 @@ fn emitted_sources_differ(
 }
 
 fn operation_locus_is(
-  locus: Optional<OperationRef>,
+  locus: Optional<v2.std.operation_argv.OperationRef>,
   path: String,
   service: String,
   operation: String
@@ -381,7 +381,7 @@ test fn effect_plan_bash_RED_unsupported_argv_expression_preserves_operation_loc
 }
 
 test fn effect_plan_bash_RED_continue_policy_is_typed_before_any_step() -> Bool {
-  match effect_plan_bash_materialize(plan: EffectPlan {
+  match effect_plan_bash_materialize(plan: v2.std.effect_plan.EffectPlan {
     steps: [Do { effect: id_invocation(operation: "Uid") }],
     on_failure: Continue
   }) {
@@ -396,12 +396,12 @@ test fn effect_plan_bash_RED_continue_policy_is_typed_before_any_step() -> Bool 
   }
 }
 
-fn empty_plan() -> EffectPlan<BashBoundOperationInvocation> {
+fn empty_plan() -> EffectPlan<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation> {
   fail_fast_plan(steps: [])
 }
 
 fn unsupported_step_refuses(
-  step: v2.std.effect_plan.EffectPlanStep<BashBoundOperationInvocation>,
+  step: v2.std.effect_plan.EffectPlanStep<v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation>,
   expected: v2.workflow.effect_plan_bash_materialize.EffectPlanBashUnsupportedStep
 ) -> Bool {
   match effect_plan_bash_materialize(plan: fail_fast_plan(steps: [step])) {

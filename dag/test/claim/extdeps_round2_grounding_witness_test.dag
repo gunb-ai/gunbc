@@ -33,9 +33,9 @@ test fn w_http_content_type_plain_not_html() -> Bool {
 }
 
 test fn w_served_static_route_content_type_media_type() -> Bool {
-  let row = ServedStaticRoute {
+  let row = extdeps.http.server.ServedStaticRoute {
     method: GET,
-    path_pattern: PathTemplate { tokens: [] },
+    path_pattern: std.http_path.PathTemplate { tokens: [] },
     body: "<html></html>",
     content_type: text_html_utf8,
     status_on_hit: 200,
@@ -59,7 +59,7 @@ test fn w_sigv4_auth_scheme_carries_enums() -> Bool {
 }
 
 test fn w_gcp_api_endpoint_service_enum() -> Bool {
-  let endpoint = GcpApiEndpoint {
+  let endpoint = extdeps.cloud.gcp.gcp.GcpApiEndpoint {
     service: GcpStorage,
     base_url: "https://storage.googleapis.com/storage/v1",
     version: "v1",
@@ -70,7 +70,7 @@ test fn w_gcp_api_endpoint_service_enum() -> Bool {
 }
 
 test fn w_gcp_project_id_refinement() -> Bool {
-  let project = GcpProject {
+  let project = extdeps.cloud.gcp.gcp.GcpProject {
     project_id: "my-gcp-project",
     project_number: 123456789,
     name: "My Project",
@@ -97,7 +97,7 @@ test fn w_gcp_rpc_code_grounded_and_other() -> Bool {
 }
 
 test fn w_service_account_email_grounded() -> Bool {
-  let sa_row = GcpServiceAccount {
+  let sa_row = extdeps.cloud.gcp.gcp.GcpServiceAccount {
     email: "runner@my-project.iam.gserviceaccount.com",
     unique_id: "123456789",
     display_name: none,
@@ -107,7 +107,7 @@ test fn w_service_account_email_grounded() -> Bool {
 }
 
 test fn w_gpu_compute_capability_sm_label() -> Bool {
-  let cap = GpuComputeCapability { vendor: nvidia, major: 8, minor: 9 }
+  let cap = extdeps.gpu.types.GpuComputeCapability { vendor: nvidia, major: 8, minor: 9 }
   match gpu_compute_capability_sm_label(cap) {
     GpuCapabilityLabelOk { label: label } => label == "sm_8_9"
     GpuCapabilityLabelRejected { reason: _ } => false
@@ -115,7 +115,7 @@ test fn w_gpu_compute_capability_sm_label() -> Bool {
 }
 
 test fn w_gpu_amd_label_distinct_from_nvidia() -> Bool {
-  let cap = GpuComputeCapability { vendor: amd, major: 11, minor: 0 }
+  let cap = extdeps.gpu.types.GpuComputeCapability { vendor: amd, major: 11, minor: 0 }
   match gpu_compute_capability_sm_label(cap) {
     GpuCapabilityLabelOk { label: label } => label == "gfx110"
     GpuCapabilityLabelRejected { reason: _ } => false
@@ -123,7 +123,7 @@ test fn w_gpu_amd_label_distinct_from_nvidia() -> Bool {
 }
 
 test fn w_intel_capability_label_refuses_fail_closed() -> Bool {
-  let cap = GpuComputeCapability { vendor: intel, major: 1, minor: 0 }
+  let cap = extdeps.gpu.types.GpuComputeCapability { vendor: intel, major: 1, minor: 0 }
   match gpu_compute_capability_sm_label(cap) {
     GpuCapabilityLabelOk { label: _ } => false
     GpuCapabilityLabelRejected { reason: r } => r.vendor == intel
@@ -131,11 +131,11 @@ test fn w_intel_capability_label_refuses_fail_closed() -> Bool {
 }
 
 test fn w_gpu_facts_structured_compute_capability() -> Bool {
-  let gpu = GpuFacts {
+  let gpu = extdeps.gpu.types.GpuFacts {
     vendor: nvidia,
     model: "H100",
-    compute_capability: GpuComputeCapability { vendor: nvidia, major: 9, minor: 0 },
-    memory: MemoryFacts {
+    compute_capability: extdeps.gpu.types.GpuComputeCapability { vendor: nvidia, major: 9, minor: 0 },
+    memory: extdeps.memory.types.MemoryFacts {
       capacity: byte_size(80),
       memory_kind: Hbm,
     },
@@ -143,7 +143,7 @@ test fn w_gpu_facts_structured_compute_capability() -> Bool {
   }
   gpu.vendor == nvidia
     && match gpu_compute_capability_sm_label(
-      GpuComputeCapability { vendor: nvidia, major: 9, minor: 0 }
+      extdeps.gpu.types.GpuComputeCapability { vendor: nvidia, major: 9, minor: 0 }
     ) {
       GpuCapabilityLabelOk { label: label } => label == "sm_9_0"
       GpuCapabilityLabelRejected { reason: _ } => false
@@ -151,7 +151,7 @@ test fn w_gpu_facts_structured_compute_capability() -> Bool {
 }
 
 test fn w_ampere_capability_label_refuses_fail_closed() -> Bool {
-  let cap = GpuComputeCapability { vendor: ampere_vendor, major: 1, minor: 0 }
+  let cap = extdeps.gpu.types.GpuComputeCapability { vendor: ampere_vendor, major: 1, minor: 0 }
   match gpu_compute_capability_sm_label(cap) {
     GpuCapabilityLabelOk { label: _ } => false
     GpuCapabilityLabelRejected { reason: r } => r.vendor == ampere_vendor
@@ -159,8 +159,8 @@ test fn w_ampere_capability_label_refuses_fail_closed() -> Bool {
 }
 
 test fn w_hardware_vendor_single_authority() -> Bool {
-  let accel = AcceleratorFacts { vendor: amd, model: "MI300X" }
-  let gpu_cap = GpuComputeCapability { vendor: amd, major: 11, minor: 0 }
+  let accel = extdeps.gpu.types.AcceleratorFacts { vendor: amd, model: "MI300X" }
+  let gpu_cap = extdeps.gpu.types.GpuComputeCapability { vendor: amd, major: 11, minor: 0 }
   accel.vendor == gpu_cap.vendor
 }
 

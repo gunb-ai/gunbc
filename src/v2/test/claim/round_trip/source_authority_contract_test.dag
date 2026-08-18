@@ -1,7 +1,7 @@
 module v2.test.round_trip.source_authority_contract_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn source_authority_contract_serializer_section_law_holds() -> Bool {
   contract_target_advertises_declared_loss()

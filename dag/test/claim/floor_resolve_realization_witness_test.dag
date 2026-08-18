@@ -3,71 +3,71 @@ module test.claim.floor_resolve_realization_witness
 
 data floor_resolve_realization_witness_note: String = "Eight required controls for 0B resolve realization (operator ruling 2026-08-04). ADMIT: anchor cold + native cold; anchor cold + native warm. REFUSE: native absent; unknown third obligation; duplicate identity; warm without provider receipt; cold without resolve receipt; unattributed physical resolve. Authority: gunbc.ci_materialization; claim_executor observes; ci_floor_plan transports only."
 
-fn cold_main_realizations() -> List<ResolveRealization> {
+fn cold_main_realizations() -> List<gunbc.ci_materialization.ResolveRealization> {
   [
     cold_realization(id: CompileAnchorWholeTree, nanos: 1),
     cold_realization(id: NativeBundleEscapingEntry, nanos: 1),
   ]
 }
 
-fn warm_pr_realizations() -> List<ResolveRealization> {
+fn warm_pr_realizations() -> List<gunbc.ci_materialization.ResolveRealization> {
   [
     cold_realization(id: CompileAnchorWholeTree, nanos: 1),
     warm_realization(id: NativeBundleEscapingEntry),
   ]
 }
 
-fn missing_native_realizations() -> List<ResolveRealization> {
+fn missing_native_realizations() -> List<gunbc.ci_materialization.ResolveRealization> {
   [cold_realization(id: CompileAnchorWholeTree, nanos: 1)]
 }
 
-fn duplicate_anchor_realizations() -> List<ResolveRealization> {
+fn duplicate_anchor_realizations() -> List<gunbc.ci_materialization.ResolveRealization> {
   [
     cold_realization(id: CompileAnchorWholeTree, nanos: 1),
     warm_realization(id: CompileAnchorWholeTree),
   ]
 }
 
-fn unknown_third_obligation_realizations() -> List<ResolveRealization> {
+fn unknown_third_obligation_realizations() -> List<gunbc.ci_materialization.ResolveRealization> {
   [
     cold_realization(id: CompileAnchorWholeTree, nanos: 1),
     cold_realization(id: NativeBundleEscapingEntry, nanos: 1),
     ColdResolvePerformed {
-      obligation: ResolveObligation {
+      obligation: gunbc.ci_materialization.ResolveObligation {
         identity: NativeBundleEscapingEntry,
-        subject: ResolveObligationSubject {
+        subject: gunbc.ci_materialization.ResolveObligationSubject {
           entry: "dag/test/claim/unknown_escaping_entry.dag",
           function: "unknown_escaping_function",
         },
       },
-      receipt: ResolveColdReceipt { resolve_nanos: nanosecond(count: 1) },
+      receipt: gunbc.ci_materialization.ResolveColdReceipt { resolve_nanos: nanosecond(count: 1) },
     },
   ]
 }
 
-fn broken_warm_native_realization() -> ResolveRealization {
+fn broken_warm_native_realization() -> gunbc.ci_materialization.ResolveRealization {
   SatisfiedFromSharedPool {
     obligation: expected_obligation(id: NativeBundleEscapingEntry),
-    provider: ResolveSharedPoolProvider { provider_id: "" },
-    receipt: ResolveSharedPoolReceipt { provider_id: floor_entry_walk_memo_provider_id },
+    provider: gunbc.ci_materialization.ResolveSharedPoolProvider { provider_id: "" },
+    receipt: gunbc.ci_materialization.ResolveSharedPoolReceipt { provider_id: floor_entry_walk_memo_provider_id },
   }
 }
 
-fn warm_without_provider_realizations() -> List<ResolveRealization> {
+fn warm_without_provider_realizations() -> List<gunbc.ci_materialization.ResolveRealization> {
   [
     cold_realization(id: CompileAnchorWholeTree, nanos: 1),
     broken_warm_native_realization(),
   ]
 }
 
-fn cold_without_resolve_receipt_realizations() -> List<ResolveRealization> {
+fn cold_without_resolve_receipt_realizations() -> List<gunbc.ci_materialization.ResolveRealization> {
   [
     cold_realization(id: CompileAnchorWholeTree, nanos: 1),
     cold_realization(id: NativeBundleEscapingEntry, nanos: 0),
   ]
 }
 
-fn broken_cold_native_realization() -> ResolveRealization {
+fn broken_cold_native_realization() -> gunbc.ci_materialization.ResolveRealization {
   cold_realization(id: NativeBundleEscapingEntry, nanos: 0)
 }
 
@@ -92,7 +92,7 @@ test fn witness_declared_count_derives_from_roster() -> Bool {
     && ci_floor_declared_resolve_count() == 2
 }
 
-fn anchor_only_obligations() -> List<ResolveObligation> {
+fn anchor_only_obligations() -> List<gunbc.ci_materialization.ResolveObligation> {
   [expected_obligation(id: CompileAnchorWholeTree)]
 }
 

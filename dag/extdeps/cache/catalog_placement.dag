@@ -10,11 +10,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type CacheInterfaceCatalogPlacement {
-  value_shape: ValueShape
-  locality: PersistenceLocality
-  retention: ProviderRetention
-  atomicity: AtomicityModel
-  auth: AuthScope
-  read_latency: ReadLatencyClass
-  consistency: ConsistencyModel
+  value_shape: std.cache_interface.ValueShape
+  locality: std.cache_interface.PersistenceLocality
+  retention: std.cache_interface.ProviderRetention
+  atomicity: std.cache_interface.AtomicityModel
+  auth: std.cache_interface.AuthScope
+  read_latency: std.cache_interface.ReadLatencyClass
+  consistency: std.cache_interface.ConsistencyModel
 }

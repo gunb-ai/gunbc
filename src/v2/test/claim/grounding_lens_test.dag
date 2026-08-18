@@ -1,6 +1,6 @@
 module v2.test.claim.grounding_lens
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn witness_coincide_caseinsensitive() -> Bool {
   name_coincides(field: "URL", concept_name: "url")
@@ -18,34 +18,34 @@ test fn witness_coincide_negative() -> Bool {
   !name_coincides(field: "note", concept_name: "Url")
 }
 
-fn type_atom(sym: Symbol) -> Node {
-  Node {
+fn type_atom(sym: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn field_edge(field: Symbol, type_sym: Symbol) -> Edge {
-  Edge {
+fn field_edge(field: v2.std.node.Symbol, type_sym: v2.std.node.Symbol) -> v2.std.node.Edge {
+  v2.std.node.Edge {
     label: Named { name: field },
     target: type_atom(sym: type_sym)
   }
 }
 
-fn record_type(fields: List<Edge>) -> Node {
-  Node {
+fn record_type(fields: List<v2.std.node.Edge>) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: fields,
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn concept_decl(qn: String, nm: String, node: Node) -> ConceptDecl {
-  ConceptDecl { qualified_name: qn, name: nm, node: node }
+fn concept_decl(qn: String, nm: String, node: Node) -> v2.std.concept_index.ConceptDecl {
+  v2.std.concept_index.ConceptDecl { qualified_name: qn, name: nm, node: node }
 }
 
-fn fixture_decls() -> List<ConceptDecl> {
+fn fixture_decls() -> List<v2.std.concept_index.ConceptDecl> {
   [
     concept_decl(
       qn: "v2.test.demo.Url",
@@ -91,7 +91,7 @@ fn fixture_decls() -> List<ConceptDecl> {
   ]
 }
 
-fn layer_inversion_fixture_decls() -> List<ConceptDecl> {
+fn layer_inversion_fixture_decls() -> List<v2.std.concept_index.ConceptDecl> {
   [
     concept_decl(
       qn: "v2.std.Foo",
@@ -109,23 +109,23 @@ fn layer_inversion_fixture_decls() -> List<ConceptDecl> {
   ]
 }
 
-fn qc(qn: String, nm: String, fs: List<FieldRef>) -> QualifiedConcept {
-  QualifiedConcept { qualified_name: qn, concept: ConceptStruct { name: nm, fields: fs } }
+fn qc(qn: String, nm: String, fs: List<v2.std.concept_index.FieldRef>) -> v2.std.concept_index.QualifiedConcept {
+  v2.std.concept_index.QualifiedConcept { qualified_name: qn, concept: v2.std.concept_index.ConceptStruct { name: nm, fields: fs } }
 }
 
-fn has_candidate(cands: List<GroundingWorklistEntry>, enclosing: String, field: String) -> Bool {
+fn has_candidate(cands: List<v2.lens.grounding.GroundingWorklistEntry>, enclosing: String, field: String) -> Bool {
   fold(cands, init: false, f: fn(acc, c) {
     acc || ((c.enclosing == enclosing) && (c.field == field))
   })
 }
 
-fn candidate_structure(cands: List<GroundingWorklistEntry>, enclosing: String, field: String) -> String {
+fn candidate_structure(cands: List<v2.lens.grounding.GroundingWorklistEntry>, enclosing: String, field: String) -> String {
   fold(cands, init: "", f: fn(acc, c) {
     if (c.enclosing == enclosing) && (c.field == field) { c.target_structure } else { acc }
   })
 }
 
-fn candidate_coincides_with(cands: List<GroundingWorklistEntry>, enclosing: String, field: String) -> String {
+fn candidate_coincides_with(cands: List<v2.lens.grounding.GroundingWorklistEntry>, enclosing: String, field: String) -> String {
   fold(cands, init: "", f: fn(acc, c) {
     if (c.enclosing == enclosing) && (c.field == field) { c.coincides_with } else { acc }
   })
@@ -166,7 +166,7 @@ test fn witness_layer_inversion_now_included() -> Bool {
   )
 }
 
-fn production_layer_inversion_fixture_decls() -> List<ConceptDecl> {
+fn production_layer_inversion_fixture_decls() -> List<v2.std.concept_index.ConceptDecl> {
   [
     concept_decl(
       qn: "v2.std.Foo",
@@ -189,7 +189,7 @@ test fn witness_production_layer_inversion_now_included() -> Bool {
   )
 }
 
-fn product_namespace_fixture_decls() -> List<ConceptDecl> {
+fn product_namespace_fixture_decls() -> List<v2.std.concept_index.ConceptDecl> {
   [
     concept_decl(
       qn: "product.compute_fabric.Endpoint",

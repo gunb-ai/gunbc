@@ -2,13 +2,13 @@ module test.claim.github_checks_witness
 
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
-data sample_check_output: CheckOutput = CheckOutput {
+data sample_check_output: extdeps.github.checks.CheckOutput = extdeps.github.checks.CheckOutput {
   title: "CI passed",
   summary: "All checks green",
   annotations_count: 0,
 }
 
-data sample_check_run_success: CheckRun = CheckRun {
+data sample_check_run_success: extdeps.github.checks.CheckRun = extdeps.github.checks.CheckRun {
   id: 42,
   name: "gunbc-ci",
   head_sha: "abc123def456",
@@ -20,7 +20,7 @@ data sample_check_run_success: CheckRun = CheckRun {
   html_url: "https://github.com/gunb-ai/gunbc/actions/runs/42",
 }
 
-data sample_check_run_pending: CheckRun = CheckRun {
+data sample_check_run_pending: extdeps.github.checks.CheckRun = extdeps.github.checks.CheckRun {
   id: 43,
   name: "gunbc-ci",
   head_sha: "abc123def456",
@@ -28,7 +28,7 @@ data sample_check_run_pending: CheckRun = CheckRun {
   conclusion: null,
   started_at: null,
   completed_at: null,
-  output: CheckOutput {
+  output: extdeps.github.checks.CheckOutput {
     title: null,
     summary: null,
     annotations_count: 0,
@@ -36,7 +36,7 @@ data sample_check_run_pending: CheckRun = CheckRun {
   html_url: "https://github.com/gunb-ai/gunbc/actions/runs/43",
 }
 
-data sample_check_list_one: CheckRunList = CheckRunList {
+data sample_check_list_one: extdeps.github.checks.CheckRunList = extdeps.github.checks.CheckRunList {
   total_count: 1,
   check_runs: [sample_check_run_success],
 }

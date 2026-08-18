@@ -1,7 +1,7 @@
 module v2.test.workflow.lens_ownership_family_eval
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn lens_ownership_family_gate() -> Bool {
   ownership_resource_dependency_claim_passes

@@ -18,17 +18,17 @@ data default_currency: CurrencyCode = Usd
 data fixed_price_listing_duration: NonEmptyStr = "GTC"
 
 type EbayListingDraft {
-  sku: NonEmptyStr
-  title: NonEmptyStr
+  sku: std.types.NonEmptyStr
+  title: std.types.NonEmptyStr
   description: String
   image_urls: List<String>
-  condition: ConditionEnum
+  condition: extdeps.ebay.inventory.ConditionEnum
   price_value: String
   quantity: Int
   category_id: String
-  fulfillment_policy_id: NonEmptyStr
-  payment_policy_id: NonEmptyStr
-  return_policy_id: NonEmptyStr
+  fulfillment_policy_id: std.types.NonEmptyStr
+  payment_policy_id: std.types.NonEmptyStr
+  return_policy_id: std.types.NonEmptyStr
   merchant_location_key: String
 }
 

@@ -3,8 +3,8 @@ module test.claim.host_cli_dependency_wet_witness_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
-data echo_cli_tool: CliTool = CliTool {
-  name: "echo" as NonEmptyStr,
+data echo_cli_tool: extdeps.tools.CliTool = extdeps.tools.CliTool {
+  name: "echo" as std.types.NonEmptyStr,
   min_version: none,
   installable_via: [SourceCoreutils],
 }

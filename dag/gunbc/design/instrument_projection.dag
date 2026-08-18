@@ -31,14 +31,14 @@ fn subject_region(placements: List<SubjectPlacement>, key: String) -> String {
 
 data focal_region_note: String = "With nothing selected there is no focal region, so no subject can be Supporting-by-sibling and the whole field reads Ground. That is the correct still state rather than a degenerate one: the instrument opens with the energy unspent, and the first selection is what spends it."
 
-fn focal_region(camera: ProgramCamera, placements: List<SubjectPlacement>) -> String {
+fn focal_region(camera: gunbc.design.instrument_camera.ProgramCamera, placements: List<SubjectPlacement>) -> String {
   match camera.focus {
     NoSubjectSelected => ""
     FinishLineFocused { line_key } => subject_region(placements: placements, key: line_key)
   }
 }
 
-fn placement_role(p: SubjectPlacement, focus_key: String, focus_region: String) -> SalienceRole {
+fn placement_role(p: SubjectPlacement, focus_key: String, focus_region: String) -> gunbc.design.salience.SalienceRole {
   if p.key == focus_key {
     SalienceFocal
   } else if focus_region != "" && p.region == focus_region {
@@ -48,23 +48,23 @@ fn placement_role(p: SubjectPlacement, focus_key: String, focus_region: String) 
   }
 }
 
-fn refusal_assignments(refusal: RefusalAggregate) -> List<SalienceAssignment> {
+fn refusal_assignments(refusal: RefusalAggregate) -> List<gunbc.design.salience.SalienceAssignment> {
   match refusal {
     NoActiveRefusal => []
     ActiveRefusals { refused_count } => [
-      SalienceAssignment { subject: refusal_subject_key, role: SalienceCritical },
+      gunbc.design.salience.SalienceAssignment { subject: refusal_subject_key, role: SalienceCritical },
     ]
   }
 }
 
 fn project_salience(
-  camera: ProgramCamera,
+  camera: gunbc.design.instrument_camera.ProgramCamera,
   placements: List<SubjectPlacement>,
   refusal: RefusalAggregate,
-) -> List<SalienceAssignment> {
+) -> List<gunbc.design.salience.SalienceAssignment> {
   let focus_key = focus_subject_key(f: camera.focus)
   let region = focal_region(camera: camera, placements: placements)
-  (placements |> map(p => SalienceAssignment {
+  (placements |> map(p => gunbc.design.salience.SalienceAssignment {
     subject: p.key,
     role: placement_role(p: p, focus_key: focus_key, focus_region: region),
   }))
@@ -74,10 +74,10 @@ fn project_salience(
 data admission_is_derived_not_asserted_note: String = "The at-most-one-Focal law is not restated here. project_salience produces assignments and region_focal_admission judges them, so the projection is checked by the SAME fold every hand-authored region is checked by — one authority, asked about derived rows instead of authored ones. A witness that runs the projection through it is therefore a real test of the projection, not a second copy of the rule."
 
 fn project_admission(
-  camera: ProgramCamera,
+  camera: gunbc.design.instrument_camera.ProgramCamera,
   placements: List<SubjectPlacement>,
   refusal: RefusalAggregate,
-) -> FocalAdmission {
+) -> gunbc.design.salience.FocalAdmission {
   region_focal_admission(
     region: focal_region(camera: camera, placements: placements),
     assignments: project_salience(camera: camera, placements: placements, refusal: refusal),
@@ -95,10 +95,10 @@ fn finish_line_placements() -> List<SubjectPlacement> {
   })
 }
 
-fn project_finish_line_salience(camera: ProgramCamera, refusal: RefusalAggregate) -> List<SalienceAssignment> {
+fn project_finish_line_salience(camera: gunbc.design.instrument_camera.ProgramCamera, refusal: RefusalAggregate) -> List<gunbc.design.salience.SalienceAssignment> {
   project_salience(camera: camera, placements: finish_line_placements(), refusal: refusal)
 }
 
-fn assignment_role_for(assignments: List<SalienceAssignment>, subject: String) -> SalienceRole {
+fn assignment_role_for(assignments: List<gunbc.design.salience.SalienceAssignment>, subject: String) -> gunbc.design.salience.SalienceRole {
   fold(assignments, init: SalienceGround, f: (acc, a) => if a.subject == subject { a.role } else { acc })
 }

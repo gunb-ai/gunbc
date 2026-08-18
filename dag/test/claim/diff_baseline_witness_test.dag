@@ -6,13 +6,13 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data planted_merge_base_sha: String = "abc123def4567890abc123def4567890abc12345"
 data planted_head_sha: String = "fedcba0987654321fedcba0987654321fedcba09"
 
-fn planted_oid(hex: String) -> GitObjectId {
+fn planted_oid(hex: String) -> extdeps.git.object_store.GitObjectId {
   match git_sha1_object_id(hex: hex) {
     Present { value: oid } => oid
     Absent =>
       GitSha1ObjectId {
-        digest: Sha1Digest {
-          hex: planted_merge_base_sha as Sha1DigestHex
+        digest: std.content_hash.Sha1Digest {
+          hex: planted_merge_base_sha as std.content_hash.Sha1DigestHex
         }
       }
   }
@@ -20,11 +20,11 @@ fn planted_oid(hex: String) -> GitObjectId {
 
 data planted_target_generation_sha: String = "1111111111111111111111111111111111111111"
 
-fn planted_diff_window() -> GitDiffWindowObservation {
+fn planted_diff_window() -> gunbc.git_diff_change_window.GitDiffWindowObservation {
   Present {
     value: GitDiffWindowObserved {
       window: git_exact_diff_window_for_verification(
-        target: "origin/main" as GitRef,
+        target: "origin/main" as std.types.GitRef,
         target_generation: planted_oid(hex: planted_target_generation_sha),
         base: planted_oid(hex: planted_merge_base_sha),
         head: planted_oid(hex: planted_head_sha),
@@ -37,12 +37,12 @@ fn resolve_case(
   override_ref: String?,
   event_name: String,
   base_ref: String?,
-  push_before: PushBeforeInput?,
+  push_before: gunbc.diff_baseline.PushBeforeInput?,
   head_sha: String?,
-  diff_window: GitDiffWindowObservation?
-) -> DiffBaselineResolution {
+  diff_window: gunbc.git_diff_change_window.GitDiffWindowObservation?
+) -> gunbc.diff_baseline.DiffBaselineResolution {
   resolve_diff_baseline(
-    event: CiDiffEvent {
+    event: gunbc.diff_baseline.CiDiffEvent {
       override_ref: override_ref,
       event_name: event_name,
       base_ref: base_ref,
@@ -55,7 +55,7 @@ fn resolve_case(
   )
 }
 
-fn arm_tag(res: DiffBaselineResolution) -> String {
+fn arm_tag(res: gunbc.diff_baseline.DiffBaselineResolution) -> String {
   match res {
     BaselineSelected { baseline: MergeTarget { ref: _ } } => "merge_target"
     BaselineSelected { baseline: ExactReplayBoundary { base: _, head: _, observed_relation: _ } } =>
@@ -68,7 +68,7 @@ fn arm_tag(res: DiffBaselineResolution) -> String {
   }
 }
 
-fn selected_ref(res: DiffBaselineResolution) -> String {
+fn selected_ref(res: gunbc.diff_baseline.DiffBaselineResolution) -> String {
   match res {
     BaselineSelected { baseline: b } => diff_baseline_ref(b: b) as String
     BaselineRefused { reason: _ } => "<<refused>>"

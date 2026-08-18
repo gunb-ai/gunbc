@@ -8,37 +8,37 @@ module gunbc.fleet_physical_inventory
 // of 18U is arithmetic on catalog rack_units plus operator-declared 1U shelf for the desktop
 // switch, not an observation. Raspberry Pi catalog identity remains unauthored until exact
 // model/revision is observed.
-data operator_site: SiteIdentity = "operator-lab" as SiteIdentity
-data rack_01: RackIdentity = "rack-01" as RackIdentity
+data operator_site: product.placement_supply.SiteIdentity = "operator-lab" as product.placement_supply.SiteIdentity
+data rack_01: product.placement_supply.RackIdentity = "rack-01" as product.placement_supply.RackIdentity
 
-data operator_physical_site: PhysicalSite = PhysicalSite {
+data operator_physical_site: product.placement_supply.PhysicalSite = product.placement_supply.PhysicalSite {
   identity: operator_site,
   racks: [rack_01],
 }
 
-data nominal_rackmount_units_declared: RackUnit = rack_unit(14)
-data operator_switch_shelf_units: RackUnit = rack_unit(1)
+data nominal_rackmount_units_declared: std.measure.RackUnit = rack_unit(14)
+data operator_switch_shelf_units: std.measure.RackUnit = rack_unit(1)
 
-data chassis_srv1: PhysicalAssetIdentity = "chassis-srv1" as PhysicalAssetIdentity
-data chassis_srv2: PhysicalAssetIdentity = "chassis-srv2" as PhysicalAssetIdentity
-data chassis_srv3: PhysicalAssetIdentity = "chassis-srv3" as PhysicalAssetIdentity
-data chassis_srv4: PhysicalAssetIdentity = "chassis-srv4" as PhysicalAssetIdentity
-data chassis_srv5_placeholder: PhysicalAssetIdentity = "chassis-srv5-placeholder" as PhysicalAssetIdentity
-data chassis_srv6_placeholder: PhysicalAssetIdentity = "chassis-srv6-placeholder" as PhysicalAssetIdentity
-data switch_01: PhysicalAssetIdentity = "switch-01" as PhysicalAssetIdentity
-data pdu_01: PhysicalAssetIdentity = "pdu-01" as PhysicalAssetIdentity
-data pi_controller: PhysicalAssetIdentity = "pi-controller" as PhysicalAssetIdentity
+data chassis_srv1: product.placement_supply.PhysicalAssetIdentity = "chassis-srv1" as product.placement_supply.PhysicalAssetIdentity
+data chassis_srv2: product.placement_supply.PhysicalAssetIdentity = "chassis-srv2" as product.placement_supply.PhysicalAssetIdentity
+data chassis_srv3: product.placement_supply.PhysicalAssetIdentity = "chassis-srv3" as product.placement_supply.PhysicalAssetIdentity
+data chassis_srv4: product.placement_supply.PhysicalAssetIdentity = "chassis-srv4" as product.placement_supply.PhysicalAssetIdentity
+data chassis_srv5_placeholder: product.placement_supply.PhysicalAssetIdentity = "chassis-srv5-placeholder" as product.placement_supply.PhysicalAssetIdentity
+data chassis_srv6_placeholder: product.placement_supply.PhysicalAssetIdentity = "chassis-srv6-placeholder" as product.placement_supply.PhysicalAssetIdentity
+data switch_01: product.placement_supply.PhysicalAssetIdentity = "switch-01" as product.placement_supply.PhysicalAssetIdentity
+data pdu_01: product.placement_supply.PhysicalAssetIdentity = "pdu-01" as product.placement_supply.PhysicalAssetIdentity
+data pi_controller: product.placement_supply.PhysicalAssetIdentity = "pi-controller" as product.placement_supply.PhysicalAssetIdentity
 
-data host_srv1: HostIdentity = "srv1" as HostIdentity
-data host_srv2: HostIdentity = "srv2" as HostIdentity
-data host_srv3: HostIdentity = "srv3" as HostIdentity
-data host_srv4: HostIdentity = "srv4" as HostIdentity
-data host_srv5: HostIdentity = "srv5" as HostIdentity
-data host_srv6: HostIdentity = "srv6" as HostIdentity
+data host_srv1: product.placement_supply.HostIdentity = "srv1" as product.placement_supply.HostIdentity
+data host_srv2: product.placement_supply.HostIdentity = "srv2" as product.placement_supply.HostIdentity
+data host_srv3: product.placement_supply.HostIdentity = "srv3" as product.placement_supply.HostIdentity
+data host_srv4: product.placement_supply.HostIdentity = "srv4" as product.placement_supply.HostIdentity
+data host_srv5: product.placement_supply.HostIdentity = "srv5" as product.placement_supply.HostIdentity
+data host_srv6: product.placement_supply.HostIdentity = "srv6" as product.placement_supply.HostIdentity
 
-data srv1_chassis_asset: PhysicalAsset = PhysicalAsset {
+data srv1_chassis_asset: product.placement_supply.PhysicalAsset = product.placement_supply.PhysicalAsset {
   identity: chassis_srv1,
-  catalog: DeclarationRef {
+  catalog: std.decl_ref.DeclarationRef {
     module_path: "extdeps.chassis.rosewill",
     decl_name: "rosewill_rsv_r4000u_catalog",
     field: WholeDeclaration,
@@ -47,9 +47,9 @@ data srv1_chassis_asset: PhysicalAsset = PhysicalAsset {
   procurement: none,
 }
 
-data switch_01_asset: PhysicalAsset = PhysicalAsset {
+data switch_01_asset: product.placement_supply.PhysicalAsset = product.placement_supply.PhysicalAsset {
   identity: switch_01,
-  catalog: DeclarationRef {
+  catalog: std.decl_ref.DeclarationRef {
     module_path: "extdeps.network.tp_link",
     decl_name: "tp_link_tl_sg1024s_catalog",
     field: WholeDeclaration,
@@ -58,9 +58,9 @@ data switch_01_asset: PhysicalAsset = PhysicalAsset {
   procurement: none,
 }
 
-data pdu_01_asset: PhysicalAsset = PhysicalAsset {
+data pdu_01_asset: product.placement_supply.PhysicalAsset = product.placement_supply.PhysicalAsset {
   identity: pdu_01,
-  catalog: DeclarationRef {
+  catalog: std.decl_ref.DeclarationRef {
     module_path: "extdeps.power.eaton_tripp_lite",
     decl_name: "eaton_tripp_lite_rs_1215_family_catalog",
     field: WholeDeclaration,
@@ -69,10 +69,10 @@ data pdu_01_asset: PhysicalAsset = PhysicalAsset {
   procurement: none,
 }
 
-data rack_01_unobserved_residence: RackResidence = RackResidenceUnobserved
+data rack_01_unobserved_residence: product.placement_supply.RackResidence = RackResidenceUnobserved
 
-data fleet_host_spatial_facts: List<HostSpatialFacts> = [
-  HostSpatialFacts {
+data fleet_host_spatial_facts: List<product.placement_supply.HostSpatialFacts> = [
+  product.placement_supply.HostSpatialFacts {
     host: host_srv1,
     asset: chassis_srv1,
     residence: rack_01_unobserved_residence,
@@ -80,7 +80,7 @@ data fleet_host_spatial_facts: List<HostSpatialFacts> = [
     relay: RelayIncapable,
     bootstrap_need: BootstrapNotNeeded,
   },
-  HostSpatialFacts {
+  product.placement_supply.HostSpatialFacts {
     host: host_srv2,
     asset: chassis_srv2,
     residence: rack_01_unobserved_residence,
@@ -88,7 +88,7 @@ data fleet_host_spatial_facts: List<HostSpatialFacts> = [
     relay: RelayUnprovisioned,
     bootstrap_need: BootstrapNotNeeded,
   },
-  HostSpatialFacts {
+  product.placement_supply.HostSpatialFacts {
     host: host_srv3,
     asset: chassis_srv3,
     residence: rack_01_unobserved_residence,
@@ -96,7 +96,7 @@ data fleet_host_spatial_facts: List<HostSpatialFacts> = [
     relay: RelayUnprovisioned,
     bootstrap_need: BootstrapNotNeeded,
   },
-  HostSpatialFacts {
+  product.placement_supply.HostSpatialFacts {
     host: host_srv4,
     asset: chassis_srv4,
     residence: rack_01_unobserved_residence,
@@ -104,7 +104,7 @@ data fleet_host_spatial_facts: List<HostSpatialFacts> = [
     relay: RelayUnprovisioned,
     bootstrap_need: BootstrapNotNeeded,
   },
-  HostSpatialFacts {
+  product.placement_supply.HostSpatialFacts {
     host: host_srv5,
     asset: chassis_srv5_placeholder,
     residence: rack_01_unobserved_residence,
@@ -112,7 +112,7 @@ data fleet_host_spatial_facts: List<HostSpatialFacts> = [
     relay: RelayUnprovisioned,
     bootstrap_need: BootstrapNeeded,
   },
-  HostSpatialFacts {
+  product.placement_supply.HostSpatialFacts {
     host: host_srv6,
     asset: chassis_srv6_placeholder,
     residence: rack_01_unobserved_residence,
@@ -133,12 +133,12 @@ data srv1_measured_wireless_note: String = "srv1 fleet controller measured Wirel
 // containment arm every other host component uses. product.cooling_qualification consumes these
 // rows to reach a catalog verdict, and gunbc.bmc_fan_converge requires that verdict before any
 // host may claim a thermally qualified fan configuration.
-data cooler_srv3: PhysicalAssetIdentity = "cooler-srv3" as PhysicalAssetIdentity
-data cooler_srv4: PhysicalAssetIdentity = "cooler-srv4" as PhysicalAssetIdentity
+data cooler_srv3: product.placement_supply.PhysicalAssetIdentity = "cooler-srv3" as product.placement_supply.PhysicalAssetIdentity
+data cooler_srv4: product.placement_supply.PhysicalAssetIdentity = "cooler-srv4" as product.placement_supply.PhysicalAssetIdentity
 
-data srv3_cooler_asset: PhysicalAsset = PhysicalAsset {
+data srv3_cooler_asset: product.placement_supply.PhysicalAsset = product.placement_supply.PhysicalAsset {
   identity: cooler_srv3,
-  catalog: DeclarationRef {
+  catalog: std.decl_ref.DeclarationRef {
     module_path: "extdeps.cooling.dynatron",
     decl_name: "dynatron_w1_catalog",
     field: WholeDeclaration,
@@ -147,9 +147,9 @@ data srv3_cooler_asset: PhysicalAsset = PhysicalAsset {
   procurement: none,
 }
 
-data srv4_cooler_asset: PhysicalAsset = PhysicalAsset {
+data srv4_cooler_asset: product.placement_supply.PhysicalAsset = product.placement_supply.PhysicalAsset {
   identity: cooler_srv4,
-  catalog: DeclarationRef {
+  catalog: std.decl_ref.DeclarationRef {
     module_path: "extdeps.cooling.dynatron",
     decl_name: "dynatron_w1_catalog",
     field: WholeDeclaration,
@@ -158,7 +158,7 @@ data srv4_cooler_asset: PhysicalAsset = PhysicalAsset {
   procurement: none,
 }
 
-data installed_cooler_containments: List<PhysicalContainment> = [
+data installed_cooler_containments: List<product.placement_supply.PhysicalContainment> = [
   HostContainsComponent { host: host_srv3, component: cooler_srv3 },
   HostContainsComponent { host: host_srv4, component: cooler_srv4 },
 ]
@@ -167,15 +167,15 @@ data installed_cooler_containments: List<PhysicalContainment> = [
 // not assumed compatible. installed_cooling_verdict_for_host reaches InstalledCoolingUnobserved
 // for them, which admits fan observation and refuses thermal qualification, so the coverage
 // obligation stays loud instead of defaulting to a pass.
-data installed_cooling_realizations: List<InstalledCoolingRealization> = [
-  InstalledCoolingRealization {
+data installed_cooling_realizations: List<product.cooling_qualification.InstalledCoolingRealization> = [
+  product.cooling_qualification.InstalledCoolingRealization {
     host: host_srv3,
     cooler_asset: cooler_srv3,
     cooler: dynatron_w1_catalog,
     processor: altra_max_m12830_catalog,
     baseboard_model: srv3_baseboard.catalog.model,
   },
-  InstalledCoolingRealization {
+  product.cooling_qualification.InstalledCoolingRealization {
     host: host_srv4,
     cooler_asset: cooler_srv4,
     cooler: dynatron_w1_catalog,
@@ -184,7 +184,7 @@ data installed_cooling_realizations: List<InstalledCoolingRealization> = [
   },
 ]
 
-data rack_01_catalog_units: RackUnit = navepoint_18u_open_frame_catalog.rack_units
+data rack_01_catalog_units: std.measure.RackUnit = navepoint_18u_open_frame_catalog.rack_units
 
 // measure_add<Q, S> admits only operands of the SAME quantity and scale, so this sum is
 // dimensionally checked by construction — a Millimeter or a bare count cannot enter it.

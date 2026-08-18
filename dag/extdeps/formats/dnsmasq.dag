@@ -1,8 +1,8 @@
 module extdeps.formats.dnsmasq
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "thekelleys.org.uk/dnsmasq/docs/dnsmasq.conf.example"
   }
@@ -16,7 +16,7 @@ type DnsmasqDirective =
   | DnsmasqDhcpOptionForceTag { tag: String, option: String, value: String }
   | DnsmasqDhcpBootTag { tag: String, target: String }
 
-data dnsmasq_protocol: LayoutProtocol = LayoutProtocol { indent_unit: "" }
+data dnsmasq_protocol: std.layout.LayoutProtocol = std.layout.LayoutProtocol { indent_unit: "" }
 
 fn dnsmasq_directive_line(d: DnsmasqDirective) -> String {
   match d {
@@ -32,7 +32,7 @@ fn dnsmasq_directive_line(d: DnsmasqDirective) -> String {
   }
 }
 
-fn dnsmasq_to_doc(directives: List<DnsmasqDirective>) -> Doc {
+fn dnsmasq_to_doc(directives: List<DnsmasqDirective>) -> std.layout.Doc {
   doc_concat(parts: map(directives, d => doc_line_of(text: dnsmasq_directive_line(d: d))))
 }
 

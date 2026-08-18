@@ -1,38 +1,38 @@
 module v2.test.execution.c_type_decl_emit_host_run
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn ctd_run_probe_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^c_type_decl_emit_host_run_probe } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn ctd_run_inputs() -> Inputs {
+fn ctd_run_inputs() -> v2.compiler.eval.Inputs {
   inputs_root_only(root: ctd_run_probe_node())
 }
 
 fn ctd_empty_conj() -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
+  v2.std.node.Node { kind: TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
-fn ctd_atom_type(name: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
+fn ctd_atom_type(name: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }
 }
 
-fn ctd_field_edge(name: Symbol, type_name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: ctd_atom_type(name: type_name) }
+fn ctd_field_edge(name: v2.std.node.Symbol, type_name: v2.std.node.Symbol) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: ctd_atom_type(name: type_name) }
 }
 
-fn ctd_variant_edge(name: Symbol) -> Edge {
-  Edge { label: Named { name: name }, target: ctd_empty_conj() }
+fn ctd_variant_edge(name: v2.std.node.Symbol) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: ctd_empty_conj() }
 }
 
 fn ctd_point_record() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       ctd_field_edge(name: ^x, type_name: ^Int),
@@ -43,7 +43,7 @@ fn ctd_point_record() -> Node {
 }
 
 fn ctd_bool_coproduct() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Disj },
     children: [ ctd_variant_edge(name: ^True), ctd_variant_edge(name: ^False) ],
     occurrence_id: SyntheticOccurrence
@@ -55,15 +55,15 @@ fn ctd_emit_decl_source() -> Medium<String> {
     Accepted { value: point, diagnostics: _ } =>
       match emit_semantic_type_decl(name: ^Bool, params: Empty, node: ctd_bool_coproduct(), target: c_type_decl_target_model()) {
         Accepted { value: bool_decl, diagnostics: _ } =>
-          Medium {
+          extdeps.communication.medium.Medium {
             carried: concat(concat(point.carried, bool_decl.carried), "\n"),
             fidelity: Lossless
           }
         Rejected { diagnostics: _ } =>
-          Medium { carried: "", fidelity: Lossless }
+          extdeps.communication.medium.Medium { carried: "", fidelity: Lossless }
       }
     Rejected { diagnostics: _ } =>
-      Medium { carried: "", fidelity: Lossless }
+      extdeps.communication.medium.Medium { carried: "", fidelity: Lossless }
   }
 }
 

@@ -1,7 +1,7 @@
 module v2.std.node_query
 
 
-fn coproduct_arm_key_list_from_node(node: Node) -> List<Symbol> {
+fn coproduct_arm_key_list_from_node(node: Node) -> List<v2.std.node.Symbol> {
   fold(
     xs: node_labeled_child_edges(node: node),
     init: Empty,
@@ -9,7 +9,7 @@ fn coproduct_arm_key_list_from_node(node: Node) -> List<Symbol> {
   )
 }
 
-fn coproduct_arm_keys(type_name: Symbol) -> List<Symbol> {
+fn coproduct_arm_keys(type_name: v2.std.node.Symbol) -> List<v2.std.node.Symbol> {
   coproduct_arm_key_list_from_node(node: resolve_type_node(type_name: type_name))
 }
 
@@ -20,14 +20,14 @@ fn node_is_coproduct(node: Node) -> Bool {
   }
 }
 
-fn edge_field_type_name(target: Node) -> Symbol {
+fn edge_field_type_name(target: Node) -> v2.std.node.Symbol {
   match target.kind {
     TypeNode { connective: Atom { identity: sym } } => sym
     _ => ^coproduct_unresolved_payload
   }
 }
 
-fn conj_payload_type_name_go(xs: FreeMonoid<Edge>, acc: String) -> String {
+fn conj_payload_type_name_go(xs: FreeMonoid<v2.std.node.Edge>, acc: String) -> String {
   match xs {
     Empty => acc
     Cons { head: h, tail: t } =>
@@ -41,11 +41,11 @@ fn conj_payload_type_name_go(xs: FreeMonoid<Edge>, acc: String) -> String {
   }
 }
 
-fn conj_authored_payload_type_name(n: Node) -> Symbol {
+fn conj_authored_payload_type_name(n: Node) -> v2.std.node.Symbol {
   concat(concat(conj_payload_type_name_go(xs: n.children, acc: "{"), " "), "}")
 }
 
-fn arm_payload_from_target(target: Node) -> ArmPayload {
+fn arm_payload_from_target(target: Node) -> v2.std.node.ArmPayload {
   match target.kind {
     TypeNode { connective: Conj } =>
       if count(target.children) == 0 {
@@ -59,21 +59,21 @@ fn arm_payload_from_target(target: Node) -> ArmPayload {
   }
 }
 
-fn arm_payload_type_name(payload: ArmPayload) -> Symbol {
+fn arm_payload_type_name(payload: v2.std.node.ArmPayload) -> v2.std.node.Symbol {
   match payload {
     Nullary => coproduct_nullary_payload_type_name
     Typed { target_ref: sym } => sym
   }
 }
 
-fn coproduct_arm_from_edge(e: Edge) -> CoproductArm {
-  CoproductArm {
+fn coproduct_arm_from_edge(e: v2.std.node.Edge) -> v2.std.node.CoproductArm {
+  v2.std.node.CoproductArm {
     label: named_edge_sort_key(e: e),
     payload: arm_payload_from_target(target: e.target)
   }
 }
 
-fn coproduct_arm_list_from_node(node: Node) -> List<CoproductArm> {
+fn coproduct_arm_list_from_node(node: Node) -> List<v2.std.node.CoproductArm> {
   fold(
     xs: node_labeled_child_edges(node: node),
     init: Empty,
@@ -81,18 +81,18 @@ fn coproduct_arm_list_from_node(node: Node) -> List<CoproductArm> {
   )
 }
 
-fn coproduct_arms(type_name: Symbol) -> List<CoproductArm> {
+fn coproduct_arms(type_name: v2.std.node.Symbol) -> List<v2.std.node.CoproductArm> {
   coproduct_arm_list_from_node(node: resolve_type_node(type_name: type_name))
 }
 
-fn coproduct_arm_payload_pair_from_arm(arm: CoproductArm) -> CoproductArmPayloadPair {
-  CoproductArmPayloadPair {
+fn coproduct_arm_payload_pair_from_arm(arm: v2.std.node.CoproductArm) -> v2.std.node.CoproductArmPayloadPair {
+  v2.std.node.CoproductArmPayloadPair {
     label: arm.label,
     payload_type_name: arm_payload_type_name(payload: arm.payload)
   }
 }
 
-fn coproduct_arm_payload_pairs(type_name: Symbol) -> List<CoproductArmPayloadPair> {
+fn coproduct_arm_payload_pairs(type_name: v2.std.node.Symbol) -> List<v2.std.node.CoproductArmPayloadPair> {
   fold(
     xs: coproduct_arms(type_name: type_name),
     init: Empty,
@@ -103,7 +103,7 @@ fn coproduct_arm_payload_pairs(type_name: Symbol) -> List<CoproductArmPayloadPai
 }
 
 fn coproduct_nullary_inhabitants<T>(
-  type_name: Symbol,
+  type_name: v2.std.node.Symbol,
   discriminant_of: fn(T) -> Symbol
 ) -> Outcome<List<T>> {
   coproduct_nullary_inhabitants(
@@ -118,7 +118,7 @@ type CoproductNullaryInhabitantLookup<T>
   | CoproductNullaryInhabitantDuplicate
 
 fn coproduct_nullary_inhabitant_lookup_step<T>(
-  wanted: Symbol,
+  wanted: v2.std.node.Symbol,
   discriminant_of: fn(T) -> Symbol,
   acc: CoproductNullaryInhabitantLookup<T>,
   inhabitant: T
@@ -138,7 +138,7 @@ fn coproduct_nullary_inhabitant_lookup_step<T>(
 }
 
 fn coproduct_nullary_inhabitant_lookup_all<T>(
-  wanted: Symbol,
+  wanted: v2.std.node.Symbol,
   discriminant_of: fn(T) -> Symbol,
   inhabitants: List<T>,
   acc: CoproductNullaryInhabitantLookup<T>
@@ -158,10 +158,10 @@ fn coproduct_nullary_inhabitant_lookup_all<T>(
 }
 
 fn coproduct_nullary_inhabitant_lookup_diagnostic(
-  type_name: Symbol,
-  reason: Symbol
-) -> Diagnostic {
-  Diagnostic {
+  type_name: v2.std.node.Symbol,
+  reason: v2.std.node.Symbol
+) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: resolve_type_node(type_name: type_name)),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -169,9 +169,9 @@ fn coproduct_nullary_inhabitant_lookup_diagnostic(
 }
 
 fn coproduct_nullary_inhabitant_by_discriminant<T>(
-  type_name: Symbol,
+  type_name: v2.std.node.Symbol,
   discriminant_of: fn(T) -> Symbol,
-  wanted: Symbol
+  wanted: v2.std.node.Symbol
 ) -> Outcome<T> {
   match coproduct_nullary_inhabitants(
     type_name: type_name,
@@ -210,7 +210,7 @@ fn node_positional_child_targets(node: Node) -> List<Node> {
   })
 }
 
-fn node_labeled_child_edges(node: Node) -> List<Edge> {
+fn node_labeled_child_edges(node: Node) -> List<v2.std.node.Edge> {
   fold(node.children, init: Empty, f: fn(acc, e) {
     match e.label {
       Named { name: _ } => list_snoc_item(xs: acc, item: e)
@@ -243,14 +243,14 @@ fn call_callee_target(node: Node) -> Outcome<Node> {
     match list_at_optional(xs: node_positional_child_targets(node: node), index: 0) {
       Present { value: callee } => outcome_accepted(value: callee)
       Absent =>
-        outcome_rejected(d: Diagnostic {
+        outcome_rejected(d: v2.std.diagnostic.Diagnostic {
           reason: ^call_callee_absent,
           at: node_locus(node: node),
           correction: Unavailable { reason: ExternalContractUnknown }
         })
     }
   } else {
-    outcome_rejected(d: Diagnostic {
+    outcome_rejected(d: v2.std.diagnostic.Diagnostic {
       reason: ^node_not_a_call,
       at: node_locus(node: node),
       correction: Unavailable { reason: ExternalContractUnknown }
@@ -267,18 +267,18 @@ fn call_argument_targets(node: Node) -> List<Node> {
 
 fn node_envelope_without_named_coordinate_go(
   root: Node,
-  xs: FreeMonoid<Edge>,
-  coordinate: Symbol,
-  acc: FreeMonoid<Edge>,
+  xs: FreeMonoid<v2.std.node.Edge>,
+  coordinate: v2.std.node.Symbol,
+  acc: FreeMonoid<v2.std.node.Edge>,
   saw_coordinate: Bool
-) -> Outcome<FreeMonoid<Edge>> {
+) -> Outcome<FreeMonoid<v2.std.node.Edge>> {
   match xs {
     Empty => outcome_accepted(value: acc)
     Cons { head: h, tail: t } =>
       match h.label {
         Named { name: n } =>
           if (n == coordinate) && saw_coordinate {
-            outcome_rejected(d: Diagnostic {
+            outcome_rejected(d: v2.std.diagnostic.Diagnostic {
               reason: ^named_child_ambiguous,
               at: node_locus(node: root),
               correction: Unavailable { reason: ExternalContractUnknown }
@@ -304,14 +304,14 @@ fn node_envelope_without_named_coordinate_go(
   }
 }
 
-fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
+fn find_named_child(root: Node, name: v2.std.node.Symbol) -> Outcome<Node> {
   match root.kind {
     TypeNode { connective: Conj } =>
       let count = name_occurrences(name: name, children: root.children)
       if count == 1 {
         fold(
           root.children,
-          init: outcome_rejected(d: Diagnostic {
+          init: outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^named_child_missing,
             at: node_locus(node: root),
             correction: Unavailable { reason: ExternalContractUnknown }
@@ -329,20 +329,20 @@ fn find_named_child(root: Node, name: Symbol) -> Outcome<Node> {
           }
         )
       } else if count == 0 {
-        outcome_rejected(d: Diagnostic {
+        outcome_rejected(d: v2.std.diagnostic.Diagnostic {
           reason: ^named_child_missing,
           at: node_locus(node: root),
           correction: Unavailable { reason: ExternalContractUnknown }
         })
       } else {
-        outcome_rejected(d: Diagnostic {
+        outcome_rejected(d: v2.std.diagnostic.Diagnostic {
           reason: ^named_child_ambiguous,
           at: node_locus(node: root),
           correction: Unavailable { reason: ExternalContractUnknown }
         })
       }
     _ =>
-      outcome_rejected(d: Diagnostic {
+      outcome_rejected(d: v2.std.diagnostic.Diagnostic {
         reason: ^named_child_missing,
         at: node_locus(node: root),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -356,20 +356,20 @@ fn find_arrow_body_child(root: Node) -> Outcome<Node> {
       match arrow_body_target_lookup(children: root.children) {
         Found { target: body } => outcome_accepted(value: body)
         Ambiguous =>
-          outcome_rejected(d: Diagnostic {
+          outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^arrow_body_child_ambiguous,
             at: node_locus(node: root),
             correction: Unavailable { reason: ExternalContractUnknown }
           })
         _ =>
-          outcome_rejected(d: Diagnostic {
+          outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^arrow_body_child_missing,
             at: node_locus(node: root),
             correction: Unavailable { reason: ExternalContractUnknown }
           })
       }
     _ =>
-      outcome_rejected(d: Diagnostic {
+      outcome_rejected(d: v2.std.diagnostic.Diagnostic {
         reason: ^arrow_body_child_not_arrow,
         at: node_locus(node: root),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -377,15 +377,15 @@ fn find_arrow_body_child(root: Node) -> Outcome<Node> {
   }
 }
 
-fn node_query_domain_malformed_diagnostic(domain: Node) -> Diagnostic {
-  Diagnostic {
+fn node_query_domain_malformed_diagnostic(domain: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^arrow_domain_named_param_bindings_malformed,
     at: node_locus(node: domain),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
+fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<v2.std.node.Symbol>> {
   match domain.kind {
     TypeNode { connective: Conj } =>
       match fold(domain.children, init: outcome_accepted(value: Empty), f: fn(acc, edge) {
@@ -422,21 +422,21 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<Symbol>> {
   }
 }
 
-fn arrow_domain_named_param_bindings(arrow: Node) -> Outcome<List<Symbol>> {
+fn arrow_domain_named_param_bindings(arrow: Node) -> Outcome<List<v2.std.node.Symbol>> {
   match arrow.kind {
     TypeNode { connective: Arrow } =>
       match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
         Present { value: domain } =>
           conj_ordered_named_param_binding_ids(domain: domain)
         Absent =>
-          outcome_rejected(d: Diagnostic {
+          outcome_rejected(d: v2.std.diagnostic.Diagnostic {
             reason: ^arrow_domain_named_param_bindings_missing,
             at: node_locus(node: arrow),
             correction: Unavailable { reason: ExternalContractUnknown }
           })
       }
     _ =>
-      outcome_rejected(d: Diagnostic {
+      outcome_rejected(d: v2.std.diagnostic.Diagnostic {
         reason: ^arrow_domain_named_param_bindings_not_arrow,
         at: node_locus(node: arrow),
         correction: Unavailable { reason: ExternalContractUnknown }

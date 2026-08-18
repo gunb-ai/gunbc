@@ -1,19 +1,19 @@
 module v2.test.claim.sql_create_table_fold
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn sql_fold_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn sql_fold_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   optional_absent()
 }
 
 fn sql_fold_fold_serialize(
-  op: SqlSchemaOperation,
-  target: TargetModel
+  op: v2.extdeps.formats.sql.SqlSchemaOperation,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<String> {
   match sql_fold_operation_emitted_witness(op: op) {
     Holds { value: emitted } =>
-      let tree = InferredTree {
+      let tree = v2.compiler.infer.InferredTree {
         root: emitted,
         facts: Map { lookup: sql_fold_facts_lookup }
       }
@@ -29,7 +29,7 @@ fn sql_fold_fold_serialize(
   }
 }
 
-fn sql_fold_fold_serialize_operation(op: SqlSchemaOperation) -> Outcome<String> {
+fn sql_fold_fold_serialize_operation(op: v2.extdeps.formats.sql.SqlSchemaOperation) -> Outcome<String> {
   match sql_fold_target_model_for_operation_witness(op: op) {
     Holds { value: target } =>
       sql_fold_fold_serialize(op: op, target: target)
@@ -38,7 +38,7 @@ fn sql_fold_fold_serialize_operation(op: SqlSchemaOperation) -> Outcome<String> 
   }
 }
 
-fn sql_fold_fold_matches_oracle(op: SqlSchemaOperation) -> Bool {
+fn sql_fold_fold_matches_oracle(op: v2.extdeps.formats.sql.SqlSchemaOperation) -> Bool {
   match sql_fold_fold_serialize_operation(op: op) {
     Accepted { value: folded, diagnostics: _ } =>
       match sql_serialize_schema_operation(op: op) {
@@ -50,15 +50,15 @@ fn sql_fold_fold_matches_oracle(op: SqlSchemaOperation) -> Bool {
   }
 }
 
-fn sql_fold_single_col_operation() -> SqlSchemaOperation {
+fn sql_fold_single_col_operation() -> v2.extdeps.formats.sql.SqlSchemaOperation {
   SqlCreateTable { table: sql_fold_tasks_single_col_table }
 }
 
-fn sql_fold_two_col_operation() -> SqlSchemaOperation {
+fn sql_fold_two_col_operation() -> v2.extdeps.formats.sql.SqlSchemaOperation {
   SqlCreateTable { table: sql_fold_tasks_two_col_table }
 }
 
-fn sql_fold_pk_operation() -> SqlSchemaOperation {
+fn sql_fold_pk_operation() -> v2.extdeps.formats.sql.SqlSchemaOperation {
   SqlCreateTable { table: sql_fold_tasks_pk_table }
 }
 
@@ -90,8 +90,8 @@ test fn sql_fold_create_table_with_pk_holds() -> Bool {
 }
 
 fn sql_fold_direct_serialize_matches_oracle(
-  op: SqlSchemaOperation,
-  target: TargetModel
+  op: v2.extdeps.formats.sql.SqlSchemaOperation,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> Bool {
   match sql_fold_operation_emitted_witness(op: op) {
     Holds { value: emitted } =>
@@ -155,7 +155,7 @@ test fn sql_fold_oracle_rejects_unsupported_drop_table_holds() -> Bool {
 test fn sql_fold_oracle_rejects_parameterized_numeric_type_holds() -> Bool {
   match sql_serialize_data_type(
     dt: SqlTypeNumeric {
-      precision: NonZeroNat { prev: Zero },
+      precision: v2.std.cardinality.NonZeroNat { prev: Zero },
       scale: Zero
     }
   ) {

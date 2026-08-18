@@ -4,12 +4,12 @@ module gunbc.host_identity_observation
 
 type HostIdentityObservationRow {
   short_hostname_raw: String
-  probed_at: NonEmptyStr
+  probed_at: std.types.NonEmptyStr
 }
 
 type HostIdentityObservation {
   short_hostname: String
-  probed_at: NonEmptyStr
+  probed_at: std.types.NonEmptyStr
 }
 
 data gunbc_host_identity_observation_scope_disposition: Disposition = std.disposition.Terminal {

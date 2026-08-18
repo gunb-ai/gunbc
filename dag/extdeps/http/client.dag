@@ -1,8 +1,8 @@
 module extdeps.http.client
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rfc-editor.org/rfc/rfc9110"
   }
@@ -18,7 +18,7 @@ fn http_client_localhost_max_time_flag() -> String {
   to_string(second_count(s: curl_localhost_max_time))
 }
 
-fn http_client_get_argv(url: NonEmptyStr) -> List<String> {
+fn http_client_get_argv(url: std.types.NonEmptyStr) -> List<String> {
   [
     "curl",
     "-fsS",
@@ -32,7 +32,7 @@ fn http_client_get_argv(url: NonEmptyStr) -> List<String> {
 
 service http.Client {
   operation Get {
-    input { url: NonEmptyStr }
+    input { url: std.types.NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -45,7 +45,7 @@ service http.Client {
   }
 
   operation GetLocalhostBounded {
-    input { url: NonEmptyStr }
+    input { url: std.types.NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -69,7 +69,7 @@ service http.Client {
   }
 
   operation PostJsonFromFile {
-    input { url: NonEmptyStr, request_body_file: NonEmptyStr }
+    input { url: std.types.NonEmptyStr, request_body_file: std.types.NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -90,7 +90,7 @@ service http.Client {
   }
 
   operation DownloadToFile {
-    input { url: NonEmptyStr, destination: NonEmptyStr }
+    input { url: std.types.NonEmptyStr, destination: std.types.NonEmptyStr }
     output { success: Bool from "exit_success" }
     transport shell { argv: ["curl", "-fL", "{url}", "-o", "{destination}"] }
     exit {

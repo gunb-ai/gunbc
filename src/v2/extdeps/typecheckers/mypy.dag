@@ -16,7 +16,7 @@ data mypy_profile_l1: MypyConfig = MypyConfig {
 }
 
 type MypyDiagnosticCode {
-  code_id: Symbol
+  code_id: v2.std.node.Symbol
   code_name: String
 }
 data mypy_diagnostic_codes: List<MypyDiagnosticCode> = [

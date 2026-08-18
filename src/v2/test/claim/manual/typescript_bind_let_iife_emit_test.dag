@@ -1,9 +1,9 @@
 module v2.test.manual.typescript_bind_let_iife_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn bind_let_binding_spellings() -> Map<Symbol, String> {
+fn bind_let_binding_spellings() -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(
       map_insert(empty_map(), ^bind_let_binding_k, "k"),
@@ -15,8 +15,8 @@ fn bind_let_binding_spellings() -> Map<Symbol, String> {
   )
 }
 
-fn bind_let_target_model() -> TargetModel {
-  TargetModel {
+fn bind_let_target_model() -> v2.std.compilers.target_model.TargetModel {
+  v2.std.compilers.target_model.TargetModel {
     produced_decl_support: ProducedDeclUnwired,
     bundle: ts_target_model_node(),
     lex: ts_lex(),
@@ -27,7 +27,7 @@ fn bind_let_target_model() -> TargetModel {
   }
 }
 
-fn ts_bind_let_expr() -> TargetValueExpression {
+fn ts_bind_let_expr() -> v2.std.compilers.target_model.TargetValueExpression {
   target_value_expression_bind_let(
     bind_key: target_value_expression_binding_ref(binding: ^bind_let_binding_k),
     bind_value: target_value_expression_binding_ref(binding: ^bind_let_binding_v),
@@ -36,7 +36,7 @@ fn ts_bind_let_expr() -> TargetValueExpression {
 }
 
 fn ts_bind_let_emit_with_projection(
-  projection: TargetValueExpressionProjection
+  projection: v2.std.compilers.target_model.TargetValueExpressionProjection
 ) -> Outcome<Medium<String>> {
   bind_outcome(
     o: target_value_expression_to_concrete_tokens(
@@ -83,7 +83,7 @@ test fn ts_bind_let_mode_perturbation_flips_holds() -> Bool {
     && (ts_bind_let_emit_statement_sequenced() != "BIND_LET_EMIT_REJECTED")
 }
 
-fn block_construct_loop_expr() -> TargetValueExpression {
+fn block_construct_loop_expr() -> v2.std.compilers.target_model.TargetValueExpression {
   target_value_expression_loop(
     body: target_value_expression_binding_ref(binding: ^bind_let_binding_b)
   )
@@ -111,7 +111,7 @@ test fn dag_loop_value_producing_emits_holds() -> Bool {
   }
 }
 
-fn block_construct_closure_expr() -> TargetValueExpression {
+fn block_construct_closure_expr() -> v2.std.compilers.target_model.TargetValueExpression {
   target_value_expression_closure(
     params: [^bind_let_binding_k],
     body: target_value_expression_binding_ref(binding: ^bind_let_binding_b)

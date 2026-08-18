@@ -11,10 +11,10 @@ fn wgsl_device_precision_fidelity(contract: NumericalContract) -> DecodeFidelity
 type GpuExecutionStatus = | DormantAwaitingOperator
 
 type GpuFidelityReceipt {
-  device: GpuModelCatalogRow
-  target_medium: NonEmptyStr
-  contract: NumericalContract
-  device_precision_fidelity: DecodeFidelity
+  device: extdeps.gpu.types.GpuModelCatalogRow
+  target_medium: std.types.NonEmptyStr
+  contract: std.numerical_contract.NumericalContract
+  device_precision_fidelity: extdeps.communication.medium.DecodeFidelity
   status: GpuExecutionStatus
 }
 

@@ -1,12 +1,12 @@
 module gunbc.srv3_nbd_proxy_serve_intent
 
 
-data srv3_nbd_proxy_lease_key: NonEmptyStr = "srv3-nbd-proxy-10809" as NonEmptyStr
+data srv3_nbd_proxy_lease_key: std.types.NonEmptyStr = "srv3-nbd-proxy-10809" as std.types.NonEmptyStr
 
-fn srv3_nbd_proxy_serve_transport_intent() -> NbdProxyServeTransportIntent {
+fn srv3_nbd_proxy_serve_transport_intent() -> extdeps.bmc.webui.nbd_proxy_serve.NbdProxyServeTransportIntent {
   nbd_proxy_serve_transport_intent(
     bmc_host: asrock_srv3_live_bmc_host,
-    session_token: concat("$", "BMCWEB_SESSION_TOKEN") as NonEmptyStr,
+    session_token: concat("$", "BMCWEB_SESSION_TOKEN") as std.types.NonEmptyStr,
     ws_path: bmcweb_nbd_proxy_ws_path(
       variant: asrock_altrad8ud_openbmc_2_07_00_nbd_proxy_primary_endpoint,
       slot: 0,
@@ -17,11 +17,11 @@ fn srv3_nbd_proxy_serve_transport_intent() -> NbdProxyServeTransportIntent {
   )
 }
 
-fn srv3_nbd_proxy_serve_intent() -> NbdProxyServeTransportIntent {
+fn srv3_nbd_proxy_serve_intent() -> extdeps.bmc.webui.nbd_proxy_serve.NbdProxyServeTransportIntent {
   srv3_nbd_proxy_serve_transport_intent()
 }
 
-fn srv3_nbd_proxy_serve_host_effect() -> HostEffect {
+fn srv3_nbd_proxy_serve_host_effect() -> gunbc.host_effect.HostEffect {
   Srv3NbdProxyServe {
     intent: srv3_nbd_proxy_serve_transport_intent(),
     lease_key: srv3_nbd_proxy_lease_key,

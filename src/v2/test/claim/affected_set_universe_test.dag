@@ -1,21 +1,21 @@
 module v2.test.claim.affected_set_universe
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn symbol_eq(a: Symbol, b: Symbol) -> Bool {
+fn symbol_eq(a: v2.std.node.Symbol, b: v2.std.node.Symbol) -> Bool {
   a == b
 }
 
-fn process_identities(ps: List<RepoProcess>) -> List<Symbol> {
+fn process_identities(ps: List<v2.lens.affected_set.RepoProcess>) -> List<v2.std.node.Symbol> {
   fold(ps, init: [], f: fn(acc, p) { list_snoc_item(xs: acc, item: p.identity) })
 }
 
-fn gate_discriminants(gates: List<Gate>) -> List<Symbol> {
+fn gate_discriminants(gates: List<gunbc.ci_gate.Gate>) -> List<v2.std.node.Symbol> {
   fold(gates, init: [], f: fn(acc, g) { list_snoc_item(xs: acc, item: discriminant(v: g)) })
 }
 
-fn identity_in(ps: List<RepoProcess>, sym: Symbol) -> Bool {
+fn identity_in(ps: List<v2.lens.affected_set.RepoProcess>, sym: v2.std.node.Symbol) -> Bool {
   fold(ps, init: false, f: fn(acc, p) { acc || (p.identity == sym) })
 }
 

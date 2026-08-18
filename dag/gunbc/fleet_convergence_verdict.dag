@@ -13,11 +13,11 @@ module gunbc.fleet_convergence_verdict
 // other required cell reads unobserved and the fleet verdict is honestly NOT converged
 // until producers land receipts — that number going down IS the arc's progress.
 type RequiredCellStanding
-  = CellConverged { host: HostIdentity, phase_label: String }
-  | CellUnobserved { host: HostIdentity, phase_label: String }
-  | CellUnreachable { host: HostIdentity, phase_label: String }
-  | CellDrifted { host: HostIdentity, phase_label: String }
-  | CellConflict { host: HostIdentity, phase_label: String }
+  = CellConverged { host: product.placement_supply.HostIdentity, phase_label: String }
+  | CellUnobserved { host: product.placement_supply.HostIdentity, phase_label: String }
+  | CellUnreachable { host: product.placement_supply.HostIdentity, phase_label: String }
+  | CellDrifted { host: product.placement_supply.HostIdentity, phase_label: String }
+  | CellConflict { host: product.placement_supply.HostIdentity, phase_label: String }
 
 // Projection keeps the full six-arm ObservationVerdict fidelity: Absent and
 // UnknownRefused are both "nobody observed this" (no producer, or a producer with no
@@ -51,9 +51,9 @@ fn cell_standing_is_converged(s: RequiredCellStanding) -> Bool {
 // no converge receipt at all is unobserved at knob grain — the same fail-closed arm as
 // an unobserved cell, never a default green.
 type HostKnobStanding
-  = KnobConverged { host: HostIdentity }
-  | KnobNotConverged { host: HostIdentity, reason: String }
-  | KnobUnobserved { host: HostIdentity }
+  = KnobConverged { host: product.placement_supply.HostIdentity }
+  | KnobNotConverged { host: product.placement_supply.HostIdentity, reason: String }
+  | KnobUnobserved { host: product.placement_supply.HostIdentity }
 
 // Duplicate receipts for ONE host identity are a CONTRADICTION to classify, never a
 // pick (the machine-id hazard, msg_1c4e0bce: both Sparks share one /etc/machine-id and
@@ -88,7 +88,7 @@ fn host_knob_standing_is_converged(s: HostKnobStanding) -> Bool {
 }
 
 type HostConvergenceStanding {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   knob: HostKnobStanding
   cells: List<RequiredCellStanding>
 }

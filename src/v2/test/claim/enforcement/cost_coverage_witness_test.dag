@@ -1,7 +1,7 @@
 module v2.test.claim.enforcement.cost_coverage_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data cc_witness_smoke_paths: List<String> = [
   "dag/std/logic.dag"
@@ -17,15 +17,15 @@ data cc_witness_v2_paths: List<String> = [
   "src/v2/std/nat.dag"
 ]
 
-fn cc_witness_smoke_receipt_live() -> CostCoverageTreeReceipt {
+fn cc_witness_smoke_receipt_live() -> v2.lens.enforcement.cost_coverage.CostCoverageTreeReceipt {
   cost_coverage_tree_census(tree_root: "dag", paths: cc_witness_smoke_paths)
 }
 
-fn cc_witness_dag_tree_receipt_live() -> CostCoverageTreeReceipt {
+fn cc_witness_dag_tree_receipt_live() -> v2.lens.enforcement.cost_coverage.CostCoverageTreeReceipt {
   cost_coverage_tree_census(tree_root: "dag", paths: cc_witness_dag_paths)
 }
 
-fn cc_witness_v2_tree_receipt_live() -> CostCoverageTreeReceipt {
+fn cc_witness_v2_tree_receipt_live() -> v2.lens.enforcement.cost_coverage.CostCoverageTreeReceipt {
   cost_coverage_tree_census(tree_root: "src/v2", paths: cc_witness_v2_paths)
 }
 

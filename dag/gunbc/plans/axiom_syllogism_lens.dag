@@ -1,7 +1,7 @@
 module gunbc.plans.axiom_syllogism_lens
 
 
-fn axiom_syllogism_lens_body() -> List<MarkdownBlock> {
+fn axiom_syllogism_lens_body() -> List<std.markdown.MarkdownBlock> {
   [
     BlockquoteBlock { blocks: [p(text: "**SCOPE-ONLY design.** This doc partitions syllogism-enforcement into the [expressibility-frontier](expressibility-frontier.md)'s three regions (① wall · ② lens-residue · ③ undecidable-review) and designs how A1–A3 plus the §1–§7 consequence chain are modeled in `.dag`, with **DESIGN.md itself as the first target** (the §7 recursion). It builds nothing — it exists for the operator nod before any carrier or witness lands. DESIGN refs: §1 (axioms A1–A3; displaced cost), §3 (single authority — turned on the argument), §4 (acyclic substrate — *the acyclicity test turned on the argument itself*), §5 (fail-closed; the \"never\" trap; construction over validation), §6 (lens as residue), §7 (recursion — this document as the first target). Closes DESIGN open thread #1.")] },
 
@@ -155,7 +155,7 @@ fn axiom_syllogism_lens_body() -> List<MarkdownBlock> {
   ]
 }
 
-data axiom_syllogism_lens_plan: Plan = Plan {
+data axiom_syllogism_lens_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "axiom-syllogism-lens",
   title: "The axiom + syllogism lens — the argument as the fourth reachability substrate",
   body: axiom_syllogism_lens_body(),

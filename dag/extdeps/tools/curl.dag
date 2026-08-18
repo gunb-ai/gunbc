@@ -1,14 +1,14 @@
 module extdeps.tools.curl
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "curl.se/docs/manpage.html"
   }
 }
 
-data curl_pinned_version: VersionConstraint = ">= 7.68"
+data curl_pinned_version: extdeps.version.VersionConstraint = ">= 7.68"
 
 data curl_cli_tool: CliTool = CliTool {
   name: "curl",
@@ -16,18 +16,18 @@ data curl_cli_tool: CliTool = CliTool {
   installable_via: [SourceApt { package: package_curl }],
 }
 
-data curl_localhost_connect_timeout: Second = second(count: 2)
+data curl_localhost_connect_timeout: std.measure.Second = second(count: 2)
 
-data curl_localhost_max_time: Second = second(count: 5)
+data curl_localhost_max_time: std.measure.Second = second(count: 5)
 
-fn curl_bounded_get_flags(connect_timeout: Second, max_time: Second) -> String {
+fn curl_bounded_get_flags(connect_timeout: std.measure.Second, max_time: std.measure.Second) -> String {
   concat(
     concat("--connect-timeout ", to_string(second_count(s: connect_timeout))),
     concat(" --max-time ", to_string(second_count(s: max_time)))
   )
 }
 
-fn curl_bounded_localhost_get_argv_prefix(connect_timeout: Second, max_time: Second) -> String {
+fn curl_bounded_localhost_get_argv_prefix(connect_timeout: std.measure.Second, max_time: std.measure.Second) -> String {
   concat("curl -sf ", curl_bounded_get_flags(connect_timeout: connect_timeout, max_time: max_time))
 }
 

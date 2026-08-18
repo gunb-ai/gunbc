@@ -1,7 +1,7 @@
 module v2.test.long.wave1_gate1_b1_bare_call_body_producer_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data wave1_gate1_b1_long_witness_note: String = "Wave 1 Gate 1 B1 execution witnesses (long lane): bare ident(args) producer lowering to Transform substrate, end-to-end resolve via existing resolver (no 03_resolve edits), builtin regression, genuine-unbound operand RED (x + unbound_sym; bisect-class resolve non-vacuity), and #6617 SymbolIndex parity no-regression. Exceeds the per-PR 5s fast-lane eval budget (gunbc_ci_fast_lane_rule_note); NOT discovery- or roster-enrolled — local recipe: claim_batch --source-root dag --source-root src/v2 --entry src/v2/test/claim/long/wave1_gate1_b1_bare_call_body_producer_witness_test.dag --function <name>."
 

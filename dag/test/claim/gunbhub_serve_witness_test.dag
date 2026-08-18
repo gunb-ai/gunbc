@@ -3,7 +3,7 @@ module test.claim.gunbhub_serve_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn witness_compose_ok_html(node: Fragment) -> String {
+fn witness_compose_ok_html(node: std.markup.Fragment) -> String {
   match gunbhub_compose_body(node: node) {
     ComposedOk { html: h } => h
     ComposeRejected { reason: _ } => ""
@@ -68,7 +68,7 @@ fn witness_static_table_repo_path_row_is_m1_placeholder() -> Bool {
 fn witness_browse_served_body_matches_consumer() -> Bool {
   let expected = expected_browse_html()
   match serve_gunbhub_request(
-    req: GunbhubServeRequest { method: GET, path: "/" }
+    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: GET, path: "/" }
   ) {
     Served { response: r } => r.body == expected && r.status == 200
     _ => false
@@ -77,7 +77,7 @@ fn witness_browse_served_body_matches_consumer() -> Bool {
 
 fn witness_readme_served_body_matches_static_table() -> Bool {
   match serve_gunbhub_request(
-    req: GunbhubServeRequest { method: GET, path: "/README.md" }
+    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: GET, path: "/README.md" }
   ) {
     Served { response: r } => r.body == expected_readme_html() && r.status == 200
     _ => false
@@ -86,7 +86,7 @@ fn witness_readme_served_body_matches_static_table() -> Bool {
 
 fn witness_browse_empty_path_also_matches() -> Bool {
   match serve_gunbhub_request(
-    req: GunbhubServeRequest { method: GET, path: "" }
+    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: GET, path: "" }
   ) {
     Served { response: r } => r.body == expected_browse_html()
     _ => false
@@ -95,7 +95,7 @@ fn witness_browse_empty_path_also_matches() -> Bool {
 
 fn witness_unknown_path_not_found() -> Bool {
   match serve_gunbhub_request(
-    req: GunbhubServeRequest { method: GET, path: "/missing/nested" }
+    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: GET, path: "/missing/nested" }
   ) {
     RouteNotFound => true
     _ => false
@@ -104,7 +104,7 @@ fn witness_unknown_path_not_found() -> Bool {
 
 fn witness_wrong_method_not_allowed() -> Bool {
   match serve_gunbhub_request(
-    req: GunbhubServeRequest { method: POST, path: "/" }
+    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: POST, path: "/" }
   ) {
     MethodNotAllowed => true
     _ => false
@@ -113,7 +113,7 @@ fn witness_wrong_method_not_allowed() -> Bool {
 
 fn witness_repo_path_wrong_method_not_allowed() -> Bool {
   match serve_gunbhub_request(
-    req: GunbhubServeRequest { method: POST, path: "/README.md" }
+    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: POST, path: "/README.md" }
   ) {
     MethodNotAllowed => true
     _ => false

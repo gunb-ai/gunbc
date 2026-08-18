@@ -7,39 +7,39 @@ type FloorPreparationPolicy
   = ResolveSelectedClosuresV1 {}
 
 type PreparedFloorEntryRequest {
-  witness: ScheduleWitnessEntry
-  closure_digest: Fnv1a64Structural
+  witness: std.realization_schedule.ScheduleWitnessEntry
+  closure_digest: std.content_hash.Fnv1a64Structural
 }
 
 type PreparedFloorSubjectRequest {
-  discovery: FloorDiscoveryRequest
+  discovery: v2.workflow.floor_discovery.FloorDiscoveryRequest
   selected: List<PreparedFloorEntryRequest>
   policy: FloorPreparationPolicy
 }
 
 type PreparedClaimSubjectIdentity sole_constructor {
-  discovery_request_identity: Fnv1a64Structural
-  selected_identity_digest: Fnv1a64Structural
-  preparation_policy_identity: Fnv1a64Structural
-  artifact_set_identity: Fnv1a64Structural
+  discovery_request_identity: std.content_hash.Fnv1a64Structural
+  selected_identity_digest: std.content_hash.Fnv1a64Structural
+  preparation_policy_identity: std.content_hash.Fnv1a64Structural
+  artifact_set_identity: std.content_hash.Fnv1a64Structural
 }
 
 type PreparedFloorEntryProbe {
-  witness: ScheduleWitnessEntry
-  probe: ProviderProbe
+  witness: std.realization_schedule.ScheduleWitnessEntry
+  probe: std.materialization_provider.ProviderProbe
 }
 
 type PreparedFloorEntryArtifact {
-  witness: ScheduleWitnessEntry
-  artifact: MaterializedArtifact
+  witness: std.realization_schedule.ScheduleWitnessEntry
+  artifact: std.materialization_provider.MaterializedArtifact
 }
 
 type PreparedFloorSubjectRefusal
-  = PreparedFloorDuplicateSelectedIdentities { duplicates: List<ScheduleWitnessEntry> }
-  | PreparedFloorDuplicateProbeIdentities { duplicates: List<ScheduleWitnessEntry> }
-  | PreparedFloorMissingProbeIdentities { missing: List<ScheduleWitnessEntry> }
-  | PreparedFloorUnexpectedProbeIdentities { unexpected: List<ScheduleWitnessEntry> }
-  | PreparedFloorProviderRefused { witness: ScheduleWitnessEntry, lookup: ProviderLookup }
+  = PreparedFloorDuplicateSelectedIdentities { duplicates: List<std.realization_schedule.ScheduleWitnessEntry> }
+  | PreparedFloorDuplicateProbeIdentities { duplicates: List<std.realization_schedule.ScheduleWitnessEntry> }
+  | PreparedFloorMissingProbeIdentities { missing: List<std.realization_schedule.ScheduleWitnessEntry> }
+  | PreparedFloorUnexpectedProbeIdentities { unexpected: List<std.realization_schedule.ScheduleWitnessEntry> }
+  | PreparedFloorProviderRefused { witness: std.realization_schedule.ScheduleWitnessEntry, lookup: std.materialization_provider.ProviderLookup }
 
 type PreparedFloorSubjectServe
   = PreparedFloorSubjectReady {
@@ -132,8 +132,8 @@ fn prepared_claim_subject_identity(
 }
 
 type PreparedFloorWitnessMultiplicityIndex {
-  witnessed: Map<ScheduleWitnessEntry, Bool>
-  duplicated: Map<ScheduleWitnessEntry, Bool>
+  witnessed: Map<std.realization_schedule.ScheduleWitnessEntry, Bool>
+  duplicated: Map<std.realization_schedule.ScheduleWitnessEntry, Bool>
 }
 
 fn prepared_floor_identity_map_contains(
@@ -180,7 +180,7 @@ fn prepared_floor_selected_multiplicity_index(
 
 type PreparedFloorProbeIndex {
   multiplicity: PreparedFloorWitnessMultiplicityIndex
-  by_witness: Map<ScheduleWitnessEntry, PreparedFloorEntryProbe>
+  by_witness: Map<std.realization_schedule.ScheduleWitnessEntry, PreparedFloorEntryProbe>
 }
 
 fn prepared_floor_probe_index_step(

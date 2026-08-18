@@ -10,7 +10,7 @@ type ModuleRootEdgeDisposition
 
 data namespace_graft_edge_disposition_note: String = "Module-root edge census (pre-graft working tree; none silently dropped): dag_surface_module_header + dag_surface_module_header_qualified_name → DISSOLVE (metadata; QN read once for graft). grammar_production_identity_node_projection → RE-HOME on output ModuleShell (^dag_surface_module provenance only). grammar_production_captured_node_projection → DISSOLVE (unwrap before graft). grammar_sequence/repeat *_node_projection, ^dag_surface_top_level_item shells, fn/data/type/import decl Named edges, Positional repeat spines, and every other non-metadata child → GRAFT_BODY (entire declaration forest under innermost Conj; extent is never an export subset)."
 
-fn namespace_graft_module_root_edge_disposition(name: Symbol) -> ModuleRootEdgeDisposition {
+fn namespace_graft_module_root_edge_disposition(name: v2.std.node.Symbol) -> ModuleRootEdgeDisposition {
   if dag_surface_module_header_metadata_edge(name: name) {
     ModuleRootEdgeDissolve
   } else if name == ^grammar_production_identity_node_projection {
@@ -22,7 +22,7 @@ fn namespace_graft_module_root_edge_disposition(name: Symbol) -> ModuleRootEdgeD
   }
 }
 
-fn namespace_graft_is_metadata_edge(name: Symbol) -> Bool {
+fn namespace_graft_is_metadata_edge(name: v2.std.node.Symbol) -> Bool {
   dag_surface_module_header_metadata_edge(name: name)
 }
 
@@ -33,7 +33,7 @@ fn namespace_graft_is_module_shell(root: Node) -> Bool {
   }
 }
 
-fn namespace_graft_parse_projection_edge(name: Symbol) -> Bool {
+fn namespace_graft_parse_projection_edge(name: v2.std.node.Symbol) -> Bool {
   (name == ^grammar_production_identity_node_projection)
     || (name == ^grammar_production_captured_node_projection)
     || ends_with(s: symbol_lexeme(sym: name), suffix: "_node_projection")
@@ -67,7 +67,7 @@ fn namespace_graft_is_transparent_sequence_spine(node: Node) -> Bool {
   }
 }
 
-fn namespace_graft_collect_body_edge(acc: List<Edge>, edge: Edge) -> List<Edge> {
+fn namespace_graft_collect_body_edge(acc: List<v2.std.node.Edge>, edge: v2.std.node.Edge) -> List<v2.std.node.Edge> {
   match edge.label {
     Named { name: sym } =>
       if namespace_graft_is_metadata_edge(name: sym) {
@@ -92,7 +92,7 @@ fn namespace_graft_collect_body_edge(acc: List<Edge>, edge: Edge) -> List<Edge> 
   }
 }
 
-fn namespace_graft_collect_body_edges_from_node(node: Node) -> List<Edge> {
+fn namespace_graft_collect_body_edges_from_node(node: Node) -> List<v2.std.node.Edge> {
   fold(node.children, init: [], f: fn(acc, edge) {
     namespace_graft_collect_body_edge(acc: acc, edge: edge)
   })
@@ -108,7 +108,7 @@ fn namespace_graft_is_graft_candidate(root: Node) -> Bool {
   }
 }
 
-fn namespace_graft_collect_body_edges(root: Node) -> List<Edge> {
+fn namespace_graft_collect_body_edges(root: Node) -> List<v2.std.node.Edge> {
   namespace_graft_collect_body_edges_from_node(
     node: namespace_graft_unwrap_module_working_root(root: root)
   )
@@ -123,7 +123,7 @@ fn namespace_graft_collect_body_edges(root: Node) -> List<Edge> {
 // A module with no declarations at all (header only) keeps its legitimate empty
 // body: the discriminant is declaration presence, not body emptiness alone. This
 // guard covers total dissolution; partial-drop fidelity is the deeper graft repair.
-fn namespace_graft_subtree_contains_atom(n: Node, sym: Symbol) -> Bool {
+fn namespace_graft_subtree_contains_atom(n: Node, sym: v2.std.node.Symbol) -> Bool {
   match n.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == sym {
@@ -135,7 +135,7 @@ fn namespace_graft_subtree_contains_atom(n: Node, sym: Symbol) -> Bool {
   }
 }
 
-fn namespace_graft_children_contain_atom(n: Node, sym: Symbol) -> Bool {
+fn namespace_graft_children_contain_atom(n: Node, sym: v2.std.node.Symbol) -> Bool {
   fold(n.children, init: false, f: fn(found, e) {
     if found {
       true
@@ -145,7 +145,7 @@ fn namespace_graft_children_contain_atom(n: Node, sym: Symbol) -> Bool {
   })
 }
 
-fn namespace_graft_body_dissolved(root: Node, body_edges: List<Edge>) -> Bool {
+fn namespace_graft_body_dissolved(root: Node, body_edges: List<v2.std.node.Edge>) -> Bool {
   if count(body_edges) == 0 {
     namespace_graft_subtree_contains_atom(
       n: namespace_graft_unwrap_module_working_root(root: root),
@@ -156,19 +156,19 @@ fn namespace_graft_body_dissolved(root: Node, body_edges: List<Edge>) -> Bool {
   }
 }
 
-fn namespace_graft_build_body_conj(edges: List<Edge>) -> Node {
-  Node {
+fn namespace_graft_build_body_conj(edges: List<v2.std.node.Edge>) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: edges,
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn namespace_graft_wrap_segment(segment: Symbol, inner: Node) -> Node {
-  Node {
+fn namespace_graft_wrap_segment(segment: v2.std.node.Symbol, inner: Node) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: segment },
         target: inner
       }
@@ -177,7 +177,7 @@ fn namespace_graft_wrap_segment(segment: Symbol, inner: Node) -> Node {
   }
 }
 
-fn namespace_graft_fold_spine(qn: QualifiedName, body: Node) -> Node {
+fn namespace_graft_fold_spine(qn: v2.std.qualified_name.QualifiedName, body: Node) -> Node {
   fold_list_right(
     xs: qn,
     empty: body,
@@ -187,8 +187,8 @@ fn namespace_graft_fold_spine(qn: QualifiedName, body: Node) -> Node {
   )
 }
 
-fn namespace_graft_atom_node(id: Symbol) -> Node {
-  Node {
+fn namespace_graft_atom_node(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -196,7 +196,7 @@ fn namespace_graft_atom_node(id: Symbol) -> Node {
 }
 
 fn namespace_graft_wrap_module_shell(captured: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -212,7 +212,7 @@ fn namespace_graft_wrap_module_shell(captured: Node) -> Node {
   }
 }
 
-fn namespace_graft_has_explicit_braced_container(root: Node, first_segment: Symbol) -> Bool {
+fn namespace_graft_has_explicit_braced_container(root: Node, first_segment: v2.std.node.Symbol) -> Bool {
   let working = namespace_graft_unwrap_module_working_root(root: root)
   fold(
     working.children,
@@ -260,7 +260,7 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
   if namespace_graft_already_grafted(root: root) {
     outcome_accepted(value: root)
   } else if namespace_graft_dual_position_refused(root: root) {
-    outcome_rejected(Diagnostic {
+    outcome_rejected(v2.std.diagnostic.Diagnostic {
       reason: ^namespace_graft_dual_position_refused,
       at: node_locus(node: root),
       correction: Unavailable { reason: ExternalContractUnknown }
@@ -273,7 +273,7 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
       Accepted { value: qn, diagnostics: _ } =>
         match qn {
           Empty =>
-            outcome_rejected(Diagnostic {
+            outcome_rejected(v2.std.diagnostic.Diagnostic {
               reason: ^qualified_name_structure_invalid,
               at: node_locus(node: root),
               correction: Unavailable { reason: ExternalContractUnknown }
@@ -281,7 +281,7 @@ fn module_header_containment_graft(root: Node) -> Outcome<Node> {
           Cons { head: _, tail: _ } => {
             let body_edges = namespace_graft_collect_body_edges(root: root)
             if namespace_graft_body_dissolved(root: root, body_edges: body_edges) {
-              outcome_rejected(Diagnostic {
+              outcome_rejected(v2.std.diagnostic.Diagnostic {
                 reason: ^namespace_graft_body_dissolved_refused,
                 at: node_locus(node: root),
                 correction: Unavailable { reason: ExternalContractUnknown }

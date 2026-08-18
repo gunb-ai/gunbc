@@ -13,12 +13,12 @@ data sudo_nopasswd_execute_probe_note: String = "Non-interactive sudo execute pr
 data sudo_nopasswd_grant_list_probe_note: String = "Non-interactive sudoers grant probe: read sudo -n -l (no target binary execution), then require an exact NOPASSWD row for command_path. Used when the binary may be absent before package ensure — exec failure would mis-diagnose absence as a grant miss (review 41039). Exit zero from the list query is not authorization evidence by itself because sudoers listpw may admit listing through a different NOPASSWD entry; extdeps.sudo.nopasswd_execute_probe_check_op owns both the typed read and exact-row parser. Its one-field probe shape is the typed command path itself; the parser, host effect, and callers consume that single authority directly."
 
 type SudoNopasswdExecuteProbeShape {
-  command_path: NonEmptyStr
-  check_argv: NonEmptyStr
+  command_path: std.types.NonEmptyStr
+  check_argv: std.types.NonEmptyStr
 }
 
 type SudoNopasswdGrantListProbeShape = NonEmptyStr where brand("SudoNopasswdGrantListProbeShape")
 
 type SudoNopasswdProbeKind
-  = NopasswdExecuteCheck { check_argv: NonEmptyStr }
+  = NopasswdExecuteCheck { check_argv: std.types.NonEmptyStr }
   | NopasswdGrantListCheck

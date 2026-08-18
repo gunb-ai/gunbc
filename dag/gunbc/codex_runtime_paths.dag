@@ -3,7 +3,7 @@ module gunbc.codex_runtime_paths
 
 data codex_runtime_paths_note: String = "Path composition for the Codex provider-runtime release tree — link name, current symlink path, and bundled-native executable path under a release parent. Lives below gunbc.host_layout and gunbc.package_delivery so both can import without a cycle: package_delivery owns materialization/version facts; host_layout owns host records; this module owns only shared path algebra."
 
-data codex_runtime_current_link_name: NonEmptyStr = "current" as NonEmptyStr
+data codex_runtime_current_link_name: std.types.NonEmptyStr = "current" as std.types.NonEmptyStr
 
 data srv1_codex_runtime_release_root: std.types.FilePath = "/opt/gunbc/provider-runtime/codex" as std.types.FilePath
 
@@ -16,7 +16,7 @@ fn codex_runtime_current_link_path(release_parent: std.types.FilePath) -> std.ty
 
 fn codex_bundled_executable_at_current_link(
   release_parent: std.types.FilePath,
-  native_executable_rel: NonEmptyStr,
+  native_executable_rel: std.types.NonEmptyStr,
 ) -> std.types.FilePath {
   concat(
     codex_runtime_current_link_path(release_parent: release_parent) as String,

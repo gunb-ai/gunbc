@@ -1,5 +1,5 @@
 module v2.test.manual.llvm_ir_model_core_anchor
 
 
-data llvm_anchor_core: ModelCore = llvm_ir_model_core()
+data llvm_anchor_core: v2.std.model_core.ModelCore = llvm_ir_model_core()
 data llvm_anchor_i32_facts: Node = llvm_integer_facts_node(facts: llvm_facts_i32)

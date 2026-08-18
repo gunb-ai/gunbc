@@ -29,7 +29,7 @@ test fn w_bach_buildup_rejects_non_increasing_counts() -> Bool {
 test fn w_bach_buildup_rejects_status_regression() -> Bool {
   let regressed = [
     bach_buildup_1004_electrons,
-    BachBuildupObservationRow {
+    extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow {
       apparatus: bach_et_al_2013_double_slit,
       figure_3_panel: Figure3PanelC,
       detected_electrons: 209,
@@ -68,7 +68,7 @@ test fn w_bach_buildup_rejects_final_not_clearly_visible() -> Bool {
     bach_buildup_7_electrons,
     bach_buildup_209_electrons,
     bach_buildup_1004_electrons,
-    BachBuildupObservationRow {
+    extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow {
       apparatus: bach_et_al_2013_double_slit,
       figure_3_panel: Figure3PanelE,
       detected_electrons: 6235,

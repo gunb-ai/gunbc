@@ -80,13 +80,13 @@ fn spice_scaled_value(magnitude: String, suffix: SpiceScaleSuffix) -> SpiceValue
 }
 
 type Parameter {
-  name: Symbol
+  name: v2.std.node.Symbol
   value: SpiceValue
 }
 
 type Modifier
-  = Flag { name: Symbol }
-  | KeyValue { name: Symbol, value: SpiceValue }
+  = Flag { name: v2.std.node.Symbol }
+  | KeyValue { name: v2.std.node.Symbol, value: SpiceValue }
 
 type IncludeCard {
   path: String
@@ -98,11 +98,11 @@ type SweepSourceKind
 
 type SweepSourceRef {
   kind: SweepSourceKind
-  name: Symbol
+  name: v2.std.node.Symbol
 }
 
 type InductorRef {
-  name: Symbol
+  name: v2.std.node.Symbol
 }
 
 type SubstrateSpec
@@ -120,11 +120,11 @@ type Component
   | Inductor { name: SpiceIdentifier, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
   | VoltageSource { name: SpiceIdentifier, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
   | CurrentSource { name: SpiceIdentifier, n_plus: NodeRef, n_minus: NodeRef, value: SpiceValue }
-  | Diode { name: SpiceIdentifier, anode: NodeRef, cathode: NodeRef, model: Symbol }
-  | Bjt { name: SpiceIdentifier, collector: NodeRef, base: NodeRef, emitter: NodeRef, substrate: SubstrateSpec, model: Symbol, modifiers: List<Modifier> }
-  | Mosfet { name: SpiceIdentifier, drain: NodeRef, gate: NodeRef, source: NodeRef, body: NodeRef, model: Symbol, modifiers: List<Modifier> }
+  | Diode { name: SpiceIdentifier, anode: NodeRef, cathode: NodeRef, model: v2.std.node.Symbol }
+  | Bjt { name: SpiceIdentifier, collector: NodeRef, base: NodeRef, emitter: NodeRef, substrate: SubstrateSpec, model: v2.std.node.Symbol, modifiers: List<Modifier> }
+  | Mosfet { name: SpiceIdentifier, drain: NodeRef, gate: NodeRef, source: NodeRef, body: NodeRef, model: v2.std.node.Symbol, modifiers: List<Modifier> }
   | MutualInductance { name: SpiceIdentifier, l1: InductorRef, l2: InductorRef, coupling: SpiceValue }
-  | SubcircuitCall { name: SpiceIdentifier, connections: SubcircuitConnections, subcircuit: Symbol, parameters: List<Parameter> }
+  | SubcircuitCall { name: SpiceIdentifier, connections: SubcircuitConnections, subcircuit: v2.std.node.Symbol, parameters: List<Parameter> }
 
 type ModelKind
   = DiodeModel
@@ -134,7 +134,7 @@ type ModelKind
   | MosfetPmos
 
 type ModelCard {
-  name: Symbol
+  name: v2.std.node.Symbol
   kind: ModelKind
   parameters: List<Parameter>
 }
@@ -170,8 +170,8 @@ type SubcircuitStatement
   | StmtInclude { card: IncludeCard }
 
 type SubcircuitDefinition {
-  name: Symbol
-  parent_scope: List<Symbol>
+  name: v2.std.node.Symbol
+  parent_scope: List<v2.std.node.Symbol>
   ports: SubcircuitPorts
   body: List<SubcircuitStatement>
 }

@@ -81,9 +81,9 @@ data serde_1_0_228_hash_set_deserialize_authority: ExternalAuthority = ExternalA
 }
 
 type RustSupplementalGenericBoundContractCoverageDisposition {
-  owner: DeclarationRef
-  lane: DeclarationRef
-  dissolution: Disposition
+  owner: std.decl_ref.DeclarationRef
+  lane: std.decl_ref.DeclarationRef
+  dissolution: std.disposition.Disposition
 }
 
 data rust_hash_set_supplemental_generic_bound_contract_coverage_disposition: RustSupplementalGenericBoundContractCoverageDisposition = RustSupplementalGenericBoundContractCoverageDisposition {

@@ -19,29 +19,29 @@ data install_media_fetch_effect_shape: EffectShape<KeySource> = CreateEffect {
 
 type InstallMediaPresenceObservation
   = Absent
-  | Present { observed_sha256: Sha256 }
+  | Present { observed_sha256: std.types.Sha256 }
 
 type InstallMediaFetchVerdict
   = AlreadyPresent {
-      install_path: NonEmptyStr
-      content_sha256: Sha256
+      install_path: std.types.NonEmptyStr
+      content_sha256: std.types.Sha256
     }
   | FetchRequired {
-      install_path: NonEmptyStr
-      mirror_order: List<UbuntuInstallMediaMirrorRow>
+      install_path: std.types.NonEmptyStr
+      mirror_order: List<extdeps.provisioning.ubuntu_install_media.UbuntuInstallMediaMirrorRow>
     }
   | HashMismatchRefusal {
-      install_path: NonEmptyStr
-      expected_sha256: Sha256
-      observed_sha256: Sha256
+      install_path: std.types.NonEmptyStr
+      expected_sha256: std.types.Sha256
+      observed_sha256: std.types.Sha256
     }
 
 type InstallMediaFetchReceipt {
-  artifact_version: NonEmptyStr
-  mirror_used: UbuntuInstallMediaMirrorHost?
-  sha256_verified: Sha256
-  bytes: ByteSize
-  duration_ms: Milliseconds
+  artifact_version: std.types.NonEmptyStr
+  mirror_used: extdeps.provisioning.ubuntu_install_media.UbuntuInstallMediaMirrorHost?
+  sha256_verified: std.types.Sha256
+  bytes: std.measure.ByteSize
+  duration_ms: std.types.Milliseconds
   outcome: InstallMediaFetchOutcome
 }
 

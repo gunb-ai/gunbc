@@ -1,13 +1,13 @@
 module v2.test.claim.gha_workflow_yaml_fold_serialize
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn gha_fold_oracle_job(job: Job) -> String {
+fn gha_fold_oracle_job(job: extdeps.github.actions.Job) -> String {
   serialize_yaml(v: job_yaml(job: job))
 }
 
-fn gha_fold_serialize_emitted(target: TargetModel, emitted: Node) -> Outcome<String> {
+fn gha_fold_serialize_emitted(target: v2.std.compilers.target_model.TargetModel, emitted: Node) -> Outcome<String> {
   match target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: d } =>
       match d {
@@ -18,7 +18,7 @@ fn gha_fold_serialize_emitted(target: TargetModel, emitted: Node) -> Outcome<Str
   }
 }
 
-fn gha_fold_fold_matches_oracle(job: Job) -> Bool {
+fn gha_fold_fold_matches_oracle(job: extdeps.github.actions.Job) -> Bool {
   let oracle = gha_fold_oracle_job(job: job)
   match gha_fold_target_model_for_job_witness(job: job, source_text: oracle) {
     Holds { value: target } =>

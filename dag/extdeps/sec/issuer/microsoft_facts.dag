@@ -2,14 +2,14 @@ module extdeps.sec.issuer.microsoft_facts
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "data.sec.gov/api/xbrl/companyconcept/CIK0000789019"
   }
 }
 
-data microsoft_facts_subject: IssuerCatalogRow = microsoft_issuer_catalog
+data microsoft_facts_subject: extdeps.sec.types.IssuerCatalogRow = microsoft_issuer_catalog
 
 data microsoft_facts_provenance_note: String = "Every amount is a live pull from data.sec.gov companyconcept (2026-07-25, session gitlab-10k-scm-costs-baz90x). CIK 0000789019 verified on the EDGAR submissions API (ticker MSFT, Nasdaq, SIC 7372 Services-Prepackaged Software -- the same SIC as GitLab and Atlassian). Four fiscal years modeled, FY2022 through FY2025; Microsoft fiscal years end June 30. Element substitution (the Rollins/Chemed case): Microsoft does NOT tag CostOfRevenue -- it tags CostOfGoodsAndServicesSold, and that actually-filed tag is the authority here, never a normalized nickname. The face statement cross-foots exactly in all four years: Revenue - CostOfGoodsAndServicesSold = GrossProfit; ResearchAndDevelopment + SellingAndMarketing + GeneralAndAdministrative = OperatingExpenses; GrossProfit - OperatingExpenses = OperatingIncomeLoss."
 
@@ -17,7 +17,7 @@ data microsoft_github_disaggregation_gap_note: String = "Microsoft acquired GitH
 
 data microsoft_operating_expenses_element_gap_note: String = "Microsoft's FY2022 10-K does not tag OperatingExpenses on the us-gaap axis (the element first appears in the FY2025 filing, which carries FY2023-FY2025). The FY2022 total is therefore Unfiled with a stated cause rather than back-computed from its three components -- deriving it and storing it as filed would fabricate a filed fact (DESIGN section 5). The FY2022 components and OperatingIncomeLoss below are all filed, so the component-sum identity is still witnessed for that year without inventing the total."
 
-data microsoft_fy2022_citation: FiledFactCitation = FiledFactCitation {
+data microsoft_fy2022_citation: extdeps.sec.facts.FiledFactCitation = extdeps.sec.facts.FiledFactCitation {
   accession: "0001564590-22-026876",
   fiscal_year: 2022,
   fiscal_period: "FY",
@@ -26,7 +26,7 @@ data microsoft_fy2022_citation: FiledFactCitation = FiledFactCitation {
   filed_date: "2022-07-28",
 }
 
-data microsoft_fy2023_citation: FiledFactCitation = FiledFactCitation {
+data microsoft_fy2023_citation: extdeps.sec.facts.FiledFactCitation = extdeps.sec.facts.FiledFactCitation {
   accession: "0000950170-23-035122",
   fiscal_year: 2023,
   fiscal_period: "FY",
@@ -35,7 +35,7 @@ data microsoft_fy2023_citation: FiledFactCitation = FiledFactCitation {
   filed_date: "2023-07-27",
 }
 
-data microsoft_fy2024_citation: FiledFactCitation = FiledFactCitation {
+data microsoft_fy2024_citation: extdeps.sec.facts.FiledFactCitation = extdeps.sec.facts.FiledFactCitation {
   accession: "0000950170-24-087843",
   fiscal_year: 2024,
   fiscal_period: "FY",
@@ -44,7 +44,7 @@ data microsoft_fy2024_citation: FiledFactCitation = FiledFactCitation {
   filed_date: "2024-07-30",
 }
 
-data microsoft_fy2025_citation: FiledFactCitation = FiledFactCitation {
+data microsoft_fy2025_citation: extdeps.sec.facts.FiledFactCitation = extdeps.sec.facts.FiledFactCitation {
   accession: "0000950170-25-100235",
   fiscal_year: 2025,
   fiscal_period: "FY",
@@ -53,223 +53,223 @@ data microsoft_fy2025_citation: FiledFactCitation = FiledFactCitation {
   filed_date: "2025-07-30",
 }
 
-data microsoft_fy2022_revenue: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2022_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
   amount: Filed { amount: usd_whole_dollars(count: 198270000000) },
   citation: microsoft_fy2022_citation,
 }
 
-data microsoft_fy2022_cost_of_goods_and_services: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2022_cost_of_goods_and_services: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_cost_of_goods_and_services_sold,
   amount: Filed { amount: usd_whole_dollars(count: 62650000000) },
   citation: microsoft_fy2022_citation,
 }
 
-data microsoft_fy2022_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2022_gross_profit: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_gross_profit,
   amount: Filed { amount: usd_whole_dollars(count: 135620000000) },
   citation: microsoft_fy2022_citation,
 }
 
-data microsoft_fy2022_research_and_development: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2022_research_and_development: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_research_and_development_expense,
   amount: Filed { amount: usd_whole_dollars(count: 24512000000) },
   citation: microsoft_fy2022_citation,
 }
 
-data microsoft_fy2022_selling_and_marketing: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2022_selling_and_marketing: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_selling_and_marketing_expense,
   amount: Filed { amount: usd_whole_dollars(count: 21825000000) },
   citation: microsoft_fy2022_citation,
 }
 
-data microsoft_fy2022_general_and_administrative: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2022_general_and_administrative: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_general_and_administrative_expense,
   amount: Filed { amount: usd_whole_dollars(count: 5900000000) },
   citation: microsoft_fy2022_citation,
 }
 
-data microsoft_fy2022_operating_expenses: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2022_operating_expenses: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_operating_expenses,
   amount: Unfiled { cause: "not tagged on the us-gaap axis in the FY2022 10-K (accession 0001564590-22-026876); see microsoft_operating_expenses_element_gap_note" },
   citation: microsoft_fy2022_citation,
 }
 
-data microsoft_fy2022_operating_income: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+data microsoft_fy2022_operating_income: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_operating_income_loss,
   amount: FiledSigned { value: signed_usd_non_negative(count: 83383000000) },
   citation: microsoft_fy2022_citation,
 }
 
-data microsoft_fy2022_net_income: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+data microsoft_fy2022_net_income: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_net_income_loss,
   amount: FiledSigned { value: signed_usd_non_negative(count: 72738000000) },
   citation: microsoft_fy2022_citation,
 }
 
-data microsoft_fy2023_revenue: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2023_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
   amount: Filed { amount: usd_whole_dollars(count: 211915000000) },
   citation: microsoft_fy2023_citation,
 }
 
-data microsoft_fy2023_cost_of_goods_and_services: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2023_cost_of_goods_and_services: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_cost_of_goods_and_services_sold,
   amount: Filed { amount: usd_whole_dollars(count: 65863000000) },
   citation: microsoft_fy2023_citation,
 }
 
-data microsoft_fy2023_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2023_gross_profit: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_gross_profit,
   amount: Filed { amount: usd_whole_dollars(count: 146052000000) },
   citation: microsoft_fy2023_citation,
 }
 
-data microsoft_fy2023_research_and_development: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2023_research_and_development: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_research_and_development_expense,
   amount: Filed { amount: usd_whole_dollars(count: 27195000000) },
   citation: microsoft_fy2023_citation,
 }
 
-data microsoft_fy2023_selling_and_marketing: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2023_selling_and_marketing: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_selling_and_marketing_expense,
   amount: Filed { amount: usd_whole_dollars(count: 22759000000) },
   citation: microsoft_fy2023_citation,
 }
 
-data microsoft_fy2023_general_and_administrative: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2023_general_and_administrative: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_general_and_administrative_expense,
   amount: Filed { amount: usd_whole_dollars(count: 7575000000) },
   citation: microsoft_fy2023_citation,
 }
 
-data microsoft_fy2023_operating_expenses: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2023_operating_expenses: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_operating_expenses,
   amount: Filed { amount: usd_whole_dollars(count: 57529000000) },
   citation: microsoft_fy2023_citation,
 }
 
-data microsoft_fy2023_operating_income: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+data microsoft_fy2023_operating_income: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_operating_income_loss,
   amount: FiledSigned { value: signed_usd_non_negative(count: 88523000000) },
   citation: microsoft_fy2023_citation,
 }
 
-data microsoft_fy2023_net_income: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+data microsoft_fy2023_net_income: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_net_income_loss,
   amount: FiledSigned { value: signed_usd_non_negative(count: 72361000000) },
   citation: microsoft_fy2023_citation,
 }
 
-data microsoft_fy2024_revenue: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2024_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
   amount: Filed { amount: usd_whole_dollars(count: 245122000000) },
   citation: microsoft_fy2024_citation,
 }
 
-data microsoft_fy2024_cost_of_goods_and_services: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2024_cost_of_goods_and_services: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_cost_of_goods_and_services_sold,
   amount: Filed { amount: usd_whole_dollars(count: 74114000000) },
   citation: microsoft_fy2024_citation,
 }
 
-data microsoft_fy2024_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2024_gross_profit: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_gross_profit,
   amount: Filed { amount: usd_whole_dollars(count: 171008000000) },
   citation: microsoft_fy2024_citation,
 }
 
-data microsoft_fy2024_research_and_development: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2024_research_and_development: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_research_and_development_expense,
   amount: Filed { amount: usd_whole_dollars(count: 29510000000) },
   citation: microsoft_fy2024_citation,
 }
 
-data microsoft_fy2024_selling_and_marketing: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2024_selling_and_marketing: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_selling_and_marketing_expense,
   amount: Filed { amount: usd_whole_dollars(count: 24456000000) },
   citation: microsoft_fy2024_citation,
 }
 
-data microsoft_fy2024_general_and_administrative: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2024_general_and_administrative: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_general_and_administrative_expense,
   amount: Filed { amount: usd_whole_dollars(count: 7609000000) },
   citation: microsoft_fy2024_citation,
 }
 
-data microsoft_fy2024_operating_expenses: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2024_operating_expenses: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_operating_expenses,
   amount: Filed { amount: usd_whole_dollars(count: 61575000000) },
   citation: microsoft_fy2024_citation,
 }
 
-data microsoft_fy2024_operating_income: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+data microsoft_fy2024_operating_income: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_operating_income_loss,
   amount: FiledSigned { value: signed_usd_non_negative(count: 109433000000) },
   citation: microsoft_fy2024_citation,
 }
 
-data microsoft_fy2024_net_income: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+data microsoft_fy2024_net_income: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_net_income_loss,
   amount: FiledSigned { value: signed_usd_non_negative(count: 88136000000) },
   citation: microsoft_fy2024_citation,
 }
 
-data microsoft_fy2025_revenue: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2025_revenue: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax,
   amount: Filed { amount: usd_whole_dollars(count: 281724000000) },
   citation: microsoft_fy2025_citation,
 }
 
-data microsoft_fy2025_cost_of_goods_and_services: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2025_cost_of_goods_and_services: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_cost_of_goods_and_services_sold,
   amount: Filed { amount: usd_whole_dollars(count: 87831000000) },
   citation: microsoft_fy2025_citation,
 }
 
-data microsoft_fy2025_gross_profit: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2025_gross_profit: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_gross_profit,
   amount: Filed { amount: usd_whole_dollars(count: 193893000000) },
   citation: microsoft_fy2025_citation,
 }
 
-data microsoft_fy2025_research_and_development: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2025_research_and_development: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_research_and_development_expense,
   amount: Filed { amount: usd_whole_dollars(count: 32488000000) },
   citation: microsoft_fy2025_citation,
 }
 
-data microsoft_fy2025_selling_and_marketing: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2025_selling_and_marketing: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_selling_and_marketing_expense,
   amount: Filed { amount: usd_whole_dollars(count: 25654000000) },
   citation: microsoft_fy2025_citation,
 }
 
-data microsoft_fy2025_general_and_administrative: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2025_general_and_administrative: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_general_and_administrative_expense,
   amount: Filed { amount: usd_whole_dollars(count: 7223000000) },
   citation: microsoft_fy2025_citation,
 }
 
-data microsoft_fy2025_operating_expenses: FiledMonetaryFact = FiledMonetaryFact {
+data microsoft_fy2025_operating_expenses: extdeps.sec.facts.FiledMonetaryFact = extdeps.sec.facts.FiledMonetaryFact {
   element: us_gaap_operating_expenses,
   amount: Filed { amount: usd_whole_dollars(count: 65365000000) },
   citation: microsoft_fy2025_citation,
 }
 
-data microsoft_fy2025_operating_income: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+data microsoft_fy2025_operating_income: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_operating_income_loss,
   amount: FiledSigned { value: signed_usd_non_negative(count: 128528000000) },
   citation: microsoft_fy2025_citation,
 }
 
-data microsoft_fy2025_net_income: FiledSignedMonetaryFact = FiledSignedMonetaryFact {
+data microsoft_fy2025_net_income: extdeps.sec.facts.FiledSignedMonetaryFact = extdeps.sec.facts.FiledSignedMonetaryFact {
   element: us_gaap_net_income_loss,
   amount: FiledSigned { value: signed_usd_non_negative(count: 101832000000) },
   citation: microsoft_fy2025_citation,
 }
 
-data microsoft_fy2025_filed_facts: List<FiledMonetaryFact> = [
+data microsoft_fy2025_filed_facts: List<extdeps.sec.facts.FiledMonetaryFact> = [
   microsoft_fy2025_revenue,
   microsoft_fy2025_cost_of_goods_and_services,
   microsoft_fy2025_gross_profit,

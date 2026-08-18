@@ -3,7 +3,7 @@ module v2.test.manual.typescript_derive_grammar_relation_row_round_trip
 
 
 fn ts_grammar_relation_round_trip_pass_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^ts_grammar_relation_round_trip_pass_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -11,7 +11,7 @@ fn ts_grammar_relation_round_trip_pass_node() -> Node {
 }
 
 fn ts_grammar_relation_round_trip_fail_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^ts_grammar_relation_round_trip_fail_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -42,12 +42,12 @@ data ts_derive_row_node_receipt: Witness<Node> = derive_grammar_relation_row_nod
 )
 
 fn ts_task_type_alias_emitted_surplus_conj_slot() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_task) },
-      Edge { label: Positional, target: ts_type_annotation_task_record_emitted() },
-      Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
+      v2.std.node.Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_binding_task) },
+      v2.std.node.Edge { label: Positional, target: ts_type_annotation_task_record_emitted() },
+      v2.std.node.Edge { label: Positional, target: ts_inhabitant_atom(id: ^ts_surplus_conj_slot_dummy) }
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -120,24 +120,24 @@ fn ts_grammar_relation_round_trip_claim_input(ok: Bool) -> Node {
   }
 }
 
-data claim_typescript_derive_grammar_relation_row_round_trip: TestClaim = CompilesClaim {
+data claim_typescript_derive_grammar_relation_row_round_trip: v2.std.verification.TestClaim = CompilesClaim {
   label: "T-11 REPLAN-3: derive_grammar_relation_row round-trips typescript formal grammar-relation row (TaskManager fixture bound)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_grammar_relation_round_trip_claim_input(
     ok: ts_derive_grammar_relation_row_round_trip_holds()
   ),
   expected_value: ts_grammar_relation_round_trip_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_typescript_derive_grammar_relation_row_arrow_emitted_rejects: TestClaim = CompilesClaim {
+data claim_typescript_derive_grammar_relation_row_arrow_emitted_rejects: v2.std.verification.TestClaim = CompilesClaim {
   label: "T-11 PR-1.5b: formal_production_for_lhs_exact rejects Arrow emitted (not Conj/Atom)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_grammar_relation_round_trip_claim_input(
     ok: ts_lhs_exact_arrow_emitted_rejects()
   ),
   expected_value: ts_grammar_relation_round_trip_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
 fn ts_pr3_identity_derive_row_round_trip_holds() -> Bool {
@@ -152,22 +152,22 @@ fn ts_pr3_identity_derive_row_round_trip_holds() -> Bool {
   }
 }
 
-data claim_typescript_pr3_identity_derive_grammar_relation_row_round_trip: TestClaim = CompilesClaim {
+data claim_typescript_pr3_identity_derive_grammar_relation_row_round_trip: v2.std.verification.TestClaim = CompilesClaim {
   label: "T-11 FINISH-LINE-B Arc 1: pr3_identity eager row content_hash round-trips derive_grammar_relation_row_node",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_grammar_relation_round_trip_claim_input(
     ok: ts_pr3_identity_derive_row_round_trip_holds()
   ),
   expected_value: ts_grammar_relation_round_trip_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_typescript_derive_grammar_relation_row_surplus_conj_rejects: TestClaim = CompilesClaim {
+data claim_typescript_derive_grammar_relation_row_surplus_conj_rejects: v2.std.verification.TestClaim = CompilesClaim {
   label: "T-11 PR-1.5b: derive_grammar_relation_row_node rejects emitted Conj with surplus positional child",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: ts_grammar_relation_round_trip_claim_input(
     ok: ts_task_derive_row_surplus_conj_slot_rejects()
   ),
   expected_value: ts_grammar_relation_round_trip_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

@@ -1,23 +1,23 @@
 module v2.test.fixture.spice_rc_passive_deck
 
 
-data spice_rc_passive_deck: SpiceNetlist = SpiceNetlist {
+data spice_rc_passive_deck: v2.extdeps.formats.spice.SpiceNetlist = v2.extdeps.formats.spice.SpiceNetlist {
   title: "RC passive series deck",
   body: [
     DeckComponent {
       component: Resistor {
         name: "1",
-        n_plus: Named { node: NamedNode { name: "vin" } },
-        n_minus: Named { node: NamedNode { name: "mid" } },
-        value: SpiceValue { lexeme: "1k" }
+        n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "vin" } },
+        n_minus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "mid" } },
+        value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1k" }
       }
     },
     DeckComponent {
       component: Capacitor {
         name: "1",
-        n_plus: Named { node: NamedNode { name: "mid" } },
+        n_plus: Named { node: v2.extdeps.formats.spice.NamedNode { name: "mid" } },
         n_minus: Ground,
-        value: SpiceValue { lexeme: "1u" }
+        value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1u" }
       }
     },
     DeckDirective {

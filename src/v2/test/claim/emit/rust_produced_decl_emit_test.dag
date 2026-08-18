@@ -1,13 +1,13 @@
 module v2.test.emit.rust_produced_decl_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_produced_add_golden: String = "fn add(x: i32, y: i32) -> i32 { x + y }"
 
 data rust_produced_add2_golden: String = "fn add2(x: i32, y: i32) -> i32 { x + y }"
 
-fn rust_produced_decl_text(fn_name: Symbol) -> Outcome<String> {
+fn rust_produced_decl_text(fn_name: v2.std.node.Symbol) -> Outcome<String> {
   match table_fixture_add_decl_node(fn_name: fn_name) {
     Accepted { value: decl, diagnostics: _ } =>
       match emit_produced_decl(decl: decl, target: rust_target_model()) {
@@ -19,7 +19,7 @@ fn rust_produced_decl_text(fn_name: Symbol) -> Outcome<String> {
   }
 }
 
-fn rust_produced_decl_matches(fn_name: Symbol, golden: String) -> Bool {
+fn rust_produced_decl_matches(fn_name: v2.std.node.Symbol, golden: String) -> Bool {
   match rust_produced_decl_text(fn_name: fn_name) {
     Accepted { value: text, diagnostics: _ } => text == golden
     Rejected { diagnostics: _ } => false

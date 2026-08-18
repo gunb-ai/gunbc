@@ -15,7 +15,7 @@ type MtCollinsBrief2022V2 {}
 type MtCollinsProductBriefRevision = MtCollinsBrief2022V2
 
 type EngineeringFactsRoute
-  = EngineeringFactsUnderNda { access_route: ExternalAuthority }
+  = EngineeringFactsUnderNda { access_route: extdeps.external_authority.ExternalAuthority }
   | EngineeringFactsPubliclyIngested
 
 data mt_collins_product_brief_title: NonEmptyStr = "Mt. Collins 2U product brief"
@@ -27,10 +27,10 @@ data mt_collins_engineering_facts_route: EngineeringFactsRoute = EngineeringFact
 }
 
 type MtCollinsPublicProductBrief {
-  marketing_name: NonEmptyStr
+  marketing_name: std.types.NonEmptyStr
   revision: MtCollinsProductBriefRevision
-  version_label: NonEmptyStr
-  publisher: Vendor<Hardware>
+  version_label: std.types.NonEmptyStr
+  publisher: Vendor<extdeps.hardware.Hardware>
   engineering_facts_route: EngineeringFactsRoute
 }
 

@@ -4,12 +4,12 @@ module gunbc.scm_compatibility.git
 data git_compatibility_binding_note: NonEmptyStr = "The Git R1 handler consumes Git's own decoded projection, independent read-back, and exact-old-OID transition model. GitObjectId, GitRefName, tree/index/worktree facts, and unsupported-boundary rows remain in GitCompatibilityReceipt; the common projection contains no Git object, ref, commit, or branch type. CompatibilityAdvanceModeled is deliberately weaker than P3's executed-and-read-back transition receipt."
 
 type GitCompatibilityReceipt {
-  target: GitRefName
-  generation: GitObjectId
-  projection: GitR0Projection
-  read_back: GitR0ReadBackObservation
-  advance: GitModeledRefTransition
-  unsupported: List<GitR0UnsupportedBoundary>
+  target: extdeps.git.object_store.GitRefName
+  generation: extdeps.git.object_store.GitObjectId
+  projection: extdeps.git.object_store.GitR0Projection
+  read_back: extdeps.git.object_store.GitR0ReadBackObservation
+  advance: extdeps.git.object_store.GitModeledRefTransition
+  unsupported: List<extdeps.git.object_store.GitR0UnsupportedBoundary>
 }
 
 type GitCompatibilityObjectPurpose
@@ -20,52 +20,52 @@ type GitCompatibilityObjectPurpose
 type GitCompatibilityRefusal
   = GitCompatibilityObjectWrongKind {
       purpose: GitCompatibilityObjectPurpose,
-      stored: StoredObject,
+      stored: extdeps.git.object_store.StoredObject,
     }
   | GitCompatibilityObjectPromisorUnavailable {
       purpose: GitCompatibilityObjectPurpose,
-      oid: GitObjectId,
-      promisor: NonEmptyStr,
+      oid: extdeps.git.object_store.GitObjectId,
+      promisor: std.types.NonEmptyStr,
     }
   | GitCompatibilityObjectUnexpectedlyMissing {
       purpose: GitCompatibilityObjectPurpose,
-      oid: GitObjectId,
+      oid: extdeps.git.object_store.GitObjectId,
     }
   | GitCompatibilityObjectCorrupt {
       purpose: GitCompatibilityObjectPurpose,
-      oid: GitObjectId,
-      reason: NonEmptyStr,
+      oid: extdeps.git.object_store.GitObjectId,
+      reason: std.types.NonEmptyStr,
     }
   | GitCompatibilityRepositoryInvalid {
       purpose: GitCompatibilityObjectPurpose,
-      cause: GitRepositoryDecodeRefusal,
+      cause: extdeps.git.object_store.GitRepositoryDecodeRefusal,
     }
-  | GitCompatibilityReadBackRejected { axis: GitReadBackMismatchAxis }
+  | GitCompatibilityReadBackRejected { axis: extdeps.git.object_store.GitReadBackMismatchAxis }
   | GitCompatibilityAdvanceRepositoryInvalid {
-      cause: GitRepositoryDecodeRefusal,
+      cause: extdeps.git.object_store.GitRepositoryDecodeRefusal,
     }
   | GitCompatibilityAdvanceStale {
-      name: GitRefName,
-      expected_old: GitObjectId,
-      observed: GitObjectId,
+      name: extdeps.git.object_store.GitRefName,
+      expected_old: extdeps.git.object_store.GitObjectId,
+      observed: extdeps.git.object_store.GitObjectId,
     }
-  | GitCompatibilityAdvanceMissing { name: GitRefName }
+  | GitCompatibilityAdvanceMissing { name: extdeps.git.object_store.GitRefName }
   | GitCompatibilityAdvanceDuplicate {
-      name: GitRefName,
+      name: extdeps.git.object_store.GitRefName,
       count: std.integer.NonNegativeInt,
     }
   | GitCompatibilityAdvanceSymbolicCycle {
-      name: GitRefName,
-      chain: List<GitRefName>,
+      name: extdeps.git.object_store.GitRefName,
+      chain: List<extdeps.git.object_store.GitRefName>,
     }
   | GitCompatibilityAdvanceFormatMismatch {
-      repository_format: GitObjectFormat,
-      oid: GitObjectId,
+      repository_format: extdeps.git.object_store.GitObjectFormat,
+      oid: extdeps.git.object_store.GitObjectId,
     }
   | GitCompatibilityAdvanceTargetKindRefused {
-      name: GitRefName,
-      oid: GitObjectId,
-      object_type: ObjectType,
+      name: extdeps.git.object_store.GitRefName,
+      oid: extdeps.git.object_store.GitObjectId,
+      object_type: extdeps.git.ObjectType,
     }
 
 type GitCompatibilityBindingOutcome

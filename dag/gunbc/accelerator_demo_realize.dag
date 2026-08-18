@@ -7,7 +7,7 @@ type DifferentialVerdict
 
 type ExecutionOutcome
   = Executed { verdict: DifferentialVerdict }
-  | ExecutionRefused { reason: AcceleratorRefusalReason }
+  | ExecutionRefused { reason: gunbc.accelerator_demo_plan.AcceleratorRefusalReason }
 
 fn demo_fixture_a() -> List<Int> {
   [2, -1, 0, 5]

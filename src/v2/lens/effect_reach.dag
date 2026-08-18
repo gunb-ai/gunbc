@@ -249,7 +249,7 @@ fn flows_from_call_node(
 
 type AtomCollectState {
   node: Node
-  atoms: List<Symbol>
+  atoms: List<v2.std.node.Symbol>
 }
 
 fn atom_collect_init(n: Node) -> AtomCollectState {
@@ -316,9 +316,9 @@ fn literal_path_flows_from_atoms(
 
 type FlowScanState {
   node: Node
-  flows: List<EffectReachFlow>
+  flows: List<v2.std.effect_reach.EffectReachFlow>
   param_names: List<String>
-  data_inits: List<DataInitDecl>
+  data_inits: List<v2.std.data_index.DataInitDecl>
 }
 
 fn flow_scan_init(

@@ -7,7 +7,7 @@ test fn rust_item_identity_note_cites_impl_method_gap() -> Bool {
 }
 
 test fn rust_item_identity_key_includes_impl_subject() -> Bool {
-  let item = RustItemIdentity {
+  let item = gunbc.rust_item_identity.RustItemIdentity {
     repo_path: "src/v1/stage0/src/cli_run.rs",
     kind: RustImplMethod,
     name: "fmt",
@@ -19,7 +19,7 @@ test fn rust_item_identity_key_includes_impl_subject() -> Bool {
 }
 
 test fn rust_item_identity_key_omits_empty_impl_subject() -> Bool {
-  let item = RustItemIdentity {
+  let item = gunbc.rust_item_identity.RustItemIdentity {
     repo_path: "src/v1/stage0/src/cli_run.rs",
     kind: RustFunction,
     name: "parse_stage0_cargo_manifest_bin_paths",

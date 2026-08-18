@@ -9,7 +9,7 @@ type ExtdepsExternalAuthorityModuleFacts {
   locator: String
 }
 
-fn corpus_anchor_facts(module: QualifiedName) -> ExtdepsExternalAuthorityModuleFacts {
+fn corpus_anchor_facts(module: v2.std.qualified_name.QualifiedName) -> ExtdepsExternalAuthorityModuleFacts {
   extdeps_external_authority_facts_for_qualified_name(module: module)
 }
 
@@ -21,7 +21,7 @@ fn corpus_live_roster_module_count() -> Int {
   extdeps_external_authority_live_roster_module_count()
 }
 
-data extdeps_fixture_missing_anchor_module: QualifiedName = Cons {
+data extdeps_fixture_missing_anchor_module: v2.std.qualified_name.QualifiedName = Cons {
   head: ^extdeps,
   tail: Cons {
     head: ^fixture,
@@ -29,7 +29,7 @@ data extdeps_fixture_missing_anchor_module: QualifiedName = Cons {
   }
 }
 
-data extdeps_fixture_file_anchor_module: QualifiedName = Cons {
+data extdeps_fixture_file_anchor_module: v2.std.qualified_name.QualifiedName = Cons {
   head: ^extdeps,
   tail: Cons {
     head: ^fixture,
@@ -37,7 +37,7 @@ data extdeps_fixture_file_anchor_module: QualifiedName = Cons {
   }
 }
 
-data extdeps_color_srgb_module: QualifiedName = Cons {
+data extdeps_color_srgb_module: v2.std.qualified_name.QualifiedName = Cons {
   head: ^extdeps,
   tail: Cons {
     head: ^color,
@@ -45,7 +45,7 @@ data extdeps_color_srgb_module: QualifiedName = Cons {
   }
 }
 
-data extdeps_archive_format_module: QualifiedName = Cons {
+data extdeps_archive_format_module: v2.std.qualified_name.QualifiedName = Cons {
   head: ^extdeps,
   tail: Cons {
     head: ^archive,
@@ -53,7 +53,7 @@ data extdeps_archive_format_module: QualifiedName = Cons {
   }
 }
 
-data extdeps_ollama_binary_release_module: QualifiedName = Cons {
+data extdeps_ollama_binary_release_module: v2.std.qualified_name.QualifiedName = Cons {
   head: ^extdeps,
   tail: Cons {
     head: ^ollama,
@@ -61,7 +61,7 @@ data extdeps_ollama_binary_release_module: QualifiedName = Cons {
   }
 }
 
-data extdeps_ollama_capability_module: QualifiedName = Cons {
+data extdeps_ollama_capability_module: v2.std.qualified_name.QualifiedName = Cons {
   head: ^extdeps,
   tail: Cons {
     head: ^ollama,
@@ -69,7 +69,7 @@ data extdeps_ollama_capability_module: QualifiedName = Cons {
   }
 }
 
-data extdeps_ollama_gpu_support_module: QualifiedName = Cons {
+data extdeps_ollama_gpu_support_module: v2.std.qualified_name.QualifiedName = Cons {
   head: ^extdeps,
   tail: Cons {
     head: ^ollama,

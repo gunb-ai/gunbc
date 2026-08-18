@@ -8,8 +8,8 @@ data type_reference_binding_context_pr_b_motivation_note: String = "PR-B motivat
 data type_reference_binding_context_pr_b_hardening_note: String = "PR-B hardening conditions (quiet-hawk-219, bind under codex outage): (1) EQUIVALENCE RECEIPT — discriminating production corpus where legacy masked-leaf path and containment-switched path both run and agree; every disagreement arm enumerated and explained as a fixed defect of the old path (not only new-path witnesses). Cross-module coverage required — same-module-only is insufficient; bar includes authored imports no longer deciding binding and removing one now-redundant import changing nothing. (2) FAIL-CLOSED — refusal or typed diagnostic on the new path; never silent fallback to lookup_type_for when containment cannot answer (absorbing arm forbidden). (3) RUNG WORDING — binding decided by containment ONLY on the resolve path switched; emit keys flat item_registry on leaf name alone, untouched by dag/std containment binding, LIVE red detector on main (#7705); unscoped closure claims are rung inflation (DESIGN 4b minimum-across-paths). Authority: dag/test/claim/type_reference_resolve_changeover_equivalence_witness_test.dag."
 
 type TypeReferenceBindingContext {
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs,
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
 }
 
 data type_reference_binding_context_absent_note: String = "Absent TypeReferenceBindingContext on resolve_node_bounded preserves the legacy lookup path unchanged (quiet-hawk-219 ruling 2). PR-B wires the masked leaf arm only when context is Present."
@@ -77,8 +77,8 @@ fn merge_occurrence_binding_input_rows(
 }
 
 type ModuleOccurrenceBindingSource {
-  module_path: NonEmptyStr,
-  transport: OccurrenceTransport,
+  module_path: std.types.NonEmptyStr,
+  transport: std.occurrence_identity.OccurrenceTransport,
 }
 
 fn build_graph_type_reference_binding_inputs(

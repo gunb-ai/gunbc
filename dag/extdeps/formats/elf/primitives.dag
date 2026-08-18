@@ -1,8 +1,8 @@
 module extdeps.formats.elf.primitives
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "refspecs.linuxfoundation.org/elf/gabi4+/ch4.eheader.html"
   }
@@ -53,4 +53,4 @@ data elf64_ehdr_size: Int = 64
 data elf64_phdr_size: Int = 56
 data elf64_shdr_size: Int = 64
 
-data linux_x86_64_elf_format: ExecutableFormat = ExecutableFormat { family: Elf }
+data linux_x86_64_elf_format: std.exec_format.ExecutableFormat = std.exec_format.ExecutableFormat { family: Elf }

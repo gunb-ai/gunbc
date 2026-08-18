@@ -3,16 +3,16 @@ module v2.workflow.ci_release_build_emit
 
 
 // Release-build shell emission (retry + verify) lives here, separate from ci_workflow_run_emit, so gunbc.ci_materialization can import ci_release_build_script without a module cycle (ci_materialization ↔ ci_workflow_run_emit via ci_sccache_provider_shell_injection).
-data ci_release_build_shell_emit_scaffold: Disposition = Scaffold {
+data ci_release_build_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_release_build_emit",
     decl_name: "ci_release_build_script",
     field: WholeDeclaration
   }
 }
 
-data ci_release_build_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_release_build_script — concat-built foreign-executor (GitHub Actions run:) release-build runner (ROOT stamp + verify-artifacts + sccache stats wrapping the orch-emitted EAGAIN retry core); membership of --bin / verify paths is derived from gunbc.ci_release_bins, but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the release-build runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
+data ci_release_build_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_release_build_script — concat-built foreign-executor (GitHub Actions run:) release-build runner (ROOT stamp + verify-artifacts + sccache stats wrapping the orch-emitted EAGAIN retry core); membership of --bin / verify paths is derived from gunbc.ci_release_bins, but the runner transport itself remains hand-shell; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) realizes the release-build runner through orchestration emit or typed host_effect_apply without a medium-as-string concat scaffold")
 
 fn ci_release_build_script() -> String {
   concat(
@@ -30,6 +30,6 @@ fn ci_release_build_script() -> String {
   )
 }
 
-fn gunbc_ci_run_script(spec: CiSpec) -> String {
+fn gunbc_ci_run_script(spec: gunbc.ci_spec.CiSpec) -> String {
   concat(concat(ci_release_build_script(), "\n"), gunbc_ci_floor_only_script(spec: spec))
 }

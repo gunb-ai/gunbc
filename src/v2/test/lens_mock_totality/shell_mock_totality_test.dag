@@ -4,7 +4,7 @@ module v2.test.lens_mock_totality.shell_mock_totality
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedShellMock {
-  tag: Symbol
+  tag: v2.std.node.Symbol
 }
 
 data shell_red_omit_keys: List<String> = ["shell.Exec.Run"]

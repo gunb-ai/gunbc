@@ -5,7 +5,7 @@ module v2.test.lens_mock_totality.sec_edgar_mock_totality
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedSecEdgarMock {
-  tag: Symbol
+  tag: v2.std.node.Symbol
 }
 
 data sec_edgar_red_omit_keys: List<String> = [

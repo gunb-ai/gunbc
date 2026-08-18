@@ -2,7 +2,7 @@ module v2.test.manual.sg1b_signature_realization_failclosed
 
 
 fn sg1b_fc_pass_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^sg1b_fc_pass_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -10,7 +10,7 @@ fn sg1b_fc_pass_node() -> Node {
 }
 
 fn sg1b_fc_fail_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^sg1b_fc_fail_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -26,7 +26,7 @@ fn sg1b_fc_claim_input(ok: Bool) -> Node {
 }
 
 fn sg1b_fc_probe_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^sg1b_fc_probe_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -34,17 +34,17 @@ fn sg1b_fc_probe_node() -> Node {
 }
 
 fn sg1b_fc_boundary_param_with_children() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: discriminant(v: FunctionBoundaryParam) } },
     children: [
-      Edge { label: Positional, target: sg1b_fc_probe_node() }
+      v2.std.node.Edge { label: Positional, target: sg1b_fc_probe_node() }
     ],
     occurrence_id: SyntheticOccurrence
 }
 }
 
 fn sg1b_fc_boundary_param_nullary() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: discriminant(v: FunctionBoundaryParam) } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -52,7 +52,7 @@ fn sg1b_fc_boundary_param_nullary() -> Node {
 }
 
 fn sg1b_fc_non_conj_catalog() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^sg1b_fc_probe_sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -102,34 +102,34 @@ fn sg1b_fc_signature_catalog_non_conj_rejects_decode_invalid() -> Bool {
   }
 }
 
-data claim_sg1b_fc_boundary_site_with_children_rejects: TestClaim = CompilesClaim {
+data claim_sg1b_fc_boundary_site_with_children_rejects: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/sg1b: nullary FunctionBoundarySite atom carrying children rejects decode-invalid (Practice 2)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg1b_fc_claim_input(ok: sg1b_fc_boundary_site_with_children_rejects_decode_invalid()),
   expected_value: sg1b_fc_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg1b_fc_boundary_site_nullary_accepts: TestClaim = CompilesClaim {
+data claim_sg1b_fc_boundary_site_nullary_accepts: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/sg1b: well-formed nullary FunctionBoundarySite atom still decodes (happy path preserved)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg1b_fc_claim_input(ok: sg1b_fc_boundary_site_nullary_accepts()),
   expected_value: sg1b_fc_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg1b_fc_atom_catalog_non_conj_rejects: TestClaim = CompilesClaim {
+data claim_sg1b_fc_atom_catalog_non_conj_rejects: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/sg1: non-Conj atom-realization catalog rejects decode-invalid, not lookup-miss (P3 fail-closed)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg1b_fc_claim_input(ok: sg1b_fc_atom_catalog_non_conj_rejects_decode_invalid()),
   expected_value: sg1b_fc_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_sg1b_fc_signature_catalog_non_conj_rejects: TestClaim = CompilesClaim {
+data claim_sg1b_fc_signature_catalog_non_conj_rejects: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/sg1b: non-Conj signature-realization catalog rejects decode-invalid, not lookup-miss (P3 fail-closed)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: sg1b_fc_claim_input(ok: sg1b_fc_signature_catalog_non_conj_rejects_decode_invalid()),
   expected_value: sg1b_fc_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

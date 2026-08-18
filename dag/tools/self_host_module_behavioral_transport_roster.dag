@@ -6,10 +6,10 @@ data compiler_module_behavioral_transport_roster_doc: String = "The modeled per-
 type ModuleBehavioralTransportConfig {
   module_path: String
   shim_lib_rel: String
-  shim_writes: List<CuratedSeedLinkedShimWrite>
+  shim_writes: List<tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedShimWrite>
   driver_rel: String
   pass_marker: String
-  claim_runs: List<CuratedSeedLinkedClaimRun>
+  claim_runs: List<tools.self_host_curated_seed_linked_harness.CuratedSeedLinkedClaimRun>
   run_closure_assembly: Bool
 }
 

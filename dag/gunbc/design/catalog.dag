@@ -5,14 +5,14 @@ data design_catalog_note: String = "The palette catalogue: one home for approved
 
 data island_pastel_provenance_note: String = "Soft high-key pastel register, operator-supplied swatches 2026-07-21, inspired by Animal Crossing: New Horizons UI colorways (inspiration, not citation — no upstream spec exists to cite). loam is DERIVED from camel (text ink in-family); witness pins WCAG capability via loam only."
 
-data island_mint: Swatch = Swatch { name: "mint", color: Srgb8 { r: 157, g: 255, b: 176 } }
-data island_aqua: Swatch = Swatch { name: "aqua", color: Srgb8 { r: 129, g: 241, b: 247 } }
-data island_ivory: Swatch = Swatch { name: "ivory", color: Srgb8 { r: 255, g: 255, b: 250 } }
-data island_camel: Swatch = Swatch { name: "camel", color: Srgb8 { r: 196, g: 141, b: 63 } }
-data island_butter: Swatch = Swatch { name: "butter", color: Srgb8 { r: 255, g: 245, b: 99 } }
-data island_loam: Swatch = Swatch { name: "loam", color: Srgb8 { r: 114, g: 77, b: 21 } }
+data island_mint: gunbc.design.palette.Swatch = gunbc.design.palette.Swatch { name: "mint", color: extdeps.color.srgb.Srgb8 { r: 157, g: 255, b: 176 } }
+data island_aqua: gunbc.design.palette.Swatch = gunbc.design.palette.Swatch { name: "aqua", color: extdeps.color.srgb.Srgb8 { r: 129, g: 241, b: 247 } }
+data island_ivory: gunbc.design.palette.Swatch = gunbc.design.palette.Swatch { name: "ivory", color: extdeps.color.srgb.Srgb8 { r: 255, g: 255, b: 250 } }
+data island_camel: gunbc.design.palette.Swatch = gunbc.design.palette.Swatch { name: "camel", color: extdeps.color.srgb.Srgb8 { r: 196, g: 141, b: 63 } }
+data island_butter: gunbc.design.palette.Swatch = gunbc.design.palette.Swatch { name: "butter", color: extdeps.color.srgb.Srgb8 { r: 255, g: 245, b: 99 } }
+data island_loam: gunbc.design.palette.Swatch = gunbc.design.palette.Swatch { name: "loam", color: extdeps.color.srgb.Srgb8 { r: 114, g: 77, b: 21 } }
 
-data island_pastel: SwatchSet = SwatchSet {
+data island_pastel: gunbc.design.palette.SwatchSet = gunbc.design.palette.SwatchSet {
   name: "island-pastel",
   provenance: InspiredByExternal { note: island_pastel_provenance_note },
   members: [
@@ -29,23 +29,23 @@ data island_pastel: SwatchSet = SwatchSet {
   ],
 }
 
-fn cited_rows_to_members(rows: List<CitedColorRow>) -> List<SwatchMember> {
-  map(rows, row => swatch_filed(sw: Swatch { name: row.name, color: row.color }))
+fn cited_rows_to_members(rows: List<extdeps.color.srgb.CitedColorRow>) -> List<gunbc.design.palette.SwatchMember> {
+  map(rows, row => swatch_filed(sw: gunbc.design.palette.Swatch { name: row.name, color: row.color }))
 }
 
-data okabe_ito: SwatchSet = SwatchSet {
+data okabe_ito: gunbc.design.palette.SwatchSet = gunbc.design.palette.SwatchSet {
   name: "okabe-ito",
   provenance: CitedUpstream { authority: extdeps.color.okabe_ito.extdeps_external_authority_anchor, version: okabe_ito_version },
   members: cited_rows_to_members(rows: okabe_ito_swatches),
 }
 
-data solarized: SwatchSet = SwatchSet {
+data solarized: gunbc.design.palette.SwatchSet = gunbc.design.palette.SwatchSet {
   name: "solarized",
   provenance: CitedUpstream { authority: extdeps.color.solarized.extdeps_external_authority_anchor, version: solarized_version },
   members: cited_rows_to_members(rows: solarized_swatches),
 }
 
-data palette_catalog: List<SwatchSet> = [island_pastel, okabe_ito, solarized]
+data palette_catalog: List<gunbc.design.palette.SwatchSet> = [island_pastel, okabe_ito, solarized]
 
 fn catalog_admissible() -> Bool {
   palette_catalog.length() == 3

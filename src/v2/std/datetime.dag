@@ -126,7 +126,7 @@ type LeapSecondInsertionOccurrence {
 }
 
 type LeapSecondAuthoritySource {
-  authority: Symbol
+  authority: v2.std.node.Symbol
 }
 
 type LeapSecondInsertionDate {

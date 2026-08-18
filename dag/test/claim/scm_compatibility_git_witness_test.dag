@@ -3,7 +3,7 @@ module test.claim.scm_compatibility_git_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn git_fixture_binding() -> GitCompatibilityBindingOutcome {
+fn git_fixture_binding() -> gunbc.scm_compatibility.git.GitCompatibilityBindingOutcome {
   git_compatibility_bind(
     repository: git_r0_fixture_repository(),
     read_back: git_r0_fixture_read_back_observation(),
@@ -118,7 +118,7 @@ test fn witness_git_endpoint_does_not_claim_authored_operation() -> Bool {
 
 test fn witness_git_readback_mismatch_refuses_binding() -> Bool {
   let observed = git_r0_fixture_read_back_observation()
-  let wrong = GitR0ReadBackObservation {
+  let wrong = extdeps.git.object_store.GitR0ReadBackObservation {
     git_version: observed.git_version,
     object_format: observed.object_format,
     tree_oid: sha1_parent_commit,
@@ -157,7 +157,7 @@ test fn witness_git_generation_derives_tree_from_commit() -> Bool {
 test fn witness_git_readback_identity_changes_with_observed_state() -> Bool {
   let repository = git_r0_fixture_repository()
   let observation = git_r0_fixture_read_back_observation()
-  let other_repository = GitRepositoryState {
+  let other_repository = extdeps.git.object_store.GitRepositoryState {
     object_format: repository.object_format,
     objects: repository.objects,
     unavailable: repository.unavailable,
@@ -165,7 +165,7 @@ test fn witness_git_readback_identity_changes_with_observed_state() -> Bool {
     index: repository.index,
     worktree: [],
   }
-  let other_observation = GitR0ReadBackObservation {
+  let other_observation = extdeps.git.object_store.GitR0ReadBackObservation {
     git_version: observation.git_version,
     object_format: observation.object_format,
     tree_oid: observation.tree_oid,

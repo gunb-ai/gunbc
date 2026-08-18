@@ -5,14 +5,14 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 // The SCM-economics comparable set, all SIC 7372 Services-Prepackaged Software: GitLab (pure-play SCM), Atlassian (developer-collaboration suite incl. Bitbucket -- the nearest pure-play comparable), Microsoft (GitHub's owner, the scale contrast whose GitHub-level economics are NOT filed). Two arms GitLab's seven loss-making years could not exercise are exercised here: NonNegativeUsd (Microsoft profitable in all four years; Atlassian FY2022 operating income positive before three loss years) and Unfiled (Microsoft's FY2022 OperatingExpenses, untagged in its own 10-K).
 fn w_cross_foots(
-  revenue: FiledMonetaryFact,
-  cost_of_revenue: FiledMonetaryFact,
-  gross_profit: FiledMonetaryFact,
-  research_and_development: FiledMonetaryFact,
-  selling_and_marketing: FiledMonetaryFact,
-  general_and_administrative: FiledMonetaryFact,
-  operating_expenses_total: FiledMonetaryFact,
-  operating_income: FiledSignedMonetaryFact
+  revenue: extdeps.sec.facts.FiledMonetaryFact,
+  cost_of_revenue: extdeps.sec.facts.FiledMonetaryFact,
+  gross_profit: extdeps.sec.facts.FiledMonetaryFact,
+  research_and_development: extdeps.sec.facts.FiledMonetaryFact,
+  selling_and_marketing: extdeps.sec.facts.FiledMonetaryFact,
+  general_and_administrative: extdeps.sec.facts.FiledMonetaryFact,
+  operating_expenses_total: extdeps.sec.facts.FiledMonetaryFact,
+  operating_income: extdeps.sec.facts.FiledSignedMonetaryFact
 ) -> Bool {
   match filed_amount(fact: revenue) {
     Present { value: rev } =>
@@ -64,7 +64,7 @@ fn w_cross_foots(
   }
 }
 
-fn w_signed_is_positive(fact: FiledSignedMonetaryFact) -> Bool {
+fn w_signed_is_positive(fact: extdeps.sec.facts.FiledSignedMonetaryFact) -> Bool {
   match filed_signed_value(fact: fact) {
     Present { value: v } =>
       match v {
@@ -75,7 +75,7 @@ fn w_signed_is_positive(fact: FiledSignedMonetaryFact) -> Bool {
   }
 }
 
-fn w_signed_is_negative(fact: FiledSignedMonetaryFact) -> Bool {
+fn w_signed_is_negative(fact: extdeps.sec.facts.FiledSignedMonetaryFact) -> Bool {
   match filed_signed_value(fact: fact) {
     Present { value: v } =>
       match v {
@@ -87,10 +87,10 @@ fn w_signed_is_negative(fact: FiledSignedMonetaryFact) -> Bool {
 }
 
 fn w_gross_margin_in_band(
-  revenue: FiledMonetaryFact,
-  gross_profit: FiledMonetaryFact,
-  low_bp: BasisPoint,
-  high_bp: BasisPoint
+  revenue: extdeps.sec.facts.FiledMonetaryFact,
+  gross_profit: extdeps.sec.facts.FiledMonetaryFact,
+  low_bp: std.measure.BasisPoint,
+  high_bp: std.measure.BasisPoint
 ) -> Bool {
   match derive_margin_envelope_from_filed_facts(
     revenue: revenue,
@@ -182,7 +182,7 @@ test fn w_microsoft_fy2022_components_reach_operating_income() -> Bool {
   }
 }
 
-fn signed_usd_value_equals(v: SignedUsdWholeDollars, expected: std.nat.Nat) -> Bool {
+fn signed_usd_value_equals(v: extdeps.sec.facts.SignedUsdWholeDollars, expected: std.nat.Nat) -> Bool {
   match v {
     NonNegativeUsd { amount: a } => usd_whole_dollars_count(m: a) == expected
     NegativeUsd { magnitude: _ } => false

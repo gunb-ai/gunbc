@@ -7,7 +7,7 @@ data live_census_note: String = "CI-0 live-roster consumer (operator bar, msg_be
 
 data bundle_disposition_note: String = "The bundle entry lives outside witness_discovery_scan_dirs and its home dir is not a test-row home (floor_test_marked_decl_allowed_in_entry restricts row production to the enrolled discovery dirs), so its file-grain disposition is derived by applying the walk's OWN resolution authority — floor_discovery_resolve_entry_live_tree over a real Filesystem.Read of the entry — never a hand-supplied constant (review 50716) and never a second disposition parser."
 
-fn live_discovery_state() -> FloorDiscoveryWalkState {
+fn live_discovery_state() -> v2.workflow.floor_discovery_producer.FloorDiscoveryWalkState {
   fold_list(
     xs: witness_discovery_scan_dirs,
     empty: floor_discovery_walk_state_zero(),
@@ -17,7 +17,7 @@ fn live_discovery_state() -> FloorDiscoveryWalkState {
   )
 }
 
-fn plan_entry_disposition(entry: String) -> Optional<LiveTreeDisposition> {
+fn plan_entry_disposition(entry: String) -> Optional<v2.std.live_tree.LiveTreeDisposition> {
   let read_out = Filesystem.Read(path: entry)
   if !read_out.success {
     Absent
@@ -29,7 +29,7 @@ fn plan_entry_disposition(entry: String) -> Optional<LiveTreeDisposition> {
   }
 }
 
-fn plan_carries(plan: SelectedWitnessPlan, entry: String, function: String) -> Bool {
+fn plan_carries(plan: std.selected_witness_bundle.SelectedWitnessPlan, entry: String, function: String) -> Bool {
   any(xs: plan.members, predicate: fn(member) {
     match member {
       NativeSelected { witness: w, realization: _ } =>
@@ -43,17 +43,17 @@ fn plan_bundle_name() -> String {
   "09d7d2e53554c783"
 }
 
-fn empty_class_rows() -> List<WitnessClassRow> {
+fn empty_class_rows() -> List<gunbc.witness_execution_class.WitnessClassRow> {
   []
 }
 
-fn plan_member_rows(plan: SelectedWitnessPlan, state: FloorDiscoveryWalkState) -> List<WitnessClassRow> {
+fn plan_member_rows(plan: std.selected_witness_bundle.SelectedWitnessPlan, state: v2.workflow.floor_discovery_producer.FloorDiscoveryWalkState) -> List<gunbc.witness_execution_class.WitnessClassRow> {
   fold_list(xs: plan.members, empty: empty_class_rows(), cons: fn(acc, member) {
     match member {
       NativeSelected { witness: w, realization: _ } =>
         match plan_carries(plan: plan, entry: w.entry, function: w.function) && any(xs: state.rows, predicate: fn(r) { (r.entry == w.entry) && (r.function == w.function) }) {
           true => acc
-          false => concat(acc, [WitnessClassRow {
+          false => concat(acc, [gunbc.witness_execution_class.WitnessClassRow {
             entry: w.entry,
             function: w.function,
             class: classify_witness(
@@ -72,9 +72,9 @@ fn plan_member_rows(plan: SelectedWitnessPlan, state: FloorDiscoveryWalkState) -
   })
 }
 
-fn discovery_class_rows(state: FloorDiscoveryWalkState, plan: SelectedWitnessPlan) -> List<WitnessClassRow> {
+fn discovery_class_rows(state: v2.workflow.floor_discovery_producer.FloorDiscoveryWalkState, plan: std.selected_witness_bundle.SelectedWitnessPlan) -> List<gunbc.witness_execution_class.WitnessClassRow> {
   fold_list(xs: state.rows, empty: empty_class_rows(), cons: fn(acc, r) {
-    concat(acc, [WitnessClassRow {
+    concat(acc, [gunbc.witness_execution_class.WitnessClassRow {
       entry: r.entry,
       function: r.function,
       class: classify_witness(

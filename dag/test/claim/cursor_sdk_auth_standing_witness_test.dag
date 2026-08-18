@@ -75,7 +75,7 @@ test fn provider_standing_rejects_credentials_on_auth_error() -> Bool {
 test fn provider_standing_usage_is_capability_gap() -> Bool {
   let standing = cursor_sdk_local_provider_standing_from_auth_probe(
     probe: CursorSdkAuthProbeUnclassified {
-      reason: "fixture" as NonEmptyStr,
+      reason: "fixture" as std.types.NonEmptyStr,
     },
   )
   cursor_sdk_local_provider_standing_has_usage_capability_gap(standing: standing)

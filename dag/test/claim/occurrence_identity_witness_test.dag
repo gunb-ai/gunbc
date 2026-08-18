@@ -18,13 +18,13 @@ test fn occurrence_identity_advance_is_monotonic_holds() -> Bool {
   let advanced = occurrence_id_allocator_advance_to(
     alloc: initial,
     min_next: authored_token_ordinal_space_from_allocator(
-      alloc: OccurrenceIdAllocator { next_id: 7 }
+      alloc: std.occurrence_identity.OccurrenceIdAllocator { next_id: 7 }
     ),
   )
   let unchanged = occurrence_id_allocator_advance_to(
     alloc: advanced,
     min_next: authored_token_ordinal_space_from_allocator(
-      alloc: OccurrenceIdAllocator { next_id: 3 }
+      alloc: std.occurrence_identity.OccurrenceIdAllocator { next_id: 3 }
     ),
   )
   advanced.next_id == 7 && unchanged.next_id == 7
@@ -62,7 +62,7 @@ test fn occurrence_identity_minted_and_synthetic_are_distinct_holds() -> Bool {
       id.value == 4
     _ => false
   }
-  let synthetic: NodeOccurrenceIdentity = OccurrenceSynthetic
+  let synthetic: std.occurrence_identity.NodeOccurrenceIdentity = OccurrenceSynthetic
   let synthetic_holds = match synthetic {
     OccurrenceSynthetic => true
     _ => false

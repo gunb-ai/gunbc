@@ -17,8 +17,8 @@ type NetworkEgressClass =
   | Unrestricted
 type NetworkInterface {
   addressability: NetworkAddressability
-  bandwidth: Bandwidth?
-  latency_class: ReadLatencyClass?
+  bandwidth: std.measure.Bandwidth?
+  latency_class: std.cache_interface.ReadLatencyClass?
   locality: NetworkLocality
 }
 
@@ -37,21 +37,21 @@ type NetworkReachabilityZone =
   | TailscaleMesh
 
 type NetworkSegment {
-  cidr: NonEmptyStr
-  gateway: NonEmptyStr?
+  cidr: std.types.NonEmptyStr
+  gateway: std.types.NonEmptyStr?
   locality: NetworkLocality
 }
 
 type NetworkEndpoint {
-  label: NonEmptyStr
+  label: std.types.NonEmptyStr
   host: product.placement_supply.HostIdentity?
-  address: NonEmptyStr
+  address: std.types.NonEmptyStr
   role: NetworkAttachmentRole
   locality: NetworkLocality
 }
 
 type NetworkTopology {
-  tailnet_domain: NonEmptyStr?
+  tailnet_domain: std.types.NonEmptyStr?
   segments: List<NetworkSegment>
   endpoints: List<NetworkEndpoint>
 }

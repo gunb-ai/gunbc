@@ -23,7 +23,7 @@ type SyntheticDoubleSlitFixture
 
 type SyntheticArrivalCountObservationRow {
   fixture: SyntheticDoubleSlitFixture
-  arrangement: SlitMaskConfiguration
+  arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitMaskConfiguration
   band: ScreenBand
   exposure: SyntheticMatchedExposureSession
   arrival_count: std.integer.NonNegativeInt
@@ -35,12 +35,12 @@ type ArrivalCountResolution
       contributing_rows: std.integer.NonNegativeInt
     }
   | ArrivalCountMissing {
-      arrangement: SlitMaskConfiguration
+      arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitMaskConfiguration
       band: ScreenBand
       exposure: SyntheticMatchedExposureSession
     }
   | ArrivalCountAmbiguous {
-      arrangement: SlitMaskConfiguration
+      arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitMaskConfiguration
       band: ScreenBand
       exposure: SyntheticMatchedExposureSession
       matching_rows: std.integer.NonNegativeInt
@@ -56,12 +56,12 @@ type AdditivityInputResolution
       both_contributing_rows: std.integer.NonNegativeInt
     }
   | AdditivityInputsIncomplete {
-      missing_arrangement: SlitMaskConfiguration
+      missing_arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitMaskConfiguration
       band: ScreenBand
       exposure: SyntheticMatchedExposureSession
     }
   | AdditivityInputsAmbiguous {
-      arrangement: SlitMaskConfiguration
+      arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitMaskConfiguration
       band: ScreenBand
       exposure: SyntheticMatchedExposureSession
       matching_rows: std.integer.NonNegativeInt
@@ -69,12 +69,12 @@ type AdditivityInputResolution
 
 type AdditivityInputFailure
   = AdditivityInputMissing {
-      missing_arrangement: SlitMaskConfiguration
+      missing_arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitMaskConfiguration
       band: ScreenBand
       exposure: SyntheticMatchedExposureSession
     }
   | AdditivityInputAmbiguous {
-      arrangement: SlitMaskConfiguration
+      arrangement: extdeps.physics.bach_et_al_2013_double_slit.SlitMaskConfiguration
       band: ScreenBand
       exposure: SyntheticMatchedExposureSession
       matching_rows: std.integer.NonNegativeInt

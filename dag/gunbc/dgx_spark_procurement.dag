@@ -5,10 +5,10 @@ module gunbc.dgx_spark_procurement
 // SPARK-LANE-A (2026-08-06) moved the identities to gunbc.fleet_intent_network, the single authority for a host's fleet identity (§3 -- SPARK-0 forked them privately here only because that file was mid-refactor at the time).
 // SPARK-LANE-A revision (2026-08-07), operator review of #7952. Two identity defects and one staleness, repaired below and in gunbc.fleet_lifecycle_observation. The staleness: BOTH UNITS ARRIVED and hold Static, Active CR1000A reservations, so the earlier "not yet arrived / no MAC exists / no address chosen" rows were false. Arrival is DERIVED from the observed reservation rows (dgx_spark_arrival_standing) rather than asserted in prose that can drift. SPARK-ALLOC-LAND-0 (2026-08-07): the slot allocation was delegated by the operator ("the 5, 6 decision is arbitrary - just make it yourself") and decided on ascending address order; it is recorded as an OperatorAllocation receipt, never as an observation.
 type HardwareProcurementIntent {
-  vendor_catalog: IntegratedComputeSystemCatalogRow
+  vendor_catalog: extdeps.systems.types.IntegratedComputeSystemCatalogRow
   unit_count: Int
   reserved_identities: List<product.placement_supply.HostIdentity>
-  ordered_note: NonEmptyStr
+  ordered_note: std.types.NonEmptyStr
 }
 
 // The two static reservations the operator authored on the CR1000A, transcribed verbatim from the router table they supplied (spark-a3ee 192.168.1.222 4C:BB:47:E8:A3:EE / spark-3bd5 192.168.1.223 4C:BB:47:E8:3B:D5; both MACs independently ARP-confirmed on the LAN). These are OBSERVED ROUTER FACTS and nothing more. The reservation labels are vendor-derived from the MAC tail -- they are the units' factory hotspot SSIDs -- which makes them display aliases of the box, NOT fleet identity: a label that the vendor generated cannot decide which fleet subject a machine serves, and reading one as if it could is the same presentation-as-identity error the collector-observation carrier below exists to prevent. So the join to a slot is never inferred from a label: it is the explicit OperatorAllocation recorded below.
@@ -59,16 +59,16 @@ data observed_dgx_spark_router_reservations: List<Cr1000aDhcpLeaseRow> = [
 // dissolve-on: inherited Optional-record resolve blowup is confirmed or refuted at the substrate,
 // at which point the inherited-report half of this comment retires while the coproduct stays.
 type OperatorAllocation {
-  decided_by: NonEmptyStr
-  decided_on: NonEmptyStr
-  basis: NonEmptyStr
+  decided_by: std.types.NonEmptyStr
+  decided_on: std.types.NonEmptyStr
+  basis: std.types.NonEmptyStr
 }
 
 type DgxSparkRouterBinding
   = SlotUnassigned { identity: product.placement_supply.HostIdentity }
   | SlotAssigned {
       identity: product.placement_supply.HostIdentity,
-      reservation: Cr1000aDhcpLeaseRow,
+      reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow,
       allocation: OperatorAllocation,
     }
 
@@ -133,19 +133,19 @@ data dgx_spark_procurement_intent: HardwareProcurementIntent = HardwareProcureme
 
 type DgxSparkDeployment {
   identity: product.placement_supply.HostIdentity
-  catalog: IntegratedComputeSystemCatalogRow
-  observation: FleetLifecycleObservation
-  router_reservation: Cr1000aDhcpLeaseRow
-  envelope_host_presentation: EnvelopeHostPresentationEvidence
+  catalog: extdeps.systems.types.IntegratedComputeSystemCatalogRow
+  observation: gunbc.fleet_lifecycle_observation.FleetLifecycleObservation
+  router_reservation: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseRow
+  envelope_host_presentation: gunbc.fleet_lifecycle_observation.EnvelopeHostPresentationEvidence
 }
 
 type DgxSparkAdmissionRefusalReason
   = DeploymentAdmissionNoEvidence { requested_identity: product.placement_supply.HostIdentity }
   | DeploymentAdmissionAmbiguousEvidence { requested_identity: product.placement_supply.HostIdentity, candidate_count: Int }
-  | DeploymentAdmissionWrongTool { observed_tool: NonEmptyStr }
+  | DeploymentAdmissionWrongTool { observed_tool: std.types.NonEmptyStr }
   | DeploymentAdmissionSubjectMismatch { dispatched_subject: product.placement_supply.HostIdentity, requested_identity: product.placement_supply.HostIdentity }
   | DeploymentAdmissionExecutionEvidenceDisagrees { receipt_exit_status: Int, reported_rc: Int }
-  | DeploymentAdmissionObservationNotOk { observed_status: FleetLifecycleStatus, observed_rc: Int }
+  | DeploymentAdmissionObservationNotOk { observed_status: extdeps.systems.nvidia_fleet_lifecycle.FleetLifecycleStatus, observed_rc: Int }
   | DeploymentAdmissionIdentityNotReserved { requested_identity: product.placement_supply.HostIdentity }
   | DeploymentAdmissionRouterBindingMismatch { binding_identity: product.placement_supply.HostIdentity, requested_identity: product.placement_supply.HostIdentity }
   | DeploymentAdmissionRouterBindingPending { requested_identity: product.placement_supply.HostIdentity }

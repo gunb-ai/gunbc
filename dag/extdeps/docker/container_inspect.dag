@@ -27,8 +27,8 @@ type ContainerStateDetail {
   pid: std.nat.Nat?
   exit_code: Int?
   error: ErrorMessage?
-  started_at: Timestamp?
-  finished_at: Timestamp?
+  started_at: std.types.Timestamp?
+  finished_at: std.types.Timestamp?
 }
 
 data container_state_detail_redundant_bools_frontier_rows: List<FrontierRow> = [
@@ -41,11 +41,11 @@ data container_state_detail_redundant_bools_frontier_rows: List<FrontierRow> = [
 
 type HostConfig {
   cpu_shares: std.nat.Nat?
-  memory: ByteSize?
-  memory_reservation: ByteSize?
-  memory_swap: ByteSize?
-  cpu_period: Microsecond?
-  cpu_quota: Microsecond?
+  memory: std.measure.ByteSize?
+  memory_reservation: std.measure.ByteSize?
+  memory_swap: std.measure.ByteSize?
+  cpu_period: std.measure.Microsecond?
+  cpu_quota: std.measure.Microsecond?
   cpuset_cpus: String?
   cpuset_mems: String?
   blkio_weight: std.nat.Nat?
@@ -107,7 +107,7 @@ data hostconfig_containerconfig_anemic_leaves_frontier_rows: List<FrontierRow> =
 
 type ContainerInspect {
   id: String
-  created: Timestamp
+  created: std.types.Timestamp
   path: std.types.FilePath?
   args: List<String>?
   state: ContainerStateDetail

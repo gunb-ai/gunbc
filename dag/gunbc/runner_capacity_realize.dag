@@ -10,7 +10,7 @@ type RunnerCapacityHostApplyOutcome
   | HostApplyRefused { reason: String }
 
 type RunnerCapacityHostApplyReceipt {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   outcome: RunnerCapacityHostApplyOutcome
 }
 

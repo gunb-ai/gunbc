@@ -9,8 +9,8 @@ type WrapDecisionBundleChildLookup
 
 fn wrap_decision_bundle_child_lookup_step(
   acc: WrapDecisionBundleChildLookup,
-  e: Edge,
-  edge_name: Symbol
+  e: v2.std.node.Edge,
+  edge_name: v2.std.node.Symbol
 ) -> WrapDecisionBundleChildLookup {
   match acc {
     WrapDecisionBundleChildInvalidEdge => acc
@@ -39,8 +39,8 @@ fn wrap_decision_bundle_child_lookup_step(
 }
 
 fn wrap_decision_bundle_optional_child(
-  target: TargetModel,
-  edge_name: Symbol
+  target: v2.std.compilers.target_model.TargetModel,
+  edge_name: v2.std.node.Symbol
 ) -> Outcome<Optional<Node>> {
   match target.bundle.kind {
     TypeNode { connective: Conj } =>
@@ -61,7 +61,7 @@ fn wrap_decision_bundle_optional_child(
           outcome_accepted(optional_absent())
         WrapDecisionBundleChildDuplicate =>
           outcome_rejected(
-            Diagnostic {
+            v2.std.diagnostic.Diagnostic {
               reason: ^wrap_decision_bundle_duplicate_edge,
               at: node_locus(node: target.bundle),
               correction: Unavailable { reason: ExternalContractUnknown }
@@ -69,7 +69,7 @@ fn wrap_decision_bundle_optional_child(
           )
         WrapDecisionBundleChildInvalidEdge =>
           outcome_rejected(
-            Diagnostic {
+            v2.std.diagnostic.Diagnostic {
               reason: ^wrap_decision_bundle_malformed,
               at: node_locus(node: target.bundle),
               correction: Unavailable { reason: ExternalContractUnknown }
@@ -78,7 +78,7 @@ fn wrap_decision_bundle_optional_child(
       }
     _ =>
       outcome_rejected(
-        Diagnostic {
+        v2.std.diagnostic.Diagnostic {
           reason: ^wrap_decision_bundle_malformed,
           at: node_locus(node: target.bundle),
           correction: Unavailable { reason: ExternalContractUnknown }
@@ -88,8 +88,8 @@ fn wrap_decision_bundle_optional_child(
 }
 
 fn wrap_decision_bundle_edge_present(
-  target: TargetModel,
-  edge_name: Symbol
+  target: v2.std.compilers.target_model.TargetModel,
+  edge_name: v2.std.node.Symbol
 ) -> Outcome<Bool> {
   match wrap_decision_bundle_optional_child(target: target, edge_name: edge_name) {
     Accepted { value: optional_child, diagnostics: _ } =>
@@ -101,8 +101,8 @@ fn wrap_decision_bundle_edge_present(
   }
 }
 
-fn wrap_decision_sg_rc_bundle_partial_diagnostic(source_carrier: Node) -> Diagnostic {
-  Diagnostic {
+fn wrap_decision_sg_rc_bundle_partial_diagnostic(source_carrier: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^wrap_decision_sg_rc_bundle_partial,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -110,8 +110,8 @@ fn wrap_decision_sg_rc_bundle_partial_diagnostic(source_carrier: Node) -> Diagno
 }
 
 
-fn wrap_decision_position_disagreement_diagnostic(source_carrier: Node) -> Diagnostic {
-  Diagnostic {
+fn wrap_decision_position_disagreement_diagnostic(source_carrier: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^wrap_decision_position_disagreement,
     at: node_locus(node: source_carrier),
     correction: Unavailable { reason: ExternalContractUnknown }
@@ -119,8 +119,8 @@ fn wrap_decision_position_disagreement_diagnostic(source_carrier: Node) -> Diagn
 }
 
 fn wrap_decision_gates_agree(
-  producer: WrapDecisionGate,
-  consumer: WrapDecisionGate
+  producer: v2.std.compilers.target_model.WrapDecisionGate,
+  consumer: v2.std.compilers.target_model.WrapDecisionGate
 ) -> Bool {
   match producer {
     WrapGateInapplicable =>
@@ -136,7 +136,7 @@ fn wrap_decision_gates_agree(
   }
 }
 
-fn wrap_decisions_equal(a: WrapDecision, c: WrapDecision) -> Bool {
+fn wrap_decisions_equal(a: v2.std.compilers.target_model.WrapDecision, c: v2.std.compilers.target_model.WrapDecision) -> Bool {
   match a {
     WrapByValue =>
       match c {
@@ -186,11 +186,11 @@ fn wrap_decisions_equal(a: WrapDecision, c: WrapDecision) -> Bool {
 // emitted-corpus evidence. What lands here is the authority and its executing controls in both
 // directions.
 fn wrap_decision_flow_gate(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node,
-  producer_site: TargetOwnershipUseSite,
-  consumer_site: TargetOwnershipUseSite
-) -> Outcome<WrapDecisionGate> {
+  producer_site: v2.std.compilers.target_model.TargetOwnershipUseSite,
+  consumer_site: v2.std.compilers.target_model.TargetOwnershipUseSite
+) -> Outcome<v2.std.compilers.target_model.WrapDecisionGate> {
   bind_outcome(
     o: wrap_decision_gate(
       target: target,
@@ -224,7 +224,7 @@ fn wrap_decision_flow_gate(
 }
 
 fn wrap_decision_sg_rc_bundle_apply_disposition(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node
 ) -> Outcome<Bool> {
   bind_outcome(
@@ -259,10 +259,10 @@ fn wrap_decision_sg_rc_bundle_apply_disposition(
 }
 
 fn wrap_decision_gate(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_carrier: Node,
-  use_site: TargetOwnershipUseSite
-) -> Outcome<WrapDecisionGate> {
+  use_site: v2.std.compilers.target_model.TargetOwnershipUseSite
+) -> Outcome<v2.std.compilers.target_model.WrapDecisionGate> {
   match wrap_decision_sg_rc_bundle_apply_disposition(
     target: target,
     source_carrier: source_carrier

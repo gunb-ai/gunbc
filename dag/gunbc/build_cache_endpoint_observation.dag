@@ -1,21 +1,21 @@
 module gunbc.build_cache_endpoint_observation
 
 
-data build_cache_endpoint_observation_authority_disposition: Disposition = SingleAuthority
+data build_cache_endpoint_observation_authority_disposition: std.disposition.Disposition = SingleAuthority
 
 // THE CI CACHE ENDPOINT PRODUCER for units, caps, and owner context. gunbc.build_cache_instance carries
 // desired intent and placement derivation; this module will walk /proc for listener ownership, cgroup
 // memory limits, and unit names. It gates on shell transport and returns EndpointObservationUnavailable
 // with ReachRefused when transport fails — never EndpointAbsent (unreachable ≠ no listener).
 
-fn build_cache_ci_endpoint_observed_producer(host: HostIdentity) -> BuildCacheEndpointObservation {
+fn build_cache_ci_endpoint_observed_producer(host: product.placement_supply.HostIdentity) -> gunbc.build_cache_instance.BuildCacheEndpointObservation {
   let instance = ci_cache_instance(host: host)
   match fleet_shell_transport_observation(host: host) {
     ShellTransportSucceeded { observed_on: _, principal: _, detail: _ } =>
       EndpointObservationUnavailable {
         instance: instance,
         reason: ProcTableUnreadable {
-          detail: "shell transport available but /proc endpoint-owner walk has no host_effect producer yet" as NonEmptyStr,
+          detail: "shell transport available but /proc endpoint-owner walk has no host_effect producer yet" as std.types.NonEmptyStr,
         },
       }
     ShellTransportReachRefused { observed_on: _, principal: _, detail: d, gap: _ } =>
@@ -27,23 +27,23 @@ fn build_cache_ci_endpoint_observed_producer(host: HostIdentity) -> BuildCacheEn
       EndpointObservationUnavailable {
         instance: instance,
         reason: ReachRefused {
-          detail: concat("shell transport unobserved: ", r) as NonEmptyStr,
+          detail: concat("shell transport unobserved: ", r) as std.types.NonEmptyStr,
         },
       }
   }
 }
 
-fn build_cache_ci_endpoint_observation(host: HostIdentity) -> BuildCacheEndpointObservation {
+fn build_cache_ci_endpoint_observation(host: product.placement_supply.HostIdentity) -> gunbc.build_cache_instance.BuildCacheEndpointObservation {
   build_cache_ci_endpoint_observed_producer(host: host)
 }
 
-fn build_cache_ci_placement_observation(host: HostIdentity) -> BuildCacheServerPlacement {
+fn build_cache_ci_placement_observation(host: product.placement_supply.HostIdentity) -> gunbc.build_cache_instance.BuildCacheServerPlacement {
   placement_of_endpoint_observation(
     observed: build_cache_ci_endpoint_observation(host: host),
   )
 }
 
-fn build_cache_ci_endpoint_unavailable_count(hosts: List<HostIdentity>) -> Int {
+fn build_cache_ci_endpoint_unavailable_count(hosts: List<product.placement_supply.HostIdentity>) -> Int {
   filter(
     hosts,
     h =>
@@ -58,7 +58,7 @@ fn build_cache_ci_endpoint_fleet_unavailable_count() -> Int {
   build_cache_ci_endpoint_unavailable_count(hosts: fleet_subsumption_hosts)
 }
 
-fn build_cache_ci_placement_unknown_count(hosts: List<HostIdentity>) -> Int {
+fn build_cache_ci_placement_unknown_count(hosts: List<product.placement_supply.HostIdentity>) -> Int {
   filter(
     hosts,
     h =>
@@ -69,9 +69,9 @@ fn build_cache_ci_placement_unknown_count(hosts: List<HostIdentity>) -> Int {
   ).length()
 }
 
-data build_cache_ci_endpoint_observed_producer_dissolve_on: Disposition = Scaffold {
+data build_cache_ci_endpoint_observed_producer_dissolve_on: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_effect",
     decl_name: "HostEffectTransport",
     field: WholeDeclaration,

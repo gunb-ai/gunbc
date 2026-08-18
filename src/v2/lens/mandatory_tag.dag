@@ -9,10 +9,10 @@ data mandatory_tag_value_vocabulary_law: String = "The value check is vocabulary
 
 type MandatoryTagRegion {
   region_dotted_prefix: String
-  required_decl_name: Symbol
-  required_type_name: Symbol
-  value_vocabulary: List<Symbol>
-  value_accepted: List<Symbol>
+  required_decl_name: v2.std.node.Symbol
+  required_type_name: v2.std.node.Symbol
+  value_vocabulary: List<v2.std.node.Symbol>
+  value_accepted: List<v2.std.node.Symbol>
   exempt_modules: List<String>
   exempt_module_prefixes: List<String>
   exempt_module_suffixes: List<String>
@@ -96,7 +96,7 @@ fn mandatory_tag_node_production_is(n: Node, want: Symbol) -> Bool {
 }
 
 type MandatoryTagDeclName
-  = DeclNameRead { name: Symbol }
+  = DeclNameRead { name: v2.std.node.Symbol }
   | DeclNameProjectionGated
   | DeclNameUnreadable
 

@@ -14,12 +14,12 @@ data aws_ec2_pricing_provenance_note: String = "On-demand Linux Shared tenancy p
 type AwsEc2InstanceFamily = | M7a
 
 type AwsEc2OnDemandPriceRow {
-  instance_type: NonEmptyStr
+  instance_type: std.types.NonEmptyStr
   family: AwsEc2InstanceFamily
-  region: AwsRegion
-  vcpus: HardwareThreadCount
-  per_hour: MoneyPerHour
-  pricing_citation: NonEmptyStr
+  region: extdeps.cloud.cloud.AwsRegion
+  vcpus: std.measure.HardwareThreadCount
+  per_hour: std.measure.MoneyPerHour
+  pricing_citation: std.types.NonEmptyStr
 }
 
 data aws_ec2_m7a_medium_us_east_1: AwsEc2OnDemandPriceRow = AwsEc2OnDemandPriceRow {

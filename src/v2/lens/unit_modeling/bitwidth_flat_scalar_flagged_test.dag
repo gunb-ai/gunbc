@@ -1,18 +1,18 @@
 module v2.test.lens_unit_modeling.bitwidth_flat_scalar_flagged
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data int_leaf_target_bitwidth: Node = Node {
+data int_leaf_target_bitwidth: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^dag_binding_type_int } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data bitwidth_flat_scalar_input: Node = Node {
+data bitwidth_flat_scalar_input: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
+    v2.std.node.Edge {
       label: Named { name: ^pointer_width },
       target: int_leaf_target_bitwidth
     }

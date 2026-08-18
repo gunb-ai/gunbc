@@ -1,13 +1,13 @@
 module gunbc.plans.wave2_prep_design
 
 
-fn status_block() -> MarkdownBlock {
+fn status_block() -> std.markdown.MarkdownBlock {
   quote(blocks: [
     p(text: "**Status: SUPERSEDED BY THE ROSTER CUT (2026-08-17) — quarry, not a plan.** Every mechanism this document names as its authority — `compiler_frontier_roster` and its 27 rows, `compiler_frontier_module_count_expected`, `compiler_frontier_self_emitted_baseline`, `compiler_frontier_census_attribution`, `compiler_frontier_sweep_order` and its monotonicity witness, `compiler_frontier_census_holds`, `compiler_frontier_band_a_emit_readiness_roster` — was deleted with the self-host frontier roster. The symbols below are NOT repointed to survivors, deliberately: there is no mapping from a roster row to a replacement, and inventing one would fabricate an authority this document never had. Per DESIGN §3, a plan authored while the deleted structure lived is re-read as quarry — its area map and its findings may still be evidence, but its sequencing is the old structure's gravity written down and is not authority over what replaces it. Read every symbol reference below as naming something that no longer exists. Original status line follows. **Status: design/scoping (checkpoint 0)** — Wave 2 prep for first real module self-emit flips. Design-first; NO load-bearing pipeline edits in this plan. Authored as a .dag Plan and NOT yet enrolled as a generated docs/plans md (no PlanArtifact, no plan_registry entry, no roadmap node) — enrollment is checkpoint 1; until then this module is reviewable from its own source. Authority chain: gunbc.plans.v2_self_hosting (wave sequencer) · general-body-producer-design (FLAG E / body producer) · namespace-resolution-design · type-env-single-authority-design (SymbolIndex index half) · **census carrier** v2.compiler.self_host.frontier (`frontier.dag`). DESIGN §2/§6: census counts and per-module ranks live on the carrier — this plan cites symbols, never a parallel ledger."),
   ])
 }
 
-fn section_1() -> List<MarkdownBlock> {
+fn section_1() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "1. Module-flip census — cite the carrier"),
     p(text: "All census facts are execution-measured or knowledge-attributed on `src/v2/compiler/self_host/frontier.dag`. Read them there; do not transcribe counts into this plan."),
@@ -38,7 +38,7 @@ fn section_1() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_2() -> List<MarkdownBlock> {
+fn section_2() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "2. Flip order and Wave 1 exit gates"),
     h3(text: "2.1 Wave 1 exit (must be green before Wave 2 opens)"),
@@ -62,7 +62,7 @@ fn section_2() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_3() -> List<MarkdownBlock> {
+fn section_3() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "3. FLAG E — row-fold design (dissolve `body_lowering_fold.dag`)"),
     h3(text: "3.1 What landed vs what remains"),
@@ -125,7 +125,7 @@ fn section_3() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_4() -> List<MarkdownBlock> {
+fn section_4() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "4. SymbolIndex dependency map (sweep-order prefix)"),
     h3(text: "4.1 Substrate facts (single authority)"),
@@ -166,7 +166,7 @@ fn section_4() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_5() -> List<MarkdownBlock> {
+fn section_5() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "5. Risks and escalation"),
     TableBlock {
@@ -183,7 +183,7 @@ fn section_5() -> List<MarkdownBlock> {
   ]
 }
 
-fn wave2_prep_design_body() -> List<MarkdownBlock> {
+fn wave2_prep_design_body() -> List<std.markdown.MarkdownBlock> {
   concat([status_block()],
     concat(section_1(),
       concat(section_2(),
@@ -191,7 +191,7 @@ fn wave2_prep_design_body() -> List<MarkdownBlock> {
           concat(section_4(), section_5())))))
 }
 
-data wave2_prep_design_plan: Plan = Plan {
+data wave2_prep_design_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "wave2-prep-design",
   title: "Wave 2 prep — module-flip census, FLAG E row-fold, SymbolIndex dependency map",
   body: wave2_prep_design_body(),

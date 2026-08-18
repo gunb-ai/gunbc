@@ -86,8 +86,8 @@ type ConstantSelect
 
 type ConstantPrimary
   = ConstantNumber { lexeme: String }
-  | ConstantParameterReference { name: Symbol, select: ConstantSelect }
-  | ConstantSpecparamReference { name: Symbol, select: ConstantSelect }
+  | ConstantParameterReference { name: v2.std.node.Symbol, select: ConstantSelect }
+  | ConstantSpecparamReference { name: v2.std.node.Symbol, select: ConstantSelect }
   | ConstantFunctionCallPrimary { call: ConstantFunctionCall }
   | ConstantSystemFunctionCallPrimary { call: ConstantSystemFunctionCall }
   | ConstantConcatenationPrimary { concatenation: ConstantConcatenation }
@@ -97,13 +97,13 @@ type ConstantPrimary
   | ConstantString { lexeme: String }
 
 type ConstantFunctionCall {
-  function_name: Symbol
+  function_name: v2.std.node.Symbol
   attributes: AttributeInstanceClause
   arguments: List<ConstantExpression>
 }
 
 type ConstantSystemFunctionCall {
-  system_function_name: Symbol
+  system_function_name: v2.std.node.Symbol
   arguments: List<ConstantExpression>
 }
 
@@ -168,7 +168,7 @@ type NetDeclaration
   = NonTriregIdentifierForm {
       kind: NonTriregNetKind
       net_packing: NetVectoredPacking
-      signedness: Signedness
+      signedness: std.integer.Signedness
       delay: DelayClause
       identifiers: List<NetIdentifierDeclarator>
     }
@@ -176,37 +176,37 @@ type NetDeclaration
       kind: NonTriregNetKind
       drive_strength: DriveStrengthClause
       net_packing: NetVectoredPacking
-      signedness: Signedness
+      signedness: std.integer.Signedness
       delay: DelayClause
       assignments: List<NetAssignmentDeclarator>
     }
   | TriregIdentifierForm {
       charge_strength: ChargeStrengthClause
       net_packing: NetVectoredPacking
-      signedness: Signedness
+      signedness: std.integer.Signedness
       delay: DelayClause
       identifiers: List<NetIdentifierDeclarator>
     }
   | TriregAssignForm {
       drive_strength: DriveStrengthClause
       net_packing: NetVectoredPacking
-      signedness: Signedness
+      signedness: std.integer.Signedness
       delay: DelayClause
       assignments: List<NetAssignmentDeclarator>
     }
 
 type NetAssignmentDeclarator {
-  name: Symbol
+  name: v2.std.node.Symbol
   rhs_lexeme: String
 }
 
 type NetIdentifierDeclarator {
-  name: Symbol
+  name: v2.std.node.Symbol
   unpacked_dimensions: UnpackedDimensionsClause
 }
 
 type VariableDeclaration
-  = RegVariable { packing: PackingShape, signedness: Signedness, declarators: List<VariableDeclarator> }
+  = RegVariable { packing: PackingShape, signedness: std.integer.Signedness, declarators: List<VariableDeclarator> }
   | IntegerVariable { declarators: List<VariableDeclarator> }
   | RealVariable { declarators: List<VariableDeclarator> }
   | TimeVariable { declarators: List<VariableDeclarator> }
@@ -214,41 +214,41 @@ type VariableDeclaration
 
 type VariableDeclarator
   = NamedVariable {
-      name: Symbol
+      name: v2.std.node.Symbol
       unpacked_dimensions: UnpackedDimensionsClause
     }
   | InitializedVariable {
-      name: Symbol
+      name: v2.std.node.Symbol
       initializer_lexeme: String
     }
 
 type OutputPortAnsiNetTypeKind
-  = OutputAnsiNetType { kind: NonTriregNetKind, packing: PackingShape, signedness: Signedness }
-  | OutputAnsiNoNetType { packing: PackingShape, signedness: Signedness }
+  = OutputAnsiNetType { kind: NonTriregNetKind, packing: PackingShape, signedness: std.integer.Signedness }
+  | OutputAnsiNoNetType { packing: PackingShape, signedness: std.integer.Signedness }
 
 type OutputPortAnsiVariableTypeKind
-  = OutputAnsiRegType { packing: PackingShape, signedness: Signedness }
+  = OutputAnsiRegType { packing: PackingShape, signedness: std.integer.Signedness }
   | OutputAnsiIntegerType
   | OutputAnsiTimeType
 
 type NonAnsiPort
   = BlankNonAnsiPort
   | ExpressionNonAnsiPort { expression_lexeme: String }
-  | ExternalNamedBlankPort { external_name: Symbol }
-  | ExternalNamedExpressionPort { external_name: Symbol, expression_lexeme: String }
+  | ExternalNamedBlankPort { external_name: v2.std.node.Symbol }
+  | ExternalNamedExpressionPort { external_name: v2.std.node.Symbol, expression_lexeme: String }
 
 type AnsiNetPortType
-  = AnsiInputInoutNet { kind: NonTriregNetKind, packing: PackingShape, signedness: Signedness }
-  | AnsiInputInoutNoNetType { packing: PackingShape, signedness: Signedness }
+  = AnsiInputInoutNet { kind: NonTriregNetKind, packing: PackingShape, signedness: std.integer.Signedness }
+  | AnsiInputInoutNoNetType { packing: PackingShape, signedness: std.integer.Signedness }
 
 type AnsiPortDeclaration
   = AnsiInputPort {
       net: AnsiNetPortType
-      names: List<Symbol>
+      names: List<v2.std.node.Symbol>
     }
   | AnsiOutputNetPort {
       type_kind: OutputPortAnsiNetTypeKind
-      names: List<Symbol>
+      names: List<v2.std.node.Symbol>
     }
   | AnsiOutputVariablePort {
       type_kind: OutputPortAnsiVariableTypeKind
@@ -256,7 +256,7 @@ type AnsiPortDeclaration
     }
   | AnsiInoutPort {
       net: AnsiNetPortType
-      names: List<Symbol>
+      names: List<v2.std.node.Symbol>
     }
 
 type AnsiHeaderPort {
@@ -265,19 +265,19 @@ type AnsiHeaderPort {
 }
 
 type AnsiOutputPortDeclarator {
-  name: Symbol
+  name: v2.std.node.Symbol
   initializer: VariableInitializerClause
 }
 
 type ParameterTypeKind
-  = UntypedParameter { packing: PackingShape, signedness: Signedness }
+  = UntypedParameter { packing: PackingShape, signedness: std.integer.Signedness }
   | IntegerParameter
   | RealParameter
   | TimeParameter
   | RealTimeParameter
 
 type ParameterAssignment {
-  name: Symbol
+  name: v2.std.node.Symbol
   default_lexeme: String
 }
 
@@ -327,7 +327,7 @@ type OrderedPortConnection {
 
 type NamedPortConnection {
   attributes: AttributeInstanceClause
-  port: Symbol
+  port: v2.std.node.Symbol
   actual: PortConnectionActual
 }
 
@@ -345,7 +345,7 @@ type ParameterOverrideActual
   | ParameterOverrideExpression { lexeme: String }
 
 type NamedParameterOverride {
-  parameter: Symbol
+  parameter: v2.std.node.Symbol
   actual: ParameterOverrideActual
 }
 
@@ -359,13 +359,13 @@ type InstanceRangeClause
   | InstanceRange { range: VectorRange }
 
 type ModuleInstance {
-  instance_name: Symbol
+  instance_name: v2.std.node.Symbol
   instance_range: InstanceRangeClause
   connections: PortConnections
 }
 
 type ModuleInstantiation {
-  module_name: Symbol
+  module_name: v2.std.node.Symbol
   parameter_overrides: ParameterOverrides
   instances: List<ModuleInstance>
 }
@@ -405,19 +405,19 @@ type FunctionReturnTypeClause
 
 type TaskDeclaration {
   lifetime: LifetimeClause
-  name: Symbol
+  name: v2.std.node.Symbol
   body_lexeme: String
 }
 
 type FunctionDeclaration {
   lifetime: LifetimeClause
   return_type: FunctionReturnTypeClause
-  name: Symbol
+  name: v2.std.node.Symbol
   body_lexeme: String
 }
 
 type EventDeclarator {
-  name: Symbol
+  name: v2.std.node.Symbol
   unpacked_dimensions: UnpackedDimensionsClause
 }
 
@@ -426,7 +426,7 @@ type EventDeclaration {
 }
 
 type GenvarDeclaration {
-  genvar_names: List<Symbol>
+  genvar_names: List<v2.std.node.Symbol>
 }
 
 type LocalParameterDeclaration {
@@ -469,7 +469,7 @@ type GateInstantiation {
 
 type UdpInstanceName
   = NoUdpInstanceName
-  | NamedUdpInstance { name: Symbol, instance_range: InstanceRangeClause }
+  | NamedUdpInstance { name: v2.std.node.Symbol, instance_range: InstanceRangeClause }
 
 type UdpInstance {
   instance_name: UdpInstanceName
@@ -477,7 +477,7 @@ type UdpInstance {
 }
 
 type UdpInstantiation {
-  udp_name: Symbol
+  udp_name: v2.std.node.Symbol
   drive_strength: DriveStrengthClause
   delay: DelayClause
   instances: List<UdpInstance>
@@ -485,12 +485,12 @@ type UdpInstantiation {
 
 type UdpDefinition {
   attributes: AttributeInstanceClause
-  name: Symbol
+  name: v2.std.node.Symbol
   body_lexeme: String
 }
 
 type SpecparamAssignment
-  = NamedSpecparamAssignment { name: Symbol, value_lexeme: String }
+  = NamedSpecparamAssignment { name: v2.std.node.Symbol, value_lexeme: String }
   | PulseControlSpecparam { lexeme: String }
 
 type SpecparamDeclaration {
@@ -539,21 +539,21 @@ type VerilogModule
   = NoPortListModule {
       attributes: AttributeInstanceClause,
       module_keyword: ModuleKeyword,
-      name: Symbol,
+      name: v2.std.node.Symbol,
       parameter_port_list: ModuleParameterPortList,
       items: List<AnsiModuleItem>
     }
   | EmptyPortListModule {
       attributes: AttributeInstanceClause,
       module_keyword: ModuleKeyword,
-      name: Symbol,
+      name: v2.std.node.Symbol,
       parameter_port_list: ModuleParameterPortList,
       items: List<AnsiModuleItem>
     }
   | NonAnsiVerilogModule {
       attributes: AttributeInstanceClause,
       module_keyword: ModuleKeyword,
-      name: Symbol,
+      name: v2.std.node.Symbol,
       parameter_port_list: ModuleParameterPortList,
       header_ports: List<NonAnsiPort>,
       items: List<NonAnsiModuleItem>
@@ -561,7 +561,7 @@ type VerilogModule
   | AnsiVerilogModule {
       attributes: AttributeInstanceClause,
       module_keyword: ModuleKeyword,
-      name: Symbol,
+      name: v2.std.node.Symbol,
       parameter_port_list: ModuleParameterPortList,
       header_ports: List<AnsiHeaderPort>,
       items: List<AnsiModuleItem>
@@ -1307,7 +1307,7 @@ fn verilog_target_model_for(row: Node, spellings: Map<Symbol, String>) -> Target
 // what makes this compositional rather than a replay of some exemplar.
 type VerilogEmission
   = VerilogEmitted { source: String }
-  | VerilogEmissionRefused { reason: Symbol }
+  | VerilogEmissionRefused { reason: v2.std.node.Symbol }
 
 fn verilog_emit_module(module_node: Node, spellings: Map<Symbol, String>) -> VerilogEmission {
   match verilog_relation_row_for(lhs: ^verilog_production_ansi_module_decl, emitted: module_node) {

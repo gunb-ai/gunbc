@@ -5,10 +5,10 @@ data witness_purpose_note: String = "THE AUTH FIELD WAS NEVER READ, so these two
 
 data secret_key_is_synthetic_note: String = "The key below is a literal fixture and not a credential. A witness needs a value to trace through the shaping, and the whole point of the claims is that the value lands in different places depending on the arm — so it has to be present and it has to be recognizable in the output."
 
-data witness_key: NonEmptyStr = "synthetic-not-a-real-key" as NonEmptyStr
+data witness_key: std.types.NonEmptyStr = "synthetic-not-a-real-key" as std.types.NonEmptyStr
 
-fn witness_invocation(auth: CursorAuth) -> CursorInvocation {
-  CursorInvocation {
+fn witness_invocation(auth: extdeps.llm.cursor_cli.CursorAuth) -> extdeps.llm.cursor_cli.CursorInvocation {
+  extdeps.llm.cursor_cli.CursorInvocation {
     auth: auth,
     model: cursor_model_auto,
     mode: CursorDefaultEditMode,
@@ -17,7 +17,7 @@ fn witness_invocation(auth: CursorAuth) -> CursorInvocation {
     force: false,
     trust_workspace: true,
     workspace: "/srv/attempt" as std.types.FilePath,
-    prompt: "do the work" as NonEmptyStr,
+    prompt: "do the work" as std.types.NonEmptyStr,
   }
 }
 
@@ -64,7 +64,7 @@ test fn automation_constructor_only_materializes_into_the_env_var() -> Bool {
       force: false,
       trust_workspace: true,
       workspace: "/srv/attempt" as std.types.FilePath,
-      prompt: "do the work" as NonEmptyStr,
+      prompt: "do the work" as std.types.NonEmptyStr,
     ),
   )
   cursor_invocation_binds_env(shaped: shaped, name: cursor_api_key_env_var)

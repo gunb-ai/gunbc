@@ -23,7 +23,7 @@ module gunbc.remote_operation
 // this constructor.
 type RemoteOperation
   = RemoteArgv { argv: List<String> }
-  | RemoteFileBytes { write: TypedRemoteFileWrite, mode: RemoteFileMode }
+  | RemoteFileBytes { write: gunbc.typed_remote_file_write.TypedRemoteFileWrite, mode: gunbc.typed_remote_file_write.RemoteFileMode }
 
 // ONE OUTCOME VOCABULARY FOR BOTH KINDS, because the two executions answer in different types and
 // neither should be forced into the other's shape. Coercing a file convergence into an argv result

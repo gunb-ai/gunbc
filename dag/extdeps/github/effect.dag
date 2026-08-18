@@ -29,24 +29,24 @@ data organization_runner_citation: ExternalAuthority = ExternalAuthority {
   }
 }
 
-type RepositoryPath { value: NonEmptyStr }
+type RepositoryPath { value: std.types.NonEmptyStr }
 
-type GitHubOrganizationRef { login: NonEmptyStr }
+type GitHubOrganizationRef { login: std.types.NonEmptyStr }
 
-type GitBranchRef { name: NonEmptyStr }
+type GitBranchRef { name: std.types.NonEmptyStr }
 
-type GitHubWorkflowRef { file_name: NonEmptyStr }
+type GitHubWorkflowRef { file_name: std.types.NonEmptyStr }
 
 type GitHubEffect
   = AdvanceRepositoryBranch {
-      repository: Repository
+      repository: extdeps.github.github.Repository
       branch: GitBranchRef
       changed_paths: List<RepositoryPath>
     }
   | DispatchWorkflow {
-      repository: Repository
+      repository: extdeps.github.github.Repository
       workflow: GitHubWorkflowRef
-      subject: CommitSha
+      subject: std.types.CommitSha
     }
   | RegisterOrganizationRunner {
       organization: GitHubOrganizationRef

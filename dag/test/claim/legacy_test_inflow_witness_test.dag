@@ -23,14 +23,14 @@ data fixture_renamed_legacy_test_zero_context_diff: String = "diff --git a/src/v
 data fixture_attribute_only_addition_zero_context_diff: String = "diff --git a/src/v1/tests/src/existing_module_test.rs b/src/v1/tests/src/existing_module_test.rs\n--- a/src/v1/tests/src/existing_module_test.rs\n+++ b/src/v1/tests/src/existing_module_test.rs\n@@ -20,0 +21 @@ fn helper() -> bool { true }\n+#[test]\n"
 
 
-fn inflow_measured_ids(observation: LegacyTestInflowObservation) -> List<String> {
+fn inflow_measured_ids(observation: gunbc.legacy_test_inflow.LegacyTestInflowObservation) -> List<String> {
   match inflow_observation_tally(observation: observation) {
     InflowCountMeasured { count: _, ids } => ids
     InflowCountUnavailable { reason: _ } => ["REFUSED"]
   }
 }
 
-fn inflow_measured_count(observation: LegacyTestInflowObservation) -> Int {
+fn inflow_measured_count(observation: gunbc.legacy_test_inflow.LegacyTestInflowObservation) -> Int {
   match inflow_observation_tally(observation: observation) {
     InflowCountMeasured { count: n, ids: _ } => n
     InflowCountUnavailable { reason: _ } => 0 - 1

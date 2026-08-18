@@ -11,10 +11,10 @@ test fn uri_scheme_is_http_rejects_file_holds() -> Bool {
 }
 
 test fn uri_is_url_https_projection_holds() -> Bool {
-  uri_is_url(uri: Uri { scheme: Https, locator: "example.com/spec" })
+  uri_is_url(uri: extdeps.uri.Uri { scheme: Https, locator: "example.com/spec" })
 }
 
 test fn uri_is_url_file_not_url_holds() -> Bool {
-  uri_is_url(uri: Uri { scheme: File, locator: "/doc/spec.pdf" }) == false
+  uri_is_url(uri: extdeps.uri.Uri { scheme: File, locator: "/doc/spec.pdf" }) == false
 }
 

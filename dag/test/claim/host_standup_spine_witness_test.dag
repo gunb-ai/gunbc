@@ -3,7 +3,7 @@ module test.claim.host_standup_spine
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn spine_step_tag(step: HostStandupStep) -> Int {
+fn spine_step_tag(step: gunbc.host_standup.HostStandupStep) -> Int {
   match step.phase {
     Prefix { phase: BmcCredentialConverge } => 0
     Prefix { phase: OsInstallMechanismResolved } => 1
@@ -129,20 +129,20 @@ test fn green_place_pin_coherent_references_gunbc_gate_not_input_satisfied() -> 
 
 test fn assimilation_complete_gate_is_fail_closed_on_any_gap_or_refusal() -> Bool {
   let ci_required = assimilation_completion_inputs_for(participation: ci_runner_enrollment_participation)
-  let gap_gate = AssimilationCompleteGate {
+  let gap_gate = gunbc.host_standup.AssimilationCompleteGate {
     obligations: [
-      AssimilationObligation {
+      gunbc.host_standup.AssimilationObligation {
         input: NodeRegistered,
         witness: InputGap { input: NodeRegistered, interim_realization: "ctrl:node_registry.mjs" },
       },
-      AssimilationObligation { input: ResourcesPresent, witness: InputSatisfied },
-      AssimilationObligation {
+      gunbc.host_standup.AssimilationObligation { input: ResourcesPresent, witness: InputSatisfied },
+      gunbc.host_standup.AssimilationObligation {
         input: GreenPlacePinCoherent,
         witness: assimilation_input_witness_from_green_place(
           w: GreenPlacePinGap { interim_realization: "ctrl:pending" }
         ),
       },
-      AssimilationObligation { input: RunnerSlotHealthy, witness: InputSatisfied },
+      gunbc.host_standup.AssimilationObligation { input: RunnerSlotHealthy, witness: InputSatisfied },
     ],
   }
   match assimilation_complete(gate: gap_gate, required: ci_required) {
@@ -150,20 +150,20 @@ test fn assimilation_complete_gate_is_fail_closed_on_any_gap_or_refusal() -> Boo
       string_contains(s: r, pattern: "P5:gap-refused:")
     AssimilationComplete => false
   }
-    && match assimilation_complete(gate: AssimilationCompleteGate {
+    && match assimilation_complete(gate: gunbc.host_standup.AssimilationCompleteGate {
       obligations: [
-        AssimilationObligation { input: NodeRegistered, witness: InputSatisfied },
-        AssimilationObligation {
+        gunbc.host_standup.AssimilationObligation { input: NodeRegistered, witness: InputSatisfied },
+        gunbc.host_standup.AssimilationObligation {
           input: ResourcesPresent,
           witness: InputRefused { input: ResourcesPresent, reason: "missing cgroup slice" },
         },
-        AssimilationObligation {
+        gunbc.host_standup.AssimilationObligation {
           input: GreenPlacePinCoherent,
           witness: assimilation_input_witness_from_green_place(
             w: host_standup_p5_default_green_place_gate_verdict()
           ),
         },
-        AssimilationObligation { input: RunnerSlotHealthy, witness: InputSatisfied },
+        gunbc.host_standup.AssimilationObligation { input: RunnerSlotHealthy, witness: InputSatisfied },
       ],
     }, required: ci_required) {
       AssimilationIncomplete { input: ResourcesPresent, reason: _ } => true
@@ -173,11 +173,11 @@ test fn assimilation_complete_gate_is_fail_closed_on_any_gap_or_refusal() -> Boo
 
 test fn assimilation_complete_passes_only_when_all_four_inputs_satisfied() -> Bool {
   let ci_required = assimilation_completion_inputs_for(participation: ci_runner_enrollment_participation)
-  let gate = AssimilationCompleteGate {
+  let gate = gunbc.host_standup.AssimilationCompleteGate {
     obligations: [
-      AssimilationObligation { input: NodeRegistered, witness: InputSatisfied },
-      AssimilationObligation { input: ResourcesPresent, witness: InputSatisfied },
-      AssimilationObligation {
+      gunbc.host_standup.AssimilationObligation { input: NodeRegistered, witness: InputSatisfied },
+      gunbc.host_standup.AssimilationObligation { input: ResourcesPresent, witness: InputSatisfied },
+      gunbc.host_standup.AssimilationObligation {
         input: GreenPlacePinCoherent,
         witness: assimilation_input_witness_from_green_place(
           w: GreenPlaceFromGunbcGate {
@@ -188,7 +188,7 @@ test fn assimilation_complete_passes_only_when_all_four_inputs_satisfied() -> Bo
           }
         ),
       },
-      AssimilationObligation { input: RunnerSlotHealthy, witness: InputSatisfied },
+      gunbc.host_standup.AssimilationObligation { input: RunnerSlotHealthy, witness: InputSatisfied },
     ],
   }
   assimilation_complete_all_satisfied(gate: gate, required: ci_required)
@@ -214,10 +214,10 @@ test fn both_participation_completion_inputs_union_inference_first() -> Bool {
 
 test fn assimilation_gate_refuses_when_required_obligation_missing() -> Bool {
   let ci_required = assimilation_completion_inputs_for(participation: ci_runner_enrollment_participation)
-  let incomplete_gate = AssimilationCompleteGate {
+  let incomplete_gate = gunbc.host_standup.AssimilationCompleteGate {
     obligations: [
-      AssimilationObligation { input: NodeRegistered, witness: InputSatisfied },
-      AssimilationObligation { input: ResourcesPresent, witness: InputSatisfied },
+      gunbc.host_standup.AssimilationObligation { input: NodeRegistered, witness: InputSatisfied },
+      gunbc.host_standup.AssimilationObligation { input: ResourcesPresent, witness: InputSatisfied },
     ],
   }
   match assimilation_complete(gate: incomplete_gate, required: ci_required) {
@@ -229,11 +229,11 @@ test fn assimilation_gate_refuses_when_required_obligation_missing() -> Bool {
 
 test fn assimilation_gate_refuses_when_unrequired_obligation_present() -> Bool {
   let inference_required = assimilation_completion_inputs_for(participation: inference_serving_enrollment_participation)
-  let gate_with_runner = AssimilationCompleteGate {
+  let gate_with_runner = gunbc.host_standup.AssimilationCompleteGate {
     obligations: [
-      AssimilationObligation { input: NodeRegistered, witness: InputSatisfied },
-      AssimilationObligation { input: ResourcesPresent, witness: InputSatisfied },
-      AssimilationObligation { input: RunnerSlotHealthy, witness: InputSatisfied },
+      gunbc.host_standup.AssimilationObligation { input: NodeRegistered, witness: InputSatisfied },
+      gunbc.host_standup.AssimilationObligation { input: ResourcesPresent, witness: InputSatisfied },
+      gunbc.host_standup.AssimilationObligation { input: RunnerSlotHealthy, witness: InputSatisfied },
     ],
   }
   match assimilation_complete(gate: gate_with_runner, required: inference_required) {

@@ -2,15 +2,15 @@ module gunbc.bmc_fan_monitor
 
 
 type BmcFanMonitoringSample {
-  elapsed: Second
+  elapsed: std.measure.Second
   safety_refusal: String?
 }
 
 type BmcFanMonitoringReceipt {
   sample_count: Int
-  elapsed: Second
-  required_elapsed: Second
-  maximum_sample_gap: Second
+  elapsed: std.measure.Second
+  required_elapsed: std.measure.Second
+  maximum_sample_gap: std.measure.Second
 }
 
 type BmcFanMonitoringResult

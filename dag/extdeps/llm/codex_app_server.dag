@@ -1,16 +1,16 @@
 module extdeps.llm.codex_app_server
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/openai/codex"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.llm.codex_app_server",
       decl_name: "CodexAppServerTransport",
       field: WholeDeclaration
@@ -35,13 +35,13 @@ type CodexAppServerMethod
   | CodexAppServerThreadStart
   | CodexAppServerTurnStart
 
-fn codex_app_server_method_wire_name(method: CodexAppServerMethod) -> NonEmptyStr {
+fn codex_app_server_method_wire_name(method: CodexAppServerMethod) -> std.types.NonEmptyStr {
   match method {
-    CodexAppServerInitialize => "initialize" as NonEmptyStr
-    CodexAppServerAccountRead => "account/read" as NonEmptyStr
-    CodexAppServerAccountRateLimitsRead => "account/rateLimits/read" as NonEmptyStr
-    CodexAppServerThreadStart => "thread/start" as NonEmptyStr
-    CodexAppServerTurnStart => "turn/start" as NonEmptyStr
+    CodexAppServerInitialize => "initialize" as std.types.NonEmptyStr
+    CodexAppServerAccountRead => "account/read" as std.types.NonEmptyStr
+    CodexAppServerAccountRateLimitsRead => "account/rateLimits/read" as std.types.NonEmptyStr
+    CodexAppServerThreadStart => "thread/start" as std.types.NonEmptyStr
+    CodexAppServerTurnStart => "turn/start" as std.types.NonEmptyStr
   }
 }
 
@@ -53,7 +53,7 @@ type CodexAppServerExecutable {
 
 data codex_app_server_request_line_emit_note: String = "Request lines are BUILT through extdeps.languages.json.emit, not hand-authored as escaped string literals (review 50540). The literals they replace carried their own JSON grammar — braces, quoting and separators spelled out in \\{ and \\\" escapes — which is a second JSON representation sitting beside the module that already owns one (DESIGN §3 dual representation), and it is the representation that cannot escape a value: a method name or client field containing a quote would have produced a malformed frame with nothing to refuse it. serialize_json applies the escaping, so the wire bytes are a consequence of the modeled value rather than of an author getting the backslashes right."
 
-fn codex_app_server_jsonrpc_request(id: Int, method: String, params: JsonValue) -> NonEmptyStr {
+fn codex_app_server_jsonrpc_request(id: Int, method: String, params: extdeps.languages.json.emit.JsonValue) -> std.types.NonEmptyStr {
   serialize_json(
     v: json_object(
       members: [
@@ -63,10 +63,10 @@ fn codex_app_server_jsonrpc_request(id: Int, method: String, params: JsonValue) 
         json_kv(key: "params", value: params),
       ],
     ),
-  ) as NonEmptyStr
+  ) as std.types.NonEmptyStr
 }
 
-fn codex_app_server_initialize_request_line() -> NonEmptyStr {
+fn codex_app_server_initialize_request_line() -> std.types.NonEmptyStr {
   codex_app_server_jsonrpc_request(
     id: 1,
     method: "initialize",
@@ -88,7 +88,7 @@ fn codex_app_server_initialize_request_line() -> NonEmptyStr {
   )
 }
 
-fn codex_app_server_initialized_notification_line() -> NonEmptyStr {
+fn codex_app_server_initialized_notification_line() -> std.types.NonEmptyStr {
   serialize_json(
     v: json_object(
       members: [
@@ -96,10 +96,10 @@ fn codex_app_server_initialized_notification_line() -> NonEmptyStr {
         json_kv(key: "method", value: json_string(s: "initialized")),
       ],
     ),
-  ) as NonEmptyStr
+  ) as std.types.NonEmptyStr
 }
 
-fn codex_app_server_account_read_request_line() -> NonEmptyStr {
+fn codex_app_server_account_read_request_line() -> std.types.NonEmptyStr {
   codex_app_server_jsonrpc_request(
     id: 2,
     method: "account/read",
@@ -107,7 +107,7 @@ fn codex_app_server_account_read_request_line() -> NonEmptyStr {
   )
 }
 
-fn codex_app_server_rate_limits_read_request_line() -> NonEmptyStr {
+fn codex_app_server_rate_limits_read_request_line() -> std.types.NonEmptyStr {
   codex_app_server_jsonrpc_request(
     id: 3,
     method: "account/rateLimits/read",
@@ -120,15 +120,15 @@ data codex_supervised_session_rpc_id_note: String = "Supervised turn session ids
 data codex_supervised_thread_start_id: Int = 4
 data codex_supervised_turn_start_wire_id: Int = 5
 
-data codex_thread_start_result_thread_key: NonEmptyStr = "thread" as NonEmptyStr
-data codex_turn_start_result_turn_key: NonEmptyStr = "turn" as NonEmptyStr
-data codex_entity_id_key: NonEmptyStr = "id" as NonEmptyStr
-data codex_turn_start_params_thread_id_key: NonEmptyStr = "threadId" as NonEmptyStr
-data codex_turn_start_params_input_key: NonEmptyStr = "input" as NonEmptyStr
-data codex_turn_input_text_type_key: NonEmptyStr = "type" as NonEmptyStr
-data codex_turn_input_text_value_key: NonEmptyStr = "text" as NonEmptyStr
+data codex_thread_start_result_thread_key: std.types.NonEmptyStr = "thread" as std.types.NonEmptyStr
+data codex_turn_start_result_turn_key: std.types.NonEmptyStr = "turn" as std.types.NonEmptyStr
+data codex_entity_id_key: std.types.NonEmptyStr = "id" as std.types.NonEmptyStr
+data codex_turn_start_params_thread_id_key: std.types.NonEmptyStr = "threadId" as std.types.NonEmptyStr
+data codex_turn_start_params_input_key: std.types.NonEmptyStr = "input" as std.types.NonEmptyStr
+data codex_turn_input_text_type_key: std.types.NonEmptyStr = "type" as std.types.NonEmptyStr
+data codex_turn_input_text_value_key: std.types.NonEmptyStr = "text" as std.types.NonEmptyStr
 
-fn codex_app_server_thread_start_request_line(cwd: FilePath) -> NonEmptyStr {
+fn codex_app_server_thread_start_request_line(cwd: FilePath) -> std.types.NonEmptyStr {
   codex_app_server_jsonrpc_request(
     id: codex_supervised_thread_start_id,
     method: "thread/start",
@@ -141,9 +141,9 @@ fn codex_app_server_thread_start_request_line(cwd: FilePath) -> NonEmptyStr {
 }
 
 fn codex_app_server_turn_start_request_line(
-  thread_id: NonEmptyStr,
+  thread_id: std.types.NonEmptyStr,
   user_input: String,
-) -> NonEmptyStr {
+) -> std.types.NonEmptyStr {
   codex_app_server_jsonrpc_request(
     id: codex_supervised_turn_start_wire_id,
     method: "turn/start",
@@ -181,24 +181,24 @@ data codex_app_server_initialized_handshake_note: String = "After initialize suc
 
 data codex_app_server_response_shape_note: String = "Response carriers for initialize / account/read / account/rateLimits/read are grounded here as cited wire field keys from the 0.146 generate-json-schema ClientRequest companion responses. Full AST decoder types that bind protocol_schema_identity are the dissolve-on; until then product modules MUST consume these keys rather than invent alternate spellings."
 
-data codex_initialize_result_user_agent_key: NonEmptyStr = "userAgent" as NonEmptyStr
-data codex_account_read_result_requires_openai_auth_key: NonEmptyStr = "requiresOpenaiAuth" as NonEmptyStr
-data codex_account_read_result_account_key: NonEmptyStr = "account" as NonEmptyStr
-data codex_rate_limits_result_rate_limits_key: NonEmptyStr = "rateLimits" as NonEmptyStr
-data codex_rate_limits_result_by_limit_id_key: NonEmptyStr = "rateLimitsByLimitId" as NonEmptyStr
-data codex_rate_limits_snapshot_limit_id_key: NonEmptyStr = "limitId" as NonEmptyStr
-data codex_rate_limits_snapshot_primary_key: NonEmptyStr = "primary" as NonEmptyStr
-data codex_rate_limits_snapshot_secondary_key: NonEmptyStr = "secondary" as NonEmptyStr
-data codex_rate_limits_snapshot_spend_control_reached_key: NonEmptyStr = "spendControlReached" as NonEmptyStr
-data codex_rate_limits_snapshot_rate_limit_reached_type_key: NonEmptyStr = "rateLimitReachedType" as NonEmptyStr
-data codex_rate_limits_window_used_percent_key: NonEmptyStr = "usedPercent" as NonEmptyStr
-data codex_rate_limits_window_resets_at_key: NonEmptyStr = "resetsAt" as NonEmptyStr
-data codex_default_rate_limit_id: NonEmptyStr = "codex" as NonEmptyStr
+data codex_initialize_result_user_agent_key: std.types.NonEmptyStr = "userAgent" as std.types.NonEmptyStr
+data codex_account_read_result_requires_openai_auth_key: std.types.NonEmptyStr = "requiresOpenaiAuth" as std.types.NonEmptyStr
+data codex_account_read_result_account_key: std.types.NonEmptyStr = "account" as std.types.NonEmptyStr
+data codex_rate_limits_result_rate_limits_key: std.types.NonEmptyStr = "rateLimits" as std.types.NonEmptyStr
+data codex_rate_limits_result_by_limit_id_key: std.types.NonEmptyStr = "rateLimitsByLimitId" as std.types.NonEmptyStr
+data codex_rate_limits_snapshot_limit_id_key: std.types.NonEmptyStr = "limitId" as std.types.NonEmptyStr
+data codex_rate_limits_snapshot_primary_key: std.types.NonEmptyStr = "primary" as std.types.NonEmptyStr
+data codex_rate_limits_snapshot_secondary_key: std.types.NonEmptyStr = "secondary" as std.types.NonEmptyStr
+data codex_rate_limits_snapshot_spend_control_reached_key: std.types.NonEmptyStr = "spendControlReached" as std.types.NonEmptyStr
+data codex_rate_limits_snapshot_rate_limit_reached_type_key: std.types.NonEmptyStr = "rateLimitReachedType" as std.types.NonEmptyStr
+data codex_rate_limits_window_used_percent_key: std.types.NonEmptyStr = "usedPercent" as std.types.NonEmptyStr
+data codex_rate_limits_window_resets_at_key: std.types.NonEmptyStr = "resetsAt" as std.types.NonEmptyStr
+data codex_default_rate_limit_id: std.types.NonEmptyStr = "codex" as std.types.NonEmptyStr
 
-data codex_bengalfox_rate_limit_id: NonEmptyStr = "codex_bengalfox" as NonEmptyStr
-data codex_structured_error_code_rate_limit_reached: NonEmptyStr = "rate_limit_reached" as NonEmptyStr
-data codex_structured_error_code_quota_exceeded: NonEmptyStr = "quota_exceeded" as NonEmptyStr
-data codex_structured_error_code_authentication_required: NonEmptyStr = "authentication_required" as NonEmptyStr
+data codex_bengalfox_rate_limit_id: std.types.NonEmptyStr = "codex_bengalfox" as std.types.NonEmptyStr
+data codex_structured_error_code_rate_limit_reached: std.types.NonEmptyStr = "rate_limit_reached" as std.types.NonEmptyStr
+data codex_structured_error_code_quota_exceeded: std.types.NonEmptyStr = "quota_exceeded" as std.types.NonEmptyStr
+data codex_structured_error_code_authentication_required: std.types.NonEmptyStr = "authentication_required" as std.types.NonEmptyStr
 
 data codex_account_union_note: String = "GetAccountResponse.account IS A CLOSED DISCRIMINATED UNION, not an opaque object. Read from `codex app-server generate-json-schema --out` against @openai/codex 0.146.0 — the version pinned by gunbc.package_delivery codex_required_package_version and materialized by the committed provider-runtime/codex lock — v2/GetAccountResponse.json: Account is a oneOf over ApiKeyAccount \{type:'apiKey'\}, ChatgptAccount \{type:'chatgpt', planType, email\} and AmazonBedrockAccount \{type:'amazonBedrock', usesCodexManagedCredentials\}, discriminated by the required `type` member. `account` itself is nullable and, unlike requiresOpenaiAuth, is NOT in the response's required list — an absent account and a null account are both reachable.\n\nTHESE ARE THREE DIFFERENT CREDENTIAL REALIZATIONS, not three spellings of one account. An apiKey account bills a platform key; an amazonBedrock account bills a cloud contract; only chatgpt is the personal OAuth subscription. A consumer whose profile requires personal ChatGPT OAuth is not satisfied by the other two, so decoding this member to a bare `the object was nonempty` discards the only fact that distinguishes them.\n\nplanType is REQUIRED on ChatgptAccount. A chatgpt account without one is a malformed frame, not an account on an unnamed plan."
 
@@ -209,11 +209,11 @@ type CodexAccountType
   | CodexAccountTypeChatgpt
   | CodexAccountTypeAmazonBedrock
 
-fn codex_account_type_wire_name(t: CodexAccountType) -> NonEmptyStr {
+fn codex_account_type_wire_name(t: CodexAccountType) -> std.types.NonEmptyStr {
   match t {
-    CodexAccountTypeApiKey => "apiKey" as NonEmptyStr
-    CodexAccountTypeChatgpt => "chatgpt" as NonEmptyStr
-    CodexAccountTypeAmazonBedrock => "amazonBedrock" as NonEmptyStr
+    CodexAccountTypeApiKey => "apiKey" as std.types.NonEmptyStr
+    CodexAccountTypeChatgpt => "chatgpt" as std.types.NonEmptyStr
+    CodexAccountTypeAmazonBedrock => "amazonBedrock" as std.types.NonEmptyStr
   }
 }
 
@@ -232,26 +232,26 @@ type CodexPlanType
   | CodexPlanEdu
   | CodexPlanUnknown
 
-fn codex_plan_type_wire_name(p: CodexPlanType) -> NonEmptyStr {
+fn codex_plan_type_wire_name(p: CodexPlanType) -> std.types.NonEmptyStr {
   match p {
-    CodexPlanFree => "free" as NonEmptyStr
-    CodexPlanGo => "go" as NonEmptyStr
-    CodexPlanPlus => "plus" as NonEmptyStr
-    CodexPlanPro => "pro" as NonEmptyStr
-    CodexPlanProlite => "prolite" as NonEmptyStr
-    CodexPlanTeam => "team" as NonEmptyStr
-    CodexPlanSelfServeBusinessUsageBased => "self_serve_business_usage_based" as NonEmptyStr
-    CodexPlanBusiness => "business" as NonEmptyStr
-    CodexPlanEnt26 => "ent26" as NonEmptyStr
-    CodexPlanEnterpriseCbpUsageBased => "enterprise_cbp_usage_based" as NonEmptyStr
-    CodexPlanEnterprise => "enterprise" as NonEmptyStr
-    CodexPlanEdu => "edu" as NonEmptyStr
-    CodexPlanUnknown => "unknown" as NonEmptyStr
+    CodexPlanFree => "free" as std.types.NonEmptyStr
+    CodexPlanGo => "go" as std.types.NonEmptyStr
+    CodexPlanPlus => "plus" as std.types.NonEmptyStr
+    CodexPlanPro => "pro" as std.types.NonEmptyStr
+    CodexPlanProlite => "prolite" as std.types.NonEmptyStr
+    CodexPlanTeam => "team" as std.types.NonEmptyStr
+    CodexPlanSelfServeBusinessUsageBased => "self_serve_business_usage_based" as std.types.NonEmptyStr
+    CodexPlanBusiness => "business" as std.types.NonEmptyStr
+    CodexPlanEnt26 => "ent26" as std.types.NonEmptyStr
+    CodexPlanEnterpriseCbpUsageBased => "enterprise_cbp_usage_based" as std.types.NonEmptyStr
+    CodexPlanEnterprise => "enterprise" as std.types.NonEmptyStr
+    CodexPlanEdu => "edu" as std.types.NonEmptyStr
+    CodexPlanUnknown => "unknown" as std.types.NonEmptyStr
   }
 }
 
-data codex_account_type_key: NonEmptyStr = "type" as NonEmptyStr
-data codex_account_plan_type_key: NonEmptyStr = "planType" as NonEmptyStr
+data codex_account_type_key: std.types.NonEmptyStr = "type" as std.types.NonEmptyStr
+data codex_account_plan_type_key: std.types.NonEmptyStr = "planType" as std.types.NonEmptyStr
 
 data codex_rate_limits_capacity_decode_note: String = "GetAccountRateLimitsResponse carries rateLimits (backward-compatible single-bucket mirror) AND rateLimitsByLimitId (multi-bucket map keyed by limit_id, e.g. codex vs codex_bengalfox). Live exhausted Pro accounts can have codex at usedPercent 100 with rateLimitReachedType rate_limit_reached while another limit_id remains at 0 — a single account-level Ready|QuotaReached is therefore false. Decode every by-limit-id entry; keep native limit tokens open. spendControlReached true is an exhaustion signal when present, but live exhaustion often has spendControlReached false — usedPercent 100 and rateLimitReachedType are the operative facts. Empty rateLimits:\{\} answers the endpoint without proving capacity."
 

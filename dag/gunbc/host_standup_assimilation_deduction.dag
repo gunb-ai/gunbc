@@ -6,17 +6,17 @@ data gunbc_host_standup_assimilation_deduction_scope_disposition: Disposition = 
 }
 
 type DhcpLeaseTableObservation
-  = LeaseTableObserved { table: Cr1000aDhcpLeaseTable }
-  | LeaseTableUnreadable { reason: NonEmptyStr }
+  = LeaseTableObserved { table: extdeps.router.verizon_cr1000a.Cr1000aDhcpLeaseTable }
+  | LeaseTableUnreadable { reason: std.types.NonEmptyStr }
 
 type OsInstallActuationAssertPlan
   = AssertOsInstallActuationPending
   | AssertOsInstallActuationConvergedMarker
 
 type StallTransitionProbe {
-  boot_override_mode: RedfishBootSourceOverrideMode?
+  boot_override_mode: extdeps.bmc.types.RedfishBootSourceOverrideMode?
   nbd_serve_session_active: Bool
-  kvm_screen: KvmObservedScreen?
+  kvm_screen: gunbc.os_install_deduction.KvmObservedScreen?
   host_logger_nonempty: Bool
   boot_progress_none: Bool
 }

@@ -1,8 +1,8 @@
 module v2.test.fixture.derivable_coercion_task_id
 
 
-fn task_id_inhabitant_atom(id: Symbol) -> Node {
-  Node {
+fn task_id_inhabitant_atom(id: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: id } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -10,10 +10,10 @@ fn task_id_inhabitant_atom(id: Symbol) -> Node {
 }
 
 fn task_id_semantic_core_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: task_id_encoding_core_node(
           representation: ^task_id_encoding_opaque_symbol,
@@ -25,15 +25,15 @@ fn task_id_semantic_core_node() -> Node {
 }
 }
 
-fn task_id_encoding_core_node(representation: Symbol, carrier: Symbol) -> Node {
-  Node {
+fn task_id_encoding_core_node(representation: v2.std.node.Symbol, carrier: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: v2.std.node.Named { name: ^task_id_encoding_core_field_representation },
         target: task_id_inhabitant_atom(id: representation)
       },
-      Edge {
+      v2.std.node.Edge {
         label: v2.std.node.Named { name: ^task_id_encoding_core_field_carrier },
         target: task_id_inhabitant_atom(id: carrier)
       }
@@ -42,18 +42,18 @@ fn task_id_encoding_core_node(representation: Symbol, carrier: Symbol) -> Node {
 }
 }
 
-fn task_id_layer_inhabitant(surface_nickname: Symbol) -> Node {
-  Node {
+fn task_id_layer_inhabitant(surface_nickname: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: task_id_encoding_core_node(
           representation: ^task_id_encoding_opaque_symbol,
           carrier: ^task_id_carrier_symbol_identity
         )
       },
-      Edge {
+      v2.std.node.Edge {
         label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: task_id_inhabitant_atom(id: surface_nickname)
       }
@@ -75,17 +75,17 @@ fn task_id_wire_inhabitant_node() -> Node {
 }
 
 fn account_id_wrong_inhabitant_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisEncoding {}) },
         target: task_id_encoding_core_node(
           representation: ^account_id_encoding_numeric,
           carrier: ^account_id_carrier_machine_int
         )
       },
-      Edge {
+      v2.std.node.Edge {
         label: v2.std.node.Named { name: discriminant(v: ModelCoreFactAxisSurfaceSpelling {}) },
         target: task_id_inhabitant_atom(id: ^account_id_nickname_surface)
       }
@@ -94,8 +94,8 @@ fn account_id_wrong_inhabitant_node() -> Node {
 }
 }
 
-fn derivable_coercion_candidate_closedness(evidence: Node) -> StructuralPropertyWitness {
-  StructuralPropertyWitness {
+fn derivable_coercion_candidate_closedness(evidence: Node) -> v2.std.witness.StructuralPropertyWitness {
+  v2.std.witness.StructuralPropertyWitness {
     property: ^derivable_coercion_closed_candidates,
     evidence: evidence
   }

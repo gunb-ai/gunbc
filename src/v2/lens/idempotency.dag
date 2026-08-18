@@ -2,7 +2,7 @@ module v2.lens.idempotency
 
 
 type IdempotencyFact {
-  dependencies: List<ClassifiedDependencyView<IdempotencyVerdict>>
+  dependencies: List<ClassifiedDependencyView<v2.lens.common.algebraic_composition.IdempotencyVerdict>>
 }
 
 fn idempotency_classify(view: DependencyView) -> ClassifiedDependencyView<IdempotencyVerdict> {

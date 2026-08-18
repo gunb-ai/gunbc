@@ -18,14 +18,14 @@ type ObservationSubject {
   segments: List<ObservationSegment>
 }
 
-fn observation_decl_field_key(field: DeclField) -> String {
+fn observation_decl_field_key(field: std.decl_ref.DeclField) -> String {
   match field {
     WholeDeclaration => "whole"
     NamedField { field_name: f } => concat("field=", f)
   }
 }
 
-fn observation_declaration_key(d: DeclarationRef) -> String {
+fn observation_declaration_key(d: std.decl_ref.DeclarationRef) -> String {
   concat(
     "decl=",
     concat(
@@ -93,7 +93,7 @@ fn observation_subject_grain(subject: ObservationSubject) -> ObservationGrain {
   fold(subject.segments, init: RunGrain, f: (acc, seg) => observation_grain_of_segment(seg: seg))
 }
 
-fn observation_subject_entry_path(subject: ObservationSubject) -> NonEmptyStr? {
+fn observation_subject_entry_path(subject: ObservationSubject) -> std.types.NonEmptyStr? {
   fold(subject.segments, init: Absent, f: (acc, seg) =>
     match seg {
       EntrySegment { source_path: p } => Present { value: p }
@@ -106,7 +106,7 @@ fn observation_subject_entry_path(subject: ObservationSubject) -> NonEmptyStr? {
   )
 }
 
-fn observation_subject_declaration(subject: ObservationSubject) -> DeclarationRef? {
+fn observation_subject_declaration(subject: ObservationSubject) -> std.decl_ref.DeclarationRef? {
   fold(subject.segments, init: Absent, f: (acc, seg) =>
     match seg {
       DeclarationSegment { declaration: d } => Present { value: d }
@@ -119,7 +119,7 @@ fn observation_subject_declaration(subject: ObservationSubject) -> DeclarationRe
   )
 }
 
-fn observation_subject_phase_name(subject: ObservationSubject) -> NonEmptyStr? {
+fn observation_subject_phase_name(subject: ObservationSubject) -> std.types.NonEmptyStr? {
   fold(subject.segments, init: Absent, f: (acc, seg) =>
     match seg {
       PhaseSegment { name: n } => Present { value: n }
@@ -132,7 +132,7 @@ fn observation_subject_phase_name(subject: ObservationSubject) -> NonEmptyStr? {
   )
 }
 
-fn observation_subject_module_path(subject: ObservationSubject) -> NonEmptyStr? {
+fn observation_subject_module_path(subject: ObservationSubject) -> std.types.NonEmptyStr? {
   fold(subject.segments, init: Absent, f: (acc, seg) =>
     match seg {
       ModuleSegment { module_path: p } => Present { value: p }
@@ -162,11 +162,11 @@ type TimedMeasurement {
 
 data observation_timed_measurement_note: String = "One duration, tagged with the clock it came from. THE BASIS IS NOT OPTIONAL AND THE VALUE IS: you always know which clock you tried to read, and you may fail to read it. So basis is a plain ClockBasis while elapsed is Measured, which keeps the cause of an unreadable clock (observation_measured_note: never a fabricated zero, never a silently omitted field) without inventing a basis nobody observed. The inverse shape -- Measured<TimedMeasurement> -- was rejected because an Unavailable arm would then carry no basis, so a failed CPU read and a failed wall read would be indistinguishable."
 
-fn timed_measurement_basis(t: TimedMeasurement) -> ClockBasis {
+fn timed_measurement_basis(t: TimedMeasurement) -> std.measure.ClockBasis {
   t.basis
 }
 
-fn timed_measurement_elapsed(t: TimedMeasurement) -> Measured<Nanosecond> {
+fn timed_measurement_elapsed(t: TimedMeasurement) -> Measured<std.measure.Nanosecond> {
   t.elapsed
 }
 
@@ -203,7 +203,7 @@ type ClockLookup
 
 fn observation_clock_lookup(
   durations: List<TimedMeasurement>,
-  basis: ClockBasis
+  basis: std.measure.ClockBasis
 ) -> ClockLookup {
   fold(durations, init: ClockNotFound, f: (acc, t) =>
     if clock_basis_eq(a: timed_measurement_basis(t: t), b: basis) {
@@ -220,15 +220,15 @@ fn observation_clock_lookup(
 
 fn observation_duration_of(
   durations: List<TimedMeasurement>,
-  basis: ClockBasis
-) -> Measured<Nanosecond> {
+  basis: std.measure.ClockBasis
+) -> Measured<std.measure.Nanosecond> {
   match observation_clock_lookup(durations: durations, basis: basis) {
     ClockNotFound =>
       MeasuredUnavailable {
         cause: concat(
           concat("no ", clock_basis_label(b: basis) as String),
           " duration was recorded on this event"
-        ) as NonEmptyStr
+        ) as std.types.NonEmptyStr
       }
     ClockFound { elapsed: e } => e
     ClockAmbiguous =>
@@ -236,30 +236,30 @@ fn observation_duration_of(
         cause: concat(
           concat("two ", clock_basis_label(b: basis) as String),
           " durations were recorded on one event; the observation is ambiguous"
-        ) as NonEmptyStr
+        ) as std.types.NonEmptyStr
       }
   }
 }
 
-fn observation_duration(event: ObservationEvent, basis: ClockBasis) -> Measured<Nanosecond> {
+fn observation_duration(event: ObservationEvent, basis: std.measure.ClockBasis) -> Measured<std.measure.Nanosecond> {
   observation_duration_of(durations: event.durations, basis: basis)
 }
 
-fn observation_wall(event: ObservationEvent) -> Measured<Nanosecond> {
+fn observation_wall(event: ObservationEvent) -> Measured<std.measure.Nanosecond> {
   observation_duration(event: event, basis: WallClock)
 }
 
-fn observation_durations_wall(elapsed: Nanosecond) -> List<TimedMeasurement> {
+fn observation_durations_wall(elapsed: std.measure.Nanosecond) -> List<TimedMeasurement> {
   [TimedMeasurement { basis: WallClock, elapsed: MeasuredValue { value: elapsed } }]
 }
 
-fn observation_durations_wall_unavailable(cause: NonEmptyStr) -> List<TimedMeasurement> {
+fn observation_durations_wall_unavailable(cause: std.types.NonEmptyStr) -> List<TimedMeasurement> {
   [TimedMeasurement { basis: WallClock, elapsed: MeasuredUnavailable { cause: cause } }]
 }
 
 fn observation_durations_cpu_and_wall(
-  cpu: Nanosecond,
-  wall: Nanosecond
+  cpu: std.measure.Nanosecond,
+  wall: std.measure.Nanosecond
 ) -> List<TimedMeasurement> {
   [
     TimedMeasurement { basis: CpuClock, elapsed: MeasuredValue { value: cpu } },
@@ -339,7 +339,7 @@ fn observation_outcome_is_anomaly(o: ObservationOutcome) -> Bool {
   }
 }
 
-fn observation_attention_of_elapsed(elapsed: Nanosecond, basis: AttentionBasis) -> AttentionLevel {
+fn observation_attention_of_elapsed(elapsed: std.measure.Nanosecond, basis: AttentionBasis) -> AttentionLevel {
   if measure_le(a: elapsed, b: millisecond_to_nanosecond(m: basis.average)) {
     Ambient
   } else if measure_le(a: elapsed, b: millisecond_to_nanosecond(m: basis.maximum)) {
@@ -504,7 +504,7 @@ fn observation_class_is_intrinsic_anomaly(c: ObservationEventClass) -> Bool {
   observation_density_expands_fully(d: observation_class_density(c: c))
 }
 
-fn observation_class_glyph(c: ObservationEventClass) -> SymbolId {
+fn observation_class_glyph(c: ObservationEventClass) -> std.symbols.SymbolId {
   match c {
     ClassBegin => NodeRunning
     ClassStep => NodeRunning
@@ -538,11 +538,11 @@ type ChangePresentation {
 fn observation_change_presentation<K, V>(hunk: KeyedDiffHunk<K, V>) -> ChangePresentation {
   match hunk {
     KeyedDiffAddedHunk { hunk_key: _, to: _ } =>
-      ChangePresentation { symbol: ChangeAdded, tag: "new" as NonEmptyStr }
+      ChangePresentation { symbol: ChangeAdded, tag: "new" as std.types.NonEmptyStr }
     KeyedDiffRemovedHunk { hunk_key: _, from: _ } =>
-      ChangePresentation { symbol: ChangeRemoved, tag: "removed" as NonEmptyStr }
+      ChangePresentation { symbol: ChangeRemoved, tag: "removed" as std.types.NonEmptyStr }
     KeyedDiffModifiedHunk { hunk_key: _, from: _, to: _ } =>
-      ChangePresentation { symbol: ChangeModified, tag: "edited" as NonEmptyStr }
+      ChangePresentation { symbol: ChangeModified, tag: "edited" as std.types.NonEmptyStr }
   }
 }
 
@@ -559,7 +559,7 @@ data selection_noop_generated_artifact_mint_note: String = "Mint helper for the 
 
 data selection_noop_generated_artifact_rename_scaffold_note: String = "DECLARED SCAFFOLD (review 44094, DESIGN 6). The rename above is a LOCAL disambiguation, not a fix: three unrelated carriers still share the noun GeneratedArtifact — this no-op disposition, v2.std.artifact.GeneratedArtifact (the emitted artifact), and gunbc.generated_artifact.GeneratedArtifact (the committed drift-gated file). Only one of them was renamed, so the collision is dodged at this site and left standing everywhere else, which is exactly the shape DESIGN 3 warns about: a fork gets consolidated later, so deferring is a cost decision, not a clean one. Three same-named types is NOT automatically three authorities — they may be genuinely different concepts that deserve distinct nouns, or two of them may be one concept forked — and deciding which is a modeling question this rename does not answer. DISSOLVES ON: the namespace-only resolution lane landing containment-derived qualified names (docs/plans/namespace-resolution-design.md), at which point a bare same-name is resolved by position and the disambiguating suffix is dead weight; or, sooner, a DFS over the three carriers that either renames each to what it actually IS or proves two of them one concept and merges them. Whichever lands first deletes this row and the NoOp suffix with it."
 
-fn selection_noop_generated_artifact(drift_gate_authority: NonEmptyStr) -> SelectionNoOp {
+fn selection_noop_generated_artifact(drift_gate_authority: std.types.NonEmptyStr) -> SelectionNoOp {
   GeneratedArtifactNoOp { drift_gate_authority: drift_gate_authority }
 }
 
@@ -583,7 +583,7 @@ fn observation_no_op_attention(n: SelectionNoOp) -> AttentionLevel {
   }
 }
 
-fn observation_no_op_symbol(n: SelectionNoOp) -> SymbolId {
+fn observation_no_op_symbol(n: SelectionNoOp) -> std.symbols.SymbolId {
   match n {
     DocsPolicy => NodeSkipped
     Uncovered { declaration: _ } => StatusWarning
@@ -593,19 +593,19 @@ fn observation_no_op_symbol(n: SelectionNoOp) -> SymbolId {
   }
 }
 
-fn observation_no_op_explanation(n: SelectionNoOp) -> NonEmptyStr {
+fn observation_no_op_explanation(n: SelectionNoOp) -> std.types.NonEmptyStr {
   match n {
-    DocsPolicy => "documentation never selects executable work" as NonEmptyStr
-    Uncovered { declaration: d } => concat("no witness covers this change: ", d) as NonEmptyStr
-    NoDeclsTouched => "only comments or whitespace changed" as NonEmptyStr
-    GeneratedArtifactNoOp { drift_gate_authority: a } => concat("generated artifact — checked by drift against ", a) as NonEmptyStr
-    DepartedPath { cause: c } => concat("a deleted module cannot be scoped, so selection widened: ", c) as NonEmptyStr
+    DocsPolicy => "documentation never selects executable work" as std.types.NonEmptyStr
+    Uncovered { declaration: d } => concat("no witness covers this change: ", d) as std.types.NonEmptyStr
+    NoDeclsTouched => "only comments or whitespace changed" as std.types.NonEmptyStr
+    GeneratedArtifactNoOp { drift_gate_authority: a } => concat("generated artifact — checked by drift against ", a) as std.types.NonEmptyStr
+    DepartedPath { cause: c } => concat("a deleted module cannot be scoped, so selection widened: ", c) as std.types.NonEmptyStr
   }
 }
 
 data observation_human_units_contract: String = "Rendered magnitudes are in human units, and a raw telemetry dump is a census violation rather than a projection. The named negative example is the floor memory heartbeat's current shape: sixty-plus identical context-free byte dumps an hour, current=16111669248 with no subject attached, which is precisely the line that was present throughout the ten-minute crawl window and told the operator nothing. A projection states the magnitude at a scale a human reads and attaches the subject it belongs to. This contract is stated on the model so the P3 census has an authority to check against; the renderers that satisfy it are P1 and later."
 
-data observation_heartbeat_period: Millisecond = millisecond(count: 60000)
+data observation_heartbeat_period: std.measure.Millisecond = millisecond(count: 60000)
 
 data observation_heartbeat_period_note: String = "The heartbeat cadence is a measured fact of the running system, not a preference: the floor's memory heartbeat already samples and prints once per minute, and the lockstep witness reads that period out of the live seed rather than trusting this row. It is stated here because the dwell threshold is derived from it."
 
@@ -619,9 +619,9 @@ data observation_dwell_threshold: DwellThreshold = DwellThreshold {
   basis: "one heartbeat period — the log's existing clock. Law 2 requires that no subject stay quiet past T without a line naming it, and the heartbeat is already the cadence at which the log speaks, so T is DERIVED from the emitter's own period rather than picked. Escalation at 2T and 4T rides the same clock, which is why depth is a division and not a table of tuned constants."
 }
 
-data observation_dwell_threshold_disposition: Disposition = Scaffold {
+data observation_dwell_threshold_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
     decl_name: "observation_dwell_threshold",
     field: WholeDeclaration
@@ -630,16 +630,16 @@ data observation_dwell_threshold_disposition: Disposition = Scaffold {
 
 data observation_dwell_recalibration_note: String = "Declared scaffold, with its trigger: the design doc says T's basis is the measured quiet-time distribution. That distribution is not yet collected — the gauntlet and falsifier whole-corpus runs are the context that will produce it (design doc section 6b names that lane as the escalation law's primary home). Deriving T from the heartbeat period is a grounded interim, not taste, because the period is itself measured and law 2 is stated in terms of it. Dissolve-on: the first measured quiet-time distribution from a gauntlet cadence replaces the basis, and this row's period becomes a projection of it."
 
-fn observation_escalation_depth(quiet: Millisecond, t: DwellThreshold) -> std.nat.Nat {
+fn observation_escalation_depth(quiet: std.measure.Millisecond, t: DwellThreshold) -> std.nat.Nat {
   millisecond_count(m: quiet) / millisecond_count(m: t.period)
 }
 
 // Law 3: attention escalates by dwell time, RECURSIVELY. A subject quiet past T surfaces its current child, past 2T the grandchild, and so on to the leaf — the collapse rule of law 4 run in reverse under time pressure, over the same tree and the same events. Depth is floor of quiet over T, so one law covers every level instead of a special case per level; the reference implementation expands one level only, and only on a TTY, which is why the CI crawl window stayed silent.
-fn observation_escalation_reveal_depth(quiet_subject: ObservationSubject, quiet: Millisecond, t: DwellThreshold) -> std.nat.Nat {
+fn observation_escalation_reveal_depth(quiet_subject: ObservationSubject, quiet: std.measure.Millisecond, t: DwellThreshold) -> std.nat.Nat {
   count(quiet_subject.segments) + observation_escalation_depth(quiet: quiet, t: t)
 }
 
-fn observation_escalation_subject(quiet_subject: ObservationSubject, active_leaf: ObservationSubject, quiet: Millisecond, t: DwellThreshold) -> ObservationSubject {
+fn observation_escalation_subject(quiet_subject: ObservationSubject, active_leaf: ObservationSubject, quiet: std.measure.Millisecond, t: DwellThreshold) -> ObservationSubject {
   if observation_subject_contains(ancestor: quiet_subject, descendant: active_leaf) {
     ObservationSubject {
       segments: active_leaf.segments.take(n: observation_escalation_reveal_depth(quiet_subject: quiet_subject, quiet: quiet, t: t))
@@ -655,8 +655,8 @@ type WatchdogVerdict
 
 data observation_watchdog_note: String = "Law 1: every subject at entry grain and above emits a matched Begin and exactly one Outcome, so an orphaned Begin is a DETECTABLE DEFECT rather than a silence to be interpreted. The watchdog converts quiet-past-budget into a typed line, which also closes the batch-wall hang gap — a batch that never completes currently rides silently to the step cap. The exceeded-budget arithmetic is not restated here: it calls std.temporal_effect.stall_budget_verdict, the one carrier already answering elapsed-against-limit, so there is a single authority for what over-budget means and this module only adds the subject the verdict is about."
 
-fn observation_watchdog(subject: ObservationSubject, elapsed: Millisecond, budget: Millisecond) -> WatchdogVerdict {
-  match stall_budget_verdict(budget: EffectStallBudget {
+fn observation_watchdog(subject: ObservationSubject, elapsed: std.measure.Millisecond, budget: std.measure.Millisecond) -> WatchdogVerdict {
+  match stall_budget_verdict(budget: std.temporal_effect.EffectStallBudget {
     step_id: observation_subject_render(subject: subject),
     limit_ms: budget,
     elapsed_ms: elapsed
@@ -669,10 +669,10 @@ fn observation_watchdog(subject: ObservationSubject, elapsed: Millisecond, budge
 
 data observation_empty_subject_note: String = "The empty-path arm NAMES the absence rather than inventing a subject, and it does not widen: unattributed is a label for a caller that built a subject with no identity, not a plausible substitute for one. It is not the absorbing fallback the house forbids — nothing is rerun, nothing is scanned wholesale, and the line is as loud as any other. It is nonetheless a CONSTRUCTION GAP, declared rather than left silent: the right shape is a segment list that cannot be empty, which the substrate cannot express today — a record-field where clause over a list is named future work in the where-clause lowering plan, and no list refinement exists in the corpus. Dissolve-on: when that lowering lands, ObservationSubject.segments takes the non-empty refinement, this arm becomes unreachable by construction, and it deletes."
 
-fn observation_subject_render(subject: ObservationSubject) -> NonEmptyStr {
+fn observation_subject_render(subject: ObservationSubject) -> std.types.NonEmptyStr {
   match join(observation_subject_path(subject: subject), " ") {
-    "" => "run=unattributed" as NonEmptyStr
-    rendered => rendered as NonEmptyStr
+    "" => "run=unattributed" as std.types.NonEmptyStr
+    rendered => rendered as std.types.NonEmptyStr
   }
 }
 
@@ -692,9 +692,9 @@ type ObservationLaw {
 data observation_laws_note: String = "The five laws land as DATA ROWS, operator-signed 2026-07-23. Each row names the declaration that enforces it, so a law with no enforcement is a detectable orphan rather than a sentence in a document nobody executes — the lockstep witness reads this module out of the live tree and reds when a named declaration is absent. Candidate convergence, flagged not assumed: the enforcement-intent lane models the operator's recurring standing directives as StandingIntent rows with a lens contract and a coverage receipt. These five are directives of exactly that shape, but StandingIntent's fields today are lens-enforcement machinery (scope roster, consumer requirement, narrowing reasons) that these rows would fill hollowly, so they stay plain rows and the consolidation is the operator's call when that lane generalizes."
 
 data observation_law_process_to_outcome: ObservationLaw = ObservationLaw {
-  id: "observation.process-to-outcome" as NonEmptyStr,
-  statement: "Every subject at entry grain and above emits a matched Begin and exactly one Outcome; quiet past budget becomes a typed line, never an interpreted silence." as NonEmptyStr,
-  enforced_by: DeclarationRef {
+  id: "observation.process-to-outcome" as std.types.NonEmptyStr,
+  statement: "Every subject at entry grain and above emits a matched Begin and exactly one Outcome; quiet past budget becomes a typed line, never an interpreted silence." as std.types.NonEmptyStr,
+  enforced_by: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
     decl_name: "observation_watchdog",
     field: WholeDeclaration
@@ -702,9 +702,9 @@ data observation_law_process_to_outcome: ObservationLaw = ObservationLaw {
 }
 
 data observation_law_heartbeat_identity: ObservationLaw = ObservationLaw {
-  id: "observation.heartbeat-carries-identity" as NonEmptyStr,
-  statement: "The heartbeat carries identity, not just vitals: phase, entry, module and k of n. No phase exceeds T without a line naming its current subject." as NonEmptyStr,
-  enforced_by: DeclarationRef {
+  id: "observation.heartbeat-carries-identity" as std.types.NonEmptyStr,
+  statement: "The heartbeat carries identity, not just vitals: phase, entry, module and k of n. No phase exceeds T without a line naming its current subject." as std.types.NonEmptyStr,
+  enforced_by: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
     decl_name: "observation_subject_render",
     field: WholeDeclaration
@@ -712,9 +712,9 @@ data observation_law_heartbeat_identity: ObservationLaw = ObservationLaw {
 }
 
 data observation_law_dwell_escalation: ObservationLaw = ObservationLaw {
-  id: "observation.attention-escalates-by-dwell" as NonEmptyStr,
-  statement: "Attention escalates by dwell time, recursively: quiet past T surfaces the child, past 2T the grandchild, down to the leaf. T is a data row with a measured basis." as NonEmptyStr,
-  enforced_by: DeclarationRef {
+  id: "observation.attention-escalates-by-dwell" as std.types.NonEmptyStr,
+  statement: "Attention escalates by dwell time, recursively: quiet past T surfaces the child, past 2T the grandchild, down to the leaf. T is a data row with a measured basis." as std.types.NonEmptyStr,
+  enforced_by: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
     decl_name: "observation_escalation_subject",
     field: WholeDeclaration
@@ -722,9 +722,9 @@ data observation_law_dwell_escalation: ObservationLaw = ObservationLaw {
 }
 
 data observation_law_quiet_at_arms_length: ObservationLaw = ObservationLaw {
-  id: "observation.quiet-at-arms-length" as NonEmptyStr,
-  statement: "Sub-threshold work is silent and collapses to summaries; a red or a refusal expands fully and names itself. The asymmetry is the design, and expansion stays bounded." as NonEmptyStr,
-  enforced_by: DeclarationRef {
+  id: "observation.quiet-at-arms-length" as std.types.NonEmptyStr,
+  statement: "Sub-threshold work is silent and collapses to summaries; a red or a refusal expands fully and names itself. The asymmetry is the design, and expansion stays bounded." as std.types.NonEmptyStr,
+  enforced_by: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
     decl_name: "observation_presentation",
     field: WholeDeclaration
@@ -732,9 +732,9 @@ data observation_law_quiet_at_arms_length: ObservationLaw = ObservationLaw {
 }
 
 data observation_law_every_response_true: ObservationLaw = ObservationLaw {
-  id: "observation.every-response-true" as NonEmptyStr,
-  statement: "Every rendered number is a projection of a receipt fact. No vibes strings, no per-site log levels, no fabricated value standing in for an unavailable measurement." as NonEmptyStr,
-  enforced_by: DeclarationRef {
+  id: "observation.every-response-true" as std.types.NonEmptyStr,
+  statement: "Every rendered number is a projection of a receipt fact. No vibes strings, no per-site log levels, no fabricated value standing in for an unavailable measurement." as std.types.NonEmptyStr,
+  enforced_by: std.decl_ref.DeclarationRef {
     module_path: "std.observation",
     decl_name: "observation_attention",
     field: WholeDeclaration
@@ -749,19 +749,19 @@ data observation_laws: List<ObservationLaw> = [
   observation_law_every_response_true
 ]
 
-data observation_outcome_predicate_contract: Disposition = Terminal {
+data observation_outcome_predicate_contract: std.disposition.Disposition = Terminal {
   reason: "Structural coproduct readers over ObservationOutcome and ObservationEventClass (observation_outcome_is_anomaly, observation_outcome_class, observation_event_class, observation_class_density and the density projections) — closed by the declared outcome and class variants, not interim scaffolds. Terminal because the sums are closed by construction and the class roster is censused: a new variant cannot be added without the totality witness naming it. Discriminating corpus: dag/test/claim/observation_model_witness_test.dag, which reds when a class loses its presentation, when Refused and Failed collapse onto one glyph, and when the density authority disagrees with what the presentation projects."
 }
 
-data observation_subject_predicate_contract: Disposition = Terminal {
+data observation_subject_predicate_contract: std.disposition.Disposition = Terminal {
   reason: "Structural readers over ObservationSegment, ObservationGrain and SchedulerHold (observation_grain_of_segment, observation_grain_depth, observation_subject_grain, observation_subject_entry_path, observation_subject_declaration, observation_subject_phase_name, observation_subject_module_path, observation_grain_at_or_above_entry, observation_hold_resource) — closed by declared variants. The hold reader is Terminal on the .dag side and additionally pinned to its realization: the lockstep witness reads the seed governor by execution, so a variant added on one side without the other reds rather than drifting."
 }
 
-data observation_selection_predicate_contract: Disposition = Terminal {
+data observation_selection_predicate_contract: std.disposition.Disposition = Terminal {
   reason: "Structural coproduct readers over SelectionNoOp (observation_no_op_is_actually_a_widen, observation_no_op_attention, observation_no_op_symbol, observation_no_op_explanation) — closed by the declared no-op variants. Terminal, and load-bearing rather than decorative: the widen reader is what keeps a departed path from being rendered as a no-op, which is the distinction the operator's closed-sum ruling exists to preserve."
 }
 
-data observation_renders_nothing_disposition: Disposition = Terminal {
+data observation_renders_nothing_disposition: std.disposition.Disposition = Terminal {
   reason: "P0 carries the model only. Renderers are P1 and later, and the CI renderer's wiring lands after the atomic CI PR because both touch the floor's emit sites and churning them twice is the migration class the operator ruled out. This module therefore holds no line formatting, no glyph text, and no ANSI: it holds the vocabulary those renderers project from."
 }
 
@@ -875,9 +875,9 @@ fn observation_rollup_open(subject: ObservationSubject) -> ObservationRollup {
 }
 
 fn observation_rollup_add_elapsed(
-  acc: Measured<Nanosecond>,
-  reading: Measured<Nanosecond>,
-) -> Measured<Nanosecond> {
+  acc: Measured<std.measure.Nanosecond>,
+  reading: Measured<std.measure.Nanosecond>,
+) -> Measured<std.measure.Nanosecond> {
   match reading {
     MeasuredUnavailable { cause: _ } => acc
     MeasuredValue { value: v } =>
@@ -889,9 +889,9 @@ fn observation_rollup_add_elapsed(
 }
 
 fn observation_rollup_max_rss(
-  acc: Measured<ByteSize>,
-  reading: Measured<ByteSize>,
-) -> Measured<ByteSize> {
+  acc: Measured<std.measure.ByteSize>,
+  reading: Measured<std.measure.ByteSize>,
+) -> Measured<std.measure.ByteSize> {
   match reading {
     MeasuredUnavailable { cause: _ } => acc
     MeasuredValue { value: v } =>
@@ -902,7 +902,7 @@ fn observation_rollup_max_rss(
   }
 }
 
-fn observation_measurement_absent_delta(reading: Measured<Nanosecond>) -> std.nat.Nat {
+fn observation_measurement_absent_delta(reading: Measured<std.measure.Nanosecond>) -> std.nat.Nat {
   match reading {
     MeasuredUnavailable { cause: _ } => 1
     MeasuredValue { value: _ } => 0
@@ -940,7 +940,7 @@ fn observation_rollup_accept(
   }
 }
 
-data observation_rollup_contract: Disposition = Terminal {
+data observation_rollup_contract: std.disposition.Disposition = Terminal {
   reason: "The rollup fold is a pure reader over the vocabulary this module already owns — subject containment (observation_subject_contains, itself std.effect_grant.path_is_prefix), grain depth, and the single density table. It mints no grain taxonomy, no second collapse rule and no threshold: which grain to roll up to is the consumer's parameter, and when to emit is the renderer's projection over these counts. Terminal because the fold is total over the closed event-class roster; a new class must extend observation_counts_accept, which the exhaustive match forces."
 }
 
@@ -1098,7 +1098,7 @@ type RecordedObservation {
   event: ObservationEvent
 }
 
-fn recorded_attempt(r: RecordedObservation) -> NonEmptyStr {
+fn recorded_attempt(r: RecordedObservation) -> std.types.NonEmptyStr {
   r.occurrence.attempt
 }
 

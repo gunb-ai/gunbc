@@ -30,9 +30,9 @@ fn unused_parameters_claim_tree() -> InferredTree {
 }
 
 type LensUseClassificationClaim {
-  input: InferredTree
-  expected: UseClassificationFact
-  actual: Witness<UseClassificationFact>
+  input: v2.compiler.infer.InferredTree
+  expected: v2.lens.unused_parameters.UseClassificationFact
+  actual: Witness<v2.lens.unused_parameters.UseClassificationFact>
 }
 
 data unused_parameters_binds_to_edge_claim: LensUseClassificationClaim = LensUseClassificationClaim {

@@ -4,20 +4,20 @@ module v2.std.effect_plan
 
 type EffectPlanStep<E>
   = Do { effect: E }
-  | If { cond: Predicate, then_: EffectPlan<E>, else_: Optional<EffectPlan<E>> }
-  | For { binder: Symbol, over: ValueSource, body: EffectPlan<E> }
-  | While { cond: Predicate, body: EffectPlan<E> }
+  | If { cond: v2.std.orchestration.Predicate, then_: EffectPlan<E>, else_: Optional<EffectPlan<E>> }
+  | For { binder: v2.std.node.Symbol, over: v2.std.orchestration.ValueSource, body: EffectPlan<E> }
+  | While { cond: v2.std.orchestration.Predicate, body: EffectPlan<E> }
   | Retry {
       body: EffectPlan<E>,
-      escalations: FreeMonoid<EscalationLevel>,
+      escalations: FreeMonoid<v2.std.orchestration.EscalationLevel>,
       on_exhausted: EffectPlan<E>
     }
-  | Let { name: String, value: Expr }
+  | Let { name: String, value: v2.std.orchestration.Expr }
   | Call { callee: String, args: List<String> }
 
 type EffectPlan<E> {
   steps: FreeMonoid<EffectPlanStep<E>>
-  on_failure: FailurePolicy
+  on_failure: v2.std.orchestration.FailurePolicy
 }
 
 data effect_plan_do_effect_target_band_note: String = "std.effect_plan leaves are Do-effect leaves, never a command string. v2.std.orchestration PipelineStep Do-run is the bash-emit scaffold; runtime-present sites compose EffectPlan over HostEffect and interpret via gunbc.host_effect_plan.host_effect_plan_apply routing to host_effect_apply (host-effect-orchestration.md section 1b)."

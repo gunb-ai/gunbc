@@ -7,8 +7,8 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data instrument_physical_witness_note: String = "The physical-character amendment and the focal audition, each law with the control that reds it. Three of these claims exist because a review found the corresponding hole: an amplitude was a signed Int so two channels could cancel and pass the budget; the enclosure and the focal plate were admitted by SEPARATE gates so each passed while the plate moved farther than either bound described; and the composed law said below while the arithmetic admitted equality. The reading claims that used to live here moved to the sandbox witness when the camera was rewired to read gunbc.roadmap_program_view instead of authored rows."
 
-fn preference_over_budget() -> InstrumentPreference {
-  InstrumentPreference {
+fn preference_over_budget() -> gunbc.design.instrument_physical.InstrumentPreference {
+  gunbc.design.instrument_physical.InstrumentPreference {
     optical_jitter: ChannelAmplitudePx { px: 6 },
     vertical_shift: ChannelAmplitudePx { px: 6 },
     buoyant_drift: ChannelAmplitudePx { px: 6 },
@@ -97,7 +97,7 @@ fn witness_red_a_denied_permission_refuses_with_its_own_cause() -> Bool {
   }
 }
 
-fn audition_admitted(i: AuditionIntensity) -> Bool {
+fn audition_admitted(i: gunbc.design.instrument_audition.AuditionIntensity) -> Bool {
   match admit_audition(i: i, role: SalienceFocal, subject_key: "compiler-fixed-point") {
     AuditionAdmitted { intensity, emission, attraction, displacement_px } =>
       intensity == audition_intensity_key(i: i) && displacement_px <= attraction_travel_max_px
@@ -169,7 +169,7 @@ fn witness_the_headroom_is_what_the_enclosure_left_unspent() -> Bool {
 }
 
 fn witness_red_enclosure_character_alone_may_not_reach_response_travel() -> Bool {
-  match admit_composed_displacement(d: ComposedVisualDisplacement {
+  match admit_composed_displacement(d: gunbc.design.instrument_physical.ComposedVisualDisplacement {
     enclosure_character_px: attraction_travel_max_px,
     focal_attraction_px: 0,
     impulse_transient_px: 0,

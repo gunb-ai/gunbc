@@ -32,7 +32,7 @@ type PlacementShadowWarmCostEvidence
   | ShadowWarmCostUnavailable { reason: String }
 
 type PlacementShadowDatedReceipt {
-  identity: CommitCheckEnrollment
+  identity: gunbc.commit_workflow.CommitCheckEnrollment
   observed_on: String
   host_class: String
   host_ref: String
@@ -56,7 +56,7 @@ type PlacementShadowOutcome
   | Qualified
 
 type PlacementShadowRowReport {
-  identity: CommitCheckEnrollment
+  identity: gunbc.commit_workflow.CommitCheckEnrollment
   receipts: List<PlacementShadowDatedReceipt>
   outcome: PlacementShadowOutcome
 }

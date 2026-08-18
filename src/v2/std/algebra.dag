@@ -696,7 +696,7 @@ fn list_init<T>(xs: FreeMonoid<T>) -> FreeMonoid<T> {
 }
 
 type CopiedPortFact {
-  combiner: Symbol
+  combiner: v2.std.node.Symbol
   copied_port_index: Int
 }
 

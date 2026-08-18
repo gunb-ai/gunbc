@@ -2,20 +2,20 @@ module test.claim.host_hygiene_liveness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data liveness_test_bound: Second = second(1800)
+data liveness_test_bound: std.measure.Second = second(1800)
 
-data liveness_test_fresh_slot: SlotListeningObservation = ListeningObserved {
-  unit: "actions-runner@srv1-01.service" as NonEmptyStr,
+data liveness_test_fresh_slot: gunbc.host_hygiene_liveness.SlotListeningObservation = ListeningObserved {
+  unit: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
   age: second(60),
 }
 
-data liveness_test_stale_slot: SlotListeningObservation = ListeningObserved {
-  unit: "actions-runner@srv1-02.service" as NonEmptyStr,
+data liveness_test_stale_slot: gunbc.host_hygiene_liveness.SlotListeningObservation = ListeningObserved {
+  unit: "actions-runner@srv1-02.service" as std.types.NonEmptyStr,
   age: second(9000),
 }
 
-data liveness_test_never_seen_slot: SlotListeningObservation = ListeningNeverSeen {
-  unit: "actions-runner@srv1-04.service" as NonEmptyStr,
+data liveness_test_never_seen_slot: gunbc.host_hygiene_liveness.SlotListeningObservation = ListeningNeverSeen {
+  unit: "actions-runner@srv1-04.service" as std.types.NonEmptyStr,
 }
 
 test fn fresh_listener_within_bound_is_healthy() -> Bool {

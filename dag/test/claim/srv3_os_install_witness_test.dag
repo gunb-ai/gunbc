@@ -37,7 +37,7 @@ test fn srv3_survey_forces_proxy_dhcp() -> Bool {
     NativeDhcpBootOptions => false
   }
     && match survey_implied_dhcp_direction(
-      survey: LanInstallInfraSurvey {
+      survey: gunbc.os_install.LanInstallInfraSurvey {
         existing_dhcp_configurable: true,
         dedicated_install_server_present: false,
       }

@@ -34,11 +34,11 @@ data dashboard_tcp_port: NonEmptyStr = "tcp:3737"
 data ssh_tcp_port: NonEmptyStr = "tcp:22"
 
 type TailscaleAclSelector
-  = AclTag { label: NonEmptyStr }
-  | AclAutogroup { group: NonEmptyStr }
-  | AclIpv4 { address: NonEmptyStr }
-  | AclProtoPort { spec: NonEmptyStr }
-  | AclLiteralUser { name: NonEmptyStr }
+  = AclTag { label: std.types.NonEmptyStr }
+  | AclAutogroup { group: std.types.NonEmptyStr }
+  | AclIpv4 { address: std.types.NonEmptyStr }
+  | AclProtoPort { spec: std.types.NonEmptyStr }
+  | AclLiteralUser { name: std.types.NonEmptyStr }
   | AclWildcard
 
 fn render_tailscale_acl_selector(s: TailscaleAclSelector) -> NonEmptyStr {
@@ -98,20 +98,20 @@ type TailscaleGrant {
 }
 
 type TailscaleSshRule {
-  action: NonEmptyStr
+  action: std.types.NonEmptyStr
   src: List<TailscaleAclSelector>
   dst: List<TailscaleAclSelector>
   users: List<TailscaleAclSelector>
 }
 
 type TailscaleNodeAttr {
-  target: List<NonEmptyStr>
-  attr: List<NonEmptyStr>
+  target: List<std.types.NonEmptyStr>
+  attr: List<std.types.NonEmptyStr>
 }
 
 type TailscaleTagOwnerRow {
-  tag: NonEmptyStr
-  owners: List<NonEmptyStr>
+  tag: std.types.NonEmptyStr
+  owners: List<std.types.NonEmptyStr>
 }
 
 type TailscaleAclPolicy {

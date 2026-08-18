@@ -1,7 +1,7 @@
 module v2.test.tokenize.lex_match_thunk_claims
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data str_a: String = Cons { head: 97, tail: std.algebra.Empty }
 data str_b: String = Cons { head: 98, tail: std.algebra.Empty }

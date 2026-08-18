@@ -1,8 +1,8 @@
 module extdeps.posix.rusage
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "pubs.opengroup.org/onlinepubs/9699919799/functions/getrusage.html"
   }
@@ -14,7 +14,7 @@ type RusageWho
   = RusageSelf
   | RusageChildren
 
-fn rusage_who_label(w: RusageWho) -> NonEmptyStr {
+fn rusage_who_label(w: RusageWho) -> std.types.NonEmptyStr {
   match w {
     RusageSelf => "RUSAGE_SELF"
     RusageChildren => "RUSAGE_CHILDREN"
@@ -26,7 +26,7 @@ type RusageMaxrssUnit
   = MaxrssBytes
   | MaxrssKibibytes
 
-fn maxrss_to_byte_size(raw: Int, unit: RusageMaxrssUnit) -> ByteSize {
+fn maxrss_to_byte_size(raw: Int, unit: RusageMaxrssUnit) -> std.measure.ByteSize {
   match unit {
     MaxrssBytes => byte_size(raw)
     MaxrssKibibytes => byte_size(raw * 1024)
@@ -39,7 +39,7 @@ type RusageMaxrssObservation {
   unit: RusageMaxrssUnit
 }
 
-fn rusage_maxrss_bytes(obs: RusageMaxrssObservation) -> ByteSize {
+fn rusage_maxrss_bytes(obs: RusageMaxrssObservation) -> std.measure.ByteSize {
   maxrss_to_byte_size(raw: obs.raw_value, unit: obs.unit)
 }
 
@@ -47,9 +47,9 @@ fn rusage_maxrss_is_positive(obs: RusageMaxrssObservation) -> Bool {
   obs.raw_value > 0
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.posix.rusage",
       decl_name: "RusageWho",
       field: WholeDeclaration

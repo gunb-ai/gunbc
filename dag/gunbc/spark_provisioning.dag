@@ -16,7 +16,7 @@ type PxeEnvironmentIdentity = NonEmptyStr where brand("PxeEnvironmentIdentity")
 type InstallationImageIdentity = NonEmptyStr where brand("InstallationImageIdentity")
 
 type SparkAutoinstallSpec {
-  parameters: DgxSparkPxeInstallParameters
+  parameters: extdeps.systems.nvidia_dgx_spark_setup.DgxSparkPxeInstallParameters
 }
 
 // PxeAutoinstall is DECLARED here and its standings are not. Whether a given network can
@@ -24,7 +24,7 @@ type SparkAutoinstallSpec {
 // this session has not made — they belong to SPARK-PXE-0, and authoring them here from
 // nothing would be fabrication dressed as coverage.
 type SparkProvisioningStrategy
-  = FactoryOobe { bootstrap: SparkFactoryBootstrap }
+  = FactoryOobe { bootstrap: gunbc.spark_bootstrap_credential.SparkFactoryBootstrap }
   | PxeAutoinstall {
       environment: PxeEnvironmentIdentity,
       image: InstallationImageIdentity,
@@ -36,20 +36,20 @@ type TelemetryDisposition
   | TelemetryDeclined
 
 type LicenseAcceptance {
-  terms_identity: NonEmptyStr
-  accepted_by: NonEmptyStr
+  terms_identity: std.types.NonEmptyStr
+  accepted_by: std.types.NonEmptyStr
 }
 
 type SparkNetworkPlacement {
-  address: Ipv4Address
+  address: extdeps.network.ipv4.Ipv4Address
 }
 
 type SparkProvisioningIntent {
-  host: HostIdentity
-  administrator: PosixUser
-  credentials: SparkProvisioningCredentials
-  locale: NonEmptyStr
-  timezone: NonEmptyStr
+  host: product.placement_supply.HostIdentity
+  administrator: extdeps.access.posix.PosixUser
+  credentials: gunbc.spark_bootstrap_credential.SparkProvisioningCredentials
+  locale: std.types.NonEmptyStr
+  timezone: std.types.NonEmptyStr
   telemetry: TelemetryDisposition
   network: SparkNetworkPlacement
   license: LicenseAcceptance
@@ -120,11 +120,11 @@ data spark_current_environment: SparkProvisioningEnvironment = SparkProvisioning
 // ------------------------------------------------------------------------------------
 
 type AccountObservation
-  = AccountObserved { name: NonEmptyStr }
+  = AccountObserved { name: std.types.NonEmptyStr }
   | AccountNotObserved
 
 type ReachObservation
-  = LanReachObserved { address: Ipv4Address }
+  = LanReachObserved { address: extdeps.network.ipv4.Ipv4Address }
   | LanReachNotObserved
 
 type SetupSurfaceStanding
@@ -136,7 +136,7 @@ type PostSetupObservation {
   account: AccountObservation
   lan_reach: ReachObservation
   setup_surface: SetupSurfaceStanding
-  software: InitialUpdateDisposition
+  software: extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateDisposition
 }
 
 // ------------------------------------------------------------------------------------
@@ -153,15 +153,15 @@ type SparkProvisioningPhase
 type SparkProvisioningInterruptionCause
   = ExpectedRebootInProgress
   | InitialSoftwareImageInstalling
-  | PrerequisiteNotYetReached { prerequisite: NonEmptyStr }
+  | PrerequisiteNotYetReached { prerequisite: std.types.NonEmptyStr }
   | BootstrapNetworkHandoffInProgress
-  | PostSetupObservationIncomplete { missing: NonEmptyStr }
+  | PostSetupObservationIncomplete { missing: std.types.NonEmptyStr }
 
 type SparkProvisioningRefusalCause
-  = InstallerRejectedField { field: NonEmptyStr }
+  = InstallerRejectedField { field: std.types.NonEmptyStr }
   | BootstrapCredentialRejected
   | SensitiveInputAdmissionRefused
-  | StrategyUnsupportedOnDevice { detail: NonEmptyStr }
+  | StrategyUnsupportedOnDevice { detail: std.types.NonEmptyStr }
 
 // THE RECEIPT IS BUILT FROM OBSERVATION, NEVER FROM INTENT. An earlier revision carried a
 // spark_receipt_from_intent that recast the requested state as the achieved one — the
@@ -174,12 +174,12 @@ type SparkProvisioningRefusalCause
 // the vendor pages say about first-boot updates is a fact about the DOCS, and copying it
 // into a receipt would claim an observation nobody made.
 type SparkProvisioningReceipt {
-  host: HostIdentity
-  administrator: PosixUser
+  host: product.placement_supply.HostIdentity
+  administrator: extdeps.access.posix.PosixUser
   strategy_used: SparkProvisioningStrategy
   account: AccountObservation
   lan_reach: ReachObservation
-  initial_update: InitialUpdateDisposition
+  initial_update: extdeps.systems.nvidia_dgx_spark_setup.InitialUpdateDisposition
 }
 
 // Collapsing any pair of these is the state-space conflation DESIGN's failure-mode list
@@ -194,7 +194,7 @@ type SparkProvisioningOutcome
       phase: SparkProvisioningPhase,
       cause: SparkProvisioningInterruptionCause
     }
-  | SparkProvisioningHumanInterventionRequired { intervention: HumanIntervention }
+  | SparkProvisioningHumanInterventionRequired { intervention: std.human_intervention.HumanIntervention }
   | SparkProvisioningRefused {
       phase: SparkProvisioningPhase,
       cause: SparkProvisioningRefusalCause
@@ -205,11 +205,11 @@ type SparkProvisioningProgress
   | ProgressAwaitingDocumentedReboot
   | ProgressInstallingSoftwareImage
   | ProgressBootstrapHandoffPending
-  | ProgressPrerequisiteNotYetReached { prerequisite: NonEmptyStr }
-  | ProgressAwaitingHuman { intervention: HumanIntervention }
-  | ProgressDeviceRejectedField { field: NonEmptyStr }
+  | ProgressPrerequisiteNotYetReached { prerequisite: std.types.NonEmptyStr }
+  | ProgressAwaitingHuman { intervention: std.human_intervention.HumanIntervention }
+  | ProgressDeviceRejectedField { field: std.types.NonEmptyStr }
   | ProgressBootstrapCredentialRejected
-  | ProgressStrategyUnsupported { detail: NonEmptyStr }
+  | ProgressStrategyUnsupported { detail: std.types.NonEmptyStr }
   | ProgressSensitiveInputRefused
 
 // An incomplete observation is an INTERRUPTION, not a refusal and not a success: nothing
@@ -317,8 +317,8 @@ fn spark_intervention(
 // receiving. Completed work is not remaining work, and carrying it as a pending
 // intervention would inflate every burden comparison that consumes this.
 type HumanBurdenDerivation
-  = BurdenDerived { burden: ProvisioningHumanBurden }
-  | BurdenUndecidable { cause: NonEmptyStr }
+  = BurdenDerived { burden: std.human_intervention.ProvisioningHumanBurden }
+  | BurdenUndecidable { cause: std.types.NonEmptyStr }
 
 fn factory_oobe_human_burden(
   env: SparkProvisioningEnvironment,
@@ -443,7 +443,7 @@ fn spark_strategy_human_burden(
 // look cheap while the world is unknown.
 type SparkStrategySelection
   = StrategySelected { strategy: SparkProvisioningStrategy }
-  | StrategySelectionUndecidable { cause: NonEmptyStr }
+  | StrategySelectionUndecidable { cause: std.types.NonEmptyStr }
 
 fn select_spark_strategy(
   a: SparkProvisioningStrategy,

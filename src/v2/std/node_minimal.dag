@@ -63,7 +63,7 @@ type InferenceSlot
   | InferencePresent { slot: UInt32 }
 
 type MatchPatternSlot {
-  tag: Symbol
+  tag: v2.std.node.Symbol
 }
 
 type SurfaceExprTag
@@ -99,7 +99,7 @@ type NamedProvenance {
   span: SpanRef
   ident_span: SpanRef
   ident: IdentRef
-  name: Symbol
+  name: v2.std.node.Symbol
 }
 
 type SurfaceDeclRole
@@ -124,33 +124,33 @@ type ReturnCardinalitySlot
 
 type TypeAnnotationSlot
   = TypeAnnotationAbsent
-  | TypeAnnotationPresent { annotation: Edge }
+  | TypeAnnotationPresent { annotation: v2.std.node.Edge }
 
 type TransportSlot
   = TransportAbsent
-  | TransportPresent { transport: Edge }
+  | TransportPresent { transport: v2.std.node.Edge }
 
 type SurfaceDeclPayload
-  = SdpChildrenOnly { children: List<Edge> }
-  | SdpWithParams { params: List<Edge>, children: List<Edge> }
-  | SdpWithBody { body: Edge, children: List<Edge> }
-  | SdpWithUses { uses: List<Edge>, children: List<Edge> }
+  = SdpChildrenOnly { children: List<v2.std.node.Edge> }
+  | SdpWithParams { params: List<v2.std.node.Edge>, children: List<v2.std.node.Edge> }
+  | SdpWithBody { body: v2.std.node.Edge, children: List<v2.std.node.Edge> }
+  | SdpWithUses { uses: List<v2.std.node.Edge>, children: List<v2.std.node.Edge> }
   | SdpFnItem {
-      params: List<Edge>
-      body: Edge
-      children: List<Edge>
-      uses: List<Edge>
+      params: List<v2.std.node.Edge>
+      body: v2.std.node.Edge
+      children: List<v2.std.node.Edge>
+      uses: List<v2.std.node.Edge>
       return_cardinality: ReturnCardinalitySlot
       descent: FnItemDescentFlags
     }
   | SdpTypedMember {
       type_annotation: TypeAnnotationSlot
-      properties: List<Edge>
-      children: List<Edge>
+      properties: List<v2.std.node.Edge>
+      children: List<v2.std.node.Edge>
     }
   | SdpServiceOp {
       transport: TransportSlot
-      children: List<Edge>
+      children: List<v2.std.node.Edge>
     }
 
 type MinimalNodeKind
@@ -163,9 +163,9 @@ type MinimalNodeKind
 
 type MinimalResolvedNode
   = MrnSubstrateGraph {
-      kind: NodeKind
-      children: List<Edge>
-      occurrence_id: NodeOccurrenceId
+      kind: v2.std.node.NodeKind
+      children: List<v2.std.node.Edge>
+      occurrence_id: v2.std.node.NodeOccurrenceId
     }
   | MrnSurfaceExprLeaf {
       expr: SurfaceExprTag
@@ -175,15 +175,15 @@ type MinimalResolvedNode
   | MrnSurfaceExprParent {
       expr: SurfaceExprTag
       provenance: SurfaceProvenance
-      children: List<Edge>
+      children: List<v2.std.node.Edge>
       inference: InferenceSlot
     }
   | MrnSurfaceConnective {
-      connective: Connective
+      connective: v2.std.node.Connective
       provenance: SurfaceProvenance
-      children: List<Edge>
-      params: List<Edge>
-      uses: List<Edge>
+      children: List<v2.std.node.Edge>
+      params: List<v2.std.node.Edge>
+      uses: List<v2.std.node.Edge>
       inference: InferenceSlot
     }
   | MrnSurfaceNamedDecl {
@@ -195,7 +195,7 @@ type MinimalResolvedNode
   | MrnSurfaceMatchArm {
       pattern: MatchPatternSlot
       provenance: SurfaceProvenance
-      children: List<Edge>
+      children: List<v2.std.node.Edge>
     }
 
 fn minimal_node_kind_of(node: MinimalResolvedNode) -> MinimalNodeKind {

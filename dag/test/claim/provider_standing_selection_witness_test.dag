@@ -7,10 +7,10 @@ test fn model_rejection_does_not_erase_account_eligibility() -> Bool {
       LimitRejected {
         subject: ProviderModelLimit {
           credential: LimitCredentialUnspecified,
-          model: "fable" as NonEmptyStr,
+          model: "fable" as std.types.NonEmptyStr,
         },
-        native_token: "model_rejected" as NonEmptyStr,
-        reason: "model not entitled" as NonEmptyStr,
+        native_token: "model_rejected" as std.types.NonEmptyStr,
+        reason: "model not entitled" as std.types.NonEmptyStr,
       },
       LimitObservedAvailable {
         subject: ProviderAccountLimit {
@@ -27,10 +27,10 @@ test fn model_rejection_blocks_dispatch_under_unspecified_draw() -> Bool {
     observation: LimitRejected {
       subject: ProviderModelLimit {
         credential: LimitCredentialUnspecified,
-        model: "fable" as NonEmptyStr,
+        model: "fable" as std.types.NonEmptyStr,
       },
-      native_token: "model_rejected" as NonEmptyStr,
-      reason: "model not entitled" as NonEmptyStr,
+      native_token: "model_rejected" as std.types.NonEmptyStr,
+      reason: "model not entitled" as std.types.NonEmptyStr,
     },
     draw: LimitDispatchDrawUnspecified,
   )

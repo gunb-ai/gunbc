@@ -9,7 +9,7 @@ data language_source_scaffold_index_test_note: String = "B2/B4/B5 control for th
 data runtime_rust_source_path: String = "src/v1/runtime_rust.dag"
 data compiler_tests_rust_source_path: String = "src/v1/compiler_tests_rust.dag"
 
-data legitimate_terminal_control_row: LanguageSourceScaffoldRow = LanguageSourceScaffoldRow {
+data legitimate_terminal_control_row: gunbc.language_source_scaffold_index.LanguageSourceScaffoldRow = gunbc.language_source_scaffold_index.LanguageSourceScaffoldRow {
   carrier_module: "v1.compiler.runtime_rust",
   blob_decl: "synthetic_irreducible_kernel",
   disposition: Terminal { reason: "named irreducible intrinsic kernel" }
@@ -56,4 +56,4 @@ test fn pair_completion_spelling_binds_the_derivation_authority() -> Bool {
   }
 }
 
-data coverage_scan_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: declared_fn_count below. It counts declarations by splitting the carrier SOURCE TEXT on a fn-name prefix, which is string-shape scanning and is anemic against the Node tree the substrate already has — the same class of debt as pair_completion_uses_rhs, and marked the same way rather than left implicit (review 43195). It is a deliberate interim, strictly better than the hardcoded censu")
+data coverage_scan_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: declared_fn_count below. It counts declarations by splitting the carrier SOURCE TEXT on a fn-name prefix, which is string-shape scanning and is anemic against the Node tree the substrate already has — the same class of debt as pair_completion_uses_rhs, and marked the same way rather than left implicit (review 43195). It is a deliberate interim, strictly better than the hardcoded censu")

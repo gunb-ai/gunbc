@@ -22,13 +22,13 @@ test fn witness_excludes_repo_scoped_wif_structurally() -> Bool {
 }
 
 test fn witness_wif_binding_perturbation_reddens() -> Bool {
-  let poisoned_wif = SecretAccessBinding {
+  let poisoned_wif = gunbc.assimilate.bmc_token_federation.SecretAccessBinding {
     member: bmc_wif_principal_set(),
     role: role_secretmanager_secret_accessor,
     secret: tailscale_acl_ephemeral_token_secret_id as String,
     project: bmc_secrets_project_id,
   }
-  let poisoned_sa = SecretAccessBinding {
+  let poisoned_sa = gunbc.assimilate.bmc_token_federation.SecretAccessBinding {
     member: bmc_assimilator_sa_member(),
     role: role_secretmanager_secret_accessor,
     secret: tailscale_acl_ephemeral_token_secret_id as String,

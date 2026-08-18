@@ -25,7 +25,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 type PushBeforeObservation
-  = PushBeforeObserved { sha: CommitSha }
+  = PushBeforeObserved { sha: std.types.CommitSha }
   | PushBeforeAbsent { detail: String }
   | PushBeforeZeroSha
   | PushBeforeMalformed { detail: String }

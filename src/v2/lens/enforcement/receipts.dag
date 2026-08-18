@@ -2,7 +2,7 @@ module v2.lens.enforcement.receipts
 
 
 type SubjectJudgment
-  = BodyJudged { verdict: Witness<SymbolicCost> }
+  = BodyJudged { verdict: Witness<v2.lens.cost.SymbolicCost> }
   | BodyUnavailable
 
 fn node_contains_computation(n: Node) -> Bool {

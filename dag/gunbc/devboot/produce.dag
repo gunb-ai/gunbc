@@ -148,7 +148,7 @@ fn devboot_materialize_source(repo_root: String, work_root: String, token: Strin
 //
 // So both are read from the toolchain that is about to do the work. The triple is parsed through the cited Rust spelling in extdeps.rust.target_triple, which is partial and refuses anything it does not publish -- an unrecognized host refuses rather than being assembled from parts, because a triple composed by concatenation looks plausible for combinations Rust does not support.
 type ObservedToolchain
-  = ToolchainObserved { toolchain: ToolchainRequirement, host: TargetTriple }
+  = ToolchainObserved { toolchain: extdeps.toolchain.types.ToolchainRequirement, host: extdeps.toolchain.types.TargetTriple }
   | ToolchainObservationRefused { detail: String }
 
 fn second_field(text: String) -> String {

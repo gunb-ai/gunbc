@@ -1,7 +1,7 @@
 module gunbc.plans.typescript_gap_census
 
 
-fn typescript_gap_census_body() -> List<MarkdownBlock> {
+fn typescript_gap_census_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** audit-first discriminating census · **approved 2026-07-01** (loyal-bee-794) · linked from `ROADMAP.md` `5-ts-first-class` · companion to [v2-self-hosting.md](v2-self-hosting.md) Wave 4 / END GOAL (post-Rust; Track T retired). **`dag/gunbc/plans/typescript_gap_census.dag` is the authority** (DESIGN §6); `docs/plans/typescript-gap-census.md` is its generated projection (PlanArtifact)."),
     p(text: "**Method:** enumerate construct families `src/v2` actually uses (compiler substrate behaviors in `src/v2/compiler/*` + TargetModel emit surfaces in `src/v2/extdeps/languages/typescript.dag`). For each family report three independent bars: (a) grammar-inverse row enrolled on the committed TargetModel node, (b) VEP / pipeline emits the expected **TypeScript source string** (witness PASS), (c) **`tsc` / emit_host accepts the output** (consumer green-by-execution). Every FAIL names a witness or authority site — not a stub count."),
@@ -70,7 +70,7 @@ fn typescript_gap_census_body() -> List<MarkdownBlock> {
   ]
 }
 
-data typescript_gap_census_plan: Plan = Plan {
+data typescript_gap_census_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "typescript-gap-census",
   title: "TypeScript first-class gap census — discriminating construct audit (Lane C / Track T)",
   body: typescript_gap_census_body(),

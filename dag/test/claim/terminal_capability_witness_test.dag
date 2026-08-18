@@ -2,23 +2,23 @@ module test.claim.terminal_capability_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data interactive_tty: TerminalEnvironment = TerminalEnvironment {
+data interactive_tty: extdeps.render.terminal_capability.TerminalEnvironment = extdeps.render.terminal_capability.TerminalEnvironment {
   is_tty: true, ci: false, no_color: false, dumb_term: false
 }
 
-data ci_log: TerminalEnvironment = TerminalEnvironment {
+data ci_log: extdeps.render.terminal_capability.TerminalEnvironment = extdeps.render.terminal_capability.TerminalEnvironment {
   is_tty: false, ci: true, no_color: false, dumb_term: false
 }
 
-data piped_file: TerminalEnvironment = TerminalEnvironment {
+data piped_file: extdeps.render.terminal_capability.TerminalEnvironment = extdeps.render.terminal_capability.TerminalEnvironment {
   is_tty: false, ci: false, no_color: false, dumb_term: false
 }
 
-data no_color_tty: TerminalEnvironment = TerminalEnvironment {
+data no_color_tty: extdeps.render.terminal_capability.TerminalEnvironment = extdeps.render.terminal_capability.TerminalEnvironment {
   is_tty: true, ci: false, no_color: true, dumb_term: false
 }
 
-data demo_viewport: Viewport = Viewport { width: 80, height: 24, unit: Chars }
+data demo_viewport: std.render.Viewport = std.render.Viewport { width: 80, height: 24, unit: Chars }
 
 data dynamic_frame: std.render.RenderFrame = std.render.RenderFrame { lines: [], cursor_action: Overwrite }
 
@@ -46,11 +46,11 @@ test fn w_no_color_opt_out_wins() -> Bool {
   cap.color == false && cap.cursor_addressable == true
 }
 
-fn cursor_is_append(a: CursorAction) -> Bool {
+fn cursor_is_append(a: std.render.CursorAction) -> Bool {
   match a { Append => true, _ => false }
 }
 
-fn cursor_is_overwrite(a: CursorAction) -> Bool {
+fn cursor_is_overwrite(a: std.render.CursorAction) -> Bool {
   match a { Overwrite => true, _ => false }
 }
 

@@ -4,7 +4,7 @@ module v2.lens.wiring_liveness
 type WiringRelation {
   output: Node
   declared_input: Node
-  dependence: List<DependencyView>
+  dependence: List<v2.std.dependency.DependencyView>
 }
 
 fn wiring_reaches(dependence: List<DependencyView>, from: Node, to: Node) -> Bool {
@@ -51,7 +51,7 @@ fn wiring_input_is_wired(output: Node, declared_input: Node) -> Bool {
 
 type WiringDeadWire {
   fn_qualified_name: String
-  param: Symbol
+  param: v2.std.node.Symbol
 }
 
 fn wiring_output_reachable_nodes(output: Node) -> List<Node> {

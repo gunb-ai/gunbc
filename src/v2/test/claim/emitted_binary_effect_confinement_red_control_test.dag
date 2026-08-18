@@ -1,16 +1,16 @@
 module v2.test.claim.emitted_binary_effect_confinement_red_control
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data emitted_binary_effect_confinement_red_control_note: String = "Task 4 RED control (neat-carp-312): construction-by-type (v2.std.host_transport.EmittedEffectFamily, a closed FilesystemReadFamily | ShellExecRunFamily sum) makes an unrostered family name unrepresentable rather than merely rejected -- there is no unrostered EmittedEffectFamily value to construct, so the RED witness is the positive control: both landed variants route through the exact same construction-site call (emitted_family_runtime_row_gated) the two landed families (rust_filesystem_read_family_runtime_row, rust_shell_exec_run_family_runtime_row) actually call in rust_test.dag, and the exhaustive match inside emitted_family_runtime_row_gated is the wall -- a future third variant would fail to compile until this call site names it. A synthetic HostTransportDescriptor stands in for a real one since content is irrelevant to the family-identity wall (fail-closed on identity, not on payload shape)."
 
-fn synthetic_transport() -> HostTransportDescriptor {
-  HostTransportDescriptor {
+fn synthetic_transport() -> v2.std.host_transport.HostTransportDescriptor {
+  v2.std.host_transport.HostTransportDescriptor {
     identity: ^emitted_binary_effect_confinement_red_control_synthetic_identity,
     workspace: [],
     build: [],
-    run: ProcessInvocation {
+    run: v2.std.host_transport.ProcessInvocation {
       program: HostToolProgram { executable: "true" },
       args: []
     },
@@ -18,10 +18,10 @@ fn synthetic_transport() -> HostTransportDescriptor {
   }
 }
 
-fn rostered_row(family: EmittedEffectFamily) -> TargetEmitHostRuntimeRow {
+fn rostered_row(family: v2.std.host_transport.EmittedEffectFamily) -> v2.std.host_transport.TargetEmitHostRuntimeRow {
   emitted_family_runtime_row_gated(
     family: family,
-    present: EmitHostRuntimeRow {
+    present: v2.std.host_transport.EmitHostRuntimeRow {
       transport: synthetic_transport(),
       runtime_primitive_type: rust_emit_host_runtime_primitive_type_node()
     }

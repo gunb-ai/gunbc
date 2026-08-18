@@ -3,12 +3,12 @@ module gunbc.principal_projection
 
 // A gunbc principal is a projection of external authentication evidence, never an independently authored identity. OidcProjectedPrincipal reads issuer and subject directly from extdeps.auth.oidc.OidcIdTokenClaims (whose vocabulary is extdeps.auth.jwt.JwtStringOrUri). PosixProjectedPrincipal reads extdeps.access.posix_effective_principal.EffectivePosixPrincipalObservation, whose opaque name is constructible only by that authority's successful non-empty read decoder. PrincipalProjection couples each evidence kind to its only matching constructor, and projected_principal derives rather than stores the principal, so contradictory principal/evidence pairs are unrepresentable. Future policy vocabulary must project the named external authorities rather than mint local substitutes: extdeps.access.aws_iam.PolicyDocument, extdeps.access.rbac.RbacPolicy, and extdeps.access.zanzibar.CheckRequest.
 type OidcProjectedPrincipal {
-  issuer: JwtStringOrUri
-  subject: JwtStringOrUri
+  issuer: extdeps.auth.jwt.JwtStringOrUri
+  subject: extdeps.auth.jwt.JwtStringOrUri
 }
 
 type PosixProjectedPrincipal {
-  effective_name: NonEmptyStr
+  effective_name: std.types.NonEmptyStr
 }
 
 type GunbcPrincipal
@@ -16,8 +16,8 @@ type GunbcPrincipal
   | PosixPrincipal { principal: PosixProjectedPrincipal }
 
 type PrincipalProjection
-  = OidcProjection { claims: OidcIdTokenClaims }
-  | PosixProjection { observation: EffectivePosixPrincipalObservation }
+  = OidcProjection { claims: extdeps.auth.oidc.OidcIdTokenClaims }
+  | PosixProjection { observation: extdeps.access.posix_effective_principal.EffectivePosixPrincipalObservation }
 
 fn oidc_principal_projection(claims: OidcIdTokenClaims) -> PrincipalProjection {
   OidcProjection { claims: claims }

@@ -5,9 +5,9 @@ data observation_tty_render_note: String = "P2 of the progress-and-observation l
 
 // The three upgrades over the reference implementation studied for this lane, all inherited from the model rather than re-earned here: outcome lines carry durations (ci_event_line already appends them), Refused is distinct from Failed (the outcome sum and the glyph authority keep them apart), and dwell escalation is recursive rather than one-level (observation_escalation_subject walks the whole tree). The reference has none of these; the TTY renderer gets them for free by projecting the same carriers.
 type PreambleFields {
-  run_id: NonEmptyStr
-  trigger: NonEmptyStr
-  diff_summary: NonEmptyStr
+  run_id: std.types.NonEmptyStr
+  trigger: std.types.NonEmptyStr
+  diff_summary: std.types.NonEmptyStr
   entry_total: std.nat.Nat
 }
 
@@ -98,13 +98,13 @@ fn tty_final_line(shown_failures: std.nat.Nat, run_index: Int, tier: Tier) -> Re
 
 // An event line on the TTY is the SAME projection the CI renderer produces — ci_event_line, imported, not re-implemented — paired with the cursor action its attention derives. The renderer differs from its CI sibling in HOW a line reaches the screen (overwrite vs append), never in WHAT the line says. That is the single-stream property made concrete: change the event and both surfaces move together, because both call the same projection.
 type TtyEmission {
-  line: RenderedLine
-  cursor: CursorAction
+  line: gunbc.observation_ci_render.RenderedLine
+  cursor: std.render.CursorAction
 }
 
 type TtyEmissionProjection
   = TtyEmissionProjected { emission: TtyEmission }
-  | TtyEmissionRefused { cause: NonEmptyStr }
+  | TtyEmissionRefused { cause: std.types.NonEmptyStr }
 
 fn tty_emission_at_attention(
   event: ObservationEvent,

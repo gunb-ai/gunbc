@@ -18,19 +18,19 @@ test fn state_response_census_counts_hold() -> Bool {
 
 data cross_wired_family_note: String = "The planted cross-family fixture: the ok member's selector bound to the FAIL band key — the round-5 flash class, synthesized at the roster grain. Emitting this family through the same realize folds and running the census with the TRUE roster must locate the ok cells as CrossFamilyValue naming fail. The var roots come from the real band_root_css. The fixture is selector-scoped (no base rule in the synthetic emission), so the rest member's cells also count ChannelValueMissing there — the assertion targets the located cross-family defect, never a defect-count of one."
 
-data cross_wired_family: StateFamily = StateFamily {
+data cross_wired_family: gunbc.design.state_response.StateFamily = gunbc.design.state_response.StateFamily {
   component_class: "dispatch-btn",
   var_prefix: "band-",
   members: [
-    StateFamilyMember { binding: RestBinding, key: "invite" },
-    StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-requested" }, key: "in-progress" },
-    StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-ok" }, key: "fail" },
-    StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-refused" }, key: "fail" },
-    StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-loud" }, key: "loud" },
+    gunbc.design.state_response.StateFamilyMember { binding: RestBinding, key: "invite" },
+    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-requested" }, key: "in-progress" },
+    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-ok" }, key: "fail" },
+    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-refused" }, key: "fail" },
+    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-loud" }, key: "loud" },
   ],
 }
 
-fn synthetic_emission(f: StateFamily) -> String {
+fn synthetic_emission(f: gunbc.design.state_response.StateFamily) -> String {
   join([
     band_root_css(),
     serialize_rules(rules: state_paint_rules(f: f, channels: dispatch_stateful_channels)),
@@ -38,7 +38,7 @@ fn synthetic_emission(f: StateFamily) -> String {
   ], "\n")
 }
 
-fn defect_is_cross_family_ok_to_fail(d: FamilyCensusDefect) -> Bool {
+fn defect_is_cross_family_ok_to_fail(d: gunbc.design.state_response.FamilyCensusDefect) -> Bool {
   d.member_key == "ok" && match d.fault {
     CrossFamilyValue { foreign_key } => foreign_key == "fail"
     FamilyVarUndefined { var_name: _ } => false
@@ -55,18 +55,18 @@ test fn state_response_census_reds_on_cross_family_press() -> Bool {
 
 data dropped_member_family_note: String = "The planted dropped-member fixture: the loud member absent from the roster the emission was realized from. The census with the TRUE roster must count every loud cell ChannelValueMissing — the totality question the round-5 defect never got asked (one pressed var presenting as total), now a standing red. Same selector-scoped caveat as the cross-wired fixture: rest cells also count Missing in the synthetic; the assertion targets the located loud defect."
 
-data dropped_member_family: StateFamily = StateFamily {
+data dropped_member_family: gunbc.design.state_response.StateFamily = gunbc.design.state_response.StateFamily {
   component_class: "dispatch-btn",
   var_prefix: "band-",
   members: [
-    StateFamilyMember { binding: RestBinding, key: "invite" },
-    StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-requested" }, key: "in-progress" },
-    StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-ok" }, key: "ok" },
-    StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-refused" }, key: "fail" },
+    gunbc.design.state_response.StateFamilyMember { binding: RestBinding, key: "invite" },
+    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-requested" }, key: "in-progress" },
+    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-ok" }, key: "ok" },
+    gunbc.design.state_response.StateFamilyMember { binding: StateClassBinding { class_name: "dispatch-refused" }, key: "fail" },
   ],
 }
 
-fn defect_is_loud_missing(d: FamilyCensusDefect) -> Bool {
+fn defect_is_loud_missing(d: gunbc.design.state_response.FamilyCensusDefect) -> Bool {
   d.member_key == "loud" && match d.fault {
     ChannelValueMissing => true
     CrossFamilyValue { foreign_key: _ } => false

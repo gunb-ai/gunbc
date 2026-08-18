@@ -1,23 +1,23 @@
 module v2.test.lens_cost.disj_max
 
 
-data disj_max_cheap_body: Node = Node {
+data disj_max_cheap_body: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^disj_max_cheap_body_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data disj_max_expensive_body: Node = Node {
+data disj_max_expensive_body: Node = v2.std.node.Node {
   kind: TypeNode { connective: Cardinality },
   children: [
-    Edge {
+    v2.std.node.Edge {
       label: Positional,
-      target: Node {
+      target: v2.std.node.Node {
         kind: ComputationNode { behavior: Transform },
         children: [
-          Edge {
+          v2.std.node.Edge {
             label: Positional,
-            target: Node {
+            target: v2.std.node.Node {
               kind: TypeNode { connective: Atom { identity: ^disj_max_expensive_body_atom } },
               children: [],
               occurrence_id: SyntheticOccurrence
@@ -31,11 +31,11 @@ data disj_max_expensive_body: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data disj_max_input: Node = Node {
+data disj_max_input: Node = v2.std.node.Node {
   kind: TypeNode { connective: Disj },
   children: [
-    Edge { label: Positional, target: disj_max_cheap_body },
-    Edge { label: Positional, target: disj_max_expensive_body }
+    v2.std.node.Edge { label: Positional, target: disj_max_cheap_body },
+    v2.std.node.Edge { label: Positional, target: disj_max_expensive_body }
   ],
   occurrence_id: SyntheticOccurrence
 }
@@ -43,7 +43,7 @@ data disj_max_input: Node = Node {
 fn disj_max_claim_holds() -> Bool {
   match cost_lens(n: disj_max_input) {
     Holds { value: actual } =>
-      actual == LinearCost { variable: SizeVariable { source: disj_max_expensive_body } }
+      actual == LinearCost { variable: v2.lens.cost.SizeVariable { source: disj_max_expensive_body } }
     _ => false
   }
 }
@@ -52,7 +52,7 @@ fn disj_max_claim_rhs() -> Node {
   if disj_max_claim_holds() {
     disj_max_input
   } else {
-    Node {
+    v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -60,10 +60,10 @@ fn disj_max_claim_rhs() -> Node {
   }
 }
 
-data claim_disj_max: TestClaim = EqualsClaim {
+data claim_disj_max: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_cost/disj_max: disjunct takes max branch cost",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: disj_max_input,
   rhs: disj_max_claim_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

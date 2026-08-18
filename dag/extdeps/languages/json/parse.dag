@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type JsonParse =
-    JsonParsed { value: JsonValue, next: Int }
+    JsonParsed { value: extdeps.languages.json.emit.JsonValue, next: Int }
   | JsonParseFail { at: Int }
 
 fn json_hex_nibble(c: String) -> Int {
@@ -137,7 +137,7 @@ fn json_string_value_or_empty(v: JsonValue) -> String {
 data json_member_lookup_note: String = "RFC 8259 permits duplicate names in an object and does not say which one wins, so JsonObject keeps members as an authored LIST rather than a map. A reader that folds that list into last-wins silently picks a value the document never committed to - and for an identity field like schema or verdict, last-wins is exactly how a document carrying two verdicts reads as whichever one an attacker put second. This lookup therefore reports duplication as its own outcome instead of resolving it, leaving the choice to refuse with the domain decoder that knows the field is an identity. JsonMemberNotAnObject is separate from JsonMemberAbsent for the same reason: a scalar document has not omitted a field, it has no fields at all, and collapsing the two would let a bare string satisfy an absence check."
 
 type JsonMemberLookup
-  = JsonMemberFound { value: JsonValue }
+  = JsonMemberFound { value: extdeps.languages.json.emit.JsonValue }
   | JsonMemberAbsent
   | JsonMemberDuplicated { count: Int }
   | JsonMemberNotAnObject
@@ -168,7 +168,7 @@ fn json_object_unique_member(v: JsonValue, key: String) -> JsonMemberLookup {
 }
 
 type JsonArrayAcc =
-    JsonArrayAccOk { elements: List<JsonValue>, next: Int }
+    JsonArrayAccOk { elements: List<extdeps.languages.json.emit.JsonValue>, next: Int }
   | JsonArrayAccFail { at: Int }
 
 data json_trailing_comma_note: String = "RFC 8259's array production is `[ ws ]` or `[ value *( , value ) ]` - the empty form is reachable only at the OPENING bracket, never after a separator. An accumulator that checks for the closing bracket at the top of each round reaches that check again after consuming a comma, which silently accepts a trailing comma; the same shape accepts `\{\"a\": 1,}`. That is not a cosmetic leniency: json_text_parseable is the guard the Codex JSONL reader uses to refuse a malformed provider line, and a parser that accepts a trailing comma lets a truncated-then-closed event read as well-formed. The element and member folds below therefore REQUIRE a value, and the empty-container case is decided once by the opening reader."
@@ -203,7 +203,7 @@ fn parse_json_array_at(s: String, i: Int) -> JsonParse {
 }
 
 type JsonObjectAcc =
-    JsonObjectAccOk { members: List<JsonKeyValue>, next: Int }
+    JsonObjectAccOk { members: List<extdeps.languages.json.emit.JsonKeyValue>, next: Int }
   | JsonObjectAccFail { at: Int }
 
 fn parse_json_object_members(s: String, i: Int, acc: List<JsonKeyValue>) -> JsonObjectAcc {

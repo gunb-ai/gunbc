@@ -10,10 +10,10 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type CachePurityViolation {
-  content_key: ContentHash
-  unkeyed_axis: NonEmptyStr
-  warm_digest: ContentHash
-  cold_digest: ContentHash
+  content_key: std.content_hash.ContentHash
+  unkeyed_axis: std.types.NonEmptyStr
+  warm_digest: std.content_hash.ContentHash
+  cold_digest: std.content_hash.ContentHash
 }
 
 type CachePurityVerdict

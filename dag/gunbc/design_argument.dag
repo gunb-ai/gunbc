@@ -1,92 +1,92 @@
 module gunbc.design_argument
 
 
-data design_axioms: List<Axiom> = [
-  Axiom {
+data design_axioms: List<std.syllogism.Axiom> = [
+  std.syllogism.Axiom {
     id: "A1",
     statement: "there is a goal: to solve a problem presupposes an agent with a goal to satisfy",
     kind: NonLogicalAxiom
   },
-  Axiom {
+  std.syllogism.Axiom {
     id: "A2",
     statement: "time is the value: every agent intrinsically values time — time is life — the one value assumed shared",
     kind: NonLogicalAxiom
   },
-  Axiom {
+  std.syllogism.Axiom {
     id: "A3",
     statement: "agreement is temporal: intersubjective agreement is possible only across time, on what stays stable under it",
     kind: NonLogicalAxiom
   }
 ]
 
-data design_section_1_propositions: List<Proposition> = [
+data design_section_1_propositions: List<std.syllogism.Proposition> = [
 
-  Proposition {
+  std.syllogism.Proposition {
     id: "s1.minimal-safe-efficient",
     statement: "the solution is minimal, safe, efficient: a solution is good insofar as it spends less of the only thing valued, time (cost, safety, complexity)",
     premises: ["A1", "A2"]
   },
 
-  Proposition {
+  std.syllogism.Proposition {
     id: "s1.grounding-intersubjective",
     statement: "grounding is intersubjective: because time is the only assumed-shared value, a fact is grounded only by pointing at a shared, time-stable framework",
     premises: ["A2", "A3"]
   },
 
-  Proposition {
+  std.syllogism.Proposition {
     id: "s1.reduce-to-physics",
     statement: "at the limit, reduce intersubjectivity to physics: the efficient, time-bound description of interactions that satisfies a goal — A1-A2 turned on grounding itself",
     premises: ["A1", "A2", "s1.grounding-intersubjective"]
   }
 ]
 
-data design_section_1_argument: Argument = Argument {
+data design_section_1_argument: std.syllogism.Argument = std.syllogism.Argument {
   axioms: design_axioms,
   propositions: design_section_1_propositions
 }
 
-data design_section_2_to_7_propositions: List<Proposition> = [
+data design_section_2_to_7_propositions: List<std.syllogism.Proposition> = [
 
-  Proposition {
+  std.syllogism.Proposition {
     id: "s2.minimize-redundancy",
     statement: "minimize redundancy is the master move for cost and complexity: redundant work loses on all three of §1's quantities at once, so a perfectly DRY process is by meaning the minimal/efficient one",
     premises: ["s1.minimal-safe-efficient"]
   },
 
-  Proposition {
+  std.syllogism.Proposition {
     id: "s3.single-authority",
     statement: "single authority keeps §2 from being undone: minimization holds only if each fact lives in exactly one place; the recurring violation is nicknaming (a second name for one concept)",
     premises: ["s2.minimize-redundancy"]
   },
 
-  Proposition {
+  std.syllogism.Proposition {
     id: "s4.closed-grounded-substrate",
     statement: "the closed, grounded substrate makes §2–§3 decidable: you can unify and decompose mechanically only in a closed, grounded system, and grounding is intersubjective",
     premises: ["s2.minimize-redundancy", "s3.single-authority", "s1.grounding-intersubjective"]
   },
 
-  Proposition {
+  std.syllogism.Proposition {
     id: "s5.fail-closed",
     statement: "fail-closed is §1's safety axis: minimizing cost and complexity is worthless if a wrong thing passes silently; stronger than catching a wrong state is making it unwritable (correctness by construction, not validation)",
     premises: ["s1.minimal-safe-efficient"]
   },
 
-  Proposition {
+  std.syllogism.Proposition {
     id: "s6.how-to-work",
     statement: "how to work given §1–§5: model by DFS-ing the concept DAG, prioritize holistically and denominate the benefit as displaced cost, and enforce by construction-first then lenses for the unstructurable residue",
     premises: ["s2.minimize-redundancy", "s3.single-authority", "s4.closed-grounded-substrate", "s5.fail-closed"]
   },
 
-  Proposition {
+  std.syllogism.Proposition {
     id: "s7.self-hosting",
     statement: "self-hosting applies the principles to the compiler itself: it is an ordinary substrate fact written in itself, and because a wall is a row over a medium-agnostic substrate, language design opens up (compiler-fork × language → row + medium)",
     premises: ["s4.closed-grounded-substrate", "s6.how-to-work", "s1.reduce-to-physics"]
   }
 ]
 
-data design_propositions: List<Proposition> = concat(design_section_1_propositions, design_section_2_to_7_propositions)
+data design_propositions: List<std.syllogism.Proposition> = concat(design_section_1_propositions, design_section_2_to_7_propositions)
 
-data design_argument: Argument = Argument {
+data design_argument: std.syllogism.Argument = std.syllogism.Argument {
   axioms: design_axioms,
   propositions: design_propositions
 }

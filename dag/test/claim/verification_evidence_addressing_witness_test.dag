@@ -1,32 +1,32 @@
 module test.claim.verification_evidence_addressing_witness_test
 
 
-data fixture_head: CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as CommitSha
+data fixture_head: std.types.CommitSha = "cafecafecafecafecafecafecafecafecafecafe" as std.types.CommitSha
 
-data fixture_other_head: CommitSha = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" as CommitSha
+data fixture_other_head: std.types.CommitSha = "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef" as std.types.CommitSha
 
-data fixture_window_w1: Fnv1a64Structural = git_diff_window_absent_identity()
+data fixture_window_w1: std.content_hash.Fnv1a64Structural = git_diff_window_absent_identity()
 
-data fixture_window_w2: Fnv1a64Structural = content_hash_atom(
-  value: "recut-a-window-two-fixture" as NonEmptyStr,
+data fixture_window_w2: std.content_hash.Fnv1a64Structural = content_hash_atom(
+  value: "recut-a-window-two-fixture" as std.types.NonEmptyStr,
 )
 
-fn fixture_subject(window: Fnv1a64Structural) -> VerificationSubject {
-  VerificationSubject {
-    node_identity: "rnfx-recut-a" as NonEmptyStr as RoadmapNodeIdentity,
+fn fixture_subject(window: std.content_hash.Fnv1a64Structural) -> gunbc.roadmap_verification_receipt.VerificationSubject {
+  gunbc.roadmap_verification_receipt.VerificationSubject {
+    node_identity: "rnfx-recut-a" as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeIdentity,
     criteria_digest: content_hash_atom(value: "recut-a-criteria"),
     attempt_key: "feedfacefeedface",
-    branch: "dispatch/recut-a-afeedfacefeedface" as NonEmptyStr,
+    branch: "dispatch/recut-a-afeedfacefeedface" as std.types.NonEmptyStr,
     head_sha: fixture_head,
     change_window_identity: window,
   }
 }
 
 fn fixture_receipt(
-  window: Fnv1a64Structural,
-  verdict: ValidationVerdict,
-) -> VerificationReceipt {
-  VerificationReceipt {
+  window: std.content_hash.Fnv1a64Structural,
+  verdict: gunbc.roadmap_validation_oracle.ValidationVerdict,
+) -> gunbc.roadmap_verification_receipt.VerificationReceipt {
+  gunbc.roadmap_verification_receipt.VerificationReceipt {
     subject: fixture_subject(window: window),
     oracle_identity: content_hash_of_value(value: "oracle-fixture"),
     executions: [],
@@ -169,13 +169,13 @@ fn v1_receipt_with_one_execution_text() -> String {
   ]))
 }
 
-fn fixture_node_id() -> RoadmapNodeId {
-  "recut-a" as NonEmptyStr as RoadmapNodeId
+fn fixture_node_id() -> gunbc.roadmap_model.RoadmapNodeId {
+  "recut-a" as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeId
 }
 
-fn fixture_roadmap_node() -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx-recut-a" as NonEmptyStr as RoadmapNodeIdentity,
+fn fixture_roadmap_node() -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx-recut-a" as std.types.NonEmptyStr as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: fixture_node_id(),
     line: DerivableLine { prs: [1], title: "recut-a", description: "" },
     carriers: [],
@@ -192,7 +192,7 @@ fn fixture_roadmap_node() -> RoadmapNode {
 }
 
 fn verify_segment_state(
-  evidence: WorkflowAttemptEvidence,
+  evidence: gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence,
   expected_state: String,
 ) -> Bool {
   let progress = workflow_attempt_progress(evidence: evidence)
@@ -206,11 +206,11 @@ fn verify_segment_state(
 }
 
 fn fixture_evidence(
-  selection: CurrentVerificationSelectionObservation,
-  subject: VerificationSubjectObservation,
-  source: VerificationReceiptFileSource,
-) -> WorkflowAttemptEvidence {
-  WorkflowAttemptEvidence {
+  selection: gunbc.roadmap_verification_receipt.CurrentVerificationSelectionObservation,
+  subject: gunbc.roadmap_verification_receipt.VerificationSubjectObservation,
+  source: gunbc.roadmap_verification_receipt.VerificationReceiptFileSource,
+) -> gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
+  gunbc.roadmap_workflow_progress.WorkflowAttemptEvidence {
     node_id: "recut-a",
     attempt_key: "feedfacefeedface",
     branch: "dispatch/recut-a-afeedfacefeedface",
@@ -228,18 +228,18 @@ fn fixture_evidence(
     verification_selection: selection,
     verification_source: source,
     publication_subject: PublicationSubjectObserved {
-      subject: RoadmapPublicationSubject {
+      subject: gunbc.roadmap_publish.RoadmapPublicationSubject {
         node_id: "recut-a",
         attempt_key: "feedfacefeedface",
-        repository: Repository {
+        repository: extdeps.github.github.Repository {
           owner: "gunb-ai",
           name: "gunbc",
           full_name: "gunb-ai/gunbc",
           private: false,
           default_branch: "main",
         },
-        branch: "dispatch/recut-a-afeedfacefeedface" as NonEmptyStr,
-        expected_base: "main" as NonEmptyStr,
+        branch: "dispatch/recut-a-afeedfacefeedface" as std.types.NonEmptyStr,
+        expected_base: "main" as std.types.NonEmptyStr,
         expected_head: fixture_head,
       },
     },
@@ -248,7 +248,7 @@ fn fixture_evidence(
 }
 
 fn live_verify_progress_state(
-  selection: CurrentVerificationSelectionObservation,
+  selection: gunbc.roadmap_verification_receipt.CurrentVerificationSelectionObservation,
 ) -> String {
   let subject = belt_verification_subject_from_selection(
     node: fixture_roadmap_node(),
@@ -366,7 +366,7 @@ test fn selection_document_for_expected_head_naming_another_head_is_malformed() 
     ),
     expected_head_sha: fixture_head as String,
     content: current_verification_selection_json(
-      selection: CurrentVerificationSelection {
+      selection: gunbc.roadmap_verification_receipt.CurrentVerificationSelection {
         head_sha: fixture_other_head,
         change_window_identity: fixture_window_w1,
       },
@@ -392,7 +392,7 @@ test fn mismatched_selection_cannot_address_the_other_heads_receipt() -> Bool {
     ),
     expected_head_sha: fixture_head as String,
     content: current_verification_selection_json(
-      selection: CurrentVerificationSelection {
+      selection: gunbc.roadmap_verification_receipt.CurrentVerificationSelection {
         head_sha: fixture_other_head,
         change_window_identity: fixture_window_w2,
       },
@@ -571,11 +571,11 @@ test fn final_exact_receipt_defers_without_rerun() -> Bool {
 }
 
 test fn wrong_subject_document_at_exact_path_refuses() -> Bool {
-  let wrong_branch = VerificationSubject {
+  let wrong_branch = gunbc.roadmap_verification_receipt.VerificationSubject {
     node_identity: fixture_subject(window: fixture_window_w1).node_identity,
     criteria_digest: fixture_subject(window: fixture_window_w1).criteria_digest,
     attempt_key: fixture_subject(window: fixture_window_w1).attempt_key,
-    branch: "dispatch/wrong-branch" as NonEmptyStr,
+    branch: "dispatch/wrong-branch" as std.types.NonEmptyStr,
     head_sha: fixture_head,
     change_window_identity: fixture_window_w1,
   }
@@ -583,7 +583,7 @@ test fn wrong_subject_document_at_exact_path_refuses() -> Bool {
     expected: fixture_subject(window: fixture_window_w1),
     source: ExactVerificationReceiptPresent {
       text: verification_receipt_json(
-        receipt: VerificationReceipt {
+        receipt: gunbc.roadmap_verification_receipt.VerificationReceipt {
           subject: wrong_branch,
           oracle_identity: as_content_hash_structural(
             structural: content_hash_atom(value: "oracle-fixture"),

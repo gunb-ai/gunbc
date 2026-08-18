@@ -37,7 +37,7 @@ type PackageBodyEnvelope {
   body_height: std.measure.Micrometer
 }
 
-fn body_envelope_of_ice40_package(p: Ice40Package) -> PackageBodyEnvelope {
+fn body_envelope_of_ice40_package(p: extdeps.programmable_logic.ice40.subject.Ice40Package) -> PackageBodyEnvelope {
   PackageBodyEnvelope {
     package_designator: p.designator,
     body_width: p.body_width,
@@ -102,7 +102,7 @@ fn physical_refusal_count(s: PhysicalRefusalSet) -> std.nat.Nat {
 // The rectangle a placement occupies. It is a construction rather than a record because a footprint
 // with a zero extent has no rectangle at all, and the geometry layer already refuses that — this
 // module does not get to decide the degenerate case differently from every other consumer.
-fn placement_extent(p: ComponentPlacement) -> OrthogonalConstruction<AxisAlignedRectangle2> {
+fn placement_extent(p: ComponentPlacement) -> OrthogonalConstruction<std.orthogonal_geometry.AxisAlignedRectangle2> {
   axis_aligned_rectangle2(
     min: p.origin,
     max: point2(
@@ -117,18 +117,18 @@ fn placement_extent(p: ComponentPlacement) -> OrthogonalConstruction<AxisAligned
 // millimetre package pitch cannot be drawn in whole millimetres at all, so a millimetre-registered
 // frame is refused rather than accepted and quietly rounded. This is the article's
 // RequiresExactSubMillimeterCoordinateQuantum cause discharged by a check rather than by a claim.
-fn frame_is_sub_millimetre(registry: SpatialFrameRegistry, frame: CoordinateFrameIdentity) -> Bool {
+fn frame_is_sub_millimetre(registry: std.spatial_frame.SpatialFrameRegistry, frame: std.coordinate_frame.CoordinateFrameIdentity) -> Bool {
   match frame_length_scale(r: registry, identity: frame) {
     Absent => false
     Present { value: s } => scales_agree(a: s, b: Micro)
   }
 }
 
-fn identity_occurrences(ps: List<ComponentPlacement>, id: NonEmptyStr) -> std.nat.Nat {
+fn identity_occurrences(ps: List<ComponentPlacement>, id: std.types.NonEmptyStr) -> std.nat.Nat {
   fold(ps, init: 0, f: fn(acc, p) { if (p.identity as String) == (id as String) { acc + 1 } else { acc } })
 }
 
-fn seen_identity(seen: List<NonEmptyStr>, id: NonEmptyStr) -> Bool {
+fn seen_identity(seen: List<std.types.NonEmptyStr>, id: std.types.NonEmptyStr) -> Bool {
   fold(seen, init: false, f: fn(acc, k) { acc || (k as String) == (id as String) })
 }
 
@@ -142,7 +142,7 @@ type PlacementScan {
 // arrived at, and for the same reason: the cause count is a number a consumer reads as a
 // population.
 fn placement_refusals(
-  registry: SpatialFrameRegistry,
+  registry: std.spatial_frame.SpatialFrameRegistry,
   article: BoardPhysicalArticle
 ) -> List<PhysicalRefusal> {
   let scanned = fold(article.placements, init: PlacementScan { seen: [], causes: [] }, f: fn(acc, p) {
@@ -221,7 +221,7 @@ fn overlap_refusals(article: BoardPhysicalArticle) -> List<PhysicalRefusal> {
   outer.out
 }
 
-fn physical_causes(registry: SpatialFrameRegistry, article: BoardPhysicalArticle) -> List<PhysicalRefusal> {
+fn physical_causes(registry: std.spatial_frame.SpatialFrameRegistry, article: BoardPhysicalArticle) -> List<PhysicalRefusal> {
   let frame_causes = match frame_length_scale(r: registry, identity: article.frame) {
     Absent => [BoardFrameUnregistered { frame: article.frame }]
     Present { value: _ } =>
@@ -237,7 +237,7 @@ fn physical_causes(registry: SpatialFrameRegistry, article: BoardPhysicalArticle
   )
 }
 
-fn admit_body_envelopes(registry: SpatialFrameRegistry, article: BoardPhysicalArticle) -> PhysicalAdmission {
+fn admit_body_envelopes(registry: std.spatial_frame.SpatialFrameRegistry, article: BoardPhysicalArticle) -> PhysicalAdmission {
   match fold(physical_causes(registry: registry, article: article), init: none, f: fn(acc, c) {
     push_physical_refusal(acc: acc, r: c)
   }) {

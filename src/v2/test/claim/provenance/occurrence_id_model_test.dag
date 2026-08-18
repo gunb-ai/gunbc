@@ -1,7 +1,7 @@
 module v2.test.provenance.occurrence_id_model
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn occurrence_id_allocator_mints_sequential_distinct_ids() -> Bool {
   let alloc0 = occurrence_id_allocator_initial()
@@ -48,7 +48,7 @@ test fn span_index_from_source_round_trip_holds() -> Bool {
   }
 }
 
-fn span_index_merge_lookup_from_source_holds(index: SpanIndex, id: v2.std.node.OccurrenceId) -> Bool {
+fn span_index_merge_lookup_from_source_holds(index: v2.std.provenance.SpanIndex, id: v2.std.node.OccurrenceId) -> Bool {
   match span_index_lookup(index: index, id: id) {
     Holds { value: event } =>
       match event {
@@ -130,12 +130,12 @@ test fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
   )
   let left = node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Positional, target: child }],
+    children: [v2.std.node.Edge { label: Positional, target: child }],
     occurrence_id: node_occurrence_minted(id: m0.id)
   )
   let right = node_with_occurrence_id(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Positional, target: child }],
+    children: [v2.std.node.Edge { label: Positional, target: child }],
     occurrence_id: node_occurrence_minted(id: m1.id)
   )
   !occurrence_id_eq(left: m0.id, right: m1.id)
@@ -159,11 +159,11 @@ test fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
   )
   let left = node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Positional, target: child_left }]
+    children: [v2.std.node.Edge { label: Positional, target: child_left }]
   )
   let right = node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Positional, target: child_right }]
+    children: [v2.std.node.Edge { label: Positional, target: child_right }]
   )
   !occurrence_id_eq(left: m0.id, right: m1.id)
     && !(left == right)

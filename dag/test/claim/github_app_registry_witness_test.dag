@@ -3,70 +3,70 @@ module test.claim.github_app_registry
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data control_plane_probe_ref: DeclarationRef = DeclarationRef {
+data control_plane_probe_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.auth.github_apps",
   decl_name: "app_control_plane_state",
   field: WholeDeclaration
 }
 
-fn live_heal_push_authority() -> GitHubCredentialAuthority {
+fn live_heal_push_authority() -> gunbc.auth.github_credential.GitHubCredentialAuthority {
   match push_binding_authority(resolution: live_heal_push_binding_resolution) {
     Present { value: a } => a
     Absent => live_heal_dispatch_credential
   }
 }
 
-fn perm(axis: GitHubPermissionAxis, access: GitHubAppPermissionAccess) -> GitHubAppPermission {
-  GitHubAppPermission { name: axis, access: access }
+fn perm(axis: extdeps.github.app.GitHubPermissionAxis, access: extdeps.github.app.GitHubAppPermissionAccess) -> extdeps.github.app.GitHubAppPermission {
+  extdeps.github.app.GitHubAppPermission { name: axis, access: access }
 }
 
-data workflow_advance_effect: GitHubEffect = AdvanceRepositoryBranch {
+data workflow_advance_effect: extdeps.github.effect.GitHubEffect = AdvanceRepositoryBranch {
   repository: gunbc_repository,
-  branch: GitBranchRef { name: "refs/heads/attempt" },
-  changed_paths: [RepositoryPath { value: ".github/workflows/ci.yml" }]
+  branch: extdeps.github.effect.GitBranchRef { name: "refs/heads/attempt" },
+  changed_paths: [extdeps.github.effect.RepositoryPath { value: ".github/workflows/ci.yml" }]
 }
 
-data ordinary_advance_effect: GitHubEffect = AdvanceRepositoryBranch {
+data ordinary_advance_effect: extdeps.github.effect.GitHubEffect = AdvanceRepositoryBranch {
   repository: gunbc_repository,
-  branch: GitBranchRef { name: "refs/heads/attempt" },
-  changed_paths: [RepositoryPath { value: "DESIGN.md" }]
+  branch: extdeps.github.effect.GitBranchRef { name: "refs/heads/attempt" },
+  changed_paths: [extdeps.github.effect.RepositoryPath { value: "DESIGN.md" }]
 }
 
-data bot_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 999 }
-data other_installation_id: GitHubAppInstallationId = GitHubAppInstallationId { value: 1000 }
+data bot_installation_id: extdeps.github.app.GitHubAppInstallationId = extdeps.github.app.GitHubAppInstallationId { value: 999 }
+data other_installation_id: extdeps.github.app.GitHubAppInstallationId = extdeps.github.app.GitHubAppInstallationId { value: 1000 }
 
-data bot_installation_locator: Uri = uri_https(
+data bot_installation_locator: extdeps.uri.Uri = uri_https(
   locator: "github.com/organizations/gunb-ai/settings/installations/999"
 )
 
 fn installation_of(
-  app: DeclaredGitHubApp,
-  installation_id: GitHubAppInstallationId,
-  perms: List<GitHubAppPermission>
-) -> GitHubAppInstallation {
-  GitHubAppInstallation {
+  app: gunbc.auth.github_apps.DeclaredGitHubApp,
+  installation_id: extdeps.github.app.GitHubAppInstallationId,
+  perms: List<extdeps.github.app.GitHubAppPermission>
+) -> extdeps.github.app.GitHubAppInstallation {
+  extdeps.github.app.GitHubAppInstallation {
     installation_id: installation_id,
     app_id: app.app_id,
     app_slug: app.slug,
     html_url: bot_installation_locator,
-    account: GitHubUser { login: "gunb-ai", id: 0, type: Organization },
+    account: extdeps.github.github.GitHubUser { login: "gunb-ai", id: 0, type: Organization },
     repository_selection: SelectionAll,
     permissions: map(perms, p => as_observed_permission(p: p)),
     subscribed_events: [],
   }
 }
 
-fn installation_holding(perms: List<GitHubAppPermission>) -> GitHubAppInstallation {
+fn installation_holding(perms: List<extdeps.github.app.GitHubAppPermission>) -> extdeps.github.app.GitHubAppInstallation {
   installation_of(app: gunbai_bot_declared, installation_id: bot_installation_id, perms: perms)
 }
 
-data bot_key_fingerprint: GitHubAppPublicKeyFingerprint = gunbai_bot_declared_key.fingerprint
+data bot_key_fingerprint: extdeps.github.app.GitHubAppPublicKeyFingerprint = gunbai_bot_declared_key.fingerprint
 
-data ci_key_fingerprint: GitHubAppPublicKeyFingerprint = sha256_base64_key_fingerprint(
+data ci_key_fingerprint: extdeps.github.app.GitHubAppPublicKeyFingerprint = sha256_base64_key_fingerprint(
   digest: "CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC="
 )
 
-data hypothetical_bot_pem: SecretRef = SecretRef {
+data hypothetical_bot_pem: extdeps.cloud.gcp.secret_ref.SecretRef = extdeps.cloud.gcp.secret_ref.SecretRef {
   project: fleet_secrets_gcp_project,
   secret: "gunbai-bot-private-key-not-yet-provisioned",
   version: "latest",
@@ -74,13 +74,13 @@ data hypothetical_bot_pem: SecretRef = SecretRef {
 }
 
 fn signer_for(
-  app: DeclaredGitHubApp,
-  pem: SecretRef,
-  derived: GitHubAppPublicKeyFingerprint,
-  registered: GitHubAppPublicKeyFingerprint
-) -> SignerCustody {
+  app: gunbc.auth.github_apps.DeclaredGitHubApp,
+  pem: extdeps.cloud.gcp.secret_ref.SecretRef,
+  derived: extdeps.github.app.GitHubAppPublicKeyFingerprint,
+  registered: extdeps.github.app.GitHubAppPublicKeyFingerprint
+) -> gunbc.auth.github_apps.SignerCustody {
   SignerCustodyObserved {
-    signer: ObservedGitHubAppSigner {
+    signer: gunbc.auth.github_apps.ObservedGitHubAppSigner {
       app_id: app.app_id,
       secret_version: pem,
       secret_content_hash: content_hash_of_value(value: pem.secret),
@@ -90,55 +90,55 @@ fn signer_for(
   }
 }
 
-data sealed_bot_signer: SignerCustody = signer_for(
+data sealed_bot_signer: gunbc.auth.github_apps.SignerCustody = signer_for(
   app: gunbai_bot_declared,
   pem: hypothetical_bot_pem,
   derived: bot_key_fingerprint,
   registered: bot_key_fingerprint
 )
 
-data cross_app_signer: SignerCustody = signer_for(
+data cross_app_signer: gunbc.auth.github_apps.SignerCustody = signer_for(
   app: gunbai_ci_declared,
   pem: gunbai_ci_app_pem_secret,
   derived: ci_key_fingerprint,
   registered: ci_key_fingerprint
 )
 
-data unregistered_key_signer: SignerCustody = signer_for(
+data unregistered_key_signer: gunbc.auth.github_apps.SignerCustody = signer_for(
   app: gunbai_bot_declared,
   pem: hypothetical_bot_pem,
   derived: ci_key_fingerprint,
   registered: bot_key_fingerprint
 )
 
-data app_credential: GitHubCredentialAuthority = ManagedAppInstallationCredential {
+data app_credential: gunbc.auth.github_credential.GitHubCredentialAuthority = ManagedAppInstallationCredential {
   app: gunbai_bot_declared,
   installation: bot_installation_id,
-  profile: GitHubCredentialProfileRef { name: "heal-branch-advance" }
+  profile: gunbc.auth.github_credential.GitHubCredentialProfileRef { name: "heal-branch-advance" }
 }
 
-data other_app_credential: GitHubCredentialAuthority = ManagedAppInstallationCredential {
+data other_app_credential: gunbc.auth.github_credential.GitHubCredentialAuthority = ManagedAppInstallationCredential {
   app: gunbai_ci_declared,
   installation: bot_installation_id,
-  profile: GitHubCredentialProfileRef { name: "heal-branch-advance" }
+  profile: gunbc.auth.github_credential.GitHubCredentialProfileRef { name: "heal-branch-advance" }
 }
 
-data other_installation_credential: GitHubCredentialAuthority = ManagedAppInstallationCredential {
+data other_installation_credential: gunbc.auth.github_credential.GitHubCredentialAuthority = ManagedAppInstallationCredential {
   app: gunbai_bot_declared,
   installation: other_installation_id,
-  profile: GitHubCredentialProfileRef { name: "heal-branch-advance" }
+  profile: gunbc.auth.github_credential.GitHubCredentialProfileRef { name: "heal-branch-advance" }
 }
 
-data workflows_write_perm: GitHubAppPermission = perm(axis: WorkflowsAxis, access: AppAccessWrite)
-data contents_write_perm: GitHubAppPermission = perm(axis: ContentsAxis, access: AppAccessWrite)
-data metadata_read_perm: GitHubAppPermission = perm(axis: MetadataAxis, access: AppAccessRead)
+data workflows_write_perm: extdeps.github.app.GitHubAppPermission = perm(axis: WorkflowsAxis, access: AppAccessWrite)
+data contents_write_perm: extdeps.github.app.GitHubAppPermission = perm(axis: ContentsAxis, access: AppAccessWrite)
+data metadata_read_perm: extdeps.github.app.GitHubAppPermission = perm(axis: MetadataAxis, access: AppAccessRead)
 
-data full_workflow_grant: List<GitHubAppPermission> = [metadata_read_perm, contents_write_perm, workflows_write_perm]
+data full_workflow_grant: List<extdeps.github.app.GitHubAppPermission> = [metadata_read_perm, contents_write_perm, workflows_write_perm]
 
 fn observed_grant_with(
-  custody: SignerCustody,
-  perms: List<GitHubAppPermission>
-) -> GitHubAppControlPlaneState {
+  custody: gunbc.auth.github_apps.SignerCustody,
+  perms: List<extdeps.github.app.GitHubAppPermission>
+) -> gunbc.auth.github_apps.GitHubAppControlPlaneState {
   app_control_plane_state(
     app: gunbai_bot_declared,
     custody: custody,
@@ -152,7 +152,7 @@ fn observed_grant_with(
   )
 }
 
-fn observed_grant(perms: List<GitHubAppPermission>) -> GitHubAppControlPlaneState {
+fn observed_grant(perms: List<extdeps.github.app.GitHubAppPermission>) -> gunbc.auth.github_apps.GitHubAppControlPlaneState {
   observed_grant_with(custody: sealed_bot_signer, perms: perms)
 }
 
@@ -414,7 +414,7 @@ test fn witness_bound_producer_yields_the_operator_packet() -> Bool {
     locator: bot_installation_locator,
     postcondition: InstallationHoldsPermissions { accept: [workflows_write_perm] },
     observation: ObservationProducerBound {
-      bound: BoundObservationProducer { producer: control_plane_probe_ref }
+      bound: gunbc.auth.github_apps.BoundObservationProducer { producer: control_plane_probe_ref }
     }
   ) {
     OperatorActionRequired { action, locator, postcondition, readback } =>
@@ -510,7 +510,7 @@ test fn witness_key_generation_is_operator_work_only_after_discovery_fails() -> 
     locator: app_key_settings_locator(app: gunbai_bot_declared),
     postcondition: AppHasRegisteredSigningKey { app: gunbai_bot_declared },
     observation: ObservationProducerBound {
-      bound: BoundObservationProducer { producer: control_plane_probe_ref }
+      bound: gunbc.auth.github_apps.BoundObservationProducer { producer: control_plane_probe_ref }
     }
   ) {
     OperatorActionRequired { action, locator, postcondition, readback: _ } =>
@@ -547,11 +547,11 @@ test fn witness_effect_permissions_are_derived_not_authored() -> Bool {
   count(github_effect_required_permissions(effect: workflow_advance_effect)) == 2
     && count(github_effect_required_permissions(effect: ordinary_advance_effect)) == 1
     && count(github_effect_required_permissions(
-         effect: RegisterOrganizationRunner { organization: GitHubOrganizationRef { login: "gunb-ai" } }
+         effect: RegisterOrganizationRunner { organization: extdeps.github.effect.GitHubOrganizationRef { login: "gunb-ai" } }
        )) == 1
     && v2.std.algebra.fold_list(
          xs: github_effect_required_permissions(
-           effect: RegisterOrganizationRunner { organization: GitHubOrganizationRef { login: "gunb-ai" } }
+           effect: RegisterOrganizationRunner { organization: extdeps.github.effect.GitHubOrganizationRef { login: "gunb-ai" } }
          ),
          empty: false,
          cons: fn(found, p) { found || permission_axis_wire_name(axis: p.name) == "organization_self_hosted_runners" }
@@ -559,11 +559,11 @@ test fn witness_effect_permissions_are_derived_not_authored() -> Bool {
 }
 
 test fn witness_workflow_path_rule_is_prefix_not_substring() -> Bool {
-  is_workflow_projection_path(path: RepositoryPath { value: ".github/workflows/ci.yml" })
-    && is_workflow_projection_path(path: RepositoryPath { value: ".github/workflows/falsifier.yml" })
-    && !is_workflow_projection_path(path: RepositoryPath { value: ".github/live-deploy-srv1-apply.sh" })
-    && !is_workflow_projection_path(path: RepositoryPath { value: "docs/.github/workflows/ci.yml" })
-    && !is_workflow_projection_path(path: RepositoryPath { value: "DESIGN.md" })
+  is_workflow_projection_path(path: extdeps.github.effect.RepositoryPath { value: ".github/workflows/ci.yml" })
+    && is_workflow_projection_path(path: extdeps.github.effect.RepositoryPath { value: ".github/workflows/falsifier.yml" })
+    && !is_workflow_projection_path(path: extdeps.github.effect.RepositoryPath { value: ".github/live-deploy-srv1-apply.sh" })
+    && !is_workflow_projection_path(path: extdeps.github.effect.RepositoryPath { value: "docs/.github/workflows/ci.yml" })
+    && !is_workflow_projection_path(path: extdeps.github.effect.RepositoryPath { value: "DESIGN.md" })
 }
 
 test fn witness_two_apps_are_distinct() -> Bool {
@@ -620,16 +620,16 @@ test fn witness_duplicate_permission_observation_refuses_in_production() -> Bool
 }
 
 test fn witness_unknown_provider_permission_survives_refusal_verbatim() -> Bool {
-  let unknown = ObservedGitHubPermission {
-    name: ObservedGitHubPermissionName { wire_name: "future_provider_permission" },
+  let unknown = extdeps.github.app.ObservedGitHubPermission {
+    name: extdeps.github.app.ObservedGitHubPermissionName { wire_name: "future_provider_permission" },
     access: AppAccessRead
   }
-  let observed_dup = GitHubAppInstallation {
+  let observed_dup = extdeps.github.app.GitHubAppInstallation {
     installation_id: bot_installation_id,
     app_id: gunbai_bot_declared.app_id,
     app_slug: gunbai_bot_declared.slug,
     html_url: bot_installation_locator,
-    account: GitHubUser { login: "gunb-ai", id: 0, type: Organization },
+    account: extdeps.github.github.GitHubUser { login: "gunb-ai", id: 0, type: Organization },
     repository_selection: SelectionAll,
     permissions: [unknown, unknown],
     subscribed_events: [],
@@ -655,8 +655,8 @@ test fn witness_unknown_provider_permission_survives_refusal_verbatim() -> Bool 
 }
 
 test fn witness_registration_readback_preserves_unknown_provider_permission() -> Bool {
-  let unknown = ObservedGitHubPermission {
-    name: ObservedGitHubPermissionName { wire_name: "future_provider_permission" },
+  let unknown = extdeps.github.app.ObservedGitHubPermission {
+    name: extdeps.github.app.ObservedGitHubPermissionName { wire_name: "future_provider_permission" },
     access: AppAccessRead
   }
   match app_control_plane_state(
@@ -694,7 +694,7 @@ test fn witness_settings_locator_names_the_app_slug() -> Bool {
 }
 
 test fn witness_fingerprint_mismatch_is_detected() -> Bool {
-  let wrong = ManagedGitHubAppKey {
+  let wrong = gunbc.auth.github_apps.ManagedGitHubAppKey {
     fingerprint: sha256_base64_key_fingerprint(digest: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="),
     role: ActiveSigningKey,
   }
@@ -722,7 +722,7 @@ test fn witness_unmodeled_installation_permission_refuses_rather_than_narrowing(
     installation_id: bot_installation_id,
     perms: [perm(axis: ContentsAxis, access: AppAccessRead)]
   )
-  let with_unknown = GitHubAppInstallation {
+  let with_unknown = extdeps.github.app.GitHubAppInstallation {
     installation_id: inst.installation_id,
     app_id: inst.app_id,
     app_slug: inst.app_slug,
@@ -731,8 +731,8 @@ test fn witness_unmodeled_installation_permission_refuses_rather_than_narrowing(
     repository_selection: inst.repository_selection,
     permissions: concat(
       inst.permissions,
-      [ObservedGitHubPermission {
-        name: ObservedGitHubPermissionName { wire_name: "future_provider_permission" },
+      [extdeps.github.app.ObservedGitHubPermission {
+        name: extdeps.github.app.ObservedGitHubPermissionName { wire_name: "future_provider_permission" },
         access: AppAccessWrite
       }]
     ),
@@ -796,9 +796,9 @@ test fn witness_registration_unobserved_is_not_a_gap() -> Bool {
   }
 }
 
-data dispatch_effect: GitHubEffect = DispatchWorkflow {
+data dispatch_effect: extdeps.github.effect.GitHubEffect = DispatchWorkflow {
   repository: gunbc_repository,
-  workflow: GitHubWorkflowRef { file_name: "ci.yml" },
+  workflow: extdeps.github.effect.GitHubWorkflowRef { file_name: "ci.yml" },
   subject: "0000000000000000000000000000000000000000"
 }
 
@@ -826,7 +826,7 @@ test fn witness_unresolved_migration_target_yields_no_credential() -> Bool {
   } && match resolved_target_credential(
     target: InstallationUnresolved {
       app: gunbai_bot_declared,
-      profile: GitHubCredentialProfileRef { name: "heal-branch-advance" }
+      profile: gunbc.auth.github_credential.GitHubCredentialProfileRef { name: "heal-branch-advance" }
     }
   ) {
     Absent => true
@@ -835,7 +835,7 @@ test fn witness_unresolved_migration_target_yields_no_credential() -> Bool {
     target: InstallationResolved {
       app: gunbai_bot_declared,
       installation: bot_installation_id,
-      profile: GitHubCredentialProfileRef { name: "heal-branch-advance" }
+      profile: gunbc.auth.github_credential.GitHubCredentialProfileRef { name: "heal-branch-advance" }
     }
   ) {
     Present { value: c } => credential_authorizes(

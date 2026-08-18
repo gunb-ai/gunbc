@@ -9,18 +9,18 @@ type SparkServingUnitProbeOutcome
   = SparkServingUnitActive
   | SparkServingUnitInactive
   | SparkServingUnitAbsent
-  | SparkServingUnitObservationRefused { cause: NonEmptyStr }
+  | SparkServingUnitObservationRefused { cause: std.types.NonEmptyStr }
 
 type SparkServingReadback {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   unit_outcome: SparkServingUnitProbeOutcome
-  runtime_version: SparkServingReadbackField
-  runtime_release_asset_digest: SparkServingReadbackField
-  model_name: SparkServingReadbackField
-  model_tag: SparkServingReadbackField
-  model_manifest_digest: SparkServingReadbackField
-  nvidia_driver: SparkServingReadbackField
-  bind_address: SparkServingReadbackField
+  runtime_version: gunbc.spark_serving_readback_parse.SparkServingReadbackField
+  runtime_release_asset_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackField
+  model_name: gunbc.spark_serving_readback_parse.SparkServingReadbackField
+  model_tag: gunbc.spark_serving_readback_parse.SparkServingReadbackField
+  model_manifest_digest: gunbc.spark_serving_readback_parse.SparkServingReadbackField
+  nvidia_driver: gunbc.spark_serving_readback_parse.SparkServingReadbackField
+  bind_address: gunbc.spark_serving_readback_parse.SparkServingReadbackField
 }
 
 fn spark_serving_loaded_model_artifact(

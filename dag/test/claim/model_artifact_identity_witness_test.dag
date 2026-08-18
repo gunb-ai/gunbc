@@ -1,7 +1,7 @@
 module test.claim.model_artifact_identity_witness_test
 
 
-fn gpt_oss_20b() -> OllamaModelRef {
+fn gpt_oss_20b() -> extdeps.ollama.api.OllamaModelRef {
   ollama_gpt_oss_20b_model_ref
 }
 
@@ -16,17 +16,17 @@ data digest_b: String = "ffffffffeeeeeeeeddddddddccccccccbbbbbbbbaaaaaaaa9999999
 // parameter.
 data tuned_digest_hex: String = "1111111122222222333333334444444455555555666666667777777788888888"
 
-fn tuned_digest() -> Sha256Digest {
+fn tuned_digest() -> std.content_hash.Sha256Digest {
   match sha256_hex_digest(hex: tuned_digest_hex) {
     Present { value: d } => d
     Absent => tuned_digest()
   }
 }
 
-fn artifact_with(hex: String) -> ModelArtifact? {
+fn artifact_with(hex: String) -> gunbc.model_artifact.ModelArtifact? {
   match ollama_model_digest_from_wire(ref: gpt_oss_20b(), hex: hex) {
     Present { value: d } => Present {
-      value: model_artifact_from_observed_digest(publisher: "ollama" as NonEmptyStr, observed: d),
+      value: model_artifact_from_observed_digest(publisher: "ollama" as std.types.NonEmptyStr, observed: d),
     }
     Absent => none
   }
@@ -40,8 +40,8 @@ test fn w_wire_digest_parses_and_the_sha256_prefix_is_serialization_not_identity
         Absent => false
         Present { value: prefixed } =>
           match compare_model_artifact(
-            desired: model_artifact_from_observed_digest(publisher: "ollama" as NonEmptyStr, observed: bare),
-            loaded: model_artifact_from_observed_digest(publisher: "ollama" as NonEmptyStr, observed: prefixed),
+            desired: model_artifact_from_observed_digest(publisher: "ollama" as std.types.NonEmptyStr, observed: bare),
+            loaded: model_artifact_from_observed_digest(publisher: "ollama" as std.types.NonEmptyStr, observed: prefixed),
           ) {
             ArtifactIdentical => true
             ArtifactDiffers { desired: _, loaded: _ } => false
@@ -98,9 +98,9 @@ test fn w_a_tuned_artifact_carries_walkable_lineage_to_its_base() -> Bool {
       let tuned = model_artifact_from_tuning_run(
         produced_digest: tuned_digest(),
         base: base,
-        dataset_identity: content_hash_of_value(value: "dataset-v1" as NonEmptyStr),
-        run_identity: "run-2026-08-12-a" as NonEmptyStr,
-        serving_label: "gunbc-tuned:v1" as NonEmptyStr,
+        dataset_identity: content_hash_of_value(value: "dataset-v1" as std.types.NonEmptyStr),
+        run_identity: "run-2026-08-12-a" as std.types.NonEmptyStr,
+        serving_label: "gunbc-tuned:v1" as std.types.NonEmptyStr,
       )
       match model_artifact_base_identity(artifact: tuned) {
         Absent => false

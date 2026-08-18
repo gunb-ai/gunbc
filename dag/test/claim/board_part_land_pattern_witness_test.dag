@@ -3,7 +3,7 @@ module test.claim.board_part_land_pattern_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn disagreement_kind(d: LandPatternDisagreement) -> String {
+fn disagreement_kind(d: extdeps.land_pattern.types.LandPatternDisagreement) -> String {
   match d {
     PatternDesignatorDiffersFromPackage { pattern_designator: _, package_designator: _ } => "designator"
     LandCountDiffersFromTerminalCount { lands: _, terminals: _ } => "count"
@@ -11,40 +11,40 @@ fn disagreement_kind(d: LandPatternDisagreement) -> String {
   }
 }
 
-fn has_kind(ds: List<LandPatternDisagreement>, k: String) -> Bool {
+fn has_kind(ds: List<extdeps.land_pattern.types.LandPatternDisagreement>, k: String) -> Bool {
   fold(ds, init: false, f: fn(acc, d) { acc || disagreement_kind(d: d) == k })
 }
 
-fn count_of(ds: List<LandPatternDisagreement>) -> Int {
+fn count_of(ds: List<extdeps.land_pattern.types.LandPatternDisagreement>) -> Int {
   fold(ds, init: 0, f: fn(acc, _d) { acc + 1 })
 }
 
-fn refusal_kind(r: CandidateRefusal) -> String {
+fn refusal_kind(r: extdeps.land_pattern.types.CandidateRefusal) -> String {
   match r {
     MechanicalDisagreement { cause: _ } => "mechanical"
     TerminalIndexingUnestablished { what_is_missing: _ } => "indexing"
   }
 }
 
-fn refusals_of(a: PartAdmission) -> List<CandidateRefusal> {
+fn refusals_of(a: extdeps.land_pattern.types.PartAdmission) -> List<extdeps.land_pattern.types.CandidateRefusal> {
   match a {
     AdmittedMountablePart { part: _ } => []
     PartRefused { causes: s } => concat([s.first], s.rest)
   }
 }
 
-fn is_admitted(a: PartAdmission) -> Bool {
+fn is_admitted(a: extdeps.land_pattern.types.PartAdmission) -> Bool {
   match a {
     AdmittedMountablePart { part: _ } => true
     PartRefused { causes: _ } => false
   }
 }
 
-fn refusal_count(a: PartAdmission) -> Int {
+fn refusal_count(a: extdeps.land_pattern.types.PartAdmission) -> Int {
   fold(refusals_of(a: a), init: 0, f: fn(acc, _r) { acc + 1 })
 }
 
-fn only_refusal_is(a: PartAdmission, k: String) -> Bool {
+fn only_refusal_is(a: extdeps.land_pattern.types.PartAdmission, k: String) -> Bool {
   let n = refusal_count(a: a)
   let all_match = fold(refusals_of(a: a), init: true, f: fn(acc, r) { acc && refusal_kind(r: r) == k })
   n == 1 && all_match
@@ -105,7 +105,7 @@ test fn w_the_sot23_pitch_reconciles_the_two_printed_readings() -> Bool {
 // freely constructible and carrying no claim. An earlier revision built this same malformed value as
 // a MountablePart, which was the evidence that type was not admission-closed: the name promised a
 // mountable part and a test could hand-build a value that could not be mounted.
-data mismatched_candidate: PartMechanicalCandidate = PartMechanicalCandidate {
+data mismatched_candidate: extdeps.land_pattern.types.PartMechanicalCandidate = extdeps.land_pattern.types.PartMechanicalCandidate {
   ordering_part_number: "DP83867IRRGZ",
   vendor: dp83867irrgz.vendor,
   body: dp83867_rgz0048b_body,
@@ -127,7 +127,7 @@ test fn w_a_pattern_from_the_wrong_package_is_refused_on_every_axis() -> Bool {
 // pass if two of the three checks were dead. This one differs from its package in the land
 // population alone — the designator and the pitch are the part's own — so exactly one mechanical
 // cause must be reported, and the count check is the one that has to be alive to report it.
-data undercounted_land_pattern: VendorRecommendedLandPattern = VendorRecommendedLandPattern {
+data undercounted_land_pattern: extdeps.land_pattern.types.VendorRecommendedLandPattern = extdeps.land_pattern.types.VendorRecommendedLandPattern {
   package_designator: "RSB0040A",
   drawing: tps53688rsbr.land_pattern.drawing,
   geometry: QuadRowLandGeometry {
@@ -140,7 +140,7 @@ data undercounted_land_pattern: VendorRecommendedLandPattern = VendorRecommended
   },
 }
 
-data undercounted_candidate: PartMechanicalCandidate = PartMechanicalCandidate {
+data undercounted_candidate: extdeps.land_pattern.types.PartMechanicalCandidate = extdeps.land_pattern.types.PartMechanicalCandidate {
   ordering_part_number: "TPS53688RSBR",
   vendor: tps53688rsbr.vendor,
   body: tps53688rsbr.body,
@@ -159,7 +159,7 @@ test fn w_a_land_population_that_disagrees_with_the_package_is_refused_alone() -
 // ASSERTED BESIDE THE OBLIGATION because the two are coupled: a solder tail needs a drill schedule,
 // and an earlier revision gave this row a standing whose only success arm carried surface-mount land
 // geometry — a success this part could never have reached no matter which document arrived.
-fn obligation_is_stated(o: MountingPatternObligation) -> Bool {
+fn obligation_is_stated(o: extdeps.land_pattern.types.MountingPatternObligation) -> Bool {
   !((o.what_is_missing as String) == "")
 }
 
@@ -175,7 +175,7 @@ test fn w_the_dimm_socket_family_owes_a_hole_pattern_it_cannot_express_as_lands(
 
 // THE POSITIVE CONTROL FOR THE SURFACE-MOUNT DISCRIMINATION. Without it, the M.2 arm below could be
 // reading a standing that is never established and the claim would still be green.
-data established_standing: SurfaceMountPatternStanding = SurfaceMountPatternEstablished {
+data established_standing: extdeps.land_pattern.types.SurfaceMountPatternStanding = SurfaceMountPatternEstablished {
   pattern: cdce913_pw0014a_land_pattern,
 }
 
@@ -218,7 +218,7 @@ test fn w_the_two_tyco_entities_are_not_one_vendor() -> Bool {
 // here, so every one of them owes it. The claim is asserted over all four because the failure it
 // guards against is a single row quietly acquiring a dimension from a distributor listing or from a
 // reader's sense of what such a part usually measures.
-fn owes_its_geometry(p: CatalogPartIdentity) -> Bool {
+fn owes_its_geometry(p: extdeps.land_pattern.types.CatalogPartIdentity) -> Bool {
   obligation_is_stated(o: p.board_pattern)
 }
 

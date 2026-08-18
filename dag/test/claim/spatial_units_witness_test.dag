@@ -41,7 +41,7 @@ fn witness_quarter_turn_is_exact() -> Bool {
 // REGRESSION CONTROL for the srgb consolidation: srgb no longer mints its own 360 and now consumes
 // degrees_per_turn(). Its hue arithmetic must be byte-identical, including the negative-hue wrap
 // that is the one place the constant does real work.
-fn rgb_equal(a: RgbScaled, b: RgbScaled) -> Bool {
+fn rgb_equal(a: extdeps.color.srgb.RgbScaled, b: extdeps.color.srgb.RgbScaled) -> Bool {
   a.r == b.r && a.g == b.g && a.b == b.b
 }
 

@@ -10,7 +10,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type CacheInterfaceCatalogIoSemantics {
-  lookup_semantics: CacheLookupSemantics
-  write_semantics: CacheWriteSemantics
-  miss_semantics: CacheMissSemantics
+  lookup_semantics: std.cache_interface.CacheLookupSemantics
+  write_semantics: std.cache_interface.CacheWriteSemantics
+  miss_semantics: std.cache_interface.CacheMissSemantics
 }

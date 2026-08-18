@@ -20,9 +20,9 @@ type ManagedOomAction
   | ManagedOomKill
 
 type OomdGlobalConfig {
-  swap_used_limit: Percent
-  default_memory_pressure_limit: Percent
-  default_memory_pressure_duration: Second
+  swap_used_limit: std.measure.Percent
+  default_memory_pressure_limit: std.measure.Percent
+  default_memory_pressure_duration: std.measure.Second
 }
 
 data oomd_default_global_config: OomdGlobalConfig = OomdGlobalConfig {
@@ -32,11 +32,11 @@ data oomd_default_global_config: OomdGlobalConfig = OomdGlobalConfig {
 }
 
 type UnitManagedOomPolicy {
-  scope_unit: NonEmptyStr
+  scope_unit: std.types.NonEmptyStr
   managed_oom_swap: ManagedOomAction
   managed_oom_memory_pressure: ManagedOomAction
-  managed_oom_memory_pressure_limit: Percent?
-  managed_oom_memory_pressure_duration: Second?
+  managed_oom_memory_pressure_limit: std.measure.Percent?
+  managed_oom_memory_pressure_duration: std.measure.Second?
 }
 
 data oomd_managed_oom_memory_pressure_property: NonEmptyStr = "ManagedOOMMemoryPressure"
@@ -77,7 +77,7 @@ fn managed_oom_action_value(a: ManagedOomAction) -> NonEmptyStr {
 }
 
 type OomdDropIn {
-  target_unit: NonEmptyStr
+  target_unit: std.types.NonEmptyStr
   policy: UnitManagedOomPolicy
 }
 

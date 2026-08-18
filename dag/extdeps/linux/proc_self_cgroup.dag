@@ -24,23 +24,23 @@ type ProcSelfCgroupLineRefusal
 
 type ProcSelfCgroupLineParse
   = ProcSelfCgroupLineParsed {
-      hierarchy_id: NonEmptyStr,
+      hierarchy_id: std.types.NonEmptyStr,
       controller_list: String,
-      relative_path: NonEmptyStr,
+      relative_path: std.types.NonEmptyStr,
     }
   | ProcSelfCgroupLineRefused { cause: ProcSelfCgroupLineRefusal }
 
 type ProcPidCgroupMembershipRecord
-  = CurrentCgroupObserved { relative_path: NonEmptyStr }
+  = CurrentCgroupObserved { relative_path: std.types.NonEmptyStr }
   | MembershipMissing
-  | MembershipAmbiguous { first: NonEmptyStr, second: NonEmptyStr }
+  | MembershipAmbiguous { first: std.types.NonEmptyStr, second: std.types.NonEmptyStr }
   | MembershipMalformed { cause: ProcSelfCgroupLineRefusal }
 
 type UnifiedMembershipOutcomeTag
   = OutcomeTagMissing
   | OutcomeTagAmbiguous
   | OutcomeTagMalformed
-  | OutcomeTagObserved { relative_path: NonEmptyStr }
+  | OutcomeTagObserved { relative_path: std.types.NonEmptyStr }
 
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {

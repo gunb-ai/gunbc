@@ -1,11 +1,11 @@
 module v2.test.lens_table_decision_tree.sg_claims
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data tdt_witness_fn_node: Node = claim_atom_node(s: ^tdt_witness_fn_node_symbol)
 data tdt_witness_module: String = "v2.lens.table_decision_tree"
 
-fn tdt_verdict_is_unrealized(verdict: LensVerdict) -> Bool {
+fn tdt_verdict_is_unrealized(verdict: v2.std.lens_verdict.LensVerdict) -> Bool {
   match verdict {
     Unrealized { diagnostic: _ } => true
     _ => false
@@ -18,7 +18,7 @@ test fn witness_tdt_unrealized_green_on_fact() -> Bool {
   )
 }
 
-fn tdt_sample_holds() -> LensVerdict {
+fn tdt_sample_holds() -> v2.std.lens_verdict.LensVerdict {
   Holds
 }
 

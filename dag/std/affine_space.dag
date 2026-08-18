@@ -94,7 +94,7 @@ type Point2 {
   y: SignedFrameComponent
 }
 
-fn vector3(frame: CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Vector3 {
+fn vector3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Vector3 {
   Vector3 {
     frame: frame,
     x: signed_frame_component(count: x),
@@ -103,7 +103,7 @@ fn vector3(frame: CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Vector3 {
   }
 }
 
-fn point3(frame: CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Point3 {
+fn point3(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Point3 {
   Point3 {
     frame: frame,
     x: signed_frame_component(count: x),
@@ -112,15 +112,15 @@ fn point3(frame: CoordinateFrameIdentity, x: Int, y: Int, z: Int) -> Point3 {
   }
 }
 
-fn vector2(frame: CoordinateFrameIdentity, x: Int, y: Int) -> Vector2 {
+fn vector2(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int) -> Vector2 {
   Vector2 { frame: frame, x: signed_frame_component(count: x), y: signed_frame_component(count: y) }
 }
 
-fn point2(frame: CoordinateFrameIdentity, x: Int, y: Int) -> Point2 {
+fn point2(frame: std.coordinate_frame.CoordinateFrameIdentity, x: Int, y: Int) -> Point2 {
   Point2 { frame: frame, x: signed_frame_component(count: x), y: signed_frame_component(count: y) }
 }
 
-fn zero_vector3(frame: CoordinateFrameIdentity) -> Vector3 {
+fn zero_vector3(frame: std.coordinate_frame.CoordinateFrameIdentity) -> Vector3 {
   vector3(frame: frame, x: 0, y: 0, z: 0)
 }
 
@@ -192,7 +192,7 @@ type SpatialResult<T>
 // FIRST CROSSING WINS, and every component is computed before the fold rather than after a partial
 // result exists. There is no arm here that produces a value from some components and a default for
 // the rest: a vector with one unrepresentable component is not a vector.
-fn vector3_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialResult<Vector3> {
+fn vector3_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.checked_arithmetic.CheckedInt, y: std.checked_arithmetic.CheckedInt, z: std.checked_arithmetic.CheckedInt) -> SpatialResult<Vector3> {
   match x {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: xv } =>
@@ -208,7 +208,7 @@ fn vector3_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: Checke
   }
 }
 
-fn point3_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt, z: CheckedInt) -> SpatialResult<Point3> {
+fn point3_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.checked_arithmetic.CheckedInt, y: std.checked_arithmetic.CheckedInt, z: std.checked_arithmetic.CheckedInt) -> SpatialResult<Point3> {
   match x {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: xv } =>
@@ -224,7 +224,7 @@ fn point3_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: Checked
   }
 }
 
-fn vector2_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt) -> SpatialResult<Vector2> {
+fn vector2_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.checked_arithmetic.CheckedInt, y: std.checked_arithmetic.CheckedInt) -> SpatialResult<Vector2> {
   match x {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: xv } =>
@@ -235,7 +235,7 @@ fn vector2_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: Checke
   }
 }
 
-fn point2_from_checked(frame: CoordinateFrameIdentity, x: CheckedInt, y: CheckedInt) -> SpatialResult<Point2> {
+fn point2_from_checked(frame: std.coordinate_frame.CoordinateFrameIdentity, x: std.checked_arithmetic.CheckedInt, y: std.checked_arithmetic.CheckedInt) -> SpatialResult<Point2> {
   match x {
     CheckedIntOverflow { cause: c } => SpatialArithmeticRefused { cause: c }
     CheckedIntReady { value: xv } =>

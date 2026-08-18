@@ -87,21 +87,21 @@ test fn witness_transport_reads_use_show_property_authority() -> Bool {
 test fn witness_list_units_line_parser_takes_first_field_only() -> Bool {
   systemctl_list_units_line_as_unit(
     line: "actions-runner@srv3-01.service loaded active running GitHub Actions Runner",
-  ) == "actions-runner@srv3-01.service" as NonEmptyStr
+  ) == "actions-runner@srv3-01.service" as std.types.NonEmptyStr
 }
 
 test fn witness_enumerate_units_uses_typed_list_units_op() -> Bool {
-  match systemctl_list_units_active_services(instance_glob: "actions-runner@srv3-*.service" as NonEmptyStr) {
+  match systemctl_list_units_active_services(instance_glob: "actions-runner@srv3-*.service" as std.types.NonEmptyStr) {
     Present { value: units } =>
       length(units) == 2
-        && units.first() == "actions-runner@srv3-01.service" as NonEmptyStr
-        && units.skip(n: 1).first() == "actions-runner@srv3-02.service" as NonEmptyStr
+        && units.first() == "actions-runner@srv3-01.service" as std.types.NonEmptyStr
+        && units.skip(n: 1).first() == "actions-runner@srv3-02.service" as std.types.NonEmptyStr
     Absent => false
   }
 }
 
 test fn witness_cross_check_allows_under_count_for_width_increase() -> Bool {
-  let empty_units: List<NonEmptyStr> = []
+  let empty_units: List<std.types.NonEmptyStr> = []
   match host_converge_slice1_cross_check_enumeration(host: operator_host_srv3, units: empty_units) {
     Present { value: _ } => false
     Absent => true
@@ -110,9 +110,9 @@ test fn witness_cross_check_allows_under_count_for_width_increase() -> Bool {
 
 test fn witness_cross_check_refuses_observed_exceeds_declared() -> Bool {
   let declared = declared_runner_count_for(host: operator_host_srv3)
-  let excess_units: List<NonEmptyStr> = map(
+  let excess_units: List<std.types.NonEmptyStr> = map(
     runner_index_seq(n: declared + 1),
-    i => join(["actions-runner@srv3-", if i < 10 { join(["0", to_string(i)], "") } else { to_string(i) }, ".service"], "") as NonEmptyStr,
+    i => join(["actions-runner@srv3-", if i < 10 { join(["0", to_string(i)], "") } else { to_string(i) }, ".service"], "") as std.types.NonEmptyStr,
   )
   match host_converge_slice1_cross_check_enumeration(host: operator_host_srv3, units: excess_units) {
     Present { value: mismatch } =>
@@ -187,7 +187,7 @@ test fn witness_tasks_outcome_routes_to_tasks_legacy_arm_preserving_applied() ->
         unit: host_converge_slice1_probe_unit,
         knob: knob,
         limit: parse_systemd_task_limit_show(raw: "16384"),
-        probed_at: "witness-fixture" as NonEmptyStr,
+        probed_at: "witness-fixture" as std.types.NonEmptyStr,
         applied: true,
         read_back_converged: true,
         reapply_noop: true,
@@ -216,7 +216,7 @@ test fn witness_tasks_receipt_invalid_when_read_still_drifted() -> Bool {
         unit: host_converge_slice1_probe_unit,
         knob: knob,
         limit: parse_systemd_task_limit_show(raw: "512"),
-        probed_at: "witness-fixture" as NonEmptyStr,
+        probed_at: "witness-fixture" as std.types.NonEmptyStr,
         applied: true,
         read_back_converged: true,
         reapply_noop: true,

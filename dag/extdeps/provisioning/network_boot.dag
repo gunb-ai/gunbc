@@ -9,8 +9,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type ClientNetworkBootMode =
-    LegacyBiosPxe { tftp_root: Uri }
-  | UefiPxe { tftp_root: Uri }
+    LegacyBiosPxe { tftp_root: extdeps.uri.Uri }
+  | UefiPxe { tftp_root: extdeps.uri.Uri }
   | UefiHttpBoot
 
 type DhcpBootDirection =
@@ -36,5 +36,5 @@ fn network_uefi_bootloader_artifact(arch: Architecture) -> NonEmptyStr? {
 type NetworkBootChain {
   boot_mode: ClientNetworkBootMode
   dhcp_direction: DhcpBootDirection
-  image_http_root: Uri
+  image_http_root: extdeps.uri.Uri
 }

@@ -246,8 +246,8 @@ data icarus_verilog_simulator_subject_ref: DeclarationRef = icarus_verilog_simul
 data target_runtime_binding_note: String = "WHICH RUNTIME EXECUTES A TARGET IS A SEPARATE FACT FROM WHAT THE TARGET IS (cursor review 48122, P0). Fusing them is what made ngspice look like a language: the registry registered the simulator, gave it the netlist's file extensions, and joined it to a surface that models a generic SpiceNetlist. Split here into two subjects plus this binding, so the medium can gain a second runtime without either subject changing — which is the whole test of whether the split was real. A binding is NOT a support claim: it says which tool WOULD execute this target, not that any execution receipt exists. SPICE's frontier row is bar-b, meaning the witness compares emitted text to a golden file and never runs ngspice at all, so this binding is precisely the thing an execution receipt would later discharge. THIS BINDING ALSO CARRIES THE DIALECT FACT, which belongs here and not on either subject's scope (cursor review 48361). SPICE has no normative netlist specification, so the readable authority for the concrete syntax this repository would emit is the ngspice manual — but that manual is ngspice's own governing document, and citing it on the SPICE medium's scope would claim one upstream grounds another. An earlier revision did exactly that and re-forked the fact this split had just separated. The binding is the honest home: it names both subjects by reference, each keeping its own authority, and says which runtime's dialect an emission would target. That is why a support claim for SPICE must resolve THROUGH this binding to state a dialect, rather than reading one off the medium's citation list."
 
 type TargetRuntimeBinding {
-  target: DeclarationRef
-  runtime: DeclarationRef
+  target: std.decl_ref.DeclarationRef
+  runtime: std.decl_ref.DeclarationRef
 }
 
 data target_runtime_bindings: List<TargetRuntimeBinding> = [

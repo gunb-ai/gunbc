@@ -71,7 +71,7 @@ fn positive_upper_bounded_nat_well_formed(b: PositiveUpperBoundedNat) -> Bool {
 }
 
 type RankingDimension {
-  measured: Symbol
+  measured: v2.std.node.Symbol
 }
 type TerminationProof {
   non_increasing: List<RankingDimension>
@@ -191,8 +191,8 @@ fn behavior_multiplicity(b: Behavior) -> Multiplicity {
 data measure_descent_registry_note: String = "Measure descent facts ground the loop termination derivation on the single DescentEvidence authority (std.termination — operator standing rule 2026-07-08: dag/std wins v2↔dag forks; body-lowering design Stage 2/T1). A measure Atom carries descent evidence only via a cited registry row; an unregistered symbol is DescentUnknown — the lattice bottom — so an unproven measure refuses, never fabricates. Copied-port facts use the same derive-not-hand-stamp discipline via v2.lens.cost.copied_port_derivation (Wave 1 Gate 1 C1)."
 
 type MeasureDescentFact {
-  measure: Symbol
-  evidence: DescentEvidence
+  measure: v2.std.node.Symbol
+  evidence: std.termination.DescentEvidence
   citation: String
 }
 
@@ -247,7 +247,7 @@ fn measure_descent_evidence_for_symbol(registry: List<MeasureDescentFact>, s: Sy
 
 type MeasureDimensionEvidence {
   dimension: RankingDimension
-  evidence: DescentEvidence
+  evidence: std.termination.DescentEvidence
 }
 
 fn measure_dimension_unknown_rows() -> List<MeasureDimensionEvidence> {

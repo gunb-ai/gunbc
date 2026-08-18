@@ -1,14 +1,14 @@
 module extdeps.languages.yaml.gha_workflow
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
   }
 }
 
-fn permission_level_yaml(level: PermissionLevel) -> YamlValue {
+fn permission_level_yaml(level: extdeps.github.actions.PermissionLevel) -> extdeps.languages.yaml.types.YamlValue {
   match level {
     PermRead => yaml_string(s: "read")
     PermWrite => yaml_string(s: "write")
@@ -16,14 +16,14 @@ fn permission_level_yaml(level: PermissionLevel) -> YamlValue {
   }
 }
 
-fn optional_permission_key(key: String, level: PermissionLevel?) -> List<YamlKeyValue> {
+fn optional_permission_key(key: String, level: extdeps.github.actions.PermissionLevel?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match level {
     Absent => []
     Present { value: l } => [kv(key: key, value: permission_level_yaml(level: l))]
   }
 }
 
-fn workflow_permissions_yaml(perms: WorkflowPermissions) -> YamlValue {
+fn workflow_permissions_yaml(perms: extdeps.github.actions.WorkflowPermissions) -> extdeps.languages.yaml.types.YamlValue {
   yaml_mapping(entries: concat(
     optional_permission_key(key: "contents", level: perms.contents),
     concat(
@@ -39,7 +39,7 @@ fn workflow_permissions_yaml(perms: WorkflowPermissions) -> YamlValue {
   ))
 }
 
-fn pr_activity_string(a: PullRequestActivity) -> String {
+fn pr_activity_string(a: extdeps.github.actions.PullRequestActivity) -> String {
   match a {
     Opened => "opened"
     Synchronize => "synchronize"
@@ -49,15 +49,15 @@ fn pr_activity_string(a: PullRequestActivity) -> String {
   }
 }
 
-fn string_list_flow(items: List<String>) -> YamlValue {
+fn string_list_flow(items: List<String>) -> extdeps.languages.yaml.types.YamlValue {
   yaml_sequence(elements: fold(items, init: empty_yaml_values, f: (acc, s) => concat(acc, [yaml_string(s: s)])))
 }
 
-fn pr_activities_flow(types: List<PullRequestActivity>) -> YamlValue {
+fn pr_activities_flow(types: List<extdeps.github.actions.PullRequestActivity>) -> extdeps.languages.yaml.types.YamlValue {
   yaml_sequence(elements: fold(types, init: empty_yaml_values, f: (acc, t) => concat(acc, [yaml_string(s: pr_activity_string(a: t))])))
 }
 
-fn push_trigger_yaml(branches: List<String>, paths: List<String>) -> YamlKeyValue {
+fn push_trigger_yaml(branches: List<String>, paths: List<String>) -> extdeps.languages.yaml.types.YamlKeyValue {
   let entries = if paths.length() == 0 {
     [kv(key: "branches", value: string_list_flow(items: branches))]
   } else {
@@ -69,7 +69,7 @@ fn push_trigger_yaml(branches: List<String>, paths: List<String>) -> YamlKeyValu
   kv(key: "push", value: yaml_mapping(entries: entries))
 }
 
-fn dispatch_input_type_label(t: DispatchInputType) -> String {
+fn dispatch_input_type_label(t: extdeps.github.actions.DispatchInputType) -> String {
   match t {
     InputString => "string"
     InputBoolean => "boolean"
@@ -78,7 +78,7 @@ fn dispatch_input_type_label(t: DispatchInputType) -> String {
   }
 }
 
-fn dispatch_input_type_extra_fields(t: DispatchInputType) -> List<YamlKeyValue> {
+fn dispatch_input_type_extra_fields(t: extdeps.github.actions.DispatchInputType) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match t {
     InputChoice { options: opts } =>
       [kv(key: "options", value: string_list_flow(items: opts))]
@@ -88,14 +88,14 @@ fn dispatch_input_type_extra_fields(t: DispatchInputType) -> List<YamlKeyValue> 
   }
 }
 
-fn dispatch_input_optional_string(key: String, value: String?) -> List<YamlKeyValue> {
+fn dispatch_input_optional_string(key: String, value: String?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match value {
     Present { value: s } => [kv(key: key, value: yaml_string(s: s))]
     Absent => []
   }
 }
 
-fn dispatch_input_yaml(input: DispatchInput) -> YamlKeyValue {
+fn dispatch_input_yaml(input: extdeps.github.actions.DispatchInput) -> extdeps.languages.yaml.types.YamlKeyValue {
   kv(
     key: input.name,
     value: yaml_mapping(entries: concat(
@@ -114,7 +114,7 @@ fn dispatch_input_yaml(input: DispatchInput) -> YamlKeyValue {
   )
 }
 
-fn workflow_dispatch_yaml(inputs: List<DispatchInput>) -> YamlValue {
+fn workflow_dispatch_yaml(inputs: List<extdeps.github.actions.DispatchInput>) -> extdeps.languages.yaml.types.YamlValue {
   if length(inputs) == 0 {
     YamlNull
   } else {
@@ -129,7 +129,7 @@ fn workflow_dispatch_yaml(inputs: List<DispatchInput>) -> YamlValue {
 
 data workflow_dispatch_input_projection_note: String = "WorkflowDispatch.inputs was modeled in extdeps.github.actions but this serializer discarded the entire list and emitted workflow_dispatch: null. That specification-without-execution gap is now closed: every modeled input is projected into the workflow syntax, while the empty list deliberately retains the compact null form. InputChoice carries a non-empty options list and projects it as the required GitHub Actions options: mapping entry — a type: choice input without options is undispatchable. The CI heal revalidation input is the first production consumer and its witness reads the projected YamlValue rather than trusting generated text."
 
-fn workflow_trigger_entry(trigger: WorkflowTrigger) -> YamlKeyValue {
+fn workflow_trigger_entry(trigger: extdeps.github.actions.WorkflowTrigger) -> extdeps.languages.yaml.types.YamlKeyValue {
   match trigger {
     WorkflowDispatch { inputs: inputs } =>
       kv(key: "workflow_dispatch", value: workflow_dispatch_yaml(inputs: inputs))
@@ -156,18 +156,18 @@ fn workflow_trigger_entry(trigger: WorkflowTrigger) -> YamlKeyValue {
   }
 }
 
-fn workflow_triggers_yaml(triggers: List<WorkflowTrigger>) -> YamlValue {
+fn workflow_triggers_yaml(triggers: List<extdeps.github.actions.WorkflowTrigger>) -> extdeps.languages.yaml.types.YamlValue {
   yaml_mapping(entries: fold(triggers, init: [], f: (acc, t) => concat(acc, [workflow_trigger_entry(trigger: t)])))
 }
 
-fn cancel_in_progress_yaml(spec: CancelInProgressSpec) -> YamlValue {
+fn cancel_in_progress_yaml(spec: extdeps.github.actions.CancelInProgressSpec) -> extdeps.languages.yaml.types.YamlValue {
   match spec {
     CancelInProgressBool { value: b } => yaml_bool(b: b)
     CancelInProgressExpression { expression: e } => yaml_string(s: e)
   }
 }
 
-fn cancel_in_progress_when_queue_max_yaml(spec: CancelInProgressWhenQueueMax) -> YamlValue {
+fn cancel_in_progress_when_queue_max_yaml(spec: extdeps.github.actions.CancelInProgressWhenQueueMax) -> extdeps.languages.yaml.types.YamlValue {
   match spec {
     QueueMaxCancelInProgressFalse => yaml_bool(b: false)
     QueueMaxCancelInProgressExpression { expression: e } => yaml_string(s: e)
@@ -176,7 +176,7 @@ fn cancel_in_progress_when_queue_max_yaml(spec: CancelInProgressWhenQueueMax) ->
 
 data concurrency_queue_max_emission_note: String = "ConcurrencyMappingQueueMax exists to express GitHub's `queue: max`, and until this row it emitted NO queue key — so it serialized byte-identically to ConcurrencyMappingQueueNotMax and the modeled distinction had no realization difference at all (srv1-deploy-serialization-and-false-greens.md §4, second drop). That matters because the two variants mean DIFFERENT THINGS on the platform: the default (QueueNotMax) holds at most one running and one pending entry, and a newly-arriving entry CANCELS the existing pending one, whereas `queue: max` permits multiple pending up to a documented cap of 100 with cancel-in-progress forced false. A caller reaching for QueueMax is asking for the no-cancel queue and was silently getting pending-replacement. `queue` is emitted FIRST so the mapping reads queue-then-group-then-cancel; CancelInProgressWhenQueueMax already models the platform's constraint that cancel-in-progress cannot be true here, so that arm needs no extra guard. Witness: gha_job_projection_witness_test asserts the emitted mapping CONTAINS the queue key and that the two variants no longer serialize identically."
 
-fn concurrency_mapping_queue_max(group: String, cip: CancelInProgressWhenQueueMax?) -> YamlValue {
+fn concurrency_mapping_queue_max(group: String, cip: extdeps.github.actions.CancelInProgressWhenQueueMax?) -> extdeps.languages.yaml.types.YamlValue {
   let base = [
     kv(key: "queue", value: yaml_string(s: "max")),
     kv(key: "group", value: yaml_string(s: group))
@@ -188,7 +188,7 @@ fn concurrency_mapping_queue_max(group: String, cip: CancelInProgressWhenQueueMa
   yaml_mapping(entries: with_cancel)
 }
 
-fn concurrency_mapping_with_cancel(group: String, cip: CancelInProgressSpec?) -> YamlValue {
+fn concurrency_mapping_with_cancel(group: String, cip: extdeps.github.actions.CancelInProgressSpec?) -> extdeps.languages.yaml.types.YamlValue {
   let base = [kv(key: "group", value: yaml_string(s: group))]
   let with_cancel = match cip {
     Absent => base
@@ -197,7 +197,7 @@ fn concurrency_mapping_with_cancel(group: String, cip: CancelInProgressSpec?) ->
   yaml_mapping(entries: with_cancel)
 }
 
-fn concurrency_yaml(spec: ConcurrencySpec) -> YamlValue {
+fn concurrency_yaml(spec: extdeps.github.actions.ConcurrencySpec) -> extdeps.languages.yaml.types.YamlValue {
   match spec {
     ConcurrencyScalar { group: g } => yaml_string(s: g)
     ConcurrencyMappingQueueMax { group: g, cancel_in_progress: cip } =>
@@ -207,7 +207,7 @@ fn concurrency_yaml(spec: ConcurrencySpec) -> YamlValue {
   }
 }
 
-fn runner_label_string(label: RunnerLabel) -> String {
+fn runner_label_string(label: extdeps.github.actions.RunnerLabel) -> String {
   match label {
     UbuntuLatest => "ubuntu-latest"
     Ubuntu2404 => "ubuntu-24.04"
@@ -220,7 +220,7 @@ fn runner_label_string(label: RunnerLabel) -> String {
   }
 }
 
-fn runner_yaml(spec: RunnerSpec) -> YamlValue {
+fn runner_yaml(spec: extdeps.github.actions.RunnerSpec) -> extdeps.languages.yaml.types.YamlValue {
   match spec {
     HostedRunner { label: l } => yaml_string(s: runner_label_string(label: l))
     SelfHosted { labels: ls } => string_list_flow(items: ls)
@@ -228,53 +228,53 @@ fn runner_yaml(spec: RunnerSpec) -> YamlValue {
   }
 }
 
-fn action_ref_uses(ref: ActionRef) -> String {
+fn action_ref_uses(ref: extdeps.github.actions.ActionRef) -> String {
   concat(concat(concat(concat(ref.owner, "/"), ref.repo), "@"), ref.ref)
 }
 
-fn yaml_key_values(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
+fn yaml_key_values(entries: List<extdeps.languages.yaml.types.YamlKeyValue>?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match entries {
     Absent => []
     Present { value: es } => es
   }
 }
 
-fn optional_kv_mapping(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
+fn optional_kv_mapping(entries: List<extdeps.languages.yaml.types.YamlKeyValue>?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match entries {
     Absent => []
     Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "with", value: yaml_mapping(entries: es))] }
   }
 }
 
-fn optional_env_mapping(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
+fn optional_env_mapping(entries: List<extdeps.languages.yaml.types.YamlKeyValue>?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match entries {
     Absent => []
     Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "env", value: yaml_mapping(entries: es))] }
   }
 }
 
-fn optional_string_kv(key: String, value: String?) -> List<YamlKeyValue> {
+fn optional_string_kv(key: String, value: String?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match value {
     Absent => []
     Present { value: s } => [kv(key: key, value: yaml_string(s: s))]
   }
 }
 
-fn optional_int_kv(key: String, value: Int?) -> List<YamlKeyValue> {
+fn optional_int_kv(key: String, value: Int?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match value {
     Absent => []
     Present { value: n } => [kv(key: key, value: yaml_int(n: n))]
   }
 }
 
-fn optional_bool_kv(key: String, value: Bool?) -> List<YamlKeyValue> {
+fn optional_bool_kv(key: String, value: Bool?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match value {
     Absent => []
     Present { value: b } => if b { [kv(key: key, value: yaml_bool(b: true))] } else { [] }
   }
 }
 
-fn shell_type_string(shell: ShellType) -> String {
+fn shell_type_string(shell: extdeps.github.actions.ShellType) -> String {
   match shell {
     Bash => "bash"
     Sh => "sh"
@@ -284,14 +284,14 @@ fn shell_type_string(shell: ShellType) -> String {
   }
 }
 
-fn optional_shell_kv(shell: ShellType?) -> List<YamlKeyValue> {
+fn optional_shell_kv(shell: extdeps.github.actions.ShellType?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match shell {
     Absent => []
     Present { value: s } => [kv(key: "shell", value: yaml_string(s: shell_type_string(shell: s)))]
   }
 }
 
-fn run_step_yaml(n: String?, i: String?, r: String, sh: ShellType?, e: List<YamlKeyValue>?, wd: String?, ic: String?, coe: Bool?, tm: Int?) -> YamlValue {
+fn run_step_yaml(n: String?, i: String?, r: String, sh: extdeps.github.actions.ShellType?, e: List<extdeps.languages.yaml.types.YamlKeyValue>?, wd: String?, ic: String?, coe: Bool?, tm: Int?) -> extdeps.languages.yaml.types.YamlValue {
   yaml_mapping(entries: concat(
     optional_string_kv(key: "name", value: n),
     concat(
@@ -319,7 +319,7 @@ fn run_step_yaml(n: String?, i: String?, r: String, sh: ShellType?, e: List<Yaml
   ))
 }
 
-fn uses_step_yaml(n: String?, i: String?, u: ActionRef, w: List<YamlKeyValue>?, e: List<YamlKeyValue>?, ic: String?, coe: Bool?, tm: Int?) -> YamlValue {
+fn uses_step_yaml(n: String?, i: String?, u: extdeps.github.actions.ActionRef, w: List<extdeps.languages.yaml.types.YamlKeyValue>?, e: List<extdeps.languages.yaml.types.YamlKeyValue>?, ic: String?, coe: Bool?, tm: Int?) -> extdeps.languages.yaml.types.YamlValue {
   yaml_mapping(entries: concat(
     optional_string_kv(key: "name", value: n),
     concat(
@@ -344,7 +344,7 @@ fn uses_step_yaml(n: String?, i: String?, u: ActionRef, w: List<YamlKeyValue>?, 
   ))
 }
 
-fn step_yaml(step: Step) -> YamlValue {
+fn step_yaml(step: extdeps.github.actions.Step) -> extdeps.languages.yaml.types.YamlValue {
   match step {
     RunStep { name: n, id: i, run: r, shell: sh, env: e, working_directory: wd, if_condition: ic, continue_on_error: coe, timeout_minutes: tm } =>
       run_step_yaml(n: n, i: i, r: r, sh: sh, e: e, wd: wd, ic: ic, coe: coe, tm: tm)
@@ -353,11 +353,11 @@ fn step_yaml(step: Step) -> YamlValue {
   }
 }
 
-fn steps_yaml(steps: List<Step>) -> YamlValue {
+fn steps_yaml(steps: List<extdeps.github.actions.Step>) -> extdeps.languages.yaml.types.YamlValue {
   yaml_sequence(elements: fold(steps, init: empty_yaml_values, f: (acc, s) => concat(acc, [step_yaml(step: s)])))
 }
 
-fn optional_string_list_kv(key: String, items: List<String>) -> List<YamlKeyValue> {
+fn optional_string_list_kv(key: String, items: List<String>) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   if items.length() == 0 {
     []
   } else {
@@ -365,7 +365,7 @@ fn optional_string_list_kv(key: String, items: List<String>) -> List<YamlKeyValu
   }
 }
 
-fn optional_job_permissions_kv(perms: WorkflowPermissions?) -> List<YamlKeyValue> {
+fn optional_job_permissions_kv(perms: extdeps.github.actions.WorkflowPermissions?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match perms {
     Absent => []
     Present { value: p } => [kv(key: "permissions", value: workflow_permissions_yaml(perms: p))]
@@ -374,21 +374,21 @@ fn optional_job_permissions_kv(perms: WorkflowPermissions?) -> List<YamlKeyValue
 
 data job_field_projection_completeness_note: String = "job_yaml projected SEVEN of the Job type's eleven emittable fields and silently dropped four — concurrency, name, outputs, and strategy — so setting any of them was a no-op that still typechecked. That is the specification-without-execution trap (DESIGN §5) at the emitter seam, and it is worse than an unsupported field: the model reads as configured while the running workflow has nothing, and the ci.yml drift gate cannot catch it because BOTH sides agree the key does not appear. Named as the first of two drops in srv1-deploy-serialization-and-false-greens.md §4, whose §7 item 4 rules them closable INDEPENDENTLY of any deploy decision, because a declared field the serializer discards is a fail-open in every future consumer. THE FIELD-BY-FIELD DISPOSITION, because 'project everything' and 'delete everything' are both wrong here: concurrency, name, and outputs are now PROJECTED — each is a real GitHub job key, each is cheap (a String or a List<YamlKeyValue>), and concurrency is load-bearing for the srv1 lane. strategy is DELETED from the model instead, along with the MatrixStrategy type it referenced: no site anywhere in the corpus ever set a MatrixStrategy VALUE — every one of the eight occurrences was a field initializer supplying the empty optional — and realizing it would require iterating MatrixStrategy.dimensions (a Map), which std offers no order-stable traversal for — a bare map_keys reach is exactly what v2.lens.determinism.determinism_compile_gate reds, so the honest options were an unrealizable declaration or removal, and DESIGN §5 picks removal. It returns as a modeled field when a real matrix consumer arrives WITH a determinism-safe map projection, not before. BYTE-STABILITY: every Job in the corpus currently sets name/outputs/concurrency to none, so adding these three projections changes no generated artifact — the new keys are proven to work by a synthetic all-fields job in gha_job_projection_witness_test rather than by any change to ci.yml or falsifier.yml, and that witness also pins that an absent field stays absent so the projections cannot start emitting empty keys."
 
-fn optional_job_concurrency_kv(spec: ConcurrencySpec?) -> List<YamlKeyValue> {
+fn optional_job_concurrency_kv(spec: extdeps.github.actions.ConcurrencySpec?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match spec {
     Absent => []
     Present { value: c } => [kv(key: "concurrency", value: concurrency_yaml(spec: c))]
   }
 }
 
-fn optional_job_outputs_kv(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
+fn optional_job_outputs_kv(entries: List<extdeps.languages.yaml.types.YamlKeyValue>?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match entries {
     Absent => []
     Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "outputs", value: yaml_mapping(entries: es))] }
   }
 }
 
-fn job_yaml(job: Job) -> YamlValue {
+fn job_yaml(job: extdeps.github.actions.Job) -> extdeps.languages.yaml.types.YamlValue {
   yaml_mapping(entries: concat(
     optional_string_kv(key: "name", value: job.name),
     concat(
@@ -422,18 +422,18 @@ fn job_yaml(job: Job) -> YamlValue {
   ))
 }
 
-fn jobs_yaml(jobs: List<Job>) -> YamlValue {
+fn jobs_yaml(jobs: List<extdeps.github.actions.Job>) -> extdeps.languages.yaml.types.YamlValue {
   yaml_mapping(entries: fold(jobs, init: [], f: (acc, j) => concat(acc, [kv(key: j.id, value: job_yaml(job: j))])))
 }
 
-fn optional_env_top(entries: List<YamlKeyValue>?) -> List<YamlKeyValue> {
+fn optional_env_top(entries: List<extdeps.languages.yaml.types.YamlKeyValue>?) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   match entries {
     Absent => []
     Present { value: es } => if es.length() == 0 { [] } else { [kv(key: "env", value: yaml_mapping(entries: es))] }
   }
 }
 
-fn project_workflow_to_yaml(workflow: Workflow) -> YamlValue {
+fn project_workflow_to_yaml(workflow: extdeps.github.actions.Workflow) -> extdeps.languages.yaml.types.YamlValue {
   yaml_mapping(entries: concat(
     [kv(key: "name", value: yaml_string(s: workflow.name))],
     concat(

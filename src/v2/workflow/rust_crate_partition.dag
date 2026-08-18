@@ -7,7 +7,7 @@ type PartitionPolicy {
 }
 
 type ExplicitPartition {
-  assignment: Map<ModuleId, CompilationUnitId>
+  assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>
 }
 
 type PartitionParameter
@@ -22,13 +22,13 @@ type ResolvePartitionRefusalCause
   = PolicyResolverUnimplemented { policy: PartitionPolicy }
 
 type ResolvePartitionOutcome
-  = ResolvePartitionOk { assignment: Map<ModuleId, CompilationUnitId> }
+  = ResolvePartitionOk { assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId> }
   | ResolvePartitionRefused { cause: ResolvePartitionRefusalCause }
 
 type Stage0PartitionReceiptOutcome
-  = Stage0PartitionReceiptOk { units: List<CompilationUnit> }
+  = Stage0PartitionReceiptOk { units: List<v2.std.compilers.compilation_unit.CompilationUnit> }
   | Stage0PartitionReceiptResolveRefused { cause: ResolvePartitionRefusalCause }
-  | Stage0PartitionReceiptFoldRefused { cause: PartitionFoldRefusalCause }
+  | Stage0PartitionReceiptFoldRefused { cause: v2.std.compilers.compilation_unit.PartitionFoldRefusalCause }
 
 type Stage0PartitionCrateKind
   = Stage0FoundationCrate
@@ -36,7 +36,7 @@ type Stage0PartitionCrateKind
   | Stage0EmitCoreCrate
 
 type Stage0PartitionCrateRow {
-  unit_id: CompilationUnitId
+  unit_id: v2.std.compilers.compilation_unit.CompilationUnitId
   package_name: String
   crate_dir: String
   kind: Stage0PartitionCrateKind
@@ -75,11 +75,11 @@ type Stage0ModuleDagInterfaceGrounding
     }
 
 type ExportsMapNotFrontierGrounded {
-  dissolve_target: DeclarationRef
+  dissolve_target: std.decl_ref.DeclarationRef
 }
 
 type TypeDefinitionsMapNotFrontierGrounded {
-  dissolve_target: DeclarationRef
+  dissolve_target: std.decl_ref.DeclarationRef
 }
 
 data rust_crate_partition_interface_deferred_note: String = "Interim: ModuleDag.exports + type_definitions carry per-module keys with empty lists (structural scaffold for partition_fold only). R3 render uses Stage0PartitionCrateRow.modules + reexport_packages wildcard pub-use chain — not CompilationUnit.interface Nodes. Full Node-carrier exports blocked on stage0 module ingest supplying them through the path-module binding index (see stage0_grounding_target_repointed_note)."

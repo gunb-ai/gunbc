@@ -3,39 +3,39 @@ module test.claim.publication_publisher_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data synthetic_head: CommitSha = "synthetic-head-sha"
-data synthetic_ordinary_session: ModeledSessionId = "synthetic-ordinary-session" as ModeledSessionId
-data synthetic_policy_version: NonEmptyStr = "policy-v1" as NonEmptyStr
+data synthetic_head: std.types.CommitSha = "synthetic-head-sha"
+data synthetic_ordinary_session: tools.publication_publisher.ModeledSessionId = "synthetic-ordinary-session" as tools.publication_publisher.ModeledSessionId
+data synthetic_policy_version: std.types.NonEmptyStr = "policy-v1" as std.types.NonEmptyStr
 
-fn synthetic_subject(path: std.types.FilePath, identity: String) -> PublicProjectionSubject {
-  PublicProjectionSubject {
-    subject_identity: content_hash_of_value(value: identity as NonEmptyStr),
-    content_identity: content_hash_of_value(value: identity as NonEmptyStr),
+fn synthetic_subject(path: std.types.FilePath, identity: String) -> gunbc.public_projection.PublicProjectionSubject {
+  gunbc.public_projection.PublicProjectionSubject {
+    subject_identity: content_hash_of_value(value: identity as std.types.NonEmptyStr),
+    content_identity: content_hash_of_value(value: identity as std.types.NonEmptyStr),
     path: path,
   }
 }
 
-fn public_docs_policy() -> PublicationPolicy {
-  PublicationPolicy {
+fn public_docs_policy() -> gunbc.publication_policy.PublicationPolicy {
+  gunbc.publication_policy.PublicationPolicy {
     version: synthetic_policy_version,
     default_disposition: publication_policy_default_disposition,
-    rules: [SubtreePublishRule {
+    rules: [gunbc.publication_policy.SubtreePublishRule {
       prefix: "docs/plans" as std.types.FilePath,
       disposition: PublishPublic,
     }],
   }
 }
 
-fn admitted_public_docs_policy() -> AdmittedPublicationPolicy {
+fn admitted_public_docs_policy() -> gunbc.publication_policy.AdmittedPublicationPolicy {
   match admit_publication_policy(policy: public_docs_policy()) {
     PublicationPolicyAccepted { admitted: admitted } => admitted
     PublicationPolicyRefused { cause: _ } =>
-      AdmittedPublicationPolicy { policy: public_docs_policy() }
+      gunbc.publication_policy.AdmittedPublicationPolicy { policy: public_docs_policy() }
   }
 }
 
-fn synthetic_decision_receipt(subject: PublicProjectionSubject) -> PublicationDecisionReceipt {
-  PublicationDecisionReceipt {
+fn synthetic_decision_receipt(subject: gunbc.public_projection.PublicProjectionSubject) -> gunbc.publication_decision.PublicationDecisionReceipt {
+  gunbc.publication_decision.PublicationDecisionReceipt {
     subject_identity: subject.subject_identity,
     content_identity: subject.content_identity,
     audience: UniversalPublicationAudience,
@@ -44,8 +44,8 @@ fn synthetic_decision_receipt(subject: PublicProjectionSubject) -> PublicationDe
   }
 }
 
-fn synthetic_push() -> PrePushStdinRow {
-  PrePushStdinRow {
+fn synthetic_push() -> extdeps.git.hooks.PrePushStdinRow {
+  extdeps.git.hooks.PrePushStdinRow {
     local_ref: "refs/heads/session/synthetic-ordinary-session",
     local_sha: synthetic_head,
     remote_ref: "refs/heads/session/synthetic-ordinary-session",
@@ -69,22 +69,22 @@ test fn sole_publisher_posture_is_unique() -> Bool {
 }
 
 test fn git_push_shape_is_modeled_not_raw_argv() -> Bool {
-  let update = GitRefUpdateSpec {
-    local_ref: "refs/heads/session/example" as GitRef,
-    remote_ref: "refs/heads/session/example" as GitRef,
+  let update = extdeps.git.publication_transport.GitRefUpdateSpec {
+    local_ref: "refs/heads/session/example" as std.types.GitRef,
+    remote_ref: "refs/heads/session/example" as std.types.GitRef,
   }
-  let request = GitPushRequest {
-    remote: "origin" as NonEmptyStr,
+  let request = extdeps.git.publication_transport.GitPushRequest {
+    remote: "origin" as std.types.NonEmptyStr,
     ref_updates: [update],
   }
-  request.remote == ("origin" as NonEmptyStr) && request.ref_updates == [update]
+  request.remote == ("origin" as std.types.NonEmptyStr) && request.ref_updates == [update]
 }
 
 test fn publication_policy_refuses_unknown_top_level_root() -> Bool {
-  match admit_publication_policy(policy: PublicationPolicy {
+  match admit_publication_policy(policy: gunbc.publication_policy.PublicationPolicy {
     version: synthetic_policy_version,
     default_disposition: publication_policy_default_disposition,
-    rules: [SubtreePublishRule {
+    rules: [gunbc.publication_policy.SubtreePublishRule {
       prefix: "private-overlay/secret" as std.types.FilePath,
       disposition: PublishPublic,
     }],
@@ -99,12 +99,12 @@ test fn publication_policy_refuses_unknown_top_level_root() -> Bool {
 }
 
 test fn publication_policy_refuses_conflicting_prefix_rules() -> Bool {
-  match admit_publication_policy(policy: PublicationPolicy {
+  match admit_publication_policy(policy: gunbc.publication_policy.PublicationPolicy {
     version: synthetic_policy_version,
     default_disposition: WithholdPrivate,
     rules: [
-      SubtreePublishRule { prefix: "docs/plans" as std.types.FilePath, disposition: PublishPublic },
-      SubtreePublishRule { prefix: "docs/plans" as std.types.FilePath, disposition: WithholdPrivate },
+      gunbc.publication_policy.SubtreePublishRule { prefix: "docs/plans" as std.types.FilePath, disposition: PublishPublic },
+      gunbc.publication_policy.SubtreePublishRule { prefix: "docs/plans" as std.types.FilePath, disposition: WithholdPrivate },
     ],
   }) {
     PublicationPolicyAccepted { admitted: _ } => false
@@ -117,12 +117,12 @@ test fn publication_policy_refuses_conflicting_prefix_rules() -> Bool {
 }
 
 test fn publication_policy_most_specific_rule_wins() -> Bool {
-  let policy = PublicationPolicy {
+  let policy = gunbc.publication_policy.PublicationPolicy {
     version: synthetic_policy_version,
     default_disposition: WithholdPrivate,
     rules: [
-      SubtreePublishRule { prefix: "docs" as std.types.FilePath, disposition: WithholdPrivate },
-      SubtreePublishRule { prefix: "docs/plans" as std.types.FilePath, disposition: PublishPublic },
+      gunbc.publication_policy.SubtreePublishRule { prefix: "docs" as std.types.FilePath, disposition: WithholdPrivate },
+      gunbc.publication_policy.SubtreePublishRule { prefix: "docs/plans" as std.types.FilePath, disposition: PublishPublic },
     ],
   }
   match admit_publication_policy(policy: policy) {
@@ -159,7 +159,7 @@ test fn change_local_admission_classifies_newly_public_delta() -> Bool {
     source_revision: synthetic_head,
     authored_subjects: [subject],
   )
-  match admit_change_local_projection(request: ChangeLocalAdmissionRequest {
+  match admit_change_local_projection(request: gunbc.publication_admission_delta.ChangeLocalAdmissionRequest {
     current: Absent,
     candidate: candidate,
   }) {
@@ -181,14 +181,14 @@ test fn change_local_admission_refuses_tampered_projection_digest() -> Bool {
       identity: "subject-tampered",
     )],
   )
-  let tampered = PublicProjectionPlan {
+  let tampered = gunbc.public_projection.PublicProjectionPlan {
     source_revision: candidate.source_revision,
     policy_version: candidate.policy_version,
     included_subjects: candidate.included_subjects,
     omitted_subjects: candidate.omitted_subjects,
-    projection_digest: content_hash_of_value(value: "tampered-digest" as NonEmptyStr),
+    projection_digest: content_hash_of_value(value: "tampered-digest" as std.types.NonEmptyStr),
   }
-  match admit_change_local_projection(request: ChangeLocalAdmissionRequest {
+  match admit_change_local_projection(request: gunbc.publication_admission_delta.ChangeLocalAdmissionRequest {
     current: Absent,
     candidate: tampered,
   }) {
@@ -217,7 +217,7 @@ test fn change_local_admission_classifies_deletion_as_newly_withheld() -> Bool {
     source_revision: synthetic_head,
     authored_subjects: [],
   )
-  match admit_change_local_projection(request: ChangeLocalAdmissionRequest {
+  match admit_change_local_projection(request: gunbc.publication_admission_delta.ChangeLocalAdmissionRequest {
     current: Present { value: current },
     candidate: candidate,
   }) {
@@ -254,11 +254,11 @@ test fn sole_publisher_refuses_stale_policy_version_receipt() -> Bool {
     source_revision: synthetic_head,
     authored_subjects: [subject],
   )
-  let stale_receipt = PublicationDecisionReceipt {
+  let stale_receipt = gunbc.publication_decision.PublicationDecisionReceipt {
     subject_identity: subject.subject_identity,
     content_identity: subject.content_identity,
     audience: UniversalPublicationAudience,
-    policy_version: "stale-policy" as NonEmptyStr,
+    policy_version: "stale-policy" as std.types.NonEmptyStr,
     authority: sole_publication_authority_id,
   }
   match admit_public_write(
@@ -288,12 +288,12 @@ test fn sole_publisher_refuses_wrong_authority_receipt() -> Bool {
     source_revision: synthetic_head,
     authored_subjects: [subject],
   )
-  let wrong_authority_receipt = PublicationDecisionReceipt {
+  let wrong_authority_receipt = gunbc.publication_decision.PublicationDecisionReceipt {
     subject_identity: subject.subject_identity,
     content_identity: subject.content_identity,
     audience: UniversalPublicationAudience,
     policy_version: synthetic_policy_version,
-    authority: "not-the-publisher" as PublicationAuthorityId,
+    authority: "not-the-publisher" as gunbc.publication_decision.PublicationAuthorityId,
   }
   match admit_public_write(
     session: sole_modeled_publisher_session,
@@ -321,7 +321,7 @@ test fn sole_publisher_refuses_enumerated_audience_receipt() -> Bool {
     source_revision: synthetic_head,
     authored_subjects: [subject],
   )
-  let narrow_receipt = PublicationDecisionReceipt {
+  let narrow_receipt = gunbc.publication_decision.PublicationDecisionReceipt {
     subject_identity: subject.subject_identity,
     content_identity: subject.content_identity,
     audience: EnumeratedPublicationAudience { label: "private-team" },
@@ -345,17 +345,17 @@ test fn sole_publisher_refuses_enumerated_audience_receipt() -> Bool {
 }
 
 test fn publication_decision_binds_content_identity_not_pathname() -> Bool {
-  let receipt = PublicationDecisionReceipt {
-    subject_identity: content_hash_of_value(value: "subject-a" as NonEmptyStr),
-    content_identity: content_hash_of_value(value: "content-v1" as NonEmptyStr),
+  let receipt = gunbc.publication_decision.PublicationDecisionReceipt {
+    subject_identity: content_hash_of_value(value: "subject-a" as std.types.NonEmptyStr),
+    content_identity: content_hash_of_value(value: "content-v1" as std.types.NonEmptyStr),
     audience: UniversalPublicationAudience,
     policy_version: synthetic_policy_version,
     authority: sole_publication_authority_id,
   }
   publication_decision_requires_refresh(
     receipt: receipt,
-    subject_identity: content_hash_of_value(value: "subject-a" as NonEmptyStr),
-    content_identity: content_hash_of_value(value: "content-v2" as NonEmptyStr),
+    subject_identity: content_hash_of_value(value: "subject-a" as std.types.NonEmptyStr),
+    content_identity: content_hash_of_value(value: "content-v2" as std.types.NonEmptyStr),
   )
 }
 
@@ -448,9 +448,9 @@ test fn sole_publisher_refuses_push_head_mismatch() -> Bool {
     source_revision: synthetic_head,
     authored_subjects: [subject],
   )
-  let bad_push = PrePushStdinRow {
+  let bad_push = extdeps.git.hooks.PrePushStdinRow {
     local_ref: "refs/heads/session/synthetic-ordinary-session",
-    local_sha: "wrong-head" as CommitSha,
+    local_sha: "wrong-head" as std.types.CommitSha,
     remote_ref: "refs/heads/session/synthetic-ordinary-session",
     remote_sha: zero_sha,
   }
@@ -507,7 +507,7 @@ test fn shadow_replay_counts_ordinary_session_refusals() -> Bool {
       identity: "subject-z",
     )],
   )
-  let observed = ObservedPublicPush {
+  let observed = tools.publication_push_shadow.ObservedPublicPush {
     session: synthetic_ordinary_session,
     head: synthetic_head,
     push: synthetic_push(),

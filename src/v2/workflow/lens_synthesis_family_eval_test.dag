@@ -1,6 +1,6 @@
 module v2.test.workflow.lens_synthesis_family_eval
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test data witness_lens_synthesis_family_gate_closed: Bool = synthesis_optimality_family_gate()

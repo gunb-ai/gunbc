@@ -31,9 +31,9 @@ type TopLevelIdentityJoinRefusal {
 }
 
 type AtomBodyDiscriminatorObservation
-  = TokenizeRejected { diagnostics: NonEmptyDiagnostics }
-  | ParseRejected { diagnostics: NonEmptyDiagnostics }
-  | NormalizeRejected { diagnostics: NonEmptyDiagnostics }
+  = TokenizeRejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
+  | ParseRejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
+  | NormalizeRejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
   | TopLevelIdentityJoinRefused { refusal: TopLevelIdentityJoinRefusal }
   | DiscriminatorObserved { tree: Node, rows: AtomBodyDiscriminatorObservedRows }
 

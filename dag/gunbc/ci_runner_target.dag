@@ -5,12 +5,12 @@ data ci_runner_target_mapping_note: String = "The single seam the 2026-07-11 ubi
 
 type CiRunnerTarget
   = FleetSelfHosted
-  | UbicloudRunner { row: UbicloudRunnerCatalogRow }
-  | GithubHostedRunner { row: GithubHostedRunnerCatalogRow }
+  | UbicloudRunner { row: extdeps.cloud.ubicloud.UbicloudRunnerCatalogRow }
+  | GithubHostedRunner { row: extdeps.github.hosted_runners.GithubHostedRunnerCatalogRow }
 
 type RunnerMemoryRegime
-  = SlotCarved { desired: RunnerSlotDesired }
-  | WholeMachine { ram: ByteSize }
+  = SlotCarved { desired: gunbc.runner_slot_allocation.RunnerSlotDesired }
+  | WholeMachine { ram: std.measure.ByteSize }
 
 fn ci_runner_target_spec(target: CiRunnerTarget) -> RunnerSpec {
   match target {

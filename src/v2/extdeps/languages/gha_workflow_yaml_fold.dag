@@ -2,14 +2,14 @@ module v2.extdeps.languages.gha_workflow_yaml_fold
 
 
 type GhaFoldStepBundle {
-  production_binding: Symbol,
-  relation_rule: Symbol,
+  production_binding: v2.std.node.Symbol,
+  relation_rule: v2.std.node.Symbol,
   emitted: Node
 }
 
 type GhaFoldJobBundle {
-  production_binding: Symbol,
-  relation_rule: Symbol,
+  production_binding: v2.std.node.Symbol,
+  relation_rule: v2.std.node.Symbol,
   emitted: Node
 }
 

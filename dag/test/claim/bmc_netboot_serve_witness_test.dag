@@ -31,16 +31,16 @@ test fn serve_command_one_shape_two_transports() -> Bool {
 
 test fn srv4_scp_put_uses_shared_ssh_posture_not_a_fork() -> Bool {
   let scp = shell_command_render(command: scp_command(
-    local_path: "/tmp/netboot/grub.cfg" as NonEmptyStr,
-    remote_target: "root@192.168.1.195:/tmp/netboot/grub.cfg" as NonEmptyStr,
+    local_path: "/tmp/netboot/grub.cfg" as std.types.NonEmptyStr,
+    remote_target: "root@192.168.1.195:/tmp/netboot/grub.cfg" as std.types.NonEmptyStr,
   ))
   string_contains(s: scp, pattern: "'sshpass' '-e' 'scp' '-o' 'StrictHostKeyChecking=no' '-o' 'UserKnownHostsFile=/dev/null' '/tmp/netboot/grub.cfg' 'root@192.168.1.195:/tmp/netboot/grub.cfg'")
 }
 
 test fn srv4_scp_put_never_carries_a_second_forked_posture() -> Bool {
   let scp = shell_command_render(command: scp_command(
-    local_path: "/tmp/a" as NonEmptyStr,
-    remote_target: "root@192.168.1.195:/tmp/b" as NonEmptyStr,
+    local_path: "/tmp/a" as std.types.NonEmptyStr,
+    remote_target: "root@192.168.1.195:/tmp/b" as std.types.NonEmptyStr,
   ))
   !string_contains(s: scp, pattern: "'ssh' '-o' 'StrictHostKeyChecking=no'")
     && !string_contains(s: scp, pattern: "StrictHostKeyChecking=yes")

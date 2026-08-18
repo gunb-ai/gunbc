@@ -1,14 +1,14 @@
 module test.claim.cursor_sdk_dispatch_bridge_witness_test
 
 
-data witness_secret_ref: SecretRef = SecretRef {
-  project: "gunbc-dashboard" as GcpProjectId,
-  secret: "cursor-api-key" as NonEmptyStr,
-  version: "7" as NonEmptyStr,
+data witness_secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef = extdeps.cloud.gcp.secret_ref.SecretRef {
+  project: "gunbc-dashboard" as extdeps.cloud.gcp.gcp.GcpProjectId,
+  secret: "cursor-api-key" as std.types.NonEmptyStr,
+  version: "7" as std.types.NonEmptyStr,
   hash_state: HashPending,
 }
 
-data witness_key: NonEmptyStr = "synthetic-not-a-real-key" as NonEmptyStr
+data witness_key: std.types.NonEmptyStr = "synthetic-not-a-real-key" as std.types.NonEmptyStr
 
 test fn dispatch_secret_ref_admits_sdk_local_binding() -> Bool {
   match cursor_sdk_local_credential_from_dispatch(
@@ -47,10 +47,10 @@ test fn environment_materialization_consumes_cli_env_var() -> Bool {
 test fn dispatch_binding_refuses_latest_secret_version() -> Bool {
   match cursor_sdk_local_credential_from_dispatch(
     credential: CursorApiKeySecretRef {
-      secret_ref: SecretRef {
-        project: "gunbc-dashboard" as GcpProjectId,
-        secret: "cursor-api-key" as NonEmptyStr,
-        version: "latest" as NonEmptyStr,
+      secret_ref: extdeps.cloud.gcp.secret_ref.SecretRef {
+        project: "gunbc-dashboard" as extdeps.cloud.gcp.gcp.GcpProjectId,
+        secret: "cursor-api-key" as std.types.NonEmptyStr,
+        version: "latest" as std.types.NonEmptyStr,
         hash_state: HashPending,
       },
     },

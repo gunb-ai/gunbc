@@ -32,7 +32,7 @@ test fn witness_hetzner_ax41_hourly_equivalent_derived() -> Bool {
   money_per_hour_micros(q: derived) == 57300000 / billing_month_as_hour_count()
 }
 
-data wrong_github_2core_per_minute_fixture: MoneyPerMinute = MoneyPerMinute {
+data wrong_github_2core_per_minute_fixture: std.measure.MoneyPerMinute = std.measure.MoneyPerMinute {
   amount: money_amount_micro(count: 5999),
   currency: Usd,
 }

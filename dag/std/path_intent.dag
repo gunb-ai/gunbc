@@ -2,21 +2,21 @@ module std.path_intent
 
 
 type PathIntent
-  = PathRef { name: NonEmptyStr }
-  | PathLiteral { parts: FilePathParts }
-  | PathJoin { base: PathIntent, suffix: FilePathParts }
+  = PathRef { name: std.types.NonEmptyStr }
+  | PathLiteral { parts: std.types.FilePathParts }
+  | PathJoin { base: PathIntent, suffix: std.types.FilePathParts }
 
 type PathPredicate
   = PathNonempty { path: PathIntent }
   | PathNotEq { lhs: PathIntent, rhs: PathIntent }
-  | PathEntryKind { path: PathIntent, kind: EntryKind }
+  | PathEntryKind { path: PathIntent, kind: std.filesystem.types.EntryKind }
   | Not { inner: PathPredicate }
   | And { lhs: PathPredicate, rhs: PathPredicate }
   | Or { lhs: PathPredicate, rhs: PathPredicate }
 
 type DirnameAscent {
   path: PathIntent
-  target: NonEmptyStr
+  target: std.types.NonEmptyStr
 }
 
 fn path_intent_ref(name: NonEmptyStr) -> PathIntent {
@@ -38,14 +38,14 @@ fn dirname_ascent(path: PathIntent, target: NonEmptyStr) -> DirnameAscent {
 data nearest_ancestor_containing_note: String = "NearestAncestorContaining is a pure search policy over path predicates: walk upward from start, stopping before stop_before, until relative_entry exists at expected_kind. start is PathRefStart — the PathIntent.PathRef carrier shape only; PathLiteral and PathJoin are unwritable at construction so nearest_ancestor_walk_target never fabricates a bash variable name. The procfs membership assign that seeds start is lowered by v2.extdeps.languages.bash_proc_self_cgroup from extdeps.linux.proc_self_cgroup semantics."
 
 type PathRefStart {
-  name: NonEmptyStr
+  name: std.types.NonEmptyStr
 }
 
 type NearestAncestorContaining {
   start: PathRefStart
-  stop_before: FilePathParts
-  relative_entry: FilePathParts
-  expected_kind: EntryKind
+  stop_before: std.types.FilePathParts
+  relative_entry: std.types.FilePathParts
+  expected_kind: std.filesystem.types.EntryKind
 }
 
 type NearestAncestorContainingResult

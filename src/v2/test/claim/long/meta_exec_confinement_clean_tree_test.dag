@@ -1,7 +1,7 @@
 module v2.test.long.meta_exec_confinement_clean_tree
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data meta_exec_clean_tree_long_note: String = "Full-corpus meta_exec_confinement clean-tree receipt exceeds the per-PR 5s fast-lane eval budget once layer_import_facts_live unions reference_resolution_facts over witness_layer_roots. Fast-lane per-PR coverage: scanner/planted_leak_test.dag (fixture scan only) and roster_soundness_test.dag (the empty-roster construction wall). Excluded from discovery by test/claim/long/ dir grain."
 

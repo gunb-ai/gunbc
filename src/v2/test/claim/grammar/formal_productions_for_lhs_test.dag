@@ -1,13 +1,13 @@
 module v2.test.claim.grammar.formal_productions_for_lhs
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data formal_productions_for_lhs_fixture_a: Symbol = ^formal_productions_for_lhs_fixture_a
-data formal_productions_for_lhs_fixture_b: Symbol = ^formal_productions_for_lhs_fixture_b
-data formal_productions_for_lhs_fixture_t: Symbol = ^formal_productions_for_lhs_fixture_t
-data formal_productions_for_lhs_fixture_missing: Symbol = ^formal_productions_for_lhs_fixture_missing
+data formal_productions_for_lhs_fixture_a: v2.std.node.Symbol = ^formal_productions_for_lhs_fixture_a
+data formal_productions_for_lhs_fixture_b: v2.std.node.Symbol = ^formal_productions_for_lhs_fixture_b
+data formal_productions_for_lhs_fixture_t: v2.std.node.Symbol = ^formal_productions_for_lhs_fixture_t
+data formal_productions_for_lhs_fixture_missing: v2.std.node.Symbol = ^formal_productions_for_lhs_fixture_missing
 
-fn formal_productions_for_lhs_fixture_catalog() -> List<FormalProduction> {
+fn formal_productions_for_lhs_fixture_catalog() -> List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^formal_productions_for_lhs_fixture_a,
@@ -27,7 +27,7 @@ fn formal_productions_for_lhs_fixture_catalog() -> List<FormalProduction> {
   ]
 }
 
-fn formal_productions_for_lhs_all_match_lhs(filtered: List<FormalProduction>, lhs: Symbol) -> Bool {
+fn formal_productions_for_lhs_all_match_lhs(filtered: List<v2.std.grammar.FormalProduction>, lhs: v2.std.node.Symbol) -> Bool {
   fold_list(
     xs: filtered,
     empty: true,
@@ -37,7 +37,7 @@ fn formal_productions_for_lhs_all_match_lhs(filtered: List<FormalProduction>, lh
   )
 }
 
-fn formal_productions_for_lhs_count(xs: List<FormalProduction>) -> Int {
+fn formal_productions_for_lhs_count(xs: List<v2.std.grammar.FormalProduction>) -> Int {
   fold_list(
     xs: xs,
     empty: 0,

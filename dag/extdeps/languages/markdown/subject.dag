@@ -1,8 +1,8 @@
 module extdeps.languages.markdown.subject
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "spec.commonmark.org/"
   }
@@ -15,9 +15,9 @@ type CommonMark
 
 data commonmark_format: CommonMark = CommonMarkTarget
 
-data commonmark_format_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data commonmark_format_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.languages.markdown.subject",
       decl_name: "commonmark_format",
       field: WholeDeclaration
@@ -27,4 +27,4 @@ data commonmark_format_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data extdeps_model_scope: ExternalModelScope = commonmark_format_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = commonmark_format_model_scope

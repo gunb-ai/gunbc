@@ -2,8 +2,8 @@ module v2.compiler.normalize
 
 
 
-fn post_normalize_not_well_formed_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
+fn post_normalize_not_well_formed_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^normalize_reason_post_normalize_not_well_formed,
     at: node_locus(node: n),
     correction: Unavailable { reason: UserInputBoundary }
@@ -14,7 +14,7 @@ fn normalize_fold_init(n: Node) -> Outcome<Node> {
   Accepted { value: node_rebuild(n: n, children: []), diagnostics: None }
 }
 
-fn normalize_fold_step(acc: Outcome<Node>, edge: Edge, child: Outcome<Node>) -> Outcome<Node> {
+fn normalize_fold_step(acc: Outcome<Node>, edge: v2.std.node.Edge, child: Outcome<Node>) -> Outcome<Node> {
   match acc {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: shell, diagnostics: ad } =>
@@ -29,7 +29,7 @@ fn normalize_fold_step(acc: Outcome<Node>, edge: Edge, child: Outcome<Node>) -> 
               n: shell,
               children: list_snoc_item(
                 xs: shell.children,
-                item: Edge { label: edge.label, target: child_node }
+                item: v2.std.node.Edge { label: edge.label, target: child_node }
               )
             ),
             diagnostics: diagnostics_merge(outer: ad, inner: cd)
@@ -38,7 +38,7 @@ fn normalize_fold_step(acc: Outcome<Node>, edge: Edge, child: Outcome<Node>) -> 
   }
 }
 
-fn normalize_sugar_key_optional(folded: Node) -> SugarKey? {
+fn normalize_sugar_key_optional(folded: Node) -> v2.std.compilers.sugar.SugarKey? {
   match folded.kind {
     TypeNode { connective: Atom { identity: id } } =>
       optional_present(value: SurfaceAtomKey { atom: id })
@@ -52,7 +52,7 @@ fn normalize_sugar_key_optional(folded: Node) -> SugarKey? {
   }
 }
 
-fn normalize_sugar_finish(n: Node, folded: Node, cd: Diagnostics) -> Outcome<Node> {
+fn normalize_sugar_finish(n: Node, folded: Node, cd: v2.std.diagnostic.Diagnostics) -> Outcome<Node> {
   match normalize_sugar_key_optional(folded: folded) {
     Present { value: key } =>
       match sugar_rule_for_key(key: key) {
@@ -80,11 +80,11 @@ fn normalize_node(n: Node) -> Outcome<Node> {
   normalize_node_ctx(n: n, under_fn_decl: false)
 }
 
-fn normalize_scope_under_fn_decl(under_fn_decl: Bool, emitted: Symbol) -> Bool {
+fn normalize_scope_under_fn_decl(under_fn_decl: Bool, emitted: v2.std.node.Symbol) -> Bool {
   under_fn_decl || (emitted == ^dag_surface_fn_decl)
 }
 
-fn normalize_fn_body_pass_through_at_seam(emitted: Symbol, under_fn_decl: Bool) -> Bool {
+fn normalize_fn_body_pass_through_at_seam(emitted: v2.std.node.Symbol, under_fn_decl: Bool) -> Bool {
   (emitted == ^dag_surface_fn_body) && under_fn_decl
 }
 
@@ -124,7 +124,7 @@ fn normalize_node_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Node> {
   }
 }
 
-fn normalize_module_graft_finish(folded: Node, cd: Diagnostics) -> Outcome<Node> {
+fn normalize_module_graft_finish(folded: Node, cd: v2.std.diagnostic.Diagnostics) -> Outcome<Node> {
   if namespace_graft_is_graft_candidate(root: folded) {
     match module_header_containment_graft(root: folded) {
       Rejected { diagnostics: r } =>
@@ -165,7 +165,7 @@ fn normalize_node_fold_children_ctx(n: Node, under_fn_decl: Bool) -> Outcome<Nod
   }
 }
 
-fn normalize(parse_tree: ParseTree) -> Outcome<NormalizedTree> {
+fn normalize(parse_tree: v2.std.grammar.ParseTree) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   match normalize_node(n: parse_tree) {
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
     Accepted { value: normalized, diagnostics: d } =>

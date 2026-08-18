@@ -16,10 +16,10 @@ type ShellConformanceDegree
   | ConformanceUnstated
 
 type ShellConformanceFact {
-  implementation: DeclarationRef
-  specification: DeclarationRef
+  implementation: std.decl_ref.DeclarationRef
+  specification: std.decl_ref.DeclarationRef
   degree: ShellConformanceDegree
-  citation: ExternalAuthority
+  citation: extdeps.external_authority.ExternalAuthority
 }
 
 data posix_shell_subject_ref: DeclarationRef = DeclarationRef {

@@ -8,7 +8,7 @@ data language_source_scaffold_enforcement_boundary: String = "What is actually e
 type LanguageSourceScaffoldRow {
   carrier_module: String
   blob_decl: String
-  disposition: Disposition
+  disposition: std.disposition.Disposition
 }
 
 data rust_pair_completion_spelling_scaffold_trigger: Disposition = Scaffold {

@@ -11,11 +11,11 @@ data roster_registry_upcoming_targets_note: String = "Walls for in-flight lanes 
 
 type GroupMembership
   = ByContainment
-  | ByDerivation { predicate: DeclarationRef }
-  | DeclaredFrontier { reason: String, dissolution: DissolutionCondition }
+  | ByDerivation { predicate: std.decl_ref.DeclarationRef }
+  | DeclaredFrontier { reason: String, dissolution: std.dissolution.DissolutionCondition }
 
 type RosterRegistration {
-  roster: DeclarationRef
+  roster: std.decl_ref.DeclarationRef
   unit_kind: String
   membership: GroupMembership
 }

@@ -1,7 +1,7 @@
 module gunbc.plans.dag_v2_defork_audit
 
 
-fn dag_v2_defork_audit_body() -> List<MarkdownBlock> {
+fn dag_v2_defork_audit_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** carrier-grounded audit + sequencing · **DESIGN.md + the carriers remain the authority** — this doc is an audit/tracker, not a fact ledger (DESIGN §6 \"no parallel-ledger docs\"). Each collapse dissolves into a mark on its carrier (a deleted file, a re-pointed import) when it lands. A task's real state is its branch/PR, not this file. Linked from `ROADMAP.md` §5 *Self-host v2 → delete `src/v1`* (the de-fork sub-lane)."),
     p(text: "**Re-verified against the live tree on 2026-06-22 by execution** (decl-name set `comm` per concept + shared-type-body diff). This pass **corrected a load-bearing project assumption**: the dag↔v2 std fork is *not* \"mostly temporary v2 mirrors of dag.\" It is **2 true mirrors + 2 pure name-collisions + 7 divergent groundings** — the same concepts grounded on *different axes/realizations*. The hard part of the de-fork is therefore a grounding-unification **design** (operator-owned, downstream of the numeric tower #5428 and the model↔realization grounding), not a mechanical sweep. The prior version of this doc (\"11 mechanical PRs / 5 collapses / `Classical`↔`Bool` nickname\") was wrong by execution and is superseded below."),
@@ -128,7 +128,7 @@ fn dag_v2_defork_audit_body() -> List<MarkdownBlock> {
   ]
 }
 
-data dag_v2_defork_audit_plan: Plan = Plan {
+data dag_v2_defork_audit_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "dag-v2-defork-audit",
   title: "Plan — De-fork `dag/` ↔ `src/v2/` (collapse the duplicated standard library)",
   body: dag_v2_defork_audit_body(),

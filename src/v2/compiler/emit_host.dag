@@ -2,9 +2,9 @@ module v2.compiler.emit_host
 
 
 
-data emit_host_access_decision_seed_transport_scaffold: Disposition = Scaffold {
+data emit_host_access_decision_seed_transport_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.v1_interpreter",
     decl_name: "require_permitted_transport",
     field: WholeDeclaration
@@ -13,53 +13,53 @@ data emit_host_access_decision_seed_transport_scaffold: Disposition = Scaffold {
 
 data emit_host_access_decision_seed_transport_receipt: String = "HAND-RUST receipt for v1_interpreter.rs require_permitted_transport and its emit_host_admission_flip_test RED control. The seed adds no authorization policy: v2.compiler.build_transport_admission build_transport_admissible constructs the AccessDecision, and the Rust transport only refuses anything other than that exact carrier's Permit arm before realizing the host effect. Checkable executing receipt: cargo test -p v1-compiler emit_host_admission_flip_test -- --nocapture; permit_arm_from_another_carrier_refuses goes red if a same-named arm from another carrier can authorize."
 
-data emit_host_access_decision_seed_transport_dissolve_trigger: DissolutionCondition = unbound_dissolution(description: "DISSOLVES WHEN the v1-exit lane's concrete ROADMAP row v1-zero-hand-maintained-rust is accepted (authority gunbc.roadmap_authority roadmap_nodes): emit_host transport is generated from this module or deleted, so require_permitted_transport and its hand-written Rust tests no longer exist.")
+data emit_host_access_decision_seed_transport_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVES WHEN the v1-exit lane's concrete ROADMAP row v1-zero-hand-maintained-rust is accepted (authority gunbc.roadmap_authority roadmap_nodes): emit_host transport is generated from this module or deleted, so require_permitted_transport and its hand-written Rust tests no longer exist.")
 
-fn emit_host_run_unsupported_target_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn emit_host_run_unsupported_target_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_run_unsupported_target,
     at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
 }
 
-fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> Diagnostic {
-  Diagnostic {
+fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_emit_vs_eval_deferred,
     at: node_locus(node: at),
     correction: None
   }
 }
 
-fn emit_host_exit_not_ok_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn emit_host_exit_not_ok_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_exit_not_ok,
     at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
 }
 
-fn emit_host_transport_outside_grant_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn emit_host_transport_outside_grant_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_transport_outside_grant,
     at: port_locus(port: ^emit_host_transport_port),
     correction: None
   }
 }
 
-fn emit_host_build_failed_diagnostic(at: Node) -> Diagnostic {
-  Diagnostic {
+fn emit_host_build_failed_diagnostic(at: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_build_failed,
     at: node_locus(node: at),
     correction: None
   }
 }
 
-fn emit_host_run_failed_diagnostic() -> Diagnostic {
+fn emit_host_run_failed_diagnostic() -> v2.std.diagnostic.Diagnostic {
   emit_host_exit_not_ok_diagnostic()
 }
 
-fn host_exit_failure_outcome(exit: HostExit) -> Outcome<RuntimeValue> {
+fn host_exit_failure_outcome(exit: v2.std.host_run.HostExit) -> Outcome<v2.std.runtime.RuntimeValue> {
   match exit.outcome {
     Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
       outcome_rejected(d: d)
@@ -69,15 +69,15 @@ fn host_exit_failure_outcome(exit: HostExit) -> Outcome<RuntimeValue> {
 }
 
 fn emit_host_receipt_from_source(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source: Medium<String>,
-  exit: HostExit,
-  stdout_bytes: ByteString,
-  stderr_bytes: ByteString,
-  build_log: BuildLog,
+  exit: v2.std.host_run.HostExit,
+  stdout_bytes: v2.std.host_transport.ByteString,
+  stderr_bytes: v2.std.host_transport.ByteString,
+  build_log: v2.std.host_run.BuildLog,
   compile_skipped: Bool
-) -> EmitHostRunReceipt {
-  EmitHostRunReceipt {
+) -> v2.std.host_run.EmitHostRunReceipt {
+  v2.std.host_run.EmitHostRunReceipt {
     target: target,
     source_text: source.carried,
     exit: exit,
@@ -88,7 +88,7 @@ fn emit_host_receipt_from_source(
   }
 }
 
-fn runtime_value_parse(target: TargetModel, stdout: HostRunStdout) -> Outcome<RuntimeValue> {
+fn runtime_value_parse(target: v2.std.compilers.target_model.TargetModel, stdout: v2.std.host_run.HostRunStdout) -> Outcome<v2.std.runtime.RuntimeValue> {
   bind_outcome(
     o: runtime_row_from_target(target: target),
     f: fn(row) {
@@ -97,7 +97,7 @@ fn runtime_value_parse(target: TargetModel, stdout: HostRunStdout) -> Outcome<Ru
   )
 }
 
-fn runtime_value_signed_i32_le_as_int(value: RuntimeValue) -> Outcome<Int> {
+fn runtime_value_signed_i32_le_as_int(value: v2.std.runtime.RuntimeValue) -> Outcome<Int> {
   match value {
     RuntimePrimitive { value: p } =>
       integer_signed_i32_le_bytes_to_int(bytes: p.bytes)
@@ -112,7 +112,7 @@ fn emit_host_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
   }
 }
 
-fn process_program_name(program: ProcessProgram) -> Outcome<String> {
+fn process_program_name(program: v2.std.host_transport.ProcessProgram) -> Outcome<String> {
   match program {
     HostToolProgram { executable: exe } =>
       Accepted { value: exe, diagnostics: None }
@@ -121,11 +121,11 @@ fn process_program_name(program: ProcessProgram) -> Outcome<String> {
   }
 }
 
-fn emit_host_process_program_name(program: ProcessProgram) -> Outcome<String> {
+fn emit_host_process_program_name(program: v2.std.host_transport.ProcessProgram) -> Outcome<String> {
   process_program_name(program: program)
 }
 
-fn invocation_arg_text(arg: InvocationArg) -> String {
+fn invocation_arg_text(arg: v2.std.host_transport.InvocationArg) -> String {
   match arg {
     LiteralArg { text: t } => t
     WorkspacePath { path: p } => p
@@ -133,7 +133,7 @@ fn invocation_arg_text(arg: InvocationArg) -> String {
   }
 }
 
-fn invocation_argv(inv: ProcessInvocation) -> Outcome<List<String>> {
+fn invocation_argv(inv: v2.std.host_transport.ProcessInvocation) -> Outcome<List<String>> {
   bind_outcome(
     o: process_program_name(program: inv.program),
     f: fn(program) {
@@ -152,7 +152,7 @@ fn empty_argv_lists() -> List<List<String>> {
   []
 }
 
-fn build_invocation_argvs(builds: List<ProcessInvocation>) -> Outcome<List<List<String>>> {
+fn build_invocation_argvs(builds: List<v2.std.host_transport.ProcessInvocation>) -> Outcome<List<List<String>>> {
   match builds {
     Empty => Accepted { value: empty_argv_lists(), diagnostics: None }
     Cons { head: inv, tail: rest } =>
@@ -170,7 +170,7 @@ fn build_invocation_argvs(builds: List<ProcessInvocation>) -> Outcome<List<List<
   }
 }
 
-fn workspace_content_text(content: WorkspaceContent, emitted: String) -> String {
+fn workspace_content_text(content: v2.std.host_transport.WorkspaceContent, emitted: String) -> String {
   match content {
     EmittedSource => emitted
     FixedText { text: t } => t
@@ -178,7 +178,7 @@ fn workspace_content_text(content: WorkspaceContent, emitted: String) -> String 
   }
 }
 
-fn emit_host_string_list_digest(xs: List<String>, seed: String) -> ContentHash {
+fn emit_host_string_list_digest(xs: List<String>, seed: String) -> std.content_hash.ContentHash {
   fold(
     xs,
     init: content_hash_atom(value: seed),
@@ -190,13 +190,13 @@ fn emit_host_string_list_digest(xs: List<String>, seed: String) -> ContentHash {
 }
 
 fn emit_host_materialized_workspace_files(
-  workspace: List<WorkspaceFile>,
+  workspace: List<v2.std.host_transport.WorkspaceFile>,
   emitted: String
-) -> List<MaterializedWorkspaceFile> {
+) -> List<v2.std.host_transport.MaterializedWorkspaceFile> {
   emit_host_list_map(
     xs: workspace,
     f: fn(w) {
-      MaterializedWorkspaceFile {
+      v2.std.host_transport.MaterializedWorkspaceFile {
         path: w.path,
         text: workspace_content_text(content: w.content, emitted: emitted)
       }
@@ -205,12 +205,12 @@ fn emit_host_materialized_workspace_files(
 }
 
 fn emit_host_workspace_realization_inputs(
-  files: List<MaterializedWorkspaceFile>
-) -> List<ArtifactRealizationInput> {
+  files: List<v2.std.host_transport.MaterializedWorkspaceFile>
+) -> List<std.artifact_store.ArtifactRealizationInput> {
   emit_host_list_map(
     xs: files,
     f: fn(file) {
-      ArtifactRealizationInput {
+      std.artifact_store.ArtifactRealizationInput {
         identity: concat("workspace:", file.path),
         content_digest: content_hash_atom(value: file.text)
       }
@@ -220,13 +220,13 @@ fn emit_host_workspace_realization_inputs(
 
 fn emit_host_build_realization_inputs(
   builds: List<List<String>>
-) -> List<ArtifactRealizationInput> {
+) -> List<std.artifact_store.ArtifactRealizationInput> {
   match builds {
     Empty => []
     Cons { head: argv, tail: rest } =>
       concat(
         [
-          ArtifactRealizationInput {
+          std.artifact_store.ArtifactRealizationInput {
             identity: "build-argv",
             content_digest: emit_host_string_list_digest(
               xs: argv,
@@ -240,9 +240,9 @@ fn emit_host_build_realization_inputs(
 }
 
 fn emit_host_input_realization_digest(
-  files: List<MaterializedWorkspaceFile>,
+  files: List<v2.std.host_transport.MaterializedWorkspaceFile>,
   builds: List<List<String>>
-) -> ContentHash {
+) -> std.content_hash.ContentHash {
   artifact_realization_digest(
     inputs: concat(
       emit_host_workspace_realization_inputs(files: files),
@@ -270,18 +270,18 @@ fn emit_host_byte_from_octet(octet: Int) -> Byte {
   }
 }
 
-fn emit_host_octets_byte_string(octets: List<Int>) -> ByteString {
+fn emit_host_octets_byte_string(octets: List<Int>) -> v2.std.host_transport.ByteString {
   emit_host_list_map(xs: octets, f: fn(o) { emit_host_byte_from_octet(octet: o) })
 }
 
 data emit_host_run_args_note: String = "run_args is the family-member selector (std.emit_on_demand witness_family_build_grain_ruling): a family-grain crate carries one argv-dispatched main, and the member id is appended to the descriptor's run invocation at run time. The dispatcher is fail-closed — an unknown member exits nonzero, surfacing as a refused logical_run, never fabricated octets. Per-witness callers pass []."
 
 fn run_host_process(
-  row: EmitHostRuntimeRow,
-  target: TargetModel,
+  row: v2.std.host_transport.EmitHostRuntimeRow,
+  target: v2.std.compilers.target_model.TargetModel,
   source: Medium<String>,
-  fixture_inputs: Inputs
-) -> Outcome<EmitHostRunReceipt> {
+  fixture_inputs: v2.compiler.eval.Inputs
+) -> Outcome<v2.std.host_run.EmitHostRunReceipt> {
   run_host_process_with_cache(
     workspace_dir: "",
     row: row,
@@ -295,11 +295,11 @@ fn run_host_process(
 
 fn run_host_process_cached(
   workspace_dir: String,
-  row: EmitHostRuntimeRow,
-  target: TargetModel,
+  row: v2.std.host_transport.EmitHostRuntimeRow,
+  target: v2.std.compilers.target_model.TargetModel,
   source: Medium<String>,
-  fixture_inputs: Inputs
-) -> Outcome<EmitHostRunReceipt> {
+  fixture_inputs: v2.compiler.eval.Inputs
+) -> Outcome<v2.std.host_run.EmitHostRunReceipt> {
   run_host_process_with_cache(
     workspace_dir: workspace_dir,
     row: row,
@@ -313,13 +313,13 @@ fn run_host_process_cached(
 
 fn run_host_process_with_cache(
   workspace_dir: String,
-  row: EmitHostRuntimeRow,
-  target: TargetModel,
+  row: v2.std.host_transport.EmitHostRuntimeRow,
+  target: v2.std.compilers.target_model.TargetModel,
   source: Medium<String>,
-  fixture_inputs: Inputs,
+  fixture_inputs: v2.compiler.eval.Inputs,
   use_cache: Bool,
   run_args: List<String>
-) -> Outcome<EmitHostRunReceipt> {
+) -> Outcome<v2.std.host_run.EmitHostRunReceipt> {
   let _inputs = fixture_inputs
   let transport = row.transport
   match build_transport_admissible(transport: transport) {
@@ -339,14 +339,14 @@ fn run_host_process_with_cache(
 }
 
 fn run_host_process_admitted(
-  admission: AccessDecision,
+  admission: std.access.AccessDecision,
   workspace_dir: String,
-  transport: HostTransportDescriptor,
-  target: TargetModel,
+  transport: v2.std.host_transport.HostTransportDescriptor,
+  target: v2.std.compilers.target_model.TargetModel,
   source: Medium<String>,
   use_cache: Bool,
   run_args: List<String>
-) -> Outcome<EmitHostRunReceipt> {
+) -> Outcome<v2.std.host_run.EmitHostRunReceipt> {
   bind_outcome(
     o: build_invocation_argvs(builds: transport.build),
     f: fn(builds) {
@@ -375,12 +375,12 @@ fn run_host_process_admitted(
           } else {
             emit_host_run_transport(admission: admission, files: files, build: builds, run: run_argv)
           }
-          let exit = HostExit {
+          let exit = v2.std.host_run.HostExit {
             outcome: Accepted {
               value: match result.termination {
                 ProcessExited { code: code } =>
                   if code == 0 {
-                    Holds { value: ExitOk { code: code } }
+                    Holds { value: v2.std.host_run.ExitOk { code: code } }
                   } else {
                     Violates { diagnostic: emit_host_exit_not_ok_diagnostic() }
                   }
@@ -399,7 +399,7 @@ fn run_host_process_admitted(
               exit: exit,
               stdout_bytes: emit_host_octets_byte_string(octets: result.stdout_octets),
               stderr_bytes: emit_host_octets_byte_string(octets: result.stderr_octets),
-              build_log: BuildLog { lines: result.build_log },
+              build_log: v2.std.host_run.BuildLog { lines: result.build_log },
               compile_skipped: result.compile_skipped
             ),
             diagnostics: None
@@ -411,10 +411,10 @@ fn run_host_process_admitted(
 }
 
 fn run_emit_host(
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source: Medium<String>,
-  fixture_inputs: Inputs
-) -> Outcome<EmitHostRunReceipt> {
+  fixture_inputs: v2.compiler.eval.Inputs
+) -> Outcome<v2.std.host_run.EmitHostRunReceipt> {
   bind_outcome(
     o: runtime_row_from_target(target: target),
     f: fn(row) {
@@ -430,10 +430,10 @@ fn run_emit_host(
 
 fn run_emit_host_cached(
   workspace_dir: String,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source: Medium<String>,
-  fixture_inputs: Inputs
-) -> Outcome<EmitHostRunReceipt> {
+  fixture_inputs: v2.compiler.eval.Inputs
+) -> Outcome<v2.std.host_run.EmitHostRunReceipt> {
   bind_outcome(
     o: runtime_row_from_target(target: target),
     f: fn(row) {
@@ -450,11 +450,11 @@ fn run_emit_host_cached(
 
 fn run_emit_host_cached_with_run_args(
   workspace_dir: String,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source: Medium<String>,
-  fixture_inputs: Inputs,
+  fixture_inputs: v2.compiler.eval.Inputs,
   run_args: List<String>
-) -> Outcome<EmitHostRunReceipt> {
+) -> Outcome<v2.std.host_run.EmitHostRunReceipt> {
   bind_outcome(
     o: runtime_row_from_target(target: target),
     f: fn(row) {
@@ -473,10 +473,10 @@ fn run_emit_host_cached_with_run_args(
 
 fn run_test_claim_emit_vs_eval_verdict(
   subject: TestClaimEvalSubject<Node>,
-  target: TargetModel,
-  host_receipt: EmitHostRunReceipt,
-  host_actual: RuntimeValue,
-  expected: Outcome<RuntimeValue>
+  target: v2.std.compilers.target_model.TargetModel,
+  host_receipt: v2.std.host_run.EmitHostRunReceipt,
+  host_actual: v2.std.runtime.RuntimeValue,
+  expected: Outcome<v2.std.runtime.RuntimeValue>
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match expected {
     Accepted { value: exp_val, diagnostics: None } =>
@@ -489,11 +489,11 @@ fn run_test_claim_emit_vs_eval_verdict(
         verdict_semantic_mismatch(
           actual: Accepted { value: host_actual, diagnostics: None },
           falsification: optional_present(
-            value: FalsificationReceipt {
+            value: v2.std.test_claim_falsification.FalsificationReceipt {
               subject: subject,
               expected: exp_val,
               actual: host_actual,
-              divergence: ValueDiff { expected: exp_val, actual: host_actual },
+              divergence: v2.std.host_run.ValueDiff { expected: exp_val, actual: host_actual },
               evidence: Host { receipt: host_receipt }
             }
           )
@@ -518,9 +518,9 @@ fn emit_host_no_run_args() -> List<String> {
 
 fn run_test_claim_emit_vs_eval_verdict_from_run(
   subject: TestClaimEvalSubject<Node>,
-  target: TargetModel,
-  run_outcome: Outcome<EmitHostRunReceipt>,
-  expected: Outcome<RuntimeValue>,
+  target: v2.std.compilers.target_model.TargetModel,
+  run_outcome: Outcome<v2.std.host_run.EmitHostRunReceipt>,
+  expected: Outcome<v2.std.runtime.RuntimeValue>,
   at: Node
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match run_outcome {
@@ -561,11 +561,11 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
 
 fn run_test_claim_emit_vs_eval_verdict_from_source(
   subject: TestClaimEvalSubject<Node>,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_outcome: Outcome<Medium<String>>,
   claim_input_root: Node,
   expected_eval_root: Node,
-  expected: Outcome<RuntimeValue>,
+  expected: Outcome<v2.std.runtime.RuntimeValue>,
   at: Node
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match source_outcome {
@@ -595,13 +595,13 @@ fn run_test_claim_emit_vs_eval_verdict_from_source(
 
 fn run_test_claim_emit_vs_eval_verdict_from_source_cached(
   subject: TestClaimEvalSubject<Node>,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   source_outcome: Outcome<Medium<String>>,
   workspace_dir: String,
   run_args: List<String>,
   claim_input_root: Node,
   expected_eval_root: Node,
-  expected: Outcome<RuntimeValue>,
+  expected: Outcome<v2.std.runtime.RuntimeValue>,
   at: Node
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
   match source_outcome {
@@ -633,7 +633,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_source_cached(
 
 fn run_test_claim_emit_vs_eval_for_claim(
   subject: TestClaimEvalSubject<Node>,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   claim_input_root: Node,
   expected_eval_root: Node
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
@@ -658,7 +658,7 @@ fn run_test_claim_emit_vs_eval_for_claim(
 fn run_test_claim_from_source_emit_vs_eval_for_claim(
   subject: TestClaimEvalSubject<Node>,
   source_outcome: Outcome<Medium<String>>,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   claim_input_root: Node,
   expected_eval_root: Node
 ) -> Verdict<TestClaimEvalSubject<Node>, RuntimeValue> {
@@ -682,10 +682,10 @@ fn run_test_claim_from_source_emit_vs_eval_for_claim(
 
 fn run_test_claim_emit_vs_eval_run(
   subject: TestClaimEvalSubject<Node>,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   verdict: Verdict<TestClaimEvalSubject<Node>, RuntimeValue>
 ) -> TestClaimRun<Node, RuntimeValue> {
-  TestClaimRun {
+  v2.compiler.eval.TestClaimRun {
     cache: test_claim_cache_receipt_node(subject: subject),
     verdict: verdict
   }
@@ -693,7 +693,7 @@ fn run_test_claim_emit_vs_eval_run(
 
 fn run_test_claim_emit_vs_eval(
   subject: TestClaimEvalSubject<Node>,
-  target: TargetModel
+  target: v2.std.compilers.target_model.TargetModel
 ) -> TestClaimRun<Node, RuntimeValue> {
   match subject.claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: lhs, classification: _ } =>
@@ -725,7 +725,7 @@ fn run_test_claim_emit_vs_eval(
 fn run_test_claim_from_source_emit_vs_eval(
   subject: TestClaimEvalSubject<Node>,
   source_outcome: Outcome<Medium<String>>,
-  target: TargetModel
+  target: v2.std.compilers.target_model.TargetModel
 ) -> TestClaimRun<Node, RuntimeValue> {
   match subject.claim {
     EqualsClaim { rhs: rhs, label: _, anchor: _, lhs: lhs, classification: _ } =>
@@ -759,7 +759,7 @@ fn run_test_claim_from_source_emit_vs_eval(
 fn run_test_claim_from_source_emit_vs_eval_cached_for_claim(
   subject: TestClaimEvalSubject<Node>,
   source_outcome: Outcome<Medium<String>>,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   workspace_dir: String,
   run_args: List<String>,
   claim_input_root: Node,
@@ -788,7 +788,7 @@ fn run_test_claim_from_source_emit_vs_eval_cached_for_claim(
 fn run_test_claim_from_source_emit_vs_eval_cached(
   subject: TestClaimEvalSubject<Node>,
   source_outcome: Outcome<Medium<String>>,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   workspace_dir: String,
   run_args: List<String>
 ) -> TestClaimRun<Node, RuntimeValue> {
@@ -827,8 +827,8 @@ fn run_test_claim_from_source_emit_vs_eval_cached(
 
 fn run_test_claim_module_emit_vs_eval(
   subject: TestClaimEvalSubject<Node>,
-  module_decls: List<InferredTree>,
-  target: TargetModel
+  module_decls: List<v2.compiler.infer.InferredTree>,
+  target: v2.std.compilers.target_model.TargetModel
 ) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_from_source_emit_vs_eval(
     subject: subject,

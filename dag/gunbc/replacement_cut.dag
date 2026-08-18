@@ -8,33 +8,33 @@ data replacement_cut_unjoined_parent_rung_note: String = "RUNG HONESTY (DESIGN 4
 type ReplacementCutId = NonEmptyStr where brand("ReplacementCutId")
 
 type CoverageClaim
-  = Covered { by: NonEmptyStr }
+  = Covered { by: std.types.NonEmptyStr }
   | CoverageOpen
 
 type ConsumerDisposition
-  = RetainSameContract { justification: NonEmptyStr, coverage: CoverageClaim }
-  | RetainChangedContract { terminal_contract: NonEmptyStr, justification: NonEmptyStr, coverage: CoverageClaim }
-  | ReplacedByY { new_authority: NonEmptyStr }
-  | EvidenceOnly { surviving_claim: NonEmptyStr, reenrolled_witness: NonEmptyStr }
-  | Retire { reason: NonEmptyStr }
+  = RetainSameContract { justification: std.types.NonEmptyStr, coverage: CoverageClaim }
+  | RetainChangedContract { terminal_contract: std.types.NonEmptyStr, justification: std.types.NonEmptyStr, coverage: CoverageClaim }
+  | ReplacedByY { new_authority: std.types.NonEmptyStr }
+  | EvidenceOnly { surviving_claim: std.types.NonEmptyStr, reenrolled_witness: std.types.NonEmptyStr }
+  | Retire { reason: std.types.NonEmptyStr }
   | Undecided
 
-type BoundaryConsumer { consumer: NonEmptyStr, disposition: ConsumerDisposition }
+type BoundaryConsumer { consumer: std.types.NonEmptyStr, disposition: ConsumerDisposition }
 
 type BoundaryCensus
   = ConsumersEnumerated { consumers: List<BoundaryConsumer> }
-  | BoundaryDeclaredEmpty { basis: NonEmptyStr }
+  | BoundaryDeclaredEmpty { basis: std.types.NonEmptyStr }
 
 type HigherBoundaryAnswer
   = OutermostBoundary
-  | DescendedFromRefusedCut { parent_cut: ReplacementCutId, refusal_summary: NonEmptyStr }
-  | DescentParentUnauthored { intended_parent_boundary: NonEmptyStr, basis: NonEmptyStr }
+  | DescendedFromRefusedCut { parent_cut: ReplacementCutId, refusal_summary: std.types.NonEmptyStr }
+  | DescentParentUnauthored { intended_parent_boundary: std.types.NonEmptyStr, basis: std.types.NonEmptyStr }
 
 type EvidenceDisposition
-  = ReenrollAgainstY { evidence: NonEmptyStr, surviving_claim: NonEmptyStr }
-  | ReplaceEvidence { old_evidence: NonEmptyStr, new_evidence: NonEmptyStr }
-  | RetireEvidence { evidence: NonEmptyStr, retired_subject: NonEmptyStr, retirement_reason: NonEmptyStr }
-  | EvidenceUndecided { evidence: NonEmptyStr }
+  = ReenrollAgainstY { evidence: std.types.NonEmptyStr, surviving_claim: std.types.NonEmptyStr }
+  | ReplaceEvidence { old_evidence: std.types.NonEmptyStr, new_evidence: std.types.NonEmptyStr }
+  | RetireEvidence { evidence: std.types.NonEmptyStr, retired_subject: std.types.NonEmptyStr, retirement_reason: std.types.NonEmptyStr }
+  | EvidenceUndecided { evidence: std.types.NonEmptyStr }
 
 type ExternalXRole
   = BootstrapProducer
@@ -44,30 +44,30 @@ type ExternalXRole
 
 type ExternalXAnswer
   = ExternalXRoles { roles: List<ExternalXRole> }
-  | NoExternalOracleRequired { justification: NonEmptyStr }
+  | NoExternalOracleRequired { justification: std.types.NonEmptyStr }
 
 type ReplacementCut {
   identity: ReplacementCutId
-  old_root_consumer: NonEmptyStr
-  subject: NonEmptyStr
-  contract: NonEmptyStr
-  new_root: NonEmptyStr
+  old_root_consumer: std.types.NonEmptyStr
+  subject: std.types.NonEmptyStr
+  contract: std.types.NonEmptyStr
+  new_root: std.types.NonEmptyStr
   why_not_higher: HigherBoundaryAnswer
-  covered_region: List<NonEmptyStr>
+  covered_region: List<std.types.NonEmptyStr>
   boundary_census: BoundaryCensus
   external_x: ExternalXAnswer
   evidence_dispositions: List<EvidenceDisposition>
 }
 
 type CutRefusalCause
-  = UndispositionedConsumer { consumer: NonEmptyStr }
-  | UncoveredSurvivingConsumer { consumer: NonEmptyStr }
-  | UndispositionedEvidence { evidence: NonEmptyStr }
-  | CoveredByOldRoot { consumer: NonEmptyStr }
-  | ReplacementNamesOldRoot { consumer: NonEmptyStr }
-  | ConsumerDuplicated { consumer: NonEmptyStr }
-  | EvidenceDuplicated { evidence: NonEmptyStr }
-  | RegionMemberDuplicated { member: NonEmptyStr }
+  = UndispositionedConsumer { consumer: std.types.NonEmptyStr }
+  | UncoveredSurvivingConsumer { consumer: std.types.NonEmptyStr }
+  | UndispositionedEvidence { evidence: std.types.NonEmptyStr }
+  | CoveredByOldRoot { consumer: std.types.NonEmptyStr }
+  | ReplacementNamesOldRoot { consumer: std.types.NonEmptyStr }
+  | ConsumerDuplicated { consumer: std.types.NonEmptyStr }
+  | EvidenceDuplicated { evidence: std.types.NonEmptyStr }
+  | RegionMemberDuplicated { member: std.types.NonEmptyStr }
   | EnumeratedCensusEmpty
   | ExternalRolesEnumeratedEmpty
   | EmptyCoveredRegion
@@ -76,7 +76,7 @@ type CutRefusalCause
 
 type AdmittedReplacementCutPlan sole_constructor {
   cut_identity: ReplacementCutId
-  criteria_digest: Fnv1a64Structural
+  criteria_digest: std.content_hash.Fnv1a64Structural
   retained_count: Int
   replaced_count: Int
   evidence_only_count: Int
@@ -157,7 +157,7 @@ fn evidence_key(e: EvidenceDisposition) -> NonEmptyStr {
   }
 }
 
-type ConsumerDupState { seen: List<NonEmptyStr>, causes: List<CutRefusalCause> }
+type ConsumerDupState { seen: List<std.types.NonEmptyStr>, causes: List<CutRefusalCause> }
 
 fn consumer_duplicate_causes(
   acc: List<CutRefusalCause>,

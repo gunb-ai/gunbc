@@ -1,8 +1,8 @@
 module extdeps.ebay.ebay
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "developer.ebay.com/api-docs/static/ebay-rest-landing.html"
   }
@@ -10,11 +10,11 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 type EbayEnvironment = Production | Sandbox
 
-data production_api_base: NonEmptyStr = "https://api.ebay.com"
+data production_api_base: std.types.NonEmptyStr = "https://api.ebay.com"
 
-data sandbox_api_base: NonEmptyStr = "https://api.sandbox.ebay.com"
+data sandbox_api_base: std.types.NonEmptyStr = "https://api.sandbox.ebay.com"
 
-fn ebay_api_base(env: EbayEnvironment) -> NonEmptyStr {
+fn ebay_api_base(env: EbayEnvironment) -> std.types.NonEmptyStr {
   match env {
     Production => production_api_base
     Sandbox => sandbox_api_base

@@ -3,17 +3,17 @@ module test.claim.sccache_pin_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data sccache_aarch64_artifact: SccacheBinaryArtifact = SccacheBinaryArtifact {
+data sccache_aarch64_artifact: extdeps.cache.sccache.SccacheBinaryArtifact = extdeps.cache.sccache.SccacheBinaryArtifact {
   binary_release: sccache_release_0_15_0,
   arch: SccacheMuslAarch64,
 }
 
-data sccache_x86_64_artifact: SccacheBinaryArtifact = SccacheBinaryArtifact {
+data sccache_x86_64_artifact: extdeps.cache.sccache.SccacheBinaryArtifact = extdeps.cache.sccache.SccacheBinaryArtifact {
   binary_release: sccache_release_0_15_0,
   arch: SccacheMuslX86_64,
 }
 
-data sccache_aarch64_pin: SubjectProjectedPin<SccacheBinaryArtifact> = sccache_binary_artifact_pin(artifact: sccache_aarch64_artifact)
+data sccache_aarch64_pin: SubjectProjectedPin<extdeps.cache.sccache.SccacheBinaryArtifact> = sccache_binary_artifact_pin(artifact: sccache_aarch64_artifact)
 
 data sccache_pin_grain_family_note: String = "Discriminating witness for feature:pin-artifact-grain. SubjectProjectedPin<SccacheBinaryArtifact> pins ONE cited musl tarball per row with no restated expected_identity field — identity projected via sha256_digest_content_hash bridge (review 44999). RED CONTROL reconcile_bridge_projects_identity_and_version fails if subject_projected_pin_as_pin does not project both ContentHash and VersionIdentity onto Pin."
 
@@ -35,8 +35,8 @@ test fn reconcile_bridge_projects_identity_and_version() -> Bool {
 }
 
 test fn sccache_pin_key_stable_across_release_version_bump() -> Bool {
-  let bumped_art = SccacheBinaryArtifact {
-    binary_release: SccacheBinaryRelease {
+  let bumped_art = extdeps.cache.sccache.SccacheBinaryArtifact {
+    binary_release: extdeps.cache.sccache.SccacheBinaryRelease {
       version: "v0.16.0",
       digest_aarch64: sha256_digest(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
       digest_x86_64: sha256_digest(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
@@ -106,8 +106,8 @@ test fn sccache_aarch64_pin_refuses_x86_64_observation() -> Bool {
   }
 }
 
-data sccache_invalid_digest_artifact: SccacheBinaryArtifact = SccacheBinaryArtifact {
-  binary_release: SccacheBinaryRelease {
+data sccache_invalid_digest_artifact: extdeps.cache.sccache.SccacheBinaryArtifact = extdeps.cache.sccache.SccacheBinaryArtifact {
+  binary_release: extdeps.cache.sccache.SccacheBinaryRelease {
     version: "v0.15.0",
     digest_aarch64: sha256_digest(hex: "not-valid-hex"),
     digest_x86_64: sha256_digest(hex: "782d2b5dd7ae0a55ebe368ab258114d0928d019ac2d949ab85d5d02f3926709e"),
@@ -127,7 +127,7 @@ test fn sccache_invalid_cited_digest_refuses_pin_integrity() -> Bool {
   match admit_sccache_binary_artifact_pin_integrity(
     pin: bad_pin,
     observed_identity: as_content_hash_structural(
-      structural: content_hash_atom(value: "any-observed-identity" as NonEmptyStr),
+      structural: content_hash_atom(value: "any-observed-identity" as std.types.NonEmptyStr),
     ),
   ) {
     SubjectProjectedPinRefused { subject: _, cause: CitedDigestIdentityUnprojectable } => true

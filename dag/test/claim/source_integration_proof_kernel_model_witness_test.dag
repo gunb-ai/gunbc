@@ -5,11 +5,11 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data proof_kernel_model_witness_note: String = "The green first-slice witnesses exercise the candidate-generation fold from finite declared generators rather than a caller-supplied CandidateSet: one transformation plus one scheduled inference generator derives four combination classes from the accepted seed. Tightening inference_rounds or candidate_classes changes the disposition to a typed, located, counted refusal; proposal, grounding, and frame controls remain distinct. Acceptance is derived from those executed positive and negative scenarios into a sole-constructor receipt, so callers cannot assert a passing Boolean or construct the receipt outside the proof-kernel module. The capability frontier is closed and derived by set difference, so duplicate admissions cannot erase missing work and a refused admission is missing like an absent one. This suite does not claim generator completeness or the public reconciliation fold exists; those remain live capabilities in the separate quarantined closing witness."
 
-fn p1_transformation() -> KernelDirectAuthoredTransformation {
-  KernelDirectAuthoredTransformation {
+fn p1_transformation() -> gunbc.source_integration_proof_kernel.KernelDirectAuthoredTransformation {
+  gunbc.source_integration_proof_kernel.KernelDirectAuthoredTransformation {
     proposal: p0_proposal(),
     ready_evidence: p0_ready_evidence(),
-    delta: [KernelGroundedDelta {
+    delta: [gunbc.source_integration_proof_kernel.KernelGroundedDelta {
       key: "worker-declaration-name",
       before: "worker",
       after: "build_worker",
@@ -24,8 +24,8 @@ fn p1_bounds(
   facts: Int,
   inference_rounds: Int,
   candidate_classes: Int,
-) -> KernelFiniteBounds {
-  KernelFiniteBounds {
+) -> gunbc.source_integration_proof_kernel.KernelFiniteBounds {
+  gunbc.source_integration_proof_kernel.KernelFiniteBounds {
     proposal_occurrences: proposals,
     facts: facts,
     transports: 2,
@@ -36,30 +36,30 @@ fn p1_bounds(
   }
 }
 
-fn p1_inference_schedule() -> List<KernelInferenceRound> {
-  [KernelInferenceRound {
+fn p1_inference_schedule() -> List<gunbc.source_integration_proof_kernel.KernelInferenceRound> {
+  [gunbc.source_integration_proof_kernel.KernelInferenceRound {
     ordinal: 1,
     procedures: ["apply-grounded-replacement"],
   }]
 }
 
 fn p1_spec_with(
-  remaining: List<KernelDirectAuthoredTransformation>,
-  first_delta: List<KernelGroundedDelta>,
+  remaining: List<gunbc.source_integration_proof_kernel.KernelDirectAuthoredTransformation>,
+  first_delta: List<gunbc.source_integration_proof_kernel.KernelGroundedDelta>,
   proposal_bound: Int,
   fact_bound: Int,
-  inference_schedule: List<KernelInferenceRound>,
+  inference_schedule: List<gunbc.source_integration_proof_kernel.KernelInferenceRound>,
   inference_round_bound: Int,
   candidate_class_bound: Int,
-) -> KernelCandidateGenerationSpec {
+) -> gunbc.source_integration_proof_kernel.KernelCandidateGenerationSpec {
   let transformation = p1_transformation()
-  KernelCandidateGenerationSpec {
+  gunbc.source_integration_proof_kernel.KernelCandidateGenerationSpec {
     accepted_parent: "accepted-state-41",
-    accepted_facts: [KernelFact {
+    accepted_facts: [gunbc.source_integration_proof_kernel.KernelFact {
       key: "worker-declaration-name",
       value: "worker",
     }],
-    first_transformation: KernelDirectAuthoredTransformation {
+    first_transformation: gunbc.source_integration_proof_kernel.KernelDirectAuthoredTransformation {
       proposal: transformation.proposal,
       ready_evidence: transformation.ready_evidence,
       delta: first_delta,
@@ -69,13 +69,13 @@ fn p1_spec_with(
     commuting_squares: [],
     canonicalizations: [],
     recovery_alternatives: [],
-    procedures: [KernelInferenceProcedure {
+    procedures: [gunbc.source_integration_proof_kernel.KernelInferenceProcedure {
       identity: "apply-grounded-replacement",
       consumes: ["worker-declaration-name"],
       produces: ["worker-declaration-name"],
     }],
     inference_schedule: inference_schedule,
-    invariants: [KernelInvariant {
+    invariants: [gunbc.source_integration_proof_kernel.KernelInvariant {
       identity: "builds-after-rename",
       claims: [p0_builds_claim()],
       procedure: "apply-grounded-replacement",
@@ -90,7 +90,7 @@ fn p1_spec_with(
   }
 }
 
-fn p1_model_spec() -> KernelCandidateGenerationSpec {
+fn p1_model_spec() -> gunbc.source_integration_proof_kernel.KernelCandidateGenerationSpec {
   p1_spec_with(
     remaining: [],
     first_delta: p1_transformation().delta,
@@ -138,11 +138,11 @@ test fn witness_candidate_generation_bound_refusal_is_typed_located_counted() ->
 }
 
 test fn witness_delta_grounding_and_frame_refusals_stay_distinct() -> Bool {
-  let ungrounded_claim = Claim {
+  let ungrounded_claim = std.claim_evidence.Claim {
     id: "not-an-authored-guarantee",
     subject: p0_proposal().transformation,
     target: p0_proposal().target,
-    proposition: LandingGuaranteeProposition {
+    proposition: gunbc.source_integration_landing_spine.LandingGuaranteeProposition {
       statement: "this claim is absent from the proposal contract",
     },
     scope: "source-and-public-behavior",
@@ -151,13 +151,13 @@ test fn witness_delta_grounding_and_frame_refusals_stay_distinct() -> Bool {
   let assessment = assess_bounded_candidate_generation(
     spec: p1_spec_with(
       remaining: [],
-      first_delta: [KernelGroundedDelta {
+      first_delta: [gunbc.source_integration_proof_kernel.KernelGroundedDelta {
         key: "unrelated-setting",
         before: "off",
         after: "on",
         scope: "outside-authored-frame",
         grounding_claim: p0_builds_claim(),
-      }, KernelGroundedDelta {
+      }, gunbc.source_integration_proof_kernel.KernelGroundedDelta {
         key: "worker-declaration-name",
         before: "worker",
         after: "build_worker",
@@ -185,7 +185,7 @@ test fn witness_delta_grounding_and_frame_refusals_stay_distinct() -> Bool {
     )
 }
 
-fn p1_bound_refusal_spec() -> KernelCandidateGenerationSpec {
+fn p1_bound_refusal_spec() -> gunbc.source_integration_proof_kernel.KernelCandidateGenerationSpec {
   p1_spec_with(
     remaining: [p1_transformation()],
     first_delta: p1_transformation().delta,
@@ -197,12 +197,12 @@ fn p1_bound_refusal_spec() -> KernelCandidateGenerationSpec {
   )
 }
 
-fn p1_delta_refusal_spec() -> KernelCandidateGenerationSpec {
-  let ungrounded_claim = Claim {
+fn p1_delta_refusal_spec() -> gunbc.source_integration_proof_kernel.KernelCandidateGenerationSpec {
+  let ungrounded_claim = std.claim_evidence.Claim {
     id: "acceptance-control-ungrounded-claim",
     subject: p0_proposal().transformation,
     target: p0_proposal().target,
-    proposition: LandingGuaranteeProposition {
+    proposition: gunbc.source_integration_landing_spine.LandingGuaranteeProposition {
       statement: "acceptance control claim absent from proposal guarantees",
     },
     scope: "source-and-public-behavior",
@@ -210,7 +210,7 @@ fn p1_delta_refusal_spec() -> KernelCandidateGenerationSpec {
   }
   p1_spec_with(
     remaining: [],
-    first_delta: [KernelGroundedDelta {
+    first_delta: [gunbc.source_integration_proof_kernel.KernelGroundedDelta {
       key: "outside-frame-acceptance-control",
       before: "off",
       after: "on",
@@ -225,7 +225,7 @@ fn p1_delta_refusal_spec() -> KernelCandidateGenerationSpec {
   )
 }
 
-fn p1_inference_round_refusal_spec() -> KernelCandidateGenerationSpec {
+fn p1_inference_round_refusal_spec() -> gunbc.source_integration_proof_kernel.KernelCandidateGenerationSpec {
   p1_spec_with(
     remaining: [],
     first_delta: p1_transformation().delta,
@@ -233,7 +233,7 @@ fn p1_inference_round_refusal_spec() -> KernelCandidateGenerationSpec {
     fact_bound: 4,
     inference_schedule: append(
       p1_inference_schedule(),
-      items: [KernelInferenceRound {
+      items: [gunbc.source_integration_proof_kernel.KernelInferenceRound {
         ordinal: 2,
         procedures: ["apply-grounded-replacement"],
       }],
@@ -243,7 +243,7 @@ fn p1_inference_round_refusal_spec() -> KernelCandidateGenerationSpec {
   )
 }
 
-fn p1_candidate_class_refusal_spec() -> KernelCandidateGenerationSpec {
+fn p1_candidate_class_refusal_spec() -> gunbc.source_integration_proof_kernel.KernelCandidateGenerationSpec {
   p1_spec_with(
     remaining: [],
     first_delta: p1_transformation().delta,
@@ -275,7 +275,7 @@ test fn witness_closure_bounds_change_generation_disposition() -> Bool {
     && count(class_refused.candidates) == 2
 }
 
-fn p1_first_slice_acceptance_admissions() -> List<KernelAcceptanceAdmission> {
+fn p1_first_slice_acceptance_admissions() -> List<gunbc.source_integration_proof_kernel.KernelAcceptanceAdmission> {
   [assess_bounded_candidate_generation_acceptance(
     admitted_spec: p1_model_spec(),
     proposal_bound_refusal_spec: p1_bound_refusal_spec(),

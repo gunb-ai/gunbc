@@ -65,8 +65,8 @@ fn fixture_targets() -> Map<String, List<String>> {
 
 // One crate owning ONLY std_measure. std_types and std_nat are absent from every roster row,
 // which is the forgotten-roster-row incident in its smallest form.
-fn fixture_rows_missing_both() -> List<GeneratedPartitionCrateRow> {
-  [GeneratedPartitionCrateRow {
+fn fixture_rows_missing_both() -> List<gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow> {
+  [gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow {
     package_name: "v1-stage0-std-core",
     crate_dir: "src/v1/stage0_std_core",
     kind: GeneratedLayeredCoreCrate,
@@ -78,8 +78,8 @@ fn fixture_rows_missing_both() -> List<GeneratedPartitionCrateRow> {
 
 // The same crate, but std_types IS claimed -- so only std_nat is missing. This is what makes
 // the two-defect assertion below discriminating rather than a restatement of RED 1.
-fn fixture_rows_missing_one() -> List<GeneratedPartitionCrateRow> {
-  [GeneratedPartitionCrateRow {
+fn fixture_rows_missing_one() -> List<gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow> {
+  [gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow {
     package_name: "v1-stage0-std-core",
     crate_dir: "src/v1/stage0_std_core",
     kind: GeneratedLayeredCoreCrate,
@@ -89,7 +89,7 @@ fn fixture_rows_missing_one() -> List<GeneratedPartitionCrateRow> {
   }]
 }
 
-fn fixture_verdict(rows: List<GeneratedPartitionCrateRow>) -> PartitionClosureVerdict {
+fn fixture_verdict(rows: List<gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow>) -> gunbc.stage0_partition_closure.PartitionClosureVerdict {
   partition_closure_verdict_over(
     rows: rows,
     targets: fixture_targets(),
@@ -98,7 +98,7 @@ fn fixture_verdict(rows: List<GeneratedPartitionCrateRow>) -> PartitionClosureVe
   )
 }
 
-fn defect_count(v: PartitionClosureVerdict) -> Int {
+fn defect_count(v: gunbc.stage0_partition_closure.PartitionClosureVerdict) -> Int {
   match v {
     PartitionClosureHolds { extent: _ } => 0
     PartitionClosureRefused { extent: _, defects: d } =>
@@ -106,7 +106,7 @@ fn defect_count(v: PartitionClosureVerdict) -> Int {
   }
 }
 
-fn defect_targets(v: PartitionClosureVerdict) -> List<String> {
+fn defect_targets(v: gunbc.stage0_partition_closure.PartitionClosureVerdict) -> List<String> {
   match v {
     PartitionClosureHolds { extent: _ } => []
     PartitionClosureRefused { extent: _, defects: d } =>
@@ -140,7 +140,7 @@ test fn red_refusal_names_the_incomplete_authority() -> Bool {
   }
 }
 
-fn authority_is_roster(a: PartitionAuthorityId) -> Bool {
+fn authority_is_roster(a: gunbc.stage0_partition_closure.PartitionAuthorityId) -> Bool {
   match a {
     PartitionCrateRoster => true
     PartitionModuleEdgeList => false

@@ -30,7 +30,7 @@ fn compose_field_patch<T>(left: FieldPatch<T>, right: FieldPatch<T>) -> FieldPat
 }
 
 fn field_patch_monoid<T>() -> Monoid<FieldPatch<T>> {
-  Monoid {
+  std.algebra.Monoid {
     op: fn(left, right) { compose_field_patch(left: left, right: right) },
     identity: Inherit,
   }

@@ -6,23 +6,23 @@ type FrontierWiringObligation {
   declared_input: Node
 }
 
-fn frontier_slice_dependence(dependencies: List<FrontierDependency>) -> List<DependencyView> {
+fn frontier_slice_dependence(dependencies: List<v2.lens.affected_set.FrontierDependency>) -> List<v2.std.dependency.DependencyView> {
   fold(dependencies, init: [], f: fn(acc, fd) {
     list_snoc_item(xs: acc, item: fd.dependency)
   })
 }
 
 fn obligation_projection(
-  dependence: List<DependencyView>,
+  dependence: List<v2.std.dependency.DependencyView>,
   obligation: FrontierWiringObligation
-) -> GraphReachProjection {
-  GraphReachProjection {
+) -> v2.lens.common.graph_invariant.GraphReachProjection {
+  v2.lens.common.graph_invariant.GraphReachProjection {
     edges: dependence,
     roots: [obligation.output]
   }
 }
 
-fn obligation_is_wired(dependence: List<DependencyView>, obligation: FrontierWiringObligation) -> Bool {
+fn obligation_is_wired(dependence: List<v2.std.dependency.DependencyView>, obligation: FrontierWiringObligation) -> Bool {
   perturbation_consistent(
     reading: BackwardDiffInDiffOut,
     output_responded: graph_invariant_reaches(
@@ -33,7 +33,7 @@ fn obligation_is_wired(dependence: List<DependencyView>, obligation: FrontierWir
 }
 
 fn first_dead_wire(
-  dependence: List<DependencyView>,
+  dependence: List<v2.std.dependency.DependencyView>,
   obligations: List<FrontierWiringObligation>
 ) -> Optional<FrontierWiringObligation> {
   fold(obligations, init: optional_absent(), f: fn(acc, obligation) {
@@ -49,7 +49,7 @@ fn first_dead_wire(
   })
 }
 
-fn dead_wire_reason(obligation: FrontierWiringObligation, dependence: List<DependencyView>) -> FailClosedReason {
+fn dead_wire_reason(obligation: FrontierWiringObligation, dependence: List<v2.std.dependency.DependencyView>) -> v2.lens.affected_set.FailClosedReason {
   ReasonDiagnostics {
     diagnostics: diagnostics_singleton(
       d: graph_reach_unreachable_diagnostic(
@@ -63,10 +63,10 @@ fn dead_wire_reason(obligation: FrontierWiringObligation, dependence: List<Depen
 }
 
 fn preflight_reexec_frontier(
-  frontier: ReExecFrontier,
-  dependencies: List<FrontierDependency>,
+  frontier: v2.lens.affected_set.ReExecFrontier,
+  dependencies: List<v2.lens.affected_set.FrontierDependency>,
   obligations: List<FrontierWiringObligation>
-) -> ReExecFrontier {
+) -> v2.lens.affected_set.ReExecFrontier {
   let dependence = frontier_slice_dependence(dependencies: dependencies)
   match frontier {
     FailClosed { reason: reason } => FailClosed { reason: reason }
@@ -79,6 +79,6 @@ fn preflight_reexec_frontier(
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }

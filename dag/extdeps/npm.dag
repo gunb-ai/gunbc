@@ -53,13 +53,13 @@ fn npm_decode_package_lock_format(observed: Int) -> NpmPackageLockFormatDecode {
 }
 
 type NpmRegistry {
-  registry: NonEmptyStr
+  registry: std.types.NonEmptyStr
 }
 
 type NpmLockPathKey
   = NpmRootLockPath
   | NpmRelativeLockPath {
-      key: NonEmptyStr
+      key: std.types.NonEmptyStr
     }
 
 data npm_lock_path_key_note: String = "npm package-lock packages map uses the empty string \"\" for the root project — NpmRootLockPath is derived only from that exact empty JSON object key. Every other key is an opaque upstream lock key (NpmRelativeLockPath.key). It is NOT automatically a safe filesystem-relative host path; materialization later decides whether and how to project it."
@@ -81,8 +81,8 @@ type NpmLockNodeFlags {
 }
 
 type NpmPlatformConstraint {
-  os: List<NonEmptyStr>
-  cpu: List<NonEmptyStr>
+  os: List<std.types.NonEmptyStr>
+  cpu: List<std.types.NonEmptyStr>
 }
 
 type NpmLockNodeMetadata {
@@ -97,29 +97,29 @@ type NpmPackageLockManager {
 data npm_package_lock_manager_note: String = "FIRST SLICE: the lockfile carries lockfileVersion, not an npm CLI version. NpmPackageLockManager is format-only. A separate npm-version observation (e.g. npm --version at materialization) may join later — do not invent a VersionIdentity from silence."
 
 type NpmResolvedRegistryArtifact {
-  locator: NonEmptyStr
+  locator: std.types.NonEmptyStr
 }
 
 data npm_resolved_registry_source_note: String = "FIRST SLICE: locator remains NonEmptyStr until acquisition types a registry tarball URL vs configured-registry marker vs file: source. Do not treat those as interchangeable forever — typed source identity lands with archive acquisition."
 
 type NpmRegistryIntegrity
   = NpmRegistrySha512Integrity {
-      digest: Sha512Digest
+      digest: std.content_hash.Sha512Digest
     }
   | NpmRegistrySha1Integrity {
-      digest: Sha1Digest
+      digest: std.content_hash.Sha1Digest
     }
 
 type NpmRegistryArtifact {
   package: PackageCoordinate<NpmRegistry>
-  version: VersionIdentity
+  version: extdeps.version.VersionIdentity
   resolved: NpmResolvedRegistryArtifact
   expected_integrity: NpmRegistryIntegrity
 }
 
 type NpmLockNodeSelection
   = NpmRootProject {
-      manifest_identity: ContentHash
+      manifest_identity: std.content_hash.ContentHash
     }
   | NpmRegistrySelected {
       artifact: NpmRegistryArtifact
@@ -131,7 +131,7 @@ type NpmLockNodeDecode
     }
   | NpmLockNodeFormUnsupported {
       key: NpmLockPathKey
-      native_form: NonEmptyStr
+      native_form: std.types.NonEmptyStr
     }
 
 data npm_lock_node_selection_note: String = "FIRST CODEX PROFILE supports only root + registry-artifact nodes. Git, link, and local forms decode as NpmLockNodeFormUnsupported — add typed arms only when a real supported consumer needs them. NpmRegistryArtifact is the native selection record; Pin<PackageCoordinate<NpmRegistry>> is DERIVED (npm_registry_artifact_pin), never stored beside native integrity."
@@ -158,20 +158,20 @@ fn npm_registry_artifact_pin(
 
 type NpmIntegrityDecode
   = NpmSingleSha512Integrity {
-      digest: Sha512Digest
+      digest: std.content_hash.Sha512Digest
     }
   | NpmSingleSha1Integrity {
-      digest: Sha1Digest
+      digest: std.content_hash.Sha1Digest
     }
   | NpmIntegrityUnsupportedAlgorithm {
-      algorithm: NonEmptyStr
+      algorithm: std.types.NonEmptyStr
     }
   | NpmIntegrityMultipleExpressionsUnsupported {
       count: Int
     }
   | NpmIntegrityOptionsUnsupported
   | NpmIntegrityMalformed {
-      reason: NonEmptyStr
+      reason: std.types.NonEmptyStr
     }
 
 type NpmRegistryIntegrityFromDecode
@@ -308,12 +308,12 @@ type NpmPackageLockParse
       graph: NpmPackageLockGraph
     }
   | NpmPackageLockParseRefused {
-      cause: NonEmptyStr
+      cause: std.types.NonEmptyStr
     }
 
 type NpmLockNodeFormUnsupportedCarrier {
   key: NpmLockPathKey
-  native_form: NonEmptyStr
+  native_form: std.types.NonEmptyStr
 }
 
 type NpmLockDecodeAcc {
@@ -355,7 +355,7 @@ type NpmBooleanMemberObservation
       count: Int
     }
   | NpmBooleanMemberWrongType {
-      observed: JsonValue
+      observed: extdeps.languages.json.emit.JsonValue
     }
   | NpmBooleanMemberNotAnObject
 
@@ -377,16 +377,16 @@ fn npm_json_boolean_member(v: JsonValue, key: String) -> NpmBooleanMemberObserva
 type NpmStringListMemberObservation
   = NpmStringListMemberAbsent
   | NpmStringListMemberObserved {
-      values: List<NonEmptyStr>
+      values: List<std.types.NonEmptyStr>
     }
   | NpmStringListMemberDuplicate {
       count: Int
     }
   | NpmStringListMemberWrongType {
-      observed: JsonValue
+      observed: extdeps.languages.json.emit.JsonValue
     }
   | NpmStringListMemberNonStringElement {
-      observed: JsonValue
+      observed: extdeps.languages.json.emit.JsonValue
     }
   | NpmStringListMemberNotAnObject
 
@@ -394,10 +394,10 @@ data npm_string_list_member_observation_note: String = "Platform os/cpu lists: A
 
 type NpmStringListFoldAcc
   = NpmStringListFoldOk {
-      values: List<NonEmptyStr>
+      values: List<std.types.NonEmptyStr>
     }
   | NpmStringListFoldBadElement {
-      observed: JsonValue
+      observed: extdeps.languages.json.emit.JsonValue
     }
 
 fn npm_json_string_list_member_observation(
@@ -448,7 +448,7 @@ type NpmLockNodeMetadataDecode
       metadata: NpmLockNodeMetadata
     }
   | NpmLockNodeMetadataRefused {
-      cause: NonEmptyStr
+      cause: std.types.NonEmptyStr
     }
 
 fn npm_boolean_flag_default_false(

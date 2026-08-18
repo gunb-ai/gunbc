@@ -3,18 +3,18 @@ module test.claim.merge_admission_enforcement_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data scenario_base_b0: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-enforce-base-b0")
-data scenario_base_b1: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-enforce-base-b1")
-data scenario_roster_r1: GateRosterHash = merge_admission_witness_gate_roster(label: "merge-admission-enforce-roster-r1")
-data scenario_head: CommitSha = "abc1234def5678901234567890abcd1234567890"
-data fresh_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+data scenario_base_b0: extdeps.git.object_store.GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-enforce-base-b0")
+data scenario_base_b1: extdeps.git.object_store.GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-enforce-base-b1")
+data scenario_roster_r1: gunbc.merge_admission.GateRosterHash = merge_admission_witness_gate_roster(label: "merge-admission-enforce-roster-r1")
+data scenario_head: std.types.CommitSha = "abc1234def5678901234567890abcd1234567890"
+data fresh_receipt: gunbc.merge_admission.MergeAdmissionReceipt = stamp_floor_receipt(
   pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base_b0,
   floor_exit_code: 0,
 )
 
-data stale_base_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
+data stale_base_receipt: gunbc.merge_admission.MergeAdmissionReceipt = gunbc.merge_admission.MergeAdmissionReceipt {
   pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base_b0,
@@ -22,7 +22,7 @@ data stale_base_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
   conclusion: Success,
 }
 
-data stale_roster_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
+data stale_roster_receipt: gunbc.merge_admission.MergeAdmissionReceipt = gunbc.merge_admission.MergeAdmissionReceipt {
   pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base_b0,
@@ -30,7 +30,7 @@ data stale_roster_receipt: MergeAdmissionReceipt = MergeAdmissionReceipt {
   conclusion: Success,
 }
 
-data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+data red_receipt: gunbc.merge_admission.MergeAdmissionReceipt = stamp_floor_receipt(
   pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base_b0,

@@ -3,28 +3,28 @@ module gunbc.legacy_test_behavior_disposition
 
 type LegacyTestBehavior {
   source_file: std.types.FilePath
-  test_fn: NonEmptyStr
+  test_fn: std.types.NonEmptyStr
 }
 
 type TestBehaviorWitness {
   entry: std.types.FilePath
-  test_fn: NonEmptyStr
+  test_fn: std.types.NonEmptyStr
 }
 
 type LegacyTestBehaviorDisposition
   = CoveredByWitness {
       behavior: LegacyTestBehavior,
       witness: TestBehaviorWitness,
-      distinguishing_failure: NonEmptyStr,
+      distinguishing_failure: std.types.NonEmptyStr,
     }
   | DeleteLowValueBehavior {
       behavior: LegacyTestBehavior,
-      reason: NonEmptyStr,
+      reason: std.types.NonEmptyStr,
     }
   | RetainedNonMigratableBehavior {
       behavior: LegacyTestBehavior,
-      reason: NonEmptyStr,
-      dissolution: DissolutionCondition,
+      reason: std.types.NonEmptyStr,
+      dissolution: std.dissolution.DissolutionCondition,
     }
 
 data legacy_test_behavior_disposition_authority_note: String = "BEHAVIOR GRAIN, NOT MODULE GRAIN. The discovered subject is every line-anchored #[test] function under src/v1/tests/src, identified by its source file and function name. A disposition is admitted only for one such identity. CoveredByWitness additionally names a discovered `test fn` in the floor corpus and the failure that distinguishes equivalent coverage from a guard that merely stays quiet. DeleteLowValueBehavior and RetainedNonMigratableBehavior require their own reasons; retention also names its dissolution trigger and never authorizes deletion. Unclassified is deliberately not a disposition someone can author: it is the set difference discovered legacy behaviors minus disposition identities. Completion is that difference at zero together with no stale or duplicate dispositions and no unresolved witness reference. No numeric snapshot is an oracle."
@@ -122,7 +122,7 @@ fn legacy_test_behavior_unresolved_witness_dispositions(
 data legacy_test_behavior_family_note: String = "A FAMILY IS A SCOPE OVER THE ONE GRAPH, NOT A SECOND CLASSIFICATION SCHEME. Migration proceeds family by family while the closing contract stays red on the rest of the corpus, so a family needs its own completion reading — but membership is derived by matching discovered behavior identities against the family's declared source files, never by listing the behaviors, so a #[test] added to a member module lands in the family's unclassified set and reds its completion the same way it reds the global frontier. Two states are refused rather than passed: a family whose declared source files discover no behavior at all is Incomplete, not vacuously complete (a renamed or misspelled path cannot read as finished work), and the family's own dispositions are checked for staleness against the WHOLE discovered population, so moving a behavior out of a member module refuses instead of quietly narrowing. Completion of a family is not completion of the contract and does not authorize deletion; it is the unit in which the frontier shrinks."
 
 type LegacyTestBehaviorFamily {
-  name: NonEmptyStr
+  name: std.types.NonEmptyStr
   source_files: List<std.types.FilePath>
 }
 

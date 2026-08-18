@@ -1,10 +1,10 @@
 module v2.test.claim.qualified_name.path_algebra_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn host_disposition_binds_bridge(
-  disposition: Disposition,
+  disposition: std.disposition.Disposition,
   module_path: String,
   decl_name: String
 ) -> Bool {

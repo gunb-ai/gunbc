@@ -18,7 +18,7 @@ type CoercionMismatchKind
   | StructuralMismatch
   | WouldLoseInformation
 type CoercionCandidateSet {
-  set: CandidateSet
+  set: v2.std.find_witness.CandidateSet
 }
 type CoercionResult {
   target: Node
@@ -26,7 +26,7 @@ type CoercionResult {
   witness: CoercionWitness
 }
 type CoercionWitness {
-  homomorphism: HomomorphismWitness
+  homomorphism: v2.std.witness.HomomorphismWitness
 }
 fn coercion_not_realized_diagnostic(
   source: CanonicalGrounding,

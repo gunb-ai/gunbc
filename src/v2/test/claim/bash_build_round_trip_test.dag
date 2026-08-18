@@ -1,7 +1,7 @@
 module v2.test.claim.bash_build_round_trip
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data bash_build_round_trip_cmd_echo_hi_golden: String = "'echo' 'hi'"
 data bash_build_round_trip_assign_foo_golden: String = "FOO='bar'"
@@ -9,13 +9,13 @@ data bash_build_round_trip_exit_42_golden: String = "exit 42"
 data bash_build_round_trip_and_then_golden: String = "'true' && 'false'"
 data bash_build_round_trip_pipe_golden: String = "'echo' 'hi' | 'wc' '-c'"
 
-fn bash_build_round_trip_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn bash_build_round_trip_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   optional_absent()
 }
 
 fn bash_build_round_trip_emit_matches_golden(
   emitted: Node,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   golden: String
 ) -> Bool {
   match target_serialize_source_from_model(target: target, emitted: emitted) {
@@ -27,10 +27,10 @@ fn bash_build_round_trip_emit_matches_golden(
 
 fn bash_build_round_trip_via_emit_matches_golden(
   emitted: Node,
-  target: TargetModel,
+  target: v2.std.compilers.target_model.TargetModel,
   golden: String
 ) -> Bool {
-  let tree = InferredTree {
+  let tree = v2.compiler.infer.InferredTree {
     root: emitted,
     facts: Map { lookup: bash_build_round_trip_facts_lookup }
   }
@@ -47,9 +47,9 @@ fn bash_build_round_trip_via_emit_matches_golden(
 fn bash_build_round_trip_target_for(
   emitted: Node,
   source_text: String,
-  production_binding: Symbol,
-  rule_name: Symbol
-) -> Witness<TargetModel> {
+  production_binding: v2.std.node.Symbol,
+  rule_name: v2.std.node.Symbol
+) -> Witness<v2.std.compilers.target_model.TargetModel> {
   bash_fold_target_model_for_emitted_witness(
     emitted: emitted,
     source_literal: ^bash_fold_dynamic_source_literal,

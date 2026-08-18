@@ -1,7 +1,7 @@
 module gunbc.plans.resolver_pathology_profile_receipt
 
 
-fn resolver_pathology_profile_receipt_body() -> List<MarkdownBlock> {
+fn resolver_pathology_profile_receipt_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** measurement doc only (no resolver refactor). Timestamped profiling receipt for ROADMAP §1 *profile the 518s resolve*. DESIGN.md remains authority."),
     p(text: "**Owner:** vivid-carp-798. This is a **historical measurement receipt** — the numbers below are the finding; they are not re-derived on any cadence. The `scripts/profile-cold-resolve.sh` harness that produced them was deleted 2026-07-23 with the rest of `scripts/`, so the receipt no longer ships a runnable entrypoint. Re-measuring is a fresh measurement against today's resolver, not a replay of this one; the durable fix remains substrate-emitted resolve timings (gunbc bash-emit #5828)."),
@@ -28,7 +28,7 @@ fn resolver_pathology_profile_receipt_body() -> List<MarkdownBlock> {
   ]
 }
 
-data resolver_pathology_profile_receipt_plan: Plan = Plan {
+data resolver_pathology_profile_receipt_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "resolver-pathology-profile-receipt",
   title: "Resolver pathology — cold-resolve profile receipt",
   body: resolver_pathology_profile_receipt_body(),

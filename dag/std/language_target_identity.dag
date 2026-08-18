@@ -18,7 +18,7 @@ type LanguageTargetSurfaceAuthority
 data surface_locus_grain_note: String = "A target-bearing surface is sometimes a DECLARATION and sometimes a whole MODULE, and collapsing the two loses the case this registry most needs to see. v2.lens.realization_vocabulary_containment confines target vocabulary at MODULE grain — target_ast_vocab_modules and target_ast_vocab_module_prefixes are module-path lists — so a vocabulary surface has no declaration to name, and forcing one would mean inventing a decl_name that denotes nothing (a nickname for a module, DESIGN section 3). std.languages rows and emit-host smoke fns are genuinely declarations. Both grains are therefore first-class, and a locus carries which it is rather than one being encoded as a degenerate case of the other."
 
 type LanguageTargetSurfaceLocus
-  = SurfaceDeclaration { ref: DeclarationRef }
+  = SurfaceDeclaration { ref: std.decl_ref.DeclarationRef }
   | SurfaceModule { module_path: String }
 
 fn surface_locus_eq(a: LanguageTargetSurfaceLocus, b: LanguageTargetSurfaceLocus) -> Bool {
@@ -39,8 +39,8 @@ fn surface_locus_eq(a: LanguageTargetSurfaceLocus, b: LanguageTargetSurfaceLocus
 data target_grounding_law: String = "IDENTITY IS DERIVED FROM GROUNDING, NEVER AUTHORED BESIDE IT (operator ruling, 2026-08-04). An earlier shape carried subject and scope as two fields, which still permitted them to DISAGREE — a registration could name one subject while grounding it in another's authority. Here the subject is a projection of the grounding carrier, so the disagreeing state has no representation and RegisteredTargetHasNoAuthoritySubject dissolves into construction rather than surviving as a validation class. WHY GROUNDING IS TWO ARMS: an external subject reference is documented as pointing at an INDEPENDENTLY GOVERNED upstream subject, which is true of Bash, TypeScript, C++, Verilog and SPICE but false of this project's own targets — the .dag language itself and the controlled-English medium are real target surfaces that are not external products, and forcing them through an external scope would make them pretend to an upstream governance they do not have. So canonical identity is the subject DeclarationRef; external targets derive it from ExternalModelScope.subject.declaration and project targets from their own declared authority. Both arms project to the SAME neutral key, which is what makes a single join over mixed grounding well-formed rather than a coincidence of two carriers happening to look alike."
 
 type TargetGrounding
-  = ExternalGrounding { scope: ExternalModelScope }
-  | ProjectGrounding { authority: DeclarationRef }
+  = ExternalGrounding { scope: extdeps.external_authority.ExternalModelScope }
+  | ProjectGrounding { authority: std.decl_ref.DeclarationRef }
 
 type LanguageTargetRegistration {
   grounding: TargetGrounding
@@ -66,7 +66,7 @@ type TargetDisposition
 type LanguageTargetSurfaceRow {
   authority: LanguageTargetSurfaceAuthority
   surface: LanguageTargetSurfaceLocus
-  target: DeclarationRef?
+  target: std.decl_ref.DeclarationRef?
 }
 
 data join_violation_class_note: String = "TWO CLASSES, DELIBERATELY NOT ONE LIST WITH A MIXED MEANING (review relayed 2026-08-04). The MISSING-IDENTITY class — SurfaceMissingTargetIdentity and TargetVocabularyHasNoRegistryTarget — is the accounted-for remainder: a surface nobody has joined yet, which is the expected state of most rows and is what the population ratchet counts. The INTEGRITY class — SurfaceNamesUnknownTarget, SurfaceJoinsMultipleTargets, DuplicateRegistryTarget, DuplicateSurfaceLocus — is malformed registry input, which must be ZERO and is an admission wall. Summing the two into one count is what let the previous accounting predicate stay green with duplicates and ambiguous surfaces present, so the classification is carried by the fold that reads them rather than left to a caller's discipline."
@@ -79,38 +79,38 @@ type LanguageTargetJoinViolation
   | SurfaceNamesUnknownTarget {
       authority: LanguageTargetSurfaceAuthority
       surface: LanguageTargetSurfaceLocus
-      named: DeclarationRef
+      named: std.decl_ref.DeclarationRef
     }
   | SurfaceJoinsMultipleTargets {
       authority: LanguageTargetSurfaceAuthority
       surface: LanguageTargetSurfaceLocus
-      first: DeclarationRef
-      second: DeclarationRef
+      first: std.decl_ref.DeclarationRef
+      second: std.decl_ref.DeclarationRef
     }
   | TargetVocabularyHasNoRegistryTarget { surface: LanguageTargetSurfaceLocus }
-  | DuplicateRegistryTarget { target: DeclarationRef }
+  | DuplicateRegistryTarget { target: std.decl_ref.DeclarationRef }
   | DuplicateSurfaceLocus { surface: LanguageTargetSurfaceLocus }
 
 data language_target_resolution_note: String = "THE RESIDUE CENSUS DERIVES ITS TARGET THROUGH THIS JOIN; it never carries an independently authored target field (operator verdict, 2026-08-04). An authored target beside an observed sink is a second writable representation of one fact, and the two can disagree — a row reading sink = extdeps.languages.typescript.program alongside target = Bash is well-formed under an authored field and unwritable under a derived one. The observed sink, imported vocabulary, target-model declaration, source artifact, or runtime binding is the input; this is the function. Every non-resolving outcome is a TYPED, LOCATED result rather than an inability to report the site: a Bash sink whose subject is unregistered still reports as a Bash sink observation carrying TargetSurfaceUnregistered, which is what keeps a missing registry entry a registry refusal instead of a census blind spot (DESIGN section 5 — a failure arm must refuse, never widen, and never narrow to nothing). THE OUTCOMES ARE NAMED FOR REGISTRY MEMBERSHIP, NOT FOR DECLARATION RESOLUTION (corrected 2026-08-04, review relayed through the operator): the last arm was called TargetSubjectUnresolvable while the code performs NO declaration resolution whatsoever — it tests registry membership — so 'names a valid subject nobody registered' and 'names a DeclarationRef that resolves nowhere on disk' were one arm wearing the second's name. It is now TargetNotRegistered, which is what the fold actually decides. The dangling-reference outcome is NOT minted here as an empty variant, because a typed arm no producer can reach is the inert-carrier defect this PR already had to close once; on-disk resolution is gunbc.extdeps_scope_frontier's roster machinery, and a declaration-resolution outcome lands here only when a producer for it exists."
 
 type LanguageTargetResolution
-  = TargetResolved { target: DeclarationRef }
+  = TargetResolved { target: std.decl_ref.DeclarationRef }
   | TargetSurfaceUnregistered { surface: LanguageTargetSurfaceLocus }
   | TargetSurfaceAmbiguous {
       surface: LanguageTargetSurfaceLocus
-      candidates: List<DeclarationRef>
+      candidates: List<std.decl_ref.DeclarationRef>
     }
-  | TargetNotRegistered { target: DeclarationRef }
+  | TargetNotRegistered { target: std.decl_ref.DeclarationRef }
 
 data named_target_tally_note: String = "The 0 / 1 / more-than-1 distinction is carried as three NAMED states rather than recovered from a list length, so the ambiguous case cannot be read as resolved by a caller that forgets to check the count. This is also why the fold below never needs a list-length primitive. THE TALLY COUNTS DISTINCT TARGETS, NOT ROWS (corrected 2026-08-04, review relayed through the operator): tally_push previously appended every occurrence, so two duplicate rows naming the SAME target reached TallyMany and were reported as a surface joining multiple targets — false, since the surface has one target and a duplicated row. Duplication is a real defect and it is now reported as the thing it is, DuplicateSurfaceLocus, while ambiguity means genuinely disagreeing identities."
 
 type NamedTargetTally
   = TallyNone
-  | TallyOne { target: DeclarationRef }
+  | TallyOne { target: std.decl_ref.DeclarationRef }
   | TallyMany {
-      first: DeclarationRef
-      second: DeclarationRef
-      rest: List<DeclarationRef>
+      first: std.decl_ref.DeclarationRef
+      second: std.decl_ref.DeclarationRef
+      rest: List<std.decl_ref.DeclarationRef>
     }
 
 fn tally_many_candidates(first: DeclarationRef, second: DeclarationRef, rest: List<DeclarationRef>) -> List<DeclarationRef> {
@@ -120,7 +120,7 @@ fn tally_many_candidates(first: DeclarationRef, second: DeclarationRef, rest: Li
 data language_target_projection_law: String = "LEGACY KEYS BECOME PROJECTIONS, NEVER PARALLEL IDENTITIES (operator requirement D, 2026-08-04). LanguageId, display name, file extensions, short labels and the old prose-table names are attributes hanging off the canonical subject and are DERIVED from it where needed; none of them may be keyed on. The distinction is enforced by DIRECTION, which is the whole content of this row: asking the registry for a target's LanguageId is a projection and total for a registered subject, while asking which target a LanguageId denotes is a LOOKUP that REFUSES when no registered subject claims it. Before this, std.languages Language.id was the closest thing to a language key in the tree and nothing stopped a consumer from treating it as identity; after this, a legacy id that resolves nowhere is a typed refusal at the lookup rather than a second identity quietly in use. That refusal is not hypothetical today: std.languages carries rust, go, python and typescript rows and NO bash row, so the target this repository emits most has no legacy id at all — which is why the projection carries the legacy id as OPTIONAL rather than pretending every subject has one. NEITHER DIRECTION MAY RESOLVE BY ORDER (corrected 2026-08-04, review relayed through the operator): both folds previously overwrote an earlier match with a later one, so two projections claiming one legacy id silently returned whichever came last — the same silent last-wins shape as the resolver's double-bound import defect, reproduced inside the module built to remove parallel identities. Both directions now have an explicit ambiguous outcome and refuse."
 
 type LanguageTargetProjection {
-  subject: DeclarationRef
+  subject: std.decl_ref.DeclarationRef
   display_name: String
   file_extensions: List<String>
   legacy_language_id: String?
@@ -128,18 +128,18 @@ type LanguageTargetProjection {
 }
 
 type LanguageIdLookup
-  = LanguageIdResolved { target: DeclarationRef }
+  = LanguageIdResolved { target: std.decl_ref.DeclarationRef }
   | LanguageIdUnregistered { language_id: String }
   | LanguageIdAmbiguous {
       language_id: String
-      first: DeclarationRef
-      second: DeclarationRef
+      first: std.decl_ref.DeclarationRef
+      second: std.decl_ref.DeclarationRef
     }
 
 type ProjectionLookup
   = ProjectionResolved { projection: LanguageTargetProjection }
-  | ProjectionAbsent { subject: DeclarationRef }
-  | ProjectionAmbiguous { subject: DeclarationRef }
+  | ProjectionAbsent { subject: std.decl_ref.DeclarationRef }
+  | ProjectionAmbiguous { subject: std.decl_ref.DeclarationRef }
 
 fn subject_occurrence_count(
   target: DeclarationRef,
@@ -185,8 +185,8 @@ fn display_name_for_subject(
 }
 
 type LanguageIdScan {
-  first: DeclarationRef?
-  second: DeclarationRef?
+  first: std.decl_ref.DeclarationRef?
+  second: std.decl_ref.DeclarationRef?
 }
 
 fn language_id_scan(
@@ -402,7 +402,7 @@ fn duplicate_surface_locus_violations(
 data duplicate_registration_grain_note: String = "ONCE PER DUPLICATED SUBJECT, NOT ONCE PER ROW (review 48205, 2026-08-04). The first version folded the registry and emitted a violation for every row whose subject occurred more than once, so one subject registered twice produced TWO violations for ONE defect, and a subject registered five times produced five. That is the same row-versus-identity confusion multi_target_detector_note fixes on the surface side — the count becomes a function of how the duplication was spread rather than of how many subjects are duplicated — and having corrected it there in this same module while leaving it here was an inconsistency, not a deliberate asymmetry. The accumulator therefore carries the subjects already reported, mirroring MultiTargetScan exactly."
 
 type DuplicateRegistryScan {
-  reported: List<DeclarationRef>
+  reported: List<std.decl_ref.DeclarationRef>
   violations: List<LanguageTargetJoinViolation>
 }
 

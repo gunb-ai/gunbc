@@ -1,7 +1,7 @@
 module v2.test.lens_cost.copied_port_derivation
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data copied_port_derivation_test_note: String = "Wave 1 Gate 1 C1 green-by-execution: per-op copied-port indices derive from cost lens over cited combiner Arrow ^arrow_body_edge bodies — matching the retired hand registry (list_append/left=0, list_snoc_item/left=0, map_merge/overlay=1). Discriminating RED: unpriceable combiner lookup yields Absent; multi-linear ambiguous body yields Absent (no tiebreak); citation-retained frontier count is 3."
 

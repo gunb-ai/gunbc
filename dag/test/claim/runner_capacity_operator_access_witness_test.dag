@@ -6,8 +6,8 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 test fn witness_srv3_admission_binds_local_shell_not_ssh() -> Bool {
   let req = runner_capacity_host_in_band_admission_requirement(host: operator_host_srv3)
   req.transport_binding.transport == LocalShell
-    && req.transport_binding.github_actions_host_label == ("srv3" as NonEmptyStr)
-    && req.executing_principal == ("briansrls" as NonEmptyStr)
+    && req.transport_binding.github_actions_host_label == ("srv3" as std.types.NonEmptyStr)
+    && req.executing_principal == ("briansrls" as std.types.NonEmptyStr)
     && req.required_operations.length() == 4
     && match req.required_operations[0] {
       Present { value: op } =>
@@ -25,7 +25,7 @@ test fn witness_srv1_privilege_observed_from_parent_probe() -> Bool {
   match srv1_in_band_privilege_observation {
     PrivilegeObserved { observed_on: o, host: h, principal: p, sudo_grant_summary: s } =>
       (h as String) == (operator_host_srv1 as String)
-        && p == ("briansrls" as NonEmptyStr)
+        && p == ("briansrls" as std.types.NonEmptyStr)
         && string_contains(s: s as String, pattern: "NOPASSWD")
         && (o as String) == "2026-08-07"
     PrivilegeUnobserved { reason: _ } => false

@@ -103,7 +103,7 @@ fn parse_format_type(raw: String) -> FormatTypeEnum? {
 
 type EbayAmount {
   value: String
-  currency: CurrencyCode
+  currency: std.currency.CurrencyCode
 }
 
 type ShipToLocationAvailability {
@@ -115,7 +115,7 @@ type InventoryItemAvailability {
 }
 
 type InventoryItemProduct {
-  title: NonEmptyStr
+  title: std.types.NonEmptyStr
   description: String?
   aspects: Json?
   imageUrls: List<String>?
@@ -149,7 +149,7 @@ data structural_coverage_gap_inventory_item_response_residual: List<CoverageClos
 ]
 
 type InventoryItemWithSkuLocaleGroupid {
-  sku: NonEmptyStr
+  sku: std.types.NonEmptyStr
   locale: String?
   condition: ConditionEnum?
   availability: InventoryItemAvailability?
@@ -201,9 +201,9 @@ data structural_coverage_gap_pricing_summary_residual: List<CoverageClosureEntry
 ]
 
 type ListingPolicies {
-  fulfillmentPolicyId: NonEmptyStr
-  paymentPolicyId: NonEmptyStr
-  returnPolicyId: NonEmptyStr
+  fulfillmentPolicyId: std.types.NonEmptyStr
+  paymentPolicyId: std.types.NonEmptyStr
+  returnPolicyId: std.types.NonEmptyStr
 }
 
 data structural_coverage_gap_listing_policies_residual: List<CoverageClosureEntry> = [
@@ -221,8 +221,8 @@ data structural_coverage_gap_listing_policies_residual: List<CoverageClosureEntr
 ]
 
 type EbayOfferDetailsWithKeys {
-  sku: NonEmptyStr
-  marketplaceId: MarketplaceEnum
+  sku: std.types.NonEmptyStr
+  marketplaceId: extdeps.ebay.ebay.MarketplaceEnum
   format: FormatTypeEnum
   availableQuantity: Int?
   categoryId: String?
@@ -254,19 +254,19 @@ data structural_coverage_gap_offer_details_residual: List<CoverageClosureEntry> 
 ]
 
 type OfferResponse {
-  offerId: NonEmptyStr
+  offerId: std.types.NonEmptyStr
   warnings: Json?
 }
 
 type PublishResponse {
-  listingId: NonEmptyStr
+  listingId: std.types.NonEmptyStr
   warnings: Json?
 }
 
 type EbayOfferDetailsWithAll {
-  offerId: NonEmptyStr
-  sku: NonEmptyStr?
-  marketplaceId: MarketplaceEnum?
+  offerId: std.types.NonEmptyStr
+  sku: std.types.NonEmptyStr?
+  marketplaceId: extdeps.ebay.ebay.MarketplaceEnum?
   format: FormatTypeEnum?
   availableQuantity: Int?
   pricingSummary: PricingSummary?

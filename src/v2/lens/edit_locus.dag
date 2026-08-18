@@ -7,7 +7,7 @@ type GitDiffNameOnly {
   changed_paths: List<RepoPath>
 }
 
-type PathRegex = Symbol
+type PathRegex = v2.std.node.Symbol
 
 type EditLocusBinding {
   pattern: PathRegex
@@ -17,10 +17,10 @@ type EditLocusBinding {
 type EditLocusRead {
   path_regex_matches: fn(RepoPath, PathRegex) -> Bool
 }
-fn edit_locus_no_match_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn edit_locus_no_match_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^edit_locus_reason_no_match,
-    at: node_locus(node: Node {
+    at: node_locus(node: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -29,10 +29,10 @@ fn edit_locus_no_match_diagnostic() -> Diagnostic {
   }
 }
 
-fn edit_locus_ambiguous_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn edit_locus_ambiguous_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^edit_locus_reason_ambiguous,
-    at: node_locus(node: Node {
+    at: node_locus(node: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -78,7 +78,7 @@ fn loci_from_bindings_for_path(
 
 fn loci_from_provenance_for_path(
   changed: RepoPath,
-  provenance: FreeMonoid<NodeArtifactProvenance>,
+  provenance: FreeMonoid<v2.std.artifact.NodeArtifactProvenance>,
   acc: FreeMonoid<Node>
 ) -> FreeMonoid<Node> {
   fold_list(
@@ -109,7 +109,7 @@ fn collect_edit_loci(
 
 fn collect_edit_loci_from_provenance(
   git_diff: GitDiffNameOnly,
-  provenance: FreeMonoid<NodeArtifactProvenance>
+  provenance: FreeMonoid<v2.std.artifact.NodeArtifactProvenance>
 ) -> FreeMonoid<Node> {
   collect_edit_loci_from_provenance_on_paths(
     changed_paths: git_diff.changed_paths,
@@ -144,7 +144,7 @@ fn collect_edit_loci_on_paths(
 
 fn collect_edit_loci_from_provenance_on_paths(
   changed_paths: FreeMonoid<RepoPath>,
-  provenance: FreeMonoid<NodeArtifactProvenance>,
+  provenance: FreeMonoid<v2.std.artifact.NodeArtifactProvenance>,
   acc: FreeMonoid<Node>
 ) -> FreeMonoid<Node> {
   fold_list(
@@ -192,7 +192,7 @@ fn resolve_edit_locus(
 
 fn resolve_edit_locus_from_provenance(
   git_diff: GitDiffNameOnly,
-  provenance: FreeMonoid<NodeArtifactProvenance>
+  provenance: FreeMonoid<v2.std.artifact.NodeArtifactProvenance>
 ) -> Witness<Node> {
   resolve_edit_locus_from_loci(
     loci: collect_edit_loci_from_provenance(
@@ -204,10 +204,10 @@ fn resolve_edit_locus_from_provenance(
 
 fn affected_set_reading_from_git_diff(
   edit_read: EditLocusRead,
-  graph: InferredTree,
+  graph: v2.compiler.infer.InferredTree,
   git_diff: GitDiffNameOnly,
   bindings: FreeMonoid<EditLocusBinding>
-) -> Witness<AffectedSetReading> {
+) -> Witness<v2.lens.affected_set.AffectedSetReading> {
   match resolve_edit_locus(
     read: edit_read,
     git_diff: git_diff,
@@ -221,10 +221,10 @@ fn affected_set_reading_from_git_diff(
 }
 
 fn affected_set_reading_from_git_diff_provenance(
-  graph: InferredTree,
+  graph: v2.compiler.infer.InferredTree,
   git_diff: GitDiffNameOnly,
-  provenance: FreeMonoid<NodeArtifactProvenance>
-) -> Witness<AffectedSetReading> {
+  provenance: FreeMonoid<v2.std.artifact.NodeArtifactProvenance>
+) -> Witness<v2.lens.affected_set.AffectedSetReading> {
   match resolve_edit_locus_from_provenance(
     git_diff: git_diff,
     provenance: provenance
@@ -236,6 +236,6 @@ fn affected_set_reading_from_git_diff_provenance(
   }
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

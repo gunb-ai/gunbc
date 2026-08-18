@@ -4,11 +4,11 @@ module test.claim.planar_projection_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn site() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
-fn page() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
-fn elsewhere() -> CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 9) }
+fn site() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 1) }
+fn page() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 2) }
+fn elsewhere() -> std.coordinate_frame.CoordinateFrameIdentity { coordinate_frame_identity(occurrence: 9) }
 
-fn view_of(kind: ProjectionKind) -> ProjectionView? {
+fn view_of(kind: ProjectionKind) -> std.planar_projection.ProjectionView? {
   match named_projection_view(kind: kind, source_frame: site(), view_frame: page()) {
     ProjectionRefused { cause: _ } => none
     ProjectionReady { value: v } => Present { value: v }
@@ -27,7 +27,7 @@ fn column_is(kind: ProjectionKind, axis: Int, u: Int, v: Int) -> Bool {
   }
 }
 
-fn projected(kind: ProjectionKind, x: Int, y: Int, z: Int) -> ViewPoint2? {
+fn projected(kind: ProjectionKind, x: Int, y: Int, z: Int) -> std.planar_projection.ViewPoint2? {
   match view_of(kind: kind) {
     Absent => none
     Present { value: view } =>
@@ -49,7 +49,7 @@ fn depth_of(kind: ProjectionKind, x: Int, y: Int, z: Int) -> Int? {
   }
 }
 
-fn at(p: ViewPoint2?, u: Int, v: Int) -> Bool {
+fn at(p: std.planar_projection.ViewPoint2?, u: Int, v: Int) -> Bool {
   match p {
     Absent => false
     Present { value: q } => q.u == u && q.v == v && q.view.occurrence == 2

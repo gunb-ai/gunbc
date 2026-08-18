@@ -2,7 +2,7 @@ module v2.test.fixture.task_manager_demo
 
 
 type TaskId {
-  identity: Symbol
+  identity: v2.std.node.Symbol
 }
 
 type TaskStatus

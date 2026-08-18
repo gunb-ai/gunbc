@@ -7,7 +7,7 @@ data process_exit_observation_divergence_note: String = "ProcessExitObservation 
 
 type PrivateEvidenceRef {
   root: std.types.FilePath
-  content_address_hex: NonEmptyStr
+  content_address_hex: std.types.NonEmptyStr
 }
 
 type ProcessExitObservation {
@@ -17,8 +17,8 @@ type ProcessExitObservation {
 
 type ProviderWireEvidenceReceipt {
   private_ref: PrivateEvidenceRef
-  content_digest: ContentHash
-  byte_count: ByteSize
+  content_digest: std.content_hash.ContentHash
+  byte_count: std.measure.ByteSize
   process_exit: ProcessExitObservation
   stderr_ref: PrivateEvidenceRef?
 }
@@ -26,11 +26,11 @@ type ProviderWireEvidenceReceipt {
 type PrivateEvidenceBytesRetention
   = PrivateEvidenceBytesRetained {
       ref: PrivateEvidenceRef
-      content_digest: ContentHash
-      byte_count: ByteSize
+      content_digest: std.content_hash.ContentHash
+      byte_count: std.measure.ByteSize
     }
   | PrivateEvidenceBytesRetentionRefused {
-      cause: NonEmptyStr
+      cause: std.types.NonEmptyStr
     }
 
 type ProviderWireCaptureOutcome
@@ -38,7 +38,7 @@ type ProviderWireCaptureOutcome
       receipt: ProviderWireEvidenceReceipt
     }
   | ProviderWireCaptureRefused {
-      cause: NonEmptyStr
+      cause: std.types.NonEmptyStr
     }
 
 fn private_evidence_object_path(root: std.types.FilePath, hex: NonEmptyStr) -> String {
@@ -49,7 +49,7 @@ data private_evidence_typed_transport_note: String = "TYPED OPS, NOT CONCAT-BUIL
 
 type PrivateEvidenceRootReadiness
   = PrivateEvidenceRootReady
-  | PrivateEvidenceRootRefused { cause: NonEmptyStr }
+  | PrivateEvidenceRootRefused { cause: std.types.NonEmptyStr }
 
 fn ensure_private_evidence_root(root: std.types.FilePath) -> PrivateEvidenceRootReadiness {
   let made = shell.Mkdir.Parents(path: root)

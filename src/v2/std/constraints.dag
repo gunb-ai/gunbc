@@ -16,12 +16,12 @@ type ConstraintSolvePolicy {
   graph: ConstraintGraph
 }
 type CanonicalGroundingCandidateSet {
-  set: CandidateSet
+  set: v2.std.find_witness.CandidateSet
 }
 type CanonicalGroundingWitness {
-  structural: StructuralPropertyWitness
+  structural: v2.std.witness.StructuralPropertyWitness
 
-  closedness: StructuralPropertyWitness
+  closedness: v2.std.witness.StructuralPropertyWitness
 }
 fn constraints_not_realized_diagnostic(graph: ConstraintGraph) -> Diagnostic {
   Diagnostic {

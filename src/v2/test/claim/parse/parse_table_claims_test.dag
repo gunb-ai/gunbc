@@ -2,17 +2,17 @@ module v2.test.parse.parse_table_claims
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-fn parse_table_token(class: Symbol) -> Token {
-  Token { class: class, lexeme: std.algebra.Empty, file: class, start: 0, end: 0 }
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+fn parse_table_token(class: v2.std.node.Symbol) -> v2.std.compilers.lexing.Token {
+  v2.std.compilers.lexing.Token { class: class, lexeme: std.algebra.Empty, file: class, start: 0, end: 0 }
 }
 
-data parse_table_two_tokens: List<Token> = Cons {
+data parse_table_two_tokens: List<v2.std.compilers.lexing.Token> = Cons {
   head: parse_table_token(class: ^parse_table_probe_class),
   tail: Cons { head: parse_table_token(class: ^parse_table_probe_class), tail: std.algebra.Empty }
 }
 
-data parse_table_empty_tokens: List<Token> = std.algebra.Empty
+data parse_table_empty_tokens: List<v2.std.compilers.lexing.Token> = std.algebra.Empty
 
 test fn parse_table_token_position_indices_no_extra_append_holds() -> Bool {
   (length(xs: token_position_indices(tokens: parse_table_two_tokens)) == 3)
@@ -20,7 +20,7 @@ test fn parse_table_token_position_indices_no_extra_append_holds() -> Bool {
     && ((length(xs: token_position_indices(tokens: parse_table_two_tokens)) == 4) == false)
 }
 
-fn nullable_set_singleton(name: Symbol) -> Set<Symbol> {
+fn nullable_set_singleton(name: v2.std.node.Symbol) -> Set<v2.std.node.Symbol> {
   Set { member: fn(sym) { sym == name } }
 }
 
@@ -76,12 +76,12 @@ test fn parse_table_nullable_morphism_holds() -> Bool {
     ) == false)
 }
 
-fn parse_table_projection_grammar() -> ParseGrammar {
+fn parse_table_projection_grammar() -> v2.std.grammar.ParseGrammar {
   ModeledGrammar {
-    root: GrammarRoot {
+    root: v2.std.grammar.GrammarRoot {
       start: ^pt_proj_start,
       productions: Cons {
-        head: GrammarProduction {
+        head: v2.std.grammar.GrammarProduction {
           name: ^pt_proj_start,
           expression: Sequence {
             left: Terminal { token_class: ^pt_proj_tok_a, stamp: StampClass },
@@ -106,10 +106,10 @@ test fn parse_table_grammar_expr_projection_holds() -> Bool {
     && (grammar_carries_symbol(grammar: parse_table_projection_grammar(), sym: ^pt_proj_absent) == false)
 }
 
-data parse_table_defined_root: GrammarRoot = GrammarRoot {
+data parse_table_defined_root: v2.std.grammar.GrammarRoot = v2.std.grammar.GrammarRoot {
   start: ^pt_undef_defined,
   productions: Cons {
-    head: GrammarProduction {
+    head: v2.std.grammar.GrammarProduction {
       name: ^pt_undef_defined,
       expression: Terminal { token_class: ^pt_undef_tok, stamp: StampClass },
       emitted: grammar_atom(identity: ^pt_undef_defined)
@@ -204,7 +204,7 @@ test fn parse_table_undefined_nonterminal_morphism_holds() -> Bool {
 test fn parse_table_parse_expr_combinator_holds() -> Bool {
   let prov = parse_prov_initial()
   let table = parse_table_empty()
-  let root = GrammarRoot {
+  let root = v2.std.grammar.GrammarRoot {
     start: ^pt_parse_expr_start,
     productions: std.algebra.Empty,
     sync_tokens: grammar_empty_sync_tokens()

@@ -8,7 +8,7 @@ data source_findings_pre_normalize_note: String = "Reads the RAW parsed surface 
 // Carries artifact.span_index and the original source_text alongside the parsed tree, not just the tree: analyze.arg_value_symbol needs both to recover a caret literal's actual referenced identifier text (node_source_symbol_note in analyze.dag) - the grammar's caret-literal terminal is StampClass-stamped, so the Node tree's atom-identity field alone cannot distinguish e.g. ^grammar_production_identity_node_projection from any other caret literal.
 type ParsedSource {
   tree: Node,
-  span_index: SpanIndex,
+  span_index: v2.std.provenance.SpanIndex,
   source_text: String
 }
 

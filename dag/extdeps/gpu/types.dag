@@ -45,34 +45,34 @@ fn gpu_compute_capability_sm_label(cap: GpuComputeCapability) -> GpuCapabilityLa
 
 type GpuFacts {
   vendor: Vendor<extdeps.hardware.Hardware>
-  model: NonEmptyStr
+  model: std.types.NonEmptyStr
   compute_capability: GpuComputeCapability?
-  memory: MemoryFacts
+  memory: extdeps.memory.types.MemoryFacts
   supported_runtimes: List<GpuRuntime>
 }
 
 type AcceleratorFacts {
   vendor: Vendor<extdeps.hardware.Hardware>
-  model: NonEmptyStr
+  model: std.types.NonEmptyStr
 }
 
 type GpuSmCacheGeometry {
-  shared_memory_per_sm: ByteSize
-  register_file_per_sm: ByteSize
+  shared_memory_per_sm: std.measure.ByteSize
+  register_file_per_sm: std.measure.ByteSize
 }
 
 type GpuModelCatalogRow {
   vendor: Vendor<extdeps.hardware.Hardware>
-  model: NonEmptyStr
-  microarchitecture: NonEmptyStr
-  execution_lane_count: HardwareThreadCount
-  memory: MemoryFacts
-  memory_bandwidth: Bandwidth
-  boost_clock: Hertz?
-  tdp_watts: Watt?
+  model: std.types.NonEmptyStr
+  microarchitecture: std.types.NonEmptyStr
+  execution_lane_count: std.measure.HardwareThreadCount
+  memory: extdeps.memory.types.MemoryFacts
+  memory_bandwidth: std.measure.Bandwidth
+  boost_clock: std.measure.Hertz?
+  tdp_watts: std.measure.Watt?
   compute_capability: GpuComputeCapability?
   supported_runtimes: List<GpuRuntime>
-  interconnect: PcieLink?
+  interconnect: extdeps.storage.types.PcieLink?
   sm_cache: GpuSmCacheGeometry?
-  sm_cache_citations: List<CacheGeometryCitation>
+  sm_cache_citations: List<extdeps.cpu.types.CacheGeometryCitation>
 }

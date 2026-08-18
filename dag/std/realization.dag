@@ -3,7 +3,7 @@ module std.realization
 
 type Independence = Independent | Dependent | Unknown
 
-fn independence_from_effect_shapes(left: EffectShape<KeySource>, right: EffectShape<KeySource>) -> Independence {
+fn independence_from_effect_shapes(left: EffectShape<std.effects.KeySource>, right: EffectShape<std.effects.KeySource>) -> Independence {
   match left {
     ReadEffect => match right {
       ReadEffect => Independent

@@ -1,7 +1,7 @@
 module v2.test.manual.typescript_eager_materialize_serialize
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn ts_arc1_eager_serialize_source_body() -> Bool {
   match ts_task_serialize_source_witness() {

@@ -16,8 +16,8 @@ fn cheap_claim_pool_claims() -> List<ClaimRun> {
 }
 
 type CheapPoolChunkAcc {
-  chunks: List<List<ClaimRun>>
-  current: List<ClaimRun>
+  chunks: List<List<tools.host_prelude.ClaimRun>>
+  current: List<tools.host_prelude.ClaimRun>
   current_len: Int
 }
 

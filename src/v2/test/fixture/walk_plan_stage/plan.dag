@@ -9,8 +9,8 @@ data walk_plan_stage_recursion_refusal_barrier_recipe: String = "RED recursion-r
 
 data walk_plan_stage_receipt_refusal_barrier_recipe: String = "RED receipt-write refusal barrier: GUNBC_WALK_ATTEMPT_ID=walk-plan-stage-fixture same invocation with --plan-function walk_plan_stage_receipt_refusal_barrier_plan. Stage-1 receipt write must fail closed after the poison claim; stage 2 must not run; target/walk_plan_stage_stage2_ran must stay absent."
 
-fn walk_plan_stage_overlap_barrier_plan() -> WalkPlan<NoWalkFinalization> {
-  WalkPlan {
+fn walk_plan_stage_overlap_barrier_plan() -> WalkPlan<std.realization_schedule.NoWalkFinalization> {
+  std.realization_schedule.WalkPlan {
     pre_walk_execution: NoPreWalkExecution {},
     batches: [[walk_plan_stage_green_floor_claim(), walk_plan_stage_cleanup_claim()]],
     finalization: NoFinalizationDeclared {},
@@ -23,8 +23,8 @@ fn walk_plan_stage_overlap_barrier_plan() -> WalkPlan<NoWalkFinalization> {
   }
 }
 
-fn walk_plan_stage_failure_barrier_plan() -> WalkPlan<NoWalkFinalization> {
-  WalkPlan {
+fn walk_plan_stage_failure_barrier_plan() -> WalkPlan<std.realization_schedule.NoWalkFinalization> {
+  std.realization_schedule.WalkPlan {
     pre_walk_execution: NoPreWalkExecution {},
     batches: [[walk_plan_stage_green_floor_claim(), walk_plan_stage_cleanup_claim()]],
     finalization: NoFinalizationDeclared {},
@@ -37,8 +37,8 @@ fn walk_plan_stage_failure_barrier_plan() -> WalkPlan<NoWalkFinalization> {
   }
 }
 
-fn walk_plan_stage_recursion_refusal_barrier_plan() -> WalkPlan<NoWalkFinalization> {
-  WalkPlan {
+fn walk_plan_stage_recursion_refusal_barrier_plan() -> WalkPlan<std.realization_schedule.NoWalkFinalization> {
+  std.realization_schedule.WalkPlan {
     pre_walk_execution: NoPreWalkExecution {},
     batches: [[walk_plan_stage_green_floor_claim(), walk_plan_stage_cleanup_claim()]],
     finalization: NoFinalizationDeclared {},
@@ -51,8 +51,8 @@ fn walk_plan_stage_recursion_refusal_barrier_plan() -> WalkPlan<NoWalkFinalizati
   }
 }
 
-fn walk_plan_stage_receipt_refusal_barrier_plan() -> WalkPlan<NoWalkFinalization> {
-  WalkPlan {
+fn walk_plan_stage_receipt_refusal_barrier_plan() -> WalkPlan<std.realization_schedule.NoWalkFinalization> {
+  std.realization_schedule.WalkPlan {
     pre_walk_execution: NoPreWalkExecution {},
     batches: [[walk_plan_stage_green_floor_claim(), walk_plan_stage_cleanup_claim()]],
     finalization: NoFinalizationDeclared {},

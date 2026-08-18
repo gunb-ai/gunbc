@@ -42,8 +42,8 @@ test fn witness_projection_population_contains_stage0_rust() -> Bool {
 
 test fn witness_duplicate_projection_path_refuses_before_emission() -> Bool {
   match deterministic_generated_projection_paths_from_rows(rows: [
-    GeneratedProjectionPathRow { path: "same/path.rs", source: CommittedGeneratedArtifact },
-    GeneratedProjectionPathRow { path: "same/path.rs", source: Stage0EmittedRust }
+    gunbc.generated_projection_paths.GeneratedProjectionPathRow { path: "same/path.rs", source: CommittedGeneratedArtifact },
+    gunbc.generated_projection_paths.GeneratedProjectionPathRow { path: "same/path.rs", source: Stage0EmittedRust }
   ]) {
     GeneratedProjectionPathsRefused { cause: GeneratedProjectionPathCollision { path, first_source, duplicate_source } } =>
       path == "same/path.rs" && first_source == CommittedGeneratedArtifact && duplicate_source == Stage0EmittedRust

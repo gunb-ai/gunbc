@@ -1,8 +1,8 @@
 module extdeps.git.versioning
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "git-scm.com/docs/BreakingChanges.html"
   }
@@ -29,9 +29,9 @@ data git_2_0_release: GitReleaseVersion = {
   patch: 0
 }
 
-data git_release_versioning_spec_url: NonEmptyStr = "https://git-scm.com/docs/BreakingChanges.html"
+data git_release_versioning_spec_url: std.types.NonEmptyStr = "https://git-scm.com/docs/BreakingChanges.html"
 
-type GitVersionConstraint = VersionConstraint where brand("GitVersionConstraint")
+type GitVersionConstraint = extdeps.version.VersionConstraint where brand("GitVersionConstraint")
 
 data min_git_version: GitVersionConstraint = ">= 2.0.0"
 
@@ -42,11 +42,11 @@ fn git_release_version_label(v: GitReleaseVersion) -> String {
   )
 }
 
-fn git_release_to_version_identity(v: GitReleaseVersion) -> VersionIdentity {
+fn git_release_to_version_identity(v: GitReleaseVersion) -> extdeps.version.VersionIdentity {
   git_release_version_label(v: v)
 }
 
-fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Ordering {
+fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> std.algebra.Ordering {
   match nat_compare(a: a.major, b: b.major) {
     Equal => match nat_compare(a: a.minor, b: b.minor) {
       Equal => nat_compare(a: a.patch, b: b.patch)
@@ -56,10 +56,10 @@ fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> Or
   }
 }
 
-fn git_release_compare_identity(a: VersionIdentity, b: VersionIdentity) -> Ordering {
+fn git_release_compare_identity(a: extdeps.version.VersionIdentity, b: extdeps.version.VersionIdentity) -> std.algebra.Ordering {
   if a == b { Equal } else { Greater }
 }
 
-data git_release_version_scheme: VersionScheme = {
+data git_release_version_scheme: extdeps.version.VersionScheme = {
   compare: git_release_compare_identity
 }

@@ -12,7 +12,7 @@ test fn witness_add_sequence_caps_before_start() -> Bool {
 test fn witness_disk_preflight_sufficient_at_apply_width() -> Bool {
   let required = runner_width_disk_required(requested_width: 6)
   let free = byte_size(byte_size_count(b: required) + 1)
-  match runner_width_disk_preflight(requested_width: 6, disk: DiskObserved { free_bytes: free, observed_on: "srv4" as NonEmptyStr }) {
+  match runner_width_disk_preflight(requested_width: 6, disk: DiskObserved { free_bytes: free, observed_on: "srv4" as std.types.NonEmptyStr }) {
     DiskHeadroomSufficient { requested_width: w, required: r, observed_free: o } =>
       w == 6 && byte_size_count(b: r) == byte_size_count(b: required) && byte_size_count(b: o) > byte_size_count(b: r)
     DiskHeadroomInsufficient { requested_width: _, required: _, observed_free: _ } => false
@@ -23,7 +23,7 @@ test fn witness_disk_preflight_sufficient_at_apply_width() -> Bool {
 test fn witness_disk_preflight_insufficient_refuses_not_fallback() -> Bool {
   let required = runner_width_disk_required(requested_width: 6)
   let free = byte_size(byte_size_count(b: required) - 1)
-  match runner_width_disk_preflight(requested_width: 6, disk: DiskObserved { free_bytes: free, observed_on: "srv4" as NonEmptyStr }) {
+  match runner_width_disk_preflight(requested_width: 6, disk: DiskObserved { free_bytes: free, observed_on: "srv4" as std.types.NonEmptyStr }) {
     DiskHeadroomInsufficient { requested_width: w, required: r, observed_free: o } =>
       w == 6 && byte_size_count(b: o) < byte_size_count(b: r)
     DiskHeadroomSufficient { requested_width: _, required: _, observed_free: _ } => false
@@ -42,7 +42,7 @@ test fn witness_disk_preflight_unobservable_refuses_not_width_five() -> Bool {
   }
     && match runner_width_disk_preflight(
       requested_width: 6,
-      disk: DiskObservationRefused { detail: "reach refused" as NonEmptyStr },
+      disk: DiskObservationRefused { detail: "reach refused" as std.types.NonEmptyStr },
     ) {
       DiskHeadroomUnobserved { requested_width: w, reason: r } => w == 6 && string_contains(s: r, pattern: "reach refused")
       DiskHeadroomSufficient { requested_width: _, required: _, observed_free: _ } => false
@@ -59,7 +59,7 @@ test fn witness_srv3_srv4_committed_width_six() -> Bool {
 
 test fn witness_host_capacity_receipt_converged_shape() -> Bool {
   let w = 3
-  let receipt = HostRunnerCapacityReceipt {
+  let receipt = gunbc.runner_lifecycle.HostRunnerCapacityReceipt {
     host: operator_host_srv3,
     requested_width: w,
     materialized_count: w,
@@ -73,7 +73,7 @@ test fn witness_host_capacity_receipt_converged_shape() -> Bool {
 
 test fn witness_RED_host_capacity_receipt_one_count_short_does_not_converge() -> Bool {
   let w = 3
-  !host_runner_capacity_converged(receipt: HostRunnerCapacityReceipt {
+  !host_runner_capacity_converged(receipt: gunbc.runner_lifecycle.HostRunnerCapacityReceipt {
     host: operator_host_srv3,
     requested_width: w,
     materialized_count: w,
@@ -82,7 +82,7 @@ test fn witness_RED_host_capacity_receipt_one_count_short_does_not_converge() ->
     online_count: w - 1,
     slots: [],
   })
-    && !host_runner_capacity_converged(receipt: HostRunnerCapacityReceipt {
+    && !host_runner_capacity_converged(receipt: gunbc.runner_lifecycle.HostRunnerCapacityReceipt {
       host: operator_host_srv3,
       requested_width: w,
       materialized_count: w - 1,
@@ -94,7 +94,7 @@ test fn witness_RED_host_capacity_receipt_one_count_short_does_not_converge() ->
 }
 
 test fn witness_slot_identity_formats_zero_padded_unit() -> Bool {
-  let slot = RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
+  let slot = gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv3, slot_index: 6 }
   runner_slot_instance_name(slot: slot) == "srv3-06"
     && runner_slot_unit_name(slot: slot) == "actions-runner@srv3-06.service"
 }

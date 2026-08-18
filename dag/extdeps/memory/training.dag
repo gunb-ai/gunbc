@@ -1,16 +1,16 @@
 module extdeps.memory.training
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.jedec.org/standards-documents/docs/jesd79-4a"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.memory.training",
       decl_name: "MemoryTrainingStep",
       field: WholeDeclaration
@@ -64,7 +64,7 @@ data lrdimm_data_buffer_training_steps: List<MemoryTrainingStep> = [
 // The step set a module must complete, DERIVED from its construction. This is
 // the single place the RDIMM/LRDIMM distinction becomes a set difference
 // rather than a preference.
-fn training_steps_required(module: DramModuleCatalogRow) -> List<MemoryTrainingStep> {
+fn training_steps_required(module: extdeps.memory.types.DramModuleCatalogRow) -> List<MemoryTrainingStep> {
   match module.buffering {
     LoadReduced => concat(phy_training_steps, lrdimm_data_buffer_training_steps)
     Registered => phy_training_steps
@@ -72,7 +72,7 @@ fn training_steps_required(module: DramModuleCatalogRow) -> List<MemoryTrainingS
   }
 }
 
-fn module_executes_step(module: DramModuleCatalogRow, step: MemoryTrainingStep) -> Bool {
+fn module_executes_step(module: extdeps.memory.types.DramModuleCatalogRow, step: MemoryTrainingStep) -> Bool {
   any(training_steps_required(module: module), s => s == step)
 }
 
@@ -87,10 +87,10 @@ fn module_executes_step(module: DramModuleCatalogRow, step: MemoryTrainingStep) 
 // a discount is therefore wrong at capacities near the density ceiling: the
 // older part is not the same module clocked slower, it is a different topology.
 fn hypothetical_module_at_rank_count(
-  module: DramModuleCatalogRow,
+  module: extdeps.memory.types.DramModuleCatalogRow,
   rank_count: Int,
-) -> DramModuleCatalogRow {
-  DramModuleCatalogRow {
+) -> extdeps.memory.types.DramModuleCatalogRow {
+  extdeps.memory.types.DramModuleCatalogRow {
     part_number: module.part_number,
     manufacturer: module.manufacturer,
     generation: module.generation,
@@ -106,8 +106,8 @@ fn hypothetical_module_at_rank_count(
 // Can this capacity be built as an ordinary low-rank registered module in this
 // generation, or does reaching it REQUIRE extra ranks or die stacking?
 fn capacity_reachable_as_dual_rank_registered(
-  module: DramModuleCatalogRow,
-  jedec: JedecDdrGenerationCatalogRow,
+  module: extdeps.memory.types.DramModuleCatalogRow,
+  jedec: extdeps.memory.types.JedecDdrGenerationCatalogRow,
 ) -> Bool {
   dram_module_is_realizable(
     module: hypothetical_module_at_rank_count(module: module, rank_count: 2),

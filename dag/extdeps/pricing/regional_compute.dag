@@ -62,20 +62,20 @@ fn compute_provider_label(p: ComputeProvider) -> NonEmptyStr {
 data hourly_rate_availability_note: String = "Same refusal discipline as extdeps.pricing.object_storage StorageRateAvailability: a rate this fetch could not read is a typed row with a stated cause, never a remembered number. HourlyUnrepresentable is a DISTINCT third arm from HourlyUnavailable because the obstacle is different in kind -- the price was read successfully but cannot be written down in the carrier (Sakura quotes JPY and std.currency admits only Eur and Usd today). Collapsing 'could not read it' and 'read it but cannot represent it' into one arm would hide a modeling gap behind a fetch failure."
 
 type HourlyRateAvailability
-  = HourlyCited { hourly: MoneyPerHour }
-  | HourlyUnavailable { cause: NonEmptyStr }
-  | HourlyUnrepresentable { observed: NonEmptyStr, cause: NonEmptyStr }
+  = HourlyCited { hourly: std.measure.MoneyPerHour }
+  | HourlyUnavailable { cause: std.types.NonEmptyStr }
+  | HourlyUnrepresentable { observed: std.types.NonEmptyStr, cause: std.types.NonEmptyStr }
 
 type RegionalComputeRow {
   provider: ComputeProvider
-  region_code: NonEmptyStr
-  region_label: NonEmptyStr
+  region_code: std.types.NonEmptyStr
+  region_label: std.types.NonEmptyStr
   geography: Geography
-  instance_label: NonEmptyStr
-  vcpus: HardwareThreadCount
-  memory_bytes: ByteSize
+  instance_label: std.types.NonEmptyStr
+  vcpus: std.measure.HardwareThreadCount
+  memory_bytes: std.measure.ByteSize
   hourly: HourlyRateAvailability
-  pricing_citation: NonEmptyStr
+  pricing_citation: std.types.NonEmptyStr
 }
 
 fn usd_per_hour(micros: std.nat.Nat) -> HourlyRateAvailability {

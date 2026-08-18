@@ -3,19 +3,19 @@ module test.claim.runner_replace_incarnation_seam_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn srv3_os_target() -> NodeControlPlane {
+fn srv3_os_target() -> gunbc.host_effect.NodeControlPlane {
   HostOs { node: srv3_host }
 }
 
-fn witness_replace_fixture_incarnation() -> LocalRunnerSlotIncarnation {
+fn witness_replace_fixture_incarnation() -> gunbc.runner_incarnation.LocalRunnerSlotIncarnation {
   runner_slot_incarnation(host: operator_host_srv3, slot_index: 6, unit_active: true)
 }
 
-fn witness_replace_fixture_cause() -> RunnerReplacementCause {
+fn witness_replace_fixture_cause() -> gunbc.runner_lifecycle.RunnerReplacementCause {
   ReplacementCauseConnectivityDetached { registration_id: 42 }
 }
 
-fn witness_replace_fixture_effect() -> HostEffect {
+fn witness_replace_fixture_effect() -> gunbc.host_effect.HostEffect {
   ReplaceRunnerIncarnation {
     from: witness_replace_fixture_incarnation(),
     cause: witness_replace_fixture_cause(),
@@ -38,8 +38,8 @@ test fn witness_replace_resolved_cell_preserves_from_and_cause() -> Bool {
   }
 }
 
-fn witness_replace_fixture_intent() -> HostEffectIntent {
-  HostEffectIntent {
+fn witness_replace_fixture_intent() -> gunbc.host_effect.HostEffectIntent {
+  gunbc.host_effect.HostEffectIntent {
     target: srv3_os_target(),
     effect: witness_replace_fixture_effect(),
     evidence: host_effect_identity_evidence,

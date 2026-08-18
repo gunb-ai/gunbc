@@ -1,16 +1,16 @@
 module test.claim.observation_seed_scoped_run_witness
 
 
-fn entry() -> NonEmptyStr {
-  "dag/example/scoped_run.dag" as NonEmptyStr
+fn entry() -> std.types.NonEmptyStr {
+  "dag/example/scoped_run.dag" as std.types.NonEmptyStr
 }
 
-fn function() -> NonEmptyStr {
-  "check_scoped_run" as NonEmptyStr
+fn function() -> std.types.NonEmptyStr {
+  "check_scoped_run" as std.types.NonEmptyStr
 }
 
-fn module_path() -> NonEmptyStr {
-  "test.fixtures.scoped_run" as NonEmptyStr
+fn module_path() -> std.types.NonEmptyStr {
+  "test.fixtures.scoped_run" as std.types.NonEmptyStr
 }
 
 test fn scoped_run_pty_begin_projects_exact_overwrite_bytes_and_open_state() -> Bool {
@@ -51,7 +51,7 @@ test fn scoped_run_refused_is_persistent_append_and_closes_open_line() -> Bool {
     entry_file: entry(),
     module_path: module_path(),
     function: function(),
-    diagnostic: "claim returned non-Bool" as NonEmptyStr,
+    diagnostic: "claim returned non-Bool" as std.types.NonEmptyStr,
     addressable: true,
     emoji: false,
     prior: DynamicLineOpen
@@ -76,7 +76,7 @@ test fn scoped_run_intrinsic_failures_ignore_unavailable_basis() -> Bool {
     entry_file: entry(),
     module_path: module_path(),
     function: function(),
-    error: "runtime failed" as NonEmptyStr,
+    error: "runtime failed" as std.types.NonEmptyStr,
     addressable: true,
     emoji: false,
     prior: DynamicLineClosed
@@ -137,13 +137,13 @@ test fn scoped_run_routine_measured_wall_preserves_unavailable_basis_refusal() -
 }
 
 test fn scoped_run_measured_nanosecond_precision_matrix_is_projected() -> Bool {
-  match scoped_run_refused_write_measured(entry_file: entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as NonEmptyStr, wall: nanosecond(count: 1), addressable: false, emoji: false, prior: DynamicLineClosed) {
+  match scoped_run_refused_write_measured(entry_file: entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as std.types.NonEmptyStr, wall: nanosecond(count: 1), addressable: false, emoji: false, prior: DynamicLineClosed) {
     ScopedRunMeasuredRefused { cause: _ } => false
     ScopedRunMeasuredProjected { bytes: one, next: one_state, wall: one_wall } =>
-      match scoped_run_refused_write_measured(entry_file: entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as NonEmptyStr, wall: nanosecond(count: 999999), addressable: false, emoji: false, prior: DynamicLineClosed) {
+      match scoped_run_refused_write_measured(entry_file: entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as std.types.NonEmptyStr, wall: nanosecond(count: 999999), addressable: false, emoji: false, prior: DynamicLineClosed) {
         ScopedRunMeasuredRefused { cause: _ } => false
         ScopedRunMeasuredProjected { bytes: sub_ms, next: sub_ms_state, wall: sub_ms_wall } =>
-          match scoped_run_refused_write_measured(entry_file: entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as NonEmptyStr, wall: nanosecond(count: 1000000), addressable: false, emoji: false, prior: DynamicLineClosed) {
+          match scoped_run_refused_write_measured(entry_file: entry(), module_path: module_path(), function: function(), diagnostic: "claim returned non-Bool" as std.types.NonEmptyStr, wall: nanosecond(count: 1000000), addressable: false, emoji: false, prior: DynamicLineClosed) {
             ScopedRunMeasuredRefused { cause: _ } => false
             ScopedRunMeasuredProjected { bytes: one_ms, next: one_ms_state, wall: one_ms_wall } =>
               one_state == DynamicLineClosed && sub_ms_state == DynamicLineClosed && one_ms_state == DynamicLineClosed &&

@@ -20,7 +20,7 @@ data restrained_has_no_emission_note: String = "The restrained variant carries n
 
 type AuditionEmission
   = AuditionNoEmission
-  | AuditionEmits { spec: EmissionSpec }
+  | AuditionEmits { spec: gunbc.design.salience.EmissionSpec }
 
 fn audition_emission(i: AuditionIntensity) -> AuditionEmission {
   match i {
@@ -46,7 +46,7 @@ fn audition_emission(i: AuditionIntensity) -> AuditionEmission {
 
 type AuditionAttraction
   = AuditionNoAttraction
-  | AuditionAttracts { field: AttractionField }
+  | AuditionAttracts { field: gunbc.design.salience.AttractionField }
 
 fn audition_attraction(i: AuditionIntensity) -> AuditionAttraction {
   match i {
@@ -89,7 +89,7 @@ type AuditionAdmission
       attraction: AuditionAttraction
       displacement_px: Int
     }
-  | AuditionEmissionRefused { intensity: String, grant: EmissionGrant }
+  | AuditionEmissionRefused { intensity: String, grant: gunbc.design.salience.EmissionGrant }
   | AuditionAttractionOutsideEnvelope { intensity: String }
   | AuditionDisplacementOverBudget { intensity: String, total_px: Int, max_px: Int }
 
@@ -111,7 +111,7 @@ data no_emission_skips_the_gate_note: String = "A restrained variant does not re
 
 type AuditionEmissionOutcome
   = NoEmissionRequested
-  | EmissionResolved { grant: EmissionGrant }
+  | EmissionResolved { grant: gunbc.design.salience.EmissionGrant }
 
 fn audition_emission_outcome(
   i: AuditionIntensity,
@@ -184,9 +184,9 @@ data reading_grain_note: String = "DEPTH SELECTS THE SUBJECT GRAIN, MODE SELECTS
 
 type ProgramReading
   = ReadingNoSubject
-  | ReadingProgramShape { remaining: RemainingShape }
+  | ReadingProgramShape { remaining: gunbc.roadmap_program_view.RemainingShape }
   | ReadingOutcomeStatus { name: String, node: String, accepted: Bool, open_fronts: Int }
-  | ReadingOutcomeRemaining { name: String, remaining: RemainingShape }
+  | ReadingOutcomeRemaining { name: String, remaining: gunbc.roadmap_program_view.RemainingShape }
   | ReadingConstraint { subject: String, kind: String, headline: String, in_flight: Bool, depth: Int }
   | ReadingNoConstraint { subject_key: String, reason: String }
   | ReadingFront { key: String, name: String, closed: Bool, gates_accepted: Int, gates_total: Int }

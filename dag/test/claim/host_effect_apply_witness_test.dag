@@ -2,15 +2,15 @@ module test.claim.host_effect_apply_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn host_os_target() -> NodeControlPlane {
+fn host_os_target() -> gunbc.host_effect.NodeControlPlane {
   HostOs { node: srv1_host }
 }
 
-fn bmc_target() -> NodeControlPlane {
+fn bmc_target() -> gunbc.host_effect.NodeControlPlane {
   BmcController { node: srv1_host }
 }
 
-fn directive_is_settled(d: ConvergeDirective) -> Bool {
+fn directive_is_settled(d: gunbc.host_effect_realize.ConvergeDirective) -> Bool {
   match d {
     Settled => true
     ReDrive => false
@@ -18,7 +18,7 @@ fn directive_is_settled(d: ConvergeDirective) -> Bool {
   }
 }
 
-fn directive_is_redrive(d: ConvergeDirective) -> Bool {
+fn directive_is_redrive(d: gunbc.host_effect_realize.ConvergeDirective) -> Bool {
   match d {
     Settled => false
     ReDrive => true
@@ -26,7 +26,7 @@ fn directive_is_redrive(d: ConvergeDirective) -> Bool {
   }
 }
 
-fn directive_is_refused(d: ConvergeDirective) -> Bool {
+fn directive_is_refused(d: gunbc.host_effect_realize.ConvergeDirective) -> Bool {
   match d {
     Settled => false
     ReDrive => false
@@ -120,7 +120,7 @@ test fn witness_ssh_shell_unreachable_fails_closed() -> Bool {
     target: host_os_target(),
     effect: ShellCommand { script: "true" },
     evidence: host_effect_identity_evidence,
-    transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
+    transport: SshShell { ssh_host: "203.0.113.1" as std.types.NonEmptyStr }
   ))
 }
 
@@ -129,7 +129,7 @@ test fn witness_ssh_empty_script_fails_closed() -> Bool {
     target: host_os_target(),
     effect: ShellCommand { script: "" },
     evidence: host_effect_identity_evidence,
-    transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
+    transport: SshShell { ssh_host: "203.0.113.1" as std.types.NonEmptyStr }
   ))
 }
 
@@ -155,7 +155,7 @@ test fn witness_converge_loop_evidence_derives_converge_drive() -> Bool {
   host_effect_drive_from_evidence(evidence: host_effect_converge_loop_evidence) == ConvergeLoop
 }
 
-data witness_arbitrary_non_idempotent_evidence: IdempotencyEvidence = NonIdempotent {
+data witness_arbitrary_non_idempotent_evidence: std.effects.IdempotencyEvidence = NonIdempotent {
   shape: AppendEffect,
   reason: "breaking side effect — not a converge-loop authorization",
 }
@@ -168,11 +168,11 @@ test fn witness_lattice_breaking_shape_derives_oneshot_not_redrive() -> Bool {
   host_effect_drive_from_evidence(evidence: LatticeEffect { shape: AppendEffect }) == OneShot
 }
 
-fn fixture_srv1_host_converge() -> HostConverge {
-  HostConverge {
+fn fixture_srv1_host_converge() -> gunbc.host_converge.HostConverge {
+  gunbc.host_converge.HostConverge {
     identity: srv1_host.identity,
     knobs: [
-      ConvergeKnob {
+      gunbc.host_converge.ConvergeKnob {
         slice: GunbcSlice,
         name: "pinned_tree_sha",
         desired: gunbc_pinned_tree_desired_label,

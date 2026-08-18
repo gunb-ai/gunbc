@@ -1,17 +1,17 @@
 module v2.test.emit.std_logic_selfhost_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data std_logic_bool_enum_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
 
 data std_logic_bool_wrong_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { False, True }")
 
-fn sl_conj(children: List<Edge>) -> Node {
-  Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: SyntheticOccurrence }
+fn sl_conj(children: List<v2.std.node.Edge>) -> Node {
+  v2.std.node.Node { kind: TypeNode { connective: Conj }, children: children, occurrence_id: SyntheticOccurrence }
 }
 
-fn sl_pos(target: Node) -> Edge { Edge { label: Positional, target: target } }
+fn sl_pos(target: Node) -> v2.std.node.Edge { v2.std.node.Edge { label: Positional, target: target } }
 
 fn sl_nil() -> Node { sl_conj(children: []) }
 
@@ -33,23 +33,23 @@ fn sl_variant_block(variants: List<Node>) -> Node {
   sl_conj(children: [ sl_pos(target: sl_variant_list(variants: variants)) ])
 }
 
-fn sl_named_edge(name: String, target: Node) -> Edge {
-  Edge { label: Named { name: name }, target: target }
+fn sl_named_edge(name: String, target: Node) -> v2.std.node.Edge {
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
-fn sl_coproduct_enum(variant_edges: List<Edge>) -> Node {
-  Node {
+fn sl_coproduct_enum(variant_edges: List<v2.std.node.Edge>) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Disj },
     children: variant_edges,
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn sl_derive_attr(binding: Symbol) -> Node {
+fn sl_derive_attr(binding: v2.std.node.Symbol) -> Node {
   sl_conj(children: [ sl_pos(target: rust_inhabitant_atom(id: binding)) ])
 }
 
-fn sl_enum_derive_binding_row(coproduct: Node) -> Edge {
+fn sl_enum_derive_binding_row(coproduct: Node) -> v2.std.node.Edge {
   match rust_decl_enum_derive_binding_for_coproduct(coproduct: coproduct) {
     Accepted { value: binding, diagnostics: _ } =>
       sl_pos(target: sl_derive_attr(binding: binding))
@@ -120,7 +120,7 @@ test fn std_logic_bool_type_decl_self_emits() -> Bool {
 
 fn sl_coproduct_derive_binding_rejects_non_disj() -> Bool {
   match rust_decl_enum_derive_binding_for_coproduct(
-    coproduct: Node {
+    coproduct: v2.std.node.Node {
       kind: TypeNode { connective: Atom { identity: ^sl_non_disj_atom } },
       children: [],
       occurrence_id: SyntheticOccurrence

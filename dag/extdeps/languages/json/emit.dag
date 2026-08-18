@@ -16,7 +16,7 @@ type JsonKeyValue {
 type JsonValue
   = JsonNull
   | JsonBool { value: Bool }
-  | JsonNumber { lexeme: JsonNumberLexeme }
+  | JsonNumber { lexeme: extdeps.languages.json.grammar.JsonNumberLexeme }
   | JsonString { value: String }
   | JsonArray { elements: List<JsonValue> }
   | JsonObject { members: List<JsonKeyValue> }

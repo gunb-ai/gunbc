@@ -1,13 +1,13 @@
 module v2.test.workflow.frontier_probe_closure_readthrough
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 fn fp_readthrough_closure_subject_matching_digest(
-  refs: List<SourceRef>,
+  refs: List<v2.compiler.source_authority.SourceRef>,
   ingest_read_count: Int,
-  entry: SourceRef
-) -> FrontierProbeIngestSubject {
+  entry: v2.compiler.source_authority.SourceRef
+) -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
   frontier_probe_discovered_closure_subject_for_matrix(
     closure: frontier_probe_discovered_closure_seal(refs: refs, entry: entry),
     coverage: SourceRootCoverageComplete,
@@ -15,15 +15,15 @@ fn fp_readthrough_closure_subject_matching_digest(
   )
 }
 
-fn fp_readthrough_missing_path_ref() -> SourceRef {
-  SourceRef {
+fn fp_readthrough_missing_path_ref() -> v2.compiler.source_authority.SourceRef {
+  v2.compiler.source_authority.SourceRef {
     path: "dag/nonexistent_fp_matrix_probe_path.dag",
     source_root: DagTree,
-    content_hash: content_hash_of_value(value: "missing-path" as NonEmptyStr)
+    content_hash: content_hash_of_value(value: "missing-path" as std.types.NonEmptyStr)
   }
 }
 
-fn fp_readthrough_read_failure_subject() -> FrontierProbeIngestSubject {
+fn fp_readthrough_read_failure_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
   fp_readthrough_closure_subject_matching_digest(
     refs: Cons {
       head: fp_readthrough_missing_path_ref(),
@@ -34,15 +34,15 @@ fn fp_readthrough_read_failure_subject() -> FrontierProbeIngestSubject {
   )
 }
 
-fn fp_readthrough_wrong_hash_ref() -> SourceRef {
-  SourceRef {
+fn fp_readthrough_wrong_hash_ref() -> v2.compiler.source_authority.SourceRef {
+  v2.compiler.source_authority.SourceRef {
     path: "dag/std/algebra.dag",
     source_root: DagTree,
-    content_hash: content_hash_of_value(value: "wrong-hash-bytes" as NonEmptyStr)
+    content_hash: content_hash_of_value(value: "wrong-hash-bytes" as std.types.NonEmptyStr)
   }
 }
 
-fn fp_readthrough_hash_mismatch_subject() -> FrontierProbeIngestSubject {
+fn fp_readthrough_hash_mismatch_subject() -> v2.compiler.self_host.frontier_probe.FrontierProbeIngestSubject {
   fp_readthrough_closure_subject_matching_digest(
     refs: Cons {
       head: fp_readthrough_wrong_hash_ref(),

@@ -2,7 +2,7 @@ module test.claim.gha_expression_roundtrip
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn core_expr() -> Expression {
+fn core_expr() -> extdeps.github.expressions.Expression {
   LogicalOr {
     left: LogicalOr {
       left: extdeps.github.expressions.FunctionCall {
@@ -15,8 +15,8 @@ fn core_expr() -> Expression {
   }
 }
 
-fn core_template() -> ExpressionTemplate {
-  ExpressionTemplate {
+fn core_template() -> extdeps.github.expressions.ExpressionTemplate {
+  extdeps.github.expressions.ExpressionTemplate {
     segments: [
       LiteralText { text: "cargo-ci-" },
       Interpolation { expression: ContextAccess { context: Runner, path: ["os"] } },
@@ -40,8 +40,8 @@ test fn witness_roundtrip_template() -> Bool {
   }
 }
 
-fn override_spellings(path_sep: String, or_op: String) -> ExpressionSpellings {
-  ExpressionSpellings {
+fn override_spellings(path_sep: String, or_op: String) -> extdeps.github.expressions.ExpressionSpellings {
+  extdeps.github.expressions.ExpressionSpellings {
     path_sep: path_sep,
     call_open: default_expression_spellings.call_open,
     call_close: default_expression_spellings.call_close,
@@ -55,15 +55,15 @@ fn override_spellings(path_sep: String, or_op: String) -> ExpressionSpellings {
   }
 }
 
-fn perturbed_path_sep() -> ExpressionSpellings {
+fn perturbed_path_sep() -> extdeps.github.expressions.ExpressionSpellings {
   override_spellings(path_sep: "->", or_op: default_expression_spellings.or_op)
 }
 
-fn perturbed_or_op() -> ExpressionSpellings {
+fn perturbed_or_op() -> extdeps.github.expressions.ExpressionSpellings {
   override_spellings(path_sep: default_expression_spellings.path_sep, or_op: " OR ")
 }
 
-fn roundtrips_under(sp: ExpressionSpellings) -> Bool {
+fn roundtrips_under(sp: extdeps.github.expressions.ExpressionSpellings) -> Bool {
   match ingest_expression_with(src: serialize_expression_with(expression: core_expr(), sp: sp), sp: sp) {
     Present { value: v } => v == core_expr()
     Absent => false
@@ -74,7 +74,7 @@ test fn witness_roundtrip_under_perturbed_rows() -> Bool {
   roundtrips_under(sp: perturbed_path_sep()) && roundtrips_under(sp: perturbed_or_op())
 }
 
-fn ingest_reads(sp: ExpressionSpellings) -> Bool {
+fn ingest_reads(sp: extdeps.github.expressions.ExpressionSpellings) -> Bool {
   match ingest_expression(src: serialize_expression_with(expression: core_expr(), sp: sp)) {
     Present { value: v } => !(v == core_expr())
     Absent => true
@@ -85,7 +85,7 @@ test fn witness_ingest_reads_rows() -> Bool {
   ingest_reads(sp: perturbed_path_sep()) && ingest_reads(sp: perturbed_or_op())
 }
 
-fn left_nested_or() -> Expression {
+fn left_nested_or() -> extdeps.github.expressions.Expression {
   LogicalOr {
     left: LogicalOr {
       left: ContextAccess { context: Runner, path: ["os"] },
@@ -95,7 +95,7 @@ fn left_nested_or() -> Expression {
   }
 }
 
-fn right_nested_or() -> Expression {
+fn right_nested_or() -> extdeps.github.expressions.Expression {
   LogicalOr {
     left: ContextAccess { context: Runner, path: ["os"] },
     right: LogicalOr {
@@ -116,11 +116,11 @@ test fn witness_or_associativity_partition() -> Bool {
   }
 }
 
-fn frontier_string_with_or() -> Expression {
+fn frontier_string_with_or() -> extdeps.github.expressions.Expression {
   StringLiteral { value: "a || b" }
 }
 
-fn frontier_nested_multiarg_call() -> Expression {
+fn frontier_nested_multiarg_call() -> extdeps.github.expressions.Expression {
   extdeps.github.expressions.FunctionCall {
     function: extdeps.github.expressions.Contains,
     args: [

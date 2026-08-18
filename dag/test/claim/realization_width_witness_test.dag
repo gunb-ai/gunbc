@@ -10,18 +10,18 @@ fn synthetic_plan_total() -> CostAccount<Nano> {
 data compile_gate_fn: String = "dag_compile_clean_gate_passes"
 data gate_entry: String = "dag/tools/floor_effect_gate_witness.dag"
 
-fn witness_threads_64() -> HardwareThreadCount {
+fn witness_threads_64() -> std.measure.HardwareThreadCount {
   hardware_thread_count(64)
 }
 
-fn witness_threads_4() -> HardwareThreadCount {
+fn witness_threads_4() -> std.measure.HardwareThreadCount {
   hardware_thread_count(4)
 }
 
 fn synthetic_plan() -> RealizationPlan<Nano> {
-  RealizationPlan {
+  std.realization_schedule.RealizationPlan {
     target: "width-witness-target"
-    objective: RealizationObjective { goals: [] }
+    objective: std.realization_schedule.RealizationObjective { goals: [] }
     schedule: [
       [RunnableSingleClaim { entry: gate_entry, function: compile_gate_fn, profile: runnable_resource_profile_negligible() }],
       [

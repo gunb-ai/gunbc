@@ -2,7 +2,7 @@ module v2.test.manual.fold_node_topdown
 
 
 fn topdown_leaf() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^topdown_leaf_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -10,27 +10,27 @@ fn topdown_leaf() -> Node {
 }
 
 fn topdown_one_child_tree() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^topdown_child_a }, target: topdown_leaf() }
+      v2.std.node.Edge { label: Named { name: ^topdown_child_a }, target: topdown_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn topdown_two_level_chain() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^topdown_chain_child }, target: topdown_one_child_tree() }
+      v2.std.node.Edge { label: Named { name: ^topdown_chain_child }, target: topdown_one_child_tree() }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn depth_max_algebra() -> NodeFoldTopDown<Int, Int> {
-  NodeFoldTopDown {
+  v2.std.node.NodeFoldTopDown {
     init: fn(_, depth) { depth },
     child_context: fn(_, depth, _) { depth + 1 },
     step: fn(acc, _, child_r) { if child_r > acc { child_r } else { acc } }
@@ -42,7 +42,7 @@ data witness_one_child_max_depth_is_one: Bool = fold_node_topdown(n: topdown_one
 data witness_two_level_chain_max_depth_is_two: Bool = fold_node_topdown(n: topdown_two_level_chain(), ctx: 0, algebra: depth_max_algebra()) == 2
 
 fn depth_edge_dispatch_algebra() -> NodeFoldTopDown<Int, Int> {
-  NodeFoldTopDown {
+  v2.std.node.NodeFoldTopDown {
     init: fn(_, depth) { depth },
     child_context: fn(_, depth, e) {
       match e.label {
@@ -56,11 +56,11 @@ fn depth_edge_dispatch_algebra() -> NodeFoldTopDown<Int, Int> {
 }
 
 fn topdown_edge_dispatch_root() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^topdown_left_child }, target: topdown_leaf() },
-      Edge { label: Named { name: ^topdown_right_child }, target: topdown_leaf() }
+      v2.std.node.Edge { label: Named { name: ^topdown_left_child }, target: topdown_leaf() },
+      v2.std.node.Edge { label: Named { name: ^topdown_right_child }, target: topdown_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
   }
@@ -75,42 +75,42 @@ fn topdown_expected() -> Node {
   topdown_leaf()
 }
 
-data claim_fold_node_topdown_compiles: TestClaim = CompilesClaim {
+data claim_fold_node_topdown_compiles: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/fold_node_topdown: module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: topdown_leaf(),
   expected_value: topdown_leaf(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_fold_node_topdown_leaf_returns_init: TestClaim = CompilesClaim {
+data claim_fold_node_topdown_leaf_returns_init: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/fold_node_topdown: leaf returns init(leaf, ctx)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: topdown_ok_node(ok: witness_leaf_returns_init),
   expected_value: topdown_expected(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_fold_node_topdown_one_child_depth: TestClaim = CompilesClaim {
+data claim_fold_node_topdown_one_child_depth: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/fold_node_topdown: one-child tree max depth is 1",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: topdown_ok_node(ok: witness_one_child_max_depth_is_one),
   expected_value: topdown_expected(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_fold_node_topdown_chain_depth: TestClaim = CompilesClaim {
+data claim_fold_node_topdown_chain_depth: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/fold_node_topdown: two-level chain max depth is 2",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: topdown_ok_node(ok: witness_two_level_chain_max_depth_is_two),
   expected_value: topdown_expected(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_fold_node_topdown_edge_dispatch: TestClaim = CompilesClaim {
+data claim_fold_node_topdown_edge_dispatch: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/fold_node_topdown: child_context dispatches on edge not ordinal",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: topdown_ok_node(ok: witness_child_context_dispatches_on_edge),
   expected_value: topdown_expected(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

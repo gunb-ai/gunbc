@@ -3,30 +3,30 @@ module test.claim.legacy_test_behavior_disposition_witness_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
-data fixture_covered_behavior: LegacyTestBehavior = LegacyTestBehavior {
+data fixture_covered_behavior: gunbc.legacy_test_behavior_disposition.LegacyTestBehavior = gunbc.legacy_test_behavior_disposition.LegacyTestBehavior {
   source_file: "fixture/legacy.rs" as std.types.FilePath,
-  test_fn: "covered_behavior" as NonEmptyStr,
+  test_fn: "covered_behavior" as std.types.NonEmptyStr,
 }
 
-data fixture_retained_behavior: LegacyTestBehavior = LegacyTestBehavior {
+data fixture_retained_behavior: gunbc.legacy_test_behavior_disposition.LegacyTestBehavior = gunbc.legacy_test_behavior_disposition.LegacyTestBehavior {
   source_file: "fixture/legacy.rs" as std.types.FilePath,
-  test_fn: "retained_behavior" as NonEmptyStr,
+  test_fn: "retained_behavior" as std.types.NonEmptyStr,
 }
 
-data fixture_witness: TestBehaviorWitness = TestBehaviorWitness {
+data fixture_witness: gunbc.legacy_test_behavior_disposition.TestBehaviorWitness = gunbc.legacy_test_behavior_disposition.TestBehaviorWitness {
   entry: "fixture/replacement_test.dag" as std.types.FilePath,
-  test_fn: "replacement_catches_regression" as NonEmptyStr,
+  test_fn: "replacement_catches_regression" as std.types.NonEmptyStr,
 }
 
-data fixture_covered_disposition: LegacyTestBehaviorDisposition = CoveredByWitness {
+data fixture_covered_disposition: gunbc.legacy_test_behavior_disposition.LegacyTestBehaviorDisposition = CoveredByWitness {
   behavior: fixture_covered_behavior,
   witness: fixture_witness,
-  distinguishing_failure: "planted regression changes the replacement verdict from true to false" as NonEmptyStr,
+  distinguishing_failure: "planted regression changes the replacement verdict from true to false" as std.types.NonEmptyStr,
 }
 
-data fixture_retained_disposition: LegacyTestBehaviorDisposition = RetainedNonMigratableBehavior {
+data fixture_retained_disposition: gunbc.legacy_test_behavior_disposition.LegacyTestBehaviorDisposition = RetainedNonMigratableBehavior {
   behavior: fixture_retained_behavior,
-  reason: "fixture host-only behavior cannot yet execute through the substrate" as NonEmptyStr,
+  reason: "fixture host-only behavior cannot yet execute through the substrate" as std.types.NonEmptyStr,
   dissolution: unbound_dissolution(description: "the fixture host surface becomes a modeled effect"),
 }
 
@@ -41,7 +41,7 @@ fn fixture_discovered_witnesses() -> List<String> {
   [test_behavior_witness_id(witness: fixture_witness)]
 }
 
-fn fixture_complete_dispositions() -> List<LegacyTestBehaviorDisposition> {
+fn fixture_complete_dispositions() -> List<gunbc.legacy_test_behavior_disposition.LegacyTestBehaviorDisposition> {
   [fixture_covered_disposition, fixture_retained_disposition]
 }
 
@@ -76,19 +76,19 @@ test fn legacy_test_behavior_planted_misclassification_reds() -> Bool {
   )
 }
 
-data fixture_family: LegacyTestBehaviorFamily = LegacyTestBehaviorFamily {
-  name: "fixture-family" as NonEmptyStr,
+data fixture_family: gunbc.legacy_test_behavior_disposition.LegacyTestBehaviorFamily = gunbc.legacy_test_behavior_disposition.LegacyTestBehaviorFamily {
+  name: "fixture-family" as std.types.NonEmptyStr,
   source_files: ["fixture/legacy.rs" as std.types.FilePath],
 }
 
-data fixture_absent_family: LegacyTestBehaviorFamily = LegacyTestBehaviorFamily {
-  name: "fixture-absent-family" as NonEmptyStr,
+data fixture_absent_family: gunbc.legacy_test_behavior_disposition.LegacyTestBehaviorFamily = gunbc.legacy_test_behavior_disposition.LegacyTestBehaviorFamily {
+  name: "fixture-absent-family" as std.types.NonEmptyStr,
   source_files: ["fixture/never_discovered.rs" as std.types.FilePath],
 }
 
-data fixture_outside_family_behavior: LegacyTestBehavior = LegacyTestBehavior {
+data fixture_outside_family_behavior: gunbc.legacy_test_behavior_disposition.LegacyTestBehavior = gunbc.legacy_test_behavior_disposition.LegacyTestBehavior {
   source_file: "fixture/other.rs" as std.types.FilePath,
-  test_fn: "outside_family_behavior" as NonEmptyStr,
+  test_fn: "outside_family_behavior" as std.types.NonEmptyStr,
 }
 
 fn fixture_discovered_legacy_with_outsider() -> List<String> {

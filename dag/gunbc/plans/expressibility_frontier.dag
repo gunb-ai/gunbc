@@ -1,7 +1,7 @@
 module gunbc.plans.expressibility_frontier
 
 
-fn expressibility_frontier_body() -> List<MarkdownBlock> {
+fn expressibility_frontier_body() -> List<std.markdown.MarkdownBlock> {
   [
     quote(blocks: [
       p(text: "Methodology doc. Generalizes DESIGN §5's decidability trichotomy (wall / ratchet / undecidable) from *one class* into a **frame for any modeling discipline**: locate each instance on a frontier between \"expressible → gate by construction\" and \"known-inexpressible → permanent review.\" Two disciplines instantiate it today — **anemic modeling** and **algorithmic complexity** — and they share a shape. DESIGN refs: §1 (displaced cost), §2 (decomposition leaf-side), §5 (fail-closed; \"never\" trap; construction over validation), §6 (lenses as residue; the purity trap), §7 (recursion)."),
@@ -73,7 +73,7 @@ fn expressibility_frontier_body() -> List<MarkdownBlock> {
   ]
 }
 
-data expressibility_frontier_plan: Plan = Plan {
+data expressibility_frontier_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "expressibility-frontier",
   title: "The expressibility frontier — what a modeling discipline can gate, and what stays review",
   body: expressibility_frontier_body(),

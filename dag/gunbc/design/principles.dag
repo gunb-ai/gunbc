@@ -20,7 +20,7 @@ type PrincipleId
 type RegisterPrinciple {
   id: PrincipleId
   law: String
-  enforced_by: DeclarationRef
+  enforced_by: std.decl_ref.DeclarationRef
 }
 
 data register_thesis_amendment_note: String = "THESIS REVISED (operator recalibration, 2026-08-02 — the S1 selective-spectacle amendment). The former thesis, quiet at arm's length / responsive up close / every response true, correctly rejected cheap uniform spectacle but was read as uniform austerity: it prevented good FOCAL spectacle along with bad ambient spectacle, and the shipped surfaces came out coherent but emotionally flat (the operator's gap ruling: no protagonist). The revision keeps every existing law — the calm field IS quiet-at-arm's-length — and adds the missing half as three new principles carried by gunbc.design.salience: energy is scarce, focal, and caused. The prior thesis string remains in history; this note is the amendment record."

@@ -13,7 +13,7 @@ type AccessEnsurePlan = GoogleCloudInteractiveAuthenticationRequired
 type AccessTokenResolution
   = AccessTokenReady { token: Secret }
   | AccessTokenUpsertRequired { plan: AccessEnsurePlan }
-  | AccessTokenEnsureRefused { reason: NonEmptyStr }
+  | AccessTokenEnsureRefused { reason: std.types.NonEmptyStr }
 
 data gcloud_human_auth_pause_note: String = "Human gcloud authentication is the current REALIZER of an access ENSURE upsert, never a fleet phase or unconditional preflight. A selected operation first has to require a Secret Manager read/write; that effect requires an access token; only then does GcloudPrintToken OBSERVE the access capability. A successful print classifies Converged/Noop and continues without exposing the token. A missing or expired session classifies Absent/Apply(GoogleCloudInteractiveAuthenticationRequired) only when stderr carries an observed authentication deficit; missing binary, network, or other infrastructure failures classify Refuse with the stderr detail preserved. Re-driving after the upsert resumes the same operation. OperatorSuppliedToken remains an explicit compatibility handler. A future workload-identity/OAuth handler can realize the same ensure without changing BMC convergence."
 

@@ -2,11 +2,11 @@ module v2.workflow.enforcement_live
 
 
 // Phase 0A honesty: live_receipt_for_contract passes desired_scope: whole_corpus_scope deliberately, NOT contract.claimed_scope. Passing claimed_scope would self-certify (claimed covers claimed by construction) and, worse, would green Cost's scope leg on decl_facts name discovery alone (~1400 discovered fn names, 0 body-evaluated). The honest model needs three facts — required_scope, claimed_scope, evaluated_scope — with meaningful checks claimed-covers-required and evaluated-covers-claimed; evaluated_scope does not exist until execution receipts land. Do NOT pass claimed_scope here until evaluated_scope exists.
-fn enforcement_ci_witness_entries() -> List<ScheduleWitnessEntry> {
+fn enforcement_ci_witness_entries() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   project_ci_floor_witness_entries(roster: commit_gate_roster)
 }
 
-fn enforcement_prepush_witness_entries() -> List<ScheduleWitnessEntry> {
+fn enforcement_prepush_witness_entries() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   witness_entries_from_enrollments(
     rows: filter(xs: commit_gate_roster, predicate: fn(e) {
       enrollment_has_surface(e: e, surface: GitPrePushHook)
@@ -14,23 +14,23 @@ fn enforcement_prepush_witness_entries() -> List<ScheduleWitnessEntry> {
   )
 }
 
-fn self_module_prefix_for(module_path: LensModulePathV0) -> String {
+fn self_module_prefix_for(module_path: v2.lens.registry.LensModulePathV0) -> String {
   match module_path {
     Bound { path } => logical_qualified_name_from_module(module_name: path, name: "")
     Unbound => "unbound-lens-module-path:"
   }
 }
 
-fn enforcement_corpus_facts() -> List<DeclFact> {
+fn enforcement_corpus_facts() -> List<v2.std.decl_index.DeclFact> {
   decl_facts(pool_roots: whole_corpus_scope.roots)
 }
 
 fn live_receipt_for_contract(
-  c: LensContract,
-  facts: List<DeclFact>,
-  ci_entries: List<ScheduleWitnessEntry>,
-  prepush_entries: List<ScheduleWitnessEntry>
-) -> EnrollmentDiscoveryReceipt {
+  c: v2.lens.enforcement.contract.LensContract,
+  facts: List<v2.std.decl_index.DeclFact>,
+  ci_entries: List<std.realization_schedule.ScheduleWitnessEntry>,
+  prepush_entries: List<std.realization_schedule.ScheduleWitnessEntry>
+) -> v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt {
   derive_receipt(
     contract: c,
     desired_scope: whole_corpus_scope,
@@ -41,7 +41,7 @@ fn live_receipt_for_contract(
   )
 }
 
-fn coverage_receipts_from(facts: List<DeclFact>) -> List<EnrollmentDiscoveryReceipt> {
+fn coverage_receipts_from(facts: List<v2.std.decl_index.DeclFact>) -> List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt> {
   let ci_entries = enforcement_ci_witness_entries()
   let prepush_entries = enforcement_prepush_witness_entries()
   fold(lens_contract_registry, init: [], f: fn(acc, c) {
@@ -62,11 +62,11 @@ fn unbound_contract_count() -> Int {
   })
 }
 
-fn coverage_receipts_live() -> List<EnrollmentDiscoveryReceipt> {
+fn coverage_receipts_live() -> List<v2.lens.enforcement.contract.EnrollmentDiscoveryReceipt> {
   coverage_receipts_from(facts: enforcement_corpus_facts())
 }
 
-fn complexity_repo_wide_verdict_live() -> IntentVerdict {
+fn complexity_repo_wide_verdict_live() -> v2.lens.enforcement.gate.IntentVerdict {
   intent_family_verdict(
     intent: standing_intent_complexity_repo_wide,
     contracts: lens_contract_registry,
@@ -94,7 +94,7 @@ fn body_judged_count_live() -> Int {
   body_judged_count_of(facts: enforcement_corpus_facts())
 }
 
-fn lens_enforcement_inventory_live() -> List<LensEnforcementInventoryRow> {
+fn lens_enforcement_inventory_live() -> List<v2.lens.enforcement.inventory.LensEnforcementInventoryRow> {
   let facts = enforcement_corpus_facts()
   let ci_entries = enforcement_ci_witness_entries()
   let prepush_entries = enforcement_prepush_witness_entries()
@@ -108,7 +108,7 @@ fn lens_enforcement_inventory_live() -> List<LensEnforcementInventoryRow> {
   )
 }
 
-fn witness_admission_inventory_live() -> List<WitnessAdmissionInventoryRow> {
+fn witness_admission_inventory_live() -> List<v2.lens.enforcement.inventory.WitnessAdmissionInventoryRow> {
   derive_witness_admission_inventory(
     exclusion_rows: witness_exclusion_frontier,
     ci_entries: enforcement_ci_witness_entries(),

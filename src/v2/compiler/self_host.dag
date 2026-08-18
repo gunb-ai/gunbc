@@ -44,11 +44,11 @@ data regen_staleness_authority: Symbol = ^canonical_emitted_bytes
 type SelfHostStageEmission {
   node: CoreNode
   source: Medium<String>
-  digest: Hash
+  digest: v2.std.node.Hash
 }
 
 type SelfHostFixpointEqual {
-  over: Symbol
+  over: v2.std.node.Symbol
   stage1: SelfHostStageEmission
   stage2: SelfHostStageEmission
 }

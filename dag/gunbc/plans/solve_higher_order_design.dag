@@ -1,7 +1,7 @@
 module gunbc.plans.solve_higher_order_design
 
 
-fn solve_higher_order_design_body() -> List<MarkdownBlock> {
+fn solve_higher_order_design_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** design ruling, captured pre-un-shelve (the language-target self-host lane is §4-shelved until soon after the Rust fixed point). This doc is a **scaffold**: at un-shelve the *structural*-solve rationale migrates onto the existing `solve_constraints` / `ConstraintGraph` authority's typed doc-rows (`src/v2/std/constraints.dag`) plus a DESIGN §4 anchor, and the *numerical*-solve gap is authored at its own trigger (the three orthogonal facts below) — then this file dissolves. Until then it is the single place the rationale lives, so it is not re-litigated or misplaced."),
     p(text: "**One-line ruling:** `solve` is **not** a substrate primitive — for either solve family. **Structural** solving (unification, resolve, affected-set closure, coercion) already exists and is grounded: `ConstraintGraph` / `solve_constraints` / `ConstraintSatisfactionPredicate` (`src/v2/std/constraints.dag:28-137`, `constraint_satisfaction_predicate.dag:4-14`) ground a node by *selecting from a candidate set* (`[root]`) under a **structural** predicate (`candidate == source_facts`); if more structural solving is needed, **extend that authority — do not mint a parallel `Residual`/`Constraint` + `solve`** (that would be the §3 fork this doc preaches against). **Numerical / iterative** solving (a residual over the reals — SPICE ODE, Newton, relaxation) is **currently ABSENT from the substrate**: it is expressible by neither `solve_constraints` (structural `==`) nor `find_witness` (finite selection from a supplied `CandidateSet`). When built it is **three orthogonal facts** (a finite loop measure + `TerminationProof`, a typed residual-acceptance contract, and a solver-method handler), still not a primitive. Minting a `solve` primitive would violate three axioms at once."),
@@ -60,7 +60,7 @@ fn solve_higher_order_design_body() -> List<MarkdownBlock> {
   ]
 }
 
-data solve_higher_order_design_plan: Plan = Plan {
+data solve_higher_order_design_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "solve-higher-order-design",
   title: "`solve` is higher-order, not a primitive — the standing rationale",
   body: solve_higher_order_design_body(),

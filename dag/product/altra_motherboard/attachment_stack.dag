@@ -85,10 +85,10 @@ fn attachment_layer_name(l: AttachmentLayer) -> NonEmptyStr {
 // facts, so nothing legal stands here -- fusing this into carriage would send a reading task to
 // whoever decides what the repository may hold.
 type FactAuthorityStanding
-  = FactEstablished { authority: ExternalAuthority, subject: DeclarationRef }
-  | FactUnresolved { what_is_missing: NonEmptyStr }
-  | FactAccessGated { subject: NonEmptyStr, access_route: ExternalAuthority }
-  | FactStatedOnlyInFigure { figure: NonEmptyStr, what_is_drawn: NonEmptyStr }
+  = FactEstablished { authority: extdeps.external_authority.ExternalAuthority, subject: std.decl_ref.DeclarationRef }
+  | FactUnresolved { what_is_missing: std.types.NonEmptyStr }
+  | FactAccessGated { subject: std.types.NonEmptyStr, access_route: extdeps.external_authority.ExternalAuthority }
+  | FactStatedOnlyInFigure { figure: std.types.NonEmptyStr, what_is_drawn: std.types.NonEmptyStr }
 
 // WHAT THIS REPOSITORY MAY CARRY FOR THAT SUBJECT. Deliberately three arms rather than the four a
 // naive split would give, and the missing one is worth stating: there is no
@@ -98,9 +98,9 @@ type FactAuthorityStanding
 // something no row may grant. NormalizedFactsMayBeCarried consequently means exactly: the
 // normalized numerical facts are admitted AND the vendor's expression of them is not.
 type RepositoryCarriageStanding
-  = CarriageNotApplicable { because: NonEmptyStr }
+  = CarriageNotApplicable { because: std.types.NonEmptyStr }
   | NormalizedFactsMayBeCarried
-  | CarriageDecisionRequired { reason: NonEmptyStr }
+  | CarriageDecisionRequired { reason: std.types.NonEmptyStr }
 
 fn fact_is_established(f: FactAuthorityStanding) -> Bool {
   match f {
@@ -308,10 +308,10 @@ data attachment_stack: List<AttachmentLayerStanding> = [
 // layer-agnostic because envelopes, laminates and layers are all blocked for these same three
 // reasons, and minting a second copy per subject is the fork this repository keeps repairing.
 type FactAuthorityBlocker
-  = NeedsSomeoneToFindTheDocument { what_is_missing: NonEmptyStr }
-  | NeedsARedistributionDecision { reason: NonEmptyStr }
-  | NeedsCommercialAccess { subject: NonEmptyStr, access_route: ExternalAuthority }
-  | NeedsAHumanToReadTheDrawing { figure: NonEmptyStr, what_is_drawn: NonEmptyStr }
+  = NeedsSomeoneToFindTheDocument { what_is_missing: std.types.NonEmptyStr }
+  | NeedsARedistributionDecision { reason: std.types.NonEmptyStr }
+  | NeedsCommercialAccess { subject: std.types.NonEmptyStr, access_route: extdeps.external_authority.ExternalAuthority }
+  | NeedsAHumanToReadTheDrawing { figure: std.types.NonEmptyStr, what_is_drawn: std.types.NonEmptyStr }
   | NeedsTheStandingItselfRepaired { refusal: AuthorityStandingRefusal }
 
 // THE BLOCKER FOR ANY SUBJECT, derived from both axes rather than either alone. AN ESTABLISHED

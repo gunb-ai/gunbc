@@ -1,9 +1,9 @@
 module v2.test.lens_grounding_ledger.grounding_ledger_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn verdict_is_stay_string_decode_none(v: GroundingVerdict) -> Bool {
+fn verdict_is_stay_string_decode_none(v: v2.lens.grounding_ledger.GroundingVerdict) -> Bool {
   match v {
     StayString { reason } => match reason { DecodeReturnedNone => true  UnrecognizedSiblingArm => false }
     Reference { authority: _ } => false
@@ -15,7 +15,7 @@ fn verdict_is_stay_string_decode_none(v: GroundingVerdict) -> Bool {
   }
 }
 
-fn verdict_is_stay_string_unrecognized(v: GroundingVerdict) -> Bool {
+fn verdict_is_stay_string_unrecognized(v: v2.lens.grounding_ledger.GroundingVerdict) -> Bool {
   match v {
     StayString { reason } => match reason { DecodeReturnedNone => false  UnrecognizedSiblingArm => true }
     Reference { authority: _ } => false
@@ -27,7 +27,7 @@ fn verdict_is_stay_string_unrecognized(v: GroundingVerdict) -> Bool {
   }
 }
 
-fn verdict_is_pending_judge(v: GroundingVerdict) -> Bool {
+fn verdict_is_pending_judge(v: v2.lens.grounding_ledger.GroundingVerdict) -> Bool {
   match v {
     PendingJudge => true
     StayString { reason: _ } => false
@@ -39,7 +39,7 @@ fn verdict_is_pending_judge(v: GroundingVerdict) -> Bool {
   }
 }
 
-fn verdict_is_any_reference(v: GroundingVerdict) -> Bool {
+fn verdict_is_any_reference(v: v2.lens.grounding_ledger.GroundingVerdict) -> Bool {
   match v {
     Reference { authority: _ } => true
     ReferenceUri => true
@@ -51,7 +51,7 @@ fn verdict_is_any_reference(v: GroundingVerdict) -> Bool {
   }
 }
 
-fn decided_by_is_structural(d: DecidedBy) -> Bool {
+fn decided_by_is_structural(d: v2.lens.grounding_ledger.DecidedBy) -> Bool {
   match d {
     StructuralRule => true
     Judge { rationale: _ } => false

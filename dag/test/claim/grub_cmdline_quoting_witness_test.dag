@@ -2,7 +2,7 @@ module test.claim.grub_cmdline_quoting
 
 
 test fn grub_quotes_semicolon_cmdline_args_only() -> Bool {
-  let entry = GrubMenuEntry {
+  let entry = extdeps.bootloader.grub.GrubMenuEntry {
     title: "gunbc autoinstall",
     linux_image: "/casper/vmlinuz",
     linux_cmdline: [

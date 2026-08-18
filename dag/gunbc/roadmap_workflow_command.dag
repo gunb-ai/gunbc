@@ -6,7 +6,7 @@ type AttemptKey = String
 data workflow_command_note: String = "THE THREE RETRY SHAPES ARE FIRST-CLASS COMMANDS, NOT INCIDENTAL TMUX CLEANUP. RetryMechanism retries a failed mechanism at the same input identity without minting a new attempt or consuming a review round. ResumeAttempt continues the same branch and worktree with a new worker turn and new head, so a new evidence round begins without a fresh tree. StartNewAttempt begins from a declared base revision, optionally recording which prior attempt it supersedes; the superseded attempt's branch, worktree, and receipts are retained as lineage history, never deleted silently. A pre-receipt attempt is typed LegacyAttemptDisposition and is cleared only through StartNewAttempt\{supersedes: ...\}, never by guessing progress from absent receipts."
 
 type WorkflowCommand
-  = RetryVerification { subject: VerificationSubject }
+  = RetryVerification { subject: gunbc.roadmap_verification_receipt.VerificationSubject }
   | ResumeAttempt { attempt_key: AttemptKey, feedback: String }
   | StartNewAttempt {
       node_id: String,
@@ -15,7 +15,7 @@ type WorkflowCommand
     }
   | RetryMechanism {
       operation: String,
-      input_identity: ContentHash,
+      input_identity: std.content_hash.ContentHash,
     }
 
 type AttemptLineage

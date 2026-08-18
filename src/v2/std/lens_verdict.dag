@@ -5,9 +5,9 @@ data lens_verdict_home_note: String = "LensVerdict is the shared fail-closed lat
 
 type LensVerdict
   = Holds
-  | Violation { diagnostic: Diagnostic }
-  | NotApplicable { diagnostic: Diagnostic }
-  | Unrealized { diagnostic: Diagnostic }
+  | Violation { diagnostic: v2.std.diagnostic.Diagnostic }
+  | NotApplicable { diagnostic: v2.std.diagnostic.Diagnostic }
+  | Unrealized { diagnostic: v2.std.diagnostic.Diagnostic }
 
 fn lens_verdict_module_file(module_name: String) -> Symbol {
   symbol_intern_lexeme(lexeme: module_name)

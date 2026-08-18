@@ -54,7 +54,7 @@ fn seed_witness_repository(repo: std.types.FilePath, driver_value: String) -> Bo
     && staged == 0 && committed == 0 && based == 0
 }
 
-fn commit_witness_side(repo: std.types.FilePath, branch: String, start_point: GitRef, content: String) -> Bool {
+fn commit_witness_side(repo: std.types.FilePath, branch: String, start_point: std.types.GitRef, content: String) -> Bool {
   let branched = git.Core.CheckoutNewBranchAtInRepo(repo: repo, branch: branch, start_point: start_point).exit_code
   let written = write_witness_generated_projection(repo: repo, content: content)
   let staged = git.Core.AddAllInRepo(repo: repo).exit_code
@@ -63,8 +63,8 @@ fn commit_witness_side(repo: std.types.FilePath, branch: String, start_point: Gi
 }
 
 fn observe_witness_merge(repo: std.types.FilePath, ours_touches_artifact: Bool) -> MergeDivergenceObservation {
-  let theirs = commit_witness_side(repo: repo, branch: "theirs", start_point: "base" as GitRef, content: witness_theirs_content)
-  let ours_branch = git.Core.CheckoutNewBranchAtInRepo(repo: repo, branch: "ours", start_point: "base" as GitRef).exit_code
+  let theirs = commit_witness_side(repo: repo, branch: "theirs", start_point: "base" as std.types.GitRef, content: witness_theirs_content)
+  let ours_branch = git.Core.CheckoutNewBranchAtInRepo(repo: repo, branch: "ours", start_point: "base" as std.types.GitRef).exit_code
   let ours_written = if ours_touches_artifact {
     write_witness_generated_projection(repo: repo, content: witness_ours_content)
   } else {

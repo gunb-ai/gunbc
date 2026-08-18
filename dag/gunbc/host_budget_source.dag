@@ -13,16 +13,16 @@ data host_budget_source_no_fallback_arm_note: String = "THERE IS NO FALLBACK ARM
 
 type HostBudgetSource
   = BudgetSourceEnvOverride
-  | BudgetSourceCgroupMemoryHigh { cgroup_dir: NonEmptyStr }
-  | BudgetSourceCgroupMemoryMax { cgroup_dir: NonEmptyStr }
-  | BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: ByteSize }
+  | BudgetSourceCgroupMemoryHigh { cgroup_dir: std.types.NonEmptyStr }
+  | BudgetSourceCgroupMemoryMax { cgroup_dir: std.types.NonEmptyStr }
+  | BudgetSourceMemAvailableCappedAtDeclaredHigh { declared_high: std.measure.ByteSize }
   | BudgetSourceMemAvailable
   | BudgetSourceMemTotal
   | BudgetSourceDarwinPhysicalMemory
 
 type HostBudgetResolution
-  = HostBudgetResolved { source: HostBudgetSource, bytes: ByteSize }
-  | HostBudgetUnreadable { reason: NonEmptyStr }
+  = HostBudgetResolved { source: HostBudgetSource, bytes: std.measure.ByteSize }
+  | HostBudgetUnreadable { reason: std.types.NonEmptyStr }
 
 fn host_budget_resolution_bytes(r: HostBudgetResolution) -> ByteSize? {
   match r {

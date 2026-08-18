@@ -3,8 +3,8 @@ module test.claim.mt_jade_platform_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data expected_mt_jade_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
-  declaration: DeclarationRef {
+data expected_mt_jade_subject_ref: extdeps.external_authority.ExternalSubjectRef = extdeps.external_authority.ExternalSubjectRef {
+  declaration: std.decl_ref.DeclarationRef {
     module_path: "extdeps.ocp.mt_jade.subject",
     decl_name: "mt_jade_reference_platform",
     field: WholeDeclaration,
@@ -12,8 +12,8 @@ data expected_mt_jade_subject_ref: ExternalSubjectRef = ExternalSubjectRef {
 }
 
 fn cpld_role_eq(
-  a: MtJadeBoardCpldResponsibility,
-  b: MtJadeBoardCpldResponsibility,
+  a: extdeps.ocp.mt_jade.platform.MtJadeBoardCpldResponsibility,
+  b: extdeps.ocp.mt_jade.platform.MtJadeBoardCpldResponsibility,
 ) -> Bool {
   match a {
     CpuBmcGpioVoltageIsolation =>
@@ -34,13 +34,13 @@ fn cpld_role_eq(
 }
 
 fn list_contains_cpld_role(
-  rows: List<MtJadeBoardCpldResponsibility>,
-  wanted: MtJadeBoardCpldResponsibility,
+  rows: List<extdeps.ocp.mt_jade.platform.MtJadeBoardCpldResponsibility>,
+  wanted: extdeps.ocp.mt_jade.platform.MtJadeBoardCpldResponsibility,
 ) -> Bool {
   fold(rows, init: false, f: fn(acc, r) { acc || cpld_role_eq(a: r, b: wanted) })
 }
 
-fn handshake_includes_slave_start(chain: List<PlatformSequencingHandshake>) -> Bool {
+fn handshake_includes_slave_start(chain: List<extdeps.ocp.mt_jade.platform.PlatformSequencingHandshake>) -> Bool {
   fold(chain, init: false, f: fn(acc, step) {
     acc || match step {
       SlaveStartHandshake {

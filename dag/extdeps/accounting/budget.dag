@@ -1,8 +1,8 @@
 module extdeps.accounting.budget
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Budget"
   }
@@ -22,7 +22,7 @@ type LineItem<Q, S> {
 type BudgetBalance = Surplus | Balanced | Deficit
 
 fn line_items_total<Q, S>(items: List<LineItem<Q, S>>) -> Measure<Q, S, std.nat.Nat> {
-  fold(items, init: Measure { count: 0 }, f: (acc, it) => measure_add(a: acc, b: it.amount))
+  fold(items, init: std.measure.Measure { count: 0 }, f: (acc, it) => measure_add(a: acc, b: it.amount))
 }
 
 fn within_appropriation<Q, S>(appropriation: Appropriation<Q, S>, items: List<LineItem<Q, S>>) -> Bool {
@@ -68,7 +68,7 @@ fn admit_line_item<Q, S>(st: AdmissionState<Q, S>, candidate: LineItem<Q, S>) ->
 fn admit_all<Q, S>(appropriation: Appropriation<Q, S>, candidates: List<LineItem<Q, S>>) -> AdmissionState<Q, S> {
   fold(
     candidates,
-    init: AdmissionState { appropriation: appropriation, committed: [], used: Measure { count: 0 }, refused: [] },
+    init: AdmissionState { appropriation: appropriation, committed: [], used: std.measure.Measure { count: 0 }, refused: [] },
     f: admit_line_item
   )
 }

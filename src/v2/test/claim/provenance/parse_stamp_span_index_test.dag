@@ -1,11 +1,11 @@
 module v2.test.provenance.parse_stamp_span_index
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn parse_stamp_list_absent_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn parse_stamp_list_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^parse_stamp_list_absent,
-    at: node_locus(node: Node {
+    at: node_locus(node: v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -14,8 +14,8 @@ fn parse_stamp_list_absent_diagnostic() -> Diagnostic {
   }
 }
 
-fn parse_stamp_token(start: Int, end: Int) -> Token {
-  Token {
+fn parse_stamp_token(start: Int, end: Int) -> v2.std.compilers.lexing.Token {
+  v2.std.compilers.lexing.Token {
     class: ^parse_stamp_tok,
     lexeme: std.algebra.Empty,
     file: ^parse_stamp_file,
@@ -24,11 +24,11 @@ fn parse_stamp_token(start: Int, end: Int) -> Token {
   }
 }
 
-fn parse_stamp_terminal_root() -> GrammarRoot {
-  GrammarRoot {
+fn parse_stamp_terminal_root() -> v2.std.grammar.GrammarRoot {
+  v2.std.grammar.GrammarRoot {
     start: ^parse_stamp_start,
     productions: Cons {
-      head: GrammarProduction {
+      head: v2.std.grammar.GrammarProduction {
         name: ^parse_stamp_start,
         expression: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass },
         emitted: grammar_atom(identity: ^parse_stamp_start)
@@ -39,11 +39,11 @@ fn parse_stamp_terminal_root() -> GrammarRoot {
   }
 }
 
-fn parse_stamp_sequence_root() -> GrammarRoot {
-  GrammarRoot {
+fn parse_stamp_sequence_root() -> v2.std.grammar.GrammarRoot {
+  v2.std.grammar.GrammarRoot {
     start: ^parse_stamp_start,
     productions: Cons {
-      head: GrammarProduction {
+      head: v2.std.grammar.GrammarProduction {
         name: ^parse_stamp_start,
         expression: Sequence {
           left: Terminal { token_class: ^parse_stamp_tok, stamp: StampClass },
@@ -58,7 +58,7 @@ fn parse_stamp_sequence_root() -> GrammarRoot {
 }
 
 fn parse_stamp_from_source_extent_holds(
-  index: SpanIndex,
+  index: v2.std.provenance.SpanIndex,
   id: v2.std.node.OccurrenceId,
   start: Int,
   end: Int
@@ -84,7 +84,7 @@ fn parse_stamp_from_source_extent_holds(
 }
 
 fn parse_stamp_derived_by_pair_holds(
-  index: SpanIndex,
+  index: v2.std.provenance.SpanIndex,
   id: v2.std.node.OccurrenceId,
   left: v2.std.node.OccurrenceId,
   right: v2.std.node.OccurrenceId

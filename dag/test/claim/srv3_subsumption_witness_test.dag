@@ -104,7 +104,7 @@ test fn srv3_and_srv4_disagree_on_convergence() -> Bool {
     && (srv4.adds + srv4.removals + srv4.refusals) == 0
 }
 
-fn ownership_lies_owned(k: SshPublicKey) -> Ownership? {
+fn ownership_lies_owned(k: extdeps.ssh.SshPublicKey) -> gunbc.ownership.Ownership? {
   authorized_key_ownership(k: operator_macbook_ssh_key)
 }
 
@@ -121,7 +121,7 @@ test fn reconcile_would_teardown_only_if_ownership_claimed_it() -> Bool {
 }
 
 test fn comment_only_drift_is_one_change_not_remove_add() -> Bool {
-  let renamed_macbook = SshPublicKey {
+  let renamed_macbook = extdeps.ssh.SshPublicKey {
     algorithm: operator_macbook_ssh_key.algorithm,
     material: operator_macbook_ssh_key.material,
     comment: "macbook-m4-renamed",
@@ -133,7 +133,7 @@ test fn comment_only_drift_is_one_change_not_remove_add() -> Bool {
 
 data host_toolchain_reach_pairing_witness_note: String = "Discriminating witnesses for the 2026-07-24 target/access pairing in gunbc.host_toolchain_ensure. The defect being walled: access used to be looked up from the REQUESTED host while the target was resolved kind-aware, so a BuildCache request for srv3 targeted srv3 and authenticated to srv1 — the effect lands on the wrong machine and reports success. A test that merely asserts the reach resolves would pass under the old code too, so the load-bearing row here is reach_access_host_is_the_target_host, which compares the two sides of the pair and is red exactly when they disagree. Its negative control is reach_wrong_machine_pairing_is_unwritable: the old behaviour is reconstructed by hand and shown to violate the same predicate, so the predicate is proven to discriminate rather than assumed to."
 
-fn reach_or_absent(kind: HostToolchainKind, host: HostIdentity) -> HostToolchainReach? {
+fn reach_or_absent(kind: gunbc.host_toolchain_ensure.HostToolchainKind, host: product.placement_supply.HostIdentity) -> gunbc.host_toolchain_ensure.HostToolchainReach? {
   match host_toolchain_ensure_reach(kind: kind, host: host) {
     ReachResolved { reach: reach } => Present { value: reach }
     ReachTargetAbsent => none
@@ -141,7 +141,7 @@ fn reach_or_absent(kind: HostToolchainKind, host: HostIdentity) -> HostToolchain
   }
 }
 
-fn reach_pair_agrees(kind: HostToolchainKind, host: HostIdentity) -> Bool {
+fn reach_pair_agrees(kind: gunbc.host_toolchain_ensure.HostToolchainKind, host: product.placement_supply.HostIdentity) -> Bool {
   match reach_or_absent(kind: kind, host: host) {
     Present { value: reach } => reach.access.host.identity == reach.target.identity
     Absent => false
@@ -174,7 +174,7 @@ test fn reach_os_install_actuator_on_srv3_runs_from_the_actuator_host() -> Bool 
   }
 }
 
-fn reach_pair_agrees_for(reach: HostToolchainReach) -> Bool {
+fn reach_pair_agrees_for(reach: gunbc.host_toolchain_ensure.HostToolchainReach) -> Bool {
   reach.access.host.identity == reach.target.identity
 }
 

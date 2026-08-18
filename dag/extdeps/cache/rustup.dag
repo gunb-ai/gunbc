@@ -2,16 +2,16 @@ module extdeps.cache.rustup
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "rust-lang.github.io/rustup/overrides.html"
   }
 }
 
-data rustup_toolchain_store_id: CacheInterfaceId = "rustup_toolchain_store"
+data rustup_toolchain_store_id: std.cache_identity.CacheInterfaceId = "rustup_toolchain_store"
 
-data rustup_toolchain_store_facts: CacheInterfaceCatalogFacts = {
+data rustup_toolchain_store_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: rustup_toolchain_store_id
   backing_surface: "rustup-toolchains-dir"
   transport_encoding: CatalogOpaqueStringEncoding

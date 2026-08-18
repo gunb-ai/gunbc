@@ -1,23 +1,23 @@
 module v2.test.complexity_gate.budget_roster_completeness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn complexity_declared_budget_is_rated(budget: ComplexityBound) -> Bool {
+fn complexity_declared_budget_is_rated(budget: v2.lens.complexity.ComplexityBound) -> Bool {
   match budget {
     UnknownComplexity { diagnostic: _ } => false
     _ => true
   }
 }
 
-data complexity_budget_row_unrated_declared_budget_semantic_red: LensSubjectComplexityBudgetRow = LensSubjectComplexityBudgetRow {
+data complexity_budget_row_unrated_declared_budget_semantic_red: v2.test.complexity_gate.subject_complexity_budget_roster.LensSubjectComplexityBudgetRow = v2.test.complexity_gate.subject_complexity_budget_roster.LensSubjectComplexityBudgetRow {
   subject_producer: table_fixture_add_arrow_with_body,
   declared_budget: fn(body) {
     unknown_complexity()
   }
 }
 
-fn complexity_budget_row_dominates(row: LensSubjectComplexityBudgetRow) -> Bool {
+fn complexity_budget_row_dominates(row: v2.test.complexity_gate.subject_complexity_budget_roster.LensSubjectComplexityBudgetRow) -> Bool {
   match lens_subject_arrow_body_for_budget_row(row: row) {
     Accepted { value: body, diagnostics: _ } =>
       let declared = complexity_declared_budget_for_row(row: row, body: body)
@@ -33,7 +33,7 @@ fn complexity_budget_row_dominates(row: LensSubjectComplexityBudgetRow) -> Bool 
   }
 }
 
-fn complexity_budget_roster_family_all_rows_hold(rows: List<LensSubjectComplexityBudgetRow>) -> Bool {
+fn complexity_budget_roster_family_all_rows_hold(rows: List<v2.test.complexity_gate.subject_complexity_budget_roster.LensSubjectComplexityBudgetRow>) -> Bool {
   fold_list(
     xs: rows,
     empty: true,

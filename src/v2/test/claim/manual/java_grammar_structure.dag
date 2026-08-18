@@ -1,7 +1,7 @@
 module v2.test.manual.java_grammar_structure
 
 
-fn java_grammar_structure_satisfied(lm: LanguageModel) -> Bool {
+fn java_grammar_structure_satisfied(lm: v2.std.language_model.LanguageModel) -> Bool {
   lex_rule_set_token_class_member(rules: java_lex_rules(), token_class: ^java_token_kw_void) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: ^java_production_result) &&
     grammar_carries_symbol(grammar: lm.grammar, sym: ^java_production_method_declarator) &&

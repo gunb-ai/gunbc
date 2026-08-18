@@ -1,7 +1,7 @@
 module gunbc.plans.reference_grounding_migration
 
 
-fn reference_grounding_migration_body() -> List<MarkdownBlock> {
+fn reference_grounding_migration_body() -> List<std.markdown.MarkdownBlock> {
   [
     BlockquoteBlock { blocks: [p(text: "ROADMAP follow-on to the #5943 construction-justification prose deletion. The carrier half of a two-part groundedness effort: this plan owns migrating stringly-typed REFERENCES to typed carriers; the DETECTOR half is neat-fox-279's v2.lens.grounding (the EXTRACT pass that enumerates every bare-String field coinciding with a concept). DESIGN refs: sec 2 (decompose to grounded atoms; net concepts must not grow by re-invention), sec 3 (single authority; nicknaming), sec 4 (a closed substrate makes references walkable, not text-matched), sec 5 (construction over validation; a typed reference makes 'points at nothing' unwritable), sec 6 (the mark on the carrier is the authority). Sibling frames: [expressibility-frontier.md](expressibility-frontier.md), [construction-justification-rule.md](construction-justification-rule.md), [axiom-syllogism-lens.md](axiom-syllogism-lens.md).")] },
 
@@ -70,7 +70,7 @@ fn reference_grounding_migration_body() -> List<MarkdownBlock> {
   ]
 }
 
-data reference_grounding_migration_plan: Plan = Plan {
+data reference_grounding_migration_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "reference-grounding-migration",
   title: "Reference grounding -- migrate stringly-typed references to typed carriers",
   body: reference_grounding_migration_body(),

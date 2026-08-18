@@ -3,16 +3,16 @@ module test.claim.merge_admission_producer_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data scenario_base: GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-producer-base")
-data scenario_head: CommitSha = "abc1234def5678901234567890abcd1234567890"
-data green_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+data scenario_base: extdeps.git.object_store.GitObjectId = merge_admission_witness_git_tree(label: "merge-admission-producer-base")
+data scenario_head: std.types.CommitSha = "abc1234def5678901234567890abcd1234567890"
+data green_receipt: gunbc.merge_admission.MergeAdmissionReceipt = stamp_floor_receipt(
   pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base,
   floor_exit_code: 0,
 )
 
-data red_receipt: MergeAdmissionReceipt = stamp_floor_receipt(
+data red_receipt: gunbc.merge_admission.MergeAdmissionReceipt = stamp_floor_receipt(
   pr_number: Present { value: 5933 },
   head_sha: scenario_head,
   base_tree_hash: scenario_base,

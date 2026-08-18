@@ -18,9 +18,9 @@ data expected_conformance_closure: FreeMonoid<String> = [
 
 data conformance_entry: String = "dag/test/claim/module_graph/conformance_imports_only.dag"
 
-data conformance_import_envelope_disposition: Disposition = Scaffold {
+data conformance_import_envelope_disposition: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.test.manual.coproduct_reflection_conformance",
     decl_name: "reflect_connective_type",
     field: WholeDeclaration
@@ -85,4 +85,4 @@ test fn reference_closure_b2_safety_wall_holds() -> Bool {
   }
 }
 
-data conformance_import_envelope_dissolve_on: DissolutionCondition = unbound_dissolution(description: "v2 parse_module accepts test fn bodies, at which point the equivalence gates stop needing the import-envelope-only mirror conformance_imports_only.dag and it deletes with this row")
+data conformance_import_envelope_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "v2 parse_module accepts test fn bodies, at which point the equivalence gates stop needing the import-envelope-only mirror conformance_imports_only.dag and it deletes with this row")

@@ -6,19 +6,19 @@ data pijul_compatibility_binding_note: NonEmptyStr = "The Pijul R1 handler consu
 data pijul_compatibility_read_back_identity_note: NonEmptyStr = "A PijulCompatibilityReceipt is constructible by this handler only after pijul_assess_read_back proves that the independently decoded observation equals repository. Its common read-back handle fingerprints the decoded repository state and availability plus the observing Pijul version; the producer version never substitutes for state identity."
 
 type PijulCompatibilityReceipt {
-  target: PijulChannelName
-  generation: PijulChannelStateIdentity
-  repository: PijulDecodedRepository
-  projection: PijulRepositoryProjection
-  read_back: PijulReadBackObservation
-  advance: PijulConditionalAdvanceCapability
+  target: extdeps.pijul.PijulChannelName
+  generation: extdeps.pijul.PijulChannelStateIdentity
+  repository: extdeps.pijul.PijulDecodedRepository
+  projection: extdeps.pijul.PijulRepositoryProjection
+  read_back: extdeps.pijul.PijulReadBackObservation
+  advance: extdeps.pijul.PijulConditionalAdvanceCapability
 }
 
 type PijulCompatibilityRefusal
-  = PijulCompatibilityDecodeRejected { cause: PijulProjectionRefusal }
-  | PijulCompatibilityTargetMissing { target: PijulChannelName }
-  | PijulCompatibilityReadBackMismatch { axis: PijulReadBackMismatchAxis }
-  | PijulCompatibilityReadBackInvalid { cause: PijulProjectionRefusal }
+  = PijulCompatibilityDecodeRejected { cause: extdeps.pijul.PijulProjectionRefusal }
+  | PijulCompatibilityTargetMissing { target: extdeps.pijul.PijulChannelName }
+  | PijulCompatibilityReadBackMismatch { axis: extdeps.pijul.PijulReadBackMismatchAxis }
+  | PijulCompatibilityReadBackInvalid { cause: extdeps.pijul.PijulProjectionRefusal }
 
 type PijulCompatibilityBindingOutcome
   = PijulCompatibilityBound { receipt: PijulCompatibilityReceipt }

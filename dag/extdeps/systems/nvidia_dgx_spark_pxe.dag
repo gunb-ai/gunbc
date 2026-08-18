@@ -84,7 +84,7 @@ fn spark_installer_kernel_parameter_name(p: SparkInstallerKernelParameterName) -
 
 type SparkPxeSecureBootPrerequisite
   = SecureBootDisabledForPxe
-  | BootloaderEnrolledForPxe { bootloader: NonEmptyStr }
+  | BootloaderEnrolledForPxe { bootloader: std.types.NonEmptyStr }
 
 fn spark_fastos_unattended_kernel_cmdline(http_image_root: Uri) -> String {
   kernel_cmdline_render(args: [

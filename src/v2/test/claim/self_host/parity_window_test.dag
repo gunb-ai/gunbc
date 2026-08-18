@@ -1,7 +1,7 @@
 module v2.test.claim.self_host.parity_window_test
 
 
-fn verdict_is_revert_required(v: ParityMonitorVerdict) -> Bool {
+fn verdict_is_revert_required(v: v2.compiler.self_host.parity_window.ParityMonitorVerdict) -> Bool {
   match v {
     ParityHolding { family: _, consecutive_green: _ } => false
     ParityRevertRequired { family: _, red_window_id: _ } => true
@@ -10,7 +10,7 @@ fn verdict_is_revert_required(v: ParityMonitorVerdict) -> Bool {
   }
 }
 
-fn verdict_is_evidence_refused(v: ParityMonitorVerdict) -> Bool {
+fn verdict_is_evidence_refused(v: v2.compiler.self_host.parity_window.ParityMonitorVerdict) -> Bool {
   match v {
     ParityHolding { family: _, consecutive_green: _ } => false
     ParityRevertRequired { family: _, red_window_id: _ } => false
@@ -19,9 +19,9 @@ fn verdict_is_evidence_refused(v: ParityMonitorVerdict) -> Bool {
   }
 }
 
-fn observed(family: String, id: String, seq: Int, green: Bool, warm: Bool) -> ParityObservation {
+fn observed(family: String, id: String, seq: Int, green: Bool, warm: Bool) -> v2.compiler.self_host.parity_window.ParityObservation {
   WindowObserved {
-    receipt: ParityWindowReceipt {
+    receipt: v2.compiler.self_host.parity_window.ParityWindowReceipt {
       family: family,
       cadence_window_id: id,
       agreement_green: green,
@@ -31,19 +31,19 @@ fn observed(family: String, id: String, seq: Int, green: Bool, warm: Bool) -> Pa
   }
 }
 
-fn green_obs(id: String, seq: Int) -> ParityObservation {
+fn green_obs(id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
   observed(family: "add", id: id, seq: seq, green: true, warm: true)
 }
 
-fn red_obs(id: String, seq: Int) -> ParityObservation {
+fn red_obs(id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
   observed(family: "add", id: id, seq: seq, green: false, warm: true)
 }
 
-fn cold_obs(id: String, seq: Int) -> ParityObservation {
+fn cold_obs(id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
   observed(family: "add", id: id, seq: seq, green: true, warm: false)
 }
 
-fn ack_obs(id: String, seq: Int) -> ParityObservation {
+fn ack_obs(id: String, seq: Int) -> v2.compiler.self_host.parity_window.ParityObservation {
   RevertAcknowledged { family: "add", ack_id: id, cadence_sequence: seq }
 }
 
@@ -114,7 +114,7 @@ test fn witness_latch_names_first_red_window() -> Bool {
   }
 }
 
-fn latched_revert_names(v: ParityMonitorVerdict, expected_window: String) -> Bool {
+fn latched_revert_names(v: v2.compiler.self_host.parity_window.ParityMonitorVerdict, expected_window: String) -> Bool {
   match v {
     ParityHolding { family: _, consecutive_green: _ } => false
     ParityRevertRequired { family: _, red_window_id: w } => w == expected_window

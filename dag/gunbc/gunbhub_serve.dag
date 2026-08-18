@@ -7,7 +7,7 @@ type GunbhubServeRequest {
 }
 
 type GunbhubHttpResponse {
-  status: HttpStatus
+  status: std.types.HttpStatus
   body: String
 }
 
@@ -17,7 +17,7 @@ type GunbhubServeResult
   | RouteNotFound
   | MethodNotAllowed
 
-type GunbhubPageSource = ReactPage { node: Fragment }
+type GunbhubPageSource = ReactPage { node: std.markup.Fragment }
 
 type GunbhubRenderResult
   = RenderedHtml { html: String }
@@ -269,7 +269,7 @@ fn serve_gunbhub_page_source(source: GunbhubPageSource) -> GunbhubServeResult {
 }
 
 type GunbhubRouteRow {
-  route: HttpServerRoute
+  route: extdeps.http.server.HttpServerRoute
   page: GunbhubPageSource
 }
 
@@ -360,7 +360,7 @@ fn path_matches_any_served_pattern(path: String, table: ServedStaticRouteTable) 
 type StaticRouteMatchState {
   found: Bool
   body: String
-  status: HttpStatus
+  status: std.types.HttpStatus
 }
 
 fn serve_gunbhub_request(req: GunbhubServeRequest) -> GunbhubServeResult {

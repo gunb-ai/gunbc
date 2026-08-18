@@ -42,7 +42,7 @@ fn configuration_signal_name(s: Ice40ConfigurationSignal) -> NonEmptyStr {
 // master-SPI board about tCR_SCK is asking about a transaction that board does not perform.
 type TimingScope
   = AllConfigurationModes
-  | OnlyUnderMode { mode: Ice40ConfigurationMode }
+  | OnlyUnderMode { mode: extdeps.programmable_logic.ice40.supply.Ice40ConfigurationMode }
 
 fn scope_admits(s: TimingScope, m: Ice40ConfigurationMode) -> Bool {
   match s {
@@ -74,9 +74,9 @@ type SpecColumn
 // in the subject module: forty-nine cycles is a number of things, and how long they take depends
 // on a clock this table does not name.
 type TimingQuantity
-  = BoundInNanoseconds { value: Nanosecond }
-  | BoundInMicroseconds { value: Microsecond }
-  | BoundInHertz { value: Hertz }
+  = BoundInNanoseconds { value: std.measure.Nanosecond }
+  | BoundInMicroseconds { value: std.measure.Microsecond }
+  | BoundInHertz { value: std.measure.Hertz }
   | BoundInClockCycles { count: std.nat.Nat }
 
 type TimingBound {
@@ -85,7 +85,7 @@ type TimingBound {
 }
 
 type ConfigurationTiming {
-  symbol: NonEmptyStr
+  symbol: std.types.NonEmptyStr
   scope: TimingScope
   bound: TimingBound
 }
@@ -146,8 +146,8 @@ type ConfigurationClockSelection
   | HighFrequency
 
 type ConfigurationTimeStanding
-  = ConfigurationTimeTypical { elapsed: Millisecond }
-  | ConfigurationTimeWithdrawnByVendor { note: NonEmptyStr }
+  = ConfigurationTimeTypical { elapsed: std.measure.Millisecond }
+  | ConfigurationTimeWithdrawnByVendor { note: std.types.NonEmptyStr }
 
 fn hx1k_configuration_time(c: ConfigurationClockSelection) -> ConfigurationTimeStanding {
   match c {

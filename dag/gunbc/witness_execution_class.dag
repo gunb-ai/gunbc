@@ -7,10 +7,10 @@ data native_blocked_cause_note: NonEmptyStr = "Exact typed causes for a pure wit
 
 type NativeBlockedCause
   = GeneralWitnessTargetModelUnavailable
-  | UnsupportedEmitterConstruction { missing: NonEmptyStr }
-  | BundleClosureEscapes { detail: NonEmptyStr }
+  | UnsupportedEmitterConstruction { missing: std.types.NonEmptyStr }
+  | BundleClosureEscapes { detail: std.types.NonEmptyStr }
   | OwnershipLoweringUnavailable
-  | HostCapabilityUnavailable { capability: NonEmptyStr }
+  | HostCapabilityUnavailable { capability: std.types.NonEmptyStr }
 
 type WitnessExecutionClass
   = NativeRequired
@@ -64,7 +64,7 @@ type WitnessClassRow {
 data classify_witness_note: NonEmptyStr = "Precedence, and why it is this order: an effect obligation stays an effect (plan -> execution -> independent readback) no matter what else is true of it, so it is checked first; a test whose SUBJECT is the interpreter must stay interpreted by definition (native execution would test the wrong implementation), so it outranks the native axes; a live-tree reader may still be emitted native but its receipt must bind the observed subject, so it is its own class rather than NativeRequired; and only a hermetic, non-interpreter-subject, effect-free witness the emitter faithfully carries is NativeRequired. Everything else pure is NativeBlocked with its typed cause. The inputs are standing facts; a native execution FAILURE is deliberately not representable here."
 
 type EmitterCarriage
-  = CarriedInEnrolledBundle { bundle_identity: NonEmptyStr, member: NonEmptyStr }
+  = CarriedInEnrolledBundle { bundle_identity: std.types.NonEmptyStr, member: std.types.NonEmptyStr }
   | NoEmitterCarriage { cause: NativeBlockedCause }
 
 data emitter_carriage_note: NonEmptyStr = "Carriage is EVIDENCE, not an assertion (review 50550 finding 3): NativeRequired is reachable only through CarriedInEnrolledBundle, which must name the enrolled bundle identity and the member spelling — facts a consumer joins against the enrolled SelectedWitnessPlan roster, so a mis-supplied bare true cannot mint NativeRequired. The refusal arm carries its typed NativeBlockedCause on the same coproduct, so carried-with-a-cause and blocked-without-one are unrepresentable."

@@ -1,7 +1,7 @@
 module v2.test.realization_vocabulary_containment.roster_soundness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data typescript_sidecar_module: String = "extdeps.languages.typescript.program"
 
@@ -9,51 +9,51 @@ data bash_build_module: String = "v2.extdeps.languages.bash_build"
 
 data roster_soundness_fast_lane_note: String = "Live-corpus roster soundness receipt moved to long/realization_vocabulary_containment_witness_test.dag (5s fast-lane budget). Per-PR controls hand-build LayerImportFact census rows and derive live_leak_edges via realization_vocab_live_leak_edges_from_facts (not by projecting realization_vocab_grandfathered_edge_roster); roster_sound then compares that derived edge set against the grandfather roster. Positive: full TS-0 frozen census facts. RED: same census minus build_step so one grandfathered edge is stale."
 
-data ts0_frozen_census_facts: List<LayerImportFact> = [
-  LayerImportFact {
+data ts0_frozen_census_facts: List<v2.std.layer.LayerImportFact> = [
+  v2.std.layer.LayerImportFact {
     layer: LayerPrefixStd,
     path: "dag/gunbc/roadmap_component.dag",
     import_module: typescript_sidecar_module
   },
-  LayerImportFact {
+  v2.std.layer.LayerImportFact {
     layer: LayerPrefixStd,
     path: "dag/gunbc/design/theme_transition.dag",
     import_module: typescript_sidecar_module
   },
-  LayerImportFact {
+  v2.std.layer.LayerImportFact {
     layer: LayerPrefixStd,
     path: "dag/gunbc/node_http_server_emit.dag",
     import_module: typescript_sidecar_module
   },
-  LayerImportFact {
+  v2.std.layer.LayerImportFact {
     layer: LayerPrefixWorkflow,
     path: "src/v2/workflow/effect_plan_bash_materialize.dag",
     import_module: bash_build_module
   },
-  LayerImportFact {
+  v2.std.layer.LayerImportFact {
     layer: LayerPrefixStd,
     path: "dag/tools/build_step.dag",
     import_module: bash_build_module
   }
 ]
 
-data ts0_frozen_census_facts_missing_build_step: List<LayerImportFact> = [
-  LayerImportFact {
+data ts0_frozen_census_facts_missing_build_step: List<v2.std.layer.LayerImportFact> = [
+  v2.std.layer.LayerImportFact {
     layer: LayerPrefixStd,
     path: "dag/gunbc/roadmap_component.dag",
     import_module: typescript_sidecar_module
   },
-  LayerImportFact {
+  v2.std.layer.LayerImportFact {
     layer: LayerPrefixStd,
     path: "dag/gunbc/design/theme_transition.dag",
     import_module: typescript_sidecar_module
   },
-  LayerImportFact {
+  v2.std.layer.LayerImportFact {
     layer: LayerPrefixStd,
     path: "dag/gunbc/node_http_server_emit.dag",
     import_module: typescript_sidecar_module
   },
-  LayerImportFact {
+  v2.std.layer.LayerImportFact {
     layer: LayerPrefixWorkflow,
     path: "src/v2/workflow/effect_plan_bash_materialize.dag",
     import_module: bash_build_module

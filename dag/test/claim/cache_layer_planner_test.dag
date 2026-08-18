@@ -2,15 +2,15 @@ module test.claim.cache_layer_planner
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data cheap_recompute: CostAccount = cost_account_measured(
+data cheap_recompute: std.realization_schedule.CostAccount = cost_account_measured(
   time: nanosecond_duration(count: 1000),
 )
 
-data expensive_recompute: CostAccount = cost_account_measured(
+data expensive_recompute: std.realization_schedule.CostAccount = cost_account_measured(
   time: nanosecond_duration(count: 50000000),
 )
 
-data wan_deployment: CacheDeploymentBackends = CacheDeploymentBackends {
+data wan_deployment: std.cache_interface.CacheDeploymentBackends = std.cache_interface.CacheDeploymentBackends {
   available: [
     parse_table_memo_id,
     sccache_local_id,
@@ -19,7 +19,7 @@ data wan_deployment: CacheDeploymentBackends = CacheDeploymentBackends {
   ],
 }
 
-data gha_only_deployment: CacheDeploymentBackends = CacheDeploymentBackends {
+data gha_only_deployment: std.cache_interface.CacheDeploymentBackends = std.cache_interface.CacheDeploymentBackends {
   available: [gha_actions_cache_id],
 }
 
@@ -82,7 +82,7 @@ test fn witness_unavailable_backends_omitted() -> Bool {
 
 test fn witness_empty_plan_means_recompute_only() -> Bool {
   let plan = plan_cache_layers(
-    deployment: CacheDeploymentBackends { available: [] },
+    deployment: std.cache_interface.CacheDeploymentBackends { available: [] },
     recompute: expensive_recompute,
     catalog: cache_catalog_rows,
     default_order: cache_layer_default_order,

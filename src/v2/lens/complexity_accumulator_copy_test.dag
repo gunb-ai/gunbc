@@ -1,21 +1,21 @@
 module v2.test.lens_complexity_accumulator_copy
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn dummy_site() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^accumulator_copy_dummy } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 
-fn bare(s: Symbol) -> PortReading {
+fn bare(s: v2.std.node.Symbol) -> v2.lens.complexity_accumulator_copy.PortReading {
   PortBareName { name: s }
 }
 
-fn classify(combiner: Symbol, ports: List<PortReading>, carriers: List<Symbol>) -> Optional<v2.lens.complexity_accumulator_copy.Finding> {
+fn classify(combiner: v2.std.node.Symbol, ports: List<v2.lens.complexity_accumulator_copy.PortReading>, carriers: List<v2.std.node.Symbol>) -> Optional<v2.lens.complexity_accumulator_copy.Finding> {
   classify_call(at: dummy_site(), combiner: combiner, ports: ports, carriers: carriers)
 }
 
@@ -30,7 +30,7 @@ fn is_suspect(o: Optional<v2.lens.complexity_accumulator_copy.Finding>) -> Bool 
   }
 }
 
-fn refuses_with(o: Optional<v2.lens.complexity_accumulator_copy.Finding>, cause: Symbol) -> Bool {
+fn refuses_with(o: Optional<v2.lens.complexity_accumulator_copy.Finding>, cause: v2.std.node.Symbol) -> Bool {
   match o {
     Present { value: f } =>
       match f {

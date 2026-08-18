@@ -1,27 +1,27 @@
 module test.claim.dgx_spark_pxe_witness
 
 
-data witness_tftp_root: Uri = Uri {
+data witness_tftp_root: extdeps.uri.Uri = extdeps.uri.Uri {
   scheme: Tftp,
   locator: "tftp.install.spark.lan",
 }
 
-data witness_http_root: Uri = Uri {
+data witness_http_root: extdeps.uri.Uri = extdeps.uri.Uri {
   scheme: Http,
   locator: "install.spark.lan",
 }
 
-data witness_dhcp_authority: DeclarationRef = decl_ref(
+data witness_dhcp_authority: std.decl_ref.DeclarationRef = decl_ref(
   module_path: "gunbc.dgx_spark_pxe_boot",
   decl_name: "admit_spark_unattended_pxe_boot",
 )
 
-data witness_tftp_endpoint: DeclarationRef = decl_ref(
+data witness_tftp_endpoint: std.decl_ref.DeclarationRef = decl_ref(
   module_path: "extdeps.systems.nvidia_dgx_spark_pxe",
   decl_name: "spark_pxe_tftp_relative_path",
 )
 
-data witness_http_endpoint: DeclarationRef = decl_ref(
+data witness_http_endpoint: std.decl_ref.DeclarationRef = decl_ref(
   module_path: "extdeps.systems.nvidia_dgx_spark_pxe",
   decl_name: "spark_pxe_http_install_image_path",
 )
@@ -116,8 +116,8 @@ test fn w_red_network_standing_without_observation_is_unobserved() -> Bool {
   }
 }
 
-fn synthetic_ready_network_observation() -> PxeNetworkObservation {
-  PxeNetworkObservation {
+fn synthetic_ready_network_observation() -> gunbc.dgx_spark_pxe_boot.PxeNetworkObservation {
+  gunbc.dgx_spark_pxe_boot.PxeNetworkObservation {
     dhcp_offers_bootloader: true,
     tftp_grub_config_reachable: true,
     tftp_kernel_initrd_reachable: true,
@@ -126,8 +126,8 @@ fn synthetic_ready_network_observation() -> PxeNetworkObservation {
   }
 }
 
-fn synthetic_ready_firmware_config() -> SparkUefiPxeConfiguration {
-  SparkUefiPxeConfiguration {
+fn synthetic_ready_firmware_config() -> gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
+  gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
     secure_boot: SecureBootDisabledForPxe,
     network_stack_enabled: true,
     ipv4_pxe_support_enabled: true,
@@ -170,7 +170,7 @@ test fn w_red_reachability_without_isolation_not_ready() -> Bool {
 
 test fn w_firmware_intervention_instruction_derives_bootloader_authority() -> Bool {
   match evaluate_spark_pxe_firmware_standing(
-    config: SparkUefiPxeConfiguration {
+    config: gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
       secure_boot: BootloaderEnrolledForPxe { bootloader: "grubnetaa64.efi" },
       network_stack_enabled: true,
       ipv4_pxe_support_enabled: true,
@@ -188,7 +188,7 @@ test fn w_firmware_intervention_instruction_derives_bootloader_authority() -> Bo
 
 test fn w_firmware_standing_refuses_secure_boot_default_without_enrollment() -> Bool {
   match evaluate_spark_pxe_firmware_standing(
-    config: SparkUefiPxeConfiguration {
+    config: gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
       secure_boot: BootloaderEnrolledForPxe { bootloader: "grubnetaa64.efi" },
       network_stack_enabled: true,
       ipv4_pxe_support_enabled: true,
@@ -200,7 +200,7 @@ test fn w_firmware_standing_refuses_secure_boot_default_without_enrollment() -> 
     SparkPxeFirmwareReady => false
   }
     && match evaluate_spark_pxe_firmware_standing(
-      config: SparkUefiPxeConfiguration {
+      config: gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
         secure_boot: BootloaderEnrolledForPxe { bootloader: spark_pxe_bootloader_filename },
         network_stack_enabled: true,
         ipv4_pxe_support_enabled: true,
@@ -277,7 +277,7 @@ test fn w_red_admission_with_network_gap_refuses_before_firmware() -> Bool {
     tftp_root: witness_tftp_root,
     http_image_root: witness_http_root,
     network_observation: Present {
-      value: PxeNetworkObservation {
+      value: gunbc.dgx_spark_pxe_boot.PxeNetworkObservation {
         dhcp_offers_bootloader: false,
         tftp_grub_config_reachable: true,
         tftp_kernel_initrd_reachable: true,
@@ -309,7 +309,7 @@ test fn w_red_admission_with_firmware_gap_refuses() -> Bool {
     http_endpoint: Present { value: witness_http_endpoint },
     isolation: Present { value: ProxyDhcpPxeOnly },
     firmware_config: Present {
-      value: SparkUefiPxeConfiguration {
+      value: gunbc.dgx_spark_pxe_boot.SparkUefiPxeConfiguration {
         secure_boot: SecureBootDisabledForPxe,
         network_stack_enabled: false,
         ipv4_pxe_support_enabled: true,

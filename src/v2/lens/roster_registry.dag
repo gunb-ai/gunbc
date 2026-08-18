@@ -11,7 +11,7 @@ type NonStandardRegistration {
 data empty_nonstandard_registrations: List<NonStandardRegistration> = []
 
 fn nonstandard_registrations_from(
-  registrations: List<RosterRegistration>
+  registrations: List<gunbc.roster_registry.RosterRegistration>
 ) -> List<NonStandardRegistration> {
   fold_list(
     xs: registrations,
@@ -32,7 +32,7 @@ fn nonstandard_registrations_from(
   )
 }
 
-fn roster_registry_nonstandard_count_from(registrations: List<RosterRegistration>) -> Int {
+fn roster_registry_nonstandard_count_from(registrations: List<gunbc.roster_registry.RosterRegistration>) -> Int {
   count_where(
     xs: registrations,
     predicate: fn(r) { !registration_membership_is_standard(r: r) }
@@ -47,6 +47,6 @@ fn roster_registry_standard_holds() -> Bool {
   roster_registry_nonstandard_count() == 0
 }
 
-data construction_justification: ConstructionJustification = ConstructionJustification {
+data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: SingleAuthority }
 }

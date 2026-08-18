@@ -14,7 +14,7 @@ data provider_standing_probe_bridge_claude_installation_unobserved_reason: NonEm
 data provider_standing_probe_bridge_claude_tool_environment_unobserved_reason: NonEmptyStr = "tool environment not observed at credential-control bridge" as NonEmptyStr
 
 type ProviderDashboardExecProbe
-  = ProviderDashboardExecProbeRefused { detail: NonEmptyStr }
+  = ProviderDashboardExecProbeRefused { detail: std.types.NonEmptyStr }
   | ProviderDashboardExecProbeReported {
       succeeded: Bool,
       stdout: String,
@@ -22,7 +22,7 @@ type ProviderDashboardExecProbe
     }
 
 type CodexProviderStateRootProbe
-  = CodexStateRootProbeRefused { reason: NonEmptyStr }
+  = CodexStateRootProbeRefused { reason: std.types.NonEmptyStr }
   | CodexStateRootAbsent
   | CodexStateRootPresent
 
@@ -33,8 +33,8 @@ type CodexProviderDashboardProbeObservation {
 }
 
 type ClaudeCredentialControlProbeObservation {
-  token_source: NonEmptyStr,
-  subscription_tier: NonEmptyStr,
+  token_source: std.types.NonEmptyStr,
+  subscription_tier: std.types.NonEmptyStr,
 }
 
 data provider_dashboard_exec_probe_transport_refused_reason: NonEmptyStr = "dashboard provider exec probe transport refused" as NonEmptyStr
@@ -119,7 +119,7 @@ data codex_entitlement_realm_policy_note: String = "ENTITLEMENT IS POLICY OVER A
 data codex_entitling_plan_roster_note: String = "NARROWED TO THE OBSERVED DEPLOYMENT (analyst P0, 2026-08-12). This roster first admitted every plan except free and unknown — go, plus, pro, team, edu and all business/enterprise variants — from a note that simultaneously admitted no upstream plan-to-entitlement mapping exists. That is a broad ALLOW decision derived from a locally authored assumption, which is the exact class that escapes review: a refusal gets scrutinized, an admission that merely widens looks like nothing happening.\n\nThe admitted set is now the one plan actually observed on the deployed credential. Everything else decodes correctly and is simply not admitted yet.\n\nA non-admitted plan reads UNOBSERVED rather than REJECTED, and the line is the same one the rest of this module draws: the remedy decides the arm. A plan outside the deployment policy is repaired by ratifying it here — our side, like a stale pin — so the honest state is that we have not decided. An apiKey or amazonBedrock account stays REJECTED because no edit to this roster makes it a personal ChatGPT subscription; that one is repaired only by changing the credential."
 
 type CodexPersonalSubscriptionPolicy {
-  admitted_plans: List<CodexPlanType>
+  admitted_plans: List<extdeps.llm.codex_app_server.CodexPlanType>
 }
 
 data codex_first_deployment_subscription_policy: CodexPersonalSubscriptionPolicy = CodexPersonalSubscriptionPolicy {

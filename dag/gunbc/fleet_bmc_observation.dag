@@ -3,55 +3,55 @@ module gunbc.fleet_bmc_observation
 
 
 type BmcFanTachReceipt {
-  sensor: NonEmptyStr
-  reading: RevolutionsPerMinute
+  sensor: std.types.NonEmptyStr
+  reading: std.measure.RevolutionsPerMinute
 }
 
 type BmcFanConvergenceReceipt {
-  evidence_scope: BmcEvidenceTemporalScope
+  evidence_scope: extdeps.bmc.capability.BmcEvidenceTemporalScope
   host: product.placement_supply.HostIdentity
-  policy: BmcFanPolicyObservation
-  persistence: BmcConfigPersistenceObservation
-  active_config_digest: Digest
-  previous_config_digest: Digest
-  zone_control_path: NonEmptyStr
+  policy: extdeps.bmc.types.BmcFanPolicyObservation
+  persistence: extdeps.bmc.types.BmcConfigPersistenceObservation
+  active_config_digest: extdeps.crypto.hash.Digest
+  previous_config_digest: extdeps.crypto.hash.Digest
+  zone_control_path: std.types.NonEmptyStr
   zone_failsafe_active: Bool
   monitoring_sample_count: std.nat.Nat
-  monitoring_duration: Second
-  temp_soc_minimum: Celsius
-  temp_soc_maximum: Celsius
-  temp_soc_final: Celsius
-  guarded_component_maximum: Celsius
+  monitoring_duration: std.measure.Second
+  temp_soc_minimum: std.measure.Celsius
+  temp_soc_maximum: std.measure.Celsius
+  temp_soc_final: std.measure.Celsius
+  guarded_component_maximum: std.measure.Celsius
   final_tachs: List<BmcFanTachReceipt>
-  observed_at: EpochMs
+  observed_at: std.types.EpochMs
 }
 
 type BmcFanRebootPersistenceReceipt {
-  evidence_scope: BmcEvidenceTemporalScope
+  evidence_scope: extdeps.bmc.capability.BmcEvidenceTemporalScope
   host: product.placement_supply.HostIdentity
-  perturbation_receipt_id: NonEmptyStr
-  perturbation_generation: StatePerturbationGeneration
-  perturbation_capability: BmcFanPolicyProjectionCapability
+  perturbation_receipt_id: std.types.NonEmptyStr
+  perturbation_generation: std.state_durability.StatePerturbationGeneration
+  perturbation_capability: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability
   before: BmcFanConvergenceReceipt
-  post_reboot_policy: BmcFanPolicyObservation
-  reset: RedfishManagerResetObservation
+  post_reboot_policy: extdeps.bmc.types.BmcFanPolicyObservation
+  reset: extdeps.bmc.types.RedfishManagerResetObservation
   bmc_down_observed: Bool
   bmc_returned: Bool
-  bmc_down_observed_at: EpochMs
-  bmc_returned_at: EpochMs
-  host_power_before: RedfishPowerState
-  host_power_after: RedfishPowerState
+  bmc_down_observed_at: std.types.EpochMs
+  bmc_returned_at: std.types.EpochMs
+  host_power_before: extdeps.bmc.types.RedfishPowerState
+  host_power_after: extdeps.bmc.types.RedfishPowerState
   host_os_ssh_reachable_throughout: Bool
-  pre_reboot_temp_soc: Celsius
-  post_reboot_temp_soc: Celsius
+  pre_reboot_temp_soc: std.measure.Celsius
+  post_reboot_temp_soc: std.measure.Celsius
   pre_reboot_tachs: List<BmcFanTachReceipt>
   post_reboot_tachs: List<BmcFanTachReceipt>
-  post_reboot_active_config_digest: Digest
+  post_reboot_active_config_digest: extdeps.crypto.hash.Digest
   post_reboot_controller_active: Bool
   post_reboot_zone_failsafe_active: Bool
   post_reboot_observer_exit_success: Bool
   post_reboot_converge_noop_exit_success: Bool
-  observed_at: EpochMs
+  observed_at: std.types.EpochMs
 }
 
 // AN OBSERVATION IS IMMUTABLE; only which one is CURRENT advances. An earlier

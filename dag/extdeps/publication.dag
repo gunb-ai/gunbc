@@ -20,13 +20,13 @@ type SpecificationDocumentDate {
 // nothing, and the access-gated arm is the only one that bars carriage.
 type DocumentPublicationStatus
   = PubliclyPublishedUnderOpenLicense {
-      license: NonEmptyStr
+      license: std.types.NonEmptyStr
     }
   | PubliclyPublishedWithRestrictiveMarking {
-      marking: NonEmptyStr
+      marking: std.types.NonEmptyStr
     }
   | AccessGatedNotPubliclyPublished {
-      gate: NonEmptyStr
+      gate: std.types.NonEmptyStr
     }
 
 // THE TWO PROJECTIONS ARE PROPERTIES OF THE STATUS, NOT OF OUR POLICY. Public

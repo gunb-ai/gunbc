@@ -12,26 +12,26 @@ type BuildCacheConsumerClass
 type BuildCacheInstanceId {
   host: product.placement_supply.HostIdentity
   consumer_class: BuildCacheConsumerClass
-  instance_name: NonEmptyStr
+  instance_name: std.types.NonEmptyStr
 }
 
 type BuildCacheInstance {
   identity: BuildCacheInstanceId
-  implementation: CacheInterfaceId
-  endpoint: SccacheServerEndpoint
-  intended_unit: NonEmptyStr
-  intended_principal: NonEmptyStr
-  intended_storage: NonEmptyStr
-  intended_capacity: ByteSize?
-  intended_compile_pool: NonEmptyStr
+  implementation: std.cache_identity.CacheInterfaceId
+  endpoint: extdeps.cache.sccache.SccacheServerEndpoint
+  intended_unit: std.types.NonEmptyStr
+  intended_principal: std.types.NonEmptyStr
+  intended_storage: std.types.NonEmptyStr
+  intended_capacity: std.measure.ByteSize?
+  intended_compile_pool: std.types.NonEmptyStr
 }
 
 data process_identity_note: String = "A BARE PID IS NOT AN IDENTITY: the kernel reuses pids, so a pid recorded in one observation and re-read in the next may name a different process, and a receipt that says 'pid 3975946 is the endpoint owner' is only true relative to a boot and a start time. boot_id distinguishes across reboots; start_time (the process's own start, monotonic within a boot) distinguishes across pid reuse within one. The triple is what makes two consecutive observations comparable, which is exactly what the non-mutation control asserts."
 
 type ProcessIdentity {
-  boot_id: NonEmptyStr
+  boot_id: std.types.NonEmptyStr
   pid: std.nat.Nat
-  start_time: NonEmptyStr
+  start_time: std.types.NonEmptyStr
 }
 
 data runner_slot_lifecycle_note: String = "A RETIRED SLOT IS A CURRENT-INTENT FACT, NOT AN ARCHAEOLOGICAL ONE. Whether srv1-10 is retired is decided by asking whether it appears in the fleet's desired runner slots today — not by explaining how the fleet once had ten. The lifecycle distinction is kept in the receipt because it names WHICH construction wall failed: an ACTIVE runner owning the endpoint means birth ordering failed (a runner ran before a managed cache existed); a RETIRED runner owning it means birth ordering AND retirement both failed (the slot's unit was disabled while its cgroup stayed computationally alive, still owning an endpoint and still parenting new compiler children under its ceiling). Both refuse."
@@ -46,9 +46,9 @@ type RunnerSlotLifecycle
   | RetiredRunnerSlot
 
 type CgroupMemoryLimits {
-  memory_max: ByteSize
-  memory_high: ByteSize
-  memory_current: ByteSize
+  memory_max: std.measure.ByteSize
+  memory_high: std.measure.ByteSize
+  memory_current: std.measure.ByteSize
 }
 
 type CgroupMemoryEvents {
@@ -62,9 +62,9 @@ type CgroupMemoryEvents {
 data endpoint_ownership_note: String = "ENDPOINT OWNERSHIP IS THE PRIMARY OBSERVATION; PROCESS NAME PLUS CGROUP IS NOT ENOUGH. The sccache binary is both client and server, so under RUSTC_WRAPPER every in-flight compile also runs a process named 'sccache' inside the cgroup of the runner that issued it. Those clients are HEALTHY and expected — srv1 carried three of them (ages 296s, 112s, 86s, under live slots 01/04/05) at the moment the receipt was taken — so a probe that selects sccache processes by name and reads a cgroup samples a client and reports the WRONG placement, and a probe that refuses on 'multiple sccache processes' produces a FALSE refusal in the ordinary case. The server is identified positively and uniquely as the process HOLDING THE LISTEN on the instance's configured endpoint. For the UDS shape the whole chain is non-mutating and needs no sccache invocation: the exact endpoint path in /proc/net/unix yields the listening socket inode, /proc/*/fd resolves that inode to one owning pid, and /proc/pid/\{exe,environ,cgroup,stat\} yields executable, principal, unit and cgroup. It depends on no pgrep, head -1, ss or lsof, and it refuses naturally when the path, the inode, or the owner is not exactly one."
 
 type EndpointObservationUnavailableReason
-  = ReachRefused { detail: NonEmptyStr }
-  | ProcTableUnreadable { detail: NonEmptyStr }
-  | EndpointPathUnreadable { detail: NonEmptyStr }
+  = ReachRefused { detail: std.types.NonEmptyStr }
+  | ProcTableUnreadable { detail: std.types.NonEmptyStr }
+  | EndpointPathUnreadable { detail: std.types.NonEmptyStr }
 
 data endpoint_owner_context_note: String = "WHAT THE OWNER'S CGROUP RESOLVES TO IS ONE FACT WITH THREE SHAPES, not three fields that happen to agree. The first version of this carrier spelled it as a bare `unit` beside `owning_runner_slot: RunnerSlotIdentity?` and `runner_slot_lifecycle: RunnerSlotLifecycle?`, which admitted states no observation can produce and no reader can interpret: a slot with no lifecycle, a lifecycle with no slot, or a unit contradicting both. The lifecycle-without-slot case was the dangerous one — the derivation matched on the slot first, so an Absent slot carrying a Present lifecycle fell straight through to the unit comparison and could return ServerManagedUnitOwned, converging on a runner-owned endpoint from inconsistent substrate data (review 46217). Guarding that with a check would have conceded the state is writable; the coproduct makes it unwritable instead (DESIGN section 5, construction over validation). A slot cannot be recorded without deciding its lifecycle against current fleet intent, because deciding it is the same act as finding it. When the chain reaches a cgroup it cannot classify — an unreadable unit, a slot index that does not parse, a desired-slot roster the observer could not read — that is its own positive arm carrying the located reason, never a half-filled record.\n\nSECOND REPAIR (operator review, post-merge): the raw cgroup path now lives INSIDE each arm as observed_cgroup rather than beside the context as its own field on EndpointOwnerObserved. Those two were independently writable and could disagree — a record could carry a cgroup naming a runner slice while its context said OwnerInSystemdUnit, and placement trusted the context, so the contradiction was silent. They are not two facts: the context IS the classification of that cgroup, so the string travels with the classification derived from it and the disagreement has nowhere to live. The path is retained because a refusal must be located — ServerUnsupervised quotes it so an operator sees WHICH cgroup was found — but it is diagnostic evidence carried by the decision, never a second input a reader could consult instead."
 
@@ -72,18 +72,18 @@ type EndpointOwnerContext
   = OwnerInRunnerSlot {
       slot: RunnerSlotIdentity
       lifecycle: RunnerSlotLifecycle
-      observed_cgroup: NonEmptyStr
+      observed_cgroup: std.types.NonEmptyStr
     }
-  | OwnerInSystemdUnit { unit: NonEmptyStr, observed_cgroup: NonEmptyStr }
-  | OwnerContextUndecided { detail: NonEmptyStr, observed_cgroup: NonEmptyStr }
+  | OwnerInSystemdUnit { unit: std.types.NonEmptyStr, observed_cgroup: std.types.NonEmptyStr }
+  | OwnerContextUndecided { detail: std.types.NonEmptyStr, observed_cgroup: std.types.NonEmptyStr }
 
 type BuildCacheEndpointObservation
   = EndpointAbsent { instance: BuildCacheInstance }
   | EndpointOwnerObserved {
       instance: BuildCacheInstance
       owner: ProcessIdentity
-      executable: NonEmptyStr
-      principal: NonEmptyStr
+      executable: std.types.NonEmptyStr
+      principal: std.types.NonEmptyStr
       owner_context: EndpointOwnerContext
       memory_limits: CgroupMemoryLimits?
       memory_events: CgroupMemoryEvents?
@@ -96,11 +96,11 @@ type BuildCacheEndpointObservation
 
 // THE SINGLE PLACEMENT AUTHORITY, homed here rather than in gunbc.host_build_cache_provision because placement is derived from an OBSERVATION of a deployed instance, and the verdict fold is a CONSUMER of it. Keeping the type beside the observation it is derived from means there is exactly one definition of what 'correctly placed' is, and the provisioning fold cannot drift a second opinion. Placement is a verdict axis and not a detail because extdeps.cache.sccache.sccache_server_process_facts cites that cache-miss compiles execute as CHILDREN OF THE SERVER PROCESS: the server's cgroup is the cgroup every compile on the host runs in, so the server's caps bound every compile on the host and not merely the caps of the job that issued them. A responsive daemon proves nothing about where it runs.
 type BuildCacheServerPlacement
-  = ServerManagedUnitOwned { unit: NonEmptyStr }
+  = ServerManagedUnitOwned { unit: std.types.NonEmptyStr }
   | ServerRunnerOwned { slot: RunnerSlotIdentity, lifecycle: RunnerSlotLifecycle }
-  | ServerUnsupervised { cgroup: NonEmptyStr }
+  | ServerUnsupervised { cgroup: std.types.NonEmptyStr }
   | ServerPlacementAbsent
-  | ServerPlacementUnknown { detail: NonEmptyStr }
+  | ServerPlacementUnknown { detail: std.types.NonEmptyStr }
 
 fn placement_of_owner(
   instance: BuildCacheInstance,

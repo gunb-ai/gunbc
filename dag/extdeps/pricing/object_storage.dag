@@ -58,43 +58,43 @@ type DurabilityClaim
 
 type StorageRateAvailability
   = RateCited {
-      rate: MoneyPerStoredUnitMonth,
-      quoted_unit_label: NonEmptyStr,
+      rate: extdeps.pricing.billing_units.MoneyPerStoredUnitMonth,
+      quoted_unit_label: std.types.NonEmptyStr,
       byte_basis: ByteBasis,
     }
-  | RateUnavailable { cause: NonEmptyStr }
+  | RateUnavailable { cause: std.types.NonEmptyStr }
 
 type TransferRateAvailability
   = TransferCited {
-      rate: MoneyPerTransferredUnit,
-      quoted_unit_label: NonEmptyStr,
+      rate: extdeps.pricing.billing_units.MoneyPerTransferredUnit,
+      quoted_unit_label: std.types.NonEmptyStr,
       byte_basis: ByteBasis,
     }
-  | TransferIncludedAtNoCharge { terms: NonEmptyStr }
-  | TransferUnavailable { cause: NonEmptyStr }
+  | TransferIncludedAtNoCharge { terms: std.types.NonEmptyStr }
+  | TransferUnavailable { cause: std.types.NonEmptyStr }
 
 type ObjectStorageClassRow {
   vendor: StorageVendor
-  storage_class_label: NonEmptyStr
+  storage_class_label: std.types.NonEmptyStr
   storage_rate: StorageRateAvailability
   durability: DurabilityClaim
   redundancy: RedundancyScope
   tier_lower_bound_gb: std.nat.Nat
-  pricing_citation: NonEmptyStr
+  pricing_citation: std.types.NonEmptyStr
 }
 
 type ObjectStorageEgressRow {
   vendor: StorageVendor
   egress_rate: TransferRateAvailability
   tier_lower_bound_gb: std.nat.Nat
-  pricing_citation: NonEmptyStr
+  pricing_citation: std.types.NonEmptyStr
 }
 
 type ObjectStorageRequestRow {
   vendor: StorageVendor
-  operation_class_label: NonEmptyStr
-  per_million: MoneyPerMillionRequests
-  pricing_citation: NonEmptyStr
+  operation_class_label: std.types.NonEmptyStr
+  per_million: extdeps.pricing.billing_units.MoneyPerMillionRequests
+  pricing_citation: std.types.NonEmptyStr
 }
 
 data s3_standard_first_50tb: ObjectStorageClassRow = ObjectStorageClassRow {
@@ -638,8 +638,8 @@ type ReliabilityRequirement {
 
 type ReliabilityVerdict
   = MeetsRequirement
-  | FailsRequirement { axis: NonEmptyStr }
-  | RequirementUnknown { unstated_axis: NonEmptyStr }
+  | FailsRequirement { axis: std.types.NonEmptyStr }
+  | RequirementUnknown { unstated_axis: std.types.NonEmptyStr }
 
 fn redundancy_rank(scope: RedundancyScope) -> std.nat.Nat? {
   match scope {

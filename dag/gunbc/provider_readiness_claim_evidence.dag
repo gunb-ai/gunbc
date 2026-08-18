@@ -4,16 +4,16 @@ module gunbc.provider_readiness_claim_evidence
 type ProviderReadinessClaim = Claim<ProviderInstance, ProviderInstance, ProviderReadiness, ProviderKind, RunKey>
 
 type ProviderReadinessOperationResult
-  = ProviderLoginCredentialRecorded { response: NonEmptyStr }
-  | ProviderLoginCredentialAbsent { response: NonEmptyStr }
-  | ProviderLoginStatusUnrecognized { response: NonEmptyStr }
-  | ProviderLiveModelResponseReceived { response: NonEmptyStr }
-  | ProviderLiveRefreshRefused { reason: NonEmptyStr }
-  | ProviderLiveRequestRefused { reason: NonEmptyStr }
+  = ProviderLoginCredentialRecorded { response: std.types.NonEmptyStr }
+  | ProviderLoginCredentialAbsent { response: std.types.NonEmptyStr }
+  | ProviderLoginStatusUnrecognized { response: std.types.NonEmptyStr }
+  | ProviderLiveModelResponseReceived { response: std.types.NonEmptyStr }
+  | ProviderLiveRefreshRefused { reason: std.types.NonEmptyStr }
+  | ProviderLiveRequestRefused { reason: std.types.NonEmptyStr }
 
 type ProviderReadinessObservation {
-  provider: ProviderInstance
-  bound: RunKey
+  provider: extdeps.llm.cli_lifecycle.ProviderInstance
+  bound: std.types.RunKey
   result: ProviderReadinessOperationResult
 }
 

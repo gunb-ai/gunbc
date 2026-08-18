@@ -18,7 +18,7 @@ data oidc_amr_external_authority: ExternalAuthority = ExternalAuthority {
 data oidc_standard_claims_note: String = "OpenID Connect Core 1.0 section 5.1 STANDARD CLAIMS, which are the OIDF's and not any provider's. email, email_verified and name mean the same thing in every id_token that carries them, so a vendor module redefining them would fork a concept with a specification.\\n\\nALL THREE ARE OPTIONAL AND THE FIRST CUT REQUIRED THEM. Section 5.1 defines standard claims that MAY be returned, and section 5.4 makes their presence contingent on the requested scope — email and email_verified arrive with the email scope, name with profile. An ID Token issued for the openid scope alone carries none of them and is perfectly conforming. Requiring them encoded one observed token's scope grant as though it were the specification.\\n\\nemail_verified is still the one worth naming explicitly: section 5.1 says it is a BOOLEAN, and that when true the provider asserts it took affirmative steps to verify the address at some point — a claim about the provider's past diligence, not a guarantee the address is currently reachable or still controlled by the subject. Treating it as proof of present control is the standard misreading, and the spec says so in the claim's own definition. Its absence is a third state and now representable: 'the provider did not say' is not 'the provider said false'."
 
 type OidcStandardClaims {
-  email: Email?
+  email: std.types.Email?
   email_verified: Bool?
   name: String?
 }
@@ -29,12 +29,12 @@ type OidcAuthMethodReference
   | AmrMultiFactor
   | AmrPassword
   | AmrOneTimePassword
-  | AmrUnregisteredName { name: NonEmptyStr }
-  | AmrUriValuedMethod { value: JwtStringOrUri }
+  | AmrUnregisteredName { name: std.types.NonEmptyStr }
+  | AmrUriValuedMethod { value: extdeps.auth.jwt.JwtStringOrUri }
 
 type OidcAmrDecode
   = AmrDecoded { method: OidcAuthMethodReference }
-  | AmrRefused { raw: NonEmptyStr, reason: String }
+  | AmrRefused { raw: std.types.NonEmptyStr, reason: String }
 
 data amr_pop_wire: String = "pop"
 data amr_mfa_wire: String = "mfa"
@@ -69,17 +69,17 @@ fn oidc_amr_of_wire(raw: NonEmptyStr) -> OidcAmrDecode {
 data oidc_id_token_claims_note: String = "THE ID TOKEN IS WHERE REQUIREMENT LIVES, which is why this record has a required core while extdeps.auth.jwt's registered claims are all optional. Section 2 lists iss, sub, aud, exp and iat as REQUIRED in an ID Token — a real obligation the JWT layer does not impose on JWTs generally — so those five are non-optional fields here and nowhere else. That split is the single-authority reading: the RFC owns the claim vocabulary, the profile owns the obligation, and neither restates the other.\\n\\nEVERYTHING ELSE ON THIS RECORD IS OPTIONAL, and the first cut required six claims that no specification universally demands. auth_time is REQUIRED only when the request carried max_age or asked for auth_time as an Essential Claim, and section 2 says so in the claim's own definition; acr and amr are explicitly OPTIONAL there; nonce is required only if it was sent in the request; azp is OPTIONAL and applies to a specific multi-audience case. sid is not in section 2 at all — it comes from Session Management and the logout specs, and is OPTIONAL there. An ID Token carrying none of them is conforming, and the earlier shape could not represent one.\\n\\nauth_time and iat remain DIFFERENT INSTANTS and the distinction still matters for any freshness decision. iat is when this token was issued — which a silent refresh updates — while auth_time is when the human last actually authenticated, which a refresh does not. A max-age policy written against iat would be satisfied forever by automatic refreshes without the user ever proving presence again. The claim being optional makes that worse rather than better: a policy needing auth_time must handle its ABSENCE, and absence is now a state it must match instead of a value it may assume."
 
 type OidcIdTokenClaims {
-  issuer: JwtStringOrUri
-  subject: JwtStringOrUri
-  audience: JwtAudience
-  expires_at: NumericDate
-  issued_at: NumericDate
-  auth_time: NumericDate?
-  nonce: NonEmptyStr?
-  acr: NonEmptyStr?
+  issuer: extdeps.auth.jwt.JwtStringOrUri
+  subject: extdeps.auth.jwt.JwtStringOrUri
+  audience: extdeps.auth.jwt.JwtAudience
+  expires_at: extdeps.auth.jwt.NumericDate
+  issued_at: extdeps.auth.jwt.NumericDate
+  auth_time: extdeps.auth.jwt.NumericDate?
+  nonce: std.types.NonEmptyStr?
+  acr: std.types.NonEmptyStr?
   amr: List<OidcAuthMethodReference>?
-  azp: JwtStringOrUri?
-  session_id: NonEmptyStr?
+  azp: extdeps.auth.jwt.JwtStringOrUri?
+  session_id: std.types.NonEmptyStr?
   standard: OidcStandardClaims
 }
 

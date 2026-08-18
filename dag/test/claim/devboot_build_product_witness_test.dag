@@ -15,10 +15,10 @@ data witness_fixture_digest_hex: String = "5af0bd8e00000000000000000000000000000
 
 data witness_other_digest_hex: String = "0000000000000000000000000000000000000000000000000000000000000000"
 
-fn witness_fixture_digest() -> Sha256Digest {
+fn witness_fixture_digest() -> std.content_hash.Sha256Digest {
   match sha256_hex_digest(hex: witness_fixture_digest_hex) {
     Present { value: digest } => digest
-    Absent => Sha256Digest { hex: witness_fixture_digest_hex as Sha256DigestHex }
+    Absent => std.content_hash.Sha256Digest { hex: witness_fixture_digest_hex as std.content_hash.Sha256DigestHex }
   }
 }
 
@@ -27,7 +27,7 @@ test fn a_built_outcome_carrying_a_digest_reports_an_executable() -> Bool {
   outcome_delivers_executable(
     outcome: Built {
       program_subject: "program=gunbc\n",
-      artifact: BuiltArtifact { path: "/tmp/gunbc", sha256: witness_fixture_digest() },
+      artifact: gunbc.devboot.build.BuiltArtifact { path: "/tmp/gunbc", sha256: witness_fixture_digest() },
       receipt: BuildReceipt { invocation: "devboot_build", producer_host: "srv3", reused: false },
     },
   )
@@ -116,21 +116,21 @@ test fn an_unoffered_program_refuses_and_lists_what_is_offered() -> Bool {
 
 // TWO C LIBRARIES ARE TWO IDENTITIES. If these tags collided, the digests built from them would collide, and an artifact linked against one library would be served to a host expecting the other -- which is precisely the incident, restored.
 test fn two_c_library_versions_have_distinct_identities() -> Bool {
-  let newer = platform_c_library_identity_tag(library: GnuLibc { version: "2.39" as NonEmptyStr })
-  let older = platform_c_library_identity_tag(library: GnuLibc { version: "2.36" as NonEmptyStr })
+  let newer = platform_c_library_identity_tag(library: GnuLibc { version: "2.39" as std.types.NonEmptyStr })
+  let older = platform_c_library_identity_tag(library: GnuLibc { version: "2.36" as std.types.NonEmptyStr })
   !(newer == older)
 }
 
 // AND THE SAME VERSION IS THE SAME IDENTITY, the positive control without which the witness above passes on a tag function that returns something different every call -- which would make every environment unique and destroy the reuse this service exists to provide.
 test fn one_c_library_version_has_a_stable_identity() -> Bool {
-  let once = platform_c_library_identity_tag(library: GnuLibc { version: "2.36" as NonEmptyStr })
-  let again = platform_c_library_identity_tag(library: GnuLibc { version: "2.36" as NonEmptyStr })
+  let once = platform_c_library_identity_tag(library: GnuLibc { version: "2.36" as std.types.NonEmptyStr })
+  let again = platform_c_library_identity_tag(library: GnuLibc { version: "2.36" as std.types.NonEmptyStr })
   once == again
 }
 
 // AN UNOBSERVED LIBRARY IS NOT AN OBSERVED ONE, and never shares an identity with a measured version. Absent this, every host whose C library could not be read would collapse into a single environment identity and serve each other's artifacts.
 test fn an_unobserved_c_library_is_distinct_from_every_observed_one() -> Bool {
   let unobserved = platform_c_library_identity_tag(library: LibcUnobserved)
-  let observed = platform_c_library_identity_tag(library: GnuLibc { version: "2.36" as NonEmptyStr })
+  let observed = platform_c_library_identity_tag(library: GnuLibc { version: "2.36" as std.types.NonEmptyStr })
   !(unobserved == observed)
 }

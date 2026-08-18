@@ -3,21 +3,21 @@ module test.claim.tool_readiness_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data expected_rustfmt_identity: ContentHash = content_hash_of_value(value: "rustfmt-hermetic-expected" as NonEmptyStr)
-data other_rustfmt_identity: ContentHash = content_hash_of_value(value: "rustfmt-host-other" as NonEmptyStr)
-data unrelated_cargo_identity_a: ContentHash = content_hash_of_value(value: "cargo-a" as NonEmptyStr)
-data unrelated_cargo_identity_b: ContentHash = content_hash_of_value(value: "cargo-b" as NonEmptyStr)
+data expected_rustfmt_identity: std.content_hash.ContentHash = content_hash_of_value(value: "rustfmt-hermetic-expected" as std.types.NonEmptyStr)
+data other_rustfmt_identity: std.content_hash.ContentHash = content_hash_of_value(value: "rustfmt-host-other" as std.types.NonEmptyStr)
+data unrelated_cargo_identity_a: std.content_hash.ContentHash = content_hash_of_value(value: "cargo-a" as std.types.NonEmptyStr)
+data unrelated_cargo_identity_b: std.content_hash.ContentHash = content_hash_of_value(value: "cargo-b" as std.types.NonEmptyStr)
 
-data rustfmt_pin: Pin<CliTool> = Pin {
+data rustfmt_pin: Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
   subject: rustfmt_cli_tool,
-  version: "1.93.0" as VersionIdentity,
+  version: "1.93.0" as extdeps.version.VersionIdentity,
   expected_identity: expected_rustfmt_identity,
   selection: ExactPin,
 }
 
-data tracked_rustfmt_pin: Pin<CliTool> = Pin {
+data tracked_rustfmt_pin: Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
   subject: rustfmt_cli_tool,
-  version: "1.93.0" as VersionIdentity,
+  version: "1.93.0" as extdeps.version.VersionIdentity,
   expected_identity: expected_rustfmt_identity,
   selection: TrackedChannel {
     channel: "stable",
@@ -25,18 +25,18 @@ data tracked_rustfmt_pin: Pin<CliTool> = Pin {
   },
 }
 
-fn observed(tool_name: String, identity: ContentHash) -> ObservedToolIdentity {
-  ObservedToolIdentity {
+fn observed(tool_name: String, identity: std.content_hash.ContentHash) -> extdeps.realization.emit_on_demand_host.ObservedToolIdentity {
+  extdeps.realization.emit_on_demand_host.ObservedToolIdentity {
     tool_name: tool_name,
     observed_identity: identity,
   }
 }
 
-fn context(rows: List<ObservedToolIdentity>) -> ResolvedBuildContext {
-  ResolvedBuildContext {
+fn context(rows: List<extdeps.realization.emit_on_demand_host.ObservedToolIdentity>) -> extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
+  extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: rows,
-    environment_identity: content_hash_of_value(value: "environment" as NonEmptyStr),
-    cargo_configuration_identity: content_hash_of_value(value: "cargo-config" as NonEmptyStr),
+    environment_identity: content_hash_of_value(value: "environment" as std.types.NonEmptyStr),
+    cargo_configuration_identity: content_hash_of_value(value: "cargo-config" as std.types.NonEmptyStr),
   }
 }
 

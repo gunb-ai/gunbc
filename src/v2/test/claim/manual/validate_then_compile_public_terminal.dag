@@ -2,9 +2,9 @@ module v2.test.manual.validate_then_compile_public_terminal
 
 
 
-data rust_target_model_stub: TargetModel = TargetModel {
+data rust_target_model_stub: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
-  bundle: Node {
+  bundle: v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -15,15 +15,15 @@ data rust_target_model_stub: TargetModel = TargetModel {
   authority_source_text: Empty,
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
-fn claim_symbol_node(s: Symbol) -> Node {
-  Node {
+fn claim_symbol_node(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
 
-fn always_reject_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
+fn always_reject_lens_gate(_tree: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
   outcome_rejected(
     compile_lens_gate_rejected_diagnostic(
       at: port_locus(port: ^rejecting_lens_gate_at)
@@ -31,15 +31,15 @@ fn always_reject_lens_gate(_tree: InferredTree) -> Outcome<Witness<Node>> {
   )
 }
 
-data rejecting_lens: CompileLens = CompileLens { gate: always_reject_lens_gate }
+data rejecting_lens: v2.compiler.compile.CompileLens = v2.compiler.compile.CompileLens { gate: always_reject_lens_gate }
 
-fn grounding_sanity_gate(tree: InferredTree) -> Outcome<Witness<Node>> {
+fn grounding_sanity_gate(tree: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
   outcome_accepted(Holds { value: tree.root })
 }
 
-data grounding_sanity_lens: CompileLens = CompileLens { gate: grounding_sanity_gate }
+data grounding_sanity_lens: v2.compiler.compile.CompileLens = v2.compiler.compile.CompileLens { gate: grounding_sanity_gate }
 
-fn anchor_validate_then_compile_empty_lenses() -> Outcome<Validated<CompileOutput>> {
+fn anchor_validate_then_compile_empty_lenses() -> Outcome<Validated<v2.compiler.compile.CompileOutput>> {
   validate_then_compile(
     source: fixture_add_resolved_tree(),
     lenses: [],
@@ -47,7 +47,7 @@ fn anchor_validate_then_compile_empty_lenses() -> Outcome<Validated<CompileOutpu
   )
 }
 
-fn anchor_validate_then_compile_rejecting_lens() -> Outcome<Validated<CompileOutput>> {
+fn anchor_validate_then_compile_rejecting_lens() -> Outcome<Validated<v2.compiler.compile.CompileOutput>> {
   validate_then_compile(
     source: fixture_add_resolved_tree(),
     lenses: [rejecting_lens],
@@ -56,7 +56,7 @@ fn anchor_validate_then_compile_rejecting_lens() -> Outcome<Validated<CompileOut
 }
 
 fn claim_empty_lenses_matches_compile_core_outcome(
-  actual: Outcome<Validated<CompileOutput>>
+  actual: Outcome<Validated<v2.compiler.compile.CompileOutput>>
 ) -> Bool {
   match actual {
     Rejected { diagnostics: r } =>
@@ -69,7 +69,7 @@ fn claim_empty_lenses_matches_compile_core_outcome(
 }
 
 fn claim_rejecting_lens_is_compile_lens_gate_rejected(
-  actual: Outcome<Validated<CompileOutput>>
+  actual: Outcome<Validated<v2.compiler.compile.CompileOutput>>
 ) -> Bool {
   match actual {
     Rejected { diagnostics: r } =>
@@ -78,20 +78,20 @@ fn claim_rejecting_lens_is_compile_lens_gate_rejected(
   }
 }
 
-data claim_validate_then_compile_module_compiles: TestClaim = CompilesClaim {
+data claim_validate_then_compile_module_compiles: v2.std.verification.TestClaim = CompilesClaim {
   label: "manual/validate_then_compile: validate_then_compile public terminal module compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: claim_symbol_node(s: ^claim_validate_then_compile_module),
   expected_value: claim_symbol_node(s: ^claim_validate_then_compile_module),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_empty_lenses_skips_gate: TestClaim = EqualsClaim {
+data claim_empty_lenses_skips_gate: v2.std.verification.TestClaim = EqualsClaim {
   label: "manual/validate_then_compile: empty lens list does not compile_lens_gate_reject (infer/compile-core Rejected OK)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_symbol_node(s: ^claim_validate_then_compile_module),
   rhs: claim_validate_then_compile_skips_gate_passes(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
 fn claim_validate_then_compile_skips_gate_passes() -> Node {
@@ -100,7 +100,7 @@ fn claim_validate_then_compile_skips_gate_passes() -> Node {
   ) {
     claim_symbol_node(s: ^claim_validate_then_compile_module)
   } else {
-    Node {
+    v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -108,12 +108,12 @@ fn claim_validate_then_compile_skips_gate_passes() -> Node {
   }
 }
 
-data claim_rejecting_lens_blocks_before_compile: TestClaim = EqualsClaim {
+data claim_rejecting_lens_blocks_before_compile: v2.std.verification.TestClaim = EqualsClaim {
   label: "manual/validate_then_compile: required lens Rejected blocks before compile-core",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: claim_symbol_node(s: ^claim_validate_then_compile_module),
   rhs: claim_rejecting_lens_blocks_passes(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
 fn claim_rejecting_lens_blocks_passes() -> Node {
@@ -122,7 +122,7 @@ fn claim_rejecting_lens_blocks_passes() -> Node {
   ) {
     claim_symbol_node(s: ^claim_validate_then_compile_module)
   } else {
-    Node {
+    v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence

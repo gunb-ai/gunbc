@@ -2,7 +2,7 @@ module test.claim.runner_placement_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn live_plan() -> RunnerDeploymentPlan {
+fn live_plan() -> gunbc.ci_runner_placement.RunnerDeploymentPlan {
   runner_deployment_plan()
 }
 
@@ -157,7 +157,7 @@ test fn witness_session_slice_line_emits_cpu_weight() -> Bool {
 }
 
 test fn witness_session_reservation_line_has_no_cpu_weight() -> Bool {
-  let fixture = SessionHostReservation {
+  let fixture = gunbc.ci_runner_placement.SessionHostReservation {
     identity: "fixture-host",
     session_count: 4,
     per_session_reservation: byte_size(4294967296),

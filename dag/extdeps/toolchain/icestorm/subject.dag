@@ -11,9 +11,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data icestorm_subject_note: String = "PROJECT ICESTORM, AND WHY IT IS A SEPARATE AUTHORITY FROM LATTICE. IceStorm is an independently governed open-source project (ISC licensed, per its own copyright file, read from the installed package 2026-08-13) that documented the iCE40 bitstream format and pin placement by reverse engineering rather than by vendor specification. It is what nextpnr actually consults to decide whether a pin constraint is legal, so it is the authority a generated constraint file must satisfy — and it is NOT the vendor's pin assignment table. Modelling one as the other would fuse a specification with a reverse-engineering of it, which is the browser-engine-versus-standard split this repository already draws elsewhere. THE PIN POPULATION BELOW is the package position roster IceStorm carries for the HX1K in TQ144: which numbered package pins are usable I/O. It carries the DESIGNATORS only. The tile coordinates beside them in IceStorm's database are the toolchain's placement internals, not facts a board consults, so they are deliberately not copied — a board needs to know that pin 47 exists and is an I/O, not which tile it lands on. THE CROSS-CHECK THAT MAKES THIS MORE THAN A COPIED LIST: Lattice's own per-bank table for this device and package sums to ninety-two general-purpose plus four configuration pins, and this roster has ninety-six entries. Two authorities produced independently, agreeing at a count. A witness executes that agreement rather than a reader noticing it."
 
 type IcestormPackagePinRoster {
-  device: NonEmptyStr
-  package_designator: NonEmptyStr
-  pins: List<NonEmptyStr>
+  device: std.types.NonEmptyStr
+  package_designator: std.types.NonEmptyStr
+  pins: List<std.types.NonEmptyStr>
 }
 
 fn roster_pin_count(r: IcestormPackagePinRoster) -> std.nat.Nat {

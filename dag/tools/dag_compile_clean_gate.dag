@@ -3,14 +3,14 @@ module tools.dag_compile_clean_gate
 
 data dag_compile_clean_failure_receipt_note: String = "The loudness half: the floor witness collapses this gate's ProcessExit to Bool via tools.ci_gates.exit_ok, so compile-clean reds reported only returned Bool(false). The gate consumes the executor's one in-run compile receipt; the failure-receipt companion projects the same receipt's located diagnostic without a second compile."
 
-fn dag_compile_clean_failure_reason(exit: ProcessExit) -> String {
+fn dag_compile_clean_failure_reason(exit: std.process.ProcessExit) -> String {
   match exit {
     ExitSuccess => ""
     ExitFailure { code: _, reason: reason } => reason
   }
 }
 
-func run_dag_compile_clean_gate_body() -> ProcessExit {
+func run_dag_compile_clean_gate_body() -> std.process.ProcessExit {
   if run_clean_tree_compile() {
     ExitSuccess
   } else {
@@ -20,7 +20,7 @@ func run_dag_compile_clean_gate_body() -> ProcessExit {
   }
 }
 
-func run_dag_compile_clean_gate() -> ProcessExit {
+func run_dag_compile_clean_gate() -> std.process.ProcessExit {
   run_dag_compile_clean_gate_body()
 }
 
@@ -28,6 +28,6 @@ func dag_compile_clean_failure_receipt() -> String {
   consume_floor_compile_clean_gate_failure_detail()
 }
 
-func main() -> ProcessExit {
+func main() -> std.process.ProcessExit {
   run_dag_compile_clean_gate_body()
 }

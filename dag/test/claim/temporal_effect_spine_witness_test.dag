@@ -2,62 +2,62 @@ module test.claim.temporal_effect_spine
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_intent_hash: ContentHash = content_hash_of_value(value: "temporal-spine-witness-intent-v1" as NonEmptyStr)
-data witness_escalation_id: NonEmptyStr = "srv3-boot-once-cd" as NonEmptyStr
-data witness_observed_at: Timestamp = "2026-07-02T23:05:00Z"
+data witness_intent_hash: std.content_hash.ContentHash = content_hash_of_value(value: "temporal-spine-witness-intent-v1" as std.types.NonEmptyStr)
+data witness_escalation_id: std.types.NonEmptyStr = "srv3-boot-once-cd" as std.types.NonEmptyStr
+data witness_observed_at: std.types.Timestamp = "2026-07-02T23:05:00Z"
 
-data witness_intent: EffectAttemptIntent = EffectAttemptIntent {
-  attempt_id: "attempt-witness-1" as NonEmptyStr,
+data witness_intent: std.temporal_effect.EffectAttemptIntent = std.temporal_effect.EffectAttemptIntent {
+  attempt_id: "attempt-witness-1" as std.types.NonEmptyStr,
   intent_hash: witness_intent_hash,
-  target: "srv3" as NonEmptyStr,
+  target: "srv3" as std.types.NonEmptyStr,
   created_at: "2026-07-02T23:00:00Z",
 }
 
-data witness_step_boot: NonEmptyStr = "boot-once-cd" as NonEmptyStr
-data witness_step_serve: NonEmptyStr = "nbd-serve" as NonEmptyStr
+data witness_step_boot: std.types.NonEmptyStr = "boot-once-cd" as std.types.NonEmptyStr
+data witness_step_serve: std.types.NonEmptyStr = "nbd-serve" as std.types.NonEmptyStr
 
-data witness_lease_key: NonEmptyStr = "srv3-nbd-proxy-10809" as NonEmptyStr
+data witness_lease_key: std.types.NonEmptyStr = "srv3-nbd-proxy-10809" as std.types.NonEmptyStr
 
-data foreign_lease: HeldLease = HeldLease {
+data foreign_lease: std.temporal_effect.HeldLease = std.temporal_effect.HeldLease {
   lease_key: witness_lease_key,
-  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
-  owner_fingerprint: content_hash_of_value(value: "foreign-owner" as NonEmptyStr),
+  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as std.types.NonEmptyStr),
+  owner_fingerprint: content_hash_of_value(value: "foreign-owner" as std.types.NonEmptyStr),
   generation: 1,
   observed: LeasePortForeign,
 }
 
-data stale_lease: HeldLease = HeldLease {
+data stale_lease: std.temporal_effect.HeldLease = std.temporal_effect.HeldLease {
   lease_key: witness_lease_key,
-  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
-  owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
+  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as std.types.NonEmptyStr),
+  owner_fingerprint: content_hash_of_value(value: "expected-owner" as std.types.NonEmptyStr),
   generation: 2,
   observed: LeaseRunningStale,
 }
 
-data expected_lease: HeldLease = HeldLease {
+data expected_lease: std.temporal_effect.HeldLease = std.temporal_effect.HeldLease {
   lease_key: witness_lease_key,
-  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
-  owner_fingerprint: content_hash_of_value(value: "expected-owner" as NonEmptyStr),
+  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as std.types.NonEmptyStr),
+  owner_fingerprint: content_hash_of_value(value: "expected-owner" as std.types.NonEmptyStr),
   generation: 3,
   observed: LeaseRunningExpected,
 }
 
-data absent_lease: HeldLease = HeldLease {
+data absent_lease: std.temporal_effect.HeldLease = std.temporal_effect.HeldLease {
   lease_key: witness_lease_key,
-  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
-  owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
+  resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as std.types.NonEmptyStr),
+  owner_fingerprint: content_hash_of_value(value: "no-owner" as std.types.NonEmptyStr),
   generation: 0,
   observed: LeaseAbsent,
 }
 
-fn converged_serve_receipt() -> EffectStepReceipt {
-  EffectStepReceipt {
+fn converged_serve_receipt() -> std.temporal_effect.EffectStepReceipt {
+  std.temporal_effect.EffectStepReceipt {
     attempt_id: witness_intent.attempt_id,
     step_id: witness_step_serve,
-    observation_digest: content_hash_of_value(value: "obs" as NonEmptyStr),
-    verdict_label: "Converged" as NonEmptyStr,
-    plan_label: "Noop" as NonEmptyStr,
-    applied: EffectApplied { effect_id: "nbd-serve-effect-1" as NonEmptyStr },
+    observation_digest: content_hash_of_value(value: "obs" as std.types.NonEmptyStr),
+    verdict_label: "Converged" as std.types.NonEmptyStr,
+    plan_label: "Noop" as std.types.NonEmptyStr,
+    applied: EffectApplied { effect_id: "nbd-serve-effect-1" as std.types.NonEmptyStr },
     read_back_ok: true,
     recorded_at: "2026-07-02T23:02:00Z",
   }
@@ -133,13 +133,13 @@ test fn converged_receipt_stale_lease_drains_not_noop() -> Bool {
 }
 
 test fn applied_without_read_back_refuses() -> Bool {
-  let bad_receipt = EffectStepReceipt {
+  let bad_receipt = std.temporal_effect.EffectStepReceipt {
     attempt_id: witness_intent.attempt_id,
     step_id: witness_step_serve,
-    observation_digest: content_hash_of_value(value: "obs" as NonEmptyStr),
-    verdict_label: "Stale" as NonEmptyStr,
-    plan_label: "Apply" as NonEmptyStr,
-    applied: EffectApplied { effect_id: "nbd-serve-effect-1" as NonEmptyStr },
+    observation_digest: content_hash_of_value(value: "obs" as std.types.NonEmptyStr),
+    verdict_label: "Stale" as std.types.NonEmptyStr,
+    plan_label: "Apply" as std.types.NonEmptyStr,
+    applied: EffectApplied { effect_id: "nbd-serve-effect-1" as std.types.NonEmptyStr },
     read_back_ok: false,
     recorded_at: "2026-07-02T23:01:00Z",
   }
@@ -179,7 +179,7 @@ test fn active_grant_covers_matching_intent() -> Bool {
     grant: GrantActive {
       escalation_id: witness_escalation_id,
       intent_hash: witness_intent_hash,
-      granted_by: "operator" as NonEmptyStr,
+      granted_by: "operator" as std.types.NonEmptyStr,
       granted_at: "2026-07-02T23:00:00Z",
       expires_at: "2026-07-03T23:00:00Z",
     },
@@ -194,7 +194,7 @@ test fn expired_grant_does_not_authorize_destructive() -> Bool {
     grant: GrantActive {
       escalation_id: witness_escalation_id,
       intent_hash: witness_intent_hash,
-      granted_by: "operator" as NonEmptyStr,
+      granted_by: "operator" as std.types.NonEmptyStr,
       granted_at: "2026-07-02T22:00:00Z",
       expires_at: "2026-07-02T23:00:00Z",
     },
@@ -210,7 +210,7 @@ test fn expired_grant_does_not_authorize_destructive() -> Bool {
       grant: GrantActive {
         escalation_id: witness_escalation_id,
         intent_hash: witness_intent_hash,
-        granted_by: "operator" as NonEmptyStr,
+        granted_by: "operator" as std.types.NonEmptyStr,
         granted_at: "2026-07-02T22:00:00Z",
         expires_at: "2026-07-02T23:00:00Z",
       },
@@ -226,22 +226,22 @@ test fn expired_grant_does_not_authorize_destructive() -> Bool {
 
 test fn derived_cursor_uses_last_receipt_step() -> Bool {
   let receipts = [
-    EffectStepReceipt {
+    std.temporal_effect.EffectStepReceipt {
       attempt_id: witness_intent.attempt_id,
-      step_id: "toolchain-ensure" as NonEmptyStr,
-      observation_digest: content_hash_of_value(value: "a" as NonEmptyStr),
-      verdict_label: "Converged" as NonEmptyStr,
-      plan_label: "Noop" as NonEmptyStr,
+      step_id: "toolchain-ensure" as std.types.NonEmptyStr,
+      observation_digest: content_hash_of_value(value: "a" as std.types.NonEmptyStr),
+      verdict_label: "Converged" as std.types.NonEmptyStr,
+      plan_label: "Noop" as std.types.NonEmptyStr,
       applied: NoEffectApplied,
       read_back_ok: true,
       recorded_at: "2026-07-02T22:58:00Z",
     },
-    EffectStepReceipt {
+    std.temporal_effect.EffectStepReceipt {
       attempt_id: witness_intent.attempt_id,
       step_id: witness_step_serve,
-      observation_digest: content_hash_of_value(value: "b" as NonEmptyStr),
-      verdict_label: "Stale" as NonEmptyStr,
-      plan_label: "DrainThenStart" as NonEmptyStr,
+      observation_digest: content_hash_of_value(value: "b" as std.types.NonEmptyStr),
+      verdict_label: "Stale" as std.types.NonEmptyStr,
+      plan_label: "DrainThenStart" as std.types.NonEmptyStr,
       applied: NoEffectApplied,
       read_back_ok: false,
       recorded_at: "2026-07-02T22:59:00Z",
@@ -249,7 +249,7 @@ test fn derived_cursor_uses_last_receipt_step() -> Bool {
   ]
   let pending = derived_pending_step_id(
     receipts: receipts,
-    default_step: "toolchain-ensure" as NonEmptyStr,
+    default_step: "toolchain-ensure" as std.types.NonEmptyStr,
   )
   pending == witness_step_serve
     && match prior_receipt_for_step(receipts: receipts, step_id: witness_step_serve) {
@@ -312,10 +312,10 @@ test fn inaccessible_lease_refuses() -> Bool {
     requires_destructive_approval: false,
     escalation_id: witness_escalation_id,
     grant: GrantAbsent,
-    lease: HeldLease {
+    lease: std.temporal_effect.HeldLease {
       lease_key: witness_lease_key,
-      resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as NonEmptyStr),
-      owner_fingerprint: content_hash_of_value(value: "no-owner" as NonEmptyStr),
+      resource_fingerprint: content_hash_of_value(value: "seeded-iso-fp" as std.types.NonEmptyStr),
+      owner_fingerprint: content_hash_of_value(value: "no-owner" as std.types.NonEmptyStr),
       generation: 0,
       observed: LeaseInaccessible,
     },
@@ -396,7 +396,7 @@ test fn decision_for_held_lease_verdict_grounds_each_observation_arm() -> Bool {
 }
 
 test fn stall_budget_within_limit_preserves_apply_plan() -> Bool {
-  let budget = EffectStallBudget {
+  let budget = std.temporal_effect.EffectStallBudget {
     step_id: witness_step_serve,
     limit_ms: hang_budget_millisecond(ms: srv3_install_hang_no_installer_progress_ms),
     elapsed_ms: millisecond(count: 600000),
@@ -415,7 +415,7 @@ test fn stall_budget_within_limit_preserves_apply_plan() -> Bool {
 }
 
 test fn stall_budget_exceeded_refuses_not_widen() -> Bool {
-  let budget = EffectStallBudget {
+  let budget = std.temporal_effect.EffectStallBudget {
     step_id: witness_step_serve,
     limit_ms: hang_budget_millisecond(ms: srv3_install_hang_no_installer_progress_ms),
     elapsed_ms: hang_budget_millisecond(ms: srv3_install_hang_no_router_lease_ms),

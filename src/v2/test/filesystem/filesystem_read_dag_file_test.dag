@@ -1,7 +1,7 @@
 module v2.test.filesystem.filesystem_read_dag_file
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 
 test fn filesystem_read_dag_module_decl_holds() -> Bool {

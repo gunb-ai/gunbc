@@ -3,7 +3,7 @@ module v2.workflow.runtime_run
 
 type RuntimeRunReceipt {
   node: Node
-  result: Outcome<RuntimeValue>
+  result: Outcome<v2.std.runtime.RuntimeValue>
 }
 
 type RuntimeRunLog {
@@ -21,7 +21,7 @@ type RuntimeRunResult
       scheduled: List<Node>
     }
   | RuntimeRunBlocked {
-      evidence: SchedulerBlockedEvidence
+      evidence: v2.workflow.scheduler.SchedulerBlockedEvidence
       log: RuntimeRunLog
       scheduled: List<Node>
       remaining: List<Node>

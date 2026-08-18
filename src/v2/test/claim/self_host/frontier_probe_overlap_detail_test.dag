@@ -1,8 +1,8 @@
 module v2.test.self_host.frontier_probe_overlap_detail
 
 
-fn sample_overlap_row() -> GrammarChoiceAmbiguityRow {
-  GrammarChoiceAmbiguityRow {
+fn sample_overlap_row() -> v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow {
+  v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow {
     production: ^dag_production_expr,
     left_first_terminals: Cons { head: ^dag_token_ident, tail: Empty },
     right_first_terminals: Cons { head: ^dag_token_kw_fn, tail: Empty },
@@ -11,7 +11,7 @@ fn sample_overlap_row() -> GrammarChoiceAmbiguityRow {
   }
 }
 
-fn overlap_residue_stage_diagnostic(row: GrammarChoiceAmbiguityRow) -> ParseStageDiagnostic {
+fn overlap_residue_stage_diagnostic(row: v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow) -> v2.compiler.parse_diagnostic.ParseStageDiagnostic {
   parse_overlap_residue_stage_diagnostic_at(
     at: port_locus(port: ^parse_stage_locus_port),
     row: row
@@ -21,7 +21,7 @@ fn overlap_residue_stage_diagnostic(row: GrammarChoiceAmbiguityRow) -> ParseStag
 test fn overlap_evidence_binds_exact_row_not_global_roster() -> Bool {
   let row = sample_overlap_row()
   let detail = frontier_probe_assemble_detail_from_parse_stage(
-    d: NonEmptyParseStageDiagnostics {
+    d: v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
       head: overlap_residue_stage_diagnostic(row: row),
       tail: Empty
     }
@@ -45,11 +45,11 @@ test fn overlap_evidence_binds_exact_row_not_global_roster() -> Bool {
 test fn masked_overlap_tail_preserves_overlap_evidence_and_remaining_chain() -> Bool {
   let row = sample_overlap_row()
   let cause = assemble_rejection_cause_from_parse_stage(
-    d: NonEmptyParseStageDiagnostics {
+    d: v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
       head: overlap_residue_stage_diagnostic(row: row),
       tail: [
-        ParseStageDiagnostic {
-          diagnostic: Diagnostic {
+        v2.compiler.parse_diagnostic.ParseStageDiagnostic {
+          diagnostic: v2.std.diagnostic.Diagnostic {
             reason: ^normalize_rejected,
             at: port_locus(port: ^parse_stage_locus_port),
             correction: Unavailable { reason: ExternalContractUnknown }
@@ -91,7 +91,7 @@ test fn emit_stage_receipt_has_no_assemble_detail() -> Bool {
 
 test fn assemble_receipt_carries_nonempty_rejection_chain() -> Bool {
   let row = sample_overlap_row()
-  let stage = NonEmptyParseStageDiagnostics {
+  let stage = v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
     head: overlap_residue_stage_diagnostic(row: row),
     tail: Empty
   }
@@ -116,7 +116,7 @@ test fn assemble_receipt_carries_nonempty_rejection_chain() -> Bool {
 
 test fn overlap_stage_attaches_evidence_when_diagnostics_stripped() -> Bool {
   let row = sample_overlap_row()
-  let stage = NonEmptyParseStageDiagnostics {
+  let stage = v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
     head: overlap_residue_stage_diagnostic(row: row),
     tail: Empty
   }
@@ -142,14 +142,14 @@ test fn overlap_stage_attaches_evidence_when_diagnostics_stripped() -> Bool {
 }
 
 test fn masked_overlap_located_reason_unmasks_terminal_refusal() -> Bool {
-  let masked = NonEmptyDiagnostics {
-    head: Diagnostic {
+  let masked = v2.std.diagnostic.NonEmptyDiagnostics {
+    head: v2.std.diagnostic.Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
       at: port_locus(port: ^parse_stage_locus_port),
       correction: Unavailable { reason: ExternalContractUnknown }
     },
     tail: [
-      Diagnostic {
+      v2.std.diagnostic.Diagnostic {
         reason: ^body_lowering_reason_wrapper_retained_emitted,
         at: port_locus(port: ^parse_stage_locus_port),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -161,8 +161,8 @@ test fn masked_overlap_located_reason_unmasks_terminal_refusal() -> Bool {
 }
 
 test fn overlap_only_chain_keeps_overlap_located_reason() -> Bool {
-  let overlap_only = NonEmptyDiagnostics {
-    head: Diagnostic {
+  let overlap_only = v2.std.diagnostic.NonEmptyDiagnostics {
+    head: v2.std.diagnostic.Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
       at: port_locus(port: ^parse_stage_locus_port),
       correction: Unavailable { reason: ExternalContractUnknown }
@@ -174,14 +174,14 @@ test fn overlap_only_chain_keeps_overlap_located_reason() -> Bool {
 }
 
 test fn masked_resolve_not_found_unmasks_located_reason() -> Bool {
-  let masked = NonEmptyDiagnostics {
-    head: Diagnostic {
+  let masked = v2.std.diagnostic.NonEmptyDiagnostics {
+    head: v2.std.diagnostic.Diagnostic {
       reason: ^parse_grammar_choice_overlap_residue,
       at: port_locus(port: ^parse_stage_locus_port),
       correction: Unavailable { reason: ExternalContractUnknown }
     },
     tail: [
-      Diagnostic {
+      v2.std.diagnostic.Diagnostic {
         reason: ^resolve_module_not_found,
         at: port_locus(port: ^parse_stage_locus_port),
         correction: Unavailable { reason: ExternalContractUnknown }

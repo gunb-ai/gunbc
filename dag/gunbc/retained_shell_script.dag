@@ -5,8 +5,8 @@ data retained_shell_script_wall_note: String = "§5.E wall (operator ruling 2026
 
 type RetainedShellScript {
   body: String
-  reason: NonEmptyStr
-  dissolves_to: DeclarationRef
+  reason: std.types.NonEmptyStr
+  dissolves_to: std.decl_ref.DeclarationRef
 }
 
 data retained_shell_script_to_transport_note: String = "The SINGLE sanctioned script-body -> TransportScript bridge. Takes the record (not a raw String), so the only route from a script body to a TransportScript is to author a counted RetainedShellScript row. Replaces the deleted free minter extdeps.shell.exec.transport_script_from_body(body: String). It is one of exactly two decls named in extdeps.shell.exec.transport_script_seal's admit_callers; the other is the emitted-bash adapter gunbc.bash_materialized_transport.bash_materialized_transport."

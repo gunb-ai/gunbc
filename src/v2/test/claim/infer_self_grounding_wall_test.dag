@@ -1,23 +1,23 @@
 module v2.test.claim.infer_self_grounding_wall
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
-fn measured_infer_eval_harness_source() -> NonEmptyStr {
+fn measured_infer_eval_harness_source() -> std.types.NonEmptyStr {
   fold_list(
     xs: v2_infer_eval_harness_source_paths(),
-    empty: "guarantee-probe-harness-source" as NonEmptyStr,
+    empty: "guarantee-probe-harness-source" as std.types.NonEmptyStr,
     cons: fn(acc, path) {
       let read = filesystem_read(path: path)
       concat(
         concat(concat(acc as String, "\n=== "), path as String),
         concat(" ===\n", read.content as String),
-      ) as NonEmptyStr
+      ) as std.types.NonEmptyStr
     },
   )
 }
 
-fn infer_wall_harness_revision(probe: GuaranteeProbeId) -> MeasurementRevision {
+fn infer_wall_harness_revision(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> gunbc.guarantee_measurement.MeasurementRevision {
   let harness_source = measured_infer_eval_harness_source()
   match active_v2_infer_eval_probe_row(probe: probe) {
     Present { value: row } =>
@@ -29,14 +29,14 @@ fn infer_wall_harness_revision(probe: GuaranteeProbeId) -> MeasurementRevision {
     Absent =>
       v2_infer_eval_harness_revision(
         probe: probe,
-        expectation: ExpectAcceptedCounted { diagnostic_class: "infer-harness-row-absent" as NonEmptyStr },
+        expectation: ExpectAcceptedCounted { diagnostic_class: "infer-harness-row-absent" as std.types.NonEmptyStr },
         harness_source: harness_source,
       )
   }
 }
 
-fn wall_atom(s: Symbol) -> Node {
-  Node {
+fn wall_atom(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: s } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -44,7 +44,7 @@ fn wall_atom(s: Symbol) -> Node {
 }
 
 fn wall_conj_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -52,7 +52,7 @@ fn wall_conj_node() -> Node {
 }
 
 fn wall_disj_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Disj },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -60,7 +60,7 @@ fn wall_disj_node() -> Node {
 }
 
 fn wall_value_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Value },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -68,10 +68,10 @@ fn wall_value_node() -> Node {
 }
 
 fn wall_malformed_bool_with_payload() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^dag_token_kw_true } },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: ^wall_malformed_bool_payload_field },
         target: wall_value_node()
       }
@@ -82,11 +82,11 @@ fn wall_malformed_bool_with_payload() -> Node {
 
 fn wall_malformed_int_with_extra_payload() -> Node {
   let literal = dag_int_literal_fixture_one()
-  Node {
+  v2.std.node.Node {
     kind: literal.kind,
     children: list_snoc_item(
       xs: literal.children,
-      item: Edge {
+      item: v2.std.node.Edge {
         label: Named { name: ^wall_malformed_int_payload_field },
         target: wall_value_node()
       }
@@ -99,15 +99,15 @@ fn wall_derived_type_node() -> Node {
   wall_atom(s: ^wall_derived_type_marker)
 }
 
-fn wall_self_grounding(node: Node) -> CanonicalGrounding {
-  CanonicalGrounding {
+fn wall_self_grounding(node: Node) -> v2.std.constraints.CanonicalGrounding {
+  v2.std.constraints.CanonicalGrounding {
     node: node,
-    witness: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
+    witness: v2.std.constraints.CanonicalGroundingWitness {
+      structural: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_being_canonical,
         evidence: node
       },
-      closedness: StructuralPropertyWitness {
+      closedness: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_candidate_set_closedness,
         evidence: node
       }
@@ -115,15 +115,15 @@ fn wall_self_grounding(node: Node) -> CanonicalGrounding {
   }
 }
 
-fn wall_derived_grounding(node: Node) -> CanonicalGrounding {
-  CanonicalGrounding {
+fn wall_derived_grounding(node: Node) -> v2.std.constraints.CanonicalGrounding {
+  v2.std.constraints.CanonicalGrounding {
     node: node,
-    witness: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
+    witness: v2.std.constraints.CanonicalGroundingWitness {
+      structural: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_being_canonical,
         evidence: wall_derived_type_node()
       },
-      closedness: StructuralPropertyWitness {
+      closedness: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_candidate_set_closedness,
         evidence: node
       }
@@ -226,10 +226,10 @@ test fn wall_malformed_int_payload_is_not_grounded_or_discharged() -> Bool {
     && wall_infer_counts_frontier(root: wall_malformed_int_with_extra_payload())
 }
 
-fn wall_frontier_observation_matches_infer(nes: NonEmptyDiagnostics, o: ProbeObservation) -> Bool {
+fn wall_frontier_observation_matches_infer(nes: v2.std.diagnostic.NonEmptyDiagnostics, o: gunbc.guarantee_measurement.ProbeObservation) -> Bool {
   probe_observation_fold(
     o: o,
-    fold: ProbeObservationFold {
+    fold: gunbc.guarantee_measurement.ProbeObservationFold {
       refused: fn(_, _) { false },
       accepted_clean: false,
       accepted_counted: fn(cls, c) {

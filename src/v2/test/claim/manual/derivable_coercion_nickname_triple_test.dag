@@ -1,30 +1,30 @@
 module v2.test.manual.derivable_coercion_nickname_triple
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn task_id_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> CandidateSet {
-  CandidateSet {
+fn task_id_candidate_set(candidates: List<Node>, closedness_evidence: Node) -> v2.std.find_witness.CandidateSet {
+  v2.std.find_witness.CandidateSet {
     candidates: candidates,
     closedness: derivable_coercion_candidate_closedness(evidence: closedness_evidence)
   }
 }
 
-fn task_id_predicate(source: Node, target: Node, rule: Symbol) -> PreservationPredicate {
+fn task_id_predicate(source: Node, target: Node, rule: v2.std.node.Symbol) -> v2.std.find_witness.PreservationPredicate {
   if rule == ^preservation_rule_refinement_widening {
-    PreservationPredicate {
+    v2.std.find_witness.PreservationPredicate {
       algebra: refinement_widening_predicate_algebra(source: source, candidate: target),
       preservation_rule: rule
     }
   } else {
-    PreservationPredicate {
+    v2.std.find_witness.PreservationPredicate {
       algebra: source,
       preservation_rule: rule
     }
   }
 }
 
-fn find_witness_sibling_accepts(source: Node, target: Node, rule: Symbol) -> Bool {
+fn find_witness_sibling_accepts(source: Node, target: Node, rule: v2.std.node.Symbol) -> Bool {
   match find_witness(
     source_facts: source,
     candidates: task_id_candidate_set(
@@ -113,28 +113,28 @@ fn derivable_coercion_claim_lhs(ok: Bool) -> Node {
   }
 }
 
-data claim_task_id_surfaces_distinct: TestClaim = EqualsClaim {
+data claim_task_id_surfaces_distinct: v2.std.verification.TestClaim = EqualsClaim {
   label: "manual/derivable_coercion: API/DB/wire inhabitants have distinct SurfaceSpelling surfaces",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: derivable_coercion_claim_lhs(ok: witness_task_id_surfaces_distinct),
   rhs: derivable_coercion_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_crux_substrate_gap: TestClaim = EqualsClaim {
+data claim_crux_substrate_gap: v2.std.verification.TestClaim = EqualsClaim {
   label: "manual/derivable_coercion: CRUX — find_witness dispatch derives nickname siblings and rejects wrong-core",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: derivable_coercion_claim_lhs(ok: !witness_crux_substrate_gap),
   rhs: derivable_coercion_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_matrix_widening_accepts_siblings_and_wrong_core: TestClaim = EqualsClaim {
+data claim_matrix_widening_accepts_siblings_and_wrong_core: v2.std.verification.TestClaim = EqualsClaim {
   label: "manual/derivable_coercion: CRUX — widening accepts siblings AND wrong-core (non-discriminating)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: derivable_coercion_claim_lhs(ok: witness_matrix_widening_api_to_db_accepts && witness_matrix_widening_api_to_wire_accepts && witness_matrix_widening_db_to_wire_accepts && witness_matrix_widening_api_to_account_id_accepts),
   rhs: derivable_coercion_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
 test data witness_claim_task_id_surfaces_distinct: Bool = match run_test_claim_assert(

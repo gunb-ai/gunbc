@@ -26,13 +26,13 @@ type NativeScmOperationalState
 type NativeScmProjection {
   workspace: Optional<String>
   target: Optional<String>
-  realizations: List<CompatibilityProjectionReceipt>
+  realizations: List<gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt>
 }
 
 type NativeScmContinuationOption {
-  label: NonEmptyStr
-  result_preview: NonEmptyStr
-  resume_token: NonEmptyStr
+  label: std.types.NonEmptyStr
+  result_preview: std.types.NonEmptyStr
+  resume_token: std.types.NonEmptyStr
 }
 
 type NativeScmContinuationOptions {

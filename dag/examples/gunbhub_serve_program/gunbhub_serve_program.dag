@@ -2,7 +2,7 @@ module examples.gunbhub_serve_program
 
 fn wa_unknown_path_is_not_found() -> Bool {
   match serve_gunbhub_request(
-    req: GunbhubServeRequest { method: GET, path: "/unknown/nonexistent" }
+    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: GET, path: "/unknown/nonexistent" }
   ) {
     RouteNotFound => true
     Served { response: _ } => false
@@ -31,7 +31,7 @@ fn wb_unsafe_href_rejected_before_serve() -> Bool {
 
 fn browse_root_serves_200() -> Bool {
   match serve_gunbhub_request(
-    req: GunbhubServeRequest { method: GET, path: "/" }
+    req: gunbc.gunbhub_serve.GunbhubServeRequest { method: GET, path: "/" }
   ) {
     Served { response: r } => r.status == 200 && r.body != ""
     RouteNotFound => false
@@ -41,7 +41,7 @@ fn browse_root_serves_200() -> Bool {
 }
 
 
-func main() -> ProcessExit {
+func main() -> std.process.ProcessExit {
   if wa_unknown_path_is_not_found()
     && wb_unsafe_href_is_rejected()
     && wb_unsafe_href_rejected_before_serve()

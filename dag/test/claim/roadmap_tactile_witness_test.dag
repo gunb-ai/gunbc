@@ -19,7 +19,7 @@ test fn witness_settle_spring_mints_only_the_easing() -> Bool {
     && string_contains(s: settle_spring.easing, pattern: "cubic-bezier(0.34, 1.56, 0.64, 1)")
 }
 
-fn timing_in_scale(t: TimingToken) -> Bool {
+fn timing_in_scale(t: gunbc.design.material.TimingToken) -> Bool {
   fold(timing_scale, init: false, f: (acc, s) =>
     acc || (s.duration_ms == t.duration_ms && s.easing == t.easing))
 }
@@ -81,7 +81,7 @@ test fn witness_detent_edges_all_beat() -> Bool {
 }
 
 test fn witness_inert_edge_reds_with_its_transform() -> Bool {
-  let inert = DetentEdge { from_state: detent_rest, to_state: detent_accepted }
+  let inert = gunbc.design.interaction.DetentEdge { from_state: detent_rest, to_state: detent_accepted }
   let defects = detent_edge_defects(detents: roadmap_dispatch_detents, edges: [inert])
   defects.length() == 1
     && all(defects, d => d.from_state == detent_rest && d.to_state == detent_accepted
@@ -92,7 +92,7 @@ test fn witness_inert_edge_reds_with_its_transform() -> Bool {
 }
 
 test fn witness_undeclared_endpoint_reds_by_name() -> Bool {
-  let typo = DetentEdge { from_state: detent_pressed, to_state: "requsted" }
+  let typo = gunbc.design.interaction.DetentEdge { from_state: detent_pressed, to_state: "requsted" }
   let defects = detent_edge_defects(detents: roadmap_dispatch_detents, edges: [typo])
   defects.length() == 1
     && all(defects, d => match d.fault {
@@ -102,7 +102,7 @@ test fn witness_undeclared_endpoint_reds_by_name() -> Bool {
 }
 
 test fn witness_two_missing_endpoints_do_not_cancel() -> Bool {
-  let both_bad = DetentEdge { from_state: "nope-a", to_state: "nope-b" }
+  let both_bad = gunbc.design.interaction.DetentEdge { from_state: "nope-a", to_state: "nope-b" }
   let defects = detent_edge_defects(detents: roadmap_dispatch_detents, edges: [both_bad])
   defects.length() == 1
     && all(defects, d => match d.fault {
@@ -111,7 +111,7 @@ test fn witness_two_missing_endpoints_do_not_cancel() -> Bool {
     })
 }
 
-fn carrier_items_all_timed(c: TransitionCarrier) -> Bool {
+fn carrier_items_all_timed(c: gunbc.design.material.TransitionCarrier) -> Bool {
   all(c.items, i => i.prop.length() > 0 && i.timing.duration_ms > 0)
 }
 
@@ -219,7 +219,7 @@ test fn witness_button_reports_dispatch_acceptance() -> Bool {
     && !string_contains(s: source, pattern: "session · spawned")
 }
 
-fn fragment_is_sound_toggle(c: Fragment) -> Bool {
+fn fragment_is_sound_toggle(c: std.markup.Fragment) -> Bool {
   match c {
     Element { tag: t, attributes: a, children: _ } =>
       t == "button"
@@ -231,7 +231,7 @@ fn fragment_is_sound_toggle(c: Fragment) -> Bool {
 }
 
 // Amended for the A2 hierarchy closeout: the header's controls moved inside the div.header-inner composition frame (gunbc.roadmap_page.header_composition_frame_note), so the toggle is no longer a direct child. Same shape as the wordmark scan in roadmap_register_witness_test (header_frame_scan_note): a RECURSIVE descent over the header's Fragment subtree, because the claim is 'every page header ships the toggle', not 'the toggle sits at depth one'. A fixed depth would re-pin the nesting it was just unpinned from.
-fn header_subtree_has_sound_toggle(f: Fragment) -> Bool {
+fn header_subtree_has_sound_toggle(f: std.markup.Fragment) -> Bool {
   fragment_is_sound_toggle(c: f)
     || (match f {
       Element { tag: _, attributes: _, children } =>
@@ -241,7 +241,7 @@ fn header_subtree_has_sound_toggle(f: Fragment) -> Bool {
     })
 }
 
-fn header_has_sound_toggle(h: Fragment) -> Bool {
+fn header_has_sound_toggle(h: std.markup.Fragment) -> Bool {
   match h {
     Element { tag, attributes: _, children } =>
       tag == "header"
@@ -257,15 +257,15 @@ test fn witness_sound_toggle_ships_on_every_page_header() -> Bool {
 }
 
 test fn witness_sound_toggle_scan_discriminates() -> Bool {
-  !header_has_sound_toggle(h: Element {
+  !header_has_sound_toggle(h: extdeps.browser.Element {
     tag: "header",
     attributes: [],
     children: [
-      Element {
+      extdeps.browser.Element {
         tag: "div",
         attributes: [],
         children: [
-          Element {
+          extdeps.browser.Element {
             tag: "button",
             attributes: [ attr(name: "class", value: "theme-toggle") ],
             children: [],
@@ -274,11 +274,11 @@ test fn witness_sound_toggle_scan_discriminates() -> Bool {
       },
     ],
   })
-    && !header_has_sound_toggle(h: Element {
+    && !header_has_sound_toggle(h: extdeps.browser.Element {
       tag: "div",
       attributes: [],
       children: [
-        Element {
+        extdeps.browser.Element {
           tag: "button",
           attributes: [ attr(name: "class", value: sound_toggle_class) ],
           children: [],

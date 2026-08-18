@@ -1,15 +1,15 @@
 module v2.test.manual.medium_source_serializer_determinism_fidelity
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data serializer_determinism_probe_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
 
 fn serializer_determinism_lossless_probe() -> Medium<String> {
-  Medium { carried: serializer_determinism_probe_text, fidelity: Lossless }
+  extdeps.communication.medium.Medium { carried: serializer_determinism_probe_text, fidelity: Lossless }
 }
 
 fn serializer_determinism_lossy_probe() -> Medium<String> {
-  Medium { carried: serializer_determinism_probe_text, fidelity: Lossy }
+  extdeps.communication.medium.Medium { carried: serializer_determinism_probe_text, fidelity: Lossy }
 }
 
 test fn serializer_determinism_holds_despite_fidelity_mismatch() -> Bool {

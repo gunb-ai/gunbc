@@ -21,7 +21,7 @@ fn build_realization(cfg: JobserverConfig) -> RealizedStep<Nano> {
 }
 
 type HeadroomPolicy
-  = HeadroomSet { bytes: ByteSize }
+  = HeadroomSet { bytes: std.measure.ByteSize }
   | HeadroomUnset
 
 data gunbc_fleet_headroom_policy: HeadroomPolicy = HeadroomUnset
@@ -33,7 +33,7 @@ fn oomd_actuation_floor(host: ByteSize) -> ByteSize {
 }
 
 type HeadroomResolution
-  = HeadroomResolved { bytes: ByteSize }
+  = HeadroomResolved { bytes: std.measure.ByteSize }
   | HeadroomUnsound { reason: String }
 
 fn resolve_headroom(policy: HeadroomPolicy, floor: ByteSize) -> HeadroomResolution {
@@ -79,7 +79,7 @@ type CompilePoolPlacement
 data gunbc_compile_pool_placement: CompilePoolPlacement = CompilePoolInRunnerSlots
 
 type CompilePoolResolution
-  = CompilePoolDerived { bytes: ByteSize }
+  = CompilePoolDerived { bytes: std.measure.ByteSize }
   | CompilePoolUnresolved { reason: String }
 
 fn compile_pool_bytes_for(
@@ -238,10 +238,10 @@ fn runner_slice_cap_drifted(disk_cap: ByteSize, effective: RunnerSliceCapEffecti
 type FleetHostPlan
   = FleetHostPlanDerived {
       name: String,
-      tree: BudgetNode,
-      runner_slice_cap: ByteSize,
-      effective_build_tokens: HardwareThreadCount,
-      effective_runner_cpu_cap: HardwareThreadCount,
+      tree: product.budget_tree.BudgetNode,
+      runner_slice_cap: std.measure.ByteSize,
+      effective_build_tokens: std.measure.HardwareThreadCount,
+      effective_runner_cpu_cap: std.measure.HardwareThreadCount,
       build_step: RealizedStep<Nano>
     }
   | FleetHostPlanUnsound { reason: String }

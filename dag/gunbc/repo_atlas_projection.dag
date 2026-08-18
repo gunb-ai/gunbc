@@ -94,7 +94,7 @@ fn atlas_address_eq(a: AtlasAddress, b: AtlasAddress) -> Bool {
 
 type RepoAtlasCell {
   address: AtlasAddress
-  occupants: List<ModuleIdentity>
+  occupants: List<v2.lens.module_impact_query.ModuleIdentity>
 }
 
 data repo_atlas_cell_note: String = "COLLISIONS SHARE A CELL; THEY DO NOT DISPLACE ONE ANOTHER. Two identities landing on one address remain two occupants and the cell renders one dot with a denser centre. Displacement would have made an address depend on which other modules exist and in what order they arrived, destroying the stability property the address exists to provide — the probing scheme, not the collision, is what would move an unrelated module.
@@ -103,7 +103,7 @@ It also caps the rendered element count by CELL count rather than declaration co
 
 type AtlasCellAccumulator {
   order: List<Int>
-  occupants: Map<Int, List<ModuleIdentity>>
+  occupants: Map<Int, List<v2.lens.module_impact_query.ModuleIdentity>>
 }
 
 data repo_atlas_cell_order_cost_note: String = "THE ORDER LIST CONSES AND REVERSES ONCE rather than appending. Appending with concat(acc, [item]) copies the whole accumulator per module, which is O(n^2) over a 3400-module population — the exact idiom dedup_import_resolution_facts_cost_note records as having cost that lane an OOM and then 900 seconds. DESIGN 6 bare-minimum-cost: a proven cost-shape defect is always fixed regardless of the realized n, and list_reverse of a cons-accumulated fold is exactly the append-accumulated order, so the projection is unchanged by construction."
@@ -146,7 +146,7 @@ fn atlas_cells_of_modules(identities: List<ModuleIdentity>) -> List<RepoAtlasCel
 data repo_atlas_duplicate_fact_note: String = "TWO ROWS NAMING ONE MODULE ARE ONE SUBJECT OBSERVED TWICE, not two subjects. The staged many-to-many path/module relation means a single module can legitimately be declared at more than one path, so the fact list may carry it repeatedly; letting that through would raise the cell's occupant count and paint the dot denser, reporting a storage detail as semantic density. Identity is the atlas's unit, so the projection deduplicates on it here — before cells exist — and a genuine collision between DISTINCT identities still yields two occupants."
 
 type AtlasIdentityDedup {
-  order: List<ModuleIdentity>
+  order: List<v2.lens.module_impact_query.ModuleIdentity>
   seen: Map<String, Bool>
 }
 
@@ -173,18 +173,18 @@ data repo_atlas_change_projection_note: String = "THE HEAD-ONLY LIMIT, STATED AS
 Resolving a departed path against the head anyway would find whatever module occupies that path NOW, which is either nothing or a different subject wearing the same storage location — a fabricated plausible output in the precise DESIGN 5 sense. So departed paths land in unprojected_changes as a visible readout and are never assigned an address. That is also why the first live protocol carries a subject advance plus a fresh snapshot rather than a semantic patch: an exact added/removed edge patch requires BOTH base and head semantic graphs, and only one exists today."
 
 type AtlasChangeMark {
-  module: ModuleIdentity
-  status: GitDiffChangeStatus
+  module: v2.lens.module_impact_query.ModuleIdentity
+  status: extdeps.git.GitDiffChangeStatus
 }
 
 type UnprojectedChange
   = DepartedPathPriorIdentityUnavailable {
       path: String,
-      status: GitDiffChangeStatus
+      status: extdeps.git.GitDiffChangeStatus
     }
   | PathDeclaresNoModule {
       path: String,
-      status: GitDiffChangeStatus
+      status: extdeps.git.GitDiffChangeStatus
     }
 
 data repo_atlas_comparison_identity_note: String = "A DIFF IS NOT A FACT UNTIL IT NAMES ITS ENDPOINTS, and the overlay may not be combined with a module population that was read from somewhere else. AtlasComparison carries the exact base, head and relation; the readout prints all three, because 'a named revision' is provenance nobody can check.
@@ -196,14 +196,14 @@ WHY THE HEAD MUST BE BOUND. module_declaration_facts_live reads the WORKING TREE
 type AtlasComparison {
   base: String
   head: String
-  relation: GitDiffRange
+  relation: extdeps.git.GitDiffRange
 }
 
 type AtlasChangeObservation
   = AtlasChangesNotObserved
   | AtlasComparisonObserved {
       comparison: AtlasComparison,
-      diff: GitDiffNameStatusParseOutcome
+      diff: extdeps.git.GitDiffNameStatusParseOutcome
     }
   | AtlasComparisonUnavailable {
       cause: AtlasOverlayRefusalCause
@@ -398,8 +398,8 @@ STANDING TRAVELS WITH THE READING so a provisional or incomplete answer cannot r
 type AtlasImpactOverlay
   = AtlasImpactNotComputed
   | AtlasImpactComputed {
-      reached: List<ModuleIdentity>,
-      standing: ImpactStanding
+      reached: List<v2.lens.module_impact_query.ModuleIdentity>,
+      standing: v2.lens.module_impact_query.ImpactStanding
     }
 
 fn atlas_impact_from_reading(reading: ImpactReading) -> AtlasImpactOverlay {
@@ -420,7 +420,7 @@ fn atlas_impact_is_exact(overlay: AtlasImpactOverlay) -> Bool {
 data repo_atlas_subject_arms_note: String = "The subject is the revision the atlas depicts. AtlasSubjectUnobserved is a real arm rather than an empty string because a static artifact generated outside a revision comparison genuinely has no subject to name, and a page that printed an empty or invented revision would be asserting provenance it does not hold. The renderer prints the arm it is given."
 
 type AtlasSubject
-  = AtlasSubjectRevision { revision: GitObjectId }
+  = AtlasSubjectRevision { revision: extdeps.git.object_store.GitObjectId }
   | AtlasSubjectUnobserved
 
 type RepoAtlasSnapshot {

@@ -4,7 +4,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data privilege_mutation_marker: String = "host-mutation-privilege-marker-7f3a"
 
-fn host_os_target() -> NodeControlPlane {
+fn host_os_target() -> gunbc.host_effect.NodeControlPlane {
   HostOs { node: srv1_host }
 }
 

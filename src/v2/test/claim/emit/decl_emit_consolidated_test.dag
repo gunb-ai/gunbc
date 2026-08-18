@@ -311,7 +311,7 @@ fn dc_empty_enum_emitted() -> Node {
 }
 
 type DeclEmitConstructRow {
-  construct: Symbol
+  construct: v2.std.node.Symbol
   covered: Bool
 }
 

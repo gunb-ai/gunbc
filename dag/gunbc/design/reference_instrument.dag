@@ -48,8 +48,8 @@ fn behaviour_axis_eq(a: InstrumentBehaviourAxis, b: InstrumentBehaviourAxis) -> 
 data evidence_join_note: String = "ATTRIBUTION IS DERIVED FROM EVIDENCE, NOT AUTHORED BESIDE IT (review finding, 2026-08-04). An earlier revision authored which products realized which axes as its own rows, importing the product settings only to count them — so correcting a setting in a product module did not correct the axis attribution, and the two representations could disagree silently. That is the parallel-representation failure the corpus already knows, and it is what let the whole attribution invert while ten witnesses stayed green. Every citation carries a DeclarationRef to the FACT that grounds it, inside the cited subject's own module, so an axis cannot be attached to a product without naming a declaration in that product."
 
 type InstrumentCitation {
-  subject: ExternalSubjectRef
-  fact: DeclarationRef
+  subject: extdeps.external_authority.ExternalSubjectRef
+  fact: std.decl_ref.DeclarationRef
 }
 
 data provenance_by_construction_note: String = "ONE TOTAL FUNCTION, NOT TWO LISTS AND A CHECK (review finding 48240, 2026-08-04, and the correct reading of DESIGN section 5). An earlier revision carried reference_instrument_evidence and originated_axes as INDEPENDENT lists with axis_provenance_is_total asserting the XOR over them — an axis with both kinds of provenance, or with none, was writable and merely detected. Because InstrumentBehaviourAxis is a CLOSED coproduct, an exhaustive match gives the same guarantee by construction: every axis has exactly one provenance because the match must answer for every variant and can answer only once, so both bad states lose their constructor and the XOR check is deleted rather than kept beside the shape that makes it unnecessary (section 4b(4): a climb dissolves the production machinery it obsoletes, never accumulates beside it). CitedOn is nonempty by the same first/rest split ExternalModelScope uses for citations, so a cited axis with zero citations is likewise unwritable. WHAT STAYS VALIDATION, honestly: an InstrumentCitation can still name a subject and a fact in different modules, and making THAT unwritable needs the citation constructors to be the only way to build one — a sole_constructor guarantee the corpus does not yet verify for generic carriers. The per-subject constructors below are the safe path and evidence_containment is the residue check over it."
@@ -65,7 +65,7 @@ fn pip_boy_3000_citation(decl_name: String) -> InstrumentCitation {
 
 type AxisProvenance
   = CitedOn { first: InstrumentCitation, rest: List<InstrumentCitation> }
-  | OriginatedHere { rationale: NonEmptyStr }
+  | OriginatedHere { rationale: std.types.NonEmptyStr }
 
 data originated_axis_note: String = "OriginatedHere is a first-class arm, not a gap. An axis the design lane wants that no cited instrument realizes has no upstream provenance to claim, and saying so is the point of the join: it separates what we cite from what we invent. BuoyantDrift is ours — no reference product realizes a continuous buoyant drift of the display, the axis entered this repository from the operator's fishing-hook-bobber description, and the InstrumentDrift register amendment it motivates must therefore stand on its own laws rather than borrow a Pip-Boy citation."
 
@@ -178,10 +178,10 @@ data source_read_path_note: String = "OUR read path, not the upstream's property
 
 type SourceReadPath
   = ReadDirectly
-  | ReadViaSearchIndex { obstacle: NonEmptyStr }
+  | ReadViaSearchIndex { obstacle: std.types.NonEmptyStr }
 
 type SourceReadReceipt {
-  instrument: ExternalSubjectRef
+  instrument: extdeps.external_authority.ExternalSubjectRef
   manual_read_path: SourceReadPath
   listing_read_path: SourceReadPath
 }
@@ -217,9 +217,9 @@ fn all_sources_read_directly() -> Bool {
 }
 
 type CoverageObligation {
-  question: NonEmptyStr
-  blocked_by: NonEmptyStr
-  dissolution: DissolutionCondition
+  question: std.types.NonEmptyStr
+  blocked_by: std.types.NonEmptyStr
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 data mk_v_display_effect_obligation: CoverageObligation = CoverageObligation {

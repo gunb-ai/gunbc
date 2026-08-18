@@ -9,12 +9,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type DockerImage {
-  repository: NonEmptyStr
-  tag: NonEmptyStr
-  digest: ContentHash?
+  repository: std.types.NonEmptyStr
+  tag: std.types.NonEmptyStr
+  digest: std.content_hash.ContentHash?
 }
 
 type DockerMount
   = BindMount { host_path: std.types.FilePath, container_path: std.types.FilePath, readonly: Bool }
-  | VolumeMount { volume: NonEmptyStr, container_path: std.types.FilePath, readonly: Bool }
+  | VolumeMount { volume: std.types.NonEmptyStr, container_path: std.types.FilePath, readonly: Bool }
   | TmpfsMount { container_path: std.types.FilePath, size_bytes: Int }

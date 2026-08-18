@@ -38,11 +38,11 @@ type TrackedIssue {
   title: String
   body: String
   stage: IssueLifecycleStage
-  url: NonEmptyStr?
+  url: std.types.NonEmptyStr?
   author: String?
   labels: List<String>
-  created_at: Timestamp?
-  updated_at: Timestamp?
+  created_at: std.types.Timestamp?
+  updated_at: std.types.Timestamp?
 }
 
 type DesignOutput {
@@ -58,7 +58,7 @@ type DesignSections {
   interfaces: String?
   risks: List<String>?
   test_plan: String?
-  scope: FermiDepth?
+  scope: std.types.FermiDepth?
 }
 
 type DesignReviewOutput {
@@ -71,13 +71,13 @@ type DesignFinding {
   check_id: String
   issue_key: String
   observation: String
-  severity: FindingSeverity
+  severity: gunbc.review_verdict.FindingSeverity
   suggestion: String?
 }
 
 type ImplementationPlan {
   tasks: List<ImplementationTask>
-  estimated_scope: FermiDepth
+  estimated_scope: std.types.FermiDepth
   summary: String
 }
 
@@ -93,8 +93,8 @@ type PipelineRun {
   issue_id: String
   stages_completed: List<IssueLifecycleStage>
   current_stage: IssueLifecycleStage
-  started_at: Timestamp
-  updated_at: Timestamp
+  started_at: std.types.Timestamp
+  updated_at: std.types.Timestamp
   artifacts: List<PipelineArtifact>
 }
 
@@ -102,7 +102,7 @@ type PipelineArtifact {
   stage: IssueLifecycleStage
   kind: ArtifactKind
   content: String
-  url: NonEmptyStr?
+  url: std.types.NonEmptyStr?
 }
 
 type IssueState = Open | Closed
@@ -113,40 +113,40 @@ type BindingStatus
   | Terminated
 
 type IntentSheet {
-  intent_id: NonEmptyStr
+  intent_id: std.types.NonEmptyStr
   intent_version: Int
-  title: NonEmptyStr
+  title: std.types.NonEmptyStr
   body: String
   labels: List<String>
-  owner: NonEmptyStr
-  repo: NonEmptyStr
-  created_at: Timestamp
+  owner: std.types.NonEmptyStr
+  repo: std.types.NonEmptyStr
+  created_at: std.types.Timestamp
   metadata: Json?
 }
 
 type IssueBinding {
-  intent_id: NonEmptyStr
-  issue_id: NonEmptyStr
-  provider: NonEmptyStr
-  created_at: Timestamp
+  intent_id: std.types.NonEmptyStr
+  issue_id: std.types.NonEmptyStr
+  provider: std.types.NonEmptyStr
+  created_at: std.types.Timestamp
   binding_status: BindingStatus
 }
 
 type StageRunKey {
-  issue_id: NonEmptyStr
+  issue_id: std.types.NonEmptyStr
   stage: IssueLifecycleStage
-  input_hash: ContentHash
-  policy_version: NonEmptyStr
+  input_hash: std.content_hash.ContentHash
+  policy_version: std.types.NonEmptyStr
 }
 
 type ClaimLease {
-  issue_id: NonEmptyStr
+  issue_id: std.types.NonEmptyStr
   stage: IssueLifecycleStage
-  owner: NonEmptyStr
+  owner: std.types.NonEmptyStr
   generation: Int
-  acquired_at: Timestamp
-  expires_at: Timestamp
-  lease_ttl_ms: Milliseconds
+  acquired_at: std.types.Timestamp
+  expires_at: std.types.Timestamp
+  lease_ttl_ms: std.types.Milliseconds
 }
 
 type OutcomeStatus
@@ -157,16 +157,16 @@ type OutcomeStatus
   | OutcomeTerminalFailed
 
 type StageOutcome {
-  run_key: NonEmptyStr
+  run_key: std.types.NonEmptyStr
   stage: IssueLifecycleStage
   status: OutcomeStatus
   payload: Json?
   error: String?
   attempt_count: Int
   retry_budget_remaining: Int
-  next_attempt_at: Timestamp?
-  created_at: Timestamp
-  updated_at: Timestamp
+  next_attempt_at: std.types.Timestamp?
+  created_at: std.types.Timestamp
+  updated_at: std.types.Timestamp
 }
 
 type ArtifactType
@@ -180,15 +180,15 @@ type ArtifactType
 
 type ArtifactPayload
   = Inline { body: String }
-  | BlobRef { uri: Uri, size_bytes: Int }
+  | BlobRef { uri: extdeps.uri.Uri, size_bytes: Int }
 
 type RunArtifact {
-  artifact_id: NonEmptyStr
-  run_key: NonEmptyStr
+  artifact_id: std.types.NonEmptyStr
+  run_key: std.types.NonEmptyStr
   artifact_type: ArtifactType
   payload: ArtifactPayload
-  content_hash: ContentHash
-  created_at: Timestamp
+  content_hash: std.content_hash.ContentHash
+  created_at: std.types.Timestamp
 }
 
 type MarkerKind
@@ -196,30 +196,30 @@ type MarkerKind
   | Canonical
 
 type ArtifactMarker {
-  run_key: NonEmptyStr
+  run_key: std.types.NonEmptyStr
   artifact_type: ArtifactType
   marker_kind: MarkerKind
-  content_hash: ContentHash
+  content_hash: std.content_hash.ContentHash
   lease_generation: Int?
-  created_at: Timestamp
+  created_at: std.types.Timestamp
 }
 
 type SignalType
-  = IntentSubmitted { intent_id: NonEmptyStr, intent_version: Int }
-  | WorkReady { issue_id: NonEmptyStr, stage: IssueLifecycleStage, stage_epoch: Int }
-  | ApprovalGranted { issue_id: NonEmptyStr, stage: IssueLifecycleStage, approval_epoch: Int }
-  | RetryDue { issue_id: NonEmptyStr, stage: IssueLifecycleStage, run_key: NonEmptyStr, next_attempt_at: Timestamp }
-  | LeaseExpired { issue_id: NonEmptyStr, stage: IssueLifecycleStage, lease_generation: Int }
-  | ReconcileTick { window_id: NonEmptyStr }
-  | InfraIntentChanged { intent_fingerprint: NonEmptyStr }
-  | TerminalStateReached { issue_id: NonEmptyStr, stage: IssueLifecycleStage, run_key: NonEmptyStr }
+  = IntentSubmitted { intent_id: std.types.NonEmptyStr, intent_version: Int }
+  | WorkReady { issue_id: std.types.NonEmptyStr, stage: IssueLifecycleStage, stage_epoch: Int }
+  | ApprovalGranted { issue_id: std.types.NonEmptyStr, stage: IssueLifecycleStage, approval_epoch: Int }
+  | RetryDue { issue_id: std.types.NonEmptyStr, stage: IssueLifecycleStage, run_key: std.types.NonEmptyStr, next_attempt_at: std.types.Timestamp }
+  | LeaseExpired { issue_id: std.types.NonEmptyStr, stage: IssueLifecycleStage, lease_generation: Int }
+  | ReconcileTick { window_id: std.types.NonEmptyStr }
+  | InfraIntentChanged { intent_fingerprint: std.types.NonEmptyStr }
+  | TerminalStateReached { issue_id: std.types.NonEmptyStr, stage: IssueLifecycleStage, run_key: std.types.NonEmptyStr }
 
 type Signal {
   signal_type: SignalType
-  idempotency_key: NonEmptyStr
+  idempotency_key: std.types.NonEmptyStr
   payload: Json
-  produced_at: Timestamp
-  consumed_at: Timestamp?
+  produced_at: std.types.Timestamp
+  consumed_at: std.types.Timestamp?
 }
 
 type RuntimeProfile
@@ -229,20 +229,20 @@ type RuntimeProfile
 type LaunchConfig {
   worker_count: Int
   drain_flag_path: String?
-  drain_flag_url: NonEmptyStr?
+  drain_flag_url: std.types.NonEmptyStr?
 }
 
 type InfraIntent {
-  schema_version: NonEmptyStr
+  schema_version: std.types.NonEmptyStr
   runtime_profile: RuntimeProfile
   launch: LaunchConfig
-  infra_fingerprint: NonEmptyStr
+  infra_fingerprint: std.types.NonEmptyStr
 }
 
 type FailureClass
   = Retryable {
       reason: String
-      next_attempt_at: Timestamp
+      next_attempt_at: std.types.Timestamp
     }
   | NonRetryable { reason: String }
   | Transient { reason: String }
@@ -268,9 +268,9 @@ type CredentialIntent
   | SecretManagerAccess
 
 type CredentialResolution
-  = EnvVar { name: NonEmptyStr }
-  | SecretManagerRef { secret_id: NonEmptyStr, project_id: GcpProjectId }
-  | WorkloadIdentity { service_account: ServiceAccountEmail?, scopes: List<String> }
+  = EnvVar { name: std.types.NonEmptyStr }
+  | SecretManagerRef { secret_id: std.types.NonEmptyStr, project_id: extdeps.cloud.gcp.gcp.GcpProjectId }
+  | WorkloadIdentity { service_account: extdeps.cloud.gcp.gcp.ServiceAccountEmail?, scopes: List<String> }
 
 type CredentialBinding {
   intent: CredentialIntent
@@ -278,10 +278,10 @@ type CredentialBinding {
 }
 
 type ExecutionMetrics {
-  run_key: NonEmptyStr
+  run_key: std.types.NonEmptyStr
   stage: IssueLifecycleStage
-  duration_ms: Milliseconds
-  approval_latency_ms: Milliseconds?
+  duration_ms: std.types.Milliseconds
+  approval_latency_ms: std.types.Milliseconds?
   retry_attempts: Int
   llm_cost_units: Float?
   transport_calls: Int
@@ -295,11 +295,11 @@ type AuditAction
   | TransitionedTo { from_state: String, to_state: String }
 
 type AuditEntry {
-  timestamp: Timestamp
-  actor: NonEmptyStr
+  timestamp: std.types.Timestamp
+  actor: std.types.NonEmptyStr
   action: AuditAction
-  entity_type: NonEmptyStr
-  entity_id: NonEmptyStr
+  entity_type: std.types.NonEmptyStr
+  entity_id: std.types.NonEmptyStr
   before: Json?
   after: Json?
 }

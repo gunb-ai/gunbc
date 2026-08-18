@@ -3,22 +3,22 @@ module gunbc.publication_admission_delta
 
 // Change-local publication admission compares current published projection vs candidate derived projection. Slice-1 classifies NewlyPublic, NewlyWithheld, and PolicyChanged only. Audience widenings and private-to-public references defer until audience/reference carriers land; digest mismatch refuses at admission via CandidateDigestInconsistent, not a delta class. Whole-projection audit is a separate centrally-owned main-health job, never inherited by unrelated PRs.
 type ProjectionDeltaClass
-  = NewlyPublic { subject: PublicProjectionSubject }
-  | NewlyWithheld { subject: PublicProjectionSubject }
+  = NewlyPublic { subject: gunbc.public_projection.PublicProjectionSubject }
+  | NewlyWithheld { subject: gunbc.public_projection.PublicProjectionSubject }
   | PolicyChanged {
-      from_version: NonEmptyStr,
-      to_version: NonEmptyStr,
+      from_version: std.types.NonEmptyStr,
+      to_version: std.types.NonEmptyStr,
     }
 
 type ChangeLocalAdmissionRequest {
-  current: PublicProjectionPlan?
-  candidate: PublicProjectionPlan
+  current: gunbc.public_projection.PublicProjectionPlan?
+  candidate: gunbc.public_projection.PublicProjectionPlan
 }
 
 type ChangeLocalRefusal
   = CandidateDigestInconsistent {
-      expected: ContentHash,
-      observed: ContentHash,
+      expected: std.content_hash.ContentHash,
+      observed: std.content_hash.ContentHash,
     }
   | WholeProjectionAuditRequired {
       detail: String,
@@ -27,7 +27,7 @@ type ChangeLocalRefusal
 type ChangeLocalAdmissionOutcome
   = ChangeLocalAdmitted {
       delta: List<ProjectionDeltaClass>,
-      candidate: PublicProjectionPlan,
+      candidate: gunbc.public_projection.PublicProjectionPlan,
     }
   | ChangeLocalRefused {
       cause: ChangeLocalRefusal,

@@ -13,7 +13,7 @@ type RegionalPremiumRefusalCause
   | VcpuCountMismatch
 
 type RegionalPremiumResult
-  = RegionalPremiumDerived { premium_bp: BasisPoint }
+  = RegionalPremiumDerived { premium_bp: std.measure.BasisPoint }
   | RegionalPremiumRefused { cause: RegionalPremiumRefusalCause }
 
 // premium_bp is the region's excess over the baseline in basis points: (region - baseline) * 10000 / baseline. A region at parity reads 0; Sao Paulo against US East reads about 5937 (a 59.4 percent premium). Integer basis points on integer micro-USD, so there is no float in the derivation and the value is exact for the cited rates.

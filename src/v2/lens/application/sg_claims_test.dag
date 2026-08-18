@@ -2,10 +2,10 @@ module v2.test.lens_application.sg_claims
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-data lens_application_synthesis_root_path: Path = Path { steps: [] }
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data lens_application_synthesis_root_path: v2.std.node.Path = v2.std.node.Path { steps: [] }
 
-data lens_application_synthesis_root_declaration: DeclarationId = DeclarationId {
+data lens_application_synthesis_root_declaration: v2.lens.application.DeclarationId = v2.lens.application.DeclarationId {
   path: lens_application_synthesis_root_path
 }
 
@@ -19,7 +19,7 @@ fn lens_application_synthesis_gap_enforce_rejects() -> Bool {
     section: DeclarationScope { declaration: lens_application_synthesis_root_declaration },
     root: synthesis_gap_poly_input,
     config: LensEnforce {
-      budget: Report {
+      budget: v2.std.report.Report {
         reason: SynthesisGapDecisionTree,
         at: node_locus(node: synthesis_gap_poly_input)
       },

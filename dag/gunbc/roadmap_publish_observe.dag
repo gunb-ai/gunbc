@@ -78,7 +78,7 @@ data worktree_repository_binding_note: String = "THE ONE READ NOBODY WAS DOING: 
 
 type WorktreeRepositoryBinding
   = WorktreeBoundToRepository
-  | WorktreeBoundElsewhere { observed: String, expected: NonEmptyStr }
+  | WorktreeBoundElsewhere { observed: String, expected: std.types.NonEmptyStr }
   | WorktreeRemoteUnreadable { exit_code: Int, stderr: String }
 
 fn worktree_repository_binding_of(
@@ -122,7 +122,7 @@ data open_state_is_supplied_not_defaulted_note: String ="THE STATE IS PASSED, NO
 data pull_observation_transport_bound_note: String = "CONFIGURED IS NOT USABLE, AND THE LIVE 401 IS WHY THIS CARRIER IS NAMED FOR PRESENCE RATHER THAN VALIDITY. An earlier cut called this arm Present and its note called the credential usable, having established only that GITHUB_TOKEN exists and does not trim to empty. A live probe on 2026-08-01 supplied exactly such a token - present, nonempty, and rejected - and GitHub answered 401 Bad credentials. So the carrier asserted a fact it had no authority for. Usability is answerable only by the authority that answers it, which for this operation is the HTTP response; the environment can report configuration and nothing more.\\n\\nFOUR FACTS THAT MUST NOT COLLAPSE INTO TWO: a source that is absent means no request is made and the refusal is decided locally; a source that is configured but rejected means the request WAS made and a remote authority refused it; a transported request with a refused status is a remote answer; a request that never transported has no status at all. Folding the invalid token into the absent arm would report a local decision for a remote one and lose the only message that says what is actually wrong with the token.\\n\\nCLOSED BY THIS CARRIER, AND THE PRIOR STATE IS KEPT BECAUSE IT NAMES THE DEFECT: a non-2xx now reaches this function as a value. Until this change github.Pulls.List declared 200/401/404/422/5xx while dispatch_rest raised for any status at or above 400, so control never returned and CredentialSourceConfigured could not become a PullRequestsUnreadable by a real call - only by a caller that already held one. The 2026-08-01 probe executed that path and confirmed the raise escaped. The operation now declares outcome: RestOutcome, so the status is transported as data and this function matches it: RestOk reads, RestStatusRefused carries what the remote authority said, RestTransportRefused says no answer was obtained, and RestBodyUndecodable says an answer arrived but its body did not decode. The live receipt: an absent credential refused locally without a request, a present-but-rejected credential returned status 401 with the Bad credentials body intact, and a valid credential read 30 pulls - the last of these being the discriminating control, since a mis-wired outcome field would plausibly have emptied the pulls projection on success too. Publication therefore claims a live trip on evidence rather than on reasoning.\\n\\nWHY THE UNREADABLE ARM STILL EXISTS: a caller CAN hold a refusal - an absent source, a prior failed read, a cached observation, a receipt decoded from disk - and the adjudicator must answer it. Deleting the arm because one producer cannot reach it through one transport would push the ignorance-as-answer conflation back into every other producer."
 
 type PublicationCredentialSource
-  = CredentialSourceConfigured { source: CredentialSource }
+  = CredentialSourceConfigured { source: std.credentials.CredentialSource }
   | CredentialSourceAbsent { reason: String }
 
 fn observe_pull_requests(

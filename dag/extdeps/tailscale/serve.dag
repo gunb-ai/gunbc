@@ -152,7 +152,7 @@ type TailscaleServeService
   = | ServeCli
 
 type TailscaleServeScope {
-  node: NetworkEndpoint
+  node: product.network_topology.NetworkEndpoint
   service: TailscaleServeService
 }
 

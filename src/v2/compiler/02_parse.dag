@@ -2,12 +2,12 @@ module v2.compiler.parse
 
 
 type ParseProvenanceState {
-  alloc: OccurrenceIdAllocator
+  alloc: std.occurrence_identity.OccurrenceIdAllocator
   index: v2.std.provenance.SpanIndex
 }
 
 type ParseArtifact {
-  tree: ParseTree
+  tree: v2.std.grammar.ParseTree
   span_index: v2.std.provenance.SpanIndex
 }
 
@@ -25,7 +25,7 @@ DISSOLVE-ON: v2 parse projects a module-item roster of AnnotationSubject from it
 
 type AuthoredParseArtifact {
   semantic: ParseArtifact
-  annotations: SourceAnnotationGraph
+  annotations: std.source_annotation.SourceAnnotationGraph
 }
 
 data authored_parse_outcome_note: String = "Refusal BLOCKS continuation; it does not ride along inside a successful-looking artifact. An earlier shape carried the refusals as a field on the wrapper, which left every consumer free to read `annotations` and never look at `refusals` — prose dropped, compilation proceeding, exactly the outcome admitting `//` and discarding the capture would have produced.
@@ -36,7 +36,7 @@ type AuthoredParseOutcome
   = AuthoredParseAccepted { artifact: AuthoredParseArtifact }
   | AuthoredParseRejected {
       semantic: ParseArtifact,
-      refusals: NonEmptyAnnotationAttachmentRefusals
+      refusals: std.source_annotation.NonEmptyAnnotationAttachmentRefusals
     }
 
 fn authored_parse_outcome(
@@ -81,68 +81,68 @@ type ParseMemoStats {
 
 type ParseMemoEntry
   = ParseMemoAccepted {
-      remaining: List<Token>,
+      remaining: List<v2.std.compilers.lexing.Token>,
       captured: Node,
-      diagnostics: List<Diagnostic>,
+      diagnostics: List<v2.std.diagnostic.Diagnostic>,
       prov: ParseProvenanceState
     }
-  | ParseMemoRejected { diagnostics: List<Diagnostic> }
+  | ParseMemoRejected { diagnostics: List<v2.std.diagnostic.Diagnostic> }
 
 type ParseExprResult
   = ParseExprAccepted {
-      remaining: List<Token>,
+      remaining: List<v2.std.compilers.lexing.Token>,
       captured: Node,
-      diagnostics: List<Diagnostic>,
+      diagnostics: List<v2.std.diagnostic.Diagnostic>,
       prov: ParseProvenanceState,
       table: ParseTable
     }
-  | ParseExprRejected { diagnostics: List<Diagnostic>, table: ParseTable }
+  | ParseExprRejected { diagnostics: List<v2.std.diagnostic.Diagnostic>, table: ParseTable }
 
 type ParseSyncState {
   found_sync: Bool
-  result: List<Token>
+  result: List<v2.std.compilers.lexing.Token>
 }
 
 type ParseRepeatAcc {
-  remaining: List<Token>
+  remaining: List<v2.std.compilers.lexing.Token>
   acc_nodes: List<Node>
-  acc_diags: List<List<Diagnostic>>
+  acc_diags: List<List<v2.std.diagnostic.Diagnostic>>
   done: Bool
   prov: ParseProvenanceState
   table: ParseTable
 }
 
 type GrammarExprCornerFold {
-  corners: List<Symbol>
+  corners: List<v2.std.node.Symbol>
   nullable: Bool
 }
 
 
 type ParsePositionKey {
   position: Int
-  production: Symbol
+  production: v2.std.node.Symbol
 }
 
 type ParseTableRealization {
   artifact_kind: std.cache_identity.ArtifactKindId
   provider_id: std.cache_identity.CacheInterfaceId
-  materialization: Materialization
-  grammar_digest: Hash
-  token_stream_digest: Hash
+  materialization: std.realization.Materialization
+  grammar_digest: v2.std.node.Hash
+  token_stream_digest: v2.std.node.Hash
   entries: Map<ParsePositionKey, ParseMemoEntry>
   memo_hits: Int
   memo_misses: Int
   memo_lookup_calls: Int
-  nullable_set: Set<Symbol>
-  first_rows: Map<Symbol, List<Symbol>>
+  nullable_set: Set<v2.std.node.Symbol>
+  first_rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>
 }
 
 type ParseTable = ParseTableRealization
 
 type PreparedModeledGrammar {
-  validated: ValidatedGrammarRoot
+  validated: v2.std.grammar.ValidatedGrammarRoot
   analysis: GrammarFirstAnalysis
-  overlap_residue_stage: Optional<NonEmptyParseStageDiagnostics>
+  overlap_residue_stage: Optional<v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics>
 }
 
 type PreparedGrammar
@@ -689,9 +689,9 @@ fn parse_nonterminal_memoized(
 }
 
 type ParseMatchArmStmtAcc {
-  remaining: List<Token>
+  remaining: List<v2.std.compilers.lexing.Token>
   acc_nodes: List<Node>
-  acc_diags: List<List<Diagnostic>>
+  acc_diags: List<List<v2.std.diagnostic.Diagnostic>>
   done: Bool
   prov: ParseProvenanceState
   table: ParseTable
@@ -1025,13 +1025,13 @@ fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
 }
 
 type GrammarExprFirstFold {
-  terminals: List<Symbol>
+  terminals: List<v2.std.node.Symbol>
   nullable: Bool
 }
 
 type GrammarFirstAnalysis {
-  nullable_set: Set<Symbol>
-  first_rows: Map<Symbol, List<Symbol>>
+  nullable_set: Set<v2.std.node.Symbol>
+  first_rows: Map<v2.std.node.Symbol, List<v2.std.node.Symbol>>
 }
 
 fn grammar_empty_terminal_list() -> List<Symbol> {

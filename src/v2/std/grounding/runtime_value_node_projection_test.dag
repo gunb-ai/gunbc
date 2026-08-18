@@ -1,10 +1,10 @@
 module v2.test.std_grounding.runtime_value_node_projection
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn rvnp_test_type_node(sym: Symbol) -> Node {
-  Node {
+fn rvnp_test_type_node(sym: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: sym } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -15,25 +15,25 @@ fn rvnp_test_byte() -> Byte {
   Byte { bits: [true] }
 }
 
-fn rvnp_test_primitive_value() -> RuntimeValue {
+fn rvnp_test_primitive_value() -> v2.std.runtime.RuntimeValue {
   RuntimePrimitive {
-    value: RuntimePrimitiveValue {
+    value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: rvnp_test_type_node(sym: ^rvnp_test_i64_sym),
       bytes: [rvnp_test_byte()]
     }
   }
 }
 
-fn rvnp_test_aggregate_value() -> RuntimeValue {
+fn rvnp_test_aggregate_value() -> v2.std.runtime.RuntimeValue {
   RuntimeAggregate {
-    value: RuntimeAggregateValue {
+    value: v2.std.runtime.RuntimeAggregateValue {
       aggregate_type: rvnp_test_type_node(sym: ^rvnp_test_pair_sym),
       fields: [
-        RuntimeFieldValue {
+        v2.std.runtime.RuntimeFieldValue {
           field: ^rvnp_test_left_field,
           value: rvnp_test_primitive_value()
         },
-        RuntimeFieldValue {
+        v2.std.runtime.RuntimeFieldValue {
           field: ^rvnp_test_right_field,
           value: rvnp_test_primitive_value()
         }
@@ -42,17 +42,17 @@ fn rvnp_test_aggregate_value() -> RuntimeValue {
   }
 }
 
-fn rvnp_test_aggregate_with_reference_field() -> RuntimeValue {
+fn rvnp_test_aggregate_with_reference_field() -> v2.std.runtime.RuntimeValue {
   RuntimeAggregate {
-    value: RuntimeAggregateValue {
+    value: v2.std.runtime.RuntimeAggregateValue {
       aggregate_type: rvnp_test_type_node(sym: ^rvnp_test_pair_sym),
       fields: [
-        RuntimeFieldValue {
+        v2.std.runtime.RuntimeFieldValue {
           field: ^rvnp_test_left_field,
           value: RuntimeReference {
-            value: RuntimeReferenceValue {
+            value: v2.std.runtime.RuntimeReferenceValue {
               reference_type: rvnp_test_type_node(sym: ^rvnp_test_ref_sym),
-              identity: RuntimeIdentity { identity: ^rvnp_test_ref_id },
+              identity: v2.std.runtime.RuntimeIdentity { identity: ^rvnp_test_ref_id },
               referent_type: rvnp_test_type_node(sym: ^rvnp_test_i64_sym)
             }
           }
@@ -62,49 +62,49 @@ fn rvnp_test_aggregate_with_reference_field() -> RuntimeValue {
   }
 }
 
-fn rvnp_test_reference_value() -> RuntimeValue {
+fn rvnp_test_reference_value() -> v2.std.runtime.RuntimeValue {
   RuntimeReference {
-    value: RuntimeReferenceValue {
+    value: v2.std.runtime.RuntimeReferenceValue {
       reference_type: rvnp_test_type_node(sym: ^rvnp_test_ref_sym),
-      identity: RuntimeIdentity { identity: ^rvnp_test_ref_id },
+      identity: v2.std.runtime.RuntimeIdentity { identity: ^rvnp_test_ref_id },
       referent_type: rvnp_test_type_node(sym: ^rvnp_test_i64_sym)
     }
   }
 }
 
-fn rvnp_test_closure_value() -> RuntimeValue {
+fn rvnp_test_closure_value() -> v2.std.runtime.RuntimeValue {
   RuntimeClosure {
-    value: RuntimeClosureValue {
+    value: v2.std.runtime.RuntimeClosureValue {
       arrow_type: rvnp_test_type_node(sym: ^rvnp_test_arrow_sym),
       arrow: rvnp_test_type_node(sym: ^rvnp_test_arrow_body_sym),
-      environment: EvaluationEnvironment { bindings: Empty }
+      environment: v2.std.runtime.EvaluationEnvironment { bindings: Empty }
     }
   }
 }
 
-fn rvnp_test_unit_value() -> RuntimeValue {
+fn rvnp_test_unit_value() -> v2.std.runtime.RuntimeValue {
   RuntimeUnit {
-    value: RuntimeUnitValue {
+    value: v2.std.runtime.RuntimeUnitValue {
       unit_type: rvnp_test_type_node(sym: ^rvnp_test_unit_sym)
     }
   }
 }
 
-fn rvnp_test_is_projected(value: RuntimeValue) -> Bool {
+fn rvnp_test_is_projected(value: v2.std.runtime.RuntimeValue) -> Bool {
   match runtime_value_node_projection(value: value) {
     RuntimeValueNodeProjected { node: _ } => true
     RuntimeValueNodeUnrepresentable => false
   }
 }
 
-fn rvnp_test_is_unrepresentable(value: RuntimeValue) -> Bool {
+fn rvnp_test_is_unrepresentable(value: v2.std.runtime.RuntimeValue) -> Bool {
   match runtime_value_node_projection(value: value) {
     RuntimeValueNodeProjected { node: _ } => false
     RuntimeValueNodeUnrepresentable => true
   }
 }
 
-fn primitive_projection_type_and_bytes_round_trip(value: RuntimeValue) -> Bool {
+fn primitive_projection_type_and_bytes_round_trip(value: v2.std.runtime.RuntimeValue) -> Bool {
   let expected_type = rvnp_test_type_node(sym: ^rvnp_test_i64_sym)
   match runtime_value_node_projection(value: value) {
     RuntimeValueNodeProjected { node: projected } =>
@@ -120,7 +120,7 @@ fn primitive_projection_type_and_bytes_round_trip(value: RuntimeValue) -> Bool {
   }
 }
 
-fn primitive_projection_bytes_edge_present(value: RuntimeValue) -> Bool {
+fn primitive_projection_bytes_edge_present(value: v2.std.runtime.RuntimeValue) -> Bool {
   match runtime_value_node_projection(value: value) {
     RuntimeValueNodeProjected { node: projected } =>
       match find_named_child(root: projected, name: ^runtime_primitive_bytes_node_projection) {

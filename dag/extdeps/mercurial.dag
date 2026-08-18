@@ -365,9 +365,9 @@ type MercurialChangeset {
   parents: MercurialRevisionParents
   branch: MercurialNamedBranchName
   branch_closure: MercurialBranchClosure
-  user: NonEmptyStr
-  authored_at: Timestamp
-  description: NonEmptyStr
+  user: std.types.NonEmptyStr
+  authored_at: std.types.Timestamp
+  description: std.types.NonEmptyStr
 }
 
 type MercurialLocalRevisionEntry {
@@ -414,14 +414,14 @@ type MercurialExchangeDisposition
 
 type MercurialSubrepository {
   path: MercurialPath
-  source: NonEmptyStr
-  revision: NonEmptyStr
+  source: std.types.NonEmptyStr
+  revision: std.types.NonEmptyStr
 }
 
 type MercurialObsolescenceMarker {
   predecessor: MercurialNodeId
   successors: List<MercurialNodeId>
-  operation: NonEmptyStr
+  operation: std.types.NonEmptyStr
 }
 
 type MercurialEvolutionMetadata
@@ -464,7 +464,7 @@ fn mercurial_repository_completeness_fold<R>(
 }
 
 type MercurialRepositoryRequirements {
-  tokens: List<NonEmptyStr>
+  tokens: List<std.types.NonEmptyStr>
 }
 
 type MercurialRepositoryContents {
@@ -500,7 +500,7 @@ type MercurialManifestWire {
 
 type MercurialPhaseWireEntry {
   changeset: MercurialNodeId
-  phase: NonEmptyStr
+  phase: std.types.NonEmptyStr
 }
 
 type MercurialRepositoryProjectionContents {
@@ -528,7 +528,7 @@ type MercurialRepositoryProjection
       missing_manifests: List<MercurialNodeId>,
       missing_file_revisions: List<MercurialNodeId>,
     }
-  | MercurialInaccessibleProjection { reason: NonEmptyStr }
+  | MercurialInaccessibleProjection { reason: std.types.NonEmptyStr }
 
 type MercurialRepositoryProjectionFold<R> {
   complete: fn(MercurialRepositoryProjectionContents) -> R
@@ -601,7 +601,7 @@ type MercurialProjectionRefusal
     }
   | MercurialUnknownPhase {
       changeset: MercurialNodeId,
-      phase: NonEmptyStr,
+      phase: std.types.NonEmptyStr,
     }
   | MercurialDuplicateLocalRevision { revision: MercurialLocalRevision }
   | MercurialDuplicateChangesetNode { changeset: MercurialNodeId }
@@ -1712,7 +1712,7 @@ fn mercurial_validate_references(
 type MercurialDecodeOutcome
   = MercurialDecoded { repository: MercurialRepositoryState }
   | MercurialDecodeRefused { cause: MercurialProjectionRefusal }
-  | MercurialRepositoryUnavailable { reason: NonEmptyStr }
+  | MercurialRepositoryUnavailable { reason: std.types.NonEmptyStr }
 
 fn mercurial_validate_partial_projection(
   projection: MercurialRepositoryProjectionContents,
@@ -1999,23 +1999,23 @@ fn mercurial_project_repository(
 
 type MercurialReadBackObservation {
   projection: MercurialRepositoryProjection
-  observed_by: NonEmptyStr
+  observed_by: std.types.NonEmptyStr
 }
 
 type MercurialReadBackAssessment
-  = MercurialReadBackMatches { observed_by: NonEmptyStr }
+  = MercurialReadBackMatches { observed_by: std.types.NonEmptyStr }
   | MercurialReadBackMismatch {
-      observed_by: NonEmptyStr,
+      observed_by: std.types.NonEmptyStr,
       expected: MercurialRepositoryState,
       observed: MercurialRepositoryState,
     }
   | MercurialReadBackInvalid {
-      observed_by: NonEmptyStr,
+      observed_by: std.types.NonEmptyStr,
       cause: MercurialProjectionRefusal,
     }
   | MercurialReadBackUnavailable {
-      observed_by: NonEmptyStr,
-      reason: NonEmptyStr,
+      observed_by: std.types.NonEmptyStr,
+      reason: std.types.NonEmptyStr,
     }
 
 fn mercurial_assess_read_back(
@@ -2062,7 +2062,7 @@ fn mercurial_named_branch_changesets(
 }
 
 type MercurialConditionalAdvanceCapability
-  = MercurialConditionalAdvanceUnavailable { reason: NonEmptyStr }
+  = MercurialConditionalAdvanceUnavailable { reason: std.types.NonEmptyStr }
 
 data mercurial_r0_conditional_advance: MercurialConditionalAdvanceCapability = MercurialConditionalAdvanceUnavailable {
     reason: "R0 has no executing transaction transport that grounds the target policy's conditional-advance guarantee"

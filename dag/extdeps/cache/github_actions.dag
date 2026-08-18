@@ -2,16 +2,16 @@ module extdeps.cache.github_actions
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows"
   }
 }
 
-data gha_actions_cache_id: CacheInterfaceId = "gha_actions_cache"
+data gha_actions_cache_id: std.cache_identity.CacheInterfaceId = "gha_actions_cache"
 
-data gha_actions_cache_facts: CacheInterfaceCatalogFacts = {
+data gha_actions_cache_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: gha_actions_cache_id
   backing_surface: "github-actions-cache-api"
   transport_encoding: CatalogOpaqueStringEncoding

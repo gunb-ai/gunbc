@@ -8,11 +8,11 @@ data simulation_receipt_note: String = "EXECUTED RECEIPTS, AND EXACTLY WHAT THEY
 // the toolchain pin, while this is a property of the run that happened.
 type RunInput
   = InputBytesRetained { blob: String }
-  | InputProducedUpstream { producer: NonEmptyStr, artifact_name: NonEmptyStr }
+  | InputProducedUpstream { producer: std.types.NonEmptyStr, artifact_name: std.types.NonEmptyStr }
 
 type SimulationTool {
-  subject: DeclarationRef
-  reported_version: NonEmptyStr
+  subject: std.decl_ref.DeclarationRef
+  reported_version: std.types.NonEmptyStr
 }
 
 // An observation of a run. The artifact is the exact bytes handed to the tool, so the join to
@@ -47,7 +47,7 @@ fn run_consumes_retained(r: SimulationRun, blob: String) -> Bool {
 
 type SimulationOutcome
   = SimulationAccepted { run: SimulationRun }
-  | SimulationRefusedByTool { run: SimulationRun, diagnostic: NonEmptyStr }
+  | SimulationRefusedByTool { run: SimulationRun, diagnostic: std.types.NonEmptyStr }
 
 data icarus_verilog_tool: SimulationTool = SimulationTool {
   subject: DeclarationRef {

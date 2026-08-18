@@ -22,15 +22,15 @@ data rfc_8118_normative_relationship_note: String = "RFC 8118 (Informational, Ma
 data citation_cit1_witness_split_note: String = "CIT-1 witnesses split across citation_cit1_witness_test and citation_cit1_consumer_witness_test because extdeps_external_authority_anchor is not module-scoped in v1-seed. dissolve-on: namespace-only resolution lane gives declarations module-scoped identity so one witness file can import both rfc_8118 and sysv_amd64 without homonym shadowing."
 
 type NavigableUriRefusalCause
-  = BaseLocatorAlreadyCarriesFragment { locator: NonEmptyStr }
+  = BaseLocatorAlreadyCarriesFragment { locator: std.types.NonEmptyStr }
   | PdfOpenParameterPercentEncodeRefused {
       parameter: PdfProfileParameter,
-      cause: UriPercentEncodeRefusalCause,
+      cause: extdeps.uri.UriPercentEncodeRefusalCause,
     }
-  | CitationSelectorConstructionRefused { cause: SelectorRefusalCause }
+  | CitationSelectorConstructionRefused { cause: std.citation.SelectorRefusalCause }
 
 type NavigableUriProjection
-  = NavigableUriProjected { uri: Uri }
+  = NavigableUriProjected { uri: extdeps.uri.Uri }
   | NavigableUriRefused { cause: NavigableUriRefusalCause }
 
 data rfc_8118_section_3_locator: NonEmptyStr = "www.rfc-editor.org/rfc/rfc8118#section-3" as NonEmptyStr
@@ -54,11 +54,11 @@ type PdfOpenPage {
 }
 
 type PdfOpenNamedDest {
-  name: NonEmptyStr
+  name: std.types.NonEmptyStr
 }
 
 type PdfOpenStructElem {
-  struct_id: NonEmptyStr
+  struct_id: std.types.NonEmptyStr
 }
 
 type PdfOpenZoom {
@@ -66,11 +66,11 @@ type PdfOpenZoom {
 }
 
 type PdfOpenComment {
-  comment_id: NonEmptyStr
+  comment_id: std.types.NonEmptyStr
 }
 
 type PdfOpenView {
-  keyword: NonEmptyStr
+  keyword: std.types.NonEmptyStr
   position: String
 }
 
@@ -89,11 +89,11 @@ type PdfOpenHighlight {
 }
 
 type PdfOpenSearch {
-  words: NonEmptyStr
+  words: std.types.NonEmptyStr
 }
 
 type PdfOpenFdf {
-  uri: Uri
+  uri: extdeps.uri.Uri
 }
 
 type PdfProfileParameter
@@ -190,21 +190,21 @@ type PdfProfileParameterWire
   = PdfProfileParameterWired { wire: String }
   | PdfProfileParameterWireRefused {
       parameter: PdfProfileParameter,
-      cause: UriPercentEncodeRefusalCause,
+      cause: extdeps.uri.UriPercentEncodeRefusalCause,
     }
 
 type PdfOpenParameterSequenceWire
   = PdfOpenParameterSequenceWired { wire: String }
   | PdfOpenParameterSequenceWireRefused {
       parameter: PdfProfileParameter,
-      cause: UriPercentEncodeRefusalCause,
+      cause: extdeps.uri.UriPercentEncodeRefusalCause,
     }
 
 type PdfProfileParameterWireOutcome
   = PdfProfileParameterWireEncoded { wire: String }
   | PdfProfileParameterWireOutcomeRefused {
       parameter: PdfProfileParameter,
-      cause: UriPercentEncodeRefusalCause,
+      cause: extdeps.uri.UriPercentEncodeRefusalCause,
     }
 
 fn pdf_profile_parameter_wire_outcome(parameter: PdfProfileParameter) -> PdfProfileParameterWireOutcome {
@@ -251,7 +251,7 @@ fn pdf_profile_parameter_wire_outcome_wires(outcomes: List<PdfProfileParameterWi
 }
 
 type PdfOpenFragmentSelectorConstruction
-  = PdfOpenFragmentSelectorConstructed(CitationSelector)
+  = PdfOpenFragmentSelectorConstructed(std.citation.CitationSelector)
   | PdfOpenFragmentSelectorRefused { cause: NavigableUriRefusalCause }
 
 fn pdf_open_nameddest_wire_from_scalar_code_points(

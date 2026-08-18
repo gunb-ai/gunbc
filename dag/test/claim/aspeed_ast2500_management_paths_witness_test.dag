@@ -3,7 +3,7 @@ module test.claim.aspeed_ast2500_management_paths_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn path_eq(a: Ast2500ManagementAcquisitionPath, b: Ast2500ManagementAcquisitionPath) -> Bool {
+fn path_eq(a: extdeps.bmc.aspeed_ast2500.Ast2500ManagementAcquisitionPath, b: extdeps.bmc.aspeed_ast2500.Ast2500ManagementAcquisitionPath) -> Bool {
   match a {
     GpioDigitalTripInput { gpio_pin_count: ac } =>
       match b {
@@ -40,8 +40,8 @@ fn path_eq(a: Ast2500ManagementAcquisitionPath, b: Ast2500ManagementAcquisitionP
 }
 
 fn list_contains_path(
-  paths: List<Ast2500ManagementAcquisitionPath>,
-  wanted: Ast2500ManagementAcquisitionPath,
+  paths: List<extdeps.bmc.aspeed_ast2500.Ast2500ManagementAcquisitionPath>,
+  wanted: extdeps.bmc.aspeed_ast2500.Ast2500ManagementAcquisitionPath,
 ) -> Bool {
   fold(paths, init: false, f: fn(acc, p) { acc || path_eq(a: p, b: wanted) })
 }

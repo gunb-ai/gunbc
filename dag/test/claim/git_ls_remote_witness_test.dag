@@ -14,7 +14,7 @@ fn line_of(sha: String, ref_name: String) -> String {
   concat(sha, concat(tab(), ref_name))
 }
 
-fn scanned_count(scan: AdvertisedRefScan) -> Int {
+fn scanned_count(scan: extdeps.git.AdvertisedRefScan) -> Int {
   match scan {
     AdvertisedRefsRead { refs } => count(refs)
     AdvertisedRefLineUnparsed { line: _, index: _ } => 0 - 1

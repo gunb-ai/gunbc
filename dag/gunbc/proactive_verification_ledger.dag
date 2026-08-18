@@ -25,19 +25,19 @@ type VerificationExecutionOutcome
   | OutcomeRed { reason: String }
 
 type SpineVerificationLedgerRow {
-  id: Symbol,
+  id: v2.std.node.Symbol,
   kind: VerificationReceiptKind,
   title: String,
   execution: VerificationExecutionShape,
   disposition: VerificationDisposition,
-  dissolution: DissolutionCondition
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 type FamilyVerificationLedgerRow {
-  id: Symbol,
+  id: v2.std.node.Symbol,
   title: String,
   execution: VerificationExecutionShape,
-  dissolution: DissolutionCondition
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 data spine_witness_parity_recipe: String = "claim_executor --source-root dag --source-root src/v2 --plan-entry src/v2/workflow/ci_floor_plan.dag --plan-function gunbc_falsifier_plan (batch 0 = SelectionPredictOnly whole-corpus cold affected-set falsifier; zero unexplained divergence vs predict-only expectations — a rerun-everything arm is the absorbing-fallback hard reject)"

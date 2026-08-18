@@ -148,7 +148,7 @@ type PcbWorldConstruction<T>
   | AdmittedPcbWorld { value: T }
   | PcbWorldRefused { cause: PcbWorldRefusal }
 
-fn pcb_world_design(w: PcbWorld) -> DeclarationRef { w.design }
+fn pcb_world_design(w: PcbWorld) -> std.decl_ref.DeclarationRef { w.design }
 fn pcb_worlds_share_design(a: PcbWorld, b: PcbWorld) -> Bool {
   declaration_ref_eq(a: a.design, b: b.design)
 }
@@ -158,7 +158,7 @@ fn pcb_body_layout(p: PcbPhysicalWorld) -> PcbBodyLayoutStanding { p.body_layout
 fn pcb_world_electrical(w: PcbWorld) -> PcbElectricalWorld { w.electrical }
 fn pcb_world_manufacturing(w: PcbWorld) -> PcbManufacturingWorld { w.manufacturing }
 
-fn capability_pending(what_is_owed: NonEmptyStr) -> PcbCapabilityStanding {
+fn capability_pending(what_is_owed: std.types.NonEmptyStr) -> PcbCapabilityStanding {
   CapabilityPending {
     owed: NonemptyCapabilityObligations {
       first: PcbCapabilityObligation { what_is_owed: what_is_owed },
@@ -177,7 +177,7 @@ fn capability_pending(what_is_owed: NonEmptyStr) -> PcbCapabilityStanding {
 // claim about any world: every capability the Altra board carries is still pending, and this
 // function is what keeps that fact deciding admission rather than whichever unrelated check
 // happens to fail first.
-fn unsettled_capability(s: PcbCapabilityStanding, name: NonEmptyStr) -> PcbWorldRefusal? {
+fn unsettled_capability(s: PcbCapabilityStanding, name: std.types.NonEmptyStr) -> PcbWorldRefusal? {
   match s {
     CapabilityPending { owed: _ } => Present { value: PcbCapabilityStillPending { capability: name } }
     CapabilityRefused { cause: c } =>
@@ -186,7 +186,7 @@ fn unsettled_capability(s: PcbCapabilityStanding, name: NonEmptyStr) -> PcbWorld
   }
 }
 
-fn capability_established(authority: DeclarationRef) -> PcbCapabilityStanding {
+fn capability_established(authority: std.decl_ref.DeclarationRef) -> PcbCapabilityStanding {
   CapabilityEstablished { authority: authority }
 }
 
@@ -302,7 +302,7 @@ fn pcb_cause_counts(p: PcbPhysicalWorld) -> PcbCauseCounts {
   })
 }
 
-fn obligation_cause_tag(c: PcbObligationCause) -> NonEmptyStr {
+fn obligation_cause_tag(c: PcbObligationCause) -> std.types.NonEmptyStr {
   match c {
     MissingDocument { what_is_missing: _ } => "missing-document"
     CommercialAccess { subject: _ } => "commercial-access"
@@ -366,7 +366,7 @@ fn first_unsettled_capability(w: PcbWorld) -> PcbWorldRefusal? {
 }
 
 fn pcb_world(
-  design: DeclarationRef,
+  design: std.decl_ref.DeclarationRef,
   electrical: PcbElectricalWorld,
   physical: PcbPhysicalWorld,
   manufacturing: PcbManufacturingWorld,

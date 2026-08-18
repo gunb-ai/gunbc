@@ -1,21 +1,21 @@
 module v2.test.round_trip.source_authority_contract
 
 
-data source_authority_contract_target_model: TargetModel = dag_target_model()
+data source_authority_contract_target_model: v2.std.compilers.target_model.TargetModel = dag_target_model()
 
-data source_authority_contract_source: Medium<String> = Medium {
+data source_authority_contract_source: Medium<String> = extdeps.communication.medium.Medium {
   carried: dag_source_text,
   fidelity: Lossy
 }
 
-data source_authority_contract_subject: Node = Node {
+data source_authority_contract_subject: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^source_authority_contract_subject_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
 fn source_authority_contract_pass_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^source_authority_contract_pass_symbol } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -78,7 +78,7 @@ fn contract_serializer_section_law_ignores_fidelity_mismatch() -> Bool {
     emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: lossy, diagnostics: _ } => {
-      let lossless_retag = Medium { carried: lossy.carried, fidelity: Lossless }
+      let lossless_retag = extdeps.communication.medium.Medium { carried: lossy.carried, fidelity: Lossless }
       match deterministic_dag_source_serializer_witness(first: lossy, second: lossless_retag) {
         Holds { value: law } =>
           law.canonical_section == lossy.carried && law.declared_fidelity == Lossy
@@ -95,7 +95,7 @@ fn contract_naive_medium_equality_rejects_fidelity_mismatch() -> Bool {
     emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: lossy, diagnostics: _ } => {
-      let lossless_retag = Medium { carried: lossy.carried, fidelity: Lossless }
+      let lossless_retag = extdeps.communication.medium.Medium { carried: lossy.carried, fidelity: Lossless }
       lossy != lossless_retag
     }
     Rejected { diagnostics: _ } => false
@@ -112,7 +112,7 @@ fn contract_perturbed_strict_section_equal_flips_fidelity_mismatch_red() -> Bool
     emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: lossy, diagnostics: _ } => {
-      let lossless_retag = Medium { carried: lossy.carried, fidelity: Lossless }
+      let lossless_retag = extdeps.communication.medium.Medium { carried: lossy.carried, fidelity: Lossless }
       medium_section_equal(left: lossy, right: lossless_retag)
         && !medium_section_and_fidelity_equal(left: lossy, right: lossless_retag)
     }
@@ -128,7 +128,7 @@ fn contract_serializer_section_law_violates_on_carried_mismatch() -> Bool {
     emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: canonical, diagnostics: _ } => {
-      let perturbed = Medium {
+      let perturbed = extdeps.communication.medium.Medium {
         carried: contract_carried_mismatch_probe,
         fidelity: canonical.fidelity
       }
@@ -146,18 +146,18 @@ fn contract_serializer_section_law_violates_on_carried_mismatch() -> Bool {
   }
 }
 
-data claim_source_authority_contract_compiles: TestClaim = CompilesClaim {
+data claim_source_authority_contract_compiles: v2.std.verification.TestClaim = CompilesClaim {
   label: "Branch H.7.2 source-authority round-trip shape contract compiles without JSON IR authority",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: source_authority_contract_pass_node(),
   expected_value: source_authority_contract_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Integration }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Integration }
 }
 
-data claim_bmin_canonical_dag_source_parse_print_law: TestClaim = CompilesClaim {
+data claim_bmin_canonical_dag_source_parse_print_law: v2.std.verification.TestClaim = CompilesClaim {
   label: "B-min canonical .dag source law: deterministic serializer plus normalized source-AST parse/print, excluding JSON IR",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: source_authority_contract_pass_node(),
   expected_value: source_authority_contract_pass_node(),
-  classification: TestClassification { tier: Tier1, layer: Integration }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Integration }
 }

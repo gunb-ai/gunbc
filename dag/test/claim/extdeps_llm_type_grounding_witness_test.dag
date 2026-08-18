@@ -3,7 +3,7 @@ module test.claim.extdeps_llm_type_grounding_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_openai_tool_call_type_known() -> Bool {
-  let row = ToolCall {
+  let row = extdeps.llm.openai.ToolCall {
     id: "call_1",
     type: OpenAiToolCallFunction,
     function: extdeps.llm.openai.FunctionCall { name: "get_weather", arguments: "{}" },
@@ -20,7 +20,7 @@ test fn w_openai_tool_call_type_other_accepts_extension() -> Bool {
 }
 
 test fn w_openai_responses_output_content_type() -> Bool {
-  let row = OpenAiResponses200OutputContent {
+  let row = extdeps.llm.openai.OpenAiResponses200OutputContent {
     type: OpenAiResponsesOutputText,
     text: "hello",
     annotations: none,
@@ -37,7 +37,7 @@ test fn w_openai_responses_output_content_type_other() -> Bool {
 }
 
 test fn w_openai_responses_output_item_type() -> Bool {
-  let row = OpenAiResponses200OutputItem {
+  let row = extdeps.llm.openai.OpenAiResponses200OutputItem {
     id: Present { value: "msg_1" },
     type: OpenAiResponsesOutputMessage,
     status: none,
@@ -70,7 +70,7 @@ test fn w_openai_responses_status_known_and_other() -> Bool {
 }
 
 test fn w_openai_responses_output_item_status_known_and_other() -> Bool {
-  let row = OpenAiResponses200OutputItem {
+  let row = extdeps.llm.openai.OpenAiResponses200OutputItem {
     id: Present { value: "msg_1" },
     type: OpenAiResponsesOutputMessage,
     status: Present { value: OpenAiResponsesOutputItemInProgress },
@@ -89,7 +89,7 @@ test fn w_openai_responses_output_item_status_known_and_other() -> Bool {
 }
 
 test fn w_openai_error_type_known_and_other() -> Bool {
-  let known = OpenAiErrorDetails {
+  let known = extdeps.llm.openai_errors.OpenAiErrorDetails {
     message: "bad",
     type: OpenAiInvalidRequestError,
     param: none,
@@ -130,14 +130,14 @@ test fn w_anthropic_image_media_type_other() -> Bool {
 }
 
 test fn w_cache_control_type() -> Bool {
-  let row = CacheControl { type: CacheEphemeral {} }
+  let row = extdeps.llm.anthropic.CacheControl { type: CacheEphemeral {} }
   match row.type {
     CacheEphemeral {} => cache_control_type_label(CacheEphemeral {}) == "ephemeral"
   }
 }
 
 test fn w_anthropic_messages_object_type() -> Bool {
-  let body = AnthropicMessages200Body {
+  let body = extdeps.llm.anthropic.AnthropicMessages200Body {
     id: "msg_01",
     type: MessagesObjectMessage {},
     role: extdeps.llm.anthropic.Assistant {},
@@ -145,7 +145,7 @@ test fn w_anthropic_messages_object_type() -> Bool {
     model: "claude-sonnet-4-6",
     stop_reason: EndTurn,
     stop_sequence: none,
-    usage: AnthropicMessages200Usage {
+    usage: extdeps.llm.anthropic.AnthropicMessages200Usage {
       input_tokens: 1,
       output_tokens: 1,
       cache_creation_input_tokens: none,

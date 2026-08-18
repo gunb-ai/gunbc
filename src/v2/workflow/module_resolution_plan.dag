@@ -19,7 +19,7 @@ type ModuleNodeBinding {
 }
 
 type ModuleDependencyViewsResult
-  = ModuleDependencyViews { views: List<DependencyView> }
+  = ModuleDependencyViews { views: List<v2.std.dependency.DependencyView> }
   | ModuleNodeBindingMissing { module: String }
 
 fn declared_module_match(decl: ModuleDeclarationFact, path: String) -> String? {

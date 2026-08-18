@@ -3,11 +3,11 @@ module test.claim.roadmap_spawner
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn roadmap_spawner_nid(s: String) -> RoadmapNodeId { s }
+fn roadmap_spawner_nid(s: String) -> gunbc.roadmap_model.RoadmapNodeId { s }
 
-fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_AEFPP8RJQ523MPCZQ7WR" as RoadmapNodeIdentity,
+fn sized_derivable(id: String, prs: List<Int>, title: String) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_AEFPP8RJQ523MPCZQ7WR" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: roadmap_spawner_nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
@@ -18,9 +18,9 @@ fn sized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   }
 }
 
-fn accepted_node(base: RoadmapNode) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_Z9KZSNBGMW86W36XPHHP" as RoadmapNodeIdentity,
+fn accepted_node(base: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_Z9KZSNBGMW86W36XPHHP" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: base.node,
     line: base.line,
     carriers: base.carriers,
@@ -31,9 +31,9 @@ fn accepted_node(base: RoadmapNode) -> RoadmapNode {
   }
 }
 
-fn rejected_node(base: RoadmapNode) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_BDFRJM5H1F0VB3E58P5N" as RoadmapNodeIdentity,
+fn rejected_node(base: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_BDFRJM5H1F0VB3E58P5N" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: base.node,
     line: base.line,
     carriers: base.carriers,
@@ -44,9 +44,9 @@ fn rejected_node(base: RoadmapNode) -> RoadmapNode {
   }
 }
 
-fn unsized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_NHF9FERTMRDJHGNW226Y" as RoadmapNodeIdentity,
+fn unsized_derivable(id: String, prs: List<Int>, title: String) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_NHF9FERTMRDJHGNW226Y" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: roadmap_spawner_nid(s: id),
     line: DerivableLine { prs: prs, title: title, description: "" },
     carriers: [],
@@ -57,15 +57,15 @@ fn unsized_derivable(id: String, prs: List<Int>, title: String) -> RoadmapNode {
   }
 }
 
-fn fixture_section(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapSection {
-  RoadmapSection {
+fn fixture_section(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> gunbc.roadmap_document.RoadmapSection {
+  gunbc.roadmap_document.RoadmapSection {
     title: "Test",
-    elements: [Group { group: SectionGroup { label: "test", nodes: nodes, edges: edges } }],
+    elements: [std.algebra.Group { group: gunbc.roadmap_model.SectionGroup { label: "test", nodes: nodes, edges: edges } }],
   }
 }
 
-fn fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDocument {
-  RoadmapDocument {
+fn fixture_doc(nodes: List<gunbc.roadmap_model.RoadmapNode>, edges: List<gunbc.roadmap_model.RoadmapEdge>) -> gunbc.roadmap_document.RoadmapDocument {
+  gunbc.roadmap_document.RoadmapDocument {
     preamble: [],
     lead_lanes: [],
     sections: [fixture_section(nodes: nodes, edges: edges)],
@@ -75,7 +75,7 @@ fn fixture_doc(nodes: List<RoadmapNode>, edges: List<RoadmapEdge>) -> RoadmapDoc
 test fn witness_satisfied_dep_is_spawnable() -> Bool {
   let node_a = accepted_node(base: sized_derivable(id: "test-a", prs: [100], title: "Node A"))
   let node_b = sized_derivable(id: "test-b", prs: [200], title: "Node B")
-  let edges = [RoadmapEdge { child: roadmap_spawner_nid(s: "test-b"), parent: roadmap_spawner_nid(s: "test-a") }]
+  let edges = [gunbc.roadmap_model.RoadmapEdge { child: roadmap_spawner_nid(s: "test-b"), parent: roadmap_spawner_nid(s: "test-a") }]
   let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
   let spawnable = next_spawnable(doc: doc, merged: [100])
   any(spawnable, n => n.node == roadmap_spawner_nid(s: "test-b"))
@@ -84,7 +84,7 @@ test fn witness_satisfied_dep_is_spawnable() -> Bool {
 test fn witness_unsatisfied_dep_not_spawnable() -> Bool {
   let node_a = sized_derivable(id: "test-a", prs: [100], title: "Node A")
   let node_b = sized_derivable(id: "test-b", prs: [200], title: "Node B")
-  let edges = [RoadmapEdge { child: roadmap_spawner_nid(s: "test-b"), parent: roadmap_spawner_nid(s: "test-a") }]
+  let edges = [gunbc.roadmap_model.RoadmapEdge { child: roadmap_spawner_nid(s: "test-b"), parent: roadmap_spawner_nid(s: "test-a") }]
   let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
   let spawnable = next_spawnable(doc: doc, merged: [100])
   !any(spawnable, n => n.node == roadmap_spawner_nid(s: "test-b"))
@@ -140,7 +140,7 @@ test fn witness_json_schema_field_present() -> Bool {
 test fn witness_json_satisfied_dep_in_ready() -> Bool {
   let node_a = accepted_node(base: sized_derivable(id: "parent-done-node", prs: [100], title: "A2"))
   let node_b = sized_derivable(id: "child-ready-node", prs: [200], title: "B2")
-  let edges = [RoadmapEdge { child: roadmap_spawner_nid(s: "child-ready-node"), parent: roadmap_spawner_nid(s: "parent-done-node") }]
+  let edges = [gunbc.roadmap_model.RoadmapEdge { child: roadmap_spawner_nid(s: "child-ready-node"), parent: roadmap_spawner_nid(s: "parent-done-node") }]
   let doc = fixture_doc(nodes: [node_a, node_b], edges: edges)
   let json = roadmap_spawn_request_json(doc: doc, merged: [100], anchor_commit: "sha1")
   string_contains(s: json, pattern: "child-ready-node")
@@ -176,8 +176,8 @@ test fn witness_all_parents_gate_spawnability() -> Bool {
   let node_b_done = accepted_node(base: node_b_open)
   let node_c = sized_derivable(id: "mp-c", prs: [300], title: "Node C")
   let edges = [
-    RoadmapEdge { child: roadmap_spawner_nid(s: "mp-c"), parent: roadmap_spawner_nid(s: "mp-a") },
-    RoadmapEdge { child: roadmap_spawner_nid(s: "mp-c"), parent: roadmap_spawner_nid(s: "mp-b") },
+    gunbc.roadmap_model.RoadmapEdge { child: roadmap_spawner_nid(s: "mp-c"), parent: roadmap_spawner_nid(s: "mp-a") },
+    gunbc.roadmap_model.RoadmapEdge { child: roadmap_spawner_nid(s: "mp-c"), parent: roadmap_spawner_nid(s: "mp-b") },
   ]
   let one_parent_done = next_spawnable(
     doc: fixture_doc(nodes: [node_a, node_b_open, node_c], edges: edges),
@@ -194,8 +194,8 @@ test fn witness_dispatch_json_partitions_ready_upcoming_done() -> Bool {
   let node_ready = sized_derivable(id: "dj-ready", prs: [200], title: "Ready Node")
   let node_gated = sized_derivable(id: "dj-gated", prs: [300], title: "Gated Node")
   let edges = [
-    RoadmapEdge { child: roadmap_spawner_nid(s: "dj-ready"), parent: roadmap_spawner_nid(s: "dj-done") },
-    RoadmapEdge { child: roadmap_spawner_nid(s: "dj-gated"), parent: roadmap_spawner_nid(s: "dj-ready") },
+    gunbc.roadmap_model.RoadmapEdge { child: roadmap_spawner_nid(s: "dj-ready"), parent: roadmap_spawner_nid(s: "dj-done") },
+    gunbc.roadmap_model.RoadmapEdge { child: roadmap_spawner_nid(s: "dj-gated"), parent: roadmap_spawner_nid(s: "dj-ready") },
   ]
   let doc = fixture_doc(nodes: [node_done, node_ready, node_gated], edges: edges)
   let json = roadmap_dispatch_json(doc: doc, merged: [100])
@@ -206,9 +206,9 @@ test fn witness_dispatch_json_partitions_ready_upcoming_done() -> Bool {
     && string_contains(s: json, pattern: "\"done\": [\"dj-done\"]")
 }
 
-fn superseded_node(id: String, by: String, content: String) -> RoadmapNode {
-  RoadmapNode {
-    identity: "rnfx_3RQ5SZ48Q7R3RWGH84BY" as RoadmapNodeIdentity,
+fn superseded_node(id: String, by: String, content: String) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_3RQ5SZ48Q7R3RWGH84BY" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: roadmap_spawner_nid(s: id),
     line: SupersededLine { by: by, content: content },
     carriers: [],
@@ -222,7 +222,7 @@ fn superseded_node(id: String, by: String, content: String) -> RoadmapNode {
 test fn witness_superseded_unblocks_child_and_never_dispatches() -> Bool {
   let node_old = superseded_node(id: "sp-old", by: "sp-successor-lane", content: "Old Lane Row")
   let node_child = sized_derivable(id: "sp-child", prs: [200], title: "Child Node")
-  let edges = [RoadmapEdge { child: roadmap_spawner_nid(s: "sp-child"), parent: roadmap_spawner_nid(s: "sp-old") }]
+  let edges = [gunbc.roadmap_model.RoadmapEdge { child: roadmap_spawner_nid(s: "sp-child"), parent: roadmap_spawner_nid(s: "sp-old") }]
   let doc = fixture_doc(nodes: [node_old, node_child], edges: edges)
   let spawnable = next_spawnable(doc: doc, merged: [])
   let json = roadmap_dispatch_json(doc: doc, merged: [])
@@ -234,8 +234,8 @@ test fn witness_superseded_unblocks_child_and_never_dispatches() -> Bool {
 }
 
 test fn witness_superseded_control_open_parent_still_gates() -> Bool {
-  let node_open = RoadmapNode {
-    identity: "rnfx_DY0Y547BC2HK2V12KA6T" as RoadmapNodeIdentity,
+  let node_open = gunbc.roadmap_model.RoadmapNode {
+    identity: "rnfx_DY0Y547BC2HK2V12KA6T" as gunbc.roadmap_model.RoadmapNodeIdentity,
     node: roadmap_spawner_nid(s: "sp-old"),
     line: AuthoredLine { done: false, content: "Old Lane Row" },
     carriers: [],
@@ -245,7 +245,7 @@ test fn witness_superseded_control_open_parent_still_gates() -> Bool {
     signoff: Unsigned,
   }
   let node_child = sized_derivable(id: "sp-child", prs: [200], title: "Child Node")
-  let edges = [RoadmapEdge { child: roadmap_spawner_nid(s: "sp-child"), parent: roadmap_spawner_nid(s: "sp-old") }]
+  let edges = [gunbc.roadmap_model.RoadmapEdge { child: roadmap_spawner_nid(s: "sp-child"), parent: roadmap_spawner_nid(s: "sp-old") }]
   let doc = fixture_doc(nodes: [node_open, node_child], edges: edges)
   !any(next_spawnable(doc: doc, merged: []), n => n.node == roadmap_spawner_nid(s: "sp-child"))
 }

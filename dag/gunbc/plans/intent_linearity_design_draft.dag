@@ -1,7 +1,7 @@
 module gunbc.plans.intent_linearity_design_draft
 
 
-fn intent_linearity_design_draft_body() -> List<MarkdownBlock> {
+fn intent_linearity_design_draft_body() -> List<std.markdown.MarkdownBlock> {
   [
     quote(blocks: [
       p(text: "Not a DESIGN.md edit. This is prose to hold against §1/§2/§7 so you can decide whether intent-linearity earns a place in the authority doc (it lands on your open thread \"model §1's axioms in `.dag` + enforce the syllogism\"). Nothing here is committed to DESIGN.md."),
@@ -23,7 +23,7 @@ fn intent_linearity_design_draft_body() -> List<MarkdownBlock> {
   ]
 }
 
-data intent_linearity_design_draft_plan: Plan = Plan {
+data intent_linearity_design_draft_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "intent-linearity-design-draft",
   title: "DRAFT for operator review — a candidate DESIGN.md articulation",
   body: intent_linearity_design_draft_body(),

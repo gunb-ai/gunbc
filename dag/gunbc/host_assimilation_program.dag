@@ -82,8 +82,8 @@ fn step_serves_any(step: HostStandupStep, wanted: List<FleetParticipation>) -> B
 }
 
 type HostAssimilationProgram {
-  identity: NonEmptyStr
-  steps: List<HostStandupStep>
+  identity: std.types.NonEmptyStr
+  steps: List<gunbc.host_standup.HostStandupStep>
 }
 
 data host_assimilation_program_derivation_note: String = "The program is DERIVED from the spine by participation, never a second hand-authored step list. A hand-authored inference program would be a parallel representation of the spine and would drift the first time a phase changed, which is the defect the host_standup gap ledger already records against itself. Deriving also gives the refactor its identity guarantee for free: a host enrolled for CI participation alone selects every step in the spine, because every phase in the spine today exists to serve runner hosts, so srv1 through srv4 keep byte-identical cells rather than merely similar ones. That identity is asserted by an executing witness rather than argued here."

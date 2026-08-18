@@ -2,7 +2,7 @@ module test.claim.output_policy_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn dec_is(d: OutputDecision, suppressed: Bool, condensed: Bool, full: Bool) -> Bool {
+fn dec_is(d: gunbc.output_policy.OutputDecision, suppressed: Bool, condensed: Bool, full: Bool) -> Bool {
   match d {
     Suppressed => suppressed
     Condensed => condensed
@@ -10,15 +10,15 @@ fn dec_is(d: OutputDecision, suppressed: Bool, condensed: Bool, full: Bool) -> B
   }
 }
 
-fn verbosity_is_verbose(v: Verbosity) -> Bool {
+fn verbosity_is_verbose(v: gunbc.output_policy.Verbosity) -> Bool {
   match v { Verbose => true, _ => false }
 }
 
-fn verbosity_is_quiet(v: Verbosity) -> Bool {
+fn verbosity_is_quiet(v: gunbc.output_policy.Verbosity) -> Bool {
   match v { Quiet => true, _ => false }
 }
 
-fn verbosity_is_normal(v: Verbosity) -> Bool {
+fn verbosity_is_normal(v: gunbc.output_policy.Verbosity) -> Bool {
   match v { Normal => true, _ => false }
 }
 
@@ -51,9 +51,9 @@ test fn w_progress_condenses_at_normal() -> Bool {
 }
 
 test fn w_verbose_wins_over_quiet() -> Bool {
-  verbosity_is_verbose(v: resolve_verbosity(env: VerbosityEnv { verbose: true, quiet: true })) &&
-  verbosity_is_quiet(v: resolve_verbosity(env: VerbosityEnv { verbose: false, quiet: true })) &&
-  verbosity_is_normal(v: resolve_verbosity(env: VerbosityEnv { verbose: false, quiet: false }))
+  verbosity_is_verbose(v: resolve_verbosity(env: gunbc.output_policy.VerbosityEnv { verbose: true, quiet: true })) &&
+  verbosity_is_quiet(v: resolve_verbosity(env: gunbc.output_policy.VerbosityEnv { verbose: false, quiet: true })) &&
+  verbosity_is_normal(v: resolve_verbosity(env: gunbc.output_policy.VerbosityEnv { verbose: false, quiet: false }))
 }
 
 test fn w_env_var_dispatch_names_grounded() -> Bool {
@@ -81,7 +81,7 @@ test fn w_resolve_channel_policy_verbose_all_full() -> Bool {
   dec_is(d: p.progress, suppressed: false, condensed: false, full: true)
 }
 
-fn disp_is(d: StreamDisposition, surface: Bool, counts: Bool, suppressed: Bool) -> Bool {
+fn disp_is(d: gunbc.output_policy.StreamDisposition, surface: Bool, counts: Bool, suppressed: Bool) -> Bool {
   match d {
     SurfaceContent => surface
     SummarizeCounts => counts
@@ -89,11 +89,11 @@ fn disp_is(d: StreamDisposition, surface: Bool, counts: Bool, suppressed: Bool) 
   }
 }
 
-fn shell_stream(verbosity: Verbosity, expected: ExpectedOutcome, observed: ObservedOutcome) -> StreamDisposition {
+fn shell_stream(verbosity: gunbc.output_policy.Verbosity, expected: gunbc.output_policy.ExpectedOutcome, observed: gunbc.output_policy.ObservedOutcome) -> gunbc.output_policy.StreamDisposition {
   effect_stream_disposition(channel: ShellTrace, verbosity: verbosity, expected: expected, observed: observed)
 }
 
-fn surfaced_text_or_marker(d: StreamDisposition, text: String) -> String {
+fn surfaced_text_or_marker(d: gunbc.output_policy.StreamDisposition, text: String) -> String {
   match surface_effect_stream(disposition: d, text: text) {
     Present { value: surfaced } => surfaced
     Absent => "<omitted>"
@@ -178,7 +178,7 @@ test fn w_shell_trace_stream_policy_projects_the_four_corners() -> Bool {
 }
 
 // The two OutcomeIsData corners above both assert counts-not-surface, which on its own is the shape a rubber stamp would also have — so it is NOT the discriminating claim. The claim that discriminates is w_outcome_is_data_is_exit_invariant below: under ExpectSuccess and ExpectFailure the disposition FLIPS between the two observed poles, and under OutcomeIsData it must NOT, because the exit is an answer rather than a verdict. An implementation that quietly treated OutcomeIsData as an alias for ExpectSuccess would pass the corner assertions and fail this one.
-fn disp_surfaces(d: StreamDisposition) -> Bool {
+fn disp_surfaces(d: gunbc.output_policy.StreamDisposition) -> Bool {
   disp_is(d: d, surface: true, counts: false, suppressed: false)
 }
 

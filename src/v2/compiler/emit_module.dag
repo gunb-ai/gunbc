@@ -56,8 +56,8 @@ fn emit_module(decls: List<InferredTree>, target: TargetModel) -> Outcome<Medium
 data emit_family_note: String = "Family-grain source producer (std.emit_on_demand witness_family_build_grain_ruling): one crate per witness FAMILY, not per witness. emit_module emits N decls under ONE target model; a witness family's members each carry their OWN target model (per-member translation rows), so emit_family folds emit(member.tree, member.target) into one concatenated source. The transport target (the family dispatcher descriptor) owns the resulting medium — it is a parameter, not a member fact."
 
 type EmitFamilyMember {
-  tree: InferredTree,
-  target: TargetModel
+  tree: v2.compiler.infer.InferredTree,
+  target: v2.std.compilers.target_model.TargetModel
 }
 
 fn emit_family_append_member(

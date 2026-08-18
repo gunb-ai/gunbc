@@ -1,7 +1,7 @@
 module v2.test.extdeps_shape_transport_policy.corpus.cargo_fmt_dead_param
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data cargo_fmt_service: String = "cargo.Build"
 data cargo_fmt_operation: String = "Fmt"

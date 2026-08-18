@@ -306,7 +306,7 @@ type ServiceCallSemantics
     }
 
 type Language {
-  id: LanguageId
+  id: std.types.LanguageId
   name: String
   extensions: List<String>
   comment: CommentSyntax
@@ -346,7 +346,7 @@ type LanguageSpec {
 }
 
 type MarkupFormat {
-  id: LanguageId
+  id: std.types.LanguageId
   name: String
   extensions: List<String>
   comment: CommentSyntax
@@ -354,7 +354,7 @@ type MarkupFormat {
 }
 
 type ConfigFormat {
-  id: LanguageId
+  id: std.types.LanguageId
   name: String
   extensions: List<String>
   comment: CommentSyntax

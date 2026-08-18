@@ -132,9 +132,9 @@ fn classify_normalize_diagnostics(d: NonEmptyDiagnostics) -> FrontendStage {
 data prepared_frontend_world_note: String = "ONE PREPARED WORLD, because the expensive part of a fifteen-member census is not the fifteen members. classify_source used to call dag_lex_rules() and dag_grammar() itself, so every member rebuilt the rule set, revalidated the grammar and recomputed the FIRST/nullable analysis — fifteen times over, for a grammar that does not vary between members.\n\nThe seam already existed and this reuses it rather than inventing one: 02_parse's prepared_grammar_carrier_note records that prepare_grammar exists precisely so a K-module walk validates once instead of K times, and parse_module_prepared is the per-module half. parse_module is prepare_grammar composed with it, which is the right shape for a single call and the wrong one for a census.\n\nPreparation can REFUSE — a malformed grammar rejects — and that refusal is a fact about the world rather than about any member, so it is not a FrontendStage. Reporting it as one would say fifteen members failed to parse when what actually happened is that no member was ever examined."
 
 type FrontendWorld {
-  lex_rules: LexRuleSet,
-  prepared: PreparedGrammar,
-  validation_residue: Diagnostics,
+  lex_rules: v2.std.compilers.lexing.LexRuleSet,
+  prepared: v2.compiler.parse.PreparedGrammar,
+  validation_residue: v2.std.diagnostic.Diagnostics,
 }
 
 fn prepare_frontend_world() -> v2.std.diagnostic.Outcome<FrontendWorld> {
@@ -200,12 +200,12 @@ fn classify_source(source: String) -> v2.std.diagnostic.Outcome<FrontendStage> {
 data frontier_roster_note: String = "THE ROSTER IS THE DENOMINATOR, and it is authored here so that the census can be reconciled against a denominator rather than counted. The fifteen hand-written m_* fns this replaces were fifteen independent facts with no denominator at all: a member could be dropped from the file and every remaining fn would still answer, so 'all fifteen were observed' was only ever 'fifteen fns happened to be present'. reconcile_census now joins observations against the roster in both directions and at multiplicity, so a dropped member, a stray one and a doubled one are three distinct located verdicts rather than a smaller number that nothing compares against.\n\nWhat this does NOT do is make the live census executable per PR. The accepted-classification path measured over the five-second fast-lane budget, and the roster reads fifteen live files on top of that. Which stage of that path owns the cost is NOT established — the figure is an aggregate over lex, grammar construction, preparation and validation, parse and normalize, and no nested span separated them. Preparing the world once removes the per-member multiplier but not that floor, so take_frontend_census stays in this non-test module as a reproduction instrument, and the durable claims over it are the classifier, identity and join laws exercised on synthetic inputs. The batched or realized execution that would let the live fifteen gate a PR is still owed, and is where the two stage-separation claims deleted in the previous increment return."
 
 type FrontierMember {
-  label: Symbol,
+  label: v2.std.node.Symbol,
   path: String,
 }
 
 type MemberObservation {
-  label: Symbol,
+  label: v2.std.node.Symbol,
   stage: FrontendStage,
 }
 
@@ -236,7 +236,7 @@ data census_receipt_provenance_note: String = "WHAT THE RECEIPT BINDS, and what 
 
 type FrontendCensusReceipt
   = CensusTaken {
-      roster_identity: ContentHash,
+      roster_identity: std.content_hash.ContentHash,
       observations: List<MemberObservation>,
     }
   | CensusRefusedAtWorld
@@ -307,15 +307,15 @@ data census_reconciliation_note: String = "COVERAGE IS NOT RECONCILIATION, and t
 type CensusReconciliation
   = CensusExact
   | CensusRosterInvalid { verdict: FrontierRosterVerdict }
-  | CensusMissingMember { label: Symbol }
-  | CensusDuplicateMember { label: Symbol }
-  | CensusUnrosteredObservation { label: Symbol }
+  | CensusMissingMember { label: v2.std.node.Symbol }
+  | CensusDuplicateMember { label: v2.std.node.Symbol }
+  | CensusUnrosteredObservation { label: v2.std.node.Symbol }
 
 data frontier_roster_validity_note: String = "THE DENOMINATOR IS ITSELF AN OBSERVATION, and reconciling against an unvalidated one proves less than it appears. reconcile_census checks the observations against the roster; it assumed the roster was internally sound, and two malformed rosters defeat it in ways that leave CensusExact reachable.\n\nA DUPLICATE LABEL is invisible to the observation-side check by construction: two roster rows carrying one label are each satisfied by the SAME single observation, because count_label finds exactly one for both. So a roster of fifteen rows and fourteen distinct labels reconciles exactly against fourteen observations, and the fifteenth member is silently not a member.\n\nA DUPLICATE PATH under two labels is worse, because nothing anywhere is wrong at the label grain: the census reads one file twice, reports it as two members, and every derived per-stage figure counts that member's stage twice. The roster is the only place this is decidable, since by observation time the path has already been read.\n\nSo roster validity is established BEFORE the observation join and CensusExact is unreachable without it. The two verdicts stay separate rather than fusing into one refusal list because they have different remedies and different owners: a bad roster is an authoring error in this file, while a bad census is a fact about the run."
 
 type FrontierRosterVerdict
   = FrontierRosterValid
-  | FrontierRosterDuplicateLabel { label: Symbol }
+  | FrontierRosterDuplicateLabel { label: v2.std.node.Symbol }
   | FrontierRosterDuplicatePath { path: String }
 
 // verify_roster takes the rows rather than reading frontier_roster, so a malformed roster is a

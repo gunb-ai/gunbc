@@ -1,7 +1,7 @@
 module v2.lens.mandatory_tag.corpus_scan_witness_test
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data corpus_scan_witness_note: String = "Corpus-cadence witnesses for the retained host anchor projection (v2.lens.mandatory_tag.corpus_scan). The GREEN half proves the live tree holds the wall (zero violations) and that enumeration actually sees the corpus (roster count floor - an accidentally-empty walk reds rather than passing vacuously). The RED half red-controls the projection itself against planted fixtures, in both failure directions: the missing-anchor plant must project absent (a projection that fabricated presence would green a hole - the fail-open direction), and the File-scheme plant must project its non-external scheme identity faithfully (the direction the old bogus/file-anchor lens_unit tests covered). Fixture modules are excluded from the live roster by the extdeps.fixture. prefix rule, so the plants never red the corpus gate while staying readable by explicit qualified name."
 

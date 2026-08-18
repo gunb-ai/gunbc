@@ -1,8 +1,8 @@
 module extdeps.cloud.gcp.sts
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "cloud.google.com/iam/docs/reference/sts/rest"
   }
@@ -28,7 +28,7 @@ type MetadataRuntime {}
 
 data metadata_runtime: MetadataRuntime = {}
 
-data sts_endpoint: NonEmptyStr = "https://sts.googleapis.com/v1/token"
+data sts_endpoint: std.types.NonEmptyStr = "https://sts.googleapis.com/v1/token"
 
 data default_grant_type: String = "urn:ietf:params:oauth:grant-type:token-exchange"
 
@@ -48,7 +48,7 @@ service gcp.STS {
   operation Exchange {
     input {
       subject_token: Secret
-      audience: NonEmptyStr
+      audience: std.types.NonEmptyStr
     }
     output {
       access_token: Secret from "access_token"
@@ -72,7 +72,7 @@ service github.OIDC {
 
   operation GetToken {
     input {
-      audience: NonEmptyStr
+      audience: std.types.NonEmptyStr
       request_url: String
       request_token: Secret
     }
@@ -92,7 +92,7 @@ service gcp.Metadata {
   config { endpoint: "http://metadata.google.internal" }
 
   operation GetIdentityToken {
-    input { audience: NonEmptyStr }
+    input { audience: std.types.NonEmptyStr }
     output { subject_token: Secret }
 
     readonly

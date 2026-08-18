@@ -1,63 +1,63 @@
 module extdeps.github.mock_corpus
 
 
-data github_gist_mock_case_create: PublishedMockCase = PublishedMockCase {
+data github_gist_mock_case_create: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "github.Gist.Create",
   service: "github.Gist",
   operation: "Create",
   case_id: 0
 }
 
-data github_pulls_mock_case_list: PublishedMockCase = PublishedMockCase {
+data github_pulls_mock_case_list: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "github.Pulls.List",
   service: "github.Pulls",
   operation: "List",
   case_id: 0
 }
 
-data github_pulls_mock_case_get: PublishedMockCase = PublishedMockCase {
+data github_pulls_mock_case_get: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "github.Pulls.Get",
   service: "github.Pulls",
   operation: "Get",
   case_id: 0
 }
 
-data github_pulls_mock_case_diff: PublishedMockCase = PublishedMockCase {
+data github_pulls_mock_case_diff: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "github.Pulls.Diff",
   service: "github.Pulls",
   operation: "Diff",
   case_id: 0
 }
 
-data github_issues_mock_case_create_comment: PublishedMockCase = PublishedMockCase {
+data github_issues_mock_case_create_comment: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "github.Issues.CreateComment",
   service: "github.Issues",
   operation: "CreateComment",
   case_id: 0
 }
 
-data github_pulls_mock_case_list_reviews: PublishedMockCase = PublishedMockCase {
+data github_pulls_mock_case_list_reviews: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "github.Pulls.ListReviews",
   service: "github.Pulls",
   operation: "ListReviews",
   case_id: 0
 }
 
-data github_pulls_mock_case_create_review: PublishedMockCase = PublishedMockCase {
+data github_pulls_mock_case_create_review: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "github.Pulls.CreateReview",
   service: "github.Pulls",
   operation: "CreateReview",
   case_id: 0
 }
 
-data github_pulls_mock_case_list_comments: PublishedMockCase = PublishedMockCase {
+data github_pulls_mock_case_list_comments: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "github.Pulls.ListComments",
   service: "github.Pulls",
   operation: "ListComments",
   case_id: 0
 }
 
-data github_published_mock_corpus: List<PublishedMockCase> = [
+data github_published_mock_corpus: List<std.hermetic_replay.PublishedMockCase> = [
   github_gist_mock_case_create,
   github_pulls_mock_case_list,
   github_pulls_mock_case_get,

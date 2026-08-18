@@ -2,11 +2,11 @@ module v2.extdeps.languages.c_decl
 
 
 type CStage1TypeDeclFrontierDisposition
-  = CStage1Deferred { migration_trigger: Symbol }
+  = CStage1Deferred { migration_trigger: v2.std.node.Symbol }
   | CStage1Landed
 
 type CStage1TypeDeclFrontierRow {
-  topic: Symbol
+  topic: v2.std.node.Symbol
   disposition: CStage1TypeDeclFrontierDisposition
   semantics_note: String
 }

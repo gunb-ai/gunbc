@@ -61,18 +61,18 @@ fn bash_path_unquoted_ok(path: String) -> Bool {
   }
 }
 
-fn bash_relative_parts_text(parts: FilePathParts) -> String {
+fn bash_relative_parts_text(parts: std.types.FilePathParts) -> String {
   fold(parts.segments, init: "", f: fn(acc, seg) {
     let seg_text = seg as String
     if acc == "" { seg_text } else { concat(acc, concat("/", seg_text)) }
   })
 }
 
-fn bash_absolute_parts_text(parts: FilePathParts) -> String {
+fn bash_absolute_parts_text(parts: std.types.FilePathParts) -> String {
   concat("/", bash_relative_parts_text(parts: parts))
 }
 
-fn bash_path_intent_text(path: PathIntent) -> Outcome<String> {
+fn bash_path_intent_text(path: std.path_intent.PathIntent) -> Outcome<String> {
   match path {
     PathRef { name: n } =>
       if !bash_path_ident_ok(name: n as String) {
@@ -100,14 +100,14 @@ fn bash_path_intent_text(path: PathIntent) -> Outcome<String> {
   }
 }
 
-fn bash_path_operand_quoted_text(path: PathIntent) -> Outcome<String> {
+fn bash_path_operand_quoted_text(path: std.path_intent.PathIntent) -> Outcome<String> {
   bind_outcome(
     o: bash_path_intent_text(path: path),
     f: fn(text) { outcome_accepted(concat("\"", concat(text, "\""))) }
   )
 }
 
-fn bash_test_path_kind_op(kind: EntryKind) -> Outcome<String> {
+fn bash_test_path_kind_op(kind: std.filesystem.types.EntryKind) -> Outcome<String> {
   match kind {
     RegularFile => outcome_accepted("-f ")
     Directory => outcome_accepted("-d ")
@@ -117,7 +117,7 @@ fn bash_test_path_kind_op(kind: EntryKind) -> Outcome<String> {
   }
 }
 
-fn bash_test_path_kind_tokens() -> List<ConcreteSyntaxToken> {
+fn bash_test_path_kind_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_test_lbracket },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_path_kind_op },
@@ -130,7 +130,7 @@ data bash_test_path_kind_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_test_path_kind_tokens()
 )
 
-fn bash_test_path_kind_lex() -> LexRules {
+fn bash_test_path_kind_lex() -> v2.std.compilers.lexing.LexRules {
   phrase_to_lex_rules(p: phrase([
     span(text: "[ ", class: ^bash_token_test_lbracket),
     span(text: " ]", class: ^bash_token_test_rbracket)
@@ -146,14 +146,14 @@ fn bash_test_path_kind_translation_rules_node() -> Node {
   )
 }
 
-fn bash_test_path_kind_binding_spellings(op: String, operand: String) -> Map<Symbol, String> {
+fn bash_test_path_kind_binding_spellings(op: String, operand: String) -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(empty_map(), ^bash_test_path_kind_op, op),
     ^bash_test_path_kind_operand, operand
   )
 }
 
-fn bash_test_path_kind_target_model(op: String, operand: String) -> Outcome<TargetModel> {
+fn bash_test_path_kind_target_model(op: String, operand: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_test_path_kind_tokens(),
@@ -176,15 +176,15 @@ fn bash_test_path_kind_target_model(op: String, operand: String) -> Outcome<Targ
   )
 }
 
-fn bash_path_intent_invalid_diagnostic() -> Diagnostic {
-  Diagnostic {
+fn bash_path_intent_invalid_diagnostic() -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^bash_path_intent_operand_invalid,
     at: port_locus(port: ^bash_path_intent_operand_port),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn bash_path_predicate_target_model(predicate: PathPredicate) -> Outcome<TargetModel> {
+fn bash_path_predicate_target_model(predicate: std.path_intent.PathPredicate) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   match predicate {
     PathNonempty { path: p } =>
       bind_outcome(
@@ -261,7 +261,7 @@ fn bash_path_predicate_target_model(predicate: PathPredicate) -> Outcome<TargetM
   }
 }
 
-fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetModel> {
+fn bash_dirname_ascent_target_model(ascent: std.path_intent.DirnameAscent) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   match ascent.path {
     PathRef { name: n } =>
       if !bash_dirname_ascent_target_ok(target: ascent.target as String) {
@@ -311,7 +311,7 @@ fn bash_dirname_ascent_target_model(ascent: DirnameAscent) -> Outcome<TargetMode
   }
 }
 
-fn bash_stmt_if_else_tokens() -> List<ConcreteSyntaxToken> {
+fn bash_stmt_if_else_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_if_kw },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_cond },
@@ -327,7 +327,7 @@ data bash_stmt_if_else_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_stmt_if_else_tokens()
 )
 
-fn bash_stmt_if_else_lex() -> LexRules {
+fn bash_stmt_if_else_lex() -> v2.std.compilers.lexing.LexRules {
   phrase_to_lex_rules(p: phrase([
     span(text: "if ", class: ^bash_token_if_kw),
     span(text: "; then ", class: ^bash_token_if_then),
@@ -349,7 +349,7 @@ fn bash_stmt_if_else_binding_spellings(
   cond: String,
   then_body: String,
   else_body: String
-) -> Map<Symbol, String> {
+) -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(
       map_insert(empty_map(), ^bash_stmt_if_cond, cond),
@@ -359,7 +359,7 @@ fn bash_stmt_if_else_binding_spellings(
   )
 }
 
-fn bash_stmt_if_else_target_model(cond: String, then_body: String, else_body: String) -> Outcome<TargetModel> {
+fn bash_stmt_if_else_target_model(cond: String, then_body: String, else_body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_stmt_if_else_tokens(),
@@ -392,7 +392,7 @@ fn bash_stmt_if_else_target_model(cond: String, then_body: String, else_body: St
 
 data bash_stmt_if_else_block_note: String = "Same If/else semantics as bash_stmt_if_else_tokens, spelled with real newlines around each body instead of the single-line \"; then \"/\"; else \"/\"; fi\" join. Selected by orch_emit_if_step (05_emit_orchestration.dag) when either arm's Pipeline carries more than one step — see bash_stmt_if_block_note (bash.dag) for why this is a formatting realization, not a correctness fix. Reuses bash_stmt_if_cond/bash_stmt_if_body/bash_stmt_if_else_body as binding keys, same fields as the inline row."
 
-fn bash_stmt_if_else_block_tokens() -> List<ConcreteSyntaxToken> {
+fn bash_stmt_if_else_block_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_if_kw },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_if_cond },
@@ -408,7 +408,7 @@ data bash_stmt_if_else_block_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_stmt_if_else_block_tokens()
 )
 
-fn bash_stmt_if_else_block_lex() -> LexRules {
+fn bash_stmt_if_else_block_lex() -> v2.std.compilers.lexing.LexRules {
   phrase_to_lex_rules(p: phrase([
     span(text: "if ", class: ^bash_token_if_kw),
     span(text: "; then\n", class: ^bash_token_if_then_block),
@@ -426,7 +426,7 @@ fn bash_stmt_if_else_block_translation_rules_node() -> Node {
   )
 }
 
-fn bash_stmt_if_else_block_target_model(cond: String, then_body: String, else_body: String) -> Outcome<TargetModel> {
+fn bash_stmt_if_else_block_target_model(cond: String, then_body: String, else_body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_stmt_if_else_block_tokens(),
@@ -457,7 +457,7 @@ fn bash_stmt_if_else_block_target_model(cond: String, then_body: String, else_bo
   )
 }
 
-fn bash_test_str_eq_tokens() -> List<ConcreteSyntaxToken> {
+fn bash_test_str_eq_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_test_lbracket },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_eq_lhs },
@@ -471,7 +471,7 @@ data bash_test_str_eq_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_test_str_eq_tokens()
 )
 
-fn bash_test_str_eq_lex() -> LexRules {
+fn bash_test_str_eq_lex() -> v2.std.compilers.lexing.LexRules {
   phrase_to_lex_rules(p: phrase([
     span(text: "[ ", class: ^bash_token_test_lbracket),
     span(text: " = ", class: ^bash_token_test_eq),
@@ -488,14 +488,14 @@ fn bash_test_str_eq_translation_rules_node() -> Node {
   )
 }
 
-fn bash_test_str_eq_binding_spellings(lhs: String, rhs: String) -> Map<Symbol, String> {
+fn bash_test_str_eq_binding_spellings(lhs: String, rhs: String) -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(empty_map(), ^bash_test_str_eq_lhs, lhs),
     ^bash_test_str_eq_rhs, rhs
   )
 }
 
-fn bash_test_str_eq_target_model(lhs: String, rhs: String) -> Outcome<TargetModel> {
+fn bash_test_str_eq_target_model(lhs: String, rhs: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_test_str_eq_tokens(),
@@ -518,7 +518,7 @@ fn bash_test_str_eq_target_model(lhs: String, rhs: String) -> Outcome<TargetMode
   )
 }
 
-fn bash_test_str_not_eq_tokens() -> List<ConcreteSyntaxToken> {
+fn bash_test_str_not_eq_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_test_lbracket },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_not_eq_lhs },
@@ -532,7 +532,7 @@ data bash_test_str_not_eq_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_test_str_not_eq_tokens()
 )
 
-fn bash_test_str_not_eq_lex() -> LexRules {
+fn bash_test_str_not_eq_lex() -> v2.std.compilers.lexing.LexRules {
   phrase_to_lex_rules(p: phrase([
     span(text: "[ ", class: ^bash_token_test_lbracket),
     span(text: " != ", class: ^bash_token_test_eq),
@@ -549,14 +549,14 @@ fn bash_test_str_not_eq_translation_rules_node() -> Node {
   )
 }
 
-fn bash_test_str_not_eq_binding_spellings(lhs: String, rhs: String) -> Map<Symbol, String> {
+fn bash_test_str_not_eq_binding_spellings(lhs: String, rhs: String) -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(empty_map(), ^bash_test_str_not_eq_lhs, lhs),
     ^bash_test_str_not_eq_rhs, rhs
   )
 }
 
-fn bash_test_str_not_eq_target_model(lhs: String, rhs: String) -> Outcome<TargetModel> {
+fn bash_test_str_not_eq_target_model(lhs: String, rhs: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_test_str_not_eq_tokens(),
@@ -579,7 +579,7 @@ fn bash_test_str_not_eq_target_model(lhs: String, rhs: String) -> Outcome<Target
   )
 }
 
-fn bash_test_str_empty_tokens() -> List<ConcreteSyntaxToken> {
+fn bash_test_str_empty_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_test_lbracket },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_empty_operand },
@@ -591,7 +591,7 @@ data bash_test_str_empty_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_test_str_empty_tokens()
 )
 
-fn bash_test_str_empty_lex() -> LexRules {
+fn bash_test_str_empty_lex() -> v2.std.compilers.lexing.LexRules {
   phrase_to_lex_rules(p: phrase([
     span(text: "[ -z ", class: ^bash_token_test_lbracket),
     span(text: " ]", class: ^bash_token_test_rbracket)
@@ -607,11 +607,11 @@ fn bash_test_str_empty_translation_rules_node() -> Node {
   )
 }
 
-fn bash_test_str_empty_binding_spellings(operand: String) -> Map<Symbol, String> {
+fn bash_test_str_empty_binding_spellings(operand: String) -> Map<v2.std.node.Symbol, String> {
   map_insert(empty_map(), ^bash_test_str_empty_operand, operand)
 }
 
-fn bash_test_str_empty_target_model(operand: String) -> Outcome<TargetModel> {
+fn bash_test_str_empty_target_model(operand: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_test_str_empty_tokens(),
@@ -634,7 +634,7 @@ fn bash_test_str_empty_target_model(operand: String) -> Outcome<TargetModel> {
   )
 }
 
-fn bash_test_str_nonempty_tokens() -> List<ConcreteSyntaxToken> {
+fn bash_test_str_nonempty_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_test_lbracket },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_str_nonempty_operand },
@@ -646,7 +646,7 @@ data bash_test_str_nonempty_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_test_str_nonempty_tokens()
 )
 
-fn bash_test_str_nonempty_lex() -> LexRules {
+fn bash_test_str_nonempty_lex() -> v2.std.compilers.lexing.LexRules {
   phrase_to_lex_rules(p: phrase([
     span(text: "[ -n ", class: ^bash_token_test_lbracket),
     span(text: " ]", class: ^bash_token_test_rbracket)
@@ -662,11 +662,11 @@ fn bash_test_str_nonempty_translation_rules_node() -> Node {
   )
 }
 
-fn bash_test_str_nonempty_binding_spellings(operand: String) -> Map<Symbol, String> {
+fn bash_test_str_nonempty_binding_spellings(operand: String) -> Map<v2.std.node.Symbol, String> {
   map_insert(empty_map(), ^bash_test_str_nonempty_operand, operand)
 }
 
-fn bash_test_str_nonempty_target_model(operand: String) -> Outcome<TargetModel> {
+fn bash_test_str_nonempty_target_model(operand: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_test_str_nonempty_tokens(),
@@ -689,7 +689,7 @@ fn bash_test_str_nonempty_target_model(operand: String) -> Outcome<TargetModel> 
   )
 }
 
-fn bash_log_matches_grep_tokens() -> List<ConcreteSyntaxToken> {
+fn bash_log_matches_grep_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_grep_kw },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_log_matches_pattern },
@@ -702,7 +702,7 @@ data bash_log_matches_grep_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_log_matches_grep_tokens()
 )
 
-fn bash_log_matches_grep_lex() -> LexRules {
+fn bash_log_matches_grep_lex() -> v2.std.compilers.lexing.LexRules {
   phrase_to_lex_rules(p: phrase([
     span(text: "grep -qiE ", class: ^bash_token_grep_kw),
     span(text: " ", class: ^bash_token_grep_sp)
@@ -718,14 +718,14 @@ fn bash_log_matches_grep_translation_rules_node() -> Node {
   )
 }
 
-fn bash_log_matches_grep_binding_spellings(pattern: String, source: String) -> Map<Symbol, String> {
+fn bash_log_matches_grep_binding_spellings(pattern: String, source: String) -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(empty_map(), ^bash_log_matches_pattern, pattern),
     ^bash_log_matches_source, source
   )
 }
 
-fn bash_log_matches_grep_target_model(pattern: String, source: String) -> Outcome<TargetModel> {
+fn bash_log_matches_grep_target_model(pattern: String, source: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_log_matches_grep_tokens(),
@@ -748,7 +748,7 @@ fn bash_log_matches_grep_target_model(pattern: String, source: String) -> Outcom
   )
 }
 
-fn bash_stmt_or_ignore_fail_tokens() -> List<ConcreteSyntaxToken> {
+fn bash_stmt_or_ignore_fail_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_or_ignore_fail_stmt },
     FixedToken { token_class: ^bash_token_or_ignore_fail_sep }
@@ -759,7 +759,7 @@ data bash_stmt_or_ignore_fail_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_stmt_or_ignore_fail_tokens()
 )
 
-fn bash_stmt_or_ignore_fail_lex() -> LexRules {
+fn bash_stmt_or_ignore_fail_lex() -> v2.std.compilers.lexing.LexRules {
   phrase_to_lex_rules(p: phrase([
     span(text: " || true", class: ^bash_token_or_ignore_fail_sep)
   ]))
@@ -774,11 +774,11 @@ fn bash_stmt_or_ignore_fail_translation_rules_node() -> Node {
   )
 }
 
-fn bash_stmt_or_ignore_fail_binding_spellings(stmt: String) -> Map<Symbol, String> {
+fn bash_stmt_or_ignore_fail_binding_spellings(stmt: String) -> Map<v2.std.node.Symbol, String> {
   map_insert(empty_map(), ^bash_stmt_or_ignore_fail_stmt, stmt)
 }
 
-fn bash_stmt_or_ignore_fail_target_model(stmt: String) -> Outcome<TargetModel> {
+fn bash_stmt_or_ignore_fail_target_model(stmt: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_stmt_or_ignore_fail_tokens(),
@@ -801,23 +801,23 @@ fn bash_stmt_or_ignore_fail_target_model(stmt: String) -> Outcome<TargetModel> {
   )
 }
 
-fn orch_if_target_model(cond: String, body: String) -> Outcome<TargetModel> {
+fn orch_if_target_model(cond: String, body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bash_stmt_if_target_model(cond: cond, body: body)
 }
 
-fn orch_if_else_target_model(cond: String, then_body: String, else_body: String) -> Outcome<TargetModel> {
+fn orch_if_else_target_model(cond: String, then_body: String, else_body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bash_stmt_if_else_target_model(cond: cond, then_body: then_body, else_body: else_body)
 }
 
-fn orch_if_block_target_model(cond: String, body: String) -> Outcome<TargetModel> {
+fn orch_if_block_target_model(cond: String, body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bash_stmt_if_block_target_model(cond: cond, body: body)
 }
 
-fn orch_if_else_block_target_model(cond: String, then_body: String, else_body: String) -> Outcome<TargetModel> {
+fn orch_if_else_block_target_model(cond: String, then_body: String, else_body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bash_stmt_if_else_block_target_model(cond: cond, then_body: then_body, else_body: else_body)
 }
 
-fn bash_stmt_while_tokens() -> List<ConcreteSyntaxToken> {
+fn bash_stmt_while_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_while_kw },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_stmt_while_cond },
@@ -831,7 +831,7 @@ data bash_stmt_while_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_stmt_while_tokens()
 )
 
-fn bash_stmt_while_lex() -> LexRules {
+fn bash_stmt_while_lex() -> v2.std.compilers.lexing.LexRules {
   phrase_to_lex_rules(p: phrase([
     span(text: "while ", class: ^bash_token_while_kw),
     span(text: "; do ", class: ^bash_token_while_do),
@@ -848,14 +848,14 @@ fn bash_stmt_while_translation_rules_node() -> Node {
   )
 }
 
-fn bash_stmt_while_binding_spellings(cond: String, body: String) -> Map<Symbol, String> {
+fn bash_stmt_while_binding_spellings(cond: String, body: String) -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(empty_map(), ^bash_stmt_while_cond, cond),
     ^bash_stmt_while_body, body
   )
 }
 
-fn bash_stmt_while_target_model(cond: String, body: String) -> Outcome<TargetModel> {
+fn bash_stmt_while_target_model(cond: String, body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_stmt_while_tokens(),
@@ -878,11 +878,11 @@ fn bash_stmt_while_target_model(cond: String, body: String) -> Outcome<TargetMod
   )
 }
 
-fn orch_while_target_model(cond: String, body: String) -> Outcome<TargetModel> {
+fn orch_while_target_model(cond: String, body: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bash_stmt_while_target_model(cond: cond, body: body)
 }
 
-fn bash_test_int_ne_tokens() -> List<ConcreteSyntaxToken> {
+fn bash_test_int_ne_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     FixedToken { token_class: ^bash_token_test_lbracket },
     BoundToken { token_class: ^bash_token_orch_raw, binding: ^bash_test_int_ne_lhs },
@@ -896,7 +896,7 @@ data bash_test_int_ne_emitted: Node = bash_conj_emitted_from_tokens(
   tokens: bash_test_int_ne_tokens()
 )
 
-fn bash_test_int_ne_lex() -> LexRules {
+fn bash_test_int_ne_lex() -> v2.std.compilers.lexing.LexRules {
   phrase_to_lex_rules(p: phrase([
     span(text: "[ ", class: ^bash_token_test_lbracket),
     span(text: " -ne ", class: ^bash_token_test_ne),
@@ -913,14 +913,14 @@ fn bash_test_int_ne_translation_rules_node() -> Node {
   )
 }
 
-fn bash_test_int_ne_binding_spellings(lhs: String, rhs: String) -> Map<Symbol, String> {
+fn bash_test_int_ne_binding_spellings(lhs: String, rhs: String) -> Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(empty_map(), ^bash_test_int_ne_lhs, lhs),
     ^bash_test_int_ne_rhs, rhs
   )
 }
 
-fn bash_test_int_ne_target_model(lhs: String, rhs: String) -> Outcome<TargetModel> {
+fn bash_test_int_ne_target_model(lhs: String, rhs: String) -> Outcome<v2.std.compilers.target_model.TargetModel> {
   bind_outcome(
     o: bound_tokens_source_text(
       tokens: bash_test_int_ne_tokens(),
@@ -944,7 +944,7 @@ fn bash_test_int_ne_target_model(lhs: String, rhs: String) -> Outcome<TargetMode
 }
 
 fn bash_nearest_ancestor_locate_assign_command_from_source(
-  spec: NearestAncestorContaining,
+  spec: std.path_intent.NearestAncestorContaining,
   cgroup_source: String,
 ) -> String {
   bash_membership_assign_from_source(
@@ -954,14 +954,14 @@ fn bash_nearest_ancestor_locate_assign_command_from_source(
   )
 }
 
-fn bash_nearest_ancestor_locate_assign_command(spec: NearestAncestorContaining) -> String {
+fn bash_nearest_ancestor_locate_assign_command(spec: std.path_intent.NearestAncestorContaining) -> String {
   bash_nearest_ancestor_locate_assign_command_from_source(
     spec: spec,
     cgroup_source: procfs_path_literal(p: ProcSelfCgroup) as String,
   )
 }
 
-fn bash_nearest_ancestor_locate_cond_command(spec: NearestAncestorContaining) -> String {
+fn bash_nearest_ancestor_locate_cond_command(spec: std.path_intent.NearestAncestorContaining) -> String {
   match bash_path_predicate_target_model(
     predicate: nearest_ancestor_while_predicate(spec: spec)
   ) {
@@ -974,7 +974,7 @@ fn bash_nearest_ancestor_locate_cond_command(spec: NearestAncestorContaining) ->
   }
 }
 
-fn bash_nearest_ancestor_locate_body_command(spec: NearestAncestorContaining) -> String {
+fn bash_nearest_ancestor_locate_body_command(spec: std.path_intent.NearestAncestorContaining) -> String {
   match bash_dirname_ascent_target_model(
     ascent: nearest_ancestor_while_ascent(spec: spec)
   ) {

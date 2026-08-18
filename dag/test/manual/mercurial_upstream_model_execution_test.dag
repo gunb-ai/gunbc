@@ -7,15 +7,15 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 data mercurial_r0_execution_receipt_note: String = "Offline wet T1 receipt for the bounded Mercurial R0 fixture. This is a runtime-present typed effect graph: shell.Mktemp/Mkdir/Test/Remove, Filesystem.Write, and individual gunbc.WitnessBin.Run argv invocations. No shell program is serialized. A real Mercurial CLI creates three changesets on two heads, observes portable node identities separately from clone-local revision numbers, reads a bookmark and local tag, checks public/draft/secret phases, copy metadata, manifest executable/symlink flags, repository requirements, and runs `hg verify`. Changeset identities are computed by Mercurial and checked as distinct 40-character upstream identities rather than embedded constants. Local recipe: put a real `hg` on PATH, then run claim_batch --wet --source-root dag --source-root src/v2 --entry dag/test/manual/mercurial_upstream_model_execution_test.dag --function witness_mercurial_cli_fixture_projects_and_independently_reads_back."
 
 fn mercurial_decode_live_node_ids_step(
-  state: List<MercurialNodeId>?,
+  state: List<extdeps.mercurial.MercurialNodeId>?,
   text: String,
-  role: MercurialNodeIdentityRole,
-) -> List<MercurialNodeId>? {
+  role: extdeps.mercurial.MercurialNodeIdentityRole,
+) -> List<extdeps.mercurial.MercurialNodeId>? {
   match state {
     Absent => none
     Present { value: nodes } =>
       match mercurial_decode_node_identity(
-        observation: MercurialNodeIdentityObservation {
+        observation: extdeps.mercurial.MercurialNodeIdentityObservation {
           role: role,
           text: trim(s: text),
         },
@@ -29,8 +29,8 @@ fn mercurial_decode_live_node_ids_step(
 
 fn mercurial_decode_live_node_ids(
   texts: List<String>,
-  role: MercurialNodeIdentityRole,
-) -> List<MercurialNodeId>? {
+  role: extdeps.mercurial.MercurialNodeIdentityRole,
+) -> List<extdeps.mercurial.MercurialNodeId>? {
   fold(
     texts,
     init: Present { value: [] },
@@ -42,21 +42,21 @@ fn mercurial_decode_live_node_ids(
   )
 }
 
-fn mercurial_requirement_tokens(text: String) -> List<NonEmptyStr> {
+fn mercurial_requirement_tokens(text: String) -> List<std.types.NonEmptyStr> {
   split(s: text, delimiter: "\n")
     |> filter(token => token.length() > 0)
-    |> map(token => token as NonEmptyStr)
+    |> map(token => token as std.types.NonEmptyStr)
 }
 
-data live_path_source: MercurialPath = MercurialPath {
+data live_path_source: extdeps.mercurial.MercurialPath = extdeps.mercurial.MercurialPath {
   octets: [115, 114, 99, 47, 109, 97, 105, 110, 46, 100, 97, 103]
 }
 
-data live_path_executable: MercurialPath = MercurialPath {
+data live_path_executable: extdeps.mercurial.MercurialPath = extdeps.mercurial.MercurialPath {
   octets: [98, 105, 110, 47, 114, 117, 110]
 }
 
-data live_path_symlink: MercurialPath = MercurialPath {
+data live_path_symlink: extdeps.mercurial.MercurialPath = extdeps.mercurial.MercurialPath {
   octets: [108, 105, 110, 107]
 }
 
@@ -95,20 +95,20 @@ fn mercurial_live_projection_decodes(
               let fbin = files.skip(n: 2).first()
               let f2 = files.skip(n: 3).first()
               let projection = MercurialCompleteProjection {
-                contents: MercurialRepositoryProjectionContents {
-                  requirements: MercurialRepositoryRequirements {
+                contents: extdeps.mercurial.MercurialRepositoryProjectionContents {
+                  requirements: extdeps.mercurial.MercurialRepositoryRequirements {
                     tokens: mercurial_requirement_tokens(
                       text: requirement_text,
                     ),
                   },
                   file_revisions: [
-                    MercurialFileRevision {
+                    extdeps.mercurial.MercurialFileRevision {
                       node: f0,
                       parents: MercurialNoParents,
                       copy: MercurialNotCopied,
                       content: octets_bytes(o: [109, 97, 105, 110]),
                     },
-                    MercurialFileRevision {
+                    extdeps.mercurial.MercurialFileRevision {
                       node: fl,
                       parents: MercurialNoParents,
                       copy: MercurialNotCopied,
@@ -116,7 +116,7 @@ fn mercurial_live_projection_decodes(
                         o: [115, 114, 99, 47, 109, 97, 105, 110, 46, 100, 97, 103],
                       ),
                     },
-                    MercurialFileRevision {
+                    extdeps.mercurial.MercurialFileRevision {
                       node: fbin,
                       parents: MercurialOneParent { parent: f0 },
                       copy: MercurialCopiedFrom {
@@ -125,7 +125,7 @@ fn mercurial_live_projection_decodes(
                       },
                       content: octets_bytes(o: [114, 117, 110]),
                     },
-                    MercurialFileRevision {
+                    extdeps.mercurial.MercurialFileRevision {
                       node: f2,
                       parents: MercurialOneParent { parent: f0 },
                       copy: MercurialNotCopied,
@@ -135,50 +135,50 @@ fn mercurial_live_projection_decodes(
                     },
                   ],
                   manifests: [
-                    MercurialManifestWire {
+                    extdeps.mercurial.MercurialManifestWire {
                       node: m0,
                       entries: [
-                        MercurialManifestWireEntry {
+                        extdeps.mercurial.MercurialManifestWireEntry {
                           path: live_path_source,
                           file_revision: f0,
                           flag: "",
                         },
-                        MercurialManifestWireEntry {
+                        extdeps.mercurial.MercurialManifestWireEntry {
                           path: live_path_symlink,
                           file_revision: fl,
                           flag: "l",
                         },
                       ],
                     },
-                    MercurialManifestWire {
+                    extdeps.mercurial.MercurialManifestWire {
                       node: m1,
                       entries: [
-                        MercurialManifestWireEntry {
+                        extdeps.mercurial.MercurialManifestWireEntry {
                           path: live_path_source,
                           file_revision: f0,
                           flag: "",
                         },
-                        MercurialManifestWireEntry {
+                        extdeps.mercurial.MercurialManifestWireEntry {
                           path: live_path_symlink,
                           file_revision: fl,
                           flag: "l",
                         },
-                        MercurialManifestWireEntry {
+                        extdeps.mercurial.MercurialManifestWireEntry {
                           path: live_path_executable,
                           file_revision: fbin,
                           flag: "x",
                         },
                       ],
                     },
-                    MercurialManifestWire {
+                    extdeps.mercurial.MercurialManifestWire {
                       node: m2,
                       entries: [
-                        MercurialManifestWireEntry {
+                        extdeps.mercurial.MercurialManifestWireEntry {
                           path: live_path_source,
                           file_revision: f2,
                           flag: "",
                         },
-                        MercurialManifestWireEntry {
+                        extdeps.mercurial.MercurialManifestWireEntry {
                           path: live_path_symlink,
                           file_revision: fl,
                           flag: "l",
@@ -187,7 +187,7 @@ fn mercurial_live_projection_decodes(
                     },
                   ],
                   changesets: [
-                    MercurialChangeset {
+                    extdeps.mercurial.MercurialChangeset {
                       node: c0,
                       manifest: m0,
                       parents: MercurialNoParents,
@@ -197,7 +197,7 @@ fn mercurial_live_projection_decodes(
                       authored_at: "0 0",
                       description: "root",
                     },
-                    MercurialChangeset {
+                    extdeps.mercurial.MercurialChangeset {
                       node: c1,
                       manifest: m1,
                       parents: MercurialOneParent { parent: c0 },
@@ -207,7 +207,7 @@ fn mercurial_live_projection_decodes(
                       authored_at: "1 0",
                       description: "left",
                     },
-                    MercurialChangeset {
+                    extdeps.mercurial.MercurialChangeset {
                       node: c2,
                       manifest: m2,
                       parents: MercurialOneParent { parent: c0 },
@@ -219,43 +219,43 @@ fn mercurial_live_projection_decodes(
                     },
                   ],
                   local_revisions: [
-                    MercurialLocalRevisionEntry {
-                      revision: MercurialLocalRevision { value: 0 },
+                    extdeps.mercurial.MercurialLocalRevisionEntry {
+                      revision: extdeps.mercurial.MercurialLocalRevision { value: 0 },
                       changeset: c0,
                     },
-                    MercurialLocalRevisionEntry {
-                      revision: MercurialLocalRevision { value: 1 },
+                    extdeps.mercurial.MercurialLocalRevisionEntry {
+                      revision: extdeps.mercurial.MercurialLocalRevision { value: 1 },
                       changeset: c1,
                     },
-                    MercurialLocalRevisionEntry {
-                      revision: MercurialLocalRevision { value: 2 },
+                    extdeps.mercurial.MercurialLocalRevisionEntry {
+                      revision: extdeps.mercurial.MercurialLocalRevision { value: 2 },
                       changeset: c2,
                     },
                   ],
                   heads: [
-                    MercurialHead { changeset: c1 },
-                    MercurialHead { changeset: c2 },
+                    extdeps.mercurial.MercurialHead { changeset: c1 },
+                    extdeps.mercurial.MercurialHead { changeset: c2 },
                   ],
                   bookmarks: [
-                    MercurialBookmark { name: "main", target: c1 },
+                    extdeps.mercurial.MercurialBookmark { name: "main", target: c1 },
                   ],
                   tags: [
-                    MercurialTag {
+                    extdeps.mercurial.MercurialTag {
                       name: "scratch",
                       target: c2,
                       source: MercurialLocalTag,
                     },
                   ],
                   phases: [
-                    MercurialPhaseWireEntry {
+                    extdeps.mercurial.MercurialPhaseWireEntry {
                       changeset: c0,
                       phase: "public",
                     },
-                    MercurialPhaseWireEntry {
+                    extdeps.mercurial.MercurialPhaseWireEntry {
                       changeset: c1,
                       phase: "draft",
                     },
-                    MercurialPhaseWireEntry {
+                    extdeps.mercurial.MercurialPhaseWireEntry {
                       changeset: c2,
                       phase: "secret",
                     },

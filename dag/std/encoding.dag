@@ -300,15 +300,15 @@ fn base64_decode(s: String, variant: Base64Variant) -> List<std.integer.UInt8>? 
   }
 }
 
-data utf8_decode_bytes_host_realization_marker: Disposition = Scaffold {
+data utf8_decode_bytes_host_realization_marker: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "std.bytes",
     decl_name: "builtin_function_registry",
     field: WholeDeclaration
   }
 }
 
-data base64_group_fill_carrier_debt_marker: Disposition = Terminal {
+data base64_group_fill_carrier_debt_marker: std.disposition.Disposition = Terminal {
   reason: "Base64EncodeBuf = EncEmpty|EncOne|EncTwo and Base64DecodeBuf = DecEmpty|DecOne|DecTwo|DecThree: the hand-rolled Int count accumulator debt is paid; closed sums are declared and all arms are covered by execution in base64_rfc4648_witness_test.dag"
 }

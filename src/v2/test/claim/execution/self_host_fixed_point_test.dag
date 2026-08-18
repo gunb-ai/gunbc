@@ -1,18 +1,18 @@
 module v2.test.execution.self_host_fixed_point
 
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data self_host_fixture_fixpoint_source: String = "self_host_fixpoint_byte_identical_v1"
 
 data self_host_fixture_regen_emitted_source_perturbed: String = "self_host_fixpoint_regen_emitted_bytes_perturbed_v2"
 
 fn self_host_fixture_medium(text: String) -> Medium<String> {
-  Medium { carried: text, fidelity: Lossless }
+  extdeps.communication.medium.Medium { carried: text, fidelity: Lossless }
 }
 
-fn self_host_fixture_source_models_at_fixpoint() -> SourceModels {
-  SourceModels {
+fn self_host_fixture_source_models_at_fixpoint() -> v2.compiler.self_host.SourceModels {
+  v2.compiler.self_host.SourceModels {
     stage1_committed_seed_source: self_host_fixture_medium(
       text: self_host_fixture_fixpoint_source
     ),
@@ -22,8 +22,8 @@ fn self_host_fixture_source_models_at_fixpoint() -> SourceModels {
   }
 }
 
-fn self_host_fixture_source_models_perturbed_regen() -> SourceModels {
-  SourceModels {
+fn self_host_fixture_source_models_perturbed_regen() -> v2.compiler.self_host.SourceModels {
+  v2.compiler.self_host.SourceModels {
     stage1_committed_seed_source: self_host_fixture_medium(
       text: self_host_fixture_fixpoint_source
     ),
@@ -33,49 +33,49 @@ fn self_host_fixture_source_models_perturbed_regen() -> SourceModels {
   }
 }
 
-fn self_host_fixture_source_models_unready() -> SourceModels {
-  SourceModels {
+fn self_host_fixture_source_models_unready() -> v2.compiler.self_host.SourceModels {
+  v2.compiler.self_host.SourceModels {
     stage1_committed_seed_source: self_host_fixture_medium(text: ""),
     stage2_regen_emitted_source: self_host_fixture_medium(text: "")
   }
 }
 
 fn stage_emission_leaf() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^stage_emission_fixture_leaf } },
     children: [],
     occurrence_id: SyntheticOccurrence
   }
 }
 fn stage_reference_emitted() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: stage_emission_leaf() },
-      Edge { label: Positional, target: stage_emission_leaf() },
-      Edge { label: Positional, target: stage_emission_leaf() }
+      v2.std.node.Edge { label: Positional, target: stage_emission_leaf() },
+      v2.std.node.Edge { label: Positional, target: stage_emission_leaf() },
+      v2.std.node.Edge { label: Positional, target: stage_emission_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 fn stage_candidate_equal_emitted() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: stage_emission_leaf() },
-      Edge { label: Positional, target: stage_emission_leaf() },
-      Edge { label: Positional, target: stage_emission_leaf() }
+      v2.std.node.Edge { label: Positional, target: stage_emission_leaf() },
+      v2.std.node.Edge { label: Positional, target: stage_emission_leaf() },
+      v2.std.node.Edge { label: Positional, target: stage_emission_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
   }
 }
 
 fn stage_candidate_perturbed_emitted() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     children: [
-      Edge { label: Positional, target: stage_emission_leaf() },
-      Edge { label: Positional, target: stage_emission_leaf() }
+      v2.std.node.Edge { label: Positional, target: stage_emission_leaf() },
+      v2.std.node.Edge { label: Positional, target: stage_emission_leaf() }
     ],
     occurrence_id: SyntheticOccurrence
   }

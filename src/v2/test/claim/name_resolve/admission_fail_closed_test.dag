@@ -17,19 +17,19 @@ test fn resolve_module_not_found_preserves_missing_module_identity() -> Bool {
   })
 }
 
-fn fc_qn_node(seg: Symbol) -> Node {
+fn fc_qn_node(seg: v2.std.node.Symbol) -> Node {
   fold_list_node(
     xs: Cons { head: seg, tail: Empty },
     item_node: fn(sym) {
-      Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
+      v2.std.node.Node { kind: TypeNode { connective: Atom { identity: sym } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
     }
   )
 }
 
-fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
-  Node {
+fn fc_module_root_export(seg: v2.std.node.Symbol, export_sym: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -40,9 +40,9 @@ fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: fc_qn_node(seg: seg)
       ),
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: export_sym },
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode {
             connective: Atom { identity: ^dag_c3_surface_sugar_service }
           },
@@ -55,18 +55,18 @@ fn fc_module_root_export(seg: Symbol, export_sym: Symbol) -> Node {
 }
 }
 
-fn fc_module_root(seg: Symbol) -> Node {
+fn fc_module_root(seg: v2.std.node.Symbol) -> Node {
   fc_module_root_export(seg: seg, export_sym: ^fc_export_sym)
 }
 
-fn fc_qn(seg: Symbol) -> QualifiedName {
+fn fc_qn(seg: v2.std.node.Symbol) -> v2.std.qualified_name.QualifiedName {
   Cons { head: seg, tail: Empty }
 }
 
 data fc_admitted_fixture_note: String = "These fixtures pass module roots to validate_module_roots / resolve_with_admission, which since BL-1 take FreeMonoid<NormalizedTree>. They therefore admit each synthetic root through the real door rather than casting past it -- a fixture that reached the sealed carrier without admission would be the wrapper-payload conflation the receipt in docs/plans/hollow-alias-construction-wall.md section 8.2 records, planted in the witness population. Admission is threaded as an Outcome and its refusal arm FAILS the witness: a fixture that cannot be admitted is a broken fixture, and reporting that as a passing verdict is the fabrication these witnesses exist to catch."
 
 fn fc_with_roots(
-  o: Outcome<FreeMonoid<NormalizedTree>>,
+  o: Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>>,
   f: fn(FreeMonoid<NormalizedTree>) -> Bool
 ) -> Bool {
   match o {
@@ -75,11 +75,11 @@ fn fc_with_roots(
   }
 }
 
-fn fc_admitted(n: Node) -> Outcome<NormalizedTree> {
+fn fc_admitted(n: Node) -> Outcome<v2.compiler.normalized_tree.NormalizedTree> {
   admit_normalized_tree(root: n, diagnostics: None)
 }
 
-fn fc_duplicate_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+fn fc_duplicate_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_dup_seg)), f: fn(a) {
     bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_dup_seg)), f: fn(b) {
       outcome_accepted(value: Cons { head: a, tail: Cons { head: b, tail: Empty } })
@@ -87,14 +87,14 @@ fn fc_duplicate_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
   })
 }
 
-fn fc_single_found_root() -> Outcome<FreeMonoid<NormalizedTree>> {
+fn fc_single_found_root() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   bind_outcome(o: fc_admitted(n: fc_module_root(seg: ^fc_found_seg)), f: fn(a) {
     outcome_accepted(value: Cons { head: a, tail: Empty })
   })
 }
 
 fn fc_malformed_subject_root() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -105,9 +105,9 @@ fn fc_malformed_subject_root() -> Node {
         name: ^dag_surface_module_header_qualified_name,
         target: fc_qn_node(seg: ^fc_malformed_seg)
       ),
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: ^fc_malformed_child_sym } },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -118,14 +118,14 @@ fn fc_malformed_subject_root() -> Node {
 }
 }
 
-fn fc_malformed_subject_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+fn fc_malformed_subject_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   bind_outcome(o: fc_admitted(n: fc_malformed_subject_root()), f: fn(a) {
     outcome_accepted(value: Cons { head: a, tail: Empty })
   })
 }
 
-fn fc_import_missing_target() -> Import {
-  Import { target: fc_qn(seg: ^fc_missing_seg), visibility: ImportVisible }
+fn fc_import_missing_target() -> v2.compiler.name_resolve.Import {
+  v2.compiler.name_resolve.Import { target: fc_qn(seg: ^fc_missing_seg), visibility: ImportVisible }
 }
 
 fn fc_initial_admission_state() -> AdmissionState {
@@ -153,8 +153,8 @@ test fn resolve_duplicate_module_roots_is_rejected() -> Bool {
   match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
     roots: roots,
-    admission: Admission {
-      subject: ResolutionSubject {
+    admission: v2.compiler.name_resolve.Admission {
+      subject: v2.compiler.name_resolve.ResolutionSubject {
         name: fc_qn(seg: ^fc_dup_seg)
       },
       imports: Empty
@@ -171,8 +171,8 @@ test fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
   match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
     roots: roots,
-    admission: Admission {
-      subject: ResolutionSubject {
+    admission: v2.compiler.name_resolve.Admission {
+      subject: v2.compiler.name_resolve.ResolutionSubject {
         name: fc_qn(seg: ^fc_missing_seg)
       },
       imports: Empty
@@ -217,8 +217,8 @@ test fn resolve_malformed_subject_root_is_rejected() -> Bool {
   match resolve_with_admission(
     lm: dag_language_model_surface_empty_prelude(),
     roots: roots,
-    admission: Admission {
-      subject: ResolutionSubject {
+    admission: v2.compiler.name_resolve.Admission {
+      subject: v2.compiler.name_resolve.ResolutionSubject {
         name: fc_qn(seg: ^fc_malformed_seg)
       },
       imports: Empty
@@ -230,8 +230,8 @@ test fn resolve_malformed_subject_root_is_rejected() -> Bool {
   })
 }
 
-fn fc_dual_import_subject_root(seg: Symbol, use_sym: Symbol, imported_decl: Symbol) -> Node {
-  Node {
+fn fc_dual_import_subject_root(seg: v2.std.node.Symbol, use_sym: v2.std.node.Symbol, imported_decl: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -242,9 +242,9 @@ fn fc_dual_import_subject_root(seg: Symbol, use_sym: Symbol, imported_decl: Symb
         name: ^dag_surface_module_header_qualified_name,
         target: fc_qn_node(seg: seg)
       ),
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: use_sym },
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: imported_decl } },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -255,7 +255,7 @@ fn fc_dual_import_subject_root(seg: Symbol, use_sym: Symbol, imported_decl: Symb
 }
 }
 
-fn fc_dual_import_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+fn fc_dual_import_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   bind_outcome(o: fc_admitted(n: fc_dual_import_subject_root(
     seg: ^fc_subject_seg,
     use_sym: ^fc_import_use_sym,
@@ -274,14 +274,14 @@ test fn resolve_dual_imports_do_not_collide_on_header_metadata() -> Bool {
   match resolve_with_admission_policy(
     lm: dag_language_model_surface_empty_prelude(),
     roots: roots,
-    admission: Admission {
-      subject: ResolutionSubject {
+    admission: v2.compiler.name_resolve.Admission {
+      subject: v2.compiler.name_resolve.ResolutionSubject {
         name: fc_qn(seg: ^fc_subject_seg)
       },
       imports: Cons {
-        head: Import { target: fc_qn(seg: ^fc_import_a_seg), visibility: ImportVisible },
+        head: v2.compiler.name_resolve.Import { target: fc_qn(seg: ^fc_import_a_seg), visibility: ImportVisible },
         tail: Cons {
-          head: Import { target: fc_qn(seg: ^fc_import_b_seg), visibility: ImportVisible },
+          head: v2.compiler.name_resolve.Import { target: fc_qn(seg: ^fc_import_b_seg), visibility: ImportVisible },
           tail: Empty
         }
       }
@@ -303,14 +303,14 @@ test fn resolve_with_admission_threads_validate_diagnostics_on_accept() -> Bool 
       match resolve_with_admission_policy(
         lm: dag_language_model_surface_empty_prelude(),
         roots: roots,
-        admission: Admission {
-          subject: ResolutionSubject {
+        admission: v2.compiler.name_resolve.Admission {
+          subject: v2.compiler.name_resolve.ResolutionSubject {
             name: fc_qn(seg: ^fc_subject_seg)
           },
           imports: Cons {
-            head: Import { target: fc_qn(seg: ^fc_import_a_seg), visibility: ImportVisible },
+            head: v2.compiler.name_resolve.Import { target: fc_qn(seg: ^fc_import_a_seg), visibility: ImportVisible },
             tail: Cons {
-              head: Import { target: fc_qn(seg: ^fc_import_b_seg), visibility: ImportVisible },
+              head: v2.compiler.name_resolve.Import { target: fc_qn(seg: ^fc_import_b_seg), visibility: ImportVisible },
               tail: Empty
             }
           }

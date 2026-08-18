@@ -127,8 +127,8 @@ test fn witness_converge_cli_refusal_causes_discriminate() -> Bool {
 }
 
 test fn witness_converge_cli_receipt_line_matches_byte_locked_grammar() -> Bool {
-  let converged = ConvergeCliReceipt { host: "srv9", applied: 3, drifted: 0, verdict: VerdictConverged, reason: none }
-  let refused = ConvergeCliReceipt {
+  let converged = gunbc.fleet_converge_cli.ConvergeCliReceipt { host: "srv9", applied: 3, drifted: 0, verdict: VerdictConverged, reason: none }
+  let refused = gunbc.fleet_converge_cli.ConvergeCliReceipt {
     host: "srv1",
     applied: 0,
     drifted: 0,
@@ -179,7 +179,7 @@ test fn witness_fleet_converge_receipt_staging_path_same_directory_as_final() ->
 test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool {
   let a = revision_fixture_oid(hex: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
   let b = revision_fixture_oid(hex: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
-  let knob = ConvergeCliReceipt { host: "srv1", applied: 0, drifted: 0, verdict: VerdictConverged, reason: none }
+  let knob = gunbc.fleet_converge_cli.ConvergeCliReceipt { host: "srv1", applied: 0, drifted: 0, verdict: VerdictConverged, reason: none }
   let joint_ok = converge_cli_receipt_join_revision(r: knob, standing: RevisionConverged { revision: a })
   let joint_drift = converge_cli_receipt_join_revision(r: knob, standing: RevisionDrifted { desired: a, local: b })
   let joint_unobs = converge_cli_receipt_join_revision(r: knob, standing: RevisionUnobserved { cause: "ls-remote refused: no route" })
@@ -226,12 +226,12 @@ test fn witness_converge_verdict_meet_is_total_over_every_pair() -> Bool {
     && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: VerdictConverged)) == "converged"
 }
 
-fn revision_fixture_oid(hex: String) -> GitObjectId {
+fn revision_fixture_oid(hex: String) -> extdeps.git.object_store.GitObjectId {
   match git_sha1_object_id(hex: hex) {
     Present { value: oid } => oid
     Absent =>
       GitSha1ObjectId {
-        digest: Sha1Digest { hex: hex as Sha1DigestHex },
+        digest: std.content_hash.Sha1Digest { hex: hex as std.content_hash.Sha1DigestHex },
       }
   }
 }

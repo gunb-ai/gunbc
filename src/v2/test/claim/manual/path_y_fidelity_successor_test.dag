@@ -1,8 +1,8 @@
 module v2.test.manual.path_y_fidelity_successor
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn path_y_core_expr() -> Expression {
+fn path_y_core_expr() -> extdeps.github.expressions.Expression {
   LogicalOr {
     left: LogicalOr {
       left: extdeps.github.expressions.FunctionCall {
@@ -69,7 +69,7 @@ fn gha_core_advertises_target_quotient_fidelity() -> Bool {
   }
 }
 
-fn bmc_lifecycle_inverse_is_lossy_section_not_iso_on_fidelity(fidelity: DecodeFidelity) -> Bool {
+fn bmc_lifecycle_inverse_is_lossy_section_not_iso_on_fidelity(fidelity: extdeps.communication.medium.DecodeFidelity) -> Bool {
   match fidelity {
     Lossy => true
     Lossless => false

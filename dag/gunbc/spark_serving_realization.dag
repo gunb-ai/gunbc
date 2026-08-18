@@ -68,12 +68,12 @@ type SparkServingIntent {
 // different remedy (go look) from CapabilityRefused (provision it), and collapsing them is how a
 // probe that never ran reads as a host that lacks something.
 type CapabilityObservation
-  = CapabilityPresent { evidence: NonEmptyStr }
-  | CapabilityRefused { cause: NonEmptyStr }
+  = CapabilityPresent { evidence: std.types.NonEmptyStr }
+  | CapabilityRefused { cause: std.types.NonEmptyStr }
   | CapabilityUnobserved
 
 type SparkHostCapabilityObservation {
-  host: NonEmptyStr
+  host: std.types.NonEmptyStr
   managed_executor_account: CapabilityObservation
   no_login_service_identity: CapabilityObservation
   system_unit_manager: CapabilityObservation
@@ -174,7 +174,7 @@ fn realization_requirements(
 type ServingRequirementRefusal {
   realization_label: String
   requirement: ServingRequirement
-  cause: NonEmptyStr
+  cause: std.types.NonEmptyStr
 }
 
 type SparkServingRealizationAdmission
@@ -432,7 +432,7 @@ type SparkServingRealizationSelection
       first: SparkServingRealization
       second: SparkServingRealization
       more: List<SparkServingRealization>
-      cause: NonEmptyStr
+      cause: std.types.NonEmptyStr
     }
 
 data spark_serving_candidate_realizations: List<SparkServingRealization> = [
@@ -655,7 +655,7 @@ data spark_serving_runtime_selection_is_declared_intent_note: String = "Measured
 // or runs the install as a different principal, the grant follows automatically -- there is no second
 // list to remember to update, because there is no second list.
 
-type SystemPrincipal = RootPrincipal | NamedPrincipal { login: NonEmptyStr }
+type SystemPrincipal = RootPrincipal | NamedPrincipal { login: std.types.NonEmptyStr }
 
 fn principal_label(p: SystemPrincipal) -> String {
   match p {
@@ -742,10 +742,10 @@ fn effect_requires_escalation(
 // than constants so one model serves several deployments without forking.
 type ServingDeploymentTarget {
   actor: SystemPrincipal
-  unit_name: NonEmptyStr
-  unit_path: NonEmptyStr
-  staged_unit_path: NonEmptyStr
-  runtime_package: NonEmptyStr
+  unit_name: std.types.NonEmptyStr
+  unit_path: std.types.NonEmptyStr
+  staged_unit_path: std.types.NonEmptyStr
+  runtime_package: std.types.NonEmptyStr
 }
 
 // HOW a mutation is actuated. This is realization, not policy: given that an effect must mutate a
@@ -764,7 +764,7 @@ type ServingDeploymentTarget {
 // to actuate a user-owned effect: it would read the empty list as work already done. The two states
 // are now different constructors, so that misreading has no representation to occur in.
 type EffectActuation
-  = ActuatedByEscalation { commands: List<NonEmptyStr> }
+  = ActuatedByEscalation { commands: List<std.types.NonEmptyStr> }
   | ActuatedByOwnerDirectly
 
 fn effect_actuation(
@@ -864,17 +864,17 @@ fn realization_sudoers_grant_lines(
 type ObservedGrantPopulation
   = GrantPopulationObserved {
       host: product.placement_supply.HostIdentity
-      principal: NonEmptyStr
-      credential_identity: ContentHash
-      commands: List<NonEmptyStr>
+      principal: std.types.NonEmptyStr
+      credential_identity: std.content_hash.ContentHash
+      commands: List<std.types.NonEmptyStr>
     }
-  | GrantPopulationUnobserved { host: product.placement_supply.HostIdentity, principal: NonEmptyStr, cause: NonEmptyStr }
+  | GrantPopulationUnobserved { host: product.placement_supply.HostIdentity, principal: std.types.NonEmptyStr, cause: std.types.NonEmptyStr }
 
 type EscalationShortfall
   = NoNewPrivilegeRequired
-  | NewPrivilegeRequired { first: NonEmptyStr, more: List<NonEmptyStr> }
-  | ShortfallUndecidable { cause: NonEmptyStr }
-  | ShortfallEvidenceMismatch { cause: NonEmptyStr }
+  | NewPrivilegeRequired { first: std.types.NonEmptyStr, more: List<std.types.NonEmptyStr> }
+  | ShortfallUndecidable { cause: std.types.NonEmptyStr }
+  | ShortfallEvidenceMismatch { cause: std.types.NonEmptyStr }
 
 fn grant_population_contains(population: List<NonEmptyStr>, command: NonEmptyStr) -> Bool {
   fold(population, init: false, f: fn(acc, held) {

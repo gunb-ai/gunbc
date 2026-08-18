@@ -5,7 +5,7 @@ data gha_fold_structural_test_entry: String = "src/v2/test/claim/gha_workflow_ya
 
 data gha_fold_serialize_test_entry: String = "src/v2/test/claim/gha_workflow_yaml_fold_serialize_test.dag"
 
-fn gha_workflow_yaml_fold_plan() -> List<List<Runnable>> {
+fn gha_workflow_yaml_fold_plan() -> List<List<std.realization_schedule.Runnable>> {
   [
     [
       RunnableSingleClaim {

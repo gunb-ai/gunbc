@@ -39,7 +39,7 @@ fn parse_apply_mode(value: String) -> ApplyModeParse {
   }
 }
 
-fn runner_capacity_plan_exit(plan: RunnerCapacityPlan) -> ProcessExit {
+fn runner_capacity_plan_exit(plan: gunbc.runner_capacity_plan.RunnerCapacityPlan) -> std.process.ProcessExit {
   match plan {
     PlanReady { hosts: _ } => ExitSuccess
     PlanRefused { reason: r } => exit_failure(reason: r)
@@ -50,7 +50,7 @@ fn apply_runner_capacity_plan(
   srv3_width: String,
   srv4_width: String,
   mode: String,
-) -> ProcessExit {
+) -> std.process.ProcessExit {
   match parse_apply_mode(value: mode) {
     ModeParseRefused { reason: r } => exit_failure(reason: r)
     ModeParsed { mode: Apply } =>
@@ -86,7 +86,7 @@ fn apply_dispatch(
   srv3_width: String,
   srv4_width: String,
   mode: String,
-) -> ProcessExit {
+) -> std.process.ProcessExit {
   match parse_apply_workflow(value: workflow) {
     WorkflowParseRefused { reason: r } => exit_failure(reason: r)
     WorkflowParsed { workflow: DashboardSrv1 } =>
@@ -100,6 +100,6 @@ fn apply_dispatch(
   }
 }
 
-func apply_wet(workflow: String, srv3_width: String, srv4_width: String, mode: String) -> ProcessExit {
+func apply_wet(workflow: String, srv3_width: String, srv4_width: String, mode: String) -> std.process.ProcessExit {
   apply_dispatch(workflow: workflow, srv3_width: srv3_width, srv4_width: srv4_width, mode: mode)
 }

@@ -9,7 +9,7 @@ data derive_admission_scaffold_note: String = "derive_module_admission is a SCAF
 
 type DoorOutcomeKind
   = DoorCompiled
-  | DoorRefused { reason: Symbol }
+  | DoorRefused { reason: v2.std.node.Symbol }
 
 type DoorLedgerRow {
   module_path: String
@@ -17,13 +17,13 @@ type DoorLedgerRow {
 }
 
 type CauseCount {
-  reason: Symbol
+  reason: v2.std.node.Symbol
   count: Int
 }
 
 type ModuleGraphFacts {
-  edges: List<ImportResolutionFact>
-  nodes: List<ModuleDeclarationFact>
+  edges: List<v2.lens.module_graph.ImportResolutionFact>
+  nodes: List<v2.lens.module_graph.ModuleDeclarationFact>
 }
 
 fn module_graph_facts(pool_roots: List<String>) -> ModuleGraphFacts {
@@ -38,8 +38,8 @@ fn module_graph_facts(pool_roots: List<String>) -> ModuleGraphFacts {
 }
 
 type AdmissionDerivation
-  = AdmissionRefused { reason: Symbol }
-  | AdmissionDerived { admission: Admission }
+  = AdmissionRefused { reason: v2.std.node.Symbol }
+  | AdmissionDerived { admission: v2.compiler.name_resolve.Admission }
 
 fn derive_module_admission(root: Node) -> AdmissionDerivation {
   match admission_from_module_root(root: root) {
@@ -235,7 +235,7 @@ type CauseLane
   | MigrationOwned
 
 type CauseOwnership {
-  cause: Symbol
+  cause: v2.std.node.Symbol
   lane: CauseLane
   flip_trigger: String
 }

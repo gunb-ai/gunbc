@@ -67,11 +67,11 @@ module product.rack_mount
 // This arm is unreachable while admission holds; it is the typed answer if the invariant behind
 // rack_units_free is ever broken, not a case a caller is expected to hit.
 type MountRefusal
-  = MountBelowFirstUnit { lowest_unit: RackUnitPosition }
-  | MountExceedsRackHeight { top_unit: RackUnitPosition, rack_capacity: RackUnit }
-  | MountsCollide { lower: PhysicalAssetIdentity, upper: PhysicalAssetIdentity }
-  | AssetMountedTwice { asset: PhysicalAssetIdentity }
-  | OccupancyExceedsCapacity { occupied: RackUnit, capacity: RackUnit }
+  = MountBelowFirstUnit { lowest_unit: product.placement_supply.RackUnitPosition }
+  | MountExceedsRackHeight { top_unit: product.placement_supply.RackUnitPosition, rack_capacity: std.measure.RackUnit }
+  | MountsCollide { lower: product.placement_supply.PhysicalAssetIdentity, upper: product.placement_supply.PhysicalAssetIdentity }
+  | AssetMountedTwice { asset: product.placement_supply.PhysicalAssetIdentity }
+  | OccupancyExceedsCapacity { occupied: std.measure.RackUnit, capacity: std.measure.RackUnit }
 
 type MountConstruction<T>
   = MountReady { value: T }
@@ -81,9 +81,9 @@ type MountConstruction<T>
 // beside lowest would let an edit to the chassis leave the top describing a height the hardware
 // does not have.
 type ChassisMount {
-  asset: PhysicalAssetIdentity
-  chassis: ChassisCatalogRow
-  lowest_unit: RackUnitPosition
+  asset: product.placement_supply.PhysicalAssetIdentity
+  chassis: extdeps.chassis.types.ChassisCatalogRow
+  lowest_unit: product.placement_supply.RackUnitPosition
 }
 
 // The span IS the cited chassis row's height - a cardinal magnitude, so it stays a RackUnit and is
@@ -151,8 +151,8 @@ fn admit_mount(acc: MountAdmission, rack: RackCatalogRow, m: ChassisMount) -> Mo
 }
 
 type RackInstance sole_constructor {
-  identity: RackIdentity
-  catalog: RackCatalogRow
+  identity: product.placement_supply.RackIdentity
+  catalog: extdeps.rack.types.RackCatalogRow
   mounts: List<ChassisMount>
 }
 

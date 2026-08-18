@@ -37,8 +37,8 @@ type PreparedSubjectSpec {
 // module carries the root that WOULD contain it, so the exclusion names its own
 // dissolution: add that root and the row is unnecessary.
 type SubjectExclusionGround
-  = ExcludedDeliberatelyInvalidFixture { property_witness: Symbol }
-  | ExcludedOutsideDeclaredSourceRoots { containing_root: Symbol }
+  = ExcludedDeliberatelyInvalidFixture { property_witness: v2.std.node.Symbol }
+  | ExcludedOutsideDeclaredSourceRoots { containing_root: v2.std.node.Symbol }
 
 // THE SITE CARRIES ITS MODULE, because the host already knows it.
 //
@@ -161,10 +161,10 @@ fn floor_execution_key_is_one_prepared_subject(key: FloorExecutionKey) -> Bool {
 // dependencies derive from container.member references. Until then this class sits at
 // mitigatable and the exact-entry check is the only thing that sees it.
 type FloorBindingStrictnessRegression {
-  previous: Symbol
-  current: Symbol
-  population: Symbol
-  restoration_trigger: Symbol
+  previous: v2.std.node.Symbol
+  current: v2.std.node.Symbol
+  population: v2.std.node.Symbol
+  restoration_trigger: v2.std.node.Symbol
 }
 
 data floor2_binding_strictness_regression: FloorBindingStrictnessRegression = FloorBindingStrictnessRegression {

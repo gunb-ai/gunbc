@@ -7,23 +7,23 @@ module extdeps.systems.nvidia_dgx_spark_setup
 // the vendor exposes; they version independently (a firmware/OOBE revision changes the
 // surface without changing a single hardware row). Nothing here is an operator decision,
 // a fleet fact, or an observation of srv5/srv6 — those live in gunbc.spark_provisioning.
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.nvidia.com/dgx/dgx-spark/first-boot.html"
   }
 }
 
-data dgx_spark_pxe_boot_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data dgx_spark_pxe_boot_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.nvidia.com/dgx/dgx-spark/pxe.html"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.systems.nvidia_dgx_spark_setup",
       decl_name: "dgx_spark_oobe_surface",
       field: WholeDeclaration

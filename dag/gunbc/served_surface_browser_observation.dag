@@ -16,18 +16,18 @@ type BrowserLaunchConfiguration
     }
 
 type BrowserExecutionEnvironment {
-  chromium_build: ChromiumBuild
-  playwright_build: PlaywrightBuild
-  browser_binary_provenance: PlaywrightBrowserBinaryProvenance
-  container_userland: DebianRelease
+  chromium_build: extdeps.browser.chromium.ChromiumBuild
+  playwright_build: extdeps.automation.playwright.PlaywrightBuild
+  browser_binary_provenance: extdeps.automation.playwright.PlaywrightBrowserBinaryProvenance
+  container_userland: extdeps.os.debian.DebianRelease
   container_visible_host_kernel: ContainerVisibleHostKernel
-  architecture: Architecture
+  architecture: extdeps.toolchain.types.Architecture
   presentation_mode: BrowserPresentationMode
   launch_configuration: BrowserLaunchConfiguration
 }
 
 type NavigationHttpHeader
-  = ContentLengthHeader { bytes: ByteSize }
+  = ContentLengthHeader { bytes: std.measure.ByteSize }
   | TextPlainUtf8ContentTypeHeader
   | Empty502SpecimenHeader
   | Sentinel502SpecimenHeader
@@ -35,8 +35,8 @@ type NavigationHttpHeader
 type NavigationResponseBody
   = EmptyNavigationResponseBody
   | Utf8NavigationResponseBody {
-      text: NonEmptyStr,
-      bytes: ByteSize,
+      text: std.types.NonEmptyStr,
+      bytes: std.measure.ByteSize,
     }
 
 type NavigationStimulusOrigin
@@ -44,44 +44,44 @@ type NavigationStimulusOrigin
 
 type NavigationStimulus
   = TcpConnectionRefusedStimulus {
-      requested_url: Uri,
+      requested_url: extdeps.uri.Uri,
       origin: NavigationStimulusOrigin,
     }
   | HttpResponseStimulus {
-      requested_url: Uri,
+      requested_url: extdeps.uri.Uri,
       origin: NavigationStimulusOrigin,
-      status: HttpStatus,
+      status: std.types.HttpStatus,
       configured_headers: List<NavigationHttpHeader>,
       body: NavigationResponseBody,
     }
 
 type NavigationOutcome
   = ChromiumNavigationFailed {
-      error: ChromiumNavigationError,
+      error: extdeps.browser.chromium.ChromiumNavigationError,
     }
   | NavigationReturnedHttpResponse {
-      status: HttpStatus,
+      status: std.types.HttpStatus,
     }
 
 type PresentedDocument
   = ChromiumInternalPresentedDocument {
-      document: ChromiumInternalDocument,
-      final_url: ChromiumInternalUrl,
+      document: extdeps.browser.chromium.ChromiumInternalDocument,
+      final_url: extdeps.browser.chromium.ChromiumInternalUrl,
     }
   | NetworkResponsePresentedDocument {
-      final_url: Uri,
+      final_url: extdeps.uri.Uri,
     }
 
 type ScreenshotArtifact {
-  path: BinaryFilePath
-  digest: Digest
-  bytes: ByteSize
+  path: std.types.BinaryFilePath
+  digest: extdeps.crypto.hash.Digest
+  bytes: std.measure.ByteSize
 }
 
 type HealthyTransition
   = | RouteChangedToHealthyHttpResponse {
-      status: HttpStatus,
-      body: NonEmptyStr,
+      status: std.types.HttpStatus,
+      body: std.types.NonEmptyStr,
     }
 
 type RecoveryAction
@@ -103,21 +103,21 @@ type NavigationPresentation {
 }
 
 type ConnectionRefusedExactSpecimen {
-  requested_url: Uri
+  requested_url: extdeps.uri.Uri
   origin: NavigationStimulusOrigin
   screenshot: ScreenshotArtifact
   recovery_trials: List<RecoveryTrial>
 }
 
 type EmptyBody502ExactSpecimen {
-  requested_url: Uri
+  requested_url: extdeps.uri.Uri
   origin: NavigationStimulusOrigin
   screenshot: ScreenshotArtifact
   recovery_trials: List<RecoveryTrial>
 }
 
 type SentinelBody502ExactSpecimen {
-  requested_url: Uri
+  requested_url: extdeps.uri.Uri
   origin: NavigationStimulusOrigin
   screenshot: ScreenshotArtifact
   recovery_trials: List<RecoveryTrial>
@@ -131,7 +131,7 @@ type Chromium151DiscriminatorSpecimens {
 
 type PlaywrightChromium151DiscriminatorRun {
   environment: BrowserExecutionEnvironment
-  observed_on: Rfc3339Timestamp
+  observed_on: extdeps.time.rfc3339.Rfc3339Timestamp
   specimens: Chromium151DiscriminatorSpecimens
 }
 

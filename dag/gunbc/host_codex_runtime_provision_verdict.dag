@@ -19,7 +19,7 @@ type CodexRuntimeProvisionRefusal
 
 type CodexRuntimeProvisionVerdict
   = ProvisionConverged { executable: std.types.FilePath, version_line: String }
-  | ProvisionRefused { cause: CodexRuntimeProvisionRefusal, reason: NonEmptyStr }
+  | ProvisionRefused { cause: CodexRuntimeProvisionRefusal, reason: std.types.NonEmptyStr }
 
 fn provision_codex_runtime_verdict(
   host: HostIdentity,

@@ -9,7 +9,7 @@ data verb_set_note: String = "Q1 AMENDED (dissolve-on fired 2026-07-19, deploy-p
 
 data execute_verb_note: String = "Execute grant reach for process/binary invocation: target is a NamespacePosition in FilesystemPathTree naming the executable. The verb is shape-grounded: verb_of_effect_shape(ExecuteEffect) = Execute. Deploy-preflight sudo probes materialize via PosixSudoGrant -> Grant projection (gunbc.fleet_posix_accounts). WHO may execute stays GroundedPosixPrincipal/std.access. dissolve-on = deploy-preflight envelope admits via admit_effect (shell-intent Wave A follow-on)."
 
-fn verb_of_effect_shape(shape: EffectShape<KeySource>) -> Verb {
+fn verb_of_effect_shape(shape: EffectShape<std.effects.KeySource>) -> Verb {
   match shape {
     ReadEffect => Read
     UpsertEffect { key_source: key_source } => Write
@@ -147,7 +147,7 @@ fn grant_coverage(grants: List<Grant>, verb: Verb, target: NamespacePosition) ->
   grant_coverage_go(grants: grants, verb: verb, target: target)
 }
 
-fn covering_grant_go(grants: List<Grant>, verb: Verb, target: NamespacePosition, frame: Frame) -> CoveringGrant {
+fn covering_grant_go(grants: List<Grant>, verb: Verb, target: NamespacePosition, frame: std.materialization_ladder.Frame) -> CoveringGrant {
   grant_coverage_fold(
     coverage: grant_coverage(grants: grants, verb: verb, target: target),
     on_covered: fn(grant) { CoveredBy { grant: grant } },
@@ -173,7 +173,7 @@ fn effect_target_label(target: NamespacePosition) -> String {
 
 fn effect_grant_decide(
   request: AccessRequest<Frame, EffectAuthorizationAction<Verb>, NamespacePosition, Frame, Envelope>,
-) -> AccessDecision {
+) -> std.access.AccessDecision {
   match covering_grant(
     env: request.evidence.value,
     verb: request.action.effect,
@@ -181,9 +181,9 @@ fn effect_grant_decide(
   ) {
     CoveredBy { grant: grant } => Permit
     NoCoveringGrant { verb: verb, target: target, frame: frame } => Deny {
-      refusal: AccessRefusal {
+      refusal: std.access.AccessRefusal {
         cause: AccessActionNotGranted { action: effect_verb_label(verb: verb) },
-        location: AccessRefusalLocation {
+        location: std.access.AccessRefusalLocation {
           profile: "EffectRequest",
           subject: frame.name,
           action: effect_verb_label(verb: verb),
@@ -194,9 +194,9 @@ fn effect_grant_decide(
   }
 }
 
-data effect_grant_policy: AccessPolicy<Frame, EffectAuthorizationAction<Verb>, NamespacePosition, Frame, Envelope> = AccessPolicy { decide: effect_grant_decide }
+data effect_grant_policy: AccessPolicy<Frame, EffectAuthorizationAction<Verb>, NamespacePosition, Frame, Envelope> = std.access.AccessPolicy { decide: effect_grant_decide }
 
-fn admit_effect(env: Envelope, verb: Verb, target: NamespacePosition) -> AccessDecision {
+fn admit_effect(env: Envelope, verb: Verb, target: NamespacePosition) -> std.access.AccessDecision {
   effect_grant_policy.decide(effect_access_request(request: std.authorization_profile.EffectRequest {
     subject: env.frame,
     effect: verb,

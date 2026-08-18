@@ -11,8 +11,8 @@ data interpreter_dispatch_bijection_real_roster_memory_envelope_note: String = "
 // resolves — see gunbc.cargo_execution_placement for why the two hardcoded
 // /opt/cargo/bin/cargo literals this replaces were a placement decision written as a
 // literal, and why the modeled cargo.Build.Test could not be used as it stands.
-data real_roster_placement_requirement: CargoSubjectPlacementRequirement = RequiresLocalWorkspace {
-    required_by: DeclarationRef {
+data real_roster_placement_requirement: gunbc.cargo_execution_placement.CargoSubjectPlacementRequirement = RequiresLocalWorkspace {
+    required_by: std.decl_ref.DeclarationRef {
       module_path: "tools.interpreter_dispatch_bijection_real_roster_transport",
       decl_name: "run_interpreter_dispatch_bijection_real_roster_red",
       field: WholeDeclaration,
@@ -62,7 +62,7 @@ fn interpreter_dispatch_bijection_real_roster_red_shell(root: String, cargo_bin:
 // 🟡 dissolve-on: when the Value::Null split lands and `T? from "stdout"` decodes as a real
 // Optional, this reads the observed absolute path, hands it to decide_cargo_placement, and
 // the locality claim becomes established rather than assumed.
-fn real_roster_cargo_decision() -> CargoPlacementDecision {
+fn real_roster_cargo_decision() -> gunbc.cargo_execution_placement.CargoPlacementDecision {
   let observed = shell.Which.Check(command: "cargo")
   if observed.exists {
     decide_cargo_placement(
@@ -80,7 +80,7 @@ fn real_roster_cargo_decision() -> CargoPlacementDecision {
 // the clone failed, or the compile wrongly SUCCEEDED when the test requires it to refuse
 // were indistinguishable, so the failure could not be triaged and therefore could not be
 // ranked or owned.
-fn real_roster_cargo_run(cargo_bin: String) -> CargoInvocationOutcome {
+fn real_roster_cargo_run(cargo_bin: String) -> gunbc.cargo_execution_placement.CargoInvocationOutcome {
   let root = git.Inspect.Toplevel()
   let run = shell.Exec.Run(
     script: retained_foreign(
@@ -95,7 +95,7 @@ fn real_roster_cargo_run(cargo_bin: String) -> CargoInvocationOutcome {
   }
 }
 
-fn run_interpreter_dispatch_bijection_real_roster_outcome() -> CargoInvocationOutcome {
+fn run_interpreter_dispatch_bijection_real_roster_outcome() -> gunbc.cargo_execution_placement.CargoInvocationOutcome {
   match real_roster_cargo_decision() {
     PlacementRefused { cause: c } => CargoInvocationNotAttempted { refusal: c }
     PlacementAdmitted { cargo_path: cargo_bin } => real_roster_cargo_run(cargo_bin: cargo_bin)

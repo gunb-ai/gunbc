@@ -50,14 +50,14 @@ test fn uri_percent_encode_refuses_negative_scalar_at_construction_holds() -> Bo
 }
 
 test fn uri_percent_encode_refuses_directly_constructed_surrogate_scalar_holds() -> Bool {
-  match uri_percent_encode_unicode_scalar(scalar: UriUnicodeScalar { cp: 55296 }) {
+  match uri_percent_encode_unicode_scalar(scalar: extdeps.uri.UriUnicodeScalar { cp: 55296 }) {
     UriPercentEncodeRefused { cause: UriPercentEncodeSurrogateScalarRefused { cp: 55296 } } => true
     UriPercentEncodeBuilding { wire: _ } => false
   }
 }
 
 test fn uri_percent_encode_refuses_directly_constructed_above_max_scalar_holds() -> Bool {
-  match uri_percent_encode_unicode_scalar(scalar: UriUnicodeScalar { cp: 1114112 }) {
+  match uri_percent_encode_unicode_scalar(scalar: extdeps.uri.UriUnicodeScalar { cp: 1114112 }) {
     UriPercentEncodeRefused {
       cause: UriPercentEncodeUnicodeScalarOutOfRangeRefused { cp: 1114112 },
     } => true
@@ -80,14 +80,14 @@ test fn uri_percent_encode_refuses_empty_code_point_list_holds() -> Bool {
 }
 
 test fn uri_percent_encode_component_round_trip_unreserved_holds() -> Bool {
-  match uri_percent_encode_component(value: "page-1_ok" as NonEmptyStr) {
+  match uri_percent_encode_component(value: "page-1_ok" as std.types.NonEmptyStr) {
     UriPercentComponentEncoded(wire) => wire == "page-1_ok"
     UriPercentComponentRefused { cause: _ } => false
   }
 }
 
 test fn uri_percent_encode_component_encodes_ascii_reserved_holds() -> Bool {
-  match uri_percent_encode_component(value: "a=b&c" as NonEmptyStr) {
+  match uri_percent_encode_component(value: "a=b&c" as std.types.NonEmptyStr) {
     UriPercentComponentEncoded(wire) => wire == "a%3Db%26c"
     UriPercentComponentRefused { cause: _ } => false
   }

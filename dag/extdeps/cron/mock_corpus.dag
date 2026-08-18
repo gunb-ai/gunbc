@@ -1,21 +1,21 @@
 module extdeps.cron.mock_corpus
 
 
-data cron_tab_mock_case_list: PublishedMockCase = PublishedMockCase {
+data cron_tab_mock_case_list: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "cron.Tab.List",
   service: "cron.Tab",
   operation: "List",
   case_id: 0
 }
 
-data cron_tab_mock_case_replace: PublishedMockCase = PublishedMockCase {
+data cron_tab_mock_case_replace: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "cron.Tab.Replace",
   service: "cron.Tab",
   operation: "Replace",
   case_id: 0
 }
 
-data cron_published_mock_corpus: List<PublishedMockCase> = [
+data cron_published_mock_corpus: List<std.hermetic_replay.PublishedMockCase> = [
   cron_tab_mock_case_list,
   cron_tab_mock_case_replace
 ]

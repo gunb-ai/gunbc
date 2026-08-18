@@ -1,7 +1,7 @@
 module gunbc.plans.edge_b_rust_dag_provenance_brief
 
 
-fn edge_b_rust_dag_provenance_brief_body() -> List<MarkdownBlock> {
+fn edge_b_rust_dag_provenance_brief_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status: SCOPING ONLY.** The multi-day build holds for the operator's explicit greenlight. This document is the decision artifact for that greenlight call."),
     h2(text: "Goal"),
@@ -50,7 +50,7 @@ fn edge_b_rust_dag_provenance_brief_body() -> List<MarkdownBlock> {
   ]
 }
 
-data edge_b_rust_dag_provenance_brief_plan: Plan = Plan {
+data edge_b_rust_dag_provenance_brief_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "edge-b-rust-dag-provenance-brief",
   title: "Edge-(b) scoped dispatch brief — rust-test ↔ consumed-.dag provenance (the coverage keystone)",
   body: edge_b_rust_dag_provenance_brief_body(),

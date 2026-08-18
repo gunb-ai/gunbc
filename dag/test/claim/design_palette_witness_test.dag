@@ -31,8 +31,8 @@ test fn witness_camel_ivory_near_miss() -> Bool {
   }
 }
 
-fn authored_five() -> SwatchSet {
-  SwatchSet {
+fn authored_five() -> gunbc.design.palette.SwatchSet {
+  gunbc.design.palette.SwatchSet {
     name: "island-pastel-authored",
     provenance: island_pastel.provenance,
     members: fold(island_pastel.members, init: [], f: (acc, m) =>
@@ -57,8 +57,8 @@ test fn witness_loam_carries_text_capability() -> Bool {
 }
 
 test fn witness_grade_kernel_discriminates() -> Bool {
-  let black = Srgb8 { r: 0, g: 0, b: 0 }
-  let white = Srgb8 { r: 255, g: 255, b: 255 }
+  let black = extdeps.color.srgb.Srgb8 { r: 0, g: 0, b: 0 }
+  let white = extdeps.color.srgb.Srgb8 { r: 255, g: 255, b: 255 }
   match srgb8_contrast_ratio_x100(a: black, b: white) {
     Present { value: r_bw } =>
       r_bw == 2100
@@ -67,7 +67,7 @@ test fn witness_grade_kernel_discriminates() -> Bool {
           Present { value: r_mm } =>
             r_mm == 100
               && grade_rank(g: grade_of_contrast(contrast_x100: 100)) == 0
-              && !srgb8_admissible(c: Srgb8 { r: 256, g: 0, b: 0 })
+              && !srgb8_admissible(c: extdeps.color.srgb.Srgb8 { r: 256, g: 0, b: 0 })
           Absent => false
         }
     Absent => false
@@ -95,7 +95,7 @@ test fn witness_hsl_projection_red_on_off_by_one_hue() -> Bool {
 }
 
 test fn witness_achromatic_maps_to_variant_not_hue_zero() -> Bool {
-  match srgb8_to_hsl_projection(c: Srgb8 { r: 128, g: 128, b: 128 }) {
+  match srgb8_to_hsl_projection(c: extdeps.color.srgb.Srgb8 { r: 128, g: 128, b: 128 }) {
     Present { value: proj } => match proj {
       Achromatic { l_pct: _ } => true
       Chromatic { h: _, s_pct: _, l_pct: _ } => false
@@ -105,7 +105,7 @@ test fn witness_achromatic_maps_to_variant_not_hue_zero() -> Bool {
 }
 
 test fn witness_chromatic_still_projects_hue() -> Bool {
-  match srgb8_to_hsl_projection(c: Srgb8 { r: 255, g: 0, b: 0 }) {
+  match srgb8_to_hsl_projection(c: extdeps.color.srgb.Srgb8 { r: 255, g: 0, b: 0 }) {
     Present { value: proj } => match proj {
       Chromatic { h, s_pct, l_pct: _ } => h >= 0 && s_pct > 0
       Achromatic { l_pct: _ } => false
@@ -115,7 +115,7 @@ test fn witness_chromatic_still_projects_hue() -> Bool {
 }
 
 test fn witness_gray_never_yields_hue_zero_as_red() -> Bool {
-  match srgb8_to_hsl_projection(c: Srgb8 { r: 127, g: 127, b: 127 }) {
+  match srgb8_to_hsl_projection(c: extdeps.color.srgb.Srgb8 { r: 127, g: 127, b: 127 }) {
     Present { value: proj } => match proj {
       Chromatic { h: 0, s_pct: 0, l_pct: _ } => false
       Chromatic { h: _, s_pct: _, l_pct: _ } => true
@@ -145,7 +145,7 @@ test fn witness_cited_palette_counts() -> Bool {
     && palette_catalog.length() == 3
 }
 
-fn ladder_step_matches_catalog(step_name: String, step_color: Srgb8) -> Bool {
+fn ladder_step_matches_catalog(step_name: String, step_color: extdeps.color.srgb.Srgb8) -> Bool {
   fold(solarized_swatches, init: false, f: (found, row) =>
     found || (row.name == step_name
       && row.color.r == step_color.r
@@ -238,13 +238,13 @@ test fn witness_graduated_default_clears_text_aa() -> Bool {
 }
 
 test fn witness_pressed_stop_derivation_and_legibility() -> Bool {
-  swatch_paint(sw: Swatch { name: "probe", color: pressed_stop(c: Srgb8 { r: 0, g: 158, b: 115 }) }) == "#008560"
+  swatch_paint(sw: gunbc.design.palette.Swatch { name: "probe", color: pressed_stop(c: extdeps.color.srgb.Srgb8 { r: 0, g: 158, b: 115 }) }) == "#008560"
     && all(workspace_band_paints(), p =>
       srgb8_contrast_at_least(a: p.ink.color, b: pressed_stop(c: p.fill.color), threshold_hundredths: wcag_aa_large_text_and_graphics_hundredths))
 }
 
 test fn witness_for_use_refuses_empty_and_duplicate() -> Bool {
-  !swatch_set_for_use_admissible(u: SwatchSetForUse { name: "x", base: island_pastel, completions: [], use_note: "control" })
-    && !swatch_set_for_use_admissible(u: SwatchSetForUse { name: "x", base: island_pastel, completions: [swatch_filed(sw: Swatch { name: "mint", color: island_venom.color })], use_note: "control" })
+  !swatch_set_for_use_admissible(u: gunbc.design.palette.SwatchSetForUse { name: "x", base: island_pastel, completions: [], use_note: "control" })
+    && !swatch_set_for_use_admissible(u: gunbc.design.palette.SwatchSetForUse { name: "x", base: island_pastel, completions: [swatch_filed(sw: gunbc.design.palette.Swatch { name: "mint", color: island_venom.color })], use_note: "control" })
 }
 

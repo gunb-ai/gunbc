@@ -9,8 +9,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type OciDescriptor {
-  mediaType: OciMediaType
-  digest: OciContentDigest
+  mediaType: extdeps.container.oci.types.OciMediaType
+  digest: extdeps.container.oci.digest.OciContentDigest
   size: Int
 }
 

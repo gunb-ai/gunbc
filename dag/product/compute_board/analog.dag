@@ -17,25 +17,25 @@ data analog_note: String = "THE ANALOG CIRCUIT INTENT, LANGUAGE-NEUTRAL. This re
 // not modelled here.
 type ElectricalComponentInstance
   = ResistorInstance {
-      identity: ComponentInstanceIdentity,
-      part: NonEmptyStr,
-      positive_terminal: TerminalIdentity,
-      negative_terminal: TerminalIdentity,
+      identity: product.electrical.connectivity.ComponentInstanceIdentity,
+      part: std.types.NonEmptyStr,
+      positive_terminal: product.electrical.connectivity.TerminalIdentity,
+      negative_terminal: product.electrical.connectivity.TerminalIdentity,
       resistance: Measure<Resistance, Kilo, std.nat.Nat>,
     }
   | CapacitorInstance {
-      identity: ComponentInstanceIdentity,
-      part: NonEmptyStr,
-      positive_terminal: TerminalIdentity,
-      negative_terminal: TerminalIdentity,
+      identity: product.electrical.connectivity.ComponentInstanceIdentity,
+      part: std.types.NonEmptyStr,
+      positive_terminal: product.electrical.connectivity.TerminalIdentity,
+      negative_terminal: product.electrical.connectivity.TerminalIdentity,
       capacitance: Measure<Capacitance, Nano, std.nat.Nat>,
     }
   | IndependentVoltageSourceInstance {
-      identity: ComponentInstanceIdentity,
-      part: NonEmptyStr,
-      positive_terminal: TerminalIdentity,
-      negative_terminal: TerminalIdentity,
-      potential_difference: Volt,
+      identity: product.electrical.connectivity.ComponentInstanceIdentity,
+      part: std.types.NonEmptyStr,
+      positive_terminal: product.electrical.connectivity.TerminalIdentity,
+      negative_terminal: product.electrical.connectivity.TerminalIdentity,
+      potential_difference: std.measure.Volt,
     }
 
 fn component_identity(c: ElectricalComponentInstance) -> ComponentInstanceIdentity {
@@ -71,9 +71,9 @@ fn component_negative_terminal(c: ElectricalComponentInstance) -> TerminalIdenti
 }
 
 type AnalogCircuitIntent {
-  title: NonEmptyStr
+  title: std.types.NonEmptyStr
   components: List<ElectricalComponentInstance>
-  nets: List<ElectricalNet>
+  nets: List<product.electrical.connectivity.ElectricalNet>
 }
 
 // WHICH MODEL CHARACTERIZES A PART, AND AT WHAT FIDELITY, IS NOT SPICE SYNTAX. These three
@@ -88,14 +88,14 @@ type ModelFidelity
   | VendorSubcircuit
 
 type ElectricalModelStanding
-  = ElectricalModelCited { model_card: NonEmptyStr, fidelity: ModelFidelity }
+  = ElectricalModelCited { model_card: std.types.NonEmptyStr, fidelity: ModelFidelity }
   | ElectricalModelAbsent
 
 // The model standing is carried BESIDE the circuit rather than inside it, because whether this
 // repository holds a simulation model for a part is a fact about our evidence, not a fact about
 // the board. The board is the same board either way.
 type ComponentModelBinding {
-  component: ComponentInstanceIdentity
+  component: product.electrical.connectivity.ComponentInstanceIdentity
   standing: ElectricalModelStanding
 }
 

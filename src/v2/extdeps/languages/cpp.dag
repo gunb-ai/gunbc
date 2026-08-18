@@ -28,27 +28,27 @@ type CppTwosComplement
 
 type CppSignedIntegerWidthSelection {
   spelling: CppSignedIntegerSurfaceSpelling
-  target_profile: CppTargetProfile
+  target_profile: v2.extdeps.cpp_abi.CppTargetProfile
 }
 
 type CppUnsignedIntegerWidthSelection {
   spelling: CppUnsignedIntegerSurfaceSpelling
-  target_profile: CppTargetProfile
+  target_profile: v2.extdeps.cpp_abi.CppTargetProfile
 }
 
 type CppPlainCharWidthSelection {
   spelling: CppPlainCharSurfaceSpelling
-  target_profile: CppTargetProfile
+  target_profile: v2.extdeps.cpp_abi.CppTargetProfile
 }
 
 type CppWcharTWidthSelection {
   spelling: CppWcharTSurfaceSpelling
-  target_profile: CppTargetProfile
+  target_profile: v2.extdeps.cpp_abi.CppTargetProfile
 }
 
 type CppFixedUnsignedCodeUnitIntegerWidthSelection {
   spelling: CppFixedUnsignedCodeUnitIntegerSurfaceSpelling
-  target_profile: CppTargetProfile
+  target_profile: v2.extdeps.cpp_abi.CppTargetProfile
 }
 
 type CppRepresentableResultRequired
@@ -77,7 +77,7 @@ type CppScalar
   | BoolScalar
 
 type CppIntegerPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   width_fact: Node
   signedness_fact: Node
   encoding_fact: Node
@@ -85,21 +85,21 @@ type CppIntegerPrimitiveFacts {
 }
 
 type CppCharacterPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   width_fact: Node
   signedness_fact: Node
   encoding_fact: Node
 }
 
 type CppBoolPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   encoding_fact: Node
 }
 
 type CppGrammarRelationRow {
-  production: GrammarProduction
+  production: v2.std.grammar.GrammarProduction
   emitted: Node
-  tokens: List<ConcreteSyntaxToken>
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 data cpp_source_text: String = "int add(int x, int y) { return x + y; }"
 
@@ -1025,7 +1025,7 @@ fn cpp_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 
 type CppGramBuild1State
   = CppGramBuild1StateInit
-  | CppGramBuild1StateReady { expr: GrammarExpr }
+  | CppGramBuild1StateReady { expr: v2.std.grammar.GrammarExpr }
 
 fn cpp_grammar_sequence_from_token_classes() -> GrammarExpr {
   match fold_list(

@@ -10,8 +10,8 @@ data devboot_shell_typed_effects_dissolve_ref: DeclarationRef = DeclarationRef {
 }
 
 type RetainedWitnessRun {
-  reason: NonEmptyStr
-  dissolves_to: DeclarationRef
+  reason: std.types.NonEmptyStr
+  dissolves_to: std.decl_ref.DeclarationRef
 }
 
 data retained_devboot_rm_rf: RetainedWitnessRun = RetainedWitnessRun {

@@ -1,7 +1,7 @@
 module v2.test.claim.name_resolve_cross_tree_resolution
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn ct_graft_module_root(root: Node) -> Node {
   match module_header_containment_graft(root: root) {
@@ -10,11 +10,11 @@ fn ct_graft_module_root(root: Node) -> Node {
   }
 }
 
-fn ct_qn_node(seg: Symbol) -> Node {
+fn ct_qn_node(seg: v2.std.node.Symbol) -> Node {
   fold_list_node(
     xs: Cons { head: seg, tail: Empty },
     item_node: fn(sym) {
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
         occurrence_id: SyntheticOccurrence
@@ -23,11 +23,11 @@ fn ct_qn_node(seg: Symbol) -> Node {
   )
 }
 
-fn ct_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
+fn ct_qn_spine(segments: FreeMonoid<v2.std.node.Symbol>) -> Node {
   fold_list_node(
     xs: segments,
     item_node: fn(sym) {
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Atom { identity: sym } },
         children: [],
         occurrence_id: SyntheticOccurrence
@@ -36,8 +36,8 @@ fn ct_qn_spine(segments: FreeMonoid<Symbol>) -> Node {
   )
 }
 
-fn ct_module_root(qn_spine: Node, export_sym: Symbol, export_atom: Symbol) -> Node {
-  Node {
+fn ct_module_root(qn_spine: Node, export_sym: v2.std.node.Symbol, export_atom: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -48,9 +48,9 @@ fn ct_module_root(qn_spine: Node, export_sym: Symbol, export_atom: Symbol) -> No
         name: ^dag_surface_module_header_qualified_name,
         target: qn_spine
       ),
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: export_sym },
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: export_atom } },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -63,10 +63,10 @@ fn ct_module_root(qn_spine: Node, export_sym: Symbol, export_atom: Symbol) -> No
 
 fn ct_subject_with_import_use(
   qn_spine: Node,
-  import_use_sym: Symbol,
-  imported_decl: Symbol
+  import_use_sym: v2.std.node.Symbol,
+  imported_decl: v2.std.node.Symbol
 ) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
       dag_named_edge(
@@ -77,9 +77,9 @@ fn ct_subject_with_import_use(
         name: ^dag_surface_module_header_qualified_name,
         target: qn_spine
       ),
-      Edge {
+      v2.std.node.Edge {
         label: Named { name: import_use_sym },
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Atom { identity: imported_decl } },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -90,29 +90,29 @@ fn ct_subject_with_import_use(
   }
 }
 
-fn ct_qn_one(seg: Symbol) -> QualifiedName {
+fn ct_qn_one(seg: v2.std.node.Symbol) -> v2.std.qualified_name.QualifiedName {
   Cons { head: seg, tail: Empty }
 }
 
-fn ct_qn_v2(seg_b: Symbol) -> QualifiedName {
+fn ct_qn_v2(seg_b: v2.std.node.Symbol) -> v2.std.qualified_name.QualifiedName {
   Cons {
     head: ^v2,
     tail: Cons { head: seg_b, tail: Empty }
   }
 }
 
-fn ct_qn_v2_std() -> QualifiedName {
+fn ct_qn_v2_std() -> v2.std.qualified_name.QualifiedName {
   Cons {
     head: ^v2,
     tail: Cons { head: ^std, tail: Empty }
   }
 }
 
-fn ct_both_trees() -> SourceRootSet {
+fn ct_both_trees() -> v2.std.cross_tree.import_model.SourceRootSet {
   Cons { head: V2Tree, tail: Cons { head: DagTree, tail: Empty } }
 }
 
-fn ct_dag_same_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+fn ct_dag_same_tree_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: Cons {
     head: ct_graft_module_root(
@@ -137,11 +137,11 @@ fn ct_dag_same_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
   )
 }
 
-fn ct_dag_same_tree_admission() -> Admission {
-  Admission {
-    subject: ResolutionSubject { name: ct_qn_one(seg: ^ct_dag_subject_seg) },
+fn ct_dag_same_tree_admission() -> v2.compiler.name_resolve.Admission {
+  v2.compiler.name_resolve.Admission {
+    subject: v2.compiler.name_resolve.ResolutionSubject { name: ct_qn_one(seg: ^ct_dag_subject_seg) },
     imports: Cons {
-      head: Import {
+      head: v2.compiler.name_resolve.Import {
         target: ct_qn_one(seg: ^ct_dag_peer_seg),
         visibility: ImportVisible
       },
@@ -150,7 +150,7 @@ fn ct_dag_same_tree_admission() -> Admission {
   }
 }
 
-fn ct_v2_same_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+fn ct_v2_same_tree_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: Cons {
     head: ct_graft_module_root(
@@ -179,11 +179,11 @@ fn ct_v2_same_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
   )
 }
 
-fn ct_v2_same_tree_admission() -> Admission {
-  Admission {
-    subject: ResolutionSubject { name: ct_qn_v2(seg_b: ^ct_v2_subject_seg) },
+fn ct_v2_same_tree_admission() -> v2.compiler.name_resolve.Admission {
+  v2.compiler.name_resolve.Admission {
+    subject: v2.compiler.name_resolve.ResolutionSubject { name: ct_qn_v2(seg_b: ^ct_v2_subject_seg) },
     imports: Cons {
-      head: Import {
+      head: v2.compiler.name_resolve.Import {
         target: ct_qn_v2(seg_b: ^ct_v2_peer_seg),
         visibility: ImportVisible
       },
@@ -192,7 +192,7 @@ fn ct_v2_same_tree_admission() -> Admission {
   }
 }
 
-fn ct_cross_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+fn ct_cross_tree_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: Cons {
     head: ct_graft_module_root(
@@ -219,13 +219,13 @@ fn ct_cross_tree_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
   )
 }
 
-fn ct_cross_tree_admission() -> Admission {
-  Admission {
-    subject: ResolutionSubject {
+fn ct_cross_tree_admission() -> v2.compiler.name_resolve.Admission {
+  v2.compiler.name_resolve.Admission {
+    subject: v2.compiler.name_resolve.ResolutionSubject {
       name: ct_qn_v2(seg_b: ^ct_cross_v2_subject_seg)
     },
     imports: Cons {
-      head: Import {
+      head: v2.compiler.name_resolve.Import {
         target: ct_qn_one(seg: ^ct_cross_dag_target_seg),
         visibility: ImportVisible
       },
@@ -234,7 +234,7 @@ fn ct_cross_tree_admission() -> Admission {
   }
 }
 
-fn ct_v2_to_dag_index() -> SourceRootIndex {
+fn ct_v2_to_dag_index() -> v2.std.cross_tree.resolution.SourceRootIndex {
   source_root_index_insert(
     index: source_root_index_insert(
       index: source_root_index_empty(),
@@ -246,7 +246,7 @@ fn ct_v2_to_dag_index() -> SourceRootIndex {
   )
 }
 
-fn ct_dag_to_v2_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
+fn ct_dag_to_v2_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   admit_normalized_roots(
     roots: Cons {
     head: ct_graft_module_root(
@@ -273,13 +273,13 @@ fn ct_dag_to_v2_roots() -> Outcome<FreeMonoid<NormalizedTree>> {
   )
 }
 
-fn ct_dag_to_v2_admission() -> Admission {
-  Admission {
-    subject: ResolutionSubject {
+fn ct_dag_to_v2_admission() -> v2.compiler.name_resolve.Admission {
+  v2.compiler.name_resolve.Admission {
+    subject: v2.compiler.name_resolve.ResolutionSubject {
       name: ct_qn_one(seg: ^ct_inv_dag_subject_seg)
     },
     imports: Cons {
-      head: Import {
+      head: v2.compiler.name_resolve.Import {
         target: ct_qn_v2_std(),
         visibility: ImportVisible
       },
@@ -288,7 +288,7 @@ fn ct_dag_to_v2_admission() -> Admission {
   }
 }
 
-fn ct_dag_to_v2_index() -> SourceRootIndex {
+fn ct_dag_to_v2_index() -> v2.std.cross_tree.resolution.SourceRootIndex {
   source_root_index_insert(
     index: source_root_index_insert(
       index: source_root_index_empty(),

@@ -3,11 +3,11 @@ module test.claim.markup_medium_convergence
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn em_hi() -> Fragment {
-  Element { tag: "em", attributes: [], children: [ FragmentText { content: "hi" } ] }
+fn em_hi() -> std.markup.Fragment {
+  extdeps.browser.Element { tag: "em", attributes: [], children: [ FragmentText { content: "hi" } ] }
 }
 
-fn md_medium() -> MarkupMedium {
+fn md_medium() -> std.markup.MarkupMedium {
   markdown_markup_medium(sp: commonmark_gfm_spellings)
 }
 
@@ -17,9 +17,9 @@ test fn witness_same_fold_html_vs_md() -> Bool {
   (html == "<em>hi</em>") && (md == "*hi*") && (html != md)
 }
 
-fn md_medium_underscore() -> MarkupMedium {
-  MarkupMedium {
-    tag_overrides: [ TagDelimiter { tag: "em", open: "_", close: "_" } ],
+fn md_medium_underscore() -> std.markup.MarkupMedium {
+  std.markup.MarkupMedium {
+    tag_overrides: [ std.markup.TagDelimiter { tag: "em", open: "_", close: "_" } ],
     bracket: canonical_html_spellings,
     text_escape: EscapeRaw,
     void_tags: [],
@@ -34,18 +34,18 @@ test fn witness_perturb_row_flips_output() -> Bool {
   (base == "*hi*") && (perturbed == "_hi_") && (base != perturbed)
 }
 
-fn button_node() -> Fragment {
-  Element {
+fn button_node() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "button",
     attributes: [ attr(name: "class", value: "primary" ) ],
     children: [ FragmentText { content: "Go" } ],
   }
 }
 
-fn single_quote_medium() -> MarkupMedium {
-  MarkupMedium {
+fn single_quote_medium() -> std.markup.MarkupMedium {
+  std.markup.MarkupMedium {
     tag_overrides: [],
-    bracket: MarkupBracket {
+    bracket: std.markup.MarkupBracket {
       tag_open: "<",
       end_tag_open: "</",
       tag_close: ">",
@@ -68,8 +68,8 @@ test fn witness_third_medium_is_one_row() -> Bool {
     && (html != single_quote)
 }
 
-fn md_mixed_doc() -> MarkdownDocument {
-  MarkdownDocument {
+fn md_mixed_doc() -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: [
       ParagraphBlock {
         inlines: [
@@ -87,8 +87,8 @@ test fn witness_md_inline_emission_bytes() -> Bool {
   out == "**bold** and *em*\n"
 }
 
-fn md_link_doc() -> MarkdownDocument {
-  MarkdownDocument {
+fn md_link_doc() -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument {
     blocks: [
       ParagraphBlock {
         inlines: [
@@ -104,8 +104,8 @@ test fn witness_md_link_named_arm_bytes() -> Bool {
   out == "[text](https://x.com)\n"
 }
 
-fn hostile_href_node() -> Fragment {
-  Element {
+fn hostile_href_node() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "a",
     attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
     children: [ FragmentText { content: "x" } ],

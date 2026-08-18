@@ -125,7 +125,7 @@ type SgrStyle
   | SgrIndexedForeground { index: PaletteIndex }
 
 type AnsiMapping {
-  color: SemanticColor
+  color: std.symbols.SemanticColor
   style: SgrStyle
 }
 

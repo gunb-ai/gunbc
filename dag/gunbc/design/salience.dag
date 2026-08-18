@@ -87,8 +87,8 @@ fn salience_budget(role: SalienceRole) -> SalienceBudget {
 data emission_note: String = "MATERIAL AND EMISSION ARE SEPARATE LAYERS (the CRT model): a material is the matte surface or glass and stays inside the quiet envelope; emission is light PRODUCED by the active instrument, layered over the restrained material. Emission is therefore the register's second declared exemption lane beside DataVizArea — scoped by SALIENCE ROLE where DataVizArea is scoped by area, and admitted only through emission_for, whose refusals are typed: a Ground or Supporting subject cannot be granted emission at all, a spec outside the envelope refuses with the measured violation, and a grant with no non-emission discriminator refuses because emission may never be the only state discriminator. The envelope keeps the login reference's shape and rejects its excess: a crisp core near the object, one soft corona carrying identity, the corona strictly wider than the core and strictly low-alpha, total spread far below the reference's maximum bloom. EmissionSpec deliberately has NO pulse, duration, or animation field: a periodic glow is ambient motion (still-until-touched forbids it by construction — no constructor exists) and a steady glow cannot imply progress."
 
 type EmissionSpec {
-  core_radius: CssLength
-  corona_radius: CssLength
+  core_radius: extdeps.languages.css.values.CssLength
+  corona_radius: extdeps.languages.css.values.CssLength
   core_alpha_pct: Int
   corona_alpha_pct: Int
 }
@@ -205,9 +205,9 @@ fn region_focal_admission(region: String, assignments: List<SalienceAssignment>)
 data attraction_note: String = "PHYSICAL RESPONSE MOVES THE VISUAL PLATE, NEVER THE HIT REGION. The reference login control follows the pointer across the whole viewport because it is the only target; a roadmap operation must never become an evasive moving target. AttractionField is therefore a bounded LOCAL field: the pointer entering activation_radius attracts the visual plate by at most max_travel inside a FIXED hit region, and the carrier structurally cannot express anything else — it has no position, offset, or hit-region field, so a realization that moved the target would need facts this authority does not carry (correctness by construction, section 5). The watery quality is inertia and damping, not a pre-authored path: settle borrows the register's one non-monotone easing (settle_spring, derived by reference — no second spring is minted), and the reference's ~16-second low-pass lag is recorded as the lesson LAG IS THE MATERIAL, to be realized inside these bounds at audition. Keyboard focus receives the same focal identity without displacement; touch presses and settles without pointer attraction; renderer-local motion is ephemera and never advances domain state or implies workflow progress."
 
 type AttractionField {
-  activation_radius: CssLength
-  max_travel: CssLength
-  settle: TimingToken
+  activation_radius: extdeps.languages.css.values.CssLength
+  max_travel: extdeps.languages.css.values.CssLength
+  settle: gunbc.design.material.TimingToken
 }
 
 data attraction_travel_max_px: Int = 14

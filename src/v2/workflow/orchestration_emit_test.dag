@@ -1,11 +1,11 @@
 module v2.workflow.orchestration_emit_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn orch_pipeline_step1() -> PipelineStep {
+fn orch_pipeline_step1() -> v2.std.orchestration.PipelineStep {
   Do {
-    run: Run {
+    run: v2.std.orchestration.Run {
       command: "cargo build -p v1-compiler --release --bins",
       env: [],
       redirect: Absent,
@@ -14,9 +14,9 @@ fn orch_pipeline_step1() -> PipelineStep {
   }
 }
 
-fn orch_pipeline_step2() -> PipelineStep {
+fn orch_pipeline_step2() -> v2.std.orchestration.PipelineStep {
   Do {
-    run: Run {
+    run: v2.std.orchestration.Run {
       command: "cargo test --workspace",
       env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
       redirect: Absent,
@@ -25,15 +25,15 @@ fn orch_pipeline_step2() -> PipelineStep {
   }
 }
 
-fn orch_pipeline_two_steps() -> Pipeline {
-  Pipeline {
+fn orch_pipeline_two_steps() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [orch_pipeline_step1(), orch_pipeline_step2()],
     on_failure: FailFast
   }
 }
 
-fn orch_pipeline_one_step() -> Pipeline {
-  Pipeline {
+fn orch_pipeline_one_step() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [orch_pipeline_step1()],
     on_failure: FailFast
   }
@@ -73,7 +73,7 @@ test fn orch_pipeline_join_has_teeth_holds() -> Bool {
 
 test fn orch_run_empty_env_delegates_to_shell_emit_holds() -> Bool {
   match orch_emit_run(
-    r: Run { command: "cargo build", env: [], redirect: Absent, capture: Absent },
+    r: v2.std.orchestration.Run { command: "cargo build", env: [], redirect: Absent, capture: Absent },
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
@@ -84,7 +84,7 @@ test fn orch_run_empty_env_delegates_to_shell_emit_holds() -> Bool {
 
 test fn orch_run_env_prefixed_structured_holds() -> Bool {
   match orch_emit_run(
-    r: Run {
+    r: v2.std.orchestration.Run {
       command: "cargo test --workspace",
       env: [EnvSet { name: "CARGO_BUILD_JOBS", value: "1" }],
       redirect: Absent,
@@ -98,40 +98,40 @@ test fn orch_run_env_prefixed_structured_holds() -> Bool {
   }
 }
 
-fn orch_if_cond() -> Predicate {
+fn orch_if_cond() -> v2.std.orchestration.Predicate {
   ExitZero {
-    run: Run { command: "[ -z \"$1\" ]", env: [], redirect: Absent, capture: Absent }
+    run: v2.std.orchestration.Run { command: "[ -z \"$1\" ]", env: [], redirect: Absent, capture: Absent }
   }
 }
 
-fn orch_do_step(command: String) -> PipelineStep {
-  Do { run: Run { command: command, env: [], redirect: Absent, capture: Absent } }
+fn orch_do_step(command: String) -> v2.std.orchestration.PipelineStep {
+  Do { run: v2.std.orchestration.Run { command: command, env: [], redirect: Absent, capture: Absent } }
 }
 
-fn orch_if_then_one_step() -> Pipeline {
-  Pipeline { steps: [orch_do_step(command: "verdict=absent")], on_failure: FailFast }
+fn orch_if_then_one_step() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline { steps: [orch_do_step(command: "verdict=absent")], on_failure: FailFast }
 }
 
-fn orch_if_then_two_steps() -> Pipeline {
-  Pipeline {
+fn orch_if_then_two_steps() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [orch_do_step(command: "verdict=absent"), orch_do_step(command: "echo \"$verdict\"")],
     on_failure: FailFast
   }
 }
 
-fn orch_if_else_one_step() -> Pipeline {
-  Pipeline { steps: [orch_do_step(command: "verdict=present")], on_failure: FailFast }
+fn orch_if_else_one_step() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline { steps: [orch_do_step(command: "verdict=present")], on_failure: FailFast }
 }
 
-fn orch_if_else_two_steps() -> Pipeline {
-  Pipeline {
+fn orch_if_else_two_steps() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [orch_do_step(command: "verdict=present"), orch_do_step(command: "echo \"$verdict\"")],
     on_failure: FailFast
   }
 }
 
-fn orch_if_pipeline(then_: Pipeline, else_: Optional<Pipeline>) -> Pipeline {
-  Pipeline {
+fn orch_if_pipeline(then_: v2.std.orchestration.Pipeline, else_: Optional<v2.std.orchestration.Pipeline>) -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [If { cond: orch_if_cond(), then_: then_, else_: else_ }],
     on_failure: FailFast
   }
@@ -192,8 +192,8 @@ test fn orch_if_multi_step_else_only_block_form_holds() -> Bool {
   }
 }
 
-fn orch_if_empty_pipeline() -> Pipeline {
-  Pipeline { steps: [], on_failure: FailFast }
+fn orch_if_empty_pipeline() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline { steps: [], on_failure: FailFast }
 }
 
 test fn orch_if_empty_then_no_else_noop_holds() -> Bool {
@@ -242,7 +242,7 @@ test fn orch_if_both_arms_empty_noop_holds() -> Bool {
 
 test fn orch_run_env_unset_multi_binding_structured_holds() -> Bool {
   match orch_emit_run(
-    r: Run {
+    r: v2.std.orchestration.Run {
       command: "cargo test --workspace",
       env: [
         EnvUnset { name: "RUSTC_WRAPPER" },

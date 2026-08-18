@@ -9,17 +9,17 @@ data expected_head_vocabulary_note: String = "The subject is EXPECTED HEAD, not 
 data belt_observes_note: String = "THE BELT OBSERVES; THIS ADJUDICATES. Nothing here pushes a branch or opens a pull request, and nothing here calls a service. The adjudicator takes observations a caller already holds, so every arm is reachable from constructed values with no network and no token — which is what lets the judgment be witnessed at all.\\n\\nThe observations are COPRODUCTS rather than bare lists because a failed read must not be indistinguishable from an empty one. 'No pull requests exist' and 'I could not find out' have different remedies, and a caller handed an empty list for both would report the branch unpublished when the truth is that nothing was learned. That is the ignorance-as-answer conflation, arriving in the direction that looks like an ordinary negative result.\\n\\nThis also replaces the previous module's honest but awkward position that a refusal arm could not be built because the interpreter raises on transport failure. It could not be built THERE, in a function that called the service itself. Here the caller performs the read and reports what happened, so the refusal is an ordinary value and the arm is reachable."
 
 type RemoteBranch {
-  remote: NonEmptyStr
-  branch: NonEmptyStr
-  head_sha: CommitSha
+  remote: std.types.NonEmptyStr
+  branch: std.types.NonEmptyStr
+  head_sha: std.types.CommitSha
 }
 
 // FOUR CAUSES, FOUR REMEDIES, PREVIOUSLY ONE STRING - the same repair remote_branch_read_failure_note describes, applied to the peer observation that did not get it. PullRequestsUnreadable carried `detail: String`, and the four failures that reach it are not four phrasings of one event. No usable credential is a LOCAL decision taken before any request exists, and the remedy is to supply one. A status refusal means the request WAS transported and a remote authority answered - the remedy depends entirely on which status, and the body is usually the only place the remote says why. A transport refusal means no status exists at all, so the remedy is an environment or reachability fix and nothing about the repository has been learned. An undecodable body means a status arrived and the payload beneath it could not be read, which is a decoder or contract fault, not an access one.\n\nA caller handed a sentence can only re-derive which of the four it holds by matching on the prose. That is the classifier-by-substring move, and it is exactly what a 401 needs to avoid: the single most decidable failure in this whole path would arrive as the least tractable kind of value.\n\nWHY THIS TYPE APPEARS NOW AND NOT EARLIER: until the REST realization carried a non-2xx response back as data, three of these four arms were unreachable through the real transport, because dispatch_rest raised. Producing a typed carrier for states no producer could construct would have been vocabulary without execution. The opt-in outcome field on github.Pulls.List is what makes all four reachable, so the type lands with its producer rather than ahead of it.\n\nTHE OPERATION IS NAMED, NOT THE URL. render_pull_request_read_failure labels github.Pulls.List through its OperationRef for the same reason the ls-remote renderer names its operation rather than its argv: the path and query are one realization of that operation and will change when the invocation is derived, while the operation identity will not.
 type PullRequestReadFailure
   = PullRequestCredentialUnavailable { repository: String, reason: String }
-  | PullRequestStatusRefused { repository: String, status: HttpStatus, body: String }
-  | PullRequestTransportRefused { repository: String, cause: NonEmptyStr }
-  | PullRequestBodyUndecodable { repository: String, status: HttpStatus, cause: NonEmptyStr }
+  | PullRequestStatusRefused { repository: String, status: std.types.HttpStatus, body: String }
+  | PullRequestTransportRefused { repository: String, cause: std.types.NonEmptyStr }
+  | PullRequestBodyUndecodable { repository: String, status: std.types.HttpStatus, cause: std.types.NonEmptyStr }
 
 data pulls_list_operation: OperationRef = OperationRef {
   path: "dag/extdeps/github/pulls.dag",
@@ -55,15 +55,15 @@ fn render_pull_request_read_failure(cause: PullRequestReadFailure) -> String {
 }
 
 type PullRequestObservation
-  = PullRequestsRead { pulls: List<PullRequest> }
+  = PullRequestsRead { pulls: List<extdeps.github.pulls.PullRequest> }
   | PullRequestsUnreadable { cause: PullRequestReadFailure }
 
 data remote_branch_read_failure_note: String = "THREE CAUSES, THREE REMEDIES, PREVIOUSLY ONE STRING. RemoteBranchesUnreadable carried `detail: String` and three genuinely different failures were flattened into it at the point of construction: the ref advertisement was REFUSED by the transport, an advertised LINE did not parse, or an advertised ref PROJECTED to an empty branch name. Those are not three phrasings of one event. The first is an environment fact and says nothing about the repository; the second means the remote spoke a format this parser does not accept; the third means a ref exists whose name survives advertisement but not projection. A caller handed a sentence can only re-derive which of the three it holds by matching on the prose, which is the classifier-by-substring move the transport-anemia plan exists to remove.\\n\\nTHE ARGV WENT WITH IT, and that is the sharper half. Each of those three sentences was built by concatenating the literal `git ls-remote --heads` onto the remote name, so the command SPELLING was load-bearing in a domain refusal three times over. A domain layer reaches for a command spelling exactly when it has no stable operation identity to name; the operation is git.Core.LsRemoteHeads and naming it is both stabler and truer, since the spelling is one realization of it and will change when the invocation is derived rather than hand-written.\\n\\nSO THE CAUSE IS TYPED AND THE PROSE MOVES TO A RENDERER. render_remote_branch_read_failure is the only function here that produces a sentence, and it names the operation rather than the argv. What it renders is recoverable from the fields, which is what makes the rendering a projection rather than the authority.\\n\\nWHAT THIS DOES NOT FIX, stated so the seam is visible: RefAdvertisementRefused still carries exit_code and stderr as an Int and a String, because the typed process observation that would replace them does not exist yet — it is the substrate half of this same plan (Lane C) and is in flight separately. This arm is therefore honest about WHICH failure occurred while still anemic about what the process did. The other two arms have no such dependency: they are decided by this module's own decoding, downstream of the process, and are fully typed here."
 
 type RemoteBranchReadFailure
-  = RefAdvertisementRefused { remote: NonEmptyStr, exit_code: Int, stderr: String }
-  | AdvertisedLineUnparsed { remote: NonEmptyStr, index: Int, line: String }
-  | AdvertisedRefProjectsEmptyBranch { remote: NonEmptyStr, ref_names: List<String> }
+  = RefAdvertisementRefused { remote: std.types.NonEmptyStr, exit_code: Int, stderr: String }
+  | AdvertisedLineUnparsed { remote: std.types.NonEmptyStr, index: Int, line: String }
+  | AdvertisedRefProjectsEmptyBranch { remote: std.types.NonEmptyStr, ref_names: List<String> }
 
 data ls_remote_operation: OperationRef = OperationRef {
   path: "dag/extdeps/git/git.dag",
@@ -105,40 +105,40 @@ data remote_ref_identity_note: String = "A REMOTE REF NAME IS NOT A PUBLICATION 
 
 type PublicationOutcome
   = PublicationBound {
-      branch: NonEmptyStr,
+      branch: std.types.NonEmptyStr,
       pr_number: Int,
-      pr_head: CommitSha,
-      url: NonEmptyStr,
+      pr_head: std.types.CommitSha,
+      url: std.types.NonEmptyStr,
       draft: Bool,
     }
   | PublicationHeadDiverged {
-      branch: NonEmptyStr,
+      branch: std.types.NonEmptyStr,
       pr_number: Int,
-      pr_head: CommitSha,
-      expected_head: CommitSha,
-      url: NonEmptyStr,
+      pr_head: std.types.CommitSha,
+      expected_head: std.types.CommitSha,
+      url: std.types.NonEmptyStr,
     }
   | PublicationBindingAmbiguous {
-      branch: NonEmptyStr,
-      base_ref: NonEmptyStr,
+      branch: std.types.NonEmptyStr,
+      base_ref: std.types.NonEmptyStr,
       pr_numbers: List<Int>,
     }
   | RemoteBranchAtExpectedHeadWithoutPullRequest {
-      branch: NonEmptyStr,
-      head_sha: CommitSha,
+      branch: std.types.NonEmptyStr,
+      head_sha: std.types.CommitSha,
     }
   | RemoteBranchHeadDiverged {
-      branch: NonEmptyStr,
-      remote_head: CommitSha,
-      expected_head: CommitSha,
+      branch: std.types.NonEmptyStr,
+      remote_head: std.types.CommitSha,
+      expected_head: std.types.CommitSha,
     }
   | RemoteBranchBindingAmbiguous {
-      branch: NonEmptyStr,
-      remote: NonEmptyStr,
+      branch: std.types.NonEmptyStr,
+      remote: std.types.NonEmptyStr,
       refs_matched: Int,
     }
   | BranchNotPublished {
-      branch: NonEmptyStr,
+      branch: std.types.NonEmptyStr,
       remote_branches_seen: Int,
     }
   | PublicationObservationRefused {
@@ -379,10 +379,10 @@ data publication_subject_note: String = "ONE SUBJECT VALUE, CARRIED BY EVERY STA
 type RoadmapPublicationSubject {
   node_id: String
   attempt_key: String
-  repository: Repository
-  branch: NonEmptyStr
-  expected_base: NonEmptyStr
-  expected_head: CommitSha
+  repository: extdeps.github.github.Repository
+  branch: std.types.NonEmptyStr
+  expected_base: std.types.NonEmptyStr
+  expected_head: std.types.CommitSha
 }
 
 fn publication_subject_remote(subject: RoadmapPublicationSubject) -> NonEmptyStr {
@@ -402,17 +402,17 @@ data receipt_bound_carries_no_head_note: String = "ReceiptBound DELIBERATELY HAS
 type PublicationReceiptOutcome
   = ReceiptBound {
       pr_number: Int,
-      url: NonEmptyStr,
+      url: std.types.NonEmptyStr,
       draft: Bool,
     }
   | ReceiptHeadDiverged {
       pr_number: Int,
-      pr_head: CommitSha,
-      url: NonEmptyStr,
+      pr_head: std.types.CommitSha,
+      url: std.types.NonEmptyStr,
     }
   | ReceiptBindingAmbiguous { pr_numbers: List<Int> }
-  | ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: CommitSha }
-  | ReceiptRemoteBranchHeadDiverged { remote_head: CommitSha }
+  | ReceiptRemoteBranchAtHeadWithoutPullRequest { head_sha: std.types.CommitSha }
+  | ReceiptRemoteBranchHeadDiverged { remote_head: std.types.CommitSha }
   | ReceiptRemoteBranchBindingAmbiguous { refs_matched: Int }
   | ReceiptBranchNotPublished { remote_branches_seen: Int }
   | ReceiptObservationRefused { detail: String }
@@ -930,7 +930,7 @@ data publication_receipt_subject_match_note: String = "A READABLE RECEIPT ABOUT 
 
 type PublicationSubjectMatch
   = SubjectMatches
-  | SubjectDiffers { field: NonEmptyStr, expected: String, found: String }
+  | SubjectDiffers { field: std.types.NonEmptyStr, expected: String, found: String }
 
 fn publication_receipt_subject_match(
   expected: RoadmapPublicationSubject,
@@ -984,7 +984,7 @@ type PublicationEvidence
   | EvidenceAbsent
   | EvidenceUnreadable { reason: String }
   | EvidenceForAnotherSubject {
-      field: NonEmptyStr,
+      field: std.types.NonEmptyStr,
       expected: String,
       found: String,
     }

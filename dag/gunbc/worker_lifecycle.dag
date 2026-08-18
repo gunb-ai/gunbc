@@ -3,8 +3,8 @@ module gunbc.worker_lifecycle
 
 type WorkerTerminalOutcome
   = WorkerTerminalCompleted
-  | WorkerTerminalFailed { reason: NonEmptyStr }
-  | WorkerTerminalRefused { reason: NonEmptyStr }
+  | WorkerTerminalFailed { reason: std.types.NonEmptyStr }
+  | WorkerTerminalRefused { reason: std.types.NonEmptyStr }
 
 fn worker_terminal_outcome_label(outcome: WorkerTerminalOutcome) -> String {
   match outcome {
@@ -15,7 +15,7 @@ fn worker_terminal_outcome_label(outcome: WorkerTerminalOutcome) -> String {
 }
 
 type WorkerPhase
-  = WorkerPhaseUnobserved { reason: NonEmptyStr }
+  = WorkerPhaseUnobserved { reason: std.types.NonEmptyStr }
   | WorkerStarting
   | WorkerWaitingForHumanSetup
   | WorkerRequestingModel
@@ -40,23 +40,23 @@ fn worker_phase_label(phase: WorkerPhase) -> String {
 type ProcessIdentityEvidence
   = ProcessIdentityObserved {
       pid: std.integer.PositiveInt
-      started_at: Timestamp
-      owner: NonEmptyStr
+      started_at: std.types.Timestamp
+      owner: std.types.NonEmptyStr
     }
-  | ProcessIdentityUnobserved { reason: NonEmptyStr }
+  | ProcessIdentityUnobserved { reason: std.types.NonEmptyStr }
 
 type TranscriptEvidence
-  = TranscriptObserved { location: NonEmptyStr }
-  | TranscriptUnobserved { reason: NonEmptyStr }
+  = TranscriptObserved { location: std.types.NonEmptyStr }
+  | TranscriptUnobserved { reason: std.types.NonEmptyStr }
 
 type TerminalOutcomeEvidence
   = TerminalOutcomeObserved { outcome: WorkerTerminalOutcome }
-  | TerminalOutcomeUnobserved { reason: NonEmptyStr }
+  | TerminalOutcomeUnobserved { reason: std.types.NonEmptyStr }
 
 type WorkerProcessEvidence
-  = WorkerProcessUnobserved { reason: NonEmptyStr }
+  = WorkerProcessUnobserved { reason: std.types.NonEmptyStr }
   | WorkerProcessAbsent
-  | WorkerProcessRunning { command: NonEmptyStr }
+  | WorkerProcessRunning { command: std.types.NonEmptyStr }
   | WorkerProcessExited { exit_code: Int, last_command: String }
 
 fn worker_process_evidence_label(evidence: WorkerProcessEvidence) -> String {
@@ -88,9 +88,9 @@ fn worker_process_evidence_detail(evidence: WorkerProcessEvidence) -> String {
 }
 
 type AttemptEvidence {
-  node_id: NonEmptyStr
+  node_id: std.types.NonEmptyStr
   attempt_key: String
-  branch: NonEmptyStr
+  branch: std.types.NonEmptyStr
   worktree: WorktreeEvidence
   provider_instance: ProviderEvidence
   process_identity: ProcessIdentityEvidence
@@ -99,8 +99,8 @@ type AttemptEvidence {
 }
 
 type WorktreeEvidence
-  = WorktreeObserved { path: NonEmptyStr }
-  | WorktreeUnobserved { reason: NonEmptyStr }
+  = WorktreeObserved { path: std.types.NonEmptyStr }
+  | WorktreeUnobserved { reason: std.types.NonEmptyStr }
 
 fn worktree_evidence_label(evidence: WorktreeEvidence) -> String {
   match evidence {
@@ -110,8 +110,8 @@ fn worktree_evidence_label(evidence: WorktreeEvidence) -> String {
 }
 
 type ProviderEvidence
-  = ProviderEvidenceObserved { instance: ProviderInstance }
-  | ProviderEvidenceUnobserved { reason: NonEmptyStr }
+  = ProviderEvidenceObserved { instance: extdeps.llm.cli_lifecycle.ProviderInstance }
+  | ProviderEvidenceUnobserved { reason: std.types.NonEmptyStr }
 
 fn provider_evidence_label(evidence: ProviderEvidence) -> String {
   match evidence {
@@ -142,11 +142,11 @@ fn terminal_outcome_evidence_label(evidence: TerminalOutcomeEvidence) -> String 
 }
 
 type WorkerObservation {
-  configured_provider: ProviderInstance
+  configured_provider: extdeps.llm.cli_lifecycle.ProviderInstance
   process: WorkerProcessEvidence
   provider_instance: ProviderEvidence
-  provider_readiness: ProviderReadiness
-  tool_readiness: ToolExecutionReadiness
+  provider_readiness: extdeps.llm.cli_lifecycle.ProviderReadiness
+  tool_readiness: extdeps.llm.cli_lifecycle.ToolExecutionReadiness
   phase: WorkerPhase
 }
 

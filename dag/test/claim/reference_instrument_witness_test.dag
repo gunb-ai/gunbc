@@ -75,7 +75,7 @@ test fn witness_every_evidence_row_lands_in_its_own_subject_module() -> Bool {
 }
 
 test fn witness_a_cross_attached_citation_is_refused() -> Bool {
-  let cross_attached = InstrumentCitation {
+  let cross_attached = gunbc.design.reference_instrument.InstrumentCitation {
     subject: pip_boy_mk_v_subject,
     fact: decl_ref(
       module_path: "extdeps.instrument.pip_boy_3000",
@@ -85,7 +85,7 @@ test fn witness_a_cross_attached_citation_is_refused() -> Bool {
     && citation_is_contained(c: pip_boy_3000_citation(decl_name: "glitch_on_tap_row"))
 }
 
-fn provenance_is_cited(a: InstrumentBehaviourAxis) -> Bool {
+fn provenance_is_cited(a: gunbc.design.reference_instrument.InstrumentBehaviourAxis) -> Bool {
   match axis_provenance(a: a) {
     CitedOn { first, rest } => true
     OriginatedHere { rationale } => false

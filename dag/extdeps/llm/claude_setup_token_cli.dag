@@ -30,23 +30,23 @@ fn shape_claude_setup_token_argv(executable: NonEmptyStr) -> List<String> {
 }
 
 type ClaudeSetupTokenFormatMeasured {
-  token_prefix: NonEmptyStr
-  min_length: CharacterCount
-  max_length: CharacterCount
+  token_prefix: std.types.NonEmptyStr
+  min_length: std.measure.CharacterCount
+  max_length: std.measure.CharacterCount
 }
 
 type ClaudeSetupTokenFormatObservation
-  = SetupTokenFormatUnobserved { reason: NonEmptyStr }
+  = SetupTokenFormatUnobserved { reason: std.types.NonEmptyStr }
   | SetupTokenFormatMeasured { format: ClaudeSetupTokenFormatMeasured }
 
 type ClaudeSetupTokenBrowserChallenge {
-  verification_uri: NonEmptyStr
-  user_code: NonEmptyStr
+  verification_uri: std.types.NonEmptyStr
+  user_code: std.types.NonEmptyStr
 }
 
 type ClaudeSetupTokenChallengeParse
   = SetupTokenChallengeParsed { challenge: ClaudeSetupTokenBrowserChallenge }
-  | SetupTokenChallengeParseRefused { reason: NonEmptyStr }
+  | SetupTokenChallengeParseRefused { reason: std.types.NonEmptyStr }
 
 data setup_token_challenge_url_marker: String = "https://"
 

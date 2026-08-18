@@ -5,7 +5,7 @@ data provision_build_cache_unknown_catalog_fixture: CacheInterfaceId = "gunbc-te
 
 type ProvisionBuildCacheCatalogGateVerdict
   = ProvisionBuildCacheCatalogRealizable
-  | ProvisionBuildCacheCatalogRefused { reason: NonEmptyStr }
+  | ProvisionBuildCacheCatalogRefused { reason: std.types.NonEmptyStr }
 
 fn catalog_id_is_known(catalog_id: CacheInterfaceId) -> Bool {
   fold(

@@ -2,9 +2,9 @@ module v2.test.claim.generated_conformance_floor
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn generated_claim_emitted(o: Outcome<TestClaim>) -> Bool {
+fn generated_claim_emitted(o: Outcome<v2.std.verification.TestClaim>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

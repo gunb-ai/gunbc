@@ -3,28 +3,28 @@ module std.artifact_store_scratch_grant
 
 data artifact_store_scratch_grant_note: String = "P-B scratch-grant authority (docs/plans/effect-namespace-grants.md 6): the artifact-store host transport's /tmp/gunbc_* store roots are declared frame-owned scratch grants (LifecycleByConvention). extdeps.realization.artifact_store_fs dispatches Write/Read only on Admitted verdicts from artifact_store_scratch_target_admissible — the SINGLE admission entry. INTERIM HONESTY (segment-prefix limit): grant roots use filesystem_position on segment tmp because NamespacePosition prefix is segment-exact — it cannot express in-segment /tmp/gunbc_* naming; is_gunbc_tmp_scratch_store_root is the precision gate in this same module until SymbolIndex-backed positions dissolve the path-string interim (std.filesystem_path_grant note). dissolve-on = P-C region model + envelope-derived LiveTreeDisposition retires hand-stamped ReadsLiveTree on witness rows."
 
-data artifact_store_scratch_frame: Frame = Frame {
+data artifact_store_scratch_frame: std.materialization_ladder.Frame = std.materialization_ladder.Frame {
   name: "artifact-store-scratch",
   kind: SharedStateFrame
 }
 
-data artifact_store_scratch_root: NamespacePosition = filesystem_position(path: ["tmp"])
+data artifact_store_scratch_root: std.effect_grant.NamespacePosition = filesystem_position(path: ["tmp"])
 
 fn is_gunbc_tmp_scratch_store_root(store_root: String) -> Bool {
   starts_with(s: store_root, prefix: "/tmp/gunbc_")
 }
 
-fn artifact_store_scratch_envelope() -> Envelope {
-  Envelope {
+fn artifact_store_scratch_envelope() -> std.effect_grant.Envelope {
+  std.effect_grant.Envelope {
     frame: artifact_store_scratch_frame,
     grants: [
-      Grant {
+      std.effect_grant.Grant {
         verb: Read,
         root: artifact_store_scratch_root,
         binding: RealTransport,
         lifecycle: LifecycleByConvention
       },
-      Grant {
+      std.effect_grant.Grant {
         verb: Write,
         root: artifact_store_scratch_root,
         binding: RealTransport,
@@ -36,12 +36,12 @@ fn artifact_store_scratch_envelope() -> Envelope {
 
 fn artifact_store_scratch_target_admissible(
   store_root: String,
-  verb: Verb
-) -> AccessDecision {
+  verb: std.effect_grant.Verb
+) -> std.access.AccessDecision {
   let env = if is_gunbc_tmp_scratch_store_root(store_root: store_root) {
     artifact_store_scratch_envelope()
   } else {
-    Envelope { frame: artifact_store_scratch_frame, grants: [] }
+    std.effect_grant.Envelope { frame: artifact_store_scratch_frame, grants: [] }
   }
   admit_effect(
     env: env,
@@ -50,10 +50,10 @@ fn artifact_store_scratch_target_admissible(
   )
 }
 
-fn artifact_store_scratch_write_admissible(store_root: String) -> AccessDecision {
+fn artifact_store_scratch_write_admissible(store_root: String) -> std.access.AccessDecision {
   artifact_store_scratch_target_admissible(store_root: store_root, verb: Write)
 }
 
-fn artifact_store_scratch_read_admissible(store_root: String) -> AccessDecision {
+fn artifact_store_scratch_read_admissible(store_root: String) -> std.access.AccessDecision {
   artifact_store_scratch_target_admissible(store_root: store_root, verb: Read)
 }

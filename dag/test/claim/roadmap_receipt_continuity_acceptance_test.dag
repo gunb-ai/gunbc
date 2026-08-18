@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data unreadable_carrier_text_fixture: String = "{ not json"
 
-fn fixture_history() -> List<RoadmapAcceptanceEvent> {
+fn fixture_history() -> List<gunbc.roadmap_model.RoadmapAcceptanceEvent> {
   match load_roadmap_acceptance_event_history_from_carrier_text(
     text: receipt_continuity_acceptance_carrier_fixture_text,
   ) {
@@ -14,14 +14,14 @@ fn fixture_history() -> List<RoadmapAcceptanceEvent> {
   }
 }
 
-fn namespace_occurrence_transport_receipt() -> RoadmapAcceptanceReceipt {
+fn namespace_occurrence_transport_receipt() -> gunbc.roadmap_model.RoadmapAcceptanceReceipt {
   first(
     project_live_acceptance_receipts(history: fixture_history())
       |> filter(r => r.node == nid(s: "namespace-occurrence-transport")),
   )
 }
 
-fn history_without_namespace_occurrence_transport() -> List<RoadmapAcceptanceEvent> {
+fn history_without_namespace_occurrence_transport() -> List<gunbc.roadmap_model.RoadmapAcceptanceEvent> {
   fixture_history()
     |> filter(e =>
       match e {
@@ -31,22 +31,22 @@ fn history_without_namespace_occurrence_transport() -> List<RoadmapAcceptanceEve
     )
 }
 
-fn exact_revocation_for(receipt: RoadmapAcceptanceReceipt) -> RoadmapAcceptanceEvent {
+fn exact_revocation_for(receipt: gunbc.roadmap_model.RoadmapAcceptanceReceipt) -> gunbc.roadmap_model.RoadmapAcceptanceEvent {
   AcceptanceRevoked {
     exact_prior_receipt: receipt,
-    disposition: AcceptanceNodeReopensActiveFrontier {},
-    reason: "fixture revocation witness" as NonEmptyStr,
-    revoked_by: "operator" as NonEmptyStr,
-    revoked_on: "2026-08-04" as NonEmptyStr,
+    disposition: gunbc.roadmap_model.AcceptanceNodeReopensActiveFrontier {},
+    reason: "fixture revocation witness" as std.types.NonEmptyStr,
+    revoked_by: "operator" as std.types.NonEmptyStr,
+    revoked_on: "2026-08-04" as std.types.NonEmptyStr,
   }
 }
 
-fn history_with_exact_revocation_for_namespace_occurrence_transport() -> List<RoadmapAcceptanceEvent> {
+fn history_with_exact_revocation_for_namespace_occurrence_transport() -> List<gunbc.roadmap_model.RoadmapAcceptanceEvent> {
   let receipt = namespace_occurrence_transport_receipt()
   concat(fixture_history(), [exact_revocation_for(receipt: receipt)])
 }
 
-fn history_with_mutated_first_event_accepted_on() -> List<RoadmapAcceptanceEvent> {
+fn history_with_mutated_first_event_accepted_on() -> List<gunbc.roadmap_model.RoadmapAcceptanceEvent> {
   let events = fixture_history()
   match first(events) {
     Absent => events
@@ -55,13 +55,13 @@ fn history_with_mutated_first_event_accepted_on() -> List<RoadmapAcceptanceEvent
         AcceptanceRecorded { receipt: r } =>
           concat(
             [AcceptanceRecorded {
-              receipt: RoadmapAcceptanceReceipt {
+              receipt: gunbc.roadmap_model.RoadmapAcceptanceReceipt {
                 node: r.node,
                 criteria_digest: r.criteria_digest,
                 red_control: r.red_control,
                 handback: r.handback,
                 accepted_by: r.accepted_by,
-                accepted_on: "1970-01-01" as NonEmptyStr,
+                accepted_on: "1970-01-01" as std.types.NonEmptyStr,
               },
             }],
             drop_first_acceptance_event(events: events),
@@ -113,13 +113,13 @@ test fn witness_deleted_event_and_prior_prefix_refuses() -> Bool {
 
 test fn witness_wrong_prior_digest_in_revocation_refuses() -> Bool {
   let receipt = namespace_occurrence_transport_receipt()
-  let wrong = RoadmapAcceptanceReceipt {
+  let wrong = gunbc.roadmap_model.RoadmapAcceptanceReceipt {
     node: receipt.node,
     criteria_digest: receipt.criteria_digest,
     red_control: receipt.red_control,
     handback: receipt.handback,
     accepted_by: receipt.accepted_by,
-    accepted_on: "1970-01-01" as NonEmptyStr,
+    accepted_on: "1970-01-01" as std.types.NonEmptyStr,
   }
   let history = concat(
     fixture_history(),
@@ -163,7 +163,7 @@ test fn witness_criteria_rewrite_with_receipt_retained_refuses_node_acceptance()
         project_live_acceptance_receipts(history: fixture_history())
           |> filter(r => r.node != receipt.node),
       ).criteria_digest
-      let planted = RoadmapAcceptanceReceipt {
+      let planted = gunbc.roadmap_model.RoadmapAcceptanceReceipt {
         node: receipt.node,
         criteria_digest: wrong_digest,
         red_control: receipt.red_control,

@@ -20,12 +20,12 @@ data git_diff_window_relation_observed: String = "observed_merge_base"
 type GitObservedMergeBase {}
 
 type GitExactDiffWindow {
-  target: GitRef,
-  target_generation: GitObjectId,
-  base: GitObjectId,
-  head: GitObjectId,
+  target: std.types.GitRef,
+  target_generation: extdeps.git.object_store.GitObjectId,
+  base: extdeps.git.object_store.GitObjectId,
+  head: extdeps.git.object_store.GitObjectId,
   relation: GitObservedMergeBase,
-  window_identity: Fnv1a64Structural,
+  window_identity: std.content_hash.Fnv1a64Structural,
 }
 
 type GitDiffWindowObservation
@@ -35,10 +35,10 @@ type GitDiffWindowObservation
 
 type GitMergeBaseObservation
   = GitMergeBaseObserved {
-      target: GitRef,
-      target_generation: GitObjectId,
-      base: GitObjectId,
-      head: GitObjectId,
+      target: std.types.GitRef,
+      target_generation: extdeps.git.object_store.GitObjectId,
+      base: extdeps.git.object_store.GitObjectId,
+      head: extdeps.git.object_store.GitObjectId,
     }
   | GitMergeBaseProgramUnavailable { program: String, reason: String }
   | GitMergeBaseExecutionFailed {
@@ -50,7 +50,7 @@ type GitMergeBaseObservation
   | GitMergeBaseOutputMalformed { stdout: String }
 
 type GitTargetGenerationObservation
-  = GitTargetGenerationObserved { generation: GitObjectId }
+  = GitTargetGenerationObserved { generation: extdeps.git.object_store.GitObjectId }
   | GitTargetGenerationProgramUnavailable { program: String, reason: String }
   | GitTargetGenerationExecutionFailed {
       program: String,

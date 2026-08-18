@@ -1,7 +1,7 @@
 module v2.test.emit.rust_signature_general_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_signature_add_golden: String = "fn add(x: i32, y: i32) -> i32 { "
 

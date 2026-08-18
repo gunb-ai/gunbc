@@ -1,5 +1,5 @@
 module v2.test.fixture.dag_add_fn_round_trip_fixture
 
-fn dag_add_fn_round_trip_fixture_identity(s: Symbol) -> Symbol {
+fn dag_add_fn_round_trip_fixture_identity(s: v2.std.node.Symbol) -> v2.std.node.Symbol {
   s
 }

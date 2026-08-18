@@ -2,25 +2,25 @@ module extdeps.realization.parse_table_memo
 
 
 
-data parse_table_memo_seed_handler_dissolution_trigger: Disposition = Scaffold {
+data parse_table_memo_seed_handler_dissolution_trigger: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.compiler.materialization_carriers",
     decl_name: "materialization_allows_memo_store",
     field: WholeDeclaration
   }
 }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/realization"
   }
 }
 
-data parse_table_memo_id: CacheInterfaceId = "parse_table_memo_cache"
+data parse_table_memo_id: std.cache_identity.CacheInterfaceId = "parse_table_memo_cache"
 
-data parse_table_memo_facts: CacheInterfaceCatalogFacts = {
+data parse_table_memo_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
   identity: parse_table_memo_id
   backing_surface: "gunbc-parse-table-in-process"
   transport_encoding: CatalogCasContentEncoding

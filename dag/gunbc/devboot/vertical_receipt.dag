@@ -7,12 +7,12 @@ module gunbc.devboot.vertical_receipt
 //
 // WHAT IS STORED IS IDENTITY, because identity is what stays true. The subject ref token, the artifact object id and the artifact's sha256 are exactly reproducible from the same tree at the same settings, and they are what a later reader needs in order to check this claim rather than believe it.
 type DevbootVerticalReceipt {
-  evaluated_head: CommitSha
-  subject_ref_token: NonEmptyStr
-  artifact_object_id: NonEmptyStr
-  artifact_sha256: Sha256Digest
-  producer_entry: DeclarationRef
-  consumer_entry: DeclarationRef
+  evaluated_head: std.types.CommitSha
+  subject_ref_token: std.types.NonEmptyStr
+  artifact_object_id: std.types.NonEmptyStr
+  artifact_sha256: std.content_hash.Sha256Digest
+  producer_entry: std.decl_ref.DeclarationRef
+  consumer_entry: std.decl_ref.DeclarationRef
 }
 
 // THE STANDING IS DERIVED, AND IT DELIBERATELY REPORTS THE WEAKER CLAIM. This vertical ran once, by hand, through the ordinary CLI. Nothing in the floor executes it, no cadence schedules it, and a cargo build of this size could not sit on a per-PR path without blowing the witness cost budget -- so the honest standing is manual execution, not enrolled coverage.
@@ -24,7 +24,7 @@ type DevbootVerticalReceipt {
 // dissolve-on: an enrolled consumer on a cadence that can afford a real build -- the same lane as the witness cost envelope. At that point the second arm gains its inhabitant and cites the consumer that produces it.
 type DevbootVerticalStanding
   = VerticalExecutedManuallyOnce
-  | VerticalExecutedUnderEnrolledConsumer { consumer: DeclarationRef }
+  | VerticalExecutedUnderEnrolledConsumer { consumer: std.decl_ref.DeclarationRef }
 
 fn devboot_vertical_standing() -> DevbootVerticalStanding {
   VerticalExecutedManuallyOnce

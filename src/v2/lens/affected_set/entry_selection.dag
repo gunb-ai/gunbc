@@ -1,9 +1,9 @@
 module v2.lens.affected_set.entry_selection
 
 
-data entry_file_touched_grain_interim: Disposition = Scaffold {
+data entry_file_touched_grain_interim: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "v2.lens.affected_set.entry_selection",
     decl_name: "entry_affected_by_dependency_view",
     field: WholeDeclaration
@@ -16,12 +16,12 @@ fn string_eq(a: String, b: String) -> Bool {
   a == b
 }
 
-fn decl_belongs_to_module(decl: FnArrowDecl, module: String) -> Bool {
+fn decl_belongs_to_module(decl: v2.std.fn_index.FnArrowDecl, module: String) -> Bool {
   starts_with(s: decl.qualified_name, prefix: concat(module, "."))
     || (decl.qualified_name == module)
 }
 
-fn module_path_for_decl(decl: FnArrowDecl, modules: List<ModuleDeclarationFact>) -> Optional<String> {
+fn module_path_for_decl(decl: v2.std.fn_index.FnArrowDecl, modules: List<v2.lens.module_graph.ModuleDeclarationFact>) -> Optional<String> {
   let best_module = fold(modules, init: "", f: fn(best, fact) {
     if decl_belongs_to_module(decl: decl, module: fact.module) {
       if best == "" {
@@ -57,7 +57,7 @@ fn modules_matching_touched_path(
   pool_roots: List<String>,
   touched_path: String,
   exclude_substrings: List<String>
-) -> List<ModuleDeclarationFact> {
+) -> List<v2.lens.module_graph.ModuleDeclarationFact> {
   fold(
     module_declaration_facts_live(pool_roots: pool_roots),
     init: [],
@@ -75,7 +75,7 @@ fn modules_matching_touched_path(
 
 fn edit_locus_nodes_for_module(
   module: String,
-  decls: List<FnArrowDecl>
+  decls: List<v2.std.fn_index.FnArrowDecl>
 ) -> List<Node> {
   fold(decls, init: [], f: fn(acc, decl) {
     if decl_belongs_to_module(decl: decl, module: module) {
@@ -126,7 +126,7 @@ fn merge_frontier_nodes(acc: List<Node>, more: List<Node>) -> List<Node> {
 }
 
 fn affected_frontier_for_edit_loci(
-  dependencies: List<DependencyView>,
+  dependencies: List<v2.std.dependency.DependencyView>,
   edit_loci: List<Node>
 ) -> List<Node> {
   fold(edit_loci, init: [], f: fn(frontier, locus) {

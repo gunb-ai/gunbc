@@ -113,7 +113,7 @@ fn bach_buildup_counts_strictly_increase(
 }
 
 type PatternStatusMonotonicFoldAcc {
-  previous_status: PatternStatus
+  previous_status: extdeps.physics.bach_et_al_2013_double_slit.PatternStatus
   has_previous: Bool
   valid: Bool
 }
@@ -223,7 +223,7 @@ fn bach_buildup_discernible_precedes_clearly_visible(
 
 type LastBuildupRowAcc
   = LastBuildupRowAbsent
-  | LastBuildupRowPresent { row: BachBuildupObservationRow }
+  | LastBuildupRowPresent { row: extdeps.physics.bach_et_al_2013_double_slit.BachBuildupObservationRow }
 
 fn fold_track_last_buildup_row(
   acc: LastBuildupRowAcc,

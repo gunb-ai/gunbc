@@ -50,7 +50,7 @@ test fn w_index_by_registry_algebra_gap_named_finding() -> Bool {
 
 test fn w_unknown_realization_refuses() -> Bool {
   match primitive_realization_unknown_primitive_violation(
-    realization: PrimitiveRealization {
+    realization: std.primitive_identity.PrimitiveRealization {
       primitive: primitive_map_keys,
       target: EmitRust,
       handler: decl_ref(module_path: "std.primitive_identity", decl_name: "missing_handler"),

@@ -14,7 +14,7 @@ fn list_contains_string(xs: List<String>, needle: String) -> Bool {
   fold(xs, init: false, f: (acc, x) => acc || (x == needle))
 }
 
-fn well_formed_entries(raw: String) -> List<GitDiffStatusEntry> {
+fn well_formed_entries(raw: String) -> List<extdeps.git.GitDiffStatusEntry> {
   match git_diff_name_status_parse(raw: raw) {
     GitDiffNameStatusComplete { entries: entries } => entries
     GitDiffNameStatusTruncated { pending: _, entries: entries } => entries

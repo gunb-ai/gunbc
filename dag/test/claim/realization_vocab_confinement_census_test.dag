@@ -7,7 +7,7 @@ data confinement_census_witness_note: String = "THE SUBJECT ROSTERS ARE READ FRO
 
 data confinement_census_witness_revision_commit: String = "0000000000000000000000000000000000000b0b"
 
-fn confinement_witness_revision() -> MeasurementRevision {
+fn confinement_witness_revision() -> gunbc.guarantee_measurement.MeasurementRevision {
   confinement_census_revision(commit: confinement_census_witness_revision_commit)
 }
 

@@ -2,13 +2,13 @@ module gunbc.plan
 
 
 type PlanRetirement
-  = PlanRetiresWhen { condition: DissolutionCondition }
+  = PlanRetiresWhen { condition: std.dissolution.DissolutionCondition }
   | PlanHasNoRetirement
 
 type Plan {
   slug: String,
   title: String,
-  body: List<MarkdownBlock>,
+  body: List<std.markdown.MarkdownBlock>,
   retirement: PlanRetirement,
 }
 

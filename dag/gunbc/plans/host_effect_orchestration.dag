@@ -1,7 +1,7 @@
 module gunbc.plans.host_effect_orchestration
 
 
-fn host_effect_orchestration_body() -> List<MarkdownBlock> {
+fn host_effect_orchestration_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** design note for sign-off. Co-authored smart-newt-512 (dag-managed-infra) + neat-boar-71 (BMC onboarding). **Neither lane mints the interface until the shape is signed** (operator + bright-stag-194). Until then host effects ride neat-boar's `host_exec()` placeholder seam — *using* it, not minting the interface; every call migrates onto `apply()` in one move once signed."),
     h2(text: "0. Aim (operator, 2026-06-24)"),
@@ -81,7 +81,7 @@ fn host_effect_orchestration_body() -> List<MarkdownBlock> {
   ]
 }
 
-data host_effect_orchestration_plan: Plan = Plan {
+data host_effect_orchestration_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "host-effect-orchestration",
   title: "Host-effect orchestration — interface + shell→.dag migration plan",
   body: host_effect_orchestration_body(),

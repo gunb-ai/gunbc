@@ -21,13 +21,13 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 }
 
 type PduCatalogRow {
-  model_family: NonEmptyStr
-  manufacturer: Vendor<Hardware>
-  rack_units: RackUnit
-  nominal_supply_voltage: Volt
-  rated_current: Ampere
+  model_family: std.types.NonEmptyStr
+  manufacturer: Vendor<extdeps.hardware.Hardware>
+  rack_units: std.measure.RackUnit
+  nominal_supply_voltage: std.measure.Volt
+  rated_current: std.measure.Ampere
   outlet_count: Int
   front_outlet_count: Int
   rear_outlet_count: Int
-  cord_length: Millimeter
+  cord_length: std.measure.Millimeter
 }

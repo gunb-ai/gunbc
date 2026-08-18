@@ -1,7 +1,7 @@
 module test.claim.workflow_recursive_gate
 
 
-func main() -> ProcessExit {
+func main() -> std.process.ProcessExit {
   let w = workflow_kernel_witnessed()
   if workflow_kernel_all_verified(w) {
     ExitSuccess

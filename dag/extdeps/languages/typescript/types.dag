@@ -1,14 +1,14 @@
 module extdeps.languages.typescript.types
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.typescriptlang.org/docs/handbook/2/types-from-types.html"
   }
 }
 
-data ts_type_checkpoints: List<TypeCheckpoint> = [
+data ts_type_checkpoints: List<std.coercion.TypeCheckpoint> = [
   { dag_name: "Int",    target_type: "number",     default_expr: "0",               is_copy: true,  literal_suffix: none },
   { dag_name: "Float",  target_type: "number",     default_expr: "0.0",             is_copy: true,  literal_suffix: none },
   { dag_name: "Bool",   target_type: "boolean",    default_expr: "false",           is_copy: true,  literal_suffix: none },
@@ -19,7 +19,7 @@ data ts_type_checkpoints: List<TypeCheckpoint> = [
   { dag_name: "Json",   target_type: "unknown",    default_expr: "null",            is_copy: false, literal_suffix: none }
 ]
 
-data ts_algebra_inhabitants: List<InhabitantDecl> = [
+data ts_algebra_inhabitants: List<std.coercion.InhabitantDecl> = [
 
   { algebra: "FreeMonoid",
     template: "Array<\{0\}>",
@@ -68,14 +68,14 @@ data ts_optional_template: String = "\{0\} | undefined"
 data ts_none_expr: String = "undefined"
 data ts_some_template: String = "{0}"
 
-data ts_callable: CallableRepr = CallableRepr {
+data ts_callable: std.coercion.CallableRepr = std.coercion.CallableRepr {
   template: "(\{params\}) => \{return\}",
   param_separator: ", ",
   return_separator: " => ",
   import_path: none
 }
 
-data ts_cast_syntax: CastSyntax = {
+data ts_cast_syntax: std.coercion.CastSyntax = {
   template: "\{expr\} as \{type\}",
   cast_rules: [
     { from_type: "number",  to_type: "number" },

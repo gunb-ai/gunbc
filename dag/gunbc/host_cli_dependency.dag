@@ -8,8 +8,8 @@ data which_path_realization_limit_note: String = "observe_host_cli_dependency ke
 data falsifier_run_31685755058_wall_receipt_note: String = "Part-two wall arithmetic CONFIRMED from floor-component-receipt run 31685755058 (not inherited): component 1 cold control wall_ms=3480830 (~58.0 min, 9016 witnesses); component 6 wall_ms=2946579 (~49.1 min, 16 witnesses, npm absent WitnessRed before this PR); components 7-9 outcome=skipped failure_mode=run_incomplete wall_ms=0 witnesses=0 — never executed before the 170-minute step cap. Batch-1 cold-control cost is a separate lane; this PR does not raise deadline/swap/max-parallel."
 
 type HostCliEnrollmentRequirement {
-  tool: NonEmptyStr
-  provision: NonEmptyStr
+  tool: std.types.NonEmptyStr
+  provision: std.types.NonEmptyStr
 }
 
 data codex_wet_materialization_host_cli_requirements: List<HostCliEnrollmentRequirement> = [
@@ -21,7 +21,7 @@ data codex_wet_materialization_host_cli_requirements: List<HostCliEnrollmentRequ
 
 type HostCliDependencyObservation
   = HostCliDependencyPresent
-  | HostCliDependencyAbsent { tool: NonEmptyStr, hint: String }
+  | HostCliDependencyAbsent { tool: std.types.NonEmptyStr, hint: String }
 
 fn observe_host_cli_dependency(tool: CliTool) -> HostCliDependencyObservation {
   let check = shell.Which.Check(command: tool.name)

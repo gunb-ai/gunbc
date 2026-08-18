@@ -6,8 +6,8 @@ type ServiceReadyEvidence {
 }
 
 type ServiceReadyApplyEffect {
-  unit: NonEmptyStr
-  endpoint: NonEmptyStr
+  unit: std.types.NonEmptyStr
+  endpoint: std.types.NonEmptyStr
 }
 
 fn service_ready_apply_effect() -> ServiceReadyApplyEffect {
@@ -433,7 +433,7 @@ fn capture_unit_diagnosis(
 
 type ServiceReadyPollOutcome =
     PollSettled { result: Reconciliation<ServiceReadyApplyEffect, ServiceReadyEvidence> }
-  | PollRefusedAtBound { refusal: ServiceNotReady }
+  | PollRefusedAtBound { refusal: gunbc.live_deploy.service_ready.ServiceNotReady }
 
 fn poll_bound_refusal(spec: DeploymentSpec, last_probe: String) -> ServiceNotReady {
   ServiceNotReady {

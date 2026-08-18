@@ -1,8 +1,8 @@
 module extdeps.cloud.gcp.iam_admin
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "cloud.google.com/iam/docs/reference/rest"
   }
@@ -22,12 +22,12 @@ service gcp.IamAdmin {
   operation CreateServiceAccount {
     input {
       access_token: Secret
-      project_id: GcpProjectId
-      account_id: NonEmptyStr
-      display_name: NonEmptyStr
+      project_id: extdeps.cloud.gcp.gcp.GcpProjectId
+      account_id: std.types.NonEmptyStr
+      display_name: std.types.NonEmptyStr
     }
     output {
-      email: ServiceAccountEmail
+      email: extdeps.cloud.gcp.gcp.ServiceAccountEmail
       sa_name: String from "name"
     }
 
@@ -50,9 +50,9 @@ service gcp.IamAdmin {
   operation CreateWorkloadIdentityPool {
     input {
       access_token: Secret
-      project_id: GcpProjectId
-      pool_id: NonEmptyStr
-      display_name: NonEmptyStr
+      project_id: extdeps.cloud.gcp.gcp.GcpProjectId
+      pool_id: std.types.NonEmptyStr
+      display_name: std.types.NonEmptyStr
     }
     output { operation_name: String from "name" }
 
@@ -76,12 +76,12 @@ service gcp.IamAdmin {
   operation CreateWorkloadIdentityPoolProvider {
     input {
       access_token: Secret
-      project_id: GcpProjectId
-      pool_id: NonEmptyStr
-      provider_id: NonEmptyStr
-      issuer_uri: NonEmptyStr
+      project_id: extdeps.cloud.gcp.gcp.GcpProjectId
+      pool_id: std.types.NonEmptyStr
+      provider_id: std.types.NonEmptyStr
+      issuer_uri: std.types.NonEmptyStr
       attribute_mapping: Map<String, String>
-      attribute_condition: NonEmptyStr
+      attribute_condition: std.types.NonEmptyStr
     }
     output { operation_name: String from "name" }
 

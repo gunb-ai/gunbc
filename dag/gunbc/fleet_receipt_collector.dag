@@ -15,7 +15,7 @@ module gunbc.fleet_receipt_collector
 // absence). Only Collected rows enter the fold; every other arm keeps the host
 // knob-unobserved, which the fold already refuses to call converged.
 type CollectedHostReceipt
-  = ReceiptCollected { host: String, receipt: ConvergeCliReceipt }
+  = ReceiptCollected { host: String, receipt: gunbc.fleet_converge_cli.ConvergeCliReceipt }
   | ReceiptAbsent { host: String, cause: String }
   | ReceiptUnparseable { host: String, line: String }
   | ReceiptConvergedUnbacked { host: String, line: String }

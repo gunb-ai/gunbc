@@ -4,14 +4,14 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data mutation_gate_marker: String = "deploy-mutation-gate-marker-c4e2"
 
-fn srv1_host_observation() -> DeployTargetHostObservation {
+fn srv1_host_observation() -> gunbc.ci_deploy_target_host.DeployTargetHostObservation {
   deploy_target_host_fixture_observation(
     hostname: "srv1",
     runner_name: "actions-runner@srv1-01.service"
   )
 }
 
-fn srv2_host_observation() -> DeployTargetHostObservation {
+fn srv2_host_observation() -> gunbc.ci_deploy_target_host.DeployTargetHostObservation {
   deploy_target_host_fixture_observation(
     hostname: "srv2",
     runner_name: "actions-runner@srv2-09.service"

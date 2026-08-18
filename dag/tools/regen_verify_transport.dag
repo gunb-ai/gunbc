@@ -13,7 +13,7 @@ fn regen_verify_failure_detail(stdout: String, stderr: String) -> String {
   }
 }
 
-fn run_regen_verify_verdict() -> ProcessExit {
+fn run_regen_verify_verdict() -> std.process.ProcessExit {
   let root = git.Inspect.Toplevel()
   if witness_bin_ready(root: root.path, bin: realized_comparison_invoke()) {
     let result = gunbc.WitnessBin.Run(

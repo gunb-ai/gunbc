@@ -151,7 +151,7 @@ type DeriveOpEffectResult
 
 fn derive_effect_shape(
   method: std.types.HttpMethod,
-  path: PathTemplate
+  path: std.http_path.PathTemplate
 ) -> EffectShape<KeySource> {
   match method {
     GET     => ReadEffect
@@ -179,7 +179,7 @@ fn derive_effect_shape(
 fn derive_op_effect(
   operation_name: String,
   method: std.types.HttpMethod,
-  path: PathTemplate
+  path: std.http_path.PathTemplate
 ) -> DeriveOpEffectResult {
   let shape = derive_effect_shape(method: method, path: path)
   DerivedEffect { effect: DerivedOpEffect {

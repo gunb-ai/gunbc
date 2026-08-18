@@ -27,12 +27,12 @@ test fn design_full_argument_axiom_set_is_closed() -> Bool {
   argument_axiom_set_is_closed(design_argument)
 }
 
-fn orphaned_variant() -> Argument {
-  Argument {
+fn orphaned_variant() -> std.syllogism.Argument {
+  std.syllogism.Argument {
     axioms: design_axioms,
     propositions: [
-      Proposition { id: "s1.minimal-safe-efficient", statement: "mse", premises: ["s1.grounding-intersubjective"] },
-      Proposition { id: "s1.grounding-intersubjective", statement: "gi", premises: ["s1.minimal-safe-efficient"] }
+      std.syllogism.Proposition { id: "s1.minimal-safe-efficient", statement: "mse", premises: ["s1.grounding-intersubjective"] },
+      std.syllogism.Proposition { id: "s1.grounding-intersubjective", statement: "gi", premises: ["s1.minimal-safe-efficient"] }
     ]
   }
 }
@@ -41,12 +41,12 @@ test fn orphan_is_detected() -> Bool {
   argument_has_no_orphan(orphaned_variant()) == false
 }
 
-fn cyclic_variant() -> Argument {
-  Argument {
+fn cyclic_variant() -> std.syllogism.Argument {
+  std.syllogism.Argument {
     axioms: design_axioms,
     propositions: [
-      Proposition { id: "p", statement: "x", premises: ["A1", "q"] },
-      Proposition { id: "q", statement: "y", premises: ["p"] }
+      std.syllogism.Proposition { id: "p", statement: "x", premises: ["A1", "q"] },
+      std.syllogism.Proposition { id: "q", statement: "y", premises: ["p"] }
     ]
   }
 }
@@ -55,12 +55,12 @@ test fn cycle_is_detected() -> Bool {
   argument_is_acyclic(cyclic_variant()) == false
 }
 
-fn smuggled_axiom_variant() -> Argument {
-  Argument {
+fn smuggled_axiom_variant() -> std.syllogism.Argument {
+  std.syllogism.Argument {
     axioms: design_axioms,
     propositions: [
-      Proposition { id: "s1.minimal-safe-efficient", statement: "mse", premises: ["A1", "A2"] },
-      Proposition { id: "A4", statement: "a smuggled fourth axiom", premises: [] }
+      std.syllogism.Proposition { id: "s1.minimal-safe-efficient", statement: "mse", premises: ["A1", "A2"] },
+      std.syllogism.Proposition { id: "A4", statement: "a smuggled fourth axiom", premises: [] }
     ]
   }
 }
@@ -69,8 +69,8 @@ test fn smuggled_axiom_is_detected() -> Bool {
   argument_axiom_set_is_closed(smuggled_axiom_variant()) == false
 }
 
-fn empty_variant() -> Argument {
-  Argument { axioms: [], propositions: [] }
+fn empty_variant() -> std.syllogism.Argument {
+  std.syllogism.Argument { axioms: [], propositions: [] }
 }
 
 test fn vacuous_argument_is_rejected() -> Bool {

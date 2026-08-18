@@ -16,7 +16,7 @@ type ScaffoldCensusState
 type ExpectedScaffoldCensusRow {
   qualified_name: String
   expected_state: ScaffoldCensusState
-  rationale: NonEmptyStr
+  rationale: std.types.NonEmptyStr
 }
 
 data scaffold_disposition_census_expected_rows: List<ExpectedScaffoldCensusRow> = [

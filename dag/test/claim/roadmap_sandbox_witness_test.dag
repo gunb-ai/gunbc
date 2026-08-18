@@ -27,10 +27,10 @@ test fn witness_auditioner_blocks_emitted_with_derived_inks() -> Bool {
 }
 
 test fn witness_auditioner_missing_swatch_is_loud() -> Bool {
-  let bogus = AuditionSet {
+  let bogus = gunbc.roadmap_style.AuditionSet {
     set_name: "bogus",
     set: okabe_ito,
-    fills: [ AuditionFillRow { key: "invite", swatch_name: "no-such-swatch" } ],
+    fills: [ gunbc.roadmap_style.AuditionFillRow { key: "invite", swatch_name: "no-such-swatch" } ],
   }
   !audition_set_resolved(a: bogus)
     && audition_block_css(a: bogus) == ""
@@ -114,7 +114,7 @@ fn frame_occurrence_count(s: String, pattern: String) -> Int {
     acc: 0)
 }
 
-fn fixture_band_entry_signature(e: WorkBandEntry) -> String {
+fn fixture_band_entry_signature(e: gunbc.roadmap_presentation.WorkBandEntry) -> String {
   match e {
     BandFamily { family } => join([
       "family|", family.claim,

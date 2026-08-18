@@ -189,7 +189,7 @@ fn exemplar_camera() -> ProgramCamera {
 data live_view_two_refusal_sources_note: String = "TWO INDEPENDENT WAYS THE LIVE WORLD CAN FAIL TO ARRIVE, flattened to located text exactly once. gunbc.roadmap_authority's roadmap_acceptance_receipts is a PROJECTION (#7791 receipt-continuity work), not a list — it can refuse before the program view is ever attempted — and gunbc.roadmap_program_view can then refuse on its own causes. Forwarding the first as the second was not available and would have been the fabrication this page exists to avoid: a receipts-projection refusal is not a ProgramViewRefusalCause, and inventing one would put a cause in front of the reader that the model never produced. So this carrier keeps both sources and renders either as its own located line. The page's contract is unchanged — refuse loudly with the causes named, never draw a smaller program. Found by execution rather than by typecheck: passing the projection straight into v1_program_view compiled clean and failed at runtime with 'fold expects a list, got Variant', so the List-versus-coproduct swap at a call site is a class the substrate does not currently wall."
 
 type LiveProgramView
-  = LiveViewDerived { view: V1DeletionProgramView }
+  = LiveViewDerived { view: gunbc.roadmap_program_view.V1DeletionProgramView }
   | LiveViewRefused { causes: List<String> }
 
 fn live_program_view_result() -> LiveProgramView {

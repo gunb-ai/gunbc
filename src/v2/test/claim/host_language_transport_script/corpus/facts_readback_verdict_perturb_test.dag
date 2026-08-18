@@ -1,6 +1,6 @@
 module v2.test.host_language_transport_script.corpus.facts_readback_verdict_perturb
 
-data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data corpus_computed_path: String = "dag/tools/dag_compile_clean_transport.dag"
 data perturb_literal_path: String = "src/v2/test/fixture/transport_script_scan/bare_string_literal/plant.dag"

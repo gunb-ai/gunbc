@@ -11,16 +11,16 @@ data motion_page_title: String = "gunbc — instrument motion lab"
 
 data frames_are_emitted_not_computed_note: String = "The client receives a decided sequence rather than a physics implementation. This is the same reading-direction discipline the emitter uses elsewhere: the model decides, the target renders. It also means the browser cannot disagree with the witness — the list asserted green in dag/test/claim/instrument_bob_witness_test.dag is the list the page ships."
 
-data motion_frame_interval_ms: Milliseconds = 16
+data motion_frame_interval_ms: std.types.Milliseconds = 16
 
-fn sequence_for(t: SyntheticTapStrength, m: MotionPreference) -> BobSequence {
+fn sequence_for(t: gunbc.capability_binding.SyntheticTapStrength, m: gunbc.design.instrument_bob.MotionPreference) -> gunbc.design.instrument_bob.BobSequence {
   bob_sequence(
     i: synthetic_tap_impulse(t: t, at_ms: 0),
     m: m,
     interval_ms: motion_frame_interval_ms)
 }
 
-fn frame_wire(f: BobFrame) -> String {
+fn frame_wire(f: gunbc.design.instrument_bob.BobFrame) -> String {
   to_string(f.displacement_px)
 }
 
@@ -30,15 +30,15 @@ data wire_takes_frames_not_a_tap_note: String = "THE SERIALIZER TAKES FRAMES, NO
 
 The repair is that the function can no longer be reached with a refusal in hand: it takes the frames a caller obtained by matching BobSequenceSettled, so the refusal arm is answered where the refusal is known — as a rendered line naming its cause — and there is no arm here to answer it wrongly."
 
-fn frames_wire(frames: List<BobFrame>) -> String {
+fn frames_wire(frames: List<gunbc.design.instrument_bob.BobFrame>) -> String {
   join(map(frames, f => frame_wire(f: f)), ",")
 }
 
-fn cls(name: String) -> SelectorSubject {
+fn cls(name: String) -> extdeps.languages.css.selectors.SelectorSubject {
   ClassSelector { name: name }
 }
 
-fn motion_rules() -> List<BuildRule> {
+fn motion_rules() -> List<gunbc.design.material.BuildRule> {
   [
     StaticRule {
       selector: cls(name: motion_plate_class),
@@ -84,14 +84,14 @@ fn instrument_motion_css() -> String {
 }
 
 
-fn tap_label(t: SyntheticTapStrength) -> String {
+fn tap_label(t: gunbc.capability_binding.SyntheticTapStrength) -> String {
   join([
     "synthetic tap · ", synthetic_tap_strength_key(t: t),
     " · ", to_string(synthetic_tap_magnitude_milli(t: t)), " milli-m/s²",
   ], "")
 }
 
-fn tap_refused_fragment(t: SyntheticTapStrength, c: BobSequenceRefusal, n: Int, b: Int) -> Fragment {
+fn tap_refused_fragment(t: gunbc.capability_binding.SyntheticTapStrength, c: gunbc.design.instrument_bob.BobSequenceRefusal, n: Int, b: Int) -> std.markup.Fragment {
   el_class("div", "motion-tap-refused", [
     txt(join([
       tap_label(t: t), " — sequence refused · ", bob_sequence_refusal_key(r: c),
@@ -100,7 +100,7 @@ fn tap_refused_fragment(t: SyntheticTapStrength, c: BobSequenceRefusal, n: Int, 
   ])
 }
 
-fn tap_button_with(t: SyntheticTapStrength, full: String) -> Fragment {
+fn tap_button_with(t: gunbc.capability_binding.SyntheticTapStrength, full: String) -> std.markup.Fragment {
   match sequence_for(t: t, m: MotionReduced) {
     BobSequenceRefused { cause: c, frames_emitted: n, budget_allowed: b } =>
       tap_refused_fragment(t: t, c: c, n: n, b: b)
@@ -115,7 +115,7 @@ fn tap_button_with(t: SyntheticTapStrength, full: String) -> Fragment {
   }
 }
 
-fn tap_button(t: SyntheticTapStrength) -> Fragment {
+fn tap_button(t: gunbc.capability_binding.SyntheticTapStrength) -> std.markup.Fragment {
   match sequence_for(t: t, m: MotionFull) {
     BobSequenceRefused { cause: c, frames_emitted: n, budget_allowed: b } =>
       tap_refused_fragment(t: t, c: c, n: n, b: b)
@@ -126,7 +126,7 @@ fn tap_button(t: SyntheticTapStrength) -> Fragment {
 
 data straddle_is_shown_note: String = "The three buttons are labelled with their magnitudes and with whether each clears the discriminating floor, because the straddle is the argument: a light tap is below the threshold a real knock would have to clear, and showing that is what stops the control from reading as a volume knob."
 
-fn tap_row() -> Fragment {
+fn tap_row() -> std.markup.Fragment {
   el_class("div", "motion-taps", [
     tap_button(t: SyntheticTapLight),
     tap_button(t: SyntheticTapFirm),
@@ -134,7 +134,7 @@ fn tap_row() -> Fragment {
   ])
 }
 
-fn straddle_row(t: SyntheticTapStrength) -> Fragment {
+fn straddle_row(t: gunbc.capability_binding.SyntheticTapStrength) -> std.markup.Fragment {
   el_class("div", "motion-straddle", [
     txt(join([
       synthetic_tap_strength_key(t: t), " — ",
@@ -154,7 +154,7 @@ fn requirement_standing_text() -> String {
   }
 }
 
-fn plate_section() -> Fragment {
+fn plate_section() -> std.markup.Fragment {
   el("section", [
     el("h2", [ txt("the plate") ]),
     instrument_note(s: "Press a tap. The inner plate rides and settles; the outer frame does not move. Nothing here reads a sensor, and nothing here changes a roadmap fact, an acceptance, a focus or an operation — the displacement is renderer-local by construction."),
@@ -183,7 +183,7 @@ fn plate_section() -> Fragment {
 
 data probe_section_note: String = "Two probes, run separately and reported separately, because they answer different questions. DeviceMotion is the cross-engine route the Accelerometer specification itself points new projects at; LinearAccelerationSensor is the route whose lifecycle produces a NAMED error when it cannot connect, which is the only way to tell a missing backend from a missing permission from missing hardware. Neither is dropped in favour of the other."
 
-fn probe_section() -> Fragment {
+fn probe_section() -> std.markup.Fragment {
   el("section", [
     el("h2", [ txt("capability probes") ]),
     instrument_note(s: join([
@@ -207,14 +207,14 @@ fn probe_section() -> Fragment {
   ])
 }
 
-fn coverage_provider_text(p: CoverageProvider) -> String {
+fn coverage_provider_text(p: gunbc.capability_binding.CoverageProvider) -> String {
   match p {
     ProviderModelled { declaration } => declaration.module_path
     ProviderNotYetModelled { intended_upstream } => join(["not yet modelled — ", intended_upstream], "")
   }
 }
 
-fn coverage_row(t: BindingCoverageTarget) -> Fragment {
+fn coverage_row(t: gunbc.capability_binding.BindingCoverageTarget) -> std.markup.Fragment {
   el_class("div", "motion-coverage-row", [
     txt(join([
       t.platform, " · ", coverage_provider_text(p: t.provider),
@@ -227,7 +227,7 @@ data coverage_section_note: String = "The coverage frontier, rendered so the gap
 
 EACH ROW SHOWS TWO STATES BECAUSE THERE ARE TWO FACTS. Whether the binding is written and whether anything has run against it are independent, and rendering them as one word let a written-but-unprobed target read the same as a probed one. A reader wants exactly this pair: the second half is the column that is almost entirely 'probe required', which is the honest shape of a lane whose hardware receipts do not exist yet."
 
-fn coverage_section() -> Fragment {
+fn coverage_section() -> std.markup.Fragment {
   el("section", concat(
     [
       el("h2", [ txt("coverage obligations") ]),
@@ -236,7 +236,7 @@ fn coverage_section() -> Fragment {
     map(coverage_targets, t => coverage_row(t: t))))
 }
 
-fn motion_main() -> Fragment {
+fn motion_main() -> std.markup.Fragment {
   el("main", [
     plate_section(),
     probe_section(),
@@ -244,8 +244,8 @@ fn motion_main() -> Fragment {
   ])
 }
 
-fn instrument_motion_page() -> Fragment {
-  Element {
+fn instrument_motion_page() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "html",
     attributes: [ attr(name: "lang", value: "en") ],
     children: [

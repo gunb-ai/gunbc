@@ -31,14 +31,14 @@ type HetznerDedicatedServerType
 
 type HetznerDedicatedServerPriceRow {
   server_type: HetznerDedicatedServerType
-  server_type_wire_label: NonEmptyStr
-  cpu: CpuFacts
-  cpu_description: NonEmptyStr
-  memory_bytes: ByteSize
-  storage_bytes: ByteSize
-  monthly: MoneyPerMonth
-  setup_fee: MoneyOnce
-  pricing_citation: NonEmptyStr
+  server_type_wire_label: std.types.NonEmptyStr
+  cpu: extdeps.cpu.types.CpuFacts
+  cpu_description: std.types.NonEmptyStr
+  memory_bytes: std.measure.ByteSize
+  storage_bytes: std.measure.ByteSize
+  monthly: std.measure.MoneyPerMonth
+  setup_fee: std.measure.MoneyOnce
+  pricing_citation: std.types.NonEmptyStr
 }
 
 data hetzner_ax41_1_ltd_price: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {

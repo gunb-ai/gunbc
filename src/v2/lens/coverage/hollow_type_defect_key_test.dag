@@ -1,15 +1,15 @@
 module v2.test.lens_coverage.hollow_type_defect_key
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-data hollow_type_authority_node: Node = Node {
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data hollow_type_authority_node: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^hollow_type_authority_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data expected_hollow_type_acceptance: CoverageDefectAcceptance = {
-  concern: CoverageDefectAcceptanceKey { lens: HollowType }
+data expected_hollow_type_acceptance: v2.lens.coverage.CoverageDefectAcceptance = {
+  concern: v2.lens.coverage.CoverageDefectAcceptanceKey { lens: HollowType }
 }
 
 test fn hollow_type_defect_key_claim_holds() -> Bool {

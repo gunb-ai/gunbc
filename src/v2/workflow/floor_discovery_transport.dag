@@ -5,14 +5,14 @@ data floor_discovery_transport_authority_note: String = "The transport is a host
 
 type FloorDiscoveryTransportAction
   = ObserveSelectedCommit
-  | ObserveSelectedTree { commit: FloorDiscoveryCommitId }
-  | ObserveTrackedWorktree { commit: FloorDiscoveryCommitId }
-  | ObserveUntrackedWorktree { tree: FloorDiscoveryTreeId }
-  | PublishVerifiedSnapshot { request: FloorDiscoveryRequest }
+  | ObserveSelectedTree { commit: v2.workflow.floor_discovery.FloorDiscoveryCommitId }
+  | ObserveTrackedWorktree { commit: v2.workflow.floor_discovery.FloorDiscoveryCommitId }
+  | ObserveUntrackedWorktree { tree: v2.workflow.floor_discovery.FloorDiscoveryTreeId }
+  | PublishVerifiedSnapshot { request: v2.workflow.floor_discovery.FloorDiscoveryRequest }
 
 type FloorDiscoverySnapshotArtifact {
-  request_identity_digest: Fnv1a64Structural
-  payload_digest: Fnv1a64Structural
+  request_identity_digest: std.content_hash.Fnv1a64Structural
+  payload_digest: std.content_hash.Fnv1a64Structural
 }
 
 type FloorDiscoverySnapshotWriteReceipt {
@@ -21,8 +21,8 @@ type FloorDiscoverySnapshotWriteReceipt {
 }
 
 type FloorDiscoveryTransportObservation
-  = CommitObserved { commit: FloorDiscoveryCommitId }
-  | TreeObserved { tree: FloorDiscoveryTreeId }
+  = CommitObserved { commit: v2.workflow.floor_discovery.FloorDiscoveryCommitId }
+  | TreeObserved { tree: v2.workflow.floor_discovery.FloorDiscoveryTreeId }
   | TrackedWorktreeObserved { modified_paths: List<String> }
   | UntrackedWorktreeObserved { paths: List<String> }
   | SnapshotPublished {
@@ -31,19 +31,19 @@ type FloorDiscoveryTransportObservation
   | TransportObservationRefused { cause: String }
 
 type FloorDiscoveryTransportRefusal
-  = TransportCommitMismatch { expected: FloorDiscoveryCommitId, observed: FloorDiscoveryCommitId }
-  | TransportTreeMismatch { expected: FloorDiscoveryTreeId, observed: FloorDiscoveryTreeId }
+  = TransportCommitMismatch { expected: v2.workflow.floor_discovery.FloorDiscoveryCommitId, observed: v2.workflow.floor_discovery.FloorDiscoveryCommitId }
+  | TransportTreeMismatch { expected: v2.workflow.floor_discovery.FloorDiscoveryTreeId, observed: v2.workflow.floor_discovery.FloorDiscoveryTreeId }
   | TransportTrackedWorktreeDirty
   | TransportUntrackedWorktree { path: String }
-  | TransportSubjectRefused { cause: FloorDiscoverySubjectMismatch }
+  | TransportSubjectRefused { cause: v2.workflow.floor_discovery.FloorDiscoverySubjectMismatch }
   | TransportObservationRefusalCause { cause: String }
 
 type FloorDiscoveryTransportState
-  = TransportNeedsCommit { request: FloorDiscoveryRequest }
-  | TransportNeedsTree { request: FloorDiscoveryRequest }
-  | TransportNeedsTrackedWorktree { request: FloorDiscoveryRequest }
-  | TransportNeedsUntrackedWorktree { request: FloorDiscoveryRequest }
-  | TransportNeedsPublication { request: FloorDiscoveryRequest }
+  = TransportNeedsCommit { request: v2.workflow.floor_discovery.FloorDiscoveryRequest }
+  | TransportNeedsTree { request: v2.workflow.floor_discovery.FloorDiscoveryRequest }
+  | TransportNeedsTrackedWorktree { request: v2.workflow.floor_discovery.FloorDiscoveryRequest }
+  | TransportNeedsUntrackedWorktree { request: v2.workflow.floor_discovery.FloorDiscoveryRequest }
+  | TransportNeedsPublication { request: v2.workflow.floor_discovery.FloorDiscoveryRequest }
   | TransportRefused { cause: FloorDiscoveryTransportRefusal }
   | TransportReady
 

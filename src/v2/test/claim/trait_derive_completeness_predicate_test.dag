@@ -4,20 +4,20 @@ module v2.test.claim.trait_derive_completeness_predicate
 data trait_derive_completeness_predicate_note: String = "Derisk witnesses for Gate-1 sub-wall #2: trait_derive_completeness.dag is the agnostic predicate authority; rust.dag owns surface-binding rows. RED: Int kernel must satisfy Add but not vice versa for String; unknown atom refuses Ord; nullary enum selects copy derive binding."
 
 fn tdc_nullary_enum_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Disj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Conj },
           children: [],
           occurrence_id: SyntheticOccurrence
         }
       },
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Conj },
           children: [],
           occurrence_id: SyntheticOccurrence
@@ -29,17 +29,17 @@ fn tdc_nullary_enum_node() -> Node {
 }
 
 fn tdc_payload_enum_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Disj },
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Conj },
           children: [
-            Edge {
+            v2.std.node.Edge {
               label: Positional,
-              target: Node {
+              target: v2.std.node.Node {
                 kind: TypeNode { connective: Atom { identity: ^tdc_payload_field } },
                 children: [],
                 occurrence_id: SyntheticOccurrence
@@ -55,7 +55,7 @@ fn tdc_payload_enum_node() -> Node {
 }
 
 fn tdc_unknown_atom_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^tdc_unknown_carrier } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -91,7 +91,7 @@ fn tdc_elem_shape_is_kernel_string(elem: Node) -> Bool {
 }
 
 fn tdc_collection_witness_gate_is_incomplete(
-  witness: RequiredTraitWitness,
+  witness: v2.std.compilers.target_model.RequiredTraitWitness,
   elem: Node
 ) -> Bool {
   match trait_derive_completeness_gate_for_collection_witness(witness: witness, elem: elem) {
@@ -100,11 +100,11 @@ fn tdc_collection_witness_gate_is_incomplete(
   }
 }
 
-fn tdc_binding_is(binding: Symbol, expected: Symbol) -> Bool {
+fn tdc_binding_is(binding: v2.std.node.Symbol, expected: v2.std.node.Symbol) -> Bool {
   binding == expected
 }
 
-fn tdc_coproduct_binding_accepted(coproduct: Node) -> Symbol {
+fn tdc_coproduct_binding_accepted(coproduct: Node) -> v2.std.node.Symbol {
   match rust_trait_derive_surface_binding_for_coproduct(coproduct: coproduct) {
     Accepted { value: binding, diagnostics: _ } => binding
     Rejected { diagnostics: _ } => ^tdc_impossible_coproduct_binding

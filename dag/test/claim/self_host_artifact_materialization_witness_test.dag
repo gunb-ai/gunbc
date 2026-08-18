@@ -12,15 +12,15 @@ data ambiguous_stream: String = "\{\"reason\":\"compiler-artifact\",\"target\":\
 
 data observed_digest_note: String = "valid_hex is the REAL sha512 of the ASCII string gunbc-artifact-materialization-fixture, reproducible with printf | sha512sum, rather than hand-typed hex. The first draft here WAS hand-typed and was 130 characters instead of 128; the refinement rejected it, good_observation became a refusal, and the three positive claims went red — which is the wall doing its job and is why this note exists. Built through the validating mint rather than by labelling text a digest: sha512_hex_digest applies the length and lowercase-hex refinement, so if this fixture hex is ever wrong the observation becomes a REFUSAL and the positive claims below go red, rather than a bad digest silently flowing into the carrier. That is the same construction wall the artifact axis relies on, exercised by the witness that depends on it."
 
-fn good_observation() -> Sha512FileObservation {
+fn good_observation() -> extdeps.tools.sha512sum.Sha512FileObservation {
   match std.content_hash.sha512_hex_digest(hex: valid_hex) {
     Present { value: d } => Sha512FileObserved { digest: d }
     Absent =>
-      Sha512FileObservationRefused { cause: "fixture hex failed the refinement" as NonEmptyStr }
+      Sha512FileObservationRefused { cause: "fixture hex failed the refinement" as std.types.NonEmptyStr }
   }
 }
 
-fn path_of(build_success: Bool, stdout: String) -> ArtifactPathOutcome {
+fn path_of(build_success: Bool, stdout: String) -> gunbc.self_host_artifact_materialization.ArtifactPathOutcome {
   gunbc.self_host_artifact_materialization.select_artifact_path(
     build_success: build_success,
     build_stdout: stdout,
@@ -28,7 +28,7 @@ fn path_of(build_success: Bool, stdout: String) -> ArtifactPathOutcome {
   )
 }
 
-fn reported_path_or_empty(outcome: ArtifactPathOutcome) -> String {
+fn reported_path_or_empty(outcome: gunbc.self_host_artifact_materialization.ArtifactPathOutcome) -> String {
   match outcome {
     ArtifactPathReported { executable: exe } => exe
     ArtifactPathBuildFailed { target_name: _ } => ""
@@ -102,7 +102,7 @@ test fn a_refused_digest_does_not_materialize() -> Bool {
   let outcome = gunbc.self_host_artifact_materialization.materialization_outcome_from_path(
     path: path_of(build_success: true, stdout: artifact_stream),
     observation: Sha512FileObservationRefused {
-      cause: "sha512sum DigestFile failed" as NonEmptyStr
+      cause: "sha512sum DigestFile failed" as std.types.NonEmptyStr
     }
   )
   match gunbc.self_host_artifact_materialization.artifact_identity_of(outcome: outcome) {

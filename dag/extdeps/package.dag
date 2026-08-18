@@ -28,7 +28,7 @@ data package_lock_node_grain_note: String = "THE LOCK NODE, NOT name@version, IS
 
 type PackageCoordinate<Ecosystem> {
   ecosystem: Ecosystem
-  name: NonEmptyStr
+  name: std.types.NonEmptyStr
 }
 
 type PackageRequirement<Ecosystem, RequirementSpec> {

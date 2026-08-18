@@ -21,14 +21,14 @@ data hetzner_money_rate_frontier_rows: List<FrontierRow> = [
 
 type HetznerCloudServerCatalogRow {
   server_type: HetznerCloudServerType
-  vcpus: HardwareThreadCount
-  memory_bytes: ByteSize
-  disk_bytes: ByteSize
-  hourly: MoneyAmountMicro
-  monthly_cap: MoneyAmountMicro
-  currency: CurrencyCode
-  pricing_citation: NonEmptyStr
-  cpu_architecture: Architecture
+  vcpus: std.measure.HardwareThreadCount
+  memory_bytes: std.measure.ByteSize
+  disk_bytes: std.measure.ByteSize
+  hourly: std.measure.MoneyAmountMicro
+  monthly_cap: std.measure.MoneyAmountMicro
+  currency: std.currency.CurrencyCode
+  pricing_citation: std.types.NonEmptyStr
+  cpu_architecture: extdeps.toolchain.types.Architecture
 }
 
 data cax41_catalog: HetznerCloudServerCatalogRow = HetznerCloudServerCatalogRow {

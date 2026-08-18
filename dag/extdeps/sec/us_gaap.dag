@@ -2,46 +2,46 @@ module extdeps.sec.us_gaap
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "xbrl.fasb.org/us-gaap/2024/elts/us-gaap-2024.xsd"
   }
 }
 
 // Declared taxonomy release for the us-gaap element tags below. Element tag strings are the single authority (DESIGN section 3 — no nicknaming); the annual release version is cited metadata, not a rename of the tags.
-data us_gaap_taxonomy_version: NonEmptyStr = "2024"
+data us_gaap_taxonomy_version: std.types.NonEmptyStr = "2024"
 
-data us_gaap_taxonomy_namespace: NonEmptyStr = "us-gaap"
+data us_gaap_taxonomy_namespace: std.types.NonEmptyStr = "us-gaap"
 
-data us_gaap_revenues: NonEmptyStr = "Revenues"
+data us_gaap_revenues: std.types.NonEmptyStr = "Revenues"
 
-data us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax: NonEmptyStr = "RevenueFromContractWithCustomerExcludingAssessedTax"
+data us_gaap_revenue_from_contract_with_customer_excluding_assessed_tax: std.types.NonEmptyStr = "RevenueFromContractWithCustomerExcludingAssessedTax"
 
-data us_gaap_cost_of_revenue: NonEmptyStr = "CostOfRevenue"
+data us_gaap_cost_of_revenue: std.types.NonEmptyStr = "CostOfRevenue"
 
-data us_gaap_gross_profit: NonEmptyStr = "GrossProfit"
+data us_gaap_gross_profit: std.types.NonEmptyStr = "GrossProfit"
 
-data us_gaap_selling_and_marketing_expense: NonEmptyStr = "SellingAndMarketingExpense"
+data us_gaap_selling_and_marketing_expense: std.types.NonEmptyStr = "SellingAndMarketingExpense"
 
-data us_gaap_research_and_development_expense: NonEmptyStr = "ResearchAndDevelopmentExpense"
+data us_gaap_research_and_development_expense: std.types.NonEmptyStr = "ResearchAndDevelopmentExpense"
 
-data us_gaap_general_and_administrative_expense: NonEmptyStr = "GeneralAndAdministrativeExpense"
+data us_gaap_general_and_administrative_expense: std.types.NonEmptyStr = "GeneralAndAdministrativeExpense"
 
-data us_gaap_operating_income_loss: NonEmptyStr = "OperatingIncomeLoss"
+data us_gaap_operating_income_loss: std.types.NonEmptyStr = "OperatingIncomeLoss"
 
-data us_gaap_cost_of_goods_and_services_sold: NonEmptyStr = "CostOfGoodsAndServicesSold"
+data us_gaap_cost_of_goods_and_services_sold: std.types.NonEmptyStr = "CostOfGoodsAndServicesSold"
 
-data us_gaap_cost_of_goods_and_service_excluding_depreciation_depletion_and_amortization: NonEmptyStr = "CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization"
+data us_gaap_cost_of_goods_and_service_excluding_depreciation_depletion_and_amortization: std.types.NonEmptyStr = "CostOfGoodsAndServiceExcludingDepreciationDepletionAndAmortization"
 
-data us_gaap_selling_general_and_administrative_expense: NonEmptyStr = "SellingGeneralAndAdministrativeExpense"
+data us_gaap_selling_general_and_administrative_expense: std.types.NonEmptyStr = "SellingGeneralAndAdministrativeExpense"
 
-data us_gaap_operating_expenses: NonEmptyStr = "OperatingExpenses"
+data us_gaap_operating_expenses: std.types.NonEmptyStr = "OperatingExpenses"
 
-data us_gaap_net_income_loss: NonEmptyStr = "NetIncomeLoss"
+data us_gaap_net_income_loss: std.types.NonEmptyStr = "NetIncomeLoss"
 
-data us_gaap_purchase_obligation: NonEmptyStr = "PurchaseObligation"
+data us_gaap_purchase_obligation: std.types.NonEmptyStr = "PurchaseObligation"
 
-data us_gaap_purchase_obligation_due_in_next_twelve_months: NonEmptyStr = "PurchaseObligationDueInNextTwelveMonths"
+data us_gaap_purchase_obligation_due_in_next_twelve_months: std.types.NonEmptyStr = "PurchaseObligationDueInNextTwelveMonths"
 
-data us_gaap_long_term_purchase_commitment_amount: NonEmptyStr = "LongTermPurchaseCommitmentAmount"
+data us_gaap_long_term_purchase_commitment_amount: std.types.NonEmptyStr = "LongTermPurchaseCommitmentAmount"

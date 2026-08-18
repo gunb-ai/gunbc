@@ -1,13 +1,13 @@
 module test.fixture.m4_universal_governed_corpus
 
 
-data m4_universal_probe_case_allowed: PublishedMockCase = PublishedMockCase {
+data m4_universal_probe_case_allowed: std.hermetic_replay.PublishedMockCase = std.hermetic_replay.PublishedMockCase {
   operation_key: "GovernedUniversalProbe.Allowed",
   service: "GovernedUniversalProbe",
   operation: "Allowed",
   case_id: 0
 }
 
-data m4_universal_governed_probe_corpus: List<PublishedMockCase> = [
+data m4_universal_governed_probe_corpus: List<std.hermetic_replay.PublishedMockCase> = [
   m4_universal_probe_case_allowed
 ]

@@ -26,10 +26,10 @@ type HubspotLifecycleStage
 
 type HubspotLifecycleStageRow {
   stage: HubspotLifecycleStage
-  display_label: NonEmptyStr
-  definition_quote: NonEmptyStr
+  display_label: std.types.NonEmptyStr
+  definition_quote: std.types.NonEmptyStr
   sort_order: std.nat.Nat
-  citation: NonEmptyStr
+  citation: std.types.NonEmptyStr
 }
 
 data hubspot_stage_subscriber: HubspotLifecycleStageRow = HubspotLifecycleStageRow {

@@ -1,8 +1,8 @@
 module v2.test.lens_registry.sg_claims
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-data lens_registry_v0_required_ids: List<LensIdV0> = [
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data lens_registry_v0_required_ids: List<v2.lens.registry.LensIdV0> = [
   ComplexityDerivedKernel,
   ComplexityOptimality,
   Cost,

@@ -27,7 +27,7 @@ fn realized_comparison_roster_manifest_path() -> String {
   realized_comparison_repo_path(rel: realized_comparison_roster_manifest_rel)
 }
 
-fn realized_comparison_invoke() -> WitnessBin {
+fn realized_comparison_invoke() -> tools.host_prelude.WitnessBin {
   witness_bin(var_name: "REGEN_STAGE0", bin_name: "regen_stage0")
 }
 

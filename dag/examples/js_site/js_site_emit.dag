@@ -5,7 +5,7 @@ fn js_site_generated_dir() -> String {
   "dag/examples/js_site/generated"
 }
 
-fn js_site_page_basename(id: JsSitePageId) -> String {
+fn js_site_page_basename(id: examples.js_site.JsSitePageId) -> String {
   match id {
     Home => "home"
     About => "about"
@@ -13,36 +13,36 @@ fn js_site_page_basename(id: JsSitePageId) -> String {
   }
 }
 
-fn js_site_html_artifact_path(id: JsSitePageId) -> String {
+fn js_site_html_artifact_path(id: examples.js_site.JsSitePageId) -> String {
   join(
     [js_site_generated_dir(), "/", js_site_page_basename(id: id), ".html"],
     ""
   )
 }
 
-fn js_site_tsx_artifact_path(id: JsSitePageId) -> String {
+fn js_site_tsx_artifact_path(id: examples.js_site.JsSitePageId) -> String {
   join(
     [js_site_generated_dir(), "/", js_site_page_basename(id: id), ".tsx"],
     ""
   )
 }
 
-fn js_site_emit_html(page: JsSitePage) -> HtmlEmitResult {
+fn js_site_emit_html(page: examples.js_site.JsSitePage) -> extdeps.languages.html.HtmlEmitResult {
   try_serialize_html_source(node: page.node)
 }
 
-fn js_site_emit_tsx(page: JsSitePage) -> JsxEmitResult {
+fn js_site_emit_tsx(page: examples.js_site.JsSitePage) -> extdeps.languages.react_jsx.JsxEmitResult {
   try_serialize_jsx_component(fn_name: page.tsx_fn_name, node: page.node)
 }
 
-fn js_site_page_html(page: JsSitePage) -> String {
+fn js_site_page_html(page: examples.js_site.JsSitePage) -> String {
   match js_site_emit_html(page: page) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
   }
 }
 
-fn js_site_page_tsx(page: JsSitePage) -> String {
+fn js_site_page_tsx(page: examples.js_site.JsSitePage) -> String {
   match js_site_emit_tsx(page: page) {
     JsxOk { tsx: s } => s
     JsxRejected { reason: _ } => ""
@@ -53,7 +53,7 @@ fn js_site_write_artifact(path: String, content: String) -> Bool {
   Filesystem.Write(path: path, content: content).success
 }
 
-fn js_site_write_page_artifacts(page: JsSitePage) -> Bool {
+fn js_site_write_page_artifacts(page: examples.js_site.JsSitePage) -> Bool {
   js_site_write_artifact(path: js_site_html_artifact_path(id: page.id), content: js_site_page_html(page: page))
     && js_site_write_artifact(path: js_site_tsx_artifact_path(id: page.id), content: js_site_page_tsx(page: page))
 }
@@ -66,7 +66,7 @@ fn js_site_write_all_artifacts() -> Bool {
   )
 }
 
-func main_wet() -> ProcessExit {
+func main_wet() -> std.process.ProcessExit {
   if js_site_write_all_artifacts() {
     ExitSuccess
   } else {

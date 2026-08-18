@@ -2,8 +2,8 @@ module test.claim.js_site_emit
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn js_site_hostile_page() -> JsSitePage {
-  JsSitePage {
+fn js_site_hostile_page() -> examples.js_site.JsSitePage {
+  examples.js_site.JsSitePage {
     id: Home,
     path: "/hostile",
     tsx_fn_name: "JsSiteHostilePage",

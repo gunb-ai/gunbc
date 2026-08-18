@@ -9,8 +9,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type KernelCmdlineArg
-  = KernelFlag { name: NonEmptyStr }
-  | KernelKeyValue { key: NonEmptyStr, value: String }
+  = KernelFlag { name: std.types.NonEmptyStr }
+  | KernelKeyValue { key: std.types.NonEmptyStr, value: String }
 
 fn kernel_cmdline_arg_wire(arg: KernelCmdlineArg) -> String {
   match arg {

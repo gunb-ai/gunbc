@@ -3,10 +3,10 @@ module test.claim.bmc_firmware_thermal_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data fixture_approved_openbmc_3_22_artifact: ApprovedBmcFirmwareArtifact = ApprovedBmcFirmwareArtifact {
+data fixture_approved_openbmc_3_22_artifact: gunbc.bmc_converge.ApprovedBmcFirmwareArtifact = gunbc.bmc_converge.ApprovedBmcFirmwareArtifact {
   firmware: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.firmware,
   board: srv3_baseboard.catalog.model,
-  image_uri: Uri {
+  image_uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "example.invalid/fixture/altrad8ud-1l2t_3.22.00.static.mtd.tar",
   },
@@ -15,15 +15,15 @@ data fixture_approved_openbmc_3_22_artifact: ApprovedBmcFirmwareArtifact = Appro
   ),
 }
 
-data fixture_pinned_track3_intent: BmcFirmwareIntent = BmcFirmwareTrackRequired {
-  track: BmcFirmwareTrack {
+data fixture_pinned_track3_intent: extdeps.bmc.capability.BmcFirmwareIntent = BmcFirmwareTrackRequired {
+  track: extdeps.bmc.capability.BmcFirmwareTrack {
     family: OpenBmc,
     major_version: 3,
   },
 }
 
 // A synthetic OpenBMC track-3 firmware requirement used only to exercise the firmware-classification machinery (mismatch detection, typed update plans). The fleet intent is BmcFirmwareUnpinned so no fleet host drifts on firmware; drift and update-plan coverage is demonstrated against this pinned fixture rather than fleet policy, so the machinery stays tested after the fleet stopped pinning a track for fan reasons.
-fn host_uses_global_bmc_valid_state(host: ComputeHost) -> Bool {
+fn host_uses_global_bmc_valid_state(host: gunbc.fleet_intent.ComputeHost) -> Bool {
   match host.bmc_intent {
     Present { value: intent } => intent == fleet_bmc_valid_state
     Absent => false
@@ -215,7 +215,7 @@ test fn a_different_image_derives_a_different_surface() -> Bool {
 test fn an_uncatalogued_image_refuses_to_derive_a_surface() -> Bool {
   match bmc_redfish_surface_for(
     catalog: asrock_altrad8ud_1l2t_bmc_redfish_surface_catalog,
-    firmware: BmcFirmwareVersion {
+    firmware: extdeps.bmc.capability.BmcFirmwareVersion {
       family: OpenBmc,
       version: firmware_semantic_version(major: 4, minor: 0, patch: 0),
     },
@@ -385,8 +385,8 @@ test fn sensor_unavailable_uses_same_duty_but_retains_cause() -> Bool {
   }
 }
 
-fn srv4_fan_policy_with_curve(curve: BmcFanCurve) -> BmcFanPolicyObservation {
-  BmcFanPolicyObservation {
+fn srv4_fan_policy_with_curve(curve: extdeps.bmc.types.BmcFanCurve) -> extdeps.bmc.types.BmcFanPolicyObservation {
+  extdeps.bmc.types.BmcFanPolicyObservation {
     firmware: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.firmware,
     evidence_scope: HistoricalEvidenceSnapshot,
     curve: curve,
@@ -403,8 +403,8 @@ fn srv4_fan_policy_with_curve(curve: BmcFanCurve) -> BmcFanPolicyObservation {
   }
 }
 
-fn minimum_duty_perturbation() -> BmcFanCurve {
-  BmcFanCurve {
+fn minimum_duty_perturbation() -> extdeps.bmc.types.BmcFanCurve {
+  extdeps.bmc.types.BmcFanCurve {
     control_sensor: fleet_quiet_temp_soc_fan_curve.control_sensor,
     steps: fleet_quiet_temp_soc_fan_curve.steps,
     minimum_duty: percent(31),
@@ -415,17 +415,17 @@ fn minimum_duty_perturbation() -> BmcFanCurve {
   }
 }
 
-data lazy_onboarding_drift_curve_steps: List<BmcFanCurveStep> = [
-  BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
-  BmcFanCurveStep { at_or_above: celsius(75), duty: percent(30) },
-  BmcFanCurveStep { at_or_above: celsius(90), duty: percent(30) },
-  BmcFanCurveStep { at_or_above: celsius(93), duty: percent(55) },
-  BmcFanCurveStep { at_or_above: celsius(95), duty: percent(70) },
-  BmcFanCurveStep { at_or_above: celsius(97), duty: percent(85) },
-  BmcFanCurveStep { at_or_above: celsius(98), duty: percent(100) },
+data lazy_onboarding_drift_curve_steps: List<extdeps.bmc.types.BmcFanCurveStep> = [
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(40), duty: percent(30) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(75), duty: percent(30) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(90), duty: percent(30) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(93), duty: percent(55) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(95), duty: percent(70) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(97), duty: percent(85) },
+  extdeps.bmc.types.BmcFanCurveStep { at_or_above: celsius(98), duty: percent(100) },
 ]
 
-data lazy_onboarding_drift_curve: BmcFanCurve = BmcFanCurve {
+data lazy_onboarding_drift_curve: extdeps.bmc.types.BmcFanCurve = extdeps.bmc.types.BmcFanCurve {
   control_sensor: "TEMP_SOC",
   steps: lazy_onboarding_drift_curve_steps,
   minimum_duty: percent(30),
@@ -737,7 +737,7 @@ test fn converged_curve_and_installed_tach_topology_are_noop() -> Bool {
 }
 
 test fn desired_curve_with_stale_uninstalled_fan_input_still_builds_apply_plan() -> Bool {
-  let stale_topology = BmcFanPolicyObservation {
+  let stale_topology = extdeps.bmc.types.BmcFanPolicyObservation {
     firmware: asrock_altrad8ud_openbmc_3_22_00_fan_policy_observation.firmware,
     evidence_scope: HistoricalEvidenceSnapshot,
     curve: fleet_quiet_temp_soc_fan_curve,
@@ -829,7 +829,7 @@ test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_
 }
 
 test fn projection_firmware_mismatch_refuses_a_322_projection_on_a_306_host() -> Bool {
-  let observed = BmcFanPolicyObservation {
+  let observed = extdeps.bmc.types.BmcFanPolicyObservation {
     firmware: asrock_altrad8ud_openbmc_3_06_00_capabilities.firmware,
     evidence_scope: HistoricalEvidenceSnapshot,
     curve: minimum_duty_perturbation(),
@@ -883,12 +883,12 @@ test fn srv3_fan_realization_refuses_without_a_modeled_projection() -> Bool {
 }
 
 test fn reboot_durability_evidence_refuses_relabeled_perturbation_capability_digest() -> Bool {
-  let relabeled_receipt = BmcFanRebootPersistenceReceipt {
+  let relabeled_receipt = gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt {
     evidence_scope: srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
     host: srv4_bmc_fan_reboot_persistence_receipt.host,
     perturbation_receipt_id: srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
     perturbation_generation: srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
-    perturbation_capability: BmcFanPolicyProjectionCapability {
+    perturbation_capability: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability {
       board: srv4_bmc_fan_projection_capability.board,
       firmware: srv4_bmc_fan_projection_capability.firmware,
       projected_curve: srv4_bmc_fan_projection_capability.projected_curve,
@@ -898,10 +898,10 @@ test fn reboot_durability_evidence_refuses_relabeled_perturbation_capability_dig
       controller_zone_path: srv4_bmc_fan_projection_capability.controller_zone_path,
       aggregate_fan_pid_entry: srv4_bmc_fan_projection_capability.aggregate_fan_pid_entry,
       realization: srv4_bmc_fan_projection_capability.realization,
-      durability_capability_version: StateDurabilityCapabilityVersion {
+      durability_capability_version: std.state_durability.StateDurabilityCapabilityVersion {
         version: "relabelled-capability",
         definition_linkage: CallerAssertedDefinitionLinkage {
-          reason: "relabelled-capability-linkage" as NonEmptyStr,
+          reason: "relabelled-capability-linkage" as std.types.NonEmptyStr,
     dissolution: symbol_index_subtree_digest_dissolution,
         },
       },
@@ -939,12 +939,12 @@ test fn reboot_durability_evidence_refuses_relabeled_perturbation_capability_dig
 }
 
 test fn relabeled_reboot_construction_refusal_propagates_through_classification() -> Bool {
-  let relabeled_receipt = BmcFanRebootPersistenceReceipt {
+  let relabeled_receipt = gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt {
     evidence_scope: srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
     host: srv4_bmc_fan_reboot_persistence_receipt.host,
     perturbation_receipt_id: srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,
     perturbation_generation: srv4_bmc_fan_reboot_persistence_receipt.perturbation_generation,
-    perturbation_capability: BmcFanPolicyProjectionCapability {
+    perturbation_capability: gunbc.bmc_fan_projection.BmcFanPolicyProjectionCapability {
       board: srv4_bmc_fan_projection_capability.board,
       firmware: srv4_bmc_fan_projection_capability.firmware,
       projected_curve: srv4_bmc_fan_projection_capability.projected_curve,
@@ -1006,7 +1006,7 @@ test fn relabeled_reboot_construction_refusal_propagates_through_classification(
 }
 
 test fn semantically_converged_live_digest_mismatch_refuses_noop() -> Bool {
-  let digest_mismatch = BmcFanPolicyObservation {
+  let digest_mismatch = extdeps.bmc.types.BmcFanPolicyObservation {
     firmware: srv4_bmc_fan_converged_policy_observation.firmware,
     evidence_scope: HistoricalEvidenceSnapshot,
     curve: fleet_quiet_temp_soc_fan_curve,
@@ -1143,7 +1143,7 @@ test fn linux_unsynchronized_publication_refuses_commit_barrier() -> Bool {
 }
 
 test fn reboot_durability_evidence_refuses_non_positive_interval() -> Bool {
-  let zero_duration_receipt = BmcFanRebootPersistenceReceipt {
+  let zero_duration_receipt = gunbc.fleet_bmc_observation.BmcFanRebootPersistenceReceipt {
     evidence_scope: srv4_bmc_fan_reboot_persistence_receipt.evidence_scope,
     host: srv4_bmc_fan_reboot_persistence_receipt.host,
     perturbation_receipt_id: srv4_bmc_fan_reboot_persistence_receipt.perturbation_receipt_id,

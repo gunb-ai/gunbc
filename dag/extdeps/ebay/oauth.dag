@@ -1,8 +1,8 @@
 module extdeps.ebay.oauth
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "developer.ebay.com/api-docs/static/oauth-tokens.html"
   }
@@ -40,17 +40,17 @@ type EbayOAuthErrorShape {
   error_description: String?
 }
 
-data client_credentials_grant_type: NonEmptyStr = "client_credentials"
+data client_credentials_grant_type: std.types.NonEmptyStr = "client_credentials"
 
-data refresh_token_grant_type: NonEmptyStr = "refresh_token"
+data refresh_token_grant_type: std.types.NonEmptyStr = "refresh_token"
 
-data authorization_code_grant_type: NonEmptyStr = "authorization_code"
+data authorization_code_grant_type: std.types.NonEmptyStr = "authorization_code"
 
-data api_scope_root: NonEmptyStr = "https://api.ebay.com/oauth/api_scope"
+data api_scope_root: std.types.NonEmptyStr = "https://api.ebay.com/oauth/api_scope"
 
-data sell_inventory_scope: NonEmptyStr = "https://api.ebay.com/oauth/api_scope/sell.inventory"
+data sell_inventory_scope: std.types.NonEmptyStr = "https://api.ebay.com/oauth/api_scope/sell.inventory"
 
-data user_authorization_endpoint: NonEmptyStr = "https://auth.ebay.com/oauth2/authorize"
+data user_authorization_endpoint: std.types.NonEmptyStr = "https://auth.ebay.com/oauth2/authorize"
 
 service ebay.OAuth {
   config {

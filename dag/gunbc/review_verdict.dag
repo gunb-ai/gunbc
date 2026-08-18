@@ -10,7 +10,7 @@ type LlmReviewProvider
 type ReviewProvider
   = Llm { provider: LlmReviewProvider }
   | HumanReviewer
-  | ProviderOther { name: NonEmptyStr }
+  | ProviderOther { name: std.types.NonEmptyStr }
 
 type ReviewSource
   = LlmSource
@@ -19,15 +19,15 @@ type ReviewSource
   | Unattributed
 
 type PolicyRef {
-  id: NonEmptyStr
-  version: NonEmptyStr
+  id: std.types.NonEmptyStr
+  version: std.types.NonEmptyStr
 }
 
 type Reviewer
   = AgentReviewer { provider: LlmReviewProvider }
   | HumanSeatReviewer
   | PolicyReviewer { policy: PolicyRef }
-  | UnattributedReviewer { provider_name: NonEmptyStr }
+  | UnattributedReviewer { provider_name: std.types.NonEmptyStr }
 
 fn reviewer_source(reviewer: Reviewer) -> ReviewSource {
   match reviewer {
@@ -39,7 +39,7 @@ fn reviewer_source(reviewer: Reviewer) -> ReviewSource {
 }
 
 type ReviewArtifactKind
-  = GitHubReview { state: ReviewState }
+  = GitHubReview { state: extdeps.github.pulls.ReviewState }
   | GitHubReviewComment
   | GitHubIssueComment
   | DashboardReviewArtifact
@@ -65,11 +65,11 @@ type FindingPriority
 
 type VerdictEvidence
   = ExplicitVerdictLine { verdict: ReviewVerdict }
-  | GitHubReviewStateEvidence { state: ReviewState }
+  | GitHubReviewStateEvidence { state: extdeps.github.pulls.ReviewState }
   | BlockingFindingPresent
   | NoBlockingConcernsText
   | HumanOverride { reason: String }
-  | TextualVerdictMarker { marker: NonEmptyStr }
+  | TextualVerdictMarker { marker: std.types.NonEmptyStr }
 
 type ReportExtractionState
   = ParsedDiscreteFindings
@@ -81,17 +81,17 @@ type ParseDeferredState
   | DeferredEmptyComment
 
 type ReviewArtifact {
-  artifact_id: ArtifactId
+  artifact_id: std.types.ArtifactId
   reviewer: Reviewer
   kind: ReviewArtifactKind
-  repo: NonEmptyStr
+  repo: std.types.NonEmptyStr
   pr_number: Int
 
-  source_commit_sha: CommitSha?
-  source_url: NonEmptyStr?
-  body_hash: ContentHash?
+  source_commit_sha: std.types.CommitSha?
+  source_url: std.types.NonEmptyStr?
+  body_hash: std.content_hash.ContentHash?
   body_text: String
-  observed_at: Timestamp?
+  observed_at: std.types.Timestamp?
 }
 
 type ReviewFinding {
@@ -102,28 +102,28 @@ type ReviewFinding {
   path: String?
   line: Int?
   body: String
-  source_artifact_id: ArtifactId
+  source_artifact_id: std.types.ArtifactId
 }
 
 type ReviewVerdictReport {
   reviewer: Reviewer
-  repo: NonEmptyStr
+  repo: std.types.NonEmptyStr
   pr_number: Int
-  head_sha: CommitSha
-  artifact_id: ArtifactId
+  head_sha: std.types.CommitSha
+  artifact_id: std.types.ArtifactId
   verdict: ReviewVerdict
   extraction_state: ReportExtractionState
   findings: List<ReviewFinding>
   evidence: List<VerdictEvidence>
-  parsed_at: Timestamp?
+  parsed_at: std.types.Timestamp?
 }
 
 type MergeReadinessTally {
-  repo: NonEmptyStr
+  repo: std.types.NonEmptyStr
   pr_number: Int
-  head_sha: CommitSha
+  head_sha: std.types.CommitSha
 
-  source_artifact_ids: List<ArtifactId>
+  source_artifact_ids: List<std.types.ArtifactId>
   approval_count: Int
   request_changes_count: Int
   blocking_finding_count: Int
@@ -132,7 +132,7 @@ type MergeReadinessTally {
 
 type ReviewVerdictParseRequest {
   artifact: ReviewArtifact
-  expected_head_sha: CommitSha
+  expected_head_sha: std.types.CommitSha
 }
 
 type ReviewVerdictParseResult

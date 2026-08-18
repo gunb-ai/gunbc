@@ -34,13 +34,13 @@ data github_runner_registration_row_wire_note: String = "THE ORG RUNNERS ENDPOIN
 
 type GitHubSelfHostedRunnerRegistration {
   id: std.nat.Nat
-  name: NonEmptyStr
+  name: std.types.NonEmptyStr
   status: GitHubRunnerRegistrationStatus
   busy: Bool
   ephemeral: Bool
-  version: NonEmptyStr
-  os: NonEmptyStr
-  labels: List<NonEmptyStr>
+  version: std.types.NonEmptyStr
+  os: std.types.NonEmptyStr
+  labels: List<std.types.NonEmptyStr>
 }
 
 data github_runner_registration_predicate_family_disposition: Disposition = Terminal {

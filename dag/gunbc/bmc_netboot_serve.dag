@@ -3,12 +3,12 @@ module gunbc.bmc_netboot_serve
 
 
 type BmcNetbootServePlan {
-  bmc_host: NonEmptyStr
-  serve_port: Port
-  netboot_dir: NonEmptyStr
-  boot_interface: NonEmptyStr
-  bulk_iso_url: Uri
-  autoinstall: UbuntuAutoinstallPayload
+  bmc_host: std.types.NonEmptyStr
+  serve_port: std.types.Port
+  netboot_dir: std.types.NonEmptyStr
+  boot_interface: std.types.NonEmptyStr
+  bulk_iso_url: extdeps.uri.Uri
+  autoinstall: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload
 }
 
 data srv4_bmc_netboot_serve_plan: BmcNetbootServePlan = BmcNetbootServePlan {
@@ -206,11 +206,11 @@ data bmc_netboot_bootstrap_artifact_dir: NonEmptyStr = "/var/lib/gunbc/artifacts
 
 type StagedContentSource
   = InlineText { text: String }
-  | LocalArtifact { path: NonEmptyStr }
-  | FetchFromUri { source: Uri }
+  | LocalArtifact { path: std.types.NonEmptyStr }
+  | FetchFromUri { source: extdeps.uri.Uri }
 
 type BmcStagedFile {
-  remote_path: NonEmptyStr
+  remote_path: std.types.NonEmptyStr
   content: StagedContentSource
 }
 

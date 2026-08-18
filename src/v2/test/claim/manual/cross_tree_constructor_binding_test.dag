@@ -1,7 +1,7 @@
 module v2.test.claim.manual.cross_tree_constructor_binding_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn build_reversed() -> List<Int> {
   fold_list(xs: [1, 2], empty: std.algebra.Empty, cons: fn(acc, item) {

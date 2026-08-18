@@ -1,19 +1,19 @@
 module v2.test.lens_cost.bounded_summation
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data bounded_summation_bound_leaf: Node = Node {
+data bounded_summation_bound_leaf: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^bounded_summation_bound_atom } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data bounded_summation_binder: SizeVariable = SizeVariable {
+data bounded_summation_binder: v2.lens.cost.SizeVariable = v2.lens.cost.SizeVariable {
   source: bounded_summation_bound_leaf
 }
 
-fn bounded_unit_summation_expr() -> CostExpr {
+fn bounded_unit_summation_expr() -> v2.lens.cost.expr.CostExpr {
   cost_loop_expr(
     binder: bounded_summation_binder,
     iterations: size_of(variable: bounded_summation_binder),
@@ -60,18 +60,18 @@ test fn existing_cost_lens_kernel_unchanged() -> Bool {
   }
 }
 
-data claim_bounded_summation: TestClaim = EqualsClaim {
+data claim_bounded_summation: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_cost/bounded_summation: CostSum with grounded binder is representable and projects to linear SymbolicCost",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: bounded_summation_bound_leaf,
   rhs: if bounded_summation_expr_authority_holds() {
     bounded_summation_bound_leaf
   } else {
-    Node {
+    v2.std.node.Node {
       kind: TypeNode { connective: Atom { identity: ^bounded_summation_claim_failed } },
       children: [],
       occurrence_id: SyntheticOccurrence
     }
   },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

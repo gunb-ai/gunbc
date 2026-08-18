@@ -2,7 +2,7 @@ module v2.lens.parallelism
 
 
 type ParallelismFact {
-  dependencies: List<ClassifiedDependencyView<ParallelismRelation>>
+  dependencies: List<ClassifiedDependencyView<v2.lens.common.algebraic_composition.ParallelismRelation>>
 }
 
 fn parallelism_relation_for_view(

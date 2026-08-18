@@ -46,9 +46,9 @@ func run_real_ingest_gate_ready(root: String) -> Bool {
         run_gunbc_claims(
           source_roots: sri_claim_source_roots(manifest_dir: manifest_dir.path),
           claims: [
-            ClaimRun { entry: ingest_entry, function: ingest_witness_module_roots_parse },
-            ClaimRun { entry: ingest_entry, function: ingest_witness_host_manifest_receipt },
-            ClaimRun { entry: ingest_entry, function: ingest_witness_validate_red }
+            tools.host_prelude.ClaimRun { entry: ingest_entry, function: ingest_witness_module_roots_parse },
+            tools.host_prelude.ClaimRun { entry: ingest_entry, function: ingest_witness_host_manifest_receipt },
+            tools.host_prelude.ClaimRun { entry: ingest_entry, function: ingest_witness_validate_red }
           ]
         )
       } else {

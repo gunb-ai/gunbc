@@ -128,7 +128,7 @@ type IterationDimension
   | CollectionFold
   | ArithmeticRepeat
 
-fn algebra_profile_to_dimension(profile: AlgebraProfile) -> IterationDimension? {
+fn algebra_profile_to_dimension(profile: std.algebra.AlgebraProfile) -> IterationDimension? {
   match profile {
     FreeMonoidCollectionProfile     => Present { value: CollectionFold }
     FreeMonoidScalarProfile         => Present { value: CollectionFold }

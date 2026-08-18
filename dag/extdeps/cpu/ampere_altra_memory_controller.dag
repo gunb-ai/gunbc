@@ -94,10 +94,10 @@ fn altra_admits_module_class(c: DramModuleClass) -> Bool {
 // position the vendor moved away from, and the honest reading of a withdrawal is that the
 // capability was found not to hold or not to be supportable — not that nobody looked.
 type ModuleClassWithdrawal {
-  buffering: DimmBuffering
-  withdrawn_in_issue: NonEmptyStr
-  withdrawn_on: NonEmptyStr
-  revision_history_text: NonEmptyStr
+  buffering: extdeps.memory.types.DimmBuffering
+  withdrawn_in_issue: std.types.NonEmptyStr
+  withdrawn_on: std.types.NonEmptyStr
+  revision_history_text: std.types.NonEmptyStr
 }
 
 data altra_udimm_withdrawal: ModuleClassWithdrawal = ModuleClassWithdrawal {
@@ -195,10 +195,10 @@ type BoardDownBuffering
   = BoardProvidesNoRegisterOrBuffer
   | BoardProvidesRegisterOrBuffer
 type BoardDownDramStanding
-  = BoardDownAdmitted { authority: ExternalAuthority }
-  | BoardDownNotAdmittedByController { authority: ExternalAuthority, because: NonEmptyStr }
-  | BoardDownNearestClassWithdrawn { authority: ExternalAuthority, withdrawal: ModuleClassWithdrawal }
-  | BoardDownSupportUnestablished { required_authority: NonEmptyStr }
+  = BoardDownAdmitted { authority: extdeps.external_authority.ExternalAuthority }
+  | BoardDownNotAdmittedByController { authority: extdeps.external_authority.ExternalAuthority, because: std.types.NonEmptyStr }
+  | BoardDownNearestClassWithdrawn { authority: extdeps.external_authority.ExternalAuthority, withdrawal: ModuleClassWithdrawal }
+  | BoardDownSupportUnestablished { required_authority: std.types.NonEmptyStr }
 
 fn altra_board_down_dram_standing(topology: BoardDownBuffering) -> BoardDownDramStanding {
   match topology {

@@ -42,7 +42,7 @@ type ImpactStanding
       causes: List<ImpactStandingCause>
     }
   | PoolIndependentProjectionUnavailable {
-      trigger: ReferenceDerivedClosureTrigger
+      trigger: gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureTrigger
     }
 
 data module_impact_pool_mismatch_note: String = "The declared flag and pool membership are INDEPENDENT observations and are kept independent (operator ruling 2026-08-08, folding manager finding F3). ModuleDependencyEdge.target_declared says the producer believed the target declared; ModuleDeclarationFact membership says the supplied pool actually carries it. An edge with target_declared true whose target has no ModuleDeclarationFact used to resolve to ZERO edges and vanish from adjacency, closure and cycle classification, while completeness was computed from the raw flag alone - so the reading still answered complete. That is the empty-observation narrow DESIGN 5 names: bottom-as-answer conflated with bottom-as-ignorance, from an inconsistent pool, in a module whose own notes cite the rule. Both observations now land as DISTINCT ImpactStandingCause arms and neither is inferred from the other."

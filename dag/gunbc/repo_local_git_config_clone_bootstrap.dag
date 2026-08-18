@@ -35,4 +35,4 @@ fn repo_local_git_config_clone_bootstrap_enrolled_path_count() -> Int {
   repo_local_git_config_clone_bootstrap_enrolled_paths().length()
 }
 
-data repo_local_git_config_clone_bootstrap_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: every supported clone-creation path invokes repo_local_git_config converge (observed_missing_count must stay zero); this carrier deletes when the population is fully enrolled and witnessed")
+data repo_local_git_config_clone_bootstrap_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: every supported clone-creation path invokes repo_local_git_config converge (observed_missing_count must stay zero); this carrier deletes when the population is fully enrolled and witnessed")

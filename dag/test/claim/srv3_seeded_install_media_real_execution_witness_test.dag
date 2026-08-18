@@ -9,7 +9,7 @@ data grub_cfg_fixture_without_cmdline: String = "menuentry \"Ubuntu\" \{\n  linu
 
 test fn install_media_remaster_ensure_grub_cmdline_inserts_by_real_execution() -> Bool {
   let dir = shell.Mktemp.Dir()
-  let grub_cfg = concat(dir.path as String, "/grub.cfg") as NonEmptyStr
+  let grub_cfg = concat(dir.path as String, "/grub.cfg") as std.types.NonEmptyStr
   let wrote = Filesystem.Write(path: grub_cfg as String, content: grub_cfg_fixture_without_cmdline)
   let cmdline = srv3_seeded_install_media_artifact.grub_kernel_cmdline
   let applied = install_media_remaster_ensure_grub_cmdline(grub_cfg: grub_cfg, cmdline: cmdline)

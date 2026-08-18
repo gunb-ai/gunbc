@@ -14,28 +14,28 @@ type Effect
 
 type Principal
   = AnyPrincipal
-  | AwsPrincipal { arns: List<NonEmptyStr> }
-  | ServicePrincipal { services: List<NonEmptyStr> }
-  | FederatedPrincipal { providers: List<NonEmptyStr> }
-  | CanonicalUserPrincipal { ids: List<NonEmptyStr> }
+  | AwsPrincipal { arns: List<std.types.NonEmptyStr> }
+  | ServicePrincipal { services: List<std.types.NonEmptyStr> }
+  | FederatedPrincipal { providers: List<std.types.NonEmptyStr> }
+  | CanonicalUserPrincipal { ids: List<std.types.NonEmptyStr> }
 
 type ConditionEntry {
-  operator: NonEmptyStr
-  key: NonEmptyStr
-  values: List<NonEmptyStr>
+  operator: std.types.NonEmptyStr
+  key: std.types.NonEmptyStr
+  values: List<std.types.NonEmptyStr>
 }
 
 type Statement {
-  sid: NonEmptyStr?
+  sid: std.types.NonEmptyStr?
   effect: Effect
   principal: Principal?
-  actions: List<NonEmptyStr>
-  resources: List<NonEmptyStr>
+  actions: List<std.types.NonEmptyStr>
+  resources: List<std.types.NonEmptyStr>
   conditions: List<ConditionEntry>
 }
 
 type PolicyDocument {
-  version: NonEmptyStr
-  id: NonEmptyStr?
+  version: std.types.NonEmptyStr
+  id: std.types.NonEmptyStr?
   statements: List<Statement>
 }

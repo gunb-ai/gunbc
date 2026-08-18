@@ -1,7 +1,7 @@
 module gunbc.plans.v2_complexity_capability_parity
 
 
-fn v2_complexity_capability_parity_body() -> List<MarkdownBlock> {
+fn v2_complexity_capability_parity_body() -> List<std.markdown.MarkdownBlock> {
   [
     BlockquoteBlock { blocks: [
       p(text: "**Status: DRAFT for operator review (2026-08-04).** Design-note-first: **no code lands from this note.** It answers one question — *is v2 complexity analysis anemic compared to v1?* — with a verdict grounded in the tree's own status carriers, and declares the migration program that closes the gap."),
@@ -178,7 +178,7 @@ fn v2_complexity_capability_parity_body() -> List<MarkdownBlock> {
   ]
 }
 
-data v2_complexity_capability_parity_plan: Plan = Plan {
+data v2_complexity_capability_parity_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "v2-complexity-capability-parity",
   title: "v2 complexity capability parity — restoring the engine, not porting the seed",
   body: v2_complexity_capability_parity_body(),

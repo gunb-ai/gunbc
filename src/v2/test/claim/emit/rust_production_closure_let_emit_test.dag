@@ -1,7 +1,7 @@
 module v2.test.emit.rust_production_closure_let_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data rust_production_closure_let_note: String = "Closes the closure and bind-let value-expression families on the PRODUCTION Rust target. Both shapes are already self-closing - TargetClosureShape carries its own body_open and body_close, TargetBindLetShape needs no bracketing - so what was missing was spellings on the production lex, not structure. The two families that are NOT closed here, conditional and loop, are excluded deliberately: their shapes carry no closing token at all, and the fixtures only appear to emit them because a hand-authored declaration scaffold ends in two rbrace and supplies the brace the expression left open. Production block close is a single rbrace, so those two would emit unbalanced Rust and are held for the shape change."
 
@@ -11,7 +11,7 @@ data rust_production_closure_golden: String = "|x, y| { x }"
 
 data rust_production_let_golden: String = "let x = y; x"
 
-fn rpcl_serialize(expr: TargetValueExpression, target: TargetModel) -> Outcome<String> {
+fn rpcl_serialize(expr: v2.std.compilers.target_model.TargetValueExpression, target: v2.std.compilers.target_model.TargetModel) -> Outcome<String> {
   match target_value_expression_to_concrete_tokens(
     expr: expr,
     projection: rust_value_expression_projection(),
@@ -27,21 +27,21 @@ fn rpcl_serialize(expr: TargetValueExpression, target: TargetModel) -> Outcome<S
   }
 }
 
-fn rpcl_emits(expr: TargetValueExpression, golden: String) -> Bool {
+fn rpcl_emits(expr: v2.std.compilers.target_model.TargetValueExpression, golden: String) -> Bool {
   match rpcl_serialize(expr: expr, target: rust_target_model()) {
     Accepted { value: text, diagnostics: _ } => text == golden
     Rejected { diagnostics: _ } => false
   }
 }
 
-fn rpcl_closure_expr() -> TargetValueExpression {
+fn rpcl_closure_expr() -> v2.std.compilers.target_model.TargetValueExpression {
   target_value_expression_closure(
     params: [^rust_binding_param_x, ^rust_binding_param_y],
     body: target_value_expression_binding_ref(binding: ^rust_binding_param_x)
   )
 }
 
-fn rpcl_let_expr() -> TargetValueExpression {
+fn rpcl_let_expr() -> v2.std.compilers.target_model.TargetValueExpression {
   target_value_expression_bind_let(
     bind_key: target_value_expression_binding_ref(binding: ^rust_binding_param_x),
     bind_value: target_value_expression_binding_ref(binding: ^rust_binding_param_y),
@@ -79,7 +79,7 @@ test fn rust_production_closure_body_is_not_ignored() -> Bool {
     )
 }
 
-fn rpcl_serialize_fixed(token_class: Symbol) -> Outcome<String> {
+fn rpcl_serialize_fixed(token_class: v2.std.node.Symbol) -> Outcome<String> {
   match serialize_concrete_syntax_tokens_to_source_string(
     target: rust_target_model(),
     tokens: [FixedToken { token_class: token_class }]
@@ -90,7 +90,7 @@ fn rpcl_serialize_fixed(token_class: Symbol) -> Outcome<String> {
   }
 }
 
-fn rpcl_refuses_class(token_class: Symbol) -> Bool {
+fn rpcl_refuses_class(token_class: v2.std.node.Symbol) -> Bool {
   match rpcl_serialize_fixed(token_class: token_class) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true

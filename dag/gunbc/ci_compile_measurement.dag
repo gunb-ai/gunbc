@@ -2,7 +2,7 @@ module gunbc.ci_compile_measurement
 
 
 type CompileJobMeasurement
-  = CompileJobMeasured { per_rustc_peak: ByteSize, procs_per_job: Int, pids_budget: Int }
+  = CompileJobMeasured { per_rustc_peak: std.measure.ByteSize, procs_per_job: Int, pids_budget: Int }
   | CompileJobUnmeasured
 
 data gunbc_ci_compile_measurement: CompileJobMeasurement = CompileJobMeasured {

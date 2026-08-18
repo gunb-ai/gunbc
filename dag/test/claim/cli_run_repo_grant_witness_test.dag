@@ -9,14 +9,14 @@ data in_repo_rel: String = "dag/std/effect_grant.dag"
 data escaping_rel: String = "../outside.dag"
 data absolute_outside: String = "/etc/passwd"
 
-fn is_refused(a: AccessDecision) -> Bool {
+fn is_refused(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => false
     Deny { refusal: refusal } => true
   }
 }
 
-fn is_admitted(a: AccessDecision) -> Bool {
+fn is_admitted(a: std.access.AccessDecision) -> Bool {
   match a {
     Permit => true
     Deny { refusal: refusal } => false

@@ -1,32 +1,32 @@
 module gunbc.srv3_seeded_install_media
 
 
-data gunbc_srv3_seeded_install_media_scope_disposition: Disposition = std.disposition.Terminal {
+data gunbc_srv3_seeded_install_media_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "srv3 seeded autoinstall ISO — remaster stock ISO with embedded nocloud user-data + GRUB autoinstall ds=nocloud; content-hash keyed on stock sha256 + autoinstall payload; dissolves NoCloudNet seed-delivery gap when proven by unattended boot execution."
 }
 
-data srv3_seeded_install_media_remaster_scaffold: Disposition = std.disposition.Terminal {
+data srv3_seeded_install_media_remaster_scaffold: std.disposition.Disposition = std.disposition.Terminal {
   reason: "srv3_seeded_install_media_remaster() routes through host_effect_apply to install_media_remaster_reconcile() in-process (TypedReconcileOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
 }
 
-data srv3_seeded_install_media_toolchain_ensure_scaffold: Disposition = std.disposition.Terminal {
+data srv3_seeded_install_media_toolchain_ensure_scaffold: std.disposition.Disposition = std.disposition.Terminal {
   reason: "srv3_seeded_install_media_toolchain_ensure routes through host_effect_apply_gated(ci_deploy_srv1_access) to realize_seeded_install_media_toolchain_ensure_on_host (SeededInstallMediaToolchainOnHost cell, dag/gunbc/host_effect_realize.dag) - no shell script is built, serialized, or run for this effect"
 }
 
-data install_media_remaster_toolchain_ensure_dissolution_trigger: Disposition = std.disposition.Terminal {
+data install_media_remaster_toolchain_ensure_dissolution_trigger: std.disposition.Disposition = std.disposition.Terminal {
   reason: "install_media_remaster_toolchain_ensure dissolved onto host_effect_apply realize_seeded_install_media_toolchain_ensure_on_host (srv3_ensure_apt_tool + xorriso version probe) - no concat-built bash script remains"
 }
 
-data srv3_seeded_install_media_unattended_not_proven_marker: Disposition = Scaffold {
+data srv3_seeded_install_media_unattended_not_proven_marker: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.srv3_os_install_actuate_scope",
     decl_name: "srv3_autoinstall_seed_delivery_refusal",
     field: WholeDeclaration
   }
 }
 
-func srv3_seeded_install_media_toolchain_ensure() -> ProcessExit
+func srv3_seeded_install_media_toolchain_ensure() -> std.process.ProcessExit
   uses net: std.resources.Network
 {
   srv3_reconciliation_to_process_exit(
@@ -35,7 +35,7 @@ func srv3_seeded_install_media_toolchain_ensure() -> ProcessExit
   )
 }
 
-func srv3_seeded_install_media_remaster() -> ProcessExit
+func srv3_seeded_install_media_remaster() -> std.process.ProcessExit
   uses net: std.resources.Network
 {
   let ensure_exit = srv3_reconciliation_to_process_exit(
@@ -52,7 +52,7 @@ func srv3_seeded_install_media_remaster() -> ProcessExit
   )
 }
 
-fn srv3_seeded_install_media_actuator_host() -> ComputeHost {
+fn srv3_seeded_install_media_actuator_host() -> gunbc.fleet_intent.ComputeHost {
   srv3_os_install_actuator_host
 }
 

@@ -1,8 +1,8 @@
 module extdeps.languages.bash.subject
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.gnu.org/software/bash/manual/bash.html"
   }
@@ -19,9 +19,9 @@ data gnu_bash: GnuBash = GnuBashShell
 
 data scope_alias_note: String = "The scope is declared under a UNIQUE name and extdeps_model_scope is its alias, rather than the other way round. Two reasons, both load-bearing. The mandated tag name is identical in every extdeps carrier, and .dag has no import aliasing, so a consumer that needs to reference two carriers' scopes at once — the conformance join in gunbc.shell_target_conformance, or any witness comparing this subject to another — cannot import both under the tag name. And a uniquely named canonical declaration is what a symbolic citation can point AT (DESIGN section 3 cite-the-symbol): 'extdeps_model_scope' names forty different things across the corpus and therefore names none of them."
 
-data gnu_bash_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data gnu_bash_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.languages.bash.subject",
       decl_name: "gnu_bash",
       field: WholeDeclaration
@@ -31,4 +31,4 @@ data gnu_bash_model_scope: ExternalModelScope = ExternalModelScope {
   further_citations: []
 }
 
-data extdeps_model_scope: ExternalModelScope = gnu_bash_model_scope
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = gnu_bash_model_scope

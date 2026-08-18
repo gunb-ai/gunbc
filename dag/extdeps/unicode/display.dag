@@ -2,14 +2,14 @@ module extdeps.unicode.display
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.unicode.org/reports/tr11/"
   }
 }
 
-fn char_display_width(c: Char) -> DisplayWidth {
+fn char_display_width(c: std.types.Char) -> std.unicode.types.DisplayWidth {
   let cp = c
   let is_zero_width = contains(zero_width_codepoints, item: cp) || any(zero_width_blocks, predicate: b => in_block(cp: cp, block: b))
   if is_zero_width { return ZeroWidth }
@@ -17,7 +17,7 @@ fn char_display_width(c: Char) -> DisplayWidth {
   return Narrow
 }
 
-fn char_width(c: Char) -> Int {
+fn char_width(c: std.types.Char) -> Int {
   display_width_columns(w: char_display_width(c: c))
 }
 

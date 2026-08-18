@@ -1,7 +1,7 @@
 module gunbc.os_install_emit
 
 
-fn identity_entries(id: AutoinstallIdentity) -> List<YamlKeyValue> {
+fn identity_entries(id: extdeps.os.ubuntu_autoinstall.AutoinstallIdentity) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   [
     kv(key: "hostname", value: yaml_string(s: id.hostname)),
     kv(key: "username", value: yaml_string(s: id.username)),
@@ -10,7 +10,7 @@ fn identity_entries(id: AutoinstallIdentity) -> List<YamlKeyValue> {
   ]
 }
 
-fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyValue> {
+fn autoinstall_inner_entries(payload: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload) -> List<extdeps.languages.yaml.types.YamlKeyValue> {
   let base = [
     kv(key: "version", value: yaml_int(n: payload.autoinstall_version)),
     kv(key: "locale", value: yaml_string(s: payload.locale)),
@@ -49,7 +49,7 @@ fn autoinstall_inner_entries(payload: UbuntuAutoinstallPayload) -> List<YamlKeyV
   }
 }
 
-fn autoinstall_user_data(payload: UbuntuAutoinstallPayload) -> String {
+fn autoinstall_user_data(payload: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPayload) -> String {
   let top = yaml_mapping(entries: [
     kv(key: "autoinstall", value: yaml_mapping(entries: autoinstall_inner_entries(payload: payload))),
   ])

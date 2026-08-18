@@ -65,7 +65,7 @@ fn posix_login_name_code_point_admitted(cp: Int) -> Bool {
 // without anyone reading /etc/passwd. Forcing a value would have made three unobserved shells get
 // invented to satisfy the type, which is how the uid rows beside them went wrong.
 type PosixLoginShell
-  = LoginShellObserved { path: NonEmptyStr }
+  = LoginShellObserved { path: std.types.NonEmptyStr }
   | LoginShellUnobserved
 
 // The nologin family exits immediately, so sshd cannot run a command under it. Cited by behaviour
@@ -83,7 +83,7 @@ fn posix_shell_permits_command_execution(shell: PosixLoginShell) -> Bool {
 }
 
 type PosixUser {
-  name: NonEmptyStr
+  name: std.types.NonEmptyStr
   uid: Int
   gid: Int
   shell: PosixLoginShell

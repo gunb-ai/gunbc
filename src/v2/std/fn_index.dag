@@ -2,7 +2,7 @@ module v2.std.fn_index
 
 
 type FnArrowParam {
-  name: Symbol
+  name: v2.std.node.Symbol
   node: Node
 }
 

@@ -10,14 +10,14 @@ fn fold_iteration_measure_atom() -> Node {
   )
 }
 
-fn fold_call_head_symbol(fold_call: Node) -> Optional<Symbol> {
+fn fold_call_head_symbol(fold_call: Node) -> Optional<v2.std.node.Symbol> {
   match find_named_child(root: fold_call, name: ^grammar_sequence_left_node_projection) {
     Accepted { value: head, diagnostics: _ } => node_atom_identity_optional(node: head)
     Rejected { diagnostics: _ } => Absent
   }
 }
 
-fn fold_family_head(sym: Symbol) -> Bool {
+fn fold_family_head(sym: v2.std.node.Symbol) -> Bool {
   (sym == ^fold) || (sym == ^fold_list) || (sym == ^fold_list_right) || (sym == ^fold_node)
 }
 
@@ -38,7 +38,7 @@ fn step_fn_iteration_body(fn_literal: Node) -> Optional<Node> {
   }
 }
 
-fn fold_seq_child(node: Node, name: Symbol) -> Optional<Node> {
+fn fold_seq_child(node: Node, name: v2.std.node.Symbol) -> Optional<Node> {
   match find_named_child(root: node, name: name) {
     Accepted { value: child, diagnostics: _ } => Present { value: child }
     Rejected { diagnostics: _ } => Absent
@@ -47,7 +47,7 @@ fn fold_seq_child(node: Node, name: Symbol) -> Optional<Node> {
 
 data step_fn_carrier_binder_note: String = "The step fn's FIRST param is the fold's accumulator binder (fn(acc, item) { .. }). fn_literal params are untyped lexeme-stamped idents (dag_grammar_untyped_params_helper = comma_list(terminal_lexeme(ident))), so the binder NAME is the captured atom's identity. Navigation follows the fn_literal grammar expression Seq(kw_fn, Seq(lparen, Seq(Optional(params), ..))): right, right, left lands on the params capture (Optional-absent = empty Conj -> Absent), whose comma_list capture is Conj[left -> first item]. A step fn with no readable first param cannot be a fold step: the caller refuses ^fold_lowering_shape_invalid, never fabricates a carrier."
 
-fn step_fn_carrier_binder_symbol(fn_literal: Node) -> Optional<Symbol> {
+fn step_fn_carrier_binder_symbol(fn_literal: Node) -> Optional<v2.std.node.Symbol> {
   match fold_seq_child(node: fn_literal, name: ^grammar_sequence_right_node_projection) {
     Absent => Absent
     Present { value: after_kw_fn } =>
@@ -66,36 +66,36 @@ fn step_fn_carrier_binder_symbol(fn_literal: Node) -> Optional<Symbol> {
   }
 }
 
-fn fold_lowering_not_a_fold_call_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
+fn fold_lowering_not_a_fold_call_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^fold_lowering_not_a_fold_call,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn fold_lowering_shape_invalid_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
+fn fold_lowering_shape_invalid_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^fold_lowering_shape_invalid,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn fold_carrier_binder_atom(binder: Symbol) -> Node {
+fn fold_carrier_binder_atom(binder: v2.std.node.Symbol) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Atom { identity: binder } },
     children: []
   )
 }
 
-fn fold_call_seam_loop(body: Node, carrier: Symbol) -> Node {
+fn fold_call_seam_loop(body: Node, carrier: v2.std.node.Symbol) -> Node {
   node_synthetic(
     kind: ComputationNode { behavior: Loop },
     children: [
-      Edge { label: Positional, target: body },
-      Edge { label: Named { name: ^loop_bound_edge }, target: fold_iteration_measure_atom() },
-      Edge { label: Named { name: ^loop_carrier_edge }, target: fold_carrier_binder_atom(binder: carrier) }
+      v2.std.node.Edge { label: Positional, target: body },
+      v2.std.node.Edge { label: Named { name: ^loop_bound_edge }, target: fold_iteration_measure_atom() },
+      v2.std.node.Edge { label: Named { name: ^loop_carrier_edge }, target: fold_carrier_binder_atom(binder: carrier) }
     ]
   )
 }

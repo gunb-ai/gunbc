@@ -1,9 +1,9 @@
 module v2.test.claim.qualified_name.freemonoid_eq_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-type QnPath = FreeMonoid<Symbol>
+type QnPath = FreeMonoid<v2.std.node.Symbol>
 
 fn ab() -> QnPath {
   Cons { head: ^a, tail: Cons { head: ^b, tail: std.algebra.Empty } }

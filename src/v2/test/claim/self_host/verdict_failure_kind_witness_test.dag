@@ -1,8 +1,8 @@
 module v2.test.claim.self_host.verdict_failure_kind_witness_test
 
 
-fn sample_diagnostic(reason: Symbol) -> Diagnostic {
-  Diagnostic {
+fn sample_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: port_locus(port: ^verdict_surface),
     correction: Unavailable { reason: ExternalContractUnknown }

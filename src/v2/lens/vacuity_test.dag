@@ -264,8 +264,8 @@ type VacuityFalsificationCaseId =
 
 type VacuityFalsificationCase {
   id: VacuityFalsificationCaseId,
-  row: VacuityCensusRow,
-  expected: VacuityEvidence
+  row: v2.lens.vacuity.VacuityCensusRow,
+  expected: v2.lens.vacuity.VacuityEvidence
 }
 
 fn vacuity_falsification_case(

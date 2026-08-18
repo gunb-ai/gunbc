@@ -1,7 +1,7 @@
 module test.claim.workflow_dispatch_input_witness
 
 
-fn value_is_expected_input(v: YamlValue) -> Bool {
+fn value_is_expected_input(v: extdeps.languages.yaml.types.YamlValue) -> Bool {
   match v {
     YamlMapping { entries } =>
       fold(entries, init: false, f: fn(acc, entry) {
@@ -48,7 +48,7 @@ fn value_is_expected_input(v: YamlValue) -> Bool {
 
 test fn workflow_dispatch_nonempty_inputs_are_realized_not_dropped() -> Bool {
   let entry = workflow_trigger_entry(trigger: WorkflowDispatch {
-    inputs: [DispatchInput {
+    inputs: [extdeps.github.actions.DispatchInput {
       name: "expected_healed_sha",
       description: Present { value: "immutable subject" },
       required: false,
@@ -71,7 +71,7 @@ test fn workflow_dispatch_empty_inputs_preserve_null_projection() -> Bool {
   }
 }
 
-fn mode_input_has_choice_options(v: YamlValue) -> Bool {
+fn mode_input_has_choice_options(v: extdeps.languages.yaml.types.YamlValue) -> Bool {
   match v {
     YamlMapping { entries } =>
       fold(entries, init: false, f: fn(acc, entry) {

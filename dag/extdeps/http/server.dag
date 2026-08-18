@@ -133,14 +133,14 @@ type HttpServerParameter {
 }
 
 type HttpStatusResponse {
-  status: HttpStatus
+  status: std.types.HttpStatus
   body_kind: HttpRequestBodyKind
 }
 
 type HttpServerRoute {
   operation_name: String
   method: std.types.HttpMethod
-  path_template: PathTemplate
+  path_template: std.http_path.PathTemplate
   request_body: HttpRequestBodyKind
   parameters: List<HttpServerParameter>
   responses: List<HttpStatusResponse>
@@ -157,7 +157,7 @@ type NodeHttpRequestListener {
 
 type HttpServerListenConfig {
   host: String
-  port: Port
+  port: std.types.Port
 }
 
 type NodeHttpServerRouteBinding {
@@ -181,10 +181,10 @@ type NodeHttpCreateServerEmissionTarget {
 
 type ServedStaticRoute {
   method: std.types.HttpMethod
-  path_pattern: PathTemplate
+  path_pattern: std.http_path.PathTemplate
   body: String
   content_type: MediaType
-  status_on_hit: HttpStatus
+  status_on_hit: std.types.HttpStatus
 }
 
 type ServedStaticRouteTable {
@@ -198,7 +198,7 @@ type ServeHttpRequest {
 }
 
 type ServeHttpResponse {
-  status: HttpStatus
+  status: std.types.HttpStatus
   content_type: MediaType
   body: String
 }
@@ -221,7 +221,7 @@ fn serve_wire_response(r: ServeHttpResponse) -> ServeWireResponse {
 // The dynamic extension of ServedStaticRoute (DESIGN 2: one concept, every breadth — a static body is the degenerate handler, embedded not re-modeled). H is the consumer's handler vocabulary: extdeps owns the route SHAPE and the pure selection fold below; it cannot and does not name any concrete handler — naming them here would point the import arrow backward (DESIGN 3: dispatch lives peripheral, the interface stays realization-free). INVOKING a selected handler is therefore the instantiating module's job, never this module's.
 type ServedRoute<H>
   = StaticRoute { route: ServedStaticRoute }
-  | DynamicRoute { method: std.types.HttpMethod, path_pattern: PathTemplate, handler: H }
+  | DynamicRoute { method: std.types.HttpMethod, path_pattern: std.http_path.PathTemplate, handler: H }
 
 type ServedRouteTable<H> {
   routes: List<ServedRoute<H>>
@@ -229,7 +229,7 @@ type ServedRouteTable<H> {
 
 type RouteSelection<H>
   = SelectedStatic { route: ServedStaticRoute }
-  | SelectedDynamic { handler: H, params: List<PathParamBinding> }
+  | SelectedDynamic { handler: H, params: List<std.http_path.PathParamBinding> }
   | MethodNotAllowed { allowed: List<std.types.HttpMethod> }
   | NoRouteMatched
 

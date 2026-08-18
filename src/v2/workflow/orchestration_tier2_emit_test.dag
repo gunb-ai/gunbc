@@ -1,11 +1,11 @@
 module v2.workflow.orchestration_tier2_emit_test
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data orch_tier2_golden_note: String = "Goldens below are hand-authored bytes from fleet_converge_emit.dag converge_gunbc_pinned_tree fresh_standup arm ONLY (docs/plans/shell-to-dag-residual-census-and-arc-completion.md §1B frontier rows). Ubuntu-media for/heredoc sites are EXCLUDED per purity-trap fence (FLAG B1). Each test compares emit against its golden independently of the grammar rows."
 
-fn fresh_standup_cmdsubst_assign_intent() -> PipelineStep {
+fn fresh_standup_cmdsubst_assign_intent() -> v2.std.orchestration.PipelineStep {
   Let {
     name: "dag_pin",
     value: ExprCmdSubst {
@@ -30,7 +30,7 @@ test fn orch_tier2_fresh_standup_cmdsubst_assign_holds() -> Bool {
   }
 }
 
-fn fresh_standup_decide_verdict_call_intent() -> PipelineStep {
+fn fresh_standup_decide_verdict_call_intent() -> v2.std.orchestration.PipelineStep {
   Call {
     callee: "decide_verdict",
     args: ["\"$dag_pin\"", "\"$desired_pin\""]
@@ -52,7 +52,7 @@ test fn orch_tier2_fresh_standup_procedure_call_holds() -> Bool {
   }
 }
 
-fn fresh_standup_read_pin_call_intent() -> PipelineStep {
+fn fresh_standup_read_pin_call_intent() -> v2.std.orchestration.PipelineStep {
   Call {
     callee: "converge_read_gunbc_host_pin",
     args: ["\"$checkout\""]
@@ -74,7 +74,7 @@ test fn orch_tier2_fresh_standup_read_pin_call_holds() -> Bool {
   }
 }
 
-fn fresh_standup_verdict_absent_let_intent() -> PipelineStep {
+fn fresh_standup_verdict_absent_let_intent() -> v2.std.orchestration.PipelineStep {
   Let { name: "verdict", value: ExprLit { spelling: "absent" } }
 }
 
@@ -93,7 +93,7 @@ test fn orch_tier2_fresh_standup_verdict_absent_let_holds() -> Bool {
   }
 }
 
-fn fresh_standup_effective_var_let_intent() -> PipelineStep {
+fn fresh_standup_effective_var_let_intent() -> v2.std.orchestration.PipelineStep {
   Let { name: "effective", value: ExprLit { spelling: "\"$dag_pin\"" } }
 }
 
@@ -112,7 +112,7 @@ test fn orch_tier2_fresh_standup_effective_var_let_holds() -> Bool {
   }
 }
 
-fn fresh_standup_dag_pin_empty_let_intent() -> PipelineStep {
+fn fresh_standup_dag_pin_empty_let_intent() -> v2.std.orchestration.PipelineStep {
   Let { name: "dag_pin", value: ExprLit { spelling: "\"\"" } }
 }
 
@@ -131,12 +131,12 @@ test fn orch_tier2_fresh_standup_dag_pin_empty_let_holds() -> Bool {
   }
 }
 
-fn decide_verdict_procedure_body() -> Pipeline {
-  Pipeline {
+fn decide_verdict_procedure_body() -> v2.std.orchestration.Pipeline {
+  v2.std.orchestration.Pipeline {
     steps: [
       If {
         cond: StrEmpty { operand: "\"$1\"" },
-        then_: Pipeline {
+        then_: v2.std.orchestration.Pipeline {
           steps: [Let { name: "verdict", value: ExprLit { spelling: "absent" } }],
           on_failure: FailFast
         },
@@ -147,8 +147,8 @@ fn decide_verdict_procedure_body() -> Pipeline {
   }
 }
 
-fn decide_verdict_procedure_intent() -> Procedure {
-  Procedure { name: "decide_verdict", body: decide_verdict_procedure_body() }
+fn decide_verdict_procedure_intent() -> v2.std.orchestration.Procedure {
+  v2.std.orchestration.Procedure { name: "decide_verdict", body: decide_verdict_procedure_body() }
 }
 
 fn decide_verdict_procedure_partial_golden() -> String {

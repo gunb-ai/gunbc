@@ -3,7 +3,7 @@ module product.compute_fabric
 
 type Fabric = NonEmptyStr where brand("Fabric")
 
-type HardRequirements { threads: HardwareThreadCount }
+type HardRequirements { threads: std.measure.HardwareThreadCount }
 
 type Shape { hard: HardRequirements }
 
@@ -12,7 +12,7 @@ fn shape_covers(offered: Shape, needed: Shape) -> Bool {
 }
 
 type Program {
-  id: NonEmptyStr
+  id: std.types.NonEmptyStr
   hard: HardRequirements
 }
 
@@ -28,13 +28,13 @@ type ComputeNeed {
 type Opportunity {
   fabric: Fabric
   offers: Shape
-  tag: NonEmptyStr
+  tag: std.types.NonEmptyStr
 }
 
 type Connection
   = Bound { opportunity: Opportunity }
   | Pending
-  | Unmet { reason: NonEmptyStr }
+  | Unmet { reason: std.types.NonEmptyStr }
 
 fn connect(need: ComputeNeed, opportunities: List<Opportunity>) -> Connection {
   let shape = derive_shape(p: need.program)

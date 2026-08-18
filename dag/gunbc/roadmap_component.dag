@@ -3,30 +3,30 @@ module gunbc.roadmap_component
 
 data roadmap_component_note: String = "The DispatchButton — the first instantiation of the component concept (gunbc.design.component), and the second consumer that unlocks the archetype library's component axis. It lives HERE, one layer above the register, because it binds the belt wire vocabulary: its terminal states are DERIVED from belt_dispatch_all_status_labels (the grounded label set), never a hand enum, so the state totality is a projection of the served contract — the exact thing the dispatch-button incident needed (the button's states cannot drift from what belt B answers). Role/material binding follows the ok/refusal split of the wire authority: an ok terminal (spawned/already_live) reads through the figure role (the lit/accent material, the same the progress bar uses); a refusal terminal reads through the boundary role (clay — the warning material, never brass-as-text). idle reads text, requested reads text-dim (the in-flight hush). P3 renders these rows as chips + reserved widths; P4 galleries them; here they are just the modeled rows."
 
-fn dispatch_terminal_role(ok: Bool) -> ThemeRole {
+fn dispatch_terminal_role(ok: Bool) -> gunbc.design.theme.ThemeRole {
   if ok { FigureRole } else { BoundaryRole }
 }
 
-fn dispatch_terminal_state(wire_label: String) -> ComponentState {
+fn dispatch_terminal_state(wire_label: String) -> gunbc.design.component.ComponentState {
   let ok = belt_dispatch_label_is_ok(wire_label: wire_label)
-  ComponentState {
+  gunbc.design.component.ComponentState {
     key: wire_label,
     kind: TerminalState { wire_label: wire_label, ok: ok },
     role: dispatch_terminal_role(ok: ok),
   }
 }
 
-fn dispatch_button_terminal_states() -> List<ComponentState> {
+fn dispatch_button_terminal_states() -> List<gunbc.design.component.ComponentState> {
   map(belt_dispatch_all_status_labels(), l => dispatch_terminal_state(wire_label: l))
 }
 
-data dispatch_idle_state: ComponentState = ComponentState {
+data dispatch_idle_state: gunbc.design.component.ComponentState = gunbc.design.component.ComponentState {
   key: "idle",
   kind: IdleState,
   role: TextRole,
 }
 
-data dispatch_requested_state: ComponentState = ComponentState {
+data dispatch_requested_state: gunbc.design.component.ComponentState = gunbc.design.component.ComponentState {
   key: "requested",
   kind: RequestedState,
   role: TextDimRole,
@@ -82,7 +82,7 @@ fn dispatch_reserved_ch() -> Int {
   dispatch_reserved_ch_for(labels: dispatch_caption_set())
 }
 
-fn dispatch_reserved_length() -> CssLength {
+fn dispatch_reserved_length() -> extdeps.languages.css.values.CssLength {
   css_ch(n: dispatch_reserved_ch())
 }
 
@@ -104,7 +104,7 @@ data dashboard_instance_label_class: String = "dashboard-instance-label"
 
 data dashboard_instance_client_note: String = "The page body remains pure and digestable; the running serve entrypoint names its actual HostDashboardInstance through /instance.json. The client projects that observation into the instance banner. Observe-only is also projected onto every real dispatch control before interaction: the control reads `dispatch · disabled`, carries the located posture reason, and is physically disabled, while the server independently returns typed HTTP 403 if a stale or scripted client still POSTs. The /sandbox program deliberately omits this projection so its harmless wire-state gallery remains pressable."
 
-fn dashboard_instance_fetch_statements() -> List<TsStmt> {
+fn dashboard_instance_fetch_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_expr_stmt(expr: ts_call(
       callee: ts_member(
@@ -318,9 +318,9 @@ data roadmap_row_archetype: List<RoadmapRowRegion> = [
 
 data roadmap_row_gutter_split_note: String = "Two gutters, two jobs (operator-signed 2026-07-25, the third PROVISIONAL flip): the first cut ran ONE space-4 token as both the grid's column rhythm and the mid cell's badge-flow rhythm, and the operator's tune split them — column gaps (chip | title | actuator) breathe at space-8 while the badge flow inside the title cell keeps space-4. They are separate density decisions that happened to share a number for one commit; a later retune of either moves alone."
 
-data roadmap_row_height: ScaleToken = height_row
-data roadmap_row_gutter: ScaleToken = space_4
-data roadmap_row_column_gutter: ScaleToken = space_8
+data roadmap_row_height: gunbc.design.scale.ScaleToken = height_row
+data roadmap_row_gutter: gunbc.design.scale.ScaleToken = space_4
+data roadmap_row_column_gutter: gunbc.design.scale.ScaleToken = space_8
 
 fn roadmap_row_grid_template() -> String {
   join(
@@ -416,14 +416,14 @@ data js_sound_muted_fn: String = "gunbcSoundMuted"
 data js_audio_context_var: String = "gunbcAudioContext"
 data js_tick_fn: String = "gunbcTick"
 
-fn js_local_storage_get(key: String) -> TsExpr {
+fn js_local_storage_get(key: String) -> extdeps.languages.typescript.program.TsExpr {
   ts_call(
     callee: ts_member(object: ts_ident(name: "localStorage"), property: "getItem"),
     args: [ts_lit_str(value: key)],
   )
 }
 
-fn js_sound_muted_predicate() -> TsStmt {
+fn js_sound_muted_predicate() -> extdeps.languages.typescript.program.TsStmt {
   ts_const(
     name: js_sound_muted_fn,
     value: ts_arrow(
@@ -437,11 +437,11 @@ fn js_sound_muted_predicate() -> TsStmt {
   )
 }
 
-fn js_actx_member(name: String) -> TsExpr {
+fn js_actx_member(name: String) -> extdeps.languages.typescript.program.TsExpr {
   ts_member(object: ts_ident(name: js_audio_context_var), property: name)
 }
 
-fn js_oscillator_tick_body(s: SoundSpec) -> TsStmt {
+fn js_oscillator_tick_body(s: gunbc.design.sound.SoundSpec) -> extdeps.languages.typescript.program.TsStmt {
   let decay_s = sound_spec_decay_seconds_wire(s: s)
   ts_block(stmts: [
     ts_if(
@@ -476,7 +476,7 @@ fn js_oscillator_tick_body(s: SoundSpec) -> TsStmt {
   ])
 }
 
-fn js_oscillator_schedule_stmts(s: SoundSpec, decay_s: String) -> List<TsStmt> {
+fn js_oscillator_schedule_stmts(s: gunbc.design.sound.SoundSpec, decay_s: String) -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: "t0", value: js_actx_member(name: web_audio_current_time_property)),
     ts_const(name: "osc", value: ts_call(callee: js_actx_member(name: web_audio_create_oscillator_method), args: [])),
@@ -530,7 +530,7 @@ fn js_oscillator_schedule_stmts(s: SoundSpec, decay_s: String) -> List<TsStmt> {
 
 data sound_preamble_note: String = "Three statements, in this order for reasons that are not stylistic. The mute predicate comes first because the tick calls it. The AudioContext is a LET initialised to null and constructed lazily inside the tick, not at load: a context created outside a user gesture starts suspended under every browser's autoplay policy, and constructing one per tick would leak a hardware resource per click. The earlier claim that a pointerdown-born context needs no resume dance was measured in Chrome only and did not survive the operator's ears (remodel W1d, A.2): a fresh context can sit suspended with currentTime frozen at 0, so a 5 ms tick scheduled on that clock is silently swallowed — the first press, at least, made no sound. The tick therefore wraps its scheduling in `play` and gates on state: running plays immediately; anything else goes through resume().then(play), which is a no-op cost when the engine was already running and the difference between silence and a first-press tick everywhere else."
 
-fn sound_preamble_statements() -> List<TsStmt> {
+fn sound_preamble_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     js_sound_muted_predicate(),
     ts_let(name: js_audio_context_var, value: ts_ident(name: "null")),
@@ -546,7 +546,7 @@ fn sound_preamble_statements() -> List<TsStmt> {
 
 data sound_toggle_program_note: String = "The toggle paints itself from the same predicate the tick reads, then repaints after each flip, so the label is a projection of the stored state rather than a second copy of it — a toggle whose label and behaviour can disagree is worse than no toggle. paint() runs once at bind time because the stored preference outlives the page: on load the label must already say what this browser will actually do."
 
-fn sound_toggle_bind_statements() -> List<TsStmt> {
+fn sound_toggle_bind_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_expr_stmt(expr: ts_call(
       callee: ts_member(
@@ -592,7 +592,7 @@ fn sound_toggle_bind_statements() -> List<TsStmt> {
 
 data dispatch_state_class_note: String = "The single authority for a state's CSS modifier class, consumed by the client script (which flips classes on the live button), the stylesheet (which paints each class through the state's role material), and the P4 gallery (which renders each state statically) — three consumers, one class vocabulary, so the live button and the gallery cannot disagree. idle is the base (no modifier); the terminals collapse to their ok/refusal MATERIAL group (figure vs boundary), the per-label distinction living in the text, not the color."
 
-fn dispatch_state_class(state: ComponentState) -> String {
+fn dispatch_state_class(state: gunbc.design.component.ComponentState) -> String {
   match state.kind {
     IdleState => ""
     RequestedState => dispatch_class_requested
@@ -613,30 +613,30 @@ data roadmap_dispatch_asset_path: String = "/assets/roadmap-dispatch.js"
 
 data sandbox_asset_path: String = "/assets/sandbox.js"
 
-fn js_b_member(name: String) -> TsExpr {
+fn js_b_member(name: String) -> extdeps.languages.typescript.program.TsExpr {
   ts_member(object: ts_ident(name: "b"), property: name)
 }
 
-fn js_j_status() -> TsExpr {
+fn js_j_status() -> extdeps.languages.typescript.program.TsExpr {
   ts_member(object: ts_ident(name: "j"), property: "status")
 }
 
-fn js_j_member(name: String) -> TsExpr {
+fn js_j_member(name: String) -> extdeps.languages.typescript.program.TsExpr {
   ts_member(object: ts_ident(name: "j"), property: name)
 }
 
-fn js_classlist_call(method: String, arg: TsExpr) -> TsStmt {
+fn js_classlist_call(method: String, arg: extdeps.languages.typescript.program.TsExpr) -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(object: ts_member(object: ts_ident(name: "b"), property: "classList"), property: method),
     args: [arg],
   ))
 }
 
-fn dispatch_ok_status_comparison(wire_label: String) -> TsExpr {
+fn dispatch_ok_status_comparison(wire_label: String) -> extdeps.languages.typescript.program.TsExpr {
   ts_binop(left: js_j_status(), op: "===", right: ts_lit_str(value: wire_label))
 }
 
-fn dispatch_or_chain(exprs: List<TsExpr>) -> TsExpr {
+fn dispatch_or_chain(exprs: List<extdeps.languages.typescript.program.TsExpr>) -> extdeps.languages.typescript.program.TsExpr {
   let acc = fold(exprs, init: none, f: (a, c) => match a {
     Absent => Present { value: c }
     Present { value: prev } => Present { value: ts_binop(left: prev, op: "||", right: c) }
@@ -647,11 +647,11 @@ fn dispatch_or_chain(exprs: List<TsExpr>) -> TsExpr {
   }
 }
 
-fn dispatch_ok_predicate_expr() -> TsExpr {
+fn dispatch_ok_predicate_expr() -> extdeps.languages.typescript.program.TsExpr {
   dispatch_or_chain(exprs: map(belt_dispatch_ok_status_labels(), l => dispatch_ok_status_comparison(wire_label: l)))
 }
 
-fn dispatch_fetch_url_expr() -> TsExpr {
+fn dispatch_fetch_url_expr() -> extdeps.languages.typescript.program.TsExpr {
   ts_binop(
     left: ts_lit_str(value: belt_dispatch_path_prefix),
     op: "+",
@@ -666,7 +666,7 @@ data dispatch_choreography_note: String = "The presented-state choreography (rem
 
 data dispatch_requested_read_dwell_note: String = "The requested phase's minimum presentation is a READING duration, not a transition clock (operator ruling 2026-07-24: 160 ms — the first cut borrowed reveal_deliberate — was too short to actually read 'dispatching...'; a dwell exists so the caption is USEFUL, so it is priced in reading time). It is deliberately its own authority row rather than a retune of a shared TimingToken: the hover reveal and this hold are different concepts that happened to share a number for one commit, and retuning the shared token would have made every hover a half-second. Operator-tuned twice: 500 ms first (readable), then 300 ms (2026-07-24 — readable AND quick). The deeper direction is filed as the motion-modeling follow-up: a single long hold is the wrong shape — the requested phase wants MOVING PARTS (the Discord-mute reference: the state lands fast, the motion continues to hold attention), i.e. phase-structured choreography rows, not one dwell scalar. This row survives until that session replaces it."
 
-data dispatch_requested_read_dwell_ms: Milliseconds = 300
+data dispatch_requested_read_dwell_ms: std.types.Milliseconds = 300
 
 data js_dwell_const: String = "gunbcDwellMs"
 data js_refresh_workflow_fn: String = "gunbcRefreshWorkflow"
@@ -676,7 +676,7 @@ data js_reason_surface_fn: String = "gunbcReasonSurface"
 
 data reason_surface_producers_note: String = "THE REASON SURFACE IS ONE MECHANISM WITH SEVERAL PRODUCERS, and it became one on an incident (2026-07-30). Composition slice 4 established the rule — anomaly evidence is a SURFACE, not a tooltip — and realized it once, inline, for the dispatch answer. Since then the row grew two more refusal producers: the seven-obligation workflow strip, whose failed and refused segments carry a located detail from /workflow.json, and the click's own catch arm. NEITHER reached a surface. The workflow segment's detail went to stage.title and the catch arm's went to b.title, which is exactly the title-only world anomaly_evidence_witness_test plants as its RED — the corpus stated the rule, enforced it against one subject, and then wrote two more subjects that fail it.\\n\\nThat is why this is a helper rather than a second copy: the defect was not that the workflow strip forgot to render a reason, it was that 'render a located reason where the operator can read it' had one realization welded to one caller, so the second and third callers could not reuse it and did the cheap thing instead. Adding a parallel insertion for the strip would have made three spellings of one concept and guaranteed a fourth.\\n\\nEach producer owns its own line, keyed by data-reason-source, because a row can be simultaneously refused at dispatch and refused at Verify and those are different facts with different remedies — one shared element would let whichever wrote last silently erase the other. Passing empty text REMOVES that producer's line, so a resolved refusal stops claiming the row is unwell; it does not touch any other producer's.\\n\\nWhat this deliberately does NOT do is auto-expand the row when a workflow segment refuses. The dispatch band expands because a click is a discrete operator act with an answer owed to it; the workflow strip re-renders on a two-second poll, and opening a disclosure on a timer would fight the operator's own hands every tick. The chip already carries `Verify · refused` in its own text; the disclosure carries why."
 
-fn row_disclosure_helper_stmt() -> TsStmt {
+fn row_disclosure_helper_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_const(name: js_row_disclosure_fn, value: ts_arrow(params: ["el"], body: ts_block(stmts: [
     ts_const(name: "r", value: ts_binop(
       left: ts_ident(name: "el"),
@@ -695,7 +695,7 @@ fn row_disclosure_helper_stmt() -> TsStmt {
   ])))
 }
 
-fn reason_surface_helper_stmt() -> TsStmt {
+fn reason_surface_helper_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_const(name: js_reason_surface_fn, value: ts_arrow(params: ["dt", "source", "text"], body: ts_block(stmts: [
     ts_if(
       cond: ts_prefix(op: "!", expr: ts_ident(name: "dt")),
@@ -770,7 +770,7 @@ data dispatch_unreadable_answer_note: String = "THE CATCH ARM USED TO NAME A CAU
 
 data dispatch_unreadable_answer_phrase: String = "no readable answer from the dispatch route"
 
-fn dispatch_preamble_statements() -> List<TsStmt> {
+fn dispatch_preamble_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: js_dwell_const, value: ts_lit_num(text: to_string(dispatch_requested_read_dwell_ms))),
     row_disclosure_helper_stmt(),
@@ -778,7 +778,7 @@ fn dispatch_preamble_statements() -> List<TsStmt> {
   ]
 }
 
-fn dwell_remaining_expr() -> TsExpr {
+fn dwell_remaining_expr() -> extdeps.languages.typescript.program.TsExpr {
   ts_call(
     callee: ts_member(object: ts_ident(name: "Math"), property: "max"),
     args: [
@@ -792,7 +792,7 @@ fn dwell_remaining_expr() -> TsExpr {
   )
 }
 
-fn dispatch_band_chain_expr() -> TsExpr {
+fn dispatch_band_chain_expr() -> extdeps.languages.typescript.program.TsExpr {
   fold(belt_dispatch_label_band_rows(), init: ts_lit_str(value: "loud"), f: (acc, row) =>
     ts_cond(
       test: ts_binop(left: ts_ident(name: "s"), op: "===", right: ts_lit_str(value: row.wire_label)),
@@ -816,7 +816,7 @@ fn dispatch_expand_band_keys() -> List<String> {
     })
 }
 
-fn dispatch_expand_chain_expr() -> TsExpr {
+fn dispatch_expand_chain_expr() -> extdeps.languages.typescript.program.TsExpr {
   fold(dispatch_expand_band_keys(), init: ts_ident(name: "false"), f: (acc, k) =>
     ts_binop(
       left: acc,
@@ -824,7 +824,7 @@ fn dispatch_expand_chain_expr() -> TsExpr {
       right: ts_binop(left: ts_ident(name: "band"), op: "===", right: ts_lit_str(value: k))))
 }
 
-fn dispatch_terminal_apply_body() -> TsStmt {
+fn dispatch_terminal_apply_body() -> extdeps.languages.typescript.program.TsStmt {
   ts_block(stmts: [
     ts_const(name: "s", value: ts_binop(left: js_j_status(), op: "||", right: ts_lit_str(value: ""))),
     ts_const(name: "band", value: dispatch_band_chain_expr()),
@@ -950,7 +950,7 @@ fn dispatch_terminal_apply_body() -> TsStmt {
   ])
 }
 
-fn dispatch_response_handler_body() -> TsStmt {
+fn dispatch_response_handler_body() -> extdeps.languages.typescript.program.TsStmt {
   ts_block(stmts: [
     ts_expr_stmt(expr: ts_binop(
       left: ts_member(object: js_b_member(name: "dataset"), property: "status"),
@@ -965,7 +965,7 @@ fn dispatch_response_handler_body() -> TsStmt {
   ])
 }
 
-fn dispatch_click_handler_body(url_expr: TsExpr) -> TsStmt {
+fn dispatch_click_handler_body(url_expr: extdeps.languages.typescript.program.TsExpr) -> extdeps.languages.typescript.program.TsStmt {
   ts_block(stmts: [
     ts_expr_stmt(expr: ts_binop(left: js_b_member(name: "disabled"), op: "=", right: ts_ident(name: "true"))),
     ts_const(name: "t0", value: ts_call(callee: ts_member(object: ts_ident(name: "Date"), property: "now"), args: [])),
@@ -1027,7 +1027,7 @@ MECHANICALLY it is when the sound belongs. Acknowledgment is owed to the press, 
 
 SAFETY-WISE it means a sound failure cannot break dispatch. Two listeners on one element are independent: if WebAudio is unavailable or throws in some browser, the exception is contained in the tick listener and the click listener still POSTs. Had the tick been a statement inside the click handler, a throw would have aborted the dispatch before the fetch — trading a working button for a decorative noise, which is exactly the wrong direction. This is also why no capability probe or try/catch appears here: the isolation makes the failure harmless, so there is nothing to degrade gracefully around and no silent fallback to write."
 
-fn dispatch_bind_statements(selector: String, url_expr: TsExpr) -> List<TsStmt> {
+fn dispatch_bind_statements(selector: String, url_expr: extdeps.languages.typescript.program.TsExpr) -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_expr_stmt(expr: ts_call(
       callee: ts_member(
@@ -1076,11 +1076,11 @@ fn swatch_toggle_reserved_width() -> String {
 data js_theme_choice_fn: String = "gunbcThemeChoice"
 data js_theme_apply_fn: String = "gunbcApplyTheme"
 
-fn js_document_element() -> TsExpr {
+fn js_document_element() -> extdeps.languages.typescript.program.TsExpr {
   ts_member(object: ts_ident(name: "document"), property: "documentElement")
 }
 
-fn theme_toggle_bind_statements() -> List<TsStmt> {
+fn theme_toggle_bind_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: js_theme_choice_fn, value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_binop(
       left: js_local_storage_get(key: theme_storage_key),
@@ -1166,7 +1166,7 @@ fn theme_toggle_bind_statements() -> List<TsStmt> {
   ]
 }
 
-fn disclosure_bind_statements() -> List<TsStmt> {
+fn disclosure_bind_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_expr_stmt(expr: ts_call(
       callee: ts_member(
@@ -1200,7 +1200,7 @@ fn disclosure_bind_statements() -> List<TsStmt> {
   ]
 }
 
-fn swatch_toggle_bind_statements() -> List<TsStmt> {
+fn swatch_toggle_bind_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: "gunbcSwatchChoice", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_binop(
       left: js_local_storage_get(key: swatch_storage_key),
@@ -1286,7 +1286,7 @@ fn swatch_toggle_bind_statements() -> List<TsStmt> {
   ]
 }
 
-fn workflow_row_selector_expr(node_id: TsExpr) -> TsExpr {
+fn workflow_row_selector_expr(node_id: extdeps.languages.typescript.program.TsExpr) -> extdeps.languages.typescript.program.TsExpr {
   ts_binop(
     left: ts_binop(
       left: ts_lit_str(value: "li[data-node=\""),
@@ -1305,14 +1305,14 @@ data js_attempts_observe_in_flight: String = "gunbcAttemptsObservationInFlight"
 data js_sessions_observe_pending: String = "gunbcSessionsObservationPending"
 data js_attempts_observe_pending: String = "gunbcAttemptsObservationPending"
 data js_observation_poll_tick: String = "gunbcObservationPollTick"
-data observation_poll_interval: Millisecond = millisecond(count: 3000)
+data observation_poll_interval: std.measure.Millisecond = millisecond(count: 3000)
 data observation_poll_note: String = "The page has no typed terminal-attempt observation yet, so it cannot honestly decide that an attempt is terminal and stop polling. It therefore re-observes both independent sources for the page lifetime at one explicit cadence; a recursive one-shot timeout schedules the next observation without introducing the dashboard's forbidden animation/interval loop, and page unload cancels the browser timer. Each source permits one request in flight and coalesces overlapping timer or post-dispatch observations into one pending rerun, so an older response cannot repaint over a newer one. This dissolves into terminal-bounded polling when AttemptEvidence.terminal_outcome gains a live producer."
 
 fn observation_complete_stmts(
   observer: String,
   in_flight: String,
   pending: String,
-) -> List<TsStmt> {
+) -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_expr_stmt(expr: ts_binop(
       left: ts_ident(name: in_flight),
@@ -1331,7 +1331,7 @@ fn observation_complete_stmts(
   ]
 }
 
-fn observation_begin_stmts(in_flight: String, pending: String) -> List<TsStmt> {
+fn observation_begin_stmts(in_flight: String, pending: String) -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_if(
       cond: ts_ident(name: in_flight),
@@ -1350,7 +1350,7 @@ fn observation_begin_stmts(in_flight: String, pending: String) -> List<TsStmt> {
   ]
 }
 
-fn sessions_mark_live_stmts() -> List<TsStmt> {
+fn sessions_mark_live_stmts() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: "sr", value: ts_call(
       callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
@@ -1665,7 +1665,7 @@ fn sessions_mark_live_stmts() -> List<TsStmt> {
   ]
 }
 
-fn remove_all_selector_stmt(selector: String, item_name: String) -> TsStmt {
+fn remove_all_selector_stmt(selector: String, item_name: String) -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(
       object: ts_call(
@@ -1681,7 +1681,7 @@ fn remove_all_selector_stmt(selector: String, item_name: String) -> TsStmt {
 
 data sessions_reset_note: String = "Each session observation clears the prior projection before repainting: presence datasets flip back and every session-facts disclosure line is removed, so a torn-down session cannot leave a stale 'present' claim. The dispatch button itself is untouched — it is an action and never carried the presence claim after A2 (node_activity_region_note)."
 
-fn sessions_reset_presence_stmt() -> TsStmt {
+fn sessions_reset_presence_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(
       object: ts_call(
@@ -1717,7 +1717,7 @@ fn sessions_reset_presence_stmt() -> TsStmt {
 
 data observe_impact_region_note: String = "ONE FAILURE NARRATED ONCE, ACROSS CHANNELS (A2 hierarchy closeout, operator gap ruling 2026-08-02). Three observation channels — sessions, attempts, workflow — used to each prepend their own full-width refusal banner through this painter, so one dead observation root stacked three near-identical amber voices above the fold (the local-serve screenshots are the specimen). The painter now upserts each channel's located row INSIDE one shared impact region: the server-rendered section.workspace-observation when the page shipped one (the serve-time impact statement keeps its own summary — the client never overwrites a server-decided claim), else a client-minted twin. The region's disclosure holds the per-channel raw rows, the summary states the user-relevant impact with the refused-channel count, and gunbcObserveImpactSync retracts rows as channels recover — a client-minted region with zero refused rows removes itself, so recovery leaves no husk. Frequency stays observable: every channel row remains in the DOM, typed by its source class, one interaction deep — deduplicated narration, never deduplicated evidence."
 
-fn observe_impact_preamble_statements() -> List<TsStmt> {
+fn observe_impact_preamble_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: "gunbcObserveImpactBox", value: ts_arrow(params: [], body: ts_block(stmts: [
       ts_let(name: "box", value: ts_call(
@@ -1836,7 +1836,7 @@ fn observe_impact_preamble_statements() -> List<TsStmt> {
   ]
 }
 
-fn observation_refused_banner_stmts(source_class: String) -> List<TsStmt> {
+fn observation_refused_banner_stmts(source_class: String) -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_let(name: "bn", value: ts_call(
       callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
@@ -1875,7 +1875,7 @@ fn observation_refused_banner_stmts(source_class: String) -> List<TsStmt> {
   ]
 }
 
-fn sessions_fetch_effect_statements() -> List<TsStmt> {
+fn sessions_fetch_effect_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_expr_stmt(expr: ts_call(
       callee: ts_member(
@@ -1937,7 +1937,7 @@ fn sessions_fetch_effect_statements() -> List<TsStmt> {
 
 data attempts_row_note: String = "U3 (result surfacing v0): each attempt branch renders into its node's disclosure as a mono line — the branch NAME, copyable and true (a tree link would be dead until a push; a dead link is a fabricated result — the PR half lands when push/PR state is observed, not guessed). Each observation clears the prior rendered projection before rebuilding it, so the immediate post-dispatch read cannot duplicate old branches. Refusal upserts its own source-labeled loud banner; recovery clears it."
 
-fn attempts_mark_stmts() -> List<TsStmt> {
+fn attempts_mark_stmts() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: "ar", value: ts_call(
       callee: ts_member(object: ts_ident(name: "document"), property: "querySelector"),
@@ -1974,7 +1974,7 @@ fn attempts_mark_stmts() -> List<TsStmt> {
   ]
 }
 
-fn attempts_fetch_effect_statements() -> List<TsStmt> {
+fn attempts_fetch_effect_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_expr_stmt(expr: ts_call(
       callee: ts_member(
@@ -2034,7 +2034,7 @@ fn attempts_fetch_effect_statements() -> List<TsStmt> {
   ]
 }
 
-fn observation_fetch_statements() -> List<TsStmt> {
+fn observation_fetch_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_let(name: js_sessions_observe_in_flight, value: ts_ident(name: "false")),
     ts_let(name: js_attempts_observe_in_flight, value: ts_ident(name: "false")),
@@ -2079,7 +2079,7 @@ fn observation_fetch_statements() -> List<TsStmt> {
 
 data workflow_paint_no_policy_note: String = "Every branch below selects WHERE a decided string lands, never WHAT it says: arm/attention keys route material and expansion, summary/outcome/reason strings land verbatim, the ledger renders the wire's canonical segment rows in wire order, and counts are never recomputed client-side. The stale sweep realizes attempt disappearance as DOM removal (attention rule: absence earns no area) while keep-and-update preserves the operator's open disclosure between polls."
 
-fn workflow_activity_in_row_expr(row_name: String) -> TsExpr {
+fn workflow_activity_in_row_expr(row_name: String) -> extdeps.languages.typescript.program.TsExpr {
   ts_binop(
     left: ts_ident(name: row_name),
     op: "&&",
@@ -2088,7 +2088,7 @@ fn workflow_activity_in_row_expr(row_name: String) -> TsExpr {
       args: [ts_lit_str(value: join([".", node_activity_class], ""))]))
 }
 
-fn workflow_clear_rendered_stmt() -> TsStmt {
+fn workflow_clear_rendered_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(
       object: ts_call(
@@ -2103,13 +2103,13 @@ fn workflow_clear_rendered_stmt() -> TsStmt {
       right: ts_lit_str(value: "1"))))]))
 }
 
-fn workflow_stale_sweep_stmt() -> TsStmt {
+fn workflow_stale_sweep_stmt() -> extdeps.languages.typescript.program.TsStmt {
   remove_all_selector_stmt(
     selector: join([".", node_activity_class, "[data-stale=\"1\"]"], ""),
     item_name: "staleActivity")
 }
 
-fn workflow_refuse_visible_stmt() -> TsStmt {
+fn workflow_refuse_visible_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(
       object: ts_call(
@@ -2136,7 +2136,7 @@ fn workflow_refuse_visible_stmt() -> TsStmt {
     ]))]))
 }
 
-fn activity_container_create_stmts() -> List<TsStmt> {
+fn activity_container_create_stmts() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_expr_stmt(expr: ts_binop(
       left: ts_ident(name: "act"),
@@ -2217,7 +2217,7 @@ fn activity_container_create_stmts() -> List<TsStmt> {
   ]
 }
 
-fn activity_summary_text_expr() -> TsExpr {
+fn activity_summary_text_expr() -> extdeps.languages.typescript.program.TsExpr {
   ts_cond(
     test: ts_binop(
       left: ts_member(object: ts_ident(name: "av"), property: "arm"),
@@ -2236,7 +2236,7 @@ fn activity_summary_text_expr() -> TsExpr {
       alternate: ts_member(object: ts_ident(name: "av"), property: "summary")))
 }
 
-fn activity_paint_stmts() -> List<TsStmt> {
+fn activity_paint_stmts() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_expr_stmt(expr: ts_binop(
       left: ts_member(
@@ -2469,7 +2469,7 @@ fn activity_paint_stmts() -> List<TsStmt> {
   ]
 }
 
-fn workflow_mark_attempt_stmts() -> List<TsStmt> {
+fn workflow_mark_attempt_stmts() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: "wr", value: ts_call(
       callee: ts_member(
@@ -2519,7 +2519,7 @@ fn workflow_mark_attempt_stmts() -> List<TsStmt> {
   ]
 }
 
-fn workflow_fetch_request_statements() -> List<TsStmt> {
+fn workflow_fetch_request_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_return(expr: ts_call(
       callee: ts_member(
@@ -2618,9 +2618,9 @@ fn workflow_fetch_request_statements() -> List<TsStmt> {
   ]
 }
 
-data workflow_observation_poll_interval: Millisecond = millisecond(count: 2000)
+data workflow_observation_poll_interval: std.measure.Millisecond = millisecond(count: 2000)
 
-fn workflow_schedule_refresh_stmt() -> TsStmt {
+fn workflow_schedule_refresh_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_ident(name: "setTimeout"),
     args: [
@@ -2633,7 +2633,7 @@ fn workflow_schedule_refresh_stmt() -> TsStmt {
 
 data workflow_poll_single_flight_note: String = "gunbcPollWorkflow waits for gunbcRefreshWorkflow's returned fetch promise to settle and schedules the next read in finally. The former fire-then-setTimeout shape overlapped every two seconds whenever /workflow.json exceeded its cadence; one real oversized Codex event made the interpreted handler slow enough to fill the socket backlog. Settlement-driven polling preserves cadence after completion and admits at most one workflow observation per browser."
 
-fn workflow_fetch_statements() -> List<TsStmt> {
+fn workflow_fetch_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(
       name: js_refresh_workflow_fn,
@@ -2674,7 +2674,7 @@ data row_selection_note: String = "SELECTION IS CLIENT STATE; PROMINENCE IS ITS 
 data row_selected_class: String = "node-selected"
 data action_focal_class: String = "action-focal"
 
-fn row_selection_bind_statements() -> List<TsStmt> {
+fn row_selection_bind_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: "gunbcClearSelection", value: ts_arrow(params: [], body: ts_expr_stmt(expr: ts_call(
       callee: ts_member(
@@ -2832,11 +2832,11 @@ fn row_selection_bind_statements() -> List<TsStmt> {
 
 fn dispatch_client_program_for(
   selector: String,
-  url_expr: TsExpr,
+  url_expr: extdeps.languages.typescript.program.TsExpr,
   header: List<String>,
-  instance_statements: List<TsStmt>,
-) -> TsProgram {
-  TsProgram {
+  instance_statements: List<extdeps.languages.typescript.program.TsStmt>,
+) -> extdeps.languages.typescript.program.TsProgram {
+  extdeps.languages.typescript.program.TsProgram {
     ts_nocheck: false,
     header_lines: header,
     statements: concat(
@@ -2865,7 +2865,7 @@ fn dispatch_client_program_for(
   }
 }
 
-fn dispatch_client_program() -> TsProgram {
+fn dispatch_client_program() -> extdeps.languages.typescript.program.TsProgram {
   dispatch_client_program_for(
     selector: ".dispatch-btn",
     url_expr: dispatch_fetch_url_expr(),
@@ -2888,7 +2888,7 @@ data sandbox_live_class: String = "sandbox-live-btn"
 
 data sandbox_client_program_note: String = "The /sandbox live instance reuses the EXACT dispatch render (dispatch_client_program_for) — one behavior, two bindings (§2): same click/response handler, only the fetch URL differs. It POSTs to /sandbox/echo?status=<data-status> instead of the real dispatch route, so every wire arm is pressable and renders identically to the real button, without spawning a session. If the render forked, the sandbox would be a lie; sharing the program makes it a faithful mirror."
 
-fn sandbox_echo_url_expr() -> TsExpr {
+fn sandbox_echo_url_expr() -> extdeps.languages.typescript.program.TsExpr {
   ts_binop(
     left: ts_lit_str(value: "/sandbox/echo?status="),
     op: "+",
@@ -2899,7 +2899,7 @@ fn sandbox_echo_url_expr() -> TsExpr {
   )
 }
 
-fn sandbox_client_program() -> TsProgram {
+fn sandbox_client_program() -> extdeps.languages.typescript.program.TsProgram {
   dispatch_client_program_for(
     selector: join([".", sandbox_live_class], ""),
     url_expr: sandbox_echo_url_expr(),
@@ -2951,7 +2951,7 @@ fn instrument_focus_keys() -> List<String> {
   )
 }
 
-fn js_instrument_wire_index_valid(keys_var: String, parts_var: String, index: String) -> TsExpr {
+fn js_instrument_wire_index_valid(keys_var: String, parts_var: String, index: String) -> extdeps.languages.typescript.program.TsExpr {
   ts_binop(
     left: ts_call(
       callee: ts_member(object: ts_ident(name: keys_var), property: "indexOf"),
@@ -2962,11 +2962,11 @@ fn js_instrument_wire_index_valid(keys_var: String, parts_var: String, index: St
   )
 }
 
-fn js_instrument_camera_member(name: String) -> TsExpr {
+fn js_instrument_camera_member(name: String) -> extdeps.languages.typescript.program.TsExpr {
   ts_member(object: ts_ident(name: js_instrument_camera_var), property: name)
 }
 
-fn js_instrument_wire_expr() -> TsExpr {
+fn js_instrument_wire_expr() -> extdeps.languages.typescript.program.TsExpr {
   ts_binop(
     left: ts_binop(
       left: js_instrument_camera_member(name: "depth"),
@@ -2986,21 +2986,21 @@ fn js_instrument_wire_expr() -> TsExpr {
   )
 }
 
-fn js_instrument_query_all(class_name: String) -> TsExpr {
+fn js_instrument_query_all(class_name: String) -> extdeps.languages.typescript.program.TsExpr {
   ts_call(
     callee: ts_member(object: ts_ident(name: "document"), property: "querySelectorAll"),
     args: [ts_lit_str(value: join([".", class_name], ""))],
   )
 }
 
-fn js_instrument_toggle_class_on(el: String, cls: String, on: TsExpr) -> TsStmt {
+fn js_instrument_toggle_class_on(el: String, cls: String, on: extdeps.languages.typescript.program.TsExpr) -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(object: ts_member(object: ts_ident(name: el), property: "classList"), property: "toggle"),
     args: [ts_lit_str(value: cls), on],
   ))
 }
 
-fn instrument_tuner_load_camera_fn_body() -> List<TsStmt> {
+fn instrument_tuner_load_camera_fn_body() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: "w", value: js_local_storage_get(key: camera_storage_key)),
     ts_if(cond: ts_prefix(op: "!", expr: ts_ident(name: "w")), then: ts_return(expr: none), else_stmt: none),
@@ -3034,7 +3034,7 @@ fn instrument_tuner_load_camera_fn_body() -> List<TsStmt> {
   ]
 }
 
-fn instrument_tuner_reading_visibility_stmt() -> TsStmt {
+fn instrument_tuner_reading_visibility_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(object: js_instrument_query_all(class_name: instrument_reading_class), property: "forEach"),
     args: [ts_arrow(params: ["r"], body: ts_block(stmts: [
@@ -3054,7 +3054,7 @@ fn instrument_tuner_reading_visibility_stmt() -> TsStmt {
   ))
 }
 
-fn instrument_tuner_depth_btn_apply_stmt() -> TsStmt {
+fn instrument_tuner_depth_btn_apply_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(object: js_instrument_query_all(class_name: instrument_depth_btn_class), property: "forEach"),
     args: [ts_arrow(params: ["b"], body: ts_block(stmts: [
@@ -3074,7 +3074,7 @@ fn instrument_tuner_depth_btn_apply_stmt() -> TsStmt {
   ))
 }
 
-fn instrument_tuner_mode_btn_apply_stmt() -> TsStmt {
+fn instrument_tuner_mode_btn_apply_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(object: js_instrument_query_all(class_name: instrument_mode_btn_class), property: "forEach"),
     args: [ts_arrow(params: ["b"], body: ts_block(stmts: [
@@ -3094,7 +3094,7 @@ fn instrument_tuner_mode_btn_apply_stmt() -> TsStmt {
   ))
 }
 
-fn instrument_tuner_subject_btn_apply_stmt() -> TsStmt {
+fn instrument_tuner_subject_btn_apply_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(object: js_instrument_query_all(class_name: instrument_subject_class), property: "forEach"),
     args: [ts_arrow(params: ["li"], body: ts_block(stmts: [
@@ -3111,7 +3111,7 @@ fn instrument_tuner_subject_btn_apply_stmt() -> TsStmt {
   ))
 }
 
-fn instrument_tuner_apply_camera_fn_body() -> List<TsStmt> {
+fn instrument_tuner_apply_camera_fn_body() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: "key", value: js_instrument_wire_expr()),
     instrument_tuner_reading_visibility_stmt(),
@@ -3121,14 +3121,14 @@ fn instrument_tuner_apply_camera_fn_body() -> List<TsStmt> {
   ]
 }
 
-fn instrument_tuner_persist_and_apply_stmts() -> List<TsStmt> {
+fn instrument_tuner_persist_and_apply_stmts() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_save_fn), args: [])),
     ts_expr_stmt(expr: ts_call(callee: ts_ident(name: js_instrument_apply_fn), args: [])),
   ]
 }
 
-fn instrument_tuner_step_depth_fn_body() -> List<TsStmt> {
+fn instrument_tuner_step_depth_fn_body() -> List<extdeps.languages.typescript.program.TsStmt> {
   concat(
     [
       ts_const(name: "prevDepth", value: js_instrument_camera_member(name: "depth")),
@@ -3190,7 +3190,7 @@ fn instrument_tuner_step_depth_fn_body() -> List<TsStmt> {
   )
 }
 
-fn instrument_tuner_seek_depth_fn_body() -> List<TsStmt> {
+fn instrument_tuner_seek_depth_fn_body() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: "targetIdx", value: ts_call(
       callee: ts_member(object: ts_ident(name: "INSTRUMENT_DEPTH_KEYS"), property: "indexOf"),
@@ -3227,7 +3227,7 @@ fn instrument_tuner_seek_depth_fn_body() -> List<TsStmt> {
   ]
 }
 
-fn instrument_tuner_select_subject_fn_body() -> List<TsStmt> {
+fn instrument_tuner_select_subject_fn_body() -> List<extdeps.languages.typescript.program.TsStmt> {
   concat(
     [
       ts_if(
@@ -3241,7 +3241,7 @@ fn instrument_tuner_select_subject_fn_body() -> List<TsStmt> {
   )
 }
 
-fn instrument_tuner_toggle_subject_key_stmts() -> List<TsStmt> {
+fn instrument_tuner_toggle_subject_key_stmts() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: "was", value: ts_binop(
       left: js_instrument_camera_member(name: "focus"),
@@ -3260,7 +3260,7 @@ fn instrument_tuner_toggle_subject_key_stmts() -> List<TsStmt> {
   ]
 }
 
-fn instrument_tuner_depth_click_handler_body() -> List<TsStmt> {
+fn instrument_tuner_depth_click_handler_body() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_expr_stmt(expr: ts_call(
       callee: ts_ident(name: js_instrument_seek_depth_fn),
@@ -3272,7 +3272,7 @@ fn instrument_tuner_depth_click_handler_body() -> List<TsStmt> {
   ]
 }
 
-fn instrument_tuner_subject_click_handler_body() -> List<TsStmt> {
+fn instrument_tuner_subject_click_handler_body() -> List<extdeps.languages.typescript.program.TsStmt> {
   concat(
     [
       ts_const(name: "t", value: ts_member(object: ts_ident(name: "e"), property: "target")),
@@ -3307,7 +3307,7 @@ fn instrument_tuner_subject_click_handler_body() -> List<TsStmt> {
   )
 }
 
-fn instrument_tuner_subject_focus_handler_body() -> List<TsStmt> {
+fn instrument_tuner_subject_focus_handler_body() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: "t", value: ts_member(object: ts_ident(name: "e"), property: "target")),
     ts_if(
@@ -3347,7 +3347,7 @@ fn instrument_tuner_subject_focus_handler_body() -> List<TsStmt> {
   ]
 }
 
-fn instrument_tuner_wheel_preamble() -> List<TsStmt> {
+fn instrument_tuner_wheel_preamble() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: js_instrument_wheel_threshold_const, value: ts_lit_num(text: to_string(wheel_detent_threshold_px))),
     ts_let(name: js_instrument_wheel_travel_var, value: ts_lit_num(text: "0")),
@@ -3472,7 +3472,7 @@ fn instrument_tuner_wheel_preamble() -> List<TsStmt> {
   ]
 }
 
-fn instrument_tuner_camera_preamble() -> List<TsStmt> {
+fn instrument_tuner_camera_preamble() -> List<extdeps.languages.typescript.program.TsStmt> {
   concat(
     [
       ts_const(name: js_instrument_camera_var, value: ts_object(fields: [
@@ -3510,7 +3510,7 @@ fn instrument_tuner_camera_preamble() -> List<TsStmt> {
   )
 }
 
-fn instrument_tuner_depth_btn_bind_stmt() -> TsStmt {
+fn instrument_tuner_depth_btn_bind_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(object: js_instrument_query_all(class_name: instrument_depth_btn_class), property: "forEach"),
     args: [ts_arrow(params: ["b"], body: ts_block(stmts: [
@@ -3525,7 +3525,7 @@ fn instrument_tuner_depth_btn_bind_stmt() -> TsStmt {
   ))
 }
 
-fn instrument_tuner_mode_btn_bind_stmt() -> TsStmt {
+fn instrument_tuner_mode_btn_bind_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(object: js_instrument_query_all(class_name: instrument_mode_btn_class), property: "forEach"),
     args: [ts_arrow(params: ["b"], body: ts_block(stmts: [
@@ -3548,7 +3548,7 @@ fn instrument_tuner_mode_btn_bind_stmt() -> TsStmt {
   ))
 }
 
-fn instrument_tuner_wheel_bind_stmt() -> TsStmt {
+fn instrument_tuner_wheel_bind_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(
       object: ts_call(
@@ -3566,7 +3566,7 @@ fn instrument_tuner_wheel_bind_stmt() -> TsStmt {
   ))
 }
 
-fn instrument_tuner_keydown_bind_stmt() -> TsStmt {
+fn instrument_tuner_keydown_bind_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
     args: [
@@ -3647,7 +3647,7 @@ fn instrument_tuner_keydown_bind_stmt() -> TsStmt {
   ))
 }
 
-fn instrument_tuner_subject_click_bind_stmt() -> TsStmt {
+fn instrument_tuner_subject_click_bind_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
     args: [
@@ -3657,7 +3657,7 @@ fn instrument_tuner_subject_click_bind_stmt() -> TsStmt {
   ))
 }
 
-fn instrument_tuner_subject_focus_bind_stmt() -> TsStmt {
+fn instrument_tuner_subject_focus_bind_stmt() -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
     args: [
@@ -3667,7 +3667,7 @@ fn instrument_tuner_subject_focus_bind_stmt() -> TsStmt {
   ))
 }
 
-fn instrument_tuner_control_bind_statements() -> List<TsStmt> {
+fn instrument_tuner_control_bind_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     instrument_tuner_depth_btn_bind_stmt(),
     instrument_tuner_mode_btn_bind_stmt(),
@@ -3678,8 +3678,8 @@ fn instrument_tuner_control_bind_statements() -> List<TsStmt> {
   ]
 }
 
-fn instrument_tuner_client_program() -> TsProgram {
-  TsProgram {
+fn instrument_tuner_client_program() -> extdeps.languages.typescript.program.TsProgram {
+  extdeps.languages.typescript.program.TsProgram {
     ts_nocheck: false,
     header_lines: [
       "gunbc v1-deletion instrument tuner — emitted from gunbc.roadmap_component.instrument_tuner_client_program",
@@ -3765,26 +3765,26 @@ data js_motion_devicemotion_probe_fn: String = "gunbcMotionProbeDeviceMotion"
 data js_motion_sensor_probe_fn: String = "gunbcMotionProbeSensor"
 data js_motion_sensor_refused_var: String = "gunbcMotionSensorRefused"
 
-fn js_motion_assign(target: TsExpr, value: TsExpr) -> TsStmt {
+fn js_motion_assign(target: extdeps.languages.typescript.program.TsExpr, value: extdeps.languages.typescript.program.TsExpr) -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_binop(left: target, op: "=", right: value))
 }
 
-fn js_motion_guard(cond: TsExpr) -> TsStmt {
+fn js_motion_guard(cond: extdeps.languages.typescript.program.TsExpr) -> extdeps.languages.typescript.program.TsStmt {
   ts_if(cond: cond, then: ts_return(expr: none), else_stmt: none)
 }
 
-fn js_motion_cat(parts: List<TsExpr>) -> TsExpr {
+fn js_motion_cat(parts: List<extdeps.languages.typescript.program.TsExpr>) -> extdeps.languages.typescript.program.TsExpr {
   fold(parts, init: ts_lit_str(value: ""), f: (acc, p) => ts_binop(left: acc, op: "+", right: p))
 }
 
-fn js_motion_line_call(index: String, text: TsExpr) -> TsStmt {
+fn js_motion_line_call(index: String, text: extdeps.languages.typescript.program.TsExpr) -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_ident(name: js_motion_line_fn),
     args: [ts_lit_num(text: index), text],
   ))
 }
 
-fn js_motion_typeof_undefined(name: String) -> TsExpr {
+fn js_motion_typeof_undefined(name: String) -> extdeps.languages.typescript.program.TsExpr {
   ts_binop(
     left: ts_prefix(op: "typeof ", expr: ts_ident(name: name)),
     op: "===",
@@ -3796,11 +3796,11 @@ data any_axis_is_the_upstream_predicate_note: String = "A READING IS ANY NON-NUL
 
 This is the emitted form of acceleration_carries_any_value: any axis carrying a value makes the reading a reading. The axis names arrive as parameters from whichever specification defines the object being read, so neither probe spells them at the reading site."
 
-fn js_motion_axis_not_null(obj: TsExpr, axis: String) -> TsExpr {
+fn js_motion_axis_not_null(obj: extdeps.languages.typescript.program.TsExpr, axis: String) -> extdeps.languages.typescript.program.TsExpr {
   ts_binop(left: ts_member(object: obj, property: axis), op: "!==", right: ts_ident(name: "null"))
 }
 
-fn js_motion_any_axis_valued(obj: TsExpr, x: String, y: String, z: String) -> TsExpr {
+fn js_motion_any_axis_valued(obj: extdeps.languages.typescript.program.TsExpr, x: String, y: String, z: String) -> extdeps.languages.typescript.program.TsExpr {
   ts_binop(
     left: js_motion_axis_not_null(obj: obj, axis: x),
     op: "||",
@@ -3812,7 +3812,7 @@ fn js_motion_any_axis_valued(obj: TsExpr, x: String, y: String, z: String) -> Ts
   )
 }
 
-fn js_motion_count_if(cond: TsExpr, counter: String) -> TsStmt {
+fn js_motion_count_if(cond: extdeps.languages.typescript.program.TsExpr, counter: String) -> extdeps.languages.typescript.program.TsStmt {
   ts_if(
     cond: cond,
     then: js_motion_assign(
@@ -3823,18 +3823,18 @@ fn js_motion_count_if(cond: TsExpr, counter: String) -> TsStmt {
   )
 }
 
-fn js_motion_now() -> TsExpr {
+fn js_motion_now() -> extdeps.languages.typescript.program.TsExpr {
   ts_call(callee: ts_member(object: ts_ident(name: "Date"), property: "now"), args: [])
 }
 
-fn js_motion_get_by_id(id: String) -> TsExpr {
+fn js_motion_get_by_id(id: String) -> extdeps.languages.typescript.program.TsExpr {
   ts_call(
     callee: ts_member(object: ts_ident(name: "document"), property: "getElementById"),
     args: [ts_lit_str(value: id)],
   )
 }
 
-fn js_motion_set_timeout(body: List<TsStmt>) -> TsStmt {
+fn js_motion_set_timeout(body: List<extdeps.languages.typescript.program.TsStmt>) -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_ident(name: "setTimeout"),
     args: [
@@ -3844,7 +3844,7 @@ fn js_motion_set_timeout(body: List<TsStmt>) -> TsStmt {
   ))
 }
 
-fn motion_preamble_statements() -> List<TsStmt> {
+fn motion_preamble_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_const(name: js_motion_plate_var, value: js_motion_get_by_id(id: motion_plate_id)),
     ts_const(name: js_motion_receipt_var, value: js_motion_get_by_id(id: motion_receipt_id)),
@@ -3884,7 +3884,7 @@ fn motion_preamble_statements() -> List<TsStmt> {
   ]
 }
 
-fn motion_line_fn_statement() -> TsStmt {
+fn motion_line_fn_statement() -> extdeps.languages.typescript.program.TsStmt {
   ts_const(
     name: js_motion_line_fn,
     value: ts_arrow(params: ["i", "text"], body: ts_block(stmts: [
@@ -3906,7 +3906,7 @@ fn motion_line_fn_statement() -> TsStmt {
   )
 }
 
-fn js_motion_set_translate(px: TsExpr) -> TsStmt {
+fn js_motion_set_translate(px: extdeps.languages.typescript.program.TsExpr) -> extdeps.languages.typescript.program.TsStmt {
   js_motion_assign(
     target: ts_member(
       object: ts_member(object: ts_ident(name: js_motion_plate_var), property: "style"),
@@ -3916,14 +3916,14 @@ fn js_motion_set_translate(px: TsExpr) -> TsStmt {
   )
 }
 
-fn js_motion_clear_timer_statements() -> List<TsStmt> {
+fn js_motion_clear_timer_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_expr_stmt(expr: ts_call(callee: ts_ident(name: "clearInterval"), args: [ts_ident(name: js_motion_timer_var)])),
     js_motion_assign(target: ts_ident(name: js_motion_timer_var), value: ts_ident(name: "null")),
   ]
 }
 
-fn motion_play_fn_statement() -> TsStmt {
+fn motion_play_fn_statement() -> extdeps.languages.typescript.program.TsStmt {
   ts_const(
     name: js_motion_play_fn,
     value: ts_arrow(params: ["wire"], body: ts_block(stmts: [
@@ -3978,7 +3978,7 @@ fn motion_play_fn_statement() -> TsStmt {
   )
 }
 
-fn motion_tap_bind_statement() -> TsStmt {
+fn motion_tap_bind_statement() -> extdeps.languages.typescript.program.TsStmt {
   ts_expr_stmt(expr: ts_call(
     callee: ts_member(object: ts_ident(name: "document"), property: "addEventListener"),
     args: [
@@ -4018,7 +4018,7 @@ fn motion_tap_bind_statement() -> TsStmt {
 
 data motion_devicemotion_probe_note: String = "The DeviceMotion route, reported as three separable facts because they fail separately: whether the interface exists at all, whether the permission gate answered, and what the stream actually delivered over a measured window. A silent stream reports zero events over its window — it does NOT report an absent sensor, because a window that produced nothing and an interface that does not exist are different observations and only one of them was made."
 
-fn motion_devicemotion_listen_statements() -> List<TsStmt> {
+fn motion_devicemotion_listen_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     ts_let(name: "events", value: ts_lit_num(text: "0")),
     ts_let(name: "valued", value: ts_lit_num(text: "0")),
@@ -4066,7 +4066,7 @@ fn motion_devicemotion_listen_statements() -> List<TsStmt> {
   ]
 }
 
-fn motion_devicemotion_probe_statement() -> TsStmt {
+fn motion_devicemotion_probe_statement() -> extdeps.languages.typescript.program.TsStmt {
   ts_const(
     name: js_motion_devicemotion_probe_fn,
     value: ts_arrow(params: [], body: ts_block(stmts: [
@@ -4140,7 +4140,7 @@ fn motion_devicemotion_probe_statement() -> TsStmt {
 
 data motion_sensor_probe_note: String = "The Generic Sensor route, kept because it is the only one whose failures are NAMED. Construction itself can raise, so it is wrapped: a SecurityError from an insecure context or a blocking permissions policy becomes a located line rather than a fault that leaves the previous line standing. The refusal flag exists so an error observed during the window is not overwritten by the window's own summary — the first thing that actually happened is what the receipt keeps."
 
-fn motion_sensor_probe_statement() -> TsStmt {
+fn motion_sensor_probe_statement() -> extdeps.languages.typescript.program.TsStmt {
   ts_const(
     name: js_motion_sensor_probe_fn,
     value: ts_arrow(params: [], body: ts_block(stmts: [
@@ -4245,11 +4245,11 @@ fn motion_sensor_probe_statement() -> TsStmt {
   )
 }
 
-fn motion_probe_bind_statement() -> TsStmt {
+fn motion_probe_bind_statement() -> extdeps.languages.typescript.program.TsStmt {
   ts_const(name: "motionProbeBtn", value: js_motion_get_by_id(id: motion_probe_run_id))
 }
 
-fn motion_probe_bind_statements() -> List<TsStmt> {
+fn motion_probe_bind_statements() -> List<extdeps.languages.typescript.program.TsStmt> {
   [
     motion_probe_bind_statement(),
     ts_if(
@@ -4269,8 +4269,8 @@ fn motion_probe_bind_statements() -> List<TsStmt> {
   ]
 }
 
-fn instrument_motion_client_program() -> TsProgram {
-  TsProgram {
+fn instrument_motion_client_program() -> extdeps.languages.typescript.program.TsProgram {
+  extdeps.languages.typescript.program.TsProgram {
     ts_nocheck: false,
     header_lines: [
       "gunbc instrument motion lab — emitted from gunbc.roadmap_component.instrument_motion_client_program",
@@ -4299,7 +4299,7 @@ fn instrument_motion_client_js_source() -> String {
   serialize_typescript_program(p: instrument_motion_client_program())
 }
 
-fn dispatch_state_display_text(state: ComponentState) -> String {
+fn dispatch_state_display_text(state: gunbc.design.component.ComponentState) -> String {
   match state.kind {
     IdleState => dispatch_caption_idle
     RequestedState => dispatch_caption_requested

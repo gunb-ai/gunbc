@@ -19,8 +19,8 @@ type PoolIndependenceVerdict
   | PoolIndependenceRefused { failure: PoolIndependenceFailure }
 
 fn bound_reference_provider_eq(
-  left: BoundReferenceProvider,
-  right: BoundReferenceProvider,
+  left: std.occurrence_binding_candidates.BoundReferenceProvider,
+  right: std.occurrence_binding_candidates.BoundReferenceProvider,
 ) -> Bool {
   left.reference_occurrence == right.reference_occurrence
     && left.declaration_occurrence == right.declaration_occurrence
@@ -29,8 +29,8 @@ fn bound_reference_provider_eq(
 }
 
 fn cross_file_binding_provenance_eq(
-  left: CrossFileBindingProvenance,
-  right: CrossFileBindingProvenance,
+  left: std.occurrence_binding_candidates.CrossFileBindingProvenance,
+  right: std.occurrence_binding_candidates.CrossFileBindingProvenance,
 ) -> Bool {
   left.reference_occurrence == right.reference_occurrence
     && left.declaration_occurrence == right.declaration_occurrence
@@ -39,8 +39,8 @@ fn cross_file_binding_provenance_eq(
 }
 
 fn bound_reference_population_eq(
-  left: BoundReferencePopulation,
-  right: BoundReferencePopulation,
+  left: std.occurrence_binding_candidates.BoundReferencePopulation,
+  right: std.occurrence_binding_candidates.BoundReferencePopulation,
 ) -> Bool {
   match left {
     AllReferencesBound { providers: left_providers } =>
@@ -69,8 +69,8 @@ fn bound_reference_population_eq(
 }
 
 fn reference_occurrence_lists_agree(
-  left: List<BoundReferenceProvider>,
-  right: List<BoundReferenceProvider>,
+  left: List<std.occurrence_binding_candidates.BoundReferenceProvider>,
+  right: List<std.occurrence_binding_candidates.BoundReferenceProvider>,
 ) -> Bool {
   match lists_agree_at(
     left: left,
@@ -83,8 +83,8 @@ fn reference_occurrence_lists_agree(
 }
 
 fn declaration_occurrence_lists_agree(
-  left: List<BoundReferenceProvider>,
-  right: List<BoundReferenceProvider>,
+  left: List<std.occurrence_binding_candidates.BoundReferenceProvider>,
+  right: List<std.occurrence_binding_candidates.BoundReferenceProvider>,
 ) -> Bool {
   match lists_agree_at(
     left: left,
@@ -97,8 +97,8 @@ fn declaration_occurrence_lists_agree(
 }
 
 fn provenance_lists_agree(
-  left: List<CrossFileBindingProvenance>,
-  right: List<CrossFileBindingProvenance>,
+  left: List<std.occurrence_binding_candidates.CrossFileBindingProvenance>,
+  right: List<std.occurrence_binding_candidates.CrossFileBindingProvenance>,
 ) -> Bool {
   match lists_agree_at(
     left: left,
@@ -112,7 +112,7 @@ fn provenance_lists_agree(
 
 fn pool_independence_source_subject_matches_provenance(
   source_subject: std.types.FilePath,
-  provenances: List<CrossFileBindingProvenance>,
+  provenances: List<std.occurrence_binding_candidates.CrossFileBindingProvenance>,
 ) -> Bool {
   fold(
     provenances,
@@ -128,12 +128,12 @@ fn pool_independence_source_subject_matches_provenance(
 
 fn pool_independence_compare_ready_fields(
   source_subject: std.types.FilePath,
-  baseline_provenances: List<CrossFileBindingProvenance>,
-  baseline_dependencies: List<DirectFileDependency>,
-  baseline_population: BoundReferencePopulation,
-  perturbed_provenances: List<CrossFileBindingProvenance>,
-  perturbed_dependencies: List<DirectFileDependency>,
-  perturbed_population: BoundReferencePopulation,
+  baseline_provenances: List<std.occurrence_binding_candidates.CrossFileBindingProvenance>,
+  baseline_dependencies: List<std.occurrence_binding_candidates.DirectFileDependency>,
+  baseline_population: std.occurrence_binding_candidates.BoundReferencePopulation,
+  perturbed_provenances: List<std.occurrence_binding_candidates.CrossFileBindingProvenance>,
+  perturbed_dependencies: List<std.occurrence_binding_candidates.DirectFileDependency>,
+  perturbed_population: std.occurrence_binding_candidates.BoundReferencePopulation,
 ) -> PoolIndependenceVerdict {
   if !pool_independence_source_subject_matches_provenance(
     source_subject: source_subject,
@@ -211,8 +211,8 @@ fn pool_independence_compare_ready_fields(
 
 fn assess_pool_independent_projection_equality(
   source_subject: std.types.FilePath,
-  baseline: ReferenceDerivedDependencyProjection,
-  perturbed: ReferenceDerivedDependencyProjection,
+  baseline: std.occurrence_binding_candidates.ReferenceDerivedDependencyProjection,
+  perturbed: std.occurrence_binding_candidates.ReferenceDerivedDependencyProjection,
 ) -> PoolIndependenceVerdict {
   match baseline {
     ReferenceDerivedDependencyProjectionReady {
@@ -280,8 +280,8 @@ fn assess_pool_independent_projection_equality(
 }
 
 fn assess_file_dependencies_only_equality(
-  baseline: ReferenceDerivedDependencyProjection,
-  perturbed: ReferenceDerivedDependencyProjection,
+  baseline: std.occurrence_binding_candidates.ReferenceDerivedDependencyProjection,
+  perturbed: std.occurrence_binding_candidates.ReferenceDerivedDependencyProjection,
 ) -> Bool {
   match baseline {
     ReferenceDerivedDependencyProjectionReady {

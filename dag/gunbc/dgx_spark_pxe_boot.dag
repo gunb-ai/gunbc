@@ -27,9 +27,9 @@ type PxeNetworkGap
 
 type PxeNetworkStanding
   = PxeNetworkReady {
-      dhcp_authority: DeclarationRef,
-      tftp_endpoint: DeclarationRef,
-      http_endpoint: DeclarationRef,
+      dhcp_authority: std.decl_ref.DeclarationRef,
+      tftp_endpoint: std.decl_ref.DeclarationRef,
+      http_endpoint: std.decl_ref.DeclarationRef,
       isolation: PxeNetworkIsolation,
     }
   | PxeNetworkGapped { gaps: List<PxeNetworkGap> }
@@ -83,9 +83,9 @@ fn pxe_network_authority_gaps(
 }
 
 type PxeNetworkPresentAuthorities {
-  dhcp_authority: DeclarationRef,
-  tftp_endpoint: DeclarationRef,
-  http_endpoint: DeclarationRef,
+  dhcp_authority: std.decl_ref.DeclarationRef,
+  tftp_endpoint: std.decl_ref.DeclarationRef,
+  http_endpoint: std.decl_ref.DeclarationRef,
   isolation: PxeNetworkIsolation,
 }
 
@@ -211,7 +211,7 @@ fn evaluate_pxe_network_standing(
 }
 
 type SparkUefiPxeConfiguration {
-  secure_boot: SparkPxeSecureBootPrerequisite
+  secure_boot: extdeps.systems.nvidia_dgx_spark_pxe.SparkPxeSecureBootPrerequisite
   network_stack_enabled: Bool
   ipv4_pxe_support_enabled: Bool
   nic_pxe_boot_enabled: Bool
@@ -225,7 +225,7 @@ type SparkPxeFirmwareGap
 
 type SparkPxeFirmwareStanding
   = SparkPxeFirmwareReady
-  | SparkPxeFirmwareHumanInterventionRequired { intervention: HumanIntervention }
+  | SparkPxeFirmwareHumanInterventionRequired { intervention: std.human_intervention.HumanIntervention }
 
 fn spark_pxe_firmware_enablement_intervention() -> HumanIntervention {
   HumanIntervention {
@@ -271,13 +271,13 @@ fn evaluate_spark_pxe_firmware_standing(config: SparkUefiPxeConfiguration) -> Sp
 }
 
 type SparkUnattendedImageBoot {
-  image_kind: SparkPxeBootImageKind
-  network_chain: NetworkBootChain
-  tftp_bootloader: NonEmptyStr
-  tftp_grub_config: NonEmptyStr
-  tftp_kernel: NonEmptyStr
-  tftp_initrd: NonEmptyStr
-  http_install_image: NonEmptyStr
+  image_kind: extdeps.systems.nvidia_dgx_spark_pxe.SparkPxeBootImageKind
+  network_chain: extdeps.provisioning.network_boot.NetworkBootChain
+  tftp_bootloader: std.types.NonEmptyStr
+  tftp_grub_config: std.types.NonEmptyStr
+  tftp_kernel: std.types.NonEmptyStr
+  tftp_initrd: std.types.NonEmptyStr
+  http_install_image: std.types.NonEmptyStr
   kernel_cmdline: String
 }
 
@@ -312,7 +312,7 @@ type SparkUnattendedPxeBootAdmissionOutcome
 
 type SparkUnattendedPxeBootRefusalReason
   = UnattendedPxeBootNetworkStandingIncomplete { gaps: List<PxeNetworkGap> }
-  | UnattendedPxeBootFirmwareHumanInterventionRequired { intervention: HumanIntervention }
+  | UnattendedPxeBootFirmwareHumanInterventionRequired { intervention: std.human_intervention.HumanIntervention }
   | NetworkObservationAbsent
   | FirmwareConfigurationAbsent
 

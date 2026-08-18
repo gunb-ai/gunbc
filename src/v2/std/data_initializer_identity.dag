@@ -152,8 +152,8 @@ fn resolved_declaration_locators_equal(
 
 type DeclFactLookup
   = DeclFactMissing
-  | DeclFactUnique { fact: DeclFact }
-  | DeclFactAmbiguous { candidates: List<DeclFact> }
+  | DeclFactUnique { fact: v2.std.decl_index.DeclFact }
+  | DeclFactAmbiguous { candidates: List<v2.std.decl_index.DeclFact> }
 
 fn decl_fact_module_path_from_qualified_name(fact: DeclFact) -> String {
   let suffix = concat(".", fact.name)

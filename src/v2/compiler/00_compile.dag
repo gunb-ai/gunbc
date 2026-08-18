@@ -6,7 +6,7 @@ type CoreNode = Node
 type RuntimeTarget = Node
 
 type CompileMode
-  = TranslateTo { target: TargetModel }
+  = TranslateTo { target: v2.std.compilers.target_model.TargetModel }
   | Eval { runtime: RuntimeTarget }
 
 type CompileOutput

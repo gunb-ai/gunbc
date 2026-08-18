@@ -1,7 +1,7 @@
 module v2.test.nat_semiring.rung_8
 
 
-fn rung8_tier1_eval_run(claim: TestClaim) -> TestClaimRun<Node, RuntimeValue> {
+fn rung8_tier1_eval_run(claim: v2.std.verification.TestClaim) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim(
     subject: rung34_test_claim_subject(
       claim: claim,

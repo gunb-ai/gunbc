@@ -7,7 +7,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // receipt says a tool accepted these exact bytes; this asserts the product still emits exactly
 // those bytes. Without it the receipt would keep vouching for an artifact the projection stopped
 // producing, which is worse than having no receipt at all — it reads as evidence.
-fn admitted() -> AdmittedBoardPowerInterfaceArticle? {
+fn admitted() -> product.compute_board.admission.AdmittedBoardPowerInterfaceArticle? {
   match admit_board_article(a: power_interlock_article) {
     BoardArticleAdmitted { article: adm } => Present { value: adm }
     BoardArticleRefused { causes: _ } => none
@@ -100,9 +100,9 @@ test fn w_the_operating_point_discriminates_the_scale_suffix() -> Bool {
 // wrong kind of thing — the article stopped being admitted and two tests silently stopped
 // measuring the projection at all. Derived, a topology change flows through, and deleting the
 // dropped terminal fails loudly instead: nothing floats and the projection renders.
-fn without_filter_high_terminal(nets: List<ElectricalNet>) -> List<ElectricalNet> {
+fn without_filter_high_terminal(nets: List<product.electrical.connectivity.ElectricalNet>) -> List<product.electrical.connectivity.ElectricalNet> {
   fold(nets, init: [], f: fn(acc, net) {
-    concat(acc, [ElectricalNet {
+    concat(acc, [product.electrical.connectivity.ElectricalNet {
       identity: net.identity,
       members: fold(net.members, init: [], f: fn(macc, m) {
         if (component_local_label(c: m.component) == "pg_filt") && ((m.terminal as String) == "1") {
@@ -115,13 +115,13 @@ fn without_filter_high_terminal(nets: List<ElectricalNet>) -> List<ElectricalNet
   })
 }
 
-fn terminal_member_count(nets: List<ElectricalNet>) -> Int {
+fn terminal_member_count(nets: List<product.electrical.connectivity.ElectricalNet>) -> Int {
   fold(nets, init: 0, f: fn(acc, net) {
     fold(net.members, init: acc, f: fn(macc, _m) { macc + 1 })
   })
 }
 
-data floating_analog: AnalogCircuitIntent = AnalogCircuitIntent {
+data floating_analog: product.compute_board.analog.AnalogCircuitIntent = product.compute_board.analog.AnalogCircuitIntent {
   title: power_interlock_article.analog.title,
   components: power_interlock_article.analog.components,
   nets: without_filter_high_terminal(nets: power_interlock_article.analog.nets),
@@ -136,7 +136,7 @@ test fn w_the_floating_fixture_actually_floats_exactly_one_terminal() -> Bool {
   produced > 0 && floated == (produced - 1)
 }
 
-data floating_terminal_article: BoardPowerInterfaceArticle = BoardPowerInterfaceArticle {
+data floating_terminal_article: product.compute_board.article.BoardPowerInterfaceArticle = product.compute_board.article.BoardPowerInterfaceArticle {
   identity: power_interlock_article.identity,
   analog: floating_analog,
   model_bindings: power_interlock_article.model_bindings,
@@ -148,7 +148,7 @@ data floating_terminal_article: BoardPowerInterfaceArticle = BoardPowerInterface
   manufacturing: power_interlock_article.manufacturing,
 }
 
-fn floating_article() -> AdmittedBoardPowerInterfaceArticle? {
+fn floating_article() -> product.compute_board.admission.AdmittedBoardPowerInterfaceArticle? {
   match admit_board_article(a: floating_terminal_article) {
     BoardArticleAdmitted { article: adm } => Present { value: adm }
     BoardArticleRefused { causes: _ } => none

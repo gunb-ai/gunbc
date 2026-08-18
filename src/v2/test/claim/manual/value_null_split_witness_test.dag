@@ -1,7 +1,7 @@
 module v2.test.manual.value_null_split_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data value_null_split_phase_a_note: String = "Phase A witnesses (keen-ferret-250): pin Optional/Witness construction carriers vs the overloaded Value::Null sentinel. optional_null_straddle_rostered_until_phase_e delegates the Optional×native_value_null straddle to the testgen roster (removed in Phase E). raw_get_miss_differs_from_optional_absent stays GREEN while raw get miss is untyped and optional_absent() is Optional::Absent; it flips RED in Phase B when get+Optional routes through map_lookup_as_optional."
 

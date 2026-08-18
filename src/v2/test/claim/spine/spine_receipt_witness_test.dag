@@ -1,16 +1,16 @@
 module v2.test.spine.spine_receipt_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn atom(sym: Symbol) -> Node {
+fn atom(sym: v2.std.node.Symbol) -> Node {
   node_synthetic(kind: TypeNode { connective: Atom { identity: sym } }, children: [])
 }
 
 fn chain1(child: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
-    children: [Edge { label: Named { name: ^only }, target: child }]
+    children: [v2.std.node.Edge { label: Named { name: ^only }, target: child }]
   )
 }
 
@@ -18,9 +18,9 @@ fn star3(a: Node, b: Node, c: Node) -> Node {
   node_synthetic(
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^first }, target: a },
-      Edge { label: Named { name: ^second }, target: b },
-      Edge { label: Named { name: ^third }, target: c }
+      v2.std.node.Edge { label: Named { name: ^first }, target: a },
+      v2.std.node.Edge { label: Named { name: ^second }, target: b },
+      v2.std.node.Edge { label: Named { name: ^third }, target: c }
     ]
   )
 }

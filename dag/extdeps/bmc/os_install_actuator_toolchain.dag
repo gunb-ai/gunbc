@@ -9,7 +9,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type ActuatorToolchainRequirement {
-  required_tools: List<CliTool>
+  required_tools: List<extdeps.tools.CliTool>
 }
 
 data os_install_actuator_toolchain_requirement: ActuatorToolchainRequirement = ActuatorToolchainRequirement {

@@ -13,8 +13,8 @@ module gunbc.memory_part_selection
 // On InferredFromSequencePosition:
 // The step is inferred from position in the boot sequence only.
 type TrainingEvidenceStanding
-  = DecodedFromPlatformSyndrome { register: NonEmptyStr }
-  | AssociatedByIdenticalSignature { signature: NonEmptyStr, source: ExternalAuthority }
+  = DecodedFromPlatformSyndrome { register: std.types.NonEmptyStr }
+  | AssociatedByIdenticalSignature { signature: std.types.NonEmptyStr, source: extdeps.external_authority.ExternalAuthority }
   | InferredFromSequencePosition
   | EvidenceUnobserved
 
@@ -23,11 +23,11 @@ type TrainingEvidenceStanding
 // only in a sparse population is weaker support for rejecting a part in a
 // full population, so the observation carries its own conditions.
 type PlatformTrainingFailure {
-  board: BaseboardModel
-  step: MemoryTrainingStep
+  board: extdeps.boards.types.BaseboardModel
+  step: extdeps.memory.training.MemoryTrainingStep
   standing: TrainingEvidenceStanding
-  observed_population: List<NonEmptyStr>
-  observed_at: EpochMs
+  observed_population: List<std.types.NonEmptyStr>
+  observed_at: std.types.EpochMs
 }
 
 // WHAT AN OBSERVED STEP FAILURE LICENSES, graded by evidence and scoped to
@@ -47,11 +47,11 @@ type PlatformTrainingFailure {
 type PartImplication
   = PartNotImplicated
   | PartSampleQualificationRequired {
-      step: MemoryTrainingStep
+      step: extdeps.memory.training.MemoryTrainingStep
       standing: TrainingEvidenceStanding
     }
   | PartImplicatedByFailingStep {
-      step: MemoryTrainingStep
+      step: extdeps.memory.training.MemoryTrainingStep
       standing: TrainingEvidenceStanding
     }
 
@@ -123,7 +123,7 @@ fn part_implication(
 // This is derived from JEDEC die density, not from price observation.
 type TopologyPressure
   = CapacityReachableConventionally
-  | CapacityForcesExoticTopology { capacity_bytes: ByteSize }
+  | CapacityForcesExoticTopology { capacity_bytes: std.measure.ByteSize }
 
 fn topology_pressure(
   candidate: DramModuleCatalogRow,
@@ -143,11 +143,11 @@ fn topology_pressure(
 // where an earlier revision of this module only narrated the invariant in a
 // comment the compiler could not read.
 type PartCandidate {
-  module: DramModuleCatalogRow
-  unit_price: MoneyAmountMicro
-  currency: CurrencyCode
+  module: extdeps.memory.types.DramModuleCatalogRow
+  unit_price: std.measure.MoneyAmountMicro
+  currency: std.currency.CurrencyCode
   sticks_required: std.nat.Nat
-  qualification: SpecificPartQualification
+  qualification: gunbc.host_memory_qualification.SpecificPartQualification
 }
 
 fn candidate_total_capacity_bytes(candidate: PartCandidate) -> std.nat.Nat {
@@ -172,16 +172,16 @@ fn candidate_total_price_micros(candidate: PartCandidate) -> std.nat.Nat {
 type CandidateAdmission
   = CandidateAdmissible
   | CandidateSampleRequired {
-      step: MemoryTrainingStep
+      step: extdeps.memory.training.MemoryTrainingStep
       standing: TrainingEvidenceStanding
     }
   | CandidateImplicated {
-      step: MemoryTrainingStep
+      step: extdeps.memory.training.MemoryTrainingStep
       standing: TrainingEvidenceStanding
     }
   | CandidateCurrencyMismatch {
-      declared: CurrencyCode
-      candidate_currency: CurrencyCode
+      declared: std.currency.CurrencyCode
+      candidate_currency: std.currency.CurrencyCode
     }
 
 fn candidate_admission(

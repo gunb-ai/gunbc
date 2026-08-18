@@ -1,7 +1,7 @@
 module gunbc.plans.m4_universal_hermetic_corpus
 
 
-fn m4_universal_hermetic_corpus_body() -> List<MarkdownBlock> {
+fn m4_universal_hermetic_corpus_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** PLAN-FIRST · worker `fierce-crab-852` · DESIGN.md §3/§5/§6 authority — this doc is a dispatch tracker, not a fact ledger."),
     p(text: "**Predecessor:** M4.0 (#5188) — `eval_service_call` reads the published mock corpus as the single authority for hermetic realizability, but only from the **entry import closure** (`item_registry`). Filesystem co-locates its corpus via `import extdeps.filesystem.mock_corpus` in `filesystem_io.dag` (M4.0 per-layer opt-in). GovernedProbe keeps corpus in the same module as the service."),
@@ -27,7 +27,7 @@ fn m4_universal_hermetic_corpus_body() -> List<MarkdownBlock> {
     ThematicBreak,
     h2(text: "Phase 2 — Runtime (load-bearing `v1_interpreter.rs` + `cli_run.rs`)"),
     ol(items: [
-      MarkdownListItem { blocks: [
+      std.markdown.MarkdownListItem { blocks: [
         p(text: "**`precompute_whole_tree_published_mock_keys(source_roots)`** in `cli_run.rs`"),
         ul(items: [
           li(text: "Scan dag source roots (paths ending in `/dag` or named `dag`)"),
@@ -36,17 +36,17 @@ fn m4_universal_hermetic_corpus_body() -> List<MarkdownBlock> {
           li(text: "Return `HashSet<String>` of operation keys"),
         ]),
       ] },
-      MarkdownListItem { blocks: [
+      std.markdown.MarkdownListItem { blocks: [
         p(text: "**`InterpContext` extensions**"),
         ul(items: [
           li(text: "`whole_tree_published_keys: Option<Rc<HashSet<String>>>` — when set, supersedes closure scan"),
           li(text: "`governed_services: RefCell<Option<Rc<HashSet<String>>>>` — service names extracted once; `eval_service_call` uses `governed_services.contains(service_name)` (O(1)) instead of scanning all keys per call"),
         ]),
       ] },
-      MarkdownListItem { blocks: [
+      std.markdown.MarkdownListItem { blocks: [
         p(text: "**`make_eval_context_with_published_keys`** — thread precomputed keys from `claim_batch` / `handle_run_with_options` (precompute once per invocation, not per witness)"),
       ] },
-      MarkdownListItem { blocks: [
+      std.markdown.MarkdownListItem { blocks: [
         p(text: "**Key extraction** — prefer `service` + `operation` fields when present; fall back to `operation_key` during migration"),
       ] },
     ]),
@@ -81,7 +81,7 @@ fn m4_universal_hermetic_corpus_body() -> List<MarkdownBlock> {
   ]
 }
 
-data m4_universal_hermetic_corpus_plan: Plan = Plan {
+data m4_universal_hermetic_corpus_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "m4-universal-hermetic-corpus",
   title: "Plan — M4.1: universal hermetic corpus governance",
   body: m4_universal_hermetic_corpus_body(),

@@ -3,7 +3,7 @@ module v2.test.complexity_gate.source_bridged_pipeline_bridge
 
 fn source_bridged_resolved_root(
   source_text: String,
-  file: Symbol
+  file: v2.std.node.Symbol
 ) -> Outcome<Node> {
   let lm = dag_language_model()
   bind_outcome(

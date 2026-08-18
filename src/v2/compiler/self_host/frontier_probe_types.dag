@@ -11,14 +11,14 @@ data frontier_fixture_cemented_producer_note: String = "FixtureCemented is forwa
 type FrontierBlockerClass
   = SelfEmitReady
   | UpstreamSemanticRefusal {
-      diagnostic_class: Symbol,
-      diagnostic_name: Symbol
+      diagnostic_class: v2.std.node.Symbol,
+      diagnostic_name: v2.std.node.Symbol
     }
   | NameResolutionGap
   | EmitSurfaceGap
   | RealizationGap
   | FixtureCemented
-  | UnknownProbeCause { reason: Symbol }
+  | UnknownProbeCause { reason: v2.std.node.Symbol }
 
 type FrontierProbeStage
   = ProbeStageAssemble
@@ -33,42 +33,42 @@ data upstream_semantic_compiler_error_class: Symbol = ^CompilerError
 
 type FrontierProbeDetail
   = FrontierProbeDetailAbsent
-  | MissingModule { requested: QualifiedName }
+  | MissingModule { requested: v2.std.qualified_name.QualifiedName }
   | SourceRootManifestElidedProbe { read_count: Int, cap: Int }
-  | FrontierProbeClosurePopulationRefused { cause: Symbol }
-  | FrontierProbeCoverageRefused { coverage: SourceRootCoverage }
-  | SourceRefReadRefused { source_ref: SourceRef, error: String }
+  | FrontierProbeClosurePopulationRefused { cause: v2.std.node.Symbol }
+  | FrontierProbeCoverageRefused { coverage: v2.compiler.source_authority.SourceRootCoverage }
+  | SourceRefReadRefused { source_ref: v2.compiler.source_authority.SourceRef, error: String }
   | SourceRefContentHashMismatch {
-      source_ref: SourceRef,
-      expected: ContentHash,
-      observed: ContentHash
+      source_ref: v2.compiler.source_authority.SourceRef,
+      expected: std.content_hash.ContentHash,
+      observed: std.content_hash.ContentHash
     }
 
 data frontier_probe_detail_note: String = "Survey receipts carry structural probe detail beside the reason symbol. MissingModule holds the QualifiedName sought (not only its dotted projection). SourceRootManifestElidedProbe records inline-manifest elision when the inline carrier cannot supply the closure. FrontierProbeClosurePopulationRefused records entry-binding and closure-population identity failures (duplicate refs, count mismatch, entry not exactly once). FrontierProbeCoverageRefused preserves the original SourceRootCoverage arm. SourceRefReadRefused carries the filesystem error string without fabricating missing-vs-unreadable. SourceRefContentHashMismatch carries expected and observed ContentHash beside the ref."
 
 type NonEmptySymbolChain {
-  head: Symbol
-  tail: FreeMonoid<Symbol>
+  head: v2.std.node.Symbol
+  tail: FreeMonoid<v2.std.node.Symbol>
 }
 
 type AssembleRejectionCause
-  = GrammarChoiceOverlap { rows: NonEmptyGrammarChoiceAmbiguityRows }
+  = GrammarChoiceOverlap { rows: v2.std.grammar_choice_ambiguity.NonEmptyGrammarChoiceAmbiguityRows }
   | MaskedAssembleRefusal {
-      overlap_evidence: NonEmptyGrammarChoiceAmbiguityRows,
+      overlap_evidence: v2.std.grammar_choice_ambiguity.NonEmptyGrammarChoiceAmbiguityRows,
       remaining_chain: NonEmptySymbolChain
     }
   | MaskedAssembleRefusalWithoutEvidence {
       remaining_chain: NonEmptySymbolChain
     }
-  | AssembleMissingModule { requested: QualifiedName }
+  | AssembleMissingModule { requested: v2.std.qualified_name.QualifiedName }
   | MissingModuleIdentityUnavailable
-  | OtherAssembleRefusal { reason: Symbol }
+  | OtherAssembleRefusal { reason: v2.std.node.Symbol }
 
 data frontier_probe_cause_location_note: String = "OtherAssembleRefusal is the catch-all arm, so its reason symbol alone does not say WHICH file refused — recovering that previously meant inferring across a whole closure. The location is carried here, but NOT as a bare Locus: Locus admits NodeLocus and PortLocus, which have no manifest serialization, and a host emitter that errored on them would abort an entire 27-module survey over one unrepresentable position. The file is a String, not a Symbol: a path contains slashes and dots, and an emitted bare ^dag/std/algebra.dag does not re-parse — the front end reads it as division and projection, so the manifest would emit but never reload. Every other emitted manifest carries paths as Strings for the same reason. This probe-owned projection is serializable by construction and total, with the unavailable arm carrying a typed reason so the deficit is counted rather than fabricated or fatal. Location sits on AssembleRejectionDetail, NOT inside AssembleRejectionCause. Two modules refusing for the same reason at different positions are the SAME detailed cause, so a clustering key reads the cause — and the only way to guarantee a key cannot accidentally include position is for position not to be part of the cause value at all. A note asserting the separation while the field lived inside the cause would have been a claim the structure contradicted. The port arm is kept as real data rather than folded into an unavailable arm, because a port IS serializable; only a Node has no manifest rendering."
 
 type FrontierProbeCauseLocation
-  = CauseLocationTextual { file: String, extent: Extent }
-  | CauseLocationPort { port: Symbol }
+  = CauseLocationTextual { file: String, extent: v2.std.diagnostic.Extent }
+  | CauseLocationPort { port: v2.std.node.Symbol }
   | CauseLocationNodeNotSerializable
 
 fn frontier_probe_cause_location_from_locus(at: Locus) -> FrontierProbeCauseLocation {
@@ -94,7 +94,7 @@ type FrontierProbeReceipt {
   module_path: String
   blocker_class: FrontierBlockerClass
   located_stage: FrontierProbeStage
-  located_reason: Symbol
+  located_reason: v2.std.node.Symbol
   detail: FrontierProbeDetail
   assemble_detail: FrontierProbeAssembleDetail
 }
@@ -133,11 +133,11 @@ data frontier_survey_subject_grounding_note: String = "FrontierSurveySubject pin
 data frontier_survey_provenance_holes_note: String = "PROVENANCE HOLES (operator still-bat-561, 2026-08-04; survey review msg_e0b0c3ff) — status at #7763:\n\nHOLE 1 CLOSED (seed): resolve_survey_subject refuses dirty worktree; frontier_survey_commit_tree_binding_holds proves source_tree == tree(source_commit).\n\nHOLE 2 CLOSED (local build): build.rs embeds BUILD_COMMIT, BUILD_TREE, and BUILD_DIRTY; verify_build_provenance refuses missing/empty stamps, commit/tree mismatch, and dirty-worktree builds. Cross-machine binary provenance remains open.\n\nHOLE 3 CLOSED (seed TSV): all five subject fields per row including probe_policy_revision; load_probe_rows_from_tsv refuses SurveySubjectMismatch; manifest emits measured revision literal (not current-policy relabel). Per-row subject on FrontierProbeReceipt remains unmodeled — see frontier_survey_subject_grounding_note.\n\nCHAIN (last of four): #7776 vocabulary, #7762 final, and #7767 assemble diagnostics are merged; authoritative 27/27 awaits operator hold release, not predecessor land."
 
 type FrontierSurveySubject {
-  source_commit: CommitSha
-  source_tree: GitObjectId
-  survey_executable: Sha256Digest
-  source_roots_digest: Fnv1a64Structural
-  probe_policy_revision: ContentHash
+  source_commit: std.types.CommitSha
+  source_tree: extdeps.git.object_store.GitObjectId
+  survey_executable: std.content_hash.Sha256Digest
+  source_roots_digest: std.content_hash.Fnv1a64Structural
+  probe_policy_revision: std.content_hash.ContentHash
 }
 
 type FrontierSurveyManifest {

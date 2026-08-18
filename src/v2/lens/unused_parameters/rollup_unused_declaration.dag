@@ -30,9 +30,9 @@ fn rollup_tree() -> InferredTree {
 }
 
 type LensRollupUnusedClaim {
-  input: InferredTree
-  expected: UnusedParametersFact
-  actual: Witness<UnusedParametersFact>
+  input: v2.compiler.infer.InferredTree
+  expected: v2.lens.unused_parameters.UnusedParametersFact
+  actual: Witness<v2.lens.unused_parameters.UnusedParametersFact>
 }
 
 data unused_parameters_rollup_claim: LensRollupUnusedClaim = LensRollupUnusedClaim {

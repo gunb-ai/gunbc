@@ -9,14 +9,14 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type AutoinstallDeliveryMethod =
-    NoCloudNet { seed_url: Uri }
+    NoCloudNet { seed_url: extdeps.uri.Uri }
   | NoCloudLocal
 
 type AutoinstallIdentity {
-  hostname: NonEmptyStr
-  username: NonEmptyStr
-  realname: NonEmptyStr
-  hashed_password: NonEmptyStr
+  hostname: std.types.NonEmptyStr
+  username: std.types.NonEmptyStr
+  realname: std.types.NonEmptyStr
+  hashed_password: std.types.NonEmptyStr
 }
 
 type AutoinstallStoragePolicy
@@ -35,12 +35,12 @@ type UbuntuAutoinstallPayload {
   autoinstall_version: Int
   delivery: AutoinstallDeliveryMethod
   fully_automated: Bool
-  target_distribution: UbuntuDistribution
+  target_distribution: std.os.types.UbuntuDistribution
   identity: AutoinstallIdentity
-  locale: NonEmptyStr
-  keyboard_layout: NonEmptyStr
+  locale: std.types.NonEmptyStr
+  keyboard_layout: std.types.NonEmptyStr
   install_openssh_server: Bool
-  ssh_authorized_keys: List<SshPublicKey>
+  ssh_authorized_keys: List<extdeps.ssh.SshPublicKey>
   ssh_password_auth: Bool
   storage_policy: AutoinstallStoragePolicy
 }

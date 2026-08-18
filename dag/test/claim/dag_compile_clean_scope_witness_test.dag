@@ -13,7 +13,7 @@ test fn dag_compile_clean_scope_disposition_row_count_pinned() -> Bool {
 }
 
 test fn dag_compile_clean_scope_disposition_core_discriminates() -> Bool {
-  let wrong_expectation = ScopeDispositionRow {
+  let wrong_expectation = tools.dag_compile_clean_scope.ScopeDispositionRow {
     touched: "docs/plans/example.md",
     expect: ExpectWholeTree
   }

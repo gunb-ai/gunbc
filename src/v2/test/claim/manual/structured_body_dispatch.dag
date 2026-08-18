@@ -63,34 +63,34 @@ fn structured_body_produce_subsumes_add_table() -> Bool {
   }
 }
 
-data claim_structured_body_dispatch_accepts_transform_call: TestClaim = EqualsClaim {
+data claim_structured_body_dispatch_accepts_transform_call: v2.std.verification.TestClaim = EqualsClaim {
   label: "manual/structured-body: dispatch accepts an add Transform call body, returns it",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: structured_body_bool_node(pass: structured_body_dispatch_accepts_transform_call()),
   rhs: structured_body_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_structured_body_dispatch_accepts_branch: TestClaim = EqualsClaim {
+data claim_structured_body_dispatch_accepts_branch: v2.std.verification.TestClaim = EqualsClaim {
   label: "manual/structured-body: dispatch accepts a pick Branch control-flow body (variant-general)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: structured_body_bool_node(pass: structured_body_dispatch_accepts_branch()),
   rhs: structured_body_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_structured_body_dispatch_rejects_non_behavior: TestClaim = EqualsClaim {
+data claim_structured_body_dispatch_rejects_non_behavior: v2.std.verification.TestClaim = EqualsClaim {
   label: "manual/structured-body: dispatch refuses a non-Behavior residual parse node",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: structured_body_bool_node(pass: structured_body_dispatch_rejects_non_behavior()),
   rhs: structured_body_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }
 
-data claim_structured_body_produce_subsumes_add_table: TestClaim = EqualsClaim {
+data claim_structured_body_produce_subsumes_add_table: v2.std.verification.TestClaim = EqualsClaim {
   label: "manual/structured-body: produce_arrow_with_structured_body subsumes the add flat-index table (byte-identical Arrow)",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: structured_body_bool_node(pass: structured_body_produce_subsumes_add_table()),
   rhs: structured_body_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

@@ -26,7 +26,7 @@ type ConvergenceFrontSpec {
   front: V1ConvergenceFront
   name: String
   purpose: String
-  gates: List<RoadmapNodeId>
+  gates: List<gunbc.roadmap_model.RoadmapNodeId>
 }
 
 data v1_convergence_front_rows_note: String = "AUTHORED LIKE FINISH LINES, DERIVED LIKE EVERYTHING ELSE (the gunbc.v1_deletion_plan pattern): a front row states only its identity, its meaning, and the GATE nodes whose acceptance closes it — the operator's own planning decomposition of the v1-deletion program (requirements, 2026-08-02). Membership is never authored: a front's population is the ancestor closure of its gates, walked over the authority's own edges, so adding or removing a prerequisite in the roadmap moves the front automatically and a hand-maintained member list cannot drift (the requirements' forbidden 'hand-maintained lane membership'). Contribution is never authored either: a front contributes to a finish line exactly when one of its gates is an ancestor of that line's node, so the front-to-outcome map is a fact of the graph. Fronts are PROJECTIONS, not a partition — the materialization-cutover front's ancestor closure legitimately overlaps the honest-frontier front's, because the cutover gate genuinely depends on the frontier — and a misspelled gate id refuses the whole projection with a located cause rather than deriving a silently smaller front (program_view_refusal_note)."
@@ -72,14 +72,14 @@ fn v1_convergence_fronts() -> List<ConvergenceFrontSpec> {
 
 type ObligationState
   = ObligationAccepted
-  | ObligationDependencyHeld { unmet: List<RoadmapNodeId> }
+  | ObligationDependencyHeld { unmet: List<gunbc.roadmap_model.RoadmapNodeId> }
   | ObligationContractHeld
   | ObligationStartable
 
 data obligation_state_note: String = "One node's position in the program's dependency algebra, decided in a fixed order: an acceptance receipt wins outright; otherwise unmet prerequisites hold it; otherwise a missing closing validation holds it (the same single authority the closing-contract task projection reads — gunbc.roadmap_execution_contract contract_has_closing_validation — so this module and the daily frontier can never disagree about boundness); otherwise it is workable now. In-flight is deliberately NOT an arm: work observed on a node is an overlay fact orthogonal to its dependency position — an attempt can run on a held node — and fusing them would be the state-space conflation DESIGN section 5 names. The requirements' partial-work controls land here by construction: nothing in this coproduct reads pull requests, so a merged PR, a partial wave, or a contract-only slice cannot reach ObligationAccepted — only a matching receipt can."
 
 type NodeStanding {
-  node: RoadmapNodeId
+  node: gunbc.roadmap_model.RoadmapNodeId
   state: ObligationState
   in_flight: Bool
   unsized: Bool
@@ -115,8 +115,8 @@ fn program_dedupe_ids(xs: List<String>) -> List<String> {
 }
 
 type ProgramNodeAcc {
-  by_id: Map<String, RoadmapNode>
-  duplicate_ids: List<RoadmapNodeId>
+  by_id: Map<String, gunbc.roadmap_model.RoadmapNode>
+  duplicate_ids: List<gunbc.roadmap_model.RoadmapNodeId>
 }
 
 fn program_node_acc_init() -> ProgramNodeAcc {
@@ -464,7 +464,7 @@ type ConstraintKind
 data constraint_kind_note: String = "WHAT SORT OF DIFFICULTY THE PRIMARY CONSTRAINT IS. Only the kinds this module can DERIVE exist as arms — an enum arm nothing can produce is specification without execution. ImplementationConstraint: the node is workable and its closing contract exists; what remains is doing the work (whether an attempt is currently observed rides on the in_flight overlay). ContractConstraint: the node is workable but nothing can check its completion — authoring the closing validation is the unblocking act, the same fact the daily workspace's closing-contract family surfaces. Dependency-held is deliberately NOT a primary-constraint kind: the primary constraint is found by walking to the workable frontier, so a held node's cause is always some frontier node upstream, and reporting the held node instead of its cause would be the old explanation the requirements' why-mode exists to kill. Deferred kinds with named triggers: DecisionConstraint (typed operator-decision marker), EvidenceConstraint (verification-refusal join), CapabilityGap and PopulationFrontier (typed carriers on the guarantee-claims lane)."
 
 type ConstraintView {
-  subject: RoadmapNodeId
+  subject: gunbc.roadmap_model.RoadmapNodeId
   kind: ConstraintKind
   headline: String
   in_flight: Bool
@@ -543,7 +543,7 @@ type FrontView {
   key: String
   name: String
   purpose: String
-  gates: List<RoadmapNodeId>
+  gates: List<gunbc.roadmap_model.RoadmapNodeId>
   gates_total: Int
   gates_accepted: Int
   closed: Bool
@@ -552,11 +552,11 @@ type FrontView {
 }
 
 type FinishLineView {
-  line: V1FinishLine
+  line: gunbc.v1_deletion_plan.V1FinishLine
   key: String
   name: String
   claim: String
-  node: RoadmapNodeId
+  node: gunbc.roadmap_model.RoadmapNodeId
   accepted: Bool
   contributing_fronts: List<V1ConvergenceFront>
   remaining: RemainingShape
@@ -571,10 +571,10 @@ type V1DeletionProgramView {
 }
 
 type ProgramViewRefusalCause
-  = FinishLineNodeUnresolved { line_key: String, node: RoadmapNodeId }
-  | FrontGateUnresolved { front_key: String, gate: RoadmapNodeId }
-  | DuplicateAcceptanceReceipt { node: RoadmapNodeId }
-  | DuplicateProgramNodeId { node: RoadmapNodeId }
+  = FinishLineNodeUnresolved { line_key: String, node: gunbc.roadmap_model.RoadmapNodeId }
+  | FrontGateUnresolved { front_key: String, gate: gunbc.roadmap_model.RoadmapNodeId }
+  | DuplicateAcceptanceReceipt { node: gunbc.roadmap_model.RoadmapNodeId }
+  | DuplicateProgramNodeId { node: gunbc.roadmap_model.RoadmapNodeId }
 
 fn program_duplicate_receipt_causes(
   receipts: List<RoadmapAcceptanceReceipt>,

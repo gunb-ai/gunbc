@@ -1,7 +1,7 @@
 module v2.test.lens_synthesis.exponential_dominates_polynomial
 
 
-data synthesis_exp_x: Node = Node {
+data synthesis_exp_x: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^synthesis_exp_x_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
@@ -10,12 +10,12 @@ data synthesis_exp_x: Node = Node {
 fn exponential_dominates_polynomial_claim_holds() -> Bool {
   symbolic_cost_dominates(
     a: ExponentialCost {
-      variable: SizeVariable { source: synthesis_exp_x },
-      base: ExponentialBase { predecessor_after_one: NonZeroNat { prev: Zero } }
+      variable: v2.lens.cost.SizeVariable { source: synthesis_exp_x },
+      base: v2.lens.cost.ExponentialBase { predecessor_after_one: v2.std.cardinality.NonZeroNat { prev: Zero } }
     },
     b: PolynomialCost {
-      variable: SizeVariable { source: synthesis_exp_x },
-      degree: PolynomialDegree { predecessor_after_linear: NonZeroNat { prev: Zero } }
+      variable: v2.lens.cost.SizeVariable { source: synthesis_exp_x },
+      degree: v2.lens.cost.PolynomialDegree { predecessor_after_linear: v2.std.cardinality.NonZeroNat { prev: Zero } }
     }
   )
 }
@@ -24,7 +24,7 @@ fn exponential_dominates_polynomial_claim_rhs() -> Node {
   if exponential_dominates_polynomial_claim_holds() {
     synthesis_exp_x
   } else {
-    Node {
+    v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -32,10 +32,10 @@ fn exponential_dominates_polynomial_claim_rhs() -> Node {
   }
 }
 
-data claim_exponential_dominates_polynomial: TestClaim = EqualsClaim {
+data claim_exponential_dominates_polynomial: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_synthesis/exponential_dominates_polynomial: exponential dominates polynomial",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: synthesis_exp_x,
   rhs: exponential_dominates_polynomial_claim_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

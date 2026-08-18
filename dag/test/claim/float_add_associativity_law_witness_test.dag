@@ -18,14 +18,14 @@ test fn w_float_add_associativity_associative_triple_control() -> Bool {
 
 test fn w_float_add_associativity_rejects_fabricated_left_fold_result() -> Bool {
   let witness = float_add_associativity_refuted.witness
-  let fabricated = AssociativityCounterexampleWitness {
+  let fabricated = std.algebra_law.AssociativityCounterexampleWitness {
     left_operand: witness.left_operand,
     middle_operand: witness.middle_operand,
     right_operand: witness.right_operand,
     left_fold_result: witness.right_fold_result,
     right_fold_result: witness.right_fold_result,
   }
-  let bad_receipt = AssociativityRefutationReceipt {
+  let bad_receipt = std.algebra_law.AssociativityRefutationReceipt {
     subject: float_add_associativity_subject,
     witness: fabricated,
   }

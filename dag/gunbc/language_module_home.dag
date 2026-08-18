@@ -6,7 +6,7 @@ data language_module_home_law: String = "WHERE A TARGET'S SURFACES LIVE IS ORGAN
 data language_module_home_scope_note: String = "WHAT THIS MODULE DOES AND DELIBERATELY DOES NOT DO. IT DOES: declare a canonical home per registered language target, carry the four legacy flat modules as an EXACT finite frontier with a dissolution trigger each, and supply the admission predicate tools.extdeps_scope_placement_gate calls on the paths a change adds. IT DOES NOT: move any file, edit any importer, touch src/v2, or check that a module sits under ITS OWN target's home rather than someone else's. IT ALSO NO LONGER CARRIES EXCEPTIONS FOR UNREGISTERED-TARGET DIRECTORIES (operator P1, 2026-08-05). An earlier revision declared dag/extdeps/languages/gpu/ and dag/extdeps/languages/simd/ as admitted-because-unregistered. Because the gate observes only NEWLY ADDED paths, existing files under them never needed an exception at all — so the rows bought nothing for the present tree and granted a permanent licence for unlimited FUTURE files under an uncited subtree. An exact roster of two prefixes is bounded in rows and unbounded in effect, which is the distinction the first reading of it missed. New work under a language this repository has not registered should force the registration, which is what the absence of those rows now does. NGSPICE IS ALSO OUT OF THIS WALL'S POPULATION: the roster once declared a simulator home under dag/extdeps/simulators/, while the predicate judges only dag/extdeps/languages/, so that row passed by never being consulted rather than by being satisfied — an unenforced claim, removed. WHY THE FLAT-MODULE MOVES ARE NOT MADE HERE: all four are rows of the FROZEN legacy manifest in gunbc.extdeps_scope_frontier, and an added dag/extdeps path can only land as scope carrier or genuine machinery, never rejoin the manifest — so each move forces its surface module to spell a second literal ExternalAuthority for an upstream whose subject carrier D0 just authored. That question is the one escalated in extdeps.posix.shell_command_language posix_authority_duplication_note."
 
 type LanguageTargetHome {
-  target: DeclarationRef
+  target: std.decl_ref.DeclarationRef
   canonical_prefix: String
 }
 
@@ -118,9 +118,9 @@ data legacy_flat_module_note: String = "THE EXACT FINITE FRONTIER. Four rows, en
 type LegacyLanguageModuleHome {
   file_path: String
   module_path: String
-  target: DeclarationRef
+  target: std.decl_ref.DeclarationRef
   moves_to: String
-  dissolution: DissolutionCondition
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 data legacy_language_module_homes: List<LegacyLanguageModuleHome> = [

@@ -2,15 +2,15 @@ module extdeps.cache
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/gunb-ai/gunbc/tree/main/dag/extdeps/cache"
   }
 }
 
-fn cache_interface_facts_from_catalog(row: CacheInterfaceCatalogFacts) -> CacheInterfaceFacts {
-  CacheInterfaceFacts {
+fn cache_interface_facts_from_catalog(row: extdeps.cache.types.CacheInterfaceCatalogFacts) -> std.cache_interface.CacheInterfaceFacts {
+  std.cache_interface.CacheInterfaceFacts {
     identity: row.identity
     backing_surface: row.backing_surface
     transport_encoding: match row.transport_encoding {
@@ -45,8 +45,8 @@ fn cache_interface_facts_from_catalog(row: CacheInterfaceCatalogFacts) -> CacheI
 
 fn cache_key_projection_provider_key<T>(
   artifact: ArtifactIdentity<T>,
-  backend: CacheInterfaceCatalogFacts,
-) -> CatalogProviderKey {
+  backend: extdeps.cache.types.CacheInterfaceCatalogFacts,
+) -> extdeps.cache.types.CatalogProviderKey {
   match backend.transport_encoding {
     CatalogOpaqueStringEncoding => CatalogOpaqueStringKey { key: artifact.subject_digest }
     SccacheInternalEncoding => SccacheInternalHash { digest: artifact.subject_digest }
@@ -57,9 +57,9 @@ fn cache_key_projection_provider_key<T>(
 
 fn cache_key_projection_transport<T>(
   artifact: ArtifactIdentity<T>,
-  backend: CacheInterfaceCatalogFacts,
-) -> CatalogBackendCacheKey {
-  CatalogBackendCacheKey {
+  backend: extdeps.cache.types.CacheInterfaceCatalogFacts,
+) -> extdeps.cache.types.CatalogBackendCacheKey {
+  extdeps.cache.types.CatalogBackendCacheKey {
     store: backend.identity
     key: cache_key_projection_provider_key(artifact: artifact, backend: backend),
   }
@@ -67,11 +67,11 @@ fn cache_key_projection_transport<T>(
 
 fn cache_verified_hit_receipt<T>(
   artifact: ArtifactIdentity<T>,
-  backend: CacheInterfaceCatalogFacts,
+  backend: extdeps.cache.types.CacheInterfaceCatalogFacts,
   producer: ProducerReceipt<T>,
-  content_digest: ContentHash,
+  content_digest: std.content_hash.ContentHash,
 ) -> CatalogCachedArtifactReceipt<T> {
-  CatalogCachedArtifactReceipt {
+  extdeps.cache.types.CatalogCachedArtifactReceipt {
     artifact: artifact
     backend_key: cache_key_projection_transport(artifact: artifact, backend: backend)
     producer: producer
@@ -79,16 +79,16 @@ fn cache_verified_hit_receipt<T>(
   }
 }
 
-data gha_actions_cache: CacheInterfaceCatalogFacts = gha_actions_cache_facts
-data sccache_local: CacheInterfaceCatalogFacts = sccache_local_facts
-data buildbuddy_cas: CacheInterfaceCatalogFacts = buildbuddy_cas_facts
-data cargo_target_dir: CacheInterfaceCatalogFacts = cargo_target_dir_facts
-data rustup_toolchain_store: CacheInterfaceCatalogFacts = rustup_toolchain_store_facts
-data resolved_graph_cache: CacheInterfaceCatalogFacts = resolved_graph_cache_facts
-data parse_table_memo: CacheInterfaceCatalogFacts = parse_table_memo_facts
-data compile_stage_memo: CacheInterfaceCatalogFacts = compile_stage_memo_facts
+data gha_actions_cache: extdeps.cache.types.CacheInterfaceCatalogFacts = gha_actions_cache_facts
+data sccache_local: extdeps.cache.types.CacheInterfaceCatalogFacts = sccache_local_facts
+data buildbuddy_cas: extdeps.cache.types.CacheInterfaceCatalogFacts = buildbuddy_cas_facts
+data cargo_target_dir: extdeps.cache.types.CacheInterfaceCatalogFacts = cargo_target_dir_facts
+data rustup_toolchain_store: extdeps.cache.types.CacheInterfaceCatalogFacts = rustup_toolchain_store_facts
+data resolved_graph_cache: extdeps.cache.types.CacheInterfaceCatalogFacts = resolved_graph_cache_facts
+data parse_table_memo: extdeps.cache.types.CacheInterfaceCatalogFacts = parse_table_memo_facts
+data compile_stage_memo: extdeps.cache.types.CacheInterfaceCatalogFacts = compile_stage_memo_facts
 
-data cache_catalog: List<CacheInterfaceCatalogFacts> = [
+data cache_catalog: List<extdeps.cache.types.CacheInterfaceCatalogFacts> = [
   gha_actions_cache,
   sccache_local,
   buildbuddy_cas,
@@ -101,14 +101,14 @@ data cache_catalog: List<CacheInterfaceCatalogFacts> = [
   compile_stage_memo_facts,
 ]
 
-data cache_catalog_rows: List<CacheInterfaceFacts> = cache_catalog
+data cache_catalog_rows: List<std.cache_interface.CacheInterfaceFacts> = cache_catalog
   |> map(row => cache_interface_facts_from_catalog(row: row))
 
-data sccache_local_projected: CacheInterfaceFacts = cache_interface_facts_from_catalog(sccache_local)
-data parse_table_memo_projected: CacheInterfaceFacts = cache_interface_facts_from_catalog(parse_table_memo)
-data cargo_target_dir_projected: CacheInterfaceFacts = cache_interface_facts_from_catalog(cargo_target_dir)
+data sccache_local_projected: std.cache_interface.CacheInterfaceFacts = cache_interface_facts_from_catalog(sccache_local)
+data parse_table_memo_projected: std.cache_interface.CacheInterfaceFacts = cache_interface_facts_from_catalog(parse_table_memo)
+data cargo_target_dir_projected: std.cache_interface.CacheInterfaceFacts = cache_interface_facts_from_catalog(cargo_target_dir)
 
-data cache_layer_default_order: List<CacheInterfaceId> = [
+data cache_layer_default_order: List<std.cache_identity.CacheInterfaceId> = [
   parse_table_memo_id,
   parse_cache_id,
   typed_module_cache_id,

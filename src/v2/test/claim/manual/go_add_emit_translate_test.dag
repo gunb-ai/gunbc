@@ -1,7 +1,7 @@
 module v2.test.manual.go_add_emit_translate
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 data go_add_forbidden_authority_source_text: String = "authority_source_text_fallback_forbidden"
 
 data go_add_int_inhabitant: Node = go_int_inhabitant_node()
@@ -18,9 +18,9 @@ data go_add_int_overflow_node: Node = go_overflow_node(
   overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
 )
 
-data go_add_target_model: TargetModel = go_target_model()
+data go_add_target_model: v2.std.compilers.target_model.TargetModel = go_target_model()
 
-data go_add_poisoned_authority_target_model: TargetModel = TargetModel {
+data go_add_poisoned_authority_target_model: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
   bundle: go_target_model_node(),
   lex: go_lex(),
@@ -30,13 +30,13 @@ data go_add_poisoned_authority_target_model: TargetModel = TargetModel {
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-data go_add_empty_translation_rules_bundle: Node = Node {
+data go_add_empty_translation_rules_bundle: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data go_add_missing_translation_rules_target: TargetModel = TargetModel {
+data go_add_missing_translation_rules_target: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
   bundle: go_add_empty_translation_rules_bundle,
   lex: go_lex(),
@@ -66,15 +66,15 @@ test fn go_add_serialize_reject_receipt_holds() -> Bool {
 fn go_add_canonical_grounding(
   node: Node,
   algebra: Node
-) -> CanonicalGrounding {
-  CanonicalGrounding {
+) -> v2.std.constraints.CanonicalGrounding {
+  v2.std.constraints.CanonicalGrounding {
     node: node,
-    witness: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
+    witness: v2.std.constraints.CanonicalGroundingWitness {
+      structural: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_being_canonical,
         evidence: algebra
       },
-      closedness: StructuralPropertyWitness {
+      closedness: v2.std.witness.StructuralPropertyWitness {
         property: ^constraint_property_candidate_set_closedness,
         evidence: node
       }
@@ -82,7 +82,7 @@ fn go_add_canonical_grounding(
   }
 }
 
-fn go_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
+fn go_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.CanonicalGrounding> {
   if node == go_add_emitted_root {
     Holds {
       value: go_add_canonical_grounding(
@@ -176,7 +176,7 @@ fn go_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
     }
   } else {
     Violates {
-      diagnostic: Diagnostic {
+      diagnostic: v2.std.diagnostic.Diagnostic {
         reason: ^go_add_grounding_miss,
         at: node_locus(node: node),
         correction: Unavailable { reason: ExternalContractUnknown }
@@ -185,7 +185,7 @@ fn go_add_canonical_grounding_for(node: Node) -> Witness<CanonicalGrounding> {
   }
 }
 
-fn go_add_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
+fn go_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   match go_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -200,11 +200,11 @@ fn go_add_inferred_facts_for(node: Node) -> Optional<InferredFacts> {
   }
 }
 
-fn go_add_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn go_add_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   go_add_inferred_facts_for(node: key)
 }
 
-data go_add_inferred_tree: InferredTree = InferredTree {
+data go_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
   root: go_add_emitted_root,
   facts: Map {
     lookup: go_add_facts_lookup
@@ -215,7 +215,7 @@ fn anchor_go_add_emit_accepts() -> Outcome<Medium<String>> {
   emit(tree: go_add_inferred_tree, target: go_add_target_model)
 }
 
-fn anchor_go_add_compile_inferred_accepts() -> Outcome<CompileOutput> {
+fn anchor_go_add_compile_inferred_accepts() -> Outcome<v2.compiler.compile.CompileOutput> {
   compile_inferred(
     inferred: go_add_inferred_tree,
     mode: TranslateTo { target: go_add_poisoned_authority_target_model }
@@ -232,7 +232,7 @@ test fn go_add_emit_add_fn_accepts_holds() -> Bool {
   }
 }
 
-data go_add_compile_inferred_receipt: Outcome<CompileOutput> = anchor_go_add_compile_inferred_accepts()
+data go_add_compile_inferred_receipt: Outcome<v2.compiler.compile.CompileOutput> = anchor_go_add_compile_inferred_accepts()
 
 test fn go_add_compile_inferred_receipt_holds() -> Bool {
   match go_add_compile_inferred_receipt {

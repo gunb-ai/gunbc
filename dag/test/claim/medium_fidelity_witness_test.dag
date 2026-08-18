@@ -4,7 +4,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 type ProbeVerdict = Dominates | Incomparable
 
-fn is_lossless(f: DecodeFidelity) -> Bool {
+fn is_lossless(f: extdeps.communication.medium.DecodeFidelity) -> Bool {
   match f {
     Lossless => true
     Lossy => false

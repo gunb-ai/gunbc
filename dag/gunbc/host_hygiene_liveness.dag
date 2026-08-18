@@ -6,14 +6,14 @@ data gunbc_host_hygiene_liveness_scope_disposition: Disposition = Terminal {
 }
 
 type SlotListeningObservation
-  = ListeningObserved { unit: NonEmptyStr, age: Second }
-  | ListeningNeverSeen { unit: NonEmptyStr }
-  | ListeningReadInaccessible { unit: NonEmptyStr, detail: NonEmptyStr }
+  = ListeningObserved { unit: std.types.NonEmptyStr, age: std.measure.Second }
+  | ListeningNeverSeen { unit: std.types.NonEmptyStr }
+  | ListeningReadInaccessible { unit: std.types.NonEmptyStr, detail: std.types.NonEmptyStr }
 
 type SlotListeningVerdict
-  = ListeningFresh { unit: NonEmptyStr }
-  | ListeningStale { unit: NonEmptyStr, age: Second, bound: Second }
-  | ListeningUnknown { unit: NonEmptyStr, reason: NonEmptyStr }
+  = ListeningFresh { unit: std.types.NonEmptyStr }
+  | ListeningStale { unit: std.types.NonEmptyStr, age: std.measure.Second, bound: std.measure.Second }
+  | ListeningUnknown { unit: std.types.NonEmptyStr, reason: std.types.NonEmptyStr }
 
 fn slot_listening_verdict(obs: SlotListeningObservation, bound: Second) -> SlotListeningVerdict {
   match obs {

@@ -7,8 +7,8 @@ type RunnerSlotEnforcement
   | RunnerSlotUnenforced { reason: String }
 
 type RunnerSlotApplyEffect {
-  slot_unit: NonEmptyStr
-  target_memory_max: ByteSize
+  slot_unit: std.types.NonEmptyStr
+  target_memory_max: std.measure.ByteSize
 }
 
 fn runner_slot_apply_effect(slot_unit: NonEmptyStr, expected_cap: ByteSize) -> RunnerSlotApplyEffect {

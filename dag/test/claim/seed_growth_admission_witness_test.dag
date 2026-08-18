@@ -6,7 +6,7 @@ test fn seed_growth_roster_mechanical_checks_hold() -> Bool {
 }
 
 test fn seed_growth_join_refuses_unknown_declaration() -> Bool {
-  let rogue = DeclarationRef {
+  let rogue = std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.cli_run",
     decl_name: "totally_unjustified_hand_rust_symbol",
     field: WholeDeclaration

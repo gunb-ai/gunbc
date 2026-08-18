@@ -44,10 +44,10 @@ test fn an_unknown_slug_is_unknown_not_a_plausible_first_row() -> Bool {
 }
 
 // THE CLAIM THAT FAILS IF IDENTITY AND SLUG RECOLLAPSE. Every other claim in this file is equally true of a registry where identity is derived from the slug — uniqueness, totality and resolution all hold in that broken world. This one does not: it takes a declared node, changes ONLY its slug, and asserts the identity is byte-identical. That is the entire property the module exists for, since a rename is precisely the operation that used to destroy edges, receipts and dispatch joins by making the node a different node.
-fn renamed(n: RoadmapNode) -> RoadmapNode {
-  RoadmapNode {
+fn renamed(n: gunbc.roadmap_model.RoadmapNode) -> gunbc.roadmap_model.RoadmapNode {
+  gunbc.roadmap_model.RoadmapNode {
     identity: n.identity,
-    node: "renamed-slug-fixture" as RoadmapNodeId,
+    node: "renamed-slug-fixture" as gunbc.roadmap_model.RoadmapNodeId,
     line: n.line,
     carriers: n.carriers,
     sizing: n.sizing,

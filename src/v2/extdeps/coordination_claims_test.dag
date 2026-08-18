@@ -2,47 +2,47 @@ module v2.test.extdeps.coordination_claims
 
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 fn coord_not(b: Bool) -> Bool {
   b == false
 }
 
-fn exchange_is_request_reply(e: ExchangePattern) -> Bool {
+fn exchange_is_request_reply(e: v2.extdeps.coordination.ExchangePattern) -> Bool {
   match e {
     RequestReply => true
     _ => false
   }
 }
 
-fn exchange_is_fire_and_forget(e: ExchangePattern) -> Bool {
+fn exchange_is_fire_and_forget(e: v2.extdeps.coordination.ExchangePattern) -> Bool {
   match e {
     FireAndForget => true
     _ => false
   }
 }
 
-fn exchange_is_stream(e: ExchangePattern) -> Bool {
+fn exchange_is_stream(e: v2.extdeps.coordination.ExchangePattern) -> Bool {
   match e {
     StreamExchange => true
     _ => false
   }
 }
 
-fn exchange_is_publish_subscribe(e: ExchangePattern) -> Bool {
+fn exchange_is_publish_subscribe(e: v2.extdeps.coordination.ExchangePattern) -> Bool {
   match e {
     PublishSubscribe => true
     _ => false
   }
 }
 
-fn settlement_is_immediate(s: SettlementGuarantee<RequiredSettleBound>) -> Bool {
+fn settlement_is_immediate(s: SettlementGuarantee<v2.extdeps.coordination.RequiredSettleBound>) -> Bool {
   match s {
     ImmediateSettlement => true
     _ => false
   }
 }
 
-fn settlement_is_within(s: SettlementGuarantee<RequiredSettleBound>) -> Bool {
+fn settlement_is_within(s: SettlementGuarantee<v2.extdeps.coordination.RequiredSettleBound>) -> Bool {
   match s {
     SettlesWithin { bound: _ } => true
     _ => false

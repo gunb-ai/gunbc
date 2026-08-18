@@ -36,7 +36,7 @@ type GcpOAuth2AccessTokenStrategy
 
 type GcpCredentialFlow
   = WorkloadIdentity {
-      audience: NonEmptyStr
+      audience: std.types.NonEmptyStr
       service_account: ServiceAccountEmail?
       scopes: List<String>
     }

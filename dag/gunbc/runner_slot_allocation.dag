@@ -6,9 +6,9 @@ type RunnerSlotLabels {
 }
 
 type RunnerSlotDesired {
-  memory_max: ByteSize
-  memory_swap_max: ByteSize
-  memory_high: ByteSize
+  memory_max: std.measure.ByteSize
+  memory_swap_max: std.measure.ByteSize
+  memory_high: std.measure.ByteSize
   tasks_max: Int
   cpu_weight: Int
   labels: RunnerSlotLabels
@@ -17,8 +17,8 @@ type RunnerSlotDesired {
 type HostRunnerSlotAllocation {
   host: product.placement_supply.HostIdentity
   slots_per_host: Int
-  cores_per_slot: HardwareThreadCount
-  runner_slice_cap: ByteSize
+  cores_per_slot: std.measure.HardwareThreadCount
+  runner_slice_cap: std.measure.ByteSize
   per_slot: RunnerSlotDesired
 }
 
@@ -159,8 +159,8 @@ fn gunbc_runner_slot_enforcement_expected_cap() -> ByteSize {
 type RunnerSlotEffectiveCapObservation
   = RunnerSlotEffectiveCapMeasured {
       runner_unit: String,
-      memory_max: ByteSize,
-      memory_high: ByteSize,
+      memory_max: std.measure.ByteSize,
+      memory_high: std.measure.ByteSize,
       probed_at: String,
     }
   | RunnerSlotEffectiveCapUnmeasured
@@ -188,9 +188,9 @@ data gunbc_srv2_03_floor_t5_leaf_cgroup_events_at_entry: FloorCgroupLeafEventAtE
 
 type ConvergedSlotThrottleObservation {
   runner_unit: String
-  armed_memory_max: ByteSize
-  armed_memory_high: ByteSize
-  memory_peak: ByteSize
+  armed_memory_max: std.measure.ByteSize
+  armed_memory_high: std.measure.ByteSize
+  memory_peak: std.measure.ByteSize
   memory_high_events: Int
   memory_max_events: Int
   oom_kill_events: Int
@@ -330,9 +330,9 @@ type FloorArmedBudgetDoomedWitness
   = FloorArmedBudgetDoomedMeasured {
       run_id: String,
       runner_unit: String,
-      armed_budget: ByteSize,
+      armed_budget: std.measure.ByteSize,
       budget_source: String,
-      floor_outcome: FloorOutcome,
+      floor_outcome: gunbc.ci_failure_class.FloorOutcome,
     }
   | FloorArmedBudgetDoomedUnmeasured
 
@@ -340,9 +340,9 @@ type FloorArmedBudgetSuccessClassWitness
   = FloorArmedBudgetSuccessClassMeasured {
       run_id: String,
       runner_unit: String,
-      armed_budget: ByteSize,
-      floor_peak_post: ByteSize,
-      floor_outcome: FloorOutcome,
+      armed_budget: std.measure.ByteSize,
+      floor_peak_post: std.measure.ByteSize,
+      floor_outcome: gunbc.ci_failure_class.FloorOutcome,
     }
   | FloorArmedBudgetSuccessClassUnmeasured
 

@@ -5,14 +5,14 @@ data repo_atlas_served_shape_witness_note: String = "EVERY PAGE CLAIM BELOW SERI
 
 data repo_atlas_page_witness_note: String = "THE PAGE CLAIMS READ EMITTED TEXT, WHICH IS WEAKER THAN READING STRUCTURE AND IS USED ONLY WHERE THE SUBJECT GENUINELY IS THE EMITTED BYTES. Every claim that asserts an ABSENCE first asserts the presence of something comparable, so a serializer returning empty text cannot make an absence claim vacuously true — the failure mode that made three earlier instrument-lane claims pass over nothing."
 
-fn atlas_page_fixture_nodes() -> List<ModuleDeclarationFact> {
+fn atlas_page_fixture_nodes() -> List<v2.lens.module_graph.ModuleDeclarationFact> {
   [
-    ModuleDeclarationFact { module: "fixture.alpha", path: "dag/fixture/alpha.dag" },
-    ModuleDeclarationFact { module: "fixture.beta", path: "dag/fixture/beta.dag" },
+    v2.lens.module_graph.ModuleDeclarationFact { module: "fixture.alpha", path: "dag/fixture/alpha.dag" },
+    v2.lens.module_graph.ModuleDeclarationFact { module: "fixture.beta", path: "dag/fixture/beta.dag" },
   ]
 }
 
-fn atlas_page_snapshot_plain() -> RepoAtlasSnapshot {
+fn atlas_page_snapshot_plain() -> gunbc.repo_atlas_projection.RepoAtlasSnapshot {
   repo_atlas_snapshot(
     subject: AtlasSubjectUnobserved,
     nodes: atlas_page_fixture_nodes(),
@@ -20,48 +20,48 @@ fn atlas_page_snapshot_plain() -> RepoAtlasSnapshot {
     impact: AtlasImpactNotComputed)
 }
 
-fn atlas_page_snapshot_changed() -> RepoAtlasSnapshot {
+fn atlas_page_snapshot_changed() -> gunbc.repo_atlas_projection.RepoAtlasSnapshot {
   repo_atlas_snapshot(
     subject: AtlasSubjectUnobserved,
     nodes: atlas_page_fixture_nodes(),
     observation: AtlasComparisonObserved {
-      comparison: AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot },
+      comparison: gunbc.repo_atlas_projection.AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot },
       diff: GitDiffNameStatusComplete { entries: [
-        GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+        extdeps.git.GitDiffStatusEntry { status: DiffModifiedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
       ] }
     },
     impact: AtlasImpactNotComputed)
 }
 
-fn atlas_page_snapshot_refused() -> RepoAtlasSnapshot {
+fn atlas_page_snapshot_refused() -> gunbc.repo_atlas_projection.RepoAtlasSnapshot {
   repo_atlas_snapshot(
     subject: AtlasSubjectUnobserved,
     nodes: atlas_page_fixture_nodes(),
     observation: AtlasComparisonObserved {
-      comparison: AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot },
+      comparison: gunbc.repo_atlas_projection.AtlasComparison { base: "HEAD^", head: "HEAD", relation: TwoDot },
       diff: GitDiffNameStatusComplete { entries: [
-        GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
+        extdeps.git.GitDiffStatusEntry { status: DiffUnmergedStatus, path: "dag/fixture/alpha.dag", old_path: Absent },
       ] }
     },
     impact: AtlasImpactNotComputed)
 }
 
-fn atlas_page_snapshot_impacted(exact: Bool) -> RepoAtlasSnapshot {
+fn atlas_page_snapshot_impacted(exact: Bool) -> gunbc.repo_atlas_projection.RepoAtlasSnapshot {
   repo_atlas_snapshot(
     subject: AtlasSubjectUnobserved,
     nodes: atlas_page_fixture_nodes(),
     observation: AtlasChangesNotObserved,
-    impact: atlas_impact_from_reading(reading: ImpactReading {
+    impact: atlas_impact_from_reading(reading: v2.lens.module_impact_query.ImpactReading {
       direction: DependentsOf,
-      seeds: [ModuleIdentity { name: "fixture.alpha" }],
-      reached: [ModuleIdentity { name: "fixture.beta" }],
+      seeds: [v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" }],
+      reached: [v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" }],
       explanation: [],
       standing: if exact { ExactForGraphSubject } else { ProvisionalForObservedPool },
       causes: []
     }))
 }
 
-fn atlas_page_html(snapshot: RepoAtlasSnapshot) -> String {
+fn atlas_page_html(snapshot: gunbc.repo_atlas_projection.RepoAtlasSnapshot) -> String {
   match try_serialize_html_source(node: repo_atlas_document(snapshot: snapshot)) {
     EmitOk { html: h } => h
     EmitRejected { reason: _ } => ""
@@ -141,7 +141,7 @@ test fn a_changed_module_is_marked_on_the_page() -> Bool {
 data atlas_page_geometry_note: String = "ACCEPTANCE 11. The renderer receives an ADDRESS and lowers it with nested transforms. These claims pin the lowering itself — that ring 0 slot 0 sits at the top of the inner ring with no rotation, and that a half-way slot turns 180 degrees — so a geometry change is a visible diff rather than a silent re-layout."
 
 test fn ring_zero_slot_zero_lowers_to_an_unrotated_inner_transform() -> Bool {
-  let lowered = atlas_cell_transform(address: AtlasAddress { ring: 0, slot: 0 })
+  let lowered = atlas_cell_transform(address: gunbc.repo_atlas_projection.AtlasAddress { ring: 0, slot: 0 })
   lowered == "translate(420 420) rotate(0.000) translate(0 -34)"
 }
 
@@ -153,7 +153,7 @@ test fn the_ring_radius_grows_by_the_declared_gap() -> Bool {
 
 test fn a_half_way_slot_turns_one_hundred_and_eighty_degrees() -> Bool {
   let half = atlas_ring_slot_count(ring: 0) / 2
-  atlas_slot_angle_millidegrees(address: AtlasAddress { ring: 0, slot: half }) / 1000 == 180
+  atlas_slot_angle_millidegrees(address: gunbc.repo_atlas_projection.AtlasAddress { ring: 0, slot: half }) / 1000 == 180
 }
 
 test fn the_ring_slot_probe_reads_the_declared_table() -> Bool {
@@ -217,8 +217,8 @@ data atlas_injective_transform_note: String = "ACCEPTANCE: distinct addresses mu
 Both halves are asserted: the MODEL always distinguished these slots in millidegrees, so a claim on the model alone would have passed throughout the defect. The claim that matters is on the emitted TRANSFORM TEXT, which is where the collapse happened."
 
 fn atlas_slot_pair_separates(ring: Int, low: Int, high: Int) -> Bool {
-  let a = AtlasAddress { ring: ring, slot: low }
-  let b = AtlasAddress { ring: ring, slot: high }
+  let a = gunbc.repo_atlas_projection.AtlasAddress { ring: ring, slot: low }
+  let b = gunbc.repo_atlas_projection.AtlasAddress { ring: ring, slot: high }
   atlas_slot_angle_millidegrees(address: a) < atlas_slot_angle_millidegrees(address: b)
     && atlas_cell_transform(address: a) != atlas_cell_transform(address: b)
 }

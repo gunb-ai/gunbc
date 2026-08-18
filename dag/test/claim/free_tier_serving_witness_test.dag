@@ -3,24 +3,24 @@ module test.claim.free_tier_serving_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data solo_scm_user_envelope: FreeTierUserEnvelope = FreeTierUserEnvelope {
+data solo_scm_user_envelope: gunbc.econ.free_tier_serving.FreeTierUserEnvelope = gunbc.econ.free_tier_serving.FreeTierUserEnvelope {
   storage_bytes_per_user: byte_size(count: 100000000),
   monthly_egress_bytes_per_user: byte_size(count: 500000000),
 }
 
-data solo_scm_10k_assumptions: FreeTierServingAssumptions = FreeTierServingAssumptions {
+data solo_scm_10k_assumptions: gunbc.econ.free_tier_serving.FreeTierServingAssumptions = gunbc.econ.free_tier_serving.FreeTierServingAssumptions {
   user_count: 10000,
   replica_count: 2,
   per_box_monthly_egress_allowance: byte_size(count: 20000000000000),
 }
 
-data solo_scm_100k_assumptions: FreeTierServingAssumptions = FreeTierServingAssumptions {
+data solo_scm_100k_assumptions: gunbc.econ.free_tier_serving.FreeTierServingAssumptions = gunbc.econ.free_tier_serving.FreeTierServingAssumptions {
   user_count: 100000,
   replica_count: 2,
   per_box_monthly_egress_allowance: byte_size(count: 20000000000000),
 }
 
-data ax41_zero_storage_fixture: HetznerDedicatedServerPriceRow = HetznerDedicatedServerPriceRow {
+data ax41_zero_storage_fixture: extdeps.pricing.hetzner_dedicated.HetznerDedicatedServerPriceRow = extdeps.pricing.hetzner_dedicated.HetznerDedicatedServerPriceRow {
   server_type: hetzner_ax41_1_ltd_price.server_type,
   server_type_wire_label: hetzner_ax41_1_ltd_price.server_type_wire_label,
   cpu: hetzner_ax41_1_ltd_price.cpu,
@@ -32,7 +32,7 @@ data ax41_zero_storage_fixture: HetznerDedicatedServerPriceRow = HetznerDedicate
   pricing_citation: "witness-fixture#box-storage-zero",
 }
 
-data zero_floor_registered_users_fixture: RegisteredUserCountRow = RegisteredUserCountRow {
+data zero_floor_registered_users_fixture: extdeps.sec.operating_metrics.RegisteredUserCountRow = extdeps.sec.operating_metrics.RegisteredUserCountRow {
   registered_user_count_floor: 0,
   citation: gitlab_fy2026_registered_users.citation,
 }
@@ -102,7 +102,7 @@ test fn w_red_zero_user_count_refused() -> Bool {
     box_row: hetzner_ax41_1_ltd_price,
     assumptions_input: FreeTierAssumptionsDeclared {
       envelope: solo_scm_user_envelope,
-      assumptions: FreeTierServingAssumptions {
+      assumptions: gunbc.econ.free_tier_serving.FreeTierServingAssumptions {
         user_count: 0,
         replica_count: 2,
         per_box_monthly_egress_allowance: byte_size(count: 20000000000000),
@@ -118,7 +118,7 @@ test fn w_red_zero_storage_per_user_refused() -> Bool {
   match derive_free_tier_serving_floor(
     box_row: hetzner_ax41_1_ltd_price,
     assumptions_input: FreeTierAssumptionsDeclared {
-      envelope: FreeTierUserEnvelope {
+      envelope: gunbc.econ.free_tier_serving.FreeTierUserEnvelope {
         storage_bytes_per_user: byte_size(count: 0),
         monthly_egress_bytes_per_user: byte_size(count: 500000000),
       },
@@ -135,7 +135,7 @@ test fn w_red_zero_replica_count_refused() -> Bool {
     box_row: hetzner_ax41_1_ltd_price,
     assumptions_input: FreeTierAssumptionsDeclared {
       envelope: solo_scm_user_envelope,
-      assumptions: FreeTierServingAssumptions {
+      assumptions: gunbc.econ.free_tier_serving.FreeTierServingAssumptions {
         user_count: 10000,
         replica_count: 0,
         per_box_monthly_egress_allowance: byte_size(count: 20000000000000),
@@ -152,7 +152,7 @@ test fn w_red_zero_egress_allowance_refused() -> Bool {
     box_row: hetzner_ax41_1_ltd_price,
     assumptions_input: FreeTierAssumptionsDeclared {
       envelope: solo_scm_user_envelope,
-      assumptions: FreeTierServingAssumptions {
+      assumptions: gunbc.econ.free_tier_serving.FreeTierServingAssumptions {
         user_count: 10000,
         replica_count: 2,
         per_box_monthly_egress_allowance: byte_size(count: 0),

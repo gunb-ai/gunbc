@@ -1,7 +1,7 @@
 module v2.test.languages_consumer_census.corpus.per_language_row_ratchet
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn corpus_per_language_row_ratchet_holds() -> Bool {
   languages_consumer_census_live_per_language_row_ratchet_holds()

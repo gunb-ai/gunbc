@@ -17,9 +17,9 @@ data sccache_releases_authority: ExternalAuthority = ExternalAuthority {
 }
 
 type SccacheBinaryRelease {
-  version: NonEmptyStr
-  digest_aarch64: Digest
-  digest_x86_64: Digest
+  version: std.types.NonEmptyStr
+  digest_aarch64: extdeps.crypto.hash.Digest
+  digest_x86_64: extdeps.crypto.hash.Digest
 }
 
 data sccache_binary_artifact_grain_note: String = "For multi-artifact releases the pin SUBJECT is the ARTIFACT (release x platform), not the release row alone (review 44662, feature:pin-artifact-grain). SccacheBinaryRelease carries two cited digests because one GitHub release publishes two musl tarballs; Pin.expected_identity is one ContentHash, so Pin<SccacheBinaryRelease> was ambiguous about which tarball it pinned. SccacheBinaryArtifact is the release x published-musl-arch product: one cited digest per row, projected from the release's named digest_aarch64 / digest_x86_64 fields — never re-minted. SccachePublishedMuslArch is a CLOSED two-arm coproduct (SccacheMuslAarch64 | SccacheMuslX86_64) so unsupported extdeps.toolchain.types.Architecture variants are UNWRITABLE on the carrier rather than admitted and refused later (review 44866, DESIGN section 5 construction). Distinct variant names avoid the typechecker fork where reusing Aarch64 | X86_64 as a separate coproduct collided with Architecture; sccache_published_musl_arch_of is the Architecture→SccachePublishedMuslArch projection (Present only for published musl arches) used by sccache_binary_artifact_for_arch and sccache_release_digest consumers. CpuArchitecture and TargetArchitecture in std are byte-identical forks (DESIGN section 3) and are deliberately NOT imported here."
@@ -160,7 +160,7 @@ data sccache_server_default_tcp_port: Int = 4226
 
 type SccacheServerEndpoint
   = SccacheServerTcpPort { port: Int }
-  | SccacheServerUnixSocket { path: NonEmptyStr }
+  | SccacheServerUnixSocket { path: std.types.NonEmptyStr }
 
 type SccacheServerSpawn
   = ClientAutoSpawned
@@ -174,7 +174,7 @@ type SccacheServerProcessFacts {
   compiles_execute_as_server_children: Bool
   stats_query_spawns_server: Bool
   default_endpoint: SccacheServerEndpoint
-  evidence: List<CacheEvidence>
+  evidence: List<std.cache_interface.CacheEvidence>
 }
 
 data sccache_server_process_facts: SccacheServerProcessFacts = {

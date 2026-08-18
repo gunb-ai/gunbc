@@ -13,7 +13,7 @@ data digital_control_note: String = "THE BOARD'S DIGITAL CONTROL INTENT, LANGUAG
 // property of a logical signal at all: a name legal in Verilog may be illegal elsewhere. Identity
 // and target spelling are separate facts, joined per target — see the binding table in
 // product.compute_board.verilog_projection, which is where Verilog lexical admission belongs.
-type SignalName = NonEmptyStr where brand("SignalName")
+type SignalName = std.types.NonEmptyStr where brand("SignalName")
 
 type SignalDirection
   = DigitalInput
@@ -56,7 +56,7 @@ fn signal_direction_is_output(s: DigitalSignal) -> Bool {
 }
 
 fn signal_names_equal(a: SignalName, b: SignalName) -> Bool {
-  (a as NonEmptyStr) == (b as NonEmptyStr)
+  (a as std.types.NonEmptyStr) == (b as std.types.NonEmptyStr)
 }
 
 fn intent_declares_signal(intent: DigitalControlIntent, name: SignalName) -> Bool {

@@ -91,7 +91,7 @@ type GoRequireEntry {
 
 type GoReplaceTarget
   = ModuleRedirect { path: GoModulePath, version: GoSemVer }
-  | LocalDirRedirect { path: NonEmptyStr }
+  | LocalDirRedirect { path: std.types.NonEmptyStr }
 
 type GoReplaceEntry {
   source_path: GoModulePath
@@ -110,7 +110,7 @@ type GoRetractRange
 
 type GoRetractEntry {
   range: GoRetractRange
-  rationale: NonEmptyStr?
+  rationale: std.types.NonEmptyStr?
 }
 
 type GoModFile {

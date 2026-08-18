@@ -13,7 +13,7 @@ type RustEmissionCandidate {
 type ProvenancedRustArtifact {
   source: Medium<String>
   emitted: Node
-  producer_receipt: ProducerEmissionReceipt
+  producer_receipt: v2.compiler.self_host.emitter_producer_provenance.ProducerEmissionReceipt
 }
 
 type RustWorkspaceWriteReceipt {
@@ -197,10 +197,10 @@ fn mint_written_provenanced_rust_artifact(
 data provenanced_rust_emission_observation_note: String = "STAGE-LOCATED production observation for the ingest-path Rust door. Replaces the Outcome-only surface whose Rejected arm erased WHICH stage refused: assembly, inference, emission (translate composed with serialize_target, observed as one production seam because v2.compiler.emit is one composition and splitting it here would fork that composition), or producer-receipt mint. generate_provenanced_rust_candidate_from_ingest is now a PROJECTION of this observation, not a second traversal — the pipeline is walked exactly once per call and every existing caller keeps its Outcome shape."
 
 type ProvenancedRustEmissionObservation
-  = AssemblyRejected { diagnostics: NonEmptyDiagnostics }
-  | InferenceRejected { diagnostics: NonEmptyDiagnostics }
-  | EmissionRejected { diagnostics: NonEmptyDiagnostics }
-  | ProducerReceiptRejected { diagnostics: NonEmptyDiagnostics }
+  = AssemblyRejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
+  | InferenceRejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
+  | EmissionRejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
+  | ProducerReceiptRejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
   | ArtifactProduced { artifact: ProvenancedRustArtifact }
 
 fn observe_provenanced_rust_emission_from_ingest(

@@ -11,8 +11,8 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data ip_address_note: String = "An IP address is v4 OR v6 (RFC 791 / RFC 4291) — the honestly CLOSED coproduct over the two grounded address leaves, not a string. The v4 arm is fully grounded with a wire codec (extdeps.network.ipv4); the v6 arm's type is grounded but its string codec is staged (extdeps.network.ipv6, zero fleet consumers). render_ip_address is fail-closed on the v6 arm — it returns Absent rather than fabricating a v6 string until that codec lands (§5), so no consumer can accidentally emit a wrong v6 literal. Constructors ip_v4 / ip_v6 are the tagged injections."
 
 type IpAddress =
-    IpV4 { v4: Ipv4Address }
-  | IpV6 { v6: Ipv6Address }
+    IpV4 { v4: extdeps.network.ipv4.Ipv4Address }
+  | IpV6 { v6: extdeps.network.ipv6.Ipv6Address }
 
 fn ip_v4(addr: Ipv4Address) -> IpAddress {
   IpV4 { v4: addr }

@@ -38,14 +38,14 @@ data specimen_pool_roots: List<String> = [
   "dag/test/fixture/scaffold_disposition_census"
 ]
 
-data specimen_requests: List<LiveReadSelectionRequest> = [
-  LiveReadSelectionRequest {
+data specimen_requests: List<v2.lens.live_read_classification.LiveReadSelectionRequest> = [
+  v2.lens.live_read_classification.LiveReadSelectionRequest {
     entry_path: specimen_entry_path,
     fn_name: specimen_fn_name
   }
 ]
 
-fn specimen_projection() -> LiveReadSelectionProjection {
+fn specimen_projection() -> v2.std.live_read.LiveReadSelectionProjection {
   match list_head(
     xs: live_read_selection_manifest_live(
       requests: specimen_requests,

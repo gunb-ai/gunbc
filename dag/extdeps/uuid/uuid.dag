@@ -1,8 +1,8 @@
 module extdeps.uuid
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "datatracker.ietf.org/doc/html/rfc9562"
   }
@@ -10,7 +10,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 
 data uuid_note: String = "RFC 9562 (which obsoletes RFC 4122) defines the UUID and its canonical textual form: 32 hexadecimal digits in five hyphen-separated groups of 8-4-4-4-12, thirty-six characters total. It is an IETF concept, so a vendor field that happens to hold one is not thereby a vendor type — several unrelated dependencies in this tree carry account and session identifiers in exactly this shape, and each re-typing it as its own NonEmptyStr would be the same concept coined once per consumer.\\n\\nThe brand is what makes the shape claim checkable at all. A 36-character string is not a UUID; a 36-character string matching the canonical layout is. Section 4 also fixes the reading order — the textual form is big-endian, and the version and variant live at fixed positions within it — which is why a UUID must never be compared case-sensitively or reordered as bytes without consulting that section.\\n\\nDeliberately NOT modeled here: version extraction, variant bits, generation. This module exists so consumers can say a field IS a UUID rather than a string that looks like one; minting and inspecting are separate concerns that land with the consumer that needs them."
 
-type Uuid = NonEmptyStr where brand("Uuid")
+type Uuid = std.types.NonEmptyStr where brand("Uuid")
 
 data uuid_canonical_length: Int = 36
 data uuid_canonical_group_lengths: List<Int> = [8, 4, 4, 4, 12]

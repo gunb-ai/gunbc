@@ -4,9 +4,9 @@ module test.claim.source_admission_selection_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 type FixtureTrees {
-  base: GitObjectId
-  head: GitObjectId
-  other: GitObjectId
+  base: extdeps.git.object_store.GitObjectId
+  head: extdeps.git.object_store.GitObjectId
+  other: extdeps.git.object_store.GitObjectId
 }
 
 fn fixture_trees() -> FixtureTrees? {

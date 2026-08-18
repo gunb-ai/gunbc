@@ -3,11 +3,11 @@ module test.claim.fleet_intent_memory
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data srv3_bmc_observed_total_gib: Gibibyte = gibibyte(128)
+data srv3_bmc_observed_total_gib: std.measure.Gibibyte = gibibyte(128)
 
-data srv1_bmc_observed_total_gib: Gibibyte = gibibyte(128)
+data srv1_bmc_observed_total_gib: std.measure.Gibibyte = gibibyte(128)
 
-data srv2_bmc_observed_total_gib: Gibibyte = gibibyte(128)
+data srv2_bmc_observed_total_gib: std.measure.Gibibyte = gibibyte(128)
 
 test fn srv3_population_matches_bmc_memory_summary() -> Bool {
   let nominal = byte_size_count(host_memory_population_nominal_bytes(pop: srv3_memory_population))
@@ -31,12 +31,12 @@ test fn srv3_observed_catalog_rows_are_jedec_realizable() -> Bool {
 test fn srv3_population_row_bytes_match_stick_capacity() -> Bool {
   let seven_sticks = byte_size_count(
     memory_population_row_bytes(
-      row: MemoryPopulationRow { module: hma82gr7afr8n_vk_catalog, stick_count: 7 }
+      row: extdeps.memory.types.MemoryPopulationRow { module: hma82gr7afr8n_vk_catalog, stick_count: 7 }
     )
   )
   let one_stick = byte_size_count(
     memory_population_row_bytes(
-      row: MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 1 }
+      row: extdeps.memory.types.MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 1 }
     )
   )
   seven_sticks == 7 * byte_size_count(hma82gr7afr8n_vk_catalog.capacity_bytes)
@@ -44,9 +44,9 @@ test fn srv3_population_row_bytes_match_stick_capacity() -> Bool {
 }
 
 test fn red_wrong_stick_count_changes_nominal_total() -> Bool {
-  let wrong = HostMemoryPopulation {
+  let wrong = extdeps.memory.types.HostMemoryPopulation {
     rows: [
-      MemoryPopulationRow { module: hma82gr7afr8n_vk_catalog, stick_count: 7 },
+      extdeps.memory.types.MemoryPopulationRow { module: hma82gr7afr8n_vk_catalog, stick_count: 7 },
     ],
   }
   let wrong_total = byte_size_count(host_memory_population_nominal_bytes(pop: wrong))
@@ -76,9 +76,9 @@ test fn srv1_srv2_host_memory_derives_from_cited_population() -> Bool {
 }
 
 test fn red_srv1_seven_stick_population_differs_from_observed() -> Bool {
-  let wrong = HostMemoryPopulation {
+  let wrong = extdeps.memory.types.HostMemoryPopulation {
     rows: [
-      MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 7 },
+      extdeps.memory.types.MemoryPopulationRow { module: hma82gr7afr4n_vk_catalog, stick_count: 7 },
     ],
   }
   let wrong_total = byte_size_count(host_memory_population_nominal_bytes(pop: wrong))

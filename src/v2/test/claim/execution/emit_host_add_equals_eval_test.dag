@@ -1,34 +1,34 @@
 module v2.test.execution.emit_host_add_equals_eval
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn emit_eval_oct5_value(n: Int) -> RuntimeValue {
+fn emit_eval_oct5_value(n: Int) -> v2.std.runtime.RuntimeValue {
   RuntimePrimitive {
-    value: RuntimePrimitiveValue {
+    value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: rust_emit_host_runtime_primitive_type_node(),
       bytes: emit_host_octets_byte_string(octets: [0, n, 0, 0, 0])
     }
   }
 }
 
-fn emit_eval_diagnostic(reason: Symbol, node: Node) -> Diagnostic {
-  Diagnostic {
+fn emit_eval_diagnostic(reason: v2.std.node.Symbol, node: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: reason,
     at: node_locus(node: node),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn emit_eval_allocate_literal(_node: Node, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn emit_eval_allocate_literal(_node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   Accepted { value: emit_eval_oct5_value(n: 2), diagnostics: None }
 }
 
-fn emit_eval_arg_is_two(value: RuntimeValue) -> Bool {
+fn emit_eval_arg_is_two(value: v2.std.runtime.RuntimeValue) -> Bool {
   value == emit_eval_oct5_value(n: 2)
 }
 
-fn emit_eval_args_are_two_twos(args: List<RuntimeValue>) -> Bool {
+fn emit_eval_args_are_two_twos(args: List<v2.std.runtime.RuntimeValue>) -> Bool {
   if count(args) == 2 {
     match list_nth(xs: args, wanted: 0, absent: emit_eval_diagnostic(reason: ^emit_eval_args_bad, node: eval_add_subgraph_node)) {
       Holds { value: left } =>
@@ -44,7 +44,7 @@ fn emit_eval_args_are_two_twos(args: List<RuntimeValue>) -> Bool {
   }
 }
 
-fn emit_eval_call_primitive_sum(result: Int, node: Node, args: List<RuntimeValue>, _env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn emit_eval_call_primitive_sum(result: Int, node: Node, args: List<v2.std.runtime.RuntimeValue>, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   if emit_eval_args_are_two_twos(args: args) {
     Accepted { value: emit_eval_oct5_value(n: result), diagnostics: None }
   } else {
@@ -52,41 +52,41 @@ fn emit_eval_call_primitive_sum(result: Int, node: Node, args: List<RuntimeValue
   }
 }
 
-fn emit_eval_call_primitive_five(node: Node, args: List<RuntimeValue>, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn emit_eval_call_primitive_five(node: Node, args: List<v2.std.runtime.RuntimeValue>, env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   emit_eval_call_primitive_sum(result: 5, node: node, args: args, _env: env)
 }
 
-fn emit_eval_call_primitive_six(node: Node, args: List<RuntimeValue>, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn emit_eval_call_primitive_six(node: Node, args: List<v2.std.runtime.RuntimeValue>, env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   emit_eval_call_primitive_sum(result: 6, node: node, args: args, _env: env)
 }
 
-fn emit_eval_choose_branch(_node: Node, _value: RuntimeValue, _env: EvaluationEnvironment) -> Outcome<Node> {
+fn emit_eval_choose_branch(_node: Node, _value: v2.std.runtime.RuntimeValue, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<Node> {
   Accepted { value: eval_add_subgraph_node, diagnostics: None }
 }
 
-fn emit_eval_step_loop(_node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+fn emit_eval_step_loop(_node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
   Accepted { value: Continue { value: emit_eval_oct5_value(n: 5) }, diagnostics: None }
 }
 
-fn emit_eval_bind_value(_key: EnvironmentBindingKey, _value: RuntimeValue, env: EvaluationEnvironment) -> Outcome<EvaluationEnvironment> {
+fn emit_eval_bind_value(_key: v2.std.runtime.EnvironmentBindingKey, _value: v2.std.runtime.RuntimeValue, env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
   Accepted { value: env, diagnostics: None }
 }
 
-fn emit_eval_interpretation(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> InterpretationAlgebra {
-  InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: emit_eval_allocate_literal },
-    transform: TransformInterpreter { call_primitive: call_primitive },
-    branch: BranchInterpreter { choose_branch: emit_eval_choose_branch },
-    loop: LoopInterpreter { step_loop: emit_eval_step_loop },
-    bind: BindInterpreter { bind_value: emit_eval_bind_value },
-    match: MatchInterpreter {
+fn emit_eval_interpretation(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> v2.std.runtime.InterpretationAlgebra {
+  v2.std.runtime.InterpretationAlgebra {
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: emit_eval_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: call_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: emit_eval_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: emit_eval_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: emit_eval_bind_value },
+    match: v2.std.runtime.MatchInterpreter {
       choose_arm: runtime_reject_match_arm
     }
   }
 }
 
-fn emit_eval_structure_witness() -> InterpretationStructureWitness {
-  InterpretationStructureWitness {
+fn emit_eval_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
+  v2.std.runtime.InterpretationStructureWitness {
     allocate_literal: ^emit_eval_allocate_literal_sym,
     call_primitive: ^emit_eval_call_primitive_sym,
     choose_branch: ^emit_eval_choose_branch_sym,
@@ -96,7 +96,7 @@ fn emit_eval_structure_witness() -> InterpretationStructureWitness {
   }
 }
 
-fn emit_eval_context(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> EvalContext {
+fn emit_eval_context(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvironment) -> Outcome<RuntimeValue>) -> v2.compiler.eval.EvalContext {
   eval_context_with_semantics(
     runtime_identity: ^emit_eval_interpretation_pin,
     interpretation: emit_eval_interpretation(call_primitive: call_primitive),
@@ -104,7 +104,7 @@ fn emit_eval_context(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvi
   )
 }
 
-fn emit_eval_generic_facts(node: Node) -> InferredFacts {
+fn emit_eval_generic_facts(node: Node) -> v2.compiler.infer.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
@@ -117,27 +117,27 @@ fn emit_eval_generic_facts(node: Node) -> InferredFacts {
   )
 }
 
-fn emit_eval_composed_facts(node: Node) -> Optional<InferredFacts> {
+fn emit_eval_composed_facts(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   match rust_add_inferred_tree.facts.lookup(node) {
     Present { value: f } => optional_present(value: f)
     Absent => optional_present(value: emit_eval_generic_facts(node: node))
   }
 }
 
-fn emit_eval_subject_tree() -> InferredTree {
-  InferredTree {
+fn emit_eval_subject_tree() -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: rust_fixture_emitted_add_fn,
     facts: Map { lookup: emit_eval_composed_facts }
   }
 }
 
-fn emit_eval_claim(rhs_result_node: Node) -> TestClaim {
+fn emit_eval_claim(rhs_result_node: Node) -> v2.std.verification.TestClaim {
   EqualsClaim {
     label: "S0: rust emit(add-fn) host-run == eval(add-subgraph) via shared octet codec",
     anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
     lhs: rhs_result_node,
     rhs: rhs_result_node,
-    classification: TestClassification { tier: Tier3, layer: Integration }
+    classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
   }
 }
 

@@ -1,14 +1,14 @@
 module extdeps.tools.socat
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Http
     locator: "www.dest-unreach.org/socat/doc/socat.html"
   }
 }
 
-data socat_pinned_version: VersionConstraint = ">= 1.7.4"
+data socat_pinned_version: extdeps.version.VersionConstraint = ">= 1.7.4"
 
 data socat_cli_tool: CliTool = CliTool {
   name: "socat",

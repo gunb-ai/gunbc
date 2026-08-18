@@ -9,9 +9,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type TierGlyphs {
-  ascii: Glyph
-  unicode: Glyph
-  emoji: Glyph
+  ascii: extdeps.render.glyph.Glyph
+  unicode: extdeps.render.glyph.Glyph
+  emoji: extdeps.render.glyph.Glyph
 }
 
 fn glyphs_for_tiers(emoji: Glyph, unicode: Glyph, ascii: Glyph) -> TierGlyphs {

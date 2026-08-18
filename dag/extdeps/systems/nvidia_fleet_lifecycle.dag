@@ -70,29 +70,29 @@ fn fleet_lifecycle_requires_change_window(op: FleetLifecycleOperation) -> Bool {
 
 type FleetLifecycleStatus = StatusOk | StatusWarning | StatusError
 
-type ArtifactPointer { locator: NonEmptyStr }
+type ArtifactPointer { locator: std.types.NonEmptyStr }
 
 type FleetLifecycleEnvelope {
-  tool: NonEmptyStr
-  ts: Timestamp
-  host: NonEmptyStr
+  tool: std.types.NonEmptyStr
+  ts: std.types.Timestamp
+  host: std.types.NonEmptyStr
   status: FleetLifecycleStatus
   rc: Int
-  duration_ms: Milliseconds
-  summary: NonEmptyStr
-  warnings: List<NonEmptyStr>
+  duration_ms: std.types.Milliseconds
+  summary: std.types.NonEmptyStr
+  warnings: List<std.types.NonEmptyStr>
   artifacts: List<ArtifactPointer>
 }
 
 type FleetLifecycleFailureClass
-  = TransportAuthFailure { detail: NonEmptyStr }
-  | PrivilegeFailure { detail: NonEmptyStr }
-  | ToolExecutionFailure { detail: NonEmptyStr }
-  | EndpointDegradedFailure { detail: NonEmptyStr }
+  = TransportAuthFailure { detail: std.types.NonEmptyStr }
+  | PrivilegeFailure { detail: std.types.NonEmptyStr }
+  | ToolExecutionFailure { detail: std.types.NonEmptyStr }
+  | EndpointDegradedFailure { detail: std.types.NonEmptyStr }
 
 type FleetLifecycleRequest {
   operation: FleetLifecycleOperation
-  target_host: NonEmptyStr
+  target_host: std.types.NonEmptyStr
 }
 
 type FleetLifecycleOutcome

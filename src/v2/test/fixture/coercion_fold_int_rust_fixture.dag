@@ -1,39 +1,39 @@
 module v2.test.coercion_fold_int_rust_fixture
 
 fn int_source_node() -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: ^fixture_int_atom } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
 }
-fn int_source_grounding_fixture() -> CanonicalGrounding {
-  CanonicalGrounding {
+fn int_source_grounding_fixture() -> v2.std.constraints.CanonicalGrounding {
+  v2.std.constraints.CanonicalGrounding {
     node: int_source_node(),
-    witness: CanonicalGroundingWitness {
-      structural: StructuralPropertyWitness {
+    witness: v2.std.constraints.CanonicalGroundingWitness {
+      structural: v2.std.witness.StructuralPropertyWitness {
         property: ^fixture_property_closed_candidates,
         evidence: int_source_node()
       },
-      closedness: StructuralPropertyWitness {
+      closedness: v2.std.witness.StructuralPropertyWitness {
         property: ^fixture_property_candidate_set_closedness,
         evidence: int_source_node()
       }
     }
   }
 }
-fn rust_i32_candidate_fixture() -> CoercionCandidateSet {
-  CoercionCandidateSet {
-    set: CandidateSet {
+fn rust_i32_candidate_fixture() -> v2.std.coercion.CoercionCandidateSet {
+  v2.std.coercion.CoercionCandidateSet {
+    set: v2.std.find_witness.CandidateSet {
       candidates: [rust_inhabitant_i32_node()],
-      closedness: StructuralPropertyWitness {
+      closedness: v2.std.witness.StructuralPropertyWitness {
         property: ^fixture_property_candidate_set_closedness,
         evidence: int_source_node()
       }
     }
   }
 }
-fn coercion_fold_int_to_i32_fixture() -> Outcome<CoercionResult> {
+fn coercion_fold_int_to_i32_fixture() -> Outcome<v2.std.coercion.CoercionResult> {
   coercion_fold(
     source: int_source_grounding_fixture(),
     candidates: rust_i32_candidate_fixture(),

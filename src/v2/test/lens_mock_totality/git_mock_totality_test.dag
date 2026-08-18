@@ -4,7 +4,7 @@ module v2.test.lens_mock_totality.git_mock_totality
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedGitMock {
-  tag: Symbol
+  tag: v2.std.node.Symbol
 }
 
 data git_red_omit_keys: List<String> = ["git.Core.DiffNameOnlyMerge"]

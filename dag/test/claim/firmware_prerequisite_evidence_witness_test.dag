@@ -8,7 +8,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 // acceptance a first-wins accumulator and a real max/min return the SAME
 // answer, so a two-element list cannot distinguish them however it is
 // ordered. Only a second refusal forces the fold to choose.
-data synthetic_lower_refusal: FirmwarePrerequisiteObservation = FirmwarePrerequisiteObservation {
+data synthetic_lower_refusal: extdeps.firmware.types.FirmwarePrerequisiteObservation = extdeps.firmware.types.FirmwarePrerequisiteObservation {
   board: AsrockRackAltrad8ud1l2t,
   subject: HostBios,
   image_kind: OpenBmcWebUiTar,
@@ -18,13 +18,13 @@ data synthetic_lower_refusal: FirmwarePrerequisiteObservation = FirmwarePrerequi
   observed_at: 1786579200000,
 }
 
-data forward_evidence: List<FirmwarePrerequisiteObservation> = [
+data forward_evidence: List<extdeps.firmware.types.FirmwarePrerequisiteObservation> = [
   asrock_altrad8ud_bios_310_push_refused_at_bmc_207,
   synthetic_lower_refusal,
   asrock_altrad8ud_bios_310_push_accepted_at_bmc_322,
 ]
 
-data reversed_evidence: List<FirmwarePrerequisiteObservation> = [
+data reversed_evidence: List<extdeps.firmware.types.FirmwarePrerequisiteObservation> = [
   asrock_altrad8ud_bios_310_push_accepted_at_bmc_322,
   synthetic_lower_refusal,
   asrock_altrad8ud_bios_310_push_refused_at_bmc_207,
@@ -46,8 +46,8 @@ data reversed_evidence: List<FirmwarePrerequisiteObservation> = [
 // supplies it, so a control asserting which version was refused reads that from
 // the refusal row rather than transcribing it.
 fn verdict_against_declared_minimum(
-  observations: List<FirmwarePrerequisiteObservation>,
-) -> PrerequisiteEvidenceVerdict {
+  observations: List<extdeps.firmware.types.FirmwarePrerequisiteObservation>,
+) -> extdeps.firmware.types.PrerequisiteEvidenceVerdict {
   match asrock_altrad8ud_bios_3_10_openbmc_release.prerequisite {
     RequiresMinimumTargetFirmware { target: _, minimum: m } =>
       prerequisite_evidence_verdict(minimum: m, observations: observations)
@@ -55,7 +55,7 @@ fn verdict_against_declared_minimum(
   }
 }
 
-fn same_firmware_version(a: FirmwareSemanticVersion, b: FirmwareSemanticVersion) -> Bool {
+fn same_firmware_version(a: extdeps.firmware.types.FirmwareSemanticVersion, b: extdeps.firmware.types.FirmwareSemanticVersion) -> Bool {
   a.major == b.major && a.minor == b.minor && a.patch == b.patch
 }
 
@@ -76,7 +76,7 @@ fn same_firmware_version(a: FirmwareSemanticVersion, b: FirmwareSemanticVersion)
 // both orderings below carry a THIRD, lower refusal at 1.00.00, so a first-wins
 // fold reports that instead of the refused row's own 2.07.00 and still fails.
 fn bounds_are_the_executed_pair(
-  observations: List<FirmwarePrerequisiteObservation>,
+  observations: List<extdeps.firmware.types.FirmwarePrerequisiteObservation>,
 ) -> Bool {
   match verdict_against_declared_minimum(observations: observations) {
     PrerequisiteConsistentUpperBound { highest_refusal: r, lowest_acceptance: a } =>

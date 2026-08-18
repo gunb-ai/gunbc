@@ -3,13 +3,13 @@ module gunbc.live_deploy.intent
 
 
 type TransportCurlHealthzProbe {
-  health_url: NonEmptyStr
+  health_url: std.types.NonEmptyStr
 }
 
 type ServiceReadyGate {
   probe: TransportCurlHealthzProbe
-  timeout: Second
-  on_not_ready: ServiceNotReady
+  timeout: std.measure.Second
+  on_not_ready: gunbc.live_deploy.service_ready.ServiceNotReady
 }
 
 type LiveDeployReadback {

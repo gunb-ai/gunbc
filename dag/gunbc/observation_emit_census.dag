@@ -6,14 +6,14 @@ data observation_emit_census_note: String = "P3 of the progress-and-observation 
 data observation_emit_census_sequencing_note: String = "Sequencing, per the operator ruling and live-log review (run 30142403230): tagged migrations landed (floor-memory, gantt, governor, typecheck-attribution, measurement, shell with named-intent subjects; Ambient ShellTrace Suppressed at Normal). Post-census growth tags ([floor-drain], [receipt], [file], #7205's [resolve-split]/[assembly-split], and #7284's [witness-row-cost]) are CountedFrontierSite rows so the roster cannot silently understate. [gate-warm-cost] and [witness-row-cost-drift] were rows here until 2026-08-11, when their raw emits were deleted outright rather than migrated — see observation_emit_roster_completeness_note for why that is not two families of progress. Unmarked raw eprintln residue in claim_executor remains counted separately."
 
 type EmitSiteDisposition
-  = MigratedToObservation { via: NonEmptyStr }
-  | CountedFrontierSite { reason: NonEmptyStr, dissolution: DissolutionCondition }
+  = MigratedToObservation { via: std.types.NonEmptyStr }
+  | CountedFrontierSite { reason: std.types.NonEmptyStr, dissolution: std.dissolution.DissolutionCondition }
 
 data emit_site_disposition_note: String = "A closed sum, so a site is exactly one of two things and never silently neither. MigratedToObservation names the projection that replaced the raw emit — the evidence the site now speaks the event vocabulary. CountedFrontierSite carries a reason it has not migrated yet and the trigger that will dissolve it, so the debt is countable and prioritizable rather than an open-ended intention. There is no third arm, which is the point: an emit site the census has not looked at cannot be represented here, so the roster's completeness is what the witness checks against the seed."
 
 type CensusedEmitSite {
-  marker: NonEmptyStr
-  source_file: NonEmptyStr
+  marker: std.types.NonEmptyStr
+  source_file: std.types.NonEmptyStr
   disposition: EmitSiteDisposition
 }
 

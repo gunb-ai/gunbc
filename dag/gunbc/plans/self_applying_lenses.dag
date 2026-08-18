@@ -3,7 +3,7 @@ module gunbc.plans.self_applying_lenses
 
 
 
-fn self_applying_lenses_body() -> List<MarkdownBlock> {
+fn self_applying_lenses_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Crux (fractal intent-linearity).** A program's *description length should equal its irreducible information content* — the minimal generative template plus the genuinely-distinct data — **recursively at every nesting level**. Equivalently: the intent is 1:1 with its own inputs; the description grows *only* with distinct information, never with repetition. This is the decidable, enforceable shadow of §1's limit (\"replace convention with necessity until nothing arbitrary survives\"): redundancy is convention surviving where a reference was available, and super-linear description is exactly that convention made visible. Enforcing it over the code-as-its-own-input — fractally — is §2's master move turned into a construction wall, and the micro-scale twin of §7's seed-shrink (a compiler 1:1 with its inputs is the seed at its irreducible core). **Bound (do not let \"linear\" become a universal wall):** it is a *wall up to the substrate's expressible abstraction* (anti-unification computes the structural minimum relative to the available combinators) and a *ratchet beyond it* (true minimal description is Kolmogorov-uncomputable). The frontier advances as the catalog/combinators grow — which is §7's \"language design opens up,\" measured. Prerequisite: the minimal form must be *expressible and ergonomic* to reference (the Ergonomics lane is what widens this wall). The candidate DESIGN.md articulation of this crux — held against §1/§2/§7 for the operator's \"model §1's axioms + enforce the syllogism\" thread — is drafted in [intent-linearity design draft](intent-linearity-design-draft.md) (operator-review, not yet a DESIGN.md edit)."),
     p(text: "**Thesis.** A lens that only *flags* concedes the bad state is writable and leaves the fix to a human (who pays the §1 time, and re-introduces fail-open arms by hand). The next form of the lens **produces the correct pattern and applies it through our own write API** — it does not report a violation, it removes it. This is the §7 recursion (the dedup principle applied to the dedup-*tools*) and the apotheosis of the Ergonomics lane (\"make the fold the path of least resistance\" → the lens *writes* the fold)."),
@@ -60,7 +60,7 @@ fn self_applying_lenses_body() -> List<MarkdownBlock> {
     p(text: "The registry must not *itself* be a fork (a linearity enforcer that is non-linear would be the §7 irony). So the redundancy lenses become **rows of one engine**, not peers. Nothing below deletes now — each deletion is gated on a named trigger (§6); executing them before the trigger would strand the floor/lens wiring."),
     ul(items: [
       li(text: "**`v2.lens.intent_linearity` is the registry** (landed, lens_unit-green). `simulated_relationship`'s `chain_is_simulated` is **row 1** (consumed, not duplicated). No deletion — it's the row-1 detector."),
-      MarkdownListItem { blocks: [
+      std.markdown.MarkdownListItem { blocks: [
         p(text: "**`v2.lens.structural_similarity` → a registry row.** It is today an *unrealized scaffold* (`verdict: Unrealized`, no predicate) — the type-decl-layer twin of the same anti-unification move. **Consolidate:** realize it as an `intent_linearity` row over the type-decl forest (binder = type parameter, not list element), reusing the shared kernel."),
         p(text: "**DELETE on trigger** `structural_similarity realized as an intent_linearity row`: the bespoke `StructuralSimilarityVerdict` / `TypeShape` / `FnShapeUnrealized` scaffold (`structural_similarity.dag` lines 12–45) — once the row exists, that empty machinery is dead. *(Not before — it carries a live `ConstructionJustification` the hygiene backstop counts.)*"),
       ] },
@@ -104,7 +104,7 @@ fn self_applying_lenses_body() -> List<MarkdownBlock> {
     p(text: "**C — detect-only / advisory residue.** No single computable corrected `Node`. Two sub-kinds:"),
     ul(items: [
       li(text: "**C1 — RatchetForever (undecidable by Rice / needs domain knowledge):** `complexity` (global optimality), `synthesis` (no constructive faster realization), `unit_modeling` (does `4926` *denote* a contact count? — domain knowledge), `idempotency` (needs an algebra-law proof), `ownership` (needs a borrow model). These stay advisory **permanently**."),
-      MarkdownListItem { blocks: [
+      std.markdown.MarkdownListItem { blocks: [
         p(text: "**C2 — decidable wall whose end-state is §5 *construction* (make it unwritable), not a patch lens:** `effect`, `resolved_imports`, `visibility` (two valid repairs — promote target *or* demote importer — so the fix is *chosen*, not computed), `parallelism`, `coverage`, `mock_totality` (→ corpus-as-type totality check), `host_language_transport_script`, `realization_vocabulary_containment`, `fact_density`, `leaf_model_verification` (decompose a `String` leaf — needs human modeling), `discrimination` (witness must be authored), `structural_resolution` (resolution-status fact source). `extdeps_external_authority` is C2 with a twist — the missing anchor URL must be *researched* (the real upstream authority), not synthesized. Each already carries a `dissolve_on: …by construction` marker; the correct work is landing that construction, **not** a produce-and-apply retrofit. (`medium_structure_containment` / no-smuggled-programs was deleted in #6831.)"),
         p(text: "*On `fact_density` specifically* (reconciling the Consolidation-map fork-check, #5591): it is the **conceptual dual** of the registry's over-side — the intent-linearity \"*description == information*\" read two ways, **redundant** spec (over) vs **hollow** carrier (under). But the duality is conceptual, **not mechanical**, so it stays C2 rather than becoming an A row: the over-side minimal form is *computed* by anti-unification (template + substitution), whereas the under-side fix is *not computable* — grounding a hollow `4926` into a `contact_count` needs domain knowledge (§2-deep DFS, §3-grounding), exactly the construction-residue the fork-check carves out. Same concept, divergent mechanism: that is why one is a registry producer-applier and the other waits on its `dissolve_on` construction."),
       ] },
@@ -121,7 +121,7 @@ fn self_applying_lenses_body() -> List<MarkdownBlock> {
   ]
 }
 
-data self_applying_lenses_plan: Plan = Plan {
+data self_applying_lenses_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "self-applying-lenses",
   title: "Self-applying lenses — detect → generalize → emit → write",
   body: self_applying_lenses_body(),

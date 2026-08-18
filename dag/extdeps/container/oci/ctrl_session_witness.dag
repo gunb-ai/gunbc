@@ -1,36 +1,36 @@
 module extdeps.container.oci.ctrl_session_witness
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/opencontainers/image-spec/blob/main/manifest.md"
   }
 }
 
-data ctrl_session_config_digest: OciContentDigest = oci_content_digest_from_validated_sha256(
-  digest: Sha256Digest {
-    hex: "88f109a61b71a73f660fb87e1b8cf1058614fa03006d8db6ffe4c6bd4d126986" as Sha256DigestHex,
+data ctrl_session_config_digest: extdeps.container.oci.digest.OciContentDigest = oci_content_digest_from_validated_sha256(
+  digest: std.content_hash.Sha256Digest {
+    hex: "88f109a61b71a73f660fb87e1b8cf1058614fa03006d8db6ffe4c6bd4d126986" as std.content_hash.Sha256DigestHex,
   },
 )
 
 data ctrl_session_config_size: Int = 34025
 
-data ctrl_session_layer0_digest: OciContentDigest = oci_content_digest_from_validated_sha256(
-  digest: Sha256Digest {
-    hex: "402614bd39aaec1e4bdcf25aa67f88588fc8d93997a2551c4e130e6ed2b06c7a" as Sha256DigestHex,
+data ctrl_session_layer0_digest: extdeps.container.oci.digest.OciContentDigest = oci_content_digest_from_validated_sha256(
+  digest: std.content_hash.Sha256Digest {
+    hex: "402614bd39aaec1e4bdcf25aa67f88588fc8d93997a2551c4e130e6ed2b06c7a" as std.content_hash.Sha256DigestHex,
   },
 )
 
 data ctrl_session_layer0_size: Int = 28122307
 
-data ctrl_session_first_diff_id: OciContentDigest = oci_content_digest_from_validated_sha256(
-  digest: Sha256Digest {
-    hex: "5e34d05421f9491747bc11c68b1a7f5029b0aefb18eb9166935ac52be45fb299" as Sha256DigestHex,
+data ctrl_session_first_diff_id: extdeps.container.oci.digest.OciContentDigest = oci_content_digest_from_validated_sha256(
+  digest: std.content_hash.Sha256Digest {
+    hex: "5e34d05421f9491747bc11c68b1a7f5029b0aefb18eb9166935ac52be45fb299" as std.content_hash.Sha256DigestHex,
   },
 )
 
-data ctrl_session_manifest: ImageManifest = {
+data ctrl_session_manifest: extdeps.container.oci.manifest.ImageManifest = {
   schemaVersion: oci_image_schema_version,
   mediaType: media_type_oci_image_manifest_v1,
   config: {
@@ -47,7 +47,7 @@ data ctrl_session_manifest: ImageManifest = {
   ],
 }
 
-data ctrl_session_image_config: ImageConfiguration = {
+data ctrl_session_image_config: extdeps.container.oci.image_config.ImageConfiguration = {
   architecture: Aarch64,
   os: Linux,
   config: {
@@ -64,12 +64,12 @@ data ctrl_session_image_config: ImageConfiguration = {
     ],
     Cmd: null,
     WorkingDir: null,
-    ExposedPorts: [ContainerExposedPort { port: 7681, protocol: Tcp }],
+    ExposedPorts: [extdeps.container.oci.types.ContainerExposedPort { port: 7681, protocol: Tcp }],
   },
   rootfs: RootfsLayers { diff_ids: [ctrl_session_first_diff_id] },
 }
 
-data ctrl_session_runtime_config: RuntimeBundleConfig = {
+data ctrl_session_runtime_config: extdeps.container.oci.runtime_config.RuntimeBundleConfig = {
   ociVersion: "1.2.0",
   process: {
     terminal: false,
@@ -114,20 +114,20 @@ data ctrl_session_runtime_config: RuntimeBundleConfig = {
   },
 }
 
-data bad_manifest_schema: ImageManifest = {
+data bad_manifest_schema: extdeps.container.oci.manifest.ImageManifest = {
   schemaVersion: 1,
   mediaType: media_type_oci_image_manifest_v1,
   config: ctrl_session_manifest.config,
   layers: ctrl_session_manifest.layers,
 }
 
-data bad_descriptor: OciDescriptor = {
+data bad_descriptor: extdeps.container.oci.descriptor.OciDescriptor = {
   mediaType: media_type_oci_image_config_v1,
   digest: ctrl_session_config_digest,
   size: -1,
 }
 
-data duplicate_namespace_linux: LinuxPlatform = {
+data duplicate_namespace_linux: extdeps.container.oci.linux.LinuxPlatform = {
   namespaces: [
     { namespace_type: LinuxNsPid, path: null },
     { namespace_type: LinuxNsPid, path: null },

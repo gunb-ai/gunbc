@@ -42,11 +42,11 @@ data host_converge_slice1_tasks_knob_name: String = "per_slot_tasks_max"
 // typed and retryable, never applied past it.
 type HostConvergeSlice1TasksMaxReceipt {
   host: product.placement_supply.HostIdentity
-  unit: NonEmptyStr
-  knob: ConvergeKnob
-  limit: SystemdCgroupTaskLimit
-  verdict: ConvergeVerdict
-  probed_at: NonEmptyStr
+  unit: std.types.NonEmptyStr
+  knob: gunbc.host_converge.ConvergeKnob
+  limit: extdeps.systemd.SystemdCgroupTaskLimit
+  verdict: gunbc.host_converge.ConvergeVerdict
+  probed_at: std.types.NonEmptyStr
   applied: Bool
   read_back_converged: Bool
   reapply_noop: Bool
@@ -54,11 +54,11 @@ type HostConvergeSlice1TasksMaxReceipt {
 
 type HostConvergeSlice1MemoryCapReceipt {
   host: product.placement_supply.HostIdentity
-  unit: NonEmptyStr
-  knob: ConvergeKnob
-  live_read: RunnerUnitMemoryLiveRead
-  verdict: ConvergeVerdict
-  probed_at: NonEmptyStr
+  unit: std.types.NonEmptyStr
+  knob: gunbc.host_converge.ConvergeKnob
+  live_read: gunbc.runner_unit_live_read.RunnerUnitMemoryLiveRead
+  verdict: gunbc.host_converge.ConvergeVerdict
+  probed_at: std.types.NonEmptyStr
   applied: Bool
   read_back_converged: Bool
   reapply_noop: Bool
@@ -203,7 +203,7 @@ fn host_converge_slice1_fixture_receipt() -> HostConvergeSlice1MemoryCapReceipt?
 type HostConvergeSlice1EnumerationMismatch {
   host: product.placement_supply.HostIdentity
   declared_count: Int
-  observed_units: List<NonEmptyStr>
+  observed_units: List<std.types.NonEmptyStr>
 }
 
 fn host_converge_slice1_enumerate_units(instance_glob: String) -> List<NonEmptyStr>? {
@@ -241,8 +241,8 @@ fn host_converge_slice1_cross_check_enumeration(host: HostIdentity, units: List<
 }
 
 type HostConvergeSlice1UnitOutcome
-  = HostConvergeSlice1UnitTasksConverged { unit: NonEmptyStr, applied: Bool, receipt: HostConvergeSlice1TasksMaxReceipt }
-  | HostConvergeSlice1UnitRefused { unit: NonEmptyStr, reason: String }
+  = HostConvergeSlice1UnitTasksConverged { unit: std.types.NonEmptyStr, applied: Bool, receipt: HostConvergeSlice1TasksMaxReceipt }
+  | HostConvergeSlice1UnitRefused { unit: std.types.NonEmptyStr, reason: String }
 
 type HostConvergeSlice1HostResult
   = HostConvergeSlice1HostEnumerated { host: product.placement_supply.HostIdentity, outcomes: List<HostConvergeSlice1UnitOutcome> }
@@ -305,9 +305,9 @@ fn host_converge_slice1_apply_tasks_max(unit: NonEmptyStr, value: String) -> Boo
 }
 
 type HostConvergeSlice1TasksGuardOutcome
-  = HostConvergeSlice1TasksSafe { unit: NonEmptyStr, current_count: Int }
-  | HostConvergeSlice1TasksUnsafe { unit: NonEmptyStr, current_count: Int, target_count: Int }
-  | HostConvergeSlice1TasksUnknown { unit: NonEmptyStr, reason: String }
+  = HostConvergeSlice1TasksSafe { unit: std.types.NonEmptyStr, current_count: Int }
+  | HostConvergeSlice1TasksUnsafe { unit: std.types.NonEmptyStr, current_count: Int, target_count: Int }
+  | HostConvergeSlice1TasksUnknown { unit: std.types.NonEmptyStr, reason: String }
 
 // Pure boundary predicate for the tasks guard, extracted so the >= boundary is
 // witnessable: equality means zero headroom (the next clone() EAGAINs), so it refuses.

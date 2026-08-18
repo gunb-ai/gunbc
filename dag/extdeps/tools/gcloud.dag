@@ -1,14 +1,14 @@
 module extdeps.tools.gcloud
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "cloud.google.com/sdk/docs/install-sdk"
   }
 }
 
-data gcloud_pinned_version: VersionConstraint = ">= 470.0.0"
+data gcloud_pinned_version: extdeps.version.VersionConstraint = ">= 470.0.0"
 
 data gcloud_cli_tool: CliTool = CliTool {
   name: "gcloud",

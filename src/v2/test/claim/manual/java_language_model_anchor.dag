@@ -1,7 +1,7 @@
 module v2.test.manual.java_language_model_anchor
 
 
-type java_anchor_language_model = LanguageModel
+type java_anchor_language_model = v2.std.language_model.LanguageModel
 
 data java_anchor_method_add: java_anchor_language_model = java_method_add_language_model()
 data java_anchor: java_anchor_language_model = java_language_model()

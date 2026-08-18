@@ -22,8 +22,8 @@ test fn os_install_actuator_toolchain_ensure_rejects_emit_artifact_transport() -
     effect: OsInstallActuatorToolchainEnsure {},
     evidence: host_effect_identity_evidence,
     transport: EmitArtifactThenThinRun {
-      bootstrap: BootstrapFragment { script: "true" },
-      invocation: ThinInvocation { argv: ["true"] },
+      bootstrap: gunbc.host_effect.BootstrapFragment { script: "true" },
+      invocation: gunbc.host_effect.ThinInvocation { argv: ["true"] },
     },
   ) {
     NotConverged { reason: why, applied: _ } =>

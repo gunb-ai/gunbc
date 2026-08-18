@@ -1,8 +1,8 @@
 module tools.namespace_structural_root_exposure_generated_witness_transport
 
 
-fn namespace_structural_root_exposure_generated_witness_bin() -> WitnessBin {
-  WitnessBin {
+fn namespace_structural_root_exposure_generated_witness_bin() -> tools.host_prelude.WitnessBin {
+  tools.host_prelude.WitnessBin {
     var_name: "NAMESPACE_STRUCTURAL_ROOT_EXPOSURE_GENERATED_WITNESS",
     bin_name: "namespace_structural_root_exposure_generated_witness",
     features: ""

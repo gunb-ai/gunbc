@@ -19,12 +19,12 @@ fn evaluation_clock_key(c: EvaluationClock) -> NonEmptyStr {
 }
 
 type EvaluationEntryIdentity {
-  entry: NonEmptyStr
+  entry: std.types.NonEmptyStr
 }
 
 type EvaluationLimit
   = LimitUnset
-  | LimitSet { limit: PositiveMillisecond }
+  | LimitSet { limit: std.measure.PositiveMillisecond }
 
 data evaluation_limit_unset_is_a_state_not_a_default_note: String = "LimitUnset IS A DECLARED POLICY STATE, NOT A MISSING VALUE, and separating it from a sentinel is what keeps this from becoming the absorbing fallback DESIGN section 5 forbids. Unset means this caller has declared that it does not bound this clock — today's serve behavior, stated rather than implied. It is NOT the same fact as a limit that could not be read, which would be a refusal; and it is not spelled as a zero or a very large number, because both of those are answers wearing the shape of an absence. A consumer matching on this coproduct cannot silently treat unbounded as bounded."
 
@@ -43,8 +43,8 @@ type EvaluationBudgetVerdict
   | EvaluationBudgetExceeded {
       entry: EvaluationEntryIdentity
       clock: EvaluationClock
-      elapsed: Nanosecond
-      limit: PositiveMillisecond
+      elapsed: std.measure.Nanosecond
+      limit: std.measure.PositiveMillisecond
     }
 
 fn evaluation_budget_verdict(

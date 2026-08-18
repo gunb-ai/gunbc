@@ -1,6 +1,6 @@
 module test.claim.floor_batch_clamp_authority_witness
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 // ONE POPULATION NOW FEEDS THE CLAMP LIST, and that is why this file shrank rather than being
 // deleted. The defect it was written for (gunbc#7869: a refusal reporting clamp_ms=360000 while
@@ -12,7 +12,7 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // a comparison that has nothing to compare. What survives is the surviving population's own
 // citation, plus the formula control -- because runnable_batch_clamp_ms is still live and its
 // unit-rate arithmetic is still the thing a future clamp row will be read through.
-fn positional_clamp_row_zero() -> RunnableBatchClamp {
+fn positional_clamp_row_zero() -> std.realization_schedule.RunnableBatchClamp {
   match gunbc_ci_floor_batch_clamp_params {
     Empty => gunbc_ci_compile_clean_clamp
     Cons { head: h, tail: _ } => h
@@ -29,7 +29,7 @@ test fn positional_clamp_row_zero_cites_the_ci_spec_list_it_lives_in() -> Bool {
 // THE FORMULA CONTROL. A row whose rate is NONZERO must move with the unit count, or nothing in
 // this file distinguishes runnable_batch_clamp_ms from a constant.
 test fn a_nonzero_rate_clamp_does_move_with_the_unit_count() -> Bool {
-  let priced = RunnableBatchClamp {
+  let priced = std.realization_schedule.RunnableBatchClamp {
     overhead: second(count: 300),
     per_unit: millisecond(count: 1000),
     authority: decl_ref(

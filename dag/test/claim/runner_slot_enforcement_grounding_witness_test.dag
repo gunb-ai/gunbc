@@ -2,48 +2,48 @@ module test.claim.runner_slot_enforcement_grounding_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn fixture_slot() -> NonEmptyStr {
+fn fixture_slot() -> std.types.NonEmptyStr {
   "actions-runner@srv1-01.service"
 }
 
-fn fixture_expected_cap() -> ByteSize {
+fn fixture_expected_cap() -> std.measure.ByteSize {
   gunbc_runner_slot_enforcement_expected_cap()
 }
 
-fn fixture_drift_cap() -> ByteSize {
+fn fixture_drift_cap() -> std.measure.ByteSize {
   byte_size(70391285350)
 }
 
-fn is_enforced(e: RunnerSlotEnforcement) -> Bool {
+fn is_enforced(e: gunbc.runner_slot_enforcement.RunnerSlotEnforcement) -> Bool {
   match e {
     RunnerSlotEnforced => true
     RunnerSlotUnenforced { reason: _ } => false
   }
 }
 
-fn matching_read() -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+fn matching_read() -> ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness> {
   ReadObserved { value: CapEffective { bytes: fixture_expected_cap() } }
 }
 
-fn unbounded_read() -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+fn unbounded_read() -> ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness> {
   ReadObserved { value: CapUnbounded }
 }
 
-fn drift_read() -> ShowEffectiveRead<RunnerSliceCapEffectiveness> {
+fn drift_read() -> ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness> {
   ReadObserved { value: CapEffective { bytes: fixture_drift_cap() } }
 }
 
-fn apply_fixture() -> RunnerSlotApplyEffect {
+fn apply_fixture() -> gunbc.runner_slot_enforcement.RunnerSlotApplyEffect {
   runner_slot_apply_effect(slot_unit: fixture_slot(), expected_cap: fixture_expected_cap())
 }
 
-fn evidence_for(read: ShowEffectiveRead<RunnerSliceCapEffectiveness>) -> RunnerSlotEnforcement {
+fn evidence_for(read: ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness>) -> gunbc.runner_slot_enforcement.RunnerSlotEnforcement {
   runner_slot_evidence_from_reconciliation(
     r: reconcile_runner_slot(read: read, expected_cap: fixture_expected_cap(), apply: apply_fixture())
   )
 }
 
-fn converges_for(read: ShowEffectiveRead<RunnerSliceCapEffectiveness>) -> Bool {
+fn converges_for(read: ShowEffectiveRead<gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness>) -> Bool {
   reconciliation_converged(
     r: reconcile_runner_slot(read: read, expected_cap: fixture_expected_cap(), apply: apply_fixture())
   )
@@ -97,7 +97,7 @@ test fn witness_per_slot_committed_uses_allocation_authority_cap() -> Bool {
 }
 
 test fn witness_matching_per_slot_unit_read_grounds_enforced() -> Bool {
-  let row = RunnerUnitLiveReadRow {
+  let row = gunbc.runner_unit_live_read.RunnerUnitLiveReadRow {
     unit: fixture_slot(),
     memory_max_raw: to_string(byte_size_count(b: gunbc_ci_runner_cgroup_memory_cap)),
     memory_swap_max_raw: "0",

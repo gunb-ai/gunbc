@@ -14,18 +14,18 @@ type CodeChangeStage
   | CodeChangeTerminal { stage: CodeChangeTerminalStage }
 
 type CodeChangeBinding {
-  node_id: ProcessNodeId
-  change_ref: NonEmptyStr
+  node_id: gunbc.process_algebra.ProcessNodeId
+  change_ref: std.types.NonEmptyStr
 }
 
 type CodeChangeFacts {
   binding: CodeChangeBinding
   stage: CodeChangeStage
-  head_sha: CommitSha?
-  marked_ready_at: Timestamp?
-  merge_ready_at: Timestamp?
-  merged_at: Timestamp?
-  closed_at: Timestamp?
+  head_sha: std.types.CommitSha?
+  marked_ready_at: std.types.Timestamp?
+  merge_ready_at: std.types.Timestamp?
+  merged_at: std.types.Timestamp?
+  closed_at: std.types.Timestamp?
 }
 
 type CodeChangeRefusal
@@ -33,7 +33,7 @@ type CodeChangeRefusal
   | ChangeDraftBlocksReview
   | ChangeNotOpen
   | CodeChangeMissingHeadSha
-  | CodeChangeHeadShaMismatch { expected: CommitSha, actual: CommitSha }
+  | CodeChangeHeadShaMismatch { expected: std.types.CommitSha, actual: std.types.CommitSha }
   | CodeChangeMissingReviewTally
   | CodeChangeMissingDigestVerdict
   | CodeChangeDigestNotReady { first_reason: String }
@@ -61,8 +61,8 @@ type CodeChangeTransitionRequest {
   facts: CodeChangeFacts
   event: CodeChangeEventTag
   github_pr: CodeChangeGithubPrContext?
-  digest: MergeReadinessVerdict?
-  tally: MergeReadinessTally?
+  digest: gunbc.pr_digests.MergeReadinessVerdict?
+  tally: gunbc.review_verdict.MergeReadinessTally?
   policy_permitted: Bool?
 }
 

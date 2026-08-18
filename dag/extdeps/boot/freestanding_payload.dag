@@ -9,6 +9,6 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type FreestandingPayloadRef
-  = EmittedPayload { digest: NonEmptyStr, entry: EntryPoint }
-  | PrebuiltPayload { digest: NonEmptyStr, entry: EntryPoint }
-  | HollowPrebuiltInit { digest: NonEmptyStr, entry: EntryPoint }
+  = EmittedPayload { digest: std.types.NonEmptyStr, entry: std.exec_format.EntryPoint }
+  | PrebuiltPayload { digest: std.types.NonEmptyStr, entry: std.exec_format.EntryPoint }
+  | HollowPrebuiltInit { digest: std.types.NonEmptyStr, entry: std.exec_format.EntryPoint }

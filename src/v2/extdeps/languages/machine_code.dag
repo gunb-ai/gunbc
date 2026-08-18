@@ -2,9 +2,9 @@ module v2.extdeps.languages.machine_code
 
 
 type Isa
-  = X86_64Isa { revision: Symbol }
-  | Aarch64Isa { revision: Symbol }
-  | RiscV64Isa { revision: Symbol }
+  = X86_64Isa { revision: v2.std.node.Symbol }
+  | Aarch64Isa { revision: v2.std.node.Symbol }
+  | RiscV64Isa { revision: v2.std.node.Symbol }
 
 type ByteOrder
   = LittleEndian
@@ -16,12 +16,12 @@ type InstructionLength
 
 type InstructionByteLimitRef {
   isa: Isa,
-  limit: Symbol
+  limit: v2.std.node.Symbol
 }
 
 type OperandFieldWidthRef {
   isa: Isa,
-  width: Symbol
+  width: v2.std.node.Symbol
 }
 
 type MachineIntKind
@@ -68,7 +68,7 @@ type RegisterClass
 
 type RegisterDeclaration {
   isa: Isa
-  name: Symbol
+  name: v2.std.node.Symbol
   class: RegisterClass
 }
 
@@ -105,19 +105,19 @@ type ByteSequence {
 
 type InstructionProductionRef {
   isa: Isa
-  opcode: Symbol
+  opcode: v2.std.node.Symbol
 }
 
 type RegisterOperandSlotRef {
-  slot: Symbol
+  slot: v2.std.node.Symbol
 }
 
 type ImmediateOperandSlotRef {
-  slot: Symbol
+  slot: v2.std.node.Symbol
 }
 
 type MemoryOperandSlotRef {
-  slot: Symbol
+  slot: v2.std.node.Symbol
 }
 
 type ImmediateOperandTarget
@@ -209,11 +209,11 @@ type FlagWriteDisposition
   | WritesPredicateRegister
 
 type MachineIntegerPrimitiveFacts {
-  surface_spelling: Symbol
+  surface_spelling: v2.std.node.Symbol
   kind: MachineIntKind
   width: MachineIntWidth
   overflow_release: MachineIntegerOverflowBehavior
-  std_projection: Symbol
+  std_projection: v2.std.node.Symbol
 }
 data mc_facts_int8: MachineIntegerPrimitiveFacts = MachineIntegerPrimitiveFacts {
   surface_spelling: ^mc_surface_spelling_int8,

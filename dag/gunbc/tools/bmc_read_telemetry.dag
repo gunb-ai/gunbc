@@ -1,7 +1,7 @@
 module gunbc.tools.bmc_read_telemetry
 
 
-func bmc_read_telemetry() -> ProcessExit
+func bmc_read_telemetry() -> std.process.ProcessExit
   uses net: std.resources.Network
 {
   host = shell.Env.Get(name: "BMC_HOST")
@@ -18,8 +18,8 @@ func bmc_read_telemetry() -> ProcessExit
             if netrc_v == "" {
               return exit_failure(reason: "BMC_NETRC_FILE is empty")
             } else {
-              let bmc = host_v as NonEmptyStr
-              let netrc_file = netrc_v as NonEmptyStr
+              let bmc = host_v as std.types.NonEmptyStr
+              let netrc_file = netrc_v as std.types.NonEmptyStr
               let chassis = asrock_altrad8ud_redfish_chassis_id
 
               system_resp = redfish.Http.GetSystemWithNetrc(bmc_host: bmc, netrc_file: netrc_file)

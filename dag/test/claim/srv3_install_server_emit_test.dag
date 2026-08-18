@@ -1,7 +1,7 @@
 module test.claim.srv3_install_server_emit
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_dnsmasq_is_proxy_dhcp_uefi_http_boot() -> Bool {
   let conf = install_server_dnsmasq_conf(spec: srv3_install_server_spec)
@@ -33,7 +33,7 @@ test fn rfc4578_client_arch_mapping_is_grounded() -> Bool {
       Present { value: x } => dhcp_processor_architecture_code(a: x) == 16
       Absent => false
     }
-    && match dhcp_client_processor_architecture(arch: Aarch64, mode: LegacyBiosPxe { tftp_root: Uri { scheme: Https, locator: "x" } }) {
+    && match dhcp_client_processor_architecture(arch: Aarch64, mode: LegacyBiosPxe { tftp_root: extdeps.uri.Uri { scheme: Https, locator: "x" } }) {
       Present { value: _ } => false
       Absent => true
     }

@@ -3,8 +3,8 @@ module test.claim.html_emit_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn sample_button() -> Fragment {
-  Element {
+fn sample_button() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "button",
     attributes: [ attr(name: "class", value: "primary" ) ],
     children: [ FragmentText { content: "Go" } ],
@@ -25,16 +25,16 @@ test fn witness_html_emit_matches_markup_fold() -> Bool {
   }
 }
 
-fn hostile_javascript_href() -> Fragment {
-  Element {
+fn hostile_javascript_href() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "a",
     attributes: [ attr(name: "href", value: "javascript:alert(1)" ) ],
     children: [ FragmentText { content: "click" } ],
   }
 }
 
-fn hostile_data_href() -> Fragment {
-  Element {
+fn hostile_data_href() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "a",
     attributes: [ attr(name: "href", value: "data:text/html,<script>alert(1)</script>" ) ],
     children: [],
@@ -79,7 +79,7 @@ test fn witness_serialize_rejects_data_href() -> Bool {
 
 test fn witness_http_href_serializes() -> Bool {
   match try_serialize_html_source(
-    node: Element {
+    node: extdeps.browser.Element {
       tag: "a",
       attributes: [ attr(name: "href", value: "https://gunbc.dev" ) ],
       children: [ FragmentText { content: "home" } ],
@@ -90,16 +90,16 @@ test fn witness_http_href_serializes() -> Bool {
   }
 }
 
-fn trusted_relative_link() -> Fragment {
-  Element {
+fn trusted_relative_link() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "a",
     attributes: [ attr(name: "href", value: "/tree/dag" ) ],
     children: [ FragmentText { content: "dag" } ],
   }
 }
 
-fn req_a_hostile_but_trusted_scheme() -> Fragment {
-  Element {
+fn req_a_hostile_but_trusted_scheme() -> std.markup.Fragment {
+  extdeps.browser.Element {
     tag: "a",
     attributes: [ attr(name: "href", value: "x\"&<y onmouseover=z" ) ],
     children: [],

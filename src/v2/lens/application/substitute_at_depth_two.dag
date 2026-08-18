@@ -1,22 +1,22 @@
 module v2.test.lens_application.substitute_at_depth_two
 
 
-data substitute_original_leaf: Node = Node {
+data substitute_original_leaf: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^substitute_original_leaf_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data substitute_replacement_leaf: Node = Node {
+data substitute_replacement_leaf: Node = v2.std.node.Node {
   kind: TypeNode { connective: Atom { identity: ^substitute_replacement_leaf_symbol } },
   children: [],
   occurrence_id: SyntheticOccurrence
 }
 
-data substitute_middle: Node = Node {
+data substitute_middle: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
+    v2.std.node.Edge {
       label: Named { name: ^substitute_step_b },
       target: substitute_original_leaf
     }
@@ -24,10 +24,10 @@ data substitute_middle: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data substitute_root: Node = Node {
+data substitute_root: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
+    v2.std.node.Edge {
       label: Named { name: ^substitute_step_a },
       target: substitute_middle
     }
@@ -35,15 +35,15 @@ data substitute_root: Node = Node {
   occurrence_id: SyntheticOccurrence
 }
 
-data substitute_expected_root: Node = Node {
+data substitute_expected_root: Node = v2.std.node.Node {
   kind: TypeNode { connective: Conj },
   children: [
-    Edge {
+    v2.std.node.Edge {
       label: Named { name: ^substitute_step_a },
-      target: Node {
+      target: v2.std.node.Node {
         kind: TypeNode { connective: Conj },
         children: [
-          Edge {
+          v2.std.node.Edge {
             label: Named { name: ^substitute_step_b },
             target: substitute_replacement_leaf
           }
@@ -58,7 +58,7 @@ data substitute_expected_root: Node = Node {
 fn substitute_at_depth_two_claim_holds() -> Bool {
   match substitute_at(
     root: substitute_root,
-    path: Path { steps: [^substitute_step_a, ^substitute_step_b] },
+    path: v2.std.node.Path { steps: [^substitute_step_a, ^substitute_step_b] },
     replacement: substitute_replacement_leaf
   ) {
     Accepted { value: n, diagnostics: _ } => n == substitute_expected_root
@@ -70,7 +70,7 @@ fn substitute_at_depth_two_claim_rhs() -> Node {
   if substitute_at_depth_two_claim_holds() {
     substitute_expected_root
   } else {
-    Node {
+    v2.std.node.Node {
       kind: TypeNode { connective: Conj },
       children: [],
       occurrence_id: SyntheticOccurrence
@@ -78,10 +78,10 @@ fn substitute_at_depth_two_claim_rhs() -> Node {
   }
 }
 
-data claim_substitute_at_depth_two: TestClaim = EqualsClaim {
+data claim_substitute_at_depth_two: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_application/substitute_at_depth_two: path depth 2 preserves root ancestry",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: substitute_expected_root,
   rhs: substitute_at_depth_two_claim_rhs(),
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

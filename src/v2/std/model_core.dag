@@ -23,7 +23,7 @@ fn model_core_primitive_fact_axis_is_core(axis: Symbol) -> Bool {
 
 type PrimitiveFactBundle {
   substrate_carrier: Node
-  spec_facts: Map<Symbol, Node>
+  spec_facts: Map<v2.std.node.Symbol, Node>
 }
 
 fn primitive_fact_axis_unbound_diagnostic(axis: Symbol) -> Diagnostic {
@@ -69,7 +69,7 @@ type PartialOperationDecl {
 }
 
 type PartialityDischarge
-  = FailClosedAtBoundary { reason: Symbol }
+  = FailClosedAtBoundary { reason: v2.std.node.Symbol }
   | RefinementHonoring { validation: Node }
 
 type PartialitySemanticsDecl {

@@ -27,11 +27,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // the catalog model_label "ASRock Rack ALTRAD8UD-1L2T" — a String leaf hiding a named part,
 // decomposed here at its first consumer, product.cooling_qualification.
 type CpuCoolerCatalogRow {
-  model: NonEmptyStr
-  manufacturer: Vendor<Hardware>
-  socket: CpuSocket
+  model: std.types.NonEmptyStr
+  manufacturer: Vendor<extdeps.hardware.Hardware>
+  socket: extdeps.cpu.types.CpuSocket
   active_passive_switchable: Bool
-  minimum_rack_units: RackUnit
-  max_design_power: Watt
-  supported_motherboards: List<BaseboardModel>
+  minimum_rack_units: std.measure.RackUnit
+  max_design_power: std.measure.Watt
+  supported_motherboards: List<extdeps.boards.types.BaseboardModel>
 }

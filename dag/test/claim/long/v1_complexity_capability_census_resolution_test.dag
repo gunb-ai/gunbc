@@ -9,9 +9,9 @@ data census_resolution_pool_note: String = "The pool must contain the seed, beca
 
 data census_resolution_pool_roots: List<String> = ["dag", "src/v2", "src/v1"]
 
-data census_resolution_facts: List<DeclFact> = decl_facts(pool_roots: census_resolution_pool_roots)
+data census_resolution_facts: List<v2.std.decl_index.DeclFact> = decl_facts(pool_roots: census_resolution_pool_roots)
 
-data census_resolution_modules: List<ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: census_resolution_pool_roots)
+data census_resolution_modules: List<v2.lens.module_graph.ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: census_resolution_pool_roots)
 
 test fn census_every_declaration_ref_resolves_exactly() -> Bool {
   cited_declaration_ref_refusal_count(

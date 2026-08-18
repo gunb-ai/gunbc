@@ -1,7 +1,7 @@
 module v2.test.emit.semantic_decl_binding_keys_parity
 
 
-fn binding_pair_matches(binding: Symbol) -> Bool {
+fn binding_pair_matches(binding: v2.std.node.Symbol) -> Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {
     Accepted { value: emission, diagnostics: _ } =>
       match semantic_decl_profile_binding_spellings(profile: emission.enum_serialize_profile) {

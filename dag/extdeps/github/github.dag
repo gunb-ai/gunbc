@@ -2,8 +2,8 @@ module extdeps.github.github
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "docs.github.com/en/rest"
   }
@@ -27,8 +27,8 @@ type Repository {
 
 data repository_remote_url_note: String = "GitHub's documented HTTPS clone URL for a repository is https://github.com/OWNER/REPO.git (docs.github.com/en/get-started/git-basics/about-remote-repositories, read 2026-08-01). It is projected from owner and name rather than stored, because storing it would be a second representation of a fact those two fields already fix, free to disagree with them.\\n\\nWHY THIS PROJECTION IS WORTH HAVING AT ALL, since git will equally accept the local alias `origin`. An alias is a fact about one checkout's configuration, not about a repository: two checkouts can point `origin` at different repositories and the same repository can be reached under a different alias or none. A caller that reads refs from `origin` and pull requests from an owner/name pair has performed two reads that are only COINCIDENTALLY about the same repository, and nothing in either result would reveal it if they were not. Projecting the remote from the same Repository that names the API target makes them the same subject by construction."
 
-fn github_https_clone_url(repo: Repository) -> NonEmptyStr {
-  join(["https://github.com/", repo.owner, "/", repo.name, ".git"], "") as NonEmptyStr
+fn github_https_clone_url(repo: Repository) -> std.types.NonEmptyStr {
+  join(["https://github.com/", repo.owner, "/", repo.name, ".git"], "") as std.types.NonEmptyStr
 }
 
 type GitHubAuthToken {
@@ -52,7 +52,7 @@ type Pagination {
 
 type GitHubPermission = PermRead | PermWrite | PermAdmin
 
-data default_api_base: NonEmptyStr = "https://api.github.com"
+data default_api_base: std.types.NonEmptyStr = "https://api.github.com"
 
 data default_per_page: Int = 30
 

@@ -71,7 +71,7 @@ type RateLimitPolicy {
 }
 
 type CloudAuthScheme
-  = Protocol { scheme: AuthScheme }
+  = Protocol { scheme: std.types.AuthScheme }
   | SigV4 { region: AwsRegion, service: AwsService }
   | OidcToken { audience: String }
 

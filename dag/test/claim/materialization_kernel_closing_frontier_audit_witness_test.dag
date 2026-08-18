@@ -20,7 +20,7 @@ test fn materialization_kernel_progress_is_nonzero_and_incomplete() -> Bool {
       materialization_kernel_clause_count(clauses: closing_frontier_clauses())
 }
 
-fn find_clause(clauses: List<FrontierClause>, id: String) -> FrontierClause? {
+fn find_clause(clauses: List<gunbc.materialization_kernel_closing_frontier_audit.FrontierClause>, id: String) -> gunbc.materialization_kernel_closing_frontier_audit.FrontierClause? {
   clauses
     |> fold(
       init: optional_absent(),
@@ -31,7 +31,7 @@ fn find_clause(clauses: List<FrontierClause>, id: String) -> FrontierClause? {
     )
 }
 
-fn clause_delivered_by_id(clauses: List<FrontierClause>, id: String) -> Bool {
+fn clause_delivered_by_id(clauses: List<gunbc.materialization_kernel_closing_frontier_audit.FrontierClause>, id: String) -> Bool {
   match find_clause(clauses: clauses, id: id) {
     Present { value: c } => clause_delivered(c: c)
     Absent => false

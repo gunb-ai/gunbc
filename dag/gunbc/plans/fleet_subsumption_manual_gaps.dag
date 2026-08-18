@@ -1,7 +1,7 @@
 module gunbc.plans.fleet_subsumption_manual_gaps
 
 
-fn fsmg_intro() -> List<MarkdownBlock> {
+fn fsmg_intro() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "Home: fleet subsumption (compute fabric). This doc is the receipt of the MANUAL steps taken to install and subsume srv4 (2026-07-22) that the modeling workflow did NOT cover. Each is a modeling gap: a step done by hand is a step the fleet cannot yet reproduce, verify, or retract through the model. The bar (per fleet_acceptance_criteria): a host must be install-able and subsume-able through the model with a read-back receipt, with zero hand-run shell. Until every item here dissolves, subsuming the next host (srv5) repeats the manual toil."),
     quote(blocks: [p(text: "A step performed by hand is not modeled. It is not that the model is wrong; it is that the model is SILENT, and silence is the §5 fail-open of a workflow: the operator performs the missing step and the gap never surfaces as a diagnostic.")]),
@@ -9,7 +9,7 @@ fn fsmg_intro() -> List<MarkdownBlock> {
   ]
 }
 
-fn fsmg_secret_materialization() -> List<MarkdownBlock> {
+fn fsmg_secret_materialization() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "A1 — Secret materialization lifecycle (the systemic credential gap)"),
     p(text: "The model has SecretRef (a typed REFERENCE to a Secret Manager secret) but NOT the runtime effect that turns a reference into a usable credential and cleans it up. That effect, done by hand for every credential this session, is: fetch the SecretRef from Secret Manager, materialize it to a 0600 temp file or an env var, bind it to the transport that needs it, and shred it on completion."),
@@ -30,7 +30,7 @@ fn fsmg_secret_materialization() -> List<MarkdownBlock> {
   ]
 }
 
-fn fsmg_reach_secrets() -> List<MarkdownBlock> {
+fn fsmg_reach_secrets() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "A2 — Reach-secrets bootstrap (ADC / workload identity)"),
     p(text: "The GCP access token is pasted by the operator every ~1h because the workflow has NO modeled way to authenticate to Secret Manager itself. This is the credential that unlocks A1, so it is the deeper enabler. It is already a DeclaredGap in host_standup (P0:reach-secrets-network; note: full WIF SecretAccessGrant modeling is follow-up) and in fleet_ssh_access (secretAccessor bound out-of-band 2026-07-21; full WIF SecretAccessGrant modeling is follow-up)."),
@@ -43,7 +43,7 @@ fn fsmg_reach_secrets() -> List<MarkdownBlock> {
   ]
 }
 
-fn fsmg_secret_liveness() -> List<MarkdownBlock> {
+fn fsmg_secret_liveness() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "A3 — SecretRef liveness (existence is not validity)"),
     p(text: "The model cited ci-github-app-private-key as truth, but Secret Manager held a REVOKED key (fingerprint 0c7a15..., deleted from the GitHub App) while the live key (64a8af...) lived only on the hosts. srv4 registration 401'd; I diagnosed and reconciled by hand (added the live key as a new SM version, disabled the dead one). The model verifies a SecretRef EXISTS but never that it is the credential the upstream (GitHub) actually ACCEPTS."),
@@ -57,7 +57,7 @@ fn fsmg_secret_liveness() -> List<MarkdownBlock> {
   ]
 }
 
-fn fsmg_slot_provisioning() -> List<MarkdownBlock> {
+fn fsmg_slot_provisioning() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "B1 — Runner slot provisioning (the width-INCREASE gap) — DONE ENTIRELY BY HAND"),
     p(text: "This is the one that should never have been hand-work. RunnerHostDeploy (this PR) models the runner ENABLE step (runner_activate_command -> systemctl enable --now actions-runner@srv4-01..05) but NOT the provisioning of the per-slot runner directories those units point at. The whole slot install was manual. fleet-converge.sh already names this exact gap: width INCREASE $current->N needs slot provisioning (rsync from -01); run the install path -- converge only drains for DECREASE. So DECREASE (drain runners) is modeled/converged; INCREASE (add runners) is not."),
@@ -85,7 +85,7 @@ fn fsmg_slot_provisioning() -> List<MarkdownBlock> {
   ]
 }
 
-fn fsmg_runner_user() -> List<MarkdownBlock> {
+fn fsmg_runner_user() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "B2 — Fleet runner-user provisioning"),
     p(text: "The fleet expects a homogeneous runner user (briansrls on srv1/srv2). srv4's Ubuntu autoinstall created ubuntu. I created briansrls by hand: useradd -G sudo, a NOPASSWD sudoers.d drop-in, and copied the fleet authorized_keys. Neither the autoinstall identity model (os_install) nor RunnerHostDeploy models the fleet runner user — RunnerHostDeploy's runner_user field just ASSUMES the user exists (install-actions-runner.sh refuses if it does not)."),
@@ -97,7 +97,7 @@ fn fsmg_runner_user() -> List<MarkdownBlock> {
   ]
 }
 
-fn fsmg_fresh_host_prereqs() -> List<MarkdownBlock> {
+fn fsmg_fresh_host_prereqs() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "B3 — Fresh-host prereqs the installer assumes"),
     p(text: "install-actions-runner.sh refuses without ctrl-jobserver (its FIFO) and assumes /opt/actions-runner exists and docker-ce-rootless-extras + sccache are installed. This PR modeled the docker-ce + sccache prereqs (extdeps.container.docker_ce, extdeps.cache.sccache) and made the execution surface honest — but ctrl-jobserver install and the /opt/actions-runner base dir are still unmodeled (ran by hand). They belong in the same RunnerHostDeploy prereq chain as docker + sccache."),
@@ -119,7 +119,7 @@ fn fsmg_fresh_host_prereqs() -> List<MarkdownBlock> {
   ]
 }
 
-fn fsmg_install_actuator() -> List<MarkdownBlock> {
+fn fsmg_install_actuator() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "B4 — OS-install actuator + virtual-media lifecycle"),
     p(text: "The BMC configfs virtual-media install (this PR models the pieces: nbd + usb_gadget + bmc_virtual_media + VirtualMediaIntent) was ORCHESTRATED by hand: stage the seeded ISO, start nbd-server (srv1), nbd-client + configfs gadget (BMC), power-cycle, watch POST/grub/install over SOL, and — critically — DETACH the gadget at the right moment so the host reboots into the installed NVMe and not back into the installer. No single srv4_os_install_actuate fold exists (srv3 has srv3_os_install_actuate for the nbd-proxy path; the configfs path has no actuator), and the detach-on-install-complete step is a hand-watched lifecycle, not a modeled reconcile."),
@@ -131,7 +131,7 @@ fn fsmg_install_actuator() -> List<MarkdownBlock> {
   ]
 }
 
-fn fsmg_host_convergence() -> List<MarkdownBlock> {
+fn fsmg_host_convergence() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "C — Host convergence: the enrollment failure (srv4 OOM receipt, 2026-07-23)"),
     p(text: "Follow-on: srv4 (put onto runners 2026-07-22) OOM-killed live PR CI the next day. The trace is sharper than any single missing step above: srv4 was never a member of the MODELED fleet at all. gunbc.fleet_intent declares exactly srv1, srv2, srv3, and every convergence value (per-slot MemoryMax/MemorySwapMax, oomd policy, slice cap) is DERIVED from that intent via ci_runner_placement.runner_deployment_plan then host_converge.fleet_converge_policy. The converge did not skip srv4 — its authority cannot NAME a host absent from the intent. The runner installer, an imperative script, was hand-pointed at srv4: a fleet member in GitHub's eyes, a ghost in the model. Membership by hand-action, not by row."),
@@ -157,7 +157,7 @@ fn fsmg_host_convergence() -> List<MarkdownBlock> {
   ]
 }
 
-fn fsmg_priority() -> List<MarkdownBlock> {
+fn fsmg_priority() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "Priority"),
     ol(items: [
@@ -170,7 +170,7 @@ fn fsmg_priority() -> List<MarkdownBlock> {
   ]
 }
 
-fn fleet_subsumption_manual_gaps_body() -> List<MarkdownBlock> {
+fn fleet_subsumption_manual_gaps_body() -> List<std.markdown.MarkdownBlock> {
   concat(fsmg_intro(),
   concat(fsmg_secret_materialization(),
   concat(fsmg_reach_secrets(),
@@ -182,7 +182,7 @@ fn fleet_subsumption_manual_gaps_body() -> List<MarkdownBlock> {
   concat(fsmg_host_convergence(), fsmg_priority())))))))))
 }
 
-data fleet_subsumption_manual_gaps_plan: Plan = Plan {
+data fleet_subsumption_manual_gaps_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "fleet-subsumption-manual-gaps",
   title: "Fleet subsumption — manual steps the modeling workflow does not yet cover (srv4 receipts, 2026-07-22 install + 2026-07-23 host-convergence OOM)",
   body: fleet_subsumption_manual_gaps_body(),

@@ -1,7 +1,7 @@
 module v2.test.extdeps_shape_transport_policy.lens_unit.module_path_rename
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn module_path_rename_resolves_by_qn_not_filepath_holds() -> Bool {
   extdeps_module_identity_resolves(module: extdeps_cargo_build_module)

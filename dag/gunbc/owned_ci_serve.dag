@@ -3,11 +3,11 @@ module gunbc.owned_ci_serve
 
 data owned_ci_serve_note: String = "Serve projection for owned CI v0: reads index.json and per-run run.json maintained by ci_control_plane. Missing files answer 503/404 with a located reason — never an empty success page."
 
-fn owned_ci_serve_text_response(status: HttpStatus, content_type: MediaType, body: String) -> ServeHttpResponse {
-  ServeHttpResponse { status: status, content_type: content_type, body: body }
+fn owned_ci_serve_text_response(status: std.types.HttpStatus, content_type: extdeps.http.server.MediaType, body: String) -> extdeps.http.server.ServeHttpResponse {
+  extdeps.http.server.ServeHttpResponse { status: status, content_type: content_type, body: body }
 }
 
-fn owned_ci_serve_page_response(page: Fragment) -> ServeHttpResponse {
+fn owned_ci_serve_page_response(page: std.markup.Fragment) -> extdeps.http.server.ServeHttpResponse {
   match try_serialize_html_source(node: page) {
     EmitOk { html: h } =>
       owned_ci_serve_text_response(status: 200, content_type: text_html_utf8, body: h)
@@ -20,7 +20,7 @@ fn owned_ci_serve_page_response(page: Fragment) -> ServeHttpResponse {
   }
 }
 
-fn serve_ci_runs_page_response() -> ServeHttpResponse {
+fn serve_ci_runs_page_response() -> extdeps.http.server.ServeHttpResponse {
   match owned_ci_classify_filesystem_text(path: owned_ci_index_rel_path()) {
     OwnedCiFilesystemTextPresent { content: body } =>
       owned_ci_serve_page_response(page: owned_ci_runs_page(body_json: body))
@@ -42,7 +42,7 @@ fn serve_ci_runs_page_response() -> ServeHttpResponse {
   }
 }
 
-fn serve_ci_run_detail_response(params: List<PathParamBinding>) -> ServeHttpResponse {
+fn serve_ci_run_detail_response(params: List<std.http_path.PathParamBinding>) -> extdeps.http.server.ServeHttpResponse {
   let run_id = path_param_value(params: params, name: "run_id")
   if run_id == "" {
     owned_ci_serve_text_response(
@@ -79,7 +79,7 @@ fn serve_ci_run_detail_response(params: List<PathParamBinding>) -> ServeHttpResp
   }
 }
 
-fn serve_ci_runs_json_response() -> ServeHttpResponse {
+fn serve_ci_runs_json_response() -> extdeps.http.server.ServeHttpResponse {
   match owned_ci_classify_filesystem_text(path: owned_ci_index_rel_path()) {
     OwnedCiFilesystemTextPresent { content: body } =>
       owned_ci_serve_text_response(status: 200, content_type: application_json_utf8, body: body)

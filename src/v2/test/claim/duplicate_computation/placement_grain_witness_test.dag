@@ -1,48 +1,48 @@
 module v2.test.duplicate_computation.placement_grain_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data placement_grain_witness_note: String = "Placement-grain discriminating witness for the codebase-wide duplicate-work lens (docs/plans/duplicate-work-graph-lens-design.md). The real cross-job build duplication (ci_job + a second building job) was DISSOLVED by the ci_regen->ci fold 2026-07-11: the live workflow now builds the release binary on a SINGLE job (the live materialization witness attests demand==1 -> AcceptedSingleRecompute). These SYNTHETIC facts are therefore the reintroduction RED control — they model two independently-building jobs (both needs:[], no artifact Share edge) and prove the lens flags it, so re-adding a second building job reds here in the same run. This is the SAME violation logic #6372 ships once each independently-building job is projected as one demand for the shared build identity — the general lens SUBSUMES #6372 (argv grain and job/placement grain are one law); the only piece #6372 lacked was the cross-job projection. Multiplicity source = placement (one identity, N runners, no Share edge), not fork. A job that consumes the shared artifact emits no build demand and never flags — exactly the fix the lens forces. Per the materialization reframe this is the content-hash generalization of std.realization reconcile keyed on the identity lattice; the ComputationDemandFact rows here stand in for materialization records pending that unification."
 
 data release_build_key: String = "cargo build -p v1-compiler --release --bins"
 
-data ci_job_build_demand: ComputationDemandFact = {
+data ci_job_build_demand: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "ci_workflow.ci_job",
   computation_key: release_build_key,
   guard: UnguardedDemand,
   replication: SingleRun
 }
 
-data second_building_job_build_demand: ComputationDemandFact = {
+data second_building_job_build_demand: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "ci_workflow.second_building_job",
   computation_key: release_build_key,
   guard: UnguardedDemand,
   replication: SingleRun
 }
 
-data producer_only_build_demand: ComputationDemandFact = {
+data producer_only_build_demand: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "ci_workflow.build_job",
   computation_key: release_build_key,
   guard: UnguardedDemand,
   replication: SingleRun
 }
 
-data consumer_guarded_fallback_demand: ComputationDemandFact = {
+data consumer_guarded_fallback_demand: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "ci_workflow.consumer_job",
   computation_key: release_build_key,
   guard: GuardedFallbackDemand,
   replication: SingleRun
 }
 
-data per_placement_a: ComputationDemandFact = {
+data per_placement_a: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "ci_workflow.arch_amd64",
   computation_key: release_build_key,
   guard: UnguardedDemand,
   replication: ReplicatedOracle { runs: 2 }
 }
 
-data per_placement_b: ComputationDemandFact = {
+data per_placement_b: v2.lens.duplicate_computation.ComputationDemandFact = {
   site: "ci_workflow.arch_arm64",
   computation_key: release_build_key,
   guard: UnguardedDemand,

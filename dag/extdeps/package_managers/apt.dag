@@ -2,8 +2,8 @@ module extdeps.apt
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "manpages.debian.org/testing/apt/apt.8.en.html"
   }
@@ -12,39 +12,39 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data apt_bin_dir: std.types.FilePath = "/usr/bin"
 data apt_local_bin_dir: std.types.FilePath = "/usr/local/bin"
 
-data package_coreutils: NonEmptyStr = "coreutils"     
-data package_grep: NonEmptyStr = "grep"               
-data package_diffutils: NonEmptyStr = "diffutils"     
-data package_cargo: NonEmptyStr = "cargo"
-data package_rustc: NonEmptyStr = "rustc"
+data package_coreutils: std.types.NonEmptyStr = "coreutils"     
+data package_grep: std.types.NonEmptyStr = "grep"               
+data package_diffutils: std.types.NonEmptyStr = "diffutils"     
+data package_cargo: std.types.NonEmptyStr = "cargo"
+data package_rustc: std.types.NonEmptyStr = "rustc"
 
-data package_systemd_oomd_defaults: NonEmptyStr = "systemd-oomd-defaults"
-data package_tailscale: NonEmptyStr = "tailscale"
-data package_nodejs: NonEmptyStr = "nodejs"
-data package_npm: NonEmptyStr = "npm"
-data package_tmux: NonEmptyStr = "tmux"
-data package_curl: NonEmptyStr = "curl"
-data package_nbdkit: NonEmptyStr = "nbdkit"
-data package_socat: NonEmptyStr = "socat"
-data package_websocat: NonEmptyStr = "websocat"
-data package_xorriso: NonEmptyStr = "xorriso"
-data package_google_cloud_cli: NonEmptyStr = "google-cloud-cli"
-data package_busybox: NonEmptyStr = "busybox-static"
-data package_gcc_arm_linux_gnueabi: NonEmptyStr = "gcc-arm-linux-gnueabi"
+data package_systemd_oomd_defaults: std.types.NonEmptyStr = "systemd-oomd-defaults"
+data package_tailscale: std.types.NonEmptyStr = "tailscale"
+data package_nodejs: std.types.NonEmptyStr = "nodejs"
+data package_npm: std.types.NonEmptyStr = "npm"
+data package_tmux: std.types.NonEmptyStr = "tmux"
+data package_curl: std.types.NonEmptyStr = "curl"
+data package_nbdkit: std.types.NonEmptyStr = "nbdkit"
+data package_socat: std.types.NonEmptyStr = "socat"
+data package_websocat: std.types.NonEmptyStr = "websocat"
+data package_xorriso: std.types.NonEmptyStr = "xorriso"
+data package_google_cloud_cli: std.types.NonEmptyStr = "google-cloud-cli"
+data package_busybox: std.types.NonEmptyStr = "busybox-static"
+data package_gcc_arm_linux_gnueabi: std.types.NonEmptyStr = "gcc-arm-linux-gnueabi"
 
-data package_jq: NonEmptyStr = "jq"
+data package_jq: std.types.NonEmptyStr = "jq"
 
-data apt_get_binary_path: NonEmptyStr = "/usr/bin/apt-get"
+data apt_get_binary_path: std.types.NonEmptyStr = "/usr/bin/apt-get"
 
-data apt_man_url: NonEmptyStr = "https://manpages.debian.org/testing/apt/apt.8.en.html"
+data apt_man_url: std.types.NonEmptyStr = "https://manpages.debian.org/testing/apt/apt.8.en.html"
 
-fn apt_install_argv(package: NonEmptyStr) -> List<String> {
+fn apt_install_argv(package: std.types.NonEmptyStr) -> List<String> {
   ["apt-get", "install", "--yes", package as String]
 }
 
 service apt.PackageManager {
   operation Install {
-    input { package: NonEmptyStr }
+    input { package: std.types.NonEmptyStr }
     output {
       success: Bool from "exit_success"
       stdout: String from "stdout"

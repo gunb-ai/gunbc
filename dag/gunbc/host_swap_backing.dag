@@ -6,7 +6,7 @@ data host_swap_backing_authority_note: String = "THE host swap-BACKING axis, and
 data host_swap_backing_requirement_is_derived_note: String = "The requirement is DERIVED from the declared cap, never authored per host, and that is the whole reason this module can exist without fabricating anything. Nobody in this session can read /proc/swaps on srv1..srv4 — the reach gap is the A1 lane — so any table of per-host swap sizes written here would be invention dressed as a model. The derivation needs no such reading: declaring a nonzero MemorySwapMax IS declaring that swap backing must exist, so the requirement falls out of gunbc_runner_slot_desired().memory_swap_max, and it moves automatically when that number moves. DECLARED LIMIT, stated rather than papered over: min_total is the PER-SLOT cap, the amount a single runner alone can demand, and not slots-per-host x cap. Whether five concurrent slots can each reach their ceiling is an aggregate-scheduling question this module does not answer, and answering it by multiplication would assert a worst case nobody has measured. So the requirement is a floor below which the declared caps are provably unsatisfiable, and it is honest about being a floor."
 
 type SwapBackingRequirement
-  = SwapBackingRequired { min_total: ByteSize, requiring_declaration: DeclarationRef }
+  = SwapBackingRequired { min_total: std.measure.ByteSize, requiring_declaration: std.decl_ref.DeclarationRef }
   | SwapBackingNotRequired
 
 fn host_swap_backing_requirement() -> SwapBackingRequirement {

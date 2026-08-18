@@ -35,7 +35,7 @@ fn compile_clean_module_shard_from_decl(decl: CompileCleanModuleDeclFact) -> Com
 }
 
 type CompileCleanModuleShardRoster
-  = CompileCleanModuleShardRosterBuilt { shards: List<CompileCleanModuleShard> }
+  = CompileCleanModuleShardRosterBuilt { shards: List<tools.dag_compile_clean_partition.CompileCleanModuleShard> }
   | CompileCleanModuleShardRosterDuplicatePath {
       path: String
       first: CompileCleanModuleDeclFact

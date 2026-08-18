@@ -1,32 +1,32 @@
 module extdeps.memory.jedec
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/JEDEC_memory_standards"
   }
 }
 
-data ddr4_generation_catalog: JedecDdrGenerationCatalogRow = JedecDdrGenerationCatalogRow {
+data ddr4_generation_catalog: extdeps.memory.types.JedecDdrGenerationCatalogRow = extdeps.memory.types.JedecDdrGenerationCatalogRow {
   generation: dram_generation_ddr4,
   max_monolithic_die_density: byte_size(count: 2147483648),
   jedec_standard: "JESD79-4",
 }
 
-data ddr5_generation_catalog: JedecDdrGenerationCatalogRow = JedecDdrGenerationCatalogRow {
+data ddr5_generation_catalog: extdeps.memory.types.JedecDdrGenerationCatalogRow = extdeps.memory.types.JedecDdrGenerationCatalogRow {
   generation: dram_generation_ddr5,
   max_monolithic_die_density: byte_size(count: 8589934592),
   jedec_standard: "JESD79-5",
 }
 
-data unknown_ddr_generation_catalog: JedecDdrGenerationCatalogRow = JedecDdrGenerationCatalogRow {
+data unknown_ddr_generation_catalog: extdeps.memory.types.JedecDdrGenerationCatalogRow = extdeps.memory.types.JedecDdrGenerationCatalogRow {
   generation: dram_generation_unknown,
   max_monolithic_die_density: byte_size(count: 0),
   jedec_standard: "UNKNOWN",
 }
 
-fn jedec_ddr_generation_catalog_row(dram_gen: DramGeneration) -> JedecDdrGenerationCatalogRow {
+fn jedec_ddr_generation_catalog_row(dram_gen: extdeps.memory.types.DramGeneration) -> extdeps.memory.types.JedecDdrGenerationCatalogRow {
   match dram_generation_signaling_family(dram_gen) {
     DoubleDataRate => match dram_generation_number(dram_gen) {
       4 => ddr4_generation_catalog

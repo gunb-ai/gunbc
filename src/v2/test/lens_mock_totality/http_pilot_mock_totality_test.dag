@@ -5,7 +5,7 @@ module v2.test.lens_mock_totality.http_pilot_mock_totality
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 type MaterializedHttpPilotMock {
-  tag: Symbol
+  tag: v2.std.node.Symbol
 }
 
 data http_pilot_red_omit_keys: List<String> = ["test.HttpPilot.GetPost"]

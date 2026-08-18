@@ -56,17 +56,17 @@ type ProviderExecutionState
 
 data codex_character_budget_note: String = "review 44089. These are budgets measured in CHARACTERS — a count of a unit, not a bare scalar — so they consume std.measure's CharacterCount on the same Measure<Count, One, Nat> axis HardwareThreadCount instantiates, and the oversize test is measure_le rather than a raw >. The wire spellings (the jq slice bounds and the refusal text) project the count at the boundary; the budgets themselves never travel as Int."
 
-data codex_provider_event_line_observation_budget: CharacterCount = character_count(count: 65536)
+data codex_provider_event_line_observation_budget: std.measure.CharacterCount = character_count(count: 65536)
 
-data codex_provider_projection_type_budget: CharacterCount = character_count(count: 128)
-data codex_provider_projection_detail_budget: CharacterCount = character_count(count: 4096)
+data codex_provider_projection_type_budget: std.measure.CharacterCount = character_count(count: 128)
+data codex_provider_projection_detail_budget: std.measure.CharacterCount = character_count(count: 4096)
 
 data codex_provider_projection_message_budget_note: String = "The agent's REPORT gets its own budget rather than reusing the detail budget beside it, because the two bound different things for different readers. A detail is a diagnostic — a terminal error's message, read to find out what broke, and short by nature. A report is what the provider says it DID, and it is the text an operator reads to judge whether the work is any good; it is the closest thing the dashboard has to the agent's answer. Sharing one number would mean a future tuning of either bound silently retunes the other, which is the coincidence-not-concept trap DESIGN §2 warns about — they are the same TYPE (CharacterCount, the same Measure axis) and genuinely different FACTS.\n\n8192 is chosen against the incident this whole projection exists to prevent: a single item.completed carrying ~154KB of aggregated command output, which killed the old 64KB line reader. A report is bounded an order of magnitude under the 65536 line budget, so it cannot be the payload that reproduces that failure, while still being generous enough that a substantial multi-paragraph summary arrives whole and truncation stays the exception rather than the norm. It is deliberately larger than the 4096 detail budget: an error message that needs 4KB is pathological, a work summary that needs 6KB is ordinary."
 
-data codex_provider_projection_message_budget: CharacterCount = character_count(count: 8192)
+data codex_provider_projection_message_budget: std.measure.CharacterCount = character_count(count: 8192)
 
 // TRUNCATION IS REPORTED, NEVER SILENT — the one place this projection could otherwise fabricate a plausible output (DESIGN §5). Everywhere else the bounds guard a machine-read classification, where a cut string simply fails to match and refuses; here the bounded value is PROSE AN OPERATOR READS AND ACTS ON, so a report severed mid-sentence and presented as if complete is a wrong answer delivered confidently — the operator would judge the work on a fragment while the screen gave no sign anything was missing. The projected envelope therefore carries the boundedness as its own member — a `message` object pairing the bounded text with a `truncated` flag — where truncated is computed from the ORIGINAL length before slicing, so it is a statement about the provider's actual output rather than about the slice. A consumer that renders text without consulting truncated is re-opening the arm this row closes, which is why the flag is a sibling of the text and not a derived guess about whether the slice happens to sit on the budget.
-data codex_provider_event_projection_filter: NonEmptyStr = join([
+data codex_provider_event_projection_filter: std.types.NonEmptyStr = join([
   "fromjson | def event_type: if (.type | type) == \"string\" then .type[0:",
   to_string(character_count_value(c: codex_provider_projection_type_budget)),
   "] else \"unknown\" end; def item_type: if (.item.type | type) == \"string\" then .item.type[0:",
@@ -82,7 +82,7 @@ data codex_provider_event_projection_filter: NonEmptyStr = join([
   "]),\"truncated\":((.item.text | length) > ",
   to_string(character_count_value(c: codex_provider_projection_message_budget)),
   ")} else null end; (event_type) as $type | if $type == \"item.started\" or $type == \"item.completed\" then (if item_type == \"agent_message\" and (agent_report != null) then {\"type\":$type,\"item\":{\"type\":item_type,\"message\":agent_report}} else {\"type\":$type,\"item\":{\"type\":item_type}} end) elif $type == \"turn.failed\" then {\"type\":$type,\"error\":{\"message\":(.error | bounded_text)}} elif $type == \"error\" then {\"type\":$type,\"message\":((.message // .error) | bounded_text)} else {\"type\":$type} end",
-], "") as NonEmptyStr
+], "") as std.types.NonEmptyStr
 
 fn codex_provider_event_projection_args(path: std.types.FilePath) -> List<String> {
   [
@@ -290,7 +290,7 @@ fn codex_event_from_complete_line(
 fn codex_parse_fold_line(
   state: CodexParseFold,
   line: String,
-  line_budget: CharacterCount,
+  line_budget: std.measure.CharacterCount,
 ) -> CodexParseFold {
   if state.refused {
     CodexParseFold {
@@ -387,7 +387,7 @@ fn codex_parse_fold_line(
 
 fn parse_codex_jsonl_with_line_budget(
   text: String,
-  line_budget: CharacterCount,
+  line_budget: std.measure.CharacterCount,
 ) -> CodexEventParse {
   if text == "" {
     CodexEventsParsed { events: [] }

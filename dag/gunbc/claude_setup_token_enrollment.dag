@@ -11,59 +11,59 @@ data claude_enrollment_no_provider_authenticated_literal_note: String = "Accepta
 
 type ClaudeSetupTokenStanding
   = SetupTokenUsable
-  | SetupTokenRejected { reason: NonEmptyStr }
-  | SetupTokenExpiryObserved { expires_at: NonEmptyStr }
+  | SetupTokenRejected { reason: std.types.NonEmptyStr }
+  | SetupTokenExpiryObserved { expires_at: std.types.NonEmptyStr }
   | SetupTokenRotationSemanticsUnobserved
 
 type ClaudeCredentialStanding
   = ClaudeCredentialUsable
-  | ClaudeCredentialExpiringSoon { detail: NonEmptyStr }
-  | ClaudeCredentialRejected { reason: NonEmptyStr }
-  | ClaudeCredentialObservationRefused { reason: NonEmptyStr }
+  | ClaudeCredentialExpiringSoon { detail: std.types.NonEmptyStr }
+  | ClaudeCredentialRejected { reason: std.types.NonEmptyStr }
+  | ClaudeCredentialObservationRefused { reason: std.types.NonEmptyStr }
 
 type ClaudeProviderEnrollmentAction
   = ConnectClaude
-  | ReconnectClaude { cause: NonEmptyStr }
+  | ReconnectClaude { cause: std.types.NonEmptyStr }
   | EnrollmentActionNotRequired
 
 type ClaudeEnrollmentHostPlacement
   = EnrollmentHostUnbound
-  | EnrollmentHostSpecified { hostname: NonEmptyStr }
+  | EnrollmentHostSpecified { hostname: std.types.NonEmptyStr }
 
 type ClaudeEnrollmentUnixServicePrincipal
   = EnrollmentUnixPrincipalUnbound
-  | EnrollmentUnixPrincipalSpecified { principal: NonEmptyStr }
+  | EnrollmentUnixPrincipalSpecified { principal: std.types.NonEmptyStr }
 
 type ClaudeEnrollmentSecretTarget
   = EnrollmentSecretTargetUnbound
   | EnrollmentSecretTargetSpecified {
-      project: NonEmptyStr,
-      secret: NonEmptyStr,
+      project: std.types.NonEmptyStr,
+      secret: std.types.NonEmptyStr,
     }
 
 type ClaudeExactSecretVersionBinding {
-  project: NonEmptyStr,
-  secret: NonEmptyStr,
-  version: NonEmptyStr,
-  private_content_identity: NonEmptyStr,
+  project: std.types.NonEmptyStr,
+  secret: std.types.NonEmptyStr,
+  version: std.types.NonEmptyStr,
+  private_content_identity: std.types.NonEmptyStr,
 }
 
 type ClaudeEnrollmentPrincipalPopulation
-  = EnrollmentPrincipalPopulationDerived { members: List<NonEmptyStr> }
+  = EnrollmentPrincipalPopulationDerived { members: List<std.types.NonEmptyStr> }
   | EnrollmentPrincipalPopulationDeploymentModelGap {
-      reason: NonEmptyStr,
+      reason: std.types.NonEmptyStr,
     }
 
 type ClaudeEnrollmentRuntimeBinding {
-  executable: NonEmptyStr,
-  version_pin: NonEmptyStr,
+  executable: std.types.NonEmptyStr,
+  version_pin: std.types.NonEmptyStr,
 }
 
 type ClaudeEnrollmentPlacement {
   host: ClaudeEnrollmentHostPlacement,
   run_as: ClaudeEnrollmentUnixServicePrincipal,
   enrollment_root: std.types.FilePath,
-  account_label: NonEmptyStr,
+  account_label: std.types.NonEmptyStr,
   secret_target: ClaudeEnrollmentSecretTarget,
   writer: ClaudeEnrollmentPrincipalPopulation,
   readers: ClaudeEnrollmentPrincipalPopulation,
@@ -72,20 +72,20 @@ type ClaudeEnrollmentPlacement {
 }
 
 type ClaudeEnrollmentOperatorChoices {
-  enrollment_host: NonEmptyStr?,
-  run_as_principal: NonEmptyStr?,
-  gcp_project: NonEmptyStr?,
-  secret_id_or_create_authorization: NonEmptyStr?,
-  account_label: NonEmptyStr?,
+  enrollment_host: std.types.NonEmptyStr?,
+  run_as_principal: std.types.NonEmptyStr?,
+  gcp_project: std.types.NonEmptyStr?,
+  secret_id_or_create_authorization: std.types.NonEmptyStr?,
+  account_label: std.types.NonEmptyStr?,
 }
 
 type ClaudeEnrollmentPlacementAdmission
   = EnrollmentPlacementAdmitted { placement: ClaudeEnrollmentPlacement }
-  | EnrollmentPlacementRefusedUnbound { missing_axes: List<NonEmptyStr> }
+  | EnrollmentPlacementRefusedUnbound { missing_axes: List<std.types.NonEmptyStr> }
 
 type ClaudeEnrollmentSession {
   placement: ClaudeEnrollmentPlacement,
-  standing_fact_id: RecordedFactId,
+  standing_fact_id: std.claim_evidence.RecordedFactId,
 }
 
 type ClaudeEnrollmentInitiationSurface
@@ -95,11 +95,11 @@ type ClaudeEnrollmentInitiationSurface
 type ClaudeEnrollmentInitiationAdmission
   = EnrollmentInitiationAdmitted
   | EnrollmentInitiationRefusedSdkPath {
-      reason: NonEmptyStr,
+      reason: std.types.NonEmptyStr,
     }
 
 type ClaudeAmbientOAuthArtifactDigest {
-  digest: NonEmptyStr
+  digest: std.types.NonEmptyStr
 }
 
 type ClaudeAmbientOAuthArtifactObservationPair {
@@ -116,31 +116,31 @@ type ClaudeAmbientOAuthHomeWriteBackAdmission
       digest: ClaudeAmbientOAuthArtifactDigest,
     }
   | AmbientOAuthWriteBackRefusedMissingObservation {
-      reason: NonEmptyStr,
+      reason: std.types.NonEmptyStr,
     }
 
 type ClaudeEnrollmentColdStartAdmission
   = EnrollmentColdStartAdmitted
   | EnrollmentColdStartRefusedAmbientPrerequisite {
-      reason: NonEmptyStr,
+      reason: std.types.NonEmptyStr,
     }
 
 type ClaudeEnrollmentWriterLeaseEpoch {
-  holder: NonEmptyStr
+  holder: std.types.NonEmptyStr
   epoch: Int
-  binding_version: NonEmptyStr
+  binding_version: std.types.NonEmptyStr
 }
 
 type ClaudeEnrollmentWriterLeaseAdmission
-  = EnrollmentLeaseGranted { holder: NonEmptyStr, epoch: Int }
+  = EnrollmentLeaseGranted { holder: std.types.NonEmptyStr, epoch: Int }
   | EnrollmentLeaseRefusedConcurrent {
-      incumbent_holder: NonEmptyStr,
-      incumbent_binding_version: NonEmptyStr,
+      incumbent_holder: std.types.NonEmptyStr,
+      incumbent_binding_version: std.types.NonEmptyStr,
       incumbent_epoch: Int,
     }
   | EnrollmentLeaseRefusedNewerBindingExists {
-      incumbent_version: NonEmptyStr,
-      attempted_version: NonEmptyStr,
+      incumbent_version: std.types.NonEmptyStr,
+      attempted_version: std.types.NonEmptyStr,
     }
 
 type ClaudeEnrollmentWriterLeasePublishAdmission
@@ -151,15 +151,15 @@ type ClaudeEnrollmentWriterLeasePublishAdmission
     }
 
 type ClaudeSetupTokenCaptureAdmission
-  = SetupTokenCaptureAdmitted { token_length: CharacterCount }
+  = SetupTokenCaptureAdmitted { token_length: std.measure.CharacterCount }
   | SetupTokenCaptureRefusedMultipleCandidates { count: Int }
   | SetupTokenCaptureRefusedMalformedPrefix
   | SetupTokenCaptureRefusedMalformedLength {
-      observed: CharacterCount,
-      min: CharacterCount,
-      max: CharacterCount,
+      observed: std.measure.CharacterCount,
+      min: std.measure.CharacterCount,
+      max: std.measure.CharacterCount,
     }
-  | SetupTokenCaptureRefusedFormatUnobserved { reason: NonEmptyStr }
+  | SetupTokenCaptureRefusedFormatUnobserved { reason: std.types.NonEmptyStr }
   | SetupTokenCaptureRefusedNoCandidate
 
 type ClaudeEnrollmentSecretVersionAdmission
@@ -168,29 +168,29 @@ type ClaudeEnrollmentSecretVersionAdmission
   | EnrollmentSecretVersionRefusedEmpty
 
 type ClaudeEnrollmentSecretWriteOutcome
-  = EnrollmentSecretWritten { version: NonEmptyStr }
-  | EnrollmentSecretWriteRefused { reason: NonEmptyStr }
+  = EnrollmentSecretWritten { version: std.types.NonEmptyStr }
+  | EnrollmentSecretWriteRefused { reason: std.types.NonEmptyStr }
 
 type ClaudeEnrollmentSecretReadBackOutcome
   = EnrollmentSecretReadBackOk {
-      version: NonEmptyStr,
-      private_content_identity: NonEmptyStr,
+      version: std.types.NonEmptyStr,
+      private_content_identity: std.types.NonEmptyStr,
       digest_matches: Bool,
     }
-  | EnrollmentSecretReadBackRefused { reason: NonEmptyStr }
+  | EnrollmentSecretReadBackRefused { reason: std.types.NonEmptyStr }
 
 type ClaudeExactSecretVersionBindingAdmission
   = ExactSecretVersionBindingAdmitted {
       binding: ClaudeExactSecretVersionBinding,
     }
-  | ExactSecretVersionBindingRefusedWrite { reason: NonEmptyStr }
-  | ExactSecretVersionBindingRefusedReadBack { reason: NonEmptyStr }
+  | ExactSecretVersionBindingRefusedWrite { reason: std.types.NonEmptyStr }
+  | ExactSecretVersionBindingRefusedReadBack { reason: std.types.NonEmptyStr }
   | ExactSecretVersionBindingRefusedDigestMismatch
 
 type ClaudeEnrollmentWorkflowStage
   = EnrollmentSpawnCliPrivatePty
   | EnrollmentObserveBrowserChallenge {
-      challenge: ClaudeSetupTokenBrowserChallenge,
+      challenge: extdeps.llm.claude_setup_token_cli.ClaudeSetupTokenBrowserChallenge,
     }
   | EnrollmentCaptureSetupTokenPrivate
   | EnrollmentSecretManagerAddVersion
@@ -201,13 +201,13 @@ type ClaudeEnrollmentWorkflowStage
 
 type ClaudeEnrollmentWorkflowAdmission
   = EnrollmentWorkflowAdmitted
-  | EnrollmentWorkflowRefusedPlacementUnbound { missing_axes: List<NonEmptyStr> }
-  | EnrollmentWorkflowRefusedDeploymentModelGap { reason: NonEmptyStr }
-  | EnrollmentWorkflowRefusedHostEffectsScaffold { stage: NonEmptyStr }
+  | EnrollmentWorkflowRefusedPlacementUnbound { missing_axes: List<std.types.NonEmptyStr> }
+  | EnrollmentWorkflowRefusedDeploymentModelGap { reason: std.types.NonEmptyStr }
+  | EnrollmentWorkflowRefusedHostEffectsScaffold { stage: std.types.NonEmptyStr }
 
 type ClaudeIsolationPathObservation
   = IsolationPathObserved { paths_read: List<std.types.FilePath> }
-  | IsolationPathObservationRefused { reason: NonEmptyStr }
+  | IsolationPathObservationRefused { reason: std.types.NonEmptyStr }
 
 data claude_enrollment_managed_home_relative: String = ".gunbc/claude-enrollment"
 

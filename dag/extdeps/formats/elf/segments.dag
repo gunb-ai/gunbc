@@ -9,7 +9,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type Elf64Phdr {
-  segment_type: ElfSegmentType
+  segment_type: extdeps.formats.elf.primitives.ElfSegmentType
   flags: Int
   offset: Int
   vaddr: Int

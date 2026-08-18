@@ -1,10 +1,10 @@
 module v2.test.manual.bind_demand_driven_eval
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn bind_eval_atom(s: Symbol) -> Node {
-  Node {
+fn bind_eval_atom(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: s } },
     occurrence_id: SyntheticOccurrence,
     children: []
@@ -19,9 +19,9 @@ fn bind_eval_i64() -> Node {
   bind_eval_atom(s: ^bind_eval_i64_sym)
 }
 
-fn bind_eval_one_value() -> RuntimeValue {
+fn bind_eval_one_value() -> v2.std.runtime.RuntimeValue {
   RuntimePrimitive {
-    value: RuntimePrimitiveValue {
+    value: v2.std.runtime.RuntimePrimitiveValue {
       primitive_type: bind_eval_i64(),
       bytes: [bind_eval_byte()]
     }
@@ -32,7 +32,7 @@ fn bind_eval_lit_one() -> Node {
   match dag_int_literal_node_from_lexeme(lexeme: "1", occurrence_id: SyntheticOccurrence) {
     Accepted { value: n, diagnostics: _ } => n
     Rejected { diagnostics: _ } =>
-      Node {
+      v2.std.node.Node {
         kind: TypeNode { connective: Atom { identity: ^bind_eval_lit_one_lexeme_invalid } },
         occurrence_id: SyntheticOccurrence,
         children: []
@@ -40,7 +40,7 @@ fn bind_eval_lit_one() -> Node {
   }
 }
 
-data bind_eval_counted_value_node: Node = Node {
+data bind_eval_counted_value_node: Node = v2.std.node.Node {
   kind: ComputationNode { behavior: Value },
   occurrence_id: SyntheticOccurrence,
   children: []
@@ -54,26 +54,26 @@ fn bind_eval_divergent() -> Node {
   bind_eval_atom(s: ^bind_eval_divergent_sym)
 }
 
-fn bind_eval_counted_slot_key() -> EnvironmentBindingKey {
-  EnvironmentBindingKey {
+fn bind_eval_counted_slot_key() -> v2.std.runtime.EnvironmentBindingKey {
+  v2.std.runtime.EnvironmentBindingKey {
     identity: ^bind_eval_counted_slot_sym
   }
 }
 
-fn bind_eval_touch_key() -> EnvironmentBindingKey {
-  EnvironmentBindingKey {
+fn bind_eval_touch_key() -> v2.std.runtime.EnvironmentBindingKey {
+  v2.std.runtime.EnvironmentBindingKey {
     identity: ^bind_eval_touch_counter_sym
   }
 }
 
-fn bind_eval_int_from_runtime(value: RuntimeValue) -> Int {
+fn bind_eval_int_from_runtime(value: v2.std.runtime.RuntimeValue) -> Int {
   match value {
     RuntimePrimitive { value: p } => count(p.bytes)
     _ => 0
   }
 }
 
-fn bind_eval_touch_from_env(env: EvaluationEnvironment, key: EnvironmentBindingKey) -> Int {
+fn bind_eval_touch_from_env(env: v2.std.runtime.EvaluationEnvironment, key: v2.std.runtime.EnvironmentBindingKey) -> Int {
   match v2.std.collection.map_get(m: env.bindings, key: key) {
     Accepted { value: opt, diagnostics: _ } =>
       match opt {
@@ -84,15 +84,15 @@ fn bind_eval_touch_from_env(env: EvaluationEnvironment, key: EnvironmentBindingK
   }
 }
 
-fn bind_eval_diagnostic(n: Node) -> Diagnostic {
-  Diagnostic {
+fn bind_eval_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^bind_eval_runtime_rejected,
     at: node_locus(node: n),
     correction: Unavailable { reason: ExternalContractUnknown }
   }
 }
 
-fn bind_eval_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome<RuntimeValue> {
+fn bind_eval_allocate_literal(node: Node, env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
   if dag_node_is_int_literal_atom(node: node) {
     match dag_int_literal_magnitude_int_from_node(node: node) {
       Accepted { value: mag, diagnostics: _ } =>
@@ -122,40 +122,40 @@ fn bind_eval_allocate_literal(node: Node, env: EvaluationEnvironment) -> Outcome
 
 fn bind_eval_call_primitive(
   _node: Node,
-  _args: List<RuntimeValue>,
-  _env: EvaluationEnvironment
-) -> Outcome<RuntimeValue> {
+  _args: List<v2.std.runtime.RuntimeValue>,
+  _env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.RuntimeValue> {
   outcome_rejected(d: bind_eval_diagnostic(n: _node))
 }
 
 fn bind_eval_choose_branch(
   _node: Node,
-  _condition: RuntimeValue,
-  _env: EvaluationEnvironment
+  _condition: v2.std.runtime.RuntimeValue,
+  _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<Node> {
   outcome_rejected(d: bind_eval_diagnostic(n: _node))
 }
 
-fn bind_eval_step_loop(node: Node, _env: EvaluationEnvironment) -> Outcome<ControlTransfer> {
+fn bind_eval_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
   outcome_rejected(d: bind_eval_diagnostic(n: node))
 }
 
 fn bind_eval_bind_value(
-  key: EnvironmentBindingKey,
-  value: RuntimeValue,
-  env: EvaluationEnvironment
-) -> Outcome<EvaluationEnvironment> {
-  let bound = EvaluationEnvironment {
+  key: v2.std.runtime.EnvironmentBindingKey,
+  value: v2.std.runtime.RuntimeValue,
+  env: v2.std.runtime.EvaluationEnvironment
+) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
+  let bound = v2.std.runtime.EvaluationEnvironment {
     bindings: map_insert(m: env.bindings, key: key, value: value)
   }
   let touched = if key.identity == bind_eval_counted_slot_key().identity {
     let next = bind_eval_touch_from_env(env: bound, key: bind_eval_touch_key()) + 1
-    EvaluationEnvironment {
+    v2.std.runtime.EvaluationEnvironment {
       bindings: map_insert(
         m: bound.bindings,
         key: bind_eval_touch_key(),
         value: RuntimePrimitive {
-          value: RuntimePrimitiveValue {
+          value: v2.std.runtime.RuntimePrimitiveValue {
             primitive_type: bind_eval_i64(),
             bytes: if next == 1 { [bind_eval_byte()] } else { [bind_eval_byte(), bind_eval_byte()] }
           }
@@ -168,19 +168,19 @@ fn bind_eval_bind_value(
   Accepted { value: touched, diagnostics: None }
 }
 
-fn bind_eval_interpretation() -> InterpretationAlgebra {
-  InterpretationAlgebra {
-    value: ValueInterpreter { allocate_literal: bind_eval_allocate_literal },
-    transform: TransformInterpreter { call_primitive: bind_eval_call_primitive },
-    branch: BranchInterpreter { choose_branch: bind_eval_choose_branch },
-    loop: LoopInterpreter { step_loop: bind_eval_step_loop },
-    bind: BindInterpreter { bind_value: bind_eval_bind_value },
-    match: MatchInterpreter { choose_arm: runtime_reject_match_arm }
+fn bind_eval_interpretation() -> v2.std.runtime.InterpretationAlgebra {
+  v2.std.runtime.InterpretationAlgebra {
+    value: v2.std.runtime.ValueInterpreter { allocate_literal: bind_eval_allocate_literal },
+    transform: v2.std.runtime.TransformInterpreter { call_primitive: bind_eval_call_primitive },
+    branch: v2.std.runtime.BranchInterpreter { choose_branch: bind_eval_choose_branch },
+    loop: v2.std.runtime.LoopInterpreter { step_loop: bind_eval_step_loop },
+    bind: v2.std.runtime.BindInterpreter { bind_value: bind_eval_bind_value },
+    match: v2.std.runtime.MatchInterpreter { choose_arm: runtime_reject_match_arm }
   }
 }
 
-fn bind_eval_interpretation_structure_witness() -> InterpretationStructureWitness {
-  InterpretationStructureWitness {
+fn bind_eval_interpretation_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
+  v2.std.runtime.InterpretationStructureWitness {
     allocate_literal: ^bind_eval_allocate_literal_sym,
     call_primitive: ^bind_eval_call_primitive_sym,
     choose_branch: ^bind_eval_choose_branch_sym,
@@ -190,7 +190,7 @@ fn bind_eval_interpretation_structure_witness() -> InterpretationStructureWitnes
   }
 }
 
-fn bind_eval_context() -> EvalContext {
+fn bind_eval_context() -> v2.compiler.eval.EvalContext {
   eval_context_with_semantics(
     runtime_identity: ^bind_eval_runtime_id,
     interpretation: bind_eval_interpretation(),
@@ -199,57 +199,57 @@ fn bind_eval_context() -> EvalContext {
 }
 
 fn bind_eval_bind_node(value: Node, body: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Bind },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: bind_eval_atom(s: ^bind_eval_counted_slot_sym) },
-      Edge { label: Positional, target: value },
-      Edge { label: Positional, target: body }
+      v2.std.node.Edge { label: Positional, target: bind_eval_atom(s: ^bind_eval_counted_slot_sym) },
+      v2.std.node.Edge { label: Positional, target: value },
+      v2.std.node.Edge { label: Positional, target: body }
     ]
   }
 }
 
 fn bind_eval_pick_call(callee: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Transform },
     occurrence_id: SyntheticOccurrence,
-    children: [Edge { label: Positional, target: callee }]
+    children: [v2.std.node.Edge { label: Positional, target: callee }]
   }
 }
 
 fn bind_eval_arrow_with_body(body: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Arrow },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge {
+      v2.std.node.Edge {
         label: Positional,
-        target: Node {
+        target: v2.std.node.Node {
           kind: TypeNode { connective: Conj },
           occurrence_id: SyntheticOccurrence,
           children: []
         }
       },
-      Edge { label: Positional, target: bind_eval_i64() },
-      Edge { label: Positional, target: bind_eval_i64() },
-      Edge { label: Named { name: ^arrow_body_edge }, target: body }
+      v2.std.node.Edge { label: Positional, target: bind_eval_i64() },
+      v2.std.node.Edge { label: Positional, target: bind_eval_i64() },
+      v2.std.node.Edge { label: Named { name: ^arrow_body_edge }, target: body }
     ]
   }
 }
 
 fn bind_eval_tree_root(call: Node, expected: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Named { name: ^bind_eval_actual }, target: call },
-      Edge { label: Named { name: ^bind_eval_expected }, target: expected }
+      v2.std.node.Edge { label: Named { name: ^bind_eval_actual }, target: call },
+      v2.std.node.Edge { label: Named { name: ^bind_eval_expected }, target: expected }
     ]
   }
 }
 
-fn bind_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
+fn bind_eval_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   optional_present(value: claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: bind_eval_i64(),
@@ -257,8 +257,8 @@ fn bind_eval_facts_lookup(key: Node) -> Optional<InferredFacts> {
     ))
 }
 
-fn bind_eval_admitted_tree(root: Node) -> InferredTree {
-  InferredTree {
+fn bind_eval_admitted_tree(root: Node) -> v2.compiler.infer.InferredTree {
+  v2.compiler.infer.InferredTree {
     root: root,
     facts: Map { lookup: bind_eval_facts_lookup }
   }
@@ -271,13 +271,13 @@ fn bind_eval_run(body: Node, expected: Node) -> Outcome<TestClaimRun<Node, Runti
   let tree = bind_eval_admitted_tree(root: root)
   outcome_accepted(
     value: run_test_claim(
-      subject: TestClaimEvalSubject {
+      subject: v2.compiler.eval.TestClaimEvalSubject {
         claim: CompilesClaim {
           label: "manual/bind_demand_driven_eval: demand-driven Bind eval acceptance",
           anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
           input: call,
           expected_value: expected,
-          classification: TestClassification { tier: Tier1, layer: Unit }
+          classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
         },
         context: bind_eval_context(),
         tree: tree,
@@ -330,8 +330,8 @@ test fn bind_eval_divergent_value_rejects_holds() -> Bool {
   }
 }
 
-fn bind_eval_minted_atom(s: Symbol, id: Int) -> Node {
-  Node {
+fn bind_eval_minted_atom(s: v2.std.node.Symbol, id: Int) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: s } },
     occurrence_id: MintedOccurrence {
       id: v2.std.node.OccurrenceId { value: id },
@@ -341,13 +341,13 @@ fn bind_eval_minted_atom(s: Symbol, id: Int) -> Node {
 }
 
 fn bind_eval_bind_node_with_binder(binder: Node, value: Node, body: Node) -> Node {
-  Node {
+  v2.std.node.Node {
     kind: ComputationNode { behavior: Bind },
     occurrence_id: SyntheticOccurrence,
     children: [
-      Edge { label: Positional, target: binder },
-      Edge { label: Positional, target: value },
-      Edge { label: Positional, target: body }
+      v2.std.node.Edge { label: Positional, target: binder },
+      v2.std.node.Edge { label: Positional, target: value },
+      v2.std.node.Edge { label: Positional, target: body }
     ]
   }
 }
@@ -407,7 +407,7 @@ test fn bind_eval_unbound_reference_refuses_holds() -> Bool {
   }
 }
 
-fn bind_eval_default_context() -> EvalContext {
+fn bind_eval_default_context() -> v2.compiler.eval.EvalContext {
   eval_context_with_semantics(
     runtime_identity: ^bind_eval_runtime_id,
     interpretation: v2_evaluator_interpretation(),

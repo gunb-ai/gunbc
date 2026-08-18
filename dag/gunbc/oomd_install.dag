@@ -14,8 +14,8 @@ data gunbc_oomd_sessions_policy: UnitManagedOomPolicy = UnitManagedOomPolicy {
 }
 
 type OomdApplyEffect {
-  install_package: NonEmptyStr
-  configured_policy: UnitManagedOomPolicy
+  install_package: std.types.NonEmptyStr
+  configured_policy: extdeps.systemd.oomd.UnitManagedOomPolicy
 }
 
 data gunbc_oomd_apply_effect: OomdApplyEffect = OomdApplyEffect {
@@ -24,11 +24,11 @@ data gunbc_oomd_apply_effect: OomdApplyEffect = OomdApplyEffect {
 }
 
 type OomdInstallPlan {
-  install_package: NonEmptyStr
-  global_config: OomdGlobalConfig
-  dropin: OomdDropIn
-  service_unit: NonEmptyStr
-  verify_property: NonEmptyStr
+  install_package: std.types.NonEmptyStr
+  global_config: extdeps.systemd.oomd.OomdGlobalConfig
+  dropin: extdeps.systemd.oomd.OomdDropIn
+  service_unit: std.types.NonEmptyStr
+  verify_property: std.types.NonEmptyStr
 }
 
 data gunbc_oomd_install_plan: OomdInstallPlan = OomdInstallPlan {
@@ -49,20 +49,20 @@ type SliceMembershipSignal {
 
 type OomdEffectiveRead {
   slice_present: Bool
-  unit_active: SystemdUnitActiveState
-  unit_file_state: UnitFileState
-  effective_managed_oom_memory_pressure: ManagedOomAction
-  effective_per_session_memory_max: RunnerSliceCapEffectiveness
-  effective_parent_slice_memory_max: RunnerSliceCapEffectiveness
-  effective_managed_oom_memory_pressure_limit: Percent
+  unit_active: extdeps.systemd.SystemdUnitActiveState
+  unit_file_state: extdeps.systemd.systemctl.UnitFileState
+  effective_managed_oom_memory_pressure: extdeps.systemd.oomd.ManagedOomAction
+  effective_per_session_memory_max: gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness
+  effective_parent_slice_memory_max: gunbc.ci_floor_measurement.RunnerSliceCapEffectiveness
+  effective_managed_oom_memory_pressure_limit: std.measure.Percent
   oomctl_manages_slice: Bool
   membership: SliceMembershipSignal
 }
 
 type OomdGroundingThresholds {
-  per_session_cap: ByteSize
-  parent_slice_cap: SessionAggregateReservation
-  pressure_limit: Percent
+  per_session_cap: std.measure.ByteSize
+  parent_slice_cap: gunbc.ci_floor_measurement.SessionAggregateReservation
+  pressure_limit: std.measure.Percent
 }
 
 type OomdGroundingCheck

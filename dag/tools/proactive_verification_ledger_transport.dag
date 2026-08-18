@@ -1,12 +1,12 @@
 module tools.proactive_verification_ledger_transport
 
 
-fn run_family_ledger_row(row: FamilyVerificationLedgerRow) -> Bool {
+fn run_family_ledger_row(row: gunbc.proactive_verification_ledger.FamilyVerificationLedgerRow) -> Bool {
   match row.execution {
     ClaimWitness { entry: e, function: f } =>
       run_gunbc_claims(
         source_roots: witness_layer_roots,
-        claims: [ClaimRun { entry: e, function: f }]
+        claims: [tools.host_prelude.ClaimRun { entry: e, function: f }]
       )
     FalsifierPredictOnlyBatch => false
     CompileCleanGate => false

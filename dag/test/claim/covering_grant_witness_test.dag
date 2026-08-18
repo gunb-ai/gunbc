@@ -2,19 +2,19 @@ module test.claim.covering_grant_witness_test
 
 
 // Discriminating witnesses for covering_grant (the P-C per-grant-binding primitive) and for admit_effect projecting EffectRequest into the one std.access kernel. An envelope carries a Read grant bound RealTransport under repo and a Write grant bound Replay (carrying a fixture_store) under scratch. covering_grant returns the COVERING grant so dispatch can read its binding: the Read target resolves to the RealTransport grant, the Write target to the Replay grant carrying its own fixture_store. An uncovered target is typed NoCoveringGrant evidence consumed by effect_grant_policy. The same cases Permit or return a located Deny through std.access, proving the migration preserves the reach wall without a second decision carrier.
-data cg_frame: Frame = Frame { name: "covering-grant-witness", kind: SharedStateFrame }
+data cg_frame: std.materialization_ladder.Frame = std.materialization_ladder.Frame { name: "covering-grant-witness", kind: SharedStateFrame }
 
-fn cg_envelope() -> Envelope {
-  Envelope {
+fn cg_envelope() -> std.effect_grant.Envelope {
+  std.effect_grant.Envelope {
     frame: cg_frame,
     grants: [
-      Grant {
+      std.effect_grant.Grant {
         verb: Read,
         root: filesystem_position(path: ["repo"]),
         binding: RealTransport,
         lifecycle: LifecycleByConvention
       },
-      Grant {
+      std.effect_grant.Grant {
         verb: Write,
         root: filesystem_position(path: ["scratch"]),
         binding: Replay { fixture_store: "fx" },
@@ -24,7 +24,7 @@ fn cg_envelope() -> Envelope {
   }
 }
 
-fn covered_binding_is_real(cg: CoveringGrant) -> Bool {
+fn covered_binding_is_real(cg: std.effect_grant.CoveringGrant) -> Bool {
   match cg {
     CoveredBy { grant: g } =>
       match g.binding {
@@ -35,7 +35,7 @@ fn covered_binding_is_real(cg: CoveringGrant) -> Bool {
   }
 }
 
-fn covered_binding_replay_store(cg: CoveringGrant, store: String) -> Bool {
+fn covered_binding_replay_store(cg: std.effect_grant.CoveringGrant, store: String) -> Bool {
   match cg {
     CoveredBy { grant: g } =>
       match g.binding {
@@ -46,7 +46,7 @@ fn covered_binding_replay_store(cg: CoveringGrant, store: String) -> Bool {
   }
 }
 
-fn is_no_covering(cg: CoveringGrant) -> Bool {
+fn is_no_covering(cg: std.effect_grant.CoveringGrant) -> Bool {
   match cg {
     NoCoveringGrant { verb: v, target: t, frame: f } => true
     CoveredBy { grant: g } => false

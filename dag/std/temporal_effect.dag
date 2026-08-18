@@ -83,15 +83,15 @@ type PriorStepReceipt
   = NoPriorReceipt
   | PriorReceipt { receipt: EffectStepReceipt }
 
-fn grant_not_expired_at(observed_at: Timestamp, expires_at: Timestamp) -> Bool {
+fn grant_not_expired_at(observed_at: std.types.Timestamp, expires_at: std.types.Timestamp) -> Bool {
   observed_at <= expires_at
 }
 
 fn approval_grant_covers_intent(
   grant: DurableApprovalGrant,
   intent: EffectAttemptIntent,
-  escalation_id: NonEmptyStr,
-  observed_at: Timestamp,
+  escalation_id: std.types.NonEmptyStr,
+  observed_at: std.types.Timestamp,
 ) -> Bool {
   match grant {
     GrantAbsent => false
@@ -113,7 +113,7 @@ type NextStepApplyPlan
   = ApplyAtStep { step_id: std.types.NonEmptyStr }
   | DrainThenStartAtStep { step_id: std.types.NonEmptyStr, lease_key: std.types.NonEmptyStr }
 
-fn held_lease_observed_verdict(observed: HeldLeaseObservedState) -> ObservationVerdict {
+fn held_lease_observed_verdict(observed: HeldLeaseObservedState) -> std.upsert_decision.ObservationVerdict {
   match observed {
     LeaseAbsent => Absent
     LeaseRunningExpected => Converged
@@ -124,9 +124,9 @@ fn held_lease_observed_verdict(observed: HeldLeaseObservedState) -> ObservationV
 }
 
 fn decision_for_held_lease_verdict(
-  verdict: ObservationVerdict,
+  verdict: std.upsert_decision.ObservationVerdict,
   lease: HeldLease,
-  pending_step_id: NonEmptyStr,
+  pending_step_id: std.types.NonEmptyStr,
 ) -> UpsertDecision<NextStepApplyPlan> {
   match verdict {
     Converged => Noop
@@ -134,15 +134,15 @@ fn decision_for_held_lease_verdict(
     Drifted => Apply {
       plan: DrainThenStartAtStep { step_id: pending_step_id, lease_key: lease.lease_key },
     }
-    Conflict => Refuse { reason: "foreign lease holder on scoped resource" as NonEmptyStr }
-    Inaccessible => Refuse { reason: "lease observation inaccessible" as NonEmptyStr }
-    UnknownRefused => Refuse { reason: "lease observation classification unknown" as NonEmptyStr }
+    Conflict => Refuse { reason: "foreign lease holder on scoped resource" as std.types.NonEmptyStr }
+    Inaccessible => Refuse { reason: "lease observation inaccessible" as std.types.NonEmptyStr }
+    UnknownRefused => Refuse { reason: "lease observation classification unknown" as std.types.NonEmptyStr }
   }
 }
 
 fn next_step_plan_from_apply_decision(
   decision: UpsertDecision<NextStepApplyPlan>,
-  pending_step_id: NonEmptyStr,
+  pending_step_id: std.types.NonEmptyStr,
 ) -> NextStepPlan {
   match decision {
     Noop => PlanNoop { step_id: pending_step_id }
@@ -159,7 +159,7 @@ fn next_step_plan_from_apply_decision(
 
 fn plan_for_held_lease_observation(
   lease: HeldLease,
-  pending_step_id: NonEmptyStr,
+  pending_step_id: std.types.NonEmptyStr,
 ) -> NextStepPlan {
   let verdict = held_lease_observed_verdict(observed: lease.observed)
   next_step_plan_from_apply_decision(
@@ -174,13 +174,13 @@ fn plan_for_held_lease_observation(
 
 fn plan_next_step_from_prior_receipt_and_lease(
   intent: EffectAttemptIntent,
-  pending_step_id: NonEmptyStr,
+  pending_step_id: std.types.NonEmptyStr,
   requires_destructive_approval: Bool,
-  escalation_id: NonEmptyStr,
+  escalation_id: std.types.NonEmptyStr,
   grant: DurableApprovalGrant,
   lease: HeldLease,
   prior: PriorStepReceipt,
-  observed_at: Timestamp,
+  observed_at: std.types.Timestamp,
 ) -> NextStepPlan {
   if requires_destructive_approval
     && !approval_grant_covers_intent(
@@ -216,9 +216,9 @@ fn plan_next_step_from_prior_receipt_and_lease(
   }
 }
 
-data cursor_unset_step: NonEmptyStr = "cursor-unset" as NonEmptyStr
+data cursor_unset_step: std.types.NonEmptyStr = "cursor-unset" as std.types.NonEmptyStr
 
-fn receipt_log_last_step_id(receipts: List<EffectStepReceipt>) -> NonEmptyStr {
+fn receipt_log_last_step_id(receipts: List<EffectStepReceipt>) -> std.types.NonEmptyStr {
   fold(
     receipts,
     init: cursor_unset_step,
@@ -228,8 +228,8 @@ fn receipt_log_last_step_id(receipts: List<EffectStepReceipt>) -> NonEmptyStr {
 
 fn derived_pending_step_id(
   receipts: List<EffectStepReceipt>,
-  default_step: NonEmptyStr,
-) -> NonEmptyStr {
+  default_step: std.types.NonEmptyStr,
+) -> std.types.NonEmptyStr {
   let last = receipt_log_last_step_id(receipts: receipts)
   if last == cursor_unset_step {
     default_step
@@ -240,7 +240,7 @@ fn derived_pending_step_id(
 
 fn prior_receipt_for_step(
   receipts: List<EffectStepReceipt>,
-  step_id: NonEmptyStr,
+  step_id: std.types.NonEmptyStr,
 ) -> PriorStepReceipt {
   fold(
     receipts,

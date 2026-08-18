@@ -2,7 +2,7 @@ module test.claim.occurrence_binding_witness_test
 
 
 fn ob_root_path(terminal: v2.std.node.Symbol) -> ContainmentPath<v2.std.node.Symbol> {
-  ContainmentPath {
+  std.occurrence_binding.ContainmentPath {
     ancestors: Empty,
     terminal: terminal,
   }
@@ -12,14 +12,14 @@ fn ob_two_level_path(
   root: v2.std.node.Symbol,
   terminal: v2.std.node.Symbol
 ) -> ContainmentPath<v2.std.node.Symbol> {
-  ContainmentPath {
+  std.occurrence_binding.ContainmentPath {
     ancestors: Cons { head: root, tail: Empty },
     terminal: terminal,
   }
 }
 
 fn ob_occurrence() -> BindingOccurrence<v2.std.node.Symbol> {
-  BindingOccurrence {
+  std.occurrence_binding.BindingOccurrence {
     containment: ob_two_level_path(
       root: ^consumer,
       terminal: ^use_site,
@@ -28,7 +28,7 @@ fn ob_occurrence() -> BindingOccurrence<v2.std.node.Symbol> {
 }
 
 fn ob_candidate(containment: ContainmentPath<v2.std.node.Symbol>) -> BindingCandidate<v2.std.node.Symbol> {
-  BindingCandidate {
+  std.occurrence_binding.BindingCandidate {
     containment: containment,
   }
 }

@@ -21,11 +21,11 @@ fn c_partition_fold_outcome(
 }
 
 type CTranslationUnitSpelling {
-  unit_id: CompilationUnitId
+  unit_id: v2.std.compilers.compilation_unit.CompilationUnitId
   header_path: String
   source_path: String
   include_directives: List<String>
-  include_closure: List<CompilationUnitId>
+  include_closure: List<v2.std.compilers.compilation_unit.CompilationUnitId>
   object_path: String
   interface_nodes: List<Node>
 }
@@ -240,8 +240,8 @@ fn c_partition_unit_graph_has_cycle(units: List<CompilationUnit>) -> Bool {
 }
 
 type CTypeOwner {
-  module: ModuleId
-  identity: Symbol
+  module: v2.std.compilers.compilation_unit.ModuleId
+  identity: v2.std.node.Symbol
 }
 
 type CByValueTypeEdge {
@@ -252,7 +252,7 @@ type CByValueTypeEdge {
 type CTypeOwnerLookup
   = CTypeOwnerFound { owner: CTypeOwner }
   | CTypeOwnerAbsent
-  | CTypeOwnerAmbiguous { identity: Symbol }
+  | CTypeOwnerAmbiguous { identity: v2.std.node.Symbol }
 
 fn c_type_owner_eq(left: CTypeOwner, right: CTypeOwner) -> Bool {
   left.module == right.module && left.identity == right.identity
@@ -607,14 +607,14 @@ data c_stage0_emit_standard_citation: DeclarationRef = DeclarationRef {
 
 type CTranslationUnitPreambleDefect
   = MissingStdboolInclude {
-      emitted_bool_literal_requires: DeclarationRef
+      emitted_bool_literal_requires: std.decl_ref.DeclarationRef
     }
 
 type CValueExpressionEmitValidityUnderStandard
   = ValidUnderDeclaredStandard
   | KnownInvalidUnderDeclaredStandard {
       standard_edition: CStage0EmitStandardEdition,
-      standard_citation: DeclarationRef,
+      standard_citation: std.decl_ref.DeclarationRef,
       defect: CTranslationUnitPreambleDefect
     }
 
@@ -773,7 +773,7 @@ fn c_grammar_terminal(token_class: Symbol) -> GrammarExpr {
 
 type CGramBuild1State
   = CGramBuild1StateInit
-  | CGramBuild1StateReady { expr: GrammarExpr }
+  | CGramBuild1StateReady { expr: v2.std.grammar.GrammarExpr }
 
 fn c_grammar_sequence_from_token_classes() -> GrammarExpr {
   match fold_list(
@@ -810,9 +810,9 @@ fn c_grammar_production_fn_add() -> GrammarProduction {
 }
 
 type CGrammarRelationRow {
-  production: GrammarProduction
+  production: v2.std.grammar.GrammarProduction
   emitted: Node
-  tokens: List<ConcreteSyntaxToken>
+  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
 fn c_grammar_relation_row() -> CGrammarRelationRow {

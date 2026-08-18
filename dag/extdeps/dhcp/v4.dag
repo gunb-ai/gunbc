@@ -2,16 +2,16 @@ module extdeps.dhcp.v4
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "datatracker.ietf.org/doc/html/rfc2132#section-3.14"
   }
 }
 
-type MacAddress = NonEmptyStr where brand("MacAddress")
+type MacAddress = std.types.NonEmptyStr where brand("MacAddress")
 
-data mac_address_anemic_brand_frontier_rows: List<FrontierRow> = [
+data mac_address_anemic_brand_frontier_rows: List<std.roster_frontier.FrontierRow> = [
   frontier_row_decl(
     ref: decl_ref(module_path: "extdeps.dhcp.v4", decl_name: "MacAddress"),
     reason: "MacAddress is a branded NonEmptyStr hiding six grounded octets; deep-decompose to structured MAC carrier (e.g. MacAddress { octets: [UInt8; 6] }) at parse boundary",
@@ -21,7 +21,7 @@ data mac_address_anemic_brand_frontier_rows: List<FrontierRow> = [
 
 data ipv4_address_brand_dissolved_note: String = "The Ipv4Address anemic brand (NonEmptyStr where brand) was dissolved 2026-07-24: it is now the structured four-octet carrier in extdeps.network.ipv4 (dissolve_on_ipv4_address_anemic_brand fired — its named trigger, extdeps/network/ipv4.dag + parse_ipv4_address witness, landed). Consumers import Ipv4Address from extdeps.network.ipv4 directly (ipv4 is a network concept, not a DHCP one — the prior re-home through this module was a layering artifact). The MacAddress brand above remains anemic; its dissolution (extdeps/network/mac.dag, hex-octet parse) is the fast-follow — same consumer files, deferred to keep the IPv4 reach-lane change focused."
 
-type DhcpClientHostNameOption12 = HostName
+type DhcpClientHostNameOption12 = extdeps.dns.domain_name.HostName
 
 type DhcpLeaseAssignment =
     DynamicLease
@@ -47,11 +47,11 @@ type DhcpLeaseObservation
       status: DhcpLeaseStatus
     }
 
-fn dhcp_lease_remaining_from_cited_minutes(minutes: std.nat.Nat) -> Second {
+fn dhcp_lease_remaining_from_cited_minutes(minutes: std.nat.Nat) -> std.measure.Second {
   second(minutes * 60)
 }
 
-fn dhcp_lease_remaining_cited_minutes(remaining: Second) -> std.nat.Nat {
+fn dhcp_lease_remaining_cited_minutes(remaining: std.measure.Second) -> std.nat.Nat {
   second_count(remaining) / 60
 }
 

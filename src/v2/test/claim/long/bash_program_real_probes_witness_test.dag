@@ -1,7 +1,7 @@
 module v2.test.long.bash_program_real_probes_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data bash_program_real_probes_long_note: String = "Executing consumer for bash real-program golden probes (review 43557). OfflineLocalRecipe under test/claim/long/ — local recipe, not per-PR floor. Dissolve-on: measured under fast-lane budget and re-enroll per-PR, or delete if goldens are superseded."
 

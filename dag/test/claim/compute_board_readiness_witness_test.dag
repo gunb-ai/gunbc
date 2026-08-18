@@ -3,8 +3,8 @@ module test.claim.compute_board_readiness_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data witness_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data witness_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https,
     locator: "amperecomputing.com/briefs/ampere-altra-family-product-brief"
   }
@@ -18,31 +18,31 @@ fn list_count<T>(xs: List<T>) -> Int {
   fold(xs, init: 0, f: (acc, _) => acc + 1)
 }
 
-fn contact(designator: NonEmptyStr) -> PackageContact {
-  PackageContact { designator: designator, function: FunctionUnstated }
+fn contact(designator: std.types.NonEmptyStr) -> extdeps.cpu.ampere_altra_package.PackageContact {
+  extdeps.cpu.ampere_altra_package.PackageContact { designator: designator, function: FunctionUnstated }
 }
 
 // A THREE-CONTACT FIXTURE, DELIBERATELY. The subject under proof is the count-and-identity
 // JOIN, and the smallest specimen that crosses the boundary is the requirement plus one. A
 // 4926-row fixture would prove nothing further and would be a cost-shape defect wearing a
 // test's name.
-fn three_contact_map() -> PackageContactMap {
-  PackageContactMap {
+fn three_contact_map() -> extdeps.cpu.ampere_altra_package.PackageContactMap {
+  extdeps.cpu.ampere_altra_package.PackageContactMap {
     socket: altra_fclga_socket,
     contacts: [contact(designator: "A1"), contact(designator: "A2"), contact(designator: "A3")],
     authority: witness_authority,
   }
 }
 
-fn duplicated_contact_map() -> PackageContactMap {
-  PackageContactMap {
+fn duplicated_contact_map() -> extdeps.cpu.ampere_altra_package.PackageContactMap {
+  extdeps.cpu.ampere_altra_package.PackageContactMap {
     socket: altra_fclga_socket,
     contacts: [contact(designator: "A1"), contact(designator: "A2"), contact(designator: "A1")],
     authority: witness_authority,
   }
 }
 
-fn standing_is_admitted(s: PackageContactMapStanding) -> Bool {
+fn standing_is_admitted(s: extdeps.cpu.ampere_altra_package.PackageContactMapStanding) -> Bool {
   match s {
     PackageContactMapAdmitted { resolved: _ } => true
     _ => false
@@ -142,8 +142,8 @@ test fn w_empty_board_leaves_every_capability_unsatisfied() -> Bool {
   list_count(xs: unsatisfied_board_capabilities(intent: narrow_compute_node_intent, components: [])) == list_count(xs: narrow_compute_node_intent.requirements)
 }
 
-fn cpu_component() -> ComponentInstance {
-  ComponentInstance {
+fn cpu_component() -> product.compute_board.composition.ComponentInstance {
+  product.compute_board.composition.ComponentInstance {
     designator: "U1",
     part: "processor",
     justifications: [DischargesCapability { capability: Compute }],
@@ -151,8 +151,8 @@ fn cpu_component() -> ComponentInstance {
   }
 }
 
-fn undersized_cpu_component() -> ComponentInstance {
-  ComponentInstance {
+fn undersized_cpu_component() -> product.compute_board.composition.ComponentInstance {
+  product.compute_board.composition.ComponentInstance {
     designator: "U1",
     part: "processor",
     justifications: [DischargesCapability { capability: Compute }],
@@ -160,8 +160,8 @@ fn undersized_cpu_component() -> ComponentInstance {
   }
 }
 
-fn decoupling_component() -> ComponentInstance {
-  ComponentInstance {
+fn decoupling_component() -> product.compute_board.composition.ComponentInstance {
+  product.compute_board.composition.ComponentInstance {
     designator: "C1",
     part: "decoupling network",
     justifications: [
@@ -175,8 +175,8 @@ fn decoupling_component() -> ComponentInstance {
   }
 }
 
-fn unjustified_component() -> ComponentInstance {
-  ComponentInstance { designator: "J9", part: "expansion header", justifications: [], provisions: [] }
+fn unjustified_component() -> product.compute_board.composition.ComponentInstance {
+  product.compute_board.composition.ComponentInstance { designator: "J9", part: "expansion header", justifications: [], provisions: [] }
 }
 
 test fn w_discharging_component_satisfies_its_capability() -> Bool {
@@ -202,15 +202,15 @@ test fn w_unjustified_component_is_unearned() -> Bool {
 // only the manufacturing family is non-empty. Written because a fold that consulted just the
 // design list would pass every other claim in this file.
 test fn w_manufacturing_refusal_alone_blocks_readiness() -> Bool {
-  !board_is_ready(r: BoardReadiness {
+  !board_is_ready(r: product.compute_board.composition.BoardReadiness {
     collateral: [],
     design: [],
     manufacturing: [FabricatorStackupUnconfirmed { fabricator: "unselected" }],
   })
-    && board_is_ready(r: BoardReadiness { collateral: [], design: [], manufacturing: [] })
+    && board_is_ready(r: product.compute_board.composition.BoardReadiness { collateral: [], design: [], manufacturing: [] })
 }
 
-fn carriage_of(rows: List<FormatSemanticRow>, semantic: ManufacturingSemantic) -> SemanticCarriage {
+fn carriage_of(rows: List<extdeps.ipc.dpmx.FormatSemanticRow>, semantic: extdeps.ipc.dpmx.ManufacturingSemantic) -> extdeps.ipc.dpmx.SemanticCarriage {
   fold(rows, init: NotCarried, f: fn(acc, row) {
     match row.semantic {
       NetlistConnectivity => match semantic {
@@ -222,7 +222,7 @@ fn carriage_of(rows: List<FormatSemanticRow>, semantic: ManufacturingSemantic) -
   })
 }
 
-fn carriage_is_in_format(c: SemanticCarriage) -> Bool {
+fn carriage_is_in_format(c: extdeps.ipc.dpmx.SemanticCarriage) -> Bool {
   match c {
     CarriedInFormat => true
     _ => false
@@ -256,13 +256,13 @@ test fn w_cores_requirement_compares_quantity_not_capability_tag() -> Bool {
 // the right kind: a management device with power control and console but no recovery path must
 // not satisfy a contract that asked for recovery.
 test fn w_management_requirement_demands_every_declared_sub_facility() -> Bool {
-  let partial = ComponentInstance {
+  let partial = product.compute_board.composition.ComponentInstance {
     designator: "U2",
     part: "management controller",
     justifications: [DischargesCapability { capability: Management }],
     provisions: [ProvidesManagement { power_control: true, console: true, recovery: false }],
   }
-  let complete = ComponentInstance {
+  let complete = product.compute_board.composition.ComponentInstance {
     designator: "U2",
     part: "management controller",
     justifications: [DischargesCapability { capability: Management }],

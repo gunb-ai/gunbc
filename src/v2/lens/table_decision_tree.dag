@@ -12,7 +12,7 @@ fn table_decision_tree_unrealized_verdict() -> LensVerdict {
 
 type TableDecisionTreeFact {
   fn_locus: Node
-  verdict: LensVerdict
+  verdict: v2.std.lens_verdict.LensVerdict
 }
 
 fn table_decision_tree_fact_for_fn(fn_node: Node) -> TableDecisionTreeFact {

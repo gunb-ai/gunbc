@@ -2,16 +2,16 @@ module v2.std.find_witness
 
 type CandidateSet {
   candidates: List<Node>
-  closedness: StructuralPropertyWitness
+  closedness: v2.std.witness.StructuralPropertyWitness
 }
 type PreservationPredicate {
   algebra: Node
-  preservation_rule: Symbol
+  preservation_rule: v2.std.node.Symbol
 }
 type FindWitnessResult {
   candidate: Node
-  witness: StructuralPropertyWitness
-  closedness: StructuralPropertyWitness
+  witness: v2.std.witness.StructuralPropertyWitness
+  closedness: v2.std.witness.StructuralPropertyWitness
 }
 
 type TargetSelectionPolicy

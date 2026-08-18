@@ -74,7 +74,7 @@ fn swatch_brighten_rules(timing: TimingToken) -> List<BuildRule> {
 }
 
 type RealizedBehavior
-  = RealizedRules { rules: List<BuildRule> }
+  = RealizedRules { rules: List<gunbc.design.material.BuildRule> }
   | UnrealizedBehavior { element: String, verb: String, response: String }
 
 fn realize_behavior(row: BehaviorRow) -> RealizedBehavior {

@@ -23,14 +23,14 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 type MotherboardFormFactor = Atx | MicroAtx | MiniItx
 
 type ChassisCatalogRow {
-  model: NonEmptyStr
-  manufacturer: Vendor<Hardware>
-  rack_units: RackUnit
+  model: std.types.NonEmptyStr
+  manufacturer: Vendor<extdeps.hardware.Hardware>
+  rack_units: std.measure.RackUnit
   motherboard_support: List<MotherboardFormFactor>
   internal_35_bay_count: Int
   internal_525_bay_count: Int
   expansion_slot_count: Int
   included_fan_count: Int
-  max_gpu_length: Millimeter?
-  max_cooler_height: Millimeter?
+  max_gpu_length: std.measure.Millimeter?
+  max_cooler_height: std.measure.Millimeter?
 }

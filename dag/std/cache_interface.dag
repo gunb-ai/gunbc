@@ -2,7 +2,7 @@ module std.cache_interface
 
 
 
-type StorageSurface = NonEmptyStr where brand("StorageSurface")
+type StorageSurface = std.types.NonEmptyStr where brand("StorageSurface")
 
 type ValueShape = RawBytes | StructuredArtifact | TarArchive | FileTree
 
@@ -315,7 +315,7 @@ fn realize_route<T>(lookup: CacheLookupResult<T>) -> RealizeRoute<T> {
 
 fn classify_write<T>(
   existing: CacheLookupResult<T>,
-  offered_content: ContentHash,
+  offered_content: std.content_hash.ContentHash,
   fresh_receipt: CachedArtifactReceipt<T>,
 ) -> CacheWriteResult<T> {
   match existing {
@@ -349,7 +349,7 @@ fn read_latency_rank(latency: ReadLatencyClass) -> Int {
   }
 }
 
-fn read_latency_cost(facts: CacheInterfaceFacts) -> NanosecondDuration {
+fn read_latency_cost(facts: CacheInterfaceFacts) -> std.verification.NanosecondDuration {
   match facts.read_latency {
     InProcessNs => nanosecond_duration(count: 1)
     LocalDiskUs => nanosecond_duration(count: 1000)
@@ -375,7 +375,7 @@ fn cache_reach_candidate_recompute() -> CacheReachCandidate {
 }
 
 fn cache_reach_candidate_probe(
-  id: CacheInterfaceId,
+  id: std.cache_identity.CacheInterfaceId,
   catalog: List<CacheInterfaceFacts>,
   recompute: CostAccount<Nano>,
 ) -> CacheReachCandidate {
@@ -389,7 +389,7 @@ fn cache_reach_candidate_probe(
   }
 }
 
-fn cache_reach_comparisons(a: CacheReachCandidate, b: CacheReachCandidate) -> List<AxisComparison> {
+fn cache_reach_comparisons(a: CacheReachCandidate, b: CacheReachCandidate) -> List<std.pareto.AxisComparison> {
   [
     axis_comparison_int(
       goal: LowerIsBetter,
@@ -409,12 +409,12 @@ fn cache_reach_comparisons(a: CacheReachCandidate, b: CacheReachCandidate) -> Li
   ]
 }
 
-fn cache_reach_dominates(a: CacheReachCandidate, b: CacheReachCandidate) -> DominanceVerdict {
+fn cache_reach_dominates(a: CacheReachCandidate, b: CacheReachCandidate) -> std.pareto.DominanceVerdict {
   dominance_of_comparisons(comparisons: cache_reach_comparisons(a: a, b: b))
 }
 
 fn cache_layer_cost_justified(
-  id: CacheInterfaceId,
+  id: std.cache_identity.CacheInterfaceId,
   catalog: List<CacheInterfaceFacts>,
   recompute: CostAccount<Nano>,
 ) -> Bool {
@@ -422,7 +422,7 @@ fn cache_layer_cost_justified(
 }
 
 fn cache_layer_beats_recompute_path(
-  id: CacheInterfaceId,
+  id: std.cache_identity.CacheInterfaceId,
   catalog: List<CacheInterfaceFacts>,
   recompute: CostAccount<Nano>,
 ) -> Bool {
@@ -437,8 +437,8 @@ fn cache_layer_beats_recompute_path(
 }
 
 fn cache_interface_id_available(
-  id: CacheInterfaceId,
-  available: List<CacheInterfaceId>,
+  id: std.cache_identity.CacheInterfaceId,
+  available: List<std.cache_identity.CacheInterfaceId>,
 ) -> Bool {
   available
     |> fold(
@@ -447,7 +447,7 @@ fn cache_interface_id_available(
     )
 }
 
-fn cache_layer_plan_contains_id(plan: CacheLayerPlan, id: CacheInterfaceId) -> Bool {
+fn cache_layer_plan_contains_id(plan: CacheLayerPlan, id: std.cache_identity.CacheInterfaceId) -> Bool {
   plan.layers
     |> fold(
       init: false,
@@ -459,7 +459,7 @@ fn plan_cache_layers(
   deployment: CacheDeploymentBackends,
   recompute: CostAccount<Nano>,
   catalog: List<CacheInterfaceFacts>,
-  default_order: List<CacheInterfaceId>,
+  default_order: List<std.cache_identity.CacheInterfaceId>,
 ) -> CacheLayerPlan {
   CacheLayerPlan {
     layers: default_order
@@ -468,22 +468,22 @@ fn plan_cache_layers(
   }
 }
 
-fn cache_layer_plan_primary(plan: CacheLayerPlan) -> CacheInterfaceId {
+fn cache_layer_plan_primary(plan: CacheLayerPlan) -> std.cache_identity.CacheInterfaceId {
   plan.layers.first()
 }
 
-fn cache_layer_plan_fallback(plan: CacheLayerPlan) -> CacheInterfaceId {
+fn cache_layer_plan_fallback(plan: CacheLayerPlan) -> std.cache_identity.CacheInterfaceId {
   plan.layers.skip(n: 1).first()
 }
 
-fn cache_facts_for_id(id: CacheInterfaceId, catalog: List<CacheInterfaceFacts>) -> CacheInterfaceFacts {
+fn cache_facts_for_id(id: std.cache_identity.CacheInterfaceId, catalog: List<CacheInterfaceFacts>) -> CacheInterfaceFacts {
   catalog
     |> filter(facts => facts.identity == id)
     |> first()
 }
 
 fn cache_layer_ids_respect_locality(
-  layers: List<CacheInterfaceId>,
+  layers: List<std.cache_identity.CacheInterfaceId>,
   catalog: List<CacheInterfaceFacts>,
   last_rank: Int,
 ) -> Bool {

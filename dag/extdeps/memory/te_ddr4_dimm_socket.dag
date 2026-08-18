@@ -14,12 +14,12 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 data te_ddr4_dimm_socket_note: String = "A PRODUCT FAMILY, NOT A SELECTED PART, AND NOT AN ORDERABLE ONE EITHER. 2308107 is the base product number the specification uses to identify this product line; the orderable variants differ in tail length for different board thicknesses and are carried on the customer drawing. So this row names a family whose mechanical facts are cited, and it does not say that this socket has been chosen for anything. THE SPECIFICATION STATES what is recorded here: 288 positions, 0.80 mm contact spacing, solder tail through plated holes, FR-4 or G-10 board material. IT ALSO PUBLISHES A PC BOARD LAYOUT AS FIGURE 3, and that is a fact about the document rather than about any reader: the hole pattern this part needs EXISTS and is published, it is simply not transcribed here. THE CUSTOMER DRAWING GOVERNS WHERE THE TWO CONFLICT, by the specification own terms, so a later reader who obtains that drawing is reading a higher authority for this part and not a second opinion. A SOLDER TAIL NEEDS A DRILL SCHEDULE, NOT A LAND PATTERN, which is why the obligation below is a plated-hole obligation carrying no success arm at all. An earlier revision of this row used a standing whose only established arm carried surface-mount land geometry, which this part can never inhabit — the type promised a success that was unreachable for the very part it described, and it also stored this session extraction failure as though it were a vendor fact. What a fetch on 2026-08-14 could or could not read is an observation this repository made, and it belongs in the observing layer downstream, never inside an upstream module."
 
 type DimmSocketCatalogRow {
-  base_part_number: NonEmptyStr
-  vendor: Vendor<Hardware>
+  base_part_number: std.types.NonEmptyStr
+  vendor: Vendor<extdeps.hardware.Hardware>
   position_count: std.nat.Nat
-  contact_pitch: Micrometer
-  attachment: BoardAttachmentStyle
-  board_pattern: MountingPatternObligation
+  contact_pitch: std.measure.Micrometer
+  attachment: extdeps.land_pattern.types.BoardAttachmentStyle
+  board_pattern: extdeps.land_pattern.types.MountingPatternObligation
 }
 
 data ddr4_dimm_socket_solder_tail_288_family: DimmSocketCatalogRow = DimmSocketCatalogRow {

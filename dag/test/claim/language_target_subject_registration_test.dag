@@ -3,7 +3,7 @@ module test.claim.language_target_subject_registration
 
 data subject_registration_witness_note: String = "D0's executed evidence: the ~20 external language-target subjects exist as CITED scope carriers and are registered. The assertions below are deliberately about STRUCTURAL properties that a hand-authored row cannot fake into truth — every grounding carries at least one citation, every registration's subject is DERIVED from its grounding rather than authored beside it, no subject is registered twice, and every carrier path is enrolled in the roster the placement gate reads. WHAT NO ASSERTION HERE ESTABLISHES, stated because a witness is where this gets forgotten: that a cited locator is the CORRECT authority for its subject is not machine-checkable — it was established by fetching each locator live on 2026-08-04 and confirming its title and publisher, and it is recorded in each carrier's subject note. A test can prove a citation EXISTS; only that fetch could prove it is the right one. The three targets whose upstreams could not be read are asserted ABSENT from the registry and PRESENT in the findings, which is the executable half of verify-or-refuse."
 
-fn registration_citation_count(r: LanguageTargetRegistration) -> Int {
+fn registration_citation_count(r: std.language_target_identity.LanguageTargetRegistration) -> Int {
   match r.grounding {
     ExternalGrounding { scope: s } => external_model_scope_citations(scope: s) |> count
     ProjectGrounding { authority: _ } => 1
@@ -113,13 +113,13 @@ test fn unverified_upstreams_are_recorded_as_typed_findings() -> Bool {
 }
 
 // Each projection hangs off a subject that is actually registered, checked here on named rows rather than only in aggregate: ngspice and CommonMark are the two subjects whose DISPLAY NAME deliberately differs from the folder and the colloquial target name, because the honest upstream is the implementation (ngspice, not 'SPICE') and the specified dialect (CommonMark, not 'Markdown'). If a projection's subject ever drifted from its registration, these are the rows where a name-based reader would notice last.
-fn registered_subject_refs() -> List<DeclarationRef> {
+fn registered_subject_refs() -> List<std.decl_ref.DeclarationRef> {
   fold(registered_language_targets, init: [], f: fn(acc, r) {
     concat(acc, [registration_subject(registration: r)])
   })
 }
 
-fn subject_is_registered(target: DeclarationRef) -> Bool {
+fn subject_is_registered(target: std.decl_ref.DeclarationRef) -> Bool {
   fold(registered_subject_refs(), init: false, f: fn(acc, s) {
     acc || declaration_ref_eq(a: s, b: target)
   })
@@ -134,7 +134,7 @@ test fn named_projections_hang_off_registered_subjects() -> Bool {
 data red_control_note: String = "RED CONTROLS — each asserts that a WRONG state is genuinely detected, so the green assertions above are discriminating rather than vacuous. A synthetic registration whose grounding has zero citations is unwritable by construction (first_citation is a required scalar), so the reachable wrong states are the ones checked here: a subject ref that no registration claims must NOT be reported as present, and a finding cause must not read as satisfied when its fields are empty."
 
 test fn red_unregistered_subject_ref_is_not_reported_as_present() -> Bool {
-  let bogus = DeclarationRef {
+  let bogus = std.decl_ref.DeclarationRef {
     module_path: "extdeps.languages.nonexistent.subject",
     decl_name: "nonexistent_language",
     field: WholeDeclaration

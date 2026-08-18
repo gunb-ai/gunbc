@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data artifact_store_witness_note: String = "P2 pure-spec ACCEPT witnesses: put/get/evict receipts with discriminating REDs - a mutated key input never serves the old artifact (stale-never-served), identical files and argv under a changed resolved build toolchain OR changed admitted environment select different effective native workspaces, budget breach evicts least-recent WITH the eviction counted in the receipt, and a store cannot be constructed over a provider that did not declare the byte ceiling it is being sized by (the retention field's first behavioral reader, audit F5). The budget is DERIVED from the provider, so the fixtures can no longer declare an unobserved ceiling and be handed an exact number anyway; each refusal names its own cause because the remedies differ."
 
-data byte_bounded_provider: CacheProvider = provider_row(
+data byte_bounded_provider: std.materialization_ladder.CacheProvider = provider_row(
   id: "artifact-store-test",
   scope: [],
   coverage: CoversAllComputations,
@@ -13,7 +13,7 @@ data byte_bounded_provider: CacheProvider = provider_row(
   retention: persistent_retention(capacity: CapacityBounded { limit: ByteCapacity { limit: ExactLimit { value: byte_size(count: 100) } }, at_capacity: ReplaceExisting { strategy: LeastRecentlyUsed } })
 )
 
-data scopeexit_provider: CacheProvider = provider_row(
+data scopeexit_provider: std.materialization_ladder.CacheProvider = provider_row(
   id: "scoped-provider-test",
   scope: [],
   coverage: CoversAllComputations,
@@ -21,15 +21,15 @@ data scopeexit_provider: CacheProvider = provider_row(
   retention: scope_released_retention(capacity: CapacityUnbounded)
 )
 
-fn test_store() -> ArtifactStore {
+fn test_store() -> std.artifact_store.ArtifactStore {
   match store_over_provider(provider: byte_bounded_provider) {
     StoreReady { store: s } => s
-    StoreRefusedRetention { provider_id: _, declared: _, cause: _ } => ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
+    StoreRefusedRetention { provider_id: _, declared: _, cause: _ } => std.artifact_store.ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
   }
 }
 
-fn key_of(toolchain: String) -> ContentHash {
-  artifact_key_hash(key: ArtifactKey {
+fn key_of(toolchain: String) -> std.content_hash.ContentHash {
+  artifact_key_hash(key: std.artifact_store.ArtifactKey {
     closure_digest: content_hash_atom(value: "closure-digest-fixture"),
     emitter_identity: "v1-seed",
     target_language: "rust",
@@ -37,7 +37,7 @@ fn key_of(toolchain: String) -> ContentHash {
   })
 }
 
-fn structural_resolved_build_context_identity(context: ResolvedBuildContext) -> ContentHash {
+fn structural_resolved_build_context_identity(context: extdeps.realization.emit_on_demand_host.ResolvedBuildContext) -> std.content_hash.ContentHash {
   match resolved_build_context_identity_outcome(context: context) {
     ResolvedBuildContextIdentityPresent { identity: id } => id
     ResolvedBuildContextIdentityRefusedCrypto { component: _, identity: _ } =>
@@ -47,7 +47,7 @@ fn structural_resolved_build_context_identity(context: ResolvedBuildContext) -> 
   }
 }
 
-fn structural_toolchain_identity(context: ResolvedBuildContext) -> ContentHash {
+fn structural_toolchain_identity(context: extdeps.realization.emit_on_demand_host.ResolvedBuildContext) -> std.content_hash.ContentHash {
   match toolchain_identity_outcome(context: context) {
     ToolchainIdentityPresent { identity: id } => id
     ToolchainIdentityRefusedCrypto { component: _, identity: _ } =>
@@ -57,8 +57,8 @@ fn structural_toolchain_identity(context: ResolvedBuildContext) -> ContentHash {
   }
 }
 
-fn observed_tool(tool_name: String, observed_identity: String) -> ObservedToolIdentity {
-  ObservedToolIdentity {
+fn observed_tool(tool_name: String, observed_identity: String) -> extdeps.realization.emit_on_demand_host.ObservedToolIdentity {
+  extdeps.realization.emit_on_demand_host.ObservedToolIdentity {
     tool_name: tool_name,
     observed_identity: as_content_hash_structural(
       structural: content_hash_atom(value: observed_identity)
@@ -67,9 +67,9 @@ fn observed_tool(tool_name: String, observed_identity: String) -> ObservedToolId
 }
 
 fn legacy_toolchain_identity(
-  cargo_observed_identity: Fnv1a64Structural,
-  rustc_observed_identity: Fnv1a64Structural,
-) -> ContentHash {
+  cargo_observed_identity: std.content_hash.Fnv1a64Structural,
+  rustc_observed_identity: std.content_hash.Fnv1a64Structural,
+) -> std.content_hash.ContentHash {
   as_content_hash_structural(
     structural: content_hash_combine_structural(
       left: content_hash_combine_structural(
@@ -177,12 +177,12 @@ test fn store_hit_and_stale_never_served_holds() -> Bool {
 }
 
 test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool {
-  let fixed_inputs: List<ArtifactRealizationInput> = [
-    ArtifactRealizationInput {
+  let fixed_inputs: List<std.artifact_store.ArtifactRealizationInput> = [
+    std.artifact_store.ArtifactRealizationInput {
       identity: "workspace:src/main.rs",
       content_digest: content_hash_atom(value: "fn main() {}")
     },
-    ArtifactRealizationInput {
+    std.artifact_store.ArtifactRealizationInput {
       identity: "build-argv",
       content_digest: content_hash_atom(value: "cargo build --release")
     },
@@ -191,7 +191,7 @@ test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool {
     workspace_root: "/tmp/gunbc_toolchain_identity/outer-key",
     realization_digest: artifact_realization_digest(inputs: fixed_inputs)
   )
-  let before_resolved_context = ResolvedBuildContext {
+  let before_resolved_context = extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: [
       observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
       observed_tool(tool_name: "rustc", observed_identity: "rustc 1.93.0 -vV"),
@@ -199,7 +199,7 @@ test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool {
     environment_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed environment")),
     cargo_configuration_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed cargo configuration"))
   }
-  let after_resolved_context = ResolvedBuildContext {
+  let after_resolved_context = extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: [
       observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
       observed_tool(tool_name: "rustc", observed_identity: "rustc 1.94.0 -vV"),
@@ -240,7 +240,7 @@ test fn native_realization_toolchain_change_cold_rebuild_holds() -> Bool {
 }
 
 test fn observed_tool_identity_missing_and_duplicate_refuse() -> Bool {
-  let missing_context = ResolvedBuildContext {
+  let missing_context = extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: [
       observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
       observed_tool(tool_name: "rustc", observed_identity: "rustc 1.93.0 -vV"),
@@ -248,7 +248,7 @@ test fn observed_tool_identity_missing_and_duplicate_refuse() -> Bool {
     environment_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed environment")),
     cargo_configuration_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed cargo configuration"))
   }
-  let duplicate_context = ResolvedBuildContext {
+  let duplicate_context = extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: [
       observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
       observed_tool(tool_name: "cargo", observed_identity: "cargo 1.94.0 -Vv"),
@@ -277,9 +277,9 @@ test fn resolved_build_context_identity_refuses_sha256_observed_tool() -> Bool {
     Absent =>
       as_content_hash_structural(structural: content_hash_atom(value: "witness-setup-failed"))
   }
-  let context = ResolvedBuildContext {
+  let context = extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: [
-      ObservedToolIdentity {
+      extdeps.realization.emit_on_demand_host.ObservedToolIdentity {
         tool_name: "cargo",
         observed_identity: sha256_identity
       }
@@ -299,7 +299,7 @@ test fn resolved_build_context_identity_refuses_sha256_observed_tool() -> Bool {
 }
 
 test fn derived_aggregate_matches_legacy_aggregate_for_unchanged_build() -> Bool {
-  let context = ResolvedBuildContext {
+  let context = extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: [
       observed_tool(tool_name: "cargo", observed_identity: "cargo 1.93.0 -Vv"),
       observed_tool(tool_name: "rustc", observed_identity: "rustc 1.93.0 -vV"),
@@ -320,7 +320,7 @@ test fn native_realization_environment_change_cold_rebuild_holds() -> Bool {
       structural: content_hash_atom(value: "fixed files and build argv")
     )
   )
-  let before_context = structural_resolved_build_context_identity(context: ResolvedBuildContext {
+  let before_context = structural_resolved_build_context_identity(context: extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: [
       observed_tool(tool_name: "cargo", observed_identity: "fixed cargo and rustc"),
       observed_tool(tool_name: "rustc", observed_identity: "fixed cargo and rustc"),
@@ -328,7 +328,7 @@ test fn native_realization_environment_change_cold_rebuild_holds() -> Bool {
     environment_identity: as_content_hash_structural(structural: content_hash_atom(value: "RUSTFLAGS=-Copt-level=2")),
     cargo_configuration_identity: as_content_hash_structural(structural: content_hash_atom(value: "fixed cargo configuration"))
   })
-  let after_context = structural_resolved_build_context_identity(context: ResolvedBuildContext {
+  let after_context = structural_resolved_build_context_identity(context: extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: [
       observed_tool(tool_name: "cargo", observed_identity: "fixed cargo and rustc"),
       observed_tool(tool_name: "rustc", observed_identity: "fixed cargo and rustc"),
@@ -391,8 +391,8 @@ test fn store_no_eviction_under_budget_holds() -> Bool {
 
 data store_put_totality_witness_note: String = "The discriminating receipt for store_put's totality repair: an artifact larger than the whole budget must be a DidNotFit VALUE and must leave the store untouched. Before the repair these assertions were all false in the same direction - the oversized put reported success, its evicted list named the key just put, and against a warm store it had already discarded the valid rows. The warm case is asserted separately from the cold one because only the warm case exposes the DESTRUCTION: a cold oversized put merely returned an empty store it had also started with, so a cold-only witness would have gone green against the destructive implementation."
 
-fn oversize_store() -> ArtifactStore {
-  ArtifactStore { budget: byte_size(count: 100), next_ordinal: 1, rows: [] }
+fn oversize_store() -> std.artifact_store.ArtifactStore {
+  std.artifact_store.ArtifactStore { budget: byte_size(count: 100), next_ordinal: 1, rows: [] }
 }
 
 test fn store_put_oversized_artifact_does_not_fit_holds() -> Bool {

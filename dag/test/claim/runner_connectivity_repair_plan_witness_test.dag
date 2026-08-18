@@ -3,33 +3,33 @@ module test.claim.runner_connectivity_repair_plan_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn act_ts(s: String) -> Timestamp {
-  s as Timestamp
+fn act_ts(s: String) -> std.types.Timestamp {
+  s as std.types.Timestamp
 }
 
-fn fixture_slot() -> RunnerSlotIdentity {
-  RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
+fn fixture_slot() -> gunbc.build_cache_instance.RunnerSlotIdentity {
+  gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
 }
 
-fn wedged_snapshot(act: Timestamp) -> RunnerSlotConnectivitySnapshot {
+fn wedged_snapshot(act: std.types.Timestamp) -> gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
   let slot = fixture_slot()
-  let inc = RunnerLocalIncarnation {
+  let inc = gunbc.runner_connectivity_recovery.RunnerLocalIncarnation {
     slot: slot,
     process: ProcessIdentity {
-      boot_id: "boot-a" as NonEmptyStr,
+      boot_id: "boot-a" as std.types.NonEmptyStr,
       pid: 4242,
-      start_time: "80000000" as NonEmptyStr,
+      start_time: "80000000" as std.types.NonEmptyStr,
     },
-    unit: "actions-runner@srv1-01.service" as NonEmptyStr,
+    unit: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
   }
-  RunnerSlotConnectivitySnapshot {
+  gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: slot,
-    local: RunnerLocalObservation {
+    local: gunbc.runner_connectivity_recovery.RunnerLocalObservation {
       incarnation: inc,
       systemd_active: true,
       observed_at: act,
     },
-    remote: RunnerRemoteObservation {
+    remote: gunbc.runner_connectivity_recovery.RunnerRemoteObservation {
       evidence: RemoteRegistrationObserved {
         registration: RunnerRemoteOffline,
         registration_id: "",
@@ -93,13 +93,13 @@ test fn replace_action_projects_five_step_repair_sequence() -> Bool {
 test fn noop_action_projects_empty_repair_plan() -> Bool {
   let act = act_ts(s: "2026-08-06T20:00:00Z")
   let snap = wedged_snapshot(act: act)
-  let connected = RunnerSlotConnectivitySnapshot {
+  let connected = gunbc.runner_connectivity_recovery.RunnerSlotConnectivitySnapshot {
     slot: snap.slot,
     local: snap.local,
-    remote: RunnerRemoteObservation {
+    remote: gunbc.runner_connectivity_recovery.RunnerRemoteObservation {
       evidence: RemoteRegistrationObserved {
         registration: RunnerRemoteOnline {
-          runner_name: "actions-runner@srv1-01.service" as NonEmptyStr,
+          runner_name: "actions-runner@srv1-01.service" as std.types.NonEmptyStr,
           labels: ["self-hosted"],
         },
         registration_id: "reg-1",

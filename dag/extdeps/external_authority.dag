@@ -114,7 +114,7 @@ type DownstreamSupportRoster {
 }
 
 data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+  uri: extdeps.uri.Uri {
     scheme: File
     locator: "DESIGN.md#3-single-authority"
   }

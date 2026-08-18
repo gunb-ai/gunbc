@@ -3,7 +3,7 @@ module test.claim.bmc_wif_delegation_chain_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn step_is(step: CredentialDelegationStep, tag: String) -> Bool {
+fn step_is(step: gunbc.assimilate.bmc_wif_delegation_chain.CredentialDelegationStep, tag: String) -> Bool {
   match step {
     GhaOidcIssuance { audience: _, designated_job: _ } => tag == "oidc"
     WifTokenExchange { pool: _, provider: _, attribute_condition: _ } => tag == "exchange"

@@ -1,8 +1,8 @@
 module extdeps.ssh.session
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "datatracker.ietf.org/doc/html/rfc4254"
   }
@@ -17,7 +17,7 @@ data ssh_exec_portable_words_supersedes_exec_argv_note: String = "ExecPortableWo
 data ssh_remote_exec_carries_a_command_string_note: String = "What ExecArgv does and does not carry, separated into what the PROTOCOL fixes and what an IMPLEMENTATION chooses, because those carry different weight and the earlier revision of this note fused them (review 45901).\\n\\nLOCAL, from this operation's own declaration: the transport argv is [ssh, host, --, argv], so the words reach the ssh client as distinct argv members and no local shell sees them. The local invocation is genuinely structured.\\n\\nPROTOCOL, from the anchored authority: RFC 4254 section 6.5 defines the exec channel request as carrying a single `command` field of type string. There is no argv vector in the request for structure to travel in. This is the universal half - it holds for every SSH client and server, so no ExecArgv-shaped operation over SSH can carry argv structure across the boundary AS STRUCTURE, and an operation wanting that promise needs a receiver on the far side accepting a structured invocation and calling exec itself. ssh.Session does not implement that and must not be read as implementing it.\\n\\nIMPLEMENTATION, which the protocol does NOT mandate and which this note therefore scopes rather than asserts: the OpenSSH client (ssh(1)) joins the command words into that single string, and OpenSSH's server (sshd(8)) executes it through the user's login shell, which re-parses it. RFC 4254 says the server starts execution of the given command; it does not say the command is joined a particular way, nor that a shell interprets it. A different server could exec the string directly.\\n\\nWHICH HALF CARRIES WHICH CONCLUSION, since they are not interchangeable: loss of argv structure follows from the PROTOCOL and is unavoidable. Re-splitting on spaces and interpretation of quotes, redirects and metacharacters follows from the OpenSSH client and server behavior above, and that is what the portable-word allowlist at gunbc.typed_argv_exec exists to bound. A note claiming the second as protocol-mandated would be overstating an extdeps authority, which is the defect this revision fixes.\\n\\nCorrection receipt: before this PR the note read `ExecArgv splices a List<String> remote argv without embedding a shell command string`, which is false for the remote half and contradicted the note at the enforcing edge, which said the opposite in the same corpus. Nothing depended on the false half - the allowlist was already fail-closed - so the defect was that the corpus asserted both readings and a reader could reach either."
 
 fn shape_scp_copy_to_argv(
-  host: NonEmptyStr,
+  host: std.types.NonEmptyStr,
   local_path: std.types.FilePath,
   remote_path: std.types.FilePath,
 ) -> List<String> {
@@ -33,7 +33,7 @@ type SshSessionExecResult {
 
 service ssh.Session {
   operation Exec {
-    input { host: NonEmptyStr, command: NonEmptyStr }
+    input { host: std.types.NonEmptyStr, command: std.types.NonEmptyStr }
     output {
       exit_code: Int from "exit_code"
       success: Bool from "exit_success"
@@ -50,7 +50,7 @@ service ssh.Session {
   }
 
   operation ExecArgv {
-    input { host: NonEmptyStr, argv: List<String> }
+    input { host: std.types.NonEmptyStr, argv: List<String> }
     output {
       exit_code: Int from "exit_code"
       success: Bool from "exit_success"
@@ -111,7 +111,7 @@ service ssh.Session {
   }
 
   operation ExecScript {
-    input { host: NonEmptyStr, script: String }
+    input { host: std.types.NonEmptyStr, script: String }
     output {
       exit_code: Int from "exit_code"
       success: Bool from "exit_success"
@@ -132,7 +132,7 @@ service ssh.Session {
   }
 
   operation Reachability {
-    input { host: NonEmptyStr }
+    input { host: std.types.NonEmptyStr }
     output { reachable: Bool from "exit_success" }
     readonly
     transport shell { argv: ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=5", "{host}", "true"] }
@@ -157,7 +157,7 @@ fn ssh_session_exec_result_from_service(
   }
 }
 
-fn ssh_session_exec(host: NonEmptyStr, command: NonEmptyStr) -> SshSessionExecResult {
+fn ssh_session_exec(host: std.types.NonEmptyStr, command: std.types.NonEmptyStr) -> SshSessionExecResult {
   let result = ssh.Session.Exec(host: host, command: command)
   ssh_session_exec_result_from_service(
     exit_code: result.exit_code,
@@ -167,7 +167,7 @@ fn ssh_session_exec(host: NonEmptyStr, command: NonEmptyStr) -> SshSessionExecRe
   )
 }
 
-fn ssh_session_exec_argv(host: NonEmptyStr, argv: List<String>) -> SshSessionExecResult {
+fn ssh_session_exec_argv(host: std.types.NonEmptyStr, argv: List<String>) -> SshSessionExecResult {
   let result = ssh.Session.ExecArgv(host: host, argv: argv)
   ssh_session_exec_result_from_service(
     exit_code: result.exit_code,
@@ -197,7 +197,7 @@ fn ssh_session_exec_portable_words_with_stdin(client_args: List<String>, stdin_p
   )
 }
 
-fn ssh_session_exec_script(host: NonEmptyStr, script: String) -> SshSessionExecResult {
+fn ssh_session_exec_script(host: std.types.NonEmptyStr, script: String) -> SshSessionExecResult {
   let result = ssh.Session.ExecScript(host: host, script: script)
   ssh_session_exec_result_from_service(
     exit_code: result.exit_code,

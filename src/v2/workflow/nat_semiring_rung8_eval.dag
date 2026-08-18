@@ -1,15 +1,15 @@
 module v2.test.workflow.nat_semiring_rung8_eval
 
 
-fn run_nat_semiring_rung8_eval() -> CorpusEvalReport {
-  CorpusEvalReport {
+fn run_nat_semiring_rung8_eval() -> v2.test.workflow.testclaim_corpus_runner.CorpusEvalReport {
+  v2.test.workflow.testclaim_corpus_runner.CorpusEvalReport {
     entries: corpus_entries_from_node_runtime_value_runs(
       runs: phase1_nat_semiring_rung8_runtime_value_rows
     )
   }
 }
 
-fn nat_semiring_rung8_gate(report: CorpusEvalReport) -> Bool {
+fn nat_semiring_rung8_gate(report: v2.test.workflow.testclaim_corpus_runner.CorpusEvalReport) -> Bool {
   if is_empty(xs: report.entries) {
     false
   } else {
@@ -17,7 +17,7 @@ fn nat_semiring_rung8_gate(report: CorpusEvalReport) -> Bool {
   }
 }
 
-fn nat_semiring_rung8_zero_deferred(report: CorpusEvalReport) -> Bool {
+fn nat_semiring_rung8_zero_deferred(report: v2.test.workflow.testclaim_corpus_runner.CorpusEvalReport) -> Bool {
   corpus_report_tally(r: report).deferred == Zero
 }
 

@@ -32,14 +32,14 @@ test fn witness_srv3_deploy_row_names_six_slots() -> Bool {
 }
 
 test fn witness_membership_reconcile_adds_delta_slots() -> Bool {
-  let observed: List<RunnerSlotMember> = [
-    RunnerSlotMember {
-      instance_name: "srv3-01" as NonEmptyStr,
-      slot_dir: "/opt/actions-runner/srv3-01" as NonEmptyStr,
+  let observed: List<gunbc.runner_slot_provision.RunnerSlotMember> = [
+    gunbc.runner_slot_provision.RunnerSlotMember {
+      instance_name: "srv3-01" as std.types.NonEmptyStr,
+      slot_dir: "/opt/actions-runner/srv3-01" as std.types.NonEmptyStr,
     },
-    RunnerSlotMember {
-      instance_name: "srv3-02" as NonEmptyStr,
-      slot_dir: "/opt/actions-runner/srv3-02" as NonEmptyStr,
+    gunbc.runner_slot_provision.RunnerSlotMember {
+      instance_name: "srv3-02" as std.types.NonEmptyStr,
+      slot_dir: "/opt/actions-runner/srv3-02" as std.types.NonEmptyStr,
     },
   ]
   let plan = runner_slot_membership_reconcile(
@@ -53,10 +53,10 @@ test fn witness_membership_reconcile_adds_delta_slots() -> Bool {
 test fn witness_provision_plan_extracts_only_upserts() -> Bool {
   match actions_runner_binary_artifact_for_arch(binary_release: actions_runner_release_2_334_0, arch: Aarch64) {
     Present { value: artifact } =>
-      let observed: List<RunnerSlotMember> = [
-        RunnerSlotMember {
-          instance_name: "srv3-01" as NonEmptyStr,
-          slot_dir: "/opt/actions-runner/srv3-01" as NonEmptyStr,
+      let observed: List<gunbc.runner_slot_provision.RunnerSlotMember> = [
+        gunbc.runner_slot_provision.RunnerSlotMember {
+          instance_name: "srv3-01" as std.types.NonEmptyStr,
+          slot_dir: "/opt/actions-runner/srv3-01" as std.types.NonEmptyStr,
         },
       ]
       let plan = runner_slot_provision_plan(
@@ -73,10 +73,10 @@ test fn witness_provision_plan_extracts_only_upserts() -> Bool {
 }
 
 test fn witness_enumeration_postcondition_red_on_under_count() -> Bool {
-  let observed: List<RunnerSlotMember> = [
-    RunnerSlotMember {
-      instance_name: "srv3-01" as NonEmptyStr,
-      slot_dir: "/opt/actions-runner/srv3-01" as NonEmptyStr,
+  let observed: List<gunbc.runner_slot_provision.RunnerSlotMember> = [
+    gunbc.runner_slot_provision.RunnerSlotMember {
+      instance_name: "srv3-01" as std.types.NonEmptyStr,
+      slot_dir: "/opt/actions-runner/srv3-01" as std.types.NonEmptyStr,
     },
   ]
   match runner_slot_enumeration_postcondition(host: operator_host_srv3, observed: observed) {

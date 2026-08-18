@@ -7,7 +7,7 @@ type ReportReason
 
 type Report {
   reason: ReportReason
-  at: Locus
+  at: v2.std.diagnostic.Locus
 }
 
 fn report_reason_to_diagnostic_reason(reason: ReportReason) -> Symbol {
@@ -16,5 +16,5 @@ fn report_reason_to_diagnostic_reason(reason: ReportReason) -> Symbol {
 
 type ReportSuggestion {
   report: Report
-  detail: Symbol
+  detail: v2.std.node.Symbol
 }

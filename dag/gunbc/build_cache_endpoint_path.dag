@@ -8,34 +8,34 @@ data endpoint_path_state_authority_note: String = "WHY THE ENDPOINT PATH NEEDS I
 type EndpointPathState
   = EndpointPathAbsent
   | EndpointListening { owner: ProcessIdentity }
-  | EndpointStaleSocket { detail: NonEmptyStr }
-  | EndpointPathConflict { detail: NonEmptyStr }
-  | EndpointPathObservationUnavailable { reason: EndpointObservationUnavailableReason }
+  | EndpointStaleSocket { detail: std.types.NonEmptyStr }
+  | EndpointPathConflict { detail: std.types.NonEmptyStr }
+  | EndpointPathObservationUnavailable { reason: gunbc.build_cache_instance.EndpointObservationUnavailableReason }
 
 // EndpointPathConflict IS NOT A STALE SOCKET AND MUST NEVER BE UNLINKED. It is the arm for a path that exists and is not a unix socket at all — a regular file, a directory, a symlink into somewhere else, a mount point. Nothing in this lane put it there, so removing it is destroying a stranger's data to make our own bind succeed, which is the widest possible failure arm. It refuses and stays refused; an operator decides what that path is. Keeping it distinct from EndpointStaleSocket is the entire reason the unlink admission can be safe, because 'the path exists but nobody is listening' is true of both and is the predicate an unconditional rm would be written against.
 type ObservationCurrency
-  = ObservationCurrent { observed_at_boot: NonEmptyStr }
-  | ObservationStale { detail: NonEmptyStr }
-  | ObservationCurrencyUnknown { detail: NonEmptyStr }
+  = ObservationCurrent { observed_at_boot: std.types.NonEmptyStr }
+  | ObservationStale { detail: std.types.NonEmptyStr }
+  | ObservationCurrencyUnknown { detail: std.types.NonEmptyStr }
 
 // AN UNLINK DECIDED FROM A STALE READ IS A RACE, NOT A DECISION. The four facts that make a socket stale are all observations, and every one of them can be falsified between the read and the write: a server can bind in that window, and the unlink then severs a LIVE server's socket, leaving a running process no client can reach and a cache that appears healthy from the inside. So currency is an input to the admission rather than an assumption of it, and it carries the boot id it was read under, because a reboot invalidates every pid, inode and socket fact at once. ObservationCurrencyUnknown refuses like ObservationStale does — not knowing whether a read is current is not weaker evidence than knowing it is old, it is the same evidence, and an arm that let Unknown through would be the absorbing fallback DESIGN section 5 forbids.
 type StaleSocketUnlinkRefusal
   = PathAlreadyAbsent
-  | PathIsNotASocket { detail: NonEmptyStr }
+  | PathIsNotASocket { detail: std.types.NonEmptyStr }
   | ListenerPresent { owner: ProcessIdentity }
-  | PathStateUnavailable { detail: NonEmptyStr }
-  | ObservationNotCurrent { detail: NonEmptyStr }
-  | EndpointHasNoSocketPath { detail: NonEmptyStr }
+  | PathStateUnavailable { detail: std.types.NonEmptyStr }
+  | ObservationNotCurrent { detail: std.types.NonEmptyStr }
+  | EndpointHasNoSocketPath { detail: std.types.NonEmptyStr }
 
 // A TCP ENDPOINT CANNOT HAVE A STALE SOCKET, AND THAT IS A REFUSAL RATHER THAN AN UNREACHABLE CASE. SccacheServerEndpoint is a two-arm coproduct and only the unix-socket arm names a filesystem path, so an unlink admission over a TCP instance has nothing to unlink. The tempting shapes are both wrong: silently succeeding treats 'there is no file' as 'the file is gone', which is the PathAlreadyAbsent answer to a question that was never askable; and treating the arm as unreachable puts a partial function at an actuation boundary. It refuses positively, so an observer that produced EndpointStaleSocket for a TCP instance — which it should never do — is reported rather than absorbed. Note this refuses at ADMISSION rather than at command construction: deciding it later would mean an Admitted value existed for which no command can be built, and the whole point of the admitted arm is that it licenses the action.
 type StaleSocketUnlinkAdmission
   = StaleSocketUnlinkAdmitted {
-      instance: BuildCacheInstance
-      stale_detail: NonEmptyStr
-      observed_at_boot: NonEmptyStr
+      instance: gunbc.build_cache_instance.BuildCacheInstance
+      stale_detail: std.types.NonEmptyStr
+      observed_at_boot: std.types.NonEmptyStr
     }
   | StaleSocketUnlinkRefused {
-      instance: BuildCacheInstance
+      instance: gunbc.build_cache_instance.BuildCacheInstance
       reason: StaleSocketUnlinkRefusal
     }
 
@@ -94,8 +94,8 @@ fn admit_stale_socket_unlink(
 }
 
 type StaleSocketUnlinkOutcome
-  = StaleSocketUnlinkCommandReady { command: ArgvCommand }
-  | StaleSocketUnlinkCommandRefused { reason: NonEmptyStr }
+  = StaleSocketUnlinkCommandReady { command: extdeps.exec.command.ArgvCommand }
+  | StaleSocketUnlinkCommandRefused { reason: std.types.NonEmptyStr }
 
 fn unlink_refusal_detail(reason: StaleSocketUnlinkRefusal) -> NonEmptyStr {
   match reason {

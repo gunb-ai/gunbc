@@ -3,7 +3,7 @@ module v2.std.program_segment
 
 type ProgramSegment
   = WholeProgram
-  | SubtreeAtPath { path: Path }
+  | SubtreeAtPath { path: v2.std.node.Path }
   | SubtreeRoot { root: Node }
 
 type PartitionBoundaryPolicy

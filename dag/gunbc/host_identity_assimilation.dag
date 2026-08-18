@@ -2,13 +2,13 @@ module gunbc.host_identity_assimilation
 
 
 type HostIdentityAssimilationTarget {
-  fleet_slot: HostIdentity
-  target_host: ComputeHost
-  control_plane: NodeControlPlane
-  transport: HostEffectTransport
-  access: DeployAccess
-  persisted_base: DeployedIntentV0
-  desired: DeployedIntentV1?
+  fleet_slot: product.placement_supply.HostIdentity
+  target_host: gunbc.fleet_intent.ComputeHost
+  control_plane: gunbc.host_effect.NodeControlPlane
+  transport: gunbc.host_effect.HostEffectTransport
+  access: gunbc.ci_deploy_access.DeployAccess
+  persisted_base: gunbc.deployed_intent_v0.DeployedIntentV0
+  desired: gunbc.deployed_intent_v1.DeployedIntentV1?
 }
 
 fn host_identity_assimilation_target_srv1(transport: HostEffectTransport) -> HostIdentityAssimilationTarget {
@@ -36,19 +36,19 @@ fn host_identity_assimilation_target_srv2(transport: HostEffectTransport) -> Hos
 }
 
 type HostIdentityAssimilationReceipt {
-  host: HostIdentity
-  key: HostIdentityKnobKey
-  adopted_base: DeployedIntentV0
+  host: product.placement_supply.HostIdentity
+  key: gunbc.host_identity_knob.HostIdentityKnobKey
+  adopted_base: gunbc.deployed_intent_v0.DeployedIntentV0
   desired_hostname_short: String
-  patch: HostIdentityLeafVerdict
+  patch: gunbc.host_identity_knob.HostIdentityLeafVerdict
   precondition_observed: String
   apply_converged: Bool
   read_back_observed: String
   read_back_converged: Bool
   reapply_noop: Bool
-  probed_at: NonEmptyStr
+  probed_at: std.types.NonEmptyStr
   transport_label: String
-  model_hash: ContentHash
+  model_hash: std.content_hash.ContentHash
 }
 
 data gunbc_host_identity_assimilation_scope_disposition: Disposition = std.disposition.Terminal {

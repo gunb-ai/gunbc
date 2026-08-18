@@ -66,10 +66,10 @@ type TransportProbeOutcome
 type TransportProbeObservation {
   host: product.placement_supply.HostIdentity
   requirement: ConfigfsTransportRequirement
-  probe: NonEmptyStr
-  result: NonEmptyStr
+  probe: std.types.NonEmptyStr
+  result: std.types.NonEmptyStr
   outcome: TransportProbeOutcome
-  observed_at: EpochMs
+  observed_at: std.types.EpochMs
 }
 
 // THE LAW THIS MODULE ENFORCES, and the whole reason it exists:
@@ -166,8 +166,8 @@ fn configfs_reinstall_path_standing(
 // "srv4 is not installed". srv3 and srv4 are both installed and running right
 // now while neither has a qualified reinstall path.
 type HostInstalledOsStanding
-  = InstalledOsRunning { observed_at: EpochMs }
-  | InstalledOsNotRunning { observed_at: EpochMs }
+  = InstalledOsRunning { observed_at: std.types.EpochMs }
+  | InstalledOsNotRunning { observed_at: std.types.EpochMs }
   | InstalledOsUnobserved
 
 fn installed_os_is_running(standing: HostInstalledOsStanding) -> Bool {

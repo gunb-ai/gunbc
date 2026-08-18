@@ -1,28 +1,28 @@
 module extdeps.chassis.rosewill
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rosewill.com/product-group/Rackmount-Cases/213-rosewill-rsv-r4000u-4u-rackmount-server-chassis-case"
   }
 }
 
-data rsv_r4000u_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data rsv_r4000u_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rosewill.com/product-group/Rackmount-Cases/213-rosewill-rsv-r4000u-4u-rackmount-server-chassis-case"
   }
 }
 
-data rsv_z2600u_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data rsv_z2600u_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.rosewill.com/product-group/Rackmount-Cases/214-rosewill-rsv-z2600u-2u-rackmount-server-chassis-case"
   }
 }
 
-data rosewill_rsv_r4000u_catalog: ChassisCatalogRow = ChassisCatalogRow {
+data rosewill_rsv_r4000u_catalog: extdeps.chassis.types.ChassisCatalogRow = extdeps.chassis.types.ChassisCatalogRow {
   model: "RSV-R4000U",
   manufacturer: rosewill,
   rack_units: rack_unit(4),
@@ -35,7 +35,7 @@ data rosewill_rsv_r4000u_catalog: ChassisCatalogRow = ChassisCatalogRow {
   max_cooler_height: none,
 }
 
-data rosewill_rsv_z2600u_catalog: ChassisCatalogRow = ChassisCatalogRow {
+data rosewill_rsv_z2600u_catalog: extdeps.chassis.types.ChassisCatalogRow = extdeps.chassis.types.ChassisCatalogRow {
   model: "RSV-Z2600U",
   manufacturer: rosewill,
   rack_units: rack_unit(2),
@@ -48,9 +48,9 @@ data rosewill_rsv_z2600u_catalog: ChassisCatalogRow = ChassisCatalogRow {
   max_cooler_height: Present { value: millimeter(70) },
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.chassis.rosewill",
       decl_name: "rosewill_rsv_r4000u_catalog",
       field: WholeDeclaration

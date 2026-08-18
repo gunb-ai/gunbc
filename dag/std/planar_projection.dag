@@ -78,7 +78,7 @@ fn triple_is_zero(t: ViewAxisTriple) -> Bool {
 // source axis is foreshortened, not merely that some axis is.
 type ProjectionRefusal
   = ProjectionArithmeticRefused { cause: IntegerOverflow }
-  | ProjectionFrameRefused { refusal: SpatialFrameRefusal }
+  | ProjectionFrameRefused { refusal: std.affine_space.SpatialFrameRefusal }
   | ViewDirectionParallelToUpReference { direction: ViewAxisTriple, up_reference: ViewAxisTriple }
   | ViewDirectionIsZero
   | ViewUnitsAreNotMillimetres { axis_image_u: Int, axis_image_v: Int }
@@ -109,13 +109,13 @@ type ProjectionMap sole_constructor {
 type ProjectionView sole_constructor {
   direction: ViewAxisTriple
   up_reference: ViewAxisTriple
-  source_frame: CoordinateFrameIdentity
-  view_frame: CoordinateFrameIdentity
+  source_frame: std.coordinate_frame.CoordinateFrameIdentity
+  view_frame: std.coordinate_frame.CoordinateFrameIdentity
   map: ProjectionMap
 }
 
 type ViewPoint2 {
-  view: CoordinateFrameIdentity
+  view: std.coordinate_frame.CoordinateFrameIdentity
   u: Int
   v: Int
 }
@@ -128,9 +128,9 @@ fn checked_pair_cross_term(a: Int, b: Int, c: Int, d: Int) -> CheckedInt {
 }
 
 type CheckedTriple {
-  x: CheckedInt
-  y: CheckedInt
-  z: CheckedInt
+  x: std.checked_arithmetic.CheckedInt
+  y: std.checked_arithmetic.CheckedInt
+  z: std.checked_arithmetic.CheckedInt
 }
 
 fn checked_cross(a: ViewAxisTriple, b: ViewAxisTriple) -> CheckedTriple {

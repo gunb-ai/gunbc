@@ -55,8 +55,8 @@ data ast2500_management_acquisition_paths: List<Ast2500ManagementAcquisitionPath
 ]
 
 type AspeedAst2500CatalogRow {
-  ordering_part_number: NonEmptyStr
-  manufacturer: Vendor<Hardware>
+  ordering_part_number: std.types.NonEmptyStr
+  manufacturer: Vendor<extdeps.hardware.Hardware>
   management_acquisition_paths: List<Ast2500ManagementAcquisitionPath>
 }
 

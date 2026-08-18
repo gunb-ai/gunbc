@@ -1,17 +1,17 @@
 module extdeps.version
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "en.wikipedia.org/wiki/Software_versioning"
   }
 }
 
-type VersionIdentity = NonEmptyStr where brand("VersionIdentity")
+type VersionIdentity = std.types.NonEmptyStr where brand("VersionIdentity")
 
 type VersionScheme {
   compare: fn(VersionIdentity, VersionIdentity) -> Ordering
 }
 
-type VersionConstraint = NonEmptyStr where brand("VersionConstraint")
+type VersionConstraint = std.types.NonEmptyStr where brand("VersionConstraint")

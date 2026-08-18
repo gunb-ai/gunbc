@@ -1,7 +1,7 @@
 module v2.test.lens_cost.valuation
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data nat_1: v2.std.nat.Nat = Succ { prev: Zero }
 data nat_2: v2.std.nat.Nat = Succ { prev: nat_1 }
@@ -14,8 +14,8 @@ data nat_8: v2.std.nat.Nat = Succ { prev: nat_7 }
 data nat_9: v2.std.nat.Nat = Succ { prev: nat_8 }
 data nat_10: v2.std.nat.Nat = Succ { prev: nat_9 }
 
-fn synthetic_leaf(identity: Symbol) -> Node {
-  Node {
+fn synthetic_leaf(identity: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Atom { identity: identity } },
     children: [],
     occurrence_id: SyntheticOccurrence
@@ -25,14 +25,14 @@ fn synthetic_leaf(identity: Symbol) -> Node {
 data outer_leaf: Node = synthetic_leaf(identity: ^valuation_outer_size_atom)
 data inner_leaf: Node = synthetic_leaf(identity: ^valuation_inner_size_atom)
 
-data outer_variable: SizeVariable = SizeVariable { source: outer_leaf }
-data inner_variable: SizeVariable = SizeVariable { source: inner_leaf }
+data outer_variable: v2.lens.cost.SizeVariable = v2.lens.cost.SizeVariable { source: outer_leaf }
+data inner_variable: v2.lens.cost.SizeVariable = v2.lens.cost.SizeVariable { source: inner_leaf }
 
-fn bind(variable: SizeVariable, value: v2.std.nat.Nat) -> CostValuationBinding {
-  CostValuationBinding { variable: variable, value: value }
+fn bind(variable: v2.lens.cost.SizeVariable, value: v2.std.nat.Nat) -> v2.lens.cost.valuation.CostValuationBinding {
+  v2.lens.cost.valuation.CostValuationBinding { variable: variable, value: value }
 }
 
-fn unit_loop_over(variable: SizeVariable) -> CostExpr {
+fn unit_loop_over(variable: v2.lens.cost.SizeVariable) -> v2.lens.cost.expr.CostExpr {
   CostSum {
     binder: inner_variable,
     upper: size_of(variable: variable),
@@ -40,7 +40,7 @@ fn unit_loop_over(variable: SizeVariable) -> CostExpr {
   }
 }
 
-fn is_exact(evaluation: CostEvaluation, expected: v2.std.nat.Nat) -> Bool {
+fn is_exact(evaluation: v2.lens.cost.valuation.CostEvaluation, expected: v2.std.nat.Nat) -> Bool {
   match evaluation {
     ExactCost { value: v } => v == expected
     _ => false
@@ -73,7 +73,7 @@ test fn changing_the_bound_size_changes_the_derived_work() -> Bool {
   )
 }
 
-fn binder_dependent_loop() -> CostExpr {
+fn binder_dependent_loop() -> v2.lens.cost.expr.CostExpr {
   CostSum {
     binder: outer_variable,
     upper: size_of(variable: outer_variable),
@@ -153,7 +153,7 @@ test fn distinct_bindings_control_does_not_refuse() -> Bool {
   )
 }
 
-fn shadowing_expr() -> CostExpr {
+fn shadowing_expr() -> v2.lens.cost.expr.CostExpr {
   CostAdd {
     left: CostSum {
       binder: outer_variable,
@@ -198,7 +198,7 @@ test fn zero_iterations_produce_exact_zero() -> Bool {
   )
 }
 
-data effect_operation: DeclarationRef = DeclarationRef {
+data effect_operation: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "v2.test.lens_cost.valuation",
   decl_name: "unmodelled_effect_specimen",
   field: WholeDeclaration
@@ -351,7 +351,7 @@ test fn one_times_an_unmodelled_effect_still_refuses() -> Bool {
 
 data symbolic_product_commutativity_note: String = "Every arm is asserted in BOTH operand orders - the zero absorption AND the one-times-unknown non-absorption - because the defect being fixed was precisely that operand order changed the answer, so a one-sided assertion is the shape that missed it in the first place. The projection authority is asserted in both orders, because it previously answered zero in one and unknown in the other. The unknown-times-zero direction is the one that was wrong and is the regression control for the reorder; the zero-times-unknown direction must keep working and is the control that the reorder did not simply swap the bug to the other side."
 
-fn unknown_symbolic_cost() -> SymbolicCost {
+fn unknown_symbolic_cost() -> v2.lens.cost.SymbolicCost {
   normalize_cost_expr_to_symbolic(expr: CostEffect { operation: effect_operation })
 }
 
@@ -411,7 +411,7 @@ test fn every_valuation_witness_holds() -> Bool {
     && symbolic_product_one_times_unknown_stays_unknown()
 }
 
-data claim_cost_valuation: TestClaim = EqualsClaim {
+data claim_cost_valuation: v2.std.verification.TestClaim = EqualsClaim {
   label: "lens_cost/valuation: CostExpr evaluated at a complete SizeVariable valuation yields exact semantic work, refuses a missing or duplicated binding rather than answering zero, scopes a CostSum binder to its body, and separates the three ways a logarithm fails - every leaf witness in this file enrolled in the conjunction",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: outer_leaf,
@@ -420,5 +420,5 @@ data claim_cost_valuation: TestClaim = EqualsClaim {
   } else {
     synthetic_leaf(identity: ^valuation_claim_failed)
   },
-  classification: TestClassification { tier: Tier1, layer: Unit }
+  classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
 }

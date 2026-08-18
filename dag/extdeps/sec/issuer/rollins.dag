@@ -2,20 +2,20 @@ module extdeps.sec.issuer.rollins
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.sec.gov/cgi-bin/browse-edgar?CIK=0000084839"
   }
 }
 
-data rollins_cik_digits: NonEmptyStr = "84839"
+data rollins_cik_digits: std.types.NonEmptyStr = "84839"
 
-data rollins_cik: Cik = Cik { digits: rollins_cik_digits }
+data rollins_cik: extdeps.sec.types.Cik = extdeps.sec.types.Cik { digits: rollins_cik_digits }
 
-data rollins_ticker: StockTicker = StockTicker { symbol: "ROL" }
+data rollins_ticker: extdeps.sec.types.StockTicker = extdeps.sec.types.StockTicker { symbol: "ROL" }
 
-data rollins_issuer_catalog: IssuerCatalogRow = IssuerCatalogRow {
+data rollins_issuer_catalog: extdeps.sec.types.IssuerCatalogRow = extdeps.sec.types.IssuerCatalogRow {
   cik: rollins_cik,
   registrant_name: "ROLLINS INC",
   primary_ticker: rollins_ticker,

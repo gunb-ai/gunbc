@@ -1,7 +1,7 @@
 module v2.test.claim.fallback_arm_census_planted
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data fallback_arm_planted_note: String = "W2 fallback-arm census planted fixtures (docs/plans/fallback-arm-census.md): AnswersOnOpen / Refuses / ClassifierUnknown mechanism REDs on synthetic Match nodes — no host, no corpus walk. Corpus grain enrolls separately on falsifier_substrate_long_lane."
 
@@ -56,7 +56,7 @@ test fn planted_interim_overrides_answers_holds() -> Bool {
 
 test fn classifier_input_not_wildcard_is_unknown_holds() -> Bool {
   let c = classify_fallback_arm(
-    input: FallbackArmClassifyInput {
+    input: v2.lens.fallback_arm_census.FallbackArmClassifyInput {
       pattern_is_wildcard: false,
       body_refuses: false,
       body_answers: true,

@@ -1,12 +1,12 @@
 module v2.test.extdeps_shape_transport_policy.lens_unit.transport_fusion_gcp_oauth
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data transport_fusion_gcp_oauth_argv_facts: List<ExtdepsTransportArgvFact> = []
+data transport_fusion_gcp_oauth_argv_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsTransportArgvFact> = []
 
-data transport_fusion_gcp_oauth_fusion_facts: List<ExtdepsTransportFusionFact> = [
-  ExtdepsTransportFusionFact {
+data transport_fusion_gcp_oauth_fusion_facts: List<v2.lens.extdeps_shape_transport_policy.ExtdepsTransportFusionFact> = [
+  v2.lens.extdeps_shape_transport_policy.ExtdepsTransportFusionFact {
     module: extdeps_gcp_module,
     endpoint_key: "oauth2:refresh",
     service_a: "oauth2.Google",

@@ -2,7 +2,7 @@ module test.claim.realization_reconcile_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn is_share(m: Materialization) -> Bool {
+fn is_share(m: std.realization.Materialization) -> Bool {
   match m {
     Share => true
     Recompute => false
@@ -10,8 +10,8 @@ fn is_share(m: Materialization) -> Bool {
   }
 }
 
-fn step_create_if_absent(field: String) -> RealizedStep {
-  RealizedStep {
+fn step_create_if_absent(field: String) -> std.realization.RealizedStep {
+  std.realization.RealizedStep {
     shape: CreateEffect { cause: std.effects.CreateIfAbsent { key_source: std.effects.InputField { field: field } } },
     placement: LocalInProcess,
     materialization: Recompute,
@@ -19,8 +19,8 @@ fn step_create_if_absent(field: String) -> RealizedStep {
   }
 }
 
-fn step_post_always() -> RealizedStep {
-  RealizedStep {
+fn step_post_always() -> std.realization.RealizedStep {
+  std.realization.RealizedStep {
     shape: CreateEffect { cause: PostAlways },
     placement: LocalInProcess,
     materialization: Recompute,

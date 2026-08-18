@@ -39,7 +39,7 @@ type RuntimeValueCodec
   | SignedI32Le
 
 type HostTransportDescriptor {
-  identity: Symbol
+  identity: v2.std.node.Symbol
   workspace: List<WorkspaceFile>
   build: List<ProcessInvocation>
   run: ProcessInvocation

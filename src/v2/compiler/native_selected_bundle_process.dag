@@ -11,7 +11,7 @@ type NativeSelectedBundleProcessSpec {
   selected_count: Int
   bundle_count: Int
   shard_count: Int
-  files: List<MaterializedWorkspaceFile>
+  files: List<v2.std.host_transport.MaterializedWorkspaceFile>
   build: List<List<String>>
   run: List<String>
   expected_stdout_octets: List<Int>

@@ -3,49 +3,49 @@ module gunbc.host_effect
 
 type HostEffect =
     ShellCommand { script: String }
-  | RedfishAction { action: RedfishSystemAction }
-  | ConvergePlan { policy: HostConverge }
+  | RedfishAction { action: extdeps.bmc.types.RedfishSystemAction }
+  | ConvergePlan { policy: gunbc.host_converge.HostConverge }
   | OsInstallActuatorToolchainEnsure {}
-  | ProvisionBuildCache { catalog_id: CacheInterfaceId }
+  | ProvisionBuildCache { catalog_id: std.cache_identity.CacheInterfaceId }
   | ProvisionCodexRuntime {}
-  | SetHostnameCas { hostnamectl_path: NonEmptyStr, base: DnsLabel, desired: DnsLabel }
-  | ReadEffectivePosixPrincipal { read: EffectivePosixPrincipalRead }
-  | SudoNopasswdExecuteProbe { probe: SudoNopasswdExecuteProbeShape }
-  | SudoNopasswdGrantListProbe { probe: SudoNopasswdGrantListProbeShape }
+  | SetHostnameCas { hostnamectl_path: std.types.NonEmptyStr, base: extdeps.dns.domain_name.DnsLabel, desired: extdeps.dns.domain_name.DnsLabel }
+  | ReadEffectivePosixPrincipal { read: extdeps.access.posix_effective_principal.EffectivePosixPrincipalRead }
+  | SudoNopasswdExecuteProbe { probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdExecuteProbeShape }
+  | SudoNopasswdGrantListProbe { probe: extdeps.sudo.nopasswd_execute_probe.SudoNopasswdGrantListProbeShape }
   | Srv3InstallMediaFetch
   | Srv3SeededInstallMediaRemaster
   | Srv3SeededInstallMediaToolchainEnsure
   | Srv3BmcwebSessionLogin
   | Srv3BmcwebTokenExtract
   | Srv3NbdProxyServe {
-      intent: NbdProxyServeTransportIntent,
-      lease_key: NonEmptyStr,
+      intent: extdeps.bmc.webui.nbd_proxy_serve.NbdProxyServeTransportIntent,
+      lease_key: std.types.NonEmptyStr,
     }
   | CodexSupervisedWorkerTurn {
-      intent: CodexAppServerStdioSessionIntent,
-      lease_key: NonEmptyStr,
+      intent: extdeps.llm.codex_app_server_stdio_session.CodexAppServerStdioSessionIntent,
+      lease_key: std.types.NonEmptyStr,
     }
   | Srv3BootOnceReadBackSleep
   | Srv3ReceiptEmit { lines: List<String> }
   | HostIdentityShortHostnameRead
-  | LiveDeployApply { spec: DeploymentSpec, candidate: CandidateRelease }
-  | LiveDeployRetract { spec: DeploymentSpec }
-  | LiveDeployEnsureDependency { dep: DeploymentDependencyStep }
+  | LiveDeployApply { spec: gunbc.live_deploy.spec.DeploymentSpec, candidate: gunbc.live_deploy.candidate.CandidateRelease }
+  | LiveDeployRetract { spec: gunbc.live_deploy.spec.DeploymentSpec }
+  | LiveDeployEnsureDependency { dep: gunbc.live_deploy.spec.DeploymentDependencyStep }
   | LiveDeployDigestReadback { port: Int }
   | DeployAccessPreflight {}
-  | EnsureActionsRunnerRelease { runner_release: ActionsRunnerRelease }
-  | EnsureRunnerSlotDirectory { slot: RunnerSlotIdentity, artifact: ActionsRunnerBinaryArtifact }
-  | EnsureRunnerJitWrapper { host_label: NonEmptyStr }
-  | EnsureRunnerSystemdTemplate { host_label: NonEmptyStr }
-  | EnsureRunnerMemoryCaps { slot: RunnerSlotIdentity }
-  | ActivateRunnerSlot { slot: RunnerSlotIdentity }
-  | ReplaceRunnerIncarnation { from: LocalRunnerSlotIncarnation, cause: RunnerReplacementCause }
-  | ObserveRunnerLocalState { slot: RunnerSlotIdentity }
-  | ObserveGitHubRunnerRegistration { slot: RunnerSlotIdentity, organization: NonEmptyStr }
+  | EnsureActionsRunnerRelease { runner_release: extdeps.github.actions_runner.ActionsRunnerRelease }
+  | EnsureRunnerSlotDirectory { slot: gunbc.build_cache_instance.RunnerSlotIdentity, artifact: extdeps.github.actions_runner.ActionsRunnerBinaryArtifact }
+  | EnsureRunnerJitWrapper { host_label: std.types.NonEmptyStr }
+  | EnsureRunnerSystemdTemplate { host_label: std.types.NonEmptyStr }
+  | EnsureRunnerMemoryCaps { slot: gunbc.build_cache_instance.RunnerSlotIdentity }
+  | ActivateRunnerSlot { slot: gunbc.build_cache_instance.RunnerSlotIdentity }
+  | ReplaceRunnerIncarnation { from: gunbc.runner_incarnation.LocalRunnerSlotIncarnation, cause: gunbc.runner_lifecycle.RunnerReplacementCause }
+  | ObserveRunnerLocalState { slot: gunbc.build_cache_instance.RunnerSlotIdentity }
+  | ObserveGitHubRunnerRegistration { slot: gunbc.build_cache_instance.RunnerSlotIdentity, organization: std.types.NonEmptyStr }
 
 type NodeControlPlane =
-    HostOs { node: ComputeHost }
-  | BmcController { node: ComputeHost }
+    HostOs { node: gunbc.fleet_intent.ComputeHost }
+  | BmcController { node: gunbc.fleet_intent.ComputeHost }
 
 type Drive = OneShot | ConvergeLoop
 
@@ -80,8 +80,8 @@ type ThinInvocation {
 // roadmap_dashboard_instance_apply, host_reach_identity_probe, fleet_receipt_collector.
 type HostEffectTransport =
     LocalShell
-  | SshShell { ssh_host: NonEmptyStr }
-  | FleetSsh { target: SshTarget, context: FleetSshExecutionContext }
+  | SshShell { ssh_host: std.types.NonEmptyStr }
+  | FleetSsh { target: gunbc.fleet_known_hosts_anchor.SshTarget, context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext }
   | EmitArtifactThenThinRun { bootstrap: BootstrapFragment, invocation: ThinInvocation }
 
 // THE FLEETSSH LEAF FRONTIER. A leaf that BUILDS an invocation cannot be migrated by routing FleetSsh
@@ -145,9 +145,9 @@ data thin_invocation_argv_carrier_scaffold: Disposition = Scaffold {
 type HostEffectIntent {
   target: NodeControlPlane
   effect: HostEffect
-  evidence: IdempotencyEvidence
+  evidence: std.effects.IdempotencyEvidence
   transport: HostEffectTransport
-  privilege_denial: AccessDecision?
+  privilege_denial: std.access.AccessDecision?
 }
 
 type HostEffectEvidence =

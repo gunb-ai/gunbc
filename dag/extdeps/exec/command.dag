@@ -14,7 +14,7 @@ type ArgvCommand {
 
 type CommandTransport
   = LocalExec
-  | SshExec { ssh_target: NonEmptyStr }
+  | SshExec { ssh_target: std.types.NonEmptyStr }
 
 data sshpass_authority: ExternalAuthority = ExternalAuthority {
   uri: Uri {

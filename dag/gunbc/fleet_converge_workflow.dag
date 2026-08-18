@@ -14,8 +14,8 @@ fn gunbc_fleet_converge_build_job_backstop_timeout_minutes() -> Int {
   gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
 }
 
-fn fleet_converge_build_job() -> Job {
-  Job {
+fn fleet_converge_build_job() -> extdeps.github.actions.Job {
+  extdeps.github.actions.Job {
     id: "build",
     name: none,
     runner: gunbc_ci_runner_spec(),
@@ -34,7 +34,7 @@ fn fleet_converge_build_job() -> Job {
   }
 }
 
-fn fleet_converge_host_pinned_runner_spec() -> RunnerSpec {
+fn fleet_converge_host_pinned_runner_spec() -> extdeps.github.actions.RunnerSpec {
   RunsOnExpression { expression: fleet_converge_host_runner_expression }
 }
 
@@ -44,7 +44,7 @@ data fleet_converge_spark_linger_step_if: String = "github.event.inputs.mode == 
 
 data fleet_converge_spark_observe_step_if: String = "github.event.inputs.mode == 'spark_observe'"
 
-fn fleet_converge_plan_upload_step() -> Step {
+fn fleet_converge_plan_upload_step() -> extdeps.github.actions.Step {
   UsesStep {
     name: Present { value: "Upload fleet converge plan artifact" },
     id: Present { value: "plan_upload" },
@@ -65,7 +65,7 @@ fn fleet_converge_plan_upload_step() -> Step {
   }
 }
 
-fn fleet_converge_plan_download_step() -> Step {
+fn fleet_converge_plan_download_step() -> extdeps.github.actions.Step {
   UsesStep {
     name: Present { value: "Download fleet converge plan artifact" },
     id: Present { value: "plan_download" },
@@ -85,7 +85,7 @@ fn fleet_converge_plan_download_step() -> Step {
   }
 }
 
-fn fleet_converge_plan_step() -> Step {
+fn fleet_converge_plan_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: "Fleet converge plan (membership_reconcile → artifact)" },
     id: Present { value: "plan" },
@@ -99,7 +99,7 @@ fn fleet_converge_plan_step() -> Step {
   }
 }
 
-fn fleet_converge_apply_step() -> Step {
+fn fleet_converge_apply_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: "Fleet converge apply (CAS + generated apply.sh)" },
     id: Present { value: "apply" },
@@ -120,7 +120,7 @@ fn fleet_converge_apply_step() -> Step {
   }
 }
 
-fn fleet_converge_spark_linger_step() -> Step {
+fn fleet_converge_spark_linger_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: "Spark serving linger converge (executor→target FleetSsh typed argv)" },
     id: Present { value: "spark_linger" },
@@ -139,7 +139,7 @@ fn fleet_converge_spark_linger_step() -> Step {
   }
 }
 
-fn fleet_converge_spark_observe_step() -> Step {
+fn fleet_converge_spark_observe_step() -> extdeps.github.actions.Step {
   RunStep {
     name: Present { value: "Spark serving observation (read-only: unit state, runtime version, model tags, driver)" },
     id: Present { value: "spark_observe" },
@@ -155,12 +155,12 @@ fn fleet_converge_spark_observe_step() -> Step {
 
 data fleet_converge_consumer_prelude_note: String = "Plain fetch-depth-0 checkout only — this workflow has no workflow_dispatch expected_healed_sha input (unlike ci.yml heal revalidation). ci_artifact_consumer_prelude_steps paste-through would reference an undeclared input and emit a dormant preflight guard."
 
-fn fleet_converge_consumer_prelude_steps() -> List<Step> {
+fn fleet_converge_consumer_prelude_steps() -> List<extdeps.github.actions.Step> {
   [ci_checkout_step()]
 }
 
-fn fleet_converge_job() -> Job {
-  Job {
+fn fleet_converge_job() -> extdeps.github.actions.Job {
+  extdeps.github.actions.Job {
     id: "fleet-converge",
     name: none,
     runner: fleet_converge_host_pinned_runner_spec(),
@@ -192,7 +192,7 @@ fn fleet_converge_job() -> Job {
     continue_on_error: none,
     concurrency: none,
     permissions: Present {
-      value: WorkflowPermissions {
+      value: extdeps.github.actions.WorkflowPermissions {
         contents: Present { value: PermRead },
         pull_requests: none,
         issues: none,
@@ -203,40 +203,40 @@ fn fleet_converge_job() -> Job {
   }
 }
 
-data fleet_converge_workflow: Workflow = Workflow {
+data fleet_converge_workflow: extdeps.github.actions.Workflow = extdeps.github.actions.Workflow {
   name: "fleet-converge",
   on: [
     WorkflowDispatch {
       inputs: [
-        DispatchInput {
+        extdeps.github.actions.DispatchInput {
           name: "host",
           description: Present { value: "Executor fleet host (runner pinned here; plan mode observes this host)" },
           required: true,
           default: none,
           type: InputChoice { options: fleet_converge_enrolled_host_options },
         },
-        DispatchInput {
+        extdeps.github.actions.DispatchInput {
           name: "mode",
           description: Present { value: "plan shows membership hunks; apply executes a prior plan artifact; spark_linger enables linger on target spark via FleetSsh typed argv from executor; spark_observe is a read-only observation of both Sparks" },
           required: true,
           default: none,
           type: InputChoice { options: fleet_converge_mode_options },
         },
-        DispatchInput {
+        extdeps.github.actions.DispatchInput {
           name: "target",
           description: Present { value: "Spark target host for spark_linger mode (srv5 or srv6)" },
           required: false,
           default: none,
           type: InputChoice { options: fleet_converge_spark_target_options },
         },
-        DispatchInput {
+        extdeps.github.actions.DispatchInput {
           name: "plan_artifact_hash",
           description: Present { value: "Fnv1a64Structural bundle digest of plan.txt + apply.sh + spark_serving_typed_actions.wire — required for apply (printed by plan step). A plan artifact minted before the typed-actions wire joined the bundle will not match." },
           required: false,
           default: none,
           type: InputString,
         },
-        DispatchInput {
+        extdeps.github.actions.DispatchInput {
           name: "plan_workflow_run_id",
           description: Present { value: "Workflow run id that produced the plan artifact — required for apply" },
           required: false,

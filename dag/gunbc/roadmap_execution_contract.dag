@@ -194,7 +194,7 @@ fn dispatch_required_capabilities(
 
 fn gunbc_claim_execution_contract(
   entry: std.types.FilePath,
-  function: NonEmptyStr,
+  function: std.types.NonEmptyStr,
 ) -> WorkItemExecutionContract {
   ExecutionContract {
     validations: [
@@ -208,7 +208,7 @@ fn gunbc_claim_execution_contract(
 }
 
 fn cargo_test_execution_contract(
-  filter: NonEmptyStr,
+  filter: std.types.NonEmptyStr,
 ) -> WorkItemExecutionContract {
   ExecutionContract {
     validations: [CargoTestValidation { filter: filter }],
@@ -241,7 +241,7 @@ fn validation_operation_command(
       ) {
         Present { value: realization } =>
           Present { value: ModeledValidationCommand {
-            label: "gunbc-claim" as NonEmptyStr,
+            label: "gunbc-claim" as std.types.NonEmptyStr,
             program: realization.executable,
             args: [
               "run",
@@ -261,7 +261,7 @@ fn validation_operation_command(
       ) {
         Present { value: realization } =>
           Present { value: ModeledValidationCommand {
-            label: "cargo-test" as NonEmptyStr,
+            label: "cargo-test" as std.types.NonEmptyStr,
             program: realization.executable,
             args: ["test", filter as String],
           } }
@@ -274,7 +274,7 @@ fn validation_operation_command(
       ) {
         Present { value: realization } =>
           Present { value: ModeledValidationCommand {
-            label: "cargo-fmt" as NonEmptyStr,
+            label: "cargo-fmt" as std.types.NonEmptyStr,
             program: realization.executable,
             args: ["fmt", "--all", "--check"],
           } }

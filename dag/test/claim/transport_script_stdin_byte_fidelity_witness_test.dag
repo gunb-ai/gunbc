@@ -30,7 +30,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 fn stdin_exact_bytes(body: String) -> String {
   let script = retained_runtime(
     body: body,
-    reason: "witness: TransportScript stdin byte fidelity through the production bridge" as NonEmptyStr,
+    reason: "witness: TransportScript stdin byte fidelity through the production bridge" as std.types.NonEmptyStr,
   )
   shell.Exec.Run(script: script).stdout
 }

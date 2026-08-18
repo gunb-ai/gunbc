@@ -11,7 +11,7 @@ type CrossShardSeamReceipt {
   m_names_class: Bool
 }
 
-fn cross_shard_seam_receipt_from(probe: CrossShardSeamProbeResult) -> CrossShardSeamReceipt {
+fn cross_shard_seam_receipt_from(probe: tools.dag_compile_clean_seam_transport.CrossShardSeamProbeResult) -> CrossShardSeamReceipt {
   CrossShardSeamReceipt {
     probe_ran: probe.probe_ran,
     y_reds: !probe.y_exit_zero,
@@ -35,7 +35,7 @@ fn monolith_control_reds_with_same_diagnostic_class(receipt: CrossShardSeamRecei
   receipt.m_reds && receipt.m_names_class
 }
 
-fn cross_shard_seam_composed_verdict(receipt: CrossShardSeamReceipt) -> CompileCleanShardVerdict {
+fn cross_shard_seam_composed_verdict(receipt: CrossShardSeamReceipt) -> tools.dag_compile_clean_partition.CompileCleanShardVerdict {
   let verdict_y = if shard_y_reds(receipt: receipt) {
     ShardFailed { entry_path: cross_shard_seam_importee_entry_path }
   } else {

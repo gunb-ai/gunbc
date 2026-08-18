@@ -1,15 +1,15 @@
 module v2.lens.subsumption
 
 type DiffId {
-  id: Symbol
+  id: v2.std.node.Symbol
 }
 
 type TestClaimId {
-  id: Symbol
+  id: v2.std.node.Symbol
 }
 
 type ProducerStageId {
-  id: Symbol
+  id: v2.std.node.Symbol
 }
 
 type SubsumptionVerification

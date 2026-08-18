@@ -43,7 +43,7 @@ fn compose_compile_clean_shard_verdicts(
   )
 }
 
-fn compile_clean_shard_verdict_to_reduce(v: CompileCleanShardVerdict) -> ReduceVerdict {
+fn compile_clean_shard_verdict_to_reduce(v: CompileCleanShardVerdict) -> std.reducible.ReduceVerdict {
   match v {
     ShardClean => Reduced { last_parts: 0 }
     ShardFailed { entry_path: p } => Irreducible { witness: p }
@@ -58,7 +58,7 @@ fn compile_clean_shard_verdict_list_nonempty(
 
 fn compose_compile_clean_shard_verdicts_as_reduce(
   verdicts: List<CompileCleanShardVerdict>
-) -> ReduceVerdict {
+) -> std.reducible.ReduceVerdict {
   if compile_clean_shard_verdict_list_nonempty(xs: verdicts) {
     compile_clean_shard_verdict_to_reduce(
       v: compose_compile_clean_shard_verdicts(verdicts: verdicts)

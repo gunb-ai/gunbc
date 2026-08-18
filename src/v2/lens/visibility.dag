@@ -2,14 +2,14 @@ module v2.lens.visibility
 
 
 type ModuleVisibilityFact {
-  module: QualifiedName
+  module: v2.std.qualified_name.QualifiedName
   public: Bool
-  imports: List<QualifiedName>
+  imports: List<v2.std.qualified_name.QualifiedName>
 }
 
 type VisibilityLeak {
-  importer: QualifiedName
-  imported: QualifiedName
+  importer: v2.std.qualified_name.QualifiedName
+  imported: v2.std.qualified_name.QualifiedName
 }
 
 data no_visibility_leaks: List<VisibilityLeak> = []

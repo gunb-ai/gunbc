@@ -60,16 +60,16 @@ type DeployStage {
   entry: String
   function: String
   needs: List<String>
-  access: DeployAccess
-  runner: RunnerSpec
+  access: gunbc.ci_deploy_access.DeployAccess
+  runner: extdeps.github.actions.RunnerSpec
 }
 
 data ci_spec_witness_entries_note: String = "witness_entries is the opt-in CI witness roster (operator inversion 2026-07-04): declared CommitWitnessClaim rows on the GithubActionsCiJob surface (see ci_witness_optin_inversion in gunbc.commit_workflow), projected as explicit entries. Since the discovery flip (see ci_spec_discovery_flip_note) the roster is no longer the only witness source: discovery_scan_dirs re-admits the tree-wide corpus, WHOLE — the three ordinary corpus batches carry SelectionOff as of 2026-08-13 — that authority note lived at v2.workflow.ci_floor_plan corpus_selection_off_note and was DELETED with the floor cut (2026-08-15), so the citation is retained as history rather than as a live pointer; the property it recorded now holds BY CONSTRUCTION in the replacement, which has no selection flag to set (gunbc.witness_floor_workflow, and the CI rung drop in DESIGN). The roster remains the home for rows that must run as declared explicit entries (execution-kind rows with their own resource profile). Empty witness_entries AND empty discovery_scan_dirs means the plan carries no witness-corpus node at all (the regen spec's shape)."
 
 data ci_spec_discovery_flip_note: String = "SUPERSEDED IN ITS OPERATIVE HALF 2026-08-13, AND ITS AUTHORITY DELETED 2026-08-15: the corpus batch carried SelectionOff (v2.workflow.ci_floor_plan corpus_selection_off_note — that module is deleted by the floor cut, so this names history, not a live symbol), so a PR and a main push both ran the tree-wide witness corpus WHOLE; the replacement preserves that whole-roster property by construction rather than by a flag. The shrink this note was written to describe is gone; the enrollment half it also describes — discovery_scan_dirs being the roster source at all, rather than a fixed opt-in list — still stands and is why the row survives instead of being deleted. Read the rest as the history of how the roster came to be discovered, not as the live selection policy.\n\nAS ORIGINALLY WRITTEN (affected-set enrollment flip, operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10 after the operator's direct go, merged onto the resolve-receipt-gate era): the ci floor's corpus batch scans these dirs (plus the source-root *_test.dag walk) with SelectionApplied, so a PR runs the tree-wide witness corpus SHRUNK to the diff's affected set instead of the fixed opt-in roster. Rationale accepted: at flip authoring per-PR coverage was 8 of ~1721 discoverable witnesses, so a selection miss (skipped-but-affected witness) is bounded by the status quo - the witness would not have run at all - while the nightly affected-set-falsifier keeps running the full corpus cold with predictions recorded, so any missing selection edge still surfaces as a counted divergence within one cadence window. Selection stays fail-closed per the PR-A rulings (a provenance gap refuses, never widens; host-scaffold/live-tree rows never predict-skip). The 8-clean-window falsifier criterion continues to govern the falsifier's own retirement, not this flip. Empty list = no discovery (the regen spec, and synthetic test specs exercising pure roster machinery)."
 type CiSpec {
-  gates: List<Gate>
-  witness_entries: List<ScheduleWitnessEntry>
+  gates: List<gunbc.ci_gate.Gate>
+  witness_entries: List<std.realization_schedule.ScheduleWitnessEntry>
   discovery_scan_dirs: List<String>
   diff_policy: DiffPolicy
   notice_title: String

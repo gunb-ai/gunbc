@@ -3,8 +3,8 @@ module test.claim.claim_indexed_evidence_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn provider_evidence_fixture() -> ProviderInstance {
-  ProviderInstance {
+fn provider_evidence_fixture() -> extdeps.llm.cli_lifecycle.ProviderInstance {
+  extdeps.llm.cli_lifecycle.ProviderInstance {
     kind: CodexCliProvider,
     host: ProviderInstanceFieldUnobserved {
       reason: "claim-evidence fixture",
@@ -25,11 +25,11 @@ fn provider_evidence_fixture() -> ProviderInstance {
   }
 }
 
-data provider_evidence_bound: RunKey = "provider-attempt-1"
-data provider_other_evidence_bound: RunKey = "provider-attempt-2"
+data provider_evidence_bound: std.types.RunKey = "provider-attempt-1"
+data provider_other_evidence_bound: std.types.RunKey = "provider-attempt-2"
 
 data source_binding_fixture_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
-  source: Medium {
+  source: extdeps.communication.medium.Medium {
     carried: "module claim.evidence.source\nfn foo() -> Bool { true }\nfn caller() -> Bool { foo() }",
     fidelity: Lossless,
   },
@@ -42,15 +42,15 @@ data source_binding_fixture_read: v2.compiler.source_authority.DagSourceReadWitn
   source_root: DagTree,
 }
 
-data source_binding_fixture_binding: OccurrenceBinding<std.occurrence_identity.OccurrenceId> = OccurrenceBinding {
-  occurrence: BindingOccurrence {
-    containment: ContainmentPath {
+data source_binding_fixture_binding: OccurrenceBinding<std.occurrence_identity.OccurrenceId> = std.occurrence_binding.OccurrenceBinding {
+  occurrence: std.occurrence_binding.BindingOccurrence {
+    containment: std.occurrence_binding.ContainmentPath {
       ancestors: Empty,
       terminal: std.occurrence_identity.OccurrenceId { value: 2 },
     },
   },
-  candidate: BindingCandidate {
-    containment: ContainmentPath {
+  candidate: std.occurrence_binding.BindingCandidate {
+    containment: std.occurrence_binding.ContainmentPath {
       ancestors: Empty,
       terminal: std.occurrence_identity.OccurrenceId { value: 1 },
     },
@@ -58,11 +58,11 @@ data source_binding_fixture_binding: OccurrenceBinding<std.occurrence_identity.O
 }
 
 fn provider_login_status_fact(
-  id: RecordedFactId,
-) -> RecordedFact<ProviderReadinessObservation> {
-  RecordedFact {
+  id: std.claim_evidence.RecordedFactId,
+) -> RecordedFact<gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation> {
+  std.claim_evidence.RecordedFact {
     id: id,
-    value: ProviderReadinessObservation {
+    value: gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation {
       provider: provider_evidence_fixture(),
       bound: provider_evidence_bound,
       result: ProviderLoginCredentialRecorded {
@@ -73,12 +73,12 @@ fn provider_login_status_fact(
 }
 
 fn provider_live_request_failed_fact(
-  id: RecordedFactId,
-  reason: NonEmptyStr,
-) -> RecordedFact<ProviderReadinessObservation> {
-  RecordedFact {
+  id: std.claim_evidence.RecordedFactId,
+  reason: std.types.NonEmptyStr,
+) -> RecordedFact<gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation> {
+  std.claim_evidence.RecordedFact {
     id: id,
-    value: ProviderReadinessObservation {
+    value: gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation {
       provider: provider_evidence_fixture(),
       bound: provider_evidence_bound,
       result: ProviderLiveRefreshRefused { reason: reason },
@@ -87,11 +87,11 @@ fn provider_live_request_failed_fact(
 }
 
 fn provider_live_request_succeeded_fact(
-  id: RecordedFactId,
-) -> RecordedFact<ProviderReadinessObservation> {
-  RecordedFact {
+  id: std.claim_evidence.RecordedFactId,
+) -> RecordedFact<gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation> {
+  std.claim_evidence.RecordedFact {
     id: id,
-    value: ProviderReadinessObservation {
+    value: gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation {
       provider: provider_evidence_fixture(),
       bound: provider_evidence_bound,
       result: ProviderLiveModelResponseReceived {
@@ -143,7 +143,7 @@ test fn witness_login_status_does_not_promote_provider_readiness() -> Bool {
     assessment: ready_assessment,
   )
   let readiness = claim_readiness_assessment(
-    policy: ClaimReadinessPolicy {
+    policy: std.claim_evidence.ClaimReadinessPolicy {
       first_required: ready_claim,
       remaining_required: [],
       evidence_admission: provider_readiness_evidence_admission_policy(),
@@ -159,9 +159,9 @@ test fn witness_login_status_does_not_promote_provider_readiness() -> Bool {
 
 test fn witness_provider_adapter_cannot_manufacture_live_success_from_login_status() -> Bool {
   let provider = provider_evidence_fixture()
-  let login_claiming_authenticated = RecordedFact {
+  let login_claiming_authenticated = std.claim_evidence.RecordedFact {
     id: "provider-login-status-cannot-be-live-success",
-    value: ProviderReadinessObservation {
+    value: gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation {
       provider: provider,
       bound: provider_evidence_bound,
       result: ProviderLoginCredentialRecorded {
@@ -283,7 +283,7 @@ test fn witness_split_support_and_challenge_assessments_stay_blocking() -> Bool 
     bound: provider_evidence_bound,
   )
   let readiness = claim_readiness_assessment(
-    policy: ClaimReadinessPolicy {
+    policy: std.claim_evidence.ClaimReadinessPolicy {
       first_required: ready_claim,
       remaining_required: [],
       evidence_admission: provider_readiness_evidence_admission_policy(),
@@ -320,20 +320,20 @@ test fn witness_forged_support_metadata_cannot_satisfy_readiness() -> Bool {
     direction: EvidenceSupports,
     inference_rule: "provider-live-request-succeeded",
     authority: extdeps_external_authority_anchor,
-    provenance: EvidenceProvenance {
+    provenance: std.claim_evidence.EvidenceProvenance {
       entity: "unrecognized-provider-output",
       activity: "unrecognized-provider-operation",
       agent: "unrecognized-provider-agent",
     },
-    freshness: EvidenceFreshness {
+    freshness: std.claim_evidence.EvidenceFreshness {
       maximum_conclusion: required,
       basis: "caller-authored cross-attempt claim",
     },
-    fidelity: EvidenceFidelity {
+    fidelity: std.claim_evidence.EvidenceFidelity {
       boundary: ProviderAuthenticated,
       losses: ["the response was not independently classified"],
     },
-    probe: ReadBackProbe {
+    probe: gunbc.readback_independence.ReadBackProbe {
       label: "ensure provider then claim success",
       subject: "provider authentication",
       effect_on_subject: ProbeMayEstablish {
@@ -342,7 +342,7 @@ test fn witness_forged_support_metadata_cannot_satisfy_readiness() -> Bool {
     },
   )
   let readiness = claim_readiness_assessment(
-    policy: ClaimReadinessPolicy {
+    policy: std.claim_evidence.ClaimReadinessPolicy {
       first_required: required,
       remaining_required: [],
       evidence_admission: provider_readiness_evidence_admission_policy(),
@@ -358,11 +358,11 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
     provider: provider,
     bound: provider_evidence_bound,
   )
-  let fact = RecordedFact {
+  let fact = std.claim_evidence.RecordedFact {
     id: "self-establishing-provider-probe",
     value: ProviderCredentialsRecordedUnverified,
   }
-  let probe = ReadBackProbe {
+  let probe = gunbc.readback_independence.ReadBackProbe {
     label: "ensure credentials then report status",
     subject: "credential material is recorded",
     effect_on_subject: ProbeMayEstablish {
@@ -374,16 +374,16 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
     direction: EvidenceSupports,
     inference_rule: "self-establishing-provider-probe",
     authority: codex_cli_auth_external_authority,
-    provenance: EvidenceProvenance {
+    provenance: std.claim_evidence.EvidenceProvenance {
       entity: "self-establishing-provider-output",
       activity: "ensure-then-read",
       agent: "fixture-provider-cli",
     },
-    freshness: EvidenceFreshness {
+    freshness: std.claim_evidence.EvidenceFreshness {
       maximum_conclusion: claim,
       basis: "same fixture attempt",
     },
-    fidelity: EvidenceFidelity {
+    fidelity: std.claim_evidence.EvidenceFidelity {
       boundary: ProviderCredentialsRecordedUnverified,
       losses: [],
     },
@@ -394,16 +394,16 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
     direction: EvidenceChallenges,
     inference_rule: "self-establishing-provider-probe",
     authority: codex_cli_auth_external_authority,
-    provenance: EvidenceProvenance {
+    provenance: std.claim_evidence.EvidenceProvenance {
       entity: "self-establishing-provider-output",
       activity: "ensure-then-read",
       agent: "fixture-provider-cli",
     },
-    freshness: EvidenceFreshness {
+    freshness: std.claim_evidence.EvidenceFreshness {
       maximum_conclusion: claim,
       basis: "same fixture attempt",
     },
-    fidelity: EvidenceFidelity {
+    fidelity: std.claim_evidence.EvidenceFidelity {
       boundary: ProviderCredentialsRecordedUnverified,
       losses: [],
     },
@@ -416,9 +416,9 @@ test fn witness_self_establishing_positive_is_insufficient_but_negative_survives
 }
 
 test fn witness_kvm_login_prompt_does_not_invent_completed_install() -> Bool {
-  let target = "claim-evidence-host" as HostIdentity
-  let bound = "os-install-attempt-1" as RunKey
-  let attestation = KvmOperatorAttestation {
+  let target = "claim-evidence-host" as product.placement_supply.HostIdentity
+  let bound = "os-install-attempt-1" as std.types.RunKey
+  let attestation = gunbc.os_install_deduction.KvmOperatorAttestation {
     target: target,
     observed_screen: LoginPrompt,
     observed_at: "2026-07-28T18:00:00Z",
@@ -459,8 +459,8 @@ test fn witness_kvm_login_prompt_does_not_invent_completed_install() -> Bool {
 }
 
 test fn witness_source_capture_does_not_invent_admission() -> Bool {
-  let bound = "source-attempt-1" as RunKey
-  let fact = SourceBindingFact {
+  let bound = "source-attempt-1" as std.types.RunKey
+  let fact = gunbc.source_integration_claim_evidence.SourceBindingFact {
     bound: bound,
     source_read: source_binding_fixture_read,
     binding: source_binding_fixture_binding,

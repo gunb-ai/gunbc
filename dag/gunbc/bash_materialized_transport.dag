@@ -13,7 +13,7 @@ module gunbc.bash_materialized_transport
 // The refusal arm returns Absent rather than an empty script: a plan that refused to materialize has no
 // script, and rendering that as an empty (successfully executing, no-op) one is the fabricated plausible
 // output DESIGN 5 forbids. The caller must match on the absence.
-fn bash_materialized_transport(materialization: EffectPlanBashMaterialization) -> TransportScript? {
+fn bash_materialized_transport(materialization: v2.workflow.effect_plan_bash_materialize.EffectPlanBashMaterialization) -> extdeps.shell.exec.TransportScript? {
   match materialization {
     EffectPlanBashMaterialized { source: source } =>
       Present { value: transport_script_seal(body: source) }

@@ -16,7 +16,7 @@ fn vacuity_consumer_witness_scan_file() -> String {
 
 type VacuitySiteKey {
   file: String,
-  function: Symbol
+  function: v2.std.node.Symbol
 }
 
 fn vacuity_site_key_eq(a: VacuitySiteKey, b: VacuitySiteKey) -> Bool {

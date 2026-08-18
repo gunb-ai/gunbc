@@ -4,7 +4,7 @@ module gunbc.roadmap_dispatch_environment
 data capability_ensure_receipt_decision_note: String = "review 44078. The receipt used to carry the Ensure decision as a raw String (\"noop\" | \"apply\" | \"refuse\") — a closed sum projected through an open carrier, so a fourth spelling was writable and nothing tied the field to the sum it came from. It now carries the UpsertDecision itself, which is the authority ensure_decide already produced, so there is no second sum to keep in step (DESIGN 3); the wire word exists once, at the JSON emit site, through upsert_decision_label."
 
 type CapabilityEnsureReceipt {
-  capability: ExecutionCapability
+  capability: gunbc.roadmap_execution_contract.ExecutionCapability
   capability_label: String
   executable: String
   decision: UpsertDecision<String>

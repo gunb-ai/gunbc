@@ -1,8 +1,8 @@
 module extdeps.boot.freestanding_witness
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "refspecs.linuxfoundation.org/elf/gabi4+/contents.html"
   }
@@ -136,7 +136,7 @@ fn witness_emitted_payload_entry_matches_ehdr() -> Bool {
 fn witness_boot_image_accepts_emitted_init() -> Bool {
   match emit_pixel_writer_payload() {
     EmittedPayload { digest: d, entry: e } =>
-      match accept_linux_x86_boot_image(LinuxX86BootImage {
+      match accept_linux_x86_boot_image(extdeps.boot.linux_x86_boot.LinuxX86BootImage {
         kernel_digest: slice_05_kernel_digest_placeholder,
         cmdline: [],
         init: EmittedPayload { digest: d, entry: e },
@@ -149,7 +149,7 @@ fn witness_boot_image_accepts_emitted_init() -> Bool {
   }
 }
 
-data slice_05_kernel_digest_placeholder: NonEmptyStr = "slice-0.5-kernel-placeholder"
+data slice_05_kernel_digest_placeholder: std.types.NonEmptyStr = "slice-0.5-kernel-placeholder"
 
 fn witness_reencode_preserves_decode() -> Bool {
   let bytes = emit_freestanding_elf64(pixel_writer_code_bytes)

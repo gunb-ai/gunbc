@@ -9,8 +9,8 @@ test fn witness_byte_count_verification_preserves_nonmatching_arms() -> Bool {
       expected: byte_size(4),
     }
     && verify_file_byte_count(
-      read: FileByteCountUnavailable { reason: "wc unavailable" as NonEmptyStr },
+      read: FileByteCountUnavailable { reason: "wc unavailable" as std.types.NonEmptyStr },
       expected: byte_size(4)) == FileByteCountVerificationUnavailable {
-        reason: "wc unavailable" as NonEmptyStr,
+        reason: "wc unavailable" as std.types.NonEmptyStr,
       }
 }

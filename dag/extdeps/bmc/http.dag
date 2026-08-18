@@ -1,16 +1,16 @@
 module extdeps.bmc.http
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "www.dmtf.org/standards/redfish"
   }
 }
 
-data redfish_http_hardwired_transport_dissolution_trigger: Disposition = Scaffold {
+data redfish_http_hardwired_transport_dissolution_trigger: std.disposition.Disposition = Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "extdeps.bmc.http",
     decl_name: "redfish.Http",
     field: WholeDeclaration
@@ -24,7 +24,7 @@ data redfish_http_success_semantics_note: String = "LOAD-BEARING: success:Bool d
 service redfish.Http {
 
   operation GetServiceRoot {
-    input { bmc_host: NonEmptyStr }
+    input { bmc_host: std.types.NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -37,7 +37,7 @@ service redfish.Http {
   }
 
   operation GetSystem {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: Secret }
+    input { bmc_host: std.types.NonEmptyStr, username: std.types.NonEmptyStr, password: Secret }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -50,7 +50,7 @@ service redfish.Http {
   }
 
   operation GetSystemWithNetrc {
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr }
+    input { bmc_host: std.types.NonEmptyStr, netrc_file: std.types.NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -63,7 +63,7 @@ service redfish.Http {
   }
 
   operation GetChassisSensors {
-    input { bmc_host: NonEmptyStr, chassis_id: NonEmptyStr, netrc_file: NonEmptyStr }
+    input { bmc_host: std.types.NonEmptyStr, chassis_id: std.types.NonEmptyStr, netrc_file: std.types.NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -76,7 +76,7 @@ service redfish.Http {
   }
 
   operation GetPower {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: Secret }
+    input { bmc_host: std.types.NonEmptyStr, username: std.types.NonEmptyStr, password: Secret }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -89,7 +89,7 @@ service redfish.Http {
   }
 
   operation GetThermal {
-    input { bmc_host: NonEmptyStr, username: NonEmptyStr, password: Secret }
+    input { bmc_host: std.types.NonEmptyStr, username: std.types.NonEmptyStr, password: Secret }
     output { body: String from "stdout", success: Bool from "exit_success" }
     readonly
     transport shell {
@@ -102,7 +102,7 @@ service redfish.Http {
   }
 
   operation SetAccountPassword {
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, account_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    input { bmc_host: std.types.NonEmptyStr, netrc_file: std.types.NonEmptyStr, account_id: std.types.NonEmptyStr, request_body_file: std.types.NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
       argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "PATCH", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "https://{bmc_host}/redfish/v1/AccountService/Accounts/{account_id}"]
@@ -114,7 +114,7 @@ service redfish.Http {
   }
 
   operation SetBootSourceOverride {
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    input { bmc_host: std.types.NonEmptyStr, netrc_file: std.types.NonEmptyStr, system_id: std.types.NonEmptyStr, request_body_file: std.types.NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
       argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "PATCH", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "https://{bmc_host}/redfish/v1/Systems/{system_id}"]
@@ -126,7 +126,7 @@ service redfish.Http {
   }
 
   operation ResetSystem {
-    input { bmc_host: NonEmptyStr, netrc_file: NonEmptyStr, system_id: NonEmptyStr, request_body_file: NonEmptyStr }
+    input { bmc_host: std.types.NonEmptyStr, netrc_file: std.types.NonEmptyStr, system_id: std.types.NonEmptyStr, request_body_file: std.types.NonEmptyStr }
     output { body: String from "stdout", success: Bool from "exit_success" }
     transport shell {
       argv: ["curl", "--fail-with-body", "-sS", "-k", "--netrc-file", "{netrc_file}", "-X", "POST", "-H", "Content-Type: application/json", "--data", "@{request_body_file}", "https://{bmc_host}/redfish/v1/Systems/{system_id}/Actions/ComputerSystem.Reset"]

@@ -34,16 +34,16 @@ test fn witness_real_corpus_entry_produces_typed_standing() -> Bool {
   (label != "") && (label != "read")
 }
 
-fn ka_read(text: String, id: Symbol, path: String) -> DagSourceReadWitness {
-  DagSourceReadWitness {
-    source: Medium { carried: text, fidelity: Lossless },
-    artifact: Artifact { kind: SourceFile, id: id, file_path: path },
+fn ka_read(text: String, id: v2.std.node.Symbol, path: String) -> v2.compiler.source_authority.DagSourceReadWitness {
+  v2.compiler.source_authority.DagSourceReadWitness {
+    source: extdeps.communication.medium.Medium { carried: text, fidelity: Lossless },
+    artifact: v2.std.artifact.Artifact { kind: SourceFile, id: id, file_path: path },
     compilation_unit: ^ka_unit,
     source_root: v2.std.cross_tree.import_model.V2Tree
   }
 }
 
-fn ka_two_module_ingest() -> SourceRootIngest {
+fn ka_two_module_ingest() -> v2.compiler.source_authority.SourceRootIngest {
   Cons {
     head: ka_read(text: "module ka_importee\n\nfn helper(x: Int) -> Int { x + 1 }\n", id: ^ka_importee_art, path: "src/v2/test/fixture/ka_importee.dag"),
     tail: Cons {
@@ -53,11 +53,11 @@ fn ka_two_module_ingest() -> SourceRootIngest {
   }
 }
 
-fn ka_admission() -> Admission {
-  Admission {
-    subject: ResolutionSubject { name: Cons { head: ^ka_importer, tail: Empty } },
+fn ka_admission() -> v2.compiler.name_resolve.Admission {
+  v2.compiler.name_resolve.Admission {
+    subject: v2.compiler.name_resolve.ResolutionSubject { name: Cons { head: ^ka_importer, tail: Empty } },
     imports: Cons {
-      head: Import { target: Cons { head: ^ka_importee, tail: Empty }, visibility: ImportVisible },
+      head: v2.compiler.name_resolve.Import { target: Cons { head: ^ka_importee, tail: Empty }, visibility: ImportVisible },
       tail: Empty
     }
   }

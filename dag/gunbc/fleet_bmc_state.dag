@@ -73,22 +73,22 @@ data srv4_bmc_fan_durability_admission: BmcFanDurabilityAdmission = bmc_fan_poli
 type BmcFanDurabilityEvidenceConstructionRefusal
   = DurabilityReceiptDigestMismatch
   | DurabilityReceiptBoundaryMismatch {
-      reset_type: RedfishResetType,
+      reset_type: extdeps.bmc.types.RedfishResetType,
     }
   | DurabilityReceiptNonPositiveInterval {
-      cause: PositiveMeasureCountNonPositive,
+      cause: std.measure.PositiveMeasureCountNonPositive,
     }
 
 type BmcFanDurabilityEvidenceConstruction
-  = BmcFanDurabilityEvidenceBuilt { evidence: BmcFanDurabilityEvidence }
+  = BmcFanDurabilityEvidenceBuilt { evidence: gunbc.bmc_fan_projection.BmcFanDurabilityEvidence }
   | BmcFanDurabilityEvidenceConstructionRefused {
       cause: BmcFanDurabilityEvidenceConstructionRefusal,
     }
 
 type BmcFanRebootTimingBuilt {
-  started_after_before_readback: PositiveMillisecond
-  duration: PositiveMillisecond
-  observed_after_perturbation_completion: PositiveMillisecond
+  started_after_before_readback: std.measure.PositiveMillisecond
+  duration: std.measure.PositiveMillisecond
+  observed_after_perturbation_completion: std.measure.PositiveMillisecond
 }
 
 type BmcFanRebootTimingReceipt

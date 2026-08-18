@@ -2,39 +2,39 @@ module extdeps.runtime.syscalls.linux
 
 
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "github.com/torvalds/linux/blob/v6.8/arch/x86/entry/syscalls/syscall_64.tbl"
   }
 }
 
-data sys_read: SyscallEntry   = SyscallEntry { number: 0,  name: "read",   arg_count: 3 }
-data sys_write: SyscallEntry  = SyscallEntry { number: 1,  name: "write",  arg_count: 3 }
-data sys_mmap: SyscallEntry   = SyscallEntry { number: 9,  name: "mmap",   arg_count: 6 }
-data sys_execve: SyscallEntry = SyscallEntry { number: 59, name: "execve", arg_count: 3 }
-data sys_exit: SyscallEntry   = SyscallEntry { number: 60, name: "exit",   arg_count: 1 }
+data sys_read: std.os.invocation.SyscallEntry   = std.os.invocation.SyscallEntry { number: 0,  name: "read",   arg_count: 3 }
+data sys_write: std.os.invocation.SyscallEntry  = std.os.invocation.SyscallEntry { number: 1,  name: "write",  arg_count: 3 }
+data sys_mmap: std.os.invocation.SyscallEntry   = std.os.invocation.SyscallEntry { number: 9,  name: "mmap",   arg_count: 6 }
+data sys_execve: std.os.invocation.SyscallEntry = std.os.invocation.SyscallEntry { number: 59, name: "execve", arg_count: 3 }
+data sys_exit: std.os.invocation.SyscallEntry   = std.os.invocation.SyscallEntry { number: 60, name: "exit",   arg_count: 1 }
 
-data linux_x86_64_syscall_subset: List<SyscallEntry> = [
+data linux_x86_64_syscall_subset: List<std.os.invocation.SyscallEntry> = [
   sys_read, sys_write, sys_mmap, sys_execve, sys_exit
 ]
 
-data linux_x86_64_syscall_abi: SyscallAbi = {
+data linux_x86_64_syscall_abi: std.os.invocation.SyscallAbi = {
   table: linux_x86_64_syscall_subset,
   convention: sysv_amd64_linux_syscall_convention,
 }
 
-data sys_aarch64_read: SyscallEntry   = SyscallEntry { number: 63,  name: "read",   arg_count: 3 }
-data sys_aarch64_write: SyscallEntry  = SyscallEntry { number: 64,  name: "write",  arg_count: 3 }
-data sys_aarch64_mmap: SyscallEntry   = SyscallEntry { number: 222, name: "mmap",   arg_count: 6 }
-data sys_aarch64_execve: SyscallEntry = SyscallEntry { number: 221, name: "execve", arg_count: 3 }
-data sys_aarch64_exit: SyscallEntry   = SyscallEntry { number: 93,  name: "exit",   arg_count: 1 }
+data sys_aarch64_read: std.os.invocation.SyscallEntry   = std.os.invocation.SyscallEntry { number: 63,  name: "read",   arg_count: 3 }
+data sys_aarch64_write: std.os.invocation.SyscallEntry  = std.os.invocation.SyscallEntry { number: 64,  name: "write",  arg_count: 3 }
+data sys_aarch64_mmap: std.os.invocation.SyscallEntry   = std.os.invocation.SyscallEntry { number: 222, name: "mmap",   arg_count: 6 }
+data sys_aarch64_execve: std.os.invocation.SyscallEntry = std.os.invocation.SyscallEntry { number: 221, name: "execve", arg_count: 3 }
+data sys_aarch64_exit: std.os.invocation.SyscallEntry   = std.os.invocation.SyscallEntry { number: 93,  name: "exit",   arg_count: 1 }
 
-data linux_aarch64_syscall_subset: List<SyscallEntry> = [
+data linux_aarch64_syscall_subset: List<std.os.invocation.SyscallEntry> = [
   sys_aarch64_read, sys_aarch64_write, sys_aarch64_mmap, sys_aarch64_execve, sys_aarch64_exit
 ]
 
-data linux_aarch64_syscall_abi: SyscallAbi = {
+data linux_aarch64_syscall_abi: std.os.invocation.SyscallAbi = {
   table: linux_aarch64_syscall_subset,
   convention: aapcs64_linux_syscall_convention,
 }

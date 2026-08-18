@@ -33,10 +33,10 @@ data build_cache_server_placement_doc: String = "WHY PLACEMENT IS A VERDICT AXIS
 data build_cache_placement_authority_is_elsewhere_note: String = "BuildCacheServerPlacement is IMPORTED from gunbc.build_cache_instance, not declared here. It used to be declared in this module with three arms (ServerUnitOwned | ServerLazySpawned | ServerPlacementUnknown). It moved because placement is derived from an observation of a DEPLOYED INSTANCE and this fold is a consumer of it; leaving a copy here would be two definitions of 'correctly placed' that can drift (DESIGN section 3). The arms also changed shape with the move, and the renames are honesty rather than churn: ServerLazySpawned named an INFERRED CAUSE (that the server was lazily auto-spawned) while what an observer can actually see is the current owner, so it is now ServerRunnerOwned carrying the slot and its lifecycle; and ServerUnitOwned became ServerManagedUnitOwned to say WHICH unit, since 'a unit owns it' is satisfied by any unit including the wrong one."
 
 type BuildCacheDaemonObservation
-  = DaemonStatsOk { stats_line: String, placement: BuildCacheServerPlacement }
+  = DaemonStatsOk { stats_line: String, placement: gunbc.build_cache_instance.BuildCacheServerPlacement }
   | DaemonAbsent
-  | DaemonUnresponsive { detail: NonEmptyStr }
-  | DaemonMisconfigured { matched_fragment: String, detail: NonEmptyStr }
+  | DaemonUnresponsive { detail: std.types.NonEmptyStr }
+  | DaemonMisconfigured { matched_fragment: String, detail: std.types.NonEmptyStr }
   | DaemonPathShadowed { resolved: String, expected: String }
   | DaemonUnsupervised { unit: String, unit_state: String }
 
@@ -52,8 +52,8 @@ type BuildCacheProvisionRefusal
   | RefusalPlacementUnknown
 
 type BuildCacheProvisionVerdict
-  = ProvisionConverged { catalog_id: CacheInterfaceId, stats_line: String }
-  | ProvisionRefused { cause: BuildCacheProvisionRefusal, reason: NonEmptyStr }
+  = ProvisionConverged { catalog_id: std.cache_identity.CacheInterfaceId, stats_line: String }
+  | ProvisionRefused { cause: BuildCacheProvisionRefusal, reason: std.types.NonEmptyStr }
 
 fn provision_build_cache_absorbing_fallback_widen_sketch(
   catalog_id: CacheInterfaceId,

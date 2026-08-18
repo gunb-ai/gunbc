@@ -20,7 +20,7 @@ test fn runner_slot_allocation_oversubscription_boundary_exact() -> Bool {
   )
 }
 
-fn committed_allocation_for(host: HostIdentity) -> Int {
+fn committed_allocation_for(host: product.placement_supply.HostIdentity) -> Int {
   fold(
     gunbc.runner_slot_allocation.gunbc_committed_runner_slot_allocations(),
     init: 0,

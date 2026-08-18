@@ -1,7 +1,7 @@
 module std.fermi
 
 
-fn fermi_ordinal(depth: FermiDepth) -> Int {
+fn fermi_ordinal(depth: std.types.FermiDepth) -> Int {
   match depth {
     Xs => 0
     S  => 1
@@ -11,42 +11,42 @@ fn fermi_ordinal(depth: FermiDepth) -> Int {
   }
 }
 
-fn fermi_gt(lhs: FermiDepth, rhs: FermiDepth) -> Bool {
+fn fermi_gt(lhs: std.types.FermiDepth, rhs: std.types.FermiDepth) -> Bool {
   fermi_ordinal(depth: lhs) > fermi_ordinal(depth: rhs)
 }
 
-fn fermi_gte(lhs: FermiDepth, rhs: FermiDepth) -> Bool {
+fn fermi_gte(lhs: std.types.FermiDepth, rhs: std.types.FermiDepth) -> Bool {
   fermi_ordinal(depth: lhs) >= fermi_ordinal(depth: rhs)
 }
 
-fn fermi_eq(lhs: FermiDepth, rhs: FermiDepth) -> Bool {
+fn fermi_eq(lhs: std.types.FermiDepth, rhs: std.types.FermiDepth) -> Bool {
   fermi_ordinal(depth: lhs) == fermi_ordinal(depth: rhs)
 }
 
-fn fermi_lattice_meet(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
+fn fermi_lattice_meet(lhs: std.types.FermiDepth, rhs: std.types.FermiDepth) -> std.types.FermiDepth {
   if fermi_gt(lhs: lhs, rhs: rhs) { rhs } else { lhs }
 }
 
-fn fermi_lattice_join(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
+fn fermi_lattice_join(lhs: std.types.FermiDepth, rhs: std.types.FermiDepth) -> std.types.FermiDepth {
   if fermi_gt(lhs: lhs, rhs: rhs) { lhs } else { rhs }
 }
 
-data fermi_bounded_lattice: BoundedLattice<FermiDepth> = {
+data fermi_bounded_lattice: BoundedLattice<std.types.FermiDepth> = {
   meet: fermi_lattice_meet
   join: fermi_lattice_join
   top: Xl
   bottom: Xs
 }
 
-fn fermi_max(lhs: FermiDepth, rhs: FermiDepth) -> FermiDepth {
+fn fermi_max(lhs: std.types.FermiDepth, rhs: std.types.FermiDepth) -> std.types.FermiDepth {
   fermi_lattice_join(lhs: lhs, rhs: rhs)
 }
 
-fn fermi_max_of(depths: List<FermiDepth>) -> FermiDepth {
+fn fermi_max_of(depths: List<std.types.FermiDepth>) -> std.types.FermiDepth {
   fold(depths, init: Xs, f: (acc, d) => fermi_lattice_join(lhs: acc, rhs: d))
 }
 
-fn fermi_within_budget(depth: FermiDepth, budget: FermiDepth) -> Bool {
+fn fermi_within_budget(depth: std.types.FermiDepth, budget: std.types.FermiDepth) -> Bool {
   fermi_ordinal(depth: depth) <= fermi_ordinal(depth: budget)
 }
 
@@ -64,7 +64,7 @@ data fermi_timeouts: List<FermiTimeout> = [
   FermiTimeout { depth: Xl, timeout_ms: 3600000,  label: "60 minutes" },
 ]
 
-fn timeout_for_depth(depth: FermiDepth) -> Milliseconds? {
+fn timeout_for_depth(depth: std.types.FermiDepth) -> std.types.Milliseconds? {
   let matches = filter(fermi_timeouts, t => t.depth == depth)
   match matches |> first {
     Present { value: t } => Present { value: t.timeout_ms }

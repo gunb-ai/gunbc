@@ -77,25 +77,25 @@ fn entry_canonical_identities(entry: String) -> List<String> {
   })
 }
 
-fn no_fn_symbols() -> List<Symbol> {
+fn no_fn_symbols() -> List<v2.std.node.Symbol> {
   []
 }
 
-fn sweep_row_located(a: EntryRealizationAttempt) -> String {
+fn sweep_row_located(a: v2.workflow.realization_attempt.EntryRealizationAttempt) -> String {
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: _ } => ""
     V2RealizationRefused { phase: _, exact_cause: _, located: l } => l
   }
 }
 
-fn sweep_row_cause(a: EntryRealizationAttempt) -> String {
+fn sweep_row_cause(a: v2.workflow.realization_attempt.EntryRealizationAttempt) -> String {
   match a.standing {
     V2TranslateSerialized { emitted_nonempty: _ } => ""
     V2RealizationRefused { phase: _, exact_cause: c, located: _ } => symbol_lexeme(sym: c)
   }
 }
 
-fn sweep_rows(ingest: SourceRootIngest, admission: Admission, entry: String) -> List<RealizationSweepRow> {
+fn sweep_rows(ingest: v2.compiler.source_authority.SourceRootIngest, admission: v2.compiler.name_resolve.Admission, entry: String) -> List<RealizationSweepRow> {
   sweep_rows_with_identities(
     ingest: ingest,
     admission: admission,
@@ -104,7 +104,7 @@ fn sweep_rows(ingest: SourceRootIngest, admission: Admission, entry: String) -> 
   )
 }
 
-fn sweep_rows_with_identities(ingest: SourceRootIngest, admission: Admission, entry: String, identities: List<String>) -> List<RealizationSweepRow> {
+fn sweep_rows_with_identities(ingest: v2.compiler.source_authority.SourceRootIngest, admission: v2.compiler.name_resolve.Admission, entry: String, identities: List<String>) -> List<RealizationSweepRow> {
   match entry_witness_source(ingest: ingest, entry: entry) {
     Absent =>
       [RealizationSweepRow {
@@ -177,7 +177,7 @@ type SweepPairState {
 
 data sweep_rows_from_refs_note: String = "Read-through seam for closures past the manifest inline cap (the SAME source_root_ingest_build_from_source_refs the frontier probe rides): the host manifest carries SourceRef rows (path + root + content hash, no inline source), the sweep reads them through the filesystem with content-hash verification, and a read failure is ONE located refusal row for the entry — typed, counted, never an empty roster."
 
-fn sweep_rows_from_refs(refs: List<SourceRef>, admission: Admission, entry: String, identities: List<String>) -> List<RealizationSweepRow> {
+fn sweep_rows_from_refs(refs: List<v2.compiler.source_authority.SourceRef>, admission: v2.compiler.name_resolve.Admission, entry: String, identities: List<String>) -> List<RealizationSweepRow> {
   match source_root_ingest_build_from_source_refs(refs: refs) {
     SourceRootIngestBuildReadFailed { result: _ } =>
       [RealizationSweepRow {
@@ -210,7 +210,7 @@ fn sweep_rows_join_canonical(rows: List<RealizationSweepRow>, entry: String, ide
 
 data member_scan_note: String = "Located attribution for assembly-parse refusals (the parse_g0_tokens_remain rows carry PortLocus, no file): each closure member is driven through the SAME canonical assembly as a singleton ingest — its own module header as the admission subject, no imports — so a member whose source the canonical grammar cannot parse yields a frontend-phase row whose entry IS the member's path. A resolve-phase refusal here is EXPECTED (imports are absent by construction) and is not reported; only frontend rows are the scan's product. The single-module probe instrument (ingested_resolved_module_from_source) is NOT used: it has measurably narrower grammar coverage than the assembled route and misattributes (== comparisons, projections and generic signatures refuse under it while parsing through assembly)."
 
-fn module_subject_of(source: String) -> List<Symbol> {
+fn module_subject_of(source: String) -> List<v2.std.node.Symbol> {
   fold_list(xs: split(s: source, delimiter: "\n"), empty: no_fn_symbols(), cons: fn(acc, line) {
     if (length(xs: acc) == 0) && starts_with(s: line, prefix: "module ") {
       fold_list(
@@ -224,17 +224,17 @@ fn module_subject_of(source: String) -> List<Symbol> {
   })
 }
 
-fn subject_admission(segments: List<Symbol>) -> Admission {
+fn subject_admission(segments: List<v2.std.node.Symbol>) -> v2.compiler.name_resolve.Admission {
   let reversed = fold_list(xs: segments, empty: Empty, cons: fn(acc, seg) { Cons { head: seg, tail: acc } })
-  Admission {
-    subject: ResolutionSubject {
+  v2.compiler.name_resolve.Admission {
+    subject: v2.compiler.name_resolve.ResolutionSubject {
       name: fold_list(xs: reversed, empty: Empty, cons: fn(acc, seg) { Cons { head: seg, tail: acc } })
     },
     imports: Empty
   }
 }
 
-fn member_parse_rows(ingest: SourceRootIngest) -> List<RealizationSweepRow> {
+fn member_parse_rows(ingest: v2.compiler.source_authority.SourceRootIngest) -> List<RealizationSweepRow> {
   fold_list(xs: ingest, empty: no_sweep_rows(), cons: fn(acc, r) {
     let singleton = Cons { head: r, tail: Empty }
     let rows = fold_list(
@@ -264,7 +264,7 @@ fn member_parse_rows(ingest: SourceRootIngest) -> List<RealizationSweepRow> {
   })
 }
 
-fn member_parse_rows_from_refs(refs: List<SourceRef>) -> List<RealizationSweepRow> {
+fn member_parse_rows_from_refs(refs: List<v2.compiler.source_authority.SourceRef>) -> List<RealizationSweepRow> {
   match source_root_ingest_build_from_source_refs(refs: refs) {
     SourceRootIngestBuildReadFailed { result: _ } =>
       [RealizationSweepRow {

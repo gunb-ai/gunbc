@@ -48,7 +48,7 @@ type CursorSdkTerminalStatus
 type CursorSdkTerminalErrorWire
   = CursorSdkTerminalErrorObserved {
       message: String,
-      code: CursorSdkErrorCode,
+      code: extdeps.llm.cursor_sdk_errors.CursorSdkErrorCode,
     }
   | CursorSdkTerminalErrorAbsent
 
@@ -59,7 +59,7 @@ type CursorSdkStreamTerminalReconcile
       raw: String,
     }
   | CursorSdkStreamTerminalsUnclassified {
-      reason: NonEmptyStr,
+      reason: std.types.NonEmptyStr,
       raw: String,
     }
 

@@ -14,9 +14,9 @@ fn line_of(sha: String, ref_name: String) -> String {
   concat(sha, concat(tab(), ref_name))
 }
 
-fn origin() -> NonEmptyStr { "origin" as NonEmptyStr }
+fn origin() -> std.types.NonEmptyStr { "origin" as std.types.NonEmptyStr }
 
-fn read_ok(advertised: List<String>) -> RemoteBranchObservation {
+fn read_ok(advertised: List<String>) -> gunbc.roadmap_publish.RemoteBranchObservation {
   remote_branch_observation_of(
     remote: origin(),
     exit_code: 0,
@@ -25,7 +25,7 @@ fn read_ok(advertised: List<String>) -> RemoteBranchObservation {
   )
 }
 
-fn observed_branch_count(o: RemoteBranchObservation) -> Int {
+fn observed_branch_count(o: gunbc.roadmap_publish.RemoteBranchObservation) -> Int {
   match o {
     RemoteBranchesRead { branches } => count(branches)
     RemoteBranchesUnreadable { cause: _ } => 0 - 1
@@ -140,8 +140,8 @@ test fn a_ref_projecting_to_an_empty_branch_name_refuses() -> Bool {
 
 test fn the_empty_projection_filter_returns_only_the_degenerate_ref() -> Bool {
   let refs = [
-    AdvertisedRef { object_id: fixture_sha_a as CommitSha, ref_name: "refs/heads/main" },
-    AdvertisedRef { object_id: fixture_sha_b as CommitSha, ref_name: "refs/heads/" },
+    extdeps.git.AdvertisedRef { object_id: fixture_sha_a as std.types.CommitSha, ref_name: "refs/heads/main" },
+    extdeps.git.AdvertisedRef { object_id: fixture_sha_b as std.types.CommitSha, ref_name: "refs/heads/" },
   ]
   let degenerate = advertised_refs_projecting_empty_branch(refs: refs)
   count(degenerate) == 1
@@ -152,7 +152,7 @@ test fn the_empty_projection_filter_returns_only_the_degenerate_ref() -> Bool {
 
 data end_to_end_note: String = "The observation is only worth building if it composes with the judgment it was built for, so this claim runs an advertisement all the way to a PublicationOutcome. It is the first place the two halves meet: extdeps.git reads the ref advertisement, gunbc.roadmap_publish_observe turns it into observations, gunbc.roadmap_publish adjudicates. Before this slice roadmap_publish had no producer at all - adjudicate_publication was called only from its own witness - so the adjudicator was a judgment nothing could ask."
 
-fn branches_of(o: RemoteBranchObservation) -> List<RemoteBranch> {
+fn branches_of(o: gunbc.roadmap_publish.RemoteBranchObservation) -> List<gunbc.roadmap_publish.RemoteBranch> {
   match o {
     RemoteBranchesRead { branches } => branches
     RemoteBranchesUnreadable { cause: _ } => []
@@ -166,8 +166,8 @@ test fn an_advertisement_at_the_expected_head_adjudicates_as_published() -> Bool
   match adjudicate_remote_branch(
     branches: branches_of(o: o),
     remote: origin(),
-    branch: "dispatch/node-a7" as NonEmptyStr,
-    expected_head: fixture_sha_a as CommitSha,
+    branch: "dispatch/node-a7" as std.types.NonEmptyStr,
+    expected_head: fixture_sha_a as std.types.CommitSha,
   ) {
     RemoteBranchAtExpectedHeadWithoutPullRequest { branch, head_sha } =>
       (branch as String) == "dispatch/node-a7" && (head_sha as String) == fixture_sha_a
@@ -182,8 +182,8 @@ test fn an_advertisement_at_another_head_adjudicates_as_diverged() -> Bool {
   match adjudicate_remote_branch(
     branches: branches_of(o: o),
     remote: origin(),
-    branch: "dispatch/node-a7" as NonEmptyStr,
-    expected_head: fixture_sha_a as CommitSha,
+    branch: "dispatch/node-a7" as std.types.NonEmptyStr,
+    expected_head: fixture_sha_a as std.types.CommitSha,
   ) {
     RemoteBranchHeadDiverged { branch: _, remote_head, expected_head } =>
       (remote_head as String) == fixture_sha_b
@@ -201,7 +201,7 @@ test fn worktree_bound_to_the_subject_repository_is_recognized() -> Bool {
     exit_code: 0,
     stderr: "",
     url: "https://github.com/gunb-ai/gunbc.git\n",
-    expected: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+    expected: "https://github.com/gunb-ai/gunbc.git" as std.types.NonEmptyStr,
   ) {
     WorktreeBoundToRepository => true
     WorktreeBoundElsewhere { observed: _, expected: _ } => false
@@ -214,7 +214,7 @@ test fn worktree_pointing_at_another_repository_refuses_and_names_both() -> Bool
     exit_code: 0,
     stderr: "",
     url: "https://github.com/someone-else/gunbc.git",
-    expected: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+    expected: "https://github.com/gunb-ai/gunbc.git" as std.types.NonEmptyStr,
   ) {
     WorktreeBoundElsewhere { observed: observed, expected: expected } =>
       observed == "https://github.com/someone-else/gunbc.git"
@@ -229,7 +229,7 @@ test fn worktree_remote_read_failure_is_not_a_mismatch() -> Bool {
     exit_code: 128,
     stderr: "fatal: not a git repository",
     url: "",
-    expected: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+    expected: "https://github.com/gunb-ai/gunbc.git" as std.types.NonEmptyStr,
   ) {
     WorktreeRemoteUnreadable { exit_code: code, stderr: err } =>
       code == 128 && err == "fatal: not a git repository"
@@ -243,7 +243,7 @@ test fn empty_remote_url_is_unreadable_not_bound_elsewhere() -> Bool {
     exit_code: 0,
     stderr: "",
     url: "   \n",
-    expected: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+    expected: "https://github.com/gunb-ai/gunbc.git" as std.types.NonEmptyStr,
   ) {
     WorktreeRemoteUnreadable { exit_code: _, stderr: _ } => true
     WorktreeBoundElsewhere { observed: _, expected: _ } => false

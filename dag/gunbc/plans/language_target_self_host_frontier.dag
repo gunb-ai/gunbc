@@ -1,7 +1,7 @@
 module gunbc.plans.language_target_self_host_frontier
 
 
-fn language_target_self_host_frontier_body() -> List<MarkdownBlock> {
+fn language_target_self_host_frontier_body() -> List<std.markdown.MarkdownBlock> {
   [
     p(text: "**Status:** staging map, captured pre-un-shelve. The multi-language self-host lane is §4-shelved (ROADMAP: \"TypeScript first-class emit + TS self-host … resumes after the Rust fixed point\"). This map exists so the lane can be **staffed continuously** the moment it un-shelves: every dependency is understood from beginning to end, Rust is the model, and the exotic languages are placed as deliberate stresses on it. `solve` is resolved as **not a substrate change** — see [solve-higher-order-design.md](solve-higher-order-design.md)."),
     p(text: "**Governing invariant (the anti-hack guarantee):** every target ends in exactly one of two *declared* states — **green-by-execution at a named bar**, or a **typed frontier row** (`bar reached · reason · dissolution trigger`). No silent `body_lexeme: String` anemic leaves, no orphan un-enrolled smokes, no anchor-stub masquerading as a finished target. \"Done\" and \"refused-with-reason\" are the only terminal states. This is the §7 typed self-host frontier applied to every target at once."),
@@ -75,7 +75,7 @@ fn language_target_self_host_frontier_body() -> List<MarkdownBlock> {
   ]
 }
 
-data language_target_self_host_frontier_plan: Plan = Plan {
+data language_target_self_host_frontier_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "language-target-self-host-frontier",
   title: "Language-target self-host frontier — beginning-to-end dependency map",
   body: language_target_self_host_frontier_body(),

@@ -1,17 +1,17 @@
 module v2.test.diagnostic_correction.show_correct_code
 
-fn atom_node(s: Symbol) -> Node {
-  Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
+fn atom_node(s: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node { kind: TypeNode { connective: Atom { identity: s } }, children: [],
  occurrence_id: SyntheticOccurrence
 }
 }
 
-fn pair_node(left: Symbol, right: Symbol) -> Node {
-  Node {
+fn pair_node(left: v2.std.node.Symbol, right: v2.std.node.Symbol) -> Node {
+  v2.std.node.Node {
     kind: TypeNode { connective: Conj },
     children: [
-      Edge { label: Named { name: ^correction_left }, target: atom_node(s: left) },
-      Edge { label: Named { name: ^correction_right }, target: atom_node(s: right) },
+      v2.std.node.Edge { label: Named { name: ^correction_left }, target: atom_node(s: left) },
+      v2.std.node.Edge { label: Named { name: ^correction_right }, target: atom_node(s: right) },
     ],
     occurrence_id: SyntheticOccurrence
 }
@@ -41,114 +41,114 @@ data falsification_external_contract_without_reason: Node = atom_node(s: ^correc
 
 data falsification_user_boundary_without_reason: Node = atom_node(s: ^correction_english_boundary_symbol)
 
-data claim_complexity_diagnostic_suggests_correct_code: TestClaim = DiagnosticClaim {
+data claim_complexity_diagnostic_suggests_correct_code: v2.std.verification.TestClaim = DiagnosticClaim {
   label: "complexity diagnostic suggests structurally correct replacement",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_complexity_diagnostic_without_correct_code,
   expected_rejection: diagnostics_singleton(
-      d: Diagnostic {
+      d: v2.std.diagnostic.Diagnostic {
         reason: ^correction_complexity_reason,
         at: node_locus(node: falsification_complexity_diagnostic_without_correct_code),
         correction: Suggested { node: complexity_correction_expected_node }
       }
     ),
-  classification: TestClassification { tier: Tier3, layer: Integration }
+  classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
 }
 
-data claim_transport_diagnostic_suggests_shared_contract: TestClaim = DiagnosticClaim {
+data claim_transport_diagnostic_suggests_shared_contract: v2.std.verification.TestClaim = DiagnosticClaim {
   label: "transport diagnostic suggests shared declaration replacement",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_transport_diagnostic_without_correct_code,
   expected_rejection: diagnostics_singleton(
-      d: Diagnostic {
+      d: v2.std.diagnostic.Diagnostic {
         reason: ^correction_transport_reason,
         at: node_locus(node: falsification_transport_diagnostic_without_correct_code),
         correction: Suggested { node: transport_correction_expected_node }
       }
     ),
-  classification: TestClassification { tier: Tier3, layer: Integration }
+  classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
 }
 
-data claim_ambiguous_boundary_diagnostic_names_no_correction_reason: TestClaim = DiagnosticClaim {
+data claim_ambiguous_boundary_diagnostic_names_no_correction_reason: v2.std.verification.TestClaim = DiagnosticClaim {
   label: "ambiguous boundary diagnostic carries explicit unavailable correction reason",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_ambiguous_boundary_without_unavailable_reason,
   expected_rejection: diagnostics_singleton(
-      d: Diagnostic {
+      d: v2.std.diagnostic.Diagnostic {
         reason: ^correction_ambiguous_boundary_reason,
         at: node_locus(node: falsification_ambiguous_boundary_without_unavailable_reason),
         correction: Unavailable { reason: AmbiguousIntent }
       }
     ),
-  classification: TestClassification { tier: Tier3, layer: Integration }
+  classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
 }
 
-data claim_textual_diagnostic_carries_whole_file_locus: TestClaim = DiagnosticClaim {
+data claim_textual_diagnostic_carries_whole_file_locus: v2.std.verification.TestClaim = DiagnosticClaim {
   label: "textual diagnostic carries whole-file locus and suggested correction",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_textual_whole_file_without_locus,
   expected_rejection: diagnostics_singleton(
-      d: Diagnostic {
+      d: v2.std.diagnostic.Diagnostic {
         reason: ^correction_textual_reason,
         at: Textual { file: ^correction_source_file, extent: WholeFile },
         correction: Suggested { node: complexity_correction_expected_node }
       }
     ),
-  classification: TestClassification { tier: Tier3, layer: Integration }
+  classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
 }
 
-data claim_textual_diagnostic_carries_byte_range_locus: TestClaim = DiagnosticClaim {
+data claim_textual_diagnostic_carries_byte_range_locus: v2.std.verification.TestClaim = DiagnosticClaim {
   label: "textual diagnostic carries byte-range locus and suggested correction",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_textual_byte_range_without_locus,
   expected_rejection: diagnostics_singleton(
-      d: Diagnostic {
+      d: v2.std.diagnostic.Diagnostic {
         reason: ^correction_textual_reason,
         at: Textual { file: ^correction_source_file, extent: ByteRange { start: 0, end: 1 } },
         correction: Suggested { node: complexity_correction_expected_node }
       }
     ),
-  classification: TestClassification { tier: Tier3, layer: Integration }
+  classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
 }
 
-data claim_port_diagnostic_carries_port_locus: TestClaim = DiagnosticClaim {
+data claim_port_diagnostic_carries_port_locus: v2.std.verification.TestClaim = DiagnosticClaim {
   label: "port diagnostic carries port locus and suggested correction",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_port_diagnostic_without_locus,
   expected_rejection: diagnostics_singleton(
-      d: Diagnostic {
+      d: v2.std.diagnostic.Diagnostic {
         reason: ^correction_port_reason,
         at: port_locus(port: ^correction_port_symbol),
         correction: Suggested { node: transport_correction_expected_node }
       }
     ),
-  classification: TestClassification { tier: Tier3, layer: Integration }
+  classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
 }
 
-data claim_external_contract_diagnostic_names_no_correction_reason: TestClaim = DiagnosticClaim {
+data claim_external_contract_diagnostic_names_no_correction_reason: v2.std.verification.TestClaim = DiagnosticClaim {
   label: "external contract diagnostic carries explicit unavailable correction reason",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_external_contract_without_reason,
   expected_rejection: diagnostics_singleton(
-      d: Diagnostic {
+      d: v2.std.diagnostic.Diagnostic {
         reason: ^correction_external_contract_reason,
         at: node_locus(node: falsification_external_contract_without_reason),
         correction: Unavailable { reason: ExternalContractUnknown }
       }
     ),
-  classification: TestClassification { tier: Tier3, layer: Integration }
+  classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
 }
 
-data claim_user_boundary_diagnostic_names_no_correction_reason: TestClaim = DiagnosticClaim {
+data claim_user_boundary_diagnostic_names_no_correction_reason: v2.std.verification.TestClaim = DiagnosticClaim {
   label: "user boundary diagnostic carries explicit unavailable correction reason",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   input: falsification_user_boundary_without_reason,
   expected_rejection: diagnostics_singleton(
-      d: Diagnostic {
+      d: v2.std.diagnostic.Diagnostic {
         reason: ^correction_user_boundary_reason,
         at: node_locus(node: falsification_user_boundary_without_reason),
         correction: Unavailable { reason: UserInputBoundary }
       }
     ),
-  classification: TestClassification { tier: Tier3, layer: Integration }
+  classification: v2.std.verification.TestClassification { tier: Tier3, layer: Integration }
 }

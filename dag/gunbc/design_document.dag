@@ -2,9 +2,9 @@
 module gunbc.design_document
 
 
-fn h1(text: String) -> MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
+fn h1(text: String) -> std.markdown.MarkdownBlock { HeadingBlock { level: H1, inlines: [TextInline { text: text }] } }
 
-fn preamble_blocks() -> List<MarkdownBlock> {
+fn preamble_blocks() -> List<std.markdown.MarkdownBlock> {
   [
     h1(text: "gunbc — Design"),
     p(text: "`README.md` and `CLAUDE.md` symlink here — this is the single source of truth. (v1 ships the `gunbc` CLI and is v2's seed · v3 was removed, migrated into v1 · v2 is active.)"),
@@ -13,7 +13,7 @@ fn preamble_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_1_blocks() -> List<MarkdownBlock> {
+fn section_1_blocks() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "1. The objective (the axioms)"),
     p(text: "The assumptions everything else rests on. Three **axioms** — assumed, not derived:"),
@@ -40,7 +40,7 @@ fn section_1_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_2_blocks() -> List<MarkdownBlock> {
+fn section_2_blocks() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "2. Minimize redundancy (the master move for cost and complexity)"),
     p(text: "Redundant work — **duplicated, unnecessary, or irrelevant** — loses on all three of §1's quantities at once: it costs more to run, it widens the surface where harm hides, and it adds complexity to maintain. So a perfectly DRY process is, *by the meaning of redundant*, the minimal/efficient one; minimizing redundancy is therefore the master move for §1's cost and complexity axes (the safety axis is §5). Through §1's time lens this is *why* DRY matters at all: redundant work **defers** cost into the future — it shoves a problem onto a later fixer, or builds a process destined to be thrown out — so DRY is the refusal to spend someone's future time to buy the author's present convenience; it values time **holistically**, across every party and all of it, not just the here-and-now. Redundancy is removed along exactly two directions — not separate \"DRY rules,\" but one move seen two ways:"),
@@ -62,7 +62,7 @@ fn section_2_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_3_blocks() -> List<MarkdownBlock> {
+fn section_3_blocks() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "3. Single authority (what keeps §2 from being undone)"),
     p(text: "Minimization holds only if each fact lives in exactly one place. The recurring violation is **nicknaming — a second name for one concept** — which duplicates work at the meaning layer and, since we generate from concepts, duplicates it again in everything derived (testgen, emit, lenses). A fork always gets consolidated later, so it is a correctness concern, not a style one. We cannot enforce this programmatically yet; until then it is diligence — faithfully model the accepted universal frameworks (classical logic, set theory, algebra), and in `extdeps/` the real upstream spec (cite the source, keep its real names, declare its version, model what the API actually returns), rather than re-coining them. Corollaries: the import graph's only structural law is acyclicity — the `std`/`extdeps`/`compiler`/`workflow` folders are browsing conventions, not a direction rule (the former strict layer DAG `std ← extdeps ← compiler ← workflow` was deleted 2026-07-24: a folder-prefix direction was convention standing where no necessity stood, and it blocked correct grounding — a std surface citing the extdeps rows that ground it; the `extdeps/` citation duty, `ExtdepsExternalAuthorityGate`, survives untouched); a fact's home is its *layer*, not its file (paths are discriminators, not gospel); below-boundary representation is opaque (the rename test). A direct consequence for `extdeps/` service operations, three separable facts that must not be fused into one row: (a) the **interface shape** — the dependency's parameterized contract (inputs → outputs, exit/error semantics) — is what extdeps owns; (b) the **transport** (shell / REST / SDK) is a §2 Realization *handler* bound to that shape, *one of N*, not a fact about the dependency — a single hardwired transport is the §4 N×M-adapter trap (`git diff` argv models the git CLI, a nickname for git's diff *semantics*; libgit2 and the compare API are the other handlers); (c) **business policy** (which base ref, which flag, an idempotency protocol the dependency doesn't provide) is a *workflow* fact and modeling it in extdeps is a layer inversion (extdeps depending upward). The tell that (c) has leaked is an argv carrying a literal it should receive as a parameter (`origin/main...HEAD`, `--all-targets`); the tell that (b) has fused is the same operation forked once per transport (GCP's OAuth2 refresh modeled three ways) instead of one shape with N bound handlers. Scaffolded by `v2.lens.extdeps_shape_transport_policy`: lens-unit +/- on synthetic fact rows; corpus RED witnesses execute against live `dag/extdeps/**` via `filesystem_read` (dissolve-on: Node-tree argv projection supersedes text scan). This holds at *any* interface↔realization seam, not only service ops: the cited data behind an agnostic std surface de-fuses exactly as a transport does, and its directional reading is the same — the *dispatch* that selects a realization is itself realization, so it sits peripheral (`extdeps/`), never in the interface (a §2 pure-spec is dispatch-free; a std projection that *matched* over its realizations would have to name them, fusing dispatch back into the pure-spec §2 keeps free of it). What migrates outward is each realization's grounded specifics — cited rows, *or* a per-OS taxonomy reduced to the shape — together with the dispatch; only the agnostic shape stays central. A std type that privileged one realization's taxonomy (POSIX `st_mode` over the `Ntfs`/`Apfs` that `FileSystemSemantics` already enumerates) is itself that inversion."),
@@ -105,7 +105,7 @@ fn section_3_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_4_blocks() -> List<MarkdownBlock> {
+fn section_4_blocks() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "4. The closed, grounded substrate (what makes §2–§3 decidable)"),
     p(text: "You can unify and decompose *mechanically* only in a closed, grounded system — so the substrate is built for it. A program is a dependency graph over two primitives (`Node` + `Edge`) and a closed vocabulary (6 connectives + 6 behaviors — `Value`, `Transform`, `Branch`, `Loop`, `Bind`, `Match`, per `v2.std.node.Behavior`; an earlier revision said 5, corrected against the live coproduct 2026-07-31 because the closed vocabulary is the denominator the decidability argument divides by); surface syntax is sugar that adds no power. Execution is **bounded and forward** (cyclic relations via acyclic encodings, never cyclic values; recursion is sugar over `Loop`), so decidability and termination *fall out* rather than being separately proved. **Grounding is intersubjective** — point at a shared framework, not an internal taxonomy — and in a closed system **a heuristic is never necessary**: the richer source always exists or can be written. This is *why* the structure is acyclic — a DAG in the substrate, serial reasoning in this document (recursively, per the preamble): intersubjective agreement holds only **across time** (§1), which demands claims that stay stable under it, so each is written syllogistically — a consequence-chain you can re-interrogate and that never wavers (algebra), never a cycle that could quietly redefine itself."),
@@ -117,7 +117,7 @@ fn section_4_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_4b_blocks() -> List<MarkdownBlock> {
+fn section_4b_blocks() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "4b. Safety: the guarantee ladder (every error class climbs from runtime harm toward unwritability)"),
     p(text: "**Placed here because it is what §4's decidability buys, before §5 legislates the floor (operator directive 2026-07-31; worked examples and the rung census live in the recovery analysis linked below).** Safety is not the presence of diagnostics or the absence of crashes — it is the reduction of the state space in which a program can silently do the wrong thing. Every discovered error class sits on one ordered ladder and is obligated to climb it: **mitigatable** (the failure occurs; harm is contained by total operations, typed outcomes, bounds, rollback, isolation) → **mechanically preventable** (a generated test, lens, or gate reliably exposes and blocks it — but the invalid state remains writable, and safety depends on that mechanism executing and staying enrolled) → **structurally guaranteed** (the source can still describe the invalid state, but no `Accepted` program contains it: the compiler derives a proof or refusal from modeled structure) → **structurally impossible** (the invalid state has no constructor or representation in the canonical model — validation is unnecessary because the bad state cannot be written, and a refusal at the source boundary is then a symptom of the carrier's shape, not a separate check). The higher rung subsumes the lower — construction over proof, proof over validation, validation over mitigation; §5's construction-before-validation preference is this ladder's top two rungs, and its fail-closed doctrine is the law of the floor. Below the floor sits **silent wrongness, which is not a rung: it is outside the ladder and forbidden outright** (§5). Adjacent — and deliberately **not a fifth rung** — is **outside the modeled guarantee**: external reality, undecidable properties, undeclared intent. That column is observed, refused, or mitigated at a declared boundary, never fabricated (§5), and keeping it off the ladder prevents \"we do not model this\" from masquerading as a weak implementation that should climb."),
@@ -126,7 +126,7 @@ fn section_4b_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_4c_blocks() -> List<MarkdownBlock> {
+fn section_4c_blocks() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "4c. Source annotations (prose the substrate can see)"),
     p(text: "**Source annotations are captured authored-source data, not semantic program data and not discarded trivia.** A language realization that admits annotation syntax routes it through an annotation-specific lexical channel; it may not produce an ordinary semantic token or namespace binding. Parsing returns annotations beside the semantic artifact, attached to eligible structural subjects. Annotation capture and provenance are disjoint from semantic occurrence allocation: adding, deleting, or moving an annotation cannot alter any semantic occurrence identity, semantic graph, resolution result, semantic hash, or target-program bytes. Textual provenance may move and must remain correct. Semantic compiler passes receive only the annotation-erased projection; source authoring, formatting, SCM, and annotation lenses consume and preserve the authored wrapper. The initial `.dag` realization admits only standalone leading `//` blocks attached to module-scope declarations; trailing, body, unattached, and block-comment forms refuse until separately modeled. Plain source annotations are modeling debt. Any invariant, receipt, event, ruling, citation, status, count, dissolution condition, or other machine-consumed fact belongs in a typed carrier. An ordinary `String` declaration whose sole purpose is commentary is misplaced or dead data."),
@@ -134,7 +134,7 @@ fn section_4c_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_5_blocks() -> List<MarkdownBlock> {
+fn section_5_blocks() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "5. Fail-closed (§1's safety axis — harm reduction)"),
     p(text: "Minimizing cost and complexity (§2–§4) is worthless if a wrong thing passes silently — this is §1's safety axis made concrete. This code is digital: a wrong answer is a **loud error, never a warning** — a bridge collapses, it does not warn. Every path succeeds fully or fails with a typed, located diagnostic; no fabricated plausible output (a bounded \"forever\" ≠ an \"unknown\" error). Relax toward application-layer leniency only under protest, and lean to infra so others can build on your work. Stronger than *catching* a wrong state is making it **unwritable** — **correctness by construction, not validation.** A check that re-states a constraint the model already carries is a *second representation* of it (§2/§3): so prefer a single authority from which the realization is *derived* — the bad state cannot be written — over a check that flags it after the fact, which concedes the bad state *is* writable. The tell that a check was validation standing where construction was available: it can be satisfied by editing the *declaration* while the realization still lies (a key-completeness check went green when the spec was edited while the realizer kept faking the cache key). Reserve post-hoc checks for the genuinely **unstructurable** residue (§6 complexity / necessity — you cannot structurally forbid an *unnecessary* loop). Construction makes a class unwritable only when membership is **decidable**, so every class is one of three: a *wall now* (decidable and grounded — nicknaming, dead scaffolds, effect leaks); a *wall after grounding* (decidable but waiting on its single authority — the cross-representation `==` straddle is one only once `Int = GroupCompletion<Nat>` grounds it); or a *ratchet forever* (undecidable — optimality, by Rice, never reaches \"never\"). The word **\"never\" is the trap**: it lets a ratchet masquerade as a wall, so check decidability before claiming one — the undecidable residue is the §6 lens, honestly and permanently. The deepest trap is **specification-without-execution**: a typecheck and a `.contains()` grep are *not* consumers — \"done\" means a real consumer **green by execution** plus a discriminating input that goes *red* when the behavior is wrong. (For the LLM agent: fluent, type-checking, grep-passing output is precisely the artifact that looks finished without running. Treat your own output as unverified until a consumer runs it green.)"),
@@ -150,7 +150,7 @@ fn section_5_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_6_blocks() -> List<MarkdownBlock> {
+fn section_6_blocks() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "6. How to work (given §1–§5 — these coexist)"),
     ul(items: [
@@ -163,7 +163,7 @@ fn section_6_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-fn section_7_blocks() -> List<MarkdownBlock> {
+fn section_7_blocks() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "7. Self-hosting (the principles applied to the compiler itself)"),
     p(text: "The compiler is a pure transform and an ordinary substrate fact, analyzable by its own lenses. It is written in itself: the `.dag` graph is the truth and Rust is one realization — a seed that shrinks toward zero. v2 emits its own sources as the **cleanest principled realization**, proven **by execution** — the emitted module compiles and is **behaviorally equivalent** to the seed on a discriminating corpus (green-by-execution + a discriminating RED, §5) — **not** by byte-matching the seed. A byte-identical fixed point is explicitly *not* the goal: it is a quality drag, forcing v2 to reproduce the seed's warts to match bytes and thereby cementing poor decisions (§1 — spending future time to preserve the present seed's accidents). The seed shrinks across a **typed self-host frontier**: each module is either *self-emitted* (green-by-execution) or *seed-retained*, and a seed-retained module is a **declared row with a reason and a migration trigger** — countable, prioritizable — never a silent escape hatch (§5; the `DecodeFidelity`/`Lossless` boundary, §4). Its tests are data. Its ontology dissolves into `std/` — no dual representation at the compiler/user boundary. This is the recursion: every principle above governs the system that implements them, and this document."),
@@ -172,14 +172,14 @@ fn section_7_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-fn failure_modes_blocks() -> List<MarkdownBlock> {
+fn failure_modes_blocks() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "Recurring failure modes (instances of §3–§5, kept for pattern-matching)"),
     p(text: "hollow alias (minimality ≠ grounding) · state-space conflation (an `Option`/`None` meaning >2 things — split into named variants) · absorbing fallback (a failure arm that widens — rerun everything, scan all keys, always run — instead of refusing; ⊤-as-answer conflated with ⊤-as-ignorance; the deficit's frequency zeroed by construction, the corpus-denominated cost breaking the budget later) · **empty-observation narrow** (the absorbing fallback's mirror: ⊥-as-answer conflated with ⊥-as-ignorance — an observation that could not express what changed rendered as the verdict \"nothing is affected\", so the run narrows to nothing instead of widening. Strictly worse than the widen §5 already forbids: a widen is merely expensive, a narrow is silently uncovered. Live specimen: a push whose baseline ref *is* the pushed ref diffs the commit against itself, and the witness floor reported the resulting zero-path observation as \"N unaffected (import-closure, skipped without resolve)\" — receipt, two main pushes reporting an identical `4118 unaffected` on different commits, a skip count that cannot be a function of the diff. The tell that one observation is wrong rather than three local choices reasonable: its consumers disagree — compile-clean widened to whole-tree, regen gated on the event name, the witness floor skipped) · cache impurity (key on declared-input content; byte-identical cached-vs-cold is the purity oracle) · reflection evidence ≠ structural proof (prove a read axis by execution, with a no-host-enumeration control) · coercion proven by normalized round-trip, not a golden string · parallel-representation debt (an honestly-marked scaffold duplicating a canonical fact is still a violation) · internal review finds missing tests, external review finds missing checks · unmarked workaround (an author-side absorbing fallback — routing around an obstacle with no dissolution trigger; the line-stop signal, never a landing state) · **self-authorized dissolution** (temporary work treated as admissible because the author named its future deletion — a trigger is a lifecycle fact, not permission; without an operator verdict, marked debt is rejected exactly like unmarked debt) · positional citation (a `file:line` pointer where a symbol was available — see §3)."),
   ]
 }
 
-fn open_threads_blocks() -> List<MarkdownBlock> {
+fn open_threads_blocks() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "Open threads"),
     ul(items: [
@@ -233,7 +233,7 @@ fn open_threads_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-fn building_checks_blocks() -> List<MarkdownBlock> {
+fn building_checks_blocks() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "Building & checks"),
     ul(items: [
@@ -245,7 +245,7 @@ fn building_checks_blocks() -> List<MarkdownBlock> {
   ]
 }
 
-fn design_blocks() -> List<MarkdownBlock> {
+fn design_blocks() -> List<std.markdown.MarkdownBlock> {
   flat_map([
     preamble_blocks(),
     section_1_blocks(),
@@ -263,8 +263,8 @@ fn design_blocks() -> List<MarkdownBlock> {
   ], bs => bs)
 }
 
-fn design_document() -> MarkdownDocument {
-  MarkdownDocument { blocks: design_blocks() }
+fn design_document() -> std.markdown.MarkdownDocument {
+  std.markdown.MarkdownDocument { blocks: design_blocks() }
 }
 
 fn expected_design_md() -> String {

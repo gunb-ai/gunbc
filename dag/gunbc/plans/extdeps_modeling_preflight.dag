@@ -4,8 +4,8 @@ module gunbc.plans.extdeps_modeling_preflight
 data extdeps_modeling_preflight_law: String = "Normative authority rows for the extdeps modeling preflight (operator verdict on gunbc#7556; DESIGN §3 'External upstream decomposition'): before any new extdeps work, the agent returns this table, and no implementation starts until the table is coherent. The typed rows below are the single authority; the registered plan doc renders its table FROM these rows (derive, never a second copy)."
 
 type ExtdepsPreflightRow {
-  question: NonEmptyStr
-  required_answer: NonEmptyStr
+  question: std.types.NonEmptyStr
+  required_answer: std.types.NonEmptyStr
 }
 
 data extdeps_modeling_preflight_rows: List<ExtdepsPreflightRow> = [

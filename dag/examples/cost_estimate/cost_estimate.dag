@@ -4,7 +4,7 @@ module examples.cost_estimate
 type CostProjection {
   expected_hours: Float
   utilization: Float
-  currency: CurrencyCode
+  currency: std.currency.CurrencyCode
 }
 
 fn billable_hours(p: CostProjection) -> Float {

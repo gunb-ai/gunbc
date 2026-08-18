@@ -3,18 +3,18 @@ module std.os.invocation
 
 type SyscallEntry {
   number: Int
-  name: NonEmptyStr
+  name: std.types.NonEmptyStr
   arg_count: Int
 }
 
 type SyscallAbi {
   table: List<SyscallEntry>
-  convention: CallingConvention
+  convention: std.abi.CallingConvention
 }
 
 type ApiEntry {
-  symbol: NonEmptyStr
-  module: NonEmptyStr
+  symbol: std.types.NonEmptyStr
+  module: std.types.NonEmptyStr
 }
 
 type LibraryApiBoundary {

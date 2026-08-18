@@ -130,7 +130,7 @@ fn slowest_witness_row(rank: Int, function: String, entry: String, eval_ns: Int,
 }
 
 type HotRowAcc {
-  lines: List<Line>
+  lines: List<std.render.Line>
   idx: Int
 }
 

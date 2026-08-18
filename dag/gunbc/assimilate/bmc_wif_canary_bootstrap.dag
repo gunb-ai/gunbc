@@ -5,7 +5,7 @@ module gunbc.assimilate.bmc_wif_canary_bootstrap
 // when some unrelated module in the closure happened to drag that definer into the pool.
 
 
-data bmc_wif_bootstrap_service_deps: List<GcpService> = [
+data bmc_wif_bootstrap_service_deps: List<extdeps.cloud.gcp.gcp.GcpService> = [
   GcpServiceUsage,
   GcpIam,
   GcpIamCredentials,
@@ -16,7 +16,7 @@ data bmc_wif_bootstrap_service_deps: List<GcpService> = [
 data bmc_wif_bootstrap_required_apis: List<String> = map(bmc_wif_bootstrap_service_deps, s => gcp_service_api_id(service: s))
 
 pattern bmc_wif_canary_bootstrap() -> {
-  sa_email: ServiceAccountEmail,
+  sa_email: extdeps.cloud.gcp.gcp.ServiceAccountEmail,
   canary_secret_name: String,
   canary_binding_etag: String,
   pool_op: String,
@@ -56,7 +56,7 @@ pattern bmc_wif_canary_bootstrap() -> {
     project_id: bmc_secrets_project_id,
     secret: wif_canary_secret_name,
     policy: bmc_wif_bootstrap_bindings_reconciled_policy(
-      observed: GcpPolicy { bindings: observed_policy.bindings, etag: observed_policy.etag, version: observed_policy.version }
+      observed: extdeps.cloud.gcp.iam.GcpPolicy { bindings: observed_policy.bindings, etag: observed_policy.etag, version: observed_policy.version }
     )
   )
 
@@ -91,7 +91,7 @@ pattern bmc_wif_canary_bootstrap() -> {
 // drops any member under an authored role that this caller did not author. Naming the owned
 // universe is what lets reconcile_gcp_policy preserve those members while still retiring cells this
 // caller genuinely owns and no longer desires.
-fn bmc_wif_bootstrap_bindings_owned_cells() -> List<GcpIamBindingCell> {
+fn bmc_wif_bootstrap_bindings_owned_cells() -> List<extdeps.cloud.gcp.iam.GcpIamBindingCell> {
   fold(bmc_wif_bootstrap_bindings(), init: no_gcp_cells, f: (acc, b) =>
     fold(gcp_binding_cells(b: b), init: acc, f: (inner, c) => inner |> list_push(c)))
 }
@@ -108,11 +108,11 @@ fn bmc_wif_bootstrap_bindings_owned_cells() -> List<GcpIamBindingCell> {
 // DISSOLVE-ON: the BMC bootstrap patterns become EffectPlan steps, at which point the reconcile
 // verdict selects whether the SetSecretIamPolicy step is present at all, and this wrapper is
 // deleted rather than returning a policy the caller was never meant to write.
-fn bmc_wif_bootstrap_bindings_reconciled_policy(observed: GcpPolicy) -> GcpPolicy {
+fn bmc_wif_bootstrap_bindings_reconciled_policy(observed: extdeps.cloud.gcp.iam.GcpPolicy) -> extdeps.cloud.gcp.iam.GcpPolicy {
   match reconcile_gcp_policy(
     observed: observed,
     desired_owned: bmc_wif_bootstrap_bindings_owned_cells(),
-    owned_universe: GcpIamOwnedCellUniverse { cells: bmc_wif_bootstrap_bindings_owned_cells() }
+    owned_universe: extdeps.cloud.gcp.iam.GcpIamOwnedCellUniverse { cells: bmc_wif_bootstrap_bindings_owned_cells() }
   ) {
     GcpPolicyAlreadyConverged { policy: p } => p
     GcpPolicyDeltaRequired { policy: p, added: _, removed: _, preserved: _ } => p

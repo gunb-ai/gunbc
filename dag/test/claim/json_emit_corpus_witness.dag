@@ -33,7 +33,7 @@ fn all_json_emit_corpus_grep_witnesses() -> Bool {
     && emit_has_no_unblessed_json_number_lexeme_cast(emit_content: emit.content)
 }
 
-func json_emit_corpus_grep_witness() -> ProcessExit {
+func json_emit_corpus_grep_witness() -> std.process.ProcessExit {
   return if all_json_emit_corpus_grep_witnesses() {
     ExitSuccess
   } else {

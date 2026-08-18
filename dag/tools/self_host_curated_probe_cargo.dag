@@ -3,7 +3,7 @@ module tools.self_host_curated_probe_cargo
 
 data curated_probe_cargo_scaffold_note: String = "SCAFFOLD — dissolve-on: deletes when cssl exposes probe-lib manifest projection or bash-emit #5828 realizes curated_cargo_probe_one transport. Single authority: cssl_v1_compiled_probe_lib_cargo_toml (tools.self_host_curated_seed_linked_harness). Shell route: curated_probe_cargo_toml_write_from_cssl_authority (ProcessExit + Filesystem.Write) — gunbc run has no value-printing verb (#8286 wall)."
 
-fn curated_probe_write_cargo_toml_blob(path: String, content: String, label: String) -> ProcessExit {
+fn curated_probe_write_cargo_toml_blob(path: String, content: String, label: String) -> std.process.ProcessExit {
   if content == "" {
     exit_failure(reason: concat(label, ": refused empty export"))
   }
@@ -15,7 +15,7 @@ fn curated_probe_write_cargo_toml_blob(path: String, content: String, label: Str
   }
 }
 
-fn curated_probe_cargo_toml_write_from_cssl_authority(out_path: String) -> ProcessExit {
+fn curated_probe_cargo_toml_write_from_cssl_authority(out_path: String) -> std.process.ProcessExit {
   let root = git.Inspect.Toplevel()
   let content = cssl_v1_compiled_probe_lib_cargo_toml(root: root.path)
   curated_probe_write_cargo_toml_blob(

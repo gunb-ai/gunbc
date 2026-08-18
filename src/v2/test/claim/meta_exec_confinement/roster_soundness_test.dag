@@ -1,7 +1,7 @@
 module v2.test.meta_exec_confinement.roster_soundness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data planted_roster_entry: String = "dag/gunbc/_perturb_stale_meta_exec_roster.dag"
 

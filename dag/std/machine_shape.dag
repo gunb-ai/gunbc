@@ -6,20 +6,20 @@ type LevelId = NonEmptyStr where brand("LevelId")
 
 type MemoryLevel {
   id: LevelId
-  capacity: ByteSize
-  transfer_grain: ByteSize?
-  bandwidth: Bandwidth?
-  latency: Nanosecond?
+  capacity: std.measure.ByteSize
+  transfer_grain: std.measure.ByteSize?
+  bandwidth: std.measure.Bandwidth?
+  latency: std.measure.Nanosecond?
 }
 
 type MemoryShape = List<MemoryLevel>
 
 type LaneGrouping
   = IndependentLanes
-  | Lockstep { group_width: HardwareThreadCount }
+  | Lockstep { group_width: std.measure.HardwareThreadCount }
 
 type ExecutionShape {
-  lane_count: HardwareThreadCount
+  lane_count: std.measure.HardwareThreadCount
   grouping: LaneGrouping
 }
 
@@ -30,8 +30,8 @@ type ExecutionDomain {
 }
 
 type InterconnectLink {
-  bandwidth: Bandwidth
-  latency: Nanosecond?
+  bandwidth: std.measure.Bandwidth
+  latency: std.measure.Nanosecond?
 }
 
 type InterconnectEdge

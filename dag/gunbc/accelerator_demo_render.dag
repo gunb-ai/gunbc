@@ -28,7 +28,7 @@ fn render_placement(placement: std.realization.Placement) -> String {
   }
 }
 
-fn render_numerical_contract(contract: NumericalContract) -> String {
+fn render_numerical_contract(contract: std.numerical_contract.NumericalContract) -> String {
   match contract {
     IntegerExact => "IntegerExact"
     FloatApproximate { fma_contraction: fma, rounding: _ } => match fma {
@@ -38,14 +38,14 @@ fn render_numerical_contract(contract: NumericalContract) -> String {
   }
 }
 
-fn render_decode_fidelity(fidelity: DecodeFidelity) -> String {
+fn render_decode_fidelity(fidelity: extdeps.communication.medium.DecodeFidelity) -> String {
   match fidelity {
     Lossless => "Lossless"
     Lossy => "Lossy"
   }
 }
 
-fn render_refusal_reason(reason: AcceleratorRefusalReason) -> String {
+fn render_refusal_reason(reason: gunbc.accelerator_demo_plan.AcceleratorRefusalReason) -> String {
   match reason {
     NotElementwisePure => "NotElementwisePure"
     CarriesEffects => "CarriesEffects"
@@ -57,9 +57,9 @@ fn render_refusal_reason(reason: AcceleratorRefusalReason) -> String {
 fn project_plan_view(
   plan: RealizationPlan<Nano>,
   kernel_placement: std.realization.Placement,
-  contract: NumericalContract,
-  fidelity: DecodeFidelity,
-  target_medium: NonEmptyStr
+  contract: std.numerical_contract.NumericalContract,
+  fidelity: extdeps.communication.medium.DecodeFidelity,
+  target_medium: std.types.NonEmptyStr
 ) -> AcceleratorDemoPlanView {
   AcceleratorDemoPlanView {
     target: demo_target_label
@@ -71,7 +71,7 @@ fn project_plan_view(
   }
 }
 
-fn project_outcome_view(outcome: AcceleratorRecognitionOutcome) -> AcceleratorDemoOutcomeView {
+fn project_outcome_view(outcome: gunbc.accelerator_demo_plan.AcceleratorRecognitionOutcome) -> AcceleratorDemoOutcomeView {
   match outcome {
     Recognized {
       plan: plan,
@@ -178,7 +178,7 @@ type AcceleratorDemoTriptychView {
   right: TriptychRightPanel
 }
 
-fn render_program_constructor(program: AcceleratorDemoProgram) -> String {
+fn render_program_constructor(program: gunbc.accelerator_demo_program.AcceleratorDemoProgram) -> String {
   match program {
     PureElementwiseMap { ops: _ } => "PureElementwiseMap"
     EffectfulElementwiseMap { ops: _ } => "EffectfulElementwiseMap"
@@ -186,14 +186,14 @@ fn render_program_constructor(program: AcceleratorDemoProgram) -> String {
   }
 }
 
-fn render_program_sketch(program: AcceleratorDemoProgram) -> String {
+fn render_program_sketch(program: gunbc.accelerator_demo_program.AcceleratorDemoProgram) -> String {
   concat(
     "map(i => relu(a[i]*b[i]+c[i]))  [",
     concat(render_program_constructor(program: program), "]")
   )
 }
 
-fn render_lifted_subgraph(program: AcceleratorDemoProgram) -> String {
+fn render_lifted_subgraph(program: gunbc.accelerator_demo_program.AcceleratorDemoProgram) -> String {
   concat(
     "fused elementwise kernel: Mul -> Add -> Relu (op_count=",
     concat(
@@ -204,8 +204,8 @@ fn render_lifted_subgraph(program: AcceleratorDemoProgram) -> String {
 }
 
 fn project_triptych_right_panel(
-  outcome: AcceleratorRecognitionOutcome,
-  program: AcceleratorDemoProgram
+  outcome: gunbc.accelerator_demo_plan.AcceleratorRecognitionOutcome,
+  program: gunbc.accelerator_demo_program.AcceleratorDemoProgram
 ) -> TriptychRightPanel {
   match outcome {
     Recognized {
@@ -233,8 +233,8 @@ fn project_triptych_right_panel(
 }
 
 fn project_triptych_view(
-  program: AcceleratorDemoProgram,
-  contract: NumericalContract
+  program: gunbc.accelerator_demo_program.AcceleratorDemoProgram,
+  contract: std.numerical_contract.NumericalContract
 ) -> AcceleratorDemoTriptychView {
   let outcome = gunbc.accelerator_demo_recognizer.recognize_accelerator_program_with_contract(
     program: program,

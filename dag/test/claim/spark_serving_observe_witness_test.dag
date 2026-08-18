@@ -27,8 +27,8 @@ fn witness_nvidia_driver_present(wire: String) -> SparkServingReadbackPresent {
   SparkServingReadbackPresent { value: wire }
 }
 
-fn readback_absent() -> SparkServingReadback {
-  SparkServingReadback {
+fn readback_absent() -> gunbc.spark_serving_loaded_release.SparkServingReadback {
+  gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitAbsent,
     runtime_version: SparkServingReadbackAbsent,
@@ -41,11 +41,11 @@ fn readback_absent() -> SparkServingReadback {
   }
 }
 
-fn readback_unreachable() -> SparkServingReadback {
-  SparkServingReadback {
+fn readback_unreachable() -> gunbc.spark_serving_loaded_release.SparkServingReadback {
+  gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitObservationRefused {
-      cause: "unit LoadState probe leg did not run" as NonEmptyStr,
+      cause: "unit LoadState probe leg did not run" as std.types.NonEmptyStr,
     },
     runtime_version: SparkServingReadbackAbsent,
     runtime_release_asset_digest: SparkServingReadbackAbsent,
@@ -57,8 +57,8 @@ fn readback_unreachable() -> SparkServingReadback {
   }
 }
 
-fn readback_active_incomplete() -> SparkServingReadback {
-  SparkServingReadback {
+fn readback_active_incomplete() -> gunbc.spark_serving_loaded_release.SparkServingReadback {
+  gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
@@ -71,8 +71,8 @@ fn readback_active_incomplete() -> SparkServingReadback {
   }
 }
 
-fn readback_active_complete() -> SparkServingReadback {
-  SparkServingReadback {
+fn readback_active_complete() -> gunbc.spark_serving_loaded_release.SparkServingReadback {
+  gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
@@ -106,7 +106,7 @@ test fn unreachable_readback_does_not_derive_absent_observation() -> Bool {
 test fn load_state_not_found_probe_derives_unit_absent() -> Bool {
   match spark_serving_unit_outcome_from_probe_results(
     load_state: Present {
-      value: SshSessionExecResult {
+      value: extdeps.ssh.session.SshSessionExecResult {
         exit_code: 0,
         success: true,
         stdout: "not-found",
@@ -114,7 +114,7 @@ test fn load_state_not_found_probe_derives_unit_absent() -> Bool {
       },
     },
     is_active: Present {
-      value: SshSessionExecResult {
+      value: extdeps.ssh.session.SshSessionExecResult {
         exit_code: 3,
         success: false,
         stdout: "inactive",
@@ -164,7 +164,7 @@ test fn runtime_receipt_json_positive_parses_asset_digest() -> Bool {
 test fn runtime_receipt_probe_success_populates_digest_field() -> Bool {
   match spark_serving_runtime_receipt_field_from_probe(
     probe: Present {
-      value: SshSessionExecResult {
+      value: extdeps.ssh.session.SshSessionExecResult {
         exit_code: 0,
         success: true,
         stdout: witness_runtime_receipt_json_positive,
@@ -202,7 +202,7 @@ test fn malformed_version_json_refuses_parse() -> Bool {
 data version_drift_red_control_note: String = "RED CONTROL: a different reported runtime version must not converge to the pinned release identity."
 
 test fn different_runtime_version_refuses_loaded_identity() -> Bool {
-  match derive_loaded_spark_serving_release_identity(readback: SparkServingReadback {
+  match derive_loaded_spark_serving_release_identity(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv6",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: "0.11.0-rc1" },
@@ -219,7 +219,7 @@ test fn different_runtime_version_refuses_loaded_identity() -> Bool {
 }
 
 test fn different_runtime_version_refuses_observation() -> Bool {
-  match derive_spark_serving_observation(readback: SparkServingReadback {
+  match derive_spark_serving_observation(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv6",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: "10.11.0" },
@@ -271,12 +271,12 @@ test fn active_incomplete_readback_refuses_observation() -> Bool {
 }
 
 test fn missing_runtime_receipt_probe_refuses_active_observation() -> Bool {
-  match derive_spark_serving_observation(readback: SparkServingReadback {
+  match derive_spark_serving_observation(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
     runtime_release_asset_digest: SparkServingReadbackRefused {
-      cause: "runtime install receipt probe failed exit=1 stderr=No such file" as NonEmptyStr,
+      cause: "runtime install receipt probe failed exit=1 stderr=No such file" as std.types.NonEmptyStr,
     },
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
@@ -314,7 +314,7 @@ test fn active_complete_readback_derives_observed() -> Bool {
 }
 
 test fn inactive_unit_readback_refuses_observation() -> Bool {
-  match derive_spark_serving_observation(readback: SparkServingReadback {
+  match derive_spark_serving_observation(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv6",
     unit_outcome: SparkServingUnitInactive,
     runtime_version: SparkServingReadbackAbsent,
@@ -333,11 +333,11 @@ test fn inactive_unit_readback_refuses_observation() -> Bool {
 }
 
 test fn api_field_refusal_surfaces_before_fingerprint_refusal() -> Bool {
-  match derive_spark_serving_observation(readback: SparkServingReadback {
+  match derive_spark_serving_observation(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackRefused {
-      cause: "ollama /api/version body is not parseable JSON" as NonEmptyStr,
+      cause: "ollama /api/version body is not parseable JSON" as std.types.NonEmptyStr,
     },
     runtime_release_asset_digest: SparkServingReadbackAbsent,
     model_name: SparkServingReadbackAbsent,
@@ -356,7 +356,7 @@ test fn api_field_refusal_surfaces_before_fingerprint_refusal() -> Bool {
 test fn observation_report_refused_is_not_success() -> Bool {
   !spark_serving_observation_report_succeeded(
     report: SparkServingObservationReportRefused {
-      cause: "attempt identity is not a safe path segment" as NonEmptyStr,
+      cause: "attempt identity is not a safe path segment" as std.types.NonEmptyStr,
     },
   )
 }
@@ -370,7 +370,7 @@ test fn per_host_refusal_report_is_not_success() -> Bool {
           more: [
             SparkServingObservationRefused {
               host: "srv6",
-              cause: "gunbc-spark-serving.service is inactive" as NonEmptyStr,
+              cause: "gunbc-spark-serving.service is inactive" as std.types.NonEmptyStr,
             },
           ],
         },
@@ -381,7 +381,7 @@ test fn per_host_refusal_report_is_not_success() -> Bool {
 }
 
 test fn unobserved_nvidia_driver_refuses_active_observation() -> Bool {
-  match derive_spark_serving_observation(readback: SparkServingReadback {
+  match derive_spark_serving_observation(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
@@ -400,7 +400,7 @@ test fn unobserved_nvidia_driver_refuses_active_observation() -> Bool {
 }
 
 test fn driver_too_old_refuses_active_observation() -> Bool {
-  match derive_spark_serving_observation(readback: SparkServingReadback {
+  match derive_spark_serving_observation(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
@@ -419,7 +419,7 @@ test fn driver_too_old_refuses_active_observation() -> Bool {
 }
 
 test fn driver_too_old_report_is_not_success() -> Bool {
-  match derive_spark_serving_observation(readback: SparkServingReadback {
+  match derive_spark_serving_observation(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
@@ -452,7 +452,7 @@ test fn loaded_release_derivation_excludes_desired_policy_fields() -> Bool {
 }
 
 test fn version_only_without_asset_digest_refuses_loaded_identity() -> Bool {
-  match derive_loaded_spark_serving_release_identity(readback: SparkServingReadback {
+  match derive_loaded_spark_serving_release_identity(readback: gunbc.spark_serving_loaded_release.SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
@@ -489,7 +489,7 @@ test fn refused_observation_was_not_made() -> Bool {
   spark_serving_observation_was_made(
     observation: SparkServingObservationRefused {
       host: "srv5",
-      cause: "ssh exec refused" as NonEmptyStr,
+      cause: "ssh exec refused" as std.types.NonEmptyStr,
     },
   ) == false
 }
@@ -507,7 +507,7 @@ test fn report_with_a_refused_host_refuses_even_when_a_sibling_answered() -> Boo
       more: [
         SparkServingObservationRefused {
           host: "srv6",
-          cause: "ssh exec refused" as NonEmptyStr,
+          cause: "ssh exec refused" as std.types.NonEmptyStr,
         },
       ],
     },
@@ -533,7 +533,7 @@ test fn empty_observation_list_produces_no_report_rather_than_a_clean_one() -> B
 test fn a_refused_report_is_never_read_as_observed() -> Bool {
   spark_serving_report_observations_were_made(
     report: SparkServingObservationReportRefused {
-      cause: "no host was probed" as NonEmptyStr,
+      cause: "no host was probed" as std.types.NonEmptyStr,
     },
   ) == false
 }

@@ -20,7 +20,7 @@ data gha_fold_pilot_job: extdeps.github.actions.Job = extdeps.github.actions.Job
     UsesStep {
       name: Absent,
       id: Absent,
-      uses: ActionRef { owner: "actions", repo: "checkout", ref: "v4" },
+      uses: extdeps.github.actions.ActionRef { owner: "actions", repo: "checkout", ref: "v4" },
       with: Absent,
       env: Absent,
       if_condition: Absent,

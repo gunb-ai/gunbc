@@ -6,14 +6,14 @@ data scm_serving_model_note: String = "How to compute an SCM's serving bill from
 // The replica-count multiplication that gunbc.econ.free_tier_serving applies to Hetzner DEDICATED boxes must NOT be applied to these object-storage rates. A cited object-storage GB-month already buys eleven-nines durability (extdeps.pricing.object_storage durability_standard_note), i.e. the vendor's own erasure-coded redundancy across facilities; multiplying it by a replica count charges twice for redundancy already purchased. Self-managed block storage is the opposite case -- one box is one copy, so replicas are the modeler's responsibility. Two storage realizations, two different cost shapes, one reason: who owns the durability.
 type ScmWorkloadProfile {
   user_count: std.nat.Nat
-  stored_bytes_per_user_after_dedup: ByteSize
-  monthly_egress_bytes_per_user: ByteSize
+  stored_bytes_per_user_after_dedup: std.measure.ByteSize
+  monthly_egress_bytes_per_user: std.measure.ByteSize
   monthly_object_reads_per_user: std.nat.Nat
   monthly_object_writes_per_user: std.nat.Nat
 }
 
 type ByteBasisAssumption
-  = BasisAssumed { basis: ByteBasis, rationale: NonEmptyStr }
+  = BasisAssumed { basis: extdeps.pricing.object_storage.ByteBasis, rationale: std.types.NonEmptyStr }
   | BasisUnknown
 
 type ScmUsageRefusalCause
@@ -279,16 +279,16 @@ fn egress_ladder(rows: List<ObjectStorageEgressRow>) -> List<RateTier>? {
 data request_pricing_note: String = "Two vendors here state that requests are not billed at all (Wasabi: 'No fees for egress or API requests'; Storj: 'No API fees'). That is a DIFFERENT fact from a zero rate and from an unknown rate, so it gets its own arm -- a model that encoded it as rate zero could not tell 'the vendor says free' apart from 'nobody filled this in yet'."
 
 type RequestPricing
-  = RequestsBilled { read_row: ObjectStorageRequestRow, write_row: ObjectStorageRequestRow }
-  | RequestsIncludedAtNoCharge { terms: NonEmptyStr }
+  = RequestsBilled { read_row: extdeps.pricing.object_storage.ObjectStorageRequestRow, write_row: extdeps.pricing.object_storage.ObjectStorageRequestRow }
+  | RequestsIncludedAtNoCharge { terms: std.types.NonEmptyStr }
 
 type ProviderQuote {
-  vendor: StorageVendor
-  quote_label: NonEmptyStr
-  storage_rows: List<ObjectStorageClassRow>
-  egress_rows: List<ObjectStorageEgressRow>
+  vendor: extdeps.pricing.object_storage.StorageVendor
+  quote_label: std.types.NonEmptyStr
+  storage_rows: List<extdeps.pricing.object_storage.ObjectStorageClassRow>
+  egress_rows: List<extdeps.pricing.object_storage.ObjectStorageEgressRow>
   requests: RequestPricing
-  quoted_basis: ByteBasis
+  quoted_basis: extdeps.pricing.object_storage.ByteBasis
 }
 
 // A quote carries the byte basis its own vendor states (BinaryGibibyte for Google, which says 'per 1 gibibyte'), or ByteBasisUnstated when the vendor does not say -- in which case the caller's declared assumption fills in. The vendor OUTRANKS the modeler: a stated basis is never overridden by an assumption, which is why the matrix can hold Google beside AWS without pretending they quote the same unit.

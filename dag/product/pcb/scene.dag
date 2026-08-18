@@ -20,37 +20,37 @@ type PcbSceneLegend {
   drawing_must_be_read: Int
   named_attachment_part_unresolved: Int
   functional_obligation: Int
-  body_layout: PcbBodyLayoutStanding
-  design: DeclarationRef
-  envelope_reads: List<DeclarationRef>
+  body_layout: product.pcb.world.PcbBodyLayoutStanding
+  design: std.decl_ref.DeclarationRef
+  envelope_reads: List<std.decl_ref.DeclarationRef>
 }
 
 type PcbSceneElement
-  = SceneBoardOutline { outline: AxisAlignedRectangle2 }
+  = SceneBoardOutline { outline: std.orthogonal_geometry.AxisAlignedRectangle2 }
   | SceneEstablishedBody {
-      identity: NonEmptyStr
-      origin: Point2
-      body_width: Micrometer
-      body_height: Micrometer
-      source: DeclarationRef?
+      identity: std.types.NonEmptyStr
+      origin: std.affine_space.Point2
+      body_width: std.measure.Micrometer
+      body_height: std.measure.Micrometer
+      source: std.decl_ref.DeclarationRef?
     }
   | SceneObligationMarker {
-      identity: NonEmptyStr
-      origin: Point2
-      cause: PcbObligationCause
+      identity: std.types.NonEmptyStr
+      origin: std.affine_space.Point2
+      cause: product.pcb.world.PcbObligationCause
     }
   | SceneAttachmentMarker {
-      layer: NonEmptyStr
-      cause: PcbObligationCause
+      layer: std.types.NonEmptyStr
+      cause: product.pcb.world.PcbObligationCause
     }
   | SceneFunctionalMarker {
-      function: NonEmptyStr
-      cause: PcbObligationCause
+      function: std.types.NonEmptyStr
+      cause: product.pcb.world.PcbObligationCause
     }
   | SceneLegend { counts: PcbSceneLegend }
 
 type PcbEngineeringScene sole_constructor {
-  world: PcbWorld
+  world: product.pcb.world.PcbWorld
   elements: List<PcbSceneElement>
 }
 

@@ -131,7 +131,7 @@ fn width_fold_objective_goals() -> List<AxisGoal> {
 
 type WidthBoundedRealization<S> {
   plan: RealizationPlan<S>
-  spawn_width: HardwareThreadCount
+  spawn_width: std.measure.HardwareThreadCount
 }
 
 fn width_bounded_realization<S>(
@@ -224,8 +224,8 @@ fn witness_memory_term_non_binding_uses_shard_count(
   ) == shard_count
 }
 
-type MemoryAwareWidthWitnessStamp { shard_count: Int, hardware_threads: HardwareThreadCount, memory_budget: ByteSize, per_shard_peak: ByteSize, conservative_fallback_width: Int, expected: Int }
-type ProcessMemoryAwareWidthWitnessStamp { hardware_threads: HardwareThreadCount, memory_budget: ByteSize, per_job_peak: ByteSize, pids_budget: Int, procs_per_job: Int, conservative_fallback_width: Int, expected: Int }
+type MemoryAwareWidthWitnessStamp { shard_count: Int, hardware_threads: std.measure.HardwareThreadCount, memory_budget: std.measure.ByteSize, per_shard_peak: std.measure.ByteSize, conservative_fallback_width: Int, expected: Int }
+type ProcessMemoryAwareWidthWitnessStamp { hardware_threads: std.measure.HardwareThreadCount, memory_budget: std.measure.ByteSize, per_job_peak: std.measure.ByteSize, pids_budget: Int, procs_per_job: Int, conservative_fallback_width: Int, expected: Int }
 
 fn witness_memory_aware_width_stamp_holds(stamp: MemoryAwareWidthWitnessStamp) -> Bool {
   memory_aware_width_value(shard_count: stamp.shard_count, hardware_threads: stamp.hardware_threads, memory_budget: stamp.memory_budget, per_shard_peak: stamp.per_shard_peak, conservative_fallback_width: stamp.conservative_fallback_width) == stamp.expected

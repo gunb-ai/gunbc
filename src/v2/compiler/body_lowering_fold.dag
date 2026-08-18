@@ -44,8 +44,8 @@ data body_lowering_frontier_three_state_note: String = "THE FRONTIER OBSERVER MU
 
 type BodyLoweringFrontierDisposition
   = BodyLoweringLowered
-  | BodyLoweringWrapperRetained { reason: Symbol }
-  | BodyLoweringRejected { diagnostics: NonEmptyDiagnostics }
+  | BodyLoweringWrapperRetained { reason: v2.std.node.Symbol }
+  | BodyLoweringRejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
 
 fn body_lowering_diagnostic_is_wrapper_retained(d: Diagnostic) -> Bool {
   d.reason == ^body_lowering_reason_wrapper_retained_emitted

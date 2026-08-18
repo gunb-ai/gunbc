@@ -1,7 +1,7 @@
 module gunbc.plans.invert_hand_maintained
 
 
-fn invert_hand_maintained_body() -> List<MarkdownBlock> {
+fn invert_hand_maintained_body() -> List<std.markdown.MarkdownBlock> {
   [
     BlockquoteBlock { blocks: [p(text: "The §7 self-hosting recursion applied **beyond the compiler**: every hand-maintained artifact (`ROADMAP.md`, doc indexes, eventually more) is a *second representation* of an authority that already lives in the substrate — so it drifts. Invert it: the `.dag` model is the authority, the artifact is an **emitted projection**, drift-gated (`generated == committed`) exactly as `ci.yml` already is. Flagship: the ROADMAP. DESIGN refs: §2 (no dual representation), §3 (single authority), §5 (construction over validation — the projection makes the defect class *unwritable*), §6 (emission = ingestion⁻¹; the doc medium), §7 (the recursion — the repo emits its own scaffolding).")] },
     h2(text: "1. Why — a hand-maintained artifact is a dual representation that drifts"),
@@ -82,7 +82,7 @@ fn invert_hand_maintained_body() -> List<MarkdownBlock> {
   ]
 }
 
-data invert_hand_maintained_plan: Plan = Plan {
+data invert_hand_maintained_plan: gunbc.plan.Plan = gunbc.plan.Plan {
   slug: "invert-hand-maintained",
   title: "Inverting hand-maintained artifacts — generate from `.dag`, drift-gate the projection",
   body: invert_hand_maintained_body(),

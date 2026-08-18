@@ -1,11 +1,11 @@
 module test.claim.evaluation_budget
 
 
-data witness_entry: EvaluationEntryIdentity = EvaluationEntryIdentity {
-  entry: "roadmap_serve_handle" as NonEmptyStr,
+data witness_entry: std.evaluation_budget.EvaluationEntryIdentity = std.evaluation_budget.EvaluationEntryIdentity {
+  entry: "roadmap_serve_handle" as std.types.NonEmptyStr,
 }
 
-data limit_10ms: EvaluationLimit = LimitSet {
+data limit_10ms: std.evaluation_budget.EvaluationLimit = LimitSet {
   limit: positive_millisecond(count: positive_measure_count(predecessor: 9)),
 }
 

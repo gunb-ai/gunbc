@@ -29,17 +29,17 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 // Modeled upstream publication write operations de-fused from git.Core. GitPushRequest and GitCommitRequest are the interface shapes; shell argv lives only in git.PublicationTransport service transport rows — no parallel free-fn argv surface. Slice 1 is model + shadow only — consumers route through tools.publication_publisher before binding a transport handler in the live slice.
 type GitRefUpdateSpec {
-  local_ref: GitRef
-  remote_ref: GitRef
+  local_ref: std.types.GitRef
+  remote_ref: std.types.GitRef
 }
 
 type GitPushRequest {
-  remote: NonEmptyStr
+  remote: std.types.NonEmptyStr
   ref_updates: List<GitRefUpdateSpec>
 }
 
 type GitCommitRequest {
-  message: NonEmptyStr
+  message: std.types.NonEmptyStr
   allow_empty: Bool
 }
 

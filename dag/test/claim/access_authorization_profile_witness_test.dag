@@ -23,19 +23,19 @@ test fn every_profile_projects_context_and_evidence_into_the_kernel() -> Bool {
   let effect = effect_access_request(request: EffectRequest {
     subject: "actor", effect: "write", target: "file", context: "frame", evidence: "grant",
   })
-  let reference = reference_access_request(request: ReferenceRequest {
+  let reference = reference_access_request(request: std.authorization_profile.ReferenceRequest {
     referrer: "caller", referenced: "callee", context: "module", evidence: "visibility-proof",
   })
-  let publication = publication_access_request(request: PublicationAdmissionRequest {
+  let publication = publication_access_request(request: std.authorization_profile.PublicationAdmissionRequest {
     subject: "session", source: "head-sha", resource: "public-root",
     audience: UniversalAudience, context: "cutover", evidence: "coverage-receipt",
   })
-  let disclosure = disclosure_access_request(request: DisclosureRequest {
+  let disclosure = disclosure_access_request(request: std.authorization_profile.DisclosureRequest {
     principal: "principal", resource: "record", fields: ["email"],
     audience: EnumeratedAudience { members: set_insert(empty_set(), "principal") },
     context: "purpose", evidence: "consent",
   })
-  let sealed = sealed_execution_access_request(request: SealedExecutionRequest {
+  let sealed = sealed_execution_access_request(request: std.authorization_profile.SealedExecutionRequest {
     principal: "principal", operation: "evaluate", sealed_resource: "sealed-model",
     execution_context: "enclave", evidence: "attestation",
   })

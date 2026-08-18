@@ -1,7 +1,7 @@
 module v2.test.manual.parse_mechanism_probe
 
 
-data pmp_anchor: Symbol = ^pmp_anchor
+data pmp_anchor: v2.std.node.Symbol = ^pmp_anchor
 
 fn pmp_tokenize_parse_text(source_text: String) -> Bool {
   let lm = dag_language_model()
@@ -20,20 +20,20 @@ fn pmp_tokenize_parse_path(path: String) -> Bool {
   pmp_tokenize_parse_text(source_text: source)
 }
 
-fn pmp_memo_stats_text(source_text: String) -> ParseMemoStats {
+fn pmp_memo_stats_text(source_text: String) -> v2.compiler.parse.ParseMemoStats {
   let lm = dag_language_model()
   let at = port_locus(port: ^parse_stage_locus_port)
   match tokenize(text: source_text, file: pmp_anchor, rules: lm.lex) {
     Rejected { diagnostics: _ } =>
-      ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+      v2.compiler.parse.ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
     Accepted { value: stream, diagnostics: _ } =>
       match lm.grammar {
         VoidGrammar =>
-          ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+          v2.compiler.parse.ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
         ModeledGrammar { root: root } =>
           match grammar_validate_for_parse(root: root, at: at) {
             Rejected { diagnostics: _ } =>
-              ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
+              v2.compiler.parse.ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
             Accepted { value: validated, diagnostics: _ } =>
               parse_production_memo_stats(
                 tokens: token_stream_remaining(stream: stream),
@@ -45,7 +45,7 @@ fn pmp_memo_stats_text(source_text: String) -> ParseMemoStats {
   }
 }
 
-fn pmp_memo_stats_path(path: String) -> ParseMemoStats {
+fn pmp_memo_stats_path(path: String) -> v2.compiler.parse.ParseMemoStats {
   let source = filesystem_read(path: path).content
   pmp_memo_stats_text(source_text: source)
 }

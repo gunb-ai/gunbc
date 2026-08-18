@@ -104,7 +104,7 @@ fn apply_outcome_label(outcome: SparkApplyOutcome) -> String {
 // the remainder for `sh -s` to read as its script, so the shape the wall admits is also the simpler
 // one. The credential still never reaches argv, on either side.
 fn privileged_leg(
-  context: FleetSshExecutionContext,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   host: String,
   admin_principal: String,
   admin_credential: String,
@@ -116,9 +116,9 @@ fn privileged_leg(
       let r = ssh_session_exec_portable_words_with_stdin(
         client_args: shape_fleet_ssh_exec(
           context: context,
-          target: SshTarget {
-            endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
-            principal: admin_principal as NonEmptyStr,
+          target: gunbc.fleet_known_hosts_anchor.SshTarget {
+            endpoint: fleet_probe_endpoint_for(host: host) as std.types.NonEmptyStr,
+            principal: admin_principal as std.types.NonEmptyStr,
           },
           words: words,
         ),
@@ -145,7 +145,7 @@ fn privileged_leg(
 // from inside the privileged session: a privileged session can read /etc/passwd and conclude the
 // account exists, which is not the same claim as the account accepting an authentication.
 fn managed_principal_leg(
-  context: FleetSshExecutionContext,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   host: String,
   managed_principal: String,
   raw_words: List<String>,
@@ -156,9 +156,9 @@ fn managed_principal_leg(
       let r = ssh_session_exec_portable_words_with_stdin(
         client_args: shape_fleet_ssh_exec(
           context: context,
-          target: SshTarget {
-            endpoint: fleet_probe_endpoint_for(host: host) as NonEmptyStr,
-            principal: managed_principal as NonEmptyStr,
+          target: gunbc.fleet_known_hosts_anchor.SshTarget {
+            endpoint: fleet_probe_endpoint_for(host: host) as std.types.NonEmptyStr,
+            principal: managed_principal as std.types.NonEmptyStr,
           },
           words: words,
         ),
@@ -180,7 +180,7 @@ data spark_inference_login: String = "gunbc-inference"
 // directory by default and the authorized_keys population needs one. The shell is a real shell
 // because this account executes convergence commands; the INFERENCE identity below is the one that
 // gets nologin, and keeping them distinct is the whole point of modeling two principals.
-fn create_managed_account_script(admitted: PortableRemoteWord) -> String {
+fn create_managed_account_script(admitted: gunbc.fleet_known_hosts_anchor.PortableRemoteWord) -> String {
   let login = admitted.value as String
   join([
     "set -e\n",
@@ -191,7 +191,7 @@ fn create_managed_account_script(admitted: PortableRemoteWord) -> String {
 
 // The no-login inference identity. nologin plus a locked password is what makes it a service
 // identity rather than an account someone can become.
-fn create_inference_identity_script(admitted: PortableRemoteWord) -> String {
+fn create_inference_identity_script(admitted: gunbc.fleet_known_hosts_anchor.PortableRemoteWord) -> String {
   let login = admitted.value as String
   join([
     "set -e\n",
@@ -208,7 +208,7 @@ fn create_inference_identity_script(admitted: PortableRemoteWord) -> String {
 data spark_managed_access_apply_shell_intent_frontier_note: String = "Privileged Spark bootstrap scripts are interim string bodies until typed HostEffects land; credential stdin uses portable-word ExecPortableWordsWithStdin, which host_effect_apply refuses for ShellCommand+FleetSsh by design (run_shell_transport)."
 
 // The authorized-key install, by exact-line presence so a repeat appends nothing.
-fn install_authorized_key_script(admitted: PortableRemoteWord, key_line: String) -> String {
+fn install_authorized_key_script(admitted: gunbc.fleet_known_hosts_anchor.PortableRemoteWord, key_line: String) -> String {
   let login = admitted.value as String
   let quoted_key_line = shell_quote(arg: key_line)
   join([
@@ -226,7 +226,7 @@ fn install_authorized_key_script(admitted: PortableRemoteWord, key_line: String)
 // THE NARROW GRANT, and it is narrow by construction rather than by intention: one command, one
 // argument form, one account. `loginctl enable-linger <login>` is what a user unit needs to survive
 // logout and reboot; nothing else is granted, so this account cannot use sudo for anything else.
-fn install_narrow_grant_script(admitted: PortableRemoteWord) -> String {
+fn install_narrow_grant_script(admitted: gunbc.fleet_known_hosts_anchor.PortableRemoteWord) -> String {
   let login = admitted.value as String
   join([
     "set -e\n",
@@ -265,7 +265,7 @@ fn spark_managed_access_apply_with_resolved_credentials(
   attempt_raw: String,
   host: String,
   admin_credential: String,
-  credential_binding: FleetSshCredentialBinding,
+  credential_binding: gunbc.fleet_known_hosts_anchor.FleetSshCredentialBinding,
 ) -> SparkApplyReport {
   match fleet_ssh_attempt_identity(raw: attempt_raw) {
     Absent => ApplyNotAttempted { cause: "attempt identity is not a safe path segment" }
@@ -323,7 +323,7 @@ fn spark_managed_access_apply_with_resolved_credentials(
 
 // Administrator password and fleet SSH private key material resolve inside this boundary via
 // Secret Manager — never as argv parameters on gunbc run.
-func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> ProcessExit
+func spark_managed_access_apply_wet(attempt_raw: String, host: String) -> std.process.ProcessExit
   uses net: Network
 {
   let now = clock_now_probed_at()
