@@ -23,6 +23,8 @@ import product.fabric.execution {
   Receipt, ReceiptPayload, ExecutionReceipt, receipt_lease_generation,
 }
 
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // The acceptance test for the terminal contract: two synthetic SCM bindings must
@@ -70,7 +72,6 @@ fn buy_terms(reservation: Int, ceiling: Int) -> BuyTerms {
     currency: Usd,
     reservation_price: money_amount_micro(reservation),
     maximum_buy_order: money_amount_micro(ceiling),
-    delay_valuation_per_second: money_amount_micro(0),
   }
 }
 

@@ -65,26 +65,26 @@ type BudgetAccountId = NonEmptyStr where brand("BudgetAccountId")
 // or settlement. maximum_buy_order is the ceiling on a single grant's
 // liability - a refusal boundary, never a degradation: an ask above it refuses
 // rather than selecting something cheaper and unsuitable.
-// delay_valuation_per_second is a RATE - money divided by time - carried on a
-// money-amount type, so its dimension currently lives in the field name rather
-// than in the type. Selection is specified to add a provider charge to a valued
-// delay, which means multiplying this by a Second and expecting money back, and
-// nothing checks that today.
+// There is deliberately NO delay-valuation field yet. Selection is specified
+// to compare a provider charge against a valued availability delay, which
+// needs a money-per-second RATE, and this record has no honest carrier for
+// one: MoneyAmountMicro would put the dimension in the field name, and the
+// existing MoneyRate bundles a CurrencyCode that would let a rate disagree
+// with the currency these terms already carry.
 //
-// dissolve-on: a currency-free money rate carrier at PerSecond in std.measure,
-// consumed here in place of MoneyAmountMicro. It is NOT a mechanical swap onto
-// the existing MoneyRate<P>, and the reason is worth stating so the next reader
-// does not try it: MoneyRate bundles a CurrencyCode, this record already
-// carries one for its two amounts, and binding a second one here would let a
-// rate disagree with the terms enclosing it. Which authority holds the
-// denomination - these terms or the referenced budget account - is settled by
-// the budget-account work, so the carrier lands with it rather than ahead of it.
+// Landing the field on the wrong type and describing the mismatch in a comment
+// was the alternative, and it is the shape DESIGN refuses -- a dissolution note
+// is a lifecycle fact, not permission to create the debt, and the author cannot
+// grant himself that permission. Since nothing consumes the field yet, the
+// cheaper and more honest option is simply not to ship it: the terms carry what
+// they can state correctly, and the rate arrives with its carrier once the
+// denomination authority -- these terms, or the referenced budget account -- is
+// decided. An absent field forces that decision; a wrongly-typed one hides it.
 type BuyTerms {
   budget_account: BudgetAccountId
   currency: CurrencyCode
   reservation_price: MoneyAmountMicro
   maximum_buy_order: MoneyAmountMicro
-  delay_valuation_per_second: MoneyAmountMicro
 }
 
 type AdmissionTerms {
