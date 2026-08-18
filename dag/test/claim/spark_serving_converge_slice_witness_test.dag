@@ -12,6 +12,7 @@ import gunbc.membership_reconcile { MemberChanged, MemberAdded }
 import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
   FleetConvergeSparkServingTypedAction,
+  PlannedEffectExecution,
   fleet_converge_spark_serving_typed_actions_wire,
   fleet_converge_plan_artifact_hash,
   fleet_converge_plan_artifact_bundle_admits,
@@ -33,6 +34,14 @@ import gunbc.spark_serving_desired {
   SparkServingDesiredAdmitted,
   SparkServingDesiredRefused,
   spark_serving_desired_admission,
+}
+import gunbc.ollama_runtime_bundle {
+  RuntimeMaterializationComplete,
+  RuntimeMaterializationIncomplete,
+  RuntimeMaterializationAbsent,
+  RuntimeMaterializationObservationRefused,
+  RuntimeExecutableMissing,
+  ollama_runtime_materialization_identity_for_required_release,
 }
 import gunbc.spark_serving_membership {
   spark_serving_user_unit_state_digest,
@@ -172,6 +181,9 @@ fn slice_release() -> SparkServingRelease? {
 fn slice_projection_linger(r: SparkServingRelease, linger_enabled: Bool) -> SparkServingObservedMemberProjection {
   spark_serving_observed_members(
     observation: SparkServingObserved { host: witness_host_srv5 as HostIdentity, loaded_release: r },
+    runtime: RuntimeMaterializationComplete {
+      identity: ollama_runtime_materialization_identity_for_required_release(),
+    },
     unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
     enablement: UserUnitEnabled,
     linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
@@ -510,12 +522,15 @@ fn tamper_row(state: NonEmptyStr, ops: List<RemoteOperation>) -> FleetConvergeSp
         ownership: Owned,
       ),
     },
-    install_effects: [EnableLingerForOwnAccount],
-    first_operation: match ops.first() {
-      Present { value: h } => h
-      Absent => RemoteArgv { argv: ["<unreachable-empty-tamper-fixture>"] }
+    first_execution: PlannedEffectExecution {
+      effect: EnableLingerForOwnAccount,
+      first_operation: match ops.first() {
+        Present { value: h } => h
+        Absent => RemoteArgv { argv: ["unreachable-empty-tamper-fixture"] }
+      },
+      further_operations: ops.skip(n: 1),
     },
-    further_operations: ops.skip(n: 1),
+    further_executions: [],
   }
 }
 

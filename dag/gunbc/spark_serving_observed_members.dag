@@ -18,6 +18,11 @@ import gunbc.spark_serving_unit_render {
   spark_serving_desired_user_unit_text,
   spark_serving_user_unit_content_identity,
 }
+import gunbc.ollama_runtime_bundle {
+  RuntimeMaterializationObservation,
+  runtime_materialization_state_digest,
+  runtime_materialization_was_observed,
+}
 import gunbc.spark_serving_membership {
   SparkServingMember,
   SparkServingRuntimeRootAddress,
@@ -85,7 +90,7 @@ type SparkServingObservedLingerState
   | LingerUnobservedState
 
 type SparkServingObservedMemberProjection
-  = SparkServingObservedMembers { members: List<SparkServingMember>, unit_observed: Bool, enablement_observed: Bool, linger_observed: Bool }
+  = SparkServingObservedMembers { members: List<SparkServingMember>, runtime_observed: Bool, unit_observed: Bool, enablement_observed: Bool, linger_observed: Bool }
   | SparkServingObservedMembersRefused { cause: String }
 
 // A member is present in the OBSERVED list only when something was actually observed to be there.
@@ -130,6 +135,41 @@ fn spark_serving_observed_unit_members(
   }
 }
 
+// THE RUNTIME ROOT IS OBSERVED FROM THE FILESYSTEM, NOT FROM A RUNNING PROCESS.
+//
+// It used to be projected from `loaded.runtime.closure_digest` -- a value derived by joining
+// `/api/version` with the archive-admission receipt. That pair proves a running server reported a
+// version and an archive was once downloaded and digest-admitted. It does not prove the runtime root
+// was extracted, placed, or published correctly, which is precisely what the runtime-root ADDRESS is
+// about. A host whose root is half-extracted while a previously-installed server still answers would
+// have reported the runtime member converged.
+//
+// The two facts also have different lifetimes: a runtime can be perfectly materialized with nothing
+// running, and a process can answer long after its root was corrupted underneath it. Reading the
+// address from the thing the address names is what makes a host mid-install observable at all --
+// which is the property whose absence made every partial state unhealable.
+//
+// This is why the runtime member is projected in BOTH observation arms. `SparkServingAbsent` means no
+// serving runtime answered, not that nothing is on disk; deriving the runtime member from the serving
+// observation would have made a materialized-but-not-running root indistinguishable from a bare host.
+fn spark_serving_observed_runtime_members(
+  host: HostIdentity,
+  runtime: RuntimeMaterializationObservation,
+) -> List<SparkServingMember> {
+  match runtime_materialization_state_digest(observation: runtime) {
+    Absent => []
+    Present { value: d } => [
+      spark_serving_member(
+        host: host,
+        principal: spark_serving_serving_principal(),
+        address: SparkServingRuntimeRootAddress,
+        state_digest: d,
+        ownership: Owned,
+      ),
+    ]
+  }
+}
+
 // THE PROJECTION.
 //
 // `SparkServingAbsent` is a real observation, not ignorance: the host was reached and the serving
@@ -145,6 +185,7 @@ fn spark_serving_observed_unit_members(
 // observation from one built on a partial one, without inferring it from list length.
 fn spark_serving_observed_members(
   observation: SparkServingObservation,
+  runtime: RuntimeMaterializationObservation,
   unit: SparkServingObservedUnitState,
   enablement: SparkServingUnitEnablement,
   linger: SparkServingObservedLingerState,
@@ -161,35 +202,7 @@ fn spark_serving_observed_members(
     SparkServingAbsent { host: h } =>
       SparkServingObservedMembers {
         members: concat(
-          concat(
-            spark_serving_observed_unit_members(host: h, unit: unit),
-            spark_serving_observed_unit_enablement_members(host: h, enablement: enablement),
-          ),
-          spark_serving_observed_linger_members(host: h, linger: linger),
-        ),
-        unit_observed: spark_serving_unit_state_was_observed(unit: unit),
-        enablement_observed: spark_serving_enablement_was_observed(enablement: enablement),
-        linger_observed: spark_serving_linger_state_was_observed(linger: linger),
-      }
-    SparkServingObserved { host: h, loaded_release: loaded } =>
-      SparkServingObservedMembers {
-        members: concat(
-          [
-            spark_serving_member(
-              host: h,
-              principal: spark_serving_serving_principal(),
-              address: SparkServingRuntimeRootAddress,
-              state_digest: loaded.runtime.closure_digest,
-              ownership: Owned,
-            ),
-            spark_serving_member(
-              host: h,
-              principal: spark_serving_serving_principal(),
-              address: SparkServingModelSlotAddress { slot: spark_serving_primary_model_slot },
-              state_digest: serialize_content_hash(hash: loaded.model.identity) as NonEmptyStr,
-              ownership: Owned,
-            ),
-          ],
+          spark_serving_observed_runtime_members(host: h, runtime: runtime),
           concat(
             concat(
               spark_serving_observed_unit_members(host: h, unit: unit),
@@ -198,6 +211,35 @@ fn spark_serving_observed_members(
             spark_serving_observed_linger_members(host: h, linger: linger),
           ),
         ),
+        runtime_observed: runtime_materialization_was_observed(observation: runtime),
+        unit_observed: spark_serving_unit_state_was_observed(unit: unit),
+        enablement_observed: spark_serving_enablement_was_observed(enablement: enablement),
+        linger_observed: spark_serving_linger_state_was_observed(linger: linger),
+      }
+    SparkServingObserved { host: h, loaded_release: loaded } =>
+      SparkServingObservedMembers {
+        members: concat(
+          concat(
+            spark_serving_observed_runtime_members(host: h, runtime: runtime),
+            [
+            spark_serving_member(
+              host: h,
+              principal: spark_serving_serving_principal(),
+              address: SparkServingModelSlotAddress { slot: spark_serving_primary_model_slot },
+              state_digest: serialize_content_hash(hash: loaded.model.identity) as NonEmptyStr,
+              ownership: Owned,
+            ),
+            ]
+          ),
+          concat(
+            concat(
+              spark_serving_observed_unit_members(host: h, unit: unit),
+              spark_serving_observed_unit_enablement_members(host: h, enablement: enablement),
+            ),
+            spark_serving_observed_linger_members(host: h, linger: linger),
+          ),
+        ),
+        runtime_observed: runtime_materialization_was_observed(observation: runtime),
         unit_observed: spark_serving_unit_state_was_observed(unit: unit),
         enablement_observed: spark_serving_enablement_was_observed(enablement: enablement),
         linger_observed: spark_serving_linger_state_was_observed(linger: linger),

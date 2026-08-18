@@ -9,10 +9,35 @@ import std.content_hash {
 }
 import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
+import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
+import extdeps.ollama.binary_release { ollama_required_release }
 
 data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home is gunbc.spark_serving_runtime_receipt; unit basename is gunbc.spark_serving_unit_identity spark_serving_unit_name. Unit desired state is SparkServingUserUnitSpec (typed fields, not systemd INI syntax); gunbc.spark_serving_membership spark_serving_user_unit_file_write_intent carries path+spec for generic remote file delivery (#8298 consumer on integration branch)."
 
-data spark_serving_runtime_root_rel: String = ".local/share/gunbc/spark-serving/ollama"
+// THE ROOT IS CONTENT-ADDRESSED BY THE MATERIALIZATION IDENTITY.
+//
+// It was a fixed path -- `.../spark-serving/ollama` -- which made the location of a runtime
+// independent of WHICH runtime it is. Two consequences, and both are the kind that only appear on
+// the second install: upgrading meant mutating a directory in place, so a failed extraction left a
+// tree that is neither the old runtime nor the new one at the only address either could occupy; and
+// a rollback had nowhere to roll back to, because the previous bytes were overwritten rather than
+// merely unreferenced.
+//
+// Deriving the leaf from the materialization identity makes materialization ADDITIVE: a new release
+// lands beside the old one, publication is a rename into a name nothing else claims, and a partially
+// extracted tree is at an address no correct runtime would ever be published to. It also makes the
+// name checkable -- a consumer that knows the release can compute where its root must be, rather
+// than trusting that whatever sits at the fixed path is what was intended.
+//
+// The membership KEY stays the stable logical runtime slot (SparkServingRuntimeRootAddress); this
+// identity is that member's desired VALUE. Fusing the identity into the key would make every upgrade
+// a member removal plus an addition rather than a change, and removal is the one arm that consults
+// ownership.
+data spark_serving_runtimes_parent_rel: String = ".local/share/gunbc/spark-serving/runtimes"
+
+fn spark_serving_runtime_root_rel_for_identity(identity: Fnv1a64Structural) -> String {
+  join([spark_serving_runtimes_parent_rel, "/", identity.digest as String], "")
+}
 
 data spark_serving_models_root_rel: String = ".local/share/gunbc/spark-serving/models"
 
@@ -34,10 +59,33 @@ fn spark_serving_user_unit_rel() -> String {
   join([spark_serving_user_unit_dir_rel, spark_serving_unit_name], "/")
 }
 
-fn spark_serving_runtime_root() -> FilePath {
+fn spark_serving_runtimes_parent() -> FilePath {
   concat(
     spark_serving_executor_home as String,
-    concat("/", spark_serving_runtime_root_rel),
+    concat("/", spark_serving_runtimes_parent_rel),
+  ) as FilePath
+}
+
+fn spark_serving_runtime_root_for_identity(identity: Fnv1a64Structural) -> FilePath {
+  concat(
+    spark_serving_executor_home as String,
+    concat("/", spark_serving_runtime_root_rel_for_identity(identity: identity)),
+  ) as FilePath
+}
+
+// The root the REQUIRED release must occupy. Named separately from the parameterized form so a
+// caller asking "where does the runtime we require live" cannot accidentally pass an observed
+// identity and get an answer about a different tree.
+fn spark_serving_required_runtime_root() -> FilePath {
+  spark_serving_runtime_root_for_identity(
+    identity: ollama_runtime_materialization_identity_for_required_release(),
+  )
+}
+
+fn spark_serving_required_runtime_executable_path() -> FilePath {
+  concat(
+    spark_serving_required_runtime_root() as String,
+    concat("/", ollama_required_release.executable_relative_path as String),
   ) as FilePath
 }
 
@@ -73,7 +121,9 @@ fn spark_serving_user_unit_spec(bind_host_port: NonEmptyStr) -> SparkServingUser
     service_type: "simple" as NonEmptyStr,
     bind_host_port: bind_host_port,
     models_root_rel: spark_serving_models_root_rel,
-    runtime_root_rel: spark_serving_runtime_root_rel,
+    runtime_root_rel: spark_serving_runtime_root_rel_for_identity(
+      identity: ollama_runtime_materialization_identity_for_required_release(),
+    ),
     exec_subcommand: "serve" as NonEmptyStr,
     restart: "on-failure" as NonEmptyStr,
     wanted_by: "default.target" as NonEmptyStr,

@@ -25,7 +25,7 @@ import gunbc.spark_serving_membership {
 }
 import gunbc.spark_serving_release { SparkServingOccurrence, SparkServingRelease }
 import gunbc.spark_serving_converge_realize {
-  realize_spark_serving_install_effect_commands,
+  realize_spark_serving_install_effect_command,
   SparkServingInstallRemoteCommandsPresent,
   SparkServingInstallRemoteCommandsRefused,
 }
@@ -44,6 +44,7 @@ import gunbc.spark_serving_realization { ServingInstallEffect, EnableLingerForOw
 import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
   FleetConvergeSparkServingTypedAction,
+  PlannedEffectExecution,
   fleet_converge_plan_subject,
   fleet_converge_plan_held_lease,
   fleet_converge_apply_shell,
@@ -60,6 +61,7 @@ import gunbc.fleet_converge_plan {
   membership_refusal_count,
   fleet_converge_spark_serving_action_line,
   fleet_converge_spark_serving_typed_actions_wire,
+  fleet_converge_spark_serving_row_effects,
 }
 data spark_serving_converge_plan_authority_note: String = "Seam 2 vertical slice — Spark serving membership frozen into FleetConvergePlanArtifact typed rows. First member kind: Ensured linger (SparkServingLingerAddress → EnableLingerForOwnAccount). Plan observes linger state, runs membership_reconcile once, serializes MemberAction + install_effects into typed_action_rows on the artifact; apply MUST read those frozen rows (never re-derive). Spark actuation is typed argv via spark_serving_converge_realize + typed_argv_exec — NOT merged into apply_shell. Change arm (disable-linger) is NOT claimed proven — sudoers grants enable-linger only."
 
@@ -117,26 +119,62 @@ fn fleet_converge_spark_serving_typed_action(
   match spark_serving_install_effects_for_member_action(action: action) {
     Absent => Absent
     Present { value: effects } =>
-      match realize_spark_serving_install_effect_commands(
-        effects: effects,
-        executor_login: spark_serving_automation_principal_login(),
-      ) {
-        SparkServingInstallRemoteCommandsRefused { reason: _ } => Absent
-        SparkServingInstallRemoteCommandsPresent { operations: ops } =>
-          match ops.first() {
+      match spark_serving_planned_effect_executions(effects: effects) {
+        Absent => Absent
+        Present { value: executions } =>
+          match executions.first() {
             Absent => Absent
             Present { value: head } =>
               Present {
                 value: FleetConvergeSparkServingTypedAction {
                   action: action,
-                  install_effects: effects,
-                  first_operation: head,
-                  further_operations: ops.skip(n: 1),
+                  first_execution: head,
+                  further_executions: executions.skip(n: 1),
                 },
               }
           }
       }
   }
+}
+
+// REALIZED PER EFFECT, SO THE ATTRIBUTION IS ESTABLISHED WHERE IT IS KNOWN.
+//
+// The whole-sequence realizer folds every effect into one flat list and the attribution is lost at
+// exactly the moment it was available. Realizing one effect at a time keeps it: the operations an
+// effect produced are the operations bound to it, by construction rather than by a later guess at
+// list offsets.
+//
+// One effect refusing refuses the whole row, unchanged from the fold it replaces -- a partially
+// realizable member must not produce a row that applies the half that worked.
+fn spark_serving_planned_effect_executions(
+  effects: List<ServingInstallEffect>,
+) -> List<PlannedEffectExecution>? {
+  fold(effects, init: Present { value: [] }, f: fn(acc, effect) {
+    match acc {
+      Absent => none
+      Present { value: prior } =>
+        match realize_spark_serving_install_effect_command(
+          effect: effect,
+          executor_login: spark_serving_automation_principal_login(),
+        ) {
+          SparkServingInstallRemoteCommandsRefused { reason: _ } => none
+          SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+            match ops.first() {
+              Absent => none
+              Present { value: head } =>
+                Present {
+                  value: concat(prior, [
+                    PlannedEffectExecution {
+                      effect: effect,
+                      first_operation: head,
+                      further_operations: ops.skip(n: 1),
+                    },
+                  ]),
+                }
+            }
+        }
+    }
+  })
 }
 
 // A PLANNED MEMBER THAT DOES NOT TRANSLATE REFUSES; IT IS NOT DROPPED.
@@ -393,7 +431,7 @@ fn spark_serving_linger_slice_noop_when_converged(linger_enabled: Bool) -> Bool 
 
 fn spark_serving_frozen_linger_effect(row: FleetConvergeSparkServingTypedAction) -> ServingInstallEffect? {
   if spark_serving_install_effects_include(
-    effects: row.install_effects,
+    effects: fleet_converge_spark_serving_row_effects(row: row),
     needle: EnableLingerForOwnAccount,
   ) {
     Present { value: EnableLingerForOwnAccount }

@@ -365,21 +365,64 @@ fn observed_baseline_text(
 // validation): a row with no operations has no constructor, so the aggregate check is not tightened,
 // it is unnecessary. The same shape StagedIntermediates uses, for the same reason.
 //
-// NOT DONE HERE, named so it is not mistaken for done: this makes each ROW nonempty, not each
-// EFFECT attributed to its own operations. A row carrying two effects still cannot say which
-// operation belongs to which. That is the PlannedEffectExecution restructure, and it is a separate
-// change with a wider blast radius.
-type FleetConvergeSparkServingTypedAction {
-  action: MemberAction<SparkServingMember, SparkServingMemberAt>,
-  install_effects: List<ServingInstallEffect>
+// EACH EFFECT OWNS ITS OWN OPERATIONS.
+//
+// The row previously carried two PARALLEL populations: a list of effects, and one flat operation
+// sequence covering all of them. That guaranteed the row was nonempty and nothing more -- there was
+// no relation between the two lists, so a row carrying three effects could not say which operation
+// belonged to which, and no apply receipt could report "the download succeeded, the digest verified,
+// the extraction failed" against the effect that owns those steps.
+//
+// Parallel lists are also the shape that goes wrong silently as the sequences get long. A short
+// linger effect contributing one argv and a runtime install contributing nine cannot be told apart
+// in a flat list of ten, so a receipt has to guess an attribution, and a guess at the actuation seam
+// is the fabricated plausible output this lane keeps closing one layer down.
+//
+// The relation is now structural: one execution binds one effect to the operations that realize it,
+// head plus tail, so an effect with zero operations has no constructor. Ordering is preserved in
+// both directions -- executions in effect order, operations in realization order within each -- and
+// the flat sequence the actuator consumes is DERIVED by concatenation rather than stored beside the
+// executions, so the two cannot disagree.
+type PlannedEffectExecution {
+  effect: ServingInstallEffect
   first_operation: RemoteOperation
   further_operations: List<RemoteOperation>
+}
+
+fn planned_effect_execution_operations(x: PlannedEffectExecution) -> List<RemoteOperation> {
+  concat([x.first_operation], x.further_operations)
+}
+
+// The row is nonempty in EXECUTIONS now rather than in operations, and each execution is nonempty in
+// operations. A row with no executions is unwritable for the same reason a row with no operations
+// was: it would report its effects applied while nothing ran for them.
+type FleetConvergeSparkServingTypedAction {
+  action: MemberAction<SparkServingMember, SparkServingMemberAt>,
+  first_execution: PlannedEffectExecution
+  further_executions: List<PlannedEffectExecution>
+}
+
+fn fleet_converge_spark_serving_row_executions(
+  row: FleetConvergeSparkServingTypedAction,
+) -> List<PlannedEffectExecution> {
+  concat([row.first_execution], row.further_executions)
+}
+
+// The effect roster is DERIVED from the executions rather than stored, which is what retires the
+// parallel-population defect: there is no second list to fall out of step with the first.
+fn fleet_converge_spark_serving_row_effects(
+  row: FleetConvergeSparkServingTypedAction,
+) -> List<ServingInstallEffect> {
+  map(fleet_converge_spark_serving_row_executions(row: row), x => x.effect)
 }
 
 fn fleet_converge_spark_serving_row_operations(
   row: FleetConvergeSparkServingTypedAction,
 ) -> List<RemoteOperation> {
-  concat([row.first_operation], row.further_operations)
+  flat_map(
+    fleet_converge_spark_serving_row_executions(row: row),
+    x => planned_effect_execution_operations(x: x),
+  )
 }
 
 type FleetConvergePlanArtifact {
@@ -465,7 +508,7 @@ fn fleet_converge_spark_serving_action_line(row: FleetConvergeSparkServingTypedA
       spark_serving_member_key(member: member),
       fleet_converge_spark_serving_action_state_wire(action: row.action),
       " effects=",
-      join(map(row.install_effects, e => fleet_converge_spark_serving_effect_wire(effect: e)), ","),
+      join(map(fleet_converge_spark_serving_row_effects(row: row), e => fleet_converge_spark_serving_effect_wire(effect: e)), ","),
       " ops=",
       remote_operations_wire(operations: fleet_converge_spark_serving_row_operations(row: row)),
     ],

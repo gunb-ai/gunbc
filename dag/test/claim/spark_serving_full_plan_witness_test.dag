@@ -3,6 +3,14 @@ module test.claim.spark_serving_full_plan_witness_test
 import std.types { Bool, List, NonEmptyStr, String, Int }
 import product.placement_supply { HostIdentity }
 import gunbc.membership_reconcile { MembershipPlan, membership_write_count }
+import gunbc.ollama_runtime_bundle {
+  RuntimeMaterializationComplete,
+  RuntimeMaterializationIncomplete,
+  RuntimeMaterializationAbsent,
+  RuntimeMaterializationObservationRefused,
+  RuntimeExecutableMissing,
+  ollama_runtime_materialization_identity_for_required_release,
+}
 import gunbc.spark_serving_membership { spark_serving_membership_reconcile, spark_serving_user_unit_state_digest }
 import gunbc.spark_serving_release {
   SparkServingObservation,
@@ -80,19 +88,25 @@ fn subject_release() -> SparkServingRelease? {
   }
 }
 
+fn complete_required_runtime() -> RuntimeMaterializationObservation {
+  RuntimeMaterializationComplete {
+    identity: ollama_runtime_materialization_identity_for_required_release(),
+  }
+}
+
 fn project(
   obs: SparkServingObservation,
   unit: SparkServingObservedUnitState,
   enablement: SparkServingUnitEnablement,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
-  spark_serving_observed_members(observation: obs, unit: unit, enablement: enablement, linger: linger)
+  spark_serving_observed_members(observation: obs, runtime: complete_required_runtime(), unit: unit, enablement: enablement, linger: linger)
 }
 
 fn observed_count(p: SparkServingObservedMemberProjection) -> Int {
   match p {
     SparkServingObservedMembersRefused { cause: _ } => 0 - 1
-    SparkServingObservedMembers { members: ms, unit_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
+    SparkServingObservedMembers { members: ms, runtime_observed: _, unit_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
   }
 }
 
@@ -316,6 +330,7 @@ test fn an_ordinary_linger_plan_still_projects_its_rows() -> Bool {
 fn observed_exactly_desired(r: SparkServingRelease) -> SparkServingObservedMemberProjection {
   spark_serving_observed_members(
     observation: SparkServingObserved { host: subject_host, loaded_release: r },
+    runtime: complete_required_runtime(),
     unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
     enablement: UserUnitEnabled,
     linger: LingerObservedEnabled,
@@ -358,12 +373,13 @@ test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
         occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
         serving_release: r,
         projection: spark_serving_observed_members(
-          observation: SparkServingObserved {
-            host: subject_host,
-            loaded_release: SparkServingRelease {
-              runtime: RuntimeArtifactIdentity { closure_digest: "drifted-runtime" as NonEmptyStr },
-              model: r.model,
+          observation: SparkServingObserved { host: subject_host, loaded_release: r },
+          runtime: RuntimeMaterializationIncomplete {
+            identity: ollama_runtime_materialization_identity_for_required_release(),
+            first_defect: RuntimeExecutableMissing {
+              expected_relative_path: "bin/ollama" as NonEmptyStr,
             },
+            further_defects: [],
           },
           unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
           enablement: UserUnitEnabled,
@@ -586,7 +602,7 @@ test fn a_disabled_linger_plans_rather_than_refusing() -> Bool {
 fn observed_addresses(p: SparkServingObservedMemberProjection) -> Int {
   match p {
     SparkServingObservedMembersRefused { cause: _ } => 0 - 1
-    SparkServingObservedMembers { members: ms, unit_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
+    SparkServingObservedMembers { members: ms, runtime_observed: _, unit_observed: _, enablement_observed: _, linger_observed: _ } => length(ms)
   }
 }
 

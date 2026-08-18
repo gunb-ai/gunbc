@@ -18,7 +18,8 @@ import extdeps.ollama.server_env { ollama_host_env_assignment, ollama_models_env
 import gunbc.spark_serving_install_paths {
   SparkServingUserUnitSpec,
   spark_serving_user_unit_spec,
-  spark_serving_runtime_root,
+  spark_serving_required_runtime_root,
+  spark_serving_required_runtime_executable_path,
   spark_serving_models_root,
 }
 import gunbc.spark_serving_desired { spark_serving_desired_bind_host_port }
@@ -37,10 +38,17 @@ import gunbc.spark_serving_desired { spark_serving_desired_bind_host_port }
 // path derived from the install-paths authority. There is no arm that can omit a directive or supply
 // a default, so a spec change cannot silently fail to reach the file.
 
+// THE EXECUTABLE PATH IS THE INSTALL-PATHS AUTHORITY'S, NOT A LITERAL SPELLED HERE.
+//
+// This used to join the runtime root with the literal "/bin/ollama" -- a second statement of
+// `executable_relative_path`, which the cited release row already carries and which the observation
+// probe reads. Two spellings of one fact, and the one that would drift silently: a release whose
+// layout put the binary elsewhere would be observed at the right path, materialized to the right
+// path, and then started from the wrong one, with nothing comparing the two.
 fn spark_serving_exec_start_command(spec: SparkServingUserUnitSpec) -> NonEmptyStr {
   join([
-    spark_serving_runtime_root() as String,
-    "/bin/ollama ",
+    spark_serving_required_runtime_executable_path() as String,
+    " ",
     spec.exec_subcommand as String,
   ], "") as NonEmptyStr
 }
@@ -59,7 +67,7 @@ fn spark_serving_user_unit_file(spec: SparkServingUserUnitSpec) -> SystemdUnitFi
       Environment {
         assignment: ollama_models_env_assignment(root: spark_serving_models_root() as NonEmptyStr),
       },
-      WorkingDirectory { path: spark_serving_runtime_root() as NonEmptyStr },
+      WorkingDirectory { path: spark_serving_required_runtime_root() as NonEmptyStr },
       ExecStart { command: spark_serving_exec_start_command(spec: spec) },
       Restart { policy: spec.restart },
     ],

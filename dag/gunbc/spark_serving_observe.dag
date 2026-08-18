@@ -2,6 +2,22 @@ module gunbc.spark_serving_observe
 
 import std.types { String, List, NonEmptyStr }
 import std.algebra { trim }
+import gunbc.ollama_runtime_bundle {
+  RuntimeMaterializationObservation,
+  RuntimeMaterializationAbsent,
+  RuntimeMaterializationIncomplete,
+  RuntimeMaterializationComplete,
+  RuntimeMaterializationObservationRefused,
+  RuntimeRootPresentButEmpty,
+  RuntimeExecutableMissing,
+  RuntimeExecutableNotExecutable,
+  ollama_runtime_materialization_identity_for_required_release,
+}
+import extdeps.ollama.binary_release { ollama_required_release }
+import gunbc.spark_serving_install_paths {
+  spark_serving_required_runtime_root,
+  spark_serving_required_runtime_executable_path,
+}
 import v2.std.algebra { fold_list }
 import std.process { ProcessExit, ExitSuccess, exit_failure }
 import std.resources { Network }
@@ -708,6 +724,145 @@ fn spark_serving_observe_user_unit_pair(
   }
 }
 
+// THE RUNTIME MATERIALIZATION PRODUCER -- the evidence behind the runtime-root member.
+//
+// This is what makes `RuntimeMaterializationObservation` a fact rather than a vocabulary. Until it
+// existed every `Complete` in the tree was caller-authored, and the runtime member was projected
+// from `/api/version` joined with the archive-admission receipt -- a pair that proves a process
+// answered and an archive was once admitted, and says nothing about the tree on disk.
+//
+// THE LEGS ARE `test`, WHICH ANSWERS BY EXIT CODE. That matters for the refusal boundary: a leg that
+// did not run at all yields `none` from the probe and REFUSES the observation, while a leg that ran
+// and exited nonzero is a successful measurement of a negative. Collapsing those would let an
+// unreachable host report a bare runtime and select a full materialization from ignorance.
+//
+// The order is root, then executable, then executable bit, and each answers a different question
+// with a different remedy. It stops at the first negative because the later legs are not meaningful
+// past it -- asking whether a missing file is executable has no answer worth carrying.
+//
+// The listing leg is CONDITIONAL and runs only when the root exists but the executable does not: an
+// empty root and a populated-but-wrong root are different failures (an interrupted extraction versus
+// a wrong recipe or a wrong release), and without it both would report as one missing executable.
+// It costs a fourth remote leg only on hosts that are already broken.
+//
+// NOT YET IN THIS PRODUCER, named rather than implied: the completion receipt and the local
+// executable's own reported version. Both belong here -- an extraction that finished and an
+// executable that IS the release the identity names are separate facts from the file merely being
+// present and +x -- and neither is observed yet, so `Complete` still means "the expected executable
+// is in the expected place and is executable", not "the tree is the one the identity names".
+fn spark_serving_runtime_root_probe_argv() -> List<String> {
+  ["test", "-d", spark_serving_required_runtime_root() as String]
+}
+
+fn spark_serving_runtime_executable_probe_argv() -> List<String> {
+  ["test", "-f", spark_serving_required_runtime_executable_path() as String]
+}
+
+fn spark_serving_runtime_executable_bit_probe_argv() -> List<String> {
+  ["test", "-x", spark_serving_required_runtime_executable_path() as String]
+}
+
+fn spark_serving_runtime_root_listing_argv() -> List<String> {
+  ["ls", "-A", spark_serving_required_runtime_root() as String]
+}
+
+fn spark_serving_required_runtime_executable_rel() -> NonEmptyStr {
+  ollama_required_release.executable_relative_path
+}
+
+fn spark_serving_classify_runtime_executable_absence(
+  listing: SshSessionExecResult?,
+) -> RuntimeMaterializationObservation {
+  let identity = ollama_runtime_materialization_identity_for_required_release()
+  match listing {
+    Absent =>
+      RuntimeMaterializationObservationRefused {
+        cause: "runtime root listing leg did not run, so an empty root cannot be told from a populated one" as NonEmptyStr,
+      }
+    Present { value: ls } =>
+      if ls.success == false {
+        RuntimeMaterializationObservationRefused {
+          cause: join([
+            "runtime root listing failed exit=", to_string(ls.exit_code), " stderr=", ls.stderr,
+          ], "") as NonEmptyStr,
+        }
+      } else {
+        if (ls.stdout as String).trim() == "" {
+          RuntimeMaterializationIncomplete {
+            identity: identity,
+            first_defect: RuntimeRootPresentButEmpty,
+            further_defects: [],
+          }
+        } else {
+          RuntimeMaterializationIncomplete {
+            identity: identity,
+            first_defect: RuntimeExecutableMissing {
+              expected_relative_path: spark_serving_required_runtime_executable_rel(),
+            },
+            further_defects: [],
+          }
+        }
+      }
+  }
+}
+
+fn spark_serving_observe_runtime_materialization(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> RuntimeMaterializationObservation {
+  let identity = ollama_runtime_materialization_identity_for_required_release()
+  match spark_serving_probe_leg(
+    context: context, host: host, raw_words: spark_serving_runtime_root_probe_argv(),
+  ) {
+    Absent =>
+      RuntimeMaterializationObservationRefused {
+        cause: "runtime root probe leg did not run" as NonEmptyStr,
+      }
+    Present { value: root } =>
+      if root.success == false {
+        RuntimeMaterializationAbsent
+      } else {
+        match spark_serving_probe_leg(
+          context: context, host: host, raw_words: spark_serving_runtime_executable_probe_argv(),
+        ) {
+          Absent =>
+            RuntimeMaterializationObservationRefused {
+              cause: "runtime executable probe leg did not run" as NonEmptyStr,
+            }
+          Present { value: exe } =>
+            if exe.success == false {
+              spark_serving_classify_runtime_executable_absence(
+                listing: spark_serving_probe_leg(
+                  context: context, host: host, raw_words: spark_serving_runtime_root_listing_argv(),
+                ),
+              )
+            } else {
+              match spark_serving_probe_leg(
+                context: context, host: host, raw_words: spark_serving_runtime_executable_bit_probe_argv(),
+              ) {
+                Absent =>
+                  RuntimeMaterializationObservationRefused {
+                    cause: "runtime executable-bit probe leg did not run" as NonEmptyStr,
+                  }
+                Present { value: bit } =>
+                  if bit.success == false {
+                    RuntimeMaterializationIncomplete {
+                      identity: identity,
+                      first_defect: RuntimeExecutableNotExecutable {
+                        expected_relative_path: spark_serving_required_runtime_executable_rel(),
+                      },
+                      further_defects: [],
+                    }
+                  } else {
+                    RuntimeMaterializationComplete { identity: identity }
+                  }
+              }
+            }
+        }
+      }
+  }
+}
+
 fn spark_serving_observe_user_unit(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -740,11 +895,13 @@ fn spark_serving_observe_user_unit(
 // an observation of that unit. This takes the bound pair so the join is structural.
 fn spark_serving_observed_members_for_unit(
   observation: SparkServingObservation,
+  runtime: RuntimeMaterializationObservation,
   observed_unit: SparkServingObservedUnit,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
   spark_serving_observed_members(
     observation: observation,
+    runtime: runtime,
     unit: observed_unit.state,
     enablement: observed_unit.enablement,
     linger: linger,

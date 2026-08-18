@@ -5,6 +5,7 @@ import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
   fleet_converge_plan_artifact_bundle_admits,
   fleet_converge_spark_serving_row_operations,
+  fleet_converge_spark_serving_row_effects,
 }
 import gunbc.typed_argv_exec {
   TypedArgvExecOutcome,
@@ -64,7 +65,7 @@ fn spark_serving_apply_reads_frozen_typed_rows(
         artifact.spark_serving_typed_actions,
         r => fleet_converge_spark_serving_row_operations(row: r),
       ),
-      effect_count: length(flat_map(artifact.spark_serving_typed_actions, r => r.install_effects)),
+      effect_count: length(flat_map(artifact.spark_serving_typed_actions, r => fleet_converge_spark_serving_row_effects(row: r))),
     }
   }
 }
