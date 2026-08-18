@@ -62,7 +62,7 @@ fn inferred_to_outputs(inferred: InferredNode?, span: std.types.SourceSpan, sour
     Resolved { node: rt } =>
         let has_structure = rt.connective != NoConnective
         if has_structure {
-          let is_product = rt.connective == Conj
+          let is_product = rt.connective == v1.std.core.Conj
           if is_product {
             if rt.ident_span == none {
               map(rt.children, child =>
@@ -75,7 +75,7 @@ fn inferred_to_outputs(inferred: InferredNode?, span: std.types.SourceSpan, sour
           } else {
             [make_field_node(name: "value", type_expr: rt, cardinality: v1.std.core.Required, default_value: none, from_key: none, span: span, name_span: no_span())]
           }
-        } else if rt.connective == Conj && rt.children |> count == 0 {
+        } else if rt.connective == v1.std.core.Conj && rt.children |> count == 0 {
           []
         } else {
           [make_field_node(name: "value", type_expr: rt, cardinality: v1.std.core.Required, default_value: none, from_key: none, span: span, name_span: no_span())]

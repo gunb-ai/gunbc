@@ -222,7 +222,7 @@ fn emit_go_typed_item(item: v1.std.core.Node, registry: Map<String, v1.compiler.
 
 fn emit_go_type_def_from_connective(item: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> String {
   let item_text = authored_name(env: env, node: item)
-  let is_product = item.connective == Conj
+  let is_product = item.connective == v1.std.core.Conj
   if is_product {
     emit_go_struct_from_children(name: item_text, children: item.children, env: env)
   } else {

@@ -140,7 +140,7 @@ fn get_item_name(item: v1.std.core.Node, source_indices: Map<String, v1.std.core
 }
 
 fn get_variant_names(item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
-  let is_coproduct = item.connective == Disj
+  let is_coproduct = item.connective == v1.std.core.Disj
   if is_coproduct { item.children |> map(c => authored_name_at(source_indices: source_indices, node: c)) }
   else { [] }
 }

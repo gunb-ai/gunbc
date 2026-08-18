@@ -362,7 +362,7 @@ fn resolve_node_bounded(n: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv,
   }
   let has_structure = n.connective != NoConnective
   if has_structure {
-    let is_product = n.connective == Conj
+    let is_product = n.connective == v1.std.core.Conj
     if is_product {
       if n.type_annotation != none {
         match n.children |> first {
@@ -527,7 +527,7 @@ fn resolve_node_bounded(n: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv,
     }
   } else if n.children |> count == 0 {
     let n_is_callable = n.params |> count > 0
-    let n_target_is_coproduct_container = match n.inferred { Present { value: v1.std.core.Resolved { node: target } } => target.connective == NoConnective && target.children |> count > 0 && is_container_type(name: target.name) && resolve_generic_use_decl(env: env, n: target).connective == Disj  _ => false }
+    let n_target_is_coproduct_container = match n.inferred { Present { value: v1.std.core.Resolved { node: target } } => target.connective == NoConnective && target.children |> count > 0 && is_container_type(name: target.name) && resolve_generic_use_decl(env: env, n: target).connective == v1.std.core.Disj  _ => false }
     if n_is_callable || is_recursive_type_for(env: env, node: n) || n_target_is_coproduct_container {
       NodeResolveResult { resolved: n, diagnostics: [] }
     } else {
@@ -536,7 +536,7 @@ fn resolve_node_bounded(n: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv,
           let structurally_resolved = if resolved.connective == NoConnective && resolved.children |> count == 0 && resolved.inferred != none {
             match resolved.inferred {
               Present { value: v1.std.core.Resolved { node: target } } =>
-                let target_is_coproduct_use = target.connective == NoConnective && target.children |> count > 0 && is_user_generic_use_site(n: target, env: env) && resolve_generic_use_decl(env: env, n: target).connective == Disj
+                let target_is_coproduct_use = target.connective == NoConnective && target.children |> count > 0 && is_user_generic_use_site(n: target, env: env) && resolve_generic_use_decl(env: env, n: target).connective == v1.std.core.Disj
                 if target_is_coproduct_use {
                   resolve_node_bounded(n: target, env: env, module_name: module_name, depth: depth + 1, masked: false).resolved
                 } else { target }
@@ -1029,7 +1029,7 @@ fn resolve_item_types(item: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv
   let resolved_props = map(prop_results, pr => pr.field_init)
   let prop_diags = flat_map(prop_results, pr => pr.diagnostics)
 
-  let child_results = if item.connective == Conj && item.transport == none {
+  let child_results = if item.connective == v1.std.core.Conj && item.transport == none {
     item.children |> map(child =>
       let authored_type = field_node_type_expr(n: child)
       let tr = resolve_node(n: authored_type, env: env, module_name: module_name)
@@ -1039,7 +1039,7 @@ fn resolve_item_types(item: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv
         diagnostics: type_diags
       }
     )
-  } else if item.connective == Disj && item.transport == none {
+  } else if item.connective == v1.std.core.Disj && item.transport == none {
     item.children |> map(variant =>
       let field_results = variant.children |> map(field =>
         let authored_type = field_node_type_expr(n: field)

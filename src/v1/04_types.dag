@@ -143,10 +143,10 @@ fn structural_carrier_template_name(n: v1.std.core.Node, source_indices: Map<Str
   }
 }
 
-fn is_product_type(n: v1.std.core.Node) -> Bool { n.connective == Conj }
-fn is_coproduct_type(n: v1.std.core.Node) -> Bool { n.connective == Disj }
+fn is_product_type(n: v1.std.core.Node) -> Bool { n.connective == v1.std.core.Conj }
+fn is_coproduct_type(n: v1.std.core.Node) -> Bool { n.connective == v1.std.core.Disj }
 fn is_leaf_type(n: v1.std.core.Node) -> Bool { n.connective == NoConnective }
-fn is_unit_like(n: v1.std.core.Node) -> Bool { n.connective == Conj && n.children |> count == 0 }
+fn is_unit_like(n: v1.std.core.Node) -> Bool { n.connective == v1.std.core.Conj && n.children |> count == 0 }
 
 fn is_fully_resolved(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   let self_is_type_var = match n.inferred { Present { value: inf } => is_type_variable(inferred: inf)  Absent => false }
@@ -692,8 +692,8 @@ fn node_type_shape(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.
       concat("Primitive(", n_name, ")")
     }
   } else {
-    let is_product = n.connective == Conj
-    let is_coproduct = n.connective == Disj
+    let is_product = n.connective == v1.std.core.Conj
+    let is_coproduct = n.connective == v1.std.core.Disj
     if is_product {
       if n.ident_span == none { "Product(<anon>)" } else { concat("Product(", n_name, ")") }
     } else if is_coproduct {
@@ -853,7 +853,7 @@ fn node_type_equals_core(left: v1.std.core.Node, right: v1.std.core.Node, source
   }
   else if left_struct && right_struct {
     if !type_name_compatible(a: left_name, b: right_name) { false }
-    else if (left.connective == Conj) != (right.connective == Conj) { false }
+    else if (left.connective == v1.std.core.Conj) != (right.connective == v1.std.core.Conj) { false }
     else if left.children |> count != right.children |> count { false }
     else {
       left.children |> enumerate |> all(pair =>
@@ -1093,7 +1093,7 @@ fn infer_binop_type_node(op: std.syntax.BinOp, left_type: v1.std.core.Node, sour
     NullCoalesce => BinOpInferred { result_type: extract_optional_inner_node(n: left_type), algebra_field: none }
     _ =>
       let candidates = binop_algebra_fields(op: op)
-      let is_product = left_type.connective == Conj
+      let is_product = left_type.connective == v1.std.core.Conj
       if is_product {
         match first_matching_algebra_field(n: left_type, candidates: candidates, source_indices: source_indices) {
           Present { value: m } =>

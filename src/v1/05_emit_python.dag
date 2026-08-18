@@ -154,8 +154,8 @@ fn emit_py_imports(imports: List<v1.std.core.Node>, source_indices: Map<String, 
 
 fn emit_py_prelude(typed_module: v1.compiler.infer_items.TypedModule) -> String {
   let items = typed_module.items
-  let has_structs = items |> any(item => is_type_def_item(item: item) && item.connective == Conj)
-  let has_enums = items |> any(item => is_type_def_item(item: item) && item.connective == Disj)
+  let has_structs = items |> any(item => is_type_def_item(item: item) && item.connective == v1.std.core.Conj)
+  let has_enums = items |> any(item => is_type_def_item(item: item) && item.connective == v1.std.core.Disj)
   let has_services = items |> any(item => is_service_item(item: item))
 
   let future_import = "from __future__ import annotations\n"
@@ -195,7 +195,7 @@ fn emit_py_typed_item(item: v1.std.core.Node, registry: Map<String, v1.compiler.
 
 fn emit_py_type_def_from_connective(item: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> String {
   let item_text = authored_name(env: env, node: item)
-  let is_product = item.connective == Conj
+  let is_product = item.connective == v1.std.core.Conj
   if is_product {
     emit_py_dataclass_from_children(name: item_text, children: item.children, env: env)
   } else {

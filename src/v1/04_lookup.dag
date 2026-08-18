@@ -259,7 +259,7 @@ fn lookup_field_type_node(n: v1.std.core.Node, field_name: String, source_indice
   } else {
     let has_structure = n.connective != NoConnective
     if has_structure {
-      let is_product = n.connective == Conj
+      let is_product = n.connective == v1.std.core.Conj
       if is_product {
         match find_child_named(n: n, name: field_name, source_indices: source_indices) {
           Present { value: field_child } =>
@@ -312,12 +312,12 @@ fn resolve_scrutinee_type_node(env: v1.compiler.infer_env.TypeEnv, n: v1.std.cor
 
 fn resolve_method_receiver_type(receiver_type: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> v1.std.core.Node {
   let raw_name = authored_name_at(source_indices: env.source_indices, node: receiver_type)
-  if receiver_type.connective == Conj || is_declared_container_alias_spelling(name: raw_name) {
+  if receiver_type.connective == v1.std.core.Conj || is_declared_container_alias_spelling(name: raw_name) {
     receiver_type
   } else {
     let resolved = reground_alias_carrier_identity(n: resolve_scrutinee_type_node(env: env, n: receiver_type), source_indices: env.source_indices)
     let resolved_name = authored_name_at(source_indices: env.source_indices, node: resolved)
-    if resolved.connective == Conj || (resolved_name != raw_name && is_declared_container_alias_spelling(name: resolved_name)) {
+    if resolved.connective == v1.std.core.Conj || (resolved_name != raw_name && is_declared_container_alias_spelling(name: resolved_name)) {
       resolved
     } else {
       receiver_type
@@ -427,7 +427,7 @@ fn field_summary_for_type(base_type: v1.std.core.Node, env: v1.compiler.infer_en
     if no_structure {
       none
     } else {
-      let is_product = resolved.connective == Conj
+      let is_product = resolved.connective == v1.std.core.Conj
       if is_product {
         map_get(build_struct_field_summaries(parent: resolved, source_indices: env.source_indices), field)
       } else {
@@ -499,13 +499,13 @@ fn lookup_field_in_product(product: v1.std.core.Node, method_name: String, sourc
 }
 
 fn lookup_structural_method(receiver_type: v1.std.core.Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> StructuralMethodLookup {
-  let is_product = receiver_type.connective == Conj
+  let is_product = receiver_type.connective == v1.std.core.Conj
   if is_product {
     let direct = lookup_field_in_product(product: receiver_type, method_name: method_name, source_indices: source_indices)
     StructuralMethodLookup { resolution: direct, kernel_diagnostics: [] }
   } else {
     let enriched = enrich_kernel_type(name: authored_name_at(source_indices: source_indices, node: receiver_type), base: receiver_type, source_indices: source_indices)
-    if enriched.ty.connective == Conj && enriched.ty.children |> count > 0 {
+    if enriched.ty.connective == v1.std.core.Conj && enriched.ty.children |> count > 0 {
       let base_result = lookup_field_in_product(product: enriched.ty, method_name: method_name, source_indices: source_indices)
       match base_result {
         Present { value: mfr } =>

@@ -313,7 +313,7 @@ fn lookup_variant_parent_enum(scope: InferScope, name: String) -> String? {
     Present { value: binding } =>
       match lookup_type_for(env: scope.type_env, node: binding.resolved) {
         Present { value: parent } =>
-          let is_coproduct = parent.connective == Disj
+          let is_coproduct = parent.connective == v1.std.core.Disj
           if is_coproduct {
             if has_child_named(n: parent, name: name, source_indices: scope.type_env.source_indices) {
               Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved) }
@@ -386,7 +386,7 @@ fn variant_owner_node(scope: InferScope, name: String) -> v1.std.core.Node? {
   if contains(name, ".") {
     match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: name) {
       Present { value: resolved } =>
-        if resolved.connective == Disj && has_child_named(n: resolved, name: qualified_last_segment(name: name), source_indices: scope.type_env.source_indices) {
+        if resolved.connective == v1.std.core.Disj && has_child_named(n: resolved, name: qualified_last_segment(name: name), source_indices: scope.type_env.source_indices) {
           Present { value: resolved }
         } else { none }
       Absent => none
@@ -396,7 +396,7 @@ fn variant_owner_node(scope: InferScope, name: String) -> v1.std.core.Node? {
     Present { value: binding } =>
       match lookup_type_for(env: scope.type_env, node: binding.resolved) {
         Present { value: owner } =>
-          let owner_is_coproduct = owner.connective == Disj
+          let owner_is_coproduct = owner.connective == v1.std.core.Disj
           if owner_is_coproduct {
             if has_child_named(n: owner, name: name, source_indices: scope.type_env.source_indices) {
               Present { value: owner }
@@ -674,7 +674,7 @@ fn rejects_string_for_optional_coproduct_field(expected: v1.std.core.Node, got: 
     Present { value: resolved } => resolved
     Absent => with_required_cardinality(n: expected)
   }
-  let expected_is_optional_coproduct = expected.return_cardinality == CardOptional && expected_resolved.connective == Disj
+  let expected_is_optional_coproduct = expected.return_cardinality == CardOptional && expected_resolved.connective == v1.std.core.Disj
   let got_is_string = node_type_shape(n: got, source_indices: source_indices) == "Primitive(String)" || authored_name_at(source_indices: source_indices, node: got) == "String"
   expected_is_optional_coproduct && got_is_string
 }
@@ -684,7 +684,7 @@ fn field_type_is_optional_coproduct(ft: v1.std.core.Node, env: v1.compiler.infer
     Present { value: resolved } => resolved
     Absent => with_required_cardinality(n: ft)
   }
-  ft.return_cardinality == CardOptional && inner.connective == Disj
+  ft.return_cardinality == CardOptional && inner.connective == v1.std.core.Disj
 }
 
 fn record_lit_expected_fields(type_name: String?, scope: InferScope) -> List<v1.std.core.Node> {
@@ -712,7 +712,7 @@ fn record_lit_expanded_from_expected(type_name: String?, expected: v1.std.core.N
       match expected {
         Present { value: exp } =>
           if authored_name_at(source_indices: scope.type_env.source_indices, node: exp) == tn
-            && exp.connective == Conj
+            && exp.connective == v1.std.core.Conj
             && exp.children |> count > 0 {
             Present { value: exp }
           } else {
@@ -756,7 +756,7 @@ fn record_lit_expected_coproduct(expected: v1.std.core.Node?, scope: InferScope)
       }
       match nominal {
         Present { value: n } =>
-          if (n.connective == Disj) { Present { value: n } } else { none }
+          if (n.connective == v1.std.core.Disj) { Present { value: n } } else { none }
         Absent => none
       }
     Absent => none
@@ -794,7 +794,7 @@ fn record_lit_variant_from_expected(type_name: String?, expected: v1.std.core.No
 fn record_lit_fields_from_expected(type_name: String?, expected: v1.std.core.Node?, scope: InferScope) -> List<v1.std.core.Node>? {
   match record_lit_expanded_from_expected(type_name: type_name, expected: expected, scope: scope) {
     Present { value: expanded } =>
-      if expanded.connective == Conj && expanded.children |> count > 0 {
+      if expanded.connective == v1.std.core.Conj && expanded.children |> count > 0 {
         Present { value: expanded.children }
       } else { none }
     Absent => none
@@ -943,7 +943,7 @@ fn brand_grounds_transparently_to(name: String, other: v1.std.core.Node, type_en
 fn nominal_call_arg_brand_mismatch(formal: v1.std.core.Node, actual: v1.std.core.Node, type_env: v1.compiler.infer_env.TypeEnv, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   let formal_name = authored_name_at(source_indices: source_indices, node: formal)
   let actual_name = authored_name_at(source_indices: source_indices, node: actual)
-  formal.connective != Arrow && actual.connective != Arrow
+  formal.connective != v1.std.core.Arrow && actual.connective != v1.std.core.Arrow
     && formal_name != ""
     && actual_name != ""
     && qualified_last_segment(name: formal_name) != qualified_last_segment(name: actual_name)
@@ -955,7 +955,7 @@ fn nominal_call_arg_brand_mismatch(formal: v1.std.core.Node, actual: v1.std.core
 }
 
 fn is_where_refinement_type(ty: v1.std.core.Node) -> Bool {
-  ty.connective == Conj && ty.type_annotation != none && (ty.children |> count) == 1
+  ty.connective == v1.std.core.Conj && ty.type_annotation != none && (ty.children |> count) == 1
 }
 
 fn where_refinement_chain(ty: v1.std.core.Node, type_env: v1.compiler.infer_env.TypeEnv) -> List<v1.std.core.Node> {
@@ -1449,10 +1449,10 @@ fn infer_expr(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.core.
 }
 
 fn kernel_value_declared_type_mismatch(formal: v1.std.core.Node, actual: v1.std.core.Node, type_env: v1.compiler.infer_env.TypeEnv, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
-  if formal.connective == Arrow || actual.connective == Arrow || (actual.children |> count) > 0 {
+  if formal.connective == v1.std.core.Arrow || actual.connective == v1.std.core.Arrow || (actual.children |> count) > 0 {
     false
   } else {
-    let formal_base = if formal.connective == Conj && formal.type_annotation != none && (formal.children |> count) == 1 {
+    let formal_base = if formal.connective == v1.std.core.Conj && formal.type_annotation != none && (formal.children |> count) == 1 {
       match formal.children |> first {
         Present { value: refinement_base } => refinement_base
         Absent => formal
@@ -1473,13 +1473,13 @@ fn kernel_value_declared_type_mismatch(formal: v1.std.core.Node, actual: v1.std.
         } else {
           match lookup_type_by_name(env: type_env, name: formal_name) {
             Present { value: decl } =>
-              let decl_is_refinement_over_actual = decl.connective == Conj && (decl.children |> count) == 1
+              let decl_is_refinement_over_actual = decl.connective == v1.std.core.Conj && (decl.children |> count) == 1
                 && (decl.type_annotation != none
                   || (match decl.children |> first {
                     Present { value: refinement_child } => authored_name_at(source_indices: source_indices, node: refinement_child) == actual_name
                     Absent => false
                   }))
-              (decl.connective == Conj || decl.connective == Disj) && (decl.children |> count) > 0 && decl_is_refinement_over_actual == false
+              (decl.connective == v1.std.core.Conj || decl.connective == v1.std.core.Disj) && (decl.children |> count) > 0 && decl_is_refinement_over_actual == false
             Absent => false
           }
         }
@@ -1689,7 +1689,7 @@ fn structured_application_site_type_mismatch(
                     if is_kernel_type(name: formal_name) {
                       match lookup_type_by_name(env: scope.type_env, name: lit_name) {
                         Present { value: lit_decl } =>
-                          lit_decl.connective == Conj || lit_decl.connective == Disj
+                          lit_decl.connective == v1.std.core.Conj || lit_decl.connective == v1.std.core.Disj
                         Absent => match variant_owner_node(scope: scope, name: lit_name) {
                           Present { value: _ } => true
                           Absent => false
@@ -2368,7 +2368,7 @@ fn method_pipe_map_keys_values_fallback(recv_rt: v1.std.core.Node, method_name: 
 
 data method_existence_wall_note: String = "WALL (DESIGN §5) — an unresolved method REFUSES; it never inherits the receiver type. The deleted else-arm returned recv_rt with an EMPTY diagnostic list, so an unknown method on List<T> became another List<T>: a success-shaped answer that survived a whole collection pipeline, stamped PlainMethodSemantics as if it had resolved. Nothing refused until InterpError::Unimplemented { what: \"method 'filter_map'\" } — whole-tree compile reported ZERO blocking errors while live dispatch returned HTTP 500 (#7479). THE DECIDABILITY PREDICATE IS THE LOAD-BEARING PART. It is PER-RECEIVER, not per-name: refuse exactly when kernel_profile_lookup returns a profile for the receiver canonical container kind, because tier0 (lookup_structural_method) has already consulted that profile algebra templates and missed — so reaching this arm with a kernel-profiled receiver PROVES the method is absent from that receiver complete declared surface. This is the same authority tier0 reads, not a second relation minted here (§3). A NAME-GRAIN PREDICATE WAS TRIED AND IS WRONG, and the receipt is worth keeping because it is subtle: gating on membership in a declared method-name roster admits any rostered name on ANY receiver, so List<Int> |> starts_with(..) and List<Int> |> to_upper() compiled clean while the diagnostic claimed the receiver was under-resolved — a fail-open with a message that also LIED about its cause, since Container(List,Primitive(Int)) is fully resolved (codex review 45327, confirmed by execution). Per-receiver closes both: those two now REFUSE. THE ONE MEASURED OBSTACLE TO PER-RECEIVER WAS A REAL §3 FORK, AND IT IS FIXED HERE RATHER THAN WORKED AROUND: free_monoid_scalar_templates omitted count while the interpreter dispatches it natively on strings (the length/count/size arm), so String |> count reached this arm and was admitted only by the fail-open — a hollow green. count is now declared on the String profile, matching the runtime, so it resolves at tier0 and never reaches here. WHAT STAYS UNDECIDED, and why refusing there would fabricate: a receiver with NO kernel profile has no complete declared surface to prove absence against. THE LARGEST MEASURED CLASS WAS NOT UNDECIDABLE AT ALL AND IS NOW DECIDED — a where-refinement alias arrived as Product(NonEmptyStr) only because resolve_method_receiver_type short-circuits on Conj and never peeled to the String base; peeling it (where_refinement_receiver_peel_note) moved 12 corpus sites out of this residue in both directions at once, resolving the correct .length() calls AND making a bogus method on a branded string a hard MethodNotFound. What remains genuinely has no surface: a lambda parameter whose type never propagates so the receiver has no authored name at all (the LexMatchThunk { apply: fn(s) } idiom in src/v2/compiler/01_tokenize.dag and the StoreObjectFold lambdas in extdeps/git/object_store.dag), a coproduct payload bound by pattern destructuring arriving typed Primitive(ok) (a correct labels |> list_push(label)), a bare type variable, and an Optional whose cardinality is dropped before lookup so the inner product is what arrives. Refusing those would red correct code, which is the mirror image of the fabricated success this wall deletes. A RECEIVER WITH NO AUTHORED NAME AT ALL is not weak evidence about the method — it is no evidence about anything, because the receiver's own type was never established upstream. That is a different judgment failure from 'this receiver has a surface and the method is not on it', so it carries its own diagnostic, v1.std.core.ReceiverTypeUnestablished, whose message names that cause instead of implying the method is missing. THE DIAGNOSTIC NAMES THE CAUSE; THE ROSTER BOUNDS THE ADMISSION, and separating those two was a correction. The class was first admitted on the CAUSE alone — any anonymous receiver, non-blocking — on the reasoning that the wall cannot tell an existing method from a nonexistent one when the receiver has no type, so refusing would refuse both. That reasoning is sound about DECIDABILITY and wrong about ADMISSION: it made every future anonymous-receiver call green, including one whose method does not exist, so the exception was unbounded exactly where existence is unknown (codex review 45459). Counting a diagnostic does not stop invalid code reaching the live system. Admission is now gated on the same declared roster as every other unestablished shape, keyed (module, method, Primitive()), so the seven measured occurrences are admitted and a new one anywhere else REFUSES as MethodExistenceUndecided. That is a ratchet that can only shrink, and blocking a new instance of a known deficit is the factory model rather than an inconvenience. Everything that has a name but no surface stays in the same shape-keyed roster. MethodExistenceUndecided carries what is left as a typed, located, COUNTED non-blocking diagnostic (the is_error_diagnostic partition, UnlistedImportUse precedent) so the frequency stays observable and prioritizable rather than zeroed by construction — and it now means exactly ONE thing, receiver surface not established, rather than doubling as a name-grain escape. Both arms return error_type, never recv_rt, so one located refusal does not cascade downstream. AND THE WALL IS REACHED FROM EVERY ARM, WHICH IT WAS NOT AT FIRST: the decision lived inline in the final else of method_pipe_map_keys_values_fallback, so an unresolved map_keys, sorted_map_keys or map_values whose receiver is not a keyed collection took an EARLIER branch and returned recv_rt with an empty diagnostic list — the identical success-shaped fallback this wall exists to delete, preserved in the two special cases that ran before it (codex review 45430). A wall reachable only from the default arm is not a wall, and prose about the default arm cannot see the two arms in front of it. The decision is now method_existence_decision, held once and called from all three, with the control run against the prior binary rather than reasoned about: List<Int> |> map_keys and |> map_values compile with exit 0 on the pre-routing binary and produce two located MethodNotFound refusals on this one. Positive controls: map/filter/fold/flat_map resolve at tier0 and service ops at tier1, neither reaching this arm. THE UPSTREAM DEFECTS ARE NAMED BY THE MEASUREMENT, one fixed here and the rest left as promotion triggers that would each let the wall decide a further non-kernel receiver: (1) FIXED — a where-refinement alias resolving to a Product shape instead of peeling to its declared base before method lookup; (2) a lambda parameter receiver whose type never propagates from the declared fn type it is bound under; (3) a coproduct payload binding typed as the VARIANT name rather than the field type; (4) an optional receiver whose cardinality is dropped so the inner product reaches lookup in place of Optional own surface. Each is carried as a row in unresolved_method_frontier, keyed on the receiver shape that is the evidence for it, except (2) which is the ReceiverTypeUnestablished cause class above. THE INSTRUMENT WAS WRONG BEFORE THE WALL WAS, and that is the most transferable thing here: this wall was measured with `gunbc run --entry dag/tools/generated_artifact_gate.dag`, which reaches only that gate's import closure, and it reported CLEAN while twelve real sites sat outside it — they surfaced from CI instead. The whole-corpus instrument is `gunbc compile --source-root dag --source-root src/v2 --target dag`, the same compile-clean gate CI runs, and it resolves 1629 sources against 2740 indexed modules. A narrow instrument reporting clean is indistinguishable from a wall that works, which is the §5 specification-without-execution trap wearing the shape of a green run. A FOURTH SHAPE was then found and NOT fixed: a brand alias can also arrive as a plain qualified LEAF (Primitive(std.types.NonEmptyStr)) rather than the refinement Conj the peel walks. Three head-resolution strategies were implemented and measured against it — lookup_type_for on the node, lookup_type_by_name on the qualified name, and on its last segment — none recovered the refinement, so the machinery was DELETED rather than shipped unproven and the site is a declared row. Unproven machinery that decides nothing is worse than a declared row that admits what it cannot decide. Dissolve-on: primitive-realization-single-authority — one PrimitiveDefinition identity joining semantic definition, interpreter dispatch and per-target emit handler, at which point every receiver has a complete surface, the count-style forks are unwritable rather than hand-reconciled, and MethodExistenceUndecided is deleted."
 
-data where_refinement_receiver_peel_note: String = "A where-refinement type is a Conj carrying its base as its single child and its predicates in type_annotation, and resolve_method_receiver_type SHORT-CIRCUITS on connective == Conj — it treats any product as already-structural and returns it untouched. So NonEmptyStr, declared `String where non_empty`, reached method lookup as Product(NonEmptyStr) and String's algebra profile was never consulted: `.length()` on a branded string had no surface to resolve against and no surface to prove absence against either, which put 12 correct corpus sites (8 in extdeps.filesystem.linux, 4 across gunbc.design) in the wall's undecided residue. This peel is the fix, and the FIRST version of it was a §3 violation that this note asserted its way past — worth recording, because the note is where the defect actually lived. It hand-rolled a second recursive walker over the Conj/annotation/single-child shape and then CLAIMED, in this sentence, that the refinement chain had one traversal authority and the peel was its second consumer. Both walkers independently encoded the shape test, the lookup_type_for base resolution and the recursion, so they could drift apart silently; the prose asserted the property instead of the code establishing it (codex review 45410). WHY THESE READ NODE STORAGE DIRECTLY, since it is asked and the answer is not a per-function one: they are 2 of the 589 direct Node-storage reads in this file (579 of them on origin/main), which is the v1 seed's pervasive and only idiom — the seed IS the traversal, the stage that walks the tree so that later stages need not. There is no canonical query or fold surface reachable from here: fold_node and node_query live in src/v2/std, no v1 seed module imports v2 at all, and v1 COMPILES v2, so routing v1 inference through v2's fold inverts the bootstrap rather than tidying it. DESIGN's fold_node line is scoped to the 7 v2 stages and is a DRY example within v2, not a rule binding the seed. So the disposition here is the SEED'S disposition, the same trigger the hand-Rust receipt carries — the v1 seed shrinks to zero at v2 self-host and these dissolve with it — and attaching a separate per-function trigger to 2 reads while 587 identical reads beside them carry none would be a fabricated bound, describing separable work that does not exist (codex review 45570). The repair is the extraction the claim described: where_refinement_chain is the one walk, it yields the refinement chain from the surface alias down to its ground base, and it has exactly two consumers — type_where_refinement_predicates_transitive flat_maps the immediate predicates over the chain, and peel_where_refinement_base takes its last link. The shape test itself is is_where_refinement_type, held once. Now there is one traversal authority, and it is one because the code says so. It runs only where the wall was already about to refuse or admit, so no previously-resolving call changes meaning; tier0 keeps first claim on the unpeeled receiver, which is what preserves a method declared on the brand itself. The consequence that matters is not that 12 sites went green — it is that they became DECIDABLE IN BOTH DIRECTIONS: once the peeled receiver is kernel-profiled, a method genuinely absent from String now refuses as MethodNotFound instead of resting in the frontier. Widening what the wall can decide is the only move that shrinks the frontier without either fabricating a success or fabricating a refusal."
+data where_refinement_receiver_peel_note: String = "A where-refinement type is a Conj carrying its base as its single child and its predicates in type_annotation, and resolve_method_receiver_type SHORT-CIRCUITS on connective == v1.std.core.Conj — it treats any product as already-structural and returns it untouched. So NonEmptyStr, declared `String where non_empty`, reached method lookup as Product(NonEmptyStr) and String's algebra profile was never consulted: `.length()` on a branded string had no surface to resolve against and no surface to prove absence against either, which put 12 correct corpus sites (8 in extdeps.filesystem.linux, 4 across gunbc.design) in the wall's undecided residue. This peel is the fix, and the FIRST version of it was a §3 violation that this note asserted its way past — worth recording, because the note is where the defect actually lived. It hand-rolled a second recursive walker over the Conj/annotation/single-child shape and then CLAIMED, in this sentence, that the refinement chain had one traversal authority and the peel was its second consumer. Both walkers independently encoded the shape test, the lookup_type_for base resolution and the recursion, so they could drift apart silently; the prose asserted the property instead of the code establishing it (codex review 45410). WHY THESE READ NODE STORAGE DIRECTLY, since it is asked and the answer is not a per-function one: they are 2 of the 589 direct Node-storage reads in this file (579 of them on origin/main), which is the v1 seed's pervasive and only idiom — the seed IS the traversal, the stage that walks the tree so that later stages need not. There is no canonical query or fold surface reachable from here: fold_node and node_query live in src/v2/std, no v1 seed module imports v2 at all, and v1 COMPILES v2, so routing v1 inference through v2's fold inverts the bootstrap rather than tidying it. DESIGN's fold_node line is scoped to the 7 v2 stages and is a DRY example within v2, not a rule binding the seed. So the disposition here is the SEED'S disposition, the same trigger the hand-Rust receipt carries — the v1 seed shrinks to zero at v2 self-host and these dissolve with it — and attaching a separate per-function trigger to 2 reads while 587 identical reads beside them carry none would be a fabricated bound, describing separable work that does not exist (codex review 45570). The repair is the extraction the claim described: where_refinement_chain is the one walk, it yields the refinement chain from the surface alias down to its ground base, and it has exactly two consumers — type_where_refinement_predicates_transitive flat_maps the immediate predicates over the chain, and peel_where_refinement_base takes its last link. The shape test itself is is_where_refinement_type, held once. Now there is one traversal authority, and it is one because the code says so. It runs only where the wall was already about to refuse or admit, so no previously-resolving call changes meaning; tier0 keeps first claim on the unpeeled receiver, which is what preserves a method declared on the brand itself. The consequence that matters is not that 12 sites went green — it is that they became DECIDABLE IN BOTH DIRECTIONS: once the peeled receiver is kernel-profiled, a method genuinely absent from String now refuses as MethodNotFound instead of resting in the frontier. Widening what the wall can decide is the only move that shrinks the frontier without either fabricating a success or fabricating a refusal."
 
 type UnresolvedMethodFrontierRow {
   module_name: String
@@ -2588,7 +2588,7 @@ fn annotate_pattern_parent_enums(pattern: MatchPattern, scrutinee_subject: v1.co
           } else if witness_container_subject {
             Present { value: "Witness" }
           } else {
-            let is_coproduct = resolved_scrut_node.connective == Disj
+            let is_coproduct = resolved_scrut_node.connective == v1.std.core.Disj
             if is_coproduct {
               Present { value: scrutinee_name }
             } else { none }
@@ -4406,14 +4406,14 @@ fn is_deferred_field_access_base(n: v1.std.core.Node, env: v1.compiler.infer_env
 
 fn needs_alias_field_expansion(n: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> Bool {
   if is_deferred_field_access_base(n: n, env: env) { false }
-  else if (n.connective == Conj || n.connective == Disj) {
+  else if (n.connective == v1.std.core.Conj || n.connective == v1.std.core.Disj) {
     false
   } else if n.connective == NoConnective && n.children |> count > 0 && n.inferred == none {
     is_user_generic_use_site(n: n, env: env)
   } else {
     match lookup_type_for(env: env, node: n) {
       Present { value: binding } =>
-        if (binding.connective == Conj || binding.connective == Disj) {
+        if (binding.connective == v1.std.core.Conj || binding.connective == v1.std.core.Disj) {
           n.connective == NoConnective && n.children |> count == 0
         } else if binding.connective == NoConnective && binding.children |> count == 0 && binding.inferred != none {
           true
@@ -4434,7 +4434,7 @@ data peel_alias_fixpoint_guard_note: String = "Termination (§4 boundedness) and
 fn peel_alias_once_for_field_access(n: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv, module_name: String, seen: Map<String, Bool>) -> v1.compiler.infer_resolve.NodeResolveResult {
   let once = resolve_node(n: n, env: env, module_name: module_name)
   let resolved_once = once.resolved
-  if (resolved_once.connective == Conj || resolved_once.connective == Disj) {
+  if (resolved_once.connective == v1.std.core.Conj || resolved_once.connective == v1.std.core.Disj) {
     once
   } else if resolved_once.connective == NoConnective && resolved_once.children |> count > 0 && resolved_once.inferred == none {
     if resolved_once == n { once }
@@ -4543,7 +4543,7 @@ fn expand_alias_chain_for_field_access(n: v1.std.core.Node, env: v1.compiler.inf
   let carrier = alias_chain_carrier(n: peeled)
   let carrier_name = if carrier.name != "" { carrier.name } else { authored_name_at(source_indices: env.source_indices, node: carrier) }
   let structural = structural_from_expanded_type(normed: resolve_scrutinee_type_node(env: env, n: peeled))
-  let is_record = structural.connective == Conj || structural.connective == Disj
+  let is_record = structural.connective == v1.std.core.Conj || structural.connective == v1.std.core.Disj
   if is_record {
     let resolved_record = if record_has_unresolved_param_field(record: structural, env: env) && (carrier.children |> count) > 0 && carrier_name != "" {
       match lookup_type_by_name(env: env, name: carrier_name) {
@@ -4626,7 +4626,7 @@ fn record_lit_construction_field_names(type_name: String, scope: InferScope) -> 
   let si = scope.type_env.source_indices
   match lookup_type_by_name(env: scope.type_env, name: type_name) {
     Present { value: decl } =>
-      if (decl.params |> count == 0) && (decl.connective == Conj) && (decl.children |> count > 0) {
+      if (decl.params |> count == 0) && (decl.connective == v1.std.core.Conj) && (decl.children |> count > 0) {
         Present { value: decl.children |> map(f => authored_name_at(source_indices: si, node: f)) }
       } else {
         none
@@ -4642,7 +4642,7 @@ fn field_in_any_variant_named(type_name: String, field: String, scope: InferScop
       owner.children |> any(arm =>
         if authored_name_at(source_indices: si, node: arm) == type_name {
           let ea = expand_type_for_field_access(n: arm, env: scope.type_env, module_name: scope.module_name).resolved
-          let fields = if (ea.connective == Conj) { ea.children } else { arm.children }
+          let fields = if (ea.connective == v1.std.core.Conj) { ea.children } else { arm.children }
           fields |> any(f => authored_name_at(source_indices: si, node: f) == field)
         } else { false }
       )
@@ -4786,7 +4786,7 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<v1.std.core
                 Absent =>
                   match alias_struct_expansion {
                     Present { value: expansion } =>
-                      if expansion.resolved.connective == Conj && expansion.resolved.children |> count > 0 {
+                      if expansion.resolved.connective == v1.std.core.Conj && expansion.resolved.children |> count > 0 {
                         expansion.resolved.children
                       } else { record_lit_expected_fields(type_name: type_name, scope: scope) }
                     Absent => record_lit_expected_fields(type_name: type_name, scope: scope)
@@ -4837,7 +4837,7 @@ fn infer_record_lit_structural(type_name: String?, field_inits: List<v1.std.core
           Absent =>
             match lookup_type_by_name(env: scope.type_env, name: tn_str) {
               Present { value: decl } =>
-                if decl.connective == Conj && (decl.params |> count) == 0 && (decl.children |> count) > 0 {
+                if decl.connective == v1.std.core.Conj && (decl.params |> count) == 0 && (decl.children |> count) > 0 {
                   decl.children
                 } else {
                   []
@@ -7599,7 +7599,7 @@ fn kernel_coproduct_variant_locals(env: v1.compiler.infer_env.TypeEnv) -> Map<St
         kernel.bindings |> map_values |> sort_by(b => b.name),
         init: empty_map(),
         f: (acc, binding) =>
-          let is_coproduct = binding.resolved.connective == Disj
+          let is_coproduct = binding.resolved.connective == v1.std.core.Disj
           if is_coproduct {
             fold(binding.resolved.children, init: acc, f: (vacc, child) =>
               let child_name = authored_name_at(source_indices: env.source_indices, node: child)
@@ -8745,7 +8745,7 @@ fn bind_coproduct_item_arms(state: VariantFoldState, item: v1.std.core.Node, sou
 
 fn build_local_variants(items: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>, module_name: String, init: VariantFoldState) -> VariantFoldState {
   fold(items, init: init, f: (acc, item) =>
-    let item_is_coproduct = item.connective == Disj
+    let item_is_coproduct = item.connective == v1.std.core.Disj
     if item_is_coproduct {
       bind_coproduct_item_arms(state: acc, item: item, source_indices: source_indices, module_name: module_name)
     } else { acc }
@@ -8776,7 +8776,7 @@ fn build_global_bare_variant_locals(
     match map_get(global_bare, name) {
       Present { value: v1.compiler.infer_env.GlobalBareUniqueBinding { module_path: _, binding: binding } } =>
         let owner = binding.resolved
-        if owner.connective == Disj && has_child_named(n: owner, name: name, source_indices: source_indices) {
+        if owner.connective == v1.std.core.Disj && has_child_named(n: owner, name: name, source_indices: source_indices) {
           map_insert(acc, name, v1.compiler.infer_env.TypeBinding { name: name, resolved: owner, provenance: SubValueUnknown })
         } else {
           acc
@@ -8802,7 +8802,7 @@ fn add_coproduct_to_variant_surface(acc: VariantExportSurface, item: v1.std.core
 
 fn collect_own_variant_export_surface(items: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> VariantExportSurface {
   fold(items, init: empty_variant_export_surface(), f: (acc, item) =>
-    let item_is_coproduct = item.connective == Disj
+    let item_is_coproduct = item.connective == v1.std.core.Disj
     if item_is_coproduct {
       add_coproduct_to_variant_surface(acc: acc, item: item, source_indices: source_indices)
     } else { acc }

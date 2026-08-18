@@ -264,8 +264,8 @@ fn order_typed_call_args(args: List<v1.std.core.Node>, func: String, scope: v1.c
 }
 
 fn has_nested_records_node(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
-  let is_product = n.connective == Conj
-  let is_coproduct = n.connective == Disj
+  let is_product = n.connective == v1.std.core.Conj
+  let is_coproduct = n.connective == v1.std.core.Disj
   if is_product {
     true
   } else if is_coproduct {
@@ -522,7 +522,7 @@ fn render_node_type(n: v1.std.core.Node, target: v1.compiler.artifact.RenderTarg
     return err_str
   }
 
-  let is_arrow = n.connective == Arrow
+  let is_arrow = n.connective == v1.std.core.Arrow
   if is_arrow {
     let repr = target_callable(target: target)
     let param_strs = n.params |> map(p => render_node_type(n: param_node_type_expr(n: p), target: target, shared_types: shared_types, source_indices: source_indices))
@@ -554,8 +554,8 @@ fn render_node_type(n: v1.std.core.Node, target: v1.compiler.artifact.RenderTarg
     return opt_str
   }
 
-  let is_conj = n.connective == Conj
-  let is_disj = n.connective == Disj
+  let is_conj = n.connective == v1.std.core.Conj
+  let is_disj = n.connective == v1.std.core.Disj
   let shared = set_contains(shared_types, tn)
 
   if is_disj {
@@ -577,7 +577,7 @@ fn render_node_type(n: v1.std.core.Node, target: v1.compiler.artifact.RenderTarg
       }
       return refined_str
     }
-    let is_pair = n.connective == Conj && n.ident_span == none && n.children |> count == 2
+    let is_pair = n.connective == v1.std.core.Conj && n.ident_span == none && n.children |> count == 2
     if is_pair {
       let first_child = match n.children |> first {
         Present { value: c } => if c.inferred != none { render_node_type(n: resolved_type(n: c), target: target, shared_types: shared_types, source_indices: source_indices) } else { render_node_type(n: c, target: target, shared_types: shared_types, source_indices: source_indices) }

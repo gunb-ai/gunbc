@@ -245,7 +245,7 @@ fn field_value_shape_from_type_node(type_node: v1.std.core.Node) -> v1.std.core.
 }
 
 fn is_tuple_type(n: v1.std.core.Node) -> Bool {
-  n.connective == Conj && n.ident_span == none && n.children |> count == 2
+  n.connective == v1.std.core.Conj && n.ident_span == none && n.children |> count == 2
 }
 
 fn build_struct_field_summaries(parent: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Map<String, v1.std.core.FieldSummary> {
@@ -340,14 +340,14 @@ fn build_field_type_map(children: List<v1.std.core.Node>, source_indices: Map<St
 }
 
 fn build_type_summary(item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> TypeSummary? {
-  if item.connective == NoConnective || item.connective == Arrow || item.transport != none {
+  if item.connective == NoConnective || item.connective == v1.std.core.Arrow || item.transport != none {
     return none
   }
   let gpn = item.params |> map(p => param_node_name_at(n: p, source_indices: source_indices))
-  let is_product = item.connective == Conj
+  let is_product = item.connective == v1.std.core.Conj
   let has_fn = item.children |> any(child =>
     match child.inferred {
-      Present { value: Resolved { node: rt } } => rt.connective == Arrow
+      Present { value: Resolved { node: rt } } => rt.connective == v1.std.core.Arrow
       _ => false
     }
   )
@@ -434,7 +434,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: v1.std.core.Node, sour
             if variant.children |> count > 0 {
               let v_has_fn = variant.children |> any(vc =>
                 match vc.inferred {
-                  Present { value: Resolved { node: rt } } => rt.connective == Arrow
+                  Present { value: Resolved { node: rt } } => rt.connective == v1.std.core.Arrow
                   _ => false
                 }
               )
