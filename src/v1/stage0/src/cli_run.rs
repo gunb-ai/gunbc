@@ -15830,8 +15830,32 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
         // relocating-the-file-does-not-discharge-it text) reaches the witness author. Mapping
         // here rather than in the kernel is what keeps a served HTTP route from receiving
         // witness guidance it cannot act on.
-        Err(e) => ClaimOutcome::RuntimeError {
-            message: format!("{}", v1_interpreter::map_budget_error_to_witness_refusal(e)),
+        // ONE EVENT, ONE VARIANT. A budget refusal reaches this seam two ways — the in-eval
+        // stride poll raises it as an error, while the completion-side backstop produces
+        // `TimedOut` directly — and until now the first arrived as a `RuntimeError` carrying
+        // the refusal as prose. That is one fact in two representations, and it is not
+        // cosmetic: any consumer partitioning on the outcome sees a budget refusal as an
+        // ordinary runtime error, so a partition that means to treat the two apart cannot.
+        // Mapping both raised forms onto `TimedOut` here makes the outcome vocabulary closed
+        // over the event, so a total match is total in fact and not only in shape.
+        Err(e) => match v1_interpreter::map_budget_error_to_witness_refusal(e) {
+            v1_interpreter::InterpError::EvalBudgetExceeded { cpu_ms, budget_ms } => {
+                ClaimOutcome::TimedOut {
+                    elapsed_ms: cpu_ms,
+                    budget_ms,
+                    kind: BudgetKind::Cpu,
+                }
+            }
+            v1_interpreter::InterpError::WitnessWallBudgetExceeded { wall_ms, budget_ms } => {
+                ClaimOutcome::TimedOut {
+                    elapsed_ms: wall_ms,
+                    budget_ms,
+                    kind: BudgetKind::Wall,
+                }
+            }
+            other => ClaimOutcome::RuntimeError {
+                message: format!("{other}"),
+            },
         },
     }
 }
