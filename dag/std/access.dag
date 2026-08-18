@@ -14,8 +14,8 @@ type AccessRequest<S, A, O, C, E> {
   subject: S
   action: A
   object: O
-  context: AccessContext<C>
-  evidence: AccessEvidence<E>
+  context: std.access.AccessContext<C>
+  evidence: std.access.AccessEvidence<E>
 }
 
 type AccessRefusalCause
@@ -35,13 +35,13 @@ type AccessRefusalLocation {
 }
 
 type AccessRefusal {
-  cause: AccessRefusalCause
-  location: AccessRefusalLocation
+  cause: std.access.AccessRefusalCause
+  location: std.access.AccessRefusalLocation
 }
 
 type AccessDecision
   = Permit
-  | Deny { refusal: AccessRefusal }
+  | Deny { refusal: std.access.AccessRefusal }
 
 fn access_policy_refusal(
   profile: String,
@@ -49,11 +49,11 @@ fn access_policy_refusal(
   action: String,
   object: String,
   reason: String,
-) -> AccessDecision {
+) -> std.access.AccessDecision {
   Deny {
-    refusal: AccessRefusal {
+    refusal: std.access.AccessRefusal {
       cause: AccessPolicyRefused { reason: reason },
-      location: AccessRefusalLocation {
+      location: std.access.AccessRefusalLocation {
         profile: profile,
         subject: subject,
         action: action,
@@ -63,7 +63,7 @@ fn access_policy_refusal(
   }
 }
 
-fn access_refusal_reason(refusal: AccessRefusal) -> String {
+fn access_refusal_reason(refusal: std.access.AccessRefusal) -> String {
   match refusal.cause {
     AccessContextAbsent { context: context } => context
     AccessEvidenceAbsent { evidence: evidence } => evidence
@@ -75,7 +75,7 @@ fn access_refusal_reason(refusal: AccessRefusal) -> String {
   }
 }
 
-fn decision_meet(a: AccessDecision, b: AccessDecision) -> AccessDecision {
+fn decision_meet(a: std.access.AccessDecision, b: std.access.AccessDecision) -> std.access.AccessDecision {
   match a {
     Deny { refusal: refusal } => Deny { refusal: refusal }
     Permit => b
@@ -83,5 +83,5 @@ fn decision_meet(a: AccessDecision, b: AccessDecision) -> AccessDecision {
 }
 
 type AccessPolicy<S, A, O, C, E> {
-  decide: fn(AccessRequest<S, A, O, C, E>) -> AccessDecision
+  decide: fn(std.access.AccessRequest<S, A, O, C, E>) -> std.access.AccessDecision
 }

@@ -50,7 +50,7 @@ type MediaTopLevel
   | TopLevelText
   | TopLevelVideo
 
-fn media_top_level_token(t: MediaTopLevel) -> String {
+fn media_top_level_token(t: extdeps.http.server.MediaTopLevel) -> String {
   match t {
     TopLevelApplication => "application"
     TopLevelAudio => "audio"
@@ -70,19 +70,19 @@ type MediaTypeParameter {
   value: String
 }
 
-data charset_utf8: MediaTypeParameter = MediaTypeParameter { name: "charset", value: "utf-8" }
+data charset_utf8: extdeps.http.server.MediaTypeParameter = MediaTypeParameter { name: "charset", value: "utf-8" }
 
 type MediaType {
-  top_level: MediaTopLevel
+  top_level: extdeps.http.server.MediaTopLevel
   subtype: String
-  parameters: List<MediaTypeParameter>
+  parameters: List<extdeps.http.server.MediaTypeParameter>
 }
 
-fn media_type_parameter_wire(p: MediaTypeParameter) -> String {
+fn media_type_parameter_wire(p: extdeps.http.server.MediaTypeParameter) -> String {
   join(["; ", p.name, "=", p.value], "")
 }
 
-fn media_type_wire_label(m: MediaType) -> String {
+fn media_type_wire_label(m: extdeps.http.server.MediaType) -> String {
   join([
     media_top_level_token(t: m.top_level),
     "/",
@@ -91,18 +91,18 @@ fn media_type_wire_label(m: MediaType) -> String {
   ], "")
 }
 
-data text_html_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "html", parameters: [charset_utf8] }
-data text_plain_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "plain", parameters: [charset_utf8] }
-data application_json_utf8: MediaType = MediaType { top_level: TopLevelApplication, subtype: "json", parameters: [charset_utf8] }
-data text_javascript_utf8: MediaType = MediaType { top_level: TopLevelText, subtype: "javascript", parameters: [charset_utf8] }
-data application_octet_stream: MediaType = MediaType { top_level: TopLevelApplication, subtype: "octet-stream", parameters: [] }
+data text_html_utf8: extdeps.http.server.MediaType = MediaType { top_level: TopLevelText, subtype: "html", parameters: [charset_utf8] }
+data text_plain_utf8: extdeps.http.server.MediaType = MediaType { top_level: TopLevelText, subtype: "plain", parameters: [charset_utf8] }
+data application_json_utf8: extdeps.http.server.MediaType = MediaType { top_level: TopLevelApplication, subtype: "json", parameters: [charset_utf8] }
+data text_javascript_utf8: extdeps.http.server.MediaType = MediaType { top_level: TopLevelText, subtype: "javascript", parameters: [charset_utf8] }
+data application_octet_stream: extdeps.http.server.MediaType = MediaType { top_level: TopLevelApplication, subtype: "octet-stream", parameters: [] }
 
 // The FORWARD reading of the wire method label into the modeled HttpMethod (RFC 9110 section 9 method names — the same closed set gunbc.node_http_server_emit.emit_http_method_label reads backward). Unknown labels are a typed UnknownMethod, never a defaulted GET (DESIGN 5: refuse, never widen — the Node realization's `req.method || GET` default is exactly the widen this arm does not copy).
 type HttpMethodParse
   = KnownMethod { method: std.types.HttpMethod }
   | UnknownMethod { label: String }
 
-fn parse_http_method_label(label: String) -> HttpMethodParse {
+fn parse_http_method_label(label: String) -> extdeps.http.server.HttpMethodParse {
   if label == "GET" { KnownMethod { method: GET } }
   else if label == "POST" { KnownMethod { method: POST } }
   else if label == "PUT" { KnownMethod { method: PUT } }
@@ -128,27 +128,27 @@ type HttpInputLocation
 
 type HttpServerParameter {
   name: String
-  location: HttpInputLocation
+  location: extdeps.http.server.HttpInputLocation
   required: Bool
 }
 
 type HttpStatusResponse {
   status: std.types.HttpStatus
-  body_kind: HttpRequestBodyKind
+  body_kind: extdeps.http.server.HttpRequestBodyKind
 }
 
 type HttpServerRoute {
   operation_name: String
   method: std.types.HttpMethod
   path_template: std.http_path.PathTemplate
-  request_body: HttpRequestBodyKind
-  parameters: List<HttpServerParameter>
-  responses: List<HttpStatusResponse>
+  request_body: extdeps.http.server.HttpRequestBodyKind
+  parameters: List<extdeps.http.server.HttpServerParameter>
+  responses: List<extdeps.http.server.HttpStatusResponse>
 }
 
 type HttpServerEmissionTarget {
   service_name: String
-  routes: List<HttpServerRoute>
+  routes: List<extdeps.http.server.HttpServerRoute>
 }
 
 type NodeHttpRequestListener {
@@ -161,34 +161,34 @@ type HttpServerListenConfig {
 }
 
 type NodeHttpServerRouteBinding {
-  route: HttpServerRoute
-  listener: NodeHttpRequestListener
+  route: extdeps.http.server.HttpServerRoute
+  listener: extdeps.http.server.NodeHttpRequestListener
 }
 
 type NodeHttpCreateServerServe {
-  route_bindings: List<NodeHttpServerRouteBinding>
+  route_bindings: List<extdeps.http.server.NodeHttpServerRouteBinding>
 }
 
 type NodeHttpCreateServerEffectChain {
-  serve: NodeHttpCreateServerServe
-  listen: HttpServerListenConfig
+  serve: extdeps.http.server.NodeHttpCreateServerServe
+  listen: extdeps.http.server.HttpServerListenConfig
 }
 
 type NodeHttpCreateServerEmissionTarget {
   service_name: String
-  effects: NodeHttpCreateServerEffectChain
+  effects: extdeps.http.server.NodeHttpCreateServerEffectChain
 }
 
 type ServedStaticRoute {
   method: std.types.HttpMethod
   path_pattern: std.http_path.PathTemplate
   body: String
-  content_type: MediaType
+  content_type: extdeps.http.server.MediaType
   status_on_hit: std.types.HttpStatus
 }
 
 type ServedStaticRouteTable {
-  routes: List<ServedStaticRoute>
+  routes: List<extdeps.http.server.ServedStaticRoute>
 }
 
 type ServeHttpRequest {
@@ -199,7 +199,7 @@ type ServeHttpRequest {
 
 type ServeHttpResponse {
   status: std.types.HttpStatus
-  content_type: MediaType
+  content_type: extdeps.http.server.MediaType
   body: String
 }
 
@@ -210,7 +210,7 @@ type ServeWireResponse {
   body: String
 }
 
-fn serve_wire_response(r: ServeHttpResponse) -> ServeWireResponse {
+fn serve_wire_response(r: extdeps.http.server.ServeHttpResponse) -> extdeps.http.server.ServeWireResponse {
   ServeWireResponse {
     status: r.status,
     content_type_label: media_type_wire_label(m: r.content_type),
@@ -220,27 +220,27 @@ fn serve_wire_response(r: ServeHttpResponse) -> ServeWireResponse {
 
 // The dynamic extension of ServedStaticRoute (DESIGN 2: one concept, every breadth — a static body is the degenerate handler, embedded not re-modeled). H is the consumer's handler vocabulary: extdeps owns the route SHAPE and the pure selection fold below; it cannot and does not name any concrete handler — naming them here would point the import arrow backward (DESIGN 3: dispatch lives peripheral, the interface stays realization-free). INVOKING a selected handler is therefore the instantiating module's job, never this module's.
 type ServedRoute<H>
-  = StaticRoute { route: ServedStaticRoute }
+  = StaticRoute { route: extdeps.http.server.ServedStaticRoute }
   | DynamicRoute { method: std.types.HttpMethod, path_pattern: std.http_path.PathTemplate, handler: H }
 
 type ServedRouteTable<H> {
-  routes: List<ServedRoute<H>>
+  routes: List<extdeps.http.server.ServedRoute<H>>
 }
 
 type RouteSelection<H>
-  = SelectedStatic { route: ServedStaticRoute }
+  = SelectedStatic { route: extdeps.http.server.ServedStaticRoute }
   | SelectedDynamic { handler: H, params: List<std.http_path.PathParamBinding> }
   | MethodNotAllowed { allowed: List<std.types.HttpMethod> }
   | NoRouteMatched
 
-fn served_route_method<H>(r: ServedRoute<H>) -> std.types.HttpMethod {
+fn served_route_method<H>(r: extdeps.http.server.ServedRoute<H>) -> std.types.HttpMethod {
   match r {
     StaticRoute { route: s } => s.method
     DynamicRoute { method: m, path_pattern: _, handler: _ } => m
   }
 }
 
-fn served_route_pattern<H>(r: ServedRoute<H>) -> std.http_path.PathTemplate {
+fn served_route_pattern<H>(r: extdeps.http.server.ServedRoute<H>) -> std.http_path.PathTemplate {
   match r {
     StaticRoute { route: s } => s.path_pattern
     DynamicRoute { method: _, path_pattern: p, handler: _ } => p
@@ -248,7 +248,7 @@ fn served_route_pattern<H>(r: ServedRoute<H>) -> std.http_path.PathTemplate {
 }
 
 // Selection is a TOTAL pure fold — every request folds to exactly one RouteSelection arm, no absorbing default (DESIGN 5). First (method AND path) match wins, in table order. A path that matches some route's template only under a different method folds to MethodNotAllowed carrying the allowed set — the same 405-with-Allow semantics the emitted Node realization implements over the same rows (gunbc.node_http_server_emit.node_http_request_handler_block); two realizations, one row authority. Nothing matched at all is NoRouteMatched (the 404 arm). Method-mismatch scan reuses the SAME match_path_template call as selection — one matcher, both questions.
-fn serve_route_hit<H>(r: ServedRoute<H>, method: std.types.HttpMethod, path: String) -> RouteSelection<H> {
+fn serve_route_hit<H>(r: extdeps.http.server.ServedRoute<H>, method: std.types.HttpMethod, path: String) -> extdeps.http.server.RouteSelection<H> {
   if !(served_route_method(r: r) == method) {
     NoRouteMatched
   } else {
@@ -264,7 +264,7 @@ fn serve_route_hit<H>(r: ServedRoute<H>, method: std.types.HttpMethod, path: Str
   }
 }
 
-fn serve_allowed_methods<H>(table: ServedRouteTable<H>, path: String) -> List<std.types.HttpMethod> {
+fn serve_allowed_methods<H>(table: extdeps.http.server.ServedRouteTable<H>, path: String) -> List<std.types.HttpMethod> {
   table.routes
     |> filter(r => match match_path_template(template: served_route_pattern(r: r), path: path) {
       PathMatched { params: _ } => true
@@ -273,7 +273,7 @@ fn serve_allowed_methods<H>(table: ServedRouteTable<H>, path: String) -> List<st
     |> map(r => served_route_method(r: r))
 }
 
-fn serve_select_route<H>(table: ServedRouteTable<H>, method: std.types.HttpMethod, path: String) -> RouteSelection<H> {
+fn serve_select_route<H>(table: extdeps.http.server.ServedRouteTable<H>, method: std.types.HttpMethod, path: String) -> extdeps.http.server.RouteSelection<H> {
   let hit = fold(table.routes, init: NoRouteMatched, f: (acc, r) =>
     match acc {
       SelectedStatic { route: _ } => acc

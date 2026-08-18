@@ -20,7 +20,7 @@ data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdep
   further_citations: []
 }
 
-data package_scope_subject_note: String = "THE SUBJECT IS THE EXACT DEPENDENCY / LOCK-GRAPH RELATION — PackageLockGraph: nodes are package selections at the manager's node grain; edges are consumer→dependency relations at that same grain. Grounded on the Reproducible Builds definition (dependencies and their versions as build-environment attributes), the same external citation extdeps.pin spells for Pin — two DISTINCT CITATIONS of one upstream page, not duplicated semantic authority (extdeps.pin pin_citation_note: the structural authority lens reads each module's anchor locally, so neither module may alias the other's anchor declaration).\\n\\nNOT Package_format: an archive-plus-metadata subject is a different external fact. Defer a generic package-artifact module until a second ecosystem needs it; do not leave PackageLockGraph cited as a package archive.\\n\\nTHE CITATION BOUNDS WHAT MAY LIVE HERE. It does NOT ground JavaScript module formats, npm lifecycle-script policy, artifact-admission outcomes, or gunbc materialization — those live in extdeps.npm (upstream manager facts) and gunbc.package_delivery (product policy and mechanism). Exact package/version/content identity for a downloaded release is Pin<PackageCoordinate<Ecosystem>> (extdeps.pin); ecosystems derive that pin from native observations — they do not mint a parallel selection carrier beside it."
+data package_scope_subject_note: String = "THE SUBJECT IS THE EXACT DEPENDENCY / LOCK-GRAPH RELATION — PackageLockGraph: nodes are package selections at the manager's node grain; edges are consumer→dependency relations at that same grain. Grounded on the Reproducible Builds definition (dependencies and their versions as build-environment attributes), the same external citation extdeps.pin spells for Pin — two DISTINCT CITATIONS of one upstream page, not duplicated semantic authority (extdeps.pin pin_citation_note: the structural authority lens reads each module's anchor locally, so neither module may alias the other's anchor declaration).\\n\\nNOT Package_format: an archive-plus-metadata subject is a different external fact. Defer a generic package-artifact module until a second ecosystem needs it; do not leave PackageLockGraph cited as a package archive.\\n\\nTHE CITATION BOUNDS WHAT MAY LIVE HERE. It does NOT ground JavaScript module formats, npm lifecycle-script policy, artifact-admission outcomes, or gunbc materialization — those live in extdeps.npm (upstream manager facts) and gunbc.package_delivery (product policy and mechanism). Exact package/version/content identity for a downloaded release is Pin<extdeps.package.PackageCoordinate<Ecosystem>> (extdeps.pin); ecosystems derive that pin from native observations — they do not mint a parallel selection carrier beside it."
 
 data package_hub_agnostic_note: String = "THE AGNOSTIC SHAPE OF A DEPENDENCY GRAPH. The hub parameterizes Selection — ecosystems define their own selection shapes. The hub never enumerates package managers. No synthetic PinnedPackageArtifactSelection convenience: the first real consumer (npm) derives Pin from native lock observations."
 
@@ -32,7 +32,7 @@ type PackageCoordinate<Ecosystem> {
 }
 
 type PackageRequirement<Ecosystem, RequirementSpec> {
-  package: PackageCoordinate<Ecosystem>
+  package: extdeps.package.PackageCoordinate<Ecosystem>
   spec: RequirementSpec
 }
 
@@ -53,8 +53,8 @@ type PackageDependencyEdge<NodeKey, EdgeKind> {
 type PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind> {
   manager: ManagerIdentity
   roots: List<NodeKey>
-  nodes: List<PackageLockNode<NodeKey, Selection, Metadata>>
-  edges: List<PackageDependencyEdge<NodeKey, EdgeKind>>
+  nodes: List<extdeps.package.PackageLockNode<NodeKey, Selection, Metadata>>
+  edges: List<extdeps.package.PackageDependencyEdge<NodeKey, EdgeKind>>
 }
 
 data package_graph_identity_absent_note: String = "NO authored lock_identity field. Canonical graph digest is a fold over parts, computed by the consumer."
@@ -62,7 +62,7 @@ data package_graph_identity_absent_note: String = "NO authored lock_identity fie
 type PackageLockNodeLookup<NodeKey, Selection, Metadata>
   = PackageLockNodeAbsent { key: NodeKey }
   | PackageLockNodeUnique {
-      node: PackageLockNode<NodeKey, Selection, Metadata>
+      node: extdeps.package.PackageLockNode<NodeKey, Selection, Metadata>
     }
   | PackageLockNodeDuplicate {
       key: NodeKey
@@ -72,9 +72,9 @@ type PackageLockNodeLookup<NodeKey, Selection, Metadata>
 data package_lock_lookup_note: String = "EXACT CARDINALITY, NOT BOOLEAN MEMBERSHIP (operator portfolio 2026-08-04). any(key==) was fail-open on duplicates: one key and three duplicate keys both returned true, so roots and edges resolved against an ambiguous graph. Lookup is 0 / 1 / many."
 
 fn package_lock_lookup_node<NodeKey, Selection, Metadata, EdgeKind, ManagerIdentity>(
-  graph: PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>,
+  graph: extdeps.package.PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>,
   key: NodeKey,
-) -> PackageLockNodeLookup<NodeKey, Selection, Metadata> {
+) -> extdeps.package.PackageLockNodeLookup<NodeKey, Selection, Metadata> {
   fold(
     graph.nodes,
     init: PackageLockNodeAbsent { key: key },
@@ -95,7 +95,7 @@ fn package_lock_lookup_node<NodeKey, Selection, Metadata, EdgeKind, ManagerIdent
 
 type PackageLockGraphAdmission<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>
   = PackageLockGraphAdmitted {
-      graph: PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>
+      graph: extdeps.package.PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>
     }
   | PackageLockGraphDuplicateNode {
       key: NodeKey
@@ -109,8 +109,8 @@ type PackageLockGraphAdmission<ManagerIdentity, NodeKey, Selection, Metadata, Ed
 data package_lock_admission_note: String = "EVERY PRODUCTION EFFECT BOUNDARY RE-ADJUDICATES the raw/parser-derived graph and proceeds only through the admitted arm — do not persist an independently supplied PackageLockGraphAdmitted as proof (the admitted arm is publicly constructible today; constructor confinement is the dissolve-on). Admission is exact-cardinality: duplicate keys refuse before roots or edges are trusted; missing roots and missing edge endpoints refuse with typed causes. Looking up a key while iterating graph.nodes cannot honestly be Absent — that is PackageLockGraphLookupInconsistency, not MissingRoot. Boolean membership is not an admission path."
 
 fn package_lock_admit_graph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>(
-  graph: PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>,
-) -> PackageLockGraphAdmission<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind> {
+  graph: extdeps.package.PackageLockGraph<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind>,
+) -> extdeps.package.PackageLockGraphAdmission<ManagerIdentity, NodeKey, Selection, Metadata, EdgeKind> {
   let after_nodes = fold(
     graph.nodes,
     init: PackageLockGraphAdmitted { graph: graph },

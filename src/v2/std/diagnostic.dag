@@ -10,9 +10,9 @@ type LocusAnchor<T> {
 }
 
 type Locus
-  = Textual { file: v2.std.node.Symbol, extent: Extent }
-  | NodeLocus { anchor: LocusAnchor<Node> }
-  | PortLocus { anchor: LocusAnchor<v2.std.node.Symbol> }
+  = Textual { file: v2.std.node.Symbol, extent: v2.std.diagnostic.Extent }
+  | NodeLocus { anchor: v2.std.diagnostic.LocusAnchor<Node> }
+  | PortLocus { anchor: v2.std.diagnostic.LocusAnchor<v2.std.node.Symbol> }
 
 type NoCorrectionReason
   = UserInputBoundary
@@ -22,51 +22,51 @@ type NoCorrectionReason
 
 type Correction
   = Suggested { node: Node }
-  | Unavailable { reason: NoCorrectionReason }
+  | Unavailable { reason: v2.std.diagnostic.NoCorrectionReason }
 type Diagnostic {
   reason: v2.std.node.Symbol
-  at: Locus
-  correction: Correction
+  at: v2.std.diagnostic.Locus
+  correction: v2.std.diagnostic.Correction
 }
 type NonEmptyDiagnostics {
-  head: Diagnostic
-  tail: List<Diagnostic>
+  head: v2.std.diagnostic.Diagnostic
+  tail: List<v2.std.diagnostic.Diagnostic>
 }
 
 type Diagnostics
   = None
-  | Some { diagnostics: NonEmptyDiagnostics }
+  | Some { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
 
 type Outcome<T>
-  = Accepted { value: T, diagnostics: Diagnostics }
-  | Rejected { diagnostics: NonEmptyDiagnostics }
+  = Accepted { value: T, diagnostics: v2.std.diagnostic.Diagnostics }
+  | Rejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
 
 type DiagnosticAccumulation
   = Accumulate
   | ShortCircuit
 type StageDiagnosticPolicy {
-  accumulation: DiagnosticAccumulation
+  accumulation: v2.std.diagnostic.DiagnosticAccumulation
 }
-fn diagnostics_singleton(d: Diagnostic) -> NonEmptyDiagnostics {
+fn diagnostics_singleton(d: v2.std.diagnostic.Diagnostic) -> v2.std.diagnostic.NonEmptyDiagnostics {
   NonEmptyDiagnostics { head: d, tail: [] }
 }
-fn node_locus(node: Node) -> Locus {
-  NodeLocus { anchor: LocusAnchor { at: node } }
+fn node_locus(node: Node) -> v2.std.diagnostic.Locus {
+  NodeLocus { anchor: v2.std.diagnostic.LocusAnchor { at: node } }
 }
 
-fn port_locus(port: v2.std.node.Symbol) -> Locus {
-  PortLocus { anchor: LocusAnchor { at: port } }
+fn port_locus(port: v2.std.node.Symbol) -> v2.std.diagnostic.Locus {
+  PortLocus { anchor: v2.std.diagnostic.LocusAnchor { at: port } }
 }
 
-fn textual_whole_file_locus(file: v2.std.node.Symbol) -> Locus {
+fn textual_whole_file_locus(file: v2.std.node.Symbol) -> v2.std.diagnostic.Locus {
   Textual { file: file, extent: WholeFile }
 }
 
 fn textual_whole_file_diagnostic(
   reason: v2.std.node.Symbol,
   module_file: v2.std.node.Symbol,
-  correction: Correction
-) -> Diagnostic {
+  correction: v2.std.diagnostic.Correction
+) -> v2.std.diagnostic.Diagnostic {
   Diagnostic {
     reason: reason,
     at: textual_whole_file_locus(file: module_file),
@@ -74,7 +74,7 @@ fn textual_whole_file_diagnostic(
   }
 }
 
-fn module_unavailable_diagnostic(reason: v2.std.node.Symbol, module_file: v2.std.node.Symbol) -> Diagnostic {
+fn module_unavailable_diagnostic(reason: v2.std.node.Symbol, module_file: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
   textual_whole_file_diagnostic(
     reason: reason,
     module_file: module_file,
@@ -82,14 +82,14 @@ fn module_unavailable_diagnostic(reason: v2.std.node.Symbol, module_file: v2.std
   )
 }
 
-fn outcome_accepted<T>(value: T) -> Outcome<T> {
+fn outcome_accepted<T>(value: T) -> v2.std.diagnostic.Outcome<T> {
   Accepted { value: value, diagnostics: None }
 }
-fn outcome_rejected<T>(d: Diagnostic) -> Outcome<T> {
+fn outcome_rejected<T>(d: v2.std.diagnostic.Diagnostic) -> v2.std.diagnostic.Outcome<T> {
   Rejected { diagnostics: diagnostics_singleton(d: d) }
 }
 
-fn extent_eq(a: Extent, b: Extent) -> Bool {
+fn extent_eq(a: v2.std.diagnostic.Extent, b: v2.std.diagnostic.Extent) -> Bool {
   match a {
     WholeFile => match b {
       WholeFile => true
@@ -101,7 +101,7 @@ fn extent_eq(a: Extent, b: Extent) -> Bool {
     }
   }
 }
-fn locus_eq(a: Locus, b: Locus) -> Bool {
+fn locus_eq(a: v2.std.diagnostic.Locus, b: v2.std.diagnostic.Locus) -> Bool {
   match a {
     Textual { file: fa, extent: ea } => match b {
       Textual { file: fb, extent: eb } => (fa == fb) && extent_eq(a: ea, b: eb)
@@ -120,7 +120,7 @@ fn locus_eq(a: Locus, b: Locus) -> Bool {
     }
   }
 }
-fn correction_eq(a: Correction, b: Correction) -> Bool {
+fn correction_eq(a: v2.std.diagnostic.Correction, b: v2.std.diagnostic.Correction) -> Bool {
   match a {
     Suggested { node: na } => match b {
       Suggested { node: nb } => na == nb
@@ -132,29 +132,29 @@ fn correction_eq(a: Correction, b: Correction) -> Bool {
     }
   }
 }
-fn diagnostic_eq(a: Diagnostic, b: Diagnostic) -> Bool {
+fn diagnostic_eq(a: v2.std.diagnostic.Diagnostic, b: v2.std.diagnostic.Diagnostic) -> Bool {
   (a.reason == b.reason)
     && locus_eq(a: a.at, b: b.at)
     && correction_eq(a: a.correction, b: b.correction)
 }
 
-fn diagnostic_tail_eq(a: List<Diagnostic>, b: List<Diagnostic>) -> Bool {
+fn diagnostic_tail_eq(a: List<v2.std.diagnostic.Diagnostic>, b: List<v2.std.diagnostic.Diagnostic>) -> Bool {
   bag_eq(xs: a, ys: b, eq: diagnostic_eq)
 }
-fn non_empty_diagnostics_eq(a: NonEmptyDiagnostics, b: NonEmptyDiagnostics) -> Bool {
+fn non_empty_diagnostics_eq(a: v2.std.diagnostic.NonEmptyDiagnostics, b: v2.std.diagnostic.NonEmptyDiagnostics) -> Bool {
   diagnostic_eq(a: a.head, b: b.head) && diagnostic_tail_eq(a: a.tail, b: b.tail)
 }
 
 fn non_empty_diagnostics_append(
-  a: NonEmptyDiagnostics,
-  b: NonEmptyDiagnostics,
-) -> NonEmptyDiagnostics {
+  a: v2.std.diagnostic.NonEmptyDiagnostics,
+  b: v2.std.diagnostic.NonEmptyDiagnostics,
+) -> v2.std.diagnostic.NonEmptyDiagnostics {
   NonEmptyDiagnostics {
     head: a.head,
     tail: list_append(left: list_snoc_item(xs: a.tail, item: b.head), right: b.tail)
   }
 }
-fn diagnostics_merge(outer: Diagnostics, inner: Diagnostics) -> Diagnostics {
+fn diagnostics_merge(outer: v2.std.diagnostic.Diagnostics, inner: v2.std.diagnostic.Diagnostics) -> v2.std.diagnostic.Diagnostics {
   match outer {
     None => inner
     Some { diagnostics: oa } => match inner {
@@ -166,23 +166,23 @@ fn diagnostics_merge(outer: Diagnostics, inner: Diagnostics) -> Diagnostics {
     }
   }
 }
-data diagnostics_monoid: Monoid<Diagnostics> = std.algebra.Monoid {
+data diagnostics_monoid: Monoid<v2.std.diagnostic.Diagnostics> = std.algebra.Monoid {
   op: diagnostics_merge,
   identity: None
 }
-data non_empty_diagnostics_semigroup: Semigroup<NonEmptyDiagnostics> = std.algebra.Semigroup {
+data non_empty_diagnostics_semigroup: Semigroup<v2.std.diagnostic.NonEmptyDiagnostics> = std.algebra.Semigroup {
   op: non_empty_diagnostics_append
 }
 fn rejected_with_pending(
-  pending: Diagnostics,
-  rejected: NonEmptyDiagnostics,
-) -> NonEmptyDiagnostics {
+  pending: v2.std.diagnostic.Diagnostics,
+  rejected: v2.std.diagnostic.NonEmptyDiagnostics,
+) -> v2.std.diagnostic.NonEmptyDiagnostics {
   match pending {
     None => rejected
     Some { diagnostics: p } => non_empty_diagnostics_append(a: p, b: rejected)
   }
 }
-fn diagnostics_eq(a: Diagnostics, b: Diagnostics) -> Bool {
+fn diagnostics_eq(a: v2.std.diagnostic.Diagnostics, b: v2.std.diagnostic.Diagnostics) -> Bool {
   match a {
     None => match b {
       None => true
@@ -194,7 +194,7 @@ fn diagnostics_eq(a: Diagnostics, b: Diagnostics) -> Bool {
     }
   }
 }
-fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
+fn outcome_node_eq(a: v2.std.diagnostic.Outcome<Node>, b: v2.std.diagnostic.Outcome<Node>) -> Bool {
   match a {
     Accepted { value: av, diagnostics: ad } => match b {
       Accepted { value: bv, diagnostics: bd } => (av == bv) && diagnostics_eq(a: ad, b: bd)
@@ -206,20 +206,20 @@ fn outcome_node_eq(a: Outcome<Node>, b: Outcome<Node>) -> Bool {
     }
   }
 }
-fn outcome_with_diagnostics<U>(value: U, diagnostics: Diagnostics) -> Outcome<U> {
+fn outcome_with_diagnostics<U>(value: U, diagnostics: v2.std.diagnostic.Diagnostics) -> v2.std.diagnostic.Outcome<U> {
   Accepted { value: value, diagnostics: diagnostics }
 }
 fn accepted_thread_diagnostics<T>(
   value: T,
-  accumulated: Diagnostics,
-  incoming: Diagnostics,
-) -> Outcome<T> {
+  accumulated: v2.std.diagnostic.Diagnostics,
+  incoming: v2.std.diagnostic.Diagnostics,
+) -> v2.std.diagnostic.Outcome<T> {
   Accepted {
     value: value,
     diagnostics: diagnostics_merge(outer: accumulated, inner: incoming)
   }
 }
-fn bind_outcome_accepted<U>(od: Diagnostics, inner: Outcome<U>) -> Outcome<U> {
+fn bind_outcome_accepted<U>(od: v2.std.diagnostic.Diagnostics, inner: v2.std.diagnostic.Outcome<U>) -> v2.std.diagnostic.Outcome<U> {
   match inner {
     Accepted { value: u, diagnostics: ud } =>
       outcome_with_diagnostics(
@@ -230,7 +230,7 @@ fn bind_outcome_accepted<U>(od: Diagnostics, inner: Outcome<U>) -> Outcome<U> {
       Rejected { diagnostics: rejected_with_pending(pending: od, rejected: r) }
   }
 }
-fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
+fn bind_outcome<T, U>(o: v2.std.diagnostic.Outcome<T>, f: fn(T) -> v2.std.diagnostic.Outcome<U>) -> v2.std.diagnostic.Outcome<U> {
   match o {
     Accepted { value: v, diagnostics: od } => bind_outcome_accepted(od: od, inner: f(v))
     Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -238,10 +238,10 @@ fn bind_outcome<T, U>(o: Outcome<T>, f: fn(T) -> Outcome<U>) -> Outcome<U> {
 }
 
 fn absorb_outcome_diagnostics<T, U>(
-  acc: Outcome<T>,
-  child: Outcome<U>,
-  policy: StageDiagnosticPolicy
-) -> Outcome<T> {
+  acc: v2.std.diagnostic.Outcome<T>,
+  child: v2.std.diagnostic.Outcome<U>,
+  policy: v2.std.diagnostic.StageDiagnosticPolicy
+) -> v2.std.diagnostic.Outcome<T> {
   match policy.accumulation {
     ShortCircuit => match acc {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -272,10 +272,10 @@ fn absorb_outcome_diagnostics<T, U>(
 }
 
 fn append_outcome_value<T>(
-  acc: Outcome<List<T>>,
-  child: Outcome<T>,
-  policy: StageDiagnosticPolicy
-) -> Outcome<List<T>> {
+  acc: v2.std.diagnostic.Outcome<List<T>>,
+  child: v2.std.diagnostic.Outcome<T>,
+  policy: v2.std.diagnostic.StageDiagnosticPolicy
+) -> v2.std.diagnostic.Outcome<List<T>> {
   match policy.accumulation {
     ShortCircuit => match acc {
       Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -314,9 +314,9 @@ fn append_outcome_value<T>(
 }
 
 fn sequence_outcome<T>(
-  xs: List<Outcome<T>>,
-  policy: StageDiagnosticPolicy
-) -> Outcome<List<T>> {
+  xs: List<v2.std.diagnostic.Outcome<T>>,
+  policy: v2.std.diagnostic.StageDiagnosticPolicy
+) -> v2.std.diagnostic.Outcome<List<T>> {
   fold_list(
     xs: xs,
     empty: outcome_accepted(value: freemonoid_empty()),
@@ -326,7 +326,7 @@ fn sequence_outcome<T>(
   )
 }
 
-fn outcome_eq<T>(a: Outcome<T>, b: Outcome<T>, payload_eq: fn(T, T) -> Bool) -> Bool {
+fn outcome_eq<T>(a: v2.std.diagnostic.Outcome<T>, b: v2.std.diagnostic.Outcome<T>, payload_eq: fn(T, T) -> Bool) -> Bool {
   match a {
     Accepted { value: av, diagnostics: ad } => match b {
       Accepted { value: bv, diagnostics: bd } =>
@@ -343,11 +343,11 @@ fn outcome_eq<T>(a: Outcome<T>, b: Outcome<T>, payload_eq: fn(T, T) -> Bool) -> 
 type DiagnosticSeverity = SeverityError | SeverityWarning
 
 type EmitDirective {
-  severity: DiagnosticSeverity
+  severity: v2.std.diagnostic.DiagnosticSeverity
   message: String
 }
 
-fn diagnostic_severity_eq(a: DiagnosticSeverity, b: DiagnosticSeverity) -> Bool {
+fn diagnostic_severity_eq(a: v2.std.diagnostic.DiagnosticSeverity, b: v2.std.diagnostic.DiagnosticSeverity) -> Bool {
   match a {
     SeverityError => match b {
       SeverityError => true
@@ -360,6 +360,6 @@ fn diagnostic_severity_eq(a: DiagnosticSeverity, b: DiagnosticSeverity) -> Bool 
   }
 }
 
-fn emit_directive_eq(a: EmitDirective, b: EmitDirective) -> Bool {
+fn emit_directive_eq(a: v2.std.diagnostic.EmitDirective, b: v2.std.diagnostic.EmitDirective) -> Bool {
   diagnostic_severity_eq(a: a.severity, b: b.severity) && (a.message == b.message)
 }
