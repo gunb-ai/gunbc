@@ -845,20 +845,23 @@ pub fn rust_render_checkpoint_scalar_bare(
             if is_container_type(leaf.clone()) {
                 return None;
             }
-            match rust_scalar_checkpoint_render_base(
-                leaf.clone(),
-                type_reference_decl_file(n.clone()),
-            ) {
-                Some(scalar) => {
-                    if (v1_rt::set_contains(&shared_types, leaf.clone())
-                        && !rust_type_is_rc_wrapped(scalar.clone()))
-                    {
-                        Some(wrap_shared_type(RenderTarget::Rust, scalar.clone()))
-                    } else {
-                        Some(scalar.clone())
+            match rust_seed_host_numeric_alias(leaf.clone(), type_reference_decl_file(n.clone())) {
+                Some(numeric) => Some(numeric.clone()),
+                None => match rust_scalar_checkpoint_render_base(
+                    leaf.clone(),
+                    type_reference_decl_file(n.clone()),
+                ) {
+                    Some(scalar) => {
+                        if (v1_rt::set_contains(&shared_types, leaf.clone())
+                            && !rust_type_is_rc_wrapped(scalar.clone()))
+                        {
+                            Some(wrap_shared_type(RenderTarget::Rust, scalar.clone()))
+                        } else {
+                            Some(scalar.clone())
+                        }
                     }
-                }
-                None => None,
+                    None => None,
+                },
             }
         }
     }
@@ -1806,20 +1809,32 @@ pub fn render_rust_shared_type_if_needed(
     }
 }
 
+pub fn rust_carrier_realizes_as_machine_scalar(n: Rc<Node>, type_name: String) -> bool {
+    match rust_seed_host_numeric_alias(type_name.clone(), type_reference_decl_file(n.clone())) {
+        Some(_) => true,
+        None => false,
+    }
+}
+
 pub fn render_rust_shared_type_with_optional(
     n: Rc<Node>,
     type_name: String,
     rendered: String,
     shared_types: Rc<BTreeSet<String>>,
 ) -> String {
-    rust_carrier_optional_wrap(
-        n.clone(),
-        render_rust_shared_type_if_needed(
-            type_name.clone(),
-            rendered.clone(),
-            shared_types.clone(),
-        ),
-    )
+    {
+        if rust_carrier_realizes_as_machine_scalar(n.clone(), type_name.clone()) {
+            return rust_carrier_optional_wrap(n.clone(), rendered.clone());
+        }
+        rust_carrier_optional_wrap(
+            n.clone(),
+            render_rust_shared_type_if_needed(
+                type_name.clone(),
+                rendered.clone(),
+                shared_types.clone(),
+            ),
+        )
+    }
 }
 
 pub fn render_rust_applied_type_shared(
