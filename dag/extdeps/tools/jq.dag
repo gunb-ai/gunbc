@@ -23,15 +23,22 @@ data jq_cli_tool: CliTool = CliTool {
   installable_via: [SourceApt { package: package_jq }],
 }
 
+// `-e` IS PART OF THE CONTRACT, NOT A FLAG (jqlang manual, "Invoking jq"): without it
+// jq exits 0 when the filter produced `null`, `false`, or nothing at all, so an ABSENT key
+// and an extracted value are the same exit status and this operation's `success` field —
+// read by every consumer as "a value was extracted" — would answer true for absence. With
+// `-e` jq exits 1 on a null/false last output and 4 when no output was produced, so absence
+// reaches the consumer as a refusal instead of as an empty string. Same class as the BMC
+// token-extract fail-open in gunbc.host_effect_realize `bmcweb_token_extraction_verdict`.
 service jq.Json {
   operation ExtractRaw {
     input { filter: NonEmptyStr, path: NonEmptyStr }
     output { value: String from "stdout", success: Bool from "exit_success" }
     readonly
-    transport shell { argv: ["jq", "-r", "{filter}", "{path}"] }
+    transport shell { argv: ["jq", "-e", "-r", "{filter}", "{path}"] }
     exit {
       0 => Unit
-      nonzero => String "jq extract failed"
+      nonzero => String "jq extract failed: filter produced no value, null, or false (jq -e)"
     }
   }
 }

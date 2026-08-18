@@ -1,6 +1,14 @@
 module test.claim.srv3_host_effect_apply_witness
 
 import std.dissolution { dissolution_description }
+import gunbc.srv3_actuate_shell_paths { srv3_bmcweb_login_response_path }
+import gunbc.host_effect_realize {
+  bmcweb_token_extract_jq_args,
+  bmcweb_token_extraction_verdict,
+  BmcwebTokenExtraction,
+  BmcwebTokenExtracted,
+  BmcwebTokenExtractRefused,
+}
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
@@ -250,3 +258,54 @@ test fn srv3_nbd_proxy_serve_realize_layer_dissolves_via_host_effect_nbd_proxy_s
     && string_contains(s: dissolution_description(condition: host_effect_nbd_proxy_serve_dissolution_trigger), pattern: "P6 Part 2")
 }
 
+
+// THE FOUR WITNESSES BELOW DISCRIMINATE THE BMCWEB TOKEN-EXTRACT FAIL-OPEN.
+// jq's `// empty` alternative turns an absent or null `.token` into a run that
+// exits 0 and prints nothing, so the pre-fix realization wrote an EMPTY file to
+// srv3_bmcweb_token_path and reconciled Converged — a rejected BMC login
+// reported as a successful convergence at a credential seam (DESIGN §5,
+// fabricated plausible output). The verdict now lives in
+// bmcweb_token_extraction_verdict, ahead of the write, so an absent token has no
+// path to Filesystem.Write at all rather than being caught after the fact.
+test fn witness_bmcweb_token_extract_argv_demands_a_value() -> Bool {
+  let argv = bmcweb_token_extract_jq_args(response_path: srv3_bmcweb_login_response_path)
+  let surface = fold(
+    argv,
+    init: "" as String,
+    f: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },
+  )
+  string_contains(s: surface, pattern: "-e")
+    && string_contains(s: surface, pattern: ".token")
+    && !string_contains(s: surface, pattern: "// empty")
+    && string_contains(s: surface, pattern: srv3_bmcweb_login_response_path)
+}
+
+test fn witness_bmcweb_token_extract_absent_token_refuses_typed() -> Bool {
+  match bmcweb_token_extraction_verdict(jq_success: true, jq_stdout: "") {
+    BmcwebTokenExtractRefused { reason: why } =>
+      string_contains(s: why, pattern: "Srv3BmcwebTokenExtract")
+        && string_contains(s: why, pattern: "fail-closed")
+    BmcwebTokenExtracted { token: _ } => false
+  }
+}
+
+test fn witness_bmcweb_token_extract_blank_token_refuses_typed() -> Bool {
+  match bmcweb_token_extraction_verdict(jq_success: true, jq_stdout: "\n") {
+    BmcwebTokenExtractRefused { reason: _ } => true
+    BmcwebTokenExtracted { token: _ } => false
+  }
+}
+
+test fn witness_bmcweb_token_extract_jq_nonzero_refuses_typed() -> Bool {
+  match bmcweb_token_extraction_verdict(jq_success: false, jq_stdout: "") {
+    BmcwebTokenExtractRefused { reason: _ } => true
+    BmcwebTokenExtracted { token: _ } => false
+  }
+}
+
+test fn witness_bmcweb_token_extract_present_token_extracts_trimmed() -> Bool {
+  match bmcweb_token_extraction_verdict(jq_success: true, jq_stdout: "3wMhV2QcT0k\n") {
+    BmcwebTokenExtracted { token: token } => (token as String) == "3wMhV2QcT0k"
+    BmcwebTokenExtractRefused { reason: _ } => false
+  }
+}

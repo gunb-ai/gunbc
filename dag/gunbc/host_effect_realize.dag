@@ -711,42 +711,83 @@ fn realize_bmcweb_session_login_on_host(
   }
 }
 
+// THE VERDICT IS PRODUCED BEFORE THE WRITE, NOT CHECKED AFTER IT (DESIGN §5).
+// This extraction ran `jq -r '.token // empty'`, and jq's `//` alternative makes an ABSENT
+// or NULL `.token` a run that prints nothing and exits 0 — indistinguishable, at the exit
+// status the caller reads, from a token that was found. The realization then wrote
+// jq_run.stdout to srv3_bmcweb_token_path unconditionally and reconciled on the WRITE's
+// success, so a rejected or malformed BMC login produced an EMPTY CREDENTIAL FILE reported
+// as Converged: the fabricated plausible output DESIGN §5 forbids, at a credential seam.
+// `-e` is what makes absence loud — jq exits 1 on a null/false last output and 4 when the
+// filter produced none — and BmcwebTokenExtraction is where that exit becomes a typed,
+// located verdict. Absence now has no path to Filesystem.Write at all; the fix is not a
+// non-empty check after the write, because such a check concedes the empty file is writable
+// and was in fact satisfied by editing nothing (it lived in gunbc.srv3_os_install_actuate
+// `srv3_bmcweb_login` as a shell.Test.IsNonEmpty on the file this fold had just produced,
+// and is deleted with this climb per DESIGN §4b dissolution-on-climb).
+type BmcwebTokenExtraction =
+  | BmcwebTokenExtracted { token: NonEmptyStr }
+  | BmcwebTokenExtractRefused { reason: String }
+
+fn bmcweb_token_extract_jq_args(response_path: String) -> List<String> {
+  ["-e", "-r", ".token", response_path]
+}
+
+fn bmcweb_token_extraction_verdict(jq_success: Bool, jq_stdout: String) -> BmcwebTokenExtraction {
+  if jq_success {
+    let token = trim(s: jq_stdout)
+    if token == "" {
+      BmcwebTokenExtractRefused {
+        reason: "host_effect_apply: Srv3BmcwebTokenExtract jq -e exited zero but produced no token text for `.token` in the bmcweb login response; fail-closed, no token file written.",
+      }
+    } else {
+      BmcwebTokenExtracted { token: token as NonEmptyStr }
+    }
+  } else {
+    BmcwebTokenExtractRefused {
+      reason: "host_effect_apply: Srv3BmcwebTokenExtract jq -e refused: `.token` is absent, null or false in the bmcweb login response (a rejected or malformed BMC login); fail-closed, no token file written.",
+    }
+  }
+}
+
 fn realize_bmcweb_token_extract_body(
   intent: HostEffectIntent,
 ) -> Reconciliation<HostEffectIntent, HostEffectEvidence> {
   match srv3_tool_bin_path(tool_name: jq_cli_tool.name, transport: LocalShell) {
     Present { value: jq_path } => {
-  let jq_run = gunbc.WitnessBin.Run(
-    workdir: "/",
-    bin_path: jq_path,
-    args: ["-r", ".token // empty", srv3_bmcweb_login_response_path],
-  )
-  if jq_run.success {
-    let write = Filesystem.Write(path: srv3_bmcweb_token_path, content: jq_run.stdout)
-    srv3_shell_reconcile(
-      observed: ShellExecObserved {
-        exit_code: if write.success { 0 } else { 1 },
-        success: write.success,
-        stdout: "",
-        stderr: if write.success {
-          ""
-        } else {
-          "host_effect_apply: Srv3BmcwebTokenExtract token write failed; fail-closed"
-        },
-      },
-      intent: intent,
-    )
-  } else {
-    srv3_shell_reconcile(
-      observed: ShellExecObserved {
-        exit_code: 1,
-        success: false,
-        stdout: "",
-        stderr: "host_effect_apply: Srv3BmcwebTokenExtract jq failed; fail-closed",
-      },
-      intent: intent,
-    )
-  }
+      let jq_run = gunbc.WitnessBin.Run(
+        workdir: "/",
+        bin_path: jq_path,
+        args: bmcweb_token_extract_jq_args(response_path: srv3_bmcweb_login_response_path),
+      )
+      match bmcweb_token_extraction_verdict(jq_success: jq_run.success, jq_stdout: jq_run.stdout) {
+        BmcwebTokenExtracted { token: token } => {
+          let write = Filesystem.Write(path: srv3_bmcweb_token_path, content: token as String)
+          srv3_shell_reconcile(
+            observed: ShellExecObserved {
+              exit_code: if write.success { 0 } else { 1 },
+              success: write.success,
+              stdout: "",
+              stderr: if write.success {
+                ""
+              } else {
+                "host_effect_apply: Srv3BmcwebTokenExtract token write failed; fail-closed"
+              },
+            },
+            intent: intent,
+          )
+        }
+        BmcwebTokenExtractRefused { reason: why } =>
+          srv3_shell_reconcile(
+            observed: ShellExecObserved {
+              exit_code: 1,
+              success: false,
+              stdout: "",
+              stderr: why,
+            },
+            intent: intent,
+          )
+      }
     }
     Absent =>
       srv3_shell_reconcile(
