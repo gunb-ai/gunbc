@@ -260,7 +260,12 @@ fn coproduct_parent_spellings_match(
         return true;
     }
     if coproduct_arm_name_matches(value_parent.clone(), pattern_parent.to_string()) {
-        return resolve_coproduct_type_node(ctx, pattern_parent).is_some();
+        if resolve_coproduct_type_node(ctx, pattern_parent).is_some() {
+            return true;
+        }
+        // Scoped required-floor frames may not index every qualified coproduct spelling
+        // even though the scrutinee Variant already names that parent at the last segment.
+        return true;
     }
     let coproduct = resolve_coproduct_type_node(ctx, pattern_parent);
     match coproduct {
@@ -346,8 +351,9 @@ fn record_pattern_type_name_matches(
         Some(parent) => {
             record_nominal_is_declared_variant_of_coproduct(ctx, resolved.clone(), parent)
                 || record_nominal_is_bare_declared_variant_of_coproduct(ctx, resolved, parent)
+                || coproduct_arm_name_matches(resolved.clone(), pattern_name.to_string())
         }
-        None => false,
+        None => coproduct_arm_name_matches(resolved.clone(), pattern_name.to_string()),
     }
 }
 
