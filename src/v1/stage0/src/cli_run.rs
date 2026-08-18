@@ -40759,10 +40759,9 @@ impl Drop for FloorPreparedAuthorityGuard {
     }
 }
 
-/// Register prepared source bytes for pool-root parse builtins and the languages census.
-/// Callers: `run_required_floor` after `prepare_repository_once`, and the
-/// `floor_prepared_toll_receipt` harness (which never resolves — it registers an index it already read).
-pub fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
+/// Install prepared source bytes. Only `register_floor_prepared_authority_guard` calls this so
+/// Drop always clears the thread-locals and compile memo.
+fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
     crate::coproduct_reflection::register_floor_decl_parse_memo();
     FLOOR_PREPARED_AUTHORITY.with(|cell| {
         *cell.borrow_mut() = Some(FloorPreparedAuthority { inventory });
@@ -40836,7 +40835,7 @@ pub fn run_floor_prepared_toll_receipt() {
         languages_disk_ms, languages_inventory_ms, item4_reclaimed
     );
 
-    register_floor_prepared_authority(inventory);
+    let _floor_prepared_guard = register_floor_prepared_authority_guard(inventory);
 
     let sample_source = "module cuartifact_ok\n\nimport std.types { NonEmptyStr, String }\n\ntype UnitId = NonEmptyStr where brand(\"UnitId\")\n\ntype Unit {\n  id: UnitId\n}\n\nfn consistent() -> Unit {\n  Unit { id: \"unit-a\" as UnitId }\n}\n";
     let file_path = "src/cuartifact_ok.rs";
