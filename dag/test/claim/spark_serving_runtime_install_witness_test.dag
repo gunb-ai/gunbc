@@ -44,13 +44,46 @@ fn step_argv(identity: String) -> List<String> {
   }
 }
 
+// THE INSTRUMENT, AND WHY IT HAS ITS OWN CONTROL BELOW.
+//
+// The first version of this counted every element that did not match -- including the ones AFTER the
+// match -- so for any identity appearing exactly once it returned `length - 2`, the same number for
+// every step. Every ordering comparison was therefore between two equal values, `<` was false
+// everywhere, and three claims that read as order assertions were measuring nothing. They failed in
+// CI rather than passing, which is the lucky direction; an off-by-one that made them all TRUE would
+// have shipped three green claims about an order nobody checked.
+//
+// The lesson is the general one about instruments: these three claims were only ever as good as
+// index_of, and nothing asserted index_of. So it stops scanning once it matches, and returns -1 for
+// an absent identity so a typo'd step name reads as a loud failure rather than a plausible index.
+type IndexScan { found: Bool, idx: Int }
+
 fn index_of(identity: String) -> Int {
-  fold(install_steps(), init: 0 - 1, f: fn(acc, id) { acc }) +
-    fold(
-      install_steps(),
-      init: 0,
-      f: fn(acc, id) { if (id as String) == identity { acc } else { acc + 1 } },
-    )
+  let scan = fold(
+    install_steps(),
+    init: IndexScan { found: false, idx: 0 },
+    f: fn(acc, id) {
+      if acc.found {
+        acc
+      } else {
+        if (id as String) == identity {
+          IndexScan { found: true, idx: acc.idx }
+        } else {
+          IndexScan { found: false, idx: acc.idx + 1 }
+        }
+      }
+    },
+  )
+  if scan.found { scan.idx } else { 0 - 1 }
+}
+
+// THE CONTROL ON THE INSTRUMENT ITSELF. Distinct constants, not a Boolean: asserting only that two
+// indices differ would pass on the broken version for any two identities where one was absent.
+test fn index_of_reports_real_positions_and_refuses_absent_ones() -> Bool {
+  index_of(identity: "ensure-runtimes-parent") == 0
+    && index_of(identity: "reset-attempt-staging") == 1
+    && index_of(identity: "write-materialization-receipt") == 9
+    && index_of(identity: "no-such-step") == 0 - 1
 }
 
 // THE EFFECT REALIZES AT ALL. It refused entirely until this change, so the plan could never select
@@ -110,15 +143,43 @@ test fn staging_is_reset_before_it_is_created() -> Bool {
     && index_of(identity: "create-attempt-staging") < index_of(identity: "download-archive")
 }
 
-// THE RED CONTROL FOR THE REST OF THE VERTICAL. PullModelArtifact is still unimplemented, and this
-// asserts it -- so when it lands, this witness fails and must be updated rather than silently
-// continuing to describe a frontier that moved.
-test fn pull_model_artifact_is_still_unrealized() -> Bool {
+// THE FRONTIER MOVED, AND THIS CLAIM MOVED WITH IT. It previously asserted PullModelArtifact was
+// unrealized, and said in its own comment that landing the realizer must fail it rather than let a
+// stale frontier description stand. The realizer landed, so this now asserts the opposite.
+//
+// It asserts the ARM AND THE ARGV, not merely that something came back. `realize_...` returns a
+// verdict whose refusal arm is a perfectly ordinary value, so a realizer that refused every call
+// would be indistinguishable from one that worked if the claim only checked that a verdict was
+// produced -- and the words go through the portable-word allowlist, which is a real way for this
+// particular step to refuse.
+test fn pull_model_artifact_realizes_as_one_pull_command() -> Bool {
   match realize_spark_serving_install_effect_command(
     effect: PullModelArtifact,
     executor_login: spark_serving_default_executor_login(),
   ) {
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => true
-    SparkServingInstallRemoteCommandsPresent { steps: _ } => false
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      match sts.first() {
+        Absent => false
+        Present { value: st } =>
+          length(sts) == 1
+            && (st.identity as String) == "pull-model-artifact"
+            && match remote_operation_argv(operation: st.operation) {
+                 Absent => false
+                 Present { value: words } =>
+                   length(words) == 3
+                     && words[0] == "ollama"
+                     && words[1] == "pull"
+                     && words[2] == "gpt-oss:20b"
+               }
+      }
   }
+}
+
+// PULLING IS NOT PART OF INSTALLING THE RUNTIME. The two effects are separate members with separate
+// remedies, and fusing them would make a model repair reinstall the runtime -- so the runtime
+// closure's step list must not contain the pull.
+test fn the_runtime_install_sequence_does_not_pull_the_model() -> Bool {
+  index_of(identity: "pull-model-artifact") == 0 - 1
+    && length(install_steps()) == 10
 }
