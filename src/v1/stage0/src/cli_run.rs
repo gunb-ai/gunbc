@@ -40964,12 +40964,16 @@ pub fn claim_scope_for(
     // produced it are read off ONE field. Deriving the population from the authored module node
     // while deriving the closure from `func_env` would be two spellings of a module identity,
     // and a scope whose members disagree with its own closure is the defect one level up.
-    let modules: Vec<Rc<v1_compiler_compile::TypedModule>> = prepared
+    let module_by_name: HashMap<&str, Rc<v1_compiler_compile::TypedModule>> = prepared
         .graph
         .modules
         .iter()
         .filter(|m| in_scope.contains(m.func_env.name.as_str()))
-        .cloned()
+        .map(|m| (m.func_env.name.as_str(), m.clone()))
+        .collect();
+    let modules: Vec<Rc<v1_compiler_compile::TypedModule>> = order
+        .iter()
+        .filter_map(|name| module_by_name.get(name.as_str()).cloned())
         .collect();
     // The item registry is projected from the SAME module population, by UNIONING each scoped
     // module's own registry rather than filtering the global one on `ItemInfo.module_name`.
@@ -40978,9 +40982,11 @@ pub fn claim_scope_for(
     // `scope.alpha.reads_datum` answered `NoSuchVariable { name: "shared_datum" }` because
     // `module_name` is not the module-path spelling the inventory carries, so the predicate
     // matched nothing and every data declaration was dropped. Functions still worked — they
-    // come from `fn_nodes`, built off the module list — so a function-only control would have
-    // passed while `build_initial_env` bound nothing at all. Each module's own registry needs
-    // no name comparison to be correct, which is why it is the projection used.
+    // come from `fn_nodes` — so a function-only control would have passed while
+    // `build_initial_env` bound nothing at all. Each module's own registry needs no name
+    // comparison to be correct, which is why it is the projection used. `fn_nodes` is built
+    // through the same precedence-ordered first-write-wins walk (see
+    // `build_scope_indexes_with_module_order` below) so bare calls and data bindings agree.
     // UNIONED IN PRECEDENCE ORDER, FIRST WRITE WINS — not in the graph's module order, last
     // write wins.
     //
@@ -41052,9 +41058,10 @@ pub fn claim_scope_for(
         emit_graph_info: prepared.graph.emit_graph_info.clone(),
     };
     Ok(PreparedClaimScope {
-        indexes: v1_interpreter::InterpContext::build_scope_indexes(
+        indexes: v1_interpreter::InterpContext::build_scope_indexes_with_module_order(
             &scoped_graph,
             prepared.source_indices.clone(),
+            Some(&order),
         ),
         module_count,
         scope_identity,
