@@ -14,7 +14,6 @@ import gunbc.gitattributes_emit {
   generated_projection_merge_attribute
 }
 import gunbc.generated_projection_paths {
-  CommittedGeneratedArtifact,
   GeneratedProjectionPathCollision,
   GeneratedProjectionPathRow,
   GeneratedProjectionPathsAccepted,
@@ -67,13 +66,11 @@ test fn witness_projection_population_contains_dispatch_generated() -> Bool {
 
 test fn witness_duplicate_projection_path_refuses_before_emission() -> Bool {
   match deterministic_generated_projection_paths_from_rows(rows: [
-    GeneratedProjectionPathRow { path: "same/path.rs", source: CommittedGeneratedArtifact },
-    GeneratedProjectionPathRow { path: "same/path.rs", source: CommittedGeneratedArtifact }
+    GeneratedProjectionPathRow { path: "same/path.rs" },
+    GeneratedProjectionPathRow { path: "same/path.rs" }
   ]) {
-    GeneratedProjectionPathsRefused { cause: GeneratedProjectionPathCollision { path, first_source, duplicate_source } } =>
+    GeneratedProjectionPathsRefused { cause: GeneratedProjectionPathCollision { path } } =>
       path == "same/path.rs"
-        && first_source == CommittedGeneratedArtifact
-        && duplicate_source == CommittedGeneratedArtifact
     GeneratedProjectionPathsAccepted { paths: _ } => false
   }
 }
