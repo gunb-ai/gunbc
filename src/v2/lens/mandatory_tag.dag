@@ -11,11 +11,11 @@ type MandatoryTagRegion {
   region_dotted_prefix: String
   required_decl_name: v2.std.node.Symbol
   required_type_name: v2.std.node.Symbol
-  value_vocabulary: List<v2.std.node.Symbol>
-  value_accepted: List<v2.std.node.Symbol>
-  exempt_modules: List<String>
-  exempt_module_prefixes: List<String>
-  exempt_module_suffixes: List<String>
+  value_vocabulary: v2.std.collection.List<v2.std.node.Symbol>
+  value_accepted: v2.std.collection.List<v2.std.node.Symbol>
+  exempt_modules: v2.std.collection.List<String>
+  exempt_module_prefixes: v2.std.collection.List<String>
+  exempt_module_suffixes: v2.std.collection.List<String>
 }
 
 data extdeps_external_authority_region_note: String = "Region membership mirrors the dissolved host roster exactly: extdeps.uri and extdeps.external_authority are the anchor machinery itself (a module cannot cite the citation vocabulary it defines - the old machinery_exempt roster); extdeps.fixture.* are deliberate red-control plants; *.mock_corpus modules are synthetic corpora. The drained backfill queue (dag/extdeps/external_authority_backfill_pending.txt, deleted with this row) is not carried forward: coverage was whole-tree at dissolution time, so no backfill concept survives."
@@ -31,23 +31,23 @@ data extdeps_external_authority_region: MandatoryTagRegion = MandatoryTagRegion 
   exempt_module_suffixes: [".mock_corpus"]
 }
 
-fn mandatory_tag_regions() -> List<MandatoryTagRegion> {
+fn mandatory_tag_regions() -> v2.std.collection.List<MandatoryTagRegion> {
   [extdeps_external_authority_region]
 }
 
-fn mandatory_tag_symbols_contain(xs: List<v2.std.node.Symbol>, s: v2.std.node.Symbol) -> Bool {
+fn mandatory_tag_symbols_contain(xs: v2.std.collection.List<v2.std.node.Symbol>, s: v2.std.node.Symbol) -> Bool {
   fold(xs, init: false, f: fn(acc, x) { acc || x == s })
 }
 
-fn mandatory_tag_strings_contain(xs: List<String>, s: String) -> Bool {
+fn mandatory_tag_strings_contain(xs: v2.std.collection.List<String>, s: String) -> Bool {
   fold(xs, init: false, f: fn(acc, x) { acc || x == s })
 }
 
-fn mandatory_tag_any_prefix(xs: List<String>, dotted: String) -> Bool {
+fn mandatory_tag_any_prefix(xs: v2.std.collection.List<String>, dotted: String) -> Bool {
   fold(xs, init: false, f: fn(acc, p) { acc || dotted.starts_with(prefix: p) })
 }
 
-fn mandatory_tag_any_suffix(xs: List<String>, dotted: String) -> Bool {
+fn mandatory_tag_any_suffix(xs: v2.std.collection.List<String>, dotted: String) -> Bool {
   fold(xs, init: false, f: fn(acc, s) { acc || dotted.ends_with(suffix: s) })
 }
 
@@ -58,7 +58,7 @@ fn mandatory_tag_region_applies(region: MandatoryTagRegion, dotted: String) -> B
     && !mandatory_tag_any_suffix(xs: region.exempt_module_suffixes, dotted: dotted)
 }
 
-fn mandatory_tag_subtree_atoms(n: v2.std.node.Node) -> List<v2.std.node.Symbol> {
+fn mandatory_tag_subtree_atoms(n: v2.std.node.Node) -> v2.std.collection.List<v2.std.node.Symbol> {
   fold_node(
     n: n,
     algebra: v2.std.node.NodeFold {
@@ -290,7 +290,7 @@ fn mandatory_tag_value_not_accepted_diagnostic(d: v2.std.node.Node) -> v2.std.di
   }
 }
 
-fn mandatory_tag_type_findings(d: v2.std.node.Node, region: MandatoryTagRegion) -> List<v2.std.diagnostic.Diagnostic> {
+fn mandatory_tag_type_findings(d: v2.std.node.Node, region: MandatoryTagRegion) -> v2.std.collection.List<v2.std.diagnostic.Diagnostic> {
   match mandatory_tag_decl_type_node(d: d) {
     Absent => [mandatory_tag_type_mismatch_diagnostic(d: d)]
     Present { value: ty } =>
@@ -305,7 +305,7 @@ fn mandatory_tag_type_findings(d: v2.std.node.Node, region: MandatoryTagRegion) 
   }
 }
 
-fn mandatory_tag_vocabulary_hits(atoms: List<v2.std.node.Symbol>, vocabulary: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
+fn mandatory_tag_vocabulary_hits(atoms: v2.std.collection.List<v2.std.node.Symbol>, vocabulary: v2.std.collection.List<v2.std.node.Symbol>) -> v2.std.collection.List<v2.std.node.Symbol> {
   fold(atoms, init: [], f: fn(acc, a) {
     if mandatory_tag_symbols_contain(xs: vocabulary, s: a) {
       concat(acc, [a])
@@ -315,7 +315,7 @@ fn mandatory_tag_vocabulary_hits(atoms: List<v2.std.node.Symbol>, vocabulary: Li
   })
 }
 
-fn mandatory_tag_value_findings(d: v2.std.node.Node, region: MandatoryTagRegion) -> List<v2.std.diagnostic.Diagnostic> {
+fn mandatory_tag_value_findings(d: v2.std.node.Node, region: MandatoryTagRegion) -> v2.std.collection.List<v2.std.diagnostic.Diagnostic> {
   match mandatory_tag_decl_value_node(d: d) {
     Absent => []
     Present { value: v } =>
@@ -347,7 +347,7 @@ fn mandatory_tag_region_module_findings(
   region: MandatoryTagRegion,
   module_node: v2.std.node.Node,
   dotted: String
-) -> List<v2.std.diagnostic.Diagnostic> {
+) -> v2.std.collection.List<v2.std.diagnostic.Diagnostic> {
   if mandatory_tag_region_applies(region: region, dotted: dotted) {
     let scan = mandatory_tag_scan_decls(
       subtree: module_node,
@@ -371,7 +371,7 @@ fn mandatory_tag_region_module_findings(
   }
 }
 
-fn mandatory_tag_module_findings(n: v2.std.node.Node) -> List<v2.std.diagnostic.Diagnostic> {
+fn mandatory_tag_module_findings(n: v2.std.node.Node) -> v2.std.collection.List<v2.std.diagnostic.Diagnostic> {
   if mandatory_tag_node_production_is(n: n, want: ^dag_surface_module) {
     match qualified_name_from_module_node(root: n) {
       Rejected { diagnostics: _ } => []
@@ -394,7 +394,7 @@ fn mandatory_tag_module_findings(n: v2.std.node.Node) -> List<v2.std.diagnostic.
 }
 
 // A dag_surface_module wrapper whose qualified name cannot be read contributes no region findings here - machine_shape parity, not an absorbing arm: name resolution over the same tree refuses malformed module headers upstream of every root lens, so the nameless-wrapper arm is unreachable on a tree that reached the lens roster; keying region membership on a fabricated name would be the fabricated-plausible-output trap the arm avoids.
-fn mandatory_tag_findings(root: v2.std.node.Node) -> List<v2.std.diagnostic.Diagnostic> {
+fn mandatory_tag_findings(root: v2.std.node.Node) -> v2.std.collection.List<v2.std.diagnostic.Diagnostic> {
   fold_node(
     n: root,
     algebra: v2.std.node.NodeFold {

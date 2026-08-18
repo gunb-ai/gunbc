@@ -26,12 +26,12 @@ type CostEvaluation
 data cost_evaluation_two_state_note: String = "Two states, because at the exact core there are exactly two honest answers: the work is this number, or here is why it cannot be. The four-state shape the design carries - adding a partial and a bounded state - is not abandoned; it returns with the work held on session/deep-owl-215-partial-bounded-hold, where each of those states will have a producer AND will carry what its consumer needs: a residual expression for the partial state, an input envelope for the bounded one. Declaring either arm here with no producer would have been rung inflation, a state named for a capability the module does not have, and the bounded arm in particular was carried through an earlier revision of this module while its arithmetic silently collapsed a two-endpoint envelope to its own ceiling."
 
 type CostValuationEnv {
-  bindings: List<CostValuationBinding>
+  bindings: v2.std.collection.List<CostValuationBinding>
 }
 
 type BindingScan {
-  seen: List<SizeVariable>
-  duplicates: List<SizeVariable>
+  seen: v2.std.collection.List<SizeVariable>
+  duplicates: v2.std.collection.List<SizeVariable>
 }
 
 fn cost_valuation_authority_locus() -> v2.std.diagnostic.Locus {
@@ -42,7 +42,7 @@ fn size_variable_eq(a: SizeVariable, b: SizeVariable) -> Bool {
   a.source == b.source
 }
 
-fn size_variable_in(xs: List<SizeVariable>, wanted: SizeVariable) -> Bool {
+fn size_variable_in(xs: v2.std.collection.List<SizeVariable>, wanted: SizeVariable) -> Bool {
   fold_list(
     xs: xs,
     empty: false,
@@ -63,7 +63,7 @@ fn env_bind(env: CostValuationEnv, binding: CostValuationBinding) -> CostValuati
 }
 
 fn lookup_bindings(
-  bindings: List<CostValuationBinding>,
+  bindings: v2.std.collection.List<CostValuationBinding>,
   variable: SizeVariable
 ) -> Optional<v2.std.nat.Nat> {
   match bindings {
@@ -278,7 +278,7 @@ fn evaluate_cost_expr_in_env(expr: v2.lens.cost.expr.CostExpr, env: CostValuatio
   }
 }
 
-fn scan_bindings(bindings: List<CostValuationBinding>) -> BindingScan {
+fn scan_bindings(bindings: v2.std.collection.List<CostValuationBinding>) -> BindingScan {
   fold_list(
     xs: bindings,
     empty: BindingScan { seen: [], duplicates: [] },
@@ -310,7 +310,7 @@ fn refuse_duplicate(variable: SizeVariable) -> CostEvaluation {
 }
 
 fn duplicate_binding_refusal(
-  duplicates: List<SizeVariable>
+  duplicates: v2.std.collection.List<SizeVariable>
 ) -> Optional<CostEvaluation> {
   fold_list(
     xs: duplicates,
@@ -335,7 +335,7 @@ data projection_path_binder_discard_debt_note: String = "TRACKED DEBT, on a path
 
 fn evaluate_cost_expr(
   expr: v2.lens.cost.expr.CostExpr,
-  bindings: List<CostValuationBinding>
+  bindings: v2.std.collection.List<CostValuationBinding>
 ) -> CostEvaluation {
   match duplicate_binding_refusal(
     duplicates: scan_bindings(bindings: bindings).duplicates

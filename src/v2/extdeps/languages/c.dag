@@ -24,10 +24,10 @@ type CTranslationUnitSpelling {
   unit_id: v2.std.compilers.compilation_unit.CompilationUnitId
   header_path: String
   source_path: String
-  include_directives: List<String>
-  include_closure: List<v2.std.compilers.compilation_unit.CompilationUnitId>
+  include_directives: v2.std.collection.List<String>
+  include_closure: v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnitId>
   object_path: String
-  interface_nodes: List<v2.std.node.Node>
+  interface_nodes: v2.std.collection.List<v2.std.node.Node>
 }
 
 data c_translation_unit_basename_note: String = "C-realization spelling authority for an agnostic CompilationUnitId (review 2026-08-01). CompilationUnitId is a branded NonEmptyStr: the brand gives nominal distinction but NO spelling law, so `../peer`, `a/b`, `a\\b`, an embedded CR/LF/NUL, and `\"` all inhabit it (the same class path_segment_is_safe records). Those values reached `.h`/`.c`/`.o` paths verbatim and were concatenated between #include \" and \", so a quote terminated the include string and a newline split the generated C source. Repair is a REVERSIBLE ENCODING, not sanitization and not a bare refusal: every codepoint outside [A-Za-z0-9._-] — and a LEADING '.', so the parent-directory segments '.' and '..' cannot be produced — renders as '%' + exactly 6 lowercase hex digits (all of Unicode fits in 6; max scalar 0x10FFFF). Because '%' is itself outside the allowlist it always escapes to %000025, so every '%' in the output opens an escape of fixed width 7 and decoding is unambiguous — that is the injectivity proof: distinct unit ids cannot collapse to one basename, so two units can never contend for one .o. Encoding rather than refusing keeps the realization TOTAL over the agnostic identity; the honesty boundary is that the emitted name is a target spelling, not the logical id."
@@ -130,14 +130,14 @@ fn c_include_directive_for_dep(dep_id: v2.std.compilers.compilation_unit.Compila
   )
 }
 
-fn c_unit_include_directives(deps: List<v2.std.compilers.compilation_unit.CompilationUnitId>) -> List<String> {
+fn c_unit_include_directives(deps: v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnitId>) -> v2.std.collection.List<String> {
   deps |> map(dep => c_include_directive_for_dep(dep_id: dep))
 }
 
 fn c_include_closure_snoc_unique(
-  items: List<v2.std.compilers.compilation_unit.CompilationUnitId>,
+  items: v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnitId>,
   item: v2.std.compilers.compilation_unit.CompilationUnitId
-) -> List<v2.std.compilers.compilation_unit.CompilationUnitId> {
+) -> v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnitId> {
   if any(xs: items, predicate: fn(id) { id == item }) {
     items
   } else {
@@ -146,9 +146,9 @@ fn c_include_closure_snoc_unique(
 }
 
 fn c_include_closure_grow_once(
-  units: List<v2.std.compilers.compilation_unit.CompilationUnit>,
-  closed: List<v2.std.compilers.compilation_unit.CompilationUnitId>
-) -> List<v2.std.compilers.compilation_unit.CompilationUnitId> {
+  units: v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnit>,
+  closed: v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnitId>
+) -> v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnitId> {
   closed
     |> fold(init: closed, f: fn(acc, dep_id) {
       match partition_unit_by_id(units: units, unit_id: dep_id) {
@@ -164,10 +164,10 @@ fn c_include_closure_grow_once(
 }
 
 fn c_include_closure_saturate_with_fuel(
-  units: List<v2.std.compilers.compilation_unit.CompilationUnit>,
-  closed: List<v2.std.compilers.compilation_unit.CompilationUnitId>,
+  units: v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnit>,
+  closed: v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnitId>,
   fuel: Int
-) -> List<v2.std.compilers.compilation_unit.CompilationUnitId> {
+) -> v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnitId> {
   if fuel <= 0 {
     closed
   } else {
@@ -186,8 +186,8 @@ fn c_include_closure_saturate_with_fuel(
 
 fn c_include_closure(
   unit: v2.std.compilers.compilation_unit.CompilationUnit,
-  units: List<v2.std.compilers.compilation_unit.CompilationUnit>
-) -> List<v2.std.compilers.compilation_unit.CompilationUnitId> {
+  units: v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnit>
+) -> v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnitId> {
   c_include_closure_saturate_with_fuel(
     units: units,
     closed: unit.deps,
@@ -197,7 +197,7 @@ fn c_include_closure(
 
 fn c_translation_unit_spelling(
   unit: v2.std.compilers.compilation_unit.CompilationUnit,
-  units: List<v2.std.compilers.compilation_unit.CompilationUnit>
+  units: v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnit>
 ) -> CTranslationUnitSpelling {
   CTranslationUnitSpelling {
     unit_id: unit.id
@@ -210,7 +210,7 @@ fn c_translation_unit_spelling(
   }
 }
 
-fn c_unit_graph_call_graph(units: List<v2.std.compilers.compilation_unit.CompilationUnit>) -> std.graph.CallGraph {
+fn c_unit_graph_call_graph(units: v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnit>) -> std.graph.CallGraph {
   std.graph.CallGraph {
     edges: units
       |> fold(init: std.algebra.Empty, f: fn(acc, unit) {
@@ -228,11 +228,11 @@ fn c_unit_graph_call_graph(units: List<v2.std.compilers.compilation_unit.Compila
   }
 }
 
-fn c_unit_graph_names(units: List<v2.std.compilers.compilation_unit.CompilationUnit>) -> List<String> {
+fn c_unit_graph_names(units: v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnit>) -> v2.std.collection.List<String> {
   units |> map(unit => unit.id) |> sort_by(id => id)
 }
 
-fn c_partition_unit_graph_has_cycle(units: List<v2.std.compilers.compilation_unit.CompilationUnit>) -> Bool {
+fn c_partition_unit_graph_has_cycle(units: v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnit>) -> Bool {
   graph_has_multi_node_scc(
     names: c_unit_graph_names(units: units),
     graph: c_unit_graph_call_graph(units: units)
@@ -258,11 +258,11 @@ fn c_type_owner_eq(left: CTypeOwner, right: CTypeOwner) -> Bool {
   left.module == right.module && left.identity == right.identity
 }
 
-fn c_list_snoc_type_owner(items: List<CTypeOwner>, item: CTypeOwner) -> List<CTypeOwner> {
+fn c_list_snoc_type_owner(items: v2.std.collection.List<CTypeOwner>, item: CTypeOwner) -> v2.std.collection.List<CTypeOwner> {
   items |> list_push(item)
 }
 
-fn c_type_atoms_by_value_in_node(node: v2.std.node.Node) -> List<v2.std.node.Symbol> {
+fn c_type_atoms_by_value_in_node(node: v2.std.node.Node) -> v2.std.collection.List<v2.std.node.Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } => [sym]
     TypeNode { connective: Arrow } => []
@@ -286,7 +286,7 @@ fn c_type_definition_body(row: v2.std.compilers.compilation_unit.ModuleTypeDefin
   row.definition
 }
 
-fn c_all_type_owners(module_dag: v2.std.compilers.compilation_unit.ModuleDag) -> List<CTypeOwner> {
+fn c_all_type_owners(module_dag: v2.std.compilers.compilation_unit.ModuleDag) -> v2.std.collection.List<CTypeOwner> {
   module_dag.modules
     |> fold(init: [], f: fn(acc, member_module) {
       module_type_definition_rows(module_dag: module_dag, module: member_module)
@@ -303,7 +303,7 @@ fn c_all_type_owners(module_dag: v2.std.compilers.compilation_unit.ModuleDag) ->
 }
 
 fn c_type_owner_for_symbol_in_module(
-  owners: List<CTypeOwner>,
+  owners: v2.std.collection.List<CTypeOwner>,
   member_module: v2.std.compilers.compilation_unit.ModuleId,
   sym: v2.std.node.Symbol
 ) -> Optional<CTypeOwner> {
@@ -324,7 +324,7 @@ fn c_type_owner_for_symbol_in_module(
 }
 
 fn c_type_owner_singleton_match(
-  owners: List<CTypeOwner>,
+  owners: v2.std.collection.List<CTypeOwner>,
   sym: v2.std.node.Symbol
 ) -> CTypeOwnerLookup {
   fold_list(
@@ -345,7 +345,7 @@ fn c_type_owner_singleton_match(
 }
 
 fn c_type_owner_for_symbol(
-  owners: List<CTypeOwner>,
+  owners: v2.std.collection.List<CTypeOwner>,
   home_module: v2.std.compilers.compilation_unit.ModuleId,
   sym: v2.std.node.Symbol
 ) -> CTypeOwnerLookup {
@@ -381,8 +381,8 @@ fn c_type_definition_for_owner(
 
 fn c_by_value_type_edges(
   module_dag: v2.std.compilers.compilation_unit.ModuleDag,
-  owners: List<CTypeOwner>
-) -> List<CByValueTypeEdge> {
+  owners: v2.std.collection.List<CTypeOwner>
+) -> v2.std.collection.List<CByValueTypeEdge> {
   owners
     |> fold(init: [], f: fn(acc, owner) {
       match c_type_definition_for_owner(module_dag: module_dag, owner: owner) {
@@ -413,7 +413,7 @@ fn c_by_value_type_edges(
 
 fn c_by_value_type_identity_resolution_refusal(
   module_dag: v2.std.compilers.compilation_unit.ModuleDag,
-  owners: List<CTypeOwner>
+  owners: v2.std.collection.List<CTypeOwner>
 ) -> Optional<String> {
   owners
     |> fold(init: Absent, f: fn(acc, owner) {
@@ -445,7 +445,7 @@ fn c_by_value_type_identity_resolution_refusal(
     })
 }
 
-fn c_path_contains_type_owner(path: List<CTypeOwner>, node: CTypeOwner) -> Bool {
+fn c_path_contains_type_owner(path: v2.std.collection.List<CTypeOwner>, node: CTypeOwner) -> Bool {
   path |> any(step => c_type_owner_eq(left: step, right: node))
 }
 
@@ -464,9 +464,9 @@ fn c_by_value_edge_crosses_units(
 }
 
 fn c_by_value_cycle_has_cross_unit_edge(
-  edges: List<CByValueTypeEdge>,
+  edges: v2.std.collection.List<CByValueTypeEdge>,
   assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>,
-  cycle: List<CTypeOwner>
+  cycle: v2.std.collection.List<CTypeOwner>
 ) -> Bool {
   edges |> any(edge =>
     c_path_contains_type_owner(path: cycle, node: edge.from)
@@ -476,10 +476,10 @@ fn c_by_value_cycle_has_cross_unit_edge(
 }
 
 fn c_dfs_by_value_type_cycle(
-  edges: List<CByValueTypeEdge>,
+  edges: v2.std.collection.List<CByValueTypeEdge>,
   assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>,
   current: CTypeOwner,
-  path: List<CTypeOwner>,
+  path: v2.std.collection.List<CTypeOwner>,
   fuel: Int
 ) -> Optional<String> {
   match fuel <= 0 {
@@ -520,9 +520,9 @@ fn c_dfs_by_value_type_cycle(
 }
 
 fn c_find_by_value_type_cycle_detail(
-  edges: List<CByValueTypeEdge>,
+  edges: v2.std.collection.List<CByValueTypeEdge>,
   assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>,
-  owners: List<CTypeOwner>
+  owners: v2.std.collection.List<CTypeOwner>
 ) -> Optional<String> {
   owners
     |> fold(init: Absent, f: fn(acc, owner) {
@@ -543,7 +543,7 @@ fn c_find_by_value_type_cycle_detail(
 fn c_by_value_type_cycle_detail_after_resolution(
   module_dag: v2.std.compilers.compilation_unit.ModuleDag,
   assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>,
-  owners: List<CTypeOwner>
+  owners: v2.std.collection.List<CTypeOwner>
 ) -> Optional<String> {
   let edges = c_by_value_type_edges(module_dag: module_dag, owners: owners)
   c_find_by_value_type_cycle_detail(
@@ -556,7 +556,7 @@ fn c_by_value_type_cycle_detail_after_resolution(
 fn c_partition_by_value_type_cycle_cause(
   module_dag: v2.std.compilers.compilation_unit.ModuleDag,
   assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>,
-  units: List<v2.std.compilers.compilation_unit.CompilationUnit>
+  units: v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnit>
 ) -> Optional<String> {
   let _ = units
   let owners = c_all_type_owners(module_dag: module_dag)
@@ -577,7 +577,7 @@ fn c_partition_by_value_type_cycle_cause(
 fn c_validate_partition_r4(
   module_dag: v2.std.compilers.compilation_unit.ModuleDag,
   assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>,
-  units: List<v2.std.compilers.compilation_unit.CompilationUnit>
+  units: v2.std.collection.List<v2.std.compilers.compilation_unit.CompilationUnit>
 ) -> v2.std.compilers.compilation_unit.PartitionR4ValidityVerdict {
   match c_partition_by_value_type_cycle_cause(
     module_dag: module_dag,
@@ -694,7 +694,7 @@ fn c_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.no
   v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
-fn c_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+fn c_concrete_tokens() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
     v2.std.compilers.target_model.FixedToken { token_class: ^c_token_ty_int },
     v2.std.compilers.target_model.BoundToken { token_class: ^c_token_ident, binding: ^c_binding_fn_add },
@@ -741,7 +741,7 @@ fn c_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSyntaxToke
   concrete_syntax_token_to_node(token: token)
 }
 
-fn c_serialize_source_children() -> List<v2.std.node.Edge> {
+fn c_serialize_source_children() -> v2.std.collection.List<v2.std.node.Edge> {
   list_append(
     left: [
       c_named_edge(name: ^serialize_source_field_source_text, target: c_atom(id: ^c_source_literal)),
@@ -812,7 +812,7 @@ fn c_grammar_production_fn_add() -> v2.std.grammar.GrammarProduction {
 type CGrammarRelationRow {
   production: v2.std.grammar.GrammarProduction
   emitted: v2.std.node.Node
-  tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>
+  tokens: v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>
 }
 
 fn c_grammar_relation_row() -> CGrammarRelationRow {
@@ -1015,7 +1015,7 @@ fn c_lex_rule(token_class: v2.std.node.Symbol, text: String) -> v2.std.compilers
   v2.std.compilers.lexing.TokenRule { token_class: token_class, pattern: v2.std.compilers.lexing.LiteralPattern { text: text } }
 }
 
-fn c_lex_rules() -> List<v2.std.compilers.lexing.LexRule> {
+fn c_lex_rules() -> v2.std.collection.List<v2.std.compilers.lexing.LexRule> {
   [
     c_lex_rule(token_class: ^c_token_ty_int, text: "int "),
     c_lex_rule(token_class: ^c_token_lparen, text: "("),
@@ -1152,7 +1152,7 @@ fn c_type_decl_target_model() -> v2.std.compilers.target_model.TargetModel {
 // return arrow. C is statement-sequenced, so the scaffold carries a return token
 // before the body and a terminator after it. The compiler is not edited to support
 // any of this -- C supplies its own renderer and its own spellings.
-fn c_produced_type_tokens(type_node: v2.std.node.Node) -> Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn c_produced_type_tokens(type_node: v2.std.node.Node) -> Outcome<v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match type_node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       outcome_accepted(value: [v2.std.compilers.target_model.BoundToken { token_class: ^c_token_ident, binding: id }])
@@ -1171,7 +1171,7 @@ fn c_produced_decl_diagnostic(reason: v2.std.node.Symbol, node: v2.std.node.Node
   }
 }
 
-fn c_produced_one_param_tokens(edge: v2.std.node.Edge) -> Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn c_produced_one_param_tokens(edge: v2.std.node.Edge) -> Outcome<v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match edge.label {
     Named { name: pname } =>
       bind_outcome(
@@ -1192,7 +1192,7 @@ fn c_produced_one_param_tokens(edge: v2.std.node.Edge) -> Outcome<List<v2.std.co
   }
 }
 
-fn c_produced_params_tail_tokens(params: List<v2.std.node.Edge>) -> Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn c_produced_params_tail_tokens(params: v2.std.collection.List<v2.std.node.Edge>) -> Outcome<v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
     Empty => outcome_accepted(value: std.algebra.Empty)
     Cons { head: e, tail: rest } =>
@@ -1215,7 +1215,7 @@ fn c_produced_params_tail_tokens(params: List<v2.std.node.Edge>) -> Outcome<List
   }
 }
 
-fn c_produced_params_tokens(params: List<v2.std.node.Edge>) -> Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+fn c_produced_params_tokens(params: v2.std.collection.List<v2.std.node.Edge>) -> Outcome<v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
     Empty => outcome_accepted(value: std.algebra.Empty)
     Cons { head: e, tail: rest } =>
@@ -1236,7 +1236,7 @@ fn c_produced_params_tokens(params: List<v2.std.node.Edge>) -> Outcome<List<v2.s
 fn c_produced_signature_from_name_and_arrow(
   fn_name: v2.std.node.Symbol,
   arrow: v2.std.node.Node
-) -> Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
+) -> Outcome<v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 0) {
     Present { value: domain } =>
       match list_at_optional(xs: node_positional_child_targets(node: arrow), index: 1) {

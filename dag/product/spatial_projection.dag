@@ -37,20 +37,20 @@ type SceneConstruction<T>
 // stored copy could go stale.
 type ProjectedRoom {
   identity: product.placement_supply.RoomIdentity
-  corner_images: List<std.planar_projection.ViewPoint2>
+  corner_images: std.types.List<std.planar_projection.ViewPoint2>
   nearest: Int
   farthest: Int
 }
 
 type ProjectedScene sole_constructor {
   view: std.planar_projection.ProjectionView
-  rooms: List<ProjectedRoom>
+  rooms: std.types.List<ProjectedRoom>
 }
 
 // THE CORNERS OF A PRISM ARE ITS FOOTPRINT VERTICES AT BOTH HEIGHTS. Deriving them here rather than
 // asking the topology layer for a corner list keeps this module a consumer: it reads the footprint
 // and the two elevations that already define the prism, and invents no geometry of its own.
-fn space_corners(s: std.orthogonal_topology.EnclosedSpace) -> List<std.affine_space.Point3> {
+fn space_corners(s: std.orthogonal_topology.EnclosedSpace) -> std.types.List<std.affine_space.Point3> {
   let prism = shell_prism(s: space_shell(s: s))
   let low = signed_frame_component_count(c: prism3_low(p: prism))
   let high = signed_frame_component_count(c: prism3_high(p: prism))
@@ -66,7 +66,7 @@ fn space_corners(s: std.orthogonal_topology.EnclosedSpace) -> List<std.affine_sp
 // refusal is retained and every later point is skipped, so the reported cause is the first one that
 // actually occurred rather than the last.
 type CornerAcc {
-  images: List<std.planar_projection.ViewPoint2>
+  images: std.types.List<std.planar_projection.ViewPoint2>
   nearest: Int
   farthest: Int
   started: Bool
@@ -115,7 +115,7 @@ fn project_room(v: std.planar_projection.ProjectionView, r: product.spatial_worl
 }
 
 type SceneAcc {
-  rooms: List<ProjectedRoom>
+  rooms: std.types.List<ProjectedRoom>
   refusal: SceneRefusal?
 }
 
@@ -135,7 +135,7 @@ fn project_world(w: product.spatial_world.World, v: std.planar_projection.Projec
   }
 }
 
-fn scene_rooms(s: ProjectedScene) -> List<ProjectedRoom> { s.rooms }
+fn scene_rooms(s: ProjectedScene) -> std.types.List<ProjectedRoom> { s.rooms }
 fn scene_view(s: ProjectedScene) -> std.planar_projection.ProjectionView { s.view }
 
 type PageBox {
@@ -191,7 +191,7 @@ fn rooms_contend(a: ProjectedRoom, b: ProjectedRoom) -> Bool {
 }
 
 type ContentionScan {
-  seen: List<ProjectedRoom>
+  seen: std.types.List<ProjectedRoom>
   refusal: SceneRefusal?
 }
 
@@ -226,13 +226,13 @@ fn scan_against_seen(acc: ContentionScan, r: ProjectedRoom) -> ContentionScan {
 }
 
 type InsertAcc {
-  out: List<ProjectedRoom>
+  out: std.types.List<ProjectedRoom>
   placed: Bool
 }
 
 // Farthest first, and stable: a room is inserted before the first room strictly nearer than it, so
 // two rooms with equal depth keep the world's order rather than an order this fold invented.
-fn insert_farthest_first(sorted: List<ProjectedRoom>, r: ProjectedRoom) -> List<ProjectedRoom> {
+fn insert_farthest_first(sorted: std.types.List<ProjectedRoom>, r: ProjectedRoom) -> std.types.List<ProjectedRoom> {
   let acc = fold(sorted, init: InsertAcc { out: no_rooms(), placed: false }, f: (a, cur) =>
     if !a.placed && r.farthest > cur.farthest {
       InsertAcc { out: concat(a.out, [r, cur]), placed: true }
@@ -252,9 +252,9 @@ fn insert_farthest_first(sorted: List<ProjectedRoom>, r: ProjectedRoom) -> List<
 // The empty seed is a named function because a bare literal in argument position has no expected
 // type for the resolver to read: the fold's result type is what fixes the element type, and it is
 // not known until the fold is typed.
-fn no_rooms() -> List<ProjectedRoom> { [] }
+fn no_rooms() -> std.types.List<ProjectedRoom> { [] }
 
-fn painter_order(s: ProjectedScene) -> SceneConstruction<List<ProjectedRoom>> {
+fn painter_order(s: ProjectedScene) -> SceneConstruction<std.types.List<ProjectedRoom>> {
   let scanned = fold(s.rooms, init: ContentionScan { seen: [], refusal: none }, f: (acc, r) =>
     scan_against_seen(acc: acc, r: r))
   match scanned.refusal {

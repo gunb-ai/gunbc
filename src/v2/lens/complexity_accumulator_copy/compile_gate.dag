@@ -21,11 +21,11 @@ fn finding_diagnostic(f: Finding) -> v2.std.diagnostic.Diagnostic {
 }
 
 type GateLedger {
-  suspects: List<v2.std.diagnostic.Diagnostic>
-  refusals: List<v2.std.diagnostic.Diagnostic>
+  suspects: v2.std.collection.List<v2.std.diagnostic.Diagnostic>
+  refusals: v2.std.collection.List<v2.std.diagnostic.Diagnostic>
 }
 
-fn gate_ledger(findings: List<Finding>) -> GateLedger {
+fn gate_ledger(findings: v2.std.collection.List<Finding>) -> GateLedger {
   let split = fold(
     findings,
     init: GateLedger { suspects: std.algebra.Empty, refusals: std.algebra.Empty },

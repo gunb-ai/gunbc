@@ -145,7 +145,7 @@ data witness_false_web_annotation_fragment_selector: std.citation.CitationSelect
   value: witness_pdf_fragment_wire,
 })
 
-data witness_citation_recorded_fact: std.claim_evidence.RecordedFact<CitationRecordedFact<std.citation.CitationSelector>> = citation_recorded_fact(
+data witness_citation_recorded_fact: std.claim_evidence.RecordedFact<std.citation.CitationRecordedFact<std.citation.CitationSelector>> = citation_recorded_fact(
   id: "cit0-fixture-fact" as std.claim_evidence.RecordedFactId,
   cited: witness_citation_target,
 )

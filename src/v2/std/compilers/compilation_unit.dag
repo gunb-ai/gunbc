@@ -20,21 +20,21 @@ type ModuleTypeDefinitionRow {
 }
 
 type ModuleDag {
-  modules: List<ModuleId>
-  edges: List<ModuleDagEdge>
-  exports: Map<ModuleId, List<v2.std.node.Node>>
-  type_definitions: Map<ModuleId, List<ModuleTypeDefinitionRow>>
+  modules: std.types.List<ModuleId>
+  edges: std.types.List<ModuleDagEdge>
+  exports: Map<ModuleId, std.types.List<v2.std.node.Node>>
+  type_definitions: Map<ModuleId, std.types.List<ModuleTypeDefinitionRow>>
 }
 
 type CompilationUnit {
   id: CompilationUnitId
-  members: List<ModuleId>
-  interface: List<v2.std.node.Node>
-  deps: List<CompilationUnitId>
+  members: std.types.List<ModuleId>
+  interface: std.types.List<v2.std.node.Node>
+  deps: std.types.List<CompilationUnitId>
 }
 
 type PartitionInterfaceClosureResult
-  = PartitionInterfaceClosed { nodes: List<v2.std.node.Node> }
+  = PartitionInterfaceClosed { nodes: std.types.List<v2.std.node.Node> }
   | PartitionInterfaceTruncated
 
 type PartitionR4ValidityCause
@@ -54,11 +54,11 @@ type PartitionFoldRefusalCause
   | ModuleAssignmentLookupRejected { module: ModuleId }
 
 type PartitionFoldOutcome
-  = PartitionFoldOk { units: List<CompilationUnit> }
+  = PartitionFoldOk { units: std.types.List<CompilationUnit> }
   | PartitionFoldRefused { cause: PartitionFoldRefusalCause }
 
 type PartitionInterfaceClosureState {
-  seeds: List<v2.std.node.Node>
+  seeds: std.types.List<v2.std.node.Node>
   stable: Bool
 }
 
@@ -66,9 +66,9 @@ data compilation_unit_home_note: String = "Shared home for the agnostic unit of 
 
 data partition_interface_derivation_note: String = "interface derivation (partition_fold): (1) collect exported declaration Nodes from member modules referenced across the partition boundary; (2) close transitively under by-value type references using ModuleTypeDefinitionRow { identity, definition } rows (definition may be Conj-bodied or Atom-rooted; identity is authoritative, not inferred from shape); (3) canonicalize as a set (dedupe by content_hash, sort by hash). Closure budget = member export+type-def row count + 1; PartitionInterfaceTruncated if budget exhausts without fixpoint. Default: home supplies full referenced-declaration set + by-value type defs; each target R3 may project a subset."
 
-data partition_r4_validity_interface_note: String = "R4 validity interface (locked 2026-07-16, eager-ferret-110): realizations implement fn validate_partition_r4(module_dag: ModuleDag, assignment: Map<ModuleId, CompilationUnitId>, units: List<CompilationUnit>) -> PartitionR4ValidityVerdict. Each cause is a realization-agnostic STRUCTURAL condition; each realization decides which it refuses. SccSplit (a module strongly-connected-component split across units) and UnitGraphCycle (a cycle in the unit condensation) are refused by Rust (crates are acyclic) but ACCEPTED by C (translation units link cyclically via forward declarations) — so the C realization must NOT refuse mere module-SCC-split or unit-graph-cyclicity, else it silently bakes in acyclic and the two-realization stress test goes vacuous. LinkageCycle is the linkage-condensation cycle C is permissive on. ByValueTypeCycle (added 2026-07-16, eager-ferret-110, C-realization-surfaced) is an incomplete by-value type reference cycle that cannot be broken by forward declaration — genuinely invalid in BOTH Rust and C (an unbreakable type-layout cycle across a unit boundary, distinct from a linkage cycle), so it is a universal cause, not a C nickname. The home exposes PartitionR4ValidityVerdict + PartitionR4ValidityCause as a closed coproduct (SccSplit | UnitGraphCycle | LinkageCycle | ByValueTypeCycle) — never a string tag discriminator or a hardcoded acyclic check here."
+data partition_r4_validity_interface_note: String = "R4 validity interface (locked 2026-07-16, eager-ferret-110): realizations implement fn validate_partition_r4(module_dag: ModuleDag, assignment: Map<ModuleId, CompilationUnitId>, units: std.types.List<CompilationUnit>) -> PartitionR4ValidityVerdict. Each cause is a realization-agnostic STRUCTURAL condition; each realization decides which it refuses. SccSplit (a module strongly-connected-component split across units) and UnitGraphCycle (a cycle in the unit condensation) are refused by Rust (crates are acyclic) but ACCEPTED by C (translation units link cyclically via forward declarations) — so the C realization must NOT refuse mere module-SCC-split or unit-graph-cyclicity, else it silently bakes in acyclic and the two-realization stress test goes vacuous. LinkageCycle is the linkage-condensation cycle C is permissive on. ByValueTypeCycle (added 2026-07-16, eager-ferret-110, C-realization-surfaced) is an incomplete by-value type reference cycle that cannot be broken by forward declaration — genuinely invalid in BOTH Rust and C (an unbreakable type-layout cycle across a unit boundary, distinct from a linkage cycle), so it is a universal cause, not a C nickname. The home exposes PartitionR4ValidityVerdict + PartitionR4ValidityCause as a closed coproduct (SccSplit | UnitGraphCycle | LinkageCycle | ByValueTypeCycle) — never a string tag discriminator or a hardcoded acyclic check here."
 
-data partition_fold_outcome_note: String = "partition_fold_outcome is the fail-closed entry for derived interface/deps: map lookup Rejected and interface-closure saturation without fixpoint return PartitionFoldRefused with a typed cause — never a partial interface. partition_fold(module_dag, assignment) -> List<CompilationUnit> remains the locked signature for well-formed inputs; it unwraps PartitionFoldOk only and returns [] on Refused (callers requiring refusal receipts MUST use partition_fold_outcome)."
+data partition_fold_outcome_note: String = "partition_fold_outcome is the fail-closed entry for derived interface/deps: map lookup Rejected and interface-closure saturation without fixpoint return PartitionFoldRefused with a typed cause — never a partial interface. partition_fold(module_dag, assignment) -> std.types.List<CompilationUnit> remains the locked signature for well-formed inputs; it unwraps PartitionFoldOk only and returns [] on Refused (callers requiring refusal receipts MUST use partition_fold_outcome)."
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: v2.lens.common.construction_justification.WallNow {
@@ -141,7 +141,7 @@ fn module_assigned_unit_fold(
 
 fn partition_assignment_lookup_cause_if_rejected(
   assignment: Map<ModuleId, CompilationUnitId>,
-  modules: List<ModuleId>
+  modules: std.types.List<ModuleId>
 ) -> Optional<PartitionFoldRefusalCause> {
   fold_list(
     xs: modules,
@@ -166,7 +166,7 @@ fn module_in_unit(
   }
 }
 
-fn list_snoc_unique(items: List<CompilationUnitId>, item: CompilationUnitId) -> List<CompilationUnitId> {
+fn list_snoc_unique(items: std.types.List<CompilationUnitId>, item: CompilationUnitId) -> std.types.List<CompilationUnitId> {
   if any(xs: items, predicate: fn(id) { id == item }) {
     items
   } else {
@@ -174,7 +174,7 @@ fn list_snoc_unique(items: List<CompilationUnitId>, item: CompilationUnitId) -> 
   }
 }
 
-fn list_snoc_unique_module(items: List<ModuleId>, item: ModuleId) -> List<ModuleId> {
+fn list_snoc_unique_module(items: std.types.List<ModuleId>, item: ModuleId) -> std.types.List<ModuleId> {
   if any(xs: items, predicate: fn(id) { id == item }) {
     items
   } else {
@@ -182,7 +182,7 @@ fn list_snoc_unique_module(items: List<ModuleId>, item: ModuleId) -> List<Module
   }
 }
 
-fn list_snoc_unique_symbol(items: List<v2.std.node.Symbol>, item: v2.std.node.Symbol) -> List<v2.std.node.Symbol> {
+fn list_snoc_unique_symbol(items: std.types.List<v2.std.node.Symbol>, item: v2.std.node.Symbol) -> std.types.List<v2.std.node.Symbol> {
   if any(xs: items, predicate: fn(sym) { sym == item }) {
     items
   } else {
@@ -190,7 +190,7 @@ fn list_snoc_unique_symbol(items: List<v2.std.node.Symbol>, item: v2.std.node.Sy
   }
 }
 
-fn list_snoc_unique_node(items: List<v2.std.node.Node>, item: v2.std.node.Node) -> List<v2.std.node.Node> {
+fn list_snoc_unique_node(items: std.types.List<v2.std.node.Node>, item: v2.std.node.Node) -> std.types.List<v2.std.node.Node> {
   let item_hash = content_hash(n: item)
   if any(xs: items, predicate: fn(n) { content_hash(n: n) == item_hash }) {
     items
@@ -199,7 +199,7 @@ fn list_snoc_unique_node(items: List<v2.std.node.Node>, item: v2.std.node.Node) 
   }
 }
 
-fn list_unique_sorted_ids(items: List<CompilationUnitId>) -> List<CompilationUnitId> {
+fn list_unique_sorted_ids(items: std.types.List<CompilationUnitId>) -> std.types.List<CompilationUnitId> {
   items
     |> fold(init: [], f: fn(acc, item) { list_snoc_unique(items: acc, item: item) })
     |> sort_by(id => id)
@@ -209,7 +209,7 @@ fn node_sort_key(n: v2.std.node.Node) -> std.content_hash.Fnv1a64Structural {
   content_hash(n: n)
 }
 
-fn list_unique_sorted_nodes(items: List<v2.std.node.Node>) -> List<v2.std.node.Node> {
+fn list_unique_sorted_nodes(items: std.types.List<v2.std.node.Node>) -> std.types.List<v2.std.node.Node> {
   items
     |> fold(init: [], f: fn(acc, item) { list_snoc_unique_node(items: acc, item: item) })
     |> sort_by(node_sort_key)
@@ -218,7 +218,7 @@ fn list_unique_sorted_nodes(items: List<v2.std.node.Node>) -> List<v2.std.node.N
 fn module_export_declarations_outcome(
   module_dag: ModuleDag,
   module: ModuleId
-) -> v2.std.diagnostic.Outcome<List<v2.std.node.Node>> {
+) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Node>> {
   match map_get(module_dag.exports, module) {
     Accepted { value: opt, diagnostics: _ } =>
       outcome_accepted(value: match opt {
@@ -232,7 +232,7 @@ fn module_export_declarations_outcome(
 fn module_type_definition_rows_outcome(
   module_dag: ModuleDag,
   module: ModuleId
-) -> v2.std.diagnostic.Outcome<List<ModuleTypeDefinitionRow>> {
+) -> v2.std.diagnostic.Outcome<std.types.List<ModuleTypeDefinitionRow>> {
   match map_get(module_dag.type_definitions, module) {
     Accepted { value: opt, diagnostics: _ } =>
       outcome_accepted(value: match opt {
@@ -243,14 +243,14 @@ fn module_type_definition_rows_outcome(
   }
 }
 
-fn module_export_declarations(module_dag: ModuleDag, module: ModuleId) -> List<v2.std.node.Node> {
+fn module_export_declarations(module_dag: ModuleDag, module: ModuleId) -> std.types.List<v2.std.node.Node> {
   match module_export_declarations_outcome(module_dag: module_dag, module: module) {
     Accepted { value: nodes, diagnostics: _ } => nodes
     Rejected { diagnostics: _ } => []
   }
 }
 
-fn module_type_definition_rows(module_dag: ModuleDag, module: ModuleId) -> List<ModuleTypeDefinitionRow> {
+fn module_type_definition_rows(module_dag: ModuleDag, module: ModuleId) -> std.types.List<ModuleTypeDefinitionRow> {
   match module_type_definition_rows_outcome(module_dag: module_dag, module: module) {
     Accepted { value: rows, diagnostics: _ } => rows
     Rejected { diagnostics: _ } => []
@@ -272,7 +272,7 @@ fn partition_unit_members(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId
-) -> List<ModuleId> {
+) -> std.types.List<ModuleId> {
   module_dag.modules
     |> filter(module => module_in_unit(assignment: assignment, module: module, unit_id: unit_id))
     |> sort_by(module => module)
@@ -313,7 +313,7 @@ fn partition_unit_dep_from_edge(
 }
 
 type PartitionDepsBuild
-  = DepsBuildOk { deps: List<CompilationUnitId> }
+  = DepsBuildOk { deps: std.types.List<CompilationUnitId> }
   | DepsBuildRefused { cause: PartitionFoldRefusalCause }
 
 fn partition_unit_deps_fold(
@@ -355,7 +355,7 @@ fn partition_unit_deps(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId
-) -> List<CompilationUnitId> {
+) -> std.types.List<CompilationUnitId> {
   module_dag.edges
     |> fold(init: [], f: fn(acc, edge) {
       match partition_unit_dep_from_edge(assignment: assignment, unit_id: unit_id, edge: edge) {
@@ -409,8 +409,8 @@ fn partition_cross_boundary_exports_for_member(
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
   member: ModuleId,
-  acc: List<v2.std.node.Node>
-) -> List<v2.std.node.Node> {
+  acc: std.types.List<v2.std.node.Node>
+) -> std.types.List<v2.std.node.Node> {
   if module_referenced_from_outside_unit(
     module_dag: module_dag,
     assignment: assignment,
@@ -428,8 +428,8 @@ fn partition_cross_boundary_exports(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
-  members: List<ModuleId>
-) -> List<v2.std.node.Node> {
+  members: std.types.List<ModuleId>
+) -> std.types.List<v2.std.node.Node> {
   members
     |> fold(init: [], f: fn(acc, member) {
       partition_cross_boundary_exports_for_member(
@@ -442,7 +442,7 @@ fn partition_cross_boundary_exports(
     })
 }
 
-fn type_atoms_in_declaration(declaration: v2.std.node.Node) -> List<v2.std.node.Symbol> {
+fn type_atoms_in_declaration(declaration: v2.std.node.Node) -> std.types.List<v2.std.node.Symbol> {
   node_subtree_nodes(root: declaration)
     |> fold(init: [], f: fn(acc, node) {
       match type_atom_identity(node: node) {
@@ -477,7 +477,7 @@ fn type_definition_for_identity_in_module(
 
 fn type_definition_for_identity_in_members(
   module_dag: ModuleDag,
-  members: List<ModuleId>,
+  members: std.types.List<ModuleId>,
   identity: v2.std.node.Symbol
 ) -> Optional<v2.std.node.Node> {
   fold_list(
@@ -498,10 +498,10 @@ fn type_definition_for_identity_in_members(
 }
 
 fn partition_interface_closure_grow_once(
-  seeds: List<v2.std.node.Node>,
+  seeds: std.types.List<v2.std.node.Node>,
   module_dag: ModuleDag,
-  members: List<ModuleId>
-) -> List<v2.std.node.Node> {
+  members: std.types.List<ModuleId>
+) -> std.types.List<v2.std.node.Node> {
   seeds
     |> fold(init: seeds, f: fn(acc, declaration) {
       type_atoms_in_declaration(declaration: declaration)
@@ -520,7 +520,7 @@ fn partition_interface_closure_grow_once(
 
 fn partition_member_declaration_budget(
   module_dag: ModuleDag,
-  members: List<ModuleId>
+  members: std.types.List<ModuleId>
 ) -> Int {
   members
     |> fold(init: 0, f: fn(acc, member) {
@@ -531,7 +531,7 @@ fn partition_member_declaration_budget(
 fn partition_interface_closure_saturate_step(
   state: PartitionInterfaceClosureState,
   module_dag: ModuleDag,
-  members: List<ModuleId>
+  members: std.types.List<ModuleId>
 ) -> PartitionInterfaceClosureState {
   if state.stable {
     state
@@ -552,7 +552,7 @@ fn partition_interface_closure_saturate_with_fuel(
   state: PartitionInterfaceClosureState,
   fuel: Int,
   module_dag: ModuleDag,
-  members: List<ModuleId>
+  members: std.types.List<ModuleId>
 ) -> PartitionInterfaceClosureState {
   if fuel <= 0 || state.stable {
     state
@@ -571,9 +571,9 @@ fn partition_interface_closure_saturate_with_fuel(
 }
 
 fn partition_interface_closure_saturate_result_with_fuel(
-  seeds: List<v2.std.node.Node>,
+  seeds: std.types.List<v2.std.node.Node>,
   module_dag: ModuleDag,
-  members: List<ModuleId>,
+  members: std.types.List<ModuleId>,
   closure_fuel: Int
 ) -> PartitionInterfaceClosureResult {
   let final_state = partition_interface_closure_saturate_with_fuel(
@@ -592,9 +592,9 @@ fn partition_interface_closure_saturate_result_with_fuel(
 }
 
 fn partition_interface_closure_saturate_result(
-  seeds: List<v2.std.node.Node>,
+  seeds: std.types.List<v2.std.node.Node>,
   module_dag: ModuleDag,
-  members: List<ModuleId>
+  members: std.types.List<ModuleId>
 ) -> PartitionInterfaceClosureResult {
   partition_interface_closure_saturate_result_with_fuel(
     seeds: seeds,
@@ -626,7 +626,7 @@ fn module_member_dag_lookup_cause_if_rejected(
 
 fn partition_members_dag_lookup_cause_if_rejected(
   module_dag: ModuleDag,
-  members: List<ModuleId>
+  members: std.types.List<ModuleId>
 ) -> Optional<PartitionFoldRefusalCause> {
   fold_list(
     xs: members,
@@ -641,14 +641,14 @@ fn partition_members_dag_lookup_cause_if_rejected(
 }
 
 type PartitionInterfaceBuild
-  = InterfaceBuildOk { nodes: List<v2.std.node.Node> }
+  = InterfaceBuildOk { nodes: std.types.List<v2.std.node.Node> }
   | InterfaceBuildRefused { cause: PartitionFoldRefusalCause }
 
 fn partition_cross_boundary_exports_fold(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
-  members: List<ModuleId>
+  members: std.types.List<ModuleId>
 ) -> PartitionInterfaceBuild {
   members
     |> fold(init: InterfaceBuildOk { nodes: std.algebra.Empty }, f: fn(acc, member) {
@@ -694,7 +694,7 @@ fn partition_unit_interface_fold(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
-  members: List<ModuleId>,
+  members: std.types.List<ModuleId>,
   closure_fuel: Int
 ) -> PartitionInterfaceBuild {
   match partition_members_dag_lookup_cause_if_rejected(module_dag: module_dag, members: members) {
@@ -728,7 +728,7 @@ fn partition_unit_interface_fold_default(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
-  members: List<ModuleId>
+  members: std.types.List<ModuleId>
 ) -> PartitionInterfaceBuild {
   partition_unit_interface_fold(
     module_dag: module_dag,
@@ -743,8 +743,8 @@ fn partition_unit_interface(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
-  members: List<ModuleId>
-) -> List<v2.std.node.Node> {
+  members: std.types.List<ModuleId>
+) -> std.types.List<v2.std.node.Node> {
   match partition_unit_interface_fold_default(
     module_dag: module_dag,
     assignment: assignment,
@@ -903,7 +903,7 @@ fn partition_fold_outcome(
 fn partition_fold(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>
-) -> List<CompilationUnit> {
+) -> std.types.List<CompilationUnit> {
   match partition_fold_outcome(module_dag: module_dag, assignment: assignment) {
     PartitionFoldOk { units: units } => units
     PartitionFoldRefused { cause: _ } => []
@@ -914,7 +914,7 @@ fn partition_boundary_dep_targets(
   module_dag: ModuleDag,
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId
-) -> List<CompilationUnitId> {
+) -> std.types.List<CompilationUnitId> {
   partition_unit_deps(
     module_dag: module_dag,
     assignment: assignment,
@@ -923,7 +923,7 @@ fn partition_boundary_dep_targets(
 }
 
 fn partition_unit_by_id(
-  units: List<CompilationUnit>,
+  units: std.types.List<CompilationUnit>,
   unit_id: CompilationUnitId
 ) -> Optional<CompilationUnit> {
   match units |> filter(unit => unit.id == unit_id) |> first {
@@ -957,7 +957,7 @@ fn partition_fold_deps_match_boundary_edges(
     })
 }
 
-fn partition_interface_contains_node(interface: List<v2.std.node.Node>, needle: v2.std.node.Node) -> Bool {
+fn partition_interface_contains_node(interface: std.types.List<v2.std.node.Node>, needle: v2.std.node.Node) -> Bool {
   let needle_hash = content_hash(n: needle)
   any(xs: interface, predicate: fn(n) { content_hash(n: n) == needle_hash })
 }
