@@ -1,20 +1,20 @@
 module test.claim.srv3_host_effect_apply_witness
 
 
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn srv3_actuator_target() -> NodeControlPlane {
+fn srv3_actuator_target() -> gunbc.host_effect.NodeControlPlane {
   HostOs { node: srv3_os_install_actuator_host }
 }
 
-fn srv3_bmc_target() -> NodeControlPlane {
+fn srv3_bmc_target() -> gunbc.host_effect.NodeControlPlane {
   BmcController { node: srv3_os_install_actuator_host }
 }
 
 test fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
   match host_effect_apply(
     target: srv3_actuator_target(),
-    effect: Srv3ReceiptEmit { lines: ["line-one", "line-two"] },
+    effect: gunbc.host_effect.Srv3ReceiptEmit { lines: ["line-one", "line-two"] },
     evidence: host_effect_identity_evidence,
     transport: LocalShell,
   ) {
@@ -36,7 +36,7 @@ test fn witness_bmcweb_token_extract_ssh_transport_refuses_typed() -> Bool {
     target: srv3_actuator_target(),
     effect: Srv3BmcwebTokenExtract,
     evidence: host_effect_identity_evidence,
-    transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr },
+    transport: gunbc.host_effect.SshShell { ssh_host: "203.0.113.1" as NonEmptyStr },
   ) {
     NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "SshShell transport is a fail-closed Unimplemented stub")
@@ -123,7 +123,7 @@ test fn witness_srv3_typed_reconcile_ssh_transport_refuses_typed() -> Bool {
     target: srv3_actuator_target(),
     effect: Srv3InstallMediaFetch,
     evidence: host_effect_identity_evidence,
-    transport: SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
+    transport: gunbc.host_effect.SshShell { ssh_host: "203.0.113.1" as NonEmptyStr }
   ) {
     NotConverged { reason: why, applied: _ } =>
       string_contains(s: why, pattern: "SshShell transport is a fail-closed Unimplemented stub")
@@ -137,7 +137,7 @@ test fn witness_srv3_nbd_proxy_apply_foreign_port_refuses_at_apply_time() -> Boo
     Srv3NbdProxyServe { intent: i, lease_key: k } =>
       match host_effect_nbd_proxy_serve_apply_with_observation(
         binding: host_effect_nbd_proxy_serve_session_binding(intent: i, lease_key: k),
-        obs: PortObserved {
+        obs: gunbc.session_lease.PortObserved {
           observed_port: i.local_nbd_port,
           pid: 424242,
           cmdline: "foreign-nbdkit" as NonEmptyStr,
@@ -157,14 +157,14 @@ test fn witness_srv3_nbd_proxy_apply_stale_matching_drains_not_foreign_kill() ->
   match effect {
     Srv3NbdProxyServe { intent: i, lease_key: k } => {
       let binding = host_effect_nbd_proxy_serve_session_binding(intent: i, lease_key: k)
-      let stale = PortObservedStaleExpected {
+      let stale = gunbc.session_lease.PortObservedStaleExpected {
         observed_port: i.local_nbd_port,
         pid: 99999,
         cmdline: "gunbc-nbd-proxy" as NonEmptyStr,
         process_fingerprint: "gunbc-nbd-proxy" as NonEmptyStr,
         stale_reason: "prior-generation lease holder" as NonEmptyStr,
       }
-      let foreign = PortObserved {
+      let foreign = gunbc.session_lease.PortObserved {
         observed_port: i.local_nbd_port,
         pid: 424242,
         cmdline: "foreign-nbdkit" as NonEmptyStr,

@@ -70,7 +70,7 @@ type CppILP32IntegerWidths = CppILP32CoreIntegerWidthModel {
   pointer_width: v2.extdeps.cpp_abi.CppIntegerWidth32,
   wchar_t_width: v2.extdeps.cpp_abi.CppIntegerWidth32
 }
-type CppILP32DataModel<plain_char_signedness, wchar_t_signedness> = CppTargetDataModel<v2.extdeps.cpp_abi.CppDataModelFamilyILP32, v2.extdeps.cpp_abi.CppILP32IntegerWidths, plain_char_signedness, wchar_t_signedness>
+type CppILP32DataModel<plain_char_signedness, wchar_t_signedness> = v2.extdeps.cpp_abi.CppTargetDataModel<v2.extdeps.cpp_abi.CppDataModelFamilyILP32, v2.extdeps.cpp_abi.CppILP32IntegerWidths, plain_char_signedness, wchar_t_signedness>
 
 type CppLP64IntegerWidths = CppLP64CoreIntegerWidthModel {
   char_width: v2.extdeps.cpp_abi.CppIntegerWidth8,
@@ -81,7 +81,7 @@ type CppLP64IntegerWidths = CppLP64CoreIntegerWidthModel {
   pointer_width: v2.extdeps.cpp_abi.CppIntegerWidth64,
   wchar_t_width: v2.extdeps.cpp_abi.CppIntegerWidth32
 }
-type CppLP64DataModel<plain_char_signedness, wchar_t_signedness> = CppTargetDataModel<v2.extdeps.cpp_abi.CppDataModelFamilyLP64, v2.extdeps.cpp_abi.CppLP64IntegerWidths, plain_char_signedness, wchar_t_signedness>
+type CppLP64DataModel<plain_char_signedness, wchar_t_signedness> = v2.extdeps.cpp_abi.CppTargetDataModel<v2.extdeps.cpp_abi.CppDataModelFamilyLP64, v2.extdeps.cpp_abi.CppLP64IntegerWidths, plain_char_signedness, wchar_t_signedness>
 
 type CppLLP64IntegerWidths = CppLLP64CoreIntegerWidthModel {
   char_width: v2.extdeps.cpp_abi.CppIntegerWidth8,
@@ -92,7 +92,7 @@ type CppLLP64IntegerWidths = CppLLP64CoreIntegerWidthModel {
   pointer_width: v2.extdeps.cpp_abi.CppIntegerWidth64,
   wchar_t_width: v2.extdeps.cpp_abi.CppIntegerWidth16
 }
-type CppLLP64DataModel<plain_char_signedness, wchar_t_signedness> = CppTargetDataModel<v2.extdeps.cpp_abi.CppDataModelFamilyLLP64, v2.extdeps.cpp_abi.CppLLP64IntegerWidths, plain_char_signedness, wchar_t_signedness>
+type CppLLP64DataModel<plain_char_signedness, wchar_t_signedness> = v2.extdeps.cpp_abi.CppTargetDataModel<v2.extdeps.cpp_abi.CppDataModelFamilyLLP64, v2.extdeps.cpp_abi.CppLLP64IntegerWidths, plain_char_signedness, wchar_t_signedness>
 
 type CppILP64IntegerWidths = CppILP64CoreIntegerWidthModel {
   char_width: v2.extdeps.cpp_abi.CppIntegerWidth8,
@@ -103,4 +103,4 @@ type CppILP64IntegerWidths = CppILP64CoreIntegerWidthModel {
   pointer_width: v2.extdeps.cpp_abi.CppIntegerWidth64,
   wchar_t_width: v2.extdeps.cpp_abi.CppIntegerWidth32
 }
-type CppILP64DataModel<plain_char_signedness, wchar_t_signedness> = CppTargetDataModel<v2.extdeps.cpp_abi.CppDataModelFamilyILP64, v2.extdeps.cpp_abi.CppILP64IntegerWidths, plain_char_signedness, wchar_t_signedness>
+type CppILP64DataModel<plain_char_signedness, wchar_t_signedness> = v2.extdeps.cpp_abi.CppTargetDataModel<v2.extdeps.cpp_abi.CppDataModelFamilyILP64, v2.extdeps.cpp_abi.CppILP64IntegerWidths, plain_char_signedness, wchar_t_signedness>

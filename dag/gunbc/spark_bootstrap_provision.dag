@@ -317,7 +317,7 @@ fn spark_cloud_access_request(
   grant: gunbc.spark_bootstrap_provision.SparkCloudGrant,
   cell: gunbc.spark_bootstrap_provision.AccessGrantCell,
   evidence: gunbc.spark_bootstrap_provision.WifCredentialIssuanceStanding
-) -> std.access.AccessRequest<gunbc.spark_bootstrap_provision.FleetCloudPrincipalKey, EffectAuthorizationAction<gunbc.spark_bootstrap_provision.SecretManagerOperation>, NonEmptyStr, gunbc.spark_bootstrap_provision.SparkCloudContext, gunbc.spark_bootstrap_provision.WifCredentialIssuanceStanding> {
+) -> std.access.AccessRequest<gunbc.spark_bootstrap_provision.FleetCloudPrincipalKey, EffectAuthorizationAction<gunbc.spark_bootstrap_provision.SecretManagerOperation>, std.types.NonEmptyStr, gunbc.spark_bootstrap_provision.SparkCloudContext, gunbc.spark_bootstrap_provision.WifCredentialIssuanceStanding> {
   effect_access_request(request: spark_cloud_request(grant: grant, cell: cell, evidence: evidence))
 }
 

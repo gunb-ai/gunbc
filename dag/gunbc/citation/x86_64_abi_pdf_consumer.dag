@@ -29,7 +29,7 @@ type X86_64AbiPdfPinConstruction = X86_64AbiPdfPinConstructed(Pin<std.citation.C
 
 type X86_64AbiCitationFactConstruction = X86_64AbiCitationFactConstructed(RecordedFact<CitationRecordedFact<std.citation.CitationSelector>>) | X86_64AbiCitationFactRefused { pin: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfPinConstruction, selector: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfCitationSelectorConstruction }
 
-type X86_64AbiEvidenceLinkConstruction = X86_64AbiEvidenceLinkConstructed(EvidenceLink<CitationRecordedFact<CitationSelector>, ClaimId, ExternalAuthority, NonEmptyStr, ReadBackProbe>) | X86_64AbiEvidenceLinkRefused { fact: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiCitationFactConstruction }
+type X86_64AbiEvidenceLinkConstruction = X86_64AbiEvidenceLinkConstructed(EvidenceLink<CitationRecordedFact<CitationSelector>, ClaimId, ExternalAuthority, std.types.NonEmptyStr, ReadBackProbe>) | X86_64AbiEvidenceLinkRefused { fact: gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiCitationFactConstruction }
 
 fn x86_64_abi_pdf_validated_digest_from_wet_receipt(hex: String) -> gunbc.citation.x86_64_abi_pdf_consumer.X86_64AbiPdfValidatedDigestConstruction {
   match sha256_hex_digest(hex: hex) {

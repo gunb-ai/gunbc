@@ -1,20 +1,20 @@
 module gunbc.srv3_os_install_actuate
 
 
-data gunbc_srv3_os_install_actuate_scope_disposition: Disposition = std.disposition.Terminal {
+data gunbc_srv3_os_install_actuate_scope_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "prefix:os-install-actuated runnable prep — ISO fetch, derived actuator host, three-step actuator plan (nbd_proxy_serve, boot-once-cd, force-restart) as gunbc run entrypoints. Scope boundary: gunbc.srv3_os_install_actuate_scope (actuator prep + runbook ONLY; seed gap fail-closed; credential debt scaffold). Live mount+boot+install operator-gated; nbd_proxy_serve is a held session via host_effect_apply (systemd transient units)."
 }
 
-data srv3_os_install_actuate_shell_runner_scaffold: Disposition = Scaffold {
+data srv3_os_install_actuate_shell_runner_scaffold: std.disposition.Disposition = Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.live_deploy.emit",
     decl_name: "live_deploy_emit_shell_dissolution_trigger",
     field: WholeDeclaration,
   }
 }
 
-data srv3_os_install_actuate_operator_runbook: NonEmptyStr = "docs/runbooks/srv3-os-install-actuate.md"
+data srv3_os_install_actuate_operator_runbook: std.types.NonEmptyStr = "docs/runbooks/srv3-os-install-actuate.md"
 
 fn srv3_bmcweb_login_body_content() -> String {
   let intent = srv3_os_install_actuate_credential_intent()
@@ -24,7 +24,7 @@ fn srv3_bmcweb_login_body_content() -> String {
   )
 }
 
-fn srv3_bmcweb_login_body_content_for_resolution(resolution: BmcCredentialResolution, password: String) -> String {
+fn srv3_bmcweb_login_body_content_for_resolution(resolution: gunbc.srv3_bmc_credential_resolve.BmcCredentialResolution, password: String) -> String {
   match resolution {
     UseFactoryCredential { login: l } =>
       bmcweb_login_body_content(username: l.username, password: password)
@@ -39,7 +39,7 @@ fn srv3_bmcweb_login_body_content_for_resolution(resolution: BmcCredentialResolu
   }
 }
 
-func srv3_bmcweb_session_login() -> ProcessExit
+func srv3_bmcweb_session_login() -> std.process.ProcessExit
   uses net: std.resources.Network
 {
   let resolution = observe_and_resolve_srv3_bmc_credential()
@@ -57,7 +57,7 @@ func srv3_bmcweb_session_login() -> ProcessExit
 // `bmcweb_token_extraction_verdict` now refuses an absent, null or blank token BEFORE
 // Filesystem.Write, so a converged extract cannot have produced an empty file and a second
 // reading of that file has nothing left to discover.
-func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> ProcessExit
+func srv3_bmcweb_session_login_resolved(resolution: gunbc.srv3_bmc_credential_resolve.BmcCredentialResolution) -> std.process.ProcessExit
   uses net: std.resources.Network
 {
   let materialization = materialize_bmc_login_password(resolution: resolution)
@@ -107,7 +107,7 @@ func srv3_bmcweb_session_login_resolved(resolution: BmcCredentialResolution) -> 
   ExitSuccess
 }
 
-func srv3_nbd_proxy_serve() -> ProcessExit
+func srv3_nbd_proxy_serve() -> std.process.ProcessExit
   uses net: std.resources.Network
 {
   srv3_reconciliation_to_process_exit(

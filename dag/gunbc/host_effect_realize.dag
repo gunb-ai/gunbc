@@ -8,7 +8,7 @@ type ResolvedHostEffectCell =
     ShellOnHost { node: gunbc.fleet_intent.ComputeHost, script: gunbc.retained_shell_script.RetainedShellScript }
   | RedfishOnBmc { node: gunbc.fleet_intent.ComputeHost, action: extdeps.bmc.types.RedfishSystemAction }
   | ConvergeOnHost { node: gunbc.fleet_intent.ComputeHost, host_converge: gunbc.host_converge.HostConverge }
-  | TypedReconcileOnHost { node: gunbc.fleet_intent.ComputeHost, kind: TypedReconcileKind }
+  | TypedReconcileOnHost { node: gunbc.fleet_intent.ComputeHost, kind: gunbc.host_effect_realize.TypedReconcileKind }
   | OsInstallActuatorToolchainOnHost { node: gunbc.fleet_intent.ComputeHost }
   | ProvisionBuildCacheOnHost { node: gunbc.fleet_intent.ComputeHost, catalog_id: String }
   | ProvisionCodexRuntimeOnHost { node: gunbc.fleet_intent.ComputeHost }
@@ -69,7 +69,7 @@ fn converge_plan_identity_mismatch_reason(node: gunbc.fleet_intent.ComputeHost, 
   )
 }
 
-fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: gunbc.host_effect.HostEffect) -> ResolvedHostEffectCell {
+fn resolve_host_effect_cell(target: gunbc.host_effect.NodeControlPlane, effect: gunbc.host_effect.HostEffect) -> gunbc.host_effect_realize.ResolvedHostEffectCell {
   match target {
     HostOs { node: n } =>
       match effect {
@@ -269,7 +269,7 @@ type ShellExecObserved {
   stderr: String
 }
 
-fn shell_exec_failure_reason_headered(observed: ShellExecObserved, header: String) -> String {
+fn shell_exec_failure_reason_headered(observed: gunbc.host_effect_realize.ShellExecObserved, header: String) -> String {
   if observed.stdout == "" && observed.stderr == "" {
     header
   } else {
@@ -280,7 +280,7 @@ fn shell_exec_failure_reason_headered(observed: ShellExecObserved, header: Strin
   }
 }
 
-fn shell_exec_failure_reason(observed: ShellExecObserved) -> String {
+fn shell_exec_failure_reason(observed: gunbc.host_effect_realize.ShellExecObserved) -> String {
   shell_exec_failure_reason_headered(
     observed: observed,
     header: concat(
@@ -291,7 +291,7 @@ fn shell_exec_failure_reason(observed: ShellExecObserved) -> String {
 }
 
 fn srv3_shell_reconcile(
-  observed: ShellExecObserved,
+  observed: gunbc.host_effect_realize.ShellExecObserved,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   let grounding = if observed.success {
@@ -324,7 +324,7 @@ fn realize_receipt_emit_on_host(
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   srv3_shell_reconcile(
-    observed: ShellExecObserved {
+    observed: gunbc.host_effect_realize.ShellExecObserved {
       exit_code: 0,
       success: true,
       stdout: host_effect_join_lines(lines: lines),
@@ -350,7 +350,7 @@ fn realize_boot_once_read_back_sleep_body(
     Absent => false
   }
   srv3_shell_reconcile(
-    observed: ShellExecObserved {
+    observed: gunbc.host_effect_realize.ShellExecObserved {
       exit_code: if success { 0 } else { 1 },
       success: success,
       stdout: "",
@@ -412,7 +412,7 @@ fn realize_seeded_install_media_toolchain_ensure_body(
   let outcome = if was_present { "Present" } else { "Installed" }
   let stdout = srv3_seeded_install_media_toolchain_receipt_line(outcome: outcome as std.types.NonEmptyStr)
   srv3_shell_reconcile(
-    observed: ShellExecObserved {
+    observed: gunbc.host_effect_realize.ShellExecObserved {
       exit_code: if ensure_ok { 0 } else { 1 },
       success: ensure_ok,
       stdout: stdout,
@@ -465,7 +465,7 @@ fn realize_bmcweb_session_login_body(
     Absent => false
   }
   srv3_shell_reconcile(
-    observed: ShellExecObserved {
+    observed: gunbc.host_effect_realize.ShellExecObserved {
       exit_code: if success { 0 } else { 1 },
       success: success,
       stdout: "",
@@ -520,14 +520,14 @@ fn realize_bmcweb_session_login_on_host(
 // `srv3_bmcweb_login` as a shell.Test.IsNonEmpty on the file this fold had just produced,
 // and is deleted with this climb per DESIGN §4b dissolution-on-climb).
 type BmcwebTokenExtraction =
-  | BmcwebTokenExtracted { token: NonEmptyStr }
+  | BmcwebTokenExtracted { token: std.types.NonEmptyStr }
   | BmcwebTokenExtractRefused { reason: String }
 
 fn bmcweb_token_extract_jq_args(response_path: String) -> List<String> {
   ["-e", "-r", ".token", response_path]
 }
 
-fn bmcweb_token_extraction_verdict(jq_success: Bool, jq_stdout: String) -> BmcwebTokenExtraction {
+fn bmcweb_token_extraction_verdict(jq_success: Bool, jq_stdout: String) -> gunbc.host_effect_realize.BmcwebTokenExtraction {
   if jq_success {
     let token = trim(s: jq_stdout)
     if token == "" {
@@ -558,7 +558,7 @@ fn realize_bmcweb_token_extract_body(
         BmcwebTokenExtracted { token: token } => {
           let write = Filesystem.Write(path: srv3_bmcweb_token_path, content: token as String)
           srv3_shell_reconcile(
-            observed: ShellExecObserved {
+            observed: gunbc.host_effect_realize.ShellExecObserved {
               exit_code: if write.success { 0 } else { 1 },
               success: write.success,
               stdout: "",
@@ -573,7 +573,7 @@ fn realize_bmcweb_token_extract_body(
         }
         BmcwebTokenExtractRefused { reason: why } =>
           srv3_shell_reconcile(
-            observed: ShellExecObserved {
+            observed: gunbc.host_effect_realize.ShellExecObserved {
               exit_code: 1,
               success: false,
               stdout: "",
@@ -585,7 +585,7 @@ fn realize_bmcweb_token_extract_body(
     }
     Absent =>
       srv3_shell_reconcile(
-        observed: ShellExecObserved {
+        observed: gunbc.host_effect_realize.ShellExecObserved {
           exit_code: 1,
           success: false,
           stdout: "",
@@ -624,7 +624,7 @@ fn realize_bmcweb_token_extract_on_host(
 data toolchain_ensure_reconcile_located_note: String = "The refusal names the effect that produced it. This fold was written for OsInstallActuatorToolchainEnsure and hardcoded that effect in its failure header; when ProvisionBuildCache started reusing it (P1b:build-cache-provision), every build-cache refusal reported itself as an OS-install-actuator failure — a located diagnostic pointing at the wrong location, which is the §5 'typed, located' bar failing at the second half. The header is now a parameter supplied by each realize arm."
 
 fn toolchain_ensure_reconcile(
-  observed: ShellExecObserved,
+  observed: gunbc.host_effect_realize.ShellExecObserved,
   intent: gunbc.host_effect.HostEffectIntent,
   effect_label: String,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
@@ -653,7 +653,7 @@ fn toolchain_ensure_reconcile(
 }
 
 fn srv3_toolchain_ensure_reconcile(
-  observed: ShellExecObserved,
+  observed: gunbc.host_effect_realize.ShellExecObserved,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   toolchain_ensure_reconcile(
@@ -664,7 +664,7 @@ fn srv3_toolchain_ensure_reconcile(
 }
 
 fn provision_build_cache_reconcile(
-  observed: ShellExecObserved,
+  observed: gunbc.host_effect_realize.ShellExecObserved,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   toolchain_ensure_reconcile(
@@ -675,7 +675,7 @@ fn provision_build_cache_reconcile(
 }
 
 fn provision_codex_runtime_reconcile(
-  observed: ShellExecObserved,
+  observed: gunbc.host_effect_realize.ShellExecObserved,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match provision_codex_runtime_target_host(effect_intent: intent) {
@@ -1274,7 +1274,7 @@ fn provision_build_cache_arch_unknown_intent_fixture() -> gunbc.host_effect.Host
 }
 
 fn provision_build_cache_reconcile_shell_observed(
-  observed: ShellExecObserved,
+  observed: gunbc.host_effect_realize.ShellExecObserved,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   provision_build_cache_reconcile(
     observed: observed,
@@ -1282,7 +1282,7 @@ fn provision_build_cache_reconcile_shell_observed(
   )
 }
 
-fn run_shell_transport(script: gunbc.retained_shell_script.RetainedShellScript, transport: gunbc.host_effect.HostEffectTransport) -> ShellExecObserved {
+fn run_shell_transport(script: gunbc.retained_shell_script.RetainedShellScript, transport: gunbc.host_effect.HostEffectTransport) -> gunbc.host_effect_realize.ShellExecObserved {
   match transport {
     LocalShell => {
       let result = shell.Exec.Run(script: retained_shell_script_to_transport(rss: script), expect: OutcomeIsData)
@@ -1445,7 +1445,7 @@ fn realize_install_media_remaster_in_process(intent: gunbc.host_effect.HostEffec
   }
 }
 
-fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, transport: gunbc.host_effect.HostEffectTransport, intent: gunbc.host_effect.HostEffectIntent) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
+fn realize_srv3_typed_reconcile(kind: gunbc.host_effect_realize.TypedReconcileKind, transport: gunbc.host_effect.HostEffectTransport, intent: gunbc.host_effect.HostEffectIntent) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   match transport {
     LocalShell =>
       match kind {
@@ -1471,7 +1471,7 @@ fn realize_srv3_typed_reconcile(kind: TypedReconcileKind, transport: gunbc.host_
 }
 
 fn reconcile_shell_exec_observed(
-  observed: ShellExecObserved,
+  observed: gunbc.host_effect_realize.ShellExecObserved,
   intent: gunbc.host_effect.HostEffectIntent,
 ) -> std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence> {
   let grounding = if observed.success {
@@ -1493,7 +1493,7 @@ fn reconcile_ssh_argv_exec_outcome(
   match outcome {
     TypedArgvExecConverged { result: r } =>
       reconcile_shell_exec_observed(
-        observed: ShellExecObserved {
+        observed: gunbc.host_effect_realize.ShellExecObserved {
           exit_code: r.exit_code,
           success: r.success,
           stdout: r.stdout,
@@ -1538,7 +1538,7 @@ fn realize_effective_principal_read_on_host(
     LocalShell => {
       let result = effective_posix_principal_read(read: read)
       reconcile_shell_exec_observed(
-        observed: ShellExecObserved {
+        observed: gunbc.host_effect_realize.ShellExecObserved {
           exit_code: result.exit_code,
           success: result.success,
           stdout: result.stdout,
@@ -1575,7 +1575,7 @@ fn realize_sudo_nopasswd_execute_probe_on_host(
     LocalShell => {
       let result = sudo.NopasswdExecuteProbe.Check(probe: probe)
       reconcile_shell_exec_observed(
-        observed: ShellExecObserved {
+        observed: gunbc.host_effect_realize.ShellExecObserved {
           exit_code: if result.success { 0 } else { 1 },
           success: result.success,
           stdout: "",
@@ -1608,7 +1608,7 @@ fn sudo_nopasswd_grant_list_observed(
   query_success: Bool,
   stdout: String,
   stderr: String,
-) -> ShellExecObserved {
+) -> gunbc.host_effect_realize.ShellExecObserved {
   let admitted = query_success
     && sudo_nopasswd_grant_list_admits_probe(listing: stdout, probe: probe)
   let observed_exit_code = if admitted {
@@ -1708,7 +1708,7 @@ fn realize_set_hostname_cas_on_host(
   ) {
     HostnameSetCasApplied =>
       reconcile_shell_exec_observed(
-        observed: ShellExecObserved {
+        observed: gunbc.host_effect_realize.ShellExecObserved {
           exit_code: 0,
           success: true,
           stdout: desired as String,
@@ -1744,12 +1744,12 @@ fn realize_hostname_read_on_host(
   match hostname_short_read(transport: transport) {
     HostnameShortCaptured { value: name } =>
       reconcile_shell_exec_observed(
-        observed: ShellExecObserved { exit_code: 0, success: true, stdout: name, stderr: "" },
+        observed: gunbc.host_effect_realize.ShellExecObserved { exit_code: 0, success: true, stdout: name, stderr: "" },
         intent: intent,
       )
     HostnameShortCaptureRefused { reason: why } =>
       reconcile_shell_exec_observed(
-        observed: ShellExecObserved {
+        observed: gunbc.host_effect_realize.ShellExecObserved {
           exit_code: 1,
           success: false,
           stdout: "",
@@ -1785,7 +1785,7 @@ fn realize_codex_supervised_worker_turn_on_host(
         exit_code: code,
       } =>
         reconcile_shell_exec_observed(
-          observed: ShellExecObserved {
+          observed: gunbc.host_effect_realize.ShellExecObserved {
             exit_code: code,
             success: code == 0,
             stdout: out,
@@ -1811,7 +1811,7 @@ fn realize_nbd_proxy_session_on_host(
       reconcile_grounded(
         apply_effect: intent_record,
         show_read: std.realization_reconcile.ReadObserved {
-          value: ShellExecObserved {
+          value: gunbc.host_effect_realize.ShellExecObserved {
             exit_code: 0,
             success: true,
             stdout: out,
@@ -2185,14 +2185,14 @@ fn host_effect_apply_gated(
 
 type ConvergeDirective = Settled | ReDrive | Refused { reason: String }
 
-fn not_converged_directive(drive: gunbc.host_effect.Drive) -> ConvergeDirective {
+fn not_converged_directive(drive: gunbc.host_effect.Drive) -> gunbc.host_effect_realize.ConvergeDirective {
   match drive {
     OneShot => Settled
     ConvergeLoop => ReDrive
   }
 }
 
-fn host_effect_drive_directive(r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>) -> ConvergeDirective {
+fn host_effect_drive_directive(r: std.realization_reconcile.Reconciliation<gunbc.host_effect.HostEffectIntent, gunbc.host_effect.HostEffectEvidence>) -> gunbc.host_effect_realize.ConvergeDirective {
   match r {
     Converged { evidence: _, applied: _ } => Settled
     NotConverged { reason: why, applied: intent } =>
