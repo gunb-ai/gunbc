@@ -2314,12 +2314,14 @@ fn coproduct_arm_label(value: &Value, ctx: &InterpContext) -> Option<String> {
     }
 }
 
-// HAND-RUST GATE explicit deferral: prepared-subject scope still refuses interpreted
-// `match` on `BoardArticleRefusal` when the fold lives in `admission.dag`. Route calls
-// to `board_article_refusal_cause_name` through the structural label the payload already
-// carries (the `.dag` authority is the identity fold variant-name → same string) until
-// substrate cross-module variant-pattern matching is sound — same dissolve-on as
-// `admission.dag` `board_article_refusal_cause_name`.
+// HAND-RUST GATE explicit deferral (review 53386): prepared-subject scope still refuses
+// interpreted `match` on `BoardArticleRefusal` when the fold lives in `admission.dag`.
+// Route calls to `board_article_refusal_cause_name` through the structural label the
+// payload already carries (the `.dag` authority is the identity fold variant-name → same
+// string) until substrate cross-module variant-pattern matching is sound — same dissolve-on
+// as `admission.dag` `board_article_refusal_cause_name`. Operator receipt: review 53386
+// APPROVE with this intercept flagged; terminal fix is substrate root-cause, not growth
+// of per-fn native bypasses.
 fn try_board_article_refusal_cause_name_native(
     ctx: &InterpContext,
     fn_node: &Rc<Node>,
