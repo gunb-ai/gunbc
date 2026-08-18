@@ -13282,13 +13282,59 @@ pub fn eval_profile_reset() {
 /// bypassing `free_monoid_to_vec`'s O(n) materialization. `parse_current_position`
 /// (v2 02_parse.dag) calls `length` on the full token stream every parse
 /// attempt; without this fast path that is an O(n) clone per attempt, an
-/// O(n^2) tax the compiled (Rust-emitted) realization never pays.
+/// O(n^2) tax the compiled (Rust-emitted) realization never pays. Method-call
+/// `.length()` on native `Value::Str` routes through `string_length_ascii_aware`
+/// so it does not flatten strings into per-codepoint `Value`s (LIST-CARRIER-0 /
+/// materialize OOM). Free-call `length`/`string_length` already avoided
+/// `free_monoid_to_vec` on `Str` via `chars().count()`; this arm closes the
+/// method-call gap only.
 pub(crate) fn native_len(val: &Value) -> Option<i64> {
     match val {
         Value::List(items) => Some(items.len() as i64),
         Value::Map(m) => Some(m.len() as i64),
         Value::Set(s) => Some(s.len() as i64),
+        // Method-call `.length()` on a native `Value::Str` must not fall through to
+        // `free_monoid_to_vec` (which materializes one `Value` per codepoint). JSON
+        // parsing alone calls `.length()` O(n) times on the input buffer; without this
+        // arm that is O(n^2) allocations and pins multi-gigabyte RSS on ~500KB inputs
+        // (srv1 materialize_codex_runtime_bundle bisect, 2026-08-14).
+        //
+        // LIMIT: non-ASCII .length()/.count() remains O(n) per call via the chars() walk.
+        // REASON: the ASCII fast path covers the dominant repeated-query case, and genuinely
+        // non-ASCII strings in this corpus are constructed-then-queried-once-or-never, so
+        // precomputing a codepoint count at construction would not amortize. Flag the
+        // ASCII-in-practice half explicitly AS AN ASSUMPTION about workloads, not a modeled
+        // fact — §6 is clear that "n is small here" is not time-stable.
+        // NEXT-RUNG TRIGGER: a workload that repeatedly length-queries the same non-ASCII
+        // string. If that appears, the amortization argument inverts and a carried count
+        // becomes correct.
+        Value::Str(s) => Some(v1_rt::string_length_ascii_aware(&s, s.is_ascii())),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod native_len_tests {
+    use super::*;
+
+    #[test]
+    fn native_len_str_avoids_free_monoid_materialization() {
+        let big = str_value(&"a".repeat(50_000));
+        let (calls_before, items_before) = flatten_counters_snapshot();
+        let n = native_len(&big).expect("native Str length");
+        assert_eq!(n, 50_000);
+        let (calls_after, items_after) = flatten_counters_snapshot();
+        assert_eq!(
+            (calls_after, items_after),
+            (calls_before, items_before),
+            "native_len on Value::Str must not call free_monoid_to_vec"
+        );
+    }
+
+    #[test]
+    fn native_len_str_counts_unicode_scalar_length() {
+        let s = str_value("é"); // one scalar, two UTF-8 bytes
+        assert_eq!(native_len(&s), Some(1));
     }
 }
 
