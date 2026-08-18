@@ -525,7 +525,7 @@ fn mark_excluded(frontier: v2.lens.affected_set.ReExecFrontier, key: v2.lens.aff
     FailClosed { reason: e } => FailClosed { reason: e }
     ChangedSubgraphFrontier { boundary_exclusions: boundary_exclusions, decisions: decisions } =>
 
-      match map_get(decisions, key) {
+      match v2.std.collection.map_get(decisions, key) {
         Accepted { value: opt, diagnostics: _ } => match opt {
           Present { value: decision } =>
             match decision {

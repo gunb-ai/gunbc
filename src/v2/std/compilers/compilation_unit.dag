@@ -112,7 +112,7 @@ fn module_unit_id_outcome(
   assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>,
   module: v2.std.compilers.compilation_unit.ModuleId
 ) -> v2.std.diagnostic.Outcome<Optional<v2.std.compilers.compilation_unit.CompilationUnitId>> {
-  match map_get(assignment, module) {
+  match v2.std.collection.map_get(assignment, module) {
     Accepted { value: opt, diagnostics: _ } => outcome_accepted(value: opt)
     Rejected { diagnostics: d } => outcome_rejected(d: d.head)
   }
@@ -122,7 +122,7 @@ fn module_unit_id(
   assignment: Map<v2.std.compilers.compilation_unit.ModuleId, v2.std.compilers.compilation_unit.CompilationUnitId>,
   module: v2.std.compilers.compilation_unit.ModuleId
 ) -> v2.std.optional.Optional<v2.std.compilers.compilation_unit.CompilationUnitId> {
-  match map_get(assignment, module) {
+  match v2.std.collection.map_get(assignment, module) {
     Accepted { value: opt, diagnostics: _ } => opt
     Rejected { diagnostics: _ } => Absent
   }
@@ -219,7 +219,7 @@ fn module_export_declarations_outcome(
   module_dag: v2.std.compilers.compilation_unit.ModuleDag,
   module: v2.std.compilers.compilation_unit.ModuleId
 ) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.node.Node>> {
-  match map_get(module_dag.exports, module) {
+  match v2.std.collection.map_get(module_dag.exports, module) {
     Accepted { value: opt, diagnostics: _ } =>
       outcome_accepted(value: match opt {
         Present { value: nodes } => nodes
@@ -233,7 +233,7 @@ fn module_type_definition_rows_outcome(
   module_dag: v2.std.compilers.compilation_unit.ModuleDag,
   module: v2.std.compilers.compilation_unit.ModuleId
 ) -> v2.std.diagnostic.Outcome<std.types.List<v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow>> {
-  match map_get(module_dag.type_definitions, module) {
+  match v2.std.collection.map_get(module_dag.type_definitions, module) {
     Accepted { value: opt, diagnostics: _ } =>
       outcome_accepted(value: match opt {
         Present { value: rows } => rows

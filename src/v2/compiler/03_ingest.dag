@@ -4,7 +4,7 @@ module v2.compiler.ingest
 data ingest_module_note: String = "Gate-A flip wave lane: v2.compiler.ingest is the parse-tree-to-target bridge (neutralize → infer → emit over CoreNode). Curated seed-linked behavioral receipt compares this module-authority constant until full ingest-tree oracle greens under std_dup-resolved cargo."
 
 fn parse_atom_frontier_class(atom_identity: v2.std.node.Symbol, binding_to_class: Map<v2.std.node.Symbol, v2.std.node.Symbol>) -> v2.std.node.Symbol {
-  match map_get(binding_to_class, atom_identity) {
+  match v2.std.collection.map_get(binding_to_class, atom_identity) {
     Accepted { value: opt, diagnostics: _ } =>
       match opt {
         Present { value: token_class } => token_class
