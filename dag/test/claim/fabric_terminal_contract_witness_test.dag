@@ -1,7 +1,7 @@
 module test.claim.fabric_terminal_contract_witness
 
 import std.types { NonEmptyStr, String, Bool, Timestamp, Int }
-import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count, hardware_thread_count, second }
+import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_count, hardware_thread_count, second, MoneyRate }
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.currency { CurrencyCode, Usd }
 import product.compute_fabric { Shape, HardRequirements }
@@ -15,7 +15,7 @@ import product.fabric.demand {
   demand_reservation_price, demand_maximum_buy_order,
 }
 import product.fabric.supply {
-  Offer, MonetaryQuote, QuoteBasis, PerSecondOfExecution, OfferEvidence,
+  Offer, OfferQuote, QuotedPerSecond, offer_quote_amount, offer_quote_currency, OfferEvidence,
   ObservedSupply, QuotedSupply,
 }
 import product.fabric.execution {
@@ -154,7 +154,7 @@ data owned_offer: Offer<NonEmptyStr> = Offer {
   trust_domain: "fleet-owned",
   quantity_bound: 1,
   ready_at: "2026-08-18T00:00:00Z",
-  quote: MonetaryQuote { currency: Usd, amount: money_amount_micro(0), basis: PerSecondOfExecution },
+  quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(0), currency: Usd }),
   evidence: ObservedSupply { observed_at: "2026-08-18T00:00:00Z", receipt: "obs-srv3-1" },
 }
 
@@ -166,7 +166,7 @@ data rented_offer: Offer<NonEmptyStr> = Offer {
   trust_domain: "rented",
   quantity_bound: 64,
   ready_at: "2026-08-18T00:04:00Z",
-  quote: MonetaryQuote { currency: Usd, amount: money_amount_micro(900), basis: PerSecondOfExecution },
+  quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(900), currency: Usd }),
   evidence: QuotedSupply {
     quoted_at: "2026-08-18T00:00:00Z",
     valid_until: "2026-08-18T01:00:00Z",
@@ -175,8 +175,9 @@ data rented_offer: Offer<NonEmptyStr> = Offer {
 }
 
 test fn owned_supply_states_zero_rather_than_absent() -> Bool {
-  money_amount_micro_count(m: owned_offer.quote.amount) == 0
-    && money_amount_micro_count(m: rented_offer.quote.amount) == 900
+  money_amount_micro_count(m: offer_quote_amount(q: owned_offer.quote)) == 0
+    && money_amount_micro_count(m: offer_quote_amount(q: rented_offer.quote)) == 900
+    && offer_quote_currency(q: owned_offer.quote) == Usd
     && owned_offer.quantity_bound == 1
     && rented_offer.quantity_bound == 64
 }

@@ -5,7 +5,7 @@ import std.measure { MoneyAmountMicro, Second }
 import std.content_hash { ContentHash }
 import product.fabric.identity { FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, GrantKey, OfferKey, ReceiptKey }
 import product.fabric.demand { ObservationReceiptRef }
-import product.fabric.supply { MonetaryQuote }
+import product.fabric.supply { OfferQuote }
 
 // An Attempt is one concrete try at a Work. Retries create attempts; they never
 // create new Work and never mutate a failed attempt back into a pending one.
@@ -76,7 +76,7 @@ type FabricGrantAction =
 
 type FabricGrantObject<P> {
   offer: FabricIdentity<P, OfferKey>
-  quote: MonetaryQuote
+  quote: OfferQuote
 }
 
 type FabricGrantContext<P> {

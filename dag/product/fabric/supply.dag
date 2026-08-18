@@ -1,7 +1,7 @@
 module product.fabric.supply
 
 import std.types { Timestamp, Int }
-import std.measure { MoneyAmountMicro }
+import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyPerHour, MoneyOnce, MoneyRate }
 import std.currency { CurrencyCode }
 import product.compute_fabric { Shape }
 import product.fabric.identity { FabricIdentity, OfferKey }
@@ -32,24 +32,47 @@ import product.fabric.work { CapabilityManifestRef, TrustDomainRef }
 // the second is not zero. Requiring the amount means a supplier whose price is
 // genuinely unknown has to say so in a way the selection fold can refuse,
 // instead of being silently treated as the cheapest offer available.
-type QuoteBasis
-  = PerSecondOfExecution
-  | PerHourOfExecution
-  | FlatPerGrant
+// A quote is std.measure's MoneyRate at the period the supplier bills in,
+// never a second money-per-period record. MoneyRate already carries the amount
+// and the currency and already makes the period a type argument, so a rate at
+// one period is not assignable where another is expected -- which is exactly
+// the property a price needs, and the reason an earlier version of this file
+// minting its own carrier was a fork rather than a specialization. That
+// version's stated defence was that folding the unit into the measure would
+// make two rates addable; MoneyRate does not fold it into the measure, so the
+// defence described a carrier that does not exist.
+//
+// The runtime coproduct is here for a reason the type parameter cannot serve:
+// selection ranks offers billed on different bases against each other, so they
+// must inhabit one roster, and Offer<P, PerHour> and Offer<P, PerSecond> would
+// be different types. Discriminating at the value level keeps the roster
+// homogeneous while keeping the periods unaddable, since reaching either
+// amount requires naming which period it is.
+//
+// Normalizing a supplier's published terms into one of these is the supplier
+// binding's work, and so are billing quantum, rounding, minimum charge, fixed
+// and setup charges, caps, and when billing starts and stops. The core
+// compares normalized quotes; it does not model any supplier's tariff.
 
-// The basis is carried because a rate without its unit is not a price. It is
-// deliberately NOT a scale on the money magnitude: an hourly rate and a per-
-// second rate are the same currency at different billing units, and folding
-// the unit into the measure would make two rates addable that must never be
-// added. Normalization from a supplier's published terms into this basis is
-// the supplier binding's work, and so are billing quantum, rounding, minimum
-// charge, fixed and setup charges, caps, and when billing starts and stops.
-// The core compares normalized amounts; it does not model any supplier's
-// tariff.
-type MonetaryQuote {
-  currency: CurrencyCode
-  amount: MoneyAmountMicro
-  basis: QuoteBasis
+type OfferQuote =
+  | QuotedPerSecond(MoneyPerSecond)
+  | QuotedPerHour(MoneyPerHour)
+  | QuotedFlatPerGrant(MoneyOnce)
+
+fn offer_quote_amount(q: OfferQuote) -> MoneyAmountMicro {
+  match q {
+    QuotedPerSecond(r) => r.amount
+    QuotedPerHour(r) => r.amount
+    QuotedFlatPerGrant(r) => r.amount
+  }
+}
+
+fn offer_quote_currency(q: OfferQuote) -> CurrencyCode {
+  match q {
+    QuotedPerSecond(r) => r.currency
+    QuotedPerHour(r) => r.currency
+    QuotedFlatPerGrant(r) => r.currency
+  }
 }
 
 type OfferEvidence
@@ -68,7 +91,7 @@ type Offer<P> {
   trust_domain: TrustDomainRef
   quantity_bound: Int
   ready_at: Timestamp
-  quote: MonetaryQuote
+  quote: OfferQuote
   evidence: OfferEvidence
 }
 
