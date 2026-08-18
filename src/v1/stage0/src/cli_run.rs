@@ -18039,6 +18039,13 @@ pub fn project_witness_cost_receipt(
                 // the authored `millisecond` constructor across the boundary rather than
                 // assembling a Value::Record here, so the constructor stays the single
                 // authority for the carrier's shape.
+                // THE ONE DELIBERATE DROP, and it is a prerequisite rather than a choice.
+                // `std.observation` `TimedOut` carries { basis, budget, elapsed } and has no
+                // completion field yet, so there is nowhere on the carrier to put it — and
+                // fabricating a value to reach a more specific arm is exactly what the floor
+                // component receipt note already forbids for the first pair. This is the last
+                // `completion: _` in the seed and it dissolves when that std arm gains
+                // `completion` beside `basis`; every other consumer now reads the axis.
                 ClaimOutcome::TimedOut {
                     elapsed_ms,
                     budget_ms,

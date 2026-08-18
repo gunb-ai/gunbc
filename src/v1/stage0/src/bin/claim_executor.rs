@@ -2306,6 +2306,11 @@ struct BudgetRefusal {
     elapsed_ms: u64,
     budget_ms: u64,
     kind: BudgetKind,
+    /// Carried, not dropped. Without it the erasure the classifier just stopped doing simply
+    /// moves one layer down: this carrier feeds the durable component and alert path, so a
+    /// completed-and-passed row would arrive there as an indistinguishable "budget refusal"
+    /// and its exact elapsed would be read as a ceiling.
+    completion: v1_compiler::cli_run::BudgetCompletion,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2677,6 +2682,7 @@ fn claim_result_for_outcome(
                 elapsed_ms,
                 budget_ms,
                 kind,
+                completion,
             }),
             host_dependency_refusal: None,
             resolve_realization,
@@ -4033,11 +4039,12 @@ fn discovery_budget_refusal(summary: &DiscoverySummary) -> Option<BudgetRefusal>
                 elapsed_ms,
                 budget_ms,
                 kind,
-                completion: _,
+                completion,
             } => Some(BudgetRefusal {
                 elapsed_ms,
                 budget_ms,
                 kind,
+                completion,
             }),
             _ => None,
         })
@@ -4109,14 +4116,23 @@ fn scoped_witness_summary_outcome(
                 elapsed_ms,
                 budget_ms,
                 kind,
-                completion: _,
+                completion,
             } => (
-                "budget-killed",
+                // "budget-killed" was unconditional and is only true of an interrupted row; a
+                // completed one passed and was reclassified on an exact cost. The tag is what
+                // downstream reads, so a wrong tag is worse than wrong prose.
+                match completion {
+                    v1_compiler::cli_run::BudgetCompletion::Interrupted => "budget-killed",
+                    v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget => {
+                        "budget-exceeded-completed"
+                    }
+                },
                 format!(
-                    "{} elapsed_ms={} budget_ms={}",
+                    "{} elapsed_ms={} budget_ms={} elapsed_is={}",
                     kind.label(),
                     elapsed_ms,
-                    budget_ms
+                    budget_ms,
+                    completion.elapsed_reading()
                 ),
             ),
         });
