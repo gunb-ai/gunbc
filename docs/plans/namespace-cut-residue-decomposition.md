@@ -625,3 +625,53 @@ Two aggregate signals have now been used as oracles and both were wrong: total c
 conflate causes. The only signal that has survived contact with the evidence is reading the
 SOURCE at a representative failing site and asking what the compiler actually refused there.
 An aggregate can rank work; it cannot classify it.
+
+## The authoritative denominator is 59,236, not 2,374 (2026-08-18)
+
+With the compiler-subject port merged, CI's `witnesses` job reaches the fold for the first
+time and refuses with typed located diagnostics:
+
+    required-floor: refused: subject=d8ed53fa02af6887 modules_resolved=3654 modules_excluded=1
+
+That is a milestone in itself -- the check is now reporting the migration's real state rather
+than integration skew -- and it supplies the authoritative diagnostic stream from the correct
+subject. The count is **59,236**:
+
+    51,672  unresolved type
+     3,463  no field
+     1,578  undefined variable
+     1,265  variant not found in type
+     1,073  function not found in scope
+       177  method cannot be resolved
+
+### Why this is 25x the regen figure, and neither number was wrong
+
+The two harnesses compile different source-root sets:
+
+    regen_stage0   src/v1 + dag      -> 2,374
+    required-floor dag  + src/v2     -> 59,236
+
+`src/v2` was never in regen's scope, so every measurement taken tonight -- including the
+1,792-edit Round 1 and the unmasking analysis -- covered `src/v1 + dag` only. Those findings
+stand for that population; they simply do not size the corpus. The migration is roughly an
+order of magnitude larger than the working figure.
+
+### Concentration, which makes it less alarming than the total
+
+    4,929  dag/extdeps/cpu/ampere_altra_package_table4_raw.dag
+    1,052  src/v2/extdeps/languages/rust_test_fixtures.dag
+      836  src/v2/workflow/floor_expected_red.dag
+      667  src/v2/test/fixture/frontier_probe_elision_boundary_overlay.dag
+      615  dag/gunbc/v1_complexity_decl_classification_roster.dag
+
+The head of the distribution is generated tables, fixtures and rosters -- files with thousands
+of near-identical rows, where one repeated type reference accounts for thousands of
+diagnostics. This is the root-versus-dependent distinction again at file grain: the honest
+unit is distinct (name, file) pairs, not rows.
+
+### Instrument note
+
+The floor prints `file:LINE:COL`; regen prints `(file:charStart-charEnd)`. The span-driven
+qualifier consumes character offsets, so consuming the floor's stream requires a line/column
+to offset conversion. Not difficult, but it is a real difference between the two streams and
+a silent mis-read would place every edit at the wrong position.
