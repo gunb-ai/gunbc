@@ -1959,6 +1959,47 @@ pub fn observe_declared_import_closure_symbol_binding(
     )
 }
 
+thread_local! {
+    static COMPILE_DAG_RUST_EMIT_CHECK_MEMO: std::cell::RefCell<
+        std::collections::HashMap<String, bool>,
+    > = std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+fn compile_dag_rust_emit_check_memo_key(
+    source: &str,
+    file_path: &str,
+    includes: &[String],
+    excludes: &[String],
+    inventory_digest: &str,
+) -> String {
+    use crate::v1_rt::{atom_identity_hash, hash_combine};
+    let mut h = atom_identity_hash(source.to_string());
+    h = hash_combine(h, atom_identity_hash(file_path.to_string()));
+    for s in includes {
+        h = hash_combine(h, atom_identity_hash(s.clone()));
+    }
+    for s in excludes {
+        h = hash_combine(h, atom_identity_hash(s.clone()));
+    }
+    h = hash_combine(h, atom_identity_hash(inventory_digest.to_string()));
+    h
+}
+
+fn floor_inventory_content_digest(inventory: &[PreparedSourceView]) -> String {
+    use crate::v1_rt::{atom_identity_hash, hash_combine};
+    let mut entries: Vec<(&str, &str)> = inventory
+        .iter()
+        .map(|e| (e.source.path.as_str(), e.source.content.as_str()))
+        .collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+    let mut h = atom_identity_hash("floor-prepared-inventory".to_string());
+    for (path, content) in entries {
+        h = hash_combine(h, atom_identity_hash(path.to_string()));
+        h = hash_combine(h, atom_identity_hash(content.to_string()));
+    }
+    h
+}
+
 /// Host realization backing the `compile_dag_rust_emit_check` builtin: compile an in-memory
 /// `.dag` program to Rust and check that the named emitted file contains every string in
 /// `includes` and none of `excludes`, with zero **compile-clean hard** diagnostics
@@ -1967,6 +2008,39 @@ pub fn observe_declared_import_closure_symbol_binding(
 /// check. A real, green-by-execution consumer of the v1 Rust emitter (DESIGN §5) — not a
 /// re-derivation of the emitter's own formula, so it can go red on a real emission regression.
 pub fn compile_dag_rust_emit_check(
+    source: &str,
+    file_path: &str,
+    includes: &[String],
+    excludes: &[String],
+) -> bool {
+    // Memo only under the floor guard, keyed on declared inputs AND the prepared
+    // inventory digest (`build_module_path_index_from_witness_roots` reads those bytes).
+    // Outside the guard there is no snapshot, so a hit would lie about disk.
+    let Some(inventory_digest) = floor_prepared_inventory_digest() else {
+        return compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+    };
+    let memo_key = compile_dag_rust_emit_check_memo_key(
+        source,
+        file_path,
+        includes,
+        excludes,
+        &inventory_digest,
+    );
+    if let Some(hit) = COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow().get(&memo_key).copied())
+    {
+        return hit;
+    }
+    if crate::v1_interpreter::eval_recompute_trace_enabled() {
+        eprintln!(
+            "compile_dag_rust_emit_check: memo miss key={memo_key} (content-addressed recompute)"
+        );
+    }
+    let verdict = compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+    COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict));
+    verdict
+}
+
+fn compile_dag_rust_emit_check_uncached(
     source: &str,
     file_path: &str,
     includes: &[String],
@@ -1984,14 +2058,15 @@ pub fn compile_dag_rust_emit_check(
         .filter(|d| compile_clean_diagnostic_is_hard(d))
         .count();
     if hard_diagnostics != 0 {
-        return false;
-    }
-    match result.files.iter().find(|f| f.path == file_path) {
-        Some(f) => {
-            includes.iter().all(|n| f.content.contains(n.as_str()))
-                && excludes.iter().all(|n| !f.content.contains(n.as_str()))
+        false
+    } else {
+        match result.files.iter().find(|f| f.path == file_path) {
+            Some(f) => {
+                includes.iter().all(|n| f.content.contains(n.as_str()))
+                    && excludes.iter().all(|n| !f.content.contains(n.as_str()))
+            }
+            None => false,
         }
-        None => false,
     }
 }
 
@@ -31286,7 +31361,104 @@ pub struct LanguagesDeclConsumerRecord {
     pub external_consumer_paths: Vec<String>,
 }
 
+fn languages_census_record_tokens(
+    rel: &str,
+    content: &str,
+    decl_name_set: &HashSet<String>,
+    by_decl: &mut HashMap<String, HashSet<String>>,
+) {
+    if rel == LANGUAGES_AUTHORITY_REL || languages_census_is_infrastructure_path(rel) {
+        return;
+    }
+    let tokens = languages_census_tokenize(content);
+    for decl_name in tokens.intersection(decl_name_set) {
+        by_decl
+            .get_mut(decl_name)
+            .expect("decl map key")
+            .insert(rel.to_string());
+    }
+}
+
+fn languages_decl_records_from_inventory(
+    inventory: &[PreparedSourceView],
+) -> Vec<LanguagesDeclConsumerRecord> {
+    let authority_content = inventory
+        .iter()
+        .find(|e| e.source.path.replace('\\', "/") == LANGUAGES_AUTHORITY_REL)
+        .map(|e| e.source.content.as_str())
+        .unwrap_or_else(|| {
+            panic!(
+                "languages_consumer_census: prepared inventory missing {LANGUAGES_AUTHORITY_REL}"
+            )
+        });
+    let decl_names = languages_census_extract_data_decl_names(authority_content);
+    let decl_name_set: HashSet<String> = decl_names.iter().cloned().collect();
+
+    let mut by_decl: HashMap<String, HashSet<String>> = decl_names
+        .iter()
+        .map(|name| (name.clone(), HashSet::new()))
+        .collect();
+
+    let mut seen: HashSet<String> = HashSet::new();
+    for entry in inventory {
+        let rel = entry.source.path.replace('\\', "/");
+        if !rel.starts_with("dag/") && !rel.starts_with("src/") {
+            continue;
+        }
+        seen.insert(rel.clone());
+        languages_census_record_tokens(&rel, &entry.source.content, &decl_name_set, &mut by_decl);
+    }
+
+    // Prepared inventory is dag + src/v2 `.dag` only. The disk census also tokenizes
+    // `src/v1` and every `.rs` file; those are the external consumers of `rust_spec`.
+    let ws = workspace_root();
+    let mut extra = Vec::new();
+    let src_root = ws.join("src");
+    if src_root.is_dir() {
+        languages_census_collect_source_files(&src_root, &mut extra);
+    }
+    for path in extra {
+        let rel = path
+            .strip_prefix(&ws)
+            .map(|p| p.to_string_lossy().replace('\\', "/"))
+            .unwrap_or_default();
+        if seen.contains(&rel) {
+            continue;
+        }
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        languages_census_record_tokens(&rel, &content, &decl_name_set, &mut by_decl);
+    }
+
+    let mut records = Vec::new();
+    for decl_name in decl_names {
+        let mut paths: Vec<String> = by_decl
+            .remove(&decl_name)
+            .expect("decl map key")
+            .into_iter()
+            .collect();
+        paths.sort();
+        records.push(LanguagesDeclConsumerRecord {
+            decl_name,
+            external_consumer_paths: paths,
+        });
+    }
+    records
+}
+
 fn languages_decl_records_inner() -> Vec<LanguagesDeclConsumerRecord> {
+    if floor_prepared_authority_active() {
+        return FLOOR_LANGUAGES_RECORDS.with(|cell| {
+            if cell.borrow().is_none() {
+                let inventory = floor_prepared_inventory_snapshot()
+                    .expect("floor languages census: authority active but inventory missing");
+                *cell.borrow_mut() = Some(languages_decl_records_from_inventory(&inventory));
+            }
+            cell.borrow().clone().expect("floor languages records")
+        });
+    }
     let ws = workspace_root();
     let authority = ws.join(LANGUAGES_AUTHORITY_REL);
     let authority_content = std::fs::read_to_string(&authority).unwrap_or_else(|e| {
@@ -31323,13 +31495,7 @@ fn languages_decl_records_inner() -> Vec<LanguagesDeclConsumerRecord> {
             Ok(c) => c,
             Err(_) => continue,
         };
-        let tokens = languages_census_tokenize(&content);
-        for decl_name in tokens.intersection(&decl_name_set) {
-            by_decl
-                .get_mut(decl_name)
-                .expect("decl map key")
-                .insert(rel.clone());
-        }
+        languages_census_record_tokens(&rel, &content, &decl_name_set, &mut by_decl);
     }
 
     let mut records = Vec::new();
@@ -37999,29 +38165,205 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
 /// callers. Direct value flow states it structurally: `prepare_repository_once` is called at
 /// one site, and every frame is derived from what it returned.
 ///
-/// THE INVENTORY IS RETAINED, and that is the second half of the deletion. Preparation
-/// already walked and read every admitted file; a later consumer that walks again to ask what
-/// modules exist, which files declare witnesses, or what a module's path is, is re-acquiring
-/// the repository to learn something the preparation already knows. The naming-hygiene walk
-/// cost ~6 minutes of every floor run for exactly that reason. Consumers fold over this
-/// inventory instead.
+/// WHAT PREPARATION LEARNED IS RETAINED; THE BYTES IT LEARNED IT FROM ARE NOT. Preparation
+/// already walked and read every admitted file, so a later consumer that walks again to ask
+/// which files declare witnesses is re-acquiring the repository to learn something preparation
+/// already knows. The naming-hygiene walk cost ~6 minutes of every floor run for exactly that
+/// reason, and retaining the answer is what removed it.
+///
+/// It retained the QUESTION as well, and that was a 31.8 MB duplicate of the whole corpus.
+/// The predecessor held every admitted file's `content` in a `Vec<InventoryEntry>` beside the
+/// `Rc<SourceFile>` list the graph already owns — `sf.content.clone()`, a deep copy of every
+/// byte, measured at 31,819,415 bytes across 3,655 modules. Its justification named three
+/// questions a consumer might ask (what modules exist, which files declare witnesses, what a
+/// module's path is). Only the middle one ever had a consumer: `content` was read in exactly
+/// two places, both inside one fold, and that fold had one caller.
+///
+/// So the fold now runs during preparation and the bytes are dropped. This is the construction
+/// move rather than the tidier one: a retained corpus copy is an invitation to answer the next
+/// question by re-scanning it, which is the second representation of facts the graph is already
+/// the authority for. With the bytes gone that answer is unavailable, so the next consumer has
+/// to ask the graph — and the duplicate cannot come back by someone reaching for what was
+/// conveniently in hand.
 pub struct PreparedRepository {
     pub graph: Rc<v1_compiler_compile::ResolvedGraph>,
     pub source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
     pub subject_digest: String,
     pub modules_resolved: usize,
     pub modules_excluded: usize,
-    pub inventory: Vec<InventoryEntry>,
+    /// The witness sites preparation found, already folded. NOT the corpus bytes.
+    pub witness_files: Vec<InventoryWitnessFile>,
 }
 
-/// One admitted source file, as preparation read it: its module path, its repository path,
-/// and the bytes. The module path is carried here rather than re-derived because the index
-/// that produced it is the same one preparation resolved from — re-deriving it later is the
-/// second representation of the path/module binding, and it is the representation that rots.
-pub struct InventoryEntry {
+/// Shared view of one admitted source. Holds the same `Rc<SourceFile>` preparation already
+/// has — path, module, and bytes — so floor host builtins can consume it without cloning a
+/// second corpus onto `PreparedRepository`.
+#[derive(Clone)]
+pub struct PreparedSourceView {
     pub module_path: String,
-    pub path: String,
-    pub content: String,
+    pub source: Rc<v1_compiler_compile::SourceFile>,
+}
+
+thread_local! {
+    static FLOOR_PREPARED_AUTHORITY: std::cell::RefCell<Option<FloorPreparedAuthority>> =
+        std::cell::RefCell::new(None);
+    static FLOOR_LANGUAGES_RECORDS: std::cell::RefCell<Option<Vec<LanguagesDeclConsumerRecord>>> =
+        std::cell::RefCell::new(None);
+}
+
+struct FloorPreparedAuthority {
+    inventory: Vec<PreparedSourceView>,
+    inventory_digest: String,
+}
+
+struct FloorPreparedAuthorityGuard;
+
+impl Drop for FloorPreparedAuthorityGuard {
+    fn drop(&mut self) {
+        clear_floor_prepared_authority();
+        COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().clear());
+    }
+}
+
+/// Install prepared source bytes. Only `register_floor_prepared_authority_guard` calls this so
+/// Drop always clears the thread-locals and compile memo.
+fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
+    crate::coproduct_reflection::register_floor_decl_parse_memo();
+    let inventory_digest = floor_inventory_content_digest(&inventory);
+    FLOOR_PREPARED_AUTHORITY.with(|cell| {
+        *cell.borrow_mut() = Some(FloorPreparedAuthority {
+            inventory,
+            inventory_digest,
+        });
+    });
+    FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
+    crate::v1_interpreter::clear_cross_claim_pure_memos();
+}
+
+pub fn clear_floor_prepared_authority() {
+    FLOOR_PREPARED_AUTHORITY.with(|cell| *cell.borrow_mut() = None);
+    FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
+    crate::coproduct_reflection::clear_floor_decl_parse_memo();
+    crate::v1_interpreter::clear_cross_claim_pure_memos();
+}
+
+/// Measurement harness (`floor_prepared_toll_receipt` bin): print reclaimed wall time per item.
+pub fn run_floor_prepared_toll_receipt() {
+    let source_roots = vec!["dag".to_string(), "src/v2".to_string()];
+    let exclusions = floor_prepared_subject_exclusions();
+    let index = build_module_index(&source_roots);
+    let mut inventory = Vec::with_capacity(index.len());
+    for (module_path, sf) in index.iter() {
+        let p = sf.path.replace('\\', "/");
+        if exclusions
+            .iter()
+            .any(|sub| p.contains(sub.as_str()) || module_path.contains(sub.as_str()))
+        {
+            continue;
+        }
+        inventory.push(PreparedSourceView {
+            module_path: module_path.clone(),
+            source: sf.clone(),
+        });
+    }
+    let ws = workspace_root();
+    let pool_roots: Vec<String> = witness_layer_roots()
+        .iter()
+        .map(|r| ws.join(r).to_string_lossy().into_owned())
+        .collect();
+
+    eprintln!(
+        "[floor-toll-receipt] inventory_modules={} pool_roots={}",
+        inventory.len(),
+        pool_roots.len()
+    );
+
+    let (disk_ms, inv_modules) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
+        &pool_roots,
+        crate::v1_compiler_infer_items::ItemKind::TypeItem,
+        None,
+    )
+    .expect("disk parse");
+    let (inventory_ms, _) = crate::coproduct_reflection::pool_decl_parse_wall_ms(
+        &pool_roots,
+        crate::v1_compiler_infer_items::ItemKind::TypeItem,
+        Some(&inventory),
+    )
+    .expect("inventory parse");
+    let item1_reclaimed = disk_ms.saturating_sub(inventory_ms);
+    eprintln!(
+        "[floor-toll-receipt] item1_pool_type_decl_parse disk_ms={} inventory_ms={} modules={} reclaimed_ms={}",
+        disk_ms, inventory_ms, inv_modules, item1_reclaimed
+    );
+
+    clear_floor_prepared_authority();
+    let languages_disk_ms = languages_decl_records_disk_scan_wall_ms();
+    let languages_inventory_ms = languages_decl_records_inventory_wall_ms(&inventory);
+    let item4_reclaimed = languages_disk_ms.saturating_sub(languages_inventory_ms);
+    eprintln!(
+        "[floor-toll-receipt] item4_languages_census disk_ms={} inventory_ms={} reclaimed_ms={}",
+        languages_disk_ms, languages_inventory_ms, item4_reclaimed
+    );
+
+    let _floor_prepared_guard = register_floor_prepared_authority_guard(inventory);
+
+    let sample_source = "module cuartifact_ok\n\nimport std.types { NonEmptyStr, String }\n\ntype UnitId = NonEmptyStr where brand(\"UnitId\")\n\ntype Unit {\n  id: UnitId\n}\n\nfn consistent() -> Unit {\n  Unit { id: \"unit-a\" as UnitId }\n}\n";
+    let file_path = "src/cuartifact_ok.rs";
+    let includes = vec!["fn consistent".to_string()];
+    let excludes: Vec<String> = vec![];
+    let cold_started = std::time::Instant::now();
+    let first = compile_dag_rust_emit_check(sample_source, file_path, &includes, &excludes);
+    let cold_ms = cold_started.elapsed().as_millis();
+    let warm_started = std::time::Instant::now();
+    let second = compile_dag_rust_emit_check(sample_source, file_path, &includes, &excludes);
+    let warm_ms = warm_started.elapsed().as_millis();
+    let item3_reclaimed = cold_ms.saturating_sub(warm_ms);
+    eprintln!(
+        "[floor-toll-receipt] item3_compile_dag_rust_emit_check cold_ms={} warm_ms={} first={first} second={second} reclaimed_ms={}",
+        cold_ms, warm_ms, item3_reclaimed
+    );
+
+    eprintln!(
+        "[floor-toll-receipt] summary item1_reclaimed_ms={} item4_reclaimed_ms={} item3_compile_reclaimed_ms={}",
+        item1_reclaimed, item4_reclaimed, item3_reclaimed
+    );
+}
+
+/// Wall time for the languages census over prepared inventory (floor path).
+pub fn languages_decl_records_inventory_wall_ms(inventory: &[PreparedSourceView]) -> u128 {
+    let started = std::time::Instant::now();
+    languages_decl_records_from_inventory(inventory);
+    started.elapsed().as_millis()
+}
+
+/// Wall time for the languages census filesystem scan (legacy path).
+pub fn languages_decl_records_disk_scan_wall_ms() -> u128 {
+    let started = std::time::Instant::now();
+    languages_decl_records_inner();
+    started.elapsed().as_millis()
+}
+
+pub fn floor_prepared_authority_active() -> bool {
+    FLOOR_PREPARED_AUTHORITY.with(|cell| cell.borrow().is_some())
+}
+
+pub fn floor_prepared_inventory_snapshot() -> Option<Vec<PreparedSourceView>> {
+    FLOOR_PREPARED_AUTHORITY.with(|cell| cell.borrow().as_ref().map(|auth| auth.inventory.clone()))
+}
+
+fn floor_prepared_inventory_digest() -> Option<String> {
+    FLOOR_PREPARED_AUTHORITY.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .map(|auth| auth.inventory_digest.clone())
+    })
+}
+
+fn register_floor_prepared_authority_guard(
+    inventory: Vec<PreparedSourceView>,
+) -> FloorPreparedAuthorityGuard {
+    register_floor_prepared_authority(inventory);
+    FloorPreparedAuthorityGuard
 }
 
 /// THE ONE PREPARATION. Reads the active sources once, resolves them once under the strict
@@ -38030,11 +38372,12 @@ pub struct InventoryEntry {
 pub fn prepare_repository_once(
     source_roots: &[String],
     exclude_substrings: &[String],
-) -> Result<PreparedRepository, String> {
+) -> Result<(PreparedRepository, Vec<PreparedSourceView>), String> {
     let index = build_module_index(source_roots);
     let total = index.len();
-    let mut inventory: Vec<InventoryEntry> = Vec::with_capacity(total);
+    let mut witness_files: Vec<InventoryWitnessFile> = Vec::new();
     let mut sources: Vec<Rc<v1_compiler_compile::SourceFile>> = Vec::with_capacity(total);
+    let mut inventory: Vec<PreparedSourceView> = Vec::with_capacity(total);
     for (module_path, sf) in index.iter() {
         let p = sf.path.replace('\\', "/");
         if exclude_substrings
@@ -38043,10 +38386,12 @@ pub fn prepare_repository_once(
         {
             continue;
         }
-        inventory.push(InventoryEntry {
+        if let Some(site) = witness_file_from_source(module_path, &sf.path, &sf.content) {
+            witness_files.push(site);
+        }
+        inventory.push(PreparedSourceView {
             module_path: module_path.clone(),
-            path: sf.path.clone(),
-            content: sf.content.clone(),
+            source: sf.clone(),
         });
         sources.push(sf.clone());
     }
@@ -38054,6 +38399,7 @@ pub fn prepare_repository_once(
         return Err("whole-tree corpus is empty (no .dag modules under source roots)".to_string());
     }
     let modules_excluded = total - sources.len();
+    witness_files.sort_by(|a, b| a.path.cmp(&b.path));
     let subject_digest = subject_digest_for_closure(&sources);
     // THE SUBJECT IS STATED BY THE REFUSAL ITSELF, not only by the success path.
     //
@@ -38070,14 +38416,17 @@ pub fn prepare_repository_once(
     );
     let resolved = resolved_graph_from_sources(sources, ResolveTypecheckGate::Strict);
     let (graph, source_indices) = resolved.map_err(|e| format!("{subject_statement}\n{e}"))?;
-    Ok(PreparedRepository {
-        graph,
-        source_indices,
-        subject_digest,
-        modules_resolved,
-        modules_excluded,
+    Ok((
+        PreparedRepository {
+            graph,
+            source_indices,
+            subject_digest,
+            modules_resolved,
+            modules_excluded,
+            witness_files,
+        },
         inventory,
-    })
+    ))
 }
 
 /// THE EXACT SCOPE ONE CLAIM EVALUATES IN — a projection of the one preparation, never a
@@ -38308,8 +38657,9 @@ pub fn claim_scope_for(
     //
     // That is the population the entry-major path bound against, computed by the compiler that
     // resolved it. An earlier revision re-derived it here by scanning `import` lines out of the
-    // retained inventory, which was a SECOND answer to a question the prepared artifacts had
-    // already answered — and one that could differ from the first, in the direction that
+    // corpus copy preparation then retained, which was a SECOND answer to a question the
+    // prepared artifacts had already answered — and one that could differ from the first, in
+    // the direction that
     // silently narrows: the old closure also admitted modules reached by bare reference, which
     // no scan of import lines can see.
     let entry_module = prepared
@@ -38535,8 +38885,9 @@ pub struct RequiredFloorOutcome {
     pub failures: Vec<String>,
 }
 
-/// A witness site as the inventory reports it — the file's path, its module, and the `test fn`
-/// names it declares. Produced by folding over bytes preparation already read.
+/// A witness site as preparation found it — the file's path, its module, and the `test fn`
+/// names it declares. Produced from bytes preparation had in hand, and retained INSTEAD of
+/// those bytes.
 pub struct InventoryWitnessFile {
     pub path: String,
     pub module_path: String,
@@ -38549,49 +38900,52 @@ pub struct InventoryWitnessFile {
     pub reads_live_tree: bool,
 }
 
-/// Fold the one inventory into witness sites. NO FILESYSTEM ACCESS: preparation read every
-/// admitted file, so asking which of them declare witnesses is a scan of bytes already in
-/// hand. The walk this replaces cost ~6 minutes of every floor run, acquired the repository a
-/// second time, and additionally built a whole-corpus module graph to answer a question about
-/// one file at a time.
+/// Decide whether ONE admitted file is a witness site, from the bytes preparation is holding
+/// at that moment. Called inside the preparation loop, so no corpus copy is retained to be
+/// scanned later and NO FILESYSTEM ACCESS occurs: the walk this replaces cost ~6 minutes of
+/// every floor run, acquired the repository a second time, and additionally built a
+/// whole-corpus module graph to answer a question about one file at a time.
+///
+/// `None` means the file declares no `test fn`, which is how a non-witness module is excluded
+/// — the predecessor expressed the same rule as `if !functions.is_empty()` after building the
+/// record.
 ///
 /// A `test fn` is recognised at column zero only, which is the same rule the parser applies to
 /// a top-level declaration: an indented occurrence is inside a body and is not a declaration.
-pub fn inventory_witness_files(prepared: &PreparedRepository) -> Vec<InventoryWitnessFile> {
-    let mut out: Vec<InventoryWitnessFile> = Vec::new();
-    for entry in &prepared.inventory {
-        let mut functions: Vec<String> = Vec::new();
-        // Same scan, same column-zero rule as `test fn` below: a module-scope `data` whose
-        // value is `ReadsLiveTree`. Indented occurrences are inside bodies and are not
-        // declarations.
-        let reads_live_tree = entry.content.lines().any(|line| {
-            line.starts_with("data ")
-                && line.contains("LiveTreeDisposition")
-                && line.contains("ReadsLiveTree")
-        });
-        for line in entry.content.lines() {
-            let Some(rest) = line.strip_prefix("test fn ") else {
-                continue;
-            };
-            let name: String = rest
-                .chars()
-                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
-                .collect();
-            if !name.is_empty() {
-                functions.push(name);
-            }
-        }
-        if !functions.is_empty() {
-            out.push(InventoryWitnessFile {
-                path: entry.path.replace('\\', "/"),
-                module_path: entry.module_path.clone(),
-                functions,
-                reads_live_tree,
-            });
+fn witness_file_from_source(
+    module_path: &str,
+    path: &str,
+    content: &str,
+) -> Option<InventoryWitnessFile> {
+    let mut functions: Vec<String> = Vec::new();
+    for line in content.lines() {
+        let Some(rest) = line.strip_prefix("test fn ") else {
+            continue;
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+            .collect();
+        if !name.is_empty() {
+            functions.push(name);
         }
     }
-    out.sort_by(|a, b| a.path.cmp(&b.path));
-    out
+    if functions.is_empty() {
+        return None;
+    }
+    // Same scan, same column-zero rule as `test fn` above: a module-scope `data` whose value is
+    // `ReadsLiveTree`. Indented occurrences are inside bodies and are not declarations.
+    let reads_live_tree = content.lines().any(|line| {
+        line.starts_with("data ")
+            && line.contains("LiveTreeDisposition")
+            && line.contains("ReadsLiveTree")
+    });
+    Some(InventoryWitnessFile {
+        path: path.replace('\\', "/"),
+        module_path: module_path.to_string(),
+        functions,
+        reads_live_tree,
+    })
 }
 
 fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
@@ -39050,7 +39404,9 @@ pub fn run_required_floor(
     // ── 1. read once, prepare once ────────────────────────────────────────────────────────
     set_phase(FloorPhase::Resolve, "required-floor preparation");
     let prepare_started = std::time::Instant::now();
-    let prepared = prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
+    let (prepared, prepared_sources) =
+        prepare_repository_once(source_roots, &floor_prepared_subject_exclusions())?;
+    let _floor_prepared_guard = register_floor_prepared_authority_guard(prepared_sources);
     let prepare_ms = prepare_started.elapsed().as_millis();
     eprintln!(
         "floor: active sources = {}",
@@ -39185,7 +39541,7 @@ pub fn run_required_floor(
     // seams below are what turn the gap into one located term.
     floor_seam("site-projection");
     let projection_started = std::time::Instant::now();
-    let files = inventory_witness_files(&prepared);
+    let files = &prepared.witness_files;
     // THE SITE CARRIES ITS MODULE. `InventoryWitnessFile` already holds `module_path`, read from
     // the same inventory entry in the same iteration, so the site is complete at construction.
     //
@@ -39218,7 +39574,7 @@ pub fn run_required_floor(
     // cannot distinguish them, cannot notice a row declined by neither, and cannot notice a row
     // counted by both.
     let mut site_facts: Vec<(String, String, bool)> = Vec::new();
-    for file in &files {
+    for file in files {
         for function in &file.functions {
             site_facts.push((
                 format!("{}.{}", file.module_path, function),
