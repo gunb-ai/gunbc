@@ -3,22 +3,22 @@ module v2.std.provenance
 
 type OriginEvent
   = FromSource { locus: v2.std.diagnostic.Locus }
-  | DerivedBy { producer: v2.std.node.Symbol, from: List<v2.std.node.OccurrenceId> }
-  | GeneratedBy { generator: v2.std.artifact.GeneratorId, from: List<v2.std.node.OccurrenceId> }
+  | DerivedBy { producer: v2.std.node.Symbol, from: List<std.occurrence_identity.OccurrenceId> }
+  | GeneratedBy { generator: v2.std.artifact.GeneratorId, from: List<std.occurrence_identity.OccurrenceId> }
 
 fn origin_event_from_source(locus: Locus) -> OriginEvent {
   FromSource { locus: locus }
 }
 
 type SpanIndex {
-  entries: Map<v2.std.node.OccurrenceId, OriginEvent>
+  entries: Map<std.occurrence_identity.OccurrenceId, OriginEvent>
 }
 
 fn span_index_empty() -> SpanIndex {
   SpanIndex { entries: empty_map() }
 }
 
-fn span_index_record(index: SpanIndex, id: v2.std.node.OccurrenceId, event: OriginEvent) -> SpanIndex {
+fn span_index_record(index: SpanIndex, id: std.occurrence_identity.OccurrenceId, event: OriginEvent) -> SpanIndex {
   SpanIndex {
     entries: map_insert(m: index.entries, key: id, value: event)
   }
@@ -32,7 +32,7 @@ fn span_index_occurrence_absent_diagnostic() -> Diagnostic {
   }
 }
 
-fn span_index_lookup(index: SpanIndex, id: v2.std.node.OccurrenceId) -> Witness<OriginEvent> {
+fn span_index_lookup(index: SpanIndex, id: std.occurrence_identity.OccurrenceId) -> Witness<OriginEvent> {
   witness_from_optional(opt: index.entries.lookup(id), absent: span_index_occurrence_absent_diagnostic())
 }
 
@@ -65,7 +65,7 @@ fn span_index_origin_chain_exhausted_diagnostic() -> Diagnostic {
 
 fn span_index_resolve_textual_locus_from_ids(
   index: SpanIndex,
-  ids: List<v2.std.node.OccurrenceId>
+  ids: List<std.occurrence_identity.OccurrenceId>
 ) -> Witness<Locus> {
   fold_list(
     xs: ids,
@@ -80,7 +80,7 @@ fn span_index_resolve_textual_locus_from_ids(
   )
 }
 
-fn span_index_resolve_textual_locus(index: SpanIndex, id: v2.std.node.OccurrenceId) -> Witness<Locus> {
+fn span_index_resolve_textual_locus(index: SpanIndex, id: std.occurrence_identity.OccurrenceId) -> Witness<Locus> {
   match span_index_lookup(index: index, id: id) {
     Holds { value: event } =>
       match event {
