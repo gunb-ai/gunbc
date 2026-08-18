@@ -5805,9 +5805,9 @@ fn rust_pure_memo_wrapper_body(
   let n0 = p0.name
   let n1 = p1.name
   let n2 = p2.name
-  let ty_key = emit_inferred(inferred: param_node_type_expr(n: p0), generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
-  let ty_env = emit_inferred(inferred: param_node_type_expr(n: p1), generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
-  let ty_val = emit_inferred(inferred: inferred, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
+  let ty_key = render_rust_fn_sig_type(n: param_node_type_expr(n: p0), generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
+  let ty_env = render_rust_fn_sig_type(n: param_node_type_expr(n: p1), generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
+  let ty_val = render_rust_fn_sig_type(n: inferred, generic_param_names: [], shared_types: shared_types, source_indices: source_indices, variant_to_enum: emit_info.variant_to_enum, env: env)
   concat(
     rust_visibility_prefix(), "fn ", emit_ident(name: name, target: Rust), "(", params_str, ")", ret_str, " {\n",
     "    thread_local! {\n",
