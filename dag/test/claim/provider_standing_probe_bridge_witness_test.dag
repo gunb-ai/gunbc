@@ -170,4 +170,339 @@ test fn provider_standing_probe_bridge_keystone_holds() -> Bool {
     && witness_bridge_profile_present_token_absent_refuses_through_mapper()
     && witness_bridge_profile_present_token_absent_not_authenticated_arm()
     && witness_bridge_standing_is_from_fact_not_inventory_unobserved()
+    && witness_codex_bucket_projects_to_native_bucket_never_account_scope()
+    && witness_exhausted_codex_allows_a_sibling_bucket_draw()
+    && witness_capacity_unknown_is_not_capacity()
+    && witness_no_buckets_is_a_located_unobserved_not_an_empty_list()
+    && witness_undecoded_bucket_does_not_refuse_a_measured_sibling()
+    && witness_undecoded_bucket_still_refuses_its_own_draw_and_unnamed_draws()
+    && witness_credential_identity_tracks_the_observed_codex_home()
+    && witness_pro_subscription_is_the_only_arm_that_entitles()
+    && witness_upstream_unknown_plan_is_not_a_yes()
+    && witness_stale_pin_is_unobserved_while_wrong_realm_is_rejected()
+    && witness_absent_and_malformed_accounts_never_entitle()
+    && witness_realm_decodes_from_the_captured_account_read_shape()
+    && witness_chatgpt_account_without_plan_type_is_malformed_not_unnamed()
+    && witness_reported_cause_and_reset_survive_the_projection()
+    && witness_unreported_cause_is_not_the_bucket_id()
+    && witness_deployed_profile_admits_exactly_the_observed_plan()
+    && witness_unadmitted_plan_is_unobserved_but_wrong_realm_is_rejected()
+    && witness_plans_added_after_the_pinned_runtime_read_as_stale_pin()
+    && witness_credential_liveness_splits_from_realm()
+}
+
+
+data codex_press_limit_bridge_witness_note: String = "The sibling-bucket case is the whole point: an exhausted `codex` bucket and an available `codex_bengalfox` bucket must produce DIFFERENT verdicts under draws that name them. A projection that routed either through ProviderAccountLimit would collapse both to one account verdict and refuse — or admit — work for the wrong reason."
+
+fn press_bucket_credential() -> LimitCredentialLabel {
+  LimitCredentialLabel { label: "srv1-codex" as NonEmptyStr }
+}
+
+fn draw_on(native_key: NonEmptyStr) -> ProviderLimitDispatchDraw {
+  LimitDispatchDrawNativeBucket {
+    credential: press_bucket_credential(),
+    native_key: native_key,
+  }
+}
+
+fn exhausted_codex_bucket() -> CodexRateLimitBucketVerdict {
+  CodexBucketUnavailableUntilReset {
+    limit_id: "codex" as NonEmptyStr,
+    reached_type: none,
+    resets_at: none,
+  }
+}
+
+fn available_bengalfox_bucket() -> CodexRateLimitBucketVerdict {
+  CodexBucketCapacityAvailable { limit_id: "codex_bengalfox" as NonEmptyStr }
+}
+
+test fn witness_codex_bucket_projects_to_native_bucket_never_account_scope() -> Bool {
+  let available = provider_limit_observation_from_codex_bucket(
+    credential: press_bucket_credential(), verdict: available_bengalfox_bucket())
+  let exhausted = provider_limit_observation_from_codex_bucket(
+    credential: press_bucket_credential(), verdict: exhausted_codex_bucket())
+  (match available {
+    LimitObservedAvailable { subject: s } =>
+      match s {
+        ProviderNativeLimitBucket { credential: _, native_key: k } => k == "codex_bengalfox"
+        _ => false
+      }
+    _ => false
+  })
+    && (match exhausted {
+      LimitUnavailableUntilReset { subject: s, cause: c, reset: _, reason: _ } =>
+        (match c { NativeCauseUnreported => true _ => false })
+          && (match s {
+            ProviderNativeLimitBucket { credential: _, native_key: k } => k == "codex"
+            ProviderAccountLimit { credential: _ } => false
+            _ => false
+          })
+      _ => false
+    })
+}
+
+test fn witness_exhausted_codex_allows_a_sibling_bucket_draw() -> Bool {
+  let observations = provider_limit_observations_from_codex_buckets(
+    credential: press_bucket_credential(),
+    buckets: [exhausted_codex_bucket(), available_bengalfox_bucket()],
+  )
+  !limit_observations_are_selection_eligible(
+    observations: observations, draw: draw_on(native_key: "codex" as NonEmptyStr))
+    && limit_observations_are_selection_eligible(
+      observations: observations, draw: draw_on(native_key: "codex_bengalfox" as NonEmptyStr))
+}
+
+test fn witness_capacity_unknown_is_not_capacity() -> Bool {
+  let unknown = provider_limit_observation_from_codex_bucket(
+    credential: press_bucket_credential(),
+    verdict: CodexBucketCapacityUnknown { limit_id: "codex" as NonEmptyStr })
+  (match unknown {
+    LimitSubjectUnobserved { subject: s, native_token: _, reason: _ } =>
+      match s {
+        ProviderNativeLimitBucket { credential: _, native_key: k } =>
+          k == ("codex" as NonEmptyStr)
+        _ => false
+      }
+    _ => false
+  })
+    && !limit_observations_are_selection_eligible(
+      observations: [unknown], draw: draw_on(native_key: "codex" as NonEmptyStr))
+}
+
+test fn witness_no_buckets_is_a_located_unobserved_not_an_empty_list() -> Bool {
+  let observations = provider_limit_observations_from_codex_buckets(
+    credential: press_bucket_credential(), buckets: [])
+  observations.length() == 1
+    && all(observations, o =>
+      match o { LimitObservationUnobserved { reason: _ } => true _ => false })
+}
+
+data mixed_decode_witness_note: String = "Over-refusal reads as caution while it prices out capacity the observation proved was there. The producer held the limit_id and threw it away; carrying it is the whole fix."
+
+fn undecoded_codex_bucket() -> CodexRateLimitBucketVerdict {
+  CodexBucketCapacityUnknown { limit_id: "codex" as NonEmptyStr }
+}
+
+fn mixed_decode_observations() -> List<ProviderLimitObservation> {
+  provider_limit_observations_from_codex_buckets(
+    credential: press_bucket_credential(),
+    buckets: [undecoded_codex_bucket(), available_bengalfox_bucket()],
+  )
+}
+
+test fn witness_undecoded_bucket_does_not_refuse_a_measured_sibling() -> Bool {
+  limit_observations_are_selection_eligible(
+    observations: mixed_decode_observations(),
+    draw: draw_on(native_key: "codex_bengalfox" as NonEmptyStr))
+}
+
+test fn witness_undecoded_bucket_still_refuses_its_own_draw_and_unnamed_draws() -> Bool {
+  let observations = mixed_decode_observations()
+  let unknown = provider_limit_observation_from_codex_bucket(
+    credential: press_bucket_credential(), verdict: undecoded_codex_bucket())
+  !limit_observations_are_selection_eligible(
+    observations: observations, draw: draw_on(native_key: "codex" as NonEmptyStr))
+    && !limit_observations_are_selection_eligible(
+      observations: observations, draw: LimitDispatchDrawUnspecified)
+    && !limit_observations_are_selection_eligible(
+      observations: observations, draw: LimitDispatchDrawAutomatic)
+    && (match unknown {
+      LimitSubjectUnobserved { subject: s, native_token: t, reason: _ } =>
+        t == "codex"
+          && (match s {
+            ProviderNativeLimitBucket { credential: _, native_key: k } => k == "codex"
+            _ => false
+          })
+      _ => false
+    })
+}
+
+test fn witness_credential_identity_tracks_the_observed_codex_home() -> Bool {
+  let a = codex_press_credential_identity(
+    credential: AmbientCodexCredentialContext { codex_home: "/srv/codex-a" as FilePath })
+  let b = codex_press_credential_identity(
+    credential: AmbientCodexCredentialContext { codex_home: "/srv/codex-b" as FilePath })
+  (match a {
+    LimitCredentialLabel { label: la } =>
+      match b {
+        LimitCredentialLabel { label: lb } => la != lb && la == "/srv/codex-a"
+        _ => false
+      }
+    _ => false
+  })
+}
+
+
+data entitlement_realm_witness_note: String = "THE TWO NEGATIVES ARE DIFFERENT NEGATIVES. A Bedrock account is REJECTED — read successfully, wrong realization, the answer is no. An unrecognized plan string is UNOBSERVED — upstream moved and our pin is stale, the answer is not yet. Both refuse dispatch today, which is exactly why a witness that only checked `not available` would pass while the model conflated them: the first is permanent until the credential changes, the second is repaired by updating a roster."
+
+fn chatgpt_realm_on(plan_wire: String) -> CodexAccountRealm {
+  match parse_json(s: plan_wire) {
+    Absent => CodexAccountRealmUnobserved { reason: "fixture did not parse" as NonEmptyStr }
+    Present { value: v } => codex_account_realm_from_result(result: v)
+  }
+}
+
+test fn witness_pro_subscription_is_the_only_arm_that_entitles() -> Bool {
+  let entitled = provider_entitlement_from_codex_realm(
+    realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanPro } })
+  let api_key = provider_entitlement_from_codex_realm(realm: CodexApiKeyRealm)
+  let bedrock = provider_entitlement_from_codex_realm(realm: CodexAmazonBedrockRealm)
+  (match entitled { EntitlementObservedAvailable => true _ => false })
+    && (match api_key { EntitlementRejected { reason: _ } => true _ => false })
+    && (match bedrock { EntitlementRejected { reason: _ } => true _ => false })
+}
+
+test fn witness_upstream_unknown_plan_is_not_a_yes() -> Bool {
+  let unknown = provider_entitlement_from_codex_realm(
+    realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanUnknown } })
+  !codex_plan_is_entitling(plan: CodexPlanUnknown)
+    && (match unknown { EntitlementObservationUnobserved { reason: _ } => true _ => false })
+    && codex_plan_is_entitling(plan: CodexPlanPro)
+    && !codex_plan_is_entitling(plan: CodexPlanFree)
+}
+
+test fn witness_deployed_profile_admits_exactly_the_observed_plan() -> Bool {
+  codex_first_deployment_subscription_policy.admitted_plans.length() == 1
+    && codex_plan_is_entitling(plan: CodexPlanPro)
+    && !codex_plan_is_entitling(plan: CodexPlanEnterprise)
+    && !codex_plan_is_entitling(plan: CodexPlanTeam)
+    && !codex_plan_is_entitling(plan: CodexPlanPlus)
+    && !codex_plan_is_entitling(plan: CodexPlanFree)
+    && !codex_plan_is_entitling(plan: CodexPlanUnknown)
+}
+
+test fn witness_unadmitted_plan_is_unobserved_but_wrong_realm_is_rejected() -> Bool {
+  let unadmitted = provider_entitlement_from_codex_realm(
+    realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanEnterprise } })
+  let wrong_realm = provider_entitlement_from_codex_realm(realm: CodexApiKeyRealm)
+  (match unadmitted { EntitlementObservationUnobserved { reason: _ } => true _ => false })
+    && (match wrong_realm { EntitlementRejected { reason: _ } => true _ => false })
+}
+
+test fn witness_stale_pin_is_unobserved_while_wrong_realm_is_rejected() -> Bool {
+  let stale_plan = provider_entitlement_from_codex_plan_reading(
+    reading: CodexPlanTypeUnrecognized { native: "quantum_max" as NonEmptyStr })
+  let stale_realm = provider_entitlement_from_codex_realm(
+    realm: CodexAccountRealmUnrecognizedType { native: "azureEntra" as NonEmptyStr })
+  let wrong_realm = provider_entitlement_from_codex_realm(realm: CodexAmazonBedrockRealm)
+  (match stale_plan { EntitlementObservationUnobserved { reason: _ } => true _ => false })
+    && (match stale_realm { EntitlementObservationUnobserved { reason: _ } => true _ => false })
+    && (match wrong_realm { EntitlementRejected { reason: _ } => true _ => false })
+}
+
+test fn witness_absent_and_malformed_accounts_never_entitle() -> Bool {
+  let absent = provider_entitlement_from_codex_realm(realm: CodexAccountRealmAbsent)
+  let malformed = provider_entitlement_from_codex_plan_reading(
+    reading: CodexPlanTypeMalformed { cause: "no planType" as NonEmptyStr })
+  (match absent { EntitlementObservationUnobserved { reason: _ } => true _ => false })
+    && (match malformed { EntitlementObservationUnobserved { reason: _ } => true _ => false })
+}
+
+test fn witness_realm_decodes_from_the_captured_account_read_shape() -> Bool {
+  let chatgpt = chatgpt_realm_on(
+    plan_wire: "{\"account\":{\"type\":\"chatgpt\",\"planType\":\"pro\",\"email\":\"REDACTED@example.invalid\"},\"requiresOpenaiAuth\":true}")
+  let api_key = chatgpt_realm_on(plan_wire: "{\"account\":{\"type\":\"apiKey\"}}")
+  let null_account = chatgpt_realm_on(
+    plan_wire: "{\"account\":null,\"requiresOpenaiAuth\":true}")
+  (match chatgpt {
+    CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanPro } } => true
+    _ => false
+  })
+    && (match api_key { CodexApiKeyRealm => true _ => false })
+    && (match null_account { CodexAccountRealmAbsent => true _ => false })
+}
+
+test fn witness_chatgpt_account_without_plan_type_is_malformed_not_unnamed() -> Bool {
+  let no_plan = chatgpt_realm_on(plan_wire: "{\"account\":{\"type\":\"chatgpt\"}}")
+  match no_plan {
+    CodexChatgptRealm { plan: CodexPlanTypeMalformed { cause: _ } } => true
+    _ => false
+  }
+}
+
+data native_cause_fallback_witness_note: String = "THIS FILE USED TO ASSERT THE DEFECT. witness_codex_bucket_projects_to_native_bucket_never_account_scope checked `t == \"codex\"` against a fixture declaring `reached_type: none` — so the value it pinned was the projection substituting the bucket id for a cause the wire never gave. A green witness was holding the fallback in place as the contract, which is the shape DESIGN §5 names when a degradation gets enshrined by the test that was supposed to catch it.\n\nThe pair below is what the old fixture could not distinguish: one bucket reports a cause and a reset, one reports neither, and they must not project to the same thing."
+
+fn exhausted_codex_bucket_with_reported_cause() -> CodexRateLimitBucketVerdict {
+  CodexBucketUnavailableUntilReset {
+    limit_id: "codex" as NonEmptyStr,
+    reached_type: Present { value: "rate_limit_reached" as NonEmptyStr },
+    resets_at: Present { value: 1786000000 },
+  }
+}
+
+test fn witness_reported_cause_and_reset_survive_the_projection() -> Bool {
+  let reported = provider_limit_observation_from_codex_bucket(
+    credential: press_bucket_credential(),
+    verdict: exhausted_codex_bucket_with_reported_cause())
+  match reported {
+    LimitUnavailableUntilReset { subject: _, cause: c, reset: r, reason: _ } =>
+      (match c {
+        NativeCauseReported { token: t } => t == ("rate_limit_reached" as NonEmptyStr)
+        NativeCauseUnreported => false
+      })
+        && (match r {
+          LimitResetAt { at: a } => a == 1786000000
+          LimitResetInstantUnobserved => false
+        })
+    _ => false
+  }
+}
+
+test fn witness_unreported_cause_is_not_the_bucket_id() -> Bool {
+  let silent = provider_limit_observation_from_codex_bucket(
+    credential: press_bucket_credential(), verdict: exhausted_codex_bucket())
+  let reported = provider_limit_observation_from_codex_bucket(
+    credential: press_bucket_credential(),
+    verdict: exhausted_codex_bucket_with_reported_cause())
+  (match silent {
+    LimitUnavailableUntilReset { subject: _, cause: NativeCauseUnreported, reset: LimitResetInstantUnobserved, reason: _ } => true
+    _ => false
+  })
+    && (match reported {
+      LimitUnavailableUntilReset { subject: _, cause: NativeCauseUnreported, reset: _, reason: _ } => false
+      LimitUnavailableUntilReset { subject: _, cause: _, reset: _, reason: _ } => true
+      _ => false
+    })
+}
+
+test fn witness_plans_added_after_the_pinned_runtime_read_as_stale_pin() -> Bool {
+  let later = chatgpt_realm_on(
+    plan_wire: "{\"account\":{\"type\":\"chatgpt\",\"planType\":\"self_serve_business_prolite\"}}")
+  let also_later = chatgpt_realm_on(
+    plan_wire: "{\"account\":{\"type\":\"chatgpt\",\"planType\":\"enterprise_cbp_automation\"}}")
+  let pinned = chatgpt_realm_on(
+    plan_wire: "{\"account\":{\"type\":\"chatgpt\",\"planType\":\"enterprise_cbp_usage_based\"}}")
+  (match later {
+    CodexChatgptRealm { plan: CodexPlanTypeUnrecognized { native: n } } =>
+      n == ("self_serve_business_prolite" as NonEmptyStr)
+    _ => false
+  })
+    && (match also_later {
+      CodexChatgptRealm { plan: CodexPlanTypeUnrecognized { native: _ } } => true
+      _ => false
+    })
+    && (match pinned {
+      CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: _ } } => true
+      _ => false
+    })
+}
+
+test fn witness_credential_liveness_splits_from_realm() -> Bool {
+  let live_auth = provider_authentication_from_codex_credential_liveness(
+    liveness: CodexCredentialLive { bucket_count: 2 })
+  let dead_auth = provider_authentication_from_codex_credential_liveness(
+    liveness: CodexCredentialDead {
+      reason: "account/rateLimits/read returned no decodable buckets" as NonEmptyStr,
+    })
+  let unobserved_auth = provider_authentication_from_codex_credential_liveness(
+    liveness: CodexCredentialLivenessUnobserved {
+      reason: "account/rateLimits/read probe did not complete" as NonEmptyStr,
+    })
+  let realm_still_pro = provider_entitlement_from_codex_realm(
+    realm: CodexChatgptRealm { plan: CodexPlanTypeObserved { plan: CodexPlanPro } })
+  (match live_auth { AuthenticationAuthenticated => true _ => false })
+    && (match dead_auth { AuthenticationRefreshFailed { reason: _ } => true _ => false })
+    && (match unobserved_auth { AuthenticationStandingUnobserved { reason: _ } => true _ => false })
+    && (match realm_still_pro { EntitlementObservedAvailable => true _ => false })
 }

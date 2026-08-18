@@ -20,7 +20,7 @@ test fn witness_srv3_receipt_emit_apply_converges_in_process() -> Bool {
   ) {
     Converged { evidence: e, applied: _ } =>
       match e {
-        ShellEffectApplied { stdout: out, exit_code: code } =>
+        ShellEffectApplied { stdout: out, exit_code: code, stderr: _ } =>
           code == 0
             && string_contains(s: out, pattern: "line-one")
             && string_contains(s: out, pattern: "line-two")

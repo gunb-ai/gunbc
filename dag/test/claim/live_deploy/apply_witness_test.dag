@@ -49,6 +49,7 @@ fn fixture_converged_mutation() -> Reconciliation<HostEffectIntent, HostEffectEv
     evidence: ShellEffectApplied {
       exit_code: 0,
       stdout: "live-deploy-mutation-applied",
+      stderr: "",
     },
     applied: HostEffectIntent {
       target: HostOs { node: srv1_host },

@@ -31,6 +31,7 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "bounded_shell_host_drain", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "ci_control_plane", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "cli_run", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "codex_app_server_stdio_session", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "coproduct_reflection", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "data_initializer_identity", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "resolved_graph_cache", has_pub_mod: true, is_dir: false },

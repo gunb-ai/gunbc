@@ -258,6 +258,10 @@ path = "src/bin/parse_witness.rs"
 name = "compile_clean_diagnostic_histogram"
 path = "src/bin/compile_clean_diagnostic_histogram.rs"
 
+[[bin]]
+name = "codex_app_server_stdio_session"
+path = "src/bin/codex_app_server_stdio_session.rs"
+
 # B0 control witness (#7943, review 49798 / operator ruling): proves the
 # GENERATED stage0 realization of declaration_exposure_from_containment under
 # NamespaceStructuralRootExposure dispatches to three distinct outcomes

@@ -1,0 +1,174 @@
+module gunbc.codex_supervised_turn_run
+
+type CodexSupervisedWorkerTurnApplyOutcome
+  = CodexSupervisedWorkerTurnApplyRefused { reason: std.types.NonEmptyStr }
+
+fn codex_supervised_worker_turn_apply(
+  executor_host: gunbc.fleet_intent.ComputeHost,
+  intent: extdeps.llm.codex_app_server_stdio_session.CodexAppServerStdioSessionIntent,
+  lease_key: std.types.NonEmptyStr,
+  running_binding: gunbc.codex_supervised_turn.CodexSupervisedTurnBinding,
+  evidence_root: std.types.FilePath,
+) -> gunbc.codex_supervised_turn.CodexSupervisedTurnOutcome {
+  let r = gunbc.host_effect_realize.host_effect_apply(
+    target: gunbc.host_effect.HostOs { node: executor_host },
+    effect: gunbc.host_effect.CodexSupervisedWorkerTurn {
+      intent: intent,
+      lease_key: lease_key,
+    },
+    evidence: gunbc.host_effect.host_effect_identity_evidence,
+    transport: gunbc.host_effect.LocalShell,
+  )
+  match r {
+    std.realization_reconcile.Converged { evidence: e, applied: _ } =>
+      match e {
+        gunbc.host_effect.ShellEffectApplied { stdout: stdout, stderr: stderr, exit_code: code } => {
+          let wire_capture = gunbc.codex_app_server_press.retain_provider_wire_capture(
+            evidence_root: evidence_root,
+            stdout: stdout,
+            stderr: stderr,
+            success: code == 0,
+            exit_code: Present { value: code },
+          )
+          let wire = match wire_capture {
+            gunbc.codex_app_server_press.ProviderWireCaptureOk { receipt: w } => Present { value: w }
+            gunbc.codex_app_server_press.ProviderWireCaptureRefused { cause: _ } => none
+          }
+          gunbc.codex_supervised_turn.codex_supervised_turn_outcome_from_capture(
+            running_binding: running_binding,
+            stdout: stdout,
+            stderr: stderr,
+            exit_code: Present { value: code },
+            wire: wire,
+            evidence_root: evidence_root,
+          )
+        }
+        gunbc.host_effect.ConvergePlanApplied { stdout: _, exit_code: _ } =>
+          gunbc.codex_supervised_turn.CodexSupervisedTurnRefused {
+            reason: "Codex supervised worker turn returned unexpected ConvergePlanApplied evidence" as std.types.NonEmptyStr,
+          }
+      }
+    std.realization_reconcile.NotConverged { reason: why, applied: _ } =>
+      gunbc.codex_supervised_turn.CodexSupervisedTurnRefused { reason: why as std.types.NonEmptyStr }
+  }
+}
+
+fn codex_supervised_stdio_session_preamble_lines(cwd: std.types.FilePath) -> std.types.List<std.types.NonEmptyStr> {
+  [
+    extdeps.llm.codex_app_server.codex_app_server_initialize_request_line(),
+    extdeps.llm.codex_app_server.codex_app_server_initialized_notification_line(),
+    extdeps.llm.codex_app_server.codex_app_server_account_read_request_line(),
+    extdeps.llm.codex_app_server.codex_app_server_rate_limits_read_request_line(),
+    extdeps.llm.codex_app_server.codex_app_server_thread_start_request_line(cwd: cwd),
+  ]
+}
+
+fn codex_supervised_stdio_session_intent(
+  executable: std.types.FilePath,
+  codex_home: std.types.FilePath,
+  cwd: std.types.FilePath,
+  user_input: std.types.String,
+  evidence_root: std.types.FilePath,
+) -> extdeps.llm.codex_app_server_stdio_session.CodexAppServerStdioSessionIntent {
+  extdeps.llm.codex_app_server_stdio_session.CodexAppServerStdioSessionIntent {
+    executable: executable,
+    codex_home: codex_home,
+    cwd: cwd,
+    preamble_lines: codex_supervised_stdio_session_preamble_lines(cwd: cwd),
+    user_input: user_input,
+    client_command_id_path: gunbc.codex_supervised_turn.codex_supervised_turn_client_command_id_store_path(
+      evidence_root: evidence_root,
+    ),
+    thread_start_rpc_id: extdeps.llm.codex_app_server.codex_supervised_thread_start_id,
+    turn_start_wire_id: extdeps.llm.codex_app_server.codex_supervised_turn_start_wire_id,
+  }
+}
+
+fn codex_supervised_turn_codex_home(
+  credential: gunbc.codex_app_server_press.AmbientCodexCredentialContext,
+  standing_receipt: gunbc.codex_app_server_press.CodexAccountStandingReceipt?,
+) -> std.types.FilePath {
+  match standing_receipt {
+    Present { value: receipt } => receipt.subject.credential.codex_home
+    Absent => credential.codex_home
+  }
+}
+
+fn codex_supervised_turn_user_input(turn: gunbc.roadmap_workflow_command.WorkerTurn) -> std.types.String {
+  if turn.consumed_feedback == "" {
+    "continue" as std.types.String
+  } else {
+    turn.consumed_feedback
+  }
+}
+
+fn run_codex_supervised_turn(
+  bundle: gunbc.package_delivery.CodexRuntimeBundle,
+  credential: gunbc.codex_app_server_press.AmbientCodexCredentialContext,
+  binding: gunbc.codex_supervised_turn.CodexSupervisedTurnBinding,
+  cwd: std.types.FilePath,
+  evidence_root: std.types.FilePath,
+) -> gunbc.codex_supervised_turn.CodexSupervisedTurnOutcome {
+  match gunbc.provider_interface_binding.project_codex_app_server_stdio_binding(bundle: bundle) {
+    gunbc.provider_interface_binding.RequiredProviderInterfaceUnavailable { interface: _, reason } =>
+      gunbc.codex_supervised_turn.CodexSupervisedTurnUnavailable {
+        reason: reason,
+        process: gunbc.codex_app_server_press.ProviderProcessReceipt {
+          exit: gunbc.codex_app_server_press.ProviderProcessObservationFailed,
+          wire: none,
+        },
+      }
+    gunbc.provider_interface_binding.ProviderInterfaceResolved { binding: projected } => {
+      let present = shell.Test.IsFile(path: projected.executable.path)
+      if present.is_file == false {
+        gunbc.codex_supervised_turn.CodexSupervisedTurnUnavailable {
+          reason: "bundled Codex native executable absent at binding path" as std.types.NonEmptyStr,
+          process: gunbc.codex_app_server_press.ProviderProcessReceipt {
+            exit: gunbc.codex_app_server_press.ProviderProcessObservationFailed,
+            wire: none,
+          },
+        }
+      } else {
+        let cmd_id = gunbc.codex_supervised_turn.codex_supervised_turn_client_command_id(turn: binding.turn)
+        if gunbc.codex_supervised_turn.persist_codex_supervised_turn_client_command_id(
+          evidence_root: evidence_root,
+          client_command_id: cmd_id,
+        ) == false {
+          gunbc.codex_supervised_turn.CodexSupervisedTurnRefused {
+            reason: "failed to persist client_command_id before turn/start" as std.types.NonEmptyStr,
+          }
+        } else {
+          let running_binding = gunbc.codex_supervised_turn.codex_supervised_turn_binding_with_observed(
+            binding: binding,
+            observed: std.temporal_effect.LeaseRunningExpected,
+          )
+          match running_binding.execution_policy {
+            std.temporal_effect.HeldSessionLease { lease_key: lease_key } => {
+              let session_intent = codex_supervised_stdio_session_intent(
+                executable: projected.executable.path,
+                codex_home: codex_supervised_turn_codex_home(
+                  credential: credential,
+                  standing_receipt: running_binding.standing_receipt,
+                ),
+                cwd: cwd,
+                user_input: codex_supervised_turn_user_input(turn: running_binding.turn),
+                evidence_root: evidence_root,
+              )
+              codex_supervised_worker_turn_apply(
+                executor_host: gunbc.fleet_intent.srv1_host,
+                intent: session_intent,
+                lease_key: lease_key,
+                running_binding: running_binding,
+                evidence_root: evidence_root,
+              )
+            }
+            _ =>
+              gunbc.codex_supervised_turn.CodexSupervisedTurnRefused {
+                reason: "supervised turn requires HeldSessionLease execution policy" as std.types.NonEmptyStr,
+              }
+          }
+        }
+      }
+    }
+  }
+}

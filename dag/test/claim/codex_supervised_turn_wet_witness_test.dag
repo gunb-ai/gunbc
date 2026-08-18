@@ -1,0 +1,362 @@
+module test.claim.codex_supervised_turn_wet_witness_test
+
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.ReadsLiveTree
+
+data witness_note: std.types.String = "WET BISECT REPRODUCTION (NOT ENROLLED WITNESSES). Bisect entrypoints are plain fn, not test fn — they cannot execute anywhere today (materialize leak on main) so enrolled-and-unrunnable would be false coverage (Phase 0(b) admission). Operator runs via gunbc run --function under MemoryMax caps on srv1 only. Hermetic coverage lives in codex_supervised_turn_witness_test.dag. Re-enroll through gunbc.explicit_witness_admission after materialize_codex_runtime_bundle is fixed."
+
+data wet_non_witness_enrollment_note: std.types.String = "Admission gate 2026-08-14: OfflineLocalRecipe exclusion + enrolled test fn produced UnclassifiedPathDeferral (five rows, zero executing consumers). Fix: bisect arms are fn not test fn; no witness enrollment until explicit admission with declared envelope after production fix."
+
+data wet_supervised_turn_memory_envelope_note: std.types.String = "MEMORY ENVELOPE (srv1 bisect 2026-08-14). LOCATED: finish_after_install PINS 8G; pair-acquire and npm-ci-offline PASS 2G. Finish observe rungs (install + one observe each, order matches finish): wet_finish_observe_set_identity_only — 2G; wet_finish_observe_manifest_digest_only — 2G; wet_finish_observe_lock_digest_only — 2G; wet_finish_observe_native_digest_only — 2G; wet_finish_observe_toolchain_only — 2G; wet_finish_observe_protocol_schema_only — 2G; wet_finish_observe_package_tree_only — 2G/8G; wet_finish_observe_receipt_identity_only — 8G; wet_finish_observe_package_tree_tiny_fixture — 2G (two-file tree, no install). INTERPRETER BISECT: wet_finish_parse_canonicalize_largest_protocol_schema_only — install + generate-json-schema + parse_json/canonicalize_json_value on codex_app_server_protocol.schemas.json only (507 KB); no fold/manifest/sha512. Control: wet_materialize_finish_after_install_only — 8G; wet_materialize_codex_runtime_bundle_only — 8G."
+
+data wet_bisect_ladder_receipt_note: std.types.String = "srv1 ladder (eager-koi-458): construct/closure/prepare/wrapper-acquire/platform-acquire/through-prepare PASS; full materialize PINS 8G. Next: pair acquire together, npm ci offline install path, finish after install (tree walk / release)."
+
+data wet_supervised_turn_oom_receipt_note: std.types.String = "srv1 bisect 2026-08-14: step2b closure PASS 2G; instrumented materialize ~2GB/min to 8G cap, zero children 4.5min, decl eval stuck — not tarball bytes. Production defect in interpreter eval of materialize_codex_runtime_bundle pre-shell region. Fix production path; do not enlarge witness envelope."
+
+data wet_supervised_turn_probe_key: gunbc.codex_app_server_press.ProviderProbeKey = "wet-supervised-turn-1" as gunbc.codex_app_server_press.ProviderProbeKey
+
+fn committed_codex_lock_text() -> std.types.String {
+  filesystem_read(path: gunbc.package_delivery.codex_runtime_lock_path as std.types.String).content
+}
+
+fn committed_admitted_codex_runtime_source() -> gunbc.package_delivery.AdmittedCodexRuntimeSource {
+  gunbc.package_delivery.AdmittedCodexRuntimeSource {
+    manifest_bytes: filesystem_read(path: gunbc.package_delivery.codex_runtime_manifest_path as std.types.String).content,
+    lock_bytes: committed_codex_lock_text(),
+  }
+}
+
+fn wet_codex_home_from_env() -> std.types.FilePath? {
+  match shell.Env.Get(name: "CODEX_HOME" as std.types.NonEmptyStr).value {
+    Present { value: home } => {
+      if home == "" {
+        none
+      } else {
+        Present { value: home as std.types.FilePath }
+      }
+    }
+    Absent => none
+  }
+}
+
+fn wet_supervised_turn_terminal_ok(
+  turn: gunbc.roadmap_workflow_command.WorkerTurn,
+  terminal: gunbc.codex_supervised_turn.CodexRunnerTurnTerminalReceipt,
+) -> std.types.Bool {
+  (terminal.client_command_id as std.types.String) ==
+    (gunbc.codex_supervised_turn.codex_supervised_turn_client_command_id(turn: turn) as std.types.String)
+    && match terminal.binding.lease.observed {
+      std.temporal_effect.LeaseAbsent => true
+      std.temporal_effect.LeaseRunningExpected => false
+      LeaseRunningStale => false
+      LeasePortForeign => false
+      LeaseInaccessible => false
+    }
+    && gunbc.provider_turn_adjudication.press_display_finished(disposition: terminal.disposition)
+}
+
+fn wet_supervised_turn() -> gunbc.roadmap_workflow_command.WorkerTurn {
+  gunbc.roadmap_workflow_command.WorkerTurn {
+    turn_key: "wet-turn-1",
+    attempt_key: "wet-attempt-1",
+    consumed_feedback: "Reply with exactly: wet-supervised-turn-ok",
+    resulting_head: none,
+  }
+}
+
+fn wet_committed_admitted_source_lock_admits() -> std.types.Bool {
+  match gunbc.package_delivery.admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    gunbc.package_delivery.CodexPackageLockAdmitted { graph: _, nodes, registry_artifacts } =>
+      count(nodes) > 0 && count(registry_artifacts) > 0
+    _ => false
+  }
+}
+
+fn wet_committed_admitted_source_construct_only() -> std.types.Bool {
+  let source = committed_admitted_codex_runtime_source()
+  (source.lock_bytes != "") && (source.manifest_bytes != "")
+}
+
+fn wet_select_codex_exact_target_closure_only() -> std.types.Bool {
+  match gunbc.package_delivery.admit_codex_package_lock_text(text: committed_codex_lock_text()) {
+    gunbc.package_delivery.CodexPackageLockAdmitted { graph, nodes: _, registry_artifacts: _ } =>
+      match gunbc.package_delivery.observe_codex_npm_runtime_target() {
+        gunbc.package_delivery.CodexNpmRuntimeTargetObserved { target } =>
+          match gunbc.package_delivery.select_codex_exact_target_closure(graph: graph, target: target) {
+            gunbc.package_delivery.CodexExactTargetClosureSelected {
+              native_executable_rel,
+              platform_lock_key,
+              wrapper: _,
+              platform: _,
+              target: _,
+            } =>
+              (native_executable_rel as std.types.String) != ""
+                && (platform_lock_key as std.types.String) != ""
+            _ => false
+          }
+        _ => false
+      }
+    _ => false
+  }
+}
+
+fn wet_acquire_wrapper_artifact_only() -> std.types.Bool {
+  match gunbc.package_delivery.prepare_codex_runtime_closure(
+    source: committed_admitted_codex_runtime_source(),
+  ) {
+    gunbc.package_delivery.CodexRuntimeClosurePrepared {
+      wrapper: wrapper,
+      platform: _,
+      selected_target: _,
+      platform_lock_key: _,
+      native_executable_rel: _,
+      source: _,
+    } => {
+      let staging = shell.Mktemp.Dir()
+      if staging.success == false {
+        false
+      } else {
+        match wrapper {
+          gunbc.package_delivery.CodexSelectedNodeAdmitted {
+            node: _,
+            artifact: wrapper_artifact,
+            lock_node_key: wrapper_key,
+          } =>
+            match gunbc.package_delivery.acquire_and_admit_registry_artifact(
+              artifact: wrapper_artifact,
+              lock_node_key: wrapper_key,
+              dest_dir: staging.path,
+            ) {
+              gunbc.package_delivery.RegistryArtifactAdmitted { staged: _ } => true
+              _ => false
+            }
+          _ => false
+        }
+      }
+    }
+    _ => false
+  }
+}
+
+fn wet_acquire_platform_artifact_only() -> std.types.Bool {
+  match gunbc.package_delivery.prepare_codex_runtime_closure(
+    source: committed_admitted_codex_runtime_source(),
+  ) {
+    gunbc.package_delivery.CodexRuntimeClosurePrepared {
+      wrapper: _,
+      platform: platform,
+      selected_target: _,
+      platform_lock_key: _,
+      native_executable_rel: _,
+      source: _,
+    } => {
+      let staging = shell.Mktemp.Dir()
+      if staging.success == false {
+        false
+      } else {
+        match platform {
+          gunbc.package_delivery.CodexSelectedNodeAdmitted {
+            node: _,
+            artifact: platform_artifact,
+            lock_node_key: platform_key,
+          } =>
+            match gunbc.package_delivery.acquire_and_admit_registry_artifact(
+              artifact: platform_artifact,
+              lock_node_key: platform_key,
+              dest_dir: staging.path,
+            ) {
+              gunbc.package_delivery.RegistryArtifactAdmitted { staged: _ } => true
+              _ => false
+            }
+          _ => false
+        }
+      }
+    }
+    _ => false
+  }
+}
+
+fn wet_codex_runtime_prepare_closure_only() -> std.types.Bool {
+  match gunbc.package_delivery.prepare_codex_runtime_closure(
+    source: committed_admitted_codex_runtime_source(),
+  ) {
+    gunbc.package_delivery.CodexRuntimeClosurePrepared {
+      native_executable_rel,
+      platform_lock_key,
+      selected_target: _,
+      wrapper: _,
+      platform: _,
+      source: _,
+    } =>
+      (native_executable_rel as std.types.String) != ""
+        && (platform_lock_key as std.types.String) != ""
+    _ => false
+  }
+}
+
+fn wet_materialize_through_prepare_only() -> std.types.Bool {
+  gunbc.package_delivery.materialize_codex_runtime_bundle_through_prepare(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_acquire_selected_pair_only() -> std.types.Bool {
+  gunbc.package_delivery.materialize_codex_runtime_bundle_through_pair_acquire(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_materialize_npm_ci_offline_only() -> std.types.Bool {
+  gunbc.package_delivery.materialize_codex_runtime_bundle_through_npm_ci_offline(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_materialize_finish_after_install_only() -> std.types.Bool {
+  gunbc.package_delivery.materialize_codex_runtime_bundle_finish_after_install(
+    source: committed_admitted_codex_runtime_source(),
+    release_parent: wet_materialize_bisect_release_parent,
+  )
+}
+
+fn wet_finish_observe_set_identity_only() -> std.types.Bool {
+  gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_set_identity_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_manifest_digest_only() -> std.types.Bool {
+  gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_manifest_digest_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_lock_digest_only() -> std.types.Bool {
+  gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_lock_digest_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_native_digest_only() -> std.types.Bool {
+  gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_native_digest_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_toolchain_only() -> std.types.Bool {
+  gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_toolchain_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_protocol_schema_only() -> std.types.Bool {
+  gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_protocol_schema_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_parse_largest_protocol_schema_only() -> std.types.Bool {
+  gunbc.package_delivery.materialize_codex_runtime_finish_bisect_parse_largest_protocol_schema_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_parse_canonicalize_largest_protocol_schema_only() -> std.types.Bool {
+  gunbc.package_delivery.materialize_codex_runtime_finish_bisect_parse_canonicalize_largest_protocol_schema_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_package_tree_only() -> std.types.Bool {
+  gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_package_tree_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_receipt_identity_only() -> std.types.Bool {
+  gunbc.package_delivery.materialize_codex_runtime_finish_bisect_observe_receipt_identity_only(
+    source: committed_admitted_codex_runtime_source(),
+  )
+}
+
+fn wet_finish_observe_package_tree_tiny_fixture() -> std.types.Bool {
+  gunbc.package_delivery.finish_bisect_observe_package_materialized_tree_tiny_fixture()
+}
+
+data wet_materialize_bisect_release_parent: std.types.FilePath = "/tmp/gunbc-wet-materialize-bisect-release" as std.types.FilePath
+
+fn wet_materialize_codex_runtime_bundle_only() -> std.types.Bool {
+  match gunbc.package_delivery.materialize_codex_runtime_bundle(
+    source: committed_admitted_codex_runtime_source(),
+    release_parent: wet_materialize_bisect_release_parent,
+  ) {
+    gunbc.package_delivery.CodexRuntimeMaterialized { bundle } =>
+      shell.Test.IsFile(path: gunbc.codex_runtime_bundle.codex_bundle_executable_path(bundle: bundle)).is_file
+    _ => false
+  }
+}
+
+fn supervised_turn_materialized_bundle_writes_terminal_receipt() -> std.types.Bool {
+  let release_tmp = shell.Mktemp.Dir()
+  let evidence = shell.Mktemp.Dir()
+  let cwd = shell.Mktemp.Dir()
+  if release_tmp.success == false
+    || evidence.success == false
+    || cwd.success == false {
+    false
+  } else {
+    match wet_codex_home_from_env() {
+      Absent => false
+      Present { value: codex_home } => {
+        match gunbc.package_delivery.materialize_codex_runtime_bundle(
+          source: committed_admitted_codex_runtime_source(),
+          release_parent: release_tmp.path,
+        ) {
+          gunbc.package_delivery.CodexRuntimeMaterialized { bundle } => {
+            let path = gunbc.codex_runtime_bundle.codex_bundle_executable_path(bundle: bundle)
+            if shell.Test.IsFile(path: path).is_file == false {
+              false
+            } else {
+              let turn = wet_supervised_turn()
+              let credential = gunbc.codex_app_server_press.observe_codex_account_preflight(
+                bundle: bundle,
+                probe_key: wet_supervised_turn_probe_key,
+                evidence_root: evidence.path,
+                codex_home: codex_home,
+              )
+              match credential {
+                gunbc.codex_app_server_press.CodexPressAccountReady { receipt } => {
+                  match gunbc.codex_supervised_turn.prepare_codex_supervised_turn_binding(
+                    turn: turn,
+                    credential: receipt.subject.credential,
+                    evidence_root: evidence.path,
+                    observed: std.temporal_effect.LeaseAbsent,
+                    standing_receipt: none,
+                  ) {
+                    gunbc.codex_supervised_turn.CodexSupervisedTurnBindingPrepared { binding: binding } =>
+                      match gunbc.codex_supervised_turn_run.run_codex_supervised_turn(
+                        bundle: bundle,
+                        credential: receipt.subject.credential,
+                        binding: binding,
+                        cwd: cwd.path,
+                        evidence_root: evidence.path,
+                      ) {
+                        gunbc.codex_supervised_turn.CodexSupervisedTurnOk { receipt: terminal } =>
+                          wet_supervised_turn_terminal_ok(turn: turn, terminal: terminal)
+                        gunbc.codex_supervised_turn.CodexSupervisedTurnRefused { reason: _ } => false
+                        gunbc.codex_supervised_turn.CodexSupervisedTurnUnavailable { reason: _, process: _ } => false
+                      }
+                    gunbc.codex_supervised_turn.CodexSupervisedTurnBindingPrepareRefused { reason: _ } => false
+                  }
+                }
+                gunbc.codex_app_server_press.CodexPressLoginRequired { reason: _, receipt: _ } => false
+                gunbc.codex_app_server_press.CodexPressRefused { reason: _, receipt: _ } => false
+                gunbc.codex_app_server_press.CodexPressUnavailable { reason: _, process: _ } => false
+              }
+            }
+          }
+          _ => false
+        }
+      }
+    }
+  }
+}

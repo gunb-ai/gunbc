@@ -26,7 +26,9 @@ Dissolve-on (hand membership of witness_declared_release_bins): a host census of
 data ci_floor_invoked_bins: List<String> = [
   "claim_executor",
   "gunbc",
-  "regen_floor_skip_witness"
+  "regen_floor_skip_witness",
+  "floor_skip_discovery_witness",
+  "selection_control_skip_witness",
 ]
 
 data witness_declared_release_bins: List<String> = [
@@ -44,7 +46,8 @@ data witness_declared_release_bins: List<String> = [
   "parse_witness",
   "resolution_divergence_census",
   "cssl_assemble",
-  "namespace_structural_root_exposure_generated_witness"
+  "namespace_structural_root_exposure_generated_witness",
+  "codex_app_server_stdio_session",
 ]
 
 fn release_bin_list_contains(xs: List<String>, needle: String) -> Bool {
