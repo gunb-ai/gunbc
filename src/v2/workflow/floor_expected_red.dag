@@ -109,6 +109,14 @@ import v2.std.text { String }
 // measured-max-plus-one-quantum from a SINGLE 1527ms observation, so rows within a few hundred
 // ms of it are not stably green on a shared runner; that is the real reason this wave exists.
 //
+// THIRD ROW, 2026-08-18: test.claim.emitted_lib_rs_module_declaration_witness_test, at 42545ms.
+// This one is worth naming separately because of HOW it was missed. My cost table was built from
+// a run where the 30s wall interrupted the longest rows, so every censored row reported its
+// deadline rather than its cost -- 30000ms, not 42545ms. The table therefore under-reported
+// exactly the rows that most needed quarantining, and this module fell outside a 1000ms cut it
+// exceeds by 42x. The measurement was a lower bound and I read it as a value. Its 3 witnesses
+// leave with it; no roster row named it, so the roster stays at 358.
+//
 // RESTORATION TRIGGER: the cost lane. Measured by three sessions independently on 2026-08-18,
 // the cost is the EVALUATION CONTEXT, not the witnesses -- a row taking 71s on the floor runs
 // in 70-85ms in isolation, a 12s row in 31ms, and dag_arrow_lambda rebuilds a 6,230-line

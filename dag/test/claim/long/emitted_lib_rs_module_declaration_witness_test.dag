@@ -1,4 +1,4 @@
-module test.claim.emitted_lib_rs_module_declaration_witness_test
+module test.claim.long.emitted_lib_rs_module_declaration_witness_test
 
 // Permanent regression control for the emitted `lib.rs` module list.
 //
