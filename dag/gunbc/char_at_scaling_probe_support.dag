@@ -1,24 +1,53 @@
 module gunbc.char_at_scaling_probe_support
 
 import std.types { NonEmptyStr }
-import std.disposition { Disposition, Terminal }
+import std.disposition { Disposition, Scaffold, SingleAuthority }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.dissolution { DissolutionCondition, unbound_dissolution }
 
-// Per DESIGN §4b: this probe IS the discriminating evidence for CHARAT-0's O(1)
-// char_at claim, so it stays enrolled rather than dissolving — the disposition is
-// Terminal, not Scaffold. §5's same-unit rule is why this carries its own
-// independent trigger rather than sharing json_parse_scaling_probe.rs's: the two
-// probes measure different primitives (char_at cost in isolation vs. end-to-end
-// parse) and could have independently different lifetimes.
-data char_at_scaling_probe_disposition: Disposition = Terminal {
-  reason: "the entry point `src/v1/stage0/src/bin/char_at_scaling_probe.rs` resolves against — a single `char_at` call, isolated from every other primitive, so per-access cost can be fit against position and against string length without the JSON parser's independent list-materialization cost. NOT floor-enrolled; the acceptance evidence for CHARAT-0's O(1) claim."
+// DISPOSITION: Scaffold, NOT Terminal. The base of this branch carried a
+// three-way contradiction -- a `Terminal` disposition, a `DissolutionCondition`
+// beside it, and a `.rs` header reading SCAFFOLD -- and an earlier revision of
+// this PR resolved it toward Terminal. That was the wrong side, per review 53457.
+//
+// The deciding fact is that NOTHING EXECUTES THIS BIN: it is hand-run, it is not
+// floor-enrolled, and no cadence, workflow or witness invokes it (checked
+// corpus-wide -- the only references are its own Cargo.toml row and this module).
+// DESIGN §4b keeps a class's discriminating RED and positive control "enrolled as
+// the executing evidence"; enrolled means executing. Evidence no consumer runs is
+// a measurement transport, which is a legitimate thing for a probe to be and is
+// precisely the Scaffold shape -- an instrument whose lifetime ends when the
+// property it measures is floor-enrolled. Calling it Terminal is the §4b rung
+// inflation case: a carrier named for the top rung while occupying the bottom,
+// and an inflated class never ranks for climbing. It would also convert bounded
+// hand-Rust in the seed into permanent unowned hand-Rust, against §7's shrink.
+//
+// This restores a dissolution obligation that the base already carried; it is
+// NOT net-new debt requiring an operator verdict under §5 -- the §5 disposition
+// is AcknowledgePreexistingDebt, which exists so that recording debt already
+// present never reads as creating it.
+//
+// The `Scaffold` row and the `DissolutionCondition` row are complementary, not a
+// §3 dual representation: §5 rules lifecycle and admission two separate questions,
+// and `std.disposition` `Scaffold` carries a construction mechanism and a binding
+// "and nothing else" -- WHAT it dissolves to. WHEN it dissolves is the
+// `DissolutionCondition`'s fact, and neither row can state the other's.
+data char_at_scaling_probe_disposition: Disposition = Scaffold {
+  dissolves_to: SingleAuthority,
+  bind: DeclarationRef {
+    module_path: "gunbc.char_at_scaling_probe_support",
+    decl_name: "char_at_probe",
+    field: WholeDeclaration
+  }
 }
 
 // §3: cite the symbol, not a position or another file's marker. The bin's own
 // grep receipt is `CHAR_AT_SCALING_PROBE_SCAFFOLD_MARKER` in
-// `char_at_scaling_probe.rs` — a real, distinct const from
+// `char_at_scaling_probe.rs` -- a real, distinct const from
 // `json_parse_scaling_probe.rs`'s `JSON_PARSE_SCALING_PROBE_SCAFFOLD_MARKER`,
-// which this probe's disposition no longer cites or depends on.
+// which this probe's disposition no longer cites or depends on. The SCAFFOLD
+// spelling is correct again now that the disposition is Scaffold; the rename to
+// IDENTITY_MARKER was downstream of the Terminal reading and is reverted with it.
 data char_at_scaling_probe_dissolution: DissolutionCondition = unbound_dissolution(
   description: "delete `src/v1/stage0/src/bin/char_at_scaling_probe.rs` (grep receipt: `CHAR_AT_SCALING_PROBE_SCAFFOLD_MARKER`) when char_at's O(1) property is floor-enrolled with a modeled witness, or when a fresh run of this probe's own printed TSV (mean_call_us per string_len/position, per its CHECKABLE RECEIPT doc comment) shows mean_call_us growing with string_len across the CHAR_AT_PROBE_LENGTHS range instead of staying flat" as NonEmptyStr
 )
