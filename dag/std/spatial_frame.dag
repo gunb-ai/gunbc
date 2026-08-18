@@ -7,7 +7,7 @@ import std.measure {
   Scale, Measure, Millimeter, Micrometer, measure_count, scale_exponent,
   Atto, Femto, Pico, Nano, Micro, Milli, One, Kilo, Mega, Giga, Tera, Peta, Exa,
   Kibi, Mebi, Gibi, Tebi,
-  ArcsecondAngle, DegreeAngle, TurnAngle, Sixty, RackUnitHeight,
+  ArcsecondAngle, DegreeAngle, TurnAngle, Sixty, RackUnitHeight, SquareFootArea,
 }
 import std.coordinate_frame { CoordinateFrameIdentity, coordinate_frame_identity_eq }
 
@@ -86,6 +86,7 @@ fn length_scale_is_decimal(s: Scale) -> Bool {
     TurnAngle      => false
     Sixty          => false
     RackUnitHeight => false
+    SquareFootArea => false
   }
 }
 

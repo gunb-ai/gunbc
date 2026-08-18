@@ -66,6 +66,7 @@ type Scale =
   | One
   | Sixty
   | RackUnitHeight
+  | SquareFootArea
 
   | ArcsecondAngle
   | DegreeAngle
@@ -96,6 +97,7 @@ fn scale_exponent(s: Scale) -> Int? {
     TurnAngle      => none
     Sixty =>  none
     RackUnitHeight => none
+    SquareFootArea => none
     Kilo  =>  Present { value:   3 }
     Mega  =>  Present { value:   6 }
     Giga  =>  Present { value:   9 }
@@ -138,6 +140,7 @@ fn time_scale_factor_seconds(s: Scale) -> Nat? {
     TurnAngle => none
     Sixty => Present { value: seconds_per_minute() }
     RackUnitHeight => none
+    SquareFootArea => none
     Atto  => none
     Femto => none
     Pico  => none
@@ -175,6 +178,7 @@ fn memory_scale_factor_bytes(s: Scale) -> Nat? {
     TurnAngle => none
     Sixty => none
     RackUnitHeight => none
+    SquareFootArea => none
     Kilo  => none
     Mega  => none
     Giga  => none
@@ -347,6 +351,14 @@ type CubicMillimeter = Measure<Volume, Nano, Nat>
 // something": square_metres_to_square_millimetres(count: 3) accepted a bare Nat and so re-created,
 // at the conversion boundary, exactly the dimensional erasure this slice exists to close.
 type SquareMeter = Measure<Area, One, Nat>
+
+// THE SQUARE FOOT is non-decimal, like Sixty and RackUnitHeight: one international foot is
+// exactly 0.3048 m, so one square foot is exactly 0.09290304 square metres - not a power of
+// ten, so scale_exponent answers none rather than pretending. US commercial real estate
+// quotes area and rent in this unit (the MoneyRate PerSquareFootYear period marker below is
+// its rent-side twin); the carrier keeps the listing's own unit rather than converting at
+// ingestion, which would trade an exact quoted figure for a rounded derived one.
+type SquareFoot = Measure<Area, SquareFootArea, Nat>
 
 type CubicMeter = Measure<Volume, One, Nat>
 
@@ -722,6 +734,14 @@ fn bit_width(count: Nat) -> BitWidth {
 
 fn bit_width_count(b: BitWidth) -> Nat {
   measure_count(b)
+}
+
+fn square_foot(count: Nat) -> SquareFoot {
+  Measure { count: count }
+}
+
+fn square_foot_count(a: SquareFoot) -> Nat {
+  measure_count(a)
 }
 
 fn hertz(count: Nat) -> Hertz {

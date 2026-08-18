@@ -2,7 +2,7 @@ module extdeps.realestate.nj_industrial
 
 import std.types { NonEmptyStr, List }
 import std.nat { Nat }
-import std.measure { MoneyPerMonth, MoneyPerSquareFootYear, money_amount_micro }
+import std.measure { MoneyPerMonth, MoneyPerSquareFootYear, money_amount_micro, SquareFoot, square_foot }
 import std.currency { Usd }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -43,7 +43,7 @@ type AnnualRentPerSqftMicro {
 type IndustrialListingSpecimen {
   listing_label: NonEmptyStr
   municipality: NonEmptyStr
-  square_feet: Nat
+  floor_area: SquareFoot
   monthly_rent: MoneyPerMonth
   power_note: NonEmptyStr
   citation: NonEmptyStr
@@ -58,7 +58,7 @@ data nj_industrial_market_snapshot: AnnualRentPerSqftMicro = AnnualRentPerSqftMi
 data belleville_specimen: IndustrialListingSpecimen = IndustrialListingSpecimen {
   listing_label: "522 Cortlandt St, Belleville - whole-building warehouse",
   municipality: "Belleville",
-  square_feet: 9200,
+  floor_area: square_foot(count: 9200),
   monthly_rent: MoneyPerMonth { amount: money_amount_micro(count: 11000000000), currency: Usd },
   power_note: "no electrical service figures published in the listing read; amperage, voltage, and phase are a per-listing question and load-bearing for any compute use",
   citation: "warecre.com north-jersey listings, read 2026-08-18; computes to about 14.35 USD per sqft-year, consistent with the statewide aggregate row",
