@@ -21,7 +21,15 @@ Every identity in `v2.workflow.floor_expected_red` receives exactly one:
 `not_evaluated` is load-bearing: folding unevaluable rows into either other bucket is
 fail-open. A nonzero `not_evaluated` count is a headline number, not a footnote.
 
-## Run the join (after rebase wave)
+## How verdicts are obtained
+
+**Re-execution, not log parsing.** The join calls `run_required_floor` → `run_claim_measured` and reads live `ClaimOutcome` values. It does not read CI stderr, failure-log lines, or any saved artifact. `run_head` in the TSV is `git rev-parse HEAD` at execution time.
+
+## Terminal consumer
+
+**(a) Terminal instrument** — consumed by `run_required_floor` on every witnesses CI run. Completes the floor's existing expected-red accounting (held + now-passing) with the required `not_evaluated` third bucket. The `expected_red_roster_join` bin alone is interim operator transport; dissolve-on when floor emits the join report by default.
+
+## Run (after rebase wave)
 
 ```bash
 cargo run -p v1-compiler --bin expected_red_roster_join -- \
