@@ -110,14 +110,14 @@ fn semver_version_label(v: SemVerVersion) -> String {
   }
 }
 
-fn semver_to_version_identity(v: SemVerVersion) -> VersionIdentity {
+fn semver_to_version_identity(v: SemVerVersion) -> extdeps.version.VersionIdentity {
   semver_version_label(v: v)
 }
 
-fn semver_identity_compare(a: VersionIdentity, b: VersionIdentity) -> std.algebra.Ordering {
+fn semver_identity_compare(a: extdeps.version.VersionIdentity, b: extdeps.version.VersionIdentity) -> std.algebra.Ordering {
   if a == b { Equal } else { if a < b { Less } else { Greater } }
 }
 
-data semver_scheme: VersionScheme = {
+data semver_scheme: extdeps.version.VersionScheme = {
   compare: semver_identity_compare
 }

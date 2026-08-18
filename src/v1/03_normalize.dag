@@ -9,7 +9,7 @@ type NormalizeResult {
   diagnostics: List<v1.std.core.ErrorNode>
 }
 
-fn check_bare_containers(n: Node, module_name: String, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+fn check_bare_containers(n: Node, module_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.std.core.ErrorNode> {
   let has_structure = match n.body { Present { value: _ } => true  Absent => false } || (n.uses |> count) > 0 || (n.properties |> count) > 0
   let is_expr = match n.expr_data { NoExprData => false  _ => true }
   let nname = authored_name_at(source_indices: source_indices, node: n)
@@ -17,7 +17,7 @@ fn check_bare_containers(n: Node, module_name: String, source_indices: Map<Strin
     Present { value: expected } =>
       if (n.children |> count) == 0 && (n.params |> count) == 0 && n.connective == NoConnective && !has_structure {
         [make_error_node(
-          diagnostic: ArityMismatch { name: nname, expected: expected, got: 0, span: n.span },
+          diagnostic: v1.std.core.ArityMismatch { name: nname, expected: expected, got: 0, span: n.span },
           module_name: module_name
         )]
       } else { [] }
@@ -49,12 +49,12 @@ fn check_bare_containers(n: Node, module_name: String, source_indices: Map<Strin
   flat_map([self_diags, child_diags, param_diags, type_ann_diags, inferred_diags, body_diags, uses_diags, prop_diags], d => d)
 }
 
-fn normalize_module_diagnostics(m: ResolvedModule, source_indices: Map<String, NewlineIndex>) -> List<ErrorNode> {
+fn normalize_module_diagnostics(m: v1.compiler.resolve.ResolvedModule, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.std.core.ErrorNode> {
   let items = module_items(n: m.module)
   flat_map(items, item => check_bare_containers(n: item, module_name: authored_name_at(source_indices: source_indices, node: m.module), source_indices: source_indices))
 }
 
-fn normalize_graph(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>) -> NormalizeResult {
+fn normalize_graph(graph: v1.compiler.resolve.ModuleGraph, source_indices: Map<String, v1.std.core.NewlineIndex>) -> NormalizeResult {
   let diags = flat_map(graph.modules, m => normalize_module_diagnostics(m: m, source_indices: source_indices))
   NormalizeResult {
     graph: graph,

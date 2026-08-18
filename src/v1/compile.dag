@@ -71,10 +71,10 @@ type FrontendPrepared {
 }
 
 fn merge_occurrence_transports(
-  transports: List<OccurrenceTransport>
-) -> OccurrenceTransport {
+  transports: List<std.occurrence_identity.OccurrenceTransport>
+) -> std.occurrence_identity.OccurrenceTransport {
   OccurrenceTransport {
-    index: OccurrenceIndex {
+    index: std.occurrence_identity.OccurrenceIndex {
       entries: transports |> flat_map(transport => transport.index.entries),
     },
     declarations: transports |> flat_map(transport => transport.declarations),
@@ -82,7 +82,7 @@ fn merge_occurrence_transports(
   }
 }
 
-fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
+fn extract_func_entries(typed: v1.compiler.infer_items.ResolvedGraph) -> List<v1.compiler.complexity.FuncEntry> {
   typed.modules
     |> filter(m => m.items |> any(item => item.body != Absent))
     |> flat_map(m =>
@@ -98,28 +98,28 @@ fn extract_func_entries(typed: ResolvedGraph) -> List<FuncEntry> {
     )
 }
 
-fn build_recursion_context(typed: ResolvedGraph) -> RecursionContext {
+fn build_recursion_context(typed: v1.compiler.infer_items.ResolvedGraph) -> v1.compiler.complexity.RecursionContext {
   RecursionContext {}
 }
 
-fn module_ownership_proofs(m: TypedModule) -> List<OwnershipProof> {
+fn module_ownership_proofs(m: v1.compiler.infer_items.TypedModule) -> List<v1.compiler.ownership.OwnershipProof> {
   m.items |> filter(item => item.body != Absent) |> map(item =>
     analyze_ownership(func_name: authored_name_at(source_indices: m.type_env.source_indices, node: item), params: item.params, body: item.body.value, si: m.type_env.source_indices)
   )
 }
 
-fn extract_ownership_proofs(typed: ResolvedGraph) -> List<OwnershipProof> {
+fn extract_ownership_proofs(typed: v1.compiler.infer_items.ResolvedGraph) -> List<v1.compiler.ownership.OwnershipProof> {
   typed.modules
     |> filter(m => m.items |> any(item => item.body != Absent))
     |> flat_map(m => module_ownership_proofs(m: m))
 }
 
-fn ownership_diagnostics(proofs: List<OwnershipProof>) -> List<ErrorNode> {
+fn ownership_diagnostics(proofs: List<v1.compiler.ownership.OwnershipProof>) -> List<v1.std.core.ErrorNode> {
   proofs |> flat_map(proof =>
     proof.decisions |> flat_map(decision =>
       match decision {
         SharedError { binding: binding, consumer_count: count, sites: sites } =>
-          [make_error_node(diagnostic: OwnershipViolation { binding: binding, fn_name: proof.func_name, consumers: count, span: no_span() }, module_name: proof.func_name)]
+          [make_error_node(diagnostic: v1.std.core.OwnershipViolation { binding: binding, fn_name: proof.func_name, consumers: count, span: no_span() }, module_name: proof.func_name)]
         _ => []
       }
     )
@@ -137,27 +137,27 @@ fn default_compile_pipeline_options() -> CompilePipelineOptions {
   CompilePipelineOptions { analyze_complexity: false, census_only_sources: [] }
 }
 
-fn run_complexity_analysis(typed: ResolvedGraph, source_indices: Map<String, NewlineIndex>) -> ComplexityReport {
+fn run_complexity_analysis(typed: v1.compiler.infer_items.ResolvedGraph, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.complexity.ComplexityReport {
   let func_entries = extract_func_entries(typed: typed)
   let recursion_ctx = build_recursion_context(typed: typed)
   build_complexity_report(func_entries: func_entries, recursion_ctx: recursion_ctx, source_indices: source_indices)
 }
 
-fn complexity_diagnostics(complexity: ComplexityReport) -> List<ErrorNode> {
+fn complexity_diagnostics(complexity: v1.compiler.complexity.ComplexityReport) -> List<v1.std.core.ErrorNode> {
   complexity.violations |> map(v =>
-    make_error_node(diagnostic: ComplexityUnknown { func_name: v.func_name, reason: v.reason, span: v.span }, module_name: v.func_name)
+    make_error_node(diagnostic: v1.std.core.ComplexityUnknown { func_name: v.func_name, reason: v.reason, span: v.span }, module_name: v.func_name)
   )
 }
 
-fn empty_artifact_plan() -> ArtifactPlan {
+fn empty_artifact_plan() -> v1.compiler.artifact.ArtifactPlan {
   ArtifactPlan { artifacts: [], boundaries: [] }
 }
 
-fn compile_bundle_error(message: String) -> ErrorNode {
-  make_error_node(diagnostic: InternalError { message: message, span: no_span() }, module_name: "")
+fn compile_bundle_error(message: String) -> v1.std.core.ErrorNode {
+  make_error_node(diagnostic: v1.std.core.InternalError { message: message, span: no_span() }, module_name: "")
 }
 
-fn emit_artifact(typed: ResolvedGraph, artifact: Artifact) -> EmitResult {
+fn emit_artifact(typed: v1.compiler.infer_items.ResolvedGraph, artifact: v1.compiler.artifact.Artifact) -> v1.compiler.emit_core_support.EmitResult {
   match artifact.target {
     Rust => emit_rust(typed: typed)
     Python => emit_python(typed: typed)
@@ -178,9 +178,9 @@ fn json_optional_string(value: String?) -> String {
 }
 
 
-fn dag_node_missing_ref_error(node: Node) -> ErrorNode {
+fn dag_node_missing_ref_error(node: Node) -> v1.std.core.ErrorNode {
   make_error_node(
-    diagnostic: InternalError {
+    diagnostic: v1.std.core.InternalError {
       message: concat("dag artifact: node missing from nodes table (key=", dag_node_key(node: node), ")"),
       span: node.span
     },
@@ -188,28 +188,28 @@ fn dag_node_missing_ref_error(node: Node) -> ErrorNode {
   )
 }
 
-fn dag_emit_check_ref_target(node: Node, key_to_id: Map<String, String>) -> List<ErrorNode> {
+fn dag_emit_check_ref_target(node: Node, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
   match map_get(key_to_id, dag_node_key(node: node)) {
     Present { value: _ } => []
     Absent => [dag_node_missing_ref_error(node: node)]
   }
 }
 
-fn dag_emit_check_optional_ref_target(value: Node?, key_to_id: Map<String, String>) -> List<ErrorNode> {
+fn dag_emit_check_optional_ref_target(value: Node?, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
   match value {
     Present { value: inner } => dag_emit_check_ref_target(node: inner, key_to_id: key_to_id)
     Absent => []
   }
 }
 
-fn dag_emit_check_inferred_ref_target(value: InferredNode?, key_to_id: Map<String, String>) -> List<ErrorNode> {
+fn dag_emit_check_inferred_ref_target(value: InferredNode?, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
   match value {
     Present { value: Resolved { node: n } } => dag_emit_check_ref_target(node: n, key_to_id: key_to_id)
     _ => []
   }
 }
 
-fn dag_emit_check_node_refs(node: Node, key_to_id: Map<String, String>) -> List<ErrorNode> {
+fn dag_emit_check_node_refs(node: Node, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
   concat(
     if is_import_statement_node(n: node) {
       []
@@ -230,7 +230,7 @@ fn dag_emit_check_node_refs(node: Node, key_to_id: Map<String, String>) -> List<
   )
 }
 
-fn dag_emit_ref_errors(order: List<Node>, key_to_id: Map<String, String>) -> List<ErrorNode> {
+fn dag_emit_ref_errors(order: List<Node>, key_to_id: Map<String, String>) -> List<v1.std.core.ErrorNode> {
   order |> flat_map(n => dag_emit_check_node_refs(node: n, key_to_id: key_to_id))
 }
 
@@ -240,7 +240,7 @@ fn build_dag_key_to_id(order: List<Node>) -> Map<String, String> {
   )
 }
 
-fn dag_graph_source_indices(typed: ResolvedGraph) -> Map<String, NewlineIndex> {
+fn dag_graph_source_indices(typed: v1.compiler.infer_items.ResolvedGraph) -> Map<String, v1.std.core.NewlineIndex> {
   typed.modules |> fold(init: empty_map(), f: (acc, m) => map_merge(acc, m.type_env.source_indices))
 }
 
@@ -283,7 +283,7 @@ fn cardinality_name(value: v1.std.core.Cardinality) -> String {
   }
 }
 
-fn field_access_style_name(value: FieldAccessStyle) -> String {
+fn field_access_style_name(value: v1.std.core.FieldAccessStyle) -> String {
   match value {
     StoredField => "StoredField"
     EnumAccessor => "EnumAccessor"
@@ -293,14 +293,14 @@ fn field_access_style_name(value: FieldAccessStyle) -> String {
   }
 }
 
-fn field_value_shape_name(value: FieldValueShape) -> String {
+fn field_value_shape_name(value: v1.std.core.FieldValueShape) -> String {
   match value {
     PlainValue => "PlainValue"
     OptionalValue => "OptionalValue"
   }
 }
 
-fn var_binding_kind_name(value: VarBindingKind) -> String {
+fn var_binding_kind_name(value: v1.std.core.VarBindingKind) -> String {
   match value {
     LocalValueBinding => "LocalValueBinding"
     FunctionValueBinding => "FunctionValueBinding"
@@ -309,14 +309,14 @@ fn var_binding_kind_name(value: VarBindingKind) -> String {
   }
 }
 
-fn call_semantics_name(value: CallSemantics) -> String {
+fn call_semantics_name(value: v1.std.core.CallSemantics) -> String {
   match value {
     PlainCallSemantics => "PlainCallSemantics"
     LookupCallSemantics => "LookupCallSemantics"
   }
 }
 
-fn expr_error_kind_name(value: ExprErrorKind) -> String {
+fn expr_error_kind_name(value: v1.std.core.ExprErrorKind) -> String {
   match value {
     ParseRecoveryError => "ParseRecoveryError"
     SemanticExprError => "SemanticExprError"
@@ -325,7 +325,7 @@ fn expr_error_kind_name(value: ExprErrorKind) -> String {
   }
 }
 
-fn bin_op_name(value: BinOp) -> String {
+fn bin_op_name(value: std.syntax.BinOp) -> String {
   match value {
     Add => "Add"
     Sub => "Sub"
@@ -344,7 +344,7 @@ fn bin_op_name(value: BinOp) -> String {
   }
 }
 
-fn unary_op_name(value: UnaryOpKind) -> String {
+fn unary_op_name(value: v1.std.core.UnaryOpKind) -> String {
   match value {
     Not => "Not"
     Neg => "Neg"
@@ -355,7 +355,7 @@ fn serialize_span(span: SourceSpan) -> String {
   concat("{\"start\": ", to_string(value: span.start), ", \"end\": ", to_string(value: span.end), "}")
 }
 
-fn serialize_import_node(imp: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn serialize_import_node(imp: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let names_json = if import_is_all(n: imp) {
     "{\"kind\": \"ImportAll\"}"
   } else {
@@ -371,14 +371,14 @@ fn serialize_import_node(imp: Node, source_indices: Map<String, NewlineIndex>) -
     "}")
 }
 
-fn serialize_field_summary(summary: FieldSummary) -> String {
+fn serialize_field_summary(summary: v1.std.core.FieldSummary) -> String {
   concat(
     "{\"access_style\": ", json_quote(s: field_access_style_name(value: summary.access_style)),
     ", \"value_shape\": ", json_quote(s: field_value_shape_name(value: summary.value_shape)),
     "}")
 }
 
-fn serialize_literal(value: LiteralValue) -> String {
+fn serialize_literal(value: std.syntax.LiteralValue) -> String {
   match value {
     LitStr { value: inner } =>
       concat("{\"kind\": \"LitStr\", \"value\": ", json_quote(s: inner), "}")
@@ -394,14 +394,14 @@ fn serialize_literal(value: LiteralValue) -> String {
   }
 }
 
-fn serialize_field_binding(binding: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn serialize_field_binding(binding: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   concat(
     "{\"field_name\": ", json_quote(s: field_binding_name_at(n: binding, source_indices: source_indices)),
     ", \"binding\": ", serialize_match_pattern(pattern: field_binding_pattern(n: binding), source_indices: source_indices),
     "}")
 }
 
-fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, NewlineIndex>) -> String {
+fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   match pattern {
     Bind { declaration: declaration } =>
       concat("{\"kind\": \"Bind\", \"name\": ", json_quote(s: declaration.name), "}")
@@ -417,14 +417,14 @@ fn serialize_match_pattern(pattern: MatchPattern, source_indices: Map<String, Ne
   }
 }
 
-fn serialize_named_arg(arg: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_named_arg(arg: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_optional_string(value: arg_name_at(n: arg, source_indices: source_indices)),
     ", \"value\": ", serialize_node_ref(node: arg_value(n: arg), key_to_id: key_to_id),
     "}")
 }
 
-fn serialize_match_arm(arm: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_match_arm(arm: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"pattern\": ", serialize_match_pattern(pattern: arm_pattern(n: arm), source_indices: source_indices),
     ", \"guard\": ", json_optional_node_ref(value: arm_guard(n: arm), key_to_id: key_to_id),
@@ -432,14 +432,14 @@ fn serialize_match_arm(arm: Node, source_indices: Map<String, NewlineIndex>, key
     "}")
 }
 
-fn serialize_field_init(field_init: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_field_init(field_init: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: field_init_node_name_at(n: field_init, source_indices: source_indices)),
     ", \"value\": ", serialize_node_ref(node: field_init_node_value(n: field_init), key_to_id: key_to_id),
     "}")
 }
 
-fn serialize_string_part(part: StringPart, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_string_part(part: v1.std.core.StringPart, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   match part {
     Text { value: inner } =>
       concat("{\"kind\": \"Text\", \"value\": ", json_quote(s: inner), "}")
@@ -448,7 +448,7 @@ fn serialize_string_part(part: StringPart, source_indices: Map<String, NewlineIn
   }
 }
 
-fn serialize_call_semantics(value: CallSemantics?) -> String {
+fn serialize_call_semantics(value: v1.std.core.CallSemantics?) -> String {
   match value {
     Present { value: inner } =>
       concat("{\"kind\": ", json_quote(s: call_semantics_name(value: inner)), "}")
@@ -456,7 +456,7 @@ fn serialize_call_semantics(value: CallSemantics?) -> String {
   }
 }
 
-fn serialize_method_semantics(value: MethodSemantics?, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_method_semantics(value: MethodSemantics?, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   match value {
     Present { value: PlainMethodSemantics } =>
       "{\"kind\": \"PlainMethodSemantics\"}"
@@ -479,7 +479,7 @@ fn serialize_method_semantics(value: MethodSemantics?, source_indices: Map<Strin
   }
 }
 
-fn serialize_recursion_shape(shape: RecursionShape) -> String {
+fn serialize_recursion_shape(shape: std.induction.RecursionShape) -> String {
   match shape {
     DirectRecursion => "{\"_variant\": \"DirectRecursion\"}"
     ListRecursion => "{\"_variant\": \"ListRecursion\"}"
@@ -489,7 +489,7 @@ fn serialize_recursion_shape(shape: RecursionShape) -> String {
   }
 }
 
-fn serialize_inductive_field(field: InductiveField) -> String {
+fn serialize_inductive_field(field: std.induction.InductiveField) -> String {
   concat(
     "{\"type_name\": ", json_quote(s: field.type_name),
     ", \"variant_name\": ", json_quote(s: field.variant_name),
@@ -498,7 +498,7 @@ fn serialize_inductive_field(field: InductiveField) -> String {
     "}")
 }
 
-fn serialize_positive_descent_amount(steps: PositiveDescentAmount) -> String {
+fn serialize_positive_descent_amount(steps: std.termination.PositiveDescentAmount) -> String {
   match steps {
     OneStep => "{\"_variant\": \"OneStep\"}"
     AdditionalStep { previous: p } =>
@@ -506,7 +506,7 @@ fn serialize_positive_descent_amount(steps: PositiveDescentAmount) -> String {
   }
 }
 
-fn serialize_proportional_divisor(d: ProportionalDivisor) -> String {
+fn serialize_proportional_divisor(d: std.termination.ProportionalDivisor) -> String {
   match d {
     DivideByTwo => "{\"_variant\": \"DivideByTwo\"}"
     StrictlyLarger { inner: i } =>
@@ -514,7 +514,7 @@ fn serialize_proportional_divisor(d: ProportionalDivisor) -> String {
   }
 }
 
-fn serialize_shrink_factor(factor: ShrinkFactor) -> String {
+fn serialize_shrink_factor(factor: std.computation.ShrinkFactor) -> String {
   match factor {
     UnitShrink => "{\"_variant\": \"UnitShrink\"}"
     ConstantShrink { steps: s } =>
@@ -524,7 +524,7 @@ fn serialize_shrink_factor(factor: ShrinkFactor) -> String {
   }
 }
 
-fn serialize_sub_value_relation(rel: SubValueRelation) -> String {
+fn serialize_sub_value_relation(rel: std.induction.SubValueRelation) -> String {
   match rel {
     StrictSubValue { field: f, factor: fac } =>
       concat(
@@ -542,14 +542,14 @@ fn serialize_sub_value_relation(rel: SubValueRelation) -> String {
   }
 }
 
-fn serialize_descent_evidence(de: List<SubValueRelation>?) -> String {
+fn serialize_descent_evidence(de: List<std.induction.SubValueRelation>?) -> String {
   match de {
     Present { value: evidence } => json_list(items: evidence |> map(rel => serialize_sub_value_relation(rel: rel)))
     Absent => "null"
   }
 }
 
-fn serialize_expr_data(expr_node: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_expr_data(expr_node: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   let ch = expr_node.children
   let name = authored_name_at(source_indices: source_indices, node: expr_node)
   match expr_node.expr_data {
@@ -700,7 +700,7 @@ fn serialize_inferred_node_ref(inferred: InferredNode, key_to_id: Map<String, St
   }
 }
 
-fn serialize_resource_use(resource_use: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_resource_use(resource_use: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: resource_use_name_at(n: resource_use, source_indices: source_indices)),
     ", \"resource\": ", serialize_node_ref(node: resource_use_resource(n: resource_use), key_to_id: key_to_id),
@@ -708,7 +708,7 @@ fn serialize_resource_use(resource_use: Node, source_indices: Map<String, Newlin
     "}")
 }
 
-fn serialize_field(field: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_field(field: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: field_node_name_at(n: field, source_indices: source_indices)),
     ", \"type_expr\": ", serialize_node_ref(node: field_node_type_expr(n: field), key_to_id: key_to_id),
@@ -719,7 +719,7 @@ fn serialize_field(field: Node, source_indices: Map<String, NewlineIndex>, key_t
     "}")
 }
 
-fn serialize_param(param: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_param(param: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: param_node_name_at(n: param, source_indices: source_indices)),
     ", \"type_expr\": ", serialize_node_ref(node: param_node_type_expr(n: param), key_to_id: key_to_id),
@@ -734,7 +734,7 @@ fn is_import_statement_node(n: Node) -> Bool {
       && (n.params |> count) == 0)
 }
 
-fn serialize_node_params_json(node: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_node_params_json(node: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   if is_module_shell_node(n: node) {
     "[]"
   } else {
@@ -742,7 +742,7 @@ fn serialize_node_params_json(node: Node, source_indices: Map<String, NewlineInd
   }
 }
 
-fn serialize_module_imports_json(node: Node, source_indices: Map<String, NewlineIndex>) -> String {
+fn serialize_module_imports_json(node: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let imports = module_imports(n: node)
   if imports |> count == 0 {
     "[]"
@@ -753,7 +753,7 @@ fn serialize_module_imports_json(node: Node, source_indices: Map<String, Newline
   }
 }
 
-fn serialize_node_record(node: Node, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_node_record(node: Node, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"name\": ", json_quote(s: authored_name_at(source_indices: source_indices, node: node)),
     ", \"imports\": ", serialize_module_imports_json(node: node, source_indices: source_indices),
@@ -781,7 +781,7 @@ fn serialize_node_record(node: Node, source_indices: Map<String, NewlineIndex>, 
     "}")
 }
 
-fn serialize_typed_module(module: TypedModule, key_to_id: Map<String, String>) -> String {
+fn serialize_typed_module(module: v1.compiler.infer_items.TypedModule, key_to_id: Map<String, String>) -> String {
   concat(
     "{\"module\": ", serialize_node_ref(node: module.module, key_to_id: key_to_id),
     ", \"items\": ", json_list(items: module.items |> map(item => serialize_node_ref(node: item, key_to_id: key_to_id))),
@@ -789,7 +789,7 @@ fn serialize_typed_module(module: TypedModule, key_to_id: Map<String, String>) -
     "}")
 }
 
-fn serialize_dag_nodes_table(order: List<Node>, source_indices: Map<String, NewlineIndex>, key_to_id: Map<String, String>) -> String {
+fn serialize_dag_nodes_table(order: List<Node>, source_indices: Map<String, v1.std.core.NewlineIndex>, key_to_id: Map<String, String>) -> String {
   order |> enumerate |> map(pair =>
     concat(
       json_quote(s: concat("n", to_string(value: pair.first))),
@@ -798,7 +798,7 @@ fn serialize_dag_nodes_table(order: List<Node>, source_indices: Map<String, Newl
   ) |> join(separator: ", ")
 }
 
-fn serialize_diagnostic(diagnostic: ErrorNode) -> String {
+fn serialize_diagnostic(diagnostic: v1.std.core.ErrorNode) -> String {
   let severity = "error"
   concat(
     "{\"severity\": ", json_quote(s: severity),
@@ -809,7 +809,7 @@ fn serialize_diagnostic(diagnostic: ErrorNode) -> String {
     "}")
 }
 
-fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
+fn emit_dag_artifact(typed: v1.compiler.infer_items.ResolvedGraph) -> v1.compiler.emit_core_support.EmitResult {
   let collected = collect_dag_nodes(typed: typed)
   let _ = trace_mark("compile.emit.dag.collect.done")
   if collected.collision_errors |> count > 0 {
@@ -840,12 +840,12 @@ fn emit_dag_artifact(typed: ResolvedGraph) -> EmitResult {
   }
 }
 
-fn boundary_ref_error(names: List<String>, ref_name: String) -> List<ErrorNode> {
+fn boundary_ref_error(names: List<String>, ref_name: String) -> List<v1.std.core.ErrorNode> {
   if names |> any(n => n == ref_name) { [] }
   else { [compile_bundle_error(message: concat("boundary references unknown artifact '", ref_name, "'"))] }
 }
 
-fn validate_boundaries(plan: ArtifactPlan) -> List<ErrorNode> {
+fn validate_boundaries(plan: v1.compiler.artifact.ArtifactPlan) -> List<v1.std.core.ErrorNode> {
   let names = plan.artifacts |> map(a => a.name)
   plan.boundaries |> flat_map(b =>
     concat(
@@ -871,11 +871,11 @@ fn emittable_graph(resolved: ResolvedPipelineResult) -> EmittableGraph? {
   }
 }
 
-fn emittable_graph_from_graph(typed: ResolvedGraph) -> EmittableGraph {
+fn emittable_graph_from_graph(typed: v1.compiler.infer_items.ResolvedGraph) -> EmittableGraph {
   EmittableGraph { graph: typed }
 }
 
-fn emit_from_artifact_plan(emittable: EmittableGraph, artifact_plan: ArtifactPlan) -> EmitResult {
+fn emit_from_artifact_plan(emittable: EmittableGraph, artifact_plan: v1.compiler.artifact.ArtifactPlan) -> v1.compiler.emit_core_support.EmitResult {
   let typed = emittable.graph
   if artifact_plan.artifacts |> count == 0 {
     return EmitResult {
@@ -893,7 +893,7 @@ fn emit_from_artifact_plan(emittable: EmittableGraph, artifact_plan: ArtifactPla
   EmitResult { files: all_files, diagnostics: all_diags }
 }
 
-fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
+fn collect_diagnostics(parse_results: List<v1.compiler.parse.ParseResult>) -> List<v1.std.core.ErrorNode> {
   fold(parse_results, init: [], f: (acc, pr) =>
     match pr.error {
       Present { value: diag } => list_push(acc, diag)
@@ -903,9 +903,9 @@ fn collect_diagnostics(parse_results: List<ParseResult>) -> List<ErrorNode> {
 }
 
 fn resolve_frontend_occurrence_transport(
-  module_inputs: List<ModuleOccurrenceInput>,
-  source_indices: Map<String, NewlineIndex>,
-  occurrence_transport: OccurrenceTransport
+  module_inputs: List<v1.compiler.resolve.ModuleOccurrenceInput>,
+  source_indices: Map<String, v1.std.core.NewlineIndex>,
+  occurrence_transport: std.occurrence_identity.OccurrenceTransport
 ) -> FrontendOccurrenceResolution {
   match occurrence_transport_refusal(transport: occurrence_transport) {
     Present { value: refusal } =>
@@ -913,7 +913,7 @@ fn resolve_frontend_occurrence_transport(
         graph: none,
         diagnostics: [
           make_error_node(
-            diagnostic: OccurrenceTransportViolation { refusal: refusal },
+            diagnostic: v1.std.core.OccurrenceTransportViolation { refusal: refusal },
             module_name: ""
           )
         ],
@@ -1095,12 +1095,12 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
   }
 }
 
-fn resolve_sources(sources: List<SourceFile>) -> CompileResult {
+fn resolve_sources(sources: List<SourceFile>) -> v1.std.core.CompileResult {
   let frontend = front_end_sources(sources: sources)
   CompileResult { files: [], diagnostics: frontend.diagnostics }
 }
 
-fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineResult {
+fn compile_sources(sources: List<SourceFile>, target: v1.compiler.artifact.RenderTarget) -> PipelineResult {
   compile_sources_with_options(
     sources: sources,
     target: target,
@@ -1108,14 +1108,14 @@ fn compile_sources(sources: List<SourceFile>, target: RenderTarget) -> PipelineR
   )
 }
 
-fn compile_sources_with_options(sources: List<SourceFile>, target: RenderTarget, options: CompilePipelineOptions) -> PipelineResult {
+fn compile_sources_with_options(sources: List<SourceFile>, target: v1.compiler.artifact.RenderTarget, options: CompilePipelineOptions) -> PipelineResult {
   emit_resolved_for_target(
     resolved: compile_to_resolved_with_options(sources: sources, options: options),
     target: target
   )
 }
 
-fn interpreter_blocking_diagnostic_messages(diagnostics: List<ErrorNode>) -> List<String> {
+fn interpreter_blocking_diagnostic_messages(diagnostics: List<v1.std.core.ErrorNode>) -> List<String> {
   diagnostics
     |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))
     |> map(d => {
@@ -1222,7 +1222,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
   }
 }
 
-fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: RenderTarget) -> PipelineResult {
+fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: v1.compiler.artifact.RenderTarget) -> PipelineResult {
   match emittable_graph(resolved: resolved) {
     Absent =>
       PipelineResult {

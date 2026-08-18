@@ -63,7 +63,7 @@ fn empty_usage_accum() -> UsageAccum {
   UsageAccum { bindings: empty_map(), fold_call_nodes: [], touched: [] }
 }
 
-fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: VarBindingKind?, span_start: Int) -> UsageAccum {
+fn record_use(accum: UsageAccum, name: String, kind: EdgeKind, site: String, binding_kind: v1.std.core.VarBindingKind?, span_start: Int) -> UsageAccum {
   let edge = EdgeClassification { kind: kind, site: site, span_start: span_start }
   let existing = match map_get(accum.bindings, name) {
     Present { value: usage } => usage
@@ -116,7 +116,7 @@ fn merge_branch_usages(base: UsageAccum, branches: List<UsageAccum>) -> UsageAcc
   }
 }
 
-fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, NewlineIndex>) -> UsageAccum {
+fn walk_expr(accum: UsageAccum, texpr: Node, in_tail: Bool, si: Map<String, v1.std.core.NewlineIndex>) -> UsageAccum {
   match texpr.expr_data {
     ExprVar { binding_kind: bk } =>
       let n = expr_var_name_at(texpr: texpr, source_indices: si)
@@ -292,7 +292,7 @@ fn make_decision(usage: BindingUsage) -> OwnershipDecision {
   }
 }
 
-fn is_owned_local(kind: VarBindingKind?) -> Bool {
+fn is_owned_local(kind: v1.std.core.VarBindingKind?) -> Bool {
   match kind {
     Present { value: LocalValueBinding } => true
     _ => false
@@ -323,7 +323,7 @@ fn build_read_only_params(proof: OwnershipProof, param_names: Set<String>) -> Se
     |> fold(init: empty_set(), f: (acc, usage) => set_insert(acc, usage.name))
 }
 
-fn collect_callable_refs(texpr: Node, si: Map<String, NewlineIndex>) -> Set<String> {
+fn collect_callable_refs(texpr: Node, si: Map<String, v1.std.core.NewlineIndex>) -> Set<String> {
   match texpr.expr_data {
     ExprVar { binding_kind: bk } =>
       match bk {
@@ -411,7 +411,7 @@ fn merge_fold_acc_use_summaries(left: FoldAccUseSummary, right: FoldAccUseSummar
   }
 }
 
-fn summarize_fold_acc_uses(node: Node, acc_name: String, si: Map<String, NewlineIndex>, inside_nested: Bool) -> FoldAccUseSummary {
+fn summarize_fold_acc_uses(node: Node, acc_name: String, si: Map<String, v1.std.core.NewlineIndex>, inside_nested: Bool) -> FoldAccUseSummary {
   match node.expr_data {
     ExprVar { binding_kind: _ } =>
       if expr_var_name_at(texpr: node, source_indices: si) == acc_name {
@@ -471,14 +471,14 @@ fn summarize_fold_acc_uses(node: Node, acc_name: String, si: Map<String, Newline
   }
 }
 
-fn fold_lambda_acc_use_summary(lambda_node: Node, acc_name: String, si: Map<String, NewlineIndex>) -> FoldAccUseSummary {
+fn fold_lambda_acc_use_summary(lambda_node: Node, acc_name: String, si: Map<String, v1.std.core.NewlineIndex>) -> FoldAccUseSummary {
   match lambda_node.expr_data {
     ExprLambda => summarize_fold_acc_uses(node: lambda_body(texpr: lambda_node), acc_name: acc_name, si: si, inside_nested: false)
     _ => empty_fold_acc_use_summary()
   }
 }
 
-fn fold_body_constructs_acc_struct(lambda_node: Node, acc_type_name: String, si: Map<String, NewlineIndex>) -> Bool {
+fn fold_body_constructs_acc_struct(lambda_node: Node, acc_type_name: String, si: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match lambda_node.expr_data {
     ExprLambda =>
       let body = lambda_body(texpr: lambda_node)
@@ -491,7 +491,7 @@ fn fold_body_constructs_acc_struct(lambda_node: Node, acc_type_name: String, si:
   }
 }
 
-fn fold_body_safe_field_moves(lambda_node: Node, acc_name: String, si: Map<String, NewlineIndex>) -> Bool {
+fn fold_body_safe_field_moves(lambda_node: Node, acc_name: String, si: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   let summary = fold_lambda_acc_use_summary(lambda_node: lambda_node, acc_name: acc_name, si: si)
   let deduped = summary.field_moves |> fold(init: empty_map(), f: (seen, field) => map_insert(seen, field, true))
   !summary.nested_acc_refs
@@ -499,14 +499,14 @@ fn fold_body_safe_field_moves(lambda_node: Node, acc_name: String, si: Map<Strin
     && (map_keys(deduped) |> count == summary.field_moves |> count)
 }
 
-fn fold_body_consumes_acc_once(lambda_node: Node, acc_name: String, si: Map<String, NewlineIndex>) -> Bool {
+fn fold_body_consumes_acc_once(lambda_node: Node, acc_name: String, si: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   let summary = fold_lambda_acc_use_summary(lambda_node: lambda_node, acc_name: acc_name, si: si)
   !summary.nested_acc_refs
     && summary.whole_acc_uses == 1
     && (summary.field_moves |> count == 0)
 }
 
-fn analyze_single_fold(method_call: Node, si: Map<String, NewlineIndex>) -> FoldAccUnwrapProof {
+fn analyze_single_fold(method_call: Node, si: Map<String, v1.std.core.NewlineIndex>) -> FoldAccUnwrapProof {
   let args = method_arg_nodes(texpr: method_call)
   let init_arg_node = match args |> first {
     Present { value: a } => arg_value(n: a)
@@ -546,7 +546,7 @@ fn analyze_single_fold(method_call: Node, si: Map<String, NewlineIndex>) -> Fold
   }
 }
 
-fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: Map<String, NewlineIndex>) -> OwnershipProof {
+fn analyze_ownership(func_name: String, params: List<Node>, body: Node, si: Map<String, v1.std.core.NewlineIndex>) -> OwnershipProof {
   let initial = params |> fold(init: empty_usage_accum(), f: (acc, p) =>
     let p_name = authored_name_at(source_indices: si, node: p)
     UsageAccum {

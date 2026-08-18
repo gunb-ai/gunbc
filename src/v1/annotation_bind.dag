@@ -12,11 +12,11 @@ data annotation_render_consumer_scope_note: String = "WHAT CONSUMES THIS TODAY, 
 // So `data` and `type` module items DO receive occurrence identities; they are absent only from the declaration-role projection, because parsed_occurrence_role_for_node classifies a node carrying both a body and a type annotation as unclassified. Rostering from `declarations` would therefore have made exactly the population this feature exists to serve — the `_note` rows that hold this repository's prose — permanently unattachable, and it would have looked like a narrow first cut rather than a defect. That role-projection gap is real and pre-existing; it is NOT repaired here, because widening a declaration role changes what binding and resolution see, which is a semantic change this lane has no business making.
 
 // Ancestor depth is the module-item test: depth 0 is the module itself, depth 1 its direct members, depth 2 and beyond nested structure.
-fn entry_ancestor_depth(entry: OccurrenceIndexEntry) -> Int {
+fn entry_ancestor_depth(entry: std.occurrence_identity.OccurrenceIndexEntry) -> Int {
   count(entry.containment.ancestors)
 }
 
-fn module_item_entries(transport: OccurrenceTransport) -> List<OccurrenceIndexEntry> {
+fn module_item_entries(transport: std.occurrence_identity.OccurrenceTransport) -> List<std.occurrence_identity.OccurrenceIndexEntry> {
   fold(
     transport.index.entries,
     init: [],
@@ -27,7 +27,7 @@ fn module_item_entries(transport: OccurrenceTransport) -> List<OccurrenceIndexEn
 
 
 fn next_module_item_start(
-  items: List<OccurrenceIndexEntry>,
+  items: List<std.occurrence_identity.OccurrenceIndexEntry>,
   after: Int,
   fallback: Int
 ) -> Int {
@@ -41,7 +41,7 @@ fn next_module_item_start(
 }
 
 fn module_item_extent_end(
-  entries: List<OccurrenceIndexEntry>,
+  entries: List<std.occurrence_identity.OccurrenceIndexEntry>,
   start: Int,
   limit: Int,
   own_end: Int
@@ -64,9 +64,9 @@ fn module_item_extent_end(
 
 data subject_extent_derivation_note: String = "DISSOLVE-ON: index entries expose source order, or a declaration carries its own extent; then the successor is a neighbor lookup and the extent is read rather than derived."
 fn annotation_subjects(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   source_length: Int
-) -> List<AnnotationSubject> {
+) -> List<std.source_annotation.AnnotationSubject> {
   let entries = transport.index.entries
   let items = module_item_entries(transport: transport)
   fold(
@@ -76,14 +76,14 @@ fn annotation_subjects(
       let depth = entry_ancestor_depth(entry: entry)
       let span = entry.projection.diagnostic_span
       if depth == 0 {
-        list_push(acc, AnnotationSubject { occurrence: entry.projection.occurrence, span: span, module_root: true })
+        list_push(acc, std.source_annotation.AnnotationSubject { occurrence: entry.projection.occurrence, span: span, module_root: true })
       } else if depth == 1 {
         let limit = next_module_item_start(items: items, after: span.start, fallback: source_length)
         list_push(
           acc,
-          AnnotationSubject {
+          std.source_annotation.AnnotationSubject {
             occurrence: entry.projection.occurrence,
-            span: SourceSpan {
+            span: std.types.SourceSpan {
               file: span.file,
               start: span.start,
               end: module_item_extent_end(entries: entries, start: span.start, limit: limit, own_end: span.end),
@@ -140,7 +140,7 @@ fn render_annotation_block(text: String) -> String {
 
 // EMPTY SELECTION REFUSES: a subject carrying no prose yields Absent rather than an empty string, because rendering `no blocks` is the caller's decision to omit the region entirely, and an empty string would put a bare newline where nothing was authored.
 fn render_subject_annotation_blocks(
-  graph: SourceAnnotationGraph,
+  graph: std.source_annotation.SourceAnnotationGraph,
   subject: std.occurrence_identity.OccurrenceId
 ) -> String? {
   let texts = fold(
@@ -160,7 +160,7 @@ fn render_subject_annotation_blocks(
 }
 
 
-fn eligible_key_entries(transport: OccurrenceTransport) -> List<OccurrenceIndexEntry> {
+fn eligible_key_entries(transport: std.occurrence_identity.OccurrenceTransport) -> List<std.occurrence_identity.OccurrenceIndexEntry> {
   fold(
     transport.index.entries,
     init: [],
@@ -169,7 +169,7 @@ fn eligible_key_entries(transport: OccurrenceTransport) -> List<OccurrenceIndexE
   )
 }
 
-fn authored_name_among(entries: List<OccurrenceIndexEntry>, id: std.occurrence_identity.OccurrenceId) -> String? {
+fn authored_name_among(entries: List<std.occurrence_identity.OccurrenceIndexEntry>, id: std.occurrence_identity.OccurrenceId) -> String? {
   fold(
     entries,
     init: none,
@@ -182,7 +182,7 @@ fn authored_name_among(entries: List<OccurrenceIndexEntry>, id: std.occurrence_i
   )
 }
 
-fn eligible_name_count(entries: List<OccurrenceIndexEntry>, name: String) -> Int {
+fn eligible_name_count(entries: List<std.occurrence_identity.OccurrenceIndexEntry>, name: String) -> Int {
   fold(
     entries,
     init: 0,
@@ -190,7 +190,7 @@ fn eligible_name_count(entries: List<OccurrenceIndexEntry>, name: String) -> Int
   )
 }
 
-fn eligible_names_unique(entries: List<OccurrenceIndexEntry>) -> Bool {
+fn eligible_names_unique(entries: List<std.occurrence_identity.OccurrenceIndexEntry>) -> Bool {
   fold(
     entries,
     init: true,
@@ -201,7 +201,7 @@ fn eligible_names_unique(entries: List<OccurrenceIndexEntry>) -> Bool {
 
 
 // Pins the element type of the accumulator's empty list. A bare `[]` in the fold's init leaves the element type unconstrained until the first push, and the emitter writes that unconstrained type into the closure signature it generates — so the seed compiles the accumulator as a list of unit and the fold no longer typechecks. Naming the empty list through a typed return is the one place the element type is stated.
-fn empty_keyed_rows() -> List<KeyedAnnotationRow> {
+fn empty_keyed_rows() -> List<std.source_annotation.KeyedAnnotationRow> {
   []
 }
 
@@ -211,9 +211,9 @@ fn empty_keyed_rows() -> List<KeyedAnnotationRow> {
 
 // Both lookups scan the eligible list per row — a join without a sorted index, bounded by one module's items, the same shape and dissolve-on as the roster scan in std.source_annotation: a name-indexed subject table on the parse artifact.
 fn keyed_annotation_rows(
-  transport: OccurrenceTransport,
-  graph: SourceAnnotationGraph
-) -> List<KeyedAnnotationRow>? {
+  transport: std.occurrence_identity.OccurrenceTransport,
+  graph: std.source_annotation.SourceAnnotationGraph
+) -> List<std.source_annotation.KeyedAnnotationRow>? {
   let eligible = eligible_key_entries(transport: transport)
   if !eligible_names_unique(entries: eligible) {
     none
@@ -229,7 +229,7 @@ fn keyed_annotation_rows(
               Absent => none
               Present { value: name } =>
                 Present {
-                  value: list_push(rows, KeyedAnnotationRow { subject_key: name, text: row.text }),
+                  value: list_push(rows, std.source_annotation.KeyedAnnotationRow { subject_key: name, text: row.text }),
                 }
             }
         }
@@ -237,7 +237,7 @@ fn keyed_annotation_rows(
   }
 }
 
-fn normalize_dag_annotation(capture: UnboundAnnotationCapture) -> NormalizedAnnotationCapture {
+fn normalize_dag_annotation(capture: std.source_annotation.UnboundAnnotationCapture) -> std.source_annotation.NormalizedAnnotationCapture {
   NormalizedAnnotationCapture {
     text: strip_line_comment_delimiter(lexeme: capture.lexeme),
     origin: capture.origin,
@@ -250,10 +250,10 @@ fn normalize_dag_annotation(capture: UnboundAnnotationCapture) -> NormalizedAnno
 
 // The .dag entry point: normalize, roster, attach. The attach step is the shared fold, so a change to the attachment rule reaches this realization and the v2 one together and cannot reach only one.
 fn bind_annotations(
-  transport: OccurrenceTransport,
-  captures: List<UnboundAnnotationCapture>,
+  transport: std.occurrence_identity.OccurrenceTransport,
+  captures: List<std.source_annotation.UnboundAnnotationCapture>,
   source_length: Int
-) -> AnnotationAttachmentResult {
+) -> std.source_annotation.AnnotationAttachmentResult {
   attach_annotations(
     captures: fold(
       captures,
@@ -274,8 +274,8 @@ type AdmittedSourceAnnotations {
 
 // Refusal is a BLOCKING diagnostic, not a note carried alongside a successful result. Unclassified prose stops the line: the graph is withheld entirely and every refusal is reported at its own span. Admitting the attachable rows while dropping the rest is the shape DESIGN forbids — the dropped prose would be uncounted, and a source that lost half its commentary would compile exactly like one that never had it.
 fn admit_source_annotations(
-  transport: OccurrenceTransport,
-  captures: List<UnboundAnnotationCapture>,
+  transport: std.occurrence_identity.OccurrenceTransport,
+  captures: List<std.source_annotation.UnboundAnnotationCapture>,
   source_length: Int
 ) -> AdmittedSourceAnnotations {
   match admit_annotations(
@@ -289,7 +289,7 @@ fn admit_source_annotations(
         diagnostics: fold(
           non_empty_refusals_all(refusals: refusals),
           init: [],
-          f: (acc, refusal) => list_push(acc, SourceAnnotationRefused { refusal: refusal })
+          f: (acc, refusal) => list_push(acc, v1.std.core.SourceAnnotationRefused { refusal: refusal })
         ),
       }
   }

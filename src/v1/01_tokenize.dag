@@ -13,7 +13,7 @@ fn is_keyword_text(text: String) -> Bool {
   }
 }
 
-data single_punct: Map<String, TokenShape> = {
+data single_punct: Map<String, v1.std.core.TokenShape> = {
   "(": ShLParen, ")": ShRParen,
   "[": ShLBracket, "]": ShRBracket,
   ":": ShColon, ",": ShComma, ".": ShDot,
@@ -34,7 +34,7 @@ type ScanStep
   = ScannedToken { result: ScanResult }
   | ScannedAnnotation { pos: Int, capture: std.source_annotation.UnboundAnnotationCapture, interp_depth: List<Int> }
 
-data v1_tokenize_artifact_note: String = "tokenize keeps returning List<Token> and is the SEMANTIC PROJECTION, so every existing caller (compile.dag, the parser, the Rust seed tests) is untouched by construction. tokenize_artifact is the authored result. The projection direction is one-way on purpose: a semantic consumer cannot reach annotation text."
+data v1_tokenize_artifact_note: String = "tokenize keeps returning List<v1.std.core.Token> and is the SEMANTIC PROJECTION, so every existing caller (compile.dag, the parser, the Rust seed tests) is untouched by construction. tokenize_artifact is the authored result. The projection direction is one-way on purpose: a semantic consumer cannot reach annotation text."
 
 type V1LexArtifact {
   tokens: List<v1.std.core.Token>
@@ -58,7 +58,7 @@ type SourceRef {
   source_chars: List<Int>
 }
 
-fn make_token(text: String, span: SourceSpan, shape: TokenShape) -> Token {
+fn make_token(text: String, span: std.types.SourceSpan, shape: v1.std.core.TokenShape) -> v1.std.core.Token {
   Token { text: text, span: span, shape: shape }
 }
 
@@ -113,7 +113,7 @@ fn tokenize_artifact(source: String, file: String) -> V1LexArtifact {
   }
 }
 
-fn tokenize(source: String, file: String) -> List<Token> {
+fn tokenize(source: String, file: String) -> List<v1.std.core.Token> {
   tokenize_artifact(source: source, file: file).tokens
 }
 
@@ -207,7 +207,7 @@ fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanStep {
     let eol = source_scan_to_eol(source: source, start: pos.pos)
     return ScannedAnnotation {
       pos: eol,
-      capture: UnboundAnnotationCapture {
+      capture: std.source_annotation.UnboundAnnotationCapture {
         lexeme: source_substring(source: source, start: pos.pos, end: eol),
         origin: make_file_span(file: source.file, start: pos.pos, end: eol),
         placement: placement_from_line_prefix(indent_only: line_prefix_is_indent_only(source: source, pos: pos.pos)),
@@ -236,7 +236,7 @@ fn scan_next_token(source: SourceRef, pos: TokPos) -> ScanStep {
   ScannedToken { result: scan_token(source: source, pos: pos, ch: ch) }
 }
 
-fn tokenize_loop(source: SourceRef, tokens: List<Token>, annotations: List<UnboundAnnotationCapture>, pos: TokPos, fuel: Int) -> TokenizerState {
+fn tokenize_loop(source: SourceRef, tokens: List<v1.std.core.Token>, annotations: List<std.source_annotation.UnboundAnnotationCapture>, pos: TokPos, fuel: Int) -> TokenizerState {
   let s = skip_spaces(source: source, pos: pos)
   if s.pos >= source_len(source: source) {
     return TokenizerState { pos: s.pos, tokens: tokens, annotations: annotations, interp_depth: s.interp_depth }
@@ -304,7 +304,7 @@ fn scan_token(source: SourceRef, pos: TokPos, ch: Int) -> ScanResult {
   }
 }
 
-fn emit(pos: TokPos, shape: TokenShape, text: String, len: Int, file: String) -> ScanResult {
+fn emit(pos: TokPos, shape: v1.std.core.TokenShape, text: String, len: Int, file: String) -> ScanResult {
   let token = make_token(text: text, span: make_file_span(file: file, start: pos.pos, end: pos.pos + len), shape: shape)
   ScanResult {
     pos: pos.pos + len,
@@ -352,9 +352,9 @@ type EscapeProcessResult
 
 fn make_processed_string_token(
   content: List<Int>,
-  span: SourceSpan,
-  accepted_shape: TokenShape
-) -> Token {
+  span: std.types.SourceSpan,
+  accepted_shape: v1.std.core.TokenShape
+) -> v1.std.core.Token {
   match process_escapes(chars: content) {
     EscapesProcessed { text: processed } =>
       make_token(text: processed, span: span, shape: accepted_shape)

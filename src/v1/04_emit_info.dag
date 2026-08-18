@@ -39,7 +39,7 @@ fn dedupe_nonempty_strings(items: List<String>) -> List<String> {
   acc.result
 }
 
-fn collect_type_node_import_surface_names(n: Node, source_indices: Map<String, NewlineIndex>) -> List<String> {
+fn collect_type_node_import_surface_names(n: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<String> {
   let peeled = normalize_access_type_node(n: n)
   let name = authored_name_at(source_indices: source_indices, node: peeled)
   let is_tv = if peeled.inferred != none { is_type_variable(inferred: peeled.inferred.value) } else { false }
@@ -111,7 +111,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   }
 }
 
-fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names: List<String>, env: TypeEnv) -> EmitGraphInfo {
+fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names: List<String>, env: v1.compiler.infer_env.TypeEnv) -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
@@ -174,7 +174,7 @@ fn lookup_emit_type_decl(emit_info: EmitGraphInfo, type_name: String) -> Node? {
   map_get(emit_info.type_decl_items, type_name)
 }
 
-fn emit_graph_records_type_decl(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn emit_graph_records_type_decl(item: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   match build_type_summary(item: item, source_indices: source_indices) {
     Present { value: _ } => true
     Absent =>
@@ -237,7 +237,7 @@ fn find_variant_parent(type_summaries: Map<String, TypeSummary>, variant_name: S
   ) |> first
 }
 
-fn field_value_shape_from_type_node(type_node: Node) -> FieldValueShape {
+fn field_value_shape_from_type_node(type_node: Node) -> v1.std.core.FieldValueShape {
   let normed = normalize_access_type_node(n: type_node)
   let is_optional = normed.return_cardinality == CardOptional
   if is_optional { OptionalValue }
@@ -248,7 +248,7 @@ fn is_tuple_type(n: Node) -> Bool {
   n.connective == Conj && n.ident_span == none && n.children |> count == 2
 }
 
-fn build_struct_field_summaries(parent: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, FieldSummary> {
+fn build_struct_field_summaries(parent: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Map<String, v1.std.core.FieldSummary> {
   let is_pair = is_tuple_type(n: parent)
   fold(parent.children |> enumerate, init: empty_map(), f: (acc, pair) =>
     let idx = pair.first
@@ -258,7 +258,7 @@ fn build_struct_field_summaries(parent: Node, source_indices: Map<String, Newlin
     } else {
       let style = if is_pair { if idx == 0 { TupleFirst } else { TupleSecond } } else { StoredField }
       let key = authored_name_at(source_indices: source_indices, node: child)
-      map_insert(acc, key, FieldSummary {
+      map_insert(acc, key, v1.std.core.FieldSummary {
         access_style: style,
         value_shape: field_value_shape_from_type_node(type_node: child_type_node(ch: child))
       })
@@ -266,7 +266,7 @@ fn build_struct_field_summaries(parent: Node, source_indices: Map<String, Newlin
   )
 }
 
-fn find_first_enum_field_node(variants: List<Node>, field_name: String, source_indices: Map<String, NewlineIndex>) -> Node? {
+fn find_first_enum_field_node(variants: List<Node>, field_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Node? {
   match variants |> first {
     Present { value: variant } =>
       match find_child_named(n: variant, name: field_name, source_indices: source_indices) {
@@ -277,13 +277,13 @@ fn find_first_enum_field_node(variants: List<Node>, field_name: String, source_i
   }
 }
 
-fn enum_field_present_in_all_variants(variants: List<Node>, field_name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn enum_field_present_in_all_variants(variants: List<Node>, field_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   variants |> all(variant =>
     has_child_named(n: variant, name: field_name, source_indices: source_indices)
   )
 }
 
-fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   variants |> all(variant =>
     match find_child_named(n: variant, name: field_name, source_indices: source_indices) {
       Present { value: field_child } => node_type_equals(left: child_type_node(ch:field_child), right: expected, source_indices: source_indices)
@@ -292,7 +292,7 @@ fn enum_field_type_consistent(variants: List<Node>, field_name: String, expected
   )
 }
 
-fn build_enum_field_summaries(variants: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, FieldSummary> {
+fn build_enum_field_summaries(variants: List<Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Map<String, v1.std.core.FieldSummary> {
   let first_field_names = match variants |> first {
     Present { value: first_variant } => first_variant.children |> map(f => authored_name_at(source_indices: source_indices, node: f))
     Absent => []
@@ -310,7 +310,7 @@ fn build_enum_field_summaries(variants: List<Node>, source_indices: Map<String, 
   fold(consistent, init: empty_map(), f: (acc, field_name) =>
     match find_first_enum_field_node(variants: variants, field_name: field_name, source_indices: source_indices) {
       Present { value: first_field } =>
-        map_insert(acc, field_name, FieldSummary {
+        map_insert(acc, field_name, v1.std.core.FieldSummary {
           access_style: EnumAccessor,
           value_shape: field_value_shape_from_type_node(type_node: child_type_node(ch:first_field))
         })
@@ -319,7 +319,7 @@ fn build_enum_field_summaries(variants: List<Node>, source_indices: Map<String, 
   )
 }
 
-fn build_field_type_map(children: List<Node>, source_indices: Map<String, NewlineIndex>) -> FieldTypeMapBuild {
+fn build_field_type_map(children: List<Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> FieldTypeMapBuild {
   fold(children, init: FieldTypeMapBuild { field_types: empty_map(), import_surface_names: [] }, f: (acc, child) =>
     match child.inferred {
       Present { value: Resolved { node: ft } } =>
@@ -339,7 +339,7 @@ fn build_field_type_map(children: List<Node>, source_indices: Map<String, Newlin
   )
 }
 
-fn build_type_summary(item: Node, source_indices: Map<String, NewlineIndex>) -> TypeSummary? {
+fn build_type_summary(item: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> TypeSummary? {
   if item.connective == NoConnective || item.connective == Arrow || item.transport != none {
     return none
   }
@@ -416,7 +416,7 @@ fn close_fn_fields(summaries: Map<String, TypeSummary>) -> Map<String, TypeSumma
   )
 }
 
-fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: Map<String, NewlineIndex>) -> EmitInfoBuildState {
+fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> EmitInfoBuildState {
   let decl_name = authored_name_at(source_indices: source_indices, node: item)
   let state = if decl_name != "" && emit_graph_records_type_decl(item: item, source_indices: source_indices) {
     EmitInfoBuildState {
@@ -464,4 +464,4 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: 
   }
 }
 
-data emit_dependency_registration_dissolve_on_note: DissolutionCondition = unbound_dissolution(description: "dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + emit_faithful_text_carrier_import_lines and (b) closure pub-mod membership via emit_lib_rs_from_files from that set. Instance-patch interim: faithful corpus emits carrier import lines per module unless locally defined (FreeMonoid/Char/NonEmptyStr/Int); closure projections (v1.compiler.closure_stub_v2_std_text_rust and closure_stub_v2_std_integer_rust) when refs exist but the real v2.std.text or v2.std.integer module is absent from narrow typed.modules — projections are NOT parallel modeling authorities (see each stub module dissolve_on_note); they dissolve when the ref set includes the real module in the closure.")
+data emit_dependency_registration_dissolve_on_note: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on (FreeMonoid pass 2026-07-20): collect emitted cross-module type/path refs during emit into one authority; derive (a) use-lines via build_shared_types + emit_faithful_text_carrier_import_lines and (b) closure pub-mod membership via emit_lib_rs_from_files from that set. Instance-patch interim: faithful corpus emits carrier import lines per module unless locally defined (FreeMonoid/Char/NonEmptyStr/Int); closure projections (v1.compiler.closure_stub_v2_std_text_rust and closure_stub_v2_std_integer_rust) when refs exist but the real v2.std.text or v2.std.integer module is absent from narrow typed.modules — projections are NOT parallel modeling authorities (see each stub module dissolve_on_note); they dissolve when the ref set includes the real module in the closure.")

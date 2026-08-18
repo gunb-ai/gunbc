@@ -6,7 +6,7 @@ module v1.compiler.infer_patterns
 
 
 
-fn generic_use_slot_bindings(scrut_node: Node, env: TypeEnv) -> Map<String, Node> {
+fn generic_use_slot_bindings(scrut_node: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> Map<String, v1.std.core.Node> {
   let decl = resolve_generic_use_decl(env: env, n: scrut_node)
   fold(decl.params |> enumerate, init: empty_map(), f: (acc, pair) =>
     let slot = generic_param_name_at(n: pair.second, source_indices: env.source_indices)
@@ -17,7 +17,7 @@ fn generic_use_slot_bindings(scrut_node: Node, env: TypeEnv) -> Map<String, Node
   )
 }
 
-fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeEnv) -> Node {
+fn expand_scrut_from_decl(decl: v1.std.core.Node, scrut_node: v1.std.core.Node, name: String, env: v1.compiler.infer_env.TypeEnv) -> v1.std.core.Node {
   let decl_is_disj = decl.connective == Disj
   let has_inferred_alias = decl.inferred != none && decl.connective == NoConnective && decl.children |> count == 0
   if decl_is_disj {
@@ -61,7 +61,7 @@ fn expand_scrut_from_decl(decl: Node, scrut_node: Node, name: String, env: TypeE
   }
 }
 
-fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
+fn expand_scrut_from_type_name(scrut_node: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> v1.std.core.Node {
   let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
   let is_generic_use = scrut_node.connective == NoConnective && scrut_node.children |> count > 0
     && is_user_generic_use_site(n: scrut_node, env: env)
@@ -102,7 +102,7 @@ fn expand_scrut_from_type_name(scrut_node: Node, env: TypeEnv) -> Node {
   }
 }
 
-fn expand_scrut_type_for_variant_lookup(scrut_node: Node, env: TypeEnv) -> Node {
+fn expand_scrut_type_for_variant_lookup(scrut_node: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> v1.std.core.Node {
   let name = authored_name_at(source_indices: env.source_indices, node: scrut_node)
   let is_disj = scrut_node.connective == Disj
   let is_witness = is_witness_type_name(name: name)
@@ -128,11 +128,11 @@ type NodeLookupResult {
 }
 
 type NodeLookupStatus
-  = LookupResolved { node: Node }
+  = LookupResolved { node: v1.std.core.Node }
   | LookupFailed
 
 type PatternSubject
-  = PatternResolved { node: Node }
+  = PatternResolved { node: v1.std.core.Node }
   | PatternDynamic { span: std.types.SourceSpan }
   | PatternLookupBlocked
 
@@ -143,14 +143,14 @@ fn is_type_variable(inferred: InferredNode) -> Bool {
   }
 }
 
-fn synthesize_optional_present_variant(scrut: Node) -> Node {
+fn synthesize_optional_present_variant(scrut: v1.std.core.Node) -> v1.std.core.Node {
   let inner = extract_optional_inner_node(n: scrut)
   let value_field = Node { name: "value", span: scrut.span, ident_span: Present { value: v1.std.core.kernel_span(name: "value") }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.Resolved { node: inner } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let present_node = Node { name: "Present", span: scrut.span, ident_span: Present { value: v1.std.core.kernel_span(name: "Present") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   present_node
 }
 
-fn synthesize_witness_holds_variant(scrut: Node) -> Node {
+fn synthesize_witness_holds_variant(scrut: v1.std.core.Node) -> v1.std.core.Node {
   let inner = match scrut.children |> first {
     Present { value: child } => child_type_node(ch: child)
     Absent => error_type
@@ -159,13 +159,13 @@ fn synthesize_witness_holds_variant(scrut: Node) -> Node {
   Node { name: "Holds", span: scrut.span, ident_span: Present { value: v1.std.core.kernel_span(name: "Holds") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-fn synthesize_witness_violates_variant(scrut: Node) -> Node {
+fn synthesize_witness_violates_variant(scrut: v1.std.core.Node) -> v1.std.core.Node {
   let diagnostic_type = Node { name: "Diagnostic", span: scrut.span, ident_span: Present { value: v1.std.core.kernel_span(name: "Diagnostic") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let diagnostic_field = Node { name: "diagnostic", span: scrut.span, ident_span: Present { value: v1.std.core.kernel_span(name: "diagnostic") }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.Resolved { node: diagnostic_type } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   Node { name: "Violates", span: scrut.span, ident_span: Present { value: v1.std.core.kernel_span(name: "Violates") }, children: [diagnostic_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-fn pattern_subject_preserving_outer_optional(outer: Node, inner: PatternSubject) -> PatternSubject {
+fn pattern_subject_preserving_outer_optional(outer: v1.std.core.Node, inner: PatternSubject) -> PatternSubject {
   match inner {
     PatternResolved { node: resolved } =>
       PatternResolved { node: preserve_outer_optional_cardinality(outer: outer, inner: resolved) }
@@ -173,7 +173,7 @@ fn pattern_subject_preserving_outer_optional(outer: Node, inner: PatternSubject)
   }
 }
 
-fn pattern_subject_from_node(n: Node) -> PatternSubject {
+fn pattern_subject_from_node(n: v1.std.core.Node) -> PatternSubject {
 
   let is_error = if n.inferred != none { is_compiler_error(inferred: n.inferred.value) } else { false }
   if is_error {
@@ -195,14 +195,14 @@ fn pattern_subject_from_inferred(n: InferredNode?) -> PatternSubject {
   }
 }
 
-fn node_lookup_resolved(node: Node) -> NodeLookupResult {
+fn node_lookup_resolved(node: v1.std.core.Node) -> NodeLookupResult {
   NodeLookupResult {
     status: LookupResolved { node: node },
     diagnostics: []
   }
 }
 
-fn node_lookup_failed(diagnostics: List<ErrorNode>) -> NodeLookupResult {
+fn node_lookup_failed(diagnostics: List<v1.std.core.ErrorNode>) -> NodeLookupResult {
   NodeLookupResult {
     status: LookupFailed,
     diagnostics: diagnostics
@@ -216,7 +216,7 @@ fn lookup_result_subject(result: NodeLookupResult) -> PatternSubject {
   }
 }
 
-fn pattern_binding_type(subject: PatternSubject) -> Node {
+fn pattern_binding_type(subject: PatternSubject) -> v1.std.core.Node {
   match subject {
     PatternResolved { node: resolved } => resolved
     PatternDynamic { span: _ } => error_type
@@ -224,18 +224,18 @@ fn pattern_binding_type(subject: PatternSubject) -> Node {
   }
 }
 
-fn variant_not_found_result(scrut: Node, variant_name: String, module_name: String, source_indices: Map<String, NewlineIndex>) -> NodeLookupResult {
+fn variant_not_found_result(scrut: v1.std.core.Node, variant_name: String, module_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> NodeLookupResult {
   node_lookup_failed(
-    diagnostics: [make_error_node(diagnostic: VariantNotFound { variant: variant_name, type_name: authored_name_at(source_indices: source_indices, node: scrut), span: scrut.span }, module_name: module_name)]
+    diagnostics: [make_error_node(diagnostic: v1.std.core.VariantNotFound { variant: variant_name, type_name: authored_name_at(source_indices: source_indices, node: scrut), span: scrut.span }, module_name: module_name)]
   )
 }
 
-fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, env: TypeEnv, field_binding_count: Int) -> NodeLookupResult {
+fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_name: String, env: v1.compiler.infer_env.TypeEnv, field_binding_count: Int) -> NodeLookupResult {
   match scrut {
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
     PatternDynamic { span: dynamic_span } =>
-      node_lookup_failed(diagnostics: [make_error_node(diagnostic: VariantNotFound { variant: variant_name, type_name: "unresolved", span: dynamic_span }, module_name: module_name)])
+      node_lookup_failed(diagnostics: [make_error_node(diagnostic: v1.std.core.VariantNotFound { variant: variant_name, type_name: "unresolved", span: dynamic_span }, module_name: module_name)])
     PatternResolved { node: scrut_node } =>
       let source_indices = env.source_indices
       if contains(variant_name, ".") {
@@ -298,18 +298,18 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
   }
 }
 
-fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_name: String, source_indices: Map<String, NewlineIndex>) -> NodeLookupResult {
+fn lookup_field_in_variant(variant: PatternSubject, field_name: String, module_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> NodeLookupResult {
   match variant {
     PatternLookupBlocked =>
       node_lookup_failed(diagnostics: [])
     PatternDynamic { span: dynamic_span } =>
-      node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: "unresolved", span: dynamic_span }, module_name: module_name)])
+      node_lookup_failed(diagnostics: [make_error_node(diagnostic: v1.std.core.FieldNotFound { field: field_name, type_name: "unresolved", span: dynamic_span }, module_name: module_name)])
     PatternResolved { node: variant_node } =>
       match find_child_named(n: variant_node, name: field_name, source_indices: source_indices) {
         Present { value: field_child } =>
           let resolved = child_type_node(ch: field_child)
           node_lookup_resolved(node: resolved)
-        Absent => node_lookup_failed(diagnostics: [make_error_node(diagnostic: FieldNotFound { field: field_name, type_name: authored_name_at(source_indices: source_indices, node: variant_node), span: variant_node.span }, module_name: module_name)])
+        Absent => node_lookup_failed(diagnostics: [make_error_node(diagnostic: v1.std.core.FieldNotFound { field: field_name, type_name: authored_name_at(source_indices: source_indices, node: variant_node), span: variant_node.span }, module_name: module_name)])
       }
   }
 }
@@ -320,12 +320,12 @@ fn variant_pattern_coverage_key(name: String) -> String {
 }
 
 fn check_match_exhaustiveness(
-  scrutinee_type: Node,
-  arms: List<Node>,
-  env: TypeEnv,
-  span: SourceSpan,
+  scrutinee_type: v1.std.core.Node,
+  arms: List<v1.std.core.Node>,
+  env: v1.compiler.infer_env.TypeEnv,
+  span: std.types.SourceSpan,
   module_name: String
-) -> List<ErrorNode> {
+) -> List<v1.std.core.ErrorNode> {
   let scrut_is_optional = scrutinee_type.return_cardinality == CardOptional
   let has_structure = scrutinee_type.connective != NoConnective
   let resolved_raw = if has_structure {
@@ -374,7 +374,7 @@ fn check_match_exhaustiveness(
         |> filter(v => emit_map_has(m: covered_set, key: variant_pattern_coverage_key(name: v)) == false)
         |> map(v => variant_pattern_coverage_key(name: v))
       if count(uncovered) > 0 {
-        [make_error_node(diagnostic: NonExhaustiveMatch { missing: uncovered, span: span }, module_name: module_name)]
+        [make_error_node(diagnostic: v1.std.core.NonExhaustiveMatch { missing: uncovered, span: span }, module_name: module_name)]
       } else {
         []
       }

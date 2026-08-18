@@ -22,7 +22,7 @@ type TypeEnv {
 
 type TypeBinding {
   name: String
-  resolved: Node
+  resolved: v1.std.core.Node
   provenance: std.induction.SubValueRelation
 }
 
@@ -41,22 +41,22 @@ type GlobalBareLookupState
 
 type ImportBinding {
   name: String
-  resolved: Node
+  resolved: v1.std.core.Node
 }
 
 type ScopeBinding {
   name: String
-  resolved: Node
+  resolved: v1.std.core.Node
   provenance: std.induction.SubValueRelation
 }
 
 type ServiceCensusEntry {
   module_path: String
-  item: Node
+  item: v1.std.core.Node
 }
 
 type SymbolIndex {
-  entries: Map<String, Node>
+  entries: Map<String, v1.std.core.Node>
   global_bare: Map<String, GlobalBareLookupState>
   services: Map<String, ServiceCensusEntry>
 }
@@ -86,11 +86,11 @@ fn empty_type_env() -> TypeEnv {
   }
 }
 
-fn symbol_index_lookup(index: SymbolIndex, qualified_name: String) -> Node? {
+fn symbol_index_lookup(index: SymbolIndex, qualified_name: String) -> v1.std.core.Node? {
   map_get(index.entries, qualified_name)
 }
 
-fn global_bare_candidates_contain(candidates: List<GlobalBareCandidate>, resolved: Node) -> Bool {
+fn global_bare_candidates_contain(candidates: List<GlobalBareCandidate>, resolved: v1.std.core.Node) -> Bool {
   candidates |> any(c => c.binding.resolved == resolved)
 }
 
@@ -123,7 +123,7 @@ fn symbol_index_track_global_bare(
   }
 }
 
-fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: Node) -> SymbolIndex {
+fn symbol_index_insert(index: SymbolIndex, qualified_name: String, resolved: v1.std.core.Node) -> SymbolIndex {
   SymbolIndex {
     entries: map_insert(index.entries, qualified_name, resolved),
     global_bare: index.global_bare,
@@ -139,7 +139,7 @@ fn symbol_index_insert_decl(index: SymbolIndex, module_path: String, binding: Ty
   }
 }
 
-fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: String, item: Node) -> SymbolIndex {
+fn symbol_index_insert_service(index: SymbolIndex, name: String, module_path: String, item: v1.std.core.Node) -> SymbolIndex {
   SymbolIndex {
     entries: index.entries,
     global_bare: index.global_bare,
@@ -602,7 +602,7 @@ fn global_bare_strict_ambiguity_candidates(env: TypeEnv, name: String) -> List<S
   }
 }
 
-fn bare_name_miss_diagnostic(env: TypeEnv, name: String, span: SourceSpan) -> CompilerDiagnostic {
+fn bare_name_miss_diagnostic(env: TypeEnv, name: String, span: std.types.SourceSpan) -> v1.std.core.CompilerDiagnostic {
   let cands = global_bare_strict_ambiguity_candidates(env: env, name: name)
   if cands |> count > 0 {
     AmbiguousReference { name: name, candidates: cands, span: span }
@@ -631,11 +631,11 @@ fn global_bare_owner_module(env: TypeEnv, owner_module_path: String, name: Strin
   }
 }
 
-fn binding_declares_name(binding: TypeBinding, name: String, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn binding_declares_name(binding: TypeBinding, name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   authored_name_at(source_indices: source_indices, node: binding.resolved) == name
 }
 
-fn borrowed_generic_param_names(params: List<Node>, source_indices: Map<String, NewlineIndex>) -> Map<String, Bool> {
+fn borrowed_generic_param_names(params: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Map<String, Bool> {
   fold(params, init: empty_map(), f: (acc, p) =>
     let pt = param_node_type_expr(n: p)
     let pname = param_node_name_at(n: p, source_indices: source_indices)
@@ -648,13 +648,13 @@ fn borrowed_generic_param_names(params: List<Node>, source_indices: Map<String, 
 
 data qualify_declaration_position_invariant: String = "qualify_borrowed_type_names rewrites REFERENCE positions only. Within a type expression, a NoConnective node's children are generic ARGS (references - rename-eligible); a STRUCTURED node's (Disj/Conj) children are DECLARATIONS (variant names, field names) whose names must never be rewritten - renaming them detaches bare patterns/projections from the decl (a projected coproduct's Independent became std.realization.Independent and every bare match arm missed). Declaration subtrees are walked by qualify_decl_reference_positions: keep the declared name, qualify the inferred payload (a type expr - reference position), recurse into child declarations. The census type-decl pass (census_upgrade_type_decl_binding) uses the SAME walk - one authority for the declaration/reference distinction."
 
-fn qualify_decl_reference_positions(n: Node, owner_module_path: String, env: TypeEnv, excluded: Map<String, Bool>) -> Node {
+fn qualify_decl_reference_positions(n: v1.std.core.Node, owner_module_path: String, env: TypeEnv, excluded: Map<String, Bool>) -> v1.std.core.Node {
   let inf2 = qualify_borrowed_inferred(inferred: n.inferred, owner_module_path: owner_module_path, env: env, excluded: excluded)
   let ch2 = n.children |> map(c => qualify_decl_reference_positions(n: c, owner_module_path: owner_module_path, env: env, excluded: excluded))
   node_with_children(n: node_with_inferred(n: n, inferred: inf2), children: ch2)
 }
 
-fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv, excluded: Map<String, Bool>) -> Node {
+fn qualify_borrowed_type_names(n: v1.std.core.Node, owner_module_path: String, env: TypeEnv, excluded: Map<String, Bool>) -> v1.std.core.Node {
   let qualified_children = if (n.connective == NoConnective) {
     n.children |> map(c => qualify_borrowed_type_names(n: c, owner_module_path: owner_module_path, env: env, excluded: excluded))
   } else {
@@ -662,7 +662,7 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
   }
   let name = authored_name_at(source_indices: env.source_indices, node: n)
   let is_type_var = match n.inferred {
-    Present { value: TypeVariable { id: _ } } => true
+    Present { value: v1.std.core.TypeVariable { id: _ } } => true
     _ => false
   }
   let rewrite = n.connective == NoConnective
@@ -694,7 +694,7 @@ fn qualify_borrowed_type_names(n: Node, owner_module_path: String, env: TypeEnv,
   }
 }
 
-fn node_with_children(n: Node, children: List<Node>) -> Node {
+fn node_with_children(n: v1.std.core.Node, children: List<v1.std.core.Node>) -> v1.std.core.Node {
   Node {
     name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
     children: children, connective: n.connective, params: n.params,
@@ -706,7 +706,7 @@ fn node_with_children(n: Node, children: List<Node>) -> Node {
   }
 }
 
-fn node_with_inferred(n: Node, inferred: InferredNode?) -> Node {
+fn node_with_inferred(n: v1.std.core.Node, inferred: InferredNode?) -> v1.std.core.Node {
   Node {
     name: n.name, ident: n.ident, span: n.span, ident_span: n.ident_span,
     children: n.children, connective: n.connective, params: n.params,
@@ -832,14 +832,14 @@ fn is_recursive_type_by_name(env: TypeEnv, name: String) -> Bool {
   }
 }
 
-fn lookup_type(env: TypeEnv, ident: Int) -> Node? {
+fn lookup_type(env: TypeEnv, ident: Int) -> v1.std.core.Node? {
   match lookup_binding(env: env, ident: ident) {
     Present { value: binding } => Present { value: binding.resolved }
     Absent => Absent
   }
 }
 
-fn lookup_type_by_name(env: TypeEnv, name: String) -> Node? {
+fn lookup_type_by_name(env: TypeEnv, name: String) -> v1.std.core.Node? {
   match lookup_binding_by_name(env: env, name: name) {
     Present { value: binding } =>
       match contains(name, ".") || binding_declares_name(binding: binding, name: name, source_indices: env.source_indices) {
@@ -882,7 +882,7 @@ fn type_ref_measure_binding_authority(env: TypeEnv, name: String) -> Bool {
   }
 }
 
-fn variant_arm_type_projection(env: TypeEnv, owner: Node, name: String) -> Node? {
+fn variant_arm_type_projection(env: TypeEnv, owner: v1.std.core.Node, name: String) -> v1.std.core.Node? {
   match owner.connective {
     Disj =>
       match find_child_named(n: owner, name: name, source_indices: env.source_indices) {
@@ -897,11 +897,11 @@ fn variant_arm_type_projection(env: TypeEnv, owner: Node, name: String) -> Node?
   }
 }
 
-fn authored_name(env: TypeEnv, node: Node) -> String {
+fn authored_name(env: TypeEnv, node: v1.std.core.Node) -> String {
   authored_name_at(source_indices: env.source_indices, node: node)
 }
 
-fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
+fn lookup_type_for(env: TypeEnv, node: v1.std.core.Node) -> v1.std.core.Node? {
   match node.ident {
     Present { value: id } =>
       match lookup_type(env: env, ident: id) {
@@ -921,14 +921,14 @@ fn lookup_type_for(env: TypeEnv, node: Node) -> Node? {
   }
 }
 
-fn is_recursive_type_for(env: TypeEnv, node: Node) -> Bool {
+fn is_recursive_type_for(env: TypeEnv, node: v1.std.core.Node) -> Bool {
   match node.ident {
     Present { value: id } => is_recursive_type(env: env, ident: id)
     Absent => is_recursive_type_by_name(env: env, name: authored_name(env: env, node: node))
   }
 }
 
-fn inductive_fields_for(env: TypeEnv, type_name: String) -> List<InductiveField> {
+fn inductive_fields_for(env: TypeEnv, type_name: String) -> List<std.induction.InductiveField> {
   let local = match map_get(env.inductive_fields, type_name) {
     Present { value: fields } => fields
     Absent => []
@@ -953,7 +953,7 @@ fn is_inductive_field(env: TypeEnv, type_name: String, variant_name: String, fie
 
 data put_inductive_field_guard_note: String = "M1a base-case guard (PR #6528 review commitment): the merge layer (merge_inductive_fields below) keeps lists duplicate-free by induction, but its base case - the local collection through these two put functions - was OBSERVED duplicate-free, not constructed (a source declaring the same (variant, field, shape, element) fact twice within one module would seed a duplicate the merge then faithfully preserves). The guarded append closes the last hand-concat site of the class: a fact already present by identity is a skip, so duplicate-freedom holds by construction at every layer (DESIGN §5 - construction, not validation). Local lists are per-(module, type) and small, so the linear any-scan per insert is bounded by per-type field count."
 
-fn append_inductive_field_absent(existing: List<InductiveField>, incoming: InductiveField) -> List<InductiveField> {
+fn append_inductive_field_absent(existing: List<std.induction.InductiveField>, incoming: std.induction.InductiveField) -> List<std.induction.InductiveField> {
   if existing |> any(f => inductive_field_key(f: f) == inductive_field_key(f: incoming)) {
     existing
   } else {
@@ -961,25 +961,25 @@ fn append_inductive_field_absent(existing: List<InductiveField>, incoming: Induc
   }
 }
 
-fn put_inductive_field(fields: Map<String, List<InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape) -> Map<String, List<InductiveField>> {
+fn put_inductive_field(fields: Map<String, List<std.induction.InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: std.induction.RecursionShape) -> Map<String, List<std.induction.InductiveField>> {
   let existing = match map_get(fields, type_name) {
     Present { value: fs } => fs
     Absent => []
   }
-  map_insert(fields, type_name, append_inductive_field_absent(existing: existing, incoming: InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: type_name }))
+  map_insert(fields, type_name, append_inductive_field_absent(existing: existing, incoming: std.induction.InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: type_name }))
 }
 
-fn put_inductive_field_cross(fields: Map<String, List<InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: RecursionShape, element_type: String) -> Map<String, List<InductiveField>> {
+fn put_inductive_field_cross(fields: Map<String, List<std.induction.InductiveField>>, type_name: String, variant_name: String, field_name: String, shape: std.induction.RecursionShape, element_type: String) -> Map<String, List<std.induction.InductiveField>> {
   let existing = match map_get(fields, type_name) {
     Present { value: fs } => fs
     Absent => []
   }
-  map_insert(fields, type_name, append_inductive_field_absent(existing: existing, incoming: InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: element_type }))
+  map_insert(fields, type_name, append_inductive_field_absent(existing: existing, incoming: std.induction.InductiveField { type_name: type_name, variant_name: variant_name, field_name: field_name, shape: shape, element_type: element_type }))
 }
 
 data merge_inductive_fields_dedupe_note: String = "Set-semantics merge (v1-run-stability-throughline M1b + M1b-2, M0 receipt 2026-07-13): a type's inductive fields are a SET of (variant, field, shape, element) facts - multiplicity carries no information. The unguarded concat-on-collision compounded diamond ancestry multiplicatively along the import DAG (measured 409,240,584 retained InductiveField slots corpus-wide, ~3.3 GB of Vec slots alone; worst single module 22.6M entries at ~1,338 types), and even skip-if-equal alone left 95,050,553 slots because differing lists carried baked-in duplicate multiplicities (worst module still 4.1M at ~3k dupes/type). So the merge appends ONLY fields not already present (identity = variant|field|shape|element; type_name is the map key): equal or subset incoming lists SKIP (the sharing fast path - absent keys insert the incoming list Rc directly, never concat-with-empty), and every list is duplicate-free by induction (local collection is duplicate-free; merges never append a present fact). Genuinely new fields still append in the pre-cut encounter order. Same treatment class as guarded_union_str_bindings' skip-if-equal (#6487 cut 2); receipts on the throughline doc."
 
-fn recursion_shape_key(shape: RecursionShape) -> String {
+fn recursion_shape_key(shape: std.induction.RecursionShape) -> String {
   match shape {
     DirectRecursion => "direct"
     ListRecursion => "list"
@@ -989,11 +989,11 @@ fn recursion_shape_key(shape: RecursionShape) -> String {
   }
 }
 
-fn inductive_field_key(f: InductiveField) -> String {
+fn inductive_field_key(f: std.induction.InductiveField) -> String {
   concat(concat(concat(concat(concat(concat(f.variant_name, "|"), f.field_name), "|"), recursion_shape_key(shape: f.shape)), "|"), f.element_type)
 }
 
-fn merge_inductive_fields(left: Map<String, List<InductiveField>>, right: Map<String, List<InductiveField>>) -> Map<String, List<InductiveField>> {
+fn merge_inductive_fields(left: Map<String, List<std.induction.InductiveField>>, right: Map<String, List<std.induction.InductiveField>>) -> Map<String, List<std.induction.InductiveField>> {
   right |> map_keys |> fold(init: left, f: (acc, type_name) =>
     match map_get(right, type_name) {
       Present { value: incoming } =>
@@ -1017,7 +1017,7 @@ fn merge_inductive_fields(left: Map<String, List<InductiveField>>, right: Map<St
   )
 }
 
-fn inductive_fields_list_to_map(fields: List<InductiveField>) -> Map<String, List<InductiveField>> {
+fn inductive_fields_list_to_map(fields: List<std.induction.InductiveField>) -> Map<String, List<std.induction.InductiveField>> {
   fields |> fold(init: empty_map(), f: (acc, field) =>
     let existing = match map_get(acc, field.type_name) {
       Present { value: fs } => fs
@@ -1033,7 +1033,7 @@ fn env_with_type_variable_bindings(env: TypeEnv, tp_names: List<String>) -> Type
   fold(tp_names, init: env, f: (e, tp_name) =>
     let tp_binding = TypeBinding {
       name: tp_name,
-      resolved: Node { name: tp_name, span: v1.std.core.kernel_span(name: tp_name), ident_span: Present { value: v1.std.core.kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
+      resolved: v1.std.core.Node { name: tp_name, span: v1.std.core.kernel_span(name: tp_name), ident_span: Present { value: v1.std.core.kernel_span(name: tp_name) }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.TypeVariable { id: tp_name } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData },
       provenance: SubValueUnknown
     }
     TypeEnv { module_path: e.module_path,

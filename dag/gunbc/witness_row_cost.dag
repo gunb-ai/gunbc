@@ -553,7 +553,7 @@ fn witness_cost_seed_refused_event(
     entry: entry,
     declaration: witness_cost_seed_declaration(module_path: module_path, function: function),
     eval: eval,
-    outcome: Refused { diagnostic: diagnostic }
+    outcome: std.observation.Refused { diagnostic: diagnostic }
   )
 }
 
@@ -568,7 +568,7 @@ fn witness_cost_seed_failed_event(
     entry: entry,
     declaration: witness_cost_seed_declaration(module_path: module_path, function: function),
     eval: eval,
-    outcome: Failed { error: error, output: "" }
+    outcome: std.observation.Failed { error: error, output: "" }
   )
 }
 
@@ -591,7 +591,7 @@ fn witness_cost_seed_timed_out_event(
     entry: entry,
     declaration: witness_cost_seed_declaration(module_path: module_path, function: function),
     eval: eval,
-    outcome: TimedOut { basis: basis, budget: budget, elapsed: elapsed }
+    outcome: std.observation.TimedOut { basis: basis, budget: budget, elapsed: elapsed }
   )
 }
 

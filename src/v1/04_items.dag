@@ -28,7 +28,7 @@ type ModuleInterface {
   cache: v1.compiler.infer_env.TypeEnvCache
 }
 
-data typed_module_interface_body_dual_field_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on (S2a move 2 increment B transitional shape, resolver-graph-major-design.md §7): TypedModule carries both body grain (type_env, type_env_cache) and interface grain (interface.env, interface.cache) as projections from one typecheck completion — interface is built only via build_module_interface at typecheck exit, never independently mutated. Consumption at the parent-import boundary reads interface grain; interpretation and cache-decode rewire keep type_env as canonical Rc-identity authority (rewire_type_env_parent_links :6986). DISSOLVES WHEN ModuleBody is the sole body carrier and TypedModule.interface becomes the only cross-module export surface (interface/body split complete — type_env on TypedModule becomes interpretation-local only or is deleted). Receipt: transitive_interface_binding_test.")
+data typed_module_interface_body_dual_field_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on (S2a move 2 increment B transitional shape, resolver-graph-major-design.md §7): TypedModule carries both body grain (type_env, type_env_cache) and interface grain (interface.env, interface.cache) as projections from one typecheck completion — interface is built only via build_module_interface at typecheck exit, never independently mutated. Consumption at the parent-import boundary reads interface grain; interpretation and cache-decode rewire keep type_env as canonical Rc-identity authority (rewire_type_env_parent_links :6986). DISSOLVES WHEN ModuleBody is the sole body carrier and TypedModule.interface becomes the only cross-module export surface (interface/body split complete — type_env on TypedModule becomes interpretation-local only or is deleted). Receipt: transitive_interface_binding_test.")
 
 type TypedModule {
   module: Node
@@ -54,7 +54,7 @@ type ResolvedGraph {
   emit_graph_info: v1.compiler.infer_emit_info.EmitGraphInfo
 }
 
-fn inferred_to_outputs(inferred: InferredNode?, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+fn inferred_to_outputs(inferred: InferredNode?, span: std.types.SourceSpan, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<Node> {
   if inferred == none { [] }
   else { match inferred.value {
     CompilerError { message: _, span: _ } => []

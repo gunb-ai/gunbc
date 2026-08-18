@@ -14,14 +14,14 @@ type KeyedCollectionParts {
   value_type: Node
 }
 
-fn access_error(message: String, span: SourceSpan, module_name: String) -> ErrorNode {
-  make_error_node(diagnostic: InternalError { message: message, span: span }, module_name: module_name)
+fn access_error(message: String, span: std.types.SourceSpan, module_name: String) -> v1.std.core.ErrorNode {
+  make_error_node(diagnostic: v1.std.core.InternalError { message: message, span: span }, module_name: module_name)
 }
 
-fn access_result(inferred: Node, diagnostics: List<ErrorNode>, span: SourceSpan, fallback_message: String) -> AccessCheckResultNode {
+fn access_result(inferred: Node, diagnostics: List<v1.std.core.ErrorNode>, span: std.types.SourceSpan, fallback_message: String) -> AccessCheckResultNode {
   if count(diagnostics) == 0 {
     AccessCheckResultNode {
-      inferred: Present { value: Resolved { node: inferred } },
+      inferred: Present { value: v1.std.core.Resolved { node: inferred } },
       diagnostics: diagnostics
     }
   } else {
@@ -30,13 +30,13 @@ fn access_result(inferred: Node, diagnostics: List<ErrorNode>, span: SourceSpan,
       Absent => fallback_message
     }
     AccessCheckResultNode {
-      inferred: Present { value: CompilerError { message: message, span: span } },
+      inferred: Present { value: v1.std.core.CompilerError { message: message, span: span } },
       diagnostics: diagnostics
     }
   }
 }
 
-fn keyed_collection_parts(n: Node, source_indices: Map<String, NewlineIndex>) -> KeyedCollectionParts? {
+fn keyed_collection_parts(n: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> KeyedCollectionParts? {
   if node_is_keyed_collection(n: n, source_indices: source_indices) && n.children |> count >= 2 {
     match n.children |> first {
       Present { value: key_child } =>
@@ -51,7 +51,7 @@ fn keyed_collection_parts(n: Node, source_indices: Map<String, NewlineIndex>) ->
   }
 }
 
-fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, module_name: String, source_indices: Map<String, NewlineIndex>) -> AccessCheckResultNode {
+fn check_index_access_node(base_type: Node, index_type: Node, span: std.types.SourceSpan, module_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> AccessCheckResultNode {
   let normed = normalize_access_type_node(n: base_type)
   let normed_index = normalize_access_type_node(n: index_type)
   let base_is_string = node_type_equals(left: normed, right: string_type, source_indices: source_indices)
@@ -81,7 +81,7 @@ fn check_index_access_node(base_type: Node, index_type: Node, span: SourceSpan, 
   }
 }
 
-fn check_slice_access_node(base_type: Node, start_type: Node, end_type: Node, span: SourceSpan, module_name: String, source_indices: Map<String, NewlineIndex>) -> AccessCheckResultNode {
+fn check_slice_access_node(base_type: Node, start_type: Node, end_type: Node, span: std.types.SourceSpan, module_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> AccessCheckResultNode {
   let normed_base = normalize_access_type_node(n: base_type)
   let base_is_string = node_type_equals(left: normed_base, right: string_type, source_indices: source_indices)
   let base_is_list = is_ordered_element_collection(name: authored_name_at(source_indices: source_indices, node: normed_base))

@@ -60,7 +60,7 @@ fn annotation_parse_is_clean(parsed: AnnotationParsedSource) -> Bool {
 
 
 // The keyed projection of a CLEANLY PARSED, ADMITTED graph, or Absent. Several distinct failures collapse to Absent here — the parse errored, the parse produced no module, the annotations were refused, or a subject would not resolve to a name — and every one of them must make a property arm fail rather than compare an empty list against an empty list, which is why the evidence predicate below requires nonemptiness explicitly.
-fn keyed_rows_of(parsed: AnnotationParsedSource) -> List<KeyedAnnotationRow>? {
+fn keyed_rows_of(parsed: AnnotationParsedSource) -> List<std.source_annotation.KeyedAnnotationRow>? {
   if !annotation_parse_is_clean(parsed: parsed) {
     none
   } else if (parsed.admitted.diagnostics |> count) > 0 {
@@ -70,7 +70,7 @@ fn keyed_rows_of(parsed: AnnotationParsedSource) -> List<KeyedAnnotationRow>? {
   }
 }
 
-fn admitted_keyed_rows(source: String) -> List<KeyedAnnotationRow>? {
+fn admitted_keyed_rows(source: String) -> List<std.source_annotation.KeyedAnnotationRow>? {
   keyed_rows_of(parsed: annotation_parsed_of(source: source))
 }
 
@@ -365,7 +365,7 @@ test fn w_a_parse_error_is_not_evidence() -> Bool {
           match keyed_rows_of(
             parsed: AnnotationParsedSource {
               artifact: good.artifact,
-              parse: ParseWithTableResult {
+              parse: v1.compiler.parse.ParseWithTableResult {
                 result: bad.parse.result,
                 intern_table: good.parse.intern_table,
                 occurrence_allocator: good.parse.occurrence_allocator,

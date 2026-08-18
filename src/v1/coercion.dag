@@ -9,7 +9,7 @@ module v1.compiler.coercion
 
 
 
-fn target_checkpoints(target: RenderTarget) -> List<TypeCheckpoint> {
+fn target_checkpoints(target: v1.compiler.artifact.RenderTarget) -> List<std.coercion.TypeCheckpoint> {
   match target {
     Rust => rust_type_checkpoints
     Python => python_type_checkpoints
@@ -18,7 +18,7 @@ fn target_checkpoints(target: RenderTarget) -> List<TypeCheckpoint> {
   }
 }
 
-fn target_inhabitants(target: RenderTarget) -> List<InhabitantDecl> {
+fn target_inhabitants(target: v1.compiler.artifact.RenderTarget) -> List<std.coercion.InhabitantDecl> {
   match target {
     Rust => rust_algebra_inhabitants
     Python => python_algebra_inhabitants
@@ -27,7 +27,7 @@ fn target_inhabitants(target: RenderTarget) -> List<InhabitantDecl> {
   }
 }
 
-fn target_callable(target: RenderTarget) -> CallableRepr {
+fn target_callable(target: v1.compiler.artifact.RenderTarget) -> std.coercion.CallableRepr {
   match target {
     Rust => rust_callable
     Python => python_callable
@@ -41,7 +41,7 @@ fn target_callable(target: RenderTarget) -> CallableRepr {
   }
 }
 
-fn target_optional_template(target: RenderTarget) -> String {
+fn target_optional_template(target: v1.compiler.artifact.RenderTarget) -> String {
   match target {
     Rust => rust_optional_template
     Python => python_optional_template
@@ -50,7 +50,7 @@ fn target_optional_template(target: RenderTarget) -> String {
   }
 }
 
-fn target_cast_syntax(target: RenderTarget) -> CastSyntax? {
+fn target_cast_syntax(target: v1.compiler.artifact.RenderTarget) -> std.coercion.CastSyntax? {
   match target {
     Rust => Present { value: rust_cast_syntax }
     Python => Present { value: python_cast_syntax }
@@ -59,14 +59,14 @@ fn target_cast_syntax(target: RenderTarget) -> CastSyntax? {
   }
 }
 
-fn can_cast(target: RenderTarget, source_type: String, target_type: String) -> Bool {
+fn can_cast(target: v1.compiler.artifact.RenderTarget, source_type: String, target_type: String) -> Bool {
   match target_cast_syntax(target: target) {
     Present { value: syntax } => syntax.cast_rules |> any(r => r.from_type == source_type && r.to_type == target_type)
     Absent => false
   }
 }
 
-fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> String {
+fn render_cast(expr_str: String, type_str: String, target: v1.compiler.artifact.RenderTarget) -> String {
   let syntax = match target_cast_syntax(target: target) {
     Present { value: s } => s
     Absent => CastSyntax { template: "\{expr\}", cast_rules: [] }
@@ -74,27 +74,27 @@ fn render_cast(expr_str: String, type_str: String, target: RenderTarget) -> Stri
   replace(replace(syntax.template, "\{expr\}", expr_str), "\{type\}", type_str)
 }
 
-fn lookup_checkpoint(target: RenderTarget, dag_name: String) -> TypeCheckpoint? {
+fn lookup_checkpoint(target: v1.compiler.artifact.RenderTarget, dag_name: String) -> std.coercion.TypeCheckpoint? {
   target_checkpoints(target: target) |> filter(cp => cp.dag_name == dag_name) |> first
 }
 
 data coerce_primitive_type_dotted_fallback_note: String = "Construction wall for the dotted-render class in TYPE position (sibling of variant_pattern_dotted_qualification_note, which covers PATTERN position, in v1.compiler.05_emit_rust). Every target's checkpoint dag_names are bare (Int, String, ...), so a namespace-QUALIFIED type name (post source_authority, e.g. v2.std.node.Edge) never matches a checkpoint and previously fell through this Absent arm verbatim, dots and all -- not a valid identifier in any target language, a PARSE error masking every later diagnostic in the module. Rendering a type never needs a crate::-qualified path here (this fn is target-agnostic, shared by Rust/Python/Go/Dag, and the existing convention across all of them is a bare type name; qualification, where a target needs it, is a separate import-line-synthesis seam) so the fix is to route the fallback through qualified_last_segment (v1.std.core, the same single authority variant_pattern_qualified_path reuses) instead of forking a second dotted-name fallback. Every already-bare dag_name renders exactly as before (qualified_last_segment is the identity on an unqualified name)."
 
-fn coerce_primitive_type(target: RenderTarget, dag_name: String) -> String {
+fn coerce_primitive_type(target: v1.compiler.artifact.RenderTarget, dag_name: String) -> String {
   match lookup_checkpoint(target: target, dag_name: dag_name) {
     Present { value: cp } => cp.target_type
     Absent => qualified_last_segment(name: dag_name)
   }
 }
 
-fn is_copy(target: RenderTarget, dag_name: String) -> Bool? {
+fn is_copy(target: v1.compiler.artifact.RenderTarget, dag_name: String) -> Bool? {
   match lookup_checkpoint(target: target, dag_name: dag_name) {
     Present { value: cp } => cp.is_copy
     Absent => none
   }
 }
 
-fn literal_suffix(target: RenderTarget, dag_name: String) -> String? {
+fn literal_suffix(target: v1.compiler.artifact.RenderTarget, dag_name: String) -> String? {
   match lookup_checkpoint(target: target, dag_name: dag_name) {
     Present { value: cp } => match cp.literal_suffix {
       Present { value: s } => Present { value: s }
@@ -104,11 +104,11 @@ fn literal_suffix(target: RenderTarget, dag_name: String) -> String? {
   }
 }
 
-fn lookup_inhabitant(target: RenderTarget, algebra: String) -> InhabitantDecl? {
+fn lookup_inhabitant(target: v1.compiler.artifact.RenderTarget, algebra: String) -> std.coercion.InhabitantDecl? {
   target_inhabitants(target: target) |> filter(inh => inh.algebra == algebra) |> first
 }
 
-fn coerce_container_template(target: RenderTarget, container_name: String) -> String? {
+fn coerce_container_template(target: v1.compiler.artifact.RenderTarget, container_name: String) -> String? {
   match container_template_algebra(name: container_name) {
     Present { value: algebra } => match lookup_inhabitant(target: target, algebra: algebra) {
       Present { value: inh } => Present { value: inh.template }
@@ -137,7 +137,7 @@ type CoercionTestEntry {
   assertions: List<CoercionAssertion>
 }
 
-fn target_label(target: RenderTarget) -> String {
+fn target_label(target: v1.compiler.artifact.RenderTarget) -> String {
   match target {
     Rust => "rust"
     Python => "python"
@@ -146,7 +146,7 @@ fn target_label(target: RenderTarget) -> String {
   }
 }
 
-fn checkpoint_tests(target: RenderTarget) -> List<CoercionTestEntry> {
+fn checkpoint_tests(target: v1.compiler.artifact.RenderTarget) -> List<CoercionTestEntry> {
   let label = target_label(target: target)
   let cps = target_checkpoints(target: target)
   if cps |> count == 0 { [] }
@@ -163,7 +163,7 @@ fn inhabitant_test_names() -> List<String> {
   concat(canonical_container_names(), ["PointwisePower"])
 }
 
-fn inhabitant_tests(target: RenderTarget) -> List<CoercionTestEntry> {
+fn inhabitant_tests(target: v1.compiler.artifact.RenderTarget) -> List<CoercionTestEntry> {
   let label = target_label(target: target)
   let assertions = inhabitant_test_names() |> flat_map(name =>
     match coerce_container_template(target: target, container_name: name) {
@@ -195,7 +195,7 @@ fn copy_tests() -> List<CoercionTestEntry> {
   }
 }
 
-fn unique_inhabitants_for_template_tests(inhs: List<InhabitantDecl>) -> List<InhabitantDecl> {
+fn unique_inhabitants_for_template_tests(inhs: List<std.coercion.InhabitantDecl>) -> List<std.coercion.InhabitantDecl> {
   inhs |> fold(init: [], f: fn(acc, inh) {
     if acc |> any(prev => prev.template == inh.template && prev.arity == inh.arity) { acc }
     else { concat(acc, [inh]) }

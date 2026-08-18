@@ -42,7 +42,7 @@ fn nrdfc_distinct_homonym_source() -> String {
   "module gunbc.closure_fixture.distinct_homonym\n\nfn helper() -> Int {\n  0\n}\n\nfn helper() -> Int {\n  1\n}\n\nfn demo() -> Int {\n  helper()\n}\n"
 }
 
-fn same_file_neighbour_observation() -> ReferenceBindingObservation {
+fn same_file_neighbour_observation() -> std.reference_binding_observation.ReferenceBindingObservation {
   match nrdfc_parse(
     file: "gunbc/closure_fixture/same_file_neighbour.dag",
     source: nrdfc_same_file_neighbour_source(),
@@ -77,7 +77,7 @@ fn same_file_neighbour_observation() -> ReferenceBindingObservation {
   }
 }
 
-fn sibling_branch_observation() -> ReferenceBindingObservation {
+fn sibling_branch_observation() -> std.reference_binding_observation.ReferenceBindingObservation {
   match nrdfc_parse(
     file: "gunbc/closure_fixture/sibling_branch.dag",
     source: nrdfc_sibling_branch_source(),
@@ -106,7 +106,7 @@ fn sibling_branch_observation() -> ReferenceBindingObservation {
                   SiblingBranchObservation {
                     own_branch_declaration: else_branch_x.occurrence,
                     sibling_branch_declaration: then_branch_x.occurrence,
-                    resolution: StructuralBindingProductionRefused {
+                    resolution: std.reference_binding_observation.StructuralBindingProductionRefused {
                       gap: ReferenceBindingNamedReferenceAbsent,
                     },
                   }
@@ -126,7 +126,7 @@ fn sibling_branch_observation() -> ReferenceBindingObservation {
   }
 }
 
-fn later_declaration_observation() -> ReferenceBindingObservation {
+fn later_declaration_observation() -> std.reference_binding_observation.ReferenceBindingObservation {
   match nrdfc_parse(
     file: "gunbc/closure_fixture/later_declaration.dag",
     source: nrdfc_later_declaration_source(),
@@ -161,7 +161,7 @@ fn later_declaration_observation() -> ReferenceBindingObservation {
   }
 }
 
-fn distinct_homonym_observation() -> ReferenceBindingObservation {
+fn distinct_homonym_observation() -> std.reference_binding_observation.ReferenceBindingObservation {
   match nrdfc_parse(
     file: "gunbc/closure_fixture/distinct_homonym.dag",
     source: nrdfc_distinct_homonym_source(),
@@ -205,7 +205,7 @@ fn distinct_homonym_observation() -> ReferenceBindingObservation {
   }
 }
 
-fn namespace_structural_binding_observations_a_through_d() -> List<ReferenceBindingObservation> {
+fn namespace_structural_binding_observations_a_through_d() -> List<std.reference_binding_observation.ReferenceBindingObservation> {
   [
     same_file_neighbour_observation(),
     sibling_branch_observation(),

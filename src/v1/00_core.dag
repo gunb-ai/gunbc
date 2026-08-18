@@ -182,8 +182,8 @@ type ErrorDAG {
 data occurrence_transport_refusal_span_absence_note: String = "Span absence for OccurrenceTransportRefusal is decided HERE, by a total wildcard-free match, and rendered by diagnostic_to_span as no_span() -- the corpus's single authority for 'no authored location' (review 45364).\n\nWHY THERE IS NO SPAN TO CARRY: UnknownOccurrenceIdentity is raised when an OccurrenceId is in neither entries_by_id nor references_by_id (std.occurrence_binding_resolve resolve_reference_occurrence_binding_validated). resolve_reference_occurrence_binding takes ONLY an OccurrenceId (review 45106) precisely so caller-supplied span facts cannot bypass the validated carrier, so at that point no authored span exists to report. This is absence by construction, not a failure to compute one.\n\nWHAT WAS DELETED AND WHY: this arm previously minted two placeholder SourceSpans -- file '<unknown-occurrence:N>' and a wildcard '<occurrence-transport-refusal>'. Both are removed. The wildcard was the DESIGN section 5 absorbing arm: a future spanless variant would have been absorbed into an anonymous placeholder instead of stopping the line. It is now unreachable-by-construction rather than merely unused, because adding a variant reds the total match below AND the total match in occurrence_transport_refusal_diagnostic_message. The '<unknown-occurrence:N>' file name was additionally a section 2 duplicate: the occurrence id is already carried by occurrence_transport_refusal_diagnostic_message, so the span restated a fact the message owns, and a bespoke pseudo-file was a section 3 nickname for no_span().\n\nBOUND, STATED HONESTLY: diagnostic_to_span returns SourceSpan, not SourceSpan?, so span-absence is rendered rather than typed at that boundary. Making it typed changes a load-bearing v1 seed signature with 3 dag and 24 Rust call sites and is a separate corpus-wide change, not this node's scope. Until then no_span() is the honest rendering and the message carries the identity."
 
 fn occurrence_transport_refusal_diagnostic_span(
-  refusal: OccurrenceTransportRefusal
-) -> SourceSpan? {
+  refusal: std.occurrence_identity.OccurrenceTransportRefusal
+) -> std.types.SourceSpan? {
   match refusal {
     MissingAuthoredOccurrenceIdentity { diagnostic_span: span } => Present { value: span }
     DuplicateAuthoredOccurrenceIdentity {
@@ -209,7 +209,7 @@ fn occurrence_transport_refusal_diagnostic_span(
 }
 
 fn occurrence_transport_refusal_diagnostic_message(
-  refusal: OccurrenceTransportRefusal
+  refusal: std.occurrence_identity.OccurrenceTransportRefusal
 ) -> String {
   match refusal {
     MissingAuthoredOccurrenceIdentity { diagnostic_span: _ } =>
@@ -252,7 +252,7 @@ fn occurrence_transport_refusal_diagnostic_message(
   }
 }
 
-fn diagnostic_to_span(d: CompilerDiagnostic) -> SourceSpan {
+fn diagnostic_to_span(d: CompilerDiagnostic) -> std.types.SourceSpan {
   match d {
     UnresolvedImport   { module_path: _, importing_module: _, span: s } => s
     MissingExport      { name: _, module_path: _, importing_module: _, span: s } => s
@@ -483,11 +483,11 @@ type Node {
   expr_data: ExprData
 }
 
-fn default_ident_span(name: String, span: SourceSpan) -> SourceSpan? {
+fn default_ident_span(name: String, span: std.types.SourceSpan) -> std.types.SourceSpan? {
   if name == "" { none } else { Present { value: span } }
 }
 
-fn node_name_span(n: Node) -> SourceSpan {
+fn node_name_span(n: Node) -> std.types.SourceSpan {
   match n.ident_span { Present { value: s } => s  Absent => n.span }
 }
 
@@ -495,7 +495,7 @@ fn empty_node_list() -> List<Node> {
   []
 }
 
-fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan) -> Node {
+fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: std.types.SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: children,
     connective: NoConnective,
@@ -507,7 +507,7 @@ fn make_expr_node(expr_data: ExprData, children: List<Node>, inferred: InferredN
   }
 }
 
-fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>, inferred: InferredNode?, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children,
     connective: NoConnective,
@@ -519,7 +519,7 @@ fn make_named_expr_node(name: String, expr_data: ExprData, children: List<Node>,
   }
 }
 
-fn make_pattern_binder_declaration_node(name: String, span: SourceSpan) -> Node {
+fn make_pattern_binder_declaration_node(name: String, span: std.types.SourceSpan) -> Node {
   make_named_expr_node(
     name: name,
     expr_data: NoExprData,
@@ -530,7 +530,7 @@ fn make_pattern_binder_declaration_node(name: String, span: SourceSpan) -> Node 
   )
 }
 
-fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) -> Node {
+fn make_expr_error_node(kind: ExprErrorKind, message: String, span: std.types.SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: [], connective: NoConnective,
 
@@ -542,7 +542,7 @@ fn make_expr_error_node(kind: ExprErrorKind, message: String, span: SourceSpan) 
   }
 }
 
-fn make_arg_node(name: String?, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_arg_node(name: String?, value: Node, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   let arg_name = match name { Present { value: n } => n  Absent => "" }
   Node {
     name: arg_name, span: span, ident_span: default_ident_span(name: arg_name, span: name_span), children: [value], connective: NoConnective,
@@ -554,7 +554,7 @@ fn make_arg_node(name: String?, value: Node, span: SourceSpan, name_span: Source
   }
 }
 
-fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSpan) -> Node {
+fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: std.types.SourceSpan) -> Node {
   let children = match guard { Present { value: g } => [g, body]  Absent => [body] }
   Node {
     name: "", span: span, ident_span: none, children: children, connective: NoConnective,
@@ -567,7 +567,7 @@ fn make_arm_node(pattern: MatchPattern, guard: Node?, body: Node, span: SourceSp
   }
 }
 
-fn make_resource_use_node(name: String, resource: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_resource_use_node(name: String, resource: Node, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [resource], connective: NoConnective,
 
@@ -587,7 +587,7 @@ fn resource_use_resource(n: Node) -> Node {
   }
 }
 
-fn make_field_init_node(name: String, value: Node, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_field_init_node(name: String, value: Node, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: [value], connective: NoConnective,
 
@@ -598,7 +598,7 @@ fn make_field_init_node(name: String, value: Node, span: SourceSpan, name_span: 
   }
 }
 
-fn make_field_binding_node(field_name: String, binding: MatchPattern, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_field_binding_node(field_name: String, binding: MatchPattern, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   Node {
     name: field_name, span: span, ident_span: default_ident_span(name: field_name, span: name_span), children: [], connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
@@ -614,7 +614,7 @@ fn field_binding_pattern(n: Node) -> MatchPattern {
   match n.match_pattern { Present { value: p } => p  Absent => Wildcard }
 }
 
-fn make_text_part_node(text: String, span: SourceSpan) -> Node {
+fn make_text_part_node(text: String, span: std.types.SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: [], connective: NoConnective,
 
@@ -622,11 +622,11 @@ fn make_text_part_node(text: String, span: SourceSpan) -> Node {
     uses: [], body: none, transport: none, properties: [],
     type_annotation: none, is_self_recursive: false,
     has_non_tail_self_call: false, match_pattern: none,
-    expr_data: ExprLiteral { value: LitStr { value: text } }
+    expr_data: ExprLiteral { value: std.syntax.LitStr { value: text } }
   }
 }
 
-fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
+fn make_interp_part_node(expr: Node, span: std.types.SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: [expr], connective: NoConnective,
 
@@ -637,7 +637,7 @@ fn make_interp_part_node(expr: Node, span: SourceSpan) -> Node {
   }
 }
 
-fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
@@ -648,7 +648,7 @@ fn make_param_node(name: String, type_expr: Node, default_value: Node?, span: So
   }
 }
 
-fn make_resolved_param_node(name: String, type_expr: Node, default_value: Node?, properties: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_resolved_param_node(name: String, type_expr: Node, default_value: Node?, properties: List<Node>, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: children, connective: NoConnective,
@@ -705,9 +705,9 @@ fn param_node_default_value(n: Node) -> Node? {
   } else { none }
 }
 
-fn param_node_span(n: Node) -> SourceSpan { n.span }
+fn param_node_span(n: Node) -> std.types.SourceSpan { n.span }
 
-fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key: String?, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_field_node(name: String, type_expr: Node, cardinality: Cardinality, default_value: Node?, from_key: String?, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   let children = match default_value { Present { value: dv } => [type_expr, dv]  Absent => [type_expr] }
   let props = match from_key {
     Present { value: fk } => [make_field_init_node(name: "from_key", value: Node { name: fk, span: make_span(start: 0, end: 0), ident_span: default_ident_span(name: fk, span: make_span(start: 0, end: 0)), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))]
@@ -746,9 +746,9 @@ fn field_node_from_key(n: Node, source_indices: Map<String, NewlineIndex>) -> St
   }
 }
 
-fn field_node_span(n: Node) -> SourceSpan { n.span }
+fn field_node_span(n: Node) -> std.types.SourceSpan { n.span }
 
-fn make_variant_node(name: String, fields: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn make_variant_node(name: String, fields: List<Node>, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: name_span), children: fields, connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
@@ -760,7 +760,7 @@ fn make_variant_node(name: String, fields: List<Node>, span: SourceSpan, name_sp
 
 fn variant_node_name_at(n: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
 fn variant_node_fields(n: Node) -> List<Node> { n.children }
-fn variant_node_span(n: Node) -> SourceSpan { n.span }
+fn variant_node_span(n: Node) -> std.types.SourceSpan { n.span }
 
 type ChildRole {
   name: String
@@ -1086,7 +1086,7 @@ fn field_access_spine(texpr: Node, source_indices: Map<String, NewlineIndex>) ->
 
 fn expr_call_func_at(texpr: Node, source_indices: Map<String, NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
 
-fn expr_call_descent_evidence(texpr: Node) -> List<SubValueRelation>? {
+fn expr_call_descent_evidence(texpr: Node) -> List<std.induction.SubValueRelation>? {
   match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: de } => de
     _ => none
@@ -1145,7 +1145,7 @@ data transport_headers_key: String = "headers"
 data transport_auth_basic_key: String = "auth_basic"
 data transport_tls_key: String = "tls"
 
-fn make_transport_node(properties: List<Node>, children: List<Node>, body: Node?, span: SourceSpan) -> Node {
+fn make_transport_node(properties: List<Node>, children: List<Node>, body: Node?, span: std.types.SourceSpan) -> Node {
   Node {
     name: "", span: span, ident_span: none, children: children, connective: NoConnective,
 
@@ -1156,11 +1156,11 @@ fn make_transport_node(properties: List<Node>, children: List<Node>, body: Node?
   }
 }
 
-fn local_transport_node(span: SourceSpan) -> Node {
+fn local_transport_node(span: std.types.SourceSpan) -> Node {
   make_transport_node(properties: [], children: [], body: none, span: span)
 }
 
-fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Node>, method: Node?, path: Node?, query: Node?, request_body: Node?, response_format: Node?, span: SourceSpan) -> Node {
+fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Node>, method: Node?, path: Node?, query: Node?, request_body: Node?, response_format: Node?, span: std.types.SourceSpan) -> Node {
   let zero_span = make_span(start: 0, end: 0)
   let url_field = make_field_init_node(name: transport_url_key, value: base_url, span: zero_span, name_span: zero_span)
   let method_props = match method {
@@ -1187,7 +1187,7 @@ fn rest_transport_node(base_url: Node, auth_props: List<Node>, headers: List<Nod
   make_transport_node(properties: props, children: [], body: none, span: span)
 }
 
-fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: SourceSpan) -> Node {
+fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: std.types.SourceSpan) -> Node {
   let shell_marker = Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let zero_span = make_span(start: 0, end: 0)
   let stdin_props = match stdin {
@@ -1204,7 +1204,7 @@ fn shell_transport_node(argv: List<Node>, env: List<Node>, stdin: Node?, span: S
   }
 }
 
-fn file_transport_node(base_path: Node, verb: Node?, span: SourceSpan) -> Node {
+fn file_transport_node(base_path: Node, verb: Node?, span: std.types.SourceSpan) -> Node {
   let path_field = make_field_init_node(name: transport_path_key, value: base_path, span: make_span(start: 0, end: 0), name_span: make_span(start: 0, end: 0))
   let props = match verb {
     Present { value: verb_expr } =>
@@ -1513,7 +1513,7 @@ fn service_config_auth_source(n: Node, source_indices: Map<String, NewlineIndex>
   find_property(props: n.properties, prop_name: "svc_auth_source", source_indices: source_indices)
 }
 
-fn module_node(name: String, imports: List<Node>, items: List<Node>, span: SourceSpan) -> Node {
+fn module_node(name: String, imports: List<Node>, items: List<Node>, span: std.types.SourceSpan) -> Node {
   Node {
     name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: items, connective: NoConnective,
 
@@ -1524,7 +1524,7 @@ fn module_node(name: String, imports: List<Node>, items: List<Node>, span: Sourc
   }
 }
 
-fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: SourceSpan, name_span: SourceSpan) -> Node {
+fn import_node(module_path: String, is_all: Bool, specific_names: List<Node>, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> Node {
   let wildcard_marker = if is_all {
     Present { value: Node { name: "", span: span, ident_span: none, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } }
   } else { none }
@@ -1554,11 +1554,11 @@ fn module_items(n: Node) -> List<Node> {
   n.children
 }
 
-fn leaf_node_with_span(name: String, span: SourceSpan) -> Node {
+fn leaf_node_with_span(name: String, span: std.types.SourceSpan) -> Node {
   Node { name: name, span: span, ident_span: default_ident_span(name: name, span: span), children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-fn kernel_span(name: String) -> SourceSpan {
+fn kernel_span(name: String) -> std.types.SourceSpan {
   SourceSpan { file: concat("<kernel:", name, ">"), start: 0, end: string_length(s: name) }
 }
 
@@ -1572,15 +1572,15 @@ data none_type: Node = Node { name: "None", span: kernel_span(name: "None"), ide
 data tuple_type_name: String = "Tuple"
 data error_type: Node = Node { name: "", span: make_span(start: 0, end: 0), ident_span: none, children: [], connective: NoConnective, params: [], inferred: Present { value: CompilerError { message: "unresolved type", span: make_span(start: 0, end: 0) } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: ExprError { kind: SemanticExprError, message: "unresolved type" } }
 
-fn make_span(start: Int, end: Int) -> SourceSpan {
+fn make_span(start: Int, end: Int) -> std.types.SourceSpan {
   SourceSpan { file: "<synthetic>", start: start, end: end }
 }
 
-fn make_file_span(file: String, start: Int, end: Int) -> SourceSpan {
+fn make_file_span(file: String, start: Int, end: Int) -> std.types.SourceSpan {
   SourceSpan { file: file, start: start, end: end }
 }
 
-fn no_span() -> SourceSpan {
+fn no_span() -> std.types.SourceSpan {
   make_span(start: 0, end: 0)
 }
 
@@ -1633,7 +1633,7 @@ fn source_line_at(index: NewlineIndex, line: Int) -> String {
   chars_to_string(chars: index.char_codes, start: line_start, end: line_end)
 }
 
-fn source_text_at(index: NewlineIndex, span: SourceSpan) -> String {
+fn source_text_at(index: NewlineIndex, span: std.types.SourceSpan) -> String {
   chars_to_string(chars: index.char_codes, start: span.start, end: span.end)
 }
 
@@ -1660,7 +1660,7 @@ fn empty_intern_table() -> InternTable {
 
 fn intern_table_with_authored_token_ordinals(
   table: InternTable,
-  authored_token_ordinals: AuthoredTokenOrdinalSpace
+  authored_token_ordinals: std.occurrence_identity.AuthoredTokenOrdinalSpace
 ) -> InternTable {
   InternTable {
     strings: table.strings,

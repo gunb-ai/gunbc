@@ -32,10 +32,10 @@ fn parse_authored_occurrence_binding_source(
 
 data declaration_exposure_from_containment_note: String = "Exposure derivation site: inputs are containment prefix shape and module path only — OccurrenceCategory is not consulted. Delegates to the single exposure authority std.occurrence_binding_candidates declaration_exposure_from_containment under ModuleLocalMemberExposure grounding (N3-B0): module-root and direct-module-child shapes => ModuleExposure; nested declaration => LexicalExposure whose exposing_scope is the nearest ancestor. Binder-as-own-path LexicalExposure (the hand-built §13 fixture shape) is correct only when uses nest under the binder in the parse tree (lets do; match-arm bodies currently do not — see parser_sibling_match_arm_pattern_binder_holds_note)."
 
-fn authored_order_row_from_entry(entry: OccurrenceIndexEntry) -> AuthoredOrderRow {
+fn authored_order_row_from_entry(entry: std.occurrence_identity.OccurrenceIndexEntry) -> std.occurrence_binding_candidates.AuthoredOrderRow {
   AuthoredOrderRow {
     occurrence: entry.projection.occurrence,
-    ordinal: AuthoredTokenOrdinal {
+    ordinal: std.occurrence_identity.AuthoredTokenOrdinal {
       value: entry.projection.diagnostic_span.start,
     },
   }
@@ -44,9 +44,9 @@ fn authored_order_row_from_entry(entry: OccurrenceIndexEntry) -> AuthoredOrderRo
 data occurrence_binding_inputs_accumulator_note: String = "Input projection accumulates by prepend during fold and reverses once at the end — never concat(acc, [row]) (§6 bare-minimum cost / blocker 6)."
 
 fn occurrence_binding_inputs_from_transport(
-  module_path: NonEmptyStr,
-  transport: OccurrenceTransport
-) -> OccurrenceBindingCandidateInputs {
+  module_path: std.types.NonEmptyStr,
+  transport: std.occurrence_identity.OccurrenceTransport
+) -> std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
   OccurrenceBindingCandidateInputs {
     module_paths: reverse(fold(
       transport.index.entries,
@@ -86,9 +86,9 @@ fn occurrence_binding_inputs_from_transport(
 data structural_binding_walk_refusal_note: String = "structural_binding_walk / StructuralBindingWalk / StructuralBindingIndexRefusal are the single authority in std.occurrence_binding_candidates (N3-B0) — StructuralBindingWalkRefused wraps the exact index-build refusal payload (transport / module-path / exposure / authored-order / declaration-bucket). Coarse unit variants that discard nested refusal evidence are forbidden (operator blocker 6 / review on PR 7515)."
 
 fn reference_named(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   name: String
-) -> ReferenceOccurrence? {
+) -> std.occurrence_identity.ReferenceOccurrence? {
   match references_named(transport: transport, name: name) |> first {
     Present { value: reference } => Present { value: reference }
     Absent => none
@@ -96,9 +96,9 @@ fn reference_named(
 }
 
 fn references_named(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   name: String
-) -> List<ReferenceOccurrence> {
+) -> List<std.occurrence_identity.ReferenceOccurrence> {
   fold(
     transport.references,
     init: [],
@@ -118,9 +118,9 @@ fn references_named(
 }
 
 fn declarations_named(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   name: String
-) -> List<DeclarationOccurrence> {
+) -> List<std.occurrence_identity.DeclarationOccurrence> {
   fold(
     transport.declarations,
     init: [],
@@ -140,9 +140,9 @@ fn declarations_named(
 }
 
 fn index_entry_for_occurrence(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   occurrence: std.occurrence_identity.OccurrenceId
-) -> OccurrenceIndexEntry? {
+) -> std.occurrence_identity.OccurrenceIndexEntry? {
   fold(
     transport.index.entries,
     init: none,
@@ -159,7 +159,7 @@ fn index_entry_for_occurrence(
 }
 
 fn occurrence_id_for_authored_name(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   name: String
 ) -> std.occurrence_identity.OccurrenceId? {
   match fold(

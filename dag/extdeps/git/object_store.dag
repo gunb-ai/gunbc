@@ -397,16 +397,16 @@ type Tree {
 type Commit {
   tree: GitObjectId
   parents: List<GitObjectId>
-  author: GitAuthor
-  committer: GitAuthor
+  author: extdeps.git.GitAuthor
+  committer: extdeps.git.GitAuthor
   message: Bytes
 }
 
 type AnnotatedTag {
   target: GitObjectId
-  target_type: ObjectType
+  target_type: extdeps.git.ObjectType
   name: std.types.NonEmptyStr
-  tagger: GitAuthor
+  tagger: extdeps.git.GitAuthor
   message: Bytes
 }
 
@@ -605,8 +605,8 @@ type GitRepositoryDecodeRefusal
   | GitRepositoryPointerKindMismatch {
       origin: GitRepositoryPointerOrigin,
       target: GitObjectId,
-      expected: ObjectType,
-      observed: ObjectType,
+      expected: extdeps.git.ObjectType,
+      observed: extdeps.git.ObjectType,
     }
   | GitRepositoryDuplicateRef {
       name: GitRefName,
@@ -617,7 +617,7 @@ type GitRepositoryDecodeOutcome
   = GitRepositoryDecoded { repository: GitRepositoryState }
   | GitRepositoryDecodeRefused { cause: GitRepositoryDecodeRefusal }
 
-fn store_object_kind(object: StoreObject) -> ObjectType {
+fn store_object_kind(object: StoreObject) -> extdeps.git.ObjectType {
   store_object_fold(
     object: object,
     fold: StoreObjectFold {
@@ -636,7 +636,7 @@ fn git_object_id_raw_size(oid: GitObjectId) -> std.integer.NonNegativeInt {
   }
 }
 
-fn git_object_type_wire_name(object_type: ObjectType) -> String {
+fn git_object_type_wire_name(object_type: extdeps.git.ObjectType) -> String {
   match object_type {
     BlobObj => "blob"
     TreeObj => "tree"
@@ -733,7 +733,7 @@ fn git_tree_entry_canonical_parts(
   }
 }
 
-fn git_author_wire_line(role: String, author: GitAuthor) -> String {
+fn git_author_wire_line(role: String, author: extdeps.git.GitAuthor) -> String {
   join(
     [
       role,
@@ -1113,7 +1113,7 @@ fn git_ref_name_index(
 
 type GitObjectKindExpectation
   = GitAnyObjectKind
-  | GitExpectedObjectKind { kind: ObjectType }
+  | GitExpectedObjectKind { kind: extdeps.git.ObjectType }
 
 type GitRepositoryPointer {
   origin: GitRepositoryPointerOrigin
@@ -2423,7 +2423,7 @@ type GitUpdateRefOutcome
       repository: GitRepositoryState,
       name: GitRefName,
       oid: GitObjectId,
-      object_type: ObjectType,
+      object_type: extdeps.git.ObjectType,
     }
 
 data git_modeled_ref_transition_boundary_note: std.types.NonEmptyStr = "git_model_update_ref_exact is the pure R0 transition model only. It proves the exact-old-OID decision and returned state, including Git's default recursive symbolic-ref dereference while retaining the symbolic ref itself; a symbolic cycle refuses. It mints no execution or read-back receipt. The independent receipt is witness_git_cli_fixture_hashes_projects_and_independently_reads_back in test.manual.git_upstream_model_execution: a fresh upstream Git process performs update-ref through symbolic HEAD, observes the direct target advance and retained HEAD target, and rejects stale/nonexistent targets. P3 must consume an executing transport observation, never promote this model transition to Applied."
@@ -2449,7 +2449,7 @@ fn git_model_update_ref_exact_dereferenced(
   visited: List<GitRefName>,
   new_oid: GitObjectId,
   expected_old: GitObjectId,
-  new_object_type: ObjectType,
+  new_object_type: extdeps.git.ObjectType,
 ) -> GitUpdateRefOutcome {
   if visited |> any(name => name == current_name) {
     GitRefAdvanceSymbolicCycle {

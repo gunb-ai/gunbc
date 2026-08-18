@@ -21,7 +21,7 @@ fn dag_collect_slot_seq(slots: Map<String, DagCollectSlot>) -> Int {
   slots |> count
 }
 
-fn dag_collect_pack_slots(slots: Map<String, DagCollectSlot>, collision_errors: List<ErrorNode>) -> DagCollectAcc {
+fn dag_collect_pack_slots(slots: Map<String, DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> DagCollectAcc {
   let ordered_slots = slots |> map_values |> sort_by(s => s.seq)
   let order = ordered_slots |> map(s => s.node)
   let seen = ordered_slots |> fold(init: empty_map(), f: (acc, s) => map_insert(acc, s.key, s.fp))
@@ -41,7 +41,7 @@ fn inferred_fingerprint(value: InferredNode?) -> String {
   }
 }
 
-fn expr_data_variant(data: ExprData) -> String {
+fn expr_data_variant(data: v1.std.core.ExprData) -> String {
   match data {
     NoExprData => "NoExprData"
     ExprLiteral { value: _ } => "ExprLiteral"
@@ -68,7 +68,7 @@ fn expr_data_variant(data: ExprData) -> String {
   }
 }
 
-fn connective_name(value: Connective) -> String {
+fn connective_name(value: v1.std.core.Connective) -> String {
   match value {
     Conj => "Conj"
     Disj => "Disj"
@@ -85,7 +85,7 @@ fn dag_node_seq_hash(digests: List<String>) -> String {
   digests |> fold(init: atom_identity_hash("^dag_collect_seq_empty"), f: (acc, d) => hash_combine(acc, d))
 }
 
-fn child_subtree_hash(connective: Connective, digests: List<String>) -> String {
+fn child_subtree_hash(connective: v1.std.core.Connective, digests: List<String>) -> String {
   match connective {
     Conj => dag_node_bag_hash(digests: digests)
     Disj => dag_node_bag_hash(digests: digests)
@@ -102,7 +102,7 @@ fn dag_node_surface_leaf_mix(node: Node) -> String {
     expr_data_variant(data: node.expr_data)))
 }
 
-fn literal_value_fingerprint(value: LiteralValue) -> String {
+fn literal_value_fingerprint(value: std.syntax.LiteralValue) -> String {
   match value {
     LitStr { value: v } => concat("LitStr:", v)
     LitInt { value: v } => concat("LitInt:", to_string(value: v))
@@ -155,7 +155,7 @@ fn dag_node_surface_fingerprint_memo(node: Node) -> String {
   dag_node_surface_fingerprint(node: node)
 }
 
-fn dag_node_key_collision_error(key: String, span: SourceSpan) -> ErrorNode {
+fn dag_node_key_collision_error(key: String, span: SourceSpan) -> v1.std.core.ErrorNode {
   let synthetic = span.start == 0 && span.end == 0
   let detail = if synthetic {
     " (synthetic 0..0 span; provisional key cannot alias distinct scaffold nodes)"
@@ -163,7 +163,7 @@ fn dag_node_key_collision_error(key: String, span: SourceSpan) -> ErrorNode {
     ""
   }
   make_error_node(
-    diagnostic: InternalError {
+    diagnostic: v1.std.core.InternalError {
       message: concat("dag artifact: distinct nodes share identity key ", json_quote(s: key), detail),
       span: span
     },

@@ -24,7 +24,7 @@ type OrdinaryFrontendObservation {
   receipt: FrontendPhaseReceipt
 }
 
-fn frontend_phase_receipt(frontend: FrontendResult) -> FrontendPhaseReceipt {
+fn frontend_phase_receipt(frontend: v1.compiler.compile.FrontendResult) -> FrontendPhaseReceipt {
   FrontendPhaseReceipt {
     module_count: match frontend.graph {
       Present { value: graph } => graph.modules |> count
@@ -41,7 +41,7 @@ fn frontend_phase_receipt(frontend: FrontendResult) -> FrontendPhaseReceipt {
 // it calls front_end_sources and nothing downstream of it — so the observation
 // never has to assert that resolve-and-beyond did not run (§5: construction
 // over validation).
-fn observe_ordinary_frontend(sources: List<SourceFile>) -> OrdinaryFrontendObservation {
+fn observe_ordinary_frontend(sources: List<v1.compiler.compile.SourceFile>) -> OrdinaryFrontendObservation {
   let frontend = front_end_sources(sources: sources)
   OrdinaryFrontendObservation {
     subject: sources,

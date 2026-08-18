@@ -153,7 +153,7 @@ fn none_resolved_sig() -> ResolvedFuncSig? {
   Absent
 }
 
-fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<CallEdge> {
+fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<CallEdge> {
   flat_map(items, item =>
     if item.params |> count > 0 && item.body != none {
       collect_calls_in_expr(caller: authored_name_at(source_indices: source_indices, node: item), texpr: item.body.value, local_func_set: local_func_set, source_indices: source_indices)
@@ -163,7 +163,7 @@ fn collect_func_call_edges(items: List<Node>, local_func_set: Map<String, Bool>,
   )
 }
 
-fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>, source_indices: Map<String, NewlineIndex>) -> List<CallEdge> {
+fn collect_calls_in_expr(caller: String, texpr: Node, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<CallEdge> {
   let this_edges = match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: texpr, source_indices: source_indices)
@@ -194,11 +194,11 @@ fn build_name_set(names: List<String>) -> Map<String, Bool> {
   fold(names, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
 }
 
-fn declared_to_resolved(dsig: DeclaredFuncSig) -> ResolvedFuncSig {
+fn declared_to_resolved(dsig: v1.std.core.DeclaredFuncSig) -> ResolvedFuncSig {
   ResolvedFuncSig { name: dsig.name, params: dsig.params, inferred: dsig.inferred.value, is_async: dsig.is_async, output_provenance: dsig.output_provenance, variant_provenance: dsig.variant_provenance }
 }
 
-fn merge_remaining_declared(declared_sigs: Map<String, DeclaredFuncSig>, resolved: Map<String, ResolvedFuncSig>) -> Map<String, ResolvedFuncSig> {
+fn merge_remaining_declared(declared_sigs: Map<String, v1.std.core.DeclaredFuncSig>, resolved: Map<String, ResolvedFuncSig>) -> Map<String, ResolvedFuncSig> {
   fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
     if dsig.inferred != none {
       map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
@@ -209,11 +209,11 @@ fn merge_remaining_declared(declared_sigs: Map<String, DeclaredFuncSig>, resolve
 fn topo_resolve_loop(
     remaining: List<String>,
     resolved: Map<String, ResolvedFuncSig>,
-    declared_sigs: Map<String, DeclaredFuncSig>,
+    declared_sigs: Map<String, v1.std.core.DeclaredFuncSig>,
     call_edges: List<CallEdge>,
     local_func_set: Map<String, Bool>,
     module_name: String,
-    diagnostics: List<ErrorNode>,
+    diagnostics: List<v1.std.core.ErrorNode>,
     parent_envs: List<ResolvedFuncEnv>,
     fuel: Int
 ) -> ResolveFuncSigsResult {
@@ -244,7 +244,7 @@ fn topo_resolve_loop(
           if dsig.inferred != none {
             SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
           } else {
-            SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, make_error_node(diagnostic: MissingAnnotation { fn_name: fn_name, what: "return type (recursive)", span: no_span() }, module_name: module_name)) }
+            SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, make_error_node(diagnostic: v1.std.core.MissingAnnotation { fn_name: fn_name, what: "return type (recursive)", span: no_span() }, module_name: module_name)) }
           }
         Absent => acc
       }
@@ -266,7 +266,7 @@ fn topo_resolve_loop(
         if dsig.inferred != none {
           SigsAccum { signatures: map_insert(acc.signatures, fn_name, declared_to_resolved(dsig: dsig)), diagnostics: acc.diagnostics }
         } else {
-          SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, make_error_node(diagnostic: MissingAnnotation { fn_name: fn_name, what: "return type", span: no_span() }, module_name: module_name)) }
+          SigsAccum { signatures: acc.signatures, diagnostics: list_push(acc.diagnostics, make_error_node(diagnostic: v1.std.core.MissingAnnotation { fn_name: fn_name, what: "return type", span: no_span() }, module_name: module_name)) }
         }
       Absent => acc
     }
@@ -289,11 +289,11 @@ fn topo_resolve_loop(
 }
 
 fn resolve_func_sigs(
-    declared_sigs: Map<String, DeclaredFuncSig>,
+    declared_sigs: Map<String, v1.std.core.DeclaredFuncSig>,
     parent_envs: List<ResolvedFuncEnv>,
     items: List<Node>,
     module_name: String,
-    source_indices: Map<String, NewlineIndex>
+    source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> ResolveFuncSigsResult {
   let local_func_names = items
     |> filter(item => item.params |> count > 0 && item.body != none)

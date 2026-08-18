@@ -781,7 +781,7 @@ fn v1_type_expr_head_is_known(
 
 fn v1_item_generic_param_name_set(
   item: Node,
-  source_indices: Map<String, NewlineIndex>
+  source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Set<String> {
   item.params |> fold(init: empty_set(), f: (acc, p) =>
     set_insert(acc, generic_param_name_at(n: p, source_indices: source_indices))
@@ -791,7 +791,7 @@ fn v1_item_generic_param_name_set(
 fn v1_type_expr_clone_undecided_head(
   type_expr: Node,
   type_decl_items: Map<String, Node>,
-  source_indices: Map<String, NewlineIndex>,
+  source_indices: Map<String, v1.std.core.NewlineIndex>,
   item_generic_params: Set<String>
 ) -> String {
   let name = authored_name_at(source_indices: source_indices, node: type_expr)

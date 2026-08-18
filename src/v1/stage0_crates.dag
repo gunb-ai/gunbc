@@ -86,7 +86,7 @@ fn stage0_crate_dir_to_sibling_dep_path(crate_dir: String) -> String {
   replace(crate_dir, "src/v1/", "../")
 }
 
-fn stage0_partition_row_is_module_bearing(row: GeneratedPartitionCrateRow) -> Bool {
+fn stage0_partition_row_is_module_bearing(row: gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow) -> Bool {
   match row.kind {
     GeneratedEmitCoreCrate => false
     GeneratedFoundationCrate => true
@@ -207,22 +207,22 @@ fn stage0_crate_boundary_emit_refusal_message(
   }
 }
 
-fn stage0_foundation_runtime_dependencies() -> List<CargoDependency> {
+fn stage0_foundation_runtime_dependencies() -> List<extdeps.cargo.CargoDependency> {
   [
-    CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
-    CargoDependency { name: "im", source: RegistryDep { version: "15.1", features: ["serde"] } },
-    CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } },
-    CargoDependency { name: "serde_json", source: RegistryDep { version: "1", features: [] } },
-    CargoDependency { name: "unicode-ident", source: RegistryDep { version: "1", features: [] } },
-    CargoDependency { name: "unicode-properties", source: RegistryDep { version: "0.1", features: ["emoji"] } }
+    CargoDependency { name: "stacker", source: extdeps.cargo.RegistryDep { version: "0.1", features: [] } },
+    extdeps.cargo.CargoDependency { name: "im", source: extdeps.cargo.RegistryDep { version: "15.1", features: ["serde"] } },
+    extdeps.cargo.CargoDependency { name: "serde", source: extdeps.cargo.RegistryDep { version: "1", features: ["derive", "rc"] } },
+    extdeps.cargo.CargoDependency { name: "serde_json", source: extdeps.cargo.RegistryDep { version: "1", features: [] } },
+    extdeps.cargo.CargoDependency { name: "unicode-ident", source: extdeps.cargo.RegistryDep { version: "1", features: [] } },
+    extdeps.cargo.CargoDependency { name: "unicode-properties", source: extdeps.cargo.RegistryDep { version: "0.1", features: ["emoji"] } }
   ]
 }
 
-fn stage0_emit_shell_registry_dependencies() -> List<CargoDependency> {
+fn stage0_emit_shell_registry_dependencies() -> List<extdeps.cargo.CargoDependency> {
   [
-    CargoDependency { name: "stacker", source: RegistryDep { version: "0.1", features: [] } },
-    CargoDependency { name: "im", source: RegistryDep { version: "15.1", features: ["serde"] } },
-    CargoDependency { name: "serde", source: RegistryDep { version: "1", features: ["derive", "rc"] } }
+    CargoDependency { name: "stacker", source: extdeps.cargo.RegistryDep { version: "0.1", features: [] } },
+    extdeps.cargo.CargoDependency { name: "im", source: extdeps.cargo.RegistryDep { version: "15.1", features: ["serde"] } },
+    extdeps.cargo.CargoDependency { name: "serde", source: extdeps.cargo.RegistryDep { version: "1", features: ["derive", "rc"] } }
   ]
 }
 
@@ -241,7 +241,7 @@ fn stage0_reexport_path_dependencies_outcome(
                 deps: deps |> concat([
                   CargoDependency {
                     name: pkg,
-                    source: LocalPathDep {
+                    source: extdeps.cargo.LocalPathDep {
                       path: stage0_crate_dir_to_sibling_dep_path(crate_dir: crate_dir)
                     }
                   }
@@ -254,18 +254,18 @@ fn stage0_reexport_path_dependencies_outcome(
     })
 }
 
-fn stage0_emit_shell_path_dependencies() -> List<CargoDependency> {
+fn stage0_emit_shell_path_dependencies() -> List<extdeps.cargo.CargoDependency> {
   generated_partition_crate_rows
     |> filter(row => stage0_partition_row_is_module_bearing(row: row))
     |> map(row =>
       CargoDependency {
         name: row.package_name,
-        source: LocalPathDep { path: stage0_crate_dir_to_sibling_dep_path(crate_dir: row.crate_dir) }
+        source: extdeps.cargo.LocalPathDep { path: stage0_crate_dir_to_sibling_dep_path(crate_dir: row.crate_dir) }
       }
     )
 }
 
-fn stage0_partition_row_kind(row: GeneratedPartitionCrateRow) -> Stage0CrateKind {
+fn stage0_partition_row_kind(row: gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow) -> Stage0CrateKind {
   match row.kind {
     GeneratedFoundationCrate => FoundationCrate
     GeneratedLayeredCoreCrate => LayeredCoreCrate
@@ -273,7 +273,7 @@ fn stage0_partition_row_kind(row: GeneratedPartitionCrateRow) -> Stage0CrateKind
   }
 }
 
-fn stage0_partition_row_header_doc(row: GeneratedPartitionCrateRow) -> String {
+fn stage0_partition_row_header_doc(row: gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow) -> String {
   match row.kind {
     GeneratedFoundationCrate => stage0_foundation_header_doc()
     GeneratedLayeredCoreCrate => stage0_layered_core_header_doc()
@@ -282,7 +282,7 @@ fn stage0_partition_row_header_doc(row: GeneratedPartitionCrateRow) -> String {
 }
 
 fn stage0_partition_row_dependencies_outcome(
-  row: GeneratedPartitionCrateRow
+  row: gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow
 ) -> Stage0PartitionRowDepsOutcome {
   match row.kind {
     GeneratedFoundationCrate =>
@@ -304,7 +304,7 @@ fn stage0_partition_row_dependencies_outcome(
   }
 }
 
-fn stage0_partition_row_features(row: GeneratedPartitionCrateRow) -> List<CargoFeature> {
+fn stage0_partition_row_features(row: gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow) -> List<extdeps.cargo.CargoFeature> {
   match row.kind {
     GeneratedFoundationCrate => [CargoFeature { name: "text_lookup_work_counter", dependencies: [] }]
     GeneratedLayeredCoreCrate => []
@@ -313,7 +313,7 @@ fn stage0_partition_row_features(row: GeneratedPartitionCrateRow) -> List<CargoF
 }
 
 fn stage0_partition_row_to_spec_outcome(
-  row: GeneratedPartitionCrateRow
+  row: gunbc.stage0_crate_partition_generated.GeneratedPartitionCrateRow
 ) -> Stage0PartitionRowSpecOutcome {
   match stage0_partition_row_dependencies_outcome(row: row) {
     Stage0PartitionRowDepsRefused { cause: cause } =>
@@ -335,7 +335,7 @@ fn stage0_partition_row_to_spec_outcome(
   }
 }
 
-fn render_stage0_crate_dep(dep: CargoDependency) -> String {
+fn render_stage0_crate_dep(dep: extdeps.cargo.CargoDependency) -> String {
   match dep.source {
     RegistryDep { version: version, features: features } =>
       emit_cargo_dep(name: dep.name, version: version, features: features)
@@ -344,7 +344,7 @@ fn render_stage0_crate_dep(dep: CargoDependency) -> String {
   }
 }
 
-fn render_stage0_crate_feature(feature: CargoFeature) -> String {
+fn render_stage0_crate_feature(feature: extdeps.cargo.CargoFeature) -> String {
   if (feature.dependencies |> count) == 0 {
     concat(feature.name, " = []\n")
   } else {
@@ -353,7 +353,7 @@ fn render_stage0_crate_feature(feature: CargoFeature) -> String {
   }
 }
 
-fn render_stage0_crate_features_section(features: List<CargoFeature>) -> String {
+fn render_stage0_crate_features_section(features: List<extdeps.cargo.CargoFeature>) -> String {
   if (features |> count) == 0 {
     ""
   } else {
@@ -365,7 +365,7 @@ fn render_stage0_crate_features_section(features: List<CargoFeature>) -> String 
   }
 }
 
-fn emit_stage0_crate_manifest(spec: Stage0CrateSpec) -> TextFile {
+fn emit_stage0_crate_manifest(spec: Stage0CrateSpec) -> v1.std.core.TextFile {
   let deps = spec.dependencies |> map(render_stage0_crate_dep) |> join(separator: "")
   let content = concat(
     render_cargo_package_header_prefix(name: spec.package_name),
@@ -457,7 +457,7 @@ fn render_stage0_emit_core_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibE
       Stage0CrateLibEmitRefused { cause: cause }
     Stage0EmitShellReexportsOk { lines: lines } =>
       Stage0CrateLibEmitOk {
-        file: TextFile {
+        file: v1.std.core.TextFile {
           path: concat(spec.crate_dir, "/src/lib.rs"),
           content: concat(
             spec.header_doc, "\n\n",
@@ -483,14 +483,14 @@ fn emit_stage0_crate_lib_outcome(spec: Stage0CrateSpec) -> Stage0CrateLibEmitOut
   match spec.kind {
     FoundationCrate =>
       Stage0CrateLibEmitOk {
-        file: TextFile {
+        file: v1.std.core.TextFile {
           path: concat(spec.crate_dir, "/src/lib.rs"),
           content: render_stage0_foundation_lib(spec)
         }
       }
     LayeredCoreCrate =>
       Stage0CrateLibEmitOk {
-        file: TextFile {
+        file: v1.std.core.TextFile {
           path: concat(spec.crate_dir, "/src/lib.rs"),
           content: render_stage0_layered_core_lib(spec)
         }
@@ -557,4 +557,4 @@ fn stage0_crate_boundary_emit_outcome() -> Stage0CrateBoundaryEmitOutcome {
   }
 }
 
-data stage0_crate_plan_list_wrapper_dissolve_on: DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (§5 empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.")
+data stage0_crate_plan_list_wrapper_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_crate_plan — deleted; receipt paths must call stage0_crate_plan_outcome (§5 empty-plan wrapper collapsed Stage0CratePlanRefused to crates:[]). workspace_members and regen_stage0 consume outcome surfaces only.")

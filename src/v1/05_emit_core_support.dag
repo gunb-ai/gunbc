@@ -43,7 +43,7 @@ fn make_indent(level: Int) -> String {
 }
 
 fn unique_strings(items: List<String>) -> List<String> {
-  let result = items |> fold(init: UniqueAccum { seen: empty_map(), result: [] }, f: fn(acc, item) {
+  let result = items |> fold(init: v1.compiler.infer_service.UniqueAccum { seen: empty_map(), result: [] }, f: fn(acc, item) {
     if emit_map_has(m: acc.seen, key: item) { acc }
     else { UniqueAccum { seen: map_insert(acc.seen, item, true), result: list_push(acc.result, item) } }
   })
@@ -155,7 +155,7 @@ fn to_pascal(name: String) -> String {
   pascal_parts |> join(separator: "")
 }
 
-fn test_function_name(projection: TestProjection, target: RenderTarget) -> String {
+fn test_function_name(projection: TestProjection, target: v1.compiler.artifact.RenderTarget) -> String {
   let conventions = test_conventions_for_target(target: target)
   let formatted = match conventions.name_style {
     SnakeCaseTestNames => concat(
@@ -212,7 +212,7 @@ fn apply_named_template_nested(template: String, bindings: Map<String, String>, 
   }
 }
 
-fn language_spec(target: RenderTarget) -> LanguageSpec {
+fn language_spec(target: v1.compiler.artifact.RenderTarget) -> v1.compiler.languages.LanguageSpec {
   language_spec_for_target(target: target)
 }
 
@@ -238,7 +238,7 @@ fn has_mock_prefix(name: String) -> Bool {
   else { substring(s: name, start: 0, end: 5) == "mock_" }
 }
 
-fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
+fn extract_test_projections(typed: v1.compiler.infer_items.ResolvedGraph) -> List<TestProjection> {
   typed.modules |> flat_map(tm =>
     tm.items
       |> filter(item => is_service_item(item: item))
@@ -259,7 +259,7 @@ fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
   )
 }
 
-fn is_type_alias_return_node(n: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn is_type_alias_return_node(n: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   authored_name_at(source_indices: source_indices, node: n) != "Unit"
 }
 
@@ -275,11 +275,11 @@ fn is_bare_leaf_item(item: Node) -> Bool {
   item.connective == NoConnective && item.body == none && item.params |> count == 0 && item.transport == none && item.children |> count == 0
 }
 
-fn is_type_alias_item(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn is_type_alias_item(item: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   is_bare_leaf_item(item: item) && is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices)
 }
 
-fn is_type_decl_item(item: Node, source_indices: Map<String, NewlineIndex>) -> Bool {
+fn is_type_decl_item(item: Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool {
   (is_bare_leaf_item(item: item) && !is_type_alias_return_node(n: resolved_type(n: item), source_indices: source_indices))
   || (item.params |> count > 0 && item.body == none && item.transport == none && item.children |> count == 0)
 }

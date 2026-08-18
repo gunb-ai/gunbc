@@ -29,7 +29,7 @@ fn obcpw_parse(file: String, source: String) -> ObcpwParsed {
   }
 }
 
-fn obcpw_same_module(left: NonEmptyStr, right: NonEmptyStr) -> Bool {
+fn obcpw_same_module(left: std.types.NonEmptyStr, right: std.types.NonEmptyStr) -> Bool {
   left == right
 }
 
@@ -58,9 +58,9 @@ fn obcpw_greeter_source() -> String {
 }
 
 fn obcpw_declarations_named(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   name: String
-) -> List<DeclarationOccurrence> {
+) -> List<std.occurrence_identity.DeclarationOccurrence> {
   fold(
     transport.declarations,
     init: [],
@@ -77,9 +77,9 @@ fn obcpw_declarations_named(
 }
 
 fn index_entry_for_declaration(
-  transport: OccurrenceTransport,
-  declaration: DeclarationOccurrence
-) -> OccurrenceIndexEntry? {
+  transport: std.occurrence_identity.OccurrenceTransport,
+  declaration: std.occurrence_identity.DeclarationOccurrence
+) -> std.occurrence_identity.OccurrenceIndexEntry? {
   fold(
     transport.index.entries,
     init: none,
@@ -96,9 +96,9 @@ fn index_entry_for_declaration(
 }
 
 fn obcpw_references_named(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   name: String
-) -> List<ReferenceOccurrence> {
+) -> List<std.occurrence_identity.ReferenceOccurrence> {
   fold(
     transport.references,
     init: [],
@@ -115,9 +115,9 @@ fn obcpw_references_named(
 }
 
 fn index_entry_for_reference(
-  transport: OccurrenceTransport,
-  reference: ReferenceOccurrence
-) -> OccurrenceIndexEntry? {
+  transport: std.occurrence_identity.OccurrenceTransport,
+  reference: std.occurrence_identity.ReferenceOccurrence
+) -> std.occurrence_identity.OccurrenceIndexEntry? {
   fold(
     transport.index.entries,
     init: none,
@@ -134,10 +134,10 @@ fn index_entry_for_reference(
 }
 
 fn obcpw_reference_binds_to_declaration(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs,
-  reference: ReferenceOccurrence,
-  declaration: DeclarationOccurrence
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
+  reference: std.occurrence_identity.ReferenceOccurrence,
+  declaration: std.occurrence_identity.DeclarationOccurrence
 ) -> Bool {
   match resolve_reference_binding_via_structural_candidates(
     transport: transport,
@@ -151,9 +151,9 @@ fn obcpw_reference_binds_to_declaration(
 }
 
 fn obcpw_reference_with_occurrence(
-  reference: ReferenceOccurrence,
+  reference: std.occurrence_identity.ReferenceOccurrence,
   occurrence: std.occurrence_identity.OccurrenceId
-) -> ReferenceOccurrence {
+) -> std.occurrence_identity.ReferenceOccurrence {
   ReferenceOccurrence {
     occurrence: occurrence,
     containment: reference.containment,
@@ -163,9 +163,9 @@ fn obcpw_reference_with_occurrence(
 }
 
 fn obcpw_reference_unbound_exactly(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs,
-  reference: ReferenceOccurrence
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
+  reference: std.occurrence_identity.ReferenceOccurrence
 ) -> Bool {
   match resolve_reference_binding_via_structural_candidates(
     transport: transport,
@@ -179,9 +179,9 @@ fn obcpw_reference_unbound_exactly(
 }
 
 fn obcpw_unknown_occurrence_transport_refuses(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs,
-  reference: ReferenceOccurrence
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
+  reference: std.occurrence_identity.ReferenceOccurrence
 ) -> Bool {
   match resolve_reference_binding_via_structural_candidates(
     transport: transport,
@@ -393,10 +393,10 @@ data parser_repeated_bindings_projection_law_note: String = "Case 6 — projecti
 data parser_transport_scoped_identity_note: String = "Case 7 — single parse in one graph scope. Positive arm preserves the parser-minted reference occurrence; negative arm substitutes an occurrence id unknown within that same transport. OccurrenceId integers are allocator-local and must not be compared across standalone parses."
 
 fn obcpw_bound_providers_named(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs,
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
   name: String
-) -> List<BoundReferenceProvider> {
+) -> List<std.occurrence_binding_candidates.BoundReferenceProvider> {
   reverse(fold(
     obcpw_references_named(transport: transport, name: name),
     init: [],
@@ -437,7 +437,7 @@ test fn parser_repeated_bindings_project_one_module_edge_holds() -> Bool {
               Absent => false
             }
             && match direct_module_dependencies_from_bound_population(
-              population: AllReferencesBound { providers: providers },
+              population: std.occurrence_binding_candidates.AllReferencesBound { providers: providers },
             ) {
               DirectModuleDependencyListReady { edges: edges } =>
                 (edges |> count) == 0
@@ -511,7 +511,7 @@ test fn parser_production_call_binds_with_edge_holds() -> Bool {
                     && obcpw_same_module(left: provider.consumer_module, right: module_path)
                     && obcpw_same_module(left: provider.provider_module, right: module_path)
                     && match direct_module_dependencies_from_bound_population(
-                      population: AllReferencesBound { providers: [provider] },
+                      population: std.occurrence_binding_candidates.AllReferencesBound { providers: [provider] },
                     ) {
                       DirectModuleDependencyListReady { edges: edges } =>
                         (edges |> count) == 0
@@ -526,9 +526,9 @@ test fn parser_production_call_binds_with_edge_holds() -> Bool {
 }
 
 fn obcpw_declaration_for_occurrence(
-  transport: OccurrenceTransport,
+  transport: std.occurrence_identity.OccurrenceTransport,
   occurrence: std.occurrence_identity.OccurrenceId
-) -> DeclarationOccurrence? {
+) -> std.occurrence_identity.DeclarationOccurrence? {
   fold(
     transport.declarations,
     init: none,
@@ -545,9 +545,9 @@ fn obcpw_declaration_for_occurrence(
 }
 
 fn obcpw_inputs_with_lexical_fn_a(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs
-) -> OccurrenceBindingCandidateInputs {
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs
+) -> std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
   match occurrence_id_for_authored_name(transport: transport, name: "fn_a") {
     Absent => inputs
     Present { value: fn_a_id } =>
@@ -566,7 +566,7 @@ fn obcpw_inputs_with_lexical_fn_a(
                     concat([
                       DeclarationExposureRow {
                         occurrence: row.occurrence,
-                        exposure: LexicalExposure {
+                        exposure: std.occurrence_binding_candidates.LexicalExposure {
                           exposing_scope: fn_a_declaration.containment,
                         },
                       },
@@ -580,9 +580,9 @@ fn obcpw_inputs_with_lexical_fn_a(
 }
 
 fn obcpw_inputs_without_fn_a_exposure(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs
-) -> OccurrenceBindingCandidateInputs {
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs
+) -> std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
   match occurrence_id_for_authored_name(transport: transport, name: "fn_a") {
     Absent => inputs
     Present { value: fn_a_id } =>
@@ -603,10 +603,10 @@ fn obcpw_inputs_without_fn_a_exposure(
 }
 
 fn obcpw_inputs_without_reference_authored_order(
-  transport: OccurrenceTransport,
-  inputs: OccurrenceBindingCandidateInputs,
-  reference: ReferenceOccurrence
-) -> OccurrenceBindingCandidateInputs {
+  transport: std.occurrence_identity.OccurrenceTransport,
+  inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
+  reference: std.occurrence_identity.ReferenceOccurrence
+) -> std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs {
   OccurrenceBindingCandidateInputs {
     module_paths: inputs.module_paths,
     exposure_rows: inputs.exposure_rows,
@@ -754,4 +754,4 @@ test fn namespace_reference_derived_closure_parser_integration_holds() -> Bool {
     && parser_missing_authored_order_refuses_holds()
 }
 
-data occurrence_binding_parser_walk_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: witness_layer_roots admits src/v1 for parser-transport witnesses without Node ambiguity, or execution corpus carries per-entry source roots — then this recipe deletes and discovery enrollment suffices.")
+data occurrence_binding_parser_walk_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: witness_layer_roots admits src/v1 for parser-transport witnesses without Node ambiguity, or execution corpus carries per-entry source roots — then this recipe deletes and discovery enrollment suffices.")
