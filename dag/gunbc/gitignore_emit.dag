@@ -49,6 +49,7 @@ fn artifact_pattern(a: gunbc.gitignore_model.IgnoreArtifact) -> String {
     PythonLocalDevScriptFile => "*.py"
     PythonAuditScriptAllowlisted => "!docs/plans/witness-subject-execution-audit.py"
     PythonProbeScriptAllowlisted => "!docs/probes/e0369_b1_operator_classify.py"
+    FloorCutNameResolutionPartitionScriptAllowlisted => "!docs/probes/floor_cut_name_resolution_partition.py"
     PythonBytecodeCacheDir => "__pycache__/"
     PythonCompiledBytecode => "*.pyc"
     ClaimMapDir => ".claim-map/"

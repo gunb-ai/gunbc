@@ -38,9 +38,6 @@ type RoadmapServeHandler
   | WorkflowJsonHandler
   | BeltStopHandler
   | BeltPublishHandler
-  | CiRunsPageHandler
-  | CiRunDetailPageHandler
-  | CiRunsJsonHandler
 
 data roadmap_serve_table_build_note: String = "Fail-closed table construction (review 40286, the §5 catch: the earlier serve_tpl mapped MalformedPathTemplate to an EMPTY template, and an empty template matches exactly '/' — so a typo in any route literal would have silently become a second root matcher, a widen at the very seam §5 forbids). The build is now a typed fold: the FIRST malformed literal refuses the WHOLE table (RoadmapServeTableRefused carries raw/segment/reason — typed, located), and the serve entry answers EVERY request with a 500 naming the broken literal until it is fixed — a loudly broken dashboard, never silently wrong routing. The RED control is witness_malformed_route_literal_refuses_table (a bad literal through the same build fold -> Refused)."
 
@@ -80,9 +77,6 @@ fn roadmap_serve_route_specs() -> List<RoadmapServeRouteSpec> {
     RoadmapServeRouteSpec { method: POST, raw: "/publish/\{node_id\}", handler: BeltPublishHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/cleanup/\{node_id\}", handler: BeltStopHandler },
     RoadmapServeRouteSpec { method: POST, raw: "/stop/\{node_id\}", handler: BeltStopHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/ci", handler: CiRunsPageHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/ci/runs.json", handler: CiRunsJsonHandler },
-    RoadmapServeRouteSpec { method: GET, raw: "/ci/run/\{run_id\}", handler: CiRunDetailPageHandler },
   ]
 }
 
@@ -346,9 +340,6 @@ fn roadmap_serve_invoke_for_instance(
     WorkflowJsonHandler => serve_workflow_response_for_instance(instance: instance)
     BeltStopHandler => serve_stop_handler_response_for_instance(instance: instance, params: params)
     BeltPublishHandler => serve_publish_handler_response_for_instance(instance: instance, params: params)
-    CiRunsPageHandler => serve_ci_runs_page_response()
-    CiRunsJsonHandler => serve_ci_runs_json_response()
-    CiRunDetailPageHandler => serve_ci_run_detail_response(params: params)
   }
 }
 

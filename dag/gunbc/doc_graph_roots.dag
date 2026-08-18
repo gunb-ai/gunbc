@@ -1022,17 +1022,6 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   },
   HandAuthoredDocBind {
     home: PlanDoc,
-    slug: "owned-ci-control-plane-design",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.owned_ci_seed", decl_name: "owned_ci_control_plane_seed_scaffold", field: WholeDeclaration },
-    additional_works: [
-      std.decl_ref.DeclarationRef { module_path: "gunbc.owned_ci_seed", decl_name: "owned_ci_control_plane_seed_note", field: WholeDeclaration },
-      std.decl_ref.DeclarationRef { module_path: "gunbc.owned_ci", decl_name: "owned_ci_authority_note", field: WholeDeclaration },
-      std.decl_ref.DeclarationRef { module_path: "gunbc.ci_execution_plan", decl_name: "ci_execution_plan_note", field: WholeDeclaration },
-    ],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "v0 lands on fleet with shadow comparison and branch-protection cutover per the design sequence, the scaffold dissolve-on items complete (REST bridge, runtime state carriers, subject_key and run_id grammar), and ci_control_plane self-emits or the plan registers — then surviving policy migrates to DESIGN or a registered gunbc.plan.Plan row and this bind deletes with the doc.") },
-  },
-  HandAuthoredDocBind {
-    home: PlanDoc,
     slug: "spark-standup-program-accounting",
     primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.plans.fleet_subsumption_manual_gaps", decl_name: "fleet_subsumption_manual_gaps_plan", field: WholeDeclaration },
     additional_works: [
