@@ -33,9 +33,9 @@ use crate::v1_std_core::{
     let_binding_name_at, let_body, let_value, match_arm_nodes, match_scrutinee, method_arg_nodes,
     method_receiver, param_node_default_value, param_node_name_at, qualified_last_segment,
     record_lit_type_name_at, return_value, slice_base, slice_end, slice_start, transport_stdin,
-    unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode, ExprData, FieldAccessStyle,
-    FieldSummary, FieldValueShape, InferredNode, MatchPattern, MethodSemantics, NewlineIndex, Node,
-    SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
+    type_name_compatible, unaryop_operand, CallSemantics, Cardinality, Connective, ErrorNode,
+    ExprData, FieldAccessStyle, FieldSummary, FieldValueShape, InferredNode, MatchPattern,
+    MethodSemantics, NewlineIndex, Node, SourceSpan, StringPart, UnaryOpKind, VarBindingKind,
 };
 
 #[path = "bounded_shell_host_drain.rs"]
@@ -238,17 +238,44 @@ fn coproduct_arm_name_matches(value_name: String, pattern_name: String) -> bool 
     qualified_last_segment(value_name.clone()) == qualified_last_segment(pattern_name)
 }
 
-fn resolve_coproduct_type_node(ctx: &InterpContext, parent_enum: &str) -> Option<Rc<Node>> {
-    lookup_type_item_across_modules(ctx, parent_enum).or_else(|| {
-        lookup_type_item_across_modules(ctx, &qualified_last_segment(parent_enum.to_string()))
-    })
+fn coproduct_disj_node(ctx: &InterpContext, item: &Rc<Node>) -> Option<Rc<Node>> {
+    if item.connective == Connective::Disj && !item.children.is_empty() {
+        return Some(item.clone());
+    }
+    if let Some(InferredNode::Resolved { node }) = item.inferred.as_deref() {
+        if node.connective == Connective::Disj && !node.children.is_empty() {
+            return Some(node.clone());
+        }
+    }
+    if let Some(rhs) = type_item_alias_rhs_name(ctx, item) {
+        return resolve_coproduct_type_node(ctx, &rhs);
+    }
+    None
 }
 
-fn pattern_parent_is(parent_enum: Option<&String>, short_name: &str) -> bool {
-    match parent_enum {
-        Some(parent) => qualified_last_segment(parent.clone()) == short_name,
-        None => false,
+fn resolve_coproduct_type_node(ctx: &InterpContext, parent_enum: &str) -> Option<Rc<Node>> {
+    let bare = qualified_last_segment(parent_enum.to_string());
+    if let Some(item) = lookup_type_item_across_modules(ctx, parent_enum)
+        .or_else(|| lookup_type_item_across_modules(ctx, &bare))
+    {
+        if let Some(disj) = coproduct_disj_node(ctx, &item) {
+            return Some(disj);
+        }
+        return Some(item);
     }
+    for module in ctx.modules.iter() {
+        let env = module.type_env.clone();
+        let node =
+            crate::v1_compiler_infer_env::lookup_type_by_name(env.clone(), parent_enum.to_string())
+                .or_else(|| crate::v1_compiler_infer_env::lookup_type_by_name(env, bare.clone()))?;
+        if let Some(disj) = coproduct_disj_node(ctx, &node) {
+            return Some(disj);
+        }
+        if node.connective == Connective::Disj {
+            return Some(node);
+        }
+    }
+    None
 }
 
 fn coproduct_parent_spellings_match(
@@ -259,36 +286,77 @@ fn coproduct_parent_spellings_match(
     if value_parent == pattern_parent {
         return true;
     }
-    if coproduct_arm_name_matches(value_parent.clone(), pattern_parent.to_string()) {
-        // Last-segment agreement is the match key; scoped frames may not index every
-        // qualified coproduct spelling even though the scrutinee already names that parent.
-        return true;
+    if qualified_last_segment(value_parent.clone())
+        == qualified_last_segment(pattern_parent.to_string())
+    {
+        if let (Some(value_coproduct), Some(pattern_coproduct)) = (
+            resolve_coproduct_type_node(ctx, &value_parent),
+            resolve_coproduct_type_node(ctx, pattern_parent),
+        ) {
+            if Rc::ptr_eq(&value_coproduct, &pattern_coproduct) {
+                return true;
+            }
+            let value_authored = authored_name_at(ctx.si(), value_coproduct);
+            let pattern_authored = authored_name_at(ctx.si(), pattern_coproduct);
+            if value_authored == pattern_authored {
+                return true;
+            }
+        }
     }
     let coproduct = resolve_coproduct_type_node(ctx, pattern_parent);
     match coproduct {
         Some(coproduct_node) => {
-            let coproduct_name = authored_name_at(ctx.si(), coproduct_node.clone());
-            value_parent == coproduct_name
-                || coproduct_arm_name_matches(value_parent.clone(), coproduct_name)
+            let authored = authored_name_at(ctx.si(), coproduct_node.clone());
+            authored == value_parent
+                || qualified_last_segment(authored) == qualified_last_segment(value_parent.clone())
         }
         None => false,
     }
 }
 
-fn coproduct_child_authored_name_matches(
+fn variant_arm_is_declared_in_coproduct(
     ctx: &InterpContext,
-    child: Rc<Node>,
-    record_nominal: &str,
-    bare_record_nominal_only: bool,
+    variant_name: Symbol,
+    pattern_parent: &str,
 ) -> bool {
-    if bare_record_nominal_only && record_nominal.contains('.') {
+    let coproduct = match resolve_coproduct_type_node(ctx, pattern_parent) {
+        Some(node) => node,
+        None => return false,
+    };
+    if coproduct.connective != Connective::Disj {
         return false;
     }
-    let child_name = authored_name_at(ctx.si(), child.clone());
-    if child_name == record_nominal {
-        return true;
+    let variant_last = qualified_last_segment(resolve_sym(variant_name));
+    for child in coproduct.children.iter() {
+        if qualified_last_segment(authored_name_at(ctx.si(), child.clone())) == variant_last {
+            return true;
+        }
     }
-    coproduct_arm_name_matches(child_name, record_nominal.to_string())
+    false
+}
+
+fn parent_enum_is(parent: Option<&String>, expected_last: &str) -> bool {
+    parent.is_some_and(|p| qualified_last_segment(p.clone()) == expected_last)
+}
+
+fn record_pattern_type_name_matches(
+    ctx: &InterpContext,
+    record_type_name: Symbol,
+    pattern_name: &str,
+    parent_enum: Option<&String>,
+) -> bool {
+    let resolved = resolve_sym(record_type_name);
+    let name_matches = record_type_name == ctx.sym(pattern_name)
+        || resolved == pattern_name
+        || type_name_compatible(resolved.clone(), pattern_name.to_string());
+    match parent_enum {
+        Some(parent) => {
+            record_nominal_is_declared_variant_of_coproduct(ctx, resolved.clone(), parent)
+                || variant_arm_is_declared_in_coproduct(ctx, record_type_name, parent)
+                || name_matches
+        }
+        None => name_matches,
+    }
 }
 
 fn record_nominal_is_declared_variant_of_coproduct(
@@ -303,63 +371,14 @@ fn record_nominal_is_declared_variant_of_coproduct(
     if coproduct.connective != Connective::Disj {
         return false;
     }
+    let record_last = qualified_last_segment(record_nominal.clone());
     for child in coproduct.children.iter() {
-        if coproduct_child_authored_name_matches(ctx, child.clone(), &record_nominal, false) {
+        let child_name = authored_name_at(ctx.si(), child.clone());
+        if child_name == record_nominal || qualified_last_segment(child_name) == record_last {
             return true;
         }
     }
     false
-}
-
-fn record_nominal_is_bare_declared_variant_of_coproduct(
-    ctx: &InterpContext,
-    record_nominal: String,
-    pattern_parent: &str,
-) -> bool {
-    let coproduct = match resolve_coproduct_type_node(ctx, pattern_parent) {
-        Some(node) => node,
-        None => return false,
-    };
-    if coproduct.connective != Connective::Disj {
-        return false;
-    }
-    for child in coproduct.children.iter() {
-        if coproduct_child_authored_name_matches(ctx, child.clone(), &record_nominal, true) {
-            return true;
-        }
-    }
-    false
-}
-
-fn record_pattern_type_name_matches(
-    ctx: &InterpContext,
-    record_type_name: Symbol,
-    pattern_name: &str,
-    parent_enum: Option<&String>,
-) -> bool {
-    let resolved = resolve_sym(record_type_name);
-    if record_type_name == ctx.sym(pattern_name) || resolved == pattern_name {
-        return true;
-    }
-    if !coproduct_arm_name_matches(resolved.clone(), pattern_name.to_string()) {
-        return false;
-    }
-    match parent_enum {
-        None => true,
-        Some(parent) => match resolve_coproduct_type_node(ctx, parent) {
-            // Scoped evaluation may not rebuild a corpus-wide type index entry; the
-            // arm-name gate above is then the precision frontier.
-            None => true,
-            Some(_) => {
-                record_nominal_is_declared_variant_of_coproduct(ctx, resolved.clone(), parent)
-                    || record_nominal_is_bare_declared_variant_of_coproduct(
-                        ctx,
-                        resolved.clone(),
-                        parent,
-                    )
-            }
-        },
-    }
 }
 
 pub fn free_monoid_symbol_value_to_dotted_string(value: &Value) -> String {
@@ -3826,7 +3845,7 @@ fn match_pattern(
             // verbatim; Variant payloads are excluded so the Variant arm's
             // inline raw-value handling stays authoritative.
             if name_last == "Present"
-                && pattern_parent_is(parent_enum.as_ref(), "Optional")
+                && parent_enum_is(parent_enum.as_ref(), "Optional")
                 && !matches!(value, Value::Null)
                 && !matches!(value, Value::Variant { .. })
             {
@@ -3839,7 +3858,7 @@ fn match_pattern(
                 return Some(bindings);
             }
             if name_last == "Holds"
-                && pattern_parent_is(parent_enum.as_ref(), "Witness")
+                && parent_enum_is(parent_enum.as_ref(), "Witness")
                 && !matches!(value, Value::Null)
                 && !matches!(value, Value::Variant { .. })
             {
@@ -3851,6 +3870,34 @@ fn match_pattern(
                 }
                 return Some(bindings);
             }
+            if name_last == "Absent" && field_bindings.is_empty() {
+                return match value {
+                    Value::Null => Some(HashMap::new()),
+                    Value::Variant {
+                        type_name,
+                        variant_name,
+                        ..
+                    } => {
+                        if !coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone()) {
+                            None
+                        } else if let Some(parent) = parent_enum.as_ref() {
+                            if coproduct_parent_spellings_match(
+                                ctx,
+                                resolve_sym(*type_name),
+                                parent,
+                            ) || variant_arm_is_declared_in_coproduct(ctx, *variant_name, parent)
+                            {
+                                Some(HashMap::new())
+                            } else {
+                                None
+                            }
+                        } else {
+                            Some(HashMap::new())
+                        }
+                    }
+                    _ => None,
+                };
+            }
             match value {
                 Value::Variant {
                     type_name,
@@ -3858,7 +3905,7 @@ fn match_pattern(
                     fields,
                 } => {
                     if name_last == "Holds"
-                        && pattern_parent_is(parent_enum.as_ref(), "Witness")
+                        && parent_enum_is(parent_enum.as_ref(), "Witness")
                         && *variant_name != ctx.sym("Holds")
                         && *variant_name != ctx.sym("Violates")
                     {
@@ -3871,7 +3918,7 @@ fn match_pattern(
                         return Some(bindings);
                     }
                     if name_last == "Present"
-                        && pattern_parent_is(parent_enum.as_ref(), "Optional")
+                        && parent_enum_is(parent_enum.as_ref(), "Optional")
                         && *variant_name != ctx.sym("Present")
                         && *variant_name != ctx.sym("Absent")
                     {
@@ -3883,27 +3930,13 @@ fn match_pattern(
                         }
                         return Some(bindings);
                     }
-                    if !coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone()) {
-                        return None;
-                    }
                     if let Some(parent) = parent_enum.as_ref() {
-                        let value_parent = resolve_sym(*type_name);
-                        let parent_last = qualified_last_segment(parent.clone());
-                        let value_parent_last = qualified_last_segment(value_parent.clone());
-                        if parent_last != value_parent_last
-                            && !coproduct_parent_spellings_match(
-                                ctx,
-                                value_parent.clone(),
-                                parent,
-                            )
-                            && !record_nominal_is_declared_variant_of_coproduct(
-                                ctx,
-                                resolve_sym(*variant_name),
-                                parent,
-                            )
-                        {
+                        if !coproduct_parent_spellings_match(ctx, resolve_sym(*type_name), parent) {
                             return None;
                         }
+                    }
+                    if !coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone()) {
+                        return None;
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
@@ -3922,7 +3955,7 @@ fn match_pattern(
                     if !record_pattern_type_name_matches(
                         ctx,
                         *type_name,
-                        name,
+                        name_last,
                         parent_enum.as_ref(),
                     ) {
                         return None;
@@ -4047,7 +4080,7 @@ fn match_pattern(
                 },
                 Value::Null
                     if name_last == "Violates"
-                        && pattern_parent_is(parent_enum.as_ref(), "Witness") =>
+                        && parent_enum_is(parent_enum.as_ref(), "Witness") =>
                 {
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
@@ -4065,19 +4098,18 @@ fn match_pattern(
                 }
                 Value::Null
                     if name_last == "None"
-                        && pattern_parent_is(parent_enum.as_ref(), "Diagnostics") =>
+                        && parent_enum_is(parent_enum.as_ref(), "Diagnostics") =>
                 {
                     Some(HashMap::new())
                 }
                 Value::Null
                     if name_last == "Absent"
-                        && pattern_parent_is(parent_enum.as_ref(), "Optional") =>
+                        && (parent_enum.is_none()
+                            || parent_enum_is(parent_enum.as_ref(), "Optional")) =>
                 {
                     Some(HashMap::new())
                 }
-                _ if name_last == "Present"
-                    && pattern_parent_is(parent_enum.as_ref(), "Optional") =>
-                {
+                _ if name_last == "Present" && parent_enum_is(parent_enum.as_ref(), "Optional") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
@@ -4089,7 +4121,7 @@ fn match_pattern(
                     }
                     Some(bindings)
                 }
-                _ if name_last == "Holds" && pattern_parent_is(parent_enum.as_ref(), "Witness") => {
+                _ if name_last == "Holds" && parent_enum_is(parent_enum.as_ref(), "Witness") => {
                     if matches!(value, Value::Null) {
                         return None;
                     }
@@ -5727,25 +5759,7 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
             built
         }
     };
-    if let Some(node) = index.get(type_name) {
-        return Some(node.clone());
-    }
-    let last = qualified_last_segment(type_name.to_string());
-    if last != type_name {
-        if let Some(node) = index.get(&last) {
-            return Some(node.clone());
-        }
-    }
-    let mut candidates: Vec<Rc<Node>> = Vec::new();
-    for (key, item) in index.iter() {
-        if coproduct_arm_name_matches(key.clone(), type_name.to_string()) {
-            candidates.push(item.clone());
-        }
-    }
-    if candidates.len() == 1 {
-        return Some(candidates[0].clone());
-    }
-    None
+    index.get(type_name).cloned()
 }
 
 fn alias_rhs_next_name(ctx: &InterpContext, rhs: Rc<Node>) -> Option<String> {
