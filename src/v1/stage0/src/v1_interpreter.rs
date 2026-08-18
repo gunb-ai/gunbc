@@ -1589,10 +1589,6 @@ pub struct PreparedScopeIndexes {
     fn_nodes: HashMap<String, Rc<Node>>,
     ambiguous_bare_function_names: std::collections::HashSet<String>,
     service_ops: HashMap<String, ServiceOp>,
-    /// Pure `data` rows evaluated under Hermetic mode, keyed by the declaring node pointer.
-    /// Shared across claims that reuse the same `PreparedClaimScope` indexes so floor witnesses
-    /// do not re-run an expensive emit once per enrolled `test fn` in the same module.
-    scope_data_cache: std::cell::RefCell<HashMap<usize, Value>>,
 }
 
 thread_local! {
@@ -1910,7 +1906,6 @@ impl InterpContext {
             fn_nodes,
             ambiguous_bare_function_names,
             service_ops,
-            scope_data_cache: std::cell::RefCell::new(HashMap::new()),
         })
     }
 
@@ -2939,23 +2934,11 @@ fn eval_var(
                         }
                     }
                     let key = Rc::as_ptr(fn_node) as usize;
-                    if matches!(ctx.execution_mode, ExecutionMode::Hermetic) {
-                        if let Some(v) = ctx.indexes.scope_data_cache.borrow().get(&key).cloned() {
-                            ctx.data_cache.borrow_mut().insert(key, v.clone());
-                            return Ok(v);
-                        }
-                    }
                     if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                         return Ok(v);
                     }
                     let v = eval_expr(body, &Env::empty(), ctx)?;
                     ctx.data_cache.borrow_mut().insert(key, v.clone());
-                    if matches!(ctx.execution_mode, ExecutionMode::Hermetic) {
-                        ctx.indexes
-                            .scope_data_cache
-                            .borrow_mut()
-                            .insert(key, v.clone());
-                    }
                     return Ok(v);
                 }
             }
@@ -2978,25 +2961,11 @@ fn eval_var(
                 ItemKind::DataItem => {
                     if let Some(ref body) = fn_node.body {
                         let key = Rc::as_ptr(fn_node) as usize;
-                        if matches!(ctx.execution_mode, ExecutionMode::Hermetic) {
-                            if let Some(v) =
-                                ctx.indexes.scope_data_cache.borrow().get(&key).cloned()
-                            {
-                                ctx.data_cache.borrow_mut().insert(key, v.clone());
-                                return Ok(v);
-                            }
-                        }
                         if let Some(v) = ctx.data_cache.borrow().get(&key).cloned() {
                             return Ok(v);
                         }
                         let v = eval_expr(body, &Env::empty(), ctx)?;
                         ctx.data_cache.borrow_mut().insert(key, v.clone());
-                        if matches!(ctx.execution_mode, ExecutionMode::Hermetic) {
-                            ctx.indexes
-                                .scope_data_cache
-                                .borrow_mut()
-                                .insert(key, v.clone());
-                        }
                         return Ok(v);
                     }
                 }

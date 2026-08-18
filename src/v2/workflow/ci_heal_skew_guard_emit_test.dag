@@ -9,47 +9,62 @@ import v2.workflow.ci_heal_skew_guard_emit {
 }
 import gunbc.generated_artifact { committed_generated_artifact_paths }
 
-// One emission per module eval: every witness reads this row, not ci_heal_binary_source_skew_guard_script()
-// directly — re-emitting per test row burned ~500ms thread-CPU each under floor load.
+// One emission per claim: every derived row reads this data row, not ci_heal_binary_source_skew_guard_script()
+// directly — re-emitting per enrolled test fn burned ~500ms thread-CPU each under floor load.
 data ci_heal_skew_guard_emitted_script: String = ci_heal_binary_source_skew_guard_script()
 
 data ci_heal_skew_guard_test_note: String = "WHY THIS IS NOT A GOLDEN-STRING TEST. The sibling ci_regen_rustfmt_path_emit_test pins its whole emitted script as a golden, which works there because that script depends on nothing outside itself. This guard's emission is DERIVED from committed_generated_artifact_paths(), so a golden would encode ~80 registry paths and would break on every unrelated generated-artifact registration — a test that fails for the wrong reason, and a second place the registry is written down (§3). These witnesses instead assert the STRUCTURE and the DERIVATION against the same single authority the emitter reads, so they stay green across registry changes and go red exactly when the guard's behaviour is wrong.\n\nThe behavioural half cannot live here at all: whether the remedy actually repairs a skew, and whether a mixed conflict refuses without partially resolving, is a property of RUNNING the emitted bytes against real git — proven by execution in the PR's receipt (a fixture repo with a real src/v1 skew and a real three-way conflict, five truth-table cases, plus two mutation RED controls that flip the verdict). A typecheck and a .contains() are not consumers (DESIGN §5), so these rows deliberately claim only what a pure reader can decide."
-
-fn ci_heal_skew_guard_script_text() -> String {
-  ci_heal_skew_guard_emitted_script
-}
 
 fn ci_heal_skew_opaque_string_control() -> String {
   "BUILT_FROM=\"${{ github.sha }}\"; SEED_AHEAD=$(git rev-list HEAD..\"$BUILT_FROM\" -- src/v1); if [ -n \"$SEED_AHEAD\" ]; then for c in $CONFLICTS; do case \" $GENERATED_ARTIFACTS \" in *\" $c \"*) ;; *) AUTHORED=\"$AUTHORED $c\" ;; esac; done; fi"
 }
 
-test fn ci_heal_skew_guard_emit_did_not_refuse_holds() -> Bool {
-  !string_contains(s: ci_heal_skew_guard_script_text(), pattern: ci_heal_skew_guard_refused_poison)
-    && !string_contains(s: ci_heal_skew_guard_script_text(), pattern: "__GUNBC_ORCH_EMIT_REFUSED__")
-}
-
-test fn ci_heal_skew_guard_uses_structural_control_flow_holds() -> Bool {
-  let s = ci_heal_skew_guard_script_text()
-  string_contains(s: s, pattern: "if ! git rev-parse --verify --quiet \"$BUILT_FROM\" >/dev/null; then")
+// One enrolled witness for every emission-derived positive control so the floor pays the emit
+// cost once per module instead of once per assertion row.
+test fn ci_heal_skew_guard_emitted_script_positive_controls_holds() -> Bool {
+  let s = ci_heal_skew_guard_emitted_script
+  !string_contains(s: s, pattern: ci_heal_skew_guard_refused_poison)
+    && !string_contains(s: s, pattern: "__GUNBC_ORCH_EMIT_REFUSED__")
+    && string_contains(s: s, pattern: "if ! git rev-parse --verify --quiet \"$BUILT_FROM\" >/dev/null; then")
     && string_contains(s: s, pattern: "if [ -n \"$SEED_AHEAD\" ]; then")
     && string_contains(s: s, pattern: "if ! git merge --no-edit \"$BUILT_FROM\"; then")
     && string_contains(s: s, pattern: "if [ -n \"$AUTHORED_CONFLICTS\" ]; then")
     && string_contains(s: s, pattern: "exit 1")
+    && !string_contains(s: s, pattern: "for c in")
+    && !string_contains(s: s, pattern: "case ")
+    && !string_contains(s: s, pattern: "esac")
+    && !string_contains(s: s, pattern: "GENERATED_ARTIFACTS")
+    && !string_contains(s: s, pattern: "seed_ahead()")
+    && fold(ci_heal_skew_excluded_paths(), init: true, f: fn(acc, p) {
+      acc && string_contains(s: s, pattern: ci_heal_skew_shell_single_quoted(word: concat(":(exclude)", p)))
+    })
+    && string_contains(s: s, pattern: ci_heal_skew_shell_single_quoted(word: ":(exclude)src/v1/stage0/src/std_algebra.rs"))
+    && ci_heal_skew_excluded_paths() |> any(p => p == "src/v1/stage0/src/std_algebra.rs")
+    && !string_contains(
+      s: s,
+      pattern: ci_heal_skew_shell_single_quoted(word: ":(exclude)dag/gunbc/ci_spec.dag")
+    )
+    && string_contains(s: s, pattern: "SEED_AHEAD_AFTER=\"$(git rev-list HEAD..\"$BUILT_FROM\" -- src/v1)\"")
+    && string_contains(s: s, pattern: "if [ -n \"$SEED_AHEAD_AFTER\" ]; then")
+    && string_contains(s: s, pattern: "heal refused: still skewed after merging $BUILT_FROM")
+    && string_contains(s: s, pattern: "git merge --no-edit \"$BUILT_FROM\"")
+    && !string_contains(s: s, pattern: "git merge --no-edit \"origin/")
+    && !string_contains(s: s, pattern: "BASE_REF")
+    && string_contains(s: s, pattern: "git merge --abort")
+    && string_contains(s: s, pattern: "STILL_UNMERGED=\"$(git diff --name-only --diff-filter=U)\"")
+    && string_contains(s: s, pattern: "if [ -n \"$STILL_UNMERGED\" ]; then")
+    && string_contains(s: s, pattern: "heal refused: the index still carries unmerged stages after resolution; refusing to commit")
+    && string_contains(s: s, pattern: "git commit --no-verify --no-edit")
+    && !string_contains(
+      s: s,
+      pattern: "🟡 dissolve-on: gunbc_ci_heal_binary_source_skew_guard_script"
+    )
 }
 
 test fn ci_heal_skew_guard_red_when_control_flow_is_opaque_string_holds() -> Bool {
   let control = ci_heal_skew_opaque_string_control()
   !string_contains(s: control, pattern: "if ! git merge --no-edit \"origin/$BASE_REF\"; then")
     && !string_contains(s: control, pattern: "if [ -n \"$AUTHORED_CONFLICTS\" ]; then")
-}
-
-test fn ci_heal_skew_guard_has_no_shell_loop_or_case_holds() -> Bool {
-  let s = ci_heal_skew_guard_script_text()
-  !string_contains(s: s, pattern: "for c in")
-    && !string_contains(s: s, pattern: "case ")
-    && !string_contains(s: s, pattern: "esac")
-    && !string_contains(s: s, pattern: "GENERATED_ARTIFACTS")
-    && !string_contains(s: s, pattern: "seed_ahead()")
 }
 
 test fn ci_heal_skew_guard_red_when_shell_loop_survives_holds() -> Bool {
@@ -59,30 +74,10 @@ test fn ci_heal_skew_guard_red_when_shell_loop_survives_holds() -> Bool {
     && string_contains(s: control, pattern: "GENERATED_ARTIFACTS")
 }
 
-test fn ci_heal_skew_guard_excludes_every_registered_artifact_holds() -> Bool {
-  let s = ci_heal_skew_guard_script_text()
-  fold(ci_heal_skew_excluded_paths(), init: true, f: fn(acc, p) {
-    acc && string_contains(s: s, pattern: ci_heal_skew_shell_single_quoted(word: concat(":(exclude)", p)))
-  })
-}
-
-test fn ci_heal_skew_guard_excludes_stage0_emitted_rust_holds() -> Bool {
-  let s = ci_heal_skew_guard_script_text()
-  string_contains(s: s, pattern: ci_heal_skew_shell_single_quoted(word: ":(exclude)src/v1/stage0/src/std_algebra.rs"))
-    && ci_heal_skew_excluded_paths() |> any(p => p == "src/v1/stage0/src/std_algebra.rs")
-}
-
 test fn ci_heal_skew_guard_exclusion_roster_is_nonempty_holds() -> Bool {
   length(committed_generated_artifact_paths()) > 0
     && length(ci_heal_skew_excluded_paths()) > length(committed_generated_artifact_paths())
     && length(ci_heal_skew_excluded_pathspec_words()) == length(ci_heal_skew_excluded_paths())
-}
-
-test fn ci_heal_skew_guard_red_when_an_artifact_is_unexcluded_holds() -> Bool {
-  !string_contains(
-    s: ci_heal_skew_guard_script_text(),
-    pattern: ci_heal_skew_shell_single_quoted(word: ":(exclude)dag/gunbc/ci_spec.dag")
-  )
 }
 
 test fn ci_heal_skew_guard_pathspec_words_are_shell_quoted_holds() -> Bool {
@@ -100,47 +95,14 @@ test fn ci_heal_skew_guard_single_quoting_is_total_holds() -> Bool {
   })
 }
 
-test fn ci_heal_skew_guard_remedy_rechecks_before_proceeding_holds() -> Bool {
-  let s = ci_heal_skew_guard_script_text()
-  string_contains(s: s, pattern: "SEED_AHEAD_AFTER=\"$(git rev-list HEAD..\"$BUILT_FROM\" -- src/v1)\"")
-    && string_contains(s: s, pattern: "if [ -n \"$SEED_AHEAD_AFTER\" ]; then")
-    && string_contains(s: s, pattern: "heal refused: still skewed after merging $BUILT_FROM")
-}
-
-test fn ci_heal_skew_guard_remedy_merges_the_built_from_revision_holds() -> Bool {
-  let s = ci_heal_skew_guard_script_text()
-  string_contains(s: s, pattern: "git merge --no-edit \"$BUILT_FROM\"")
-    && !string_contains(s: s, pattern: "git merge --no-edit \"origin/")
-    && !string_contains(s: s, pattern: "BASE_REF")
-}
-
 test fn ci_heal_skew_guard_red_when_remedy_merges_the_moving_base_holds() -> Bool {
   let control = "BASE_REF=\"${{ github.base_ref }}\"; git merge --no-edit \"origin/$BASE_REF\""
   string_contains(s: control, pattern: "git merge --no-edit \"origin/")
     && !string_contains(s: control, pattern: "git merge --no-edit \"$BUILT_FROM\"")
 }
 
-test fn ci_heal_skew_guard_refusal_aborts_the_merge_holds() -> Bool {
-  string_contains(s: ci_heal_skew_guard_script_text(), pattern: "git merge --abort")
-}
-
-test fn ci_heal_skew_guard_commit_rechecks_unmerged_before_committing_holds() -> Bool {
-  let s = ci_heal_skew_guard_script_text()
-  string_contains(s: s, pattern: "STILL_UNMERGED=\"$(git diff --name-only --diff-filter=U)\"")
-    && string_contains(s: s, pattern: "if [ -n \"$STILL_UNMERGED\" ]; then")
-    && string_contains(s: s, pattern: "heal refused: the index still carries unmerged stages after resolution; refusing to commit")
-    && string_contains(s: s, pattern: "git commit --no-verify --no-edit")
-}
-
 test fn ci_heal_skew_guard_red_when_unmerged_recheck_is_absent_holds() -> Bool {
   let control = "CONFLICTS=\"$(git diff --name-only --diff-filter=U)\"; git checkout --ours -- \"$p\"; git add -- \"$p\"; git commit --no-verify --no-edit"
   !string_contains(s: control, pattern: "STILL_UNMERGED=\"$(git diff --name-only --diff-filter=U)\"")
     && !string_contains(s: control, pattern: "if [ -n \"$STILL_UNMERGED\" ]; then")
-}
-
-test fn ci_heal_skew_guard_scaffold_row_is_deleted_holds() -> Bool {
-  !string_contains(
-    s: ci_heal_skew_guard_script_text(),
-    pattern: "🟡 dissolve-on: gunbc_ci_heal_binary_source_skew_guard_script"
-  )
 }
