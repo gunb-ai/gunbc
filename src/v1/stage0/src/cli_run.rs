@@ -40076,6 +40076,34 @@ pub fn run_required_floor(
                 }
             }
         }
+        // AN EMPTY ROSTER REFUSES, because it is indistinguishable from a roster that could
+        // not be read. Every downstream guard here is a join over this set: the partition-sum
+        // check compares four counters against `len()`, and the did-not-execute check walks
+        // the roster looking for identities no claim reported. At zero, all of them are
+        // VACUOUSLY TRUE -- 0+0+0+0 == 0 passes, and nothing is missing from an empty set. So
+        // the one shape that disables every check is the one shape nothing was checking.
+        //
+        // This is the empty-observation narrow, and it is the mirror of the absorbing fallback
+        // rather than an instance of it: a widen is merely expensive, a narrow is silently
+        // uncovered. It ran live on main. #8437 flipped prepared-floor scope to bind bare
+        // helper names last-write-wins, `floor_expected_red_roster` began evaluating to the
+        // empty list, and the run reported `roster carries 0 enrolled identity(ies)` followed
+        // by 469 ordinary FAILs -- 469 enrolled rows each re-labelled a regression, with the
+        // remainder absorbed as passes. The immediately preceding commit reported 661.
+        //
+        // The roster is a debt ledger shrinking toward zero, so an empty one WILL eventually
+        // be legitimate. It is not legitimate SILENTLY: the day the last row is removed, this
+        // refusal is what makes someone delete it deliberately and say so, rather than a read
+        // failure quietly wearing the same face as success.
+        if out.is_empty() {
+            return Err("REQUIRED-FLOOR REFUSAL cause=ExpectedRedRosterEmpty — \
+                 v2.workflow.floor_expected_red.floor_expected_red_roster evaluated to zero \
+                 identities. An empty roster makes the partition-sum and did-not-execute \
+                 checks vacuous, so every enrolled row reports as an ordinary failure and no \
+                 guard can fire. If the roster is genuinely empty, delete this refusal in the \
+                 same change that empties it."
+                .to_string());
+        }
         out
     };
     eprintln!(
