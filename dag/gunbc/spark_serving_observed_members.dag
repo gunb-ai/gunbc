@@ -250,7 +250,8 @@ fn spark_serving_projection_supports_empty_replan(
 ) -> Bool {
   match projection {
     SparkServingObservedMembersRefused { cause: _ } => false
-    SparkServingObservedMembers { members: _, unit_observed: observed, linger_observed: linger_seen } => observed && linger_seen
+    SparkServingObservedMembers { members: _, unit_observed: observed, enablement_observed: enab_seen, linger_observed: linger_seen } =>
+      observed && enab_seen && linger_seen
   }
 }
 

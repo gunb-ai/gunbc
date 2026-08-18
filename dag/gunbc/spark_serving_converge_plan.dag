@@ -248,13 +248,21 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
       SparkServingPlanArtifactRefused {
         cause: join(["plan-refused observation ", why], ""),
       }
-    SparkServingFullMembershipPlanReady { plan: full_plan, unit_observed: unit_observed, linger_observed: linger_observed, observed_members: observed_members } =>
+    SparkServingFullMembershipPlanReady { plan: full_plan, unit_observed: unit_observed, enablement_observed: enablement_observed, linger_observed: linger_observed, observed_members: observed_members } =>
       if !unit_observed {
         SparkServingPlanArtifactRefused {
           cause: join([
             "plan-refused unit-unobserved host=", host as String,
             ": the unit member was not observed, and planning it as an addition against an",
             " unobserved state would write it on every run while no replan could ever be empty",
+          ], ""),
+        }
+      } else if !enablement_observed {
+        SparkServingPlanArtifactRefused {
+          cause: join([
+            "plan-refused unit-enablement-unobserved host=", host as String,
+            ": an unobserved enablement projects no member, so the desired one reads as absent and",
+            " the plan would select EnableUserUnit off a probe that never answered",
           ], ""),
         }
       } else if !linger_observed {
@@ -410,7 +418,7 @@ fn spark_serving_full_membership_plan(
   match projection {
     SparkServingObservedMembersRefused { cause: cause } =>
       SparkServingFullMembershipPlanRefused { cause: cause }
-    SparkServingObservedMembers { members: observed, unit_observed: unit_observed, linger_observed: linger_observed } =>
+    SparkServingObservedMembers { members: observed, unit_observed: unit_observed, enablement_observed: enablement_observed, linger_observed: linger_observed } =>
       SparkServingFullMembershipPlanReady {
         plan: spark_serving_membership_reconcile(
           desired: spark_serving_desired_members(
@@ -420,6 +428,7 @@ fn spark_serving_full_membership_plan(
           observed: observed,
         ),
         unit_observed: unit_observed,
+        enablement_observed: enablement_observed,
         linger_observed: linger_observed,
         observed_members: observed,
       }
@@ -427,5 +436,5 @@ fn spark_serving_full_membership_plan(
 }
 
 type SparkServingFullMembershipPlan
-  = SparkServingFullMembershipPlanReady { plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>, unit_observed: Bool, linger_observed: Bool, observed_members: List<SparkServingMember> }
+  = SparkServingFullMembershipPlanReady { plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>, unit_observed: Bool, enablement_observed: Bool, linger_observed: Bool, observed_members: List<SparkServingMember> }
   | SparkServingFullMembershipPlanRefused { cause: String }
