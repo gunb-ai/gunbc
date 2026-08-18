@@ -284,8 +284,11 @@ data no_seen_qualified_names: List<String> = []
 // shared CI hosts under floor load; witnesses scrubbed from expected-red because they
 // now pass measured 1323-1398ms on the same commit — logic unchanged, the full fold
 // is the load — so the ceiling needs headroom above jitter, not per-witness rewrites.
+// 1600ms (2026-08-18): extdeps-heavy compile_dag_rust_emit_check fixtures (OCI digest
+// where-refinement green control) flirt with 1500ms under floor RSS pressure — 1506ms
+// observed on PR CI with zero logic change.
 fn required_floor_claim_budget_ms() -> Int {
-  1500
+  1600
 }
 
 fn required_floor_claim_warn_ms() -> Int {
