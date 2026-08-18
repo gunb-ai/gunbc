@@ -24,11 +24,15 @@ cheaper.
 ## The population
 
 ```
-720 rows over the 100ms warn      543.0s
-220 rows over 500ms               438.8s   <- the operator's target ceiling
-103 rows over 1552ms                       <- today's armed ceiling
-  6 rows over 5s                  194.1s   <- 36% of all slow time
+720 rows over the 100ms warn     >=543.0s
+220 rows over 500ms              >=438.8s   <- the operator's target ceiling
+103 rows over 1552ms                        <- today's armed ceiling
+  6 rows over 5s                 >=194.1s   <- 36% of all slow time
 ```
+
+The totals are LOWER BOUNDS, not sums of measurements: 85 of the 720 rows are
+censored at the cooperative interrupt point, and one of the six runaways is.
+The counts are sound. See the censoring section below before using any total.
 
 500ms is the operator's hard ceiling (2026-08-17, superseding the 5s rule);
 1552ms is the accommodation currently armed in `v2.workflow.required_floor`
@@ -60,10 +64,20 @@ A budget refusal is emitted two ways, and they are different data:
 
 See `BudgetCompletion::elapsed_reading` in `cli_run.rs`. This matters because a
 parser matching only `at least` systematically drops the runaways: a row cheap
-enough to be interrupted at the poll never gets to be expensive. Run
-32172125816 carries five `exactly` lines and zero `at least` lines. The census
-above is built from `[floor-witness-slow]` instead, which fires at the warn line
-and carries every row's real elapsed regardless of outcome.
+enough to be interrupted at the poll never gets to be expensive.
+
+**And those two are not the whole vocabulary.** A third line,
+`required-floor: BUDGET-REFUSED <identity> is enrolled as expected-red but was
+BUDGET-REFUSED`, reports interruption for enrolled expected-red rows; run
+32172125816 carries 98 of those and zero `at least` lines. Concluding "nothing
+was interrupted" from the absence of `at least` is therefore unsound, and this
+document did exactly that before being corrected. Enumerate all three channels
+before making any claim about censoring.
+
+The census above is built from `[floor-witness-slow]` instead, which fires at
+the warn line and carries elapsed for every row regardless of outcome — but see
+the censoring section below: carrying an elapsed figure is not the same as that
+figure being a measurement.
 
 ## Seven rows are refused by 1-4ms
 
@@ -77,14 +91,38 @@ tuning a threshold to its current population rather than to a requirement.
 
 ## Why this run is usable as a baseline, and what it must not be used for
 
-**Uncensored.** Run 32172125816 carries five `cost is exactly` lines and zero
-`cost is at least`. Nothing in it was interrupted, so all 720 elapsed figures
-are real measurements rather than deadline ceilings. That is not true of main's
-runs on the same day: those carry 97 interrupted rows, every one reporting at
-least the 1552ms interrupt point, so a census taken from them would be censored
-and its ordering would be an artifact of where the kill landed rather than of
-cost. A baseline drawn from this table is comparing measurements; one drawn from
-a main run today would not be.
+**Partly censored — corrected 2026-08-18, and the correction matters.** An
+earlier revision of this section called the run uncensored, on the ground that
+it carries five `cost is exactly` lines and zero `cost is at least`. That was
+wrong, and wrong in this document's own failure mode: interruption is reported
+in this run through a THIRD channel, `required-floor: BUDGET-REFUSED`, which
+carries 98 identities and which that check never looked at. Absence of the
+`at least` phrasing is therefore NOT evidence that nothing was interrupted.
+
+What the data shows once that channel is read. 85 of the 720 slow rows sit in a
+pinned band at the cooperative interrupt point — 28 at 1553ms, 28 at 1554,
+18 at 1555, 8 at 1556 — which is a deadline, not a distribution of costs. Those
+85 figures are LOWER BOUNDS. The remaining 635 are real measurements, including
+every value above the band.
+
+Consequences for the headline numbers, stated exactly:
+
+- `220 rows over 500ms` — the COUNT is sound; each of those rows genuinely
+  exceeded 500ms. The `438.8s` total is a LOWER BOUND, because 85 of its rows
+  are censored at the interrupt point.
+- `6 runaways, 194.1s` — five of the six are real completed measurements. One,
+  `grounding_lens_whole_tree` at 20558ms, is budget-refused and is a lower
+  bound, so 194.1s is a lower bound too.
+- The pinned band must never be ranked internally. Its rows differ by
+  milliseconds because the poll fired, not because they cost different amounts.
+
+The deadline is cooperative — polled every 4096 evals — so a row can run well
+past the ceiling before the poll fires. That is why 13 refused rows on main
+carry real overshoot rather than sitting in the band, and why refusal lines do
+carry measured elapsed rather than a ceiling readout. Cross-check available in
+this run: `grounding_lens_whole_tree` appears as a slow line at 20558ms and as a
+refusal at at-least 20475ms — two independent renderings of one row agreeing to
+within 0.4%.
 
 **Not a ranking of expensive witnesses.** This table records what the floor
 spent and where. It does not record which witnesses are expensive, and the two
