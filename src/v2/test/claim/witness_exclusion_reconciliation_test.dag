@@ -48,7 +48,7 @@ test fn witness_exclusion_red_control_bare_nickname_row_reds() -> Bool {
     rows: [
       gunbc.ci_layer_roots.WitnessExclusionRow {
         pattern: "synthetic_nickname.dag",
-        classification: gunbc.ci_layer_roots.OfflineLocalRecipe,
+        classification: std.witness_admission.OfflineLocalRecipe,
         reason: "",
         dissolution: synthetic_empty_condition(text: "")
       }
@@ -172,7 +172,7 @@ test fn dispatch_bijection_real_roster_red_falsifier_self_host_wet_note_names_wi
 fn synthetic_wet_lane_row(dissolution: std.dissolution.DissolutionCondition) -> gunbc.ci_layer_roots.WitnessExclusionRow {
   gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: "synthetic_wet_lane_third_spelling_test.dag",
-    classification: gunbc.ci_layer_roots.OfflineLocalRecipe,
+    classification: std.witness_admission.OfflineLocalRecipe,
     reason: "synthetic",
     dissolution: dissolution
   }

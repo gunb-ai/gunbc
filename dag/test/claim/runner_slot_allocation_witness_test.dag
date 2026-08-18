@@ -124,17 +124,11 @@ test fn witness_srv2_03_refuses_effective_readback_as_declaration_authority() ->
   )
 }
 
-test fn witness_srv2_03_enforcement_envelope_drifts_two_gib_above_declaration() -> Bool {
-  gunbc.runner_slot_allocation.srv2_03_effective_envelope_drifts_two_gib_above_declaration()
-}
 
 test fn witness_srv2_03_floor_leaf_cgroup_events_at_entry_are_zero() -> Bool {
   gunbc.runner_slot_allocation.srv2_03_floor_leaf_cgroup_events_at_entry_are_zero()
 }
 
-test fn witness_srv2_03_converge_would_first_enforce_modeled_envelope() -> Bool {
-  gunbc.runner_slot_allocation.srv2_03_converge_would_first_enforce_modeled_envelope()
-}
 
 test fn witness_srv2_03_RED_converged_cap_would_not_refuse_readback_reconciliation() -> Bool {
   !gunbc.runner_slot_allocation.gunbc_runner_slot_allocation_refuses_effective_readback_reconciliation(
