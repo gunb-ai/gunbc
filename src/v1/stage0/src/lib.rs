@@ -14,6 +14,7 @@
 #![recursion_limit = "256"]
 
 use im::{OrdSet as BTreeSet, Vector as Vec};
+pub mod expected_red_roster_join;
 
 pub mod extdeps_cargo;
 pub mod extdeps_cargo_version;
@@ -164,12 +165,12 @@ pub mod codex_app_server_stdio_session;
 pub mod coproduct_reflection;
 pub mod data_initializer_identity;
 pub mod derived_realization_schedule;
-pub mod expected_red_roster_join;
 pub mod memory_governor;
 pub mod module_path_index;
 pub mod recorded_fixture;
 pub mod resolved_graph_cache;
 pub mod shared_typecheck_store;
+pub mod source_closure;
 pub mod usv_pilot_v2_std_algebra;
 pub mod usv_pilot_v2_std_collection;
 pub mod usv_pilot_v2_std_node;
