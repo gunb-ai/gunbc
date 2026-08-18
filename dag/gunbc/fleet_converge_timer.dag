@@ -1,10 +1,7 @@
 module gunbc.fleet_converge_timer
 
-import std.types { String, NonEmptyStr, Bool, Int }
-import std.nat { Nat }
-import std.measure { Second, second, second_count }
-import std.disposition { Disposition, Scaffold, SingleAuthority }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
+import std.types { String }
+import std.measure { Second, second }
 
 // Arc item 4 (timer / anti-entropy, operator directive 2026-08-08): the steady-state
 // enforcement loop is a PER-HOST systemd timer executing the converge circuit against
@@ -22,85 +19,37 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 data fleet_converge_service_unit_name: String = "ctrl-fleet-converge.service"
 data fleet_converge_timer_unit_name: String = "ctrl-fleet-converge.timer"
 data fleet_converge_timer_on_calendar: String = "*:0/15"
-data fleet_converge_timer_cadence_retired_note: String = "RETIRED (operator directive 2026-08-13, sleek-heron-218): the *:0/15 unattended cadence is no longer installed by live_deploy membership or CI self-install. Fleet convergence is on-demand via the emitted .github/workflows/fleet-converge.yml plan/apply workflow with content-addressed plan artifacts and CAS apply. Unit content rows remain for teardown of legacy hosts and witness regression controls only."
 data fleet_converge_timer_randomized_delay: Second = second(count: 90)
-data fleet_converge_binary_path: String = "/opt/gunbc/bin/gunbc"
-data fleet_converge_env_file_path: String = "/etc/gunbc/fleet-converge.env"
 
-// String-built medium: unit INI text is rendered by join/concat rather than as a Node
-// emitted through grammar rows — the medium-as-string shape the shell→intent lane's
-// containment exists to stop spreading. Tolerated only while this module is tests-only
-// (no production emitter consumes it); the typed row below carries the dissolution.
-data fleet_converge_unit_text_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "live_deploy_emit_shell_dissolution_trigger",
-    field: WholeDeclaration,
-  }
-}
-
-// 🟡 dissolve-on: fleet-converge unit-body single render (review 50806) — the unit BODY
-// is currently authored TWICE: these content fns (consumed by the srv2–srv4 self-install
-// route) and gunbc.live_deploy.emit emit_fleet_converge_{service,timer}_unit_doc (the
-// srv1 membership route, which adds After/Wants=network-online.target and
-// WorkingDirectory=, omits EnvironmentFile=, and derives only cadence/jitter from this
-// authority). A §3 parallel representation across the two consumers — srv1 and srv2–4
-// do NOT receive byte-identical units, and an edit to either producer can drift them.
-// Not merged blind here because the emit side's bytes are golden-pinned and deployed on
-// srv1 (a silent byte churn of a live unit is the wrong side of the trade mid-arc).
-// DISSOLVES WHEN one render authority (these content fns, Doc-wrapped) feeds both
-// routes and the emit goldens re-pin from it.
-// b1 UPGRADE (CONVERGE close): the fork is no longer only a byte-drift risk — it is now a
-// CORRECTNESS fork. The emit side (srv1) was moved off User=root to User=/Group=service_user
-// with an owned receipts dir, because a root run cannot observe refs/fleet/desired inside a
-// service-user-owned repo with no root-side credential. This body still renders "User=root\n"
-// AND omits WorkingDirectory=, so the srv2–srv4 self-install route inherits the exact b1
-// defect srv1 just shed (root ls-remote in a foreign-owned tree, and no workdir to run git in
-// at all). Dissolving this to the single emit authority is therefore a b1 correctness
-// requirement for srv2–srv4, not merely DRY; patching "User=root" here in isolation is
-// declined because the missing WorkingDirectory makes this body wrong regardless of principal.
-data fleet_converge_unit_body_fork_disposition: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.live_deploy.emit",
-    decl_name: "emit_fleet_converge_service_unit_doc",
-    field: WholeDeclaration,
-  }
-}
-
-fn fleet_converge_service_content(host_arg: String) -> String {
-  join([
-    "[Unit]\n",
-    "Description=gunbc fleet converge (self)\n",
-    "\n",
-    "[Service]\n",
-    "Type=oneshot\n",
-    "User=root\n",
-    "EnvironmentFile=-", fleet_converge_env_file_path, "\n",
-    "ExecStart=", fleet_converge_binary_path, " converge --host ", host_arg, "\n",
-  ], "")
-}
-
-fn fleet_converge_timer_content() -> String {
-  join([
-    "[Unit]\n",
-    "Description=gunbc fleet converge cadence\n",
-    "\n",
-    "[Timer]\n",
-    "OnCalendar=", fleet_converge_timer_on_calendar, "\n",
-    "Persistent=true\n",
-    "RandomizedDelaySec=", to_string(second_count(s: fleet_converge_timer_randomized_delay)), "\n",
-    "Unit=", fleet_converge_service_unit_name, "\n",
-    "\n",
-    "[Install]\n",
-    "WantedBy=timers.target\n",
-  ], "")
-}
-
-// The service converges SELF only: the unit text never names a remote host, so the
-// central-actor-converges-remote-host shape is unwritable from this authority (the
-// design doc's invariant: CI never runs converge against a remote N).
-fn fleet_converge_service_content_self() -> String {
-  fleet_converge_service_content(host_arg: "self")
-}
+// THE DEAD SELF-INSTALL RENDERER IS GONE (2026-08-18). What stood here was a SECOND systemd
+// renderer for these same two units -- `fleet_converge_service_content`,
+// `fleet_converge_timer_content`, `fleet_converge_service_content_self` -- feeding the
+// srv2-srv4 self-install route, beside `gunbc.live_deploy.emit`'s
+// `emit_fleet_converge_{service,timer}_unit_doc` feeding srv1. Two authorities for one unit,
+// which two registered `Scaffold` rows here described and neither removed.
+//
+// It was not merely duplicated, it had DIVERGED into a correctness fork: this body rendered
+// `User=root` and omitted `WorkingDirectory=`, the exact b1 defect the emit side shed when it
+// moved to the service user -- a root `ls-remote` in a service-user-owned tree with no workdir
+// to run git in.
+//
+// WHY IT COULD BE DELETED RATHER THAN RECONCILED, which is the whole reason this is a deletion
+// and not a migration: its only consumer chain was
+// `fleet_converge_timer_install.fleet_timer_self_install_wet` <- `ci_spec`'s
+// `gunbc_ci_fleet_timer_install_invoke` <- `ci.yml`, and #8283 deleted `ci.yml`. Measured at
+// deletion: `fleet_timer_self_install` appears in neither surviving workflow, and
+// `gunbc_ci_fleet_timer_install_invoke` had no consumer but its own `DeclarationRef`. The
+// remaining callers were its own two witness files.
+//
+// The retention reason recorded in `fleet_converge_timer_cadence_retired_note` -- kept "for
+// teardown of legacy hosts" -- was NOT realized by any code. `live_deploy` teardown derives
+// its unit names from `live_deploy.spec` and never called these functions; the note was prose
+// asserting a consumer that did not exist. Deleted with them rather than left standing.
+//
+// Both `Scaffold` rows declared `dissolves_to: SingleAuthority` bound to `gunbc.live_deploy.emit`.
+// `live_deploy.emit` is now that single authority, so this deletion FIRES those dissolutions
+// rather than adding any -- the obligations are discharged, not inherited.
+//
+// WHAT SURVIVES HERE, and why each row is still load-bearing: the two unit NAMES are read by
+// `gunbc.fleet_converge_plan`, and the cadence and jitter are read by `gunbc.live_deploy.emit`.
+// This module remains the naming and cadence authority; it is no longer a renderer.

@@ -643,38 +643,19 @@ fn gunbc_ci_fleet_key_agent_cleanup_script() -> String {
   "if [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k || true; fi\n"
 }
 
-// Fleet timer self-install bootstrap (operator verdict join 2, parent verification
-// msg_8d84ae4f): the LIVE invocation wire for fleet_timer_self_install_wet — without
-// this job the self-install route had zero callers, a disconnected mechanism. The job
-// runs on a fleet runner and installs the timer on THE MACHINE IT RUNS ON (self-install:
-// no remote host is contacted); dispatch it once per bootstrap host, thereafter the
-// installed timer sustains itself.
-data gunbc_ci_fleet_timer_install_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_fleet_timer_install_invoke",
-    field: WholeDeclaration
-  }
-}
-
-data gunbc_ci_fleet_timer_install_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_timer_install_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_converge_timer_install fleet_timer_self_install_wet; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
-
-fn gunbc_ci_fleet_timer_install_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_timer_install_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat("ROOT=", ci_repo_root_shell(), "\n"),
-      gunbc_run_shell(
-        source_roots: witness_layer_roots,
-        entry: "dag/gunbc/fleet_converge_timer_install.dag",
-        function: "fleet_timer_self_install_wet",
-        rooted: true,
-        claim_run: false
-      )
-    )
-  )
-}
+// THE FLEET-TIMER SELF-INSTALL WIRE IS DELETED (2026-08-18). It emitted a GitHub Actions
+// `run:` step invoking `gunbc.fleet_converge_timer_install fleet_timer_self_install_wet`,
+// and its own comment recorded that the step existed because the self-install route
+// otherwise "had zero callers, a disconnected mechanism". That step lived in `ci.yml`,
+// which #8283 deleted, so the wire returned to being exactly the disconnected mechanism it
+// was added to prevent: measured at deletion, `gunbc_ci_fleet_timer_install_invoke` had no
+// consumer but the `DeclarationRef` inside its own `Scaffold` row, and
+// `fleet_timer_self_install` appears in neither surviving workflow.
+//
+// Its registered `Scaffold` and unbound `DissolutionCondition` go with it. Both described a
+// concat-built foreign-executor shell awaiting bash-emit; deleting the emitter discharges
+// the obligation instead of carrying it, and an unbound condition whose subject no longer
+// exists can never report itself fired.
 
 data gunbc_fleet_converge_plan_artifact_name: String = "fleet-converge-plan"
 
