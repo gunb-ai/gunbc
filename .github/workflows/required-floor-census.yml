@@ -1,4 +1,7 @@
 # SCAFFOLD — foreign-executor workflow for Wave 1 expected-red failure census.
+# Hand-shell transport (operator-scoped diagnostic): workflow_dispatch + session branch only;
+# production witnesses.yml does not set census env vars. Operator verdict: Wave 1 partition
+# lane (read-only census before qualification vs binding-wall decision).
 # dissolve-on: Wave 1 name-resolution debt repaid OR floor-enrolled census lens subsumes
 # `required_floor_failure_census` host transport (same trigger as
 # CLI_RUN_REQUIRED_FLOOR_FAILURE_CENSUS_SCAFFOLD_MARKER in cli_run.rs).

@@ -2,6 +2,8 @@
 # SCAFFOLD — dissolve-on: Wave 1 name-resolution debt repaid (qualification or binding-wall
 # lands and floor_expected_red shrinks) OR a floor-enrolled census lens subsumes the
 # required_floor_failure_census host transport.
+# Hand-shell transport (operator-scoped diagnostic for Wave 1 partition lane); modeled
+# intent authority is docs/probes/floor_cut_name_resolution_partition.md until bash-emit.
 # dissolve-on alt: modeled census entry in .dag via gunbc bash-emit / host_effect_apply (#5828).
 # Authority: docs/probes/floor_cut_name_resolution_partition.md;
 #   src/v1/stage0/src/bin/required_floor_failure_census.rs

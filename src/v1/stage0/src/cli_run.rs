@@ -42204,6 +42204,11 @@ pub fn run_required_floor(
 
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
     eprintln!("floor: claims = {}", claims.len());
+    // STOPPED-LINE AUDIT ONLY (review 53063). `GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS[_ONLY]`
+    // are set only by the standalone `required_floor_failure_census` bin for Wave 1 partition
+    // work — never by `claim_executor --required-floor`, witnesses.yml, or any enrolled gate.
+    // They write/report diagnostic rows and may shrink the evaluated population; they do not
+    // change pass/fail verdict arms on the production path (unset env = full manifest fold).
     let census_only = std::env::var("GUNBC_REQUIRED_FLOOR_FAILURE_CENSUS_ONLY")
         .ok()
         .is_some_and(|v| v == "1" || v.eq_ignore_ascii_case("true"));
