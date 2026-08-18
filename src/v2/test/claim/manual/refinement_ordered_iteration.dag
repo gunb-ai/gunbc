@@ -15,7 +15,7 @@ fn test_locus() -> v2.std.diagnostic.Locus {
 
 fn witness_ordered_classifier_accepts() -> Bool {
   match refine_ordered_iteration(
-    base: Empty,
+    base: std.algebra.Empty,
     by: ordered_classifier_for_list_int(),
     at: test_locus()
   ) {
@@ -38,7 +38,7 @@ data claim_refine_ordered_iteration_accepts_on_ordered_classifier: v2.std.verifi
 
 fn witness_unordered_classifier_rejects_with_naming_the_leak() -> Bool {
   match refine_ordered_iteration(
-    base: Empty,
+    base: std.algebra.Empty,
     by: unordered_classifier_for_list_int(),
     at: test_locus()
   ) {

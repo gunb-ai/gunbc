@@ -18,7 +18,7 @@ fn rust_fold_call_emit_from_root(root: Node, target: v2.std.compilers.target_mod
   bind_outcome(
     o: v2.std.diagnostic.Accepted {
       value: rust_fold_call_emit_inferred_tree_for(root: root),
-      diagnostics: None
+      diagnostics: v2.std.diagnostic.None
     },
     f: fn(tree) {
       emit(tree: tree, target: target)
@@ -32,7 +32,7 @@ test fn rust_fold_call_emit_canonical_accepts() -> Bool {
     target: rust_fold_call_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_fold_call_source_text) && (d == None)
+      (source.carried == rust_fold_call_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -54,8 +54,8 @@ test fn rust_fold_call_emit_swap_discriminates() -> Bool {
           (swapped.carried == rust_fold_call_swapped_source_text) &&
           (swapped.carried != canonical.carried) &&
           (canonical.carried == rust_fold_call_source_text) &&
-          (dc == None) &&
-          (ds == None)
+          (dc == v2.std.diagnostic.None) &&
+          (ds == v2.std.diagnostic.None)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false

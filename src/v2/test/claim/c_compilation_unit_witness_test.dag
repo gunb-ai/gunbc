@@ -126,12 +126,12 @@ fn witness_triangle_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
     ],
     exports: empty_map()
-      |> map_insert(witness_mod_a, Empty)
-      |> map_insert(witness_mod_b, Empty)
+      |> map_insert(witness_mod_a, std.algebra.Empty)
+      |> map_insert(witness_mod_b, std.algebra.Empty)
       |> map_insert(witness_mod_c, witness_exports_for_c()),
     type_definitions: empty_map()
-      |> map_insert(witness_mod_a, Empty)
-      |> map_insert(witness_mod_b, Empty)
+      |> map_insert(witness_mod_a, std.algebra.Empty)
+      |> map_insert(witness_mod_b, std.algebra.Empty)
       |> map_insert(witness_mod_c, witness_type_defs_for_c()),
   }
 }
@@ -151,11 +151,11 @@ fn witness_mutual_recursive_dag() -> v2.std.compilers.compilation_unit.ModuleDag
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_b, to: witness_mod_a },
     ],
     exports: empty_map()
-      |> map_insert(witness_mod_a, Empty)
-      |> map_insert(witness_mod_b, Empty),
+      |> map_insert(witness_mod_a, std.algebra.Empty)
+      |> map_insert(witness_mod_b, std.algebra.Empty),
     type_definitions: empty_map()
-      |> map_insert(witness_mod_a, Empty)
-      |> map_insert(witness_mod_b, Empty),
+      |> map_insert(witness_mod_a, std.algebra.Empty)
+      |> map_insert(witness_mod_b, std.algebra.Empty),
   }
 }
 
@@ -170,8 +170,8 @@ fn witness_by_value_type_cycle_dag() -> v2.std.compilers.compilation_unit.Module
     modules: [witness_mod_a, witness_mod_b],
     edges: [],
     exports: empty_map()
-      |> map_insert(witness_mod_a, Empty)
-      |> map_insert(witness_mod_b, Empty),
+      |> map_insert(witness_mod_a, std.algebra.Empty)
+      |> map_insert(witness_mod_b, std.algebra.Empty),
     type_definitions: empty_map()
       |> map_insert(
         witness_mod_a,
@@ -203,8 +203,8 @@ fn witness_pointer_type_cycle_dag() -> v2.std.compilers.compilation_unit.ModuleD
     modules: [witness_mod_a, witness_mod_b],
     edges: [],
     exports: empty_map()
-      |> map_insert(witness_mod_a, Empty)
-      |> map_insert(witness_mod_b, Empty),
+      |> map_insert(witness_mod_a, std.algebra.Empty)
+      |> map_insert(witness_mod_b, std.algebra.Empty),
     type_definitions: empty_map()
       |> map_insert(
         witness_mod_a,
@@ -239,13 +239,13 @@ fn witness_link_cyclic_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_b, to: witness_mod_a2 },
     ],
     exports: empty_map()
-      |> map_insert(witness_mod_a1, Empty)
-      |> map_insert(witness_mod_a2, Empty)
-      |> map_insert(witness_mod_b, Empty),
+      |> map_insert(witness_mod_a1, std.algebra.Empty)
+      |> map_insert(witness_mod_a2, std.algebra.Empty)
+      |> map_insert(witness_mod_b, std.algebra.Empty),
     type_definitions: empty_map()
-      |> map_insert(witness_mod_a1, Empty)
-      |> map_insert(witness_mod_a2, Empty)
-      |> map_insert(witness_mod_b, Empty),
+      |> map_insert(witness_mod_a1, std.algebra.Empty)
+      |> map_insert(witness_mod_a2, std.algebra.Empty)
+      |> map_insert(witness_mod_b, std.algebra.Empty),
   }
 }
 

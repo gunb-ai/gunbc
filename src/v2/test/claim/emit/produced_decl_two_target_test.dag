@@ -14,7 +14,7 @@ fn tt_emit(target: v2.std.compilers.target_model.TargetModel, fn_name: v2.std.no
     Accepted { value: decl, diagnostics: _ } =>
       match emit_produced_decl(decl: decl, target: target) {
         Accepted { value: medium, diagnostics: _ } =>
-          v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: None }
+          v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
         Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -72,7 +72,7 @@ fn tt_module_text(target: v2.std.compilers.target_model.TargetModel, first: v2.s
         Accepted { value: d2, diagnostics: _ } =>
           match emit_produced_module(decls: [d1, d2], target: target) {
             Accepted { value: medium, diagnostics: _ } =>
-              v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: None }
+              v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
             Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           }
         Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }

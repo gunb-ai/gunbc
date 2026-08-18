@@ -1631,7 +1631,7 @@ fn remap_containment_path(
   let ancestors_build = fold(
     path.ancestors,
     init: OccurrenceAncestorRemapBuild {
-      ancestors: Empty,
+      ancestors: std.algebra.Empty,
       state: state,
     },
     f: (acc, ancestor) => {

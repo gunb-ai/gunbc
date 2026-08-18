@@ -201,7 +201,7 @@ fn skeleton_callee_target(node: Node) -> Node {
 fn skeleton_call_argument_targets(node: Node) -> List<Node> {
   match list_tail(xs: node_positional_child_targets(node: node)) {
     TailFound { tail: args } => args
-    TailAbsent => Empty
+    TailAbsent => std.algebra.Empty
   }
 }
 

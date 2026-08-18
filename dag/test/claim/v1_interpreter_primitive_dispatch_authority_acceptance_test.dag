@@ -25,7 +25,7 @@ fn declared_residual_rows_retain_independent_dispositions() -> Bool {
         DeclaredHere => arm_is_declared_here(arm: r)
         _ => false
       }))
-    && (v1_interpreter_declared_arms() |> any(r => r.form == MethodCall))
+    && (v1_interpreter_declared_arms() |> any(r => r.form == gunbc.v1_interpreter_primitive_surface.MethodCall))
     && (v1_interpreter_declared_arms() |> any(r => r.form == ServiceDispatch))
 }
 

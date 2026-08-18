@@ -98,7 +98,7 @@ fn partition_collect_user_semantic_types_from_module(
 }
 
 fn partition_user_semantic_types_from_root(root: Node) -> List<PartitionUserSemanticType> {
-  partition_collect_user_semantic_types_from_module(module: root, acc: Empty)
+  partition_collect_user_semantic_types_from_module(module: root, acc: std.algebra.Empty)
 }
 
 fn partition_user_type_ownership_realization(
@@ -163,7 +163,7 @@ fn partition_user_type_ownership_realizations_from_decls(
 ) -> List<v2.std.compilers.target_model.TargetUseSiteOwnershipRealization> {
   fold_list(
     xs: decls,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, decl) {
       list_append(
         left: acc,
@@ -178,7 +178,7 @@ fn partition_user_type_atom_names_from_decls(
 ) -> List<v2.std.node.Symbol> {
   fold_list(
     xs: decls,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, decl) {
       list_snoc_item(xs: acc, item: decl.name)
     }
@@ -204,7 +204,7 @@ fn partition_carrier_identity_snoc(acc: List<v2.std.node.Symbol>, node: Node) ->
 fn partition_carrier_identities_in_semantic(semantic: Node) -> List<v2.std.node.Symbol> {
   fold_list(
     xs: node_subtree_nodes(root: semantic),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, node) {
       partition_carrier_identity_snoc(acc: acc, node: node)
     }
@@ -222,7 +222,7 @@ fn partition_user_type_carrier_identities_from_decls(
 ) -> List<v2.std.node.Symbol> {
   fold_list(
     xs: decls,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, decl) {
       fold_list(
         xs: partition_carrier_identities_in_semantic(semantic: decl.semantic),

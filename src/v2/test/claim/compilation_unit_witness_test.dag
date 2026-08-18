@@ -71,12 +71,12 @@ fn witness_triangle_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_c, to: witness_mod_a },
     ],
     exports: empty_map()
-      |> map_insert(witness_mod_a, Empty)
-      |> map_insert(witness_mod_b, Empty)
+      |> map_insert(witness_mod_a, std.algebra.Empty)
+      |> map_insert(witness_mod_b, std.algebra.Empty)
       |> map_insert(witness_mod_c, witness_exports_for_c()),
     type_definitions: empty_map()
-      |> map_insert(witness_mod_a, Empty)
-      |> map_insert(witness_mod_b, Empty)
+      |> map_insert(witness_mod_a, std.algebra.Empty)
+      |> map_insert(witness_mod_b, std.algebra.Empty)
       |> map_insert(witness_mod_c, witness_type_defs_for_c()),
   }
 }
@@ -89,13 +89,13 @@ fn witness_chain_dag() -> v2.std.compilers.compilation_unit.ModuleDag {
       v2.std.compilers.compilation_unit.ModuleDagEdge { from: witness_mod_b, to: witness_mod_c },
     ],
     exports: empty_map()
-      |> map_insert(witness_mod_a, Empty)
-      |> map_insert(witness_mod_b, Empty)
-      |> map_insert(witness_mod_c, Empty),
+      |> map_insert(witness_mod_a, std.algebra.Empty)
+      |> map_insert(witness_mod_b, std.algebra.Empty)
+      |> map_insert(witness_mod_c, std.algebra.Empty),
     type_definitions: empty_map()
-      |> map_insert(witness_mod_a, Empty)
-      |> map_insert(witness_mod_b, Empty)
-      |> map_insert(witness_mod_c, Empty),
+      |> map_insert(witness_mod_a, std.algebra.Empty)
+      |> map_insert(witness_mod_b, std.algebra.Empty)
+      |> map_insert(witness_mod_c, std.algebra.Empty),
   }
 }
 

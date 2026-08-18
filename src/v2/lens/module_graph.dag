@@ -78,7 +78,7 @@ fn import_fact_to_dependency_edge(edge: ImportResolutionFact) -> ModuleDependenc
 fn dependency_edges_from_import_facts(edges: List<ImportResolutionFact>) -> List<ModuleDependencyEdge> {
   list_reverse(xs: fold_list(
     xs: edges,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, edge) {
       std.algebra.Cons { head: import_fact_to_dependency_edge(edge: edge), tail: acc }
     }

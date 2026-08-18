@@ -55,7 +55,7 @@ test fn rust_field_access_emit_get_accepts() -> Bool {
     target: rust_field_access_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_field_access_source_text) && (d == None)
+      (source.carried == rust_field_access_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -68,7 +68,7 @@ test fn rust_field_access_emit_wrong_field_discriminates() -> Bool {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_field_access_wrong_field_source_text) &&
       (source.carried != rust_field_access_source_text) &&
-      (d == None)
+      (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

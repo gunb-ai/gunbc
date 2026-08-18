@@ -316,7 +316,7 @@ fn neutralize_edges_for_target(
 ) -> Outcome<List<v2.std.node.Edge>> {
   fold(
     edges,
-    init: v2.std.diagnostic.Accepted { value: Empty, diagnostics: None },
+    init: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: None },
     f: fn(acc, edge) {
       match acc {
         v2.std.diagnostic.Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }

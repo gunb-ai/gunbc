@@ -71,13 +71,13 @@ fn operational_parse_tree_project_to_formal_captures(
   match node_atom_identity_optional(node: captured) {
     Present { value: id } =>
       list_append(
-        left: Empty,
+        left: std.algebra.Empty,
         right: [parse_atom_frontier_class(atom_identity: id, binding_to_class: binding_to_class)]
       )
     Absent =>
       fold(
         captured.children,
-        init: Empty,
+        init: std.algebra.Empty,
         f: fn(acc, edge) {
           match edge.label {
             Named { name: n } =>
@@ -113,7 +113,7 @@ fn grammar_relation_row_forward_selection(frontier: List<v2.std.node.Symbol>, ru
 fn concrete_syntax_token_spine_classes(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.node.Symbol> {
   fold(
     tokens,
-    init: Empty,
+    init: std.algebra.Empty,
     f: fn(acc, t) {
       list_append(left: acc, right: [concrete_syntax_token_class(token: t)])
     }

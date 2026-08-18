@@ -87,7 +87,7 @@ test fn effect_io_pure_absent_lookup_is_fail_closed_holds() -> Bool {
   let store = effect_io_pure_empty_fixture_store(backend: FileResourceBackend)
   let bundle = effect_io_pure_handler_binding(store: store)
   let read_handler = effect_handler_for_kind(binding: bundle.handlers, kind: ReadResource)
-  let read_args = std.algebra.Cons { head: effect_io_claim_resource_a(), tail: Empty }
+  let read_args = std.algebra.Cons { head: effect_io_claim_resource_a(), tail: std.algebra.Empty }
   match effect_io_pure_invoke_handler(
     handler: read_handler,
     request: effect_io_pure_read_request(args: read_args)
@@ -101,7 +101,7 @@ test fn effect_io_host_read_fail_closed_holds() -> Bool {
   let runtime = effect_io_host_runtime_hermetic(backend: FileResourceBackend)
   let read_args = std.algebra.Cons {
     head: effect_io_claim_resource_a(),
-    tail: Empty
+    tail: std.algebra.Empty
   }
   let read_handler = effect_handler_for_kind(binding: runtime.handlers, kind: ReadResource)
   match effect_io_pure_invoke_handler(

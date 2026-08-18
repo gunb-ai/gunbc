@@ -159,7 +159,7 @@ test fn complete_verified_artifact_serves_as_hit() -> Bool {
 test fn absent_probe_is_a_miss() -> Bool {
   lookup_is_miss(l: provider_serve(
     req: witness_closure_request(),
-    probe: ProbeAbsent
+    probe: std.materialization_provider.ProbeAbsent
   ))
 }
 

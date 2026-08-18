@@ -84,7 +84,7 @@ type ChannelPolicy {
 // heartbeats, and anomalies at their exact leaf subject.
 // No new grain taxonomy is minted: BatchSegment and the floor plan already name the high-level work,
 // and a second phase enum beside them would be the nickname DESIGN section 3 forbids.
-fn routine_rollup_grain_for(verbosity: Verbosity) -> ObservationGrain? {
+fn routine_rollup_grain_for(verbosity: Verbosity) -> std.observation.ObservationGrain? {
   match verbosity {
     Quiet => Present { value: BatchGrain }
     Normal => Present { value: BatchGrain }

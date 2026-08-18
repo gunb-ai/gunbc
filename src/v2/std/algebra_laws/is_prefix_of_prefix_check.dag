@@ -1,10 +1,10 @@
 module v2.test.algebra_laws.is_prefix_of_prefix_check
 
 fn prefix_sym_eq(a: v2.std.node.Symbol, b: v2.std.node.Symbol) -> Bool { a == b }
-fn sym_empty() -> FreeMonoid<v2.std.node.Symbol> { Empty }
-fn sym_a() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^prefix_sym_a, tail: Empty } }
-fn sym_b() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^prefix_sym_b, tail: Empty } }
-fn sym_ab() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^prefix_sym_a, tail: std.algebra.Cons { head: ^prefix_sym_b, tail: Empty } } }
+fn sym_empty() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Empty }
+fn sym_a() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^prefix_sym_a, tail: std.algebra.Empty } }
+fn sym_b() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^prefix_sym_b, tail: std.algebra.Empty } }
+fn sym_ab() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^prefix_sym_a, tail: std.algebra.Cons { head: ^prefix_sym_b, tail: std.algebra.Empty } } }
 
 fn prefix_pass_node() -> Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^prefix_pass_sym } }, children: [],

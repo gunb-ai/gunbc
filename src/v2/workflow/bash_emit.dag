@@ -81,7 +81,7 @@ fn bash_emit_heredoc(path_spelling: String, delimiter: String, body: String) -> 
       delimiter: delimiter,
       body: body
     ),
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   }
 }
 
@@ -107,7 +107,7 @@ fn bash_emit_env_prefixed(
       value: value_spelling,
       command: command_spelling
     ),
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   }
 }
 

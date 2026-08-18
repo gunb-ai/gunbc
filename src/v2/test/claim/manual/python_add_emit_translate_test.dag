@@ -58,7 +58,7 @@ data python_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_pytho
 test fn python_add_serialize_reject_receipt_holds() -> Bool {
   match python_add_serialize_reject_receipt {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d != None
+    Rejected { diagnostics: d } => d != v2.std.diagnostic.None
   }
 }
 
@@ -185,7 +185,7 @@ data python_add_emit_receipt: Outcome<Medium<String>> = anchor_python_add_emit_a
 test fn python_add_emit_add_fn_accepts_holds() -> Bool {
   match python_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == python_source_text) && (d == None)
+      (source.carried == python_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -194,7 +194,7 @@ data python_add_compile_inferred_receipt: Outcome<v2.compiler.compile.CompileOut
 
 test fn python_add_compile_inferred_receipt_holds() -> Bool {
   match python_add_compile_inferred_receipt {
-    Accepted { value: _, diagnostics: d } => d == None
+    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
     Rejected { diagnostics: _ } => false
   }
 }

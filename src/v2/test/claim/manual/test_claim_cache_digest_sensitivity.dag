@@ -303,7 +303,7 @@ fn tcc_cache_runtime_unit() -> v2.std.runtime.RuntimeValue {
 }
 
 fn tcc_stub_alloc_a(_node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
-  v2.std.diagnostic.Accepted { value: tcc_cache_runtime_unit(), diagnostics: None }
+  v2.std.diagnostic.Accepted { value: tcc_cache_runtime_unit(), diagnostics: v2.std.diagnostic.None }
 }
 
 fn tcc_stub_call_b(
@@ -311,7 +311,7 @@ fn tcc_stub_call_b(
   _args: List<v2.std.runtime.RuntimeValue>,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.RuntimeValue> {
-  v2.std.diagnostic.Accepted { value: tcc_cache_runtime_unit(), diagnostics: None }
+  v2.std.diagnostic.Accepted { value: tcc_cache_runtime_unit(), diagnostics: v2.std.diagnostic.None }
 }
 
 fn tcc_interp_stub_allocate_body() -> v2.std.runtime.InterpretationAlgebra {
@@ -413,7 +413,7 @@ fn tcc_stub_choose_arm(
   _value: v2.std.runtime.RuntimeValue,
   _env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<Node> {
-  v2.std.diagnostic.Accepted { value: tcc_cache_pass_node(), diagnostics: None }
+  v2.std.diagnostic.Accepted { value: tcc_cache_pass_node(), diagnostics: v2.std.diagnostic.None }
 }
 
 fn tcc_interp_match_default_body() -> v2.std.runtime.InterpretationAlgebra {

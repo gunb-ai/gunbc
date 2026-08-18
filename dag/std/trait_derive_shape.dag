@@ -171,7 +171,7 @@ fn record_derive_traits_heap() -> List<ReprGroundingDeriveTrait> {
         head: ReprDerivePartialEq,
         tail: std.algebra.Cons {
           head: ReprDeriveSerialize,
-          tail: std.algebra.Cons { head: ReprDeriveDeserialize, tail: Empty }
+          tail: std.algebra.Cons { head: ReprDeriveDeserialize, tail: std.algebra.Empty }
         }
       }
     }
@@ -189,7 +189,7 @@ fn record_derive_traits_copy() -> List<ReprGroundingDeriveTrait> {
           head: ReprDerivePartialEq,
           tail: std.algebra.Cons {
             head: ReprDeriveSerialize,
-            tail: std.algebra.Cons { head: ReprDeriveDeserialize, tail: Empty }
+            tail: std.algebra.Cons { head: ReprDeriveDeserialize, tail: std.algebra.Empty }
           }
         }
       }
@@ -214,7 +214,7 @@ fn nullary_coproduct_derive_traits() -> List<ReprGroundingDeriveTrait> {
                 head: ReprDeriveOrd,
                 tail: std.algebra.Cons {
                   head: ReprDeriveSerialize,
-                  tail: std.algebra.Cons { head: ReprDeriveDeserialize, tail: Empty }
+                  tail: std.algebra.Cons { head: ReprDeriveDeserialize, tail: std.algebra.Empty }
                 }
               }
             }
@@ -240,7 +240,7 @@ fn symbol_wrapped_ord_carrier_derive_traits() -> List<ReprGroundingDeriveTrait> 
               head: ReprDeriveOrd,
               tail: std.algebra.Cons {
                 head: ReprDeriveSerialize,
-                tail: std.algebra.Cons { head: ReprDeriveDeserialize, tail: Empty }
+                tail: std.algebra.Cons { head: ReprDeriveDeserialize, tail: std.algebra.Empty }
               }
             }
           }
@@ -251,7 +251,7 @@ fn symbol_wrapped_ord_carrier_derive_traits() -> List<ReprGroundingDeriveTrait> 
 }
 
 fn fn_field_derive_traits() -> List<ReprGroundingDeriveTrait> {
-  std.algebra.Cons { head: ReprDeriveClone, tail: Empty }
+  std.algebra.Cons { head: ReprDeriveClone, tail: std.algebra.Empty }
 }
 
 fn payload_coproduct_derive_traits() -> List<ReprGroundingDeriveTrait> {
@@ -263,7 +263,7 @@ fn payload_coproduct_derive_traits() -> List<ReprGroundingDeriveTrait> {
         head: ReprDerivePartialEq,
         tail: std.algebra.Cons {
           head: ReprDeriveSerialize,
-          tail: std.algebra.Cons { head: ReprDeriveDeserialize, tail: Empty }
+          tail: std.algebra.Cons { head: ReprDeriveDeserialize, tail: std.algebra.Empty }
         }
       }
     }
@@ -297,7 +297,7 @@ fn phantom_opaque_carrier_derive_traits() -> List<ReprGroundingDeriveTrait> {
             head: ReprDeriveEq,
             tail: std.algebra.Cons {
               head: ReprDeriveSerialize,
-              tail: std.algebra.Cons { head: ReprDeriveDeserialize, tail: Empty }
+              tail: std.algebra.Cons { head: ReprDeriveDeserialize, tail: std.algebra.Empty }
             }
           }
         }
@@ -307,7 +307,7 @@ fn phantom_opaque_carrier_derive_traits() -> List<ReprGroundingDeriveTrait> {
 }
 
 fn map_key_required_derive_traits() -> List<ReprGroundingDeriveTrait> {
-  std.algebra.Cons { head: ReprDeriveEq, tail: std.algebra.Cons { head: ReprDeriveHash, tail: Empty } }
+  std.algebra.Cons { head: ReprDeriveEq, tail: std.algebra.Cons { head: ReprDeriveHash, tail: std.algebra.Empty } }
 }
 
 fn repr_grounding_derive_trait_rank(derive_trait: ReprGroundingDeriveTrait) -> Int {
@@ -362,7 +362,7 @@ fn kernel_int_arithmetic_traits() -> List<ReprGroundingDeriveTrait> {
               head: ReprDeriveNeg,
               tail: std.algebra.Cons {
                 head: ReprDerivePartialEq,
-                tail: std.algebra.Cons { head: ReprDerivePartialOrd, tail: Empty }
+                tail: std.algebra.Cons { head: ReprDerivePartialOrd, tail: std.algebra.Empty }
               }
             }
           }

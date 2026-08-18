@@ -223,7 +223,7 @@ fn module_export_declarations_outcome(
     Accepted { value: opt, diagnostics: _ } =>
       outcome_accepted(value: match opt {
         Present { value: nodes } => nodes
-        Absent => Empty
+        Absent => std.algebra.Empty
       })
     Rejected { diagnostics: d } => outcome_rejected(d: d.head)
   }
@@ -237,7 +237,7 @@ fn module_type_definition_rows_outcome(
     Accepted { value: opt, diagnostics: _ } =>
       outcome_accepted(value: match opt {
         Present { value: rows } => rows
-        Absent => Empty
+        Absent => std.algebra.Empty
       })
     Rejected { diagnostics: d } => outcome_rejected(d: d.head)
   }
@@ -651,7 +651,7 @@ fn partition_cross_boundary_exports_fold(
   members: List<ModuleId>
 ) -> PartitionInterfaceBuild {
   members
-    |> fold(init: InterfaceBuildOk { nodes: Empty }, f: fn(acc, member) {
+    |> fold(init: InterfaceBuildOk { nodes: std.algebra.Empty }, f: fn(acc, member) {
       match acc {
         InterfaceBuildRefused { cause: _ } => acc
         InterfaceBuildOk { nodes: acc_nodes } =>

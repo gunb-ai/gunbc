@@ -40,7 +40,7 @@ test fn witness_verified_hit_reuses() -> Bool {
 }
 
 test fn witness_miss_recomputes() -> Bool {
-  match realize_route(lookup: Miss) {
+  match realize_route(lookup: std.cache_interface.Miss) {
     Recompute { reason: SubjectAbsent } => true
     _ => false
   }
@@ -62,7 +62,7 @@ test fn witness_refused_hit_surfaces_reason() -> Bool {
 
 test fn witness_fresh_subject_written() -> Bool {
   let fresh = mk_receipt(content: content_v1)
-  match classify_write(existing: Miss, offered_content: content_v1, fresh_receipt: fresh) {
+  match classify_write(existing: std.cache_interface.Miss, offered_content: content_v1, fresh_receipt: fresh) {
     Written { receipt: _ } => true
     _ => false
   }

@@ -289,7 +289,7 @@ data witness_floor_workflow: extdeps.github.actions.Workflow = {
   },
   permissions: Present {
     value: extdeps.github.actions.WorkflowPermissions {
-      contents: Present { value: PermRead },
+      contents: Present { value: extdeps.github.actions.PermRead },
       pull_requests: none,
       issues: none,
       actions: none,

@@ -20,7 +20,7 @@ fn rpcl_serialize(expr: v2.std.compilers.target_model.TargetValueExpression, tar
     Accepted { value: tokens, diagnostics: _ } =>
       match serialize_concrete_syntax_tokens_to_source_string(target: target, tokens: tokens) {
         Accepted { value: text, diagnostics: _ } =>
-          v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: None }
+          v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: v2.std.diagnostic.None }
         Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -85,7 +85,7 @@ fn rpcl_serialize_fixed(token_class: v2.std.node.Symbol) -> Outcome<String> {
     tokens: [v2.std.compilers.target_model.FixedToken { token_class: token_class }]
   ) {
     Accepted { value: text, diagnostics: _ } =>
-      v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: None }
+      v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: v2.std.diagnostic.None }
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }

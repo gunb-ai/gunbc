@@ -1023,7 +1023,7 @@ fn rust_signature_one_param_tokens(edge: v2.std.node.Edge) -> Outcome<List<v2.st
 
 fn rust_signature_params_tail_tokens(params: List<v2.std.node.Edge>) -> Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
-    Empty => outcome_accepted(value: Empty)
+    Empty => outcome_accepted(value: std.algebra.Empty)
     Cons { head: e, tail: rest } =>
       bind_outcome(
         o: rust_signature_one_param_tokens(edge: e),
@@ -1049,7 +1049,7 @@ fn rust_signature_params_tail_tokens(params: List<v2.std.node.Edge>) -> Outcome<
 
 fn rust_signature_params_tokens(params: List<v2.std.node.Edge>) -> Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
-    Empty => outcome_accepted(value: Empty)
+    Empty => outcome_accepted(value: std.algebra.Empty)
     Cons { head: e, tail: rest } =>
       bind_outcome(
         o: rust_signature_one_param_tokens(edge: e),
@@ -1431,7 +1431,7 @@ fn rust_set_collection_hash_choice() -> v2.std.compilers.target_model.TargetRepr
 fn rust_set_collection_alternative_choices() -> List<v2.std.compilers.target_model.TargetRepresentationChoice> {
   std.algebra.Cons {
     head: rust_set_collection_hash_choice(),
-    tail: Empty
+    tail: std.algebra.Empty
   }
 }
 
@@ -1448,7 +1448,7 @@ fn rust_free_monoid_collection_primary_choice() -> v2.std.compilers.target_model
 }
 
 fn rust_free_monoid_collection_alternative_choices() -> List<v2.std.compilers.target_model.TargetRepresentationChoice> {
-  Empty
+  std.algebra.Empty
 }
 
 fn rust_collection_repr_bundle_node(form: v2.std.compilers.target_model.TargetRepresentation) -> Node {
@@ -1652,7 +1652,7 @@ fn rust_collection_realization_catalog_node() -> Node {
   fold_list_node(
     xs: std.algebra.Cons {
       head: rust_set_collection_realization_bundle_node(),
-      tail: std.algebra.Cons { head: rust_free_monoid_collection_realization_bundle_node(), tail: Empty }
+      tail: std.algebra.Cons { head: rust_free_monoid_collection_realization_bundle_node(), tail: std.algebra.Empty }
     },
     item_node: fn(row) { row }
   )
@@ -2030,7 +2030,7 @@ fn rust_grammar_atom(id: v2.std.node.Symbol) -> Node {
 fn rust_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
@@ -2716,7 +2716,7 @@ fn rust_bool_algebra_inhabitance() -> v2.std.model_core.AlgebraInhabitanceDecl {
 fn rust_integer_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: rust_integer_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: rust_integer_algebra_inhabitance(facts: facts))
     }
@@ -2726,7 +2726,7 @@ fn rust_integer_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInh
 fn rust_float_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: rust_float_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: rust_float_algebra_inhabitance(facts: facts))
     }
@@ -2878,7 +2878,7 @@ fn rust_bool_algebra_laws() -> List<v2.std.model_core.AlgebraLawObligation> {
 fn rust_integer_algebra_laws() -> List<v2.std.model_core.AlgebraLawObligation> {
   fold_list(
     xs: rust_integer_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_append(left: acc, right: rust_integer_law_obligations(facts: facts))
     }
@@ -2888,7 +2888,7 @@ fn rust_integer_algebra_laws() -> List<v2.std.model_core.AlgebraLawObligation> {
 fn rust_float_algebra_laws() -> List<v2.std.model_core.AlgebraLawObligation> {
   fold_list(
     xs: rust_float_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_append(left: acc, right: rust_float_law_obligations(facts: facts))
     }
@@ -3102,7 +3102,7 @@ fn rust_noninteger_per_language_fact_bundle_entries(
 fn rust_per_language_fact_bundle_entries_from_integer_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   fold_list(
     xs: rust_integer_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_append(
         left: acc,
@@ -3115,7 +3115,7 @@ fn rust_per_language_fact_bundle_entries_from_integer_catalog() -> List<v2.std.g
 fn rust_per_language_fact_bundle_entries_from_float_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   fold_list(
     xs: rust_float_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_append(
         left: acc,
@@ -3128,7 +3128,7 @@ fn rust_per_language_fact_bundle_entries_from_float_catalog() -> List<v2.std.gro
 fn rust_per_language_fact_bundle_entries_from_noninteger_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   fold_list(
     xs: rust_noninteger_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_append(
         left: acc,
@@ -3200,7 +3200,7 @@ fn rust_primitive_bundles_from_integer_catalog_registry(
 ) -> Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   fold_list(
     xs: rust_integer_facts_catalog,
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc, facts) {
       rust_snoc_primitive_bundle(
         acc: acc,
@@ -3216,7 +3216,7 @@ fn rust_primitive_bundles_from_float_catalog_registry(
 ) -> Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   fold_list(
     xs: rust_float_facts_catalog,
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc, facts) {
       rust_snoc_primitive_bundle(
         acc: acc,
@@ -3232,7 +3232,7 @@ fn rust_primitive_bundles_from_noninteger_catalog_registry(
 ) -> Outcome<List<v2.std.model_core.PrimitiveFactBundle>> {
   fold_list(
     xs: rust_noninteger_facts_catalog,
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc, facts) {
       rust_snoc_primitive_bundle(
         acc: acc,
@@ -4220,7 +4220,7 @@ fn rust_sg2_type_expr_bundle_core_base() -> List<v2.std.node.Edge> {
       name: ^target_model_edge_translation_rules,
       target: v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: Conj },
-        children: Empty,
+        children: std.algebra.Empty,
         occurrence_id: SyntheticOccurrence
       }
     ),
@@ -4464,7 +4464,7 @@ fn rust_sg2_arrow_xy_emitted() -> Node {
         form: rust_type_expression_projection().atom_form,
         identity: ^rust_binding_sg2_x
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     },
     output: target_type_expr_atom_emitted(
       form: rust_type_expression_projection().atom_form,
@@ -4568,7 +4568,7 @@ fn rust_sg2_lex_only_atom_emitted() -> Node {
 fn rust_sg2_emitted_without_named_edge(base: Node, field: v2.std.node.Symbol) -> Node {
   v2.std.node.Node {
     kind: base.kind,
-    children: fold(base.children, init: Empty, f: fn(acc, e) {
+    children: fold(base.children, init: std.algebra.Empty, f: fn(acc, e) {
       match e.label {
         Named { name: n } =>
           if n == field {
@@ -4668,7 +4668,7 @@ fn rust_sg2_malformed_atom_zero_positional_emitted() -> Node {
   )
   v2.std.node.Node {
     kind: base.kind,
-    children: fold(base.children, init: Empty, f: fn(acc, e) {
+    children: fold(base.children, init: std.algebra.Empty, f: fn(acc, e) {
       match e.label {
         Positional => acc
         _ => list_snoc_item(xs: acc, item: e)
@@ -4681,7 +4681,7 @@ fn rust_sg2_malformed_atom_zero_positional_emitted() -> Node {
 fn rust_sg2_malformed_arrow_one_positional_emitted() -> Node {
   target_type_expr_arrow_emitted(
     form: rust_type_expression_projection().arrow_form,
-    inputs: Empty,
+    inputs: std.algebra.Empty,
     output: target_type_expr_atom_emitted(
       form: rust_type_expression_projection().atom_form,
       identity: ^rust_binding_sg2_x
@@ -4693,7 +4693,7 @@ fn rust_sg2_malformed_instantiation_zero_positional_emitted() -> Node {
   target_type_expr_wrapped_emitted(
     kind: TargetTypeExprInstantiation,
     surface: rust_type_expression_projection().instantiation_form.surface,
-    children: Empty
+    children: std.algebra.Empty
   )
 }
 

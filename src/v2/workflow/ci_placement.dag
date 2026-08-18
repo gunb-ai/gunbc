@@ -66,17 +66,17 @@ type PlacementShadowReport {
   rows: List<PlacementShadowRowReport>
 }
 
-fn commit_workflow_surface_list_eq(left: List<CommitWorkflowSurface>, right: List<CommitWorkflowSurface>) -> Bool {
+fn commit_workflow_surface_list_eq(left: List<gunbc.commit_workflow.CommitWorkflowSurface>, right: List<gunbc.commit_workflow.CommitWorkflowSurface>) -> Bool {
   (length(xs: left) == length(xs: right))
     && !any(xs: left, predicate: fn(surface) { !commit_workflow_surface_present(surface: surface, surfaces: right) })
     && !any(xs: right, predicate: fn(surface) { !commit_workflow_surface_present(surface: surface, surfaces: left) })
 }
 
-fn commit_workflow_surface_present(surface: CommitWorkflowSurface, surfaces: List<CommitWorkflowSurface>) -> Bool {
+fn commit_workflow_surface_present(surface: gunbc.commit_workflow.CommitWorkflowSurface, surfaces: List<gunbc.commit_workflow.CommitWorkflowSurface>) -> Bool {
   any(xs: surfaces, predicate: fn(s) { commit_workflow_surface_eq(a: s, b: surface) })
 }
 
-fn commit_check_enrollment_eq(left: CommitCheckEnrollment, right: CommitCheckEnrollment) -> Bool {
+fn commit_check_enrollment_eq(left: gunbc.commit_workflow.CommitCheckEnrollment, right: gunbc.commit_workflow.CommitCheckEnrollment) -> Bool {
   commit_check_kind_eq(a: left.check, b: right.check)
     && commit_workflow_surface_list_eq(left: left.surfaces, right: right.surfaces)
 }
@@ -92,7 +92,7 @@ fn placement_shadow_receipt_is_joinable(receipt: PlacementShadowDatedReceipt) ->
 }
 
 fn placement_shadow_receipt_matches_identity(
-  identity: CommitCheckEnrollment,
+  identity: gunbc.commit_workflow.CommitCheckEnrollment,
   receipt: PlacementShadowDatedReceipt
 ) -> Bool {
   placement_shadow_receipt_is_joinable(receipt: receipt)
@@ -100,7 +100,7 @@ fn placement_shadow_receipt_matches_identity(
 }
 
 fn placement_shadow_receipts_for_identity(
-  identity: CommitCheckEnrollment,
+  identity: gunbc.commit_workflow.CommitCheckEnrollment,
   receipts: List<PlacementShadowDatedReceipt>
 ) -> List<PlacementShadowDatedReceipt> {
   filter(
@@ -173,7 +173,7 @@ fn placement_shadow_row_outcome(receipts: List<PlacementShadowDatedReceipt>) -> 
 }
 
 fn placement_shadow_row_report(
-  identity: CommitCheckEnrollment,
+  identity: gunbc.commit_workflow.CommitCheckEnrollment,
   basis: PlacementShadowSignedBasis
 ) -> PlacementShadowRowReport {
   let receipts = placement_shadow_receipts_for_identity(identity: identity, receipts: basis.receipts)
@@ -185,7 +185,7 @@ fn placement_shadow_row_report(
 }
 
 fn placement_shadow_report(
-  roster: List<CommitCheckEnrollment>,
+  roster: List<gunbc.commit_workflow.CommitCheckEnrollment>,
   basis: PlacementShadowSignedBasis
 ) -> PlacementShadowReport {
   PlacementShadowReport {
@@ -195,7 +195,7 @@ fn placement_shadow_report(
 }
 
 fn placement_shadow_report_matches_roster(
-  roster: List<CommitCheckEnrollment>,
+  roster: List<gunbc.commit_workflow.CommitCheckEnrollment>,
   report: PlacementShadowReport
 ) -> Bool {
   (length(xs: roster) == length(xs: report.rows))

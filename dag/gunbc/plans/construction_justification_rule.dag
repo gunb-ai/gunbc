@@ -7,12 +7,12 @@ fn construction_justification_rule_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "1. The rule"),
     p(text: "DESIGN §6: a lens is **validation** — it concedes the bad state is *writable*. So **before adding any lens**, justify why its target bad-state class cannot be made *unwritable by construction* (single authority / realization derived from model). Convert what can be converted; reserve a lens only for the genuinely **unstructurable residue**. Each lens must classify its target class into one of DESIGN §5's three buckets:"),
     std.markdown.TableBlock {
-      header: row(cells: [cell(text: "Class"), cell(text: "DESIGN §5 / frontier §2"), cell(text: "Meaning for a lens")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "Class"), cell(text: "DESIGN §5 / frontier §2"), cell(text: "Meaning for a lens")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "`WallNow`"), cell(text: "wall-now / ① Wall"), cell(text: "Decidable **and** grounded now: a single authority already makes the bad state unwritable, or the value is total-by-construction. A thing in this class **should be construction, not a validation lens** — recording `WallNow` honestly says \"this module filed under `v2.lens.*` is actually a construction\" (a §3 home question).")]),
-        row(cells: [cell(text: "`WallAfterGrounding`"), cell(text: "wall-after-grounding / ② Lens-residue"), cell(text: "Decidable, but the construction is not built yet. An **interim, shrinking** lens that names the `grounding_authority` that will turn it into a wall and the `dissolve_on` trigger that deletes it.")]),
-        row(cells: [cell(text: "`RatchetForever`"), cell(text: "ratchet-forever / ③ Inexpressible"), cell(text: "Undecidable (Rice) or needs domain knowledge. A **permanent** residue / honest review — never a wall. Pricing this region as a wall is the §5 \"never\" trap.")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "`WallNow`"), cell(text: "wall-now / ① Wall"), cell(text: "Decidable **and** grounded now: a single authority already makes the bad state unwritable, or the value is total-by-construction. A thing in this class **should be construction, not a validation lens** — recording `WallNow` honestly says \"this module filed under `v2.lens.*` is actually a construction\" (a §3 home question).")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "`WallAfterGrounding`"), cell(text: "wall-after-grounding / ② Lens-residue"), cell(text: "Decidable, but the construction is not built yet. An **interim, shrinking** lens that names the `grounding_authority` that will turn it into a wall and the `dissolve_on` trigger that deletes it.")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "`RatchetForever`"), cell(text: "ratchet-forever / ③ Inexpressible"), cell(text: "Undecidable (Rice) or needs domain knowledge. A **permanent** residue / honest review — never a wall. Pricing this region as a wall is the §5 \"never\" trap.")]),
       ],
     },
     p(text: "This is **not a parallel taxonomy** (§3): the names are DESIGN §5's, which [expressibility-frontier.md](expressibility-frontier.md) §2 generalizes into regions ①/②/③. The single authority for the typed model is `v2.lens.common.construction_justification`."),

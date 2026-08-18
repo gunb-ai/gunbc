@@ -62,7 +62,7 @@ test fn match_bool_emit_holds() -> Bool {
     Accepted { value: authority, diagnostics: ad } =>
       match match_bool_emit_from_producer(target: dag_match_target_model()) {
         Accepted { value: source, diagnostics: d } =>
-          (source == authority) && (d == None) && (ad == None)
+          (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -74,7 +74,7 @@ test fn match_bool_emit_swapped_arms_discriminates() -> Bool {
     Accepted { value: canonical, diagnostics: dc } =>
       match match_bool_emit_swapped_from_producer(target: dag_match_target_model()) {
         Accepted { value: swapped, diagnostics: ds } =>
-          (swapped != canonical) && (dc == None) && (ds == None)
+          (swapped != canonical) && (dc == v2.std.diagnostic.None) && (ds == v2.std.diagnostic.None)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false

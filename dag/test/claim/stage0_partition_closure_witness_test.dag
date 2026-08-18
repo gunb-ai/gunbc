@@ -27,8 +27,8 @@ test fn w_transitive_reexport_is_reachable() -> Bool {
     package: "v1-stage0-std-surface",
     fuel: 8
   )
-  list_contains_string(xs: reach, needle: "std_types")
-    && list_contains_string(xs: reach, needle: "std_effects")
+  gunbc.stage0_partition_closure.list_contains_string(xs: reach, needle: "std_types")
+    && gunbc.stage0_partition_closure.list_contains_string(xs: reach, needle: "std_effects")
 }
 
 // A crate that reexports nothing must NOT see another crate's modules. Without this, the
@@ -40,7 +40,7 @@ test fn w_reachability_is_not_universal() -> Bool {
     package: "v1-stage0-runtime",
     fuel: 8
   )
-  !list_contains_string(xs: runtime_reach, needle: "std_measure")
+  !gunbc.stage0_partition_closure.list_contains_string(xs: runtime_reach, needle: "std_measure")
 }
 
 // ---------------------------------------------------------------------------
@@ -152,8 +152,8 @@ fn authority_is_roster(a: gunbc.stage0_partition_closure.PartitionAuthorityId) -
 // round trips this gate exists to collapse.
 test fn red_reports_every_incomplete_authority_in_one_run() -> Bool {
   let targets = defect_targets(v: fixture_verdict(rows: fixture_rows_missing_both()))
-  list_contains_string(xs: targets, needle: "std_types")
-    && list_contains_string(xs: targets, needle: "std_nat")
+  gunbc.stage0_partition_closure.list_contains_string(xs: targets, needle: "std_types")
+    && gunbc.stage0_partition_closure.list_contains_string(xs: targets, needle: "std_nat")
 }
 
 // THE VERDICT CARRIES ITS OWN EXTENT. A clean answer that does not state the population it

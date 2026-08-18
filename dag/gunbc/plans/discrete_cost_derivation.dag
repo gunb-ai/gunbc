@@ -22,7 +22,7 @@ fn discrete_cost_derivation_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "2. Three quantities, never one number"),
     p(text: "The originating question asks for 'a literal number of cycles x reads'. **Cycles and reads are different dimensions and must not be multiplied into one scalar** — that product has no unit and no falsifier. Three quantities wear the word 'cost', and conflating any two is the DESIGN state-space conflation class:"),
     std.markdown.TableBlock {
-      header: row(cells: [
+      header: gunbc.plans.md_helpers.row(cells: [
         cell(text: "Quantity"),
         cell(text: "Question"),
         cell(text: "Epistemic status"),
@@ -30,19 +30,19 @@ fn discrete_cost_derivation_body() -> List<std.markdown.MarkdownBlock> {
       ]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "**Semantic work**"),
           cell(text: "how many modeled operations must happen?"),
           cell(text: "**Derived** from graph + input — exact where the input is known"),
           cell(text: "65 source reads, 65 content hashes, 931 calls, 64 loop iterations"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "**Realization cost**"),
           cell(text: "what does that work cost under one implementation and machine?"),
           cell(text: "**Predicted** — a projection requiring a calibrated model"),
           cell(text: "interpreter dispatch vs native dispatch, hash cost per byte, cache hit vs miss"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "**Observed physical cost**"),
           cell(text: "what happened during one execution?"),
           cell(text: "**Measured** — falsifier only, never authority"),
@@ -56,7 +56,7 @@ fn discrete_cost_derivation_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "3. What already exists (verified against the tree)"),
     p(text: "Four load-bearing pieces exist. This note reuses all four and mints no parallel cost taxonomy (DESIGN §3)."),
     std.markdown.TableBlock {
-      header: row(cells: [
+      header: gunbc.plans.md_helpers.row(cells: [
         cell(text: "Piece"),
         cell(text: "Authority"),
         cell(text: "What it gives"),
@@ -64,25 +64,25 @@ fn discrete_cost_derivation_body() -> List<std.markdown.MarkdownBlock> {
       ]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Symbolic cost fold"),
           cell(text: "`v2.lens.cost` — `SymbolicCost`, `symbolic_cost_of_node`, `cost_lens`, `asymptotic_class_of_cost`"),
           cell(text: "total fold over the closed Node kernel via `fold_node`; `UnknownCost` is lattice top (fail-closed); loop cost reads the modeled bound, never a guess"),
           cell(text: "**scalar, not a vector**; no span; no valuation environment; no binder-carrying sum"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Loop bound + termination"),
           cell(text: "`v2.std.cardinality` — `loop_bound_witness_for_node`, `loop_bound_measure`; `std.termination` `DescentEvidence`"),
           cell(text: "a loop must carry one unambiguous bound measure or the fold yields `UnknownCost` with a `Diagnostic` — exactly the substrate a concrete iteration count needs"),
           cell(text: "nothing — this is the piece that already works"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Concrete cost expressions"),
           cell(text: "`v1.compiler.complexity` — `CostExpr`, `ComplexitySummary`, `Certainty`"),
           cell(text: "`CostSum { binder, upper, body }`, `CostMax`, `CostLog`; and a summary carrying `work` / `span` / `output_size` / `peak_space` / `certainty`"),
           cell(text: "lives in the **v1 seed**, not the shared authority; not reachable from v2 consumers"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Predicted vs measured realization"),
           cell(text: "`std.realization_schedule` `CostAccount` / `CostBasis`; `std.realization_measurement`; `gunbc.witness_row_cost`"),
           cell(text: "time/space/power with `Predicted | Measured`; and a **populated** dated basis corpus (`dag/gunbc/witness_row_cost_basis.tsv`, host_class `srv_fleet_arm64`) with drift verdicts"),
@@ -117,29 +117,29 @@ fn discrete_cost_derivation_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "7. Four honesty states — the result is not always a literal"),
     p(text: "The derivation is total and fail-closed. It never returns a number it cannot justify, and it never silently contributes zero for something it failed to model (`zero_cost()` for an unmodeled construct is the fabricated-plausible-output class, DESIGN §5):"),
     std.markdown.TableBlock {
-      header: row(cells: [
+      header: gunbc.plans.md_helpers.row(cells: [
         cell(text: "State"),
         cell(text: "When"),
         cell(text: "Carries"),
       ]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`ExactCost`"),
           cell(text: "every size variable is bound to a literal by the input valuation"),
           cell(text: "one `DiscreteCostSummary`"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`BoundedCost`"),
           cell(text: "sizes are declared as ceilings, not values (the `BoundedInput` case)"),
           cell(text: "lower and upper summary + the `InputEnvelope` they were evaluated at"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`UnresolvedCost`"),
           cell(text: "sizes remain free variables"),
           cell(text: "the authority's `v2.lens.cost` `SymbolicCost` expression, **carried unchanged**, plus the unresolved variables, named"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`CostRefused`"),
           cell(text: "unbounded loop, unresolved descent, unmodeled host call, absent effect model, unknown cache posture"),
           cell(text: "a **NonEmptyList** of typed, located causes"),

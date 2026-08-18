@@ -16,7 +16,7 @@ fn cli_run_hollowing_plan_body() -> List<std.markdown.MarkdownBlock> {
     ]),
     h2(text: "1. Area map (summary)"),
     std.markdown.TableBlock {
-      header: row(cells: [
+      header: gunbc.plans.md_helpers.row(cells: [
         cell(text: "Area"),
         cell(text: "v2 subsumption (authority)"),
         cell(text: "Disposition"),
@@ -24,97 +24,97 @@ fn cli_run_hollowing_plan_body() -> List<std.markdown.MarkdownBlock> {
       ]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Workspace & repo paths"),
           cell(text: "`gunbc.cli_run_workspace_root_scaffold` · `gunbc.cli_run_repo_grant` · [effect-namespace-grants.md](effect-namespace-grants.md)"),
           cell(text: "emit-when"),
           cell(text: "Chunk F → GENERATED `host_effect_apply`; grant presets land"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "CLI argv & bin dispatch"),
           cell(text: "`gunbc` bins + `src/v2/workflow/*` orchestration rows"),
           cell(text: "seed-kernel-retained"),
           cell(text: "Wave 4 pinned bootstrap (~8–15k LOC)"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Corpus discovery & file walk"),
           cell(text: "`gunbc.ci_spec` discovery_scan_dirs · `gunbc.ci_floor_plan`"),
           cell(text: "emit-when"),
           cell(text: "CI native routing (#7069) + witness-realization"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Resolve / typecheck entry orchestration"),
           cell(text: "v2.compiler pipeline (GENERATED) · [cli-run-reconcile-defork.md](cli-run-reconcile-defork.md)"),
           cell(text: "emit-when"),
           cell(text: "Reconcile-defork Phase 1–3 + closure equivalence receipt"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Reconcile & env merge"),
           cell(text: "`v2.compiler` reconcile stage (GENERATED)"),
           cell(text: "already-subsumed"),
           cell(text: "Orchestration wrapper deletes with Chunk F"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Typed module cache / memo"),
           cell(text: "`std.materialize` / duplicate-work lattice ([duplicate-work-graph-lens-design.md](duplicate-work-graph-lens-design.md))"),
           cell(text: "emit-when"),
           cell(text: "ComputationIdentity qualifier lands on materialize spine"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Import & module-graph host facts"),
           cell(text: "`v2.lens.module_graph` · `import_resolution_facts` host seam"),
           cell(text: "emit-when"),
           cell(text: "Reconcile-defork Phase 1 repoint + namespace SymbolIndex"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Reference / cross-tree edges"),
           cell(text: "`v2.std.cross_tree.resolution` · [namespace-resolution-design.md](namespace-resolution-design.md)"),
           cell(text: "emit-when"),
           cell(text: "Reference-deps B3 + import grammar deletion (B4)"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Affected-set & diff provenance"),
           cell(text: "`gunbc.ci_spec` selection · `v2.lens.effect_reach` · [module-identity-storage-binding-design.md](module-identity-storage-binding-design.md)"),
           cell(text: "emit-when"),
           cell(text: "Declared `SourceRef` boundary + provenance ingest"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Floor / witness execution"),
           cell(text: "`claim_executor` · `src/v2/workflow/ci_floor_plan.dag` · [witness-realization-plan.md](witness-realization-plan.md)"),
           cell(text: "emit-when"),
           cell(text: "Workflow `host_effect_apply` replaces HAND driver"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Compile-clean shard scope"),
           cell(text: "`tools.dag_compile_clean_scope` · `v2.compiler.compile`"),
           cell(text: "partial"),
           cell(text: "Import-closure authority unified on `module_graph`"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Regen oracle & self-host scope"),
           cell(text: "`regen_stage0` (the `v2.compiler.self_host.frontier` half of this scope is deleted with the roster)"),
           cell(text: "delete-with-v1"),
           cell(text: "Wave 4 real-fixpoint cutover (`5-real-fixpoint`)"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Host builtin bridge (interpreter seam)"),
           cell(text: "`v1_interpreter` builtins · per-lens `*_live` projections"),
           cell(text: "seed-kernel-retained"),
           cell(text: "Node-tree readers dissolve seams (#5364 class); kernel keeps physics"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Lens census / hygiene host feeds"),
           cell(text: "`v2.lens.*` tables · `non_fold_residue` · `fact_cardinality`"),
           cell(text: "emit-when"),
           cell(text: "Each lens lands node-tree reader or explicit host row retires"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Floor observability & width"),
           cell(text: "`gunbc.floor_materialization` · `dag/std/realization_width.dag` · [realization-measurement-loop.md](realization-measurement-loop.md)"),
           cell(text: "partial"),
           cell(text: "Scheduler emits receipts; HAND timing deletes with floor native routing"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Test-migration debt builtins"),
           cell(text: "`v2.lens.test_migration_debt`"),
           cell(text: "delete-with-v1"),

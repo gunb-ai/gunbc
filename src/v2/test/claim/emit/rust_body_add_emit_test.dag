@@ -90,7 +90,7 @@ fn rust_body_add_missing_catalog_target_model() -> v2.std.compilers.target_model
 test fn rust_body_add_emit_add_fn_accepts_holds() -> Bool {
   match rust_body_add_emit_from_tree(target: rust_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_source_text) && (d == None)
+      (source.carried == rust_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -100,7 +100,7 @@ test fn rust_body_add_emit_operand_swap_discriminates() -> Bool {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_body_add_swapped_source_text) &&
       (source.carried != rust_source_text) &&
-      (d == None)
+      (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -110,7 +110,7 @@ test fn rust_body_add_emit_catalog_minus_discriminates() -> Bool {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_body_add_minus_source_text) &&
       (source.carried != rust_source_text) &&
-      (d == None)
+      (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

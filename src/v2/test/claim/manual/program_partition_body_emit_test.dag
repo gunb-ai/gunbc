@@ -10,17 +10,17 @@ fn program_partition_node_list_member_seen(seen: List<Node>, needle: Node) -> Bo
 fn program_partition_node_list_is_duplicate_free(xs: List<Node>) -> Bool {
   match fold_list(
     xs: xs,
-    empty: v2.std.diagnostic.Accepted { value: Empty, diagnostics: None },
+    empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, member) {
       match acc {
         Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
         Accepted { value: seen, diagnostics: _ } =>
           if program_partition_node_list_member_seen(seen: seen, needle: member) {
-            v2.std.diagnostic.Rejected { diagnostics: None }
+            v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.None }
           } else {
             v2.std.diagnostic.Accepted {
               value: list_snoc_item(xs: seen, item: member),
-              diagnostics: None
+              diagnostics: v2.std.diagnostic.None
             }
           }
       }
@@ -82,8 +82,8 @@ test fn program_partition_body_emit_accepts_and_differs_from_whole() -> Bool {
                 boundary: partition_boundary_ambient_context()
               ) {
                 Accepted { value: body_source, diagnostics: body_d } =>
-                  (body_d == None)
-                    && (whole_d == None)
+                  (body_d == v2.std.diagnostic.None)
+                    && (whole_d == v2.std.diagnostic.None)
                     && (body_source != whole_source)
                     && (whole_source.carried == ts_source_text)
                 Rejected { diagnostics: _ } => false
@@ -108,8 +108,8 @@ test fn program_partition_whole_program_emit_matches_direct() -> Bool {
             boundary: partition_boundary_ambient_context()
           ) {
             Accepted { value: partition_source, diagnostics: partition_d } =>
-              (direct_d == None)
-                && (partition_d == None)
+              (direct_d == v2.std.diagnostic.None)
+                && (partition_d == v2.std.diagnostic.None)
                 && (direct_source == partition_source)
                 && (direct_source.carried == ts_source_text)
             Rejected { diagnostics: _ } => false

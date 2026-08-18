@@ -168,11 +168,11 @@ test fn witness_unpublished_completed_run_has_no_check_conclusion() -> Bool {
     && match owned_ci_check_conclusion_for_queue(
       state: QueueCompleted,
       publication: gunbc.owned_ci.CheckPublicationPending {
-        local_conclusion: Success,
+        local_conclusion: extdeps.github.checks.Success,
         details_url: "http://localhost/ci/run/x" as std.types.NonEmptyStr,
       },
     ) {
-      Present { value: c } => c == Success
+      Present { value: c } => c == extdeps.github.checks.Success
       Absent => false
     }
 }
@@ -190,7 +190,7 @@ test fn witness_queue_refused_maps_to_failure() -> Bool {
 
 test fn witness_publication_pending_is_not_github_success() -> Bool {
   let pending = gunbc.owned_ci.CheckPublicationPending {
-    local_conclusion: Success,
+    local_conclusion: extdeps.github.checks.Success,
     details_url: "http://localhost/ci/run/x" as std.types.NonEmptyStr,
   }
   check_publication_is_pending_honest(state: pending)
@@ -198,7 +198,7 @@ test fn witness_publication_pending_is_not_github_success() -> Bool {
 }
 
 test fn witness_publication_completed_is_github_success() -> Bool {
-  let done = gunbc.owned_ci.CheckPublicationCompleted { check_run_id: 1, conclusion: Success }
+  let done = gunbc.owned_ci.CheckPublicationCompleted { check_run_id: 1, conclusion: extdeps.github.checks.Success }
   check_publication_reports_github_success(state: done)
     && !(check_publication_is_pending_honest(state: done))
 }

@@ -176,7 +176,7 @@ fn rebuild_node_with_child(root: Node, name: v2.std.node.Symbol, child: Node) ->
       n: root,
       children: fold(
         root.children,
-        init: Empty,
+        init: std.algebra.Empty,
         f: fn(current_acc, edge) {
           match edge.label {
             Named { name: edge_name } =>

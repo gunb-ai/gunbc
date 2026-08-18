@@ -50,7 +50,7 @@ fn lbe_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
-  v2.std.diagnostic.Accepted { value: env, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: env, diagnostics: v2.std.diagnostic.None }
 }
 
 fn lbe_inferred_facts(resolved: Node) -> v2.compiler.infer.InferredFacts {
@@ -193,7 +193,7 @@ fn lbe_test_claim_run_from_emit(
 fn lbe_mock_actual(mock: v2.lens.testgen.LanguageBehaviorIoMock) -> Outcome<Node> {
   v2.std.diagnostic.Accepted {
     value: mock.snapshot.expected_value,
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   }
 }
 

@@ -62,7 +62,7 @@ fn phrase_to_lex_rule_set(p: LexicalPhrase) -> LexRuleSet {
   LexRuleSet {
     rules: fold_list(
       xs: p.spans,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, s) {
         list_snoc_item(
           xs: acc,
@@ -106,7 +106,7 @@ fn token_stream_new(all: List<Token>) -> TokenStream {
 }
 
 fn token_stream_empty() -> TokenStream {
-  TokenStream { all: Empty, pos: 0 }
+  TokenStream { all: std.algebra.Empty, pos: 0 }
 }
 
 fn token_stream_position(stream: TokenStream) -> Int {

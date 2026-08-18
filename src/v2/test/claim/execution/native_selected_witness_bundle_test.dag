@@ -330,7 +330,7 @@ fn observe_selected_bundle_native(
               warm: warm
               warm_wall: nanosecond_duration(count: finish - start)
             },
-            diagnostics: None
+            diagnostics: v2.std.diagnostic.None
           }
         }
         Rejected { diagnostics: diagnostics } => v2.std.diagnostic.Rejected { diagnostics: diagnostics }

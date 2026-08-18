@@ -85,7 +85,7 @@ test fn interface_summary_import_unresolved_refuses_module_key_hashes() -> Bool 
   match import_interface_hashes_for_module(
     rel_path: "src/mod.dag",
     edges: edges,
-    summaries: Empty
+    summaries: std.algebra.Empty
   ) {
     Absent => true
     Present { value: _ } => false

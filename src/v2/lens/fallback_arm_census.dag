@@ -153,10 +153,10 @@ fn match_positional_arms(match_node: Node) -> List<Node> {
     ComputationNode { behavior: Match } =>
       match list_tail(xs: node_positional_child_targets(node: match_node)) {
         TailFound { tail: arms } => arms
-        TailAbsent => Empty
+        TailAbsent => std.algebra.Empty
       }
-    TypeNode { connective: _ } => Empty
-    ComputationNode { behavior: _ } => Empty
+    TypeNode { connective: _ } => std.algebra.Empty
+    ComputationNode { behavior: _ } => std.algebra.Empty
   }
 }
 
@@ -228,7 +228,7 @@ fn fallback_arm_census_reconciliation_holds_live() -> Bool {
 fn fallback_arm_census_defect_facts_live() -> List<FallbackArmCensusFact> {
   fold_list(
     xs: fallback_arm_census_facts_live(),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, f) {
       if f.class == "answers_on_open" {
         list_snoc_item(xs: acc, item: f)
@@ -242,7 +242,7 @@ fn fallback_arm_census_defect_facts_live() -> List<FallbackArmCensusFact> {
 fn fallback_arm_census_unknown_facts_live() -> List<FallbackArmCensusFact> {
   fold_list(
     xs: fallback_arm_census_facts_live(),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, f) {
       if f.class == "unknown" {
         list_snoc_item(xs: acc, item: f)

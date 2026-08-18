@@ -10,10 +10,10 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 data workflow_run_status_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: "WorkflowRunStatus"
-  encoding: std.serialization.StringVariant { naming: SnakeCase }
+  encoding: std.serialization.StringVariant { naming: std.serialization.SnakeCase }
 }
 
 data workflow_run_conclusion_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: "WorkflowRunConclusion"
-  encoding: std.serialization.StringVariant { naming: SnakeCase }
+  encoding: std.serialization.StringVariant { naming: std.serialization.SnakeCase }
 }

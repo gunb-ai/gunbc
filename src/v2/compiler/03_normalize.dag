@@ -11,7 +11,7 @@ fn post_normalize_not_well_formed_diagnostic(n: Node) -> v2.std.diagnostic.Diagn
 }
 
 fn normalize_fold_init(n: Node) -> Outcome<Node> {
-  v2.std.diagnostic.Accepted { value: node_rebuild(n: n, children: []), diagnostics: None }
+  v2.std.diagnostic.Accepted { value: node_rebuild(n: n, children: []), diagnostics: v2.std.diagnostic.None }
 }
 
 fn normalize_fold_step(acc: Outcome<Node>, edge: v2.std.node.Edge, child: Outcome<Node>) -> Outcome<Node> {

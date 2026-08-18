@@ -84,7 +84,7 @@ fn candidate_generation_dag_add_slice_accepts() -> Bool {
     dag_target: dag_add_target_model
   ) {
     Accepted { value: candidate, diagnostics: d } =>
-      (candidate.emitted == dag_emitted_add_fn_node()) && (d == None)
+      (candidate.emitted == dag_emitted_add_fn_node()) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

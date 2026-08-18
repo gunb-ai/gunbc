@@ -12,30 +12,30 @@ fn section_0() -> List<std.markdown.MarkdownBlock> {
     h2(text: "0. Grounded today — receipts from the live repo"),
     p(text: "This is not speculative. The stale-green class reddened main at least three times (gunbc.plans.ci_merge_freshness records #5429/#5445/#5453; the recent case is #5933, reddened by #5943 removing a field on a base #5933's CI never saw). The probe below reads the actual gunb-ai/gunbc settings via the GitHub API and shows the gap is live config, not lore:"),
     std.markdown.TableBlock {
-      header: row(cells: [cell(text: "Live setting (read 2026-06-29)"), cell(text: "Value"), cell(text: "Consequence")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "Live setting (read 2026-06-29)"), cell(text: "Value"), cell(text: "Consequence")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Default-branch ruleset required check"),
           cell(text: "only context ci"),
           cell(text: "the floor is the one required gate"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "strict_required_status_checks_policy"),
           cell(text: "false"),
           cell(text: "the SMOKING GUN: GitHub's require-up-to-date-before-merge is OFF, so a stale-base PR merges green and reds main"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "merge_queue rule"),
           cell(text: "absent"),
           cell(text: "no atomic test-then-fast-forward exists"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "pull_request rule (required approvals)"),
           cell(text: "absent"),
           cell(text: "the 2-approval bar is dashboard convention, enforced nowhere in config"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "allow_squash_merge / allow_merge_commit / allow_rebase_merge"),
           cell(text: "true / true / true"),
           cell(text: "our documented squash-only standard is convention; all three methods are allowed — a standard-vs-reality fork"),
@@ -65,19 +65,19 @@ fn section_2() -> List<std.markdown.MarkdownBlock> {
     p(text: "The same separation gunbc.commit_workflow already applies to the CI/pre-push side, extended to the merge step: (a) interface shape = the RepoStandard (desired settings + admission rule); (b) transport = the GitHub Rulesets API and PATCH /repos, one realization handler of N; (c) business policy = the admission predicate. The merge step is the one fact currently OUTSIDE the model (ci_merge_freshness calls it the operator's repo-admin half) — pulling it in dissolves the inversion."),
     p(text: "DFS of the concept DAG first: almost everything is already modeled. Reuse, do not mint a nickname:"),
     std.markdown.TableBlock {
-      header: row(cells: [cell(text: "Concept"), cell(text: "Existing authority to reuse")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "Concept"), cell(text: "Existing authority to reuse")]),
       alignments: [AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "Pull request (number, head, base, merged_at)"), cell(text: "extdeps.github.pulls.PullRequest")]),
-        row(cells: [cell(text: "Git branch / ref"), cell(text: "extdeps.git.GitBranch")]),
-        row(cells: [cell(text: "Mergeable / merge-state"), cell(text: "extdeps.github.mergeable_state.MergeableState, extdeps.github.merge_state.MergeStateStatus")]),
-        row(cells: [cell(text: "Content hash / commit sha"), cell(text: "std.types.ContentHash, std.types.CommitSha")]),
-        row(cells: [cell(text: "Provider / commit consumer"), cell(text: "gunbc.generated_artifact.RepoConsumer (GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler)")]),
-        row(cells: [cell(text: "Diff base / merge-base / two-dot"), cell(text: "gunbc.ci_spec.DiffPolicy, gunbc.ci_spec.DiffMode")]),
-        row(cells: [cell(text: "Process exit / pass-fail"), cell(text: "std.process.ProcessExit")]),
-        row(cells: [cell(text: "Check conclusion"), cell(text: "extdeps.github.checks.CheckConclusion")]),
-        row(cells: [cell(text: "Gate roster (the criteria)"), cell(text: "gunbc.commit_workflow.commit_gate_roster")]),
-        row(cells: [cell(text: "Enforcement-deferred status"), cell(text: "gunbc.ci_failure_class.MergeGatingStatus (GatingComputedDeferred, GatingEnforced)")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Pull request (number, head, base, merged_at)"), cell(text: "extdeps.github.pulls.PullRequest")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Git branch / ref"), cell(text: "extdeps.git.GitBranch")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Mergeable / merge-state"), cell(text: "extdeps.github.mergeable_state.MergeableState, extdeps.github.merge_state.MergeStateStatus")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Content hash / commit sha"), cell(text: "std.types.ContentHash, std.types.CommitSha")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Provider / commit consumer"), cell(text: "gunbc.generated_artifact.RepoConsumer (GitProtocol, GithubActionsWorkflow, ProjectDocumentation, HostReconciler)")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Diff base / merge-base / two-dot"), cell(text: "gunbc.ci_spec.DiffPolicy, gunbc.ci_spec.DiffMode")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Process exit / pass-fail"), cell(text: "std.process.ProcessExit")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Check conclusion"), cell(text: "extdeps.github.checks.CheckConclusion")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Gate roster (the criteria)"), cell(text: "gunbc.commit_workflow.commit_gate_roster")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Enforcement-deferred status"), cell(text: "gunbc.ci_failure_class.MergeGatingStatus (GatingComputedDeferred, GatingEnforced)")]),
       ],
     },
     p(text: "Genuinely-new (a real gap; the inventory found NO repo-settings/branch-protection model in dag/): MergeStrategy, RepoStandard, MergeAdmissionReceipt, AdmissionPolicy. Minting these grows net concepts only where no authority existed — not a failed decomposition."),
@@ -103,13 +103,13 @@ fn section_4() -> List<std.markdown.MarkdownBlock> {
     h2(text: "4. The simulation — before/after green-to-red as DATA, options COMPUTED"),
     p(text: "Per the operator: encode the situation and let a witness compute which policies survive, rather than argue in prose. The scenario is two events as data: PR-X earns a receipt against base B0 with roster R0 (green); then PR-Y lands removing a field, advancing main to B1 (roster still R0). A separate scenario isolates the criteria case: main tree unchanged (B0) but roster advances R0 to R1. A witness (a test fn in a _test.dag, floor-enrolled by naming) runs each candidate AdmissionPolicy over both scenarios and asserts which are total — admit nothing that reds main:"),
     std.markdown.TableBlock {
-      header: row(cells: [cell(text: "AdmissionPolicy"), cell(text: "catches stale base-tree"), cell(text: "catches stale roster (criteria changed)"), cell(text: "green-stays-green total"), cell(text: "cost")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "AdmissionPolicy"), cell(text: "catches stale base-tree"), cell(text: "catches stale roster (criteria changed)"), cell(text: "green-stays-green total"), cell(text: "cost")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "PerPrGateOnly (today)"), cell(text: "no"), cell(text: "no"), cell(text: "NO — admits PR-X, reds main (the #5933 bug)"), cell(text: "none")]),
-        row(cells: [cell(text: "RequireUpToDateBase (strict policy true)"), cell(text: "yes"), cell(text: "no"), cell(text: "PARTIAL — misses the roster-only scenario"), cell(text: "re-stales every open PR on each main move")]),
-        row(cells: [cell(text: "KeyedReceipt (base_tree_hash + gate_roster_hash)"), cell(text: "yes"), cell(text: "yes"), cell(text: "YES — by construction"), cell(text: "re-validate, scopeable to the affected-set")]),
-        row(cells: [cell(text: "MergeQueueAtomic (test-then-fast-forward)"), cell(text: "yes"), cell(text: "yes"), cell(text: "YES"), cell(text: "retires the manual-parallel-merge policy")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "PerPrGateOnly (today)"), cell(text: "no"), cell(text: "no"), cell(text: "NO — admits PR-X, reds main (the #5933 bug)"), cell(text: "none")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "RequireUpToDateBase (strict policy true)"), cell(text: "yes"), cell(text: "no"), cell(text: "PARTIAL — misses the roster-only scenario"), cell(text: "re-stales every open PR on each main move")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "KeyedReceipt (base_tree_hash + gate_roster_hash)"), cell(text: "yes"), cell(text: "yes"), cell(text: "YES — by construction"), cell(text: "re-validate, scopeable to the affected-set")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "MergeQueueAtomic (test-then-fast-forward)"), cell(text: "yes"), cell(text: "yes"), cell(text: "YES"), cell(text: "retires the manual-parallel-merge policy")]),
       ],
     },
     p(text: "The witness makes the table executable and discriminating: PerPrGateOnly goes RED on the scenario (proving the test has teeth), and only the bottom two are total. The KeyedReceipt re-validation reuses the existing v2.lens.affected_set machinery, evaluated against the post-merge tree instead of the PR base — the project-native cheaper variant of a full merge queue."),
@@ -121,12 +121,12 @@ fn section_5() -> List<std.markdown.MarkdownBlock> {
     h2(text: "5. Realization — GitHub API hookup, and why it is idempotent"),
     p(text: "Probed read-only on 2026-06-29. The legacy branch-protection API is dead to our integration (403 not accessible); the modern Rulesets API — which supersedes it and is where merge-queue config also lives — reads fine. So the handler targets rulesets, not branch protection:"),
     std.markdown.TableBlock {
-      header: row(cells: [cell(text: "Setting"), cell(text: "Read endpoint"), cell(text: "Idempotent write"), cell(text: "Token today")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "Setting"), cell(text: "Read endpoint"), cell(text: "Idempotent write"), cell(text: "Token today")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "Merge methods, auto-merge, delete-branch"), cell(text: "GET /repos/OWNER/REPO"), cell(text: "PATCH /repos/OWNER/REPO (set booleans)"), cell(text: "read confirmed")]),
-        row(cells: [cell(text: "Branch protection (legacy)"), cell(text: "GET .../branches/main/protection"), cell(text: "PUT"), cell(text: "403 — unusable")]),
-        row(cells: [cell(text: "Required checks, strict policy, merge queue (Rulesets)"), cell(text: "GET .../rulesets and .../rulesets/ID"), cell(text: "PUT .../rulesets/ID (full replace)"), cell(text: "read confirmed")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Merge methods, auto-merge, delete-branch"), cell(text: "GET /repos/OWNER/REPO"), cell(text: "PATCH /repos/OWNER/REPO (set booleans)"), cell(text: "read confirmed")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Branch protection (legacy)"), cell(text: "GET .../branches/main/protection"), cell(text: "PUT"), cell(text: "403 — unusable")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Required checks, strict policy, merge queue (Rulesets)"), cell(text: "GET .../rulesets and .../rulesets/ID"), cell(text: "PUT .../rulesets/ID (full replace)"), cell(text: "read confirmed")]),
       ],
     },
     p(text: "Idempotency is by construction: a ruleset is one declarative JSON object describing desired state, and PUT is full-replace. So the loop is the same Realization shape as gunbc generated_artifact_drift_gate, with the rulesets API as the host-effect handler instead of the filesystem: modeled RepoStandard projects desired ruleset JSON; GET reads actual; the diff IS the drift gate (RED on mismatch); PUT reconciles; a re-PUT is a no-op. PATCH /repos for merge-methods is likewise idempotent. The reconciler binds as a RepoConsumer.HostReconciler handler — one transport of N, not a workflow fork."),

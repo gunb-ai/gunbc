@@ -552,7 +552,7 @@ fn kotlin_primitive_bundle_from_nonnumeric_facts(
 fn kotlin_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: kotlin_integer_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -565,7 +565,7 @@ fn kotlin_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.Pri
 fn kotlin_primitive_bundles_from_float_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: kotlin_float_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -578,7 +578,7 @@ fn kotlin_primitive_bundles_from_float_catalog() -> List<v2.std.model_core.Primi
 fn kotlin_primitive_bundles_from_nonnumeric_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: kotlin_nonnumeric_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -746,7 +746,7 @@ fn kotlin_bool_algebra_inhabitance() -> v2.std.model_core.AlgebraInhabitanceDecl
 fn kotlin_integer_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: kotlin_integer_algebra_inhabitance_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: kotlin_integer_algebra_inhabitance(facts: facts))
     }
@@ -756,7 +756,7 @@ fn kotlin_integer_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraI
 fn kotlin_float_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: kotlin_float_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: kotlin_float_algebra_inhabitance(facts: facts))
     }
@@ -971,7 +971,7 @@ fn kotlin_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
         name: ^serialize_source_field_source_grammar,
         target: kotlin_atom(id: ^kotlin_production_fn_add)
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   }
 }
@@ -1535,7 +1535,7 @@ fn kotlin_lex() -> v2.std.compilers.lexing.LexRules {
 fn kotlin_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,

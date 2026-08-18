@@ -352,7 +352,7 @@ fn probe_mint(
     module_path: direct_rust_door_module_path,
     producer: V2EmitterInterpreted,
     qualifications: qualifications,
-    build_result: BuildGreen,
+    build_result: v2.compiler.self_host.emitter_producer_provenance.BuildGreen,
     behavioral_probe: probe,
     realized_closure: realized_closure_for_v2_direct_rust_door_emit_run()
   )

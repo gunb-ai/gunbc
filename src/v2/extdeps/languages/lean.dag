@@ -891,7 +891,7 @@ fn lean_inhabitance_decl_step(acc: List<v2.std.model_core.AlgebraInhabitanceDecl
 fn lean_model_core_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: lean_primitive_facts_catalog,
-    empty: Empty,
+    empty: v2.std.algebra.Empty,
     cons: fn(acc, facts) {
       lean_inhabitance_decl_step(acc: acc, facts: facts)
     }

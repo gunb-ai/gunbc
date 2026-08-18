@@ -131,7 +131,7 @@ test fn tdc_int_kernel_satisfies_arith_and_ord() -> Bool {
     && repr_grounding_derive_completeness_predicate_for_elem(
       required: std.algebra.Cons {
         head: ReprDeriveAdd,
-        tail: std.algebra.Cons { head: ReprDeriveClone, tail: std.algebra.Cons { head: ReprDeriveSerialize, tail: Empty } }
+        tail: std.algebra.Cons { head: ReprDeriveClone, tail: std.algebra.Cons { head: ReprDeriveSerialize, tail: v2.std.algebra.Empty } }
       },
       elem: trait_derive_int_kernel_type_node()
     )

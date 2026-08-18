@@ -36,7 +36,7 @@ fn refine<B>(base: B, by: Validation<B>, at: v2.std.diagnostic.Locus) -> Outcome
   if admits(base) {
     v2.std.diagnostic.Accepted {
       value: Refined { base: base },
-      diagnostics: None
+      diagnostics: v2.std.diagnostic.None
     }
   } else {
     v2.std.diagnostic.Rejected {
@@ -58,7 +58,7 @@ fn refined_base<B>(r: Refined<B>) -> B {
 fn refined_vacuous_oracle_terminal<B>(base: B, by: VacuousValidation<B>, at: v2.std.diagnostic.Locus) -> Outcome<Refined<B>> {
   let validation = validation_from_vacuous(by: by)
   match refine(base: base, by: validation, at: at) {
-    Accepted { value: refined, diagnostics: _ } => v2.std.diagnostic.Accepted { value: refined, diagnostics: None }
+    Accepted { value: refined, diagnostics: _ } => v2.std.diagnostic.Accepted { value: refined, diagnostics: v2.std.diagnostic.None }
     Rejected { diagnostics: rejected } => v2.std.diagnostic.Rejected { diagnostics: rejected }
   }
 }
@@ -262,7 +262,7 @@ fn refine_ordered_iteration<B>(base: B, by: IterationClassifier<B>, at: v2.std.d
   let classify = by.classify
   match classify(base) {
     StructurallyOrdered =>
-      v2.std.diagnostic.Accepted { value: Refined { base: base }, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: Refined { base: base }, diagnostics: v2.std.diagnostic.None }
     StructurallyUnordered =>
       v2.std.diagnostic.Rejected {
         diagnostics: diagnostics_singleton(

@@ -11,7 +11,7 @@ test fn witness_missing_rule_assessment_establishes_on_fixture() -> Bool {
 }
 
 test fn witness_accept_despite_gap_refusal_fires() -> Bool {
-  match refused(failure: MissingRuleAcceptedDespiteGap) {
+  match v2.compiler.self_host.v2_emitter_direct_rust_door_contract.refused(failure: MissingRuleAcceptedDespiteGap) {
     DirectRustDoorRefused { failure } => failure == MissingRuleAcceptedDespiteGap
     _ => false
   }

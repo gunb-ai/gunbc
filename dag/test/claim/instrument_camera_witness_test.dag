@@ -107,8 +107,8 @@ fn witness_an_active_refusal_is_one_critical_subject_however_many_refuse() -> Bo
   )
   count(a |> filter(x => salience_key(role: x.role) == salience_key(role: SalienceCritical))) == 1
     && role_key_for(assignments: a, subject: refusal_subject_key) == salience_key(role: SalienceCritical)
-    && refusal_count(r: gunbc.design.instrument_projection.ActiveRefusals { refused_count: 3 }) == 3
-    && refusal_count(r: NoActiveRefusal) == 0
+    && gunbc.design.instrument_projection.refusal_count(r: gunbc.design.instrument_projection.ActiveRefusals { refused_count: 3 }) == 3
+    && gunbc.design.instrument_projection.refusal_count(r: NoActiveRefusal) == 0
 }
 
 fn witness_critical_interrupts_without_dethroning_the_derived_focal_subject() -> Bool {

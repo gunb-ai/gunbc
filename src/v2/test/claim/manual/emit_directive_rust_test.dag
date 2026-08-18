@@ -54,7 +54,7 @@ fn emit_directive_bash_emit(d: v2.std.diagnostic.EmitDirective) -> Outcome<Mediu
 test fn emit_directive_rust_error_emits_eprintln_holds() -> Bool {
   match emit_directive_rust_emit(d: emit_directive_rust_error_example) {
     Accepted { value: source, diagnostics: dg } =>
-      (source.carried == emit_directive_rust_error_expected) && (dg == None)
+      (source.carried == emit_directive_rust_error_expected) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

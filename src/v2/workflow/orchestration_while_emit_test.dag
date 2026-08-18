@@ -32,7 +32,7 @@ data orch_while_predicate: std.path_intent.PathPredicate = And {
     rhs: std.path_intent.Not {
       inner: std.path_intent.PathEntryKind {
         path: orch_while_memory_peak_path,
-        kind: RegularFile
+        kind: std.filesystem.types.RegularFile
       }
     }
   }
@@ -160,7 +160,7 @@ test fn orch_while_locate_pipeline_matches_golden_holds() -> Bool {
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: source, diagnostics: dg } =>
-      (source.carried == orch_while_locate_golden) && (dg == None)
+      (source.carried == orch_while_locate_golden) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -184,7 +184,7 @@ test fn orch_while_step_matches_golden_holds() -> Bool {
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: source, diagnostics: dg } =>
-      (source.carried == orch_while_locate_golden) && (dg == None)
+      (source.carried == orch_while_locate_golden) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

@@ -10,15 +10,15 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 data pull_request_state_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.github.pulls", decl_name: "PullRequestState", field: WholeDeclaration },
-  encoding: std.serialization.StringVariant { naming: SnakeCase }
+  encoding: std.serialization.StringVariant { naming: std.serialization.SnakeCase }
 }
 
 data review_state_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.github.pulls", decl_name: "ReviewState", field: WholeDeclaration },
-  encoding: std.serialization.StringVariant { naming: ScreamingSnakeCase }
+  encoding: std.serialization.StringVariant { naming: std.serialization.ScreamingSnakeCase }
 }
 
 data review_event_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.github.pulls", decl_name: "ReviewEvent", field: WholeDeclaration },
-  encoding: std.serialization.StringVariant { naming: ScreamingSnakeCase }
+  encoding: std.serialization.StringVariant { naming: std.serialization.ScreamingSnakeCase }
 }

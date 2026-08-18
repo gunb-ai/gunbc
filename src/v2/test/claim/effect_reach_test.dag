@@ -87,7 +87,7 @@ test fn effect_reach_path_data_init_red_when_import_severed_holds() -> Bool {
     decls: fn_arrow_decl_facts_live(),
     data_inits: fixture_path_data_inits
   )
-  classification_is_local(classification: c)
+  v2.lens.effect_reach.classification_is_local(classification: c)
 }
 
 test fn effect_reach_path_touch_selects_on_normalize_path_holds() -> Bool {
@@ -111,7 +111,7 @@ test fn effect_reach_hermetic_fixture_stays_local_holds() -> Bool {
     decls: fn_arrow_decl_facts_live(),
     data_inits: fixture_empty_data_inits
   )
-  classification_is_local(classification: c)
+  v2.lens.effect_reach.classification_is_local(classification: c)
     && effect_reach_flow_count(classification: c) == 0
 }
 
@@ -122,7 +122,7 @@ test fn effect_reach_prose_string_path_does_not_classify_holds() -> Bool {
     decls: fn_arrow_decl_facts_live(),
     data_inits: fixture_prose_doc_inits
   )
-  classification_is_local(classification: c)
+  v2.lens.effect_reach.classification_is_local(classification: c)
     && !derived_host_reading(classification: c)
     && effect_reach_flow_count(classification: c) == 0
 }
@@ -134,7 +134,7 @@ fn witness_frontier_concat_built_path_not_classified() -> Bool {
     decls: fn_arrow_decl_facts_live(),
     data_inits: fixture_concat_path_data_inits
   )
-  classification_is_local(classification: c)
+  v2.lens.effect_reach.classification_is_local(classification: c)
     && !derived_host_reading(classification: c)
     && effect_reach_flow_count(classification: c) == 0
 }

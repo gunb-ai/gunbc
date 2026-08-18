@@ -57,7 +57,7 @@ func main_wet() -> std.process.ProcessExit {
         ArtifactGenerationRefused { reason } => exit_failure(reason: concat(concat("generation refused for ", artifact_path(a: a)), concat(": ", reason)))
         ArtifactGenerated { content } => {
           let w = Filesystem.Write(path: artifact_path(a: a), content: content)
-          if w.success { ExitSuccess } else { exit_failure(reason: concat(concat("write failed for ", artifact_path(a: a)), concat(": ", w.error))) }
+          if w.success { std.process.ExitSuccess } else { exit_failure(reason: concat(concat("write failed for ", artifact_path(a: a)), concat(": ", w.error))) }
         }
       }
     } else {

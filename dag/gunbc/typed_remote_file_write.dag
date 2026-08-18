@@ -238,11 +238,11 @@ fn typed_remote_file_write_over_fleet_ssh(
 // One remote step: portable-word admission, then the leg. A non-portable argv refuses BEFORE the
 // leg rather than being quoted into something the far-side shell may re-split.
 fn typed_remote_file_step(
-  target: SshTarget,
-  context: FleetSshExecutionContext,
+  target: gunbc.fleet_known_hosts_anchor.SshTarget,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   raws: List<String>,
   stdin_payload: String,
-) -> SshSessionExecResult? {
+) -> extdeps.ssh.session.SshSessionExecResult? {
   match portable_remote_words(raws: raws) {
     Absent => none
     Present { value: words } => Present {
@@ -257,8 +257,8 @@ fn typed_remote_file_step(
 // A step that carries no stdin still goes through the stdin-bearing operation with an empty payload,
 // so there is ONE leg shape rather than two that could drift apart.
 fn typed_remote_file_step_outcome(
-  target: SshTarget,
-  context: FleetSshExecutionContext,
+  target: gunbc.fleet_known_hosts_anchor.SshTarget,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   step: String,
   raws: List<String>,
   stdin_payload: String,
@@ -275,7 +275,7 @@ fn typed_remote_file_step_outcome(
         Present {
           value: TypedRemoteFileConvergenceRefused {
             step: step,
-            reason: concat("remote step failed: ", trim(s: r.stderr)),
+            reason: concat("remote step failed: ", std.algebra.trim(s: r.stderr)),
           },
         }
       }
@@ -287,8 +287,8 @@ fn typed_remote_file_step_outcome(
 // single opaque false. Nothing is published under the destination name until the rename, and nothing
 // is called converged until the destination has been read back and compared.
 func converge_typed_remote_file(
-  target: SshTarget,
-  context: FleetSshExecutionContext,
+  target: gunbc.fleet_known_hosts_anchor.SshTarget,
+  context: gunbc.fleet_known_hosts_anchor.FleetSshExecutionContext,
   admission: TypedRemoteFileWriteAdmission,
   mode: RemoteFileMode,
 ) -> TypedRemoteFileConvergence {

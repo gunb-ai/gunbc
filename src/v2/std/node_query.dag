@@ -4,7 +4,7 @@ module v2.std.node_query
 fn coproduct_arm_key_list_from_node(node: Node) -> List<v2.std.node.Symbol> {
   fold(
     xs: node_labeled_child_edges(node: node),
-    init: Empty,
+    init: std.algebra.Empty,
     f: fn(acc, e) { list_snoc_item(xs: acc, item: named_edge_sort_key(e: e)) }
   )
 }
@@ -76,7 +76,7 @@ fn coproduct_arm_from_edge(e: v2.std.node.Edge) -> v2.std.node.CoproductArm {
 fn coproduct_arm_list_from_node(node: Node) -> List<v2.std.node.CoproductArm> {
   fold(
     xs: node_labeled_child_edges(node: node),
-    init: Empty,
+    init: std.algebra.Empty,
     f: fn(acc, e) { list_snoc_item(xs: acc, item: coproduct_arm_from_edge(e: e)) }
   )
 }
@@ -95,7 +95,7 @@ fn coproduct_arm_payload_pair_from_arm(arm: v2.std.node.CoproductArm) -> v2.std.
 fn coproduct_arm_payload_pairs(type_name: v2.std.node.Symbol) -> List<v2.std.node.CoproductArmPayloadPair> {
   fold(
     xs: coproduct_arms(type_name: type_name),
-    init: Empty,
+    init: std.algebra.Empty,
     f: fn(acc, arm) {
       list_snoc_item(xs: acc, item: coproduct_arm_payload_pair_from_arm(arm: arm))
     }
@@ -202,7 +202,7 @@ fn coproduct_nullary_inhabitant_by_discriminant<T>(
 }
 
 fn node_positional_child_targets(node: Node) -> List<Node> {
-  fold(node.children, init: Empty, f: fn(acc, e) {
+  fold(node.children, init: std.algebra.Empty, f: fn(acc, e) {
     match e.label {
       Positional => list_snoc_item(xs: acc, item: e.target)
       Named { name: _ } => acc
@@ -211,7 +211,7 @@ fn node_positional_child_targets(node: Node) -> List<Node> {
 }
 
 fn node_labeled_child_edges(node: Node) -> List<v2.std.node.Edge> {
-  fold(node.children, init: Empty, f: fn(acc, e) {
+  fold(node.children, init: std.algebra.Empty, f: fn(acc, e) {
     match e.label {
       Named { name: _ } => list_snoc_item(xs: acc, item: e)
       Positional => acc
@@ -261,7 +261,7 @@ fn call_callee_target(node: Node) -> Outcome<Node> {
 fn call_argument_targets(node: Node) -> List<Node> {
   match list_tail(xs: node_positional_child_targets(node: node)) {
     TailFound { tail: args } => args
-    TailAbsent => Empty
+    TailAbsent => std.algebra.Empty
   }
 }
 
@@ -388,7 +388,7 @@ fn node_query_domain_malformed_diagnostic(domain: Node) -> v2.std.diagnostic.Dia
 fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<v2.std.node.Symbol>> {
   match domain.kind {
     TypeNode { connective: Conj } =>
-      match fold(domain.children, init: outcome_accepted(value: Empty), f: fn(acc, edge) {
+      match fold(domain.children, init: outcome_accepted(value: std.algebra.Empty), f: fn(acc, edge) {
         match acc {
           Accepted { value: bindings, diagnostics: d } =>
             match edge.label {
@@ -406,7 +406,7 @@ fn conj_ordered_named_param_binding_ids(domain: Node) -> Outcome<List<v2.std.nod
         }
       }) {
         Accepted { value: bindings, diagnostics: d } =>
-          if is_empty(xs: bindings) {
+          if v2.std.algebra.is_empty(xs: bindings) {
             outcome_rejected(
               d: node_query_domain_malformed_diagnostic(domain: domain)
             )

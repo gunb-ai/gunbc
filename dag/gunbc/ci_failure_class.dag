@@ -30,7 +30,7 @@ data verdict_infra_signatures: List<InfraSignature> = [
 fn infra_signature_match_substring(sig: InfraSignature) -> String {
   match sig {
     ResourceTemporarilyUnavailable => errno_strerror(e: EAGAIN)
-    ProcessSpawnFailure => spawn_outcome_log_fragment(outcome: SpawnFailed)
+    ProcessSpawnFailure => spawn_outcome_log_fragment(outcome: extdeps.rust.std_process.SpawnFailed)
     SccacheFatalError => sccache_fatal_error_log_fragment
     SccacheRustcWrapperExit254 => sccache_rustc_wrapper_exit_254_log_fragment
     SccacheFailedToExecuteCompile => sccache_failed_to_execute_compile_log_fragment

@@ -119,14 +119,14 @@ fn stage0_module_dag_interface_grounding_is_debt() -> Bool {
 fn stage0_module_dag_exports_map() -> Map<v2.std.compilers.compilation_unit.ModuleId, List<Node>> {
   stage0_all_partitioned_modules()
     |> fold(init: empty_map(), f: fn(acc, basename) {
-      map_insert(acc, stage0_module_id(basename: basename), Empty)
+      map_insert(acc, stage0_module_id(basename: basename), std.algebra.Empty)
     })
 }
 
 fn stage0_module_dag_type_definitions_map() -> Map<v2.std.compilers.compilation_unit.ModuleId, List<v2.std.compilers.compilation_unit.ModuleTypeDefinitionRow>> {
   stage0_all_partitioned_modules()
     |> fold(init: empty_map(), f: fn(acc, basename) {
-      map_insert(acc, stage0_module_id(basename: basename), Empty)
+      map_insert(acc, stage0_module_id(basename: basename), std.algebra.Empty)
     })
 }
 

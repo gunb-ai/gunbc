@@ -20,7 +20,7 @@ fn bash_build_round_trip_emit_matches_golden(
 ) -> Bool {
   match target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == golden) && (d == None)
+      (source.carried == golden) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

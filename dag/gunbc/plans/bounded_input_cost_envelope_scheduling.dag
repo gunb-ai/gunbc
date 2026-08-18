@@ -26,7 +26,7 @@ fn bounded_input_cost_envelope_scheduling_body() -> List<std.markdown.MarkdownBl
     p(text: "**On `Runnable`:** `cost: CostAccount` with `basis = Predicted`; `space` (and rolled-up `time` where modeled) come from the CostEnvelope evaluation for that runnable's graph slice. `cost_account_predicted_zero()` is the tell that Predicted authority is not yet wired — it must have no consumers on the floor path when implementation closes."),
     h2(text: "4. The pipeline — three stages, never fused"),
     std.markdown.TableBlock {
-      header: row(cells: [
+      header: gunbc.plans.md_helpers.row(cells: [
         cell(text: "Stage"),
         cell(text: "Question"),
         cell(text: "Authority"),
@@ -34,19 +34,19 @@ fn bounded_input_cost_envelope_scheduling_body() -> List<std.markdown.MarkdownBl
       ]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "**SELECTION** (§4)"),
           cell(text: "does this result depend on what changed?"),
           cell(text: "`v2.lens.affected_set` — transitive node closure"),
           cell(text: "provenance gap → run-all baseline (#5427)"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "**ADMISSION** (data)"),
           cell(text: "is actual input within declared ceiling?"),
           cell(text: "`input_admitted(envelope, actual)`"),
           cell(text: "`EnvelopeUnknown` → `RefusedUndeclared`"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "**SCHEDULING** (§1/§2)"),
           cell(text: "given admitted work, how wide / where / when?"),
           cell(text: "CostEnvelope (Predicted) + `gunbc.fleet_container.ResourceEnvelope` / budget tree"),

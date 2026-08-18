@@ -384,7 +384,7 @@ fn try_resolve_qualified_name_node(ctx: ResolveContext, n: Node) -> Optional<Out
 
 fn resolve_atom(ctx: ResolveContext, n: Node, identity: v2.std.node.Symbol) -> Outcome<Node> {
   if dag_node_is_int_literal_atom(node: n) {
-    v2.std.diagnostic.Accepted { value: n, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: n, diagnostics: v2.std.diagnostic.None }
   } else {
     match lookup_chain(s: ctx.scope, name: identity) {
       Accepted { value: found, diagnostics: pending } => match found {
@@ -468,7 +468,7 @@ fn resolve_transform_children(
   ctx: ResolveContext,
   n: Node
 ) -> Outcome<Node> {
-  match fold(n.children, init: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
+  match fold(n.children, init: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }, f: fn(acc, e) {
     match acc {
       Rejected { diagnostics: r } =>
         v2.std.diagnostic.Rejected { diagnostics: r }
@@ -597,7 +597,7 @@ fn resolve_child_edge(
     Named { name: sym } =>
       if ctx.under_module_root
         && resolve_preserve_module_root_named_edge(name: sym, target: e.target) {
-        v2.std.diagnostic.Accepted { value: e, diagnostics: None }
+        v2.std.diagnostic.Accepted { value: e, diagnostics: v2.std.diagnostic.None }
       } else {
         let child_ctx = if ctx.under_module_root
           && !dag_surface_module_header_metadata_edge(name: sym) {
@@ -617,7 +617,7 @@ fn resolve_child_edge(
     Positional =>
       if ctx.under_module_root
         && dag_resolve_preserve_module_metadata_subtree(node: e.target) {
-        v2.std.diagnostic.Accepted { value: e, diagnostics: None }
+        v2.std.diagnostic.Accepted { value: e, diagnostics: v2.std.diagnostic.None }
       } else {
         match resolve_node(ctx: ctx, n: e.target) {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
@@ -683,7 +683,7 @@ fn resolve_children_homogeneous_scope(
     ctx: resolve_ctx_with_under_module_root(ctx: ctx, under_module_root: at_module_root),
     scope: scope_here
   )
-  match fold(n.children, init: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: None }, f: fn(acc, e) {
+  match fold(n.children, init: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }, f: fn(acc, e) {
     match acc {
       Rejected { diagnostics: r } =>
         v2.std.diagnostic.Rejected { diagnostics: r }
@@ -720,7 +720,7 @@ fn resolve_edges_first_outer_then_inner(
     edges,
     init: EdgeResolveAccMk {
       have_seen_first: false,
-      acc: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: None }
+      acc: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }
     },
     f: fn(state, e) {
       match state {
@@ -792,7 +792,7 @@ fn resolve_edges_first_outer_then_inner(
 fn resolve_bind_binder_target(t: Node) -> Outcome<Node> {
   match t.kind {
     TypeNode { connective: Atom { identity: id } } =>
-      v2.std.diagnostic.Accepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: None }
+      v2.std.diagnostic.Accepted { value: canonical_atom(identity: id, occurrence_id: t.occurrence_id), diagnostics: v2.std.diagnostic.None }
     _ =>
       Rejected { diagnostics: diagnostics_singleton(d: malformed_tree_diagnostic(n: t)) }
   }
@@ -808,7 +808,7 @@ fn resolve_bind_edges(
     edges,
     init: BindEdgeAccMk {
       idx: 0,
-      acc: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: None }
+      acc: v2.std.diagnostic.Accepted { value: empty_edge_list(), diagnostics: v2.std.diagnostic.None }
     },
     f: fn(state, e) {
       match state {

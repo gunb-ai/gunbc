@@ -28,44 +28,44 @@ type FloorComponentRow {
   failure_mode: gunbc.floor_component_receipt_document.FloorComponentFailureMode
 }
 
-fn floor_component_subject(run_id: NonEmptyStr, index: Nat, label: NonEmptyStr) -> ObservationSubject {
-  ObservationSubject {
+fn floor_component_subject(run_id: std.types.NonEmptyStr, index: std.nat.Nat, label: std.types.NonEmptyStr) -> std.observation.ObservationSubject {
+  std.observation.ObservationSubject {
     segments: [
-      RunSegment { id: run_id },
-      BatchSegment { index: index, label: label }
+      std.observation.RunSegment { id: run_id },
+      std.observation.BatchSegment { index: index, label: label }
     ]
   }
 }
 
 fn floor_component_outcome_of_tag(
-  tag: NonEmptyStr,
-  detail: NonEmptyStr,
-  basis: ClockBasis,
-  budget: Millisecond,
-  elapsed: Millisecond,
-  shown_failures: Nat
-) -> ObservationOutcome? {
-  if (tag as String) == "done" { Present { value: Done } }
-  else if (tag as String) == "refused" { Present { value: Refused { diagnostic: detail } } }
-  else if (tag as String) == "failed" { Present { value: Failed { error: detail, output: "" } } }
+  tag: std.types.NonEmptyStr,
+  detail: std.types.NonEmptyStr,
+  basis: std.observation.ClockBasis,
+  budget: std.measure.Millisecond,
+  elapsed: std.measure.Millisecond,
+  shown_failures: std.nat.Nat
+) -> std.observation.ObservationOutcome? {
+  if (tag as String) == "done" { Present { value: std.observation.Done } }
+  else if (tag as String) == "refused" { Present { value: std.observation.Refused { diagnostic: detail } } }
+  else if (tag as String) == "failed" { Present { value: std.observation.Failed { error: detail, output: "" } } }
   else if (tag as String) == "timed_out" {
-    Present { value: TimedOut { basis: basis, budget: budget, elapsed: elapsed } }
+    Present { value: std.observation.TimedOut { basis: basis, budget: budget, elapsed: elapsed } }
   }
-  else if (tag as String) == "skipped" { Present { value: Skipped { reason: detail } } }
-  else if (tag as String) == "final" { Present { value: Final { shown_failures: shown_failures } } }
+  else if (tag as String) == "skipped" { Present { value: std.observation.Skipped { reason: detail } } }
+  else if (tag as String) == "final" { Present { value: std.observation.Final { shown_failures: shown_failures } } }
   else { none }
 }
 
 data floor_component_failure_mode_note: String = "The seed's failure-mode vocabulary (claim_executor falsifier_failure_mode: BudgetExceeded | Infra | WitnessRed, plus the no-failures case) mapped onto ObservationOutcome HERE rather than in Rust, so the classification sits under a witness and the seed transport carries no judgment of its own. BudgetExceeded becomes Refused, not Failed: a kill at a declared ceiling is the deliberate, located stop observation_refused_distinct_note defines Refused to mean, and its remedy (re-basis the dated ceiling, or fix the row's cost) differs from a broken witness's. UNKNOWN MODE REFUSES. The first version of this mapping lived in the seed with a `_ => failed` catch-all, which would have absorbed a newly added mode into `failed` silently — a widen with no diagnostic, exactly the absorbing fallback DESIGN section 5 forbids. Here an unmodelled mode returns absent, the row cannot be built, and the walk fails closed with the mode named."
 
-fn floor_component_outcome_of_failure_mode(mode: NonEmptyStr, detail: NonEmptyStr) -> ObservationOutcome? {
+fn floor_component_outcome_of_failure_mode(mode: std.types.NonEmptyStr, detail: std.types.NonEmptyStr) -> std.observation.ObservationOutcome? {
   match floor_component_failure_mode_of(mode: mode) {
     Absent => none
     Present { value: m } => floor_component_outcome_of_mode(m: m, detail: detail)
   }
 }
 
-fn floor_component_outcome_members(o: ObservationOutcome) -> List<JsonKeyValue> {
+fn floor_component_outcome_members(o: std.observation.ObservationOutcome) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   match o {
     Done => []
     Refused { diagnostic: d } => [json_kv(key: "diagnostic", value: json_string(s: d as String))]
@@ -82,7 +82,7 @@ fn floor_component_outcome_members(o: ObservationOutcome) -> List<JsonKeyValue> 
   }
 }
 
-fn floor_component_transition_outcome(t: ObservationTransition) -> ObservationOutcome? {
+fn floor_component_transition_outcome(t: std.observation.ObservationTransition) -> std.observation.ObservationOutcome? {
   match t {
     Begin => none
     Step { k: _, n: _ } => none
@@ -91,20 +91,20 @@ fn floor_component_transition_outcome(t: ObservationTransition) -> ObservationOu
 }
 
 fn floor_component_row_of(
-  run_id: NonEmptyStr,
-  index: Nat,
-  label: NonEmptyStr,
-  witnesses: Nat,
-  outcome: ObservationOutcome,
-  wall: Millisecond,
-  failure_mode: FloorComponentFailureMode
+  run_id: std.types.NonEmptyStr,
+  index: std.nat.Nat,
+  label: std.types.NonEmptyStr,
+  witnesses: std.nat.Nat,
+  outcome: std.observation.ObservationOutcome,
+  wall: std.measure.Millisecond,
+  failure_mode: gunbc.floor_component_receipt_document.FloorComponentFailureMode
 ) -> FloorComponentRow {
   FloorComponentRow {
-    event: ObservationEvent {
+    event: std.observation.ObservationEvent {
       subject: floor_component_subject(run_id: run_id, index: index, label: label),
-      transition: Concluded { outcome: outcome },
+      transition: std.observation.Concluded { outcome: outcome },
       durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: wall)),
-      rss: MeasuredUnavailable { cause: "per-component RSS not sampled by the floor walk" as NonEmptyStr }
+      rss: std.observation.MeasuredUnavailable { cause: "per-component RSS not sampled by the floor walk" as std.types.NonEmptyStr }
     },
     witnesses: witnesses,
     failure_mode: failure_mode
@@ -112,17 +112,17 @@ fn floor_component_row_of(
 }
 
 fn floor_component_row(
-  run_id: NonEmptyStr,
-  index: Nat,
-  label: NonEmptyStr,
-  witnesses: Nat,
-  outcome_tag: NonEmptyStr,
-  detail: NonEmptyStr,
-  basis: ClockBasis,
-  budget: Millisecond,
-  elapsed: Millisecond,
-  shown_failures: Nat,
-  wall: Millisecond
+  run_id: std.types.NonEmptyStr,
+  index: std.nat.Nat,
+  label: std.types.NonEmptyStr,
+  witnesses: std.nat.Nat,
+  outcome_tag: std.types.NonEmptyStr,
+  detail: std.types.NonEmptyStr,
+  basis: std.observation.ClockBasis,
+  budget: std.measure.Millisecond,
+  elapsed: std.measure.Millisecond,
+  shown_failures: std.nat.Nat,
+  wall: std.measure.Millisecond
 ) -> FloorComponentRow? {
   match floor_component_outcome_of_tag(
     tag: outcome_tag,
@@ -148,13 +148,13 @@ fn floor_component_row(
 }
 
 fn floor_component_row_of_failure_mode(
-  run_id: NonEmptyStr,
-  index: Nat,
-  label: NonEmptyStr,
-  witnesses: Nat,
-  failure_mode: NonEmptyStr,
-  detail: NonEmptyStr,
-  wall: Millisecond
+  run_id: std.types.NonEmptyStr,
+  index: std.nat.Nat,
+  label: std.types.NonEmptyStr,
+  witnesses: std.nat.Nat,
+  failure_mode: std.types.NonEmptyStr,
+  detail: std.types.NonEmptyStr,
+  wall: std.measure.Millisecond
 ) -> FloorComponentRow? {
   match floor_component_failure_mode_of(mode: failure_mode) {
     Absent => none
@@ -177,24 +177,24 @@ fn floor_component_row_of_failure_mode(
 }
 
 fn floor_component_row_not_concluded(
-  run_id: NonEmptyStr,
-  index: Nat,
-  label: NonEmptyStr,
-  failure_mode: NonEmptyStr,
-  detail: NonEmptyStr
+  run_id: std.types.NonEmptyStr,
+  index: std.nat.Nat,
+  label: std.types.NonEmptyStr,
+  failure_mode: std.types.NonEmptyStr,
+  detail: std.types.NonEmptyStr
 ) -> FloorComponentRow? {
   match floor_component_failure_mode_of(mode: failure_mode) {
     Absent => none
     Present { value: mode } => Present {
       value: FloorComponentRow {
-        event: ObservationEvent {
+        event: std.observation.ObservationEvent {
           subject: floor_component_subject(run_id: run_id, index: index, label: label),
           transition: Begin,
           durations: observation_durations_wall(
             elapsed: millisecond_to_nanosecond(m: millisecond(count: 0))
           ),
-          rss: MeasuredUnavailable {
-            cause: "per-component RSS not sampled by the floor walk" as NonEmptyStr
+          rss: std.observation.MeasuredUnavailable {
+            cause: "per-component RSS not sampled by the floor walk" as std.types.NonEmptyStr
           }
         },
         witnesses: 0,
@@ -204,7 +204,7 @@ fn floor_component_row_not_concluded(
   }
 }
 
-fn floor_component_row_index(row: FloorComponentRow) -> Nat {
+fn floor_component_row_index(row: FloorComponentRow) -> std.nat.Nat {
   fold(row.event.subject.segments, init: 0, f: (acc, seg) =>
     match seg {
       RunSegment { id: _ } => acc
@@ -228,7 +228,7 @@ fn floor_component_row_label(row: FloorComponentRow) -> String {
     })
 }
 
-fn floor_component_wall_members(w: Measured<Nanosecond>) -> List<JsonKeyValue> {
+fn floor_component_wall_members(w: Measured<std.measure.Nanosecond>) -> List<extdeps.languages.json.emit.JsonKeyValue> {
   match w {
     MeasuredValue { value: ns } => [
       json_kv(key: "wall_ms", value: json_int(n: nanosecond_count(n: ns) / 1000000))
@@ -257,7 +257,7 @@ fn floor_component_row_is_done(row: FloorComponentRow) -> Bool {
   }
 }
 
-fn floor_component_row_json(row: FloorComponentRow) -> JsonValue {
+fn floor_component_row_json(row: FloorComponentRow) -> extdeps.languages.json.emit.JsonValue {
   match floor_component_transition_outcome(t: row.event.transition) {
     Absent => json_object(members: [
       json_kv(key: "index", value: json_int(n: floor_component_row_index(row: row))),
@@ -270,7 +270,7 @@ fn floor_component_row_json(row: FloorComponentRow) -> JsonValue {
         json_kv(key: "index", value: json_int(n: floor_component_row_index(row: row))),
         json_kv(key: "label", value: json_string(s: floor_component_row_label(row: row))),
           json_kv(key: "witnesses", value: json_int(n: row.witnesses)),
-        json_kv(key: "outcome", value: json_string(s: floor_component_outcome_wire_tag(r: ComponentConcluded { outcome: o }))),
+        json_kv(key: "outcome", value: json_string(s: floor_component_outcome_wire_tag(r: gunbc.floor_component_receipt_document.ComponentConcluded { outcome: o }))),
         json_kv(key: "failure_mode", value: json_string(s: floor_component_failure_mode_tag(m: row.failure_mode)))
       ],
       concat(
@@ -286,11 +286,11 @@ fn floor_unsuccessful_component_rows(rows: List<FloorComponentRow>) -> List<Floo
 }
 
 fn floor_run_terminal_json(
-  disposition: NonEmptyStr,
-  cause: NonEmptyStr,
-  concluded_count: Nat,
-  pending_from_index: Nat
-) -> JsonValue {
+  disposition: std.types.NonEmptyStr,
+  cause: std.types.NonEmptyStr,
+  concluded_count: std.nat.Nat,
+  pending_from_index: std.nat.Nat
+) -> extdeps.languages.json.emit.JsonValue {
   json_object(members: [
     json_kv(key: "disposition", value: json_string(s: disposition as String)),
     json_kv(key: "cause", value: json_string(s: cause as String)),
@@ -300,16 +300,16 @@ fn floor_run_terminal_json(
 }
 
 fn floor_component_receipt_json_value(
-  workflow_name: NonEmptyStr,
-  run_id: NonEmptyStr,
-  head_sha: CommitSha,
+  workflow_name: std.types.NonEmptyStr,
+  run_id: std.types.NonEmptyStr,
+  head_sha: std.types.CommitSha,
   rows: List<FloorComponentRow>,
   run_terminal_present: Bool,
-  run_terminal_disposition: NonEmptyStr,
-  run_terminal_cause: NonEmptyStr,
-  concluded_count: Nat,
-  pending_from_index: Nat
-) -> JsonValue {
+  run_terminal_disposition: std.types.NonEmptyStr,
+  run_terminal_cause: std.types.NonEmptyStr,
+  concluded_count: std.nat.Nat,
+  pending_from_index: std.nat.Nat
+) -> extdeps.languages.json.emit.JsonValue {
   let base = [
     json_kv(key: receipt_member_schema, value: json_string(s: floor_component_receipt_schema)),
     json_kv(key: receipt_member_workflow_name, value: json_string(s: workflow_name as String)),
@@ -345,9 +345,9 @@ fn floor_component_receipt_json_value(
 data selection_degradation_member_deleted_note: String = "The receipt carried two members about affected-set selection — selection_degradation and affected_set_cold_control — and both are deleted with the mechanism they described (2026-08-15). Neither can be reconstructed from a run because the fact they reported no longer exists: nothing selects, so there is no degradation to report and no cold control to identify.\n\nWHAT THE DELETION MUST NOT BE READ AS. selection_degradation was made an explicit null on every path (review 49594) precisely so that ABSENT could mean the writer did not tell you either way. Removing the member returns it to absent — but for every reader, unconditionally, rather than for one path. That is only sound because the corresponding read-side requirement in gunbc.floor_component_receipt_document is removed in the same change: a writer that stops emitting a member a decoder still requires is exactly the broken encode-then-decode that ruling was about."
 
 fn floor_component_receipt_document(
-  workflow_name: NonEmptyStr,
-  run_id: NonEmptyStr,
-  head_sha: CommitSha,
+  workflow_name: std.types.NonEmptyStr,
+  run_id: std.types.NonEmptyStr,
+  head_sha: std.types.CommitSha,
   rows: List<FloorComponentRow>
 ) -> String {
   serialize_json(v: floor_component_receipt_json_value(
@@ -356,21 +356,21 @@ fn floor_component_receipt_document(
     head_sha: head_sha,
     rows: rows,
     run_terminal_present: false,
-    run_terminal_disposition: "concluded" as NonEmptyStr,
-    run_terminal_cause: "none" as NonEmptyStr,
+    run_terminal_disposition: "concluded" as std.types.NonEmptyStr,
+    run_terminal_cause: "none" as std.types.NonEmptyStr,
     concluded_count: count(rows),
     pending_from_index: 0
   ))
 }
 
 fn floor_component_receipt_document_incomplete(
-  workflow_name: NonEmptyStr,
-  run_id: NonEmptyStr,
-  head_sha: CommitSha,
+  workflow_name: std.types.NonEmptyStr,
+  run_id: std.types.NonEmptyStr,
+  head_sha: std.types.CommitSha,
   rows: List<FloorComponentRow>,
-  run_terminal_cause: NonEmptyStr,
-  concluded_count: Nat,
-  pending_from_index: Nat
+  run_terminal_cause: std.types.NonEmptyStr,
+  concluded_count: std.nat.Nat,
+  pending_from_index: std.nat.Nat
 ) -> String {
   serialize_json(v: floor_component_receipt_json_value(
     workflow_name: workflow_name,
@@ -378,7 +378,7 @@ fn floor_component_receipt_document_incomplete(
     head_sha: head_sha,
     rows: rows,
     run_terminal_present: true,
-    run_terminal_disposition: "incomplete" as NonEmptyStr,
+    run_terminal_disposition: "incomplete" as std.types.NonEmptyStr,
     run_terminal_cause: run_terminal_cause,
     concluded_count: concluded_count,
     pending_from_index: pending_from_index

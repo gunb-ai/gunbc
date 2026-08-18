@@ -325,7 +325,7 @@ fn refinement_preservation_subject_nonempty_list_base() -> Outcome<RefinementPre
           refined: refined,
           original: original,
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
@@ -348,7 +348,7 @@ fn testgen_emit_refinement_preservation_claim(
           rhs: refinement_preservation_list_node(xs: subject.original),
           classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     _ =>
       v2.std.diagnostic.Rejected {
@@ -381,7 +381,7 @@ fn testgen_emit_idempotent_operation_equals_claim(
       rhs: idempotent_operation_apply_once(state: sample_state, subject: subject),
       classification: classification,
     },
-    diagnostics: None,
+    diagnostics: v2.std.diagnostic.None,
   }
 }
 
@@ -435,7 +435,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
           expected_value: snap.expected_value,
           classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     ManualLbeDisjDagSurface =>
       v2.std.diagnostic.Accepted {
@@ -446,7 +446,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
           expected_value: snap.expected_value,
           classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     ManualLbeTransformDagSurface =>
       v2.std.diagnostic.Accepted {
@@ -457,7 +457,7 @@ fn testgen_emit_language_behavior_equivalence_claim(
           expected_value: snap.expected_value,
           classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     _ =>
       v2.std.diagnostic.Rejected {
@@ -494,7 +494,7 @@ fn testgen_emit_algebra_law_claim(
             rhs: algebra_law_claim_term(subject: law_case.subject, expression: rhs),
             classification: classification,
           },
-          diagnostics: None,
+          diagnostics: v2.std.diagnostic.None,
         }
       Rejected { diagnostics: d } =>
         v2.std.diagnostic.Rejected { diagnostics: d }
@@ -510,7 +510,7 @@ fn algebra_law_manual_claim_case(anchor: v2.std.verification.ManualAnchorKey) ->
           anchor: manual_claim_anchor(anchor: anchor),
           subject: subject,
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }
@@ -526,7 +526,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: v2.std.verification.ManualAncho
           inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
           law: ^law_nat_add_left_identity,
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     ManualNatAddRightIdentity =>
       v2.std.diagnostic.Accepted {
@@ -535,7 +535,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: v2.std.verification.ManualAncho
           inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
           law: ^law_nat_add_right_identity,
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     ManualNatAddAssociativity =>
       v2.std.diagnostic.Accepted {
@@ -544,7 +544,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: v2.std.verification.ManualAncho
           inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
           law: ^law_nat_add_associativity,
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     ManualNatMulLeftIdentity =>
       v2.std.diagnostic.Accepted {
@@ -553,7 +553,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: v2.std.verification.ManualAncho
           inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
           law: ^law_nat_mul_left_identity,
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     ManualNatMulAnnihilator =>
       v2.std.diagnostic.Accepted {
@@ -562,7 +562,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: v2.std.verification.ManualAncho
           inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
           law: ^law_nat_mul_annihilator,
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     ManualNatMulAssociativity =>
       v2.std.diagnostic.Accepted {
@@ -571,7 +571,7 @@ fn algebra_law_subject_for_manual_anchor(anchor: v2.std.verification.ManualAncho
           inhabitant: ^nat_algebra_law_subject_symbol_inhabitant_nat,
           law: ^law_nat_mul_associativity,
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     _ =>
       v2.std.diagnostic.Rejected {
@@ -696,7 +696,7 @@ fn witness_validity_subject_node(
           ],
           occurrence_id: SyntheticOccurrence
 },
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     }
   )
@@ -744,7 +744,7 @@ fn witness_validity_extent_node(e: v2.std.diagnostic.Extent) -> Outcome<Node> {
     WholeFile =>
       v2.std.diagnostic.Accepted {
         value: witness_validity_symbol_atom_node(s: ^witness_validity_extent_tag_whole_file),
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     ByteRange { start: _, end: _ } =>
       outcome_rejected(
@@ -783,7 +783,7 @@ fn witness_validity_locus_node(l: v2.std.diagnostic.Locus) -> Outcome<Node> {
             ],
             occurrence_id: SyntheticOccurrence
 },
-          diagnostics: None
+          diagnostics: v2.std.diagnostic.None
         }
       })
     NodeLocus { anchor: a } =>
@@ -795,7 +795,7 @@ fn witness_validity_locus_node(l: v2.std.diagnostic.Locus) -> Outcome<Node> {
           ],
           occurrence_id: SyntheticOccurrence
 },
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     PortLocus { anchor: a } =>
       v2.std.diagnostic.Accepted {
@@ -809,7 +809,7 @@ fn witness_validity_locus_node(l: v2.std.diagnostic.Locus) -> Outcome<Node> {
           ],
           occurrence_id: SyntheticOccurrence
 },
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
   }
 }
@@ -835,7 +835,7 @@ fn witness_validity_diagnostic_node(d: v2.std.diagnostic.Diagnostic) -> Outcome<
         ],
         occurrence_id: SyntheticOccurrence
 },
-      diagnostics: None
+      diagnostics: v2.std.diagnostic.None
     }
   })
 }
@@ -845,7 +845,7 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<v2.std.diagnostic.Diagno
     xs: xs,
     empty: v2.std.diagnostic.Accepted {
       value: witness_validity_symbol_atom_node(s: ^witness_validity_list_tag_empty),
-      diagnostics: None
+      diagnostics: v2.std.diagnostic.None
     },
     snoc: fn(acc, h) {
       bind_outcome(o: acc, f: fn(prev_node) {
@@ -859,7 +859,7 @@ fn witness_validity_diagnostic_list_node(xs: FreeMonoid<v2.std.diagnostic.Diagno
               ],
               occurrence_id: SyntheticOccurrence
 },
-            diagnostics: None
+            diagnostics: v2.std.diagnostic.None
           }
         })
       })
@@ -885,7 +885,7 @@ fn witness_validity_non_empty_diagnostics_node(d: v2.std.diagnostic.NonEmptyDiag
           ],
           occurrence_id: SyntheticOccurrence
 },
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     })
   })
@@ -896,7 +896,7 @@ fn witness_validity_diagnostics_node(ds: v2.std.diagnostic.Diagnostics) -> Outco
     None =>
       v2.std.diagnostic.Accepted {
         value: witness_validity_symbol_atom_node(s: ^witness_validity_diagnostics_tag_none),
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     Some { diagnostics: nd } =>
       bind_outcome(o: witness_validity_non_empty_diagnostics_node(d: nd), f: fn(ndn) {
@@ -911,7 +911,7 @@ fn witness_validity_diagnostics_node(ds: v2.std.diagnostic.Diagnostics) -> Outco
             ],
             occurrence_id: SyntheticOccurrence
 },
-          diagnostics: None
+          diagnostics: v2.std.diagnostic.None
         }
       })
   }
@@ -945,7 +945,7 @@ fn witness_validity_outcome_node(o: Outcome<v2.std.witness.StructuralPropertyWit
             ],
             occurrence_id: SyntheticOccurrence
 },
-          diagnostics: None
+          diagnostics: v2.std.diagnostic.None
         }
       })
     Rejected { diagnostics: d } =>
@@ -961,7 +961,7 @@ fn witness_validity_outcome_node(o: Outcome<v2.std.witness.StructuralPropertyWit
             ],
             occurrence_id: SyntheticOccurrence
 },
-          diagnostics: None
+          diagnostics: v2.std.diagnostic.None
         }
       })
   }
@@ -989,7 +989,7 @@ fn testgen_emit_witness_validity_claim(
           input: input_node,
           classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }
         },
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     }
   )
@@ -1063,7 +1063,7 @@ fn append_nat_obligation_if_law_matches(
     Accepted { value: _, diagnostics: None } => found
     Rejected { diagnostics: _ } =>
       if obligation.law == law {
-        v2.std.diagnostic.Accepted { value: obligation, diagnostics: None }
+        v2.std.diagnostic.Accepted { value: obligation, diagnostics: v2.std.diagnostic.None }
       } else {
         found
       }
@@ -1094,17 +1094,17 @@ fn nat_algebra_law_obligation_for_law(law: v2.std.node.Symbol) -> Outcome<v2.std
 
 fn testgen_manual_anchor_for_law(law: v2.std.node.Symbol) -> Outcome<v2.std.verification.ManualAnchorKey> {
   if law == ^law_nat_add_left_identity {
-    v2.std.diagnostic.Accepted { value: ManualNatAddLeftIdentity, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: ManualNatAddLeftIdentity, diagnostics: v2.std.diagnostic.None }
   } else if law == ^law_nat_add_right_identity {
-    v2.std.diagnostic.Accepted { value: ManualNatAddRightIdentity, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: ManualNatAddRightIdentity, diagnostics: v2.std.diagnostic.None }
   } else if law == ^law_nat_add_associativity {
-    v2.std.diagnostic.Accepted { value: ManualNatAddAssociativity, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: ManualNatAddAssociativity, diagnostics: v2.std.diagnostic.None }
   } else if law == ^law_nat_mul_left_identity {
-    v2.std.diagnostic.Accepted { value: ManualNatMulLeftIdentity, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: ManualNatMulLeftIdentity, diagnostics: v2.std.diagnostic.None }
   } else if law == ^law_nat_mul_annihilator {
-    v2.std.diagnostic.Accepted { value: ManualNatMulAnnihilator, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: ManualNatMulAnnihilator, diagnostics: v2.std.diagnostic.None }
   } else if law == ^law_nat_mul_associativity {
-    v2.std.diagnostic.Accepted { value: ManualNatMulAssociativity, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: ManualNatMulAssociativity, diagnostics: v2.std.diagnostic.None }
   } else {
     v2.std.diagnostic.Rejected {
       diagnostics: diagnostics_singleton(
@@ -1128,7 +1128,7 @@ fn nat_algebra_law_schedule_row_from_obligation(
     f: fn(anchor) {
       v2.std.diagnostic.Accepted {
         value: NatAlgebraLawScheduleRow { obligation: obligation, anchor: anchor },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     }
   )
@@ -1182,7 +1182,7 @@ fn append_nat_algebra_law_schedule_row_if_anchor_matches(
         o: nat_algebra_law_schedule_row_from_obligation(obligation: obligation),
         f: fn(row) {
           if nat_manual_anchor_key_eq(a: row.anchor, b: anchor) {
-            v2.std.diagnostic.Accepted { value: row, diagnostics: None }
+            v2.std.diagnostic.Accepted { value: row, diagnostics: v2.std.diagnostic.None }
           } else {
             found
           }
@@ -1228,7 +1228,7 @@ fn testgen_algebra_law_generator_from_nat_obligation(
           provenance: generator_provenance(id: generator_id_for_manual_anchor(key: anchor)),
           profile_metadata: default_generator_profile(),
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     }
   )
@@ -1246,7 +1246,7 @@ fn append_algebra_law_generator_from_nat_obligation(
         f: fn(generator) {
           v2.std.diagnostic.Accepted {
             value: list_snoc_item(xs: acc, item: generator),
-            diagnostics: None,
+            diagnostics: v2.std.diagnostic.None,
           }
         }
       )
@@ -1257,7 +1257,7 @@ fn append_algebra_law_generator_from_nat_obligation(
 fn testgen_scheduled_algebra_law_generators() -> Outcome<List<Generator<TestgenConcept>>> {
   fold_list_right(
     xs: nat_declared_algebra_law_obligations(),
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     snoc: fn(o, obligation) {
       append_algebra_law_generator_from_nat_obligation(
         acc: o,
@@ -1273,7 +1273,7 @@ fn nat_algebra_law_obligation_for_manual_anchor(
   bind_outcome(
     o: nat_algebra_law_schedule_row_for_manual_anchor(anchor: anchor),
     f: fn(row) {
-      v2.std.diagnostic.Accepted { value: row.obligation, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: row.obligation, diagnostics: v2.std.diagnostic.None }
     }
   )
 }
@@ -1288,7 +1288,7 @@ fn testgen_algebra_law_concept_for_manual_nat_anchor(
         value: AlgebraLaw {
           subject: algebra_law_subject_from_nat_obligation(o: obligation),
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     }
   )
@@ -1299,7 +1299,7 @@ fn testgen_algebra_law_subject_from_scheduled_generator(
 ) -> Outcome<AlgebraLawSubject> {
   match generator.slot {
     AlgebraLaw { subject: subject } =>
-      v2.std.diagnostic.Accepted { value: subject, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: subject, diagnostics: v2.std.diagnostic.None }
     TypeConstruction { subject: _ } =>
       v2.std.diagnostic.Rejected {
         diagnostics: diagnostics_singleton(
@@ -1354,7 +1354,7 @@ fn append_algebra_law_subject_from_scheduled_generator(
     f: fn(subject) {
       v2.std.diagnostic.Accepted {
         value: std.algebra.Cons { head: subject, tail: acc },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     }
   )
@@ -1365,7 +1365,7 @@ fn testgen_algebra_law_subjects_from_scheduled_generators(
 ) -> Outcome<List<AlgebraLawSubject>> {
   fold_list_right(
     xs: generators,
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     snoc: fn(o, generator) {
       bind_outcome(
         o: o,
@@ -1471,7 +1471,7 @@ fn testgen_emit_coproduct_exhaustiveness_claim(
       ),
       classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     },
-    diagnostics: None,
+    diagnostics: v2.std.diagnostic.None,
   }
 }
 
@@ -1501,7 +1501,7 @@ fn coproduct_exhaustiveness_generators_for_decl(
 ) -> List<Generator<TestgenConcept>> {
   fold(
     coproduct_arm_key_list_from_node(node: decl.node),
-    init: Empty,
+    init: std.algebra.Empty,
     f: fn(acc, arm) {
       list_snoc_item(
         xs: acc,
@@ -1514,7 +1514,7 @@ fn coproduct_exhaustiveness_generators_for_decl(
 fn testgen_scheduled_coproduct_exhaustiveness_generators() -> List<Generator<TestgenConcept>> {
   fold(
     enumerate_coproduct_decls(),
-    init: Empty,
+    init: std.algebra.Empty,
     f: fn(acc, decl) {
       list_append(
         left: acc,
@@ -1587,7 +1587,7 @@ fn testgen_emit_cross_representation_equality_claim(
       ),
       classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit },
     },
-    diagnostics: None,
+    diagnostics: v2.std.diagnostic.None,
   }
 }
 
@@ -1773,23 +1773,23 @@ fn manual_test_claim_for_manual_anchor(key: v2.std.verification.ManualAnchorKey)
   match key {
     ManualAnchorAbsent =>
       v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: manual_anchor_absent_bootstrap_diagnostic()) }
-    ManualTcConjEmpty => v2.std.diagnostic.Accepted { value: claim_conj_empty_compiles, diagnostics: None }
-    ManualTcDisjEmpty => v2.std.diagnostic.Accepted { value: claim_disj_empty_compiles, diagnostics: None }
-    ManualTcArrowTwoConj => v2.std.diagnostic.Accepted { value: claim_arrow_two_conj_compiles, diagnostics: None }
-    ManualTcCardinalityEmpty => v2.std.diagnostic.Accepted { value: claim_cardinality_empty_rejected, diagnostics: None }
-    ManualTcInstantiationEmpty => v2.std.diagnostic.Accepted { value: claim_instantiation_empty_rejected, diagnostics: None }
-    ManualTcArrowEmpty => v2.std.diagnostic.Accepted { value: claim_arrow_empty_rejected, diagnostics: None }
-    ManualTcTransformEmpty => v2.std.diagnostic.Accepted { value: claim_transform_empty_rejected, diagnostics: None }
-    ManualTcBranchEmpty => v2.std.diagnostic.Accepted { value: claim_branch_empty_rejected, diagnostics: None }
-    ManualTcLoopEmpty => v2.std.diagnostic.Accepted { value: claim_loop_empty_rejected, diagnostics: None }
-    ManualTcBindZeroChildren => v2.std.diagnostic.Accepted { value: claim_bind_zero_children_rejected, diagnostics: None }
-    ManualTcConjEqualsRefl => v2.std.diagnostic.Accepted { value: claim_conj_equals_refl, diagnostics: None }
-    ManualNatAddLeftIdentity => v2.std.diagnostic.Accepted { value: claim_nat_add_left_identity, diagnostics: None }
-    ManualNatAddRightIdentity => v2.std.diagnostic.Accepted { value: claim_nat_add_right_identity, diagnostics: None }
-    ManualNatAddAssociativity => v2.std.diagnostic.Accepted { value: claim_nat_add_associativity, diagnostics: None }
-    ManualNatMulLeftIdentity => v2.std.diagnostic.Accepted { value: claim_nat_mul_left_identity, diagnostics: None }
-    ManualNatMulAnnihilator => v2.std.diagnostic.Accepted { value: claim_nat_mul_annihilator, diagnostics: None }
-    ManualNatMulAssociativity => v2.std.diagnostic.Accepted { value: claim_nat_mul_associativity, diagnostics: None }
+    ManualTcConjEmpty => v2.std.diagnostic.Accepted { value: claim_conj_empty_compiles, diagnostics: v2.std.diagnostic.None }
+    ManualTcDisjEmpty => v2.std.diagnostic.Accepted { value: claim_disj_empty_compiles, diagnostics: v2.std.diagnostic.None }
+    ManualTcArrowTwoConj => v2.std.diagnostic.Accepted { value: claim_arrow_two_conj_compiles, diagnostics: v2.std.diagnostic.None }
+    ManualTcCardinalityEmpty => v2.std.diagnostic.Accepted { value: claim_cardinality_empty_rejected, diagnostics: v2.std.diagnostic.None }
+    ManualTcInstantiationEmpty => v2.std.diagnostic.Accepted { value: claim_instantiation_empty_rejected, diagnostics: v2.std.diagnostic.None }
+    ManualTcArrowEmpty => v2.std.diagnostic.Accepted { value: claim_arrow_empty_rejected, diagnostics: v2.std.diagnostic.None }
+    ManualTcTransformEmpty => v2.std.diagnostic.Accepted { value: claim_transform_empty_rejected, diagnostics: v2.std.diagnostic.None }
+    ManualTcBranchEmpty => v2.std.diagnostic.Accepted { value: claim_branch_empty_rejected, diagnostics: v2.std.diagnostic.None }
+    ManualTcLoopEmpty => v2.std.diagnostic.Accepted { value: claim_loop_empty_rejected, diagnostics: v2.std.diagnostic.None }
+    ManualTcBindZeroChildren => v2.std.diagnostic.Accepted { value: claim_bind_zero_children_rejected, diagnostics: v2.std.diagnostic.None }
+    ManualTcConjEqualsRefl => v2.std.diagnostic.Accepted { value: claim_conj_equals_refl, diagnostics: v2.std.diagnostic.None }
+    ManualNatAddLeftIdentity => v2.std.diagnostic.Accepted { value: v2.test.manual.nat_law_anchors.claim_nat_add_left_identity, diagnostics: v2.std.diagnostic.None }
+    ManualNatAddRightIdentity => v2.std.diagnostic.Accepted { value: v2.test.manual.nat_law_anchors.claim_nat_add_right_identity, diagnostics: v2.std.diagnostic.None }
+    ManualNatAddAssociativity => v2.std.diagnostic.Accepted { value: v2.test.manual.nat_law_anchors.claim_nat_add_associativity, diagnostics: v2.std.diagnostic.None }
+    ManualNatMulLeftIdentity => v2.std.diagnostic.Accepted { value: v2.test.manual.nat_law_anchors.claim_nat_mul_left_identity, diagnostics: v2.std.diagnostic.None }
+    ManualNatMulAnnihilator => v2.std.diagnostic.Accepted { value: v2.test.manual.nat_law_anchors.claim_nat_mul_annihilator, diagnostics: v2.std.diagnostic.None }
+    ManualNatMulAssociativity => v2.std.diagnostic.Accepted { value: v2.test.manual.nat_law_anchors.claim_nat_mul_associativity, diagnostics: v2.std.diagnostic.None }
     ManualLbeConjDagSurface =>
       testgen_emit_language_behavior_equivalence_claim(
         anchor: ManualLbeConjDagSurface,
@@ -1828,47 +1828,47 @@ fn testgen_concept_for_manual_claim(claim: v2.std.verification.TestClaim) -> Out
     ManualClaimAnchor { manual_anchor: ManualTcConjEmpty } =>
       v2.std.diagnostic.Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Conj },
-        }, diagnostics: None }
+        }, diagnostics: v2.std.diagnostic.None }
     ManualClaimAnchor { manual_anchor: ManualTcDisjEmpty } =>
       v2.std.diagnostic.Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Disj },
-        }, diagnostics: None }
+        }, diagnostics: v2.std.diagnostic.None }
     ManualClaimAnchor { manual_anchor: ManualTcArrowTwoConj } =>
       v2.std.diagnostic.Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Arrow },
-        }, diagnostics: None }
+        }, diagnostics: v2.std.diagnostic.None }
     ManualClaimAnchor { manual_anchor: ManualTcCardinalityEmpty } =>
       v2.std.diagnostic.Accepted { value: TypeConstruction {
-          subject: ConnectiveKernel { connective: Cardinality },
-        }, diagnostics: None }
+          subject: ConnectiveKernel { connective: v2.std.node.Cardinality },
+        }, diagnostics: v2.std.diagnostic.None }
     ManualClaimAnchor { manual_anchor: ManualTcInstantiationEmpty } =>
       v2.std.diagnostic.Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Instantiation },
-        }, diagnostics: None }
+        }, diagnostics: v2.std.diagnostic.None }
     ManualClaimAnchor { manual_anchor: ManualTcArrowEmpty } =>
       v2.std.diagnostic.Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Arrow },
-        }, diagnostics: None }
+        }, diagnostics: v2.std.diagnostic.None }
     ManualClaimAnchor { manual_anchor: ManualTcTransformEmpty } =>
       v2.std.diagnostic.Accepted { value: TypeConstruction {
-          subject: BehaviorValueSubject { behavior: Transform },
-        }, diagnostics: None }
+          subject: BehaviorValueSubject { behavior: v2.std.node.Transform },
+        }, diagnostics: v2.std.diagnostic.None }
     ManualClaimAnchor { manual_anchor: ManualTcBranchEmpty } =>
       v2.std.diagnostic.Accepted { value: TypeConstruction {
           subject: BehaviorValueSubject { behavior: Branch },
-        }, diagnostics: None }
+        }, diagnostics: v2.std.diagnostic.None }
     ManualClaimAnchor { manual_anchor: ManualTcLoopEmpty } =>
       v2.std.diagnostic.Accepted { value: TypeConstruction {
           subject: BehaviorValueSubject { behavior: Loop },
-        }, diagnostics: None }
+        }, diagnostics: v2.std.diagnostic.None }
     ManualClaimAnchor { manual_anchor: ManualTcBindZeroChildren } =>
       v2.std.diagnostic.Accepted { value: TypeConstruction {
           subject: BehaviorValueSubject { behavior: Bind },
-        }, diagnostics: None }
+        }, diagnostics: v2.std.diagnostic.None }
     ManualClaimAnchor { manual_anchor: ManualTcConjEqualsRefl } =>
       v2.std.diagnostic.Accepted { value: TypeConstruction {
           subject: ConnectiveKernel { connective: Conj },
-        }, diagnostics: None }
+        }, diagnostics: v2.std.diagnostic.None }
     ManualClaimAnchor { manual_anchor: ManualNatAddLeftIdentity } =>
       testgen_algebra_law_concept_for_manual_nat_anchor(anchor: ManualNatAddLeftIdentity)
     ManualClaimAnchor { manual_anchor: ManualNatAddRightIdentity } =>
@@ -1887,7 +1887,7 @@ fn testgen_concept_for_manual_claim(claim: v2.std.verification.TestClaim) -> Out
           subject: lbe_subject_conj_dag_surface(),
           mock: lbe_io_mock_conj_dag_surface(),
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     ManualClaimAnchor { manual_anchor: ManualLbeDisjDagSurface } =>
       v2.std.diagnostic.Accepted {
@@ -1895,7 +1895,7 @@ fn testgen_concept_for_manual_claim(claim: v2.std.verification.TestClaim) -> Out
           subject: lbe_subject_disj_dag_surface(),
           mock: lbe_io_mock_disj_dag_surface(),
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     ManualClaimAnchor { manual_anchor: ManualLbeTransformDagSurface } =>
       v2.std.diagnostic.Accepted {
@@ -1903,17 +1903,17 @@ fn testgen_concept_for_manual_claim(claim: v2.std.verification.TestClaim) -> Out
           subject: lbe_subject_transform_dag_surface(),
           mock: lbe_io_mock_transform_dag_surface(),
         },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     GeneratedClaimAnchor { generated_anchor: GeneratedCoproductExhaustiveness { coproduct_type: ct, omitted_variant: v } } =>
       v2.std.diagnostic.Accepted {
         value: DiagnosticExhaustiveness { coproduct_type: ct, omitted_variant: v },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     GeneratedClaimAnchor { generated_anchor: GeneratedCrossRepresentationEquality { modeled_coproduct: mc, native_realization: nr } } =>
       v2.std.diagnostic.Accepted {
         value: CrossRepresentationEquality { modeled_coproduct: mc, native_realization: nr },
-        diagnostics: None,
+        diagnostics: v2.std.diagnostic.None,
       }
     ManualClaimAnchor { manual_anchor: ManualRefinementNonEmptyListBase } =>
       match refinement_preservation_subject_nonempty_list_base() {
@@ -1922,7 +1922,7 @@ fn testgen_concept_for_manual_claim(claim: v2.std.verification.TestClaim) -> Out
             value: RefinementPreservation {
               subject: subject,
             },
-            diagnostics: None,
+            diagnostics: v2.std.diagnostic.None,
           }
         Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
@@ -1933,7 +1933,7 @@ fn testgen_concept_for_manual_claim(claim: v2.std.verification.TestClaim) -> Out
             value: AlgebraLaw {
               subject: subject,
             },
-            diagnostics: None,
+            diagnostics: v2.std.diagnostic.None,
           }
         Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }

@@ -107,7 +107,7 @@ fn bind_bind_value(
     value: v2.std.runtime.EvaluationEnvironment {
       bindings: map_insert(m: env.bindings, key: key, value: value)
     },
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   }
 }
 

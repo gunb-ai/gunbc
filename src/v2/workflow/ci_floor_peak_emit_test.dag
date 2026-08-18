@@ -86,7 +86,7 @@ test fn ci_floor_peak_pre_reset_if_has_teeth_holds() -> Bool {
   ) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried != "if echo reset > \"$d/memory.peak\" 2>/dev/null; then echo \"[calibration] floor_peak_pre reset=ok scope=floor cgroup=$d\"; fi")
-        && (dg == None)
+        && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

@@ -1531,7 +1531,7 @@ fn parse_diag_cons(d: v2.std.diagnostic.Diagnostic, acc: v2.std.diagnostic.Diagn
 }
 
 fn parse_diags_to_diagnostics(diags: List<v2.std.diagnostic.Diagnostic>) -> v2.std.diagnostic.Diagnostics {
-  fold_list_right(xs: diags, empty: None, snoc: fn(acc, d) { parse_diag_cons(d: d, acc: acc) })
+  fold_list_right(xs: diags, empty: v2.std.diagnostic.None, snoc: fn(acc, d) { parse_diag_cons(d: d, acc: acc) })
 }
 
 fn parse_diags_to_non_empty(diags: List<v2.std.diagnostic.Diagnostic>, default: v2.std.diagnostic.Diagnostic) -> v2.std.diagnostic.NonEmptyDiagnostics {
@@ -2173,7 +2173,7 @@ fn prepare_grammar(grammar: v2.std.grammar.ParseGrammar) -> Outcome<PreparedGram
   if well_formed(n: grammar_node) {
     match grammar {
       VoidGrammar =>
-        v2.std.diagnostic.Accepted { value: PreparedVoidGrammar, diagnostics: None }
+        v2.std.diagnostic.Accepted { value: PreparedVoidGrammar, diagnostics: v2.std.diagnostic.None }
       ModeledGrammar { root: root } =>
         match grammar_validate_and_analyze(root: root, at: at) {
           Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }

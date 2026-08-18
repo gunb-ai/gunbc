@@ -107,7 +107,7 @@ test fn classifier_does_not_call_retention_alone_retained_RED() -> Bool {
 
 
 test fn containment_read_finds_reason_behind_prepended_carrier() -> Bool {
-  reasons_contain(
+  gunbc.tools.frontier_ingestion_probe.reasons_contain(
     reasons: [
       ^body_lowering_reason_wrapper_retained_emitted,
       ^normalize_reason_post_normalize_not_well_formed
@@ -117,7 +117,7 @@ test fn containment_read_finds_reason_behind_prepended_carrier() -> Bool {
 }
 
 test fn containment_read_refuses_absent_reason_RED() -> Bool {
-  reasons_contain(
+  gunbc.tools.frontier_ingestion_probe.reasons_contain(
     reasons: [^body_lowering_reason_wrapper_retained_emitted],
     sym: ^normalize_reason_post_normalize_not_well_formed
   ) == false
@@ -165,11 +165,11 @@ fn observations_missing_one() -> List<gunbc.tools.frontier_ingestion_probe.Membe
 }
 
 test fn census_over_the_whole_roster_is_complete() -> Bool {
-  census_is_complete(obs: observations_for_whole_roster())
+  gunbc.tools.frontier_ingestion_probe.census_is_complete(obs: observations_for_whole_roster())
 }
 
 test fn census_missing_one_member_is_incomplete_RED() -> Bool {
-  census_is_complete(obs: observations_missing_one()) == false
+  gunbc.tools.frontier_ingestion_probe.census_is_complete(obs: observations_missing_one()) == false
 }
 
 // A count equality would accept this: fifteen observations, none of them a roster member.
@@ -177,7 +177,7 @@ test fn census_of_the_right_size_but_wrong_members_is_incomplete_RED() -> Bool {
   let wrong = fold_list(xs: frontier_roster, empty: [] as List<gunbc.tools.frontier_ingestion_probe.MemberObservation>, cons: fn(acc, m) {
     concat(acc, [gunbc.tools.frontier_ingestion_probe.MemberObservation { label: ^not_a_roster_member, stage: NormalizeOther }])
   })
-  census_is_complete(obs: wrong) == false
+  gunbc.tools.frontier_ingestion_probe.census_is_complete(obs: wrong) == false
 }
 
 

@@ -1650,7 +1650,7 @@ fn ts_sg2_arrow_xy_emitted() -> Node {
         form: ts_type_expression_projection().atom_form,
         identity: ^ts_binding_sg2_x
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     },
     output: target_type_expr_atom_emitted(
       form: ts_type_expression_projection().atom_form,
@@ -2029,7 +2029,7 @@ fn ts_primitive_bundle_from_bool_facts(facts: TsBooleanPrimitiveFacts) -> v2.std
 fn ts_numeric_primitive_fact_bundles() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: ts_numeric_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, row) {
       list_snoc_item(
         xs: acc,
@@ -2153,7 +2153,7 @@ fn ts_numeric_algebra_inhabitance_step(
 fn ts_numeric_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: ts_numeric_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, row) {
       ts_numeric_algebra_inhabitance_step(acc: acc, row: row)
     }
@@ -2272,7 +2272,7 @@ fn ts_formal_grammar_symbol_from_token(token: v2.std.compilers.target_model.Conc
 fn ts_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
@@ -3352,7 +3352,7 @@ fn ts_bigint_law_step(
 fn ts_number_law_decls() -> List<v2.std.model_core.AlgebraLawObligation> {
   fold_list(
     xs: ts_numeric_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, row) { ts_number_law_step(acc: acc, row: row) }
   )
 }
@@ -3360,7 +3360,7 @@ fn ts_number_law_decls() -> List<v2.std.model_core.AlgebraLawObligation> {
 fn ts_bigint_law_decls() -> List<v2.std.model_core.AlgebraLawObligation> {
   fold_list(
     xs: ts_numeric_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, row) { ts_bigint_law_step(acc: acc, row: row) }
   )
 }

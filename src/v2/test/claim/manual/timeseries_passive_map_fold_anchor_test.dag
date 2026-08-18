@@ -9,7 +9,7 @@ data timeseries_anchor_resistor: v2.std.timeseries_signal.ResistorMap = v2.std.t
 }
 
 data timeseries_anchor_current: v2.std.timeseries_signal.StepCurrent = v2.std.timeseries_signal.StepCurrent {
-  microamperes: current(2)
+  microamperes: v2.std.timeseries_signal.current(2)
 }
 
 data timeseries_anchor_capacitor: v2.std.timeseries_signal.CapacitorFold = v2.std.timeseries_signal.CapacitorFold {
@@ -28,7 +28,7 @@ data timeseries_anchor_inductor: v2.std.timeseries_signal.InductorFold = v2.std.
 }
 
 data timeseries_anchor_ind_initial: v2.std.timeseries_signal.InductorState = v2.std.timeseries_signal.InductorState {
-  current: v2.std.timeseries_signal.StepCurrent { microamperes: current(0) }
+  current: v2.std.timeseries_signal.StepCurrent { microamperes: v2.std.timeseries_signal.current(0) }
   flux_microwebers: flux_micro(0)
 }
 
@@ -47,7 +47,7 @@ data timeseries_anchor_tick0: v2.std.timeseries_signal.TimeSeriesSample = v2.std
 
 data timeseries_anchor_signal: v2.std.timeseries_signal.TimeSeriesSignal = std.algebra.Cons {
   head: timeseries_anchor_tick0,
-  tail: Empty
+  tail: std.algebra.Empty
 }
 
 test fn timeseries_anchor_resistor_map_holds() -> Bool {
@@ -64,7 +64,7 @@ test fn timeseries_signed_magnitude_resistor_map_holds() -> Bool {
       kind: MapStep
       rating: v2.std.timeseries_signal.ResistorRating { microohms: resistance_micro(1000) }
     },
-    current: v2.std.timeseries_signal.StepCurrent { microamperes: current(-3) },
+    current: v2.std.timeseries_signal.StepCurrent { microamperes: v2.std.timeseries_signal.current(-3) },
   )
   voltage_count(mapped.difference.microvolts) == -3000
 }
@@ -78,7 +78,7 @@ test fn timeseries_signed_magnitude_capacitor_fold_holds() -> Bool {
   match capacitor_fold_step(
     element: timeseries_anchor_capacitor,
     state: timeseries_signed_cap_initial_positive,
-    current: v2.std.timeseries_signal.StepCurrent { microamperes: current(-2) },
+    current: v2.std.timeseries_signal.StepCurrent { microamperes: v2.std.timeseries_signal.current(-2) },
     dt: timeseries_anchor_dt,
   ) {
     Accepted { value: stepped, diagnostics: _ } =>
@@ -103,16 +103,16 @@ test fn timeseries_anchor_capacitor_fold_holds() -> Bool {
 }
 
 data timeseries_anchor_current_low: v2.std.timeseries_signal.StepCurrent = v2.std.timeseries_signal.StepCurrent {
-  microamperes: current(2)
+  microamperes: v2.std.timeseries_signal.current(2)
 }
 
 data timeseries_anchor_current_high: v2.std.timeseries_signal.StepCurrent = v2.std.timeseries_signal.StepCurrent {
-  microamperes: current(4)
+  microamperes: v2.std.timeseries_signal.current(4)
 }
 
 data timeseries_anchor_current_pair: List<v2.std.timeseries_signal.StepCurrent> = std.algebra.Cons {
   head: timeseries_anchor_current_low,
-  tail: std.algebra.Cons { head: timeseries_anchor_current_high, tail: Empty }
+  tail: std.algebra.Cons { head: timeseries_anchor_current_high, tail: std.algebra.Empty }
 }
 
 test fn timeseries_anchor_capacitor_fold_chronological_holds() -> Bool {

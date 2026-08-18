@@ -65,7 +65,7 @@ fn job_run_demands(job: extdeps.github.actions.Job, fresh_scripts: List<String>)
     |> map(s => std.materialization_ladder.FrameDemand {
       identity: step_run_script(s: s),
       site: ci_step_site(job_id: job.id, step_name: step_display_name(s: s)),
-      nature: if string_list_contains(xs: fresh_scripts, wanted: step_run_script(s: s)) {
+      nature: if std.materialization_ladder.string_list_contains(xs: fresh_scripts, wanted: step_run_script(s: s)) {
         FreshEffect
       } else {
         IdempotentEffect
@@ -82,7 +82,7 @@ fn workflow_run_demands(w: extdeps.github.actions.Workflow, fresh_scripts: List<
 
 fn job_scripts_named(job: extdeps.github.actions.Job, names: List<String>) -> List<String> {
   job.steps
-    |> filter(s => step_is_run(s: s) && string_list_contains(xs: names, wanted: step_display_name(s: s)))
+    |> filter(s => step_is_run(s: s) && std.materialization_ladder.string_list_contains(xs: names, wanted: step_display_name(s: s)))
     |> map(s => step_run_script(s: s))
 }
 

@@ -244,7 +244,7 @@ fn ecmascript_primitive_fact_bundles_from_catalog_rows<T>(
 ) -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: rows,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, row) {
       list_snoc_item(xs: acc, item: row_to_bundle(row))
     }
@@ -534,7 +534,7 @@ fn ecmascript_boolean_algebra_inhabitance(facts: EcmascriptBooleanPrimitiveFacts
 fn ecmascript_number_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: ecmascript_number_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: ecmascript_number_algebra_inhabitance(facts: facts))
     }
@@ -544,7 +544,7 @@ fn ecmascript_number_algebra_inhabitance_decls() -> List<v2.std.model_core.Algeb
 fn ecmascript_bigint_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: ecmascript_bigint_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: ecmascript_bigint_algebra_inhabitance(facts: facts))
     }
@@ -554,7 +554,7 @@ fn ecmascript_bigint_algebra_inhabitance_decls() -> List<v2.std.model_core.Algeb
 fn ecmascript_boolean_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: ecmascript_boolean_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: ecmascript_boolean_algebra_inhabitance(facts: facts))
     }
@@ -667,7 +667,7 @@ fn ecmascript_serialize_source_node() -> Node {
 fn ecmascript_formal_rhs_from_token_classes() -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: ecmascript_concrete_tokens(),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
@@ -738,7 +738,7 @@ fn ecmascript_formal_alternatives_to_choice_expr(alts: List<List<v2.std.grammar.
 }
 
 fn ecmascript_formal_rhs_alternatives_accum_empty() -> List<List<v2.std.grammar.FormalGrammarSymbol>> {
-  Empty
+  std.algebra.Empty
 }
 
 fn ecmascript_formal_collect_rhs_alternative(
@@ -1001,7 +1001,7 @@ fn ecmascript_grammar_root() -> v2.std.grammar.GrammarRoot {
             grammar_formal_nonterminal_occurrence(identity: ^ecmascript_production_block)
           ]
         ),
-        alts: Empty,
+        alts: std.algebra.Empty,
         emitted: ^ecmascript_surface_fn_item
       ),
 
@@ -1050,7 +1050,7 @@ fn ecmascript_grammar_root() -> v2.std.grammar.GrammarRoot {
             grammar_formal_terminal(identity: ^ecmascript_token_semicolon)
           ]
         ),
-        alts: Empty,
+        alts: std.algebra.Empty,
         emitted: ^ecmascript_surface_assign_stmt
       ),
 
@@ -1064,7 +1064,7 @@ fn ecmascript_grammar_root() -> v2.std.grammar.GrammarRoot {
             grammar_formal_nonterminal_occurrence(identity: ^ecmascript_production_return_stmt)
           ]
         ),
-        alts: Empty,
+        alts: std.algebra.Empty,
         emitted: ^ecmascript_surface_if_stmt
       ),
 
@@ -1104,7 +1104,7 @@ fn ecmascript_grammar_root() -> v2.std.grammar.GrammarRoot {
             grammar_formal_nonterminal_occurrence(identity: ^ecmascript_production_comparison_tail)
           ]
         ),
-        alts: Empty,
+        alts: std.algebra.Empty,
         emitted: ^ecmascript_surface_comparison
       ),
 
@@ -1116,7 +1116,7 @@ fn ecmascript_grammar_root() -> v2.std.grammar.GrammarRoot {
             grammar_formal_nonterminal_occurrence(identity: ^ecmascript_production_additive)
           ]
         ),
-        alts: [grammar_formal_production(lhs: ^ecmascript_production_comparison_tail, rhs: Empty)],
+        alts: [grammar_formal_production(lhs: ^ecmascript_production_comparison_tail, rhs: std.algebra.Empty)],
         emitted: ^ecmascript_surface_comparison_tail
       ),
       ecmascript_formal_productions_to_grammar_production(
@@ -1127,7 +1127,7 @@ fn ecmascript_grammar_root() -> v2.std.grammar.GrammarRoot {
             grammar_formal_nonterminal_occurrence(identity: ^ecmascript_production_additive_tail)
           ]
         ),
-        alts: Empty,
+        alts: std.algebra.Empty,
         emitted: ^ecmascript_surface_additive
       ),
 
@@ -1140,7 +1140,7 @@ fn ecmascript_grammar_root() -> v2.std.grammar.GrammarRoot {
             grammar_formal_nonterminal_occurrence(identity: ^ecmascript_production_additive_tail)
           ]
         ),
-        alts: [grammar_formal_production(lhs: ^ecmascript_production_additive_tail, rhs: Empty)],
+        alts: [grammar_formal_production(lhs: ^ecmascript_production_additive_tail, rhs: std.algebra.Empty)],
         emitted: ^ecmascript_surface_additive_tail
       ),
       ecmascript_formal_productions_to_grammar_production(

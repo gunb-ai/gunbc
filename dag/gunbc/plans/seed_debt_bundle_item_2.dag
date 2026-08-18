@@ -7,11 +7,11 @@ fn seed_debt_bundle_item_2_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "0. Verdict — HAND_MAINTAINED exemptions vs authority models"),
     p(text: "Both `main.rs` and `v1_compiler_parse.rs` are **`HAND_MAINTAINED_STAGE0_FILES`** on `origin/main` (`regen_stage0.rs:141`, `:148`) with explicit dissolution comments. Full dissolution = model + emit-wiring + move-to-`GENERATED` + `regen --verify` byte-identical (operator superset-diff playbook). **#5894 grounds fork B only; it does not retire either exemption.**"),
     std.markdown.TableBlock {
-      header: row(cells: [cell(text: "seed file"), cell(text: "committed behavior"), cell(text: "#5894"), cell(text: "exemption retirement (follow-up)")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "seed file"), cell(text: "committed behavior"), cell(text: "#5894"), cell(text: "exemption retirement (follow-up)")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "`main.rs`"), cell(text: "`DependencyPoolIndex`, `--dependency-pool-index`, `pool_fill_only` indexing"), cell(text: "`gunbc.compile_source_model` + `compile_source_model_witnesses` (pure floor witness)"), cell(text: "wire `05_emit_rust.dag` main-emit → move to `GENERATED_STAGE0_FILES` → `regen --verify`")]),
-        row(cells: [cell(text: "`v1_compiler_parse.rs`"), cell(text: "O(N) `TokenStream` cursor (#5864)"), cell(text: "**deferred** — no `02_parse` edits, no floor sidecar"), cell(text: "ground cursor in `02_parse.dag` + emit → move to `GENERATED` → `regen --verify`")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "`main.rs`"), cell(text: "`DependencyPoolIndex`, `--dependency-pool-index`, `pool_fill_only` indexing"), cell(text: "`gunbc.compile_source_model` + `compile_source_model_witnesses` (pure floor witness)"), cell(text: "wire `05_emit_rust.dag` main-emit → move to `GENERATED_STAGE0_FILES` → `regen --verify`")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "`v1_compiler_parse.rs`"), cell(text: "O(N) `TokenStream` cursor (#5864)"), cell(text: "**deferred** — no `02_parse` edits, no floor sidecar"), cell(text: "ground cursor in `02_parse.dag` + emit → move to `GENERATED` → `regen --verify`")]),
       ],
     },
     h2(text: "1. Fork A — parse cursor (deferred; not #5894)"),

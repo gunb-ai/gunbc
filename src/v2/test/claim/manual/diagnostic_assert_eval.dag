@@ -32,7 +32,7 @@ data rejected_other: Outcome<Node> = v2.std.diagnostic.Rejected {
 
 data accepted_actual: Outcome<Node> = v2.std.diagnostic.Accepted {
   value: diag_assert_node(),
-  diagnostics: None
+  diagnostics: v2.std.diagnostic.None
 }
 
 data witness_diagnostic_claim_match: v2.std.verification.TestClaim = v2.std.verification.DiagnosticClaim {

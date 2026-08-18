@@ -27,7 +27,7 @@ fn fp_readthrough_read_failure_subject() -> v2.compiler.self_host.frontier_probe
   fp_readthrough_closure_subject_matching_digest(
     refs: std.algebra.Cons {
       head: fp_readthrough_missing_path_ref(),
-      tail: Empty
+      tail: std.algebra.Empty
     },
     ingest_read_count: 1,
     entry: fp_readthrough_missing_path_ref()
@@ -46,7 +46,7 @@ fn fp_readthrough_hash_mismatch_subject() -> v2.compiler.self_host.frontier_prob
   fp_readthrough_closure_subject_matching_digest(
     refs: std.algebra.Cons {
       head: fp_readthrough_wrong_hash_ref(),
-      tail: Empty
+      tail: std.algebra.Empty
     },
     ingest_read_count: 1,
     entry: fp_readthrough_wrong_hash_ref()

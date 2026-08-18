@@ -139,10 +139,10 @@ type CommitWriterArtifactClassificationResolution
     }
 
 fn commit_writer_classify_artifact(
-  module_storage: List<ModuleStorageBinding>,
-  path: GitPath,
-  indexed_oid: GitObjectId,
-  artifact: Artifact,
+  module_storage: List<v2.compiler.source_authority.ModuleStorageBinding>,
+  path: extdeps.git.object_store.GitPath,
+  indexed_oid: extdeps.git.object_store.GitObjectId,
+  artifact: v2.std.artifact.Artifact,
 ) -> CommitWriterArtifactClassificationResolution {
   if bytes_octets(b: utf8_encode_bytes(s: artifact.file_path)) != git_path_octets(path: path) {
     CommitWriterArtifactClassificationRefused {
@@ -175,7 +175,7 @@ fn commit_writer_classify_artifact(
 
 fn commit_writer_text_classification_receipt(
   text: String,
-  marker_grammar: GitEffectiveConflictMarkerGrammar,
+  marker_grammar: extdeps.git.object_store.GitEffectiveConflictMarkerGrammar,
   artifact: CommitWriterArtifactClassificationReceipt,
 ) -> CommitWriterBlobClassificationReceipt {
   CommitWriterBlobClassificationReceipt {
@@ -213,7 +213,7 @@ fn commit_writer_refused_artifact_classification_receipt(
 
 fn commit_writer_text_unclaimed_classification_receipt(
   text: String,
-  marker_grammar: GitEffectiveConflictMarkerGrammar,
+  marker_grammar: extdeps.git.object_store.GitEffectiveConflictMarkerGrammar,
 ) -> CommitWriterBlobClassificationReceipt {
   CommitWriterBlobClassificationReceipt {
     observed: CommitWriterBlobTextUnclaimed { text: text, marker_grammar: marker_grammar }
@@ -279,10 +279,10 @@ fn conflict_marker_line_has_prefix(line: String, marker: String) -> Bool {
 
 fn conflict_marker_parse_line(
   fold_state: ConflictMarkerParseFold,
-  path: GitPath,
+  path: extdeps.git.object_store.GitPath,
   line: String,
   line_number: Int,
-  grammar: GitEffectiveConflictMarkerGrammar,
+  grammar: extdeps.git.object_store.GitEffectiveConflictMarkerGrammar,
 ) -> ConflictMarkerParseFold {
   if conflict_marker_line_has_prefix(line: line, marker: git_conflict_marker_begin(grammar: grammar)) {
     ConflictMarkerParseFold {
@@ -339,8 +339,8 @@ fn conflict_marker_parse_line(
 fn conflict_marker_locations_from_lines_at(
   lines: List<String>,
   index: Int,
-  path: GitPath,
-  grammar: GitEffectiveConflictMarkerGrammar,
+  path: extdeps.git.object_store.GitPath,
+  grammar: extdeps.git.object_store.GitEffectiveConflictMarkerGrammar,
   parsed: ConflictMarkerParseFold,
 ) -> List<ConflictMarkerLocation> {
   if index >= count(lines) {
@@ -364,8 +364,8 @@ fn conflict_marker_locations_from_lines_at(
 
 fn conflict_marker_locations_from_lines(
   lines: List<String>,
-  path: GitPath,
-  grammar: GitEffectiveConflictMarkerGrammar,
+  path: extdeps.git.object_store.GitPath,
+  grammar: extdeps.git.object_store.GitEffectiveConflictMarkerGrammar,
 ) -> List<ConflictMarkerLocation> {
   conflict_marker_locations_from_lines_at(
     lines: lines,
@@ -380,9 +380,9 @@ fn conflict_marker_locations_from_lines(
 }
 
 fn commit_writer_text_marker_refusals(
-  path: GitPath,
+  path: extdeps.git.object_store.GitPath,
   text: String,
-  grammar: GitEffectiveConflictMarkerGrammar,
+  grammar: extdeps.git.object_store.GitEffectiveConflictMarkerGrammar,
 ) -> List<CommitWriterRefusal> {
   map(
     conflict_marker_locations_from_lines(
@@ -399,16 +399,16 @@ fn commit_writer_text_marker_refusals(
 data commit_writer_index_filter_capture_scaffold: String = "DECLARED SCAFFOLD (gunbc#7480, 2026-08-02). The body below selects entries with flat_map rather than the obvious filter(index, entry => entry.path == path), and that spelling is NOT a preference -- the filter form does not compile in this module. ROOT CAUSE, bisected and reproduced: src/v2/std/algebra.dag declares fn filter<T>(xs: FreeMonoid<T>, predicate: fn(T) -> Bool). This module does not import v2.std.algebra, but it imports v2.compiler.source_authority, which drags the whole v2 compiler closure -- including v2.std.algebra -- into the module pool. The bare name filter then binds to THAT declaration instead of the builtin, List<GitIndexEntry> does not unify with FreeMonoid<T>, the lambda parameter stays an unbound T, and the module fails with `no field path on type T`. THE DISCRIMINATING MEASUREMENT: importing v2.std.algebra for `length` ALONE -- never filter -- is sufficient to break it, and deleting only the source_authority import makes the original filter form compile. So this is name capture by POOL MEMBERSHIP, not by the import list, which is exactly the DESIGN #6985 Class B failure mode in its inverting direction: an unrelated import pulls a module into the pool whose declaration captures a bare name that was resolving correctly. It is silent -- nothing reports that filter rebound. Hypotheses REFUTED by execution first, recorded so nobody repeats them: a trailing comma in the parameter list; filter over an imported record type; List not being imported; two filter calls over different element types in one module; a lambda or parameter name colliding with an imported symbol; cross-call-site unification collapsing the element type. The sibling function below uses flat_map over the same type with the same `entry` binding and compiles, which is what makes flat_map a safe carrier here. The source_authority import CANNOT simply be dropped: ModuleStorageBinding, ParsedFromSource and ProducedByBehavior are all genuinely used by this module. DISSOLVE-ON: the namespace-only name-resolution lane makes the containment tree the single naming authority, so a module not in the import list can no longer capture a bare reference; at that point restore the filter spelling and delete this row. This scaffold changes NO behaviour -- it selects exactly the entries whose path matches, as filter did."
 
 fn commit_writer_index_entries_for_path(
-  index: List<GitIndexEntry>,
-  path: GitPath,
-) -> List<GitIndexEntry> {
+  index: List<extdeps.git.object_store.GitIndexEntry>,
+  path: extdeps.git.object_store.GitPath,
+) -> List<extdeps.git.object_store.GitIndexEntry> {
   flat_map(index, entry => if entry.path == path { [entry] } else { [] })
 }
 
 fn commit_writer_normal_index_entries_for_path(
-  index: List<GitIndexEntry>,
-  path: GitPath,
-) -> List<GitIndexEntry> {
+  index: List<extdeps.git.object_store.GitIndexEntry>,
+  path: extdeps.git.object_store.GitPath,
+) -> List<extdeps.git.object_store.GitIndexEntry> {
   flat_map(
     commit_writer_index_entries_for_path(index: index, path: path),
     entry => match entry.stage {
@@ -421,15 +421,15 @@ fn commit_writer_normal_index_entries_for_path(
 }
 
 fn commit_writer_index_stages_for_path(
-  index: List<GitIndexEntry>,
-  path: GitPath,
-) -> List<GitIndexStage> {
+  index: List<extdeps.git.object_store.GitIndexEntry>,
+  path: extdeps.git.object_store.GitPath,
+) -> List<extdeps.git.object_store.GitIndexStage> {
   map(commit_writer_index_entries_for_path(index: index, path: path), entry => entry.stage)
 }
 
 fn commit_writer_prior_unmerged_stage_count(
-  index: List<GitIndexEntry>,
-  path: GitPath,
+  index: List<extdeps.git.object_store.GitIndexEntry>,
+  path: extdeps.git.object_store.GitPath,
   before: Int,
 ) -> Int {
   count(flat_map(
@@ -448,7 +448,7 @@ fn commit_writer_prior_unmerged_stage_count(
 }
 
 fn commit_writer_unmerged_index_refusals_at(
-  index: List<GitIndexEntry>,
+  index: List<extdeps.git.object_store.GitIndexEntry>,
   at: Int,
 ) -> List<CommitWriterRefusal> {
   if at >= count(index) {
@@ -503,8 +503,8 @@ fn commit_writer_unmerged_index_refusals_at(
 }
 
 fn commit_writer_prior_normal_stage_count(
-  index: List<GitIndexEntry>,
-  path: GitPath,
+  index: List<extdeps.git.object_store.GitIndexEntry>,
+  path: extdeps.git.object_store.GitPath,
   before: Int,
 ) -> Int {
   count(flat_map(
@@ -523,7 +523,7 @@ fn commit_writer_prior_normal_stage_count(
 }
 
 fn commit_writer_duplicate_normal_index_refusals_at(
-  index: List<GitIndexEntry>,
+  index: List<extdeps.git.object_store.GitIndexEntry>,
   at: Int,
 ) -> List<CommitWriterRefusal> {
   if at >= count(index) {
@@ -569,14 +569,14 @@ fn commit_writer_duplicate_normal_index_refusals_at(
 
 fn commit_writer_blobs_for_path(
   blobs: List<CommitWriterStagedBlobObservation>,
-  path: GitPath,
+  path: extdeps.git.object_store.GitPath,
 ) -> List<CommitWriterStagedBlobObservation> {
   flat_map(blobs, blob => if blob.path == path { [blob] } else { [] })
 }
 
 fn commit_writer_prior_blob_count(
   blobs: List<CommitWriterStagedBlobObservation>,
-  path: GitPath,
+  path: extdeps.git.object_store.GitPath,
   before: Int,
 ) -> Int {
   count(flat_map(
@@ -624,7 +624,7 @@ fn commit_writer_duplicate_blob_refusals_at(
 fn commit_writer_artifact_refusals(
   blob: CommitWriterStagedBlobObservation,
   receipt: CommitWriterArtifactClassificationReceipt,
-  module_storage: List<ModuleStorageBinding>,
+  module_storage: List<v2.compiler.source_authority.ModuleStorageBinding>,
 ) -> List<CommitWriterRefusal> {
   append(
     if receipt.path == blob.path {
@@ -666,7 +666,7 @@ fn commit_writer_artifact_refusals(
 
 fn commit_writer_blob_classification_refusals(
   blob: CommitWriterStagedBlobObservation,
-  module_storage: List<ModuleStorageBinding>,
+  module_storage: List<v2.compiler.source_authority.ModuleStorageBinding>,
 ) -> List<CommitWriterRefusal> {
   match blob.classification.observed {
     CommitWriterBlobClassificationUnavailable { cause } =>
@@ -824,9 +824,9 @@ fn admit_commit_writer(
 data commit_writer_complete_staged_index_blob_observation_transport_note: String = "REALIZATION for commit_writer_complete_staged_index_blob_observation_transport (commit_writer_binding_work). Decodes the real staged index via git.Core.LsFilesStageZInRepo + git_decode_ls_files_stage_z, reads each GitIndexStageNormal blob's content via git.Core.CatFileBlobInRepo keyed on the index oid — both repo-scoped (git -C dispatched to the repo argument), matching the existing *InRepo operation family in extdeps.git.git rather than assuming the process cwd, so the same fold is exercisable against a throwaway test repository and not only the actuator's invocation directory (never a caller-supplied oid, so content_oid == indexed_oid is an honest fetch-by-that-exact-oid check, not a tautology), classifies each blob against heal_writer_claims_no_fixture_exemptions, the declared-empty ModuleStorageIndex policy this writer holds (see heal_writer_claims_no_fixture_exemptions_note for why and its named limitation), matched by GitPath octets, and falls to the CommitWriterBlobTextUnclaimed absence arm (still fully marker-scanned) for every blob because no binding is ever held. Two named residues, unchanged from commit_writer_admission_note: text-vs-non-text is not independently observed (every fetched blob is treated as text, matching the existing observer-trusted residue), and the marker grammar is Git's documented default width of seven rather than an observed gitattributes conflict-marker-size (no attribute-reading operation exists yet; a narrower grammar only widens what refuses, never what silently admits, so this is a strict subset of the true refusal set, not a fail-open). GitObjectFormatSha1 is hardcoded because this repository's object database is SHA-1; a SHA-256 repository would need this as a parameter, not assumed."
 
 fn commit_writer_candidate_artifacts_for_path(
-  module_storage: List<ModuleStorageBinding>,
-  path: GitPath,
-) -> List<Artifact> {
+  module_storage: List<v2.compiler.source_authority.ModuleStorageBinding>,
+  path: extdeps.git.object_store.GitPath,
+) -> List<v2.std.artifact.Artifact> {
   flat_map(
     module_storage,
     binding => match binding.provenance {
@@ -842,11 +842,11 @@ fn commit_writer_candidate_artifacts_for_path(
 }
 
 fn commit_writer_classify_staged_blob(
-  module_storage: List<ModuleStorageBinding>,
-  path: GitPath,
-  indexed_oid: GitObjectId,
+  module_storage: List<v2.compiler.source_authority.ModuleStorageBinding>,
+  path: extdeps.git.object_store.GitPath,
+  indexed_oid: extdeps.git.object_store.GitObjectId,
   text: String,
-  grammar: GitEffectiveConflictMarkerGrammar,
+  grammar: extdeps.git.object_store.GitEffectiveConflictMarkerGrammar,
 ) -> CommitWriterBlobClassificationReceipt {
   match first(commit_writer_candidate_artifacts_for_path(module_storage: module_storage, path: path)) {
     Absent => commit_writer_text_unclaimed_classification_receipt(text: text, marker_grammar: grammar)
@@ -866,9 +866,9 @@ fn commit_writer_classify_staged_blob(
 }
 
 fn commit_writer_observe_staged_blob(
-  repo: FilePath,
-  module_storage: List<ModuleStorageBinding>,
-  entry: GitIndexEntry,
+  repo: std.types.FilePath,
+  module_storage: List<v2.compiler.source_authority.ModuleStorageBinding>,
+  entry: extdeps.git.object_store.GitIndexEntry,
 ) -> CommitWriterStagedBlobObservation {
   let hex = git_object_id_wire_hex(oid: entry.oid) as String
   let read = git.Core.CatFileBlobInRepo(repo: repo, oid: hex)
@@ -882,7 +882,7 @@ fn commit_writer_observe_staged_blob(
         path: entry.path,
         indexed_oid: entry.oid,
         text: read.content,
-        grammar: GitEffectiveConflictMarkerGrammar { size: 7 },
+        grammar: extdeps.git.object_store.GitEffectiveConflictMarkerGrammar { size: 7 },
       )
     } else {
       commit_writer_unavailable_classification_receipt(
@@ -893,9 +893,9 @@ fn commit_writer_observe_staged_blob(
 }
 
 fn commit_writer_observe_staged_blobs(
-  repo: FilePath,
-  module_storage: List<ModuleStorageBinding>,
-  index: List<GitIndexEntry>,
+  repo: std.types.FilePath,
+  module_storage: List<v2.compiler.source_authority.ModuleStorageBinding>,
+  index: List<extdeps.git.object_store.GitIndexEntry>,
 ) -> List<CommitWriterStagedBlobObservation> {
   flat_map(
     index,
@@ -915,9 +915,9 @@ type CommitWriterTransportObservation
 
 data heal_writer_claims_no_fixture_exemptions_note: String = "POLICY, NOT A FALLBACK. observe_complete_staged_commit's caller (heal_admit / HealAutocommit) never stages genuine test fixtures — it stages only generated artifacts — so it declares up front that it holds no ModuleStorageBinding rows and therefore claims no TestClaimArtifact fixture exemption for anything it stages. This is v2.compiler.source_authority module_storage_bindings_for_source_roots's Empty ModuleStorageIndex written directly as a typed declaration at this call site, never produced by a Rejected/failure arm — no path through observe_complete_staged_commit can reach an empty or absent module_storage by way of a failure; the only way to get one is this declaration. Per commit_writer_admission_note's absence-arm design, an empty module_storage costs nothing on this path: every staged blob is CommitWriterBlobTextUnclaimed or CommitWriterBlobNonTextUnclaimed and still receives the full commit_writer_text_marker_refusals conflict-marker scan; only a claimed TestClaimArtifact receipt would have skipped it, and this writer never holds one. NAMED LIMITATION: a staged blob that is genuinely TestClaimArtifact-shaped and contains conflict-marker-looking bytes (a real fixture with embedded begin/separator/end tokens) refuses under this policy, because the declaration cannot distinguish it from ordinary content — a false refusal, not a missed defect, and diagnosable in one read from this note rather than hidden behind a relaxed gate. Not chosen for this callsite: real module-storage supply. module_storage_bindings_for_source_roots(source_roots: [\"dag\", \"src/v2\"]) is currently an always-Rejecting scaffold with no live in-graph host dispatch (source_authority.dag module_storage_bindings_for_source_roots_host_disposition / module_storage_supply_unbound_body_note), and the manifest-overlay-supply mechanism used elsewhere (module_binding_supply_transport.dag) does not fit here: discover_source_root_ingest mints ^-edge identifiers from source-file basenames with no keyword-escaping, so scanning dag/ mints ^capability, ^module, ^import — all reserved .dag keywords (extdeps_languages_dag_syntax.rs dag_keyword_set) — for dag/extdeps/bmc/capability.dag, dag/extdeps/languages/go/module.dag, and dag/std/import.dag respectively, producing syntactically invalid overlay output for any scope touching dag/. DISSOLUTION TRIGGER: this declaration dissolves in favor of a real module_storage_bindings_for_source_roots binding once (a) that scaffold gains a live host dispatch, or (b) the manifest-overlay identifier-minting defect is fixed and re-verified end-to-end; either bounds a real fixture-exemption receipt for this writer instead of the empty declaration."
 
-data heal_writer_claims_no_fixture_exemptions: List<ModuleStorageBinding> = Empty
+data heal_writer_claims_no_fixture_exemptions: List<v2.compiler.source_authority.ModuleStorageBinding> = std.algebra.Empty
 
-fn observe_complete_staged_commit(repo: FilePath, writer: CommitWriter) -> CommitWriterTransportObservation {
+fn observe_complete_staged_commit(repo: std.types.FilePath, writer: CommitWriter) -> CommitWriterTransportObservation {
   let ls_files = git.Core.LsFilesStageZInRepo(repo: repo)
   if !ls_files.success {
     CommitWriterTransportRefused {
@@ -941,12 +941,12 @@ fn observe_complete_staged_commit(repo: FilePath, writer: CommitWriter) -> Commi
   }
 }
 
-fn commit_writer_heal_admission_gate(repo: FilePath, writer: CommitWriter) -> ProcessExit {
+fn commit_writer_heal_admission_gate(repo: std.types.FilePath, writer: CommitWriter) -> std.process.ProcessExit {
   match observe_complete_staged_commit(repo: repo, writer: writer) {
     CommitWriterTransportRefused { reason } => exit_failure(reason: reason)
     CommitWriterTransportObserved { observation } =>
       match admit_commit_writer(writer: writer, observation: observation) {
-        CommitWriterAdmitted { writer: _, coverage: _ } => ExitSuccess
+        CommitWriterAdmitted { writer: _, coverage: _ } => std.process.ExitSuccess
         CommitWriterRefused { writer: _, refusals: _ } =>
           exit_failure(
             reason: "commit writer heal admission refused: the staged index carries at least one unmerged, unclaimed-and-marked, or mismatched blob — refusing to commit (DESIGN section 5)",
@@ -955,8 +955,8 @@ fn commit_writer_heal_admission_gate(repo: FilePath, writer: CommitWriter) -> Pr
   }
 }
 
-fn heal_admit() -> ProcessExit {
-  commit_writer_heal_admission_gate(repo: "." as FilePath, writer: HealAutocommit)
+fn heal_admit() -> std.process.ProcessExit {
+  commit_writer_heal_admission_gate(repo: "." as std.types.FilePath, writer: HealAutocommit)
 }
 
 data commit_writer_heal_skew_conflict_arm_provisional_bytes_residue_note: String = "commit_writer_heal_admission_gate DOES NOT discharge CommitWriterHealSkewConflictArm's full obligation in commit_writer_binding_work — a second, distinct defect in ci_heal_skew_guard_emit.dag's conflict arm survives this gate by construction, not by oversight. That arm resolves (git checkout --ours), stages (git add), and THEN commits provisional ours-side bytes BEFORE ci_heal_regen_step runs and produces the actually-correct bytes, which ci_heal_commit_push_step commits a second time — two pushed commits, the first authored by no one and immediately contradicted by the second (the #7870 shape, reproduced by the guard's own design, per operator analysis msg_8723bc93). This gate runs against exactly that provisional-ours commit: the index is clean (every entry GitIndexStageNormal, admit_commit_writer's unmerged-index check does not fire) and the resolved text carries no conflict markers (the conflict-marker check does not fire), so admit_commit_writer correctly ADMITS it — nothing this gate models is violated by provisional-but-unregenerated bytes, because staleness-versus-regenerated-authority is not a fact this observation carries. What this gate closes: a FAILED resolution reaching the arm's commit with unmerged stages or live conflict markers still present (the CommitWriterUnmergedIndexRefusal / CommitWriterConflictMarkerTextRefusal arms). What stays open, as its own row with its own trigger: the conflict arm should not commit provisional bytes at all — leave the resolution staged, let regen run, commit once with regenerated bytes — which is a merge-state semantics change to a load-bearing CI flow (a merge must be concluded; ci_heal_commit_push_step filters to auto-push-eligible paths, so whether it would carry the staged merge resolution as-is is unverified) requiring its own design pass, not inferred under this brief. Next trigger: that reorder lands as its own PR against ci_heal_skew_guard_emit.dag's ci_heal_skew_conflict_arm."
@@ -1026,15 +1026,15 @@ type CommitWorkflowRealizationBinding {
   artifact: gunbc.generated_artifact.GeneratedArtifact
 }
 
-data githooks_pre_push_artifact_drift_gate_removed_disposition: Disposition = Terminal {
+data githooks_pre_push_artifact_drift_gate_removed_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "GeneratedArtifactDriftGate's GitPrePushHook enrollment REMOVED 2026-07-22 (fleet incident: this gate broke pushes fleet-wide — measured ~61min/2,176 witnesses on a rebased force-push touching measure.dag, since committed_generated_artifacts() regeneration walks the whole generated-artifact corpus, not an affected-set slice). Fail-closed verification before removal (DESIGN §5 — do not drop a check without confirming the authoritative boundary still covers it): GeneratedArtifactDriftGate stays enrolled on GithubActionsCiJob, which the required `ci` job runs via src/v2/workflow/ci_floor_plan.dag gunbc_ci_floor_plan (dag/gunbc/ci_spec.dag ci_gate list, RunnableSingleClaim on generated_artifact_drift_gate_passes); that same floor run is what stamps the merge-admission receipt tools.merge_admission_gate.dag reads at merge time, so drift is still a hard merge-time wall — pre-push was a redundant SECOND full-corpus run of the same unscoped check (DESIGN §2: duplicated work, not added safety), not the only place it was enforced. This mirrors the fmt precedent recorded in commit_gate_rust_suite_removed_disposition below: a git hook is opt-in per clone (core.hooksPath), bypassable with --no-verify, and absent in container worktrees, so it was never a sound enforcement AUTHORITY — only fast local feedback. The pre-push hook keeps the cheap guards (uncommitted-tree check, doc-reachability witness on the ReadsLiveTree entry, cargo fmt --all --check) and gunbc_ci_witness_corpus_only_batches' declared affected-set-scoped test gate (see its own note: deliberately narrowed to the hermetic discovery corpus, not this whole-corpus regen sweep). No skip env var was added — the heavy arm is gone from the model, not hidden behind a toggle (DESIGN §5 no-escape-hatches)."
 }
 
-data githooks_pre_push_slimmed_to_fmt_disposition: Disposition = Terminal {
+data githooks_pre_push_slimmed_to_fmt_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "The pre-push hook was SLIMMED TO FMT-ONLY 2026-07-25 (operator ruling): 'Pre-push hook restored to fmt-only per CLAUDE.md's documented contract; the witness corpus belongs to CI, not the push path.' Removed from the GitPrePushHook surface: the doc-reachability CommitWitnessClaim enrollment, and (in gunbc.githooks_pre_push_emit) the whole `claim_batch --pre-push` shim — the affected-set WitnessCorpusRun gate, the DocWitnessRun gate, and the in-hook `cargo build -p v1-compiler --bin claim_batch` that ran from inside a push when the binary was missing. Fail-closed verification before removal (DESIGN §5 — do not drop a check without confirming the authoritative boundary still covers it): cargo fmt --all --check remains a required-path CI step (gunbc.ci_spec ci_fmt_gate_note — build runs it first, and ci needs:[build]); the witness corpus remains the required `ci` floor via gunbc_ci_floor_plan, which also stamps the merge-admission receipt tools.merge_admission_gate.dag reads; and dag/test/claim/doc_reachability_witness_test.dag keeps its cadence through the floor's discovery-corpus scan (CiSpec.discovery_scan_dirs covers dag/test/claim), so the doc-reachability rows lose no coverage — only their redundant second run on the push path. NOTHING LOSES ENFORCEMENT BECAUSE THE HOOK NEVER PROVIDED ANY: it is opt-in per clone (core.hooksPath), bypassable with --no-verify, absent in container worktrees, and PROVEN ineffective by #6658 (an unformatted .rs landed on main and no hook caught it) — the same argument commit_gate_rust_suite_removed_disposition and githooks_pre_push_artifact_drift_gate_removed_disposition already make. What the weight DID buy was harm: a non-authority check heavy enough to make a legitimately-red mid-lane branch feel unpushable is pressure that converts honest reds into workaround greens, and it was priced — three rounds of hand-import workarounds, one decorative gate, and the normalization of --no-verify on the namespace type-binding lane (2026-07-25). A check that cannot enforce should at least be instant. Explicitly DECLINED as the alternative: branch-level expected-red exemption machinery — building configuration so a non-authority check can be tolerated invests in a mechanism that should not carry this weight at all, and slimming dissolves the need. No skip env var was added; the heavy arms are gone from the model, not hidden behind a toggle (DESIGN §5 no-escape-hatches). Re-heavying requires a GitPrePushHook roster edit, which dag/test/claim/githooks_pre_push_emit_test.dag reds on."
 }
 
-data commit_gate_rust_suite_removed_disposition: Disposition = Terminal {
+data commit_gate_rust_suite_removed_disposition: std.disposition.Disposition = std.disposition.Terminal {
   reason: "The v1 Rust test suite (cargo fmt --all --check plus cargo nextest run -p v1-compiler-tests) was REMOVED from CI 2026-07-11 (operator ruling) — its RustMonolithGate enrollment, the rust_tests job, and rust_gates_ci.dag's CI consumers are all gone. This records the removal as intentional, not silent (the review-flagged concern). Rationale: rust_tests was NON-required (only the ci job is protection-required on the gunbc main ruleset; rust_tests and ci_regen were not) AND red on main (it exercises the v1 seed, which is being deleted under the §7 burn-down), so it delivered a permanent non-required red — the §5 tolerated-red anti-pattern — at ~37 GiB, the fleet's single largest CI memory job. AMENDED 2026-07-15 (operator ruling, the falsifier lane): the fmt HALF of this removal is REVERSED — cargo fmt --all --check is re-enrolled as a standalone build-job step (gunbc.ci_spec ci_fmt_gate_note / ci_fmt_gate_line). Every rationale above is a fact about NEXTEST (37 GiB, red, seed-runtime); fmt is 4.3s measured, parse-only, needs no build, and is green — it was collateral damage of a §3 fusion, since tools.rust_gates_ci.run_gates welds both into one ProcessExit, so killing the bundle killed the cheap green half. This amendment does NOT re-enroll RustMonolithGate (still REJECTED below) and does not return nextest to CI. AMENDED 2026-07-31 (operator ruling, PR #7490 repair): the COMPILE half for the separate v1-compiler-tests workspace crate is RE-ENROLLED as cargo check -p v1-compiler-tests --tests (gunbc.ci_spec ci_v1_compiler_tests_compile_gate_note / ci_v1_compiler_tests_compile_gate_line) — compile-only, no test execution, ~41s measured cold; NOT nextest and NOT RustMonolithGate. #7490 updated typecheck_module and fixed stage0 call sites but left four direct integration-test callers stale because neither DagCompileCleanGate nor the release build compiles that crate. The former claim 'cargo fmt stays enforced by the pre-push hook (CommitCargoFmtCheck on GitPrePushHook)' is RETRACTED as the enforcement authority: a hook is an escape hatch (§5) — opt-in per clone via a manual core.hooksPath config, bypassable with --no-verify, and absent in container worktrees — and it is PROVEN ineffective, not merely theoretically weak: #6658 landed an unformatted .rs on main 2026-07-15 and no gate caught it. The hook remains as fast local feedback, never as the wall. Coverage now: cargo fmt = the required CI path (ci needs:[build], so a red fmt step blocks the required job by construction); cargo check -p v1-compiler-tests --tests = the required CI compile path for direct Rust integration-test call sites; cargo nextest run -p v1-compiler-tests still runs LOCALLY, not in CI. Return trigger for NEXTEST — NONE by design: that suite does not re-enroll. It is retired WITH the v1 seed and deleted at §7 terminal collapse. Re-enrolling RustMonolithGate onto the required ci floor is explicitly REJECTED — it would move the ~37 GiB red job into the required merge gate. DagCompileCleanGate and RegenVerifyGate still catch .dag compile drift; this gate closes the v1-compiler-tests direct-caller hole they cannot see."
 }
 
@@ -1594,20 +1594,20 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag",
       check_fns: ["frontier_probe_read_failure_detail_refused_holds"],
       kind: ExecutionWitnessKind,
-      span: SpanEnrolled {
+      span: std.realization_schedule.SpanEnrolled {
         seams: [
-          WitnessSeam {
+          std.realization_schedule.WitnessSeam {
             producer: "GithubActionsCiJob",
             consumer: "frontier_probe_read_failure_detail_refused_holds"
           }
         ],
-        cost_basis: MeasuredAtExactSubject {
+        cost_basis: std.realization_schedule.MeasuredAtExactSubject {
           clock: WallClock,
           duration: millisecond(count: 3),
           receipt: frontier_probe_witness_measure_receipt_read_failure
         },
-        envelope: ScheduledWitnessEnvelope {
-          path_classification: OfflineLocalRecipe,
+        envelope: std.realization_schedule.ScheduledWitnessEnvelope {
+          path_classification: std.witness_admission.OfflineLocalRecipe,
           wall_budget: millisecond(count: 5000),
           max_staleness: millisecond(count: 0)
         }
@@ -1620,20 +1620,20 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag",
       check_fns: ["frontier_probe_hash_mismatch_detail_carries_observed_holds"],
       kind: ExecutionWitnessKind,
-      span: SpanEnrolled {
+      span: std.realization_schedule.SpanEnrolled {
         seams: [
-          WitnessSeam {
+          std.realization_schedule.WitnessSeam {
             producer: "GithubActionsCiJob",
             consumer: "frontier_probe_hash_mismatch_detail_carries_observed_holds"
           }
         ],
-        cost_basis: MeasuredAtExactSubject {
+        cost_basis: std.realization_schedule.MeasuredAtExactSubject {
           clock: WallClock,
           duration: millisecond(count: 2),
           receipt: frontier_probe_witness_measure_receipt_hash_mismatch
         },
-        envelope: ScheduledWitnessEnvelope {
-          path_classification: OfflineLocalRecipe,
+        envelope: std.realization_schedule.ScheduledWitnessEnvelope {
+          path_classification: std.witness_admission.OfflineLocalRecipe,
           wall_budget: millisecond(count: 5000),
           max_staleness: millisecond(count: 0)
         }
@@ -1646,20 +1646,20 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "src/v2/test/claim/workflow/frontier_probe_closure_readthrough_test.dag",
       check_fns: ["frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds"],
       kind: ExecutionWitnessKind,
-      span: SpanEnrolled {
+      span: std.realization_schedule.SpanEnrolled {
         seams: [
-          WitnessSeam {
+          std.realization_schedule.WitnessSeam {
             producer: "GithubActionsCiJob",
             consumer: "frontier_probe_ninety_one_read_compiler_closure_elision_integrates_holds"
           }
         ],
-        cost_basis: MeasuredAtExactSubject {
+        cost_basis: std.realization_schedule.MeasuredAtExactSubject {
           clock: WallClock,
           duration: millisecond(count: 3),
           receipt: frontier_probe_witness_measure_receipt_elision_boundary
         },
-        envelope: ScheduledWitnessEnvelope {
-          path_classification: OfflineLocalRecipe,
+        envelope: std.realization_schedule.ScheduledWitnessEnvelope {
+          path_classification: std.witness_admission.OfflineLocalRecipe,
           wall_budget: millisecond(count: 5000),
           max_staleness: millisecond(count: 0)
         }
@@ -1672,19 +1672,19 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
       check_fns: ["frontier_probe_below_cap_complete_population_gates_pass_holds"],
       kind: ExecutionWitnessKind,
-      span: SpanEnrolled {
+      span: std.realization_schedule.SpanEnrolled {
         seams: [
-          WitnessSeam {
+          std.realization_schedule.WitnessSeam {
             producer: "FalsifierCadenceJob",
             consumer: "frontier_probe_below_cap_complete_population_gates_pass_holds"
           }
         ],
-        cost_basis: MeasuredAtExactSubject {
+        cost_basis: std.realization_schedule.MeasuredAtExactSubject {
           clock: WallClock,
           duration: millisecond(count: 784772),
           receipt: frontier_probe_witness_measure_receipt_below_cap
         },
-        envelope: ScheduledWitnessEnvelope {
+        envelope: std.realization_schedule.ScheduledWitnessEnvelope {
           path_classification: FalsifierRehomedBinWet,
           wall_budget: millisecond(count: 900000),
           max_staleness: millisecond(count: 14400000)
@@ -1698,19 +1698,19 @@ data commit_gate_roster: List<CommitCheckEnrollment> = [
       entry: "src/v2/test/claim/long/frontier_probe_closure_matrix_integration_test.dag",
       check_fns: ["frontier_probe_second_source_root_population_gates_pass_holds"],
       kind: ExecutionWitnessKind,
-      span: SpanEnrolled {
+      span: std.realization_schedule.SpanEnrolled {
         seams: [
-          WitnessSeam {
+          std.realization_schedule.WitnessSeam {
             producer: "FalsifierCadenceJob",
             consumer: "frontier_probe_second_source_root_population_gates_pass_holds"
           }
         ],
-        cost_basis: MeasuredAtExactSubject {
+        cost_basis: std.realization_schedule.MeasuredAtExactSubject {
           clock: WallClock,
           duration: millisecond(count: 742109),
           receipt: frontier_probe_witness_measure_receipt_second_root
         },
-        envelope: ScheduledWitnessEnvelope {
+        envelope: std.realization_schedule.ScheduledWitnessEnvelope {
           path_classification: FalsifierRehomedBinWet,
           wall_budget: millisecond(count: 900000),
           max_staleness: millisecond(count: 14400000)
@@ -1797,7 +1797,7 @@ fn enrollment_has_surface(e: CommitCheckEnrollment, surface: CommitWorkflowSurfa
   surface_enrolled(surface: surface, surfaces: e.surfaces)
 }
 
-fn gate_eq(a: Gate, b: Gate) -> Bool {
+fn gate_eq(a: gunbc.ci_gate.Gate, b: gunbc.ci_gate.Gate) -> Bool {
   match a {
     EmitHostGate => match b { EmitHostGate => true  _ => false }
     CheapClaimPoolGate => match b { CheapClaimPoolGate => true  _ => false }
@@ -1813,7 +1813,7 @@ fn gate_eq(a: Gate, b: Gate) -> Bool {
   }
 }
 
-fn gates_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<Gate> {
+fn gates_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<gunbc.ci_gate.Gate> {
   fold(rows, init: [], f: fn(acc, row) {
     match row.check {
       CommitSpecGate { gate: g } => concat(acc, [g])
@@ -1823,13 +1823,13 @@ fn gates_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<Gate> {
   })
 }
 
-fn project_ci_floor_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
+fn project_ci_floor_gates(roster: List<CommitCheckEnrollment>) -> List<gunbc.ci_gate.Gate> {
   gates_from_enrollments(
     rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsCiJob))
   )
 }
 
-fn project_ci_regen_job_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
+fn project_ci_regen_job_gates(roster: List<CommitCheckEnrollment>) -> List<gunbc.ci_gate.Gate> {
   gates_from_enrollments(
     rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsCiRegenJob))
   )
@@ -1839,27 +1839,27 @@ data gate_gauntlet_flip_basis_note: String = "THE MEASURED FLIPS (D3b, first app
 
 data falsifier_gate_projection_note: String = "The GATE half of the FalsifierCadenceJob lane, and it did not exist until 2026-07-26. FOUND BY AUDIT, not by a red: the lane shipped with a witness projector (project_falsifier_witness_entries) and no gate projector, while witness_entries_from_enrollments drops CommitSpecGate rows by construction (`CommitSpecGate { gate: _ } => acc`). So a gate row moved to surfaces: [FalsifierCadenceJob] projected into NOTHING — it left the per-PR floor and arrived on no lane — and bare_deenrollment_wall_note's wall could not catch it because that wall filters on enrollment_is_witness_claim, which answers false for exactly this row kind. A gate was therefore the one enrollment shape that could be silently de-enrolled by a one-line surface edit that reads, in the diff, identically to a legitimate re-home. This projector plus gate_enrollment_is_scheduled close that: the lane can now receive gates, and the wall now counts them. THE ORDER MATTERS AND IS NOT COSMETIC: this projector and its executing batch (v2.workflow.ci_floor_plan gunbc_falsifier_gate_batch) land in the SAME change as the wall extension, because a wall that credits FalsifierCadenceJob for gates before any batch reads them would bless precisely the enrollment-by-illusion it exists to forbid — the same 'a surface tag with no batch reading it' trap falsifier_cadence_witness_batch_note names for witnesses."
 
-fn project_falsifier_gates(roster: List<CommitCheckEnrollment>) -> List<Gate> {
+fn project_falsifier_gates(roster: List<CommitCheckEnrollment>) -> List<gunbc.ci_gate.Gate> {
   gates_from_enrollments(
     rows: filter(roster, e => enrollment_has_surface(e: e, surface: FalsifierCadenceJob))
   )
 }
 
-data ci_witness_optin_inversion: Disposition = Terminal {
+data ci_witness_optin_inversion: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Opt-in inversion (operator, 2026-07-04) DISSOLVE FIRED at the discovery flip (operator acceptance 2026-07-09 on #6403; re-landed 2026-07-10, see gunbc.ci_spec ci_spec_discovery_flip_note): the corpus re-enrolled through CiSpec.discovery_scan_dirs with SelectionApplied, so per-PR CI runs tree-wide discovery shrunk to the diff's affected set. The scaffold's dissolve-on (affected-set selection + floor memoization make per-PR selection-by-affectedness affordable) is satisfied at discovery width=1 under union-resolve S1. project_ci_floor_witness_entries is Terminal, not interim: CommitWitnessClaim rows remain live as the explicit-entry roster (execution-kind rows with their own resource profile, and any row that must run as declared) - only the roster's EXCLUSIVITY as witness source dissolved."
 }
 
 data witness_projection_explicit_arms_note: String = "The enrollment projections match EXPLICITLY on every CommitCheckKind variant (no wildcard arm): a future variant added to the coproduct then reds every projection at compile time instead of being silently dropped by a `_ => acc` absorption - fail-open enrollment (a declared row contributing zero entries with no diagnostic) is unwritable, not detected."
 
-fn witness_entries_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<ScheduleWitnessEntry> {
+fn witness_entries_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<std.realization_schedule.ScheduleWitnessEntry> {
   fold(rows, init: [], f: fn(acc, row) {
     match row.check {
       CommitWitnessClaim { entry, check_fns, kind, span: _ } =>
         if check_fns.count() == 0 {
-          concat(acc, [ScheduleWitnessEntry { entry: entry, function: "", kind: kind }])
+          concat(acc, [std.realization_schedule.ScheduleWitnessEntry { entry: entry, function: "", kind: kind }])
         } else {
           concat(acc, fold(check_fns, init: [], f: fn(fns, check_fn) {
-            concat(fns, [ScheduleWitnessEntry { entry: entry, function: check_fn, kind: kind }])
+            concat(fns, [std.realization_schedule.ScheduleWitnessEntry { entry: entry, function: check_fn, kind: kind }])
           }))
         }
       CommitSpecGate { gate: _ } => acc
@@ -1868,7 +1868,7 @@ fn witness_entries_from_enrollments(rows: List<CommitCheckEnrollment>) -> List<S
   })
 }
 
-fn project_ci_floor_witness_entries(roster: List<CommitCheckEnrollment>) -> List<ScheduleWitnessEntry> {
+fn project_ci_floor_witness_entries(roster: List<CommitCheckEnrollment>) -> List<std.realization_schedule.ScheduleWitnessEntry> {
   witness_entries_from_enrollments(
     rows: filter(roster, e => enrollment_has_surface(e: e, surface: GithubActionsCiJob))
   )
@@ -1878,7 +1878,7 @@ data falsifier_cadence_surface_note: String = "FalsifierCadenceJob is the SCHEDU
 
 data provenance_wall_cadence_rehome_risk: String = "ACCEPTED RISK, recorded where it was decided (operator ruling 2026-07-25). Three affected-set provenance walls — lens_affected_set_provenance_producer_rejects_malformed_ingest_holds, _rejects_beyond_surface_ingest_holds, _coverage_receipt_holds (14s + 13s + 13s measured, run 30148859947 group-B slow-witness table) — move from per-PR to the 4-hour falsifier cadence. THE COST: a selection-provenance regression now has up to a 24-hour detection window instead of one PR. THE CONTEXT THAT MAKES THIS UNCOMFORTABLE, stated rather than elided: this is accepted in the same week that exact class let #7196's stale slice control ride main green — the infer_semantics witness's transport (dag/tools/infer_semantics_witness_transport.dag) declares no dependency on v1_compiler_infer_access.rs, so the affected set could not see the edge and main's run at bb4347d skipped 1761 of 2373 witnesses, that one among them (fixed as a control by #7222; the SELECTION escape is untouched). WHAT KEEPS THIS FROM BEING A BARE NARROW: the four cheap fns of the same file stay per-PR (single_read_emits_row, parse_coverage_known_diff_fail_closed, git_diff_wire, unknown_diff_fail_closed — all <=161ms), so the producer keeps per-PR coverage at the fixture grain and loses only the wet grain; and gauntlet_lane_enrollment_witness_test proves by execution that these rows are cadence-enrolled rather than merely dropped. 🟡 dissolve-on — THE COMPENSATING CONTROL, which converts this from cadence-detection to construction: v2.lens.affected_set.declared_source_ref_selection today answers NoDeclaredSourceRefs => false in declared_source_refs_blocks_skip, i.e. a witness that declares NO source refs does not block its own skip — the precise fail-open #7196 rode. When the SourceRef child lands declared source-ref edges on witness transports AND that arm flips to refuse (NoDeclaredSourceRefs => true, an undeclared-provenance witness is never skippable), the wall is CONSTRUCTION rather than a witness watching for the breach, and these three rows can stay cadence-only permanently. Until that flip, this row is the standing record that per-PR detection was traded away deliberately, priced at 40s of a 194s clamp breach."
 
-fn project_falsifier_witness_entries(roster: List<CommitCheckEnrollment>) -> List<ScheduleWitnessEntry> {
+fn project_falsifier_witness_entries(roster: List<CommitCheckEnrollment>) -> List<std.realization_schedule.ScheduleWitnessEntry> {
   witness_entries_from_enrollments(
     rows: filter(roster, e => enrollment_has_surface(e: e, surface: FalsifierCadenceJob))
   )
@@ -1925,7 +1925,7 @@ fn live_roster_has_no_bare_deenrolled_gate() -> Bool {
   roster_has_no_bare_deenrolled_gate(roster: commit_gate_roster)
 }
 
-fn live_roster_falsifier_gates() -> List<Gate> {
+fn live_roster_falsifier_gates() -> List<gunbc.ci_gate.Gate> {
   project_falsifier_gates(roster: commit_gate_roster)
 }
 
@@ -1945,15 +1945,15 @@ fn live_roster_has_no_bare_deenrolled_witness() -> Bool {
   roster_has_no_bare_deenrolled_witness(roster: commit_gate_roster)
 }
 
-fn live_roster_falsifier_witness_entries() -> List<ScheduleWitnessEntry> {
+fn live_roster_falsifier_witness_entries() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   project_falsifier_witness_entries(roster: commit_gate_roster)
 }
 
-fn witness_seam_eq(a: WitnessSeam, b: WitnessSeam) -> Bool {
+fn witness_seam_eq(a: std.realization_schedule.WitnessSeam, b: std.realization_schedule.WitnessSeam) -> Bool {
   (a.producer == b.producer) && (a.consumer == b.consumer)
 }
 
-fn witness_seam_lists_eq(left: List<WitnessSeam>, right: List<WitnessSeam>) -> Bool {
+fn witness_seam_lists_eq(left: List<std.realization_schedule.WitnessSeam>, right: List<std.realization_schedule.WitnessSeam>) -> Bool {
   if left.count() != right.count() {
     false
   } else if left.count() == 0 {
@@ -1964,7 +1964,7 @@ fn witness_seam_lists_eq(left: List<WitnessSeam>, right: List<WitnessSeam>) -> B
   }
 }
 
-fn witness_cost_basis_eq(a: WitnessCostBasis, b: WitnessCostBasis) -> Bool {
+fn witness_cost_basis_eq(a: std.realization_schedule.WitnessCostBasis, b: std.realization_schedule.WitnessCostBasis) -> Bool {
   match a {
     MeasuredAtExactSubject { clock, duration, receipt } => match b {
       MeasuredAtExactSubject {
@@ -1993,13 +1993,13 @@ fn witness_cost_basis_eq(a: WitnessCostBasis, b: WitnessCostBasis) -> Bool {
 
 data scheduled_witness_envelope_path_classification_scope_note: String = "path_classification is WitnessConsumerCadence, the path-policy classification authority (std.witness_admission) — it does NOT answer whether anything executes a row; that question is answered by the separate fold in src/v2/workflow/witness_admission.dag, per commit_roster_enrollment_is_a_consumer_note there. This function and scheduled_witness_envelope_wellformed below compare/validate only what the field carries."
 
-fn scheduled_witness_envelope_eq(a: ScheduledWitnessEnvelope, b: ScheduledWitnessEnvelope) -> Bool {
+fn scheduled_witness_envelope_eq(a: std.realization_schedule.ScheduledWitnessEnvelope, b: std.realization_schedule.ScheduledWitnessEnvelope) -> Bool {
   witness_consumer_cadence_eq(a: a.path_classification, b: b.path_classification)
     && (millisecond_count(m: a.wall_budget) == millisecond_count(m: b.wall_budget))
     && (millisecond_count(m: a.max_staleness) == millisecond_count(m: b.max_staleness))
 }
 
-fn witness_cost_basis_wellformed(basis: WitnessCostBasis) -> Bool {
+fn witness_cost_basis_wellformed(basis: std.realization_schedule.WitnessCostBasis) -> Bool {
   match basis {
     MeasuredAtExactSubject { clock: _, duration, receipt } =>
       millisecond_count(m: duration) > 0 && receipt != ""
@@ -2008,11 +2008,11 @@ fn witness_cost_basis_wellformed(basis: WitnessCostBasis) -> Bool {
   }
 }
 
-fn scheduled_witness_envelope_wellformed(envelope: ScheduledWitnessEnvelope) -> Bool {
+fn scheduled_witness_envelope_wellformed(envelope: std.realization_schedule.ScheduledWitnessEnvelope) -> Bool {
   millisecond_count(m: envelope.wall_budget) > 0
 }
 
-fn witness_span_eq(a: WitnessSpan, b: WitnessSpan) -> Bool {
+fn witness_span_eq(a: std.realization_schedule.WitnessSpan, b: std.realization_schedule.WitnessSpan) -> Bool {
   match a {
     SpanUndeclared => match b {
       SpanUndeclared => true
@@ -2068,14 +2068,14 @@ fn commit_check_kind_eq(a: CommitCheckKind, b: CommitCheckKind) -> Bool {
   }
 }
 
-fn declaration_field_is_whole(field: DeclField) -> Bool {
+fn declaration_field_is_whole(field: std.decl_ref.DeclField) -> Bool {
   match field {
     WholeDeclaration => true
     NamedField { field_name: _ } => false
   }
 }
 
-fn declaration_refs_unique(declarations: List<DeclarationRef>) -> Bool {
+fn declaration_refs_unique(declarations: List<std.decl_ref.DeclarationRef>) -> Bool {
   if declarations.count() == 0 {
     true
   } else {
@@ -2086,7 +2086,7 @@ fn declaration_refs_unique(declarations: List<DeclarationRef>) -> Bool {
   }
 }
 
-fn declaration_ref_lists_eq(left: List<DeclarationRef>, right: List<DeclarationRef>) -> Bool {
+fn declaration_ref_lists_eq(left: List<std.decl_ref.DeclarationRef>, right: List<std.decl_ref.DeclarationRef>) -> Bool {
   declaration_refs_unique(declarations: left)
     && declaration_refs_unique(declarations: right)
     && left.count() == right.count()
@@ -2170,7 +2170,7 @@ fn discoveries_are_roster_scoped(
 }
 
 fn complete_discovery_module_count(
-  module_path: NonEmptyStr,
+  module_path: std.types.NonEmptyStr,
   discoveries: List<EntryDeclarationDiscovery>,
 ) -> Int {
   filter(discoveries, discovery => match discovery {
@@ -2181,8 +2181,8 @@ fn complete_discovery_module_count(
 }
 
 fn discovery_declarations_well_formed(
-  module_path: NonEmptyStr,
-  declarations: List<DeclarationRef>,
+  module_path: std.types.NonEmptyStr,
+  declarations: List<std.decl_ref.DeclarationRef>,
 ) -> Bool {
   declaration_refs_unique(declarations: declarations)
     && fold(declarations, init: true, f: fn(acc, declaration) {
@@ -2192,13 +2192,13 @@ fn discovery_declarations_well_formed(
     })
 }
 
-fn declaration_matches_name(declaration: DeclarationRef, name: String) -> Bool {
+fn declaration_matches_name(declaration: std.decl_ref.DeclarationRef, name: String) -> Bool {
   (declaration.decl_name as String) == name
 }
 
 fn project_named_declaration_demands(
   names: List<String>,
-  declarations: List<DeclarationRef>,
+  declarations: List<std.decl_ref.DeclarationRef>,
 ) -> NamedDeclarationDemandOutcome {
   if names.count() == 0 {
     NamedDeclarationsQualified { declarations: [] }
@@ -2209,11 +2209,11 @@ fn project_named_declaration_demands(
     )
     if matching.count() == 0 {
       NamedDeclarationMissing {
-        cause: "named witness declaration is absent from complete discovery" as NonEmptyStr
+        cause: "named witness declaration is absent from complete discovery" as std.types.NonEmptyStr
       }
     } else if matching.count() > 1 {
       NamedDeclarationAmbiguous {
-        cause: "named witness declaration has duplicate discovery identities" as NonEmptyStr
+        cause: "named witness declaration has duplicate discovery identities" as std.types.NonEmptyStr
       }
     } else {
       match project_named_declaration_demands(
@@ -2228,7 +2228,7 @@ fn project_named_declaration_demands(
             NamedDeclarationsQualified { declarations: selected }
           } else {
             NamedDeclarationAmbiguous {
-              cause: "named witness demand repeats one declaration identity" as NonEmptyStr
+              cause: "named witness demand repeats one declaration identity" as std.types.NonEmptyStr
             }
           }
       }
@@ -2253,17 +2253,17 @@ fn project_one_enrollment_witness_demand(
       let matching = discoveries_for_entry(entry: entry, discoveries: discoveries)
       if matching.count() == 0 {
         SingleDemandMissing {
-          cause: "witness enrollment has no supplied declaration discovery" as NonEmptyStr
+          cause: "witness enrollment has no supplied declaration discovery" as std.types.NonEmptyStr
         }
       } else if matching.count() > 1 {
         SingleDemandAmbiguous {
-          cause: "witness enrollment has duplicate discovery entries" as NonEmptyStr
+          cause: "witness enrollment has duplicate discovery entries" as std.types.NonEmptyStr
         }
       } else {
         fold(
           matching,
           init: SingleDemandMissing {
-            cause: "singleton discovery fold produced no row" as NonEmptyStr
+            cause: "singleton discovery fold produced no row" as std.types.NonEmptyStr
           },
           f: fn(_prior, discovery) {
             match discovery {
@@ -2275,18 +2275,18 @@ fn project_one_enrollment_witness_demand(
                   discoveries: discoveries
                 ) > 1 {
                   SingleDemandAmbiguous {
-                    cause: "complete discoveries repeat one module identity" as NonEmptyStr
+                    cause: "complete discoveries repeat one module identity" as std.types.NonEmptyStr
                   }
                 } else if declarations.count() == 0 {
                   SingleDemandMissing {
-                    cause: "complete witness discovery contains no declarations" as NonEmptyStr
+                    cause: "complete witness discovery contains no declarations" as std.types.NonEmptyStr
                   }
                 } else if !discovery_declarations_well_formed(
                   module_path: module_path,
                   declarations: declarations
                 ) {
                   SingleDemandAmbiguous {
-                    cause: "complete discovery contains invalid or duplicate declaration identities" as NonEmptyStr
+                    cause: "complete discovery contains invalid or duplicate declaration identities" as std.types.NonEmptyStr
                   }
                 } else if check_fns.count() == 0 {
                   SingleDemandQualified {
@@ -2364,7 +2364,7 @@ fn project_enrollment_witness_demands_unchecked(
             if demand_row_overlaps(row: row, rows: rows) {
               DemandAmbiguous {
                 check: check,
-                cause: "declaration identity belongs to multiple enrollment demands" as NonEmptyStr
+                cause: "declaration identity belongs to multiple enrollment demands" as std.types.NonEmptyStr
               }
             } else {
               DemandQualified { rows: concat([row], rows) }
@@ -2380,14 +2380,14 @@ fn project_enrollment_witness_demands(
   let roster = commit_gate_roster
   if !discoveries_are_roster_scoped(roster: roster, discoveries: discoveries) {
     DemandRosterAmbiguous {
-      cause: "declaration discovery has no owning witness enrollment" as NonEmptyStr
+      cause: "declaration discovery has no owning witness enrollment" as std.types.NonEmptyStr
     }
   } else {
     match first_duplicate_commit_check(roster: roster) {
     DuplicateCommitCheckFound { check } =>
       DemandAmbiguous {
         check: check,
-        cause: "commit check roster contains a duplicate typed identity" as NonEmptyStr
+        cause: "commit check roster contains a duplicate typed identity" as std.types.NonEmptyStr
       }
     NoDuplicateCommitCheck =>
       match project_enrollment_witness_demands_unchecked(
@@ -2407,7 +2407,7 @@ fn project_enrollment_witness_demands(
           } else {
             DemandIncomplete {
               check: roster.first().check,
-              cause: "projected demand check set does not equal input roster" as NonEmptyStr
+              cause: "projected demand check set does not equal input roster" as std.types.NonEmptyStr
             }
           }
     }
@@ -2415,15 +2415,15 @@ fn project_enrollment_witness_demands(
 }
 }
 
-fn witness_seam_wellformed(seam: WitnessSeam) -> Bool {
+fn witness_seam_wellformed(seam: std.realization_schedule.WitnessSeam) -> Bool {
   !(seam.producer == seam.consumer)
 }
 
-fn seam_list_contains(seams: List<WitnessSeam>, seam: WitnessSeam) -> Bool {
+fn seam_list_contains(seams: List<std.realization_schedule.WitnessSeam>, seam: std.realization_schedule.WitnessSeam) -> Bool {
   fold(seams, init: false, f: fn(acc, s) { acc || witness_seam_eq(a: s, b: seam) })
 }
 
-fn seams_wellformed_and_distinct(seams: List<WitnessSeam>) -> Bool {
+fn seams_wellformed_and_distinct(seams: List<std.realization_schedule.WitnessSeam>) -> Bool {
   if seams.count() == 0 {
     true
   } else {
@@ -2433,7 +2433,7 @@ fn seams_wellformed_and_distinct(seams: List<WitnessSeam>) -> Bool {
   }
 }
 
-fn witness_span_wellformed(span: WitnessSpan) -> Bool {
+fn witness_span_wellformed(span: std.realization_schedule.WitnessSpan) -> Bool {
   match span {
     SpanUndeclared => true
     SpanSeams { seams } => seams.count() > 0 && seams_wellformed_and_distinct(seams: seams)
@@ -2497,7 +2497,7 @@ fn project_local_tidy_fmt_rows(roster: List<CommitCheckEnrollment>) -> List<Loca
   })
 }
 
-fn gate_lists_eq(left: List<Gate>, right: List<Gate>) -> Bool {
+fn gate_lists_eq(left: List<gunbc.ci_gate.Gate>, right: List<gunbc.ci_gate.Gate>) -> Bool {
   if length(left) != length(right) {
     false
   } else if length(left) == 0 {
@@ -2521,11 +2521,11 @@ fn local_tidy_lists_eq(left: List<LocalTidyCheck>, right: List<LocalTidyCheck>) 
   }
 }
 
-data commit_workflow_ci_floor_gates: List<Gate> = project_ci_floor_gates(roster: commit_gate_roster)
+data commit_workflow_ci_floor_gates: List<gunbc.ci_gate.Gate> = project_ci_floor_gates(roster: commit_gate_roster)
 
 data commit_workflow_local_tidy_checks: List<LocalTidyCheck> = project_local_tidy_checks(roster: commit_gate_roster)
 
-fn ci_floor_commit_witness_claim_schedule() -> List<ScheduleWitnessEntry> {
+fn ci_floor_commit_witness_claim_schedule() -> List<std.realization_schedule.ScheduleWitnessEntry> {
   project_ci_floor_witness_entries(roster: commit_gate_roster)
 }
 
@@ -2555,7 +2555,7 @@ fn realization_handler_for_surface(surface: CommitWorkflowSurface) -> CommitWork
 // plausible wrong artifact.
 data ci_surface_artifact_wiped: String = "<wiped 2026-08-15: no generated artifact for this surface>"
 
-fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> GeneratedArtifact? {
+fn realization_artifact_for_surface(surface: CommitWorkflowSurface) -> gunbc.generated_artifact.GeneratedArtifact? {
   match surface {
     GithubActionsCiJob => none
     GithubActionsCiRegenJob => none

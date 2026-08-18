@@ -18,7 +18,7 @@ test fn w_the_designation_is_attested_by_independent_publishers() -> Bool {
 }
 
 test fn w_each_attestation_carries_its_own_authority_and_wording() -> Bool {
-  let ampere_max = attestations_from_authority(authority: extdeps_external_authority_anchor)
+  let ampere_max = attestations_from_authority(authority: extdeps.cpu_attachment.ilm4926.extdeps_external_authority_anchor)
   let ampere_classic = attestations_from_authority(authority: altra_classic_datasheet_authority)
   let ocp = attestations_from_authority(authority: ocp_mt_jade_specification_authority)
   list_length(items: ampere_max) == 1
@@ -48,7 +48,7 @@ test fn w_red_a_concrete_referent_would_resolve_the_question() -> Bool {
 // RED control: a single-publisher population must NOT read as independent
 // attestation, which is the claim this module's existence rests on.
 test fn w_red_one_publisher_twice_is_not_independent_attestation() -> Bool {
-  let ampere_only = attestations_from_authority(authority: extdeps_external_authority_anchor)
+  let ampere_only = attestations_from_authority(authority: extdeps.cpu_attachment.ilm4926.extdeps_external_authority_anchor)
   let ocp_only = attestations_from_authority(authority: ocp_mt_jade_specification_authority)
   list_length(items: ampere_only) != list_length(items: ilm4926_attestations)
     && list_length(items: ocp_only) != list_length(items: ilm4926_attestations)
@@ -167,7 +167,7 @@ test fn w_red_an_identified_socket_body_with_a_land_pattern_would_permit_emissio
 test fn w_red_a_cited_value_would_establish_a_resolution_axis() -> Bool {
   let established = extdeps.cpu_attachment.ilm4926.DesignationFactEstablished {
     value: "Lotes",
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.cpu_attachment.ilm4926.extdeps_external_authority_anchor,
   }
   let unresolved = extdeps.cpu_attachment.ilm4926.DesignationFactUnresolved {
     reason: "any reason at all",

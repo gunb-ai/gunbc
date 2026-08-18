@@ -164,7 +164,7 @@ fn yaml_parse_mapping_entry(lines: List<String>, index: Int, indent: Int) -> Yam
         YamlBlockRejected { reason: r } => YamlEntryRejected { reason: r }
       }
     } else {
-      ParsedYamlEntry { entry: kv(key: key, value: YamlNull), next_index: index + 1 }
+      ParsedYamlEntry { entry: kv(key: key, value: extdeps.languages.yaml.types.YamlNull), next_index: index + 1 }
     }
   } else {
     YamlEntryRejected { reason: concat("malformed mapping entry: ", content) }
@@ -193,7 +193,7 @@ fn yaml_parse_mapping_entry_from_text(text: String, lines: List<String>, index: 
         YamlBlockRejected { reason: r } => YamlEntryRejected { reason: r }
       }
     } else {
-      ParsedYamlEntry { entry: kv(key: key, value: YamlNull), next_index: index + 1 }
+      ParsedYamlEntry { entry: kv(key: key, value: extdeps.languages.yaml.types.YamlNull), next_index: index + 1 }
     }
   } else {
     YamlEntryRejected { reason: concat("malformed sequence-item mapping entry: ", text) }

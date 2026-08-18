@@ -13,7 +13,7 @@ fn ob_two_level_path(
   terminal: v2.std.node.Symbol
 ) -> ContainmentPath<v2.std.node.Symbol> {
   std.occurrence_binding.ContainmentPath {
-    ancestors: std.algebra.Cons { head: root, tail: Empty },
+    ancestors: std.algebra.Cons { head: root, tail: std.algebra.Empty },
     terminal: terminal,
   }
 }
@@ -64,7 +64,7 @@ test fn occurrence_binding_two_level_path_separates_terminal_holds() -> Bool {
 test fn occurrence_binding_zero_candidates_is_unbound_holds() -> Bool {
   match occurrence_binding_from_candidates(
     occurrence: ob_occurrence(),
-    candidates: Empty,
+    candidates: std.algebra.Empty,
   ) {
     OccurrenceUnbound { occurrence: observed } =>
       observed.containment.terminal == ^use_site
@@ -86,7 +86,7 @@ test fn occurrence_binding_one_candidate_is_bound_holds() -> Bool {
   )
   match occurrence_binding_from_candidates(
     occurrence: ob_occurrence(),
-    candidates: std.algebra.Cons { head: candidate, tail: Empty },
+    candidates: std.algebra.Cons { head: candidate, tail: std.algebra.Empty },
   ) {
     OccurrenceBound {
       binding: OccurrenceBinding {
@@ -116,7 +116,7 @@ test fn occurrence_binding_two_candidates_are_structurally_ambiguous_holds() -> 
     occurrence: ob_occurrence(),
     candidates: std.algebra.Cons {
       head: first,
-      tail: std.algebra.Cons { head: second, tail: Empty },
+      tail: std.algebra.Cons { head: second, tail: std.algebra.Empty },
     },
   ) {
     OccurrenceAmbiguous {
@@ -154,7 +154,7 @@ test fn occurrence_binding_many_candidates_preserve_input_order_holds() -> Bool 
         head: second,
         tail: std.algebra.Cons {
           head: third,
-          tail: std.algebra.Cons { head: fourth, tail: Empty },
+          tail: std.algebra.Cons { head: fourth, tail: std.algebra.Empty },
         },
       },
     },
@@ -189,7 +189,7 @@ test fn occurrence_binding_duplicate_candidates_remain_ambiguous_holds() -> Bool
     occurrence: ob_occurrence(),
     candidates: std.algebra.Cons {
       head: duplicate,
-      tail: std.algebra.Cons { head: duplicate, tail: Empty },
+      tail: std.algebra.Cons { head: duplicate, tail: std.algebra.Empty },
     },
   ) {
     OccurrenceAmbiguous {
@@ -233,7 +233,7 @@ test fn occurrence_binding_same_name_different_containment_is_ambiguous_holds() 
     occurrence: ob_occurrence(),
     candidates: std.algebra.Cons {
       head: left,
-      tail: std.algebra.Cons { head: right, tail: Empty },
+      tail: std.algebra.Cons { head: right, tail: std.algebra.Empty },
     },
   ) {
     OccurrenceAmbiguous {

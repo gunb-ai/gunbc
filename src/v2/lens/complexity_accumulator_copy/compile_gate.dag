@@ -28,9 +28,9 @@ type GateLedger {
 fn gate_ledger(findings: List<Finding>) -> GateLedger {
   let split = fold(
     findings,
-    init: GateLedger { suspects: Empty, refusals: Empty },
+    init: GateLedger { suspects: std.algebra.Empty, refusals: std.algebra.Empty },
     f: fn(acc, finding) {
-      if finding_is_suspect(f: finding) {
+      if v2.lens.complexity_accumulator_copy.analyze.finding_is_suspect(f: finding) {
         GateLedger {
           suspects: std.algebra.Cons { head: finding_diagnostic(f: finding), tail: acc.suspects },
           refusals: acc.refusals

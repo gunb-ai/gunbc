@@ -33,7 +33,7 @@ fn witness_static_table_browse_row_matches_host_contract() -> Bool {
       if acc {
         acc
       } else {
-        row.method == GET
+        row.method == std.types.GET
           && path_matches_template(template: row.path_pattern, path: "/")
           && path_matches_template(template: browse_tpl, path: "/")
           && row.body == expected_browse_html()
@@ -54,7 +54,7 @@ fn witness_static_table_repo_path_row_is_m1_placeholder() -> Bool {
       if acc {
         acc
       } else {
-        row.method == GET
+        row.method == std.types.GET
           && path_matches_template(template: row.path_pattern, path: "/README.md")
           && path_matches_template(template: repo_tpl, path: "/README.md")
           && row.body == expected_readme_html()

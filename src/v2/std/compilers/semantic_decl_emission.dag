@@ -176,7 +176,7 @@ fn semantic_decl_lex_rules_catalog(rows: List<Node>) -> Node {
   target_model_type_conj_node(
     children: fold_list(
       xs: rows,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, row) {
         list_snoc_item(
           xs: acc,
@@ -251,7 +251,7 @@ fn semantic_decl_lex_rule_rows_from_catalog(catalog: Node) -> Outcome<List<Node>
     TypeNode { connective: Conj } =>
       fold(
         catalog.children,
-        init: outcome_accepted(value: Empty),
+        init: outcome_accepted(value: std.algebra.Empty),
         f: fn(acc_o, edge) {
           bind_outcome(
             o: acc_o,
@@ -277,7 +277,7 @@ fn semantic_decl_lex_rules_from_rows(rows: List<Node>) -> Outcome<v2.std.compile
   bind_outcome(
     o: fold_list(
       xs: rows,
-      empty: outcome_accepted(value: Empty),
+      empty: outcome_accepted(value: std.algebra.Empty),
       cons: fn(acc_o, row) {
         bind_outcome(
           o: acc_o,
@@ -328,7 +328,7 @@ fn semantic_decl_binding_spellings_catalog(rows: List<Node>) -> Node {
   target_model_type_conj_node(
     children: fold_list(
       xs: rows,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, row) {
         list_snoc_item(
           xs: acc,
@@ -368,7 +368,7 @@ fn semantic_decl_binding_spelling_rows_from_catalog(catalog: Node) -> Outcome<Li
     TypeNode { connective: Conj } =>
       fold(
         catalog.children,
-        init: outcome_accepted(value: Empty),
+        init: outcome_accepted(value: std.algebra.Empty),
         f: fn(acc_o, edge) {
           bind_outcome(
             o: acc_o,
@@ -438,7 +438,7 @@ fn semantic_decl_binding_spelling_rows_from_row_nodes(
 ) -> Outcome<List<SemanticDeclBindingSpellingRow>> {
   fold_list(
     xs: rows,
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc_o, row) {
       bind_outcome(
         o: acc_o,
@@ -495,7 +495,7 @@ fn semantic_decl_bound_tokens_source_text(
     f: fn(lex) {
       fold_list(
         xs: tokens,
-        empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: None },
+        empty: v2.std.diagnostic.Accepted { value: target_text_empty, diagnostics: v2.std.diagnostic.None },
         cons: fn(acc, token) {
           match acc {
             Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -657,7 +657,7 @@ fn semantic_decl_decoration_lines_catalog_from_lines(
   target_model_type_conj_node(
     children: fold_list(
       xs: lines,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, line) {
         list_snoc_item(
           xs: acc,
@@ -690,7 +690,7 @@ fn semantic_decl_decoration_lines_from_catalog(catalog: Node) -> Outcome<List<Ta
     TypeNode { connective: Conj } =>
       fold(
         catalog.children,
-        init: outcome_accepted(value: Empty),
+        init: outcome_accepted(value: std.algebra.Empty),
         f: fn(acc_o, edge) {
           bind_outcome(
             o: acc_o,
@@ -738,7 +738,7 @@ fn semantic_decl_coproduct_decoration_rules_catalog(
   target_model_type_conj_node(
     children: fold_list(
       xs: rules,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, rule) {
         list_snoc_item(
           xs: acc,
@@ -791,7 +791,7 @@ fn semantic_decl_coproduct_decoration_rules_from_catalog(
     TypeNode { connective: Conj } =>
       fold(
         catalog.children,
-        init: outcome_accepted(value: Empty),
+        init: outcome_accepted(value: std.algebra.Empty),
         f: fn(acc_o, edge) {
           bind_outcome(
             o: acc_o,
@@ -905,7 +905,7 @@ fn semantic_decl_surface_projection_coproduct_layout_extra_edges(
   layout: TargetSemanticDeclCoproductSurfaceLayout
 ) -> List<v2.std.node.Edge> {
   match layout {
-    TargetSemanticDeclCoproductEnumSurface => Empty
+    TargetSemanticDeclCoproductEnumSurface => std.algebra.Empty
     TargetSemanticDeclCoproductTaggedUnionSurface { tag_field: tag_field, union_field: union_field } =>
       [
         target_model_named_edge(
@@ -1398,7 +1398,7 @@ fn target_semantic_decl_surface_decoration_pos_edges(
 ) -> List<v2.std.node.Edge> {
   fold_list(
     xs: lines,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, line) {
       list_snoc_item(
         xs: acc,
@@ -1619,7 +1619,7 @@ fn target_semantic_decl_surface_tagged_union_body_fields(
           union_field: union_field
         )
       ]
-    TargetSemanticDeclCoproductEnumSurface => Empty
+    TargetSemanticDeclCoproductEnumSurface => std.algebra.Empty
   }
 }
 
@@ -1676,7 +1676,7 @@ fn target_semantic_decl_surface_generic_params(params: List<v2.std.node.Symbol>)
         target: target_semantic_decl_surface_cons_list(
           items: fold_list(
             xs: params,
-            empty: Empty,
+            empty: std.algebra.Empty,
             cons: fn(acc, p) { list_snoc_item(xs: acc, item: target_semantic_decl_surface_atom(id: p)) }
           )
         )
@@ -1732,7 +1732,7 @@ fn target_semantic_decl_decoration_lines_for_shape(
 ) -> List<TargetSemanticDeclDecorationLine> {
   fold_list(
     xs: rules,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, rule) {
       target_semantic_decl_coproduct_rule_decoration_lines_if_shape(
         rule: rule,
@@ -1783,7 +1783,7 @@ fn target_semantic_decl_coproduct_decoration_lines(
   coproduct: Node
 ) -> Outcome<List<TargetSemanticDeclDecorationLine>> {
   if is_empty(xs: projection.coproduct_decoration_rules) {
-    outcome_accepted(value: Empty)
+    outcome_accepted(value: std.algebra.Empty)
   } else {
     bind_outcome(
       o: target_semantic_decl_coproduct_shape_key(coproduct: coproduct),
@@ -1814,7 +1814,7 @@ fn target_semantic_decl_field_surfaces(
 ) -> Outcome<List<Node>> {
   fold_list(
     xs: edges,
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc_o, edge) {
       bind_outcome(
         o: acc_o,
@@ -1873,7 +1873,7 @@ fn target_semantic_decl_tagged_union_variant_surfaces(
 ) -> Outcome<List<Node>> {
   fold_list(
     xs: edges,
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc_o, edge) {
       bind_outcome(
         o: acc_o,
@@ -1929,7 +1929,7 @@ fn target_semantic_decl_variant_surfaces(
 ) -> Outcome<List<Node>> {
   fold_list(
     xs: edges,
-    empty: outcome_accepted(value: Empty),
+    empty: outcome_accepted(value: std.algebra.Empty),
     cons: fn(acc_o, edge) {
       bind_outcome(
         o: acc_o,

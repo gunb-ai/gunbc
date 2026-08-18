@@ -70,7 +70,7 @@ fn closure_ingest(closure_paths: FreeMonoid<String>) -> v2.compiler.source_autho
   list_reverse(
     xs: fold_list(
       xs: closure_paths,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, p) { std.algebra.Cons { head: ledger_read_witness(path: p), tail: acc } }
     )
   )
@@ -117,7 +117,7 @@ fn door_ledger(paths: List<String>, pool_roots: List<String>) -> List<DoorLedger
   list_reverse(
     xs: fold_list(
       xs: paths,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, path) {
         std.algebra.Cons { head: door_ledger_row(subject_path: path, facts: facts), tail: acc }
       }
@@ -163,7 +163,7 @@ type CauseBumpState {
 fn cause_count_bump(counts: List<CauseCount>, reason: v2.std.node.Symbol) -> List<CauseCount> {
   let walked = fold_list(
     xs: counts,
-    empty: CauseBumpState { rows: Empty, found: false },
+    empty: CauseBumpState { rows: std.algebra.Empty, found: false },
     cons: fn(state, row) {
       let bumped = if row.reason == reason {
         CauseCount { reason: row.reason, count: row.count + 1 }
@@ -186,7 +186,7 @@ fn cause_count_bump(counts: List<CauseCount>, reason: v2.std.node.Symbol) -> Lis
 fn ledger_cause_histogram(rows: List<DoorLedgerRow>) -> List<CauseCount> {
   fold_list(
     xs: rows,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, row) {
       match row.outcome {
         DoorCompiled => acc

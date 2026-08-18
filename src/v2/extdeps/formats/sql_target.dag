@@ -14,7 +14,7 @@ fn sql_conj_emitted_from_tokens(tokens: List<v2.std.compilers.target_model.Concr
     kind: v2.std.node.TypeNode { connective: Conj },
     children: fold_list(
       xs: tokens,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, token) {
         match token {
           BoundToken { binding: binding, token_class: _ } =>
@@ -41,7 +41,7 @@ fn sql_formal_symbol_from_token(token: v2.std.compilers.target_model.ConcreteSyn
 fn sql_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, token) {
       list_snoc_item(xs: acc, item: sql_formal_symbol_from_token(token: token))
     }

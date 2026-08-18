@@ -98,7 +98,7 @@ fn lean4_nat_materialize_non_negative_int(value: Int, at: v2.std.diagnostic.Locu
   } else {
     v2.std.diagnostic.Accepted {
       value: lean4_nat_peano_from_non_negative_int(value: value),
-      diagnostics: None
+      diagnostics: v2.std.diagnostic.None
     }
   }
 }
@@ -125,9 +125,9 @@ fn make_lean4_nat_value(value: Int, at: v2.std.diagnostic.Locus) -> Outcome<Lean
       )
     }
   } else if value == 2 {
-    v2.std.diagnostic.Accepted { value: lean4_nat_catalog_format_indent(), diagnostics: None }
+    v2.std.diagnostic.Accepted { value: lean4_nat_catalog_format_indent(), diagnostics: v2.std.diagnostic.None }
   } else if value == 120 {
-    v2.std.diagnostic.Accepted { value: lean4_nat_catalog_format_width(), diagnostics: None }
+    v2.std.diagnostic.Accepted { value: lean4_nat_catalog_format_width(), diagnostics: v2.std.diagnostic.None }
   } else {
     lean4_nat_materialize_non_negative_int(value: value, at: at)
   }

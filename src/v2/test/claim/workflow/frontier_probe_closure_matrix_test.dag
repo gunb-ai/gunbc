@@ -19,7 +19,7 @@ fn fp_matrix_ref_b() -> v2.compiler.source_authority.SourceRef {
   fp_matrix_synthetic_ref(path: "dag/std/types.dag", hash_seed: "fp-matrix-ref-b")
 }
 
-data fp_matrix_cap_boundary_paths: List<String> = std.algebra.Cons { head: "dag/fp_matrix/cap/00.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/01.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/02.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/03.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/04.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/05.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/06.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/07.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/08.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/09.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/10.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/11.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/12.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/13.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/14.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/15.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/16.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/17.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/18.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/19.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/20.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/21.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/22.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/23.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/24.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/25.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/26.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/27.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/28.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/29.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/30.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/31.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/32.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/33.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/34.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/35.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/36.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/37.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/38.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/39.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/40.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/41.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/42.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/43.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/44.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/45.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/46.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/47.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/48.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/49.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/50.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/51.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/52.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/53.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/54.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/55.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/56.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/57.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/58.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/59.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/60.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/61.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/62.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/63.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/64.dag", tail: Empty } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+data fp_matrix_cap_boundary_paths: List<String> = std.algebra.Cons { head: "dag/fp_matrix/cap/00.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/01.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/02.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/03.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/04.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/05.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/06.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/07.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/08.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/09.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/10.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/11.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/12.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/13.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/14.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/15.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/16.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/17.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/18.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/19.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/20.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/21.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/22.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/23.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/24.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/25.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/26.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/27.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/28.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/29.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/30.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/31.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/32.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/33.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/34.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/35.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/36.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/37.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/38.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/39.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/40.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/41.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/42.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/43.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/44.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/45.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/46.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/47.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/48.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/49.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/50.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/51.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/52.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/53.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/54.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/55.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/56.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/57.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/58.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/59.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/60.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/61.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/62.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/63.dag", tail: std.algebra.Cons { head: "dag/fp_matrix/cap/64.dag", tail: std.algebra.Empty } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
 
 fn fp_matrix_refs_from_paths(paths: List<String>) -> List<v2.compiler.source_authority.SourceRef> {
   list_map(
@@ -51,7 +51,7 @@ fn fp_matrix_duplicate_closure_subject() -> v2.compiler.self_host.frontier_probe
   fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
       head: fp_matrix_ref_a(),
-      tail: std.algebra.Cons { head: fp_matrix_ref_a(), tail: Empty }
+      tail: std.algebra.Cons { head: fp_matrix_ref_a(), tail: std.algebra.Empty }
     },
     coverage: SourceRootCoverageComplete,
     ingest_read_count: 2,
@@ -63,7 +63,7 @@ fn fp_matrix_entry_not_in_refs_subject() -> v2.compiler.self_host.frontier_probe
   fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
       head: fp_matrix_ref_a(),
-      tail: Empty
+      tail: std.algebra.Empty
     },
     coverage: SourceRootCoverageComplete,
     ingest_read_count: 1,
@@ -75,7 +75,7 @@ fn fp_matrix_count_mismatch_subject() -> v2.compiler.self_host.frontier_probe.Fr
   fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
       head: fp_matrix_ref_a(),
-      tail: std.algebra.Cons { head: fp_matrix_ref_b(), tail: Empty }
+      tail: std.algebra.Cons { head: fp_matrix_ref_b(), tail: std.algebra.Empty }
     },
     coverage: SourceRootCoverageComplete,
     ingest_read_count: 3,
@@ -87,7 +87,7 @@ fn fp_matrix_rows_missing_coverage_subject() -> v2.compiler.self_host.frontier_p
   fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
       head: fp_matrix_ref_a(),
-      tail: Empty
+      tail: std.algebra.Empty
     },
     coverage: v2.compiler.source_authority.SourceRootRowsMissing {
       read_count: 5,
@@ -102,7 +102,7 @@ fn fp_matrix_manifest_absent_subject() -> v2.compiler.self_host.frontier_probe.F
   fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
       head: fp_matrix_ref_a(),
-      tail: Empty
+      tail: std.algebra.Empty
     },
     coverage: SourceRootManifestAbsent,
     ingest_read_count: 1,
@@ -114,7 +114,7 @@ fn fp_matrix_elided_incomplete_refs_subject() -> v2.compiler.self_host.frontier_
   fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
       head: fp_matrix_ref_a(),
-      tail: Empty
+      tail: std.algebra.Empty
     },
     coverage: v2.compiler.source_authority.SourceRootManifestElided { read_count: 91, cap: 64 },
     ingest_read_count: 1,
@@ -130,7 +130,7 @@ fn fp_matrix_storage_hash_conflict_subject() -> v2.compiler.self_host.frontier_p
   fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
       head: fp_matrix_ref_a(),
-      tail: std.algebra.Cons { head: fp_matrix_wrong_hash_ref(), tail: Empty }
+      tail: std.algebra.Cons { head: fp_matrix_wrong_hash_ref(), tail: std.algebra.Empty }
     },
     coverage: SourceRootCoverageComplete,
     ingest_read_count: 2,
@@ -142,7 +142,7 @@ fn fp_matrix_substituted_refs_digest() -> v2.compiler.source_authority.Discovere
   discovered_source_refs_digest_for_refs(
     refs: std.algebra.Cons {
       head: fp_matrix_ref_a(),
-      tail: std.algebra.Cons { head: fp_matrix_ref_a(), tail: Empty }
+      tail: std.algebra.Cons { head: fp_matrix_ref_a(), tail: std.algebra.Empty }
     }
   )
 }
@@ -152,7 +152,7 @@ fn fp_matrix_forged_closure_subject() -> v2.compiler.self_host.frontier_probe.Fr
     closure: v2.compiler.source_authority.FrontierProbeDiscoveredClosure {
       refs: std.algebra.Cons {
         head: fp_matrix_ref_a(),
-        tail: std.algebra.Cons { head: fp_matrix_ref_b(), tail: Empty }
+        tail: std.algebra.Cons { head: fp_matrix_ref_b(), tail: std.algebra.Empty }
       },
       population_digest: fp_matrix_substituted_refs_digest(),
       entry: fp_matrix_ref_a()

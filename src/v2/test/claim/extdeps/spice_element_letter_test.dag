@@ -15,7 +15,7 @@ fn one_resistor(name: String) -> v2.extdeps.formats.spice.SpiceNetlist {
           value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1k" },
         },
       },
-      tail: Empty,
+      tail: std.algebra.Empty,
     },
   }
 }
@@ -32,7 +32,7 @@ fn one_capacitor(name: String) -> v2.extdeps.formats.spice.SpiceNetlist {
           value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1k" },
         },
       },
-      tail: Empty,
+      tail: std.algebra.Empty,
     },
   }
 }
@@ -84,7 +84,7 @@ test fn w_a_source_and_a_resistor_do_not_collide() -> Bool {
           value: v2.extdeps.formats.spice.SpiceValue { lexeme: "1k" },
         },
       },
-      tail: Empty,
+      tail: std.algebra.Empty,
     },
   }
   spice_emit(netlist: src) == "Vx hot 0 1k"

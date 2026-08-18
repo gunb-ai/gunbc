@@ -215,7 +215,7 @@ fn sgb_choice(
   v2.std.compilers.target_model.TargetRepresentationChoice {
     form: sgb_vec_representation(),
     representation_parameters: representation_parameters,
-    constraints: Empty,
+    constraints: std.algebra.Empty,
     supplemental_generic_bound_contracts: contracts
   }
 }
@@ -252,7 +252,7 @@ fn sgb_nested_realization() -> v2.std.compilers.target_model.TargetCollectionRea
   sgb_realization(
     source_carrier: sgb_nested_source_carrier_node(),
     primary: sgb_nested_choice(),
-    alternatives: Empty
+    alternatives: std.algebra.Empty
   )
 }
 
@@ -260,7 +260,7 @@ fn sgb_empty_realization(source_carrier: Node) -> v2.std.compilers.target_model.
   sgb_realization(
     source_carrier: source_carrier,
     primary: sgb_empty_choice(),
-    alternatives: Empty
+    alternatives: std.algebra.Empty
   )
 }
 
@@ -270,7 +270,7 @@ fn sgb_wrong_choice_realization() -> v2.std.compilers.target_model.TargetCollect
     primary: sgb_empty_choice(),
     alternatives: std.algebra.Cons {
       head: sgb_nested_choice(),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   )
 }
@@ -1103,7 +1103,7 @@ test fn rust_hash_set_serialize_contract_is_known_zero_after_bundle_decode() -> 
             row: sgb_realization(
               source_carrier: decoded.source_carrier,
               primary: hash_choice,
-              alternatives: Empty
+              alternatives: std.algebra.Empty
             ),
             elem: sgb_collection_eligible_elem_node(),
             derive_trait: ReprDeriveSerialize
@@ -1130,7 +1130,7 @@ test fn rust_hash_set_unrepresentable_hash_contracts_refuse_with_typed_blockers(
           let hash_realization = sgb_realization(
             source_carrier: decoded.source_carrier,
             primary: hash_choice,
-            alternatives: Empty
+            alternatives: std.algebra.Empty
           )
           match target_derive_supplemental_generic_bound_contract_lookup_in_realization(
             row: hash_realization,

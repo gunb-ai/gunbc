@@ -61,7 +61,7 @@ fn rust_call_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.s
       rust_call_named_edge(
         name: ^arrow_body_edge,
         target: node_synthetic(
-          kind: v2.std.node.ComputationNode { behavior: Transform },
+          kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
           children: [
             rust_call_positional(target: rust_call_type_atom(id: ^dag_token_plus)),
             rust_call_positional(target: rust_call_type_atom(id: left_operand)),
@@ -75,7 +75,7 @@ fn rust_call_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.s
 
 fn rust_call_fold_body(closure: Node) -> Node {
   node_synthetic(
-    kind: v2.std.node.ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
       rust_call_positional(target: rust_call_type_atom(id: ^rust_call_callee_fold)),
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_param_x)),
@@ -120,7 +120,7 @@ fn rust_call_fold_swapped_arrow() -> Node {
 
 fn rust_call_helper_body() -> Node {
   node_synthetic(
-    kind: v2.std.node.ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
       rust_call_positional(target: rust_call_type_atom(id: ^rust_call_callee_helper)),
       rust_call_positional(target: rust_call_type_atom(id: ^dag_binding_param_x)),
@@ -194,7 +194,7 @@ fn rust_call_emit_from_arrow(arrow: Node, authority: String) -> Outcome<Medium<S
 fn rust_call_emit_matches(arrow: Node, authority: String) -> Bool {
   match rust_call_emit_from_arrow(arrow: arrow, authority: authority) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == authority) && (d == None)
+      (source.carried == authority) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

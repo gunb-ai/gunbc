@@ -92,7 +92,7 @@ fn rust_binop_vep_emit(operation: v2.std.compilers.target_model.CanonicalOperati
           tokens: tokens
         ),
         f: fn(carrier) {
-          v2.std.diagnostic.Accepted { value: render_target_text(t: carrier), diagnostics: None }
+          v2.std.diagnostic.Accepted { value: render_target_text(t: carrier), diagnostics: v2.std.diagnostic.None }
         }
       )
     }
@@ -104,7 +104,7 @@ fn rust_binop_vep_emit_accepts(operation: v2.std.compilers.target_model.Canonica
     operation: operation,
     catalog: rust_operator_realizations_catalog_node()
   ) {
-    Accepted { value: s, diagnostics: d } => (s == expected) && (d == None)
+    Accepted { value: s, diagnostics: d } => (s == expected) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -126,7 +126,7 @@ fn rust_binop_producer_emit_accepts(operator_token: v2.std.node.Symbol, expected
     target: rust_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == expected) && (d == None)
+      (source.carried == expected) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

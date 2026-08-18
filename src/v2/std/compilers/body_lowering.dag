@@ -11,7 +11,7 @@ fn body_lowering_diagnostic(reason: v2.std.node.Symbol, n: Node) -> v2.std.diagn
 
 fn lower_binary_infix(left: Node, operator: Node, right: Node) -> Node {
   node_synthetic(
-    kind: v2.std.node.ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
       v2.std.node.Edge { label: Positional, target: operator },
       v2.std.node.Edge { label: Positional, target: left },

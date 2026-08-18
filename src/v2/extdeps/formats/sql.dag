@@ -291,7 +291,7 @@ fn sql_primitive_bundle_from_nonnumeric_facts(
 fn sql_list_reverse<T>(xs: List<T>) -> List<T> {
   fold_list(
     xs: xs,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, item) {
       std.algebra.Cons { head: item, tail: acc }
     }
@@ -302,7 +302,7 @@ fn sql_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
   sql_list_reverse(
     xs: fold_list(
       xs: xs,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, item) {
         std.algebra.Cons { head: f(item), tail: acc }
       }
@@ -424,7 +424,7 @@ fn sql_serialize_column_definition(col: SqlColumnDefinition) -> Outcome<String> 
 fn sql_serialize_column_definition_strings(cols: List<SqlColumnDefinition>) -> Outcome<List<String>> {
   fold(
     cols,
-    init: outcome_accepted(value: Empty),
+    init: outcome_accepted(value: std.algebra.Empty),
     f: fn(acc, col) {
       append_outcome_value(
         acc: acc,

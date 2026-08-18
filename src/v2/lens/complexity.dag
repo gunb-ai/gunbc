@@ -46,7 +46,7 @@ fn single_complexity_variable(size_var: v2.lens.cost.SizeVariable) -> Complexity
 }
 
 fn empty_complexity_variables() -> ComplexityVariables {
-  Empty
+  std.algebra.Empty
 }
 
 fn composite_complexity_variables(
@@ -93,7 +93,7 @@ fn unknown_complexity_with_diagnostic(diagnostic: v2.std.diagnostic.Diagnostic) 
 
 fn complexity_variables_from_cost(cost: v2.lens.cost.SymbolicCost) -> ComplexityVariables {
   match cost {
-    ConstantCost { value: _ } => Empty
+    ConstantCost { value: _ } => std.algebra.Empty
     LogCost { variable: v } => [v]
     LinearCost { variable: v } => [v]
     PolynomialCost { variable: v, degree: _ } => [v]
@@ -110,7 +110,7 @@ fn complexity_variables_from_cost(cost: v2.lens.cost.SymbolicCost) -> Complexity
         complexity_variables_from_cost(cost: lhs),
         complexity_variables_from_cost(cost: rhs)
       )
-    UnknownCost { diagnostic: _ } => Empty
+    UnknownCost { diagnostic: _ } => std.algebra.Empty
   }
 }
 

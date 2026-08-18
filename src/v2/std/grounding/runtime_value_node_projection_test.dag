@@ -77,7 +77,7 @@ fn rvnp_test_closure_value() -> v2.std.runtime.RuntimeValue {
     value: v2.std.runtime.RuntimeClosureValue {
       arrow_type: rvnp_test_type_node(sym: ^rvnp_test_arrow_sym),
       arrow: rvnp_test_type_node(sym: ^rvnp_test_arrow_body_sym),
-      environment: v2.std.runtime.EvaluationEnvironment { bindings: Empty }
+      environment: v2.std.runtime.EvaluationEnvironment { bindings: std.algebra.Empty }
     }
   }
 }

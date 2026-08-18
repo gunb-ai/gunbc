@@ -27,7 +27,7 @@ fn count_three_algebra() -> SourceFold<CountAcc> {
   }
 }
 
-data src_abc: String = std.algebra.Cons { head: 97, tail: std.algebra.Cons { head: 98, tail: std.algebra.Cons { head: 99, tail: Empty } } }
+data src_abc: String = std.algebra.Cons { head: 97, tail: std.algebra.Cons { head: 98, tail: std.algebra.Cons { head: 99, tail: std.algebra.Empty } } }
 
 fn witness_fold_source_stops_at_is_done() -> Bool {
   let result = fold_source(src: src_abc, algebra: count_three_algebra())

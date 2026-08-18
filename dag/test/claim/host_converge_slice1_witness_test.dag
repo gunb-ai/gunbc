@@ -21,7 +21,7 @@ test fn witness_fixture_infinity_drifts_against_model_desired() -> Bool {
     Present { value: receipt } =>
       receipt.host == operator_host_srv1
         && receipt.unit == host_converge_slice1_probe_unit
-        && receipt.verdict == Drifted
+        && receipt.verdict == gunbc.host_converge.Drifted
     Absent => false
   }
 }
@@ -155,8 +155,8 @@ test fn witness_tasks_knob_is_per_slot_tasks_max_on_srv1_and_srv3() -> Bool {
 test fn witness_tasks_verdict_outage_512_drifts() -> Bool {
   match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
     Present { value: knob } =>
-      host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "512"), knob: knob) == Drifted
-        && host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "infinity"), knob: knob) == Drifted
+      host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "512"), knob: knob) == gunbc.host_converge.Drifted
+        && host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "infinity"), knob: knob) == gunbc.host_converge.Drifted
     Absent => false
   }
 }
@@ -165,7 +165,7 @@ test fn witness_tasks_verdict_desired_count_converges_and_offbyone_drifts() -> B
   match host_converge_slice1_tasks_knob(host: operator_host_srv1) {
     Present { value: knob } =>
       host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "16384"), knob: knob) == VerdictConverged
-        && host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "16383"), knob: knob) == Drifted
+        && host_converge_slice1_tasks_verdict(limit: parse_systemd_task_limit_show(raw: "16383"), knob: knob) == gunbc.host_converge.Drifted
     Absent => false
   }
 }

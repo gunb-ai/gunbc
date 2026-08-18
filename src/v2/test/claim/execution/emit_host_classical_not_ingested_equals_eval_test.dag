@@ -29,7 +29,7 @@ fn ingested_resolved_module_from_source(source: String) -> Outcome<Node> {
           bind_outcome(
             o: normalize(parse_tree: artifact.tree),
             f: fn(normalized) {
-              resolve(tree: normalized, lm: lm)
+              v2.compiler.resolve.resolve(tree: normalized, lm: lm)
             }
           )
         }

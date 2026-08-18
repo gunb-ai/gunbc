@@ -17,14 +17,14 @@ fn derisk_ingest_for(src: String) -> v2.compiler.source_authority.SourceRootInge
       compilation_unit: ^derisk_pilot_cu,
       source_root: V2Tree
     },
-    tail: Empty
+    tail: std.algebra.Empty
   }
 }
 
 fn derisk_module_admission() -> v2.compiler.name_resolve.Admission {
   v2.compiler.name_resolve.Admission {
     subject: v2.compiler.name_resolve.ResolutionSubject {
-      name: std.algebra.Cons { head: ^derisk_pilot, tail: Empty }
+      name: std.algebra.Cons { head: ^derisk_pilot, tail: std.algebra.Empty }
     },
     imports: Empty
   }

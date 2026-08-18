@@ -61,7 +61,7 @@ data typescript_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_t
 test fn typescript_add_serialize_reject_receipt_holds() -> Bool {
   match typescript_add_serialize_reject_receipt {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d != None
+    Rejected { diagnostics: d } => d != v2.std.diagnostic.None
   }
 }
 
@@ -223,7 +223,7 @@ data typescript_add_emit_receipt: Outcome<Medium<String>> = anchor_typescript_ad
 test fn typescript_add_emit_add_fn_accepts_holds() -> Bool {
   match typescript_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == ts_source_text) && (d == None)
+      (source.carried == ts_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -232,7 +232,7 @@ data typescript_add_compile_inferred_receipt: Outcome<v2.compiler.compile.Compil
 
 test fn typescript_add_compile_inferred_receipt_holds() -> Bool {
   match typescript_add_compile_inferred_receipt {
-    Accepted { value: _, diagnostics: d } => d == None
+    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
     Rejected { diagnostics: _ } => false
   }
 }

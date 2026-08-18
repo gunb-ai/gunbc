@@ -120,7 +120,7 @@ type ViewPoint2 {
   v: Int
 }
 
-fn checked_pair_cross_term(a: Int, b: Int, c: Int, d: Int) -> CheckedInt {
+fn checked_pair_cross_term(a: Int, b: Int, c: Int, d: Int) -> std.checked_arithmetic.CheckedInt {
   checked_subtract_results(
     a: checked_int_multiply(a: a, b: b),
     b: checked_int_multiply(a: c, b: d),
@@ -167,8 +167,8 @@ fn settle_triple(t: CheckedTriple) -> ProjectionConstruction<ViewAxisTriple> {
 fn projection_view(
   direction: ViewAxisTriple,
   up_reference: ViewAxisTriple,
-  source_frame: CoordinateFrameIdentity,
-  view_frame: CoordinateFrameIdentity,
+  source_frame: std.coordinate_frame.CoordinateFrameIdentity,
+  view_frame: std.coordinate_frame.CoordinateFrameIdentity,
 ) -> ProjectionConstruction<ProjectionView> {
   if triple_is_zero(t: direction) {
     ProjectionRefused { cause: ViewDirectionIsZero }
@@ -202,8 +202,8 @@ fn projection_view(
 }
 
 fn view_map(v: ProjectionView) -> ProjectionMap { v.map }
-fn view_source_frame(v: ProjectionView) -> CoordinateFrameIdentity { v.source_frame }
-fn view_frame_of(v: ProjectionView) -> CoordinateFrameIdentity { v.view_frame }
+fn view_source_frame(v: ProjectionView) -> std.coordinate_frame.CoordinateFrameIdentity { v.source_frame }
+fn view_frame_of(v: ProjectionView) -> std.coordinate_frame.CoordinateFrameIdentity { v.view_frame }
 fn view_direction(v: ProjectionView) -> ViewAxisTriple { v.direction }
 
 // THE FOUR NAMED CAMERAS, and they are cameras rather than maps: each row supplies a direction and
@@ -244,8 +244,8 @@ fn projection_kind_up_reference(k: ProjectionKind) -> ViewAxisTriple {
 
 fn named_projection_view(
   kind: ProjectionKind,
-  source_frame: CoordinateFrameIdentity,
-  view_frame: CoordinateFrameIdentity,
+  source_frame: std.coordinate_frame.CoordinateFrameIdentity,
+  view_frame: std.coordinate_frame.CoordinateFrameIdentity,
 ) -> ProjectionConstruction<ProjectionView> {
   projection_view(
     direction: projection_kind_direction(k: kind),
@@ -255,7 +255,7 @@ fn named_projection_view(
   )
 }
 
-fn point3_components(p: Point3) -> ViewAxisTriple {
+fn point3_components(p: std.affine_space.Point3) -> ViewAxisTriple {
   view_axis_triple(
     x: signed_frame_component_count(c: p.x),
     y: signed_frame_component_count(c: p.y),
@@ -263,7 +263,7 @@ fn point3_components(p: Point3) -> ViewAxisTriple {
   )
 }
 
-fn checked_row_dot(ax: Int, ay: Int, az: Int, p: ViewAxisTriple) -> CheckedInt {
+fn checked_row_dot(ax: Int, ay: Int, az: Int, p: ViewAxisTriple) -> std.checked_arithmetic.CheckedInt {
   checked_add_results(
     a: checked_add_results(
       a: checked_int_multiply(a: ax, b: p.x),
@@ -273,9 +273,9 @@ fn checked_row_dot(ax: Int, ay: Int, az: Int, p: ViewAxisTriple) -> CheckedInt {
   )
 }
 
-fn projection_frame_refusal(v: ProjectionView, p: Point3) -> ProjectionRefusal {
+fn projection_frame_refusal(v: ProjectionView, p: std.affine_space.Point3) -> ProjectionRefusal {
   ProjectionFrameRefused {
-    refusal: SpatialFrameRefusal {
+    refusal: std.affine_space.SpatialFrameRefusal {
       operation: OpProjectPoint3,
       left_frame: v.source_frame,
       right_frame: p.frame,
@@ -287,7 +287,7 @@ fn projection_frame_refusal(v: ProjectionView, p: Point3) -> ProjectionRefusal {
 // THE FRAME CHECK PRECEDES THE ARITHMETIC, for the reason std.affine_space states: a point from
 // another frame has no projection under this map, so an overflow reported for it would name the
 // wrong cause.
-fn project_point(v: ProjectionView, p: Point3) -> ProjectionConstruction<ViewPoint2> {
+fn project_point(v: ProjectionView, p: std.affine_space.Point3) -> ProjectionConstruction<ViewPoint2> {
   if !coordinate_frame_identity_eq(a: v.source_frame, b: p.frame) {
     ProjectionRefused { cause: projection_frame_refusal(v: v, p: p) }
   } else {
@@ -308,7 +308,7 @@ fn project_point(v: ProjectionView, p: Point3) -> ProjectionConstruction<ViewPoi
 // third field on ViewPoint2 because it is not a position on the page: a consumer that draws does not
 // want it, and a consumer that orders does not want the page coordinates. Fusing them would make
 // every drawing carry a number it must remember to ignore.
-fn projection_depth(v: ProjectionView, p: Point3) -> ProjectionConstruction<Int> {
+fn projection_depth(v: ProjectionView, p: std.affine_space.Point3) -> ProjectionConstruction<Int> {
   if !coordinate_frame_identity_eq(a: v.source_frame, b: p.frame) {
     ProjectionRefused { cause: projection_frame_refusal(v: v, p: p) }
   } else {
@@ -362,7 +362,7 @@ fn first_distorted_axis(m: ProjectionMap) -> Int {
 // with no arithmetic at all. On an axonometric view there is no exact millimetre reading of a page
 // coordinate, and there is no rounding arm here: a caller that wants an approximate scale bar must
 // declare the approximation it is willing to make, in the layer that renders.
-fn view_point_millimetres(v: ProjectionView, p: ViewPoint2) -> ProjectionConstruction<Point2> {
+fn view_point_millimetres(v: ProjectionView, p: ViewPoint2) -> ProjectionConstruction<std.affine_space.Point2> {
   if !view_units_are_millimetres(m: v.map) {
     let axis = first_distorted_axis(m: v.map)
     ProjectionRefused {

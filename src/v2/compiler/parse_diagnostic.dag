@@ -49,7 +49,7 @@ fn non_empty_parse_stage_diagnostics_from_overlap_roster(
           head: parse_overlap_residue_stage_diagnostic_at(at: at, row: first),
           tail: fold_list(
             xs: rest,
-            empty: Empty,
+            empty: v2.std.algebra.Empty,
             cons: fn(acc, row) {
               list_snoc_item(
                 xs: acc,
@@ -85,7 +85,7 @@ fn non_empty_diagnostics_from_parse_stage(d: NonEmptyParseStageDiagnostics) -> v
     head: parse_stage_diagnostic_core(d: d.head),
     tail: fold_list(
       xs: d.tail,
-      empty: Empty,
+      empty: v2.std.algebra.Empty,
       cons: fn(acc, item) {
         list_snoc_item(xs: acc, item: parse_stage_diagnostic_core(d: item))
       }
@@ -106,7 +106,7 @@ fn grammar_choice_ambiguity_rows_append_parse_stage(
 fn grammar_choice_ambiguity_rows_from_non_empty_parse_stage(
   d: NonEmptyParseStageDiagnostics
 ) -> FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
-  let head_rows = grammar_choice_ambiguity_rows_append_parse_stage(acc: Empty, d: d.head)
+  let head_rows = grammar_choice_ambiguity_rows_append_parse_stage(acc: v2.std.algebra.Empty, d: d.head)
   fold_list(
     xs: d.tail,
     empty: head_rows,
@@ -134,7 +134,7 @@ fn non_empty_grammar_choice_ambiguity_rows_from_parse_stage(
 
 fn list_tail_or_empty_rows(xs: FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>) -> FreeMonoid<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   match list_tail(xs: xs) {
-    TailAbsent => Empty
+    TailAbsent => v2.std.algebra.Empty
     TailFound { tail: rest } => rest
   }
 }
@@ -153,7 +153,7 @@ fn list_tail_or_empty_parse_stage(
   tail: FreeMonoid<ParseStageDiagnostic>
 ) -> FreeMonoid<ParseStageDiagnostic> {
   match list_tail(xs: tail) {
-    TailAbsent => Empty
+    TailAbsent => v2.std.algebra.Empty
     TailFound { tail: rest } => rest
   }
 }

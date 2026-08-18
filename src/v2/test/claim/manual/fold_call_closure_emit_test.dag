@@ -48,7 +48,7 @@ fn fold_call_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.s
       fold_call_named_edge(
         name: ^arrow_body_edge,
         target: node_synthetic(
-          kind: v2.std.node.ComputationNode { behavior: Transform },
+          kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
           children: [
             fold_call_positional(target: fold_call_atom(id: ^dag_token_plus)),
             fold_call_positional(target: fold_call_atom(id: left_operand)),
@@ -62,7 +62,7 @@ fn fold_call_closure_arrow(left_operand: v2.std.node.Symbol, right_operand: v2.s
 
 fn fold_call_body(closure: Node) -> Node {
   node_synthetic(
-    kind: v2.std.node.ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
       fold_call_positional(target: fold_call_atom(id: ^fold_call_callee)),
       fold_call_positional(target: fold_call_atom(id: ^fold_call_param_xs)),
@@ -202,7 +202,7 @@ fn fold_call_tokens_equal(
 fn fold_call_emit_matches(arrow: Node, expected: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> Bool {
   match fold_call_emit_body_tokens(arrow: arrow) {
     Accepted { value: tokens, diagnostics: d } =>
-      fold_call_tokens_equal(left: tokens, right: expected) && (d == None)
+      fold_call_tokens_equal(left: tokens, right: expected) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

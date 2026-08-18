@@ -119,7 +119,7 @@ fn bash_fold_with_redir_stmt(node: Node) -> v2.workflow.bash_emit.BashEmitStmt {
 fn bash_fold_direct_serialize_matches_golden(emitted: Node, target: v2.std.compilers.target_model.TargetModel, golden: String) -> Bool {
   match target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == golden) && (d == None)
+      (source.carried == golden) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

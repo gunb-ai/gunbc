@@ -74,7 +74,7 @@ fn pipeline_resolved_source(source: String, file: v2.std.node.Symbol) -> Outcome
   bind_outcome(
     o: pipeline_normalize_source(source: source, file: file),
     f: fn(normalized) {
-      resolve(tree: normalized, lm: dag_language_model())
+      v2.compiler.resolve.resolve(tree: normalized, lm: dag_language_model())
     }
   )
 }

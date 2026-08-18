@@ -87,7 +87,7 @@ test fn emit_on_demand_materialize_recompute_on_miss_holds() -> Bool {
     key: kernel_native_key()
   )
   match lookup {
-    EmitOnDemandMiss => materialization_for_lookup(lookup: lookup) == Recompute
+    EmitOnDemandMiss => materialization_for_lookup(lookup: lookup) == std.realization.Recompute
     EmitOnDemandHit { receipt: _ } => false
   }
 }

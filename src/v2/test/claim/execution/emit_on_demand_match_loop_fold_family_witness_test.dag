@@ -438,7 +438,7 @@ test fn emit_on_demand_match_loop_fold_materialize_recompute_on_miss_holds() -> 
             key: family_native_key_for(tree: tree)
           )
           match lookup {
-            EmitOnDemandMiss => materialization_for_lookup(lookup: lookup) == Recompute
+            EmitOnDemandMiss => materialization_for_lookup(lookup: lookup) == std.realization.Recompute
             EmitOnDemandHit { receipt: _ } => false
           }
         Absent => false

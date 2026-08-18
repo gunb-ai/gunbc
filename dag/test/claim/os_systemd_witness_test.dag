@@ -18,7 +18,7 @@ test fn witness_wrong_case_does_not_decode() -> Bool {
 }
 
 test fn witness_roundtrip_failed() -> Bool {
-  systemd_unit_active_state_wire_label(s: Failed) == "failed"
+  systemd_unit_active_state_wire_label(s: extdeps.systemd.Failed) == "failed"
 }
 
 test fn witness_memory_limit_infinity_roundtrip() -> Bool {

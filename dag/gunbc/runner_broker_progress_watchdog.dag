@@ -1,27 +1,27 @@
 module gunbc.runner_broker_progress_watchdog
 
 
-data runner_broker_progress_watchdog_authority_disposition: Disposition = SingleAuthority
+data runner_broker_progress_watchdog_authority_disposition: std.disposition.Disposition = SingleAuthority
 
 data runner_broker_progress_watchdog_provisioning_note: String = "PART OF PROVISIONING, NOT A SIBLING UTILITY (operator ruling 2026-08-06). The ctrl-side incident patch is FROZEN AND RETIRED — behavior must not accumulate there. Every slot provisioned through gunbc.runner_lifecycle installs release, directory, JIT wrapper, systemd template, memory drop-ins, watchdog executable, watchdog service/timer, local observation producer, remote registration observer, replacement effect, and independent readback together. srv3-06/07 and srv4-06/07 get the watchdog in the SAME application that creates them."
 
-data runner_broker_progress_silence_bound_seconds: Duration = 600
+data runner_broker_progress_silence_bound_seconds: std.types.Duration = 600
 
 data runner_broker_progress_silence_bound_basis_note: String = "DERIVED, NOT TUNABLE: pinned Actions Runner v2.334.0 backs off on repeated message failures in tens of seconds, settling ~30-60s between retries. Ten minutes spans many expected retry envelopes while the incident wedges were silent 41 and 77 MINUTES — an order of magnitude past any healthy retry cadence. Do not treat this bound as a knob."
 
-data runner_watchdog_arm_reachability_stale_seconds: Duration = 5
+data runner_watchdog_arm_reachability_stale_seconds: std.types.Duration = 5
 
 data runner_watchdog_arm_reachability_note: String = "STALE_SECONDS=5 proves only that the restart arm is REACHABLE in tests — label it an arm-reachability control, NOT a semantic bound. Semantic positive fixtures preserve the 41- and 77-minute incident wedges. The SIGPIPE ls|head regression is preserved as a typed refusal to reconstruct diagnostic reads through shell pipelines — enumerate and select diagnostic files directly."
 
-data runner_watchdog_registration_grace_seconds: Duration = 120
+data runner_watchdog_registration_grace_seconds: std.types.Duration = 120
 
-data runner_watchdog_incident_wedge_41_minutes_seconds: Duration = 2460
+data runner_watchdog_incident_wedge_41_minutes_seconds: std.types.Duration = 2460
 
-data runner_watchdog_incident_wedge_77_minutes_seconds: Duration = 4620
+data runner_watchdog_incident_wedge_77_minutes_seconds: std.types.Duration = 4620
 
-data runner_watchdog_diagnostic_read_scaffold: Disposition = Scaffold {
+data runner_watchdog_diagnostic_read_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.runner_lifecycle",
     decl_name: "runner_slot_add_steps_ordered",
     field: WholeDeclaration,
@@ -149,7 +149,7 @@ fn broker_progress_event_resets_silence(event: BrokerProgressEvent) -> Bool {
   }
 }
 
-fn broker_progress_silence_exceeds_bound(silence_seconds: Duration, bound: Duration) -> Bool {
+fn broker_progress_silence_exceeds_bound(silence_seconds: std.types.Duration, bound: std.types.Duration) -> Bool {
   silence_seconds >= bound
 }
 
@@ -249,11 +249,11 @@ fn watchdog_replace_predicate_holds(
 
 fn reobservation_refuses_mutation(
   receipt: RunnerRepairDecisionReceipt,
-  fresh_local_process: ProcessIdentity,
+  fresh_local_process: gunbc.build_cache_instance.ProcessIdentity,
   fresh_remote: RemoteRegistrationEvidence,
   fresh_worker: RunnerWorkerObservation,
   fresh_broker: BrokerProgressObservation,
-  act_at: Timestamp,
+  act_at: std.types.Timestamp,
 ) -> Bool {
   if !process_identity_matches_receipt(
     receipt: receipt,
@@ -286,7 +286,7 @@ fn reobservation_refuses_mutation(
 
 fn process_identity_matches_receipt(
   receipt: RunnerRepairDecisionReceipt,
-  found: ProcessIdentity,
+  found: gunbc.build_cache_instance.ProcessIdentity,
 ) -> Bool {
   (receipt.local_process.boot_id as String) == (found.boot_id as String)
     && receipt.local_process.pid == found.pid
@@ -297,9 +297,9 @@ type RunnerDiagnosticReadPath
   = DiagnosticFileEnumeration { path: std.types.NonEmptyStr }
   | DiagnosticShellPipelineRefused { attempted: std.types.NonEmptyStr, reason: std.types.NonEmptyStr }
 
-fn refuses_shell_pipeline_diagnostic_read(attempted: NonEmptyStr) -> RunnerDiagnosticReadPath {
+fn refuses_shell_pipeline_diagnostic_read(attempted: std.types.NonEmptyStr) -> RunnerDiagnosticReadPath {
   DiagnosticShellPipelineRefused {
     attempted: attempted,
-    reason: "enumerate and select diagnostic files directly; shell pipelines risk SIGPIPE and conceal partial reads" as NonEmptyStr,
+    reason: "enumerate and select diagnostic files directly; shell pipelines risk SIGPIPE and conceal partial reads" as std.types.NonEmptyStr,
   }
 }

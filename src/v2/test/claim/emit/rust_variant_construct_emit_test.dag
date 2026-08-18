@@ -26,7 +26,7 @@ test fn rust_variant_construct_emit_holds_accepts() -> Bool {
     target: rust_variant_construct_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_variant_construct_source_text) && (d == None)
+      (source.carried == rust_variant_construct_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -39,7 +39,7 @@ test fn rust_variant_construct_emit_wrong_value_discriminates() -> Bool {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_variant_construct_emit_wrong_value_source_text) &&
       (source.carried != rust_variant_construct_source_text) &&
-      (d == None)
+      (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

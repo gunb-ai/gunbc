@@ -1069,7 +1069,7 @@ fn rust_classical_not_target_model_bundle_core() -> Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: fold(
       core,
-      init: Empty,
+      init: std.algebra.Empty,
       f: fn(acc, edge) {
         match edge.label {
           Named { name: n } =>
@@ -3782,7 +3782,7 @@ fn rust_bind_literal_target_model_bundle() -> Node {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: fold(
       core,
-      init: Empty,
+      init: std.algebra.Empty,
       f: fn(acc, edge) {
         match edge.label {
           Named { name: n } =>
@@ -3822,7 +3822,7 @@ fn rust_conj_emitted_from_tokens(tokens: List<v2.std.compilers.target_model.Conc
     kind: v2.std.node.TypeNode { connective: Conj },
     children: fold_list(
       xs: tokens,
-      empty: Empty,
+      empty: std.algebra.Empty,
       cons: fn(acc, token) {
         match token {
           BoundToken { binding: binding, token_class: _ } =>
@@ -3849,7 +3849,7 @@ fn rust_formal_symbol_from_token(token: v2.std.compilers.target_model.ConcreteSy
 fn rust_formal_rhs_from_tokens_with_bindings(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, token) {
       list_snoc_item(xs: acc, item: rust_formal_symbol_from_token(token: token))
     }

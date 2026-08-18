@@ -291,7 +291,7 @@ fn wrap_decision_gate(
                 ),
                 f: fn(optional_carriers) {
                   let value_semantics_carriers = match optional_carriers {
-                    Absent => Empty
+                    Absent => std.algebra.Empty
                     Present { value: node } =>
                       target_value_semantics_carriers_from_node(node: node)
                   }

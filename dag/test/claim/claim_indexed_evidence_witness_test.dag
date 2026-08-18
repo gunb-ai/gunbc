@@ -319,7 +319,7 @@ test fn witness_forged_support_metadata_cannot_satisfy_readiness() -> Bool {
     ),
     direction: EvidenceSupports,
     inference_rule: "provider-live-request-succeeded",
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.external_authority.extdeps_external_authority_anchor,
     provenance: std.claim_evidence.EvidenceProvenance {
       entity: "unrecognized-provider-output",
       activity: "unrecognized-provider-operation",

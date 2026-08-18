@@ -14,7 +14,7 @@ fn qn_fold_init(n: Node) -> QnFoldStatus {
   match n.kind {
     TypeNode { connective: Conj } =>
       if count(n.children) == 0 {
-        QnFoldDone { qn: Empty }
+        QnFoldDone { qn: std.algebra.Empty }
       } else if count(n.children) == 2 {
         QnFoldInit
       } else {
@@ -26,7 +26,7 @@ fn qn_fold_init(n: Node) -> QnFoldStatus {
       }
     TypeNode { connective: Atom { identity: sym } } =>
       if count(n.children) == 0 {
-        QnFoldDone { qn: std.algebra.Cons { head: sym, tail: Empty } }
+        QnFoldDone { qn: std.algebra.Cons { head: sym, tail: std.algebra.Empty } }
       } else {
         QnFoldError { diag: v2.std.diagnostic.Diagnostic {
           reason: ^qualified_name_structure_invalid,
@@ -129,7 +129,7 @@ fn qn_fold_step(acc: QnFoldStatus, edge: v2.std.node.Edge, child: QnFoldStatus) 
 fn qualified_name_from_string_segments(segments: List<String>) -> FreeMonoid<v2.std.node.Symbol> {
   fold_list_right(
     xs: segments,
-    empty: Empty,
+    empty: std.algebra.Empty,
     snoc: fn(tail, segment) {
       std.algebra.Cons { head: symbol_intern_lexeme(lexeme: segment), tail: tail }
     }
@@ -138,7 +138,7 @@ fn qualified_name_from_string_segments(segments: List<String>) -> FreeMonoid<v2.
 
 fn qualified_name_from_dotted_string(dotted: String) -> FreeMonoid<v2.std.node.Symbol> {
   if string_is_empty(s: dotted) {
-    Empty
+    std.algebra.Empty
   } else {
     qualified_name_from_string_segments(segments: dotted.split(delimiter: "."))
   }
@@ -158,7 +158,7 @@ fn qualified_name_to_dotted_string(qn: QualifiedName) -> String {
     Empty => ""
     Cons { head: sym, tail: rest } =>
       let segment = symbol_lexeme(sym: sym)
-      if is_empty(xs: rest) {
+      if v2.std.algebra.is_empty(xs: rest) {
         segment
       } else {
         concat(segment, ".", qualified_name_to_dotted_string(qn: rest))
@@ -174,7 +174,7 @@ fn qualified_name_last_segment(qn: QualifiedName) -> Optional<v2.std.node.Symbol
   match qn {
     Empty => optional_absent()
     Cons { head: h, tail: t } =>
-      if is_empty(xs: t) {
+      if v2.std.algebra.is_empty(xs: t) {
         optional_present(value: h)
       } else {
         qualified_name_last_segment(qn: t)

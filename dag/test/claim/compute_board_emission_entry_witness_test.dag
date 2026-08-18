@@ -20,7 +20,7 @@ fn is_emitted(e: BoardEmission<product.compute_board.spice_projection.SpiceProje
 test fn w_the_production_article_emits_through_every_entry() -> Bool {
   is_emitted(e: emit_spice())
     && is_emitted(e: emit_ngspice_run())
-    && match emit_verilog() {
+    && match product.compute_board.emission_entry.emit_verilog() {
       BoardEmitted { source: s } => s != ""
       BoardArticleNotAdmitted { causes: _ } => false
       BoardTargetRefused { cause: _ } => false

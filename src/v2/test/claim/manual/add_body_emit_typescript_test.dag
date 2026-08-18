@@ -68,7 +68,7 @@ fn add_body_ts_lex_with_minus() -> v2.std.compilers.lexing.LexRules {
         left: base.rules,
         right: std.algebra.Cons {
           head: ts_lex_rule(token_class: ^ts_token_minus, text: " - "),
-          tail: Empty
+          tail: std.algebra.Empty
         }
       )
     }
@@ -346,7 +346,7 @@ fn add_body_ts_emit_from_producer_swapped_tree(target: v2.std.compilers.target_m
 test fn add_body_ts_emit_add_fn_accepts_holds() -> Bool {
   match add_body_ts_emit_from_producer_tree(target: ts_target_model()) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == ts_source_text) && (d == None)
+      (source.carried == ts_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -356,7 +356,7 @@ test fn add_body_ts_emit_operand_swap_discriminates() -> Bool {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == add_body_ts_emit_operand_swap_source_text) &&
       (source.carried != ts_source_text) &&
-      (d == None)
+      (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -366,7 +366,7 @@ test fn add_body_ts_emit_catalog_minus_discriminates() -> Bool {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == add_body_ts_emit_catalog_minus_source_text) &&
       (source.carried != ts_source_text) &&
-      (d == None)
+      (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

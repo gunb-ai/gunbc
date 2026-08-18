@@ -24,7 +24,7 @@ fn sdtr_bool_coproduct() -> Node {
 fn sdtr_unwired_target_refuses() -> Bool {
   match emit_semantic_type_decl(
     name: ^Bool,
-    params: Empty,
+    params: std.algebra.Empty,
     node: sdtr_bool_coproduct(),
     target: cpp_target_model()
   ) {

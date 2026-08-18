@@ -427,11 +427,11 @@ fn stage_normalize() -> fn(ParseTree) -> Outcome<NormalizedTree> {
 }
 
 fn stage_resolve(lm: v2.std.language_model.LanguageModel) -> fn(NormalizedTree) -> Outcome<ResolvedTree> {
-  fn(normalized) { resolve(tree: normalized, lm: lm) }
+  fn(normalized) { v2.compiler.resolve.resolve(tree: normalized, lm: lm) }
 }
 
 fn resolve_cache_miss(normalized: v2.compiler.normalized_tree.NormalizedTree) -> CacheProbe<v2.compiler.resolve.ResolvedTree> {
-  Miss
+  v2.std.staging.Miss
 }
 
 fn stage_translate(target: v2.std.compilers.target_model.TargetModel) -> fn(ResolvedTree) -> Outcome<Medium<String>> {

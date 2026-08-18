@@ -92,7 +92,7 @@ fn parse_converge_verdict_label(label: String) -> gunbc.host_converge.ConvergeVe
     Present { value: VerdictConverged }
   } else {
     if label == "drifted" {
-      Present { value: Drifted }
+      Present { value: gunbc.host_converge.Drifted }
     } else {
       if label == "absent" {
         Present { value: Absent }

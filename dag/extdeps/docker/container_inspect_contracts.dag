@@ -10,5 +10,5 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 
 data container_state_wire_contract: std.serialization.CoproductWireContract = {
   coproduct: std.decl_ref.DeclarationRef { module_path: "extdeps.docker.container_inspect", decl_name: "ContainerState", field: WholeDeclaration }
-  encoding: std.serialization.StringVariant { naming: SnakeCase }
+  encoding: std.serialization.StringVariant { naming: std.serialization.SnakeCase }
 }

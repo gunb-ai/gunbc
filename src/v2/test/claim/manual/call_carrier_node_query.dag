@@ -38,7 +38,7 @@ fn call_carrier_arg_y() -> Node {
 
 fn call_carrier_call_node() -> Node {
   node_synthetic(
-    kind: v2.std.node.ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
       v2.std.node.Edge { label: Positional, target: call_carrier_callee_ref() },
       v2.std.node.Edge { label: Positional, target: call_carrier_arg_x() },
@@ -53,7 +53,7 @@ fn call_carrier_value_node() -> Node {
 
 fn call_carrier_callee_free_transform() -> Node {
   node_synthetic(
-    kind: v2.std.node.ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
       v2.std.node.Edge { label: Positional, target: call_carrier_value_node() },
       v2.std.node.Edge { label: Positional, target: call_carrier_value_node() }

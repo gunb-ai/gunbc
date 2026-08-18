@@ -48,17 +48,17 @@ fn ka_two_module_ingest() -> v2.compiler.source_authority.SourceRootIngest {
     head: ka_read(text: "module ka_importee\n\nfn helper(x: Int) -> Int { x + 1 }\n", id: ^ka_importee_art, path: "src/v2/test/fixture/ka_importee.dag"),
     tail: std.algebra.Cons {
       head: ka_read(text: "module ka_importer\n\nimport ka_importee { helper }\n\nfn subject(x: Int) -> Int { helper(x: x) }\n", id: ^ka_importer_art, path: "src/v2/test/fixture/ka_importer.dag"),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   }
 }
 
 fn ka_admission() -> v2.compiler.name_resolve.Admission {
   v2.compiler.name_resolve.Admission {
-    subject: v2.compiler.name_resolve.ResolutionSubject { name: std.algebra.Cons { head: ^ka_importer, tail: Empty } },
+    subject: v2.compiler.name_resolve.ResolutionSubject { name: std.algebra.Cons { head: ^ka_importer, tail: std.algebra.Empty } },
     imports: std.algebra.Cons {
-      head: v2.compiler.name_resolve.Import { target: std.algebra.Cons { head: ^ka_importee, tail: Empty }, visibility: ImportVisible },
-      tail: Empty
+      head: v2.compiler.name_resolve.Import { target: std.algebra.Cons { head: ^ka_importee, tail: std.algebra.Empty }, visibility: ImportVisible },
+      tail: std.algebra.Empty
     }
   }
 }

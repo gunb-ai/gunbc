@@ -20,7 +20,7 @@ fn sql_fold_fold_serialize(
       match emit(tree: tree, target: target) {
         Accepted { value: source, diagnostics: d } =>
           match d {
-            None => v2.std.diagnostic.Accepted { value: source.carried, diagnostics: None }
+            None => v2.std.diagnostic.Accepted { value: source.carried, diagnostics: v2.std.diagnostic.None }
             Some { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           }
         Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -43,7 +43,7 @@ fn sql_fold_fold_matches_oracle(op: v2.extdeps.formats.sql.SqlSchemaOperation) -
     Accepted { value: folded, diagnostics: _ } =>
       match sql_serialize_schema_operation(op: op) {
         Accepted { value: oracle, diagnostics: od } =>
-          (folded == oracle) && (od == None)
+          (folded == oracle) && (od == v2.std.diagnostic.None)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -99,7 +99,7 @@ fn sql_fold_direct_serialize_matches_oracle(
         Accepted { value: source, diagnostics: d } =>
           match sql_serialize_schema_operation(op: op) {
             Accepted { value: oracle, diagnostics: od } =>
-              (source.carried == oracle) && (d == None) && (od == None)
+              (source.carried == oracle) && (d == v2.std.diagnostic.None) && (od == v2.std.diagnostic.None)
             Rejected { diagnostics: _ } => false
           }
         Rejected { diagnostics: _ } => false

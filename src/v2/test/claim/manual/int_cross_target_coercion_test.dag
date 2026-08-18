@@ -113,7 +113,7 @@ fn cross_target_rust_i32_to_python_int_coercion_fold() -> Outcome<v2.std.coercio
       closedness_property: ^target_model_edge_declared_inhabitants
     ),
     f: fn(candidates) {
-      coercion_fold_rust_i32_to_python_int_widening(
+      v2.extdeps.coercion_widening.coercion_fold_rust_i32_to_python_int_widening(
         source: rust_i32_grounding(),
         candidates: candidates,
         priority: python_int_inhabitant_node()
@@ -147,7 +147,7 @@ fn cross_target_python_to_rust_i32_narrowing_fold() -> Outcome<v2.std.coercion.C
       closedness_property: ^target_model_edge_declared_inhabitants
     ),
     f: fn(candidates) {
-      coercion_fold_python_int_to_rust_i32_narrowing(
+      v2.extdeps.coercion_widening.coercion_fold_python_int_to_rust_i32_narrowing(
         source: python_unbounded_int_grounding(),
         candidates: candidates,
         priority: rust_inhabitant_i32_node()

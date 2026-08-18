@@ -12,7 +12,7 @@ fn generated_coproduct_exhaustiveness_claim() -> Outcome<v2.std.verification.Tes
 fn generated_coproduct_exhaustiveness_input() -> Outcome<Node> {
   match generated_coproduct_exhaustiveness_claim() {
     Accepted { value: claim, diagnostics: _ } =>
-      v2.std.diagnostic.Accepted { value: test_claim_input(c: claim), diagnostics: None }
+      v2.std.diagnostic.Accepted { value: test_claim_input(c: claim), diagnostics: v2.std.diagnostic.None }
     Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
 }

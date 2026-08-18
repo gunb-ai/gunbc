@@ -11,12 +11,12 @@ fn resolver_pathology_profile_receipt_body() -> List<std.markdown.MarkdownBlock>
     hr(),
     h2(text: "2. Measured top resolve offenders (warm typed_module_cache)"),
     std.markdown.TableBlock {
-      header: row(cells: [cell(text: "Rank"), cell(text: "ms"), cell(text: "items"), cell(text: "entry")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "Rank"), cell(text: "ms"), cell(text: "items"), cell(text: "entry")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "1"), cell(text: "9410"), cell(text: "1973"), cell(text: "v2/compiler/manual/dag_import_block_lexeme_stamp_test.dag")]),
-        row(cells: [cell(text: "2"), cell(text: "6164"), cell(text: "2594"), cell(text: "v2/test/claim/emit_host_gate/target_coverage_completeness_test.dag")]),
-        row(cells: [cell(text: "12"), cell(text: "1556"), cell(text: "2412"), cell(text: "complexity_gate/budget_roster_completeness_test.dag")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "1"), cell(text: "9410"), cell(text: "1973"), cell(text: "v2/compiler/manual/dag_import_block_lexeme_stamp_test.dag")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "2"), cell(text: "6164"), cell(text: "2594"), cell(text: "v2/test/claim/emit_host_gate/target_coverage_completeness_test.dag")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "12"), cell(text: "1556"), cell(text: "2412"), cell(text: "complexity_gate/budget_roster_completeness_test.dag")]),
       ]
     },
     hr(),

@@ -206,16 +206,16 @@ fn test_claim_coproduct_variant(c: TestClaim) -> TestClaimCoproductVariant {
 
 fn locus_evaluation_nodes(at: v2.std.diagnostic.Locus) -> List<Node> {
   match at {
-    NodeLocus { anchor: a } => list_snoc_item(xs: Empty, item: a.at)
-    Textual { file: _, extent: _ } => Empty
-    PortLocus { anchor: _ } => Empty
+    NodeLocus { anchor: a } => list_snoc_item(xs: std.algebra.Empty, item: a.at)
+    Textual { file: _, extent: _ } => std.algebra.Empty
+    PortLocus { anchor: _ } => std.algebra.Empty
   }
 }
 
 fn correction_evaluation_nodes(c: v2.std.diagnostic.Correction) -> List<Node> {
   match c {
-    Suggested { node: n } => list_snoc_item(xs: Empty, item: n)
-    Unavailable { reason: _ } => Empty
+    Suggested { node: n } => list_snoc_item(xs: std.algebra.Empty, item: n)
+    Unavailable { reason: _ } => std.algebra.Empty
   }
 }
 
@@ -229,7 +229,7 @@ fn diagnostic_evaluation_nodes(d: v2.std.diagnostic.Diagnostic) -> List<Node> {
 fn diagnostic_list_evaluation_nodes(ds: List<v2.std.diagnostic.Diagnostic>) -> List<Node> {
   fold_list(
     xs: ds,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, d) {
       list_append(left: acc, right: diagnostic_evaluation_nodes(d: d))
     }
@@ -246,18 +246,18 @@ fn non_empty_diagnostics_evaluation_nodes(d: v2.std.diagnostic.NonEmptyDiagnosti
 fn test_claim_evaluation_nodes(c: TestClaim) -> List<Node> {
   match c {
     EqualsClaim { lhs: l, rhs: r, label: _, anchor: _, classification: _ } =>
-      list_snoc_item(xs: list_snoc_item(xs: Empty, item: l), item: r)
+      list_snoc_item(xs: list_snoc_item(xs: std.algebra.Empty, item: l), item: r)
     StructuralEqualsClaim { lhs: l, rhs: r, label: _, anchor: _, classification: _ } =>
-      list_snoc_item(xs: list_snoc_item(xs: Empty, item: l), item: r)
+      list_snoc_item(xs: list_snoc_item(xs: std.algebra.Empty, item: l), item: r)
     CompilesClaim { input: n, expected_value: e, label: _, anchor: _, classification: _ } =>
-      list_snoc_item(xs: list_snoc_item(xs: Empty, item: n), item: e)
+      list_snoc_item(xs: list_snoc_item(xs: std.algebra.Empty, item: n), item: e)
     DiagnosticClaim { input: n, expected_rejection: e, label: _, anchor: _, classification: _ } =>
       list_append(
-        left: list_snoc_item(xs: Empty, item: n),
+        left: list_snoc_item(xs: std.algebra.Empty, item: n),
         right: non_empty_diagnostics_evaluation_nodes(d: e)
       )
     RoundTripClaim { input: n, label: _, anchor: _, classification: _ } =>
-      list_snoc_item(xs: Empty, item: n)
+      list_snoc_item(xs: std.algebra.Empty, item: n)
   }
 }
 

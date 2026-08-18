@@ -59,7 +59,7 @@ fn rust_conditional_emit_from_swapped_tree(target: v2.std.compilers.target_model
 test fn rust_conditional_emit_pick_fn_accepts() -> Bool {
   match rust_conditional_emit_from_tree(target: rust_pick_target_model_staging()) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_pick_source_text) && (d == None)
+      (source.carried == rust_pick_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -69,7 +69,7 @@ test fn rust_conditional_emit_swapped_arms_discriminates() -> Bool {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_conditional_emit_swapped_source_text) &&
       (source.carried != rust_pick_source_text) &&
-      (d == None)
+      (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

@@ -15,7 +15,7 @@ fn source_bridged_resolved_root(
           bind_outcome(
             o: normalize(parse_tree: artifact.tree),
             f: fn(normalized) {
-              resolve(tree: normalized, lm: lm)
+              v2.compiler.resolve.resolve(tree: normalized, lm: lm)
             }
           )
         }

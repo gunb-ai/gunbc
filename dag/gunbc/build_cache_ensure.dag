@@ -1,7 +1,7 @@
 module gunbc.build_cache_ensure
 
 
-data build_cache_ensure_scope_disposition: Disposition = SingleAuthority
+data build_cache_ensure_scope_disposition: std.disposition.Disposition = SingleAuthority
 
 data ensure_effect_grain_migration_note: String = "WHY THE EFFECT GRAIN IS WRONG TODAY, AND WHY THIS PR DOES NOT YET FIX IT. gunbc.host_effect's ProvisionBuildCache carries a CacheInterfaceId, which names sccache's cache SEMANTICS and its pinned binary. It does not name a running daemon, and srv1 and srv2 each run TWO servers from that one catalog row — a CI server as ghrunner over /var/lib/ctrl/sccache-ci, and a session server as briansrls over /var/lib/ctrl/sccache with a 50G cap. So `provision the sccache_local catalog on this host` names NEITHER of them: it cannot say which of the two to converge, and it cannot express that one is correctly placed while the other is not. That is gunbc.build_cache_instance's grain note restated as an effect-layer defect, and the end state is an effect carrying the BuildCacheInstance so the desired unit, principal, storage, capacity, endpoint and compile pool travel WITH the request instead of being guessed by a realizer.\n\nTHE SWAP IS NOT IN THIS PR AND THE REASON IS NOT TIMIDITY. ProvisionBuildCache is not a model-only stub: it has a live realization path — realize_provision_build_cache, the six emitted *_body builders in gunbc.host_build_cache_provision_script, an architecture and pinned-sha256 derivation over the cited sccache release, consumers in host_toolchain_ensure and fleet_converge_cli, and a WET execution witness that runs a real bash body against a real fake-sccache on disk. Swapping the arm means reworking all of that in one motion.\n\nMore decisively, that work lands inside a DEFERRED census row: host_build_cache_provision_script is A5 in the shell-to-dag residual census, `deferred by operator 2026-07-22 — real debt, NOT done; un-defer trigger is the operator`, and pledged to SHRINK but never grow. Rewriting its builders to carry an instance is exactly the un-deferral that row reserves to the operator. Landing it unasked would be deciding someone else's sequencing.\n\nSO THIS MODULE IS THE ADD-REPLACEMENT HALF of DESIGN's add-replacement then migrate then delete-at-arc-close pattern, and nothing more. The admission and the render exist and are proven; the effect arm is untouched; ProvisionBuildCache remains the only constructible build-cache effect. MIGRATION TRIGGER: operator un-defers census row A5, at which point the arm becomes EnsureBuildCacheInstance { desired: BuildCacheInstance }, realize_provision_build_cache consumes this admission, the emitted bodies are replaced by render_build_cache_unit rather than edited, and ProvisionBuildCache is deleted rather than deprecated — for the reason runner_enable_command was, that an effect arm left constructible is a path left open.\n\nAn earlier revision of this note said the replacement had already happened. It had not, and the sentence would have shipped a false present-tense claim about the tree into the exact carrier that exists to keep the grain honest."
 
@@ -60,8 +60,8 @@ fn ensure_build_cache_admission_fold<R>(
 }
 
 fn placement_already_converged(
-  instance: BuildCacheInstance,
-  placement: BuildCacheServerPlacement,
+  instance: gunbc.build_cache_instance.BuildCacheInstance,
+  placement: gunbc.build_cache_instance.BuildCacheServerPlacement,
 ) -> Bool {
   match placement {
     ServerManagedUnitOwned { unit: u } => (u as String) == (instance.intended_unit as String)
@@ -73,10 +73,10 @@ fn placement_already_converged(
 }
 
 fn admit_ensure_build_cache_instance(
-  desired: BuildCacheInstance,
-  placement: BuildCacheServerPlacement,
-  observed_path: EndpointPathState,
-  currency: ObservationCurrency,
+  desired: gunbc.build_cache_instance.BuildCacheInstance,
+  placement: gunbc.build_cache_instance.BuildCacheServerPlacement,
+  observed_path: gunbc.build_cache_endpoint_path.EndpointPathState,
+  currency: gunbc.build_cache_endpoint_path.ObservationCurrency,
 ) -> EnsureBuildCacheAdmission {
   match placement_already_converged(instance: desired, placement: placement) {
     true => EnsureAlreadyConverged { desired: desired, unit: desired.intended_unit }
@@ -98,9 +98,9 @@ fn admit_ensure_build_cache_instance(
 data placement_unknown_refuses_before_the_path_note: String = "ServerPlacementUnknown REFUSES RATHER THAN FALLING THROUGH TO THE PATH. The other four non-converged placements are all POSITIVE readings — a runner owns it, something unsupervised owns it, nothing owns it, or a managed unit that is not ours owns it — and in each of those the path state is the right next question, because we know we must act and only need to know whether the endpoint is clear. Unknown is not a reading at all: the observer could not classify the owner's cgroup. Proceeding on it would mean deciding to write and restart a unit on a host whose current state we failed to read, which is the absorbing fallback in its most expensive form — the widen here is not a rerun, it is a host mutation.\n\nThe distinction is worth the extra arm precisely because Unknown and Absent are easy to conflate: both mean 'we found no managed owner', but Absent means we LOOKED and there is none, while Unknown means the looking failed."
 
 fn ensure_from_path(
-  desired: BuildCacheInstance,
-  observed_path: EndpointPathState,
-  currency: ObservationCurrency,
+  desired: gunbc.build_cache_instance.BuildCacheInstance,
+  observed_path: gunbc.build_cache_endpoint_path.EndpointPathState,
+  currency: gunbc.build_cache_endpoint_path.ObservationCurrency,
 ) -> EnsureBuildCacheAdmission {
   match observed_path {
     EndpointPathAbsent =>
@@ -117,7 +117,7 @@ fn ensure_from_path(
       EnsureBuildCacheRefused {
         instance: desired,
         reason: EnsureEndpointUnobservable {
-          detail: "the endpoint path could not be read, so whether a bind would succeed is unknown; refusing rather than writing and starting a unit into an unread state" as NonEmptyStr,
+          detail: "the endpoint path could not be read, so whether a bind would succeed is unknown; refusing rather than writing and starting a unit into an unread state" as std.types.NonEmptyStr,
         },
       }
     EndpointStaleSocket { detail: _ } =>

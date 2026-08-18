@@ -467,7 +467,7 @@ fn java_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
         name: ^serialize_source_field_source_grammar,
         target: java_inhabitant_atom(id: ^java_production_method_add)
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   }
 }
@@ -704,7 +704,7 @@ fn java_grammar_atom(id: v2.std.node.Symbol) -> Node {
 fn java_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
@@ -1584,7 +1584,7 @@ fn java_primitive_bundle_from_noninteger_facts(
 fn java_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: java_integer_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -1597,7 +1597,7 @@ fn java_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.Primi
 fn java_primitive_bundles_from_float_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: java_float_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -1610,7 +1610,7 @@ fn java_primitive_bundles_from_float_catalog() -> List<v2.std.model_core.Primiti
 fn java_primitive_bundles_from_noninteger_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: java_noninteger_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -1701,7 +1701,7 @@ fn java_bool_algebra_inhabitance() -> v2.std.model_core.AlgebraInhabitanceDecl {
 fn java_integer_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: java_integer_algebra_inhabitance_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: java_wrapping_integer_algebra_inhabitance(facts: facts))
     }
@@ -1826,7 +1826,7 @@ fn java_bool_algebra_laws() -> List<v2.std.model_core.AlgebraLawObligation> {
 fn java_integer_algebra_laws() -> List<v2.std.model_core.AlgebraLawObligation> {
   fold_list(
     xs: java_integer_algebra_inhabitance_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_append(left: acc, right: java_wrapping_integer_law_obligations(facts: facts))
     }

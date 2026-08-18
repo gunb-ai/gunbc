@@ -12,7 +12,7 @@ fn pa_graft_module_root(root: Node) -> Node {
 
 fn pa_qn_node(seg: v2.std.node.Symbol) -> Node {
   fold_list_node(
-    xs: std.algebra.Cons { head: seg, tail: Empty },
+    xs: std.algebra.Cons { head: seg, tail: std.algebra.Empty },
     item_node: fn(sym) {
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
@@ -85,7 +85,7 @@ fn pa_cross_file_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.Norma
           export_atom: ^dag_c3_surface_sugar_service
         )
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   },
     diagnostics: None
@@ -110,7 +110,7 @@ fn pa_duplicate_module_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree
           export_atom: ^dag_c3_surface_sugar_type
         )
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   },
     diagnostics: None
@@ -120,14 +120,14 @@ fn pa_duplicate_module_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree
 fn pa_cross_file_admission() -> v2.compiler.name_resolve.Admission {
   v2.compiler.name_resolve.Admission {
     subject: v2.compiler.name_resolve.ResolutionSubject {
-      name: std.algebra.Cons { head: ^pa_subject_seg, tail: Empty }
+      name: std.algebra.Cons { head: ^pa_subject_seg, tail: std.algebra.Empty }
     },
     imports: std.algebra.Cons {
       head: v2.compiler.name_resolve.Import {
-        target: std.algebra.Cons { head: ^pa_imported_seg, tail: Empty },
+        target: std.algebra.Cons { head: ^pa_imported_seg, tail: std.algebra.Empty },
         visibility: ImportVisible
       },
-      tail: Empty
+      tail: std.algebra.Empty
     }
   }
 }
@@ -191,7 +191,7 @@ data pa_ingest_non_source_read: v2.compiler.source_authority.DagSourceReadWitnes
 
 data pa_ingest_non_source_ingest: v2.compiler.source_authority.SourceRootIngest = std.algebra.Cons {
   head: pa_ingest_non_source_read,
-  tail: Empty
+  tail: std.algebra.Empty
 }
 
 test fn program_assembly_ingest_non_source_file_rejects() -> Bool {
@@ -199,7 +199,7 @@ test fn program_assembly_ingest_non_source_file_rejects() -> Bool {
     ingest: pa_ingest_non_source_ingest,
     admission: v2.compiler.name_resolve.Admission {
       subject: v2.compiler.name_resolve.ResolutionSubject {
-        name: std.algebra.Cons { head: ^pa_subject_seg, tail: Empty }
+        name: std.algebra.Cons { head: ^pa_subject_seg, tail: std.algebra.Empty }
       },
       imports: Empty
     },

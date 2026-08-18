@@ -47,7 +47,7 @@ data rust_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_rust_ad
 test fn rust_add_serialize_reject_receipt_holds() -> Bool {
   match rust_add_serialize_reject_receipt {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d != None
+    Rejected { diagnostics: d } => d != v2.std.diagnostic.None
   }
 }
 
@@ -118,14 +118,14 @@ fn rust_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Ca
         algebra: rust_add_i32_facts_node()
       )
     }
-  } else if node == rust_int_kind_node(kind: Signed) {
+  } else if node == rust_int_kind_node(kind: v2.extdeps.languages.rust.Signed) {
     v2.std.witness.Holds {
       value: rust_add_canonical_grounding(
         node: node,
         algebra: rust_add_i32_facts_node()
       )
     }
-  } else if node == rust_int_width_node(width: Bits32) {
+  } else if node == rust_int_width_node(width: v2.extdeps.languages.rust.Bits32) {
     v2.std.witness.Holds {
       value: rust_add_canonical_grounding(
         node: node,
@@ -167,14 +167,14 @@ fn rust_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Ca
         algebra: rust_i32_scalar_node()
       )
     }
-  } else if node == rust_overflow_node(overflow: PanicOnOverflow) {
+  } else if node == rust_overflow_node(overflow: v2.extdeps.languages.rust.PanicOnOverflow) {
     v2.std.witness.Holds {
       value: rust_add_canonical_grounding(
         node: node,
         algebra: rust_i32_overflow_disposition_node()
       )
     }
-  } else if node == rust_overflow_node(overflow: TwoComplementWrap) {
+  } else if node == rust_overflow_node(overflow: v2.extdeps.languages.rust.TwoComplementWrap) {
     v2.std.witness.Holds {
       value: rust_add_canonical_grounding(
         node: node,
@@ -185,14 +185,14 @@ fn rust_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Ca
     v2.std.witness.Holds {
       value: rust_add_canonical_grounding(
         node: node,
-        algebra: rust_overflow_node(overflow: PanicOnOverflow)
+        algebra: rust_overflow_node(overflow: v2.extdeps.languages.rust.PanicOnOverflow)
       )
     }
   } else if node == rust_inhabitant_atom(id: ^rust_tag_two_complement_wrap) {
     v2.std.witness.Holds {
       value: rust_add_canonical_grounding(
         node: node,
-        algebra: rust_overflow_node(overflow: TwoComplementWrap)
+        algebra: rust_overflow_node(overflow: v2.extdeps.languages.rust.TwoComplementWrap)
       )
     }
   } else {
@@ -248,7 +248,7 @@ data rust_add_emit_receipt: Outcome<Medium<String>> = anchor_rust_add_emit_accep
 test fn rust_add_emit_add_fn_accepts_holds() -> Bool {
   match rust_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_source_text) && (d == None)
+      (source.carried == rust_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -257,7 +257,7 @@ data rust_add_compile_inferred_receipt: Outcome<v2.compiler.compile.CompileOutpu
 
 test fn rust_add_compile_inferred_receipt_holds() -> Bool {
   match rust_add_compile_inferred_receipt {
-    Accepted { value: _, diagnostics: d } => d == None
+    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
     Rejected { diagnostics: _ } => false
   }
 }

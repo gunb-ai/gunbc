@@ -8,21 +8,21 @@ test fn ci_placement_gauntlet_always_admissible_holds() -> Bool {
 test fn ci_placement_valid_pr_tier_admissible_holds() -> Bool {
   placement_is_admissible(p: v2.workflow.ci_placement.PrTier {
     warm_cost: v2.workflow.ci_placement.WarmCostReceipt { measured_ms: 1600, run_ref: "synthetic-warm-receipt" },
-    classification: Hermetic
+    classification: v2.workflow.ci_placement.Hermetic
   })
 }
 
 test fn ci_placement_over_budget_pr_tier_refused_holds() -> Bool {
   !placement_is_admissible(p: v2.workflow.ci_placement.PrTier {
     warm_cost: v2.workflow.ci_placement.WarmCostReceipt { measured_ms: 6000, run_ref: "synthetic-over-budget" },
-    classification: Hermetic
+    classification: v2.workflow.ci_placement.Hermetic
   })
 }
 
 test fn ci_placement_unclassified_pr_tier_refused_holds() -> Bool {
   !placement_is_admissible(p: v2.workflow.ci_placement.PrTier {
     warm_cost: v2.workflow.ci_placement.WarmCostReceipt { measured_ms: 100, run_ref: "synthetic-unclassified" },
-    classification: Unclassified
+    classification: v2.workflow.ci_placement.Unclassified
   })
 }
 

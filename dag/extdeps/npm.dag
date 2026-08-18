@@ -203,7 +203,7 @@ fn npm_octets_to_lower_hex(octets: List<std.integer.UInt8>) -> String {
 }
 
 fn npm_sri_base64_payload_is_canonical(encoded: String, octets: List<std.integer.UInt8>) -> Bool {
-  encoded == base64_encode(octets: octets, variant: Standard)
+  encoded == base64_encode(octets: octets, variant: std.encoding.Standard)
 }
 
 fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {
@@ -211,7 +211,7 @@ fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {
     NpmIntegrityOptionsUnsupported
   } else if expression.starts_with(prefix: "sha512-") {
     let encoded = expression.substring(start: 7, end: expression.length())
-    match base64_decode(s: encoded, variant: Standard) {
+    match base64_decode(s: encoded, variant: std.encoding.Standard) {
       Present { value: octets } =>
         if count(octets) == 64 {
           if npm_sri_base64_payload_is_canonical(encoded: encoded, octets: octets) {
@@ -239,7 +239,7 @@ fn npm_decode_integrity_expression(expression: String) -> NpmIntegrityDecode {
     }
   } else if expression.starts_with(prefix: "sha1-") {
     let encoded = expression.substring(start: 5, end: expression.length())
-    match base64_decode(s: encoded, variant: Standard) {
+    match base64_decode(s: encoded, variant: std.encoding.Standard) {
       Present { value: octets } =>
         if count(octets) == 20 {
           if npm_sri_base64_payload_is_canonical(encoded: encoded, octets: octets) {

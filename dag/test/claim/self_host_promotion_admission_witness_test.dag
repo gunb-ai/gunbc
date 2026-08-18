@@ -201,11 +201,11 @@ fn pa_good() -> v2.compiler.self_host.promotion_admission.SelfHostCandidate {
   pa_bundle(
     candidate_build: pa_build(
       subject: pa_candidate_identity(),
-      outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+      outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
     ),
     successor_build: pa_build(
       subject: pa_successor_identity(),
-      outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+      outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
     ),
     candidate_equivalence: pa_equivalence(
       subject: pa_candidate_identity(),
@@ -255,8 +255,8 @@ test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
         identity: ident,
         produced_by_candidate: cand
       },
-      candidate_build: pa_build(subject: ident, outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }),
-      successor_build: pa_build(subject: ident, outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }),
+      candidate_build: pa_build(subject: ident, outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }),
+      successor_build: pa_build(subject: ident, outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }),
       candidate_equivalence: v2.compiler.self_host.promotion_admission.BehavioralEquivalenceReceipt {
         subject: ident,
         oracle: ident,
@@ -293,11 +293,11 @@ test fn uncaught_planted_fault_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
@@ -338,11 +338,11 @@ test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Boo
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
@@ -381,11 +381,11 @@ test fn empty_behavioral_corpus_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       candidate_equivalence: pa_equivalence_on(
         subject: pa_candidate_identity(),
@@ -434,11 +434,11 @@ test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: stale_subject,
@@ -476,7 +476,7 @@ test fn failed_successor_build_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
@@ -519,11 +519,11 @@ test fn candidate_cannot_authorize_its_own_provenance() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
@@ -571,11 +571,11 @@ test fn candidate_as_its_own_oracle_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       candidate_equivalence: self_oracle,
       successor_equivalence: pa_equivalence(
@@ -627,11 +627,11 @@ test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
       },
       candidate_build: pa_build(
         subject: unbuilt_identity,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: unbuilt_identity,
@@ -683,11 +683,11 @@ test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
       successor: spliced_successor,
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
@@ -728,11 +728,11 @@ test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
@@ -793,11 +793,11 @@ test fn same_identity_different_seed_splice_is_refused() -> Bool {
       },
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
@@ -841,11 +841,11 @@ test fn truncated_successor_run_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
@@ -884,11 +884,11 @@ test fn overlong_run_against_its_declared_corpus_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
@@ -927,11 +927,11 @@ test fn same_named_corpus_declaring_two_sizes_is_refused() -> Bool {
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       successor_build: pa_build(
         subject: pa_successor_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
       ),
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
@@ -1029,7 +1029,7 @@ test fn fully_observed_run_projects_into_an_admitted_promotion() -> Bool {
     o: admit_promotion(
       c: pa_bundle_from_observation(
         o: pa_observation(
-          build: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen },
+          build: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen },
           equivalence: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees },
           fault: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
         )
@@ -1047,7 +1047,7 @@ test fn unreported_fault_observation_refuses_through_the_seam() -> Bool {
   let o = admit_promotion(
     c: pa_bundle_from_observation(
       o: pa_observation(
-        build: v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen },
+        build: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen },
         equivalence: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees },
         fault: v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_fault_run_unreported }
       )

@@ -652,7 +652,7 @@ fn llvm_primitive_bundle_from_float_facts(facts: LlvmFloatPrimitiveFacts) -> v2.
 fn llvm_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: llvm_integer_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -665,7 +665,7 @@ fn llvm_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.Primi
 fn llvm_primitive_bundles_from_float_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: llvm_float_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,

@@ -405,32 +405,32 @@ fn bootstrap_hash_pin_projection_node(pin: BootstrapHashPin) -> Outcome<Node> {
     if (pin.pin == ^v2_stage0_hash_pin) && (pin.digest == v2_stage0_hash) {
       v2.std.diagnostic.Accepted {
         value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     } else if (pin.pin == ^v2_stage1_hash_pin) && (pin.digest == v2_stage1_hash) {
       v2.std.diagnostic.Accepted {
         value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     } else if (pin.pin == ^v2_stage2_hash_pin) && (pin.digest == v2_stage2_hash) {
       v2.std.diagnostic.Accepted {
         value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     } else if (pin.pin == ^v2_stage2_hash_pin) && (pin.digest == v2_stage1_hash) {
       v2.std.diagnostic.Accepted {
         value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     } else if (pin.pin == ^pinned_v4_fixed_point_hash_pin) && (pin.digest == pinned_v4_fixed_point_hash) {
       v2.std.diagnostic.Accepted {
         value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     } else if (pin.pin == ^pinned_v4_fixed_point_hash_pin) && (pin.digest == v2_stage1_hash) {
       v2.std.diagnostic.Accepted {
         value: bootstrap_hash_pin_pair_projection_node(pin: pin.pin, digest: pin.digest),
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     } else {
       v2.std.diagnostic.Rejected {
@@ -597,7 +597,7 @@ fn seed_self_verify_check(
   } else {
     v2.std.diagnostic.Accepted {
       value: SeedSelfVerifyReceipt { claim: claim, check: check },
-      diagnostics: None
+      diagnostics: v2.std.diagnostic.None
     }
   }
 }
@@ -750,7 +750,7 @@ fn bootstrap_plan_well_formed(p: BootstrapPlan) -> Outcome<BootstrapPlan> {
            && (p.fixpt.left_hash.digest == p.self0.produces_hash.digest)
            && (p.fixpt.right_hash.digest == p.self1.produces_hash.digest)
            && (p.fixpt.pinned_hash.digest == p.self0.produces_hash.digest) {
-        v2.std.diagnostic.Accepted { value: p, diagnostics: None }
+        v2.std.diagnostic.Accepted { value: p, diagnostics: v2.std.diagnostic.None }
       } else {
         v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: bs_diagnostic(reason: ^bootstrap_mis_wired)) }
       }

@@ -11,17 +11,17 @@ fn v2_complexity_capability_parity_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "1. Scope seam with the sibling note (DESIGN §3 — do not fork)"),
     p(text: "This note and [`discrete-cost-derivation.md`](discrete-cost-derivation.md) are two halves of one program and must not restate each other. The split is by *question*:"),
     std.markdown.TableBlock {
-      header: row(cells: [
+      header: gunbc.plans.md_helpers.row(cells: [
         cell(text: "Question"),
         cell(text: "Owner"),
       ]),
       alignments: [AlignNone, AlignNone],
       rows: [
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "What can the engine *express and derive*? (cost algebra, work/span, output size, peak space, interprocedural summaries, recursion)"),
           cell(text: "**this note**"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "What does a derivation *mean and get used for*? (subject binding, valuation at a declared input, honesty states, cost justification, witness admission)"),
           cell(text: "[`discrete-cost-derivation.md`](discrete-cost-derivation.md)"),
         ]),
@@ -32,7 +32,7 @@ fn v2_complexity_capability_parity_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "2. The verdict, and its exact boundary"),
     p(text: "**The cost half is live; the complexity half is not.** This distinction matters, because over-scoping the fix would be a second error. From `v2.lens.enforcement.contract`:"),
     std.markdown.TableBlock {
-      header: row(cells: [
+      header: gunbc.plans.md_helpers.row(cells: [
         cell(text: "Contract"),
         cell(text: "Mode"),
         cell(text: "Consumer witness"),
@@ -40,37 +40,37 @@ fn v2_complexity_capability_parity_body() -> List<std.markdown.MarkdownBlock> {
       ]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`lens_contract_cost`"),
           cell(text: "**`Blocking`**"),
           cell(text: "**`BoundConsumerWitness`** (`complexity_gate/budget_roster_completeness_test.dag`)"),
           cell(text: "`WallNow`"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`lens_contract_complexity_derived_kernel`"),
           cell(text: "`AuditOnly`"),
           cell(text: "**`NoConsumerWitness`**"),
           cell(text: "`WallAfterGrounding`"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`lens_contract_complexity_optimality`"),
           cell(text: "`AuditOnly`"),
           cell(text: "**`NoConsumerWitness`**"),
           cell(text: "**`RatchetForever`** (the genuinely undecidable residue)"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`lens_contract_complexity_accumulator_copy`"),
           cell(text: "`AuditOnly`"),
           cell(text: "`NoConsumerWitness`"),
           cell(text: "`WallAfterGrounding`"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`lens_contract_complexity_linearity_audit`"),
           cell(text: "`AuditOnly`"),
           cell(text: "`NoConsumerWitness`"),
           cell(text: "`WallAfterGrounding` → `SubstrateMandatoryTag`"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`lens_contract_complexity_lowering`"),
           cell(text: "`AuditOnly`"),
           cell(text: "`NoConsumerWitness`"),
@@ -87,27 +87,27 @@ fn v2_complexity_capability_parity_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "3. Capability comparison (verified, not recalled)"),
     p(text: "`src/v1/complexity.dag` is 4,857 lines and **171 top-level `fn` declarations** — the method matters and was previously unstated: counting `fn` + `type` + `data` + `let` gives **201** (26 `type`, 4 `data`), which is why a sibling artifact quoted a different figure. Neither number was wrong; the missing method made them read as a contradiction. C0(b2) replaces both with a population derived from `DeclFact`. What v1 carries that v2 does not:"),
     std.markdown.TableBlock {
-      header: row(cells: [
+      header: gunbc.plans.md_helpers.row(cells: [
         cell(text: "Capability"),
         cell(text: "v1"),
         cell(text: "v2"),
       ]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "Asymptotic class + dominance lattice"), cell(text: "yes"), cell(text: "**yes** (and better factored)")]),
-        row(cells: [cell(text: "Symbolic cost expression"), cell(text: "`CostConst/Add/Mul/Max/Sum/Log/Extern/Unknown`"), cell(text: "partial — no `Max`, no binder-carrying `Sum`, no extern")]),
-        row(cells: [cell(text: "Size expression"), cell(text: "`SizeConst/SizeVar/SizeLen/SizeAdd/SizeMax`"), cell(text: "**none** — `SizeVariable { source: Node }` only")]),
-        row(cells: [cell(text: "Exact summation over a bounded collection"), cell(text: "`CostSum { binder, upper, body }`"), cell(text: "**no**")]),
-        row(cells: [cell(text: "Work vs span"), cell(text: "both, on `ComplexitySummary`"), cell(text: "**neither**")]),
-        row(cells: [cell(text: "Output-size derivation"), cell(text: "`output_size: Map<String, CostExpr>`"), cell(text: "**no**")]),
-        row(cells: [cell(text: "Peak space"), cell(text: "`peak_space: CostExpr?`"), cell(text: "**no**")]),
-        row(cells: [cell(text: "Certainty"), cell(text: "`Proven | Conservative`"), cell(text: "**no**")]),
-        row(cells: [cell(text: "Interprocedural function summaries"), cell(text: "`CostInternTable` memo"), cell(text: "**no**")]),
-        row(cells: [cell(text: "Call graph / SCC"), cell(text: "by import from `std.graph`"), cell(text: "**not consumed** — corrected by census, see C0(b1) finding 1")]),
-        row(cells: [cell(text: "Recursion / descent bounds"), cell(text: "vocabulary shared (`std.termination` / `std.computation` / `std.induction`); **walkers** v1-AST-local"), cell(text: "loop-bound edge only")]),
-        row(cells: [cell(text: "Parser-progress reasoning"), cell(text: "yes (mutual recursion)"), cell(text: "**no**")]),
-        row(cells: [cell(text: "Concrete-input evaluation"), cell(text: "partial machinery"), cell(text: "**no** (sibling note's C1)")]),
-        row(cells: [cell(text: "Live repo-wide consumer"), cell(text: "seed-internal"), cell(text: "cost yes / complexity **no**")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Asymptotic class + dominance lattice"), cell(text: "yes"), cell(text: "**yes** (and better factored)")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Symbolic cost expression"), cell(text: "`CostConst/Add/Mul/Max/Sum/Log/Extern/Unknown`"), cell(text: "partial — no `Max`, no binder-carrying `Sum`, no extern")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Size expression"), cell(text: "`SizeConst/SizeVar/SizeLen/SizeAdd/SizeMax`"), cell(text: "**none** — `SizeVariable { source: Node }` only")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Exact summation over a bounded collection"), cell(text: "`CostSum { binder, upper, body }`"), cell(text: "**no**")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Work vs span"), cell(text: "both, on `ComplexitySummary`"), cell(text: "**neither**")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Output-size derivation"), cell(text: "`output_size: Map<String, CostExpr>`"), cell(text: "**no**")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Peak space"), cell(text: "`peak_space: CostExpr?`"), cell(text: "**no**")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Certainty"), cell(text: "`Proven | Conservative`"), cell(text: "**no**")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Interprocedural function summaries"), cell(text: "`CostInternTable` memo"), cell(text: "**no**")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Call graph / SCC"), cell(text: "by import from `std.graph`"), cell(text: "**not consumed** — corrected by census, see C0(b1) finding 1")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Recursion / descent bounds"), cell(text: "vocabulary shared (`std.termination` / `std.computation` / `std.induction`); **walkers** v1-AST-local"), cell(text: "loop-bound edge only")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Parser-progress reasoning"), cell(text: "yes (mutual recursion)"), cell(text: "**no**")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Concrete-input evaluation"), cell(text: "partial machinery"), cell(text: "**no** (sibling note's C1)")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "Live repo-wide consumer"), cell(text: "seed-internal"), cell(text: "cost yes / complexity **no**")]),
       ],
     },
     p(text: "**The gap is real and large. It is migration debt, not a deliberate retirement** — nothing in the tree declares these capabilities unwanted."),

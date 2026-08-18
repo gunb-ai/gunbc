@@ -564,7 +564,7 @@ fn lex_walk_artifact(source: String, file: v2.std.node.Symbol, rules: v2.std.com
         tokens: token_stream_new(all: result.tokens.reverse()),
         annotations: result.annotations.reverse()
       ),
-      diagnostics: None
+      diagnostics: v2.std.diagnostic.None
     }
   }
 }
@@ -586,7 +586,7 @@ fn tokenize(text: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexi
   match rules {
     VoidLexRules =>
       if is_empty(xs: text) {
-        v2.std.diagnostic.Accepted { value: token_stream_empty(), diagnostics: None }
+        v2.std.diagnostic.Accepted { value: token_stream_empty(), diagnostics: v2.std.diagnostic.None }
       } else {
         v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: tokenize_lex_e0_source_not_exhausted_diagnostic(at: at)) }
       }

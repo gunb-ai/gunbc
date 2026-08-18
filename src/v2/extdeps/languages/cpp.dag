@@ -615,7 +615,7 @@ fn cpp_primitive_bundles_from_integer_catalog(
 ) -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: cpp_integer_facts_catalog(target_profile: target_profile),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -630,7 +630,7 @@ fn cpp_primitive_bundles_from_character_catalog(
 ) -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: cpp_character_facts_catalog(target_profile: target_profile),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -643,7 +643,7 @@ fn cpp_primitive_bundles_from_character_catalog(
 fn cpp_primitive_bundles_from_bool_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: cpp_bool_facts_catalog(),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -747,7 +747,7 @@ fn cpp_bool_algebra_inhabitance(facts: CppBoolPrimitiveFacts) -> v2.std.model_co
 fn cpp_signed_integer_algebra_inhabitance_decls(target_profile: Node) -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: cpp_signed_integer_algebra_inhabitance_facts_catalog(target_profile: target_profile),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: cpp_signed_integer_algebra_inhabitance(facts: facts))
     }
@@ -757,7 +757,7 @@ fn cpp_signed_integer_algebra_inhabitance_decls(target_profile: Node) -> List<v2
 fn cpp_unsigned_integer_algebra_inhabitance_decls(target_profile: Node) -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: cpp_unsigned_integer_algebra_inhabitance_facts_catalog(target_profile: target_profile),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: cpp_unsigned_integer_algebra_inhabitance(facts: facts))
     }
@@ -774,7 +774,7 @@ fn cpp_integer_algebra_inhabitance_decls(target_profile: Node) -> List<v2.std.mo
 fn cpp_bool_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: cpp_bool_facts_catalog(),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: cpp_bool_algebra_inhabitance(facts: facts))
     }
@@ -998,7 +998,7 @@ fn cpp_serialize_source_node() -> Node {
 fn cpp_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,

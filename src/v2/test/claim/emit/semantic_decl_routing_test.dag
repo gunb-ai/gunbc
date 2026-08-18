@@ -30,11 +30,11 @@ fn semantic_bool_coproduct() -> Node {
 fn semantic_bool_emit_text() -> Outcome<String> {
   match emit_semantic_type_decl(
     name: ^Bool,
-    params: Empty,
+    params: std.algebra.Empty,
     node: semantic_bool_coproduct(),
     target: rust_target_model()
   ) {
-    Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: None }
+    Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
@@ -65,11 +65,11 @@ fn semantic_record_type() -> Node {
 fn semantic_record_emit_text() -> Outcome<String> {
   match emit_semantic_type_decl(
     name: ^OccurrenceIdAllocator,
-    params: Empty,
+    params: std.algebra.Empty,
     node: semantic_record_type(),
     target: rust_target_model()
   ) {
-    Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: None }
+    Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
@@ -102,7 +102,7 @@ fn semantic_arrow_type() -> Node {
 fn semantic_arrow_refuses() -> Bool {
   match emit_semantic_type_decl(
     name: ^Bogus,
-    params: Empty,
+    params: std.algebra.Empty,
     node: semantic_arrow_type(),
     target: rust_target_model()
   ) {

@@ -74,7 +74,7 @@ fn infer_receipt_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
-  v2.std.diagnostic.Accepted { value: env, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: env, diagnostics: v2.std.diagnostic.None }
 }
 
 fn infer_receipt_interpretation() -> v2.std.runtime.InterpretationAlgebra {
@@ -286,7 +286,7 @@ fn anchor_infer_add() -> Outcome<v2.compiler.infer.InferredTree> {
 
 fn infer_descent_witness_contract_node(n: Node) -> Outcome<Node> {
   match infer_descent_witness_for_node(n: n) {
-    Holds { value: _ } => v2.std.diagnostic.Accepted { value: n, diagnostics: None }
+    Holds { value: _ } => v2.std.diagnostic.Accepted { value: n, diagnostics: v2.std.diagnostic.None }
     Violates { diagnostic: d } =>
       v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }
   }

@@ -100,7 +100,7 @@ data verdict_parallelism_data_dependency_node_assert: Verdict<TestClaimEvalSubje
   claim: claim_parallelism_data_dependency_receipt,
   actual: v2.std.diagnostic.Accepted {
     value: parallelism_claim_input(ok: parallelism_data_dependency_claim_passes),
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   },
   at: parallelism_claim_pass_node()
 )

@@ -12,12 +12,12 @@ fn regime2_shared_emission_fold_body() -> List<std.markdown.MarkdownBlock> {
     ]),
     p(text: "The boutique pain is entirely in **regime 2**: three hand-rolled serializers, each re-inventing indent / line-join / separator / comment layout, over three different-or-absent IRs:"),
     std.markdown.TableBlock {
-      header: row(cells: [cell(text: "emitter"), cell(text: "file"), cell(text: "IR today"), cell(text: "serialize fn")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "emitter"), cell(text: "file"), cell(text: "IR today"), cell(text: "serialize fn")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "yaml (ci.yml)"), cell(text: "`dag/extdeps/languages/yaml/types.dag` + `dag/extdeps/languages/yaml/emit.dag` + `dag/gunbc/ci_yaml_emit.dag`"), cell(text: "`YamlValue` (a real structured IR)"), cell(text: "`serialize_yaml` — hand-rolled recursive `match` (block/flow seq, scalar quoting, indent)")]),
-        row(cells: [cell(text: "gitignore"), cell(text: "`dag/gunbc/gitignore_emit.dag`"), cell(text: "**none** — raw `concat`"), cell(text: "`serialize_gitignore` — hand fold over `IgnoreGroup`")]),
-        row(cells: [cell(text: "runner_deploy"), cell(text: "`dag/gunbc/runner_deploy_emit.dag`"), cell(text: "**none** — raw `concat`"), cell(text: "`expected_runner_deploy_manifest` — hand fold over hosts")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "yaml (ci.yml)"), cell(text: "`dag/extdeps/languages/yaml/types.dag` + `dag/extdeps/languages/yaml/emit.dag` + `dag/gunbc/ci_yaml_emit.dag`"), cell(text: "`YamlValue` (a real structured IR)"), cell(text: "`serialize_yaml` — hand-rolled recursive `match` (block/flow seq, scalar quoting, indent)")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "gitignore"), cell(text: "`dag/gunbc/gitignore_emit.dag`"), cell(text: "**none** — raw `concat`"), cell(text: "`serialize_gitignore` — hand fold over `IgnoreGroup`")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "runner_deploy"), cell(text: "`dag/gunbc/runner_deploy_emit.dag`"), cell(text: "**none** — raw `concat`"), cell(text: "`expected_runner_deploy_manifest` — hand fold over hosts")]),
       ],
     },
     p(text: "That's the §2 violation: layout logic duplicated three ways."),

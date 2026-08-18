@@ -39,7 +39,7 @@ fn host_logical_run_from_exit(exit: HostExit, stdout_bytes: v2.std.host_transpor
         value: HostLogicalRun {
           stdout: HostRunStdout { bytes: stdout_bytes }
         },
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
       v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: d) }

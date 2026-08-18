@@ -17,9 +17,9 @@ fn bash_conj_emitted_from_tokens(tokens: List<v2.std.compilers.target_model.Conc
         BoundToken { binding: binding, token_class: _ } =>
           std.algebra.Cons {
             head: v2.std.node.Edge { label: Positional, target: bash_word_atom(id: binding) },
-            tail: Empty
+            tail: std.algebra.Empty
           }
-        FixedToken { token_class: _ } => Empty
+        FixedToken { token_class: _ } => std.algebra.Empty
       }
     }),
     occurrence_id: SyntheticOccurrence

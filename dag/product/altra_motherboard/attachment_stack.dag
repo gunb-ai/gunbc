@@ -130,7 +130,7 @@ type AttachmentLayerStanding {
 data processor_package_standing: AttachmentLayerStanding = AttachmentLayerStanding {
   layer: ProcessorPackageLayer,
   fact: FactEstablished {
-    authority: extdeps_external_authority_anchor,
+    authority: extdeps.cpu.ampere_altra_package.extdeps_external_authority_anchor,
     subject: std.decl_ref.DeclarationRef {
       module_path: "extdeps.cpu.ampere_altra_package",
       decl_name: "altra_fclga_socket",

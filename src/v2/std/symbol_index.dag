@@ -153,7 +153,7 @@ fn symbol_index_lexical_lookup(
     index: index,
     position: position,
     name: name,
-    acc: Empty
+    acc: std.algebra.Empty
   )
   match length(xs: candidates) {
     0 => LexicalUnbound

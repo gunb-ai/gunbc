@@ -1,7 +1,7 @@
 module gunbc.runner_activation
 
 
-data runner_activation_scope_disposition: Disposition = SingleAuthority
+data runner_activation_scope_disposition: std.disposition.Disposition = SingleAuthority
 
 data materialization_is_not_activation_note: String = "RunnerDeploySlot CONFLATED TWO LIFECYCLE MOMENTS, and the conflation is why the fleet-wide birth defect was constructible. Materializing a slot — writing its files, service template, credentials and drop-ins — and ACTIVATING it — enabling the unit so it may accept a job — have different prerequisites, and only the second one can create the defect. A materialized-but-disabled slot compiles nothing and therefore cannot spawn a cache server; the moment a slot may accept work, its first cache-miss compile will connect-or-start, and if no managed endpoint owner exists that start happens inside the runner's own cgroup, where it survives as the host's de facto build cache under one slot's memory ceiling.\\n\\nSo the prerequisite belongs on ACTIVATION and nowhere else. This module owns that moment; gunbc.runner_host_deploy keeps materialization and no longer offers an enable path at all. The two live in different modules because the dependency has to run one way: activation needs the deployed-instance model, materialization does not, and a single module owning both would have to import the cache authority into the installer's own layer.\\n\\nWHY MOVING THE ROW IN host_standup WOULD NOT HAVE DONE THIS. The spine declares P1 RunnerDeploySlot before P1b BuildCacheProvision, and swapping those two rows changes the declared narrative while leaving runner_enable_command constructible from a bare RunnerHostAdmission through exactly the path that produced srv1. Ordering in a status list is a projection of a dependency; it is not the dependency. The wall has to be that the enable command has no constructor that does not consume the readiness receipt."
 
@@ -55,7 +55,7 @@ fn compile_pool_is_ready(p: HostCompilePoolReady) -> Bool {
   p.pool_declared && p.pool_observed
 }
 
-fn pool_receipt_is_for_host(p: HostCompilePoolReady, host: HostIdentity) -> Bool {
+fn pool_receipt_is_for_host(p: HostCompilePoolReady, host: product.placement_supply.HostIdentity) -> Bool {
   (p.host as String) == (host as String)
 }
 
@@ -64,7 +64,7 @@ fn pool_receipt_names_intended_pool(p: HostCompilePoolReady, r: BuildCacheInstan
 }
 
 fn admit_runner_activation(
-  host_admission: RunnerHostAdmission,
+  host_admission: gunbc.runner_host_deploy.RunnerHostAdmission,
   cache_ready: BuildCacheInstanceReady,
   pool_ready: HostCompilePoolReady,
 ) -> RunnerActivationAdmission {
@@ -82,29 +82,29 @@ fn admit_runner_activation(
                 concat("' but activation was requested for '", d.host_label as String),
                 "'. A receipt proven on another machine says nothing about this one; refusing rather than accepting a same-shaped token from the wrong subject.",
               ),
-            ) as NonEmptyStr,
+            ) as std.types.NonEmptyStr,
           }
         true =>
           match ready_receipt_names_intended_unit(r: cache_ready) {
             false =>
               RunnerActivationRefused {
                 host_label: d.host_label,
-                reason: "runner_activation: the endpoint is owned by a managed unit, but not the unit this instance intends. ServerManagedUnitOwned means SOME unit holds it, which is satisfied by the wrong one — an out-of-band supervisor, a legacy ctrl unit, a hand-started service — and each of those charges cache-miss compilers to a parent the fleet does not manage. Refusing rather than accepting unit ownership as a synonym for correct ownership." as NonEmptyStr,
+                reason: "runner_activation: the endpoint is owned by a managed unit, but not the unit this instance intends. ServerManagedUnitOwned means SOME unit holds it, which is satisfied by the wrong one — an out-of-band supervisor, a legacy ctrl unit, a hand-started service — and each of those charges cache-miss compilers to a parent the fleet does not manage. Refusing rather than accepting unit ownership as a synonym for correct ownership." as std.types.NonEmptyStr,
               }
             true =>
           match readiness_flags_all_verified(r: cache_ready) {
             false =>
               RunnerActivationRefused {
                 host_label: d.host_label,
-                reason: "runner_activation: the build-cache instance is managed-unit-owned but at least one declared attribute (endpoint, executable, principal, storage, capacity, compile pool) is unverified against intent. A partially verified instance is not a ready one; refusing rather than activating on the verified subset." as NonEmptyStr,
+                reason: "runner_activation: the build-cache instance is managed-unit-owned but at least one declared attribute (endpoint, executable, principal, storage, capacity, compile pool) is unverified against intent. A partially verified instance is not a ready one; refusing rather than activating on the verified subset." as std.types.NonEmptyStr,
               }
             true =>
-              match pool_receipt_is_for_host(p: pool_ready, host: d.host_label as HostIdentity)
+              match pool_receipt_is_for_host(p: pool_ready, host: d.host_label as product.placement_supply.HostIdentity)
                 && pool_receipt_names_intended_pool(p: pool_ready, r: cache_ready) {
                 false =>
                   RunnerActivationRefused {
                     host_label: d.host_label,
-                    reason: "runner_activation: the compile-pool receipt is not bound to this activation. Either it was observed on a different host, or it names a slice other than the instance's intended_compile_pool. An unbound receipt makes the pool check answer a question about somewhere else, which is indistinguishable from not checking (review 46581)." as NonEmptyStr,
+                    reason: "runner_activation: the compile-pool receipt is not bound to this activation. Either it was observed on a different host, or it names a slice other than the instance's intended_compile_pool. An unbound receipt makes the pool check answer a question about somewhere else, which is indistinguishable from not checking (review 46581)." as std.types.NonEmptyStr,
                   }
                 true =>
               match compile_pool_is_ready(p: pool_ready) {
@@ -114,7 +114,7 @@ fn admit_runner_activation(
                     reason: concat(
                       concat("runner_activation: compile pool '", pool_ready.slice_unit as String),
                       "' is not both declared and observed. A managed server outside a declared compile pool charges every cache-miss compiler to an unbounded parent, which is the same defect as runner ownership wearing a different unit name. Fail-closed.",
-                    ) as NonEmptyStr,
+                    ) as std.types.NonEmptyStr,
                   }
                 true =>
                   RunnerActivationAdmitted {
@@ -132,29 +132,29 @@ fn admit_runner_activation(
 
 data activation_command_has_one_constructor_note: String = "THE WALL ITSELF: there is no function in this module that takes a RunnerHostDeploy, or a bare RunnerHostAdmission, and yields an enable command. runner_activate_command consumes RunnerActivationAdmission, and its refusal arm carries no command at all — so 'enable a runner without a grounded managed cache' is unrepresentable rather than discouraged. gunbc.runner_host_deploy's readiness-blind runner_enable_command is deleted rather than deprecated; leaving it would leave the old path constructible, and a wall with a door beside it is a sign.\\n\\nHONEST RESIDUAL, inherited from the enrollment wall this mirrors and stated for the same reason: .dag has no visibility modifiers yet, so a caller can hand-write RunnerActivationAdmitted, or a BuildCacheInstanceReady whose Bool flags are all true, without any observation behind it. That is an explicit lie in the source rather than a forgotten check, which is the strongest wall this substrate currently supports. It closes when node/subtree visibility grants make these constructors private to their producers (DESIGN open thread), at which point the receipt becomes unforgeable."
 
-fn runner_activate_command(admission: RunnerActivationAdmission) -> RunnerCommandOrRefusal {
+fn runner_activate_command(admission: RunnerActivationAdmission) -> gunbc.runner_host_deploy.RunnerCommandOrRefusal {
   match admission {
     RunnerActivationAdmitted { deploy: d, cache_ready: _, pool_ready: _ } =>
-      RunnerCommandReady { command: runner_enable_command_argv(deploy: d) }
+      gunbc.runner_host_deploy.RunnerCommandReady { command: runner_enable_command_argv(deploy: d) }
     RunnerActivationRefused { host_label: l, reason: r } =>
-      RunnerCommandRefused { host_label: l, reason: r }
+      gunbc.runner_host_deploy.RunnerCommandRefused { host_label: l, reason: r }
   }
 }
 
 // RED-control fixture modeling the arm this module exists to delete: an activation builder that consumes the host admission and ignores cache readiness entirely. It is not hypothetical — it is a faithful copy of gunbc.runner_host_deploy's runner_enable_command as it stood on main, which is the path every host in the fleet was actually activated through, and therefore the path that produced srv1's stranded server, srv2's and srv3's runner-owned ones, and srv4's stale-socket trap. runner_activation_gate_accepts rejects it on exactly the inputs the fleet hit live.
 fn runner_activation_readiness_blind_widen_sketch(
-  host_admission: RunnerHostAdmission,
-) -> RunnerCommandOrRefusal {
+  host_admission: gunbc.runner_host_deploy.RunnerHostAdmission,
+) -> gunbc.runner_host_deploy.RunnerCommandOrRefusal {
   match host_admission {
     RunnerHostEnrolled { deploy: d } =>
-      RunnerCommandReady { command: runner_enable_command_argv(deploy: d) }
+      gunbc.runner_host_deploy.RunnerCommandReady { command: runner_enable_command_argv(deploy: d) }
     RunnerHostUnenrolled { host_label: l, reason: r } =>
-      RunnerCommandRefused { host_label: l, reason: r }
+      gunbc.runner_host_deploy.RunnerCommandRefused { host_label: l, reason: r }
   }
 }
 
 fn runner_activation_gate_accepts(
-  outcome: RunnerCommandOrRefusal,
+  outcome: gunbc.runner_host_deploy.RunnerCommandOrRefusal,
   admission: RunnerActivationAdmission,
 ) -> Bool {
   match admission {
@@ -173,7 +173,7 @@ fn runner_activation_gate_accepts(
 
 data placement_admits_activation_note: String = "The bridge from an observation to a readiness receipt is deliberately PARTIAL and lives here as a refusal, not a constructor. Given any endpoint observation, this answers only whether its placement could support activation at all — and only ServerManagedUnitOwned can. It does not build a BuildCacheInstanceReady, because the remaining attribute verifications have no producers yet; a function that manufactured the receipt from placement alone would fabricate five verified flags from one observed fact, which is the fabricated-plausible-output shape (DESIGN section 5) applied to the wall's own input."
 
-fn placement_admits_activation(placement: BuildCacheServerPlacement) -> Bool {
+fn placement_admits_activation(placement: gunbc.build_cache_instance.BuildCacheServerPlacement) -> Bool {
   match placement {
     ServerManagedUnitOwned { unit: _ } => true
     ServerRunnerOwned { slot: _, lifecycle: _ } => false
@@ -183,6 +183,6 @@ fn placement_admits_activation(placement: BuildCacheServerPlacement) -> Bool {
   }
 }
 
-fn observation_admits_activation(observed: BuildCacheEndpointObservation) -> Bool {
+fn observation_admits_activation(observed: gunbc.build_cache_instance.BuildCacheEndpointObservation) -> Bool {
   placement_admits_activation(placement: placement_of_endpoint_observation(observed: observed))
 }

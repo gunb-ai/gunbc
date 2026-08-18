@@ -87,7 +87,7 @@ fn coercion_candidate_set_from_declared_inhabitants(
           }
         }
       },
-      diagnostics: None
+      diagnostics: v2.std.diagnostic.None
     }
   } else {
     outcome_rejected(
@@ -192,13 +192,13 @@ fn find_witness_rejection_kind_from_reason(
   reason: v2.std.node.Symbol
 ) -> Outcome<FindWitnessRejectionKind> {
   if reason == ^find_witness_reason_no_candidate {
-    v2.std.diagnostic.Accepted { value: FindWitnessNoCandidate, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: FindWitnessNoCandidate, diagnostics: v2.std.diagnostic.None }
   } else if reason == ^find_witness_reason_ambiguous_candidate {
-    v2.std.diagnostic.Accepted { value: FindWitnessAmbiguousCandidate, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: FindWitnessAmbiguousCandidate, diagnostics: v2.std.diagnostic.None }
   } else if reason == ^find_witness_reason_not_realized {
-    v2.std.diagnostic.Accepted { value: FindWitnessNotRealized, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: FindWitnessNotRealized, diagnostics: v2.std.diagnostic.None }
   } else if reason == ^find_witness_reason_invalid_witness {
-    v2.std.diagnostic.Accepted { value: FindWitnessInvalidWitness, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: FindWitnessInvalidWitness, diagnostics: v2.std.diagnostic.None }
   } else {
     outcome_rejected(
       coercion_find_witness_reason_unmapped_diagnostic(source: source)
@@ -231,11 +231,11 @@ fn coercion_wrap_find_witness_rejection(
             kind: coercion_mismatch_kind_for_find_witness_rejection_kind(kind: fw_kind)
           ),
           tail: list_append(
-            left: list_snoc_item(xs: Empty, item: upstream.head),
+            left: list_snoc_item(xs: std.algebra.Empty, item: upstream.head),
             right: upstream.tail
           )
         },
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     Rejected { diagnostics: coerce_r } =>
       v2.std.diagnostic.Rejected {
@@ -253,11 +253,11 @@ fn coercion_wrap_find_witness_rejection_with_refinement_algebra(
       value: v2.std.diagnostic.NonEmptyDiagnostics {
         head: coercion_not_realized_diagnostic(source: source, kind: WouldLoseInformation),
         tail: list_append(
-          left: list_snoc_item(xs: Empty, item: upstream.head),
+          left: list_snoc_item(xs: std.algebra.Empty, item: upstream.head),
           right: upstream.tail
         )
       },
-      diagnostics: None
+      diagnostics: v2.std.diagnostic.None
     }
   } else {
     coercion_wrap_find_witness_rejection(source: source, upstream: upstream)

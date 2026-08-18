@@ -12,7 +12,7 @@ test fn witness_run_owns_one_execution_identity() -> Bool {
     && environment.container_visible_host_kernel == gunbc.served_surface_browser_observation.ContainerVisibleHostKernel {
       visible_release: "6.8.0-124-generic" as gunbc.served_surface_browser_observation.LinuxKernelRelease,
     }
-    && environment.architecture == Aarch64
+    && environment.architecture == extdeps.toolchain.types.Aarch64
     && environment.presentation_mode == HeadlessPresentation
     && environment.launch_configuration == gunbc.served_surface_browser_observation.PlaywrightDefaultChromiumLaunch {
       executable_path: "/session-home/.cache/ms-playwright/chromium-1234/chrome-linux/chrome" as std.types.FilePath,

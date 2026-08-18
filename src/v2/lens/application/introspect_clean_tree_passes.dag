@@ -15,7 +15,7 @@ fn introspect_tree() -> v2.compiler.infer.InferredTree {
 }
 
 fn introspect_passing_gate(_tree: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
-  v2.std.diagnostic.Accepted { value: v2.std.witness.Holds { value: introspect_root }, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: v2.std.witness.Holds { value: introspect_root }, diagnostics: v2.std.diagnostic.None }
 }
 
 data introspect_passing_lens: v2.compiler.compile.CompileLens = v2.compiler.compile.CompileLens { gate: introspect_passing_gate }

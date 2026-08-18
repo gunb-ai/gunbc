@@ -47,7 +47,7 @@ fn verdict_of(closure: List<String>) -> v2.std.live_read.LiveReadClassification 
 }
 
 test fn unit_closure_is_local_read() -> Bool {
-  classification_is_local(classification: verdict_of(closure: fixture_unit_closure))
+  v2.lens.live_read_classification.classification_is_local(classification: verdict_of(closure: fixture_unit_closure))
 }
 
 test fn two_hop_decl_facts_carrier_is_runtime_read() -> Bool {
@@ -75,7 +75,7 @@ test fn two_hop_facts_classify_as_runtime_read() -> Bool {
 }
 
 test fn severed_mid_hop_is_local_read() -> Bool {
-  classification_is_local(
+  v2.lens.live_read_classification.classification_is_local(
     classification: live_read_classification_from_facts(
       entry_module: "fix.entry",
       facts: fixture_severed_facts,
@@ -94,7 +94,7 @@ test fn roster_gate_facts_classify_filesystem_carrier() -> Bool {
 }
 
 test fn red_control_roster_gate_severed_is_local() -> Bool {
-  classification_is_local(
+  v2.lens.live_read_classification.classification_is_local(
     classification: live_read_classification_from_facts(
       entry_module: "fix.witness",
       facts: fixture_roster_gate_severed_facts,
@@ -305,14 +305,14 @@ fn selection_projection_over(decls: List<v2.std.fn_index.FnArrowDecl>) -> v2.std
 fn projection_is_refused(p: v2.std.live_read.LiveReadSelectionProjection) -> Bool {
   match p {
     LiveReadSelectionRefused { cause: c } => !string_is_empty(s: c)
-    LiveReadSelectionClassified { classification: k } => classification_is_local(classification: k) && false
+    LiveReadSelectionClassified { classification: k } => v2.lens.live_read_classification.classification_is_local(classification: k) && false
   }
 }
 
 fn projection_classification_is_local(p: v2.std.live_read.LiveReadSelectionProjection) -> Bool {
   match p {
     LiveReadSelectionRefused { cause: _ } => false
-    LiveReadSelectionClassified { classification: c } => classification_is_local(classification: c)
+    LiveReadSelectionClassified { classification: c } => v2.lens.live_read_classification.classification_is_local(classification: c)
   }
 }
 

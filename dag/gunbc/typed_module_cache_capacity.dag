@@ -46,7 +46,7 @@ fn raw_entry_cap(budget: std.measure.ByteSize) -> Int {
 
 fn clamp_to_declared_band(raw: Int) -> Int {
   int_min(
-    a: int_max(a: raw, b: typed_module_cache_entries_floor),
+    a: std.realization_width.int_max(a: raw, b: typed_module_cache_entries_floor),
     b: typed_module_cache_entries_ceiling
   )
 }

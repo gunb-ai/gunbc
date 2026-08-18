@@ -50,18 +50,18 @@ fn settlement_is_within(s: SettlementGuarantee<v2.extdeps.coordination.RequiredS
 }
 
 test fn coordination_obligation_exchange_arm_sharp_holds() -> Bool {
-  exchange_is_request_reply(e: coordination_effect_obligation(effect: Http).required_exchange)
+  exchange_is_request_reply(e: coordination_effect_obligation(effect: v2.extdeps.coordination.Http).required_exchange)
     && exchange_is_fire_and_forget(e: coordination_effect_obligation(effect: Queue).required_exchange)
     && exchange_is_stream(e: coordination_effect_obligation(effect: Stream).required_exchange)
     && exchange_is_publish_subscribe(e: coordination_effect_obligation(effect: PubSub).required_exchange)
-    && coord_not(b: exchange_is_fire_and_forget(e: coordination_effect_obligation(effect: Http).required_exchange))
+    && coord_not(b: exchange_is_fire_and_forget(e: coordination_effect_obligation(effect: v2.extdeps.coordination.Http).required_exchange))
 }
 
 test fn coordination_obligation_settlement_arm_sharp_holds() -> Bool {
-  settlement_is_immediate(s: coordination_effect_obligation(effect: Http).required_settlement)
+  settlement_is_immediate(s: coordination_effect_obligation(effect: v2.extdeps.coordination.Http).required_settlement)
     && settlement_is_within(s: coordination_effect_obligation(effect: Queue).required_settlement)
     && settlement_is_within(s: coordination_effect_obligation(effect: Stream).required_settlement)
     && settlement_is_within(s: coordination_effect_obligation(effect: PubSub).required_settlement)
-    && coord_not(b: settlement_is_within(s: coordination_effect_obligation(effect: Http).required_settlement))
+    && coord_not(b: settlement_is_within(s: coordination_effect_obligation(effect: v2.extdeps.coordination.Http).required_settlement))
     && coord_not(b: settlement_is_immediate(s: coordination_effect_obligation(effect: Queue).required_settlement))
 }

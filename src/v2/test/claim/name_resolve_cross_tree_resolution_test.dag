@@ -12,7 +12,7 @@ fn ct_graft_module_root(root: Node) -> Node {
 
 fn ct_qn_node(seg: v2.std.node.Symbol) -> Node {
   fold_list_node(
-    xs: std.algebra.Cons { head: seg, tail: Empty },
+    xs: std.algebra.Cons { head: seg, tail: std.algebra.Empty },
     item_node: fn(sym) {
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
@@ -91,25 +91,25 @@ fn ct_subject_with_import_use(
 }
 
 fn ct_qn_one(seg: v2.std.node.Symbol) -> v2.std.qualified_name.QualifiedName {
-  std.algebra.Cons { head: seg, tail: Empty }
+  std.algebra.Cons { head: seg, tail: std.algebra.Empty }
 }
 
 fn ct_qn_v2(seg_b: v2.std.node.Symbol) -> v2.std.qualified_name.QualifiedName {
   std.algebra.Cons {
     head: ^v2,
-    tail: std.algebra.Cons { head: seg_b, tail: Empty }
+    tail: std.algebra.Cons { head: seg_b, tail: std.algebra.Empty }
   }
 }
 
 fn ct_qn_v2_std() -> v2.std.qualified_name.QualifiedName {
   std.algebra.Cons {
     head: ^v2,
-    tail: std.algebra.Cons { head: ^std, tail: Empty }
+    tail: std.algebra.Cons { head: ^std, tail: std.algebra.Empty }
   }
 }
 
 fn ct_both_trees() -> v2.std.cross_tree.import_model.SourceRootSet {
-  std.algebra.Cons { head: V2Tree, tail: std.algebra.Cons { head: DagTree, tail: Empty } }
+  std.algebra.Cons { head: V2Tree, tail: std.algebra.Cons { head: DagTree, tail: std.algebra.Empty } }
 }
 
 fn ct_dag_same_tree_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
@@ -130,7 +130,7 @@ fn ct_dag_same_tree_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.No
           export_atom: ^dag_c3_surface_sugar_service
         )
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   },
     diagnostics: None
@@ -145,7 +145,7 @@ fn ct_dag_same_tree_admission() -> v2.compiler.name_resolve.Admission {
         target: ct_qn_one(seg: ^ct_dag_peer_seg),
         visibility: ImportVisible
       },
-      tail: Empty
+      tail: std.algebra.Empty
     }
   }
 }
@@ -156,7 +156,7 @@ fn ct_v2_same_tree_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.Nor
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
         qn_spine: ct_qn_spine(
-          segments: std.algebra.Cons { head: ^v2, tail: std.algebra.Cons { head: ^ct_v2_subject_seg, tail: Empty } }
+          segments: std.algebra.Cons { head: ^v2, tail: std.algebra.Cons { head: ^ct_v2_subject_seg, tail: std.algebra.Empty } }
         ),
         import_use_sym: ^ct_v2_import_use_sym,
         imported_decl: ^ct_v2_imported_decl
@@ -166,13 +166,13 @@ fn ct_v2_same_tree_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.Nor
       head: ct_graft_module_root(
         root: ct_module_root(
           qn_spine: ct_qn_spine(
-            segments: std.algebra.Cons { head: ^v2, tail: std.algebra.Cons { head: ^ct_v2_peer_seg, tail: Empty } }
+            segments: std.algebra.Cons { head: ^v2, tail: std.algebra.Cons { head: ^ct_v2_peer_seg, tail: std.algebra.Empty } }
           ),
           export_sym: ^ct_v2_imported_decl,
           export_atom: ^dag_c3_surface_sugar_service
         )
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   },
     diagnostics: None
@@ -187,7 +187,7 @@ fn ct_v2_same_tree_admission() -> v2.compiler.name_resolve.Admission {
         target: ct_qn_v2(seg_b: ^ct_v2_peer_seg),
         visibility: ImportVisible
       },
-      tail: Empty
+      tail: std.algebra.Empty
     }
   }
 }
@@ -198,7 +198,7 @@ fn ct_cross_tree_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.Norma
     head: ct_graft_module_root(
       root: ct_subject_with_import_use(
         qn_spine: ct_qn_spine(
-          segments: std.algebra.Cons { head: ^v2, tail: std.algebra.Cons { head: ^ct_cross_v2_subject_seg, tail: Empty } }
+          segments: std.algebra.Cons { head: ^v2, tail: std.algebra.Cons { head: ^ct_cross_v2_subject_seg, tail: std.algebra.Empty } }
         ),
         import_use_sym: ^ct_cross_import_use_sym,
         imported_decl: ^ct_cross_dag_export_sym
@@ -212,7 +212,7 @@ fn ct_cross_tree_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.Norma
           export_atom: ^dag_c3_surface_sugar_service
         )
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   },
     diagnostics: None
@@ -229,7 +229,7 @@ fn ct_cross_tree_admission() -> v2.compiler.name_resolve.Admission {
         target: ct_qn_one(seg: ^ct_cross_dag_target_seg),
         visibility: ImportVisible
       },
-      tail: Empty
+      tail: std.algebra.Empty
     }
   }
 }
@@ -260,13 +260,13 @@ fn ct_dag_to_v2_roots() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.Normal
       head: ct_graft_module_root(
         root: ct_module_root(
           qn_spine: ct_qn_spine(
-            segments: std.algebra.Cons { head: ^v2, tail: std.algebra.Cons { head: ^std, tail: Empty } }
+            segments: std.algebra.Cons { head: ^v2, tail: std.algebra.Cons { head: ^std, tail: std.algebra.Empty } }
           ),
           export_sym: ^ct_inv_v2_export_sym,
           export_atom: ^dag_c3_surface_sugar_service
         )
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   },
     diagnostics: None
@@ -283,7 +283,7 @@ fn ct_dag_to_v2_admission() -> v2.compiler.name_resolve.Admission {
         target: ct_qn_v2_std(),
         visibility: ImportVisible
       },
-      tail: Empty
+      tail: std.algebra.Empty
     }
   }
 }
@@ -309,7 +309,7 @@ test fn witness_dag_same_tree_import_resolves_holds() -> Bool {
       roots: admitted,
       admission: ct_dag_same_tree_admission(),
       index: source_root_index_empty(),
-      active_roots: Empty,
+      active_roots: std.algebra.Empty,
       policy: ImportScoped
     ) {
       Accepted { value: _, diagnostics: _ } => true
@@ -327,7 +327,7 @@ test fn witness_v2_same_tree_import_resolves_holds() -> Bool {
       roots: admitted,
       admission: ct_v2_same_tree_admission(),
       index: source_root_index_empty(),
-      active_roots: Empty,
+      active_roots: std.algebra.Empty,
       policy: ImportScoped
     ) {
       Accepted { value: _, diagnostics: _ } => true

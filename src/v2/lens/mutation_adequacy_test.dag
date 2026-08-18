@@ -4,11 +4,11 @@ module v2.test.lens_mutation_adequacy.mutation_adequacy_test
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn node_a() -> Node {
-  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^a } }, children: Empty)
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^a } }, children: std.algebra.Empty)
 }
 
 fn node_b() -> Node {
-  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^b } }, children: Empty)
+  node_synthetic(kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^b } }, children: std.algebra.Empty)
 }
 
 fn green_claim() -> v2.std.verification.TestClaim {
@@ -51,7 +51,7 @@ test fn surviving_mutation_is_inadequate() -> Bool {
   let coverage = [
     v2.lens.mutation_adequacy.MutationCoverage {
       mutation: v2.lens.mutation_adequacy.StructureMutation { mutated: ^drop_input_edge },
-      discriminating_unit: Empty
+      discriminating_unit: std.algebra.Empty
     }
   ]
   return !is_adequate(coverage: coverage)

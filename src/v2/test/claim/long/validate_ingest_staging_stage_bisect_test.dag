@@ -114,7 +114,7 @@ fn bisect_parse_module_add_resolve_accepts() -> Bool {
         Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: parsed) {
             Accepted { value: normalized, diagnostics: _ } =>
-              match resolve(tree: normalized, lm: lm) {
+              match v2.compiler.resolve.resolve(tree: normalized, lm: lm) {
                 Accepted { value: _, diagnostics: _ } => true
                 Rejected { diagnostics: _ } => false
               }
@@ -207,7 +207,7 @@ fn bisect_resolve_accepts_text(text: String) -> Bool {
         Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: parsed) {
             Accepted { value: normalized, diagnostics: _ } =>
-              match resolve(tree: normalized, lm: lm) {
+              match v2.compiler.resolve.resolve(tree: normalized, lm: lm) {
                 Accepted { value: _, diagnostics: _ } => true
                 Rejected { diagnostics: _ } => false
               }

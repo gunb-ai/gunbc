@@ -80,7 +80,7 @@ data hermetic_fixture_in_process_facts: extdeps.cache.types.CacheInterfaceCatalo
     locality: InProcess
     retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityUnbounded }
     atomicity: PerFile
-    auth: None
+    auth: std.cache_interface.None
     read_latency: InProcessNs
     consistency: Strong
   }

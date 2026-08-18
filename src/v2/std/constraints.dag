@@ -68,7 +68,7 @@ fn canonical_grounding_from_derived_type(
           }
         }
       },
-      diagnostics: None
+      diagnostics: v2.std.diagnostic.None
     }
   }
 }
@@ -113,7 +113,7 @@ fn canonical_grounding_candidates(
           closedness: canonical_grounding_candidate_set_closedness(root: policy.graph.root)
         }
       },
-      diagnostics: None
+      diagnostics: v2.std.diagnostic.None
     }
   } else {
     outcome_rejected(constraints_ill_formed_root_diagnostic(graph: policy.graph))

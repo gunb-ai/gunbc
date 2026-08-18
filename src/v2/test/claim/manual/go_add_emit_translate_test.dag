@@ -12,7 +12,7 @@ data go_add_int_facts_node: Node = go_integer_facts_node(facts: go_facts_int)
 
 data go_add_int_width_node: Node = go_signed_int_width_node(width: SignedPlatformInt)
 
-data go_add_int_kind_signed_node: Node = go_int_kind_node(kind: Signed)
+data go_add_int_kind_signed_node: Node = go_int_kind_node(kind: v2.extdeps.languages.go.Signed)
 
 data go_add_int_overflow_node: Node = go_overflow_node(
   overflow: SignedTypedIntegerTruncatesSilentlyOnOverflow
@@ -58,7 +58,7 @@ data go_add_serialize_reject_receipt: Outcome<Medium<String>> = anchor_go_add_se
 test fn go_add_serialize_reject_receipt_holds() -> Bool {
   match go_add_serialize_reject_receipt {
     Accepted { value: _, diagnostics: _ } => false
-    Rejected { diagnostics: d } => d != None
+    Rejected { diagnostics: d } => d != v2.std.diagnostic.None
   }
 }
 
@@ -227,7 +227,7 @@ data go_add_emit_receipt: Outcome<Medium<String>> = anchor_go_add_emit_accepts()
 test fn go_add_emit_add_fn_accepts_holds() -> Bool {
   match go_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == go_source_text) && (d == None)
+      (source.carried == go_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -236,7 +236,7 @@ data go_add_compile_inferred_receipt: Outcome<v2.compiler.compile.CompileOutput>
 
 test fn go_add_compile_inferred_receipt_holds() -> Bool {
   match go_add_compile_inferred_receipt {
-    Accepted { value: _, diagnostics: d } => d == None
+    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
     Rejected { diagnostics: _ } => false
   }
 }

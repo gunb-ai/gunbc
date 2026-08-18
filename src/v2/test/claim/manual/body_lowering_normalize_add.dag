@@ -147,7 +147,7 @@ fn body_lowering_has_plus_token() -> Bool {
       match body_lower_unwrap_captured(shell: fn_decl) {
         Present { value: captured } =>
           fold(
-            body_lower_collect_atoms(root: captured, acc: Empty),
+            body_lower_collect_atoms(root: captured, acc: std.algebra.Empty),
             init: false,
             f: fn(acc, sym) { acc || sym == ^dag_token_plus }
           )
@@ -295,7 +295,7 @@ fn body_lowering_normalized_resolves() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
-      match resolve(tree: tree, lm: dag_language_model()) {
+      match v2.compiler.resolve.resolve(tree: tree, lm: dag_language_model()) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -333,7 +333,7 @@ fn body_lowering_fixture_resolves() -> Bool {
   match admit_normalized_tree(root: dag_add_arrow_with_body_fixture, diagnostics: None) {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
-      match resolve(tree: admitted, lm: lm) {
+      match v2.compiler.resolve.resolve(tree: admitted, lm: lm) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -345,7 +345,7 @@ fn body_lowering_transform_operand_identities(arrow: Node) -> List<v2.std.node.S
     Accepted { value: body, diagnostics: _ } =>
       match body.kind {
         ComputationNode { behavior: Transform } =>
-          fold(body.children, init: Empty, f: fn(acc, e) {
+          fold(body.children, init: std.algebra.Empty, f: fn(acc, e) {
             match e.label {
               Positional =>
                 match list_at_optional(xs: acc, index: 0) {
@@ -359,9 +359,9 @@ fn body_lowering_transform_operand_identities(arrow: Node) -> List<v2.std.node.S
               _ => acc
             }
           })
-        _ => Empty
+        _ => std.algebra.Empty
       }
-    Rejected { diagnostics: _ } => Empty
+    Rejected { diagnostics: _ } => std.algebra.Empty
   }
 }
 
@@ -703,7 +703,7 @@ fn body_lowering_normalized_arrow_root_resolves() -> Bool {
           match admit_normalized_tree(root: arrow, diagnostics: None) {
             Rejected { diagnostics: _ } => false
             Accepted { value: admitted_arrow, diagnostics: _ } =>
-              match resolve(tree: admitted_arrow, lm: lm) {
+              match v2.compiler.resolve.resolve(tree: admitted_arrow, lm: lm) {
                 Accepted { value: _, diagnostics: _ } => true
                 Rejected { diagnostics: _ } => false
               }

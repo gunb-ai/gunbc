@@ -62,12 +62,12 @@ data phase1_nat_semiring_rung_0_to_2_roster: List<v2.std.verification.TestClaim>
 ]
 
 data phase1_nat_semiring_fixture_law_roster: List<v2.std.verification.TestClaim> = [
-  claim_nat_add_left_identity,
-  claim_nat_add_right_identity,
-  claim_nat_add_associativity,
-  claim_nat_mul_left_identity,
-  claim_nat_mul_annihilator,
-  claim_nat_mul_associativity
+  v2.test.algebra_laws.nat_semiring.claim_nat_add_left_identity,
+  v2.test.algebra_laws.nat_semiring.claim_nat_add_right_identity,
+  v2.test.algebra_laws.nat_semiring.claim_nat_add_associativity,
+  v2.test.algebra_laws.nat_semiring.claim_nat_mul_left_identity,
+  v2.test.algebra_laws.nat_semiring.claim_nat_mul_annihilator,
+  v2.test.algebra_laws.nat_semiring.claim_nat_mul_associativity
 ]
 
 data phase1_nat_semiring_rung_gate_canonical_subject: Node = nat_add_left_identity_input

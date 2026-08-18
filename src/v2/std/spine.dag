@@ -32,7 +32,7 @@ fn shift_deeper(profile: List<Int>) -> List<Int> {
 }
 
 fn profile_fold_init(_n: Node) -> List<Int> {
-  std.algebra.Cons { head: 1, tail: Empty }
+  std.algebra.Cons { head: 1, tail: std.algebra.Empty }
 }
 
 fn profile_fold_step(acc: List<Int>, _edge: v2.std.node.Edge, child_profile: List<Int>) -> List<Int> {

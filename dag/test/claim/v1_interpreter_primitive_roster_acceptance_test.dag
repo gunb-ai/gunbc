@@ -37,8 +37,8 @@ fn duplicate_row_keys_refuse() -> Bool {
 }
 
 fn shadows_are_exactly_the_known_named_set() -> Bool {
-  let free = shadowed_spellings(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == FreeCall))
-  let method = shadowed_spellings(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == MethodCall))
+  let free = shadowed_spellings(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == gunbc.v1_interpreter_primitive_surface.FreeCall))
+  let method = shadowed_spellings(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == gunbc.v1_interpreter_primitive_surface.MethodCall))
   count(free) == 0
     && count(method) == 1
     && (method |> all(x => x == "lookup"))

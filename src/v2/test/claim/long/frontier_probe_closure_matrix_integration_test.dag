@@ -30,7 +30,7 @@ fn fp_matrix_below_cap_complete_subject() -> v2.compiler.self_host.frontier_prob
   fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
       head: fp_matrix_ref_a(),
-      tail: Empty
+      tail: std.algebra.Empty
     },
     coverage: SourceRootCoverageComplete,
     ingest_read_count: 1,
@@ -42,7 +42,7 @@ fn fp_matrix_second_root_subject() -> v2.compiler.self_host.frontier_probe.Front
   fp_matrix_closure_subject_matching_digest(
     refs: std.algebra.Cons {
       head: fp_matrix_ref_a(),
-      tail: std.algebra.Cons { head: fp_matrix_ref_v2(), tail: Empty }
+      tail: std.algebra.Cons { head: fp_matrix_ref_v2(), tail: std.algebra.Empty }
     },
     coverage: SourceRootCoverageComplete,
     ingest_read_count: 2,

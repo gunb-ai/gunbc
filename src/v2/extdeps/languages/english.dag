@@ -424,7 +424,7 @@ fn english_concrete_token_node(token: v2.std.compilers.target_model.ConcreteSynt
 fn english_add_fn_formal_rhs() -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: english_add_fn_concrete_tokens(),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,

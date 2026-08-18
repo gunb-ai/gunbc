@@ -560,7 +560,7 @@ fn source_root_ingest_build_from_source_refs(
 ) -> SourceRootIngestBuild {
   match fold_list(
     xs: refs,
-    empty: SourceRootIngestBuildOk { ingest: Empty },
+    empty: SourceRootIngestBuildOk { ingest: std.algebra.Empty },
     cons: fn(acc, ref) {
       match acc {
         SourceRootIngestBuildReadFailed { result: _ } => acc
@@ -957,7 +957,7 @@ fn module_storage_bindings_from_ingest_prepared(
 ) -> Outcome<ModuleStorageIndex> {
   match fold_list(
     xs: ingest,
-    empty: ModuleStorageFoldOk { bindings: Empty },
+    empty: ModuleStorageFoldOk { bindings: std.algebra.Empty },
     cons: fn(state, read) {
       module_storage_fold_step(
         state: state,
@@ -978,7 +978,7 @@ fn module_storage_bindings_from_ingest_with_model(
   lm: v2.std.language_model.LanguageModel
 ) -> Outcome<ModuleStorageIndex> {
   match ingest {
-    Empty => outcome_accepted(value: Empty)
+    Empty => outcome_accepted(value: std.algebra.Empty)
     _ =>
       match prepare_grammar(grammar: lm.grammar) {
         Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
@@ -1227,7 +1227,7 @@ fn node_artifact_provenance_from_source_root(
 ) -> Outcome<FreeMonoid<v2.std.artifact.NodeArtifactProvenance>> {
   match fold_list(
     xs: ingest,
-    empty: NodeArtifactProvenanceFoldOk { provenance: Empty },
+    empty: NodeArtifactProvenanceFoldOk { provenance: std.algebra.Empty },
     cons: fn(state, read) {
       node_artifact_provenance_fold_step(state: state, read: read)
     }
@@ -1265,7 +1265,7 @@ fn source_root_provenance_coverage_receipt(
 fn source_root_set_from_ingest(ingest: SourceRootIngest) -> v2.std.cross_tree.import_model.SourceRootSet {
   fold_list(
     xs: ingest,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, read) {
       source_root_set_insert(roots: acc, r: read.source_root)
     }

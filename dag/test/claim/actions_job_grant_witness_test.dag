@@ -24,7 +24,7 @@ fn grant_with(
       contents: contents,
       pull_requests: none,
       issues: none,
-      actions: Present { value: PermWrite },
+      actions: Present { value: extdeps.github.actions.PermWrite },
       id_token: none
     }
   }
@@ -86,8 +86,8 @@ data public_fork_policy_allows: extdeps.github.actions_token.ActionsRepositoryPo
 }
 
 test fn witness_public_repository_fork_write_is_unreachable() -> Bool {
-  is_read(r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: public_fork_policy_allows))
-    && is_write(r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: fork_policy_allows))
+  is_read(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: ForkedRepositoryOrigin, policy: public_fork_policy_allows))
+    && is_write(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: ForkedRepositoryOrigin, policy: fork_policy_allows))
     && !fork_write_tokens_reachable(policy: public_fork_policy_allows)
     && fork_write_tokens_reachable(policy: fork_policy_allows)
     && !fork_write_tokens_reachable(policy: ActionsRepositoryPolicyUnobserved)
@@ -96,28 +96,28 @@ test fn witness_public_repository_fork_write_is_unreachable() -> Bool {
 test fn witness_declared_level_decides_the_grant_not_the_scope_name() -> Bool {
   is_none(r: contents_resolution(contents: none, origin: SameRepositoryOrigin, policy: same_repo_policy))
     && is_none(r: contents_resolution(contents: Present { value: PermNone }, origin: SameRepositoryOrigin, policy: same_repo_policy))
-    && is_read(r: contents_resolution(contents: Present { value: PermRead }, origin: SameRepositoryOrigin, policy: same_repo_policy))
-    && is_write(r: contents_resolution(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy))
+    && is_read(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermRead }, origin: SameRepositoryOrigin, policy: same_repo_policy))
+    && is_write(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy))
 }
 
 test fn witness_fork_origin_downgrades_write_to_read() -> Bool {
-  is_read(r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: fork_policy_denies))
-    && is_read(r: contents_resolution(contents: Present { value: PermRead }, origin: ForkedRepositoryOrigin, policy: fork_policy_denies))
-    && is_write(r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: fork_policy_allows))
+  is_read(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: ForkedRepositoryOrigin, policy: fork_policy_denies))
+    && is_read(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermRead }, origin: ForkedRepositoryOrigin, policy: fork_policy_denies))
+    && is_write(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: ForkedRepositoryOrigin, policy: fork_policy_allows))
 }
 
 test fn witness_unobserved_fork_policy_refuses_rather_than_assuming() -> Bool {
   is_fork_policy_unobserved(
-    r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved)
+    r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved)
   ) && is_write(
-    r: contents_resolution(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved)
+    r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: SameRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved)
   ) && is_write(
-    r: contents_resolution(contents: Present { value: PermWrite }, origin: OriginNotApplicable, policy: ActionsRepositoryPolicyUnobserved)
+    r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: OriginNotApplicable, policy: ActionsRepositoryPolicyUnobserved)
   )
 }
 
 test fn witness_scope_unavailable_is_not_scope_none() -> Bool {
-  let g = grant_with(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
+  let g = grant_with(contents: Present { value: extdeps.github.actions.PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
   is_scope_unavailable(r: effective_actions_grant(grant: g, name: WorkflowsAxis))
     && is_scope_unavailable(r: effective_actions_grant(grant: g, name: RepositoryProjectsAxis))
     && is_scope_unavailable(r: effective_actions_grant(grant: g, name: AdministrationAxis))
@@ -135,7 +135,7 @@ test fn witness_scope_unavailable_is_not_scope_none() -> Bool {
 // granted read, while the keyless axes that carry no intrinsic grant stay
 // unavailable — so re-fusing the two facts in either direction reds.
 test fn witness_undeclarable_axis_may_still_be_granted() -> Bool {
-  let g = grant_with(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
+  let g = grant_with(contents: Present { value: extdeps.github.actions.PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
   !actions_token_may_declare_permission(name: MetadataAxis)
     && is_read(r: effective_actions_grant(grant: g, name: MetadataAxis))
     && !is_scope_unavailable(r: effective_actions_grant(grant: g, name: MetadataAxis))
@@ -149,7 +149,7 @@ test fn witness_undeclarable_axis_may_still_be_granted() -> Bool {
 // widening the intrinsic carrier to write would red here rather than silently
 // authorizing a write the live token does not carry.
 test fn witness_intrinsic_read_grant_refuses_a_write_request() -> Bool {
-  let g = grant_with(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
+  let g = grant_with(contents: Present { value: extdeps.github.actions.PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
   match actions_job_capability(grant: g, required: extdeps.github.app.GitHubAppPermission { name: MetadataAxis, access: AppAccessRead }) {
     CredentialGrants => true
     _ => false
@@ -385,7 +385,7 @@ test fn witness_invalid_declared_access_refuses_rather_than_capping() -> Bool {
       pull_requests: none,
       issues: none,
       actions: none,
-      id_token: Present { value: PermRead }
+      id_token: Present { value: extdeps.github.actions.PermRead }
     }
   }
   match effective_actions_grant(grant: id_token_read, name: IdTokenAxis) {
@@ -403,7 +403,7 @@ test fn witness_invalid_declared_access_refuses_rather_than_capping() -> Bool {
 }
 
 test fn witness_unmodeled_axis_is_not_reported_as_scope_none() -> Bool {
-  let g = grant_with(contents: Present { value: PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
+  let g = grant_with(contents: Present { value: extdeps.github.actions.PermWrite }, origin: SameRepositoryOrigin, policy: same_repo_policy)
   match effective_actions_grant(grant: g, name: ChecksAxis) {
     ActionsGrantAxisNotModeled => true
     _ => false
@@ -414,9 +414,9 @@ test fn witness_unmodeled_axis_is_not_reported_as_scope_none() -> Bool {
 }
 
 test fn witness_fork_policy_is_required_only_for_a_declared_write() -> Bool {
-  is_read(r: contents_resolution(contents: Present { value: PermRead }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved))
+  is_read(r: contents_resolution(contents: Present { value: extdeps.github.actions.PermRead }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved))
     && is_fork_policy_unobserved(
-         r: contents_resolution(contents: Present { value: PermWrite }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved)
+         r: contents_resolution(contents: Present { value: extdeps.github.actions.PermWrite }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved)
        )
     && is_none(r: contents_resolution(contents: Present { value: PermNone }, origin: ForkedRepositoryOrigin, policy: ActionsRepositoryPolicyUnobserved))
 }

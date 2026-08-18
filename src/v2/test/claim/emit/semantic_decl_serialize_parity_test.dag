@@ -63,7 +63,7 @@ fn bool_text_with_target(target: v2.std.compilers.target_model.TargetModel) -> O
         o: target_semantic_enum_surface_from_coproduct(
           projection: emission.surface,
           name: ^Bool,
-          params: Empty,
+          params: std.algebra.Empty,
           coproduct: bool_coproduct()
         ),
         f: fn(surface) {
@@ -86,7 +86,7 @@ test fn same_tokens_decoded_bindings_match_live_bindings() -> Bool {
           match target_semantic_enum_surface_from_coproduct(
             projection: emission.surface,
             name: ^Bool,
-            params: Empty,
+            params: std.algebra.Empty,
             coproduct: bool_coproduct()
           ) {
             Accepted { value: surface, diagnostics: _ } =>
@@ -142,7 +142,7 @@ test fn same_tokens_decoded_lex_matches_live_lex() -> Bool {
           match target_semantic_enum_surface_from_coproduct(
             projection: emission.surface,
             name: ^Bool,
-            params: Empty,
+            params: std.algebra.Empty,
             coproduct: bool_coproduct()
           ) {
             Accepted { value: surface, diagnostics: _ } =>
@@ -266,7 +266,7 @@ test fn generic_row_profile_matches_golden() -> Bool {
       match target_semantic_enum_surface_from_coproduct(
         projection: emission.surface,
         name: ^Bool,
-        params: Empty,
+        params: std.algebra.Empty,
         coproduct: bool_coproduct()
       ) {
         Accepted { value: surface, diagnostics: _ } =>

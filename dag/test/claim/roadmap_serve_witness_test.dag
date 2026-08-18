@@ -94,7 +94,7 @@ test fn witness_dispatch_param_bound() -> Bool {
 
 test fn witness_dispatch_get_folds_405() -> Bool {
   match serve_select_route(table: live_table_or_empty(), method: GET, path: "/dispatch/x") {
-    MethodNotAllowed { allowed: ms } => count(ms) == 1 && any(ms, m => m == POST)
+    MethodNotAllowed { allowed: ms } => count(ms) == 1 && any(ms, m => m == std.types.POST)
     SelectedStatic { route: _ } => false
     SelectedDynamic { handler: _, params: _ } => false
     NoRouteMatched => false
@@ -111,7 +111,7 @@ test fn witness_unknown_path_folds_404_response() -> Bool {
 }
 
 test fn witness_405_response_carries_allowed() -> Bool {
-  let r = roadmap_serve_selection_response(sel: extdeps.http.server.MethodNotAllowed { allowed: [POST] }, request: fixture_request(method: GET, path: "/dispatch/x"), release_revision: deploy_witness_release_revision)
+  let r = roadmap_serve_selection_response(sel: extdeps.http.server.MethodNotAllowed { allowed: [std.types.POST] }, request: fixture_request(method: GET, path: "/dispatch/x"), release_revision: deploy_witness_release_revision)
   r.status == 405 && string_contains(s: r.body, pattern: "POST")
 }
 
@@ -209,11 +209,11 @@ test fn witness_unknown_method_folds_501_response() -> Bool {
 
 test fn witness_known_methods_parse() -> Bool {
   match parse_http_method_label(label: "GET") {
-    KnownMethod { method: m } => m == GET
+    KnownMethod { method: m } => m == std.types.GET
     UnknownMethod { label: _ } => false
   }
   && match parse_http_method_label(label: "POST") {
-    KnownMethod { method: m } => m == POST
+    KnownMethod { method: m } => m == std.types.POST
     UnknownMethod { label: _ } => false
   }
 }

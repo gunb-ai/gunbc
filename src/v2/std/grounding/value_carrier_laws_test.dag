@@ -58,7 +58,7 @@ test fn declared_carriers_preserve_prior_versions_holds() -> Bool {
 test fn storage_and_update_persistence_axes_coexist_holds() -> Bool {
   let storage: extdeps.storage.types.PersistenceKind = Ephemeral
   let update: v2.std.value_carrier.UpdateVersionPersistence = PersistentUpdate
-  (storage == Ephemeral) && (update == PersistentUpdate)
+  (storage == extdeps.storage.types.Ephemeral) && (update == PersistentUpdate)
 }
 
 test fn name_interning_covers_all_domains_holds() -> Bool {

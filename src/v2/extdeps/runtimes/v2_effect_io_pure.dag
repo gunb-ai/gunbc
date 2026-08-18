@@ -162,7 +162,7 @@ fn effect_io_pure_store_lookup(
       Accepted { value: opt, diagnostics: None } =>
         match opt {
           Present { value: payload } =>
-            v2.std.diagnostic.Accepted { value: payload, diagnostics: None }
+            v2.std.diagnostic.Accepted { value: payload, diagnostics: v2.std.diagnostic.None }
           Absent =>
             outcome_rejected(
               d: v2.std.diagnostic.Diagnostic {
@@ -204,7 +204,7 @@ fn effect_io_pure_handle_write(
       match effect_io_pure_write_payload_from_args(args: request.arguments) {
         Holds { value: payload } =>
           if effect_io_pure_backends_match(left: locator.backend, right: store.backend) {
-            v2.std.diagnostic.Accepted { value: payload, diagnostics: None }
+            v2.std.diagnostic.Accepted { value: payload, diagnostics: v2.std.diagnostic.None }
           } else {
             outcome_rejected(
               d: v2.std.diagnostic.Diagnostic {
@@ -332,7 +332,7 @@ fn effect_io_pure_read_write_roundtrip(
 ) -> Bool {
   match effect_io_pure_locator_from_args(
     backend: backend,
-    args: std.algebra.Cons { head: locator_arg, tail: Empty }
+    args: std.algebra.Cons { head: locator_arg, tail: std.algebra.Empty }
   ) {
     Holds { value: locator } =>
       effect_io_pure_roundtrip_through_store(
@@ -353,7 +353,7 @@ fn effect_io_pure_roundtrip_through_store(
 ) -> Bool {
   let store0 = effect_io_pure_empty_fixture_store(backend: backend)
   let bundle0 = effect_io_pure_handler_binding(store: store0)
-  let write_args = std.algebra.Cons { head: locator_arg, tail: std.algebra.Cons { head: payload, tail: Empty } }
+  let write_args = std.algebra.Cons { head: locator_arg, tail: std.algebra.Cons { head: payload, tail: std.algebra.Empty } }
   let write_request = effect_io_pure_write_request(args: write_args)
   let write_handler = effect_handler_for_kind(binding: bundle0.handlers, kind: WriteResource)
   match effect_io_pure_invoke_handler(handler: write_handler, request: write_request) {
@@ -365,7 +365,7 @@ fn effect_io_pure_roundtrip_through_store(
           payload: written
         )
         let bundle1 = effect_io_pure_handler_binding(store: store1)
-        let read_args = std.algebra.Cons { head: locator_arg, tail: Empty }
+        let read_args = std.algebra.Cons { head: locator_arg, tail: std.algebra.Empty }
         let read_request = effect_io_pure_read_request(args: read_args)
         let read_handler = effect_handler_for_kind(binding: bundle1.handlers, kind: ReadResource)
         match effect_io_pure_invoke_handler(handler: read_handler, request: read_request) {

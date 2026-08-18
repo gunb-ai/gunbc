@@ -18,7 +18,7 @@ type DeclFactQualifiedNameResolution
   | DeclFactResolvedAmbiguous { qualified_name: String, match_count: Int }
 
 fn decl_facts_matching_qualified_name(qn: String, facts: List<v2.std.decl_index.DeclFact>) -> List<v2.std.decl_index.DeclFact> {
-  list_reverse(xs: fold(facts, init: Empty, f: fn(acc, fact) {
+  list_reverse(xs: fold(facts, init: v2.std.algebra.Empty, f: fn(acc, fact) {
     if fact.qualified_name == qn {
       std.algebra.Cons { head: fact, tail: acc }
     } else {
@@ -65,7 +65,7 @@ fn skeleton_marshal_atom_lexeme_optional(node: Node) -> SkeletonMarshalAtomLexem
 }
 
 fn node_skeleton_edge_targets(node: Node) -> List<Node> {
-  list_reverse(xs: fold(node.children, init: Empty, f: fn(acc, e) {
+  list_reverse(xs: fold(node.children, init: v2.std.algebra.Empty, f: fn(acc, e) {
     std.algebra.Cons { head: e.target, tail: acc }
   }))
 }
@@ -73,7 +73,7 @@ fn node_skeleton_edge_targets(node: Node) -> List<Node> {
 fn node_skeleton_marshal_atom_lexemes(node: Node) -> List<SkeletonMarshalAtomLexeme> {
   let child_lexemes = fold_list_right(
     xs: node_skeleton_edge_targets(node: node),
-    empty: Empty,
+    empty: v2.std.algebra.Empty,
     snoc: fn(acc, child) {
       fold_list_right(
         xs: node_skeleton_marshal_atom_lexemes(node: child),

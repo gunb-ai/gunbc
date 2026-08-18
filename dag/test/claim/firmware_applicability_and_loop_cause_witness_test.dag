@@ -15,7 +15,7 @@ test fn unreadable_target_version_refuses_rather_than_assuming() -> Bool {
     observed: Absent,
   ) {
     FirmwarePrerequisiteUnobserved { target: t, minimum: m } =>
-      t == BmcController && m.major == 3 && m.minor == 22
+      t == extdeps.firmware.types.BmcController && m.major == 3 && m.minor == 22
     FirmwareApplicable => false
     FirmwarePrerequisiteUnmet { target: _, minimum: _, observed: _ } => false
   }

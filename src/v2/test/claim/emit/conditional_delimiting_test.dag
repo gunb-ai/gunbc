@@ -103,7 +103,7 @@ fn cld_emit(projection: v2.std.compilers.target_model.TargetValueExpressionProje
         tokens: tokens
       ) {
         Accepted { value: text, diagnostics: _ } =>
-          v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: None }
+          v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: v2.std.diagnostic.None }
         Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }

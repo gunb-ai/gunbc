@@ -79,7 +79,7 @@ fn spice_component(
 fn spice_netlist(intent: product.compute_board.analog.AnalogCircuitIntent, reference: product.electrical.connectivity.NetIdentity) -> v2.extdeps.formats.spice.SpiceNetlist {
   v2.extdeps.formats.spice.SpiceNetlist {
     title: intent.title as String,
-    body: fold(intent.components, init: Empty, f: fn(acc, c) {
+    body: fold(intent.components, init: std.algebra.Empty, f: fn(acc, c) {
       list_snoc_item(xs: acc, item: v2.extdeps.formats.spice.DeckComponent { component: spice_component(intent: intent, reference: reference, c: c) })
     }),
   }

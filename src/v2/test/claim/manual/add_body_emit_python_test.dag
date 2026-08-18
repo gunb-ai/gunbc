@@ -41,7 +41,7 @@ test fn python_add_emit_holds() -> Bool {
     Accepted { value: authority, diagnostics: ad } =>
       match python_add_emit_from_tree(target: python_target_model()) {
         Accepted { value: source, diagnostics: d } =>
-          (source == authority) && (d == None) && (ad == None)
+          (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -57,8 +57,8 @@ test fn python_add_emit_perturbed_spellings_discriminates() -> Bool {
         Accepted { value: perturbed, diagnostics: dp } =>
           (perturbed != canonical)
             && (perturbed.carried == python_add_emit_perturbed_source_text)
-            && (dc == None)
-            && (dp == None)
+            && (dc == v2.std.diagnostic.None)
+            && (dp == v2.std.diagnostic.None)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false

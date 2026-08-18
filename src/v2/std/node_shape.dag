@@ -36,7 +36,7 @@ fn stamp_edge_shape(e: v2.std.node.EdgeShape) -> v2.std.node.Edge {
 fn stamp_edge_shape_list(shapes: List<v2.std.node.EdgeShape>) -> List<v2.std.node.Edge> {
   fold_list(
     xs: shapes,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, es) {
       list_snoc_item(xs: acc, item: stamp_edge_shape(e: es))
     }

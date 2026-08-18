@@ -22,7 +22,7 @@ type EnrollmentDiscoveryReceipt {
 
 data lens_contract_cost: LensContract = {
   entry: lens_registry_v0_cost,
-  mode: Blocking,
+  mode: v2.lens.enforcement.vocab.Blocking,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: v2.lens.enforcement.vocab.BoundConsumerWitness {
     witness: std.realization_schedule.ScheduleWitnessEntry {
@@ -60,7 +60,7 @@ data lens_contract_complexity_optimality: LensContract = {
 
 data lens_contract_emitted_binary_effect_confinement: LensContract = {
   entry: lens_registry_v0_emitted_binary_effect_confinement,
-  mode: Blocking,
+  mode: v2.lens.enforcement.vocab.Blocking,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: v2.lens.enforcement.vocab.BoundConsumerWitness {
     witness: std.realization_schedule.ScheduleWitnessEntry {
@@ -359,7 +359,7 @@ data lens_contract_realization_vocabulary_containment: LensContract = {
 
 data lens_contract_schedule_lens: LensContract = {
   entry: lens_registry_v0_schedule_lens,
-  mode: Blocking,
+  mode: v2.lens.enforcement.vocab.Blocking,
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster {
     roots: [
       "dag/std/realization_schedule.dag",

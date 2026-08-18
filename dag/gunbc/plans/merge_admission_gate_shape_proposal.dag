@@ -12,25 +12,25 @@ fn section_proposed_actuator() -> List<std.markdown.MarkdownBlock> {
     h2(text: "1. Approved actuator shape (follow-on PR — READY but HELD)"),
     p(text: "Merge admission is merge-time policy, orthogonal to per-commit floor gates. The actuator consumes a MergeAdmissionReceipt and live merge-target facts; it does NOT add a new gunbc.ci_gate variant."),
     std.markdown.TableBlock {
-      header: row(cells: [cell(text: "Layer"), cell(text: "Home"), cell(text: "Role")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "Layer"), cell(text: "Home"), cell(text: "Role")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Predicate (single authority)"),
           cell(text: "gunbc.merge_admission.receipt_is_admissible"),
           cell(text: "Pure fn: base_tree_hash == merge_target_tree_hash AND gate_roster_hash == current_gate_roster_hash AND conclusion Success"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Consumption (follow-on, HELD)"),
           cell(text: "gunbc.ci_failure_class.merge_admission_blocks_merge"),
           cell(text: "Computed + surfaced via merge_freshness_gating_status; GatingComputedDeferred until operator sign-off — same pattern as floor_exit_blocks_merge today"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Receipt mint (deferred)"),
           cell(text: "CI floor green + recorded base tree + gate_roster_content_hash"),
           cell(text: "Emitted at run time; stored as the PR merge-admission receipt"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "GitHub Rulesets handler (realization)"),
           cell(text: "DERIVED/EMITTED transport of receipt_is_admissible + RepoStandard"),
           cell(text: "One authority, N handlers: idempotent PUT from substrate when administration:write is available — NOT a separate read-only drift re-check authority (that framing is the section-3 re-encode trap)"),

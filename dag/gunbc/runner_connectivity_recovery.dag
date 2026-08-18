@@ -1,7 +1,7 @@
 module gunbc.runner_connectivity_recovery
 
 
-data runner_connectivity_recovery_scope_disposition: Disposition = SingleAuthority
+data runner_connectivity_recovery_scope_disposition: std.disposition.Disposition = SingleAuthority
 
 data runner_connectivity_watchdog_note: String = "PORTS the incident ctrl watchdog into gunbc (operator ruling 2026-08-06). Replace eligibility is the CONJUNCTION: remote registration offline/absent AND broker progress silent beyond the derived ten-minute bound AND no Runner.Worker alive AND registration grace elapsed. Offline-alone and quiet-locally-alone are both unsafe single-signal policies; only the conjunction is safe. Re-read immediately before mutation; fanout is canary-first with per-host cooldown. systemctl restart exit 0 is NOT success."
 
@@ -104,9 +104,9 @@ type FleetConnectivityRepairPlan {
   actions: List<RunnerConnectivityAction>
 }
 
-data runner_connectivity_observation_freshness_seconds: Duration = 120
+data runner_connectivity_observation_freshness_seconds: std.types.Duration = 120
 
-data runner_connectivity_restart_cooldown_seconds: Duration = 300
+data runner_connectivity_restart_cooldown_seconds: std.types.Duration = 300
 
 data runner_connectivity_control_plane_degraded_fraction_threshold: Int = 75
 
@@ -114,9 +114,9 @@ data runner_connectivity_max_replacements_per_host_per_tick: Int = 2
 
 data runner_connectivity_replacement_jitter_basis_note: String = "LIMIT FANOUT (operator ruling 2026-08-06): every host independently restarting several slots on the same two-minute timer boundary would amplify the next incident. Per-host replacement cap is enforced in plan_fleet_connectivity_repair; schedule jitter is a realization concern on the watchdog timer — offsets derive from slot_key hash modulo the tick interval, not a modeled random draw."
 
-data runner_connectivity_rebind_healthy_note: Disposition = Scaffold {
+data runner_connectivity_rebind_healthy_note: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
+  bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.host_standup",
     decl_name: "RunnerSlotHealthy",
     field: WholeDeclaration,
@@ -125,7 +125,7 @@ data runner_connectivity_rebind_healthy_note: Disposition = Scaffold {
 
 data timestamp_comparison_scaffold_note: String = "HONEST SCAFFOLD: Timestamp is String today and this module compares equality only until PR A lands a parsed observation clock. Freshness and cooldown therefore use same-moment equality as the zero-age case in witnesses and refuse when act_at differs from confirmed_at without a parseable ordering — the wall is real, the parser is deferred to the observation carrier."
 
-fn recovery_runner_slot_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
+fn recovery_runner_slot_unit_name(slot: gunbc.build_cache_instance.RunnerSlotIdentity) -> std.types.NonEmptyStr {
   let idx = if slot.slot_index < 10 {
     concat("0", slot.slot_index as String)
   } else {
@@ -137,20 +137,20 @@ fn recovery_runner_slot_unit_name(slot: RunnerSlotIdentity) -> NonEmptyStr {
       concat("-", idx),
     ),
     ".service",
-  ) as NonEmptyStr
+  ) as std.types.NonEmptyStr
 }
 
-fn process_identity_eq(a: ProcessIdentity, b: ProcessIdentity) -> Bool {
+fn process_identity_eq(a: gunbc.build_cache_instance.ProcessIdentity, b: gunbc.build_cache_instance.ProcessIdentity) -> Bool {
   (a.boot_id as String) == (b.boot_id as String)
     && a.pid == b.pid
     && (a.start_time as String) == (b.start_time as String)
 }
 
-fn remote_observation_registration(obs: RunnerRemoteObservation) -> RunnerRemoteRegistration? {
+fn remote_observation_registration(obs: RunnerRemoteObservation) -> gunbc.runner_broker_progress_watchdog.RunnerRemoteRegistration? {
   remote_evidence_registration(ev: obs.evidence)
 }
 
-fn remote_registration_id_from_evidence(ev: RemoteRegistrationEvidence) -> String {
+fn remote_registration_id_from_evidence(ev: gunbc.runner_broker_progress_watchdog.RemoteRegistrationEvidence) -> String {
   match ev {
     RemoteRegistrationObserved { registration_id: id, registration: _, grade: _ } => id
     RemoteRegistrationOperatorDeclared { registration: _, reason: _ } => ""
@@ -161,9 +161,9 @@ fn remote_registration_id_from_evidence(ev: RemoteRegistrationEvidence) -> Strin
 
 fn watchdog_inputs_from_snapshot(
   snap: RunnerSlotConnectivitySnapshot,
-  reach: HostReachAdmission,
-) -> RunnerWatchdogInputs {
-  RunnerWatchdogInputs {
+  reach: gunbc.runner_broker_progress_watchdog.HostReachAdmission,
+) -> gunbc.runner_broker_progress_watchdog.RunnerWatchdogInputs {
+  gunbc.runner_broker_progress_watchdog.RunnerWatchdogInputs {
     remote: snap.remote.evidence,
     broker: snap.broker,
     worker: snap.worker,
@@ -174,9 +174,9 @@ fn watchdog_inputs_from_snapshot(
 
 fn repair_decision_receipt_from_prior(
   prior: RunnerSlotConnectivitySnapshot,
-  act_at: Timestamp,
-) -> RunnerRepairDecisionReceipt {
-  RunnerRepairDecisionReceipt {
+  act_at: std.types.Timestamp,
+) -> gunbc.runner_broker_progress_watchdog.RunnerRepairDecisionReceipt {
+  gunbc.runner_broker_progress_watchdog.RunnerRepairDecisionReceipt {
     slot: prior.slot,
     local_process: prior.local.incarnation.process,
     remote_registration_id: remote_registration_id_from_evidence(ev: prior.remote.evidence),
@@ -185,8 +185,8 @@ fn repair_decision_receipt_from_prior(
 }
 
 fn replacement_cause_for_watchdog(
-  reg: RunnerRemoteRegistration,
-  silence_seconds: Duration,
+  reg: gunbc.runner_broker_progress_watchdog.RunnerRemoteRegistration,
+  silence_seconds: std.types.Duration,
 ) -> RecoveryRunnerReplacementCause {
   if match reg {
     RunnerRemoteOffline => true
@@ -200,7 +200,7 @@ fn replacement_cause_for_watchdog(
   }
 }
 
-fn replacement_cause_for_remote(reg: RunnerRemoteRegistration) -> RecoveryRunnerReplacementCause {
+fn replacement_cause_for_remote(reg: gunbc.runner_broker_progress_watchdog.RunnerRemoteRegistration) -> RecoveryRunnerReplacementCause {
   match reg {
     RunnerRemoteOffline => RemoteRegistrationOfflineWhileLocalAlive
     RunnerRemoteAbsent => RemoteRegistrationAbsentWhileLocalAlive
@@ -210,9 +210,9 @@ fn replacement_cause_for_remote(reg: RunnerRemoteRegistration) -> RecoveryRunner
 }
 
 fn observation_is_fresh(
-  observed_at: Timestamp,
-  act_at: Timestamp,
-  max_staleness_seconds: Duration,
+  observed_at: std.types.Timestamp,
+  act_at: std.types.Timestamp,
+  max_staleness_seconds: std.types.Duration,
 ) -> Bool {
   if observed_at != act_at {
     false
@@ -221,7 +221,7 @@ fn observation_is_fresh(
   }
 }
 
-fn restart_cooldown_elapsed(last_restart_at: Timestamp?, act_at: Timestamp) -> Bool {
+fn restart_cooldown_elapsed(last_restart_at: std.types.Timestamp?, act_at: std.types.Timestamp) -> Bool {
   match last_restart_at {
     Absent => true
     Present { value: restarted_at } => restarted_at != act_at
@@ -265,7 +265,7 @@ fn classify_control_plane_standing(
       RunnerControlPlaneDegraded {
         offline_slots: offline,
         total_slots: total,
-        reason: "common offline or control-plane error burst across the fleet; inhibit fanout and recover canary-first" as NonEmptyStr,
+        reason: "common offline or control-plane error burst across the fleet; inhibit fanout and recover canary-first" as std.types.NonEmptyStr,
       }
     } else {
       RunnerControlPlaneHealthy
@@ -276,8 +276,8 @@ fn classify_control_plane_standing(
 fn decide_runner_connectivity_action(
   snap: RunnerSlotConnectivitySnapshot,
   prior: RunnerSlotConnectivitySnapshot,
-  watchdog: RunnerWatchdogInputs,
-  act_at: Timestamp,
+  watchdog: gunbc.runner_broker_progress_watchdog.RunnerWatchdogInputs,
+  act_at: std.types.Timestamp,
   allow_replace: Bool,
 ) -> RunnerConnectivityAction {
   let slot = snap.slot
@@ -315,10 +315,10 @@ fn decide_runner_connectivity_action(
 fn decide_runner_connectivity_for_verdict(
   snap: RunnerSlotConnectivitySnapshot,
   prior: RunnerSlotConnectivitySnapshot,
-  watchdog: RunnerWatchdogInputs,
-  act_at: Timestamp,
+  watchdog: gunbc.runner_broker_progress_watchdog.RunnerWatchdogInputs,
+  act_at: std.types.Timestamp,
   allow_replace: Bool,
-  verdict: RunnerWatchdogVerdict,
+  verdict: gunbc.runner_broker_progress_watchdog.RunnerWatchdogVerdict,
 ) -> RunnerConnectivityAction {
   let slot = snap.slot
   match verdict {
@@ -330,7 +330,7 @@ fn decide_runner_connectivity_for_verdict(
           RunnerRepairRefused {
             slot: slot,
             cause: RemoteEvidenceUnobserved {
-              reason: "healthy verdict without registration payload" as NonEmptyStr,
+              reason: "healthy verdict without registration payload" as std.types.NonEmptyStr,
             },
           }
       }
@@ -358,10 +358,10 @@ fn decide_runner_connectivity_for_verdict(
 fn decide_wedged_runner_connectivity_action(
   snap: RunnerSlotConnectivitySnapshot,
   prior: RunnerSlotConnectivitySnapshot,
-  watchdog: RunnerWatchdogInputs,
-  act_at: Timestamp,
+  watchdog: gunbc.runner_broker_progress_watchdog.RunnerWatchdogInputs,
+  act_at: std.types.Timestamp,
   allow_replace: Bool,
-  silence_seconds: Duration,
+  silence_seconds: std.types.Duration,
 ) -> RunnerConnectivityAction {
   let slot = snap.slot
   if !watchdog.registration_grace_elapsed {
@@ -404,7 +404,7 @@ fn decide_wedged_runner_connectivity_action(
         RunnerRepairRefused {
           slot: slot,
           cause: RemoteEvidenceRefused {
-            reason: "reach refused without reason payload" as NonEmptyStr,
+            reason: "reach refused without reason payload" as std.types.NonEmptyStr,
           },
         }
     }
@@ -439,7 +439,7 @@ fn decide_wedged_runner_connectivity_action(
     RunnerRepairRefused {
       slot: slot,
       cause: ReobservationRefused {
-        reason: "repair decision stale after re-read; process, registration, worker, or broker progress changed" as NonEmptyStr,
+        reason: "repair decision stale after re-read; process, registration, worker, or broker progress changed" as std.types.NonEmptyStr,
       },
     }
   } else if !allow_replace {
@@ -456,7 +456,7 @@ fn decide_wedged_runner_connectivity_action(
         RunnerRepairRefused {
           slot: slot,
           cause: RemoteEvidenceUnobserved {
-            reason: "wedged replace without registration payload" as NonEmptyStr,
+            reason: "wedged replace without registration payload" as std.types.NonEmptyStr,
           },
         }
     }
@@ -466,8 +466,8 @@ fn decide_wedged_runner_connectivity_action(
 fn decide_runner_connectivity_action_for_snapshot(
   snap: RunnerSlotConnectivitySnapshot,
   prior: RunnerSlotConnectivitySnapshot,
-  act_at: Timestamp,
-  reach: HostReachAdmission,
+  act_at: std.types.Timestamp,
+  reach: gunbc.runner_broker_progress_watchdog.HostReachAdmission,
   allow_replace: Bool,
 ) -> RunnerConnectivityAction {
   decide_runner_connectivity_action(
@@ -495,14 +495,14 @@ fn action_is_noop(action: RunnerConnectivityAction) -> Bool {
   }
 }
 
-fn slot_key(slot: RunnerSlotIdentity) -> String {
+fn slot_key(slot: gunbc.build_cache_instance.RunnerSlotIdentity) -> String {
   concat(concat(slot.host as String, "-"), slot.slot_index as String)
 }
 
 fn plan_allows_replace_for_slot(
-  slot: RunnerSlotIdentity,
+  slot: gunbc.build_cache_instance.RunnerSlotIdentity,
   standing: RunnerControlPlaneStanding,
-  canary_slot: RunnerSlotIdentity,
+  canary_slot: gunbc.build_cache_instance.RunnerSlotIdentity,
   canary_verified: Bool,
 ) -> Bool {
   match standing {
@@ -519,10 +519,10 @@ fn plan_allows_replace_for_slot(
 fn plan_slot_connectivity_action(
   snap: RunnerSlotConnectivitySnapshot,
   prior: RunnerSlotConnectivitySnapshot,
-  act_at: Timestamp,
-  reach: HostReachAdmission,
+  act_at: std.types.Timestamp,
+  reach: gunbc.runner_broker_progress_watchdog.HostReachAdmission,
   standing: RunnerControlPlaneStanding,
-  canary_slot: RunnerSlotIdentity,
+  canary_slot: gunbc.build_cache_instance.RunnerSlotIdentity,
   canary_verified: Bool,
 ) -> RunnerConnectivityAction {
   decide_runner_connectivity_action_for_snapshot(
@@ -540,7 +540,7 @@ fn plan_slot_connectivity_action(
 }
 
 fn verify_incarnation_replace_postcondition(
-  slot: RunnerSlotIdentity,
+  slot: gunbc.build_cache_instance.RunnerSlotIdentity,
   prior: RunnerLocalIncarnation,
   after_local: RunnerLocalObservation,
   after_remote: RunnerRemoteObservation,
@@ -549,12 +549,12 @@ fn verify_incarnation_replace_postcondition(
   if process_identity_eq(a: prior.process, b: after_local.incarnation.process) {
     ReplacePostconditionFailed {
       slot: slot,
-      reason: "prior local process identity still present after restart" as NonEmptyStr,
+      reason: "prior local process identity still present after restart" as std.types.NonEmptyStr,
     }
   } else if !after_local.systemd_active {
     ReplacePostconditionFailed {
       slot: slot,
-      reason: "successor local process not active after restart" as NonEmptyStr,
+      reason: "successor local process not active after restart" as std.types.NonEmptyStr,
     }
   } else {
     match remote_evidence_registration(ev: after_remote.evidence) {
@@ -566,45 +566,45 @@ fn verify_incarnation_replace_postcondition(
                 slot: slot,
                 prior: prior,
                 successor: after_local.incarnation,
-                remote: RunnerRemoteOnline { runner_name: name, labels: labels },
+                remote: gunbc.runner_broker_progress_watchdog.RunnerRemoteOnline { runner_name: name, labels: labels },
               }
             } else {
               ReplacePostconditionFailed {
                 slot: slot,
-                reason: "remote registration online but labels do not match intent" as NonEmptyStr,
+                reason: "remote registration online but labels do not match intent" as std.types.NonEmptyStr,
               }
             }
           RunnerRemoteOffline =>
             ReplacePostconditionFailed {
               slot: slot,
-              reason: "remote registration still offline after restart" as NonEmptyStr,
+              reason: "remote registration still offline after restart" as std.types.NonEmptyStr,
             }
           RunnerRemoteAbsent =>
             ReplacePostconditionFailed {
               slot: slot,
-              reason: "remote registration still absent after restart" as NonEmptyStr,
+              reason: "remote registration still absent after restart" as std.types.NonEmptyStr,
             }
           RunnerRemoteBusy { detail: _ } =>
             ReplacePostconditionFailed {
               slot: slot,
-              reason: "remote registration busy after restart" as NonEmptyStr,
+              reason: "remote registration busy after restart" as std.types.NonEmptyStr,
             }
         }
       Absent =>
         ReplacePostconditionFailed {
           slot: slot,
-          reason: "remote registration unobserved after restart" as NonEmptyStr,
+          reason: "remote registration unobserved after restart" as std.types.NonEmptyStr,
         }
     }
   }
 }
 
-fn host_reach_admission_for_fleet_host(host: HostIdentity) -> HostReachAdmission {
+fn host_reach_admission_for_fleet_host(host: product.placement_supply.HostIdentity) -> gunbc.runner_broker_progress_watchdog.HostReachAdmission {
   if (host as String) == (operator_host_srv3 as String)
     || (host as String) == (operator_host_srv4 as String) {
-    HostReachRefused {
+    gunbc.runner_broker_progress_watchdog.HostReachRefused {
       host: host,
-      reason: "host key login unavailable; located reach refusal while siblings continue" as NonEmptyStr,
+      reason: "host key login unavailable; located reach refusal while siblings continue" as std.types.NonEmptyStr,
     }
   } else {
     HostReachAdmitted
@@ -632,7 +632,7 @@ fn initial_per_host_replace_budget(cap: Int) -> PerHostReplaceBudgetState {
   }
 }
 
-fn host_budget_remaining(state: PerHostReplaceBudgetState, host: HostIdentity) -> Int {
+fn host_budget_remaining(state: PerHostReplaceBudgetState, host: product.placement_supply.HostIdentity) -> Int {
   if (host as String) == (operator_host_srv1 as String) {
     state.srv1
   } else if (host as String) == (operator_host_srv2 as String) {
@@ -648,7 +648,7 @@ fn host_budget_remaining(state: PerHostReplaceBudgetState, host: HostIdentity) -
 
 fn decrement_host_budget(
   state: PerHostReplaceBudgetState,
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
 ) -> PerHostReplaceBudgetState {
   if (host as String) == (operator_host_srv1 as String) {
     PerHostReplaceBudgetState {
@@ -683,7 +683,7 @@ fn decrement_host_budget(
   }
 }
 
-fn replace_action_slot(action: RunnerConnectivityAction) -> RunnerSlotIdentity? {
+fn replace_action_slot(action: RunnerConnectivityAction) -> gunbc.build_cache_instance.RunnerSlotIdentity? {
   match action {
     RunnerIncarnationReplace { slot: slot, from: _, cause: _ } =>
       Present { value: slot }
@@ -692,7 +692,7 @@ fn replace_action_slot(action: RunnerConnectivityAction) -> RunnerSlotIdentity? 
   }
 }
 
-fn cap_exceeded_refusal(slot: RunnerSlotIdentity) -> RunnerConnectivityAction {
+fn cap_exceeded_refusal(slot: gunbc.build_cache_instance.RunnerSlotIdentity) -> RunnerConnectivityAction {
   RunnerRepairRefused {
     slot: slot,
     cause: HostReplacementCapExceeded {
@@ -746,7 +746,7 @@ fn enforce_per_host_replace_cap(
 
 fn first_snapshot_canary_slot(
   snapshots: List<RunnerSlotConnectivitySnapshot>,
-) -> RunnerSlotIdentity? {
+) -> gunbc.build_cache_instance.RunnerSlotIdentity? {
   match snapshots.first() {
     Present { value: snap } => Present { value: snap.slot }
     Absent => Absent
@@ -755,7 +755,7 @@ fn first_snapshot_canary_slot(
 
 fn plan_fleet_connectivity_repair(
   snapshots: List<RunnerSlotConnectivitySnapshot>,
-  act_at: Timestamp,
+  act_at: std.types.Timestamp,
   canary_verified: Bool,
 ) -> FleetConnectivityRepairPlan {
   let standing = classify_control_plane_standing(
@@ -765,7 +765,7 @@ fn plan_fleet_connectivity_repair(
   let canary = match first_snapshot_canary_slot(snapshots: snapshots) {
     Present { value: slot } => slot
     Absent =>
-      RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
+      gunbc.build_cache_instance.RunnerSlotIdentity { host: operator_host_srv1, slot_index: 1 }
   }
   let raw_actions = fold(
     snapshots,
@@ -794,7 +794,7 @@ fn plan_fleet_connectivity_repair(
 
 fn count_replace_actions_for_host(
   actions: List<RunnerConnectivityAction>,
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
 ) -> Int {
   fold(
     actions,

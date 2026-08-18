@@ -53,7 +53,7 @@ data msb_unparseable_read: v2.compiler.source_authority.DagSourceReadWitness = v
 
 data msb_fixture_qn: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^v2,
-  tail: std.algebra.Cons { head: ^std, tail: std.algebra.Cons { head: ^msb_fixture, tail: Empty } }
+  tail: std.algebra.Cons { head: ^std, tail: std.algebra.Cons { head: ^msb_fixture, tail: std.algebra.Empty } }
 }
 
 data msb_ingest: v2.compiler.source_authority.SourceRootIngest = [msb_read, msb_other_read]

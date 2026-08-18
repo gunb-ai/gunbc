@@ -27,7 +27,7 @@ test fn observed_monotonic_nanos_arm_is_one_authored_roster_free_call() -> Bool 
     |> filter(r => r.authored_spelling == "observed_monotonic_nanos")
   count(rows) == 1 && (rows |> all(r =>
     r.arm.identity == "free_call.observed_monotonic_nanos"
-      && r.form == FreeCall
+      && r.form == gunbc.v1_interpreter_primitive_surface.FreeCall
       && r.dispatch_symbol == "eval_builtin_inner"
       && r.enumeration == AuthoredInRoster
   ))
@@ -51,7 +51,7 @@ test fn method_rows_are_authored_in_roster_rather_than_transcribed() -> Bool {
 }
 
 test fn v4_bridge_rows_are_authored_in_roster_rather_than_transcribed() -> Bool {
-  let rows = v1_interpreter_authored_roster_arms() |> filter(r => r.dispatch_symbol == "eval_call" && r.form == FreeCall)
+  let rows = v1_interpreter_authored_roster_arms() |> filter(r => r.dispatch_symbol == "eval_call" && r.form == gunbc.v1_interpreter_primitive_surface.FreeCall)
   rows |> any(r => r.authored_spelling == "resolve_type_node")
     && rows |> all(r => r.enumeration == AuthoredInRoster)
 }
@@ -84,11 +84,11 @@ test fn duplicate_detector_admits_one_spelling_at_two_distinct_sites() -> Bool {
 }
 
 test fn free_call_carries_no_shadowed_spelling() -> Bool {
-  form_has_no_shadowed_spelling(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == FreeCall))
+  form_has_no_shadowed_spelling(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == gunbc.v1_interpreter_primitive_surface.FreeCall))
 }
 
 test fn method_call_shadowing_is_exactly_the_known_lookup_case() -> Bool {
-  let s = shadowed_spellings(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == MethodCall))
+  let s = shadowed_spellings(rows: v1_interpreter_primitive_arms() |> filter(r => r.form == gunbc.v1_interpreter_primitive_surface.MethodCall))
   count(s) == 1 && (s |> all(x => x == "lookup"))
 }
 
@@ -98,7 +98,7 @@ test fn native_special_form_carries_no_shadow_at_all() -> Bool {
 
 test fn the_two_shadowed_arm_identities_under_lookup_are_exactly_the_expected_pair() -> Bool {
   let ids = v1_interpreter_primitive_arms()
-    |> filter(r => r.authored_spelling == "lookup" && r.form == MethodCall)
+    |> filter(r => r.authored_spelling == "lookup" && r.form == gunbc.v1_interpreter_primitive_surface.MethodCall)
     |> map(r => r.arm.identity)
   count(ids) == 2 && (ids |> any(x => x == "method_call.lookup")) && (ids |> any(x => x == "method_call_short_circuit.lookup"))
 }

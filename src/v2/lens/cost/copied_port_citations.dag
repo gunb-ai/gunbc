@@ -52,7 +52,7 @@ fn copied_port_citation_frontier_rows() -> List<CopiedPortCitationFrontierRow> {
       head: copied_port_citation_frontier_row_list_snoc_item,
       tail: std.algebra.Cons {
         head: copied_port_citation_frontier_row_map_merge,
-        tail: Empty
+        tail: std.algebra.Empty
       }
     }
   }
@@ -193,7 +193,7 @@ fn copied_port_fact_list_prepend(row: v2.std.algebra.CopiedPortFact, xs: List<v2
 fn copied_port_derived_registry_rows() -> List<v2.std.algebra.CopiedPortFact> {
   fold_list(
     xs: copied_port_combiner_arrow_citations,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, cite) {
       match derive_copied_port_fact(combiner: cite.combiner, arrow: cite.arrow) {
         Absent => acc

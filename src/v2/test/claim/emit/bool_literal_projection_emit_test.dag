@@ -119,7 +119,7 @@ fn blp_emit(
         tokens: tokens
       ) {
         Accepted { value: text, diagnostics: _ } =>
-          v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: None }
+          v2.std.diagnostic.Accepted { value: render_target_text(t: text), diagnostics: v2.std.diagnostic.None }
         Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -151,7 +151,7 @@ fn blp_production_emits(
 ) -> Bool {
   match blp_emit(target: target, projection: projection, catalog: catalog) {
     Accepted { value: text, diagnostics: d } =>
-      (text == bool_literal_true_lower_golden) && (d == None)
+      (text == bool_literal_true_lower_golden) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

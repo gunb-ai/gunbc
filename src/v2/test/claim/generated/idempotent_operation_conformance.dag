@@ -25,7 +25,7 @@ fn idempotent_operation_call_primitive(node: Node, _args: List<v2.std.runtime.Ru
 }
 
 fn idempotent_operation_choose_branch(node: Node, _value: v2.std.runtime.RuntimeValue, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<Node> {
-  v2.std.diagnostic.Accepted { value: node, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: node, diagnostics: v2.std.diagnostic.None }
 }
 
 fn idempotent_operation_step_loop(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.ControlTransfer> {
@@ -41,7 +41,7 @@ fn idempotent_operation_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
-  v2.std.diagnostic.Accepted { value: env, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: env, diagnostics: v2.std.diagnostic.None }
 }
 
 fn idempotent_operation_interpretation_structure_witness() -> v2.std.runtime.InterpretationStructureWitness {
@@ -126,7 +126,7 @@ fn idempotent_operation_generated_run(row: Outcome<v2.std.verification.TestClaim
     Accepted { value: claim, diagnostics: None } =>
       v2.std.diagnostic.Accepted {
         value: idempotent_operation_run_via_test_claim(claim: claim),
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }

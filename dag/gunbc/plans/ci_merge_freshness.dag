@@ -16,29 +16,29 @@ fn ci_merge_freshness_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "The forward completeness checks already exist, are non-vacuous, and are floor-enrolled (`realization_vocab` `clean_tree_test.dag`; `external_authority` `live_anchored_modules_clean_test.dag`). They validate a PR's tree against an independent live scan — **but only at the PR's base**. A gate that lands *after* a PR's last CI run is invisible to that PR's green. The hole is **freshness**, not coverage: nothing requires the green to be against *current* `main` at merge time. This is the same shape for all 3× reds (#5445/#5453, #5429/#5465) — the one-time cost of a gate and a module crossing `main` in overlapping, never-jointly-validated PRs."),
     h2(text: "3. Options (operator decision)"),
     std.markdown.TableBlock {
-      header: row(cells: [
+      header: gunbc.plans.md_helpers.row(cells: [
         cell(text: ""),
         cell(text: "Option 1 — **merge-queue** (preferred)"),
         cell(text: "Option 2 — require-up-to-date + required-check"),
       ]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Mechanism"),
           cell(text: "GitHub merge queue tests each PR against current `main` in the queue before merging"),
           cell(text: "Branch-protection \"require branches up to date\" + floor as a required status check"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Freshness"),
           cell(text: "By construction — stale-green cannot merge"),
           cell(text: "By construction — must re-sync to current `main` first"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Churn"),
           cell(text: "None forced on the author"),
           cell(text: "Every PR re-syncs on each `main` move → re-runs CI **and re-stales HEAD-keyed approvals**"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Cost fit"),
           cell(text: "Good — queue serializes validation, no manual re-sync"),
           cell(text: "Poor right now — ~440 PR-runs/day; re-staling collides with the 2nd-provider approval outage + the freeze-head-during-approval-accrual discipline"),

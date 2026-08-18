@@ -249,11 +249,11 @@ fn probe_select_best_under_budget(
   )
   let best_singleton = fold_list(
     xs: eligible,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(best, entry) {
       match best {
         Empty =>
-          std.algebra.Cons { head: entry, tail: Empty }
+          std.algebra.Cons { head: entry, tail: std.algebra.Empty }
         Cons { head: current, tail: _ } =>
           match probe_discrimination_beats_with_coverage(
             challenger: entry,
@@ -261,14 +261,14 @@ fn probe_select_best_under_budget(
             incumbent: current,
             incumbent_coverage: probe_effective_coverage(entry: current, prior: prior)
           ) {
-            true => std.algebra.Cons { head: entry, tail: Empty }
+            true => std.algebra.Cons { head: entry, tail: std.algebra.Empty }
             false => best
           }
       }
     }
   )
   match best_singleton {
-    Empty => Empty
+    Empty => std.algebra.Empty
     Cons { head: best, tail: _ } =>
       filter(
         xs: eligible,
@@ -341,7 +341,7 @@ fn ci_probe_catalog_entries_from_roster_with_prior(
 ) -> List<ProbeCatalogEntry> {
   fold_list_right(
     xs: roster,
-    empty: Empty,
+    empty: std.algebra.Empty,
     snoc: fn(acc, claim) {
       std.algebra.Cons {
         head: ci_probe_catalog_entry_for_claim_with_prior(claim: claim, prior: prior),
@@ -514,7 +514,7 @@ fn diagnostic_capability_ci_in_repo() -> DiagnosticCapabilityFacts {
   DiagnosticCapabilityFacts {
     interfaces: std.algebra.Cons {
       head: DiagnosticSsh,
-      tail: std.algebra.Cons { head: DiagnosticDockerReachability, tail: Empty }
+      tail: std.algebra.Cons { head: DiagnosticDockerReachability, tail: std.algebra.Empty }
     }
   }
 }
@@ -523,14 +523,14 @@ data host_probe_docker_reachability: ProbeCatalogEntry = ProbeCatalogEntry {
   label: "docker-reachability",
   coverage: 10,
   cost: 1,
-  requires: std.algebra.Cons { head: DiagnosticDockerReachability, tail: Empty }
+  requires: std.algebra.Cons { head: DiagnosticDockerReachability, tail: std.algebra.Empty }
 }
 
 data host_probe_edac_summary: ProbeCatalogEntry = ProbeCatalogEntry {
   label: "edac-correctable-summary",
   coverage: 40,
   cost: 2,
-  requires: std.algebra.Cons { head: DiagnosticEdac, tail: Empty }
+  requires: std.algebra.Cons { head: DiagnosticEdac, tail: std.algebra.Empty }
 }
 
 data host_probe_ipmi_ecc_stress: ProbeCatalogEntry = ProbeCatalogEntry {
@@ -539,7 +539,7 @@ data host_probe_ipmi_ecc_stress: ProbeCatalogEntry = ProbeCatalogEntry {
   cost: 5,
   requires: std.algebra.Cons {
     head: DiagnosticIpmi,
-    tail: std.algebra.Cons { head: DiagnosticBmcSensors, tail: std.algebra.Cons { head: DiagnosticEdac, tail: Empty } }
+    tail: std.algebra.Cons { head: DiagnosticBmcSensors, tail: std.algebra.Cons { head: DiagnosticEdac, tail: std.algebra.Empty } }
   }
 }
 
@@ -607,7 +607,7 @@ fn probe_select_host_health(
     prior: HostHealthPrior { hypothesis: prior.hypothesis },
     budget: budget,
     available: available,
-    roster: Empty
+    roster: std.algebra.Empty
   )
 }
 

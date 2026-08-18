@@ -63,7 +63,7 @@ fn derive_free_tier_serving_floor(
         let egress_total = a.user_count * per_user_egress
         let storage_boxes = ((stored_total + box_storage) - 1) / box_storage
         let egress_boxes = ((egress_total + egress_allowance) - 1) / egress_allowance
-        let box_count = nat_max(a: nat_max(a: storage_boxes, b: egress_boxes), b: a.replica_count)
+        let box_count = std.nat.nat_max(a: std.nat.nat_max(a: storage_boxes, b: egress_boxes), b: a.replica_count)
         FreeTierFloorComputed {
           floor: FreeTierServingFloor {
             box_count: box_count,

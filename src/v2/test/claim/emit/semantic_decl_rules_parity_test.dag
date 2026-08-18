@@ -33,7 +33,7 @@ test fn emission_rules_match_rust_rules_for_generic_surface() -> Bool {
       match target_semantic_enum_surface_from_coproduct(
         projection: emission.surface,
         name: ^Bool,
-        params: Empty,
+        params: std.algebra.Empty,
         coproduct: bool_coproduct()
       ) {
         Accepted { value: surface, diagnostics: _ } =>

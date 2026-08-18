@@ -187,7 +187,7 @@ fn host_phase_cell_status_eq(a: HostPhaseCellStatus, b: HostPhaseCellStatus) -> 
 }
 
 fn host_phase_cell_ownership(c: HostPhaseCellStatus) -> gunbc.ownership.Ownership? {
-  Present { value: Owned }
+  Present { value: gunbc.ownership.Owned }
 }
 
 data host_phase_reconcile_instantiation_note: String = "The status matrix reconciled as a MEMBERSHIP DIFF — one more (key_of, key_eq, value_eq, ownership_of) bundle handed to the single generic gunbc.membership_reconcile.membership_reconcile, never a forked diff (a forked reconcile means the genericity bought nothing). Desired is every cell modeled AND observed Converged: that is the end state of the whole subsumption lane — every phase modeled AND every enrolled host converged on it — so a Modified hunk is precisely one unit of remaining work, and membership_write_count is the answer to 'how much is left' as a NUMBER rather than a prose reconstruction. Removed is a real arm, not a degenerate pole: a cell observed for a host no longer in fleet_intent is a host that left the fleet, and cells are Owned, so it tears down rather than refusing. The witness exercises that arm synthetically because the live fleet has no departed host today — an instantiation whose interesting hunks are all unreachable in practice is an instantiation nobody has actually tested."
@@ -198,7 +198,7 @@ fn host_phase_desired(enrollments: List<gunbc.host_assimilation_program.HostEnro
     c => HostPhaseCellStatus {
       cell: c.cell,
       disposition: host_phase_desired_disposition(),
-      observation: Present { value: Converged },
+      observation: Present { value: std.upsert_decision.Converged },
     },
   )
 }

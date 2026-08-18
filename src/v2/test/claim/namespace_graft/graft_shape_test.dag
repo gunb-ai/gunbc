@@ -196,7 +196,7 @@ test fn namespace_graft_empty_qn_refused_holds() -> Bool {
 data ng_dual_position_root: Node = ng_pre_graft_module_root(
   qn: std.algebra.Cons {
     head: ^NgAlpha,
-    tail: std.algebra.Cons { head: ^NgBeta, tail: Empty }
+    tail: std.algebra.Cons { head: ^NgBeta, tail: std.algebra.Empty }
   },
   body_edges: [
     v2.std.node.Edge {

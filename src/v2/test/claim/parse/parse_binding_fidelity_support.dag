@@ -35,7 +35,7 @@ fn pbf_normalized_add_module() -> Outcome<v2.compiler.normalized_tree.Normalized
 fn pbf_normalized_add_arrow() -> Optional<Node> {
   match pbf_normalized_add_module() {
     Accepted { value: tree, diagnostics: _ } =>
-      ingested_find_arrow_in_module(root: tree.root)
+      v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: tree.root)
     Rejected { diagnostics: _ } => Absent
   }
 }
@@ -44,7 +44,7 @@ fn pbf_resolved_add_module() -> Outcome<Node> {
   let lm = dag_language_model()
   match pbf_normalized_add_module() {
     Accepted { value: normalized, diagnostics: _ } =>
-      resolve(tree: normalized, lm: lm)
+      v2.compiler.resolve.resolve(tree: normalized, lm: lm)
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
@@ -52,7 +52,7 @@ fn pbf_resolved_add_module() -> Outcome<Node> {
 fn pbf_resolved_add_arrow() -> Optional<Node> {
   match pbf_resolved_add_module() {
     Accepted { value: tree, diagnostics: _ } =>
-      ingested_find_arrow_in_module(root: tree)
+      v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: tree)
     Rejected { diagnostics: _ } => Absent
   }
 }

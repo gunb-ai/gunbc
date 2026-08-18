@@ -78,7 +78,7 @@ test fn arrow_body_form_eval_value_vertical_holds() -> Bool {
       match abf_admitted_add_arrow_tree() {
         Rejected { diagnostics: _ } => false
         Accepted { value: admitted_tree, diagnostics: _ } =>
-          match resolve(tree: admitted_tree, lm: lm) {
+          match v2.compiler.resolve.resolve(tree: admitted_tree, lm: lm) {
             Accepted { value: add_arrow, diagnostics: _ } =>
               arrow_body_form_eval_unary_int_holds(
                 callee: arrow_body_form_id_arrow_fixture(),
@@ -126,7 +126,7 @@ test fn arrow_body_form_classify_record_construct_holds() -> Bool {
 
 test fn arrow_body_form_classify_computation_transform_holds() -> Bool {
   match classify_arrow_body_form(
-    target: node_synthetic(kind: v2.std.node.ComputationNode { behavior: Transform }, children: [])
+    target: node_synthetic(kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform }, children: [])
   ) {
     ComputationBody { behavior: Transform } => true
     _ => false
@@ -177,7 +177,7 @@ test fn arrow_body_form_atom_body_admitted_structurally_holds() -> Bool {
 
 test fn arrow_body_form_transform_body_admitted_structurally_holds() -> Bool {
   arrow_body_target_is_valid_realization(
-    target: node_synthetic(kind: v2.std.node.ComputationNode { behavior: Transform }, children: [])
+    target: node_synthetic(kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform }, children: [])
   )
 }
 
@@ -190,7 +190,7 @@ test fn arrow_body_form_RED_no_direct_atom_refuses_atom_body_holds() -> Bool {
 
 test fn arrow_body_form_RED_no_computation_refuses_transform_body_holds() -> Bool {
   !arrow_body_form_admits_body_with_mirror(
-    target: node_synthetic(kind: v2.std.node.ComputationNode { behavior: Transform }, children: []),
+    target: node_synthetic(kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform }, children: []),
     mirror: ArrowBodyFormAdmissionRedNoComputationBody
   )
 }
@@ -207,7 +207,7 @@ test fn arrow_body_form_atom_admits_eval_entry_holds() -> Bool {
 }
 
 test fn arrow_body_form_transform_admits_eval_entry_holds() -> Bool {
-  arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: Transform })
+  arrow_body_admits_eval_entry(form: v2.std.node.ComputationBody { behavior: v2.std.node.Transform })
 }
 
 test fn arrow_body_form_dispatch_behaviors_admit_eval_entry_holds() -> Bool {

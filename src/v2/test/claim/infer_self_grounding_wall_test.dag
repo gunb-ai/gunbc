@@ -294,7 +294,7 @@ test fn wall_frontier_derived_green_receipt_joins_corpus_identity() -> Bool {
     Accepted { value: _, diagnostics: d } =>
       match active_v2_infer_eval_probe_row(probe: v2_frontier_green_probe) {
         Present { value: row } =>
-          d == None
+          d == v2.std.diagnostic.None
             && observation_is_clean(o: probe_observation_from_accepted_infer_diagnostics(diagnostics: d))
             && receipt_matches_v2_infer_eval_probe_row(
               receipt: build_v2_infer_eval_receipt(

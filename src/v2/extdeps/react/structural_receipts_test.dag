@@ -39,14 +39,14 @@ fn react_probe_hook_use_insertion_effect() -> v2.extdeps.frameworks.react.ReactH
 fn react_probe_hook_use_memo() -> v2.extdeps.frameworks.react.ReactHookSite {
   v2.extdeps.frameworks.react.UseMemo {
     factory_ref: react_probe_cross_decl_ref,
-    dependencies: std.algebra.Cons { head: react_probe_cross_decl_ref, tail: Empty }
+    dependencies: std.algebra.Cons { head: react_probe_cross_decl_ref, tail: std.algebra.Empty }
   }
 }
 
 fn react_probe_hook_use_callback() -> v2.extdeps.frameworks.react.ReactHookSite {
   v2.extdeps.frameworks.react.UseCallback {
     callback_ref: react_probe_cross_decl_ref,
-    dependencies: std.algebra.Cons { head: react_probe_cross_decl_ref, tail: Empty }
+    dependencies: std.algebra.Cons { head: react_probe_cross_decl_ref, tail: std.algebra.Empty }
   }
 }
 
@@ -56,7 +56,7 @@ fn react_probe_host_element() -> v2.extdeps.frameworks.react.ReactHostElement {
     key: KeyAbsent,
     ref: RefAbsent,
     props: react_probe_props_site(),
-    children: Empty
+    children: std.algebra.Empty
   }
 }
 
@@ -66,7 +66,7 @@ fn react_probe_composite_element() -> v2.extdeps.frameworks.react.ReactComposite
     key: KeyAbsent,
     ref: RefAbsent,
     props: react_probe_props_site(),
-    children: Empty
+    children: std.algebra.Empty
   }
 }
 
@@ -75,7 +75,7 @@ fn react_probe_react_element_host() -> v2.extdeps.frameworks.react.ReactElement 
 }
 
 fn react_probe_react_element_fragment() -> v2.extdeps.frameworks.react.ReactElement {
-  std.markup.Fragment { key: KeyAbsent, children: Empty }
+  std.markup.Fragment { key: KeyAbsent, children: std.algebra.Empty }
 }
 
 fn react_probe_create_element_child_text() -> v2.extdeps.frameworks.react.ReactCreateElementChild {
@@ -92,7 +92,7 @@ fn react_probe_host_element_with_typed_children() -> v2.extdeps.frameworks.react
     key: KeyAbsent,
     ref: RefAbsent,
     props: react_probe_props_site(),
-    children: std.algebra.Cons { head: react_probe_create_element_child_text(), tail: Empty }
+    children: std.algebra.Cons { head: react_probe_create_element_child_text(), tail: std.algebra.Empty }
   }
 }
 
@@ -102,19 +102,19 @@ fn react_probe_composite_element_with_typed_children() -> v2.extdeps.frameworks.
     key: KeyAbsent,
     ref: RefAbsent,
     props: react_probe_props_site(),
-    children: std.algebra.Cons { head: react_probe_create_element_child_text(), tail: Empty }
+    children: std.algebra.Cons { head: react_probe_create_element_child_text(), tail: std.algebra.Empty }
   }
 }
 
 fn react_probe_react_element_fragment_with_typed_children() -> v2.extdeps.frameworks.react.ReactElement {
   std.markup.Fragment {
     key: KeyAbsent,
-    children: std.algebra.Cons { head: react_probe_create_element_child_text(), tail: Empty }
+    children: std.algebra.Cons { head: react_probe_create_element_child_text(), tail: std.algebra.Empty }
   }
 }
 
 test fn extdeps_react_use_memo_use_callback_dependencies_are_required_lists_holds() -> Bool {
-  let expected = std.algebra.Cons { head: react_probe_cross_decl_ref, tail: Empty }
+  let expected = std.algebra.Cons { head: react_probe_cross_decl_ref, tail: std.algebra.Empty }
   match react_probe_hook_use_memo() {
     UseMemo { factory_ref: _, dependencies: memo_deps } =>
       match react_probe_hook_use_callback() {

@@ -132,7 +132,7 @@ fn slb_comparison_observation() -> v2.compiler.self_host.promotion_admission.Beh
   let build_verdict = if !staged {
     v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_stage_incomplete }
   } else if build.success {
-    v2.compiler.self_host.promotion_admission.Observed { value: BuildGreen }
+    v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen }
   } else {
     v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildFailed { cause: ^slb_driver_build_failed } }
   }

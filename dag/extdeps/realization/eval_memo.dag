@@ -45,7 +45,7 @@ data eval_memo_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
     locality: InProcess
     retention: { release_policy: ReleasedAtProviderScopeExit, capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.EntryCountCapacity { limit: std.cache_interface.ExactLimit { value: 1000000 } }, at_capacity: RefuseNewStore } }
     atomicity: PerFile
-    auth: None
+    auth: std.cache_interface.None
     read_latency: InProcessNs
     consistency: Strong
   }

@@ -147,7 +147,7 @@ fn add_arrow_eval_bind_value(
     value: v2.std.runtime.EvaluationEnvironment {
       bindings: map_insert(m: env.bindings, key: key, value: value)
     },
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   }
 }
 
@@ -177,7 +177,7 @@ fn add_arrow_source_ingested_add_infers() -> Outcome<v2.compiler.infer.InferredT
             o: normalize(parse_tree: parsed),
             f: fn(normalized) {
               bind_outcome(
-                o: resolve(tree: normalized, lm: lm),
+                o: v2.compiler.resolve.resolve(tree: normalized, lm: lm),
                 f: fn(resolved) {
                   outcome_accepted(value: add_arrow_eval_admitted_tree(root: resolved))
                 }
@@ -236,7 +236,7 @@ test fn add_arrow_eval_resolve_holds() -> Bool {
         Accepted { value: parsed, diagnostics: _ } =>
           match normalize(parse_tree: parsed) {
             Accepted { value: normalized, diagnostics: _ } =>
-              match resolve(tree: normalized, lm: lm) {
+              match v2.compiler.resolve.resolve(tree: normalized, lm: lm) {
                 Accepted { value: _, diagnostics: _ } => true
                 Rejected { diagnostics: _ } => false
               }

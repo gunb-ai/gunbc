@@ -6,7 +6,7 @@ fn bash_fold_serialize_emit_from_node(emitted: Node, target: v2.std.compilers.ta
   match target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: d } =>
       match d {
-        None => v2.std.diagnostic.Accepted { value: source.carried, diagnostics: None }
+        None => v2.std.diagnostic.Accepted { value: source.carried, diagnostics: v2.std.diagnostic.None }
         Some { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       }
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -48,7 +48,7 @@ fn bash_fold_serialize_stmts_semi_from(
   rest: List<Node>
 ) -> Outcome<String> {
   match list_head(xs: rest) {
-    HeadAbsent => v2.std.diagnostic.Accepted { value: acc, diagnostics: None }
+    HeadAbsent => v2.std.diagnostic.Accepted { value: acc, diagnostics: v2.std.diagnostic.None }
     HeadFound { value: s } =>
       bind_outcome(
         o: bash_fold_serialize_node(stmt: s),
@@ -57,7 +57,7 @@ fn bash_fold_serialize_stmts_semi_from(
           match list_tail(xs: rest) {
             TailFound { tail: t } =>
               bash_fold_serialize_stmts_semi_from(acc: next, first: false, rest: t)
-            TailAbsent => v2.std.diagnostic.Accepted { value: next, diagnostics: None }
+            TailAbsent => v2.std.diagnostic.Accepted { value: next, diagnostics: v2.std.diagnostic.None }
           }
         }
       )
@@ -208,7 +208,7 @@ fn bash_fold_serialize_word_list_spelling_from(
   rest: List<Node>
 ) -> Outcome<String> {
   match list_head(xs: rest) {
-    HeadAbsent => v2.std.diagnostic.Accepted { value: acc, diagnostics: None }
+    HeadAbsent => v2.std.diagnostic.Accepted { value: acc, diagnostics: v2.std.diagnostic.None }
     HeadFound { value: w } =>
       bind_outcome(
         o: bash_fold_serialize_word_node(word: w),
@@ -217,7 +217,7 @@ fn bash_fold_serialize_word_list_spelling_from(
           match list_tail(xs: rest) {
             TailFound { tail: t } =>
               bash_fold_serialize_word_list_spelling_from(acc: next, first: false, rest: t)
-            TailAbsent => v2.std.diagnostic.Accepted { value: next, diagnostics: None }
+            TailAbsent => v2.std.diagnostic.Accepted { value: next, diagnostics: v2.std.diagnostic.None }
           }
         }
       )
@@ -474,7 +474,7 @@ fn bash_fold_serialize_node(stmt: Node) -> Outcome<String> {
 
 fn bash_fold_serialize_body(stmts: List<Node>) -> Outcome<String> {
   match list_head(xs: stmts) {
-    HeadAbsent => v2.std.diagnostic.Accepted { value: "", diagnostics: None }
+    HeadAbsent => v2.std.diagnostic.Accepted { value: "", diagnostics: v2.std.diagnostic.None }
     HeadFound { value: s } =>
       bind_outcome(
         o: bash_fold_serialize_node(stmt: s),
@@ -484,10 +484,10 @@ fn bash_fold_serialize_body(stmts: List<Node>) -> Outcome<String> {
               bind_outcome(
                 o: bash_fold_serialize_body(stmts: t),
                 f: fn(rest) {
-                  v2.std.diagnostic.Accepted { value: concat(concat(part, "\n"), rest), diagnostics: None }
+                  v2.std.diagnostic.Accepted { value: concat(concat(part, "\n"), rest), diagnostics: v2.std.diagnostic.None }
                 }
               )
-            TailAbsent => v2.std.diagnostic.Accepted { value: concat(part, "\n"), diagnostics: None }
+            TailAbsent => v2.std.diagnostic.Accepted { value: concat(part, "\n"), diagnostics: v2.std.diagnostic.None }
           }
         }
       )
@@ -499,9 +499,9 @@ fn bash_fold_serialize_program(stmts: List<Node>, set_e: Bool) -> Outcome<String
     o: bash_fold_serialize_body(stmts: stmts),
     f: fn(body) {
       if set_e {
-        v2.std.diagnostic.Accepted { value: concat("set -e\n", body), diagnostics: None }
+        v2.std.diagnostic.Accepted { value: concat("set -e\n", body), diagnostics: v2.std.diagnostic.None }
       } else {
-        v2.std.diagnostic.Accepted { value: body, diagnostics: None }
+        v2.std.diagnostic.Accepted { value: body, diagnostics: v2.std.diagnostic.None }
       }
     }
   )

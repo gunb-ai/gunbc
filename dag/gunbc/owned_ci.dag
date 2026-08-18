@@ -266,7 +266,7 @@ fn owned_ci_check_conclusion_for_queue(state: CiRunQueueState, publication: Chec
         CheckPublicationQueued { check_run_id: _ } => none
         CheckPublicationInProgress { check_run_id: _ } => none
       }
-    QueueFailed { detail: _ } => Present { value: Failure }
-    QueueRefused { cause: _ } => Present { value: Failure }
+    QueueFailed { detail: _ } => Present { value: extdeps.github.checks.Failure }
+    QueueRefused { cause: _ } => Present { value: extdeps.github.checks.Failure }
   }
 }

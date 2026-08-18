@@ -271,7 +271,7 @@ fn measure_dimension_rows(registry: List<MeasureDescentFact>, measure: Node) -> 
             }
           ]
         Conj =>
-          fold(measure.children, init: Empty, f: fn(acc, e) {
+          fold(measure.children, init: std.algebra.Empty, f: fn(acc, e) {
             fold(measure_dimension_rows(registry: registry, measure: e.target), init: acc, f: fn(acc2, row) {
               std.algebra.Cons { head: row, tail: acc2 }
             })
@@ -319,7 +319,7 @@ type LexicographicSplit {
 }
 
 fn non_strict_dimensions_after_first(rows: List<MeasureDimensionEvidence>) -> List<RankingDimension> {
-  let split = fold(rows, init: LexicographicSplit { strict_taken: false, non_increasing: Empty }, f: fn(acc, row) {
+  let split = fold(rows, init: LexicographicSplit { strict_taken: false, non_increasing: std.algebra.Empty }, f: fn(acc, row) {
     if dimension_row_is_strict(row: row) && !acc.strict_taken {
       LexicographicSplit { strict_taken: true, non_increasing: acc.non_increasing }
     } else {

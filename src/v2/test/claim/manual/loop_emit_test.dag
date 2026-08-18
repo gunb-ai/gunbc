@@ -62,7 +62,7 @@ test fn loop_emit_holds() -> Bool {
     Accepted { value: authority, diagnostics: ad } =>
       match loop_emit_from_producer(target: dag_loop_target_model()) {
         Accepted { value: source, diagnostics: d } =>
-          (source == authority) && (d == None) && (ad == None)
+          (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -74,7 +74,7 @@ test fn loop_emit_wrong_value_discriminates() -> Bool {
     Accepted { value: canonical, diagnostics: dc } =>
       match loop_emit_wrong_value_from_producer(target: dag_loop_target_model()) {
         Accepted { value: wrong, diagnostics: dw } =>
-          (wrong != canonical) && (dc == None) && (dw == None)
+          (wrong != canonical) && (dc == v2.std.diagnostic.None) && (dw == v2.std.diagnostic.None)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false

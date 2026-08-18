@@ -33,7 +33,7 @@ fn fmn_value_eq(out: Outcome<v2.std.qualified_name.QualifiedName>, expected: v2.
 }
 
 data fmn_qn_node: Node = fold_list_node(
-  xs: std.algebra.Cons { head: ^fmn_sym_a, tail: std.algebra.Cons { head: ^fmn_sym_b, tail: Empty } },
+  xs: std.algebra.Cons { head: ^fmn_sym_a, tail: std.algebra.Cons { head: ^fmn_sym_b, tail: std.algebra.Empty } },
   item_node: fn(sym) { fmn_sym_node(sym: sym) }
 )
 
@@ -49,7 +49,7 @@ data fmn_qn_empty_node: Node = v2.std.node.Node { kind: v2.std.node.TypeNode { c
 data fmn_module_header_empty_qn_node: Node = emit_module_header_emitted_node(qualified_name: fmn_qn_empty_node)
 
 data fmn_qn_gated_node: Node = fold_list_node(
-  xs: std.algebra.Cons { head: ^dag_token_ident, tail: Empty },
+  xs: std.algebra.Cons { head: ^dag_token_ident, tail: std.algebra.Empty },
   item_node: fn(sym) { fmn_sym_node(sym: sym) }
 )
 
@@ -60,7 +60,7 @@ data claim_from_module_node_accepted: v2.std.verification.TestClaim = v2.std.ver
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: fmn_bool_atom(b: fmn_value_eq(
     out: qualified_name_from_module_node(root: fmn_module_header_node),
-    expected: std.algebra.Cons { head: ^fmn_sym_a, tail: std.algebra.Cons { head: ^fmn_sym_b, tail: Empty } }
+    expected: std.algebra.Cons { head: ^fmn_sym_a, tail: std.algebra.Cons { head: ^fmn_sym_b, tail: std.algebra.Empty } }
   )),
   rhs: fmn_bool_atom(b: true),
   classification: v2.std.verification.TestClassification { tier: Tier1, layer: Unit }

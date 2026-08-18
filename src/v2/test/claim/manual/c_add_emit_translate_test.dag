@@ -110,7 +110,7 @@ data c_add_serialize_reject_receipt: Outcome<Medium<String>> = c_add_serialize_r
 test fn c_add_emit_add_fn_accepts_holds() -> Bool {
   match c_add_emit_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == c_source_text) && (d == None)
+      (source.carried == c_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -121,7 +121,7 @@ test fn c_add_serialize_source_matches_authority_holds() -> Bool {
     emitted: c_add_emitted_root
   ) {
     Accepted { value: authority, diagnostics: d } =>
-      (authority.carried == c_source_text) && (d == None)
+      (authority.carried == c_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -140,7 +140,7 @@ test fn c_add_emit_wrong_node_refuses_holds() -> Bool {
   }
   match emit(tree: wrong_tree, target: c_add_target_model) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried != c_source_text) && (d == None)
+      (source.carried != c_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => true
   }
 }

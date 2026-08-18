@@ -34,7 +34,7 @@ fn textual_diagnostic() -> v2.std.diagnostic.Diagnostic {
 fn node_locus_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^cause_location_probe_unclassified_reason,
-    at: node_locus(node: Empty),
+    at: node_locus(node: std.algebra.Empty),
     correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary }
   }
 }
@@ -73,7 +73,7 @@ fn two_diagnostic_stage() -> v2.compiler.parse_diagnostic.NonEmptyParseStageDiag
     head: parse_stage_diagnostic_from_diagnostic_only(d: textual_diagnostic()),
     tail: std.algebra.Cons {
       head: parse_stage_diagnostic_from_diagnostic_only(d: later_diagnostic()),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   }
 }

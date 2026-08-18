@@ -30,7 +30,7 @@ fn fixture_index_entry(
       diagnostic_span: span,
     },
     containment: fixture_path(
-      ancestors: Empty,
+      ancestors: std.algebra.Empty,
       terminal: occurrence
     ),
   }
@@ -115,7 +115,7 @@ test fn namespace_occurrence_typed_categories_refuse_cross_role_holds() -> Bool 
       std.occurrence_identity.DeclarationOccurrence {
         occurrence: occurrence,
         containment: fixture_path(
-          ancestors: Empty,
+          ancestors: std.algebra.Empty,
           terminal: occurrence
         ),
         category: LexicalValueOccurrence,
@@ -126,7 +126,7 @@ test fn namespace_occurrence_typed_categories_refuse_cross_role_holds() -> Bool 
       std.occurrence_identity.ReferenceOccurrence {
         occurrence: occurrence,
         containment: fixture_path(
-          ancestors: Empty,
+          ancestors: std.algebra.Empty,
           terminal: occurrence
         ),
         category: CallableOccurrence,
@@ -153,7 +153,7 @@ test fn namespace_occurrence_missing_and_duplicate_identity_refuse_holds() -> Bo
   let declaration = std.occurrence_identity.DeclarationOccurrence {
     occurrence: occurrence,
     containment: fixture_path(
-      ancestors: Empty,
+      ancestors: std.algebra.Empty,
       terminal: occurrence
     ),
     category: LexicalValueOccurrence,
@@ -211,7 +211,7 @@ test fn namespace_occurrence_index_terminal_mismatch_refuses_holds() -> Bool {
             diagnostic_span: span,
           },
           containment: fixture_path(
-            ancestors: Empty,
+            ancestors: std.algebra.Empty,
             terminal: mismatched_terminal
           ),
         }
@@ -287,7 +287,7 @@ test fn namespace_occurrence_duplicate_declaration_rows_refuse_holds() -> Bool {
   let declaration = std.occurrence_identity.DeclarationOccurrence {
     occurrence: occurrence,
     containment: fixture_path(
-      ancestors: Empty,
+      ancestors: std.algebra.Empty,
       terminal: occurrence
     ),
     category: LexicalValueOccurrence,
@@ -329,7 +329,7 @@ test fn namespace_occurrence_duplicate_reference_rows_refuse_holds() -> Bool {
   let reference = std.occurrence_identity.ReferenceOccurrence {
     occurrence: occurrence,
     containment: fixture_path(
-      ancestors: Empty,
+      ancestors: std.algebra.Empty,
       terminal: occurrence
     ),
     category: CallableOccurrence,
@@ -482,7 +482,7 @@ fn fixture_declaration(
 ) -> std.occurrence_identity.DeclarationOccurrence {
   std.occurrence_identity.DeclarationOccurrence {
     occurrence: occurrence,
-    containment: fixture_path(ancestors: Empty, terminal: occurrence),
+    containment: fixture_path(ancestors: std.algebra.Empty, terminal: occurrence),
     category: category,
     diagnostic_span: span,
   }
@@ -495,7 +495,7 @@ fn fixture_reference(
 ) -> std.occurrence_identity.ReferenceOccurrence {
   std.occurrence_identity.ReferenceOccurrence {
     occurrence: occurrence,
-    containment: fixture_path(ancestors: Empty, terminal: occurrence),
+    containment: fixture_path(ancestors: std.algebra.Empty, terminal: occurrence),
     category: category,
     diagnostic_span: span,
   }

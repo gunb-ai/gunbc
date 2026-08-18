@@ -97,7 +97,7 @@ test fn orch_retry_byte_identical_to_hand_authored_holds() -> Bool {
   match orch_emit_step(s: retry_eagain_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
       (source.carried == ci_cargo_eagain_retry_core_golden(command: retry_eagain_example_command))
-        && (dg == None)
+        && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -242,7 +242,7 @@ fn orch_retry_1level_perturbed_intent() -> v2.std.orchestration.PipelineStep {
 test fn orch_retry_1level_emit_matches_golden_holds() -> Bool {
   match orch_emit_step(s: orch_retry_1level_intent(), medium: bash_orchestration_emit_medium()) {
     Accepted { value: source, diagnostics: dg } =>
-      (source.carried == orch_retry_1level_golden()) && (dg == None)
+      (source.carried == orch_retry_1level_golden()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

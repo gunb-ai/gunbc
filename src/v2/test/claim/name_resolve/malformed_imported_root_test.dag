@@ -3,7 +3,7 @@ module v2.test.name_resolve.malformed_imported_root
 
 fn malformed_qn_node() -> Node {
   fold_list_node(
-    xs: std.algebra.Cons { head: ^malformed_seg, tail: Empty },
+    xs: std.algebra.Cons { head: ^malformed_seg, tail: std.algebra.Empty },
     item_node: fn(sym) {
       v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } }, children: [],
  occurrence_id: SyntheticOccurrence
@@ -38,12 +38,12 @@ fn malformed_root_node() -> Node {
 }
 
 fn malformed_entry_name() -> v2.std.qualified_name.QualifiedName {
-  std.algebra.Cons { head: ^malformed_seg, tail: Empty }
+  std.algebra.Cons { head: ^malformed_seg, tail: std.algebra.Empty }
 }
 
 fn roots_with_malformed_entry() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
   bind_outcome(o: admit_normalized_tree(root: malformed_root_node(), diagnostics: None), f: fn(a) {
-    outcome_accepted(value: std.algebra.Cons { head: a, tail: Empty })
+    outcome_accepted(value: std.algebra.Cons { head: a, tail: std.algebra.Empty })
   })
 }
 
@@ -73,7 +73,7 @@ test fn witness_malformed_root_is_rejected_holds() -> Bool {
       state: initial_admission_state(),
       subject_qn: malformed_entry_name(),
       index: source_root_index_empty(),
-      active_roots: Empty
+      active_roots: std.algebra.Empty
     )
   )
   }

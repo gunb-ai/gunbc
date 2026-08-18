@@ -25,7 +25,7 @@ test fn orch_tier2_fresh_standup_cmdsubst_assign_holds() -> Bool {
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
-      (src.carried == fresh_standup_cmdsubst_assign_golden()) && (dg == None)
+      (src.carried == fresh_standup_cmdsubst_assign_golden()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -47,7 +47,7 @@ test fn orch_tier2_fresh_standup_procedure_call_holds() -> Bool {
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
-      (src.carried == fresh_standup_decide_verdict_call_golden()) && (dg == None)
+      (src.carried == fresh_standup_decide_verdict_call_golden()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -69,7 +69,7 @@ test fn orch_tier2_fresh_standup_read_pin_call_holds() -> Bool {
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
-      (src.carried == fresh_standup_read_pin_call_golden()) && (dg == None)
+      (src.carried == fresh_standup_read_pin_call_golden()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -88,7 +88,7 @@ test fn orch_tier2_fresh_standup_verdict_absent_let_holds() -> Bool {
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
-      (src.carried == fresh_standup_verdict_absent_let_golden()) && (dg == None)
+      (src.carried == fresh_standup_verdict_absent_let_golden()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -107,7 +107,7 @@ test fn orch_tier2_fresh_standup_effective_var_let_holds() -> Bool {
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
-      (src.carried == fresh_standup_effective_var_let_golden()) && (dg == None)
+      (src.carried == fresh_standup_effective_var_let_golden()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -126,7 +126,7 @@ test fn orch_tier2_fresh_standup_dag_pin_empty_let_holds() -> Bool {
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
-      (src.carried == fresh_standup_dag_pin_empty_let_golden()) && (dg == None)
+      (src.carried == fresh_standup_dag_pin_empty_let_golden()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -161,7 +161,7 @@ test fn orch_tier2_procedure_definition_band_holds() -> Bool {
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: src, diagnostics: dg } =>
-      (src.carried == decide_verdict_procedure_partial_golden()) && (dg == None)
+      (src.carried == decide_verdict_procedure_partial_golden()) && (dg == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

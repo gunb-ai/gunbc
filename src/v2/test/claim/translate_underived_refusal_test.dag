@@ -335,7 +335,7 @@ fn translate_accepts_derived_rust_add_tree() -> Bool {
 fn translate_derived_emit_byte_identical_to_before() -> Bool {
   match emit(tree: rust_add_inferred_tree, target: rust_target_model()) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_source_text) && (d == None)
+      (source.carried == rust_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

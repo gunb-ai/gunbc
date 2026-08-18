@@ -14,7 +14,7 @@ fn is_hole(n: Node) -> Bool {
 }
 
 fn is_leaf(n: Node) -> Bool {
-  is_empty(xs: n.children)
+  v2.std.algebra.is_empty(xs: n.children)
 }
 
 fn edge_labels_eq(ea: v2.std.node.Edge, eb: v2.std.node.Edge) -> Bool {

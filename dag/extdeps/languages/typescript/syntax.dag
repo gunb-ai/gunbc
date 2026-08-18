@@ -50,8 +50,8 @@ data ts_keyword_set: Map<String, Bool> = {
 
 data ts_operators: List<std.syntax.OperatorSpec> = [
   std.syntax.OperatorSpec { symbol: "??",  left_bp: 3,  right_bp: 4,  binop: NullCoalesce, algebra_field: none },
-  std.syntax.OperatorSpec { symbol: "||",  left_bp: 5,  right_bp: 6,  binop: Or,           algebra_field: none },
-  std.syntax.OperatorSpec { symbol: "&&",  left_bp: 7,  right_bp: 8,  binop: And,          algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "||",  left_bp: 5,  right_bp: 6,  binop: std.syntax.Or,           algebra_field: none },
+  std.syntax.OperatorSpec { symbol: "&&",  left_bp: 7,  right_bp: 8,  binop: std.syntax.And,          algebra_field: none },
   std.syntax.OperatorSpec { symbol: "===", left_bp: 9,  right_bp: 10, binop: Eq,           algebra_field: none },
   std.syntax.OperatorSpec { symbol: "!==", left_bp: 9,  right_bp: 10, binop: Ne,           algebra_field: none },
   std.syntax.OperatorSpec { symbol: "<",   left_bp: 11, right_bp: 12, binop: Lt,           algebra_field: none },

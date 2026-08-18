@@ -41,17 +41,17 @@ data memo_amort_bisect_add_read: v2.compiler.source_authority.DagSourceReadWitne
 
 data memo_amort_ingest_one_file: v2.compiler.source_authority.SourceRootIngest = std.algebra.Cons {
   head: memo_amort_file_a_read,
-  tail: Empty
+  tail: std.algebra.Empty
 }
 
 data memo_amort_ingest_two_files: v2.compiler.source_authority.SourceRootIngest = std.algebra.Cons {
   head: memo_amort_file_a_read,
-  tail: std.algebra.Cons { head: memo_amort_file_b_read, tail: Empty }
+  tail: std.algebra.Cons { head: memo_amort_file_b_read, tail: std.algebra.Empty }
 }
 
 data memo_amort_ingest_bisect_add: v2.compiler.source_authority.SourceRootIngest = std.algebra.Cons {
   head: memo_amort_bisect_add_read,
-  tail: Empty
+  tail: std.algebra.Empty
 }
 
 fn memo_amort_single_root_content_hash(ingest: v2.compiler.source_authority.SourceRootIngest) -> Outcome<v2.std.node.Hash> {
@@ -64,13 +64,13 @@ fn memo_amort_single_root_content_hash(ingest: v2.compiler.source_authority.Sour
         true =>
           fold_list(
             xs: roots,
-            empty: v2.std.diagnostic.Rejected { diagnostics: None },
+            empty: v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.None },
             cons: fn(_acc, root) {
               outcome_accepted(value: content_hash(n: root))
             }
           )
         false =>
-          v2.std.diagnostic.Rejected { diagnostics: None }
+          v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.None }
       }
     Rejected { diagnostics: d } =>
       v2.std.diagnostic.Rejected { diagnostics: d }

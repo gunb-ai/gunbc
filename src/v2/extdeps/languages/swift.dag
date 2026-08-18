@@ -463,7 +463,7 @@ fn swift_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
         name: ^serialize_source_field_source_grammar,
         target: swift_atom(id: ^swift_production_fn_add)
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   }
 }

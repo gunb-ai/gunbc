@@ -504,7 +504,7 @@ data spice_probe_resistor_netlist: SpiceNetlist = SpiceNetlist {
         value: SpiceValue { lexeme: "1" }
       }
     },
-    tail: Empty
+    tail: std.algebra.Empty
   }
 }
 

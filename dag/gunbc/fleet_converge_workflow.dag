@@ -11,7 +11,7 @@ data fleet_converge_mode_options: List<String> = ["plan", "apply", "spark_linger
 data fleet_converge_host_runner_expression: String = "${{ fromJSON(format('[\"self-hosted\",\"linux\",\"arm64\",\"{0}\"]', github.event.inputs.host)) }}"
 
 fn gunbc_fleet_converge_build_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc_ci_prelude_allowance_minutes
+  gunbc.fleet_workflow_steps.gunbc_ci_release_build_step_timeout_minutes + gunbc_ci_aux_step_timeout_minutes + gunbc.fleet_workflow_steps.gunbc_ci_artifact_transfer_step_timeout_minutes + gunbc.fleet_workflow_steps.gunbc_ci_prelude_allowance_minutes
 }
 
 fn fleet_converge_build_job() -> extdeps.github.actions.Job {
@@ -21,7 +21,7 @@ fn fleet_converge_build_job() -> extdeps.github.actions.Job {
     runner: gunbc_ci_runner_spec(),
     steps: concat(
       ci_prelude_steps(),
-      [ci_release_build_step(), ci_release_bins_pack_step(), ci_release_bins_upload_step()],
+      [ci_release_build_step(), gunbc.fleet_workflow_steps.ci_release_bins_pack_step(), ci_release_bins_upload_step()],
     ),
     needs: [],
     env: none,
@@ -61,7 +61,7 @@ fn fleet_converge_plan_upload_step() -> extdeps.github.actions.Step {
     env: none,
     if_condition: Present { value: fleet_converge_plan_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc.fleet_workflow_steps.gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
 }
 
@@ -81,7 +81,7 @@ fn fleet_converge_plan_download_step() -> extdeps.github.actions.Step {
     env: none,
     if_condition: Present { value: fleet_converge_apply_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_artifact_transfer_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc.fleet_workflow_steps.gunbc_ci_artifact_transfer_step_timeout_minutes }
   }
 }
 
@@ -193,11 +193,11 @@ fn fleet_converge_job() -> extdeps.github.actions.Job {
     concurrency: none,
     permissions: Present {
       value: extdeps.github.actions.WorkflowPermissions {
-        contents: Present { value: PermRead },
+        contents: Present { value: extdeps.github.actions.PermRead },
         pull_requests: none,
         issues: none,
-        actions: Present { value: PermRead },
-        id_token: Present { value: PermWrite },
+        actions: Present { value: extdeps.github.actions.PermRead },
+        id_token: Present { value: extdeps.github.actions.PermWrite },
       }
     }
   }

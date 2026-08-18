@@ -24,12 +24,12 @@ fn host_effect_orchestration_body() -> List<std.markdown.MarkdownBlock> {
     ]),
     p(text: "**Layer split** (keeps the import arrow pointing toward std; std stays product-free per DESIGN open-decision #2):"),
     std.markdown.TableBlock {
-      header: row(cells: [cell(text: "Part"), cell(text: "Layer"), cell(text: "Why")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "Part"), cell(text: "Layer"), cell(text: "Why")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "`EffectShape` (an effect: inputs/outputs/exit semantics)"), cell(text: "**std** (`std.effects`, exists)"), cell(text: "framework-level, no fleet knowledge")]),
-        row(cells: [cell(text: "`HostEffect` coproduct, `NodeControlPlane`, `apply(target, effect, policy)`, `Receipt`"), cell(text: "**product**"), cell(text: "references `HostIdentity`/`BmcEndpoint`/`fleet_intent` (product); homing in std would drag product upward")]),
-        row(cells: [cell(text: "concrete transports (Redfish / ssh / systemd), each citing its real spec, + the dispatch that selects them"), cell(text: "**extdeps**"), cell(text: "external authorities; dispatch is realization → peripheral")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "`EffectShape` (an effect: inputs/outputs/exit semantics)"), cell(text: "**std** (`std.effects`, exists)"), cell(text: "framework-level, no fleet knowledge")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "`HostEffect` coproduct, `NodeControlPlane`, `apply(target, effect, policy)`, `Receipt`"), cell(text: "**product**"), cell(text: "references `HostIdentity`/`BmcEndpoint`/`fleet_intent` (product); homing in std would drag product upward")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "concrete transports (Redfish / ssh / systemd), each citing its real spec, + the dispatch that selects them"), cell(text: "**extdeps**"), cell(text: "external authorities; dispatch is realization → peripheral")]),
       ],
     },
     p(text: "**Receipt:** generalize the converge lane's already-byte-locked receipt (#5725, fierce-carp) as the *single* `apply()` outcome — do **not** fork a second receipt grammar (§3 nickname trap). Confirm its located+typed core is **policy-agnostic** (carries `OneShotIdempotent` outcomes, not just drift-deltas); if it has converge-specific fields, generalize = common located/typed core + a policy-specific extension, never a parallel type. **Touch it WITH fierce-carp's lock, not around it.**"),

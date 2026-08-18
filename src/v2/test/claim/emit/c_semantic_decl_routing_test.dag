@@ -44,8 +44,8 @@ fn cdr_variant_edge_payload(name: v2.std.node.Symbol, fields: List<v2.std.node.E
 }
 
 fn cdr_emit_text(name: v2.std.node.Symbol, node: Node) -> Outcome<String> {
-  match emit_semantic_type_decl(name: name, params: Empty, node: node, target: c_target_model()) {
-    Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: None }
+  match emit_semantic_type_decl(name: name, params: std.algebra.Empty, node: node, target: c_target_model()) {
+    Accepted { value: medium, diagnostics: _ } => v2.std.diagnostic.Accepted { value: medium.carried, diagnostics: v2.std.diagnostic.None }
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }

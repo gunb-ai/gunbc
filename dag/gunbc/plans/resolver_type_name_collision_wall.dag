@@ -38,34 +38,34 @@ fn resolver_type_name_collision_wall_body() -> List<std.markdown.MarkdownBlock> 
     p(text: "`structural_inequality` is a normalized structural compare of the two resolved type Nodes (connective + children names + field types), modulo span/occurrence — the same shape the emitter's coercion homomorphism check already walks; no new comparison primitive needed."),
     h3(text: "Trade-off (parent rules on the real distribution)"),
     std.markdown.TableBlock {
-      header: row(cells: [
+      header: gunbc.plans.md_helpers.row(cells: [
         cell(text: ""),
         cell(text: "flag-ANY"),
         cell(text: "flag-DIVERGENT"),
       ]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Catches the A1 class (divergent shadow)"),
           cell(text: "yes"),
           cell(text: "yes"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "Catches a *future* mirror that later drifts"),
           cell(text: "yes (at fork time)"),
           cell(text: "no (only after drift, when a closure re-imports both)"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "De-fork scope it demands"),
           cell(text: "**all** same-name pairs resolved: divergent → rename-apart, mirror → **merge to one authority**"),
           cell(text: "only divergent pairs resolved; mirrors may stay"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "False-positive risk"),
           cell(text: "a legitimately-duplicated mirror that *cannot* be merged yet would block until merged"),
           cell(text: "a divergent pair that *looks* similar but isn't structurally-equal still correctly fires"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "§3 fidelity"),
           cell(text: "full (one name ⇒ one authority, tree-wide)"),
           cell(text: "partial (tolerates two authorities iff currently identical)"),

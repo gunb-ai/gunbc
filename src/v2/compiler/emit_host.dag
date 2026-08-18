@@ -19,7 +19,7 @@ fn emit_host_run_unsupported_target_diagnostic() -> v2.std.diagnostic.Diagnostic
   v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_run_unsupported_target,
     at: port_locus(port: ^emit_host_transport_port),
-    correction: None
+    correction: v2.std.diagnostic.None
   }
 }
 
@@ -27,7 +27,7 @@ fn emit_host_emit_vs_eval_deferred_diagnostic(at: Node) -> v2.std.diagnostic.Dia
   v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_emit_vs_eval_deferred,
     at: node_locus(node: at),
-    correction: None
+    correction: v2.std.diagnostic.None
   }
 }
 
@@ -35,7 +35,7 @@ fn emit_host_exit_not_ok_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_exit_not_ok,
     at: port_locus(port: ^emit_host_transport_port),
-    correction: None
+    correction: v2.std.diagnostic.None
   }
 }
 
@@ -43,7 +43,7 @@ fn emit_host_transport_outside_grant_diagnostic() -> v2.std.diagnostic.Diagnosti
   v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_transport_outside_grant,
     at: port_locus(port: ^emit_host_transport_port),
-    correction: None
+    correction: v2.std.diagnostic.None
   }
 }
 
@@ -51,7 +51,7 @@ fn emit_host_build_failed_diagnostic(at: Node) -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
     reason: ^emit_host_build_failed,
     at: node_locus(node: at),
-    correction: None
+    correction: v2.std.diagnostic.None
   }
 }
 
@@ -115,9 +115,9 @@ fn emit_host_list_map<T, U>(xs: List<T>, f: fn(T) -> U) -> List<U> {
 fn process_program_name(program: v2.std.host_transport.ProcessProgram) -> Outcome<String> {
   match program {
     HostToolProgram { executable: exe } =>
-      v2.std.diagnostic.Accepted { value: exe, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: exe, diagnostics: v2.std.diagnostic.None }
     ProducedProgram { path: p } =>
-      v2.std.diagnostic.Accepted { value: concat("./", p), diagnostics: None }
+      v2.std.diagnostic.Accepted { value: concat("./", p), diagnostics: v2.std.diagnostic.None }
   }
 }
 
@@ -142,7 +142,7 @@ fn invocation_argv(inv: v2.std.host_transport.ProcessInvocation) -> Outcome<List
           [program],
           emit_host_list_map(xs: inv.args, f: fn(a) { invocation_arg_text(arg: a) })
         ),
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     }
   )
@@ -154,7 +154,7 @@ fn empty_argv_lists() -> List<List<String>> {
 
 fn build_invocation_argvs(builds: List<v2.std.host_transport.ProcessInvocation>) -> Outcome<List<List<String>>> {
   match builds {
-    Empty => v2.std.diagnostic.Accepted { value: empty_argv_lists(), diagnostics: None }
+    Empty => v2.std.diagnostic.Accepted { value: empty_argv_lists(), diagnostics: v2.std.diagnostic.None }
     Cons { head: inv, tail: rest } =>
       bind_outcome(
         o: invocation_argv(inv: inv),
@@ -162,7 +162,7 @@ fn build_invocation_argvs(builds: List<v2.std.host_transport.ProcessInvocation>)
           bind_outcome(
             o: build_invocation_argvs(builds: rest),
             f: fn(acc) {
-              v2.std.diagnostic.Accepted { value: concat([argv], acc), diagnostics: None }
+              v2.std.diagnostic.Accepted { value: concat([argv], acc), diagnostics: v2.std.diagnostic.None }
             }
           )
         }
@@ -402,7 +402,7 @@ fn run_host_process_admitted(
               build_log: v2.std.host_run.BuildLog { lines: result.build_log },
               compile_skipped: result.compile_skipped
             ),
-            diagnostics: None
+            diagnostics: v2.std.diagnostic.None
           }
         }
       )
@@ -481,13 +481,13 @@ fn run_test_claim_emit_vs_eval_verdict(
   match expected {
     Accepted { value: exp_val, diagnostics: None } =>
       if accepted_runtime_value_outcome_eq(
-        a: v2.std.diagnostic.Accepted { value: host_actual, diagnostics: None },
+        a: v2.std.diagnostic.Accepted { value: host_actual, diagnostics: v2.std.diagnostic.None },
         b: expected
       ) {
         Pass
       } else {
         verdict_semantic_mismatch(
-          actual: v2.std.diagnostic.Accepted { value: host_actual, diagnostics: None },
+          actual: v2.std.diagnostic.Accepted { value: host_actual, diagnostics: v2.std.diagnostic.None },
           falsification: optional_present(
             value: v2.std.test_claim_falsification.FalsificationReceipt {
               subject: subject,

@@ -146,7 +146,7 @@ fn sg2_arrow_swapped_split_emitted() -> Node {
         form: row.atom_form,
         identity: ^rust_binding_sg2_y
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     },
     output: target_type_expr_atom_emitted(
       form: row.atom_form,

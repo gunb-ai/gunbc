@@ -28,7 +28,7 @@ fn spine_resolve_service_parse_tree() -> Node {
 fn spine_resolve_accepts_normalized_tree() -> Bool {
   match normalize(parse_tree: spine_resolve_service_parse_tree()) {
     Accepted { value: normalized, diagnostics: _ } =>
-      match resolve(tree: normalized, lm: dag_language_model_void()) {
+      match v2.compiler.resolve.resolve(tree: normalized, lm: dag_language_model_void()) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }

@@ -17,7 +17,7 @@ fn meet_join_emit_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
 fn meet_join_emit_source_equals(root: Node, target: v2.std.compilers.target_model.TargetModel, expected: String) -> Bool {
   match emit(tree: meet_join_emit_tree_for(root: root), target: target) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == expected) && (d == None)
+      (source.carried == expected) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -30,7 +30,7 @@ fn meet_join_emit_discriminates(
 ) -> Bool {
   match emit(tree: meet_join_emit_tree_for(root: root), target: target) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == expected) && (source.carried != wrong) && (d == None)
+      (source.carried == expected) && (source.carried != wrong) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

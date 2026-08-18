@@ -710,7 +710,7 @@ fn go_primitive_bundle_from_string_facts(facts: GoStringPrimitiveFacts) -> v2.st
 fn go_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: go_integer_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -723,7 +723,7 @@ fn go_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.Primiti
 fn go_primitive_bundles_from_float_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: go_float_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -736,7 +736,7 @@ fn go_primitive_bundles_from_float_catalog() -> List<v2.std.model_core.Primitive
 fn go_primitive_bundles_from_complex_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: go_complex_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -749,7 +749,7 @@ fn go_primitive_bundles_from_complex_catalog() -> List<v2.std.model_core.Primiti
 fn go_primitive_bundles_from_bool_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: go_bool_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -762,7 +762,7 @@ fn go_primitive_bundles_from_bool_catalog() -> List<v2.std.model_core.PrimitiveF
 fn go_primitive_bundles_from_string_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: go_string_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -966,7 +966,7 @@ fn go_string_per_language_fact_bundle_entries(
 fn go_per_language_fact_bundle_entries_from_integer_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   fold_list(
     xs: go_integer_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_append(
         left: acc,
@@ -979,7 +979,7 @@ fn go_per_language_fact_bundle_entries_from_integer_catalog() -> List<v2.std.gro
 fn go_per_language_fact_bundle_entries_from_float_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   fold_list(
     xs: go_float_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_append(
         left: acc,
@@ -992,7 +992,7 @@ fn go_per_language_fact_bundle_entries_from_float_catalog() -> List<v2.std.groun
 fn go_per_language_fact_bundle_entries_from_complex_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   fold_list(
     xs: go_complex_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_append(
         left: acc,
@@ -1005,7 +1005,7 @@ fn go_per_language_fact_bundle_entries_from_complex_catalog() -> List<v2.std.gro
 fn go_per_language_fact_bundle_entries_from_bool_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   fold_list(
     xs: go_bool_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_append(
         left: acc,
@@ -1018,7 +1018,7 @@ fn go_per_language_fact_bundle_entries_from_bool_catalog() -> List<v2.std.ground
 fn go_per_language_fact_bundle_entries_from_string_catalog() -> List<v2.std.grounding.PerLanguageFactBundleEntry> {
   fold_list(
     xs: go_string_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_append(
         left: acc,
@@ -1245,7 +1245,7 @@ fn go_bool_algebra_inhabitance() -> v2.std.model_core.AlgebraInhabitanceDecl {
 fn go_integer_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: go_integer_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: go_integer_algebra_inhabitance(facts: facts))
     }
@@ -1255,7 +1255,7 @@ fn go_integer_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhab
 fn go_float_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: go_float_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: go_float_algebra_inhabitance(facts: facts))
     }
@@ -1274,7 +1274,7 @@ fn go_string_algebra_inhabitance(facts: GoStringPrimitiveFacts) -> v2.std.model_
 fn go_string_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: go_string_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: go_string_algebra_inhabitance(facts: facts))
     }
@@ -1565,7 +1565,7 @@ fn go_grammar_terminal(token_class: v2.std.node.Symbol) -> v2.std.grammar.Gramma
 fn go_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, token) {
       list_snoc_item(xs: acc, item: grammar_formal_terminal(identity: concrete_syntax_token_class(token: token)))
     }
@@ -1701,7 +1701,7 @@ fn go_host_transport_descriptor() -> v2.std.host_transport.HostTransportDescript
         content: EmittedSource
       }
     ],
-    build: Empty,
+    build: std.algebra.Empty,
     run: v2.std.host_transport.ProcessInvocation {
       program: v2.std.host_transport.HostToolProgram { executable: "go" },
       args: [

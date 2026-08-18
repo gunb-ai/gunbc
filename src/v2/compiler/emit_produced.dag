@@ -15,7 +15,7 @@ fn emit_produced_decl_inner_arrow(decl: Node) -> Outcome<Node> {
       match list_at_optional(xs: decl.children, index: 0) {
         Present { value: edge } =>
           match edge.label {
-            Named { name: _ } => v2.std.diagnostic.Accepted { value: edge.target, diagnostics: None }
+            Named { name: _ } => v2.std.diagnostic.Accepted { value: edge.target, diagnostics: v2.std.diagnostic.None }
             Positional =>
               v2.std.diagnostic.Rejected {
                 diagnostics: diagnostics_singleton(
@@ -103,7 +103,7 @@ fn emit_produced_module_append(
           left: list_append(left: partial, right: medium.carried),
           right: emit_module_decl_separator
         ),
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     }
   )
@@ -126,7 +126,7 @@ fn emit_produced_module(decls: List<Node>, target: v2.std.compilers.target_model
   bind_outcome(
     o: fold_list(
       xs: decls,
-      empty: v2.std.diagnostic.Accepted { value: Empty, diagnostics: None },
+      empty: v2.std.diagnostic.Accepted { value: std.algebra.Empty, diagnostics: v2.std.diagnostic.None },
       cons: fn(acc, decl) { emit_produced_module_step(acc: acc, decl: decl, target: target) }
     ),
     f: fn(joined) { target_source_medium(text: joined, target: target) }

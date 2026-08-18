@@ -71,7 +71,7 @@ fn integer_value_set_from_node(value_set: Node) -> Outcome<IntegerValueSet> {
                   )
                 }
               Rejected { diagnostics: _ } =>
-                v2.std.diagnostic.Accepted { value: IntegerValueSetUnbounded, diagnostics: None }
+                v2.std.diagnostic.Accepted { value: IntegerValueSetUnbounded, diagnostics: v2.std.diagnostic.None }
             }
           } else {
             v2.std.diagnostic.Rejected {
@@ -85,7 +85,7 @@ fn integer_value_set_from_node(value_set: Node) -> Outcome<IntegerValueSet> {
             match find_named_child(root: value_set, name: ^integer_value_set_field_interval) {
               Accepted { value: interval, diagnostics: None } =>
                 if integer_interval_spec_node_contains(container: interval, contained: interval) {
-                  v2.std.diagnostic.Accepted { value: IntegerValueSetInterval { interval: interval }, diagnostics: None }
+                  v2.std.diagnostic.Accepted { value: IntegerValueSetInterval { interval: interval }, diagnostics: v2.std.diagnostic.None }
                 } else {
                   v2.std.diagnostic.Rejected {
                     diagnostics: diagnostics_singleton(

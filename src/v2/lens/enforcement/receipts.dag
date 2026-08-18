@@ -55,7 +55,7 @@ fn subject_qn_of(fact: v2.std.decl_index.DeclFact) -> v2.std.qualified_name.Qual
 }
 
 fn discovered_subject_names(facts: List<v2.std.decl_index.DeclFact>) -> v2.lens.enforcement.vocab.SubjectRoster {
-  let discovered_entries = fold(facts, init: Empty, f: fn(acc, fact) {
+  let discovered_entries = fold(facts, init: std.algebra.Empty, f: fn(acc, fact) {
     if decl_facts_is_fn_like(kind: fact.kind) {
       std.algebra.Cons { head: subject_qn_of(fact: fact), tail: acc }
     } else {
@@ -83,7 +83,7 @@ fn root_has_body_unavailable_subject(root: String, facts: List<v2.std.decl_index
 
 fn roots_with_body_unavailable(scope: v2.lens.enforcement.vocab.ScopeRoster, facts: List<v2.std.decl_index.DeclFact>) -> v2.lens.enforcement.vocab.ScopeRoster {
   v2.lens.enforcement.vocab.ScopeRoster {
-    roots: fold(scope.roots, init: Empty, f: fn(acc, root) {
+    roots: fold(scope.roots, init: std.algebra.Empty, f: fn(acc, root) {
       if root_has_body_unavailable_subject(root: root, facts: facts) {
         std.algebra.Cons { head: root, tail: acc }
       } else {
@@ -133,7 +133,7 @@ fn consumer_enrolled_for(
 fn lens_contract_is_unbound(c: v2.lens.enforcement.contract.LensContract) -> Bool {
   consumer_kind_eq(
     a: consumer_enrolled_for(binding: c.consumer_witness, ci_entries: [], prepush_entries: []),
-    b: NoConsumer
+    b: v2.lens.enforcement.vocab.NoConsumer
   )
 }
 

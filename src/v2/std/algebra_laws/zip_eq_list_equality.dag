@@ -1,10 +1,10 @@
 module v2.test.algebra_laws.zip_eq_list_equality
 
 fn zip_sym_eq(a: v2.std.node.Symbol, b: v2.std.node.Symbol) -> Bool { a == b }
-fn sym_list_empty() -> FreeMonoid<v2.std.node.Symbol> { Empty }
-fn sym_list_a() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^zip_eq_sym_a, tail: Empty } }
-fn sym_list_b() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^zip_eq_sym_b, tail: Empty } }
-fn sym_list_ab() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^zip_eq_sym_a, tail: std.algebra.Cons { head: ^zip_eq_sym_b, tail: Empty } } }
+fn sym_list_empty() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Empty }
+fn sym_list_a() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^zip_eq_sym_a, tail: std.algebra.Empty } }
+fn sym_list_b() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^zip_eq_sym_b, tail: std.algebra.Empty } }
+fn sym_list_ab() -> FreeMonoid<v2.std.node.Symbol> { std.algebra.Cons { head: ^zip_eq_sym_a, tail: std.algebra.Cons { head: ^zip_eq_sym_b, tail: std.algebra.Empty } } }
 
 fn zip_eq_pass_node() -> Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^zip_eq_pass_sym } }, children: [],

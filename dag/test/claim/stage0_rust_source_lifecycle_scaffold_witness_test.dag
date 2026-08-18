@@ -241,7 +241,7 @@ fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionConditi
 
 test fn scaffold_residue_red_control_empty_dissolve_on_reds() -> Bool {
   !lifecycle_row_well_formed(
-    row: residue_row(
+    row: gunbc.stage0_rust_source_lifecycle_scaffold.residue_row(
       path: "synthetic/unclassified.rs",
       reason: "red control",
       dissolution: synthetic_empty_condition(text: "")

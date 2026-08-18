@@ -20,14 +20,14 @@ fn service_atom_conj_tree() -> Node {
 }
 
 fn anchor_resolve_service_atom_via_canonical_symbols() -> Outcome<v2.compiler.resolve.ResolvedTree> {
-  resolve(
+  v2.compiler.resolve.resolve(
     tree: service_atom_conj_tree(),
     lm: dag_language_model_void()
   )
 }
 
 fn anchor_resolve_empty_prelude_service_atom() -> Outcome<v2.compiler.resolve.ResolvedTree> {
-  resolve(
+  v2.compiler.resolve.resolve(
     tree: service_atom_conj_tree(),
     lm: dag_language_model_surface_empty_prelude()
   )
@@ -64,7 +64,7 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<v2.compiler
     diagnostics: None
   ) {
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    Accepted { value: t, diagnostics: _ } => resolve(tree: t, lm: dag_language_model_void())
+    Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: dag_language_model_void())
   }
 }
 
@@ -118,7 +118,7 @@ fn anchor_resolve_bind_binder_use() -> Outcome<v2.compiler.resolve.ResolvedTree>
     diagnostics: None
   ) {
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    Accepted { value: t, diagnostics: _ } => resolve(tree: t, lm: dag_language_model_void())
+    Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: dag_language_model_void())
   }
 }
 
@@ -140,7 +140,7 @@ fn resolve_roots_claim_node(ok: Bool) -> Node {
 
 fn resolve_imported_qn_node() -> Node {
   fold_list_node(
-    xs: std.algebra.Cons { head: ^anchor_imported_path_segment, tail: Empty },
+    xs: std.algebra.Cons { head: ^anchor_imported_path_segment, tail: std.algebra.Empty },
     item_node: fn(sym) {
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
@@ -180,7 +180,7 @@ fn resolve_imported_module_root() -> Node {
 
 fn resolve_subject_qn_node() -> Node {
   fold_list_node(
-    xs: std.algebra.Cons { head: ^anchor_subject_path_segment, tail: Empty },
+    xs: std.algebra.Cons { head: ^anchor_subject_path_segment, tail: std.algebra.Empty },
     item_node: fn(sym) {
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
@@ -230,7 +230,7 @@ fn resolve_subject_module_root_with_import_use() -> Node {
 }
 
 fn resolve_subject_name() -> v2.std.qualified_name.QualifiedName {
-  std.algebra.Cons { head: ^anchor_subject_path_segment, tail: Empty }
+  std.algebra.Cons { head: ^anchor_subject_path_segment, tail: std.algebra.Empty }
 }
 
 fn resolve_roots_single_import() -> Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
@@ -239,7 +239,7 @@ fn resolve_roots_single_import() -> Outcome<FreeMonoid<v2.compiler.normalized_tr
     head: resolve_subject_module_root_with_import_use(),
     tail: std.algebra.Cons {
       head: resolve_imported_module_root(),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   },
     diagnostics: None
@@ -255,7 +255,7 @@ fn resolve_imported_use_tree() -> Node {
 }
 
 fn resolve_import_target() -> v2.std.qualified_name.QualifiedName {
-  std.algebra.Cons { head: ^anchor_imported_path_segment, tail: Empty }
+  std.algebra.Cons { head: ^anchor_imported_path_segment, tail: std.algebra.Empty }
 }
 
 fn resolve_with_admission_imported_binding_accepts() -> Bool {
@@ -274,11 +274,11 @@ fn resolve_with_admission_imported_binding_accepts() -> Bool {
             target: resolve_import_target(),
             visibility: ImportVisible
           },
-          tail: Empty
+          tail: std.algebra.Empty
         }
       },
       index: source_root_index_empty(),
-      active_roots: Empty,
+      active_roots: std.algebra.Empty,
       policy: ImportScoped
     ) {
       Accepted { value: _, diagnostics: _ } => true

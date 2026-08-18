@@ -40,7 +40,7 @@ test fn optimality_claim_rejects_derived_kernel_subject_red() -> Bool {
 
 test fn complexity_scope_roster_duplicate_planted_red() -> Bool {
   !complexity_scope_roster_has_no_duplicates(
-  claim: BoundedSummation,
-  planted_duplicate: BoundedSummation
+  claim: v2.lens.enforcement.complexity_contract_subject.BoundedSummation,
+  planted_duplicate: v2.lens.enforcement.complexity_contract_subject.BoundedSummation
   )
 }

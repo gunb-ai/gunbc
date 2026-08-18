@@ -22,7 +22,7 @@ data aarch64_general_purpose_registers: List<std.abi.ArchitecturalRegister> = [
 ]
 
 data aarch64_linux_architecture_profile: extdeps.toolchain.architecture_profile.ArchitectureProfile = {
-  architecture: Aarch64,
+  architecture: extdeps.toolchain.types.Aarch64,
   word_width: bit_width(64),
   pointer_width: bit_width(64),
   endianness: LittleEndian,
@@ -39,7 +39,7 @@ data aarch64_linux_deployment_target: extdeps.toolchain.architecture_profile.Dep
 }
 
 fn witness_architecture_is_aarch64() -> Bool {
-  aarch64_linux_architecture_profile.architecture == Aarch64
+  aarch64_linux_architecture_profile.architecture == extdeps.toolchain.types.Aarch64
 }
 
 fn witness_word_width_is_64() -> Bool {

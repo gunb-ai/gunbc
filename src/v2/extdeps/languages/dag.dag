@@ -3663,7 +3663,7 @@ fn dag_formal_grammar_symbol_from_token(token: v2.std.compilers.target_model.Con
 fn dag_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
@@ -4049,7 +4049,7 @@ fn dag_int_literal_node_from_lexeme(lexeme: String, occurrence_id: std.occurrenc
         d: v2.std.diagnostic.Diagnostic {
           reason: ^dag_int_literal_lexeme_invalid,
           at: port_locus(port: ^dag_int_literal_lexeme_invalid),
-          correction: None
+          correction: v2.std.diagnostic.None
         }
       )
   }
@@ -4090,7 +4090,7 @@ fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
           d: v2.std.diagnostic.Diagnostic {
             reason: ^dag_int_literal_lexeme_invalid,
             at: node_locus(node: node),
-            correction: None
+            correction: v2.std.diagnostic.None
           }
         )
     }
@@ -4099,7 +4099,7 @@ fn dag_int_literal_magnitude_int_from_node(node: Node) -> Outcome<Int> {
       d: v2.std.diagnostic.Diagnostic {
         reason: ^dag_int_literal_lexeme_invalid,
         at: node_locus(node: node),
-        correction: None
+        correction: v2.std.diagnostic.None
       }
     )
   }
@@ -4113,7 +4113,7 @@ fn dag_canonical_literal_shape_diagnostic(node: Node) -> v2.std.diagnostic.Diagn
   v2.std.diagnostic.Diagnostic {
     reason: ^dag_literal_shape_invalid,
     at: node_locus(node: node),
-    correction: None
+    correction: v2.std.diagnostic.None
   }
 }
 
@@ -4177,7 +4177,7 @@ fn dag_add_operator_node() -> Node {
 fn dag_arrow_domain_conj_node() -> Node {
   let children = fold_list(
     xs: dag_add_param_binding_ids(),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, binding_id) {
       list_snoc_item(
         xs: acc,
@@ -5597,7 +5597,7 @@ fn parse_qn_repeat_suffix_ident(sequence_capture: Node, root: Node) -> Outcome<v
 fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<v2.std.node.Symbol>> {
 
   if is_empty_conj_root(n: repeat_capture) {
-    outcome_accepted(value: Empty)
+    outcome_accepted(value: std.algebra.Empty)
   } else {
     match find_named_child(
       root: repeat_capture,
@@ -5619,7 +5619,7 @@ fn parse_qn_repeat_suffixes(repeat_capture: Node, root: Node) -> Outcome<List<v2
                   Accepted { value: suffixes, diagnostics: tail_diag } =>
                     outcome_with_diagnostics(
                       value: list_append(
-                        left: std.algebra.Cons { head: sym, tail: Empty },
+                        left: std.algebra.Cons { head: sym, tail: std.algebra.Empty },
                         right: suffixes
                       ),
                       diagnostics: tail_diag
@@ -5649,7 +5649,7 @@ fn parse_qualified_name_segments_from_capture(qn_capture: Node, root: Node) -> O
                 Accepted { value: suffixes, diagnostics: tail_diag } =>
                   outcome_with_diagnostics(
                     value: list_append(
-                      left: std.algebra.Cons { head: head_sym, tail: Empty },
+                      left: std.algebra.Cons { head: head_sym, tail: std.algebra.Empty },
                       right: suffixes
                     ),
                     diagnostics: tail_diag
@@ -5687,7 +5687,7 @@ fn parse_comma_ident_list_items(
                     Accepted { value: suffixes, diagnostics: tail_diag } =>
                       outcome_with_diagnostics(
                         value: list_append(
-                          left: std.algebra.Cons { head: head_sym, tail: Empty },
+                          left: std.algebra.Cons { head: head_sym, tail: std.algebra.Empty },
                           right: suffixes
                         ),
                         diagnostics: tail_diag
@@ -5707,7 +5707,7 @@ fn parse_import_block_idents(
     root: import_decl_node,
     emitted: ^dag_surface_import_block
   ) {
-    ParseSubtreeAbsent => outcome_accepted(value: Empty)
+    ParseSubtreeAbsent => outcome_accepted(value: std.algebra.Empty)
     ParseSubtreeFound { captured: block_capture } =>
       match find_named_child(
         root: block_capture,
@@ -5823,7 +5823,7 @@ fn alias_binding_row_from_decl_node(decl: Node, module_root: Node) -> Outcome<v2
 
 fn qualified_name_append_segment(qn: v2.std.qualified_name.QualifiedName, sym: v2.std.node.Symbol) -> v2.std.qualified_name.QualifiedName {
   match qn {
-    Empty => std.algebra.Cons { head: sym, tail: Empty }
+    Empty => std.algebra.Cons { head: sym, tail: std.algebra.Empty }
     Cons { head: h, tail: t } =>
       std.algebra.Cons { head: h, tail: qualified_name_append_segment(qn: t, sym: sym) }
   }
@@ -5832,7 +5832,7 @@ fn qualified_name_append_segment(qn: v2.std.qualified_name.QualifiedName, sym: v
 fn qualified_name_from_symbol_segments(segments: List<v2.std.node.Symbol>, root: Node) -> Outcome<v2.std.qualified_name.QualifiedName> {
   let qn = fold_list(
     xs: segments,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, sym) {
       qualified_name_append_segment(qn: acc, sym: sym)
     }
@@ -6017,7 +6017,7 @@ fn namespace_graft_already_grafted(root: Node) -> Bool {
     false
   } else {
     match qualified_name_from_graft_spine(root: root) {
-      Accepted { value: qn, diagnostics: _ } => !is_empty(xs: qn)
+      Accepted { value: qn, diagnostics: _ } => !v2.std.algebra.is_empty(xs: qn)
       Rejected { diagnostics: _ } => false
     }
   }

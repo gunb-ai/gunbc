@@ -341,7 +341,7 @@ test fn vacuity_unknown_provenance_classifies_unknown() -> Bool {
       rhs_provenance: OperandProvenanceUnknown,
       operand_provenance: OperandProvenanceUnknown
     ),
-    b: Unknown
+    b: v2.lens.vacuity.Unknown
   )
 }
 

@@ -37,7 +37,7 @@ test fn w_evidence_from_one_principal_does_not_answer_for_another() -> Bool {
       effect: ProbeInert,
     ),
   ]
-  match observation_for(
+  match gunbc.spark_capability_observation.observation_for(
     observations: observations, host: "srv5" as product.placement_supply.HostIdentity,
     principal: "gunbc-automation" as std.types.NonEmptyStr, capability: AcceleratorAccessible,
   ) {
@@ -58,7 +58,7 @@ test fn w_the_exact_principal_gets_its_own_answer() -> Bool {
       effect: ProbeInert,
     ),
   ]
-  match observation_for(
+  match gunbc.spark_capability_observation.observation_for(
     observations: observations, host: "srv5" as product.placement_supply.HostIdentity,
     principal: "gunbc-automation" as std.types.NonEmptyStr, capability: AcceleratorAccessible,
   ) {

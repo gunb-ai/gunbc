@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data witness_voltage_zero: v2.std.timeseries_signal.Voltage = voltage(0)
 
-data witness_current_zero: v2.std.timeseries_signal.Current = current(0)
+data witness_current_zero: v2.std.timeseries_signal.Current = v2.std.timeseries_signal.current(0)
 
 test fn named_affine_voltage_preserves_ground_reference_holds() -> Bool {
   let named = named_affine_voltage(

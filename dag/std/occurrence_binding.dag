@@ -63,7 +63,7 @@ fn occurrence_binding_from_candidates<N>(
         OccurrenceBindingFoldMany {
           first: first,
           second: candidate,
-          rest_reversed: Empty,
+          rest_reversed: std.algebra.Empty,
         }
       OccurrenceBindingFoldMany {
         first: first,

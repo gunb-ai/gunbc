@@ -24,7 +24,7 @@ test fn rust_logic_complement_emit_accepts() -> Bool {
     target: rust_logic_complement_target_model_staging()
   ) {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == rust_logic_complement_source_text) && (d == None)
+      (source.carried == rust_logic_complement_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -37,7 +37,7 @@ test fn rust_logic_complement_emit_swapped_discriminates() -> Bool {
     Accepted { value: source, diagnostics: d } =>
       (source.carried == rust_logic_complement_swapped_arms_source_text) &&
       (source.carried != rust_logic_complement_source_text) &&
-      (d == None)
+      (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

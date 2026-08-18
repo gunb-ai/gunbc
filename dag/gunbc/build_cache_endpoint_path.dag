@@ -1,7 +1,7 @@
 module gunbc.build_cache_endpoint_path
 
 
-data build_cache_endpoint_path_scope_disposition: Disposition = SingleAuthority
+data build_cache_endpoint_path_scope_disposition: std.disposition.Disposition = SingleAuthority
 
 data endpoint_path_state_authority_note: String = "WHY THE ENDPOINT PATH NEEDS ITS OWN STATE MACHINE, AND WHY EndpointAbsent WAS NOT ENOUGH. gunbc.build_cache_instance's EndpointAbsent answers one question — is anybody listening — and that is the right question for PLACEMENT, because an endpoint with no listener has no owner whose cgroup could be classified. It is the wrong question for ACTUATION, and srv4 is the specimen that proves it. Observed 2026-08-01: no listener, no process, no unit, a server.sock file present on disk, and an error log whose entire contents are 'Address in use (os error 98)'. A server born inside a runner cgroup died with that cgroup without unlinking its socket, so every later server fails to bind and the whole cache tree holds one file. srv4 has been uncached since roughly 2026-07-26 for this reason alone.\n\nUnder EndpointAbsent, srv4 and a host that simply has no cache yet are the SAME state. They are not: one needs a unit started, the other needs a file removed FIRST and then a unit started, and starting the unit without removing the file reproduces error 98 forever. That is a state-space conflation of exactly the kind DESIGN's failure-mode list names, and its cost is measured rather than hypothetical — a host silently uncached for a week.\n\nSO THE PATH IS A SEPARATE AXIS FROM THE OWNER. EndpointPathState answers 'what is at this path', BuildCacheEndpointObservation answers 'who owns this endpoint'. They are not redundant readings of one fact: EndpointStaleSocket and EndpointPathAbsent both project to EndpointAbsent on the ownership axis, which is precisely the distinction the ownership axis is not built to carry."
 
@@ -45,7 +45,7 @@ data unlink_admission_construction_note: String = "THE ADMISSION IS DERIVED FROM
 //
 // The chain is the same non-mutating /proc walk the endpoint-owner observation already uses, and it deliberately invokes no sccache: extdeps.cache.sccache records by measurement that --show-stats does NOT start a server and answers plausibly with no server in existence, so it cannot establish absence, and a real compile WOULD start one, which is a mutation. Neither is admissible evidence here.
 fn admit_stale_socket_unlink(
-  instance: BuildCacheInstance,
+  instance: gunbc.build_cache_instance.BuildCacheInstance,
   observed: EndpointPathState,
   currency: ObservationCurrency,
 ) -> StaleSocketUnlinkAdmission {
@@ -69,7 +69,7 @@ fn admit_stale_socket_unlink(
               StaleSocketUnlinkRefused {
                 instance: instance,
                 reason: EndpointHasNoSocketPath {
-                  detail: "this instance's endpoint is a TCP port, which names no filesystem path, so a stale unix socket is not a state it can be in" as NonEmptyStr,
+                  detail: "this instance's endpoint is a TCP port, which names no filesystem path, so a stale unix socket is not a state it can be in" as std.types.NonEmptyStr,
                 },
               }
             SccacheServerUnixSocket { path: _ } =>
@@ -97,13 +97,13 @@ type StaleSocketUnlinkOutcome
   = StaleSocketUnlinkCommandReady { command: extdeps.exec.command.ArgvCommand }
   | StaleSocketUnlinkCommandRefused { reason: std.types.NonEmptyStr }
 
-fn unlink_refusal_detail(reason: StaleSocketUnlinkRefusal) -> NonEmptyStr {
+fn unlink_refusal_detail(reason: StaleSocketUnlinkRefusal) -> std.types.NonEmptyStr {
   match reason {
     PathAlreadyAbsent =>
-      "endpoint path is already absent; there is nothing to unlink and a unit start needs no precondition here" as NonEmptyStr
+      "endpoint path is already absent; there is nothing to unlink and a unit start needs no precondition here" as std.types.NonEmptyStr
     PathIsNotASocket { detail: d } => d
     ListenerPresent { owner: _ } =>
-      "a listener holds this endpoint; unlinking would sever a live server's socket and leave it unreachable while it keeps running" as NonEmptyStr
+      "a listener holds this endpoint; unlinking would sever a live server's socket and leave it unreachable while it keeps running" as std.types.NonEmptyStr
     PathStateUnavailable { detail: d } => d
     ObservationNotCurrent { detail: d } => d
     EndpointHasNoSocketPath { detail: d } => d
@@ -118,11 +118,11 @@ fn stale_socket_unlink_command(admission: StaleSocketUnlinkAdmission) -> StaleSo
       match i.endpoint {
         SccacheServerUnixSocket { path: p } =>
           StaleSocketUnlinkCommandReady {
-            command: ArgvCommand { argv: ["rm", "-f", p as String] },
+            command: extdeps.exec.command.ArgvCommand { argv: ["rm", "-f", p as String] },
           }
         SccacheServerTcpPort { port: _ } =>
           StaleSocketUnlinkCommandRefused {
-            reason: "admitted unlink over a TCP endpoint, which names no path; admit_stale_socket_unlink refuses this at admission, so reaching it here means an admitted value was hand-written rather than derived" as NonEmptyStr,
+            reason: "admitted unlink over a TCP endpoint, which names no path; admit_stale_socket_unlink refuses this at admission, so reaching it here means an admitted value was hand-written rather than derived" as std.types.NonEmptyStr,
           }
       }
   }

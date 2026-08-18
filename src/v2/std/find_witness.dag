@@ -145,7 +145,7 @@ fn only_passing_candidate(
     NoPassingCandidate =>
       outcome_rejected(find_witness_no_candidate_diagnostic(source_facts: source_facts))
     OnePassingCandidate { candidate: only } =>
-      v2.std.diagnostic.Accepted { value: only, diagnostics: None }
+      v2.std.diagnostic.Accepted { value: only, diagnostics: v2.std.diagnostic.None }
     ManyPassingCandidates =>
       outcome_rejected(find_witness_ambiguous_candidate_diagnostic(source_facts: source_facts))
   }
@@ -182,7 +182,7 @@ fn accepted_witness_result(
       },
       closedness: candidates.closedness
     },
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   }
 }
 fn resolve_selected_candidate(
@@ -385,7 +385,7 @@ fn verify_witness_realized(
     candidate: candidate,
     predicate: predicate
   ) && (witness.property == predicate.preservation_rule) && (witness.evidence == candidate) {
-    v2.std.diagnostic.Accepted { value: witness, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: witness, diagnostics: v2.std.diagnostic.None }
   } else {
     outcome_rejected(find_witness_invalid_witness_diagnostic(source_facts: source_facts))
   }

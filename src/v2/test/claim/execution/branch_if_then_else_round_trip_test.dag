@@ -130,7 +130,7 @@ test fn branch_if_then_else_emit_matches_serialize_holds() -> Bool {
     Accepted { value: authority, diagnostics: ad } =>
       match branch_if_then_else_emit_receipt {
         Accepted { value: source, diagnostics: d } =>
-          (source == authority) && (d == None) && (ad == None)
+          (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -142,7 +142,7 @@ test fn branch_if_then_else_grammar_inverse_holds() -> Bool {
     target: branch_if_then_else_target_model,
     emitted: branch_if_then_else_emitted_root
   ) {
-    Accepted { value: _, diagnostics: d } => d == None
+    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
     Rejected { diagnostics: _ } => false
   }
 }
@@ -156,7 +156,7 @@ test fn branch_if_then_else_ingest_via_coerce_matches_canonical() -> Bool {
     Accepted { value: result, diagnostics: d } =>
       (result.target == dag_fixture_emitted_pick_fn)
         && branch_if_then_else_coercion_quality_is_faithful(q: result.quality)
-        && (d == None)
+        && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

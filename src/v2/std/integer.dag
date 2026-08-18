@@ -157,7 +157,7 @@ type DecimalDigitsStep {
 
 fn decimal_digits_double(digits: FreeMonoid<DecimalDigit>) -> DecimalDigitsStep {
   match digits {
-    Empty => DecimalDigitsStep { digits: Empty, carry: false }
+    Empty => DecimalDigitsStep { digits: std.algebra.Empty, carry: false }
     Cons { head, tail } =>
       match decimal_digits_double(digits: tail) {
         DecimalDigitsStep { digits: doubled_tail, carry: tail_carry } =>
@@ -171,7 +171,7 @@ fn decimal_digits_double(digits: FreeMonoid<DecimalDigit>) -> DecimalDigitsStep 
 
 fn decimal_digits_sub_one(digits: FreeMonoid<DecimalDigit>) -> DecimalDigitsStep {
   match digits {
-    Empty => DecimalDigitsStep { digits: Empty, carry: true }
+    Empty => DecimalDigitsStep { digits: std.algebra.Empty, carry: true }
     Cons { head, tail } =>
       match decimal_digits_sub_one(digits: tail) {
         DecimalDigitsStep { digits: sub_tail, carry: tail_borrow } =>
@@ -245,7 +245,7 @@ fn decimal_nonzero_sub_one(m: DecimalNonZeroMagnitude) -> DecimalMagnitude {
 
 fn integer_pow2_magnitude(exponent: Int) -> DecimalNonZeroMagnitude {
   if exponent <= 0 {
-    DecimalNonZeroMagnitude { lead: NonZeroD1, tail: Empty }
+    DecimalNonZeroMagnitude { lead: NonZeroD1, tail: std.algebra.Empty }
   } else {
     decimal_nonzero_double(m: integer_pow2_magnitude(exponent: exponent - 1))
   }
@@ -397,7 +397,7 @@ fn integer_standard_integer_type_from_node(node: Node) -> Outcome<StandardIntege
         Accepted { value: _, diagnostics: _ } => acc
         Rejected { diagnostics: _ } =>
           if node == integer_interval_spec_node(spec: integer_standard_integer_type_interval_spec(standard_integer_type: candidate)) {
-            v2.std.diagnostic.Accepted { value: candidate, diagnostics: None }
+            v2.std.diagnostic.Accepted { value: candidate, diagnostics: v2.std.diagnostic.None }
           } else {
             acc
           }
@@ -765,7 +765,7 @@ fn integer_decimal_magnitude_node(magnitude: DecimalMagnitude) -> Node {
   match magnitude {
     DecimalZero =>
       fold_list_node(
-        xs: std.algebra.Cons { head: D0, tail: Empty },
+        xs: std.algebra.Cons { head: D0, tail: std.algebra.Empty },
         item_node: fn(digit) { integer_decimal_digit_node(digit: digit) }
       )
     DecimalNonZero { magnitude } => integer_decimal_nonzero_node(magnitude: magnitude)
@@ -966,7 +966,7 @@ fn int_div(a: Int, b: Int, at: v2.std.diagnostic.Locus) -> Outcome<Int> {
       diagnostics: diagnostics_singleton(d: integer_divide_by_zero_diagnostic(at: at))
     }
   } else {
-    v2.std.diagnostic.Accepted { value: a / b, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: a / b, diagnostics: v2.std.diagnostic.None }
   }
 }
 
@@ -976,7 +976,7 @@ fn int_mod(a: Int, b: Int, at: v2.std.diagnostic.Locus) -> Outcome<Int> {
       diagnostics: diagnostics_singleton(d: integer_modulo_by_zero_diagnostic(at: at))
     }
   } else {
-    v2.std.diagnostic.Accepted { value: a % b, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: a % b, diagnostics: v2.std.diagnostic.None }
   }
 }
 
@@ -1011,7 +1011,7 @@ fn integer_decimal_digits_snoc(
   digit: DecimalDigit
 ) -> FreeMonoid<DecimalDigit> {
   match xs {
-    Empty => std.algebra.Cons { head: digit, tail: Empty }
+    Empty => std.algebra.Cons { head: digit, tail: std.algebra.Empty }
     Cons { head, tail } =>
       std.algebra.Cons { head: head, tail: integer_decimal_digits_snoc(xs: tail, digit: digit) }
   }
@@ -1040,7 +1040,7 @@ fn integer_string_to_decimal_digits_step(
 }
 
 fn integer_string_to_decimal_digits_optional(s: String) -> Optional<FreeMonoid<DecimalDigit>> {
-  integer_string_to_decimal_digits_step(s: s, acc: Empty)
+  integer_string_to_decimal_digits_step(s: s, acc: std.algebra.Empty)
 }
 
 fn integer_decimal_nonzero_magnitude_to_int(m: DecimalNonZeroMagnitude) -> Int {
@@ -1203,7 +1203,7 @@ fn integer_decimal_digit_from_node_optional(node: Node) -> Optional<DecimalDigit
 
 fn integer_fold_list_node_digits_optional(node: Node) -> Optional<FreeMonoid<DecimalDigit>> {
   if is_empty_conj_root(n: node) {
-    optional_present(value: Empty)
+    optional_present(value: std.algebra.Empty)
   } else {
     match find_named_child(root: node, name: ^fold_list_node_head) {
       Accepted { value: head_node, diagnostics: _ } =>

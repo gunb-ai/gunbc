@@ -16,13 +16,13 @@ data host_source_root_ingest_coverage_receipt: v2.compiler.source_authority.Sour
 
 data host_source_root_ingest: v2.compiler.source_authority.SourceRootIngest = Empty
 
-data host_source_root_closure_refs: List<v2.compiler.source_authority.SourceRef> = Empty
+data host_source_root_closure_refs: List<v2.compiler.source_authority.SourceRef> = std.algebra.Empty
 
 data host_compiler_closure_admission: v2.compiler.name_resolve.Admission = v2.compiler.name_resolve.Admission {
   subject: v2.compiler.name_resolve.ResolutionSubject {
     name: std.algebra.Cons {
       head: ^v2,
-      tail: std.algebra.Cons { head: ^compiler, tail: std.algebra.Cons { head: ^compile, tail: Empty } }
+      tail: std.algebra.Cons { head: ^compiler, tail: std.algebra.Cons { head: ^compile, tail: std.algebra.Empty } }
     }
   },
   imports: Empty
@@ -31,7 +31,7 @@ data host_compiler_closure_admission: v2.compiler.name_resolve.Admission = v2.co
 data frontier_probe_entry_source_ref: v2.compiler.source_authority.SourceRef = v2.compiler.source_authority.SourceRef {
   path: "",
   source_root: DagTree,
-  content_hash: Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "0000000000000000" })
+  content_hash: std.content_hash.Fnv1a64(std.content_hash.Fnv1a64Structural { digest: "0000000000000000" })
 }
 
 data frontier_probe_entry_module_path: String = ""

@@ -136,7 +136,7 @@ data altra_1p_requirement_part_realizations: List<RequirementPartRealization> = 
     providers: ["mgmt_net"],
     justification: ReferenceDesignPrecedent {
       reference_design: mt_jade_reference_platform_ref(),
-      authority: extdeps_external_authority_anchor,
+      authority: extdeps.ocp.mt_jade.platform.extdeps_external_authority_anchor,
     },
   },
   RequirementPartRealization {

@@ -105,7 +105,7 @@ test fn x86_64_abi_syscall_citation_selector_conforms_to_rfc_8118() -> Bool {
   match x86_64_abi_pdf_syscall_fragment_selector() {
     X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
       s.value == ("page=125" as std.types.NonEmptyStr)
-        && s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
+        && s.conforms_to.uri.locator == extdeps.standards.rfc_8118.extdeps_external_authority_anchor.uri.locator
         && s.conforms_to.uri.locator != extdeps.runtime.abi.sysv_amd64.extdeps_external_authority_anchor.uri.locator
     _ => false
   }
@@ -122,7 +122,7 @@ test fn x86_64_abi_syscall_selector_value_is_page_125() -> Bool {
 test fn x86_64_abi_syscall_selector_conforms_to_rfc_anchor() -> Bool {
   match x86_64_abi_pdf_syscall_fragment_selector() {
     X86_64AbiPdfCitationSelectorConstructed(FragmentSelectorVariant(s)) =>
-      s.conforms_to.uri.locator == extdeps_external_authority_anchor.uri.locator
+      s.conforms_to.uri.locator == extdeps.standards.rfc_8118.extdeps_external_authority_anchor.uri.locator
     _ => false
   }
 }

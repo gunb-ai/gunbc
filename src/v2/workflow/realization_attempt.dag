@@ -135,7 +135,7 @@ fn capture_test_markers(source: String) -> MarkedSource {
 
 fn attempt_entry_source(entry: String, source: String) -> EntryRealizationAttempt {
   let marked = capture_test_markers(source: source)
-  match ingested_resolved_module_from_source(source: marked.unmarked, file: ^realization_attempt_entry_file) {
+  match v2.compiler.ingested_fixture_arrows.ingested_resolved_module_from_source(source: marked.unmarked, file: ^realization_attempt_entry_file) {
     Rejected { diagnostics: ds } =>
       attempt_refused_at(
         entry: entry,

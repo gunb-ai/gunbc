@@ -125,7 +125,7 @@ fn binding_candidates_from_supplied_declarations(
   fold(
     supplied_candidates,
     init: OccurrenceCandidatePopulationBuild {
-      candidates: Empty,
+      candidates: std.algebra.Empty,
       seen_candidate_ids: empty_map(),
       refusal: none,
     },

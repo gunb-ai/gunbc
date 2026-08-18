@@ -31,7 +31,7 @@ test fn realize_never_exceeds_budget_holds() -> Bool {
 }
 
 test fn realize_unknown_peak_maturation_reserve_holds() -> Bool {
-  let v = realize_pack_width(bound: BoundUnknown, budget: budget_100, independence_width: 16)
+  let v = realize_pack_width(bound: std.realize_pack.BoundUnknown, budget: budget_100, independence_width: 16)
   realize_verdict_width(v: v) == 1
     && match v { MaturationReserve { width: _ } => true  PackedWidth { width: _ } => false  BudgetRefused => false }
 }

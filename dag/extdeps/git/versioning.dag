@@ -47,9 +47,9 @@ fn git_release_to_version_identity(v: GitReleaseVersion) -> extdeps.version.Vers
 }
 
 fn git_release_version_compare(a: GitReleaseVersion, b: GitReleaseVersion) -> std.algebra.Ordering {
-  match nat_compare(a: a.major, b: b.major) {
-    Equal => match nat_compare(a: a.minor, b: b.minor) {
-      Equal => nat_compare(a: a.patch, b: b.patch)
+  match std.nat.nat_compare(a: a.major, b: b.major) {
+    Equal => match std.nat.nat_compare(a: a.minor, b: b.minor) {
+      Equal => std.nat.nat_compare(a: a.patch, b: b.patch)
       other => other
     }
     other => other

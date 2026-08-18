@@ -51,9 +51,9 @@ fn ctd_bool_coproduct() -> Node {
 }
 
 fn ctd_emit_decl_source() -> Medium<String> {
-  match emit_semantic_type_decl(name: ^Point, params: Empty, node: ctd_point_record(), target: c_type_decl_target_model()) {
+  match emit_semantic_type_decl(name: ^Point, params: std.algebra.Empty, node: ctd_point_record(), target: c_type_decl_target_model()) {
     Accepted { value: point, diagnostics: _ } =>
-      match emit_semantic_type_decl(name: ^Bool, params: Empty, node: ctd_bool_coproduct(), target: c_type_decl_target_model()) {
+      match emit_semantic_type_decl(name: ^Bool, params: std.algebra.Empty, node: ctd_bool_coproduct(), target: c_type_decl_target_model()) {
         Accepted { value: bool_decl, diagnostics: _ } =>
           extdeps.communication.medium.Medium {
             carried: concat(concat(point.carried, bool_decl.carried), "\n"),

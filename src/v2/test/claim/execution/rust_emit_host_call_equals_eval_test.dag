@@ -199,7 +199,7 @@ test fn rust_emit_host_call_eval_subgraph_holds() -> Bool {
     inputs: inputs_root_only(root: rust_call_helper_eval_subgraph)
   ) {
     Accepted { value: v, diagnostics: d } =>
-      (v == emit_call_eval_octet_value(n: 7)) && (d == None)
+      (v == emit_call_eval_octet_value(n: 7)) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }

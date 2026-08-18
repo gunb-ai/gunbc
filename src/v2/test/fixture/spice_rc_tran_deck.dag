@@ -49,7 +49,7 @@ data spice_rc_tran_deck: v2.extdeps.formats.spice.SpiceNetlist = v2.extdeps.form
                 tstop: v2.extdeps.formats.spice.SpiceValue { lexeme: "10ms" }
               }
             },
-            tail: Empty
+            tail: std.algebra.Empty
           }
         }
       }

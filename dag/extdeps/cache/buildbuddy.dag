@@ -21,7 +21,7 @@ data buildbuddy_cas_facts: extdeps.cache.types.CacheInterfaceCatalogFacts = {
     overwritable: false
     prefix_fallback_allowed: false
     content_verified_on_read: true
-    visibility_scope: Network
+    visibility_scope: std.cache_interface.Network
     invalidation_triggers: [ManualPurge]
   }
   io: {

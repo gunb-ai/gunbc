@@ -15,7 +15,7 @@ fn refinement_preservation_generated_nonempty_list_claim() -> Outcome<v2.std.ver
   match refinement_preservation_subject_nonempty_list_base() {
     Accepted { value: subject, diagnostics: None } =>
       match refinement_preservation_claim_from_testgen_emit(subject: subject) {
-        Accepted { value: claim, diagnostics: None } => v2.std.diagnostic.Accepted { value: claim, diagnostics: None }
+        Accepted { value: claim, diagnostics: None } => v2.std.diagnostic.Accepted { value: claim, diagnostics: v2.std.diagnostic.None }
         Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
       }
     Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
@@ -34,7 +34,7 @@ fn refinement_preservation_subject_base_value() -> Outcome<Node> {
     Accepted { value: subject, diagnostics: None } =>
       v2.std.diagnostic.Accepted {
         value: refinement_preservation_list_node(xs: subject.original),
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }

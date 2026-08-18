@@ -366,7 +366,7 @@ fn wasm_serialize_source_prefix_edges() -> List<v2.std.node.Edge> {
         name: ^serialize_source_field_source_grammar,
         target: wasm_inhabitant_atom(id: ^wasm_production_fn_add)
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   }
 }
@@ -882,7 +882,7 @@ fn wasm_lex() -> v2.std.compilers.lexing.LexRules {
 fn wasm_formal_rhs_from_tokens(tokens: List<v2.std.compilers.target_model.ConcreteSyntaxToken>) -> List<v2.std.grammar.FormalGrammarSymbol> {
   fold_list(
     xs: tokens,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, token) {
       list_snoc_item(
         xs: acc,
@@ -1550,7 +1550,7 @@ fn wasm_primitive_bundle_from_float_facts(facts: WasmFloatPrimitiveFacts) -> v2.
 fn wasm_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: wasm_integer_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -1563,7 +1563,7 @@ fn wasm_primitive_bundles_from_integer_catalog() -> List<v2.std.model_core.Primi
 fn wasm_primitive_bundles_from_float_catalog() -> List<v2.std.model_core.PrimitiveFactBundle> {
   fold_list(
     xs: wasm_float_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(
         xs: acc,
@@ -1664,7 +1664,7 @@ fn wasm_float_algebra_inhabitance(facts: WasmFloatPrimitiveFacts) -> v2.std.mode
 fn wasm_integer_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: wasm_integer_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: wasm_integer_algebra_inhabitance(facts: facts))
     }
@@ -1674,7 +1674,7 @@ fn wasm_integer_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInh
 fn wasm_float_algebra_inhabitance_decls() -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   fold_list(
     xs: wasm_float_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_snoc_item(xs: acc, item: wasm_float_algebra_inhabitance(facts: facts))
     }
@@ -1793,7 +1793,7 @@ fn wasm_float_law_obligations(facts: WasmFloatPrimitiveFacts) -> List<v2.std.mod
 fn wasm_integer_algebra_laws() -> List<v2.std.model_core.AlgebraLawObligation> {
   fold_list(
     xs: wasm_integer_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_append(left: acc, right: wasm_integer_law_obligations(facts: facts))
     }
@@ -1803,7 +1803,7 @@ fn wasm_integer_algebra_laws() -> List<v2.std.model_core.AlgebraLawObligation> {
 fn wasm_float_algebra_laws() -> List<v2.std.model_core.AlgebraLawObligation> {
   fold_list(
     xs: wasm_float_facts_catalog,
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, facts) {
       list_append(left: acc, right: wasm_float_law_obligations(facts: facts))
     }

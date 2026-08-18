@@ -7,12 +7,12 @@ data msb_fast_lane_note: String = "FAST-LANE half of the Phase-1 binding witness
 
 data msb_fixture_qn: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^v2,
-  tail: std.algebra.Cons { head: ^std, tail: std.algebra.Cons { head: ^msb_fixture, tail: Empty } }
+  tail: std.algebra.Cons { head: ^std, tail: std.algebra.Cons { head: ^msb_fixture, tail: std.algebra.Empty } }
 }
 
 data msb_other_qn: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^v2,
-  tail: std.algebra.Cons { head: ^std, tail: std.algebra.Cons { head: ^msb_other_fixture, tail: Empty } }
+  tail: std.algebra.Cons { head: ^std, tail: std.algebra.Cons { head: ^msb_other_fixture, tail: std.algebra.Empty } }
 }
 
 data msb_produced_binding: v2.compiler.source_authority.ModuleStorageBinding = module_storage_produced_binding(
@@ -33,7 +33,7 @@ data msb_produced_other_binding: v2.compiler.source_authority.ModuleStorageBindi
   source_root: V2Tree
 )
 
-data msb_singleton_index: v2.compiler.source_authority.ModuleStorageIndex = std.algebra.Cons { head: msb_produced_binding, tail: Empty }
+data msb_singleton_index: v2.compiler.source_authority.ModuleStorageIndex = std.algebra.Cons { head: msb_produced_binding, tail: std.algebra.Empty }
 
 test fn module_storage_duplicate_module_insert_refuses() -> Bool {
   match module_storage_index_insert(
@@ -77,7 +77,7 @@ data msb_parsed_path: String = "src/v2/std/msb_parsed_fixture.dag"
 
 data msb_parsed_qn: v2.std.qualified_name.QualifiedName = std.algebra.Cons {
   head: ^v2,
-  tail: std.algebra.Cons { head: ^std, tail: std.algebra.Cons { head: ^msb_parsed_fixture, tail: Empty } }
+  tail: std.algebra.Cons { head: ^std, tail: std.algebra.Cons { head: ^msb_parsed_fixture, tail: std.algebra.Empty } }
 }
 
 data msb_parsed_binding: v2.compiler.source_authority.ModuleStorageBinding = module_storage_parsed_binding(
@@ -91,7 +91,7 @@ data msb_parsed_binding: v2.compiler.source_authority.ModuleStorageBinding = mod
   source_root: V2Tree
 )
 
-data msb_parsed_index: v2.compiler.source_authority.ModuleStorageIndex = std.algebra.Cons { head: msb_parsed_binding, tail: Empty }
+data msb_parsed_index: v2.compiler.source_authority.ModuleStorageIndex = std.algebra.Cons { head: msb_parsed_binding, tail: std.algebra.Empty }
 
 test fn module_storage_parsed_module_has_storage() -> Bool {
   match module_storage_binding_file_path(binding: msb_parsed_binding) {
@@ -121,12 +121,12 @@ data msb_oracle_row: v2.compiler.source_authority.ModuleStorageBinding = module_
   source_root: V2Tree
 )
 
-data msb_oracle_only_index: v2.compiler.source_authority.ModuleStorageIndex = std.algebra.Cons { head: msb_oracle_row, tail: Empty }
+data msb_oracle_only_index: v2.compiler.source_authority.ModuleStorageIndex = std.algebra.Cons { head: msb_oracle_row, tail: std.algebra.Empty }
 
 data msb_host_divergent_row: v2.compiler.source_authority.ModuleStorageBinding = module_storage_parsed_binding(
   module: std.algebra.Cons {
     head: ^v2,
-    tail: std.algebra.Cons { head: ^std, tail: std.algebra.Cons { head: ^msb_wrong_fixture, tail: Empty } }
+    tail: std.algebra.Cons { head: ^std, tail: std.algebra.Cons { head: ^msb_wrong_fixture, tail: std.algebra.Empty } }
   },
   artifact: v2.std.artifact.Artifact {
     kind: SourceFile,
@@ -137,7 +137,7 @@ data msb_host_divergent_row: v2.compiler.source_authority.ModuleStorageBinding =
   source_root: V2Tree
 )
 
-data msb_host_divergent_index: v2.compiler.source_authority.ModuleStorageIndex = std.algebra.Cons { head: msb_host_divergent_row, tail: Empty }
+data msb_host_divergent_index: v2.compiler.source_authority.ModuleStorageIndex = std.algebra.Cons { head: msb_host_divergent_row, tail: std.algebra.Empty }
 
 test fn module_storage_agreement_holds_when_host_matches_oracle() -> Bool {
   match module_storage_host_agrees_with_oracle(
@@ -164,7 +164,7 @@ test fn module_storage_agreement_reports_divergent_on_wrong_module() -> Bool {
 test fn module_storage_agreement_reports_uncovered_on_missing_row() -> Bool {
   match module_storage_host_agrees_with_oracle(
     oracle: msb_oracle_only_index,
-    host: Empty
+    host: std.algebra.Empty
   ) {
     ModuleStorageUncovered { path: p } => p == msb_parsed_path
     ModuleStorageAgrees => false

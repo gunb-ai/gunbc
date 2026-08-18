@@ -127,13 +127,13 @@ fn body_lower_fn_decl_ident_from_captured(captured: Node) -> Optional<v2.std.nod
 fn body_lower_arrow_domain_named_bindings(root: Node) -> List<v2.std.node.Symbol> {
   match root.kind {
     TypeNode { connective: Conj } =>
-      fold(root.children, init: Empty, f: fn(acc, e) {
+      fold(root.children, init: std.algebra.Empty, f: fn(acc, e) {
         match e.label {
           Named { name: sym } => std.algebra.Cons { head: sym, tail: acc }
           Positional => acc
         }
       })
-    _ => Empty
+    _ => std.algebra.Empty
   }
 }
 
@@ -146,11 +146,11 @@ fn body_lower_binding_symbol_lists_match(
 
 fn body_lower_param_binding_symbols_from_param_list(param_list: Node) -> List<v2.std.node.Symbol> {
   match body_lower_param_list_comma_spine_optional(param_list_captured: param_list) {
-    Absent => Empty
+    Absent => std.algebra.Empty
     Present { value: comma_spine } =>
       fold(
         body_lower_collect_param_edges(sequence_capture: comma_spine),
-        init: Empty,
+        init: std.algebra.Empty,
         f: fn(acc, e) {
           match e.label {
             Named { name: sym } => std.algebra.Cons { head: sym, tail: acc }
@@ -165,7 +165,7 @@ fn body_lower_param_binding_symbols_from_fn_captured(captured: Node) -> List<v2.
   match body_lower_find_captured(root: captured, emitted: ^dag_surface_param_list) {
     ParseSubtreeFound { captured: param_list } =>
       body_lower_param_binding_symbols_from_param_list(param_list: param_list)
-    ParseSubtreeAbsent => Empty
+    ParseSubtreeAbsent => std.algebra.Empty
   }
 }
 
@@ -173,7 +173,7 @@ fn body_lower_param_binding_symbols_from_fn_decl_module(root: Node) -> List<v2.s
   match body_lower_find_captured(root: root, emitted: ^dag_surface_fn_decl) {
     ParseSubtreeFound { captured: captured } =>
       body_lower_param_binding_symbols_from_fn_captured(captured: captured)
-    ParseSubtreeAbsent => Empty
+    ParseSubtreeAbsent => std.algebra.Empty
   }
 }
 
@@ -183,9 +183,9 @@ fn body_lower_arrow_domain_binding_symbols(arrow: Node) -> List<v2.std.node.Symb
       match first(arrow.children) {
         Present { value: domain_edge } =>
           body_lower_arrow_domain_named_bindings(root: domain_edge.target)
-        Absent => Empty
+        Absent => std.algebra.Empty
       }
-    false => Empty
+    false => std.algebra.Empty
   }
 }
 
@@ -789,7 +789,7 @@ fn body_lower_typed_param_from_comma_seq(sequence_capture: Node) -> Optional<v2.
 
 fn body_lower_collect_param_edges_from_repeat_tail(repeat_capture: Node) -> List<v2.std.node.Edge> {
   if is_empty_conj_root(n: repeat_capture) {
-    Empty
+    std.algebra.Empty
   } else {
     match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
       Accepted { value: head_sequence, diagnostics: _ } =>
@@ -813,10 +813,10 @@ fn body_lower_collect_param_edges_from_repeat_tail(repeat_capture: Node) -> List
             ) {
               Accepted { value: tail, diagnostics: _ } =>
                 body_lower_collect_param_edges_from_repeat_tail(repeat_capture: tail)
-              Rejected { diagnostics: _ } => Empty
+              Rejected { diagnostics: _ } => std.algebra.Empty
             }
         }
-      Rejected { diagnostics: _ } => Empty
+      Rejected { diagnostics: _ } => std.algebra.Empty
     }
   }
 }
@@ -826,7 +826,7 @@ fn body_lower_collect_param_edges(sequence_capture: Node) -> List<v2.std.node.Ed
     Accepted { value: first, diagnostics: _ } =>
       let first_edges = match body_lower_typed_param_edge(param_capture: first) {
         Present { value: edge } => [edge]
-        Absent => Empty
+        Absent => std.algebra.Empty
       }
       match find_named_child(root: sequence_capture, name: ^grammar_sequence_right_node_projection) {
         Accepted { value: outer_right, diagnostics: _ } =>
@@ -847,7 +847,7 @@ fn body_lower_collect_param_edges(sequence_capture: Node) -> List<v2.std.node.Ed
         Present { value: edge } => [edge]
         Absent =>
           match sugar_sequence_pair_optional(node: sequence_capture) {
-            Absent => Empty
+            Absent => std.algebra.Empty
             Present { value: pair } =>
               match body_lower_typed_param_edge(param_capture: pair.left) {
                 Present { value: edge } =>
@@ -862,7 +862,7 @@ fn body_lower_collect_param_edges(sequence_capture: Node) -> List<v2.std.node.Ed
                 Absent =>
                   match body_lower_after_comma_tail_optional(node: pair.right) {
                     Present { value: tail } => body_lower_collect_param_edges(sequence_capture: tail)
-                    Absent => Empty
+                    Absent => std.algebra.Empty
                   }
               }
           }
@@ -1563,7 +1563,7 @@ fn body_lower_reify_transform_edge(
 fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
   match body.kind {
     ComputationNode { behavior: Transform } =>
-      match fold(body.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
+      match fold(body.children, init: outcome_accepted(value: std.algebra.Empty), f: fn(acc, e) {
         match acc {
           Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           Accepted { value: done, diagnostics: d } =>
@@ -1584,7 +1584,7 @@ fn body_lower_reify_transform_body(body: Node) -> Outcome<Node> {
         Accepted { value: children, diagnostics: d } =>
           outcome_with_diagnostics(
             value: node_synthetic(
-              kind: v2.std.node.ComputationNode { behavior: Transform },
+              kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
               children: children
             ),
             diagnostics: d
@@ -1746,10 +1746,10 @@ fn body_lower_unwrap_pass_through(shell: Node) -> Outcome<Node> {
 
 fn body_lower_transform_call(operator: Node, args: List<Node>) -> Node {
   node_synthetic(
-    kind: v2.std.node.ComputationNode { behavior: Transform },
+    kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: list_append(
       left: [v2.std.node.Edge { label: Positional, target: operator }],
-      right: fold(args, init: Empty, f: fn(acc, arg) {
+      right: fold(args, init: std.algebra.Empty, f: fn(acc, arg) {
         list_snoc_item(xs: acc, item: v2.std.node.Edge { label: Positional, target: arg })
       })
     )
@@ -1834,12 +1834,12 @@ fn body_lower_call_arg_operand_from_repeat_elem(repeat_elem: Node) -> List<Node>
         arg_capture: body_lower_postfix_optional_unwrap(node: pair.right)
       ) {
         Present { value: operand } => [operand]
-        Absent => Empty
+        Absent => std.algebra.Empty
       }
     Absent =>
       match body_lower_call_arg_edge_optional(arg_capture: stripped) {
         Present { value: operand } => [operand]
-        Absent => Empty
+        Absent => std.algebra.Empty
       }
   }
 }
@@ -1864,7 +1864,7 @@ fn body_lower_extract_comma_list_operand(node: Node) -> List<Node> {
 
 fn body_lower_collect_call_arg_operands_from_repeat_tail(repeat_capture: Node) -> List<Node> {
   if is_empty_conj_root(n: repeat_capture) {
-    Empty
+    std.algebra.Empty
   } else {
     match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
       Accepted { value: head, diagnostics: _ } =>
@@ -1877,7 +1877,7 @@ fn body_lower_collect_call_arg_operands_from_repeat_tail(repeat_capture: Node) -
             )
           Rejected { diagnostics: _ } => operands
         }
-      Rejected { diagnostics: _ } => Empty
+      Rejected { diagnostics: _ } => std.algebra.Empty
     }
   }
 }
@@ -1917,10 +1917,10 @@ fn body_lower_collect_call_arg_operands(sequence_capture: Node) -> List<Node> {
                 Absent =>
                   match body_lower_after_comma_tail_optional(node: pair.right) {
                     Present { value: tail } => body_lower_collect_call_arg_operands(sequence_capture: tail)
-                    Absent => Empty
+                    Absent => std.algebra.Empty
                   }
               }
-            Absent => Empty
+            Absent => std.algebra.Empty
           }
       }
   }
@@ -1984,7 +1984,7 @@ fn body_lower_postfix_call_suffix_args(call_suffix: Node) -> Optional<List<Node>
         Present { value: id } =>
           if id == ^dag_token_lparen {
             match sugar_sequence_pair_optional(node: pair.right) {
-              Absent => optional_present(value: Empty)
+              Absent => optional_present(value: std.algebra.Empty)
               Present { value: inner } =>
                 optional_present(
                   value: body_lower_call_args_from_capture(
@@ -2056,11 +2056,11 @@ fn body_lower_postfix_method_suffix_optional(repeat_elem: Node) -> Optional<Node
 
 fn body_lower_postfix_projection_args(repeat_elem: Node) -> List<Node> {
   match body_lower_postfix_method_suffix_optional(repeat_elem: repeat_elem) {
-    Absent => Empty
+    Absent => std.algebra.Empty
     Present { value: call_suffix } =>
       match body_lower_postfix_call_suffix_args(call_suffix: call_suffix) {
         Present { value: args } => args
-        Absent => Empty
+        Absent => std.algebra.Empty
       }
   }
 }
@@ -2434,7 +2434,7 @@ fn body_lower_wire_match_arm_capture(arm_capture: Node) -> Outcome<Node> {
 
 fn body_lower_collect_match_arms_from_repeat_tail(repeat_capture: Node) -> Outcome<List<Node>> {
   if is_empty_conj_root(n: repeat_capture) {
-    outcome_accepted(value: Empty)
+    outcome_accepted(value: std.algebra.Empty)
   } else {
     match find_named_child(root: repeat_capture, name: ^grammar_sequence_left_node_projection) {
       Accepted { value: head, diagnostics: _ } =>
@@ -2455,7 +2455,7 @@ fn body_lower_collect_match_arms_from_repeat_tail(repeat_capture: Node) -> Outco
                 v2.std.diagnostic.Accepted { value: [arm], diagnostics: d }
             }
         }
-      Rejected { diagnostics: _ } => outcome_accepted(value: Empty)
+      Rejected { diagnostics: _ } => outcome_accepted(value: std.algebra.Empty)
     }
   }
 }
@@ -2528,7 +2528,7 @@ fn body_lower_reify_branch_target(node: Node) -> Node {
 fn body_lower_reify_branch_body(body: Node) -> Outcome<Node> {
   match body.kind {
     ComputationNode { behavior: Branch } =>
-      match fold(body.children, init: outcome_accepted(value: Empty), f: fn(acc, e) {
+      match fold(body.children, init: outcome_accepted(value: std.algebra.Empty), f: fn(acc, e) {
         match acc {
           Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
           Accepted { value: done, diagnostics: d } =>

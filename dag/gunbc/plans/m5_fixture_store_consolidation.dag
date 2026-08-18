@@ -7,44 +7,44 @@ fn m5_fixture_store_consolidation_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "1. The fork"),
     p(text: "Two seeds each hand-roll a fixture store that answers the *same* question — \"given an operation and its inputs, return the recorded response, fail-closed if absent/stale\":"),
     std.markdown.TableBlock {
-      header: row(cells: [
+      header: gunbc.plans.md_helpers.row(cells: [
         cell(text: "axis"),
         cell(text: "v1 `RecordedFixture` (`src/v1/stage0/src/recorded_fixture.rs`)"),
         cell(text: "v2 `EffectIoFixtureStore` (`src/v2/extdeps/runtimes/v2_effect_io_pure.dag`)"),
       ]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "key"),
           cell(text: "`(operation, input_hash = content_hash(inputs))`"),
           cell(text: "`Symbol` locator — degenerate `^effect_io_pure_default_locator` pin (ignores the `RuntimeValue` arg)"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "key class"),
           cell(text: "**ContentAddressedByValue**"),
           cell(text: "**HandAuthoredString** (fail-open: distinct args silently alias)"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "value"),
           cell(text: "`response: serde_json::Value` (faithful `Value` serialization)"),
           cell(text: "`RuntimeValue`"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "placement"),
           cell(text: "on-disk `\{root\}/\{op_slug\}/\{hash\}.json` — **PerHostFilesystem**"),
           cell(text: "in-process `Map<Symbol, RuntimeValue>` — **InProcess**"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "read verify"),
           cell(text: "stores `inputs`, verifies on lookup (collision safety) — **content_verified_on_read**"),
           cell(text: "none"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "fail-closed"),
           cell(text: "`Missing` / `Stale` / `InputMismatch` / `Expired` / `ResponseDrift` (purity oracle)"),
           cell(text: "miss → rejected; backend mismatch → rejected"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "eviction"),
           cell(text: "`Ttl` (FIXTURE_FRESHNESS_SECS = 30d)"),
           cell(text: "`Never` (drops with eval)"),
@@ -63,41 +63,41 @@ fn m5_fixture_store_consolidation_body() -> List<std.markdown.MarkdownBlock> {
     p(text: "So the fixture store is a *missing pair of `CacheInterfaceFacts` rows + a shared lookup fold*, not new vocabulary. This spike lands the rows; §5 escalates the fold."),
     h3(text: "Fail-closed reason mapping (the §5 win)"),
     std.markdown.TableBlock {
-      header: row(cells: [
+      header: gunbc.plans.md_helpers.row(cells: [
         cell(text: "v1 `FixtureError`"),
         cell(text: "kernel surface"),
       ]),
       alignments: [AlignNone, AlignNone],
       rows: [
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`Missing`"),
           cell(text: "`Miss`"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`Stale` (operation / input_hash mismatch)"),
           cell(text: "`RejectedHit\{ SubjectDigestMismatch \}`"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`InputMismatch` (stored inputs ≠ current — collision)"),
           cell(text: "`RejectedHit\{ ContentDigestMismatch \}`"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`InvalidDigest`"),
           cell(text: "`RejectedHit\{ BackendKeyMalformed \}`"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`Io` / `Json` / `ClockUnavailable`"),
           cell(text: "`RejectedHit\{ BackendUnavailable \}`"),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`Expired` (TTL)"),
           cell(text: "**GAP** — no expiry variant in `CacheRejectReason`; expiry is `eviction: Ttl` but v1 treats it as a *loud refusal*, not a silent evicted-Miss. Needs a `FreshnessExpired` reject reason (or an explicit policy that TTL-expiry is fail-closed)."),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`ResponseDrift` (re-record ≠ stored for same key)"),
           cell(text: "**GAP (write path)** — this is the `WriteSemantics = WriteOnce` purity-oracle violation; the kernel has no write-outcome coproduct yet."),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "`DeserializationMismatch` / `UnknownTag` / `UnreplayableValue`"),
           cell(text: "**GAP (transport faithfulness)** — value (de)serialization faithfulness of the `StructuredArtifact` transport encoding; handler-internal, but worth a typed `transport_encoding`-level reason rather than a stringly reason."),
         ]),

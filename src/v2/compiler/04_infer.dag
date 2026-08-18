@@ -289,7 +289,7 @@ fn inferred_facts_construction(
         grounding: DerivedGrounding { grounding: grounding },
         descent: descent
       },
-      diagnostics: None
+      diagnostics: v2.std.diagnostic.None
     }
   } else {
     outcome_rejected(
@@ -390,7 +390,7 @@ fn lookup_inferred_facts_in_entries(
 }
 
 fn facts_map_from_entries(entries: List<InferredFactsEntry>) -> Outcome<Map<Node, InferredFacts>> {
-  match fold(entries, init: v2.std.diagnostic.Accepted { value: empty_inferred_facts_entry_list(), diagnostics: None }, f: fn(acc, entry) {
+  match fold(entries, init: v2.std.diagnostic.Accepted { value: empty_inferred_facts_entry_list(), diagnostics: v2.std.diagnostic.None }, f: fn(acc, entry) {
     match acc {
       Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
       Accepted { value: ok_entries, diagnostics: d } =>
@@ -437,7 +437,7 @@ fn canonical_grounding_from_inferred_facts(
       } else if canonical_grounding_admits_infer_facts(grounding: g) {
         v2.std.diagnostic.Accepted {
           value: g,
-          diagnostics: None
+          diagnostics: v2.std.diagnostic.None
         }
       } else {
         outcome_rejected(infer_canonical_grounding_incoherent_diagnostic(node: node))
@@ -458,7 +458,7 @@ fn admitted_inferred_facts_entry(node: Node, facts: InferredFacts) -> Outcome<In
   if inferred_facts_cover_node(facts: facts, node: node) {
     v2.std.diagnostic.Accepted {
       value: InferredFactsEntry { node: node, facts: facts },
-      diagnostics: None
+      diagnostics: v2.std.diagnostic.None
     }
   } else {
     outcome_rejected(infer_canonical_grounding_incoherent_diagnostic(node: node))
@@ -724,7 +724,7 @@ fn infer_unify_branch_arm_types(
         Violates { diagnostic: d } => outcome_rejected(d)
         Holds { value: else_type } =>
           if infer_branch_type_atoms_equal(a: then_type, b: else_type) {
-            v2.std.diagnostic.Accepted { value: then_type, diagnostics: None }
+            v2.std.diagnostic.Accepted { value: then_type, diagnostics: v2.std.diagnostic.None }
           } else {
             outcome_rejected(infer_branch_arm_type_mismatch_diagnostic(node: then_node))
           }
@@ -999,7 +999,7 @@ fn infer_loop_body_type_at(target: Node, entries: List<InferredFactsEntry>) -> O
         Holds { value: body_type } =>
           v2.std.diagnostic.Accepted {
             value: body_type,
-            diagnostics: None
+            diagnostics: v2.std.diagnostic.None
           }
       }
   }
@@ -1016,7 +1016,7 @@ fn infer_loop_fixpoint_carrier(
       bind_outcome(
         o: infer_loop_body_type_at(target: first_body, entries: entries),
         f: fn(carrier) {
-          fold(body_targets, init: v2.std.diagnostic.Accepted { value: carrier, diagnostics: None }, f: fn(acc, target) {
+          fold(body_targets, init: v2.std.diagnostic.Accepted { value: carrier, diagnostics: v2.std.diagnostic.None }, f: fn(acc, target) {
             match acc {
               Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
               Accepted { value: c, diagnostics: _ } =>

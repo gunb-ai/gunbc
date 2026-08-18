@@ -139,7 +139,7 @@ data claim_matrix_widening_accepts_siblings_and_wrong_core: v2.std.verification.
 
 test data witness_claim_task_id_surfaces_distinct: Bool = match run_test_claim_assert(
   claim: claim_task_id_surfaces_distinct,
-  actual: v2.std.diagnostic.Accepted { value: derivable_coercion_pass_node(), diagnostics: None },
+  actual: v2.std.diagnostic.Accepted { value: derivable_coercion_pass_node(), diagnostics: v2.std.diagnostic.None },
   at: task_id_api_inhabitant_node()
 ) {
   Pass => true
@@ -151,7 +151,7 @@ test data witness_claim_task_id_surfaces_distinct: Bool = match run_test_claim_a
 
 test data witness_claim_crux_substrate_gap: Bool = match run_test_claim_assert(
   claim: claim_crux_substrate_gap,
-  actual: v2.std.diagnostic.Accepted { value: derivable_coercion_pass_node(), diagnostics: None },
+  actual: v2.std.diagnostic.Accepted { value: derivable_coercion_pass_node(), diagnostics: v2.std.diagnostic.None },
   at: task_id_api_inhabitant_node()
 ) {
   Pass => true
@@ -163,7 +163,7 @@ test data witness_claim_crux_substrate_gap: Bool = match run_test_claim_assert(
 
 test data witness_claim_matrix_widening_accepts_siblings_and_wrong_core: Bool = match run_test_claim_assert(
   claim: claim_matrix_widening_accepts_siblings_and_wrong_core,
-  actual: v2.std.diagnostic.Accepted { value: derivable_coercion_pass_node(), diagnostics: None },
+  actual: v2.std.diagnostic.Accepted { value: derivable_coercion_pass_node(), diagnostics: v2.std.diagnostic.None },
   at: task_id_api_inhabitant_node()
 ) {
   Pass => true

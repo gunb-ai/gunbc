@@ -182,7 +182,7 @@ fn body_lowering_match_first_arm_wires() -> Bool {
 fn body_lowering_match_unnavigable_arm_refuses() -> Bool {
   let unnavigable_arm = node_synthetic(
     kind: v2.std.node.TypeNode { connective: Conj },
-    children: Empty
+    children: std.algebra.Empty
   )
   match body_lower_wire_match_arm_capture(arm_capture: unnavigable_arm) {
     Rejected { diagnostics: d } =>

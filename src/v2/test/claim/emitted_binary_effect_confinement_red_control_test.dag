@@ -43,7 +43,7 @@ test fn emitted_family_runtime_row_gated_admits_rostered_shell_exec_run_family()
 }
 
 test fn emitted_binary_effect_confinement_authority_points_at_host_transport() -> Bool {
-  match construction_justification.class {
+  match v2.lens.emitted_binary_effect_confinement.construction_justification.class {
     WallNow { mechanism: _, authority: authority } =>
       authority.module_path == "v2.std.host_transport"
         && authority.decl_name == "EmittedEffectFamily"

@@ -73,7 +73,7 @@ test fn witness_dispatch_post_binds_param() -> Bool {
 test fn witness_wrong_method_folds_405_with_allowed() -> Bool {
   match serve_select_route(table: probe_table(), method: GET, path: "/dispatch/x") {
     MethodNotAllowed { allowed: ms } =>
-      count(ms) == 1 && any(ms, m => m == POST)
+      count(ms) == 1 && any(ms, m => m == std.types.POST)
     SelectedStatic { route: _ } => false
     SelectedDynamic { handler: _, params: _ } => false
     NoRouteMatched => false

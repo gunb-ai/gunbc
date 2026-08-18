@@ -43,7 +43,7 @@ fn wave1_gate1_normalized_add_resolves_holds() -> Bool {
   match wave1_gate1_normalized_add_module() {
     Absent => false
     Present { value: tree } =>
-      match resolve(tree: tree, lm: dag_language_model()) {
+      match v2.compiler.resolve.resolve(tree: tree, lm: dag_language_model()) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }
@@ -74,7 +74,7 @@ fn wave1_gate1_resolved_add_arrow_transform_holds() -> Bool {
   match wave1_gate1_normalized_add_module() {
     Absent => false
     Present { value: tree } =>
-      match resolve(tree: tree, lm: dag_language_model()) {
+      match v2.compiler.resolve.resolve(tree: tree, lm: dag_language_model()) {
         Accepted { value: resolved, diagnostics: _ } =>
           match wave1_gate1_find_arrow_in_module(root: resolved) {
             Present { value: arrow } =>

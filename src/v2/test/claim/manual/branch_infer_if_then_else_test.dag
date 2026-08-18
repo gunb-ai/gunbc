@@ -13,7 +13,7 @@ fn branch_infer_arm_mismatch_body() -> Node {
 
 test fn branch_infer_bool_cond_accepts_holds() -> Bool {
   match infer(tree: dag_pick_if_body_fixture) {
-    Accepted { value: _, diagnostics: d } => d == None
+    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
     Rejected { diagnostics: _ } => false
   }
 }

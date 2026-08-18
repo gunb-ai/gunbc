@@ -203,7 +203,7 @@ fn sugar_variant_to_disj_edge(variant_node: Node) -> Outcome<v2.std.node.Edge> {
     Present { value: name } =>
       v2.std.diagnostic.Accepted {
         value: v2.std.node.Edge { label: Named { name: name }, target: variant },
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     Absent =>
       v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: variant_node)) }
@@ -227,7 +227,7 @@ fn sugar_variants_to_disj_edges(variants: FreeMonoid<Node>) -> Outcome<FreeMonoi
 fn sugar_fold_coproduct_pipe_chain(captured: Node, shell: Node) -> Outcome<Node> {
   let variants = sugar_all_coproduct_variants(captured: captured)
   if length(xs: variants) < 2 {
-    v2.std.diagnostic.Accepted { value: captured, diagnostics: None }
+    v2.std.diagnostic.Accepted { value: captured, diagnostics: v2.std.diagnostic.None }
   } else {
     match sugar_variants_to_disj_edges(variants: variants) {
       Accepted { value: edges, diagnostics: d } =>
@@ -250,7 +250,7 @@ fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
       if edges_conform(children: folded.children, d: discipline) {
         v2.std.diagnostic.Accepted {
           value: sugar_type_node(connective: connective, children: folded.children, n: n),
-          diagnostics: None
+          diagnostics: v2.std.diagnostic.None
         }
       } else {
         v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
@@ -258,7 +258,7 @@ fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
     SugarUnwrapPositionalChild {} =>
       match sugar_positional_unwrap_child(children: folded.children) {
         Present { value: child } =>
-          v2.std.diagnostic.Accepted { value: child, diagnostics: None }
+          v2.std.diagnostic.Accepted { value: child, diagnostics: v2.std.diagnostic.None }
         Absent =>
           v2.std.diagnostic.Rejected { diagnostics: diagnostics_singleton(d: sugar_malformed_diagnostic(n: n)) }
       }
@@ -272,11 +272,11 @@ fn apply_sugar(rule: SugarRule, n: Node, folded: Node) -> Outcome<Node> {
                 TypeNode { connective: Disj } =>
                   v2.std.diagnostic.Accepted { value: result, diagnostics: d }
                 _ =>
-                  v2.std.diagnostic.Accepted { value: folded, diagnostics: None }
+                  v2.std.diagnostic.Accepted { value: folded, diagnostics: v2.std.diagnostic.None }
               }
           }
         Absent =>
-          v2.std.diagnostic.Accepted { value: folded, diagnostics: None }
+          v2.std.diagnostic.Accepted { value: folded, diagnostics: v2.std.diagnostic.None }
       }
   }
 }

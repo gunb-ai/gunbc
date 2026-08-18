@@ -7,12 +7,12 @@ fn interpreter_kernel_d_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "0. Verdict — pure-eval authority vs pinned host-physics"),
     p(text: "`v1_interpreter.rs` (~6.3k LOC, `HAND_MAINTAINED_STAGE0_FILES`) is a **hybrid**: pure expression evaluation + host-effect dispatch (shell / REST / file / fixture replay / caches). Total dissolution is not one file delete — the seam splits on **decidability**: pure-eval grounds into `v2.compiler.eval` + `emit_host`; host-physics (transports / fixtures / cache backends) is the **terminal irreducible kernel** (seed-shrink-census §6)."),
     std.markdown.TableBlock {
-      header: row(cells: [cell(text: "class"), cell(text: "authority / carrier"), cell(text: "this slice"), cell(text: "follow-up")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "class"), cell(text: "authority / carrier"), cell(text: "this slice"), cell(text: "follow-up")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "pure-eval"), cell(text: "`05_eval.dag` · `emit_host.dag` · `v2_evaluator.dag` · `host_transport.dag` · `host_run.dag`"), cell(text: "`gunbc.interpreter_kernel_model` + `interpreter_kernel_model_witnesses`"), cell(text: "wire `05_emit_rust` pure-eval emit → shrink `v1_interpreter.rs` eval core")]),
-        row(cells: [cell(text: "pinned host-physics"), cell(text: "`recorded_fixture.rs` · `resolved_graph_cache.rs`"), cell(text: "roster + dissolution triggers in model"), cell(text: "collapse onto Materialization kernel (`realize(subject)`); stays HAND until then")]),
-        row(cells: [cell(text: "hybrid remainder"), cell(text: "`v1_interpreter.rs` host-effect + CLI render dispatch"), cell(text: "explicitly NOT pinned as a whole file"), cell(text: "split: eval → GENERATED; host dispatch → pinned submodule or `.dag` transport handlers")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "pure-eval"), cell(text: "`05_eval.dag` · `emit_host.dag` · `v2_evaluator.dag` · `host_transport.dag` · `host_run.dag`"), cell(text: "`gunbc.interpreter_kernel_model` + `interpreter_kernel_model_witnesses`"), cell(text: "wire `05_emit_rust` pure-eval emit → shrink `v1_interpreter.rs` eval core")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "pinned host-physics"), cell(text: "`recorded_fixture.rs` · `resolved_graph_cache.rs`"), cell(text: "roster + dissolution triggers in model"), cell(text: "collapse onto Materialization kernel (`realize(subject)`); stays HAND until then")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "hybrid remainder"), cell(text: "`v1_interpreter.rs` host-effect + CLI render dispatch"), cell(text: "explicitly NOT pinned as a whole file"), cell(text: "split: eval → GENERATED; host dispatch → pinned submodule or `.dag` transport handlers")]),
       ],
     },
     h2(text: "1. Pure-eval emit seam (`emit_host`)"),

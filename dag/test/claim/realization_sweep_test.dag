@@ -21,17 +21,17 @@ fn ks_ingest() -> v2.compiler.source_authority.SourceRootIngest {
     head: ks_read(text: "module ks_dep\n\nfn helper(x: Int) -> Int { x + 1 }\n", id: ^ks_dep_art, path: "src/v2/test/fixture/ks_dep.dag"),
     tail: std.algebra.Cons {
       head: ks_read(text: sweep_entry_source, id: ^ks_entry_art, path: sweep_entry_path),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   }
 }
 
 fn ks_admission() -> v2.compiler.name_resolve.Admission {
   v2.compiler.name_resolve.Admission {
-    subject: v2.compiler.name_resolve.ResolutionSubject { name: std.algebra.Cons { head: ^ks_entry, tail: Empty } },
+    subject: v2.compiler.name_resolve.ResolutionSubject { name: std.algebra.Cons { head: ^ks_entry, tail: std.algebra.Empty } },
     imports: std.algebra.Cons {
-      head: v2.compiler.name_resolve.Import { target: std.algebra.Cons { head: ^ks_dep, tail: Empty }, visibility: ImportVisible },
-      tail: Empty
+      head: v2.compiler.name_resolve.Import { target: std.algebra.Cons { head: ^ks_dep, tail: std.algebra.Empty }, visibility: ImportVisible },
+      tail: std.algebra.Empty
     }
   }
 }

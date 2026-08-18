@@ -27,7 +27,7 @@ fn tailscale_endpoint_value_eq(a: extdeps.tailscale.serve.TailscaleServeRouteSub
 }
 
 fn tailscale_endpoint_ownership(_: extdeps.tailscale.serve.TailscaleServeRouteSubject) -> gunbc.ownership.Ownership? {
-  Present { value: Owned }
+  Present { value: gunbc.ownership.Owned }
 }
 
 fn retired_flattened_serve_flags_key(subject: extdeps.tailscale.serve.TailscaleServeRouteSubject) -> std.types.NonEmptyStr {

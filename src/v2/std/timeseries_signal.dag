@@ -238,7 +238,7 @@ fn time_series_append(
 ) -> TimeSeriesSignal {
   fold_list_right(
     xs: signal,
-    empty: std.algebra.Cons { head: sample, tail: Empty },
+    empty: std.algebra.Cons { head: sample, tail: std.algebra.Empty },
     snoc: fn(acc, item) { std.algebra.Cons { head: item, tail: acc } }
   )
 }
@@ -309,7 +309,7 @@ fn capacitor_fold_step(
           }
           charge_microcoulombs: charge_micro(new_charge)
         }
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }
@@ -323,7 +323,7 @@ fn fold_capacitor_transient(
 ) -> Outcome<CapacitorState> {
   fold_list(
     xs: currents,
-    empty: v2.std.diagnostic.Accepted { value: initial, diagnostics: None },
+    empty: v2.std.diagnostic.Accepted { value: initial, diagnostics: v2.std.diagnostic.None },
     cons: fn(acc, current) {
       match acc {
         Accepted { value: state, diagnostics: _ } =>
@@ -380,7 +380,7 @@ fn inductor_fold_step(
           }
           flux_microwebers: flux_micro(new_flux)
         }
-        diagnostics: None
+        diagnostics: v2.std.diagnostic.None
       }
     Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
   }

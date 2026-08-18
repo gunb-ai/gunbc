@@ -119,7 +119,7 @@ data english_emit_add_receipt: Outcome<Medium<String>> = anchor_english_emit_add
 test fn english_emit_add_prose_holds() -> Bool {
   match english_emit_add_receipt {
     Accepted { value: source, diagnostics: d } =>
-      (source.carried == english_add_fn_source_text) && (d == None)
+      (source.carried == english_add_fn_source_text) && (d == v2.std.diagnostic.None)
     Rejected { diagnostics: _ } => false
   }
 }
@@ -132,7 +132,7 @@ fn english_emit_add_matches_serialize_holds() -> Bool {
     Accepted { value: authority, diagnostics: ad } =>
       match english_emit_add_receipt {
         Accepted { value: source, diagnostics: d } =>
-          (source == authority) && (d == None) && (ad == None)
+          (source == authority) && (d == v2.std.diagnostic.None) && (ad == v2.std.diagnostic.None)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -144,7 +144,7 @@ fn english_emit_add_grammar_inverse_holds() -> Bool {
     target: english_emit_add_target_model,
     emitted: english_emit_add_emitted_root
   ) {
-    Accepted { value: _, diagnostics: d } => d == None
+    Accepted { value: _, diagnostics: d } => d == v2.std.diagnostic.None
     Rejected { diagnostics: _ } => false
   }
 }
@@ -190,7 +190,7 @@ test fn english_emit_add_ingest_round_trip_holds() -> Bool {
           english_emit_add_parse_identity_matches(
             root: tree,
             expected: english_emit_add_emitted_root
-          ) && (d == None)
+          ) && (d == v2.std.diagnostic.None)
         Rejected { diagnostics: _ } => false
       }
   }

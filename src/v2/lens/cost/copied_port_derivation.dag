@@ -28,7 +28,7 @@ fn cost_linear_in_node(cost: SymbolicCost, n: Node) -> Bool {
 fn arrow_domain_param_nodes(arrow: Node) -> List<Node> {
   match arrow.kind {
     TypeNode { connective: Arrow } =>
-      fold(arrow.children, init: Empty, f: fn(acc, e) {
+      fold(arrow.children, init: std.algebra.Empty, f: fn(acc, e) {
         match e.label {
           Positional =>
             match e.target.kind {
@@ -44,12 +44,12 @@ fn arrow_domain_param_nodes(arrow: Node) -> List<Node> {
           Named { name: _ } => acc
         }
       })
-    _ => Empty
+    _ => std.algebra.Empty
   }
 }
 
 fn param_list_reverse_to_forward(xs: List<Node>) -> List<Node> {
-  fold(xs, init: Empty, f: fn(acc, n) { std.algebra.Cons { head: n, tail: acc } })
+  fold(xs, init: std.algebra.Empty, f: fn(acc, n) { std.algebra.Cons { head: n, tail: acc } })
 }
 
 fn int_list_prepend(item: Int, xs: List<Int>) -> List<Int> {
@@ -78,7 +78,7 @@ fn derive_copied_port_index_from_arrow(arrow: Node) -> Optional<Int> {
     Found { target: body } =>
       let params = param_list_reverse_to_forward(xs: arrow_domain_param_nodes(arrow: arrow))
       let body_cost = symbolic_cost_of_node(n: body)
-      let linear_indices = linear_param_indices(cost: body_cost, params: params, idx: 0, acc: Empty)
+      let linear_indices = linear_param_indices(cost: body_cost, params: params, idx: 0, acc: std.algebra.Empty)
       match linear_indices {
         Empty => Absent
         Cons { head: only, tail: Empty } => Present { value: only }

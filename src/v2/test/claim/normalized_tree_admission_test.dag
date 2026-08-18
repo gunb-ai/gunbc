@@ -72,7 +72,7 @@ test fn the_production_retention_producer_is_refused_by_the_door() -> Bool {
 }
 
 fn two_probe_roots() -> FreeMonoid<Node> {
-  std.algebra.Cons { head: probe_shell(), tail: std.algebra.Cons { head: probe_shell(), tail: Empty } }
+  std.algebra.Cons { head: probe_shell(), tail: std.algebra.Cons { head: probe_shell(), tail: std.algebra.Empty } }
 }
 
 test fn plural_admission_does_not_duplicate_shared_diagnostics_RED() -> Bool {

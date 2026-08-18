@@ -37,7 +37,7 @@ data effect_io_eval_roundtrip_node: Node = effect_io_roundtrip_transform(
 )
 
 fn effect_io_eval_allocate_literal(node: Node, _env: v2.std.runtime.EvaluationEnvironment) -> Outcome<v2.std.runtime.RuntimeValue> {
-  v2.std.diagnostic.Accepted { value: effect_io_eval_literal_value(), diagnostics: None }
+  v2.std.diagnostic.Accepted { value: effect_io_eval_literal_value(), diagnostics: v2.std.diagnostic.None }
 }
 
 fn effect_io_eval_reject_primitive(
@@ -77,7 +77,7 @@ fn effect_io_eval_bind_value(
   _value: v2.std.runtime.RuntimeValue,
   env: v2.std.runtime.EvaluationEnvironment
 ) -> Outcome<v2.std.runtime.EvaluationEnvironment> {
-  v2.std.diagnostic.Accepted { value: env, diagnostics: None }
+  v2.std.diagnostic.Accepted { value: env, diagnostics: v2.std.diagnostic.None }
 }
 
 fn effect_io_eval_interpretation() -> v2.std.runtime.InterpretationAlgebra {

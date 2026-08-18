@@ -115,13 +115,13 @@ test fn firmware_classification_reuses_upsert_states_and_refuses_unapproved_upda
     artifact: none,
     update_service: none,
   )
-  srv3.verdict == Drifted
+  srv3.verdict == std.upsert_decision.Drifted
     && match srv3.decision {
       Refuse { reason: _ } => true
       Noop => false
       Apply { plan: _ } => false
     }
-    && srv4.verdict == Converged
+    && srv4.verdict == std.upsert_decision.Converged
     && match srv4.decision {
       Noop => true
       Refuse { reason: _ } => false
@@ -152,7 +152,7 @@ test fn approved_exact_firmware_artifact_builds_a_typed_srv3_update_plan() -> Bo
     artifact: Present { value: fixture_approved_openbmc_3_22_artifact },
     update_service: none,
   )
-  classified.verdict == Drifted
+  classified.verdict == std.upsert_decision.Drifted
     && match classified.decision {
       Apply { plan: plan } =>
         plan.host == srv3_host.identity
@@ -162,7 +162,7 @@ test fn approved_exact_firmware_artifact_builds_a_typed_srv3_update_plan() -> Bo
       Noop => false
       Refuse { reason: _ } => false
     }
-    && without_update_surface.verdict == Drifted
+    && without_update_surface.verdict == std.upsert_decision.Drifted
     && match without_update_surface.decision {
       Refuse { reason: _ } => true
       Noop => false
@@ -760,7 +760,7 @@ test fn desired_curve_with_stale_uninstalled_fan_input_still_builds_apply_plan()
     durability_evidence_construction: Present { value: srv4_bmc_fan_durability_evidence_construction },
     durability_evidence: [],
   )
-  classified.verdict == Drifted
+  classified.verdict == std.upsert_decision.Drifted
     && match classified.decision {
       Apply { plan: _ } => true
       Noop => false
@@ -803,7 +803,7 @@ test fn drifted_srv4_curve_builds_typed_overlay_plan_only_with_exact_projection_
     durability_evidence_construction: Present { value: srv4_bmc_fan_durability_evidence_construction },
     durability_evidence: [],
   )
-  with_storage.verdict == Drifted
+  with_storage.verdict == std.upsert_decision.Drifted
     && match with_storage.decision {
       Apply { plan: plan } =>
         plan.host == srv4_host.identity
@@ -1029,7 +1029,7 @@ test fn semantically_converged_live_digest_mismatch_refuses_noop() -> Bool {
     durability_evidence_construction: Present { value: srv4_bmc_fan_durability_evidence_construction },
     durability_evidence: [],
   )
-  classified.verdict == Drifted
+  classified.verdict == std.upsert_decision.Drifted
     && match classified.decision {
       Apply { plan: _ } => true
       Noop => false
@@ -1050,7 +1050,7 @@ test fn drifted_policy_applies_without_prior_durability_evidence() -> Bool {
     durability_evidence_construction: Absent,
     durability_evidence: [],
   )
-  classified.verdict == Drifted
+  classified.verdict == std.upsert_decision.Drifted
     && match classified.decision {
       Apply { plan: _ } => true
       Noop => false

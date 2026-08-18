@@ -118,7 +118,7 @@ fn wave1_gate1_a1_fn_body_seam_normalize_still_yields_arrow_transform_holds() ->
           match normalize(parse_tree: artifact.tree) {
             Rejected { diagnostics: _ } => false
             Accepted { value: tree, diagnostics: _ } =>
-              match ingested_find_arrow_in_module(root: tree.root) {
+              match v2.compiler.ingested_fixture_arrows.ingested_find_arrow_in_module(root: tree.root) {
                 Absent => false
                 Present { value: arrow } =>
                   match find_arrow_body_child(root: arrow) {

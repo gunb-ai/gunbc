@@ -14,11 +14,11 @@ fn wiring_liveness_preflight_body() -> List<std.markdown.MarkdownBlock> {
     h2(text: "1. The principle — wiring is causal dependence, and it is the cache oracle read backwards"),
     p(text: "A declared input is *wired* iff it **influences the observable output it is declared to feed.** The detector is perturbation-response — the same signal the caching kernel already uses as its purity oracle (DESIGN §6: *byte-identical cached-vs-cold is the purity oracle*). The two are duals on one kernel:"),
     std.markdown.TableBlock {
-      header: row(cells: [cell(text: "reading"), cell(text: "claim"), cell(text: "violation")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "reading"), cell(text: "claim"), cell(text: "violation")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [cell(text: "**purity** (caching)"), cell(text: "*same* input ⇒ *same* output"), cell(text: "output depends on something **outside** its declared inputs (impure key)")]),
-        row(cells: [cell(text: "**liveness** (wiring)"), cell(text: "*different* input ⇒ *different* output"), cell(text: "output depends on **less** than its declared inputs — a declared input is dead")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "**purity** (caching)"), cell(text: "*same* input ⇒ *same* output"), cell(text: "output depends on something **outside** its declared inputs (impure key)")]),
+        gunbc.plans.md_helpers.row(cells: [cell(text: "**liveness** (wiring)"), cell(text: "*different* input ⇒ *different* output"), cell(text: "output depends on **less** than its declared inputs — a declared input is dead")]),
       ],
     },
     p(text: "The cache key **is** the true dependence set. An input present in the declared signature but absent from that set is either (a) a wiring bug — it should matter and doesn't (the auth case), or (b) an over-broad cache key — it shouldn't matter and is keyed anyway. Same content-hash + perturbation machinery, two directions. This is §2-horizontal (*one concept, every breadth*): the wiring oracle is not new infra, it is the purity oracle turned around. (Carrier today: `std.dependency` `DependencyView`/`EffectDependsOn`, already exercised by `src/v2/lens/effect/effect_depends_on.dag`.)"),

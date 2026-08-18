@@ -213,7 +213,7 @@ fn c_translation_unit_spelling(
 fn c_unit_graph_call_graph(units: List<v2.std.compilers.compilation_unit.CompilationUnit>) -> std.graph.CallGraph {
   std.graph.CallGraph {
     edges: units
-      |> fold(init: Empty, f: fn(acc, unit) {
+      |> fold(init: std.algebra.Empty, f: fn(acc, unit) {
         unit.deps
           |> fold(init: acc, f: fn(inner, dep) {
             inner
@@ -1194,7 +1194,7 @@ fn c_produced_one_param_tokens(edge: v2.std.node.Edge) -> Outcome<List<v2.std.co
 
 fn c_produced_params_tail_tokens(params: List<v2.std.node.Edge>) -> Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
-    Empty => outcome_accepted(value: Empty)
+    Empty => outcome_accepted(value: std.algebra.Empty)
     Cons { head: e, tail: rest } =>
       bind_outcome(
         o: c_produced_one_param_tokens(edge: e),
@@ -1217,7 +1217,7 @@ fn c_produced_params_tail_tokens(params: List<v2.std.node.Edge>) -> Outcome<List
 
 fn c_produced_params_tokens(params: List<v2.std.node.Edge>) -> Outcome<List<v2.std.compilers.target_model.ConcreteSyntaxToken>> {
   match params {
-    Empty => outcome_accepted(value: Empty)
+    Empty => outcome_accepted(value: std.algebra.Empty)
     Cons { head: e, tail: rest } =>
       bind_outcome(
         o: c_produced_one_param_tokens(edge: e),

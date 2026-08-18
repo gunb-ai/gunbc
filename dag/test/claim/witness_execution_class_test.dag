@@ -61,7 +61,7 @@ fn census_fixture_rows() -> List<gunbc.witness_execution_class.WitnessClassRow> 
 }
 
 test fn witness_census_partitions_the_population_exactly() -> Bool {
-  let c = census_of(rows: census_fixture_rows())
+  let c = gunbc.witness_execution_class.census_of(rows: census_fixture_rows())
   census_accounts_for_every_row(rows: census_fixture_rows())
     && c.total == 5
     && c.native_required == 1

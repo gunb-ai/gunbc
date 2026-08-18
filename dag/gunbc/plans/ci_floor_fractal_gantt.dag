@@ -35,24 +35,24 @@ fn ci_floor_fractal_gantt_body() -> List<std.markdown.MarkdownBlock> {
     hr(),
     h2(text: "3. Top 3 hot spots post-#5757 baseline"),
     std.markdown.TableBlock {
-      header: row(cells: [cell(text: "Rank"), cell(text: "Hot spot"), cell(text: "Wall impact"), cell(text: "Nature"), cell(text: "Next lever")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "Rank"), cell(text: "Hot spot"), cell(text: "Wall impact"), cell(text: "Nature"), cell(text: "Next lever")]),
       alignments: [AlignNone, AlignNone, AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "1"),
           cell(text: "`rust_monolith_gate_passes` (cargo clippy + fmt + build) — **Batch 2, Group A, runs first**"),
           cell(text: "~530s (~58% of total executor wall)"),
           cell(text: "External process — NOT interpreter. Cargo invocation serialized inside a single claim thread."),
           cell(text: "Split the rust gate into its own CI job (already tracked in ci_humming W2). Parallelize clippy/fmt/build as concurrent cargo invocations. Neither requires interpreter changes."),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "2"),
           cell(text: "Discovery corpus eval (682s serial sum, `width=3`) — **Batch 3 dominant cost**"),
           cell(text: "~229s wall (~25% of total executor wall, ~228s of claim_executor)"),
           cell(text: "Interpreter — per-witness eval at ~675ms average. The top witnesses by self-time are the bottleneck; `GUNBC_INTERP_PROFILE=1` on a per-witness basis (via `claim_batch` tool) would reveal the node-kind breakdown."),
           cell(text: "Increase `spawn_width` beyond 3 (memory-bound today; Budget Tree B5 governs this). Identify the top 10 slow witnesses by wall time using the new `GUNBC_FLOOR_GANTT=1` output and drill into each with `GUNBC_INTERP_PROFILE=1`."),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "3"),
           cell(text: "Batch 1 compile gate resolve (~30-40s) — **Batch 1 resolve cost**"),
           cell(text: "~50s (~5.7% of total executor wall)"),
@@ -64,20 +64,20 @@ fn ci_floor_fractal_gantt_body() -> List<std.markdown.MarkdownBlock> {
     hr(),
     h2(text: "4. Addressability analysis — quick-win vs architectural"),
     std.markdown.TableBlock {
-      header: row(cells: [cell(text: "Hot spot"), cell(text: "Addressable time"), cell(text: "Quick win or architectural?")]),
+      header: gunbc.plans.md_helpers.row(cells: [cell(text: "Hot spot"), cell(text: "Addressable time"), cell(text: "Quick win or architectural?")]),
       alignments: [AlignNone, AlignNone, AlignNone],
       rows: [
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "**#1** rust_monolith gate (cargo clippy)"),
           cell(text: "~530s → ~0s in executor wall (moves to a parallel CI job)"),
           cell(text: "**Quick win** — the split is a CI workflow change (ci_humming W2). The cargo invocation itself is fixed by toolchain/cache; no interpreter work needed. ETA: 1–2 PRs."),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "**#2** discovery corpus eval"),
           cell(text: "~229s → ~100s at `width=6` (halved by doubling parallelism)"),
           cell(text: "**Mixed.** Width increase is quick (Budget Tree B5 governs, deep-otter lane). Per-witness speedup is architectural (depends on which witnesses dominate — needs `GUNBC_INTERP_PROFILE=1` per-witness breakdown via the new `GUNBC_FLOOR_GANTT=1` output + drill-down)."),
         ]),
-        row(cells: [
+        gunbc.plans.md_helpers.row(cells: [
           cell(text: "**#3** compile-gate cold resolve"),
           cell(text: "~30-40s → ~0s per run (cached after first)"),
           cell(text: "**Architectural** — requires the resolve-cost caching lane (#4867 Realization) to land a content-addressed resolved-graph cache. Medium-term (the lane is in progress)."),
