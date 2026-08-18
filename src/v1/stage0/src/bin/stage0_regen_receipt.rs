@@ -91,26 +91,47 @@ fn run() -> Result<(), String> {
     let manifest_path = candidate_dir.join("roster_manifest.txt");
     let pass1 = run_regen_emit_fresh(&regen_bin, &workspace, &candidate_dir, &manifest_path, true)?;
     let candidate_src = candidate_dir.join("src");
-    let changed_paths = changed_generated_paths(&committed_src, &candidate_src, &generated_files);
+    let changed_paths = if candidate_src.is_dir() {
+        changed_generated_paths(&committed_src, &candidate_src, &generated_files)?
+    } else {
+        Vec::new()
+    };
     let first_generation_equal = pass1.success && changed_paths.is_empty();
     let committed_generated_digest = generated_tree_digest(&committed_src, &generated_files)?;
-    let candidate_generated_digest = generated_tree_digest(&candidate_src, &generated_files)?;
+    let candidate_generated_digest = if candidate_src.is_dir() {
+        generated_tree_digest(&candidate_src, &generated_files)?
+    } else {
+        String::from("fnv1a64:0000000000000000")
+    };
 
-    let pass2_dir = workspace.join("target/stage0-regen-fixed-point");
-    let _ = fs::remove_dir_all(&pass2_dir);
-    let rebuilt_regen =
-        build_regen_from_staged_candidate(&workspace, &candidate_src, &generated_files)?;
-    let pass2 = run_regen_emit_fresh(
-        &rebuilt_regen,
-        &workspace,
-        &pass2_dir,
-        &pass2_dir.join("roster_manifest.txt"),
-        false,
-    )?;
-    let pass2_src = pass2_dir.join("src");
-    let fixed_point_equal = pass2.success
-        && generated_tree_digest(&candidate_src, &generated_files)?
-            == generated_tree_digest(&pass2_src, &generated_files)?;
+    let mut fixed_point_equal = false;
+    let fixed_point_error = if first_generation_equal {
+        let pass2_dir = workspace.join("target/stage0-regen-fixed-point");
+        let _ = fs::remove_dir_all(&pass2_dir);
+        match build_regen_from_staged_candidate(&workspace, &candidate_src, &generated_files) {
+            Ok(rebuilt_regen) => {
+                let pass2 = run_regen_emit_fresh(
+                    &rebuilt_regen,
+                    &workspace,
+                    &pass2_dir,
+                    &pass2_dir.join("roster_manifest.txt"),
+                    false,
+                )?;
+                let pass2_src = pass2_dir.join("src");
+                fixed_point_equal = pass2.success
+                    && generated_tree_digest(&candidate_src, &generated_files)?
+                        == generated_tree_digest(&pass2_src, &generated_files)?;
+                if fixed_point_equal {
+                    None
+                } else {
+                    Some("re-emit after staged rebuild did not reproduce candidate".to_string())
+                }
+            }
+            Err(message) => Some(message),
+        }
+    } else {
+        None
+    };
 
     let receipt = RegenReceipt {
         schema: RECEIPT_SCHEMA,
@@ -130,23 +151,26 @@ fn run() -> Result<(), String> {
         changed_paths.len()
     );
     if !first_generation_equal {
+        let detail = if !pass1.success && !pass1.detail.is_empty() {
+            format!("; regen_stage0: {}", pass1.detail)
+        } else {
+            String::new()
+        };
         return Err(format!(
-            "stage0 regen drift: committed seed differs from fresh self-compile ({} path(s)): {}",
+            "stage0 regen drift: committed seed differs from fresh self-compile ({} path(s)): {}{detail}",
             changed_paths.len(),
             changed_paths.join(", ")
         ));
     }
-    if !fixed_point_equal {
-        return Err(
-            "stage0 regen fixed-point check failed: re-emit after rebuild did not reproduce candidate"
-                .to_string(),
-        );
+    if let Some(message) = fixed_point_error {
+        return Err(format!("stage0 regen fixed-point check failed: {message}"));
     }
     Ok(())
 }
 
 struct RegenEmitOutcome {
     success: bool,
+    detail: String,
 }
 
 fn default_regen_bin() -> PathBuf {
@@ -227,18 +251,20 @@ fn changed_generated_paths(
     committed_src: &Path,
     candidate_src: &Path,
     file_names: &[String],
-) -> Vec<String> {
+) -> Result<Vec<String>, String> {
     let mut changed = Vec::new();
     for file_name in file_names {
         let committed = committed_src.join(file_name);
         let candidate = candidate_src.join(file_name);
-        let committed_text = fs::read_to_string(&committed).unwrap_or_default();
-        let candidate_text = fs::read_to_string(&candidate).unwrap_or_default();
+        let committed_text = fs::read_to_string(&committed)
+            .map_err(|e| format!("read committed generated file {}: {e}", committed.display()))?;
+        let candidate_text = fs::read_to_string(&candidate)
+            .map_err(|e| format!("read candidate generated file {}: {e}", candidate.display()))?;
         if committed_text != candidate_text {
             changed.push(file_name.clone());
         }
     }
-    changed
+    Ok(changed)
 }
 
 fn run_regen_emit_fresh(
@@ -270,8 +296,20 @@ fn run_regen_emit_fresh(
     if !stderr.is_empty() {
         eprint!("{stderr}");
     }
+    if !output.status.success() {
+        let detail = if stderr.is_empty() {
+            stdout.trim().to_string()
+        } else {
+            stderr.trim().to_string()
+        };
+        return Ok(RegenEmitOutcome {
+            success: false,
+            detail,
+        });
+    }
     Ok(RegenEmitOutcome {
-        success: output.status.success(),
+        success: true,
+        detail: String::new(),
     })
 }
 

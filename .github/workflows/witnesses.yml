@@ -33,7 +33,7 @@ jobs:
           "$ROOT/target/release/claim_executor" --required-floor --source-root "$ROOT/dag" --source-root "$ROOT/src/v2"
   stage0_regen:
     runs-on: [self-hosted, linux, arm64]
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -68,7 +68,7 @@ jobs:
           exit 1
           fi
           "$ROOT/target/release/stage0_regen_receipt" --candidate-dir "target/stage0-regen-candidate" --receipt "target/stage0-regen-receipt.json"
-        timeout-minutes: 15
+        timeout-minutes: 25
       - name: Upload stage0 regen candidate artifact
         uses: actions/upload-artifact@v4
         with:

@@ -2,7 +2,7 @@ module gunbc.regen_receipt
 
 import std.types { String, Int, List, Bool }
 
-data regen_receipt_note: String = "THE TYPED RECEIPT FOR A NON-MUTATING STAGE0 REGEN VERIFY RUN. regen_stage0 also writes a JSON bootstrap timing file on disk; that artifact is a host-side convenience, not this authority. The host binary stage0_regen_receipt materializes this carrier at runtime: it performs main_wet (in CI, as a separate preceding step), first-generation emit-fresh against the committed seed, rebuilds regen_stage0 from the candidate crate, re-emits to prove fixed-point stability, and writes every field below. first_generation_equal and fixed_point_equal are DISTINCT questions and must never collapse."
+data regen_receipt_note: String = "THE TYPED RECEIPT FOR A NON-MUTATING STAGE0 REGEN VERIFY RUN. regen_stage0 also writes a JSON bootstrap timing file on disk; that artifact is a host-side convenience, not this authority. The host binary stage0_regen_receipt materializes this carrier at runtime: main_wet runs in CI as a preceding step; pass 1 is emit-fresh against the committed seed; pass 2 rebuilds regen_stage0 from a staged copy of src/v1/stage0 with candidate generated files overlaid, then re-emits to prove fixed-point stability. first_generation_equal and fixed_point_equal are DISTINCT questions and must never collapse. The receipt is written before exit even on failure so a later healer can consume the candidate artifact."
 
 type RegenReceipt {
   commit_sha: String

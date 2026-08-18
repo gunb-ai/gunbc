@@ -185,9 +185,12 @@ fn witness_floor_run_step() -> Step {
 // RESTORATION TRIGGER: the first run that completes this fold. Its wall time is the real
 // measurement, and this constant is replaced by one derived from it -- at which point this
 // note dissolves with the provisional bound it explains.
-data stage0_regen_job_timeout_minutes: Int = 30
+data stage0_regen_job_timeout_minutes: Int = 45
 
-data stage0_regen_verify_step_timeout_minutes: Int = 15
+// Measured locally (611fd027708, CTRL_BUILD_BYPASS_SHIMS=1): stage0_regen_receipt alone
+// ~9.1 min wall; with main_wet + tool build the job needs headroom above the old single-pass
+// 15-minute step budget.
+data stage0_regen_verify_step_timeout_minutes: Int = 25
 
 fn stage0_regen_build_script() -> String {
   concat(
