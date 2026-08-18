@@ -3664,7 +3664,17 @@ fn regen_build_module_index(
 /// (the import-resolution index). Single authority for both `regen_stage0` and the
 /// regen affected-set skip witness.
 pub fn regen_source_roots(workspace: &Path) -> Vec<PathBuf> {
-    vec![workspace.join("src/v1"), workspace.join("dag")]
+    // src/v2 is here because dag/ modules legitimately reference v2 ones -- with
+    // imports gone, a bare-name closure follows those references and reaches
+    // modules this root is the only one that can supply. Omitting it does not
+    // narrow the closure, it makes the same closure unresolvable: a v2 reference
+    // in a dag/ file reported `undefined variable 'v2'` under regen while the
+    // floor, whose roots are dag and src/v2, resolved the identical line.
+    vec![
+        workspace.join("src/v1"),
+        workspace.join("dag"),
+        workspace.join("src/v2"),
+    ]
 }
 
 /// Every `.dag` source `regen_stage0` reads to emit the stage0 seed: all `src/v1/**.dag`
