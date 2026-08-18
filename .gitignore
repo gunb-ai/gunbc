@@ -112,6 +112,7 @@ out.txt
 # Python is used only for local dev tooling; never committed to the .dag/.rs substrate
 *.py
 !docs/plans/witness-subject-execution-audit.py
+!docs/probes/e0369_b1_operator_classify.py
 
 # --- CPython bytecode cache (PEP 3147) [cited: python.org/peps/pep-3147] ---
 __pycache__/
@@ -130,3 +131,7 @@ src/v2/test/claim/manual/sg2_scratch_probe.dag
 # Regenerable; not committed. Whitelist: ci.yml, .gitignore, .md docs (ROADMAP.md, DESIGN.md, docs/plans/).
 /.github/fleet-runner-deploy.manifest
 /provisioning/srv3/user-data
+
+# tools/ carries executable instruments that MUST be reviewable; the blanket
+# *.py above silently swallowed one and a commit shipped claiming it existed.
+!tools/**/*.py

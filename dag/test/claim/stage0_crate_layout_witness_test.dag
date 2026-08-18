@@ -1,32 +1,34 @@
 module test.claim.stage0_crate_layout_witness
 
 
-test fn w_hand_maintained_stage0_filenames_include_self_emitted() -> Bool {
-  if v2.compiler.self_host.frontier.compiler_frontier_emitter_produced_count() == 0 {
-    true
-  } else {
-    generated_stage0_filenames
-      |> any(f => f == "v2_compiler_use_site_verdict.rs")
-      && generated_stage0_filenames
-        |> any(f => f == "v2_compiler_parse_engine_hooks.rs")
-      && generated_stage0_filenames
-        |> any(f => f == "v2_compiler_discovery_enumeration.rs")
-  }
-}
+// Two witnesses were deleted here with the self-host frontier roster, and both
+// were green by construction rather than by evidence.
+//
+// w_hand_maintained_stage0_filenames_include_self_emitted opened with
+// `if compiler_frontier_emitter_produced_count() == 0 { true }`. That count was
+// zero at every commit the witness ever ran under, so the three filename
+// assertions inside the else arm had never been evaluated — the witness
+// reported a pass without testing anything.
+//
+// w_self_emitted_derived_count asserted that the emitter-produced basename list
+// had the same length as the emitter-produced count. Both sides were derived
+// from the same empty roster projection, so it compared zero against zero and
+// could not fail while the roster held no EmitterProduced row.
+//
+// Neither is retired as a claim someone should re-establish elsewhere: their
+// subject was the roster's promotion state, and the roster is gone. The two
+// witnesses below are the ones that were doing work — they hold the committed
+// generated artifact byte-for-byte against the registration rows it derives
+// from, which is a live drift wall independent of self-host progress.
 
 test fn w_generated_stage0_filenames_match_frontier() -> Bool {
-  generated_stage0_filenames.length() == v2.compiler.self_host.frontier.hand_maintained_stage0_filenames().length()
+  generated_stage0_filenames.length() == hand_maintained_stage0_filenames().length()
     && generated_stage0_filenames
-      |> all(f => v2.compiler.self_host.frontier.hand_maintained_stage0_filenames() |> any(g => g == f))
+      |> all(f => hand_maintained_stage0_filenames() |> any(g => g == f))
 }
 
 test fn w_generated_stage0_dirs_match_frontier() -> Bool {
-  generated_stage0_dirs.length() == v2.compiler.self_host.frontier.hand_maintained_stage0_dirs().length()
+  generated_stage0_dirs.length() == hand_maintained_stage0_dirs().length()
     && generated_stage0_dirs
-      |> all(d => v2.compiler.self_host.frontier.hand_maintained_stage0_dirs() |> any(g => g == d))
+      |> all(d => hand_maintained_stage0_dirs() |> any(g => g == d))
 }
-
-test fn w_self_emitted_derived_count() -> Bool {
-  v2.compiler.self_host.frontier.compiler_frontier_emitter_produced_stage0_mod_basenames().length() == v2.compiler.self_host.frontier.compiler_frontier_emitter_produced_count()
-}
-

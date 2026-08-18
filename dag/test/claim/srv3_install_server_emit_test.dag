@@ -1,7 +1,7 @@
 module test.claim.srv3_install_server_emit
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn srv3_dnsmasq_is_proxy_dhcp_uefi_http_boot() -> Bool {
   let conf = install_server_dnsmasq_conf(spec: srv3_install_server_spec)
@@ -41,4 +41,11 @@ test fn rfc4578_client_arch_mapping_is_grounded() -> Bool {
       Present { value: _ } => false
       Absent => true
     }
+}
+
+// Local since the falsifier witness that used to declare it was deleted with the CI wipe
+// (2026-08-15). One line over one builtin: a cross-test import for this is a dependency on
+// another witness's incidental helper, not on a shared authority.
+fn string_contains(s: String, pattern: String) -> Bool {
+  s.contains(pattern)
 }

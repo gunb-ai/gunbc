@@ -141,7 +141,7 @@ fn declarations_named(
 
 fn index_entry_for_occurrence(
   transport: OccurrenceTransport,
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> OccurrenceIndexEntry? {
   fold(
     transport.index.entries,
@@ -161,7 +161,7 @@ fn index_entry_for_occurrence(
 fn occurrence_id_for_authored_name(
   transport: OccurrenceTransport,
   name: String
-) -> OccurrenceId? {
+) -> std.occurrence_identity.OccurrenceId? {
   match fold(
     transport.index.entries,
     init: none,

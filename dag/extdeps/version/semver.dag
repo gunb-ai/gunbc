@@ -25,7 +25,7 @@ type SemVerVersion {
 }
 
 fn semver_compare_non_negative_int(a: std.integer.NonNegativeInt, b: std.integer.NonNegativeInt) -> Ordering {
-  nat_compare(a: a, b: b)
+  std.nat.nat_compare(a: a, b: b)
 }
 
 fn semver_compare_identifier(a: SemVerIdentifier, b: SemVerIdentifier) -> Ordering {

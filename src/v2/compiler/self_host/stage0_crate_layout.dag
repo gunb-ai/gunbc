@@ -1,0 +1,211 @@
+module v2.compiler.self_host.stage0_crate_layout
+
+
+// The stage0 crate's module layout, authored as registration rows.
+//
+// This module was carved out of v2.compiler.self_host.frontier when the
+// 27-row self-host frontier roster was deleted (see
+// stage0_crate_layout_carve_out_note). Crate layout is a separate concept
+// from self-host progress; it lived in the frontier module only because the
+// roster was once expected to contribute basenames to it, and by the time of
+// the deletion it contributed none.
+
+data stage0_crate_layout_carve_out_note: String = "CARVED OUT of v2.compiler.self_host.frontier at that module's deletion, and the carve-out is smaller than the old wiring because the roster term was provably empty. hand_maintained_pub_mod_basenames formerly appended compiler_frontier_emitter_produced_stage0_mod_basenames(), a fold over the roster admitting only EmitterProduced rows. All 27 roster rows were SeedRetained, so that fold returned the empty list at every call — the roster contributed nothing to crate layout on the day it was deleted, and dropping the term changes no emitted byte. The same argument retires hand_maintained_stage0_filenames' roster term and compiler_frontier_crate_layout_holds, whose one non-trivial conjunct counted EmitterProduced basenames against a baseline of zero. What survives here is what actually produced bytes: the intrinsic, scaffold and support-dir registration rows and their pub-mod / filename / dir projections."
+
+type SeedRetainedIntrinsicRegistration {
+  basename: String
+  has_pub_mod: Bool
+  is_dir: Bool
+}
+
+type SeedRetainedScaffoldRegistration {
+  basename: String
+}
+
+type SeedRetainedSupportDirRegistration {
+  basename: String
+}
+
+data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistration> = [
+  SeedRetainedIntrinsicRegistration { basename: "v1_interpreter", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "bounded_shell_host_drain", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "ci_control_plane", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "cli_run", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "coproduct_reflection", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "data_initializer_identity", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "resolved_graph_cache", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "shared_typecheck_store", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "source_closure", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "recorded_fixture", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "main", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "phase_profile", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "pre_push", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "census_exclude_derive", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "derived_realization_schedule", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "memory_governor", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "std_lens_verdict", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "module_path_index", has_pub_mod: true, is_dir: true },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_body_producer", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_normalize", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_target_carriers", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_discovery_enumeration", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_parse_engine_hooks", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_use_site_verdict", has_pub_mod: false, is_dir: false }
+]
+
+data data_initializer_identity_seed_retained_note: String = "SeedRetained hand-Rust for resolved data-initializer projection marshaling (decl_facts initializer identity lane, PR #7924). Reason: marshal requires InterpContext typechecked subjects, inferred Node stamps, and owning type-item lookup not yet modeled in .dag. Migration trigger: v2.std.data_initializer_identity projection carriers self-emit and coproduct_reflection routes through the modeled marshal surface; then this module deletes with its SeedRetainedIntrinsicRegistration row. Frontier row schema lacks reason/trigger fields — this note is the counted scaffold until the schema lands."
+
+data seed_retained_support_dir_registrations: List<SeedRetainedSupportDirRegistration> = [
+  SeedRetainedSupportDirRegistration { basename: "cli_run" }
+]
+
+data seed_retained_quarantine_scaffold_stage0_files_note: String = "Review 44472: six quarantine modules (SeedRetained, emitter_produced_baseline=0) retain emitted .rs on disk for wet re-flip without pub mod — listed in HAND_MAINTAINED_STAGE0_FILES (has_pub_mod: false) so crate layout authority matches filesystem. Dissolve-on: witness-realization enables EmitterProduced and rows return to generated pub mod roster."
+data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration> = [
+  SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_algebra" },
+  SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_collection" },
+  SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_node" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_resolve" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_partition" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_tokenize" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_infer" },
+  SeedRetainedScaffoldRegistration { basename: "v1_interpreter_dispatch_generated" }
+]
+
+fn intrinsic_pub_mod_basename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
+  if row.has_pub_mod {
+    [row.basename]
+  } else {
+    []
+  }
+}
+
+fn intrinsic_stage0_filename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
+  if row.is_dir {
+    []
+  } else {
+    [concat(row.basename, ".rs")]
+  }
+}
+
+fn intrinsic_stage0_dir_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
+  if row.is_dir {
+    [row.basename]
+  } else {
+    []
+  }
+}
+
+fn seed_retained_intrinsic_pub_mod_basenames() -> List<String> {
+  fold(
+    seed_retained_intrinsic_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, intrinsic_pub_mod_basename_from_row(row: row))
+    }
+  )
+}
+
+fn seed_retained_intrinsic_stage0_files() -> List<String> {
+  fold(
+    seed_retained_intrinsic_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, intrinsic_stage0_filename_from_row(row: row))
+    }
+  )
+}
+
+fn seed_retained_scaffold_pub_mod_basenames() -> List<String> {
+  fold(
+    seed_retained_scaffold_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, [row.basename])
+    }
+  )
+}
+
+fn seed_retained_scaffold_stage0_files() -> List<String> {
+  fold(
+    seed_retained_scaffold_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, [concat(row.basename, ".rs")])
+    }
+  )
+}
+
+fn seed_retained_support_stage0_dirs() -> List<String> {
+  fold(
+    seed_retained_support_dir_registrations,
+    init: [],
+    f: fn(acc, row) {
+      concat(acc, [row.basename])
+    }
+  )
+}
+
+fn hand_maintained_stage0_dirs() -> List<String> {
+  concat(
+    fold(
+      seed_retained_intrinsic_registrations,
+      init: [],
+      f: fn(acc, row) {
+        concat(acc, intrinsic_stage0_dir_from_row(row: row))
+      }
+    ),
+    seed_retained_support_stage0_dirs()
+  )
+}
+
+fn basename_to_pub_mod_decl(basename: String) -> String {
+  concat("pub mod ", basename, ";")
+}
+
+fn dispatch_generated_macro_use_pub_mod_decl() -> String {
+  "#[macro_use]\npub mod v1_interpreter_dispatch_generated;"
+}
+
+fn pub_mod_decl_lines_for_basename(basename: String) -> List<String> {
+  if basename == "v1_interpreter" {
+  [
+    dispatch_generated_macro_use_pub_mod_decl(),
+    basename_to_pub_mod_decl(basename: basename),
+  ]
+  } else if basename == "v1_interpreter_dispatch_generated" {
+    []
+  } else {
+    [basename_to_pub_mod_decl(basename: basename)]
+  }
+}
+
+fn format_pub_mod_declarations(basenames: List<String>) -> String {
+  let lines = basenames |> flat_map(basename => pub_mod_decl_lines_for_basename(basename: basename))
+  concat("\n", lines |> join(separator: "\n"))
+}
+
+fn basename_to_stage0_filename(basename: String) -> String {
+  concat(basename, ".rs")
+}
+
+fn basenames_to_stage0_filenames(basenames: List<String>) -> List<String> {
+  basenames |> map(basename_to_stage0_filename)
+}
+
+data stage0_crate_layout_arity_note: String = "These three keep their zero-arity shape deliberately. Their caller is generated_artifact_emit.dag's ~18-variant dispatch, one match whose every arm is a zero-arg generator returning String; giving them a parameter would force seventeen unrelated generators to accept an argument they cannot use. Changing their arity broke this lane once: dag/gunbc and dag/test/claim callers compile CLEAN at a stale arity because .dag does not arity-check these cross-module sites, so the breakage surfaces only at run time."
+
+fn hand_maintained_pub_mod_basenames() -> List<String> {
+  concat(seed_retained_intrinsic_pub_mod_basenames(), seed_retained_scaffold_pub_mod_basenames())
+}
+
+fn emit_hand_maintained_pub_mod_block() -> String {
+  format_pub_mod_declarations(basenames: hand_maintained_pub_mod_basenames())
+}
+
+fn hand_maintained_stage0_filenames() -> List<String> {
+  concat(seed_retained_intrinsic_stage0_files(), seed_retained_scaffold_stage0_files())
+}
+
+data construction_justification: ConstructionJustification = ConstructionJustification {
+  class: WallAfterGrounding { dissolves_to: RealizationDispatch }
+}

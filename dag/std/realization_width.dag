@@ -64,7 +64,7 @@ fn measure_max(a: ByteSize, b: ByteSize) -> ByteSize {
 }
 
 fn memory_bounded_shard_count(memory_budget: ByteSize, per_shard_peak: ByteSize) -> Int {
-  nat_max(
+  std.nat.nat_max(
     a: memory_bounded_fit_count(budget: memory_budget, unit_peak: per_shard_peak, reserved: byte_size(0)),
     b: 1
   )

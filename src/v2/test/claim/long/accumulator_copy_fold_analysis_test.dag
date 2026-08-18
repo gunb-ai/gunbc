@@ -1,6 +1,5 @@
 module v2.test.long.accumulator_copy_fold_analysis
 
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 data quadratic_snippet: String = "module quad\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { list_append(left: acc, right: x) })\n}\n"
@@ -174,7 +173,7 @@ fn edge_list_prepend(item: Edge, xs: List<Edge>) -> List<Edge> {
 }
 
 fn no_edges() -> List<Edge> {
-  Empty
+  std.algebra.Empty
 }
 
 fn opaque_head_node() -> Node {

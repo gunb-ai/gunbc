@@ -38,14 +38,22 @@ fn subterm_at_ambiguous_duplicate_name_claim_holds() -> Bool {
   }
 }
 
-fn subterm_at_ambiguous_duplicate_name_claim_rhs() -> Bool {
-  subterm_at_ambiguous_duplicate_name_claim_holds()
+fn subterm_at_ambiguous_duplicate_name_claim_rhs() -> Node {
+  if subterm_at_ambiguous_duplicate_name_claim_holds() {
+    ambiguous_duplicate_name_root
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }
+  }
 }
 
 data claim_subterm_at_ambiguous_duplicate_name: TestClaim = EqualsClaim {
   label: "lens_application/subterm_at_ambiguous_duplicate_name: duplicate named edge rejects",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: subterm_at_ambiguous_duplicate_name_claim_rhs(),
-  rhs: true,
+  lhs: ambiguous_duplicate_name_root,
+  rhs: subterm_at_ambiguous_duplicate_name_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

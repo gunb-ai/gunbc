@@ -11,7 +11,7 @@ type SourceIntegrationProposition
   = SourceBindingCaptured
   | SourceBindingAdmissible
 
-type SourceIntegrationClaim = Claim<OccurrenceBinding<OccurrenceId>, DagSourceReadWitness, SourceIntegrationProposition, SyntaxSpec, RunKey>
+type SourceIntegrationClaim = Claim<OccurrenceBinding<std.occurrence_identity.OccurrenceId>, DagSourceReadWitness, SourceIntegrationProposition, SyntaxSpec, RunKey>
 
 type SourceIntegrationEvidenceLink = EvidenceLink<SourceBindingFact, SourceIntegrationClaim, SyntaxSpec, SourceIntegrationProposition, ReadBackProbe>
 

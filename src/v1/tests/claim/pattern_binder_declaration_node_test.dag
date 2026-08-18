@@ -69,7 +69,7 @@ fn transport_fixture_span() -> std.types.SourceSpan {
 }
 
 fn transport_fixture_path(
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> OccurrenceContainmentPath {
   OccurrenceContainmentPath {
     ancestors: [],
@@ -78,7 +78,7 @@ fn transport_fixture_path(
 }
 
 fn transport_fixture_index_entry(
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> OccurrenceIndexEntry {
   OccurrenceIndexEntry {
     projection: OccurrenceProjection {
@@ -91,7 +91,7 @@ fn transport_fixture_index_entry(
 }
 
 fn transport_fixture_declaration(
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> DeclarationOccurrence {
   DeclarationOccurrence {
     occurrence: occurrence,
@@ -102,7 +102,7 @@ fn transport_fixture_declaration(
 }
 
 fn transport_fixture_reference(
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> ReferenceOccurrence {
   ReferenceOccurrence {
     occurrence: occurrence,
@@ -114,7 +114,7 @@ fn transport_fixture_reference(
 
 fn occurrence_index_has_name(
   index: OccurrenceIndex,
-  occurrence: OccurrenceId,
+  occurrence: std.occurrence_identity.OccurrenceId,
   name: String
 ) -> Bool {
   fold(
@@ -391,7 +391,7 @@ test fn w_production_frontend_accepts_valid_occurrence_transport() -> Bool {
 }
 
 test fn w_production_frontend_refuses_missing_occurrence_identity() -> Bool {
-  let occurrence = OccurrenceId { value: 17 }
+  let occurrence = std.occurrence_identity.OccurrenceId { value: 17 }
   let result = resolve_frontend_occurrence_transport(
     module_inputs: [],
     source_indices: empty_map(),
@@ -419,7 +419,7 @@ test fn w_production_frontend_refuses_missing_occurrence_identity() -> Bool {
 }
 
 test fn w_production_frontend_refuses_duplicate_occurrence_identity() -> Bool {
-  let occurrence = OccurrenceId { value: 23 }
+  let occurrence = std.occurrence_identity.OccurrenceId { value: 23 }
   let entry = transport_fixture_index_entry(occurrence: occurrence)
   let result = resolve_frontend_occurrence_transport(
     module_inputs: [],
@@ -451,7 +451,7 @@ test fn w_production_frontend_refuses_duplicate_occurrence_identity() -> Bool {
 }
 
 test fn w_production_frontend_refuses_wrong_occurrence_role() -> Bool {
-  let occurrence = OccurrenceId { value: 29 }
+  let occurrence = std.occurrence_identity.OccurrenceId { value: 29 }
   let result = resolve_frontend_occurrence_transport(
     module_inputs: [],
     source_indices: empty_map(),
@@ -490,8 +490,8 @@ test fn w_production_frontend_refuses_wrong_occurrence_role() -> Bool {
 }
 
 test fn w_production_frontend_refuses_index_terminal_mismatch() -> Bool {
-  let occurrence = OccurrenceId { value: 31 }
-  let mismatched_terminal = OccurrenceId { value: 32 }
+  let occurrence = std.occurrence_identity.OccurrenceId { value: 31 }
+  let mismatched_terminal = std.occurrence_identity.OccurrenceId { value: 32 }
   let entry = transport_fixture_index_entry(occurrence: occurrence)
   let result = resolve_frontend_occurrence_transport(
     module_inputs: [],
@@ -530,8 +530,8 @@ test fn w_production_frontend_refuses_index_terminal_mismatch() -> Bool {
 }
 
 test fn w_production_frontend_refuses_ancestor_path_mismatch() -> Bool {
-  let occurrence = OccurrenceId { value: 33 }
-  let ancestor = OccurrenceId { value: 34 }
+  let occurrence = std.occurrence_identity.OccurrenceId { value: 33 }
+  let ancestor = std.occurrence_identity.OccurrenceId { value: 34 }
   let declaration = transport_fixture_declaration(occurrence: occurrence)
   let result = resolve_frontend_occurrence_transport(
     module_inputs: [],
@@ -575,7 +575,7 @@ test fn w_production_frontend_refuses_ancestor_path_mismatch() -> Bool {
 }
 
 test fn w_production_frontend_refuses_duplicate_declaration_rows() -> Bool {
-  let occurrence = OccurrenceId { value: 35 }
+  let occurrence = std.occurrence_identity.OccurrenceId { value: 35 }
   let declaration = transport_fixture_declaration(occurrence: occurrence)
   let result = resolve_frontend_occurrence_transport(
     module_inputs: [],
@@ -609,7 +609,7 @@ test fn w_production_frontend_refuses_duplicate_declaration_rows() -> Bool {
 }
 
 test fn w_production_frontend_refuses_duplicate_reference_rows() -> Bool {
-  let occurrence = OccurrenceId { value: 36 }
+  let occurrence = std.occurrence_identity.OccurrenceId { value: 36 }
   let reference = transport_fixture_reference(occurrence: occurrence)
   let result = resolve_frontend_occurrence_transport(
     module_inputs: [],

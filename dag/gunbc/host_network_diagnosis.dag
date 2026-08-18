@@ -15,7 +15,7 @@ fn diagnose_host_network(
   observed: InterfaceObservation,
 ) -> HostNetworkDiagnosis {
   match config {
-    Absent =>
+    std.upsert_decision.Absent =>
       NetworkConfigAbsent {
         detail: "no netplan configuration present for this host",
       }
@@ -114,8 +114,8 @@ data network_axis_cell_note: String = "What makes this fold a MECHANISM rather t
 fn network_diagnosis_verdict(d: HostNetworkDiagnosis) -> ObservationVerdict {
   match d {
     ConfiguredLinkPresent { interface: _ } => Converged
-    ConfiguredLinkAbsent { interface: _, mac: _ } => Drifted
-    NetworkConfigAbsent { detail: _ } => Drifted
+    ConfiguredLinkAbsent { interface: _, mac: _ } => std.upsert_decision.Drifted
+    NetworkConfigAbsent { detail: _ } => std.upsert_decision.Drifted
     LinkStateUnobserved { interface: _ } => UnknownRefused
   }
 }

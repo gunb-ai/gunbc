@@ -891,14 +891,14 @@ fn is_conj_with_children(n: Node) -> Bool {
 
 fn child_inferred_or_empty(ch: Node) -> Node {
   match ch.inferred {
-    Present { value: Resolved { node: rt } } => rt
+    Present { value: v1.std.core.Resolved { node: rt } } => rt
     _ => error_type
   }
 }
 
 fn node_inferred_to_outputs(rt: Node, source_indices: Map<String, NewlineIndex>) -> List<Node> {
   if is_conj_with_children(n: rt) {
-    let all_children_typed = rt.children |> all(ch => match ch.inferred { Present { value: Resolved { node: _ } } => true  _ => false })
+    let all_children_typed = rt.children |> all(ch => match ch.inferred { Present { value: v1.std.core.Resolved { node: _ } } => true  _ => false })
     if all_children_typed {
       rt.children
         |> map(ch => make_field_node(name: authored_name_at(source_indices: source_indices, node: ch), type_expr: child_inferred_or_empty(ch: ch), cardinality: v1.std.core.Required, default_value: ch.body, from_key: none, span: ch.span, name_span: node_name_span(n: ch)))
@@ -929,15 +929,15 @@ fn parse_dotted_ident_rest(tokens: TokenStream, acc: String, span: SourceSpan) -
 }
 
 fn occurrence_ancestors_push(
-  ancestors: FreeMonoid<OccurrenceId>,
-  occurrence: OccurrenceId
-) -> FreeMonoid<OccurrenceId> {
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
+  occurrence: std.occurrence_identity.OccurrenceId
+) -> FreeMonoid<std.occurrence_identity.OccurrenceId> {
   concat(ancestors, Cons { head: occurrence, tail: Empty })
 }
 
 fn stamp_parsed_node_list(
   nodes: List<Node>,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext,
   role: ParsedOccurrenceRole
 ) -> ParsedNodeListStampResult {
@@ -960,7 +960,7 @@ fn stamp_parsed_node_list(
 
 fn stamp_parsed_optional_node(
   node: Node?,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext,
   role: ParsedOccurrenceRole
 ) -> ParsedOptionalNodeStampResult {
@@ -983,7 +983,7 @@ fn stamp_parsed_optional_node(
 
 fn stamp_parsed_pattern(
   pattern: MatchPattern?,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext
 ) -> ParsedPatternStampResult {
   match pattern {
@@ -1030,9 +1030,9 @@ fn stamp_parsed_pattern(
         pattern: Present { value: LitPattern { value: value } },
         ctx: ctx,
       }
-    Present { value: Wildcard } =>
+    Present { value: v1.std.core.Wildcard } =>
       ParsedPatternStampResult {
-        pattern: Present { value: Wildcard },
+        pattern: Present { value: v1.std.core.Wildcard },
         ctx: ctx,
       }
     Absent =>
@@ -1042,11 +1042,11 @@ fn stamp_parsed_pattern(
 
 fn stamp_parsed_inferred(
   inferred: InferredNode?,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext
 ) -> ParsedOptionalNodeStampResult {
   match inferred {
-    Present { value: Resolved { node: node } } =>
+    Present { value: v1.std.core.Resolved { node: node } } =>
       let stamped = stamp_parsed_node(
         node: node,
         ancestors: ancestors,
@@ -1097,7 +1097,7 @@ fn parsed_occurrence_role_for_node(
 fn parse_context_record_occurrence(
   ctx: ParseContext,
   role: ParsedOccurrenceRole,
-  occurrence: OccurrenceId,
+  occurrence: std.occurrence_identity.OccurrenceId,
   containment: OccurrenceContainmentPath,
   diagnostic_span: SourceSpan
 ) -> ParseContext {
@@ -1144,7 +1144,7 @@ fn parse_context_record_occurrence(
 
 fn stamp_parsed_node_list_with_head_role(
   nodes: List<Node>,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext,
   head_role: ParsedOccurrenceRole,
   tail_role: ParsedOccurrenceRole
@@ -1173,7 +1173,7 @@ fn stamp_parsed_node_list_with_head_role(
 
 fn stamp_parsed_node_children(
   node: Node,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext,
   role: ParsedOccurrenceRole
 ) -> ParsedNodeListStampResult {
@@ -1224,7 +1224,7 @@ fn stamp_parsed_node_children(
 
 fn stamp_parsed_node(
   node: Node,
-  ancestors: FreeMonoid<OccurrenceId>,
+  ancestors: FreeMonoid<std.occurrence_identity.OccurrenceId>,
   ctx: ParseContext,
   role: ParsedOccurrenceRole
 ) -> ParsedNodeStampResult {
@@ -1625,7 +1625,7 @@ fn field_to_child_node(field: Node, source_indices: Map<String, NewlineIndex>) -
   }
   Node { name: field_node_name_at(n: field, source_indices: source_indices), span: field.span, ident_span: field.ident_span,
     children: [], connective: NoConnective,
-    params: [], inferred: Present { value: Resolved { node: ret_type } }, return_cardinality: field_node_cardinality(n: field),
+    params: [], inferred: Present { value: v1.std.core.Resolved { node: ret_type } }, return_cardinality: field_node_cardinality(n: field),
     uses: [], body: field_node_default_value(n: field),
     transport: none, properties: props,
     type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
@@ -1645,7 +1645,7 @@ fn variant_to_child_node(variant: Node, source_indices: Map<String, NewlineIndex
 
 fn outputs_to_inferred(outputs: List<Node>, span: SourceSpan, source_indices: Map<String, NewlineIndex>) -> InferredNode? {
   if outputs |> count > 0 {
-    Present { value: Resolved { node: Node { name: "", span: span, ident_span: none, children: map(outputs, f => field_to_child_node(field: f, source_indices: source_indices)), connective: Conj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } } }
+    Present { value: v1.std.core.Resolved { node: Node { name: "", span: span, ident_span: none, children: map(outputs, f => field_to_child_node(field: f, source_indices: source_indices)), connective: Conj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData } } }
   } else {
     none
   }
@@ -1723,7 +1723,7 @@ fn parse_type_after_kw(tokens: TokenStream, ctx: ParseContext, start_span: Sourc
         let tokens = skip_newlines(tokens: __ec)
         parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params)
       EatUnchanged { tokens: __eu } =>
-        let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: v1.std.core.Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
         ItemResult { item: item, tokens: __eu, ctx: ctx, err: none }
     }
   }
@@ -1757,7 +1757,7 @@ fn parse_type_body_from_prefix(prefix: ItemPrefixResult, start_span: SourceSpan)
         let tokens = skip_newlines(tokens: __ec)
         parse_type_body_after_eq(tokens: tokens, ctx: ctx, name: name, name_span: name_span, start_span: start_span, type_params: type_params)
       EatUnchanged { tokens: __eu } =>
-        let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+        let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: v1.std.core.Resolved { node: leaf_type_node(name: name, span: name_span) } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
         ItemResult { item: item, tokens: __eu, ctx: ctx, err: none }
     }
   }
@@ -1804,7 +1804,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
       if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
       let wr = try_where_clause(tokens: r.tokens, ctx: r.ctx, base_te: r.type_expr, start_span: start_span)
       if has_err(err: wr.err) { return ItemResult { item: dummy, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
-      let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: wr.type_expr } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+      let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: v1.std.core.Resolved { node: wr.type_expr } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
       ItemResult { item: item, tokens: skip_newlines(tokens: wr.tokens), ctx: wr.ctx, err: none }
     }
   } else {
@@ -1812,7 +1812,7 @@ fn parse_type_body_after_eq(tokens: TokenStream, ctx: ParseContext, name: String
     if has_err(err: r.err) { return ItemResult { item: dummy, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let wr = try_where_clause(tokens: r.tokens, ctx: r.ctx, base_te: r.type_expr, start_span: start_span)
     if has_err(err: wr.err) { return ItemResult { item: dummy, tokens: wr.tokens, ctx: wr.ctx, err: wr.err } }
-    let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: Resolved { node: wr.type_expr } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    let item = Node { name: name, span: start_span, ident_span: Present { value: name_span }, children: [], connective: NoConnective, params: type_params, inferred: Present { value: v1.std.core.Resolved { node: wr.type_expr } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
     ItemResult { item: item, tokens: skip_newlines(tokens: wr.tokens), ctx: wr.ctx, err: none }
   }
   }
@@ -2089,7 +2089,7 @@ fn parse_callable_type_expr(tokens: TokenStream, ctx: ParseContext, start_span: 
   let ret = parse_type_expr(tokens: r3.tokens, ctx: params_result.ctx)
   if has_err(err: ret.err) { return TypeResult { type_expr: dummy_te, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
 
-  let te = Node { name: "Callable", span: start_span, ident_span: Present { value: start_span }, children: [], connective: Arrow, params: params_result.params, inferred: Present { value: Resolved { node: ret.type_expr } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let te = Node { name: "Callable", span: start_span, ident_span: Present { value: start_span }, children: [], connective: Arrow, params: params_result.params, inferred: Present { value: v1.std.core.Resolved { node: ret.type_expr } }, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   maybe_optional(tokens: ret.tokens, ctx: ret.ctx, te: te, start_span: start_span)
 }
 
@@ -2580,7 +2580,7 @@ fn parse_optional_inferred(tokens: TokenStream, ctx: ParseContext) -> OptRetResu
   EatConsumed { token: _, tokens: __ec } =>
     let r = parse_type_expr(tokens: __ec, ctx: ctx)
     if has_err(err: r.err) { return OptRetResult { inferred: none, tokens: r.tokens, ctx: r.ctx, err: r.err } }
-    OptRetResult { inferred: Present { value: Resolved { node: r.type_expr } }, tokens: r.tokens, ctx: r.ctx, err: none }
+    OptRetResult { inferred: Present { value: v1.std.core.Resolved { node: r.type_expr } }, tokens: r.tokens, ctx: r.ctx, err: none }
   EatUnchanged { tokens: __eu } =>
     OptRetResult { inferred: none, tokens: tokens, ctx: ctx, err: none }
   }
@@ -2937,7 +2937,7 @@ fn parse_operation_v2_inline(tokens: TokenStream, ctx: ParseContext, name: Strin
   let tokens = ret.tokens
   let ctx = ret.ctx
   let outputs = match ret.inferred {
-    Present { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt, source_indices: ctx.source_indices)
+    Present { value: v1.std.core.Resolved { node: rt } } => node_inferred_to_outputs(rt: rt, source_indices: ctx.source_indices)
     _ => []
   }
   let tokens = skip_newlines(tokens: tokens)
@@ -3482,7 +3482,7 @@ fn parse_capability(tokens: TokenStream, ctx: ParseContext) -> CapResult {
     let ret = parse_optional_inferred(tokens: r4.tokens, ctx: r3.ctx)
     if has_err(err: ret.err) { return CapResult { capability: dummy_cap, tokens: ret.tokens, ctx: ret.ctx, err: ret.err } }
     let outputs = match ret.inferred {
-      Present { value: Resolved { node: rt } } => node_inferred_to_outputs(rt: rt, source_indices: ret.ctx.source_indices)
+      Present { value: v1.std.core.Resolved { node: rt } } => node_inferred_to_outputs(rt: rt, source_indices: ret.ctx.source_indices)
       _ => []
     }
     let cap = make_capability_node(name: name, ident_span: Present { value: name_span }, inputs: inputs, outputs: outputs, span: start_span, source_indices: ctx.source_indices)
@@ -4505,7 +4505,7 @@ fn parse_match_arms_acc(tokens: TokenStream, ctx: ParseContext, acc: List<Node>)
 
 fn parse_match_arm(tokens: TokenStream, ctx: ParseContext) -> ArmResult {
   let arm_span = token_span(tok: token_stream_first(stream: tokens))
-  let dummy_arm = make_arm_node(pattern: Wildcard, guard: none, body: parse_recovery_placeholder(), span: make_span(start: 0, end: 0))
+  let dummy_arm = make_arm_node(pattern: v1.std.core.Wildcard, guard: none, body: parse_recovery_placeholder(), span: make_span(start: 0, end: 0))
   let r = parse_pattern(tokens: tokens, ctx: ctx)
   if has_err(err: r.err) { return ArmResult { arm: dummy_arm, tokens: r.tokens, ctx: r.ctx, err: r.err } }
   let pat = r.pattern
@@ -4687,11 +4687,11 @@ fn parse_pattern(tokens: TokenStream, ctx: ParseContext) -> PatternResult {
     Present { value: ShIdent } => {
       let r = parse_dotted_ident(tokens: tokens)
       if has_err(err: r.err) {
-        return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: ctx, err: r.err }
+        return PatternResult { pattern: v1.std.core.Wildcard, tokens: r.tokens, ctx: ctx, err: r.err }
       }
       let n = r.name
       if n == "_" {
-        PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: ctx, err: none }
+        PatternResult { pattern: v1.std.core.Wildcard, tokens: r.tokens, ctx: ctx, err: none }
       } else if is_variant_pattern_start(name: n) {
         parse_variant_pattern(tokens: r.tokens, ctx: ctx, name: n)
       } else {
@@ -4712,19 +4712,19 @@ fn parse_pattern(tokens: TokenStream, ctx: ParseContext) -> PatternResult {
         Present { value: lv } => {
           PatternResult { pattern: LitPattern { value: lv }, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
         }
-        Absent => PatternResult { pattern: Wildcard, tokens: tokens, ctx: ctx, err: none }
+        Absent => PatternResult { pattern: v1.std.core.Wildcard, tokens: tokens, ctx: ctx, err: none }
       }
     }
     Present { value: ShLitInt } => {
       let n_opt = parse_int(s: tok.value.text)
-      let n = match n_opt { Present { value: v } => v  Absent => { return PatternResult { pattern: Wildcard, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("internal: ShLitInt token text not parseable as int: '", tok.value.text, "'"), span: span) } } } }
+      let n = match n_opt { Present { value: v } => v  Absent => { return PatternResult { pattern: v1.std.core.Wildcard, tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: concat("internal: ShLitInt token text not parseable as int: '", tok.value.text, "'"), span: span) } } } }
       PatternResult { pattern: LitPattern { value: LitInt { value: n } }, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
     }
     Present { value: ShLitStr } => {
       let s = tok.value.text
       PatternResult { pattern: LitPattern { value: LitStr { value: s } }, tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
     }
-    _ => PatternResult { pattern: Wildcard, tokens: tokens, ctx: ctx, err: none }
+    _ => PatternResult { pattern: v1.std.core.Wildcard, tokens: tokens, ctx: ctx, err: none }
   }
 }
 
@@ -4732,15 +4732,15 @@ fn parse_variant_pattern(tokens: TokenStream, ctx: ParseContext, name: String) -
   let span = token_span(tok: token_stream_first(stream: tokens))
   if tok_is_lbrace(tok: token_stream_first(stream: tokens)) {
     let r = parse_variant_bindings_brace(tokens: skip_newlines(tokens: token_stream_advance(stream: tokens, n: 1)), ctx: ctx)
-    if has_err(err: r.err) { return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+    if has_err(err: r.err) { return PatternResult { pattern: v1.std.core.Wildcard, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let r2 = expect(tokens: skip_newlines(tokens: r.tokens), expected: ExpectRBrace)
-    if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+    if has_err(err: r2.err) { return PatternResult { pattern: v1.std.core.Wildcard, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
     PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: r.field_bindings }, tokens: r2.tokens, ctx: r.ctx, err: none }
   } else if tok_is_lparen(tok: token_stream_first(stream: tokens)) {
     let r = parse_pattern(tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx)
-    if has_err(err: r.err) { return PatternResult { pattern: Wildcard, tokens: r.tokens, ctx: r.ctx, err: r.err } }
+    if has_err(err: r.err) { return PatternResult { pattern: v1.std.core.Wildcard, tokens: r.tokens, ctx: r.ctx, err: r.err } }
     let r2 = expect(tokens: r.tokens, expected: ExpectRParen)
-    if has_err(err: r2.err) { return PatternResult { pattern: Wildcard, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
+    if has_err(err: r2.err) { return PatternResult { pattern: v1.std.core.Wildcard, tokens: r2.tokens, ctx: r.ctx, err: r2.err } }
     let fb = make_field_binding_node(field_name: "0", binding: r.pattern, span: span, name_span: v1.std.core.kernel_span(name: "0"))
     PatternResult { pattern: VariantPattern { name: name, parent_enum: none, field_bindings: [fb] }, tokens: r2.tokens, ctx: r.ctx, err: none }
   } else {
@@ -5159,7 +5159,7 @@ fn parse_interp_parts(tokens: TokenStream, ctx: ParseContext, parts: List<String
   if has_err(err: r.err) {
     return ExprResult { expr: r.expr, tokens: r.tokens, ctx: r.ctx, err: Present { value: parse_error(msg: interp_body_error_message(err: r.err), span: span) } }
   }
-  let new_parts = list_push(parts, Interpolation { expr: r.expr })
+  let new_parts = list_push(parts, v1.std.core.Interpolation { expr: r.expr })
   let tokens = r.tokens
   let ctx = r.ctx
 
@@ -5182,10 +5182,10 @@ fn parse_interp_parts(tokens: TokenStream, ctx: ParseContext, parts: List<String
       } else {
         new_parts
       }
-      ExprResult { expr: make_expr_node(expr_data: ExprStringInterp, children: final_parts |> map(p => match p { v1.std.core.Text { value: v } => make_text_part_node(text: v, span: span)  Interpolation { expr: e } => make_interp_part_node(expr: e, span: span) }), inferred: none, span: span), tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
+      ExprResult { expr: make_expr_node(expr_data: ExprStringInterp, children: final_parts |> map(p => match p { v1.std.core.Text { value: v } => make_text_part_node(text: v, span: span)  v1.std.core.Interpolation { expr: e } => make_interp_part_node(expr: e, span: span) }), inferred: none, span: span), tokens: token_stream_advance(stream: tokens, n: 1), ctx: ctx, err: none }
     }
     _ =>
-      ExprResult { expr: make_expr_node(expr_data: ExprStringInterp, children: new_parts |> map(p => match p { v1.std.core.Text { value: v } => make_text_part_node(text: v, span: span)  Interpolation { expr: e } => make_interp_part_node(expr: e, span: span) }), inferred: none, span: span), tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: interp_body_error_message(err: none), span: span) } }
+      ExprResult { expr: make_expr_node(expr_data: ExprStringInterp, children: new_parts |> map(p => match p { v1.std.core.Text { value: v } => make_text_part_node(text: v, span: span)  v1.std.core.Interpolation { expr: e } => make_interp_part_node(expr: e, span: span) }), inferred: none, span: span), tokens: tokens, ctx: ctx, err: Present { value: parse_error(msg: interp_body_error_message(err: none), span: span) } }
   }
 }
 

@@ -89,6 +89,13 @@ path = "src/bin/claim_executor.rs"
 name = "json_parse_scaling_probe"
 path = "src/bin/json_parse_scaling_probe.rs"
 
+# Isolated char_at scaling receipt: position x string-length, uncontaminated by the
+# JSON parser's independent list-accumulation cost (eager-koi-458 scope correction,
+# 2026-08-17). DISSOLUTION: delete alongside json_parse_scaling_probe.rs.
+[[bin]]
+name = "char_at_scaling_probe"
+path = "src/bin/char_at_scaling_probe.rs"
+
 # Resolved-type owned-data discovery for Consolidation #4553 glob discovery.
 # Hand-written CI tool (like claim_batch); exposes neutral decl facts only.
 [[bin]]
@@ -100,15 +107,6 @@ path = "src/bin/discover_owned_data.rs"
 name = "discover_source_root_ingest"
 path = "src/bin/discover_source_root_ingest.rs"
 
-# SCAFFOLD (DESIGN §7 seed-retained HAND-RUST / P5) — per-module emit-frontier survey host transport.
-# Authority: module census reads `compiler_frontier_sweep_order` from `frontier.dag` at runtime (no parallel roster).
-# NOT floor-enrolled — long-lane local recipe via `frontier_probe_survey_transport.dag`.
-# CHECKABLE RECEIPT: census before=27 (`compiler_frontier_roster_count`); after shrink=0 LOC when manifest witness greens.
-# Bin LOC: 821 (origin/main) → 1088 (+267 Lane 2 assemble_detail/overlap manifest serialize; see frontier_probe_survey_transport_scaffold_note).
-# DISSOLUTION: `gunbc.plans.wave2_prep_design` §2.3 + `^migrate_when_frontier_per_module_probe_receipt_binds`; then delete bin.
-[[bin]]
-name = "frontier_probe_survey"
-path = "src/bin/frontier_probe_survey.rs"
 
 # CI2-0 Commit B sweep driver — local recipe only (NOT floor-enrolled, not WitnessBin-addressed):
 # per-entry canonical realization sweep over the frontier-probe overlay transport.
@@ -196,14 +194,6 @@ path = "src/bin/auth_declared_but_unwired_witness.rs"
 name = "bootstrap_witness"
 path = "src/bin/bootstrap_witness.rs"
 
-# Host-physics floor witness for the affected-set floor skip/discovery mechanism
-# (run_discovery_corpus_with_options node-precise skip semantics). Runtime host-effect
-# behavior (git diff observation, multi-entry resolve, per-witness skip decisions), not
-# pure logic, so a bare .dag test fn would be spec-without-execution (DESIGN §5).
-[[bin]]
-name = "floor_skip_discovery_witness"
-path = "src/bin/floor_skip_discovery_witness.rs"
-
 [[bin]]
 name = "p1_cohort_probe"
 path = "src/bin/p1_cohort_probe.rs"
@@ -224,16 +214,6 @@ path = "src/bin/measure_worker_private_memory.rs"
 [[bin]]
 name = "regen_floor_skip_witness"
 path = "src/bin/regen_floor_skip_witness.rs"
-
-# Affected-set selection-control skip witness. Declared explicitly for the same reason every
-# other witness here is: edition-2021 autodiscovery WOULD find src/bin/*.rs (cargo metadata
-# lists this target with or without this block, and CI's --bin build has been green
-# throughout), but an undeclared target is invisible to a reader of the manifest and would
-# vanish if autobins were ever turned off. Consistency with the roster above, not a fix
-# (review 44778 read the omission as a build break; it was not).
-[[bin]]
-name = "selection_control_skip_witness"
-path = "src/bin/selection_control_skip_witness.rs"
 
 # Host-physics floor witness for the v1 interpreter recorded-fixture record ->
 # hermetic-replay -> fail-closed lifecycle (DESIGN §5 determinism). Drives the real

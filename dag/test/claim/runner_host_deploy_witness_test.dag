@@ -43,17 +43,17 @@ test fn srv4_runner_app_from_secret_manager() -> Bool {
     && gunbc_ci_github_app.installation_id.value == 104134109
 }
 
-test fn srv4_enables_seven_named_runner_instances() -> Bool {
+test fn srv4_enables_six_named_runner_instances() -> Bool {
   let names = runner_instance_names(deploy: srv4_runner_host_deploy)
   let enable = match runner_activate_command(admission: admit_runner_activation(host_admission: admit_runner_host(deploy: srv4_runner_host_deploy), cache_ready: witness_ready_receipt(), pool_ready: witness_ready_pool())) {
     RunnerCommandReady { command: cmd } => shell_command_render(command: cmd)
     RunnerCommandRefused { host_label: _, reason: _ } => ""
   }
-  list_length(items: names) == 7
+  list_length(items: names) == 6
     && string_contains(s: enable, pattern: "'actions-runner@srv4-01.service'")
     && string_contains(s: enable, pattern: "'actions-runner@srv4-05.service'")
     && string_contains(s: enable, pattern: "srv4-06")
-    && string_contains(s: enable, pattern: "srv4-07")
+    && !string_contains(s: enable, pattern: "srv4-07")
     && string_contains(s: enable, pattern: "'sudo' 'systemctl' 'enable' '--now'")
 }
 

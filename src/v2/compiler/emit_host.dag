@@ -647,7 +647,7 @@ fn run_test_claim_emit_vs_eval_for_claim(
   run_test_claim_emit_vs_eval_verdict_from_source(
     subject: subject,
     target: target,
-    source_outcome: emit(tree: subject.tree, target: target),
+    source_outcome: v2.compiler.emit.emit(tree: subject.tree, target: target),
     claim_input_root: claim_input_root,
     expected_eval_root: expected_eval_root,
     expected: expected,

@@ -1,0 +1,148 @@
+module test.claim.spark_serving_write_unit_operation_witness_test
+
+// Position-wise kind, so an ordering claim asserts WHERE each kind sits rather than only how many
+// of each exist. A count-only claim is satisfied by any permutation, including the one that puts the
+// write before its own directory.
+fn kind_at(ops: List<RemoteOperation>, i: Int) -> String {
+  match ops[i] {
+    Absent => "<none>"
+    Present { value: op } =>
+      match op {
+        RemoteArgv { argv: _ } => "argv"
+        RemoteFileBytes { write: _, mode: _ } => "file"
+      }
+  }
+}
+
+fn realize(effects: List<ServingInstallEffect>) -> SparkServingInstallRemoteCommandsVerdict {
+  realize_spark_serving_install_effect_commands(
+    effects: effects,
+    executor_login: spark_serving_automation_principal_login(),
+  )
+}
+
+// ── The defect this closes ──────────────────────────────────────────────────────────────────────
+
+// THE KEYSTONE. `WriteUserUnitFile` refused for as long as the realizer could only produce argv, and
+// that refusal was reporting a MISSING TYPE rather than missing work: a file write is bytes, and
+// bytes ride stdin, so no argv-shaped verdict could ever express it. It now realizes.
+test fn write_user_unit_file_realizes_instead_of_refusing() -> Bool {
+  match realize(effects: [WriteUserUnitFile]) {
+    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      remote_operation_count(operations: ops) == 2
+        && remote_operation_file_write_count(operations: ops) == 1
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+// THE BARE-HOST KEYSTONE. `~/.config/systemd/user` does not exist on a machine that has never run a
+// user unit, and the file convergence opens a staging sibling with `dd` -- it does not create missing
+// parents. So the mkdir must come FIRST; reversed, the write refuses on exactly the host this effect
+// exists to restore. Order is asserted by position, which is the only thing that distinguishes a
+// correct sequence from one containing the same two operations.
+test fn the_unit_write_is_preceded_by_a_non_privileged_mkdir() -> Bool {
+  match realize(effects: [WriteUserUnitFile]) {
+    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      match ops.first() {
+        Absent => false
+        Present { value: first } =>
+          match first {
+            RemoteArgv { argv: argv } =>
+              argv == ["mkdir", "-p", spark_serving_user_unit_dir() as String]
+            RemoteFileBytes { write: _, mode: _ } => false
+          }
+      }
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+// The mkdir targets the executor's OWN home, so sudo would be an unnecessary privilege escalation
+// for a write the account can already perform. Asserted rather than assumed, because a stray sudo
+// here would silently require a sudoers grant that does not exist.
+test fn the_unit_directory_mkdir_is_not_privileged() -> Bool {
+  match realize(effects: [WriteUserUnitFile]) {
+    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      match ops.first() {
+        Absent => false
+        Present { value: first } =>
+          match first {
+            RemoteArgv { argv: argv } => argv.first() != Present { value: "sudo" }
+            RemoteFileBytes { write: _, mode: _ } => false
+          }
+      }
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+// It is a FILE WRITE, not an argv. A file write with an argv projection would mean bytes had been
+// routed onto a command line, which is exactly what the typed-write module exists to prevent.
+test fn the_unit_write_carries_no_argv_projection() -> Bool {
+  match realize(effects: [WriteUserUnitFile]) {
+    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      length(remote_operations_argv_only(operations: ops)) == 1
+        && remote_operation_file_write_count(operations: ops) == 1
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+// The bytes are the ones the renderer produces, and the path is the modeled unit path. Asserting the
+// exact content is what makes this a claim about delivering the right unit rather than delivering
+// something.
+test fn the_unit_write_carries_the_rendered_bytes_at_the_modeled_path() -> Bool {
+  match realize(effects: [WriteUserUnitFile]) {
+    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      match ops[1] {
+        Absent => false
+        Present { value: op } =>
+          match op {
+            RemoteFileBytes { write: w, mode: _ } =>
+              w.content == spark_serving_desired_user_unit_text()
+                && (w.path as String) == (spark_serving_user_unit_path() as String)
+            RemoteArgv { argv: _ } => false
+          }
+      }
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+// ── The two kinds coexist in one ordered sequence ───────────────────────────────────────────────
+
+// Ordering is load-bearing: the unit file must exist before the manager reloads it. A mixed sequence
+// must therefore keep both kinds in order rather than partitioning them, and the counts must
+// disagree — one operation of each, but only one argv — which is what proves the argv projection is
+// a genuine subset and not the whole population.
+test fn a_mixed_sequence_keeps_both_kinds_and_their_order() -> Bool {
+  match realize(effects: [WriteUserUnitFile, EnableLingerForOwnAccount]) {
+    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      remote_operation_count(operations: ops) == 3
+        && remote_operation_file_write_count(operations: ops) == 1
+        && length(remote_operations_argv_only(operations: ops)) == 2
+        && kind_at(ops: ops, i: 0) == "argv"
+        && kind_at(ops: ops, i: 1) == "file"
+        && kind_at(ops: ops, i: 2) == "argv"
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+// ── What still refuses, so the widening did not become an absorbing arm ─────────────────────────
+
+// Widening the representation must not turn unimplemented effects into successes. `PullModelArtifact`
+// has no realization, and a sequence containing it still refuses whole rather than silently
+// realizing the part it understands.
+test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
+  match realize(effects: [WriteUserUnitFile, PullModelArtifact]) {
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => true
+    SparkServingInstallRemoteCommandsPresent { operations: _ } => false
+  }
+}
+
+// An argv effect is still an argv operation. The keystone above would also pass if EVERYTHING became
+// a file write, so this pins the other direction.
+test fn an_argv_effect_is_still_an_argv_operation() -> Bool {
+  match realize(effects: [EnableLingerForOwnAccount]) {
+    SparkServingInstallRemoteCommandsPresent { operations: ops } =>
+      remote_operation_file_write_count(operations: ops) == 0
+        && length(remote_operations_argv_only(operations: ops)) == 1
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}

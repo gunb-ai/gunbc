@@ -92,7 +92,7 @@ fn cli_run_hollowing_plan_body() -> List<MarkdownBlock> {
         ]),
         row(cells: [
           cell(text: "Regen oracle & self-host scope"),
-          cell(text: "`regen_stage0` · `v2.compiler.self_host.frontier`"),
+          cell(text: "`regen_stage0` (the `v2.compiler.self_host.frontier` half of this scope is deleted with the roster)"),
           cell(text: "delete-with-v1"),
           cell(text: "Wave 4 real-fixpoint cutover (`5-real-fixpoint`)"),
         ]),

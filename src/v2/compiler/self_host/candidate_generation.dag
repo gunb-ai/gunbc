@@ -91,7 +91,7 @@ fn generate_rust_emission_candidate(
   target: TargetModel
 ) -> Outcome<RustEmissionCandidate> {
   bind_outcome(
-    o: emit(tree: inferred, target: target),
+    o: v2.compiler.emit.emit(tree: inferred, target: target),
     f: fn(source) {
       outcome_accepted(
         value: RustEmissionCandidate {

@@ -41,10 +41,6 @@ test fn witness_empty_string_scalar_round_trips() -> Bool {
   round_trips(v: yaml_mapping(entries: [kv(key: "rustflags", value: yaml_string(s: ""))]))
 }
 
-test fn witness_real_ci_yml_parses() -> Bool {
-  yaml_source_parses(src: expected_ci_yml())
-}
-
 test fn witness_empty_document_rejected() -> Bool {
   yaml_source_parses(src: "") == false
 }

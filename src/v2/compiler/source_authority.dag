@@ -601,7 +601,7 @@ fn source_root_ingest_from_source_refs(refs: List<SourceRef>) -> Outcome<SourceR
   }
 }
 
-data module_storage_binding_authority_note: String = "Phase 1 of docs/plans/module-identity-storage-binding-design.md §2: a module is a node (containment subtree); a file is ONE storage realization of module content (§2 Realization). The path⇄module binding is therefore DERIVED at parse — the compiler parsed the files and knows which modules came out — never authored. This is the single home for that fact: the 27 hand FrontierQualifiedModuleBinding rows and the host-side build_module_path_index both project from here, else two authorities remain (§3). Task 4 repointed the host producer through v1_compiler_parse (src/v1/stage0/src/module_path_index); DeclarationScanned deleted. Scope is the LIVE 1:1 binding the tree enforces today; many-to-many (fragment identity/order, several-modules-one-file) is a NAMED DEFERRAL until a consumer prices it (§6), never a silent assumption. What lands now is the provenance coproduct, so zero-file produced modules are representable honestly rather than pretending they came from parse."
+data module_storage_binding_authority_note: String = "Phase 1 of docs/plans/module-identity-storage-binding-design.md §2: a module is a node (containment subtree); a file is ONE storage realization of module content (§2 Realization). The path⇄module binding is therefore DERIVED at parse — the compiler parsed the files and knows which modules came out — never authored. This is the single home for that fact. It once shared the job with 27 hand-authored FrontierQualifiedModuleBinding rows in the self-host frontier module, kept in step by a standing parity witness; those rows and that witness are deleted with the frontier roster, so the duality this sentence used to describe as an interim is closed and the host-side build_module_path_index is now the only other projection. Task 4 repointed the host producer through v1_compiler_parse (src/v1/stage0/src/module_path_index); DeclarationScanned deleted. Scope is the LIVE 1:1 binding the tree enforces today; many-to-many (fragment identity/order, several-modules-one-file) is a NAMED DEFERRAL until a consumer prices it (§6), never a silent assumption. What lands now is the provenance coproduct, so zero-file produced modules are representable honestly rather than pretending they came from parse."
 
 type ModuleStorageProvenance
   = ParsedFromSource { artifact: Artifact, span_index: SpanIndex }
@@ -609,7 +609,7 @@ type ModuleStorageProvenance
 
 data module_storage_host_parse_note: String = "Task 4 (module-identity-storage-binding-design.md Phase 1): the host producer build_module_path_index (src/v1/stage0/src/module_path_index) routes through v1_compiler_parse::parse — the same bootstrap parse path the in-graph oracle uses at the module-name grain — so host rows are ParsedFromSource, not a parallel substring scan. DeclarationScanned was deleted with this repoint: it existed only to record honestly that extract_module_path never parsed; keeping it after the repoint would be a second way to say the same thing (§3). Bootstrap host emission records ident_span byte ranges in span_index via span_index_record; full OccurrenceId mint parity with v2.compiler.parse's stamp pipeline is a named follow-on (dissolve-on: v1 bootstrap parse stamps NodeOccurrenceId the way parse_production_prepared does)."
 
-// Host manifest emission (discover_source_root_ingest --emit-module-binding-manifest) records the module declaration's ident_span as a FromSource Textual locus in span_index. The OccurrenceId is keyed by the span start offset within the file — deterministic and sufficient for binding-authority consumers that only need file⇄module, not full occurrence navigation. It is NOT the v2 parse stamp's minted occurrence graph; conflating the two would fabricate stamps the bootstrap parser never produced (§5).
+// Host manifest emission (discover_source_root_ingest --emit-module-binding-manifest) records the module declaration's ident_span as a FromSource Textual locus in span_index. The v2.std.node.OccurrenceId is keyed by the span start offset within the file — deterministic and sufficient for binding-authority consumers that only need file⇄module, not full occurrence navigation. It is NOT the v2 parse stamp's minted occurrence graph; conflating the two would fabricate stamps the bootstrap parser never produced (§5).
 type ModuleStorageBinding {
   module: QualifiedName
   provenance: ModuleStorageProvenance
@@ -711,7 +711,7 @@ fn semantic_ir_from_ast_with_model(ast: DagSourceAst, lm: LanguageModel) -> Outc
     o: normalize(parse_tree: ast.tree),
     f: fn(normalized) {
       bind_outcome(
-        o: resolve(tree: normalized, lm: lm),
+        o: v2.compiler.resolve.resolve(tree: normalized, lm: lm),
         f: fn(resolved) {
           outcome_accepted(value: DagSemanticIr { tree: resolved })
         }

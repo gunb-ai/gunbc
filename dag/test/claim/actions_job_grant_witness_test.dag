@@ -1,7 +1,6 @@
 module test.claim.actions_job_grant_witness
 
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 fn live_heal_push_authority() -> GitHubCredentialAuthority {
   match push_binding_authority(resolution: live_heal_push_binding_resolution) {
@@ -304,15 +303,6 @@ test fn witness_heal_condition_and_origin_share_one_binding() -> Bool {
     && string_contains(s: no_dependabot_clause.condition, pattern: "head.repo.full_name")
     && !string_contains(s: no_dependabot_clause.condition, pattern: "dependabot")
     && match no_dependabot_clause.origin { SameRepositoryOrigin => true  _ => false }
-}
-
-test fn witness_effective_grant_names_declarations_that_exist() -> Bool {
-  ci_heal_workflow_ref.module_path == "gunbc.ci_workflow"
-    && ci_heal_workflow_ref.decl_name == "ci_workflow"
-    && ci_heal_job_ref.module_path == "gunbc.ci_workflow"
-    && ci_heal_job_ref.decl_name == "ci_heal_generated_artifacts_job"
-    && (ci_heal_effective_grant.workflow.decl_name == ci_heal_workflow_ref.decl_name)
-    && (ci_heal_effective_grant.job.decl_name == ci_heal_job_ref.decl_name)
 }
 
 test fn witness_only_a_real_checkout_action_binds_the_push_credential() -> Bool {

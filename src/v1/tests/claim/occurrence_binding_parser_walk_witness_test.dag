@@ -152,7 +152,7 @@ fn obcpw_reference_binds_to_declaration(
 
 fn obcpw_reference_with_occurrence(
   reference: ReferenceOccurrence,
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> ReferenceOccurrence {
   ReferenceOccurrence {
     occurrence: occurrence,
@@ -193,7 +193,7 @@ fn obcpw_unknown_occurrence_transport_refuses(
   }
 }
 
-fn obcpw_candidate_ids_distinct(candidates: List<OccurrenceId>) -> Bool {
+fn obcpw_candidate_ids_distinct(candidates: List<std.occurrence_identity.OccurrenceId>) -> Bool {
   match candidates |> first {
     Absent => false
     Present { value: first } =>
@@ -465,7 +465,7 @@ test fn parser_transport_scoped_preserved_identity_and_unknown_occurrence_refuse
               )
               let unknown = obcpw_reference_with_occurrence(
                 reference: format_reference,
-                occurrence: OccurrenceId { value: 999999 },
+                occurrence: std.occurrence_identity.OccurrenceId { value: 999999 },
               )
               match resolve_reference_binding_via_structural_candidates(
                 transport: transport,
@@ -527,7 +527,7 @@ test fn parser_production_call_binds_with_edge_holds() -> Bool {
 
 fn obcpw_declaration_for_occurrence(
   transport: OccurrenceTransport,
-  occurrence: OccurrenceId
+  occurrence: std.occurrence_identity.OccurrenceId
 ) -> DeclarationOccurrence? {
   fold(
     transport.declarations,

@@ -58,7 +58,7 @@ fn spine_normalize_child_is_service_sugar_atom(n: Node) -> Bool {
 fn spine_normalize_dissolves_interior_service_sugar() -> Bool {
   match normalize(parse_tree: spine_normalize_nested_service_parse_tree()) {
     Accepted { value: normalized, diagnostics: _ } =>
-      fold(normalized.children, init: true, f: fn(acc, e) {
+      fold(normalized.root.children, init: true, f: fn(acc, e) {
         acc && !spine_normalize_child_is_service_sugar_atom(n: e.target)
       })
     Rejected { diagnostics: _ } => false

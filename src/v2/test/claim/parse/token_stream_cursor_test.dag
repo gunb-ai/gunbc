@@ -13,7 +13,7 @@ data tsc_three_tokens: List<Token> = Cons {
     head: tsc_token(class: ^tsc_b, lexeme: "b"),
     tail: Cons {
       head: tsc_token(class: ^tsc_c, lexeme: "c"),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   }
 }

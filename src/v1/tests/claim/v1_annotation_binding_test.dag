@@ -45,7 +45,7 @@ fn bound(source: String) -> AnnotationAttachmentResult {
 
 data name_lookup_note: String = "Resolves an occurrence back to the name the author wrote, through the same index the roster was built from. An unresolvable id renders as a marker rather than an empty string so a lookup miss cannot be mistaken for an anonymous declaration."
 
-fn name_of(transport: OccurrenceTransport, id: OccurrenceId) -> String {
+fn name_of(transport: OccurrenceTransport, id: std.occurrence_identity.OccurrenceId) -> String {
   fold(
     transport.index.entries,
     init: "<unresolved>",

@@ -1,6 +1,6 @@
 module test.claim.uri_grounding_witness
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 test fn w_uri_requires_scheme_and_locator() -> Bool {
   let uri = Uri { scheme: Https, locator: "api.example.com" }
@@ -17,3 +17,9 @@ test fn w_nonempty_str_html_url_holds() -> Bool {
   string_contains(url, pattern: "github.com")
 }
 
+// Local since the falsifier witness that used to declare it was deleted with the CI wipe
+// (2026-08-15). One line over one builtin: a cross-test import for this is a dependency on
+// another witness's incidental helper, not on a shared authority.
+fn string_contains(s: String, pattern: String) -> Bool {
+  s.contains(pattern)
+}

@@ -73,38 +73,38 @@ fn authority() -> RoadmapDocument {
   RoadmapDocument { preamble: preamble(), lead_lanes: [], sections: [lockdown_section(), expansion_section()] }
 }
 
-fn emit(merged: List<Int>) -> String {
+fn emit_roadmap(merged: List<Int>) -> String {
   serialize_markdown_source(doc: project_roadmap_to_markdown(doc: authority(), merged: merged))
 }
 
 test fn witness_preamble_first() -> Bool {
-  let out = emit(merged: [5491])
+  let out = emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "# ROADMAP")
     && string_contains(s: out, pattern: "Generated from .dag authority")
 }
 
 test fn witness_both_sections() -> Bool {
-  let out = emit(merged: [5491])
+  let out = emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "## 0. Fail-closed lock-down")
     && string_contains(s: out, pattern: "## 6. Expansion")
 }
 
 test fn witness_authored_evidence_awaiting_signoff() -> Bool {
-  let out = emit(merged: [5491])
+  let out = emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "[ ] **fail-open audit**")
     && string_contains(s: out, pattern: "[plan](docs/plans/fail-closed-lockdown.md)")
     && string_contains(s: out, pattern: "⏳ awaiting sign-off")
 }
 
 test fn witness_derived_merged_awaiting_signoff() -> Bool {
-  let out = emit(merged: [5491])
+  let out = emit_roadmap(merged: [5491])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
     && string_contains(s: out, pattern: "⏳ awaiting sign-off")
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
 }
 
 test fn witness_derived_unchecked_when_unmerged() -> Bool {
-  let out = emit(merged: [])
+  let out = emit_roadmap(merged: [])
   string_contains(s: out, pattern: "[ ] **PR-checkbox status**")
     && !string_contains(s: out, pattern: "[x] **PR-checkbox status**")
 }
@@ -127,10 +127,10 @@ fn expected_roadmap() -> String {
 }
 
 test fn witness_exact_bytes() -> Bool {
-  emit(merged: [5491]) == expected_roadmap()
+  emit_roadmap(merged: [5491]) == expected_roadmap()
 }
 
 test fn witness_drift_receipt() -> Bool {
-  emit(merged: [5491]) == expected_roadmap()
-    && !(emit(merged: []) == expected_roadmap())
+  emit_roadmap(merged: [5491]) == expected_roadmap()
+    && !(emit_roadmap(merged: []) == expected_roadmap())
 }

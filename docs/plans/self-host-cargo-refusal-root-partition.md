@@ -844,7 +844,7 @@ rather than joining the nearest root.
 
 | root | sites | % | in floor | in delta |
 |---|---:|---:|---:|---:|
-| **B1 — algebra-carrier representation** ⚠️ **WITHDRAWN as one root — see §18** (≤146 repr-shaped; 167 derive-shaped on one underivable declaration; 191 E0369 unclassified) | ~~509~~ | ~~27.2~~ | 80 | 429 |
+| **B1 — algebra-carrier representation** ⚠️ **WITHDRAWN as one root — see §18** (≤146 repr-shaped; 167 derive-shaped on one underivable declaration; 191 E0369 repr_fork per §18.4) | ~~509~~ | ~~27.2~~ | 80 | 429 |
 | **C — Optional collapses to `()`** (owner `gentle-dove-833`) | 167 | 8.9 | 136 | 31 |
 | **A — generic Clone bound not emitted** (owner `smart-ram-730`) | 142 | 7.6 | 98 | 44 |
 | **K — unsynthesized use-line** (E0433/E0425/E0422 unresolved names) | 132 | 7.0 | 13 | 119 |
@@ -879,8 +879,8 @@ R1, T4, R3, R5 — eight nameable mechanisms — plus 62 singleton rows.
 > **ENUMERATION INCOMPLETE since §18 (annotated 2026-08-17).** This list is not false and nothing in
 > it directs anyone to do the wrong thing — but it is the list a session greps to learn what the
 > partition contains, and **B1 is no longer one root**: §18 decomposes it into at most 146
-> repr-shaped sites, 167 derive-shaped on one underivable declaration, and 191 E0369 rows
-> deliberately left unclassified. Read §18 before treating "six" as the root count or before
+> repr-shaped sites, 167 derive-shaped on one underivable declaration, and 191 E0369 operator-on-carrier
+> sites (all repr_fork — §18.4). Read §18 before treating "six" as the root count or before
 > re-deriving a mechanism for the algebra carrier.
 
 
@@ -1215,8 +1215,8 @@ cause.
 |---|---|---|---|
 | B — algebra/numeric carrier, closure flag | ~~509~~ → **at most 146 repr-shaped (§18)**, and narrower still: sites whose type carries a checkpoint row do not move | `eager-deer-389` | identity-keying design; flip control executed both directions |
 | C — variant ambiguity sentinel | 167, 113 in one file | `gentle-dove-833` | fix in `src/v1/05_emit_rust.dag`, regen fixed point confirmed twice |
-| D — checkpoint arity | 116 = 65 alias + 33 `Witness` | `vivid-wren-870` | `Witness` row deletion ready; alias half entangled with B |
-| A — derive/bounds | **unknown; under challenge** | this session | see 12.5 |
+| D — checkpoint arity | 116 = 65 alias + 33 `Witness` | half 2 `vivid-wren-870`, half 1 `stern-badger-166` | **both halves LANDED** — half 1 as `bbb52138b25` ([PR #8350](https://github.com/gunb-ai/gunbc/pull/8350)), which also retired an enrolled witness that had been asserting the broken shape; half 2 as `7cfeb6f0fd7` ([PR #8341](https://github.com/gunb-ai/gunbc/pull/8341)), deleting the `Witness` checkpoint-scalar rows so scalar arity derives from its single authority |
+| A — derive/bounds | **LANDED**, [PR #8347](https://github.com/gunb-ai/gunbc/pull/8347) merged as `c4e9cc918c5` | this session | see 12.5 for what the diagnosis got wrong on the way |
 | tail — six mid-sized roots + 62 singletons | 1,874 distinct total | `smart-ibex-716` | partitioned, §11 |
 
 **Live collision:** B and D both land on `rust_scalar_checkpoint_render_base`. The split asked for
@@ -1241,8 +1241,32 @@ suspicious independent of which trigger scopes what. A's split into CloneSharedR
 TargetApiRequirement 168 / OwnedDeconstructionRequirement 63 came from the same July TSV that
 produced two of the dead claims in 12.2.
 
-**A's live size, code mix and cause signatures are requested from §11's instrument. Until they
-land, treat A as unpartitioned, not as diagnosed.**
+~~**A's live size, code mix and cause signatures are requested from §11's instrument. Until they
+land, treat A as unpartitioned, not as diagnosed.**~~ — **SUPERSEDED by the RESOLVED block below;
+A is landed, not open.** Struck rather than deleted because the instruction was correct when
+written and the paragraph above it records *why* the then-current diagnosis was refused, which is
+the part that still governs.
+
+**RESOLVED 2026-08-17 — and the challenge above was right, which is why what landed is not what
+this section proposed.** [PR #8347](https://github.com/gunb-ai/gunbc/pull/8347) merged as
+`c4e9cc918c5`: *split the clone-bounds map into the two facts it was answering.* The fix is a
+fused-map decomposition, not the coproduct-skip edit the retracted diagnosis pointed at — the skip
+is still there and still deliberate, exactly as `trait_derive_emit_item_clone_bound_wf_propagation_note`
+defends it. The E0599-vs-E0277 mismatch this section flagged is what kept that edit from being made.
+
+Two receipts worth keeping, because both were nearly missed:
+
+- **The landed change needed a stage0 regeneration that was not in the first push.** Four generated
+  files (`v1_compiler_emit_rust`, `v1_compiler_infer`, `v1_compiler_infer_emit_info`,
+  `v1_compiler_trait_derive_emit`) were stale against the `.dag` edit; `regen` was green on the
+  final head, which is the receipt that matters.
+- **Two regen runs before that reported a PERFECT FIXED POINT while measuring nothing.**
+  `ctrl-build --remote` syncs to the *invoking* head, and the fix lived on a different branch, so
+  the runs compiled a tree that never contained it. A wrong-branch arm is worse than a stale one —
+  correct SHA, correct binary, correct argv, clean provenance, and every other check passes on it.
+  Only a subject-presence grep printed beside the verdict (`grep -c` on a construct the change
+  introduces: 0 in base, >0 in the change arm) distinguishes the two. Anyone regenerating stage0
+  for a root fix should print that count next to the fixed-point verdict, always.
 
 ### 12.6 Adjacent, landed: the self-host frontier roster is deleted
 
@@ -2264,16 +2288,17 @@ Re-decomposed by mechanism, over the same M=11 census:
 
 | mechanism | sites | share | moved by a repr flag? |
 |---|---:|---:|---|
-| operator on carrier (E0369) | 191 | 37.5% | **undetermined — not classified** |
+| operator on carrier (E0369) | 191 | 37.5% | **repr_fork: 191 / missing_trait_impl: 0** (§18.4) |
 | derive: serde Serialize/Deserialize | 132 | 25.9% | no |
 | REPR: carrier expected, integer literal found | 92 | 18.1% | yes |
 | REPR: carrier vs another named type | 54 | 10.6% | yes |
 | derive: Debug | 35 | 6.9% | no |
 | other | 5 | 1.0% | — |
 
-**At most 146 sites are the repr mechanism I named.** The 191 E0369 rows are deliberately left
-unclassified: E0369 on a carrier is ambiguous between a missing trait impl and the repr fork, and
-guessing would repeat the error this section reports.
+**At most 146 sites are the repr mechanism I named.** The 191 E0369 rows are classified in
+§18.4: **all repr_fork, zero missing_trait_impl** within the B1 keyword filter — the
+apparent ambiguity applies only to unfiltered E0369 (R1 `im::Vector` / `dyn Fn` sites are
+missing_trait_impl but excluded from this bucket).
 
 ### 18.1 The 167 derive-shaped sites are ONE declaration, and it is underivable
 
@@ -2317,3 +2342,42 @@ large enough to hide three mechanisms inside one plausible name.
 **Consequence for anyone measuring the repr cut:** a `RustCorpusRepr` change should be expected to
 move the repr-shaped sites, at most 146 and possibly fewer — **not 509.** If a receipt shows far
 less than 509 moving, that is this mis-sizing and not an underperforming cut.
+
+### 18.3 The measured Root B flip, and one retraction
+
+`smart-ibex-716` executed the flip in both directions. **What holds, measured:** 211 → 204 errors,
+203 → 196 sites, with 195 common, 8 removed and 1 added; containment 0-of-18 disjoint.
+
+**Retracted in full and recorded so nobody re-derives it:** a reading that 43 sites showed renderer
+inconsistency, that 18 sites reassigned from B to R1, and that the two roots were fused. The
+specimen behind it was read from a different module's artifact. Nothing from that reading reached a
+carrier.
+
+**What survives from it is worth more than the retracted claim.** The leaf name `Nat` denotes two
+different types under two module authorities — `01_tokenize`'s is an enum, not the algebra alias —
+so **a census pooled across modules is keyed on a name that is not unique over the population it
+pools.** That is §18.2's failure one level deeper: grouping by a type name is unsound not only
+because a name says involvement rather than mechanism, but because the same name may not denote one
+type at all. Key on resolved type identity per artifact, never on the printed name, and allow a site
+to carry more than one root.
+
+### 18.4 E0369 operator-on-carrier — classified (`lively-ibex-709`, 2026-08-17)
+
+Receipt: [`docs/probes/e0369_b1_operator_classification_2026-08-17.md`](../probes/e0369_b1_operator_classification_2026-08-17.md)
+
+| classification | sites (M=11 §18) | sites (July 7-module bank, measured) |
+|---|---:|---:|
+| repr_fork | 191 | 112 distinct |
+| missing_trait_impl | 0 | 0 |
+
+**Mechanism, stated once:** every B1-keyword E0369 site is an operator or `PartialEq` derive
+expansion on `CommutativeSemiring<Magnitude>` / `Measure<…>` emitted under
+`FaithfulFreeMonoid`. Fixing it requires grounding the numeric tower (`RustCorpusRepr` /
+identity-keyed checkpoint rows), not adding `Add`/`PartialEq` impls to the algebra stub.
+
+The R1 E0369 population (`im::Vector`, `dyn Fn`, `*Interpreter` — 116 instances in the July
+census) is **missing_trait_impl** but **outside** the B1 keyword filter and therefore outside
+the 191. That is why the bucket-wide ambiguity does not survive filtering.
+
+Per-site TSV (July bank): `docs/probes/e0369_b1_classification_2026-08-17/sites_classified_july_bank.tsv`
+Repro script (M=11): `docs/probes/run_e0369_b1_classification.sh`

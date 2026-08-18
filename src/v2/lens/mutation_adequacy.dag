@@ -21,7 +21,7 @@ fn mutation_is_killed(mc: MutationCoverage) -> Bool {
 }
 
 fn adequacy_survivors(coverage: List<MutationCoverage>) -> List<StructureMutation> {
-  fold(coverage, init: Empty, f: fn(acc, mc) {
+  fold(coverage, init: std.algebra.Empty, f: fn(acc, mc) {
     if mutation_is_killed(mc: mc) {
       acc
     } else {

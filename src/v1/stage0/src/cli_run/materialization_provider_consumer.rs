@@ -474,6 +474,53 @@ pub fn serve_resolved_graph_stored_disk_probe(
     )
 }
 
+/// Provider-serve outcomes against a CALLER-SUPPLIED context.
+///
+/// The provider's refusal semantics — wrong request key, wrong semantic digest,
+/// incomplete artifact, wrong content — are independent of whether the live
+/// repository can be resolved. `serve_resolved_graph_stored_disk_probe_for_test`
+/// welds the two together because it builds the context from
+/// `default_source_roots()`, so a corpus that does not resolve reports as four
+/// separate provider defects. This seam lets a caller prepare one minimal
+/// context (from its own fixture) and exercise the whole outcome matrix over it,
+/// leaving repository preparation as one separately attributed subject.
+#[doc(hidden)]
+pub fn serve_resolved_graph_stored_disk_probe_in_ctx_for_test(
+    ctx: &InterpContext,
+    closure_digest: &str,
+    compiler_digest: &str,
+    stored_request_key: &str,
+    stored_semantic_digest: &str,
+    parts: &FaithfulResolvedGraphProbeParts,
+) -> Result<ResolvedGraphProviderOutcome, String> {
+    if !supports_faithful_probe() {
+        return Err(format!(
+            "resolved-graph-cache provider refused faithful probe: {}",
+            faithful_probe_unavailable_gap()
+        ));
+    }
+    if is_union_part_absent(parts) {
+        return serve_resolved_graph_incomplete_stored_disk_probe_in_ctx(
+            ctx,
+            closure_digest,
+            compiler_digest,
+            stored_request_key,
+            &parts.graph_digest,
+            parts.graph_bytes,
+            &parts.indices_digest,
+            parts.indices_bytes,
+        );
+    }
+    serve_resolved_graph_stored_disk_probe_in_ctx(
+        ctx,
+        closure_digest,
+        compiler_digest,
+        stored_request_key,
+        stored_semantic_digest,
+        parts,
+    )
+}
+
 pub fn serve_resolved_graph_stored_disk_probe_for_test(
     closure_digest: &str,
     compiler_digest: &str,

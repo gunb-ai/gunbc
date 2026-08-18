@@ -113,7 +113,7 @@ fn cwc_resolve_accepts(src: String) -> Bool {
   let lm = dag_language_model()
   match cwc_norm_of(src: src) {
     Accepted { value: tree, diagnostics: _ } =>
-      match resolve(tree: tree, lm: lm) {
+      match v2.compiler.resolve.resolve(tree: tree, lm: lm) {
         Accepted { value: _, diagnostics: _ } => true
         Rejected { diagnostics: _ } => false
       }

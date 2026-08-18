@@ -63,14 +63,22 @@ fn apply_lens_enforce_projection_claim_holds() -> Bool {
   }
 }
 
-fn apply_lens_enforce_projection_claim_rhs() -> Bool {
-  apply_lens_enforce_projection_claim_holds()
+fn apply_lens_enforce_projection_claim_rhs() -> Node {
+  if apply_lens_enforce_projection_claim_holds() {
+    projection_test_root
+  } else {
+    Node {
+      kind: TypeNode { connective: Conj },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }
+  }
 }
 
 data claim_apply_lens_enforce_uses_projection: TestClaim = EqualsClaim {
   label: "lens_application/apply_lens_enforce_uses_projection: enforce result carries projection",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: apply_lens_enforce_projection_claim_rhs(),
-  rhs: true,
+  lhs: projection_test_root,
+  rhs: apply_lens_enforce_projection_claim_rhs(),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }

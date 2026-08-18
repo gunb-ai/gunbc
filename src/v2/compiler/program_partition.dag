@@ -535,7 +535,7 @@ fn emit_partition_with_target(
     bind_outcome(
       o: partition_inferred_tree(partition: partition),
       f: fn(tree) {
-        emit(tree: tree, target: target)
+        v2.compiler.emit.emit(tree: tree, target: target)
       }
     )
   }

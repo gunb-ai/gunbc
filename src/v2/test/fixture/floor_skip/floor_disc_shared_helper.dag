@@ -1,6 +1,0 @@
-module v2.test.fixture.floor_skip.floor_disc_shared_helper
-
-
-fn floor_disc_shared_helper() -> Bool {
-  true
-}

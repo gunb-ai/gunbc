@@ -128,8 +128,8 @@ fn emit_call_eval_generic_facts(node: Node) -> InferredFacts {
 
 fn emit_call_eval_composed_facts(key: Node) -> Optional<InferredFacts> {
   match rust_call_facts_miss(key: key) {
-    Holds { value: f } => optional_present(value: f)
-    Violates { diagnostic: _ } => optional_present(value: emit_call_eval_generic_facts(node: key))
+    Present { value: f } => optional_present(value: f)
+    Absent => optional_present(value: emit_call_eval_generic_facts(node: key))
   }
 }
 

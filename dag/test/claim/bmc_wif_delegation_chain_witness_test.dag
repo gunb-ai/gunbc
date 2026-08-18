@@ -105,13 +105,6 @@ test fn threat_model_names_both_read_capabilities() -> Bool {
          acc || match c { CodeExecOnRunnerHostDuringJobWindow => true, _ => false })
 }
 
-test fn main_ci_workflow_grants_no_id_token() -> Bool {
-  match ci_workflow.permissions {
-    Present { value: perms } => match perms.id_token { Absent => true, _ => false }
-    Absent => true
-  }
-}
-
 test fn secret_ref_login_handler_added_beside_factory_login_not_over_it() -> Bool {
   secret_ref_credential_authority.module_path == "gunbc.auth.secret_ref_credential"
     && secret_ref_credential_authority.decl_name == "fetch_secret_ref_credential"

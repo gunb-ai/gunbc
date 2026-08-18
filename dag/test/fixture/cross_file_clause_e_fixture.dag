@@ -7,15 +7,15 @@ fn cross_file_clause_e_fixture_span() -> std.types.SourceSpan {
   std.types.SourceSpan { file: "app/consumer.dag", start: 1, end: 2 }
 }
 
-fn cross_file_clause_e_fixture_path(terminal: OccurrenceId) -> OccurrenceContainmentPath {
+fn cross_file_clause_e_fixture_path(terminal: std.occurrence_identity.OccurrenceId) -> OccurrenceContainmentPath {
   OccurrenceContainmentPath {
-    ancestors: [OccurrenceId { value: 20 }],
+    ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }],
     terminal: terminal,
   }
 }
 
 fn cross_file_clause_e_fixture_index_entry(
-  occurrence: OccurrenceId,
+  occurrence: std.occurrence_identity.OccurrenceId,
   authored_name: String,
 ) -> OccurrenceIndexEntry {
   OccurrenceIndexEntry {
@@ -29,7 +29,7 @@ fn cross_file_clause_e_fixture_index_entry(
 }
 
 fn cross_file_clause_e_fixture_provider_transport() -> OccurrenceTransport {
-  let helper = OccurrenceId { value: 300 }
+  let helper = std.occurrence_identity.OccurrenceId { value: 300 }
   let helper_path = cross_file_clause_e_fixture_path(terminal: helper)
   OccurrenceTransport {
     index: OccurrenceIndex {
@@ -48,8 +48,8 @@ fn cross_file_clause_e_fixture_provider_transport() -> OccurrenceTransport {
 }
 
 fn cross_file_clause_e_fixture_consumer_transport() -> OccurrenceTransport {
-  let ref_one = OccurrenceId { value: 200 }
-  let ref_two = OccurrenceId { value: 201 }
+  let ref_one = std.occurrence_identity.OccurrenceId { value: 200 }
+  let ref_two = std.occurrence_identity.OccurrenceId { value: 201 }
   let ref_one_path = cross_file_clause_e_fixture_path(terminal: ref_one)
   let ref_two_path = cross_file_clause_e_fixture_path(terminal: ref_two)
   OccurrenceTransport {
@@ -81,7 +81,7 @@ fn cross_file_clause_e_fixture_module_path(dotted: String) -> NonEmptyStr {
   dotted as NonEmptyStr
 }
 
-fn cross_file_clause_e_fixture_authored_order(occurrence: OccurrenceId) -> AuthoredOrderRow {
+fn cross_file_clause_e_fixture_authored_order(occurrence: std.occurrence_identity.OccurrenceId) -> AuthoredOrderRow {
   AuthoredOrderRow {
     occurrence: occurrence,
     ordinal: AuthoredTokenOrdinal { value: occurrence.value },
@@ -95,13 +95,13 @@ fn cross_file_clause_e_fixture_consumer_row() -> CrossFileBindingClosureRow {
     transport: transport,
     inputs: OccurrenceBindingCandidateInputs {
       module_paths: [
-        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 200 }, module_path: consumer_module },
-        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 201 }, module_path: consumer_module },
+        OccurrenceModulePathRow { occurrence: std.occurrence_identity.OccurrenceId { value: 200 }, module_path: consumer_module },
+        OccurrenceModulePathRow { occurrence: std.occurrence_identity.OccurrenceId { value: 201 }, module_path: consumer_module },
       ],
       exposure_rows: [],
       authored_order_rows: [
-        cross_file_clause_e_fixture_authored_order(occurrence: OccurrenceId { value: 200 }),
-        cross_file_clause_e_fixture_authored_order(occurrence: OccurrenceId { value: 201 }),
+        cross_file_clause_e_fixture_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 200 }),
+        cross_file_clause_e_fixture_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 201 }),
       ],
     },
     module_path: consumer_module,
@@ -112,7 +112,7 @@ fn cross_file_clause_e_fixture_consumer_row() -> CrossFileBindingClosureRow {
 fn cross_file_clause_e_fixture_provider_row() -> CrossFileBindingClosureRow {
   let transport = cross_file_clause_e_fixture_provider_transport()
   let provider_module = cross_file_clause_e_fixture_module_path(dotted: "app.provider")
-  let helper = OccurrenceId { value: 300 }
+  let helper = std.occurrence_identity.OccurrenceId { value: 300 }
   let helper_path = cross_file_clause_e_fixture_path(terminal: helper)
   CrossFileBindingClosureRow {
     transport: transport,
@@ -140,7 +140,7 @@ fn cross_file_clause_e_fixture_provider_row() -> CrossFileBindingClosureRow {
 fn cross_file_clause_e_fixture_unrelated_loaded_provider_transport(
   declaration_authored_name: String,
 ) -> OccurrenceTransport {
-  let decl = OccurrenceId { value: 400 }
+  let decl = std.occurrence_identity.OccurrenceId { value: 400 }
   let decl_path = cross_file_clause_e_fixture_path(terminal: decl)
   OccurrenceTransport {
     index: OccurrenceIndex {
@@ -172,7 +172,7 @@ fn cross_file_clause_e_fixture_unrelated_loaded_provider_row(
     declaration_authored_name: declaration_authored_name,
   )
   let provider_module = cross_file_clause_e_fixture_module_path(dotted: module_dotted)
-  let decl = OccurrenceId { value: 400 }
+  let decl = std.occurrence_identity.OccurrenceId { value: 400 }
   let decl_path = cross_file_clause_e_fixture_path(terminal: decl)
   CrossFileBindingClosureRow {
     transport: transport,

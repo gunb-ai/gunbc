@@ -524,20 +524,20 @@ data occurrence_binding_candidates_witness_dependency_order_note: String = "RED 
 
 test fn direct_module_dependency_dedupes_by_module_pair_holds() -> Bool {
   let same_module_provider = BoundReferenceProvider {
-    reference_occurrence: OccurrenceId { value: 110 },
-    declaration_occurrence: OccurrenceId { value: 100 },
+    reference_occurrence: std.occurrence_identity.OccurrenceId { value: 110 },
+    declaration_occurrence: std.occurrence_identity.OccurrenceId { value: 100 },
     consumer_module: obc_module_path(dotted: "gunbc.example.greeter"),
     provider_module: obc_module_path(dotted: "gunbc.example.greeter"),
   }
   let cross_module_provider_one = BoundReferenceProvider {
-    reference_occurrence: OccurrenceId { value: 200 },
-    declaration_occurrence: OccurrenceId { value: 300 },
+    reference_occurrence: std.occurrence_identity.OccurrenceId { value: 200 },
+    declaration_occurrence: std.occurrence_identity.OccurrenceId { value: 300 },
     consumer_module: obc_module_path(dotted: "app.consumer"),
     provider_module: obc_module_path(dotted: "app.provider"),
   }
   let cross_module_provider_two = BoundReferenceProvider {
-    reference_occurrence: OccurrenceId { value: 201 },
-    declaration_occurrence: OccurrenceId { value: 300 },
+    reference_occurrence: std.occurrence_identity.OccurrenceId { value: 201 },
+    declaration_occurrence: std.occurrence_identity.OccurrenceId { value: 300 },
     consumer_module: obc_module_path(dotted: "app.consumer"),
     provider_module: obc_module_path(dotted: "app.provider"),
   }
@@ -562,7 +562,7 @@ test fn refused_population_never_projects_empty_edge_list_holds() -> Bool {
   match direct_module_dependencies_from_bound_population(
     population: ReferencePopulationRefused {
       first_failure: ReferenceBindingProjectionUnbound {
-        occurrence: OccurrenceId { value: 30 },
+        occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
       },
       more_failures: [],
     },
@@ -576,14 +576,14 @@ data occurrence_binding_candidates_witness_file_dependency_note: String = "Claus
 
 test fn repeated_cross_file_mentions_collapse_provider_file_holds() -> Bool {
   let provider_one = BoundReferenceProvider {
-    reference_occurrence: OccurrenceId { value: 200 },
-    declaration_occurrence: OccurrenceId { value: 300 },
+    reference_occurrence: std.occurrence_identity.OccurrenceId { value: 200 },
+    declaration_occurrence: std.occurrence_identity.OccurrenceId { value: 300 },
     consumer_module: obc_module_path(dotted: "app.consumer"),
     provider_module: obc_module_path(dotted: "app.provider"),
   }
   let provider_two = BoundReferenceProvider {
-    reference_occurrence: OccurrenceId { value: 201 },
-    declaration_occurrence: OccurrenceId { value: 300 },
+    reference_occurrence: std.occurrence_identity.OccurrenceId { value: 201 },
+    declaration_occurrence: std.occurrence_identity.OccurrenceId { value: 300 },
     consumer_module: obc_module_path(dotted: "app.consumer"),
     provider_module: obc_module_path(dotted: "app.provider"),
   }
@@ -669,21 +669,21 @@ test fn module_scope_declaration_missing_module_path_refuses_holds() -> Bool {
     transport: obc_module_sibling_transport(),
     inputs: obc_fixture_inputs(
       module_paths: [
-        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 20 }, module_path: obc_module_path(dotted: "app.sibling_module") },
-        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 30 }, module_path: obc_module_path(dotted: "app.sibling_module") },
+        OccurrenceModulePathRow { occurrence: std.occurrence_identity.OccurrenceId { value: 20 }, module_path: obc_module_path(dotted: "app.sibling_module") },
+        OccurrenceModulePathRow { occurrence: std.occurrence_identity.OccurrenceId { value: 30 }, module_path: obc_module_path(dotted: "app.sibling_module") },
       ],
       exposure_rows: [
-        obc_module_exposure(occurrence: OccurrenceId { value: 10 }, module: "app.sibling_module"),
-        obc_module_exposure(occurrence: OccurrenceId { value: 20 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: std.occurrence_identity.OccurrenceId { value: 10 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: std.occurrence_identity.OccurrenceId { value: 20 }, module: "app.sibling_module"),
       ],
       authored_order_rows: [
-        obc_authored_order(occurrence: OccurrenceId { value: 20 }),
-        obc_authored_order(occurrence: OccurrenceId { value: 30 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 20 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 30 }),
       ],
     ),
     reference: obc_fixture_reference(
-      occurrence: OccurrenceId { value: 30 },
-      containment: obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: OccurrenceId { value: 30 }),
+      occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
+      containment: obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: std.occurrence_identity.OccurrenceId { value: 30 }),
       category: CallableOccurrence,
     ),
   ) {
@@ -701,24 +701,24 @@ test fn duplicate_module_path_row_refuses_holds() -> Bool {
     transport: obc_module_sibling_transport(),
     inputs: obc_fixture_inputs(
       module_paths: [
-        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 10 }, module_path: obc_module_path(dotted: "app.sibling_module") },
-        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 10 }, module_path: obc_module_path(dotted: "app.other_module") },
-        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 20 }, module_path: obc_module_path(dotted: "app.sibling_module") },
-        OccurrenceModulePathRow { occurrence: OccurrenceId { value: 30 }, module_path: obc_module_path(dotted: "app.sibling_module") },
+        OccurrenceModulePathRow { occurrence: std.occurrence_identity.OccurrenceId { value: 10 }, module_path: obc_module_path(dotted: "app.sibling_module") },
+        OccurrenceModulePathRow { occurrence: std.occurrence_identity.OccurrenceId { value: 10 }, module_path: obc_module_path(dotted: "app.other_module") },
+        OccurrenceModulePathRow { occurrence: std.occurrence_identity.OccurrenceId { value: 20 }, module_path: obc_module_path(dotted: "app.sibling_module") },
+        OccurrenceModulePathRow { occurrence: std.occurrence_identity.OccurrenceId { value: 30 }, module_path: obc_module_path(dotted: "app.sibling_module") },
       ],
       exposure_rows: [
-        obc_module_exposure(occurrence: OccurrenceId { value: 10 }, module: "app.sibling_module"),
-        obc_module_exposure(occurrence: OccurrenceId { value: 20 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: std.occurrence_identity.OccurrenceId { value: 10 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: std.occurrence_identity.OccurrenceId { value: 20 }, module: "app.sibling_module"),
       ],
       authored_order_rows: [
-        obc_authored_order(occurrence: OccurrenceId { value: 10 }),
-        obc_authored_order(occurrence: OccurrenceId { value: 20 }),
-        obc_authored_order(occurrence: OccurrenceId { value: 30 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 10 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 20 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 30 }),
       ],
     ),
     reference: obc_fixture_reference(
-      occurrence: OccurrenceId { value: 30 },
-      containment: obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: OccurrenceId { value: 30 }),
+      occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
+      containment: obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: std.occurrence_identity.OccurrenceId { value: 30 }),
       category: CallableOccurrence,
     ),
   ) {
@@ -744,19 +744,19 @@ test fn duplicate_declaration_exposure_row_refuses_holds() -> Bool {
     inputs: obc_fixture_inputs(
       module_paths: obc_module_sibling_module_paths(),
       exposure_rows: [
-        obc_module_exposure(occurrence: OccurrenceId { value: 10 }, module: "app.sibling_module"),
-        obc_module_exposure(occurrence: OccurrenceId { value: 10 }, module: "app.other_module"),
-        obc_module_exposure(occurrence: OccurrenceId { value: 20 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: std.occurrence_identity.OccurrenceId { value: 10 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: std.occurrence_identity.OccurrenceId { value: 10 }, module: "app.other_module"),
+        obc_module_exposure(occurrence: std.occurrence_identity.OccurrenceId { value: 20 }, module: "app.sibling_module"),
       ],
       authored_order_rows: [
-        obc_authored_order(occurrence: OccurrenceId { value: 10 }),
-        obc_authored_order(occurrence: OccurrenceId { value: 20 }),
-        obc_authored_order(occurrence: OccurrenceId { value: 30 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 10 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 20 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 30 }),
       ],
     ),
     reference: obc_fixture_reference(
-      occurrence: OccurrenceId { value: 30 },
-      containment: obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: OccurrenceId { value: 30 }),
+      occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
+      containment: obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: std.occurrence_identity.OccurrenceId { value: 30 }),
       category: CallableOccurrence,
     ),
   ) {
@@ -790,22 +790,22 @@ test fn duplicate_authored_order_row_refuses_holds() -> Bool {
     inputs: obc_fixture_inputs(
       module_paths: obc_module_sibling_module_paths(),
       exposure_rows: [
-        obc_module_exposure(occurrence: OccurrenceId { value: 10 }, module: "app.sibling_module"),
-        obc_module_exposure(occurrence: OccurrenceId { value: 20 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: std.occurrence_identity.OccurrenceId { value: 10 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: std.occurrence_identity.OccurrenceId { value: 20 }, module: "app.sibling_module"),
       ],
       authored_order_rows: [
-        obc_authored_order(occurrence: OccurrenceId { value: 10 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 10 }),
         AuthoredOrderRow {
-          occurrence: OccurrenceId { value: 10 },
+          occurrence: std.occurrence_identity.OccurrenceId { value: 10 },
           ordinal: AuthoredTokenOrdinal { value: 99 },
         },
-        obc_authored_order(occurrence: OccurrenceId { value: 20 }),
-        obc_authored_order(occurrence: OccurrenceId { value: 30 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 20 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 30 }),
       ],
     ),
     reference: obc_fixture_reference(
-      occurrence: OccurrenceId { value: 30 },
-      containment: obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: OccurrenceId { value: 30 }),
+      occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
+      containment: obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: std.occurrence_identity.OccurrenceId { value: 30 }),
       category: CallableOccurrence,
     ),
   ) {
@@ -831,17 +831,17 @@ test fn missing_declaration_exposure_refuses_holds() -> Bool {
     inputs: obc_fixture_inputs(
       module_paths: obc_module_sibling_module_paths(),
       exposure_rows: [
-        obc_module_exposure(occurrence: OccurrenceId { value: 20 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: std.occurrence_identity.OccurrenceId { value: 20 }, module: "app.sibling_module"),
       ],
       authored_order_rows: [
-        obc_authored_order(occurrence: OccurrenceId { value: 10 }),
-        obc_authored_order(occurrence: OccurrenceId { value: 20 }),
-        obc_authored_order(occurrence: OccurrenceId { value: 30 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 10 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 20 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 30 }),
       ],
     ),
     reference: obc_fixture_reference(
-      occurrence: OccurrenceId { value: 30 },
-      containment: obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: OccurrenceId { value: 30 }),
+      occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
+      containment: obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: std.occurrence_identity.OccurrenceId { value: 30 }),
       category: CallableOccurrence,
     ),
   ) {
@@ -860,17 +860,17 @@ test fn missing_authored_order_row_refuses_holds() -> Bool {
     inputs: obc_fixture_inputs(
       module_paths: obc_module_sibling_module_paths(),
       exposure_rows: [
-        obc_module_exposure(occurrence: OccurrenceId { value: 10 }, module: "app.sibling_module"),
-        obc_module_exposure(occurrence: OccurrenceId { value: 20 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: std.occurrence_identity.OccurrenceId { value: 10 }, module: "app.sibling_module"),
+        obc_module_exposure(occurrence: std.occurrence_identity.OccurrenceId { value: 20 }, module: "app.sibling_module"),
       ],
       authored_order_rows: [
-        obc_authored_order(occurrence: OccurrenceId { value: 10 }),
-        obc_authored_order(occurrence: OccurrenceId { value: 20 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 10 }),
+        obc_authored_order(occurrence: std.occurrence_identity.OccurrenceId { value: 20 }),
       ],
     ),
     reference: obc_fixture_reference(
-      occurrence: OccurrenceId { value: 30 },
-      containment: obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: OccurrenceId { value: 30 }),
+      occurrence: std.occurrence_identity.OccurrenceId { value: 30 },
+      containment: obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: std.occurrence_identity.OccurrenceId { value: 30 }),
       category: CallableOccurrence,
     ),
   ) {
@@ -884,9 +884,9 @@ test fn missing_authored_order_row_refuses_holds() -> Bool {
 data occurrence_binding_candidates_witness_raw_containment_not_parallel_note: String = "Fail-closed RED (PR 7515 blocker 1): a declaration whose containment is a prefix of the reference but whose DeclarationExposure is ModuleExposure for a DIFFERENT module must NOT bind via raw containment. Exposure carrier alone decides — missing/wrong ModuleExposure is not rescued by declaration.containment."
 
 test fn raw_containment_without_matching_exposure_does_not_bind_holds() -> Bool {
-  let nested_decl = OccurrenceId { value: 10 }
-  let outer_fn = OccurrenceId { value: 20 }
-  let call_ref = OccurrenceId { value: 30 }
+  let nested_decl = std.occurrence_identity.OccurrenceId { value: 10 }
+  let outer_fn = std.occurrence_identity.OccurrenceId { value: 20 }
+  let call_ref = std.occurrence_identity.OccurrenceId { value: 30 }
   let nested_path = obc_fixture_path(ancestors: [], terminal: nested_decl)
   let call_ref_path = obc_fixture_path(ancestors: [nested_decl, outer_fn], terminal: call_ref)
   let transport = OccurrenceTransport {
@@ -937,10 +937,10 @@ test fn raw_containment_without_matching_exposure_does_not_bind_holds() -> Bool 
 data occurrence_binding_candidates_witness_root_exposure_note: String = "RootExposure authority control: a declaration carrying RootExposure binds on every candidate lookup regardless of containment ancestry or module siblinghood — visibility comes from RootExposure's own semantics, not raw containment."
 
 test fn root_exposure_is_visible_holds() -> Bool {
-  let root_decl = OccurrenceId { value: 10 }
-  let call_ref = OccurrenceId { value: 30 }
+  let root_decl = std.occurrence_identity.OccurrenceId { value: 10 }
+  let call_ref = std.occurrence_identity.OccurrenceId { value: 30 }
   let root_path = obc_fixture_path(ancestors: [], terminal: root_decl)
-  let call_ref_path = obc_fixture_path(ancestors: [OccurrenceId { value: 20 }], terminal: call_ref)
+  let call_ref_path = obc_fixture_path(ancestors: [std.occurrence_identity.OccurrenceId { value: 20 }], terminal: call_ref)
   match resolve_reference_binding_via_structural_candidates(
     transport: OccurrenceTransport {
       index: OccurrenceIndex {
@@ -985,7 +985,7 @@ test fn root_exposure_is_visible_holds() -> Bool {
 data occurrence_binding_candidates_witness_declarations_by_name_refuse_note: String = "Fail-closed RED (operator finding 3): declarations_by_name_build refuses MissingDeclarationIndexEntry when a declaration is absent from entries_by_id — never silent-skips and shrinks the candidate population."
 
 test fn declarations_by_name_missing_index_entry_refuses_holds() -> Bool {
-  let decl = OccurrenceId { value: 10 }
+  let decl = std.occurrence_identity.OccurrenceId { value: 10 }
   let decl_path = obc_fixture_path(ancestors: [], terminal: decl)
   match declarations_by_name_build(
     entries_by_id: empty_map(),

@@ -191,7 +191,7 @@ fn cross_language_compile(
           bind_outcome(
             o: infer(tree: neutralized),
             f: fn(inferred) {
-              emit(tree: inferred, target: target_model)
+              v2.compiler.emit.emit(tree: inferred, target: target_model)
             }
           )
         }

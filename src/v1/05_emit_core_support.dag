@@ -20,6 +20,7 @@ type TestProjection {
   params: List<Node>
   mock_field_inits: List<Node>
   source_indices: Map<String, NewlineIndex>
+  type_env: TypeEnv
 }
 
 fn escape_json_string(s: String) -> String {
@@ -251,7 +252,8 @@ fn extract_test_projections(typed: ResolvedGraph) -> List<TestProjection> {
             inferred: resolved_type(n: c),
             params: c.params,
             mock_field_inits: c.properties |> filter(p => has_mock_prefix(name: field_init_node_name_at(n: p, source_indices: tm.type_env.source_indices))),
-            source_indices: tm.type_env.source_indices
+            source_indices: tm.type_env.source_indices,
+            type_env: tm.type_env
           })
       )
   )

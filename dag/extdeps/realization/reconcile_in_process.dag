@@ -35,7 +35,7 @@ data parse_cache_facts: CacheInterfaceCatalogFacts = {
     locality: InProcess
     retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityUnbounded }
     atomicity: PerFile
-    auth: None
+    auth: std.cache_interface.None
     read_latency: InProcessNs
     consistency: Strong
   }
@@ -80,7 +80,7 @@ data typed_module_cache_facts: CacheInterfaceCatalogFacts = {
     locality: InProcess
     retention: { release_policy: ReleasedAtProviderScopeExit, capacity: CapacityBounded { limit: EntryCountCapacity { limit: RuntimeDerivedLimit { authority: { module_path: "gunbc.typed_module_cache_capacity", decl_name: "typed_module_cache_entry_cap", field: WholeDeclaration } } }, at_capacity: ReplaceExisting { strategy: ProviderNativeReplacement } } }
     atomicity: PerFile
-    auth: None
+    auth: std.cache_interface.None
     read_latency: InProcessNs
     consistency: Strong
   }

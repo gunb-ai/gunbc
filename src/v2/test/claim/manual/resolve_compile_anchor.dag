@@ -1,6 +1,5 @@
 module v2.test.manual.resolve_compile_anchor
 
-
 fn service_atom_conj_tree() -> Node {
   Node {
     kind: TypeNode { connective: Conj },
@@ -35,8 +34,8 @@ fn anchor_resolve_empty_prelude_service_atom() -> Outcome<ResolvedTree> {
 }
 
 fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTree> {
-  resolve(
-    tree: Node {
+  match admit_normalized_tree(
+    root: Node {
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
@@ -62,13 +61,16 @@ fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> Outcome<ResolvedTre
       ],
       occurrence_id: SyntheticOccurrence
 },
-    lm: dag_language_model_void()
-  )
+    diagnostics: None
+  ) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: t, diagnostics: _ } => resolve(tree: t, lm: dag_language_model_void())
+  }
 }
 
 fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
-  resolve(
-    tree: Node {
+  match admit_normalized_tree(
+    root: Node {
       kind: TypeNode { connective: Conj },
       children: [
         Edge {
@@ -113,8 +115,11 @@ fn anchor_resolve_bind_binder_use() -> Outcome<ResolvedTree> {
       ],
       occurrence_id: SyntheticOccurrence
 },
-    lm: dag_language_model_void()
-  )
+    diagnostics: None
+  ) {
+    Rejected { diagnostics: r } => Rejected { diagnostics: r }
+    Accepted { value: t, diagnostics: _ } => resolve(tree: t, lm: dag_language_model_void())
+  }
 }
 
 fn resolve_roots_claim_node(ok: Bool) -> Node {

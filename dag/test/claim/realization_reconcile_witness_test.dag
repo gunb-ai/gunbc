@@ -12,7 +12,7 @@ fn is_share(m: Materialization) -> Bool {
 
 fn step_create_if_absent(field: String) -> RealizedStep {
   RealizedStep {
-    shape: CreateEffect { cause: std.effects.CreateIfAbsent { key_source: InputField { field: field } } },
+    shape: CreateEffect { cause: std.effects.CreateIfAbsent { key_source: std.effects.InputField { field: field } } },
     placement: LocalInProcess,
     materialization: Recompute,
     cost: cost_account_predicted_zero()

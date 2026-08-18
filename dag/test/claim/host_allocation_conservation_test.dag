@@ -14,7 +14,7 @@ test fn allocation_conserves_when_pools_fit() -> Bool {
   )
 }
 
-data per_host_width_red_controls_note: String = "THE FOUR CONTROLS BELOW ARE THE POINT OF THE PER-HOST SPLIT, and each one goes red against a specific way of getting this wrong rather than against a changed number. Every input is the live authority except the WIDTH under test, which is perturbed by exactly one slot — so a control cannot pass by coincidence and cannot be repaired by editing a literal.\n\nThe pair matters more than either half. Asserting only that the committed widths fit would be satisfied by a wall that returns true for everything, which is exactly the wall this change replaced (it charged session_pool: 0 on every host and would have passed srv1 at seven slots). Asserting only the refusals would be satisfied by a wall that refuses everything. Together they pin the boundary at the slot, in both directions, on both host classes.\n\nWhy srv1 refuses at 6 and srv3 refuses at 8: srv1 owes the sessions reservation its roster entry declares and carries the legacy overhead allowance, srv3 owes neither and carries the measured bound. Same per-slot ceiling, same host RAM, different admissible width — which is the whole claim, stated as arithmetic that fails if either per-host fact is wrong."
+data per_host_width_red_controls_note: String = "THE FOUR CONTROLS BELOW ARE THE POINT OF THE PER-HOST SPLIT, and each one goes red against a specific way of getting this wrong rather than against a changed number. Every input is the live authority except the WIDTH under test, which is perturbed by exactly one slot — so a control cannot pass by coincidence and cannot be repaired by editing a literal.\n\nThe pair matters more than either half. Asserting only that the committed widths fit would be satisfied by a wall that returns true for everything, which is exactly the wall this change replaced (it charged session_pool: 0 on every host and would have passed srv1 at seven slots). Asserting only the refusals would be satisfied by a wall that refuses everything. Together they pin the boundary at the slot, in both directions, on both host classes.\n\nWhy srv1 refuses at 6 and srv3 refuses at 7 (srv3's boundary moved down one slot with the 2026-08-17 16GiB ruling): srv1 owes the sessions reservation its roster entry declares and carries the legacy overhead allowance, srv3 owes neither and carries the measured bound. Same per-slot ceiling, same host RAM, different admissible width — which is the whole claim, stated as arithmetic that fails if either per-host fact is wrong."
 
 fn usable_ram_of(host: HostIdentity) -> ByteSize {
   match host_usable_ram_or_refusal(host: host, r: gunbc_ci_host_usable_ram_for(host: host)) {
@@ -62,12 +62,12 @@ test fn committed_width_never_exceeds_memory_admission() -> Bool {
   )
 }
 
-data srv4_disk_gated_at_apply_not_allocation_note: String = "srv4 COMMITS SEVEN AT THE MEMORY AXIS LIKE srv3; the retired disk row-pin no longer lowers allocation. Disk binding is apply-time via gunbc.runner_lifecycle runner_width_disk_preflight (~38GB/slot). host_disk_admitted_width stays DiskWidthUnconstrained at allocation so provisioning cannot silently skip the gate; unobservable disk at apply refuses rather than falling back to five."
+data srv4_disk_gated_at_apply_not_allocation_note: String = "srv4 COMMITS SIX AT THE MEMORY AXIS LIKE srv3 (seven before the 2026-08-17 16GiB ruling); the retired disk row-pin no longer lowers allocation. Disk binding is apply-time via gunbc.runner_lifecycle runner_width_disk_preflight (~38GB/slot). host_disk_admitted_width stays DiskWidthUnconstrained at allocation so provisioning cannot silently skip the gate; unobservable disk at apply refuses rather than falling back to five."
 
 test fn srv4_commits_memory_width_disk_gated_at_apply() -> Bool {
-  host_memory_admitted_width(host: operator_host_srv4) == 7
-    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 7
-    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 7
+  host_memory_admitted_width(host: operator_host_srv4) == 6
+    && gunbc_runner_slots_per_host(host: operator_host_srv4) == 6
+    && gunbc_runner_slots_per_host(host: operator_host_srv3) == 6
     && match host_disk_admitted_width(host: operator_host_srv4) {
       DiskWidthUnconstrained { reason: r } => string_contains(s: r, pattern: "runner_width_disk_preflight")
       DiskAdmitsWidth { slots: _, provenance: _ } => false
@@ -75,9 +75,10 @@ test fn srv4_commits_memory_width_disk_gated_at_apply() -> Bool {
 }
 
 test fn session_hosts_refuse_the_managed_width() -> Bool {
-  conserves_at_width(host: operator_host_srv3, slots: 7)
-    && !conserves_at_width(host: operator_host_srv1, slots: 7)
-    && !conserves_at_width(host: operator_host_srv2, slots: 7)
+  conserves_at_width(host: operator_host_srv3, slots: 6)
+    && !conserves_at_width(host: operator_host_srv3, slots: 7)
+    && !conserves_at_width(host: operator_host_srv1, slots: 6)
+    && !conserves_at_width(host: operator_host_srv2, slots: 6)
 }
 
 test fn charging_zero_sessions_would_have_admitted_the_overcommit() -> Bool {
@@ -182,7 +183,7 @@ test fn middle_arm_is_a_bound_not_a_measurement() -> Bool {
   }
 }
 
-data derived_width_probe_note: String = "WHAT THIS PROBE IS FOR, stated plainly because it asserts about a function that does not exist yet. host_memory_admitted_width returns hand-authored literals 5/5/7/7, while gunbc.runner_slot_allocation gunbc_runner_slot_width_ruling_note describes those numbers as falling out of the conservation arithmetic — 'neither number is authored here as a target; both are the largest width the wall will pass'. That is a claim about a derivation nobody wrote: the arithmetic was run by hand once and its answers were typed in beside the wall that checks them, which is the second-representation shape DESIGN 5 names, and it is why raising a host's RAM does not raise its width.\n\nThis probe runs the derivation the note describes and asserts it reproduces every literal exactly. It is evidence for replacing them with the derivation, and until then it is a live consumer that reds if the two ever disagree — which is the failure the current arrangement cannot detect, because nothing recomputes the literals.\n\nIt lives in a test module deliberately: the production derivation needs the overhead, session and headroom charges, and those sit downstream of runner_slot_allocation, so writing it in place would close an import cycle. Resolving that is a structural change, not a line edit."
+data derived_width_probe_note: String = "WHAT THIS PROBE IS FOR, stated plainly because it asserts about a function that does not exist yet. host_memory_admitted_width returns hand-authored literals 5/5/6/6 (5/5/7/7 before the 2026-08-17 16GiB ruling), while gunbc.runner_slot_allocation gunbc_runner_slot_width_ruling_note describes those numbers as falling out of the conservation arithmetic — 'neither number is authored here as a target; both are the largest width the wall will pass'. That is a claim about a derivation nobody wrote: the arithmetic was run by hand once and its answers were typed in beside the wall that checks them, which is the second-representation shape DESIGN 5 names, and it is why raising a host's RAM does not raise its width.\n\nThis probe runs the derivation the note describes and asserts it reproduces every literal exactly. It is evidence for replacing them with the derivation, and until then it is a live consumer that reds if the two ever disagree — which is the failure the current arrangement cannot detect, because nothing recomputes the literals.\n\nIt lives in a test module deliberately: the production derivation needs the overhead, session and headroom charges, and those sit downstream of runner_slot_allocation, so writing it in place would close an import cycle. Resolving that is a structural change, not a line edit."
 
 fn derived_memory_admitted_width(host: HostIdentity) -> Int {
   let usable = usable_ram_of(host: host)
@@ -210,5 +211,5 @@ test fn derived_width_reproduces_every_authored_literal() -> Bool {
 
 test fn derived_width_reproduces_the_two_host_classes() -> Bool {
   derived_memory_admitted_width(host: operator_host_srv1) == 5
-    && derived_memory_admitted_width(host: operator_host_srv3) == 7
+    && derived_memory_admitted_width(host: operator_host_srv3) == 6
 }

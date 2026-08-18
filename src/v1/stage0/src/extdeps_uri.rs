@@ -916,7 +916,8 @@ pub fn uri_percent_encode_outcomes_first_refusal(
 ) -> Option<Rc<UriPercentEncodeRefusalCause>> {
     outcomes.clone().iter().cloned().fold(
         None,
-        |acc: _, outcome: Rc<UriPercentEncodeScalarOutcome>| match acc.clone() {
+        |acc: Option<Rc<UriPercentEncodeRefusalCause>>,
+         outcome: Rc<UriPercentEncodeScalarOutcome>| match acc.clone() {
             Some(_) => acc.clone(),
             None => match (*outcome.clone()).clone() {
                 UriPercentEncodeScalarOutcome::UriPercentEncodeScalarRefused {

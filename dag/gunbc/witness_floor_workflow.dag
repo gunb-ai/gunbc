@@ -1,0 +1,253 @@
+module gunbc.witness_floor_workflow
+
+// THE ONLY CI EMISSION THIS REPOSITORY HAS.
+//
+// Authored fresh on 2026-08-15 as re-add #1 after the CI wipe, deliberately NOT by reviving
+// gunbc.ci_workflow's job-spec architecture. That module emitted six jobs across a build ->
+// regen -> ci -> heal -> fleet pipeline with per-step timeout rows, artifact transfer between
+// jobs, concurrency expressions, upstream-red refusal arms and a floor step whose plan resolved
+// batches, workers and a coordinator. None of it is re-derived here, because none of it follows
+// from the obligation this workflow discharges.
+//
+// The obligation is exactly one sentence: every test witness in the repository executes, on
+// every push and pull request, and the run is red if any of them is. From that, one job:
+// check out the tree, install the toolchain, build the one binary that folds the witnesses, run
+// it once. There is no second job, so there is nothing to sequence, nothing to hand an artifact
+// to, and no `needs` edge to get wrong.
+//
+// WHAT IS DELIBERATELY ABSENT, so that a later reader does not restore it as an oversight:
+// heal, the generated-artifact drift gates, the seven effect gates, the fmt gate,
+// merge-admission stamping and the falsifier cadence are all real obligations and all currently
+// unmet. They return one at a time, each re-derived from its own first principles under its own
+// operator agreement. Their absence here is the declared state of the ladder, not a gap in this
+// module.
+//
+// REGEN IS ABSENT FOR A DIFFERENT REASON AND DOES NOT RETURN (operator ruling, 2026-08-15,
+// landed on integration/v1-cut at eebdeca813 -- 71 files, 62,261 lines deleted). This list named
+// regen as an unmet obligation awaiting its turn; that is no longer true, because its SUBJECT is
+// deleted. `regen_stage0` went with the whole v1 .dag compiler authority and its 142-entry
+// emit-plan roster. The emitted Rust under src/v1/stage0/src is retained and frozen -- every .rs
+// is committed, so a clone still builds with rustc alone -- and what died is the loop that kept
+// those files in sync with a .dag authority that no longer exists. Deleting regen in the same
+// commit was load-bearing rather than tidy: left standing, it would have computed an empty emit
+// set against the deleted authority and deleted the 142 frozen files, so the regrowth trap
+// pointed at the seed itself. A regen job, a regen verify gate, a self-host staleness gate and a
+// regen affected-set skip witness are therefore all off this queue permanently; each had exactly
+// one subject. The consequence for this fold is that no second required CI path competes with it
+// for the floor budget.
+//
+// THAT RETIREMENT IS ORDER-DEPENDENT, and the paragraph above states it in a settled present
+// tense it has not earned (corrected 2026-08-15, cross-branch review). `regen_stage0` and its
+// roster are deleted on integration/v1-cut and ALIVE on main. So "its subject is deleted" is true
+// on that branch and not yet true of the repository, and the retirement above discharges only if
+// v1-cut reaches main. If this cut lands FIRST, main carries a live regen authority with no
+// required job invoking it -- which is a real gap someone must own, not the settled absence the
+// paragraph describes -- and if v1-cut never lands, the item returns to the queue as an ordinary
+// unmet obligation rather than a retired one. This is the same branch-dependent-population defect
+// already declared on the src/v1 coverage gap row, and it is recorded here because a reader
+// checking main and a reader checking the cut branch would otherwise disagree about whether this
+// obligation exists at all. Whichever cut merges second owns the reconciliation.
+//
+// THE DRIFT GATES DO NOT RIDE ON THIS. Measured on the v1-cut branch: heal_generated_artifacts
+// PASSES while regen is RED. So "the regen fixed point and the generated-artifact drift gates"
+// is two obligations with two subjects, and only the regen half is order-dependent. The drift
+// gates stay on the queue above unconditionally, and a future reader must not retire them by
+// association when the regen half retires.
+
+data witness_floor_workflow_job_id: String = "witnesses"
+
+data witness_floor_concurrency_group: String = "witness-floor-${{ github.event.pull_request.number || github.ref }}"
+
+// The binaries the fold actually needs, and only those. `claim_executor` is the fold's entry;
+// `gunbc` is the CLI the repository's own tooling invokes. The predecessor build job named
+// nineteen binaries, most of which this cut deleted; naming a binary that no step runs buys
+// nothing and costs a compile.
+data witness_floor_required_bins: List<String> = ["claim_executor", "gunbc"]
+
+fn witness_floor_checkout_step() -> Step {
+  UsesStep {
+    name: Present { value: "Checkout" },
+    id: none,
+    uses: checkout_action,
+    with: Present {
+      value: [kv(key: "fetch-depth", value: yaml_int(n: 0))]
+    },
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+fn witness_floor_toolchain_step() -> Step {
+  UsesStep {
+    name: Present { value: "Install Rust toolchain" },
+    id: none,
+    uses: setup_rust_action,
+    with: none,
+    env: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// One cargo invocation, no retry arm. The predecessor carried a fallback that re-ran the build
+// with CARGO_BUILD_JOBS=1 and RUSTC_WRAPPER unset when the first attempt failed; that arm made
+// an sccache deficit unobservable by construction (DESIGN section 5, the absorbing fallback), so
+// it is not re-derived. A build failure is a build failure and stops the line.
+fn witness_floor_build_script() -> String {
+  fold(
+    witness_floor_required_bins,
+    init: "cargo build --release -p v1-compiler",
+    f: fn(acc, bin) { concat(acc, concat(" --bin ", bin)) }
+  )
+}
+
+fn witness_floor_build_step() -> Step {
+  RunStep {
+    name: Present { value: "Build the witness fold" },
+    id: none,
+    run: concat(witness_floor_build_script(), "\n"),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// The source-root flags are FOLDED from gunbc.ci_layer_roots witness_layer_roots, never spelled
+// here. That authority is what the compile-clean closure and the divergence census already read,
+// so a literal list in this emitter would be a second representation of it (DESIGN §3) -- and the
+// rung drop is invisible exactly while the bytes still agree, because the copy typechecks and
+// looks finished. It went in as a literal on the first authoring of this file and is corrected
+// here; the class was named by tidy-gull-813 on a sibling lane, same day, from its own migration.
+fn witness_floor_source_root_flags() -> String {
+  fold(witness_layer_roots, init: "", f: fn(acc, root) {
+    concat(acc, concat(" --source-root \"$ROOT/", concat(root, "\"")))
+  })
+}
+
+// ONE INVOCATION OF OUR OWN BINARY. Everything the run decides -- which witnesses exist, what
+// identity each has, which frame it needs, and whether the roster is admissible at all -- is
+// decided in .dag by v2.workflow.required_floor. This step passes the source roots and
+// nothing else: there is no plan entry, no plan function, no batch id, no worker role and no
+// selection flag, because the fold has no such concepts to configure.
+fn witness_floor_run_script() -> String {
+  concat(
+    concat("ROOT=", concat(ci_repo_root_shell(), "\n")),
+    concat(
+      "\"$ROOT/target/release/claim_executor\" --required-floor",
+      concat(witness_floor_source_root_flags(), "\n")
+    )
+  )
+}
+
+fn witness_floor_run_step() -> Step {
+  RunStep {
+    name: Present { value: "All witnesses (one prepared subject, one fold)" },
+    id: none,
+    run: witness_floor_run_script(),
+    shell: none,
+    env: none,
+    working_directory: none,
+    if_condition: none,
+    continue_on_error: none,
+    timeout_minutes: none
+  }
+}
+
+// A DECLARED PROVISIONAL BOUND, NOT A DERIVED ONE, AND THE DIFFERENCE IS THE WHOLE POINT.
+//
+// Absent, this job inherits GitHub's 360-minute default -- so it was never unbounded, but
+// the bound was nobody's decision and it is longer than any observed run needs. The cost it
+// imposes is not wall clock: a self-hosted runner is held for the duration, and the step's
+// log is UNREADABLE until the job ends, so an over-long ceiling converts a failed run into
+// hours of zero information. A bounded failure is strictly more informative than an
+// unbounded wait.
+//
+// 180 is NOT derived from a completed run, because no run of this fold has ever completed.
+// Deriving it would require the completion time this bound exists to force. What it is: half
+// the inherited default, above every phase sequence measured so far (preparation 553s plus
+// published-mock projection 47s locally, at bfecfd961c1), and low enough that the log
+// arrives the same working hour as the failure. Calling it derived would be the fabricated
+// plausible output DESIGN section 5 forbids, one level up -- a number with no measurement
+// behind it wearing a measurement's authority.
+//
+// RESTORATION TRIGGER: the first run that completes this fold. Its wall time is the real
+// measurement, and this constant is replaced by one derived from it -- at which point this
+// note dissolves with the provisional bound it explains.
+fn witness_floor_job() -> Job {
+  Job {
+    id: witness_floor_workflow_job_id,
+    name: none,
+    runner: gunbc_ci_runner_spec(),
+    steps: [
+      witness_floor_checkout_step(),
+      witness_floor_toolchain_step(),
+      witness_floor_build_step(),
+      witness_floor_run_step()
+    ],
+    needs: [],
+    env: none,
+    outputs: none,
+    if_condition: none,
+    timeout_minutes: 180,
+    continue_on_error: none,
+    concurrency: none,
+    permissions: none
+  }
+}
+
+data witness_floor_workflow: Workflow = {
+  name: "witnesses",
+  on: [
+    WorkflowDispatch { inputs: [] },
+    Push { branches: [gunbc_default_branch_name], paths: [] },
+    PullRequest {
+      branches: [gunbc_default_branch_name],
+      types: [Opened, Synchronize, Reopened, ReadyForReview]
+    }
+  ],
+  concurrency: Present {
+    value: ConcurrencyMappingQueueNotMax {
+      group: witness_floor_concurrency_group,
+      cancel_in_progress: Present { value: CancelInProgressBool { value: true } },
+      explicit_single: none
+    }
+  },
+  env: Present {
+    value: [kv(key: "CARGO_TERM_COLOR", value: yaml_string(s: "always"))]
+  },
+  permissions: Present {
+    value: WorkflowPermissions {
+      contents: Present { value: PermRead },
+      pull_requests: none,
+      issues: none,
+      actions: none,
+      id_token: none
+    }
+  },
+  jobs: [witness_floor_job()]
+}
+
+fn expected_witness_floor_yml() -> String {
+  serialize_yaml(v: project_workflow_to_yaml(workflow: witness_floor_workflow))
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// FIRST-EXECUTION FINDINGS (2026-08-15). Three rulings, recorded here beside the emission they
+// are about rather than in a plan document that would drift from it.
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+data witness_floor_first_execution_receipt: String = "THE FOLD'S FIRST REAL EXECUTION REFUSED, AND THAT IS THE FINDING. Run on GitHub (12m24s whole job) and reproduced locally (531s for the fold alone): strict preparation refused with one typed located diagnostic and ZERO witnesses executed. Measured cost shape inside the fold — frontend 38s, normalize 2s, reconcile ~8 minutes, analyses 1s; reconcile IS the fold. Diagnostic census after repairing this cut's own residue: 282 diagnostics across 75 files (57 test/fixture, 18 production). CORRECTION 2026-08-15: this sentence first read that ZERO of them referenced anything this cut deleted. That was FALSE, and the method that produced it is the error worth keeping. The check was a grep of the refusal set for `ci_floor|falsifier|selection|scoped_witness|pr_native|fast_lane` — a list of names I expected — so it could only ever find residue I had already thought of. Two carriers declared in the deleted `affected_set_floor_runner` (`FloorDiffLineTouch`, `DiffPathsProduced`) matched none of those patterns and sat in the census unattributed, along with the two witness files that consumed them. The sound check, run afterwards, asks the question from the other side: for every unresolved symbol in the refusal set, is it declared anywhere in the live tree, and if not, was it declared in a file this branch deleted. That found them immediately. A grep for names you predict is not a census; it is a confirmation of your own list, and this is the second time in one day this lane produced an incomplete enumeration while documenting the incomplete-enumeration class. Against the old floor's 56.5 minutes this is 8m51s, but the comparison is NOT like-for-like and must not be quoted as one: a refusing run that executed nothing is cheaper than a run that executed 9,000 witnesses for reasons that have nothing to do with the fold's design."
+
+data witness_floor_whole_tree_strict_concealment_note: String = "WHAT THE REFUSAL ACTUALLY DISCOVERED: this repository has never been whole-tree strict-typechecked. The old floor prepared PER-ENTRY closures, so a broken module reddened only the closures that imported it and was invisible everywhere else; a module nothing imported was never typechecked at all. This fold's admission wall is the first mechanism that has ever demanded the whole tree resolve as one namespace, and it cannot yet. That is a pre-existing concealment surfaced, not a regression introduced — and it is a larger finding than the fold's wall-clock. Note the same asymmetry inside this lane's own verification: `gunbc compile --target dag` resolves a transitive import closure and reports the remaining 1,135 modules as census-only, which is why this cut's own six orphaned importers passed a whole-corpus compile and were caught only by the fold."
+
+data witness_floor_all_or_nothing_upheld_note: String = "ALL-OR-NOTHING PREPARATION IS UPHELD (ruling 2026-08-15), and the reasoning is recorded because the temptation to relax it recurs. The subject IS the corpus. Admitting a partially-typechecking subject while reporting a whole-corpus verdict is the empty-observation narrow — rendering 'I could not admit this population' as 'this population is fine' — which DESIGN names as strictly worse than the widen section 5 already forbids, because a widen is merely expensive while a narrow is silently uncovered. The ordering consequence is real and is owned by the operator rather than by this lane: the fold's first green day requires the last pre-existing defect to be fixed."
+
+data witness_floor_bare_cross_module_reference_class_note: String = "THE LARGEST DIAGNOSTIC CLASS IS NOT THIS LANE'S TO FIX, and it must not be fixed the obvious way. 151 of the 185 undefined-variable diagnostics are one name: `Empty`. CORRECTED 2026-08-15, same day, against this note's own first revision: that revision said `Empty` is the nullary constructor of `FreeMonoid` in `std.algebra`, declared once. It is declared TWICE — `std.stack` `Stack` and `std.algebra` `FreeMonoid` — and the error was reproduced independently on both sides of the relay, because each of us grepped the module we had been pointed at and neither swept the tree for a second declaration of the name. That is the incomplete-enumeration class committed while diagnosing the incomplete-enumeration class, and it is recorded here rather than quietly amended because the corrected fact changes the remedy.\n\nWHAT THESE SITES ACTUALLY ARE: bare references to a TWO-CANDIDATE HOMONYM, where neither candidate sits on the referencing module's containment chain (verified on the settling specimen, `v2.lens.enforcement.cost_coverage`, which carries exactly one unrelated import and uses bare `Empty` in its body). The old per-entry path admitted them by POOL-MEMBERSHIP COINCIDENCE — some unrelated entry in that closure happened to drag the right module into the pool — which is the corpus-wide accidental-coverage trap DESIGN already carries. Strict whole-corpus preparation has no such coincidence to rely on.\n\nTHE REMEDY, and what it is NOT: containment-based resolution cannot bind these, because there is nothing on the chain to bind them to; the honest answer at those sites is a refusal for ambiguity. So this is corpus AUTHORING work — each site takes a qualified reference (`std.algebra.Empty`) — and NOT resolver work. The first revision of this note recorded the fold's first green as downstream of the namespace cut's resolution model; that dependency is STRUCK, because it was a promise made on the namespace lane's behalf that its own measurement showed it could not keep. DO NOT REPAIR BY ADDING IMPORT LINES: that ruling stands unchanged, and its reason is now sharper — a qualified reference IS the dependency edge, which is the end state; an import line is the grammar being deleted.\n\nNOT STARTED HERE, deliberately: 151 qualified references authored on this branch would collide with the namespace branch's rewrite of the same files, so sequencing across two live branches is an operator decision. The single dual-std `nat_compare` ambiguity (`std.nat` vs `v2.std.nat`) is the same shape and confirms the pattern is the dual std tree under one flat namespace rather than an `Empty` quirk."
+
+data witness_floor_memory_envelope_finding: String = "THE FOLD'S MEMORY ENVELOPE IS A FIRST-CLASS PROPERTY, measured rather than estimated. One run was OOM-KILLED (exit 137 at 537s, during strict preparation — a kill, not a refusal). The next run was sampled: RSS climbed 3.9 -> 4.8 -> 5.8 -> 6.3 GiB over 90 seconds and PEAKED AT 9.37 GiB. The container cap (31 GiB) is not the binding constraint; the shared 20 GiB slice is, and the kernel kills the LARGEST task in it when the aggregate is exceeded, which is the likely cause of the kill. CONSEQUENCE, named because it is what makes this rank beside the diagnostic census: non-deterministic OOM on a shared host is exactly the shape that makes a required check flaky, and a check that dies for reasons unrelated to its subject teaches everyone to ignore it. DIRECTION RULED, MEASUREMENT NOT STARTED: do NOT re-shard into batches or worker processes to make it fit — that is the deleted decomposition rebuilding itself inside the replacement one convenience at a time, and the single prepared subject is precisely what the fold exists to be. The 9.37 GiB peak is a cost-shape defect to root-cause (the repository already carries that lane: schedule-derived per-module retention, and the carrier/interning roots), not a reason to change the shape."

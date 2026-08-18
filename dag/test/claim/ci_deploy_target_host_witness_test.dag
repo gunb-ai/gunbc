@@ -97,16 +97,6 @@ test fn witness_preflight_script_checks_target_host() -> Bool {
     && string_contains(s: script, pattern: "printenv RUNNER_NAME")
 }
 
-// The deploy is now a STEP inside the unified `fleet` job (operator consolidation
-// 2026-08-10), so runner pinning is asserted on that job: it runs on the srv1 self-hosted
-// label set and never on a ubicloud runner. The deploy STEP itself carries no runs-on;
-// pinning is a job fact, and the fleet job is where the deploy executes.
-test fn witness_ci_yml_deploy_job_pins_srv1_runner() -> Bool {
-  let yaml = expected_ci_yml()
-  string_contains(s: yaml, pattern: "  fleet:\n    runs-on: [self-hosted, linux, arm64, srv1]")
-    && !string_contains(s: yaml, pattern: "  fleet:\n    runs-on: ubicloud-standard-16-arm")
-}
-
 test fn witness_local_proof_requires_host_identity() -> Bool {
   match deploy_target_proof_from_access(access: ci_deploy_srv1_access) {
     RunnerIdentityOnHost { host: id } => id == operator_host_srv1

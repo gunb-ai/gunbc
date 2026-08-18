@@ -1,0 +1,97 @@
+module test.claim.systemd_unit_file_witness_test
+
+
+fn sample() -> extdeps.systemd.unit_file.SystemdUnitFile {
+  extdeps.systemd.unit_file.SystemdUnitFile {
+    unit: [
+      extdeps.systemd.unit_file.Description { text: "gunbc Spark serving" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.After { target: "network-online.target" as std.types.NonEmptyStr },
+    ],
+    service: [
+      extdeps.systemd.unit_file.ServiceType { mode: "simple" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.ExecStart { command: "/opt/x/bin/ollama serve" as std.types.NonEmptyStr },
+      extdeps.systemd.unit_file.Restart { policy: "on-failure" as std.types.NonEmptyStr },
+    ],
+    install: [extdeps.systemd.unit_file.WantedBy { target: "default.target" as std.types.NonEmptyStr }],
+  }
+}
+
+// THE KEYSTONE: exact bytes, not a shape or a substring.
+//
+// This is the file that gets delivered to a host and, byte for byte, the value an already-delivered
+// unit is compared against to decide convergence. A `string_contains` check would pass on a file with
+// its sections transposed, a missing trailing newline, or CRLF endings -- all of which are real
+// systemd failures or permanent false diffs. So the claim is equality with a literal written out
+// here independently of the serializer's own composition.
+test fn a_unit_file_serializes_to_exactly_these_bytes() -> Bool {
+  extdeps.systemd.unit_file.serialize_systemd_unit_file(file: sample()) ==
+    "[Unit]\nDescription=gunbc Spark serving\nAfter=network-online.target\n[Service]\nType=simple\nExecStart=/opt/x/bin/ollama serve\nRestart=on-failure\n[Install]\nWantedBy=default.target\n"
+}
+
+// systemd's parser is line-oriented; a final directive with no newline is the classic silently
+// truncated last line. It is also load-bearing for convergence: the observed-vs-rendered byte
+// comparison would differ forever against every correctly written file on disk.
+test fn the_rendered_unit_file_ends_with_a_newline() -> Bool {
+  ends_with(s: extdeps.systemd.unit_file.serialize_systemd_unit_file(file: sample()), suffix: "default.target\n")
+}
+
+// Section order is systemd's, and it is asserted rather than assumed: the sections are three
+// separate fields, so nothing about the record's shape forces the emission order.
+test fn sections_are_emitted_in_unit_service_install_order() -> Bool {
+  let out = extdeps.systemd.unit_file.serialize_systemd_unit_file(file: sample())
+  starts_with(s: out, prefix: "[Unit]\n")
+    && string_contains(out, "\n[Service]\n")
+    && string_contains(out, "\n[Install]\n")
+}
+
+// An empty section still emits its header. A unit file with no [Install] directives is legitimate
+// (a unit started by another unit rather than enabled), and the header's presence is what makes the
+// rendered bytes a function of the record alone rather than of which fields happened to be nonempty.
+test fn an_empty_section_still_emits_its_header() -> Bool {
+  extdeps.systemd.unit_file.serialize_systemd_unit_file(
+    file: extdeps.systemd.unit_file.SystemdUnitFile {
+      unit: [extdeps.systemd.unit_file.Description { text: "d" as std.types.NonEmptyStr }],
+      service: [],
+      install: [],
+    },
+  ) == "[Unit]\nDescription=d\n[Service]\n[Install]\n"
+}
+
+// ── The directive names are systemd's, and each is pinned to a distinct constant ────────────────
+
+// `ServiceType` renders as `Type=`, NOT `ServiceType=`. The variant is named for what it is in the
+// model; the wire name is systemd's. Nothing but an assertion on the literal catches a variant whose
+// constructor name leaked into the emitted bytes.
+test fn service_type_renders_as_the_type_directive() -> Bool {
+  extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.ServiceType { mode: "notify" as std.types.NonEmptyStr })
+    == "Type=notify"
+}
+
+test fn each_unit_directive_renders_its_own_systemd_name() -> Bool {
+  extdeps.systemd.unit_file.systemd_unit_directive_line(directive: extdeps.systemd.unit_file.Description { text: "a" as std.types.NonEmptyStr }) == "Description=a"
+    && extdeps.systemd.unit_file.systemd_unit_directive_line(directive: extdeps.systemd.unit_file.After { target: "b" as std.types.NonEmptyStr }) == "After=b"
+    && extdeps.systemd.unit_file.systemd_unit_directive_line(directive: extdeps.systemd.unit_file.Wants { target: "c" as std.types.NonEmptyStr }) == "Wants=c"
+}
+
+test fn each_service_directive_renders_its_own_systemd_name() -> Bool {
+  extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.ExecStart { command: "a" as std.types.NonEmptyStr }) == "ExecStart=a"
+    && extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.Restart { policy: "b" as std.types.NonEmptyStr }) == "Restart=b"
+    && extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.Environment { assignment: "K=v" as std.types.NonEmptyStr })
+      == "Environment=K=v"
+    && extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.WorkingDirectory { path: "/d" as std.types.NonEmptyStr })
+      == "WorkingDirectory=/d"
+}
+
+test fn each_install_directive_renders_its_own_systemd_name() -> Bool {
+  extdeps.systemd.unit_file.systemd_install_directive_line(directive: extdeps.systemd.unit_file.WantedBy { target: "a" as std.types.NonEmptyStr }) == "WantedBy=a"
+    && extdeps.systemd.unit_file.systemd_install_directive_line(directive: extdeps.systemd.unit_file.RequiredBy { target: "b" as std.types.NonEmptyStr })
+      == "RequiredBy=b"
+}
+
+// An `Environment=` value legitimately contains `=`. Splitting on the first separator is the obvious
+// wrong implementation, and this pins the whole assignment through.
+test fn an_environment_assignment_keeps_its_own_equals_sign() -> Bool {
+  extdeps.systemd.unit_file.systemd_service_directive_line(
+    directive: extdeps.systemd.unit_file.Environment { assignment: "OLLAMA_HOST=127.0.0.1:11434" as std.types.NonEmptyStr },
+  ) == "Environment=OLLAMA_HOST=127.0.0.1:11434"
+}

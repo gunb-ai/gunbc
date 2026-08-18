@@ -109,7 +109,7 @@ fn rendered_source_for(source: String, subject_name: String, decl: String) -> St
 // Zero matches and two matches are both Absent here because both mean `this name does not identify a subject`. They are distinguishable at the call site if a future arm needs to tell them apart; what must never happen is a confident wrong id.
 
 // This helper protects the TEST'S OWN rendering selection. The production projection does not depend on it: keyed_annotation_rows carries its own eligible-roster resolution and duplicate refusal, and the arm below proves that at the projection itself rather than here.
-fn subjects_named_in(parsed: AnnotationParsedSource, name: String) -> List<OccurrenceId> {
+fn subjects_named_in(parsed: AnnotationParsedSource, name: String) -> List<std.occurrence_identity.OccurrenceId> {
   fold(
     parsed.parse.occurrence_transport.index.entries,
     init: [],
@@ -122,7 +122,7 @@ fn subjects_named_in(parsed: AnnotationParsedSource, name: String) -> List<Occur
   )
 }
 
-fn subject_named_in(parsed: AnnotationParsedSource, name: String) -> OccurrenceId? {
+fn subject_named_in(parsed: AnnotationParsedSource, name: String) -> std.occurrence_identity.OccurrenceId? {
   let matches = subjects_named_in(parsed: parsed, name: name)
   if (matches |> count) == 1 {
     fold(matches, init: none, f: (acc, id) => Present { value: id })
@@ -131,7 +131,7 @@ fn subject_named_in(parsed: AnnotationParsedSource, name: String) -> OccurrenceI
   }
 }
 
-fn subject_named(source: String, name: String) -> OccurrenceId? {
+fn subject_named(source: String, name: String) -> std.occurrence_identity.OccurrenceId? {
   subject_named_in(parsed: annotation_parsed_of(source: source), name: name)
 }
 

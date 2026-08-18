@@ -76,15 +76,29 @@ data artifact_axis_omits_build_path: PromotionObligation = PromotionObligation {
 // uses. That is a property of every bound trigger, mitigated the same way — the name
 // here is the specified authoring point, not a guess, and it is stated in the paragraph
 // above so a future author renaming it knows to move this row with it.
+// RE-HOMED, NOT RETIRED (self-host frontier roster cut). Both refs named
+// v2.compiler.self_host.frontier, which is deleted, so the subject pointed at a ghost
+// and — worse — the bound trigger became one that can never fire: DeclarationAppears
+// waits for a declaration in a module nobody will re-create, which is a permanently
+// pending obligation wearing a checkable trigger.
+//
+// The obligation itself survives the roster because it was never about the roster. The
+// hazard is that a self-host promotion can be granted on evidence produced by the v1
+// seed, and its live subject is the producer axis in
+// v2.compiler.self_host.emitter_producer_provenance, whose EmitterProducer still carries
+// a V1SeedEmitter arm. The "n/27" framing goes with the roster; the hazard does not.
+// The trigger keeps its declaration name and moves to the module that is now the
+// specified authoring point, per the paragraph above about a bound ref naming where the
+// carrier will be authored rather than where it is.
 data frontier_numerator_admits_seed_evidence: PromotionObligation = PromotionObligation {
   subject: decl_ref(
-    module_path: "v2.compiler.self_host.frontier",
-    decl_name: "SelfHostFrontierDisposition"
+    module_path: "v2.compiler.self_host.emitter_producer_provenance",
+    decl_name: "EmitterProducer"
   ),
-  claim_at_risk: "A reported n/27 means n modules were emitted by a v2 emitter; today the promoted disposition would also admit a module emitted by the v1 seed." as NonEmptyStr,
+  claim_at_risk: "A self-host promotion is supposed to mean a v2 emitter produced the module; the producer axis still carries a V1SeedEmitter arm, so a promotion granted on seed-produced evidence is representable." as NonEmptyStr,
   condition: bound_dissolution(
     ref: decl_ref(
-      module_path: "v2.compiler.self_host.frontier",
+      module_path: "v2.compiler.self_host.emitter_producer_provenance",
       decl_name: "v2_self_hosted_promotions"
     )
   ),

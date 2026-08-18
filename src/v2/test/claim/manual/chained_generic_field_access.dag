@@ -1,6 +1,5 @@
 module v2.test.manual.chained_generic_field_access
 
-
 type Inner<S> { value: S }
 type Middle<S> { inner: Inner<S> }
 type Outer<S> { middle: Middle<S> }
@@ -16,10 +15,16 @@ fn use_chained() -> Int {
 
 data witness_chained_generic_field: Bool = use_chained() == 9
 
+data chained_generic_field_claim_payload: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
 data claim_chained_generic_field_compiles: TestClaim = CompilesClaim {
   label: "manual/chained_generic_field_access: chained o.middle.inner.value compiles",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: Rec { v: 0 },
-  expected_value: Rec { v: 0 },
+  input: chained_generic_field_claim_payload,
+  expected_value: chained_generic_field_claim_payload,
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
