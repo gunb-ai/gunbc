@@ -3,7 +3,7 @@ module v2.extdeps.coercion_widening
 
 fn coercion_widening_unknown_value_set_node() -> Node {
   v2.std.node.Node {
-    kind: TypeNode { connective: Atom { identity: ^coercion_widening_unknown_value_set } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^coercion_widening_unknown_value_set } },
     children: [],
     occurrence_id: SyntheticOccurrence
 }
@@ -78,7 +78,7 @@ fn coercion_fold_rust_i32_to_python_int_widening(
   coercion_fold_refinement_widening(
     source: source,
     candidates: candidates,
-    policy: TargetDeclaredPriority { priority: priority },
+    policy: v2.std.find_witness.TargetDeclaredPriority { priority: priority },
     predicate: rust_i32_python_int_refinement_widening_predicate()
   )
 }
@@ -91,7 +91,7 @@ fn coercion_fold_python_int_to_rust_i32_narrowing(
   coercion_fold_refinement_widening(
     source: source,
     candidates: candidates,
-    policy: TargetDeclaredPriority { priority: priority },
+    policy: v2.std.find_witness.TargetDeclaredPriority { priority: priority },
     predicate: python_int_rust_i32_refinement_narrowing_predicate()
   )
 }

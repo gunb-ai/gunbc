@@ -3,7 +3,7 @@ module v2.std.patch
 
 type ConfigPatchRecord<Config>
 
-fn config_patch_layer<Config>(base: Config, patch: ConfigPatchRecord<Config>) -> Config {
+fn config_patch_layer<Config>(base: Config, patch: v2.std.patch.ConfigPatchRecord<Config>) -> Config {
   base
 }
 
