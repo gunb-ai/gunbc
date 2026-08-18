@@ -23,7 +23,7 @@ homepage = "https://github.com/gunb-ai/gunbc"
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-license = "MIT"
+license = "BUSL-1.1"
 
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive", "rc"] }
