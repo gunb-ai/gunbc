@@ -7,12 +7,12 @@ type TestClass = Unit | Hermetic | Integration
 
 type DerivedClassification {
   test_class: TestClass
-  depth: FermiDepth
+  depth: std.types.FermiDepth
   hermetic: Bool
 }
 
 type TransportFidelity {
-  depth: FermiDepth
+  depth: std.types.FermiDepth
   hermetic: Bool
 }
 

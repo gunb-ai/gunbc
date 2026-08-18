@@ -15,8 +15,8 @@ data occurrence_module_path_convergence_note: String = "Convergence, not fork: O
 data declaration_exposure_note: String = "DeclarationExposure is THE deciding authority for whether a declaration is structurally exposed to a reference (namespace-resolution-design.md 13 / namespace-unique-on-chain-operational-plan.md 2). LexicalExposure\{exposing_scope\} exposes exactly when its exposing_scope contains the reference (occurrence_containment_path_is_prefix_of); ModuleExposure\{module\} exposes when the reference shares that module and the declaration's AuthoredTokenOrdinal is strictly before the reference's; RootExposure exposes on every candidate lookup (root declarations on every applicable chain). Raw declaration.containment must never remain a parallel binding rule beside the carrier — containment may derive LexicalExposure when rows are produced, but the decision reads only DeclarationExposure. Category must never be substituted for exposure."
 
 type DeclarationExposure
-  = LexicalExposure { exposing_scope: OccurrenceContainmentPath }
-  | ModuleExposure { module: NonEmptyStr }
+  = LexicalExposure { exposing_scope: std.occurrence_identity.OccurrenceContainmentPath }
+  | ModuleExposure { module: std.types.NonEmptyStr }
   | RootExposure
 
 type DeclarationExposureRow {
@@ -28,7 +28,7 @@ data authored_order_note: String = "AuthoredOrderRow carries the authored token 
 
 type AuthoredOrderRow {
   occurrence: std.occurrence_identity.OccurrenceId
-  ordinal: AuthoredTokenOrdinal
+  ordinal: std.occurrence_identity.AuthoredTokenOrdinal
 }
 
 type OccurrenceBindingCandidateInputs {
@@ -39,19 +39,19 @@ type OccurrenceBindingCandidateInputs {
 
 type OccurrenceModulePathRow {
   occurrence: std.occurrence_identity.OccurrenceId
-  module_path: NonEmptyStr
+  module_path: std.types.NonEmptyStr
 }
 
 type OccurrenceModulePathIndexRefusal
   = DuplicateOccurrenceModulePathRow {
       occurrence: std.occurrence_identity.OccurrenceId,
-      first_module_path: NonEmptyStr,
-      conflicting_module_path: NonEmptyStr,
+      first_module_path: std.types.NonEmptyStr,
+      conflicting_module_path: std.types.NonEmptyStr,
     }
   | MissingOccurrenceModulePathRow { occurrence: std.occurrence_identity.OccurrenceId }
 
 type OccurrenceModulePathIndexBuild {
-  module_by_occurrence: Map<Int, NonEmptyStr>
+  module_by_occurrence: Map<Int, std.types.NonEmptyStr>
   refusal: OccurrenceModulePathIndexRefusal?
 }
 
@@ -287,12 +287,12 @@ type AuthoredOrderIndexRefusal
     }
   | ConflictingAuthoredOrderRow {
       occurrence: std.occurrence_identity.OccurrenceId,
-      first_ordinal: AuthoredTokenOrdinal,
-      conflicting_ordinal: AuthoredTokenOrdinal,
+      first_ordinal: std.occurrence_identity.AuthoredTokenOrdinal,
+      conflicting_ordinal: std.occurrence_identity.AuthoredTokenOrdinal,
     }
 
 type AuthoredOrderIndexBuild {
-  order_by_occurrence: Map<Int, AuthoredTokenOrdinal>
+  order_by_occurrence: Map<Int, std.occurrence_identity.AuthoredTokenOrdinal>
   refusal: AuthoredOrderIndexRefusal?
 }
 
@@ -600,11 +600,11 @@ fn declaration_exposed_on_reference_chain(
 data occurrence_candidate_index_note: String = "OccurrenceCandidateIndex is built exactly once per transport (occurrence_candidate_index_build). declarations_by_name buckets every declaration by its authored spelling so a single reference's candidate lookup is a map_get plus a scan of only the same-spelled declarations, never a rescan of the whole declaration population -- the O(declarations x references) shape the pre-strip candidate scan had. entries_by_id is the same validated lookup authority std.occurrence_binding_resolve builds internally; it is retained here only to read authored_name, never to re-decide cardinality."
 
 type OccurrenceCandidateIndex {
-  entries_by_id: Map<Int, OccurrenceIndexEntry>
-  declarations_by_name: Map<String, List<DeclarationOccurrence>>
-  module_by_occurrence: Map<Int, NonEmptyStr>
+  entries_by_id: Map<Int, std.occurrence_identity.OccurrenceIndexEntry>
+  declarations_by_name: Map<String, List<std.occurrence_identity.DeclarationOccurrence>>
+  module_by_occurrence: Map<Int, std.types.NonEmptyStr>
   exposure_by_occurrence: Map<Int, DeclarationExposure>
-  order_by_occurrence: Map<Int, AuthoredTokenOrdinal>
+  order_by_occurrence: Map<Int, std.occurrence_identity.AuthoredTokenOrdinal>
 }
 
 fn declarations_by_name_insert(
@@ -623,7 +623,7 @@ data declarations_by_name_build_note: String = "declarations_by_name_build refus
 
 type DeclarationsByNameBuild
   = DeclarationsByNameReady {
-      by_name: Map<String, List<DeclarationOccurrence>>,
+      by_name: Map<String, List<std.occurrence_identity.DeclarationOccurrence>>,
     }
   | DeclarationsByNameMissingIndexEntry {
       occurrence: std.occurrence_identity.OccurrenceId,
@@ -631,7 +631,7 @@ type DeclarationsByNameBuild
 
 type DeclarationsByNameFold
   = DeclarationsByNameFoldReady {
-      by_name: Map<String, List<DeclarationOccurrence>>,
+      by_name: Map<String, List<std.occurrence_identity.DeclarationOccurrence>>,
     }
   | DeclarationsByNameFoldMissing {
       occurrence: std.occurrence_identity.OccurrenceId,
@@ -674,7 +674,7 @@ fn declarations_by_name_build(
 
 type OccurrenceCandidateIndexBuild
   = OccurrenceCandidateIndexReady { index: OccurrenceCandidateIndex }
-  | OccurrenceCandidateIndexTransportRefused { refusal: OccurrenceTransportRefusal }
+  | OccurrenceCandidateIndexTransportRefused { refusal: std.occurrence_identity.OccurrenceTransportRefusal }
   | OccurrenceCandidateIndexModulePathRefused { refusal: OccurrenceModulePathIndexRefusal }
   | OccurrenceCandidateIndexExposureRefused { refusal: DeclarationExposureIndexRefusal }
   | OccurrenceCandidateIndexAuthoredOrderRefused { refusal: AuthoredOrderIndexRefusal }
@@ -785,15 +785,15 @@ data bound_reference_provider_note: String = "BoundReferenceProvider is the post
 type BoundReferenceProvider {
   reference_occurrence: std.occurrence_identity.OccurrenceId
   declaration_occurrence: std.occurrence_identity.OccurrenceId
-  consumer_module: NonEmptyStr
-  provider_module: NonEmptyStr
+  consumer_module: std.types.NonEmptyStr
+  provider_module: std.types.NonEmptyStr
 }
 
 data direct_module_dependency_note: String = "DirectModuleDependency is a projection of accepted bindings, never a second authored dependency statement (namespace-resolution-design.md 7.2 / roadmap recut 7517): it dedupes BoundReferenceProvider down to the distinct (consumer_module, provider_module) pairs the bindings require — the reference-derived successor to an authored import list. Same-module ruling (carrier law): same-module BoundReferenceProvider rows are preserved; this projection emits NO DirectModuleDependency self-edge (consumer_module == provider_module is skipped in direct_module_dependency_dedup_step — M→M is not a dependency and invites self-cycles). Dedup happens ONLY at this module-edge projection via a typed two-level index (Map consumer_module → Set provider_module; membership is map_get + set_contains, never a NUL-concatenated string key), with first-seen edges accumulated in provider-traversal order (prepend during fold, single reverse at end — never map_values hash-order readback). Output order is first occurrence of each cross-module edge in the input provider list. direct_module_dependencies_from_bound_population refuses unless BoundReferencePopulation is AllReferencesBound — a refused population never becomes an empty edge list."
 
 type DirectModuleDependency {
-  consumer_module: NonEmptyStr
-  provider_module: NonEmptyStr
+  consumer_module: std.types.NonEmptyStr
+  provider_module: std.types.NonEmptyStr
 }
 
 fn direct_module_dependency_from_provider(
@@ -806,7 +806,7 @@ fn direct_module_dependency_from_provider(
 }
 
 type DirectModuleDependencyDedupBuild {
-  providers_by_consumer: Map<NonEmptyStr, Set<String>>
+  providers_by_consumer: Map<std.types.NonEmptyStr, Set<String>>
   edges_first_seen: List<DirectModuleDependency>
 }
 
@@ -1077,14 +1077,14 @@ data module_path_file_row_dissolution_note: String = "See module_path_file_row_d
 data module_path_file_row_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: cross-file binding production consumes ModuleStorageBinding rows from v2.compiler.source_authority (module_storage_binding_module_dotted × module_storage_binding_file_path) on OrdinaryLoadedCompilationClosure; ModulePathFileRow, ModulePathFileIndex, and this note delete in the completing change. Until then parser-walk supplies rows with ParsedFromSource provenance only.")
 
 type ModulePathFileRow {
-  module_path: NonEmptyStr
+  module_path: std.types.NonEmptyStr
   file_path: std.types.FilePath
 }
 
 type ModulePathFileIndexRefusal
-  = ModulePathFileDuplicateSame { module_path: NonEmptyStr, file_path: std.types.FilePath }
+  = ModulePathFileDuplicateSame { module_path: std.types.NonEmptyStr, file_path: std.types.FilePath }
   | ModulePathFileConflict {
-      module_path: NonEmptyStr,
+      module_path: std.types.NonEmptyStr,
       first_file: std.types.FilePath,
       second_file: std.types.FilePath,
     }
@@ -1160,7 +1160,7 @@ data structural_binding_walk_refusal_note: String = "StructuralBindingWalkRefuse
 
 type StructuralBindingIndexRefusal
   = StructuralBindingTransportRefusal {
-      refusal: OccurrenceTransportRefusal,
+      refusal: std.occurrence_identity.OccurrenceTransportRefusal,
     }
   | StructuralBindingModulePathRefusal {
       refusal: OccurrenceModulePathIndexRefusal,
@@ -1225,7 +1225,7 @@ fn cross_file_binding_provenance_from_provider(
 
 type CrossFileBindingProvenanceProjection
   = CrossFileBindingProvenanceProjectionBound { provenance: CrossFileBindingProvenance }
-  | CrossFileBindingProvenanceProjectionFilePathMissing { module_path: NonEmptyStr }
+  | CrossFileBindingProvenanceProjectionFilePathMissing { module_path: std.types.NonEmptyStr }
 
 type CrossFileBindingProvenancePopulation
   = AllCrossFileBindingsBound { provenances: List<CrossFileBindingProvenance> }
@@ -1519,7 +1519,7 @@ fn reference_derived_dependency_binding_references(
 }
 
 type ReferenceDerivedDependencyBindingReferenceBuild {
-  references_reversed: List<ReferenceOccurrence>
+  references_reversed: List<std.occurrence_identity.ReferenceOccurrence>
 }
 
 fn structural_binding_walk_selected_references(
@@ -1577,7 +1577,7 @@ fn structural_binding_walk(
 data cross_file_binding_closure_assembly_note: String = "Collision-free cross-file assembly substrate (N3-B0): two independently parsed transports each mint raw OccurrenceId values from their own zero-based allocator, so a naive merge collides. occurrence_id_remap_state_with_fresh_map gives each transport its own old-ID => closure-ID remap keyed by the RAW id.value (never reused across transports); remap_occurrence_id/remap_containment_path/rekey_occurrence_transport/rekey_occurrence_binding_inputs rekey index, declarations, references, module paths, exposure rows, and authored-order rows TOGETHER against that one remap map, so every row for one transport lands on the SAME closure identity for the same raw id. assemble_cross_file_binding_closure rekeys the consumer with a fresh allocator and a fresh remap map, then folds providers each with a FRESH remap map but the ALLOCATOR CARRIED FORWARD from the prior step -- this is the mechanism that makes two transports that both minted raw id 0 land on distinct closure ids. module_path_file_index_from_rows validates the accumulated module=>file rows fail-closed (ModulePathFileDuplicateSame vs ModulePathFileConflict), never last-write-wins."
 
 type OccurrenceIdRemapState {
-  allocator: OccurrenceIdAllocator
+  allocator: std.occurrence_identity.OccurrenceIdAllocator
   remap: Map<Int, std.occurrence_identity.OccurrenceId>
 }
 
@@ -1615,7 +1615,7 @@ fn remap_occurrence_id(
 }
 
 type OccurrenceContainmentRemapResult {
-  path: OccurrenceContainmentPath
+  path: std.occurrence_identity.OccurrenceContainmentPath
   state: OccurrenceIdRemapState
 }
 
@@ -1656,22 +1656,22 @@ fn remap_containment_path(
 }
 
 type OccurrenceTransportRekeyResult {
-  transport: OccurrenceTransport
+  transport: std.occurrence_identity.OccurrenceTransport
   state: OccurrenceIdRemapState
 }
 
 type OccurrenceIndexRekeyBuild {
-  entries_reversed: List<OccurrenceIndexEntry>
+  entries_reversed: List<std.occurrence_identity.OccurrenceIndexEntry>
   state: OccurrenceIdRemapState
 }
 
 type OccurrenceDeclarationRekeyBuild {
-  declarations_reversed: List<DeclarationOccurrence>
+  declarations_reversed: List<std.occurrence_identity.DeclarationOccurrence>
   state: OccurrenceIdRemapState
 }
 
 type OccurrenceReferenceRekeyBuild {
-  references_reversed: List<ReferenceOccurrence>
+  references_reversed: List<std.occurrence_identity.ReferenceOccurrence>
   state: OccurrenceIdRemapState
 }
 
@@ -1916,9 +1916,9 @@ fn cross_file_binding_closure_row(
 }
 
 type CrossFileBindingClosureRow {
-  transport: OccurrenceTransport
+  transport: std.occurrence_identity.OccurrenceTransport
   inputs: OccurrenceBindingCandidateInputs
-  module_path: NonEmptyStr
+  module_path: std.types.NonEmptyStr
   file_path: std.types.FilePath
 }
 
@@ -1929,7 +1929,7 @@ type AssembledCrossFileBindingClosureRefusal
 
 type AssembledCrossFileBindingClosure
   = AssembledCrossFileBindingClosureReady {
-      transport: OccurrenceTransport,
+      transport: std.occurrence_identity.OccurrenceTransport,
       inputs: OccurrenceBindingCandidateInputs,
       module_files: List<ModulePathFileRow>,
       consumer_file: std.types.FilePath,
@@ -1939,9 +1939,9 @@ type AssembledCrossFileBindingClosure
     }
 
 type AssembledCrossFileFold {
-  entries_reversed: List<OccurrenceIndexEntry>
-  declarations_reversed: List<DeclarationOccurrence>
-  references_reversed: List<ReferenceOccurrence>
+  entries_reversed: List<std.occurrence_identity.OccurrenceIndexEntry>
+  declarations_reversed: List<std.occurrence_identity.DeclarationOccurrence>
+  references_reversed: List<std.occurrence_identity.ReferenceOccurrence>
   module_paths_reversed: List<OccurrenceModulePathRow>
   exposure_rows_reversed: List<DeclarationExposureRow>
   order_rows_reversed: List<AuthoredOrderRow>
@@ -2253,7 +2253,7 @@ type ReferenceBindingProjection
   = ReferenceBindingProjectionBound { provider: BoundReferenceProvider }
   | ReferenceBindingProjectionUnbound { occurrence: std.occurrence_identity.OccurrenceId }
   | ReferenceBindingProjectionAmbiguous { occurrence: std.occurrence_identity.OccurrenceId }
-  | ReferenceBindingProjectionTransportRefused { refusal: OccurrenceTransportRefusal }
+  | ReferenceBindingProjectionTransportRefused { refusal: std.occurrence_identity.OccurrenceTransportRefusal }
   | ReferenceBindingProjectionModulePathRefused { refusal: OccurrenceModulePathIndexRefusal }
   | ReferenceBindingProjectionExposureRefused { refusal: DeclarationExposureIndexRefusal }
   | ReferenceBindingProjectionAuthoredOrderRefused { refusal: AuthoredOrderIndexRefusal }
@@ -2261,7 +2261,7 @@ type ReferenceBindingProjection
   | ReferenceBindingProjectionModulePathMissing { occurrence: std.occurrence_identity.OccurrenceId }
   | ReferenceBindingProjectionWrongCategory {
       occurrence: std.occurrence_identity.OccurrenceId,
-      observed: OccurrenceCategory,
+      observed: std.occurrence_identity.OccurrenceCategory,
     }
 
 data resolve_type_reference_containment_binding_note: String = "N2 typed entry (gunbc.type_reference_containment_binding slice 1): refuses non-TypeOccurrence references at the API boundary before candidate enumeration — category is part of the binding contract, not an after-the-fact filter. TypeOccurrence references delegate to resolve_reference_binding_via_structural_candidates unchanged."
@@ -2394,15 +2394,15 @@ type Section13PopulationLawId
   | Section13RepeatedDiscoverySameIdentityCollapse
 
 type Section13ExactHeadExecutionObservation {
-  head: CommitSha
-  declaration: DeclarationRef
+  head: std.types.CommitSha
+  declaration: std.decl_ref.DeclarationRef
   passed: Bool
 }
 
 type Section13PopulationLawEvidence
-  = Section13PopulationLawExecuting { receipt: DeclarationRef }
+  = Section13PopulationLawExecuting { receipt: std.decl_ref.DeclarationRef }
   | Section13PopulationLawDeferredProductionOccurrenceCollectorMissing {
-      dissolve_on: DeclarationRef?,
+      dissolve_on: std.decl_ref.DeclarationRef?,
     }
 
 type Section13PopulationLawRosterRow {
@@ -2419,13 +2419,13 @@ type Section13PopulationLawRosterVerdict
       law: Section13PopulationLawId,
     }
   | Section13PopulationLawRosterRefusedPositionalModulePath {
-      receipt: DeclarationRef,
+      receipt: std.decl_ref.DeclarationRef,
     }
   | Section13PopulationLawRosterRefusedMissingObservation {
-      receipt: DeclarationRef,
+      receipt: std.decl_ref.DeclarationRef,
     }
   | Section13PopulationLawRosterRefusedFailedOrStaleObservation {
-      receipt: DeclarationRef,
+      receipt: std.decl_ref.DeclarationRef,
     }
   | Section13PopulationLawRosterRefusedDeferredMissingTrigger
 

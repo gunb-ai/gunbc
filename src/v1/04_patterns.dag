@@ -124,7 +124,7 @@ fn is_witness_type_name(name: String) -> Bool {
 
 type NodeLookupResult {
   status: NodeLookupStatus
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type NodeLookupStatus
@@ -133,7 +133,7 @@ type NodeLookupStatus
 
 type PatternSubject
   = PatternResolved { node: Node }
-  | PatternDynamic { span: SourceSpan }
+  | PatternDynamic { span: std.types.SourceSpan }
   | PatternLookupBlocked
 
 fn is_type_variable(inferred: InferredNode) -> Bool {

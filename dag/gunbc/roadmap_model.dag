@@ -32,12 +32,12 @@ type NodeSizing
 type RoadmapNode {
   identity: RoadmapNodeIdentity
   node: RoadmapNodeId
-  line: RoadmapItem
+  line: gunbc.roadmap_status.RoadmapItem
   carriers: List<Pointer>
   sizing: NodeSizing
-  execution: WorkItemExecutionContract
+  execution: gunbc.roadmap_execution_contract.WorkItemExecutionContract
   owner: String
-  signoff: Signoff
+  signoff: gunbc.roadmap_status.Signoff
 }
 
 type RoadmapEdge {
@@ -105,11 +105,11 @@ data roadmap_acceptance_receipt_note: String = "Acceptance is a durable typed fa
 
 type RoadmapAcceptanceReceipt {
   node: RoadmapNodeId
-  criteria_digest: Fnv1a64Structural
-  red_control: RedControlEvidence
-  handback: HandbackEvidence
-  accepted_by: NonEmptyStr
-  accepted_on: NonEmptyStr
+  criteria_digest: std.content_hash.Fnv1a64Structural
+  red_control: gunbc.roadmap_status.RedControlEvidence
+  handback: gunbc.roadmap_status.HandbackEvidence
+  accepted_by: std.types.NonEmptyStr
+  accepted_on: std.types.NonEmptyStr
 }
 
 fn roadmap_criteria_digest(t: TicketFields) -> Fnv1a64Structural {
@@ -166,9 +166,9 @@ type RoadmapAcceptanceEvent
   | AcceptanceRevoked {
       exact_prior_receipt: RoadmapAcceptanceReceipt,
       disposition: AcceptanceRevocationDisposition,
-      reason: NonEmptyStr,
-      revoked_by: NonEmptyStr,
-      revoked_on: NonEmptyStr,
+      reason: std.types.NonEmptyStr,
+      revoked_by: std.types.NonEmptyStr,
+      revoked_on: std.types.NonEmptyStr,
     }
 
 type AcceptanceHistoryReplayState {
@@ -234,7 +234,7 @@ fn non_empty_str_list_eq_ordered(a: List<NonEmptyStr>, b: List<NonEmptyStr>) -> 
 
 type DropFirstStrState {
   skipped: Bool
-  rest: List<NonEmptyStr>
+  rest: List<std.types.NonEmptyStr>
 }
 
 type DropFirstEventState {

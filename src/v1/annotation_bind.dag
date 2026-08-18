@@ -266,8 +266,8 @@ fn bind_annotations(
 
 
 type AdmittedSourceAnnotations {
-  graph: SourceAnnotationGraph
-  diagnostics: List<CompilerDiagnostic>
+  graph: std.source_annotation.SourceAnnotationGraph
+  diagnostics: List<v1.std.core.CompilerDiagnostic>
 }
 
 // THE single seam both production frontend paths use. front_end_sources and parse_census_fill_sources call this one function rather than each repeating normalize-roster-attach-admit, so the two cannot drift into disagreeing about whether a given file's prose is admissible — a drift that would be invisible, because the census path and the compile path would simply produce different graphs for the same source.

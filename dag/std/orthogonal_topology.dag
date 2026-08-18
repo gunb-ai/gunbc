@@ -39,14 +39,14 @@ module std.orthogonal_topology
 // be a second representation of the footprint: an edit to the loop would leave them stale, and
 // nothing in the type could notice. The span is the edge; the vertical extent is the prism's.
 type ShellWall {
-  start: Point2
-  end: Point2
+  start: std.affine_space.Point2
+  end: std.affine_space.Point2
   low: Int
   high: Int
 }
 
 type ClosedShell sole_constructor {
-  prism: OrthogonalPrism3
+  prism: std.orthogonal_geometry.OrthogonalPrism3
 }
 
 // Total: a prism IS a closed shell, so there is nothing here to refuse and the return type says so.
@@ -579,7 +579,7 @@ type SpaceComplex sole_constructor {
 
 type ComplexAccum {
   admitted: List<EnclosedSpace>
-  refusal: OrthogonalRefusal?
+  refusal: std.orthogonal_geometry.OrthogonalRefusal?
 }
 
 fn admit_space(acc: ComplexAccum, s: EnclosedSpace) -> ComplexAccum {

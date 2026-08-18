@@ -49,56 +49,56 @@ fn heading_level_to_tag(level: HeadingLevel) -> String {
   }
 }
 
-fn markdown_inline_to_fragments(inline: MarkdownInline) -> List<Fragment> {
+fn markdown_inline_to_fragments(inline: MarkdownInline) -> List<std.markup.Fragment> {
   match inline {
     TextInline { text } =>
-      [ FragmentText { content: text } ]
+      [ std.markup.FragmentText { content: text } ]
     CodeInline { text } =>
-      [ Element {
+      [ std.markup.Element {
         tag: "code",
         attributes: [],
-        children: [ FragmentText { content: text } ],
+        children: [ std.markup.FragmentText { content: text } ],
       } ]
     EmphasisInline { inlines } =>
-      [ Element {
+      [ std.markup.Element {
         tag: "em",
         attributes: [],
         children: markdown_inlines_to_fragments(inlines: inlines),
       } ]
     StrongInline { inlines } =>
-      [ Element {
+      [ std.markup.Element {
         tag: "strong",
         attributes: [],
         children: markdown_inlines_to_fragments(inlines: inlines),
       } ]
     LinkInline { inlines, url } =>
-      [ Element {
+      [ std.markup.Element {
         tag: "a",
         attributes: [
-          Attribute { name: "href", ctx: UrlContext, value: url },
+          std.markup.Attribute { name: "href", ctx: UrlContext, value: url },
         ],
         children: markdown_inlines_to_fragments(inlines: inlines),
       } ]
     ImageInline { alt, url } =>
-      [ Element {
+      [ std.markup.Element {
         tag: "img",
         attributes: [
-          Attribute { name: "src", ctx: UrlContext, value: url },
-          Attribute { name: "alt", ctx: AttributeContext, value: alt },
+          std.markup.Attribute { name: "src", ctx: UrlContext, value: url },
+          std.markup.Attribute { name: "alt", ctx: AttributeContext, value: alt },
         ],
         children: [],
       } ]
   }
 }
 
-fn markdown_inlines_to_fragments(inlines: List<MarkdownInline>) -> List<Fragment> {
+fn markdown_inlines_to_fragments(inlines: List<MarkdownInline>) -> List<std.markup.Fragment> {
   reverse(inlines |> fold(init: [], f: fn(acc, inline) {
     concat(markdown_inline_to_fragments(inline: inline), acc)
   }))
 }
 
-fn markdown_list_item_to_fragment(item: MarkdownListItem) -> Fragment {
-  Element {
+fn markdown_list_item_to_fragment(item: MarkdownListItem) -> std.markup.Fragment {
+  std.markup.Element {
     tag: "li",
     attributes: [],
     children: markdown_blocks_to_fragments(blocks: item.blocks),
@@ -112,88 +112,88 @@ fn checkbox_label(state: CheckboxState) -> String {
   }
 }
 
-fn markdown_task_item_to_fragment(item: MarkdownTaskItem) -> Fragment {
-  Element {
+fn markdown_task_item_to_fragment(item: MarkdownTaskItem) -> std.markup.Fragment {
+  std.markup.Element {
     tag: "li",
     attributes: [],
     children: concat(
-      [ FragmentText { content: checkbox_label(state: item.state) } ],
+      [ std.markup.FragmentText { content: checkbox_label(state: item.state) } ],
       markdown_blocks_to_fragments(blocks: item.blocks)
     ),
   }
 }
 
-fn markdown_table_cell_to_fragment(cell: MarkdownTableCell, tag: String) -> Fragment {
-  Element {
+fn markdown_table_cell_to_fragment(cell: MarkdownTableCell, tag: String) -> std.markup.Fragment {
+  std.markup.Element {
     tag: tag,
     attributes: [],
     children: markdown_inlines_to_fragments(inlines: cell.inlines),
   }
 }
 
-fn markdown_table_row_to_fragment(row: MarkdownTableRow, cell_tag: String) -> Fragment {
-  Element {
+fn markdown_table_row_to_fragment(row: MarkdownTableRow, cell_tag: String) -> std.markup.Fragment {
+  std.markup.Element {
     tag: "tr",
     attributes: [],
     children: map(row.cells, c => markdown_table_cell_to_fragment(cell: c, tag: cell_tag)),
   }
 }
 
-fn markdown_block_to_fragment(block: MarkdownBlock) -> Fragment {
+fn markdown_block_to_fragment(block: MarkdownBlock) -> std.markup.Fragment {
   match block {
     HeadingBlock { level, inlines } =>
-      Element {
+      std.markup.Element {
         tag: heading_level_to_tag(level: level),
         attributes: [],
         children: markdown_inlines_to_fragments(inlines: inlines),
       }
     ParagraphBlock { inlines } =>
-      Element {
+      std.markup.Element {
         tag: "p",
         attributes: [],
         children: markdown_inlines_to_fragments(inlines: inlines),
       }
     CodeBlock { code } =>
-      Element {
+      std.markup.Element {
         tag: "pre",
         attributes: [],
         children: [
-          Element {
+          std.markup.Element {
             tag: "code",
             attributes: [],
-            children: [ FragmentText { content: code } ],
+            children: [ std.markup.FragmentText { content: code } ],
           },
         ],
       }
     UnorderedListBlock { items } =>
-      Element {
+      std.markup.Element {
         tag: "ul",
         attributes: [],
         children: map(items, i => markdown_list_item_to_fragment(item: i)),
       }
     OrderedListBlock { items } =>
-      Element {
+      std.markup.Element {
         tag: "ol",
         attributes: [],
         children: map(items, i => markdown_list_item_to_fragment(item: i)),
       }
     TaskListBlock { items } =>
-      Element {
+      std.markup.Element {
         tag: "ul",
         attributes: [],
         children: map(items, i => markdown_task_item_to_fragment(item: i)),
       }
     TableBlock { header, alignments: _, rows } =>
-      Element {
+      std.markup.Element {
         tag: "table",
         attributes: [],
         children: [
-          Element {
+          std.markup.Element {
             tag: "thead",
             attributes: [],
             children: [ markdown_table_row_to_fragment(row: header, cell_tag: "th") ],
           },
-          Element {
+          std.markup.Element {
             tag: "tbody",
             attributes: [],
             children: map(rows, r => markdown_table_row_to_fragment(row: r, cell_tag: "td")),
@@ -201,13 +201,13 @@ fn markdown_block_to_fragment(block: MarkdownBlock) -> Fragment {
         ],
       }
     BlockquoteBlock { blocks } =>
-      Element {
+      std.markup.Element {
         tag: "blockquote",
         attributes: [],
         children: markdown_blocks_to_fragments(blocks: blocks),
       }
     ThematicBreak =>
-      Element {
+      std.markup.Element {
         tag: "hr",
         attributes: [],
         children: [],
@@ -215,12 +215,12 @@ fn markdown_block_to_fragment(block: MarkdownBlock) -> Fragment {
   }
 }
 
-fn markdown_blocks_to_fragments(blocks: List<MarkdownBlock>) -> List<Fragment> {
+fn markdown_blocks_to_fragments(blocks: List<MarkdownBlock>) -> List<std.markup.Fragment> {
   map(blocks, b => markdown_block_to_fragment(block: b))
 }
 
-fn markdown_document_to_fragment(doc: MarkdownDocument) -> Fragment {
-  Element {
+fn markdown_document_to_fragment(doc: MarkdownDocument) -> std.markup.Fragment {
+  std.markup.Element {
     tag: "div",
     attributes: [],
     children: markdown_blocks_to_fragments(blocks: doc.blocks),

@@ -49,7 +49,7 @@ fn plan_artifacts(rule: PartitionRule) -> ArtifactPlan {
 
 type ArtifactOutput {
   artifact: Artifact
-  files: List<TextFile>
+  files: List<v1.std.core.TextFile>
 }
 
 fn default_artifact_plan(root_modules: List<String>, target: RenderTarget) -> ArtifactPlan {
@@ -67,7 +67,7 @@ type DagNodeId = String
 type DagInferredRecord
   = ResolvedRef { node: DagNodeId }
   | TypeVariableRef { id: String }
-  | CompilerErrorRecord { message: String, span: SourceSpan }
+  | CompilerErrorRecord { message: String, span: v1.std.core.SourceSpan }
 
 type DagModuleRef {
   module: DagNodeId
@@ -78,7 +78,7 @@ type DagModuleRef {
 type DagDiagnosticRecord {
   severity: String
   message: String
-  span: SourceSpan
+  span: v1.std.core.SourceSpan
   module_name: String?
   category: String?
 }

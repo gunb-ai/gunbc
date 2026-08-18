@@ -3,7 +3,7 @@ module v1.std.core
 
 type Token {
   text: String
-  span: SourceSpan
+  span: std.types.SourceSpan
   shape: TokenShape
 }
 
@@ -39,7 +39,7 @@ type FieldSummary {
 
 type InferredNode
   = Resolved { node: Node }
-  | CompilerError { message: String, span: SourceSpan }
+  | CompilerError { message: String, span: std.types.SourceSpan }
   | TypeVariable { id: String }
 
 fn inferred_to_node(inferred: InferredNode) -> Node? {
@@ -74,25 +74,25 @@ type CallSemantics
 
 type MethodSemantics
   = PlainMethodSemantics
-  | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node?, size_effect: CollectionSizeEffect?, cost_shape: CostShape?, algebra_template: AlgebraFieldTemplate? }
+  | AlgebraMethodSemantics { method_def: Node, fold_accumulator_type: Node?, size_effect: std.algebra.CollectionSizeEffect?, cost_shape: std.algebra.CostShape?, algebra_template: std.algebra.AlgebraFieldTemplate? }
   | ServiceMethodSemantics { service_name: String, op_params: List<Node> }
 
 type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError | CensusHeadsBodyStripped
 
 type ExprData
   = NoExprData
-  | ExprLiteral { value: LiteralValue }
+  | ExprLiteral { value: std.syntax.LiteralValue }
   | ExprError { kind: ExprErrorKind, message: String }
   | ExprVar { binding_kind: VarBindingKind? }
   | ExprFieldAccess { summary: FieldSummary? }
-  | ExprCall { call_semantics: CallSemantics?, descent_evidence: List<SubValueRelation>? }
+  | ExprCall { call_semantics: CallSemantics?, descent_evidence: List<std.induction.SubValueRelation>? }
   | ExprMethodCall { method_semantics: MethodSemantics? }
   | ExprMatch
   | ExprIf
   | ExprLet
   | ExprRecordLit { parent_enum: String? }
   | ExprListLit
-  | ExprBinOp { op: BinOp, algebra_field: AlgebraFieldKind? }
+  | ExprBinOp { op: std.syntax.BinOp, algebra_field: std.syntax.AlgebraFieldKind? }
   | ExprUnaryOp { op: UnaryOpKind }
   | ExprLambda
   | ExprStringInterp
@@ -105,7 +105,7 @@ type ExprData
 
 type MatchPattern
   = Bind { declaration: Node }
-  | LitPattern { value: LiteralValue }
+  | LitPattern { value: std.syntax.LiteralValue }
   | VariantPattern { name: String, parent_enum: String?, field_bindings: List<Node> }
   | Wildcard
 
@@ -123,52 +123,52 @@ type CompileResult {
 }
 
 type TextFile {
-  path: FilePath
+  path: std.types.FilePath
   content: String
 }
 
 type CompilerDiagnostic
-  = UnresolvedImport   { module_path: String, importing_module: String, span: SourceSpan }
-  | MissingExport      { name: String, module_path: String, importing_module: String, span: SourceSpan }
-  | UnresolvedType     { name: String, span: SourceSpan }
-  | TypeMismatch       { expected: String, got: String, span: SourceSpan }
-  | ArityMismatch      { name: String, expected: Int, got: Int, span: SourceSpan }
-  | VariantNotFound    { variant: String, type_name: String, span: SourceSpan }
-  | FieldNotFound      { field: String, type_name: String, span: SourceSpan }
-  | MethodNotFound     { method: String, receiver_type: String, span: SourceSpan }
-  | MethodExistenceUndecided { method: String, receiver_type: String, span: SourceSpan }
-  | MethodExistenceFrontierAdmitted { method: String, receiver_type: String, trigger: String, span: SourceSpan }
-  | ReceiverTypeUnestablished { method: String, span: SourceSpan }
-  | FrontierOccurrenceBudgetExceeded { method: String, receiver_type: String, declared: Int, observed: Int, span: SourceSpan }
-  | MissingField       { field: String, type_name: String, span: SourceSpan }
-  | NonExhaustiveMatch { missing: List<String>, span: SourceSpan }
-  | CircularDependency { modules: List<String>, span: SourceSpan }
-  | DuplicateModule    { name: String, span: SourceSpan }
-  | MissingAnnotation  { fn_name: String, what: String, span: SourceSpan }
-  | ParseError         { message: String, span: SourceSpan }
-  | InternalError      { message: String, span: SourceSpan }
-  | ComplexityUnknown  { func_name: String, reason: String, span: SourceSpan }
-  | WhereRefinementUnenforced { predicate: String, formal_type: String, reason: String, span: SourceSpan }
-  | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: SourceSpan }
-  | VariantCollision { variant: String, enum1: String, enum2: String, span: SourceSpan }
-  | SoleConstructorViolation { type_name: String, span: SourceSpan }
-  | SourceAnnotationRefused { refusal: AnnotationAttachmentRefusal }
+  = UnresolvedImport   { module_path: String, importing_module: String, span: std.types.SourceSpan }
+  | MissingExport      { name: String, module_path: String, importing_module: String, span: std.types.SourceSpan }
+  | UnresolvedType     { name: String, span: std.types.SourceSpan }
+  | TypeMismatch       { expected: String, got: String, span: std.types.SourceSpan }
+  | ArityMismatch      { name: String, expected: Int, got: Int, span: std.types.SourceSpan }
+  | VariantNotFound    { variant: String, type_name: String, span: std.types.SourceSpan }
+  | FieldNotFound      { field: String, type_name: String, span: std.types.SourceSpan }
+  | MethodNotFound     { method: String, receiver_type: String, span: std.types.SourceSpan }
+  | MethodExistenceUndecided { method: String, receiver_type: String, span: std.types.SourceSpan }
+  | MethodExistenceFrontierAdmitted { method: String, receiver_type: String, trigger: String, span: std.types.SourceSpan }
+  | ReceiverTypeUnestablished { method: String, span: std.types.SourceSpan }
+  | FrontierOccurrenceBudgetExceeded { method: String, receiver_type: String, declared: Int, observed: Int, span: std.types.SourceSpan }
+  | MissingField       { field: String, type_name: String, span: std.types.SourceSpan }
+  | NonExhaustiveMatch { missing: List<String>, span: std.types.SourceSpan }
+  | CircularDependency { modules: List<String>, span: std.types.SourceSpan }
+  | DuplicateModule    { name: String, span: std.types.SourceSpan }
+  | MissingAnnotation  { fn_name: String, what: String, span: std.types.SourceSpan }
+  | ParseError         { message: String, span: std.types.SourceSpan }
+  | InternalError      { message: String, span: std.types.SourceSpan }
+  | ComplexityUnknown  { func_name: String, reason: String, span: std.types.SourceSpan }
+  | WhereRefinementUnenforced { predicate: String, formal_type: String, reason: String, span: std.types.SourceSpan }
+  | OwnershipViolation   { binding: String, fn_name: String, consumers: Int, span: std.types.SourceSpan }
+  | VariantCollision { variant: String, enum1: String, enum2: String, span: std.types.SourceSpan }
+  | SoleConstructorViolation { type_name: String, span: std.types.SourceSpan }
+  | SourceAnnotationRefused { refusal: std.source_annotation.AnnotationAttachmentRefusal }
   | ConstructorCallAdmissionRefused {
       constructor_module_path: String,
       constructor_decl_name: String,
       caller_module_path: String,
       caller_decl_name: String,
       permitted_callers: List<String>,
-      span: SourceSpan
+      span: std.types.SourceSpan
     }
-  | UnlistedImportUse { name: String, span: SourceSpan }
-  | AmbiguousReference { name: String, candidates: List<String>, span: SourceSpan }
-  | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: SourceSpan }
-  | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: SourceSpan }
-  | CallArgumentDuplicate { callee: String, argument: String, span: SourceSpan }
-  | CallPositionalDeficit { callee: String, parameter: String, supplied: Int, required: Int, span: SourceSpan }
-  | CallNamedArgOnFunctionValue { callee: String, argument: String, span: SourceSpan }
-  | OccurrenceTransportViolation { refusal: OccurrenceTransportRefusal }
+  | UnlistedImportUse { name: String, span: std.types.SourceSpan }
+  | AmbiguousReference { name: String, candidates: List<String>, span: std.types.SourceSpan }
+  | CallArgumentNameUnknown { callee: String, argument: String, declared: List<String>, span: std.types.SourceSpan }
+  | CallPositionalSurplus { callee: String, supplied: Int, capacity: Int, span: std.types.SourceSpan }
+  | CallArgumentDuplicate { callee: String, argument: String, span: std.types.SourceSpan }
+  | CallPositionalDeficit { callee: String, parameter: String, supplied: Int, required: Int, span: std.types.SourceSpan }
+  | CallNamedArgOnFunctionValue { callee: String, argument: String, span: std.types.SourceSpan }
+  | OccurrenceTransportViolation { refusal: std.occurrence_identity.OccurrenceTransportRefusal }
 
 type ErrorNode {
   diagnostic: CompilerDiagnostic
@@ -452,8 +452,8 @@ type DeclaredFuncSig {
   params: List<Node>
   inferred: Node?
   is_async: Bool
-  output_provenance: List<Map<String, SubValueRelation>>
-  variant_provenance: Map<String, Map<String, Map<String, SubValueRelation>>>
+  output_provenance: List<Map<String, std.induction.SubValueRelation>>
+  variant_provenance: Map<String, Map<String, Map<String, std.induction.SubValueRelation>>>
 }
 
 type DeclaredFuncEnv {
@@ -463,8 +463,8 @@ type DeclaredFuncEnv {
 type Node {
   name: String
   ident: Int?
-  span: SourceSpan
-  ident_span: SourceSpan?
+  span: std.types.SourceSpan
+  ident_span: std.types.SourceSpan?
   children: List<Node>
   connective: Connective
 
@@ -1641,7 +1641,7 @@ type InternTable {
   strings: List<String>
   index: Map<String, Int>
   next_id: Int
-  authored_token_ordinals: AuthoredTokenOrdinalSpace
+  authored_token_ordinals: std.occurrence_identity.AuthoredTokenOrdinalSpace
 }
 
 type InternResult {

@@ -3,11 +3,11 @@ module std.decl_ref
 
 type DeclField
   = WholeDeclaration
-  | NamedField { field_name: NonEmptyStr }
+  | NamedField { field_name: std.types.NonEmptyStr }
 
 type DeclarationRef {
-  module_path: NonEmptyStr
-  decl_name: NonEmptyStr
+  module_path: std.types.NonEmptyStr
+  decl_name: std.types.NonEmptyStr
   field: DeclField
 }
 

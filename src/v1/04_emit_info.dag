@@ -13,7 +13,7 @@ type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
 type TypeSummary {
   name: String
   repr: TypeRepr
-  field_summaries: Map<String, FieldSummary>
+  field_summaries: Map<String, v1.std.core.FieldSummary>
   field_type_map: Map<String, String>
   field_import_surface_names: List<String>
   variant_name_set: Map<String, Bool>
@@ -76,7 +76,7 @@ type EmitGraphInfo {
 
 
   fn_generic_param_names: List<String>
-  fn_type_env: TypeEnv
+  fn_type_env: v1.compiler.infer_env.TypeEnv
   fn_return_type: Node?
 }
 

@@ -31,7 +31,7 @@ type ElectricalDesignIdentity = NonEmptyStr where brand("ElectricalDesignIdentit
 
 type ComponentInstanceIdentity {
   design: ElectricalDesignIdentity
-  local_identity: NonEmptyStr
+  local_identity: std.types.NonEmptyStr
 }
 
 // A TERMINAL IDENTITY GETS NO DESIGN AXIS, deliberately. A terminal is not board-global to begin
@@ -43,7 +43,7 @@ type TerminalIdentity = NonEmptyStr where brand("TerminalIdentity")
 
 type NetIdentity {
   design: ElectricalDesignIdentity
-  local_identity: NonEmptyStr
+  local_identity: std.types.NonEmptyStr
 }
 
 fn component_instance_identity(design: ElectricalDesignIdentity, local_identity: NonEmptyStr) -> ComponentInstanceIdentity {

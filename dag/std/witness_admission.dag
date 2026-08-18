@@ -127,7 +127,7 @@ fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumerCade
   }
 }
 
-fn witness_consumer_cadence_content_hash_structural(cadence: WitnessConsumerCadence) -> Fnv1a64Structural {
+fn witness_consumer_cadence_content_hash_structural(cadence: WitnessConsumerCadence) -> std.content_hash.Fnv1a64Structural {
   match cadence {
     DiscoverySelection => content_hash_atom(value: "DiscoverySelection")
     FalsifierSelfHostWet => content_hash_atom(value: "FalsifierSelfHostWet")

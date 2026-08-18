@@ -135,57 +135,57 @@ fn peel_nominal_alias_identity(n: Node, env: TypeEnv, module_name: String) -> No
 
 type NodeResolveResult {
   resolved: Node
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type ItemResolveResult {
   item: Node
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type FieldResolveResult {
   field: Node
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type ExprResolveResult {
   expr: Node
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type NamedArgResolveResult {
   arg: Node
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type MatchArmResolveResult {
   arm: Node
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type FieldInitResolveResult {
   field_init: Node
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type StringPartResolveResult {
-  part: StringPart
-  diagnostics: List<ErrorNode>
+  part: v1.std.core.StringPart
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type TransportResolveResult {
   transport: Node
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type ParamResolveResult {
   param: Node
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type ResourceUseResult {
   resource_use: Node
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 fn resolve_node(n: Node, env: TypeEnv, module_name: String) -> NodeResolveResult {

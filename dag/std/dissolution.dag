@@ -2,11 +2,11 @@ module std.dissolution
 
 
 type DissolutionTrigger
-  = DeclarationAppears { ref: DeclarationRef }
+  = DeclarationAppears { ref: std.decl_ref.DeclarationRef }
 
 type DissolutionCondition
   = BoundDissolution { trigger: DissolutionTrigger }
-  | UnboundDissolution { description: NonEmptyStr }
+  | UnboundDissolution { description: std.types.NonEmptyStr }
 
 type DissolutionStatus
   = DissolutionUnbound

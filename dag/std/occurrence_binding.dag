@@ -73,7 +73,7 @@ fn occurrence_binding_from_candidates<N>(
         OccurrenceBindingFoldMany {
           first: first,
           second: second,
-          rest_reversed: Cons {
+          rest_reversed: std.algebra.Cons {
             head: candidate,
             tail: rest_reversed,
           },
@@ -108,4 +108,4 @@ fn occurrence_binding_from_candidates<N>(
   }
 }
 
-data occurrence_binding_staged_adoption_dissolve_on: DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: both production resolver paths consume OccurrenceBindingResult by execution — v1 emits declaration-backed occurrence bindings, and v2 emits the same result and derives DependencyView BindsTo from OccurrenceBound — then delete this staged-adoption scaffold note and this dissolution row.")
+data occurrence_binding_staged_adoption_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVE-ON: both production resolver paths consume OccurrenceBindingResult by execution — v1 emits declaration-backed occurrence bindings, and v2 emits the same result and derives DependencyView BindsTo from OccurrenceBound — then delete this staged-adoption scaffold note and this dissolution row.")

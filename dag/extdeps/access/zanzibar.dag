@@ -9,50 +9,50 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 }
 
 type Object {
-  namespace: NonEmptyStr
-  id: NonEmptyStr
+  namespace: std.types.NonEmptyStr
+  id: std.types.NonEmptyStr
 }
 
 type Userset {
   object: Object
-  relation: NonEmptyStr
+  relation: std.types.NonEmptyStr
 }
 
 type User
-  = UserId { id: NonEmptyStr }
+  = UserId { id: std.types.NonEmptyStr }
   | UsersetUser { userset: Userset }
 
 type RelationTuple {
   object: Object
-  relation: NonEmptyStr
+  relation: std.types.NonEmptyStr
   user: User
 }
 
 type UsersetRewrite
   = This
-  | ComputedUserset { relation: NonEmptyStr }
-  | TupleToUserset { tupleset: NonEmptyStr, computed: NonEmptyStr }
+  | ComputedUserset { relation: std.types.NonEmptyStr }
+  | TupleToUserset { tupleset: std.types.NonEmptyStr, computed: std.types.NonEmptyStr }
   | Union { children: List<UsersetRewrite> }
   | Intersection { children: List<UsersetRewrite> }
   | Exclusion { base: UsersetRewrite, subtract: UsersetRewrite }
 
 type RelationConfig {
-  relation: NonEmptyStr
+  relation: std.types.NonEmptyStr
   rewrite: UsersetRewrite
 }
 
 type NamespaceConfig {
-  namespace: NonEmptyStr
+  namespace: std.types.NonEmptyStr
   relations: List<RelationConfig>
 }
 
 type Zookie {
-  token: NonEmptyStr
+  token: std.types.NonEmptyStr
 }
 
 type CheckRequest {
   object: Object
-  relation: NonEmptyStr
+  relation: std.types.NonEmptyStr
   user: User
   at: Zookie
 }

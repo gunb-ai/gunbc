@@ -23,12 +23,12 @@ type CopperLayerFunction
 // where the quoting convention lives, not in the physical model.
 type CopperLayer {
   function: CopperLayerFunction
-  thickness: Micrometer
+  thickness: std.measure.Micrometer
 }
 
 type DielectricLayer {
-  thickness: Micrometer
-  material: NonEmptyStr
+  thickness: std.measure.Micrometer
+  material: std.types.NonEmptyStr
 }
 
 type StackupPly {
@@ -131,7 +131,7 @@ type StackupAdmission
 // reads (DESIGN section 5 - a field carried but never joined establishes nothing).
 type AdmittedStackup sole_constructor {
   stackup: Stackup
-  authority: DeclarationRef
+  authority: std.decl_ref.DeclarationRef
 }
 
 fn stackup_has_zero_thickness_copper(s: Stackup) -> Bool {

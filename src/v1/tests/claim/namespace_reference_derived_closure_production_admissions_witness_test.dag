@@ -63,11 +63,11 @@ test fn witness_closing_contract_still_reds_until_dependency_clauses_land() -> B
     admissions: concat(
       structural_admissions,
       [
-        ReferenceDerivedClosureUnavailable {
+        gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
           capability: RepeatedMentionsCollapseDependency,
           trigger: P2aReferenceDependencyProjection7515,
         },
-        ReferenceDerivedClosureUnavailable {
+        gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureUnavailable {
           capability: UnrelatedLoadedFileExcluded,
           trigger: P2aPoolIndependentDependencyProjection7515,
         },

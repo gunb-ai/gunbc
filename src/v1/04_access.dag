@@ -6,7 +6,7 @@ module v1.compiler.infer_access
 
 type AccessCheckResultNode {
   inferred: InferredNode?
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type KeyedCollectionParts {

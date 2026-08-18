@@ -3,12 +3,12 @@ module std.roster_frontier
 
 type FrontierSubject
   = PathSubject { path: String }
-  | DeclSubject { ref: DeclarationRef }
+  | DeclSubject { ref: std.decl_ref.DeclarationRef }
 
 type FrontierRow {
   subject: FrontierSubject
-  reason: NonEmptyStr
-  dissolution: DissolutionCondition
+  reason: std.types.NonEmptyStr
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 fn frontier_row_path(path: String, reason: String, dissolution: DissolutionCondition) -> FrontierRow {

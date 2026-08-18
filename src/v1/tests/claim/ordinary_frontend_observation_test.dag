@@ -56,15 +56,15 @@ test fn w_record_literal_is_still_a_record() -> Bool {
 }
 
 // The ordinary front end, observed executing.
-fn tiny_subject() -> List<SourceFile> {
-  [SourceFile {
+fn tiny_subject() -> List<v1.compiler.compile.SourceFile> {
+  [v1.compiler.compile.SourceFile {
     path: "tiny_subject.dag",
     content: "module tiny.subject\nfn probe() -> Bool { true }\n"
   }]
 }
 
-fn broken_subject() -> List<SourceFile> {
-  [SourceFile {
+fn broken_subject() -> List<v1.compiler.compile.SourceFile> {
+  [v1.compiler.compile.SourceFile {
     path: "broken_subject.dag",
     content: "module tiny.broken\nfn probe( -> Bool { true }\n"
   }]

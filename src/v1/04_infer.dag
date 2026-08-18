@@ -6,26 +6,26 @@ fn is_witness_type_name(name: String) -> Bool {
 
 type ItemContribution {
   resolved_item: Node
-  resolve_diagnostics: List<ErrorNode>
-  func_sig: DeclaredFuncSig?
-  svc_entries: List<OpEntry>
-  svc_local: TypeBinding?
-  item_info: ItemInfo
+  resolve_diagnostics: List<v1.std.core.ErrorNode>
+  func_sig: v1.std.core.DeclaredFuncSig?
+  svc_entries: List<v1.compiler.infer_service.OpEntry>
+  svc_local: v1.compiler.infer_env.TypeBinding?
+  item_info: v1.compiler.infer_items.ItemInfo
 }
 
 type ModuleContext {
   resolved_items: List<Node>
-  func_env: ResolvedFuncEnv
-  svc_registry: Map<String, List<OpEntry>>
-  locals: Map<String, TypeBinding>
-  variant_locals: Map<String, TypeBinding>
-  item_registry: Map<String, ItemInfo>
-  diagnostics: List<ErrorNode>
+  func_env: v1.compiler.infer_sigs.ResolvedFuncEnv
+  svc_registry: Map<String, List<v1.compiler.infer_service.OpEntry>>
+  locals: Map<String, v1.compiler.infer_env.TypeBinding>
+  variant_locals: Map<String, v1.compiler.infer_env.TypeBinding>
+  item_registry: Map<String, v1.compiler.infer_items.ItemInfo>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type VariantFoldState {
-  locals: Map<String, TypeBinding>
-  collision_errors: List<ErrorNode>
+  locals: Map<String, v1.compiler.infer_env.TypeBinding>
+  collision_errors: List<v1.std.core.ErrorNode>
 }
 
 type VariantExportSurface {
@@ -35,30 +35,30 @@ type VariantExportSurface {
 
 type TypeNameExportFacts {
   exporter_count: Int
-  canonical_binding: TypeBinding?
+  canonical_binding: v1.compiler.infer_env.TypeBinding?
 }
 
 type InferScope {
-  type_env: TypeEnv
-  func_env: ResolvedFuncEnv
-  locals: Map<String, TypeBinding>
+  type_env: v1.compiler.infer_env.TypeEnv
+  func_env: v1.compiler.infer_sigs.ResolvedFuncEnv
+  locals: Map<String, v1.compiler.infer_env.TypeBinding>
   body_locals: Map<String, Bool>
   match_bound_names: Map<String, Bool>
   module_name: String
-  service_registry: Map<String, List<OpEntry>>
-  item_registry: Map<String, ItemInfo>
-  lambda_param_provenance: Map<String, SubValueRelation>
+  service_registry: Map<String, List<v1.compiler.infer_service.OpEntry>>
+  item_registry: Map<String, v1.compiler.infer_items.ItemInfo>
+  lambda_param_provenance: Map<String, std.induction.SubValueRelation>
   caller_decl_name: String
 }
 
 type InferResult {
   typed: Node
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type BlockInferState {
   scope: InferScope
-  diag_chunks: List<List<ErrorNode>>
+  diag_chunks: List<List<v1.std.core.ErrorNode>>
   last_type: Node
   typed_stmts: List<Node>
 }
@@ -95,48 +95,48 @@ fn infer_block_stmts(remaining: List<Node>, remaining_count: Int, scope: InferSc
 
 type TypedItemResult {
   item: Node
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type ArmInferResult {
   typed_arm: Node
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
   body_type: Node
 }
 
 type PatternScopeResult {
   scope: InferScope
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type StringPartInferResult {
-  typed_part: StringPart
-  diagnostics: List<ErrorNode>
+  typed_part: v1.std.core.StringPart
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type ArgInferResult {
   typed_arg: Node
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type FieldInferResult {
   typed_field: Node
   infer_result: InferResult
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type BuildTypeEnvResult {
-  env: TypeEnv
-  cache: TypeEnvCache
-  diagnostics: List<ErrorNode>
-  binding_forks: List<TypeEnvCacheMergeConflict>
+  env: v1.compiler.infer_env.TypeEnv
+  cache: v1.compiler.infer_env.TypeEnvCache
+  diagnostics: List<v1.std.core.ErrorNode>
+  binding_forks: List<v1.compiler.infer_env.TypeEnvCacheMergeConflict>
 }
 
 data binding_forks_channel_note: String = "Out-of-band binding-fork ledger channel (S2a move 2 increment B; lane ruling REVISED 2026-07-11: NOVELTY, not TREE, is the refusal axis). A binding fork is one name reaching a module from two peer imports with DIFFERENT bindings. A PRE-EXISTING fork (present on main) is already resolved there by import-order overlay-wins and every real consumer gets that winner, so refusing it retroactively is a REGRESSION (breaks working resolution, makes this PR pay pre-existing corpus debt), NOT a fail-open being closed. So ALL pre-existing forks - same-tree AND cross-tree - are LEDGERED here, keeping the pre-cut overlay-wins winner (behavior-preserving); NONE ride the diagnostics channel (consumers read diagnostics as compile cleanliness). This is the SANCTIONED declared-interim: loud + typed + counted (the floor prints a partitioned count line per run, cli_run reconcile_with_typed_cache) + dissolution-named (std consolidation / namespace Rule-1 terminal) = the std-consolidation worklist, strictly better than main's SILENT overlay-wins. TREE only labels the dissolution partition (same-tree = homonym/fork within one tree; cross-tree = v1-seed-vs-v2 migration debt). The actual WALL is novelty-refusal - hard-refuse a fork a PR NEWLY introduces - implemented as a separate per-PR gate comparing this ledger against a drift-gated baseline receipt (follow-up work item), NOT an in-run refusal (that would double floor cost by re-resolving main's ledger)."
 
 type ParentModulesResult {
-  modules: List<TypedModule>
-  diagnostics: List<ErrorNode>
+  modules: List<v1.compiler.infer_items.TypedModule>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type CycleDetectState {
@@ -145,17 +145,17 @@ type CycleDetectState {
 }
 
 type InferScopeComponents {
-  svc_registry: Map<String, List<OpEntry>>
-  svc_locals: Map<String, TypeBinding>
+  svc_registry: Map<String, List<v1.compiler.infer_service.OpEntry>>
+  svc_locals: Map<String, v1.compiler.infer_env.TypeBinding>
 }
 
 type LocalContributionState {
   resolved_items: List<Node>
-  func_sigs: Map<String, DeclaredFuncSig>
-  svc_registry: Map<String, List<OpEntry>>
-  svc_locals: Map<String, TypeBinding>
-  item_registry: Map<String, ItemInfo>
-  diag_chunks: List<List<ErrorNode>>
+  func_sigs: Map<String, v1.std.core.DeclaredFuncSig>
+  svc_registry: Map<String, List<v1.compiler.infer_service.OpEntry>>
+  svc_locals: Map<String, v1.compiler.infer_env.TypeBinding>
+  item_registry: Map<String, v1.compiler.infer_items.ItemInfo>
+  diag_chunks: List<List<v1.std.core.ErrorNode>>
 }
 
 fn nominal_leaf_type(name: String) -> Node {
@@ -167,7 +167,7 @@ fn nominal_type_binding(name: String) -> TypeBinding {
 }
 
 type FieldRecursionResult {
-  shape: RecursionShape
+  shape: std.induction.RecursionShape
   element_type: String
 }
 
@@ -831,7 +831,7 @@ fn record_lit_instantiated_fields(type_name: String?, expected: Node?, scope: In
 
 type KernelListTyDiag {
   ty: Node
-  miss_diags: List<ErrorNode>
+  miss_diags: List<v1.std.core.ErrorNode>
 }
 
 fn list_kernel_ty_from_element(element: Node) -> KernelListTyDiag {
@@ -2111,7 +2111,7 @@ fn direct_call_arg_mismatch_diags(
 
 type Tier2bBt {
   bt: Node
-  kernel_diags: List<ErrorNode>
+  kernel_diags: List<v1.std.core.ErrorNode>
 }
 
 fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<Node>, scope: InferScope, span: SourceSpan) -> Tier2bBt {
@@ -2264,7 +2264,7 @@ fn infer_tier2b_builtin_with_kernel_diags(func_name: String, typed_args: List<No
 
 type MethodPipeFallback {
   result_ty: Node
-  kernel_diags: List<ErrorNode>
+  kernel_diags: List<v1.std.core.ErrorNode>
 }
 
 fn method_existence_decision(recv_rt: Node, method_name: String, scope: InferScope, span: SourceSpan) -> MethodPipeFallback {
@@ -2359,7 +2359,7 @@ type UnresolvedMethodFrontierRow {
   receiver_shape: String
   occurrences: Int
   cause: String
-  dissolution: DissolutionCondition
+  dissolution: std.dissolution.DissolutionCondition
 }
 
 fn unresolved_method_frontier() -> List<UnresolvedMethodFrontierRow> {
@@ -5047,12 +5047,12 @@ type DescentContext {
   fn_name: String
   param_names: Map<String, String>
   param_order: List<String>
-  type_env: TypeEnv
-  sub_value_vars: Map<String, SubValueRelation>
+  type_env: v1.compiler.infer_env.TypeEnv
+  sub_value_vars: Map<String, std.induction.SubValueRelation>
   size_aliases: Map<String, DescentSizeExpr>
-  scope_locals: Map<String, TypeBinding>
-  func_env: ResolvedFuncEnv
-  per_field_vars: Map<String, Map<String, SubValueRelation>>
+  scope_locals: Map<String, v1.compiler.infer_env.TypeBinding>
+  func_env: v1.compiler.infer_sigs.ResolvedFuncEnv
+  per_field_vars: Map<String, Map<String, std.induction.SubValueRelation>>
 }
 
 fn classify_size_expr(val: Node, ctx: DescentContext) -> DescentSizeExpr? {
@@ -6604,8 +6604,8 @@ fn classify_body_provenance(expr: Node, param_names: List<String>, param_types: 
 }
 
 type BlockProvFoldState {
-  prov: Map<String, Map<String, SubValueRelation>>
-  last: Map<String, SubValueRelation>
+  prov: Map<String, Map<String, std.induction.SubValueRelation>>
+  last: Map<String, std.induction.SubValueRelation>
 }
 
 fn call_args_by_name(call: Node, source_indices: Map<String, NewlineIndex>) -> Map<String, Node> {
@@ -6727,7 +6727,7 @@ fn classify_terminal_per_field(expr: Node, param_names: List<String>, param_type
 
 type BodyTerminal {
   expr: Node
-  let_prov: Map<String, Map<String, SubValueRelation>>
+  let_prov: Map<String, Map<String, std.induction.SubValueRelation>>
 }
 
 fn unwrap_body_terminal(expr: Node, let_prov: Map<String, Map<String, SubValueRelation>>, type_env: TypeEnv) -> BodyTerminal {
@@ -7095,12 +7095,12 @@ fn annotate_descent_evidence(body: Node, fn_name: String, params: List<Node>, ty
 
 type InferPropertiesResult {
   props: List<Node>
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type InferTransportResult {
   transport: Node?
-  diagnostics: List<ErrorNode>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 fn infer_property_values(props: List<Node>, scope: InferScope) -> InferPropertiesResult {
@@ -7564,7 +7564,7 @@ fn type_env_cache_from_bindings(
 
 type ParentCacheRow {
   import_path: String
-  cache: TypeEnvCache
+  cache: v1.compiler.infer_env.TypeEnvCache
 }
 
 fn kernel_coproduct_variant_locals(env: TypeEnv) -> Map<String, TypeBinding> {
@@ -8866,9 +8866,9 @@ fn build_module_context(contributions: List<ItemContribution>,
 }
 
 type TypecheckModuleResult {
-  typed: TypedModule
-  diagnostics: List<ErrorNode>
-  binding_forks: List<TypeEnvCacheMergeConflict>
+  typed: v1.compiler.infer_items.TypedModule
+  diagnostics: List<v1.std.core.ErrorNode>
+  binding_forks: List<v1.compiler.infer_env.TypeEnvCacheMergeConflict>
 }
 
 fn typecheck_module(resolved: ResolvedModule, parent_index: Map<String, TypedModule>, variant_surfaces: Map<String, VariantExportSurface>, source_indices: Map<String, NewlineIndex>, intern_table: InternTable, symbol_index: SymbolIndex, global_variant_base: Map<String, TypeBinding>) -> TypecheckModuleResult {
@@ -9000,19 +9000,19 @@ fn typecheck_module_isolated(resolved: ResolvedModule, parent_index: Map<String,
 }
 
 type EnvResolveResult {
-  env: TypeEnv
-  diagnostics: List<ErrorNode>
+  env: v1.compiler.infer_env.TypeEnv
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type BindingResult {
-  binding: TypeBinding
-  diagnostics: List<ErrorNode>
+  binding: v1.compiler.infer_env.TypeBinding
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type BindingsAccum {
-  bindings: Map<Int, TypeBinding>
-  str_bindings: Map<String, TypeBinding>
-  diagnostics: List<ErrorNode>
+  bindings: Map<Int, v1.compiler.infer_env.TypeBinding>
+  str_bindings: Map<String, v1.compiler.infer_env.TypeBinding>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 fn resolve_env_bindings(env: TypeEnv, module_name: String, local_names: Map<Int, Bool>, deps_map: Map<String, List<String>>) -> EnvResolveResult {
@@ -9202,10 +9202,10 @@ fn seed_kernel_intern_table(intern_table: InternTable) -> InternTable {
 }
 
 type RealizeState {
-  module_index: Map<String, TypedModule>
+  module_index: Map<String, v1.compiler.infer_items.TypedModule>
   variant_surfaces: Map<String, VariantExportSurface>
-  item_registry: Map<String, ItemInfo>
-  diags_by_name: Map<String, List<ErrorNode>>
+  item_registry: Map<String, v1.compiler.infer_items.ItemInfo>
+  diags_by_name: Map<String, List<v1.std.core.ErrorNode>>
 }
 
 fn typecheck(graph: ModuleGraph, source_indices: Map<String, NewlineIndex>, intern_table: InternTable) -> TypedGraph {

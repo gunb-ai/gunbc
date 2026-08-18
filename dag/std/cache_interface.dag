@@ -31,11 +31,11 @@ type PersistenceLocality
 // Those are independent, so they are separate levels.
 type CapacityValue<T>
   = ExactLimit { value: T }
-  | RuntimeDerivedLimit { authority: DeclarationRef }
+  | RuntimeDerivedLimit { authority: std.decl_ref.DeclarationRef }
   | EffectiveLimitUnobserved
 
 type CapacityLimit
-  = ByteCapacity { limit: CapacityValue<ByteSize> }
+  = ByteCapacity { limit: CapacityValue<std.measure.ByteSize> }
   | EntryCountCapacity { limit: CapacityValue<Int> }
 
 type ReplacementStrategy = LeastRecentlyUsed | ProviderNativeReplacement
@@ -154,7 +154,7 @@ type CacheRejectReason
 
 type CacheLookupSemantics
   = ExactKeyOnly
-  | PrefixFallback { ordered_prefixes: List<NonEmptyStr> }
+  | PrefixFallback { ordered_prefixes: List<std.types.NonEmptyStr> }
   | NativeInternalLookup
   | ContentAddressLookup
 
@@ -169,11 +169,11 @@ type CacheMissSemantics
   | ProviderNativeFallback
 
 type CacheLayerPlan {
-  layers: List<CacheInterfaceId>
+  layers: List<std.cache_identity.CacheInterfaceId>
 }
 
 type CacheDeploymentBackends {
-  available: List<CacheInterfaceId>
+  available: List<std.cache_identity.CacheInterfaceId>
 }
 
 type KeyDerivationClass
@@ -192,7 +192,7 @@ type VisibilityScope = Repo | Org | Network | World
 // window is Second rather than days because the cited seed constant is
 // FIXTURE_FRESHNESS_SECS -- the row now states the unit its authority states.
 type InvalidationTrigger
-  = TtlExpiry { window: Second }
+  = TtlExpiry { window: std.measure.Second }
   | ManualPurge
   | ToolchainChange
   | DependencyChange
@@ -208,13 +208,13 @@ type KeyDerivationFacts {
 }
 
 type CacheRowEvidence
-  = VendorCitation { source: NonEmptyStr, url: NonEmptyStr }
-  | RunnerObserved { receipt: NonEmptyStr, observed_at: LogicalTime }
-  | OperatorObserved { note: NonEmptyStr, observed_at: LogicalTime }
-  | CiReceiptCitation { workflow_run_id: NonEmptyStr, step_id: NonEmptyStr }
+  = VendorCitation { source: std.types.NonEmptyStr, url: std.types.NonEmptyStr }
+  | RunnerObserved { receipt: std.types.NonEmptyStr, observed_at: std.types.LogicalTime }
+  | OperatorObserved { note: std.types.NonEmptyStr, observed_at: std.types.LogicalTime }
+  | CiReceiptCitation { workflow_run_id: std.types.NonEmptyStr, step_id: std.types.NonEmptyStr }
 
 type CacheEvidence {
-  field: NonEmptyStr
+  field: std.types.NonEmptyStr
   evidence: CacheRowEvidence
 }
 
@@ -224,7 +224,7 @@ type ProviderKeyEncoding
   | NativeInternalEncoding
 
 type CacheInterfaceFacts {
-  identity: CacheInterfaceId
+  identity: std.cache_identity.CacheInterfaceId
   backing_surface: StorageSurface
   transport_encoding: ProviderKeyEncoding
 
@@ -248,16 +248,16 @@ type CacheStoreView {
 }
 
 type ArtifactIdentity<T> {
-  subject_digest: ContentHash
-  artifact_kind: ArtifactKindId
+  subject_digest: std.content_hash.ContentHash
+  artifact_kind: std.cache_identity.ArtifactKindId
 }
 
 type ProviderKey
-  = OpaqueStringKey { key: NonEmptyStr }
-  | CasContentDigest { digest: ContentHash }
+  = OpaqueStringKey { key: std.types.NonEmptyStr }
+  | CasContentDigest { digest: std.content_hash.ContentHash }
 
 type BackendCacheKey {
-  store: CacheInterfaceId
+  store: std.cache_identity.CacheInterfaceId
   key: ProviderKey
 }
 
@@ -267,19 +267,19 @@ type CacheKeyProjection<T> {
 }
 
 type ExecutionReceiptRef<T> {
-  receipt_digest: ExecutionReceiptDigest
+  receipt_digest: std.cache_identity.ExecutionReceiptDigest
 }
 
 type ProducerReceipt<T>
   = InternalExecution { receipt: ExecutionReceiptRef<T> }
-  | VendorArtifact { evidence: CacheRowEvidence, content_digest: ContentHash }
-  | RunnerObservedArtifact { evidence: CacheRowEvidence, content_digest: ContentHash }
+  | VendorArtifact { evidence: CacheRowEvidence, content_digest: std.content_hash.ContentHash }
+  | RunnerObservedArtifact { evidence: CacheRowEvidence, content_digest: std.content_hash.ContentHash }
 
 type CachedArtifactReceipt<T> {
   artifact: ArtifactIdentity<T>
   backend_key: BackendCacheKey
   producer: ProducerReceipt<T>
-  content_digest: ContentHash
+  content_digest: std.content_hash.ContentHash
 }
 
 type CacheLookupResult<T>
@@ -359,10 +359,10 @@ fn read_latency_cost(facts: CacheInterfaceFacts) -> NanosecondDuration {
 }
 
 type CacheReachCandidate {
-  layer: CacheInterfaceId?
-  fetch_cost: NanosecondDuration
-  recompute_saved: NanosecondDuration
-  latency: NanosecondDuration
+  layer: std.cache_identity.CacheInterfaceId?
+  fetch_cost: std.verification.NanosecondDuration
+  recompute_saved: std.verification.NanosecondDuration
+  latency: std.verification.NanosecondDuration
 }
 
 fn cache_reach_candidate_recompute() -> CacheReachCandidate {

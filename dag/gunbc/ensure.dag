@@ -25,31 +25,31 @@ fn ensure_decide<P, E>(
 ) -> UpsertDecision<P> {
   match observation {
     EnsureInaccessible { reason } =>
-      Refuse { reason: reason as NonEmptyStr }
+      std.upsert_decision.Refuse { reason: reason as std.types.NonEmptyStr }
     EnsureObserved { evidence: _ } =>
       if observation_satisfies {
         Noop
       } else {
         match policy {
           EnsureObserveOnly =>
-            Refuse { reason: mismatch_reason as NonEmptyStr }
+            std.upsert_decision.Refuse { reason: mismatch_reason as std.types.NonEmptyStr }
           EnsureMayApply =>
             match plan {
-              EnsurePlanAvailable { plan: p } => Apply { plan: p }
+              EnsurePlanAvailable { plan: p } => std.upsert_decision.Apply { plan: p }
               EnsurePlanUnavailable { reason } =>
-                Refuse { reason: reason as NonEmptyStr }
+                std.upsert_decision.Refuse { reason: reason as std.types.NonEmptyStr }
             }
         }
       }
     EnsureAbsent { reason } =>
       match policy {
         EnsureObserveOnly =>
-          Refuse { reason: reason as NonEmptyStr }
+          std.upsert_decision.Refuse { reason: reason as std.types.NonEmptyStr }
         EnsureMayApply =>
           match plan {
-            EnsurePlanAvailable { plan: p } => Apply { plan: p }
+            EnsurePlanAvailable { plan: p } => std.upsert_decision.Apply { plan: p }
             EnsurePlanUnavailable { reason: why } =>
-              Refuse { reason: why as NonEmptyStr }
+              std.upsert_decision.Refuse { reason: why as std.types.NonEmptyStr }
           }
       }
   }
@@ -65,24 +65,24 @@ fn ensure_readback<E>(
     EnsureObserved { evidence } =>
       reconcile_grounded(
         apply_effect: applied,
-        show_read: ReadObserved { value: evidence },
+        show_read: std.realization_reconcile.ReadObserved { value: evidence },
         grounding: if observation_satisfies {
-          Grounds { evidence: evidence }
+          std.realization_reconcile.Grounds { evidence: evidence }
         } else {
-          DoesNotGround { reason: mismatch_reason }
+          std.realization_reconcile.DoesNotGround { reason: mismatch_reason }
         },
       )
     EnsureAbsent { reason } =>
       reconcile_grounded(
         apply_effect: applied,
-        show_read: ReadAbsent { reason: reason },
-        grounding: DoesNotGround { reason: reason },
+        show_read: std.realization_reconcile.ReadAbsent { reason: reason },
+        grounding: std.realization_reconcile.DoesNotGround { reason: reason },
       )
     EnsureInaccessible { reason } =>
       reconcile_grounded(
         apply_effect: applied,
-        show_read: ReadAbsent { reason: reason },
-        grounding: DoesNotGround { reason: reason },
+        show_read: std.realization_reconcile.ReadAbsent { reason: reason },
+        grounding: std.realization_reconcile.DoesNotGround { reason: reason },
       )
   }
 }

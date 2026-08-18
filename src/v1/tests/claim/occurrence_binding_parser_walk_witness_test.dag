@@ -8,9 +8,9 @@ data occurrence_binding_parser_walk_offline_recipe: String = "OFFLINE LOCAL RECI
 
 type ObcpwParsed
   = ObcpwParsedReady {
-      transport: OccurrenceTransport,
-      inputs: OccurrenceBindingCandidateInputs,
-      module_path: NonEmptyStr,
+      transport: std.occurrence_identity.OccurrenceTransport,
+      inputs: std.occurrence_binding_candidates.OccurrenceBindingCandidateInputs,
+      module_path: std.types.NonEmptyStr,
     }
   | ObcpwParsedRefused
 

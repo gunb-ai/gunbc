@@ -58,7 +58,7 @@ fn evict_summary(table: CostInternTable, func_name: String) -> CostInternTable {
 type SccInfo {
   members: List<String>
   member_set: Set<String>
-  pattern: LoweringTarget
+  pattern: std.computation.LoweringTarget
 }
 
 type SccBuildAcc {
@@ -70,7 +70,7 @@ type SccResult {
   index: Map<String, SccInfo>
   topo_order: List<String>
   processing_order: List<String>
-  call_graph: CallGraph
+  call_graph: std.graph.CallGraph
 }
 
 type ParserStateParam {
@@ -79,21 +79,21 @@ type ParserStateParam {
 }
 
 type ParserResultSource
-  = ParserResultAdvance { input: DescentEvidence }
-  | ParserResultExpect { input: DescentEvidence }
-  | ParserResultEat { input: DescentEvidence }
-  | ParserResultCall { input: DescentEvidence, callee: String }
-  | ParserResultDirectState { input: DescentEvidence }
+  = ParserResultAdvance { input: std.termination.DescentEvidence }
+  | ParserResultExpect { input: std.termination.DescentEvidence }
+  | ParserResultEat { input: std.termination.DescentEvidence }
+  | ParserResultCall { input: std.termination.DescentEvidence, callee: String }
+  | ParserResultDirectState { input: std.termination.DescentEvidence }
   | ParserResultOpaque
 
 type ParserProgressEdge {
   caller: String
   callee: String
-  progress: DescentEvidence
+  progress: std.termination.DescentEvidence
 }
 
 type ParserProgressEnv {
-  state_aliases: Map<String, DescentEvidence>
+  state_aliases: Map<String, std.termination.DescentEvidence>
   result_sources: Map<String, ParserResultSource>
 }
 
@@ -108,7 +108,7 @@ type DescentCheckAcc {
 }
 
 type EvidenceBlockAcc {
-  evidence: DescentEvidence?
+  evidence: std.termination.DescentEvidence?
   vars: Map<String, Bool>
 }
 
@@ -3668,15 +3668,15 @@ fn cost_of_method_by_shape(shape: CostShape, produces_collection: Bool, recv_r: 
 type ComplexityViolation {
   func_name: String
   reason: String
-  span: SourceSpan
+  span: std.types.SourceSpan
 }
 
 type StructuralBoundResult {
   func_name: String
   param: String
-  recurrence_bound: CostBound
-  stack_bound: CostBound
-  span: SourceSpan
+  recurrence_bound: std.induction.CostBound
+  stack_bound: std.induction.CostBound
+  span: std.types.SourceSpan
 }
 
 type ComplexityReport {
@@ -4036,7 +4036,7 @@ type FuncEntry {
   name: String
   body: Node
   params: List<Node>
-  span: SourceSpan
+  span: std.types.SourceSpan
   is_tail_recursive: Bool
 }
 
