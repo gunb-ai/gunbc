@@ -1,0 +1,220 @@
+module product.pcb.footprint
+
+import std.logic { Bool }
+import std.types { Int, List, NonEmptyStr }
+import std.decl_ref { DeclarationRef }
+import std.affine_space { Point2, point2 }
+import std.orthogonal_geometry { point2_x, point2_y }
+import std.measure { Micrometer, micrometer_count }
+import v2.std.algebra { fold_list }
+import product.electrical.connectivity {
+  ComponentInstanceIdentity,
+  ElectricalNet,
+  ElectricalTerminalRef,
+  NetIdentity,
+  TerminalIdentity,
+  component_identity_eq,
+  terminal_ref,
+  terminal_ref_equal,
+}
+import product.pcb.copper {
+  CopperLayerRef,
+  copper_layer_ordinal,
+}
+
+// A FOOTPRINT IS WHERE A COMPONENT'S TERMINALS BECOME COPPER, and until it exists the board model has
+// a gap it cannot name. Placement establishes where a component's BODY sits — an outline and an
+// origin. Copper establishes which net is realized on which layer. Nothing joined them: a net
+// referenced terminals by identity, a realization referenced a layer, and no carrier said that THIS
+// terminal of THIS component is a conductor at THIS coordinate on THIS layer.
+//
+// That gap is why the plan view renders bodies and no traces. It is also why the board cannot yet
+// refuse the interesting way: a net whose members name terminals that have no pad is unroutable, and
+// before this module that fact had no representation, so it could not be observed, counted, or
+// refused.
+//
+// THE UNIT IS THE PAD, NOT THE PIN NUMBER. A pin number is a vendor's indexing convention, which
+// differs between the package drawing, the schematic symbol and the netlist, and comparing two of
+// them by number is the spelling coincidence DESIGN section 3 forbids. A pad names the terminal
+// identity the connectivity model already uses, so "is this pad on that net" is the same decidable
+// join the net relation performs, not a second numbering scheme laid beside it.
+type Pad {
+  terminal: TerminalIdentity
+  centre: Point2
+  layer: CopperLayerRef
+}
+
+// A CITATION IS NOT OPTIONAL, because for a footprint the citation IS the grounding. Pad coordinates
+// are a manufacturer's recommended land pattern; authored without a source they are someone's
+// recollection of a drawing, and a board built to them does not solder. An Absent arm here would be
+// an invitation to fill the gap from memory, which is precisely the fabricated plausible output
+// DESIGN section 5 forbids — so the field is plainly required and there is no legacy arm.
+//
+// It names a declaration rather than a document title or a file path: a symbol the namespace
+// authority can resolve, per the section 3 cite-the-symbol rule, so a stale citation is decidable
+// rather than prose that rots silently.
+type Footprint {
+  component: ComponentInstanceIdentity
+  pads: List<Pad>
+  drawing_authority: DeclarationRef
+}
+
+fn footprint_pad_count(f: Footprint) -> Int {
+  count(f.pads)
+}
+
+fn pad_terminal_ref(f: Footprint, p: Pad) -> ElectricalTerminalRef {
+  terminal_ref(component: f.component, terminal: p.terminal)
+}
+
+fn footprint_terminal_refs(f: Footprint) -> List<ElectricalTerminalRef> {
+  map(f.pads, p => pad_terminal_ref(f: f, p: p))
+}
+
+fn footprints_terminal_refs(fs: List<Footprint>) -> List<ElectricalTerminalRef> {
+  fold_list(
+    xs: fs,
+    empty: no_terminal_refs,
+    cons: fn(acc, f) { acc + footprint_terminal_refs(f: f) },
+  )
+}
+
+data no_terminal_refs: List<ElectricalTerminalRef> = []
+
+fn terminal_ref_is_padded(refs: List<ElectricalTerminalRef>, t: ElectricalTerminalRef) -> Bool {
+  count(filter(refs, r => terminal_ref_equal(a: r, b: t))) > 0
+}
+
+// TWO PADS ON ONE TERMINAL IS A FORK, NOT A REDUNDANT CONTACT. A terminal with two pads has two
+// coordinates claiming one electrical identity, and nothing in the model says which one a trace
+// should reach — the same authority fork copper already refuses when a net is realized twice on one
+// layer. Real multi-pad terminals exist (a thermal pad tied to a pin, a wide bus bar), and they are
+// modelled as a terminal whose pad is a shape, not as one terminal appearing twice; that is a
+// geometry question this increment does not carry, and admitting the fork now would make it
+// unrepresentable later.
+fn terminal_has_duplicate_pad(f: Footprint, t: TerminalIdentity) -> Bool {
+  count(filter(f.pads, p => (p.terminal as NonEmptyStr) == (t as NonEmptyStr))) > 1
+}
+
+fn footprint_duplicate_terminals(f: Footprint) -> List<TerminalIdentity> {
+  map(
+    filter(f.pads, p => terminal_has_duplicate_pad(f: f, t: p.terminal)),
+    p => p.terminal,
+  )
+}
+
+// ADMISSION: WHETHER THE BOARD'S TERMINALS ARE REACHABLE AT ALL. This is the question that was
+// unrepresentable before the pad existed, and it is deliberately about the JOIN rather than about
+// either side: the nets are fine, the footprints are fine, and the board is still unbuildable if a
+// net names a terminal no pad realizes.
+//
+// It is a separate admission from copper's, and not folded into it, because they answer different
+// questions in different orders. Footprint admission asks whether the net roster can be routed AT
+// ALL; copper admission asks whether the conductors someone drew are consistent. A board can pass
+// the first and fail the second, and a board that fails the first has nothing to route, so fusing
+// them would make "there are no pads yet" indistinguishable from "the routing is wrong".
+type FootprintRefusalCause
+  = NetMemberHasNoPad { net: NetIdentity, component: ComponentInstanceIdentity, terminal: TerminalIdentity }
+  | TerminalHasTwoPads { component: ComponentInstanceIdentity, terminal: TerminalIdentity }
+  | PadSelectedAgainstAnotherStackup { component: ComponentInstanceIdentity, terminal: TerminalIdentity }
+  | TwoFootprintsForOneComponent { component: ComponentInstanceIdentity }
+
+type AdmittedFootprints sole_constructor {
+  board: DeclarationRef
+  footprints: List<Footprint>
+}
+
+type FootprintAdmission
+  = FootprintsAdmitted { admitted: AdmittedFootprints }
+  | FootprintsRefused { causes: List<FootprintRefusalCause> }
+
+data no_footprint_causes: List<FootprintRefusalCause> = []
+
+fn net_member_causes(refs: List<ElectricalTerminalRef>, n: ElectricalNet) -> List<FootprintRefusalCause> {
+  map(
+    filter(n.members, m => !terminal_ref_is_padded(refs: refs, t: m)),
+    m => NetMemberHasNoPad { net: n.identity, component: m.component, terminal: m.terminal },
+  )
+}
+
+fn duplicate_pad_causes(f: Footprint) -> List<FootprintRefusalCause> {
+  map(
+    footprint_duplicate_terminals(f: f),
+    t => TerminalHasTwoPads { component: f.component, terminal: t },
+  )
+}
+
+// A COMPONENT WITH TWO FOOTPRINTS IS TWO ANSWERS TO ONE QUESTION. Which pads a component has is a
+// fact with one authority; two rows for one component identity means two drawings were read and
+// neither was chosen, and every downstream join would silently take whichever came first.
+fn component_has_duplicate_footprint(fs: List<Footprint>, c: ComponentInstanceIdentity) -> Bool {
+  count(filter(fs, f => component_identity_eq(a: f.component, b: c))) > 1
+}
+
+fn duplicate_component_causes(fs: List<Footprint>) -> List<FootprintRefusalCause> {
+  map(
+    filter(fs, f => component_has_duplicate_footprint(fs: fs, c: f.component)),
+    f => TwoFootprintsForOneComponent { component: f.component },
+  )
+}
+
+// A PAD SELECTED AGAINST A DIFFERENT BOARD IS NOT THIS BOARD'S COPPER. The layer reference carries
+// its stackup binding, so this is the same join copper performs on its realizations — asked here
+// because a footprint reaches copper before any realization does.
+fn foreign_pad_causes(board: DeclarationRef, f: Footprint) -> List<FootprintRefusalCause> {
+  map(
+    filter(f.pads, p => p.layer.stackup_authority != board),
+    p => PadSelectedAgainstAnotherStackup { component: f.component, terminal: p.terminal },
+  )
+}
+
+fn footprint_refusal_causes(
+  board: DeclarationRef,
+  nets: List<ElectricalNet>,
+  fs: List<Footprint>,
+) -> List<FootprintRefusalCause> {
+  let refs = footprints_terminal_refs(fs: fs)
+  let unpadded = fold_list(
+    xs: nets,
+    empty: no_footprint_causes,
+    cons: fn(acc, n) { acc + net_member_causes(refs: refs, n: n) },
+  )
+  let duplicated = fold_list(
+    xs: fs,
+    empty: no_footprint_causes,
+    cons: fn(acc, f) { acc + duplicate_pad_causes(f: f) },
+  )
+  let foreign = fold_list(
+    xs: fs,
+    empty: no_footprint_causes,
+    cons: fn(acc, f) { acc + foreign_pad_causes(board: board, f: f) },
+  )
+  unpadded + duplicated + foreign + duplicate_component_causes(fs: fs)
+}
+
+fn mint_admitted_footprints(board: DeclarationRef, fs: List<Footprint>) -> FootprintAdmission
+  admit_callers: [
+    decl_ref(module_path: "product.pcb.footprint", decl_name: "admit_footprints"),
+  ]
+  = FootprintsAdmitted { admitted: AdmittedFootprints { board: board, footprints: fs } }
+
+fn admit_footprints(
+  board: DeclarationRef,
+  nets: List<ElectricalNet>,
+  fs: List<Footprint>,
+) -> FootprintAdmission {
+  let causes = footprint_refusal_causes(board: board, nets: nets, fs: fs)
+  if count(causes) > 0 {
+    FootprintsRefused { causes: causes }
+  } else {
+    mint_admitted_footprints(board: board, fs: fs)
+  }
+}
+
+fn admitted_footprints_rows(a: AdmittedFootprints) -> List<Footprint> {
+  a.footprints
+}
+
+fn admitted_footprints_board(a: AdmittedFootprints) -> DeclarationRef {
+  a.board
+}
