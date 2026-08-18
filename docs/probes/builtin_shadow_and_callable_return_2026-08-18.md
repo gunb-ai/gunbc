@@ -136,3 +136,32 @@ to the alias itself and additionally mis-qualifies host-grounded names
 (`crate::std_types::String`). Both halves were implemented, measured, and **reverted** rather than
 landed half-right: the qualification must come from the resolved declaring module, not from a
 name-keyed registry. Left as a named root with an executed repro, not as a silent gap.
+
+## 7. The board: all 51 surviving errors, partitioned at mechanism grain
+
+Every one of the 51 is in exactly one row; the counts sum to 51 by construction, and the
+partition was assigned from the rustc JSON (code + primary span + label), never from a keyword
+over rendered text. Measured on this branch's head against `origin/main` `2c65eeacf3`.
+
+`DFS position` names the layer that decides the fact, not the file the error appears in — the
+whole point of the partition is that most of these errors are downstream of a decision made
+somewhere else.
+
+| # | mechanism | pop | specimen (emitted site) | DFS position | authority | consumer | touch set | depends on | target shape |
+|---|---|---:|---|---|---|---|---|---|---|
+| 1 | **Clone bound not emitted on generic params** | **28** | `v2_std_staging.rs:44` `no method clone on type parameter A`; `v2_std_algebra.rs:45` derive | emit, two distinct seams | `v1_item_clone_bounded_param_names` (fn sigs) + `trait_derive_emit` (derives) | rustc trait solver | `05_emit_rust.dag`, `trait_derive_emit.dag` | none — it is the root | modeled `TraitBoundWitness` consumed by `emit_fn_def`; **never** a scan for `.clone()`/`.iter()`. Keep E0599 (generic fn bodies) and E0277 (per-derive bounds at struct decls) separate: same trait word, different consumers, different repairs |
+| 2 | **Optional carrier fork** | 6 | `std_cache_interface.rs:638` `expected Option<String>, found None` (a `None` *variant*); `:695` list head returning `Option` where the value is expected; `extdeps_uri.rs:752` `Absent` as a fold init against an `Option` accumulator | infer + emit | `std.optional` / the `Value::Null` split | emitted Rust; the interpreter's `Value::Null` overload | `04_infer.dag`, `05_emit_rust.dag` | the `Value::Null` split plan | one Optional carrier with one emitted spelling; `Present`/`Absent` and `Option` stop being two surfaces |
+| 3 | **Unsynthesized use-line (root K)** | 5 | `extdeps_realization_compile_stage_memo.rs:82` `ProviderRetention` not found; `v2_compiler_materialization_carriers.rs:141` `NonEmptyStr` not found | emit, import synthesis | `reference_derived_use_lines` (`05_emit_rust.dag`) | rustc name resolution | `05_emit_rust.dag` | namespace-resolution lane | the note's own §5: a candidate that registry-resolves but fails export proof must **refuse**, typed and counted, instead of silently emitting nothing |
+| 4 | **Int literal accepted into a branded-string field** | 4 | `extdeps_realization_compile_stage_memo.rs:95` `observed_at: 0`, `expected String, found integer` | **corpus authoring, and a hole in the compile seam** | `dag/std/types.dag` `LogicalTime = NonEmptyStr where brand("LogicalTime")` | record-literal field checking | `dag/extdeps/realization/{compile_stage,parse_table}_memo.dag` (4 authored rows) + the field-literal conformance check | none | **rustc caught what the typechecker did not.** The rows are simply wrong (`0` where a branded non-empty string is declared) and repairing them is a two-line edit — but the seam that let an `Int` literal into a `where`-refined `String` field is the real subject, and it is a §5 fail-open, not a formatting slip |
+| 5 | **Type alias materialised as a second type** | 3 | `v2_std_node.rs:69` `expected std_occurrence_identity::OccurrenceId, found v2_std_node::OccurrenceId` | emit, type-decl branch | `is_self_referential_opaque_type_resolved` + `render_rust_alias_rhs_type` (`05_emit_rust.dag`) | every boundary that passes the aliased type | `05_emit_rust.dag` | resolved-declaring-module lookup that is **not** the bare-name registry | §6(b) above: identity discriminator **and** qualification from the resolved declaring module, landed together. Either alone is a different error with the same root |
+| 6 | **Nested coproduct pattern flattened to the outer discriminant** | 2 | `v2_std_node.rs:533/537` `unreachable pattern` | emit, match lowering | `classify_arrow_body_form` in `src/v2/std/node.dag` matches `TypeNode { connective: Atom {..} }` then `TypeNode { connective: Conj }` | emitted `match` | `05_emit_rust.dag` match lowering | none | **the count understates this one.** Both arms lower to the same outer arm, with the inner test as a refutable `let ... else { unreachable!() }`, so arm 2 is dead *and* a `Conj` node reaches `unreachable!()` at runtime — the model selects arm 2, the emitted program panics. rustc reports it only as a lint; the defect is a realization divergence |
+| 7 | **ContentHash carrier vs `String` (T7)** | 1 | `v2_std_node.rs:1334` `partial_cmp` on `Rc<Fnv1a64Structural>` | model + emit | `std.content_hash` | sort key in the canonical-hash fold | owned by `calm-lynx-547` — **do not touch** | their lane | (theirs). Note main's #8410 already retired 6 of the 7 rows this mechanism had here |
+| 8 | **Record literal through a shared-wrapped alias** | 1 | `std_verification.rs:22` `Rc<Measure<(),(),i64>> has no field count` | emit, record-literal head | `dag/std/verification.dag` `NanosecondDuration = Measure<Time, Nano, Nat>` | emitted constructor | `05_emit_rust.dag` | none | construct then wrap (`Rc::new(Measure { .. })`); the alias head must not be used as the literal head when the alias renders shared-wrapped. (The `Time, Nano` → `()` phantom collapse at the same site is mechanism 1's neighbour, not this row) |
+| 9 | **Type annotations needed** | 1 | `std_realization_measurement.rs:197` cannot infer `S` on `cost_account_predicted_zero` | emit, turbofish elision | — | rustc inference | `05_emit_rust.dag` | none | emit the type argument the model already knows instead of relying on inference at a phantom-parameter call |
+
+**Allocation reading.** Mechanism 1 is 55% of what is left and is the only row whose repair is a
+design rather than a fix; 2/3/5 are known roots with named owners or lanes; 4/6/8 are new here and
+each is small, self-contained, and in `05_emit_rust.dag` or four authored rows — but **4 and 6 are
+worth more than their counts**, because each is a fail-open that rustc happened to notice: one is a
+type error the compile seam admitted, the other is a match the emitted program gets wrong at
+runtime.
