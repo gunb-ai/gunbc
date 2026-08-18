@@ -3,11 +3,11 @@ module std.behavioral
 
 type SideEffects = ReadOnly | WritesState | WritesExternal
 
-type Severity = Low | extdeps.communication.medium.Medium | High | Critical
+type Severity = Low | Medium | High | Critical
 
 type Confidence = Documented | HighConfidence | MediumConfidence | LowConfidence | Assumed
 
-type PrerequisiteKind = Capability | std.types.Credential | Infrastructure | Policy | Tooling | Runtime | Other
+type PrerequisiteKind = Capability | Credential | Infrastructure | Policy | Tooling | Runtime | Other
 
 type FailureMode {
   name: String

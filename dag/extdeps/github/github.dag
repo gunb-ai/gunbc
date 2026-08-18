@@ -9,7 +9,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
   }
 }
 
-type UserType = extdeps.access.zanzibar.User | Bot | Organization
+type UserType = User | Bot | Organization
 
 type GitHubUser {
   login: String

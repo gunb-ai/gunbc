@@ -5,7 +5,7 @@ type SourceRootRef
   = V2Tree
   | DagTree
 
-type SourceRootSet = std.algebra.FreeMonoid<SourceRootRef>
+type SourceRootSet = FreeMonoid<SourceRootRef>
 
 type CrossTreeImport {
   from_tree: SourceRootRef
@@ -14,7 +14,7 @@ type CrossTreeImport {
   to_module: String
 }
 
-type ImportClosure = std.algebra.FreeMonoid<CrossTreeImport>
+type ImportClosure = FreeMonoid<CrossTreeImport>
 
 type TreeFundamentalityOrder
   = MoreFundamental

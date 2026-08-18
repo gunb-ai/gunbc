@@ -1,7 +1,7 @@
 module v2.extdeps.file_system
 
 
-type PosixByteString = std.algebra.FreeMonoid<std.bit.Byte>
+type PosixByteString = FreeMonoid<std.bit.Byte>
 
 type NamedPathComponent {
   bytes: PosixByteString
@@ -40,7 +40,7 @@ type FileKindResolutionPolicy
 
 type Filesystem
 
-type FileBody = std.algebra.FreeMonoid<std.bit.Byte>
+type FileBody = FreeMonoid<std.bit.Byte>
 
 type FileResource {
   filesystem: Filesystem
@@ -73,9 +73,9 @@ type FileWriteReceipt {
   resource: FileResource
 }
 
-type FileReadResult = v2.std.diagnostic.Outcome<FileContent>
+type FileReadResult = Outcome<FileContent>
 
-type FileWriteResult = v2.std.diagnostic.Outcome<FileResource>
+type FileWriteResult = Outcome<FileResource>
 
 type ModeledFileEffects {
   file_read: fn(FileRead) -> FileReadResult
@@ -87,7 +87,7 @@ type ReadFileRequest {
   path: AbsolutePath
 }
 
-type ReadFileResult = v2.std.diagnostic.Outcome<FileBody>
+type ReadFileResult = Outcome<FileBody>
 
 type WriteFileRequest {
   filesystem: Filesystem
@@ -95,14 +95,14 @@ type WriteFileRequest {
   body: FileBody
 }
 
-type WriteFileResult = v2.std.diagnostic.Outcome<Filesystem>
+type WriteFileResult = Outcome<Filesystem>
 
 type ListDirRequest {
   filesystem: Filesystem
   path: AbsolutePath
 }
 
-type ListDirResult = v2.std.diagnostic.Outcome<List<PathComponent>>
+type ListDirResult = Outcome<List<PathComponent>>
 
 type FileKindRequest {
   filesystem: Filesystem
@@ -110,7 +110,7 @@ type FileKindRequest {
   resolution: FileKindResolutionPolicy
 }
 
-type FileKindResult = v2.std.diagnostic.Outcome<FileKind>
+type FileKindResult = Outcome<FileKind>
 
 type FileSystemOperations {
   read_file: fn(ReadFileRequest) -> ReadFileResult

@@ -1,5 +1,5 @@
 module v2.std.generic_instantiation
-type GenericSubstitution = std.types.Map<String, Node>
+type GenericSubstitution = Map<String, Node>
 
 data generic_substitution_bind_once_port: v2.std.node.Symbol = generic_substitution_bind_once_port
 data generic_substitution_bind_conflict: v2.std.node.Symbol = generic_substitution_bind_conflict

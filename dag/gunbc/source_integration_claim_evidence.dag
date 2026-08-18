@@ -11,11 +11,11 @@ type SourceIntegrationProposition
   = SourceBindingCaptured
   | SourceBindingAdmissible
 
-type SourceIntegrationClaim = std.claim_evidence.Claim<std.occurrence_binding.OccurrenceBinding<std.occurrence_identity.OccurrenceId>, v2.compiler.source_authority.DagSourceReadWitness, SourceIntegrationProposition, std.syntax.SyntaxSpec, std.types.RunKey>
+type SourceIntegrationClaim = Claim<OccurrenceBinding<std.occurrence_identity.OccurrenceId>, DagSourceReadWitness, SourceIntegrationProposition, SyntaxSpec, RunKey>
 
-type SourceIntegrationEvidenceLink = std.claim_evidence.EvidenceLink<SourceBindingFact, SourceIntegrationClaim, std.syntax.SyntaxSpec, SourceIntegrationProposition, gunbc.readback_independence.ReadBackProbe>
+type SourceIntegrationEvidenceLink = EvidenceLink<SourceBindingFact, SourceIntegrationClaim, SyntaxSpec, SourceIntegrationProposition, ReadBackProbe>
 
-type SourceIntegrationEvidenceInference = std.claim_evidence.EvidenceInference<SourceBindingFact, SourceIntegrationClaim, std.syntax.SyntaxSpec, SourceIntegrationProposition, gunbc.readback_independence.ReadBackProbe>
+type SourceIntegrationEvidenceInference = EvidenceInference<SourceBindingFact, SourceIntegrationClaim, SyntaxSpec, SourceIntegrationProposition, ReadBackProbe>
 
 data source_binding_capture_probe: gunbc.readback_independence.ReadBackProbe = gunbc.readback_independence.ReadBackProbe {
   label: "decode one authored source binding",

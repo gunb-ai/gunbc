@@ -1,6 +1,6 @@
 module v2.std.integer
 
-type Int = std.algebra.GroupCompletion<v2.std.nat.Nat>
+type Int = GroupCompletion<v2.std.nat.Nat>
 type UInt = v2.std.nat.Nat
 type Compose<carrier, dimension>
 

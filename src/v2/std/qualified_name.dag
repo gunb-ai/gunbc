@@ -1,7 +1,7 @@
 module v2.std.qualified_name
 
 
-type QualifiedName = std.algebra.FreeMonoid<v2.std.node.Symbol>
+type QualifiedName = FreeMonoid<v2.std.node.Symbol>
 
 type QnFoldStatus
   = QnFoldInit

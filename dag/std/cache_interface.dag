@@ -181,7 +181,7 @@ type KeyDerivationClass
   | HandAuthoredString
   | NativeInternalHash
 
-type VisibilityScope = Repo | Org | Network | product.spatial_world.World
+type VisibilityScope = Repo | Org | Network | World
 
 // TtlExpiry CARRIES ITS WINDOW. The retention split claimed freshness "stays on
 // InvalidationTrigger", but TtlExpiry was a bare tag with no duration, so

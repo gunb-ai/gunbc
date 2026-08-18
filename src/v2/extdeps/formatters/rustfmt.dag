@@ -269,7 +269,7 @@ data rustfmt_defaults: RustfmtConfig = RustfmtConfig {
   ignore: [],
 }
 
-type RustfmtConfigPatch = v2.std.patch.ConfigPatchRecord<RustfmtConfig>
+type RustfmtConfigPatch = ConfigPatchRecord<RustfmtConfig>
 
 fn rustfmt_layer(base: RustfmtConfig, patch: RustfmtConfigPatch) -> RustfmtConfig {
   config_patch_layer(base: base, patch: patch)

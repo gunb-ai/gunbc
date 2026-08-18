@@ -15,7 +15,7 @@ type SurveyObligationId = std.types.NonEmptyStr where brand("SurveyObligationId"
 // DIMENSIONAL case, deliberately named for a length rather than for space in general: a point
 // needs a radius or bounding box and a pose needs separate translation and rotation error, and
 // those are separate carriers rather than a widened low/high.
-type LengthInterval = std.interval.OrderedClosedInterval<std.measure.Millimeter>
+type LengthInterval = OrderedClosedInterval<std.measure.Millimeter>
 
 fn millimeter_le(a: std.measure.Millimeter, b: std.measure.Millimeter) -> Bool {
   millimeter_count(m: a) <= millimeter_count(m: b)

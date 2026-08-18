@@ -102,9 +102,9 @@ type Bytes
 
 type Char = Int where unicode_scalar, brand("Char")
 
-type List<element> = std.algebra.FreeMonoid<element>
-type Set<element> = std.algebra.PointwisePower<element>
-type Map<key, value> = std.algebra.PartialFunction<key, value>
+type List<element> = FreeMonoid<element>
+type Set<element> = PointwisePower<element>
+type Map<key, value> = PartialFunction<key, value>
 
 fn list_length<T>(items: List<T>) -> Int {
   fold(items, init: 0, f: (acc, _) => acc + 1)

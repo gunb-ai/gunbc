@@ -6,7 +6,7 @@ type SKey {
   b: Int
 }
 
-type SKeyMap = std.types.Map<SKey, Int>
+type SKeyMap = Map<SKey, Int>
 
 fn one_entry(a: Int, b: Int, v: Int) -> SKeyMap {
   map_insert(m: empty_map(), key: SKey { a: a, b: b }, value: v)

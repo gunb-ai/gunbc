@@ -318,14 +318,14 @@ type Millimeter = Measure<Length, Milli, std.nat.Nat>
 // let the factor here and the factor there drift with nothing to notice.
 type SquareMillimeter = Measure<Area, Micro, std.nat.Nat>
 
-type CubicMillimeter = Measure<gunbc.roadmap_model.Volume, Nano, std.nat.Nat>
+type CubicMillimeter = Measure<Volume, Nano, std.nat.Nat>
 
 // The SOURCE units of the conversions below. They exist so a conversion cannot be handed "three of
 // something": square_metres_to_square_millimetres(count: 3) accepted a bare Nat and so re-created,
 // at the conversion boundary, exactly the dimensional erasure this slice exists to close.
 type SquareMeter = Measure<Area, One, std.nat.Nat>
 
-type CubicMeter = Measure<gunbc.roadmap_model.Volume, One, std.nat.Nat>
+type CubicMeter = Measure<Volume, One, std.nat.Nat>
 
 // PLANE ANGLE units are non-decimal, like Sixty and RackUnitHeight already are: an arcsecond is
 // 1/1296000 of a turn, which is not a power of ten, so scale_decimal_exponent answers `none` rather

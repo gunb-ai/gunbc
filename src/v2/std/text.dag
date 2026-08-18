@@ -1,6 +1,6 @@
 module v2.std.text
 
-type String = std.algebra.FreeMonoid<std.types.Char>
+type String = FreeMonoid<std.types.Char>
 
 type HostStringText {
   text: String

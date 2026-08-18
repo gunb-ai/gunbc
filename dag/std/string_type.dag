@@ -1,7 +1,7 @@
 module std.string_type
 
 
-type String = std.algebra.FreeMonoid<std.types.Char>
+type String = FreeMonoid<std.types.Char>
 
 fn string_lex_compare(left: String, right: String) -> std.algebra.Ordering {
   let left_len = string_length(s: left)

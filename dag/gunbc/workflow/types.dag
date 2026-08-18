@@ -1,7 +1,7 @@
 module gunbc.workflow.types
 
 
-type ArtifactKind = DesignDoc | gunbc.idea_pr_spine.Review | gunbc.plan.Plan | CiReport
+type ArtifactKind = DesignDoc | Review | Plan | CiReport
 type AuthorSource = Llm | Human
 
 type ReviewDimension = Coherence | Quality | Requirements | Aspirational

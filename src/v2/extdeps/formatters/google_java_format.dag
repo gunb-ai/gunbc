@@ -13,7 +13,7 @@ data google_java_format_defaults: GoogleJavaFormatConfig = GoogleJavaFormatConfi
   style: GoogleJavaFormatGoogle,
 }
 
-type GoogleJavaFormatConfigPatch = v2.std.patch.ConfigPatchRecord<GoogleJavaFormatConfig>
+type GoogleJavaFormatConfigPatch = ConfigPatchRecord<GoogleJavaFormatConfig>
 
 fn google_java_format_layer(base: GoogleJavaFormatConfig, patch: GoogleJavaFormatConfigPatch) -> GoogleJavaFormatConfig {
   config_patch_layer(base: base, patch: patch)

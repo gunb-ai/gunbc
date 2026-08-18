@@ -44,15 +44,15 @@ type LandingEvidenceFact {
   claim: LandingRequiredClaim
 }
 
-type LandingRequiredClaim = std.claim_evidence.Claim<LandingTransformationHandle, LandingTargetHandle, LandingGuaranteeProposition, LandingScopeHandle, LandingClaimBound>
+type LandingRequiredClaim = Claim<LandingTransformationHandle, LandingTargetHandle, LandingGuaranteeProposition, LandingScopeHandle, LandingClaimBound>
 
-type LandingEvidenceLink = std.claim_evidence.EvidenceLink<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
+type LandingEvidenceLink = EvidenceLink<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
 
-type LandingEvidenceAdmissionPolicy = std.claim_evidence.EvidenceAdmissionPolicy<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
+type LandingEvidenceAdmissionPolicy = EvidenceAdmissionPolicy<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
 
-type LandingClaimReadinessReceipt = std.claim_evidence.ClaimReadinessReceipt<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
+type LandingClaimReadinessReceipt = ClaimReadinessReceipt<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
 
-type LandingClaimRequirementReadiness = std.claim_evidence.ClaimRequirementReadiness<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
+type LandingClaimRequirementReadiness = ClaimRequirementReadiness<LandingEvidenceFact, LandingRequiredClaim, LandingEvidenceAuthorityHandle, LandingFidelityBoundaryHandle, LandingEvidenceIndependenceHandle>
 
 type LandingRequiredClaims {
   first: LandingRequiredClaim

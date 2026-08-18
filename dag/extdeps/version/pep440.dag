@@ -11,7 +11,7 @@ data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAutho
 data pep440_spec_url: std.types.NonEmptyStr = "https://packaging.python.org/en/latest/specifications/version-specifiers/"
 data pep440_spec_label: std.types.NonEmptyStr = "PEP 440 (Final, 2014-08-22)"
 
-type Pep440Constraint = extdeps.version.VersionConstraint
+type Pep440Constraint = VersionConstraint
 
 data min_python_interpreter: Pep440Constraint = ">= 3.11"
 
