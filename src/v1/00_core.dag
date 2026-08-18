@@ -1381,7 +1381,7 @@ fn transport_env(t: v1.std.core.Node, source_indices: Map<String, v1.std.core.Ne
   )
 }
 
-fn map_children(node: v1.std.core.Node, transform: fn(Node) -> v1.std.core.Node) -> v1.std.core.Node {
+fn map_children(node: v1.std.core.Node, transform: fn(v1.std.core.Node) -> v1.std.core.Node) -> v1.std.core.Node {
   Node {
     name: node.name, ident: node.ident, span: node.span, ident_span: node.ident_span,
     children: node.children |> map(child => transform(child)),

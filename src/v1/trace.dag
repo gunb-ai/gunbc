@@ -44,7 +44,7 @@ fn trace_pop_frame(trace: Trace) -> Trace {
   }
 }
 
-fn event_span(event: TraceEvent) -> SourceSpan {
+fn event_span(event: TraceEvent) -> std.types.SourceSpan {
   match event {
     TraceEnter { node_id: _, span: s, inputs: _ } => s
     TraceExit { node_id: _, span: s, output: _ } => s
@@ -84,7 +84,7 @@ fn replay_trace(trace: Trace, filter: TraceFilter) -> List<TraceEvent> {
   }
 }
 
-fn format_span(sp: SourceSpan) -> String {
+fn format_span(sp: std.types.SourceSpan) -> String {
   concat("[", to_string(sp.start), "..", to_string(sp.end), ")")
 }
 
@@ -124,7 +124,7 @@ type SourceMap {
   mappings: List<SpanMapping>
 }
 
-fn remap_location(source_map: SourceMap, generated_line: Int) -> SourceSpan? {
+fn remap_location(source_map: SourceMap, generated_line: Int) -> std.types.SourceSpan? {
   source_map.mappings
     |> filter(m => m.generated_line <= generated_line)
     |> last
