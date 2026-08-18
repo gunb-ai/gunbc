@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Post-process required_floor_failure_census TSV into identity-grain partition."""
+"""Derive identity-grain partition TSV from floor_cut_name_resolution_census.tsv."""
 
 from __future__ import annotations
 
