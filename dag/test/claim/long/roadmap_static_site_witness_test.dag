@@ -1,4 +1,4 @@
-module test.claim.roadmap_static_site_witness
+module test.claim.long.roadmap_static_site_witness
 
 import std.content_hash { content_hash_atom }
 import std.types { NonEmptyStr }

@@ -126,7 +126,7 @@ test fn witness_finish_line_variants_render_from_fixture() -> Bool {
     && !string_contains(s: active_html, pattern: "finish-line-accepted")
 }
 
-data daily_leads_operational_note: String = "The A1 placement wall (presentation recon, operator-signed 2026-08-01): the daily workspace's declared archetype is Operational (gunbc.design.archetype dashboard_archetype), so / may not open with the four strategic finish-line claims — it carries the one-line program-progress summary with the LOCAL denominator, and the full narrative block lives on /roadmap only. The 'of 4' magnitude is structural, not a live-population transcription: v1_exit_finish_lines is the authored four-row design list, unlike the deleted global declared/accepted/active counts this section used to show (see live_state_count_transcription_note in test.claim.roadmap_authority)."
+data daily_leads_operational_note: String = "The A1 placement wall (presentation recon, operator-signed 2026-08-01): the daily workspace's declared archetype is Operational (gunbc.design.archetype dashboard_archetype), so / may not open with the four strategic finish-line claims — it carries the one-line program-progress summary with the LOCAL denominator, and the full narrative block lives on /roadmap only. The 'of 4' magnitude is structural, not a live-population transcription: v1_exit_finish_lines is the authored four-row design list, unlike the deleted global declared/accepted/active counts this section used to show (see live_state_count_transcription_note in test.claim.long.roadmap_authority)."
 
 test fn witness_daily_leads_operational_not_narrative() -> Bool {
   let h = match try_serialize_html_source(node: gunbc.roadmap_page.roadmap_daily_workspace_page_for_authority()) {

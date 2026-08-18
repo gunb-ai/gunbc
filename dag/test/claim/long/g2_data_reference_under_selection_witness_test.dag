@@ -1,4 +1,4 @@
-module test.claim.g2_data_reference_under_selection_witness_test
+module test.claim.long.g2_data_reference_under_selection_witness_test
 
 // Expected-red control for G2 under-selection through data declarations
 // (work item adhoc-8026d859-7e4).

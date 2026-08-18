@@ -1,4 +1,4 @@
-module test.claim.live_deploy.readiness
+module test.claim.long.live_deploy.readiness
 
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
 import gunbc.live_deploy.readiness {

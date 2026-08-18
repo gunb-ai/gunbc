@@ -1,4 +1,4 @@
-module test.claim.roadmap_frontier_witness
+module test.claim.long.roadmap_frontier_witness
 
 import gunbc.roadmap_model {
   RoadmapNodeId,

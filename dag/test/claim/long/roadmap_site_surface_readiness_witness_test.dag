@@ -1,4 +1,4 @@
-module test.claim.roadmap_site_surface_readiness
+module test.claim.long.roadmap_site_surface_readiness
 
 import gunbc.roadmap_site_surface_witness { roadmap_site_surface_readiness_group_holds }
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision }
