@@ -1,0 +1,16 @@
+rank	cause_class	witness_count	total_wall_ms	max_wall_ms	median_wall_ms
+1	unpollable_host_builtin_giant	1	492849.6	492849.6	492849.6
+2	pollable_marginal_other	76	207863.4	78589.5	713.1
+3	decl_facts_reflection_scan	28	77155.7	2972.9	2752.3
+4	import_closure_scan	2	63158.8	36593.5	36593.5
+5	whole_corpus_pool_parse_builtin	1	24105.2	24105.2	24105.2
+6	emit_host_execution_witness	44	22132.5	505.5	502.9
+7	roadmap_page_html_emit	29	14586.5	509.2	502.3
+8	live_deploy_script_emit	24	12096.4	508.8	502.9
+9	rust_target_model_construction	15	11606.2	1036.7	801.4
+10	compile_dag_rust_emit_check_mini_compile	8	7238.9	2082.1	835.5
+11	dag_arrow_lambda_emit_fold	14	7050.8	506.6	503.3
+12	live_read_g2_classification	3	6884.7	2541.9	2172.7
+13	ci_heal_bash_script_emission	11	5592.3	511.4	508.9
+14	repeated_prepare_grammar_lens_scan	10	5056.9	518.0	504.2
+15	languages_filesystem_census	1	667.8	667.8	667.8

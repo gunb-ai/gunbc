@@ -1,0 +1,42 @@
+FLOOR PARE-DOWN MEASUREMENT RECEIPT (stern-carp-716)
+Authority run: GitHub Actions witnesses workflow 32097006674 (main, 2026-08-18)
+Clock basis: in-floor gantt wall ms (PreparedSubject leg) — true pollable wall for completed rows
+
+POPULATION (reconciles tidy-lark-471 correction on this run)
+  over_500ms_hard_cutoff: 267 witnesses
+  censored_band_500_525ms: 150 witnesses (operator ~148; host drift)
+  budget_failures_this_run: 14 (lower bound — unpollable builtins can exceed 500ms and pass green)
+
+INTERPRETATION
+  The 500-525ms band is "censored at the wall" for pare-down ranking: gantt records true
+  in-floor wall (e.g. 502.4ms), but witness-specific work is a few ms atop shared per-claim
+  overhead. Ranking by budget-failure list alone mis-orders work (~7s reclaim vs ~850s+ for
+  the full >=500ms population on this run).
+
+TOP RECLAIM BY IN-FLOOR WALL (ms)
+  492849.6  resolution_divergence_silent_pick_gate_keystone_holds (unpollable; green)
+   78589.5  extdeps_scope red_seed_runner_failure_detail_projects_located_receipt
+   46813.8  dissolution unbound_dissolution_empty_literal_refuses
+   36593.5  rust_test_fixtures_import_closure ambient_pool_provider_preserves_listed_import
+   26565.3  rust_test_fixtures_import_closure declared_import_closure_lists_rust_import
+   24105.2  grounding_lens_whole_tree_witnesses (whole_corpus_pool_parse_builtin)
+   15486.6  g2_data_reference specimen_classifies_as_runtime_read
+  ~77155.7  decl_facts_reflection_scan cluster (28 rows, 2.7-3.0s each)
+
+CENSORED BAND CAUSE MIX (150 rows, ~75.8s total wall)
+  emit_host_execution_witness: 44
+  roadmap_page_html_emit: 29
+  live_deploy_script_emit: 24
+  pollable_marginal_other: 17
+  dag_arrow_lambda_emit_fold: 14
+  ci_heal_bash_script_emission: 11
+  repeated_prepare_grammar_lens_scan (roster_gate): 10
+  compile_dag_rust_emit_check_mini_compile (where_refinement): 1 in band
+
+ARTIFACTS (same directory)
+  floor_pare_down_all_ge_500ms_run_32097006674.tsv
+  floor_censored_band_500_525ms_run_32097006674.tsv
+  floor_pare_down_groups_ge_500ms_run_32097006674.tsv
+
+REPRODUCE
+  tools/floor_pare_down_measure.sh --run 32097006674
