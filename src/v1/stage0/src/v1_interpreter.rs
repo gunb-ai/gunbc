@@ -11350,52 +11350,6 @@ macro_rules! v1_builtin_arms {
                 .map(Some)
             },
 
-            // DECLARED SCAFFOLD supplying gunbc.stage0_emit_plan with SOURCE identities only.
-            // It parses cli_run::regen_input_sources through the module-binding authority path;
-            // it never observes EmitResult. Dissolve-on: generated_artifact_gate accepts a
-            // v2.compiler.source_authority.ModuleStorageIndex.
-            arm "free_call.stage0_emission_source_identities_host" { "stage0_emission_source_identities_host" } => {
-                if !$positional.is_empty() {
-                    return Err(InterpError::TypeError {
-                        msg: "stage0_emission_source_identities_host takes no arguments".to_string(),
-                    });
-                }
-                let workspace = crate::cli_run::workspace_root();
-                let identities = crate::cli_run::stage0_emission_source_identities(&workspace)
-                    .map_err(|msg| InterpError::TypeError { msg })?;
-                let items = identities
-                    .into_iter()
-                    .map(|identity| Value::Record {
-                        type_name: $ctx.sym("Stage0SourceModuleIdentity"),
-                        fields: Rc::new(sorted_fields(vec![
-                            ($ctx.sym("module_path"), str_value(identity.module_path)),
-                            (
-                                $ctx.sym("provenance"),
-                                Value::Variant {
-                                    type_name: $ctx.sym("Stage0SourceIdentityProvenance"),
-                                    variant_name: $ctx.sym("ParsedFromRegenSourceClosure"),
-                                    fields: Rc::new(Vec::new()),
-                                },
-                            ),
-                            (
-                                $ctx.sym("source_tree"),
-                                Value::Variant {
-                                    type_name: $ctx.sym("Stage0SourceTree"),
-                                    variant_name: $ctx.sym(identity.source_tree),
-                                    fields: Rc::new(Vec::new()),
-                                },
-                            ),
-                            ($ctx.sym("storage_path"), str_value(identity.storage_path)),
-                        ])),
-                    })
-                    .collect::<Vec<_>>();
-                Ok(Some(Value::Variant {
-                    type_name: $ctx.sym("Stage0SourceIdentitySupply"),
-                    variant_name: $ctx.sym("Stage0SourceIdentitySupplyAvailable"),
-                    fields: Rc::new(vec![($ctx.sym("identities"), list_value(items))]),
-                }))
-            },
-
             arm "free_call.to_string" { "to_string" } => {
                 let v = $positional.first().ok_or_else(|| InterpError::TypeError {
                     msg: "to_string requires 1 argument".to_string(),
@@ -12481,17 +12435,6 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.consume_floor_compile_clean_gate_failure_detail" { "consume_floor_compile_clean_gate_failure_detail" } => Ok(Some(str_value(
                 crate::cli_run::consume_floor_compile_clean_gate_failure_detail(),
-            ))),
-
-            arm "free_call.record_regen_verify_gate_failure_detail" { "record_regen_verify_gate_failure_detail" } => {
-                if let [Value::Str(detail)] = $positional.as_slice() {
-                    crate::cli_run::record_regen_verify_gate_failure_detail(detail.to_string());
-                }
-                Ok(Some(Value::Unit))
-            },
-
-            arm "free_call.consume_regen_verify_gate_failure_detail" { "consume_regen_verify_gate_failure_detail" } => Ok(Some(str_value(
-                crate::cli_run::consume_regen_verify_gate_failure_detail(),
             ))),
 
             arm "free_call.record_generated_artifact_drift_gate_failure_detail" { "record_generated_artifact_drift_gate_failure_detail" } => {
