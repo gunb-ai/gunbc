@@ -1979,6 +1979,7 @@ fn compile_dag_rust_emit_check_memo_key(
     file_path: &str,
     includes: &[String],
     excludes: &[String],
+    inventory_digest: &str,
 ) -> String {
     use crate::v1_rt::{atom_identity_hash, hash_combine};
     let mut h = atom_identity_hash(source.to_string());
@@ -1988,6 +1989,22 @@ fn compile_dag_rust_emit_check_memo_key(
     }
     for s in excludes {
         h = hash_combine(h, atom_identity_hash(s.clone()));
+    }
+    h = hash_combine(h, atom_identity_hash(inventory_digest.to_string()));
+    h
+}
+
+fn floor_inventory_content_digest(inventory: &[PreparedSourceView]) -> String {
+    use crate::v1_rt::{atom_identity_hash, hash_combine};
+    let mut entries: Vec<(&str, &str)> = inventory
+        .iter()
+        .map(|e| (e.source.path.as_str(), e.source.content.as_str()))
+        .collect();
+    entries.sort_by(|a, b| a.0.cmp(b.0));
+    let mut h = atom_identity_hash("floor-prepared-inventory".to_string());
+    for (path, content) in entries {
+        h = hash_combine(h, atom_identity_hash(path.to_string()));
+        h = hash_combine(h, atom_identity_hash(content.to_string()));
     }
     h
 }
@@ -2005,7 +2022,19 @@ pub fn compile_dag_rust_emit_check(
     includes: &[String],
     excludes: &[String],
 ) -> bool {
-    let memo_key = compile_dag_rust_emit_check_memo_key(source, file_path, includes, excludes);
+    // Memo only under the floor guard, keyed on declared inputs AND the prepared
+    // inventory digest (`build_module_path_index_from_witness_roots` reads those bytes).
+    // Outside the guard there is no snapshot, so a hit would lie about disk.
+    let Some(inventory_digest) = floor_prepared_inventory_digest() else {
+        return compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+    };
+    let memo_key = compile_dag_rust_emit_check_memo_key(
+        source,
+        file_path,
+        includes,
+        excludes,
+        &inventory_digest,
+    );
     if let Some(hit) = COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow().get(&memo_key).copied())
     {
         return hit;
@@ -2015,6 +2044,17 @@ pub fn compile_dag_rust_emit_check(
             "compile_dag_rust_emit_check: memo miss key={memo_key} (content-addressed recompute)"
         );
     }
+    let verdict = compile_dag_rust_emit_check_uncached(source, file_path, includes, excludes);
+    COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict));
+    verdict
+}
+
+fn compile_dag_rust_emit_check_uncached(
+    source: &str,
+    file_path: &str,
+    includes: &[String],
+    excludes: &[String],
+) -> bool {
     let module_index = build_module_path_index_from_witness_roots();
     let sources = resolve_virtual_source_with_imports("test.dag", source, &module_index);
     let result = v1_compiler_compile::compile_sources(
@@ -2026,7 +2066,7 @@ pub fn compile_dag_rust_emit_check(
         .iter()
         .filter(|d| compile_clean_diagnostic_is_hard(d))
         .count();
-    let verdict = if hard_diagnostics != 0 {
+    if hard_diagnostics != 0 {
         false
     } else {
         match result.files.iter().find(|f| f.path == file_path) {
@@ -2036,9 +2076,7 @@ pub fn compile_dag_rust_emit_check(
             }
             None => false,
         }
-    };
-    COMPILE_DAG_RUST_EMIT_CHECK_MEMO.with(|m| m.borrow_mut().insert(memo_key, verdict));
-    verdict
+    }
 }
 
 const CI_LAYER_ROOTS_AUTHORITY_REL: &str = "dag/gunbc/ci_layer_roots.dag";
@@ -40748,6 +40786,7 @@ thread_local! {
 
 struct FloorPreparedAuthority {
     inventory: Vec<PreparedSourceView>,
+    inventory_digest: String,
 }
 
 struct FloorPreparedAuthorityGuard;
@@ -40763,8 +40802,12 @@ impl Drop for FloorPreparedAuthorityGuard {
 /// Drop always clears the thread-locals and compile memo.
 fn register_floor_prepared_authority(inventory: Vec<PreparedSourceView>) {
     crate::coproduct_reflection::register_floor_decl_parse_memo();
+    let inventory_digest = floor_inventory_content_digest(&inventory);
     FLOOR_PREPARED_AUTHORITY.with(|cell| {
-        *cell.borrow_mut() = Some(FloorPreparedAuthority { inventory });
+        *cell.borrow_mut() = Some(FloorPreparedAuthority {
+            inventory,
+            inventory_digest,
+        });
     });
     FLOOR_LANGUAGES_RECORDS.with(|cell| *cell.borrow_mut() = None);
     crate::v1_interpreter::clear_cross_claim_pure_memos();
@@ -40879,6 +40922,14 @@ pub fn floor_prepared_authority_active() -> bool {
 
 pub fn floor_prepared_inventory_snapshot() -> Option<Vec<PreparedSourceView>> {
     FLOOR_PREPARED_AUTHORITY.with(|cell| cell.borrow().as_ref().map(|auth| auth.inventory.clone()))
+}
+
+fn floor_prepared_inventory_digest() -> Option<String> {
+    FLOOR_PREPARED_AUTHORITY.with(|cell| {
+        cell.borrow()
+            .as_ref()
+            .map(|auth| auth.inventory_digest.clone())
+    })
 }
 
 fn register_floor_prepared_authority_guard(

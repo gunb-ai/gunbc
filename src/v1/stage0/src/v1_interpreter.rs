@@ -1058,12 +1058,12 @@ fn try_cross_claim_pure_memo(
     func_name: &str,
     args: &[(Option<String>, Value)],
 ) -> Option<Value> {
-    // 🟡 dissolve-on: a generic *cross-claim* pure memo keyed on fn-node identity +
-    // content-hashable args. `eval_call_memo` cannot be that authority: its eviction
-    // scope is the witness frame (`eval_call_memo_frame_exit`), so it cannot amortize
-    // the same pure call across the floor fold. These two name arms exist only because
-    // that lifetime gap does; a third arm is evidence the generic memo has not landed,
-    // not a reason to grow the list.
+    // 🟡 dissolve-on: gunbc.roadmap_authority five_minute_ci_gate_program_note — a generic
+    // *cross-claim* pure memo keyed on fn-node identity + content-hashable args. `eval_call_memo`
+    // cannot be that authority: its eviction scope is the witness frame
+    // (`eval_call_memo_frame_exit`), so it cannot amortize the same pure call across the floor
+    // fold. These two name arms exist only because that lifetime gap does; a third arm is
+    // evidence the generic memo has not landed, not a reason to grow the list.
     if func_name == "prepare_grammar" && args.len() == 1 {
         let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
         let key = eval_recompute_arg_key(&mut hash_memo, &args[0].1)?;
