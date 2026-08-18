@@ -2,7 +2,7 @@ module gunbc.tools.bmc_read_telemetry
 
 
 func bmc_read_telemetry() -> std.process.ProcessExit
-  uses net: std.resources.Network
+  uses net: std.cache_interface.Network
 {
   host = shell.Env.Get(name: "BMC_HOST")
   netrc = shell.Env.Get(name: "BMC_NETRC_FILE")

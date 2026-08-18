@@ -106,7 +106,7 @@ test fn cited_symbol_resolves_node_kind_authority() -> Bool {
     facts: cited_symbol_long_witness_layer_facts,
     modules: cited_symbol_long_witness_layer_modules
   ) {
-    DeclarationRefResolved { declaration_identity: id } => id.qualified_name == "std.node.NodeKind"
+    DeclarationRefResolved { declaration_identity: id } => id.qualified_name == "v2.std.node.NodeKind"
     DeclarationRefModuleAbsent { reference: _ } => false
     DeclarationRefDeclarationAbsent { reference: _ } => false
     DeclarationRefFieldAbsent { reference: _ } => false

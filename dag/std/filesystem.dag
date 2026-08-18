@@ -58,4 +58,4 @@ fn skip_reason(entry: FileEntry) -> String {
   }
 }
 
-data filesystem_is_text_encoding_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: std.filesystem.is_text_encoding — deleted duplicate Optional-lifted predicate; sole authority is std.encoding.is_text_encoding (Encoding, not Encoding?).")
+data filesystem_is_text_encoding_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: std.encoding.is_text_encoding — deleted duplicate Optional-lifted predicate; sole authority is std.encoding.is_text_encoding (Encoding, not Encoding?).")

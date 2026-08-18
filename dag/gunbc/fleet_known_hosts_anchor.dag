@@ -200,7 +200,7 @@ fn fleet_known_hosts_anchor_path(attempt: FleetSshAttemptIdentity) -> std.types.
 // agreement. The readback is the success criterion; the write's exit code is not, because a
 // successful write to the wrong place is exactly the failure mode this replaces.
 func materialize_fleet_known_hosts_anchor(attempt: FleetSshAttemptIdentity) -> KnownHostsMaterializationOutcome
-  uses net: std.resources.Network
+  uses net: std.cache_interface.Network
 {
   if length(gunbc.fleet_host_key_enrollment.fleet_host_key_enrollments) == 0 {
     KnownHostsRefused {

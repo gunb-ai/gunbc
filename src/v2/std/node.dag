@@ -6,7 +6,7 @@ type Symbol
 type Hash = std.content_hash.Fnv1a64Structural
 
 
-data node_occurrence_id_v2_facade_note: String = "TEMPORARY COMPATIBILITY: v2 callers still construct and match this source-compatible coproduct while std.occurrence_identity.NodeOccurrenceId is the sole shared semantic authority. The total conversions below are the only bridge; new consumers use the shared carrier directly."
+data node_occurrence_id_v2_facade_note: String = "TEMPORARY COMPATIBILITY: v2 callers still construct and match this source-compatible coproduct while v2.std.node.NodeOccurrenceId is the sole shared semantic authority. The total conversions below are the only bridge; new consumers use the shared carrier directly."
 
 type NodeOccurrenceId
   = SyntheticOccurrence

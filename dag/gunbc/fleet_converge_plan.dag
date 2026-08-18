@@ -212,22 +212,22 @@ fn fleet_converge_desired_caps() -> std.types.List<gunbc.host_axis_caps.CapMembe
   [
     gunbc.host_axis_caps.desired_cap_member(
       dropin_path: gunbc.host_converge.gunbc_runner_per_slot_dropin_path as std.types.NonEmptyStr,
-      property: gunbc.host_converge.systemd_memory_max_property,
+      property: extdeps.systemd.systemd_memory_max_property,
       bytes_value: to_string(std.measure.byte_size_count(b: slot.memory_max)) as std.types.NonEmptyStr,
     ),
     gunbc.host_axis_caps.desired_cap_member(
       dropin_path: gunbc.host_converge.gunbc_runner_per_slot_high_dropin_path as std.types.NonEmptyStr,
-      property: gunbc.host_converge.systemd_memory_high_property,
+      property: extdeps.systemd.systemd_memory_high_property,
       bytes_value: to_string(std.measure.byte_size_count(b: slot.memory_high)) as std.types.NonEmptyStr,
     ),
     gunbc.host_axis_caps.desired_cap_member(
       dropin_path: gunbc.host_converge.gunbc_runner_per_slot_swap_dropin_path as std.types.NonEmptyStr,
-      property: gunbc.host_converge.systemd_memory_swap_max_property,
+      property: extdeps.systemd.systemd_memory_swap_max_property,
       bytes_value: to_string(std.measure.byte_size_count(b: slot.memory_swap_max)) as std.types.NonEmptyStr,
     ),
     gunbc.host_axis_caps.desired_cap_member(
       dropin_path: gunbc.host_converge.gunbc_runner_per_slot_tasks_dropin_path as std.types.NonEmptyStr,
-      property: gunbc.host_converge.systemd_tasks_max_property,
+      property: extdeps.systemd.systemd_tasks_max_property,
       bytes_value: to_string(slot.tasks_max) as std.types.NonEmptyStr,
     ),
   ]

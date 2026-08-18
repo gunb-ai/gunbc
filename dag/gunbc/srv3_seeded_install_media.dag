@@ -27,7 +27,7 @@ data srv3_seeded_install_media_unattended_not_proven_marker: std.disposition.Dis
 }
 
 func srv3_seeded_install_media_toolchain_ensure() -> std.process.ProcessExit
-  uses net: std.resources.Network
+  uses net: std.cache_interface.Network
 {
   srv3_reconciliation_to_process_exit(
     r: srv3_seeded_install_media_toolchain_ensure_apply(),
@@ -36,7 +36,7 @@ func srv3_seeded_install_media_toolchain_ensure() -> std.process.ProcessExit
 }
 
 func srv3_seeded_install_media_remaster() -> std.process.ProcessExit
-  uses net: std.resources.Network
+  uses net: std.cache_interface.Network
 {
   let ensure_exit = srv3_reconciliation_to_process_exit(
     r: srv3_seeded_install_media_toolchain_ensure_apply(),

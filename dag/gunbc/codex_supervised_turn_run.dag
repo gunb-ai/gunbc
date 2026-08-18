@@ -23,7 +23,7 @@ fn codex_supervised_worker_turn_apply(
     Converged { evidence: e, applied: _ } =>
       match e {
         ShellEffectApplied { stdout: stdout, stderr: stderr, exit_code: code } => {
-          let wire_capture = gunbc.codex_app_server_press.retain_provider_wire_capture(
+          let wire_capture = gunbc.provider_wire_evidence.retain_provider_wire_capture(
             evidence_root: evidence_root,
             stdout: stdout,
             stderr: stderr,

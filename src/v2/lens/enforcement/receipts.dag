@@ -133,7 +133,7 @@ fn consumer_enrolled_for(
 fn lens_contract_is_unbound(c: v2.lens.enforcement.contract.LensContract) -> Bool {
   consumer_kind_eq(
     a: consumer_enrolled_for(binding: c.consumer_witness, ci_entries: [], prepush_entries: []),
-    b: v2.lens.enforcement.vocab.NoConsumer
+    b: std.witness_admission.NoConsumer
   )
 }
 

@@ -2,7 +2,7 @@ module gunbc.tools.bmc_onboard_validate
 
 
 func bmc_onboard_validate() -> std.process.ProcessExit
-  uses net: std.resources.Network
+  uses net: std.cache_interface.Network
 {
   let bmc_host = srv3_onboarding_plan.bmc.host
 

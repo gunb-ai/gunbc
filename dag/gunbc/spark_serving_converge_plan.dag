@@ -152,7 +152,7 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
       observed_caps: observed_caps,
     )
     let timer_plan = gunbc.fleet_converge_plan.timer_retirement_plan(observed: observed_timers)
-    let cap_plan = gunbc.fleet_converge_plan.caps_reconcile(desired: gunbc.fleet_converge_plan.fleet_converge_desired_caps(), observed: observed_caps)
+    let cap_plan = gunbc.host_axis_caps.caps_reconcile(desired: gunbc.fleet_converge_plan.fleet_converge_desired_caps(), observed: observed_caps)
     let timer_lines = gunbc.fleet_converge_plan.membership_plan_lines_timer(plan: timer_plan)
     let cap_lines = gunbc.fleet_converge_plan.membership_plan_lines_cap(plan: cap_plan)
     let spark_lines = map(spark_rows, r => gunbc.fleet_converge_plan.fleet_converge_spark_serving_action_line(row: r))
@@ -187,8 +187,8 @@ fn spark_serving_fleet_converge_plan_artifact_from_rows(
         [
           concat("# spark-serving-typed-actions:", spark_wire),
           concat("# spark-linger-writes=", to_string(gunbc.membership_reconcile.membership_write_count(plan: linger_plan))),
-          concat("# cap-refusals=", to_string(gunbc.fleet_converge_plan.membership_refusal_count(plan: cap_plan))),
-          concat("# timer-refusals=", to_string(gunbc.fleet_converge_plan.membership_refusal_count(plan: timer_plan))),
+          concat("# cap-refusals=", to_string(gunbc.membership_reconcile.membership_refusal_count(plan: cap_plan))),
+          concat("# timer-refusals=", to_string(gunbc.membership_reconcile.membership_refusal_count(plan: timer_plan))),
         ],
       ),
       "\n",

@@ -2,7 +2,7 @@ module gunbc.tools.bmc_first_contact
 
 
 func bmc_first_contact() -> std.process.ProcessExit
-  uses net: std.resources.Network
+  uses net: std.cache_interface.Network
 {
   host = shell.Env.Get(name: "BMC_HOST")
   resp = redfish.Http.GetSystem(

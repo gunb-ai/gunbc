@@ -40,7 +40,7 @@ fn srv3_bmcweb_login_body_content_for_resolution(resolution: gunbc.srv3_bmc_cred
 }
 
 func srv3_bmcweb_session_login() -> std.process.ProcessExit
-  uses net: std.resources.Network
+  uses net: std.cache_interface.Network
 {
   let resolution = observe_and_resolve_srv3_bmc_credential()
   return match resolution {
@@ -51,7 +51,7 @@ func srv3_bmcweb_session_login() -> std.process.ProcessExit
 }
 
 func srv3_bmcweb_session_login_resolved(resolution: gunbc.srv3_bmc_credential_resolve.BmcCredentialResolution) -> std.process.ProcessExit
-  uses net: std.resources.Network
+  uses net: std.cache_interface.Network
 {
   let materialization = materialize_bmc_login_password(resolution: resolution)
   let password = match materialization {
@@ -105,7 +105,7 @@ func srv3_bmcweb_session_login_resolved(resolution: gunbc.srv3_bmc_credential_re
 }
 
 func srv3_nbd_proxy_serve() -> std.process.ProcessExit
-  uses net: std.resources.Network
+  uses net: std.cache_interface.Network
 {
   srv3_reconciliation_to_process_exit(
     r: srv3_nbd_proxy_serve_apply(),
