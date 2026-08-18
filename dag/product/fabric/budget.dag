@@ -46,6 +46,7 @@ type MoneyAccount {
   account: BudgetAccountId
   currency: CurrencyCode
   ledger: EncumbranceLedger<Currency, Micro>
+  leases: List<MoneyLease>
 }
 
 // A request names its own currency rather than inheriting the account's. That
@@ -80,6 +81,32 @@ type MoneySettlementRequest {
   settled_at: Timestamp
 }
 
+// The generation fence lives HERE, not in the accounting kernel. Temporal
+// fencing is this fabric's lease protocol rather than a fact about
+// encumbrance accounting, so an upstream carrier holding it would impose CI
+// lease generations on every future consumer of appropriation conservation.
+// The binding checks the fence and then calls the transition, which keeps the
+// upstream authority about money and this module about leases.
+//
+// The held generation is recorded per reservation reference, because that is
+// what a superseded holder's late settlement has to be compared against.
+
+type MoneyLease {
+  reference: ReservationRef
+  generation: Int
+}
+
+fn lease_generation_for(a: MoneyAccount, reference: ReservationRef) -> List<Int> {
+  a.leases |> filter(l => l.reference == reference) |> map(l => l.generation)
+}
+
+fn fence_admits(a: MoneyAccount, reference: ReservationRef, presented: Int) -> Bool {
+  match lease_generation_for(a: a, reference: reference) {
+    Empty {} => false
+    Cons { head: held, tail: _ } => held == presented
+  }
+}
+
 type MoneyRefusal =
   | CurrencyMismatch {
       account: BudgetAccountId,
@@ -87,13 +114,23 @@ type MoneyRefusal =
       presented_currency: CurrencyCode,
     }
   | LedgerRefused { account: BudgetAccountId, refusal: EncumbranceRefusal<Currency, Micro> }
+  | StaleLeaseGeneration { reference: ReservationRef, presented: Int }
 
 type MoneyOutcome =
   | AccountAdvanced { account: MoneyAccount }
   | MoneyRefused { refusal: MoneyRefusal }
 
 fn account_with_ledger(a: MoneyAccount, ledger: EncumbranceLedger<Currency, Micro>) -> MoneyAccount {
-  MoneyAccount { account: a.account, currency: a.currency, ledger: ledger }
+  MoneyAccount { account: a.account, currency: a.currency, ledger: ledger, leases: a.leases }
+}
+
+fn account_with_lease(a: MoneyAccount, lease: MoneyLease) -> MoneyAccount {
+  MoneyAccount {
+    account: a.account,
+    currency: a.currency,
+    ledger: a.ledger,
+    leases: concat(a.leases, [lease]),
+  }
 }
 
 fn project_outcome(a: MoneyAccount, outcome: EncumbranceOutcome<Currency, Micro>) -> MoneyOutcome {
@@ -120,20 +157,30 @@ fn reserve_money(a: MoneyAccount, request: MoneyReservationRequest) -> MoneyOutc
       }
     }
   } else {
-    project_outcome(
-      a: a,
-      outcome: reserve_encumbrance(
-        ledger: a.ledger,
-        reference: request.reference,
-        generation: request.generation,
-        maximum_liability: request.maximum_liability,
+    record_lease(
+      o: project_outcome(
+        a: a,
+        outcome: reserve_encumbrance(
+          ledger: a.ledger,
+          reference: request.reference,
+          maximum_liability: request.maximum_liability,
+        ),
       ),
+      reference: request.reference,
+      generation: request.generation,
     )
   }
 }
 
 fn settle_money(a: MoneyAccount, request: MoneySettlementRequest) -> MoneyOutcome {
-  if a.currency != request.currency {
+  if !fence_admits(a: a, reference: request.reference, presented: request.generation) {
+    MoneyRefused {
+      refusal: StaleLeaseGeneration {
+        reference: request.reference,
+        presented: request.generation,
+      }
+    }
+  } else if a.currency != request.currency {
     MoneyRefused {
       refusal: CurrencyMismatch {
         account: a.account,
@@ -147,7 +194,6 @@ fn settle_money(a: MoneyAccount, request: MoneySettlementRequest) -> MoneyOutcom
       outcome: settle_encumbrance(
         ledger: a.ledger,
         reference: request.reference,
-        presented_generation: request.generation,
         actual: request.actual_spend,
         settled_at: request.settled_at,
       ),
@@ -167,16 +213,39 @@ fn release_money(
   reason: NonEmptyStr,
   released_at: Timestamp,
 ) -> MoneyOutcome {
-  project_outcome(
-    a: a,
-    outcome: release_encumbrance(
-      ledger: a.ledger,
-      reference: reference,
-      presented_generation: generation,
-      reason: reason,
-      released_at: released_at,
-    ),
-  )
+  if !fence_admits(a: a, reference: reference, presented: generation) {
+    MoneyRefused {
+      refusal: StaleLeaseGeneration { reference: reference, presented: generation }
+    }
+  } else {
+    project_outcome(
+      a: a,
+      outcome: release_encumbrance(
+        ledger: a.ledger,
+        reference: reference,
+        reason: reason,
+        released_at: released_at,
+      ),
+    )
+  }
+}
+
+// A successful reservation records the generation it was taken under, so a
+// later settlement from a superseded holder has something exact to fail
+// against. Recording only on success matters: a refused reservation that still
+// wrote a lease would let the fence admit a hold that does not exist.
+
+fn record_lease(o: MoneyOutcome, reference: ReservationRef, generation: Int) -> MoneyOutcome {
+  match o {
+    AccountAdvanced { account: a } =>
+      AccountAdvanced {
+        account: account_with_lease(
+          a: a,
+          lease: MoneyLease { reference: reference, generation: generation },
+        )
+      }
+    MoneyRefused { refusal: r } => MoneyRefused { refusal: r }
+  }
 }
 
 fn account_committed(a: MoneyAccount) -> MoneyAmountMicro {

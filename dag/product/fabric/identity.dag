@@ -40,6 +40,16 @@ fn fabric_identity_key<P, K>(id: FabricIdentity<P, K>) -> K {
   id.key
 }
 
+// Equality is over the PAIR, because that is what identity means here. A
+// comparison on the key alone silently merges two tenants who chose the same
+// name for their work, which is not a naming collision but a cross-principal
+// leak: the whole reason principal sits INSIDE identity rather than beside it
+// is that dropping it must not be expressible as an ordinary field access.
+
+fn fabric_identity_eq<P, K>(left: FabricIdentity<P, K>, right: FabricIdentity<P, K>) -> Bool {
+  left.principal == right.principal && left.key == right.key
+}
+
 fn fabric_identity_principal<P, K>(id: FabricIdentity<P, K>) -> P {
   id.principal
 }

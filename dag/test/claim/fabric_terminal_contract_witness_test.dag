@@ -5,9 +5,10 @@ import std.measure { MoneyAmountMicro, money_amount_micro, money_amount_micro_co
 import std.content_hash { ContentHash, content_hash_of_value }
 import std.currency { CurrencyCode, Usd }
 import product.compute_fabric { Shape, HardRequirements }
-import product.fabric.identity { FabricIdentity, DemandKey, WorkKey, ExecutionAttemptKey, OfferKey, GrantKey, ReceiptKey }
+import product.fabric.identity { FabricIdentity, fabric_identity_key, DemandKey, WorkKey, ExecutionAttemptKey, OfferKey, GrantKey, ReceiptKey }
 import product.fabric.work {
   Work, WorkContract, ExecutionRequirements, WorkStep, ResumabilityTier,
+  derive_work_key, work_for,
   ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects,
 }
 import product.fabric.demand {
@@ -51,7 +52,7 @@ data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
 
 data fixture_contract: WorkContract = WorkContract {
   program: "gunbc-required-floor",
-  step_graph: "linear-build-then-floor",
+  steps: [WorkStep { step_id: "floor", resumability: ReceiptSatisfiable }],
   source: "sha256:tree-abc",
   inputs: "manifest-inputs-1",
   runtime_closure: "toolchain-rust-1.89",
@@ -59,15 +60,38 @@ data fixture_contract: WorkContract = WorkContract {
   output_contract: "outputs-verdict",
 }
 
-data fixture_work_key: WorkKey = "work-floor-abc"
+// The key is DERIVED, never authored. An earlier version of this file declared
+// a constant and placed it into both synthetic demands, which made the headline
+// neutrality test unfalsifiable: it would have passed against a key that
+// ignored every contract input, while claiming to prove the opposite.
+
+data fixture_work_key: WorkKey = derive_work_key(
+  contract: fixture_contract,
+  requirements: fixture_requirements,
+)
 
 fn work_for_principal(p: NonEmptyStr) -> Work<NonEmptyStr> {
-  Work {
-    id: FabricIdentity { principal: p, key: fixture_work_key },
-    contract: fixture_contract,
-    requirements: fixture_requirements,
-    steps: [WorkStep { step_id: "floor", resumability: ReceiptSatisfiable }],
-  }
+  work_for(principal: p, contract: fixture_contract, requirements: fixture_requirements)
+}
+
+// A contract differing in ONE semantic input - the source tree - and one
+// differing only in a scheduling-irrelevant way are the two controls the
+// derivation has to separate.
+
+data other_source_contract: WorkContract = WorkContract {
+  program: "gunbc-required-floor",
+  steps: [WorkStep { step_id: "floor", resumability: ReceiptSatisfiable }],
+  source: "sha256:tree-DIFFERENT",
+  inputs: "manifest-inputs-1",
+  runtime_closure: "toolchain-rust-1.89",
+  effect_contract: "effects-read-only",
+  output_contract: "outputs-verdict",
+}
+
+data other_runtime_requirements: ExecutionRequirements = ExecutionRequirements {
+  shape: fixture_shape,
+  capabilities: "linux-amd64",
+  trust_domain: "fleet-owned",
 }
 
 fn buy_terms(reservation: Int, ceiling: Int) -> BuyTerms {
@@ -120,12 +144,49 @@ data gitlab_binding_demand: Demand<NonEmptyStr> = demand_from_binding(
 // The load-bearing claim: two providers, one Work.
 
 test fn two_bindings_project_into_one_work_identity() -> Bool {
-  let gh = demand_work(d: github_binding_demand)
-  let gl = demand_work(d: gitlab_binding_demand)
-  (gh.key as String) == (gl.key as String)
-    && (gh.principal as String) == (gl.principal as String)
-    && (github_binding_demand.origin as String) != (gitlab_binding_demand.origin as String)
-    && (github_binding_demand.id.key as String) != (gitlab_binding_demand.id.key as String)
+  fabric_identity_key(id: demand_work(d: github_binding_demand))
+    == fabric_identity_key(id: demand_work(d: gitlab_binding_demand))
+    && github_binding_demand.origin != gitlab_binding_demand.origin
+    && fabric_identity_key(id: github_binding_demand.id)
+      != fabric_identity_key(id: gitlab_binding_demand.id)
+}
+
+// The derivation controls. Without these the test above is satisfied by a key
+// that ignores its inputs entirely, which is what an authored constant was.
+
+test fn one_changed_semantic_input_changes_the_work_key() -> Bool {
+  derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
+    != derive_work_key(contract: other_source_contract, requirements: fixture_requirements)
+}
+
+// Requirements are part of the promise, not scheduling trivia: work that needs
+// a different architecture does not promise the same answer, so it must not
+// share a key with work that does.
+
+test fn changed_execution_requirements_change_the_work_key() -> Bool {
+  derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
+    != derive_work_key(contract: fixture_contract, requirements: other_runtime_requirements)
+}
+
+// And the direction that matters most for the fabric: identical semantics
+// reached through two different providers derive the SAME key, so the
+// deduplication the whole design rests on is a property of the function rather
+// than of two fixtures happening to be given one constant.
+
+test fn identical_contracts_derive_one_key_regardless_of_who_asked() -> Bool {
+  derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
+    == derive_work_key(
+      contract: WorkContract {
+        program: "gunbc-required-floor",
+        steps: [WorkStep { step_id: "floor", resumability: ReceiptSatisfiable }],
+        source: "sha256:tree-abc",
+        inputs: "manifest-inputs-1",
+        runtime_closure: "toolchain-rust-1.89",
+        effect_contract: "effects-read-only",
+        output_contract: "outputs-verdict",
+      },
+      requirements: fixture_requirements,
+    )
 }
 
 // Cost differs between the two demands while the Work they attach to does not.
@@ -303,6 +364,22 @@ data other_slice_receipt: Receipt<NonEmptyStr> = Receipt {
   },
 }
 
+// Same attempt KEY, different principal. This is the cross-tenant case: two
+// tenants naming their attempt identically must not share receipts, and a
+// key-only comparison admits this one.
+
+data foreign_principal_receipt: Receipt<NonEmptyStr> = Receipt {
+  id: FabricIdentity { principal: "other-tenant", key: "receipt-4" },
+  attempt: FabricIdentity { principal: "other-tenant", key: "attempt-1" },
+  lease: lease_gen_9,
+  payload: ExecutionReceipt {
+    step_id: "floor",
+    outputs: content_hash_of_value(value: "outputs-4"),
+    billable: second(count: 3600),
+    completed_at: "2026-08-18T01:00:00Z",
+  },
+}
+
 data foreign_attempt_receipt: Receipt<NonEmptyStr> = Receipt {
   id: FabricIdentity { principal: "operator", key: "receipt-3" },
   attempt: FabricIdentity { principal: "operator", key: "attempt-99" },
@@ -334,6 +411,14 @@ test fn acceptance_compares_lease_identity_not_only_generation() -> Bool {
   admission_label(r: stale_receipt) == "generation-stale"
     && admission_label(r: other_slice_receipt) == "different-lease"
     && admission_label(r: foreign_attempt_receipt) == "different-attempt"
+}
+
+// The cross-tenant control. Identity is the pair, so an attempt key alone is
+// not an attempt; a receipt carrying another principal's identically-named
+// attempt is refused rather than admitted.
+
+test fn a_receipt_from_another_principal_is_not_the_same_attempt() -> Bool {
+  admission_label(r: foreign_principal_receipt) == "different-attempt"
 }
 
 // The positive control. Without it every refusal above is satisfied by an

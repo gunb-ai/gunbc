@@ -44,16 +44,17 @@ type EncumbranceState<Q, S> =
   | Expended { actual: Measure<Q, S, Nat>, settled_at: Timestamp }
   | Released { reason: NonEmptyStr, released_at: Timestamp }
 
-// The generation is the fence, and it is the same fence a lease carries. A
-// reservation is a lease over money rather than over a machine: something is
-// held exclusively, it may be lost while its holder still believes it holds
-// it, and a late settlement from a superseded holder must not be honoured.
-// Carrying the generation on the reservation is what makes that decidable at
-// settlement instead of racing.
+// This carrier deliberately holds NO generation and no fencing vocabulary.
+// An earlier version put a generation on every encumbrance and a stale-
+// generation arm in the refusals, which is a layer inversion: temporal
+// fencing is this repository's CI lease protocol, not a fact about
+// encumbrance accounting, and an upstream authority that carried it would
+// impose CI lease generations on every future consumer of appropriation
+// conservation. The fence lives in product.fabric.budget, which checks it and
+// then calls the transition here.
 
 type Encumbrance<Q, S> {
   reference: NonEmptyStr
-  generation: Int
   state: EncumbranceState<Q, S>
 }
 
@@ -99,7 +100,6 @@ type EncumbranceRefusal<Q, S> =
     }
   | UnknownEncumbrance { reference: NonEmptyStr }
   | DuplicateReference { reference: NonEmptyStr }
-  | StaleGeneration { reference: NonEmptyStr, expected: Int, presented: Int }
   | ExpenditureExceedsEncumbrance {
       reference: NonEmptyStr,
       actual: Measure<Q, S, Nat>,
@@ -119,7 +119,6 @@ type EncumbranceOutcome<Q, S> =
 fn reserve_encumbrance<Q, S>(
   ledger: EncumbranceLedger<Q, S>,
   reference: NonEmptyStr,
-  generation: Int,
   maximum_liability: Measure<Q, S, Nat>,
 ) -> EncumbranceOutcome<Q, S> {
   match entry_matching(ledger: ledger, reference: reference) {
@@ -128,7 +127,6 @@ fn reserve_encumbrance<Q, S>(
     Empty {} => reserve_fresh_reference(
       ledger: ledger,
       reference: reference,
-      generation: generation,
       maximum_liability: maximum_liability,
     )
   }
@@ -150,7 +148,6 @@ fn reserve_encumbrance<Q, S>(
 fn reserve_fresh_reference<Q, S>(
   ledger: EncumbranceLedger<Q, S>,
   reference: NonEmptyStr,
-  generation: Int,
   maximum_liability: Measure<Q, S, Nat>,
 ) -> EncumbranceOutcome<Q, S> {
   let committed = committed_total(ledger: ledger)
@@ -162,7 +159,6 @@ fn reserve_fresh_reference<Q, S>(
         entries: concat(ledger.entries, [
           Encumbrance {
             reference: reference,
-            generation: generation,
             state: Held { maximum_liability: maximum_liability },
           }
         ]),
@@ -200,7 +196,7 @@ fn replace_entry<Q, S>(
     appropriation: ledger.appropriation,
     entries: ledger.entries |> map(e =>
       if e.reference == reference {
-        Encumbrance { reference: e.reference, generation: e.generation, state: next_state }
+        Encumbrance { reference: e.reference, state: next_state }
       } else {
         e
       }
@@ -208,23 +204,16 @@ fn replace_entry<Q, S>(
   }
 }
 
-// Settlement is where the three walls stand together, and the order they are
-// checked in is not incidental. An unknown reference is refused before a
-// generation is compared, because comparing against an entry that does not
-// exist has no meaning. A stale generation is refused before the amount is
-// examined, because a superseded holder's amount is not evidence about
-// anything. Only then is the expenditure checked against what was actually
-// encumbered.
-//
-// An expenditure above the encumbrance refuses instead of expanding the hold.
-// Expanding it would be the failure arm that widens: the appropriation's
-// ceiling would be crossed by the settle path rather than the reserve path,
-// which is the one place the conservation argument assumed it could not be.
+// Settlement checks what an accounting authority can check: that the
+// reference is known, that it is still held, and that the expenditure does not
+// exceed what was encumbered. An expenditure above the encumbrance refuses
+// instead of expanding the hold, because expanding would cross the ceiling
+// through the settle path rather than the reserve path -- the one place the
+// conservation argument assumed it could not be crossed.
 
 fn settle_encumbrance<Q, S>(
   ledger: EncumbranceLedger<Q, S>,
   reference: NonEmptyStr,
-  presented_generation: Int,
   actual: Measure<Q, S, Nat>,
   settled_at: Timestamp,
 ) -> EncumbranceOutcome<Q, S> {
@@ -232,15 +221,6 @@ fn settle_encumbrance<Q, S>(
   match matches {
     Empty {} => EncumbranceRefused { refusal: UnknownEncumbrance { reference: reference } }
     Cons { head: e, tail: _ } =>
-      if e.generation != presented_generation {
-        EncumbranceRefused {
-          refusal: StaleGeneration {
-            reference: reference,
-            expected: e.generation,
-            presented: presented_generation,
-          }
-        }
-      } else {
         match held_liability(e: e) {
           Empty {} => EncumbranceRefused { refusal: AlreadyTerminal { reference: reference } }
           Cons { head: liability, tail: _ } =>
@@ -262,7 +242,6 @@ fn settle_encumbrance<Q, S>(
               }
             }
         }
-      }
   }
 }
 
@@ -274,7 +253,6 @@ fn settle_encumbrance<Q, S>(
 fn release_encumbrance<Q, S>(
   ledger: EncumbranceLedger<Q, S>,
   reference: NonEmptyStr,
-  presented_generation: Int,
   reason: NonEmptyStr,
   released_at: Timestamp,
 ) -> EncumbranceOutcome<Q, S> {
@@ -282,15 +260,6 @@ fn release_encumbrance<Q, S>(
   match matches {
     Empty {} => EncumbranceRefused { refusal: UnknownEncumbrance { reference: reference } }
     Cons { head: e, tail: _ } =>
-      if e.generation != presented_generation {
-        EncumbranceRefused {
-          refusal: StaleGeneration {
-            reference: reference,
-            expected: e.generation,
-            presented: presented_generation,
-          }
-        }
-      } else {
         match held_liability(e: e) {
           Empty {} => EncumbranceRefused { refusal: AlreadyTerminal { reference: reference } }
           Cons { head: _, tail: _ } =>
@@ -302,6 +271,5 @@ fn release_encumbrance<Q, S>(
               )
             }
         }
-      }
   }
 }

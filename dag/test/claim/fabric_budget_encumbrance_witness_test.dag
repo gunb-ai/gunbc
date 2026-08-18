@@ -8,14 +8,14 @@ import extdeps.accounting.budget { Appropriation }
 import extdeps.accounting.encumbrance {
   EncumbranceLedger, Encumbrance, EncumbranceState, Held, Expended, Released,
   EncumbranceOutcome, LedgerAdvanced, EncumbranceRefused,
-  ExceedsAppropriation, UnknownEncumbrance, StaleGeneration,
+  ExceedsAppropriation, UnknownEncumbrance,
   ExpenditureExceedsEncumbrance, AlreadyTerminal, DuplicateReference,
   committed_total,
 }
 import product.fabric.budget {
   MoneyAccount, MoneyReservationRequest, MoneySettlementRequest,
   MoneyOutcome, AccountAdvanced, MoneyRefused, MoneyRefusal,
-  CurrencyMismatch, LedgerRefused,
+  CurrencyMismatch, LedgerRefused, StaleLeaseGeneration,
   reserve_money, settle_money, release_money, account_committed,
 }
 
@@ -35,6 +35,7 @@ data usd_account: MoneyAccount = MoneyAccount {
     appropriation: Appropriation { ceiling: money_amount_micro(count: 1000000) },
     entries: [],
   },
+  leases: [],
 }
 
 fn advanced_account(o: MoneyOutcome) -> List<MoneyAccount> {
@@ -65,12 +66,12 @@ fn refusal_label(o: MoneyOutcome) -> NonEmptyStr {
     MoneyRefused { refusal: r } =>
       match r {
         CurrencyMismatch { account: _, account_currency: _, presented_currency: _ } => "currency-mismatch"
+        StaleLeaseGeneration { reference: _, presented: _ } => "stale-generation"
         LedgerRefused { account: _, refusal: lr } =>
           match lr {
             ExceedsAppropriation { requested: _, committed: _, ceiling: _ } => "exceeds-appropriation"
             UnknownEncumbrance { reference: _ } => "unknown-encumbrance"
             DuplicateReference { reference: _ } => "duplicate-reference"
-            StaleGeneration { reference: _, expected: _, presented: _ } => "stale-generation"
             ExpenditureExceedsEncumbrance { reference: _, actual: _, maximum_liability: _ } => "expenditure-exceeds-encumbrance"
             AlreadyTerminal { reference: _ } => "already-terminal"
           }
@@ -264,6 +265,7 @@ test fn the_currency_refusal_is_distinct_from_a_ceiling_refusal() -> Bool {
         CurrencyMismatch { account: _, account_currency: ac, presented_currency: pc } =>
           ac == Usd && pc == Eur
         LedgerRefused { account: _, refusal: _ } => false
+        StaleLeaseGeneration { reference: _, presented: _ } => false
       }
   }
 }

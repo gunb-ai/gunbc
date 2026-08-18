@@ -1,7 +1,7 @@
 module product.fabric.work
 
 import std.types { NonEmptyStr, List }
-import std.content_hash { ContentHash }
+import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
 import product.compute_fabric { Shape }
 import product.fabric.identity { FabricIdentity, WorkKey }
 
@@ -32,8 +32,6 @@ import product.fabric.identity { FabricIdentity, WorkKey }
 // consumes the manifest, consuming provenance only where provenance is a
 // declared input.
 type ProgramRef = NonEmptyStr where brand("ProgramRef")
-
-type StepGraphRef = NonEmptyStr where brand("StepGraphRef")
 
 type ArtifactManifestRef = NonEmptyStr where brand("ArtifactManifestRef")
 
@@ -76,7 +74,7 @@ type WorkStep {
 
 type WorkContract {
   program: ProgramRef
-  step_graph: StepGraphRef
+  steps: List<WorkStep>
   source: SourceManifestRef
   inputs: ArtifactManifestRef
   runtime_closure: ArtifactManifestRef
@@ -110,7 +108,79 @@ type Work<P> {
   id: FabricIdentity<P, WorkKey>
   contract: WorkContract
   requirements: ExecutionRequirements
-  steps: List<WorkStep>
+}
+
+// The key is DERIVED here rather than accepted from a caller, and that is the
+// difference between a claim and a mechanism. Before this function existed the
+// comment below already said the key derives from the semantic contract, but
+// nothing computed it: a Work took an arbitrary branded key beside an arbitrary
+// contract, so one contract could carry two keys, two contracts could carry one
+// key, and a binding could let a provider fact influence the key with the core
+// unable to notice. The witness that was supposed to prove neutrality authored
+// one constant and placed it in both demands, so it would have passed against a
+// key that ignored every input.
+//
+// Every field of the contract and of the requirements feeds the digest, and
+// nothing else can: the function takes no other argument, so excluding
+// scheduling facts is a property of its signature rather than of an author's
+// discipline. Requirements are included because a Work that needs a different
+// architecture or trust domain does not promise the same answer.
+
+fn work_identity_material(contract: WorkContract, requirements: ExecutionRequirements) -> NonEmptyStr {
+  concat(
+    contract.program, "\u{1f}",
+    work_steps_material(steps: contract.steps), "\u{1f}",
+    contract.source, "\u{1f}",
+    contract.inputs, "\u{1f}",
+    contract.runtime_closure, "\u{1f}",
+    contract.effect_contract, "\u{1f}",
+    contract.output_contract, "\u{1f}",
+    requirements.capabilities, "\u{1f}",
+    requirements.trust_domain
+  )
+}
+
+fn work_step_material(step: WorkStep) -> NonEmptyStr {
+  concat(step.step_id, "\u{1e}", resumability_material(tier: step.resumability))
+}
+
+fn resumability_material(tier: ResumabilityTier) -> NonEmptyStr {
+  match tier {
+    ReceiptSatisfiable => "receipt-satisfiable"
+    IdempotentUnderKey { idempotency_key: k } =>
+      concat("idempotent-under-key:", serialize_content_hash(hash: k))
+    OpaqueEffects { reason: _ } => "opaque-effects"
+  }
+}
+
+fn work_steps_material(steps: List<WorkStep>) -> NonEmptyStr {
+  fold(
+    steps,
+    init: "steps",
+    f: (acc, step) => concat(acc, "\u{1d}", work_step_material(step: step))
+  )
+}
+
+fn derive_work_key(contract: WorkContract, requirements: ExecutionRequirements) -> WorkKey {
+  serialize_content_hash(
+    hash: content_hash_of_value(
+      value: work_identity_material(contract: contract, requirements: requirements)
+    )
+  )
+}
+
+// The public constructor. A Work cannot be built with a key someone chose,
+// because this is the only place a key comes from.
+
+fn work_for<P>(principal: P, contract: WorkContract, requirements: ExecutionRequirements) -> Work<P> {
+  Work {
+    id: FabricIdentity {
+      principal: principal,
+      key: derive_work_key(contract: contract, requirements: requirements),
+    },
+    contract: contract,
+    requirements: requirements,
+  }
 }
 
 // The work key is derived from the semantic contract alone. Excluded, each for
