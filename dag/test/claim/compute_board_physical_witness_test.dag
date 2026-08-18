@@ -108,14 +108,14 @@ fn admits(placements: List<ComponentPlacement>) -> Bool {
 
 fn refusal_is(r: PhysicalRefusal, wanted: String) -> Bool {
   match r {
-    BoardFrameUnregistered { frame: _ } => wanted != "BoardFrameUnregistered"
-    BoardFrameRegistrationRefused { cause: _ } => wanted != "BoardFrameRegistrationRefused"
-    BoardFrameIsNotSubMillimetre { frame: _ } => wanted != "BoardFrameIsNotSubMillimetre"
-    PlacementFrameDiffersFromBoard { placement: _ } => wanted != "PlacementFrameDiffersFromBoard"
-    PlacementExtentNotPositive { placement: _ } => wanted != "PlacementExtentNotPositive"
-    PlacementNotWithinOutline { placement: _ } => wanted != "PlacementNotWithinOutline"
-    PlacementsOverlap { first: _, second: _ } => wanted != "PlacementsOverlap"
-    PlacementIdentityRepeated { placement: _ } => wanted != "PlacementIdentityRepeated"
+    BoardFrameUnregistered { frame: _ } => wanted == "BoardFrameUnregistered"
+    BoardFrameRegistrationRefused { cause: _ } => wanted == "BoardFrameRegistrationRefused"
+    BoardFrameIsNotSubMillimetre { frame: _ } => wanted == "BoardFrameIsNotSubMillimetre"
+    PlacementFrameDiffersFromBoard { placement: _ } => wanted == "PlacementFrameDiffersFromBoard"
+    PlacementExtentNotPositive { placement: _ } => wanted == "PlacementExtentNotPositive"
+    PlacementNotWithinOutline { placement: _ } => wanted == "PlacementNotWithinOutline"
+    PlacementsOverlap { first: _, second: _ } => wanted == "PlacementsOverlap"
+    PlacementIdentityRepeated { placement: _ } => wanted == "PlacementIdentityRepeated"
   }
 }
 
