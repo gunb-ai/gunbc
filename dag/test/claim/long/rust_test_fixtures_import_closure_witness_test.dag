@@ -1,4 +1,4 @@
-module test.claim.rust_test_fixtures_import_closure_witness
+module test.claim.long.rust_test_fixtures_import_closure_witness
 
 import v2.workflow.class_b_import_closure_transport {
   class_b_declared_import_closure_lists_rust_import,

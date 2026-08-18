@@ -1,4 +1,4 @@
-module test.claim.dissolution_census_witness_test
+module test.claim.long.dissolution_census_witness_test
 
 import std.decl_ref { decl_ref }
 import std.roster_frontier { fold_frontier_expiry, frontier_expiry_clean, frontier_rows_well_formed }
@@ -49,7 +49,7 @@ test fn supplying_a_bound_rows_declaration_reds_the_gate() -> Bool {
 test fn unbound_rows_stay_unbound_under_any_present_decls() -> Bool {
   let probes = [
     decl_ref(module_path: "extdeps.docker.endpoint", decl_name: "docker_default_endpoint"),
-    decl_ref(module_path: "test.claim.dissolution_census_witness_test", decl_name: "unbound_rows_stay_unbound_under_any_present_decls"),
+    decl_ref(module_path: "test.claim.long.dissolution_census_witness_test", decl_name: "unbound_rows_stay_unbound_under_any_present_decls"),
   ]
   let base = dissolution_census_report()
   let probed = dissolution_census_report_against(present_decls: probes)

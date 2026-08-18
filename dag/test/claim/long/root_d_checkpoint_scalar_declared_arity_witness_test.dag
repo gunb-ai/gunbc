@@ -1,4 +1,4 @@
-module test.claim.root_d_checkpoint_scalar_declared_arity_witness
+module test.claim.long.root_d_checkpoint_scalar_declared_arity_witness
 
 import std.types { is_container_type }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
