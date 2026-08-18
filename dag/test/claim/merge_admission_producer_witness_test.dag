@@ -57,7 +57,7 @@ test fn wire_missing_head_sha_returns_absent() -> Bool {
       concat(git_object_id_wire_hex(oid: scenario_base), "\n"),
       concat(render_gate_roster_hash_wire(hash: current_gate_roster_hash), "\n")
     ),
-    check_conclusion_wire_label(c: Success)
+    check_conclusion_wire_label(c: extdeps.github.checks.Success)
   )
   match parse_receipt_wire(text: wire) {
     Present { value: _ } => false
@@ -69,7 +69,7 @@ test fn wire_missing_pr_number_parses_as_absent_field() -> Bool {
   let wire = concat(
     concat(
       concat(concat(git_object_id_wire_hex(oid: scenario_base), "\n"), concat(render_gate_roster_hash_wire(hash: current_gate_roster_hash), "\n")),
-      concat(check_conclusion_wire_label(c: Success), "\n")
+      concat(check_conclusion_wire_label(c: extdeps.github.checks.Success), "\n")
     ),
     scenario_head
   )

@@ -216,13 +216,13 @@ test fn witness_self_receipt_verdict_is_joint_never_false_converged() -> Bool {
 // wildcard used to answer, then converged reachable only when both sides are converged.
 test fn witness_converge_verdict_meet_is_total_over_every_pair() -> Bool {
   converge_verdict_label(v: converge_verdict_meet(a: Absent, b: Absent)) == "absent"
-    && converge_verdict_label(v: converge_verdict_meet(a: Absent, b: Drifted)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: Absent, b: gunbc.host_converge.Drifted)) == "absent"
     && converge_verdict_label(v: converge_verdict_meet(a: Absent, b: VerdictConverged)) == "absent"
-    && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: Absent)) == "absent"
+    && converge_verdict_label(v: converge_verdict_meet(a: gunbc.host_converge.Drifted, b: Absent)) == "absent"
     && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: Absent)) == "absent"
-    && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: Drifted)) == "drifted"
-    && converge_verdict_label(v: converge_verdict_meet(a: Drifted, b: VerdictConverged)) == "drifted"
-    && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: Drifted)) == "drifted"
+    && converge_verdict_label(v: converge_verdict_meet(a: gunbc.host_converge.Drifted, b: gunbc.host_converge.Drifted)) == "drifted"
+    && converge_verdict_label(v: converge_verdict_meet(a: gunbc.host_converge.Drifted, b: VerdictConverged)) == "drifted"
+    && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: gunbc.host_converge.Drifted)) == "drifted"
     && converge_verdict_label(v: converge_verdict_meet(a: VerdictConverged, b: VerdictConverged)) == "converged"
 }
 

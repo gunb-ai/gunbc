@@ -131,12 +131,12 @@ type AnsiMapping {
 
 data ansi_mappings: List<AnsiMapping> = [
   { color: Default, style: SgrReset {} },
-  { color: Success, style: SgrIndexedForeground { index: 34 } },
+  { color: std.symbols.Success, style: SgrIndexedForeground { index: 34 } },
   { color: Warning, style: SgrIndexedForeground { index: 208 } },
   { color: Error,   style: SgrIndexedForeground { index: 196 } },
-  { color: Info,    style: SgrIndexedForeground { index: 39 } },
+  { color: std.symbols.Info,    style: SgrIndexedForeground { index: 39 } },
   { color: Dim,     style: SgrDim {} },
-  { color: Active,  style: SgrIndexedForeground { index: 208 } },
+  { color: std.symbols.Active,  style: SgrIndexedForeground { index: 208 } },
   { color: Accent,  style: SgrIndexedForeground { index: 75 } }
 ]
 

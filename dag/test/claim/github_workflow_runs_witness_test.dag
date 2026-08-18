@@ -81,7 +81,7 @@ test fn parse_workflow_run_status_case_sensitive() -> Bool {
 }
 
 test fn workflow_run_conclusion_wire_label_success() -> Bool {
-  workflow_run_conclusion_wire_label(Success) == "success"
+  workflow_run_conclusion_wire_label(extdeps.github.workflow_runs.Success) == "success"
 }
 
 test fn workflow_run_conclusion_wire_label_failure() -> Bool {
@@ -148,7 +148,7 @@ test fn workflow_run_status_roundtrip_completed() -> Bool {
 }
 
 test fn workflow_run_conclusion_roundtrip_all() -> Bool {
-  let r_success = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(Success))) == Present { value: extdeps.github.workflow_runs.Success }
+  let r_success = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(extdeps.github.workflow_runs.Success))) == Present { value: extdeps.github.workflow_runs.Success }
   let r_failure = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(Failure))) == Present { value: extdeps.github.workflow_runs.Failure }
   let r_cancelled = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(Cancelled))) == Present { value: extdeps.github.workflow_runs.Cancelled }
   let r_neutral = (parse_workflow_run_conclusion(workflow_run_conclusion_wire_label(Neutral))) == Present { value: extdeps.github.workflow_runs.Neutral }
