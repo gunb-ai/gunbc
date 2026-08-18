@@ -286,6 +286,24 @@ fn v1_map_key_fixpoint_loop(
 // exists to name", and this consumer is hand-written Rust: it is outside the
 // containment tree the namespace authority walks, so there is no symbol to cite
 // and a path is the honest referent rather than a lazy one.
+// WHY type_name IS A STRING AND NOT A TYPED IDENTITY, since a stringly registry
+// is the first thing DESIGN section 3 objects to. The requirement is keyed the
+// way its CONSUMER is keyed: v1_map_key_required_type_names takes
+// type_decl_items as Map<String, Node> and decides membership through
+// map_has_declared_type(name: String), so a typed carrier would be converted
+// back to a string at the seam and would add a second notion of type identity
+// to a module that has none -- buying a nicer field while leaving the string
+// exactly where it was. That is not a preference: map_key_alias_hop_gap_note in
+// this same module records the sibling gap being blocked on precisely this, and
+// says it plainly -- "This module has names, not declaration identity. NOT
+// LANDED FOR THAT REASON." That note refused a structural proxy rather than
+// trace a property nobody claims is the real one, and this row refuses a typed
+// wrapper for the same reason.
+//
+// So the two share one dissolution trigger, and should dissolve together:
+// when declaration identity reaches this analysis, the alias arm lands AND this
+// roster re-keys onto it. Recorded here so the next author sees one blocked
+// authority rather than two unrelated string keys.
 type HandRustMapKeyRequirement {
   type_name: String
   consumer: String
