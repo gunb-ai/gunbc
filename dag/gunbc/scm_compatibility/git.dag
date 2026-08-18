@@ -658,7 +658,7 @@ fn git_compatibility_projection_receipt(
   }
 }
 
-fn git_compatibility_projection_handler() -> CompatibilityProjectionHandler<GitCompatibilityReceipt> {
+fn git_compatibility_projection_handler() -> gunbc.scm_compatibility_shape.CompatibilityProjectionHandler<GitCompatibilityReceipt> {
   gunbc.scm_compatibility_shape.CompatibilityProjectionHandler {
     project: fn(receipt) {
       git_compatibility_projection_receipt(receipt: receipt)

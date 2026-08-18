@@ -322,7 +322,7 @@ fn lex_try_compiled(compiled: CompiledLexRule, source: String) -> LexRuleApply {
   }
 }
 
-fn lex_compile_rules(rules: List<v2.std.compilers.lexing.LexRule>) -> List<CompiledLexRule> {
+fn lex_compile_rules(rules: List<v2.std.compilers.lexing.LexRule>) -> v2.std.collection.List<CompiledLexRule> {
   let reversed = fold_list(
     xs: rules,
     empty: std.algebra.Empty,
@@ -541,7 +541,7 @@ fn lex_walk_step(acc: LexWalkAcc) -> LexWalkAcc {
   }
 }
 
-fn lex_walk_source_algebra(file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> SourceFold<LexWalkAcc> {
+fn lex_walk_source_algebra(file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> v2.std.text.SourceFold<LexWalkAcc> {
   v2.std.text.SourceFold {
     init: fn(src) { lex_walk_init(src: src, file: file, rules: rules) },
     is_done: lex_walk_is_done,
@@ -550,7 +550,7 @@ fn lex_walk_source_algebra(file: v2.std.node.Symbol, rules: v2.std.compilers.lex
 }
 
 // lex_walk_artifact is the authored result; lex_walk is its SEMANTIC PROJECTION and is what every existing caller keeps using. The direction matters: the projection is derived from the artifact by dropping the annotation channel, never the reverse, so a semantic consumer cannot reach annotation text and an annotation-aware consumer does not have to re-lex. Both fold the same walk exactly once — this is one traversal read two ways, not two traversals (DESIGN 4c erasure boundary at the lexical layer, mirroring AuthoredParseArtifact at the parse layer).
-fn lex_walk_artifact(source: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> Outcome<v2.std.compilers.lexing.LexArtifact> {
+fn lex_walk_artifact(source: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> v2.std.diagnostic.Outcome<v2.std.compilers.lexing.LexArtifact> {
   let result = fold_source(
     src: source,
     algebra: lex_walk_source_algebra(file: file, rules: rules)
@@ -569,7 +569,7 @@ fn lex_walk_artifact(source: String, file: v2.std.node.Symbol, rules: v2.std.com
   }
 }
 
-fn lex_walk(source: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> Outcome<v2.std.compilers.lexing.TokenStream> {
+fn lex_walk(source: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRuleSet) -> v2.std.diagnostic.Outcome<v2.std.compilers.lexing.TokenStream> {
   match lex_walk_artifact(source: source, file: file, rules: rules) {
     v2.std.diagnostic.Rejected { diagnostics: ds } =>
       v2.std.diagnostic.Rejected { diagnostics: ds }
@@ -578,7 +578,7 @@ fn lex_walk(source: String, file: v2.std.node.Symbol, rules: v2.std.compilers.le
   }
 }
 
-fn tokenize(text: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRules) -> Outcome<v2.std.compilers.lexing.TokenStream> {
+fn tokenize(text: String, file: v2.std.node.Symbol, rules: v2.std.compilers.lexing.LexRules) -> v2.std.diagnostic.Outcome<v2.std.compilers.lexing.TokenStream> {
   let at = v2.std.diagnostic.Textual {
     file: file,
     extent: WholeFile

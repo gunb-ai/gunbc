@@ -114,7 +114,7 @@ fn float_body_compare_semantic_total(a: FloatBody, b: FloatBody) -> std.algebra.
     }
   }
 }
-fn float_body_compare_ieee_ordered_outcome(a: FloatBody, b: FloatBody) -> Outcome<std.algebra.Ordering> {
+fn float_body_compare_ieee_ordered_outcome(a: FloatBody, b: FloatBody) -> v2.std.diagnostic.Outcome<std.algebra.Ordering> {
   if float_body_is_nan(a) {
     float_ordered_compare_nan_rejected()
   } else {
@@ -139,17 +139,17 @@ fn float_body_compare_ieee_ordered_outcome(a: FloatBody, b: FloatBody) -> Outcom
     }
   }
 }
-fn float_ordered_compare_nan_rejected() -> Outcome<std.algebra.Ordering> {
+fn float_ordered_compare_nan_rejected() -> v2.std.diagnostic.Outcome<std.algebra.Ordering> {
   Rejected { diagnostics: diagnostics_singleton(d: v2.std.diagnostic.Diagnostic {
       reason: ^float_totalizer_reason_ieee754_nan_unordered,
       at: port_locus(port: ^float_totalizer_port_ieee754_nan_totalizer),
       correction: v2.std.diagnostic.Unavailable { reason: UserInputBoundary },
     }) }
 }
-fn float_ieee_ordered_compare_outcome(a: Float, b: Float) -> Outcome<std.algebra.Ordering> {
+fn float_ieee_ordered_compare_outcome(a: Float, b: Float) -> v2.std.diagnostic.Outcome<std.algebra.Ordering> {
   float_body_compare_ieee_ordered_outcome(a: a.body, b: b.body)
 }
-fn float_ordered_compare_tier2(a: Float, b: Float) -> Outcome<std.algebra.Ordering> {
+fn float_ordered_compare_tier2(a: Float, b: Float) -> v2.std.diagnostic.Outcome<std.algebra.Ordering> {
   float_ieee_ordered_compare_outcome(a: a, b: b)
 }
 

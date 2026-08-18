@@ -29,7 +29,7 @@ fn topdown_two_level_chain() -> Node {
   }
 }
 
-fn depth_max_algebra() -> NodeFoldTopDown<Int, Int> {
+fn depth_max_algebra() -> v2.std.node.NodeFoldTopDown<Int, Int> {
   v2.std.node.NodeFoldTopDown {
     init: fn(_, depth) { depth },
     child_context: fn(_, depth, _) { depth + 1 },
@@ -41,7 +41,7 @@ data witness_leaf_returns_init: Bool = fold_node_topdown(n: topdown_leaf(), ctx:
 data witness_one_child_max_depth_is_one: Bool = fold_node_topdown(n: topdown_one_child_tree(), ctx: 0, algebra: depth_max_algebra()) == 1
 data witness_two_level_chain_max_depth_is_two: Bool = fold_node_topdown(n: topdown_two_level_chain(), ctx: 0, algebra: depth_max_algebra()) == 2
 
-fn depth_edge_dispatch_algebra() -> NodeFoldTopDown<Int, Int> {
+fn depth_edge_dispatch_algebra() -> v2.std.node.NodeFoldTopDown<Int, Int> {
   v2.std.node.NodeFoldTopDown {
     init: fn(_, depth) { depth },
     child_context: fn(_, depth, e) {

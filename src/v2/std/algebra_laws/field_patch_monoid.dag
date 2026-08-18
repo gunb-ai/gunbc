@@ -14,11 +14,11 @@ fn fp_ok(b: Bool) -> Node {
   if b { fp_pass_node() } else { fp_fail_node() }
 }
 
-fn fp_monoid_op(left: FieldPatch<Bool>, right: FieldPatch<Bool>) -> FieldPatch<Bool> {
+fn fp_monoid_op(left: FieldPatch<Bool>, right: FieldPatch<Bool>) -> v2.std.patch.FieldPatch<Bool> {
   let m = field_patch_monoid()
   m.op(left, right)
 }
-fn fp_monoid_identity() -> FieldPatch<Bool> {
+fn fp_monoid_identity() -> v2.std.patch.FieldPatch<Bool> {
   field_patch_monoid().identity
 }
 

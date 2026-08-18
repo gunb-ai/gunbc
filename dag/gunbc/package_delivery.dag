@@ -260,7 +260,7 @@ type CodexPackageLockAdmission
 
 fn codex_registry_artifacts_from_nodes(
   nodes: List<CodexPackageLockNode>,
-) -> List<extdeps.npm.NpmRegistryArtifact> {
+) -> std.types.List<extdeps.npm.NpmRegistryArtifact> {
   fold(
     nodes,
     init: [],
@@ -886,7 +886,7 @@ fn admitted_package_receipt_canonical_line(
 
 fn sort_admitted_packages_by_lock_key(
   receipts: List<AdmittedPackageArtifactReceipt>,
-) -> List<AdmittedPackageArtifactReceipt> {
+) -> std.types.List<AdmittedPackageArtifactReceipt> {
   match receipts.skip(n: 0).first() {
     Absent => [] as List<AdmittedPackageArtifactReceipt>
     Present { value: a } =>
@@ -1164,7 +1164,7 @@ fn json_object_keys_unique(members: List<extdeps.languages.json.emit.JsonKeyValu
   }
 }
 
-fn sort_json_members_by_key(members: List<extdeps.languages.json.emit.JsonKeyValue>) -> List<extdeps.languages.json.emit.JsonKeyValue> {
+fn sort_json_members_by_key(members: List<extdeps.languages.json.emit.JsonKeyValue>) -> std.types.List<extdeps.languages.json.emit.JsonKeyValue> {
   sort_by(members, m => m.key)
 }
 
@@ -2038,7 +2038,7 @@ fn seed_npm_cache_from_admitted(
 
 fn durable_admitted_receipts(
   staged: List<StagedAdmittedPackageArtifact>,
-) -> List<AdmittedPackageArtifactReceipt> {
+) -> std.types.List<AdmittedPackageArtifactReceipt> {
   match staged.skip(n: 0).first() {
     Absent => [] as List<AdmittedPackageArtifactReceipt>
     Present { value: a } =>

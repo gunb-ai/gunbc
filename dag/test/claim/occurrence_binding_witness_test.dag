@@ -27,7 +27,7 @@ fn ob_occurrence() -> std.occurrence_binding.BindingOccurrence<v2.std.node.Symbo
   }
 }
 
-fn ob_candidate(containment: std.occurrence_binding.ContainmentPath<v2.std.node.Symbol>) -> BindingCandidate<v2.std.node.Symbol> {
+fn ob_candidate(containment: std.occurrence_binding.ContainmentPath<v2.std.node.Symbol>) -> std.occurrence_binding.BindingCandidate<v2.std.node.Symbol> {
   std.occurrence_binding.BindingCandidate {
     containment: containment,
   }

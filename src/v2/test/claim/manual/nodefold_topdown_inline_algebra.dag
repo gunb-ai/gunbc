@@ -15,7 +15,7 @@ fn my_leaf() -> Node {
   }
 }
 
-fn inline_topdown_algebra() -> NodeFoldTopDown<MyFold, MyFold> {
+fn inline_topdown_algebra() -> v2.std.node.NodeFoldTopDown<MyFold, MyFold> {
   v2.std.node.NodeFoldTopDown {
     init: fn(n, fold) {
       MyFold { origin: fold.origin, state: fold.state + 1, at_conj: true }

@@ -173,7 +173,7 @@ fn runner_capacity_host_admission_verdict(host: product.placement_supply.HostIde
   }
 }
 
-fn runner_capacity_managed_host_admission_verdicts() -> List<RunnerCapacityHostAdmissionVerdict> {
+fn runner_capacity_managed_host_admission_verdicts() -> std.types.List<RunnerCapacityHostAdmissionVerdict> {
   [
     runner_capacity_host_admission_verdict(host: operator_host_srv3),
     runner_capacity_host_admission_verdict(host: operator_host_srv4),

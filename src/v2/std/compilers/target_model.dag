@@ -885,7 +885,7 @@ fn target_canonical_operation_wire_malformed_diagnostic(wire: v2.std.node.Node) 
 fn target_model_canonical_operation_atom_field_from_wire(
   wire: v2.std.node.Node,
   field_name: v2.std.node.Symbol
-) -> Optional<v2.std.node.Symbol> {
+) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match fold(
     wire.children,
     init: optional_absent(),
@@ -923,7 +923,7 @@ fn ordering_predicate_wire_symbol(predicate: OrderingPredicate) -> v2.std.node.S
   }
 }
 
-fn ordering_predicate_from_wire_symbol(id: v2.std.node.Symbol) -> Optional<OrderingPredicate> {
+fn ordering_predicate_from_wire_symbol(id: v2.std.node.Symbol) -> v2.std.optional.Optional<OrderingPredicate> {
   if id == ^ordering_predicate_is_less {
     optional_present(value: IsLess)
   } else {
@@ -954,7 +954,7 @@ fn equality_predicate_wire_symbol(predicate: EqualityPredicate) -> v2.std.node.S
   }
 }
 
-fn equality_predicate_from_wire_symbol(id: v2.std.node.Symbol) -> Optional<EqualityPredicate> {
+fn equality_predicate_from_wire_symbol(id: v2.std.node.Symbol) -> v2.std.optional.Optional<EqualityPredicate> {
   if id == ^equality_predicate_is_equal {
     optional_present(value: IsEqual)
   } else {
@@ -3186,7 +3186,7 @@ fn source_atom_char(codepoint: std.types.Char) -> SourceAtomValue {
   SourceAtomChar { codepoint: codepoint }
 }
 
-fn source_atom_char_projection_from_node(source: v2.std.node.Node) -> Optional<SourceAtomValue> {
+fn source_atom_char_projection_from_node(source: v2.std.node.Node) -> v2.std.optional.Optional<SourceAtomValue> {
   match source.kind {
     TypeNode { connective: Atom { identity: c } } =>
       if c == ^char_kernel_type_atom {
@@ -3198,7 +3198,7 @@ fn source_atom_char_projection_from_node(source: v2.std.node.Node) -> Optional<S
   }
 }
 
-fn source_atom_string_projection_from_node(source: v2.std.node.Node) -> Optional<SourceAtomValue> {
+fn source_atom_string_projection_from_node(source: v2.std.node.Node) -> v2.std.optional.Optional<SourceAtomValue> {
   source_atom_string_projection_from_node_bounded(source: source, fuel: source_atom_string_projection_node_count(source: source))
 }
 
@@ -3212,7 +3212,7 @@ fn source_atom_string_projection_node_count(source: v2.std.node.Node) -> Int {
   )
 }
 
-fn source_atom_string_projection_from_node_bounded(source: v2.std.node.Node, fuel: Int) -> Optional<SourceAtomValue> {
+fn source_atom_string_projection_from_node_bounded(source: v2.std.node.Node, fuel: Int) -> v2.std.optional.Optional<SourceAtomValue> {
   if fuel <= 0 {
     optional_absent()
   } else {
@@ -3257,7 +3257,7 @@ fn target_model_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -
   v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
-fn source_atom_symbol_projection_from_node(source: v2.std.node.Node) -> Optional<SourceAtomValue> {
+fn source_atom_symbol_projection_from_node(source: v2.std.node.Node) -> v2.std.optional.Optional<SourceAtomValue> {
   match source.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == ^symbol_kernel_type_atom {
@@ -3272,7 +3272,7 @@ fn source_atom_symbol_projection_from_node(source: v2.std.node.Node) -> Optional
 fn source_atom_value_for_value_template(
   source: v2.std.node.Node,
   template: TargetValueTemplate
-) -> Optional<SourceAtomValue> {
+) -> v2.std.optional.Optional<SourceAtomValue> {
   match template.kind {
     ValueSymbolIdentityPassthrough =>
       source_atom_symbol_projection_from_node(source: source)
@@ -3318,32 +3318,32 @@ fn source_atom_value_for_value_template(
 fn source_atom_value_for_realization_row(
   source: v2.std.node.Node,
   row: TargetAtomRealization
-) -> Optional<SourceAtomValue> {
+) -> v2.std.optional.Optional<SourceAtomValue> {
   source_atom_value_for_value_template(source: source, template: row.value_form)
 }
 
-fn source_atom_value_as_symbol(value: SourceAtomValue) -> Optional<v2.std.node.Symbol> {
+fn source_atom_value_as_symbol(value: SourceAtomValue) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match value {
     SourceAtomSymbol { identity: id } => optional_present(id)
     _ => optional_absent()
   }
 }
 
-fn source_atom_value_as_bool(value: SourceAtomValue) -> Optional<Bool> {
+fn source_atom_value_as_bool(value: SourceAtomValue) -> v2.std.optional.Optional<Bool> {
   match value {
     SourceAtomBool { value: b } => optional_present(b)
     _ => optional_absent()
   }
 }
 
-fn source_atom_value_as_char(value: SourceAtomValue) -> Optional<std.types.Char> {
+fn source_atom_value_as_char(value: SourceAtomValue) -> v2.std.optional.Optional<std.types.Char> {
   match value {
     SourceAtomChar { codepoint: c } => optional_present(c)
     _ => optional_absent()
   }
 }
 
-fn source_atom_value_as_string(value: SourceAtomValue) -> Optional<v2.std.node.Node> {
+fn source_atom_value_as_string(value: SourceAtomValue) -> v2.std.optional.Optional<v2.std.node.Node> {
   match value {
     SourceAtomString { value: s } => optional_present(s)
     _ => optional_absent()
@@ -4091,7 +4091,7 @@ type TargetValueExprMatchArmEdgeFold {
   skipped_scrutinee: Bool
 }
 
-fn target_value_expr_positional_child_optional(node: v2.std.node.Node, index: Int) -> Optional<v2.std.node.Node> {
+fn target_value_expr_positional_child_optional(node: v2.std.node.Node, index: Int) -> v2.std.optional.Optional<v2.std.node.Node> {
   list_at_optional(xs: node_positional_child_targets(node: node), index: index)
 }
 
@@ -5274,7 +5274,7 @@ fn target_value_expr_record_construct_field_slots_from_wire(
   }
 }
 
-fn target_value_expr_labeled_edge_head(labeled: v2.std.collection.List<v2.std.node.Edge>) -> Optional<v2.std.node.Edge> {
+fn target_value_expr_labeled_edge_head(labeled: v2.std.collection.List<v2.std.node.Edge>) -> v2.std.optional.Optional<v2.std.node.Edge> {
   fold(labeled, init: optional_absent(), f: fn(acc, edge) {
     match acc {
       Present { value: _ } => acc
@@ -6131,7 +6131,7 @@ fn target_value_expr_match_arm_tokens(
 
 data target_value_expr_int_bool_octet_channel_dissolution_note: String = "Staging bridge only: inline scrutinee `x != 0` decodes Int wire to bool at the match seam. Ground on the modeled octet↔bool codec authority once inhabited ({0,1} domain, not general nonzero) — do not let this bridge harden into a second decode nickname. interim bindings: ^dag_binding_octet_zero/^dag_binding_octet_one spell 0/1 until codec rows land. scaffold-widen: infer half emits infer_match_int_scrutinee_bool_literal_scaffold diagnostic on Int-scrutinee bool-literal match (countable). paired-scaffold: infer half = infer_match_int_scrutinee_bool_literal_body_note (04_infer.dag) — dissolve both halves together on octet↔bool codec inhabitation."
 
-fn target_value_expr_bool_literal_value_from_atom(node: v2.std.node.Node) -> Optional<Bool> {
+fn target_value_expr_bool_literal_value_from_atom(node: v2.std.node.Node) -> v2.std.optional.Optional<Bool> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == ^target_value_expression_bool_true {
@@ -6148,7 +6148,7 @@ fn target_value_expr_bool_literal_value_from_atom(node: v2.std.node.Node) -> Opt
 fn target_value_expr_bool_literal_value_from_source_symbol(
   id: v2.std.node.Symbol,
   source_bool_form: TargetBoolLiteralShape
-) -> Optional<Bool> {
+) -> v2.std.optional.Optional<Bool> {
   if id == ^target_value_expression_bool_true || id == source_bool_form.true_token {
     optional_present(true)
   } else if id == ^target_value_expression_bool_false || id == source_bool_form.false_token {
@@ -6158,7 +6158,7 @@ fn target_value_expr_bool_literal_value_from_source_symbol(
   }
 }
 
-fn target_value_expression_bool_literal_value_from_wire(wire: v2.std.node.Node) -> Optional<Bool> {
+fn target_value_expression_bool_literal_value_from_wire(wire: v2.std.node.Node) -> v2.std.optional.Optional<Bool> {
   match fold(
     wire.children,
     init: optional_absent(),
@@ -6186,7 +6186,7 @@ fn target_value_expression_bool_literal_value_from_wire(wire: v2.std.node.Node) 
 fn target_value_expr_bool_literal_value_from_expression(
   expr: TargetValueExpression,
   source_bool_form: TargetBoolLiteralShape
-) -> Optional<Bool> {
+) -> v2.std.optional.Optional<Bool> {
   match expr.kind {
     TargetValueExprBoolLiteral =>
       target_value_expression_bool_literal_value_from_wire(wire: expr.node)
@@ -7125,7 +7125,7 @@ fn target_declared_inhabitants_edge_targets(root: v2.std.node.Node) -> v2.std.co
   }
 }
 
-fn target_inhabitant_wire_primary_atom_identity(wire: v2.std.node.Node) -> Optional<v2.std.node.Symbol> {
+fn target_inhabitant_wire_primary_atom_identity(wire: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match wire.kind {
     TypeNode { connective: Atom { identity: id } } => optional_present(value: id)
     TypeNode { connective: Conj } =>
@@ -7739,7 +7739,7 @@ fn target_atom_realization_lookup_extract_row_step(
   acc: Optional<TargetAtomRealization>,
   row: TargetAtomRealization,
   source_carrier: v2.std.node.Node
-) -> Optional<TargetAtomRealization> {
+) -> v2.std.optional.Optional<TargetAtomRealization> {
   match acc {
     Present { value: _ } => acc
     Absent =>
@@ -7754,7 +7754,7 @@ fn target_atom_realization_lookup_extract_row_step(
 fn target_atom_realization_lookup_extract_row(
   catalog: v2.std.collection.List<TargetAtomRealization>,
   source_carrier: v2.std.node.Node
-) -> Optional<TargetAtomRealization> {
+) -> v2.std.optional.Optional<TargetAtomRealization> {
   fold(catalog, init: optional_absent(), f: fn(acc, item) {
     target_atom_realization_lookup_extract_row_step(
       acc: acc,
@@ -8694,7 +8694,7 @@ fn target_type_expr_surface_edge(surface: v2.std.node.Symbol) -> v2.std.node.Edg
   }
 }
 
-fn target_type_expr_kind_from_atom(id: v2.std.node.Symbol) -> Optional<TargetTypeExprKind> {
+fn target_type_expr_kind_from_atom(id: v2.std.node.Symbol) -> v2.std.optional.Optional<TargetTypeExprKind> {
   if id == discriminant(v: TargetTypeExprAtom) {
     optional_present(value: TargetTypeExprAtom)
   } else {
@@ -9462,7 +9462,7 @@ fn target_derive_supplemental_generic_bound_requirement_set_empty() -> TargetDer
   empty_map()
 }
 
-fn target_derive_supplemental_generic_bound_contract_requirements_empty() -> Map<v2.std.node.Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+fn target_derive_supplemental_generic_bound_contract_requirements_empty() -> std.types.Map<v2.std.node.Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
   empty_map()
 }
 
@@ -9470,11 +9470,11 @@ fn target_representation_parameter_slot_empty() -> TargetRepresentationParameter
   TargetRepresentationParameterSlot {}
 }
 
-fn target_representation_parameter_slots_empty() -> Map<v2.std.node.Symbol, TargetRepresentationParameterSlot> {
+fn target_representation_parameter_slots_empty() -> std.types.Map<v2.std.node.Symbol, TargetRepresentationParameterSlot> {
   empty_map()
 }
 
-fn target_derive_supplemental_generic_bound_contract_authorities_empty() -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+fn target_derive_supplemental_generic_bound_contract_authorities_empty() -> std.types.Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   empty_map()
 }
 
@@ -9483,7 +9483,7 @@ fn target_derive_supplemental_generic_bound_contract_authority_insert_with_requi
   derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
   authority: extdeps.external_authority.ExternalAuthority,
   requirements: Map<v2.std.node.Symbol, TargetDeriveSupplementalGenericBoundRequirementSet>
-) -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+) -> std.types.Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   map_insert(
     m: contracts,
     key: target_grounding_derive_trait_key(derive_trait: derive_trait),
@@ -9498,7 +9498,7 @@ fn target_derive_supplemental_generic_bound_contract_authority_insert(
   contracts: Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority>,
   derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
   authority: extdeps.external_authority.ExternalAuthority
-) -> Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
+) -> std.types.Map<TargetDeriveTraitKey, TargetDeriveSupplementalGenericBoundContractAuthority> {
   target_derive_supplemental_generic_bound_contract_authority_insert_with_requirements(
     contracts: contracts,
     derive_trait: derive_trait,
@@ -9848,7 +9848,7 @@ fn target_derive_supplemental_generic_bound_contract_requirements_insert(
   required_key: TargetDeriveTraitKey,
   parameter_requirements: TargetDeriveSupplementalGenericBoundRequirementSet,
   authority: extdeps.external_authority.ExternalAuthority
-) -> Map<v2.std.node.Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
+) -> std.types.Map<v2.std.node.Symbol, TargetDeriveSupplementalGenericBoundRequirementSet> {
   map_insert(
     m: requirements,
     key: representation_parameter,
@@ -10122,7 +10122,7 @@ fn target_derive_supplemental_generic_bound_requirement_authority(
   contract: TargetDeriveSupplementalGenericBoundContract,
   representation_parameter: v2.std.node.Symbol,
   required_trait: std.trait_derive_shape.ReprGroundingDeriveTrait
-) -> Optional<extdeps.external_authority.ExternalAuthority> {
+) -> v2.std.optional.Optional<extdeps.external_authority.ExternalAuthority> {
   match contract.requirements.lookup(representation_parameter) {
     Absent => Absent
     Present { value: requirements } =>
@@ -10253,7 +10253,7 @@ fn target_collection_set_carrier_node() -> v2.std.node.Node {
 }
 }
 
-fn target_collection_repr_kind_from_atom(id: v2.std.node.Symbol) -> Optional<TargetCollectionReprKind> {
+fn target_collection_repr_kind_from_atom(id: v2.std.node.Symbol) -> v2.std.optional.Optional<TargetCollectionReprKind> {
   if id == discriminant(v: TargetCollectionReprBTreeSet) {
     optional_present(value: TargetCollectionReprBTreeSet)
   } else {
@@ -10438,7 +10438,7 @@ fn target_collection_select_choice(
   primary: TargetRepresentationChoice,
   alternatives: v2.std.collection.List<TargetRepresentationChoice>,
   elem: v2.std.node.Node
-) -> Optional<TargetRepresentationChoice> {
+) -> v2.std.optional.Optional<TargetRepresentationChoice> {
   if target_collection_choice_constraints_satisfied(choice: primary, elem: elem) {
     optional_present(value: primary)
   } else {
@@ -10456,7 +10456,7 @@ fn target_collection_select_choice(
   }
 }
 
-fn target_collection_set_carrier_head(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn target_collection_set_carrier_head(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   list_at_optional(xs: node_positional_child_targets(node: node), index: 0)
 }
 
@@ -10475,11 +10475,11 @@ fn target_collection_type_node_is_set_carrier(node: v2.std.node.Node) -> Bool {
   }
 }
 
-fn target_collection_set_element_type_node(set_node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn target_collection_set_element_type_node(set_node: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   list_at_optional(xs: node_positional_child_targets(node: set_node), index: 1)
 }
 
-fn target_collection_free_monoid_carrier_head(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn target_collection_free_monoid_carrier_head(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   list_at_optional(xs: node_positional_child_targets(node: node), index: 0)
 }
 
@@ -10499,7 +10499,7 @@ fn target_collection_type_node_is_free_monoid_carrier(node: v2.std.node.Node) ->
   }
 }
 
-fn target_collection_free_monoid_element_type_node(free_monoid_node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn target_collection_free_monoid_element_type_node(free_monoid_node: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   let positional = node_positional_child_targets(node: free_monoid_node)
   if length(xs: positional) == 2 {
     list_at_optional(xs: positional, index: 1)
@@ -10594,7 +10594,7 @@ fn target_carrier_use_site_verdict_node() -> v2.std.node.Node {
   target_carrier_type_node(identity: ^target_carrier_use_site_verdict)
 }
 
-fn target_ownership_use_site_from_atom(id: v2.std.node.Symbol) -> Optional<TargetOwnershipUseSite> {
+fn target_ownership_use_site_from_atom(id: v2.std.node.Symbol) -> v2.std.optional.Optional<TargetOwnershipUseSite> {
   if id == discriminant(v: OwnershipAtFunctionReturn) {
     optional_present(value: OwnershipAtFunctionReturn)
   } else {
@@ -10616,7 +10616,7 @@ fn target_ownership_use_site_from_atom(id: v2.std.node.Symbol) -> Optional<Targe
 
 fn target_use_site_ownership_source_projection_from_atom(
   id: v2.std.node.Symbol
-) -> Optional<TargetUseSiteOwnershipSourceProjection> {
+) -> v2.std.optional.Optional<TargetUseSiteOwnershipSourceProjection> {
   if id == discriminant(v: UseSiteOwnershipExactCarrier) {
     optional_present(value: UseSiteOwnershipExactCarrier)
   } else {
@@ -10628,7 +10628,7 @@ fn target_use_site_ownership_source_projection_from_atom(
   }
 }
 
-fn target_reference_layer_from_atom(id: v2.std.node.Symbol) -> Optional<TargetReferenceLayer> {
+fn target_reference_layer_from_atom(id: v2.std.node.Symbol) -> v2.std.optional.Optional<TargetReferenceLayer> {
   if id == discriminant(v: ReferenceLayerOwned) {
     optional_present(value: ReferenceLayerOwned)
   } else {
@@ -10678,7 +10678,7 @@ type TargetUseSiteOwnershipLookup
 fn target_use_site_ownership_source_key(
   source_carrier: v2.std.node.Node,
   projection: TargetUseSiteOwnershipSourceProjection
-) -> Optional<v2.std.node.Node> {
+) -> v2.std.optional.Optional<v2.std.node.Node> {
   match projection {
     UseSiteOwnershipExactCarrier => optional_present(value: source_carrier)
     UseSiteOwnershipInstantiationHeadCarrier =>
@@ -12108,7 +12108,7 @@ fn target_value_expr_param_binding_for_referent(
   referent: v2.std.node.Symbol,
   bindings: v2.std.collection.List<v2.std.node.Symbol>,
   target: TargetModel
-) -> Optional<v2.std.node.Symbol> {
+) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   if target_value_expr_binding_in_declared_param_list(binding: referent, bindings: bindings) {
     optional_present(value: referent)
   } else {
@@ -12356,7 +12356,7 @@ fn target_value_expr_is_int_literal_atom(node: v2.std.node.Node) -> Bool {
   }
 }
 
-fn target_value_expr_int_literal_magnitude_node_optional(node: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn target_value_expr_int_literal_magnitude_node_optional(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   if target_value_expr_is_int_literal_atom(node: node) {
     fold(node.children, init: optional_absent(), f: fn(acc, edge) {
       match acc {
@@ -12378,7 +12378,7 @@ fn target_value_expr_int_literal_magnitude_node_optional(node: v2.std.node.Node)
   }
 }
 
-fn target_value_expr_int_literal_magnitude_binding(magnitude: Int) -> Optional<v2.std.node.Symbol> {
+fn target_value_expr_int_literal_magnitude_binding(magnitude: Int) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   if magnitude == 1 {
     optional_present(value: ^dag_binding_pick_lit_one)
   } else if magnitude == 2 {
@@ -12420,7 +12420,7 @@ fn target_value_expr_project_int_literal_atom(node: v2.std.node.Node) -> v2.std.
   }
 }
 
-fn target_value_expr_binding_ref_for_literal_atom(id: v2.std.node.Symbol) -> Optional<v2.std.node.Symbol> {
+fn target_value_expr_binding_ref_for_literal_atom(id: v2.std.node.Symbol) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   if id == ^dag_pick_lit_one {
     optional_present(value: ^dag_binding_pick_lit_one)
   } else if id == ^dag_pick_lit_two {

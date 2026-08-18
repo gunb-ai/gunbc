@@ -116,7 +116,7 @@ fn current_capability() -> std.state_durability.StateDurabilityCapability {
 fn fixture_activation(
   admission: std.state_durability.StateDurabilityAdmission<FixtureTarget, FixtureReadbackSubject>,
   receipt_id: std.types.NonEmptyStr,
-) -> StateActivationEvidence<FixtureTarget, FixtureReadbackSubject> {
+) -> std.state_durability.StateActivationEvidence<FixtureTarget, FixtureReadbackSubject> {
   std.state_durability.ActivationVerified {
     receipt: std.state_durability.StateActivationReceipt {
       perturbation_receipt_id: receipt_id,
@@ -133,7 +133,7 @@ fn fixture_activation(
 fn fixture_before_readback(
   receipt_id: std.types.NonEmptyStr,
   digest: extdeps.crypto.hash.Digest,
-) -> StateBeforeReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
+) -> std.state_durability.StateBeforeReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
   std.state_durability.StateBeforeReadbackReceipt {
     perturbation_receipt_id: receipt_id,
     target: fixture_target,
@@ -146,7 +146,7 @@ fn fixture_before_readback(
 fn fixture_after_readback(
   receipt_id: std.types.NonEmptyStr,
   digest: extdeps.crypto.hash.Digest,
-) -> StateAfterReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
+) -> std.state_durability.StateAfterReadbackReceipt<FixtureTarget, FixtureReadbackSubject> {
   std.state_durability.StateAfterReadbackReceipt {
     perturbation_receipt_id: receipt_id,
     target: fixture_target,

@@ -15,7 +15,7 @@ fn span_of(id: std.types.NonEmptyStr, low: std.nat.Nat, high: std.nat.Nat) -> st
   std.attribution.ExtentSpec { occurrence: occ(id: id), frame: frame(), start_ns: low, width_ns: high - low }
 }
 
-fn unattributed_widths(r: std.attribution.AttributionResult) -> List<std.nat.Nat> {
+fn unattributed_widths(r: std.attribution.AttributionResult) -> std.types.List<std.nat.Nat> {
   match r {
     AttributionComputed { spans: ss } =>
       map(

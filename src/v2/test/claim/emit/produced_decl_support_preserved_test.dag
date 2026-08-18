@@ -9,7 +9,7 @@ fn pdp_marker_token_class() -> v2.std.node.Symbol {
   ^pdp_renderer_executed_marker
 }
 
-fn pdp_render(decl: Node) -> Outcome<v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold> {
+fn pdp_render(decl: Node) -> v2.std.diagnostic.Outcome<v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold> {
   outcome_accepted(
     v2.std.compilers.target_model.TargetBodiedArrowStatementScaffold {
       prefix: [v2.std.compilers.target_model.FixedToken { token_class: pdp_marker_token_class() }],

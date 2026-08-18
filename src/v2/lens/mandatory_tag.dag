@@ -100,28 +100,28 @@ type MandatoryTagDeclName
   | DeclNameProjectionGated
   | DeclNameUnreadable
 
-fn mandatory_tag_seq_right(n: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn mandatory_tag_seq_right(n: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match find_named_child(root: n, name: ^grammar_sequence_right_node_projection) {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: r, diagnostics: _ } => optional_present(value: r)
   }
 }
 
-fn mandatory_tag_seq_left(n: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn mandatory_tag_seq_left(n: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match find_named_child(root: n, name: ^grammar_sequence_left_node_projection) {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: l, diagnostics: _ } => optional_present(value: l)
   }
 }
 
-fn mandatory_tag_parse_captured(d: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn mandatory_tag_parse_captured(d: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match find_named_child(root: d, name: ^grammar_production_captured_node_projection) {
     Rejected { diagnostics: _ } => optional_absent()
     Accepted { value: c, diagnostics: _ } => optional_present(value: c)
   }
 }
 
-fn mandatory_tag_parse_name_node(d: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn mandatory_tag_parse_name_node(d: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match mandatory_tag_parse_captured(d: d) {
     Absent => optional_absent()
     Present { value: captured } =>
@@ -132,7 +132,7 @@ fn mandatory_tag_parse_name_node(d: v2.std.node.Node) -> Optional<v2.std.node.No
   }
 }
 
-fn mandatory_tag_parse_type_node(d: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn mandatory_tag_parse_type_node(d: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match mandatory_tag_parse_captured(d: d) {
     Absent => optional_absent()
     Present { value: captured } =>
@@ -151,7 +151,7 @@ fn mandatory_tag_parse_type_node(d: v2.std.node.Node) -> Optional<v2.std.node.No
   }
 }
 
-fn mandatory_tag_parse_value_node(d: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn mandatory_tag_parse_value_node(d: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match mandatory_tag_parse_captured(d: d) {
     Absent => optional_absent()
     Present { value: captured } =>
@@ -202,14 +202,14 @@ fn mandatory_tag_decl_name(d: v2.std.node.Node) -> MandatoryTagDeclName {
   }
 }
 
-fn mandatory_tag_decl_type_node(d: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn mandatory_tag_decl_type_node(d: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match find_named_child(root: d, name: ^dag_surface_data_decl_type) {
     Accepted { value: ty, diagnostics: _ } => optional_present(value: ty)
     Rejected { diagnostics: _ } => mandatory_tag_parse_type_node(d: d)
   }
 }
 
-fn mandatory_tag_decl_value_node(d: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn mandatory_tag_decl_value_node(d: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   match find_named_child(root: d, name: ^dag_surface_data_decl_expr) {
     Accepted { value: v, diagnostics: _ } => optional_present(value: v)
     Rejected { diagnostics: _ } => mandatory_tag_parse_value_node(d: d)
@@ -408,7 +408,7 @@ fn mandatory_tag_findings_count(root: v2.std.node.Node) -> Int {
   length(xs: mandatory_tag_findings(root: root))
 }
 
-fn mandatory_tag_compile_gate(node: v2.std.node.Node) -> Outcome<Witness<v2.std.node.Node>> {
+fn mandatory_tag_compile_gate(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<Witness<v2.std.node.Node>> {
   match mandatory_tag_findings(root: node) {
     Cons { head: first, tail: rest } =>
       v2.std.diagnostic.Rejected {

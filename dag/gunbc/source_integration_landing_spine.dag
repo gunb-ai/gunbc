@@ -150,7 +150,7 @@ type LandingEvidenceReadiness
 
 fn landing_required_claims(
   proposal: LandingProposalContract,
-) -> List<LandingRequiredClaim> {
+) -> std.types.List<LandingRequiredClaim> {
   append(
     [proposal.ensures_guarantees.first],
     items: proposal.ensures_guarantees.remaining,
@@ -170,7 +170,7 @@ fn landing_requirement_is_duplicated(
 fn landing_requirement_block(
   proposal: LandingProposalContract,
   readiness: LandingClaimRequirementReadiness,
-) -> List<LandingEvidenceBlock> {
+) -> std.types.List<LandingEvidenceBlock> {
   claim_requirement_readiness_fold(
     readiness: readiness,
     fold: std.claim_evidence.ClaimRequirementReadinessFold {
@@ -480,7 +480,7 @@ type LandingChoiceResolution
 fn landing_alternative_for_choice(
   options: LandingNormativeOptions,
   choice: gunbc.native_scm_interaction_contract.NativeScmContinuationChoice,
-) -> Optional<LandingNormativeAlternative> {
+) -> v2.std.optional.Optional<LandingNormativeAlternative> {
   match choice {
     NativeScmFirstContinuationOption =>
       Present { value: options.first_option.alternative }

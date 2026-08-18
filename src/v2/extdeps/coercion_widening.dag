@@ -71,7 +71,7 @@ fn coercion_fold_rust_i32_to_python_int_widening(
   source: v2.std.constraints.CanonicalGrounding,
   candidates: v2.std.coercion.CoercionCandidateSet,
   priority: Node,
-) -> Outcome<v2.std.coercion.CoercionResult> {
+) -> v2.std.diagnostic.Outcome<v2.std.coercion.CoercionResult> {
   coercion_fold_refinement_widening(
     source: source,
     candidates: candidates,
@@ -84,7 +84,7 @@ fn coercion_fold_python_int_to_rust_i32_narrowing(
   source: v2.std.constraints.CanonicalGrounding,
   candidates: v2.std.coercion.CoercionCandidateSet,
   priority: Node,
-) -> Outcome<v2.std.coercion.CoercionResult> {
+) -> v2.std.diagnostic.Outcome<v2.std.coercion.CoercionResult> {
   coercion_fold_refinement_widening(
     source: source,
     candidates: candidates,

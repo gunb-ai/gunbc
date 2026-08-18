@@ -79,7 +79,7 @@ fn resolve_module_not_found_diagnostic(name: v2.std.qualified_name.QualifiedName
   resolve_module_not_found_diagnostic_from_missing(requested: name)
 }
 
-fn collect_import_decl_nodes(n: v2.std.node.Node, acc: FreeMonoid<v2.std.node.Node>) -> FreeMonoid<v2.std.node.Node> {
+fn collect_import_decl_nodes(n: v2.std.node.Node, acc: FreeMonoid<v2.std.node.Node>) -> std.algebra.FreeMonoid<v2.std.node.Node> {
   let here = match parse_production_emitted_identity_optional(node: n) {
     Present { value: id } =>
       if id == ^dag_surface_import_decl {
@@ -362,7 +362,7 @@ fn admit_named_export_edge(
   }
 }
 
-fn named_exports_topdown_algebra() -> NodeFoldTopDown<AdmitExportsFold, AdmitExportsFold> {
+fn named_exports_topdown_algebra() -> v2.std.node.NodeFoldTopDown<AdmitExportsFold, AdmitExportsFold> {
   v2.std.node.NodeFoldTopDown {
     init: fn(n, fold) {
       AdmitExportsFold {

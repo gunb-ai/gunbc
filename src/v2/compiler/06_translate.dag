@@ -559,7 +559,7 @@ fn token_sequence_item_kind(item: v2.std.node.Node) -> v2.std.diagnostic.Outcome
   )
 }
 
-fn serialize_source_tokens_fold_child(serialize_source: v2.std.node.Node) -> Optional<v2.std.node.Node> {
+fn serialize_source_tokens_fold_child(serialize_source: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Node> {
   fold(
     serialize_source.children,
     init: optional_absent(),
@@ -1666,7 +1666,7 @@ fn translate_type_expression_arrow_project(
 fn translate_algebra(
   target: v2.std.compilers.target_model.TargetModel,
   projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
-) -> NodeFold<v2.std.diagnostic.Outcome<TypeExprTranslateAcc>> {
+) -> v2.std.node.NodeFold<v2.std.diagnostic.Outcome<TypeExprTranslateAcc>> {
   v2.std.node.NodeFold {
     init: fn(n) {
       match n.kind {
@@ -3931,7 +3931,7 @@ type TranslateDiagnosticReason
   | TargetFunctionSignatureRealizationLookupMiss
   | TargetTypeExprEmittedShapeMalformed
 
-fn translate_diagnostic_reason_variants() -> List<TranslateDiagnosticReason> {
+fn translate_diagnostic_reason_variants() -> v2.std.collection.List<TranslateDiagnosticReason> {
   [
     TargetBundleMalformed,
     TargetBundleDuplicateEdge,
@@ -3978,7 +3978,7 @@ fn translate_diagnostic_reason_symbol(reason: TranslateDiagnosticReason) -> v2.s
 fn translate_diagnostic_reason_find_by_symbol(
   sym: v2.std.node.Symbol,
   variants: List<TranslateDiagnosticReason>
-) -> Optional<TranslateDiagnosticReason> {
+) -> v2.std.optional.Optional<TranslateDiagnosticReason> {
   fold(variants, init: optional_absent(), f: fn(acc, variant) {
     match acc {
       Present { value: _ } => acc
@@ -3992,14 +3992,14 @@ fn translate_diagnostic_reason_find_by_symbol(
   })
 }
 
-fn translate_diagnostic_reason_from_symbol(sym: v2.std.node.Symbol) -> Optional<TranslateDiagnosticReason> {
+fn translate_diagnostic_reason_from_symbol(sym: v2.std.node.Symbol) -> v2.std.optional.Optional<TranslateDiagnosticReason> {
   translate_diagnostic_reason_find_by_symbol(
     sym: sym,
     variants: translate_diagnostic_reason_variants()
   )
 }
 
-fn translate_diagnostic_reason_roster() -> List<v2.std.node.Symbol> {
+fn translate_diagnostic_reason_roster() -> v2.std.collection.List<v2.std.node.Symbol> {
   fold(translate_diagnostic_reason_variants(), init: std.algebra.Empty, f: fn(acc, variant) {
     list_snoc_item(
       xs: acc,
@@ -4010,6 +4010,6 @@ fn translate_diagnostic_reason_roster() -> List<v2.std.node.Symbol> {
 
 fn translate_diagnostic_reason_head(
   diagnostics: v2.std.diagnostic.NonEmptyDiagnostics
-) -> Optional<TranslateDiagnosticReason> {
+) -> v2.std.optional.Optional<TranslateDiagnosticReason> {
   translate_diagnostic_reason_from_symbol(sym: diagnostics.head.reason)
 }

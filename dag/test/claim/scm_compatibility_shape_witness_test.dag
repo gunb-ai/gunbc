@@ -8,7 +8,7 @@ type SyntheticFourthReceipt {
 }
 
 fn synthetic_fourth_handler(
-) -> CompatibilityProjectionHandler<SyntheticFourthReceipt> {
+) -> gunbc.scm_compatibility_shape.CompatibilityProjectionHandler<SyntheticFourthReceipt> {
   gunbc.scm_compatibility_shape.CompatibilityProjectionHandler {
     project: fn(receipt) {
       gunbc.scm_compatibility_shape.CompatibilityProjectionReceipt {

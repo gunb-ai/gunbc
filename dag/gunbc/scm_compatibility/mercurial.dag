@@ -570,7 +570,7 @@ fn mercurial_compatibility_projection_receipt(
 }
 
 fn mercurial_compatibility_projection_handler(
-) -> CompatibilityProjectionHandler<MercurialCompatibilityReceipt> {
+) -> gunbc.scm_compatibility_shape.CompatibilityProjectionHandler<MercurialCompatibilityReceipt> {
   gunbc.scm_compatibility_shape.CompatibilityProjectionHandler {
     project: fn(receipt) {
       mercurial_compatibility_projection_receipt(receipt: receipt)

@@ -1,11 +1,11 @@
 module v2.test.manual.refinement_ordered_iteration
 
 
-fn ordered_classifier_for_list_int() -> IterationClassifier<List<Int>> {
+fn ordered_classifier_for_list_int() -> v2.std.refinement.IterationClassifier<List<Int>> {
   v2.std.refinement.IterationClassifier { classify: fn(_) { StructurallyOrdered } }
 }
 
-fn unordered_classifier_for_list_int() -> IterationClassifier<List<Int>> {
+fn unordered_classifier_for_list_int() -> v2.std.refinement.IterationClassifier<List<Int>> {
   v2.std.refinement.IterationClassifier { classify: fn(_) { StructurallyUnordered } }
 }
 

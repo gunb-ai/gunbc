@@ -171,7 +171,7 @@ fn frontier_from_fold_acc(acc: AffectedFoldAcc) -> ReExecFrontier {
   }
 }
 
-fn lens_frontier_dependency_kinds() -> List<v2.std.dependency.DependencyKind> {
+fn lens_frontier_dependency_kinds() -> v2.std.collection.List<v2.std.dependency.DependencyKind> {
   [ProjectionDependsOn, VerifiedBy, Contains]
 }
 
@@ -331,7 +331,7 @@ fn affected_set_closure_frontier_unchanged(
   length(xs: before.frontier) == length(xs: after.frontier)
 }
 
-fn affected_set_closure_convergence_rounds(dependencies: List<v2.std.dependency.DependencyView>) -> List<v2.std.dependency.DependencyView> {
+fn affected_set_closure_convergence_rounds(dependencies: List<v2.std.dependency.DependencyView>) -> v2.std.collection.List<v2.std.dependency.DependencyView> {
   list_append(left: dependencies, right: dependencies)
 }
 
@@ -377,13 +377,13 @@ fn affected_set_reading(graph: v2.compiler.infer.InferredTree, edit_locus: v2.st
   }
 }
 
-fn append_changed_node_subjects(nodes: List<v2.std.node.Node>, changes: v2.std.change.ChangeSet) -> List<v2.std.node.Node> {
+fn append_changed_node_subjects(nodes: List<v2.std.node.Node>, changes: v2.std.change.ChangeSet) -> v2.std.collection.List<v2.std.node.Node> {
   fold(changes.changes, init: nodes, f: fn(acc, change) {
     list_snoc_item(xs: acc, item: change.subject)
   })
 }
 
-fn append_affected_dependency_nodes(nodes: List<v2.std.node.Node>, affected: List<v2.std.change.AffectedDependency>) -> List<v2.std.node.Node> {
+fn append_affected_dependency_nodes(nodes: List<v2.std.node.Node>, affected: List<v2.std.change.AffectedDependency>) -> v2.std.collection.List<v2.std.node.Node> {
   fold(affected, init: nodes, f: fn(acc, row) {
     list_snoc_item(
       xs: acc,
@@ -909,7 +909,7 @@ fn affected_set_from_diff(
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
   dag: Dag,
   diff: v2.std.node.Diff
-) -> Witness<v2.std.change.AffectedSet> {
+) -> v2.std.witness.Witness<v2.std.change.AffectedSet> {
   v2.std.witness.Holds {
     value: affected_set_from_fold_acc(
       acc: fold(diff.edits, init: empty_affected_set_fold_acc(dag: dag), f: fn(acc, edit) {
@@ -929,7 +929,7 @@ fn re_exec_frontier_from_diff(
   post_edit_dag: fn(Dag, Edit) -> AffectedPostEditDagRead,
   dag: Dag,
   diff: v2.std.node.Diff
-) -> Witness<ReExecFrontier> {
+) -> v2.std.witness.Witness<ReExecFrontier> {
   v2.std.witness.Holds {
     value: frontier_from_fold_acc(
       acc: fold(diff.edits, init: empty_affected_fold_acc(dag: dag), f: fn(acc, edit) {
@@ -1003,7 +1003,7 @@ fn behavior_to_dimension_family(behavior: v2.std.node.Behavior) -> AffectedDimen
   }
 }
 
-fn node_root_dimension_family(node: v2.std.node.Node) -> List<AffectedDimension> {
+fn node_root_dimension_family(node: v2.std.node.Node) -> v2.std.collection.List<AffectedDimension> {
   match node.kind {
     TypeNode { connective: connective } =>
       [connective_to_dimension_family(connective: connective)]
@@ -1016,7 +1016,7 @@ fn dimension_in_list(xs: List<AffectedDimension>, item: AffectedDimension) -> Bo
   contains(xs: xs, item: item, eq: fn(left, right) { left == right })
 }
 
-fn union_dimension_into(acc: List<AffectedDimension>, dim: AffectedDimension) -> List<AffectedDimension> {
+fn union_dimension_into(acc: List<AffectedDimension>, dim: AffectedDimension) -> v2.std.collection.List<AffectedDimension> {
   if dimension_in_list(xs: acc, item: dim) {
     acc
   } else {
@@ -1024,7 +1024,7 @@ fn union_dimension_into(acc: List<AffectedDimension>, dim: AffectedDimension) ->
   }
 }
 
-fn union_dimension_lists(left: List<AffectedDimension>, right: List<AffectedDimension>) -> List<AffectedDimension> {
+fn union_dimension_lists(left: List<AffectedDimension>, right: List<AffectedDimension>) -> v2.std.collection.List<AffectedDimension> {
   fold(right, init: left, f: fn(acc, dim) {
     union_dimension_into(acc: acc, dim: dim)
   })
@@ -1094,7 +1094,7 @@ fn frontier_dependency_from_dependency_view(dependency: v2.std.dependency.Depend
   }
 }
 
-fn frontier_dependencies_from_dependency_views(dependencies: List<v2.std.dependency.DependencyView>) -> List<FrontierDependency> {
+fn frontier_dependencies_from_dependency_views(dependencies: List<v2.std.dependency.DependencyView>) -> v2.std.collection.List<FrontierDependency> {
   fold(dependencies, init: [], f: fn(acc, dependency) {
     list_snoc_item(
       xs: acc,
@@ -1203,7 +1203,7 @@ fn canonical_post_edit_dag(dag: Dag, edit: v2.std.node.Edit) -> AffectedPostEdit
   }
 }
 
-fn affected_set(dag: Dag, diff: v2.std.node.Diff) -> Witness<ReExecFrontier> {
+fn affected_set(dag: Dag, diff: v2.std.node.Diff) -> v2.std.witness.Witness<ReExecFrontier> {
   re_exec_frontier_from_diff(
     read_model: canonical_affected_set_read(),
     post_edit_dag: canonical_post_edit_dag,
@@ -1235,13 +1235,13 @@ data affected_set_reflect_gate_type: v2.std.node.Symbol = ^Gate
 data affected_set_reflect_meta_process_kind_type: v2.std.node.Symbol = ^MetaProcessKind
 data affected_set_reflect_repo_process_kind_type: v2.std.node.Symbol = ^RepoProcessKind
 
-fn ci_gate_processes() -> List<RepoProcess> {
+fn ci_gate_processes() -> v2.std.collection.List<RepoProcess> {
   fold(coproduct_arm_keys(type_name: affected_set_reflect_gate_type), init: [], f: fn(acc, key) {
     list_snoc_item(xs: acc, item: RepoProcess { kind: CiGateProcess, identity: key })
   })
 }
 
-fn meta_processes() -> List<RepoProcess> {
+fn meta_processes() -> v2.std.collection.List<RepoProcess> {
   fold(coproduct_arm_keys(type_name: affected_set_reflect_meta_process_kind_type), init: [], f: fn(acc, key) {
     list_snoc_item(xs: acc, item: RepoProcess { kind: MetaProcessRole, identity: key })
   })

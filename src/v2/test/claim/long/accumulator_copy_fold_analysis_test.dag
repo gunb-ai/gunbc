@@ -36,7 +36,7 @@ data projection_call_carrier_snippet: String = "module projcar\n\nfn f(xs: List<
 
 data multiline_unregistered_snippet: String = "module unreg\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    mystery_op(a: acc, b: x)\n  })\n}\n"
 
-fn ingest(source_text: String, file: v2.std.node.Symbol) -> Optional<v2.std.node.Node> {
+fn ingest(source_text: String, file: v2.std.node.Symbol) -> v2.std.optional.Optional<v2.std.node.Node> {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   match v2.compiler.tokenize.tokenize(text: source_text, file: file, rules: lm.lex) {
     Rejected { diagnostics: _ } => Absent
@@ -52,7 +52,7 @@ fn ingest(source_text: String, file: v2.std.node.Symbol) -> Optional<v2.std.node
   }
 }
 
-fn findings_of(source_text: String, file: v2.std.node.Symbol) -> Optional<List<v2.lens.complexity_accumulator_copy.Finding>> {
+fn findings_of(source_text: String, file: v2.std.node.Symbol) -> v2.std.optional.Optional<List<v2.lens.complexity_accumulator_copy.Finding>> {
   match ingest(source_text: source_text, file: file) {
     Absent => Absent
     Present { value: tree } => Present { value: v2.lens.complexity_accumulator_copy.analyze.accumulator_copy_findings(root: tree) }

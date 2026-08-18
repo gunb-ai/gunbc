@@ -191,7 +191,7 @@ fn converge_revision_observed_hex(raw: String) -> String? {
   })
 }
 
-fn collected_receipts_only(collected: List<CollectedHostReceipt>) -> List<gunbc.fleet_converge_cli.ConvergeCliReceipt> {
+fn collected_receipts_only(collected: List<CollectedHostReceipt>) -> std.types.List<gunbc.fleet_converge_cli.ConvergeCliReceipt> {
   collected.flat_map(c => match c {
     ReceiptCollected { host: _, receipt: r } => [r]
     ReceiptAbsent { host: _, cause: _ } => []

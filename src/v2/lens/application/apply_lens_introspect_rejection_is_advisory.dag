@@ -14,7 +14,7 @@ fn apply_lens_mode_tree() -> v2.compiler.infer.InferredTree {
   )
 }
 
-fn apply_lens_mode_rejecting_gate(_tree: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
+fn apply_lens_mode_rejecting_gate(_tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   outcome_rejected(
     compile_lens_gate_rejected_diagnostic(at: port_locus(port: ^apply_lens_mode_gate_at))
   )

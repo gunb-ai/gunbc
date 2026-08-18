@@ -317,7 +317,7 @@ fn spark_cloud_access_request(
   grant: SparkCloudGrant,
   cell: AccessGrantCell,
   evidence: WifCredentialIssuanceStanding
-) -> AccessRequest<FleetCloudPrincipalKey, EffectAuthorizationAction<SecretManagerOperation>, NonEmptyStr, SparkCloudContext, WifCredentialIssuanceStanding> {
+) -> std.access.AccessRequest<FleetCloudPrincipalKey, EffectAuthorizationAction<SecretManagerOperation>, NonEmptyStr, SparkCloudContext, WifCredentialIssuanceStanding> {
   effect_access_request(request: spark_cloud_request(grant: grant, cell: cell, evidence: evidence))
 }
 

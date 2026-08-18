@@ -89,7 +89,7 @@ fn effect_io_pure_args_absent_diagnostic() -> v2.std.diagnostic.Diagnostic {
 fn effect_io_pure_locator_from_args(
   backend: EffectIoResourceBackend,
   args: List<v2.std.runtime.RuntimeValue>
-) -> Witness<EffectIoResourceLocator> {
+) -> v2.std.witness.Witness<EffectIoResourceLocator> {
   match list_nth(xs: args, wanted: 0, absent: effect_io_pure_args_absent_diagnostic()) {
     Holds { value: locator_value } =>
       match effect_io_pure_locator_identity(value: locator_value) {
@@ -114,7 +114,7 @@ fn effect_io_pure_locator_unrepresentable_diagnostic() -> v2.std.diagnostic.Diag
   }
 }
 
-fn effect_io_pure_locator_identity(value: v2.std.runtime.RuntimeValue) -> Witness<v2.std.node.Hash> {
+fn effect_io_pure_locator_identity(value: v2.std.runtime.RuntimeValue) -> v2.std.witness.Witness<v2.std.node.Hash> {
   match runtime_value_node_projection(value: value) {
     RuntimeValueNodeProjected { node: reified } =>
       v2.std.witness.Holds { value: content_hash(n: reified) }
@@ -123,7 +123,7 @@ fn effect_io_pure_locator_identity(value: v2.std.runtime.RuntimeValue) -> Witnes
   }
 }
 
-fn effect_io_pure_write_payload_from_args(args: List<v2.std.runtime.RuntimeValue>) -> Witness<v2.std.runtime.RuntimeValue> {
+fn effect_io_pure_write_payload_from_args(args: List<v2.std.runtime.RuntimeValue>) -> v2.std.witness.Witness<v2.std.runtime.RuntimeValue> {
   match list_nth(xs: args, wanted: 1, absent: effect_io_pure_args_absent_diagnostic()) {
     Holds { value: payload } => v2.std.witness.Holds { value: payload }
     Violates { diagnostic: d } => v2.std.witness.Violates { diagnostic: d }

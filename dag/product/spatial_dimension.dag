@@ -21,7 +21,7 @@ fn millimeter_le(a: std.measure.Millimeter, b: std.measure.Millimeter) -> Bool {
   millimeter_count(m: a) <= millimeter_count(m: b)
 }
 
-fn length_interval(low: std.measure.Millimeter, high: std.measure.Millimeter) -> IntervalConstruction<std.measure.Millimeter> {
+fn length_interval(low: std.measure.Millimeter, high: std.measure.Millimeter) -> std.interval.IntervalConstruction<std.measure.Millimeter> {
   closed_interval(low: low, high: high, le: millimeter_le)
 }
 

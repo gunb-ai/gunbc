@@ -59,7 +59,7 @@ data source_binding_fixture_binding: OccurrenceBinding<std.occurrence_identity.O
 
 fn provider_login_status_fact(
   id: std.claim_evidence.RecordedFactId,
-) -> RecordedFact<gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation> {
+) -> std.claim_evidence.RecordedFact<gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation> {
   std.claim_evidence.RecordedFact {
     id: id,
     value: gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation {
@@ -75,7 +75,7 @@ fn provider_login_status_fact(
 fn provider_live_request_failed_fact(
   id: std.claim_evidence.RecordedFactId,
   reason: std.types.NonEmptyStr,
-) -> RecordedFact<gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation> {
+) -> std.claim_evidence.RecordedFact<gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation> {
   std.claim_evidence.RecordedFact {
     id: id,
     value: gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation {
@@ -88,7 +88,7 @@ fn provider_live_request_failed_fact(
 
 fn provider_live_request_succeeded_fact(
   id: std.claim_evidence.RecordedFactId,
-) -> RecordedFact<gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation> {
+) -> std.claim_evidence.RecordedFact<gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation> {
   std.claim_evidence.RecordedFact {
     id: id,
     value: gunbc.provider_readiness_claim_evidence.ProviderReadinessObservation {

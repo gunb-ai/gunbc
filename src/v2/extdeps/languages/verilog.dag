@@ -686,7 +686,7 @@ fn verilog_source_text_module_formal_production() -> v2.std.grammar.FormalProduc
 // not a module grammar. Expressions nest through their own nonterminals for the same reason: a
 // row whose token list happened to spell the whole module would only be the hand serializer
 // moved into data.
-fn verilog_emission_formal_productions() -> List<v2.std.grammar.FormalProduction> {
+fn verilog_emission_formal_productions() -> v2.std.collection.List<v2.std.grammar.FormalProduction> {
   [
     grammar_formal_production(
       lhs: ^verilog_production_ansi_port,
@@ -866,7 +866,7 @@ fn verilog_module_declaration(name: v2.std.node.Symbol, ports: Node, assignments
   ])
 }
 
-fn verilog_emit_layout_transforms() -> Map<v2.std.node.Symbol, fn(String) -> String> {
+fn verilog_emit_layout_transforms() -> std.types.Map<v2.std.node.Symbol, fn(String) -> String> {
   map_insert(
     map_insert(
       map_insert(
@@ -960,7 +960,7 @@ fn verilog_interlock_emitted() -> Node {
 // The spellings the bound slots resolve to. The two directions pad to equal width because the
 // oracle aligns them; that padding is layout and therefore lives here, on the target, exactly
 // like the transforms.
-fn verilog_binding_spellings() -> Map<v2.std.node.Symbol, String> {
+fn verilog_binding_spellings() -> std.types.Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(
       map_insert(
@@ -1012,7 +1012,7 @@ fn verilog_relation_row_for_productions(
   productions: List<v2.std.grammar.FormalProduction>,
   lhs: v2.std.node.Symbol,
   emitted: Node
-) -> Witness<Node> {
+) -> v2.std.witness.Witness<Node> {
   match formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
     Holds { value: production } =>
       derive_grammar_relation_row_node(
@@ -1027,11 +1027,11 @@ fn verilog_relation_row_for_productions(
 // The same population in reverse authoring order. Selection is structural, so this must derive a
 // byte-identical row; if it did not, the grammar would be an ordered table pretending to be a
 // relation and the first matching row would win.
-fn verilog_emission_formal_productions_reversed() -> List<v2.std.grammar.FormalProduction> {
+fn verilog_emission_formal_productions_reversed() -> v2.std.collection.List<v2.std.grammar.FormalProduction> {
   reverse(verilog_emission_formal_productions())
 }
 
-fn verilog_relation_row_for(lhs: v2.std.node.Symbol, emitted: Node) -> Witness<Node> {
+fn verilog_relation_row_for(lhs: v2.std.node.Symbol, emitted: Node) -> v2.std.witness.Witness<Node> {
   let productions = verilog_emission_formal_productions()
   match formal_production_for_lhs_exact(productions: productions, lhs: lhs, child: emitted) {
     Holds { value: production } =>
@@ -1044,7 +1044,7 @@ fn verilog_relation_row_for(lhs: v2.std.node.Symbol, emitted: Node) -> Witness<N
   }
 }
 
-fn verilog_module_relation_row() -> Witness<Node> {
+fn verilog_module_relation_row() -> v2.std.witness.Witness<Node> {
   verilog_relation_row_for(
     lhs: ^verilog_production_ansi_module_decl,
     emitted: verilog_interlock_emitted()
@@ -1241,7 +1241,7 @@ fn verilog_identifier_is_admissible(spelling: String) -> Bool {
 // boolean operators. A product supplies the spellings for ITS identifiers and merges them over
 // these, so no consumer has to know that "input" is padded to align with "output" or that the
 // conjunction renders with surrounding spaces. Those are layout decisions and they stay here.
-fn verilog_base_spellings() -> Map<v2.std.node.Symbol, String> {
+fn verilog_base_spellings() -> std.types.Map<v2.std.node.Symbol, String> {
   map_insert(
     map_insert(
       map_insert(

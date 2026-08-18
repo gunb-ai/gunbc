@@ -12,7 +12,7 @@ fn tpl(raw: String) -> std.http_path.PathTemplate {
   }
 }
 
-fn probe_table() -> ServedRouteTable<ProbeHandler> {
+fn probe_table() -> extdeps.http.server.ServedRouteTable<ProbeHandler> {
   extdeps.http.server.ServedRouteTable {
     routes: [
       extdeps.http.server.DynamicRoute { method: GET, path_pattern: tpl(raw: "/"), handler: ProbePage },
@@ -177,7 +177,7 @@ fn zip_accept(re_segs: List<String>, path_segs: List<String>) -> Bool {
   }
 }
 
-fn parity_corpus() -> List<String> {
+fn parity_corpus() -> std.types.List<String> {
   ["/", "/roadmap", "/roadmap/", "/dispatch", "/dispatch/abc", "/dispatch/abc/d", "/dispatch//x", "/nope", "/healthz"]
 }
 

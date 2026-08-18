@@ -121,7 +121,7 @@ fn module_unit_id_outcome(
 fn module_unit_id(
   assignment: Map<ModuleId, CompilationUnitId>,
   module: ModuleId
-) -> Optional<CompilationUnitId> {
+) -> v2.std.optional.Optional<CompilationUnitId> {
   match map_get(assignment, module) {
     Accepted { value: opt, diagnostics: _ } => opt
     Rejected { diagnostics: _ } => Absent
@@ -131,7 +131,7 @@ fn module_unit_id(
 fn module_assigned_unit_fold(
   assignment: Map<ModuleId, CompilationUnitId>,
   module: ModuleId
-) -> Optional<PartitionFoldRefusalCause> {
+) -> v2.std.optional.Optional<PartitionFoldRefusalCause> {
   match module_unit_id_outcome(assignment: assignment, module: module) {
     Rejected { diagnostics: _ } =>
       optional_present(value: ModuleAssignmentLookupRejected { module: module })
@@ -142,7 +142,7 @@ fn module_assigned_unit_fold(
 fn partition_assignment_lookup_cause_if_rejected(
   assignment: Map<ModuleId, CompilationUnitId>,
   modules: std.types.List<ModuleId>
-) -> Optional<PartitionFoldRefusalCause> {
+) -> v2.std.optional.Optional<PartitionFoldRefusalCause> {
   fold_list(
     xs: modules,
     empty: Absent,
@@ -261,7 +261,7 @@ fn type_definition_row_identity(row: ModuleTypeDefinitionRow) -> v2.std.node.Sym
   row.identity
 }
 
-fn type_atom_identity(node: v2.std.node.Node) -> Optional<v2.std.node.Symbol> {
+fn type_atom_identity(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match node.kind {
     TypeNode { connective: Atom { identity: id } } => Present { value: id }
     _ => Absent
@@ -282,7 +282,7 @@ fn partition_unit_dep_from_edge_fold(
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
   edge: ModuleDagEdge
-) -> Optional<PartitionFoldRefusalCause> {
+) -> v2.std.optional.Optional<PartitionFoldRefusalCause> {
   match module_assigned_unit_fold(assignment: assignment, module: edge.from) {
     Present { value: cause } => optional_present(value: cause)
     Absent =>
@@ -303,7 +303,7 @@ fn partition_unit_dep_from_edge(
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
   edge: ModuleDagEdge
-) -> Optional<CompilationUnitId> {
+) -> v2.std.optional.Optional<CompilationUnitId> {
   if module_in_unit(assignment: assignment, module: edge.from, unit_id: unit_id)
     && !module_in_unit(assignment: assignment, module: edge.to, unit_id: unit_id) {
     module_unit_id(assignment: assignment, module: edge.to)
@@ -383,7 +383,7 @@ fn module_referenced_from_outside_unit_fold(
   assignment: Map<ModuleId, CompilationUnitId>,
   unit_id: CompilationUnitId,
   member: ModuleId
-) -> Optional<PartitionFoldRefusalCause> {
+) -> v2.std.optional.Optional<PartitionFoldRefusalCause> {
   fold_list(
     xs: module_dag.edges,
     empty: Absent,
@@ -457,7 +457,7 @@ fn type_definition_for_identity_in_module(
   module_dag: ModuleDag,
   member: ModuleId,
   identity: v2.std.node.Symbol
-) -> Optional<v2.std.node.Node> {
+) -> v2.std.optional.Optional<v2.std.node.Node> {
   fold_list(
     xs: module_type_definition_rows(module_dag: module_dag, module: member),
     empty: Absent,
@@ -479,7 +479,7 @@ fn type_definition_for_identity_in_members(
   module_dag: ModuleDag,
   members: std.types.List<ModuleId>,
   identity: v2.std.node.Symbol
-) -> Optional<v2.std.node.Node> {
+) -> v2.std.optional.Optional<v2.std.node.Node> {
   fold_list(
     xs: members,
     empty: Absent,
@@ -607,7 +607,7 @@ fn partition_interface_closure_saturate_result(
 fn module_member_dag_lookup_cause_if_rejected(
   module_dag: ModuleDag,
   member: ModuleId
-) -> Optional<PartitionFoldRefusalCause> {
+) -> v2.std.optional.Optional<PartitionFoldRefusalCause> {
   match module_export_declarations_outcome(module_dag: module_dag, module: member) {
     Rejected { diagnostics: _ } =>
       optional_present(
@@ -627,7 +627,7 @@ fn module_member_dag_lookup_cause_if_rejected(
 fn partition_members_dag_lookup_cause_if_rejected(
   module_dag: ModuleDag,
   members: std.types.List<ModuleId>
-) -> Optional<PartitionFoldRefusalCause> {
+) -> v2.std.optional.Optional<PartitionFoldRefusalCause> {
   fold_list(
     xs: members,
     empty: Absent,
@@ -925,7 +925,7 @@ fn partition_boundary_dep_targets(
 fn partition_unit_by_id(
   units: std.types.List<CompilationUnit>,
   unit_id: CompilationUnitId
-) -> Optional<CompilationUnit> {
+) -> v2.std.optional.Optional<CompilationUnit> {
   match units |> filter(unit => unit.id == unit_id) |> first {
     Present { value: unit } => Present { value: unit }
     Absent => Absent

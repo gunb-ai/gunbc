@@ -43,7 +43,7 @@ fn infer_transform_subtract_fixture() -> Node {
   )
 }
 
-fn infer_transform_witness_resolved_add_arrow() -> Optional<Node> {
+fn infer_transform_witness_resolved_add_arrow() -> v2.std.optional.Optional<Node> {
   match wave1_gate1_normalized_add_module() {
     Absent => Absent
     Present { value: tree } =>
@@ -55,7 +55,7 @@ fn infer_transform_witness_resolved_add_arrow() -> Optional<Node> {
   }
 }
 
-fn infer_transform_witness_add_body(arrow: Node) -> Optional<Node> {
+fn infer_transform_witness_add_body(arrow: Node) -> v2.std.optional.Optional<Node> {
   match find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
       match body.kind {
