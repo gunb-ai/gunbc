@@ -42078,8 +42078,7 @@ pub fn run_required_floor(
                     None
                 }
             })
-            .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "unknown".to_string());
+            .filter(|s| !s.is_empty());
         let run_note = if roster_join_only {
             "join-only mode: evaluates enrolled identities present in the manifest; do not \
              prune the roster from this output until the rebase wave (#8420) restores host-tool \

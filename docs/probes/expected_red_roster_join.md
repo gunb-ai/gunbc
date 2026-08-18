@@ -35,7 +35,7 @@ smaller discriminating fixtures; whole-corpus scans belong on a cadence, not per
 
 ## How verdicts are obtained
 
-**Not log parsing.** On the CI path the in-floor join **consumes the verdict the fold already produced** — it records `ClaimOutcome` from the single `run_claim_measured` call per claim, with no second execution. The standalone bin runs join-only (one eval per enrolled identity). `run_head` in the TSV is `git rev-parse HEAD` at execution time.
+**Not log parsing.** On the CI path the in-floor join **consumes the verdict the fold already produced** — it records `ClaimOutcome` from the single `run_claim_measured` call per claim, with no second execution. The standalone bin runs join-only (one eval per enrolled identity). `run_head` in the TSV is `git rev-parse HEAD` when available; the header field is empty when git is unavailable.
 
 **CI wiring:** `GUNBC_EXPECTED_RED_ROSTER_JOIN=expected_red_roster_join.tsv` in `gunbc.witness_floor_workflow` → `.github/workflows/witnesses.yml`.
 

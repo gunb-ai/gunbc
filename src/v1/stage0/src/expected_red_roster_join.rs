@@ -44,17 +44,14 @@ pub struct ExpectedRedRosterJoinRow {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExpectedRedRosterJoinReport {
-    pub run_head: String,
+    /// `git rev-parse HEAD` when available; absent rather than a fabricated placeholder.
+    pub run_head: Option<String>,
     pub run_note: String,
-    pub roster_len: usize,
-    pub still_red: usize,
-    pub now_passes: usize,
-    pub not_evaluated: usize,
     pub rows: Vec<ExpectedRedRosterJoinRow>,
 }
 
 impl ExpectedRedRosterJoinReport {
-    pub fn new(run_head: String, run_note: String, roster: &[String]) -> Self {
+    pub fn new(run_head: Option<String>, run_note: String, roster: &[String]) -> Self {
         let rows = roster
             .iter()
             .map(|identity| ExpectedRedRosterJoinRow {
@@ -68,23 +65,47 @@ impl ExpectedRedRosterJoinReport {
         Self {
             run_head,
             run_note,
-            roster_len: roster.len(),
-            still_red: 0,
-            now_passes: 0,
-            not_evaluated: roster.len(),
             rows,
         }
+    }
+
+    pub fn roster_len(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub fn still_red(&self) -> usize {
+        self.rows
+            .iter()
+            .filter(|row| matches!(row.disposition, ExpectedRedJoinDisposition::StillRed))
+            .count()
+    }
+
+    pub fn now_passes(&self) -> usize {
+        self.rows
+            .iter()
+            .filter(|row| matches!(row.disposition, ExpectedRedJoinDisposition::NowPasses))
+            .count()
+    }
+
+    pub fn not_evaluated(&self) -> usize {
+        self.rows
+            .iter()
+            .filter(|row| {
+                matches!(
+                    row.disposition,
+                    ExpectedRedJoinDisposition::NotEvaluated { .. }
+                )
+            })
+            .count()
     }
 
     pub fn record_observed(&mut self, identity: &str, verdict: &WitnessEvalVerdict) {
         let Some(row) = self.row_mut(identity) else {
             return;
         };
-        let old = row.disposition.clone();
         let (disposition, detail) = classify_verdict(verdict);
-        row.disposition = disposition.clone();
+        row.disposition = disposition;
         row.detail = detail;
-        self.adjust_counts(&old, &disposition);
     }
 
     pub fn finalize_not_observed(&mut self) {
@@ -105,51 +126,6 @@ impl ExpectedRedRosterJoinReport {
 
     fn row_mut(&mut self, identity: &str) -> Option<&mut ExpectedRedRosterJoinRow> {
         self.rows.iter_mut().find(|row| row.identity == identity)
-    }
-
-    fn adjust_counts(
-        &mut self,
-        old: &ExpectedRedJoinDisposition,
-        new: &ExpectedRedJoinDisposition,
-    ) {
-        Self::decrement_bucket(
-            &mut self.still_red,
-            &mut self.now_passes,
-            &mut self.not_evaluated,
-            old,
-        );
-        Self::increment_bucket(
-            &mut self.still_red,
-            &mut self.now_passes,
-            &mut self.not_evaluated,
-            new,
-        );
-    }
-
-    fn increment_bucket(
-        still_red: &mut usize,
-        now_passes: &mut usize,
-        not_evaluated: &mut usize,
-        disposition: &ExpectedRedJoinDisposition,
-    ) {
-        match disposition {
-            ExpectedRedJoinDisposition::StillRed => *still_red += 1,
-            ExpectedRedJoinDisposition::NowPasses => *now_passes += 1,
-            ExpectedRedJoinDisposition::NotEvaluated { .. } => *not_evaluated += 1,
-        }
-    }
-
-    fn decrement_bucket(
-        still_red: &mut usize,
-        now_passes: &mut usize,
-        not_evaluated: &mut usize,
-        disposition: &ExpectedRedJoinDisposition,
-    ) {
-        match disposition {
-            ExpectedRedJoinDisposition::StillRed => *still_red -= 1,
-            ExpectedRedJoinDisposition::NowPasses => *now_passes -= 1,
-            ExpectedRedJoinDisposition::NotEvaluated { .. } => *not_evaluated -= 1,
-        }
     }
 }
 
@@ -211,14 +187,21 @@ pub fn not_evaluated_reason(disposition: &ExpectedRedJoinDisposition) -> &str {
 pub fn write_join_tsv(path: &str, report: &ExpectedRedRosterJoinReport) -> Result<(), String> {
     let mut file = std::fs::File::create(path)
         .map_err(|e| format!("expected_red_roster_join create {path}: {e}"))?;
-    writeln!(file, "# run_head\t{}", report.run_head)
-        .map_err(|e| format!("expected_red_roster_join header: {e}"))?;
+    match &report.run_head {
+        Some(head) => writeln!(file, "# run_head\t{head}")
+            .map_err(|e| format!("expected_red_roster_join header: {e}"))?,
+        None => writeln!(file, "# run_head\t")
+            .map_err(|e| format!("expected_red_roster_join header: {e}"))?,
+    }
     writeln!(file, "# run_note\t{}", report.run_note.replace('\t', " "))
         .map_err(|e| format!("expected_red_roster_join header: {e}"))?;
     writeln!(
         file,
         "# summary\troster={}\tstill_red={}\tnow_passes={}\tnot_evaluated={}",
-        report.roster_len, report.still_red, report.now_passes, report.not_evaluated
+        report.roster_len(),
+        report.still_red(),
+        report.now_passes(),
+        report.not_evaluated()
     )
     .map_err(|e| format!("expected_red_roster_join header: {e}"))?;
     writeln!(file, "identity\tdisposition\tnot_evaluated_reason\tdetail")
@@ -238,14 +221,17 @@ pub fn write_join_tsv(path: &str, report: &ExpectedRedRosterJoinReport) -> Resul
 }
 
 pub fn emit_join_summary(report: &ExpectedRedRosterJoinReport) {
+    let head = report
+        .run_head
+        .as_deref()
+        .map_or("(unresolved)", |head| head);
     eprintln!(
         "[expected-red-roster-join] roster={} still_red={} now_passes={} not_evaluated={} \
-         (head={})",
-        report.roster_len,
-        report.still_red,
-        report.now_passes,
-        report.not_evaluated,
-        report.run_head
+         (head={head})",
+        report.roster_len(),
+        report.still_red(),
+        report.now_passes(),
+        report.not_evaluated(),
     );
     eprintln!("[expected-red-roster-join] {}", report.run_note);
     let mut reason_counts: BTreeMap<&str, usize> = BTreeMap::new();
@@ -312,7 +298,7 @@ mod tests {
     fn join_covers_full_roster() {
         let roster = vec!["a.w".to_string(), "b.w".to_string(), "c.w".to_string()];
         let mut report = ExpectedRedRosterJoinReport::new(
-            "deadbeef".to_string(),
+            Some("deadbeef".to_string()),
             "synthetic fixture".to_string(),
             &roster,
         );
@@ -325,10 +311,10 @@ mod tests {
             },
         );
         report.finalize_not_observed();
-        assert_eq!(report.roster_len, 3);
-        assert_eq!(report.now_passes, 1);
-        assert_eq!(report.not_evaluated, 2);
-        assert_eq!(report.still_red, 0);
+        assert_eq!(report.roster_len(), 3);
+        assert_eq!(report.now_passes(), 1);
+        assert_eq!(report.not_evaluated(), 2);
+        assert_eq!(report.still_red(), 0);
         let c = report.rows.iter().find(|r| r.identity == "c.w").unwrap();
         assert!(matches!(
             c.disposition,
@@ -336,5 +322,25 @@ mod tests {
                 ref reason
             } if reason == "not_in_executed_manifest"
         ));
+    }
+
+    #[test]
+    fn summary_counts_derive_from_rows() {
+        let roster = vec!["x.w".to_string()];
+        let mut report = ExpectedRedRosterJoinReport::new(None, "fixture".to_string(), &roster);
+        assert_eq!(report.not_evaluated(), 1);
+        report.record_observed("x.w", &WitnessEvalVerdict::BoolFalse);
+        assert_eq!(report.still_red(), 1);
+        assert_eq!(report.not_evaluated(), 0);
+    }
+
+    #[test]
+    fn unresolved_run_head_writes_empty_tsv_field() {
+        let report = ExpectedRedRosterJoinReport::new(None, "fixture".to_string(), &[]);
+        let path = std::env::temp_dir().join("expected_red_roster_join_test.tsv");
+        write_join_tsv(path.to_str().unwrap(), &report).unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
+        assert!(contents.starts_with("# run_head\t\n"));
+        let _ = std::fs::remove_file(path);
     }
 }
