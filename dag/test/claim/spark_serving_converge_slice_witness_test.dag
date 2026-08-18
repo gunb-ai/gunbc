@@ -17,10 +17,30 @@ import gunbc.fleet_converge_plan {
 }
 import gunbc.spark_serving_converge_plan {
   spark_serving_fleet_converge_plan_artifact,
+  SparkServingPlanArtifactReady,
+  SparkServingPlanArtifactRefused,
   spark_serving_linger_slice_noop_when_converged,
   spark_serving_linger_membership_plan,
   spark_serving_frozen_linger_effect,
 }
+import gunbc.spark_serving_release {
+  SparkServingRelease,
+  SparkServingObserved,
+}
+import gunbc.spark_serving_desired {
+  SparkServingDesiredAdmitted,
+  SparkServingDesiredRefused,
+  spark_serving_desired_admission,
+}
+import gunbc.spark_serving_membership { spark_serving_user_unit_state_digest }
+import gunbc.spark_serving_observed_members {
+  SparkServingObservedMemberProjection,
+  UserUnitStateObserved,
+  LingerObservedEnabled,
+  LingerObservedDisabled,
+  spark_serving_observed_members,
+}
+import product.placement_supply { HostIdentity }
 import gunbc.spark_serving_converge_slice_wet {
   render_observed_linger,
   spark_serving_slice_verdict_is_converged,
@@ -123,15 +143,36 @@ test fn an_unrealized_effect_still_refuses_the_whole_sequence() -> Bool {
   }
 }
 
+// THE PLAN NOW TAKES AN OBSERVATION, NOT A LINGER BOOL. These three claims are about the LINGER
+// member specifically, so everything else in the observation is pinned to exactly desired and only
+// linger varies -- which is what keeps them claims about linger rather than about the widening.
+fn slice_release() -> SparkServingRelease? {
+  match spark_serving_desired_admission {
+    SparkServingDesiredAdmitted { serving_release: r } => Present { value: r }
+    SparkServingDesiredRefused { cause: _ } => none
+  }
+}
+
+fn slice_projection_linger(r: SparkServingRelease, linger_enabled: Bool) -> SparkServingObservedMemberProjection {
+  spark_serving_observed_members(
+    observation: SparkServingObserved { host: witness_host_srv5 as HostIdentity, loaded_release: r },
+    unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
+    linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
+  )
+}
+
 test fn linger_slice_freezes_enable_linger_typed_row() -> Bool {
+  match slice_release() {
+    Absent => false
+    Present { value: rel } =>
   match spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
-    linger_enabled: false,
+    projection: slice_projection_linger(r: rel, linger_enabled: false),
   ) {
-    Present { value: artifact } =>
+    SparkServingPlanArtifactReady { artifact: artifact } =>
       length(artifact.spark_serving_typed_actions) == 1
         && match spark_serving_frozen_linger_effect(row: artifact.spark_serving_typed_actions[0]) {
           Present { value: e } => e == EnableLingerForOwnAccount
@@ -142,32 +183,40 @@ test fn linger_slice_freezes_enable_linger_typed_row() -> Bool {
           pattern: "# spark-serving-typed-actions:",
         )
         && !string_contains(s: artifact.apply_shell, pattern: "loginctl")
-    Absent => false
+    SparkServingPlanArtifactRefused { cause: _ } => false
+  }
   }
 }
 
 test fn linger_slice_converged_plan_has_empty_typed_rows() -> Bool {
+  match slice_release() {
+    Absent => false
+    Present { value: rel } =>
   match spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
-    linger_enabled: true,
+    projection: slice_projection_linger(r: rel, linger_enabled: true),
   ) {
-    Present { value: artifact } => length(artifact.spark_serving_typed_actions) == 0
-    Absent => false
+    SparkServingPlanArtifactReady { artifact: artifact } => length(artifact.spark_serving_typed_actions) == 0
+    SparkServingPlanArtifactRefused { cause: _ } => false
+  }
   }
 }
 
 test fn linger_slice_bundle_refuses_smuggled_v1_without_typed_rows() -> Bool {
+  match slice_release() {
+    Absent => false
+    Present { value: rel } =>
   match spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
-    linger_enabled: false,
+    projection: slice_projection_linger(r: rel, linger_enabled: false),
   ) {
-    Present { value: artifact } =>
+    SparkServingPlanArtifactReady { artifact: artifact } =>
       match fleet_converge_plan_artifact_hash(artifact: artifact) {
         Present { value: hex } =>
           !fleet_converge_plan_artifact_bundle_admits(
@@ -184,19 +233,23 @@ test fn linger_slice_bundle_refuses_smuggled_v1_without_typed_rows() -> Bool {
           )
         Absent => false
       }
-    Absent => false
+    SparkServingPlanArtifactRefused { cause: _ } => false
+  }
   }
 }
 
 test fn linger_slice_apply_reads_frozen_rows_as_typed_argv_when_drift() -> Bool {
+  match slice_release() {
+    Absent => false
+    Present { value: rel } =>
   match spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
-    linger_enabled: false,
+    projection: slice_projection_linger(r: rel, linger_enabled: false),
   ) {
-    Present { value: artifact } =>
+    SparkServingPlanArtifactReady { artifact: artifact } =>
       match fleet_converge_plan_artifact_hash(artifact: artifact) {
         Present { value: hex } =>
           match spark_serving_apply_reads_frozen_typed_rows(
@@ -213,19 +266,23 @@ test fn linger_slice_apply_reads_frozen_rows_as_typed_argv_when_drift() -> Bool 
           }
         Absent => false
       }
-    Absent => false
+    SparkServingPlanArtifactRefused { cause: _ } => false
+  }
   }
 }
 
 test fn linger_slice_apply_noop_when_converged() -> Bool {
+  match slice_release() {
+    Absent => false
+    Present { value: rel } =>
   match spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
-    linger_enabled: true,
+    projection: slice_projection_linger(r: rel, linger_enabled: true),
   ) {
-    Present { value: artifact } =>
+    SparkServingPlanArtifactReady { artifact: artifact } =>
       match fleet_converge_plan_artifact_hash(artifact: artifact) {
         Present { value: hex } =>
           match spark_serving_apply_reads_frozen_typed_rows(
@@ -238,24 +295,29 @@ test fn linger_slice_apply_noop_when_converged() -> Bool {
           }
         Absent => false
       }
-    Absent => false
+    SparkServingPlanArtifactRefused { cause: _ } => false
+  }
   }
 }
 
 test fn linger_slice_consistency_wall_requires_body_marker() -> Bool {
+  match slice_release() {
+    Absent => false
+    Present { value: rel } =>
   match spark_serving_fleet_converge_plan_artifact(
     host: witness_host_srv5,
     prior_generation: 0,
     observed_timers: [],
     observed_caps: [],
-    linger_enabled: false,
+    projection: slice_projection_linger(r: rel, linger_enabled: false),
   ) {
-    Present { value: artifact } =>
+    SparkServingPlanArtifactReady { artifact: artifact } =>
       fleet_converge_plan_spark_typed_actions_consistency_admits(
         plan_body: artifact.plan_body,
         spark_serving_typed_actions: artifact.spark_serving_typed_actions,
       )
-    Absent => false
+    SparkServingPlanArtifactRefused { cause: _ } => false
+  }
   }
 }
 

@@ -5,13 +5,6 @@ import gunbc.fleet_converge_plan {
   FleetConvergePlanArtifact,
   fleet_converge_plan_artifact_bundle_admits,
 }
-import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
-import gunbc.spark_serving_converge_realize {
-  realize_spark_serving_install_effect_commands,
-  spark_serving_install_remote_commands_refused,
-  SparkServingInstallRemoteCommandsPresent,
-  SparkServingInstallRemoteCommandsRefused,
-}
 import gunbc.typed_argv_exec {
   TypedArgvExecOutcome,
   TypedArgvExecConverged,
@@ -41,7 +34,7 @@ import gunbc.typed_remote_file_write {
   converge_typed_remote_file,
 }
 
-data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile or re-derive install_effects from live observation. Realization emits an ORDERED SEQUENCE of gunbc.remote_operation RemoteOperation values (never one fused argv); actuation runs them in order, halting at the first failure. Dispatch is per operation kind: RemoteArgv routes through host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never effect_actuation shell strings), while RemoteFileBytes routes through typed_remote_file_write converge_typed_remote_file (stage, mode, atomic rename, read-back) and REFUSES on any non-FleetSsh transport, because that convergence needs the SshTarget and sealed FleetSshExecutionContext and SshShell carries neither. The two executions answer in different types and are mapped into one RemoteOperationOutcome vocabulary rather than coercing a file convergence into an argv result, which would require inventing an exit code and stdout it never had."
+data spark_serving_converge_apply_authority_note: String = "Apply reads ONLY the frozen FleetConvergePlanArtifact.spark_serving_typed_actions rows minted at plan time — it MUST NOT re-run membership_reconcile, re-derive install_effects, or re-realize operations from live authorities. Realization happens at PLAN time and its RemoteOperation values are frozen into the row, so the bundle hash covers the exact bytes a file write will deliver; apply executes those operations verbatim. Realization emits an ORDERED SEQUENCE of gunbc.remote_operation RemoteOperation values (never one fused argv); actuation runs them in order, halting at the first failure. Dispatch is per operation kind: RemoteArgv routes through host_effect_realize run_typed_argv_transport (FleetSsh/SshShell typed argv binding — never effect_actuation shell strings), while RemoteFileBytes routes through typed_remote_file_write converge_typed_remote_file (stage, mode, atomic rename, read-back) and REFUSES on any non-FleetSsh transport, because that convergence needs the SshTarget and sealed FleetSshExecutionContext and SshShell carries neither. The two executions answer in different types and are mapped into one RemoteOperationOutcome vocabulary rather than coercing a file convergence into an argv result, which would require inventing an exit code and stdout it never had."
 
 type SparkServingFrozenApplyResult =
     SparkServingFrozenApplied { remote_operations: List<RemoteOperation>, effect_count: Int }
@@ -51,6 +44,11 @@ type SparkServingFrozenRemoteExecResult =
     SparkServingFrozenRemoteExecApplied { exec_outcome: RemoteOperationOutcome }
   | SparkServingFrozenRemoteExecRefused { reason: String }
 
+// APPLY EXECUTES THE FROZEN OPERATIONS. It no longer calls the realizer: the plan already did, at
+// plan time, and the result is in the row. That is what makes the bundle hash meaningful for a file
+// write -- the bytes are inside the thing that was hashed, so a plan/apply divergence is no longer
+// possible rather than merely unlikely. Rows carrying effects but no operations refuse, because
+// executing nothing while reporting the effects applied is the fail-open this freeze exists to shut.
 fn spark_serving_apply_reads_frozen_typed_rows(
   artifact: FleetConvergePlanArtifact,
   claimed_bundle_hex: String,
@@ -61,30 +59,15 @@ fn spark_serving_apply_reads_frozen_typed_rows(
     }
   } else {
     let frozen_effects = flat_map(artifact.spark_serving_typed_actions, r => r.install_effects)
-    let commands_verdict = realize_spark_serving_install_effect_commands(
-      effects: frozen_effects,
-      executor_login: spark_serving_automation_principal_login(),
-    )
-    if spark_serving_install_remote_commands_refused(v: commands_verdict) {
-      match commands_verdict {
-        SparkServingInstallRemoteCommandsRefused { reason: why } =>
-          SparkServingFrozenApplyRefused {
-            reason: concat("spark_serving_converge_apply: ", why),
-          }
-        SparkServingInstallRemoteCommandsPresent { operations: _ } =>
-          SparkServingFrozenApplyRefused {
-            reason: "spark_serving_converge_apply: remote commands refused verdict disagreed with shape",
-          }
+    let frozen_operations = flat_map(artifact.spark_serving_typed_actions, r => r.operations)
+    if length(frozen_effects) > 0 && length(frozen_operations) == 0 {
+      SparkServingFrozenApplyRefused {
+        reason: "spark_serving_converge_apply: frozen rows carry effects but no operations — refusing rather than executing nothing while reporting the effects applied",
       }
     } else {
-      match commands_verdict {
-        SparkServingInstallRemoteCommandsPresent { operations: remote_operations } =>
-          SparkServingFrozenApplied {
-            remote_operations: remote_operations,
-            effect_count: length(frozen_effects),
-          }
-        SparkServingInstallRemoteCommandsRefused { reason: why } =>
-          SparkServingFrozenApplyRefused { reason: why }
+      SparkServingFrozenApplied {
+        remote_operations: frozen_operations,
+        effect_count: length(frozen_effects),
       }
     }
   }

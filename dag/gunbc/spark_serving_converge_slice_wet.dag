@@ -41,6 +41,17 @@ import gunbc.spark_serving_desired { spark_serving_automation_principal_login }
 import gunbc.spark_serving_converge_plan {
   spark_serving_fleet_converge_plan_artifact,
   spark_serving_linger_membership_plan,
+  SparkServingPlanArtifactReady,
+  SparkServingPlanArtifactRefused,
+}
+import gunbc.spark_serving_observed_members {
+  spark_serving_observed_members,
+  LingerObservedEnabled,
+  LingerObservedDisabled,
+}
+import gunbc.spark_serving_observe {
+  spark_serving_observe_host_via_locus,
+  spark_serving_observe_user_unit,
 }
 import gunbc.remote_operation { RemoteOperationSucceeded, RemoteOperationRefused, remote_operation_count }
 import gunbc.spark_serving_converge_apply {
@@ -284,9 +295,13 @@ fn spark_serving_converge_slice_wet_host_report(
               prior_generation: 0,
               observed_timers: [],
               observed_caps: [],
-              linger_enabled: linger_enabled,
+              projection: spark_serving_observed_members(
+                observation: spark_serving_observe_host_via_locus(context: context, host: host),
+                unit: spark_serving_observe_user_unit(context: context, host: host),
+                linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
+              ),
             ) {
-              Absent =>
+              SparkServingPlanArtifactRefused { cause: why } =>
                 spark_serving_converge_slice_host_line(
                   host: host,
                   endpoint: endpoint,
@@ -294,9 +309,9 @@ fn spark_serving_converge_slice_wet_host_report(
                   typed_row_count: 0,
                   apply_effect_count: 0,
                   apply_command_count: 0,
-                  verdict: "plan-refused",
+                  verdict: why,
                 )
-              Present { value: artifact } =>
+              SparkServingPlanArtifactReady { artifact: artifact } =>
                 match fleet_converge_plan_artifact_hash(artifact: artifact) {
                   Absent =>
                     spark_serving_converge_slice_host_line(

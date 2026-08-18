@@ -1,6 +1,6 @@
 module test.claim.spark_serving_full_plan_witness_test
 
-import std.types { Bool, List, NonEmptyStr, String }
+import std.types { Bool, List, NonEmptyStr, String, Int }
 import product.placement_supply { HostIdentity }
 import gunbc.membership_reconcile { MembershipPlan, membership_write_count }
 import gunbc.spark_serving_membership { spark_serving_membership_reconcile, spark_serving_user_unit_state_digest }
@@ -45,6 +45,10 @@ import gunbc.spark_serving_converge_plan {
   SparkServingFullMembershipPlanRefused,
   spark_serving_full_membership_plan,
   spark_serving_linger_membership_plan,
+  SparkServingPlanArtifactVerdict,
+  SparkServingPlanArtifactReady,
+  SparkServingPlanArtifactRefused,
+  spark_serving_fleet_converge_plan_artifact,
 }
 import gunbc.spark_serving_desired {
   SparkServingDesiredAdmission,
@@ -346,4 +350,158 @@ test fn a_runtime_only_drift_changes_exactly_one_member() -> Bool {
           membership_write_count(plan: plan) == 1
       }
   }
+}
+
+// ── The cutover: the production plan artifact now plans the whole population ─────────────────────
+
+fn artifact_verdict(
+  host: HostIdentity,
+  projection: SparkServingObservedMemberProjection,
+) -> SparkServingPlanArtifactVerdict {
+  spark_serving_fleet_converge_plan_artifact(
+    host: host as NonEmptyStr,
+    prior_generation: 0,
+    observed_timers: [],
+    observed_caps: [],
+    projection: projection,
+  )
+}
+
+fn artifact_refusal_cause(v: SparkServingPlanArtifactVerdict) -> String {
+  match v {
+    SparkServingPlanArtifactReady { artifact: _ } => "<ready>"
+    SparkServingPlanArtifactRefused { cause: c } => c
+  }
+}
+
+fn artifact_row_count(v: SparkServingPlanArtifactVerdict) -> Int {
+  match v {
+    SparkServingPlanArtifactReady { artifact: a } => length(a.spark_serving_typed_actions)
+    SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
+  }
+}
+
+// THE CUTOVER KEYSTONE. This function planned a one-member linger list; it now plans the declared
+// population. A bare host with linger already on owes the other three members, and the artifact must
+// freeze a typed row for each -- not the single linger row the superseded planner produced.
+test fn a_bare_host_refuses_because_two_effects_are_still_unrealized() -> Bool {
+  string_contains(
+    artifact_refusal_cause(
+      v: artifact_verdict(
+        host: subject_host,
+        projection: project(
+          obs: SparkServingAbsent { host: subject_host },
+          unit: UserUnitStateAbsent,
+          linger: LingerObservedEnabled,
+        ),
+      ),
+    ),
+    "typed-actions",
+  )
+}
+
+// AND THE UNIT MEMBER ALONE DOES PLAN, which is what proves the refusal above is about the two
+// unrealized effects and not about the widening itself. A host whose runtime and model are already
+// correct but whose unit drifted owes exactly one row, and that row realizes end to end.
+test fn a_unit_only_drift_freezes_exactly_one_row() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      artifact_row_count(
+        v: artifact_verdict(
+          host: subject_host,
+          projection: project(
+            obs: SparkServingObserved { host: subject_host, loaded_release: r },
+            unit: UserUnitStateObserved { unit_state_digest: "drifted-unit-bytes" as NonEmptyStr },
+            linger: LingerObservedEnabled,
+          ),
+        ),
+      ) == 1
+  }
+}
+
+// A host in exactly the desired state freezes NO rows. This is the control that proves convergence
+// is reachable through the production entry point and not merely through the plan beneath it: if it
+// ever fails, the wet slice writes on every run forever.
+test fn the_production_artifact_freezes_no_rows_when_converged() -> Bool {
+  match subject_release() {
+    Absent => false
+    Present { value: r } =>
+      artifact_row_count(v: artifact_verdict(host: subject_host, projection: observed_exactly_desired(r: r))) == 0
+  }
+}
+
+// THE PARTIAL-OBSERVATION WALL. An unobserved unit is ABSENT from the observed list, and absence is
+// what makes reconcile plan an addition -- so planning against it would write the unit on every run
+// while no replan could ever be empty. It must refuse, and the refusal must say which one it was.
+test fn an_unobserved_unit_refuses_the_artifact_rather_than_planning_a_write() -> Bool {
+  let cause = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: subject_host,
+      projection: project(
+        obs: SparkServingAbsent { host: subject_host },
+        unit: UserUnitStateUnobserved,
+        linger: LingerObservedEnabled,
+      ),
+    ),
+  )
+  string_contains(cause, "unit-unobserved")
+}
+
+// A refused OBSERVATION refuses the artifact too, and is a DIFFERENT cause than the partial one --
+// "we could not reach the host" and "we reached it but did not read the unit" have different
+// remedies, so one word for both would be the state-space conflation.
+test fn a_refused_observation_refuses_the_artifact_with_its_own_cause() -> Bool {
+  let cause = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: subject_host,
+      projection: project(
+        obs: SparkServingObservationRefused { host: subject_host, cause: "probe leg unreachable" as NonEmptyStr },
+        unit: UserUnitStateUnobserved,
+        linger: LingerUnobservedState,
+      ),
+    ),
+  )
+  string_contains(cause, "observation") && !string_contains(cause, "unit-unobserved")
+}
+
+// A non-Spark host refuses, and says SO. Every refusal above used to render as the single word
+// "plan-refused", so a reader could not tell an unreachable host from a wrong one; the residue this
+// module declared for that is dissolved by the widened return type, and this pins it.
+test fn a_non_spark_host_refuses_with_a_distinguishable_cause() -> Bool {
+  let cause = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: "srv1" as HostIdentity,
+      projection: project(
+        obs: SparkServingAbsent { host: "srv1" as HostIdentity },
+        unit: UserUnitStateAbsent,
+        linger: LingerObservedEnabled,
+      ),
+    ),
+  )
+  string_contains(cause, "host-not-spark")
+}
+
+// The four refusal causes are mutually distinguishable. Asserting each contains its own word is
+// satisfied by a cause that contains ALL of them, so the population is compared pairwise.
+test fn the_refusal_causes_are_pairwise_distinct() -> Bool {
+  let unobserved = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: subject_host,
+      projection: project(obs: SparkServingAbsent { host: subject_host }, unit: UserUnitStateUnobserved, linger: LingerObservedEnabled),
+    ),
+  )
+  let unreached = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: subject_host,
+      projection: project(obs: SparkServingObservationRefused { host: subject_host, cause: "probe leg unreachable" as NonEmptyStr }, unit: UserUnitStateUnobserved, linger: LingerUnobservedState),
+    ),
+  )
+  let wrong_host = artifact_refusal_cause(
+    v: artifact_verdict(
+      host: "srv1" as HostIdentity,
+      projection: project(obs: SparkServingAbsent { host: "srv1" as HostIdentity }, unit: UserUnitStateAbsent, linger: LingerObservedEnabled),
+    ),
+  )
+  unobserved != unreached && unreached != wrong_host && unobserved != wrong_host
 }

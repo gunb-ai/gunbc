@@ -69,6 +69,7 @@ import gunbc.spark_serving_membership {
   spark_serving_member_key,
 }
 import gunbc.spark_serving_realization { ServingInstallEffect, EnableLingerForOwnAccount }
+import gunbc.remote_operation { RemoteOperation, remote_operation_label }
 
 type TimerRetirementMemberAt = NonEmptyStr
 
@@ -317,9 +318,17 @@ fn observed_baseline_text(
   )
 }
 
+// THE ROW FREEZES WHAT APPLY EXECUTES, not merely what it should figure out.
+//
+// The row used to carry the action and its effects only. `WriteUserUnitFile` is a bare variant with
+// no bytes, so apply resolved the unit content, path and mode from the repository's CURRENT
+// authorities at execution time -- and the bundle hash could not detect a plan/apply divergence
+// because the bytes were never in the bundle. Freezing the realized operations closes that: what the
+// plan admitted is exactly what runs.
 type FleetConvergeSparkServingTypedAction {
   action: MemberAction<SparkServingMember, SparkServingMemberAt>,
   install_effects: List<ServingInstallEffect>
+  operations: List<RemoteOperation>
 }
 
 type FleetConvergePlanArtifact {
