@@ -34,7 +34,6 @@ type RequiredRegenRefusal
   | CompileRefused { reason: String }
   | HandUnverifiableRefused { entries: List<String> }
   | PlannedExecutedMismatch { planned: Int, executed: Int }
-  | FixedPointRefused { reason: String }
   | EmptyCommittedPopulation
   | EmptyEmitResult
   | CandidateTreeAbsent { reason: String }
@@ -169,34 +168,6 @@ fn required_regen_sync_admission(
       generated_outcomes: generated_outcomes,
       hand_outcomes: hand_outcomes,
       authority_digest: authority_digest
-    }
-  }
-}
-
-// fixed_point_equal is a SECOND QUESTION: pass-1 emit digest vs pass-2 emit digest.
-fn required_regen_fixed_point_admission(
-  pass1_digest: String,
-  pass2_digest: String
-) -> RequiredRegenSyncAdmission {
-  if pass1_digest == pass2_digest {
-    RequiredRegenSyncRunnable {
-      attempt: RequiredRegenAttempt {
-        generated_outcomes: [],
-        hand_outcomes: [],
-        authority_digest: pass1_digest
-      }
-    }
-  } else {
-    RequiredRegenSyncRefused {
-      refusals: Cons {
-        head: FixedPointRefused {
-          reason: concat(
-            "emit pass-1 digest ",
-            concat(pass1_digest, concat(" != pass-2 digest ", pass2_digest))
-          )
-        },
-        tail: no_regen_refusals
-      }
     }
   }
 }
