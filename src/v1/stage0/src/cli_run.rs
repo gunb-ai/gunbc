@@ -15957,6 +15957,33 @@ pub fn run_claims_in_process(
 /// replacing a genuine finding with the budget message would discard it. `cpu_nanos` is
 /// THREAD CPU time (not wall), matching the stride-poll metric — a witness whose wall time
 /// was inflated by cold-I/O or governor time-slicing is not misclassified as over-budget.
+/// WHICH ARM OF THE EXPECTED-RED PARTITION AN ENROLLED ROW LANDS IN.
+///
+/// Extracted as a total function over the outcome so the partition is a value the tests can
+/// enumerate, rather than three `continue`s whose exhaustiveness only holds by reading the
+/// loop. The three arms are mutually exclusive by construction here; the caller's sum check
+/// then verifies that the roster is covered exactly once.
+#[derive(Debug, PartialEq, Eq)]
+enum ExpectedRedArm {
+    /// Enrolled and failed. Agreement.
+    Held,
+    /// Enrolled and passed. The debt was repaid and the roster is stale — reds the build.
+    NowPassing,
+    /// Enrolled and budget-refused. NOT agreement: a budget refusal is an interruption and a
+    /// lower bound on cost, never a verdict, so the enrolled claim was never decided.
+    BudgetRefused,
+}
+
+fn expected_red_arm(outcome: &ClaimOutcome) -> ExpectedRedArm {
+    match outcome {
+        ClaimOutcome::Pass => ExpectedRedArm::NowPassing,
+        ClaimOutcome::TimedOut { .. } => ExpectedRedArm::BudgetRefused,
+        ClaimOutcome::Fail | ClaimOutcome::NotBool { .. } | ClaimOutcome::RuntimeError { .. } => {
+            ExpectedRedArm::Held
+        }
+    }
+}
+
 fn budget_completion_outcome(
     budget: Option<u64>,
     outcome: ClaimOutcome,
@@ -42114,6 +42141,7 @@ pub fn run_required_floor(
     let mut scope_module_max: usize = 0;
     let mut known_red_held: usize = 0;
     let mut known_red_now_passing: usize = 0;
+    let mut known_red_budget_refused: usize = 0;
     let mut expected_red_seen: HashSet<String> = HashSet::new();
     let mut claim_rss_kb_max: u64 = 0;
     let mut claim_rss_kb_max_row = String::new();
@@ -42285,8 +42313,31 @@ pub fn run_required_floor(
             continue;
         }
         if expected_red {
+            // A BUDGET REFUSAL IS NOT AN ENROLLED FAILURE, and conflating the two is what let
+            // the most expensive row in the corpus hide behind its own enrollment. Enrollment
+            // records that this branch expects the claim to FAIL — a statement about the
+            // witness's verdict. A budget refusal is not a verdict: it is an interruption plus
+            // a measured lower bound on cost, so the enrolled claim was never decided at all.
+            // Holding it reports agreement about a failure that nobody observed.
+            if let ClaimOutcome::TimedOut {
+                elapsed_ms,
+                budget_ms,
+                kind,
+            } = &result
+            {
+                known_red_budget_refused += 1;
+                outcome.failures.push(format!(
+                    "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed: {:?} \
+                     {}ms against {}ms. Enrollment asserts an expected verdict and a budget \
+                     refusal produces none, so the enrolled claim went undecided. Reduce the \
+                     row's cost, or move it to a lane that declares its own ceiling — removing \
+                     it from the roster would not help, because it is not passing either.",
+                    claim.qualified, kind, elapsed_ms, budget_ms
+                ));
+                continue;
+            }
             known_red_held += 1;
-            // NOT COUNTED AS A PASS. A held row did not pass — it failed exactly as enrolled,
+            // NOT COUNTED AS A PASS. A held row did not pass — it failed as enrolled,
             // and agreement about a failure is not the same fact as a passing witness. Folding
             // it into `passed` would make the headline number rise as debt is ADDED, which is
             // the direction that flatters, and would leave no count that falls when the debt is
@@ -42375,8 +42426,9 @@ pub fn run_required_floor(
     // than quietly absorbing it.
     eprintln!(
         "[floor-known-red] {} enrolled identity(ies) held as expected-red; {} enrolled \
-         identity(ies) now PASS and must be removed from the roster",
-        known_red_held, known_red_now_passing
+         identity(ies) now PASS and must be removed from the roster; {} enrolled \
+         identity(ies) were BUDGET-REFUSED and so went undecided",
+        known_red_held, known_red_now_passing, known_red_budget_refused
     );
     eprintln!(
         "[floor-claim-memory] worst single claim grew rss by {:.2}GB at={}",
@@ -42439,12 +42491,16 @@ pub fn run_required_floor(
     // observed exactly once, so it landed in precisely one of the two arms. Checking the sum is
     // therefore checking that the two arms are the whole roster and do not overlap — cheap, and
     // it fails loudly if a later edit adds a third arm that quietly swallows rows.
-    if known_red_held + known_red_now_passing != expected_red_roster.len() {
+    if known_red_held + known_red_now_passing + known_red_budget_refused
+        != expected_red_roster.len()
+    {
         return Err(format!(
             "REQUIRED-FLOOR REFUSAL cause=ExpectedRedPartitionInexact held={} now_passing={} \
-             roster={} — every enrolled identity must be exactly one of held or now-passing",
+             budget_refused={} roster={} — every enrolled identity must be exactly one of \
+             held, now-passing or budget-refused",
             known_red_held,
             known_red_now_passing,
+            known_red_budget_refused,
             expected_red_roster.len()
         ));
     }
