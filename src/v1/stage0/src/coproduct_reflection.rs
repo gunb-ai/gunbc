@@ -6,7 +6,7 @@ use std::rc::Rc;
 use crate::cli_run::{
     collect_dag_files_tolerant, extract_module_path, is_test_dag, repo_rel, workspace_root,
 };
-use crate::module_path_index::parsed_dag_file::parse_dag_file;
+use crate::module_path_index::parsed_dag_file::{parse_dag_content, parse_dag_file};
 use crate::v1_compiler_infer_env::lookup_binding_by_name;
 use crate::v1_compiler_infer_items::{item_kind, ItemKind};
 use crate::v1_interpreter::{
@@ -306,12 +306,129 @@ struct ParsedTypeDecl {
     source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
 }
 
-/// Parse-only decl extraction over `build_module_path_index` — fail-closed on parse
-/// errors (no silent skip). Shared substrate for `concept_decl_facts(pool_roots)` and
-/// `data_decl_type_facts(pool_roots)`; distinct from `decl_facts_corpus_walk` which skips
-/// test `.dag` files and tolerates parse failure. A completeness census cannot be grounded
-/// on a walk that silently skips a file, so both callers share this one.
-fn decls_parse_only_fail_closed(
+use std::cell::RefCell;
+use std::collections::HashMap as StdHashMap;
+
+thread_local! {
+    static FLOOR_DECL_PARSE_MEMO: RefCell<Option<(String, StdHashMap<(Vec<String>, ItemKind), (Vec<ParsedTypeDecl>, usize)>)>> =
+        RefCell::new(None);
+}
+
+pub fn register_floor_decl_parse_memo(subject_digest: String) {
+    FLOOR_DECL_PARSE_MEMO.with(|cell| {
+        *cell.borrow_mut() = Some((subject_digest, StdHashMap::new()));
+    });
+}
+
+pub fn clear_floor_decl_parse_memo() {
+    FLOOR_DECL_PARSE_MEMO.with(|cell| *cell.borrow_mut() = None);
+}
+
+fn floor_decl_parse_memo_lookup(
+    roots: &[String],
+    want_kind: ItemKind,
+) -> Option<(Vec<ParsedTypeDecl>, usize)> {
+    FLOOR_DECL_PARSE_MEMO.with(|cell| {
+        let slot = cell.borrow();
+        let Some((_, map)) = slot.as_ref() else {
+            return None;
+        };
+        map.get(&(roots.to_vec(), want_kind)).cloned()
+    })
+}
+
+fn floor_decl_parse_memo_store(
+    roots: &[String],
+    want_kind: ItemKind,
+    result: &(Vec<ParsedTypeDecl>, usize),
+) {
+    FLOOR_DECL_PARSE_MEMO.with(|cell| {
+        let mut slot = cell.borrow_mut();
+        if let Some((_, map)) = slot.as_mut() {
+            map.insert((roots.to_vec(), want_kind), result.clone());
+        }
+    });
+}
+
+fn inventory_entry_under_abs_roots(
+    rel_path: &str,
+    abs_roots: &[String],
+    ws: &std::path::Path,
+) -> bool {
+    let normalized = rel_path.replace('\\', "/");
+    let abs = ws.join(&normalized);
+    let abs_str = abs.to_string_lossy();
+    abs_roots.iter().any(|root| {
+        let root_norm = root.replace('\\', "/");
+        abs_str.starts_with(root_norm.as_str())
+    })
+}
+
+fn decls_parse_only_from_inventory(
+    inventory: &[crate::cli_run::PreparedSourceView],
+    roots: &[String],
+    want_kind: ItemKind,
+    caller: &str,
+) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
+    let ws = workspace_root();
+    let mut entries: Vec<&crate::cli_run::PreparedSourceView> = inventory
+        .iter()
+        .filter(|e| inventory_entry_under_abs_roots(&e.source.path, roots, &ws))
+        .collect();
+    entries.sort_by(|a, b| a.source.path.cmp(&b.source.path));
+    let module_count = entries.len();
+    let mut out = Vec::new();
+    for entry in entries {
+        let filename = entry
+            .source
+            .path
+            .rsplit('/')
+            .next()
+            .unwrap_or(&entry.source.path);
+        let parsed = parse_dag_content(&entry.source.content, filename).ok_or_else(|| {
+            format!(
+                "{caller}: failed to parse `{path}` from prepared inventory (fail-closed; no silent skip)",
+                path = entry.source.path
+            )
+        })?;
+        let si = parsed.source_indices;
+        for item in parsed.items.iter() {
+            if item_kind(item.clone()) != want_kind {
+                continue;
+            }
+            let name = authored_name_at(si.clone(), item.clone());
+            if name.is_empty() {
+                continue;
+            }
+            out.push(ParsedTypeDecl {
+                module_path: entry.module_path.clone(),
+                rel_path: entry.source.path.clone(),
+                name,
+                item: item.clone(),
+                source_indices: si.clone(),
+            });
+        }
+    }
+    Ok((out, module_count))
+}
+
+/// Measurement harness (`floor_prepared_toll_receipt` bin): wall time for pool-root parse-only
+/// decl extraction. `inventory` selects the floor prepared path; `None` is the legacy disk walk.
+pub fn pool_decl_parse_wall_ms(
+    pool_roots: &[String],
+    want_kind: ItemKind,
+    inventory: Option<&[crate::cli_run::PreparedSourceView]>,
+) -> Result<(u128, usize), String> {
+    let started = std::time::Instant::now();
+    let (_, module_count) = if let Some(inv) = inventory {
+        decls_parse_only_from_inventory(inv, pool_roots, want_kind, "pool_decl_parse_wall_ms")?
+    } else {
+        decls_parse_only_from_disk(pool_roots, want_kind, "pool_decl_parse_wall_ms")?
+    };
+    Ok((started.elapsed().as_millis(), module_count))
+}
+
+fn decls_parse_only_from_disk(
     roots: &[String],
     want_kind: ItemKind,
     caller: &str,
@@ -346,6 +463,28 @@ fn decls_parse_only_fail_closed(
         }
     }
     Ok((out, module_count))
+}
+
+/// Parse-only decl extraction over `build_module_path_index` — fail-closed on parse
+/// errors (no silent skip). Shared substrate for `concept_decl_facts(pool_roots)` and
+/// `data_decl_type_facts(pool_roots)`; distinct from `decl_facts_corpus_walk` which skips
+/// test `.dag` files and tolerates parse failure. A completeness census cannot be grounded
+/// on a walk that silently skips a file, so both callers share this one.
+fn decls_parse_only_fail_closed(
+    roots: &[String],
+    want_kind: ItemKind,
+    caller: &str,
+) -> Result<(Vec<ParsedTypeDecl>, usize), String> {
+    if let Some(cached) = floor_decl_parse_memo_lookup(roots, want_kind) {
+        return Ok(cached);
+    }
+    let result = if let Some(inventory) = crate::cli_run::floor_prepared_inventory_snapshot() {
+        decls_parse_only_from_inventory(&inventory, roots, want_kind, caller)?
+    } else {
+        decls_parse_only_from_disk(roots, want_kind, caller)?
+    };
+    floor_decl_parse_memo_store(roots, want_kind, &result);
+    Ok(result)
 }
 
 fn concept_decl_node(
@@ -428,18 +567,6 @@ pub fn eval_concept_decl_facts(ctx: &InterpContext, pool_roots: &[String]) -> In
 }
 
 /// The authored declared-type head name of a top-level `data` declaration.
-///
-/// `decl_facts` marshals a `DataItem`'s node through the initializer projection, which drops
-/// `type_annotation` entirely — so the declared type is not reachable from that producer at
-/// all. This projects the annotation's head name (`String`, `NonEmptyStr`, `List`, ...). Head
-/// name is sufficient and deliberately not a full type rendering: the only consumer asks
-/// whether a declaration is still a bare string, and a second type-printer would be a
-/// nickname for a rendering the emitter already owns.
-///
-/// An absent annotation yields the empty string rather than a guess. `data` requires an
-/// annotation, so empty means the parse did not carry one, and a consumer that treated
-/// unknown as "not a string" would silently under-report exactly the survivors a census
-/// exists to find.
 fn data_decl_type_name(decl: &ParsedTypeDecl) -> String {
     match decl.item.type_annotation.as_ref() {
         Some(ann) => {
@@ -454,12 +581,6 @@ fn data_decl_type_name(decl: &ParsedTypeDecl) -> String {
     }
 }
 
-/// Corpus-wide top-level `data` declarations with their declared type, keyed at declaration
-/// identity (`module_path` + `decl_name`).
-///
-/// `module_path` is the module's own authored path, UNSTRIPPED (`v2.` retained), because a
-/// `DeclarationRef` names the module as authored; `decl_facts`'s stripped `qualified_name`
-/// cannot be un-stripped back into a module identity.
 pub fn eval_data_decl_type_facts(
     ctx: &InterpContext,
     pool_roots: &[String],

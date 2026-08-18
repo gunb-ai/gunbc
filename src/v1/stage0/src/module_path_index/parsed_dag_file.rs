@@ -16,11 +16,9 @@ pub struct ParsedDagFile {
     pub source_indices: SourceIndices,
 }
 
-pub fn parse_dag_file(path: &Path) -> Option<ParsedDagFile> {
-    let content = std::fs::read_to_string(path).ok()?;
-    let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("?");
-    let tokens = tokenize(content.clone(), filename.to_string());
-    let source_index = build_newline_index(filename.to_string(), content);
+pub fn parse_dag_content(content: &str, filename: &str) -> Option<ParsedDagFile> {
+    let tokens = tokenize(content.to_string(), filename.to_string());
+    let source_index = build_newline_index(filename.to_string(), content.to_string());
     let mut indices = HashMap::new();
     indices.insert(filename.to_string(), source_index);
     let source_indices: SourceIndices = Rc::new(indices);
@@ -34,6 +32,12 @@ pub fn parse_dag_file(path: &Path) -> Option<ParsedDagFile> {
         items: module.children.clone(),
         source_indices,
     })
+}
+
+pub fn parse_dag_file(path: &Path) -> Option<ParsedDagFile> {
+    let content = std::fs::read_to_string(path).ok()?;
+    let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("?");
+    parse_dag_content(&content, filename)
 }
 
 pub fn parse_file(path: &Path) -> Option<(Rc<im::Vector<Rc<Node>>>, SourceIndices)> {

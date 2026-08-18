@@ -1023,6 +1023,68 @@ struct PureCallMemo {
 }
 
 #[derive(Default)]
+struct PrepareGrammarCrossClaimMemo {
+    map: HashMap<u64, Value>,
+}
+
+thread_local! {
+    static PREPARE_GRAMMAR_CROSS_CLAIM_MEMO: RefCell<PrepareGrammarCrossClaimMemo> =
+        RefCell::new(PrepareGrammarCrossClaimMemo::default());
+    static ZERO_ARG_PURE_CROSS_CLAIM_MEMO: RefCell<HashMap<String, Value>> =
+        RefCell::new(HashMap::new());
+}
+
+pub fn clear_cross_claim_pure_memos() {
+    PREPARE_GRAMMAR_CROSS_CLAIM_MEMO
+        .with(|m| *m.borrow_mut() = PrepareGrammarCrossClaimMemo::default());
+    ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| m.borrow_mut().clear());
+}
+
+fn try_cross_claim_pure_memo(
+    ctx: &InterpContext,
+    func_name: &str,
+    args: &[(Option<String>, Value)],
+) -> Option<Value> {
+    if func_name == "prepare_grammar" && args.len() == 1 {
+        let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
+        let key = eval_recompute_arg_key(&mut hash_memo, &args[0].1)?;
+        let content_hash = match key {
+            EvalRecomputeArgKey::ContentHash(h) => h,
+            _ => return None,
+        };
+        return PREPARE_GRAMMAR_CROSS_CLAIM_MEMO
+            .with(|m| m.borrow().map.get(&content_hash).cloned());
+    }
+    if args.is_empty() && func_name == "ci_heal_binary_source_skew_guard_script" {
+        return ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| m.borrow().get(func_name).cloned());
+    }
+    None
+}
+
+fn store_cross_claim_pure_memo(
+    ctx: &InterpContext,
+    func_name: &str,
+    args: &[(Option<String>, Value)],
+    result: &Value,
+) {
+    if func_name == "prepare_grammar" && args.len() == 1 {
+        let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
+        if let Some(key) = eval_recompute_arg_key(&mut hash_memo, &args[0].1) {
+            if let EvalRecomputeArgKey::ContentHash(h) = key {
+                PREPARE_GRAMMAR_CROSS_CLAIM_MEMO
+                    .with(|m| m.borrow_mut().map.insert(h, result.clone()));
+            }
+        }
+        return;
+    }
+    if args.is_empty() && func_name == "ci_heal_binary_source_skew_guard_script" {
+        ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| {
+            m.borrow_mut().insert(func_name.to_string(), result.clone());
+        });
+    }
+}
+
+#[derive(Default)]
 struct ParseTableMemo {
     map: HashMap<(String, String, i64, Symbol), Value>,
     keepalive: Vec<Value>,
@@ -4176,10 +4238,17 @@ fn eval_pure_named_call(
     args: &[(Option<String>, Value)],
     env: &Rc<Env>,
 ) -> InterpResult<Value> {
+    if let Some(v) = try_cross_claim_pure_memo(ctx, func_name, args) {
+        return Ok(v);
+    }
     let trace_on = eval_recompute_trace_enabled();
     let memo_on = ctx.eval_call_memo.borrow().enabled;
     if !trace_on && !memo_on {
-        return call_function(ctx, fn_node, args, env);
+        let result = call_function(ctx, fn_node, args, env);
+        if let Ok(v) = &result {
+            store_cross_claim_pure_memo(ctx, func_name, args, v);
+        }
+        return result;
     }
     let started = Instant::now();
     let key = match eval_recompute_key(ctx, fn_node, args) {
@@ -4208,6 +4277,9 @@ fn eval_pure_named_call(
     }
     let effects_before = ctx.effect_dispatch_count.get();
     let result = call_function(ctx, fn_node, args, env);
+    if let Ok(v) = &result {
+        store_cross_claim_pure_memo(ctx, func_name, args, v);
+    }
     if memo_on && ctx.effect_dispatch_count.get() == effects_before {
         if let Ok(v) = &result {
             eval_call_memo_put(ctx, fn_node, key.clone(), args, v.clone());
