@@ -24,6 +24,7 @@ import gunbc.gitignore_model {
   OpenClawScriptsDir, V2InspectFile, V2InspectErrorsFile, GithubCLICacheDir,
   PythonLocalDevScriptFile, PythonAuditScriptAllowlisted,
   PythonProbeScriptAllowlisted,
+  FloorCutNameResolutionPartitionScriptAllowlisted,
   PythonBytecodeCacheDir, PythonCompiledBytecode,
   ClaimMapDir, ScratchProbeFile,
   GunbcPlanningDir, ScriptsFixturesDir
@@ -128,6 +129,7 @@ data gitignore_authority: List<IgnoreGroup> = [
       PythonLocalDevScriptFile,
       PythonAuditScriptAllowlisted,
       PythonProbeScriptAllowlisted,
+      FloorCutNameResolutionPartitionScriptAllowlisted,
     ]
   },
   IgnoreGroup {

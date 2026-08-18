@@ -21,6 +21,12 @@ test fn witness_has_header() -> Bool {
     && string_contains(s: eg, pattern: "do not hand-edit")
 }
 
+test fn witness_has_probe_script_allowlists() -> Bool {
+  let eg = expected_gitignore()
+  string_contains(s: eg, pattern: "!docs/probes/e0369_b1_operator_classify.py")
+    && string_contains(s: eg, pattern: "!docs/probes/floor_cut_name_resolution_partition.py")
+}
+
 test fn witness_clean_does_not_drift() -> Bool {
   !(gitignore_drifted(committed: expected_gitignore()))
 }

@@ -81,6 +81,7 @@ type IgnoreArtifact
   | PythonLocalDevScriptFile
   | PythonAuditScriptAllowlisted
   | PythonProbeScriptAllowlisted
+  | FloorCutNameResolutionPartitionScriptAllowlisted
   | PythonBytecodeCacheDir
   | PythonCompiledBytecode
   | ClaimMapDir
