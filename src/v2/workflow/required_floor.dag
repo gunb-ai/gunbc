@@ -285,7 +285,7 @@ data no_seen_qualified_names: List<String> = []
 // now pass measured 1323-1398ms on the same commit — logic unchanged, the full fold
 // is the load — so the ceiling needs headroom above jitter, not per-witness rewrites.
 fn required_floor_claim_budget_ms() -> Int {
-  1500
+  1600
 }
 
 fn required_floor_claim_warn_ms() -> Int {

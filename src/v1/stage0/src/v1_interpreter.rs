@@ -3883,9 +3883,19 @@ fn match_pattern(
                         }
                         return Some(bindings);
                     }
+                    if !coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone()) {
+                        return None;
+                    }
                     if let Some(parent) = parent_enum.as_ref() {
                         let value_parent = resolve_sym(*type_name);
-                        if !coproduct_parent_spellings_match(ctx, value_parent.clone(), parent)
+                        let parent_last = qualified_last_segment(parent.clone());
+                        let value_parent_last = qualified_last_segment(value_parent.clone());
+                        if parent_last != value_parent_last
+                            && !coproduct_parent_spellings_match(
+                                ctx,
+                                value_parent.clone(),
+                                parent,
+                            )
                             && !record_nominal_is_declared_variant_of_coproduct(
                                 ctx,
                                 resolve_sym(*variant_name),
@@ -3894,9 +3904,6 @@ fn match_pattern(
                         {
                             return None;
                         }
-                    }
-                    if !coproduct_arm_name_matches(resolve_sym(*variant_name), name.clone()) {
-                        return None;
                     }
                     let mut bindings = HashMap::new();
                     for fb in field_bindings.iter() {
