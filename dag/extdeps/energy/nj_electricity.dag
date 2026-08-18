@@ -2,6 +2,8 @@ module extdeps.energy.nj_electricity
 
 import std.types { NonEmptyStr }
 import std.nat { Nat }
+import std.measure { MoneyPerKilowattHour, money_amount_micro }
+import std.currency { Usd }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
@@ -33,25 +35,25 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 
 type RetailElectricityRate {
   customer_class: NonEmptyStr
-  usd_micro_per_kwh: Nat
+  rate: MoneyPerKilowattHour
   citation: NonEmptyStr
 }
 
 data nj_commercial_rate: RetailElectricityRate = RetailElectricityRate {
   customer_class: "commercial",
-  usd_micro_per_kwh: 161300,
+  rate: MoneyPerKilowattHour { amount: money_amount_micro(count: 161300), currency: Usd },
   citation: "chooseenergy.com New Jersey state report, August 2026, citing EIA sales/revenue/price data; secondary read of the EIA table, 2026-08-18",
 }
 
 data nj_industrial_rate: RetailElectricityRate = RetailElectricityRate {
   customer_class: "industrial",
-  usd_micro_per_kwh: 139500,
+  rate: MoneyPerKilowattHour { amount: money_amount_micro(count: 139500), currency: Usd },
   citation: "chooseenergy.com New Jersey state report, August 2026, citing EIA sales/revenue/price data; secondary read of the EIA table, 2026-08-18",
 }
 
 data nj_residential_rate: RetailElectricityRate = RetailElectricityRate {
   customer_class: "residential",
-  usd_micro_per_kwh: 270000,
+  rate: MoneyPerKilowattHour { amount: money_amount_micro(count: 270000), currency: Usd },
   citation: "nuwattenergy.com PSE&G rate tracker, 2026 (headline all-in figure of 0.27 USD per kWh, supply plus delivery); aggregator grade, read 2026-08-18 - the June 2026 BGS supply component alone was reported near 0.199 USD per kWh, so the all-in figure is the one a marginal continuous load pays",
 }
 

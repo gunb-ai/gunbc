@@ -2,7 +2,7 @@ module extdeps.realestate.nj_industrial
 
 import std.types { NonEmptyStr, List }
 import std.nat { Nat }
-import std.measure { MoneyPerMonth, money_amount_micro }
+import std.measure { MoneyPerMonth, MoneyPerSquareFootYear, money_amount_micro }
 import std.currency { Usd }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 
@@ -35,7 +35,7 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // a monthly figure only where the listing itself quoted monthly.
 
 type AnnualRentPerSqftMicro {
-  usd_micro_per_sqft_year: Nat
+  asking_rent: MoneyPerSquareFootYear
   basis_note: NonEmptyStr
   citation: NonEmptyStr
 }
@@ -50,7 +50,7 @@ type IndustrialListingSpecimen {
 }
 
 data nj_industrial_market_snapshot: AnnualRentPerSqftMicro = AnnualRentPerSqftMicro {
-  usd_micro_per_sqft_year: 14000000,
+  asking_rent: MoneyPerSquareFootYear { amount: money_amount_micro(count: 14000000), currency: Usd },
   basis_note: "statewide New Jersey industrial average asking rent, aggregator read; northern-NJ port-adjacent submarkets quote above this and small-bay product is the tightest segment (sub-5-percent vacancy per the same read, against 9.6 percent statewide) - so the figure is a floor for the target corridor, not an estimate of any specific bay",
   citation: "tenantbase.com 2026 industrial cost survey + warecre.com market notes, read 2026-08-18; aggregator grade, superseded by any actual listing or quote",
 }
