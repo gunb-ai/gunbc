@@ -107,3 +107,26 @@ fn zz_prepared_parse(source: String) -> Bool {
 
 test fn zz_prepared_parse_header() -> Bool { zz_prepared_parse(source: zz_src_header) }
 test fn zz_prepared_parse_four() -> Bool { zz_prepared_parse(source: zz_src_four_type) }
+
+test fn zz_check_undefined() -> Bool {
+  v2.compiler.parse.grammar_has_undefined_nonterminals(root: zz_root()) == false
+}
+
+test fn zz_check_duplicate() -> Bool {
+  v2.compiler.parse.grammar_has_duplicate_productions(root: zz_root()) == false
+}
+
+test fn zz_check_left_recursion() -> Bool {
+  v2.compiler.parse.grammar_has_left_recursion(root: zz_root()) == false
+}
+
+test fn zz_analysis_only() -> Bool {
+  let a = v2.compiler.parse.compute_grammar_first_analysis(root: zz_root())
+  zz_first_total(root: zz_root(), rows: a.first_rows) > 0
+}
+
+test fn zz_ambiguity_roster_only() -> Bool {
+  let root = zz_root()
+  let a = v2.compiler.parse.compute_grammar_first_analysis(root: root)
+  length(xs: v2.compiler.parse.grammar_choice_ambiguity_roster_from_analysis(root: root, analysis: a)) >= 0
+}
