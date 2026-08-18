@@ -7691,6 +7691,13 @@ pub enum ClaimOutcome {
         budget_ms: u64,
         kind: BudgetKind,
     },
+    /// A host-tool program could not be resolved to an existing executable path.
+    /// Typed at the witness boundary so downstream classifiers do not substring-match
+    /// `Display` prose from `InterpError::HostToolUnresolved`.
+    HostToolUnresolved {
+        name: String,
+        probed: Vec<String>,
+    },
 }
 
 pub fn resolve_entry_graph(
@@ -15830,9 +15837,17 @@ pub fn run_claim(ctx: &v1_interpreter::InterpContext, function: &str) -> ClaimOu
         // relocating-the-file-does-not-discharge-it text) reaches the witness author. Mapping
         // here rather than in the kernel is what keeps a served HTTP route from receiving
         // witness guidance it cannot act on.
-        Err(e) => ClaimOutcome::RuntimeError {
-            message: format!("{}", v1_interpreter::map_budget_error_to_witness_refusal(e)),
-        },
+        Err(e) => {
+            let e = v1_interpreter::map_budget_error_to_witness_refusal(e);
+            match e {
+                v1_interpreter::InterpError::HostToolUnresolved { name, probed } => {
+                    ClaimOutcome::HostToolUnresolved { name, probed }
+                }
+                other => ClaimOutcome::RuntimeError {
+                    message: format!("{other}"),
+                },
+            }
+        }
     }
 }
 
@@ -17919,6 +17934,16 @@ pub fn project_witness_cost_receipt(
                         str_value(format!("runtime error: {message}")),
                     ));
                     "witness_cost_seed_failed_event"
+                }
+                ClaimOutcome::HostToolUnresolved { name, probed } => {
+                    args.push((
+                        Some("error".to_string()),
+                        str_value(format!(
+                            "host tool unresolved: {name:?} (probed: {})",
+                            probed.join(", ")
+                        )),
+                    ));
+                    "witness_cost_seed_refused_event"
                 }
                 // A deadline-killed row is TimedOut, never Failed: its recorded wall is a
                 // CEILING, not a cost, and anything reading it as a completed duration
@@ -23630,6 +23655,13 @@ fn run_discovery_rows(
             ClaimOutcome::RuntimeError { message } => summary.failures.push(format!(
                 "{} ({}) runtime error: {}",
                 row.function, row.entry, message
+            )),
+            ClaimOutcome::HostToolUnresolved { name, probed } => summary.failures.push(format!(
+                "{} ({}) host tool unresolved: {:?} (probed: {})",
+                row.function,
+                row.entry,
+                name,
+                probed.join(", ")
             )),
             // Rendered so the elapsed value is never mistaken for a completed duration:
             // the row was killed AT the budget, so this is a ceiling, not a cost. The
@@ -42374,6 +42406,12 @@ pub fn run_required_floor(
             ClaimOutcome::RuntimeError { message } => outcome
                 .failures
                 .push(format!("{} errored: {message}", claim.qualified)),
+            ClaimOutcome::HostToolUnresolved { name, probed } => outcome.failures.push(format!(
+                "{} host tool unresolved: {:?} (probed: {})",
+                claim.qualified,
+                name,
+                probed.join(", ")
+            )),
             ClaimOutcome::TimedOut {
                 elapsed_ms,
                 budget_ms,
@@ -42551,6 +42589,12 @@ fn witness_eval_verdict_from_claim_outcome(
         }
         ClaimOutcome::RuntimeError { message } => {
             crate::expected_red_roster_join::WitnessEvalVerdict::RuntimeError(message.clone())
+        }
+        ClaimOutcome::HostToolUnresolved { name, probed } => {
+            crate::expected_red_roster_join::WitnessEvalVerdict::HostToolUnresolved {
+                name: name.clone(),
+                probed: probed.clone(),
+            }
         }
         ClaimOutcome::TimedOut {
             elapsed_ms,

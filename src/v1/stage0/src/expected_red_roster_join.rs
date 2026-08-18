@@ -17,6 +17,10 @@ pub enum WitnessEvalVerdict {
     BoolFalse,
     NotBool(String),
     RuntimeError(String),
+    HostToolUnresolved {
+        name: String,
+        probed: Vec<String>,
+    },
     BudgetExceeded {
         elapsed_ms: u64,
         budget_ms: u64,
@@ -133,17 +137,17 @@ pub fn classify_verdict(verdict: &WitnessEvalVerdict) -> (ExpectedRedJoinDisposi
             format!("witness answered {got}, not a Bool"),
         ),
         WitnessEvalVerdict::RuntimeError(message) => {
-            if let Some(tool) = host_tool_unresolved(message) {
-                (
-                    ExpectedRedJoinDisposition::NotEvaluated {
-                        reason: "host_tool_unresolved".to_string(),
-                    },
-                    format!("host tool unresolved: {tool}"),
-                )
-            } else {
-                (ExpectedRedJoinDisposition::StillRed, message.clone())
-            }
+            (ExpectedRedJoinDisposition::StillRed, message.clone())
         }
+        WitnessEvalVerdict::HostToolUnresolved { name, probed } => (
+            ExpectedRedJoinDisposition::NotEvaluated {
+                reason: "host_tool_unresolved".to_string(),
+            },
+            format!(
+                "host tool unresolved: {name:?} (probed: {})",
+                probed.join(", ")
+            ),
+        ),
         WitnessEvalVerdict::BudgetExceeded {
             elapsed_ms,
             budget_ms,
@@ -171,22 +175,21 @@ pub fn classify_verdict(verdict: &WitnessEvalVerdict) -> (ExpectedRedJoinDisposi
     }
 }
 
-/// Host-selected marginal overrun: 501–509ms against a 500ms line relocates between runs.
+/// Basis: `v2.workflow.required_floor` `required_floor_claim_budget_ms` — 500ms HARD witness
+/// eval ceiling (operator 2026-08-17). Host-load overruns just above that line (501–509ms
+/// observed) relocate between runs and classify as `not_evaluated`, not `still_red`.
+pub const MARGINAL_BUDGET_RELATIVE_DIVISOR: u64 = 50;
+pub const MARGINAL_BUDGET_MIN_ABSOLUTE_MS: u64 = 10;
+
+/// Host-selected marginal overrun relative to a declared budget ceiling.
 pub fn is_marginal_budget_exceeded(elapsed_ms: u64, budget_ms: u64) -> bool {
     if elapsed_ms <= budget_ms {
         return false;
     }
     let over_ms = elapsed_ms.saturating_sub(budget_ms);
-    // Within 2% of budget or 10ms absolute, whichever is larger (covers 500→509 case).
-    let margin = (budget_ms / 50).max(10);
+    let margin =
+        (budget_ms / MARGINAL_BUDGET_RELATIVE_DIVISOR).max(MARGINAL_BUDGET_MIN_ABSOLUTE_MS);
     over_ms <= margin
-}
-
-fn host_tool_unresolved(message: &str) -> Option<&str> {
-    message
-        .strip_prefix("host tool unresolved: ")
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
 }
 
 pub fn disposition_label(disposition: &ExpectedRedJoinDisposition) -> &'static str {
@@ -288,7 +291,10 @@ mod tests {
 
     #[test]
     fn host_tool_unresolved_is_not_evaluated() {
-        let verdict = WitnessEvalVerdict::RuntimeError("host tool unresolved: cargo".to_string());
+        let verdict = WitnessEvalVerdict::HostToolUnresolved {
+            name: "cargo".to_string(),
+            probed: vec!["/usr/bin/cargo".to_string()],
+        };
         let (disp, detail) = classify_verdict(&verdict);
         assert!(matches!(
             disp,
@@ -316,7 +322,10 @@ mod tests {
         report.record_observed("a.w", &WitnessEvalVerdict::Passed);
         report.record_observed(
             "b.w",
-            &WitnessEvalVerdict::RuntimeError("host tool unresolved: cargo".to_string()),
+            &WitnessEvalVerdict::HostToolUnresolved {
+                name: "cargo".to_string(),
+                probed: vec![],
+            },
         );
         report.finalize_not_observed();
         assert_eq!(report.roster_len, 3);

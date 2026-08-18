@@ -2097,9 +2097,9 @@ impl ExpectedRedDisposition {
             ClaimOutcome::Fail => Self::AgreementAssertionReturnedFalse,
             ClaimOutcome::Pass => Self::StaleQuarantineAssertionReturnedTrue,
             ClaimOutcome::TimedOut { .. } => Self::BudgetFailure,
-            ClaimOutcome::RuntimeError { .. } | ClaimOutcome::NotBool { .. } => {
-                Self::InfrastructureOrReferentFailure
-            }
+            ClaimOutcome::HostToolUnresolved { .. }
+            | ClaimOutcome::RuntimeError { .. }
+            | ClaimOutcome::NotBool { .. } => Self::InfrastructureOrReferentFailure,
         }
     }
 
@@ -2630,6 +2630,38 @@ fn claim_result_for_outcome(
             host_dependency_refusal: None,
             resolve_realization,
         },
+        ClaimOutcome::HostToolUnresolved { name, probed } => {
+            let hint = if probed.is_empty() {
+                "no candidates probed".to_string()
+            } else {
+                probed.join(", ")
+            };
+            let host_dependency_refusal = Some(HostDependencyRefusal {
+                tool: name.clone(),
+                hint,
+            });
+            ClaimResult {
+                function,
+                entry: entry.clone(),
+                ok: false,
+                detail: format!(
+                    "host tool unresolved: {:?} (probed: {})",
+                    name,
+                    probed.join(", ")
+                ),
+                wall_nanos,
+                resolve_nanos,
+                corpus_resolve_nanos: 0,
+                corpus_eval_nanos: 0,
+                corpus_witnesses: 0,
+                runtime_unit_count: single_claim_runtime_unit_count(),
+                witness_row_costs: Vec::new(),
+                expectation_refusal: None,
+                budget_refusal: None,
+                host_dependency_refusal,
+                resolve_realization,
+            }
+        }
         ClaimOutcome::TimedOut {
             elapsed_ms,
             budget_ms,
@@ -4087,7 +4119,8 @@ fn scoped_witness_summary_outcome(
             ClaimOutcome::Pass => ("executed", "true".to_string()),
             ClaimOutcome::Fail
             | ClaimOutcome::NotBool { .. }
-            | ClaimOutcome::RuntimeError { .. } => ("executed", "false".to_string()),
+            | ClaimOutcome::RuntimeError { .. }
+            | ClaimOutcome::HostToolUnresolved { .. } => ("executed", "false".to_string()),
             ClaimOutcome::TimedOut {
                 elapsed_ms,
                 budget_ms,
