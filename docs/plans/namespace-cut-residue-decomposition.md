@@ -903,3 +903,31 @@ cleanly, and emits 23,949 diagnostics CI never sees. Use `claim_executor
 --required-floor` under `ulimit -s 2048` -- the small stack makes the same
 recursion die in ~4 minutes at ~4 GB instead of 23 minutes, and the run
 tracks CI's own RSS curve to within 0.6% at equal wall time.
+
+### Why nothing caught it: the witness shares the guard's blind spot
+
+There IS a discriminating witness for this exact function --
+`cli_run.rs` `peel_alias_fixpoint_termination::peel_terminates_at_resolve_fixpoint`,
+with a 30-second timeout whose failure message reads "the fixpoint guard
+regressed (pre-guard this fixture spins forever)". It did not fire, for two
+independent reasons, and the first is the interesting one.
+
+**Its fixture can only express the bug it was written for.** From its own
+header: "The fixture binds a NoConnective/1-child/inferred=None name to its
+OWN node -- resolve then yields the identical node". That is a period-1
+self-loop, exactly the shape `once == n` detects. A 2-cycle cannot be
+constructed by binding one node to itself, so the witness cannot fail on the
+class that actually broke. The test was derived from the same premise as the
+guard, so it is green by construction for everything that premise excludes --
+it can confirm the guard, never falsify it.
+
+**And it does not execute.** It is a Rust `#[test]`, and the Rust suite left
+CI on 2026-07-11 (DESIGN, Building & checks). So even a fixture that could
+express a 2-cycle would not have run.
+
+The remedy has two halves that must land together, or the next premise
+failure is equally silent: bound the peel against cycles of ANY length
+(`seen` already exists in the outer frame), and give the witness a 2-cycle
+fixture -- two names each resolving to the other -- so the assertion can
+discriminate the class rather than the instance. The bound alone would fix
+today's crash and leave the evidence unable to see tomorrow's.
