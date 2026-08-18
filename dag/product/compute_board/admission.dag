@@ -334,8 +334,15 @@ fn refusal_set_count(s: BoardArticleRefusalSet) -> Nat {
   1 + fold(s.rest, init: 0, f: fn(acc, _r) { acc + 1 })
 }
 
-// Match on BoardArticleRefusal in the module that owns the coproduct — imported variant
-// patterns in witness modules do not reconcile at runtime (non-exhaustive on every arm).
+// 🟡 SCAFFOLD — workaround, not terminal construction (DESIGN §5). Imported coproduct
+// variant patterns in witness modules fail to reconcile at runtime: every arm in a
+// witness-local match reads non-exhaustive even when textually exhaustive (#8419 import
+// arm alone did not fix). Routes matching into this module until the interpreter binds
+// imported variants to their declaring module's coproduct identity.
+// dissolve-on: v1_interpreter match/eval reconciles cross-module imported variant
+// patterns at runtime (delete refusal_matches_name and refuses_with_exactly_named_cause;
+// witness modules may match on imported BoardArticleRefusal variants directly). Same
+// substrate lane as namespace-cut name reconciliation, gunbc#8282.
 fn refusal_matches_name(r: BoardArticleRefusal, wanted: String) -> Bool {
   match r {
     DuplicateComponentIdentity { component: _ } => wanted == "DuplicateComponentIdentity"
