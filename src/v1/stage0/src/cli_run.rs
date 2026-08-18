@@ -14667,7 +14667,6 @@ fn render_batch_summary_line(
 /// `observation_ci_render_witness_test` is the oracle (same pattern as
 /// `render_heartbeat_line_mirror`).
 const WITNESS_CLAIM_COLUMN_WIDTH: usize = 60;
-const WITNESS_CLAIM_MINUTE_SWITCH_SECONDS: u64 = 90;
 
 fn witness_claim_package_path(subject: &str) -> String {
     if subject.contains('/') {
@@ -14685,25 +14684,7 @@ fn witness_bazel_target_label(subject: &str, function: &str) -> String {
     format!("//{}:{}", witness_claim_package_path(subject), function)
 }
 
-fn witness_claim_human_duration(ms: u64) -> String {
-    if ms < 1_000 {
-        format!("{ms}ms")
-    } else if ms < WITNESS_CLAIM_MINUTE_SWITCH_SECONDS * 1_000 {
-        format!("{} seconds", ms / 1_000)
-    } else {
-        format!("{} minutes", ms / 60_000)
-    }
-}
-
-fn witness_claim_human_elapsed(wall_nanos: u128) -> String {
-    if wall_nanos < 1_000_000 {
-        format!("{wall_nanos}ns")
-    } else {
-        witness_claim_human_duration((wall_nanos / 1_000_000) as u64)
-    }
-}
-
-fn render_witness_claim_result_text_mirror(
+pub fn render_witness_claim_result_text_mirror(
     subject: &str,
     function: &str,
     wall_nanos: u128,
@@ -14722,7 +14703,7 @@ fn render_witness_claim_result_text_mirror(
     let token = if passed { "PASSED" } else { "FAILED" };
     format!(
         "{padded}{token} in {}",
-        witness_claim_human_elapsed(wall_nanos)
+        crate::v1_rt::obs_human_elapsed(wall_nanos)
     )
 }
 
@@ -14739,6 +14720,32 @@ fn render_witness_claim_result_text(
     OBSERVATION_SOURCE_ROOTS.get()?;
     Some(render_witness_claim_result_text_mirror(
         subject, function, wall_nanos, passed,
+    ))
+}
+
+/// Mirror of `gunbc.observation_ci_render.ci_witness_budget_warn_text`. Hot-path render
+/// for the warn-tier line (~800 rows/run): native format, no per-line interpreter eval.
+pub fn render_witness_budget_warn_text_mirror(
+    qualified: &str,
+    wall_ms: u128,
+    warn_ms: u64,
+    budget_ms: u64,
+) -> String {
+    format!(
+        "[floor-witness-slow] {qualified} {wall_ms}ms > {warn_ms}ms warn (ceiling {budget_ms}ms)"
+    )
+}
+
+/// Render one per-witness budget-warn line through the `.dag` authority.
+fn render_witness_budget_warn_text(
+    qualified: &str,
+    wall_ms: u128,
+    warn_ms: u64,
+    budget_ms: u64,
+) -> Option<String> {
+    OBSERVATION_SOURCE_ROOTS.get()?;
+    Some(render_witness_budget_warn_text_mirror(
+        qualified, wall_ms, warn_ms, budget_ms,
     ))
 }
 
@@ -42338,10 +42345,19 @@ pub fn run_required_floor(
         let wall_ms = receipt.wall_nanos / 1_000_000;
         if wall_ms > u128::from(claim.warn_ms) {
             outcome.over_warn += 1;
-            eprintln!(
-                "[floor-witness-slow] {} {}ms > {}ms warn (ceiling {}ms)",
-                claim.qualified, wall_ms, claim.warn_ms, claim.budget_ms
-            );
+            match render_witness_budget_warn_text(
+                &claim.qualified,
+                wall_ms,
+                claim.warn_ms,
+                claim.budget_ms,
+            ) {
+                Some(line) => eprintln!("{line}"),
+                None => eprintln!(
+                    "::error::witness presentation unavailable: could not render budget warn \
+                     through gunbc.observation_ci_render `ci_witness_budget_warn_text` for {}",
+                    claim.qualified
+                ),
+            }
         }
         // THE EXPECTED-RED JOIN. A quarantined identity is one this branch KNOWS fails; it is
         // enrolled by exact qualified name in `v2.workflow.floor_expected_red`, and the

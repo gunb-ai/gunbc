@@ -800,13 +800,22 @@ pub const GANTT_CENSUS_MARKER: &str = "[gantt]";
 /// Mirror of `gunbc.observation_ci_render.ci_minute_switch_seconds`.
 const OBS_MINUTE_SWITCH_SECONDS: u64 = 90;
 
-fn obs_human_duration(ms: u64) -> String {
+pub fn obs_human_duration(ms: u64) -> String {
     if ms < 1_000 {
         format!("{ms}ms")
     } else if ms < OBS_MINUTE_SWITCH_SECONDS * 1_000 {
         format!("{} seconds", ms / 1_000)
     } else {
         format!("{} minutes", ms / 60_000)
+    }
+}
+
+/// Mirror of `gunbc.observation_ci_render.ci_human_elapsed`.
+pub fn obs_human_elapsed(wall_nanos: u128) -> String {
+    if wall_nanos < 1_000_000 {
+        format!("{wall_nanos}ns")
+    } else {
+        obs_human_duration((wall_nanos / 1_000_000) as u64)
     }
 }
 

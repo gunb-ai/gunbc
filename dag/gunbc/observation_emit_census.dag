@@ -70,6 +70,22 @@ data shell_site: CensusedEmitSite = CensusedEmitSite {
   }
 }
 
+data witness_claim_result_site: CensusedEmitSite = CensusedEmitSite {
+  marker: "render_witness_claim_result_text_mirror" as NonEmptyStr,
+  source_file: "src/v1/stage0/src/cli_run.rs" as NonEmptyStr,
+  disposition: MigratedToObservation {
+    via: "gunbc.observation_ci_render.ci_witness_claim_result_text (seed mirror render_witness_claim_result_text_mirror; Bazel-shaped per-witness claim result; module_path subject)" as NonEmptyStr
+  }
+}
+
+data witness_budget_warn_site: CensusedEmitSite = CensusedEmitSite {
+  marker: "[floor-witness-slow]" as NonEmptyStr,
+  source_file: "src/v1/stage0/src/cli_run.rs" as NonEmptyStr,
+  disposition: MigratedToObservation {
+    via: "gunbc.observation_ci_render.ci_witness_budget_warn_text (seed mirror render_witness_budget_warn_text_mirror; per-witness warn-tier budget line)" as NonEmptyStr
+  }
+}
+
 data floor_drain_site: CensusedEmitSite = CensusedEmitSite {
   marker: "[floor-drain]" as NonEmptyStr,
   source_file: "src/v1/stage0/src/cli_run.rs" as NonEmptyStr,
@@ -144,6 +160,8 @@ data observation_emit_roster: List<CensusedEmitSite> = [
   governor_site,
   measurement_site,
   shell_site,
+  witness_claim_result_site,
+  witness_budget_warn_site,
   floor_drain_site,
   receipt_site,
   file_trace_site,
@@ -162,7 +180,7 @@ data observation_emit_roster_completeness_disposition: Disposition = Scaffold {
   }
 }
 
-data observation_emit_roster_completeness_note: String = "Roster is bidirectional: every rostered marker must still exist in the seed, AND every known live tag family born after the initial snapshot must appear on the roster (operator finding 3, run 30142403230). Frontier count = 8 (floor-drain, receipt, file, resolve-split, assembly-split, witness-row-cost, witness-row-cost-migration-disclosure, selection-degradation). Six families MigratedToObservation. RETIRED BY DELETION 2026-08-11, and the distinction matters: gate-warm-cost, witness-row-cost-drift and compile-clean-cost-drift left this roster because their raw emits were DELETED from the seed, not because they migrated to the observation vocabulary. There is no roster arm for that, and there should not be one — the census rosters emit sites that exist, so a site with no emit is simply absent. What replaced them is the floor-receipts artifact plus each receipt's [receipt] summary line, and [receipt] is itself still a counted frontier family on this roster, so the debt those three represented did not vanish, it CONSOLIDATED into a row that is still counted. Reading 10 -> 8 as two families' worth of progress would overstate it; the honest reading is that three raw TSV mirrors stopped existing and one already-counted summary family absorbed their role. The unmarked eprintln sites remain the per-print completeness scaffold."
+data observation_emit_roster_completeness_note: String = "Roster is bidirectional: every rostered marker must still exist in the seed, AND every known live tag family born after the initial snapshot must appear on the roster (operator finding 3, run 30142403230). Frontier count = 8 (floor-drain, receipt, file, resolve-split, assembly-split, witness-row-cost, witness-row-cost-migration-disclosure, selection-degradation). Eight families MigratedToObservation (floor-memory, gantt, governor, typecheck-attribution, measurement, shell, witness-claim-result, witness-budget-warn). RETIRED BY DELETION 2026-08-11, and the distinction matters: gate-warm-cost, witness-row-cost-drift and compile-clean-cost-drift left this roster because their raw emits were DELETED from the seed, not because they migrated to the observation vocabulary. There is no roster arm for that, and there should not be one — the census rosters emit sites that exist, so a site with no emit is simply absent. What replaced them is the floor-receipts artifact plus each receipt's [receipt] summary line, and [receipt] is itself still a counted frontier family on this roster, so the debt those three represented did not vanish, it CONSOLIDATED into a row that is still counted. Reading 10 -> 8 as two families' worth of progress would overstate it; the honest reading is that three raw TSV mirrors stopped existing and one already-counted summary family absorbed their role. The unmarked eprintln sites remain the per-print completeness scaffold."
 
 fn emit_site_is_frontier(site: CensusedEmitSite) -> Bool {
   match site.disposition {

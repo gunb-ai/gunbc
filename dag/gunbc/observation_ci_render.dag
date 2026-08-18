@@ -761,3 +761,32 @@ fn ci_witness_claim_result_text(
   let padded = ci_witness_pad_to_column(label: label, width: ci_witness_claim_column_width)
   concat(padded, ci_witness_claim_suffix(passed: passed, wall: wall))
 }
+
+data ci_witness_budget_warn_note: String = "Per-witness budget warning for the floor fold's warn tier — distinct from S1 claim-result lines. A witness over its warn_ms but under budget_ms is reported and allowed to finish; the line names qualified identity, observed wall, warn threshold and hard ceiling so the population is observable rather than reconstructed from timings. The seed transports scalars only; every choice about how the line READS lives here."
+
+fn ci_witness_budget_warn_text(
+  qualified: String,
+  wall_ms: Nat,
+  warn_ms: Nat,
+  budget_ms: Nat,
+) -> String {
+  concat(
+    "[floor-witness-slow] ",
+    concat(
+      qualified,
+      concat(
+        " ",
+        concat(
+          to_string(wall_ms),
+          concat(
+            "ms > ",
+            concat(
+              to_string(warn_ms),
+              concat("ms warn (ceiling ", concat(to_string(budget_ms), "ms)"))
+            )
+          )
+        )
+      )
+    )
+  )
+}
