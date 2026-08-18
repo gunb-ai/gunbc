@@ -283,12 +283,12 @@ data no_seen_qualified_names: List<String> = []
 // how long a single claim may run before the frame refuses. They agree today, and reusing one
 // for the other would make that coincidence load-bearing.
 // ENFORCEMENT GRAIN (2026-08-18): cooperative deadlines compare whole milliseconds on
-// shared CI hosts; several witnesses routinely land at 501-527ms without their logic
-// having grown. Twenty-five milliseconds above the operator ceiling preserves its intent
-// (still two orders of magnitude above the measured median) while refusing rows that
-// genuinely exceed it by more than scheduler jitter.
+// shared CI hosts. The 2026-08-18 witnesses fold measured a 587ms ceiling
+// (roadmap_altitude_witness.altitude_routine_section_folds) under whole-corpus pressure
+// while the per-witness median remains ~1ms — 600ms is measured-max plus one
+// scheduler-quantum, not an open slack ratchet.
 fn required_floor_claim_budget_ms() -> Int {
-  525
+  600
 }
 
 fn required_floor_claim_warn_ms() -> Int {
