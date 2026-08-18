@@ -3784,10 +3784,7 @@ fn match_pattern(
                                     resolve_sym(*variant_name),
                                     &value_parent,
                                 );
-                            if !declared_under_value_parent
-                                && (!arm_matches
-                                    || (name_last != "Absent" && name_last != "Drifted"))
-                            {
+                            if !declared_under_value_parent {
                                 return None;
                             }
                         } else if !arm_matches {
