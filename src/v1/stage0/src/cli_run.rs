@@ -40395,9 +40395,13 @@ pub fn run_required_floor(
                     outcome.budget_refused.push(format!(
                         "{} is enrolled as expected-red but was BUDGET-REFUSED, not failed: \
                          {}. Enrollment asserts an expected verdict and a budget refusal \
-                         produces none, so the enrolled claim went undecided. Reduce the row's \
-                         cost, or move it to a lane that declares its own ceiling — removing it \
-                         from the roster would not help, because it is not passing either.",
+                         produces none, so the enrolled claim went undecided — THIS ROW'S \
+                         CORRECTNESS IS UNKNOWN, not merely expensive: the refusal preempted \
+                         the verdict, so a content defect here would be indistinguishable from \
+                         the enrolled failure. Reducing the row's cost, or moving it to a lane \
+                         that declares its own ceiling, is what lets it reach a verdict at all; \
+                         removing it from the roster would not help, because it is not passing \
+                         either.",
                         claim.qualified, detail
                     ));
                     continue;
