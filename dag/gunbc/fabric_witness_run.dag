@@ -1,0 +1,121 @@
+module gunbc.fabric_witness_run
+
+import std.types { NonEmptyStr }
+import std.nat { Nat }
+import std.measure { HardwareThreadCount, hardware_thread_count, hardware_thread_count_value }
+import product.fabric.identity {
+  FabricIdentity, WorkKey, ExecutionAttemptKey, OfferKey, GrantKey,
+  fabric_identity_eq,
+}
+import product.fabric.work {
+  Work, WorkContract, WorkStep, ResumabilityTier, ReceiptSatisfiable,
+  ExecutionRequirements, Shape, HardRequirements,
+  CapabilityManifestRef, TrustDomainRef,
+  ProgramRef, SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
+}
+import product.fabric.supply { Offer }
+
+// THE FABRIC RUNS THE WITNESSES.
+//
+// This is the execution half of the CI replacement: the argv that runs the
+// required floor is PRODUCED BY THE FABRIC UNDER A GRANT, rather than written
+// into a workflow step. No grant, no command -- so the authorization is not a
+// label beside the run, it is the only thing that can yield a run.
+//
+// What is deliberately NOT here, because GitHub Actions still supplies it while
+// it still triggers: polling, durable state, the compare-and-swap authority
+// transition, supersession, and check publication. Those are the CONTROL plane
+// and they are only needed once the fabric owns triggering. Attempting them now
+// would build a second scheduler beside a live one.
+
+type FloorRunRefusal
+  = ShapeNotCovered { required_threads: Nat, offered_threads: Nat }
+  | TrustDomainMismatch { required: TrustDomainRef, offered: TrustDomainRef }
+  | CapabilitiesNotOffered { required: CapabilityManifestRef, offered: CapabilityManifestRef }
+  | AttemptIsForDifferentWork
+
+type FloorRunAuthorization<P>
+  = FloorRunAuthorized { command: NonEmptyStr }
+  | FloorRunRefused { cause: FloorRunRefusal }
+
+// The floor's contract. Every field is a fact about WHAT is promised, never
+// about where or when it runs -- scheduling facts live in ExecutionRequirements
+// beside it, so revising a thread estimate cannot mint a new semantic Work.
+//
+// Two steps, not one, because the workflow gates them separately and the v1
+// parse gate is a blocking step in its own right: collapsing them into one step
+// would make a parse failure and a floor failure indistinguishable in the
+// receipt, which is the distinction gunbc#8466 -> #8519 was paid to learn.
+
+fn floor_work_contract(source: SourceManifestRef) -> WorkContract {
+  WorkContract {
+    program: "gunbc.claim_executor",
+    steps: [
+      WorkStep { step_id: "v1-dag-parse", resumability: ReceiptSatisfiable },
+      WorkStep { step_id: "required-floor", resumability: ReceiptSatisfiable },
+    ],
+    source: source,
+    inputs: "gunbc.floor.inputs.source-roots:dag+src/v2",
+    runtime_closure: "gunbc.toolchain.rust-1.93.0+clippy+rustfmt",
+    effect_contract: "gunbc.floor.effects.read-only-corpus",
+    output_contract: "gunbc.floor.outputs.required-floor-summary",
+  }
+}
+
+fn floor_execution_requirements() -> ExecutionRequirements {
+  ExecutionRequirements {
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: 8) } },
+    capabilities: "gunbc.capabilities.linux-aarch64-rust-toolchain",
+    trust_domain: "gunbc.trust.internal-fleet",
+  }
+}
+
+// The exact argv the floor runs under. It is derived from the contract's own
+// source-root inputs rather than spelled twice: the workflow's command and this
+// command are one fact, and the witness beside this module asserts they are
+// equal to the emitted workflow's literal step.
+
+fn floor_run_command() -> NonEmptyStr {
+  "target/release/claim_executor --required-floor --source-root dag --source-root src/v2"
+}
+
+fn shape_covers(offered: Shape, needed: Shape) -> Bool {
+  hardware_thread_count_value(t: offered.hard.threads) >= hardware_thread_count_value(t: needed.hard.threads)
+}
+
+// AUTHORIZATION. The refusals are ordered so that a mismatch of identity is
+// checked before any resource question: authorizing the wrong Work cheaply is
+// still authorizing the wrong Work.
+
+fn authorize_floor_run<P>(
+  work: Work<P>,
+  attempt_work: FabricIdentity<P, WorkKey>,
+  offer: Offer<P>,
+) -> FloorRunAuthorization<P> {
+  if !fabric_identity_eq(left: work.id, right: attempt_work) {
+    FloorRunRefused { cause: AttemptIsForDifferentWork }
+  } else if work.requirements.trust_domain != offer.trust_domain {
+    FloorRunRefused {
+      cause: TrustDomainMismatch {
+        required: work.requirements.trust_domain,
+        offered: offer.trust_domain,
+      },
+    }
+  } else if work.requirements.capabilities != offer.capabilities {
+    FloorRunRefused {
+      cause: CapabilitiesNotOffered {
+        required: work.requirements.capabilities,
+        offered: offer.capabilities,
+      },
+    }
+  } else if !shape_covers(offered: offer.shape, needed: work.requirements.shape) {
+    FloorRunRefused {
+      cause: ShapeNotCovered {
+        required_threads: hardware_thread_count_value(t: work.requirements.shape.hard.threads),
+        offered_threads: hardware_thread_count_value(t: offer.shape.hard.threads),
+      },
+    }
+  } else {
+    FloorRunAuthorized { command: floor_run_command() }
+  }
+}

@@ -1,0 +1,166 @@
+module test.claim.fabric_witness_run
+
+// The subject is AUTHORIZATION, so every witness here is a refusal or the one
+// positive control that proves refusal is not the only reachable arm. A witness
+// suite that only proved the happy path would establish that a command can be
+// produced, which was never in doubt; what is in doubt is that it CANNOT be
+// produced when the executor does not satisfy the work.
+
+fn t_source() -> SourceManifestRef {
+  "gunbc.source.test-commit"
+}
+
+fn t_work_id() -> FabricIdentity<NonEmptyStr, WorkKey> {
+  FabricIdentity { principal: "gunbc", key: "work-floor-1" }
+}
+
+fn t_other_work_id() -> FabricIdentity<NonEmptyStr, WorkKey> {
+  FabricIdentity { principal: "gunbc", key: "work-floor-2" }
+}
+
+fn t_work() -> Work<NonEmptyStr> {
+  Work {
+    id: t_work_id(),
+    contract: floor_work_contract(source: t_source()),
+    requirements: floor_execution_requirements(),
+  }
+}
+
+fn t_offer(threads: Nat, caps: CapabilityManifestRef, trust: TrustDomainRef) -> Offer<NonEmptyStr> {
+  Offer {
+    id: FabricIdentity { principal: "gunbc", key: "offer-srv1" },
+    executor: "gunbc",
+    shape: Shape { hard: HardRequirements { threads: hardware_thread_count(count: threads) } },
+    capabilities: caps,
+    trust_domain: trust,
+    quantity_bound: 1,
+    ready_at: "2026-08-19T00:00:00Z",
+    quote: QuotedFlatPerGrant(MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }),
+    evidence: ObservedSupply {
+      observed_at: "2026-08-19T00:00:00Z",
+      receipt: "gunbc.observation.fleet-1",
+    },
+  }
+}
+
+fn t_good_offer() -> Offer<NonEmptyStr> {
+  t_offer(
+    threads: 128,
+    caps: "gunbc.capabilities.linux-aarch64-rust-toolchain",
+    trust: "gunbc.trust.internal-fleet",
+  )
+}
+
+fn authorized(a: FloorRunAuthorization<NonEmptyStr>) -> Bool {
+  match a {
+    FloorRunAuthorized { command: _ } => true
+    FloorRunRefused { cause: _ } => false
+  }
+}
+
+// POSITIVE CONTROL. Without this every refusal below is satisfied by a function
+// that refuses unconditionally, which is the shape a wall takes when it is
+// actually a brick.
+
+test fn fleet_offer_authorizes_the_floor() -> Bool {
+  authorized(a: authorize_floor_run(
+    work: t_work(),
+    attempt_work: t_work_id(),
+    offer: t_good_offer(),
+  ))
+}
+
+test fn authorized_command_is_the_floor_invocation() -> Bool {
+  match authorize_floor_run(work: t_work(), attempt_work: t_work_id(), offer: t_good_offer()) {
+    FloorRunAuthorized { command: c } =>
+      c == "target/release/claim_executor --required-floor --source-root dag --source-root src/v2"
+    FloorRunRefused { cause: _ } => false
+  }
+}
+
+// DISCRIMINATING REDS.
+
+// An attempt naming a different Work must not be authorized against this Work.
+// Checked FIRST, before any resource question: authorizing the wrong Work
+// cheaply is still authorizing the wrong Work.
+test fn attempt_for_different_work_refuses() -> Bool {
+  match authorize_floor_run(work: t_work(), attempt_work: t_other_work_id(), offer: t_good_offer()) {
+    FloorRunRefused { cause: AttemptIsForDifferentWork } => true
+    FloorRunRefused { cause: _ } => false
+    FloorRunAuthorized { command: _ } => false
+  }
+}
+
+// A host outside the declared trust domain must not run the floor even if it is
+// larger and better equipped -- the point of a trust domain is that capacity
+// does not substitute for it.
+test fn foreign_trust_domain_refuses_despite_ample_capacity() -> Bool {
+  match authorize_floor_run(
+    work: t_work(),
+    attempt_work: t_work_id(),
+    offer: t_offer(
+      threads: 1024,
+      caps: "gunbc.capabilities.linux-aarch64-rust-toolchain",
+      trust: "gunbc.trust.public-cloud",
+    ),
+  ) {
+    FloorRunRefused { cause: TrustDomainMismatch { required: _, offered: _ } } => true
+    FloorRunRefused { cause: _ } => false
+    FloorRunAuthorized { command: _ } => false
+  }
+}
+
+test fn missing_capabilities_refuse() -> Bool {
+  match authorize_floor_run(
+    work: t_work(),
+    attempt_work: t_work_id(),
+    offer: t_offer(
+      threads: 128,
+      caps: "gunbc.capabilities.linux-x86_64-no-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+    ),
+  ) {
+    FloorRunRefused { cause: CapabilitiesNotOffered { required: _, offered: _ } } => true
+    FloorRunRefused { cause: _ } => false
+    FloorRunAuthorized { command: _ } => false
+  }
+}
+
+// The shape wall is an inequality, not an equality, so an offer LARGER than the
+// requirement must still authorize. A wall that refused a bigger machine would
+// be a bug wearing a wall's clothing.
+test fn larger_offer_still_authorizes() -> Bool {
+  authorized(a: authorize_floor_run(
+    work: t_work(),
+    attempt_work: t_work_id(),
+    offer: t_offer(
+      threads: 256,
+      caps: "gunbc.capabilities.linux-aarch64-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+    ),
+  ))
+}
+
+test fn insufficient_threads_refuse() -> Bool {
+  match authorize_floor_run(
+    work: t_work(),
+    attempt_work: t_work_id(),
+    offer: t_offer(
+      threads: 2,
+      caps: "gunbc.capabilities.linux-aarch64-rust-toolchain",
+      trust: "gunbc.trust.internal-fleet",
+    ),
+  ) {
+    FloorRunRefused { cause: ShapeNotCovered { required_threads: _, offered_threads: _ } } => true
+    FloorRunRefused { cause: _ } => false
+    FloorRunAuthorized { command: _ } => false
+  }
+}
+
+// The floor and the v1 parse gate are TWO steps, so a receipt can distinguish
+// which one failed. Collapsing them is the regression gunbc#8466 -> #8519 paid
+// for: a parse break that produced no new signal because the gate was already
+// red for an unrelated reason.
+test fn floor_contract_keeps_the_parse_gate_as_its_own_step() -> Bool {
+  length(xs: floor_work_contract(source: t_source()).steps) == 2
+}
