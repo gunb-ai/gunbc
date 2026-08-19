@@ -286,10 +286,10 @@ fn opaque_host_call_grandfather_population() -> List<String> {
 
 fn string_in_grandfather_population(needle: String, population: List<String>) -> Bool {
   match population {
-    Empty {} => False
+    Empty {} => false
     Cons { head: h, tail: t } =>
       if needle == h {
-        True
+        true
       } else {
         string_in_grandfather_population(needle: needle, population: t)
       }
@@ -297,17 +297,17 @@ fn string_in_grandfather_population(needle: String, population: List<String>) ->
 }
 
 // THE MIGRATION WALL. A NEW opaque host operation brought under a per-claim safety guarantee
-// must REFUSE (`False`, never a diagnostic that lets the run continue): nothing about the two
+// must REFUSE (`false`, never a diagnostic that lets the run continue): nothing about the two
 // safety-limit constants above makes an arbitrary native call deadline-aware, and admitting a
 // second ungoverned operation by silence would repeat, for a second operation, the exact defect
 // this file exists to name for the first. An EXISTING member of
-// `opaque_host_call_grandfather_population` is admitted (`True`) with no growth to the
+// `opaque_host_call_grandfather_population` is admitted (`true`) with no growth to the
 // population that admits it -- it derives `OpaqueHostCallUnbounded` rather than a fictitious
 // hard-bound standing (see `claim_safety_outcome` below), never a refusal, because refusing it
 // today would refuse the whole corpus of claims that already, honestly, exercise it.
 fn claim_preemption_admission(preemption: ClaimPreemptionReachability) -> Bool {
   match preemption {
-    CooperativelyPollable => True
+    CooperativelyPollable => true
     OpaqueHostCallUnbounded { operation: op } =>
       string_in_grandfather_population(needle: op, population: opaque_host_call_grandfather_population())
   }
@@ -370,13 +370,13 @@ fn claim_safety_outcome(
   preemption: ClaimPreemptionReachability,
 ) -> ClaimSafetyOutcome {
   match reached_verdict {
-    False =>
+    false =>
       SafetyInterrupted {
         raised_by: raised_by,
         elapsed_cpu_at_least: observed_cpu_ms,
         elapsed_wall_at_least: observed_wall_ms,
       }
-    True =>
+    true =>
       if int_gt(a: observed_cpu_ms, b: cpu_limit_ms) {
         CompletedPastSafetyLimit {
           observed_cpu: observed_cpu_ms,
@@ -435,8 +435,8 @@ fn claim_safety_outcome(
 // that fact is asserted, so a caller cannot rediscover it (or get it wrong) per call site.
 fn claim_safety_outcome_blocks(outcome: ClaimSafetyOutcome) -> Bool {
   match outcome {
-    CompletedWithinSafetyLimits => False
-    SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => True
-    CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => True
+    CompletedWithinSafetyLimits => false
+    SafetyInterrupted { raised_by: _, elapsed_cpu_at_least: _, elapsed_wall_at_least: _ } => true
+    CompletedPastSafetyLimit { observed_cpu: _, observed_wall: _, preemption: _ } => true
   }
 }
