@@ -18784,9 +18784,9 @@ fn frozen_path_deferral_keys() -> &'static [String] {
     })
 }
 
-fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
+fn frozen_path_deferral_rows_from_source(content: &str) -> Vec<(String, Vec<String>)> {
     const HEAD: &str = "FrozenPathDeferral {";
-    let mut keys: Vec<String> = Vec::new();
+    let mut rows: Vec<(String, Vec<String>)> = Vec::new();
     let mut cursor = 0usize;
     while let Some(offset) = content[cursor..].find(HEAD) {
         let at = cursor + offset;
@@ -18815,6 +18815,14 @@ fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
                  function list — a freeze row covering nothing is a row that should be deleted"
             );
         }
+        rows.push((entry, functions));
+    }
+    rows
+}
+
+fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
+    let mut keys: Vec<String> = Vec::new();
+    for (entry, functions) in frozen_path_deferral_rows_from_source(content) {
         for function in functions {
             let key = witness_admission_manifest_key(&entry, &function);
             if !keys.iter().any(|k| k == &key) {
@@ -18823,6 +18831,97 @@ fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
         }
     }
     keys
+}
+
+/// The same freeze rows, joined against the ENROLLED-ROSTER identity space instead of the
+/// admission-key space: `module.function` (as `floor_expected_red_roster` writes it) rather
+/// than `entry::function` (as `witness_admission_manifest_key` writes it). Two different keys
+/// over the same two facts, kept as two functions rather than one that returns both — a caller
+/// asking "is this frozen?" wants the admission key; a caller asking "is this row also known-red?"
+/// wants the qualified name, and conflating them would let a shape mismatch hide a real miss.
+///
+/// The module name is read from each entry file's own `module ...` line (`extract_module_path`),
+/// the same authority `run_required_floor` reads for every other qualified name it reports — not
+/// re-derived from the path string, which would silently diverge from the interpreter's own
+/// binding the day a file's module line stops matching its directory.
+fn frozen_path_deferral_qualified_identities_from_source(
+    content: &str,
+    root: &std::path::Path,
+) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for (entry, functions) in frozen_path_deferral_rows_from_source(content) {
+        let file_content = match std::fs::read_to_string(root.join(&entry)) {
+            Ok(c) => c,
+            // A frozen row naming a file the tree no longer carries is stale-path debt, not a
+            // roster-intersection question — `collect_stale_frozen_path_deferrals` already owns
+            // that disposition, so this join skips it rather than panicking a second authority.
+            Err(_) => continue,
+        };
+        let module = match extract_module_path(&file_content) {
+            Some(m) => m,
+            None => continue,
+        };
+        for function in functions {
+            out.push((entry.clone(), format!("{module}.{function}")));
+        }
+    }
+    out
+}
+
+/// The contradictory-intersection wall's pure decision: which frozen (entry, qualified-name)
+/// rows also name an identity enrolled in `floor_expected_red_roster`. Pure and side-effect-free
+/// so it is testable without a corpus checkout or a git repository — the file-reading half
+/// (`frozen_path_deferral_qualified_identities_from_source`) and the git-head half
+/// (`current_git_head_or_unresolved`) are kept out of it deliberately.
+fn expected_red_freeze_intersection(
+    frozen_qualified: &[(String, String)],
+    expected_red_roster: &HashSet<String>,
+) -> Vec<(String, String)> {
+    let mut colliding: Vec<(String, String)> = frozen_qualified
+        .iter()
+        .filter(|(_, qualified)| expected_red_roster.contains(qualified))
+        .cloned()
+        .collect();
+    colliding.sort();
+    colliding.dedup();
+    colliding
+}
+
+fn current_git_head_or_unresolved() -> String {
+    std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| "HEAD-unresolved".to_string())
+}
+
+fn format_expected_red_freeze_intersection_refusal(
+    colliding: &[(String, String)],
+    head: &str,
+) -> String {
+    let mut detail = String::new();
+    for (entry, qualified) in colliding {
+        detail.push_str(&format!("\n  - {qualified} (frozen via entry \"{entry}\")"));
+    }
+    format!(
+        "REQUIRED-FLOOR REFUSAL cause=ExpectedRedFreezeIntersection count={} head={head} — {} \
+         identity(ies) are simultaneously enrolled in \
+         v2.workflow.floor_expected_red.floor_expected_red_roster (known-red, removable only by \
+         an observed pass) AND path-deferred in dag/gunbc/witness_deferral_freeze.dag \
+         frozen_path_deferrals (LegacyFrozenPathDeferral, admitted as never-executed). Both \
+         claims cannot hold of one identity: this roster's own did-not-execute check below \
+         proves every enrolled row here DOES execute, so the freeze row is stale evidence, not a \
+         live exemption. This count is bound to the head above — measure again at merge time, \
+         never cite it bare. Disposition: retire the frozen_path_deferrals row (it already has \
+         an executing consumer — this required floor) with a receipt in \
+         witness_deferral_freeze.dag's shrink log, or if the identity is not genuinely \
+         executing, fix floor_expected_red_roster/required_floor's admission instead of leaving \
+         the contradiction standing. Colliding identities:{detail}",
+        colliding.len(),
+        colliding.len()
+    )
 }
 
 fn quoted_after_field(text: &str, field: &str) -> Option<String> {
@@ -25544,6 +25643,100 @@ mod node_frontier_plumbing_controls {
             ],
             "the `type` declaration is not a row, and both row shapes parse"
         );
+    }
+
+    // The contradictory-intersection wall's file-reading half: an entry path resolves through
+    // its own `module ...` line, not through the path string, and a frozen row naming a file the
+    // tree does not carry is skipped here (that disposition belongs to
+    // `collect_stale_frozen_path_deferrals`) rather than panicking a second authority.
+    #[test]
+    fn frozen_path_deferral_qualified_identities_reads_the_entrys_own_module_line() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc_freeze_qualified_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(dir.join("test/claim")).expect("mkdir fixture root");
+        std::fs::write(
+            dir.join("test/claim/one_test.dag"),
+            "module test.claim.one\n\nfn x_holds() -> Bool { true }\n",
+        )
+        .expect("write fixture entry");
+        let source = concat!(
+            "data frozen_path_deferrals: List<FrozenPathDeferral> = [\n",
+            "  FrozenPathDeferral { entry: \"test/claim/one_test.dag\", functions: [\"x_holds\"] },\n",
+            "  FrozenPathDeferral { entry: \"test/claim/missing_test.dag\", functions: [\"y_holds\"] },\n",
+            "]\n"
+        );
+        let qualified = super::frozen_path_deferral_qualified_identities_from_source(source, &dir);
+        assert_eq!(
+            qualified,
+            vec![(
+                "test/claim/one_test.dag".to_string(),
+                "test.claim.one.x_holds".to_string()
+            )],
+            "the missing entry is skipped, not panicked, and the module line — not the path — \
+             names the qualified identity"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // DISCRIMINATING RED: a frozen row whose qualified identity is also enrolled in
+    // floor_expected_red_roster must be caught, by identity, not by count — planting one
+    // colliding row beside one non-colliding row proves the join is selective rather than
+    // vacuously "any freeze row plus any roster makes a hit."
+    #[test]
+    fn expected_red_freeze_intersection_catches_the_planted_collision() {
+        let frozen = vec![
+            (
+                "test/claim/known_red_test.dag".to_string(),
+                "test.claim.known_red.stays_red_holds".to_string(),
+            ),
+            (
+                "test/claim/other_test.dag".to_string(),
+                "test.claim.other.unrelated_holds".to_string(),
+            ),
+        ];
+        let mut roster: std::collections::HashSet<String> = std::collections::HashSet::new();
+        roster.insert("test.claim.known_red.stays_red_holds".to_string());
+        roster.insert("test.claim.some_third_thing.holds".to_string());
+
+        let colliding = super::expected_red_freeze_intersection(&frozen, &roster);
+        assert_eq!(
+            colliding,
+            vec![(
+                "test/claim/known_red_test.dag".to_string(),
+                "test.claim.known_red.stays_red_holds".to_string()
+            )],
+            "only the row present in BOTH rosters collides — the unrelated frozen row and the \
+             unrelated roster entry must not appear"
+        );
+
+        let refusal =
+            super::format_expected_red_freeze_intersection_refusal(&colliding, "deadbeef");
+        assert!(refusal.contains("cause=ExpectedRedFreezeIntersection"));
+        assert!(refusal.contains("count=1"));
+        assert!(refusal.contains("head=deadbeef"));
+        assert!(refusal.contains("test.claim.known_red.stays_red_holds"));
+        assert!(
+            !refusal.contains("test.claim.other.unrelated_holds"),
+            "the refusal must name exactly the colliding identities, not the whole frozen roster"
+        );
+    }
+
+    // POSITIVE CONTROL: disjoint rosters must produce no collision and no refusal text — the
+    // wall's ordinary, contradiction-free path stays silent rather than firing on every run.
+    #[test]
+    fn expected_red_freeze_intersection_is_empty_when_rosters_are_disjoint() {
+        let frozen = vec![(
+            "test/claim/other_test.dag".to_string(),
+            "test.claim.other.unrelated_holds".to_string(),
+        )];
+        let mut roster: std::collections::HashSet<String> = std::collections::HashSet::new();
+        roster.insert("test.claim.some_third_thing.holds".to_string());
+
+        let colliding = super::expected_red_freeze_intersection(&frozen, &roster);
+        assert!(colliding.is_empty(), "{colliding:?}");
     }
 
     // The freeze's second direction, live: every frozen identity must still exist in the tree and
@@ -39890,6 +40083,37 @@ pub fn run_required_floor(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
     );
+
+    // CONTRADICTORY-INTERSECTION WALL: `floor_expected_red_roster` (this roster — removable
+    // only by an OBSERVED PASS, per its own header) and `witness_deferral_freeze`'s
+    // `frozen_path_deferrals` (`LegacyFrozenPathDeferral` — admitted as NEVER EXECUTED) make
+    // opposite claims about the same identity. Both cannot be true of one row: an identity that
+    // executes here (as every enrolled row must, on pain of `ExpectedRedIdentityDidNotExecute`
+    // below) is proof the freeze's classification for it is stale, and an identity that is
+    // genuinely never executed cannot legitimately be "known red, awaiting an observed pass" —
+    // there is no pass to observe. Construction, not validation (DESIGN.md §5): the two rosters
+    // are cross-referenced from their own source authorities on every required-floor run, so the
+    // contradiction cannot re-accumulate silently the way it did before this wall existed.
+    {
+        let freeze_content = std::fs::read_to_string(
+            workspace_root().join(WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL),
+        )
+        .map_err(|e| {
+            format!("witness deferral freeze: failed to read {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL}: {e}")
+        })?;
+        let frozen_qualified = frozen_path_deferral_qualified_identities_from_source(
+            &freeze_content,
+            &workspace_root(),
+        );
+        let colliding = expected_red_freeze_intersection(&frozen_qualified, &expected_red_roster);
+        if !colliding.is_empty() {
+            let head = current_git_head_or_unresolved();
+            return Err(format_expected_red_freeze_intersection_refusal(
+                &colliding, &head,
+            ));
+        }
+    }
+
     let roster_join_path = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN").ok();
     let roster_join_only = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY")
         .ok()
