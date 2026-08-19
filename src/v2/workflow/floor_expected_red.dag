@@ -35,7 +35,7 @@ import v2.std.text { String }
 // (469 -> 361 -> 358). The count is NOT the whole population affected, and the rest is stated
 // exactly here rather than left to the waves: 38 modules were relocated carrying 429 `test fn`
 // declarations. Of those 429 rows, 111 were enrolled here (the 469 -> 358 delta), 111 were
-// observed over budget or failing (102 budget_refused pre-quarantine, 8 tipped in 32189985063,
+// observed over budget or failing (102 budget_refused pre-quarantine, 8 tipped in 32186963581,
 // 1 straggler in 32193032348), and the remaining 207 are healthy witnesses enrolled nowhere,
 // which no number in this file counts. They return when their module does.
 //
@@ -45,6 +45,13 @@ import v2.std.text { String }
 // population is the one thing a rung drop must not round: sharp-raven-273's monotone-shrink
 // wall reads this carrier as its baseline, so a stale count here is load-bearing for work
 // that is not mine. Found by tidy-lark-471's external review, not by me.
+//
+// The run id for the eight was itself wrong until 2026-08-19 and is corrected above. It read
+// 32189985063, which reports failed=1; the eight are run 32186963581, which reports failed=8 and
+// is the run the SECOND WAVE paragraph below already names. One carrier stating two runs for one
+// population is the dual account DESIGN 3 forbids, and the checkable half is which one the
+// counters agree with. Raised by sharp-raven-273 and quiet-ibex-39, who measured the mismatch
+// independently; corrected by tidy-lark-471 because this carrier's author is no longer a session.
 //
 // HISTORY: cut at 820 on tree 380c242c79a; 25 were removed after the first complete
 // run on main (611fd027708) observed them PASSING and red the build naming themselves, which is the
