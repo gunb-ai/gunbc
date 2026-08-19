@@ -1,0 +1,78 @@
+module extdeps.ci_runner.types
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef }
+import extdeps.toolchain.types { Architecture }
+import extdeps.pricing.object_storage { ByteBasis }
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Continuous_integration"
+  }
+}
+
+// THE AGNOSTIC SHAPE ONLY. Per DESIGN's external-upstream decomposition rule
+// this hub defines the contract every CI runner provider's published catalog
+// inhabits; it does NOT enumerate providers, dispatch among them, or hold any
+// provider's rows. Adding a provider is a new module beside its peers, never
+// an edit here — which is also why provider identity below is a
+// DeclarationRef into the provider's own module rather than a variant of a
+// central enum that every new provider would have to widen.
+
+// WHAT ONE UNIT OF ADVERTISED CPU ACTUALLY IS. A published "vCPU" is not one
+// thing across providers: Ubicloud states that an arm64 vCPU is a DEDICATED
+// physical core, while an x64 vCPU is one of two threads sharing one. Most
+// providers state neither, and that third state is the common one — so it is
+// a named arm, not a default. Collapsing it would make a memory-per-vCPU
+// figure look comparable across providers when the denominators differ by a
+// factor of two.
+type CpuEntitlement
+  = DedicatedPhysicalCore
+  | SmtSharedVcpu { threads_per_core: Nat }
+  | EntitlementUnstated
+
+// ONE PUBLISHED RUNNER SIZE.
+//
+// The memory figure is carried as the vendor's QUOTED NUMBER plus its quoted
+// unit word plus a typed basis, and deliberately NOT as a ByteSize: none of
+// these vendors states whether its "GB" is 10^9 or 2^30, and a row that
+// converted anyway would bake a 7.4% error into the one number a DIMM
+// population is compared against. The ratio a profile reads is a quotient of
+// two figures in the SAME quoted unit, so it needs no conversion; only the
+// comparison against physical DIMM capacity does, and that is where the basis
+// must be declared or the comparison refused.
+type RunnerShapeRow {
+  provider: DeclarationRef
+  label: NonEmptyStr
+  architecture: Architecture
+  entitlement: CpuEntitlement
+  vcpus: Nat
+  quoted_memory_amount: Nat
+  quoted_memory_unit_label: NonEmptyStr
+  byte_basis: ByteBasis
+}
+
+// A provider whose published surface this repository could not read lands
+// here with a stated cause, never as remembered numbers. Same shape as the
+// object-storage rate rows and for the same reason: a plausible figure
+// recalled rather than fetched is indistinguishable from a cited one
+// downstream, and a runner catalog is exactly the kind of fact that moves.
+type RunnerCatalogAvailability
+  = RunnerShapesCited { rows: List<RunnerShapeRow> }
+  | RunnerShapesUnavailable { cause: NonEmptyStr }
+
+fn runner_shape_rows(availability: RunnerCatalogAvailability) -> List<RunnerShapeRow> {
+  match availability {
+    RunnerShapesCited { rows } => rows
+    RunnerShapesUnavailable { cause } => []
+  }
+}
+
+fn shape_is_architecture(row: RunnerShapeRow, architecture: Architecture) -> Bool {
+  row.architecture == architecture
+}

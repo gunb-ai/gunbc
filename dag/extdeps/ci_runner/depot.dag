@@ -1,0 +1,71 @@
+module extdeps.ci_runner.depot
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
+import extdeps.pricing.object_storage { ByteBasisUnstated }
+import extdeps.ci_runner.types {
+  EntitlementUnstated,
+  RunnerCatalogAvailability,
+  RunnerShapeRow,
+  RunnerShapesCited,
+}
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "depot.dev/docs/github-actions/runner-types"
+  }
+}
+
+data depot_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data depot_provider_identity: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.depot",
+  decl_name: "depot_catalog_authority",
+)
+
+// Live-fetched 2026-08-18 from the runner-types page. Linux families only.
+// Every size on both architectures is four GB per vCPU, which is what makes
+// this provider a useful control beside GitHub: a uniform provider and a
+// non-uniform one under the same shape.
+//
+// The page states no basis for "GB" and states no per-vCPU core entitlement.
+fn depot_shape(
+  label: NonEmptyStr,
+  architecture: Architecture,
+  vcpus: Nat,
+  memory_gb: Nat,
+) -> RunnerShapeRow {
+  RunnerShapeRow {
+    provider: depot_provider_identity,
+    label: label,
+    architecture: architecture,
+    entitlement: EntitlementUnstated,
+    vcpus: vcpus,
+    quoted_memory_amount: memory_gb,
+    quoted_memory_unit_label: "GB",
+    byte_basis: ByteBasisUnstated,
+  }
+}
+
+data depot_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+  rows: [
+    depot_shape(label: "depot-ubuntu-24.04-arm", architecture: Aarch64, vcpus: 2, memory_gb: 8),
+    depot_shape(label: "depot-ubuntu-24.04-arm-4", architecture: Aarch64, vcpus: 4, memory_gb: 16),
+    depot_shape(label: "depot-ubuntu-24.04-arm-8", architecture: Aarch64, vcpus: 8, memory_gb: 32),
+    depot_shape(label: "depot-ubuntu-24.04-arm-16", architecture: Aarch64, vcpus: 16, memory_gb: 64),
+    depot_shape(label: "depot-ubuntu-24.04-arm-32", architecture: Aarch64, vcpus: 32, memory_gb: 128),
+    depot_shape(label: "depot-ubuntu-24.04-arm-64", architecture: Aarch64, vcpus: 64, memory_gb: 256),
+    depot_shape(label: "depot-ubuntu-24.04", architecture: X86_64, vcpus: 2, memory_gb: 8),
+    depot_shape(label: "depot-ubuntu-24.04-4", architecture: X86_64, vcpus: 4, memory_gb: 16),
+    depot_shape(label: "depot-ubuntu-24.04-8", architecture: X86_64, vcpus: 8, memory_gb: 32),
+    depot_shape(label: "depot-ubuntu-24.04-16", architecture: X86_64, vcpus: 16, memory_gb: 64),
+    depot_shape(label: "depot-ubuntu-24.04-32", architecture: X86_64, vcpus: 32, memory_gb: 128),
+    depot_shape(label: "depot-ubuntu-24.04-64", architecture: X86_64, vcpus: 64, memory_gb: 256),
+  ],
+}

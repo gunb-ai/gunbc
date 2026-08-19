@@ -1,0 +1,68 @@
+module extdeps.ci_runner.circleci
+
+import std.types { List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, decl_ref }
+import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
+import extdeps.pricing.object_storage { ByteBasisUnstated }
+import extdeps.ci_runner.types {
+  EntitlementUnstated,
+  RunnerCatalogAvailability,
+  RunnerShapeRow,
+  RunnerShapesCited,
+}
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "circleci.com/docs/reference/configuration-reference/"
+  }
+}
+
+data circleci_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+
+data circleci_provider_identity: DeclarationRef = decl_ref(
+  module_path: "extdeps.ci_runner.circleci",
+  decl_name: "circleci_catalog_authority",
+)
+
+// Live-fetched 2026-08-18 from the configuration reference resource-class
+// tables. THE x86 DOCKER CLASSES ARE TWO GB PER vCPU, not four — so a
+// four-GB-per-vCPU assumption is not universal on x64 either, and this
+// provider is the row that refutes it. The Arm Docker classes are four.
+fn circleci_shape(
+  label: NonEmptyStr,
+  architecture: Architecture,
+  vcpus: Nat,
+  memory_gb: Nat,
+) -> RunnerShapeRow {
+  RunnerShapeRow {
+    provider: circleci_provider_identity,
+    label: label,
+    architecture: architecture,
+    entitlement: EntitlementUnstated,
+    vcpus: vcpus,
+    quoted_memory_amount: memory_gb,
+    quoted_memory_unit_label: "GB",
+    byte_basis: ByteBasisUnstated,
+  }
+}
+
+data circleci_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+  rows: [
+    circleci_shape(label: "arm.medium", architecture: Aarch64, vcpus: 2, memory_gb: 8),
+    circleci_shape(label: "arm.large", architecture: Aarch64, vcpus: 4, memory_gb: 16),
+    circleci_shape(label: "arm.xlarge", architecture: Aarch64, vcpus: 8, memory_gb: 32),
+    circleci_shape(label: "arm.2xlarge", architecture: Aarch64, vcpus: 16, memory_gb: 64),
+    circleci_shape(label: "small", architecture: X86_64, vcpus: 1, memory_gb: 2),
+    circleci_shape(label: "medium", architecture: X86_64, vcpus: 2, memory_gb: 4),
+    circleci_shape(label: "medium+", architecture: X86_64, vcpus: 3, memory_gb: 6),
+    circleci_shape(label: "large", architecture: X86_64, vcpus: 4, memory_gb: 8),
+    circleci_shape(label: "xlarge", architecture: X86_64, vcpus: 8, memory_gb: 16),
+    circleci_shape(label: "2xlarge", architecture: X86_64, vcpus: 16, memory_gb: 32),
+    circleci_shape(label: "2xlarge+", architecture: X86_64, vcpus: 20, memory_gb: 40),
+  ],
+}
