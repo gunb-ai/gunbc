@@ -2113,18 +2113,6 @@ pub(crate) fn string_list_data_from_module_source(
     panic!("lens table reader: no `data {data_name}` def in {module_rel_path}")
 }
 
-/// Read a `List<String>` data table from a live `.dag` lens authority on disk.
-pub fn lens_string_list_data(
-    module_rel_path: &str,
-    data_name: &str,
-    allow_empty: bool,
-) -> Vec<String> {
-    let path = workspace_root().join(module_rel_path);
-    let content = std::fs::read_to_string(&path)
-        .unwrap_or_else(|e| panic!("lens table reader: failed to read {}: {e}", path.display()));
-    string_list_data_from_module_source(module_rel_path, &content, data_name, allow_empty)
-}
-
 /// Project a `List<String>` data literal out of the ci_layer_roots authority's SOURCE TEXT via the
 /// real front-end (`tokenize` + `parse`) — no second hand-rolled scanner.
 pub(crate) fn string_list_data_from_ci_layer_roots_source(
@@ -2995,48 +2983,12 @@ pub fn compile_clean_pipeline_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorN
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
 }
 
-/// `PipelineResult` adapter for the compile CLI transport.
-pub fn compile_clean_vec_has_hard_errors(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> bool {
-    if compile_clean_policy_read_refuses_gate() {
-        return true;
-    }
-    diagnostics.iter().any(compile_clean_diagnostic_is_hard)
-}
-
 /// `ResolvedPipelineResult` / `im::Vector` adapter for compile-clean checks.
 pub fn compile_clean_im_vector_has_hard_errors(diagnostics: &im::Vector<Rc<ErrorNode>>) -> bool {
     if compile_clean_policy_read_refuses_gate() {
         return true;
     }
     diagnostics.iter().any(compile_clean_diagnostic_is_hard)
-}
-
-pub fn compile_clean_im_vector_hard_error_count(diagnostics: &im::Vector<Rc<ErrorNode>>) -> usize {
-    diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .count()
-}
-
-pub fn compile_clean_im_vector_advisory_count(diagnostics: &im::Vector<Rc<ErrorNode>>) -> usize {
-    diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_advisory(d))
-        .count()
-}
-
-pub fn compile_clean_vec_hard_error_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> usize {
-    diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_hard(d))
-        .count()
-}
-
-pub fn compile_clean_vec_advisory_count(diagnostics: &Rc<Vec<Rc<ErrorNode>>>) -> usize {
-    diagnostics
-        .iter()
-        .filter(|d| compile_clean_diagnostic_is_advisory(d))
-        .count()
 }
 
 fn format_compile_clean_hard_diagnostic_line(d: &Rc<ErrorNode>) -> String {
@@ -4858,19 +4810,6 @@ pub fn import_closure_from_adjacency(
     let mut result: Vec<String> = reached.into_iter().collect();
     result.sort();
     result
-}
-
-/// Host realization of `v2.lens.module_graph.import_closure` over modeled fact rows.
-/// Authority: `src/v2/lens/module_graph.dag` — this is the consumer repoint surface for
-/// `cli_run.rs` resolve/reconcile (Phase 1 de-fork); fact extraction stays on the existing
-/// `import_resolution_facts` / `module_declaration_facts` builtins.
-pub fn import_closure_from_facts(
-    entry_path: &str,
-    edges: &[ImportResolutionFactRaw],
-    nodes: &[ModuleDeclarationFactRaw],
-) -> Vec<String> {
-    let adjacency = build_import_adjacency(edges, nodes);
-    import_closure_from_adjacency(entry_path, &adjacency)
 }
 
 /// Pre-built `import_resolution_facts` / `module_declaration_facts` rows for one pool-root
@@ -7548,12 +7487,6 @@ fn record_provider_bootstrap_store_skip() {
     PROVIDER_BOOTSTRAP_STORE_SKIPS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 }
 
-/// Observed count of bootstrap-window store skips — the countable half of the
-/// disclosed refusal (§5).
-pub fn provider_bootstrap_store_skip_count() -> usize {
-    PROVIDER_BOOTSTRAP_STORE_SKIPS.load(std::sync::atomic::Ordering::SeqCst)
-}
-
 pub(crate) fn with_cross_process_provider_routing_suppressed<F, R>(f: F) -> R
 where
     F: FnOnce() -> R,
@@ -9119,19 +9052,6 @@ fn stripped_fn_body_marker() -> Rc<Node> {
 pub fn is_census_heads_fn_stand_in(node: &Rc<Node>) -> bool {
     node.name == CENSUS_HEADS_FN_STAND_IN_NAME
         || STRIPPED_FN_BODY_MARKER.with(|marker| Rc::ptr_eq(node, marker))
-}
-
-/// Optional query helper for non-inference traversals. Loud refusal on inference is
-/// enforced by `ExprErrorKind::CensusHeadsBodyStripped` in `infer_expr`, not this API.
-pub fn census_heads_body_traversal_refusal(node: &Rc<Node>) -> Option<String> {
-    if is_census_heads_fn_stand_in(node) {
-        Some(format!(
-            "census heads-only pool parse refused: body traversal hit stand-in '{}'",
-            CENSUS_HEADS_FN_STAND_IN_NAME
-        ))
-    } else {
-        None
-    }
 }
 
 #[cfg(any(test, feature = "interp_test_witness"))]
@@ -10893,20 +10813,6 @@ fn typed_module_cache_cap_derivation() -> (usize, String, bool) {
         TYPED_MODULE_CACHE_MAX_ENTRIES_CEIL,
     );
     (cap, source_label, degraded)
-}
-
-/// Host-budget-derived cap on `typed_module_cache` entries for the private
-/// per-index store (width=1 drain path). `GUNBC_TYPED_MODULE_CACHE_MAX_ENTRIES`
-/// is an operator/test probe: still clamped to `1..CEIL` (never unbounded); a
-/// malformed override falls through to the derived cap (fail-closed).
-///
-/// This is the pure, un-cached derivation — kept for direct env-override
-/// tests. Runtime call sites must go through `typed_module_cache_cap`
-/// instead, which samples this exactly once per index lifetime; re-deriving
-/// from a live host-shared signal on every insert was the 2026-07-21 fleet
-/// OOM incident (see the doc comment on `MultiEntryIndex::typed_module_cache_cap`).
-pub fn typed_module_cache_max_entries() -> usize {
-    typed_module_cache_cap_derivation().0
 }
 
 /// The typed-cache cap for `index`, sampled exactly ONCE for this index's
@@ -18170,78 +18076,6 @@ pub(crate) fn resolve_entry_file_under_roots(
     ))
 }
 
-pub fn wet_hermetic_scaffold_roster_entry_prefix(
-    source_roots: &[String],
-) -> Result<String, String> {
-    let entry =
-        resolve_entry_file_under_roots(source_roots, WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY)?;
-    let (graph, source_indices) = resolve_entry_graph_shared(source_roots, &entry)?;
-    let sources = load_sources_for_entry(source_roots, &entry)?;
-    let entry_source = sources
-        .iter()
-        .find(|s| s.path == entry || s.path.ends_with(WET_HERMETIC_EQUIVALENCE_WITNESS_ENTRY))
-        .ok_or_else(|| format!("{entry}: missing from entry closure"))?;
-    let entry_module = extract_module_path(&entry_source.content)
-        .ok_or_else(|| format!("{entry}: missing module declaration"))?;
-    let typed_module = entry_typed_module(&graph, &source_indices, &entry_module)?;
-    let si = Rc::new((*source_indices).clone());
-    for item in typed_module.items.iter() {
-        if item.body.is_none() {
-            continue;
-        }
-        let decl_name = authored_name_at(si.clone(), item.clone());
-        if decl_name != WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA {
-            continue;
-        }
-        let body = item.body.as_ref().ok_or_else(|| {
-            format!("{entry}: data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}' missing body")
-        })?;
-        return literal_string_from_expr(body).ok_or_else(|| {
-            format!(
-                "{entry}: data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}' must be a string literal"
-            )
-        });
-    }
-    Err(format!(
-        "{entry}: missing data '{WET_HERMETIC_SCAFFOLD_ROSTER_PREFIX_DATA}'"
-    ))
-}
-
-pub fn is_governed_service_representative_row(row: &DiscoveryRow, prefix: &str) -> bool {
-    !prefix.is_empty() && row.entry.contains(prefix)
-}
-
-pub fn wet_hermetic_discovery_outcome_divergences(
-    wet: &[DiscoveryWitnessOutcome],
-    hermetic: &[DiscoveryWitnessOutcome],
-) -> Vec<String> {
-    let mut divergences = Vec::new();
-    if wet.len() != hermetic.len() {
-        divergences.push(format!(
-            "roster size mismatch: wet={} hermetic={}",
-            wet.len(),
-            hermetic.len()
-        ));
-        return divergences;
-    }
-    for (w, h) in wet.iter().zip(hermetic.iter()) {
-        if w.entry != h.entry || w.function != h.function {
-            divergences.push(format!(
-                "roster order mismatch: wet=({},{}) hermetic=({},{})",
-                w.function, w.entry, h.function, h.entry
-            ));
-            continue;
-        }
-        if w.outcome != h.outcome {
-            divergences.push(format!(
-                "{} ({}): wet={:?} hermetic={:?}",
-                w.function, w.entry, w.outcome, h.outcome
-            ));
-        }
-    }
-    divergences
-}
-
 fn proc_status_kb_field(prefix: &str) -> Option<u64> {
     let status = std::fs::read_to_string("/proc/self/status").ok()?;
     let line = status.lines().find(|l| l.starts_with(prefix))?;
@@ -18329,20 +18163,6 @@ pub fn peak_rss_vhwm_bytes() -> Option<u64> {
     {
         Some(raw.saturating_mul(1024))
     }
-}
-
-/// `memory.events` `high` counter from the process leaf cgroup, when readable.
-pub fn cgroup_memory_events_high() -> Option<u64> {
-    let dir = crate::memory_governor::leaf_cgroup_dir()?;
-    let raw = crate::memory_governor::read_cgroup_raw(&dir, "memory.events")?;
-    raw.lines().find_map(|line| {
-        let mut parts = line.split_whitespace();
-        let key = parts.next()?;
-        if key != "high" {
-            return None;
-        }
-        parts.next()?.parse().ok()
-    })
 }
 
 pub fn floor_discovery_path_excluded(path: &str) -> bool {
@@ -29808,134 +29628,6 @@ pub struct BareRefReachability {
     pub cross_subtree_unique_sites: usize,
 }
 
-/// Count bare-reference reachability for `name` using the same nearest-wins producer as
-/// `reference_resolution_facts` (import-less files only).
-pub fn bare_ref_reachability_for_name(
-    pool_roots: &[String],
-    importer_roots: &[String],
-    exclude_substrings: &[String],
-    name: &str,
-) -> BareRefReachability {
-    let abs_pool_roots = pool_roots_abs(pool_roots);
-    let abs_importer_roots = pool_roots_abs(importer_roots);
-    let mut decl_index: HashMap<String, std::collections::BTreeSet<String>> = HashMap::new();
-    let mut module_names: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut seen_modules: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut pool_trees: HashMap<String, (String, Rc<crate::v1_std_core::Node>, bool)> =
-        HashMap::new();
-    for root in &abs_pool_roots {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
-        files.sort();
-        for file in files {
-            let rel = rel_path_for_layer_import(&file);
-            let content = match std::fs::read_to_string(&file) {
-                Ok(c) => c,
-                Err(_) => continue,
-            };
-            let module_name = match extract_module_path(&content) {
-                Some(m) => m,
-                None => continue,
-            };
-            let tree = match parse_module_node_tolerant(&rel, &content) {
-                Some(t) => t,
-                None => continue,
-            };
-            let has_imports = !extract_import_paths(&content).is_empty();
-            if seen_modules.insert(module_name.clone()) {
-                module_names.insert(module_name.clone());
-                for decl_name in collect_module_decl_names(&tree) {
-                    decl_index
-                        .entry(decl_name)
-                        .or_default()
-                        .insert(module_name.clone());
-                }
-            }
-            pool_trees
-                .entry(rel)
-                .or_insert((module_name, tree, has_imports));
-        }
-    }
-
-    let mut stats = BareRefReachability::default();
-    for root in &abs_importer_roots {
-        let root_path = Path::new(root);
-        if !root_path.is_dir() {
-            continue;
-        }
-        let mut files: Vec<PathBuf> = Vec::new();
-        collect_dag_files_tolerant(root_path, &mut files);
-        files.sort();
-        for file in files {
-            let rel = rel_path_for_layer_import(&file);
-            if is_excluded_import_path(&rel, exclude_substrings) {
-                continue;
-            }
-            let (self_module, tree) = match pool_trees.get(&rel) {
-                Some((_, _, true)) => continue,
-                Some((m, t, false)) => (m.clone(), t.clone()),
-                None => {
-                    let content = match std::fs::read_to_string(&file) {
-                        Ok(c) => c,
-                        Err(_) => continue,
-                    };
-                    if !extract_import_paths(&content).is_empty() {
-                        continue;
-                    }
-                    let module_name = match extract_module_path(&content) {
-                        Some(m) => m,
-                        None => continue,
-                    };
-                    match parse_module_node_tolerant(&rel, &content) {
-                        Some(t) => (module_name, t),
-                        None => continue,
-                    }
-                }
-            };
-            let mut bare: std::collections::HashSet<String> = std::collections::HashSet::new();
-            let mut chains: Vec<Vec<String>> = Vec::new();
-            for item in tree.children.iter() {
-                collect_node_refs(item, &mut bare, &mut chains);
-            }
-            if !bare.contains(name) {
-                continue;
-            }
-            let Some(mods) = decl_index.get(name) else {
-                continue;
-            };
-            if mods.contains(&self_module) {
-                continue;
-            }
-            let mut best_len = 0usize;
-            let mut winners: Vec<&String> = Vec::new();
-            for m in mods.iter() {
-                let shared = module_prefix_shared_len(&self_module, m);
-                if winners.is_empty() || shared > best_len {
-                    best_len = shared;
-                    winners.clear();
-                    winners.push(m);
-                } else if shared == best_len {
-                    winners.push(m);
-                }
-            }
-            match winners.len() {
-                0 => {}
-                1 => {
-                    if module_prefix_shared_len(&self_module, winners[0]) == 0 {
-                        stats.cross_subtree_unique_sites += 1;
-                    }
-                }
-                _ => stats.ambiguous_sites += 1,
-            }
-        }
-    }
-    stats
-}
-
 #[cfg(test)]
 mod reference_edge_producer_tests {
     use super::reference_resolution_facts;
@@ -30686,10 +30378,6 @@ pub fn commit_witness_claim_roster_unresolvable_count() -> i64 {
     defects.len() as i64
 }
 
-pub fn commit_witness_claim_roster_holds() -> bool {
-    commit_witness_claim_roster_unresolvable_count() == 0
-}
-
 pub fn non_fold_residue_wildcard_red_fixture_holds() -> bool {
     let fixture = vec![(
         "m.dag".to_string(),
@@ -31243,14 +30931,6 @@ pub fn non_fold_residue_stale_roster_count() -> i64 {
 
 pub fn non_fold_residue_coproduct_universe_count() -> i64 {
     nfr_build_report().coproduct_universe as i64
-}
-
-pub fn non_fold_residue_live_sites() -> &'static [String] {
-    &nfr_build_report().sites
-}
-
-pub fn non_fold_residue_roster_size() -> i64 {
-    non_fold_residue_roster_entries().len() as i64
 }
 
 #[cfg(test)]
