@@ -1,11 +1,12 @@
 module test.claim.belt_tick_receipt_home_witness
 
-import std.types { Bool, String }
+import std.types { Bool, String, FilePath }
 import gunbc.host_layout { instance_receipts_dir }
 import gunbc.roadmap_dashboard_instance {
   srv1_live_dashboard_instance,
   srv1_lab_dashboard_instance,
   dashboard_instance_dispatch_attempt_state_root,
+  dashboard_path_is_under,
 }
 import gunbc.roadmap_belt_actuate { belt_tick_receipt_path_for_instance }
 import gunbc.live_deploy.emit {
@@ -30,13 +31,30 @@ import v2.std.orchestration { PipelineStep, Do, Run }
 // rather than against a literal, so it keeps discriminating if that root is ever re-pointed.
 // NARROWED when the second slot was deleted: the first conjunct used to assert that the blue/green
 // pair really did share one root, which was the premise the rest defended. One production instance
-// remains, so that premise has no subject and asserting it would be asserting a self-equality. The
-// claim it guarded is untouched — the receipt must not live in the shared root — and that is what
-// is left here.
+// remains, so that premise has no subject and asserting it would be asserting a self-equality.
+//
+// The first cut of that narrowing left `receipt != shared`, and review caught that it is a
+// TAUTOLOGY dressed as this claim's law. The shared root is /opt/gunbc/attempt-state and the
+// receipt is /opt/gunbc/receipts/belt-last-tick.json, so the inequality holds for a reason unrelated
+// to the claim — and the exact defect the claim is NAMED for, a receipt homed IN the shared root at
+// /opt/gunbc/attempt-state/belt-last-tick.json, ALSO satisfies it. The narrowing had removed the one
+// conjunct carrying content and left the empty one standing.
+//
+// Containment is the predicate that states the law, and it is the same one
+// host_shared_slots_are_exempt_from_containment_but_labs_are_not uses: the receipt must not be
+// UNDER the shared attempt-state root. This reds for the real defect.
+// The second conjunct is the CONTROL, and it is in the claim rather than in this comment on
+// purpose: it constructs the defect -- the receipt homed inside the shared root -- and asserts the
+// predicate CATCHES it. Without it, `!dashboard_path_is_under(...)` would be one predicate change
+// away from being vacuous again in a way no reader could see, which is exactly how the tautology
+// got here. With it, a predicate that stopped detecting containment reds this claim from the
+// positive side even while the negative side still looks satisfied.
 test fn the_receipt_is_not_homed_in_the_shared_attempt_state_root() -> Bool {
-  let shared = dashboard_instance_dispatch_attempt_state_root(instance: srv1_live_dashboard_instance()) as String
+  let shared = dashboard_instance_dispatch_attempt_state_root(instance: srv1_live_dashboard_instance())
   let receipt = belt_tick_receipt_path_for_instance(instance: srv1_live_dashboard_instance())
-  receipt != shared
+  let homed_in_shared = join([shared as String, "/belt-last-tick.json"], "") as FilePath
+  !dashboard_path_is_under(path: receipt as FilePath, root: shared)
+    && dashboard_path_is_under(path: homed_in_shared, root: shared)
 }
 
 // Two instances on one host must not fuse. The receipt is per-instance by construction because it

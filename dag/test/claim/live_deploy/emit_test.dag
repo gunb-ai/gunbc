@@ -1,11 +1,10 @@
 module test.claim.live_deploy.emit
 
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_other_release_revision }
-import std.types { Bool, String, List, NonEmptyStr, Int }
+import std.types { Bool, String, List, NonEmptyStr }
 import std.os.types { Apt }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
-  OwnedArtifactKind,
   DeploymentDependencyStep,
   EnsuredPackage,
   TailscalePackage,
@@ -25,12 +24,7 @@ import gunbc.live_deploy.spec {
   Dependency,
   deployment_tailnet_url,
   gunbc_roadmap_unit_name,
-  GunbcSourceTree,
   ServeBinary,
-  DispatchWorktreeRoot,
-  AttemptStateRoot,
-  SystemdUnit,
-  BeltTimerUnit,
   FleetConvergeTimerUnit,
   TailscaleServeMapping,
   TeardownDisposition,
@@ -112,12 +106,6 @@ fn witness_retract_script() -> String {
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
-fn spec_artifact_kind_count(spec: DeploymentSpec, kind: OwnedArtifactKind) -> Int {
-  count(filter(spec.steps, step => match step {
-    ArtifactStep { step: art } => art.kind == kind
-    Dependency { step: _ } => false
-  }))
-}
 
 // ── RETIRED WITH THE BLUE/GREEN PARTITION ──────────────────────────────────────────────────────
 //
@@ -138,6 +126,12 @@ fn spec_artifact_kind_count(spec: DeploymentSpec, kind: OwnedArtifactKind) -> In
 // pre-flip window to protect — the deploy's only mapping write is its own, on the only slot. The
 // guarantee is not weakened here, it is vacuous, and a claim kept alive over a vacuous subject is
 // the specification-without-execution shape DESIGN section 5 names.
+//
+// Retired with them, and MISSED on the first pass: spec_artifact_kind_count, the helper all three
+// read through. The receipt below enumerated the other dead helper and not this one, which is the
+// residue class this cut kept tripping over — review found it as an orphan with a single occurrence
+// (its own definition). Its OwnedArtifactKind imports go with it, keeping only the variants the
+// surviving claims still name.
 //
 // NOT retired with them: witness_retract_attempt_state_root_refuses_when_nonempty, which the third
 // claim called as a conjunct. It is independently enrolled as its own test fn below, so removing

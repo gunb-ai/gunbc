@@ -130,8 +130,13 @@ test fn the_desired_url_is_the_derived_public_clone_url() -> Bool {
 // Identity is repository x remote name. Two instances on one host both call their remote `origin`,
 // so a key that dropped the repository would fuse their members into one.
 // The deleted second slot was this claim's second path, not its subject: the member is keyed on the
-// repository path it is HANDED, so any two distinct paths exercise it. Re-pointed at the lab root
-// rather than retired, and rather than left spelling a root no deployment owns any more.
+// repository path it is HANDED, so any two distinct paths exercise it, and an arbitrary second path
+// is the better fixture precisely because the law is about the key rather than about any instance.
+// /opt/gunbc-lab/gunbc is NOT srv1-lab's root -- that is
+// gunbc.roadmap_dashboard_instance srv1_dashboard_lab_root, under
+// /home/briansrls/.local/share/gunbc-dashboard-instances -- and an earlier version of this comment
+// called it one, which review caught. It is a synthetic path owned by nothing, chosen only to be
+// distinct from the live root, and it is named as such here so nobody reads it as a live location.
 test fn identity_separates_two_instances_on_one_host() -> Bool {
   let other = deployed_tree_remote_desired(repository_path: "/opt/gunbc-lab/gunbc" as FilePath)
   let live = deployed_tree_remote_desired(repository_path: "/opt/gunbc/gunbc" as FilePath)

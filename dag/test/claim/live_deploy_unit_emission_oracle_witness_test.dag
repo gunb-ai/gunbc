@@ -44,31 +44,30 @@ import gunbc.live_deploy.spec { DeploymentSpec, deployment_spec_srv1 }
 // Live drift detection is a DIFFERENT mechanism this fixture does not provide: it would have to
 // observe the host at run time and would belong with the fleet observation lane, not here.
 //
-// ── RETIRED FOR WANT OF AN OBSERVATION, NOT FOR WANT OF A SUBJECT ──────────────────────────────
+// ── RETIRED WITH THEIR MEMBER, NOT PENDING AN OBSERVATION ──────────────────────────────────────
 //
 // the_fleet_converge_service_unit_matches_the_deployed_bytes and
 // the_fleet_converge_timer_unit_matches_the_deployed_bytes were transcribed from
-// gunbc-srv1-green-fleet-converge.{service,timer}. Those files existed only on the deleted slot.
-// srv1's surviving deployment carries no fleet-converge units at all — checked on the host on
-// 2026-08-19, where /etc/systemd/system holds gunbc-roadmap.service, its belt pair, tree-sync and
-// tree-remote, and nothing else for the live slot.
+// gunbc-srv1-green-fleet-converge.{service,timer}, which existed only on the deleted slot. srv1's
+// surviving deployment carries no fleet-converge units — checked on the host 2026-08-19.
 //
-// So there are no host bytes to transcribe, and that is the whole reason these are gone. The
-// members are still in deployment_spec_srv1's step list, so the emitter still renders them and
-// they will appear on the host at the next apply; the absence is that the live slot predates them,
-// not that the units were retired. Writing an expectation anyway would mean authoring the bytes
-// from the emitter and calling the result an independent transcription, which is exactly the
-// self-capture golden the header above refuses — a change detector wearing an oracle's name.
+// THE FIRST VERSION OF THIS RECEIPT GAVE A FALSE REASON, and the correction matters more than the
+// rows. It said the members were still in deployment_spec_srv1's step list and would appear at the
+// next apply, so the oracle would re-arm then. They are not. gunbc.live_deploy.spec
+// deployment_owned_steps lists eight members and FleetConvergeTimerUnit is not among them —
+// deployment_apply_order_note in that module records it as RETIRED from deployment membership by
+// operator directive 2026-08-13, and test.claim.live_deploy.emit carries an enrolled claim
+// asserting exactly that absence. So the re-arm trigger I wrote could never fire: no apply will
+// ever install those units. That is the stalled-trigger shape DESIGN section 4b names, a `cannot
+// climb` wearing the label `can climb after one event`, and it would have sent a later session
+// waiting on an apply that cannot deliver.
 //
-// RE-ARMS: transcribe both units off srv1 after the next apply of deployment_spec_srv1, the same
-// way every surviving row here was obtained.
-
-// RE-TRANSCRIBED against the surviving deployment. This fixture used to read the green slot; that
-// slot is deleted, so its bytes had no subject. Re-pointing was the right disposition rather than
-// retirement — the oracle's subject is the EMITTER, and the slot was only the instance whose
-// deployed files supplied an independent transcription. srv1's live units were read on 2026-08-19,
-// the same way and for the same reason, so the fixture keeps the property that makes it sound: the
-// expected bytes were obtained without consulting the functions under test.
+// WHAT IS ACTUALLY TRUE: gunbc.live_deploy.emit emit_fleet_converge_service_unit_doc and
+// emit_fleet_converge_timer_unit_doc now have no member, no spec consumer, and no oracle. They are
+// orphaned emitters, and under delete-first they are the NEXT root to cut rather than evidence to
+// re-arm. This is recorded as an observation for that cut, not as an obligation on this one — no
+// trigger is declared here, because there is no event that would discharge it.
+//
 fn live_spec() -> DeploymentSpec {
   deployment_spec_srv1()
 }

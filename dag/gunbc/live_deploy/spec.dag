@@ -510,25 +510,8 @@ fn deployment_spec_srv1() -> DeploymentSpec {
 
 
 
-data alternating_state_roots_dissolved_note: String = "THE ALTERNATING-STATE-ROOTS SCAFFOLD IS DISSOLVED BY DELETION, WHICH IS THE CONDITION IT NAMED. It read: dissolves when dispatch worktree and attempt-state roots are no longer a second copy provisioned per candidate, leaving two alternating state roots. Blue/green was deleted at the root on 2026-08-19, so there is one deployment, one dispatch-worktree root and one attempt-state root -- not two shared ones, but one, which satisfies the condition more completely than the host-scoped-sharing shape it anticipated. The bounded outage repair it accompanied (deployment_retiring_slot_spec) went with it: retirement of an old slot is not an operation this model has any more.\n\nRecorded rather than silently dropped because a scaffold row that vanishes with its subject leaves no evidence the obligation was DISCHARGED as opposed to forgotten (DESIGN 4b: dissolution on climb deletes the production machinery, never the receipt)."
+data alternating_state_roots_dissolved_note: String = "THE ALTERNATING-STATE-ROOTS SCAFFOLD IS DISSOLVED BY DELETION, WHICH IS THE CONDITION IT NAMED. It read: dissolves when dispatch worktree and attempt-state roots are no longer a second copy provisioned per candidate, leaving two alternating state roots. Blue/green was deleted at the root on 2026-08-19, so there is one deployment, one dispatch-worktree root and one attempt-state root -- not two shared ones, but one, which satisfies the condition more completely than the host-scoped-sharing shape it anticipated. The bounded outage repair it accompanied (deployment_retiring_slot_spec) went with it: retirement of an old slot is not an operation this model has any more.\n\nRecorded rather than silently dropped because a scaffold row that vanishes with its subject leaves no evidence the obligation was DISCHARGED as opposed to forgotten (DESIGN 4b: dissolution on climb deletes the production machinery, never the receipt).\n\nRetirement classification went with it. RetirementDisposition and owned_artifact_retirement_disposition -- a coproduct and the total fold over OwnedArtifactKind that answered which members a retiring slot stops and which it preserves -- had exactly one consumer, deployment_retiring_slot_spec, and no other. With no retiring slot there is nothing to classify, so they are deleted here rather than left as a total fold nobody calls. Review caught them: the first cut of this change claimed zero production residue and this was part of what refuted it."
 
-type RetirementDisposition
-  = RetiresRuntime
-  | RetirementPreserves
-
-fn owned_artifact_retirement_disposition(kind: OwnedArtifactKind) -> RetirementDisposition {
-  match kind {
-    ServeBinary => RetirementPreserves
-    GunbcSourceTree => RetirementPreserves
-    DispatchWorktreeRoot => RetirementPreserves
-    AttemptStateRoot => RetirementPreserves
-    SystemdUnit => RetiresRuntime
-    BeltTimerUnit => RetiresRuntime
-    FleetConvergeTimerUnit => RetiresRuntime
-    TailscaleServeMapping => RetirementPreserves
-    DeployedTreeRemoteUnit => RetiresRuntime
-  }
-}
 
 
 
