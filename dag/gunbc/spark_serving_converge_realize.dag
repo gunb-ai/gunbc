@@ -1,12 +1,14 @@
 module gunbc.spark_serving_converge_realize
 
 import std.types { String, List, NonEmptyStr, Bool }
+import extdeps.systemd.systemctl { systemctl_user_enable_argv, systemctl_user_start_argv }
 import gunbc.fleet_known_hosts_anchor { portable_remote_words, portable_remote_words_strings }
 import gunbc.spark_serving_realization {
   ServingInstallEffect,
   EnableLingerForOwnAccount,
   ReloadUserManager,
   EnableUserUnit,
+  StartUserUnit,
   WriteUserUnitFile,
   WriteSystemUnitFile,
   ReloadSystemManager,
@@ -117,13 +119,33 @@ fn spark_serving_reload_user_manager_remote_argv() -> SparkServingInstallRemoteC
   )
 }
 
-// enable --now, matching the fleet_converge_timer precedent: the frozen effect order places
-// PullModelArtifact AFTER EnableUserUnit, and pulling a model targets the RUNNING server, so the
-// unit must be started here rather than left enabled-but-inactive for a later effect to start.
+// ENABLE, NOT `enable --now`, AND THE `--now` IS WHAT THIS CHANGE REMOVES.
+//
+// The fused form was justified by an ordering argument that was true: PullModelArtifact runs after
+// EnableUserUnit and targets a RUNNING server, so something had to start the unit, and `--now` was
+// the nearest thing to hand. What it cost was the distinction. Enablement is persistence -- whether
+// the unit returns after a reboot -- and activity is whether it is running right now; `--now`
+// applied both remedies under one word, so the enablement member reconciling as converged USUALLY
+// implied a live unit, and usually is not a guarantee. A unit that died after being enabled left
+// every resource member converged with nothing serving, and the only thing that noticed was the
+// generation probe at the very end. That is detection by symptom.
+//
+// The ordering argument survives intact and is now carried by the schedule rather than by an argv
+// flag: the model slot requires UnitActive (a BarrierBefore), the activity address establishes it,
+// and the activity address itself requires UnitKnownToManager. So the pull still runs against a
+// started server -- because the dependency says so, which is checkable, rather than because two
+// remedies were spelled in one command, which was not.
 fn spark_serving_enable_user_unit_remote_argv() -> SparkServingInstallRemoteCommandsVerdict {
   spark_serving_admit_portable_remote_argv(
     identity: "enable-user-unit" as NonEmptyStr,
-    raws: ["systemctl", "--user", "enable", "--now", spark_serving_unit_name],
+    raws: systemctl_user_enable_argv(unit: spark_serving_unit_name as NonEmptyStr),
+  )
+}
+
+fn spark_serving_start_user_unit_remote_argv() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_admit_portable_remote_argv(
+    identity: "start-user-unit" as NonEmptyStr,
+    raws: systemctl_user_start_argv(unit: spark_serving_unit_name as NonEmptyStr),
   )
 }
 
@@ -512,6 +534,7 @@ fn realize_spark_serving_install_effect_command(
       spark_serving_enable_linger_remote_argv(login: executor_login)
     ReloadUserManager => spark_serving_reload_user_manager_remote_argv()
     EnableUserUnit => spark_serving_enable_user_unit_remote_argv()
+    StartUserUnit => spark_serving_start_user_unit_remote_argv()
     WriteSystemUnitFile =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: WriteSystemUnitFile is not implemented in the Spark serving slice",

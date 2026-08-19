@@ -102,6 +102,10 @@ import gunbc.spark_serving_observed_members {
   SparkServingObservedUnitState,
   UserUnitStateUnobserved,
   SparkServingUnitManagerState,
+  SparkServingObservedActivityState,
+  UnitActivityRunning,
+  UnitActivityStopped,
+  UnitActivityUnobserved,
   UserUnitManagerEnabled,
   UserUnitManagerDisabled,
   UserUnitManagerNotRegistered,
@@ -723,6 +727,24 @@ fn cat_reported_missing_file(result: SshSessionExecResult) -> Bool {
 type SparkServingObservedUnit {
   state: SparkServingObservedUnitState
   enablement: SparkServingUnitManagerState
+  activity: SparkServingObservedActivityState
+}
+
+// `systemctl --user is-active` and nothing else decides this. Exit 0 with "active" is running;
+// exit 3 is systemd's documented answer for a unit that is simply not running, which is a healthy
+// observation and not a probe failure; every other outcome leaves the activity UNOBSERVED, because
+// a manager we could not reach has not told us the unit is dead, and planning a start on that
+// silence would actuate off a probe that never answered.
+fn classify_is_active_result(result: SshSessionExecResult) -> SparkServingObservedActivityState {
+  if result.success && trim(s: result.stdout) == "active" {
+    UnitActivityRunning
+  } else if result.exit_code == 3 {
+    UnitActivityStopped
+  } else if result.success {
+    UnitActivityStopped
+  } else {
+    UnitActivityUnobserved
+  }
 }
 
 // THE MODEL STORE PRODUCER -- the evidence behind the model-slot member.
@@ -1192,21 +1214,45 @@ fn spark_serving_observe_user_unit_pair(
     context: context, host: host, raw_words: spark_serving_user_unit_read_argv(),
   ) {
     Absent =>
-      SparkServingObservedUnit { state: UserUnitStateUnobserved, enablement: UserUnitManagerUnobserved }
+      SparkServingObservedUnit {
+        state: UserUnitStateUnobserved,
+        enablement: UserUnitManagerUnobserved,
+        activity: UnitActivityUnobserved,
+      }
     Present { value: read } =>
       match spark_serving_probe_leg(
         context: context, host: host, raw_words: spark_serving_user_unit_is_enabled_argv(),
       ) {
         Absent =>
-          SparkServingObservedUnit { state: UserUnitStateUnobserved, enablement: UserUnitManagerUnobserved }
-        Present { value: enabled } =>
           SparkServingObservedUnit {
-            state: classify_observed_user_unit(
-              read_succeeded: read.success,
-              read_stdout: read.stdout,
-              file_absent: cat_reported_missing_file(result: read),
-            ),
-            enablement: classify_is_enabled_stdout(result: enabled),
+            state: UserUnitStateUnobserved,
+            enablement: UserUnitManagerUnobserved,
+            activity: UnitActivityUnobserved,
+          }
+        Present { value: enabled } =>
+          match spark_serving_probe_leg(
+            context: context, host: host, raw_words: spark_serving_active_probe_words(),
+          ) {
+            Absent =>
+              SparkServingObservedUnit {
+                state: classify_observed_user_unit(
+                  read_succeeded: read.success,
+                  read_stdout: read.stdout,
+                  file_absent: cat_reported_missing_file(result: read),
+                ),
+                enablement: classify_is_enabled_stdout(result: enabled),
+                activity: UnitActivityUnobserved,
+              }
+            Present { value: active } =>
+              SparkServingObservedUnit {
+                state: classify_observed_user_unit(
+                  read_succeeded: read.success,
+                  read_stdout: read.stdout,
+                  file_absent: cat_reported_missing_file(result: read),
+                ),
+                enablement: classify_is_enabled_stdout(result: enabled),
+                activity: classify_is_active_result(result: active),
+              }
           }
       }
   }
@@ -1449,6 +1495,7 @@ fn spark_serving_observed_members_for_unit(
     store: store,
     unit: observed_unit.state,
     enablement: observed_unit.enablement,
+    activity: observed_unit.activity,
     linger: linger,
   )
 }

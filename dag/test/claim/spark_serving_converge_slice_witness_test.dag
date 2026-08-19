@@ -63,6 +63,7 @@ import gunbc.spark_serving_observed_members {
   SparkServingObservedMemberProjection,
   SparkServingUnitManagerState,
   UserUnitManagerEnabled,
+  UnitActivityRunning,
   UserUnitManagerDisabled,
   UserUnitManagerNotRegistered,
   UserUnitManagerUnobserved,
@@ -94,6 +95,7 @@ import gunbc.spark_serving_converge_realize {
   realize_spark_serving_install_effect_commands,
   spark_serving_reload_user_manager_remote_argv,
   spark_serving_enable_user_unit_remote_argv,
+  spark_serving_start_user_unit_remote_argv,
   SparkServingInstallRemoteCommandsPresent,
   SparkServingInstallRemoteCommandsRefused,
 }
@@ -196,6 +198,7 @@ fn slice_projection_linger(r: SparkServingRelease, linger_enabled: Bool) -> Spar
     },
     unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
     enablement: UserUnitManagerEnabled,
+    activity: UnitActivityRunning,
     linger: if linger_enabled { LingerObservedEnabled } else { LingerObservedDisabled },
   )
 }
@@ -516,7 +519,35 @@ test fn enable_user_unit_targets_the_unit_identity_authority() -> Bool {
     SparkServingInstallRemoteCommandsPresent { steps: sts } =>
       remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 1
         && join(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), "\0")
-          == join(["systemctl", "--user", "enable", "--now", spark_serving_unit_name], "\0")
+          == join(["systemctl", "--user", "enable", spark_serving_unit_name], "\0")
+        && !any(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), w => w == "sudo")
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+// ENABLE DOES NOT START, AND THIS IS THE CLAIM THAT KEEPS IT THAT WAY.
+//
+// The install used `enable --now`, which applies two remedies under one word: persistence and
+// activity. That made an enabled-but-dead unit indistinguishable from a converged one at the
+// membership layer, because the enablement member was the only place either fact could be recorded.
+// A `--now` reintroduced anywhere fails here.
+test fn enable_user_unit_does_not_also_start_the_unit() -> Bool {
+  match spark_serving_enable_user_unit_remote_argv() {
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      !any(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), w => w == "--now")
+        && !any(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), w => w == "start")
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
+  }
+}
+
+// The other half: starting is its own operation against the same unit identity authority, so the
+// two remedies exist separately rather than the activity one having been dropped.
+test fn start_user_unit_is_its_own_operation_on_the_unit_identity() -> Bool {
+  match spark_serving_start_user_unit_remote_argv() {
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 1
+        && join(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), "\0")
+          == join(["systemctl", "--user", "start", spark_serving_unit_name], "\0")
         && !any(remote_operations_argv_only(operations: map(sts, st => st.operation)).first(), w => w == "sudo")
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
@@ -534,7 +565,7 @@ test fn realized_sequence_preserves_frozen_effect_order() -> Bool {
       remote_operations_argv_only(operations: map(sts, st => st.operation)).length() == 2
         && join(remote_operations_argv_only(operations: map(sts, st => st.operation))[0], "\0") == join(["systemctl", "--user", "daemon-reload"], "\0")
         && join(remote_operations_argv_only(operations: map(sts, st => st.operation))[1], "\0")
-          == join(["systemctl", "--user", "enable", "--now", spark_serving_unit_name], "\0")
+          == join(["systemctl", "--user", "enable", spark_serving_unit_name], "\0")
     SparkServingInstallRemoteCommandsRefused { reason: _ } => false
   }
 }

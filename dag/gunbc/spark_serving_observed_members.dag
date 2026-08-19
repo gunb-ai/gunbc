@@ -92,7 +92,7 @@ type SparkServingObservedLingerState
   | LingerUnobservedState
 
 type SparkServingObservedMemberProjection
-  = SparkServingObservedMembers { members: List<SparkServingMember>, runtime_observed: Bool, model_observed: Bool, unit_observed: Bool, registration_observed: Bool, enablement_observed: Bool, linger_observed: Bool }
+  = SparkServingObservedMembers { members: List<SparkServingMember>, runtime_observed: Bool, model_observed: Bool, unit_observed: Bool, registration_observed: Bool, enablement_observed: Bool, activity_observed: Bool, linger_observed: Bool }
 
 
 // A member is present in the OBSERVED list only when something was actually observed to be there.
@@ -255,10 +255,12 @@ fn spark_serving_observed_members(
   store: ModelStoreObservation,
   unit: SparkServingObservedUnitState,
   enablement: SparkServingUnitManagerState,
+  activity: SparkServingObservedActivityState,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
   spark_serving_reached_host_members(
-    host: host, runtime: runtime, store: store, unit: unit, enablement: enablement, linger: linger,
+    host: host, runtime: runtime, store: store, unit: unit, enablement: enablement,
+    activity: activity, linger: linger,
   )
 }
 
@@ -269,6 +271,7 @@ fn spark_serving_reached_host_members(
   store: ModelStoreObservation,
   unit: SparkServingObservedUnitState,
   enablement: SparkServingUnitManagerState,
+  activity: SparkServingObservedActivityState,
   linger: SparkServingObservedLingerState,
 ) -> SparkServingObservedMemberProjection {
   SparkServingObservedMembers {
@@ -284,7 +287,10 @@ fn spark_serving_reached_host_members(
             spark_serving_observed_unit_registration_members(
               host: host, manager: enablement, unit: unit,
             ),
-            spark_serving_observed_unit_enablement_members(host: host, manager: enablement),
+            concat(
+              spark_serving_observed_unit_enablement_members(host: host, manager: enablement),
+              spark_serving_observed_unit_activity_members(host: host, activity: activity),
+            ),
           ),
         ),
         spark_serving_observed_linger_members(host: host, linger: linger),
@@ -295,6 +301,7 @@ fn spark_serving_reached_host_members(
     unit_observed: spark_serving_unit_state_was_observed(unit: unit),
     registration_observed: spark_serving_registration_was_observed(manager: enablement),
     enablement_observed: spark_serving_enablement_was_observed(manager: enablement),
+    activity_observed: spark_serving_activity_was_observed(activity: activity),
     linger_observed: spark_serving_linger_state_was_observed(linger: linger),
   }
 
@@ -484,6 +491,55 @@ fn classify_observed_user_unit(
 //
 // This is NOT the unobserved arm wearing another name. The host answered; a real fact was
 // established. It is simply a fact about REGISTRATION, and it is reported there.
+// WHETHER THE UNIT IS RUNNING, as its own subject. `systemctl --user is-active` answers exactly this
+// and nothing else, and its exit codes are modeled rather than collapsed: 0 with "active" is
+// running, exit 3 is a healthy stopped unit, and anything else is a failure to observe -- because a
+// manager that could not be reached has not established that the unit is stopped, and reporting it
+// as stopped would plan a start against evidence nobody has.
+type SparkServingObservedActivityState
+  = UnitActivityRunning
+  | UnitActivityStopped
+  | UnitActivityUnobserved
+
+fn spark_serving_activity_was_observed(activity: SparkServingObservedActivityState) -> Bool {
+  match activity {
+    UnitActivityRunning => true
+    UnitActivityStopped => true
+    UnitActivityUnobserved => false
+  }
+}
+
+// THE ACTIVITY MEMBER, and the reason an unobserved activity produces NO member rather than a
+// stopped one. An absent member reconciles as MemberAdded against the desired active member, which
+// is the honest "we do not know that this is running"; a fabricated stopped member would assert a
+// measurement that was never taken, and would be indistinguishable from a genuinely dead unit.
+fn spark_serving_observed_unit_activity_members(
+  host: HostIdentity,
+  activity: SparkServingObservedActivityState,
+) -> List<SparkServingMember> {
+  match activity {
+    UnitActivityUnobserved => []
+    UnitActivityRunning => [
+      spark_serving_member(
+        host: host,
+        principal: spark_serving_serving_principal(),
+        address: SparkServingUserUnitActivityAddress,
+        state_digest: spark_serving_user_unit_active_state,
+        ownership: Owned,
+      ),
+    ]
+    UnitActivityStopped => [
+      spark_serving_member(
+        host: host,
+        principal: spark_serving_serving_principal(),
+        address: SparkServingUserUnitActivityAddress,
+        state_digest: spark_serving_user_unit_stopped_state,
+        ownership: Owned,
+      ),
+    ]
+  }
+}
+
 fn spark_serving_observed_unit_enablement_members(
   host: HostIdentity,
   manager: SparkServingUnitManagerState,

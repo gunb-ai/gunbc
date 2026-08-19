@@ -460,6 +460,7 @@ fn fleet_converge_spark_serving_effect_wire(effect: ServingInstallEffect) -> Str
     WriteUserUnitFile => "WriteUserUnitFile"
     ReloadUserManager => "ReloadUserManager"
     EnableUserUnit => "EnableUserUnit"
+    StartUserUnit => "StartUserUnit"
     InstallRuntimePackage => "InstallRuntimePackage"
     InstallOwnedRuntimeClosure => "InstallOwnedRuntimeClosure"
     PullModelArtifact => "PullModelArtifact"

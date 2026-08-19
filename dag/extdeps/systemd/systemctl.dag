@@ -68,6 +68,25 @@ fn systemctl_user_is_enabled_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "--user", "is-enabled", unit as String]
 }
 
+// `is-active` answers whether the unit is RUNNING NOW, which is the fact `is-enabled` does not carry
+// and cannot be derived from. Both directions are real: an enabled unit can be dead, and a running
+// unit can be disabled and vanish at the next boot.
+fn systemctl_user_is_active_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "is-active", unit as String]
+}
+
+// Enable and start are SEPARATE OPERATIONS, deliberately not `enable --now`. The fused form applies
+// two remedies under one word, so a plan that needed only one of them pays for both, and -- worse --
+// the two facts stop being separately observable in the actuation the way they are separately
+// observable on the host.
+fn systemctl_user_enable_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "enable", unit as String]
+}
+
+fn systemctl_user_start_argv(unit: NonEmptyStr) -> List<String> {
+  ["systemctl", "--user", "start", unit as String]
+}
+
 fn systemctl_show_load_state_argv(unit: NonEmptyStr) -> List<String> {
   ["systemctl", "show", unit as String, "--property=LoadState", "--value"]
 }

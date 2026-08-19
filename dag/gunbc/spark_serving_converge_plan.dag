@@ -359,7 +359,7 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
       SparkServingPlanArtifactRefused {
         cause: join(["plan-refused observation ", why], ""),
       }
-    SparkServingFullMembershipPlanReady { plan: full_plan, unit_observed: unit_observed, enablement_observed: enablement_observed, linger_observed: linger_observed, observed_members: observed_members, desired_members: desired_members } =>
+    SparkServingFullMembershipPlanReady { plan: full_plan, unit_observed: unit_observed, enablement_observed: enablement_observed, activity_observed: activity_observed, linger_observed: linger_observed, observed_members: observed_members, desired_members: desired_members } =>
       if !unit_observed {
         SparkServingPlanArtifactRefused {
           cause: join([
@@ -374,6 +374,14 @@ fn spark_serving_fleet_converge_plan_artifact_for_release(
             "plan-refused unit-enablement-unobserved host=", host as String,
             ": an unobserved enablement projects no member, so the desired one reads as absent and",
             " the plan would select EnableUserUnit off a probe that never answered",
+          ], ""),
+        }
+      } else if !activity_observed {
+        SparkServingPlanArtifactRefused {
+          cause: join([
+            "plan-refused unit-activity-unobserved host=", host as String,
+            ": an unobserved activity projects no member, so the desired active one reads as absent",
+            " and the plan would select StartUserUnit off a probe that never answered",
           ], ""),
         }
       } else if !linger_observed {
@@ -548,6 +556,7 @@ fn spark_serving_full_membership_plan(
       model_observed: model_observed,
       unit_observed: unit_observed,
       enablement_observed: enablement_observed,
+      activity_observed: activity_observed,
       linger_observed: linger_observed,
     } =>
       if runtime_observed == false {
@@ -573,6 +582,7 @@ fn spark_serving_full_membership_plan(
         ),
         unit_observed: unit_observed,
         enablement_observed: enablement_observed,
+        activity_observed: activity_observed,
         linger_observed: linger_observed,
         observed_members: observed,
       }
@@ -585,6 +595,7 @@ type SparkServingFullMembershipPlan
       plan: MembershipPlan<SparkServingMember, SparkServingMemberAt>,
       unit_observed: Bool,
       enablement_observed: Bool,
+      activity_observed: Bool,
       linger_observed: Bool,
       observed_members: List<SparkServingMember>,
       desired_members: List<SparkServingMember>,

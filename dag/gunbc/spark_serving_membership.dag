@@ -52,6 +52,7 @@ type SparkServingResourceAddress
   | SparkServingUserUnitAddress
   | SparkServingUserUnitRegistrationAddress
   | SparkServingUserUnitEnablementAddress
+  | SparkServingUserUnitActivityAddress
   | SparkServingModelSlotAddress { slot: NonEmptyStr }
   | SparkServingLingerAddress
 
@@ -79,6 +80,8 @@ fn spark_serving_resource_address_wire(address: SparkServingResourceAddress) -> 
       join(["user-unit-registration:", spark_serving_unit_name], "")
     SparkServingUserUnitEnablementAddress =>
       join(["user-unit-enablement:", spark_serving_unit_name], "")
+    SparkServingUserUnitActivityAddress =>
+      join(["user-unit-activity:", spark_serving_unit_name], "")
     SparkServingModelSlotAddress { slot: slot } =>
       join(["model-slot:", slot as String], "")
     SparkServingLingerAddress => "linger"
@@ -123,6 +126,27 @@ fn spark_serving_user_unit_state_digest() -> NonEmptyStr {
 // -- an enablement mismatch is a MemberChanged at this address, selecting only the enable effect.
 data spark_serving_user_unit_enabled_state: NonEmptyStr = "user-unit-enabled" as NonEmptyStr
 
+// ENABLEMENT IS PERSISTENCE; ACTIVITY IS WHETHER IT IS RUNNING NOW. Two facts, and the reason they
+// are two members rather than one is that they have different remedies and either can hold without
+// the other. `systemctl --user enable` makes a unit start at boot and starts nothing; a unit can be
+// enabled and dead, and it can be running while disabled -- which serves today and vanishes at the
+// next reboot.
+//
+// WHY THIS WAS NOT A MEMBER UNTIL NOW, stated because the gap was real and was found by reasoning
+// about the verdict rather than by a failure. The install used `enable --now`, which fuses the two,
+// so the enabled member reconciling as converged USUALLY implied a running unit. Usually is not a
+// guarantee: a unit that died after being enabled -- a crash, an OOM kill, a manual stop -- left
+// every resource member converged with nothing serving, and the only thing that noticed was the
+// terminal health probe at the very end. That is detection by symptom. The membership diff already
+// knew the unit was dead; it had no address at which to say so, so it said nothing and let the
+// convergence verdict rest on a generation probe catching it.
+//
+// With activity as its own member, an enabled-but-dead unit is a MemberChanged at THIS address and
+// selects a start -- a plan, not a postmortem.
+data spark_serving_user_unit_active_state: NonEmptyStr = "user-unit-active" as NonEmptyStr
+
+data spark_serving_user_unit_stopped_state: NonEmptyStr = "user-unit-stopped" as NonEmptyStr
+
 data spark_serving_user_unit_disabled_state: NonEmptyStr = "user-unit-disabled" as NonEmptyStr
 
 data spark_serving_user_unit_not_registered_state: NonEmptyStr = "user-unit-not-registered" as NonEmptyStr
@@ -165,6 +189,10 @@ fn spark_serving_desired_user_unit_registration_state_digest() -> NonEmptyStr {
 
 fn spark_serving_user_unit_enabled_state_digest() -> NonEmptyStr {
   spark_serving_user_unit_enabled_state
+}
+
+fn spark_serving_user_unit_active_state_digest() -> NonEmptyStr {
+  spark_serving_user_unit_active_state
 }
 
 type ExecutorLingerEnabled {}
@@ -268,6 +296,13 @@ fn spark_serving_desired_members(
       principal: principal,
       address: SparkServingUserUnitEnablementAddress,
       state_digest: spark_serving_user_unit_enabled_state_digest(),
+      ownership: Owned,
+    ),
+    spark_serving_member(
+      host: host,
+      principal: principal,
+      address: SparkServingUserUnitActivityAddress,
+      state_digest: spark_serving_user_unit_active_state_digest(),
       ownership: Owned,
     ),
     spark_serving_member(

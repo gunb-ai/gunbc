@@ -60,6 +60,7 @@ type SparkServingResourceFact
   | UnitFilePresent
   | UnitKnownToManager
   | UnitEnabled
+  | UnitActive
   | ModelPresentInSlot { slot: String }
   | LingerEnabledForAccount
 
@@ -69,6 +70,7 @@ fn spark_serving_resource_fact_wire(fact: SparkServingResourceFact) -> String {
     UnitFilePresent => "unit-file-present"
     UnitKnownToManager => "unit-known-to-manager"
     UnitEnabled => "unit-enabled"
+    UnitActive => "unit-active"
     ModelPresentInSlot { slot: slot } => join(["model-present:", slot], "")
     LingerEnabledForAccount => "linger-enabled"
   }
@@ -87,6 +89,7 @@ fn spark_serving_address_establishes(address: SparkServingResourceAddress) -> Sp
     SparkServingUserUnitAddress => UnitFilePresent
     SparkServingUserUnitRegistrationAddress => UnitKnownToManager
     SparkServingUserUnitEnablementAddress => UnitEnabled
+    SparkServingUserUnitActivityAddress => UnitActive
     SparkServingModelSlotAddress { slot: slot } => ModelPresentInSlot { slot: slot as String }
     SparkServingLingerAddress => LingerEnabledForAccount
   }
@@ -130,8 +133,10 @@ fn spark_serving_address_requires(address: SparkServingResourceAddress) -> List<
       [SparkServingRequirement { fact: UnitFilePresent, kind: ResourceDependsOn }]
     SparkServingUserUnitEnablementAddress =>
       [SparkServingRequirement { fact: UnitKnownToManager, kind: ResourceDependsOn }]
+    SparkServingUserUnitActivityAddress =>
+      [SparkServingRequirement { fact: UnitKnownToManager, kind: ResourceDependsOn }]
     SparkServingModelSlotAddress { slot: _ } =>
-      [SparkServingRequirement { fact: UnitEnabled, kind: BarrierBefore }]
+      [SparkServingRequirement { fact: UnitActive, kind: BarrierBefore }]
     SparkServingLingerAddress => []
   }
 }

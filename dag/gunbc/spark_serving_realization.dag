@@ -386,6 +386,7 @@ type ServingInstallEffect
   | WriteUserUnitFile
   | ReloadUserManager
   | EnableUserUnit
+  | StartUserUnit
   | EnableLingerForOwnAccount
   | InstallRuntimePackage
   | InstallOwnedRuntimeClosure
@@ -404,7 +405,7 @@ fn serving_install_effect_requires_privilege(effect: ServingInstallEffect) -> Bo
 fn realization_install_effects(realization: SparkServingRealization) -> List<ServingInstallEffect> {
   match realization {
     UserUnitRealization =>
-      [InstallOwnedRuntimeClosure, WriteUserUnitFile, ReloadUserManager, EnableUserUnit, EnableLingerForOwnAccount, PullModelArtifact]
+      [InstallOwnedRuntimeClosure, WriteUserUnitFile, ReloadUserManager, EnableUserUnit, StartUserUnit, EnableLingerForOwnAccount, PullModelArtifact]
     SystemUnitRealization =>
       [InstallRuntimePackage, WriteSystemUnitFile, ReloadSystemManager, EnableSystemUnit, PullModelArtifact]
     RootlessContainerRealization =>
@@ -727,6 +728,7 @@ fn effect_mutation_subject(
     WriteUserUnitFile => UserUnitRegistry { owner: actor }
     ReloadUserManager => UserUnitRegistry { owner: actor }
     EnableUserUnit => UserUnitRegistry { owner: actor }
+    StartUserUnit => UserUnitRegistry { owner: actor }
     PullModelArtifact => ModelArtifactStore { owner: actor }
     RunContainerAsOwnUser => ContainerRuntimeAsOwnUser { owner: actor }
   }
@@ -804,6 +806,7 @@ fn effect_actuation(
     WriteUserUnitFile => ActuatedByOwnerDirectly
     ReloadUserManager => ActuatedByOwnerDirectly
     EnableUserUnit => ActuatedByOwnerDirectly
+    StartUserUnit => ActuatedByOwnerDirectly
     PullModelArtifact => ActuatedByOwnerDirectly
     RunContainerAsOwnUser => ActuatedByOwnerDirectly
   }
