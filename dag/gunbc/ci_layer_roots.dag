@@ -1151,25 +1151,25 @@ data falsifier_substrate_long_lane_note: String = "Nightly falsifier batch 6 (te
 
 data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
+    entry: "dag/test/claim/dissolution_census_witness_test.dag",
     function: "census_counters_exhaustively_partition_the_rows",
     reason: "63.0s measured eval (CI run ci5, subject a5d1c49d9a802c3a, current-shape fold — docs/plans/measurements/floor-slow-rows-2026-08-17.md): the row derives census_closure_frontier_rows(), whose own cost is dominated by the transitive resolve of the ~20 extdeps modules gunbc.census_closure_frontier concatenates into one dissolution-frontier roster, not by the fold_frontier_expiry classification std.roster_frontier itself walks. Its input is the live tree's breadth, so its cost is not bounded by anything the fast lane can see. The discriminating half — that fold_frontier_expiry correctly classifies a bound row as pending/fired and an unbound row as always-unbound under a planted present_decls set — is fixture-shaped and stays per-PR in test.claim.dissolution_census_mechanism_witness_test, so this row carries the census and not the mechanism",
     dissolution: unbound_dissolution(description: "the concatenated groups in census_closure_frontier_rows resolve at closure cost rather than a ~20-module fan-in (module-identity-vs-storage lane) or v2 self-host gains compile-graph access (gunbc#5364); then the eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, and this row deletes with its siblings")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
+    entry: "dag/test/claim/dissolution_census_witness_test.dag",
     function: "bound_and_unbound_partition_the_same_rows",
     reason: "same census cost class as sibling census_counters_exhaustively_partition_the_rows (63.0s measured module total, CI run ci5)",
     dissolution: unbound_dissolution(description: "same as census_counters_exhaustively_partition_the_rows row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
+    entry: "dag/test/claim/dissolution_census_witness_test.dag",
     function: "census_holds_on_the_live_roster",
     reason: "same census cost class as sibling census_counters_exhaustively_partition_the_rows (63.0s measured module total, CI run ci5)",
     dissolution: unbound_dissolution(description: "same as census_counters_exhaustively_partition_the_rows row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
+    entry: "dag/test/claim/dissolution_census_witness_test.dag",
     function: "nothing_is_fired_and_still_present_today",
     reason: "same census cost class as sibling census_counters_exhaustively_partition_the_rows (63.0s measured module total, CI run ci5)",
     dissolution: unbound_dissolution(description: "same as census_counters_exhaustively_partition_the_rows row")
@@ -1625,7 +1625,7 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolution: unbound_dissolution(description: "replaced by a cheaper structural receipt proving the same live-corpus relation, or live containment observation becomes unnecessary")
   },
   SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/body_lowering/long/atom_body_discriminator_witness_test.dag",
+    entry: "src/v2/test/claim/body_lowering/atom_body_discriminator_witness_test.dag",
     function: "atom_body_discriminator_single_pass_receipt_holds",
     reason: "~18661ms thread-CPU measured locally (2026-08-14; wall=18704ms) — 3.7× over the 5s fast-lane budget. The 5001ms figure is only where a --eval-budget-ms 5000 probe aborted (EvalBudgetExceeded), not completed witness cost. One tokenize→parse→normalize over the four-declaration atom-body discriminator module, then declaration/parameter_count/ArrowBodyForm production rows plus both RED mirror directions on the same normalized tree. The cost is the production frontend crossing — not a second pass and not a synthetic node_synthetic fixture.",
     dissolution: unbound_dissolution(description: "witness realization lands the frontend natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")

@@ -1,4 +1,4 @@
-module test.claim.long.where_refinement_enforcement_witness
+module test.claim.where_refinement_enforcement_witness
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

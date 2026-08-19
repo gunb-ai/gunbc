@@ -613,7 +613,7 @@ data frozen_path_deferrals: List<FrozenPathDeferral> = [
     ]
   },
   FrozenPathDeferral {
-    entry: "src/v2/test/claim/identity_captured_navigation/long/roster_gate_test.dag",
+    entry: "src/v2/test/claim/identity_captured_navigation/roster_gate_test.dag",
     functions: [
       "roster_dag_language_model_zero_suspects_within_ratchet",
       "roster_body_lowering_fold_zero_suspects_within_ratchet",

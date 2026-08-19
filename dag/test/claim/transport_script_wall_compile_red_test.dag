@@ -1,4 +1,4 @@
-module test.claim.long.transport_script_wall_compile_red
+module test.claim.transport_script_wall_compile_red
 
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 

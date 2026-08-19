@@ -1,4 +1,4 @@
-module test.claim.long.roadmap_row_witness
+module test.claim.roadmap_row_witness
 
 import gunbc.roadmap_style { roadmap_css }
 import gunbc.roadmap_page { roadmap_page_for_authority }
