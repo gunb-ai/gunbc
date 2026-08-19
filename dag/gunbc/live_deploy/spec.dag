@@ -371,6 +371,10 @@ fn deployment_owned_steps(
   [
     DeploymentArtifactStep { kind: GunbcSourceTree, path: instance.repo_root as String as NonEmptyStr },
     DeploymentArtifactStep { kind: ServeBinary, path: instance.serve_binary as String as NonEmptyStr },
+    DeploymentArtifactStep {
+      kind: DeployedTreeRemoteUnit,
+      path: deployment_tree_remote_unit_path(names: names),
+    },
     DeploymentArtifactStep { kind: DispatchWorktreeRoot, path: dashboard_instance_dispatch_worktree_root(instance: instance) as String as NonEmptyStr },
     DeploymentArtifactStep { kind: AttemptStateRoot, path: dashboard_instance_dispatch_attempt_state_root(instance: instance) as String as NonEmptyStr },
     DeploymentArtifactStep { kind: SystemdUnit, path: deployment_systemd_unit_path(names: names) },
@@ -378,10 +382,6 @@ fn deployment_owned_steps(
     DeploymentArtifactStep {
       kind: TailscaleServeMapping,
       path: tailscale_serve_route_member_path(endpoint: names.tailscale_serve_endpoint),
-    },
-    DeploymentArtifactStep {
-      kind: DeployedTreeRemoteUnit,
-      path: deployment_tree_remote_unit_path(names: names),
     },
   ]
 }

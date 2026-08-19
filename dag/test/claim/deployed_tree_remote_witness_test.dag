@@ -166,3 +166,54 @@ test fn only_an_exact_read_back_reports_success() -> Bool {
       outcome: RemoteReadBackRefused { at: green_at(), exit_code: 7, stderr: "?" },
     ))
 }
+
+
+// ── The prerequisite is ordered before its consumer ─────────────────────────────────────────────
+//
+// Apply walks deployment_owned_steps in order, so member POSITION IS EXECUTION ORDER. The remote
+// is a prerequisite of every belt tick: with no origin, fleet_desired_observe's ls-remote refuses
+// and the tick faults. An earlier cut of this change appended the member LAST, after the belt
+// timer, so a candidate belt could fire against the known-broken observation state before the
+// correction ran — a self-inflicted refusal on every fresh deploy, and an inversion of
+// deployment_apply_order_note's own rule that dependencies precede their consumers.
+//
+// Third is the EARLIEST correct position rather than an arbitrary improvement: convergence needs
+// the tree (it configures that repository) and the binary (the unit's ExecStart invokes it), and
+// those are members one and two. Earlier would red the first deploy of a fresh slot, which is the
+// concern that put it last to begin with — so this position satisfies both constraints, and the
+// original placement satisfied only one.
+//
+// Asserted as a filtered SEQUENCE rather than absolute indices, so inserting an unrelated member
+// leaves this green while a genuine reordering reds it.
+
+fn ordering_tag(kind: OwnedArtifactKind) -> String {
+  match kind {
+    GunbcSourceTree => "tree"
+    ServeBinary => "binary"
+    DeployedTreeRemoteUnit => "remote"
+    BeltTimerUnit => "belt"
+    TailscaleServeMapping => "route"
+    DispatchWorktreeRoot => ""
+    AttemptStateRoot => ""
+    SystemdUnit => ""
+    FleetConvergeTimerUnit => ""
+  }
+}
+
+fn ordered_tags() -> List<String> {
+  fold(
+    deployment_owned_steps(
+      instance: srv1_green_dashboard_instance(),
+      names: srv1_green_deployment_names(instance: srv1_green_dashboard_instance()),
+    ),
+    init: [],
+    f: (acc, step) => {
+      let tag = ordering_tag(kind: step.kind)
+      if tag == "" { acc } else { concat(acc, [tag]) }
+    },
+  )
+}
+
+test fn the_remote_converges_after_its_inputs_and_before_the_belt() -> Bool {
+  join(ordered_tags(), ",") == "tree,binary,remote,belt,route"
+}
