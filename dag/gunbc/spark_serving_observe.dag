@@ -999,7 +999,7 @@ fn spark_serving_blob_file_name_for(digest_hex: NonEmptyStr) -> String {
   ollama_blob_file_name(digest_hex: digest_hex)
 }
 
-// THE IDENTITY IS READ, NOT COMPUTED THIS SIDE, AND THE FAMILY IS WHY.
+// THE IDENTITY COMES FROM THE SERVING API, WHICH IS WHERE DESIRED GOT IT.
 //
 // An earlier revision identified the observed manifest with content_hash_atom over the bytes -- an
 // fnv1a64 structural digest. Desired carries `ModelArtifact.identity`, which comes off an ollama
@@ -1010,16 +1010,31 @@ fn spark_serving_blob_file_name_for(digest_hex: NonEmptyStr) -> String {
 //
 // So the host computes it, in the family desired already speaks.
 //
-// STATED, NOT ASSUMED: that sha256 of the manifest file equals the digest `/api/tags` reports for
-// that model is an upstream property this repository has NOT verified against a live store. If it
-// does not hold, the failure is a permanently non-empty plan -- the member reconciles as drift on
-// every run and a pull is planned forever. That is loud and self-announcing, which is the direction
-// an unverified assumption is allowed to fail in; the srv6 canary is what decides it, and the empty
-// second plan is exactly the observation that would confirm or refute it.
-fn spark_serving_model_manifest_digest_argv() -> List<String> {
-  ["sha256sum", spark_serving_desired_model_manifest_path() as String]
-}
-
+// REFUTED BY THE srv6 CANARY, 2026-08-19, AND THE ASSUMPTION IS GONE RATHER THAN VERIFIED.
+//
+// The paragraph here used to state, without having checked it, that sha256 of the manifest file
+// equals the digest `/api/tags` reports; it named the failure it would cause -- a member reconciling
+// as drift forever, a pull planned on every run, a plan that can never empty -- and nominated this
+// canary as what would decide it. The canary decided it. With the model present on the host, the two
+// sides answered:
+//
+//   sha256sum of the manifest file   sha256:17052f91a42e97930aa6e28a6c6c06a983e6a58dbb00434885a0cf5313e376f7
+//   digest reported by /api/tags     sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05
+//
+// Same family, both present, different values. So the file's hash is not the model's identity, and
+// no amount of care on the comparison would have made it one.
+//
+// The repair is not a better comparison, it is one authority. gunbc.spark_serving_desired records
+// the operator declaration that model identity IS the manifest digest from /api/tags, and that is
+// where the desired side already reads it -- so the observation now asks the same source the same
+// question instead of computing a second answer from the filesystem and hoping the two coincide.
+// This is the third identity this member has been keyed on: fnv1a64 over the bytes, which the
+// cross-family wall caught; sha256 of the file, which this canary caught; and now the digest the
+// serving runtime itself reports.
+//
+// The blob-closure checks below are unchanged and still earn their place: /api/tags says which model
+// the runtime believes it has, and the manifest's blob requirements say whether the store behind
+// that claim is actually whole. Those are different questions and both are still asked.
 fn spark_serving_observe_model_store(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -1061,23 +1076,6 @@ fn spark_serving_observe_model_store(
               }
             } else {
               match spark_serving_probe_leg(
-                context: context, host: host,
-                raw_words: spark_serving_model_manifest_digest_argv(),
-              ) {
-                Absent =>
-                  ModelStoreObservationRefused {
-                    cause: "model manifest digest leg did not run, and an identity this side invented would not be comparable to the desired one" as NonEmptyStr,
-                  }
-                Present { value: digest } =>
-                  if digest.success == false {
-                    ModelStoreObservationRefused {
-                      cause: join([
-                        "model manifest digest failed exit=", to_string(digest.exit_code),
-                        " stderr=", digest.stderr,
-                      ], "") as NonEmptyStr,
-                    }
-                  } else {
-                    match spark_serving_probe_leg(
                       context: context, host: host,
                       raw_words: spark_serving_model_blob_digest_argv(
                         digest_hexes: spark_serving_manifest_required_digests(
@@ -1092,12 +1090,15 @@ fn spark_serving_observe_model_store(
                       Present { value: blobdigests } =>
                         spark_serving_classify_model_store(
                           manifest_body: manifest.stdout,
-                          manifest_digest_stdout: digest.stdout,
+                          served_identity: spark_serving_tags_fields_from_probe(
+                            probe: spark_serving_probe_leg(
+                              context: context, host: host,
+                              raw_words: spark_serving_tags_probe_words,
+                            ),
+                          ).model_manifest_digest,
                           blobs_listing: blobs.stdout,
                           blob_digest_stdout: blobdigests.stdout,
                         )
-                    }
-                  }
               }
             }
         }
@@ -1111,7 +1112,7 @@ fn spark_serving_observe_model_store(
 // blob it requires is present because it requires none.
 fn spark_serving_classify_model_store(
   manifest_body: String,
-  manifest_digest_stdout: String,
+  served_identity: SparkServingReadbackField,
   blobs_listing: String,
   blob_digest_stdout: String,
 ) -> ModelStoreObservation {
@@ -1131,7 +1132,7 @@ fn spark_serving_classify_model_store(
       }
     SparkServingManifestDigests { first: rf, further: rr } => {
       let required = concat([rf], rr)
-      let observed_identity = spark_serving_sha256sum_identity(stdout: manifest_digest_stdout)
+      let observed_identity = spark_serving_readback_field_present_value(field: served_identity)
       let missing = fold(required, init: [], f: fn(acc, want) {
         if any(present, p => trim(s: p) == spark_serving_blob_file_name_for(digest_hex: want)) {
           acc
@@ -1142,7 +1143,13 @@ fn spark_serving_classify_model_store(
       match observed_identity {
         Absent =>
           ModelStoreObservationRefused {
-            cause: "sha256sum output is not a readable sha256 hex digest" as NonEmptyStr,
+            cause: join([
+              "ollama /api/tags did not report a digest for the desired model: ",
+              match spark_serving_readback_field_refusal_cause(field: served_identity) {
+                Present { value: why } => why as String
+                Absent => "no digest and no stated cause"
+              },
+            ], "") as NonEmptyStr,
           }
         Present { value: ident } =>
           match missing.first() {
@@ -1435,20 +1442,4 @@ fn spark_serving_observed_members_for_unit(
     enablement: observed_unit.enablement,
     linger: linger,
   )
-}
-
-// `sha256sum` prints "<hex>  <path>". Only the hex is taken, and it must parse as a real sha256 --
-// a truncated or error-shaped line refuses rather than becoming an identity nothing can compare.
-fn spark_serving_sha256sum_identity(stdout: String) -> NonEmptyStr? {
-  match split(trim(s: stdout), " ").first() {
-    Absent => none
-    Present { value: hex } =>
-      match sha256_hex_digest(hex: trim(s: hex)) {
-        Absent => none
-        Present { value: d } =>
-          Present {
-            value: serialize_content_hash(hash: as_content_hash_cryptographic(digest: d)) as NonEmptyStr,
-          }
-      }
-  }
 }
