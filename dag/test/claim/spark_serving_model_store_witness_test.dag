@@ -13,6 +13,7 @@ module test.claim.spark_serving_model_store_witness_test
 
 import std.types { Bool, NonEmptyStr, String, Int }
 import std.content_hash { serialize_content_hash }
+import extdeps.ollama.api { strip_sha256_prefix }
 import gunbc.ollama_runtime_bundle {
   ModelStoreObservation,
   ModelStoreAbsent,
@@ -132,7 +133,12 @@ test fn a_host_holding_the_declared_model_reconciles_as_converged() -> Bool {
     Absent => false
     Present { value: r } => {
       let desired = serialize_content_hash(hash: r.model.identity) as String
-      let hex = "49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05"
+      // DERIVED, NOT TYPED IN. The first version of this witness carried the desired hex as a
+      // literal, and when the operator re-pinned desired state on 2026-08-19 the literal stayed
+      // behind -- so the claim reddened on a repin that was correct. A witness asserting that a host
+      // holding THE DECLARED MODEL converges has to read the declaration, or it is asserting that a
+      // host holding one particular historical model converges.
+      let hex = strip_sha256_prefix(text: desired)
       match spark_serving_classify_model_store(
         manifest_body: join([
           "{\"config\":{\"digest\":\"sha256:",
