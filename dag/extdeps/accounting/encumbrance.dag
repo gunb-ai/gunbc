@@ -1,0 +1,275 @@
+module extdeps.accounting.encumbrance
+
+import std.measure { Measure, measure_add, measure_le }
+import std.nat { Nat }
+import std.types { NonEmptyStr, List, Timestamp }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+// Encumbrance accounting, the upstream this module models. In fund and
+// governmental accounting a commitment is recorded against an appropriation
+// BEFORE the cash moves: an appropriation authorizes a ceiling, an encumbrance
+// reserves part of it against an expected obligation, and an expenditure
+// finally consumes some amount at or below what was encumbered. The residue
+// is released back to the appropriation rather than silently retained.
+//
+// This is imported rather than coined because the reserve-then-settle
+// lifecycle already has a name, a literature and a settled meaning. Minting a
+// second vocabulary for it would be the nicknaming violation, and the borrowed
+// names carry the discipline with them: an encumbrance is not spend, and an
+// expenditure may not exceed the encumbrance that authorized it.
+//
+// The kernel is quantity-generic. It knows nothing about money, and nothing
+// about compute; both are instantiations. That is deliberate rather than
+// speculative genericity, since the reserve-settle-release shape is the same
+// operation at both scales and forking it per subject would duplicate the
+// conservation argument along with it.
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Encumbrance_(accounting)"
+  }
+}
+
+// The lifecycle is a closed three-state coproduct rather than a record with
+// nullable settlement fields. A reservation is held, or it settled at an exact
+// amount, or it was released with a reason - and no fourth state exists to be
+// represented by an absent field. The terminal arms carry their own timestamp
+// because when a commitment ended is part of the commitment's record.
+
+type EncumbranceState<Q, S> =
+  | Held { maximum_liability: Measure<Q, S, Nat> }
+  | Expended { actual: Measure<Q, S, Nat>, settled_at: Timestamp }
+  | Released { reason: NonEmptyStr, released_at: Timestamp }
+
+// This carrier deliberately holds NO generation and no fencing vocabulary.
+// An earlier version put a generation on every encumbrance and a stale-
+// generation arm in the refusals, which is a layer inversion: temporal
+// fencing is this repository's CI lease protocol, not a fact about
+// encumbrance accounting, and an upstream authority that carried it would
+// impose CI lease generations on every future consumer of appropriation
+// conservation. The fence lives in product.fabric.budget, which checks it and
+// then calls the transition here.
+
+type Encumbrance<Q, S> {
+  reference: NonEmptyStr
+  state: EncumbranceState<Q, S>
+}
+
+type EncumbranceLedger<Q, S> {
+  appropriation: Appropriation<Q, S>
+  entries: List<Encumbrance<Q, S>>
+}
+
+// Committed funds are DERIVED from the entries, never stored. A stored balance
+// can disagree with the entries that produced it, and then two authorities
+// answer one question; recomputing cannot. Held liability and settled
+// expenditure both count against the ceiling, because the whole point of
+// encumbering is that an outstanding commitment is already spoken for.
+
+fn encumbrance_charge<Q, S>(e: Encumbrance<Q, S>) -> Measure<Q, S, Nat> {
+  match e.state {
+    Held { maximum_liability: m } => m
+    Expended { actual: a, settled_at: _ } => a
+    Released { reason: _, released_at: _ } => Measure { count: 0 }
+  }
+}
+
+fn committed_total<Q, S>(ledger: EncumbranceLedger<Q, S>) -> Measure<Q, S, Nat> {
+  fold(
+    ledger.entries,
+    init: Measure { count: 0 },
+    f: (acc, e) => measure_add(a: acc, b: encumbrance_charge(e: e))
+  )
+}
+
+// Every refusal is typed and carries the two facts a reader needs to act on
+// it. None of them carries a computed headroom: Nat subtraction is partial,
+// and a difference that underflows would have to fabricate a value at exactly
+// the moment the ledger is over its ceiling. The ceiling and the committed
+// total are both present, so the reader can compare them without the kernel
+// inventing arithmetic it cannot perform totally.
+
+type EncumbranceRefusal<Q, S> =
+  | ExceedsAppropriation {
+      requested: Measure<Q, S, Nat>,
+      committed: Measure<Q, S, Nat>,
+      ceiling: Measure<Q, S, Nat>,
+    }
+  | UnknownEncumbrance { reference: NonEmptyStr }
+  | DuplicateReference { reference: NonEmptyStr }
+  | ExpenditureExceedsEncumbrance {
+      reference: NonEmptyStr,
+      actual: Measure<Q, S, Nat>,
+      maximum_liability: Measure<Q, S, Nat>,
+    }
+  | AlreadyTerminal { reference: NonEmptyStr }
+
+type EncumbranceOutcome<Q, S> =
+  | LedgerAdvanced { ledger: EncumbranceLedger<Q, S> }
+  | EncumbranceRefused { refusal: EncumbranceRefusal<Q, S> }
+
+// Reserving refuses rather than admitting a commitment the appropriation
+// cannot cover. It does not admit-and-flag, and it does not partially reserve:
+// a caller that asked to hold an amount and received a smaller hold would
+// proceed believing it was covered.
+
+fn reserve_encumbrance<Q, S>(
+  ledger: EncumbranceLedger<Q, S>,
+  reference: NonEmptyStr,
+  maximum_liability: Measure<Q, S, Nat>,
+) -> EncumbranceOutcome<Q, S> {
+  match entry_matching(ledger: ledger, reference: reference) {
+    Cons { head: _, tail: _ } =>
+      EncumbranceRefused { refusal: DuplicateReference { reference: reference } }
+    Empty {} => reserve_fresh_reference(
+      ledger: ledger,
+      reference: reference,
+      maximum_liability: maximum_liability,
+    )
+  }
+}
+
+// The reference is a KEY, and reserving refuses a second entry under one that
+// is already present. Before this refusal existed it was not a key at all, and
+// the consequence was not merely an untidy ledger. Settlement resolves a
+// reference by taking the FIRST match while replacement rewrites EVERY match,
+// so two holds under one reference meant a single settlement of some amount
+// wrote that amount onto both entries - charging the appropriation twice for
+// one commitment, at a total the caller never asked for - and no operation
+// could ever address the second entry on its own to release it.
+//
+// So the wall is not defensive tidiness. It is what makes first-match
+// resolution and rewrite-all-matches the same operation, which is the
+// assumption the two functions below are written against.
+
+fn reserve_fresh_reference<Q, S>(
+  ledger: EncumbranceLedger<Q, S>,
+  reference: NonEmptyStr,
+  maximum_liability: Measure<Q, S, Nat>,
+) -> EncumbranceOutcome<Q, S> {
+  let committed = committed_total(ledger: ledger)
+  let next = measure_add(a: committed, b: maximum_liability)
+  if measure_le(a: next, b: ledger.appropriation.ceiling) {
+    LedgerAdvanced {
+      ledger: EncumbranceLedger {
+        appropriation: ledger.appropriation,
+        entries: concat(ledger.entries, [
+          Encumbrance {
+            reference: reference,
+            state: Held { maximum_liability: maximum_liability },
+          }
+        ]),
+      }
+    }
+  } else {
+    EncumbranceRefused {
+      refusal: ExceedsAppropriation {
+        requested: maximum_liability,
+        committed: committed,
+        ceiling: ledger.appropriation.ceiling,
+      }
+    }
+  }
+}
+
+fn entry_matching<Q, S>(ledger: EncumbranceLedger<Q, S>, reference: NonEmptyStr) -> List<Encumbrance<Q, S>> {
+  ledger.entries |> filter(e => e.reference == reference)
+}
+
+fn held_liability<Q, S>(e: Encumbrance<Q, S>) -> List<Measure<Q, S, Nat>> {
+  match e.state {
+    Held { maximum_liability: m } => [m]
+    Expended { actual: _, settled_at: _ } => []
+    Released { reason: _, released_at: _ } => []
+  }
+}
+
+fn replace_entry<Q, S>(
+  ledger: EncumbranceLedger<Q, S>,
+  reference: NonEmptyStr,
+  next_state: EncumbranceState<Q, S>,
+) -> EncumbranceLedger<Q, S> {
+  EncumbranceLedger {
+    appropriation: ledger.appropriation,
+    entries: ledger.entries |> map(e =>
+      if e.reference == reference {
+        Encumbrance { reference: e.reference, state: next_state }
+      } else {
+        e
+      }
+    ),
+  }
+}
+
+// Settlement checks what an accounting authority can check: that the
+// reference is known, that it is still held, and that the expenditure does not
+// exceed what was encumbered. An expenditure above the encumbrance refuses
+// instead of expanding the hold, because expanding would cross the ceiling
+// through the settle path rather than the reserve path -- the one place the
+// conservation argument assumed it could not be crossed.
+
+fn settle_encumbrance<Q, S>(
+  ledger: EncumbranceLedger<Q, S>,
+  reference: NonEmptyStr,
+  actual: Measure<Q, S, Nat>,
+  settled_at: Timestamp,
+) -> EncumbranceOutcome<Q, S> {
+  let matches = entry_matching(ledger: ledger, reference: reference)
+  match matches {
+    Empty {} => EncumbranceRefused { refusal: UnknownEncumbrance { reference: reference } }
+    Cons { head: e, tail: _ } =>
+        match held_liability(e: e) {
+          Empty {} => EncumbranceRefused { refusal: AlreadyTerminal { reference: reference } }
+          Cons { head: liability, tail: _ } =>
+            if measure_le(a: actual, b: liability) {
+              LedgerAdvanced {
+                ledger: replace_entry(
+                  ledger: ledger,
+                  reference: reference,
+                  next_state: Expended { actual: actual, settled_at: settled_at },
+                )
+              }
+            } else {
+              EncumbranceRefused {
+                refusal: ExpenditureExceedsEncumbrance {
+                  reference: reference,
+                  actual: actual,
+                  maximum_liability: liability,
+                }
+              }
+            }
+        }
+  }
+}
+
+// Releasing an unused hold returns its full liability to the appropriation,
+// which is what makes reserving the MAXIMUM safe rather than wasteful. Without
+// it, a conservative liability estimate would permanently consume headroom it
+// never used, and callers would be pushed toward under-reserving instead.
+
+fn release_encumbrance<Q, S>(
+  ledger: EncumbranceLedger<Q, S>,
+  reference: NonEmptyStr,
+  reason: NonEmptyStr,
+  released_at: Timestamp,
+) -> EncumbranceOutcome<Q, S> {
+  let matches = entry_matching(ledger: ledger, reference: reference)
+  match matches {
+    Empty {} => EncumbranceRefused { refusal: UnknownEncumbrance { reference: reference } }
+    Cons { head: e, tail: _ } =>
+        match held_liability(e: e) {
+          Empty {} => EncumbranceRefused { refusal: AlreadyTerminal { reference: reference } }
+          Cons { head: _, tail: _ } =>
+            LedgerAdvanced {
+              ledger: replace_entry(
+                ledger: ledger,
+                reference: reference,
+                next_state: Released { reason: reason, released_at: released_at },
+              )
+            }
+        }
+  }
+}

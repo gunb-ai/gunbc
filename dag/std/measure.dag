@@ -676,6 +676,8 @@ fn money_amount_micro_count(m: MoneyAmountMicro) -> Nat {
 
 data money_rate_billing_unit_note: String = "Billing unit is part of the fact: per-minute, per-hour, and per-month are distinct carriers — never folded into a bare amount with the unit in the field name. Cross-vendor normalization is a derived projection at read time, never a stored catalog field."
 
+type PerSecond
+
 type PerMinute
 
 type PerHour
@@ -688,6 +690,8 @@ type MoneyRate<P> {
   amount: MoneyAmountMicro
   currency: CurrencyCode
 }
+
+type MoneyPerSecond = MoneyRate<PerSecond>
 
 type MoneyPerMinute = MoneyRate<PerMinute>
 
