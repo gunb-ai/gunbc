@@ -1,4 +1,4 @@
-module test.claim.occurrence_identity_witness_test
+module test.claim.long.occurrence_identity_witness_test
 
 import std.types { Bool }
 import std.occurrence_identity {
