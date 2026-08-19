@@ -20,7 +20,6 @@ import gunbc.commit_workflow {
   CommitWitnessClaim,
   CommitCargoFmtCheck,
   GithubActionsCiJob,
-  GithubActionsCiRegenJob,
   GitPrePushHook,
   FalsifierCadenceJob,
   commit_gate_roster
