@@ -305,7 +305,7 @@ fn mandatory_tag_type_findings(d: v2.std.node.Node, region: v2.lens.mandatory_ta
   }
 }
 
-fn mandatory_tag_vocabulary_hits(atoms: std.algebra.FreeMonoid<v2.std.node.Symbol>, vocabulary: List<v2.std.node.Symbol>) -> List<v2.std.node.Symbol> {
+fn mandatory_tag_vocabulary_hits(atoms: std.algebra.FreeMonoid<v2.std.node.Symbol>, vocabulary: std.algebra.FreeMonoid<v2.std.node.Symbol>) -> std.algebra.FreeMonoid<v2.std.node.Symbol> {
   fold(atoms, init: [], f: fn(acc, a) {
     if mandatory_tag_symbols_contain(xs: vocabulary, s: a) {
       concat(acc, [a])
