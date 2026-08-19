@@ -1,6 +1,6 @@
 module gunbc.typed_remote_file_write
 
-import std.types { String, Bool, List, NonEmptyStr, FilePath }
+import std.types { String, Bool, List, NonEmptyStr, FilePath, Int }
 import std.algebra { trim }
 import std.content_hash { content_hash_atom }
 import extdeps.ssh.session {
@@ -98,38 +98,62 @@ fn typed_remote_file_rename_argv(write: TypedRemoteFileWrite) -> List<String> {
   ["mv", "-f", typed_remote_file_staging_path(write: write), write.path as String]
 }
 
-fn typed_remote_file_readback_argv(write: TypedRemoteFileWrite) -> List<String> {
-  ["cat", write.path as String]
+// THE COMPARISON HAPPENS FAR-SIDE, AND ONLY AN EXIT CODE COMES BACK.
+//
+// This read `cat <path>` and compared the returned stdout to the declared content here. That cannot
+// work for arbitrary bytes and the reason is structural, not a bug in the comparison: the shell
+// transport delivers stdout through `retained_utf8_lossy_trimmed`, so the channel is a TRIMMED
+// string. Trimming is right for `hostname` or `systemctl is-enabled`, where the trailing newline is
+// noise, and wrong here, where the bytes ARE the payload -- the transport conflates "the text a
+// command printed" with "the bytes a command emitted", and a unit file ending in a newline can never
+// compare equal. Measured on srv6: declared_bytes=500 read_back_bytes=499, every run, deterministic.
+//
+// Widening the transport was the wrong fix and the corpus says so: a new untrimmed output binding is
+// PublicSurfaceGrowth against a seed whose semantics are frozen, and refusal dominates admission
+// there. Trimming the declared side to match would be worse -- it is exactly the normalization
+// the exact comparison refuses, and it would let a real trailing-byte difference pass.
+//
+// So the payload does not round-trip at all. `cmp -s - <path>` reads the declared bytes from stdin
+// and compares them far-side, and the verdict rides home as an exit code, which no trim can alter.
+// The evidence is strictly stronger than the old read-back: it never assumed the transport could
+// carry arbitrary bytes faithfully, and it stops shipping whole files back through stdout. cmp's own
+// exit vocabulary distinguishes a difference (1) from an error reading either side (2), so those stay
+// two refusals rather than collapsing into one.
+fn typed_remote_file_compare_argv(write: TypedRemoteFileWrite) -> List<String> {
+  ["cmp", "-s", "-", write.path as String]
 }
 
 // The read-back judgment, pure so every arm is reachable hermetically. Exact comparison, with no
 // trimming: normalizing whitespace here would let a real difference pass, and a file whose trailing
 // bytes differ from the declared content is not the file that was declared.
-fn classify_typed_remote_file_readback(
+// The comparison verdict, pure so every arm is reachable hermetically. The arms are cmp's own exit
+// vocabulary and are NOT collapsed: 0 is identical, 1 is a real content difference, and anything else
+// means cmp could not compare -- a missing file, an unreadable one, a cmp that is not there. Reporting
+// the third as a difference would blame the content for a failure to look at it.
+fn classify_typed_remote_file_comparison(
   write: TypedRemoteFileWrite,
   mode: RemoteFileMode,
-  readback_succeeded: Bool,
-  readback_stdout: String,
-  readback_stderr: String,
+  compare_exit_code: Int,
+  compare_stderr: String,
 ) -> TypedRemoteFileConvergence {
-  if !readback_succeeded {
-    TypedRemoteFileConvergenceRefused {
-      step: "read-back",
-      reason: concat(
-        concat("could not read back ", write.path as String),
-        concat(" after rename: ", readback_stderr),
-      ),
-    }
-  } else if readback_stdout == write.content {
+  if compare_exit_code == 0 {
     TypedRemoteFileConverged { path: write.path, mode: mode }
-  } else {
+  } else if compare_exit_code == 1 {
     TypedRemoteFileConvergenceRefused {
-      step: "read-back",
+      step: "compare",
       reason: join([
         "the bytes at ", write.path as String,
         " are not the declared content: the write reported success and the file is something else",
-        " (declared_bytes=", to_string(string_length(s: write.content)),
-        " read_back_bytes=", to_string(string_length(s: readback_stdout)), ")",
+        " (declared_bytes=", to_string(string_length(s: write.content)), ")",
+      ], ""),
+    }
+  } else {
+    TypedRemoteFileConvergenceRefused {
+      step: "compare",
+      reason: join([
+        "could not compare ", write.path as String,
+        " against the declared content after rename: cmp exit=",
+        to_string(compare_exit_code), " ", trim(s: compare_stderr),
       ], ""),
     }
   }
@@ -337,21 +361,20 @@ func converge_typed_remote_file(
                 Absent =>
                   match typed_remote_file_step(
                     target: target, context: context,
-                    raws: typed_remote_file_readback_argv(write: write),
-                    stdin_payload: "",
+                    raws: typed_remote_file_compare_argv(write: write),
+                    stdin_payload: write.content,
                   ) {
                     Absent =>
                       TypedRemoteFileConvergenceRefused {
-                        step: "read-back",
+                        step: "compare",
                         reason: "remote argv refused as non-portable under the far-side shell re-parse allowlist",
                       }
                     Present { value: back } =>
-                      classify_typed_remote_file_readback(
+                      classify_typed_remote_file_comparison(
                         write: write,
                         mode: mode,
-                        readback_succeeded: back.success,
-                        readback_stdout: back.stdout,
-                        readback_stderr: back.stderr,
+                        compare_exit_code: back.exit_code,
+                        compare_stderr: back.stderr,
                       )
                   }
               }
