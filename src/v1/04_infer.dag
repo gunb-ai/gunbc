@@ -8346,21 +8346,38 @@ fn symbol_index_insert_unique_disj_variant_aliases(
   fold(items, init: index, f: (acc, item) =>
     match item.connective {
       Disj =>
+        let tname = authored_name_at(source_indices: source_indices, node: item)
         fold(item.children, init: acc, f: (a2, child) =>
           let vname = authored_name_at(source_indices: source_indices, node: child)
+          // Unconditional fully-qualified insertion, ahead of the uniqueness-gated 2-segment
+          // aliases below: `module_path.TypeName.variant_name` disambiguates by construction
+          // (a variant name is unique within one Disj, and a TypeName is unique within one
+          // module), so it needs no corpus-wide uniqueness check the way the bare `module_path.
+          // variant_name` shortcut does. This closes the population-A gap named in
+          // direct_call_shape_wall_note: a qualified constructor call site like
+          // `gunbc.WitnessBin.Run(...)` builds exactly this 3-segment dotted name
+          // (ExprMethodCall's qualified_direct_call gate, and func_sig_from_global_bare's
+          // borrowed_census_decl, both call symbol_index_lookup on it) and previously found
+          // nothing, falling through to the generic method-call bridge instead of the
+          // direct_call_shape_diags wall.
+          let a2_qualified = symbol_index_insert(
+            index: a2,
+            qualified_name: concat(concat(module_path, ".", tname), ".", vname),
+            resolved: item
+          )
           match map_get(counts, vname) {
             Present { value: 1 } =>
               match map_get(corpus_variant_counts, vname) {
                 Present { value: 1 } =>
                   if map_get(corpus_item_counts, vname) != none || overlay_skips_kernel_name(name: vname) {
                     symbol_index_insert(
-                      index: a2,
+                      index: a2_qualified,
                       qualified_name: concat(module_path, ".", vname),
                       resolved: item
                     )
                   } else {
                   symbol_index_insert_decl(
-                    index: a2,
+                    index: a2_qualified,
                     module_path: module_path,
                     binding: TypeBinding {
                       name: vname,
@@ -8371,12 +8388,12 @@ fn symbol_index_insert_unique_disj_variant_aliases(
                   }
                 _ =>
                   symbol_index_insert(
-                    index: a2,
+                    index: a2_qualified,
                     qualified_name: concat(module_path, ".", vname),
                     resolved: item
                   )
               }
-            _ => a2
+            _ => a2_qualified
           }
         )
       _ => acc
