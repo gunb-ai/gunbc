@@ -272,11 +272,3 @@ path = "src/bin/floor_prepared_toll_receipt.rs"
 [[bin]]
 name = "expected_red_roster_join"
 path = "src/bin/expected_red_roster_join.rs"
-
-# PROBE (not shipped): does a prepare_grammar memo entry survive InterpContext construction?
-# Two claims, two arms, one binary — the one-context arm calibrates the counters so the
-# two-context arm's MISS is readable. Replaces running the whole required-floor fold to
-# observe a two-claim phenomenon.
-[[bin]]
-name = "cross_context_memo_probe"
-path = "src/bin/cross_context_memo_probe.rs"

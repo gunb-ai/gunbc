@@ -1204,33 +1204,6 @@ struct PureCallMemo {
 #[derive(Default)]
 struct PrepareGrammarCrossClaimMemo {
     map: HashMap<(usize, u64), Value>,
-    lookups: u64,
-    hits: u64,
-    inserts: u64,
-}
-
-/// Observable counters for the cross-claim `prepare_grammar` memo, mirroring
-/// `ParseTableMemoStats`. Read by `run_required_floor`'s grammar warm, which REFUSES when a
-/// lookup from a freshly built claim context does not hit: a store that lands under an
-/// unreachable key, a wrong hash, or another thread is otherwise indistinguishable from a
-/// working warm at wall-clock. Without these, the hit/miss pattern is only extractable by
-/// rebuilding the interpreter with prints — which is what it cost to learn it the first time.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct PrepareGrammarCrossClaimMemoStats {
-    pub lookups: u64,
-    pub hits: u64,
-    pub inserts: u64,
-}
-
-pub fn prepare_grammar_cross_claim_memo_stats_snapshot() -> PrepareGrammarCrossClaimMemoStats {
-    PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| {
-        let st = m.borrow();
-        PrepareGrammarCrossClaimMemoStats {
-            lookups: st.lookups,
-            hits: st.hits,
-            inserts: st.inserts,
-        }
-    })
 }
 
 thread_local! {
@@ -1239,9 +1212,6 @@ thread_local! {
     static CROSS_CLAIM_FN_KEEPALIVE: RefCell<Vec<Rc<Node>>> = RefCell::new(Vec::new());
 }
 
-// Eviction resets the counters with the map: they describe the CURRENT epoch, not the process
-// lifetime. That is what a consumer asking "did my warm's entry get hit" needs — a lifetime
-// total spanning an eviction would answer a hit from a map that no longer exists.
 pub fn clear_cross_claim_pure_memos() {
     PREPARE_GRAMMAR_CROSS_CLAIM_MEMO
         .with(|m| *m.borrow_mut() = PrepareGrammarCrossClaimMemo::default());
@@ -1278,15 +1248,7 @@ fn try_cross_claim_pure_memo(
             _ => return None,
         };
         let memo_key = (Rc::as_ptr(fn_node) as usize, content_hash);
-        return PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| {
-            let mut st = m.borrow_mut();
-            st.lookups += 1;
-            let got = st.map.get(&memo_key).cloned();
-            if got.is_some() {
-                st.hits += 1;
-            }
-            got
-        });
+        return PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| m.borrow().map.get(&memo_key).cloned());
     }
     None
 }
@@ -1304,9 +1266,8 @@ fn store_cross_claim_pure_memo(
             if let EvalRecomputeArgKey::ContentHash(h) = key {
                 keep_cross_claim_fn(fn_node);
                 PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| {
-                    let mut st = m.borrow_mut();
-                    st.inserts += 1;
-                    st.map
+                    m.borrow_mut()
+                        .map
                         .insert((Rc::as_ptr(fn_node) as usize, h), result.clone())
                 });
             }
