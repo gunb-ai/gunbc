@@ -2,20 +2,20 @@ module v2.compiler.symbol_index_fill
 
 
 data symbol_index_fill_extdeps_coupling_disposition: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.std.qualified_name",
     decl_name: "qualified_name_from_node",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data symbol_index_containment_disposition: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.compiler.symbol_index_fill",
     decl_name: "symbol_index_fill_containment_node",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 

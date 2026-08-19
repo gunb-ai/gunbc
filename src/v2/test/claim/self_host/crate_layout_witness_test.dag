@@ -1,7 +1,7 @@
 module v2.test.claim.self_host.crate_layout_witness
 
 
-data witness_red_control_note: String = "Discriminating RED, both directions: (1) OMIT — drop a basename from generated_pub_mod_basenames while its registration row stands, and witness_generated_basenames_match_registrations_holds goes false on the length comparison; (2) INCLUDE — append phantom_module to generated_pub_mod_basenames with no registration row, and witness_generated_has_no_phantom_registration_holds goes false. A third RED sits outside this file: perturb a suffix in dag/gunbc/stage0_crate_layout_generated.dag and the generated-artifact drift gate reds on bytes."
+data witness_red_control_note: String = "Discriminating RED, both directions: (1) OMIT — drop a basename from gunbc.stage0_crate_layout_generated.generated_pub_mod_basenames while its registration row stands, and witness_generated_basenames_match_registrations_holds goes false on the length comparison; (2) INCLUDE — append phantom_module to gunbc.stage0_crate_layout_generated.generated_pub_mod_basenames with no registration row, and witness_generated_has_no_phantom_registration_holds goes false. A third RED sits outside this file: perturb a suffix in dag/gunbc/stage0_crate_layout_generated.dag and the generated-artifact drift gate reds on bytes."
 
 data witness_roster_half_deleted_note: String = "SEVEN WITNESSES WERE DELETED FROM THIS FILE with the self-host frontier roster, and none of them could fail. Three asked whether a specific roster row's basename was registered, each guarded by a match on that row's disposition whose EmitterProduced arm was unreachable — every row was SeedRetained, so all three took the other arm and returned true without consulting the layout at all. Three more compared an emitter-produced basename projection against the emitter-produced count; both sides derived from the same empty projection, so each compared zero with zero. The seventh opened with `if compiler_frontier_emitter_produced_count() == 0 { true }` and had therefore never evaluated its body.
 
@@ -19,30 +19,30 @@ fn lists_have_same_members(a: List<String>, b: List<String>) -> Bool {
 }
 
 fn witness_generated_pub_mod_block_matches_registrations_holds() -> Bool {
-  generated_pub_mod_block == emit_hand_maintained_pub_mod_block()
+  gunbc.stage0_crate_layout_generated.generated_pub_mod_block == emit_hand_maintained_pub_mod_block()
 }
 
 fn witness_generated_basenames_match_registrations_holds() -> Bool {
   lists_have_same_members(
-    a: generated_pub_mod_basenames,
+    a: gunbc.stage0_crate_layout_generated.generated_pub_mod_basenames,
     b: hand_maintained_pub_mod_basenames()
   )
 }
 
 fn witness_generated_filenames_match_registrations_holds() -> Bool {
   lists_have_same_members(
-    a: generated_stage0_filenames,
+    a: gunbc.stage0_crate_layout_generated.generated_stage0_filenames,
     b: hand_maintained_stage0_filenames()
   )
 }
 
 fn witness_generated_dirs_match_registrations_holds() -> Bool {
-  lists_have_same_members(a: generated_stage0_dirs, b: hand_maintained_stage0_dirs())
+  lists_have_same_members(a: gunbc.stage0_crate_layout_generated.generated_stage0_dirs, b: hand_maintained_stage0_dirs())
 }
 
 fn witness_generated_has_no_phantom_registration_holds() -> Bool {
   fold_list(
-    xs: generated_pub_mod_basenames,
+    xs: gunbc.stage0_crate_layout_generated.generated_pub_mod_basenames,
     empty: true,
     cons: fn(ok, basename) {
       ok && string_list_contains(xs: hand_maintained_pub_mod_basenames(), needle: basename)

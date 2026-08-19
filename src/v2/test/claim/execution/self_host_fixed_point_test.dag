@@ -8,7 +8,7 @@ data self_host_fixture_fixpoint_source: String = "self_host_fixpoint_byte_identi
 data self_host_fixture_regen_emitted_source_perturbed: String = "self_host_fixpoint_regen_emitted_bytes_perturbed_v2"
 
 fn self_host_fixture_medium(text: String) -> Medium<String> {
-  extdeps.communication.medium.Medium { carried: text, fidelity: Lossless }
+  extdeps.communication.medium.Medium { carried: text, fidelity: extdeps.communication.medium.Lossless }
 }
 
 fn self_host_fixture_source_models_at_fixpoint() -> v2.compiler.self_host.SourceModels {

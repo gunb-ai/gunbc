@@ -11,7 +11,7 @@ fn map_keys_leak_source() -> std.decl_ref.DeclarationRef {
   std.decl_ref.DeclarationRef {
     module_path: "v1.runtime_rust",
     decl_name: "map_keys",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -19,7 +19,7 @@ fn map_values_leak_source() -> std.decl_ref.DeclarationRef {
   std.decl_ref.DeclarationRef {
     module_path: "v1.runtime_rust",
     decl_name: "map_values",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -105,7 +105,7 @@ fn determinism_leak_diagnostic(n: Node) -> v2.std.diagnostic.Diagnostic {
 fn determinism_contract_witness(signature: v2.std.node.Symbol, n: Node) -> Witness<v2.std.determinism.DeterminismFact> {
   let fact = determinism_fact_for_node(signature: signature, n: n)
   match fact.classification {
-    std.determinism.NonDeterministic { source: _ } => v2.std.witness.Violates { diagnostic: determinism_leak_diagnostic(n: n) }
+    NonDeterministic { source: _ } => v2.std.witness.Violates { diagnostic: determinism_leak_diagnostic(n: n) }
     std.determinism.Deterministic => v2.std.witness.Holds { value: fact }
   }
 }

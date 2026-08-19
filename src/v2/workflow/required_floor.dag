@@ -32,7 +32,7 @@ module v2.workflow.required_floor
 // such renames stand on this branch as interim debt, dissolving with the trigger below.
 // Qualification at the reference routes past the whole class without touching the frozen
 // component, because the qualified key is collision-free by construction.
-data floor_bare_name_ambiguity_next_rung_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: bare-name binding stops being decided by insertion order. Reached when ambiguous references carry their qualified module path (v2.compiler.emit.emit rather than emit), which routes through the collision-free qualified key in the interpreter's index and needs no change to the frozen component. Owned by the namespace cut, gunbc#8282; the nine production emit call sites were handed over and taken 2026-08-17. Until then [floor-bare-name-ambiguity] counts the population every run and the three emit renames on integration/floor-cut are interim debt reverting on that landing. Rung today: mitigatable — the ambiguous set is computed and countable, and the wrong binding is loud at the caller as a contract mismatch rather than silent. Ceiling: structural impossibility — a qualified reference has exactly one declarer, so no ambiguous binding is writable.")
+data floor_bare_name_ambiguity_next_rung_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: bare-name binding stops being decided by insertion order. Reached when ambiguous references carry their qualified module path (v2.compiler.emit.emit rather than emit), which routes through the collision-free qualified key in the interpreter's index and needs no change to the frozen component. Owned by the namespace cut, gunbc#8282; the nine production emit call sites were handed over and taken 2026-08-17. Until then [floor-bare-name-ambiguity] counts the population every run and the three emit renames on integration/floor-cut are interim debt reverting on that landing. Rung today: mitigatable — the ambiguous set is computed and countable, and the wrong binding is loud at the caller as a contract mismatch rather than silent. Ceiling: structural impossibility — a qualified reference has exactly one declarer, so no ambiguous binding is writable.")
 
 // THE REQUIRED FLOOR IS ONE ATTEMPT: read the sources once, prepare one subject, fold one
 // exact claim manifest, reduce one receipt. This module is that program.
@@ -418,13 +418,13 @@ type QualifiedEnrollment
 fn enrollment_after(prior: QualifiedEnrollment, mode: std.execution_mode.ExecutionMode) -> QualifiedEnrollment {
   match prior {
     FirstEnrollment { mode: first } =>
-      if execution_mode_eq(left: first, right: mode) {
+      if std.execution_mode.execution_mode_eq(left: first, right: mode) {
         RepeatedSameMode { mode: first }
       } else {
         RepeatedConflictingModes
       }
     RepeatedSameMode { mode: first } =>
-      if execution_mode_eq(left: first, right: mode) {
+      if std.execution_mode.execution_mode_eq(left: first, right: mode) {
         RepeatedSameMode { mode: first }
       } else {
         RepeatedConflictingModes

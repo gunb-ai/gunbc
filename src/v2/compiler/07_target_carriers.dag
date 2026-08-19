@@ -6,7 +6,7 @@ fn source_medium(text: String, fidelity: extdeps.communication.medium.DecodeFide
 }
 
 fn lossless_source(text: String) -> Medium<String> {
-  source_medium(text: text, fidelity: Lossless)
+  source_medium(text: text, fidelity: extdeps.communication.medium.Lossless)
 }
 
 fn fidelity_disposition_node_has_named_kind(root: v2.std.node.Node, name: v2.std.node.Symbol) -> Bool {
@@ -20,7 +20,7 @@ fn fidelity_disposition_node_decode_fidelity(node: v2.std.node.Node) -> Outcome<
   match node.kind {
     TypeNode { connective: Atom { identity: id } } =>
       if id == ^dag_fidelity_disposition_kind_modeled {
-        outcome_accepted(Lossless)
+        outcome_accepted(extdeps.communication.medium.Lossless)
       } else {
         outcome_rejected(
           v2.std.diagnostic.Diagnostic {
@@ -38,7 +38,7 @@ fn fidelity_disposition_node_decode_fidelity(node: v2.std.node.Node) -> Outcome<
         root: node,
         name: ^dag_fidelity_disposition_kind_fail_closed
       ) {
-        outcome_accepted(Lossy)
+        outcome_accepted(extdeps.communication.medium.Lossy)
       } else {
         outcome_rejected(
           v2.std.diagnostic.Diagnostic {
@@ -64,7 +64,7 @@ fn fidelity_quotient_decode_fidelity(quotient: v2.std.node.Node) -> Outcome<extd
     TypeNode { connective: Conj } =>
       fold(
         quotient.children,
-        init: v2.std.diagnostic.Accepted { value: Lossless, diagnostics: v2.std.diagnostic.None },
+        init: v2.std.diagnostic.Accepted { value: extdeps.communication.medium.Lossless, diagnostics: v2.std.diagnostic.None },
         f: fn(acc, edge) {
           match acc {
             Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -73,7 +73,7 @@ fn fidelity_quotient_decode_fidelity(quotient: v2.std.node.Node) -> Outcome<extd
                 o: fidelity_disposition_node_decode_fidelity(node: edge.target),
                 f: fn(next_fidelity) {
                   v2.std.diagnostic.Accepted {
-                    value: decode_fidelity_merge(
+                    value: extdeps.communication.fidelity_carriers.decode_fidelity_merge(
                       left: current_fidelity,
                       right: next_fidelity
                     ),
@@ -112,7 +112,7 @@ fn decode_fidelity_from_target(target: v2.std.compilers.target_model.TargetModel
     o: target_fidelity_quotient_optional(target: target),
     f: fn(opt) {
       match opt {
-        Absent => outcome_accepted(Lossless)
+        Absent => outcome_accepted(extdeps.communication.medium.Lossless)
         Present { value: quotient } =>
           fidelity_quotient_decode_fidelity(quotient: quotient)
       }

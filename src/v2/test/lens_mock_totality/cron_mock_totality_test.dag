@@ -33,14 +33,14 @@ fn cron_omits_replace_consumer_handles(case: std.hermetic_replay.PublishedMockCa
 
 test fn cron_mock_consumer_is_total_holds() -> Bool {
   mock_totality_green_holds(
-    published: cron_published_mock_corpus,
+    published: extdeps.cron.mock_corpus.cron_published_mock_corpus,
     consumer_handles: cron_real_consumer_handles
   )
 }
 
 test fn cron_mock_omitted_member_is_red_holds() -> Bool {
   mock_totality_red_on_omission_holds(
-    published: cron_published_mock_corpus,
+    published: extdeps.cron.mock_corpus.cron_published_mock_corpus,
     consumer_handles: cron_omits_replace_consumer_handles
   )
 }

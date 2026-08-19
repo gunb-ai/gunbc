@@ -1,10 +1,10 @@
 module v2.test.claim.self_host.frontier_probe_empty_ingest
 
 
-data frontier_probe_empty_ingest_test_note: String = "An empty ingest is the absence of a closure, not a closure containing nothing. Before this wall the probe answered ^resolve_module_not_found with cause MissingModuleIdentityUnavailable, so a survey row asserted the module was missing when its sources had never been supplied — the two states have different remedies and the plausible one was being reported. The measurement that found it: src/v2/compiler/03_resolve.dag needs 71 source reads against the manifest's 64-row inline cap, so the transport emits SourceRootManifestElided with produced_row_count 0 and an Empty ingest, and the probe answered anyway. These claims are fixtures over the empty ingest and cost milliseconds; the RED is the previous behavior, asserted directly — the refusal must NOT be the module-not-found reason, and it must land in the population-refused detail rather than any other arm."
+data frontier_probe_empty_ingest_test_note: String = "An empty ingest is the absence of a closure, not a closure containing nothing. Before this wall the probe answered ^resolve_module_not_found with cause MissingModuleIdentityUnavailable, so a survey row asserted the module was missing when its sources had never been supplied — the two states have different remedies and the plausible one was being reported. The measurement that found it: src/v2/compiler/03_resolve.dag needs 71 source reads against the manifest's 64-row inline cap, so the transport emits SourceRootManifestElided with produced_row_count 0 and an std.algebra.Empty ingest, and the probe answered anyway. These claims are fixtures over the empty ingest and cost milliseconds; the RED is the previous behavior, asserted directly — the refusal must NOT be the module-not-found reason, and it must land in the population-refused detail rather than any other arm."
 
 fn empty_ingest() -> v2.compiler.source_authority.SourceRootIngest {
-  Empty
+  std.algebra.Empty
 }
 
 fn empty_ingest_admission() -> v2.compiler.name_resolve.Admission {
@@ -12,7 +12,7 @@ fn empty_ingest_admission() -> v2.compiler.name_resolve.Admission {
     subject: v2.compiler.name_resolve.ResolutionSubject {
       name: qualified_name_from_dotted_string(dotted: "v2.compiler.03_resolve")
     },
-    imports: Empty
+    imports: std.algebra.Empty
   }
 }
 

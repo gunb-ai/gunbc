@@ -145,11 +145,11 @@ fn qualified_name_from_dotted_string(dotted: String) -> FreeMonoid<v2.std.node.S
 }
 
 data qualified_name_from_dotted_string_host_disposition: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.std.qualified_name",
     decl_name: "qualified_name_from_dotted_string",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 

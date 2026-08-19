@@ -54,10 +54,10 @@ type RealizedStep<S> {
   cost: CostAccount<S>
 }
 
-fn mark_collapsible_share<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> List<RealizedStep<S>> {
+fn mark_collapsible_share<S>(acc: List<std.realization.RealizedStep<S>>, s: std.realization.RealizedStep<S>) -> List<std.realization.RealizedStep<S>> {
   acc |> map(e =>
     if create_double_init_collapsible(a: e.shape, b: s.shape) {
-      RealizedStep {
+      std.realization.RealizedStep {
         shape: e.shape,
         placement: e.placement,
         materialization: Share,
@@ -69,12 +69,12 @@ fn mark_collapsible_share<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> 
   )
 }
 
-fn has_collapsible_peer<S>(acc: List<RealizedStep<S>>, s: RealizedStep<S>) -> Bool {
+fn has_collapsible_peer<S>(acc: List<std.realization.RealizedStep<S>>, s: std.realization.RealizedStep<S>) -> Bool {
   let peers = acc |> filter(e => create_double_init_collapsible(a: e.shape, b: s.shape))
   !((peers |> length) == 0)
 }
 
-fn reconcile<S>(steps: List<RealizedStep<S>>) -> List<RealizedStep<S>> {
+fn reconcile<S>(steps: List<std.realization.RealizedStep<S>>) -> List<std.realization.RealizedStep<S>> {
   reverse(steps |> fold(init: [], f: fn(acc, s) {
     if has_collapsible_peer(acc: acc, s: s) {
       mark_collapsible_share(acc: acc, s: s)

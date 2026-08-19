@@ -59,42 +59,42 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
     entry: "src/v2/test/claim/determinism_contract_test.dag",
     disposition: InterpretedRetained {
       reason: BulkFlipPendingCensusIncomplete,
-      dissolution: unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
+      dissolution: std.dissolution.unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/ci_floor_plan_witness_test.dag",
     disposition: InterpretedRetained {
       reason: BulkFlipPendingCensusIncomplete,
-      dissolution: unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
+      dissolution: std.dissolution.unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/long/effect_reach_test.dag",
     disposition: InterpretedRetained {
       reason: HostFedCeiling,
-      dissolution: unbound_dissolution(description: "native host-effect transport lane delivers typed host_effect_apply execution for this entry's sink class (deliberately uncoupled from bulk flip per ROADMAP 2a)")
+      dissolution: std.dissolution.unbound_dissolution(description: "native host-effect transport lane delivers typed host_effect_apply execution for this entry's sink class (deliberately uncoupled from bulk flip per ROADMAP 2a)")
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/execution/emit_host_add_equals_eval_test.dag",
     disposition: InterpretedRetained {
       reason: EmitOnDemandFamilyGrain,
-      dissolution: unbound_dissolution(description: "native_routing_frontier flips the owning family to NativeRouted with a warm per-PR agreement receipt; entry-grain row then derives NativeRouted from family membership")
+      dissolution: std.dissolution.unbound_dissolution(description: "native_routing_frontier flips the owning family to NativeRouted with a warm per-PR agreement receipt; entry-grain row then derives NativeRouted from family membership")
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/witness_admission_test.dag",
     disposition: InterpretedRetained {
       reason: BulkFlipPendingCensusIncomplete,
-      dissolution: unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
+      dissolution: std.dissolution.unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
     }
   },
   WitnessEntryRoutingRow {
     entry: "dag/test/claim/roadmap_gate_test.dag",
     disposition: InterpretedRetained {
       reason: BulkFlipPendingCensusIncomplete,
-      dissolution: unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
+      dissolution: std.dissolution.unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
     }
   },
   WitnessEntryRoutingRow {
@@ -115,42 +115,42 @@ data witness_bulk_routing_sample_roster: List<WitnessEntryRoutingRow> = [
     entry: "src/v2/test/claim/enforcement/lens_module_gate_witness_test.dag",
     disposition: InterpretedRetained {
       reason: RetainedReadsLiveTreeCarrier,
-      dissolution: unbound_dissolution(description: "module_graph pure/live split lands and the witness row's live_tree_disposition is derived, not hand-stamped")
+      dissolution: std.dissolution.unbound_dissolution(description: "module_graph pure/live split lands and the witness row's live_tree_disposition is derived, not hand-stamped")
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/execution/emit_on_demand_kernel_witness_test.dag",
     disposition: InterpretedRetained {
       reason: EmitOnDemandFamilyGrain,
-      dissolution: unbound_dissolution(description: "native_routing_frontier flips the owning family to NativeRouted with a warm per-PR agreement receipt; entry-grain row then derives NativeRouted from family membership")
+      dissolution: std.dissolution.unbound_dissolution(description: "native_routing_frontier flips the owning family to NativeRouted with a warm per-PR agreement receipt; entry-grain row then derives NativeRouted from family membership")
     }
   },
   WitnessEntryRoutingRow {
     entry: "dag/test/claim/uri_witness_test.dag",
     disposition: InterpretedRetained {
       reason: HostFedCeiling,
-      dissolution: unbound_dissolution(description: "native host-effect transport lane delivers typed host_effect_apply execution for this entry's sink class (deliberately uncoupled from bulk flip per ROADMAP 2a)")
+      dissolution: std.dissolution.unbound_dissolution(description: "native host-effect transport lane delivers typed host_effect_apply execution for this entry's sink class (deliberately uncoupled from bulk flip per ROADMAP 2a)")
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/manual/integer_census_stage_receipt.dag",
     disposition: InterpretedRetained {
       reason: BulkFlipPendingCensusIncomplete,
-      dissolution: unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
+      dissolution: std.dissolution.unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
     }
   },
   WitnessEntryRoutingRow {
     entry: "dag/test/claim/access_validation_test.dag",
     disposition: InterpretedRetained {
       reason: BulkFlipPendingCensusIncomplete,
-      dissolution: unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
+      dissolution: std.dissolution.unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
     }
   },
   WitnessEntryRoutingRow {
     entry: "src/v2/test/claim/self_host/native_routing_frontier_test.dag",
     disposition: InterpretedRetained {
       reason: BulkFlipPendingCensusIncomplete,
-      dissolution: unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
+      dissolution: std.dissolution.unbound_dissolution(description: "744-entry srvN sweep receipt names this entry's measured first-error class; row flips to NativeRouted or EmitIneligible in the bulk flip PR (ROADMAP 2a section 3), never before the in-PR agreement receipt")
     }
   }
 ]
@@ -166,7 +166,7 @@ fn retained_pending_long_lane(entry: String) -> WitnessEntryRoutingRow {
     entry: entry,
     disposition: InterpretedRetained {
       reason: RetainedPendingLongLane,
-      dissolution: unbound_dissolution(description: "eval budget under 5s per-PR fast lane OR native execution makes the long-lane wall clock negligible; row re-classified after measurement")
+      dissolution: std.dissolution.unbound_dissolution(description: "eval budget under 5s per-PR fast lane OR native execution makes the long-lane wall clock negligible; row re-classified after measurement")
     }
   }
 }
@@ -176,7 +176,7 @@ fn retained_pending_offline_recipe(entry: String) -> WitnessEntryRoutingRow {
     entry: entry,
     disposition: InterpretedRetained {
       reason: RetainedPendingOfflineRecipe,
-      dissolution: unbound_dissolution(description: "witness_admission consumer classification derives OfflineLocalRecipe without a parallel exclusion substring row")
+      dissolution: std.dissolution.unbound_dissolution(description: "witness_admission consumer classification derives OfflineLocalRecipe without a parallel exclusion substring row")
     }
   }
 }

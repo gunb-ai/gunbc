@@ -6,7 +6,7 @@ data ci_retry_emit_refused_poison: String = "__GUNBC_ORCH_EMIT_REFUSED__ retry-i
 // Retry shell emission for gunbc.ci_spec.ci_cargo_eagain_retry_intent lives here (realization edge): intent stays in ci_spec, bash medium binding stays out of the intent layer (shell→intent Phase 4 wall).
 fn ci_cargo_eagain_retry_core(command: String) -> String {
   match orch_emit_step(
-    s: ci_cargo_eagain_retry_intent(command: command),
+    s: gunbc.ci_spec.ci_cargo_eagain_retry_intent(command: command),
     medium: bash_orchestration_emit_medium()
   ) {
     Accepted { value: source, diagnostics: d } =>

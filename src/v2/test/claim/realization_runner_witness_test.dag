@@ -106,36 +106,36 @@ test fn witness_runner_blocks_when_prerequisite_missing() -> Bool {
   }
 }
 
-data graph_hash_c: std.content_hash.ContentHash = content_hash_of_value(value: "hash_c" as std.types.NonEmptyStr)
-data graph_hash_a: std.content_hash.ContentHash = content_hash_of_value(value: "hash_a" as std.types.NonEmptyStr)
-data graph_hash_b: std.content_hash.ContentHash = content_hash_of_value(value: "hash_b" as std.types.NonEmptyStr)
-data graph_hash_root: std.content_hash.ContentHash = content_hash_of_value(value: "hash_root" as std.types.NonEmptyStr)
-data graph_hash_store_node: std.content_hash.ContentHash = content_hash_of_value(value: "hash_store_node" as std.types.NonEmptyStr)
-data graph_hash_dangling_root: std.content_hash.ContentHash = content_hash_of_value(value: "hash_dangling_root" as std.types.NonEmptyStr)
-data graph_hash_never_encoded: std.content_hash.ContentHash = content_hash_of_value(value: "hash_never_encoded" as std.types.NonEmptyStr)
-data graph_hash_absent: std.content_hash.ContentHash = content_hash_of_value(value: "hash_absent" as std.types.NonEmptyStr)
+data graph_hash_c: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "hash_c" as std.types.NonEmptyStr)
+data graph_hash_a: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "hash_a" as std.types.NonEmptyStr)
+data graph_hash_b: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "hash_b" as std.types.NonEmptyStr)
+data graph_hash_root: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "hash_root" as std.types.NonEmptyStr)
+data graph_hash_store_node: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "hash_store_node" as std.types.NonEmptyStr)
+data graph_hash_dangling_root: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "hash_dangling_root" as std.types.NonEmptyStr)
+data graph_hash_never_encoded: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "hash_never_encoded" as std.types.NonEmptyStr)
+data graph_hash_absent: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "hash_absent" as std.types.NonEmptyStr)
 
 data graph_artifact_row_c: v2.workflow.realization_runner.NodeKeyedGraphRow = v2.workflow.realization_runner.NodeKeyedGraphRow {
   content_hash: graph_hash_c,
-  encoded_length: byte_size(count: 7),
+  encoded_length: std.measure.byte_size(count: 7),
   child_refs: []
 }
 
 data graph_artifact_row_a: v2.workflow.realization_runner.NodeKeyedGraphRow = v2.workflow.realization_runner.NodeKeyedGraphRow {
   content_hash: graph_hash_a,
-  encoded_length: byte_size(count: 3),
+  encoded_length: std.measure.byte_size(count: 3),
   child_refs: [graph_hash_c]
 }
 
 data graph_artifact_row_b: v2.workflow.realization_runner.NodeKeyedGraphRow = v2.workflow.realization_runner.NodeKeyedGraphRow {
   content_hash: graph_hash_b,
-  encoded_length: byte_size(count: 5),
+  encoded_length: std.measure.byte_size(count: 5),
   child_refs: [graph_hash_c]
 }
 
 data graph_artifact_row_root: v2.workflow.realization_runner.NodeKeyedGraphRow = v2.workflow.realization_runner.NodeKeyedGraphRow {
   content_hash: graph_hash_root,
-  encoded_length: byte_size(count: 10),
+  encoded_length: std.measure.byte_size(count: 10),
   child_refs: [graph_hash_a, graph_hash_b]
 }
 
@@ -155,7 +155,7 @@ data graph_artifact_dangling: v2.workflow.realization_runner.NodeKeyedGraphArtif
   rows: [
     v2.workflow.realization_runner.NodeKeyedGraphRow {
       content_hash: graph_hash_dangling_root,
-      encoded_length: byte_size(count: 4),
+      encoded_length: std.measure.byte_size(count: 4),
       child_refs: [graph_hash_never_encoded]
     }
   ],
@@ -170,7 +170,7 @@ data graph_artifact_duplicated: v2.workflow.realization_runner.NodeKeyedGraphArt
 test fn witness_graph_artifact_shared_row_counted_once() -> Bool {
   match node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: graph_hash_root) {
     NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
-      byte_size_count(b: bytes) == 25
+      std.measure.byte_size_count(b: bytes) == 25
     NodeKeyedGraphTransitiveBytesMissingRow { missing: _ } => false
     NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
   }
@@ -179,14 +179,14 @@ test fn witness_graph_artifact_shared_row_counted_once() -> Bool {
 test fn witness_graph_artifact_subgraph_bytes() -> Bool {
   match node_keyed_graph_transitive_bytes(artifact: graph_artifact_diamond, root: graph_hash_a) {
     NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
-      byte_size_count(b: bytes) == 10
+      std.measure.byte_size_count(b: bytes) == 10
     NodeKeyedGraphTransitiveBytesMissingRow { missing: _ } => false
     NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
   }
 }
 
 test fn witness_graph_artifact_total_matches_fully_reachable_root() -> Bool {
-  byte_size_count(b: node_keyed_graph_artifact_total_bytes(artifact: graph_artifact_diamond)) == 25
+  std.measure.byte_size_count(b: node_keyed_graph_artifact_total_bytes(artifact: graph_artifact_diamond)) == 25
 }
 
 test fn witness_graph_artifact_entry_binds_value_root() -> Bool {
@@ -195,7 +195,7 @@ test fn witness_graph_artifact_entry_binds_value_root() -> Bool {
     entry: v2.workflow.realization_runner.NodeKeyedGraphArtifactEntry { store_node: graph_hash_store_node, value_root: graph_hash_b }
   ) {
     NodeKeyedGraphTransitiveBytesSettled { bytes: bytes } =>
-      byte_size_count(b: bytes) == 12
+      std.measure.byte_size_count(b: bytes) == 12
     NodeKeyedGraphTransitiveBytesMissingRow { missing: _ } => false
     NodeKeyedGraphTransitiveBytesUnsettled { pending: _ } => false
   }

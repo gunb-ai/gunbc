@@ -78,7 +78,7 @@ fn floor_discovery_transport_observe(
   match state {
     TransportNeedsCommit { request: request } => match observation {
       CommitObserved { commit: observed } => {
-        if git_object_id_eq(left: observed.object_id, right: request.subject.tested_commit.object_id) {
+        if extdeps.git.object_store.git_object_id_eq(left: observed.object_id, right: request.subject.tested_commit.object_id) {
           TransportNeedsTree { request: request }
         } else {
           TransportRefused {
@@ -97,7 +97,7 @@ fn floor_discovery_transport_observe(
     }
     TransportNeedsTree { request: request } => match observation {
       TreeObserved { tree: observed } => {
-        if git_object_id_eq(left: observed.object_id, right: request.subject.tested_tree.object_id) {
+        if extdeps.git.object_store.git_object_id_eq(left: observed.object_id, right: request.subject.tested_tree.object_id) {
           TransportNeedsTrackedWorktree { request: request }
         } else {
           TransportRefused {

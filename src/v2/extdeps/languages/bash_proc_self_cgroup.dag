@@ -19,7 +19,7 @@ fn bash_membership_assign_from_record(
       concat(
         walk_var as String,
         "=\"",
-        proc_self_cgroup_absolute_path_from_relative(relative_path: rel, mount_root: mount_root),
+        extdeps.linux.proc_self_cgroup.proc_self_cgroup_absolute_path_from_relative(relative_path: rel, mount_root: mount_root),
         "\"",
       )
     MembershipMissing => bash_membership_refuse_missing_body
@@ -34,24 +34,24 @@ fn bash_membership_assign_from_content(
   mount_root: std.types.FilePathParts,
 ) -> String {
   bash_membership_assign_from_record(
-    record: read_unified_cgroup_membership(content: content),
+    record: extdeps.linux.proc_self_cgroup.read_unified_cgroup_membership(content: content),
     walk_var: walk_var,
     mount_root: mount_root,
   )
 }
 
-data bash_membership_realization_note: String = "Bash realization for extdeps.linux.proc_self_cgroup unified-hierarchy membership. bash_membership_assign_from_content lowers read_unified_cgroup_membership outcomes to shell text. bash_membership_assign_from_source is the foreign-executor transport: a runtime scan over cgroup_source that mirrors the parser's refusal/observed semantics for wet witnesses. The semantic parser lives in extdeps.linux.proc_self_cgroup; procfs path literal is extdeps.linux.procfs ProcSelfCgroup; this module owns target spelling only."
+data bash_membership_realization_note: String = "Bash realization for extdeps.linux.proc_self_cgroup unified-hierarchy membership. bash_membership_assign_from_content lowers extdeps.linux.proc_self_cgroup.read_unified_cgroup_membership outcomes to shell text. bash_membership_assign_from_source is the foreign-executor transport: a runtime scan over cgroup_source that mirrors the parser's refusal/observed semantics for wet witnesses. The semantic parser lives in extdeps.linux.proc_self_cgroup; procfs path literal is extdeps.linux.procfs ProcSelfCgroup; this module owns target spelling only."
 
 data bash_membership_runtime_scan_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.extdeps.languages.bash_proc_self_cgroup",
     decl_name: "bash_membership_assign_from_source",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data bash_membership_runtime_scan_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: bash_membership_assign_from_source — foreign-executor runtime scan over extdeps.linux.procfs ProcSelfCgroup; semantic parser is extdeps.linux.proc_self_cgroup read_unified_cgroup_membership. DISSOLVES WHEN shell→intent Phase 2 binds cgroup membership observation through host_effect_apply without medium-as-string concat.")
+data bash_membership_runtime_scan_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: bash_membership_assign_from_source — foreign-executor runtime scan over extdeps.linux.procfs ProcSelfCgroup; semantic parser is extdeps.linux.proc_self_cgroup extdeps.linux.proc_self_cgroup.read_unified_cgroup_membership. DISSOLVES WHEN shell→intent Phase 2 binds cgroup membership observation through host_effect_apply without medium-as-string concat.")
 
 fn bash_membership_outcome_tag_from_execution(
   success: Bool,
@@ -67,7 +67,7 @@ fn bash_membership_outcome_tag_from_execution(
     OutcomeTagAmbiguous
   } else if success {
     let abs = trim(s: stdout)
-    let root = proc_self_cgroup_mount_root_text(mount_root: mount_root)
+    let root = extdeps.linux.proc_self_cgroup.proc_self_cgroup_mount_root_text(mount_root: mount_root)
     let root_len = string_length(s: root)
     if string_length(s: abs) >= root_len
       && substring(s: abs, start: 0, end: root_len) == root {
@@ -93,9 +93,9 @@ fn bash_membership_cross_realization_law_holds(
   stdout: String,
   mount_root: std.types.FilePathParts,
 ) -> Bool {
-  unified_membership_outcome_tag_eq(
-    a: unified_membership_outcome_tag(
-      record: read_unified_cgroup_membership(content: content)
+  extdeps.linux.proc_self_cgroup.unified_membership_outcome_tag_eq(
+    a: extdeps.linux.proc_self_cgroup.unified_membership_outcome_tag(
+      record: extdeps.linux.proc_self_cgroup.read_unified_cgroup_membership(content: content)
     ),
     b: bash_membership_outcome_tag_from_execution(
       success: success,
@@ -132,7 +132,7 @@ fn bash_membership_assign_from_source_drift_sketch(
     "; }; ",
     walk_var as String,
     "=\"",
-    proc_self_cgroup_mount_root_text(mount_root: mount_root),
+    extdeps.linux.proc_self_cgroup.proc_self_cgroup_mount_root_text(mount_root: mount_root),
     "$_cg_rel\"; ",
     "} || exit 1",
   )
@@ -164,7 +164,7 @@ fn bash_membership_assign_from_source(
     "; }; ",
     walk_var as String,
     "=\"",
-    proc_self_cgroup_mount_root_text(mount_root: mount_root),
+    extdeps.linux.proc_self_cgroup.proc_self_cgroup_mount_root_text(mount_root: mount_root),
     "$_cg_rel\"; ",
     "} || exit 1",
   )

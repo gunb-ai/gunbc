@@ -17,7 +17,7 @@ fn compile_clean_touched_path_is_docs_only(path: String) -> Bool {
 }
 
 fn compile_clean_all_touched_paths_docs_universe(touched_paths: List<String>) -> Bool {
-  list_length(items: touched_paths) > 0
+  std.types.list_length(items: touched_paths) > 0
     && fold(
       touched_paths,
       init: true,

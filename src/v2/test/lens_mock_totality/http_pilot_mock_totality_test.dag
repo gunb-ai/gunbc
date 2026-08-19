@@ -32,14 +32,14 @@ fn omits_get_post_consumer_handles(case: std.hermetic_replay.PublishedMockCase) 
 
 test fn http_pilot_mock_consumer_is_total_holds() -> Bool {
   mock_totality_green_holds(
-    published: http_pilot_published_mock_corpus,
+    published: extdeps.test.mock_corpus.http_pilot_published_mock_corpus,
     consumer_handles: real_consumer_handles
   )
 }
 
 test fn http_pilot_mock_omitted_member_is_red_holds() -> Bool {
   mock_totality_red_on_omission_holds(
-    published: http_pilot_published_mock_corpus,
+    published: extdeps.test.mock_corpus.http_pilot_published_mock_corpus,
     consumer_handles: omits_get_post_consumer_handles
   )
 }

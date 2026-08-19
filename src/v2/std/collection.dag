@@ -15,8 +15,8 @@ fn optional_present_witness<T>(opt: Optional<T>) -> Witness<T> {
 
 type List<T> = std.algebra.FreeMonoid<T>
 
-data empty_map_host_binding: std.primitives.PrimitiveContract = empty_map_contract
-data map_insert_host_binding: std.primitives.PrimitiveContract = map_insert_contract
+data empty_map_host_binding: std.primitives.PrimitiveContract = std.primitives.empty_map_contract
+data map_insert_host_binding: std.primitives.PrimitiveContract = std.primitives.map_insert_contract
 
 type IndexedLookup<T> {
   index: Int

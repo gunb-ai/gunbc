@@ -3,9 +3,9 @@ module v2.test.emit.std_logic_selfhost_witness
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data std_logic_bool_enum_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
+data std_logic_bool_enum_golden: String = concat(extdeps.languages.rust.emit.rust_enum_derives_copy, "\nenum Bool { True, False }")
 
-data std_logic_bool_wrong_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { False, True }")
+data std_logic_bool_wrong_golden: String = concat(extdeps.languages.rust.emit.rust_enum_derives_copy, "\nenum Bool { False, True }")
 
 fn sl_conj(children: List<v2.std.node.Edge>) -> Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: children, occurrence_id: SyntheticOccurrence }

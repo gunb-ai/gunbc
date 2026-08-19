@@ -92,7 +92,7 @@ fn create_if_absent_shape(key_source: SubstrateKeySource) -> std.effects.EffectS
 }
 
 fn create_always_shape() -> std.effects.EffectShape<SubstrateKeySource> {
-  std.effects.CreateEffect { cause: PostAlways }
+  std.effects.CreateEffect { cause: std.effects.PostAlways }
 }
 
 fn atom_node(s: v2.std.node.Symbol) -> Node {
@@ -164,7 +164,7 @@ fn effect_shape_node(shape: std.effects.EffectShape<SubstrateKeySource>) -> Node
       match cause {
         CreateIfAbsent { key_source: key_source } =>
           keyed_shape_node(variant_marker: ^effect_shape_variant_create_if_absent, key_source: key_source)
-        PostAlways => atom_node(s: ^effect_shape_variant_create_always)
+        std.effects.PostAlways => atom_node(s: ^effect_shape_variant_create_always)
         KeylessFallback { method: method } => atom_node(s: ^effect_shape_variant_create_keyless)
       }
     std.effects.AppendEffect => atom_node(s: ^effect_shape_variant_append)

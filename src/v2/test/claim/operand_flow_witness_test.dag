@@ -48,7 +48,7 @@ data operand_flow_settled_artifact: v2.workflow.realization_runner.NodeKeyedGrap
   rows: [
     v2.workflow.realization_runner.NodeKeyedGraphRow {
       content_hash: operand_flow_shared_hash,
-      encoded_length: byte_size(count: 9),
+      encoded_length: std.measure.byte_size(count: 9),
       child_refs: []
     }
   ],
@@ -81,7 +81,7 @@ test fn witness_shared_operand_consumers_agree() -> Bool {
         OperandFlow { edge: _, operand: operand_b, footprint: footprint_b } =>
           (operand_a == operand_b)
             && (operand_a == operand_flow_shared_hash)
-            && (byte_size_count(b: footprint_a) == byte_size_count(b: footprint_b))
+            && (std.measure.byte_size_count(b: footprint_a) == std.measure.byte_size_count(b: footprint_b))
         OperandFlowRefused { edge: _, cause: _ } => false
       }
     OperandFlowRefused { edge: _, cause: _ } => false

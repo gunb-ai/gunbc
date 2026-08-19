@@ -3,9 +3,9 @@ module v2.test.long.parse_table_memo_amortization
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data memo_amort_empty_a_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module memo_amort_a\n", fidelity: Lossless }
-data memo_amort_empty_b_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module memo_amort_b\n", fidelity: Lossless }
-data memo_amort_bisect_add_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: Lossless }
+data memo_amort_empty_a_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module memo_amort_a\n", fidelity: extdeps.communication.medium.Lossless }
+data memo_amort_empty_b_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module memo_amort_b\n", fidelity: extdeps.communication.medium.Lossless }
+data memo_amort_bisect_add_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module bisect.add\n\nfn add(x:Int, y:Int) -> Int { x + y }", fidelity: extdeps.communication.medium.Lossless }
 data memo_amort_file_a_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
   source: memo_amort_empty_a_source,
   artifact: v2.std.artifact.Artifact {

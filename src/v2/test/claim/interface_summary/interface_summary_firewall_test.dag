@@ -16,7 +16,7 @@ fn export_fingerprint_for_gate(module_path: std.types.NonEmptyStr) -> std.conten
           Present { value: _ } => found
           Absent =>
             match entry.name == "firewall_gate" {
-              true => Present { value: export_entry_fingerprint(entry: entry) }
+              true => Present { value: std.interface_summary.export_entry_fingerprint(entry: entry) }
               false => found
             }
         }

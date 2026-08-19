@@ -3,17 +3,17 @@ module v2.lens.interface_summary
 
 fn decl_kind_to_export_kind(kind: v2.std.decl_index.ItemKind) -> std.interface_summary.ExportKind? {
   match kind {
-    FnItem => Present { value: ExportFn }
-    FuncItem => Present { value: ExportFn }
-    TypeItem => Present { value: ExportType }
-    DataItem => Present { value: ExportData }
-    ServiceItem => Present { value: ExportService }
+    FnItem => Present { value: std.interface_summary.ExportFn }
+    FuncItem => Present { value: std.interface_summary.ExportFn }
+    TypeItem => Present { value: std.interface_summary.ExportType }
+    DataItem => Present { value: std.interface_summary.ExportData }
+    ServiceItem => Present { value: std.interface_summary.ExportService }
     OtherItem => Absent
   }
 }
 
 fn signature_fingerprint_of_node(node: Node) -> std.interface_summary.SignatureFingerprint {
-  content_hash_atom(value: content_hash(n: node).digest as String)
+  std.content_hash.content_hash_atom(value: content_hash(n: node).digest as String)
 }
 
 fn export_entry_from_decl_fact(fact: v2.std.decl_index.DeclFact) -> std.interface_summary.ExportEntry? {
@@ -23,7 +23,7 @@ fn export_entry_from_decl_fact(fact: v2.std.decl_index.DeclFact) -> std.interfac
         value: std.interface_summary.ExportEntry {
           name: fact.name,
           kind: kind,
-          contract: signature_contract(
+          contract: std.interface_summary.signature_contract(
             signature: signature_fingerprint_of_node(node: fact.node)
           )
         }
@@ -54,7 +54,7 @@ fn interface_summary_for_module_path(
   std.interface_summary.InterfaceSummary {
     module_path: module_path,
     exports: exports,
-    interface_hash: interface_summary_rollup(exports: exports)
+    interface_hash: std.interface_summary.interface_summary_rollup(exports: exports)
   }
 }
 
@@ -151,7 +151,7 @@ fn module_key_for_rel_path(
   ) {
     Present { value: import_hashes } =>
       Present {
-        value: module_key(
+        value: std.interface_summary.module_key(
           source_hash: source_hash,
           direct_import_interface_hashes: import_hashes
         )

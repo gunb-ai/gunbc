@@ -333,7 +333,7 @@ fn advance_producer_emission_receipt_behavioral_equivalent(
 fn scaffold_digest_for_module_path(module_path: String) -> v2.std.node.Hash {
   combine_hash(
     a: symbol_identity_digest(sym: ^frontier_producer_receipt_scaffold_digest),
-    b: content_hash_atom(value: module_path)
+    b: std.content_hash.content_hash_atom(value: module_path)
   )
 }
 

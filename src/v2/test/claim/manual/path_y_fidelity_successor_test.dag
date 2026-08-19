@@ -6,12 +6,12 @@ fn path_y_core_expr() -> extdeps.github.expressions.Expression {
   extdeps.github.expressions.LogicalOr {
     left: extdeps.github.expressions.LogicalOr {
       left: extdeps.github.expressions.FunctionCall {
-        function: HashFiles,
+        function: extdeps.github.expressions.HashFiles,
         args: [ extdeps.github.expressions.StringLiteral { value: "Cargo.lock" }, extdeps.github.expressions.StringLiteral { value: "Cargo.toml" } ],
       },
-      right: extdeps.github.expressions.ContextAccess { context: Github, path: ["event", "number"] },
+      right: extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Github, path: ["event", "number"] },
     },
-    right: extdeps.github.expressions.ContextAccess { context: Runner, path: ["os"] },
+    right: extdeps.github.expressions.ContextAccess { context: extdeps.github.expressions.Runner, path: ["os"] },
   }
 }
 
@@ -53,11 +53,11 @@ fn gha_roundtrip_fidelity_matches_target_quotient() -> Bool {
 }
 
 fn gha_core_advertises_target_quotient_fidelity() -> Bool {
-  match ingest_expression(src: serialize_expression(expression: path_y_core_expr())) {
+  match extdeps.github.expressions.ingest_expression(src: extdeps.github.expressions.serialize_expression(expression: path_y_core_expr())) {
     Present { value: v } =>
       match gha_expression_core_roundtrip_fidelity() {
         Accepted { value: fidelity, diagnostics: _ } => {
-          let m = source_medium_carried(carried: v, fidelity: fidelity)
+          let m = extdeps.communication.fidelity_carriers.source_medium_carried(carried: v, fidelity: fidelity)
           match m.fidelity {
             Lossless => m.carried == path_y_core_expr()
             Lossy => false
@@ -124,7 +124,7 @@ test fn path_y_fidelity_successor_reads_target_model_quotient() -> Bool {
     && bmc_roundtrip_fidelity_matches_target_quotient()
     && gha_roundtrip_fidelity_matches_target_quotient()
     && gha_core_advertises_target_quotient_fidelity()
-    && match bmc_lifecycle_roundtrip(s: bmc_factory_state()) {
+    && match bmc_lifecycle_roundtrip(s: gunbc.bmc_onboarding.bmc_factory_state()) {
       Accepted { value: medium, diagnostics: _ } =>
         match medium.fidelity {
           Lossy => true
@@ -132,5 +132,5 @@ test fn path_y_fidelity_successor_reads_target_model_quotient() -> Bool {
         }
       Rejected { diagnostics: _ } => false
     }
-    && bmc_full_state_is_lossy_after_roundtrip(s: bmc_factory_state())
+    && gunbc.bmc_onboarding.bmc_full_state_is_lossy_after_roundtrip(s: gunbc.bmc_onboarding.bmc_factory_state())
 }

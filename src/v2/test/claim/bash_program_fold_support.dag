@@ -123,7 +123,7 @@ fn bash_program_fixture_ensure_bin_specials(var_name: String, bin_name: String) 
     root,
     bash_build_word_lit(text: concat("/target/release/", bin_name))
   ])
-  let verify_nodes = emit_verifications(
+  let verify_nodes = tools.build_step.emit_verifications(
     produces: [tools.build_step.BuildArtifact { path: bin_path, name: bin_name }]
   )
   list_append(

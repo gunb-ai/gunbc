@@ -15,17 +15,17 @@ data a4_opacity_target_model: v2.std.compilers.target_model.TargetModel = v2.std
 
 data a4_opacity_charoffset_for_byteoffset_source: Medium<String> = extdeps.communication.medium.Medium {
   carried: "module a4opacity.refined_twin\n\ntype ByteOffset {\n  value: Int\n}\ntype CharOffset {\n  value: Int\n}\n\nfn expects_byte(x: ByteOffset) -> Int = x.value\n\nfn call_site(c: CharOffset) -> Int = expects_byte(c)\n",
-  fidelity: Lossless
+  fidelity: extdeps.communication.medium.Lossless
 }
 
 data a4_opacity_byteoffset_for_charoffset_source: Medium<String> = extdeps.communication.medium.Medium {
   carried: "module a4opacity.refined_twin_reverse\n\ntype ByteOffset {\n  value: Int\n}\ntype CharOffset {\n  value: Int\n}\n\nfn expects_char(x: CharOffset) -> Int = x.value\n\nfn call_site(b: ByteOffset) -> Int = expects_char(b)\n",
-  fidelity: Lossless
+  fidelity: extdeps.communication.medium.Lossless
 }
 
 data a4_opacity_same_brand_source: Medium<String> = extdeps.communication.medium.Medium {
   carried: "module a4opacity.same_brand\n\ntype ByteOffset {\n  value: Int\n}\n\nfn expects_byte(x: ByteOffset) -> Int = x.value\n\nfn call_site(b: ByteOffset) -> Int = expects_byte(b)\n",
-  fidelity: Lossless
+  fidelity: extdeps.communication.medium.Lossless
 }
 
 fn a4_opacity_compile(source: Medium<String>) -> v2.std.diagnostic.Outcome<Medium<String>> {

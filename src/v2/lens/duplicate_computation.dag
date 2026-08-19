@@ -173,7 +173,7 @@ fn computation_demand_group_admissible(group: List<ComputationDemandFact>) -> Bo
 }
 
 fn authored_duplication_lca(key: String) -> List<std.materialization_ladder.Frame> {
-  [std.materialization_ladder.Frame { name: key, kind: SharedStateFrame }]
+  [std.materialization_ladder.Frame { name: key, kind: std.materialization_ladder.SharedStateFrame }]
 }
 
 fn duplicate_computation_violations(facts: List<ComputationDemandFact>) -> List<std.materialization_ladder.LadderVerdict> {

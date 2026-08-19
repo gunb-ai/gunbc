@@ -3,7 +3,7 @@ module v2.compiler.self_host.seed_emitter_behavioral_wet_known_red_entries
 
 data seed_emitter_behavioral_wet_known_red_entries_note: String = "The six V1SeedEmitter behavioral wet expect_red quarantine receipts (review #7199, re-homed under emitter_producer_provenance 2026-07-29), DERIVED as of 2026-08-03 from the one function-grain admission authority gunbc.explicit_witness_admission: they are its ExecutionWitnessKind known-red rows, the same rows the hermetic probe roster projects at CorpusWitnessKind, so a quarantine is authored once whatever cadence executes it. Hand rows previously lived here beside a paired QuarantineProbeExpectRed path pattern in gunbc.ci_layer_roots; both are gone. Consumed by v2.compiler.self_host.wet_receipt_enrollment (falsifier batch enrollment) and v2.compiler.self_host.emitter_producer_provenance (producer receipt citation gate); this decl keeps its name so neither consumer changed. Cycle-free leaf: neither consumer is imported here."
 
-data seed_emitter_behavioral_wet_known_red_entries: List<std.realization_schedule.ScheduleWitnessEntry> = known_red_probe_execution_roster()
+data seed_emitter_behavioral_wet_known_red_entries: List<std.realization_schedule.ScheduleWitnessEntry> = gunbc.explicit_witness_admission.known_red_probe_execution_roster()
 
 fn schedule_witness_entry_cited(
   probe_entry: String,
@@ -32,7 +32,7 @@ fn schedule_witness_entries_structurally_equal(
         ok && any(
           xs: right,
           predicate: fn(right_entry) {
-            schedule_witness_entry_eq(a: left_entry, b: right_entry)
+            std.realization_schedule.schedule_witness_entry_eq(a: left_entry, b: right_entry)
           }
         )
       }

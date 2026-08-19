@@ -4,16 +4,16 @@ module v2.compiler.emit
 fn serialize_source_for_emitted(
   emitted: v2.compiler.translate.TargetNodeTree,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Medium<String>> {
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
   target_serialize_source_from_model(target: target, emitted: emitted)
 }
-fn serialize_target(tree: v2.compiler.translate.TargetNodeTree, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
+fn serialize_target(tree: v2.compiler.translate.TargetNodeTree, target: v2.std.compilers.target_model.TargetModel) -> Outcome<extdeps.communication.medium.Medium<String>> {
   serialize_source_for_emitted(emitted: tree, target: target)
 }
 fn emit(
   tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Medium<String>> {
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: translate(tree: tree, target: target),
     f: fn(target_tree) {

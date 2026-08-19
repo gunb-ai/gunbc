@@ -4,10 +4,10 @@ module v2.test.manual.nominal_distinctness_cross_call
 
 data nominal_distinct_forbidden_authority_source_text: String = "nominal_distinct_forbidden_authority_source_text"
 
-data nominal_distinct_records_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module nominal.distinct.records.probe\n\ntype WrapA {\n  value: Int\n}\n\ntype WrapB {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(b: WrapB) -> Int = expects_a(b)\n", fidelity: Lossless }
+data nominal_distinct_records_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module nominal.distinct.records.probe\n\ntype WrapA {\n  value: Int\n}\n\ntype WrapB {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(b: WrapB) -> Int = expects_a(b)\n", fidelity: extdeps.communication.medium.Lossless }
 
-data nominal_distinct_brands_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module nominal.distinct.desugared_brands.probe\n\ntype IntentId {\n  value: String\n}\n\ntype IssueId {\n  value: String\n}\n\nfn expects_intent(x: IntentId) -> String = x.value\n\nfn call_site(i: IssueId) -> String = expects_intent(i)\n", fidelity: Lossless }
-data nominal_distinct_control_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module nominal.distinct.control.probe\n\ntype WrapA {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(a: WrapA) -> Int = expects_a(a)\n", fidelity: Lossless }
+data nominal_distinct_brands_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module nominal.distinct.desugared_brands.probe\n\ntype IntentId {\n  value: String\n}\n\ntype IssueId {\n  value: String\n}\n\nfn expects_intent(x: IntentId) -> String = x.value\n\nfn call_site(i: IssueId) -> String = expects_intent(i)\n", fidelity: extdeps.communication.medium.Lossless }
+data nominal_distinct_control_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module nominal.distinct.control.probe\n\ntype WrapA {\n  value: Int\n}\n\nfn expects_a(x: WrapA) -> Int = x.value\n\nfn call_site(a: WrapA) -> Int = expects_a(a)\n", fidelity: extdeps.communication.medium.Lossless }
 data nominal_distinct_compile_target: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
   produced_decl_support: ProducedDeclUnwired,
   bundle: rust_target_model_node(),

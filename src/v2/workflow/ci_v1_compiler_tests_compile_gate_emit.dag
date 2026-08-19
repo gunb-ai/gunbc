@@ -17,15 +17,15 @@ data ci_v1_compiler_tests_compile_gate_refusal_prefix: String = "__GUNBC_EFFECT_
 data ci_v1_compiler_tests_compile_gate_authority_note: String = "Build-job RETAINED-KERNEL EXECUTION gate for the v1-compiler-tests workspace crate. --no-run was removed 2026-08-11: the crate is now the declared retained kernel (test.retirement.model retained_legacy_rust_test_modules), so the gate RUNS the tests rather than only typechecking their bodies. There is no compile-only arm — a retained test either executes or the gate refuses. Wave B typed carrier: one extdeps.cargo_build cargo.Build.Test invocation (--release) bound by name; runs after the release build so v1-compiler is compiled once in release with the same feature set as the test crate. Bash realization supplies HostEnvVar for ci_v1_compiler_tests_compile_gate_cargo_bin_env_var so the pin-rustup prelude env var renders through bash_build_word_var in effect_plan_bash_materialize — not a post-emission string substitution and not fused into the agnostic BoundOperationInvocation substrate. argv tail tokens remain declaration-derived; GitHub Actions run: is still a foreign-executor shell transport scaffold awaiting full orchestration emit."
 
 data ci_v1_compiler_tests_compile_gate_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_v1_compiler_tests_compile_gate_emit",
     decl_name: "ci_v1_compiler_tests_compile_gate_script",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); the EAGAIN retry wrapper lives in gunbc.ci_workflow ci_v1_compiler_tests_compile_gate_run_script (same seam as ci_release_build_script); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await")
+data ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: ci_v1_compiler_tests_compile_gate_script — foreign-executor (GitHub Actions run:) shell transport for extdeps.cargo_build cargo.Build.Test(extra_args: ci_v1_compiler_tests_compile_gate_extra_args); the EAGAIN retry wrapper lives in gunbc.ci_workflow ci_v1_compiler_tests_compile_gate_run_script (same seam as ci_release_build_script); DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the build-job step to orchestration emit over the typed cargo operation — the same de-fork ci_fmt_gate_line and ci_release_build_script await")
 
 fn ci_v1_compiler_tests_compile_gate_check_step() -> v2.workflow.effect_plan_bash_materialize.BashBoundOperationInvocation {
   bash_bind_operation_invocation_host_env_executable(
@@ -70,7 +70,7 @@ fn ci_v1_compiler_tests_compile_gate_command() -> String {
 
 fn ci_v1_compiler_tests_compile_gate_script() -> String {
   concat(
-    concat("# ", concat(dissolution_description(condition: ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger), "\n")),
+    concat("# ", concat(std.dissolution.dissolution_description(condition: ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger), "\n")),
     concat(ci_v1_compiler_tests_compile_gate_command(), "\n")
   )
 }

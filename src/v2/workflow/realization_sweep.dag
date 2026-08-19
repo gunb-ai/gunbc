@@ -61,7 +61,7 @@ fn entry_canonical_identities(entry: String) -> List<String> {
       acc
     }
   })
-  let with_admitted = fold_list(xs: explicit_witness_admissions, empty: discovered, cons: fn(acc, a) {
+  let with_admitted = fold_list(xs: gunbc.explicit_witness_admission.explicit_witness_admissions, empty: discovered, cons: fn(acc, a) {
     if a.witness.entry == entry {
       identity_snoc_unique(acc: acc, f: a.witness.function)
     } else {
@@ -230,7 +230,7 @@ fn subject_admission(segments: List<v2.std.node.Symbol>) -> v2.compiler.name_res
     subject: v2.compiler.name_resolve.ResolutionSubject {
       name: fold_list(xs: reversed, empty: std.algebra.Empty, cons: fn(acc, seg) { std.algebra.Cons { head: seg, tail: acc } })
     },
-    imports: Empty
+    imports: std.algebra.Empty
   }
 }
 

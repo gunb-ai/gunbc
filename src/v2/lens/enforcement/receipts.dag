@@ -120,9 +120,9 @@ fn consumer_enrolled_for(
   match binding {
     NoConsumerWitness => NoConsumer
     BoundConsumerWitness { witness } =>
-      if contains(xs: ci_entries, item: witness, eq: schedule_witness_entry_eq) {
+      if contains(xs: ci_entries, item: witness, eq: std.realization_schedule.schedule_witness_entry_eq) {
         EnrolledInFloorRoster
-      } else if contains(xs: prepush_entries, item: witness, eq: schedule_witness_entry_eq) {
+      } else if contains(xs: prepush_entries, item: witness, eq: std.realization_schedule.schedule_witness_entry_eq) {
         PrePushHook
       } else {
         WitnessOnly

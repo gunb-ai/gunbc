@@ -5,5 +5,5 @@ data retry_eagain_example_command: String = "cargo build -p v1-compiler --releas
 
 // The CI EAGAIN-retry intent (Retry body/escalations/on_exhausted) lives at its production home, gunbc.ci_spec.ci_cargo_eagain_retry_intent - the module that owns the policy facts (command, infra patterns, warnings, escalation env). This fixture module keeps only the example command and the delegation, so the byte-identity tests in v2.workflow.orchestration_retry_emit_test exercise the SAME intent value production emits.
 fn retry_eagain_intent() -> v2.std.orchestration.PipelineStep {
-  ci_cargo_eagain_retry_intent(command: retry_eagain_example_command)
+  gunbc.ci_spec.ci_cargo_eagain_retry_intent(command: retry_eagain_example_command)
 }

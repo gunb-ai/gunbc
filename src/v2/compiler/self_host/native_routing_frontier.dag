@@ -20,7 +20,7 @@ fn family_subject(module_path: String, decl_name: String) -> std.decl_ref.Declar
   std.decl_ref.DeclarationRef {
     module_path: module_path,
     decl_name: decl_name,
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -35,7 +35,7 @@ fn retained_no_cached_carrier(
     agreement_function: f,
     disposition: InterpretedRetained {
       reason: "no_cached_no_evict_carrier",
-      dissolution: unbound_dissolution(description: "a no-evict cached agreement leg exists for this family (the family_crate pr_native pattern) with one warm green agreement receipt; the equals_eval legs are UNCACHED (srv1 sweep receipt 2026-07-22: empty native-cache fields) so routing them would build every PR run. On flip the family enrolls in post-flip monitoring per v2.compiler.self_host.parity_window (no pre-flip streak is required — demotion 2026-07-28)")
+      dissolution: std.dissolution.unbound_dissolution(description: "a no-evict cached agreement leg exists for this family (the family_crate pr_native pattern) with one warm green agreement receipt; the equals_eval legs are UNCACHED (srv1 sweep receipt 2026-07-22: empty native-cache fields) so routing them would build every PR run. On flip the family enrolls in post-flip monitoring per v2.compiler.self_host.parity_window (no pre-flip streak is required — demotion 2026-07-28)")
     }
   }
 }
@@ -84,7 +84,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     agreement_function: "emit_on_demand_family_crate_pr_native_agreement_holds",
     disposition: InterpretedRetained {
       reason: "agreement_red_on_main",
-      dissolution: unbound_dissolution(description: "routed_flip_reverted_note receipt: divergence root-caused with member + both values NAMED (agreement loudness gap closed first), then a fresh warm per-host agreement receipt — re-flip via routed_via_family_crate")
+      dissolution: std.dissolution.unbound_dissolution(description: "routed_flip_reverted_note receipt: divergence root-caused with member + both values NAMED (agreement loudness gap closed first), then a fresh warm per-host agreement receipt — re-flip via routed_via_family_crate")
     }
   },
   retained_no_cached_carrier(
@@ -120,7 +120,7 @@ data native_routing_frontier_roster: List<NativeRoutingFrontierRow> = [
     agreement_function: "emit_on_demand_family_crate_pr_native_agreement_holds",
     disposition: InterpretedRetained {
       reason: "agreement_red_on_main",
-      dissolution: unbound_dissolution(description: "routed_flip_reverted_note receipt: divergence root-caused with member + both values NAMED (agreement loudness gap closed first), then a fresh warm per-host agreement receipt — re-flip via routed_via_family_crate")
+      dissolution: std.dissolution.unbound_dissolution(description: "routed_flip_reverted_note receipt: divergence root-caused with member + both values NAMED (agreement loudness gap closed first), then a fresh warm per-host agreement receipt — re-flip via routed_via_family_crate")
     }
   },
   retained_no_cached_carrier(

@@ -5,7 +5,7 @@ module v2.test.claim.roster_registry_test
 
 
 // Constructs the empty condition through the NON-LITERAL path deliberately.
-// The literal form `unbound_dissolution(description: "")` is refused at compile
+// The literal form `std.dissolution.unbound_dissolution(description: "")` is refused at compile
 // now that the parameter is NonEmptyStr -- that is the wall. Refinement at
 // non-literal positions is still deferred, and that gap is exactly what the
 // downstream well-formedness guard defends, so this control has to reach it
@@ -16,12 +16,12 @@ fn synthetic_nonliteral_text(text: String) -> std.types.NonEmptyStr {
 }
 
 fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionCondition {
-  unbound_dissolution(description: synthetic_nonliteral_text(text: text))
+  std.dissolution.unbound_dissolution(description: synthetic_nonliteral_text(text: text))
 }
 
 fn synthetic_registration(membership: gunbc.roster_registry.GroupMembership) -> gunbc.roster_registry.RosterRegistration {
   gunbc.roster_registry.RosterRegistration {
-    roster: roster_decl(module_path: "v2.test.synthetic", decl_name: "synthetic_roster"),
+    roster: gunbc.roster_registry.roster_decl(module_path: "v2.test.synthetic", decl_name: "synthetic_roster"),
     unit_kind: "synthetic unit",
     membership: membership
   }
@@ -30,7 +30,7 @@ fn synthetic_registration(membership: gunbc.roster_registry.GroupMembership) -> 
 
 fn nickname_registration() -> gunbc.roster_registry.RosterRegistration {
   synthetic_registration(
-    membership: DeclaredFrontier { reason: "", dissolution: unbound_dissolution(description: "nickname-class control: the reason axis is the writable one") }
+    membership: DeclaredFrontier { reason: "", dissolution: std.dissolution.unbound_dissolution(description: "nickname-class control: the reason axis is the writable one") }
   )
 }
 
@@ -39,7 +39,7 @@ test fn roster_registry_standard_holds_live() -> Bool {
 }
 
 test fn roster_registry_enrolls_known_rosters() -> Bool {
-  length(xs: roster_registry) >= 26
+  length(xs: gunbc.roster_registry.roster_registry) >= 26
 }
 
 
@@ -79,13 +79,13 @@ test fn roster_registry_green_control_standard_forms_pass() -> Bool {
       synthetic_registration(membership: ByContainment),
       synthetic_registration(
         membership: gunbc.roster_registry.ByDerivation {
-          predicate: roster_decl(module_path: "v2.test.synthetic", decl_name: "derivation_fn")
+          predicate: gunbc.roster_registry.roster_decl(module_path: "v2.test.synthetic", decl_name: "derivation_fn")
         }
       ),
       synthetic_registration(
         membership: DeclaredFrontier {
           reason: "declared with a reason",
-          dissolution: unbound_dissolution(description: "and a trigger")
+          dissolution: std.dissolution.unbound_dissolution(description: "and a trigger")
         }
       )
     ]

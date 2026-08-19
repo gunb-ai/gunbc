@@ -240,7 +240,7 @@ test fn witness_provenance_variants_distinct() -> Bool {
     policy: std.decl_ref.DeclarationRef {
       module_path: "v2.std.compilers.compilation_unit" as std.types.NonEmptyStr,
       decl_name: "partition_fold" as std.types.NonEmptyStr,
-      field: WholeDeclaration,
+      field: std.decl_ref.WholeDeclaration,
     }
   )
   !partition_provenance_eq(left: explicit, right: derived)

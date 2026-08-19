@@ -58,14 +58,14 @@ fn floor_discovery_subject_bind(
   expected: FloorDiscoverySubject,
   observed: FloorDiscoverySubject,
 ) -> FloorDiscoverySubjectBinding {
-  if !git_object_id_eq(left: expected.tested_commit.object_id, right: observed.tested_commit.object_id) {
+  if !extdeps.git.object_store.git_object_id_eq(left: expected.tested_commit.object_id, right: observed.tested_commit.object_id) {
     FloorDiscoverySubjectRefused {
       cause: FloorDiscoveryTestedCommitMismatch {
         expected: expected.tested_commit.object_id,
         observed: observed.tested_commit.object_id,
       }
     }
-  } else if !git_object_id_eq(left: expected.tested_tree.object_id, right: observed.tested_tree.object_id) {
+  } else if !extdeps.git.object_store.git_object_id_eq(left: expected.tested_tree.object_id, right: observed.tested_tree.object_id) {
     FloorDiscoverySubjectRefused {
       cause: FloorDiscoveryTestedTreeMismatch {
         expected: expected.tested_tree.object_id,
@@ -145,7 +145,7 @@ fn floor_discovery_request_bind(
             observed: observed.discovery_scope_dirs,
           }
         }
-      } else if !execution_mode_eq(left: expected.execution_mode, right: observed.execution_mode) {
+      } else if !std.execution_mode.execution_mode_eq(left: expected.execution_mode, right: observed.execution_mode) {
         FloorDiscoveryRequestRefused {
           cause: FloorDiscoveryExecutionModeMismatch {
             expected: expected.execution_mode,
@@ -189,19 +189,19 @@ fn floor_discovery_identity_fold_strings(
     values,
     init: seed,
     f: fn(acc, value) {
-      content_hash_combine_structural(left: acc, right: content_hash_atom(value: value))
+      std.content_hash.content_hash_combine_structural(left: acc, right: std.content_hash.content_hash_atom(value: value))
     }
   )
 }
 
 fn floor_discovery_request_identity(request: FloorDiscoveryRequest) -> std.content_hash.Fnv1a64Structural {
-  let with_commit = content_hash_combine_structural(
-    left: content_hash_atom(value: "floor-discovery-request-identity-v2"),
-    right: content_hash_atom(value: floor_discovery_commit_identity(commit: request.subject.tested_commit))
+  let with_commit = std.content_hash.content_hash_combine_structural(
+    left: std.content_hash.content_hash_atom(value: "floor-discovery-request-identity-v2"),
+    right: std.content_hash.content_hash_atom(value: floor_discovery_commit_identity(commit: request.subject.tested_commit))
   )
-  let with_tree = content_hash_combine_structural(
+  let with_tree = std.content_hash.content_hash_combine_structural(
     left: with_commit,
-    right: content_hash_atom(value: floor_discovery_tree_identity(tree: request.subject.tested_tree))
+    right: std.content_hash.content_hash_atom(value: floor_discovery_tree_identity(tree: request.subject.tested_tree))
   )
   let with_source_roots = floor_discovery_identity_fold_strings(
     seed: with_tree,
@@ -219,19 +219,19 @@ fn floor_discovery_request_identity(request: FloorDiscoveryRequest) -> std.conte
     seed: with_exclusions,
     values: request.discovery_scope_dirs,
   )
-  let with_mode = content_hash_combine_structural(
+  let with_mode = std.content_hash.content_hash_combine_structural(
     left: with_scope,
-    right: content_hash_atom(value: floor_discovery_execution_mode_identity(mode: request.execution_mode))
+    right: std.content_hash.content_hash_atom(value: floor_discovery_execution_mode_identity(mode: request.execution_mode))
   )
   let with_execution_authority = floor_discovery_identity_fold_strings(
     seed: with_mode,
     values: request.subject.execution_authority_source_roots,
   )
-  let with_naming_authority = content_hash_combine_structural(
+  let with_naming_authority = std.content_hash.content_hash_combine_structural(
     left: with_execution_authority,
     right: request.subject.naming_authority_identity,
   )
-  content_hash_combine_structural(
+  std.content_hash.content_hash_combine_structural(
     left: with_naming_authority,
     right: request.subject.tool_identity,
   )

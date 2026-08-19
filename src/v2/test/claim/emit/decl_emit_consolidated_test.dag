@@ -2,16 +2,16 @@ module v2.test.emit.decl_emit_consolidated
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data dc_bool_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
-data dc_execmode_golden: String = concat(rust_enum_derives_copy, "\nenum ExecutionMode { Hermetic, Wet, Record }")
-data dc_artifactkind_golden: String = concat(rust_enum_derives_copy, "\nenum ArtifactKind { SourceFile, GeneratedSource, TestClaimArtifact, ProjectionArtifact, Stage0Candidate, CorePackage, WitnessBundle }")
-data dc_witness_golden: String = concat(rust_enum_derives, "\nenum Witness<C> { Holds { value: C }, Violates { diagnostic: Diagnostic } }")
-data dc_spw_golden: String = concat(rust_struct_derives, "\nstruct StructuralPropertyWitness { property: Symbol, evidence: Node }")
-data dc_hw_golden: String = concat(rust_struct_derives, "\nstruct HomomorphismWitness { rule: Symbol, evidence: Node }")
-data dc_artifact_golden: String = concat(rust_struct_derives, "\nstruct Artifact { kind: ArtifactKind, id: Symbol, file_path: String }")
-data dc_occ_golden: String = concat(rust_struct_derives, "\nstruct OccurrenceIdAllocator { next_id: Int }")
-data dc_vendor_golden: String = concat(rust_struct_derives, "\nstruct Vendor<Domain> { legal_name: String }")
-data dc_pair_golden: String = concat(rust_struct_derives, "\nstruct Pair<K, V> { key: K, value: V }")
+data dc_bool_golden: String = concat(extdeps.languages.rust.emit.rust_enum_derives_copy, "\nenum Bool { True, False }")
+data dc_execmode_golden: String = concat(extdeps.languages.rust.emit.rust_enum_derives_copy, "\nenum ExecutionMode { Hermetic, Wet, Record }")
+data dc_artifactkind_golden: String = concat(extdeps.languages.rust.emit.rust_enum_derives_copy, "\nenum ArtifactKind { SourceFile, GeneratedSource, TestClaimArtifact, ProjectionArtifact, Stage0Candidate, CorePackage, WitnessBundle }")
+data dc_witness_golden: String = concat(extdeps.languages.rust.emit.rust_enum_derives, "\nenum Witness<C> { Holds { value: C }, Violates { diagnostic: Diagnostic } }")
+data dc_spw_golden: String = concat(extdeps.languages.rust.emit.rust_struct_derives, "\nstruct StructuralPropertyWitness { property: Symbol, evidence: Node }")
+data dc_hw_golden: String = concat(extdeps.languages.rust.emit.rust_struct_derives, "\nstruct HomomorphismWitness { rule: Symbol, evidence: Node }")
+data dc_artifact_golden: String = concat(extdeps.languages.rust.emit.rust_struct_derives, "\nstruct Artifact { kind: ArtifactKind, id: Symbol, file_path: String }")
+data dc_occ_golden: String = concat(extdeps.languages.rust.emit.rust_struct_derives, "\nstruct OccurrenceIdAllocator { next_id: Int }")
+data dc_vendor_golden: String = concat(extdeps.languages.rust.emit.rust_struct_derives, "\nstruct Vendor<Domain> { legal_name: String }")
+data dc_pair_golden: String = concat(extdeps.languages.rust.emit.rust_struct_derives, "\nstruct Pair<K, V> { key: K, value: V }")
 
 fn dc_conj(children: List<v2.std.node.Edge>) -> Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: children, occurrence_id: SyntheticOccurrence }
@@ -356,8 +356,8 @@ test fn dc_structs_covered_holds() -> Bool {
 
 test fn dc_golden_discriminates_holds() -> Bool {
   !dc_enum_matches(emitted: dc_bool_emitted(), golden: dc_execmode_golden)
-    && !dc_enum_matches(emitted: dc_bool_emitted(), golden: concat(rust_enum_derives_copy, "\nenum Bool { True, FALSE }"))
-    && !dc_struct_matches(emitted: dc_spw_emitted(), golden: concat(rust_struct_derives, "\nstruct StructuralPropertyWitness { property: Symbol, evidence: NODE }"))
+    && !dc_enum_matches(emitted: dc_bool_emitted(), golden: concat(extdeps.languages.rust.emit.rust_enum_derives_copy, "\nenum Bool { True, FALSE }"))
+    && !dc_struct_matches(emitted: dc_spw_emitted(), golden: concat(extdeps.languages.rust.emit.rust_struct_derives, "\nstruct StructuralPropertyWitness { property: Symbol, evidence: NODE }"))
     && !dc_enum_matches(emitted: dc_bool_emitted(), golden: "enum Bool { True, False }")
     && !dc_struct_matches(emitted: dc_spw_emitted(), golden: "struct StructuralPropertyWitness { property: Symbol, evidence: Node }")
 }

@@ -949,7 +949,7 @@ fn bash_nearest_ancestor_locate_assign_command_from_source(
 ) -> String {
   bash_membership_assign_from_source(
     cgroup_source: cgroup_source,
-    walk_var: nearest_ancestor_walk_target(spec: spec),
+    walk_var: std.path_intent.nearest_ancestor_walk_target(spec: spec),
     mount_root: spec.stop_before,
   )
 }
@@ -957,13 +957,13 @@ fn bash_nearest_ancestor_locate_assign_command_from_source(
 fn bash_nearest_ancestor_locate_assign_command(spec: std.path_intent.NearestAncestorContaining) -> String {
   bash_nearest_ancestor_locate_assign_command_from_source(
     spec: spec,
-    cgroup_source: procfs_path_literal(p: ProcSelfCgroup) as String,
+    cgroup_source: extdeps.linux.procfs.procfs_path_literal(p: extdeps.linux.procfs.ProcSelfCgroup) as String,
   )
 }
 
 fn bash_nearest_ancestor_locate_cond_command(spec: std.path_intent.NearestAncestorContaining) -> String {
   match bash_path_predicate_target_model(
-    predicate: nearest_ancestor_while_predicate(spec: spec)
+    predicate: std.path_intent.nearest_ancestor_while_predicate(spec: spec)
   ) {
     Accepted { value: source, diagnostics: d } =>
       match d {
@@ -976,7 +976,7 @@ fn bash_nearest_ancestor_locate_cond_command(spec: std.path_intent.NearestAncest
 
 fn bash_nearest_ancestor_locate_body_command(spec: std.path_intent.NearestAncestorContaining) -> String {
   match bash_dirname_ascent_target_model(
-    ascent: nearest_ancestor_while_ascent(spec: spec)
+    ascent: std.path_intent.nearest_ancestor_while_ascent(spec: spec)
   ) {
     Accepted { value: source, diagnostics: d } =>
       match d {

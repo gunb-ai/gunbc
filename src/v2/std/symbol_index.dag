@@ -18,7 +18,7 @@ type LexicalBindingCandidate {
 
 type LexicalLookup
   = LexicalHit { node: Node, path: v2.std.qualified_name.QualifiedName }
-  | LexicalAmbiguous { candidates: FreeMonoid<LexicalBindingCandidate> }
+  | LexicalAmbiguous { candidates: std.algebra.FreeMonoid<LexicalBindingCandidate> }
   | LexicalUnbound
 
 type SymbolIndex {

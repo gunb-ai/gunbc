@@ -247,7 +247,7 @@ fn compile_inferred(
         f: fn(value) {
           outcome_accepted(
             EvalResult {
-              value: extdeps.communication.medium.Medium { carried: value, fidelity: Lossless }
+              value: extdeps.communication.medium.Medium { carried: value, fidelity: extdeps.communication.medium.Lossless }
             }
           )
         }

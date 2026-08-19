@@ -95,7 +95,7 @@ fn materialize_share_identity_grade() -> std.computation_identity.ComputationIde
 }
 
 fn materialize_share_grade_permits_share() -> Bool {
-  identity_permits_share(ci: materialize_share_identity_grade())
+  std.computation_identity.identity_permits_share(ci: materialize_share_identity_grade())
 }
 
 fn materialize_ungrounded_identity(detail: String) -> std.computation_identity.ComputationIdentity {

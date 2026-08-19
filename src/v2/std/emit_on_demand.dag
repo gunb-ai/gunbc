@@ -14,7 +14,7 @@ fn witness_family_realize_width(
   } else {
     spine_receipt(root: witness_root).independence_width
   }
-  realize_pack_width(
+  std.realize_pack.realize_pack_width(
     bound: std.realize_pack.BoundDerived { bytes: bound_bytes },
     budget: budget,
     independence_width: independence

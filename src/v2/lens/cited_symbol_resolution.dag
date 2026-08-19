@@ -1,7 +1,7 @@
 module v2.lens.cited_symbol_resolution
 
 
-data cited_symbol_resolution_law: String = "feature:cited-symbol-resolution — every typed DeclarationRef enrolled in hand_authored_production_doc_declaration_refs (HandAuthoredDocBind primary_work + additional_works, excluding permanent g1-cited-symbol-control-* probe rows) resolves to exactly one decl_facts row over a declared module, or refuses with a typed five-arm result. Population is structural, not corpus text scan. Permanent planted controls in hand_authored_cited_symbol_control_declaration_refs stay enrolled for mutation witnesses — they never retire when production goes green (operator ruling 2026-08-03, DESIGN 4b(4)). Resolution semantics live in v2.std.decl_ref_resolution.resolve_declaration_ref over decl_facts + module_declaration_facts — single authority, no per-kind fork. dissolve-on: substrate refuses unwritable DeclarationRef at construction; enrollment widens to every structural DeclarationRef carrier when the Node-tree reader lands."
+data cited_symbol_resolution_law: String = "feature:cited-symbol-resolution — every typed DeclarationRef enrolled in gunbc.doc_graph_roots.hand_authored_production_doc_declaration_refs (HandAuthoredDocBind primary_work + additional_works, excluding permanent g1-cited-symbol-control-* probe rows) resolves to exactly one decl_facts row over a declared module, or refuses with a typed five-arm result. Population is structural, not corpus text scan. Permanent planted controls in gunbc.doc_graph_roots.hand_authored_cited_symbol_control_declaration_refs stay enrolled for mutation witnesses — they never retire when production goes green (operator ruling 2026-08-03, DESIGN 4b(4)). Resolution semantics live in v2.std.decl_ref_resolution.resolve_declaration_ref over decl_facts + module_declaration_facts — single authority, no per-kind fork. dissolve-on: substrate refuses unwritable DeclarationRef at construction; enrollment widens to every structural DeclarationRef carrier when the Node-tree reader lands."
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SubstrateMandatoryTag }
@@ -10,7 +10,7 @@ data construction_justification: v2.lens.common.construction_justification.Const
 data cited_symbol_planted_ambiguous_control_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "v2.std.node",
   decl_name: "G1_planted_ambiguous_control_RED",
-  field: WholeDeclaration,
+  field: std.decl_ref.WholeDeclaration,
 }
 
 data cited_symbol_planted_ambiguous_control_facts: List<v2.std.decl_index.DeclFact> = [
@@ -33,11 +33,11 @@ data cited_symbol_planted_ambiguous_control_facts: List<v2.std.decl_index.DeclFa
 data cited_symbol_population_widened_note: String = "THE DENOMINATOR NOW INCLUDES GENERATED-DOCUMENT REFERENCES, and that widening is the entire mechanism change. Before it, this lens counted hand-authored binds only, so a system named inside gunbc.design_document could be renamed or deleted and every required check stayed green while the same system named in a hand-authored document reddened -- one class of documentary reference enforced, an adjacent one silently exempt. The population widened rather than a second resolver being written: v2.std.decl_ref_resolution stays the single authority for what resolving a reference means, because a second algorithm that agrees today is a fork that disagrees later.\n\nWHAT WIDENS AND WHAT DOES NOT: production references from both sources are counted here. The permanent g1-cited-symbol-control-* probe rows stay excluded exactly as before, because they are planted to refuse and folding them in would make this count nonzero by construction."
 
 fn cited_symbol_production_declaration_refs() -> List<std.decl_ref.DeclarationRef> {
-  concat(hand_authored_production_doc_declaration_refs(), generated_document_declaration_refs())
+  concat(gunbc.doc_graph_roots.hand_authored_production_doc_declaration_refs(), gunbc.documentary_refs.generated_document_declaration_refs())
 }
 
 fn cited_symbol_resolution_violation_count() -> Int {
-  let pool = hand_authored_works_resolution_pool_roots()
+  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
   cited_declaration_ref_refusal_count(
     refs: cited_symbol_production_declaration_refs(),
     facts: decl_facts(pool_roots: pool),
@@ -46,18 +46,18 @@ fn cited_symbol_resolution_violation_count() -> Int {
 }
 
 fn cited_symbol_enrolled_refusal_count() -> Int {
-  let pool = hand_authored_works_resolution_pool_roots()
+  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
   cited_declaration_ref_refusal_count(
-    refs: hand_authored_doc_declaration_refs(),
+    refs: gunbc.doc_graph_roots.hand_authored_doc_declaration_refs(),
     facts: decl_facts(pool_roots: pool),
     modules: module_declaration_facts_live(pool_roots: pool)
   )
 }
 
 fn cited_symbol_planted_control_refusal_count() -> Int {
-  let pool = hand_authored_works_resolution_pool_roots()
+  let pool = gunbc.doc_graph_roots.hand_authored_works_resolution_pool_roots()
   cited_declaration_ref_refusal_count(
-    refs: hand_authored_cited_symbol_control_declaration_refs(),
+    refs: gunbc.doc_graph_roots.hand_authored_cited_symbol_control_declaration_refs(),
     facts: decl_facts(pool_roots: pool),
     modules: module_declaration_facts_live(pool_roots: pool)
   )

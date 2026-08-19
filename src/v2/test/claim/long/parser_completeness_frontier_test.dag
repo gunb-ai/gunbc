@@ -11,7 +11,7 @@ data parser_frontier_module_artifact: v2.std.artifact.Artifact = v2.std.artifact
 fn parser_frontier_ingest_for(src: String) -> v2.compiler.source_authority.SourceRootIngest {
   std.algebra.Cons {
     head: v2.compiler.source_authority.DagSourceReadWitness {
-      source: extdeps.communication.medium.Medium { carried: src, fidelity: Lossless },
+      source: extdeps.communication.medium.Medium { carried: src, fidelity: extdeps.communication.medium.Lossless },
       artifact: parser_frontier_module_artifact,
       compilation_unit: ^parser_frontier_pilot_cu,
       source_root: V2Tree

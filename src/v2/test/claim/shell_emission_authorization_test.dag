@@ -79,7 +79,7 @@ test fn steady_state_with_matching_roster_entry_authorizes() -> Bool {
     v2.std.execution_surface.ShellEmissionRosterEntry {
       site: ^live_deploy_apply,
       roster_key: "live_deploy_apply",
-      dissolution: unbound_dissolution(description: "dissolve-on: live_deploy typed-effect reshape (slice 3)")
+      dissolution: std.dissolution.unbound_dissolution(description: "dissolve-on: live_deploy typed-effect reshape (slice 3)")
     }
   ]
   let auth = authorize_shell_emission(
@@ -101,7 +101,7 @@ test fn steady_state_roster_entry_for_other_site_still_refuses() -> Bool {
     v2.std.execution_surface.ShellEmissionRosterEntry {
       site: ^live_deploy_apply,
       roster_key: "live_deploy_apply",
-      dissolution: unbound_dissolution(description: "dissolve-on: live_deploy typed-effect reshape (slice 3)")
+      dissolution: std.dissolution.unbound_dissolution(description: "dissolve-on: live_deploy typed-effect reshape (slice 3)")
     }
   ]
   let auth = authorize_shell_emission(

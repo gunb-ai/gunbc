@@ -11,22 +11,22 @@ fn gha_workflow_yaml_fold_plan() -> List<List<std.realization_schedule.Runnable>
       std.realization_schedule.RunnableSingleClaim {
         entry: gha_fold_structural_test_entry,
         function: "gha_fold_relation_row_job_witness_holds",
-        profile: runnable_resource_profile_negligible()
+        profile: std.realization_schedule.runnable_resource_profile_negligible()
       },
       std.realization_schedule.RunnableSingleClaim {
         entry: gha_fold_serialize_test_entry,
         function: "gha_fold_pilot_job_byte_identical_holds",
-        profile: runnable_resource_profile_negligible()
+        profile: std.realization_schedule.runnable_resource_profile_negligible()
       },
       std.realization_schedule.RunnableSingleClaim {
         entry: gha_fold_serialize_test_entry,
         function: "gha_fold_wrong_production_rejects_oracle_holds",
-        profile: runnable_resource_profile_negligible()
+        profile: std.realization_schedule.runnable_resource_profile_negligible()
       },
       std.realization_schedule.RunnableSingleClaim {
         entry: gha_fold_serialize_test_entry,
         function: "gha_fold_flat_steps_perturbation_rejects_oracle_holds",
-        profile: runnable_resource_profile_negligible()
+        profile: std.realization_schedule.runnable_resource_profile_negligible()
       }
     ]
   ]

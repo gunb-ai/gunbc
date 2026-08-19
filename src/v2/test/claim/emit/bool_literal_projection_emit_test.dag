@@ -25,7 +25,7 @@ fn blp_probe_inputs() -> v2.compiler.eval.Inputs {
 }
 
 fn blp_probe_source() -> Medium<String> {
-  extdeps.communication.medium.Medium { carried: "", fidelity: Lossless }
+  extdeps.communication.medium.Medium { carried: "", fidelity: extdeps.communication.medium.Lossless }
 }
 
 fn blp_bool_literal_expr() -> v2.std.compilers.target_model.TargetValueExpression {

@@ -250,7 +250,7 @@ fn artifact_identity_agrees(left: GeneratedArtifactIdentity, right: GeneratedArt
     ArtifactMaterialized { digest: l } =>
       match right {
         ArtifactMaterialized { digest: r } =>
-          content_hash_eq_sha512(left: l.observed, right: r.observed)
+          std.content_hash.content_hash_eq_sha512(left: l.observed, right: r.observed)
         ArtifactNotMaterialized => false
       }
     ArtifactNotMaterialized =>

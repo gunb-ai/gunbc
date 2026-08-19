@@ -14,7 +14,7 @@ fn probe_artifact() -> tools.build_step.BuildArtifact {
 }
 
 fn probe_stmts() -> List<Node> {
-  emit_verifications(produces: [probe_artifact()])
+  tools.build_step.emit_verifications(produces: [probe_artifact()])
 }
 
 fn witness_stmt_is_if(s: Node) -> Bool {
@@ -60,7 +60,7 @@ test fn witness_serialized_conjuncts_and_teeth() -> Bool {
 }
 
 test fn witness_floor_covers_both_release_bins() -> Bool {
-  let script = ci_floor_build_verify_script()
+  let script = gunbc.ci_spec.ci_floor_build_verify_script()
   string_contains(s: script, pattern: "--verify-build-artifacts")
     && string_contains(s: script, pattern: "/target/release/claim_executor")
     && string_contains(s: script, pattern: "/target/release/gunbc")

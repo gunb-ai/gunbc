@@ -1227,7 +1227,7 @@ fn verilog_identifier_is_reserved(spelling: String) -> Bool {
 
 fn verilog_identifier_contains_forbidden(spelling: String) -> Bool {
   fold(verilog_forbidden_identifier_characters, init: false, f: fn(acc, ch) {
-    acc || list_length(items: split(s: spelling, delimiter: ch)) > 1
+    acc || std.types.list_length(items: split(s: spelling, delimiter: ch)) > 1
   })
 }
 

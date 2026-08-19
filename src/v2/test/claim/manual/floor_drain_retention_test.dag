@@ -3,11 +3,11 @@ module v2.test.manual.floor_drain_retention
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data floor_drain_retention_note: String = "Width=1 floor drain reuses one in-process typed_module_cache across entry groups (term-3 retention axis). MIGRATED off the fused eviction axis (2026-08-07): this witness was enrolled but not swept with the rest of the split, so it kept asserting the pre-split model — locality plus 'Never eviction' plus a projected ScopeExit. Two of those three claims were garbled by the old vocabulary rather than merely renamed. 'Never eviction' described a mechanism that never deletes, but the catalog row's real facts are an in-process store RELEASED at scope exit whose entries are capped by a runtime-derived count; the old axis could not say both, so it said the wrong one. And the projection claim asserted an inference provider_from_catalog no longer makes: retention now travels through unchanged, so the meaningful control is that the provider PRESERVES the cited retention, not that it re-derives a verdict from locality. The entry-count unit is what makes this row a discriminating specimen for the role doors, so the two role controls below are the point of the file rather than decoration: the same row is eligible for a capacity-bounded role and refused for an exact-byte one, and the refusal names the unit."
+data floor_drain_retention_note: String = "Width=1 floor drain reuses one in-process typed_module_cache across entry groups (term-3 retention axis). MIGRATED off the fused eviction axis (2026-08-07): this witness was enrolled but not swept with the rest of the split, so it kept asserting the pre-split model — locality plus 'Never eviction' plus a projected ScopeExit. Two of those three claims were garbled by the old vocabulary rather than merely renamed. 'Never eviction' described a mechanism that never deletes, but the catalog row's real facts are an in-process store RELEASED at scope exit whose entries are capped by a runtime-derived count; the old axis could not say both, so it said the wrong one. And the projection claim asserted an inference extdeps.cache.materialization.provider_from_catalog no longer makes: retention now travels through unchanged, so the meaningful control is that the provider PRESERVES the cited retention, not that it re-derives a verdict from locality. The entry-count unit is what makes this row a discriminating specimen for the role doors, so the two role controls below are the point of the file rather than decoration: the same row is eligible for a capacity-bounded role and refused for an exact-byte one, and the refusal names the unit."
 
 test fn witness_typed_module_cache_is_scope_released_with_entry_ceiling() -> Bool {
-  let row = cache_interface_facts_from_catalog(row: typed_module_cache_facts)
-  let retention = typed_module_cache_facts.placement.retention
+  let row = extdeps.cache.cache_interface_facts_from_catalog(row: extdeps.realization.reconcile_in_process.typed_module_cache_facts)
+  let retention = extdeps.realization.reconcile_in_process.typed_module_cache_facts.placement.retention
   let released_at_scope_exit = match retention.release_policy {
     ReleasedAtProviderScopeExit => true
     _ => false
@@ -22,26 +22,26 @@ test fn witness_typed_module_cache_is_scope_released_with_entry_ceiling() -> Boo
     }
     _ => false
   }
-  (row.locality == InProcess)
+  (row.locality == std.cache_interface.InProcess)
     && released_at_scope_exit
     && entry_ceiling_is_runtime_derived
-    && (catalog_key_derivation_classification(kd: typed_module_cache_facts.key_derivation) == NativeInternalHash)
+    && (extdeps.cache.types.catalog_key_derivation_classification(kd: extdeps.realization.reconcile_in_process.typed_module_cache_facts.key_derivation) == std.cache_interface.NativeInternalHash)
 }
 
 test fn witness_provider_preserves_the_cited_retention() -> Bool {
-  let prov = provider_from_catalog(
-    facts: typed_module_cache_facts,
-    scope: empty_frame_path,
-    coverage: CoversAllComputations
+  let prov = extdeps.cache.materialization.provider_from_catalog(
+    facts: extdeps.realization.reconcile_in_process.typed_module_cache_facts,
+    scope: std.materialization_ladder.empty_frame_path,
+    coverage: std.materialization_ladder.CoversAllComputations
   )
-  prov.retention == typed_module_cache_facts.placement.retention
+  prov.retention == extdeps.realization.reconcile_in_process.typed_module_cache_facts.placement.retention
 }
 
 test fn witness_entry_capped_row_is_eligible_for_a_capacity_bounded_role() -> Bool {
-  match provider_for_capacity_bounded_role(
-    facts: typed_module_cache_facts,
-    scope: empty_frame_path,
-    coverage: CoversAllComputations
+  match extdeps.cache.materialization.provider_for_capacity_bounded_role(
+    facts: extdeps.realization.reconcile_in_process.typed_module_cache_facts,
+    scope: std.materialization_ladder.empty_frame_path,
+    coverage: std.materialization_ladder.CoversAllComputations
   ) {
     ProviderEligible { role: _, provider: _ } => true
     ProviderIneligible { role: _, interface: _, reason: _ } => false
@@ -49,12 +49,12 @@ test fn witness_entry_capped_row_is_eligible_for_a_capacity_bounded_role() -> Bo
 }
 
 test fn witness_entry_capped_row_is_refused_for_an_exact_byte_role_naming_the_unit() -> Bool {
-  match provider_for_exact_byte_budget_role(
-    facts: typed_module_cache_facts,
-    scope: empty_frame_path,
-    coverage: CoversAllComputations
+  match extdeps.cache.materialization.provider_for_exact_byte_budget_role(
+    facts: extdeps.realization.reconcile_in_process.typed_module_cache_facts,
+    scope: std.materialization_ladder.empty_frame_path,
+    coverage: std.materialization_ladder.CoversAllComputations
   ) {
     ProviderEligible { role: _, provider: _ } => false
-    ProviderIneligible { role: _, interface: _, reason: why } => why == CapacityUnitMismatchForRole
+    ProviderIneligible { role: _, interface: _, reason: why } => why == extdeps.cache.materialization.CapacityUnitMismatchForRole
   }
 }

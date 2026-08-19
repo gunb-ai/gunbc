@@ -46,11 +46,11 @@ fn ci_heal_revalidation_expected_arm() -> v2.std.orchestration.Pipeline {
         name: "ACTUAL_HEAD",
         value: v2.std.orchestration.ExprCmdSubst {
           callee: "git",
-          args: shape_git_rev_parse_head_args()
+          args: extdeps.git.shape_git_rev_parse_head_args()
         }
       },
       If {
-        cond: Not {
+        cond: v2.std.orchestration.Not {
           inner: v2.std.orchestration.StrEq {
             lhs: "\"$RUN_SUBJECT_HEAD\"",
             rhs: "\"$EXPECTED_HEALED_SHA\""
@@ -60,7 +60,7 @@ fn ci_heal_revalidation_expected_arm() -> v2.std.orchestration.Pipeline {
         else_: Absent
       },
       If {
-        cond: Not {
+        cond: v2.std.orchestration.Not {
           inner: v2.std.orchestration.StrEq {
             lhs: "\"$ACTUAL_HEAD\"",
             rhs: "\"$EXPECTED_HEALED_SHA\""

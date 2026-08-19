@@ -13,7 +13,7 @@ test fn witness_exclusion_frontier_reconciliation_holds() -> Bool {
 
 
 // Constructs the empty condition through the NON-LITERAL path deliberately.
-// The literal form `unbound_dissolution(description: "")` is refused at compile
+// The literal form `std.dissolution.unbound_dissolution(description: "")` is refused at compile
 // now that the parameter is NonEmptyStr -- that is the wall. Refinement at
 // non-literal positions is still deferred, and that gap is exactly what the
 // downstream well-formedness guard defends, so this control has to reach it
@@ -24,7 +24,7 @@ fn synthetic_nonliteral_text(text: String) -> std.types.NonEmptyStr {
 }
 
 fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionCondition {
-  unbound_dissolution(description: synthetic_nonliteral_text(text: text))
+  std.dissolution.unbound_dissolution(description: synthetic_nonliteral_text(text: text))
 }
 
 fn synthetic_row(pattern: String) -> gunbc.ci_layer_roots.WitnessExclusionRow {
@@ -32,7 +32,7 @@ fn synthetic_row(pattern: String) -> gunbc.ci_layer_roots.WitnessExclusionRow {
     pattern: pattern,
     classification: DiscoverySelection,
     reason: "synthetic",
-    dissolution: unbound_dissolution(description: "synthetic")
+    dissolution: std.dissolution.unbound_dissolution(description: "synthetic")
   }
 }
 
@@ -63,7 +63,7 @@ test fn witness_exclusion_red_control_unbacked_bin_wet_row_reds() -> Bool {
         pattern: "no_such_entry_anywhere.dag",
         classification: BinWitnessWet,
         reason: "synthetic",
-        dissolution: unbound_dissolution(description: "synthetic")
+        dissolution: std.dissolution.unbound_dissolution(description: "synthetic")
       }
     ],
     bin_entries: [],
@@ -79,7 +79,7 @@ test fn witness_exclusion_red_control_unbacked_rehomed_row_reds() -> Bool {
         pattern: "no_such_rehomed_entry.dag",
         classification: FalsifierRehomedBinWet,
         reason: "synthetic",
-        dissolution: unbound_dissolution(description: "synthetic")
+        dissolution: std.dissolution.unbound_dissolution(description: "synthetic")
       }
     ],
     bin_entries: [],
@@ -95,7 +95,7 @@ test fn witness_exclusion_red_control_unbacked_substrate_long_lane_row_reds() ->
         pattern: "no_such_substrate_long_entry.dag",
         classification: FalsifierSubstrateLongLane,
         reason: "synthetic",
-        dissolution: unbound_dissolution(description: "synthetic")
+        dissolution: std.dissolution.unbound_dissolution(description: "synthetic")
       }
     ],
     bin_entries: [],
@@ -115,7 +115,7 @@ test fn witness_exclusion_red_control_quarantine_row_in_path_carrier_reds() -> B
         pattern: "synthetic_quarantined_file_test.dag",
         classification: QuarantineProbeExpectRed,
         reason: "synthetic",
-        dissolution: unbound_dissolution(description: "synthetic")
+        dissolution: std.dissolution.unbound_dissolution(description: "synthetic")
       }
     ]
   ) == false
@@ -181,14 +181,14 @@ fn synthetic_wet_lane_row(dissolution: std.dissolution.DissolutionCondition) -> 
 data witness_exclusion_red_control_third_spelling_row_is_unclassified_note: String = "The discriminating RED control: a synthetic row phrasing its trigger around the wet lane in a THIRD spelling -- naming the lane without the cadence-flag identifier, without referential equality to excl_wet_integration_dissolve, and without un-darken(s) -- must be caught by the broad candidate net yet missed by the precise positive predicate, proving the unclassified-residue mechanism can actually distinguish (not merely always return true/empty by construction)."
 
 test fn witness_exclusion_red_control_third_spelling_row_is_unclassified() -> Bool {
-  let row = synthetic_wet_lane_row(dissolution: unbound_dissolution(description: "falsifier_self_host_wet lane activates for this trigger"))
+  let row = synthetic_wet_lane_row(dissolution: std.dissolution.unbound_dissolution(description: "falsifier_self_host_wet lane activates for this trigger"))
   gunbc.ci_layer_roots.witness_exclusion_row_mentions_wet_lane_dark_state(row: row)
     && !gunbc.ci_layer_roots.witness_exclusion_row_waits_on_wet_lane_undarken(row: row)
 }
 
 // Positive control on the same synthetic-row path: a row that DOES match one of the positive arms must not be reported as unclassified by the net/positive-predicate pairing.
 test fn witness_exclusion_control_matched_row_is_not_flagged_unclassified() -> Bool {
-  let row = synthetic_wet_lane_row(dissolution: unbound_dissolution(description: "falsifier_self_host_wet_cadence_active flips true"))
+  let row = synthetic_wet_lane_row(dissolution: std.dissolution.unbound_dissolution(description: "falsifier_self_host_wet_cadence_active flips true"))
   gunbc.ci_layer_roots.witness_exclusion_row_mentions_wet_lane_dark_state(row: row)
     && gunbc.ci_layer_roots.witness_exclusion_row_waits_on_wet_lane_undarken(row: row)
 }

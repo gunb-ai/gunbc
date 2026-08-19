@@ -86,9 +86,9 @@ fn pr_floor_scheduling_disposition(
     DiscoverySelection => SchedulingEnrolled
     FalsifierSelfHostWet => disposition_when_bool(enrolled: ci_enrolled)
     FalsifierRehomedBinWet => disposition_when_bool(enrolled: ci_enrolled)
-    FalsifierSubstrateLongLane => disposition_when_bool(enrolled: ci_enrolled)
+    std.witness_admission.FalsifierSubstrateLongLane => disposition_when_bool(enrolled: ci_enrolled)
     BinWitnessWet => disposition_when_bool(enrolled: ci_enrolled)
-    QuarantineProbeExpectRed => disposition_when_bool(enrolled: ci_enrolled)
+    std.witness_admission.QuarantineProbeExpectRed => disposition_when_bool(enrolled: ci_enrolled)
     OfflineLocalRecipe => disposition_when_bool(enrolled: ci_enrolled)
     FixtureExplicitRoster => disposition_when_bool(enrolled: ci_enrolled)
     NoConsumer => disposition_when_bool(enrolled: ci_enrolled)
@@ -102,8 +102,8 @@ fn wet_falsifier_scheduling_disposition(primary: std.witness_admission.WitnessCo
     BinWitnessWet => SchedulingEnrolled
     OfflineLocalRecipe => SchedulingDark
     DiscoverySelection => SchedulingExcluded
-    FalsifierSubstrateLongLane => SchedulingExcluded
-    QuarantineProbeExpectRed => SchedulingExcluded
+    std.witness_admission.FalsifierSubstrateLongLane => SchedulingExcluded
+    std.witness_admission.QuarantineProbeExpectRed => SchedulingExcluded
     FixtureExplicitRoster => SchedulingExcluded
     NoConsumer => SchedulingExcluded
   }
@@ -113,8 +113,8 @@ fn scheduled_falsifier_scheduling_disposition(primary: std.witness_admission.Wit
   match primary {
     FalsifierSelfHostWet => SchedulingEnrolled
     FalsifierRehomedBinWet => SchedulingEnrolled
-    FalsifierSubstrateLongLane => SchedulingEnrolled
-    QuarantineProbeExpectRed => SchedulingEnrolled
+    std.witness_admission.FalsifierSubstrateLongLane => SchedulingEnrolled
+    std.witness_admission.QuarantineProbeExpectRed => SchedulingEnrolled
     DiscoverySelection => SchedulingExcluded
     BinWitnessWet => SchedulingExcluded
     OfflineLocalRecipe => SchedulingExcluded
@@ -139,9 +139,9 @@ fn scheduling_disposition_for_primary_cadence(
     WetFalsifier =>
       wet_falsifier_scheduling_disposition(primary: primary)
     KnownRedQuarantine =>
-      disposition_when_bool(enrolled: primary == QuarantineProbeExpectRed)
+      disposition_when_bool(enrolled: primary == std.witness_admission.QuarantineProbeExpectRed)
     SubstrateLongLane =>
-      disposition_when_bool(enrolled: primary == FalsifierSubstrateLongLane)
+      disposition_when_bool(enrolled: primary == std.witness_admission.FalsifierSubstrateLongLane)
     OfflineLocalRecipe =>
       disposition_when_bool(enrolled: primary == OfflineLocalRecipe)
     ScheduledFalsifier =>
@@ -395,12 +395,12 @@ fn inventory_row_for_contract(
         facts: facts,
         ci_enrolled: match c.consumer_witness {
           BoundConsumerWitness { witness } =>
-            contains(xs: ci_entries, item: witness, eq: schedule_witness_entry_eq)
+            contains(xs: ci_entries, item: witness, eq: std.realization_schedule.schedule_witness_entry_eq)
           NoConsumerWitness => false
         },
         prepush_enrolled: match c.consumer_witness {
           BoundConsumerWitness { witness } =>
-            contains(xs: prepush_entries, item: witness, eq: schedule_witness_entry_eq)
+            contains(xs: prepush_entries, item: witness, eq: std.realization_schedule.schedule_witness_entry_eq)
           NoConsumerWitness => false
         }
       )
@@ -520,7 +520,7 @@ fn inventory_application_count_for_lens(
 
 fn witness_exclusion_lookup_is_offline(lookup: WitnessExclusionLookup) -> Bool {
   match lookup {
-    ExclusionRowFound { value: row } => witness_exclusion_row_is_offline(row: row)
+    ExclusionRowFound { value: row } => gunbc.ci_layer_roots.witness_exclusion_row_is_offline(row: row)
     ExclusionRowAbsent => false
   }
 }

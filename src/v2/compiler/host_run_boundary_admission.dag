@@ -20,7 +20,7 @@ fn grade_is_construction(g: std.effect_grant.LifecycleGrade) -> Bool {
 fn host_run_network_boundary_admits(
   provided: std.frame_boundary.BoundaryMaterialization
 ) -> HostRunBoundaryAdmission {
-  match boundary_admits(required_trees: host_run_network_layers, provided: provided) {
+  match std.frame_boundary.boundary_admits(required_trees: host_run_network_layers, provided: provided) {
     BoundaryUnmaterialized { tree: t } => HostRunBoundaryRefused { tree: t }
     BoundaryMaterialized { grade: g } =>
       if grade_is_construction(g: g) {

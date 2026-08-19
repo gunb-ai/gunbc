@@ -19,7 +19,7 @@ fn fp_readthrough_missing_path_ref() -> v2.compiler.source_authority.SourceRef {
   v2.compiler.source_authority.SourceRef {
     path: "dag/nonexistent_fp_matrix_probe_path.dag",
     source_root: DagTree,
-    content_hash: content_hash_of_value(value: "missing-path" as std.types.NonEmptyStr)
+    content_hash: std.content_hash.content_hash_of_value(value: "missing-path" as std.types.NonEmptyStr)
   }
 }
 
@@ -38,7 +38,7 @@ fn fp_readthrough_wrong_hash_ref() -> v2.compiler.source_authority.SourceRef {
   v2.compiler.source_authority.SourceRef {
     path: "dag/std/algebra.dag",
     source_root: DagTree,
-    content_hash: content_hash_of_value(value: "wrong-hash-bytes" as std.types.NonEmptyStr)
+    content_hash: std.content_hash.content_hash_of_value(value: "wrong-hash-bytes" as std.types.NonEmptyStr)
   }
 }
 

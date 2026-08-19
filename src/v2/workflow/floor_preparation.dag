@@ -1,7 +1,7 @@
 module v2.workflow.floor_preparation
 
 
-data prepared_floor_subject_authority_note: String = "The prepared floor subject is an opaque semantic identity over the exact discovery request, selected witness identities, and the existing std.materialization_provider ResolveClosureRequest keys. It deliberately does NOT carry MultiEntryIndex or any other compiler container. ProviderProbe is the host read-back seam and provider_serve remains the one request/artifact binding authority. A miss, damaged artifact, incomplete artifact, wrong key, wrong content, or wrong hash family remains the corresponding typed ProviderLookup inside PreparedFloorProviderRefused. There is no cold-construction or fallback arm. SequentialChildProcess may therefore realize this identity as verified materialized resolved-closure artifacts while SharedWalkProcess may realize it as live capabilities; neither realization changes the semantic identity. FIRST CONSUMER: the scoped-witness population named by ROADMAP ci-scoped-worker-shared-substrate. The old scoped cold constructor may delete only after that consumer can serve every exact selected identity through this contract."
+data prepared_floor_subject_authority_note: String = "The prepared floor subject is an opaque semantic identity over the exact discovery request, selected witness identities, and the existing std.materialization_provider ResolveClosureRequest keys. It deliberately does NOT carry MultiEntryIndex or any other compiler container. ProviderProbe is the host read-back seam and std.materialization_provider.provider_serve remains the one request/artifact binding authority. A miss, damaged artifact, incomplete artifact, wrong key, wrong content, or wrong hash family remains the corresponding typed ProviderLookup inside PreparedFloorProviderRefused. There is no cold-construction or fallback arm. SequentialChildProcess may therefore realize this identity as verified materialized resolved-closure artifacts while SharedWalkProcess may realize it as live capabilities; neither realization changes the semantic identity. FIRST CONSUMER: the scoped-witness population named by ROADMAP ci-scoped-worker-shared-substrate. The old scoped cold constructor may delete only after that consumer can serve every exact selected identity through this contract."
 
 type FloorPreparationPolicy
   = ResolveSelectedClosuresV1 {}
@@ -50,7 +50,7 @@ type PreparedFloorSubjectServe
 
 fn floor_preparation_policy_identity(policy: FloorPreparationPolicy) -> std.content_hash.Fnv1a64Structural {
   match policy {
-    ResolveSelectedClosuresV1 {} => content_hash_atom(value: "floor-preparation.resolve-selected-closures-v1")
+    ResolveSelectedClosuresV1 {} => std.content_hash.content_hash_atom(value: "floor-preparation.resolve-selected-closures-v1")
   }
 }
 
@@ -63,17 +63,17 @@ fn prepared_floor_witness_kind_identity(witness: std.realization_schedule.Schedu
 }
 
 fn prepared_floor_witness_identity(witness: std.realization_schedule.ScheduleWitnessEntry) -> std.content_hash.Fnv1a64Structural {
-  let with_entry = content_hash_combine_structural(
-    left: content_hash_atom(value: "prepared-floor-witness-v1"),
-    right: content_hash_atom(value: witness.entry),
+  let with_entry = std.content_hash.content_hash_combine_structural(
+    left: std.content_hash.content_hash_atom(value: "prepared-floor-witness-v1"),
+    right: std.content_hash.content_hash_atom(value: witness.entry),
   )
-  let with_function = content_hash_combine_structural(
+  let with_function = std.content_hash.content_hash_combine_structural(
     left: with_entry,
-    right: content_hash_atom(value: witness.function),
+    right: std.content_hash.content_hash_atom(value: witness.function),
   )
-  content_hash_combine_structural(
+  std.content_hash.content_hash_combine_structural(
     left: with_function,
-    right: content_hash_atom(value: prepared_floor_witness_kind_identity(witness: witness)),
+    right: std.content_hash.content_hash_atom(value: prepared_floor_witness_kind_identity(witness: witness)),
   )
 }
 
@@ -81,8 +81,8 @@ fn prepared_floor_selected_identity(
   selected: List<PreparedFloorEntryRequest>,
 ) -> std.content_hash.Fnv1a64Structural {
   selected |> fold(
-    init: content_hash_atom(value: "prepared-floor-selected-v1"),
-    f: (acc, entry) => content_hash_combine_structural(
+    init: std.content_hash.content_hash_atom(value: "prepared-floor-selected-v1"),
+    f: (acc, entry) => std.content_hash.content_hash_combine_structural(
       left: acc,
       right: prepared_floor_witness_identity(witness: entry.witness),
     )
@@ -95,7 +95,7 @@ fn prepared_floor_entry_artifact_request(
 ) -> std.materialization_provider.ArtifactRequest {
   std.materialization_provider.ResolveClosureRequest {
     closure_digest: entry.closure_digest,
-    compiler: compiler_identity_input(digest: discovery.subject.tool_identity),
+    compiler: std.materialization_provider.compiler_identity_input(digest: discovery.subject.tool_identity),
   }
 }
 
@@ -103,12 +103,12 @@ fn prepared_floor_artifact_set_identity(
   request: PreparedFloorSubjectRequest,
 ) -> std.content_hash.Fnv1a64Structural {
   request.selected |> fold(
-    init: content_hash_atom(value: "prepared-floor-artifact-set-v1"),
-    f: (acc, entry) => content_hash_combine_structural(
+    init: std.content_hash.content_hash_atom(value: "prepared-floor-artifact-set-v1"),
+    f: (acc, entry) => std.content_hash.content_hash_combine_structural(
       left: acc,
-      right: content_hash_atom(
-        value: serialize_content_hash(
-          hash: request_key(
+      right: std.content_hash.content_hash_atom(
+        value: std.content_hash.serialize_content_hash(
+          hash: std.materialization_provider.request_key(
             req: prepared_floor_entry_artifact_request(
               discovery: request.discovery,
               entry: entry,
@@ -303,7 +303,7 @@ fn prepared_floor_serve_one(
         Absent => PreparedFloorServeStopped {
           cause: PreparedFloorMissingProbeIdentities { missing: [entry.witness] }
         }
-        Present { value: prepared_probe } => match provider_serve(
+        Present { value: prepared_probe } => match std.materialization_provider.provider_serve(
           req: prepared_floor_entry_artifact_request(
             discovery: request.discovery,
             entry: entry,

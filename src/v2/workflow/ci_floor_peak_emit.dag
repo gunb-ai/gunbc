@@ -71,45 +71,45 @@ data ci_floor_wet_witness_row_outcome_receipt_read_command: String = "echo \"[we
 data ci_floor_wet_witness_row_outcome_receipt_absent_command: String = "echo \"[wet-witness-row-outcome-receipt] absent\""
 
 data ci_floor_wet_witness_row_outcome_receipt_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_floor_peak_emit",
     decl_name: "ci_floor_wet_witness_row_outcome_receipt_if",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_floor_wet_witness_row_outcome_receipt_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four receipt leaves: FileExists, column-name log, row-count summary log, and absent log. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_wet_witness_row_outcome_receipt_if contains no opaque shell command text.")
+data ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: ci_floor_wet_witness_row_outcome_receipt_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four receipt leaves: FileExists, column-name log, row-count summary log, and absent log. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_wet_witness_row_outcome_receipt_if contains no opaque shell command text.")
 
-data ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment: String = concat("# ", dissolution_description(condition: ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger))
+data ci_floor_wet_witness_row_outcome_receipt_runner_scaffold_comment: String = concat("# ", std.dissolution.dissolution_description(condition: ci_floor_wet_witness_row_outcome_receipt_shell_emit_dissolution_trigger))
 
 data ci_floor_phase_journal_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_floor_peak_emit",
     decl_name: "ci_floor_phase_journal_if",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data ci_floor_phase_journal_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_floor_phase_journal_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four journal leaves: FileExists, column-name log, row-count summary log, and absent log. If/else control flow is already v2.std.orchestration intent; only those leaves remain medium-as-string Run.command values. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_phase_journal_if contains no opaque shell command text.")
+data ci_floor_phase_journal_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: ci_floor_phase_journal_if — bounded foreign-executor (GitHub Actions run:) shell transport for exactly four journal leaves: FileExists, column-name log, row-count summary log, and absent log. If/else control flow is already v2.std.orchestration intent; only those leaves remain medium-as-string Run.command values. DISSOLVES WHEN bash-emit (#5828 / ROADMAP shell-effectplan-to-bash / shell→intent Phase 2) binds typed filesystem observation plus diagnostic-log operations through host_effect_apply, so ci_floor_phase_journal_if contains no opaque shell command text.")
 
 data ci_floor_phase_journal_roadmap_citation_note: String = "The symbolic ROADMAP row `shell-effectplan-to-bash` above is intentional. Neighboring shell-emission dissolve markers still carry the pre-existing stale pointer `6-shell-slice0`, which names no roadmap_authority row and is tracked for a separate shell-lane correction; do not normalize this live citation back to that spelling."
 
-data ci_floor_phase_journal_runner_scaffold_comment: String = concat("# ", dissolution_description(condition: ci_floor_phase_journal_shell_emit_dissolution_trigger))
+data ci_floor_phase_journal_runner_scaffold_comment: String = concat("# ", std.dissolution.dissolution_description(condition: ci_floor_phase_journal_shell_emit_dissolution_trigger))
 
 data ci_floor_peak_cgroup_locate_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_floor_peak_emit",
     decl_name: "ci_cgroup_peak_locate_shell",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data ci_floor_peak_cgroup_locate_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_cgroup_peak_locate_shell — foreign-executor (GitHub Actions run:) shell transport composing extdeps.linux.proc_self_cgroup unified-hierarchy membership (v2.extdeps.languages.bash_proc_self_cgroup) with std.path_intent NearestAncestorContaining dirname ascent (bash_orch_if). Procfs path is extdeps.linux.procfs ProcSelfCgroup. DISSOLVES WHEN shell→intent Phase 2 realizes cgroup membership plus path ascent on host_effect_apply / orchestration path arms without medium-as-string Run.command concat.")
+data ci_floor_peak_cgroup_locate_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: ci_cgroup_peak_locate_shell — foreign-executor (GitHub Actions run:) shell transport composing extdeps.linux.proc_self_cgroup unified-hierarchy membership (v2.extdeps.languages.bash_proc_self_cgroup) with std.path_intent NearestAncestorContaining dirname ascent (bash_orch_if). Procfs path is extdeps.linux.procfs ProcSelfCgroup. DISSOLVES WHEN shell→intent Phase 2 realizes cgroup membership plus path ascent on host_effect_apply / orchestration path arms without medium-as-string Run.command concat.")
 
-data ci_floor_peak_cgroup_locate_runner_scaffold_comment: String = concat("# ", dissolution_description(condition: ci_floor_peak_cgroup_locate_shell_emit_dissolution_trigger))
+data ci_floor_peak_cgroup_locate_runner_scaffold_comment: String = concat("# ", std.dissolution.dissolution_description(condition: ci_floor_peak_cgroup_locate_shell_emit_dissolution_trigger))
 
 fn ci_floor_peak_run(command: String) -> v2.std.orchestration.Run {
   v2.std.orchestration.Run {

@@ -4,5 +4,5 @@ module v2.test.claim.infer_semantics_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn infer_semantics_witness_keystone_holds() -> Bool {
-  run_infer_semantics_witness()
+  tools.infer_semantics_witness_transport.run_infer_semantics_witness()
 }

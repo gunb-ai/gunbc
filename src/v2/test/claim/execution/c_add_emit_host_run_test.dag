@@ -16,7 +16,7 @@ fn c_run_inputs() -> v2.compiler.eval.Inputs {
 }
 
 fn c_run_source() -> Medium<String> {
-  extdeps.communication.medium.Medium { carried: c_source_text, fidelity: Lossless }
+  extdeps.communication.medium.Medium { carried: c_source_text, fidelity: extdeps.communication.medium.Lossless }
 }
 
 fn c_expected_add_stdout_octets() -> List<Int> {

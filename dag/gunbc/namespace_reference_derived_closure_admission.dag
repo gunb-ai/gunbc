@@ -23,7 +23,7 @@ type ReferenceDerivedClosureAcceptanceReceipt sole_constructor {
 
 type ReferenceDerivedClosureAdmission
   = ReferenceDerivedClosureEstablished {
-      receipt: ReferenceDerivedClosureAcceptanceReceipt,
+      receipt: gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAcceptanceReceipt,
     }
   | ReferenceDerivedClosureRefused {
       capability: ReferenceDerivedClosureCapability,
@@ -45,7 +45,7 @@ fn file_present(xs: List<std.types.FilePath>, wanted: std.types.FilePath) -> Boo
 
 fn established(capability: ReferenceDerivedClosureCapability) -> ReferenceDerivedClosureAdmission {
   ReferenceDerivedClosureEstablished {
-    receipt: ReferenceDerivedClosureAcceptanceReceipt { capability: capability },
+    receipt: gunbc.namespace_reference_derived_closure_admission.ReferenceDerivedClosureAcceptanceReceipt { capability: capability },
   }
 }
 

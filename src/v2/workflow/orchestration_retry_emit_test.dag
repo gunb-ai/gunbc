@@ -13,7 +13,7 @@ fn ci_cargo_eagain_retry_core_golden(command: String) -> String {
     ),
     concat(
       concat(
-        concat(concat("  if grep -qiE '", infra_retry_grep_alternation()), "' \"$BUILD_LOG\"; then\n"),
+        concat(concat("  if grep -qiE '", gunbc.ci_failure_class.infra_retry_grep_alternation()), "' \"$BUILD_LOG\"; then\n"),
         "    echo \"::warning::cargo/sccache EAGAIN under fleet pressure; cold retry CARGO_BUILD_JOBS=1 (keep sccache)\"\n"
       ),
       concat(
@@ -55,7 +55,7 @@ test fn orch_retry_row_direct_emit_accepted_holds() -> Bool {
 
 fn orch_retry_perturbed_level2() -> v2.std.orchestration.EscalationLevel {
   v2.std.orchestration.EscalationLevel {
-    detect: v2.std.orchestration.LogMatches { source: "RETRY_LOG", pattern: infra_retry_grep_alternation() },
+    detect: v2.std.orchestration.LogMatches { source: "RETRY_LOG", pattern: gunbc.ci_failure_class.infra_retry_grep_alternation() },
     warning: v2.std.diagnostic.EmitDirective {
       severity: SeverityWarning,
       message: "cargo/sccache still failing; retry without RUSTC_WRAPPER"

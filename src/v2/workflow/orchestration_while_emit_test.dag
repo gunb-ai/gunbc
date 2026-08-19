@@ -22,7 +22,7 @@ data orch_while_memory_peak_path: std.path_intent.PathIntent = std.path_intent.P
   suffix: std.types.FilePathParts { segments: ["memory.peak"] }
 }
 
-data orch_while_predicate: std.path_intent.PathPredicate = And {
+data orch_while_predicate: std.path_intent.PathPredicate = std.path_intent.And {
   lhs: std.path_intent.PathNonempty { path: orch_while_path_ref },
   rhs: std.path_intent.And {
     lhs: std.path_intent.PathNotEq {

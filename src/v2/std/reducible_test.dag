@@ -4,31 +4,31 @@ module v2.test.std.reducible
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn classify_leaf_empty_is_unknown() -> Bool {
-  verdict_eq(
-    a: classify_leaf(witness: ""),
+  std.reducible.verdict_eq(
+    a: std.reducible.classify_leaf(witness: ""),
     b: std.reducible.Unknown { missing: "witness" }
   )
 }
 
 test fn classify_leaf_named_is_irreducible() -> Bool {
-  verdict_eq(
-    a: classify_leaf(witness: "grounded-atom"),
+  std.reducible.verdict_eq(
+    a: std.reducible.classify_leaf(witness: "grounded-atom"),
     b: std.reducible.Irreducible { witness: "grounded-atom" }
   )
 }
 
 fn verdict_eq_discriminates_variants() -> Bool {
-  verdict_eq(a: std.reducible.Reduced { last_parts: 1 }, b: std.reducible.Reduced { last_parts: 1 })
-    && !verdict_eq(a: std.reducible.Reduced { last_parts: 1 }, b: std.reducible.Reduced { last_parts: 2 })
-    && verdict_eq(
+  std.reducible.verdict_eq(a: std.reducible.Reduced { last_parts: 1 }, b: std.reducible.Reduced { last_parts: 1 })
+    && !std.reducible.verdict_eq(a: std.reducible.Reduced { last_parts: 1 }, b: std.reducible.Reduced { last_parts: 2 })
+    && std.reducible.verdict_eq(
       a: std.reducible.Irreducible { witness: "w" },
       b: std.reducible.Irreducible { witness: "w" }
     )
-    && !verdict_eq(
+    && !std.reducible.verdict_eq(
       a: std.reducible.Irreducible { witness: "w" },
       b: std.reducible.Irreducible { witness: "x" }
     )
-    && verdict_eq(
+    && std.reducible.verdict_eq(
       a: std.reducible.Unknown { missing: "axis" },
       b: std.reducible.Unknown { missing: "axis" }
     )
@@ -43,8 +43,8 @@ fn mixed_verdicts_unknown_absorbs_leftmost() -> List<std.reducible.ReduceVerdict
 }
 
 fn reduce_verdicts_located_unknown_latch_holds() -> Bool {
-  verdict_eq(
-    a: reduce_verdicts_located(
+  std.reducible.verdict_eq(
+    a: std.reducible.reduce_verdicts_located(
       verdicts: mixed_verdicts_unknown_absorbs_leftmost(),
       empty_missing: "verdict-list:empty"
     ),
@@ -52,8 +52,8 @@ fn reduce_verdicts_located_unknown_latch_holds() -> Bool {
   )
 }
 
-data witness_reduce_verdicts_located_RED: Bool = verdict_eq(
-  a: reduce_verdicts_located(
+data witness_reduce_verdicts_located_RED: Bool = std.reducible.verdict_eq(
+  a: std.reducible.reduce_verdicts_located(
     verdicts: mixed_verdicts_unknown_absorbs_leftmost(),
     empty_missing: "verdict-list:empty"
   ),

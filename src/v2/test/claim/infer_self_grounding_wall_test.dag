@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 fn measured_infer_eval_harness_source() -> std.types.NonEmptyStr {
   fold_list(
-    xs: v2_infer_eval_harness_source_paths(),
+    xs: gunbc.guarantee_probe_corpus.v2_infer_eval_harness_source_paths(),
     empty: "guarantee-probe-harness-source" as std.types.NonEmptyStr,
     cons: fn(acc, path) {
       let read = filesystem_read(path: path)
@@ -19,15 +19,15 @@ fn measured_infer_eval_harness_source() -> std.types.NonEmptyStr {
 
 fn infer_wall_harness_revision(probe: gunbc.guarantee_measurement.GuaranteeProbeId) -> gunbc.guarantee_measurement.MeasurementRevision {
   let harness_source = measured_infer_eval_harness_source()
-  match active_v2_infer_eval_probe_row(probe: probe) {
+  match gunbc.guarantee_probe_corpus.active_v2_infer_eval_probe_row(probe: probe) {
     Present { value: row } =>
-      v2_infer_eval_harness_revision(
+      gunbc.guarantee_probe_corpus.v2_infer_eval_harness_revision(
         probe: probe,
         expectation: row.expectation,
         harness_source: harness_source,
       )
     Absent =>
-      v2_infer_eval_harness_revision(
+      gunbc.guarantee_probe_corpus.v2_infer_eval_harness_revision(
         probe: probe,
         expectation: gunbc.guarantee_probe_corpus.ExpectAcceptedCounted { diagnostic_class: "infer-harness-row-absent" as std.types.NonEmptyStr },
         harness_source: harness_source,
@@ -227,14 +227,14 @@ test fn wall_malformed_int_payload_is_not_grounded_or_discharged() -> Bool {
 }
 
 fn wall_frontier_observation_matches_infer(nes: v2.std.diagnostic.NonEmptyDiagnostics, o: gunbc.guarantee_measurement.ProbeObservation) -> Bool {
-  probe_observation_fold(
+  gunbc.guarantee_measurement.probe_observation_fold(
     o: o,
     fold: gunbc.guarantee_measurement.ProbeObservationFold {
       refused: fn(_, _) { false },
       accepted_clean: false,
       accepted_counted: fn(cls, c) {
         (cls as String) == (nes.head.reason as String)
-          && c == non_empty_diagnostics_count_reason(nes: nes, reason: ^infer_grounding_not_derived)
+          && c == gunbc.guarantee_probe_corpus.non_empty_diagnostics_count_reason(nes: nes, reason: ^infer_grounding_not_derived)
       },
       diverged: fn(_) { false },
       not_runnable: fn(_) { false },
@@ -250,33 +250,33 @@ test fn wall_frontier_receipt_joins_corpus_identity() -> Bool {
       match d {
         None => false
         Some { diagnostics: nes } =>
-          match active_v2_infer_eval_probe_row(probe: v2_frontier_red_probe) {
+          match gunbc.guarantee_probe_corpus.active_v2_infer_eval_probe_row(probe: gunbc.guarantee_probe_corpus.v2_frontier_red_probe) {
             Present { value: row } =>
               wall_resolved_type_refused(root: root)
                 && nes.head.reason == ^infer_grounding_not_derived
-                && receipt_matches_v2_infer_eval_probe_row(
-                  receipt: build_v2_infer_eval_receipt(
+                && gunbc.guarantee_probe_corpus.receipt_matches_v2_infer_eval_probe_row(
+                  receipt: gunbc.guarantee_probe_corpus.build_v2_infer_eval_receipt(
                     row: row,
-                    observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
-                    subject_revision: synthetic_infer_eval_subject_revision_from_node(node: root),
+                    observed: gunbc.guarantee_probe_corpus.probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                    subject_revision: gunbc.guarantee_probe_corpus.synthetic_infer_eval_subject_revision_from_node(node: root),
                     harness_revision: infer_wall_harness_revision(probe: row.probe),
                   ),
                   row: row,
                 )
-                && match join_receipt_to_path(
-                  receipt: build_v2_infer_eval_receipt(
+                && match gunbc.guarantee_measurement.join_receipt_to_path(
+                  receipt: gunbc.guarantee_probe_corpus.build_v2_infer_eval_receipt(
                     row: row,
-                    observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
-                    subject_revision: synthetic_infer_eval_subject_revision_from_node(node: root),
+                    observed: gunbc.guarantee_probe_corpus.probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                    subject_revision: gunbc.guarantee_probe_corpus.synthetic_infer_eval_subject_revision_from_node(node: root),
                     harness_revision: infer_wall_harness_revision(probe: row.probe),
                   ),
-                  paths: guarantee_probe_paths(),
+                  paths: gunbc.guarantee_probe_corpus.guarantee_probe_paths(),
                 ) {
                   ReceiptJoined { path: p } =>
-                    p.acceptance_boundary == InferToEval
+                    p.acceptance_boundary == gunbc.guarantee_measurement.InferToEval
                       && wall_frontier_observation_matches_infer(
                         nes: nes,
-                        o: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                        o: gunbc.guarantee_probe_corpus.probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
                       )
                   ReceiptPathUnknown { receipt_path: _ } => false
                   ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
@@ -292,29 +292,29 @@ test fn wall_frontier_derived_green_receipt_joins_corpus_identity() -> Bool {
   match infer(tree: root) {
     Rejected { diagnostics: _ } => false
     Accepted { value: _, diagnostics: d } =>
-      match active_v2_infer_eval_probe_row(probe: v2_frontier_green_probe) {
+      match gunbc.guarantee_probe_corpus.active_v2_infer_eval_probe_row(probe: gunbc.guarantee_probe_corpus.v2_frontier_green_probe) {
         Present { value: row } =>
           d == v2.std.diagnostic.None
-            && observation_is_clean(o: probe_observation_from_accepted_infer_diagnostics(diagnostics: d))
-            && receipt_matches_v2_infer_eval_probe_row(
-              receipt: build_v2_infer_eval_receipt(
+            && gunbc.guarantee_probe_corpus.observation_is_clean(o: gunbc.guarantee_probe_corpus.probe_observation_from_accepted_infer_diagnostics(diagnostics: d))
+            && gunbc.guarantee_probe_corpus.receipt_matches_v2_infer_eval_probe_row(
+              receipt: gunbc.guarantee_probe_corpus.build_v2_infer_eval_receipt(
                 row: row,
-                observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
-                subject_revision: synthetic_infer_eval_subject_revision_from_node(node: root),
+                observed: gunbc.guarantee_probe_corpus.probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                subject_revision: gunbc.guarantee_probe_corpus.synthetic_infer_eval_subject_revision_from_node(node: root),
                 harness_revision: infer_wall_harness_revision(probe: row.probe),
               ),
               row: row,
             )
-            && match join_receipt_to_path(
-              receipt: build_v2_infer_eval_receipt(
+            && match gunbc.guarantee_measurement.join_receipt_to_path(
+              receipt: gunbc.guarantee_probe_corpus.build_v2_infer_eval_receipt(
                 row: row,
-                observed: probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
-                subject_revision: synthetic_infer_eval_subject_revision_from_node(node: root),
+                observed: gunbc.guarantee_probe_corpus.probe_observation_from_accepted_infer_diagnostics(diagnostics: d),
+                subject_revision: gunbc.guarantee_probe_corpus.synthetic_infer_eval_subject_revision_from_node(node: root),
                 harness_revision: infer_wall_harness_revision(probe: row.probe),
               ),
-              paths: guarantee_probe_paths(),
+              paths: gunbc.guarantee_probe_corpus.guarantee_probe_paths(),
             ) {
-              ReceiptJoined { path: p } => p.acceptance_boundary == InferToEval
+              ReceiptJoined { path: p } => p.acceptance_boundary == gunbc.guarantee_measurement.InferToEval
               ReceiptPathUnknown { receipt_path: _ } => false
               ReceiptPathDuplicate { receipt_path: _, matches: _ } => false
             }

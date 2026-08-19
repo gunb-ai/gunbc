@@ -21,7 +21,7 @@ data cost_evaluation_nonempty_note: String = "The nonempty carrier (std.algebra 
 
 type CostEvaluation
   = ExactCost { value: v2.std.nat.Nat }
-  | CostEvaluationRefused { causes: FreeSemigroup<CostEvaluationRefusal> }
+  | CostEvaluationRefused { causes: std.algebra.FreeSemigroup<CostEvaluationRefusal> }
 
 data cost_evaluation_two_state_note: String = "Two states, because at the exact core there are exactly two honest answers: the work is this number, or here is why it cannot be. The four-state shape the design carries - adding a partial and a bounded state - is not abandoned; it returns with the work held on session/deep-owl-215-partial-bounded-hold, where each of those states will have a producer AND will carry what its consumer needs: a residual expression for the partial state, an input envelope for the bounded one. Declaring either arm here with no producer would have been rung inflation, a state named for a capability the module does not have, and the bounded arm in particular was carried through an earlier revision of this module while its arithmetic silently collapsed a two-endpoint envelope to its own ceiling."
 

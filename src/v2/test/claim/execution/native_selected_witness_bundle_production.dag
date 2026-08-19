@@ -22,24 +22,24 @@ fn selected_logic_process_spec_for(
               workspace: row.transport.workspace,
               emitted: source.carried
             )
-            let bundle = native_witness_bundle_from_plan(plan: plan)
-            let bundle_key = as_content_hash_structural(
+            let bundle = std.selected_witness_bundle.native_witness_bundle_from_plan(plan: plan)
+            let bundle_key = std.content_hash.as_content_hash_structural(
               structural: bundle.identity.structural_fingerprint
             )
-            let workspace_root = native_cache_workspace_root(
+            let workspace_root = extdeps.realization.emit_on_demand_host.native_cache_workspace_root(
               cache_root: selected_logic_bundle_cache_root,
               key: bundle_key
             )
             v2.std.diagnostic.Accepted {
               value: v2.compiler.native_selected_bundle_process.NativeSelectedBundleProcessSpec {
-                workspace_dir: native_cache_realization_workspace_root(
+                workspace_dir: extdeps.realization.emit_on_demand_host.native_cache_realization_workspace_root(
                   workspace_root: workspace_root,
                   realization_digest: emit_host_input_realization_digest(
                     files: files,
                     builds: builds
                   )
                 )
-                bundle_identity: serialize_content_hash(hash: bundle_key) as String
+                bundle_identity: std.content_hash.serialize_content_hash(hash: bundle_key) as String
                 selected_count: plan.members.count()
                 bundle_count: 1
                 shard_count: 1

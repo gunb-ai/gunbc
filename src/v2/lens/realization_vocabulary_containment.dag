@@ -57,7 +57,7 @@ data realization_vocab_grandfathered_edge_roster: List<RealizationVocabGrandfath
     },
     debt_class: ProductLayerTargetAstDebt,
     reason: "product-layer roadmap component authors target TypeScript AST outside realization-edge prefixes (TS-0 census 2026-08-06)",
-    dissolution: unbound_dissolution(description: "TS-4..TS-6 migration: client behavior authored as language-independent site facts and emitted through the production TS target; hand-authored target AST deletes and this edge row deletes with it")
+    dissolution: std.dissolution.unbound_dissolution(description: "TS-4..TS-6 migration: client behavior authored as language-independent site facts and emitted through the production TS target; hand-authored target AST deletes and this edge row deletes with it")
   },
   RealizationVocabGrandfatheredEdgeRow {
     edge: RealizationVocabImportEdge {
@@ -66,7 +66,7 @@ data realization_vocab_grandfathered_edge_roster: List<RealizationVocabGrandfath
     },
     debt_class: ProductLayerTargetAstDebt,
     reason: "site theme-transition module authors target TypeScript AST for media-query/timer/listener behavior outside realization-edge prefixes (TS-0 census 2026-08-06)",
-    dissolution: unbound_dissolution(description: "TS-5/TS-6 migration: theme reframe behavior modeled language-independently and emitted through the production TS target; hand-authored target AST deletes and this edge row deletes with it")
+    dissolution: std.dissolution.unbound_dissolution(description: "TS-5/TS-6 migration: theme reframe behavior modeled language-independently and emitted through the production TS target; hand-authored target AST deletes and this edge row deletes with it")
   },
   RealizationVocabGrandfatheredEdgeRow {
     edge: RealizationVocabImportEdge {
@@ -75,7 +75,7 @@ data realization_vocab_grandfathered_edge_roster: List<RealizationVocabGrandfath
     },
     debt_class: MisplacedRealizationEdge,
     reason: "srv1 dashboard static-server emitter consumes the typescript AST vocabulary outside the realization-edge prefixes (declared interim per the gunbc-served dashboard design)",
-    dissolution: unbound_dissolution(description: "gunbc serve (belt B) replaces the emitted-JS static server and this module deletes with the interim route; edge row deletes with it")
+    dissolution: std.dissolution.unbound_dissolution(description: "gunbc serve (belt B) replaces the emitted-JS static server and this module deletes with the interim route; edge row deletes with it")
   },
   RealizationVocabGrandfatheredEdgeRow {
     edge: RealizationVocabImportEdge {
@@ -84,7 +84,7 @@ data realization_vocab_grandfathered_edge_roster: List<RealizationVocabGrandfath
     },
     debt_class: MisplacedRealizationEdge,
     reason: "EffectPlan bash materializer imports v2.extdeps.languages.bash_build outside realization-edge prefixes (shell-to-intent wave-A interim site; TS-0 census 2026-08-06)",
-    dissolution: unbound_dissolution(description: "shell-to-intent phase 2/3: argv lowering routes through typed effects / emit rows at the realization boundary and bash_build containment closes here; edge row deletes")
+    dissolution: std.dissolution.unbound_dissolution(description: "shell-to-intent phase 2/3: argv lowering routes through typed effects / emit rows at the realization boundary and bash_build containment closes here; edge row deletes")
   },
   RealizationVocabGrandfatheredEdgeRow {
     edge: RealizationVocabImportEdge {
@@ -93,7 +93,7 @@ data realization_vocab_grandfathered_edge_roster: List<RealizationVocabGrandfath
     },
     debt_class: MisplacedRealizationEdge,
     reason: "build-step tooling constructs bash via the bash-AST vocabulary outside the realization-edge prefixes (pre shell-to-intent phase-2 site)",
-    dissolution: unbound_dissolution(description: "shell-to-intent phase 2/3: the site routes through typed effects / emit rows and the bash-AST containment wall closes; edge row deletes")
+    dissolution: std.dissolution.unbound_dissolution(description: "shell-to-intent phase 2/3: the site routes through typed effects / emit rows and the bash-AST containment wall closes; edge row deletes")
   }
 ]
 

@@ -21,11 +21,11 @@ type ReferenceResolutionCensus {
 }
 
 data reference_deps_parsed_tree_disposition: std.disposition.Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.lens.reference_deps",
     decl_name: "reference_resolution_facts_from_parsed_corpus",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -914,7 +914,7 @@ fn reference_closure_ingest_refusal_witness(
 }
 
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
-  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: SingleAuthority }
+  class: v2.lens.common.construction_justification.WallAfterGrounding { dissolves_to: std.disposition.SingleAuthority }
 }
 
-data reference_deps_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "the namespace terminal step lands and reference edges come from the containment authority rather than this segment-prefix match over parsed-tree qualified-name use sites (namespace-resolution-design section 8)")
+data reference_deps_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "the namespace terminal step lands and reference edges come from the containment authority rather than this segment-prefix match over parsed-tree qualified-name use sites (namespace-resolution-design section 8)")

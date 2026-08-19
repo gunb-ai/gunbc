@@ -1,24 +1,24 @@
 module v2.compiler.materialization_carriers
 
 
-data v2_compiler_materialization_memo_gate_predicate_contract: std.disposition.Disposition = Terminal {
-  reason: "Structural coproduct reader over std.realization.Materialization (materialization_allows_memo_store — Memoize => store permitted, Recompute/Share => refused) — closed by the three declared Materialization variants; .dag authority for parse_table_lookup/insert and cached_stage_governed; discriminating corpus: parse_table_memo_governed_witness_test.dag + compiler_materialization_witness_test.dag."
+data v2_compiler_materialization_memo_gate_predicate_contract: std.disposition.Disposition = std.disposition.Terminal {
+  reason: "Structural coproduct reader over std.realization.Materialization (materialization_allows_memo_store — std.realization.Memoize => store permitted, Recompute/Share => refused) — closed by the three declared Materialization variants; .dag authority for parse_table_lookup/insert and cached_stage_governed; discriminating corpus: parse_table_memo_governed_witness_test.dag + compiler_materialization_witness_test.dag."
 }
 
-data v2_compiler_materialization_note: String = "The .dag-substrate demonstration lane (duplicate-work-graph-lens-design.md section 10b): ParseTable and cached_stage memoization flows through the governed carrier door — Memoize verdict consumed (non-Memoize refuses store), ContentKeyed law at parse_table_subject (grammar_digest × token_stream_digest × position × production). std.realization.reconcile-as-lookup-path is the following increment (no v2 runtime dispatch yet). Seed-side memo interceptor: extdeps/realization/parse_table_memo.dag parse_table_memo_seed_handler_dissolution_trigger (Scaffold dissolves_to RealizationDispatch on materialization_allows_memo_store; v1_interpreter.rs try_parse_table_memo_dispatch is the seed handler). In-process memo cannot span runs: RefusedScopeTooNarrow at IsolatedChildren LCA; persistent-tier discharge belongs to resolved_graph_cache-class rows. Collapsing plural sites into one process frame → AuthoredDuplication (rule 1). Dissolve-on: demands derive from the DependencyView and the transport folds into materialize (Half A)."
+data v2_compiler_materialization_note: String = "The .dag-substrate demonstration lane (duplicate-work-graph-lens-design.md section 10b): ParseTable and cached_stage memoization flows through the governed carrier door — std.realization.Memoize verdict consumed (non-std.realization.Memoize refuses store), ContentKeyed law at parse_table_subject (grammar_digest × token_stream_digest × position × production). std.realization.reconcile-as-lookup-path is the following increment (no v2 runtime dispatch yet). Seed-side memo interceptor: extdeps/realization/parse_table_memo.dag parse_table_memo_seed_handler_dissolution_trigger (Scaffold dissolves_to RealizationDispatch on materialization_allows_memo_store; v1_interpreter.rs try_parse_table_memo_dispatch is the seed handler). In-process memo cannot span runs: RefusedScopeTooNarrow at IsolatedChildren LCA; persistent-tier discharge belongs to resolved_graph_cache-class rows. Collapsing plural sites into one process frame → AuthoredDuplication (rule 1). Dissolve-on: demands derive from the DependencyView and the transport folds into materialize (Half A)."
 
 data materialization_carriers_tail_probe_note: String = "TAIL probe 2026-07-17 (cssl_assemble, smart-newt-39): execution-measured Gate-A-shaped rustc refusal (UNRESOLVED_CompilerError on emitter Rc/Optional surface) — NOT materialize-spine. Frontier migration_trigger reclassified to ^migrate_when_closure_self_emits_cargo_green (#6775 lane). Receipt: TSV deleted 2026-08-16 (operator ruling: delete anything not actively derived)."
 
 fn materialization_allows_memo_store(m: std.realization.Materialization) -> Bool {
   match m {
-    Memoize => true
+    std.realization.Memoize => true
     Recompute => false
     Share => false
   }
 }
 
 fn v2_compile_process_frame() -> std.materialization_ladder.Frame {
-  std.materialization_ladder.Frame { name: "v2-compile-ingest", kind: SharedStateFrame }
+  std.materialization_ladder.Frame { name: "v2-compile-ingest", kind: std.materialization_ladder.SharedStateFrame }
 }
 
 fn v2_compile_process_site() -> List<std.materialization_ladder.Frame> {
@@ -32,7 +32,7 @@ fn parse_table_memo_demand() -> std.materialization_ladder.FrameDemand {
   std.materialization_ladder.FrameDemand {
     identity: parse_table_memo_demand_identity,
     site: v2_compile_process_site(),
-    nature: PureComputation
+    nature: std.materialization_ladder.PureComputation
   }
 }
 
@@ -40,7 +40,7 @@ fn compile_stage_memo_demand() -> std.materialization_ladder.FrameDemand {
   std.materialization_ladder.FrameDemand {
     identity: compile_stage_memo_demand_identity,
     site: v2_compile_process_site(),
-    nature: PureComputation
+    nature: std.materialization_ladder.PureComputation
   }
 }
 
@@ -50,7 +50,7 @@ fn v2_compiler_materialization_demands() -> List<std.materialization_ladder.Fram
 
 fn parse_table_memo_provider() -> std.materialization_ladder.CacheProvider {
   extdeps.cache.materialization.provider_from_catalog(
-    facts: parse_table_memo_facts,
+    facts: extdeps.realization.parse_table_memo.parse_table_memo_facts,
     scope: v2_compile_process_site(),
     coverage: CoversAllComputations
   )
@@ -58,7 +58,7 @@ fn parse_table_memo_provider() -> std.materialization_ladder.CacheProvider {
 
 fn compile_stage_memo_provider() -> std.materialization_ladder.CacheProvider {
   extdeps.cache.materialization.provider_from_catalog(
-    facts: compile_stage_memo_facts,
+    facts: extdeps.realization.compile_stage_memo.compile_stage_memo_facts,
     scope: v2_compile_process_site(),
     coverage: CoversAllComputations
   )
@@ -77,31 +77,31 @@ fn compile_stage_memo_provider_id() -> std.cache_identity.CacheInterfaceId {
 }
 
 fn parse_table_memo_artifact_kind() -> std.cache_identity.ArtifactKindId {
-  parse_table_artifact_kind
+  std.cache_identity.parse_table_artifact_kind
 }
 
 fn v2_compiler_materialization_verdicts() -> List<std.materialization_ladder.LadderVerdict> {
-  materialization_ladder(
+  std.materialization_ladder.materialization_ladder(
     demands: v2_compiler_materialization_demands(),
     providers: v2_compiler_cache_providers(),
-    cost_floor_exempt: no_cost_floor_exemptions
+    cost_floor_exempt: std.materialization_ladder.no_cost_floor_exemptions
   )
 }
 
 fn v2_compiler_materialization_ladder_holds() -> Bool {
-  materialization_ladder_holds(
+  std.materialization_ladder.materialization_ladder_holds(
     demands: v2_compiler_materialization_demands(),
     providers: v2_compiler_cache_providers(),
-    cost_floor_exempt: no_cost_floor_exemptions
+    cost_floor_exempt: std.materialization_ladder.no_cost_floor_exemptions
   )
 }
 
 fn parse_table_memo_materialization() -> std.realization.Materialization {
-  Memoize
+  std.realization.Memoize
 }
 
 fn compile_stage_memo_materialization() -> std.realization.Materialization {
-  Memoize
+  std.realization.Memoize
 }
 
 type CachedStageRealization {
@@ -132,18 +132,18 @@ fn cached_stage_governed<A, B>(
 fn parse_table_realized_step() -> RealizedStep<std.measure.Nano> {
   std.realization.RealizedStep {
     shape: ReadEffect,
-    placement: LocalInProcess,
+    placement: std.realization.LocalInProcess,
     materialization: parse_table_memo_materialization(),
-    cost: cost_account_predicted_zero()
+    cost: std.realization_schedule.cost_account_predicted_zero()
   }
 }
 
 fn compile_stage_realized_step() -> RealizedStep<std.measure.Nano> {
   std.realization.RealizedStep {
     shape: ReadEffect,
-    placement: LocalInProcess,
+    placement: std.realization.LocalInProcess,
     materialization: compile_stage_memo_materialization(),
-    cost: cost_account_predicted_zero()
+    cost: std.realization_schedule.cost_account_predicted_zero()
   }
 }
 
@@ -153,39 +153,39 @@ fn compile_stage_realized_step() -> RealizedStep<std.measure.Nano> {
 // the catalog's retention UNCHANGED — the property the pre-verdicting mapping
 // actually broke when it discarded placement retention and minted SpacePacked.
 fn parse_table_memo_retention_preserved() -> Bool {
-  parse_table_memo_provider().retention == parse_table_memo_facts.placement.retention
+  parse_table_memo_provider().retention == extdeps.realization.parse_table_memo.parse_table_memo_facts.placement.retention
 }
 
 fn compile_stage_memo_retention_preserved() -> Bool {
-  compile_stage_memo_provider().retention == compile_stage_memo_facts.placement.retention
+  compile_stage_memo_provider().retention == extdeps.realization.compile_stage_memo.compile_stage_memo_facts.placement.retention
 }
 
 fn parse_table_memo_verdict_is_single_recompute() -> Bool {
   v2_compiler_materialization_verdicts()
     |> fold(init: false, f: (acc, v) =>
-      acc || verdict_is_accepted_single_recompute(v: v, identity: parse_table_memo_demand_identity)
+      acc || std.materialization_ladder.verdict_is_accepted_single_recompute(v: v, identity: parse_table_memo_demand_identity)
     )
 }
 
 fn compile_stage_memo_verdict_is_single_recompute() -> Bool {
   v2_compiler_materialization_verdicts()
     |> fold(init: false, f: (acc, v) =>
-      acc || verdict_is_accepted_single_recompute(v: v, identity: compile_stage_memo_demand_identity)
+      acc || std.materialization_ladder.verdict_is_accepted_single_recompute(v: v, identity: compile_stage_memo_demand_identity)
     )
 }
 
 fn parse_table_carrier_grounded_on_catalog() -> Bool {
-  (parse_table_memo_artifact_kind() == parse_table_artifact_kind)
+  (parse_table_memo_artifact_kind() == std.cache_identity.parse_table_artifact_kind)
     && (parse_table_memo_provider_id() == extdeps.realization.parse_table_memo.parse_table_memo_id)
-    && (parse_table_memo_materialization() == Memoize)
+    && (parse_table_memo_materialization() == std.realization.Memoize)
 }
 
 fn v2_compile_workflow_frame() -> std.materialization_ladder.Frame {
-  std.materialization_ladder.Frame { name: "v2-compile-workflow", kind: IsolatedChildrenFrame }
+  std.materialization_ladder.Frame { name: "v2-compile-workflow", kind: std.materialization_ladder.IsolatedChildrenFrame }
 }
 
 fn v2_compile_run_frame(name: String) -> std.materialization_ladder.Frame {
-  std.materialization_ladder.Frame { name: name, kind: SharedStateFrame }
+  std.materialization_ladder.Frame { name: name, kind: std.materialization_ladder.SharedStateFrame }
 }
 
 fn parse_table_memo_plural_demands() -> List<std.materialization_ladder.FrameDemand> {
@@ -197,7 +197,7 @@ fn parse_table_memo_plural_demands() -> List<std.materialization_ladder.FrameDem
         v2_compile_run_frame(name: "compile-run-a"),
         v2_compile_process_frame()
       ],
-      nature: PureComputation
+      nature: std.materialization_ladder.PureComputation
     },
     std.materialization_ladder.FrameDemand {
       identity: parse_table_memo_demand_identity,
@@ -206,39 +206,39 @@ fn parse_table_memo_plural_demands() -> List<std.materialization_ladder.FrameDem
         v2_compile_run_frame(name: "compile-run-b"),
         v2_compile_process_frame()
       ],
-      nature: PureComputation
+      nature: std.materialization_ladder.PureComputation
     }
   ]
 }
 
 fn parse_table_memo_plural_verdicts(providers: List<std.materialization_ladder.CacheProvider>) -> List<std.materialization_ladder.LadderVerdict> {
-  materialization_ladder(
+  std.materialization_ladder.materialization_ladder(
     demands: parse_table_memo_plural_demands(),
     providers: providers,
-    cost_floor_exempt: no_cost_floor_exemptions
+    cost_floor_exempt: std.materialization_ladder.no_cost_floor_exemptions
   )
 }
 
 fn parse_table_memo_plural_holds_with_provider() -> Bool {
-  materialization_ladder_holds(
+  std.materialization_ladder.materialization_ladder_holds(
     demands: parse_table_memo_plural_demands(),
     providers: v2_compiler_cache_providers(),
-    cost_floor_exempt: no_cost_floor_exemptions
+    cost_floor_exempt: std.materialization_ladder.no_cost_floor_exemptions
   )
 }
 
 fn parse_table_memo_plural_holds_without_provider() -> Bool {
-  materialization_ladder_holds(
+  std.materialization_ladder.materialization_ladder_holds(
     demands: parse_table_memo_plural_demands(),
-    providers: no_cache_providers,
-    cost_floor_exempt: no_cost_floor_exemptions
+    providers: std.materialization_ladder.no_cache_providers,
+    cost_floor_exempt: std.materialization_ladder.no_cost_floor_exemptions
   )
 }
 
 fn parse_table_memo_plural_refused_without_provider_count() -> Int {
-  parse_table_memo_plural_verdicts(providers: no_cache_providers)
+  parse_table_memo_plural_verdicts(providers: std.materialization_ladder.no_cache_providers)
     |> fold(init: 0, f: (acc, v) =>
-      if verdict_is_refused_no_provider(v: v, identity: parse_table_memo_demand_identity) {
+      if std.materialization_ladder.verdict_is_refused_no_provider(v: v, identity: parse_table_memo_demand_identity) {
         acc + 1
       } else {
         acc
@@ -249,7 +249,7 @@ fn parse_table_memo_plural_refused_without_provider_count() -> Int {
 fn parse_table_memo_plural_scope_too_narrow_count() -> Int {
   parse_table_memo_plural_verdicts(providers: v2_compiler_cache_providers())
     |> fold(init: 0, f: (acc, v) =>
-      if verdict_is_refused_scope_too_narrow(v: v, provider_id: extdeps.realization.parse_table_memo.parse_table_memo_id) {
+      if std.materialization_ladder.verdict_is_refused_scope_too_narrow(v: v, provider_id: extdeps.realization.parse_table_memo.parse_table_memo_id) {
         acc + 1
       } else {
         acc

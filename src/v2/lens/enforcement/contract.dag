@@ -28,14 +28,14 @@ data lens_contract_cost: LensContract = {
     witness: std.realization_schedule.ScheduleWitnessEntry {
       entry: "src/v2/test/claim/complexity_gate/budget_roster_completeness_test.dag",
       function: "complexity_budget_roster_family_gate_holds",
-      kind: CorpusWitnessKind
+      kind: std.realization_schedule.CorpusWitnessKind
     }
   },
   exemptions: [],
   boundary: v2.lens.common.construction_justification.ConstructionJustification {
     class: v2.lens.common.construction_justification.WallNow {
       mechanism: SubstrateMandatoryTag,
-      authority: std.decl_ref.DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: WholeDeclaration }
+      authority: std.decl_ref.DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: std.decl_ref.WholeDeclaration }
     }
   }
 }
@@ -66,14 +66,14 @@ data lens_contract_emitted_binary_effect_confinement: LensContract = {
     witness: std.realization_schedule.ScheduleWitnessEntry {
       entry: "src/v2/test/claim/emitted_binary_effect_confinement_red_control_test.dag",
       function: "emitted_binary_effect_confinement_authority_points_at_host_transport",
-      kind: CorpusWitnessKind
+      kind: std.realization_schedule.CorpusWitnessKind
     }
   },
   exemptions: [],
   boundary: v2.lens.common.construction_justification.ConstructionJustification {
     class: v2.lens.common.construction_justification.WallNow {
       mechanism: SingleAuthority,
-      authority: std.decl_ref.DeclarationRef { module_path: "v2.std.host_transport", decl_name: "EmittedEffectFamily", field: WholeDeclaration }
+      authority: std.decl_ref.DeclarationRef { module_path: "v2.std.host_transport", decl_name: "EmittedEffectFamily", field: std.decl_ref.WholeDeclaration }
     }
   }
 }
@@ -371,7 +371,7 @@ data lens_contract_schedule_lens: LensContract = {
     witness: std.realization_schedule.ScheduleWitnessEntry {
       entry: "src/v2/test/claim/walk_plan_schedule_lens_test.dag",
       function: "gunbc_ci_walk_plan_schedule_lens_holds",
-      kind: CorpusWitnessKind
+      kind: std.realization_schedule.CorpusWitnessKind
     }
   },
   exemptions: [],
@@ -440,7 +440,7 @@ data lens_contract_vacuity: LensContract = {
     witness: std.realization_schedule.ScheduleWitnessEntry {
       entry: "src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag",
       function: "vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution",
-      kind: CorpusWitnessKind
+      kind: std.realization_schedule.CorpusWitnessKind
     }
   },
   exemptions: [],

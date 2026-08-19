@@ -32,7 +32,7 @@ fn planted_artifact(
     Present { value: receipt } =>
       v2.compiler.self_host.candidate_generation.ArtifactProduced {
         artifact: v2.compiler.self_host.candidate_generation.ProvenancedRustArtifact {
-          source: extdeps.communication.medium.Medium { carried: source_text, fidelity: Lossless },
+          source: extdeps.communication.medium.Medium { carried: source_text, fidelity: extdeps.communication.medium.Lossless },
           emitted: rust_fixture_emitted_add_fn,
           producer_receipt: receipt
         }

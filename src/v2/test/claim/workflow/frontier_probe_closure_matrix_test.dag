@@ -7,7 +7,7 @@ fn fp_matrix_synthetic_ref(path: String, hash_seed: String) -> v2.compiler.sourc
   v2.compiler.source_authority.SourceRef {
     path: path,
     source_root: DagTree,
-    content_hash: content_hash_of_value(value: hash_seed as std.types.NonEmptyStr)
+    content_hash: std.content_hash.content_hash_of_value(value: hash_seed as std.types.NonEmptyStr)
   }
 }
 

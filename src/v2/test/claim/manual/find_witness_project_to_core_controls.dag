@@ -366,18 +366,18 @@ data witness_integer_interval_bound_compare_orders_pointer_width_bounds: Bool = 
     left: integer_pointer_width_bound(signedness: Signed, endpoint: v2.std.integer.IntegerRangeInclusiveMin),
     right: integer_pointer_width_bound(signedness: Unsigned, endpoint: IntegerRangeInclusiveMin)
   ) {
-    Less => true
-    Equal => false
+    std.algebra.Less => true
+    std.algebra.Equal => false
     Greater => false
   }
     && integer_interval_bound_compare(
       left: integer_pointer_width_bound(signedness: Signed, endpoint: IntegerRangeInclusiveMin),
       right: integer_concrete_zero()
-    ) == Less
+    ) == std.algebra.Less
     && integer_interval_bound_compare(
       left: integer_pointer_width_bound(signedness: Unsigned, endpoint: IntegerRangeInclusiveMin),
       right: integer_concrete_zero()
-    ) == Equal
+    ) == std.algebra.Equal
     && !integer_interval_spec_contains(
       container: uint_platform_interval_spec(),
       contained: uint8_interval_spec()

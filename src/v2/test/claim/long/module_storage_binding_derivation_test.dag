@@ -8,7 +8,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data msb_v2_path: String = "src/v2/std/msb_fixture.dag"
 
 data msb_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
-  source: extdeps.communication.medium.Medium { carried: "module v2.std.msb_fixture", fidelity: Lossless },
+  source: extdeps.communication.medium.Medium { carried: "module v2.std.msb_fixture", fidelity: extdeps.communication.medium.Lossless },
   artifact: v2.std.artifact.Artifact {
     kind: SourceFile,
     id: ^msb_artifact,
@@ -19,7 +19,7 @@ data msb_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.s
 }
 
 data msb_other_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
-  source: extdeps.communication.medium.Medium { carried: "module v2.std.msb_other_fixture", fidelity: Lossless },
+  source: extdeps.communication.medium.Medium { carried: "module v2.std.msb_other_fixture", fidelity: extdeps.communication.medium.Lossless },
   artifact: v2.std.artifact.Artifact {
     kind: SourceFile,
     id: ^msb_other_artifact,
@@ -30,7 +30,7 @@ data msb_other_read: v2.compiler.source_authority.DagSourceReadWitness = v2.comp
 }
 
 data msb_duplicate_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
-  source: extdeps.communication.medium.Medium { carried: "module v2.std.msb_fixture", fidelity: Lossless },
+  source: extdeps.communication.medium.Medium { carried: "module v2.std.msb_fixture", fidelity: extdeps.communication.medium.Lossless },
   artifact: v2.std.artifact.Artifact {
     kind: SourceFile,
     id: ^msb_duplicate_artifact,
@@ -41,7 +41,7 @@ data msb_duplicate_read: v2.compiler.source_authority.DagSourceReadWitness = v2.
 }
 
 data msb_unparseable_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
-  source: extdeps.communication.medium.Medium { carried: "this source declares no module at all", fidelity: Lossless },
+  source: extdeps.communication.medium.Medium { carried: "this source declares no module at all", fidelity: extdeps.communication.medium.Lossless },
   artifact: v2.std.artifact.Artifact {
     kind: SourceFile,
     id: ^msb_unparseable_artifact,

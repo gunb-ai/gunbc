@@ -1128,482 +1128,482 @@ data falsifier_substrate_long_lane_note: String = "Batch 6 (test-decomposition C
 
 CADENCE STANDING — RUNG DROP, DECLARED (effective 611fd02770/#8283, 2026-08-15; this note rewritten 2026-08-19, dashboard node adhoc-1eb1a9f9-ad9). PREVIOUS RUNG: every admitted long-lane identity (and, by the same falsifier.yml, every FalsifierRehomedBinWet and FalsifierSelfHostWet identity) had a scheduled route through the falsifier workflow — WitnessHasExecutingConsumer was a true claim for these cadences. CURRENT RUNG: falsifier.yml, the sole scheduled executor, was deleted at 611fd02770/#8283; the cadence is declared but unrealized, and every identity classified into it has no execution route and zero coverage. std.witness_admission witness_cadence_has_scheduled_route(FalsifierSubstrateLongLane) is false; witness_execution_standing_for_row now derives DeclaredCadenceUnrealized for these identities rather than WitnessHasExecutingConsumer. REASON: FLOOR-Y (the 2026-08-15 required-floor cut, #8283) deliberately deleted falsifier.yml along with ci.yml and falsifier-alert.yml and reserved re-adding a cadence executor for a separate, later operator agreement — restoring or improvising one here would be a new gate decision this note does not make. BOUNDED POPULATION: the exact identity union of every admission source whose cadence is FalsifierSubstrateLongLane — falsifier_substrate_long_lane_batch_schedule_entries() below, not a transcribed count (DESIGN §3 single authority: that function already computes this union via witness_long_eval_budget_union_in over falsifier_substrate_long_lane_entries() and explicit_witness_admission_substrate_long_lane_roster()). RESTORATION: an identity leaves this declared-unrealized state only when (a) a separately agreed realized consumer reaches it, (b) it returns to an already-realized per-PR route (DiscoverySelection etc.), (c) it moves to another genuinely realized consumer, or (d) the obligation deletes as duplicate or non-discriminating — deliberately NOT 'one future cron fixes all of them': the roster is heterogeneous (real breadth censuses, repeated interpreted pipelines, integration receipts, and likely some redundant rows), and root-cause work may dissolve much of it before any cadence executor is even reconsidered. THIS NOTE reveals and types an already-existing drop; it neither deletes an executor nor creates a coverage loss. Local recipe until a route exists: claim_batch --source-root dag --source-root src/v2 --entry <file> --functions <csv>."
 
-data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
-  SubstrateLongLaneRow {
+data falsifier_substrate_long_lane_rows: List<gunbc.ci_layer_roots.SubstrateLongLaneRow> = [
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
     function: "census_counters_exhaustively_partition_the_rows",
     reason: "63.0s measured eval (CI run ci5, subject a5d1c49d9a802c3a, current-shape fold — docs/plans/measurements/floor-slow-rows-2026-08-17.md): the row derives census_closure_frontier_rows(), whose own cost is dominated by the transitive resolve of the ~20 extdeps modules gunbc.census_closure_frontier concatenates into one dissolution-frontier roster, not by the fold_frontier_expiry classification std.roster_frontier itself walks. Its input is the live tree's breadth, so its cost is not bounded by anything the fast lane can see. The discriminating half — that fold_frontier_expiry correctly classifies a bound row as pending/fired and an unbound row as always-unbound under a planted present_decls set — is fixture-shaped and stays per-PR in test.claim.dissolution_census_mechanism_witness_test, so this row carries the census and not the mechanism",
     dissolution: unbound_dissolution(description: "the concatenated groups in census_closure_frontier_rows resolve at closure cost rather than a ~20-module fan-in (module-identity-vs-storage lane) or v2 self-host gains compile-graph access (gunbc#5364); then the eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, and this row deletes with its siblings")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
     function: "bound_and_unbound_partition_the_same_rows",
     reason: "same census cost class as sibling census_counters_exhaustively_partition_the_rows (63.0s measured module total, CI run ci5)",
     dissolution: unbound_dissolution(description: "same as census_counters_exhaustively_partition_the_rows row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
     function: "census_holds_on_the_live_roster",
     reason: "same census cost class as sibling census_counters_exhaustively_partition_the_rows (63.0s measured module total, CI run ci5)",
     dissolution: unbound_dissolution(description: "same as census_counters_exhaustively_partition_the_rows row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
     function: "nothing_is_fired_and_still_present_today",
     reason: "same census cost class as sibling census_counters_exhaustively_partition_the_rows (63.0s measured module total, CI run ci5)",
     dissolution: unbound_dissolution(description: "same as census_counters_exhaustively_partition_the_rows row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/stage0_partition_closure_live_census_test.dag",
     function: "w_live_corpus_partition_closure_holds",
     reason: "173.6s and 177.6s measured eval on two runs (claim_batch, local): the partition-closure census derives the whole-corpus dependency and declaration facts to ask whether the live crate roster holds. Its input is the live tree's breadth, so its cost is not bounded by anything the fast lane can see. The discriminating half is fixture-shaped and stays per-PR in test.claim.stage0_partition_closure_witness_test at 1-4ms, so this row carries the census and not the mechanism. THE MARGIN IS THIN: 177.6s sits about 1.3 percent under this lane's 180000ms ceiling, measured on a contended session container, so it may exceed on a slower runner — that surfaces as a counted cadence failure rather than a blocked merge, which is why enrolling still beats the fast lane",
     dissolution: unbound_dissolution(description: "the live producers stop dominating (dependency_resolution_facts_live and module_declaration_facts_live, already host-memoized — the two cost-shape defects removed in this module measurably did not move the total) or v2 self-host gains compile-graph access (gunbc#5364); then the eval lands under the fast-lane budget, the census re-enrolls per-PR discovery, and this row deletes with its exclusion pair")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
     function: "no_raw_lifecycle_string_survivors_remain",
     reason: "18482ms measured eval (claim_batch, local): the lifecycle-carrier completeness gate derives every top-level data declaration in the corpus with its declared type — 16975 declarations across 3475 modules — and refuses if any raw-string lifecycle carrier survives. Its input is the live tree's breadth, so its cost is not bounded by anything the fast lane can see; that is what disqualifies it, independent of the single measurement. The discriminating half is fixture-shaped and stays per-PR in test.claim.lifecycle_survivor_scan_witness at ~0ms, so this row carries the census and not the mechanism",
     dissolution: unbound_dissolution(description: "v2 self-host gains compile-graph access (gunbc#5364) so the declared type is reachable from the substrate and the census derives at closure cost rather than a corpus walk; then re-enroll per-PR discovery and delete the five census rows")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
     function: "scan_denominator_is_a_real_corpus",
     reason: "non-vacuity control for no_raw_lifecycle_string_survivors_remain: zero survivors is also what a producer that read nothing returns, so the denominator is asserted to be a real corpus. Same walk, same cost class",
     dissolution: unbound_dissolution(description: "same as no_raw_lifecycle_string_survivors_remain row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
     function: "scan_denominator_contains_bare_string_declarations",
     reason: "same census cost class: proves the type projection is populated rather than uniformly empty, which a broken projection would also render as zero survivors",
     dissolution: unbound_dissolution(description: "same as no_raw_lifecycle_string_survivors_remain row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
     function: "scan_reads_a_declared_type_for_every_declaration",
     reason: "same census cost class: an unread annotation would classify a survivor as not-a-string and under-report exactly what the gate exists to find",
     dissolution: unbound_dissolution(description: "same as no_raw_lifecycle_string_survivors_remain row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
     function: "scan_denominator_includes_test_modules",
     reason: "same census cost class: decl_facts_corpus_walk skips test .dag files and this walk must not, or a survivor authored in a witness would be invisible to the gate",
     dissolution: unbound_dissolution(description: "same as no_raw_lifecycle_string_survivors_remain row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_attempt_keystone_test.dag",
     function: "witness_planted_minimal_module_emits",
     reason: "5015ms deadline kill measured on CI run 31290921315 (2026-08-09): every keystone witness runs the real interpreted v2 pipeline (tokenize->parse->normalize->resolve->emit or assemble->join->infer->translate) at least once — the mechanism IS the modeled boundary crossing and its interpreted cost exceeds the 5s fast lane on CI hardware",
     dissolution: unbound_dissolution(description: "witness realization lands the pipeline natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured CI run — then re-enroll per-PR discovery and delete the five keystone rows")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_attempt_keystone_test.dag",
     function: "witness_planted_garbage_refuses_frontend_RED",
     reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
     dissolution: unbound_dissolution(description: "same as witness_planted_minimal_module_emits row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_attempt_keystone_test.dag",
     function: "witness_real_corpus_entry_produces_typed_standing",
     reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
     dissolution: unbound_dissolution(description: "same as witness_planted_minimal_module_emits row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_attempt_keystone_test.dag",
     function: "witness_assembled_cross_module_subject_reaches_typed_standing",
     reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
     dissolution: unbound_dissolution(description: "same as witness_planted_minimal_module_emits row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/realization_attempt_keystone_test.dag",
     function: "witness_assembled_identity_absent_refuses_RED",
     reason: "same keystone deadline class as witness_planted_minimal_module_emits (CI run 31290921315)",
     dissolution: unbound_dissolution(description: "same as witness_planted_minimal_module_emits row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/realization_sweep_test.dag",
     function: "witness_canonical_identities_join_own_enrolled_roster",
     reason: "~150s-class dir walk (floor_discovery_producer over dag/test/claim, the census-walk cost class): the canonical-roster derivation witnessed against this file's own enrolled roster — fixture-controlled identity join, corpus-breadth walk",
     dissolution: unbound_dissolution(description: "witness realization lands the walk natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/realization_sweep_test.dag",
     function: "witness_sweep_rows_join_planted_roster_exactly_once",
     reason: "~16s measured eval (valiant-boar-65, 2026-08-09): one real canonical two-module closure assembly (tokenize->parse->normalize->resolve) through attempt_closure_rows — the CI2-0 sweep mechanism keystone; the cheap identity-scan and witness-absent RED siblings stay per-PR",
     dissolution: unbound_dissolution(description: "witness realization lands the assembly natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/realization_sweep_test.dag",
     function: "witness_sweep_receipt_and_histogram_render_every_row",
     reason: "same Class C assembly wall as sibling witness_sweep_rows_join_planted_roster_exactly_once (~17.5s measured)",
     dissolution: unbound_dissolution(description: "same as sibling row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_single_param_lambda_parses",
     reason: "~16s measured eval (valiant-boar-65, 2026-08-10): interpreted production dag_lex_rules + dag_grammar lex+parse per control — the CI2-0 arrow-lambda grammar-admission proof matrix (parse-only, v1-fidelity), same wall as the leading-pipe sibling matrix",
     dissolution: unbound_dissolution(description: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_multi_param_lambda_parses",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~16s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_lambda_in_pipeline_parses",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~16s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_authored_algebra_shape_parses",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~16s measured; the VERBATIM dag/std/algebra.dag line-370 source — lambda in pipeline in lambda)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_lambda_block_body_parses",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_match_arm_fat_arrow_unchanged",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_named_arg_unchanged",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_paren_arithmetic_unchanged",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_sum_decl_unchanged",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_missing_body_refuses_RED",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_missing_param_refuses_RED",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_single_paren_param_refuses_RED",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured; v1-fidelity refusal — (x) is a parenthesized expr in v1, never a lambda)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_zero_param_refuses_RED",
     reason: "same interpreted lex/parse wall as sibling witness_single_param_lambda_parses (~17s measured; v1-fidelity refusal — () is the empty record literal in v1, never a lambda)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_arrow_lambda_witness_test.dag",
     function: "witness_pre_repair_grammar_restores_the_RED",
     reason: "four parses under the identity-swapped pre-extension grammar — the rule-removed RED (~68s measured)",
     dissolution: unbound_dissolution(description: "same as witness_single_param_lambda_parses row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/namespace_graft_body_dissolution_witness_test.dag",
     function: "witness_type_fn_module_dissolution_refuses_RED",
     reason: "~16s measured eval (valiant-boar-65, 2026-08-10): interpreted production lex+parse+normalize per control — the graft empty-observation-narrow guard matrix (operator ruling msg_d18a55de: the collector reporting a declaration-carrying module as declaration-free now REFUSES)",
     dissolution: unbound_dissolution(description: "witness realization lands the lex/parse natively or eval drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/namespace_graft_body_dissolution_witness_test.dag",
     function: "witness_type_only_module_dissolution_refuses_RED",
     reason: "same interpreted lex/parse/normalize wall as sibling witness_type_fn_module_dissolution_refuses_RED (~16s measured)",
     dissolution: unbound_dissolution(description: "same as witness_type_fn_module_dissolution_refuses_RED row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/namespace_graft_body_dissolution_witness_test.dag",
     function: "witness_lowered_body_module_still_grafts",
     reason: "two full lex/parse/normalize passes over the lowered-body control (~35s measured; acceptance plus the non-vacuous declaration-presence read)",
     dissolution: unbound_dissolution(description: "same as witness_type_fn_module_dissolution_refuses_RED row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/namespace_graft_body_dissolution_witness_test.dag",
     function: "witness_header_only_module_still_accepts",
     reason: "same interpreted lex/parse/normalize wall as sibling witness_type_fn_module_dissolution_refuses_RED (~18s measured)",
     dissolution: unbound_dissolution(description: "same as witness_type_fn_module_dissolution_refuses_RED row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/witness_execution_class_live_census_test.dag",
     function: "witness_live_roster_census_holds",
     reason: "~150s measured single-walk eval (valiant-boar-65, 2026-08-08): the CI-0 live-roster classification census — a full floor_discovery_producer walk over witness_discovery_scan_dirs (~1k file reads through the interpreted producer) joined against the enrolled bundle plan. Corpus-breadth census, not a fixture-shaped defect (DESIGN witness-cost ruling: the census is irreducible, the mechanism never is); the mechanism fixtures stay per-PR in witness_execution_class_test",
     dissolution: unbound_dissolution(description: "witness realization lands the census natively or the interpreted walk drops under gunbc_ci_fast_lane_witness_eval_budget on a measured run — then re-enroll per-PR discovery and delete this row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/wave1_gate1_d_mvp_subsumption_witness_test.dag",
     function: "wave1_gate1_d_census_subsumption_witness_holds",
     reason: "134526ms measured witness wall on a cold run (27x a 5s fast-lane budget, test-decomposition-wcf-cut.md Class C, merry-ibex-306 2026-07-25): the fn builds 10 ingested_fixture_arrows fixtures through a real tokenize->parse_module->normalize->resolve pass each, across two aggregator checks (well-formedness, behavior-kind) — genuine corpus breadth, not a fixture-shaped defect. The mechanism-only sibling (self_host/wave1_gate1_d_mvp_subsumption_witness_test.dag table_fixture check_fns, measured eval_self=0.000ms) is already covered by the source-root *_test.dag discovery walk (gunbc.commit_workflow wave1_gate1_d_census_class_c_split_note) — no explicit per-PR roster row for it",
     dissolution: unbound_dissolution(description: "the census-ingest fixture pipeline's per-fixture pass drops under the per-PR fast-lane budget on a measured cold run (e.g. shared parse-table/resolve memoization for this closure) — then re-enroll wave1_gate1_d_census_subsumption_witness_holds per-PR and delete this row")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_single_read_emits_row_holds",
     reason: "~9.5s measured eval per witness (proud-bat-741, 2026-07-25): node_artifact_provenance_from_source_root parse pipeline on inline fixture ingest — fixture-shaped, not corpus-breadth; per-PR fast-lane keeps hand-built fail-closed walls only",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_rejects_malformed_ingest_holds",
     reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline wall receipt)",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_rejects_beyond_surface_ingest_holds",
     reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline wall receipt)",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_parse_coverage_known_diff_fail_closed_holds",
     reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline coverage receipt)",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_coverage_receipt_holds",
     reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline coverage receipt)",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_git_diff_wire_holds",
     reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline git-diff wire receipt)",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
     function: "lens_affected_set_provenance_producer_unknown_diff_fail_closed_holds",
     reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline fail-closed receipt; per-PR hand-built unknown-path wall lives in affected_set_provenance_producer_test.dag)",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
     function: "lens_edit_locus_source_provenance_affected_set_wire_holds",
     reason: "Class C live-grain row (edit-locus provenance producer ×3 family): source_ir_node_artifact_provenance parse pipeline exceeds per-PR 5s budget. Renamed off the imported fn's own name 2026-07-26 — the same-name wrapper self-recursed instead of delegating (edit_locus_source_provenance_wrapper_shadowing_note); the row had never executed",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
     function: "lens_edit_locus_source_provenance_producer_rejects_malformed_source_holds",
     reason: "Class C live-grain row (edit-locus provenance producer ×3 family): malformed-source refusal through parse pipeline exceeds per-PR 5s budget. Renamed off the imported fn's own name 2026-07-26 — the same-name wrapper self-recursed instead of delegating (edit_locus_source_provenance_wrapper_shadowing_note); the row had never executed",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
     function: "lens_edit_locus_source_provenance_producer_holds",
     reason: "Class C live-grain edit-locus provenance producer (review 43557): was if-false-pinned in the lens module; now a real long/ wrapper on the substrate long lane with its siblings",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
     function: "lens_edit_locus_source_provenance_parse_root_span_holds",
     reason: "Class C live-grain edit-locus parse-root-span pole (review 43557); pair with producer_holds",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
     function: "fallback_arm_census_reconciliation_holds",
     reason: "W2 fallback-arm census corpus grain (docs/plans/fallback-arm-census.md, 2026-07-25): host-seamed MatchPattern::Wildcard walk over witness_layer_roots via decl_facts — exceeds per-PR 5s fast-lane budget (Class C). Per-PR fixture walls stay in fallback_arm_census_planted_test.dag",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
     function: "fallback_arm_census_total_nonempty_holds",
     reason: "same W2 census corpus grain as sibling reconciliation_holds",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
     function: "fallback_arm_census_class_counts_nonnegative_holds",
     reason: "same W2 census corpus grain as sibling reconciliation_holds",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
     function: "fallback_arm_seed_inventory_count_holds",
     reason: "same W2 census corpus grain as sibling reconciliation_holds (seed inventory count receipt)",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
     function: "fallback_arm_census_self_applies_holds",
     reason: "same W2 census corpus grain as sibling reconciliation_holds (lens self-application: zero AnswersOnOpen on fallback_arm_census.dag)",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or the host seam dissolves when #5364 exposes MatchPattern to .dag")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag",
     function: "vacuity_consumer_witness_real_test_fn_gap_stays_unknown_by_execution",
     reason: "review 47233 (PR #7620): this is the exact ScheduleWitnessEntry lens_contract_vacuity.consumer_witness binds to (src/v2/lens/enforcement/contract.dag). Before this row it had no scheduled CI path at all — test/claim/long/ is excluded from per-PR discovery and no falsifier row named it — so consumer_observed_for resolved WitnessOnly with no execution behind it, exactly the DESIGN §5 specification-without-execution class the vacuity lens exists to catch, recreated in its own binding. Measured 88996ms cold (17.8x the 5s fast-lane budget): corpus_ingest_fixture_module ingests a live snapshot through tokenize->parse_module->normalize->resolve, genuine corpus-breadth cost, not a fixture-shaped one-off",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag",
     function: "vacuity_consumer_witness_fixture_ingest_is_accepted_by_execution",
     reason: "sibling corpus-ingest witness in the same file as the bound consumer witness (review 47233 enrollment sweep): proves the fixture module itself ingests Accepted before the gap witness relies on that precondition. Measured 88996ms cold, same corpus_ingest_fixture_module cost as its sibling",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag",
     function: "vacuity_consumer_witness_derived_equals_classified_sites",
     reason: "sibling corpus-ingest witness in the same file as the bound consumer witness (review 47233 enrollment sweep): the live-derived-sites vs classified-sites reconciliation. Measured 32423ms cold",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/vacuity_consumer_witness_long_test.dag",
     function: "vacuity_consumer_witness_shadows_reconcile_with_admitted_exceptions",
     reason: "sibling corpus-ingest witness in the same file as the bound consumer witness (review 47233 enrollment sweep): live-shadow reconciliation against admitted exceptions. Measured 29754ms cold",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/generated_artifact_drift_fixed_point_witness_test.dag",
     function: "witness_committed_is_fixed_point",
     reason: "ReadsLiveTree fixed-point receipt: reads every committed artifact from disk and asserts artifact_generate reproduces bytes byte-for-byte. Its input is therefore the live tree rather than its own source, so its eval cost is not bounded by anything the fast lane can see — that is what disqualifies it from the fast lane, independent of any single measurement. Measured 1005ms warm on srv_fleet_arm64 (witness_row_cost_basis) and 5004ms in falsifier discovery-corpus batch 1 (run 30550328673, BudgetExceeded); those two figures differ in CLOCK (wall receipt vs CPU kill path), host, head and route at once, so the gap is an observation and not a diagnosis. WHY they differ is adjudicated once, in fixed_point_witness_long_lane_note (dag/test/claim/generated_artifact_drift_test.dag), NOT here: this field carries the enrollment fact and that note carries the cause, so the two cannot drift (DESIGN 3 — the earlier text of this field duplicated the diagnosis and both copies said host contention, which is false on a thread-CPU clock; corrected 2026-08-04)",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/generated_artifact_drift_fixed_point_witness_test.dag",
     function: "witness_committed_fixed_point_red_control",
     reason: "RED control paired with witness_committed_is_fixed_point (same file, same Filesystem.Read + artifact_generate cost shape)",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/production_qualification_origin_probe_witness_test.dag",
     function: "witness_production_qualification_origin_probe_admission_holds",
     reason: "production_qualification_origin_probe_admission_holds() walks fn_arrow_decl_facts_live() and exceeded 5000ms fast-lane budget on PR CI (d3fb2fed): eval-budget routing only — planted closed-subject witnesses stay per-PR discovery",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_every_declaration_ref_resolves_exactly",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
     dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_absent_declaration_refuses",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
     dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_absent_module_refuses",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
     dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_prose_only_name_does_not_resolve",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
     dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_resolved_identity_carries_observed_path",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
     dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_shared_substrate_carrier_resolves",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
     dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_capability_census_resolution_test.dag",
     function: "census_complexity_admission_predicate_is_vacuous_by_execution",
     reason: "C0(b1) capability-census citation hygiene: exact DeclarationRef resolution over decl_facts plus module_declaration_facts. Measured on dag plus src/v2 walk roots: census_every_declaration_ref_resolves_exactly ~22s, the remaining six ~0.1s each. SubstrateInputsOnly, not wet — v1 declarations are reached through decl_facts POOL ROOTS rather than an import, which is what lets a dag/ entry carry them at all.",
     dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the resolution census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
     function: "w_population_and_roster_counts_match",
     reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
     dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
     function: "w_every_population_declaration_is_classified",
     reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
     dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
     function: "w_every_classification_row_matches_population",
     reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
     dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
     function: "w_no_stale_classification_rows",
     reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
     dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
     function: "w_derived_population_is_nonempty",
     reason: "C0(b2) declaration-to-capability totality: derive v1.compiler.complexity population from decl_facts and prove bijection with the classification roster. Shares the C0(b1) resolution census cost envelope — decl_facts scan over dag plus src/v2 plus src/v1 pool roots.",
     dissolution: unbound_dissolution(description: "per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger), or the totality census lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery; row deletes with either")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/v1_complexity_decl_classification_totality_test.dag",
     function: "w_population_decl_names_are_distinct",
     reason: "C0(b2) bare-name join precondition, read against the REAL derived population: classification_matches_fact keys on DeclFact.name, which is sound only while the population's top-level names are distinct, and nothing in the carrier makes that true — it is a property of the subject module. Enrolled here rather than per-PR because it reads the same decl_facts population as the five totality rows above and shares their witness-layer scan over a pool including src/v1. The MECHANISM that would catch a broken fold — a planted-duplicate RED plus a distinct positive control over synthetic two-element fixtures — is NOT enrolled here: it runs per-PR in test.claim.v1_complexity_decl_classification_witness_test, so a regression in the fold reds on every PR and only the live-population reading waits for the cadence.",
     dissolution: unbound_dissolution(description: "the classification roster carries exact DeclFact identity (qualified_name, or name plus kind) so the join is exact by construction and no precondition remains to read; or per-witness declared cost envelopes subsume the long-lane cadence (long_lane_exclusion_note trigger).")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/instrument_sandbox_live_witness_test.dag",
     function: "instrument_sandbox_live_keystone_holds",
     reason: "Re-homed off per-PR discovery after 5074ms thread-CPU in falsifier discovery batch 3 (run 30986055960, BudgetExceeded against the 5000ms fast-lane budget). WHY THE SPLIT, which is structural and does not move with the measurements: every claim on this entry renders the served page or reads the live program view and pays that cost once, while the cheap register-gate claims — derived salience role, emission/admission join, refused-role controls, theme-block position — do not, so those stay per-PR in dag/test/claim/instrument_sandbox_witness_test.dag at 0-2ms each, per the 2026-08-04 admission ruling that a live-population subject decomposes into mechanism fixtures per PR plus the irreducible live half on a cadence. NOT declared irreducible corpus breadth: the cost is measured and its gating term named. WHERE THAT COST IS: dag/test/claim/long/instrument_sandbox_live_witness_test.dag post_7822_attribution_note, which is its single home. This field used to carry an attribution of its own — the served-page render and live_program_view_result named as the dominant term, a 263ms-inputs / 5132ms-derivation split, n=25 declared nodes — and all of it is retracted: the cost location was wrong and the node count was never right. Deleted rather than disclaimed, because reason is read before dissolve_on and a superseded attribution here steers a worker scanning this roster before any correction below it can land (review 48997; the same fix the witness file's header got)",
     dissolution: unbound_dissolution(description: "PARTIALLY MET AND RE-MEASURED TWICE, 2026-08-05. #7822 landed the keyed-lookup restructure this row originally named, and this witness fell roughly tenfold on the same host and binary, so that condition — eval under gunbc_ci_fast_lane_witness_eval_budget — now HOLDS. The row does not dissolve: the bar moved to a 500ms per-witness warning threshold (operator, 2026-08-05) and this witness is still several times over it. THE SECOND CONDITION THIS ROW NAMED IS ALSO WITHDRAWN. It said the residue was the served-page render and asked for a measured run under the warning line, which pointed the work at the witness file; attribution by execution says the dominant term is constructing declared_roadmap_nodes, several times the warning line on its own and before the page renders anything, so no change confined to dag/test/claim/long/instrument_sandbox_live_witness_test.dag can close the gap. CORRECTED CONDITION: the cost of reading the live roadmap authority — declared_roadmap_nodes construction specifically — drops under the per-witness warning line. That cost is shared with every other witness reading that authority, so it is owned by that authority's lane and tracked with the materialization/native-witness-execution work, not here; when it lands, this witness's own render residue is inside the line, these claims re-merge into dag/test/claim/instrument_sandbox_witness_test.dag per-PR, and this row, the exclusion row, and the long-lane file delete together. Every figure behind this — the per-component thread-CPU breakdown, the clock basis, and both retractions — is carried once in the witness file's post_7822_attribution_note and deferral_floor_note, deliberately not copied here, because two numeric copies of one measurement drift")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/dag_compile_clean_scope_disposition_witness_test.dag",
     function: "dag_compile_clean_scope_all_disposition_rows_hold",
     reason: "Fixture-grain compile-clean scope disposition rows (scope_disposition_witness_roster_note): PR CI run 31077616566 hit EvalBudgetExceeded at 5002ms thread-CPU on the seven-row fold and at 5002ms/5001ms on per-PR split halves — all budget-interrupt lower bounds, not completed witness costs. Comparing the two split aborts does not establish whether halving helped: each is at least 5000ms with no upper bound. No-budget local reruns of the historical seven-row fold and both halves (2026-08-14) complete at ~15-16ms thread-CPU on warm host at current fixture grain; cold CI totals remain unmeasured. Cheap scope witnesses stay per-PR in dag/test/claim/dag_compile_clean_scope_witness_test.dag.",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run (e.g. shared module_declaration_facts memoization for the fixture pool) and re-enrolls per-PR discovery; row deletes with the long-lane file")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/long/qualified_declaration_reference_emit_cross_module_witness_test.dag",
     function: "cross_module_qualified_reference_emits_call_from_correct_module",
     reason: "compile_dag_rust_emit_check cross-module fixture (std.unicode.types.unicode_scalar_max_code_point — minimal std closure, not the heavy std.emit_on_demand roster the prior fixture dragged in): measured 5436-5544ms thread-CPU vs 5000ms fast-lane cap on srv_fleet_arm64 PR CI discovery batch 3. Same-module sibling stays per-PR in dag/test/claim/qualified_declaration_reference_emit_witness_test.dag.",
     dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run and re-enrolls per-PR discovery; row deletes with the long-lane file")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "dag/test/claim/roadmap_program_view_live_corpus_receipt_test.dag",
     function: "live_roadmap_program_view_corpus_projection_receipt",
     reason: "LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822): exercises the full declared roadmap closure through gunbc.roadmap_program_view — evidentiary wiring receipt enrolled on the corpus/integration lane for its integration role, not because eval cost exceeds the per-PR business budget. Business algebra stays on planted fixtures in roadmap_program_view_witness_test.dag",
     dissolution: unbound_dissolution(description: "replaced by a cheaper structural wiring receipt that covers the same live-authority join, or live roadmap projection integration receipts become unnecessary")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag",
     function: "realization_vocab_live_corpus_receipt_holds",
     reason: "TS-0/LANG-2 live-corpus containment receipt: irreducible live-tree census over realization_vocab_consumer_scan_roots verifying every current leak edge is grandfathered and containment holds corpus-wide. Enrolled on the falsifier substrate long lane for its corpus/integration role — the observation that must read the live import graph — not because per-PR discovery is the right admission surface. Per-PR mechanism coverage stays in no_new_debt_gate_test.dag and the existing synthetic/scanner/roster-soundness receipts.",
     dissolution: unbound_dissolution(description: "replaced by a cheaper structural receipt proving the same live-corpus relation, or live containment observation becomes unnecessary")
   },
-  SubstrateLongLaneRow {
+  gunbc.ci_layer_roots.SubstrateLongLaneRow {
     entry: "src/v2/test/claim/body_lowering/long/atom_body_discriminator_witness_test.dag",
     function: "atom_body_discriminator_single_pass_receipt_holds",
     reason: "~18661ms thread-CPU measured locally (2026-08-14; wall=18704ms) — 3.7× over the 5s fast-lane budget. The 5001ms figure is only where a --eval-budget-ms 5000 probe aborted (EvalBudgetExceeded), not completed witness cost. One tokenize→parse→normalize over the four-declaration atom-body discriminator module, then declaration/parameter_count/ArrowBodyForm production rows plus both RED mirror directions on the same normalized tree. The cost is the production frontend crossing — not a second pass and not a synthetic node_synthetic fixture.",

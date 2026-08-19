@@ -107,8 +107,8 @@ fn parse_stamp_derived_by_pair_holds(
                   absent: parse_stamp_list_absent_diagnostic()
                 ) {
                   Holds { value: t } =>
-                    occurrence_id_eq(left: h, right: left)
-                      && occurrence_id_eq(left: t, right: right)
+                    std.occurrence_identity.occurrence_id_eq(left: h, right: left)
+                      && std.occurrence_identity.occurrence_id_eq(left: t, right: right)
                   Violates { diagnostic: _ } => false
                 }
               Violates { diagnostic: _ } => false

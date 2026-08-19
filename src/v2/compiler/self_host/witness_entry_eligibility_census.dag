@@ -40,28 +40,28 @@ fn census_entry_path_matches_emit_on_demand_family_grain(entry: String) -> Bool 
 fn census_pending_interpreted_retained(entry: String) -> v2.std.witness_execution_routing.WitnessExecutionDisposition {
   InterpretedRetained {
     reason: BulkFlipPendingCensusIncomplete,
-    dissolution: unbound_dissolution(description: "srvN cssl sweep receipt names first-error class for this entry; row flips to NativeRouted or EmitIneligible in bulk flip PR (ROADMAP 2a section 3)")
+    dissolution: std.dissolution.unbound_dissolution(description: "srvN cssl sweep receipt names first-error class for this entry; row flips to NativeRouted or EmitIneligible in bulk flip PR (ROADMAP 2a section 3)")
   }
 }
 
 fn census_emit_on_demand_family_grain(entry: String) -> v2.std.witness_execution_routing.WitnessExecutionDisposition {
   InterpretedRetained {
     reason: EmitOnDemandFamilyGrain,
-    dissolution: unbound_dissolution(description: "native_routing_frontier flips owning family to NativeRouted with warm per-PR agreement receipt; entry-grain row derives NativeRouted from family membership")
+    dissolution: std.dissolution.unbound_dissolution(description: "native_routing_frontier flips owning family to NativeRouted with warm per-PR agreement receipt; entry-grain row derives NativeRouted from family membership")
   }
 }
 
 fn census_host_fed_ceiling_retained(entry: String) -> v2.std.witness_execution_routing.WitnessExecutionDisposition {
   InterpretedRetained {
     reason: HostFedCeiling,
-    dissolution: unbound_dissolution(description: "native host-effect transport lane retires host_fed ceiling; row reclassifies from InterpretedRetained")
+    dissolution: std.dissolution.unbound_dissolution(description: "native host-effect transport lane retires host_fed ceiling; row reclassifies from InterpretedRetained")
   }
 }
 
 fn census_reads_live_tree_carrier_retained(entry: String) -> v2.std.witness_execution_routing.WitnessExecutionDisposition {
   InterpretedRetained {
     reason: RetainedReadsLiveTreeCarrier,
-    dissolution: unbound_dissolution(description: "G2 live-read classification + native host-effect transport retire ReadsLiveTree carrier rows")
+    dissolution: std.dissolution.unbound_dissolution(description: "G2 live-read classification + native host-effect transport retire ReadsLiveTree carrier rows")
   }
 }
 

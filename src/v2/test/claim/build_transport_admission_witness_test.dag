@@ -16,11 +16,11 @@ test fn emit_host_access_decision_seed_transport_is_declared_scaffold() -> Bool 
           pattern: "permit_arm_from_another_carrier_refuses",
         )
         && string_contains(
-          s: dissolution_description(condition: emit_host_access_decision_seed_transport_dissolve_trigger),
+          s: std.dissolution.dissolution_description(condition: emit_host_access_decision_seed_transport_dissolve_trigger),
           pattern: "v1-zero-hand-maintained-rust",
         )
         && string_contains(
-          s: dissolution_description(condition: emit_host_access_decision_seed_transport_dissolve_trigger),
+          s: std.dissolution.dissolution_description(condition: emit_host_access_decision_seed_transport_dissolve_trigger),
           pattern: "DISSOLVES WHEN",
         )
     _ => false
@@ -132,11 +132,11 @@ test fn build_transport_refuses_escaping_arg() -> Bool {
 }
 
 test fn build_transport_projection_boundary() -> Bool {
-  position_under(
+  std.effect_grant.position_under(
     target: build_transport_rel_position(rel: "src/lib.rs"),
     root: std.effect_grant.NamespacePosition { tree: FilesystemPathTree, path: ["workspace"] }
   )
-    && !position_under(
+    && !std.effect_grant.position_under(
          target: build_transport_rel_position(rel: "../escape"),
          root: std.effect_grant.NamespacePosition { tree: FilesystemPathTree, path: ["workspace"] }
        )

@@ -3,13 +3,13 @@ module v2.test.emit.semantic_decl_routing_generic
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data semantic_witness_golden: String = concat(rust_enum_derives, "\nenum Witness<C> { Holds { value: C }, Violates { diagnostic: Diagnostic } }")
+data semantic_witness_golden: String = concat(extdeps.languages.rust.emit.rust_enum_derives, "\nenum Witness<C> { Holds { value: C }, Violates { diagnostic: Diagnostic } }")
 
-data semantic_witness_wrong_golden: String = concat(rust_enum_derives, "\nenum Witness<C> { Violates { diagnostic: Diagnostic }, Holds { value: C } }")
+data semantic_witness_wrong_golden: String = concat(extdeps.languages.rust.emit.rust_enum_derives, "\nenum Witness<C> { Violates { diagnostic: Diagnostic }, Holds { value: C } }")
 
-data semantic_pair_golden: String = concat(rust_struct_derives, "\nstruct Pair<K, V> { key: K, value: V }")
+data semantic_pair_golden: String = concat(extdeps.languages.rust.emit.rust_struct_derives, "\nstruct Pair<K, V> { key: K, value: V }")
 
-data semantic_pair_wrong_golden: String = concat(rust_struct_derives, "\nstruct Pair<K, V> { value: V, key: K }")
+data semantic_pair_wrong_golden: String = concat(extdeps.languages.rust.emit.rust_struct_derives, "\nstruct Pair<K, V> { value: V, key: K }")
 
 fn sdrg_atom_type(name: v2.std.node.Symbol) -> Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: name } }, children: [], occurrence_id: SyntheticOccurrence }

@@ -16,7 +16,7 @@ fn wire_inputs() -> v2.compiler.eval.Inputs {
 }
 
 fn wire_source() -> Medium<String> {
-  extdeps.communication.medium.Medium { carried: rust_source_text, fidelity: Lossless }
+  extdeps.communication.medium.Medium { carried: rust_source_text, fidelity: extdeps.communication.medium.Lossless }
 }
 
 fn wire_fixed_main_row(main_text: String) -> v2.std.host_transport.EmitHostRuntimeRow {

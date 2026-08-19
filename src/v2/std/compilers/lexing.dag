@@ -260,11 +260,11 @@ fn symbol_intern_lexeme(lexeme: Lexeme) -> v2.std.node.Symbol {
 }
 
 data symbol_lexeme_host_disposition: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.std.compilers.lexing",
     decl_name: "symbol_lexeme",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 

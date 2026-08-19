@@ -27,7 +27,7 @@ type ExportEntry {
 
 type InterfaceSummary {
   module_path: std.types.NonEmptyStr
-  exports: List<ExportEntry>
+  exports: List<std.interface_summary.ExportEntry>
   interface_hash: InterfaceHash
 }
 
@@ -57,7 +57,7 @@ fn export_kind_tag(kind: ExportKind) -> std.types.NonEmptyStr {
   }
 }
 
-fn export_entry_fingerprint(entry: ExportEntry) -> std.content_hash.Fnv1a64Structural {
+fn export_entry_fingerprint(entry: std.interface_summary.ExportEntry) -> std.content_hash.Fnv1a64Structural {
   match entry.contract {
     ContractAbsent =>
       content_hash_tagged_structural(
@@ -81,7 +81,7 @@ fn export_entry_fingerprint(entry: ExportEntry) -> std.content_hash.Fnv1a64Struc
   }
 }
 
-fn interface_summary_rollup(exports: List<ExportEntry>) -> InterfaceHash {
+fn interface_summary_rollup(exports: List<std.interface_summary.ExportEntry>) -> InterfaceHash {
   fold(
     exports,
     init: content_hash_atom(value: "interface-summary-v0"),

@@ -1,7 +1,7 @@
 module v2.test.emit.semantic_decl_lookup_receipt_test
 
 
-data expected_derive_spelling: String = rust_decl_derive_lex_spelling(text: rust_enum_derives_copy)
+data expected_derive_spelling: String = rust_decl_derive_lex_spelling(text: extdeps.languages.rust.emit.rust_enum_derives_copy)
 
 test fn row_lookup_returns_derive_spelling() -> Bool {
   match semantic_decl_emission_from_target(target: rust_target_model()) {

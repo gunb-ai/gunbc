@@ -3,14 +3,14 @@ module v2.extdeps.github.diagnostic_emit
 
 fn gha_severity_command(severity: v2.std.diagnostic.DiagnosticSeverity) -> String {
   match severity {
-    SeverityError => gha_log_command_error
-    SeverityWarning => gha_log_command_warning
+    SeverityError => extdeps.github.log_annotations.gha_log_command_error
+    SeverityWarning => extdeps.github.log_annotations.gha_log_command_warning
   }
 }
 
 fn emit_directive_gha_message(d: v2.std.diagnostic.EmitDirective) -> String {
   concat(
-    gha_message_command_prefix(command: gha_severity_command(severity: d.severity)),
+    extdeps.github.log_annotations.gha_message_command_prefix(command: gha_severity_command(severity: d.severity)),
     d.message
   )
 }

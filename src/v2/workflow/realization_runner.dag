@@ -40,15 +40,15 @@ fn node_keyed_store_node_count<V>(store: NodeKeyedStore<V>) -> Int {
 data node_keyed_graph_artifact_note: String = "NodeKeyedGraphArtifact is the persistent/streamed form of NodeKeyedStore (the S2b store shape, landed early as the settled encoding authority — inherited from the S2a lane, bound 2026-07-10). CODEC RULING (settled): a tree codec over the Rc-shared graph un-shares every shared subtree — the resolved-graph cache write measured a ~3.4GiB working set expanding to 17GiB under serde_json::to_vec; serde-streaming and packed-binary-tree keep the unsharing, so both are WRONG. The artifact form is an interned content-keyed node table: each node encoded exactly ONCE, keyed by its content hash, children referenced BY HASH and never inline; a decode rebuilds the structural sharing. Witness homes, precisely: the SIZE/TOPOLOGY/REFUSAL witnesses (shared-row-counted-once with the tree-double-count RED, missing-ref refusals, interning check) execute in v2.test.claim.realization_runner_witness; the two SHARING witnesses are pointer-identity facts only a host realization can observe, so they executed in the seed test module src/v1/tests/src/node_keyed_graph_artifact_codec_test.rs, DELETED 2026-08-11 by the gunbc#8146 test-suite cutover — that module was gated by --no-run and never actually ran, so the sharing claims are now UNWITNESSED rather than newly so (decode-rebuilds-sharing via Rc ptr-eq with a deliberately unshared tree-decode RED control, and reencode-byte-identity). ROWS CARRY ROW-LOCAL FACTS ONLY (encoded body length): a stored transitive size would be a dual representation of the child_refs topology, so transitive footprint is DERIVED, never stored. The reachable-set fold node_keyed_graph_transitive_bytes IS the single value-size authority — the eval-memo byte-cap admission (extdeps.realization.eval_memo) and the space-lens predictor both bind to it, and no parallel size walk may exist anywhere. Content hashes ground on the fnv1a64 authority surfaced by std.content_hash / the v1 intrinsics (DESIGN section 3 convergence thread) — this schema must not mint a third hash surface; ContentHash here is the std.types carrier. Failure arms REFUSE, never widen: a child ref with no row refuses with the missing hash, never a fabricated size. The walk is fuel-bounded by row count and settles within the fuel by construction (each pass either visits a new interned row or empties the frontier — a visited ref is skipped, so even a cyclic row table converges to its reachable set); the Unsettled arm is the typed fail-closed backstop should that bound argument ever be violated, not a reachable state we can construct. Artifact well-formedness itself (interning — at most one row per hash — and acyclicity via child-before-parent row order) is the codec's obligation: node_keyed_graph_rows_interned checks the former, and the hash-consed single-pass decode refuses a forward or missing child ref, which makes an encoded cycle unrepresentable."
 
 data node_keyed_graph_codec_seed_disposition: std.disposition.Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.realization_runner",
     decl_name: "NodeKeyedGraphArtifact",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data node_keyed_graph_codec_seed_note: String = "Seed-retained frontier row (DESIGN section 7: seed-retained = declared, with reason and migration trigger, never silent). The byte codec realizing NodeKeyedGraphArtifact — trait NodeKeyedGraphEncode plus node_keyed_graph_encode/node_keyed_graph_decode/node_keyed_graph_row_facts in src/v1/stage0/src/resolved_graph_cache.rs (hand-maintained registry), with its sharing witnesses formerly in src/v1/tests/src/node_keyed_graph_artifact_codec_test.rs (deleted 2026-08-11, gunbc#8146; unwitnessed pending a host surface that can observe rebuilt sharing) — is HOST RUST because it is realization, not model: byte-level IO plus Rc pointer identity, neither expressible in the substrate today (no bytes carrier; pointer sharing is a host-realization fact the model deliberately does not carry). Reason it exists at all: the tree-codec un-sharing defect at the resolved-graph cache write (3.4GiB working set -> 17GiB encode). Dissolution trigger, concrete: when the section-4 one-grammar-both-directions emission rows extend to a binary medium (a bytes carrier + extdeps/languages-style row table for this format), the kernel becomes row-derived emission dispatched from THIS schema (RealizationDispatch via the bound declaration) and the hand-Rust retires with the seed; the sharing witnesses migrate to whatever surface can then observe rebuilt sharing. Until that trigger, the kernel rides the resolved_graph_cache.rs hand-maintained registry row and this disposition is its count."
+data node_keyed_graph_codec_seed_note: String = "Seed-retained frontier row (DESIGN section 7: seed-retained = declared, with reason and migration trigger, never silent). The byte codec realizing NodeKeyedGraphArtifact — trait NodeKeyedGraphEncode plus node_keyed_graph_encode/node_keyed_graph_decode/node_keyed_graph_row_facts in src/v1/stage0/src/resolved_graph_cache.rs (hand-maintained registry), with its sharing witnesses formerly in src/v1/tests/src/node_keyed_graph_artifact_codec_test.rs (deleted 2026-08-11, gunbc#8146; unwitnessed pending a host surface that can observe rebuilt sharing) — is HOST RUST because it is realization, not model: byte-level IO plus Rc pointer identity, neither expressible in the substrate today (no bytes carrier; pointer sharing is a host-realization fact the model deliberately does not carry). Reason it exists at all: the tree-codec un-sharing defect at the resolved-graph cache write (3.4GiB working set -> 17GiB encode). Dissolution trigger, concrete: when the section-4 one-grammar-both-directions emission rows extend to a binary medium (a bytes carrier + extdeps/languages-style row table for this format), the kernel becomes row-derived emission dispatched from THIS schema (std.disposition.RealizationDispatch via the bound declaration) and the hand-Rust retires with the seed; the sharing witnesses migrate to whatever surface can then observe rebuilt sharing. Until that trigger, the kernel rides the resolved_graph_cache.rs hand-maintained registry row and this disposition is its count."
 
 type NodeKeyedGraphRow {
   content_hash: std.content_hash.ContentHash
@@ -90,8 +90,8 @@ fn node_keyed_graph_rows_interned(rows: List<NodeKeyedGraphRow>) -> Bool {
 }
 
 fn node_keyed_graph_artifact_total_bytes(artifact: NodeKeyedGraphArtifact) -> std.measure.ByteSize {
-  fold(artifact.rows, init: byte_size(count: 0), f: fn(total, row) {
-    measure_add(a: total, b: row.encoded_length)
+  fold(artifact.rows, init: std.measure.byte_size(count: 0), f: fn(total, row) {
+    std.measure.measure_add(a: total, b: row.encoded_length)
   })
 }
 
@@ -142,7 +142,7 @@ fn node_keyed_graph_reach_step(
                   NodeKeyedGraphReachActive {
                     visited: list_snoc_item(xs: seen, item: content_hash),
                     frontier: list_append(left: next, right: row.child_refs),
-                    bytes: measure_add(a: acc, b: row.encoded_length)
+                    bytes: std.measure.measure_add(a: acc, b: row.encoded_length)
                   }
               }
             }
@@ -165,7 +165,7 @@ fn node_keyed_graph_transitive_bytes(
     state: NodeKeyedGraphReachActive {
       visited: [],
       frontier: [root],
-      bytes: byte_size(count: 0)
+      bytes: std.measure.byte_size(count: 0)
     }
   )
   let walked = fold(artifact.rows, init: seeded, f: fn(state, _) {

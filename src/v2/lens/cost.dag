@@ -625,6 +625,6 @@ fn llvm_instruction_cost(i: v2.extdeps.languages.llvm_ir.LlvmInstruction) -> Int
 data construction_justification: v2.lens.common.construction_justification.ConstructionJustification = v2.lens.common.construction_justification.ConstructionJustification {
   class: v2.lens.common.construction_justification.WallNow {
     mechanism: SubstrateMandatoryTag,
-    authority: std.decl_ref.DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: WholeDeclaration }
+    authority: std.decl_ref.DeclarationRef { module_path: "v2.std.node", decl_name: "NodeKind", field: std.decl_ref.WholeDeclaration }
   }
 }

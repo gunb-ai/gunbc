@@ -14,7 +14,7 @@ data host_source_root_ingest_coverage_receipt: v2.compiler.source_authority.Sour
   coverage: SourceRootManifestAbsent
 }
 
-data host_source_root_ingest: v2.compiler.source_authority.SourceRootIngest = Empty
+data host_source_root_ingest: v2.compiler.source_authority.SourceRootIngest = std.algebra.Empty
 
 data host_source_root_closure_refs: List<v2.compiler.source_authority.SourceRef> = std.algebra.Empty
 
@@ -25,7 +25,7 @@ data host_compiler_closure_admission: v2.compiler.name_resolve.Admission = v2.co
       tail: std.algebra.Cons { head: ^compiler, tail: std.algebra.Cons { head: ^compile, tail: std.algebra.Empty } }
     }
   },
-  imports: Empty
+  imports: std.algebra.Empty
 }
 
 data frontier_probe_entry_source_ref: v2.compiler.source_authority.SourceRef = v2.compiler.source_authority.SourceRef {

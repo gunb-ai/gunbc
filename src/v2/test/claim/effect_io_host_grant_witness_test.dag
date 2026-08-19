@@ -7,12 +7,12 @@ data effect_io_host_grant_witness_note: String = "P-B discriminating witnesses f
 
 data sample_locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator = v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator {
   backend: HttpResourceBackend,
-  identity: content_hash_atom(value: "effect-io-grant-witness")
+  identity: std.content_hash.content_hash_atom(value: "effect-io-grant-witness")
 }
 
 data mismatched_backend_locator: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator = v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator {
   backend: FileResourceBackend,
-  identity: content_hash_atom(value: "effect-io-grant-witness-mismatch")
+  identity: std.content_hash.content_hash_atom(value: "effect-io-grant-witness-mismatch")
 }
 
 fn is_refused(a: std.access.AccessDecision) -> Bool {
@@ -31,7 +31,7 @@ fn is_admitted(a: std.access.AccessDecision) -> Bool {
 
 data sample_locator_b: v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator = v2.extdeps.runtimes.v2_effect_io_pure.EffectIoResourceLocator {
   backend: HttpResourceBackend,
-  identity: content_hash_atom(value: "effect-io-grant-witness-b")
+  identity: std.content_hash.content_hash_atom(value: "effect-io-grant-witness-b")
 }
 
 test fn effect_io_host_locator_position_uses_hash_identity_holds() -> Bool {

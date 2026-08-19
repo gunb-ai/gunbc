@@ -3,13 +3,13 @@ module v2.workflow.enforcement_live
 
 // Phase 0A honesty: live_receipt_for_contract passes desired_scope: whole_corpus_scope deliberately, NOT contract.claimed_scope. Passing claimed_scope would self-certify (claimed covers claimed by construction) and, worse, would green Cost's scope leg on decl_facts name discovery alone (~1400 discovered fn names, 0 body-evaluated). The honest model needs three facts — required_scope, claimed_scope, evaluated_scope — with meaningful checks claimed-covers-required and evaluated-covers-claimed; evaluated_scope does not exist until execution receipts land. Do NOT pass claimed_scope here until evaluated_scope exists.
 fn enforcement_ci_witness_entries() -> List<std.realization_schedule.ScheduleWitnessEntry> {
-  project_ci_floor_witness_entries(roster: commit_gate_roster)
+  gunbc.commit_workflow.project_ci_floor_witness_entries(roster: gunbc.commit_workflow.commit_gate_roster)
 }
 
 fn enforcement_prepush_witness_entries() -> List<std.realization_schedule.ScheduleWitnessEntry> {
-  witness_entries_from_enrollments(
-    rows: filter(xs: commit_gate_roster, predicate: fn(e) {
-      enrollment_has_surface(e: e, surface: GitPrePushHook)
+  gunbc.commit_workflow.witness_entries_from_enrollments(
+    rows: v2.std.algebra.filter(xs: gunbc.commit_workflow.commit_gate_roster, predicate: fn(e) {
+      gunbc.commit_workflow.enrollment_has_surface(e: e, surface: gunbc.commit_workflow.GitPrePushHook)
     })
   )
 }

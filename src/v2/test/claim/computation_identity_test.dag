@@ -2,28 +2,28 @@ module v2.test.claim.computation_identity_test
 
 
 test fn witness_known_grades_permit_share() -> Bool {
-  identity_permits_share(ci: StructurallyIdentical)
-    && identity_permits_share(ci: std.computation_identity.NormalizedIdentical { normalizer: "alpha-rename" })
-    && identity_permits_share(ci: std.computation_identity.ExtensionallyIdentical { bound: "declared-input-domain" })
+  std.computation_identity.identity_permits_share(ci: std.computation_identity.StructurallyIdentical)
+    && std.computation_identity.identity_permits_share(ci: std.computation_identity.NormalizedIdentical { normalizer: "alpha-rename" })
+    && std.computation_identity.identity_permits_share(ci: std.computation_identity.ExtensionallyIdentical { bound: "declared-input-domain" })
 }
 
 test fn witness_unknown_never_permits_share() -> Bool {
   let unknown = std.computation_identity.IdentityUnknown {
     cause: std.computation_identity.MissingEnforcement { detail: "no lens covers this producer" }
   }
-  (identity_permits_share(ci: unknown) == false)
-    && (identity_grade_is_known(ci: unknown) == false)
+  (std.computation_identity.identity_permits_share(ci: unknown) == false)
+    && (std.computation_identity.identity_grade_is_known(ci: unknown) == false)
 }
 
 test fn witness_unknown_cause_arms_construct() -> Bool {
   let a = std.computation_identity.IdentityUnknown { cause: std.computation_identity.MissingConcept { detail: "x" } }
   let b = std.computation_identity.IdentityUnknown { cause: std.computation_identity.BoundUnmodeled { detail: "y" } }
-  (identity_grade_is_known(ci: a) == false) && (identity_grade_is_known(ci: b) == false)
+  (std.computation_identity.identity_grade_is_known(ci: a) == false) && (std.computation_identity.identity_grade_is_known(ci: b) == false)
 }
 
 test fn witness_materialize_share_is_structural() -> Bool {
   match materialize_share_identity_grade() {
-    StructurallyIdentical => materialize_share_grade_permits_share()
+    std.computation_identity.StructurallyIdentical => materialize_share_grade_permits_share()
     NormalizedIdentical { normalizer: _ } => false
     ExtensionallyIdentical { bound: _ } => false
     IdentityUnknown { cause: _ } => false
@@ -31,6 +31,6 @@ test fn witness_materialize_share_is_structural() -> Bool {
 }
 
 test fn witness_materialize_ungrounded_refuses_share() -> Bool {
-  identity_permits_share(ci: materialize_ungrounded_identity(detail: "normalized peer")) == false
+  std.computation_identity.identity_permits_share(ci: materialize_ungrounded_identity(detail: "normalized peer")) == false
 }
 

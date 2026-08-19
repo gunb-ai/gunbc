@@ -201,7 +201,7 @@ test fn zero_iterations_produce_exact_zero() -> Bool {
 data effect_operation: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "v2.test.lens_cost.valuation",
   decl_name: "unmodelled_effect_specimen",
-  field: WholeDeclaration
+  field: std.decl_ref.WholeDeclaration
 }
 
 test fn cost_effect_refuses_until_an_effect_model_exists() -> Bool {

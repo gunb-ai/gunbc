@@ -33,7 +33,7 @@ type AdmissionState
   | AdmissionRejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
 
 type ModuleRootValidateState
-  = ModuleRootsValid { seen: FreeMonoid<v2.std.qualified_name.QualifiedName>, diagnostics: v2.std.diagnostic.Diagnostics }
+  = ModuleRootsValid { seen: std.algebra.FreeMonoid<v2.std.qualified_name.QualifiedName>, diagnostics: v2.std.diagnostic.Diagnostics }
   | ModuleRootsDuplicate { diagnostics: v2.std.diagnostic.Diagnostics }
   | ModuleRootsProjectionRejected { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics }
 

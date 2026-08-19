@@ -3,17 +3,17 @@ module v2.compiler.emit_host
 
 
 data emit_host_access_decision_seed_transport_scaffold: std.disposition.Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v1_compiler.v1_interpreter",
     decl_name: "require_permitted_transport",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 data emit_host_access_decision_seed_transport_receipt: String = "HAND-RUST receipt for v1_interpreter.rs require_permitted_transport and its emit_host_admission_flip_test RED control. The seed adds no authorization policy: v2.compiler.build_transport_admission build_transport_admissible constructs the AccessDecision, and the Rust transport only refuses anything other than that exact carrier's Permit arm before realizing the host effect. Checkable executing receipt: cargo test -p v1-compiler emit_host_admission_flip_test -- --nocapture; permit_arm_from_another_carrier_refuses goes red if a same-named arm from another carrier can authorize."
 
-data emit_host_access_decision_seed_transport_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVES WHEN the v1-exit lane's concrete ROADMAP row v1-zero-hand-maintained-rust is accepted (authority gunbc.roadmap_authority roadmap_nodes): emit_host transport is generated from this module or deleted, so require_permitted_transport and its hand-written Rust tests no longer exist.")
+data emit_host_access_decision_seed_transport_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "DISSOLVES WHEN the v1-exit lane's concrete ROADMAP row v1-zero-hand-maintained-rust is accepted (authority gunbc.roadmap_authority roadmap_nodes): emit_host transport is generated from this module or deleted, so require_permitted_transport and its hand-written Rust tests no longer exist.")
 
 fn emit_host_run_unsupported_target_diagnostic() -> v2.std.diagnostic.Diagnostic {
   v2.std.diagnostic.Diagnostic {
@@ -61,7 +61,7 @@ fn emit_host_run_failed_diagnostic() -> v2.std.diagnostic.Diagnostic {
 
 fn host_exit_failure_outcome(exit: v2.std.host_run.HostExit) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   match exit.outcome {
-    v2.std.diagnostic.Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
+    Accepted { value: Violates { diagnostic: d }, diagnostics: None } =>
       outcome_rejected(d: d)
     Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
     _ => outcome_rejected(d: emit_host_exit_not_ok_diagnostic())
@@ -181,10 +181,10 @@ fn workspace_content_text(content: v2.std.host_transport.WorkspaceContent, emitt
 fn emit_host_string_list_digest(xs: v2.std.collection.List<String>, seed: String) -> std.content_hash.ContentHash {
   fold(
     xs,
-    init: content_hash_atom(value: seed),
-    f: (acc, value) => content_hash_combine_structural(
+    init: std.content_hash.content_hash_atom(value: seed),
+    f: (acc, value) => std.content_hash.content_hash_combine_structural(
       left: acc,
-      right: content_hash_atom(value: value)
+      right: std.content_hash.content_hash_atom(value: value)
     )
   )
 }
@@ -212,7 +212,7 @@ fn emit_host_workspace_realization_inputs(
     f: fn(file) {
       std.artifact_store.ArtifactRealizationInput {
         identity: concat("workspace:", file.path),
-        content_digest: content_hash_atom(value: file.text)
+        content_digest: std.content_hash.content_hash_atom(value: file.text)
       }
     }
   )
@@ -243,7 +243,7 @@ fn emit_host_input_realization_digest(
   files: v2.std.collection.List<v2.std.host_transport.MaterializedWorkspaceFile>,
   builds: v2.std.collection.List<v2.std.collection.List<String>>
 ) -> std.content_hash.ContentHash {
-  artifact_realization_digest(
+  std.artifact_store.artifact_realization_digest(
     inputs: concat(
       emit_host_workspace_realization_inputs(files: files),
       emit_host_build_realization_inputs(builds: builds)
@@ -361,7 +361,7 @@ fn run_host_process_admitted(
           let result = if use_cache {
             emit_host_run_transport_cached(
               admission: admission,
-              workspace_dir: native_cache_realization_workspace_root(
+              workspace_dir: extdeps.realization.emit_on_demand_host.native_cache_realization_workspace_root(
                 workspace_root: workspace_dir,
                 realization_digest: emit_host_input_realization_digest(
                   files: files,
@@ -504,7 +504,7 @@ fn run_test_claim_emit_vs_eval_verdict(
         actual: expected,
         diagnostic: ds.head
       )
-    v2.std.diagnostic.Accepted { value: _, diagnostics: Some { diagnostics: ds } } =>
+    Accepted { value: _, diagnostics: Some { diagnostics: ds } } =>
       verdict_build_failed(
         actual: expected,
         diagnostic: ds.head
@@ -526,7 +526,7 @@ fn run_test_claim_emit_vs_eval_verdict_from_run(
   match run_outcome {
     Accepted { value: host_receipt, diagnostics: _ } =>
       match host_receipt.logical_run {
-        v2.std.diagnostic.Accepted {
+        Accepted {
           value: HostLogicalRun { stdout: stdout },
           diagnostics: None
         } =>

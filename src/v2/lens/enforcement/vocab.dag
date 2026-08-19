@@ -111,11 +111,11 @@ fn self_application_ok(s: SelfApplicationStatus) -> Bool {
 }
 
 data narrowing_reason_same_variant_disposition: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.lens.enforcement.vocab",
     decl_name: "narrowing_reason_same_variant",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 

@@ -5,7 +5,7 @@ type EffectShape<K>
   = ReadEffect
   | UpsertEffect { key_source: K }
   | DeleteEffect { key_source: K }
-  | CreateEffect { cause: CreateCause<K> }
+  | CreateEffect { cause: std.effects.CreateCause<K> }
   | AppendEffect
   | ExecuteEffect
 
@@ -16,7 +16,7 @@ type CreateCause<K>
   | CreateIfAbsent { key_source: K }
   | KeylessFallback { method: std.types.HttpMethod }
 
-data keyless_fallback_cause_note: String = "KeylessFallback de-conflates PostAlways. derive_effect_shape maps a PUT/PATCH/DELETE whose path carries no key onto CreateEffect, and before this variant that arm answered PostAlways -- so one cause meant BOTH 'the spec said POST' AND 'we fell back because there was no key', losing the originating method (state-space conflation, DESIGN failure-mode list). The conflation was observable: check_modifier_vs_derivation could only hedge 'idempotency may be spec-declared' on a keyless PUT because it could not see which case it held. RESIDUE (deliberate, not oversight): is_idempotent_effect still answers false for KeylessFallback, preserving the pre-variant verdict exactly. RFC 9110 makes PUT and DELETE idempotent BY METHOD, so the method-derived refinement (keyless PUT declared idempotent => Agrees, not DerivationUnknown) is the correct end state -- it changes live verdicts and generate_idempotency_obligations output, so it lands with its own discriminating witness rather than riding this de-conflation. Discriminating control: test.claim.effects_witness_test.effects_keyless_fallback_is_not_post_witnesses."
+data keyless_fallback_cause_note: String = "std.effects.KeylessFallback de-conflates std.effects.PostAlways. derive_effect_shape maps a PUT/PATCH/DELETE whose path carries no key onto CreateEffect, and before this variant that arm answered std.effects.PostAlways -- so one cause meant BOTH 'the spec said POST' AND 'we fell back because there was no key', losing the originating method (state-space conflation, DESIGN failure-mode list). The conflation was observable: check_modifier_vs_derivation could only hedge 'idempotency may be spec-declared' on a keyless PUT because it could not see which case it held. RESIDUE (deliberate, not oversight): is_idempotent_effect still answers false for std.effects.KeylessFallback, preserving the pre-variant verdict exactly. RFC 9110 makes PUT and DELETE idempotent BY METHOD, so the method-derived refinement (keyless PUT declared idempotent => Agrees, not DerivationUnknown) is the correct end state -- it changes live verdicts and generate_idempotency_obligations output, so it lands with its own discriminating witness rather than riding this de-conflation. Discriminating control: test.claim.effects_witness_test.effects_keyless_fallback_is_not_post_witnesses."
 
 type KeySource
   = PathParam { param: String }
@@ -28,7 +28,7 @@ type IdempotencyEvidence
   | IdentityEffect
   | NonIdempotent { shape: EffectShape<KeySource>, reason: String }
 
-data generic_predicate_frontier_note: String = "EffectShape<K>/CreateCause<K> are GENERIC (the single-authority TYPE, shared across the REST-derivation instantiation K=KeySource here and v2's substrate-witness instantiation K=Symbol). The predicates below are CONCRETE to EffectShape<KeySource>, not generic, by a declared emitter frontier: the v1 Rust emitter lowers every match as `match (*x.clone()).clone()`, so a generic fn matching EffectShape<K> needs `where K: Clone` (and PartialEq for the key `==`), but the emitter emits generic FUNCTIONS without bounds (it bounds generic TYPES via emit_type_params_with_clone_bound, not functions). Making the predicates generic breaks the emitted stage0 seed (std.effects is real compiler seed via v1_compiler_effect_derivation). dissolve-on = emitter emits Clone/PartialEq bounds on generic functions; then these lift to <K>. v2's harness uses the TYPE at K=Symbol and does not call these predicates (it builds Node witnesses), so the concreteness costs nothing today."
+data generic_predicate_frontier_note: String = "EffectShape<K>/std.effects.CreateCause<K> are GENERIC (the single-authority TYPE, shared across the REST-derivation instantiation K=KeySource here and v2's substrate-witness instantiation K=Symbol). The predicates below are CONCRETE to EffectShape<KeySource>, not generic, by a declared emitter frontier: the v1 Rust emitter lowers every match as `match (*x.clone()).clone()`, so a generic fn matching EffectShape<K> needs `where K: Clone` (and PartialEq for the key `==`), but the emitter emits generic FUNCTIONS without bounds (it bounds generic TYPES via emit_type_params_with_clone_bound, not functions). Making the predicates generic breaks the emitted stage0 seed (std.effects is real compiler seed via v1_compiler_effect_derivation). dissolve-on = emitter emits Clone/PartialEq bounds on generic functions; then these lift to <K>. v2's harness uses the TYPE at K=Symbol and does not call these predicates (it builds Node witnesses), so the concreteness costs nothing today."
 
 fn is_idempotent_effect(shape: EffectShape<KeySource>) -> Bool {
   match shape {
@@ -37,9 +37,9 @@ fn is_idempotent_effect(shape: EffectShape<KeySource>) -> Bool {
     DeleteEffect => true
     CreateEffect { cause: cause } =>
       match cause {
-        CreateIfAbsent { key_source: key_source } => true
-        PostAlways => false
-        KeylessFallback { method: method } => false
+        std.effects.CreateIfAbsent { key_source: key_source } => true
+        std.effects.PostAlways => false
+        std.effects.KeylessFallback { method: method } => false
       }
     AppendEffect => false
     ExecuteEffect => false
@@ -67,9 +67,9 @@ fn create_effect_is_dedupable(shape: EffectShape<KeySource>) -> Bool {
   match shape {
     CreateEffect { cause: cause } =>
       match cause {
-        CreateIfAbsent { key_source: key_source } => true
-        PostAlways => false
-        KeylessFallback { method: method } => false
+        std.effects.CreateIfAbsent { key_source: key_source } => true
+        std.effects.PostAlways => false
+        std.effects.KeylessFallback { method: method } => false
       }
     ReadEffect => false
     UpsertEffect { key_source: key_source } => false
@@ -83,13 +83,13 @@ fn create_double_init_collapsible(a: EffectShape<KeySource>, b: EffectShape<KeyS
   match a {
     CreateEffect { cause: cause_a } =>
       match cause_a {
-        CreateIfAbsent { key_source: ka } =>
+        std.effects.CreateIfAbsent { key_source: ka } =>
           match b {
             CreateEffect { cause: cause_b } =>
               match cause_b {
-                CreateIfAbsent { key_source: kb } => key_source_eq(left: ka, right: kb)
-                PostAlways => false
-                KeylessFallback { method: method } => false
+                std.effects.CreateIfAbsent { key_source: kb } => key_source_eq(left: ka, right: kb)
+                std.effects.PostAlways => false
+                std.effects.KeylessFallback { method: method } => false
               }
             ReadEffect => false
             UpsertEffect { key_source: key_source } => false
@@ -97,8 +97,8 @@ fn create_double_init_collapsible(a: EffectShape<KeySource>, b: EffectShape<KeyS
             AppendEffect => false
             ExecuteEffect => false
           }
-        PostAlways => false
-        KeylessFallback { method: method } => false
+        std.effects.PostAlways => false
+        std.effects.KeylessFallback { method: method } => false
       }
     ReadEffect => false
     UpsertEffect { key_source: key_source } => false
@@ -157,21 +157,21 @@ fn derive_effect_shape(
     GET     => ReadEffect
     HEAD    => ReadEffect
     OPTIONS => ReadEffect
-    POST    => CreateEffect { cause: PostAlways }
+    POST    => CreateEffect { cause: std.effects.PostAlways }
     DELETE =>
       match last_path_param(template: path) {
         Present { value: p } => DeleteEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect { cause: KeylessFallback { method: DELETE } }
+        Absent => CreateEffect { cause: std.effects.KeylessFallback { method: DELETE } }
       }
     PUT =>
       match last_path_param(template: path) {
         Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect { cause: KeylessFallback { method: PUT } }
+        Absent => CreateEffect { cause: std.effects.KeylessFallback { method: PUT } }
       }
     PATCH =>
       match last_path_param(template: path) {
         Present { value: p } => UpsertEffect { key_source: PathParam { param: p } }
-        Absent => CreateEffect { cause: KeylessFallback { method: PATCH } }
+        Absent => CreateEffect { cause: std.effects.KeylessFallback { method: PATCH } }
       }
   }
 }
@@ -215,11 +215,11 @@ fn check_modifier_vs_derivation(
     match op.shape {
       CreateEffect { cause: cause } =>
         match cause {
-          PostAlways =>
+          std.effects.PostAlways =>
             DerivationUnknown { reason: "POST with no path key derives CreateEffect; idempotency may be spec-declared" }
-          KeylessFallback { method: method } =>
+          std.effects.KeylessFallback { method: method } =>
             DerivationUnknown { reason: "keyless PUT/PATCH/DELETE derives CreateEffect; idempotency may be method-derived" }
-          CreateIfAbsent { key_source: key_source } =>
+          std.effects.CreateIfAbsent { key_source: key_source } =>
             Disagrees { reason: "derivation says non-idempotent but modifier declares idempotent" }
         }
       ReadEffect =>
@@ -237,10 +237,10 @@ fn check_modifier_vs_derivation(
     match op.shape {
       CreateEffect { cause: cause } =>
         match cause {
-          CreateIfAbsent { key_source: key_source } =>
+          std.effects.CreateIfAbsent { key_source: key_source } =>
             Disagrees { reason: "create-if-absent has proven identity but modifier declares non-idempotent" }
-          PostAlways => Agrees
-          KeylessFallback { method: method } => Agrees
+          std.effects.PostAlways => Agrees
+          std.effects.KeylessFallback { method: method } => Agrees
         }
       ReadEffect => Agrees
       UpsertEffect { key_source: key_source } => Agrees

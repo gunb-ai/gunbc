@@ -55,7 +55,7 @@ fn source_root_for_path(path: String) -> v2.std.cross_tree.import_model.SourceRo
 
 fn ledger_read_witness(path: String) -> v2.compiler.source_authority.DagSourceReadWitness {
   v2.compiler.source_authority.DagSourceReadWitness {
-    source: extdeps.communication.medium.Medium { carried: filesystem_read(path: path).content, fidelity: Lossless },
+    source: extdeps.communication.medium.Medium { carried: filesystem_read(path: path).content, fidelity: extdeps.communication.medium.Lossless },
     artifact: v2.std.artifact.Artifact {
       kind: SourceFile,
       id: symbol_intern_lexeme(lexeme: path),

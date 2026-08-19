@@ -398,7 +398,7 @@ fn frontier_probe_receipt_from_discovered_closure(
               cause: frontier_probe_closure_non_structural_hash_reason
             )
           SourceRefListDigestOk { digest: computed_digest } =>
-            if !content_hash_eq_structural(
+            if !std.content_hash.content_hash_eq_structural(
               left: computed_digest,
               right: sealed_digest
             ) {

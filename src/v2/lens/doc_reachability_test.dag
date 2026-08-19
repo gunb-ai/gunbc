@@ -4,7 +4,7 @@ module v2.test.lens_doc_reachability.doc_reachability_test
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 test fn doc_graph_has_no_orphan_docs() -> Bool {
-  return doc_graph_floor_orphan_clean_holds()
+  return gunbc.doc_graph_roots.doc_graph_floor_orphan_clean_holds()
 }
 
 test fn doc_graph_has_no_dangling_links() -> Bool {
@@ -16,5 +16,5 @@ test fn doc_graph_universe_is_nonempty() -> Bool {
 }
 
 test fn doc_graph_is_clean() -> Bool {
-  return doc_graph_floor_clean_holds()
+  return gunbc.doc_graph_roots.doc_graph_floor_clean_holds()
 }

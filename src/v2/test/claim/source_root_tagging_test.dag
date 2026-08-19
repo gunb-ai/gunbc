@@ -4,7 +4,7 @@ module v2.test.claim.source_root_tagging
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 data sr_tag_v2_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
-  source: extdeps.communication.medium.Medium { carried: "module v2.std.sr_tag_fixture", fidelity: Lossless },
+  source: extdeps.communication.medium.Medium { carried: "module v2.std.sr_tag_fixture", fidelity: extdeps.communication.medium.Lossless },
   artifact: v2.std.artifact.Artifact {
     kind: SourceFile,
     id: ^sr_tag_v2_artifact,
@@ -15,7 +15,7 @@ data sr_tag_v2_read: v2.compiler.source_authority.DagSourceReadWitness = v2.comp
 }
 
 data sr_tag_dag_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
-  source: extdeps.communication.medium.Medium { carried: "module std.sr_tag_fixture", fidelity: Lossless },
+  source: extdeps.communication.medium.Medium { carried: "module std.sr_tag_fixture", fidelity: extdeps.communication.medium.Lossless },
   artifact: v2.std.artifact.Artifact {
     kind: SourceFile,
     id: ^sr_tag_dag_artifact,

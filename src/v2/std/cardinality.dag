@@ -198,19 +198,19 @@ type MeasureDescentFact {
 
 data measure_descent_fact_structural_node_size: MeasureDescentFact = {
   measure: ^cardinality_structural_node_size,
-  evidence: Strict,
+  evidence: std.termination.Strict,
   citation: "v2.std.node.fold_node structural recursion: every child is a strict subtree of its parent — the dimension structural_node_size_termination_proof already names"
 }
 
 data measure_descent_fact_dag_loop_measure: MeasureDescentFact = {
   measure: ^dag_loop_measure_sym,
-  evidence: Strict,
+  evidence: std.termination.Strict,
   citation: "loop-body producer's declared loop bound (v2.extdeps.languages.dag.dag_loop_measure_node); grounds the exact TerminationProof that loop_round_trip_test and loop_eval_by_execution_test previously hand-fabricated per test site"
 }
 
 data measure_descent_fact_fold_iteration: MeasureDescentFact = {
   measure: ^dag_surface_fold_iteration_measure,
-  evidence: Strict,
+  evidence: std.termination.Strict,
   citation: "fold iteration over a finite collection descends by construction (std.termination DescentSource.FoldIteration: each step consumes one element of the folded list); the surface cost-shape lowering stamps this measure on every fold-family call it lowers to Loop (v2.extdeps.languages.dag)"
 }
 
@@ -286,13 +286,13 @@ fn measure_dimension_rows(registry: List<MeasureDescentFact>, measure: v2.std.no
 }
 
 fn dimension_rows_meet(rows: List<MeasureDimensionEvidence>) -> std.termination.DescentEvidence {
-  fold(rows, init: Strict, f: fn(acc, row) {
-    descent_evidence_lattice_meet(a: acc, b: row.evidence)
+  fold(rows, init: std.termination.Strict, f: fn(acc, row) {
+    std.termination.descent_evidence_lattice_meet(a: acc, b: row.evidence)
   })
 }
 
 fn dimension_row_is_strict(row: MeasureDimensionEvidence) -> Bool {
-  evidence_rank(e: row.evidence) == evidence_rank(e: Strict)
+  std.termination.evidence_rank(e: row.evidence) == std.termination.evidence_rank(e: std.termination.Strict)
 }
 
 fn ranking_dimension_some(d: RankingDimension) -> Optional<RankingDimension> {
@@ -352,7 +352,7 @@ fn loop_multiplicity_from_rows(rows: List<MeasureDimensionEvidence>) -> Multipli
     match dimension_rows_meet(rows: rows) {
       DescentUnknown => RequiresTerminationProof
       NonIncreasing => lexicographic_multiplicity(rows: rows)
-      Strict => lexicographic_multiplicity(rows: rows)
+      std.termination.Strict => lexicographic_multiplicity(rows: rows)
     }
   }
 }

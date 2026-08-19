@@ -2,7 +2,7 @@ module v2.extdeps.cache.key_completeness_verdict
 
 
 fn cache_key_completeness_verdict(facts: extdeps.cache.types.CatalogKeyDerivationFacts, module_name: String) -> v2.std.lens_verdict.LensVerdict {
-  if cache_key_derivation_complete(facts: facts) {
+  if extdeps.cache.key_completeness.cache_key_derivation_complete(facts: facts) {
     Holds
   } else {
     lens_verdict_module_violation(

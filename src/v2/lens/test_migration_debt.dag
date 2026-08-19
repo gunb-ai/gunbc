@@ -18,7 +18,7 @@ module v2.lens.test_migration_debt
 // Both populations are LIVE host observations, so neither side is a count copied
 // from the tree — the equality is an identity join, not a numeric comparison.
 fn retained_declared_source_files() -> List<String> {
-  retained_legacy_rust_test_modules() |> map(m => retained_module_source_file(m: m))
+  test.retirement.model.retained_legacy_rust_test_modules() |> map(m => test.retirement.model.retained_module_source_file(m: m))
 }
 
 fn discovered_rust_test_modules() -> List<String> {

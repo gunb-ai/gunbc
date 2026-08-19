@@ -5,13 +5,13 @@ module v2.workflow.legacy_test_inflow_audit
 fn legacy_test_inflow_observe_live() -> gunbc.legacy_test_inflow.LegacyTestInflowObservation {
   match floor_observe_git_diff_unified_for_ci() {
     UnifiedDiffOk { text } =>
-      inflow_observation_of_unified_diff_result(
+      gunbc.legacy_test_inflow.inflow_observation_of_unified_diff_result(
         observed: true,
         diff_text: text,
         failure_reason: "",
       )
     UnifiedDiffFail { reason } =>
-      inflow_observation_of_unified_diff_result(
+      gunbc.legacy_test_inflow.inflow_observation_of_unified_diff_result(
         observed: false,
         diff_text: "",
         failure_reason: reason,
@@ -20,9 +20,9 @@ fn legacy_test_inflow_observe_live() -> gunbc.legacy_test_inflow.LegacyTestInflo
 }
 
 fn legacy_test_inflow_live_tally() -> gunbc.legacy_test_inflow.LegacyTestInflowTally {
-  inflow_observation_tally(observation: legacy_test_inflow_observe_live())
+  gunbc.legacy_test_inflow.inflow_observation_tally(observation: legacy_test_inflow_observe_live())
 }
 
 fn legacy_test_inflow_live_observation_holds() -> Bool {
-  inflow_tally_is_measured(tally: legacy_test_inflow_live_tally())
+  gunbc.legacy_test_inflow.inflow_tally_is_measured(tally: legacy_test_inflow_live_tally())
 }

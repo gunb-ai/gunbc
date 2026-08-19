@@ -28,7 +28,7 @@ data pcf_forbidden_name_characters: List<String> = [
 
 fn pcf_name_contains_forbidden(spelling: String) -> Bool {
   fold(pcf_forbidden_name_characters, init: false, f: fn(acc, ch) {
-    acc || list_length(items: split(s: spelling, delimiter: ch)) > 1
+    acc || std.types.list_length(items: split(s: spelling, delimiter: ch)) > 1
   })
 }
 

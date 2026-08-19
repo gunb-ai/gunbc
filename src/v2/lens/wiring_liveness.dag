@@ -63,8 +63,8 @@ fn wiring_param_reaches_output(reachable: List<Node>, declared_input: Node) -> B
 }
 
 fn wiring_param_is_dead_wire(reachable: List<Node>, declared_input: Node) -> Bool {
-  perturbation_is_violation(
-    reading: BackwardDiffInDiffOut,
+  std.perturbation.perturbation_is_violation(
+    reading: std.perturbation.BackwardDiffInDiffOut,
     output_responded: wiring_param_reaches_output(reachable: reachable, declared_input: declared_input)
   )
 }

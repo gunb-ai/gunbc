@@ -162,7 +162,7 @@ test fn program_assembly_duplicate_module_roots_rejects() -> Bool {
   }
 }
 
-data pa_ingest_stub_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module pa_subject_seg", fidelity: Lossless }
+data pa_ingest_stub_source: Medium<String> = extdeps.communication.medium.Medium { carried: "module pa_subject_seg", fidelity: extdeps.communication.medium.Lossless }
 data pa_ingest_source_file_artifact: v2.std.artifact.Artifact = v2.std.artifact.Artifact {
   kind: SourceFile,
   id: ^pa_ingest_source_file_artifact,
@@ -201,7 +201,7 @@ test fn program_assembly_ingest_non_source_file_rejects() -> Bool {
       subject: v2.compiler.name_resolve.ResolutionSubject {
         name: std.algebra.Cons { head: ^pa_subject_seg, tail: std.algebra.Empty }
       },
-      imports: Empty
+      imports: std.algebra.Empty
     },
     lm: dag_language_model_surface_empty_prelude()
   ) {

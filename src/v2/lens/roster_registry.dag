@@ -17,7 +17,7 @@ fn nonstandard_registrations_from(
     xs: registrations,
     empty: empty_nonstandard_registrations,
     cons: fn(acc, r) {
-      if registration_membership_is_standard(r: r) {
+      if gunbc.roster_registry.registration_membership_is_standard(r: r) {
         acc
       } else {
         list_snoc_item(
@@ -35,12 +35,12 @@ fn nonstandard_registrations_from(
 fn roster_registry_nonstandard_count_from(registrations: List<gunbc.roster_registry.RosterRegistration>) -> Int {
   count_where(
     xs: registrations,
-    predicate: fn(r) { !registration_membership_is_standard(r: r) }
+    predicate: fn(r) { !gunbc.roster_registry.registration_membership_is_standard(r: r) }
   )
 }
 
 fn roster_registry_nonstandard_count() -> Int {
-  roster_registry_nonstandard_count_from(registrations: roster_registry)
+  roster_registry_nonstandard_count_from(registrations: gunbc.roster_registry.roster_registry)
 }
 
 fn roster_registry_standard_holds() -> Bool {

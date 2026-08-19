@@ -3,13 +3,13 @@ module v2.test.emit.semantic_decl_routing
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-data semantic_bool_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
+data semantic_bool_golden: String = concat(extdeps.languages.rust.emit.rust_enum_derives_copy, "\nenum Bool { True, False }")
 
-data semantic_bool_wrong_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { False, True }")
+data semantic_bool_wrong_golden: String = concat(extdeps.languages.rust.emit.rust_enum_derives_copy, "\nenum Bool { False, True }")
 
-data semantic_record_golden: String = concat(rust_struct_derives, "\nstruct OccurrenceIdAllocator { next_id: Int }")
+data semantic_record_golden: String = concat(extdeps.languages.rust.emit.rust_struct_derives, "\nstruct OccurrenceIdAllocator { next_id: Int }")
 
-data semantic_record_wrong_golden: String = concat(rust_struct_derives, "\nstruct OccurrenceIdAllocator { next_id: Bool }")
+data semantic_record_wrong_golden: String = concat(extdeps.languages.rust.emit.rust_struct_derives, "\nstruct OccurrenceIdAllocator { next_id: Bool }")
 
 fn sdr_empty_conj() -> Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: Conj }, children: [], occurrence_id: SyntheticOccurrence }

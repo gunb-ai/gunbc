@@ -5,11 +5,11 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 data serializer_determinism_probe_text: String = "fn add(x:Int, y:Int) -> Int { x + y }"
 
 fn serializer_determinism_lossless_probe() -> Medium<String> {
-  extdeps.communication.medium.Medium { carried: serializer_determinism_probe_text, fidelity: Lossless }
+  extdeps.communication.medium.Medium { carried: serializer_determinism_probe_text, fidelity: extdeps.communication.medium.Lossless }
 }
 
 fn serializer_determinism_lossy_probe() -> Medium<String> {
-  extdeps.communication.medium.Medium { carried: serializer_determinism_probe_text, fidelity: Lossy }
+  extdeps.communication.medium.Medium { carried: serializer_determinism_probe_text, fidelity: extdeps.communication.medium.Lossy }
 }
 
 test fn serializer_determinism_holds_despite_fidelity_mismatch() -> Bool {
@@ -19,13 +19,13 @@ test fn serializer_determinism_holds_despite_fidelity_mismatch() -> Bool {
   ) {
     Holds { value: law } =>
       law.canonical_section == serializer_determinism_probe_text
-        && law.declared_fidelity == Lossless
+        && law.declared_fidelity == extdeps.communication.medium.Lossless
     Violates { diagnostic: _ } => false
   }
 }
 
 test fn red_naive_medium_equality_rejects_fidelity_mismatch() -> Bool {
-  medium_section_equal(
+  extdeps.communication.fidelity_carriers.medium_section_equal(
     left: serializer_determinism_lossless_probe(),
     right: serializer_determinism_lossy_probe()
   )

@@ -20,7 +20,7 @@ test fn complexity_repo_wide_verdict_matches_roadmap() -> Bool {
 data synthetic_binding_witness: std.realization_schedule.ScheduleWitnessEntry = {
   entry: "src/v2/test/claim/synthetic_enforcement_probe_test.dag",
   function: "synthetic_probe_holds",
-  kind: CorpusWitnessKind
+  kind: std.realization_schedule.CorpusWitnessKind
 }
 
 test fn roster_read_liveness_discriminates() -> Bool {

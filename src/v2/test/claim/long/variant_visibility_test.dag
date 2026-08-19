@@ -12,7 +12,7 @@ data variant_vis_artifact: v2.std.artifact.Artifact = v2.std.artifact.Artifact {
 fn variant_vis_ingest_for(src: String) -> v2.compiler.source_authority.SourceRootIngest {
   std.algebra.Cons {
     head: v2.compiler.source_authority.DagSourceReadWitness {
-      source: extdeps.communication.medium.Medium { carried: src, fidelity: Lossless },
+      source: extdeps.communication.medium.Medium { carried: src, fidelity: extdeps.communication.medium.Lossless },
       artifact: variant_vis_artifact,
       compilation_unit: ^variant_vis_cu,
       source_root: V2Tree

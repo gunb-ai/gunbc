@@ -79,7 +79,7 @@ fn react_probe_react_element_fragment() -> v2.extdeps.frameworks.react.ReactElem
 }
 
 fn react_probe_create_element_child_text() -> v2.extdeps.frameworks.react.ReactCreateElementChild {
-  Text { text_value_ref: react_probe_cross_decl_ref }
+  v2.extdeps.frameworks.react.Text { text_value_ref: react_probe_cross_decl_ref }
 }
 
 fn react_probe_create_element_child_element() -> v2.extdeps.frameworks.react.ReactCreateElementChild {

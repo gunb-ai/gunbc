@@ -12,7 +12,7 @@ test fn dependents_empty_is_unused() -> Bool {
 }
 
 test fn dependents_with_use_is_live() -> Bool {
-  match no_dependents(d: v2.std.dependents.Tracked { uses: [alloc_occurrence_id(alloc: occurrence_id_allocator_initial()).id] }) {
+  match no_dependents(d: v2.std.dependents.Tracked { uses: [std.occurrence_identity.alloc_occurrence_id(alloc: std.occurrence_identity.occurrence_id_allocator_initial()).id] }) {
     true => false
     false => true
   }

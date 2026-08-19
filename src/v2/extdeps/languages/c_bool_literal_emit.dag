@@ -2,12 +2,12 @@ module v2.extdeps.languages.c_bool_literal_emit
 
 
 data c_bool_literal_stdbool_preamble_emit_disposition: std.disposition.Disposition = Scaffold {
-  dissolves_to: RealizationDispatch,
+  dissolves_to: std.disposition.RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.extdeps.languages.c",
     decl_name: "c_bool_literal_emit_validity_under_declared_standard",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data c_bool_literal_stdbool_preamble_derivation_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: production C translation-unit emission derives c_stdbool_include_directive whenever bool_literal_form tokens are emitted under c_stage0_emit_standard_edition — c_bool_literal_emit_validity_under_declared_standard becomes ValidUnderDeclaredStandard and c_bool_literal_stdbool_preamble_emit_disposition retires.")
+data c_bool_literal_stdbool_preamble_derivation_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: production C translation-unit emission derives c_stdbool_include_directive whenever bool_literal_form tokens are emitted under c_stage0_emit_standard_edition — c_bool_literal_emit_validity_under_declared_standard becomes ValidUnderDeclaredStandard and c_bool_literal_stdbool_preamble_emit_disposition retires.")

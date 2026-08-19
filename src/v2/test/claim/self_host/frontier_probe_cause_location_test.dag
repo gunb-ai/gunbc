@@ -7,7 +7,7 @@ fn detail_location_of(d: v2.std.diagnostic.Diagnostic) -> v2.std.node.Symbol {
   match frontier_probe_assemble_detail_from_parse_stage(
     d: v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
       head: parse_stage_diagnostic_from_diagnostic_only(d: d),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   ) {
     NoFrontierProbeDetail => ^no_detail
@@ -51,7 +51,7 @@ fn textual_extent_start() -> Int {
   match frontier_probe_assemble_detail_from_parse_stage(
     d: v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics {
       head: parse_stage_diagnostic_from_diagnostic_only(d: textual_diagnostic()),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   ) {
     NoFrontierProbeDetail => 0 - 1

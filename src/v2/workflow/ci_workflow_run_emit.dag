@@ -104,21 +104,21 @@ fn ci_native_cache_root_intent() -> v2.std.orchestration.Pipeline {
 
 fn ci_native_cache_root_script() -> String {
   concat(
-    concat("# ", concat(dissolution_description(condition: ci_native_cache_root_shell_emit_dissolution_trigger), "\n")),
+    concat("# ", concat(std.dissolution.dissolution_description(condition: ci_native_cache_root_shell_emit_dissolution_trigger), "\n")),
     ci_workflow_run_emit_pipeline(p: ci_native_cache_root_intent())
   )
 }
 
 data ci_native_cache_root_shell_emit_scaffold: std.disposition.Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.workflow.ci_workflow_run_emit",
     decl_name: "ci_native_cache_root_script",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data ci_native_cache_root_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)")
+data ci_native_cache_root_shell_emit_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: ci_native_cache_root_script — orch-emitted foreign-executor prelude step deriving GUNBC_NATIVE_CACHE_ROOT from rustc -V after setup-rust-toolchain; leaf rustc/tr/mkdir/echo strings remain until typed toolchain probe lands on host_effect_apply (#5828 / shell→intent Phase 2)")
 
 data ci_native_cache_fabricated_segment_literal: String = "toolchain-unresolved"
 

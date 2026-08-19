@@ -17,7 +17,7 @@ fn orch_bash_do(command: String) -> v2.std.orchestration.PipelineStep {
 }
 
 fn orch_bash_comment_line(text: String) -> v2.std.orchestration.PipelineStep {
-  Comment { text: text }
+  v2.std.orchestration.Comment { text: text }
 }
 
 fn orch_bash_emit_pipeline(p: v2.std.orchestration.Pipeline, refused_poison: String) -> String {

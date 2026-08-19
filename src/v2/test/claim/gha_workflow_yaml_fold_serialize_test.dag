@@ -4,7 +4,7 @@ module v2.test.claim.gha_workflow_yaml_fold_serialize
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn gha_fold_oracle_job(job: extdeps.github.actions.Job) -> String {
-  serialize_yaml(v: job_yaml(job: job))
+  extdeps.languages.yaml.emit.serialize_yaml(v: extdeps.languages.yaml.gha_workflow.job_yaml(job: job))
 }
 
 fn gha_fold_serialize_emitted(target: v2.std.compilers.target_model.TargetModel, emitted: Node) -> v2.std.diagnostic.Outcome<String> {
@@ -38,11 +38,11 @@ fn gha_fold_fold_matches_oracle(job: extdeps.github.actions.Job) -> Bool {
 test fn gha_fold_pilot_job_byte_identical_holds() -> Bool {
   gha_fold_prod_kind_sentinel == from_code_point(cp: 2)
     && gha_fold_scalar_kind_sentinel == from_code_point(cp: 0)
-    && gha_fold_fold_matches_oracle(job: gha_fold_pilot_job)
+    && gha_fold_fold_matches_oracle(job: gunbc.gha_yaml_fold_pilot.gha_fold_pilot_job)
 }
 
 test fn gha_fold_wrong_production_rejects_oracle_holds() -> Bool {
-  let oracle = gha_fold_oracle_job(job: gha_fold_pilot_job)
+  let oracle = gha_fold_oracle_job(job: gunbc.gha_yaml_fold_pilot.gha_fold_pilot_job)
   match gha_fold_job_wrong_production_target_model_witness(source_text: oracle) {
     Holds { value: target } =>
       match gha_fold_serialize_emitted(
@@ -57,7 +57,7 @@ test fn gha_fold_wrong_production_rejects_oracle_holds() -> Bool {
 }
 
 test fn gha_fold_flat_steps_perturbation_rejects_oracle_holds() -> Bool {
-  let oracle = gha_fold_oracle_job(job: gha_fold_pilot_job)
+  let oracle = gha_fold_oracle_job(job: gunbc.gha_yaml_fold_pilot.gha_fold_pilot_job)
   match gha_fold_flat_steps_wrong_target_model_witness(source_text: oracle) {
     Holds { value: target } =>
       match gha_fold_serialize_emitted(

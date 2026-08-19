@@ -54,14 +54,14 @@ type EmitOnDemandCacheReceipt {
 }
 
 type EmitOnDemandLookup
-  = EmitOnDemandHit { receipt: EmitOnDemandCacheReceipt }
+  = EmitOnDemandHit { receipt: std.emit_on_demand.EmitOnDemandCacheReceipt }
   | EmitOnDemandMiss
 
 fn emit_on_demand_lookup(store: std.artifact_store.ArtifactStore, key: std.content_hash.ContentHash) -> EmitOnDemandLookup {
   match store_get(store: store, key: key) {
     StoreHit { store: _, row: _ } =>
       EmitOnDemandHit {
-        receipt: EmitOnDemandCacheReceipt { key: key, compile_skipped: true }
+        receipt: std.emit_on_demand.EmitOnDemandCacheReceipt { key: key, compile_skipped: true }
       }
     StoreMiss { store: _ } => EmitOnDemandMiss
   }

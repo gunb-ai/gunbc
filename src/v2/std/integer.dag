@@ -917,7 +917,7 @@ fn int_ge(a: Int, b: Int) -> Bool {
 
 fn int_div_result(a: Int, b: Int) -> Result<Int, DivError> {
   if int_is_zero(a: b) {
-    std.error_primitives.Err { value: DivideByZero }
+    std.error_primitives.Err { value: std.error_primitives.DivideByZero }
   } else {
     std.error_primitives.Ok { value: a / b }
   }

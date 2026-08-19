@@ -34,14 +34,14 @@ fn omits_read_consumer_handles(case: std.hermetic_replay.PublishedMockCase) -> B
 
 test fn filesystem_mock_consumer_is_total_holds() -> Bool {
   mock_totality_green_holds(
-    published: filesystem_published_mock_corpus,
+    published: extdeps.filesystem.mock_corpus.filesystem_published_mock_corpus,
     consumer_handles: real_consumer_handles
   )
 }
 
 test fn filesystem_mock_omitted_member_is_red_holds() -> Bool {
   mock_totality_red_on_omission_holds(
-    published: filesystem_published_mock_corpus,
+    published: extdeps.filesystem.mock_corpus.filesystem_published_mock_corpus,
     consumer_handles: omits_read_consumer_handles
   )
 }

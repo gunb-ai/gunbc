@@ -12,7 +12,7 @@ fn host_disposition_binds_bridge(
     Scaffold { dissolves_to: RealizationDispatch, bind: bind } =>
       bind.module_path == module_path
         && bind.decl_name == decl_name
-        && bind.field == WholeDeclaration
+        && bind.field == std.decl_ref.WholeDeclaration
     Scaffold { dissolves_to: _, bind: _ } => false
     Terminal { reason: _ } => false
   }

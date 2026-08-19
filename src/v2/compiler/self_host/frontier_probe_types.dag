@@ -4,7 +4,7 @@ module v2.compiler.self_host.frontier_probe_types
 
 data frontier_nonempty_carrier_pattern_note: String = "NonEmptySymbolChain and NonEmptyGrammarChoiceAmbiguityRows join NonEmptyDiagnostics, NonEmptyProcessNodeIds and v2.std.collection FiniteSet as hand-rolled nonempty carriers. The generic carrier is NO LONGER fixture-only: std.algebra FreeSemigroup is a real construction wall in the tree, so this count is now migration debt with a reachable destination rather than a pattern with nowhere to go. Counted here so the pattern is visible rather than silently repeated. Dissolve triggers: non_empty_symbol_chain_dissolve_trigger (this module); NonEmptyGrammarChoiceAmbiguityRows trigger on v2.std.grammar_choice_ambiguity. NonEmptyDiagnostics, NonEmptyProcessNodeIds and FiniteSet carry NO trigger and are untracked stalls owed one - see std.algebra free_semigroup_grounding_note, which names them at the grain a grep decides."
 
-data non_empty_symbol_chain_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "migrate_when_free_semigroup_available — NonEmptySymbolChain dissolves into std.algebra FreeSemigroup<Symbol>. RETARGETED: this trigger previously named the promotion of the manual Refined<List<T>> fixture to std, and the generic carrier that landed is a record with a head field rather than that refinement, with the NonEmptyList alias deliberately withheld while the fixture lives - so the event as previously spelled will not occur and this row would have stalled untracked. The construction wall is now available; see std.algebra free_semigroup_grounding_note.")
+data non_empty_symbol_chain_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "migrate_when_free_semigroup_available — NonEmptySymbolChain dissolves into std.algebra FreeSemigroup<Symbol>. RETARGETED: this trigger previously named the promotion of the manual Refined<List<T>> fixture to std, and the generic carrier that landed is a record with a head field rather than that refinement, with the NonEmptyList alias deliberately withheld while the fixture lives - so the event as previously spelled will not occur and this row would have stalled untracked. The construction wall is now available; see std.algebra free_semigroup_grounding_note.")
 
 data frontier_fixture_cemented_producer_note: String = "FixtureCemented is forward-declared for the fixture-free self-host bar; inhabited by the behavioral-equivalence probe when it detects injected fixtures cementing greens (e.g. add_arrow_eval_allocate_literal, pick-lit hardcoding) — not by frontier_classify_rejection_reason (assemble/emit stage only)."
 
@@ -27,7 +27,7 @@ type FrontierProbeStage
 
 data upstream_semantic_refusal_vocabulary_note: String = "UNRESOLVED_CompilerError at emit establishes upstream semantic refusal, not inference failure and not emit-surface gap: the emitter plants compile_error when is_compiler_error(n.inferred) — the underlying refusal may originate in parse, normalize, resolve, infer, or translate. UpstreamSemanticRefusal names the ORIGINAL typed diagnostic (class + name); the UNRESOLVED marker is a consistency control after pre-emit capture lands, not the classification source. ProbeStageSemanticDerivation is the interim located stage — not ProbeStageEmit. gunbc.bootstrap.CompilerStage is the compiler-pipeline authority (Tokenize|Parse|…|Emit); FrontierProbeStage names harness positions (Assemble is not a compiler stage). Dissolve-on (interim): frontier_probe_pre_emit_upstream_semantic_scan binds infer-tree CompilerError messages before emit. Dissolve-on (durable): ProbeStageSemanticDerivation grounds compiler-stage provenance on CompilerStage when the probe can supply it; until then do not fabricate stage labels."
 
-data frontier_probe_pre_emit_upstream_semantic_scan_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "migrate_when_frontier_probe_pre_emit_upstream_semantic_scan — infer-tree walk binds CompilerError message into UpstreamSemanticRefusal.diagnostic_name before emit; UNRESOLVED_CompilerError becomes a consistency control only after this lands.")
+data frontier_probe_pre_emit_upstream_semantic_scan_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "migrate_when_frontier_probe_pre_emit_upstream_semantic_scan — infer-tree walk binds CompilerError message into UpstreamSemanticRefusal.diagnostic_name before emit; UNRESOLVED_CompilerError becomes a consistency control only after this lands.")
 
 data upstream_semantic_compiler_error_class: v2.std.node.Symbol = ^CompilerError
 
@@ -145,28 +145,28 @@ type FrontierSurveyManifest {
   receipts: List<FrontierProbeReceipt>
 }
 
-data frontier_probe_policy_revision_atom: std.content_hash.Fnv1a64Structural = content_hash_atom(value: "frontier-probe-survey-policy-v1")
+data frontier_probe_policy_revision_atom: std.content_hash.Fnv1a64Structural = std.content_hash.content_hash_atom(value: "frontier-probe-survey-policy-v1")
 
 fn frontier_probe_policy_revision() -> std.content_hash.ContentHash {
-  as_content_hash_structural(structural: frontier_probe_policy_revision_atom)
+  std.content_hash.as_content_hash_structural(structural: frontier_probe_policy_revision_atom)
 }
 
 fn frontier_probe_source_roots_digest(source_roots: List<String>) -> std.content_hash.Fnv1a64Structural {
   fold_list(
     xs: source_roots,
-    empty: content_hash_atom(value: "frontier-probe-source-roots"),
+    empty: std.content_hash.content_hash_atom(value: "frontier-probe-source-roots"),
     cons: fn(acc, root) {
-      content_hash_combine_structural(left: acc, right: content_hash_atom(value: root))
+      std.content_hash.content_hash_combine_structural(left: acc, right: std.content_hash.content_hash_atom(value: root))
     }
   )
 }
 
 fn frontier_survey_executable_sha256_holds(digest: std.content_hash.Sha256Digest) -> Bool {
-  content_hash_validate_lower_hex_length(text: digest.hex, expected_hex_digits: 64)
+  std.content_hash.content_hash_validate_lower_hex_length(text: digest.hex, expected_hex_digits: 64)
 }
 
 fn frontier_survey_source_roots_digest_holds(digest: std.content_hash.Fnv1a64Structural) -> Bool {
-  content_hash_validate_lower_hex_length(text: digest.digest, expected_hex_digits: 16)
+  std.content_hash.content_hash_validate_lower_hex_length(text: digest.digest, expected_hex_digits: 16)
 }
 
 fn frontier_survey_commit_tree_binding_holds(
@@ -177,8 +177,8 @@ fn frontier_survey_commit_tree_binding_holds(
   if !result.success {
     false
   } else {
-    match git_object_id_from_untagged_hex(hex: result.tree) {
-      Present { value: observed } => git_object_id_eq(left: observed, right: tree)
+    match extdeps.git.object_store.git_object_id_from_untagged_hex(hex: result.tree) {
+      Present { value: observed } => extdeps.git.object_store.git_object_id_eq(left: observed, right: tree)
       Absent => false
     }
   }
@@ -189,10 +189,10 @@ fn frontier_survey_subject_eq(
   right: FrontierSurveySubject
 ) -> Bool {
   (left.source_commit == right.source_commit)
-    && git_object_id_eq(left: left.source_tree, right: right.source_tree)
+    && extdeps.git.object_store.git_object_id_eq(left: left.source_tree, right: right.source_tree)
     && (left.survey_executable.hex == right.survey_executable.hex)
     && (left.source_roots_digest.digest == right.source_roots_digest.digest)
-    && match compare_content_hash(left: left.probe_policy_revision, right: right.probe_policy_revision) {
+    && match std.content_hash.compare_content_hash(left: left.probe_policy_revision, right: right.probe_policy_revision) {
       ContentHashEqual => true
       _ => false
     }

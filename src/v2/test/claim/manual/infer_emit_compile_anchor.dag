@@ -18,7 +18,7 @@ data anchor_stub_target_model: v2.std.compilers.target_model.TargetModel = v2.st
   runtime_row: target_emit_host_runtime_row_unconfigured
 }
 
-data anchor_stub_source: Medium<String> = extdeps.communication.medium.Medium { carried: std.algebra.Empty, fidelity: Lossless }
+data anchor_stub_source: Medium<String> = extdeps.communication.medium.Medium { carried: std.algebra.Empty, fidelity: extdeps.communication.medium.Lossless }
 data anchor_stub_inferred_facts: v2.compiler.inferred_tree.InferredFacts = claim_inferred_facts_from_nodes(
   resolved: anchor_stub_empty_conj,
   algebra: anchor_stub_empty_conj,

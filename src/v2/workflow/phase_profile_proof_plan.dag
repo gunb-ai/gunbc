@@ -8,7 +8,7 @@ fn phase_profile_proof_batches() -> List<List<std.realization_schedule.Runnable>
     std.realization_schedule.RunnableSingleClaim {
       entry: phase_profile_gate_entry,
       function: "extdeps_external_authority_gate_passes",
-      profile: runnable_resource_profile_negligible()
+      profile: std.realization_schedule.runnable_resource_profile_negligible()
     }
   ]]
 }

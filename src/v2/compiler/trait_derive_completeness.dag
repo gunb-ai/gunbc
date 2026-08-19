@@ -57,7 +57,7 @@ fn repr_grounding_derive_trait_satisfied(
   derive_trait: std.trait_derive_shape.ReprGroundingDeriveTrait,
   elem: v2.std.node.Node
 ) -> Bool {
-  repr_grounding_derive_shape_has_trait(
+  std.trait_derive_shape.repr_grounding_derive_shape_has_trait(
     shape: repr_grounding_derive_elem_shape(elem: elem),
     derive_trait: derive_trait
   )
@@ -67,7 +67,7 @@ fn repr_grounding_derive_completeness_predicate_for_elem(
   required: List<std.trait_derive_shape.ReprGroundingDeriveTrait>,
   elem: v2.std.node.Node
 ) -> Bool {
-  repr_grounding_derive_completeness_predicate(
+  std.trait_derive_shape.repr_grounding_derive_completeness_predicate(
     required: required,
     shape: repr_grounding_derive_elem_shape(elem: elem)
   )
@@ -79,32 +79,32 @@ fn repr_grounding_derive_traits_for_collection_witness(
   match witness {
     TargetCollectionWitnessOrd { type_param: _ } =>
       std.algebra.Cons {
-        head: ReprDeriveOrd,
+        head: std.trait_derive_shape.ReprDeriveOrd,
         tail: std.algebra.Cons {
-          head: ReprDerivePartialOrd,
+          head: std.trait_derive_shape.ReprDerivePartialOrd,
           tail: std.algebra.Cons {
-            head: ReprDeriveEq,
+            head: std.trait_derive_shape.ReprDeriveEq,
             tail: std.algebra.Cons {
-              head: ReprDerivePartialEq,
-              tail: std.algebra.Cons { head: ReprDeriveClone, tail: std.algebra.Empty }
+              head: std.trait_derive_shape.ReprDerivePartialEq,
+              tail: std.algebra.Cons { head: std.trait_derive_shape.ReprDeriveClone, tail: std.algebra.Empty }
             }
           }
         }
       }
     TargetCollectionWitnessHash { type_param: _ } =>
       std.algebra.Cons {
-        head: ReprDeriveEq,
+        head: std.trait_derive_shape.ReprDeriveEq,
         tail: std.algebra.Cons {
-          head: ReprDerivePartialEq,
-          tail: std.algebra.Cons { head: ReprDeriveClone, tail: std.algebra.Empty }
+          head: std.trait_derive_shape.ReprDerivePartialEq,
+          tail: std.algebra.Cons { head: std.trait_derive_shape.ReprDeriveClone, tail: std.algebra.Empty }
         }
       }
     TargetCollectionWitnessEq { type_param: _ } =>
       std.algebra.Cons {
-        head: ReprDeriveEq,
+        head: std.trait_derive_shape.ReprDeriveEq,
         tail: std.algebra.Cons {
-          head: ReprDerivePartialEq,
-          tail: std.algebra.Cons { head: ReprDeriveClone, tail: std.algebra.Empty }
+          head: std.trait_derive_shape.ReprDerivePartialEq,
+          tail: std.algebra.Cons { head: std.trait_derive_shape.ReprDeriveClone, tail: std.algebra.Empty }
         }
       }
   }

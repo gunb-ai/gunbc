@@ -6,7 +6,7 @@ data copied_port_citations_note: String = "Cited combiner Arrow bodies for per-o
 
 data copied_port_citation_frontier_dissolution_note: String = "See copied_port_citation_frontier_dissolution_note_dissolve_on for the lifecycle condition this row's rationale accompanies."
 
-data copied_port_citation_frontier_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: CopiedPortCitationRetained rows in copied_port_citation_frontier_rows() stand in for producer-ingested combiner Arrow bodies (Wave 1 Gate 1 C1 interim). DISSOLVES WHEN the general body producer emits ingested Arrow bodies for list_append, list_snoc_item, and map_merge (Stage D) — citations delete, derivation runs on real producer output, copied_port_citation_retained_count() reaches 0.")
+data copied_port_citation_frontier_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: CopiedPortCitationRetained rows in copied_port_citation_frontier_rows() stand in for producer-ingested combiner Arrow bodies (Wave 1 Gate 1 C1 interim). DISSOLVES WHEN the general body producer emits ingested Arrow bodies for list_append, list_snoc_item, and map_merge (Stage D) — citations delete, derivation runs on real producer output, copied_port_citation_retained_count() reaches 0.")
 
 type CopiedPortCitationFrontierDisposition
   = CopiedPortCitationRetained { combiner: v2.std.node.Symbol, migration_trigger: v2.std.node.Symbol }

@@ -114,7 +114,7 @@ fn lens_module_gate_is_genuinely_new(surface: LensInvariantSurface) -> Bool {
 
 data lens_module_gate_surface_table_dissolution_note: String = "Central lens_module_gate_surface_for_lens_id match is a WallAfterGrounding scaffold: a parallel ledger of projection, verdict-authority, remedy, and admission per LensIdV0 beside lens_registry_v0."
 
-data lens_module_gate_surface_table_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "DISSOLVES WHEN each enrolled lens module declares its own invariant surface on-carrier (ConstructionJustification surface fields on the module or a LensRegistryEntryV0 extension) and lens_module_gate_surfaces reads those declarations instead of this central table — mark-on-carrier is authority. Until then the total match with no wildcard default forces a surface row on every new LensIdV0.")
+data lens_module_gate_surface_table_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "DISSOLVES WHEN each enrolled lens module declares its own invariant surface on-carrier (ConstructionJustification surface fields on the module or a LensRegistryEntryV0 extension) and lens_module_gate_surfaces reads those declarations instead of this central table — mark-on-carrier is authority. Until then the total match with no wildcard default forces a surface row on every new LensIdV0.")
 
 fn lens_module_gate_surface_for_lens_id(id: v2.lens.registry.LensIdV0, module: String) -> LensInvariantSurface {
   match id {

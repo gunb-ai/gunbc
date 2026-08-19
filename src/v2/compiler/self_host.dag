@@ -291,11 +291,11 @@ fn source_models_from_roster_and_roots(
   SourceModels {
     stage1_committed_seed_source: extdeps.communication.medium.Medium {
       carried: fold_side_bytes(root: committed_root, roster: roster),
-      fidelity: Lossless
+      fidelity: extdeps.communication.medium.Lossless
     },
     stage2_regen_emitted_source: extdeps.communication.medium.Medium {
       carried: fold_side_bytes(root: emitted_root, roster: roster),
-      fidelity: Lossless
+      fidelity: extdeps.communication.medium.Lossless
     }
   }
 }

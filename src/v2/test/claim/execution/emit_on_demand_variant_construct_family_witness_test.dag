@@ -5,30 +5,30 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
 data emit_on_demand_variant_construct_family_note: String = "Witness-realization fan-out lane 4 (variant_construct), consolidated to ONE-BUILD grain (std.emit_on_demand witness_family_build_grain_ruling, merry-pike-487 fan-out): the singleton family's crate builds ONCE per corpus pass. The single wet receipt is emit_on_demand_variant_construct_native_one_build_holds: one root, both keys evicted up front; primary cold then warm (octet 9), then the wrong-value alt tree colds in the SAME root with the flipped octet 1 — the content-change MISS and the wrong-value RED in one cold rebuild. Formerly 5 crate builds per pass (per-test eviction roots); now 2. Interpreted==native agreement stays in emit_host_variant_construct_equals_eval_test.dag (its own oracle leg). Pure receipts unchanged."
 
-data variant_construct_family_cache_root: String = emit_on_demand_family_cache_root(family: "variant_construct_family")
+data variant_construct_family_cache_root: String = std.emit_on_demand.emit_on_demand_family_cache_root(family: "variant_construct_family")
 data variant_construct_family_emitter: String = "v2.compiler.emit"
-data variant_construct_family_provider: std.materialization_ladder.CacheProvider = provider_row(
+data variant_construct_family_provider: std.materialization_ladder.CacheProvider = std.materialization_ladder.provider_row(
   id: "emit-on-demand-variant-construct-family",
   scope: [],
-  coverage: CoversAllComputations,
-  tier: std.materialization_ladder.ArtifactTier { keying: ContentKeyed },
-  retention: persistent_retention(capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: byte_size(count: 1000000) } }, at_capacity: std.cache_interface.ReplaceExisting { strategy: LeastRecentlyUsed } })
+  coverage: std.materialization_ladder.CoversAllComputations,
+  tier: std.materialization_ladder.ArtifactTier { keying: std.materialization_ladder.ContentKeyed },
+  retention: std.materialization_ladder.persistent_retention(capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: std.measure.byte_size(count: 1000000) } }, at_capacity: std.cache_interface.ReplaceExisting { strategy: std.cache_interface.LeastRecentlyUsed } })
 )
 
 fn variant_construct_family_native_key_for(tree: v2.compiler.inferred_tree.InferredTree) -> std.content_hash.ContentHash {
-  emit_on_demand_key(
+  std.emit_on_demand.emit_on_demand_key(
     closure_digest: inferred_tree_digest(tree: tree),
     emitter_identity: variant_construct_family_emitter,
     target_language: "rust",
-    grain: NativeArtifact
+    grain: std.emit_on_demand.NativeArtifact
   )
 }
 
 fn variant_construct_family_test_store() -> std.artifact_store.ArtifactStore {
-  match store_over_provider(provider: variant_construct_family_provider) {
+  match std.artifact_store.store_over_provider(provider: variant_construct_family_provider) {
     StoreReady { store: s } => s
     StoreRefusedRetention { provider_id: _, declared: _ } =>
-      std.artifact_store.ArtifactStore { budget: byte_size(count: 0), next_ordinal: 1, rows: [] }
+      std.artifact_store.ArtifactStore { budget: std.measure.byte_size(count: 0), next_ordinal: 1, rows: [] }
   }
 }
 
@@ -117,31 +117,31 @@ fn variant_construct_family_cached_cold_then_warm(
 
 test fn emit_on_demand_variant_construct_grain_keys_differ_holds() -> Bool {
   let digest = inferred_tree_digest(tree: emit_variant_construct_eval_tree)
-  let source = emit_on_demand_key(
+  let source = std.emit_on_demand.emit_on_demand_key(
     closure_digest: digest,
     emitter_identity: variant_construct_family_emitter,
     target_language: "rust",
-    grain: SourceArtifact
+    grain: std.emit_on_demand.SourceArtifact
   )
-  let native = emit_on_demand_key(
+  let native = std.emit_on_demand.emit_on_demand_key(
     closure_digest: digest,
     emitter_identity: variant_construct_family_emitter,
     target_language: "rust",
-    grain: NativeArtifact
+    grain: std.emit_on_demand.NativeArtifact
   )
   (source == native) == false
 }
 
 test fn emit_on_demand_variant_construct_materialize_share_on_hit_holds() -> Bool {
   let key = variant_construct_family_native_key_for(tree: emit_variant_construct_eval_tree)
-  store_put_fold(
-    outcome: store_put(store: variant_construct_family_test_store(), key: key, artifact_bytes: byte_size(count: 64)),
+  std.artifact_store.store_put_fold(
+    outcome: std.artifact_store.store_put(store: variant_construct_family_test_store(), key: key, artifact_bytes: std.measure.byte_size(count: 64)),
     admitted: fn(put_store, evicted) {
-      let lookup = emit_on_demand_lookup(store: put_store, key: key)
+      let lookup = std.emit_on_demand.emit_on_demand_lookup(store: put_store, key: key)
       match lookup {
         EmitOnDemandHit { receipt: r } =>
           r.compile_skipped
-            && materialization_for_lookup(lookup: lookup) == Share
+            && std.emit_on_demand.materialization_for_lookup(lookup: lookup) == std.realization.Share
         EmitOnDemandMiss => false
       }
     },
@@ -150,23 +150,23 @@ test fn emit_on_demand_variant_construct_materialize_share_on_hit_holds() -> Boo
 }
 
 test fn emit_on_demand_variant_construct_materialize_recompute_on_miss_holds() -> Bool {
-  let lookup = emit_on_demand_lookup(
+  let lookup = std.emit_on_demand.emit_on_demand_lookup(
     store: variant_construct_family_test_store(),
     key: variant_construct_family_native_key_for(tree: emit_variant_construct_eval_tree)
   )
   match lookup {
-    EmitOnDemandMiss => materialization_for_lookup(lookup: lookup) == std.realization.Recompute
+    EmitOnDemandMiss => std.emit_on_demand.materialization_for_lookup(lookup: lookup) == std.realization.Recompute
     EmitOnDemandHit { receipt: _ } => false
   }
 }
 
 test fn emit_on_demand_variant_construct_interpreter_roles_bounded_holds() -> Bool {
-  interpreter_surviving_roles_bounded()
+  std.emit_on_demand.interpreter_surviving_roles_bounded()
 }
 
 test fn emit_on_demand_variant_construct_schedule_refuses_unreadable_budget_holds() -> Bool {
   match witness_family_realize_width(
-    bound_bytes: byte_size(count: 25),
+    bound_bytes: std.measure.byte_size(count: 25),
     budget: BudgetUnreadable,
     witness_root: emit_variant_construct_eval_tree.root,
     independence_override: 4
@@ -192,15 +192,15 @@ test fn emit_on_demand_variant_construct_native_one_build_holds() -> Bool {
   if key_primary == key_alt {
     false
   } else {
-    let workspace_primary = native_cache_workspace_root(cache_root: shared_parent, key: key_primary)
-    let _evict_primary = emit_on_demand_evict_native_cache(cache_root: shared_parent, key: key_primary)
-    let _evict_alt = emit_on_demand_evict_native_cache(cache_root: shared_parent, key: key_alt)
+    let workspace_primary = extdeps.realization.emit_on_demand_host.native_cache_workspace_root(cache_root: shared_parent, key: key_primary)
+    let _evict_primary = extdeps.realization.emit_on_demand_host.emit_on_demand_evict_native_cache(cache_root: shared_parent, key: key_primary)
+    let _evict_alt = extdeps.realization.emit_on_demand_host.emit_on_demand_evict_native_cache(cache_root: shared_parent, key: key_alt)
     let warmed = variant_construct_family_cached_cold_then_warm(
       workspace: workspace_primary,
       tree: tree_primary,
       expected_octet: 9
     )
-    let workspace_alt = native_cache_workspace_root(cache_root: shared_parent, key: key_alt)
+    let workspace_alt = extdeps.realization.emit_on_demand_host.native_cache_workspace_root(cache_root: shared_parent, key: key_alt)
     warmed
       && variant_construct_family_cached_run_checks(
         workspace: workspace_alt,

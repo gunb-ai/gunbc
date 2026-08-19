@@ -25,7 +25,7 @@ fn schedule_lens_compile_gate_not_second_reason(expected: String) -> v2.std.node
 
 fn schedule_lens_batch_has_any_cheap_gate(batch: List<std.realization_schedule.Runnable>, cheap_gate_labels: List<String>) -> Bool {
   fold(cheap_gate_labels, init: false, f: fn(found, label) {
-    found || schedule_batch_contains_label(batch: batch, target: label)
+    found || std.realization_schedule.schedule_batch_contains_label(batch: batch, target: label)
   })
 }
 
@@ -110,13 +110,13 @@ fn schedule_lens_verdict_for_ci_floor_ordinary(
     }
   } else {
     let batch0 = plan.schedule.first()
-    if schedule_batch_contains_label(batch: batch0, target: compile_gate_fn) {
+    if std.realization_schedule.schedule_batch_contains_label(batch: batch0, target: compile_gate_fn) {
       v2.std.lens_verdict.Violation {
         diagnostic: schedule_lens_violation_diagnostic(
           kind: CompileGateInFirstBatch { expected: compile_gate_fn }
         )
       }
-    } else if schedule_batch_contains_label(batch: batch0, target: "__discovery_corpus__") {
+    } else if std.realization_schedule.schedule_batch_contains_label(batch: batch0, target: "__discovery_corpus__") {
       v2.std.lens_verdict.Violation {
         diagnostic: schedule_lens_violation_diagnostic(kind: CorpusBeforeCompile)
       }
@@ -126,13 +126,13 @@ fn schedule_lens_verdict_for_ci_floor_ordinary(
       }
     } else {
       let batch1 = plan.schedule.skip(n: 1).first()
-      if (batch1.count() != 1) || !schedule_batch_contains_label(batch: batch1, target: compile_gate_fn) {
+      if (batch1.count() != 1) || !std.realization_schedule.schedule_batch_contains_label(batch: batch1, target: compile_gate_fn) {
         v2.std.lens_verdict.Violation {
           diagnostic: schedule_lens_violation_diagnostic(
             kind: CompileGateNotSecond { expected: compile_gate_fn }
           )
         }
-      } else if schedule_batch_contains_label(batch: batch1, target: "__discovery_corpus__") {
+      } else if std.realization_schedule.schedule_batch_contains_label(batch: batch1, target: "__discovery_corpus__") {
         v2.std.lens_verdict.Violation {
           diagnostic: schedule_lens_violation_diagnostic(kind: CorpusBeforeCompile)
         }
@@ -153,7 +153,7 @@ fn schedule_lens_verdict_for_ci_floor_ordinary(
 }
 
 fn on_success_runnable_is_admitted(runnable: std.realization_schedule.Runnable) -> Bool {
-  match on_success_runnable_disposition(runnable: runnable) {
+  match std.realization_schedule.on_success_runnable_disposition(runnable: runnable) {
     OnSuccessRunnableAdmitted => true
     _ => false
   }
@@ -173,7 +173,7 @@ fn on_success_stages_are_admitted(stages: List<List<std.realization_schedule.Run
 
 fn runnable_occurs_in(runnable: std.realization_schedule.Runnable, runnables: List<std.realization_schedule.Runnable>) -> Bool {
   fold(runnables, init: false, f: fn(found, candidate) {
-    found || runnable_eq(left: runnable, right: candidate)
+    found || std.realization_schedule.runnable_eq(left: runnable, right: candidate)
   })
 }
 
@@ -221,7 +221,7 @@ fn on_success_stages_eq(
     false
   } else if actual.count() == 0 {
     true
-  } else if !bag_eq(xs: actual.first(), ys: expected.first(), eq: runnable_eq) {
+  } else if !bag_eq(xs: actual.first(), ys: expected.first(), eq: std.realization_schedule.runnable_eq) {
     false
   } else {
     on_success_stages_eq(
@@ -231,7 +231,7 @@ fn on_success_stages_eq(
   }
 }
 
-data walk_plan_schedule_lens_note: String = "The WalkPlan schedule lens owns the join the executor consumes: batches must be the ordinary RealizationPlan projection; on-success stage barriers remain ordered; siblings inside one stage compare as an unordered multiset because WalkPlan promises no sibling order; and every stage member must have the modeled std.realization_schedule on_success_runnable_disposition OnSuccessRunnableAdmitted. Duplicate runnable identity (entry + function + full profile) refuses until duplication has an explicit model. Finalization is deliberately outside this lens: gunbc.ci_materialization finalization witnesses and the strict runtime parser own it. Complete WalkPlan coverage composes this ordinary schedule check, success-stage structure and admissibility, the finalization witness, and executor-semantics controls."
+data walk_plan_schedule_lens_note: String = "The WalkPlan schedule lens owns the join the executor consumes: batches must be the ordinary RealizationPlan projection; on-success stage barriers remain ordered; siblings inside one stage compare as an unordered multiset because WalkPlan promises no sibling order; and every stage member must have the modeled std.realization_schedule std.realization_schedule.on_success_runnable_disposition OnSuccessRunnableAdmitted. Duplicate runnable identity (entry + function + full profile) refuses until duplication has an explicit model. Finalization is deliberately outside this lens: gunbc.ci_materialization finalization witnesses and the strict runtime parser own it. Complete WalkPlan coverage composes this ordinary schedule check, success-stage structure and admissibility, the finalization witness, and executor-semantics controls."
 
 fn walk_plan_schedule_lens_verdict_for_ci_floor<F>(
   plan: std.realization_schedule.WalkPlan<F>,
@@ -240,7 +240,7 @@ fn walk_plan_schedule_lens_verdict_for_ci_floor<F>(
   compile_gate_fn: String,
   cheap_gate_labels: List<String>
 ) -> v2.std.lens_verdict.LensVerdict {
-  if !schedule_eq(left: plan.batches, right: ordinary_plan.schedule) {
+  if !std.realization_schedule.schedule_eq(left: plan.batches, right: ordinary_plan.schedule) {
     v2.std.lens_verdict.Violation {
       diagnostic: schedule_lens_violation_diagnostic(kind: OrdinaryProjectionMismatch)
     }

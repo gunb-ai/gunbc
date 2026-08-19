@@ -378,15 +378,15 @@ data claim_validate_accepts_disjoint_choice: v2.std.verification.TestClaim = v2.
 // `B = A 'x'`. That is precisely the failure a closure rewrite introduces, so the transitive case
 // is asserted directly rather than assumed to follow from the direct one.
 
-data validation_indirect_a: Symbol = ^validation_indirect_a_production
-data validation_indirect_b: Symbol = ^validation_indirect_b_production
+data validation_indirect_a: v2.std.node.Symbol = ^validation_indirect_a_production
+data validation_indirect_b: v2.std.node.Symbol = ^validation_indirect_b_production
 
-fn validation_left_corner_production(name: Symbol, corner: Symbol) -> GrammarProduction {
-  GrammarProduction {
+fn validation_left_corner_production(name: v2.std.node.Symbol, corner: v2.std.node.Symbol) -> v2.std.grammar.GrammarProduction {
+  v2.std.grammar.GrammarProduction {
     name: name,
-    expression: Sequence {
-      left: Nonterminal { production: corner },
-      right: Terminal { token_class: ^validation_tok_class, stamp: StampClass }
+    expression: v2.std.grammar.Sequence {
+      left: v2.std.grammar.Nonterminal { production: corner },
+      right: v2.std.grammar.Terminal { token_class: ^validation_tok_class, stamp: StampClass }
     },
     emitted: grammar_atom(identity: name)
   }
@@ -394,19 +394,19 @@ fn validation_left_corner_production(name: Symbol, corner: Symbol) -> GrammarPro
 
 // A = B 'x' , B = A 'x' — neither production is directly left-recursive; the cycle exists only
 // through the transitive left-corner relation.
-data validation_indirect_left_recursive_root: GrammarRoot = GrammarRoot {
+data validation_indirect_left_recursive_root: v2.std.grammar.GrammarRoot = v2.std.grammar.GrammarRoot {
   start: ^validation_indirect_a_production,
-  productions: Cons {
+  productions: std.algebra.Cons {
     head: validation_left_corner_production(
       name: ^validation_indirect_a_production,
       corner: ^validation_indirect_b_production
     ),
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: validation_left_corner_production(
         name: ^validation_indirect_b_production,
         corner: ^validation_indirect_a_production
       ),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   },
   sync_tokens: grammar_empty_sync_tokens()
@@ -415,16 +415,16 @@ data validation_indirect_left_recursive_root: GrammarRoot = GrammarRoot {
 // A = B 'x' , B = 'x' — one left-corner hop, no cycle. The negative twin of the row above: it
 // shares the indirect SHAPE and differs only in whether the relation closes, so a mechanism that
 // answered `true` for any two-production grammar would be caught here.
-data validation_indirect_terminating_root: GrammarRoot = GrammarRoot {
+data validation_indirect_terminating_root: v2.std.grammar.GrammarRoot = v2.std.grammar.GrammarRoot {
   start: ^validation_indirect_a_production,
-  productions: Cons {
+  productions: std.algebra.Cons {
     head: validation_left_corner_production(
       name: ^validation_indirect_a_production,
       corner: ^validation_indirect_b_production
     ),
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: validation_terminal_production(name: ^validation_indirect_b_production),
-      tail: Empty
+      tail: std.algebra.Empty
     }
   },
   sync_tokens: grammar_empty_sync_tokens()
@@ -454,19 +454,19 @@ test fn validation_two_distinct_productions_are_not_left_recursive() -> Bool {
 // expands even once. A five-production cycle is not: it requires the relation to close over five
 // hops, so an implementation that stopped early — a truncated fixpoint, a bounded expansion, a
 // fuel that ran out — answers `false` here while still passing every row above.
-data validation_cycle_5_root: GrammarRoot = GrammarRoot {
+data validation_cycle_5_root: v2.std.grammar.GrammarRoot = v2.std.grammar.GrammarRoot {
   start: ^validation_cycle_p1,
-  productions: Cons {
+  productions: std.algebra.Cons {
     head: validation_left_corner_production(name: ^validation_cycle_p1, corner: ^validation_cycle_p2),
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: validation_left_corner_production(name: ^validation_cycle_p2, corner: ^validation_cycle_p3),
-      tail: Cons {
+      tail: std.algebra.Cons {
         head: validation_left_corner_production(name: ^validation_cycle_p3, corner: ^validation_cycle_p4),
-        tail: Cons {
+        tail: std.algebra.Cons {
           head: validation_left_corner_production(name: ^validation_cycle_p4, corner: ^validation_cycle_p5),
-          tail: Cons {
+          tail: std.algebra.Cons {
             head: validation_left_corner_production(name: ^validation_cycle_p5, corner: ^validation_cycle_p1),
-            tail: Empty
+            tail: std.algebra.Empty
           }
         }
       }
@@ -477,19 +477,19 @@ data validation_cycle_5_root: GrammarRoot = GrammarRoot {
 
 // The same five-hop chain with the cycle broken at the last link: p5 ends in a terminal instead of
 // returning to p1. Identical size and shape, opposite verdict.
-data validation_chain_5_root: GrammarRoot = GrammarRoot {
+data validation_chain_5_root: v2.std.grammar.GrammarRoot = v2.std.grammar.GrammarRoot {
   start: ^validation_cycle_p1,
-  productions: Cons {
+  productions: std.algebra.Cons {
     head: validation_left_corner_production(name: ^validation_cycle_p1, corner: ^validation_cycle_p2),
-    tail: Cons {
+    tail: std.algebra.Cons {
       head: validation_left_corner_production(name: ^validation_cycle_p2, corner: ^validation_cycle_p3),
-      tail: Cons {
+      tail: std.algebra.Cons {
         head: validation_left_corner_production(name: ^validation_cycle_p3, corner: ^validation_cycle_p4),
-        tail: Cons {
+        tail: std.algebra.Cons {
           head: validation_left_corner_production(name: ^validation_cycle_p4, corner: ^validation_cycle_p5),
-          tail: Cons {
+          tail: std.algebra.Cons {
             head: validation_terminal_production(name: ^validation_cycle_p5),
-            tail: Empty
+            tail: std.algebra.Empty
           }
         }
       }

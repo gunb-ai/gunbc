@@ -1,6 +1,6 @@
 module v2.workflow.ci_placement
 
-data ci_placement_law_note: String = "The two-tier placement axis (ci-two-tier-placement-redesign.md D3, operator 2026-07-24): a check rides the PR path iff its measured warm cost is within the fast-lane budget OR its cost is proportional to the diff; everything else is a Gauntlet row (main pushes + the 4h falsifier cadence). Placement is DATA (PrTier | Gauntlet), never per-site prose. Admission is FAIL-CLOSED by construction: PrTier is admissible ONLY with (a) a measured warm-cost receipt within the fast-lane budget and (b) a hermetic/ephemeral classification; an unmeasured or unclassified check is inadmissible as PrTier and its only valid placement is Gauntlet — no row rides the fast path by taste. The 5s threshold is REUSED from the single fast-lane authority (gunbc.witness_row_cost gunbc_ci_fast_lane_eval_budget_ms), never a second 5s definition. That row moved out of v2.workflow.ci_floor_plan when the CI wipe deleted that module on 2026-08-15; its home is now the module whose subject is what a witness row may cost, and NO consumer arms it today because the executor that did is deleted -- so it is a declared threshold rather than an enforced one. The roster of real checks and their PrTier flips are FILLED from the D2 warm-cost probe on fleet srv hardware; until a check has a measured receipt it stays Gauntlet, so this mechanism is correct-by-construction with an empty PrTier set. Wiring the placement onto the live check rows (gates, ci-job steps, floor batches) and the Gauntlet workflow split ride PR-1 (D3b)."
+data ci_placement_law_note: String = "The two-tier placement axis (ci-two-tier-placement-redesign.md D3, operator 2026-07-24): a check rides the PR path iff its measured warm cost is within the fast-lane budget OR its cost is proportional to the diff; everything else is a Gauntlet row (main pushes + the 4h falsifier cadence). Placement is DATA (PrTier | Gauntlet), never per-site prose. Admission is FAIL-CLOSED by construction: PrTier is admissible ONLY with (a) a measured warm-cost receipt within the fast-lane budget and (b) a hermetic/ephemeral classification; an unmeasured or unclassified check is inadmissible as PrTier and its only valid placement is Gauntlet — no row rides the fast path by taste. The 5s threshold is REUSED from the single fast-lane authority (gunbc.witness_row_cost gunbc.witness_row_cost.gunbc_ci_fast_lane_eval_budget_ms), never a second 5s definition. That row moved out of v2.workflow.ci_floor_plan when the CI wipe deleted that module on 2026-08-15; its home is now the module whose subject is what a witness row may cost, and NO consumer arms it today because the executor that did is deleted -- so it is a declared threshold rather than an enforced one. The roster of real checks and their PrTier flips are FILLED from the D2 warm-cost probe on fleet srv hardware; until a check has a measured receipt it stays Gauntlet, so this mechanism is correct-by-construction with an empty PrTier set. Wiring the placement onto the live check rows (gates, ci-job steps, floor batches) and the Gauntlet workflow split ride PR-1 (D3b)."
 
 type PlacementClassification
   = Hermetic
@@ -73,11 +73,11 @@ fn commit_workflow_surface_list_eq(left: List<gunbc.commit_workflow.CommitWorkfl
 }
 
 fn commit_workflow_surface_present(surface: gunbc.commit_workflow.CommitWorkflowSurface, surfaces: List<gunbc.commit_workflow.CommitWorkflowSurface>) -> Bool {
-  any(xs: surfaces, predicate: fn(s) { commit_workflow_surface_eq(a: s, b: surface) })
+  any(xs: surfaces, predicate: fn(s) { gunbc.commit_workflow.commit_workflow_surface_eq(a: s, b: surface) })
 }
 
 fn commit_check_enrollment_eq(left: gunbc.commit_workflow.CommitCheckEnrollment, right: gunbc.commit_workflow.CommitCheckEnrollment) -> Bool {
-  commit_check_kind_eq(a: left.check, b: right.check)
+  gunbc.commit_workflow.commit_check_kind_eq(a: left.check, b: right.check)
     && commit_workflow_surface_list_eq(left: left.surfaces, right: right.surfaces)
 }
 
@@ -221,7 +221,7 @@ fn classification_admits_pr_tier(c: PlacementClassification) -> Bool {
 }
 
 fn warm_cost_within_fast_lane(wc: WarmCostReceipt) -> Bool {
-  wc.measured_ms <= gunbc_ci_fast_lane_eval_budget_ms()
+  wc.measured_ms <= gunbc.witness_row_cost.gunbc_ci_fast_lane_eval_budget_ms()
 }
 
 fn placement_is_admissible(p: Placement) -> Bool {

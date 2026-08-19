@@ -44,7 +44,7 @@ fn emit_module_text(decls: List<v2.compiler.inferred_tree.InferredTree>, target:
   )
 }
 
-fn emit_module(decls: List<v2.compiler.inferred_tree.InferredTree>, target: v2.std.compilers.target_model.TargetModel) -> Outcome<Medium<String>> {
+fn emit_module(decls: List<v2.compiler.inferred_tree.InferredTree>, target: v2.std.compilers.target_model.TargetModel) -> Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: emit_module_text(decls: decls, target: target),
     f: fn(joined) {
@@ -95,7 +95,7 @@ fn emit_family_text(members: List<EmitFamilyMember>) -> Outcome<String> {
 fn emit_family(
   members: List<EmitFamilyMember>,
   transport_target: v2.std.compilers.target_model.TargetModel
-) -> Outcome<Medium<String>> {
+) -> Outcome<extdeps.communication.medium.Medium<String>> {
   bind_outcome(
     o: emit_family_text(members: members),
     f: fn(joined) {

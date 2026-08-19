@@ -16,7 +16,7 @@ data expr_refusal_log_variable: v2.lens.cost.SizeVariable = v2.lens.cost.SizeVar
 data expr_refusal_effect_operation: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "v2.lens.cost",
   decl_name: "cost_lens",
-  field: WholeDeclaration
+  field: std.decl_ref.WholeDeclaration
 }
 
 fn log_base_two() -> v2.std.nat.Nat {

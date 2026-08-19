@@ -18,7 +18,7 @@ data meta_exec_confinement_roster_empty_note: String = "Roster 3 -> 0 (shell->da
 data meta_exec_confinement_exception_roster: List<std.roster_frontier.FrontierRow> = []
 
 fn meta_exec_confinement_exception_paths() -> List<String> {
-  frontier_units(rows: meta_exec_confinement_exception_roster)
+  std.roster_frontier.frontier_units(rows: meta_exec_confinement_exception_roster)
 }
 
 type MetaExecConfinementLeak {

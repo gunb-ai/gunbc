@@ -2,11 +2,11 @@ module v2.lens.affected_set.entry_selection
 
 
 data entry_file_touched_grain_interim: std.disposition.Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.lens.affected_set.entry_selection",
     decl_name: "entry_affected_by_dependency_view",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 

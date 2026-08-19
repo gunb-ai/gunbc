@@ -51,7 +51,7 @@ fn witness_plan_schedule() -> List<List<std.realization_schedule.Runnable>> {
     [std.realization_schedule.RunnableSingleClaim {
       entry: "src/v2/test/claim/materialize/materialize_witness_test.dag"
       function: "duplicate_subtree_flagged"
-      profile: runnable_resource_profile_negligible()
+      profile: std.realization_schedule.runnable_resource_profile_negligible()
     }]
   ]
 }
@@ -63,7 +63,7 @@ test fn node_content_hash_is_realization_plan_target() -> Bool {
     target: content_hash(n: root)
     objective: std.realization_schedule.RealizationObjective { goals: [] }
     schedule: witness_plan_schedule()
-    total: cost_account_predicted_zero()
+    total: std.realization_schedule.cost_account_predicted_zero()
   }
   hashes_contain(hs: distinct_hashes(root: root), h: plan.target)
     && !hashes_contain(hs: distinct_hashes(root: other), h: plan.target)

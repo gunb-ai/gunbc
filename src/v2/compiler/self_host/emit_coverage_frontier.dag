@@ -20,7 +20,7 @@ fn coverage_subject(module_path: String, decl_name: String) -> std.decl_ref.Decl
   std.decl_ref.DeclarationRef {
     module_path: module_path,
     decl_name: decl_name,
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
@@ -35,7 +35,7 @@ fn retained_via_eval_agreement(
     witness_function: f,
     disposition: InterpreterRetained {
       reason: "witness_body_calls_eval",
-      dissolution: unbound_dissolution(description: "a native_only-verdict-style witness (real ingest to emit to compile to run native, verdict decoded from stdout, eval() never called — the emit_host_native_only_verdict_test.dag pattern) lands for this family and is enrolled in falsifier_self_host_wet_template_entries")
+      dissolution: std.dissolution.unbound_dissolution(description: "a native_only-verdict-style witness (real ingest to emit to compile to run native, verdict decoded from stdout, eval() never called — the emit_host_native_only_verdict_test.dag pattern) lands for this family and is enrolled in falsifier_self_host_wet_template_entries")
     }
   }
 }

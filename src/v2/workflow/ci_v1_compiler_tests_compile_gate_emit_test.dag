@@ -30,7 +30,7 @@ test fn ci_v1_compiler_tests_compile_gate_script_is_typed_plan_plus_marker() -> 
   let expected = concat(
     concat(
       "# ",
-      concat(dissolution_description(condition: ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger), "\n")
+      concat(std.dissolution.dissolution_description(condition: ci_v1_compiler_tests_compile_gate_shell_emit_dissolution_trigger), "\n")
     ),
     concat(
       ci_v1_compiler_tests_compile_gate_command(),

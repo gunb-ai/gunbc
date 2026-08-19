@@ -97,11 +97,11 @@ fn harvest_direct_atom_binding(root: v2.std.node.Node, acc: Map<v2.std.node.Symb
 }
 
 data resolve_variant_visibility_disposition: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.compiler.symbol_index_fill",
     decl_name: "symbol_index_fill_unique_variant_aliases",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 

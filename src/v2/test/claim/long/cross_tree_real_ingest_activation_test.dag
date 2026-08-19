@@ -4,12 +4,12 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data ct_real_v2_subject_source: Medium<String> = extdeps.communication.medium.Medium {
   carried: "module v2.ct_real_subject\n",
-  fidelity: Lossless
+  fidelity: extdeps.communication.medium.Lossless
 }
 
 data ct_real_dag_target_source: Medium<String> = extdeps.communication.medium.Medium {
   carried: "module ct_real_target\n",
-  fidelity: Lossless
+  fidelity: extdeps.communication.medium.Lossless
 }
 
 data ct_real_v2_subject_artifact: v2.std.artifact.Artifact = v2.std.artifact.Artifact {

@@ -11,8 +11,8 @@ fn bmc_lifecycle_roundtrip(s: gunbc.bmc_onboarding.BmcLifecycleState) -> Outcome
     f: fn(fidelity) {
       outcome_accepted(
         extdeps.communication.medium.Medium {
-          carried: bmc_recoverable_quotient(
-            s: bmc_decom_to_factory_state(s: bmc_onboard_to_steady_state(s: s))
+          carried: gunbc.bmc_onboarding.bmc_recoverable_quotient(
+            s: gunbc.bmc_onboarding.bmc_decom_to_factory_state(s: gunbc.bmc_onboarding.bmc_onboard_to_steady_state(s: s))
           ),
           fidelity: fidelity
         }

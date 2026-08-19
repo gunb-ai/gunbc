@@ -2,6 +2,6 @@ module v2.test.fixture.meta_exec_confinement_scan.leak_plant
 
 
 fn planted_meta_exec_import_leak() -> Bool {
-  let result = shell.Exec.Run(script: "true" as TransportScript)
+  let result = shell.Exec.Run(script: "true" as extdeps.shell.exec.TransportScript)
   result.success
 }

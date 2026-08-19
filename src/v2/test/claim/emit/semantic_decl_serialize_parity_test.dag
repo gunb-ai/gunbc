@@ -1,7 +1,7 @@
 module v2.test.emit.semantic_decl_serialize_parity
 
 
-data bool_golden: String = concat(rust_enum_derives_copy, "\nenum Bool { True, False }")
+data bool_golden: String = concat(extdeps.languages.rust.emit.rust_enum_derives_copy, "\nenum Bool { True, False }")
 
 fn bool_coproduct() -> Node {
   v2.std.node.Node {

@@ -12,7 +12,7 @@ data derisk_module_artifact: v2.std.artifact.Artifact = v2.std.artifact.Artifact
 fn derisk_ingest_for(src: String) -> v2.compiler.source_authority.SourceRootIngest {
   std.algebra.Cons {
     head: v2.compiler.source_authority.DagSourceReadWitness {
-      source: extdeps.communication.medium.Medium { carried: src, fidelity: Lossless },
+      source: extdeps.communication.medium.Medium { carried: src, fidelity: extdeps.communication.medium.Lossless },
       artifact: derisk_module_artifact,
       compilation_unit: ^derisk_pilot_cu,
       source_root: V2Tree
@@ -26,7 +26,7 @@ fn derisk_module_admission() -> v2.compiler.name_resolve.Admission {
     subject: v2.compiler.name_resolve.ResolutionSubject {
       name: std.algebra.Cons { head: ^derisk_pilot, tail: std.algebra.Empty }
     },
-    imports: Empty
+    imports: std.algebra.Empty
   }
 }
 

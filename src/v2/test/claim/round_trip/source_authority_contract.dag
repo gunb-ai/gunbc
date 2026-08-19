@@ -3,9 +3,9 @@ module v2.test.round_trip.source_authority_contract
 
 data source_authority_contract_target_model: v2.std.compilers.target_model.TargetModel = dag_target_model()
 
-data source_authority_contract_source: Medium<String> = extdeps.communication.medium.Medium {
+data source_authority_contract_source: extdeps.communication.medium.Medium<String> = extdeps.communication.medium.Medium {
   carried: dag_source_text,
-  fidelity: Lossy
+  fidelity: extdeps.communication.medium.Lossy
 }
 
 data source_authority_contract_subject: Node = v2.std.node.Node {
@@ -26,8 +26,8 @@ fn contract_target_advertises_declared_loss() -> Bool {
   match decode_fidelity_from_target(target: source_authority_contract_target_model) {
     Accepted { value: fidelity, diagnostics: _ } =>
       match fidelity {
-        Lossy => true
-        Lossless => false
+        extdeps.communication.medium.Lossy => true
+        extdeps.communication.medium.Lossless => false
       }
     Rejected { diagnostics: _ } => false
   }
@@ -40,8 +40,8 @@ fn contract_source_medium_matches_compose_up() -> Bool {
   ) {
     Accepted { value: medium, diagnostics: _ } =>
       match medium.fidelity {
-        Lossy => medium.carried == dag_source_text
-        Lossless => false
+        extdeps.communication.medium.Lossy => medium.carried == dag_source_text
+        extdeps.communication.medium.Lossless => false
       }
     Rejected { diagnostics: _ } => false
   }
@@ -62,8 +62,8 @@ fn contract_serializer_section_law_holds() -> Bool {
             Holds { value: law } =>
               law.canonical_section == first.carried
                 && law.declared_fidelity == first.fidelity
-                && first.fidelity == Lossy
-                && medium_section_equal(left: first, right: second)
+                && first.fidelity == extdeps.communication.medium.Lossy
+                && extdeps.communication.fidelity_carriers.medium_section_equal(left: first, right: second)
             Violates { diagnostic: _ } => false
           }
         Rejected { diagnostics: _ } => false
@@ -78,10 +78,10 @@ fn contract_serializer_section_law_ignores_fidelity_mismatch() -> Bool {
     emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: lossy, diagnostics: _ } => {
-      let lossless_retag = extdeps.communication.medium.Medium { carried: lossy.carried, fidelity: Lossless }
+      let lossless_retag = extdeps.communication.medium.Medium { carried: lossy.carried, fidelity: extdeps.communication.medium.Lossless }
       match deterministic_dag_source_serializer_witness(first: lossy, second: lossless_retag) {
         Holds { value: law } =>
-          law.canonical_section == lossy.carried && law.declared_fidelity == Lossy
+          law.canonical_section == lossy.carried && law.declared_fidelity == extdeps.communication.medium.Lossy
         Violates { diagnostic: _ } => false
       }
     }
@@ -95,7 +95,7 @@ fn contract_naive_medium_equality_rejects_fidelity_mismatch() -> Bool {
     emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: lossy, diagnostics: _ } => {
-      let lossless_retag = extdeps.communication.medium.Medium { carried: lossy.carried, fidelity: Lossless }
+      let lossless_retag = extdeps.communication.medium.Medium { carried: lossy.carried, fidelity: extdeps.communication.medium.Lossless }
       lossy != lossless_retag
     }
     Rejected { diagnostics: _ } => false
@@ -103,7 +103,7 @@ fn contract_naive_medium_equality_rejects_fidelity_mismatch() -> Bool {
 }
 
 fn medium_section_and_fidelity_equal<R>(left: extdeps.communication.medium.Medium<R>, right: extdeps.communication.medium.Medium<R>) -> Bool {
-  medium_section_equal(left: left, right: right) && left.fidelity == right.fidelity
+  extdeps.communication.fidelity_carriers.medium_section_equal(left: left, right: right) && left.fidelity == right.fidelity
 }
 
 fn contract_perturbed_strict_section_equal_flips_fidelity_mismatch_red() -> Bool {
@@ -112,8 +112,8 @@ fn contract_perturbed_strict_section_equal_flips_fidelity_mismatch_red() -> Bool
     emitted: dag_fixture_emitted_add_fn
   ) {
     Accepted { value: lossy, diagnostics: _ } => {
-      let lossless_retag = extdeps.communication.medium.Medium { carried: lossy.carried, fidelity: Lossless }
-      medium_section_equal(left: lossy, right: lossless_retag)
+      let lossless_retag = extdeps.communication.medium.Medium { carried: lossy.carried, fidelity: extdeps.communication.medium.Lossless }
+      extdeps.communication.fidelity_carriers.medium_section_equal(left: lossy, right: lossless_retag)
         && !medium_section_and_fidelity_equal(left: lossy, right: lossless_retag)
     }
     Rejected { diagnostics: _ } => false
@@ -133,7 +133,7 @@ fn contract_serializer_section_law_violates_on_carried_mismatch() -> Bool {
         fidelity: canonical.fidelity
       }
       (canonical.carried != contract_carried_mismatch_probe)
-        && !medium_section_equal(left: canonical, right: perturbed)
+        && !extdeps.communication.fidelity_carriers.medium_section_equal(left: canonical, right: perturbed)
         && match deterministic_dag_source_serializer_witness(
           first: canonical,
           second: perturbed

@@ -1,7 +1,7 @@
 module v2.compiler.build_transport_admission
 
 
-data build_transport_admission_note: String = "P-B enforcement decision (docs/plans/effect-namespace-grants.md 6, owned silent-ibex-417): whether a build transport may run in the replay/hermetic lane is DERIVED from its own declared structure, not a mode bit. build_transport_admissible projects each declared effect of a HostTransportDescriptor onto a NamespacePosition and runs std.effect_grant.admit_effect against the SINGLE build-envelope authority (v2.compiler.build_workspace_grant.build_workspace_grant_envelope -- consumed, never re-minted, DESIGN 3): a build that would touch anything outside that envelope is a located std.access.Deny, never silently widened (DESIGN 5). The descriptor's decisions combine only through std.access.decision_meet; this compiler profile carries no independent allow/deny fold. The named consumer is the emit-host build transport (src/v2/compiler/emit_host.emit_host_run_transport, a v1_interpreter.rs intrinsic), which runs only on Permit, with the intrinsic's existing relative-path escape guard staying as the realization-side belt derived from this same containment. The build's reads of its own workspace (emitted sources + produced intermediates) are permitted because the authority grants the workspace Read+Write -- the ownership-implies-read resolution this seam settled. Two containment refinements fold in here: (1) a `..` PATH SEGMENT escapes but a `..` substring inside a filename (foo..bar) does not -- rel_path_is_workspace_contained brackets the path with slashes and matches the `/../` segment, so it no longer false-refuses well-formed names (review 39707); (2) an invocation's declared ARGS are checked too, not just its program -- a WorkspacePath/ProducedArtifact arg reads a workspace-relative position, so an escaping arg path is a located refusal on the same envelope (review 39684), while a LiteralArg carries no path and is the fold identity."
+data build_transport_admission_note: String = "P-B enforcement decision (docs/plans/effect-namespace-grants.md 6, owned silent-ibex-417): whether a build transport may run in the replay/hermetic lane is DERIVED from its own declared structure, not a mode bit. build_transport_admissible projects each declared effect of a HostTransportDescriptor onto a NamespacePosition and runs std.effect_grant.admit_effect against the SINGLE build-envelope authority (v2.compiler.build_workspace_grant.build_workspace_grant_envelope -- consumed, never re-minted, DESIGN 3): a build that would touch anything outside that envelope is a located std.access.Deny, never silently widened (DESIGN 5). The descriptor's decisions combine only through std.access.decision_meet; this compiler profile carries no independent allow/deny fold. The named consumer is the emit-host build transport (src/v2/compiler/emit_host.emit_host_run_transport, a v1_interpreter.rs intrinsic), which runs only on std.access.Permit, with the intrinsic's existing relative-path escape guard staying as the realization-side belt derived from this same containment. The build's reads of its own workspace (emitted sources + produced intermediates) are permitted because the authority grants the workspace std.effect_grant.Read+std.effect_grant.Write -- the ownership-implies-read resolution this seam settled. Two containment refinements fold in here: (1) a `..` PATH SEGMENT escapes but a `..` substring inside a filename (foo..bar) does not -- rel_path_is_workspace_contained brackets the path with slashes and matches the `/../` segment, so it no longer false-refuses well-formed names (review 39707); (2) an invocation's declared ARGS are checked too, not just its program -- a WorkspacePath/ProducedArtifact arg reads a workspace-relative position, so an escaping arg path is a located refusal on the same envelope (review 39684), while a LiteralArg carries no path and is the fold identity."
 
 data build_transport_workspace_segment: String = "workspace"
 data build_transport_toolchain_segment: String = "toolchain"
@@ -9,7 +9,7 @@ data build_transport_closure_segment: String = "closure"
 
 data build_transport_frame: std.materialization_ladder.Frame = std.materialization_ladder.Frame {
   name: "build-transport",
-  kind: SharedStateFrame
+  kind: std.materialization_ladder.SharedStateFrame
 }
 
 data build_transport_workspace_root: std.effect_grant.NamespacePosition = std.effect_grant.NamespacePosition {
@@ -37,7 +37,7 @@ fn build_transport_envelope() -> std.effect_grant.Envelope {
 }
 
 fn rel_path_is_workspace_contained(p: v2.std.host_transport.RelPath) -> Bool {
-  !starts_with(s: p, prefix: "/") && !rel_path_has_parent_segment(p: p)
+  !starts_with(s: p, prefix: "/") && !std.filesystem_path_grant.rel_path_has_parent_segment(p: p)
 }
 
 fn build_transport_rel_position(rel: v2.std.host_transport.RelPath) -> std.effect_grant.NamespacePosition {
@@ -71,42 +71,42 @@ fn build_program_read_position(program: v2.std.host_transport.ProcessProgram) ->
 }
 
 fn build_workspace_write_admission(env: std.effect_grant.Envelope, file: v2.std.host_transport.WorkspaceFile) -> std.access.AccessDecision {
-  admit_effect(
+  std.effect_grant.admit_effect(
     env: env,
-    verb: Write,
+    verb: std.effect_grant.Write,
     target: build_transport_rel_position(rel: file.path)
   )
 }
 
 fn build_program_read_admission(env: std.effect_grant.Envelope, invocation: v2.std.host_transport.ProcessInvocation) -> std.access.AccessDecision {
-  admit_effect(
+  std.effect_grant.admit_effect(
     env: env,
-    verb: Read,
+    verb: std.effect_grant.Read,
     target: build_program_read_position(program: invocation.program)
   )
 }
 
 fn build_invocation_arg_read_admission(env: std.effect_grant.Envelope, arg: v2.std.host_transport.InvocationArg) -> std.access.AccessDecision {
   match arg {
-    LiteralArg { text: text } => Permit
+    LiteralArg { text: text } => std.access.Permit
     WorkspacePath { path: path } =>
-      admit_effect(env: env, verb: Read, target: build_transport_rel_position(rel: path))
+      std.effect_grant.admit_effect(env: env, verb: std.effect_grant.Read, target: build_transport_rel_position(rel: path))
     ProducedArtifact { path: path } =>
-      admit_effect(env: env, verb: Read, target: build_transport_rel_position(rel: path))
+      std.effect_grant.admit_effect(env: env, verb: std.effect_grant.Read, target: build_transport_rel_position(rel: path))
   }
 }
 
 fn build_invocation_args_read_admission(env: std.effect_grant.Envelope, invocation: v2.std.host_transport.ProcessInvocation) -> std.access.AccessDecision {
   fold(
     invocation.args,
-    init: Permit,
+    init: std.access.Permit,
     f: (acc, arg) =>
-      decision_meet(a: acc, b: build_invocation_arg_read_admission(env: env, arg: arg))
+      std.access.decision_meet(a: acc, b: build_invocation_arg_read_admission(env: env, arg: arg))
   )
 }
 
 fn build_invocation_admission(env: std.effect_grant.Envelope, invocation: v2.std.host_transport.ProcessInvocation) -> std.access.AccessDecision {
-  decision_meet(
+  std.access.decision_meet(
     a: build_program_read_admission(env: env, invocation: invocation),
     b: build_invocation_args_read_admission(env: env, invocation: invocation)
   )
@@ -116,19 +116,19 @@ fn build_transport_admissible(transport: v2.std.host_transport.HostTransportDesc
   let env = build_transport_envelope()
   let writes_admission = fold(
     transport.workspace,
-    init: Permit,
+    init: std.access.Permit,
     f: (acc, file) =>
-      decision_meet(a: acc, b: build_workspace_write_admission(env: env, file: file))
+      std.access.decision_meet(a: acc, b: build_workspace_write_admission(env: env, file: file))
   )
   let build_admission = fold(
     transport.build,
-    init: Permit,
+    init: std.access.Permit,
     f: (acc, invocation) =>
-      decision_meet(a: acc, b: build_invocation_admission(env: env, invocation: invocation))
+      std.access.decision_meet(a: acc, b: build_invocation_admission(env: env, invocation: invocation))
   )
   let run_admission = build_invocation_admission(env: env, invocation: transport.run)
-  decision_meet(
-    a: decision_meet(a: writes_admission, b: build_admission),
+  std.access.decision_meet(
+    a: std.access.decision_meet(a: writes_admission, b: build_admission),
     b: run_admission
   )
 }

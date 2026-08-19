@@ -23,8 +23,8 @@ fn obligation_projection(
 }
 
 fn obligation_is_wired(dependence: List<v2.std.dependency.DependencyView>, obligation: FrontierWiringObligation) -> Bool {
-  perturbation_consistent(
-    reading: BackwardDiffInDiffOut,
+  std.perturbation.perturbation_consistent(
+    reading: std.perturbation.BackwardDiffInDiffOut,
     output_responded: graph_invariant_reaches(
       projection: obligation_projection(dependence: dependence, obligation: obligation),
       target: obligation.declared_input

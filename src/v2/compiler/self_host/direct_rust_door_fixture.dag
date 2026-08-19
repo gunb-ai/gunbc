@@ -16,7 +16,7 @@ data direct_rust_door_ingest_artifact: v2.std.artifact.Artifact = v2.std.artifac
 }
 
 data direct_rust_door_ingest_read: v2.compiler.source_authority.DagSourceReadWitness = v2.compiler.source_authority.DagSourceReadWitness {
-  source: extdeps.communication.medium.Medium { carried: direct_rust_door_dag_module_source, fidelity: Lossless },
+  source: extdeps.communication.medium.Medium { carried: direct_rust_door_dag_module_source, fidelity: extdeps.communication.medium.Lossless },
   artifact: direct_rust_door_ingest_artifact,
   compilation_unit: ^direct_rust_door_add_probe_cu,
   source_root: V2Tree
@@ -31,7 +31,7 @@ fn direct_rust_door_admission() -> v2.compiler.name_resolve.Admission {
     subject: v2.compiler.name_resolve.ResolutionSubject {
       name: std.algebra.Cons { head: ^add_probe, tail: std.algebra.Empty }
     },
-    imports: Empty
+    imports: std.algebra.Empty
   }
 }
 

@@ -100,8 +100,8 @@ test fn witness_partition_perturbation_member_coverage_holds() -> Bool {
     left: stage0_single_crate_fold_outcome(),
     right: stage0_partition_receipt_outcome()
   )
-  perturbation_consistent(
-    reading: ForwardSameInSameOut,
+  std.perturbation.perturbation_consistent(
+    reading: std.perturbation.ForwardSameInSameOut,
     output_responded: !coverage_same
   )
 }
@@ -140,7 +140,7 @@ test fn witness_provenance_distinct_from_policy_derived_holds() -> Bool {
     policy: std.decl_ref.DeclarationRef {
       module_path: "v2.workflow.rust_crate_partition" as std.types.NonEmptyStr,
       decl_name: "resolve_partition" as std.types.NonEmptyStr,
-      field: WholeDeclaration,
+      field: std.decl_ref.WholeDeclaration,
     }
   )
   !partition_provenance_eq(left: explicit, right: derived)

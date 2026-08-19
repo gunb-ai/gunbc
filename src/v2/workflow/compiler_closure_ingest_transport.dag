@@ -31,14 +31,14 @@ fn run_closure_ingest_overlay_claims(
 ) -> Bool {
   let emitted = gunbc.WitnessBin.Run(
     workdir: root,
-    bin_path: witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
+    bin_path: tools.host_prelude.witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
     args: closure_manifest_emit_args(
       entry: closure_entry,
       manifest_dir: manifest_dir
     )
   )
   if emitted.success {
-    run_gunbc_claims(
+    tools.host_prelude.run_gunbc_claims(
       source_roots: concat(gunbc.ci_layer_roots.witness_layer_roots, [manifest_dir]),
       claims: claims
     )
@@ -53,14 +53,14 @@ fn run_closure_boundary_overlay_claims(
 ) -> Bool {
   let emitted = gunbc.WitnessBin.Run(
     workdir: root,
-    bin_path: witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
+    bin_path: tools.host_prelude.witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
     args: closure_manifest_emit_args(
       entry: closure_boundary_entry,
       manifest_dir: manifest_dir
     )
   )
   if emitted.success {
-    run_gunbc_claims(
+    tools.host_prelude.run_gunbc_claims(
       source_roots: concat(gunbc.ci_layer_roots.witness_layer_roots, [manifest_dir]),
       claims: [
         tools.host_prelude.ClaimRun {
@@ -75,7 +75,7 @@ fn run_closure_boundary_overlay_claims(
 }
 
 func run_compiler_closure_ingest_gate_ready(root: String) -> Bool {
-    let pre_overlay = run_gunbc_claims(
+    let pre_overlay = tools.host_prelude.run_gunbc_claims(
       source_roots: gunbc.ci_layer_roots.witness_layer_roots,
       claims: [
         tools.host_prelude.ClaimRun { entry: closure_test_entry, function: closure_witness_layer_roots },
@@ -126,8 +126,8 @@ func run_compiler_closure_ingest_gate_ready(root: String) -> Bool {
 
 func run_compiler_closure_ingest_gate() -> Bool {
   let root = git.Inspect.Toplevel()
-  let ingest_bin = witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
-  match witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
+  let ingest_bin = tools.host_prelude.witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
+  match tools.host_prelude.witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
     WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
     WitnessBinReady { path: _ } => run_compiler_closure_ingest_gate_ready(root: root.path)
   }

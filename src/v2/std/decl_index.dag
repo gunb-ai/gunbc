@@ -40,11 +40,11 @@ fn data_decl_type_facts(pool_roots: List<String>) -> List<v2.std.decl_index.Data
 }
 
 data export_signature_facts_host_scaffold_dissolution_trigger: std.disposition.Disposition = std.disposition.Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "std.interface_summary",
     decl_name: "interface_summary_v0_dissolution_trigger",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 

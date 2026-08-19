@@ -9,5 +9,5 @@ fn round_trip_ok(s: String) -> Bool {
 }
 
 test fn derive_copy_spelling_round_trips() -> Bool {
-  round_trip_ok(s: rust_decl_derive_lex_spelling(text: rust_enum_derives_copy))
+  round_trip_ok(s: rust_decl_derive_lex_spelling(text: extdeps.languages.rust.emit.rust_enum_derives_copy))
 }

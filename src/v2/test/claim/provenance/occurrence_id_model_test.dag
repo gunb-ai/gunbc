@@ -4,18 +4,18 @@ module v2.test.provenance.occurrence_id_model
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 test fn occurrence_id_allocator_mints_sequential_distinct_ids() -> Bool {
-  let alloc0 = occurrence_id_allocator_initial()
-  let r0 = alloc_occurrence_id(alloc: alloc0)
-  let r1 = alloc_occurrence_id(alloc: r0.alloc)
-  let r2 = alloc_occurrence_id(alloc: r1.alloc)
-  !occurrence_id_eq(left: r0.id, right: r1.id)
-    && !occurrence_id_eq(left: r1.id, right: r2.id)
-    && !occurrence_id_eq(left: r0.id, right: r2.id)
+  let alloc0 = std.occurrence_identity.occurrence_id_allocator_initial()
+  let r0 = std.occurrence_identity.alloc_occurrence_id(alloc: alloc0)
+  let r1 = std.occurrence_identity.alloc_occurrence_id(alloc: r0.alloc)
+  let r2 = std.occurrence_identity.alloc_occurrence_id(alloc: r1.alloc)
+  !std.occurrence_identity.occurrence_id_eq(left: r0.id, right: r1.id)
+    && !std.occurrence_identity.occurrence_id_eq(left: r1.id, right: r2.id)
+    && !std.occurrence_identity.occurrence_id_eq(left: r0.id, right: r2.id)
 }
 
 test fn span_index_from_source_round_trip_holds() -> Bool {
-  let alloc0 = occurrence_id_allocator_initial()
-  let minted = alloc_occurrence_id(alloc: alloc0)
+  let alloc0 = std.occurrence_identity.occurrence_id_allocator_initial()
+  let minted = std.occurrence_identity.alloc_occurrence_id(alloc: alloc0)
   let id = minted.id
   let locus = v2.std.diagnostic.Textual {
     file: ^occurrence_model_file,
@@ -65,9 +65,9 @@ fn span_index_merge_lookup_from_source_holds(index: v2.std.provenance.SpanIndex,
 }
 
 test fn span_index_merge_disjoint_entries_holds() -> Bool {
-  let alloc0 = occurrence_id_allocator_initial()
-  let r0 = alloc_occurrence_id(alloc: alloc0)
-  let r1 = alloc_occurrence_id(alloc: r0.alloc)
+  let alloc0 = std.occurrence_identity.occurrence_id_allocator_initial()
+  let r0 = std.occurrence_identity.alloc_occurrence_id(alloc: alloc0)
+  let r1 = std.occurrence_identity.alloc_occurrence_id(alloc: r0.alloc)
   let locus0 = v2.std.diagnostic.Textual {
     file: ^occurrence_model_file,
     extent: v2.std.diagnostic.ByteRange { start: 0, end: 4 }
@@ -92,9 +92,9 @@ test fn span_index_merge_disjoint_entries_holds() -> Bool {
 }
 
 test fn span_index_resolve_derived_chain_holds() -> Bool {
-  let alloc0 = occurrence_id_allocator_initial()
-  let r0 = alloc_occurrence_id(alloc: alloc0)
-  let r1 = alloc_occurrence_id(alloc: r0.alloc)
+  let alloc0 = std.occurrence_identity.occurrence_id_allocator_initial()
+  let r0 = std.occurrence_identity.alloc_occurrence_id(alloc: alloc0)
+  let r1 = std.occurrence_identity.alloc_occurrence_id(alloc: r0.alloc)
   let locus0 = v2.std.diagnostic.Textual {
     file: ^occurrence_model_file,
     extent: v2.std.diagnostic.ByteRange { start: 0, end: 12 }
@@ -121,9 +121,9 @@ test fn span_index_resolve_derived_chain_holds() -> Bool {
 }
 
 test fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
-  let alloc0 = occurrence_id_allocator_initial()
-  let m0 = alloc_occurrence_id(alloc: alloc0)
-  let m1 = alloc_occurrence_id(alloc: m0.alloc)
+  let alloc0 = std.occurrence_identity.occurrence_id_allocator_initial()
+  let m0 = std.occurrence_identity.alloc_occurrence_id(alloc: alloc0)
+  let m1 = std.occurrence_identity.alloc_occurrence_id(alloc: m0.alloc)
   let child = node_synthetic(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^occurrence_eq_child } },
     children: []
@@ -138,15 +138,15 @@ test fn occurrence_id_root_mint_excluded_from_structural_equality() -> Bool {
     children: [v2.std.node.Edge { label: Positional, target: child }],
     occurrence_id: node_occurrence_minted(id: m1.id)
   )
-  !occurrence_id_eq(left: m0.id, right: m1.id)
+  !std.occurrence_identity.occurrence_id_eq(left: m0.id, right: m1.id)
     && !(left == right)
     && exact_structural_equality_zip_fold(source_facts: left, candidate: right)
 }
 
 test fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
-  let alloc0 = occurrence_id_allocator_initial()
-  let m0 = alloc_occurrence_id(alloc: alloc0)
-  let m1 = alloc_occurrence_id(alloc: m0.alloc)
+  let alloc0 = std.occurrence_identity.occurrence_id_allocator_initial()
+  let m0 = std.occurrence_identity.alloc_occurrence_id(alloc: alloc0)
+  let m1 = std.occurrence_identity.alloc_occurrence_id(alloc: m0.alloc)
   let child_left = node_with_occurrence_id(
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^occurrence_eq_child } },
     children: [],
@@ -165,7 +165,7 @@ test fn occurrence_id_nested_mint_excluded_from_structural_equality() -> Bool {
     kind: v2.std.node.TypeNode { connective: Conj },
     children: [v2.std.node.Edge { label: Positional, target: child_right }]
   )
-  !occurrence_id_eq(left: m0.id, right: m1.id)
+  !std.occurrence_identity.occurrence_id_eq(left: m0.id, right: m1.id)
     && !(left == right)
     && exact_structural_equality_zip_fold(source_facts: left, candidate: right)
     && !(node_for_structural_equality(n: left) == node_for_structural_equality(n: right))

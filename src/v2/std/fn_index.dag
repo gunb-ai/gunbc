@@ -14,11 +14,11 @@ type FnArrowDecl {
 }
 
 data fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger: std.disposition.Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.std.fn_index",
     decl_name: "fn_arrow_decl_facts_live",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 

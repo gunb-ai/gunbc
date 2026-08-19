@@ -157,7 +157,7 @@ test fn resolve_duplicate_module_roots_is_rejected() -> Bool {
       subject: v2.compiler.name_resolve.ResolutionSubject {
         name: fc_qn(seg: ^fc_dup_seg)
       },
-      imports: Empty
+      imports: std.algebra.Empty
     }
   ) {
     Accepted { value: _, diagnostics: _ } => false
@@ -175,7 +175,7 @@ test fn resolve_subject_name_not_in_roots_is_rejected() -> Bool {
       subject: v2.compiler.name_resolve.ResolutionSubject {
         name: fc_qn(seg: ^fc_missing_seg)
       },
-      imports: Empty
+      imports: std.algebra.Empty
     }
   ) {
     Accepted { value: _, diagnostics: _ } => false
@@ -221,7 +221,7 @@ test fn resolve_malformed_subject_root_is_rejected() -> Bool {
       subject: v2.compiler.name_resolve.ResolutionSubject {
         name: fc_qn(seg: ^fc_malformed_seg)
       },
-      imports: Empty
+      imports: std.algebra.Empty
     }
   ) {
     Accepted { value: _, diagnostics: _ } => false

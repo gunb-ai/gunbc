@@ -1687,7 +1687,7 @@ fn target_semantic_decl_surface_generic_params(params: List<v2.std.node.Symbol>)
 
 data target_semantic_decl_shape_predicate_dissolution_note: String = "DISSOLVED 2026-07-24 (silent-badger-23): nullary/payload coproduct variant walk consolidated onto v2.std.compilers.coproduct_variant_shape (single authority)."
 
-data target_semantic_decl_shape_predicate_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "Remaining dissolve-on: decoration rules key on typed surface facts from the bundle authority, not ad-hoc Conj-child heuristics at call sites.")
+data target_semantic_decl_shape_predicate_dissolve_on: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "Remaining dissolve-on: decoration rules key on typed surface facts from the bundle authority, not ad-hoc Conj-child heuristics at call sites.")
 
 fn semantic_decl_coproduct_shape_key_unsupported_connective_diagnostic(
   coproduct: v2.std.node.Node

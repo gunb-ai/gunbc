@@ -42,11 +42,11 @@ func run_module_binding_supply_gate_ready(root: String) -> Bool {
     if overlay.success {
       let emitted = gunbc.WitnessBin.Run(
         workdir: root,
-        bin_path: witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
+        bin_path: tools.host_prelude.witness_bin_release_path(root: root, bin_name: "discover_source_root_ingest"),
         args: mbs_emit_args(overlay_dir: overlay.path)
       )
       let ran = if emitted.success {
-        run_gunbc_claims(
+        tools.host_prelude.run_gunbc_claims(
           source_roots: mbs_claim_source_roots(overlay_dir: overlay.path),
           claims: [
             tools.host_prelude.ClaimRun { entry: mbs_entry, function: "module_binding_host_manifest_is_populated" },
@@ -70,8 +70,8 @@ func run_module_binding_supply_gate_ready(root: String) -> Bool {
 
 func run_module_binding_supply_gate() -> Bool {
   let root = git.Inspect.Toplevel()
-  let ingest_bin = witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
-  match witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
+  let ingest_bin = tools.host_prelude.witness_bin(var_name: "DISCOVER_SOURCE_ROOT_INGEST", bin_name: "discover_source_root_ingest")
+  match tools.host_prelude.witness_bin_ensure_built_typed(root: root.path, bin: ingest_bin) {
     WitnessBinRefused { bin_name: _, path: _, reason: _ } => false
     WitnessBinReady { path: _ } => run_module_binding_supply_gate_ready(root: root.path)
   }

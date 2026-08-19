@@ -1,7 +1,7 @@
 module v2.lens.affected_set.corpus_dependency_view
 
 
-data corpus_dependency_view_resolve_budget: std.measure.Minute = minute(count: 90)
+data corpus_dependency_view_resolve_budget: std.measure.Minute = std.measure.minute(count: 90)
 
 type CorpusDependencyViewResolvePhaseMark {
   frontend_done: std.measure.Millisecond
@@ -25,23 +25,23 @@ type CorpusDependencyViewMeasurementVerdict
     }
 
 data corpus_dependency_view_measurement_receipt: CorpusDependencyViewMeasurementVerdict = WallPricedAbort {
-  aborted_wall: millisecond(count: 3220703),
+  aborted_wall: std.measure.millisecond(count: 3220703),
   budget: corpus_dependency_view_resolve_budget,
   phase_marks: CorpusDependencyViewResolvePhaseMark {
-    frontend_done: millisecond(count: 4104),
-    normalize_done: millisecond(count: 4677),
-    reconcile_done: millisecond(count: 0),
-    view_build_done: millisecond(count: 0)
+    frontend_done: std.measure.millisecond(count: 4104),
+    normalize_done: std.measure.millisecond(count: 4677),
+    reconcile_done: std.measure.millisecond(count: 0),
+    view_build_done: std.measure.millisecond(count: 0)
   },
   last_phase: "post_normalize_stuck_in_reconcile"
 }
 
 data corpus_dependency_view_per_pr_execution_gate: std.disposition.Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.lens.affected_set.corpus_dependency_view",
     decl_name: "corpus_dependency_views_live",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 

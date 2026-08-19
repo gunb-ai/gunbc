@@ -12,7 +12,7 @@ data frontier_probe_cause_location_emitted_receipt: v2.compiler.self_host.fronti
   assemble_detail: v2.compiler.self_host.frontier_probe_types.AssembleRejectionDetail {
   rejection_chain: v2.compiler.self_host.frontier_probe_types.NonEmptySymbolChain {
   head: ^tokenize_lex_e1_unrecognized_char,
-  tail: Empty
+  tail: std.algebra.Empty
 },
   cause: v2.compiler.self_host.frontier_probe_types.OtherAssembleRefusal { reason: ^tokenize_lex_e1_unrecognized_char },
   at: v2.compiler.self_host.frontier_probe_types.CauseLocationTextual { file: "dag/std/algebra.dag", extent: v2.std.diagnostic.ByteRange { start: 28138, end: 28138 } }

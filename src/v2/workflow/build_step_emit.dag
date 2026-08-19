@@ -5,7 +5,7 @@ data build_step_emit_authority_note: String = "Build-artifact verification shell
 
 fn verifications_script(produces: List<tools.build_step.BuildArtifact>) -> Outcome<String> {
   bash_fold_serialize_program(
-    stmts: emit_verifications(produces: produces),
+    stmts: tools.build_step.emit_verifications(produces: produces),
     set_e: false
   )
 }
