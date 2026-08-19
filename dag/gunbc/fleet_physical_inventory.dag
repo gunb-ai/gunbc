@@ -30,6 +30,25 @@ import extdeps.cooling.dynatron { dynatron_w1_catalog }
 import extdeps.cpu.ampere { altra_max_m12830_catalog }
 import gunbc.fleet_intent { srv3_baseboard, srv4_baseboard }
 import product.cooling_qualification { InstalledCoolingRealization }
+import gunbc.fleet_intent {
+  srv1_memory_population,
+  srv2_memory_population,
+  srv3_memory_population,
+}
+import extdeps.memory.sk_hynix { hma82gr7afr4n_vk_catalog }
+import product.installed_bom_reconcile {
+  DimmObservationAbsent,
+  DimmPopulationObserved,
+  DimmReconcileVerdict,
+  HostDimmExpectation,
+  HostDimmObservation,
+  HostProcessorExpectation,
+  HostProcessorObservation,
+  ProcessorObservationAbsent,
+  ProcessorReconcileVerdict,
+  dimm_reconcile_verdict,
+  processor_reconcile_verdict,
+}
 
 // SPATIAL-0 owned inventory bindings: extdeps rows cite vendor facts; this module binds allocated
 // PhysicalAssetIdentity and HostIdentity instances to catalog declarations and rack residence.
@@ -237,3 +256,111 @@ fn fleet_nominal_rackmount_arithmetic_holds() -> Bool {
   )
   declared == nominal_rackmount_units_declared && rack_01_catalog_units == navepoint_18u_open_frame_catalog.rack_units
 }
+
+// ---------------------------------------------------------------------------
+// INSTALLED DIMM AND PROCESSOR BILLS OF MATERIALS: what is expected, what has
+// actually been observed, and the refusal between them.
+//
+// The expectation below is the operator's stated belief that all four hosts
+// carry an eight-stick population of the SK Hynix part already cited in
+// extdeps.memory.sk_hynix. It is authored as an expectation and nothing else:
+// no PhysicalAsset row binds an installed DIMM here, because binding an asset
+// would assert that somebody read a part number off a slot, and for the
+// per-slot grain nobody has.
+//
+// THE EXPECTATION IS ALREADY REFUTED ON ONE HOST, and that is the mechanism
+// working rather than an authoring error. srv1 and srv2 confirm it against
+// their 2026-07-16 BMC Redfish populations; srv3's population from the same
+// read is seven HMA82GR7AFR8N-VK plus one HMA82GR7AFR4N-VK, so the uniform
+// expectation reaches DimmPopulationRefused with the exact part difference
+// named. The rows stay as authored rather than being quietly edited to match
+// srv3, because an expectation rewritten to fit the observation records
+// nothing and would have made this divergence invisible.
+// ---------------------------------------------------------------------------
+
+data fleet_dimm_expectations: List<HostDimmExpectation> = [
+  HostDimmExpectation { host: host_srv1, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+  HostDimmExpectation { host: host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+  HostDimmExpectation { host: host_srv3, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+  HostDimmExpectation { host: host_srv4, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+]
+
+data srv1_dimm_observation: HostDimmObservation = DimmPopulationObserved {
+  host: host_srv1,
+  rows: srv1_memory_population.rows,
+}
+
+data srv2_dimm_observation: HostDimmObservation = DimmPopulationObserved {
+  host: host_srv2,
+  rows: srv2_memory_population.rows,
+}
+
+data srv3_dimm_observation: HostDimmObservation = DimmPopulationObserved {
+  host: host_srv3,
+  rows: srv3_memory_population.rows,
+}
+
+data srv4_dimm_observation: HostDimmObservation = DimmObservationAbsent {
+  host: host_srv4,
+  cause: "no per-DIMM read of srv4 exists at either grain: the BMC Redfish read of 192.168.1.195 was never authenticated (gunbc.fleet_intent srv4_memory_population_deferral) and no dmidecode receipt has been supplied",
+}
+
+data fleet_dimm_verdicts: List<DimmReconcileVerdict> = [
+  dimm_reconcile_verdict(
+    expectation: HostDimmExpectation { host: host_srv1, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    observation: srv1_dimm_observation,
+  ),
+  dimm_reconcile_verdict(
+    expectation: HostDimmExpectation { host: host_srv2, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    observation: srv2_dimm_observation,
+  ),
+  dimm_reconcile_verdict(
+    expectation: HostDimmExpectation { host: host_srv3, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    observation: srv3_dimm_observation,
+  ),
+  dimm_reconcile_verdict(
+    expectation: HostDimmExpectation { host: host_srv4, catalog: hma82gr7afr4n_vk_catalog, stick_count: 8 },
+    observation: srv4_dimm_observation,
+  ),
+]
+
+// THE PROCESSOR HALF IS UNOBSERVED ON EVERY HOST. gunbc.fleet_intent's
+// fleet_intent_cpu already cites altra_max_m12830_catalog as the fleet
+// processor, and every other in-tree consumer agrees with it, but that is a
+// modeled intent rather than a per-host reading of what is in the socket. The
+// four rows below say so, and they are what a dmidecode -t processor receipt
+// dissolves.
+data fleet_processor_expectations: List<HostProcessorExpectation> = [
+  HostProcessorExpectation { host: host_srv1, catalog: altra_max_m12830_catalog },
+  HostProcessorExpectation { host: host_srv2, catalog: altra_max_m12830_catalog },
+  HostProcessorExpectation { host: host_srv3, catalog: altra_max_m12830_catalog },
+  HostProcessorExpectation { host: host_srv4, catalog: altra_max_m12830_catalog },
+]
+
+data fleet_processor_observation_absent_cause: NonEmptyStr = "no per-host processor reading exists: the fleet processor is modeled intent (gunbc.fleet_intent fleet_intent_cpu) and no dmidecode -t processor receipt has been supplied"
+
+data fleet_processor_observations: List<HostProcessorObservation> = [
+  ProcessorObservationAbsent { host: host_srv1, cause: fleet_processor_observation_absent_cause },
+  ProcessorObservationAbsent { host: host_srv2, cause: fleet_processor_observation_absent_cause },
+  ProcessorObservationAbsent { host: host_srv3, cause: fleet_processor_observation_absent_cause },
+  ProcessorObservationAbsent { host: host_srv4, cause: fleet_processor_observation_absent_cause },
+]
+
+data fleet_processor_verdicts: List<ProcessorReconcileVerdict> = [
+  processor_reconcile_verdict(
+    expectation: HostProcessorExpectation { host: host_srv1, catalog: altra_max_m12830_catalog },
+    observation: ProcessorObservationAbsent { host: host_srv1, cause: fleet_processor_observation_absent_cause },
+  ),
+  processor_reconcile_verdict(
+    expectation: HostProcessorExpectation { host: host_srv2, catalog: altra_max_m12830_catalog },
+    observation: ProcessorObservationAbsent { host: host_srv2, cause: fleet_processor_observation_absent_cause },
+  ),
+  processor_reconcile_verdict(
+    expectation: HostProcessorExpectation { host: host_srv3, catalog: altra_max_m12830_catalog },
+    observation: ProcessorObservationAbsent { host: host_srv3, cause: fleet_processor_observation_absent_cause },
+  ),
+  processor_reconcile_verdict(
+    expectation: HostProcessorExpectation { host: host_srv4, catalog: altra_max_m12830_catalog },
+    observation: ProcessorObservationAbsent { host: host_srv4, cause: fleet_processor_observation_absent_cause },
+  ),
+]
