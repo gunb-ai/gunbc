@@ -1216,9 +1216,158 @@ struct PureCallMemo {
     keepalive_fns: Vec<Rc<Node>>,
 }
 
+/// `Symbol`-free mirror of `Value`, used as the cross-claim memo's storage shape.
+///
+/// A `Symbol` is an index into ONE `InterpContext`'s `SymbolInterner` (`v1_interpreter.rs`
+/// `resolve_sym`) — it carries no meaning outside that instance. Required-floor builds a
+/// FRESH `InterpContext` (fresh, empty interner) per claim by design (`cli_run.rs`
+/// `evaluation_frame`, "FRESH PER CLAIM"), while this memo's whole point is to survive
+/// across claims for the life of one prepared-subject run (`clear_cross_claim_pure_memos`
+/// is called once per `register_floor_prepared_authority`/`clear_floor_prepared_authority`,
+/// not per claim). Caching a raw `Value` there let a `Symbol` minted by claim N's interner
+/// be handed, unresolved-index-and-all, to claim N+1's unrelated interner: matching against
+/// it either missed every arm or hit the wrong one, and the `PatternMatchFailure`'s Display
+/// then resolved the stale index against claim N+1's interner and printed `<invalid-symbol>`
+/// (gunbc#8505; the 33 `body_lowering_*` floor-only rows in `floor_expected_red` chunk_14).
+/// Per-entry `claim_batch` never hit this because it keeps one interner live across the
+/// claims of an entry, so a memoized value's symbols stayed valid for every consumer.
+///
+/// The fix is the boundary translation the Realization pattern (DESIGN.md §4) already
+/// prescribes: de-symbolize to `PortableValue` (raw strings) at store time, while the
+/// producing ctx is still alive, and re-intern into the CONSUMING ctx's own interner at
+/// load time. `Closure`/`Fn` are not portable this way (their `Env` chain isn't a content
+/// snapshot) and are refused rather than guessed at — `prepare_grammar` never returns them.
+#[derive(Debug, Clone)]
+enum PortableValue {
+    Null,
+    Unit,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    Str(Rc<str>),
+    List(Vec<PortableValue>),
+    Map(Vec<(PortableValue, PortableValue)>),
+    Set(Rc<OrdSet<String>>),
+    Record {
+        type_name: String,
+        fields: Vec<(String, PortableValue)>,
+    },
+    Variant {
+        type_name: String,
+        variant_name: String,
+        fields: Vec<(String, PortableValue)>,
+    },
+}
+
+fn portable_value_from_ctx(ctx: &InterpContext, value: &Value) -> Option<PortableValue> {
+    Some(match value {
+        Value::Null => PortableValue::Null,
+        Value::Unit => PortableValue::Unit,
+        Value::Bool(b) => PortableValue::Bool(*b),
+        Value::Int(i) => PortableValue::Int(*i),
+        Value::Float(f) => PortableValue::Float(*f),
+        Value::Str(s) => PortableValue::Str(s.clone()),
+        Value::List(items) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items.iter() {
+                out.push(portable_value_from_ctx(ctx, item)?);
+            }
+            PortableValue::List(out)
+        }
+        Value::Map(m) => {
+            let mut out = Vec::with_capacity(m.len());
+            for (k, v) in m.iter() {
+                out.push((
+                    portable_value_from_ctx(ctx, &k.key)?,
+                    portable_value_from_ctx(ctx, v)?,
+                ));
+            }
+            PortableValue::Map(out)
+        }
+        Value::Set(members) => PortableValue::Set(members.clone()),
+        Value::Record { type_name, fields } => {
+            let mut out = Vec::with_capacity(fields.len());
+            for (k, v) in fields.iter() {
+                out.push((ctx.resolve(*k), portable_value_from_ctx(ctx, v)?));
+            }
+            PortableValue::Record {
+                type_name: ctx.resolve(*type_name),
+                fields: out,
+            }
+        }
+        Value::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => {
+            let mut out = Vec::with_capacity(fields.len());
+            for (k, v) in fields.iter() {
+                out.push((ctx.resolve(*k), portable_value_from_ctx(ctx, v)?));
+            }
+            PortableValue::Variant {
+                type_name: ctx.resolve(*type_name),
+                variant_name: ctx.resolve(*variant_name),
+                fields: out,
+            }
+        }
+        Value::Closure { .. } | Value::Fn { .. } => return None,
+    })
+}
+
+fn value_from_portable_ctx(ctx: &InterpContext, portable: &PortableValue) -> Value {
+    match portable {
+        PortableValue::Null => Value::Null,
+        PortableValue::Unit => Value::Unit,
+        PortableValue::Bool(b) => Value::Bool(*b),
+        PortableValue::Int(i) => Value::Int(*i),
+        PortableValue::Float(f) => Value::Float(*f),
+        PortableValue::Str(s) => Value::Str(s.clone()),
+        PortableValue::List(items) => list_value(
+            items
+                .iter()
+                .map(|p| value_from_portable_ctx(ctx, p))
+                .collect::<Vec<_>>(),
+        ),
+        PortableValue::Map(entries) => {
+            let fields: HamtMap<CanonKey, Value> = entries
+                .iter()
+                .filter_map(|(k, v)| {
+                    CanonKey::new(value_from_portable_ctx(ctx, k))
+                        .map(|ck| (ck, value_from_portable_ctx(ctx, v)))
+                })
+                .collect();
+            map_value(fields)
+        }
+        PortableValue::Set(members) => Value::Set(members.clone()),
+        PortableValue::Record { type_name, fields } => Value::Record {
+            type_name: ctx.sym(type_name),
+            fields: Rc::new(
+                fields
+                    .iter()
+                    .map(|(k, v)| (ctx.sym(k), value_from_portable_ctx(ctx, v)))
+                    .collect(),
+            ),
+        },
+        PortableValue::Variant {
+            type_name,
+            variant_name,
+            fields,
+        } => Value::Variant {
+            type_name: ctx.sym(type_name),
+            variant_name: ctx.sym(variant_name),
+            fields: Rc::new(
+                fields
+                    .iter()
+                    .map(|(k, v)| (ctx.sym(k), value_from_portable_ctx(ctx, v)))
+                    .collect(),
+            ),
+        },
+    }
+}
+
 #[derive(Default)]
 struct PrepareGrammarCrossClaimMemo {
-    map: HashMap<(usize, u64), Value>,
+    map: HashMap<(usize, u64), PortableValue>,
 }
 
 thread_local! {
@@ -1263,7 +1412,9 @@ fn try_cross_claim_pure_memo(
             _ => return None,
         };
         let memo_key = (Rc::as_ptr(fn_node) as usize, content_hash);
-        return PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| m.borrow().map.get(&memo_key).cloned());
+        let portable =
+            PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| m.borrow().map.get(&memo_key).cloned())?;
+        return Some(value_from_portable_ctx(ctx, &portable));
     }
     None
 }
@@ -1279,13 +1430,109 @@ fn store_cross_claim_pure_memo(
         let mut hash_memo = ctx.eval_recompute_hash_memo.borrow_mut();
         if let Some(key) = eval_recompute_arg_key(&mut hash_memo, &args[0].1) {
             if let EvalRecomputeArgKey::ContentHash(h) = key {
-                keep_cross_claim_fn(fn_node);
-                PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| {
-                    m.borrow_mut()
-                        .map
-                        .insert((Rc::as_ptr(fn_node) as usize, h), result.clone())
-                });
+                if let Some(portable) = portable_value_from_ctx(ctx, result) {
+                    keep_cross_claim_fn(fn_node);
+                    PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| {
+                        m.borrow_mut()
+                            .map
+                            .insert((Rc::as_ptr(fn_node) as usize, h), portable)
+                    });
+                }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod cross_claim_memo_tests {
+    use std::rc::Rc;
+
+    use im::{vector as im_vec, HashMap};
+
+    use crate::v1_compiler_infer_emit_info::empty_emit_graph_info;
+    use crate::v1_compiler_infer_items::ResolvedGraph;
+    use crate::v1_std_core::{make_expr_node, make_span, ExprData};
+
+    use super::{
+        list_value, store_cross_claim_pure_memo, try_cross_claim_pure_memo, ExecutionMode,
+        InterpContext, Value,
+    };
+
+    fn fresh_ctx() -> InterpContext {
+        let graph = ResolvedGraph {
+            modules: Rc::new(im_vec![]),
+            item_registry: Rc::new(HashMap::new()),
+            diagnostics: Rc::new(im_vec![]),
+            emit_graph_info: empty_emit_graph_info(),
+        };
+        InterpContext::new(&graph, Rc::new(HashMap::new()), ExecutionMode::Hermetic)
+    }
+
+    // Regression for gunbc#8505: the cross-claim `prepare_grammar` memo cached a raw
+    // `Value` (its `Symbol`s indexing into the PRODUCING ctx's interner) keyed only on
+    // fn-node identity + content hash, with no scope tied to which `InterpContext`
+    // consumes it. Required-floor builds a fresh ctx (fresh, empty interner) per claim,
+    // so a value stored under `ctx_a` and served unmodified to `ctx_b` resolved its
+    // `Symbol`s against the wrong interner. This test would have failed under the old
+    // (pre-`PortableValue`) code: `ctx_b`'s decoy vocabulary is interned in a different
+    // order than `ctx_a`'s, so a leaked raw `Symbol` index resolves to the WRONG name
+    // (or is out of bounds) in `ctx_b`, rather than merely happening to still work.
+    #[test]
+    fn cross_claim_memo_survives_a_fresh_consuming_context() {
+        let ctx_a = fresh_ctx();
+        // Decoy vocabulary interned into ctx_a BEFORE the memoized value's symbols, so
+        // "PreparedModeledGrammar"/"GrammarFirstAnalysis"/"stage" do not land at index 0.
+        let _ = ctx_a.sym("alpha_decoy_a");
+        let _ = ctx_a.sym("beta_decoy_a");
+
+        let ctx_b = fresh_ctx();
+        // A DIFFERENT decoy vocabulary, interned in a different order, so any symbol
+        // index that leaked unresolved from ctx_a would resolve to a different (or
+        // out-of-bounds) name under ctx_b rather than accidentally lining up.
+        let _ = ctx_b.sym("zzz_decoy_b_one");
+        let _ = ctx_b.sym("zzz_decoy_b_two");
+        let _ = ctx_b.sym("zzz_decoy_b_three");
+
+        let fn_node = make_expr_node(
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            make_span(0, 0),
+        );
+
+        // A non-empty List argument routes through `EvalRecomputeArgKey::ContentHash`
+        // (a bare `Value::Str` would take the `StrHash` arm instead and never reach the
+        // cross-claim memo at all).
+        let arg = list_value(vec![Value::Int(42)]);
+        let args = [(None, arg)];
+
+        let result = Value::Variant {
+            type_name: ctx_a.sym("PreparedModeledGrammar"),
+            variant_name: ctx_a.sym("GrammarFirstAnalysis"),
+            fields: Rc::new(vec![(ctx_a.sym("stage"), Value::Str(Rc::from("first")))]),
+        };
+
+        store_cross_claim_pure_memo(&ctx_a, &fn_node, "prepare_grammar", &args, &result);
+
+        let loaded = try_cross_claim_pure_memo(&ctx_b, &fn_node, "prepare_grammar", &args)
+            .expect("cross-claim memo hit for the same fn identity + content hash");
+
+        match loaded {
+            Value::Variant {
+                type_name,
+                variant_name,
+                fields,
+            } => {
+                assert_eq!(ctx_b.resolve(type_name), "PreparedModeledGrammar");
+                assert_eq!(ctx_b.resolve(variant_name), "GrammarFirstAnalysis");
+                assert_eq!(fields.len(), 1);
+                assert_eq!(ctx_b.resolve(fields[0].0), "stage");
+                match &fields[0].1 {
+                    Value::Str(s) => assert_eq!(s.as_ref(), "first"),
+                    other => panic!("expected Str field, got {other:?}"),
+                }
+            }
+            other => panic!("expected Variant, got {other:?}"),
         }
     }
 }
