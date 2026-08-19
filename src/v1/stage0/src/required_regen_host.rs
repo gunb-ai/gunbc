@@ -207,6 +207,15 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
     for file in result.files.iter() {
         out.insert(file.path.clone(), file.content.clone());
     }
+    if std::env::var("GUNBC_DEBUG_VERSION_EMIT").is_ok() {
+        for (path, content) in out.iter() {
+            if content.starts_with("[package]") {
+                eprintln!("=== DEBUG culprit path={path} len={} ===", content.len());
+                eprintln!("{content}");
+                eprintln!("=== END DEBUG ===");
+            }
+        }
+    }
     Ok(out)
 }
 
