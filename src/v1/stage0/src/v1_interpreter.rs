@@ -117,6 +117,14 @@ impl SymbolInterner {
             .unwrap_or("<invalid-symbol>")
     }
 
+    // Read-only counterpart to `intern`: looks up a string already interned
+    // without requiring a mutable borrow. Used where a caller may be
+    // reentered while an immutable borrow of this interner is held elsewhere
+    // on the stack (see `free_monoid_ctx_syms`).
+    pub fn get(&self, s: &str) -> Option<Symbol> {
+        self.index.get(s).map(|&id| Symbol(id))
+    }
+
     fn heap_bytes(&self) -> u64 {
         let mut bytes = (self.strings.len() * std::mem::size_of::<String>()) as u64;
         for s in &self.strings {
@@ -1653,6 +1661,45 @@ mod cross_claim_memo_tests {
             loaded.is_none(),
             "field-name ordinal collision (alpha vs beta both at ordinal 1) aliased across contexts"
         );
+    }
+
+    // Regression for the `RefCell already borrowed` panic surfaced by CI on
+    // gunbc#8565 (dashboard adhoc-e78c4260-d3a): `eval_recompute_value_hash` hashes a
+    // `Value::Map` arg by hashing each `CanonKey`, and `CanonKey::hash` calls
+    // `value_hash`, which for a String/List/Variant key calls `free_monoid_to_vec`.
+    // `free_monoid_to_vec` used to intern its well-known Cons/Empty/head/tail
+    // symbols via `ctx.sym()` (a MUTABLE borrow of `ctx.symbols`), while the memo-key
+    // computation above it holds an IMMUTABLE `ctx.symbols.borrow()` for the whole
+    // traversal -- a same-thread `RefCell` double-borrow that panics rather than
+    // erroring. This requires `active_ctx()` to resolve to the SAME ctx whose
+    // `symbols` is borrowed, so the call is wrapped in `with_active_context` (as
+    // production evaluation always is) rather than left ambient-free.
+    #[test]
+    fn cross_claim_memo_key_hashes_a_map_arg_with_string_keys_without_panicking() {
+        let ctx = fresh_ctx();
+        let fn_node = make_expr_node(
+            Rc::new(ExprData::NoExprData),
+            Rc::new(im_vec![]),
+            None,
+            make_span(0, 0),
+        );
+        let result = Value::Str(Rc::from("ok"));
+
+        super::with_active_context(&ctx, || {
+            let mut entries: HashMap<super::CanonKey, Value> = HashMap::new();
+            let key =
+                super::CanonKey::new(Value::Str(Rc::from("a"))).expect("Str is a valid map key");
+            entries.insert(key, Value::Int(1));
+            let args = [(None, super::map_value(entries))];
+
+            store_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args, &result);
+            let loaded = try_cross_claim_pure_memo(&ctx, &fn_node, "prepare_grammar", &args)
+                .expect("cross-claim memo hit for the same fn identity + content hash");
+            match loaded {
+                Value::Str(s) => assert_eq!(s.as_ref(), "ok"),
+                other => panic!("expected Str, got {other:?}"),
+            }
+        });
     }
 }
 
@@ -14293,18 +14340,39 @@ mod native_len_tests {
 }
 
 #[track_caller]
+// `free_monoid_to_vec` reaches for the ambient `active_ctx()` to intern the
+// well-known Cons/Empty/head/tail symbols. It is called (transitively, via
+// `value_hash`/`CanonKey::hash`, for a Map key that is itself a free-monoid
+// value) from `eval_recompute_value_hash` while that computation holds an
+// immutable `ctx.symbols.borrow()` for its own symbol resolution -- so the
+// mutable `ctx.sym()` intern below would double-borrow and panic. Since a
+// value that could actually be a free-monoid encoding must already carry
+// interned Cons/Empty/head/tail symbols (they're baked into its `Variant`
+// fields), a read-only lookup is sufficient whenever the mutable path is
+// unavailable; failing that lookup means this isn't a free-monoid value.
+fn free_monoid_ctx_syms(ctx: &InterpContext) -> Option<(Symbol, Symbol, Symbol, Symbol)> {
+    if let Ok(mut symbols) = ctx.symbols.try_borrow_mut() {
+        return Some((
+            symbols.intern("Empty"),
+            symbols.intern("Cons"),
+            symbols.intern("head"),
+            symbols.intern("tail"),
+        ));
+    }
+    let symbols = ctx.symbols.try_borrow().ok()?;
+    Some((
+        symbols.get("Empty")?,
+        symbols.get("Cons")?,
+        symbols.get("head")?,
+        symbols.get("tail")?,
+    ))
+}
+
 pub(crate) fn free_monoid_to_vec(val: &Value) -> Option<Vec<Value>> {
     let site = std::panic::Location::caller();
     let mut out = Vec::new();
     let mut cur = val.clone();
-    let monoid_syms = active_ctx().map(|ctx| {
-        (
-            ctx.sym("Empty"),
-            ctx.sym("Cons"),
-            ctx.sym("head"),
-            ctx.sym("tail"),
-        )
-    });
+    let monoid_syms = active_ctx().and_then(free_monoid_ctx_syms);
     loop {
         match &cur {
             Value::List(items) => {
