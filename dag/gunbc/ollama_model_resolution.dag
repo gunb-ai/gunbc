@@ -91,6 +91,16 @@ fn gpt_oss_20b_resolution() -> TrackedReferenceResolution<OllamaModelRef, Ollama
 // is fully determined before any network contact, so what actually gets fetched is checkable against
 // this file rather than against whatever the registry answered.
 //
+// FETCHABILITY MEASURED, 2026-08-19, because a frozen closure whose entries cannot be retrieved is a
+// plan that fails at execution rather than at review. Each blob was requested by digest from
+// registry.ollama.ai and the response hashed: the config (489 B), template (7240 B), license
+// (11353 B) and params (18 B) blobs were fetched in full and each hashed EXACTLY to the digest
+// requested. The model layer was not downloaded in full -- it is 13.8 GB and this measurement is not
+// worth that transfer -- but its endpoint answers 200 with content-length 13793422144, which is the
+// size the manifest declares for it to the byte, and a range request against it returns 206. So four
+// of five are verified by content and the fifth by size and reachability, which is stated here
+// rather than rounded up to "verified".
+//
 // EVERY ENTRY IS A DIGEST, and that is the half of the store that IS content-addressed: the registry
 // serves /v2/library/gpt-oss/blobs/sha256:<hex> and the bytes it returns either hash to <hex> or the
 // fetch refused. Measured 2026-08-19: the config blob and four layers, taken from the same manifest
