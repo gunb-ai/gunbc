@@ -1,0 +1,40 @@
+module v2.compiler.inferred_tree
+
+import v2.std.cardinality { TerminationProof }
+import v2.std.collection { Map }
+import v2.std.constraints { CanonicalGrounding }
+import v2.std.node { Node }
+import v2.std.witness { Witness }
+
+// InferredFacts/InferredTree/InferredFactsEntry are the SHAPE infer's pass
+// produces and consumers hold -- not the pass itself. They lived inside
+// v2.compiler.infer (the 04_infer.dag fold implementation), which imports
+// v2.compiler.resolve for its own logic; any consumer that wanted only these
+// record shapes (to hand-construct a fixture InferredTree, never calling an
+// infer-stage fold) inherited that resolve coupling for free, inflating its
+// import closure past what it actually uses -- exactly the module-grain
+// type-vs-fold conflation witness_cost_locality_precision_frontier names as
+// a known LayerDepth false-positive source (src/v2/lens/witness_cost_locality.dag).
+// Split out per the v2.compiler.normalized_tree precedent (03_resolve.dag's
+// pass is v2.compiler.resolve; ResolvedTree's own shape carrier is separate).
+// v2.compiler.infer imports these back; this is a relocation of one
+// authority, never a second declaration of it (DESIGN.md §3).
+
+type NodeGrounding
+  = DerivedGrounding { grounding: CanonicalGrounding }
+  | GroundingNotDerived { node: Node }
+
+type InferredFacts {
+  grounding: NodeGrounding
+  descent: Witness<TerminationProof>
+}
+
+type InferredTree {
+  root: Node
+  facts: Map<Node, InferredFacts>
+}
+
+type InferredFactsEntry {
+  node: Node
+  facts: InferredFacts
+}

@@ -3511,6 +3511,12 @@ fn compile_clean_scoping_active() -> bool {
 
 pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
 pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_transport.dag";
+/// Rows 1-2's shape+call, relocated out of CLASS_B_TRANSPORT_REL so a witness reaching only
+/// rows 1-2 does not inherit the transport module's extdeps.git / extdeps.git.inspect /
+/// gunbc.ci_layer_roots closure (DESIGN.md §3 relocation-not-refork; the same signature
+/// extdeps_scope_placement_gate_loudness_witness's repair fixed). The transport module imports
+/// this one back for rows 1-2's own use, so it is part of the gate's input closure too.
+pub const CLASS_B_PROBE_REL: &str = "src/v2/workflow/class_b_import_closure_probe.dag";
 pub const CLASS_B_BINDING_REL: &str = "dag/gunbc/declared_import_closure_binding.dag";
 pub const CLASS_B_OVERLAY_REL: &str = "dag/gunbc/class_b_import_closure_overlay.dag";
 pub const CLASS_B_FIXTURES_PREFIX: &str = "fixtures/class_b_import_closure";
@@ -3519,6 +3525,7 @@ const CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME: &str = "class_b_declared_import_poo
 pub const CLASS_B_GATE_INPUT_ENTRIES: &[&str] = &[
     CLASS_B_ENTRY_REL,
     CLASS_B_TRANSPORT_REL,
+    CLASS_B_PROBE_REL,
     CLASS_B_BINDING_REL,
     CLASS_B_OVERLAY_REL,
 ];
