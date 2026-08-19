@@ -182,6 +182,16 @@ type SparkServingObservationReport
 // anchored context at all (spark_credential_access_token_frontier_note). Refusals stay typed
 // rather than collapsing to `none`, so an unreachable host and an unportable word list do not
 // arrive at the caller as the same value.
+// THE TRANSPORT'S REFUSAL REASON IS CARRIED, and this is the fourth instrument of this exact shape
+// this lane has had to repair. The arm read `TypedArgvExecRefused { reason: _ } => none`, so a leg
+// the transport declined became indistinguishable from a leg nobody asked for, and every consumer
+// downstream could say only "probe leg did not run" -- the shape that costs a whole diagnostic cycle
+// because the one fact needed to end it was computed and thrown away one line from the caller.
+//
+// A refused leg now surfaces as a result carrying the reason on stderr with a non-zero exit, which
+// is the same shape a genuinely failing command produces and which every field reader already
+// renders with its cause attached. The distinction the exit code preserves: 127 is "this leg was
+// never attempted", not "the command ran and failed".
 fn spark_serving_probe_leg_via_locus(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -192,7 +202,15 @@ fn spark_serving_probe_leg_via_locus(
     transport: spark_serving_slice_transport(context: context, host: host),
   ) {
     TypedArgvExecConverged { result: r } => Present { value: r }
-    TypedArgvExecRefused { reason: _ } => none
+    TypedArgvExecRefused { reason: why } =>
+      Present {
+        value: SshSessionExecResult {
+          exit_code: 127,
+          success: false,
+          stdout: "",
+          stderr: join(["transport refused the leg, it was never attempted: ", why], ""),
+        },
+      }
   }
 }
 
