@@ -59,10 +59,10 @@ fn map_lookup<K, V>(m: Map<K, V>, key: K) -> Optional<V> {
 fn map_get<K, V>(m: Map<K, V>, key: K) -> Outcome<Optional<V>> {
   outcome_accepted(value: map_lookup(m: m, key: key))
 }
-fn list_nth<T>(xs: List<T>, wanted: Int, absent: v2.std.diagnostic.Diagnostic) -> Witness<T> {
+fn list_nth<T>(xs: v2.std.collection.List<T>, wanted: Int, absent: v2.std.diagnostic.Diagnostic) -> Witness<T> {
   fold_list(
     xs: xs,
-    empty: IndexedLookup {
+    empty: v2.std.collection.IndexedLookup {
       index: 0,
       value: v2.std.witness.Violates { diagnostic: absent }
     },
@@ -78,7 +78,7 @@ fn list_nth<T>(xs: List<T>, wanted: Int, absent: v2.std.diagnostic.Diagnostic) -
     }
   ).value
 }
-fn list_at_optional<T>(xs: List<T>, index: Int) -> Optional<T> {
+fn list_at_optional<T>(xs: v2.std.collection.List<T>, index: Int) -> Optional<T> {
   match fold_list(
     xs: xs,
     empty: ListAtMissing { remaining: index },
@@ -101,7 +101,7 @@ fn list_at_optional<T>(xs: List<T>, index: Int) -> Optional<T> {
 
 type FiniteSet<T> {
   head: T
-  tail: List<T>
+  tail: v2.std.collection.List<T>
 }
 type TotalMap<K, V> {
   lookup: fn(K) -> V

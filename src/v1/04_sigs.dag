@@ -16,17 +16,17 @@ type ResolvedFuncSig {
 
 type ResolvedFuncEnv {
   name: String
-  local: Map<String, ResolvedFuncSig>
-  parents: List<ResolvedFuncEnv>
+  local: Map<String, v1.compiler.infer_sigs.ResolvedFuncSig>
+  parents: List<v1.compiler.infer_sigs.ResolvedFuncEnv>
 }
 
 type ResolveFuncSigsResult {
-  func_env: ResolvedFuncEnv
+  func_env: v1.compiler.infer_sigs.ResolvedFuncEnv
   diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type SigsAccum {
-  signatures: Map<String, ResolvedFuncSig>
+  signatures: Map<String, v1.compiler.infer_sigs.ResolvedFuncSig>
   diagnostics: List<v1.std.core.ErrorNode>
 }
 
@@ -39,12 +39,12 @@ data sigs_env_flat_parents_note: String = "Cost shape (§6 bare-minimum cost): R
 
 type FlattenAccum {
   seen: Map<String, Bool>
-  out: List<ResolvedFuncEnv>
+  out: List<v1.compiler.infer_sigs.ResolvedFuncEnv>
 }
 
-fn flatten_parent_envs(direct_parents: List<ResolvedFuncEnv>) -> List<ResolvedFuncEnv> {
+fn flatten_parent_envs(direct_parents: List<v1.compiler.infer_sigs.ResolvedFuncEnv>) -> List<v1.compiler.infer_sigs.ResolvedFuncEnv> {
   let ordered = flat_map(direct_parents |> reverse, p => concat([p], p.parents))
-  let dedup = fold(ordered, init: FlattenAccum { seen: empty_map(), out: [] }, f: (acc, p) =>
+  let dedup = fold(ordered, init: v1.compiler.infer_sigs.FlattenAccum { seen: empty_map(), out: [] }, f: (acc, p) =>
     if emit_map_has(m: acc.seen, key: p.name) { acc }
     else { FlattenAccum { seen: map_insert(acc.seen, p.name, true), out: list_push(acc.out, p) } }
   )
@@ -52,25 +52,25 @@ fn flatten_parent_envs(direct_parents: List<ResolvedFuncEnv>) -> List<ResolvedFu
 }
 
 type ParentSigScan {
-  sig: ResolvedFuncSig?
+  sig: v1.compiler.infer_sigs.ResolvedFuncSig?
   match_count: Int
   first_parent: String?
 }
 
-data func_sig_lookup_outcome_note: String = "namespace-resolution-design.md 13 / 8 step 1, fn path: ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. Under ImportScoped (host bracket false) the first-hit behavior remains until the downstream production flip; under NamespaceOnlyY exactly-one match across the flat parent closure resolves, two-plus refuses through module_path_owner_binding_decide. Own-module local hit stays first on both arms."
+data func_sig_lookup_outcome_note: String = "namespace-resolution-design.md 13 / 8 step 1, fn path: v1.compiler.infer_sigs.ResolvedFuncSig? overloaded Absent as 'keep looking' (the census fallback fires on it), so a refusal had nowhere to go — the first-hit over func_env.parents was the fn silent-pick class (fn_parent_first_hit) with NO refusal arm at all. FuncSigLookup is the 3-state outcome: FuncSigResolved binds, FuncSigUnresolved means genuinely-no-sig (census fallback may still run), FuncSigAmbiguous carries the full candidate list and REFUSES — it never falls through to a fallback. Under ImportScoped (host bracket false) the first-hit behavior remains until the downstream production flip; under NamespaceOnlyY exactly-one match across the flat parent closure resolves, two-plus refuses through module_path_owner_binding_decide. Own-module local hit stays first on both arms."
 
 type FuncSigLookup
-  = FuncSigResolved { sig: ResolvedFuncSig }
+  = FuncSigResolved { sig: v1.compiler.infer_sigs.ResolvedFuncSig }
   | FuncSigUnresolved
   | FuncSigAmbiguous { candidates: List<String> }
 
 type ChainSigScan {
-  first_sig: ResolvedFuncSig?
+  first_sig: v1.compiler.infer_sigs.ResolvedFuncSig?
   owners: List<String>
 }
 
-fn lookup_resolved_sig_unique_across_parents(env: ResolvedFuncEnv, name: String) -> FuncSigLookup {
-  let scan = fold(env.parents, init: ChainSigScan { first_sig: none, owners: [] }, f: (acc, p) =>
+fn lookup_resolved_sig_unique_across_parents(env: v1.compiler.infer_sigs.ResolvedFuncEnv, name: String) -> v1.compiler.infer_sigs.FuncSigLookup {
+  let scan = fold(env.parents, init: v1.compiler.infer_sigs.ChainSigScan { first_sig: none, owners: [] }, f: (acc, p) =>
     match map_get(p.local, name) {
       Present { value: sig } =>
         ChainSigScan {
@@ -97,8 +97,8 @@ fn lookup_resolved_sig_unique_across_parents(env: ResolvedFuncEnv, name: String)
   }
 }
 
-fn lookup_resolved_sig_with_telemetry(env: ResolvedFuncEnv, name: String) -> ResolvedFuncSig? {
-  let scan = fold(env.parents, init: ParentSigScan { sig: none, match_count: 0, first_parent: none }, f: (acc, p) =>
+fn lookup_resolved_sig_with_telemetry(env: v1.compiler.infer_sigs.ResolvedFuncEnv, name: String) -> v1.compiler.infer_sigs.ResolvedFuncSig? {
+  let scan = fold(env.parents, init: v1.compiler.infer_sigs.ParentSigScan { sig: none, match_count: 0, first_parent: none }, f: (acc, p) =>
     match map_get(p.local, name) {
       Present { value: sig } =>
         ParentSigScan {
@@ -124,7 +124,7 @@ fn lookup_resolved_sig_with_telemetry(env: ResolvedFuncEnv, name: String) -> Res
   scan.sig
 }
 
-fn lookup_resolved_sig(env: ResolvedFuncEnv, name: String) -> FuncSigLookup {
+fn lookup_resolved_sig(env: v1.compiler.infer_sigs.ResolvedFuncEnv, name: String) -> v1.compiler.infer_sigs.FuncSigLookup {
   match map_get(env.local, name) {
     Present { value: sig } => FuncSigResolved { sig: sig }
     Absent =>
@@ -149,11 +149,11 @@ fn lookup_resolved_sig(env: ResolvedFuncEnv, name: String) -> FuncSigLookup {
   }
 }
 
-fn none_resolved_sig() -> ResolvedFuncSig? {
+fn none_resolved_sig() -> v1.compiler.infer_sigs.ResolvedFuncSig? {
   Absent
 }
 
-fn collect_func_call_edges(items: List<v1.std.core.Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<CallEdge> {
+fn collect_func_call_edges(items: List<v1.std.core.Node>, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.compiler.infer_sigs.CallEdge> {
   flat_map(items, item =>
     if item.params |> count > 0 && item.body != none {
       collect_calls_in_expr(caller: authored_name_at(source_indices: source_indices, node: item), texpr: item.body.value, local_func_set: local_func_set, source_indices: source_indices)
@@ -163,7 +163,7 @@ fn collect_func_call_edges(items: List<v1.std.core.Node>, local_func_set: Map<St
   )
 }
 
-fn collect_calls_in_expr(caller: String, texpr: v1.std.core.Node, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<CallEdge> {
+fn collect_calls_in_expr(caller: String, texpr: v1.std.core.Node, local_func_set: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.compiler.infer_sigs.CallEdge> {
   let this_edges = match texpr.expr_data {
     ExprCall { call_semantics: _, descent_evidence: _ } =>
       let f = expr_call_func_at(texpr: texpr, source_indices: source_indices)
@@ -178,7 +178,7 @@ fn collect_calls_in_expr(caller: String, texpr: v1.std.core.Node, local_func_set
   result
 }
 
-fn func_reaches_self(root: String, current: String, call_edges: List<CallEdge>, visited: Map<String, Bool>) -> Bool {
+fn func_reaches_self(root: String, current: String, call_edges: List<v1.compiler.infer_sigs.CallEdge>, visited: Map<String, Bool>) -> Bool {
   if emit_map_has(m: visited, key: current) { false }
   else {
     let next_visited = map_insert(visited, current, true)
@@ -194,11 +194,11 @@ fn build_name_set(names: List<String>) -> Map<String, Bool> {
   fold(names, init: empty_map(), f: (acc, name) => map_insert(acc, name, true))
 }
 
-fn declared_to_resolved(dsig: v1.std.core.DeclaredFuncSig) -> ResolvedFuncSig {
+fn declared_to_resolved(dsig: v1.std.core.DeclaredFuncSig) -> v1.compiler.infer_sigs.ResolvedFuncSig {
   ResolvedFuncSig { name: dsig.name, params: dsig.params, inferred: dsig.inferred.value, is_async: dsig.is_async, output_provenance: dsig.output_provenance, variant_provenance: dsig.variant_provenance }
 }
 
-fn merge_remaining_declared(declared_sigs: Map<String, v1.std.core.DeclaredFuncSig>, resolved: Map<String, ResolvedFuncSig>) -> Map<String, ResolvedFuncSig> {
+fn merge_remaining_declared(declared_sigs: Map<String, v1.std.core.DeclaredFuncSig>, resolved: Map<String, v1.compiler.infer_sigs.ResolvedFuncSig>) -> Map<String, v1.compiler.infer_sigs.ResolvedFuncSig> {
   fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
     if dsig.inferred != none {
       map_insert(acc, dsig.name, declared_to_resolved(dsig: dsig))
@@ -208,15 +208,15 @@ fn merge_remaining_declared(declared_sigs: Map<String, v1.std.core.DeclaredFuncS
 
 fn topo_resolve_loop(
     remaining: List<String>,
-    resolved: Map<String, ResolvedFuncSig>,
+    resolved: Map<String, v1.compiler.infer_sigs.ResolvedFuncSig>,
     declared_sigs: Map<String, v1.std.core.DeclaredFuncSig>,
-    call_edges: List<CallEdge>,
+    call_edges: List<v1.compiler.infer_sigs.CallEdge>,
     local_func_set: Map<String, Bool>,
     module_name: String,
     diagnostics: List<v1.std.core.ErrorNode>,
-    parent_envs: List<ResolvedFuncEnv>,
+    parent_envs: List<v1.compiler.infer_sigs.ResolvedFuncEnv>,
     fuel: Int
-) -> ResolveFuncSigsResult {
+) -> v1.compiler.infer_sigs.ResolveFuncSigsResult {
   if remaining |> count == 0 {
     let all_resolved = fold(map_values(declared_sigs), init: resolved, f: (acc, dsig) =>
       if dsig.inferred != none {
@@ -224,7 +224,7 @@ fn topo_resolve_loop(
       } else { acc }
     )
     return ResolveFuncSigsResult {
-      func_env: ResolvedFuncEnv { name: module_name, local: all_resolved, parents: parent_envs },
+      func_env: v1.compiler.infer_sigs.ResolvedFuncEnv { name: module_name, local: all_resolved, parents: parent_envs },
       diagnostics: diagnostics
     }
   }
@@ -238,7 +238,7 @@ fn topo_resolve_loop(
   )
 
   if ready |> count == 0 {
-    let cycle_accum = fold(remaining, init: SigsAccum { signatures: resolved, diagnostics: [] }, f: (acc, fn_name) =>
+    let cycle_accum = fold(remaining, init: v1.compiler.infer_sigs.SigsAccum { signatures: resolved, diagnostics: [] }, f: (acc, fn_name) =>
       match map_get(declared_sigs, fn_name) {
         Present { value: dsig } =>
           if dsig.inferred != none {
@@ -255,12 +255,12 @@ fn topo_resolve_loop(
       } else { acc }
     )
     return ResolveFuncSigsResult {
-      func_env: ResolvedFuncEnv { name: module_name, local: all_resolved, parents: parent_envs },
+      func_env: v1.compiler.infer_sigs.ResolvedFuncEnv { name: module_name, local: all_resolved, parents: parent_envs },
       diagnostics: concat(diagnostics, cycle_accum.diagnostics)
     }
   }
 
-  let ready_accum = fold(ready, init: SigsAccum { signatures: resolved, diagnostics: diagnostics }, f: (acc, fn_name) =>
+  let ready_accum = fold(ready, init: v1.compiler.infer_sigs.SigsAccum { signatures: resolved, diagnostics: diagnostics }, f: (acc, fn_name) =>
     match map_get(declared_sigs, fn_name) {
       Present { value: dsig } =>
         if dsig.inferred != none {
@@ -290,11 +290,11 @@ fn topo_resolve_loop(
 
 fn resolve_func_sigs(
     declared_sigs: Map<String, v1.std.core.DeclaredFuncSig>,
-    parent_envs: List<ResolvedFuncEnv>,
+    parent_envs: List<v1.compiler.infer_sigs.ResolvedFuncEnv>,
     items: List<v1.std.core.Node>,
     module_name: String,
     source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> ResolveFuncSigsResult {
+) -> v1.compiler.infer_sigs.ResolveFuncSigsResult {
   let local_func_names = items
     |> filter(item => item.params |> count > 0 && item.body != none)
     |> map(item => authored_name_at(source_indices: source_indices, node: item))

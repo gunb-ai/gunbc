@@ -7,7 +7,7 @@ type ParsedFixturePattern
   = ParsedFixturePatternReady { pattern: MatchPattern }
   | ParsedFixturePatternRefused
 
-fn parse_fixture_pattern(source: String) -> ParsedFixturePattern {
+fn parse_fixture_pattern(source: String) -> v1.tests.claim.pattern_binder_declaration_node_test.ParsedFixturePattern {
   let file = "pattern-binder-declaration-node.dag"
   let index = build_newline_index(file: file, source: source)
   let result = parse_pattern(

@@ -12,7 +12,7 @@ type TypeRepr = StructRepr | EnumRepr { unit_only: Bool }
 
 type TypeSummary {
   name: String
-  repr: TypeRepr
+  repr: v1.compiler.infer_emit_info.TypeRepr
   field_summaries: Map<String, v1.std.core.FieldSummary>
   field_type_map: Map<String, String>
   field_import_surface_names: List<String>
@@ -32,7 +32,7 @@ type UniqueStringAccum {
 }
 
 fn dedupe_nonempty_strings(items: List<String>) -> List<String> {
-  let acc = items |> fold(init: UniqueStringAccum { seen: empty_map(), result: [] }, f: (inner, item) =>
+  let acc = items |> fold(init: v1.compiler.infer_emit_info.UniqueStringAccum { seen: empty_map(), result: [] }, f: (inner, item) =>
     if item == "" || emit_map_has(m: inner.seen, key: item) { inner }
     else { UniqueStringAccum { seen: map_insert(inner.seen, item, true), result: concat(inner.result, [item]) } }
   )
@@ -55,7 +55,7 @@ fn collect_type_node_import_surface_names(n: v1.std.core.Node, source_indices: M
 }
 
 type EmitGraphInfo {
-  type_summaries: Map<String, TypeSummary>
+  type_summaries: Map<String, v1.compiler.infer_emit_info.TypeSummary>
   type_decl_items: Map<String, v1.std.core.Node>
   recursive_type_set: Set<String>
   fielded_variants: Set<String>
@@ -81,13 +81,13 @@ type EmitGraphInfo {
 }
 
 type EmitInfoBuildState {
-  type_summaries: Map<String, TypeSummary>
+  type_summaries: Map<String, v1.compiler.infer_emit_info.TypeSummary>
   type_decl_items: Map<String, v1.std.core.Node>
 }
 
 data empty_emit_graph_info_ord_fallback_note: String = "Conservatism: render paths without EmitGraphInfo pass empty_emit_graph_info(); bare-ref BTreeSet Ord eligibility fails closed (lookup_emit_type_decl -> Absent) and surfaces compile_error! at probe time — nine call sites inherit this, loud not silent widen."
 
-fn empty_emit_graph_info() -> EmitGraphInfo {
+fn empty_emit_graph_info() -> v1.compiler.infer_emit_info.EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
     type_decl_items: empty_map(),
@@ -111,7 +111,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   }
 }
 
-fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names: List<String>, env: v1.compiler.infer_env.TypeEnv) -> EmitGraphInfo {
+fn emit_info_with_fn_type_context(emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, generic_param_names: List<String>, env: v1.compiler.infer_env.TypeEnv) -> v1.compiler.infer_emit_info.EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
@@ -134,7 +134,7 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
   }
 }
 
-fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: v1.std.core.Node?) -> EmitGraphInfo {
+fn emit_info_with_fn_return(emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, fn_return_type: v1.std.core.Node?) -> v1.compiler.infer_emit_info.EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
@@ -157,7 +157,7 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: v1.std.cor
   }
 }
 
-fn variant_has_fields(emit_info: EmitGraphInfo, enum_name: String, variant_name: String) -> Bool {
+fn variant_has_fields(emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, enum_name: String, variant_name: String) -> Bool {
   let key = concat(enum_name, "::", variant_name)
   set_contains(emit_info.fielded_variants, key)
 }
@@ -166,11 +166,11 @@ fn variant_summary_key(enum_name: String, variant_name: String) -> String {
   concat(enum_name, "::", variant_name)
 }
 
-fn lookup_emit_type_summary(emit_info: EmitGraphInfo, type_name: String) -> TypeSummary? {
+fn lookup_emit_type_summary(emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, type_name: String) -> v1.compiler.infer_emit_info.TypeSummary? {
   map_get(emit_info.type_summaries, type_name)
 }
 
-fn lookup_emit_type_decl(emit_info: EmitGraphInfo, type_name: String) -> v1.std.core.Node? {
+fn lookup_emit_type_decl(emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, type_name: String) -> v1.std.core.Node? {
   map_get(emit_info.type_decl_items, type_name)
 }
 
@@ -185,7 +185,7 @@ fn emit_graph_records_type_decl(item: v1.std.core.Node, source_indices: Map<Stri
   }
 }
 
-fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<String, String> {
+fn derive_variant_to_enum(type_summaries: Map<String, v1.compiler.infer_emit_info.TypeSummary>) -> Map<String, String> {
   map_values(type_summaries) |> fold(init: empty_map(), f: (acc, summary) =>
     match summary.repr {
       EnumRepr { unit_only: _ } =>
@@ -200,7 +200,7 @@ fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<Strin
   )
 }
 
-fn is_known_variant(type_summaries: Map<String, TypeSummary>, name: String) -> Bool {
+fn is_known_variant(type_summaries: Map<String, v1.compiler.infer_emit_info.TypeSummary>, name: String) -> Bool {
   map_values(type_summaries) |> any(summary =>
     match summary.repr {
       EnumRepr { unit_only: _ } => emit_map_has(m: summary.variant_name_set, key: name)
@@ -209,7 +209,7 @@ fn is_known_variant(type_summaries: Map<String, TypeSummary>, name: String) -> B
   )
 }
 
-fn variant_belongs_to_enum(type_summaries: Map<String, TypeSummary>, variant_name: String, enum_name: String) -> Bool {
+fn variant_belongs_to_enum(type_summaries: Map<String, v1.compiler.infer_emit_info.TypeSummary>, variant_name: String, enum_name: String) -> Bool {
   match map_get(type_summaries, enum_name) {
     Present { value: summary } =>
       match summary.repr {
@@ -221,7 +221,7 @@ fn variant_belongs_to_enum(type_summaries: Map<String, TypeSummary>, variant_nam
   }
 }
 
-fn is_enum_in_summaries(type_summaries: Map<String, TypeSummary>, type_name: String) -> Bool {
+fn is_enum_in_summaries(type_summaries: Map<String, v1.compiler.infer_emit_info.TypeSummary>, type_name: String) -> Bool {
   match map_get(type_summaries, type_name) {
     Present { value: summary } => match summary.repr {
       EnumRepr { unit_only: _ } => true
@@ -231,7 +231,7 @@ fn is_enum_in_summaries(type_summaries: Map<String, TypeSummary>, type_name: Str
   }
 }
 
-fn find_variant_parent(type_summaries: Map<String, TypeSummary>, variant_name: String, scope_enums: List<String>) -> String? {
+fn find_variant_parent(type_summaries: Map<String, v1.compiler.infer_emit_info.TypeSummary>, variant_name: String, scope_enums: List<String>) -> String? {
   scope_enums |> filter(en =>
     variant_belongs_to_enum(type_summaries: type_summaries, variant_name: variant_name, enum_name: en)
   ) |> first
@@ -319,8 +319,8 @@ fn build_enum_field_summaries(variants: List<v1.std.core.Node>, source_indices: 
   )
 }
 
-fn build_field_type_map(children: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> FieldTypeMapBuild {
-  fold(children, init: FieldTypeMapBuild { field_types: empty_map(), import_surface_names: [] }, f: (acc, child) =>
+fn build_field_type_map(children: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_emit_info.FieldTypeMapBuild {
+  fold(children, init: v1.compiler.infer_emit_info.FieldTypeMapBuild { field_types: empty_map(), import_surface_names: [] }, f: (acc, child) =>
     match child.inferred {
       Present { value: Resolved { node: ft } } =>
         let resolved_name = authored_name_at(source_indices: source_indices, node: normalize_access_type_node(n: ft))
@@ -339,7 +339,7 @@ fn build_field_type_map(children: List<v1.std.core.Node>, source_indices: Map<St
   )
 }
 
-fn build_type_summary(item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> TypeSummary? {
+fn build_type_summary(item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_emit_info.TypeSummary? {
   if item.connective == NoConnective || item.connective == v1.std.core.Arrow || item.transport != none {
     return none
   }
@@ -353,7 +353,7 @@ fn build_type_summary(item: v1.std.core.Node, source_indices: Map<String, v1.std
   )
   if is_product {
     let field_types = build_field_type_map(children: item.children, source_indices: source_indices)
-    Present { value: TypeSummary {
+    Present { value: v1.compiler.infer_emit_info.TypeSummary {
       name: authored_name_at(source_indices: source_indices, node: item),
       repr: StructRepr,
       field_summaries: build_struct_field_summaries(parent: item, source_indices: source_indices),
@@ -365,7 +365,7 @@ fn build_type_summary(item: v1.std.core.Node, source_indices: Map<String, v1.std
     } }
   } else {
     let unit_only = item.children |> all(child => child.children |> count == 0)
-    Present { value: TypeSummary {
+    Present { value: v1.compiler.infer_emit_info.TypeSummary {
       name: authored_name_at(source_indices: source_indices, node: item),
       repr: EnumRepr { unit_only: unit_only },
       field_summaries: build_enum_field_summaries(variants: item.children, source_indices: source_indices),
@@ -378,7 +378,7 @@ fn build_type_summary(item: v1.std.core.Node, source_indices: Map<String, v1.std
   }
 }
 
-fn type_summary_reaches_fn(name: String, summaries: Map<String, TypeSummary>, visited: Set<String>) -> Bool {
+fn type_summary_reaches_fn(name: String, summaries: Map<String, v1.compiler.infer_emit_info.TypeSummary>, visited: Set<String>) -> Bool {
   if set_contains(visited, name) {
     false
   } else {
@@ -395,12 +395,12 @@ fn type_summary_reaches_fn(name: String, summaries: Map<String, TypeSummary>, vi
   }
 }
 
-fn close_fn_fields(summaries: Map<String, TypeSummary>) -> Map<String, TypeSummary> {
+fn close_fn_fields(summaries: Map<String, v1.compiler.infer_emit_info.TypeSummary>) -> Map<String, v1.compiler.infer_emit_info.TypeSummary> {
   fold(map_keys(summaries), init: summaries, f: (acc, name) =>
     match map_get(summaries, name) {
       Present { value: s } =>
         if !s.has_fn_fields && type_summary_reaches_fn(name: name, summaries: summaries, visited: empty_set()) {
-          map_insert(acc, name, TypeSummary {
+          map_insert(acc, name, v1.compiler.infer_emit_info.TypeSummary {
             name: s.name,
             repr: s.repr,
             field_summaries: s.field_summaries,
@@ -416,7 +416,7 @@ fn close_fn_fields(summaries: Map<String, TypeSummary>) -> Map<String, TypeSumma
   )
 }
 
-fn add_emit_item_summary(state: EmitInfoBuildState, item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> EmitInfoBuildState {
+fn add_emit_item_summary(state: v1.compiler.infer_emit_info.EmitInfoBuildState, item: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_emit_info.EmitInfoBuildState {
   let decl_name = authored_name_at(source_indices: source_indices, node: item)
   let state = if decl_name != "" && emit_graph_records_type_decl(item: item, source_indices: source_indices) {
     EmitInfoBuildState {
@@ -441,7 +441,7 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: v1.std.core.Node, sour
               let vname = authored_name_at(source_indices: source_indices, node: variant)
               let qualified_vname = variant_summary_key(enum_name: summary.name, variant_name: vname)
               let variant_field_types = build_field_type_map(children: variant.children, source_indices: source_indices)
-              map_insert(acc, qualified_vname, TypeSummary {
+              map_insert(acc, qualified_vname, v1.compiler.infer_emit_info.TypeSummary {
                 name: qualified_vname,
                 repr: StructRepr,
                 field_summaries: build_struct_field_summaries(parent: variant, source_indices: source_indices),

@@ -128,12 +128,12 @@ fn ownership_diagnostics(proofs: List<v1.compiler.ownership.OwnershipProof>) -> 
 
 type CompilePipelineOptions {
   analyze_complexity: Bool,
-  census_only_sources: List<SourceFile>
+  census_only_sources: List<v1.compiler.compile.SourceFile>
 }
 
 data census_only_sources_note: String = "Sources included in the NAME CENSUS but not compiled (fill = whole tree; policy gates lookup, never fill — namespace-resolution-design.md 7.5). Qualified references to modules outside the compile closure resolve against these; compiling them here instead would subject them to this invocation's pool-precedence tree view, where cross-tree bare names break (measured: 344 diagnostics, the Empty/Cons poisoning class)."
 
-fn default_compile_pipeline_options() -> CompilePipelineOptions {
+fn default_compile_pipeline_options() -> v1.compiler.compile.CompilePipelineOptions {
   CompilePipelineOptions { analyze_complexity: false, census_only_sources: [] }
 }
 
@@ -860,23 +860,23 @@ type EmittableGraph sole_constructor {
   graph: v1.compiler.infer_items.ResolvedGraph
 }
 
-fn emittable_graph(resolved: ResolvedPipelineResult) -> EmittableGraph? {
+fn emittable_graph(resolved: v1.compiler.compile.ResolvedPipelineResult) -> v1.compiler.compile.EmittableGraph? {
   let blocking = resolved.diagnostics |> filter(d => is_interpreter_blocking_diagnostic(d: d.diagnostic))
   if blocking |> count > 0 {
     none
   } else {
     match resolved.graph {
-      Present { value: typed } => Present { value: EmittableGraph { graph: typed } }
+      Present { value: typed } => Present { value: v1.compiler.compile.EmittableGraph { graph: typed } }
       Absent => none
     }
   }
 }
 
-fn emittable_graph_from_graph(typed: v1.compiler.infer_items.ResolvedGraph) -> EmittableGraph {
+fn emittable_graph_from_graph(typed: v1.compiler.infer_items.ResolvedGraph) -> v1.compiler.compile.EmittableGraph {
   EmittableGraph { graph: typed }
 }
 
-fn emit_from_artifact_plan(emittable: EmittableGraph, artifact_plan: v1.compiler.artifact.ArtifactPlan) -> v1.compiler.emit_core_support.EmitResult {
+fn emit_from_artifact_plan(emittable: v1.compiler.compile.EmittableGraph, artifact_plan: v1.compiler.artifact.ArtifactPlan) -> v1.compiler.emit_core_support.EmitResult {
   let typed = emittable.graph
   if artifact_plan.artifacts |> count == 0 {
     return v1.compiler.emit_core_support.EmitResult {
@@ -907,7 +907,7 @@ fn resolve_frontend_occurrence_transport(
   module_inputs: List<v1.compiler.resolve.ModuleOccurrenceInput>,
   source_indices: Map<String, v1.std.core.NewlineIndex>,
   occurrence_transport: std.occurrence_identity.OccurrenceTransport
-) -> FrontendOccurrenceResolution {
+) -> v1.compiler.compile.FrontendOccurrenceResolution {
   match occurrence_transport_refusal(transport: occurrence_transport) {
     Present { value: refusal } =>
       FrontendOccurrenceResolution {
@@ -932,7 +932,7 @@ fn resolve_frontend_occurrence_transport(
   }
 }
 
-fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
+fn front_end_sources(sources: List<v1.compiler.compile.SourceFile>) -> v1.compiler.compile.FrontendResult {
   let prepared = sources |> map(s =>
     let artifact = tokenize_artifact(source: s.content, file: s.path)
     let si = build_newline_index(file: s.path, source: s.content)
@@ -944,7 +944,7 @@ fn front_end_sources(sources: List<SourceFile>) -> FrontendResult {
     }
   )
   let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
-  let parsed = prepared |> fold(init: FrontendAccum {
+  let parsed = prepared |> fold(init: v1.compiler.compile.FrontendAccum {
     parse_results: [],
     module_inputs: [],
     newline_indices: [],
@@ -1023,7 +1023,7 @@ type CensusFillParse {
 
 data parse_census_fill_note: String = "Parse-grade front end for census-only fill: tokenize + parse, NEVER resolve (a fill module's imports live in the compile closure or a different tree view; resolving against a fill-only pool fabricates unresolved-import diagnostics about the view, not the modules). Diagnostics are parse errors only — those are load-bearing (a broken-parse module contributes no names to the census) and must surface, never be skipped."
 
-fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
+fn parse_census_fill_sources(sources: List<v1.compiler.compile.SourceFile>) -> v1.compiler.compile.CensusFillParse {
   let prepared = sources |> map(s =>
     let artifact = tokenize_artifact(source: s.content, file: s.path)
     let si = build_newline_index(file: s.path, source: s.content)
@@ -1035,7 +1035,7 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
     }
   )
   let intern_table = prepared |> fold(init: empty_intern_table(), f: (t, p) => pre_intern_tokens(tokens: p.tokens, table: t))
-  let parsed = prepared |> fold(init: FrontendAccum {
+  let parsed = prepared |> fold(init: v1.compiler.compile.FrontendAccum {
     parse_results: [],
     module_inputs: [],
     newline_indices: [],
@@ -1096,12 +1096,12 @@ fn parse_census_fill_sources(sources: List<SourceFile>) -> CensusFillParse {
   }
 }
 
-fn resolve_sources(sources: List<SourceFile>) -> v1.std.core.CompileResult {
+fn resolve_sources(sources: List<v1.compiler.compile.SourceFile>) -> v1.std.core.CompileResult {
   let frontend = front_end_sources(sources: sources)
   v1.std.core.CompileResult { files: [], diagnostics: frontend.diagnostics }
 }
 
-fn compile_sources(sources: List<SourceFile>, target: v1.compiler.artifact.RenderTarget) -> PipelineResult {
+fn compile_sources(sources: List<v1.compiler.compile.SourceFile>, target: v1.compiler.artifact.RenderTarget) -> v1.compiler.compile.PipelineResult {
   compile_sources_with_options(
     sources: sources,
     target: target,
@@ -1109,7 +1109,7 @@ fn compile_sources(sources: List<SourceFile>, target: v1.compiler.artifact.Rende
   )
 }
 
-fn compile_sources_with_options(sources: List<SourceFile>, target: v1.compiler.artifact.RenderTarget, options: CompilePipelineOptions) -> PipelineResult {
+fn compile_sources_with_options(sources: List<v1.compiler.compile.SourceFile>, target: v1.compiler.artifact.RenderTarget, options: v1.compiler.compile.CompilePipelineOptions) -> v1.compiler.compile.PipelineResult {
   emit_resolved_for_target(
     resolved: compile_to_resolved_with_options(sources: sources, options: options),
     target: target
@@ -1134,7 +1134,7 @@ fn interpreter_blocking_diagnostic_messages(diagnostics: List<v1.std.core.ErrorN
     })
 }
 
-fn stage0_self_compile_refusal_message(result: PipelineResult) -> String? {
+fn stage0_self_compile_refusal_message(result: v1.compiler.compile.PipelineResult) -> String? {
   let hard_messages = interpreter_blocking_diagnostic_messages(diagnostics: result.diagnostics)
   if hard_messages |> count > 0 {
     Present {
@@ -1161,18 +1161,18 @@ type ResolvedPipelineResult {
   newline_indices: List<v1.std.core.NewlineIndex>
 }
 
-fn compile_to_resolved(sources: List<SourceFile>) -> ResolvedPipelineResult {
+fn compile_to_resolved(sources: List<v1.compiler.compile.SourceFile>) -> v1.compiler.compile.ResolvedPipelineResult {
   compile_to_resolved_with_options(
     sources: sources,
     options: default_compile_pipeline_options()
   )
 }
 
-fn compile_to_resolved_discovery_corpus_advisory(sources: List<SourceFile>) -> ResolvedPipelineResult {
+fn compile_to_resolved_discovery_corpus_advisory(sources: List<v1.compiler.compile.SourceFile>) -> v1.compiler.compile.ResolvedPipelineResult {
   compile_to_resolved(sources: sources)
 }
 
-fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompilePipelineOptions) -> ResolvedPipelineResult {
+fn compile_to_resolved_with_options(sources: List<v1.compiler.compile.SourceFile>, options: v1.compiler.compile.CompilePipelineOptions) -> v1.compiler.compile.ResolvedPipelineResult {
   let _ = trace_mark("compile.frontend.begin")
   let frontend = front_end_sources(sources: sources)
   let _ = trace_mark("compile.frontend.done")
@@ -1223,7 +1223,7 @@ fn compile_to_resolved_with_options(sources: List<SourceFile>, options: CompileP
   }
 }
 
-fn emit_resolved_for_target(resolved: ResolvedPipelineResult, target: v1.compiler.artifact.RenderTarget) -> PipelineResult {
+fn emit_resolved_for_target(resolved: v1.compiler.compile.ResolvedPipelineResult, target: v1.compiler.artifact.RenderTarget) -> v1.compiler.compile.PipelineResult {
   match emittable_graph(resolved: resolved) {
     Absent =>
       PipelineResult {

@@ -17,11 +17,11 @@ type DagCollectAcc {
   collision_errors: List<v1.std.core.ErrorNode>
 }
 
-fn dag_collect_slot_seq(slots: Map<String, DagCollectSlot>) -> Int {
+fn dag_collect_slot_seq(slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>) -> Int {
   slots |> count
 }
 
-fn dag_collect_pack_slots(slots: Map<String, DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> DagCollectAcc {
+fn dag_collect_pack_slots(slots: Map<String, v1.compiler.dag_collect_support.DagCollectSlot>, collision_errors: List<v1.std.core.ErrorNode>) -> v1.compiler.dag_collect_support.DagCollectAcc {
   let ordered_slots = slots |> map_values |> sort_by(s => s.seq)
   let order = ordered_slots |> map(s => s.node)
   let seen = ordered_slots |> fold(init: empty_map(), f: (acc, s) => map_insert(acc, s.key, s.fp))

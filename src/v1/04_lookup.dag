@@ -50,21 +50,21 @@ type BorrowedCensusDecl {
   node: v1.std.core.Node
 }
 
-fn borrowed_census_decl(type_env: v1.compiler.infer_env.TypeEnv, name: String) -> BorrowedCensusDecl? {
+fn borrowed_census_decl(type_env: v1.compiler.infer_env.TypeEnv, name: String) -> v1.compiler.infer_lookup.BorrowedCensusDecl? {
   if contains(name, ".") {
     match symbol_index_lookup(index: type_env.symbol_index, qualified_name: name) {
       Present { value: node } =>
-        Present { value: BorrowedCensusDecl { owner_module_path: qualified_all_but_last(name: name), node: node } }
+        Present { value: v1.compiler.infer_lookup.BorrowedCensusDecl { owner_module_path: qualified_all_but_last(name: name), node: node } }
       Absent => none
     }
   } else {
     match map_get(type_env.symbol_index.global_bare, name) {
       Present { value: GlobalBareUniqueBinding { module_path: mp, binding: b } } =>
-        Present { value: BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
+        Present { value: v1.compiler.infer_lookup.BorrowedCensusDecl { owner_module_path: mp, node: b.resolved } }
       Present { value: GlobalBareAmbiguousBinding { candidates: cands } } =>
         match global_bare_policy_candidate(env_module_path: type_env.module_path, candidates: cands) {
           Present { value: cand } =>
-            Present { value: BorrowedCensusDecl { owner_module_path: cand.module_path, node: cand.binding.resolved } }
+            Present { value: v1.compiler.infer_lookup.BorrowedCensusDecl { owner_module_path: cand.module_path, node: cand.binding.resolved } }
           Absent => none
         }
       Absent => none
@@ -129,15 +129,15 @@ type DeclarationLookupFailure
   = DeclarationNotIndexedAtQualifiedName { qualified_name: String }
 
 type ConstructorDeclarationLookup
-  = ExactConstructorDeclaration { identity: ExactDeclarationIdentity, declaration: v1.std.core.Node }
+  = ExactConstructorDeclaration { identity: v1.compiler.infer_lookup.ExactDeclarationIdentity, declaration: v1.std.core.Node }
   | NotAdmissionBearingReference {}
-  | AdmissionBearingDeclarationUnavailable { identity: ExactDeclarationIdentity, cause: DeclarationLookupFailure }
+  | AdmissionBearingDeclarationUnavailable { identity: v1.compiler.infer_lookup.ExactDeclarationIdentity, cause: v1.compiler.infer_lookup.DeclarationLookupFailure }
 
 fn constructor_declaration_for_admission(
   type_env: v1.compiler.infer_env.TypeEnv,
   owner_module_path: String,
   name: String
-) -> ConstructorDeclarationLookup {
+) -> v1.compiler.infer_lookup.ConstructorDeclarationLookup {
   let decl_name = qualified_last_segment(name: name)
   let qualified = if contains(name, ".") { name } else { concat(owner_module_path, ".", name) }
   let identity = ExactDeclarationIdentity { owner_module_path: owner_module_path, decl_name: decl_name }
@@ -156,7 +156,7 @@ fn func_decl_binding_for_call(
   func_env: v1.compiler.infer_sigs.ResolvedFuncEnv,
   type_env: v1.compiler.infer_env.TypeEnv,
   name: String
-) -> ConstructorDeclarationLookup {
+) -> v1.compiler.infer_lookup.ConstructorDeclarationLookup {
   match func_decl_owner_module(func_env: func_env, name: name) {
     Present { value: owner } =>
       constructor_declaration_for_admission(
@@ -188,7 +188,7 @@ fn func_sig_from_global_bare(type_env: v1.compiler.infer_env.TypeEnv, name: Stri
     Absent =>
   let borrowed = match lookup_binding_by_name_local(env: type_env, name: name) {
     Present { value: binding } =>
-      Present { value: BorrowedCensusDecl { owner_module_path: type_env.module_path, node: binding.resolved } }
+      Present { value: v1.compiler.infer_lookup.BorrowedCensusDecl { owner_module_path: type_env.module_path, node: binding.resolved } }
     Absent => borrowed_census_decl(type_env: type_env, name: name)
   }
   match borrowed {
@@ -446,7 +446,7 @@ type MethodFieldResult {
 }
 
 type StructuralMethodLookup {
-  resolution: MethodFieldResult?
+  resolution: v1.compiler.infer_lookup.MethodFieldResult?
   kernel_diagnostics: List<v1.std.core.ErrorNode>
 }
 
@@ -481,16 +481,16 @@ fn map_lookup_result_type(product: v1.std.core.Node, field: v1.std.core.Node, so
   }
 }
 
-fn lookup_field_in_product(product: v1.std.core.Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> MethodFieldResult? {
+fn lookup_field_in_product(product: v1.std.core.Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_lookup.MethodFieldResult? {
   let matching = product.children |> filter(c => authored_name_at(source_indices: source_indices, node: c) == method_name)
   match matching |> first {
     Present { value: field } =>
       match if method_name == "lookup" { map_lookup_result_type(product: product, field: field, source_indices: source_indices) } else { none } {
         Present { value: lookup_rt } =>
-          Present { value: MethodFieldResult { field_node: field, result_type: lookup_rt, size_effect: none, cost_shape: none, algebra_template: none } }
+          Present { value: v1.compiler.infer_lookup.MethodFieldResult { field_node: field, result_type: lookup_rt, size_effect: none, cost_shape: none, algebra_template: none } }
         Absent =>
           match product_field_result_type(field: field) {
-            Present { value: rt } => Present { value: MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none, algebra_template: none } }
+            Present { value: rt } => Present { value: v1.compiler.infer_lookup.MethodFieldResult { field_node: field, result_type: rt, size_effect: none, cost_shape: none, algebra_template: none } }
             Absent => none
           }
         }
@@ -498,7 +498,7 @@ fn lookup_field_in_product(product: v1.std.core.Node, method_name: String, sourc
   }
 }
 
-fn lookup_structural_method(receiver_type: v1.std.core.Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> StructuralMethodLookup {
+fn lookup_structural_method(receiver_type: v1.std.core.Node, method_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_lookup.StructuralMethodLookup {
   let is_product = receiver_type.connective == v1.std.core.Conj
   if is_product {
     let direct = lookup_field_in_product(product: receiver_type, method_name: method_name, source_indices: source_indices)
@@ -518,7 +518,7 @@ fn lookup_structural_method(receiver_type: v1.std.core.Node, method_name: String
           }
           let resolution = match template_match {
             Present { value: t } =>
-              Present { value: MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape, algebra_template: Present { value: t } } }
+              Present { value: v1.compiler.infer_lookup.MethodFieldResult { field_node: mfr.field_node, result_type: mfr.result_type, size_effect: t.size_effect, cost_shape: t.cost_shape, algebra_template: Present { value: t } } }
             Absent => base_result
           }
           StructuralMethodLookup { resolution: resolution, kernel_diagnostics: enriched.diagnostics }
@@ -530,7 +530,7 @@ fn lookup_structural_method(receiver_type: v1.std.core.Node, method_name: String
   }
 }
 
-fn resolve_known_method_node(receiver: v1.std.core.Node, receiver_type: v1.std.core.Node, method_name: String, fold_accumulator_type: v1.std.core.Node?, service_registry: Map<String, List<v1.compiler.infer_service.OpEntry>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> KnownMethodResolution {
+fn resolve_known_method_node(receiver: v1.std.core.Node, receiver_type: v1.std.core.Node, method_name: String, fold_accumulator_type: v1.std.core.Node?, service_registry: Map<String, List<v1.compiler.infer_service.OpEntry>>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_lookup.KnownMethodResolution {
 
   let tier0 = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
   match tier0.resolution {

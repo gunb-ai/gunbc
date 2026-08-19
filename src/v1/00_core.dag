@@ -4,7 +4,7 @@ module v1.std.core
 type Token {
   text: String
   span: std.types.SourceSpan
-  shape: TokenShape
+  shape: v1.std.core.TokenShape
 }
 
 type TokenShape
@@ -33,8 +33,8 @@ type FieldAccessStyle = StoredField | EnumAccessor | OptionalUnwrap | TupleFirst
 type FieldValueShape = PlainValue | OptionalValue
 
 type FieldSummary {
-  access_style: FieldAccessStyle
-  value_shape: FieldValueShape
+  access_style: v1.std.core.FieldAccessStyle
+  value_shape: v1.std.core.FieldValueShape
 }
 
 type InferredNode
@@ -83,18 +83,18 @@ type ExprErrorKind = ParseRecoveryError | SemanticExprError | InternalExprError 
 type ExprData
   = NoExprData
   | ExprLiteral { value: std.syntax.LiteralValue }
-  | ExprError { kind: ExprErrorKind, message: String }
-  | ExprVar { binding_kind: VarBindingKind? }
-  | ExprFieldAccess { summary: FieldSummary? }
-  | ExprCall { call_semantics: CallSemantics?, descent_evidence: List<std.induction.SubValueRelation>? }
-  | ExprMethodCall { method_semantics: MethodSemantics? }
+  | ExprError { kind: v1.std.core.ExprErrorKind, message: String }
+  | ExprVar { binding_kind: v1.std.core.VarBindingKind? }
+  | ExprFieldAccess { summary: v1.std.core.FieldSummary? }
+  | ExprCall { call_semantics: v1.std.core.CallSemantics?, descent_evidence: List<std.induction.SubValueRelation>? }
+  | ExprMethodCall { method_semantics: v1.std.core.MethodSemantics? }
   | ExprMatch
   | ExprIf
   | ExprLet
   | ExprRecordLit { parent_enum: String? }
   | ExprListLit
   | ExprBinOp { op: std.syntax.BinOp, algebra_field: std.syntax.AlgebraFieldKind? }
-  | ExprUnaryOp { op: UnaryOpKind }
+  | ExprUnaryOp { op: v1.std.core.UnaryOpKind }
   | ExprLambda
   | ExprStringInterp
   | ExprBlock
@@ -119,8 +119,8 @@ type StringPart
 type OperationModifier = Idempotent | Readonly | Hermetic
 
 type CompileResult {
-  files: List<TextFile>
-  diagnostics: List<ErrorNode>
+  files: List<v1.std.core.TextFile>
+  diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type TextFile {
@@ -172,12 +172,12 @@ type CompilerDiagnostic
   | OccurrenceTransportViolation { refusal: std.occurrence_identity.OccurrenceTransportRefusal }
 
 type ErrorNode {
-  diagnostic: CompilerDiagnostic
+  diagnostic: v1.std.core.CompilerDiagnostic
   module_name: String
 }
 
 type ErrorDAG {
-  errors: List<ErrorNode>
+  errors: List<v1.std.core.ErrorNode>
 }
 
 data occurrence_transport_refusal_span_absence_note: String = "Span absence for OccurrenceTransportRefusal is decided HERE, by a total wildcard-free match, and rendered by diagnostic_to_span as no_span() -- the corpus's single authority for 'no authored location' (review 45364).\n\nWHY THERE IS NO SPAN TO CARRY: UnknownOccurrenceIdentity is raised when an OccurrenceId is in neither entries_by_id nor references_by_id (std.occurrence_binding_resolve resolve_reference_occurrence_binding_validated). resolve_reference_occurrence_binding takes ONLY an OccurrenceId (review 45106) precisely so caller-supplied span facts cannot bypass the validated carrier, so at that point no authored span exists to report. This is absence by construction, not a failure to compute one.\n\nWHAT WAS DELETED AND WHY: this arm previously minted two placeholder SourceSpans -- file '<unknown-occurrence:N>' and a wildcard '<occurrence-transport-refusal>'. Both are removed. The wildcard was the DESIGN section 5 absorbing arm: a future spanless variant would have been absorbed into an anonymous placeholder instead of stopping the line. It is now unreachable-by-construction rather than merely unused, because adding a variant reds the total match below AND the total match in occurrence_transport_refusal_diagnostic_message. The '<unknown-occurrence:N>' file name was additionally a section 2 duplicate: the occurrence id is already carried by occurrence_transport_refusal_diagnostic_message, so the span restated a fact the message owns, and a bespoke pseudo-file was a section 3 nickname for no_span().\n\nBOUND, STATED HONESTLY: diagnostic_to_span returns SourceSpan, not SourceSpan?, so span-absence is rendered rather than typed at that boundary. Making it typed changes a load-bearing v1 seed signature with 3 dag and 24 Rust call sites and is a separate corpus-wide change, not this node's scope. Until then no_span() is the honest rendering and the message carries the identity."
@@ -253,7 +253,7 @@ fn occurrence_transport_refusal_diagnostic_message(
   }
 }
 
-fn diagnostic_to_span(d: CompilerDiagnostic) -> std.types.SourceSpan {
+fn diagnostic_to_span(d: v1.std.core.CompilerDiagnostic) -> std.types.SourceSpan {
   match d {
     UnresolvedImport   { module_path: _, importing_module: _, span: s } => s
     MissingExport      { name: _, module_path: _, importing_module: _, span: s } => s
@@ -303,7 +303,7 @@ fn diagnostic_to_span(d: CompilerDiagnostic) -> std.types.SourceSpan {
   }
 }
 
-fn diagnostic_to_message(d: CompilerDiagnostic) -> String {
+fn diagnostic_to_message(d: v1.std.core.CompilerDiagnostic) -> String {
   match d {
     UnresolvedImport   { module_path: m, importing_module: i, span: _ } => concat("unresolved import: module '", m, "' not found (imported by '", i, "')")
     MissingExport      { name: n, module_path: m, importing_module: i, span: _ } => concat("name '", n, "' not found in module '", m, "' (imported by '", i, "')")
@@ -386,19 +386,19 @@ type FrontierOccurrenceKey {
   receiver_shape: String
 }
 
-fn diagnostic_frontier_occurrence_key(d: CompilerDiagnostic) -> FrontierOccurrenceKey? {
+fn diagnostic_frontier_occurrence_key(d: v1.std.core.CompilerDiagnostic) -> v1.std.core.FrontierOccurrenceKey? {
   match d {
     ReceiverTypeUnestablished { method: m, span: _ } =>
-      Present { value: FrontierOccurrenceKey { method: m, receiver_shape: "Primitive()" } }
+      Present { value: v1.std.core.FrontierOccurrenceKey { method: m, receiver_shape: "Primitive()" } }
     MethodExistenceFrontierAdmitted { method: m, receiver_type: t, trigger: _, span: _ } =>
-      Present { value: FrontierOccurrenceKey { method: m, receiver_shape: t } }
+      Present { value: v1.std.core.FrontierOccurrenceKey { method: m, receiver_shape: t } }
     _ => none
   }
 }
 
 data diagnostic_frontier_occurrence_key_note: String = "The canonical accessor for 'which declared unresolved-method frontier row does this diagnostic count against', held HERE beside diagnostic_to_span and diagnostic_to_message rather than in the consumer. The occurrence-budget fold first hand-rolled this match in v1.compiler.infer, which put a second reader of the CompilerDiagnostic coproduct outside the coproduct's own authority — so adding a variant could leave the budget silently blind to it, and the coproduct would have two places that decide what a diagnostic means (codex review 45476). Only two variants carry an occurrence against a row: MethodExistenceFrontierAdmitted names its receiver shape directly, and ReceiverTypeUnestablished always arises from a receiver with NO authored name, whose shape renders as Primitive() — which is why that literal is the key here rather than a field on the variant. Everything else counts against no row. A new variant that should be budgeted is added in this fn, next to the variants it joins."
 
-fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
+fn is_error_diagnostic(d: v1.std.core.CompilerDiagnostic) -> Bool {
   match d {
     UnlistedImportUse { name: _, span: _ } => false
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => false
@@ -411,7 +411,7 @@ fn is_error_diagnostic(d: CompilerDiagnostic) -> Bool {
 
 data where_refinement_deferral_reason_scaffold_note: String = "owner: v1.compiler.infer (00_core diagnostic partition). lane: where-refinement literal-wall enforcement. interim: WhereRefinementUnenforced.reason is a closed-string sum enrolled in is_where_refinement_unenforced_advisory_reason; any unlisted reason fails closed blocking. bound: only the five deferral strings emitted by 04_infer today; classifier/eval/equivalence arms must change together until coproduct lands. dissolve-on: feature:where-refinement-predicate-coproduct (WhereRefinementDeferralReason coproduct on the diagnostic carrier)."
 
-fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
+fn is_interpreter_blocking_diagnostic(d: v1.std.core.CompilerDiagnostic) -> Bool {
   match d {
     ComplexityUnknown { func_name: _, reason: _, span: _ } => false
     WhereRefinementUnenforced { predicate: _, formal_type: _, reason: r, span: _ } =>
@@ -423,7 +423,7 @@ fn is_interpreter_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   }
 }
 
-fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> Bool {
+fn is_discovery_corpus_advisory_typecheck_diagnostic(d: v1.std.core.CompilerDiagnostic) -> Bool {
   match d {
     UnlistedImportUse { name: _, span: _ } => true
     MethodExistenceFrontierAdmitted { method: _, receiver_type: _, trigger: _, span: _ } => true
@@ -434,7 +434,7 @@ fn is_discovery_corpus_advisory_typecheck_diagnostic(d: CompilerDiagnostic) -> B
   }
 }
 
-fn is_discovery_corpus_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
+fn is_discovery_corpus_blocking_diagnostic(d: v1.std.core.CompilerDiagnostic) -> Bool {
   if is_interpreter_blocking_diagnostic(d: d) == false {
     false
   } else if is_discovery_corpus_advisory_typecheck_diagnostic(d: d) {
@@ -444,7 +444,7 @@ fn is_discovery_corpus_blocking_diagnostic(d: CompilerDiagnostic) -> Bool {
   }
 }
 
-fn make_error_node(diagnostic: CompilerDiagnostic, module_name: String) -> ErrorNode {
+fn make_error_node(diagnostic: v1.std.core.CompilerDiagnostic, module_name: String) -> v1.std.core.ErrorNode {
   ErrorNode { diagnostic: diagnostic, module_name: module_name }
 }
 
@@ -458,7 +458,7 @@ type DeclaredFuncSig {
 }
 
 type DeclaredFuncEnv {
-  signatures: Map<String, DeclaredFuncSig>
+  signatures: Map<String, v1.std.core.DeclaredFuncSig>
 }
 
 type Node {
@@ -480,7 +480,7 @@ type Node {
   is_self_recursive: Bool
   has_non_tail_self_call: Bool
 
-  match_pattern: MatchPattern?
+  match_pattern: v1.std.core.MatchPattern?
   expr_data: v1.std.core.ExprData
 }
 
@@ -531,7 +531,7 @@ fn make_pattern_binder_declaration_node(name: String, span: std.types.SourceSpan
   )
 }
 
-fn make_expr_error_node(kind: ExprErrorKind, message: String, span: std.types.SourceSpan) -> v1.std.core.Node {
+fn make_expr_error_node(kind: v1.std.core.ExprErrorKind, message: String, span: std.types.SourceSpan) -> v1.std.core.Node {
   Node {
     name: "", span: span, ident_span: none, children: [], connective: NoConnective,
 
@@ -555,7 +555,7 @@ fn make_arg_node(name: String?, value: v1.std.core.Node, span: std.types.SourceS
   }
 }
 
-fn make_arm_node(pattern: MatchPattern, guard: v1.std.core.Node?, body: v1.std.core.Node, span: std.types.SourceSpan) -> v1.std.core.Node {
+fn make_arm_node(pattern: v1.std.core.MatchPattern, guard: v1.std.core.Node?, body: v1.std.core.Node, span: std.types.SourceSpan) -> v1.std.core.Node {
   let children = match guard { Present { value: g } => [g, body]  Absent => [body] }
   Node {
     name: "", span: span, ident_span: none, children: children, connective: NoConnective,
@@ -599,7 +599,7 @@ fn make_field_init_node(name: String, value: v1.std.core.Node, span: std.types.S
   }
 }
 
-fn make_field_binding_node(field_name: String, binding: MatchPattern, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> v1.std.core.Node {
+fn make_field_binding_node(field_name: String, binding: v1.std.core.MatchPattern, span: std.types.SourceSpan, name_span: std.types.SourceSpan) -> v1.std.core.Node {
   Node {
     name: field_name, span: span, ident_span: default_ident_span(name: field_name, span: name_span), children: [], connective: NoConnective,
     params: [], inferred: none, return_cardinality: Required,
@@ -611,7 +611,7 @@ fn make_field_binding_node(field_name: String, binding: MatchPattern, span: std.
 
 fn field_binding_name_at(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: n) }
 
-fn field_binding_pattern(n: v1.std.core.Node) -> MatchPattern {
+fn field_binding_pattern(n: v1.std.core.Node) -> v1.std.core.MatchPattern {
   match n.match_pattern { Present { value: p } => p  Absent => Wildcard }
 }
 
@@ -770,28 +770,28 @@ type ChildRole {
   required: Bool
 }
 
-data expr_child_roles: Map<String, List<ChildRole>> = {
+data expr_child_roles: Map<String, List<v1.std.core.ChildRole>> = {
   "ExprFieldAccess": [
     ChildRole { name: "base", accessor: "field_access_base", position: 0, required: true }
   ],
   "ExprBinOp": [
     ChildRole { name: "left", accessor: "binop_left", position: 0, required: true },
-    ChildRole { name: "right", accessor: "binop_right", position: 1, required: true }
+    v1.std.core.ChildRole { name: "right", accessor: "binop_right", position: 1, required: true }
   ],
   "ExprUnaryOp": [
     ChildRole { name: "operand", accessor: "unaryop_operand", position: 0, required: true }
   ],
   "ExprIf": [
     ChildRole { name: "condition", accessor: "if_condition", position: 0, required: true },
-    ChildRole { name: "then", accessor: "if_then_branch", position: 1, required: true },
-    ChildRole { name: "else", accessor: "if_else_branch", position: 2, required: false }
+    v1.std.core.ChildRole { name: "then", accessor: "if_then_branch", position: 1, required: true },
+    v1.std.core.ChildRole { name: "else", accessor: "if_else_branch", position: 2, required: false }
   ],
   "ExprMatch": [
     ChildRole { name: "scrutinee", accessor: "match_scrutinee", position: 0, required: true }
   ],
   "ExprLet": [
     ChildRole { name: "value", accessor: "let_value", position: 0, required: true },
-    ChildRole { name: "body", accessor: "let_body", position: 1, required: false }
+    v1.std.core.ChildRole { name: "body", accessor: "let_body", position: 1, required: false }
   ],
   "ExprLambda": [
     ChildRole { name: "body", accessor: "lambda_body", position: 0, required: true }
@@ -801,33 +801,33 @@ data expr_child_roles: Map<String, List<ChildRole>> = {
   ],
   "ExprCast": [
     ChildRole { name: "expr", accessor: "cast_expr", position: 0, required: true },
-    ChildRole { name: "target", accessor: "cast_target", position: 1, required: true }
+    v1.std.core.ChildRole { name: "target", accessor: "cast_target", position: 1, required: true }
   ],
   "ExprForEach": [
     ChildRole { name: "collection", accessor: "foreach_collection", position: 0, required: true },
-    ChildRole { name: "body", accessor: "foreach_body", position: 1, required: true }
+    v1.std.core.ChildRole { name: "body", accessor: "foreach_body", position: 1, required: true }
   ],
   "ExprIndex": [
     ChildRole { name: "base", accessor: "index_base", position: 0, required: true },
-    ChildRole { name: "index", accessor: "index_expr", position: 1, required: true }
+    v1.std.core.ChildRole { name: "index", accessor: "index_expr", position: 1, required: true }
   ],
   "ExprSlice": [
     ChildRole { name: "base", accessor: "slice_base", position: 0, required: true },
-    ChildRole { name: "start", accessor: "slice_start", position: 1, required: true },
-    ChildRole { name: "end", accessor: "slice_end", position: 2, required: true }
+    v1.std.core.ChildRole { name: "start", accessor: "slice_start", position: 1, required: true },
+    v1.std.core.ChildRole { name: "end", accessor: "slice_end", position: 2, required: true }
   ],
   "ExprReturn": [
     ChildRole { name: "value", accessor: "return_value", position: 0, required: true }
   ]
 }
 
-data wrapper_child_roles: Map<String, List<ChildRole>> = {
+data wrapper_child_roles: Map<String, List<v1.std.core.ChildRole>> = {
   "Arg": [
     ChildRole { name: "value", accessor: "arg_value", position: 0, required: true }
   ],
   "Arm": [
     ChildRole { name: "guard", accessor: "arm_guard", position: 0, required: false },
-    ChildRole { name: "body", accessor: "arm_body", position: -1, required: true }
+    v1.std.core.ChildRole { name: "body", accessor: "arm_body", position: -1, required: true }
   ],
   "FieldInit": [
     ChildRole { name: "value", accessor: "field_init_node_value", position: 0, required: true }
@@ -839,7 +839,7 @@ fn is_child_accessor_in_model(name: String) -> Bool {
   || (map_values(wrapper_child_roles) |> any(roles => roles |> any(r => r.accessor == name)))
 }
 
-fn child_roles_for_variant(variant_name: String) -> List<ChildRole>? {
+fn child_roles_for_variant(variant_name: String) -> List<v1.std.core.ChildRole>? {
   map_get(expr_child_roles, variant_name)
 }
 
@@ -848,7 +848,7 @@ type NodeFieldRole
   | SubValueField
   | MetadataField
 
-data node_field_roles: Map<String, NodeFieldRole> = {
+data node_field_roles: Map<String, v1.std.core.NodeFieldRole> = {
   "children": ChildrenListField,
   "params": ChildrenListField,
   "body": SubValueField,
@@ -876,7 +876,7 @@ type FunctionSizeEffect
   | TreeSizeReducing
   | PropertyContraction { domain_size: Int }
 
-data function_size_effects: Map<String, FunctionSizeEffect> = {
+data function_size_effects: Map<String, v1.std.core.FunctionSizeEffect> = {
   "with_required_cardinality": PropertyContraction { domain_size: 2 },
   "resolved_type": TreeSizeReducing,
   "param_node_type_expr": TreeSizeReducing,
@@ -936,7 +936,7 @@ fn arg_value(n: v1.std.core.Node) -> v1.std.core.Node {
   }
 }
 
-fn arm_pattern(n: v1.std.core.Node) -> MatchPattern {
+fn arm_pattern(n: v1.std.core.Node) -> v1.std.core.MatchPattern {
   match n.match_pattern { Present { value: p } => p  Absent => Wildcard }
 }
 
@@ -967,7 +967,7 @@ type DeclRefCoords {
   decl_name: String
 }
 
-fn decl_ref_coords_label(coords: DeclRefCoords) -> String {
+fn decl_ref_coords_label(coords: v1.std.core.DeclRefCoords) -> String {
   concat(coords.module_path, ".", coords.decl_name)
 }
 
@@ -991,7 +991,7 @@ fn call_named_arg_string_optional(
 fn decl_ref_coords_from_call_expr(
   expr: v1.std.core.Node,
   source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> DeclRefCoords? {
+) -> v1.std.core.DeclRefCoords? {
   if expr_call_func_at(texpr: expr, source_indices: source_indices) != "decl_ref" {
     none
   } else {
@@ -1007,7 +1007,7 @@ fn decl_ref_coords_from_call_expr(
           source_indices: source_indices
         ) {
           Present { value: dn } =>
-            Present { value: DeclRefCoords { module_path: mp, decl_name: dn } }
+            Present { value: v1.std.core.DeclRefCoords { module_path: mp, decl_name: dn } }
           Absent => none
         }
       Absent => none
@@ -1018,7 +1018,7 @@ fn decl_ref_coords_from_call_expr(
 fn collect_decl_ref_coords_from_list(
   exprs: List<v1.std.core.Node>,
   source_indices: Map<String, v1.std.core.NewlineIndex>
-) -> List<DeclRefCoords> {
+) -> List<v1.std.core.DeclRefCoords> {
   flat_map(
     exprs,
     e =>
@@ -1029,7 +1029,7 @@ fn collect_decl_ref_coords_from_list(
   )
 }
 
-fn fn_admit_callers(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<DeclRefCoords>? {
+fn fn_admit_callers(n: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.std.core.DeclRefCoords>? {
   match n.properties |> filter(p => p.name == "admit_callers") |> first {
     Present { value: p } =>
       Present {
@@ -1058,7 +1058,7 @@ fn expr_var_name_at(texpr: v1.std.core.Node, source_indices: Map<String, v1.std.
 
 fn field_access_base(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 0, role: "field access base") }
 fn field_access_field_at(texpr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
-fn expr_field_access_summary(texpr: v1.std.core.Node) -> FieldSummary? {
+fn expr_field_access_summary(texpr: v1.std.core.Node) -> v1.std.core.FieldSummary? {
   match texpr.expr_data { ExprFieldAccess { summary: s } => s  _ => none }
 }
 
@@ -1067,15 +1067,15 @@ type FieldAccessSpine {
   dotted: String
 }
 
-fn field_access_spine(texpr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> FieldAccessSpine? {
+fn field_access_spine(texpr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.FieldAccessSpine? {
   match texpr.expr_data {
     ExprVar { binding_kind: _ } =>
       let name = expr_var_name_at(texpr: texpr, source_indices: source_indices)
-      Present { value: FieldAccessSpine { root: name, dotted: name } }
+      Present { value: v1.std.core.FieldAccessSpine { root: name, dotted: name } }
     ExprFieldAccess { summary: _ } =>
       match field_access_spine(texpr: field_access_base(texpr: texpr), source_indices: source_indices) {
         Present { value: base_spine } =>
-          Present { value: FieldAccessSpine {
+          Present { value: v1.std.core.FieldAccessSpine {
             root: base_spine.root,
             dotted: concat(base_spine.dotted, ".", field_access_field_at(texpr: texpr, source_indices: source_indices))
           } }
@@ -1097,7 +1097,7 @@ fn expr_call_descent_evidence(texpr: v1.std.core.Node) -> List<std.induction.Sub
 fn method_receiver(texpr: v1.std.core.Node) -> v1.std.core.Node { expr_child_at(texpr: texpr, index: 0, role: "method receiver") }
 fn method_arg_nodes(texpr: v1.std.core.Node) -> List<v1.std.core.Node> { texpr.children |> skip(1) }
 fn expr_method_name_at(texpr: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String { authored_name_at(source_indices: source_indices, node: texpr) }
-fn expr_method_call_semantics(texpr: v1.std.core.Node) -> MethodSemantics? {
+fn expr_method_call_semantics(texpr: v1.std.core.Node) -> v1.std.core.MethodSemantics? {
   match texpr.expr_data { ExprMethodCall { method_semantics: ms } => ms  _ => none }
 }
 
@@ -1291,7 +1291,7 @@ fn is_shell_transport(t: v1.std.core.Node) -> Bool { t.body != none }
 fn is_file_transport(t: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool { transport_base_path(t: t, source_indices: source_indices) != none }
 fn is_local_transport(t: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> Bool { !is_rest_transport(t: t, source_indices: source_indices) && !is_shell_transport(t: t) && !is_file_transport(t: t, source_indices: source_indices) }
 
-fn field_init_operation_modifier(field_init: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> OperationModifier? {
+fn field_init_operation_modifier(field_init: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.std.core.OperationModifier? {
   let fi_name = field_init_node_name_at(n: field_init, source_indices: source_indices)
   if fi_name == "idempotent" { Present { value: Idempotent } }
   else if fi_name == "readonly" { Present { value: Readonly } }
@@ -1299,7 +1299,7 @@ fn field_init_operation_modifier(field_init: v1.std.core.Node, source_indices: M
   else { none }
 }
 
-fn operation_modifier_name(modifier: OperationModifier) -> String {
+fn operation_modifier_name(modifier: v1.std.core.OperationModifier) -> String {
   match modifier {
     Idempotent => "idempotent"
     Readonly => "readonly"
@@ -1604,7 +1604,7 @@ fn build_newline_index(file: String, source: String) -> v1.std.core.NewlineIndex
   NewlineIndex { file: file, offsets: offsets, char_codes: char_codes }
 }
 
-fn byte_to_line_col(index: v1.std.core.NewlineIndex, offset: Int) -> LineCol {
+fn byte_to_line_col(index: v1.std.core.NewlineIndex, offset: Int) -> v1.std.core.LineCol {
   let clamped = if offset < 0 { 0 } else { offset }
   let line = (index.offsets |> filter(o => o < clamped) |> count) + 1
   let line_start = if line <= 1 { 0 }
@@ -1646,11 +1646,11 @@ type InternTable {
 }
 
 type InternResult {
-  table: InternTable
+  table: v1.std.core.InternTable
   id: Int
 }
 
-fn empty_intern_table() -> InternTable {
+fn empty_intern_table() -> v1.std.core.InternTable {
   InternTable {
     strings: [""],
     index: map_insert(empty_map(), "", 0),
@@ -1660,9 +1660,9 @@ fn empty_intern_table() -> InternTable {
 }
 
 fn intern_table_with_authored_token_ordinals(
-  table: InternTable,
+  table: v1.std.core.InternTable,
   authored_token_ordinals: std.occurrence_identity.AuthoredTokenOrdinalSpace
-) -> InternTable {
+) -> v1.std.core.InternTable {
   InternTable {
     strings: table.strings,
     index: table.index,
@@ -1671,13 +1671,13 @@ fn intern_table_with_authored_token_ordinals(
   }
 }
 
-fn intern(table: InternTable, s: String) -> InternResult {
+fn intern(table: v1.std.core.InternTable, s: String) -> v1.std.core.InternResult {
   match map_get(table.index, s) {
     Present { value: id } => InternResult { table: table, id: id }
     Absent =>
       let id = table.next_id
       InternResult {
-        table: InternTable {
+        table: v1.std.core.InternTable {
           strings: list_push(table.strings, s),
           index: map_insert(table.index, s, id),
           next_id: id + 1,
@@ -1688,28 +1688,28 @@ fn intern(table: InternTable, s: String) -> InternResult {
   }
 }
 
-fn intern_str(table: InternTable, id: Int) -> String {
+fn intern_str(table: v1.std.core.InternTable, id: Int) -> String {
   match table.strings |> get(id) {
     Present { value: s } => s
     Absent => ""
   }
 }
 
-fn intern_find(table: InternTable, s: String) -> Int? {
+fn intern_find(table: v1.std.core.InternTable, s: String) -> Int? {
   match map_get(table.index, s) {
     Present { value: id } => Present { value: id }
     Absent => none
   }
 }
 
-fn intern_find_or_empty(table: InternTable, s: String) -> Int {
+fn intern_find_or_empty(table: v1.std.core.InternTable, s: String) -> Int {
   match map_get(table.index, s) {
     Present { value: id } => id
     Absent => 0
   }
 }
 
-fn merge_intern_tables(tables: List<InternTable>) -> InternTable {
+fn merge_intern_tables(tables: List<v1.std.core.InternTable>) -> v1.std.core.InternTable {
   tables |> fold(init: empty_intern_table(), f: (merged, t) =>
     let merged_allocator = occurrence_id_allocator_advance_to(
       alloc: merged.authored_token_ordinals.allocator,
@@ -1727,11 +1727,11 @@ fn merge_intern_tables(tables: List<InternTable>) -> InternTable {
   )
 }
 
-fn is_internable_token(shape: TokenShape) -> Bool {
+fn is_internable_token(shape: v1.std.core.TokenShape) -> Bool {
   match shape { ShIdent => true  ShKeyword => true  _ => false }
 }
 
-fn pre_intern_tokens(tokens: List<v1.std.core.Token>, table: InternTable) -> InternTable {
+fn pre_intern_tokens(tokens: List<v1.std.core.Token>, table: v1.std.core.InternTable) -> v1.std.core.InternTable {
   fold(tokens, init: table, f: (t, tok) =>
     if is_internable_token(shape: tok.shape) {
       intern(table: t, s: tok.text).table

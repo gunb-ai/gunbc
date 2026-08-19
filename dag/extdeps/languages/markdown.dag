@@ -36,7 +36,7 @@ type MarkdownSpellings {
   thematic_break: String
 }
 
-data commonmark_gfm_spellings: MarkdownSpellings = {
+data commonmark_gfm_spellings: extdeps.languages.markdown.MarkdownSpellings = {
   heading_marker: "#",
   heading_sep: " ",
   unordered_bullet: "- ",
@@ -64,14 +64,14 @@ data commonmark_gfm_spellings: MarkdownSpellings = {
   thematic_break: "---",
 }
 
-fn md_link_form(text: String, url: String, sp: MarkdownSpellings) -> String {
+fn md_link_form(text: String, url: String, sp: extdeps.languages.markdown.MarkdownSpellings) -> String {
   join(
     [sp.link_text_open, text, sp.link_text_close, sp.link_url_open, url, sp.link_url_close],
     ""
   )
 }
 
-fn markdown_markup_medium(sp: MarkdownSpellings) -> std.markup.MarkupMedium {
+fn markdown_markup_medium(sp: extdeps.languages.markdown.MarkdownSpellings) -> std.markup.MarkupMedium {
   std.markup.MarkupMedium {
     tag_overrides: [
       std.markup.TagDelimiter { tag: "em", open: sp.emphasis_delim, close: sp.emphasis_delim },
@@ -86,7 +86,7 @@ fn markdown_markup_medium(sp: MarkdownSpellings) -> std.markup.MarkupMedium {
   }
 }
 
-fn md_inline_to_fragment(inline: std.markdown.MarkdownInline, sp: MarkdownSpellings) -> std.markup.Fragment {
+fn md_inline_to_fragment(inline: std.markdown.MarkdownInline, sp: extdeps.languages.markdown.MarkdownSpellings) -> std.markup.Fragment {
   match inline {
     TextInline { text } =>
       std.markup.FragmentText { content: text }
@@ -103,11 +103,11 @@ fn md_inline_to_fragment(inline: std.markdown.MarkdownInline, sp: MarkdownSpelli
   }
 }
 
-fn md_inlines_to_fragments(inlines: List<std.markdown.MarkdownInline>, sp: MarkdownSpellings) -> List<std.markup.Fragment> {
+fn md_inlines_to_fragments(inlines: List<std.markdown.MarkdownInline>, sp: extdeps.languages.markdown.MarkdownSpellings) -> List<std.markup.Fragment> {
   map(inlines, i => md_inline_to_fragment(inline: i, sp: sp))
 }
 
-fn md_render_inlines(inlines: List<std.markdown.MarkdownInline>, sp: MarkdownSpellings) -> String {
+fn md_render_inlines(inlines: List<std.markdown.MarkdownInline>, sp: extdeps.languages.markdown.MarkdownSpellings) -> String {
   fold(
     md_inlines_to_fragments(inlines: inlines, sp: sp),
     init: "",
@@ -115,7 +115,7 @@ fn md_render_inlines(inlines: List<std.markdown.MarkdownInline>, sp: MarkdownSpe
   )
 }
 
-fn md_item(marker: String, blocks: List<std.markdown.MarkdownBlock>, sp: MarkdownSpellings, depth: Int) -> String {
+fn md_item(marker: String, blocks: List<std.markdown.MarkdownBlock>, sp: extdeps.languages.markdown.MarkdownSpellings, depth: Int) -> String {
   let pad = repeat_string(s: sp.list_indent, n: depth)
   fold(blocks, init: { idx: 0, out: "" }, f: (acc, b) => {
     if acc.idx == 0 {
@@ -143,11 +143,11 @@ fn md_item(marker: String, blocks: List<std.markdown.MarkdownBlock>, sp: Markdow
   }).out
 }
 
-fn md_unordered(items: List<std.markdown.MarkdownListItem>, sp: MarkdownSpellings, depth: Int) -> String {
+fn md_unordered(items: List<std.markdown.MarkdownListItem>, sp: extdeps.languages.markdown.MarkdownSpellings, depth: Int) -> String {
   join(map(items, it => md_item(marker: sp.unordered_bullet, blocks: it.blocks, sp: sp, depth: depth)), "\n")
 }
 
-fn md_ordered(items: List<std.markdown.MarkdownListItem>, sp: MarkdownSpellings, depth: Int) -> String {
+fn md_ordered(items: List<std.markdown.MarkdownListItem>, sp: extdeps.languages.markdown.MarkdownSpellings, depth: Int) -> String {
   fold(items, init: { n: 1, out: "" }, f: (acc, it) => {
     let marker = concat(to_string(acc.n), sp.ordered_suffix)
     let line = md_item(marker: marker, blocks: it.blocks, sp: sp, depth: depth)
@@ -158,21 +158,21 @@ fn md_ordered(items: List<std.markdown.MarkdownListItem>, sp: MarkdownSpellings,
   }).out
 }
 
-fn md_task_box(state: std.markdown.CheckboxState, sp: MarkdownSpellings) -> String {
+fn md_task_box(state: std.markdown.CheckboxState, sp: extdeps.languages.markdown.MarkdownSpellings) -> String {
   match state {
     Checked => sp.task_checked
     Unchecked => sp.task_unchecked
   }
 }
 
-fn md_tasklist(items: List<std.markdown.MarkdownTaskItem>, sp: MarkdownSpellings, depth: Int) -> String {
+fn md_tasklist(items: List<std.markdown.MarkdownTaskItem>, sp: extdeps.languages.markdown.MarkdownSpellings, depth: Int) -> String {
   join(map(items, it => {
     let marker = concat(sp.unordered_bullet, md_task_box(state: it.state, sp: sp))
     md_item(marker: marker, blocks: it.blocks, sp: sp, depth: depth)
   }), "\n")
 }
 
-fn md_nested(block: std.markdown.MarkdownBlock, sp: MarkdownSpellings, depth: Int) -> String {
+fn md_nested(block: std.markdown.MarkdownBlock, sp: extdeps.languages.markdown.MarkdownSpellings, depth: Int) -> String {
   match block {
     UnorderedListBlock { items } => md_unordered(items: items, sp: sp, depth: depth)
     OrderedListBlock { items } => md_ordered(items: items, sp: sp, depth: depth)
@@ -181,16 +181,16 @@ fn md_nested(block: std.markdown.MarkdownBlock, sp: MarkdownSpellings, depth: In
   }
 }
 
-fn md_table_cell(cell: std.markdown.MarkdownTableCell, sp: MarkdownSpellings) -> String {
+fn md_table_cell(cell: std.markdown.MarkdownTableCell, sp: extdeps.languages.markdown.MarkdownSpellings) -> String {
   md_render_inlines(inlines: cell.inlines, sp: sp)
 }
 
-fn md_table_row(row: std.markdown.MarkdownTableRow, sp: MarkdownSpellings) -> String {
+fn md_table_row(row: std.markdown.MarkdownTableRow, sp: extdeps.languages.markdown.MarkdownSpellings) -> String {
   fold(row.cells, init: sp.table_pipe, f: (acc, c) =>
     join([acc, sp.table_cell_pad, md_table_cell(cell: c, sp: sp), sp.table_cell_pad, sp.table_pipe], ""))
 }
 
-fn md_align_cell(a: std.markdown.MarkdownAlignment, sp: MarkdownSpellings) -> String {
+fn md_align_cell(a: std.markdown.MarkdownAlignment, sp: extdeps.languages.markdown.MarkdownSpellings) -> String {
   match a {
     AlignNone => sp.table_align_none
     AlignLeft => sp.table_align_left
@@ -199,7 +199,7 @@ fn md_align_cell(a: std.markdown.MarkdownAlignment, sp: MarkdownSpellings) -> St
   }
 }
 
-fn md_table_delim(alignments: List<std.markdown.MarkdownAlignment>, sp: MarkdownSpellings) -> String {
+fn md_table_delim(alignments: List<std.markdown.MarkdownAlignment>, sp: extdeps.languages.markdown.MarkdownSpellings) -> String {
   fold(alignments, init: sp.table_pipe, f: (acc, a) =>
     join([acc, sp.table_cell_pad, md_align_cell(a: a, sp: sp), sp.table_cell_pad, sp.table_pipe], ""))
 }
@@ -208,7 +208,7 @@ fn md_table(
   header: std.markdown.MarkdownTableRow,
   alignments: List<std.markdown.MarkdownAlignment>,
   rows: List<std.markdown.MarkdownTableRow>,
-  sp: MarkdownSpellings
+  sp: extdeps.languages.markdown.MarkdownSpellings
 ) -> String {
   let head = md_table_row(row: header, sp: sp)
   let delim = md_table_delim(alignments: alignments, sp: sp)
@@ -224,7 +224,7 @@ fn md_prefix_lines(text: String, prefix: String) -> String {
   join(map(split(s: text, delimiter: "\n"), line => concat(prefix, line)), "\n")
 }
 
-fn md_blockquote(blocks: List<std.markdown.MarkdownBlock>, sp: MarkdownSpellings) -> String {
+fn md_blockquote(blocks: List<std.markdown.MarkdownBlock>, sp: extdeps.languages.markdown.MarkdownSpellings) -> String {
   let inner = join(map(blocks, b => md_block(block: b, sp: sp)), "\n")
   md_prefix_lines(text: inner, prefix: sp.blockquote_marker)
 }
@@ -240,7 +240,7 @@ fn heading_level_to_int(level: std.markdown.HeadingLevel) -> Int {
   }
 }
 
-fn md_code_block(code: String, sp: MarkdownSpellings) -> String {
+fn md_code_block(code: String, sp: extdeps.languages.markdown.MarkdownSpellings) -> String {
   if ends_with(s: code, suffix: "\n") {
     join([sp.code_fence, "\n", code, sp.code_fence], "")
   } else {
@@ -248,7 +248,7 @@ fn md_code_block(code: String, sp: MarkdownSpellings) -> String {
   }
 }
 
-fn md_block(block: std.markdown.MarkdownBlock, sp: MarkdownSpellings) -> String {
+fn md_block(block: std.markdown.MarkdownBlock, sp: extdeps.languages.markdown.MarkdownSpellings) -> String {
   match block {
     HeadingBlock { level, inlines } =>
       join([
@@ -275,7 +275,7 @@ fn md_block(block: std.markdown.MarkdownBlock, sp: MarkdownSpellings) -> String 
   }
 }
 
-fn serialize_markdown_source_with(doc: std.markdown.MarkdownDocument, sp: MarkdownSpellings) -> String {
+fn serialize_markdown_source_with(doc: std.markdown.MarkdownDocument, sp: extdeps.languages.markdown.MarkdownSpellings) -> String {
   concat(
     join(map(doc.blocks, b => md_block(block: b, sp: sp)), sp.block_separator),
     "\n"
@@ -301,7 +301,7 @@ fn md_drop_prefix(s: String, prefix: String) -> String {
   substring(s: s, start: prefix.length(), end: s.length())
 }
 
-fn md_strip_repeated(s: String, unit: String, n: Int) -> RepeatStrip {
+fn md_strip_repeated(s: String, unit: String, n: Int) -> extdeps.languages.markdown.RepeatStrip {
   if (unit != "") && starts_with(s: s, prefix: unit) {
     md_strip_repeated(s: md_drop_prefix(s: s, prefix: unit), unit: unit, n: n + 1)
   } else {
@@ -313,7 +313,7 @@ fn md_is_digit(c: String) -> Bool {
   (c != "") && string_contains(s: "0123456789", pattern: c)
 }
 
-fn md_strip_digits(s: String, n: Int) -> RepeatStrip {
+fn md_strip_digits(s: String, n: Int) -> extdeps.languages.markdown.RepeatStrip {
   let c = char_at(s, 0)
   if md_is_digit(c: c) {
     md_strip_digits(s: substring(s: s, start: 1, end: s.length()), n: n + 1)
@@ -326,7 +326,7 @@ fn md_ingest_inlines(text: String) -> List<std.markdown.MarkdownInline> {
   [ std.markdown.TextInline { text: text } ]
 }
 
-fn md_split_blocks(src: String, sp: MarkdownSpellings) -> List<String> {
+fn md_split_blocks(src: String, sp: extdeps.languages.markdown.MarkdownSpellings) -> List<String> {
   let trimmed = if ends_with(s: src, suffix: "\n") {
     substring(s: src, start: 0, end: src.length() - 1)
   } else {
@@ -335,12 +335,12 @@ fn md_split_blocks(src: String, sp: MarkdownSpellings) -> List<String> {
   split(s: trimmed, delimiter: sp.block_separator)
 }
 
-fn md_is_heading(line: String, sp: MarkdownSpellings) -> Bool {
+fn md_is_heading(line: String, sp: extdeps.languages.markdown.MarkdownSpellings) -> Bool {
   let h = md_strip_repeated(s: line, unit: sp.heading_marker, n: 0)
   (h.count >= 1) && (h.count <= 6) && starts_with(s: h.rest, prefix: sp.heading_sep)
 }
 
-fn md_is_task_line(line: String, sp: MarkdownSpellings) -> Bool {
+fn md_is_task_line(line: String, sp: extdeps.languages.markdown.MarkdownSpellings) -> Bool {
   if starts_with(s: line, prefix: sp.unordered_bullet) {
     let after = md_drop_prefix(s: line, prefix: sp.unordered_bullet)
     starts_with(s: after, prefix: sp.task_checked) || starts_with(s: after, prefix: sp.task_unchecked)
@@ -349,12 +349,12 @@ fn md_is_task_line(line: String, sp: MarkdownSpellings) -> Bool {
   }
 }
 
-fn md_is_ordered_line(line: String, sp: MarkdownSpellings) -> Bool {
+fn md_is_ordered_line(line: String, sp: extdeps.languages.markdown.MarkdownSpellings) -> Bool {
   let d = md_strip_digits(s: line, n: 0)
   (d.count >= 1) && starts_with(s: d.rest, prefix: sp.ordered_suffix)
 }
 
-fn md_parse_heading(line: String, sp: MarkdownSpellings) -> std.markdown.MarkdownBlock {
+fn md_parse_heading(line: String, sp: extdeps.languages.markdown.MarkdownSpellings) -> std.markdown.MarkdownBlock {
   let h = md_strip_repeated(s: line, unit: sp.heading_marker, n: 0)
   std.markdown.HeadingBlock {
     level: int_to_heading_level(n: h.count),
@@ -362,20 +362,20 @@ fn md_parse_heading(line: String, sp: MarkdownSpellings) -> std.markdown.Markdow
   }
 }
 
-fn md_unordered_item(line: String, sp: MarkdownSpellings) -> std.markdown.MarkdownListItem {
+fn md_unordered_item(line: String, sp: extdeps.languages.markdown.MarkdownSpellings) -> std.markdown.MarkdownListItem {
   std.markdown.MarkdownListItem {
     blocks: [ std.markdown.ParagraphBlock { inlines: md_ingest_inlines(text: md_drop_prefix(s: line, prefix: sp.unordered_bullet)) } ],
   }
 }
 
-fn md_ordered_item(line: String, sp: MarkdownSpellings) -> std.markdown.MarkdownListItem {
+fn md_ordered_item(line: String, sp: extdeps.languages.markdown.MarkdownSpellings) -> std.markdown.MarkdownListItem {
   let d = md_strip_digits(s: line, n: 0)
   std.markdown.MarkdownListItem {
     blocks: [ std.markdown.ParagraphBlock { inlines: md_ingest_inlines(text: md_drop_prefix(s: d.rest, prefix: sp.ordered_suffix)) } ],
   }
 }
 
-fn md_task_item(line: String, sp: MarkdownSpellings) -> std.markdown.MarkdownTaskItem {
+fn md_task_item(line: String, sp: extdeps.languages.markdown.MarkdownSpellings) -> std.markdown.MarkdownTaskItem {
   let after = md_drop_prefix(s: line, prefix: sp.unordered_bullet)
   if starts_with(s: after, prefix: sp.task_checked) {
     std.markdown.MarkdownTaskItem {
@@ -397,7 +397,7 @@ fn md_parse_code(block_lines: List<String>) -> std.markdown.MarkdownBlock {
   }
 }
 
-fn md_parse_block(block_src: String, sp: MarkdownSpellings) -> std.markdown.MarkdownBlock {
+fn md_parse_block(block_src: String, sp: extdeps.languages.markdown.MarkdownSpellings) -> std.markdown.MarkdownBlock {
   let lines = split(s: block_src, delimiter: "\n")
   let first = lines.first()
   if starts_with(s: block_src, prefix: sp.code_fence) {
@@ -416,7 +416,7 @@ fn md_parse_block(block_src: String, sp: MarkdownSpellings) -> std.markdown.Mark
   }
 }
 
-fn ingest_markdown_source_with(src: String, sp: MarkdownSpellings) -> std.markdown.MarkdownDocument {
+fn ingest_markdown_source_with(src: String, sp: extdeps.languages.markdown.MarkdownSpellings) -> std.markdown.MarkdownDocument {
   std.markdown.MarkdownDocument {
     blocks: map(md_split_blocks(src: src, sp: sp), b => md_parse_block(block_src: b, sp: sp)),
   }
@@ -560,17 +560,17 @@ type InlineSplit {
 }
 
 type InlineSplitResult
-  = FoundSplit { parts: InlineSplit }
+  = FoundSplit { parts: extdeps.languages.markdown.InlineSplit }
   | NoSplit
 
-fn md_split_on_delim_pair(text: String, delim: String) -> InlineSplitResult {
+fn md_split_on_delim_pair(text: String, delim: String) -> extdeps.languages.markdown.InlineSplitResult {
   let parts = split(s: text, delimiter: delim)
   if parts.length() >= 3 {
     let before = parts.first()
     let tail = parts.skip(n: 1)
     let inner = tail.first()
     let after = join(tail.skip(n: 1), delim)
-    FoundSplit { parts: InlineSplit { before: before, inner: inner, after: after } }
+    FoundSplit { parts: extdeps.languages.markdown.InlineSplit { before: before, inner: inner, after: after } }
   } else {
     NoSplit
   }
@@ -580,7 +580,7 @@ fn md_text_inline_if_nonempty(s: String) -> List<std.markdown.MarkdownInline> {
   if s == "" { [] } else { [ std.markdown.TextInline { text: s } ] }
 }
 
-fn md_parse_inline_rest(text: String, sp: MarkdownSpellings) -> List<std.markdown.MarkdownInline> {
+fn md_parse_inline_rest(text: String, sp: extdeps.languages.markdown.MarkdownSpellings) -> List<std.markdown.MarkdownInline> {
   if text == "" {
     []
   } else {
@@ -621,7 +621,7 @@ fn md_parse_inline_rest(text: String, sp: MarkdownSpellings) -> List<std.markdow
   }
 }
 
-fn md_parse_inline_link(text: String, sp: MarkdownSpellings) -> List<std.markdown.MarkdownInline> {
+fn md_parse_inline_link(text: String, sp: extdeps.languages.markdown.MarkdownSpellings) -> List<std.markdown.MarkdownInline> {
   let open_parts = split(s: text, delimiter: sp.link_text_open)
   if open_parts.length() < 2 {
     [ std.markdown.TextInline { text: text } ]

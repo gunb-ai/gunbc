@@ -14,7 +14,7 @@ type ItemKind = FnItem | FuncItem | TypeItem | DataItem | ServiceItem | OtherIte
 type ItemInfo {
   name: String
   module_name: String
-  kind: ItemKind
+  kind: v1.compiler.infer_items.ItemKind
   service_names: List<String>
   resource_names: List<String>
   params: List<v1.std.core.Node>
@@ -28,28 +28,28 @@ type ModuleInterface {
   cache: v1.compiler.infer_env.TypeEnvCache
 }
 
-data typed_module_interface_body_dual_field_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on (S2a move 2 increment B transitional shape, resolver-graph-major-design.md §7): TypedModule carries both body grain (type_env, type_env_cache) and interface grain (interface.env, interface.cache) as projections from one typecheck completion — interface is built only via build_module_interface at typecheck exit, never independently mutated. Consumption at the parent-import boundary reads interface grain; interpretation and cache-decode rewire keep type_env as canonical Rc-identity authority (rewire_type_env_parent_links :6986). DISSOLVES WHEN ModuleBody is the sole body carrier and TypedModule.interface becomes the only cross-module export surface (interface/body split complete — type_env on TypedModule becomes interpretation-local only or is deleted). Receipt: transitive_interface_binding_test.")
+data typed_module_interface_body_dual_field_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on (S2a move 2 increment B transitional shape, resolver-graph-major-design.md §7): v1.compiler.infer_items.TypedModule carries both body grain (type_env, type_env_cache) and interface grain (interface.env, interface.cache) as projections from one typecheck completion — interface is built only via build_module_interface at typecheck exit, never independently mutated. Consumption at the parent-import boundary reads interface grain; interpretation and cache-decode rewire keep type_env as canonical Rc-identity authority (rewire_type_env_parent_links :6986). DISSOLVES WHEN ModuleBody is the sole body carrier and TypedModule.interface becomes the only cross-module export surface (interface/body split complete — type_env on TypedModule becomes interpretation-local only or is deleted). Receipt: transitive_interface_binding_test.")
 
 type TypedModule {
   module: v1.std.core.Node
   items: List<v1.std.core.Node>
   type_env: v1.compiler.infer_env.TypeEnv
   type_env_cache: v1.compiler.infer_env.TypeEnvCache
-  interface: ModuleInterface
+  interface: v1.compiler.infer_items.ModuleInterface
   func_env: v1.compiler.infer_sigs.ResolvedFuncEnv
-  item_registry: Map<String, ItemInfo>
+  item_registry: Map<String, v1.compiler.infer_items.ItemInfo>
   occurrence_transport: std.occurrence_identity.OccurrenceTransport?
 }
 
 type TypedGraph {
-  modules: List<TypedModule>
-  item_registry: Map<String, ItemInfo>
+  modules: List<v1.compiler.infer_items.TypedModule>
+  item_registry: Map<String, v1.compiler.infer_items.ItemInfo>
   diagnostics: List<v1.std.core.ErrorNode>
 }
 
 type ResolvedGraph {
-  modules: List<TypedModule>
-  item_registry: Map<String, ItemInfo>
+  modules: List<v1.compiler.infer_items.TypedModule>
+  item_registry: Map<String, v1.compiler.infer_items.ItemInfo>
   diagnostics: List<v1.std.core.ErrorNode>
   emit_graph_info: v1.compiler.infer_emit_info.EmitGraphInfo
 }
@@ -84,7 +84,7 @@ fn inferred_to_outputs(inferred: InferredNode?, span: std.types.SourceSpan, sour
   }
 }
 
-fn item_kind(item: v1.std.core.Node) -> ItemKind {
+fn item_kind(item: v1.std.core.Node) -> v1.compiler.infer_items.ItemKind {
   let kind = if item.connective != NoConnective && item.transport == none {
     TypeItem
   } else if item.transport != none {

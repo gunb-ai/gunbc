@@ -11,13 +11,13 @@ type DeclarationIdentity {
 }
 
 type DeclarationRefResolution
-  = DeclarationRefResolved { declaration_identity: DeclarationIdentity }
+  = DeclarationRefResolved { declaration_identity: v2.std.decl_ref_resolution.DeclarationIdentity }
   | DeclarationRefModuleAbsent { reference: std.decl_ref.DeclarationRef }
   | DeclarationRefDeclarationAbsent { reference: std.decl_ref.DeclarationRef }
   | DeclarationRefFieldAbsent { reference: std.decl_ref.DeclarationRef }
-  | DeclarationRefAmbiguous { reference: std.decl_ref.DeclarationRef, candidates: List<DeclarationIdentity> }
+  | DeclarationRefAmbiguous { reference: std.decl_ref.DeclarationRef, candidates: List<v2.std.decl_ref_resolution.DeclarationIdentity> }
 
-fn declaration_identity_from_fact(fact: v2.std.decl_index.DeclFact) -> DeclarationIdentity {
+fn declaration_identity_from_fact(fact: v2.std.decl_index.DeclFact) -> v2.std.decl_ref_resolution.DeclarationIdentity {
   DeclarationIdentity {
     qualified_name: fact.qualified_name,
     name: fact.name,
@@ -38,7 +38,7 @@ fn module_path_declared(module_path: String, modules: List<v2.lens.module_graph.
 }
 
 
-fn declaration_identities_from_facts(facts: List<v2.std.decl_index.DeclFact>) -> List<DeclarationIdentity> {
+fn declaration_identities_from_facts(facts: List<v2.std.decl_index.DeclFact>) -> List<v2.std.decl_ref_resolution.DeclarationIdentity> {
   list_map(xs: facts, f: fn(fact) { declaration_identity_from_fact(fact: fact) })
 }
 
@@ -57,7 +57,7 @@ fn resolve_declaration_ref(
   ref: std.decl_ref.DeclarationRef,
   facts: List<v2.std.decl_index.DeclFact>,
   modules: List<v2.lens.module_graph.ModuleDeclarationFact>
-) -> DeclarationRefResolution {
+) -> v2.std.decl_ref_resolution.DeclarationRefResolution {
   if !module_path_declared(module_path: ref.module_path as String, modules: modules) {
     DeclarationRefModuleAbsent { reference: ref }
   } else {
@@ -126,10 +126,10 @@ fn declaration_ref_resolution_census(
   refs: List<std.decl_ref.DeclarationRef>,
   facts: List<v2.std.decl_index.DeclFact>,
   modules: List<v2.lens.module_graph.ModuleDeclarationFact>
-) -> DeclarationRefResolutionCensus {
+) -> v2.std.decl_ref_resolution.DeclarationRefResolutionCensus {
   fold(
     refs,
-    init: DeclarationRefResolutionCensus {
+    init: v2.std.decl_ref_resolution.DeclarationRefResolutionCensus {
       resolved_count: 0,
       module_absent_count: 0,
       declaration_absent_count: 0,
