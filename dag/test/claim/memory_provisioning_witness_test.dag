@@ -27,8 +27,8 @@ fn rdimm_64g() -> extdeps.memory.types.DramModuleCatalogRow { rdimm(part: "SYNTH
 // Used only as the discriminating input for the platform-compatibility join:
 // keeping every other field equal is what makes the refusal attributable to
 // the generation axis rather than to synthetic rows generally.
-fn rdimm_32g_ddr5() -> DramModuleCatalogRow {
-  DramModuleCatalogRow {
+fn rdimm_32g_ddr5() -> extdeps.memory.types.DramModuleCatalogRow {
+  extdeps.memory.types.DramModuleCatalogRow {
     part_number: "SYNTH-32G-DDR5",
     manufacturer: samsung,
     generation: dram_generation_ddr5,
@@ -838,11 +838,11 @@ test fn a_declared_decimal_basis_converts_to_bytes() -> Bool {
 // between two DIMM SKUs.
 test fn the_same_quoted_figure_differs_under_a_binary_basis() -> Bool {
   match entitlement_bytes(
-    profile: RunnerProductProfile {
+    profile: gunbc.memory_provisioning.RunnerProductProfile {
       label: "synthetic-binary",
       architecture: Aarch64,
       advertised_entitlement: DedicatedPhysicalCore,
-      guaranteed_memory_per_entitlement: QuotedBinaryGibibytes { value: gibibyte(count: 3) },
+      guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedBinaryGibibytes { value: gibibyte(count: 3) },
       consulted_benchmarks: [ubicloud_arm_benchmark],
     },
   ) {
@@ -859,11 +859,11 @@ test fn an_undeclared_basis_refuses_the_capacity_derivation() -> Bool {
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
     cpu: altra_q6430_catalog,
-    profile: RunnerProductProfile {
+    profile: gunbc.memory_provisioning.RunnerProductProfile {
       label: "synthetic-unbased",
       architecture: Aarch64,
       advertised_entitlement: DedicatedPhysicalCore,
-      guaranteed_memory_per_entitlement: QuotedWithoutBasis { numeral: 3, unit_label: "GB" },
+      guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedWithoutBasis { numeral: 3, unit_label: "GB" },
       consulted_benchmarks: [ubicloud_arm_benchmark],
     },
     modules: [rdimm_32g(), rdimm_64g()],
@@ -897,11 +897,11 @@ test fn an_unstated_entitlement_refuses_through_the_fold() -> Bool {
     geometry: asrock_altrad8ud_1l2t_geometry,
     policy: FullChannelRequiredForSellableRunner,
     cpu: altra_q6430_catalog,
-    profile: RunnerProductProfile {
+    profile: gunbc.memory_provisioning.RunnerProductProfile {
       label: "synthetic-unstated",
       architecture: Aarch64,
       advertised_entitlement: EntitlementUnstated,
-      guaranteed_memory_per_entitlement: QuotedDecimalGigabytes { value: gigabyte(count: 3) },
+      guaranteed_memory_per_entitlement: extdeps.ci_runner.types.QuotedDecimalGigabytes { value: gigabyte(count: 3) },
       consulted_benchmarks: [ubicloud_arm_benchmark],
     },
     modules: [rdimm_32g()],

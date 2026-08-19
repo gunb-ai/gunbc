@@ -5,13 +5,13 @@ data documentary_refs_note: String = "THE SYSTEMS A GENERATED DOCUMENT NAMES, CA
 
 data generated_document_ref_rows_note: String = "ONE ROW PER SYSTEM THE GENERATED DESIGN DOCUMENT NAMES IN A MIGRATED PARAGRAPH, and the rendered bytes come from these rows rather than beside them. A row typed here while the paragraph independently spells the same name would be two representations of one fact, which is the shape this program exists to remove -- so the paragraph builds its symbol text by rendering the row, and a rename that moves the row moves the document."
 
-data v1_maintenance_standing_ref: DeclarationRef = decl_ref(module_path: "gunbc.v1_maintenance_standing", decl_name: "v1_seed_standing")
+data v1_maintenance_standing_ref: std.decl_ref.DeclarationRef = decl_ref(module_path: "gunbc.v1_maintenance_standing", decl_name: "v1_seed_standing")
 
-fn documentary_ref_symbol_text(reference: DeclarationRef) -> String {
+fn documentary_ref_symbol_text(reference: std.decl_ref.DeclarationRef) -> String {
   concat("`", reference.module_path as String, " ", reference.decl_name as String, "`")
 }
 
-fn generated_document_declaration_refs() -> List<DeclarationRef> {
+fn generated_document_declaration_refs() -> List<std.decl_ref.DeclarationRef> {
   [v1_maintenance_standing_ref]
 }
 

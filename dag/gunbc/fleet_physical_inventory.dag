@@ -343,7 +343,7 @@ data fleet_processor_verdicts: List<ProcessorReconcileVerdict> = [
 
 data fleet_lot_allocation_seed: InventoryLotAllocator = inventory_lot_allocator_initial()
 
-data dimm_lot_64gib_32x_identity: InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocation_seed).id
+data dimm_lot_64gib_32x_identity: product.inventory.InventoryLotIdentity = mint_inventory_lot_identity(alloc: fleet_lot_allocation_seed).id
 
 data fleet_lot_allocator_after_dimm_lot: InventoryLotAllocator = mint_inventory_lot_identity(alloc: fleet_lot_allocation_seed).alloc
 
@@ -369,9 +369,9 @@ data dimm_lot_64gib_32x_ledger: List<InventoryEvent> = [
 // typed fact rather than prose, and it is discharged - not restated - by the
 // QuantityReserved events that follow receipt and qualification.
 type FleetLotAllocationIntent {
-  lot: InventoryLotIdentity
-  host: HostIdentity
-  intended_quantity: Nat
+  lot: product.inventory.InventoryLotIdentity
+  host: product.placement_supply.HostIdentity
+  intended_quantity: std.nat.Nat
 }
 
 data dimm_lot_64gib_32x_intended_allocation: List<FleetLotAllocationIntent> = [
@@ -381,7 +381,7 @@ data dimm_lot_64gib_32x_intended_allocation: List<FleetLotAllocationIntent> = [
   FleetLotAllocationIntent { lot: dimm_lot_64gib_32x_identity, host: host_srv4, intended_quantity: 8 },
 ]
 
-fn intended_allocation_total(rows: List<FleetLotAllocationIntent>) -> Nat {
+fn intended_allocation_total(rows: List<FleetLotAllocationIntent>) -> std.nat.Nat {
   if rows.length() == 0 {
     0
   } else {

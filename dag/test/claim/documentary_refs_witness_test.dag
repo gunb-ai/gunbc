@@ -35,7 +35,7 @@ fn intact_facts() -> List<v2.std.decl_index.DeclFact> {
 }
 
 
-fn refusals_against(facts: List<DeclFact>) -> Int {
+fn refusals_against(facts: List<v2.std.decl_index.DeclFact>) -> Int {
   cited_declaration_ref_refusal_count(
     refs: generated_document_declaration_refs(),
     facts: facts,

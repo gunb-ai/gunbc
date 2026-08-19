@@ -85,7 +85,7 @@ fn section_3_blocks() -> List<std.markdown.MarkdownBlock> {
     p(text: "Each independently versioned upstream product, implementation, engine, vendor, or specification has its own extdeps module authority. Multiple source citations from the same upstream subject may ground that module. A generic hub may define or re-export agnostic shapes, but it may not enumerate concrete products, dispatch among their authorities, carry product-specific version rows, or store consumer coverage state."),
     p(text: "Observations produced by this repository are receipts in the observing product/workflow layer, not facts owned by the observed upstream. Missing observations are coverage obligations downstream, never `Unobserved` properties authored inside an upstream module."),
     p(text: "Example:"),
-    CodeBlock { code: "extdeps.whatwg.html_navigation        shared standard\nextdeps.browser.chromium              Chromium implementation\nextdeps.browser.google_chrome         Chrome distribution\nextdeps.browser.webkit               WebKit implementation\nextdeps.browser.apple_safari          Safari distribution\nextdeps.automation.playwright         automation dependency\ngunbc.served_surface_browser_support  support policy and evidence join\n" },
+    std.markdown.CodeBlock { code: "extdeps.whatwg.html_navigation        shared standard\nextdeps.browser.chromium              Chromium implementation\nextdeps.browser.google_chrome         Chrome distribution\nextdeps.browser.webkit               WebKit implementation\nextdeps.browser.apple_safari          Safari distribution\nextdeps.automation.playwright         automation dependency\ngunbc.served_surface_browser_support  support policy and evidence join\n" },
     p(text: "A Chrome change must not require editing Safari’s module. Adding Opera must not widen a generic browser-product enum."),
   ]
 }
@@ -162,7 +162,7 @@ fn failure_modes_blocks() -> List<std.markdown.MarkdownBlock> {
   ]
 }
 
-fn building_checks_blocks() -> List<MarkdownBlock> {
+fn building_checks_blocks() -> List<std.markdown.MarkdownBlock> {
   [
     h2(text: "Building & checks"),
     ul(items: [

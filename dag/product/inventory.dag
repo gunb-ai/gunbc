@@ -95,12 +95,12 @@ data landed_cost_is_aggregate_note: String = "Landed cost is stored ONCE, as an 
 data landed_cost_is_three_states_note: String = "A lot's landed cost was a bare MoneyOnce, which made 'what did this cost' a question the type insisted had an answer. It does not always have one, and the two ways it can be missing are not the same fact. A lot in transit has no landed cost because none has been incurred yet — nothing is hidden and the figure will exist later. A settled lot whose cost is recorded off-public HAS a cost; the public model simply does not carry it, per the operator's 2026-08-19 privacy ruling, and it never will. Those send a reader in opposite directions: one waits, the other stops asking. Collapsing them into a single Withheld arm carrying a reason string would put prose where a coproduct belongs — the same defect review 53528 caught on LandedCostSumRefused's cause field one layer down — so the arm IS the reason and there is no string to parse. Note what this is NOT: it is not a privacy mechanism bolted onto an economics model. LandedCostUnsettled earns its place with no privacy ruling in play at all, because in-transit-with-no-cost-yet is a real state of a real lot; the ruling supplies the third arm, not the split."
 
 type LandedCost
-  = LandedCostRecorded { cost: MoneyOnce }
+  = LandedCostRecorded { cost: std.measure.MoneyOnce }
   | LandedCostUnsettled
   | LandedCostHeldPrivately
 
 type LotReceipt
-  = ReceiptRecorded { receipt: ProcurementReceiptIdentity }
+  = ReceiptRecorded { receipt: product.placement_supply.ProcurementReceiptIdentity }
   | ReceiptHeldPrivately
 
 // EVERY READER OF A COST IS NOW PARTIAL, and that is the point rather than a cost of the change.
@@ -109,20 +109,20 @@ type LotReceipt
 // quietly wrong in the direction that looks like thrift. So the reading is three-valued, the two
 // unreadable arms are distinguishable, and a consumer must decide what to do about each.
 type LandedCostReading
-  = LandedCostReadingMicros { micros: Nat }
+  = LandedCostReadingMicros { micros: std.nat.Nat }
   | LandedCostReadingUnsettled
   | LandedCostReadingHeldPrivately
 
 type LandedCostCurrencyReading
-  = LandedCostCurrencyKnown { currency: CurrencyCode }
+  = LandedCostCurrencyKnown { currency: std.currency.CurrencyCode }
   | LandedCostCurrencyUnrecorded
 
 type ProcurementLot {
   identity: InventoryLotIdentity
   receipt: LotReceipt
   catalog: LotCatalogIdentity
-  display_label: NonEmptyStr
-  quantity_acquired: Nat
+  display_label: std.types.NonEmptyStr
+  quantity_acquired: std.nat.Nat
   landed_cost: LandedCost
 }
 
@@ -152,13 +152,13 @@ fn lot_landed_cost_currency(lot: ProcurementLot) -> LandedCostCurrencyReading {
 data landed_cost_empty_is_its_own_state_note: String = "LandedCostEmpty is a THIRD arm, not a refusal carrying a sentinel. An earlier revision seeded the fold with LandedCostSumRefused { cause: \"no_lots\" } and told the empty accumulator apart from a genuine currency mismatch by comparing that String — which is the DESIGN section 5 state-space conflation exactly, one level down: two states with completely different remedies (supply lots versus reconcile currencies) shared one constructor, and any consumer wanting to tell them apart had to parse prose out of a diagnostic field. Summing nothing is not a failure and must not be reported as one; it is the empty case, and it has its own inhabitant. Caught by review 53528."
 
 type LandedCostSumRefusalCause
-  = CurrencyMismatchAcrossLots { left: CurrencyCode, right: CurrencyCode }
+  = CurrencyMismatchAcrossLots { left: std.currency.CurrencyCode, right: std.currency.CurrencyCode }
   | LotLandedCostUnsettled { lot: InventoryLotIdentity }
   | LotLandedCostHeldPrivately { lot: InventoryLotIdentity }
 
 type LandedCostSum
   = LandedCostEmpty
-  | LandedCostTotal { total: MoneyOnce }
+  | LandedCostTotal { total: std.measure.MoneyOnce }
   | LandedCostSumRefused { cause: LandedCostSumRefusalCause }
 
 // THE CAUSE IS TYPED, AND THE UNREADABLE LOT IS NAMED. The refusal previously carried a
@@ -195,7 +195,7 @@ fn sum_landed_cost(lots: List<ProcurementLot>) -> LandedCostSum {
           LandedCostRecorded { cost: c } =>
             if t.currency == c.currency {
               LandedCostTotal {
-                total: MoneyOnce {
+                total: std.measure.MoneyOnce {
                   amount: money_amount_micro(count: money_once_micros(q: t) + money_once_micros(q: c)),
                   currency: t.currency,
                 },
