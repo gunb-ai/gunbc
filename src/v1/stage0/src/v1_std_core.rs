@@ -2593,6 +2593,32 @@ pub fn expr_literal_string_optional(expr: Rc<Node>) -> Option<String> {
     }
 }
 
+pub fn expr_is_any_literal(mut expr: Rc<Node>) -> bool {
+    loop {
+        match (*expr.expr_data.clone()).clone() {
+            ExprData::ExprLiteral { value: lit, .. } => match (*lit.clone()).clone() {
+                LiteralValue::LitNull => {
+                    break false;
+                }
+                _ => {
+                    break true;
+                }
+            },
+            ExprData::ExprUnaryOp {
+                op: UnaryOpKind::Neg,
+                ..
+            } => {
+                let __tco_0 = unaryop_operand(expr);
+                expr = __tco_0;
+                continue;
+            }
+            _ => {
+                break false;
+            }
+        }
+    }
+}
+
 pub fn record_lit_expr_optional(expr: Rc<Node>) -> Option<Rc<Node>> {
     match (*expr.expr_data.clone()).clone() {
         ExprData::ExprRecordLit { parent_enum: _, .. } => Some(expr.clone()),
