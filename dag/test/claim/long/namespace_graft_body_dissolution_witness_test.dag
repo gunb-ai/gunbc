@@ -64,14 +64,14 @@ fn normalize_accepts(source: String) -> Bool {
 
 fn normalized_tree_optional(source: String) -> v2.std.node.Node? {
   match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^graft_guard_probe, rules: v2.extdeps.languages.dag.dag_lex_rules()) {
-    Rejected { diagnostics: _ } => v2.std.collection.optional_absent()
+    Rejected { diagnostics: _ } => v2.std.optional.optional_absent()
     Accepted { value: a, diagnostics: _ } =>
       match v2.compiler.parse.parse_module(tokens: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: a), grammar: v2.extdeps.languages.dag.dag_grammar()) {
-        Rejected { diagnostics: _ } => v2.std.collection.optional_absent()
+        Rejected { diagnostics: _ } => v2.std.optional.optional_absent()
         Accepted { value: artifact, diagnostics: _ } =>
           match v2.compiler.normalize.normalize(parse_tree: artifact_tree(artifact: artifact)) {
-            Rejected { diagnostics: _ } => v2.std.collection.optional_absent()
-            Accepted { value: n, diagnostics: _ } => v2.std.collection.optional_present(value: normalized_root_node(t: n))
+            Rejected { diagnostics: _ } => v2.std.optional.optional_absent()
+            Accepted { value: n, diagnostics: _ } => v2.std.optional.optional_present(value: normalized_root_node(t: n))
           }
       }
   }

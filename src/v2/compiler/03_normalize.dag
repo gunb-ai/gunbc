@@ -41,14 +41,14 @@ fn normalize_fold_step(acc: v2.std.diagnostic.Outcome<v2.std.node.Node>, edge: v
 fn normalize_sugar_key_optional(folded: v2.std.node.Node) -> v2.std.compilers.sugar.SugarKey? {
   match folded.kind {
     TypeNode { connective: v2.std.node.Atom { identity: id } } =>
-      v2.std.collection.optional_present(value: v2.std.compilers.sugar.SurfaceAtomKey { atom: id })
+      v2.std.optional.optional_present(value: v2.std.compilers.sugar.SurfaceAtomKey { atom: id })
     TypeNode { connective: _ } =>
       match v2.extdeps.languages.dag.parse_production_emitted_identity_optional(node: folded) {
         Present { value: id } =>
-          v2.std.collection.optional_present(value: v2.std.compilers.sugar.ProductionIdentityKey { identity: id })
-        v2.std.optional.Absent => v2.std.collection.optional_absent()
+          v2.std.optional.optional_present(value: v2.std.compilers.sugar.ProductionIdentityKey { identity: id })
+        v2.std.optional.Absent => v2.std.optional.optional_absent()
       }
-    ComputationNode { behavior: _ } => v2.std.collection.optional_absent()
+    ComputationNode { behavior: _ } => v2.std.optional.optional_absent()
   }
 }
 

@@ -160,7 +160,7 @@ fn match_positional_arms(match_node: v2.std.node.Node) -> List<v2.std.node.Node>
   }
 }
 
-fn last_list_node(xs: List<v2.std.node.Node>) -> v2.std.collection.Optional<v2.std.node.Node> {
+fn last_list_node(xs: List<v2.std.node.Node>) -> v2.std.optional.Optional<v2.std.node.Node> {
   v2.std.algebra.fold_list(
     xs: xs,
     empty: v2.std.optional.Absent,

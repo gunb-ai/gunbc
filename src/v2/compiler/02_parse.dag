@@ -129,12 +129,12 @@ type ParseTableRealization {
   materialization: std.realization.Materialization
   grammar_digest: v2.std.node.Hash
   token_stream_digest: v2.std.node.Hash
-  entries: v2.std.collection.Map<ParsePositionKey, ParseMemoEntry>
+  entries: std.types.Map<ParsePositionKey, ParseMemoEntry>
   memo_hits: Int
   memo_misses: Int
   memo_lookup_calls: Int
-  nullable_set: v2.std.collection.Set<v2.std.node.Symbol>
-  first_rows: v2.std.collection.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>>
+  nullable_set: std.types.Set<v2.std.node.Symbol>
+  first_rows: std.types.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>>
 }
 
 type ParseTable = ParseTableRealization
@@ -306,7 +306,7 @@ fn parse_table_memo_stats(table: ParseTable) -> ParseMemoStats {
   }
 }
 
-fn parse_table_carry_analysis(table: ParseTable, entries: v2.std.collection.Map<ParsePositionKey, ParseMemoEntry>, hits: Int, misses: Int, lookups: Int) -> ParseTable {
+fn parse_table_carry_analysis(table: ParseTable, entries: std.types.Map<ParsePositionKey, ParseMemoEntry>, hits: Int, misses: Int, lookups: Int) -> ParseTable {
   ParseTableRealization {
     artifact_kind: table.artifact_kind,
     provider_id: table.provider_id,
@@ -449,7 +449,7 @@ fn parse_table_empty() -> ParseTable {
     memo_hits: 0,
     memo_misses: 0,
     memo_lookup_calls: 0,
-    nullable_set: v2.std.collection.Set { member: fn(_) { false } },
+    nullable_set: std.types.Set { member: fn(_) { false } },
     first_rows: v2.std.collection.empty_map()
   }
 }
@@ -491,7 +491,7 @@ fn parse_non_empty_diagnostics_to_list(ned: v2.std.diagnostic.NonEmptyDiagnostic
 
 fn parse_prov_initial() -> ParseProvenanceState {
   ParseProvenanceState {
-    alloc: v2.std.occurrence_id.occurrence_id_allocator_initial(),
+    alloc: std.occurrence_identity.occurrence_id_allocator_initial(),
     index: v2.std.provenance.span_index_empty()
   }
 }
@@ -501,9 +501,9 @@ fn parse_prov_merge(
   incoming: ParseProvenanceState
 ) -> ParseProvenanceState {
   ParseProvenanceState {
-    alloc: v2.std.occurrence_id.occurrence_id_allocator_advance_to(
+    alloc: std.occurrence_identity.occurrence_id_allocator_advance_to(
       alloc: base.alloc,
-      min_next: v2.std.occurrence_id.authored_token_ordinal_space_from_allocator(
+      min_next: std.occurrence_identity.authored_token_ordinal_space_from_allocator(
         alloc: incoming.alloc
       )
     ),
@@ -517,7 +517,7 @@ fn parse_mint_from_source(
   start: Int,
   end: Int
 ) -> ParseMintSourceResult {
-  let minted = v2.std.occurrence_id.alloc_occurrence_id(alloc: prov.alloc)
+  let minted = std.occurrence_identity.alloc_occurrence_id(alloc: prov.alloc)
   let locus = v2.std.diagnostic.Textual {
     file: file,
     extent: v2.std.diagnostic.ByteRange { start: start, end: end }
@@ -604,7 +604,7 @@ fn parse_stamp_derived_conj(
   cap2: v2.std.node.Node,
   prov: ParseProvenanceState
 ) -> ParseStampResult {
-  let minted = v2.std.occurrence_id.alloc_occurrence_id(alloc: prov.alloc)
+  let minted = std.occurrence_identity.alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: [cap1, cap2])
   let event = v2.std.provenance.DerivedBy { producer: ^parse_stage_producer, from: from }
   let index = v2.std.provenance.span_index_record(index: prov.index, id: minted.id, event: event)
@@ -625,7 +625,7 @@ fn parse_stamp_derived_repeat(
   acc_nodes: v2.std.collection.List<v2.std.node.Node>,
   prov: ParseProvenanceState
 ) -> ParseStampResult {
-  let minted = v2.std.occurrence_id.alloc_occurrence_id(alloc: prov.alloc)
+  let minted = std.occurrence_identity.alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: acc_nodes)
   let event = v2.std.provenance.DerivedBy { producer: ^parse_stage_producer, from: from }
   let index = v2.std.provenance.span_index_record(index: prov.index, id: minted.id, event: event)
@@ -643,7 +643,7 @@ fn parse_wrap_production_captured(
   captured: v2.std.node.Node,
   prov: ParseProvenanceState
 ) -> ParseStampResult {
-  let minted = v2.std.occurrence_id.alloc_occurrence_id(alloc: prov.alloc)
+  let minted = std.occurrence_identity.alloc_occurrence_id(alloc: prov.alloc)
   let from = parse_minted_id_list(nodes: [captured])
   let event = v2.std.provenance.DerivedBy { producer: ^parse_stage_producer, from: from }
   let index = v2.std.provenance.span_index_record(index: prov.index, id: minted.id, event: event)
@@ -980,13 +980,13 @@ fn parse_nonterminal_memoized_core(
   }
 }
 
-fn set_symbol_insert(s: v2.std.collection.Set<v2.std.node.Symbol>, item: v2.std.node.Symbol) -> v2.std.collection.Set<v2.std.node.Symbol> {
-  v2.std.collection.Set {
+fn set_symbol_insert(s: std.types.Set<v2.std.node.Symbol>, item: v2.std.node.Symbol) -> std.types.Set<v2.std.node.Symbol> {
+  std.types.Set {
     member: fn(sym) { sym == item || s.member(sym) }
   }
 }
 
-fn expr_is_nullable_given_set(expr: v2.std.grammar.GrammarExpr, nullable_set: v2.std.collection.Set<v2.std.node.Symbol>) -> Bool {
+fn expr_is_nullable_given_set(expr: v2.std.grammar.GrammarExpr, nullable_set: std.types.Set<v2.std.node.Symbol>) -> Bool {
   v2.std.grammar.fold_grammar_expr(
     expr: expr,
     algebra: v2.std.grammar.GrammarExprFold {
@@ -1000,7 +1000,7 @@ fn expr_is_nullable_given_set(expr: v2.std.grammar.GrammarExpr, nullable_set: v2
   )
 }
 
-fn compute_nullable_step(ns: v2.std.collection.Set<v2.std.node.Symbol>, p: v2.std.grammar.GrammarProduction) -> v2.std.collection.Set<v2.std.node.Symbol> {
+fn compute_nullable_step(ns: std.types.Set<v2.std.node.Symbol>, p: v2.std.grammar.GrammarProduction) -> std.types.Set<v2.std.node.Symbol> {
   if expr_is_nullable_given_set(expr: p.expression, nullable_set: ns) {
     set_symbol_insert(s: ns, item: p.name)
   } else {
@@ -1008,10 +1008,10 @@ fn compute_nullable_step(ns: v2.std.collection.Set<v2.std.node.Symbol>, p: v2.st
   }
 }
 
-fn compute_nullable_set(root: v2.std.grammar.GrammarRoot) -> v2.std.collection.Set<v2.std.node.Symbol> {
+fn compute_nullable_set(root: v2.std.grammar.GrammarRoot) -> std.types.Set<v2.std.node.Symbol> {
   v2.std.algebra.fold_list(
     xs: root.productions,
-    empty: v2.std.collection.Set { member: fn(_) { false } },
+    empty: std.types.Set { member: fn(_) { false } },
     cons: fn(acc, _) {
       v2.std.algebra.fold_list(
         xs: root.productions,
@@ -1030,8 +1030,8 @@ type GrammarExprFirstFold {
 }
 
 type GrammarFirstAnalysis {
-  nullable_set: v2.std.collection.Set<v2.std.node.Symbol>
-  first_rows: v2.std.collection.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>>
+  nullable_set: std.types.Set<v2.std.node.Symbol>
+  first_rows: std.types.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>>
 }
 
 fn grammar_empty_terminal_list() -> v2.std.collection.List<v2.std.node.Symbol> {
@@ -1063,7 +1063,7 @@ fn first_list_intersect(left: v2.std.collection.List<v2.std.node.Symbol>, right:
   )
 }
 
-fn production_first_row_lookup(rows: v2.std.collection.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>>, name: v2.std.node.Symbol) -> v2.std.collection.List<v2.std.node.Symbol> {
+fn production_first_row_lookup(rows: std.types.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>>, name: v2.std.node.Symbol) -> v2.std.collection.List<v2.std.node.Symbol> {
   match v2.std.collection.map_get(m: rows, key: name) {
     v2.std.diagnostic.Accepted { value: v2.std.optional.Present { value: terminals }, diagnostics: _ } => terminals
     v2.std.diagnostic.Accepted { value: v2.std.optional.Absent, diagnostics: _ } => grammar_empty_terminal_list()
@@ -1080,8 +1080,8 @@ fn expr_first_fold_terminal(token_class: v2.std.node.Symbol) -> GrammarExprFirst
 
 fn expr_first_fold_nonterminal(
   name: v2.std.node.Symbol,
-  nullable_set: v2.std.collection.Set<v2.std.node.Symbol>,
-  first_rows: v2.std.collection.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>>
+  nullable_set: std.types.Set<v2.std.node.Symbol>,
+  first_rows: std.types.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>>
 ) -> GrammarExprFirstFold {
   GrammarExprFirstFold {
     terminals: production_first_row_lookup(rows: first_rows, name: name),
@@ -1116,8 +1116,8 @@ fn expr_first_fold_repeat(element: GrammarExprFirstFold) -> GrammarExprFirstFold
 
 fn expr_first_fold(
   expr: v2.std.grammar.GrammarExpr,
-  nullable_set: v2.std.collection.Set<v2.std.node.Symbol>,
-  first_rows: v2.std.collection.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>>
+  nullable_set: std.types.Set<v2.std.node.Symbol>,
+  first_rows: std.types.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>>
 ) -> GrammarExprFirstFold {
   v2.std.grammar.fold_grammar_expr(
     expr: expr,
@@ -1135,9 +1135,9 @@ fn expr_first_fold(
 }
 
 fn compute_production_first_row_terminals(
-  rows: v2.std.collection.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>>,
+  rows: std.types.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>>,
   p: v2.std.grammar.GrammarProduction,
-  nullable_set: v2.std.collection.Set<v2.std.node.Symbol>
+  nullable_set: std.types.Set<v2.std.node.Symbol>
 ) -> v2.std.collection.List<v2.std.node.Symbol> {
   expr_first_fold(
     expr: p.expression,
@@ -1148,8 +1148,8 @@ fn compute_production_first_row_terminals(
 
 fn compute_production_first_rows(
   root: v2.std.grammar.GrammarRoot,
-  nullable_set: v2.std.collection.Set<v2.std.node.Symbol>
-) -> v2.std.collection.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>> {
+  nullable_set: std.types.Set<v2.std.node.Symbol>
+) -> std.types.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>> {
   v2.std.algebra.fold_list(
     xs: root.productions,
     empty: v2.std.collection.empty_map(),
@@ -1206,8 +1206,8 @@ fn append_choice_ambiguity_row(
 fn collect_choice_ambiguities_in_expr(
   expr: v2.std.grammar.GrammarExpr,
   production: v2.std.node.Symbol,
-  nullable_set: v2.std.collection.Set<v2.std.node.Symbol>,
-  first_rows: v2.std.collection.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>>,
+  nullable_set: std.types.Set<v2.std.node.Symbol>,
+  first_rows: std.types.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>>,
   acc: v2.std.collection.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
 ) -> v2.std.collection.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   match expr {
@@ -1367,7 +1367,7 @@ fn expr_corner_fold_terminal(_: v2.std.node.Symbol) -> GrammarExprCornerFold {
   GrammarExprCornerFold { corners: std.algebra.Empty, nullable: false }
 }
 
-fn expr_corner_fold_nonterminal(name: v2.std.node.Symbol, nullable_set: v2.std.collection.Set<v2.std.node.Symbol>) -> GrammarExprCornerFold {
+fn expr_corner_fold_nonterminal(name: v2.std.node.Symbol, nullable_set: std.types.Set<v2.std.node.Symbol>) -> GrammarExprCornerFold {
   GrammarExprCornerFold {
     corners: std.algebra.Cons { head: name, tail: std.algebra.Empty },
     nullable: nullable_set.member(name)
@@ -1410,7 +1410,7 @@ fn expr_corner_fold_repeat(element_fold: GrammarExprCornerFold) -> GrammarExprCo
   GrammarExprCornerFold { corners: element_fold.corners, nullable: true }
 }
 
-fn expr_corner_nullable_fold(expr: v2.std.grammar.GrammarExpr, nullable_set: v2.std.collection.Set<v2.std.node.Symbol>) -> GrammarExprCornerFold {
+fn expr_corner_nullable_fold(expr: v2.std.grammar.GrammarExpr, nullable_set: std.types.Set<v2.std.node.Symbol>) -> GrammarExprCornerFold {
   v2.std.grammar.fold_grammar_expr(
     expr: expr,
     algebra: v2.std.grammar.GrammarExprFold {
@@ -1424,13 +1424,13 @@ fn expr_corner_nullable_fold(expr: v2.std.grammar.GrammarExpr, nullable_set: v2.
   )
 }
 
-fn expr_direct_left_corner_list(expr: v2.std.grammar.GrammarExpr, nullable_set: v2.std.collection.Set<v2.std.node.Symbol>) -> v2.std.collection.List<v2.std.node.Symbol> {
+fn expr_direct_left_corner_list(expr: v2.std.grammar.GrammarExpr, nullable_set: std.types.Set<v2.std.node.Symbol>) -> v2.std.collection.List<v2.std.node.Symbol> {
   expr_corner_nullable_fold(expr: expr, nullable_set: nullable_set).corners
 }
 
 fn compute_left_corner_closure(
   start: v2.std.collection.List<v2.std.node.Symbol>,
-  nullable_set: v2.std.collection.Set<v2.std.node.Symbol>,
+  nullable_set: std.types.Set<v2.std.node.Symbol>,
   root: v2.std.grammar.GrammarRoot
 ) -> v2.std.collection.List<v2.std.node.Symbol> {
   v2.std.algebra.fold_list(

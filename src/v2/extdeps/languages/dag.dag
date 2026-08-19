@@ -3183,8 +3183,8 @@ fn dag_grammar() -> v2.std.grammar.ParseGrammar {
   v2.std.grammar.ModeledGrammar { root: dag_grammar_root() }
 }
 
-fn dag_language_model_surface_prelude_atoms() -> v2.std.collection.Set<v2.std.node.Symbol> {
-  v2.std.collection.Set {
+fn dag_language_model_surface_prelude_atoms() -> std.types.Set<v2.std.node.Symbol> {
+  std.types.Set {
     member: fn(sym) {
       sym == ^dag_c3_surface_sugar_service ||
         sym == ^dag_c3_surface_sugar_fn ||
@@ -3195,8 +3195,8 @@ fn dag_language_model_surface_prelude_atoms() -> v2.std.collection.Set<v2.std.no
   }
 }
 
-fn dag_language_model_empty_canonical_symbol_set() -> v2.std.collection.Set<v2.std.node.Symbol> {
-  v2.std.collection.Set {
+fn dag_language_model_empty_canonical_symbol_set() -> std.types.Set<v2.std.node.Symbol> {
+  std.types.Set {
     member: fn(_) {
       false
     }
@@ -3218,8 +3218,8 @@ fn dag_language_model_binding_canonical(sym: v2.std.node.Symbol) -> Bool {
     || sym == ^dag_loop_measure_sym
 }
 
-fn dag_canonical_symbols() -> v2.std.collection.Set<v2.std.node.Symbol> {
-  v2.std.collection.Set {
+fn dag_canonical_symbols() -> std.types.Set<v2.std.node.Symbol> {
+  std.types.Set {
     member: fn(sym) {
       dag_language_model_surface_prelude_atoms().member(sym) ||
         v2.std.grammar.grammar_carries_symbol(grammar: dag_grammar(), sym: sym) ||
@@ -3258,7 +3258,7 @@ fn dag_language_model_surface_empty_prelude() -> v2.std.language_model.LanguageM
   }
 }
 
-fn dag_language_model_canonical_symbols(lm: v2.std.language_model.LanguageModel) -> v2.std.collection.Set<v2.std.node.Symbol> {
+fn dag_language_model_canonical_symbols(lm: v2.std.language_model.LanguageModel) -> std.types.Set<v2.std.node.Symbol> {
   lm.canonical_symbols
 }
 
@@ -3874,7 +3874,7 @@ fn dag_target_model_node() -> v2.std.node.Node {
   dag_target_model_bundle_core()
 }
 
-fn dag_binding_spellings() -> v2.std.collection.Map<v2.std.node.Symbol, v2.std.text.String> {
+fn dag_binding_spellings() -> std.types.Map<v2.std.node.Symbol, v2.std.text.String> {
   let m0 = v2.std.collection.map_insert(v2.std.collection.empty_map(), ^dag_binding_fn_add, "add")
   let m1 = v2.std.collection.map_insert(m0, ^dag_binding_param_x, "x")
   let m2 = v2.std.collection.map_insert(m1, ^dag_binding_param_y, "y")

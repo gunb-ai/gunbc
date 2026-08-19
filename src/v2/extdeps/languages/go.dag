@@ -1762,7 +1762,7 @@ data go_target_atom_realization_symbol: v2.std.compilers.target_model.TargetAtom
   target_model: go_target_model_staging(),
   type_form: go_target_atom_type_form(spelling: ^go_surface_spelling_string),
   value_form: v2.std.compilers.target_model.target_value_template_for_kind(kind: v2.std.compilers.target_model.ValueSymbolToOwnedString),
-  constructor_form: v2.std.collection.optional_absent(),
+  constructor_form: v2.std.optional.optional_absent(),
   display_name: ^symbol_kernel_type_atom
 }
 
@@ -1771,7 +1771,7 @@ data go_target_atom_realization_bool: v2.std.compilers.target_model.TargetAtomRe
   target_model: go_target_model_staging(),
   type_form: go_target_atom_type_form(spelling: ^go_surface_spelling_bool),
   value_form: v2.std.compilers.target_model.target_value_template_for_kind(kind: v2.std.compilers.target_model.ValueBoolLiteral),
-  constructor_form: v2.std.collection.optional_absent(),
+  constructor_form: v2.std.optional.optional_absent(),
   display_name: ^bool_node_symbol
 }
 
@@ -1780,7 +1780,7 @@ data go_target_atom_realization_char: v2.std.compilers.target_model.TargetAtomRe
   target_model: go_target_model_staging(),
   type_form: go_target_atom_type_form(spelling: ^go_surface_spelling_rune),
   value_form: v2.std.compilers.target_model.target_value_template_for_kind(kind: v2.std.compilers.target_model.ValueCharUnicodeScalar),
-  constructor_form: v2.std.collection.optional_absent(),
+  constructor_form: v2.std.optional.optional_absent(),
   display_name: ^char_kernel_type_atom
 }
 

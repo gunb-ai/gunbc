@@ -199,8 +199,8 @@ fn ci_outcome_text(o: std.observation.ObservationOutcome) -> String {
           concat(
             " ",
             concat(
-              std.observation.clock_basis_label(b: k) as String,
-              concat(" (budget ", concat(ci_human_duration(d: b), concat(" ", concat(std.observation.clock_basis_label(b: k) as String, ")"))))
+              std.measure.clock_basis_label(b: k) as String,
+              concat(" (budget ", concat(ci_human_duration(d: b), concat(" ", concat(std.measure.clock_basis_label(b: k) as String, ")"))))
             )
           )
         )

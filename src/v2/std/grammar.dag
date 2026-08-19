@@ -19,8 +19,8 @@ type FormalProduction {
 }
 
 type FormalGrammar {
-  nonterminals: v2.std.collection.Set<FormalNonterminal>
-  terminals: v2.std.collection.Set<FormalTerminal>
+  nonterminals: std.types.Set<FormalNonterminal>
+  terminals: std.types.Set<FormalTerminal>
   productions: v2.std.collection.List<FormalProduction>
   start: FormalNonterminal
 }
@@ -47,8 +47,8 @@ fn validate_grammar_diagnostic(reason: v2.std.node.Symbol) -> v2.std.diagnostic.
 }
 
 fn formal_grammar_symbol_in_alphabet(
-  nonterminals: v2.std.collection.Set<FormalNonterminal>,
-  terminals: v2.std.collection.Set<FormalTerminal>,
+  nonterminals: std.types.Set<FormalNonterminal>,
+  terminals: std.types.Set<FormalTerminal>,
   symbol: FormalGrammarSymbol
 ) -> Bool {
   match symbol {
@@ -60,8 +60,8 @@ fn formal_grammar_symbol_in_alphabet(
 }
 
 fn formal_production_rhs_in_alphabet(
-  nonterminals: v2.std.collection.Set<FormalNonterminal>,
-  terminals: v2.std.collection.Set<FormalTerminal>,
+  nonterminals: std.types.Set<FormalNonterminal>,
+  terminals: std.types.Set<FormalTerminal>,
   production: FormalProduction
 ) -> Bool {
   v2.std.algebra.fold_list(
@@ -239,8 +239,8 @@ type GrammarProduction {
 //
 // A grammar's error-recovery sync tokens are finite and known at authoring time — every producer in
 // the corpus writes either an empty set or a literal list of keyword classes. Carrying them as
-// `v2.std.collection.Set<v2.std.node.Symbol>` made them a POINTWISE-POWER characteristic function (`std.types` grounds
-// `v2.std.collection.Set<element> = PointwisePower<element>`), which is the right grounding for a set in general and
+// `std.types.Set<v2.std.node.Symbol>` made them a POINTWISE-POWER characteristic function (`std.types` grounds
+// `std.types.Set<element> = PointwisePower<element>`), which is the right grounding for a set in general and
 // the wrong carrier for six literal keywords: a characteristic function cannot be enumerated, so
 // the whole grammar value became unhashable through this one field.
 //
@@ -250,7 +250,7 @@ type GrammarProduction {
 // language in the corpus and not only `.dag`. The measured consequence was a full ~12s grammar
 // preparation on every parse, including of an empty module.
 //
-// The field is therefore the enumeration it always was. `v2.std.collection.Set` keeps its grounding untouched; what
+// The field is therefore the enumeration it always was. `std.types.Set` keeps its grounding untouched; what
 // changed is that this field stopped borrowing a power-set to carry a list.
 type GrammarRoot {
   start: v2.std.node.Symbol

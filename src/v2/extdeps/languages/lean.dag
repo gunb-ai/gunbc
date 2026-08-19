@@ -855,7 +855,7 @@ fn lean_bool_algebra_witness_node() -> v2.std.node.Node {
 }
 }
 
-fn lean_scalar_algebra_inhabitance_optional(facts: LeanPrimitiveFacts) -> v2.std.collection.Optional<v2.std.model_core.AlgebraInhabitanceDecl> {
+fn lean_scalar_algebra_inhabitance_optional(facts: LeanPrimitiveFacts) -> v2.std.optional.Optional<v2.std.model_core.AlgebraInhabitanceDecl> {
   let inhabitant = lean_primitive_facts_node(facts: facts)
   match facts.scalar {
     LeanIntegerScalar { signedness, width, overflow: _ } => v2.std.optional.Present {
