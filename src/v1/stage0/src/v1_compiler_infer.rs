@@ -4239,13 +4239,6 @@ pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> 
     cause: "receiver is an untyped parameter of a lambda stored in a fold record field, the same shape as the object_store rows.".to_string(),
     dissolution: unbound_dissolution("lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string()),
 }), Rc::new(UnresolvedMethodFrontierRow {
-    module_name: "gunbc.scm_compatibility.mercurial".to_string(),
-    method: "map".to_string(),
-    occurrences: 3,
-    receiver_shape: "Primitive()".to_string(),
-    cause: "receiver is `missing_changesets`, an untyped parameter of the `partial:` lambda in a MercurialRepositoryCompletenessFold record field.".to_string(),
-    dissolution: unbound_dissolution("lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in".to_string()),
-}), Rc::new(UnresolvedMethodFrontierRow {
     module_name: "extdeps.dns.domain_name".to_string(),
     method: "list_push".to_string(),
     occurrences: 1,
@@ -4263,7 +4256,7 @@ pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> 
     module_name: "gunbc.source_integration_landing_spine".to_string(),
     method: "map".to_string(),
     occurrences: 1,
-    receiver_shape: "Node(Optional)".to_string(),
+    receiver_shape: "Node(v2.std.optional.Optional)".to_string(),
     cause: "same optional-functor class as the v1.compiler.trace row, in its OTHER surface form: here the Optional survives as a named node rather than collapsing to its inner product, and neither form carries a method surface. Two shapes for one concept is itself the defect the trigger names.".to_string(),
     dissolution: unbound_dissolution("reconciling the two optionality representations so an optional receiver keeps its optional surface at method lookup".to_string()),
 }), Rc::new(UnresolvedMethodFrontierRow {

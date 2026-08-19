@@ -35,7 +35,7 @@ fn claim_inferred_facts_witness(
   descent: Witness<v2.std.cardinality.TerminationProof>
 ) -> v2.compiler.inferred_tree.InferredFacts {
   v2.compiler.inferred_tree.InferredFacts {
-    grounding: v2.compiler.infer.DerivedGrounding { grounding: grounding },
+    grounding: v2.compiler.inferred_tree.DerivedGrounding { grounding: grounding },
     descent: descent
   }
 }

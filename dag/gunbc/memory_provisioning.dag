@@ -684,12 +684,12 @@ fn best_reachable_bytes(
   shapes: List<PopulationShape>,
   modules: List<extdeps.memory.types.DramModuleCatalogRow>,
 ) -> std.measure.ByteSize {
-  let widest = fold(shapes, init: 0, f: (acc, s) => nat_max(a: acc, b: s.dimm_count))
+  let widest = fold(shapes, init: 0, f: (acc, s) => std.nat.nat_max(a: acc, b: s.dimm_count))
   byte_size(
     count: fold(
       modules,
       init: 0,
-      f: (acc, m) => nat_max(a: acc, b: byte_size_count(b: m.capacity_bytes) * widest),
+      f: (acc, m) => std.nat.nat_max(a: acc, b: byte_size_count(b: m.capacity_bytes) * widest),
     ),
   )
 }

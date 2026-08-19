@@ -2461,14 +2461,6 @@ fn unresolved_method_frontier() -> List<v1.compiler.infer.UnresolvedMethodFronti
       dissolution: unbound_dissolution(description: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in")
     },
     {
-      module_name: "gunbc.scm_compatibility.mercurial",
-      method: "map",
-      occurrences: 3,
-      receiver_shape: "Primitive()",
-      cause: "receiver is `missing_changesets`, an untyped parameter of the `partial:` lambda in a MercurialRepositoryCompletenessFold record field.",
-      dissolution: unbound_dissolution(description: "lambda-parameter receiver typing from the declared fn type of the record field the lambda is stored in")
-    },
-    {
       module_name: "extdeps.dns.domain_name",
       method: "list_push",
       occurrences: 1,

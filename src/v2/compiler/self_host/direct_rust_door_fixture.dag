@@ -198,7 +198,7 @@ fn direct_rust_door_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer
         Holds { value: proof } =>
           optional_present(
             value: v2.compiler.inferred_tree.InferredFacts {
-              grounding: v2.compiler.infer.DerivedGrounding { grounding: grounding },
+              grounding: v2.compiler.inferred_tree.DerivedGrounding { grounding: grounding },
               descent: Holds { value: proof }
             }
           )
