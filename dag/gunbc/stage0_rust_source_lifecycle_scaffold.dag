@@ -482,17 +482,9 @@ fn path_matches_discovery_prefix_hint(path: String) -> Bool {
   )
 }
 
-data residue_cssl_assembly_reason: String = "hand-retained cssl seed-linked closure assembly kernel — not regen-emitted; counted scaffold until harness consolidation emits it"
-
-data residue_cssl_assembly_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: cssl_seed_linked_closure_assembly.rs migrates to generated_stage0_files membership or a typed emit producer row deletes the hand file")
-
 data residue_module_path_index_reason: String = "hand_maintained_stage0_dirs lists module_path_index/ but file membership is not enumerated by any join authority yet"
 
 data residue_module_path_index_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: module_path_index/*.rs paths derive from hand_maintained_stage0_dirs + host census, or the directory dissolves into generated emit")
-
-data residue_frontier_module_gap_reason: String = "frontier module with behavioral receipt roster row but not yet on hand_maintained_stage0_filenames / generated_stage0_files join"
-
-data residue_frontier_module_gap_dissolution: DissolutionCondition = unbound_dissolution(description: "dissolve-on: the module basename appears on hand_maintained_stage0_filenames() or generated_stage0_files and this residue row deletes")
 
 data residue_stage0_core_lib_reason: String = "src/v1/stage0_core/src/lib.rs exists on disk but is absent from stage0_partition_crate_rows — authority contradiction surfaced for operator resolution"
 
@@ -510,11 +502,6 @@ fn residue_row(path: String, reason: String, dissolution: DissolutionCondition) 
 
 data rust_source_lifecycle_residue_rows: List<RustSourceLifecycleRow> = [
   residue_row(
-    path: "src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs",
-    reason: residue_cssl_assembly_reason,
-    dissolution: residue_cssl_assembly_dissolution
-  ),
-  residue_row(
     path: "src/v1/stage0/src/module_path_index/mod.rs",
     reason: residue_module_path_index_reason,
     dissolution: residue_module_path_index_dissolution
@@ -528,21 +515,6 @@ data rust_source_lifecycle_residue_rows: List<RustSourceLifecycleRow> = [
     path: "src/v1/stage0/src/module_path_index/parsed_dag_file.rs",
     reason: residue_module_path_index_reason,
     dissolution: residue_module_path_index_dissolution
-  ),
-  residue_row(
-    path: "src/v1/stage0/src/v2_compiler_compile.rs",
-    reason: residue_frontier_module_gap_reason,
-    dissolution: residue_frontier_module_gap_dissolution
-  ),
-  residue_row(
-    path: "src/v1/stage0/src/v2_compiler_program_assembly.rs",
-    reason: residue_frontier_module_gap_reason,
-    dissolution: residue_frontier_module_gap_dissolution
-  ),
-  residue_row(
-    path: "src/v1/stage0/src/v2_compiler_source_authority.rs",
-    reason: residue_frontier_module_gap_reason,
-    dissolution: residue_frontier_module_gap_dissolution
   ),
   residue_row(
     path: "src/v1/stage0_core/src/lib.rs",

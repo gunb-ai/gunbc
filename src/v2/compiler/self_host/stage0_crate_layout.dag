@@ -31,6 +31,29 @@ type SeedRetainedSupportDirRegistration {
   basename: String
 }
 
+// THREE INTRINSIC ROWS ADDED 2026-08-19, AND THEIR ABSENCE WAS NOT A LAYOUT DETAIL --
+// it was the reason `claim_executor --required-regen` produced no verdict at all on main.
+// The regen host classifies the committed stage0 population by COMPLEMENT: every `.rs` under
+// src/v1/stage0/src that is not on HAND_MAINTAINED_STAGE0_FILES is presumed to be output of the
+// stage0 emit (`required_regen_host` `committed_generated_basenames`). So a hand-authored file
+// that nobody registered here does not surface as an unregistered hand file -- it surfaces as a
+// generated file the emitter failed to produce, and `validate_compared_populations` refuses the
+// whole run before any byte is compared. Measured on e0c5e25444: eight names in
+// `committed_not_emitted`, not one of them an emission defect.
+//
+// None of the three is `pub mod`: `required_regen_host` is declared inside `cli_run`,
+// `bootstrap_stage0_crate_layout_generated` inside `required_regen_host`, and
+// `cssl_seed_linked_closure_assembly` is reached by `#[path]` from the `cssl_assemble` bin --
+// so registering them changes lib.rs by nothing and changes the regen population by everything.
+//
+// SIX EXISTING ROWS ALSO FLIPPED TO `has_pub_mod: true` in the same edit, for the reason stated
+// on the scaffold registrations below: they are seed oracles that live shims import from the seed
+// crate, and a module the crate does not declare cannot be imported from it.
+//
+// `bootstrap_stage0_crate_layout_generated` is generated, but by THIS module's own emitter rather
+// than by the stage0 emit plan, so it is correctly outside the regen population. That it rides on
+// a list named for hand maintenance is a residual conflation, recorded in the closing block of
+// this module rather than fixed silently here.
 data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistration> = [
   SeedRetainedIntrinsicRegistration { basename: "v1_interpreter", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "bounded_shell_host_drain", has_pub_mod: false, is_dir: false },
@@ -50,12 +73,15 @@ data seed_retained_intrinsic_registrations: List<SeedRetainedIntrinsicRegistrati
   SeedRetainedIntrinsicRegistration { basename: "memory_governor", has_pub_mod: true, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "std_lens_verdict", has_pub_mod: false, is_dir: false },
   SeedRetainedIntrinsicRegistration { basename: "module_path_index", has_pub_mod: true, is_dir: true },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_body_producer", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_normalize", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_target_carriers", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_discovery_enumeration", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_parse_engine_hooks", has_pub_mod: false, is_dir: false },
-  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_use_site_verdict", has_pub_mod: false, is_dir: false }
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_body_producer", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_normalize", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_target_carriers", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_discovery_enumeration", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_parse_engine_hooks", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "v2_compiler_use_site_verdict", has_pub_mod: true, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "required_regen_host", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "bootstrap_stage0_crate_layout_generated", has_pub_mod: false, is_dir: false },
+  SeedRetainedIntrinsicRegistration { basename: "cssl_seed_linked_closure_assembly", has_pub_mod: false, is_dir: false }
 ]
 
 data data_initializer_identity_seed_retained_note: String = "SeedRetained hand-Rust for resolved data-initializer projection marshaling (decl_facts initializer identity lane, PR #7924). Reason: marshal requires InterpContext typechecked subjects, inferred Node stamps, and owning type-item lookup not yet modeled in .dag. Migration trigger: v2.std.data_initializer_identity projection carriers self-emit and coproduct_reflection routes through the modeled marshal surface; then this module deletes with its SeedRetainedIntrinsicRegistration row. Frontier row schema lacks reason/trigger fields — this note is the counted scaffold until the schema lands."
@@ -64,7 +90,16 @@ data seed_retained_support_dir_registrations: List<SeedRetainedSupportDirRegistr
   SeedRetainedSupportDirRegistration { basename: "cli_run" }
 ]
 
-data seed_retained_quarantine_scaffold_stage0_files_note: String = "Review 44472: six quarantine modules (SeedRetained, emitter_produced_baseline=0) retain emitted .rs on disk for wet re-flip without pub mod — listed in HAND_MAINTAINED_STAGE0_FILES (has_pub_mod: false) so crate layout authority matches filesystem. Dissolve-on: witness-realization enables EmitterProduced and rows return to generated pub mod roster."
+data seed_retained_quarantine_scaffold_stage0_files_note: String = "Review 44472: six quarantine modules (SeedRetained, emitter_produced_baseline=0) retain emitted .rs on disk for wet re-flip — listed in HAND_MAINTAINED_STAGE0_FILES so crate layout authority matches filesystem. CORRECTED 2026-08-19: this row read \"without pub mod (has_pub_mod: false)\", which was true when written and is now false. Retaining a file on disk and declaring it in the crate are two decisions, and collapsing them cost the behavioral receipts their seed side — the shims import v1_compiler::v2_compiler_X, which no undeclared module can satisfy. The rows now carry has_pub_mod: true; the quarantine they describe is about emitter production, not about crate membership. Dissolve-on: witness-realization enables EmitterProduced and rows return to the generated roster."
+// THE SEED SIDE OF EVERY BEHAVIORAL-EQUIVALENCE RECEIPT, and it was unlinkable. Each
+// `dag/tools/self_host_*_shims/witness_main.rs` compares `v1_compiled::v2_compiler_X` (the emitted
+// artifact under test) against `v1_compiler::v2_compiler_X` (the seed oracle) -- and the second
+// path resolves only if the seed crate DECLARES that module. `v2_compiler_compile`,
+// `v2_compiler_program_assembly` and `v2_compiler_source_authority` carried no registration in
+// this authority at all, and six intrinsic `v2_compiler_*` rows above carried `has_pub_mod: false`,
+// so nine seed oracles named by live shims were absent from lib.rs. A promotion receipt cannot go
+// green, or red, against a seed it cannot link; that is specification-without-execution
+// (DESIGN section 5) sitting one layer below the harness that was believed to be the blocker.
 data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration> = [
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_algebra" },
   SeedRetainedScaffoldRegistration { basename: "usv_pilot_v2_std_collection" },
@@ -73,7 +108,10 @@ data seed_retained_scaffold_registrations: List<SeedRetainedScaffoldRegistration
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_partition" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_tokenize" },
   SeedRetainedScaffoldRegistration { basename: "v2_compiler_infer" },
-  SeedRetainedScaffoldRegistration { basename: "v1_interpreter_dispatch_generated" }
+  SeedRetainedScaffoldRegistration { basename: "v1_interpreter_dispatch_generated" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_compile" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_program_assembly" },
+  SeedRetainedScaffoldRegistration { basename: "v2_compiler_source_authority" }
 ]
 
 fn intrinsic_pub_mod_basename_from_row(row: SeedRetainedIntrinsicRegistration) -> List<String> {
@@ -211,6 +249,22 @@ fn hand_maintained_stage0_filenames() -> List<String> {
   concat(seed_retained_intrinsic_stage0_files(), seed_retained_scaffold_stage0_files())
 }
 
+// THE EXCLUSION LIST IS NAMED FOR ONE OF ITS THREE REASONS, and that conflation is what let the
+// gap above stay invisible. `HAND_MAINTAINED_STAGE0_FILES` is consumed by `required_regen_host` as
+// "the files the stage0 emit does not produce", and membership now has three distinct causes:
+// hand-authored Rust with a migration trigger (the intrinsic rows), hand-retained seed oracles and
+// pilots awaiting their flip (the scaffold rows), and one file generated by a DIFFERENT authority
+// (`bootstrap_stage0_crate_layout_generated`, emitted by this module). Only the first is literally
+// hand-maintained. The consequence is not cosmetic: because the consumer classifies by complement,
+// the only way to learn that a row is missing is a refused regen run naming it, which is exactly
+// how these were found -- and a reader checking whether a file "should be hand-maintained" asks a
+// question the list cannot answer for two of its three populations.
+//
+// NOT FIXED HERE, deliberately. Splitting the reasons means a per-row typed cause and a renamed
+// emitted constant, which is a change to what the regen host reads; landing it in the same diff
+// that first gives regen a verdict would mean the verdict and its input population changed
+// together, and neither could be attributed. Next step: one typed `Stage0ExclusionCause` per row,
+// projected into the same constant, with the regen host reading the cause rather than the name.
 data construction_justification: ConstructionJustification = ConstructionJustification {
   class: WallAfterGrounding { dissolves_to: RealizationDispatch }
 }
