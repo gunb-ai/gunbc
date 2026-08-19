@@ -94,7 +94,7 @@ fn infer_emit_shape_frontier_inferred_tree(root: v2.std.node.Node) -> InferredTr
 
 type InferGatherFoldAcc {
   node: v2.std.node.Node
-  entries: List<v2.compiler.inferred_tree.InferredFactsEntry>
+  entries: List<InferredFactsEntry>
   failed: Bool
   pending: v2.std.diagnostic.Diagnostics
   await_branch_row: Bool

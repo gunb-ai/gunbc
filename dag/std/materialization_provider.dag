@@ -343,13 +343,13 @@ fn binding_identity_grade(b: RequestArtifactBinding) -> std.computation_identity
   match b {
     BindingOk => StructurallyIdentical
     BindingKindMismatch { requested: _, found: _ } =>
-      IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "artifact kind disagrees with the request kind" } }
+      std.computation_identity.IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "artifact kind disagrees with the request kind" } }
     BindingWrongArtifact { key: _, found_key: _ } =>
-      IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "artifact was keyed for a different request" } }
+      std.computation_identity.IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "artifact was keyed for a different request" } }
     BindingWrongContent { recorded: _, observed: _ } =>
-      IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } }
+      std.computation_identity.IdentityUnknown { cause: std.computation_identity.MissingEnforcement { detail: "read-back content digest disagrees with the recorded digest" } }
     BindingIncomplete { missing: _ } =>
-      IdentityUnknown { cause: std.computation_identity.MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } }
+      std.computation_identity.IdentityUnknown { cause: std.computation_identity.MissingConcept { detail: "artifact does not carry every correctness-relevant output the request requires" } }
   }
 }
 

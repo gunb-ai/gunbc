@@ -123,6 +123,16 @@ test fn exact_prepared_artifact_set_serves() -> Bool {
   }
 }
 
+fn entries_count(xs: std.algebra.FreeMonoid<std.realization_schedule.ScheduleWitnessEntry>) -> Int {
+  xs.count()
+}
+
+fn entries_first_entry(
+  xs: std.algebra.FreeMonoid<std.realization_schedule.ScheduleWitnessEntry>,
+) -> String {
+  xs.first().entry
+}
+
 test fn missing_prepared_identity_refuses() -> Bool {
   match v2.workflow.floor_preparation.prepared_floor_subject_serve(
     request: canonical_request(),
@@ -131,7 +141,7 @@ test fn missing_prepared_identity_refuses() -> Bool {
     PreparedFloorSubjectRefused { cause: cause } =>
       match cause {
         PreparedFloorMissingProbeIdentities { missing: missing } =>
-          missing.count() == 1 && missing.first().entry == witness_b().entry
+          entries_count(xs: missing) == 1 && entries_first_entry(xs: missing) == witness_b().entry
         _ => false
       }
     _ => false
@@ -182,7 +192,7 @@ test fn duplicate_selected_identity_refuses() -> Bool {
   ) {
     PreparedFloorSubjectRefused { cause: cause } =>
       match cause {
-        PreparedFloorDuplicateSelectedIdentities { duplicates: duplicates } => duplicates.count() == 2
+        PreparedFloorDuplicateSelectedIdentities { duplicates: duplicates } => entries_count(xs: duplicates) == 2
         _ => false
       }
     _ => false
@@ -196,7 +206,7 @@ test fn duplicate_probe_identity_refuses() -> Bool {
   ) {
     PreparedFloorSubjectRefused { cause: cause } =>
       match cause {
-        PreparedFloorDuplicateProbeIdentities { duplicates: duplicates } => duplicates.count() == 2
+        PreparedFloorDuplicateProbeIdentities { duplicates: duplicates } => entries_count(xs: duplicates) == 2
         _ => false
       }
     _ => false
@@ -212,7 +222,7 @@ test fn unexpected_probe_identity_refuses() -> Bool {
     PreparedFloorSubjectRefused { cause: cause } =>
       match cause {
         PreparedFloorUnexpectedProbeIdentities { unexpected: unexpected } =>
-          unexpected.count() == 1 && unexpected.first().entry == witness_extra().entry
+          entries_count(xs: unexpected) == 1 && entries_first_entry(xs: unexpected) == witness_extra().entry
         _ => false
       }
     _ => false
