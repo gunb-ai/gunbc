@@ -3089,7 +3089,63 @@ fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope
   }
 }
 
-fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, scope: InferScope) -> List<ArgInferResult> {
+// The declared argument contract for a resolved method call, read structurally
+// off lookup_structural_method's own MethodFieldResult -- never a second,
+// hand-authored parameter list. A method field's real parameter types live
+// nested at field_node.inferred -> Resolved(node: rt).params (product_field_result_type
+// establishes this convention for both origins reaching this bridge: an
+// algebra-templated field's callable is built by algebra_method_field, and a
+// genuinely-authored product field of callable type carries its own params
+// the same way). For an algebra-templated method the instantiated params
+// include a leading receiver-shaped entry (AlgebraFieldTemplate.param_types
+// itself puts ReceiverSelf first for skip/take/get/map/... -- confirmed at
+// dag/std/algebra.dag; instantiate_algebra_field maps the whole template list
+// through unfiltered), so the trailing method_args_count entries are aligned
+// against method_args rather than assuming a fixed arity offset -- the same
+// alignment degrades to a no-op for a direct product method, whose params
+// already correspond 1:1 with method_args.
+type MethodArgContract {
+  KnownArgTypes { types: List<Node> }
+  MethodUnresolved
+  UncontractedMethod
+}
+
+fn method_declared_arg_contract(receiver_type: Node, method_name: String, method_args_count: Int, source_indices: Map<String, NewlineIndex>) -> MethodArgContract {
+  let tier0 = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
+  match tier0.resolution {
+    Absent => MethodUnresolved
+    Present { value: mfr } =>
+      match mfr.field_node.inferred {
+        Present { value: Resolved { node: rt } } =>
+          if rt.params |> count > 0 {
+            let all_types = rt.params |> map(p => param_node_type_expr(n: p))
+            let total = all_types |> count
+            let aligned = if total > method_args_count { all_types |> skip(total - method_args_count) } else { all_types }
+            KnownArgTypes { types: aligned }
+          } else if method_args_count == 0 {
+            KnownArgTypes { types: [] }
+          } else {
+            UncontractedMethod
+          }
+        _ => UncontractedMethod
+      }
+  }
+}
+
+fn type_at_position(types: List<Node>, idx: Int) -> Node? {
+  types |> enumerate |> filter(pair => pair.first == idx) |> map(pair => pair.second) |> first
+}
+
+fn method_arg_contract_refusal(arg: Node, method_name: String?, scope: InferScope) -> ArgInferResult {
+  let mn = match method_name { Present { value: m } => m  Absent => "<unknown>" }
+  let msg = concat("no declared parameter contract for argument to method '", mn, "'")
+  ArgInferResult {
+    typed_arg: make_arg_node(name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: semantic_expr_error_node(message: msg, span: arg.span), span: arg.span, name_span: arg.span),
+    diagnostics: [inference_error(message: msg, span: arg.span, module_name: scope.module_name)]
+  }
+}
+
+fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, arg_contract: MethodArgContract, scope: InferScope) -> List<ArgInferResult> {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   method_args |> enumerate |> map(idx_pair =>
     let a = idx_pair.second
@@ -3154,53 +3210,18 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
       if is_lambda_expr(e: nf_lam_value) {
         infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
       } else {
-        match scalar_shaped_builtin_method_arg_type(method_name: method_name) {
-          Present { value: declared_type } =>
-            infer_arg_with_element_type(arg: a, element_type: declared_type, scope: nf_scope)
-          Absent =>
-            infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
+        match arg_contract {
+          KnownArgTypes { types: ts } =>
+            match type_at_position(types: ts, idx: idx) {
+              Present { value: dt } => infer_arg_with_element_type(arg: a, element_type: dt, scope: nf_scope)
+              Absent => method_arg_contract_refusal(arg: a, method_name: method_name, scope: nf_scope)
+            }
+          MethodUnresolved => infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
+          UncontractedMethod => method_arg_contract_refusal(arg: a, method_name: method_name, scope: nf_scope)
         }
       }
     }
   )
-}
-
-// Interim classification standing in for a per-method parameter contract
-// that does not yet exist anywhere in the tree (the corpus run this fix
-// shipped with found no such authority to cite). The terminal shape is one
-// authority naming each builtin method's parameter shape once -- arity,
-// per-position type -- which this function and every other consumer reads,
-// replacing this inline name list. Dissolves when that authority lands and
-// this match is rewritten to look each method up in it instead of naming
-// five methods by string.
-//
-// The Absent arm intentionally still defaults to element_type rather than
-// refusing: this same fold's "method" position also receives qualified
-// variant-constructor calls whose symbol_index_lookup misses at the
-// ExprMethodCall seam (direct_call_shape_wall_note names this fallthrough
-// as deliberate -- "the method-call path... is the method wall's
-// territory," left uncovered). That population's real parameter types come
-// from the constructor's declared field shapes, not from a collection's
-// element_type or an Int refinement, and only the missing per-method
-// parameter-contract authority above can classify it correctly. Refusing
-// it here -- as an earlier version of this function did -- surfaced a
-// pre-existing silent mistype as a hard compile break across every
-// unrelated call site that happens to route through this bridge (measured:
-// dozens of sites in host_effect_realize.dag, fleet_workflow_steps.dag,
-// generated_artifact_gate.dag and others, none of them skip/take/at/nth/
-// index calls). That is refusing an undecided, ungrounded population
-// rather than the decided one this fix actually grounds -- the DESIGN §5
-// "wall after grounding" distinction, not a wall this fix can build now.
-fn scalar_shaped_builtin_method_arg_type(method_name: String?) -> Node? {
-  match method_name {
-    Present { value: mn } =>
-      if mn == "skip" || mn == "take" || mn == "at" || mn == "nth" || mn == "index" {
-        Present { value: int_type }
-      } else {
-        none
-      }
-    Absent => none
-  }
 }
 
 fn is_lambda_expr(e: Node) -> Bool {
@@ -3541,7 +3562,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             let first_type = resolved_type(n: first_result.typed)
             let elem_type = for_each_element_type_node(n: first_type, source_indices: scope.type_env.source_indices)
             let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
-            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, scope: scope)
+            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, arg_contract: MethodUnresolved, scope: scope)
             concat(
               [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: first_arg, source_indices: scope.type_env.source_indices), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
               remaining_results
@@ -4005,7 +4026,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent => error_type
       }
       let mc_elem_provenance = derive_element_provenance(coll_expr: recv_typed, elem_type: recv_elem_type, scope: scope)
-      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, scope: scope)
+      let mc_arg_contract = method_declared_arg_contract(receiver_type: recv_rt, method_name: method_name, method_args_count: mc_args |> count, source_indices: scope.type_env.source_indices)
+      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, arg_contract: mc_arg_contract, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
       let mc_acc_is_under_resolved = !is_fully_resolved(n: fold_acc_type, source_indices: scope.type_env.source_indices)

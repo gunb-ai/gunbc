@@ -5318,6 +5318,100 @@ pub fn derive_element_provenance(
     }
 }
 
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(tag = "_variant")]
+pub enum MethodArgContract {
+    KnownArgTypes { types: Rc<Vec<Rc<Node>>> },
+    MethodUnresolved,
+    UncontractedMethod,
+}
+
+pub fn method_declared_arg_contract(
+    receiver_type: Rc<Node>,
+    method_name: String,
+    method_args_count: i64,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<MethodArgContract> {
+    let tier0 = lookup_structural_method(
+        receiver_type.clone(),
+        method_name.clone(),
+        source_indices.clone(),
+    );
+    match tier0.resolution.clone() {
+        None => Rc::new(MethodArgContract::MethodUnresolved),
+        Some(mfr) => match mfr.field_node.inferred.clone().as_deref().cloned() {
+            Some(InferredNode::Resolved { node: rt, .. }) => {
+                if (rt.params.clone().len() as i64) > 0 {
+                    let all_types: Rc<Vec<Rc<Node>>> = Rc::new(
+                        rt.params
+                            .clone()
+                            .iter()
+                            .cloned()
+                            .map(|p| param_node_type_expr(p))
+                            .collect(),
+                    );
+                    let total = all_types.len() as i64;
+                    let aligned: Rc<Vec<Rc<Node>>> = if total > method_args_count {
+                        Rc::new(
+                            all_types
+                                .iter()
+                                .cloned()
+                                .skip((total - method_args_count) as usize)
+                                .collect(),
+                        )
+                    } else {
+                        all_types.clone()
+                    };
+                    Rc::new(MethodArgContract::KnownArgTypes { types: aligned })
+                } else if method_args_count == 0 {
+                    Rc::new(MethodArgContract::KnownArgTypes {
+                        types: Rc::new(vec![]),
+                    })
+                } else {
+                    Rc::new(MethodArgContract::UncontractedMethod)
+                }
+            }
+            _ => Rc::new(MethodArgContract::UncontractedMethod),
+        },
+    }
+}
+
+pub fn type_at_position(types: Rc<Vec<Rc<Node>>>, idx: i64) -> Option<Rc<Node>> {
+    if idx < 0 {
+        None
+    } else {
+        types.get(idx as usize).cloned()
+    }
+}
+
+pub fn method_arg_contract_refusal(
+    arg: Rc<Node>,
+    method_name: Option<String>,
+    scope: Rc<InferScope>,
+) -> Rc<ArgInferResult> {
+    let mn = match method_name {
+        Some(m) => m,
+        None => "<unknown>".to_string(),
+    };
+    let msg = format!(
+        "no declared parameter contract for argument to method '{}'",
+        mn
+    );
+    Rc::new(ArgInferResult {
+        typed_arg: make_arg_node(
+            arg_name_at(arg.clone(), scope.type_env.clone().source_indices.clone()),
+            semantic_expr_error_node(msg.clone(), arg.span.clone()),
+            arg.span.clone(),
+            arg.span.clone(),
+        ),
+        diagnostics: Rc::new(vec![inference_error(
+            msg.clone(),
+            arg.span.clone(),
+            scope.module_name.clone(),
+        )]),
+    })
+}
+
 pub fn infer_method_args_with_fold(
     method_name: Option<String>,
     method_args: Rc<Vec<Rc<Node>>>,
@@ -5325,6 +5419,7 @@ pub fn infer_method_args_with_fold(
     fold_acc_type: Rc<Node>,
     element_type: Rc<Node>,
     elem_provenance: Rc<SubValueRelation>,
+    arg_contract: Rc<MethodArgContract>,
     scope: Rc<InferScope>,
 ) -> Rc<Vec<Rc<ArgInferResult>>> {
     {
@@ -5480,18 +5575,35 @@ pub fn infer_method_args_with_fold(
                                         nf_scope.clone(),
                                     )
                                 } else {
-                                    match scalar_shaped_builtin_method_arg_type(method_name.clone())
-                                    {
-                                        Some(declared_type) => infer_arg_with_element_type(
-                                            a.clone(),
-                                            declared_type,
-                                            nf_scope.clone(),
-                                        ),
-                                        None => infer_arg_with_element_type(
-                                            a.clone(),
-                                            element_type.clone(),
-                                            nf_scope.clone(),
-                                        ),
+                                    match (*arg_contract.clone()).clone() {
+                                        MethodArgContract::KnownArgTypes { types: ts } => {
+                                            match type_at_position(ts.clone(), idx.clone()) {
+                                                Some(dt) => infer_arg_with_element_type(
+                                                    a.clone(),
+                                                    dt.clone(),
+                                                    nf_scope.clone(),
+                                                ),
+                                                None => method_arg_contract_refusal(
+                                                    a.clone(),
+                                                    method_name.clone(),
+                                                    nf_scope.clone(),
+                                                ),
+                                            }
+                                        }
+                                        MethodArgContract::MethodUnresolved => {
+                                            infer_arg_with_element_type(
+                                                a.clone(),
+                                                element_type.clone(),
+                                                nf_scope.clone(),
+                                            )
+                                        }
+                                        MethodArgContract::UncontractedMethod => {
+                                            method_arg_contract_refusal(
+                                                a.clone(),
+                                                method_name.clone(),
+                                                nf_scope.clone(),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -5501,19 +5613,6 @@ pub fn infer_method_args_with_fold(
             }
             __result
         })
-    }
-}
-
-pub fn scalar_shaped_builtin_method_arg_type(method_name: Option<String>) -> Option<Rc<Node>> {
-    match method_name {
-        Some(mn) => {
-            if mn == "skip" || mn == "take" || mn == "at" || mn == "nth" || mn == "index" {
-                Some(int_type())
-            } else {
-                None
-            }
-        }
-        None => None,
     }
 }
 
@@ -6190,6 +6289,7 @@ pub fn infer_expr_body(
                                                 call_fold_acc_type.clone(),
                                                 elem_type.clone(),
                                                 call_elem_provenance.clone(),
+                                                Rc::new(MethodArgContract::MethodUnresolved),
                                                 scope.clone(),
                                             );
                                             v1_rt::concat(
@@ -7095,6 +7195,12 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                         recv_elem_type.clone(),
                         scope.clone(),
                     );
+                    let mc_arg_contract = method_declared_arg_contract(
+                        recv_rt.clone(),
+                        method_name.clone(),
+                        mc_args.clone().len() as i64,
+                        scope.type_env.clone().source_indices.clone(),
+                    );
                     let mc_arg_infer_results = infer_method_args_with_fold(
                         mc_method_name.clone(),
                         mc_args.clone(),
@@ -7102,6 +7208,7 @@ if ((call_ambiguity_cands.clone().len() as i64) > 0) {
                         fold_acc_type.clone(),
                         recv_elem_type.clone(),
                         mc_elem_provenance.clone(),
+                        mc_arg_contract.clone(),
                         scope.clone(),
                     );
                     let typed_mc_args = Rc::new({
