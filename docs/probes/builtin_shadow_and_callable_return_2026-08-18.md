@@ -300,10 +300,18 @@ The mechanism-keyed split is clean and sums:
 
 | row | mechanism | pop | evidence | repair site |
 |---|---|---:|---|---|
-| **1a** | bound missing on a generic type's **derived impls** | **14** | E0277 ×10 (`im::Vector<T>` needs `T: Clone` for Debug/Serialize/Deserialize on `FreeMonoidUniqueState<T>`, `ListTailResult<T>`) · E0369 ×2 (derived `PartialEq` comparing `Rc<Vector<T>>`) · E0599 ×2 (`CacheLookupResult<T>` derived `Clone` unsatisfiable) | the `#[derive(...)]` emission for a generic declaration — `trait_derive_emit.dag` |
-| **1b** | bound missing on a generated **fn / inherent-impl signature** whose body clones a type param | **14** | E0277 ×6 (`required by a bound in bind_outcome` / `resolve_probe`) · E0599 ×6 (`no method clone found for type parameter A`) · E0308 ×2 (`expected type parameter T, found &T` — "`T` does not implement `Clone`, so `&T` was cloned instead") | `v1_item_clone_bounded_param_names` / `emit_fn_def` in `05_emit_rust.dag` |
+| **1a** | bound missing on a generic type's **derived impls** | **12** | E0277 ×10 (`im::Vector<T>` needs `T: Clone` for Debug/Serialize/Deserialize on `FreeMonoidUniqueState<T>`, `ListTailResult<T>`) · E0369 ×2 (derived `PartialEq` comparing `Rc<Vector<T>>`) | the `#[derive(...)]` emission for a generic declaration — `trait_derive_emit.dag` |
+| **1b** | bound missing on a generated **fn / inherent-impl signature** whose body clones a type param | **16** | E0277 ×6 (`required by a bound in bind_outcome` / `resolve_probe`) · E0599 ×6 (`no method clone found for type parameter A`) · E0599 ×2 (`CacheLookupResult<T>` — see the correction below) · E0308 ×2 (`expected type parameter T, found &T` — "`T` does not implement `Clone`, so `&T` was cloned instead") | `v1_item_clone_bounded_param_names` / `emit_fn_def` in `05_emit_rust.dag` |
 
-14 + 14 = 28. This preserves the separation `smart-ram-730` asked for — different consumers,
+12 + 16 = 28. **Corrected 2026-08-19 by reading the specimens** `silent-raven-853` asked for: the
+two `CacheLookupResult<T>` E0599 rows were in 1a and are fn-side. Their span text is a call site —
+`match (*lookup.clone()).clone()` — and rustc's children say *consider restricting the type
+parameter*, because `#[derive(Clone)]` on the enum already generates `impl<T: Clone> Clone`, which
+is correct; what is missing is `T: Clone` on the enclosing generic fn (`realize_route<T>`,
+`dag/std/cache_interface.dag:325` and its sibling at `:334`). Full site list with raw diagnostics
+for that head: `docs/probes/row_1a_sites_f0e7c9df89.md` + `.json`.
+
+This preserves the separation `smart-ram-730` asked for — different consumers,
 different repairs — but draws it where the repair actually differs. A `TraitBoundWitness` consumed
 by `emit_fn_def` addresses **1b**; **1a** is the derive emitter, and the two can land independently.
 
