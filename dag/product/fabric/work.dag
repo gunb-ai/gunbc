@@ -2,8 +2,7 @@ module product.fabric.work
 
 import std.types { NonEmptyStr, List }
 import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
-import product.compute_fabric { Shape }
-import std.measure { hardware_thread_count_value }
+import std.measure { HardwareThreadCount, hardware_thread_count_value }
 import product.fabric.identity { FabricIdentity, WorkKey }
 
 // Work is WHAT is computed, and it is provider-neutral by construction: no field
@@ -98,6 +97,18 @@ type WorkContract {
 type CapabilityManifestRef = NonEmptyStr where brand("CapabilityManifestRef")
 
 type TrustDomainRef = NonEmptyStr where brand("TrustDomainRef")
+
+// Shape and HardRequirements moved here when product.compute_fabric was deleted at
+// the root. They are the only load-bearing content that module had: what a WorkSpec
+// requires and what an Offer offers is a work-side fact, and shape_material below
+// already destructures the axis deliberately, so the axis wall lives beside the
+// carrier rather than one module away. The rest of that module -- Fabric, Program,
+// ComputeNeed, Opportunity, Connection, connect -- had no decision consumer and was
+// deleted rather than moved.
+
+type HardRequirements { threads: HardwareThreadCount }
+
+type Shape { hard: HardRequirements }
 
 type ExecutionRequirements {
   shape: Shape
