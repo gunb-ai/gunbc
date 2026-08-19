@@ -27,7 +27,7 @@ import gunbc.session_lease {
   ProcessPortObservation,
   PortAbsent,
   PortObserved,
-  PortInaccessible,
+  PortObservationRefused,
   ProcessLeasePlan,
   Start,
   DrainMatchingStaleThenStart,
@@ -138,7 +138,8 @@ fn host_effect_nbd_proxy_serve_observation_from_is_active_capture(
       } else {
         PortAbsent
       }
-    UnitIsActiveCaptureRefused { reason: _ } => PortInaccessible
+    UnitIsActiveCaptureRefused { reason: why } =>
+      PortObservationRefused { reason: why as NonEmptyStr }
   }
 }
 
@@ -154,13 +155,18 @@ fn host_effect_nbd_proxy_serve_observe_port(
   )
 }
 
+// Named for the one transport that genuinely cannot observe (EmitArtifactThenThinRun): its typed
+// dispatch refuses before any read-back is attempted, which now surfaces here as the real captured
+// refusal reason (via PortObservationRefused / ObservationVerdict.UnknownRefused), never the fixed
+// "port inaccessible" string -- that string means the port was observed and genuinely wrong, a
+// different fact this predicate must not conflate with "could not observe."
 fn host_effect_nbd_proxy_serve_apply_refuses_when_observe_unimplemented(
   binding: NbdProxyServeSessionBinding,
   transport: HostEffectTransport,
 ) -> Bool {
   match host_effect_nbd_proxy_serve_apply(binding: binding, transport: transport) {
     NbdProxyServeApplyRefused { reason: why } =>
-      string_contains(s: why, pattern: "port inaccessible")
+      string_contains(s: why, pattern: "EmitArtifactThenThinRun")
     _ => false
   }
 }

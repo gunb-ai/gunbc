@@ -156,7 +156,11 @@ test fn nbd_proxy_observe_port_inactive_capture_yields_port_absent() -> Bool {
   }
 }
 
-test fn nbd_proxy_observe_port_capture_refusal_yields_port_inaccessible() -> Bool {
+// This is the empty-observation-narrow guard (DESIGN.md recurring failure modes): a refused
+// observation ("I could not observe") must never render as PortInaccessible ("the port was
+// observed and is genuinely wrong") -- those are different facts with different remedies, and
+// collapsing them hides a systematically-broken read-back behind a plausible-looking answer.
+test fn nbd_proxy_observe_port_capture_refusal_yields_port_observation_refused_not_answer() -> Bool {
   let scope = nbd_proxy_observe_port_test_scope()
   let unit = "nbd-proxy-srv3-nbd-proxy-10809-ws" as NonEmptyStr
   match host_effect_nbd_proxy_serve_observation_from_is_active_capture(
@@ -164,8 +168,17 @@ test fn nbd_proxy_observe_port_capture_refusal_yields_port_inaccessible() -> Boo
     websocat_unit: unit,
     capture: UnitIsActiveCaptureRefused { reason: "typed argv shell-safe refusal" },
   ) {
-    PortInaccessible => true
-    _ => false
+    PortObservationRefused { reason: why } => (why as String) == "typed argv shell-safe refusal"
+    PortAbsent => false
+    PortObserved { observed_port: _, pid: _, cmdline: _, process_fingerprint: _ } => false
+    PortObservedStaleExpected {
+      observed_port: _,
+      pid: _,
+      cmdline: _,
+      process_fingerprint: _,
+      stale_reason: _,
+    } => false
+    PortInaccessible => false
   }
 }
 

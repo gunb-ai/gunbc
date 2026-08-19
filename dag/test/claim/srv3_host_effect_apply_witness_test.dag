@@ -203,7 +203,10 @@ test fn witness_srv3_nbd_proxy_websocat_argv_materializes_token_not_shell_env_re
 // P6 Part 2 dissolution trigger, retired). LocalShell/SshShell/FleetSsh can genuinely observe, so
 // this no longer names "observe unimplemented" universally -- it names the one transport that
 // genuinely cannot: EmitArtifactThenThinRun, whose typed dispatch refuses before any read-back is
-// attempted, which classify_process_port_upsert renders as the same "port inaccessible" verdict.
+// attempted. That refusal is carried through as PortObservationRefused (ObservationVerdict
+// UnknownRefused), never rendered as PortInaccessible -- "could not observe" and "observed and
+// genuinely wrong" are different facts, and the apply refusal reason names the transport, not a
+// fabricated "port inaccessible" string.
 test fn witness_srv3_nbd_proxy_apply_emit_artifact_transport_observe_refuses_fail_closed() -> Bool {
   let effect = srv3_nbd_proxy_serve_host_effect()
   match effect {
