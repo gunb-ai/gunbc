@@ -124,5 +124,5 @@ test fn a_citation_drifted_from_the_imported_symbol_is_rejected() -> Bool {
 }
 
 test fn cited_evidence_declaration_is_an_executing_witness() -> Bool {
-  return native_selected_witness_bundle_cutover_evidence_holds()
+  return v2.test.execution.native_selected_witness_bundle.native_selected_witness_bundle_cutover_evidence_holds()
 }

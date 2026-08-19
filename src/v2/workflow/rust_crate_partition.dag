@@ -629,7 +629,7 @@ fn stage0_r3_emit_shell_crate_row() -> Stage0PartitionCrateRow {
   }
 }
 
-fn stage0_partition_crate_rows() -> List<Stage0PartitionCrateRow> {
+fn stage0_partition_crate_rows() -> List<v2.workflow.rust_crate_partition.Stage0PartitionCrateRow> {
   stage0_module_bearing_crate_rows()
     |> concat([stage0_r3_emit_shell_crate_row()])
 }

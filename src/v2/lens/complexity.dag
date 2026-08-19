@@ -12,7 +12,7 @@ data complexity_variables_validation: Validation<List<v2.lens.cost.SizeVariable>
   admits: complexity_variables_admits
 }
 
-data complexity_variables_vacuous_validation: VacuousValidation<List<v2.lens.cost.SizeVariable>> = v2.std.refinement.VacuousValidation {
+data complexity_variables_vacuous_validation: v2.std.refinement.VacuousValidation<List<v2.lens.cost.SizeVariable>> = v2.std.refinement.VacuousValidation {
   reason: ^complexity_variables_invalid,
   vacuous: vacuous_admits_marker
 }
