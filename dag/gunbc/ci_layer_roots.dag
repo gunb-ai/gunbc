@@ -103,12 +103,6 @@ data excl_install_media_dissolve: DissolutionCondition = unbound_dissolution(des
 
 data witness_exclusion_frontier: List<WitnessExclusionRow> = [
   WitnessExclusionRow {
-    pattern: "stage0_partition_closure_live_census_test.dag",
-    classification: FalsifierSubstrateLongLane,
-    reason: "PARTITION-CLOSURE LIVE CENSUS: partition_closure_verdict derives dependency_resolution_facts_live and module_declaration_facts_live over pool roots dag and src/v2 and asks whether the live crate roster holds against the live corpus. Its subject IS the corpus breadth, so it cannot be shrunk without measuring less, and narrowing the pool roots would under-approximate the edges — the fail-open gunbc.stage0_partition_closure partition_closure_authority_note refuses. MEASURED 173.6s and 177.6s thread CPU against the 5s fast-lane budget; CI only ever reported 5040ms, which is where the budget INTERRUPTS and is a lower bound on cost, never the cost. The mechanism half is fixture-shaped and stays per-PR in test.claim.stage0_partition_closure_witness_test at 1-4ms (three REDs plus the extent row, through partition_closure_verdict_over), so this row carries the census and not the discrimination — and the census lives in its OWN file precisely so this file-grain pattern does not drag those four fixtures off per-PR discovery with it.",
-    dissolution: unbound_dissolution(description: "the live fact producers stop dominating the verdict — they are already host-memoized, and two cost-shape defects removed here (a per-edge re-read of the importer's emitted source, and duplicate live scans) measurably did NOT move it, 177.6s against a 173.6s baseline, so the remaining cost is theirs and not this gate's folds — OR v2 self-host gains compile-graph access (gunbc#5364) so the closure derives at closure cost rather than a corpus walk. Then the row's eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run, the census re-enrolls per-PR discovery beside its fixture siblings, and this classification flips back to DiscoverySelection.")
-  },
-  WitnessExclusionRow {
     pattern: "lifecycle_survivor_corpus_census_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: "LIFECYCLE-CARRIER COMPLETENESS CENSUS: derives every top-level data declaration in the corpus with its declared type (data_decl_type_facts over both roots, 16975 declarations / 3475 modules) and gates the raw-string lifecycle survivor population at zero. Its subject IS the corpus breadth, so it cannot be shrunk without measuring less. MEASURED 18482ms eval against the 5s fast-lane budget. The mechanism half is fixture-shaped and stays per-PR in test.claim.lifecycle_survivor_scan_witness (planted survivor selected, migrated control and out-of-class String rejected, ~0ms), so this row carries only the irreducible census — not the discrimination.",
@@ -432,16 +426,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: excl_bin_wet_dissolve},
   WitnessExclusionRow {
     pattern: "atom_body_discriminator_witness_test.dag",
-    classification: FalsifierSubstrateLongLane,
-    reason: excl_substrate_long_lane_reason,
-    dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
-    pattern: "affected_set_provenance_producer_witness_test.dag",
-    classification: FalsifierSubstrateLongLane,
-    reason: excl_substrate_long_lane_reason,
-    dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
-    pattern: "edit_locus_source_provenance_witness_test.dag",
     classification: FalsifierSubstrateLongLane,
     reason: excl_substrate_long_lane_reason,
     dissolution: excl_substrate_long_lane_dissolve},
@@ -1190,12 +1174,6 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     dissolution: unbound_dissolution(description: "same as census_counters_exhaustively_partition_the_rows row")
   },
   SubstrateLongLaneRow {
-    entry: "dag/test/claim/stage0_partition_closure_live_census_test.dag",
-    function: "w_live_corpus_partition_closure_holds",
-    reason: "173.6s and 177.6s measured eval on two runs (claim_batch, local): the partition-closure census derives the whole-corpus dependency and declaration facts to ask whether the live crate roster holds. Its input is the live tree's breadth, so its cost is not bounded by anything the fast lane can see. The discriminating half is fixture-shaped and stays per-PR in test.claim.stage0_partition_closure_witness_test at 1-4ms, so this row carries the census and not the mechanism. THE MARGIN IS THIN: 177.6s sits about 1.3 percent under this lane's 180000ms ceiling, measured on a contended session container, so it may exceed on a slower runner — that surfaces as a counted cadence failure rather than a blocked merge, which is why enrolling still beats the fast lane",
-    dissolution: unbound_dissolution(description: "the live producers stop dominating (dependency_resolution_facts_live and module_declaration_facts_live, already host-memoized — the two cost-shape defects removed in this module measurably did not move the total) or v2 self-host gains compile-graph access (gunbc#5364); then the eval lands under the fast-lane budget, the census re-enrolls per-PR discovery, and this row deletes with its exclusion pair")
-  },
-  SubstrateLongLaneRow {
     entry: "dag/test/claim/lifecycle_survivor_corpus_census_test.dag",
     function: "no_raw_lifecycle_string_survivors_remain",
     reason: "18482ms measured eval (claim_batch, local): the lifecycle-carrier completeness gate derives every top-level data declaration in the corpus with its declared type — 16975 declarations across 3475 modules — and refuses if any raw-string lifecycle carrier survives. Its input is the live tree's breadth, so its cost is not bounded by anything the fast lane can see; that is what disqualifies it, independent of the single measurement. The discriminating half is fixture-shaped and stays per-PR in test.claim.lifecycle_survivor_scan_witness at ~0ms, so this row carries the census and not the mechanism",
@@ -1392,72 +1370,6 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "wave1_gate1_d_census_subsumption_witness_holds",
     reason: "134526ms measured witness wall on a cold run (27x a 5s fast-lane budget, test-decomposition-wcf-cut.md Class C, merry-ibex-306 2026-07-25): the fn builds 10 ingested_fixture_arrows fixtures through a real tokenize->parse_module->normalize->resolve pass each, across two aggregator checks (well-formedness, behavior-kind) — genuine corpus breadth, not a fixture-shaped defect. The mechanism-only sibling (self_host/wave1_gate1_d_mvp_subsumption_witness_test.dag table_fixture check_fns, measured eval_self=0.000ms) is already covered by the source-root *_test.dag discovery walk (gunbc.commit_workflow wave1_gate1_d_census_class_c_split_note) — no explicit per-PR roster row for it",
     dissolution: unbound_dissolution(description: "the census-ingest fixture pipeline's per-fixture pass drops under the per-PR fast-lane budget on a measured cold run (e.g. shared parse-table/resolve memoization for this closure) — then re-enroll wave1_gate1_d_census_subsumption_witness_holds per-PR and delete this row")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
-    function: "lens_affected_set_provenance_producer_single_read_emits_row_holds",
-    reason: "~9.5s measured eval per witness (proud-bat-741, 2026-07-25): node_artifact_provenance_from_source_root parse pipeline on inline fixture ingest — fixture-shaped, not corpus-breadth; per-PR fast-lane keeps hand-built fail-closed walls only",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
-    function: "lens_affected_set_provenance_producer_rejects_malformed_ingest_holds",
-    reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline wall receipt)",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
-    function: "lens_affected_set_provenance_producer_rejects_beyond_surface_ingest_holds",
-    reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline wall receipt)",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
-    function: "lens_affected_set_provenance_producer_parse_coverage_known_diff_fail_closed_holds",
-    reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline coverage receipt)",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
-    function: "lens_affected_set_provenance_producer_coverage_receipt_holds",
-    reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline coverage receipt)",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
-    function: "lens_affected_set_provenance_producer_git_diff_wire_holds",
-    reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline git-diff wire receipt)",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/affected_set_provenance_producer_witness_test.dag",
-    function: "lens_affected_set_provenance_producer_unknown_diff_fail_closed_holds",
-    reason: "same Class C live-grain row as sibling single_read_emits_row (parse-pipeline fail-closed receipt; per-PR hand-built unknown-path wall lives in affected_set_provenance_producer_test.dag)",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
-    function: "lens_edit_locus_source_provenance_affected_set_wire_holds",
-    reason: "Class C live-grain row (edit-locus provenance producer ×3 family): source_ir_node_artifact_provenance parse pipeline exceeds per-PR 5s budget. Renamed off the imported fn's own name 2026-07-26 — the same-name wrapper self-recursed instead of delegating (edit_locus_source_provenance_wrapper_shadowing_note); the row had never executed",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
-    function: "lens_edit_locus_source_provenance_producer_rejects_malformed_source_holds",
-    reason: "Class C live-grain row (edit-locus provenance producer ×3 family): malformed-source refusal through parse pipeline exceeds per-PR 5s budget. Renamed off the imported fn's own name 2026-07-26 — the same-name wrapper self-recursed instead of delegating (edit_locus_source_provenance_wrapper_shadowing_note); the row had never executed",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
-    function: "lens_edit_locus_source_provenance_producer_holds",
-    reason: "Class C live-grain edit-locus provenance producer (review 43557): was if-false-pinned in the lens module; now a real long/ wrapper on the substrate long lane with its siblings",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
-  },
-  SubstrateLongLaneRow {
-    entry: "src/v2/test/claim/long/edit_locus_source_provenance_witness_test.dag",
-    function: "lens_edit_locus_source_provenance_parse_root_span_holds",
-    reason: "Class C live-grain edit-locus parse-root-span pole (review 43557); pair with producer_holds",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/fallback_arm_census_witness_test.dag",
