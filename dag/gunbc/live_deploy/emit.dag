@@ -33,8 +33,16 @@ import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.layout {
   Doc, DocConcat,
   LayoutProtocol,
-  doc_concat, doc_line_of,
+  doc_concat, doc_line_of, doc_text,
   render
+}
+import extdeps.systemd.unit_file {
+  SystemdUnitFile, ServiceUnitFile,
+  SystemdInstallSection, NotInstallable,
+  SystemdUnitDirective, Description,
+  SystemdServiceDirective, ServiceType, ExecStart,
+  WorkingDirectory, ServiceUser, ServiceGroup,
+  serialize_systemd_unit_file,
 }
 import gunbc.live_deploy.spec {
   DeploymentSpec,
@@ -42,8 +50,9 @@ import gunbc.live_deploy.spec {
   DeploymentDependencyStep,
   EnsuredSubject, EnsuredPackage, EnsuredHostDirectory, ensured_subject_identity,
   DeploymentArtifactStep,
-  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping,
+  ServeBinary, GunbcSourceTree, DispatchWorktreeRoot, AttemptStateRoot, SystemdUnit, BeltTimerUnit, FleetConvergeTimerUnit, TailscaleServeMapping, DeployedTreeRemoteUnit,
   deployment_belt_service_unit_name,
+  deployment_tree_remote_unit_name,
   deployment_belt_timer_unit_name,
   deployment_belt_service_unit_path,
   deployment_fleet_converge_service_unit_name,
@@ -323,6 +332,58 @@ fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
     doc_line_of(text: "[Install]"),
     doc_line_of(text: "WantedBy=timers.target"),
   ])
+}
+
+// THE DEPLOYED TREE'S REMOTE, CONVERGED BY ITS OWNER.
+//
+// `gunbc.fleet_desired_observe` reads refs/fleet/desired with `git ls-remote origin`, a network
+// call through a CONFIGURED remote, and `tree_sync_git_whitelist_note` excludes .git/config from
+// the sync because a blanket sync once carried a live Actions token into the service tree. Both are
+// correct and neither was checked against the other, so the deploy produced a tree that could not
+// answer an observation the belt makes every sixty seconds (srv1, measured 2026-08-18).
+//
+// WHY A UNIT AND NOT AN APPLY STEP: the tree is service-user-owned and the deploy principal is the
+// unprivileged ci-runner holding six sudo grants, none of them git (emit_deploy_principal_note), so
+// `git config` from the apply is refused on one side and EACCES on the other. The same reasoning
+// that produced gunbc-tree-sync.service produces this one -- the owner writes its own tree.
+//
+// WHY NOT A LEG ON THE TREE-SYNC UNIT, which already has the right principal: that unit is started
+// inside the GunbcSourceTree step, and ServeBinary is installed in the step AFTER it, so the gunbc
+// binary this invocation needs does not exist yet on a fresh instance. Ordering this member AFTER
+// ServeBinary in deployment_owned_steps is what makes the binary a precondition the membership
+// establishes -- concretely THIRD, before the belt timer that depends on the remote, not last
+// (see deployment_tree_remote_unit_name's header for why last was wrong).
+//
+// The ExecStart names the tree explicitly rather than deriving it, because a host can run two slots
+// and the unit of one slot must not converge the other's tree.
+fn emit_tree_remote_unit_doc(spec: DeploymentSpec) -> Doc {
+  let svc = spec.service
+  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+    unit: [Description {
+      text: "gunbc deployed tree remote convergence (origin URL for fleet desired observation)" as NonEmptyStr,
+    }],
+    service: [
+      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      WorkingDirectory { path: svc.repo_root },
+      ExecStart { command: join([
+        svc.serve_binary as String,
+        " run --source-root dag --source-root src/v2",
+        " --entry dag/gunbc/deployed_tree_remote.dag --function ensure_deployed_tree_remote_wet",
+        " --arg repository_path=", svc.repo_root as String,
+      ], "") as NonEmptyStr },
+    ],
+    install: NotInstallable,
+  }))
+}
+
+fn apply_tree_remote_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
+  deploy_raw(command: join([
+    "cat > \"$_gunbc_stage/", deployment_tree_remote_unit_name(names: spec.names) as String, "\" <<'GUNBC_TREE_REMOTE_EOF'\n",
+    render(doc: emit_tree_remote_unit_doc(spec: spec), proto: live_deploy_protocol),
+    "GUNBC_TREE_REMOTE_EOF",
+  ], ""))
 }
 
 fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
@@ -654,6 +715,15 @@ fn emit_artifact_upsert(art: DeploymentArtifactStep, spec: DeploymentSpec, revis
     TailscaleServeMapping => [
       tailscale_serve_apply_step(spec: spec),
     ]
+    DeployedTreeRemoteUnit => [
+      apply_tree_remote_unit_write_step(spec: spec),
+      deploy_raw(command: join([
+        "sudo -n install -m 0644 \"$_gunbc_stage/", deployment_tree_remote_unit_name(names: spec.names) as String, "\" ",
+        art.path as String,
+      ], "")),
+      deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      deploy_raw(command: systemctl_restart_command(unit: deployment_tree_remote_unit_name(names: spec.names), privileged: true)),
+    ]
   }
 }
 
@@ -689,6 +759,13 @@ fn emit_artifact_teardown(art: DeploymentArtifactStep, spec: DeploymentSpec) -> 
         deploy_raw(command: join([
           "sudo -n rm -f ", art.path as String, " ", deployment_fleet_converge_service_unit_path(names: spec.names) as String,
         ], "")),
+        deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
+      ]
+    )
+    DeployedTreeRemoteUnit => concat(
+      systemctl_disable_now_if_present_steps(unit: deployment_tree_remote_unit_name(names: spec.names), privileged: true),
+      [
+        deploy_raw(command: concat("sudo -n rm -f ", art.path as String)),
         deploy_raw(command: systemctl_daemon_reload_command(privileged: true)),
       ]
     )
