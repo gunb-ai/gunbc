@@ -1055,6 +1055,12 @@ fn srv3_actuator_toolchain_chown_args(owner: String, path: String) -> List<Strin
   ["-n", "/usr/bin/chown", owner, path]
 }
 
+data srv3_transport_witness_bin_nonroot_workdir_refused_note: String = "typed_argv_exec_over_{ssh,fleet_ssh} carries a bare argv with no shell to `cd` first, so a non-root workdir has no typed form to hand it. Every in-tree caller passes workdir: \"/\" (checked at review time), so this arm is unreachable dead debt today -- named rather than folded into the workdir == \"/\" condition so a non-root workdir renders as a located refusal instead of an indistinguishable-from-measured `false` (DESIGN §5, fabricated negative). DISSOLVES WHEN a typed remote cd/chdir primitive lands and this reroutes to it, or when workdir is dropped from the signature because no caller ever varies it."
+
+fn srv3_transport_witness_bin_nonroot_workdir_refused() -> Bool {
+  false
+}
+
 fn srv3_transport_witness_bin_success(
   transport: HostEffectTransport,
   workdir: String,
@@ -1065,20 +1071,28 @@ fn srv3_transport_witness_bin_success(
     LocalShell =>
       gunbc.WitnessBin.Run(workdir: workdir, bin_path: bin_path, args: args).success
     SshShell { ssh_host: h } =>
-      workdir == "/" && srv3_typed_argv_outcome_success(
-        outcome: typed_argv_exec_over_ssh(
-          host: h,
-          argv: srv3_argv_with_bin(bin_path: bin_path, args: args),
-        ),
-      )
+      if workdir == "/" {
+        srv3_typed_argv_outcome_success(
+          outcome: typed_argv_exec_over_ssh(
+            host: h,
+            argv: srv3_argv_with_bin(bin_path: bin_path, args: args),
+          ),
+        )
+      } else {
+        srv3_transport_witness_bin_nonroot_workdir_refused()
+      }
     FleetSsh { target: t, context: c } =>
-      workdir == "/" && srv3_typed_argv_outcome_success(
-        outcome: typed_argv_exec_over_fleet_ssh(
-          target: t,
-          context: c,
-          argv: srv3_argv_with_bin(bin_path: bin_path, args: args),
-        ),
-      )
+      if workdir == "/" {
+        srv3_typed_argv_outcome_success(
+          outcome: typed_argv_exec_over_fleet_ssh(
+            target: t,
+            context: c,
+            argv: srv3_argv_with_bin(bin_path: bin_path, args: args),
+          ),
+        )
+      } else {
+        srv3_transport_witness_bin_nonroot_workdir_refused()
+      }
     EmitArtifactThenThinRun { bootstrap: _, invocation: _ } =>
       srv3_actuator_toolchain_emit_artifact_transport_helper_refused()
   }
