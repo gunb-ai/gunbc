@@ -51,7 +51,7 @@ type MeasurementSample {
   calls: Int
   inclusive_wall: Nanosecond
   exclusive_wall: Nanosecond
-  work_units: Int
+  work_units: Int?
 }
 
 type MeasurementRun {
@@ -76,6 +76,7 @@ type MeasurementRefusalCause
   | ParentIsSelf { span: NonEmptyStr }
   | SubjectHasNoSourceRoots
   | SubjectPopulationNonPositive { module_population: Int }
+  | SubjectMismatch { expected_digest: Fnv1a64Structural, actual_digest: Fnv1a64Structural }
 
 // A sealed verdict. The digest covers every subject field, so an admitted
 // receipt detached from the run that produced it is unwritable rather than
@@ -247,6 +248,39 @@ fn admit_measurement_run(run: MeasurementRun) -> MeasurementAdmission {
   }
 }
 
+// THE EXPECTATION ARM, and why it is a separate entry rather than an optional
+// field on the run. A harness knows the commit and binary it intends to measure
+// BEFORE the producer runs, so "this run is of the thing I asked for" is a
+// question the carrier can answer -- but only if the expectation is supplied.
+// Carrying it as an optional field on MeasurementRun would make the unchecked
+// case the default and the check something a caller must remember, which is the
+// escape hatch DESIGN section 5 forbids; carrying it as a distinct entry point
+// makes the checked and unchecked cases two named calls instead of one call
+// with a silent mode. admit_measurement_run remains for a measurement recorded
+// with no prior expectation, which is a real case and not a weaker one.
+fn admit_measurement_run_against(expected: MeasurementSubject, run: MeasurementRun) -> MeasurementAdmission {
+  let expected_digest = measurement_subject_digest(subject: expected)
+  let actual_digest = measurement_subject_digest(subject: run.subject)
+  let mismatch = if content_hash_eq_structural(left: expected_digest, right: actual_digest) {
+    []
+  } else {
+    [SubjectMismatch { expected_digest: expected_digest, actual_digest: actual_digest }]
+  }
+  let causes = mismatch + measurement_run_causes(run: run)
+  if list_length(items: causes) == 0 {
+    MeasurementAdmitted {
+      admitted: AdmittedMeasurementRun {
+        subject_digest: actual_digest,
+        span_count: list_length(items: run.samples),
+        total_calls: measurement_total_calls(samples: run.samples),
+        producer_exit: run.producer_exit,
+      },
+    }
+  } else {
+    MeasurementRefused { causes: causes }
+  }
+}
+
 // THE A/B ARM. A delta between two runs is meaningless unless both were
 // admitted AND their subjects actually differ: an A/B pair whose two arms
 // carry one subject digest measured one thing twice, and its agreement is a
@@ -298,6 +332,8 @@ fn admit_measurement_delta(baseline: MeasurementRun, candidate: MeasurementRun) 
   }
 }
 
-data measurement_subject_rung_note: String = "THE DURATION AXIS IS GROUNDED, recorded first because an earlier revision of this carrier got it wrong. The two wall figures were declared as bare Int fields named inclusive_wall_nanos and exclusive_wall_nanos -- a unit carried in a field NAME, which is a second representation of a quantity std.measure already owns, and in a std/ carrier at that. They are now Nanosecond, which is Measure<Time, Nano, Nat>: the scale lives in the type, so the field name no longer carries it, the refusal causes that propagate the figures outward carry the same type rather than re-flattening it, and the inclusive/exclusive ordering check is measure_le rather than a scalar comparison. No dissolution trigger is attached because nothing is deferred -- the fork is removed rather than admitted. Caught in review on gunbc#8545; the remedy the review named (std.measure.Duration) does not exist, and Nanosecond is the carrier that does.
+data measurement_subject_rung_note: String = "TWO REFUSALS FROM THE COMMISSIONING SPEC WERE MISSING FROM THE FIRST REVISION, and one of them was this carrier committing the defect it exists to refuse. The spec names 'wrong commit or binary' and 'unknown metric rendered as zero' among the states a measurement harness must refuse. (1) Wrong commit or binary had no representation: SubjectsIdentical catches two arms that measured ONE subject, but nothing compared a run against the subject it was SUPPOSED to measure, because no expectation was ever supplied. admit_measurement_run_against now takes that expectation and refuses SubjectMismatch, carrying both digests. (2) work_units was a bare Int, so a span whose work units were never measured could only be rendered as zero -- unknown collapsed into a legitimate value, inside the carrier whose entire subject is that ignorance must not be rendered as an answer. It is now Int?, so 'not measured' and 'measured zero' are distinct states. Note the asymmetry deliberately: the spec asked for a REFUSAL on rendering unknown as zero, and the repair makes the rendering UNWRITABLE instead, which is the higher rung -- a refusal would have conceded that the bad state is constructible. Both gaps were found by re-reading the commissioning spec against the built carrier after it was already approved and green, which is the only reason they are recorded here rather than shipped.
+
+THE DURATION AXIS IS GROUNDED, recorded first because an earlier revision of this carrier got it wrong. The two wall figures were declared as bare Int fields named inclusive_wall_nanos and exclusive_wall_nanos -- a unit carried in a field NAME, which is a second representation of a quantity std.measure already owns, and in a std/ carrier at that. They are now Nanosecond, which is Measure<Time, Nano, Nat>: the scale lives in the type, so the field name no longer carries it, the refusal causes that propagate the figures outward carry the same type rather than re-flattening it, and the inclusive/exclusive ordering check is measure_le rather than a scalar comparison. No dissolution trigger is attached because nothing is deferred -- the fork is removed rather than admitted. Caught in review on gunbc#8545; the remedy the review named (std.measure.Duration) does not exist, and Nanosecond is the carrier that does.
 
 RUNG, stated honestly rather than by the carrier's name. MeasurementSubject and MeasurementSample are ordinary records and remain directly constructible, so an author can still write a subject whose fields do not describe the run they label - this carrier cannot make a LIE about an observation unwritable, because the observation happens outside the model. What IS structural is the verdict: AdmittedMeasurementRun is sole_constructor with one in-module mint inside admit_measurement_run, so an admitted receipt that never passed the causes fold has no representation, and a delta over an unadmitted or self-identical pair likewise has none. So the class sits at mechanically preventable for the ADMISSION question and at mitigatable for the FAITHFULNESS question. NEXT-RUNG TRIGGER for the second half: the subject's binary_digest and source_inventory_digest are produced by the harness at launch rather than declared by the author, at which point a subject detached from its run stops being writable at the boundary that mints it. NOT CLAIMED: that any measurement in this repository currently routes through this carrier. It has one consumer, its witness, and the profiler spans that would feed it are blocked behind the stage0 regeneration; enrolling a producer is separate work and until it lands this is a modeled admission with no production subject."

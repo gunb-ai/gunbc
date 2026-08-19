@@ -15,6 +15,7 @@ import std.measurement_subject {
   DeltaAdmitted,
   DeltaRefused,
   admit_measurement_run,
+  admit_measurement_run_against,
   admit_measurement_delta,
   measurement_subject_digest,
   measurement_subject_eq,
@@ -55,7 +56,7 @@ fn w_sample(span: String, calls: Int, inclusive: Nat, exclusive: Nat) -> Measure
     calls: calls,
     inclusive_wall: w_nanos(count: inclusive),
     exclusive_wall: w_nanos(count: exclusive),
-    work_units: calls,
+    work_units: Present { value: calls },
   }
 }
 
@@ -257,7 +258,7 @@ test fn dangling_parent_span_refuses() -> Bool {
     calls: 600000,
     inclusive_wall: w_nanos(count: 90000000000),
     exclusive_wall: w_nanos(count: 90000000000),
-    work_units: 600000,
+    work_units: Present { value: 600000 },
   }
   !w_is_admitted(a: admit_measurement_run(run: MeasurementRun {
     subject: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
@@ -274,7 +275,7 @@ test fn self_parented_span_refuses() -> Bool {
     calls: 10,
     inclusive_wall: w_nanos(count: 100),
     exclusive_wall: w_nanos(count: 100),
-    work_units: 10,
+    work_units: Present { value: 10 },
   }
   !w_is_admitted(a: admit_measurement_run(run: MeasurementRun {
     subject: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
@@ -294,7 +295,7 @@ test fn wellformed_parent_child_is_admitted() -> Bool {
     calls: 600000,
     inclusive_wall: w_nanos(count: 91010000000),
     exclusive_wall: w_nanos(count: 91010000000),
-    work_units: 600000,
+    work_units: Present { value: 600000 },
   }
   w_is_admitted(a: admit_measurement_run(run: MeasurementRun {
     subject: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
@@ -347,4 +348,72 @@ test fn every_cause_is_counted() -> Bool {
     expected_spans: [],
     samples: [],
   })) >= 4
+}
+
+// The expectation arm, both directions. A harness knows the commit and binary it
+// intends to measure before the producer runs; a run reporting a different
+// subject is not a slower result, it is a result about something else.
+test fn subject_mismatch_against_expectation_refuses() -> Bool {
+  let expected = w_subject(commit: "228638139d", binary: "60cee20962576c7d")
+  let actual = w_run(
+    subject: w_subject(commit: "3abc17b54", binary: "179375783af59779"),
+    exit_code: 0,
+    samples: w_good_samples(),
+  )
+  !w_is_admitted(a: admit_measurement_run_against(expected: expected, run: actual))
+}
+
+test fn matching_expectation_is_admitted() -> Bool {
+  let subject = w_subject(commit: "228638139d", binary: "60cee20962576c7d")
+  w_is_admitted(a: admit_measurement_run_against(
+    expected: subject,
+    run: w_run(subject: subject, exit_code: 0, samples: w_good_samples()),
+  ))
+}
+
+// The expectation arm must not launder an otherwise-refused run: a matching
+// subject with a nonzero producer exit still refuses.
+test fn matching_expectation_still_refuses_a_bad_run() -> Bool {
+  let subject = w_subject(commit: "228638139d", binary: "60cee20962576c7d")
+  !w_is_admitted(a: admit_measurement_run_against(
+    expected: subject,
+    run: w_run(subject: subject, exit_code: 127, samples: w_good_samples()),
+  ))
+}
+
+// Unmeasured work units are a distinct state from zero measured work units.
+// Before this, an unknown count could only be rendered as zero - the carrier
+// committing the defect it exists to refuse.
+test fn unmeasured_work_units_are_distinct_from_zero() -> Bool {
+  let unmeasured = MeasurementSample {
+    span: "compile.reconcile" as NonEmptyStr,
+    parent_span: none,
+    calls: 5,
+    inclusive_wall: w_nanos(count: 100),
+    exclusive_wall: w_nanos(count: 50),
+    work_units: none,
+  }
+  let measured_zero = MeasurementSample {
+    span: "compile.reconcile" as NonEmptyStr,
+    parent_span: none,
+    calls: 5,
+    inclusive_wall: w_nanos(count: 100),
+    exclusive_wall: w_nanos(count: 50),
+    work_units: Present { value: 0 },
+  }
+  let differs = match unmeasured.work_units {
+    Absent =>
+      match measured_zero.work_units {
+        Present { value: v } => v == 0
+        Absent => false
+      }
+    Present { value: _ } => false
+  }
+  differs
+    && w_is_admitted(a: admit_measurement_run(run: MeasurementRun {
+         subject: w_subject(commit: "228638139d", binary: "60cee20962576c7d"),
+         producer_exit: 0,
+         expected_spans: [],
+         samples: [unmeasured],
+       }))
 }
