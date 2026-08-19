@@ -2,7 +2,7 @@ set -e
 echo "AMBIENT RUSTC_WRAPPER before clearing: '${RUSTC_WRAPPER:-<unset>}'"
 unset RUSTC_WRAPPER || true
 export RUSTC_WRAPPER=
-MERGE_FULL=4b40f0be9efbc1da6146c02896c69a61e676563e
+MERGE_FULL=1fba7e6c5e69e9c2bfe92573553c648242fe17c1
 echo "MERGE_FULL=$MERGE_FULL"
 
 git fetch origin $MERGE_FULL
