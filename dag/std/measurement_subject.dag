@@ -142,6 +142,10 @@ fn measurement_subject_causes(acc: List<MeasurementRefusalCause>, subject: Measu
   }
 }
 
+// A span that reports elapsed time over zero calls is the fabricated-total
+// shape: something rendered a duration for work it never observed, which is
+// why the calls counter is carried beside the two wall figures rather than
+// derived from them.
 fn measurement_sample_causes(
   acc: List<MeasurementRefusalCause>,
   sample: MeasurementSample,
@@ -161,8 +165,6 @@ fn measurement_sample_causes(
   } else {
     dup
   }
-  // A span that reports elapsed time over zero calls is the fabricated-total
-  // shape: something rendered a duration for work it never observed.
   let calls = if sample.calls <= 0 && sample.inclusive_wall_nanos > 0 {
     bounds + [SampleWithoutCalls { span: sample.span, inclusive_wall_nanos: sample.inclusive_wall_nanos }]
   } else {
@@ -205,6 +207,9 @@ fn measurement_total_calls(samples: List<MeasurementSample>) -> Int {
   fold(samples, init: 0, f: fn(acc, s) { acc + s.calls })
 }
 
+// Zero samples is its own arm, ahead of the per-sample fold, because a fold
+// over an empty list produces no causes at all - which is exactly how an
+// instrument that observed nothing reports as clean.
 fn measurement_run_causes(run: MeasurementRun) -> List<MeasurementRefusalCause> {
   let exit_acc = if run.producer_exit != 0 {
     [ProducerExitNonZero { code: run.producer_exit }]
@@ -212,9 +217,6 @@ fn measurement_run_causes(run: MeasurementRun) -> List<MeasurementRefusalCause> 
     []
   }
   let subject_acc = measurement_subject_causes(acc: exit_acc, subject: run.subject)
-  // Zero samples is its own arm, ahead of the per-sample fold, because a fold
-  // over an empty list produces no causes at all - which is how an instrument
-  // that observed nothing reports as clean.
   let empty_acc = if list_length(items: run.samples) == 0 {
     subject_acc + [ZeroSamples]
   } else {
