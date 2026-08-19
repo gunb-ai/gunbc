@@ -250,6 +250,12 @@ test fn witness_missing_inputs_neither_dominate_nor_die() -> Bool {
   standing_is_incomparable(s: pending) && cheap_unmoved && pareto_label(s: pending) == "not computable"
 }
 
+// RE-ENROLLED 2026-08-19 against the standing path: pair_dominates is deleted.
+// Its Bool answered false for PairRefused, so the hole_never_dominates line
+// below used to be satisfied by the very conflation this control was written to
+// catch. The hole must not merely fail to dominate — the comparison must
+// REFUSE, and the arm is named.
+//
 // CONTROL 4 - THE FAIL-CLOSED DISCRIMINATOR. An entry that claims complete inputs while
 // lacking a compared reading REFUSES the pair, and the refusal reaches the standing as
 // incomparable rather than being skipped: a partial comparison never silently survives.
@@ -262,10 +268,6 @@ test fn witness_absent_reading_refuses_the_pair() -> Bool {
     PairNoDominance => false,
   }
   let standing_surfaces_it = standing_is_incomparable(s: entry_standing(subject: entry_reading_hole, field: holed_field, axes: both_axes, sensitivities: spine_sensitivities))
-  // RE-ENROLLED 2026-08-19 against the standing path: pair_dominates is deleted
-  // (its Bool answered false for PairRefused, so this very claim used to be
-  // satisfied by the conflation it was written to catch). The hole must not
-  // merely fail to dominate — the comparison must REFUSE, and the arm is named.
   let hole_never_dominates = match compare_pair(a: entry_reading_hole, b: entry_dear_weak, axes: both_axes) {
     PairRefused { cause } => true,
     PairDominates { winning_axes } => false,
