@@ -1,0 +1,40 @@
+module test.claim.runtime_rust_seed_bootstrap_sync_witness_test
+
+import std.types { Bool, String }
+import extdeps.filesystem.filesystem_io
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+
+data live_tree_disposition: LiveTreeDisposition = ReadsLiveTree
+
+data runtime_rust_seed_bootstrap_sync_witness_note: String = "Regression control for a two-hop bootstrap-lag class: `regen_stage0 --emit-fresh` renders v1_rt.rs by running the CURRENTLY-COMPILED `rt_hash_ops()`, which is compiled from the checked-in seed src/v1/stage0/src/v1_compiler_runtime_rust.rs — not derived live from src/v1/runtime_rust.dag at emit time. Editing the .dag authority alone (as happened for `pub fn obs_human_elapsed`, added so `crate::v1_rt::obs_human_elapsed` in cli_run.rs would resolve — E0425 previously) updates the fresh-emit projection of the seed file but leaves the CHECKED-IN seed, and therefore the compiled binary's output, stale. This witness pins the three-file agreement directly: the .dag authority, its checked-in Rust-translation seed, and the final generated runtime all name the same functions. A regression that repeats this class (author edits runtime_rust.dag, forgets to sync+recompile the seed) reds here without requiring a live regen_stage0 run."
+
+data runtime_rust_dag_path: String = "src/v1/runtime_rust.dag"
+data runtime_rust_seed_path: String = "src/v1/stage0/src/v1_compiler_runtime_rust.rs"
+data v1_rt_generated_path: String = "src/v1/stage0/src/v1_rt.rs"
+
+fn file_contains(path: String, pattern: String) -> Bool {
+  let src = filesystem_read(path: path)
+  string_contains(s: src.content, pattern: pattern)
+}
+
+test fn dag_authority_declares_obs_human_elapsed() -> Bool {
+  file_contains(path: runtime_rust_dag_path, pattern: "pub fn obs_human_elapsed(wall_nanos: u128) -> String")
+    && file_contains(path: runtime_rust_dag_path, pattern: "pub fn obs_human_duration(ms: u64) -> String")
+}
+
+test fn checked_in_seed_agrees_with_the_dag_authority() -> Bool {
+  file_contains(path: runtime_rust_seed_path, pattern: "\"pub fn obs_human_elapsed(wall_nanos: u128) -> String {\\n\"")
+    && file_contains(path: runtime_rust_seed_path, pattern: "\"pub fn obs_human_duration(ms: u64) -> String {\\n\"")
+}
+
+test fn generated_runtime_carries_the_symbol_the_hand_seed_calls() -> Bool {
+  file_contains(path: v1_rt_generated_path, pattern: "pub fn obs_human_elapsed(wall_nanos: u128) -> String")
+    && file_contains(path: v1_rt_generated_path, pattern: "pub fn obs_human_duration(ms: u64) -> String")
+}
+
+// The pre-fix seed had no obs_human_elapsed declaration anywhere in it — this pins the
+// doc-comment-qualified mirror marker so a future edit that drops the fn but leaves an
+// unrelated "obs_human_elapsed" substring elsewhere (e.g. in a comment) still reds.
+test fn w_RED_seed_carries_the_mirror_doc_comment_beside_the_fn() -> Bool {
+  file_contains(path: runtime_rust_seed_path, pattern: "\"/// Mirror of `gunbc.observation_ci_render.ci_human_elapsed`.\\n\"")
+}

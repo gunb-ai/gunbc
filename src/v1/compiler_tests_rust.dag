@@ -2020,24 +2020,6 @@ fn ct_contracts_sidecar_witness_test() -> String {
     "    }\n\n")
 }
 
-fn ct_caret_parse_smoke_native_witness_tests() -> String {
-  concat(
-    "    #[test]\n",
-    "    fn caret_parse_smoke_native_compile_emit_witnesses() {\n",
-    "        use crate::v1_tests_claim_caret_parse_smoke_test::*;\n",
-    "        assert!(w_caret_tokenizes_as_sh_caret());\n",
-    "        assert!(w_caret_paren_tokenizes_as_caret_then_lparen());\n",
-    "        assert!(w_parse_caret_ident_produces_literal());\n",
-    "        assert!(w_parse_caret_paren_produces_discriminant_call());\n",
-    "        assert!(w_parse_expr_caret_paren_full_pipeline());\n",
-    "        assert!(w_parse_expr_caret_var_arg_produces_discriminant_call());\n",
-    "        assert!(w_parse_module_let_caret_paren());\n",
-    "        assert!(w_compile_to_resolved_caret_probe5b_has_no_caret_function_error());\n",
-    "        assert!(w_emit_caret_ident_symbol_literal());\n",
-    "        assert!(w_emit_caret_paren_discriminant_sugar());\n",
-    "    }\n\n")
-}
-
 fn ct_call_shape_wall_witness_test() -> String {
   concat(
     "    #[test]\n",
@@ -2802,7 +2784,6 @@ fn compiler_tests_source() -> String {
     ct_constructor_call_admission_qualified_caller_test(),
     ct_sole_constructor_fieldless_witness_test(),
     ct_contracts_sidecar_witness_test(),
-    ct_caret_parse_smoke_native_witness_tests(),
     ct_self_parse_all_test(),
     ct_self_resolve_test(),
     ct_self_compile_test(),
