@@ -1,13 +1,5 @@
 module gunbc.runner_spec_from_offer
 
-import extdeps.github.actions { RunnerSpec, SelfHosted }
-import gunbc.ci_fleet { ComputeOffer, gunbc_ci_fleet_offer }
-import gunbc.fleet_intent { compute_host_primary_cpu }
-import extdeps.cpu { cpu_facts_architecture }
-import extdeps.toolchain.types { Architecture }
-import std.os.types { KernelFamily }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-
 fn kernel_runner_label(kernel: std.os.types.KernelFamily) -> String {
   match kernel {
     Linux => "linux"
@@ -35,21 +27,21 @@ fn cpu_architecture_runner_label(arch: extdeps.toolchain.types.Architecture) -> 
 
 fn runner_spec_from_offer(offer: gunbc.ci_fleet.ComputeOffer) -> extdeps.github.actions.RunnerSpec {
   let os = offer.supply.execution.os
-  match compute_host_primary_cpu(host: offer.supply.physical) {
+  match gunbc.fleet_intent.compute_host_primary_cpu(host: offer.supply.physical) {
     Absent =>
       extdeps.github.actions.SelfHosted { labels: concat(["self-hosted"], [kernel_runner_label(kernel: os.kernel)]) }
     Present { value: cpu } =>
       extdeps.github.actions.SelfHosted {
         labels: concat(
           concat(["self-hosted"], [kernel_runner_label(kernel: os.kernel)]),
-          [cpu_architecture_runner_label(arch: cpu_facts_architecture(cpu: cpu))],
+          [cpu_architecture_runner_label(arch: extdeps.cpu.cpu_facts_architecture(cpu: cpu))],
         ),
       }
   }
 }
 
-data gunbc_ci_runner_spec_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "\u{1f7e1} dissolve-on: CUT D of the fabric recut, WITH A PRECONDITION THAT DOES NOT EXIST YET. This is the pre-seam direct projection of the CI runner spec. gunbc.ci_runner_target is the selection authority and gunbc_ci_selected_runner_spec is its projection; since Cut C no CI workflow emitter calls this function, and it is NOT a second answer to prefer at a CI call site. Its remaining callers are ci_runner_target_spec's FleetSelfHosted arm, test.claim.ci_runner_target_witness (which asserts the two are equal and is what makes that equality a fact rather than a hope), and gunbc.fleet_converge_workflow, which is deliberately NOT migrated to the CI seam: which machine runs CI and which machine converges the fleet are two different questions whose answers merely coincide today, and routing fleet convergence through a selection row designed to be flipped would let a cloud-runner flip send the converger to a machine that cannot reach the hosts it converges (operator ruling 2026-08-19). CONSEQUENCE FOR CUT D: D classifies runner_spec_from_offer as an execution-environment consumer and re-sources the FleetSelfHosted derivation from an execution class, but it cannot delete this function while fleet convergence still calls it, so fleet convergence needs its own fleet-derived runner authority first. That precondition is recorded in the recut program, not built here. UNBOUND rather than bound to a DeclarationAppears trigger deliberately: neither Cut D's execution-class declaration nor the fleet runner authority exists yet, and naming a symbol that has never been declared is the fabricated-citation class (DESIGN 3), which cost this lane real work twice on 2026-08-19. It binds when those declarations land.")
+data gunbc_ci_runner_spec_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "\u{1f7e1} dissolve-on: CUT D of the fabric recut, WITH A PRECONDITION THAT DOES NOT EXIST YET. This is the pre-seam direct projection of the CI runner spec. gunbc.ci_runner_target is the selection authority and gunbc_ci_selected_runner_spec is its projection; since Cut C no CI workflow emitter calls this function, and it is NOT a second answer to prefer at a CI call site. Its remaining callers are ci_runner_target_spec's FleetSelfHosted arm, test.claim.ci_runner_target_witness (which asserts the two are equal and is what makes that equality a fact rather than a hope), and gunbc.fleet_converge_workflow, which is deliberately NOT migrated to the CI seam: which machine runs CI and which machine converges the fleet are two different questions whose answers merely coincide today, and routing fleet convergence through a selection row designed to be flipped would let a cloud-runner flip send the converger to a machine that cannot reach the hosts it converges (operator ruling 2026-08-19). CONSEQUENCE FOR CUT D: D classifies runner_spec_from_offer as an execution-environment consumer and re-sources the FleetSelfHosted derivation from an execution class, but it cannot delete this function while fleet convergence still calls it, so fleet convergence needs its own fleet-derived runner authority first. That precondition is recorded in the recut program, not built here. UNBOUND rather than bound to a DeclarationAppears trigger deliberately: neither Cut D's execution-class declaration nor the fleet runner authority exists yet, and naming a symbol that has never been declared is the fabricated-citation class (DESIGN 3), which cost this lane real work twice on 2026-08-19. It binds when those declarations land.")
 
-fn gunbc_ci_runner_spec() -> RunnerSpec {
-  runner_spec_from_offer(offer: gunbc_ci_fleet_offer)
+fn gunbc_ci_runner_spec() -> extdeps.github.actions.RunnerSpec {
+  runner_spec_from_offer(offer: gunbc.ci_fleet.gunbc_ci_fleet_offer)
 }
