@@ -1,31 +1,20 @@
 module v2.test.lens_fact_density.conj_positional_only_no_fact
 
-import v2.lens.fact_density { NoFact, carrier_spec_fact }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Conj,
-  Edge,
-  Node,
-  Positional,
-  TypeNode,
-  SyntheticOccurrence
-}
 
-data conj_positional_only_child: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^conj_positional_only_child_symbol } },
+data conj_positional_only_child: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^conj_positional_only_child_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data conj_positional_only_input: Node = Node {
-  kind: TypeNode { connective: Conj },
+data conj_positional_only_input: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [
-    Edge { label: Positional, target: conj_positional_only_child }
+    v2.std.node.Edge { label: v2.std.node.Positional, target: conj_positional_only_child }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn conj_positional_only_no_fact_claim_holds() -> Bool {
-  carrier_spec_fact(carrier: conj_positional_only_input) == NoFact
+test fn conj_positional_only_no_fact_claim_holds() -> v2.std.logic.Bool {
+  v2.lens.fact_density.carrier_spec_fact(carrier: conj_positional_only_input) == v2.lens.fact_density.NoFact
 }

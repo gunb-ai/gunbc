@@ -1,55 +1,40 @@
 module v2.workflow.floor_expected_red_coherence
 
-import std.types { Bool, List, String }
-import v2.std.algebra { Cons, Empty, contains, length, list_append, list_reverse }
-import v2.std.decl_facts_skeleton {
-  DeclFactQualifiedNameResolution,
-  DeclFactResolvedAmbiguous,
-  DeclFactResolvedMissing,
-  DeclFactResolvedUnique,
-  decl_fact_skeleton_for_resolution,
-  node_skeleton_authored_non_construction_atom_lexemes,
-  resolve_decl_fact_by_qualified_name,
-  skeleton_contains_marshal_atom_lexeme,
-}
-import v2.std.collection { Absent, Present }
-import v2.std.decl_index { DeclFact }
-import v2.std.node { Node }
 
 // AUTHORED-VS-EVALUATED COHERENCE for a chunk/aggregator/roster roster shape such as
-// floor_expected_red.dag's. #8437 severed one chunk out of the Cons chain that links
+// floor_expected_red.dag's. #8437 severed one chunk out of the v2.std.algebra.Cons chain that links
 // chunk_NN() calls into the aggregator: the chunk still authored its identities, the
 // aggregator stayed well-formed, and the roster stayed non-empty, so nothing observed
 // that identities had silently stopped being evaluated. This module reads the SAME
 // declaration facts the corpus already exposes and asserts two things a hand-authored
-// Cons chain cannot assert of itself: every identity a chunk body authors is present
+// v2.std.algebra.Cons chain cannot assert of itself: every identity a chunk body authors is present
 // in the evaluated roster, and every declared chunk function is actually called from
 // the aggregator body — both at identity/lexeme grain, never by count.
 
 // A single declared chunk to check: its fully qualified decl-fact lookup key, and the
 // short identifier spelling the aggregator body must contain if the chunk is linked.
 type ChunkDeclRef {
-  qualified_name: String
-  short_name: String
+  qualified_name: std.types.String
+  short_name: std.types.String
 }
 
 type ChunkCoherenceRefusal
-  = ChunkDeclarationUnresolved { qualified_name: String, resolution: DeclFactQualifiedNameResolution }
-  | AggregatorDeclarationUnresolved { qualified_name: String, resolution: DeclFactQualifiedNameResolution }
-  | ChunkNotLinkedIntoAggregator { chunk_qualified_name: String, chunk_short_name: String, aggregator_qualified_name: String }
-  | AuthoredIdentityMissingFromRoster { identity: String, source_chunk_qualified_name: String, message: String }
-  | RosterIdentityMissingFromAuthoredChunks { identity: String, message: String }
+  = ChunkDeclarationUnresolved { qualified_name: std.types.String, resolution: v2.std.decl_facts_skeleton.DeclFactQualifiedNameResolution }
+  | AggregatorDeclarationUnresolved { qualified_name: std.types.String, resolution: v2.std.decl_facts_skeleton.DeclFactQualifiedNameResolution }
+  | ChunkNotLinkedIntoAggregator { chunk_qualified_name: std.types.String, chunk_short_name: std.types.String, aggregator_qualified_name: std.types.String }
+  | AuthoredIdentityMissingFromRoster { identity: std.types.String, source_chunk_qualified_name: std.types.String, message: std.types.String }
+  | RosterIdentityMissingFromAuthoredChunks { identity: std.types.String, message: std.types.String }
 
 type ChunkCoherenceVerdict
   = ChunkCoherenceCoherent { checked_chunk_count: Int, checked_identity_count: Int }
-  | ChunkCoherenceRefused { causes: List<ChunkCoherenceRefusal> }
+  | ChunkCoherenceRefused { causes: std.types.List<ChunkCoherenceRefusal> }
 
 // The refusal message a maintainer meets when a chunk body authors an identity the
 // evaluated roster does not contain. It names WHY the mismatch is dangerous to paper
 // over and WHERE the real fix belongs, so the cheapest available reaction is not an
 // exclusion list re-inventing the lexeme-shape heuristic this derivation was built to
 // avoid (DESIGN §4/§5).
-fn authored_identity_missing_from_roster_message(identity: String, source_chunk_qualified_name: String) -> String {
+fn authored_identity_missing_from_roster_message(identity: std.types.String, source_chunk_qualified_name: std.types.String) -> std.types.String {
   concat(
     "identity '",
     concat(
@@ -58,14 +43,14 @@ fn authored_identity_missing_from_roster_message(identity: String, source_chunk_
         "' is authored inside ",
         concat(
           source_chunk_qualified_name,
-          " but does not appear in the evaluated roster. If this is not an authored roster identity, the chunk body contains a construction that v2.std.decl_facts_skeleton.node_skeleton_authored_non_construction_atom_lexemes does not yet model as a non-authored atom kind (a call, a parameter reference, a nullary-variant-value binding, or similar) -- the fix is to model that atom kind at that derivation, in decl_facts_skeleton.dag, NOT to add an exclusion lexeme here or anywhere else. An exclusion list is exactly the lexeme-shape heuristic this check exists to avoid, reintroduced one identity at a time by whoever meets this refusal next."
+          " but does not appear in the evaluated roster. If this is not an authored roster identity, the chunk body v2.std.algebra.contains a construction that v2.std.decl_facts_skeleton.node_skeleton_authored_non_construction_atom_lexemes does not yet model as a non-authored atom kind (a call, a parameter reference, a nullary-variant-value binding, or similar) -- the fix is to model that atom kind at that derivation, in decl_facts_skeleton.dag, NOT to add an exclusion lexeme here or anywhere else. An exclusion list is exactly the lexeme-shape heuristic this check exists to avoid, reintroduced one identity at a time by whoever meets this refusal next."
         )
       )
     )
   )
 }
 
-fn roster_identity_missing_from_authored_chunks_message(identity: String) -> String {
+fn roster_identity_missing_from_authored_chunks_message(identity: std.types.String) -> std.types.String {
   concat(
     "identity '",
     concat(
@@ -75,21 +60,21 @@ fn roster_identity_missing_from_authored_chunks_message(identity: String) -> Str
   )
 }
 
-fn chunk_short_name_linked(node: Node, chunk: ChunkDeclRef) -> Bool {
-  skeleton_contains_marshal_atom_lexeme(node: node, lexeme: chunk.short_name)
+fn chunk_short_name_linked(node: v2.std.node.Node, chunk: ChunkDeclRef) -> std.types.Bool {
+  v2.std.decl_facts_skeleton.skeleton_contains_marshal_atom_lexeme(node: node, lexeme: chunk.short_name)
 }
 
 fn chunk_authored_identities_against_roster(
-  node: Node,
+  node: v2.std.node.Node,
   chunk: ChunkDeclRef,
-  roster: List<String>
-) -> List<ChunkCoherenceRefusal> {
-  let authored = node_skeleton_authored_non_construction_atom_lexemes(node: node)
-  list_reverse(xs: fold(authored, init: Empty, f: fn(acc, identity) {
-    if contains(xs: roster, item: identity, eq: fn(a, b) { a == b }) {
+  roster: std.types.List<std.types.String>
+) -> std.types.List<ChunkCoherenceRefusal> {
+  let authored = v2.std.decl_facts_skeleton.node_skeleton_authored_non_construction_atom_lexemes(node: node)
+  v2.std.algebra.list_reverse(xs: fold(authored, init: v2.std.algebra.Empty, f: fn(acc, identity) {
+    if v2.std.algebra.contains(xs: roster, item: identity, eq: fn(a, b) { a == b }) {
       acc
     } else {
-      Cons {
+      v2.std.algebra.Cons {
         head: AuthoredIdentityMissingFromRoster {
           identity: identity,
           source_chunk_qualified_name: chunk.qualified_name,
@@ -105,36 +90,36 @@ fn chunk_authored_identities_against_roster(
 }
 
 fn all_checked_chunk_authored_identities(
-  facts: List<DeclFact>,
-  chunks: List<ChunkDeclRef>
-) -> List<String> {
-  list_reverse(xs: fold(chunks, init: Empty, f: fn(acc, chunk) {
-    let resolution = resolve_decl_fact_by_qualified_name(facts: facts, qn: chunk.qualified_name)
-    match decl_fact_skeleton_for_resolution(resolution: resolution) {
+  facts: std.types.List<v2.std.decl_index.DeclFact>,
+  chunks: std.types.List<ChunkDeclRef>
+) -> std.types.List<std.types.String> {
+  v2.std.algebra.list_reverse(xs: fold(chunks, init: v2.std.algebra.Empty, f: fn(acc, chunk) {
+    let resolution = v2.std.decl_facts_skeleton.resolve_decl_fact_by_qualified_name(facts: facts, qn: chunk.qualified_name)
+    match v2.std.decl_facts_skeleton.decl_fact_skeleton_for_resolution(resolution: resolution) {
       Present { value: node } =>
-        fold(node_skeleton_authored_non_construction_atom_lexemes(node: node), init: acc, f: fn(inner_acc, identity) {
-          if contains(xs: inner_acc, item: identity, eq: fn(a, b) { a == b }) {
+        fold(v2.std.decl_facts_skeleton.node_skeleton_authored_non_construction_atom_lexemes(node: node), init: acc, f: fn(inner_acc, identity) {
+          if v2.std.algebra.contains(xs: inner_acc, item: identity, eq: fn(a, b) { a == b }) {
             inner_acc
           } else {
-            Cons { head: identity, tail: inner_acc }
+            v2.std.algebra.Cons { head: identity, tail: inner_acc }
           }
         })
-      Absent => acc
+      v2.std.collection.Absent => acc
     }
   }))
 }
 
 fn roster_identities_missing_from_authored_chunks(
-  facts: List<DeclFact>,
-  chunks: List<ChunkDeclRef>,
-  roster: List<String>
-) -> List<ChunkCoherenceRefusal> {
+  facts: std.types.List<v2.std.decl_index.DeclFact>,
+  chunks: std.types.List<ChunkDeclRef>,
+  roster: std.types.List<std.types.String>
+) -> std.types.List<ChunkCoherenceRefusal> {
   let union_authored = all_checked_chunk_authored_identities(facts: facts, chunks: chunks)
-  list_reverse(xs: fold(roster, init: Empty, f: fn(acc, identity) {
-    if contains(xs: union_authored, item: identity, eq: fn(a, b) { a == b }) {
+  v2.std.algebra.list_reverse(xs: fold(roster, init: v2.std.algebra.Empty, f: fn(acc, identity) {
+    if v2.std.algebra.contains(xs: union_authored, item: identity, eq: fn(a, b) { a == b }) {
       acc
     } else {
-      Cons {
+      v2.std.algebra.Cons {
         head: RosterIdentityMissingFromAuthoredChunks {
           identity: identity,
           message: roster_identity_missing_from_authored_chunks_message(identity: identity)
@@ -161,7 +146,7 @@ fn roster_identities_missing_from_authored_chunks(
 //
 // BLIND SPOT this scope creates, named rather than left implicit: a chunk that is
 // declared in the checked module (e.g. floor_expected_red.dag) but is absent from
-// the call site's `chunks: List<ChunkDeclRef>` roster is invisible to this check --
+// the call site's `chunks: std.types.List<ChunkDeclRef>` roster is invisible to this check --
 // it is not one of the `facts` this function ever resolves, so it can neither
 // contribute a cause nor be reported missing. Such an omission returns
 // ChunkCoherenceCoherent exactly as if the chunk had never existed, which is the
@@ -179,60 +164,60 @@ fn roster_identities_missing_from_authored_chunks(
 // angle rather than the roster-content angle, and it dissolves with that work's
 // preparation-time consumer, not separately.
 fn floor_expected_red_chunk_coherence_check(
-  facts: List<DeclFact>,
-  chunks: List<ChunkDeclRef>,
-  aggregator_qualified_name: String,
-  evaluated_roster: List<String>
+  facts: std.types.List<v2.std.decl_index.DeclFact>,
+  chunks: std.types.List<ChunkDeclRef>,
+  aggregator_qualified_name: std.types.String,
+  evaluated_roster: std.types.List<std.types.String>
 ) -> ChunkCoherenceVerdict {
-  let aggregator_resolution = resolve_decl_fact_by_qualified_name(facts: facts, qn: aggregator_qualified_name)
+  let aggregator_resolution = v2.std.decl_facts_skeleton.resolve_decl_fact_by_qualified_name(facts: facts, qn: aggregator_qualified_name)
   let aggregator_causes = match aggregator_resolution {
-    DeclFactResolvedUnique { fact: _ } => Empty
-    _ => Cons {
+    DeclFactResolvedUnique { fact: _ } => v2.std.algebra.Empty
+    _ => v2.std.algebra.Cons {
       head: AggregatorDeclarationUnresolved { qualified_name: aggregator_qualified_name, resolution: aggregator_resolution },
-      tail: Empty
+      tail: v2.std.algebra.Empty
     }
   }
 
-  let per_chunk_causes = list_reverse(xs: fold(chunks, init: Empty, f: fn(acc, chunk) {
-    let resolution = resolve_decl_fact_by_qualified_name(facts: facts, qn: chunk.qualified_name)
-    match decl_fact_skeleton_for_resolution(resolution: resolution) {
-      Absent =>
-        Cons {
+  let per_chunk_causes = v2.std.algebra.list_reverse(xs: fold(chunks, init: v2.std.algebra.Empty, f: fn(acc, chunk) {
+    let resolution = v2.std.decl_facts_skeleton.resolve_decl_fact_by_qualified_name(facts: facts, qn: chunk.qualified_name)
+    match v2.std.decl_facts_skeleton.decl_fact_skeleton_for_resolution(resolution: resolution) {
+      v2.std.collection.Absent =>
+        v2.std.algebra.Cons {
           head: ChunkDeclarationUnresolved { qualified_name: chunk.qualified_name, resolution: resolution },
           tail: acc
         }
       Present { value: chunk_node } => {
         let identity_causes = chunk_authored_identities_against_roster(node: chunk_node, chunk: chunk, roster: evaluated_roster)
-        let link_causes = match decl_fact_skeleton_for_resolution(resolution: aggregator_resolution) {
+        let link_causes = match v2.std.decl_facts_skeleton.decl_fact_skeleton_for_resolution(resolution: aggregator_resolution) {
           Present { value: aggregator_node } =>
             if chunk_short_name_linked(node: aggregator_node, chunk: chunk) {
-              Empty
+              v2.std.algebra.Empty
             } else {
-              Cons {
+              v2.std.algebra.Cons {
                 head: ChunkNotLinkedIntoAggregator {
                   chunk_qualified_name: chunk.qualified_name,
                   chunk_short_name: chunk.short_name,
                   aggregator_qualified_name: aggregator_qualified_name
                 },
-                tail: Empty
+                tail: v2.std.algebra.Empty
               }
             }
-          Absent => Empty
+          v2.std.collection.Absent => v2.std.algebra.Empty
         }
-        list_append(left: identity_causes, right: list_append(left: link_causes, right: acc))
+        v2.std.algebra.list_append(left: identity_causes, right: v2.std.algebra.list_append(left: link_causes, right: acc))
       }
     }
   }))
 
   let roster_causes = roster_identities_missing_from_authored_chunks(facts: facts, chunks: chunks, roster: evaluated_roster)
 
-  let all_causes = list_append(left: aggregator_causes, right: list_append(left: per_chunk_causes, right: roster_causes))
-  if length(xs: all_causes) > 0 {
+  let all_causes = v2.std.algebra.list_append(left: aggregator_causes, right: v2.std.algebra.list_append(left: per_chunk_causes, right: roster_causes))
+  if v2.std.algebra.length(xs: all_causes) > 0 {
     ChunkCoherenceRefused { causes: all_causes }
   } else {
     ChunkCoherenceCoherent {
-      checked_chunk_count: length(xs: chunks),
-      checked_identity_count: length(xs: evaluated_roster)
+      checked_chunk_count: v2.std.algebra.length(xs: chunks),
+      checked_identity_count: v2.std.algebra.length(xs: evaluated_roster)
     }
   }
 }
@@ -249,7 +234,7 @@ fn floor_expected_red_chunk_coherence_check(
 // DESIGN §4b a climb deletes redundant lower-rung PRODUCTION machinery and never the
 // evidence, so these RED controls stay enrolled exactly as they are even after a live
 // census exists on top of them.
-data floor_expected_red_chunk_coherence_check_note: String = "MECHANISM ON FIXTURES: floor_expected_red_chunk_coherence_check is proven by execution against planted rosters in dag/test/claim/floor_expected_red_coherence_witness_test.dag -- a severed-aggregator RED, its cause-naming RED siblings, and a linked-chunks-only positive control. That is the complete claim this module makes about the mechanism; it is not partial."
+data floor_expected_red_chunk_coherence_check_note: std.types.String = "MECHANISM ON FIXTURES: floor_expected_red_chunk_coherence_check is proven by execution against planted rosters in dag/test/claim/floor_expected_red_coherence_witness_test.dag -- a severed-aggregator RED, its cause-naming RED siblings, and a linked-chunks-only positive control. That is the complete claim this module makes about the mechanism; it is not partial."
 
 // SEPARATE, PRE-EXISTING, UNOWNED OBLIGATION -- not debt this module introduces.
 // Folding floor_expected_red.dag's own real 20 chunks through the same check is a
@@ -269,4 +254,4 @@ data floor_expected_red_chunk_coherence_check_note: String = "MECHANISM ON FIXTU
 // has already done -- the #8470 shape one level up. Building that preparation-time
 // consumer is its own future work item with its own owner, not a continuation of
 // this one.
-data live_floor_expected_red_coherence_join_gap_note: String = "PRE-EXISTING, UNOWNED GAP (not this module's debt): the live join of floor_expected_red.dag's own 20 chunks against its own evaluated roster is not a per-PR witness in floor_expected_red_coherence_witness_test.dag, and was not checkable by anything before this module existed either. This single gap has two faces, not two gaps: a checked chunk's identities may drift from the roster (the content face, this note's original subject), and a chunk may be missing from the caller's ChunkDeclRef roster entirely (the omission face, named on floor_expected_red_chunk_coherence_check's own SCOPE comment) -- closing either face requires the identical fresh decl_facts parse over floor_expected_red.dag's module, so one preparation-time consumer closes both. See floor_expected_red_chunk_coherence_check_note and the comment above it for why the mechanism itself is complete, and for the measured cost and natural home (a required-floor preparation-time consumer) of the still-open live-census gap."
+data live_floor_expected_red_coherence_join_gap_note: std.types.String = "PRE-EXISTING, UNOWNED GAP (not this module's debt): the live join of floor_expected_red.dag's own 20 chunks against its own evaluated roster is not a per-PR witness in floor_expected_red_coherence_witness_test.dag, and was not checkable by anything before this module existed either. This single gap has two faces, not two gaps: a checked chunk's identities may drift from the roster (the content face, this note's original subject), and a chunk may be missing from the caller's ChunkDeclRef roster entirely (the omission face, named on floor_expected_red_chunk_coherence_check's own SCOPE comment) -- closing either face requires the identical fresh decl_facts parse over floor_expected_red.dag's module, so one preparation-time consumer closes both. See floor_expected_red_chunk_coherence_check_note and the comment above it for why the mechanism itself is complete, and for the measured cost and natural home (a required-floor preparation-time consumer) of the still-open live-census gap."
