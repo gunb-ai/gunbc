@@ -1,0 +1,74 @@
+module test.claim.required_expr_newline_continuation_witness_test
+
+data required_expr_newline_continuation_migration_note: String = "Migrated from src/v1/tests/claim/required_expr_newline_continuation_test.dag (dead witness tree triage, dashboard node adhoc-9b80ec49-d63; that file's only historical consumer, v1_claim_scoped_witness_batch, was deleted 2026-08-15, and the file's own dissolve-on already named the successor: 'fold into v2 parser witness corpus when v1 claim discovery is retired'). All 8 assertions were already black-box 'this exact source parses / this exact source refuses' checks over v1.compiler.parse's newline-continuation-after-a-required-expression production, calling only tokenize + parse_with_table with no v1 state inspected beyond the parse error slot — they migrate directly onto compile_dag_rust_emit_check, which drives the same production compile path and answers the identical parses-or-refuses question through ordinary per-PR discovery (source roots dag + src/v2, no v1 import needed)."
+
+fn parses_clean(source: String, path: String) -> Bool {
+  compile_dag_rust_emit_check(source, path, [], [])
+}
+
+fn refuses_to_compile(source: String, path: String) -> Bool {
+  !compile_dag_rust_emit_check(source, path, [], [])
+}
+
+test fn w_untyped_let_newline_before_initializer_test() -> Bool {
+  parses_clean(
+    "module test\nfn demo() -> Int {\n  let x =\n    1\n  x\n}\n",
+    "src/untyped_let_newline.rs"
+  )
+}
+
+test fn w_typed_let_newline_before_initializer_test() -> Bool {
+  parses_clean(
+    "module test\nfn demo() -> Int {\n  let x: Int =\n    1\n  x\n}\n",
+    "src/typed_let_newline.rs"
+  )
+}
+
+test fn w_return_newline_before_expression_test() -> Bool {
+  parses_clean(
+    "module test\nfn demo() -> Int {\n  return\n    1\n}\n",
+    "src/return_newline.rs"
+  )
+}
+
+test fn w_for_newline_before_collection_test() -> Bool {
+  parses_clean(
+    "module test\nfn demo() -> List<String> {\n  for ch in\n    \"abc\" { ch }\n}\n",
+    "src/for_newline.rs"
+  )
+}
+
+test fn w_statement_boundary_after_complete_initializer_test() -> Bool {
+  parses_clean(
+    "module test\nfn demo() -> Int {\n  let x = 1\n  let y = 2\n  y\n}\n",
+    "src/let_statement_boundary.rs"
+  )
+}
+
+// The three refusal arms below each pair against an already-proven-clean
+// sibling above (same production, one token removed), so a harness-level
+// false — compile refused for an unrelated reason, or the emitted file was
+// never found — cannot be mistaken for the discriminating refusal: the
+// sibling arm's positive result already rules that class of failure out for
+// the same source shape.
+
+test fn w_untyped_let_newline_then_rbrace_refuses_test() -> Bool {
+  refuses_to_compile(
+    "module test\nfn demo() -> Int {\n  let x =\n}\n",
+    "src/untyped_let_newline_rbrace.rs"
+  )
+}
+
+test fn w_return_newline_then_rbrace_refuses_test() -> Bool {
+  refuses_to_compile(
+    "module test\nfn demo() -> Int {\n  return\n}\n",
+    "src/return_newline_rbrace.rs"
+  )
+}
+
+test fn w_for_newline_then_block_without_collection_refuses_test() -> Bool {
+  refuses_to_compile(
+    "module test\nfn demo() -> List<String> {\n  for x in\n  { x }\n}\n",
+    "src/for_newline_missing_collection.rs"
+  )
+}

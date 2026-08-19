@@ -1,0 +1,51 @@
+module test.claim.frontend_literal_and_compile_witness_test
+
+data frontend_literal_and_compile_migration_note: String = "Migrated from src/v1/tests/claim/ordinary_frontend_observation_test.dag (dead witness tree triage, dashboard node adhoc-9b80ec49-d63). That file mixed two unrelated subjects under one v1 import: two pure interpreter-literal-semantics tests that never actually called any v1 symbol (moved here unchanged, needing no v1 import and no special source roots), and two black-box compile-and-observe tests built on v1.compiler.frontend_observation's observe_ordinary_frontend, which required a v1-scoped root to execute and never actually ran (its only historical consumer, v1_claim_scoped_witness_batch, was deleted 2026-08-15). Those two convert directly to compile_dag_rust_emit_check: a tiny valid subject must compile clean, a syntactically broken one must not — the same 'runs, and reports a broken subject rather than fabricating success' claim, proven through the production compile path instead of the v1-internal receipt shape."
+
+// The map-literal representation, on a CONTROLLED fixture: this module
+// authors both the input and the expected key population, so the assertion
+// is not a measurement of the current tree copied back onto itself.
+data probe_keyed_literal: Map<String, Bool> = {
+  "alpha": true, "beta": false, "gamma": true
+}
+
+type ProbeRecord {
+  alpha: Bool
+  beta: Bool
+}
+
+data probe_record_literal: ProbeRecord = ProbeRecord { alpha: true, beta: false }
+
+test fn w_map_typed_literal_is_a_map_test() -> Bool {
+  let keys = map_keys(probe_keyed_literal) |> sort_by(k => k)
+  (keys |> count) == 3
+    && keys == ["alpha", "beta", "gamma"]
+    && (map_values(probe_keyed_literal) |> filter(v => v) |> count) == 2
+}
+
+// The control that keeps the fix from over-converting: a literal in a NAMED
+// record position stays a record, with ordinary field access.
+test fn w_record_literal_is_still_a_record_test() -> Bool {
+  probe_record_literal.alpha && !probe_record_literal.beta
+}
+
+test fn w_tiny_valid_subject_compiles_clean_test() -> Bool {
+  compile_dag_rust_emit_check(
+    "module tiny_subject\nfn probe() -> Bool { true }\n",
+    "src/tiny_subject.rs",
+    [],
+    []
+  )
+}
+
+// The discriminating arm: a producer fabricating a clean observation, or one
+// that never fed the subject to the front end at all, stays green on the arm
+// above and reds here.
+test fn w_broken_subject_fails_to_compile_test() -> Bool {
+  !compile_dag_rust_emit_check(
+    "module tiny_broken\nfn probe( -> Bool { true }\n",
+    "src/tiny_broken.rs",
+    [],
+    []
+  )
+}
