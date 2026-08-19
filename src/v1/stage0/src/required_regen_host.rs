@@ -210,6 +210,11 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
             .and_then(|n| n.to_str())
             .unwrap_or(file.path.as_str())
             .to_string();
+        if std::env::var("GUNBC_REGEN_DUMP_FILE").as_deref() == Ok(basename.as_str()) {
+            eprintln!("=== DUMP BEGIN {basename} ===");
+            eprintln!("{}", file.content);
+            eprintln!("=== DUMP END {basename} ===");
+        }
         out.insert(basename, file.content.clone());
     }
     Ok(out)
