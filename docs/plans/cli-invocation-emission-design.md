@@ -823,6 +823,56 @@ General argument typechecking strengthens the boundary; it does not prove that p
    nothing refuses the next such reference, and a green witness is not evidence that a module's
    imports are complete.
 
+9-ter. **BLOCKER, PROVEN BY EXECUTION: the argv transport silently destroys argument boundaries
+   for computed lists (2026-08-19).** A `List<String>` built by folding is CONCATENATED into a
+   single argv word; the identical list written as a literal is SPLICED. Same declared type, same
+   elements, same handler, two different processes.
+
+   **Receipt, through the production handler `jq.Process.RunWithStdin`:**
+
+   ```
+   arguments = ["--raw-output", "."]        literal   -> exit 0   (jq ran; two argv words)
+   arguments = fold_list(... same two ...)  folded    -> exit 2
+       jq: Unknown option --raw-output.
+   ```
+
+   And from the first wet run of the real vertical, three lowered arguments arriving as one:
+
+   ```
+   $ jq --raw-output--exit-status.missing   (exit=2)
+   ```
+
+   **Mechanism** — `v1_interpreter.rs` `push_shell_argv_tokens`. `Value::List` splices each item.
+   `Value::Variant` tries `value_as_host_string` FIRST, which walks a free monoid and concatenates
+   it into one String, pushing a single argv word; only on `None` does it fall through to
+   `free_monoid_to_vec` and splice. A folded list is monoid-encoded with all-`Str` elements, so
+   the concatenating reader succeeds and wins. `gunbc.WitnessBin.Run` escapes this only because
+   its `args` is authored as a literal at each call site.
+
+   **Independently attacked:** an outside reviewer attempted to refute this and failed — the
+   source matches the reading, and the collapse occurs BEFORE `Command::args`, which rules out a
+   downstream shell or SSH join.
+
+   **Why neither obvious repair is correct.** Reordering the arms would splice this case but
+   SHRED a modeled `String`, because a String is itself a monoid here (`value_as_host_string`
+   reconstructs one from code points): both readings succeed on a monoid of `Str`s, and the
+   runtime cannot separate *list of arguments* from *string assembled from pieces*. The
+   disambiguator is the DECLARED TYPE, erased at that seam — the same missing
+   application-argument typechecking that `target_model` `target_text_carrier_scaffold_note`
+   names as the trigger for every type-based construction guarantee at a call boundary.
+   Hand-authoring a literal argv in the handler defeats row-derived lowering and leaves the next
+   caller silently joined, which is the workaround shape §5 treats as a line-stop.
+
+   **Rung:** this is a §5 fail-open — it fabricates one plausible argument instead of refusing —
+   and it is the LANE'S OWN DEFECT CLASS one layer below the lane: Wave 0's witness asserts that
+   fragments concatenate within an argument and never across, and the transport violates exactly
+   that. It is also a live specimen of the model↔realization fork DESIGN tracks as an open thread.
+
+   **Consequence for this lane:** the cutover is BLOCKED at the execution seam. The semantic
+   spine is built and resolving; no consumer can move until this is decided, because every
+   migrated call site computes its argv rather than authoring it literally — which is precisely
+   what the migration asks callers to start doing.
+
 9-bis. **The Class B specimen RECURRED, in code written after it was documented (review 53669,
    2026-08-19).** `jq_invocation_process_plan` used `bind_outcome` and `outcome_accepted` with
    neither in the module's `v2.std.diagnostic` import list. Same mechanism as the
