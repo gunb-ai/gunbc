@@ -115,7 +115,7 @@ data gunbc_ci_spec: CiSpec = {
   deploy_stages: gunbc_ci_deploy_stages,
 }
 
-fn ci_spec_with_witness_entries(spec: CiSpec, entries: List<ScheduleWitnessEntry>) -> CiSpec {
+fn ci_spec_with_witness_entries(spec: CiSpec, entries: List<std.realization_schedule.ScheduleWitnessEntry>) -> CiSpec {
   CiSpec {
     gates: spec.gates,
     witness_entries: entries,

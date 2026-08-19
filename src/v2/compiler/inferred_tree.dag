@@ -1,10 +1,5 @@
 module v2.compiler.inferred_tree
 
-import v2.std.cardinality { TerminationProof }
-import v2.std.collection { Map }
-import v2.std.constraints { CanonicalGrounding }
-import v2.std.node { Node }
-import v2.std.witness { Witness }
 
 // InferredFacts/InferredTree/InferredFactsEntry are the SHAPE infer's pass
 // produces and consumers hold -- not the pass itself. They lived inside
@@ -21,20 +16,20 @@ import v2.std.witness { Witness }
 // authority, never a second declaration of it (DESIGN.md §3).
 
 type NodeGrounding
-  = DerivedGrounding { grounding: CanonicalGrounding }
-  | GroundingNotDerived { node: Node }
+  = DerivedGrounding { grounding: v2.std.constraints.CanonicalGrounding }
+  | GroundingNotDerived { node: v2.std.node.Node }
 
 type InferredFacts {
   grounding: NodeGrounding
-  descent: Witness<TerminationProof>
+  descent: v2.std.witness.Witness<v2.std.cardinality.TerminationProof>
 }
 
 type InferredTree {
-  root: Node
-  facts: Map<Node, InferredFacts>
+  root: v2.std.node.Node
+  facts: v2.std.collection.Map<v2.std.node.Node, InferredFacts>
 }
 
 type InferredFactsEntry {
-  node: Node
+  node: v2.std.node.Node
   facts: InferredFacts
 }
