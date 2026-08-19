@@ -451,9 +451,9 @@ data asrock_altrad8ud_scp_console_tcp_port: std.nat.Nat = 2202
 // module without adding a second citation of one page.
 // ---------------------------------------------------------------------------
 
-data asrock_altrad8ud_mechanical_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data asrock_altrad8ud_mechanical_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.boards.asrock_rack",
       decl_name: "asrock_altrad8ud_1l2t_mechanical",
       field: WholeDeclaration

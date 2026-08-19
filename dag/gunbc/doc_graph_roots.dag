@@ -97,7 +97,7 @@ fn hand_authored_doc_path(b: HandAuthoredDocBind) -> String {
   }
 }
 
-data body_lowering_ref_home_note: String = "THE THREE BODY-LOWERING SYSTEM REFERENCES LIVE HERE, ONCE, BECAUSE TWO DOCUMENTS NAME THEM. The generated design document names them in its body-lowering paragraph and the hand-authored general-body-producer plan names them in its discharged-prerequisite paragraph, so authoring one DeclarationRef literal in each place would be the dual representation this program exists to remove -- and the copies would then rot independently, which is precisely the failure that produced the bind below. The home is this module rather than gunbc.documentary_refs because the union projection imports in that direction; reversing it would be a cycle."
+data body_lowering_ref_home_note: String = "THE THREE BODY-LOWERING SYSTEM REFERENCES LIVE HERE, ONCE, BECAUSE TWO DOCUMENTS NAME THEM. The generated design document names them in its body-lowering paragraph and the hand-authored general-body-producer plan names them in its discharged-prerequisite paragraph, so authoring one std.decl_ref.DeclarationRef literal in each place would be the dual representation this program exists to remove -- and the copies would then rot independently, which is precisely the failure that produced the bind below. The home is this module rather than gunbc.documentary_refs because the union projection imports in that direction; reversing it would be a cycle."
 
 data body_lowering_symbol_index_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef { module_path: "v2.std.symbol_index", decl_name: "SymbolIndex", field: WholeDeclaration }
 
@@ -113,7 +113,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     slug: "floor-expected-red-shrink-monotonicity-design",
     primary_work: std.decl_ref.DeclarationRef { module_path: "v2.workflow.floor_expected_red", decl_name: "floor_expected_red_roster", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "gunbc.witness_deferral_freeze", decl_name: "FrozenPathDeferral", field: WholeDeclaration },
+      std.decl_ref.DeclarationRef { module_path: "gunbc.witness_deferral_freeze", decl_name: "FrozenPathDeferral", field: WholeDeclaration },
     ],
     dissolution: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "the undispositioned-SHRINK wall lands on floor_expected_red_roster and its subject describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
@@ -131,7 +131,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
     slug: "fabric-concept-reconciliation",
     primary_work: std.decl_ref.DeclarationRef { module_path: "gunbc.runner_spec_from_offer", decl_name: "runner_spec_from_offer", field: WholeDeclaration },
     additional_works: [
-      DeclarationRef { module_path: "gunbc.ci_fleet", decl_name: "ComputeOffer", field: WholeDeclaration },
+      std.decl_ref.DeclarationRef { module_path: "gunbc.ci_fleet", decl_name: "ComputeOffer", field: WholeDeclaration },
     ],
     dissolution: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "the fabric identities land on a single authority with the existing offer vocabulary and this reconciliation has no forks left to name; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
@@ -581,11 +581,11 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
   HandAuthoredDocBind {
     home: PlanDoc,
     slug: "import-strip-witness-discovery-cascade-diagnosis",
-    primary_work: std.decl_ref.DeclarationRef { module_path: "std.decl_ref", decl_name: "DeclarationRef", field: WholeDeclaration },
+    primary_work: std.decl_ref.DeclarationRef { module_path: "std.decl_ref", decl_name: "std.decl_ref.DeclarationRef", field: WholeDeclaration },
     additional_works: [
       std.decl_ref.DeclarationRef { module_path: "std.content_hash", decl_name: "ContentHash", field: WholeDeclaration },
     ],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject DeclarationRef describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
+    dissolution: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "the work this document plans lands and its subject std.decl_ref.DeclarationRef describes shipped behavior rather than a planned change; the row deletes with the document. Registered at subject grain: the systems bound here are the ones whose movement would make this document's purpose false, not every system its prose mentions.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
@@ -1056,7 +1056,7 @@ data hand_authored_doc_bind_incomings: List<HandAuthoredDocBind> = [
       std.decl_ref.DeclarationRef { module_path: "v2.lens.grounding", decl_name: "first_coincident_target", field: WholeDeclaration },
       std.decl_ref.DeclarationRef { module_path: "gunbc.review_verdict", decl_name: "is_approving_verdict", field: WholeDeclaration },
     ],
-    dissolution: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "every row in the map has been deleted, consumed by a named live edge, or transferred to a typed roadmap obligation with an owner and acceptance. The four bound works are the map's load-bearing subjects and each names its own end state: the completeness roster note's exemption for v2.lens.grounding_ledger cites consumption by v2.lens.grounding that does not exist, and dissolves when the ledger is deleted so the row disappears rather than being reworded; LedgerEntry is that inert module's carrier; first_coincident_target folds to the FIRST non-self match while GroundingWorklistEntry stores a single coincides_with string, which is the silent-pick defect blocking any exclusive-candidate review and dissolves when the candidate population becomes complete, zero/one/many explicit, and identified by DeclarationRef rather than presentation strings; MergeReadinessTally has no producer outside fixtures and a dormant consumer whose kernel has no in-tree driver, and its unread approval_count field dissolves when the two-approval rule becomes a typed obligation with a zero-approval RED. The map is a worksheet, not an authority: it registers here so it cannot sit unreachable, and it deletes outright rather than migrating to DESIGN.") },
+    dissolution: gunbc.plan.PlanRetiresWhen { condition: unbound_dissolution(description: "every row in the map has been deleted, consumed by a named live edge, or transferred to a typed roadmap obligation with an owner and acceptance. The four bound works are the map's load-bearing subjects and each names its own end state: the completeness roster note's exemption for v2.lens.grounding_ledger cites consumption by v2.lens.grounding that does not exist, and dissolves when the ledger is deleted so the row disappears rather than being reworded; LedgerEntry is that inert module's carrier; first_coincident_target folds to the FIRST non-self match while GroundingWorklistEntry stores a single coincides_with string, which is the silent-pick defect blocking any exclusive-candidate review and dissolves when the candidate population becomes complete, zero/one/many explicit, and identified by std.decl_ref.DeclarationRef rather than presentation strings; MergeReadinessTally has no producer outside fixtures and a dormant consumer whose kernel has no in-tree driver, and its unread approval_count field dissolves when the two-approval rule becomes a typed obligation with a zero-approval RED. The map is a worksheet, not an authority: it registers here so it cannot sit unreachable, and it deletes outright rather than migrating to DESIGN.") },
   },
   HandAuthoredDocBind {
     home: PlanDoc,
