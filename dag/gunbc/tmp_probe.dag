@@ -1,0 +1,63 @@
+module gunbc.tmp_probe
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import extdeps.toolchain.types { X86_64 }
+import extdeps.ci_runner.types { quoted_numeral, quoted_unit_label }
+import gunbc.memory_provisioning {
+  BenchmarkUnreadable,
+  ContrastsOnRatio,
+  ContrastsOnRatioUniformity,
+  ContrastsOnUnitWord,
+  EvidenceSupported,
+  EvidenceUnsupported,
+  MarketShapeBenchmark,
+  SupportsDeclaredRatio,
+  classify_benchmark,
+  circleci_x64_benchmark,
+  depot_x64_benchmark,
+  github_x64_benchmark,
+  warpbuild_x64_benchmark,
+  arm_memory_profile,
+  arm_value_profile,
+  x64_standard_profile,
+  profile_evidence_verdict,
+}
+
+fn code(b: MarketShapeBenchmark) -> Nat {
+  match classify_benchmark(declared: x64_standard_profile.guaranteed_memory_per_entitlement, benchmark: b) {
+    SupportsDeclaredRatio { advertised_per_entitlement, sizes_agreeing } => 1000 + sizes_agreeing
+    ContrastsOnRatio { advertised_per_entitlement } => 2000 + quoted_numeral(quoted: advertised_per_entitlement)
+    ContrastsOnUnitWord { advertised_unit_label, declared_unit_label } => 3000
+    ContrastsOnRatioUniformity { reading } => 4000
+    BenchmarkUnreadable { reading } => 5000
+  }
+}
+
+fn probe_github_x64() -> Nat { code(b: github_x64_benchmark) }
+fn probe_depot_x64() -> Nat { code(b: depot_x64_benchmark) }
+fn probe_warpbuild_x64() -> Nat { code(b: warpbuild_x64_benchmark) }
+fn probe_circleci_x64() -> Nat { code(b: circleci_x64_benchmark) }
+
+fn verdict_code(p: Nat, v: Nat) -> Nat { p * 100 + v }
+
+fn probe_x64_verdict() -> Nat {
+  match profile_evidence_verdict(profile: x64_standard_profile) {
+    EvidenceSupported { supporting_count, contrasting_count } => 10000 + supporting_count * 10 + contrasting_count
+    EvidenceUnsupported { consulted_count, contrasting_count } => 20000 + consulted_count * 10 + contrasting_count
+  }
+}
+
+fn probe_arm_value_verdict() -> Nat {
+  match profile_evidence_verdict(profile: arm_value_profile) {
+    EvidenceSupported { supporting_count, contrasting_count } => 10000 + supporting_count * 10 + contrasting_count
+    EvidenceUnsupported { consulted_count, contrasting_count } => 20000 + consulted_count * 10 + contrasting_count
+  }
+}
+
+fn probe_arm_memory_verdict() -> Nat {
+  match profile_evidence_verdict(profile: arm_memory_profile) {
+    EvidenceSupported { supporting_count, contrasting_count } => 10000 + supporting_count * 10 + contrasting_count
+    EvidenceUnsupported { consulted_count, contrasting_count } => 20000 + consulted_count * 10 + contrasting_count
+  }
+}
