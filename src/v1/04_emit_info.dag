@@ -72,9 +72,12 @@ fn collect_type_node_import_surface_names(n: Node, source_indices: Map<String, N
   dedupe_nonempty_strings(items: concat(own, concat(child_names, inferred_names)))
 }
 
+data emit_graph_fn_decl_items_note: String = "fn_decl_items mirrors type_decl_items (dashboard node adhoc-574e999b-39c): a fn-name-keyed lookup into the SAME typed (post-04_infer, .inferred-populated) module items build_emit_graph_info already folds over, so a caller-side Clone-bound derivation (v1.compiler.trait_bound_witness) can resolve a callee-by-name and re-run emit_fn_def's own derivation on the callee's real declaration Node — never a second, parallel re-parse or re-inference of the callee."
+
 type EmitGraphInfo {
   type_summaries: Map<String, TypeSummary>
   type_decl_items: Map<String, Node>
+  fn_decl_items: Map<String, Node>
   recursive_type_set: Set<String>
   fielded_variants: Set<String>
   positional_payload_variants: Set<String>
@@ -101,6 +104,7 @@ type EmitGraphInfo {
 type EmitInfoBuildState {
   type_summaries: Map<String, TypeSummary>
   type_decl_items: Map<String, Node>
+  fn_decl_items: Map<String, Node>
 }
 
 data empty_emit_graph_info_ord_fallback_note: String = "Conservatism: render paths without EmitGraphInfo pass empty_emit_graph_info(); bare-ref BTreeSet Ord eligibility fails closed (lookup_emit_type_decl -> Absent) and surfaces compile_error! at probe time — nine call sites inherit this, loud not silent widen."
@@ -109,6 +113,7 @@ fn empty_emit_graph_info() -> EmitGraphInfo {
   EmitGraphInfo {
     type_summaries: empty_map(),
     type_decl_items: empty_map(),
+    fn_decl_items: empty_map(),
     recursive_type_set: empty_set(),
     fielded_variants: empty_set(),
     positional_payload_variants: empty_set(),
@@ -133,6 +138,7 @@ fn emit_info_with_fn_type_context(emit_info: EmitGraphInfo, generic_param_names:
   EmitGraphInfo {
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
+    fn_decl_items: emit_info.fn_decl_items,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
     positional_payload_variants: emit_info.positional_payload_variants,
@@ -156,6 +162,7 @@ fn emit_info_with_fn_return(emit_info: EmitGraphInfo, fn_return_type: Node?) -> 
   EmitGraphInfo {
     type_summaries: emit_info.type_summaries,
     type_decl_items: emit_info.type_decl_items,
+    fn_decl_items: emit_info.fn_decl_items,
     recursive_type_set: emit_info.recursive_type_set,
     fielded_variants: emit_info.fielded_variants,
     positional_payload_variants: emit_info.positional_payload_variants,
@@ -201,6 +208,12 @@ fn emit_graph_records_type_decl(item: Node, source_indices: Map<String, NewlineI
         && (item.params |> count) == 0
         && item.transport == none
   }
+}
+
+data emit_graph_records_fn_decl_note: String = "Same criterion as v1.compiler.emit_core_support's is_function_item (05_emit_rust.dag's top-level item dispatch), duplicated here rather than imported: this module (v1.compiler.infer_emit_info) is upstream of v1.compiler.emit_core_support in the DAG (04_emit_info.dag has no import of 05_emit_core_support.dag today), and emit_graph_records_type_decl beside it already establishes the precedent of a locally-scoped duplicate one-line item-shape predicate at this stage rather than reaching downstream for one (DESIGN.md S3 -- a fact's home is its layer, and both predicates answer 'what item shape reaches this stage's fold', not 'what does emit_core_support export')."
+
+fn emit_graph_records_fn_decl(item: Node) -> Bool {
+  item.body != none && item.type_annotation == none
 }
 
 fn derive_variant_to_enum(type_summaries: Map<String, TypeSummary>) -> Map<String, String> {
@@ -439,7 +452,17 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: 
   let state = if decl_name != "" && emit_graph_records_type_decl(item: item, source_indices: source_indices) {
     EmitInfoBuildState {
       type_summaries: state.type_summaries,
-      type_decl_items: map_insert(state.type_decl_items, decl_name, item)
+      type_decl_items: map_insert(state.type_decl_items, decl_name, item),
+      fn_decl_items: state.fn_decl_items
+    }
+  } else {
+    state
+  }
+  let state = if decl_name != "" && emit_graph_records_fn_decl(item: item) {
+    EmitInfoBuildState {
+      type_summaries: state.type_summaries,
+      type_decl_items: state.type_decl_items,
+      fn_decl_items: map_insert(state.fn_decl_items, decl_name, item)
     }
   } else {
     state
@@ -476,7 +499,8 @@ fn add_emit_item_summary(state: EmitInfoBuildState, item: Node, source_indices: 
       let next_summaries = map_insert(with_variants, summary.name, summary)
       EmitInfoBuildState {
         type_summaries: next_summaries,
-        type_decl_items: state.type_decl_items
+        type_decl_items: state.type_decl_items,
+        fn_decl_items: state.fn_decl_items
       }
     Absent => state
   }

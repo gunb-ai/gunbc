@@ -26,7 +26,7 @@ fn parent_node() -> RoadmapNode {
   }
 }
 
-fn child_node() -> RoadmapNode {
+fn roadmap_emit_child_node() -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_8P7AJ3QVQCM2E8W3AMR7" as RoadmapNodeIdentity,
     node: child_id,
@@ -52,7 +52,7 @@ fn signed_child_node() -> RoadmapNode {
   }
 }
 
-fn nodes() -> List<RoadmapNode> { [parent_node(), child_node()] }
+fn nodes() -> List<RoadmapNode> { [parent_node(), roadmap_emit_child_node()] }
 fn edges() -> List<RoadmapEdge> { [RoadmapEdge { child: child_id, parent: parent_id }] }
 
 fn emit_nodes(nodes: List<RoadmapNode>, merged: List<Int>) -> String {

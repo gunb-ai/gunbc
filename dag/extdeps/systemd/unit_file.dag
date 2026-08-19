@@ -30,6 +30,28 @@ data systemd_service_directive_authority: ExternalAuthority = ExternalAuthority 
   }
 }
 
+// THE TIMER AND EXECUTION-ENVIRONMENT SUBJECTS ARE THEIR OWN UPSTREAM SPECIFICATIONS, and the
+// declared scope has to cover the grammar this module actually models. systemd.unit owns [Unit]
+// and [Install]; systemd.service owns [Service] and Type=/Restart=/ExecStart=. Neither owns the
+// [Timer] section, and neither owns the execution-environment options (User=, Group=,
+// WorkingDirectory=, Environment=, EnvironmentFile=) that systemd.exec defines for service units.
+// Those rows became this repository's PRODUCTION authority for live-deploy unit emission, so
+// leaving their subjects uncited would declare a scope narrower than the grammar being claimed --
+// the extdeps citation duty (DESIGN section 3, ExtdepsExternalAuthorityGate), not documentation.
+data systemd_timer_directive_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.timer.html"
+  }
+}
+
+data systemd_exec_directive_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.freedesktop.org/software/systemd/man/latest/systemd.exec.html"
+  }
+}
+
 data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
   subject: ExternalSubjectRef {
     declaration: DeclarationRef {
@@ -39,7 +61,11 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
     }
   },
   first_citation: extdeps_external_authority_anchor,
-  further_citations: [systemd_service_directive_authority]
+  further_citations: [
+    systemd_service_directive_authority,
+    systemd_timer_directive_authority,
+    systemd_exec_directive_authority,
+  ]
 }
 
 // ONE DIRECTIVE TYPE PER SECTION, SO A MISPLACED DIRECTIVE HAS NO REPRESENTATION.
