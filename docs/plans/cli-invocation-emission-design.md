@@ -809,7 +809,21 @@ General argument typechecking strengthens the boundary; it does not prove that p
    refusal has another cause this bisect did not separate, is unestablished — and a §5 line-stop
    is owed on it before anything else in this lane relies on the distinction.
 
-9. **The spelling-seam extraction is right, but its obvious shape is forbidden — corrected
+9. **A live Class B specimen, in this lane's own new code (found by review, 2026-08-19).**
+   `extdeps.tools.jq` `jq_option_canonical_spelling` calls `cli_long_option_spelling` while the
+   module's import list named only `CliArgumentSyntax`, `CliSurface` and `serialize_cli_arguments`.
+   The call resolved anyway — and every Wave 1A assertion passed — because `cli_surface` was
+   already in the assembled closure via those three imports. That is exactly the accidental
+   coverage DESIGN's import-strip thread records as **blocking all further `dag/**` import
+   stripping**: the binding came from pool membership, not from the bare-reference closure. Note
+   which control does *not* catch this — the bystander probe above refuses a *qualified* import of
+   a name a module does not export, whereas this is an *unimported bare reference* into a module
+   that is present for other reasons. Different mechanism, and only the second is silent. Fixed by
+   naming the symbol in the import list. **The general defect is untouched and not this lane's:**
+   nothing refuses the next such reference, and a green witness is not evidence that a module's
+   imports are complete.
+
+10. **The spelling-seam extraction is right, but its obvious shape is forbidden — corrected
    2026-08-19.** The static-dependency finding stands: at execution grain the jq fold reaches no
    compiler machinery, but at dependency grain `cli_surface` imports `v2.std.compilers.target_model`,
    whose closure carries target-representation, host-runtime and node-query machinery. The
@@ -848,7 +862,7 @@ General argument typechecking strengthens the boundary; it does not prove that p
    **Not performed.** `target_model` is load-bearing and carries the ruling above, so the move is
    its own increment under its own review, not a rider on this one.
 
-10. **A downstream typed verdict may be the redundant lower rung, not a peer** (raised by
+11. **A downstream typed verdict may be the redundant lower rung, not a peer** (raised by
    `eager-wren-138`, 2026-08-18). `gunbc.host_effect_realize` `bmcweb_token_extraction_verdict`
    refuses blank stdout as its own decode — the wall that actually closed that fail-open, with
    `jq -e` only ever loudness beside it. If the semantic layer makes *absence-is-a-value*
