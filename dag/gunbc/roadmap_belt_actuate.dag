@@ -1442,7 +1442,7 @@ data belt_tick_receipt_schema: String = "roadmap-belt-tick-receipt/v2"
 // dashboard_instance_dispatch_attempt_state_root to ONE path, and a receipt written there would
 // be a single file answering for two instances. Deriving from instance_root keeps the receipt
 // per-instance by construction.
-fn belt_tick_receipt_path_for_instance(instance: HostDashboardInstance) -> String {
+fn belt_tick_receipt_path_for_instance(instance: gunbc.roadmap_dashboard_instance.HostDashboardInstance) -> String {
   join([
     instance_receipts_dir(instance_root: instance.instance_root as String),
     "/belt-last-tick.json",

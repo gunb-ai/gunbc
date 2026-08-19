@@ -21,7 +21,7 @@ fn deploy_access_preflight_probe_steps(access: gunbc.ci_deploy_access.DeployAcce
 fn deploy_access_preflight_plan(access: gunbc.ci_deploy_access.DeployAccess) -> v2.std.effect_plan.EffectPlan<gunbc.host_effect.HostEffect> {
   v2.std.effect_plan.EffectPlan {
     steps: deploy_access_preflight_probe_steps(access: access),
-    on_failure: FailFast,
+    on_failure: v2.std.orchestration.FailFast,
   }
 }
 
