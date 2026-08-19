@@ -207,15 +207,6 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
     for file in result.files.iter() {
         out.insert(file.path.clone(), file.content.clone());
     }
-    if std::env::var("GUNBC_DEBUG_VERSION_EMIT").is_ok() {
-        for (path, content) in out.iter() {
-            if content.starts_with("[package]") {
-                eprintln!("=== DEBUG culprit path={path} len={} ===", content.len());
-                eprintln!("{content}");
-                eprintln!("=== END DEBUG ===");
-            }
-        }
-    }
     Ok(out)
 }
 
@@ -428,9 +419,14 @@ fn write_emitted_tree(dest_src: &Path, emitted: &HashMap<String, String>) -> Res
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
         }
-        let normalized = normalize_generated_source(content)?;
-        fs::write(&out_path, normalized)
-            .map_err(|e| format!("write {}: {e}", out_path.display()))?;
+        if path.ends_with(".rs") {
+            let normalized = normalize_generated_source(content)?;
+            fs::write(&out_path, normalized)
+                .map_err(|e| format!("write {}: {e}", out_path.display()))?;
+        } else {
+            fs::write(&out_path, content)
+                .map_err(|e| format!("write {}: {e}", out_path.display()))?;
+        }
     }
     Ok(())
 }
