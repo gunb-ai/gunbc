@@ -142,6 +142,27 @@ when a conditional impl is involved. Until `deep-swift-570`'s executed answer la
 totals (14/14, 51 overall) are unaffected either way; only the row these two sites file under is
 open.
 
+**SETTLED, 2026-08-19, by execution — 1a stands.** `deep-swift-570` ran the actual build, both
+against their pushed head `561bf1166b1` and separately against `origin/main`: both `:564`/`:580`
+errors are byte-identical (text, line, column) on both sides — outcome three of the three named
+above. Proposition B is false: a signature-only repair does not clear these errors, so the 1b
+counter-reading is refuted by the same standard that would have confirmed it, and §4's 14/14 row
+assignment (both sites in **1a**) is no longer provisional.
+
+**Why, and a genuinely new finding — not folded into either row.** The emitted match scrutinees at
+these two sites are `(*lookup.clone()).clone()` / `(*existing.clone()).clone()` — an `Rc` clone
+followed by a redundant deep clone of the pointee, done purely to support a match. Neither a
+missing derive bound (1a) nor a missing fn-signature bound (1b) is what a T:Clone-bound repair
+would actually reach here; `deep-swift-570` reports their original signature-bound fix doesn't
+even reach these two sites in practice, and `smart-ram-730` separately flagged that adding the
+bound would be the wrong direction — a match by reference would need no `Clone` at all. So the
+board keeps these two sites at **1a** (that assignment is what execution confirmed — unchanged
+under a signature-only repair), but the *actual* repair, if and when one lands, likely won't be a
+derive fix or a signature fix — it's plausibly a distinct **redundant-clone-in-match-lowering**
+mechanism in the Rc-deref-clone emission path. Not reclassifying speculatively while this is
+unsettled; flagging it here so a future landing doesn't get filed into 1a or 1b by row-proximity
+when it's neither.
+
 ## 5. T7 / "99 E0308 sites" — resolved for `stern-fox-619`, restated against this base
 
 Re-confirmed at `72676cf0be`: this module's **live T7 footprint is row 7 above — 1 site, and it
@@ -165,10 +186,12 @@ class fix across the corpus, not a dent in this board.
 **Ownership check (per `smart-ram-730`'s ask):** row 7 was attributed to `calm-lynx-547`, checked
 via `dashboard-ops` — that session is **archived**. This row's owner is stale, not confirmed live.
 Flagging here rather than silently carrying the attribution forward: if no lane has since picked up
-T7-for-this-module, row 7 is currently **unowned**, and it is exactly the kind of single leftover
-row that goes unnoticed until someone else drives the board to zero and finds it still there. Not
-claiming it myself (out of this session's scope, and `smart-ram-730` should route it), but naming
-it as open rather than "owned, untouched."
+T7-for-this-module, row 7 was **unowned**, and it is exactly the kind of single leftover row that
+goes unnoticed until someone else drives the board to zero and finds it still there.
+
+**Update, same day:** `smart-ram-730` has since assigned row 7 to `stern-fox-619` — the stale
+`calm-lynx-547` attribution above is superseded, row 7 is no longer unowned, and no further routing
+is needed from this session.
 
 ## 6. Predictions, restated against this base, before the causing PRs land
 
