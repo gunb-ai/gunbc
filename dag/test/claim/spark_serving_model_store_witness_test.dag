@@ -43,7 +43,6 @@ import gunbc.spark_serving_observed_members {
   LingerObservedEnabled,
 }
 import gunbc.spark_serving_observe { spark_serving_classify_model_store, spark_serving_model_blob_digest_argv }
-import gunbc.spark_serving_readback_parse { SparkServingReadbackPresent, SparkServingReadbackRefused }
 
 import product.placement_supply { HostIdentity }
 
@@ -123,21 +122,11 @@ test fn an_exact_store_carries_the_desired_identity() -> Bool {
 // carries. Nothing is stubbed between the probe output and the comparison reconcile makes, so a
 // re-hash reintroduced anywhere along that path fails here.
 //
-// THIS CLAIM PREDICTED ITS OWN BLINDNESS, AND THE PREDICTION CAME TRUE.
-//
-// It used to read: "if ollama ever stores a manifest whose file digest differs from the digest it
-// publishes, THIS is the claim that stays green while srv6 replans forever." It did. The fixture fed
-// the /api/tags digest in as though it were sha256sum output, so it asserted that a host holding the
-// declared model converges only under the very assumption that was in question -- and stayed 15/15
-// green through seven canaries while the member reconciled as drift on every one.
-//
-// The canary measured both sides on a host that demonstrably held the model: the file hashed to
-// 17052f91a42e...376f7 and /api/tags reported 49124fc2c622...79d05. The assumption is dead, and the
-// observation now reads identity from the API the desired side already reads it from, so the fixture
-// supplies a readback field rather than a filesystem digest that nothing computes any more.
-//
-// The lesson kept beside the claim: a fixture that encodes an assumption cannot test it. This one
-// named the risk in a comment, which is better than silence and is not the same as coverage.
+// The sha256 hex is the declared desired manifest digest, so this doubles as the statement that a
+// host holding exactly the declared model converges. If ollama ever stores a manifest whose file
+// digest differs from the digest it publishes, THIS is the claim that stays green while srv6 replans
+// forever -- which is why the module comment names that as the one unverified upstream property and
+// the canary as what decides it.
 test fn a_host_holding_the_declared_model_reconciles_as_converged() -> Bool {
   match subject_release() {
     Absent => false
@@ -152,7 +141,7 @@ test fn a_host_holding_the_declared_model_reconciles_as_converged() -> Bool {
           "2222222222222222222222222222222222222222222222222222222222222222",
           "\"}]}",
         ], ""),
-        served_identity: SparkServingReadbackPresent { value: join(["sha256:", hex], "") },
+        manifest_digest_stdout: join([hex, "  /home/x/manifest"], ""),
         blobs_listing: join([
           "sha256-1111111111111111111111111111111111111111111111111111111111111111\n",
           "sha256-2222222222222222222222222222222222222222222222222222222222222222",
@@ -173,7 +162,7 @@ test fn a_host_holding_the_declared_model_reconciles_as_converged() -> Bool {
                 "2222222222222222222222222222222222222222222222222222222222222222",
                 "\"}]}",
               ], ""),
-              served_identity: SparkServingReadbackPresent { value: join(["sha256:", hex], "") },
+              manifest_digest_stdout: join([hex, "  /home/x/manifest"], ""),
               blobs_listing: join([
                 "sha256-1111111111111111111111111111111111111111111111111111111111111111\n",
                 "sha256-2222222222222222222222222222222222222222222222222222222222222222",
@@ -204,7 +193,7 @@ test fn a_host_missing_a_blob_does_not_reconcile_as_converged() -> Bool {
           "2222222222222222222222222222222222222222222222222222222222222222",
           "\"}]}",
         ], ""),
-        served_identity: SparkServingReadbackPresent { value: "sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05" },
+        manifest_digest_stdout: "49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05  /home/x/manifest",
         blobs_listing: "sha256-1111111111111111111111111111111111111111111111111111111111111111",
         blob_digest_stdout: intact_blob_digests(),
       ) {
@@ -349,7 +338,7 @@ test fn an_unobserved_store_blocks_the_empty_replan_bar() -> Bool {
 test fn an_unparseable_manifest_says_so() -> Bool {
   match spark_serving_classify_model_store(
     manifest_body: "not json at all",
-    served_identity: SparkServingReadbackPresent { value: "sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05" },
+    manifest_digest_stdout: "aa  /p",
     blobs_listing: "",
     blob_digest_stdout: "",
   ) {
@@ -364,7 +353,7 @@ test fn an_unparseable_manifest_says_so() -> Bool {
 test fn a_manifest_whose_layer_has_no_digest_says_malformed() -> Bool {
   match spark_serving_classify_model_store(
     manifest_body: "{\"layers\":[{\"size\":1}]}",
-    served_identity: SparkServingReadbackPresent { value: "sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05" },
+    manifest_digest_stdout: "aa  /p",
     blobs_listing: "",
     blob_digest_stdout: "",
   ) {
@@ -382,7 +371,7 @@ test fn a_manifest_whose_layer_has_no_digest_says_malformed() -> Bool {
 test fn a_manifest_naming_no_blobs_refuses_rather_than_reporting_complete() -> Bool {
   match spark_serving_classify_model_store(
     manifest_body: "{\"layers\":[]}",
-    served_identity: SparkServingReadbackPresent { value: "sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05" },
+    manifest_digest_stdout: "aa  /p",
     blobs_listing: "",
     blob_digest_stdout: "",
   ) {
@@ -412,7 +401,7 @@ fn complete_runtime_stub() -> RuntimeMaterializationObservation {
 test fn a_corrupt_blob_is_not_a_complete_store() -> Bool {
   match spark_serving_classify_model_store(
     manifest_body: two_layer_manifest(),
-    served_identity: SparkServingReadbackPresent { value: "sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05" },
+    manifest_digest_stdout: "49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05  /m",
     blobs_listing: present_listing(),
     blob_digest_stdout: corrupt_blob_digests(),
   ) {
@@ -430,7 +419,7 @@ test fn a_corrupt_blob_is_not_a_complete_store() -> Bool {
 test fn the_same_store_with_intact_blobs_is_complete() -> Bool {
   match spark_serving_classify_model_store(
     manifest_body: two_layer_manifest(),
-    served_identity: SparkServingReadbackPresent { value: "sha256:49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05" },
+    manifest_digest_stdout: "49124fc2c622237675273a842019e83bd327d4d6c2d6e076378ca07ec7579d05  /m",
     blobs_listing: present_listing(),
     blob_digest_stdout: intact_blob_digests(),
   ) {
