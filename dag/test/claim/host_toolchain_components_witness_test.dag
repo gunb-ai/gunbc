@@ -63,7 +63,7 @@ test fn witness_missing_set_names_the_requiring_gate() -> Bool {
   }
   missing.length() == 1
     && names_rustfmt
-    && named_gate == "floor_self_host_realized_comparison_gate_entry"
+    && named_gate == "ci_fmt_gate_line"
 }
 
 data witness_red_control_note: String = "The discriminating RED control: a probe that installs the missing component before reporting. It is the shape an ensure lane reaches for by reflex — the check and the repair in one step — and it is exactly what the operator's hand-install did, which is why automating it as a PROBE would be wrong even though performing it as an ACT was right. The authority refuses on the classification, so a self-repairing probe can never certify completeness, and its Converged is not reachable. Asserted in both directions: the inert probe on the same inputs does yield Converged, so this is not a fold that refuses everything."

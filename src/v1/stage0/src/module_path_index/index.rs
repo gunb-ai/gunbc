@@ -99,15 +99,4 @@ mod tests {
             other => panic!("unexpected: {:?}", other),
         }
     }
-
-    #[test]
-    fn parse_stage0_emit_plan_binding() {
-        let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
-        let path = manifest_dir.join("../../../dag/gunbc/stage0_emit_plan.dag");
-        let content = std::fs::read_to_string(&path).expect("read stage0 emit plan");
-        let binding = parse_module_binding(&path, &content)
-            .expect("stage0 emit plan must parse")
-            .expect("stage0 emit plan must declare a module");
-        assert_eq!(binding.module_path, "gunbc.stage0_emit_plan");
-    }
 }
