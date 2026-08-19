@@ -1641,7 +1641,7 @@ fn emit_expr_var_shared(expr: v1.std.core.Node, target: v1.compiler.artifact.Ren
   else { emit_ident(name: n, target: target) }
 }
 
-fn emit_expr_field_access_shared(expr: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, emit_field: fn(Node) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_expr_field_access_shared(expr: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, emit_field: fn(v1.std.core.Node) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   if is_typed_service_call_receiver(receiver: expr, source_indices: source_indices) {
     match extract_typed_service_name(receiver: expr, source_indices: source_indices) {
       Present { value: svc_name } => service_var_name(service_name: svc_name)
@@ -1659,7 +1659,7 @@ fn extract_string_interp_parts(expr: v1.std.core.Node) -> List<v1.std.core.Strin
   })
 }
 
-fn emit_typed_cast_shared(expr: v1.std.core.Node, cast_target_node: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, recurse: fn(Node) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_typed_cast_shared(expr: v1.std.core.Node, cast_target_node: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let expr_str = recurse(expr)
   let ty_str = emit_node_type(n: cast_target_node, target: target, source_indices: source_indices)
   let src_ty = match expr.inferred {
@@ -1693,7 +1693,7 @@ fn emit_typed_for_each_shared(variable: String, collection: v1.std.core.Node, bo
   }
 }
 
-fn emit_typed_index_shared(base: v1.std.core.Node, index: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, recurse: fn(Node) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_typed_index_shared(base: v1.std.core.Node, index: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let spec = language_spec(target: target)
   let base_str = recurse(base)
   let index_str = recurse(index)
@@ -1708,7 +1708,7 @@ fn emit_typed_index_shared(base: v1.std.core.Node, index: v1.std.core.Node, targ
   }
 }
 
-fn emit_typed_slice_shared(base: v1.std.core.Node, start: v1.std.core.Node, end: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, recurse: fn(Node) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
+fn emit_typed_slice_shared(base: v1.std.core.Node, start: v1.std.core.Node, end: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let spec = language_spec(target: target)
   let base_str = recurse(base)
   let start_str = recurse(start)
@@ -1732,22 +1732,22 @@ fn emit_shared_expr(
   target: v1.compiler.artifact.RenderTarget,
   source_indices: Map<String, v1.std.core.NewlineIndex>,
   wrap_result: fn(String) -> String,
-  recurse: fn(Node) -> String,
-  emit_var: fn(Node) -> String,
-  emit_field_access: fn(Node) -> String,
-  emit_call: fn(Node) -> String,
-  emit_method_call: fn(Node) -> String,
-  emit_match: fn(Node) -> String,
-  emit_if: fn(Node) -> String,
-  emit_let: fn(Node) -> String,
-  emit_record_lit: fn(Node) -> String,
-  emit_string_interp: fn(Node) -> String,
-  emit_block: fn(Node) -> String,
-  emit_cast: fn(Node) -> String,
-  emit_for_each: fn(Node) -> String,
-  emit_index: fn(Node) -> String,
-  emit_slice: fn(Node) -> String,
-  emit_bin_op: fn(Node) -> String
+  recurse: fn(v1.std.core.Node) -> String,
+  emit_var: fn(v1.std.core.Node) -> String,
+  emit_field_access: fn(v1.std.core.Node) -> String,
+  emit_call: fn(v1.std.core.Node) -> String,
+  emit_method_call: fn(v1.std.core.Node) -> String,
+  emit_match: fn(v1.std.core.Node) -> String,
+  emit_if: fn(v1.std.core.Node) -> String,
+  emit_let: fn(v1.std.core.Node) -> String,
+  emit_record_lit: fn(v1.std.core.Node) -> String,
+  emit_string_interp: fn(v1.std.core.Node) -> String,
+  emit_block: fn(v1.std.core.Node) -> String,
+  emit_cast: fn(v1.std.core.Node) -> String,
+  emit_for_each: fn(v1.std.core.Node) -> String,
+  emit_index: fn(v1.std.core.Node) -> String,
+  emit_slice: fn(v1.std.core.Node) -> String,
+  emit_bin_op: fn(v1.std.core.Node) -> String
 ) -> String {
   match texpr.expr_data {
     ExprLiteral { value: v } =>
@@ -1805,7 +1805,7 @@ fn emit_shared_expr(
   }
 }
 
-fn emit_default_bin_op(texpr: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>, recurse: fn(Node) -> String, wrap_result: fn(String) -> String) -> String {
+fn emit_default_bin_op(texpr: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>, recurse: fn(v1.std.core.Node) -> String, wrap_result: fn(String) -> String) -> String {
   match texpr.expr_data {
     ExprBinOp { op: op, algebra_field: algebra } =>
       let left = binop_left(texpr: texpr)
@@ -1980,14 +1980,14 @@ fn emit_algebra_method_template(method_name: String, recv_str: String,
   }
 }
 
-fn emit_typed_first_arg_shared(args: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, recurse: fn(Node) -> String) -> String {
+fn emit_typed_first_arg_shared(args: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String) -> String {
   match args |> first {
     Present { value: a } => recurse(arg_value(n: a))
     Absent => emit_error_expr(message: "missing method argument", target: target)
   }
 }
 
-fn emit_typed_string_interp_unified(parts: List<v1.std.core.StringPart>, target: v1.compiler.artifact.RenderTarget, recurse: fn(Node) -> String) -> String {
+fn emit_typed_string_interp_unified(parts: List<v1.std.core.StringPart>, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String) -> String {
   let spec = language_spec(target: target)
   let interp = spec.string_interp
   let has_interpolations = parts |> any(p => match p { Interpolation { expr: _ } => true  _ => false })
@@ -2021,7 +2021,7 @@ fn emit_typed_string_interp_unified(parts: List<v1.std.core.StringPart>, target:
   }
 }
 
-fn emit_typed_record_lit_unified(type_name: String?, fields: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>, recurse: fn(Node) -> String) -> String {
+fn emit_typed_record_lit_unified(type_name: String?, fields: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, source_indices: Map<String, v1.std.core.NewlineIndex>, recurse: fn(v1.std.core.Node) -> String) -> String {
   let rls = language_spec(target: target).record_lit
   match type_name {
     Absent => {
@@ -2061,7 +2061,7 @@ fn emit_go_v2rt_free_call(func: String, arg_strs: List<String>) -> String {
   concat("v2rt.", emit_export_ident(name: bridge_method_name_unified(method_name: func, target: Go), target: Go), "(", arg_strs |> join(separator: ", "), ")")
 }
 
-fn emit_typed_call_unified(func: String, args: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, recurse: fn(Node) -> String) -> String {
+fn emit_typed_call_unified(func: String, args: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, recurse: fn(v1.std.core.Node) -> String) -> String {
   let spec = language_spec(target: target)
   let ordered_args = order_typed_call_args(args: args, func: func, scope: scope)
   let arg_strs = ordered_args |> map(a => recurse(arg_value(n: a)))
@@ -2098,7 +2098,7 @@ fn bridge_method_name_unified(method_name: String, target: v1.compiler.artifact.
   apply_naming_case(name: overridden, case_style: spec.bridge_method_case)
 }
 
-fn emit_algebra_method_call_unified(method_name: String, receiver: v1.std.core.Node, args: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, first_arg_str: String, recurse: fn(Node) -> String) -> String {
+fn emit_algebra_method_call_unified(method_name: String, receiver: v1.std.core.Node, args: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, first_arg_str: String, recurse: fn(v1.std.core.Node) -> String) -> String {
   let spec = language_spec(target: target)
   let recv_str = recurse(receiver)
   match emit_algebra_method_template(method_name: method_name, recv_str: recv_str, first_arg_str: first_arg_str, target: target) {
@@ -2111,14 +2111,14 @@ fn emit_algebra_method_call_unified(method_name: String, receiver: v1.std.core.N
   }
 }
 
-fn emit_plain_method_call_unified(receiver: v1.std.core.Node, method: String, args: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, recurse: fn(Node) -> String) -> String {
+fn emit_plain_method_call_unified(receiver: v1.std.core.Node, method: String, args: List<v1.std.core.Node>, target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String) -> String {
   let recv_str = recurse(receiver)
   let arg_strs = args |> map(a => recurse(arg_value(n: a)))
   let args_str = arg_strs |> join(separator: ", ")
   concat(recv_str, ".", emit_export_ident(name: method, target: target), "(", args_str, ")")
 }
 
-fn emit_typed_method_call_unified(receiver: v1.std.core.Node, method: String, args: List<v1.std.core.Node>, method_semantics: MethodSemantics?, target: v1.compiler.artifact.RenderTarget, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, recurse: fn(Node) -> String) -> String {
+fn emit_typed_method_call_unified(receiver: v1.std.core.Node, method: String, args: List<v1.std.core.Node>, method_semantics: MethodSemantics?, target: v1.compiler.artifact.RenderTarget, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, recurse: fn(v1.std.core.Node) -> String) -> String {
   let spec = language_spec(target: target)
   let source_indices = scope.type_env.source_indices
   if method_semantics != none { match method_semantics.value {
@@ -2220,7 +2220,7 @@ fn emit_match_arm_line(
     make_indent(level: body_depth), body_str)
 }
 
-fn emit_arm_guard(arm: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, render_guard_expr: fn(Node) -> String) -> String {
+fn emit_arm_guard(arm: v1.std.core.Node, target: v1.compiler.artifact.RenderTarget, render_guard_expr: fn(v1.std.core.Node) -> String) -> String {
   let es = language_spec(target: target).expression_semantics
   match arm_guard(n: arm) {
     Present { value: g } => match es.guard_prefix {
@@ -2387,7 +2387,7 @@ fn is_tco_identity_passthrough(arg_val: v1.std.core.Node, param_name: String, si
 }
 
 fn emit_typed_tco_reassign_shared(args: List<v1.std.core.Node>, params: List<v1.std.core.Node>,
-    target: v1.compiler.artifact.RenderTarget, recurse: fn(Node) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
+    target: v1.compiler.artifact.RenderTarget, recurse: fn(v1.std.core.Node) -> String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   let arg_values = args |> map(a => arg_value(n: a))
   let pairs = params |> enumerate
     |> filter(pair =>
