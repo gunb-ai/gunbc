@@ -115,7 +115,7 @@ test fn body_lowering_arrow_token_holds() -> Bool {
   }
 }
 
-fn body_lower_collect_atoms(root: v2.std.node.Node, acc: v2.std.collection.List<Symbol>) -> v2.std.collection.List<Symbol> {
+fn body_lower_collect_atoms(root: v2.std.node.Node, acc: v2.std.collection.List<v2.std.node.Symbol>) -> v2.std.collection.List<v2.std.node.Symbol> {
   let acc1 = match node_atom_identity_optional(node: root) {
     Present { value: id } => std.algebra.Cons { head: id, tail: acc }
     Absent => acc
@@ -294,7 +294,7 @@ test fn body_lowering_normalize_accepts() -> Bool {
   }
 }
 
-fn body_lowering_tree_contains_atom(root: v2.std.node.Node, wanted: Symbol) -> Bool {
+fn body_lowering_tree_contains_atom(root: v2.std.node.Node, wanted: v2.std.node.Symbol) -> Bool {
   match node_atom_identity_optional(node: root) {
     Present { value: id } =>
       if id == wanted {
@@ -325,7 +325,7 @@ test fn body_lowering_fixture_resolves() -> Bool {
   }
 }
 
-fn body_lowering_transform_operand_identities(arrow: v2.std.node.Node) -> v2.std.collection.List<Symbol> {
+fn body_lowering_transform_operand_identities(arrow: v2.std.node.Node) -> v2.std.collection.List<v2.std.node.Symbol> {
   match v2.std.node_query.find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
       match body.kind {
@@ -381,7 +381,7 @@ test fn body_lowering_normalized_operator_is_plus() -> Bool {
   }
 }
 
-fn body_lower_arrow_operand_identity(arrow: v2.std.node.Node, index: Int) -> v2.std.optional.Optional<Symbol> {
+fn body_lower_arrow_operand_identity(arrow: v2.std.node.Node, index: Int) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   match v2.std.node_query.find_arrow_body_child(root: arrow) {
     Accepted { value: body, diagnostics: _ } =>
       match v2.std.collection.list_at_optional(xs: body.children, index: index) {
@@ -530,7 +530,7 @@ test fn body_lowering_domain_operand2_match() -> Bool {
   }
 }
 
-fn body_lower_arrow_domain_first_binding(arrow: v2.std.node.Node) -> v2.std.optional.Optional<Symbol> {
+fn body_lower_arrow_domain_first_binding(arrow: v2.std.node.Node) -> v2.std.optional.Optional<v2.std.node.Symbol> {
   if count(arrow.children) >= 1 {
     match first(arrow.children) {
       Present { value: e0 } =>
@@ -594,7 +594,7 @@ test fn body_lowering_normalized_operand1_lexeme_is_x() -> Bool {
   }
 }
 
-fn body_lowering_operand_equals(arrow: v2.std.node.Node, index: Int, wanted: Symbol) -> Bool {
+fn body_lowering_operand_equals(arrow: v2.std.node.Node, index: Int, wanted: v2.std.node.Symbol) -> Bool {
   match body_lower_arrow_operand_identity(arrow: arrow, index: index) {
     Present { value: id } => id == wanted
     Absent => false
