@@ -142,7 +142,7 @@ fn node_with_occurrence_id(
   children: List<v2.std.node.Edge>,
   occurrence_id: v2.std.node.NodeOccurrenceId
 ) -> v2.std.node.Node {
-  Node { kind: kind, children: children, occurrence_id: occurrence_id }
+  v2.std.node.Node { kind: kind, children: children, occurrence_id: occurrence_id }
 }
 
 fn node_rebuild(n: v2.std.node.Node, children: List<v2.std.node.Edge>) -> v2.std.node.Node {
@@ -725,31 +725,31 @@ fn canonicalize_node_for_content_hash(n: v2.std.node.Node) -> v2.std.node.Node {
   let base = node_for_structural_equality(n: n)
   match node_edge_discipline(n: n) {
     LabeledEdges =>
-      Node {
+      v2.std.node.Node {
         kind: base.kind,
         children: sort_by(base.children, fn(e) { named_edge_sort_key(e: e) }),
         occurrence_id: SyntheticOccurrence
       }
     NoEdges =>
-      Node {
+      v2.std.node.Node {
         kind: base.kind,
         children: base.children,
         occurrence_id: SyntheticOccurrence
       }
     PositionalEdges =>
-      Node {
+      v2.std.node.Node {
         kind: base.kind,
         children: base.children,
         occurrence_id: SyntheticOccurrence
       }
     ArrowBodyEdges =>
-      Node {
+      v2.std.node.Node {
         kind: base.kind,
         children: canonicalize_arrow_children_for_content_hash(children: base.children),
         occurrence_id: SyntheticOccurrence
       }
     LoopBoundEdges =>
-      Node {
+      v2.std.node.Node {
         kind: base.kind,
         children: canonicalize_loop_children_for_content_hash(children: base.children),
         occurrence_id: SyntheticOccurrence

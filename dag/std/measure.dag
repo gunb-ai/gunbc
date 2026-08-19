@@ -222,17 +222,17 @@ type Gibibyte = Measure<Memory, Gibi, std.nat.Nat>
 // as two Measure types at two Scales makes the comparison a conversion the
 // author must write, which is the same resolution ByteBasis reaches by
 // validation and this reaches by construction.
-type Gigabyte = Measure<Memory, Giga, Nat>
+type Gigabyte = Measure<Memory, Giga, std.nat.Nat>
 
-fn gigabyte(count: Nat) -> Gigabyte {
+fn gigabyte(count: std.nat.Nat) -> Gigabyte {
   Measure { count: count }
 }
 
-fn gigabyte_count(g: Gigabyte) -> Nat {
+fn gigabyte_count(g: Gigabyte) -> std.nat.Nat {
   measure_count(g)
 }
 
-fn mebibyte(count: Nat) -> Mebibyte {
+fn mebibyte(count: std.nat.Nat) -> Mebibyte {
   Measure { count: count }
 }
 
@@ -264,9 +264,9 @@ type Hertz = Measure<Frequency, One, std.nat.Nat>
 // scale), semantically distinct from both Hertz (a clock: DDR moves two transfers per clock,
 // so the marketing figure is never the clock) and DataRate (bits/s: transfers x bus width).
 // The alias carries the transfer semantics; the scale carries the Mega.
-type MegatransfersPerSecond = Measure<Frequency, Mega, Nat>
+type MegatransfersPerSecond = Measure<Frequency, Mega, std.nat.Nat>
 
-type HardwareThreadCount = Measure<Count, One, Nat>
+type HardwareThreadCount = Measure<Count, One, std.nat.Nat>
 
 type CharacterCount = Measure<Count, One, std.nat.Nat>
 
@@ -325,12 +325,12 @@ type Millimeter = Measure<Length, Milli, std.nat.Nat>
 //
 // It is recorded rather than silently removed because the deletion is the point: leaving both
 // standing would have been a second signed-spatial authority beside the frame-owned one, which is
-// exactly the fork the migration existed to close. Nat-backed Millimeter above is untouched and is
+// exactly the fork the migration existed to close. std.nat.Nat-backed Millimeter above is untouched and is
 // NOT widened - a wall of length -3 m must remain unwritable, and that is a magnitude rather than
 // a component.
 
 // AREA AND VOLUME carry the scale their ratio to the base unit actually has. An earlier revision
-// wrote Measure<Area, Milli, Nat> and warned in a comment not to read Milli linearly - but Scale is
+// wrote Measure<Area, Milli, std.nat.Nat> and warned in a comment not to read Milli linearly - but Scale is
 // not documentation, it is a fold: scale_exponent answers Milli => -3, so the carrier asserted that
 // a square millimetre is 10^-3 of a square metre. It is 10^-6, and a comment cannot correct a fold.
 //
@@ -348,7 +348,7 @@ type SquareMillimeter = Measure<Area, Micro, std.nat.Nat>
 type CubicMillimeter = Measure<Volume, Nano, std.nat.Nat>
 
 // The SOURCE units of the conversions below. They exist so a conversion cannot be handed "three of
-// something": square_metres_to_square_millimetres(count: 3) accepted a bare Nat and so re-created,
+// something": square_metres_to_square_millimetres(count: 3) accepted a bare std.nat.Nat and so re-created,
 // at the conversion boundary, exactly the dimensional erasure this slice exists to close.
 type SquareMeter = Measure<Area, One, std.nat.Nat>
 
@@ -358,9 +358,9 @@ type SquareMeter = Measure<Area, One, std.nat.Nat>
 // quotes area and rent in this unit (the MoneyRate PerSquareFootYear period marker below is
 // its rent-side twin); the carrier keeps the listing's own unit rather than converting at
 // ingestion, which would trade an exact quoted figure for a rounded derived one.
-type SquareFoot = Measure<Area, SquareFootArea, Nat>
+type SquareFoot = Measure<Area, SquareFootArea, std.nat.Nat>
 
-type CubicMeter = Measure<Volume, One, Nat>
+type CubicMeter = Measure<Volume, One, std.nat.Nat>
 
 // PLANE ANGLE units are non-decimal, like Sixty and RackUnitHeight already are: an arcsecond is
 // 1/1296000 of a turn, which is not a power of ten, so scale_decimal_exponent answers `none` rather
@@ -452,7 +452,7 @@ fn arcsecond_displacement_count(a: ArcsecondDisplacement) -> Int {
 }
 
 // EIA-310 rack unit: 1U = 1.75 in = 44.45 mm EXACTLY, which is 44450 micrometres — an
-// integer, so the quantum is exact in the Nat carrier and needs no rounding. RackUnitHeight
+// integer, so the quantum is exact in the std.nat.Nat carrier and needs no rounding. RackUnitHeight
 // is a non-decimal scale in the same sense Sixty is: scale_exponent has no answer for it and
 // the conversion lives in a domain factor function instead.
 type RackUnit = Measure<Length, RackUnitHeight, std.nat.Nat>
@@ -668,7 +668,7 @@ type MoneyPerKilowattHour = MoneyRate<PerKilowattHour>
 
 type MoneyPerSquareFootYear = MoneyRate<PerSquareFootYear>
 
-data money_rate_carrier_representation_note: String = "MoneyRate<P> is the §2-horizontal carrier for vendor billing period: one parameterized record (P = PerMinute | PerHour | PerMonth | Once phantom markers), not four structurally-identical records — same move as MoneyAmount<S> = Measure<Currency, S, Nat> and Vendor<Domain>. Not a Measure<Q,S,M> row: billing period is a categorical vendor unit axis, not an SI Scale on a single Quantity; the carrier also holds runtime CurrencyCode beside the micro-denominated amount. Passing PerMinute where PerHour is expected is unwritable via the type argument."
+data money_rate_carrier_representation_note: String = "MoneyRate<P> is the §2-horizontal carrier for vendor billing period: one parameterized record (P = PerMinute | PerHour | PerMonth | Once phantom markers), not four structurally-identical records — same move as MoneyAmount<S> = Measure<Currency, S, std.nat.Nat> and Vendor<Domain>. Not a Measure<Q,S,M> row: billing period is a categorical vendor unit axis, not an SI Scale on a single Quantity; the carrier also holds runtime CurrencyCode beside the micro-denominated amount. Passing PerMinute where PerHour is expected is unwritable via the type argument."
 
 fn money_rate_micros<P>(q: MoneyRate<P>) -> std.nat.Nat {
   money_amount_micro_count(m: q.amount)
@@ -690,11 +690,11 @@ fn money_once_micros(q: MoneyOnce) -> std.nat.Nat {
   money_rate_micros(q: q)
 }
 
-fn money_per_kilowatt_hour_micros(q: MoneyPerKilowattHour) -> Nat {
+fn money_per_kilowatt_hour_micros(q: MoneyPerKilowattHour) -> std.nat.Nat {
   money_rate_micros(q: q)
 }
 
-fn money_per_sqft_year_micros(q: MoneyPerSquareFootYear) -> Nat {
+fn money_per_sqft_year_micros(q: MoneyPerSquareFootYear) -> std.nat.Nat {
   money_rate_micros(q: q)
 }
 
@@ -711,7 +711,7 @@ fn billing_month_as_hour_count() -> std.nat.Nat {
 
 data billing_month_as_hour_count_note: String = "Derived monthly→hourly divisor: 730 hours (365×24/12), the conventional cloud billing month used for cross-vendor hourly equivalence only — not a vendor quote."
 
-data billing_month_as_hour_count_representation_note: String = "Nat divisor via fn not Measure<Time, One, Nat>: stage0 alias emission collapses applied-generic Measure aliases to concrete Measure<(), (), Nat> while fn/data return sites still reference the un-erased alias params (E0107). Dissolve-on: stage0 Measure-alias emitter preserves return types at data/fn sites."
+data billing_month_as_hour_count_representation_note: String = "std.nat.Nat divisor via fn not Measure<Time, One, std.nat.Nat>: stage0 alias emission collapses applied-generic Measure aliases to concrete Measure<(), (), std.nat.Nat> while fn/data return sites still reference the un-erased alias params (E0107). Dissolve-on: stage0 Measure-alias emitter preserves return types at data/fn sites."
 
 fn per_hour_equivalent_from_per_month(q: MoneyPerMonth) -> MoneyPerHour {
   MoneyPerHour {
@@ -736,27 +736,27 @@ fn bit_width_count(b: BitWidth) -> std.nat.Nat {
   measure_count(b)
 }
 
-fn square_foot(count: Nat) -> SquareFoot {
+fn square_foot(count: std.nat.Nat) -> SquareFoot {
   Measure { count: count }
 }
 
-fn square_foot_count(a: SquareFoot) -> Nat {
+fn square_foot_count(a: SquareFoot) -> std.nat.Nat {
   measure_count(a)
 }
 
-fn hertz(count: Nat) -> Hertz {
+fn hertz(count: std.nat.Nat) -> Hertz {
   Measure { count: count }
 }
 
-fn megatransfers_per_second(count: Nat) -> MegatransfersPerSecond {
+fn megatransfers_per_second(count: std.nat.Nat) -> MegatransfersPerSecond {
   Measure { count: count }
 }
 
-fn megatransfers_per_second_count(r: MegatransfersPerSecond) -> Nat {
+fn megatransfers_per_second_count(r: MegatransfersPerSecond) -> std.nat.Nat {
   measure_count(r)
 }
 
-fn hertz_count(h: Hertz) -> Nat {
+fn hertz_count(h: Hertz) -> std.nat.Nat {
   measure_count(h)
 }
 
@@ -778,7 +778,7 @@ fn character_count_value(c: CharacterCount) -> std.nat.Nat {
   measure_count(c)
 }
 
-data token_count_note: String = "A count of LLM tokens is a COUNT of a unit on the same axis HardwareThreadCount and CharacterCount already instantiate, with a different thing being counted — so it is a fourth member of an existing family, not a new point in the type space. It lives HERE, beside its siblings, because Measure of Count at One over Nat takes only arguments std.measure already owns: an instantiation declared downstream would be a fourth name for a shape this module already names three times, which is the DESIGN section 3 fork. That is the distinction from extdeps.pricing.billing_units, whose MoneyRate aliases introduce their own phantom markers and are therefore genuinely new instantiations that CANNOT be written here without importing vendor vocabulary. Landed by review 48816 on gunbc#7851, which caught the alias minted in gunbc.econ.llm_attempt_receipt and correctly refused the billing_units citation offered for it. HONEST LIMIT, unchanged from the siblings: all four are structurally identical, so passing a TokenCount where a CharacterCount belongs is WRITABLE — the family buys reading clarity and one construction site each, never a wall."
+data token_count_note: String = "A count of LLM tokens is a COUNT of a unit on the same axis HardwareThreadCount and CharacterCount already instantiate, with a different thing being counted — so it is a fourth member of an existing family, not a new point in the type space. It lives HERE, beside its siblings, because Measure of Count at One over std.nat.Nat takes only arguments std.measure already owns: an instantiation declared downstream would be a fourth name for a shape this module already names three times, which is the DESIGN section 3 fork. That is the distinction from extdeps.pricing.billing_units, whose MoneyRate aliases introduce their own phantom markers and are therefore genuinely new instantiations that CANNOT be written here without importing vendor vocabulary. Landed by review 48816 on gunbc#7851, which caught the alias minted in gunbc.econ.llm_attempt_receipt and correctly refused the billing_units citation offered for it. HONEST LIMIT, unchanged from the siblings: all four are structurally identical, so passing a TokenCount where a CharacterCount belongs is WRITABLE — the family buys reading clarity and one construction site each, never a wall."
 
 fn token_count(count: std.nat.Nat) -> TokenCount {
   Measure { count: count }
@@ -927,7 +927,7 @@ fn percent_scale_hundred() -> Int {
   extdeps.units.dimensionless.percent_unity_hundred_count()
 }
 
-data percent_from_computed_int_frontier: String = "Percent = Measure<Dimensionless, One, Nat>; percent(n) accepts literal Nat only. Runtime eval refuses computed Int→Nat cast (runtime error: cannot cast Int to Nat) — so HSL projection returns bounded Int percent counts in extdeps.color.srgb.HslProjection; gunbc.design.material quiet_envelope_hsl_pct consumes Int at the (palette×register) binding. Dissolve when numeric-tower Int=Nat grounding extends to computed values (same lane as CrossRepresentationEquality guard removal)."
+data percent_from_computed_int_frontier: String = "Percent = Measure<Dimensionless, One, std.nat.Nat>; percent(n) accepts literal std.nat.Nat only. Runtime eval refuses computed Int→std.nat.Nat cast (runtime error: cannot cast Int to std.nat.Nat) — so HSL projection returns bounded Int percent counts in extdeps.color.srgb.HslProjection; gunbc.design.material quiet_envelope_hsl_pct consumes Int at the (palette×register) binding. Dissolve when numeric-tower Int=std.nat.Nat grounding extends to computed values (same lane as CrossRepresentationEquality guard removal)."
 
 type BasisPoint = Measure<Dimensionless, One, std.nat.Nat>
 
@@ -943,7 +943,7 @@ fn basis_point_unity_count() -> std.nat.Nat {
   extdeps.units.dimensionless.parts_per_ten_thousand_unity_count()
 }
 
-data basis_point_unit_note: String = "One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same Measure<Dimensionless, One, Nat> shape, different semantic axis for utilization ratios and filed margin envelopes."
+data basis_point_unit_note: String = "One basis point = 0.01 percentage points (1/10000 of unity). Distinct from Percent carrier — same Measure<Dimensionless, One, std.nat.Nat> shape, different semantic axis for utilization ratios and filed margin envelopes."
 
 type AmortizationMonths = Measure<Count, One, std.nat.Nat>
 
@@ -1001,7 +1001,7 @@ fn clock_basis_label(b: ClockBasis) -> std.types.NonEmptyStr {
 // squared/cubed relation has a modeled consumer: without them the carriers above would name an
 // authority nothing reaches.
 //
-// BOTH SIDES OF THE CONVERSION ARE TYPED. An earlier revision took a bare Nat, so the one boundary
+// BOTH SIDES OF THE CONVERSION ARE TYPED. An earlier revision took a bare std.nat.Nat, so the one boundary
 // where a unit is being CHANGED - the single place a wrong unit is most likely to enter - was the
 // one place the substrate accepted an undimensioned number.
 fn square_metres_to_square_millimetres(area: SquareMeter) -> SquareMillimeter {

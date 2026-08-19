@@ -109,7 +109,7 @@ fn on_pareto_front(verdicts: List<DominanceVerdict>) -> Bool {
 // standings back; the fold knows nothing about the domain.
 //
 // IDENTITY IS STRUCTURAL, NEVER A RENDERED LABEL (review ruling 2026-08-18): a candidate
-// and an axis are each named by a DeclarationRef - the domain declaration the row projects -
+// and an axis are each named by a std.decl_ref.DeclarationRef - the domain declaration the row projects -
 // and display_label is presentation only. Two entries sharing a label still compare; a
 // duplicate identity in the axes or the field REFUSES (a duplicate would otherwise be
 // silently skipped as self-comparison or first-one-wins, the sentinel-through-presence-test
@@ -126,12 +126,12 @@ fn on_pareto_front(verdicts: List<DominanceVerdict>) -> Bool {
 // observation and standings, never a second ordering.
 
 type SelectionAxis {
-  identity: DeclarationRef
+  identity: std.decl_ref.DeclarationRef
   goal: AxisGoal
 }
 
 type AxisReading {
-  axis: DeclarationRef
+  axis: std.decl_ref.DeclarationRef
   value_micro: Int
 }
 
@@ -141,40 +141,40 @@ type AxisReading {
 // instead of substituting a zero or an average, the same rule the node-build model already
 // enforces for missing rates.
 type ParetoEntry {
-  identity: DeclarationRef
-  display_label: NonEmptyStr
+  identity: std.decl_ref.DeclarationRef
+  display_label: std.types.NonEmptyStr
   readings: List<AxisReading>
-  missing_inputs: List<NonEmptyStr>
+  missing_inputs: List<std.types.NonEmptyStr>
 }
 
 type Domination {
-  candidate: DeclarationRef
-  winning_axes: List<DeclarationRef>
+  candidate: std.decl_ref.DeclarationRef
+  winning_axes: List<std.decl_ref.DeclarationRef>
 }
 
 type ParetoStanding
-  = ProvisionallyNonDominated { sensitivities: List<NonEmptyStr> }
+  = ProvisionallyNonDominated { sensitivities: List<std.types.NonEmptyStr> }
   | DominatedBy { dominators: List<Domination> }
-  | IncomparablePendingEvidence { missing: NonEmptyStr }
-  | SelectionRefused { cause: NonEmptyStr }
+  | IncomparablePendingEvidence { missing: std.types.NonEmptyStr }
+  | SelectionRefused { cause: std.types.NonEmptyStr }
 
 type ReadingLookup
   = ReadingFound { value_micro: Int }
-  | ReadingAbsent { absent_axis: DeclarationRef }
-  | ReadingDuplicated { duplicated_axis: DeclarationRef }
+  | ReadingAbsent { absent_axis: std.decl_ref.DeclarationRef }
+  | ReadingDuplicated { duplicated_axis: std.decl_ref.DeclarationRef }
 
 type PairStanding
-  = PairDominates { winning_axes: List<DeclarationRef> }
+  = PairDominates { winning_axes: List<std.decl_ref.DeclarationRef> }
   | PairNoDominance
-  | PairRefused { cause: NonEmptyStr }
+  | PairRefused { cause: std.types.NonEmptyStr }
 
-fn reading_matches(e: ParetoEntry, wanted: DeclarationRef) -> Int {
+fn reading_matches(e: ParetoEntry, wanted: std.decl_ref.DeclarationRef) -> Int {
   fold(e.readings, init: 0, f: fn(acc, r) {
     if declaration_ref_eq(a: r.axis, b: wanted) { acc + 1 } else { acc }
   })
 }
 
-fn reading_for(e: ParetoEntry, wanted: DeclarationRef) -> ReadingLookup {
+fn reading_for(e: ParetoEntry, wanted: std.decl_ref.DeclarationRef) -> ReadingLookup {
   let matches = reading_matches(e: e, wanted: wanted)
   if matches > 1 {
     ReadingDuplicated { duplicated_axis: wanted }
@@ -194,20 +194,20 @@ fn reading_for(e: ParetoEntry, wanted: DeclarationRef) -> ReadingLookup {
 // (or a duplicated one), a_worse_somewhere kills dominance, winning_axes names where a is
 // strictly better.
 type PairAccum {
-  refusal_causes: List<NonEmptyStr>
+  refusal_causes: List<std.types.NonEmptyStr>
   a_worse_somewhere: Bool
-  winning_axes: List<DeclarationRef>
+  winning_axes: List<std.decl_ref.DeclarationRef>
 }
 
-data no_names: List<NonEmptyStr> = []
-data no_axis_ids: List<DeclarationRef> = []
+data no_names: List<std.types.NonEmptyStr> = []
+data no_axis_ids: List<std.decl_ref.DeclarationRef> = []
 data no_dominators: List<Domination> = []
 
-fn one_name(name: NonEmptyStr) -> List<NonEmptyStr> { [name] }
+fn one_name(name: std.types.NonEmptyStr) -> List<std.types.NonEmptyStr> { [name] }
 
-fn one_axis_id(id: DeclarationRef) -> List<DeclarationRef> { [id] }
+fn one_axis_id(id: std.decl_ref.DeclarationRef) -> List<std.decl_ref.DeclarationRef> { [id] }
 
-fn accum_refusal(acc: PairAccum, axis: SelectionAxis, defect: NonEmptyStr) -> PairAccum {
+fn accum_refusal(acc: PairAccum, axis: SelectionAxis, defect: std.types.NonEmptyStr) -> PairAccum {
   PairAccum {
     refusal_causes: concat(acc.refusal_causes, one_name(name: join(["axis ", declaration_ref_display_key(ref: axis.identity), " ", defect], ""))),
     a_worse_somewhere: acc.a_worse_somewhere,
@@ -277,7 +277,7 @@ fn pair_dominates(a: ParetoEntry, b: ParetoEntry, axes: List<SelectionAxis>) -> 
 // Duplicate-identity refusals: an axis roster or a candidate field carrying one identity
 // twice REFUSES the whole selection, because the fold would otherwise resolve the collision
 // silently (first-reading-wins for axes, skipped-as-self for candidates).
-fn count_axis_identity(axes: List<SelectionAxis>, id: DeclarationRef) -> Int {
+fn count_axis_identity(axes: List<SelectionAxis>, id: std.decl_ref.DeclarationRef) -> Int {
   fold(axes, init: 0, f: fn(acc, ax) { if declaration_ref_eq(a: ax.identity, b: id) { acc + 1 } else { acc } })
 }
 
@@ -285,7 +285,7 @@ fn axes_have_duplicate_identity(axes: List<SelectionAxis>) -> Bool {
   fold(axes, init: false, f: fn(acc, ax) { acc || count_axis_identity(axes: axes, id: ax.identity) > 1 })
 }
 
-fn count_entry_identity(field: List<ParetoEntry>, id: DeclarationRef) -> Int {
+fn count_entry_identity(field: List<ParetoEntry>, id: std.decl_ref.DeclarationRef) -> Int {
   fold(field, init: 0, f: fn(acc, e) { if declaration_ref_eq(a: e.identity, b: id) { acc + 1 } else { acc } })
 }
 
@@ -302,7 +302,7 @@ fn challenger_applies(subject: ParetoEntry, other: ParetoEntry) -> Bool {
 // The field accumulator: every refusal and every dominator is collected, so the derived
 // standing cannot depend on which challenger the fold happened to visit first.
 type FieldAccum {
-  refusal_causes: List<NonEmptyStr>
+  refusal_causes: List<std.types.NonEmptyStr>
   dominators: List<Domination>
 }
 
@@ -324,7 +324,7 @@ fn field_step(subject: ParetoEntry, other: ParetoEntry, axes: List<SelectionAxis
   } else { acc }
 }
 
-fn standing_from_accum(folded: FieldAccum, sensitivities: List<NonEmptyStr>) -> ParetoStanding {
+fn standing_from_accum(folded: FieldAccum, sensitivities: List<std.types.NonEmptyStr>) -> ParetoStanding {
   if count(folded.refusal_causes) > 0 {
     IncomparablePendingEvidence { missing: join(folded.refusal_causes, " ; ") }
   } else {
@@ -336,7 +336,7 @@ fn standing_from_accum(folded: FieldAccum, sensitivities: List<NonEmptyStr>) -> 
   }
 }
 
-fn entry_standing(subject: ParetoEntry, field: List<ParetoEntry>, axes: List<SelectionAxis>, sensitivities: List<NonEmptyStr>) -> ParetoStanding {
+fn entry_standing(subject: ParetoEntry, field: List<ParetoEntry>, axes: List<SelectionAxis>, sensitivities: List<std.types.NonEmptyStr>) -> ParetoStanding {
   if axes_have_duplicate_identity(axes: axes) {
     SelectionRefused { cause: "two selection axes share one identity - a duplicate axis would resolve first-one-wins, so the selection refuses" }
   } else {
@@ -357,11 +357,11 @@ fn entry_standing(subject: ParetoEntry, field: List<ParetoEntry>, axes: List<Sel
   }
 }
 
-fn dominator_names(dominators: List<Domination>) -> List<NonEmptyStr> {
+fn dominator_names(dominators: List<Domination>) -> List<std.types.NonEmptyStr> {
   fold(dominators, init: no_names, f: fn(acc, d) { concat(acc, one_name(name: declaration_ref_display_key(ref: d.candidate))) })
 }
 
-fn pareto_label(s: ParetoStanding) -> NonEmptyStr {
+fn pareto_label(s: ParetoStanding) -> std.types.NonEmptyStr {
   match s {
     ProvisionallyNonDominated { sensitivities } => "on the frontier",
     DominatedBy { dominators } => join(["dominated by ", join(dominator_names(dominators: dominators), ", ")], ""),
