@@ -258,7 +258,7 @@ type GuardResult { guard: Node?, tokens: v1.compiler.parse.TokenStream, ctx: v1.
 type FromKeyResult { from_key: String?, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 
 type PostfixResult { expr: Node, changed: Bool, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
-type ParserParam { name: String, span: v1.std.core.SourceSpan }
+type ParserParam { name: String, span: SourceSpan }
 type LambdaCheckResult { is_lambda: Bool, params: List<v1.compiler.parse.ParserParam>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 type IdentCollectResult { success: Bool, params: List<v1.compiler.parse.ParserParam>, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }
 type RangeArgsResult { min_val: Int?, max_val: Int?, tokens: v1.compiler.parse.TokenStream, ctx: v1.compiler.parse.ParseContext, err: v1.std.core.ErrorNode? }

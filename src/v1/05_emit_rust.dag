@@ -540,10 +540,10 @@ fn rust_witness_type_arg_for_variant(variant_name: String, resolved_type: v1.std
   } else if variant_name == "Violates" {
     match rust_witness_type_arg_from_fn_return(emit_info: emit_info, shared_types: shared_types, source_indices: source_indices) {
       Present { value: arg } => Present { value: arg }
-      Absent => rust_witness_carrier_from_type_node(type_node: v1.compiler.infer_types.resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+      Absent => rust_witness_carrier_from_type_node(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
     }
   } else {
-    rust_witness_carrier_from_type_node(type_node: v1.compiler.infer_types.resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
+    rust_witness_carrier_from_type_node(type_node: resolved_type, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices)
   }
 }
 
@@ -553,7 +553,7 @@ fn rust_witness_variant_ctor_path(variant_name: String, ctor_name: String, effec
       if !rust_witness_parent_leaf(parent: parent) {
         concat(v1.std.core.qualified_last_segment(name: parent), "::", variant_name)
       } else {
-        match rust_witness_type_arg_for_variant(variant_name: variant_name, resolved_type: v1.compiler.infer_types.resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
+        match rust_witness_type_arg_for_variant(variant_name: variant_name, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: source_indices) {
           Present { value: arg } => concat("Witness::<", arg, ">::", variant_name)
           Absent => concat("compile_error!(\"witness carrier type arg unresolved for variant ", variant_name, "\")")
         }
@@ -6733,7 +6733,7 @@ fn effective_variant_parent(name: String, binding_kind: v1.std.core.VarBindingKi
   match cached {
     Present { value: parent } => Present { value: parent }
     Absent =>
-      match v1.compiler.infer_types.resolved_type {
+      match resolved_type {
         Present { value: v1.std.core.Resolved { node: rt } } =>
           effective_variant_parent_from_resolved(leaf_name: leaf_name, rt: rt, binding_kind: binding_kind, emit_info: emit_info, source_indices: source_indices)
         _ => variant_parent_from_binding_kind(binding_kind: binding_kind)
@@ -6777,7 +6777,7 @@ fn emit_value_ref_ident(name: String, registry: Map<String, v1.compiler.infer_it
 data none_undetermined_carrier_refuse_note: String = "Fail-open closed (sharp-bee-290 msg_6317aebe / DESIGN §5): when none/None has no resolved variant_parent, the emitter previously emitted Rust null as a fabricated plausible default. variant_parent == none conflated (a) bare Optional none with a determined CardOptional carrier and (b) undetermined carrier. Split: CardOptional → None (type-directed); any other determined non-optional carrier → typed refuse; undetermined (Absent / non-Resolved inferred) → typed refuse. Never null as a default. The refuse surfaces as emit_error_expr (UNRESOLVED_… diagnostic text in emitted Rust) so the deficit is countable; if the refusal spike is corpus-red-large, fold a named counted interim INSIDE this single decision with an explicit dissolution trigger — never restore an escaping Optional default at callers."
 
 fn emit_none_keyword_for_resolved_type(resolved_type: v1.std.core.InferredNode?) -> String {
-  match v1.compiler.infer_types.resolved_type {
+  match resolved_type {
     Present { value: v1.std.core.Resolved { node: rt } } =>
       match rt.return_cardinality {
         v1.std.core.CardOptional => v1.compiler.emit.emit_keyword(key: "null", target: v1.compiler.artifact.Rust)
@@ -6790,8 +6790,8 @@ fn emit_none_keyword_for_resolved_type(resolved_type: v1.std.core.InferredNode?)
 fn emit_var_ref(name: String, binding_kind: v1.std.core.VarBindingKind?, resolved_type: v1.std.core.InferredNode?, shared_types: Set<String>, registry: Map<String, v1.compiler.infer_items.ItemInfo>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>, module_name: String) -> String {
   let resolved_name = value_ref_normalize_self_module(name: name, module_name: module_name)
   let leaf_name = value_ref_qualified_leaf(name: resolved_name)
-  let variant_parent = effective_variant_parent(name: resolved_name, binding_kind: binding_kind, resolved_type: v1.compiler.infer_types.resolved_type, emit_info: emit_info, source_indices: source_indices)
-  if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_none_keyword_for_resolved_type(resolved_type: v1.compiler.infer_types.resolved_type) }
+  let variant_parent = effective_variant_parent(name: resolved_name, binding_kind: binding_kind, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
+  if (leaf_name == "none" || leaf_name == "None") && variant_parent == none { emit_none_keyword_for_resolved_type(resolved_type: resolved_type) }
   else if leaf_name == "true" || leaf_name == "false" { v1.compiler.emit.emit_keyword(key: leaf_name, target: v1.compiler.artifact.Rust) }
   else {
 
@@ -6827,7 +6827,7 @@ fn emit_var_ref(name: String, binding_kind: v1.std.core.VarBindingKind?, resolve
                 ident
               } else if moves_by_value {
                 ident
-              } else { match v1.compiler.infer_types.resolved_type {
+              } else { match resolved_type {
                 Present { value: _ } => v1.compiler.emit_core_support.apply_type_template1(template: sharing.clone_value, arg0: ident)
                 _ => ident
               } }
@@ -6838,7 +6838,7 @@ fn emit_var_ref(name: String, binding_kind: v1.std.core.VarBindingKind?, resolve
             let ident = emit_value_ref_ident(name: resolved_name, registry: registry, emit_info: emit_info)
             let ident_str = if moves_by_value {
               ident
-            } else { match v1.compiler.infer_types.resolved_type {
+            } else { match resolved_type {
               Present { value: _ } => v1.compiler.emit_core_support.apply_type_template1(template: sharing.clone_value, arg0: ident)
               _ => ident
             } }
@@ -7336,8 +7336,8 @@ fn is_enum_type_name(type_name: String, type_summaries: Map<String, v1.compiler.
 }
 
 fn contextual_variant_parent_from_type_name(variant_name: String, resolved_type: v1.std.core.Node, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
-  let rt_name = v1.std.core.authored_name_at(source_indices: source_indices, node: v1.compiler.infer_types.resolved_type)
-  if v1.compiler.infer_types.resolved_type.ident_span != none && rt_name != variant_name && v1.compiler.infer_emit_info.variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: rt_name) {
+  let rt_name = v1.std.core.authored_name_at(source_indices: source_indices, node: resolved_type)
+  if resolved_type.ident_span != none && rt_name != variant_name && v1.compiler.infer_emit_info.variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: rt_name) {
     Present { value: rt_name }
   } else {
     none
@@ -7345,10 +7345,10 @@ fn contextual_variant_parent_from_type_name(variant_name: String, resolved_type:
 }
 
 fn contextual_variant_parent_absent(variant_name: String, resolved_type: v1.std.core.Node, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
-  match v1.compiler.infer_types.resolved_type.return_cardinality {
+  match resolved_type.return_cardinality {
     v1.std.core.CardOptional =>
-      if is_optional_variant_name(name: variant_name) { Present { value: "Optional" } } else { contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: v1.compiler.infer_types.resolved_type, emit_info: emit_info, source_indices: source_indices) }
-    _ => contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: v1.compiler.infer_types.resolved_type, emit_info: emit_info, source_indices: source_indices)
+      if is_optional_variant_name(name: variant_name) { Present { value: "Optional" } } else { contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices) }
+    _ => contextual_variant_parent_from_type_name(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
   }
 }
 
@@ -7358,7 +7358,7 @@ fn contextual_variant_parent(variant_name: String, parent_enum: String?, resolve
       if v1.compiler.infer_emit_info.variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_name, enum_name: explicit_parent) {
         Present { value: explicit_parent }
       } else { none }
-    Absent => contextual_variant_parent_absent(variant_name: variant_name, resolved_type: v1.compiler.infer_types.resolved_type, emit_info: emit_info, source_indices: source_indices)
+    Absent => contextual_variant_parent_absent(variant_name: variant_name, resolved_type: resolved_type, emit_info: emit_info, source_indices: source_indices)
   }
 }
 
@@ -7734,7 +7734,7 @@ fn lambda_scope_from_children(scope: v1.compiler.infer.InferScope, params: List<
     let param_type = match param_nodes |> skip(idx) |> first {
       Present { value: pn } =>
         match pn.inferred {
-          Present { value: v1.std.core.Resolved { node: v1.compiler.infer_types.resolved_type } } => v1.compiler.infer_types.resolved_type
+          Present { value: v1.std.core.Resolved { node: resolved_type } } => resolved_type
           _ => type_variable_node(id: "lambda_param")
         }
       Absent => type_variable_node(id: "lambda_param")
@@ -8832,12 +8832,12 @@ fn find_unique_struct_name_by_fields(field_names: List<String>, type_summaries: 
 }
 
 fn emit_typed_record_lit(type_name: String?, fields: List<v1.std.core.Node>, parent_enum: String?, resolved_type: v1.std.core.Node, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
-  let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: v1.compiler.infer_types.resolved_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
+  let struct_name = explicit_record_struct_name(type_name: type_name, inferred_node: resolved_type, shared_types: shared_types, source_indices: scope.type_env.source_indices)
   let qualified_name = match struct_name {
     Present { value: sn } => Present { value: sn }
     Absent =>
-      let rt_name = v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: v1.compiler.infer_types.resolved_type)
-      if v1.compiler.infer_types.resolved_type.ident_span != none && map_contains_key(emit_info.type_summaries, rt_name) {
+      let rt_name = v1.std.core.authored_name_at(source_indices: scope.type_env.source_indices, node: resolved_type)
+      if resolved_type.ident_span != none && map_contains_key(emit_info.type_summaries, rt_name) {
         Present { value: rt_name }
       } else { none }
   }
@@ -8855,8 +8855,8 @@ fn emit_typed_record_lit(type_name: String?, fields: List<v1.std.core.Node>, par
   }
   match bare_qualified_name {
     Absent =>
-      let is_product = v1.compiler.infer_types.is_product_type(n: v1.compiler.infer_types.resolved_type)
-      if is_product && v1.compiler.infer_types.resolved_type.ident_span == none {
+      let is_product = v1.compiler.infer_types.is_product_type(n: resolved_type)
+      if is_product && resolved_type.ident_span == none {
         if fields |> count == 1 {
           match fields |> first {
             Present { value: f } =>
@@ -8914,7 +8914,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<v1.std.core.Node>, par
       let tn_is_known_struct = map_contains_key(emit_info.type_summaries, tn)
       let ctor_name = if tn_is_known_struct { tn }
         else {
-          let resolved_struct = v1.compiler.infer_resolve.resolve_node(n: v1.compiler.infer_types.resolved_type, env: scope.type_env, module_name: scope.module_name).resolved
+          let resolved_struct = v1.compiler.infer_resolve.resolve_node(n: resolved_type, env: scope.type_env, module_name: scope.module_name).resolved
           if (resolved_struct.connective == v1.std.core.Conj) {
             let resolved_field_names = resolved_struct.children |> map(c => v1.std.core.authored_name_at(source_indices: si, node: c))
             match find_unique_struct_name_by_fields(field_names: resolved_field_names, type_summaries: emit_info.type_summaries) {
@@ -8924,14 +8924,14 @@ fn emit_typed_record_lit(type_name: String?, fields: List<v1.std.core.Node>, par
           } else { tn }
         }
       let ctor_alias_resolved = ctor_name != tn
-      let context_lookup = contextual_variant_parent(variant_name: variant_surface_name, parent_enum: bare_parent_enum, resolved_type: v1.compiler.infer_types.resolved_type, emit_info: emit_info, source_indices: si)
+      let context_lookup = contextual_variant_parent(variant_name: variant_surface_name, parent_enum: bare_parent_enum, resolved_type: resolved_type, emit_info: emit_info, source_indices: si)
       let effective_parent = match context_lookup {
         Present { value: context_parent } => Present { value: context_parent }
         Absent =>
-          let rt_is_type_var = if v1.compiler.infer_types.resolved_type.inferred != none { is_type_variable(inferred: v1.compiler.infer_types.resolved_type.inferred.value) } else { false }
-          let rt_name = v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: si, node: v1.compiler.infer_types.resolved_type))
+          let rt_is_type_var = if resolved_type.inferred != none { is_type_variable(inferred: resolved_type.inferred.value) } else { false }
+          let rt_name = v1.std.core.qualified_last_segment(name: v1.std.core.authored_name_at(source_indices: si, node: resolved_type))
 
-          if v1.compiler.infer_types.resolved_type.ident_span != none && rt_name != variant_surface_name && !rt_is_type_var && rt_name != "Error"
+          if resolved_type.ident_span != none && rt_name != variant_surface_name && !rt_is_type_var && rt_name != "Error"
             && v1.compiler.infer_emit_info.variant_belongs_to_enum(type_summaries: emit_info.type_summaries, variant_name: variant_surface_name, enum_name: rt_name) {
             Present { value: rt_name }
           } else {
@@ -8951,13 +8951,13 @@ fn emit_typed_record_lit(type_name: String?, fields: List<v1.std.core.Node>, par
         }
         return concat("{ let mut __cons_v = (*", tail_val, ").clone(); __cons_v.insert(0, ", head_val, "); __cons_v }")
       }
-      let optional_variant = is_optional_variant_name(name: variant_surface_name) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || v1.compiler.infer_types.resolved_type.return_cardinality == v1.std.core.CardOptional)
+      let optional_variant = is_optional_variant_name(name: variant_surface_name) && (is_optional_parent(parent_enum: bare_parent_enum) || is_optional_parent(parent_enum: effective_parent) || resolved_type.return_cardinality == v1.std.core.CardOptional)
       let rust_tn = if optional_variant {
         if is_some_like_variant_name(name: variant_surface_name) { "Some" } else { "None" }
       } else { tn }
       let display_tn = if optional_variant { rust_tn }
         else {
-          rust_witness_variant_ctor_path(variant_name: rust_tn, ctor_name: ctor_name, effective_parent: effective_parent, resolved_type: v1.compiler.infer_types.resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: si)
+          rust_witness_variant_ctor_path(variant_name: rust_tn, ctor_name: ctor_name, effective_parent: effective_parent, resolved_type: resolved_type, fields: fields, shared_types: shared_types, emit_info: emit_info, source_indices: si)
         }
       if optional_variant && is_some_like_variant_name(name: variant_surface_name) && fields |> count == 1 {
         match fields |> first {
@@ -8967,7 +8967,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<v1.std.core.Node>, par
           Absent => concat(display_tn, " {}")
         }
       } else if fields |> count == 0 {
-        let host_freemonoid_carrier = v1.std.core.authored_name_at(source_indices: si, node: v1.compiler.infer_types.resolved_type)
+        let host_freemonoid_carrier = v1.std.core.authored_name_at(source_indices: si, node: resolved_type)
         match rust_seed_host_freemonoid_empty(carrier_name: host_freemonoid_carrier) {
           Present { value: grounded } => grounded
           Absent => concat(display_tn, " {}")
@@ -8985,7 +8985,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<v1.std.core.Node>, par
           match fields |> first {
             Present { value: f } =>
               let f_value = v1.std.core.field_init_node_value(n: f)
-              let val_str = emit_field_value_with_context(field_value: f_value, struct_node: v1.compiler.infer_types.resolved_type, outer_type_name: bare_qualified_name, field_name: "0", registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+              let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: bare_qualified_name, field_name: "0", registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
               let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: "0")
                 && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
               let field_val = if needs_wrap {
@@ -8998,7 +8998,7 @@ fn emit_typed_record_lit(type_name: String?, fields: List<v1.std.core.Node>, par
         let field_strs = fields |> map(f =>
           let f_name = v1.std.core.field_init_node_name_at(n: f, source_indices: scope.type_env.source_indices)
           let f_value = v1.std.core.field_init_node_value(n: f)
-          let val_str = emit_field_value_with_context(field_value: f_value, struct_node: v1.compiler.infer_types.resolved_type, outer_type_name: bare_qualified_name, field_name: f_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
+          let val_str = emit_field_value_with_context(field_value: f_value, struct_node: resolved_type, outer_type_name: bare_qualified_name, field_name: f_name, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
           let needs_wrap = is_optional_struct_field(emit_info: emit_info, struct_name: variant_summary_name, field_name: f_name)
             && is_already_optional(texpr: f_value, emit_info: emit_info, scope: scope) == false
           let field_val = if needs_wrap {
