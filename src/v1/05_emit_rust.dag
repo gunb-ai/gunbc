@@ -5640,7 +5640,7 @@ fn emit_fn_def(name: String, params: List<v1.std.core.Node>, inferred: v1.std.co
             emit_info: emit_info,
             source_indices: si
           )
-          v1_rc_match_scrutinee_clone_bound_param_names(
+          v1.compiler.trait_bound_witness.v1_rc_match_scrutinee_clone_bound_param_names(
             generic_param_names: generic_param_names,
             scrutinee_type_arg_names: rt.children |> map(c => authored_name_at(source_indices: si, node: c)),
             rc_match_needs_deref: rc_match.needs_deref
@@ -5649,7 +5649,7 @@ fn emit_fn_def(name: String, params: List<v1.std.core.Node>, inferred: v1.std.co
       }
     _ => []
   }
-  let derived_clone_param_names_with_rc_match = v1_union_clone_param_names(
+  let derived_clone_param_names_with_rc_match = v1.compiler.trait_bound_witness.v1_union_clone_param_names(
     base: derived_clone_param_names,
     extra: rc_match_clone_param_names
   )
@@ -7231,7 +7231,7 @@ fn emit_rust_expr_string_interp(expr: v1.std.core.Node, registry: Map<String, v1
   match expr.expr_data {
     v1.std.core.ExprStringInterp =>
       let ps = expr.children |> map(child => match child.expr_data {
-        v1.std.core.ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
+        ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
         _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
       })
       emit_typed_string_interp(parts: ps, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info)
@@ -9125,7 +9125,7 @@ fn is_string_typed_expr(e: v1.std.core.Node, source_indices: Map<String, v1.std.
 }
 
 fn emit_typed_string_interp(parts: List<v1.std.core.StringPart>, registry: Map<String, v1.compiler.infer_items.ItemInfo>, scope: v1.compiler.infer.InferScope, depth: Int, shared_types: Set<String>, emit_info: v1.compiler.infer_emit_info.EmitGraphInfo) -> String {
-  let has_interpolations = parts |> any(p => match p { v1.std.core.Interpolation { expr: _ } => true  _ => false })
+  let has_interpolations = parts |> any(p => match p { Interpolation { expr: _ } => true  _ => false })
   let fmt_parts = parts |> map(p => typed_interp_format_part(part: p, registry: registry, scope: scope, depth: depth, shared_types: shared_types, emit_info: emit_info, has_interpolations: has_interpolations))
   let fmt_str = fmt_parts |> map(p => p.format_segment) |> join(separator: "")
   let args = fmt_parts
@@ -9485,7 +9485,7 @@ fn emit_service_new_method(name: String, fallback_transport: v1.std.core.Node, o
   else { fs }
   let from_config = match v1.std.core.service_config_endpoint(n: service_item, source_indices: source_indices) {
     Present { value: ep } => match ep.expr_data {
-      v1.std.core.ExprLiteral { value: LitStr { value: s } } => s
+      ExprLiteral { value: LitStr { value: s } } => s
       _ => ""
     }
     Absent => ""
@@ -9496,7 +9496,7 @@ fn emit_service_new_method(name: String, fallback_transport: v1.std.core.Node, o
     let from_fallback = if fallback_is_rest {
       match v1.std.core.transport_base_url(t: fallback_transport, source_indices: source_indices) {
         Present { value: bu } => match bu.expr_data {
-          v1.std.core.ExprLiteral { value: LitStr { value: s } } => s
+          ExprLiteral { value: LitStr { value: s } } => s
           _ => ""
         }
         Absent => ""
@@ -9530,7 +9530,7 @@ fn emit_auth_source_ctor(source_expr: v1.std.core.Node, source_indices: Map<Stri
       if variant == "EnvVar" {
         match source_expr.children |> first {
           Present { value: fi } => match v1.std.core.field_init_node_value(n: fi).expr_data {
-            v1.std.core.ExprLiteral { value: LitStr { value: env_name } } =>
+            ExprLiteral { value: LitStr { value: env_name } } =>
               concat("        auth_token: std::env::var(\"", env_name, "\").expect(\"missing credential: ", env_name, "\"),\n")
             _ => "        auth_token: compile_error!(\"EnvVar.name must be a string literal\"),\n"
           }
@@ -9748,11 +9748,11 @@ fn emit_rest_http_method(transport: v1.std.core.Node, source_indices: Map<String
 fn emit_rest_url_line(transport: v1.std.core.Node, op_name: String, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   match v1.std.core.transport_path_template(t: transport, source_indices: source_indices) {
     Present { value: path_node } => match path_node.expr_data {
-      v1.std.core.ExprLiteral { value: LitStr { value: path_str } } =>
+      ExprLiteral { value: LitStr { value: path_str } } =>
         concat("let url = format!(\"{}", v1.compiler.emit_core_support.escape_string_literal_body(s: path_str), "\", self.base_url);")
       v1.std.core.ExprStringInterp => {
         let parts = path_node.children |> map(child => match child.expr_data {
-          v1.std.core.ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
+          ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
           _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
         })
         let fmt_segments = parts |> map(p => match p {
@@ -9806,7 +9806,7 @@ fn emit_rest_auth_line(transport: v1.std.core.Node, service_item: v1.std.core.No
         ExprCall { call_semantics: _, descent_evidence: _ } =>
           let header_name = match auth.children |> first {
             Present { value: arg_node } => match v1.std.core.arg_value(n: arg_node).expr_data {
-              v1.std.core.ExprLiteral { value: LitStr { value: s } } => s
+              ExprLiteral { value: LitStr { value: s } } => s
               _ => v1.compiler.emit.emit_simple_expr(expr: v1.std.core.arg_value(n: arg_node), target: v1.compiler.artifact.Rust, source_indices: source_indices)
             }
             Absent => "x-api-key"
@@ -9893,7 +9893,7 @@ fn has_response_prefix(name: String) -> Bool {
 fn child_from_key(ch: v1.std.core.Node, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String? {
   match ch.properties |> filter(p => v1.std.core.field_init_node_name_at(n: p, source_indices: source_indices) == "from_key") |> first {
     Present { value: prop } => match v1.std.core.field_init_node_value(n: prop).expr_data {
-      v1.std.core.ExprLiteral { value: LitStr { value: s } } => Present { value: s }
+      ExprLiteral { value: LitStr { value: s } } => Present { value: s }
       _ => none
     }
     Absent => none
@@ -10236,11 +10236,11 @@ fn emit_shell_call(op_name: String, transport: v1.std.core.Node, registry: Map<S
 
 fn emit_shell_argv_element(arg: v1.std.core.Node, optional_params: Map<String, Bool>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> String {
   match arg.expr_data {
-    v1.std.core.ExprLiteral { value: LitStr { value: s } } =>
+    ExprLiteral { value: LitStr { value: s } } =>
       concat("\"", v1.compiler.emit_core_support.escape_string_literal_body(s: s), "\"")
     v1.std.core.ExprStringInterp => {
       let parts = arg.children |> map(child => match child.expr_data {
-        v1.std.core.ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
+        ExprLiteral { value: LitStr { value: text } } => v1.std.core.Text { value: text }
         _ => v1.std.core.Interpolation { expr: v1.std.core.arg_value(n: child) }
       })
       let fmt_segments = parts |> map(p => match p {

@@ -160,7 +160,7 @@ type AtomLexemeCensus {
   self_lexeme: SkeletonMarshalAtomLexeme
 }
 
-fn skeleton_edge_is_construction_spelling(e: Edge) -> Bool {
+fn skeleton_edge_is_construction_spelling(e: v2.std.node.Edge) -> Bool {
   match e.label {
     Named { name: nm } => nm == ^record_construction_spelling
     Positional => false
@@ -170,7 +170,7 @@ fn skeleton_edge_is_construction_spelling(e: Edge) -> Bool {
 fn skeleton_atom_lexeme_census_fold(n: Node) -> AtomLexemeCensus {
   fold_node(
     n: n,
-    algebra: NodeFold {
+    algebra: v2.std.node.NodeFold {
       init: fn(n0) {
         match n0.kind {
           TypeNode { connective: Atom { identity: s } } =>
@@ -195,7 +195,7 @@ fn skeleton_atom_lexeme_census_fold(n: Node) -> AtomLexemeCensus {
           construction_spelling_lexemes: concat(
             acc.construction_spelling_lexemes,
             if skeleton_edge_is_construction_spelling(e: e) && child.self_is_atom {
-              Cons { head: child.self_lexeme, tail: child.construction_spelling_lexemes }
+              std.algebra.Cons { head: child.self_lexeme, tail: child.construction_spelling_lexemes }
             } else {
               child.construction_spelling_lexemes
             }
@@ -215,8 +215,8 @@ fn node_skeleton_authored_non_construction_atom_lexemes(node: Node) -> List<Skel
   })
 }
 
-data authored_non_construction_atom_lexeme_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: same closed spelling authority as skeleton_marshal_atom_lexeme_dissolve_on. Also widens if a future decl_facts consumer's subject body carries ExprCall/param-reference/nullary-variant-value atoms alongside string literals — this derivation stays over-inclusive rather than under-inclusive for that residue by design (see the function's own note), so a consumer needing an exact string-literal-only set still has an open obligation rather than a false guarantee.")
+data authored_non_construction_atom_lexeme_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "Dissolve-on: same closed spelling authority as skeleton_marshal_atom_lexeme_dissolve_on. Also widens if a future decl_facts consumer's subject body carries ExprCall/param-reference/nullary-variant-value atoms alongside string literals — this derivation stays over-inclusive rather than under-inclusive for that residue by design (see the function's own note), so a consumer needing an exact string-literal-only set still has an open obligation rather than a false guarantee.")
 
-data outer_record_constructor_lexeme_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: a closed enum or branded digest for each outer record-constructor spelling atom, grounded on extdeps/languages/dag ingest productions, so String aliases at the skeleton marshal boundary become unwritable.")
+data outer_record_constructor_lexeme_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "Dissolve-on: a closed enum or branded digest for each outer record-constructor spelling atom, grounded on extdeps/languages/dag ingest productions, so String aliases at the skeleton marshal boundary become unwritable.")
 
 data skeleton_marshal_atom_lexeme_dissolve_on: std.dissolution.DissolutionCondition = unbound_dissolution(description: "Dissolve-on: same closed spelling authority as outer_record_constructor_lexeme_dissolve_on — skeleton marshal atoms share one cited production roster rather than parallel String nicknames.")

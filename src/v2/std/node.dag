@@ -176,7 +176,7 @@ fn strip_provenance_fold_init(n: v2.std.node.Node) -> v2.std.node.Node {
 fn strip_provenance_fold_step(acc: v2.std.node.Node, edge: v2.std.node.Edge, child: v2.std.node.Node) -> v2.std.node.Node {
   node_rebuild(
     n: acc,
-    children: concat(acc.children, [Edge { label: edge.label, target: child }])
+    children: concat(acc.children, [v2.std.node.Edge { label: edge.label, target: child }])
   )
 }
 
@@ -1374,7 +1374,7 @@ fn node_offset_atom(sym: v2.std.node.Symbol) -> v2.std.node.Node {
 }
 
 fn node_offset_named_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2.std.node.Edge {
-  Edge { label: Named { name: name }, target: target }
+  v2.std.node.Edge { label: Named { name: name }, target: target }
 }
 
 fn node_offset_conj(children: List<v2.std.node.Edge>) -> v2.std.node.Node {
