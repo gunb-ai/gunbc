@@ -2,7 +2,7 @@ module v2.workflow.bash_command_fold_serialize
 
 
 // Emit realization for bash_command_fold grammar rows lives in workflow (serialize_target ∘ translate over pre-built TargetModel rows). Grammar productions and target-model witnesses stay in v2.extdeps.languages.bash_command_fold per layer DAG (extdeps must not import compiler).
-fn bash_fold_serialize_emit_from_node(emitted: Node, target: v2.std.compilers.target_model.TargetModel) -> Outcome<String> {
+fn bash_fold_serialize_emit_from_node(emitted: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<String> {
   match target_serialize_source_from_model(target: target, emitted: emitted) {
     Accepted { value: source, diagnostics: d } =>
       match d {
@@ -28,7 +28,7 @@ fn bash_fold_serialize_leaf_node(
   emitted: Node,
   production_binding: v2.std.node.Symbol,
   rule_name: v2.std.node.Symbol
-) -> Outcome<String> {
+) -> v2.std.diagnostic.Outcome<String> {
   match bash_fold_target_model_for_emitted_witness(
     emitted: emitted,
     source_literal: ^bash_fold_dynamic_source_literal,
@@ -46,7 +46,7 @@ fn bash_fold_serialize_stmts_semi_from(
   acc: String,
   first: Bool,
   rest: List<Node>
-) -> Outcome<String> {
+) -> v2.std.diagnostic.Outcome<String> {
   match list_head(xs: rest) {
     HeadAbsent => v2.std.diagnostic.Accepted { value: acc, diagnostics: v2.std.diagnostic.None }
     HeadFound { value: s } =>
@@ -64,7 +64,7 @@ fn bash_fold_serialize_stmts_semi_from(
   }
 }
 
-fn bash_fold_serialize_stmts_semi(stmts: List<Node>) -> Outcome<String> {
+fn bash_fold_serialize_stmts_semi(stmts: List<Node>) -> v2.std.diagnostic.Outcome<String> {
   bash_fold_serialize_stmts_semi_from(acc: "", first: true, rest: stmts)
 }
 
@@ -80,11 +80,11 @@ fn bash_fold_flatten_stmt_list(list_node: Node) -> List<Node> {
   }
 }
 
-fn bash_fold_serialize_stmt_list_semi(list_node: Node) -> Outcome<String> {
+fn bash_fold_serialize_stmt_list_semi(list_node: Node) -> v2.std.diagnostic.Outcome<String> {
   bash_fold_serialize_stmts_semi(stmts: bash_fold_flatten_stmt_list(list_node: list_node))
 }
 
-fn bash_fold_serialize_with_redir_node(stmt: Node) -> Outcome<String> {
+fn bash_fold_serialize_with_redir_node(stmt: Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
     Present { value: inner } =>
       match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
@@ -148,7 +148,7 @@ fn bash_fold_serialize_with_redir_node(stmt: Node) -> Outcome<String> {
   }
 }
 
-fn bash_fold_serialize_word_node(word: Node) -> Outcome<String> {
+fn bash_fold_serialize_word_node(word: Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: word), index: 0) {
     Present { value: kind_node } =>
       match kind_node.kind {
@@ -206,7 +206,7 @@ fn bash_fold_serialize_word_list_spelling_from(
   acc: String,
   first: Bool,
   rest: List<Node>
-) -> Outcome<String> {
+) -> v2.std.diagnostic.Outcome<String> {
   match list_head(xs: rest) {
     HeadAbsent => v2.std.diagnostic.Accepted { value: acc, diagnostics: v2.std.diagnostic.None }
     HeadFound { value: w } =>
@@ -224,7 +224,7 @@ fn bash_fold_serialize_word_list_spelling_from(
   }
 }
 
-fn bash_fold_serialize_word_list_spelling(parts: Node) -> Outcome<String> {
+fn bash_fold_serialize_word_list_spelling(parts: Node) -> v2.std.diagnostic.Outcome<String> {
   bash_fold_serialize_word_list_spelling_from(
     acc: "",
     first: true,
@@ -232,7 +232,7 @@ fn bash_fold_serialize_word_list_spelling(parts: Node) -> Outcome<String> {
   )
 }
 
-fn bash_fold_serialize_command_node(stmt: Node) -> Outcome<String> {
+fn bash_fold_serialize_command_node(stmt: Node) -> v2.std.diagnostic.Outcome<String> {
   bash_fold_serialize_leaf_node(
     emitted: stmt,
     production_binding: ^bash_production_fold_command,
@@ -240,7 +240,7 @@ fn bash_fold_serialize_command_node(stmt: Node) -> Outcome<String> {
   )
 }
 
-fn bash_fold_serialize_assign_node(stmt: Node) -> Outcome<String> {
+fn bash_fold_serialize_assign_node(stmt: Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
     Present { value: name_node } =>
       match name_node.kind {
@@ -267,7 +267,7 @@ fn bash_fold_serialize_assign_node(stmt: Node) -> Outcome<String> {
   }
 }
 
-fn bash_fold_serialize_exit_node(stmt: Node) -> Outcome<String> {
+fn bash_fold_serialize_exit_node(stmt: Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
     Present { value: code_node } =>
       match code_node.kind {
@@ -282,7 +282,7 @@ fn bash_fold_serialize_exit_node(stmt: Node) -> Outcome<String> {
   }
 }
 
-fn bash_fold_serialize_and_then_node(stmt: Node) -> Outcome<String> {
+fn bash_fold_serialize_and_then_node(stmt: Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
     Present { value: left } =>
       match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
@@ -311,7 +311,7 @@ fn bash_fold_serialize_and_then_node(stmt: Node) -> Outcome<String> {
   }
 }
 
-fn bash_fold_serialize_or_else_node(stmt: Node) -> Outcome<String> {
+fn bash_fold_serialize_or_else_node(stmt: Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
     Present { value: left } =>
       match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
@@ -340,7 +340,7 @@ fn bash_fold_serialize_or_else_node(stmt: Node) -> Outcome<String> {
   }
 }
 
-fn bash_fold_serialize_pipe_node(stmt: Node) -> Outcome<String> {
+fn bash_fold_serialize_pipe_node(stmt: Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
     Present { value: left } =>
       match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
@@ -368,7 +368,7 @@ fn bash_fold_serialize_pipe_node(stmt: Node) -> Outcome<String> {
   }
 }
 
-fn bash_fold_serialize_if_node(stmt: Node) -> Outcome<String> {
+fn bash_fold_serialize_if_node(stmt: Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
     Present { value: cond } =>
       match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 2) {
@@ -401,7 +401,7 @@ fn bash_fold_serialize_if_node(stmt: Node) -> Outcome<String> {
   }
 }
 
-fn bash_fold_serialize_subshell_node(stmt: Node) -> Outcome<String> {
+fn bash_fold_serialize_subshell_node(stmt: Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
     Present { value: body } =>
       bind_outcome(
@@ -417,7 +417,7 @@ fn bash_fold_serialize_subshell_node(stmt: Node) -> Outcome<String> {
   }
 }
 
-fn bash_fold_serialize_negation_node(stmt: Node) -> Outcome<String> {
+fn bash_fold_serialize_negation_node(stmt: Node) -> v2.std.diagnostic.Outcome<String> {
   match list_at_optional(xs: node_positional_child_targets(node: stmt), index: 1) {
     Present { value: inner } =>
       bind_outcome(
@@ -433,7 +433,7 @@ fn bash_fold_serialize_negation_node(stmt: Node) -> Outcome<String> {
   }
 }
 
-fn bash_fold_serialize_node(stmt: Node) -> Outcome<String> {
+fn bash_fold_serialize_node(stmt: Node) -> v2.std.diagnostic.Outcome<String> {
   let binding = bash_fold_built_stmt_production_binding(stmt: stmt)
   if binding == ^bash_production_fold_command {
     bash_fold_serialize_command_node(stmt: stmt)
@@ -472,7 +472,7 @@ fn bash_fold_serialize_node(stmt: Node) -> Outcome<String> {
   }
 }
 
-fn bash_fold_serialize_body(stmts: List<Node>) -> Outcome<String> {
+fn bash_fold_serialize_body(stmts: List<Node>) -> v2.std.diagnostic.Outcome<String> {
   match list_head(xs: stmts) {
     HeadAbsent => v2.std.diagnostic.Accepted { value: "", diagnostics: v2.std.diagnostic.None }
     HeadFound { value: s } =>
@@ -494,7 +494,7 @@ fn bash_fold_serialize_body(stmts: List<Node>) -> Outcome<String> {
   }
 }
 
-fn bash_fold_serialize_program(stmts: List<Node>, set_e: Bool) -> Outcome<String> {
+fn bash_fold_serialize_program(stmts: List<Node>, set_e: Bool) -> v2.std.diagnostic.Outcome<String> {
   bind_outcome(
     o: bash_fold_serialize_body(stmts: stmts),
     f: fn(body) {

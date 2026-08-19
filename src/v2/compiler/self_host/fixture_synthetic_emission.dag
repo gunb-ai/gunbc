@@ -139,7 +139,7 @@ fn mint_synthetic_emitted_artifact_from_fixture_inferred(
   target: v2.std.compilers.target_model.TargetModel,
   module_path: String,
   fixture_lane_tag: String
-) -> Outcome<SyntheticEmittedArtifact> {
+) -> v2.std.diagnostic.Outcome<SyntheticEmittedArtifact> {
   bind_outcome(
     o: generate_rust_emission_candidate(inferred: inferred, target: target),
     f: fn(candidate) {
@@ -164,7 +164,7 @@ fn mint_written_synthetic_emitted_artifact_from_fixture_inferred(
   module_path: String,
   workspace_dir: String,
   fixture_lane_tag: String
-) -> Outcome<WrittenSyntheticEmittedArtifact> {
+) -> v2.std.diagnostic.Outcome<WrittenSyntheticEmittedArtifact> {
   bind_outcome(
     o: mint_synthetic_emitted_artifact_from_fixture_inferred(
       inferred: inferred,
