@@ -3089,7 +3089,19 @@ fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope
   }
 }
 
-fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, scope: InferScope) -> List<ArgInferResult> {
+fn method_declared_arg_expected_types(receiver_type: Node, method_name: String, source_indices: Map<String, NewlineIndex>) -> List<Node> {
+  let tier0 = lookup_structural_method(receiver_type: receiver_type, method_name: method_name, source_indices: source_indices)
+  match tier0.resolution {
+    Present { value: mfr } => mfr.field_node.params |> skip(1) |> map(p => param_node_type_expr(n: p))
+    Absent => []
+  }
+}
+
+fn type_at_position(types: List<Node>, idx: Int) -> Node? {
+  types |> enumerate |> filter(pair => pair.first == idx) |> map(pair => pair.second) |> first
+}
+
+fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, param_expected_types: List<Node>, scope: InferScope) -> List<ArgInferResult> {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   method_args |> enumerate |> map(idx_pair =>
     let a = idx_pair.second
@@ -3137,7 +3149,8 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
         SubValueUnknown => empty_map()
         _ => map_insert(empty_map(), "elem", elem_provenance)
       }
-      let nf_scope = if is_lambda_expr(e: nf_lam_value) {
+      let nf_is_lambda = is_lambda_expr(e: nf_lam_value)
+      let nf_scope = if nf_is_lambda {
         InferScope {
           type_env: scope.type_env,
           func_env: scope.func_env,
@@ -3151,7 +3164,11 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
           lambda_param_provenance: nf_prov_map
         }
       } else { scope }
-      infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
+      let nf_declared_type = if nf_is_lambda { none } else { type_at_position(types: param_expected_types, idx: idx) }
+      match nf_declared_type {
+        Present { value: dt } => infer_arg_with_element_type(arg: a, element_type: dt, scope: nf_scope)
+        Absent => infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
+      }
     }
   )
 }
@@ -3494,7 +3511,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             let first_type = resolved_type(n: first_result.typed)
             let elem_type = for_each_element_type_node(n: first_type, source_indices: scope.type_env.source_indices)
             let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
-            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, scope: scope)
+            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, param_expected_types: [], scope: scope)
             concat(
               [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: first_arg, source_indices: scope.type_env.source_indices), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
               remaining_results
@@ -3958,7 +3975,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent => error_type
       }
       let mc_elem_provenance = derive_element_provenance(coll_expr: recv_typed, elem_type: recv_elem_type, scope: scope)
-      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, scope: scope)
+      let mc_param_expected_types = method_declared_arg_expected_types(receiver_type: recv_rt, method_name: method_name, source_indices: scope.type_env.source_indices)
+      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, param_expected_types: mc_param_expected_types, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
       let mc_acc_is_under_resolved = !is_fully_resolved(n: fold_acc_type, source_indices: scope.type_env.source_indices)
