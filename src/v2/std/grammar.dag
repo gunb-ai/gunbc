@@ -161,11 +161,11 @@ type GrammarExpr
   | Nonterminal { production: v2.std.node.Symbol }
   | Sequence { left: GrammarExpr, right: GrammarExpr }
   | Choice { left: GrammarExpr, right: GrammarExpr }
-  | v2.std.optional.Optional { element: GrammarExpr }
+  | Optional { element: GrammarExpr }
   | Repeat { element: GrammarExpr }
 
 fn grammar_expr_optional(element: GrammarExpr) -> GrammarExpr {
-  v2.std.optional.Optional { element: element }
+  Optional { element: element }
 }
 
 fn grammar_expr_terminal(token_class: v2.std.node.Symbol) -> GrammarExpr {
@@ -222,7 +222,7 @@ fn fold_grammar_expr<R>(expr: GrammarExpr, algebra: GrammarExprFold<R>) -> R {
         fold_grammar_expr(expr: left, algebra: algebra),
         fold_grammar_expr(expr: right, algebra: algebra)
       )
-    v2.std.optional.Optional { element: element } =>
+    Optional { element: element } =>
       algebra.optional(fold_grammar_expr(expr: element, algebra: algebra))
     Repeat { element: element } =>
       algebra.repeat(fold_grammar_expr(expr: element, algebra: algebra))
