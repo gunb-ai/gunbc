@@ -91,7 +91,7 @@ fn swapped_count(productions: List<v2.std.grammar.GrammarProduction>) -> Int {
 
 fn pre_repair_grammar() -> v2.std.grammar.ParseGrammar {
   match v2.extdeps.languages.dag.dag_grammar() {
-    ModeledGrammar { root: r } =>
+    v2.std.grammar.ModeledGrammar { root: r } =>
       v2.std.grammar.ModeledGrammar {
         root: v2.std.grammar.GrammarRoot {
           start: r.start,
@@ -105,7 +105,7 @@ fn pre_repair_grammar() -> v2.std.grammar.ParseGrammar {
 
 fn pre_repair_swap_targeted_exactly_one() -> Bool {
   match v2.extdeps.languages.dag.dag_grammar() {
-    ModeledGrammar { root: r } => swapped_count(productions: r.productions) == 1
+    v2.std.grammar.ModeledGrammar { root: r } => swapped_count(productions: r.productions) == 1
     v2.std.grammar.VoidGrammar => false
   }
 }

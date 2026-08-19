@@ -115,7 +115,7 @@ test fn exact_prepared_artifact_set_serves() -> Bool {
     request: request,
     probes: [probe_for(entry: entry_a()), probe_for(entry: entry_b())],
   ) {
-    PreparedFloorSubjectReady { identity: identity, entries: entries } =>
+    v2.workflow.floor_preparation.PreparedFloorSubjectReady { identity: identity, entries: entries } =>
       identity == v2.workflow.floor_preparation.prepared_claim_subject_identity(request: request)
         && entries.count() == 2
         && entries.first().witness.entry == witness_a().entry

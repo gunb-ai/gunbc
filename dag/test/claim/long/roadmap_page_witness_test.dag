@@ -240,9 +240,9 @@ test fn witness_page_script_census_clean() -> Bool {
 }
 
 fn hand_inline_script_page() -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "body", attributes: [], children: [
+  std.markup.Element { tag: "body", attributes: [], children: [
     gunbc.roadmap_page.dispatch_client_script(),
-    extdeps.browser.Element { tag: "script", attributes: [], children: [ std.markup.FragmentText { content: "alert('rogue')" } ] },
+    std.markup.Element { tag: "script", attributes: [], children: [ std.markup.FragmentText { content: "alert('rogue')" } ] },
   ] }
 }
 
@@ -252,9 +252,9 @@ test fn witness_inline_hand_script_reds() -> Bool {
 }
 
 fn rogue_src_script_page() -> std.markup.Fragment {
-  extdeps.browser.Element { tag: "body", attributes: [], children: [
+  std.markup.Element { tag: "body", attributes: [], children: [
     gunbc.roadmap_page.dispatch_client_script(),
-    extdeps.browser.Element { tag: "script", attributes: [ std.markup.attr(name: "src", value: "https://evil.example/x.js" ) ], children: [] },
+    std.markup.Element { tag: "script", attributes: [ std.markup.attr(name: "src", value: "https://evil.example/x.js" ) ], children: [] },
   ] }
 }
 
@@ -399,7 +399,7 @@ test fn witness_style_child_combinator_unescaped() -> Bool {
 }
 
 test fn witness_raw_text_close_guard_refuses() -> Bool {
-  let bad = extdeps.browser.Element {
+  let bad = std.markup.Element {
     tag: "style",
     attributes: [],
     children: [ std.markup.FragmentText { content: "a \{ color: red } </style><p>escaped</p>" } ],
@@ -492,7 +492,7 @@ fn parity_specimen_view(activity: gunbc.roadmap_presentation.ActivityView) -> gu
 
 fn parity_row_html(activity: gunbc.roadmap_presentation.ActivityView) -> String {
   let view = parity_specimen_view(activity: activity)
-  match extdeps.languages.html.try_serialize_html_source(node: extdeps.browser.Element {
+  match extdeps.languages.html.try_serialize_html_source(node: std.markup.Element {
     tag: "li",
     attributes: gunbc.roadmap_page.node_li_attributes(view: view),
     children: gunbc.roadmap_page.render_work_row(view: view),

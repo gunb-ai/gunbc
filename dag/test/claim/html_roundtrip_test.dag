@@ -4,16 +4,16 @@ module test.claim.html_roundtrip
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn roundtrip_core_node() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "div",
     attributes: [],
     children: [
-      extdeps.browser.Element {
+      std.markup.Element {
         tag: "p",
         attributes: [],
         children: [std.markup.FragmentText { content: "hello & world" }],
       },
-      extdeps.browser.Element {
+      std.markup.Element {
         tag: "a",
         attributes: [std.markup.attr(name: "href", value: "https://example.com" )],
         children: [std.markup.FragmentText { content: "link" }],
@@ -41,7 +41,7 @@ fn perturbed_spellings() -> std.markup.MarkupBracket {
 }
 
 fn perturbed_node() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "a",
     attributes: [std.markup.attr(name: "href", value: "/about" )],
     children: [std.markup.FragmentText { content: "plain text" }],
@@ -57,7 +57,7 @@ test fn witness_roundtrip_under_perturbed_rows() -> Bool {
 }
 
 fn attr_node() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "a",
     attributes: [std.markup.attr(name: "href", value: "https://example.com" )],
     children: [std.markup.FragmentText { content: "click" }],
@@ -82,7 +82,7 @@ test fn witness_core_advertised_lossless() -> Bool {
 }
 
 test fn witness_frontier_unsafe_href_rejected() -> Bool {
-  let serialized = extdeps.languages.html.serialize_html_source(node: extdeps.browser.Element {
+  let serialized = extdeps.languages.html.serialize_html_source(node: std.markup.Element {
     tag: "a",
     attributes: [std.markup.attr(name: "href", value: "javascript:alert(1)" )],
     children: [std.markup.FragmentText { content: "x" }],
@@ -94,7 +94,7 @@ test fn witness_frontier_unsafe_href_rejected() -> Bool {
 }
 
 fn adjacent_text_node() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "span",
     attributes: [],
     children: [

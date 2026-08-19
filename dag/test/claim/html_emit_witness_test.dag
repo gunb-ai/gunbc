@@ -4,7 +4,7 @@ module test.claim.html_emit_witness
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
 fn sample_button() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "button",
     attributes: [ std.markup.attr(name: "class", value: "primary" ) ],
     children: [ std.markup.FragmentText { content: "Go" } ],
@@ -26,7 +26,7 @@ test fn witness_html_emit_matches_markup_fold() -> Bool {
 }
 
 fn hostile_javascript_href() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "a",
     attributes: [ std.markup.attr(name: "href", value: "javascript:alert(1)" ) ],
     children: [ std.markup.FragmentText { content: "click" } ],
@@ -34,7 +34,7 @@ fn hostile_javascript_href() -> std.markup.Fragment {
 }
 
 fn hostile_data_href() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "a",
     attributes: [ std.markup.attr(name: "href", value: "data:text/html,<script>alert(1)</script>" ) ],
     children: [],
@@ -79,7 +79,7 @@ test fn witness_serialize_rejects_data_href() -> Bool {
 
 test fn witness_http_href_serializes() -> Bool {
   match extdeps.languages.html.try_serialize_html_source(
-    node: extdeps.browser.Element {
+    node: std.markup.Element {
       tag: "a",
       attributes: [ std.markup.attr(name: "href", value: "https://gunbc.dev" ) ],
       children: [ std.markup.FragmentText { content: "home" } ],
@@ -91,7 +91,7 @@ test fn witness_http_href_serializes() -> Bool {
 }
 
 fn trusted_relative_link() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "a",
     attributes: [ std.markup.attr(name: "href", value: "/tree/dag" ) ],
     children: [ std.markup.FragmentText { content: "dag" } ],
@@ -99,7 +99,7 @@ fn trusted_relative_link() -> std.markup.Fragment {
 }
 
 fn req_a_hostile_but_trusted_scheme() -> std.markup.Fragment {
-  extdeps.browser.Element {
+  std.markup.Element {
     tag: "a",
     attributes: [ std.markup.attr(name: "href", value: "x\"&<y onmouseover=z" ) ],
     children: [],
