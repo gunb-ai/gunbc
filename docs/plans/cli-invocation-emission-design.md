@@ -823,6 +823,24 @@ General argument typechecking strengthens the boundary; it does not prove that p
    nothing refuses the next such reference, and a green witness is not evidence that a module's
    imports are complete.
 
+9-bis. **The Class B specimen RECURRED, in code written after it was documented (review 53669,
+   2026-08-19).** `jq_invocation_process_plan` used `bind_outcome` and `outcome_accepted` with
+   neither in the module's `v2.std.diagnostic` import list. Same mechanism as the
+   `cli_long_option_spelling` case one commit earlier, same lane, introduced by the same author
+   who had just written that entry.
+
+   **Two things this settles.** First, the mitigation has to run *after every addition*: the
+   unimported-reference sweep had been run and was clean, then a new function was added and the
+   sweep was not re-run. A one-time audit does not close a class whose defect is invisible.
+   Second — and this corrects the review that found it — the stated consequence, "as written this
+   file will not resolve", is **false**, and its falsity is the whole point. The file resolves,
+   and `stdin_survives_lowering_into_the_process_plan` executes green *through the affected
+   function*, because `v2.std.diagnostic` is already in the closure via other imports. A reviewer
+   predicting a resolution failure would have been refuted by running it, and might then have
+   dismissed a real finding. The correct statement is: the reference is unimported, it binds by
+   pool membership, and **nothing in the tree will tell you** — not the resolver, not CI, not a
+   green witness.
+
 10. **The spelling-seam extraction is right, but its obvious shape is forbidden — corrected
    2026-08-19.** The static-dependency finding stands: at execution grain the jq fold reaches no
    compiler machinery, but at dependency grain `cli_surface` imports `v2.std.compilers.target_model`,

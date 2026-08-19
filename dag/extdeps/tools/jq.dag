@@ -12,7 +12,9 @@ import v2.std.diagnostic {
   ExternalContractUnknown,
   Outcome,
   Unavailable,
+  bind_outcome,
   node_locus,
+  outcome_accepted,
   outcome_rejected
 }
 import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
