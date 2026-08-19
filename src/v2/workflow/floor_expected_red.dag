@@ -53,7 +53,14 @@ import v2.std.text { String }
 //     enrolled here AND completed-over-budget (stale_quarantine)  5
 //   313 passing when they were relocated, enrolled nowhere, counted by no number in this file.
 //       NINE of those later tipped over the ceiling once wave 1 removed the slow head (8 in
-//       32189985063, 1 straggler in 32193032348), so 304 have never been observed over budget.
+//       32186963581, 1 straggler in 32193032348), so 304 have never been observed over budget.
+//       THE EIGHT ARE 32186963581, not 32189985063, and the counters decide it without reading
+//       any prose: 32186963581 failed=8 known_red_held=361, 32189985063 failed=1
+//       known_red_held=358, 32193032348 failed=1 known_red_held=358. Only one run observed
+//       eight. The wrong id survived three rewrites of this block including mine, while the
+//       SECOND WAVE paragraph below named the right one the whole time -- one file, two
+//       accounts of one population, which is why the run counters and not the neighbouring
+//       sentence are the authority here.
 //
 //   111 + 5 + 313 = 429. Independently: `grep -c '^test fn'` over the 38 relocated modules is
 //   also 429, and differencing the two floor runs gives the same split (below).
