@@ -1,0 +1,33 @@
+module test.claim.lambda_capture_clone_required_witness
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data lambda_capture_clone_required_witness_note: String = "Executing floor witness, discriminating causation (not population), for v1.compiler.ownership walk_expr's ExprLambda arm: every captured binding's real inner usage is collapsed into exactly one synthetic Read edge at the enclosing scope before make_decision/build_movable_set ever see it, so a binding used only inside a returned closure's body can never reach SoleOwner and is unconditionally excluded from emit_info.movable regardless of its lexical single-use shape. THIS WAS FIRST FRAMED AS A GAP AND HAS SINCE BEEN REFUTED AS A DEFECT BY EXECUTION (Arm C, 2026-08-19, SHA 12e326028282e35c3b8fddde1c94a1259b3e7fe9): a returned Fn closure capturing a non-Copy Widget\{tag: String\} and invoked twice compiled clean with .clone() present (control build, 22.28s); hand-deleting the .clone() from the identical emitted crate and rebuilding failed with rustc error[E0507] 'cannot move out of `w`, a captured variable in an `Fn` closure' ('Fn and FnMut closures require captured values to be able to be consumed multiple times, but FnOnce closures may consume them only once'). The Copy-trap is why this receipt is trustworthy rather than vacuous: a Copy-eligible capture field (Int) would let Rust perform an implicit bitwise copy regardless of the clone, so removing the clone would compile either way and produce a false 'unnecessary' verdict -- only a non-Copy capture makes the experiment discriminate the real question. So the collapse this fixture exercises is PROVABLY REQUIRED for this shape, not provably lossy: closure invocation count is not observable from a lexical walk over the body, and emitting the identifier bare here would be an unsound optimization removing load-bearing correctness, not a redundancy. This file therefore now DEFENDS the clone rather than indicting it -- it guards against a future change that 'optimizes' the clone away for this shape. Scope, stated so it is not overclaimed by this control's passing: Arm C measured exactly one shape (a returned Fn closure over a non-Copy capture, invoked twice); a FnOnce closure invoked exactly once, and the ExprForEach arm at src/v1/ownership.dag:276, remain UNMEASURED and are not asserted safe or unsafe by this witness. Two-arm fixture through compile_dag_rust_emit_check (the per-PR enrolled real-emitter consumer, per generic_item_clone_bound_witness_test.dag's pattern): ARM A returns a param directly (no lambda) and must emit it BARE (moves_by_value true, no .clone()) -- the control that the clone is not simply blanket-emitted; ARM B returns the identical single-use param from inside a returned closure and must emit .clone() -- the behavior Arm C proved necessary. Each arm also asserts a positive structural string (the function/struct header) so a .clone()-absent zero in Arm A is paired with a confirmed nonzero emission, per DESIGN §5/4b: compile_dag_rust_emit_check returns false for both a real refusal and a not-found file, so a clean negative alone would be indistinguishable from the harness silently producing nothing. Subject is emit_var_ref's clone_value at the emitter (v1.compiler.emit_rust), NOT deref_clone and NOT the inner Rc clone at deref_clone call sites (deep-swift-570's territory, disjoint mechanism and disjoint lowering site)."
+
+fn w_direct_single_use_param_moves_bare() -> Bool {
+  compile_dag_rust_emit_check(
+    "module lambda_capture_witness.direct\n\ntype Widget {\n  tag: Int\n}\n\nfn identity_direct(w: Widget) -> Widget {\n  w\n}\n",
+    "src/lambda_capture_witness_direct.rs",
+    ["fn identity_direct", "struct Widget"],
+    ["w.clone()"]
+  )
+}
+
+fn w_lambda_captured_single_use_param_requires_clone() -> Bool {
+  compile_dag_rust_emit_check(
+    "module lambda_capture_witness.lambda_capture\n\ntype Widget {\n  tag: Int\n}\n\nfn identity_lambda(w: Widget) -> fn(Int) -> Widget {\n  fn(u) { w }\n}\n",
+    "src/lambda_capture_witness_lambda_capture.rs",
+    ["fn identity_lambda", "struct Widget", "w.clone()"],
+    []
+  )
+}
+
+test fn direct_single_use_param_no_clone_positive() -> Bool {
+  w_direct_single_use_param_moves_bare()
+}
+
+test fn lambda_captured_single_use_param_clone_required_regression() -> Bool {
+  w_lambda_captured_single_use_param_requires_clone()
+}
