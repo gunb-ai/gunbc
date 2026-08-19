@@ -54,7 +54,7 @@ fn placement_shadow_receipt(
 }
 
 fn placement_shadow_measured_warm_cost(run_ref: String, measured_ms: Nat) -> v2.workflow.ci_placement.PlacementShadowWarmCostEvidence {
-  v2.workflow.ci_placement.ShadowWarmCostMeasured {
+  ShadowWarmCostMeasured {
     receipt: v2.workflow.ci_placement.WarmCostReceipt {
       measured_ms: measured_ms,
       run_ref: run_ref
@@ -63,7 +63,7 @@ fn placement_shadow_measured_warm_cost(run_ref: String, measured_ms: Nat) -> v2.
 }
 
 fn placement_shadow_unavailable_warm_cost() -> v2.workflow.ci_placement.PlacementShadowWarmCostEvidence {
-  v2.workflow.ci_placement.ShadowWarmCostUnavailable { reason: "warm measurement unavailable" }
+  ShadowWarmCostUnavailable { reason: "warm measurement unavailable" }
 }
 
 fn placement_shadow_multi_fn_identity() -> gunbc.commit_workflow.CommitCheckEnrollment {

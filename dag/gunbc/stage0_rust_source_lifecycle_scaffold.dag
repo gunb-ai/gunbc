@@ -2,52 +2,52 @@ module gunbc.stage0_rust_source_lifecycle_scaffold
 
 
 
-data stage0_rust_source_lifecycle_scaffold_note: String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument. gunbc.stage0_rust_host_observation supplies the exact tracked-Rust subject plus Cargo target ROLE facts. This module keeps role and maintenance disposition independent: CargoBin never classifies a path as Generated, DeleteWith, RetainedKernel, or HandScaffold. A Cargo target with no maintenance disposition refuses as CargoTargetMissingLifecycleDisposition. Product reachability and LOC/capability ratchets remain explicit v1-honest-frontier follow-on work; this observation prerequisite does not claim those finish lines."
+data stage0_rust_source_lifecycle_scaffold_note: v2.std.text.String = "SCAFFOLD — NOT the live ZeroHandMaintainedRust instrument. gunbc.stage0_rust_host_observation supplies the exact tracked-Rust subject plus Cargo target ROLE facts. This module keeps role and maintenance disposition independent: CargoBin never classifies a path as Generated, DeleteWith, RetainedKernel, or HandScaffold. A Cargo target with no maintenance disposition refuses as CargoTargetMissingLifecycleDisposition. Product reachability and LOC/capability ratchets remain explicit v1-honest-frontier follow-on work; this observation prerequisite does not claim those finish lines."
 
-data zero_hand_maintained_rust_finish_line_attachment_note: String = "Observation prerequisite only: RustManifestObserved establishes the revision-addressed subject and Cargo roles. v1-honest-frontier must separately derive maintenance disposition, product reachability, generation authority, retirement trigger, hand LOC, and typed hand obligations before V1FinishLine ZeroHandMaintainedRust can consume it."
+data zero_hand_maintained_rust_finish_line_attachment_note: v2.std.text.String = "Observation prerequisite only: gunbc.stage0_rust_host_observation.RustManifestObserved establishes the revision-addressed subject and Cargo roles. v1-honest-frontier must separately derive maintenance disposition, product reachability, generation authority, retirement trigger, hand LOC, and typed hand obligations before V1FinishLine ZeroHandMaintainedRust can consume it."
 
 type RustSourceManifestStateVerdict
   = ManifestStateScaffoldOk
   | ManifestStateScaffoldRefused { cause: RustSourceManifestStateRefusal }
 
 type RustSourceManifestStateRefusal
-  = HostManifestReadRefused { detail: String }
-  | HostManifestParseRefused { detail: String }
-  | HostGitObservationRefused { detail: String }
+  = HostManifestReadRefused { detail: v2.std.text.String }
+  | HostManifestParseRefused { detail: v2.std.text.String }
+  | HostGitObservationRefused { detail: v2.std.text.String }
   | DerivedNewlyUnclassified { count: Int }
   | DerivedStaleLifecycleRows { count: Int }
   | DerivedDuplicateExactPaths { count: Int }
   | DerivedHandMaintainedGrew { prior: Int, current: Int }
   | DerivedUnclassifiedTracked { count: Int }
-  | ObservedCargoPathUntracked { path: String }
-  | CargoTargetMissingLifecycleDisposition { path: String }
+  | ObservedCargoPathUntracked { path: v2.std.text.String }
+  | CargoTargetMissingLifecycleDisposition { path: v2.std.text.String }
 
-data rust_source_manifest_state_verdict_query_scaffold: std.disposition.Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+data rust_source_manifest_state_verdict_query_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.stage0_rust_source_lifecycle_scaffold",
     decl_name: "rust_source_manifest_state_verdict",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data rust_source_manifest_state_verdict_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: rust_source_manifest_state_verdict — interim scaffold evidence fold; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes path-derived ratchets (authority dag/gunbc/v1_deletion_plan.dag, ROADMAP.md:24 / v1-zero-hand-maintained-rust)")
+data rust_source_manifest_state_verdict_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: rust_source_manifest_state_verdict — interim scaffold evidence fold; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes path-derived ratchets (authority dag/gunbc/v1_deletion_plan.dag, ROADMAP.md:24 / v1-zero-hand-maintained-rust)")
 
-fn path_in_list(path: String, paths: List<String>) -> Bool {
-  any(xs: paths, predicate: fn(p) { p == path })
+fn path_in_list(path: v2.std.text.String, paths: v2.std.collection.List<v2.std.text.String>) -> Bool {
+  v2.std.algebra.any(xs: paths, predicate: fn(p) { p == path })
 }
 
 fn observed_classified_repo_paths(
-  file_grain_paths: List<String>
-) -> List<String> {
+  file_grain_paths: v2.std.collection.List<v2.std.text.String>
+) -> v2.std.collection.List<v2.std.text.String> {
   file_grain_paths
 }
 
 fn observed_cargo_paths_subset_of_tracked(
-  cargo_bin_repo_paths: List<String>,
-  tracked_paths: List<String>
+  cargo_bin_repo_paths: v2.std.collection.List<v2.std.text.String>,
+  tracked_paths: v2.std.collection.List<v2.std.text.String>
 ) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: cargo_bin_repo_paths,
     empty: true,
     cons: fn(ok, cargo_path) { ok && path_in_list(path: cargo_path, paths: tracked_paths) }
@@ -55,10 +55,10 @@ fn observed_cargo_paths_subset_of_tracked(
 }
 
 fn first_untracked_cargo_path(
-  cargo_bin_repo_paths: List<String>,
-  tracked_paths: List<String>
-) -> String {
-  fold_list(
+  cargo_bin_repo_paths: v2.std.collection.List<v2.std.text.String>,
+  tracked_paths: v2.std.collection.List<v2.std.text.String>
+) -> v2.std.text.String {
+  v2.std.algebra.fold_list(
     xs: cargo_bin_repo_paths,
     empty: "",
     cons: fn(first, cargo_path) {
@@ -73,8 +73,8 @@ fn first_untracked_cargo_path(
   )
 }
 
-fn count_tracked_unclassified(tracked_paths: List<String>, classified_paths: List<String>) -> Int {
-  fold_list(
+fn count_tracked_unclassified(tracked_paths: v2.std.collection.List<v2.std.text.String>, classified_paths: v2.std.collection.List<v2.std.text.String>) -> Int {
+  v2.std.algebra.fold_list(
     xs: tracked_paths,
     empty: 0,
     cons: fn(count, path) {
@@ -88,11 +88,11 @@ fn count_tracked_unclassified(tracked_paths: List<String>, classified_paths: Lis
 }
 
 fn count_newly_unclassified_tracked(
-  tracked_paths: List<String>,
-  prior_tracked_paths: List<String>,
-  classified_paths: List<String>
+  tracked_paths: v2.std.collection.List<v2.std.text.String>,
+  prior_tracked_paths: v2.std.collection.List<v2.std.text.String>,
+  classified_paths: v2.std.collection.List<v2.std.text.String>
 ) -> Int {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: tracked_paths,
     empty: 0,
     cons: fn(count, path) {
@@ -107,8 +107,8 @@ fn count_newly_unclassified_tracked(
   )
 }
 
-fn count_stale_lifecycle_rows(tracked_paths: List<String>, lifecycle_paths: List<String>) -> Int {
-  fold_list(
+fn count_stale_lifecycle_rows(tracked_paths: v2.std.collection.List<v2.std.text.String>, lifecycle_paths: v2.std.collection.List<v2.std.text.String>) -> Int {
+  v2.std.algebra.fold_list(
     xs: lifecycle_paths,
     empty: 0,
     cons: fn(count, path) {
@@ -121,8 +121,8 @@ fn count_stale_lifecycle_rows(tracked_paths: List<String>, lifecycle_paths: List
   )
 }
 
-fn count_hand_maintained_in_tracked(tracked_paths: List<String>) -> Int {
-  fold_list(
+fn count_hand_maintained_in_tracked(tracked_paths: v2.std.collection.List<v2.std.text.String>) -> Int {
+  v2.std.algebra.fold_list(
     xs: derived_hand_maintained_disposition_repo_paths(),
     empty: 0,
     cons: fn(count, hand_path) {
@@ -135,8 +135,8 @@ fn count_hand_maintained_in_tracked(tracked_paths: List<String>) -> Int {
   )
 }
 
-fn count_hand_maintained_in_prior_tracked(prior_tracked_paths: List<String>) -> Int {
-  fold_list(
+fn count_hand_maintained_in_prior_tracked(prior_tracked_paths: v2.std.collection.List<v2.std.text.String>) -> Int {
+  v2.std.algebra.fold_list(
     xs: derived_hand_maintained_disposition_repo_paths(),
     empty: 0,
     cons: fn(count, hand_path) {
@@ -149,12 +149,12 @@ fn count_hand_maintained_in_prior_tracked(prior_tracked_paths: List<String>) -> 
   )
 }
 
-fn count_duplicate_path_excess(paths: List<String>) -> Int {
-  fold_list(
+fn count_duplicate_path_excess(paths: v2.std.collection.List<v2.std.text.String>) -> Int {
+  v2.std.algebra.fold_list(
     xs: paths,
     empty: 0,
     cons: fn(excess, path) {
-      let occurrences = path_occurrence_count(paths: paths, target: path)
+      let occurrences = std.keyed_roster.path_occurrence_count(paths: paths, target: path)
       if occurrences > 1 {
         excess + (occurrences - 1)
       } else {
@@ -165,11 +165,11 @@ fn count_duplicate_path_excess(paths: List<String>) -> Int {
 }
 
 fn count_observed_manifest_duplicate_excess(
-  tracked_paths: List<String>,
-  prior_tracked_paths: List<String>,
-  cargo_bin_repo_paths: List<String>
+  tracked_paths: v2.std.collection.List<v2.std.text.String>,
+  prior_tracked_paths: v2.std.collection.List<v2.std.text.String>,
+  cargo_bin_repo_paths: v2.std.collection.List<v2.std.text.String>
 ) -> Int {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: [tracked_paths, prior_tracked_paths, cargo_bin_repo_paths],
     empty: 0,
     cons: fn(sum, paths) { sum + count_duplicate_path_excess(paths: paths) }
@@ -178,13 +178,13 @@ fn count_observed_manifest_duplicate_excess(
 
 fn rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observation.RustSourceHostObservation) -> RustSourceManifestStateVerdict {
   match observation {
-    RustManifestReadRefused { detail: detail } =>
+    gunbc.stage0_rust_host_observation.RustManifestReadRefused { detail: detail } =>
       ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: detail } }
-    RustManifestParseRefused { detail: detail } =>
+    gunbc.stage0_rust_host_observation.RustManifestParseRefused { detail: detail } =>
       ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: detail } }
-    GitObservationRefused { detail: detail } =>
+    gunbc.stage0_rust_host_observation.GitObservationRefused { detail: detail } =>
       ManifestStateScaffoldRefused { cause: HostGitObservationRefused { detail: detail } }
-    RustManifestObserved {
+    gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: repository_revision,
       manifest_content_identity: manifest_content_identity,
       tracked_rust_repo_paths: tracked_paths,
@@ -219,7 +219,7 @@ fn rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observ
           cargo_bin_repo_paths: cargo_bin_repo_paths,
           tracked_paths: file_grain_paths
         )
-        if length(xs: cargo_bin_repo_paths) == 0 {
+        if v2.std.algebra.length(xs: cargo_bin_repo_paths) == 0 {
           ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: "observed manifest missing cargo_bin_repo_paths evidence" } }
         } else if untracked_cargo != "" {
           ManifestStateScaffoldRefused { cause: ObservedCargoPathUntracked { path: untracked_cargo } }
@@ -244,47 +244,47 @@ fn rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observ
   }
 }
 
-data rust_source_prefix_test_harness: String = "src/v1/tests/"
+data rust_source_prefix_test_harness: v2.std.text.String = "src/v1/tests/"
 
-data rust_source_prefix_stage0_test: String = "src/v1/stage0/tests/"
+data rust_source_prefix_stage0_test: v2.std.text.String = "src/v1/stage0/tests/"
 
-data rust_source_prefix_stage0_example: String = "src/v1/stage0/examples/"
+data rust_source_prefix_stage0_example: v2.std.text.String = "src/v1/stage0/examples/"
 
-data rust_source_prefix_tooling: String = "dag/tools/"
+data rust_source_prefix_tooling: v2.std.text.String = "dag/tools/"
 
-data rust_source_discovery_prefix_hints: List<String> = [
+data rust_source_discovery_prefix_hints: v2.std.collection.List<v2.std.text.String> = [
   rust_source_prefix_test_harness,
   rust_source_prefix_tooling,
   rust_source_prefix_stage0_test,
   rust_source_prefix_stage0_example
 ]
 
-data stage0_src_repo_prefix: String = "src/v1/stage0/src/"
+data stage0_src_repo_prefix: v2.std.text.String = "src/v1/stage0/src/"
 
 data generated_stage0_files_authority_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.stage0_emit_plan_generated",
-  decl_name: "generated_stage0_files",
-  field: WholeDeclaration
+  decl_name: "gunbc.stage0_emit_plan_generated.generated_stage0_files",
+  field: std.decl_ref.WholeDeclaration
 }
 
 data hand_maintained_stage0_filenames_authority_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "v2.compiler.self_host.stage0_crate_layout",
-  decl_name: "hand_maintained_stage0_filenames",
-  field: WholeDeclaration
+  decl_name: "v2.compiler.self_host.stage0_crate_layout.hand_maintained_stage0_filenames",
+  field: std.decl_ref.WholeDeclaration
 }
 
 data stage0_partition_crate_rows_authority_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "v2.workflow.rust_crate_partition",
-  decl_name: "stage0_partition_crate_rows",
-  field: WholeDeclaration
+  decl_name: "v2.workflow.rust_crate_partition.stage0_partition_crate_rows",
+  field: std.decl_ref.WholeDeclaration
 }
 
-data stage0_cargo_bin_manifest_authority_ref: std.decl_ref.DeclarationRef = stage0_cargo_bin_paths_observation_ref
+data stage0_cargo_bin_manifest_authority_ref: std.decl_ref.DeclarationRef = gunbc.stage0_cargo_manifest.stage0_cargo_bin_paths_observation_ref
 
 data behavioral_oracle_carrier_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "tools.self_host_module_behavioral_transport_roster",
   decl_name: "compiler_module_behavioral_transport_roster",
-  field: WholeDeclaration
+  field: std.decl_ref.WholeDeclaration
 }
 
 type RustSourceRole
@@ -298,59 +298,62 @@ type RustMaintenanceDisposition
   = Generated { authority: std.decl_ref.DeclarationRef }
   | EmitFrom { authority: std.decl_ref.DeclarationRef }
   | DeleteWith { roadmap_node: gunbc.roadmap_model.RoadmapNodeId }
-  | RetainedKernel { reason: String }
-  | HandScaffold { reason: std.types.NonEmptyStr, dissolution: std.dissolution.DissolutionCondition }
+  | RetainedKernel { reason: v2.std.text.String }
+  | HandScaffold { reason: NonEmptyStr, dissolution: std.dissolution.DissolutionCondition }
 
 type RustSourceLifecycleRow {
-  path: String
-  roles: List<RustSourceRole>
-  maintenance_dispositions: List<RustMaintenanceDisposition>
+  path: v2.std.text.String
+  roles: v2.std.collection.List<RustSourceRole>
+  maintenance_dispositions: v2.std.collection.List<RustMaintenanceDisposition>
 }
 
-fn stage0_src_repo_path(filename: String) -> String {
+fn stage0_src_repo_path(filename: v2.std.text.String) -> v2.std.text.String {
   concat(stage0_src_repo_prefix, filename)
 }
 
-fn derived_generated_stage0_repo_paths() -> List<String> {
-  list_map(xs: generated_stage0_files, f: fn(basename) { stage0_src_repo_path(filename: basename) })
+fn derived_generated_stage0_repo_paths() -> v2.std.collection.List<v2.std.text.String> {
+  v2.std.algebra.list_map(
+    xs: gunbc.stage0_emit_plan_generated.generated_stage0_files,
+    f: fn(basename) { stage0_src_repo_path(filename: basename) }
+  )
 }
 
-fn derived_hand_maintained_stage0_repo_paths() -> List<String> {
-  list_map(
-    xs: hand_maintained_stage0_filenames(),
+fn derived_hand_maintained_stage0_repo_paths() -> v2.std.collection.List<v2.std.text.String> {
+  v2.std.algebra.list_map(
+    xs: v2.compiler.self_host.stage0_crate_layout.hand_maintained_stage0_filenames(),
     f: fn(filename) { stage0_src_repo_path(filename: filename) }
   )
 }
 
-data generated_artifact_disposition_derivation_note: String = "derived_hand_maintained_stage0_repo_paths() answers ONE question: which paths must be pub-mod-declared for the crate to link (layout membership, per hand_maintained_stage0_filenames_authority_ref). It does not answer who maintains a path's contents. A layout member's maintenance disposition is DERIVED, never hand-enumerated: gunbc.generated_artifact's generated_artifact_registry is the closed, single authority over every drift-gated artifact this repo produces, and artifact_path is its per-variant path projection — the same projection generated_artifact_emit.dag's artifact_generate dispatch already reads. Any stage0-src path that is a member of that registry (generated_artifact_stage0_src_repo_paths, an identity join by artifact_path, not a filename literal) is EmitFrom the registry's real generation authority, never HandScaffold and never silently excluded by a hand-picked path. v1_interpreter_dispatch_generated.rs (V1InterpreterDispatchGeneratedRsArtifact) is the discriminating case that exposed the conflation; bootstrap_stage0_crate_layout_generated.rs (Stage0CrateLayoutGeneratedRsArtifact) is the second instance the same join surfaces — both derive from the identical registry membership check, no per-file code. derived_hand_maintained_disposition_repo_paths() is the corrected maintenance-disposition population: layout membership minus the generated-artifact-registry overlap. This is the single authority consumed by count_hand_maintained_in_tracked/count_hand_maintained_in_prior_tracked and by gunbc.stage0_rust_honest_frontier_integration's exact_hand_maintained_* joins."
+data generated_artifact_disposition_derivation_note: v2.std.text.String = "derived_hand_maintained_stage0_repo_paths() answers ONE question: which paths must be pub-mod-declared for the crate to link (layout membership, per hand_maintained_stage0_filenames_authority_ref). It does not answer who maintains a path's contents. A layout member's maintenance disposition is DERIVED, never hand-enumerated: gunbc.generated_artifact's gunbc.generated_artifact.generated_artifact_registry is the closed, single authority over every drift-gated artifact this repo produces, and gunbc.generated_artifact.artifact_path is its per-variant path projection — the same projection generated_artifact_emit.dag's artifact_generate dispatch already reads. Any stage0-src path that is a member of that registry (generated_artifact_stage0_src_repo_paths, an identity join by gunbc.generated_artifact.artifact_path, not a filename literal) is EmitFrom the registry's real generation authority, never HandScaffold and never silently excluded by a hand-picked path. v1_interpreter_dispatch_generated.rs (V1InterpreterDispatchGeneratedRsArtifact) is the discriminating case that exposed the conflation; bootstrap_stage0_crate_layout_generated.rs (Stage0CrateLayoutGeneratedRsArtifact) is the second instance the same join surfaces — both derive from the identical registry membership check, no per-file code. derived_hand_maintained_disposition_repo_paths() is the corrected maintenance-disposition population: layout membership minus the generated-artifact-registry overlap. This is the single authority consumed by count_hand_maintained_in_tracked/count_hand_maintained_in_prior_tracked and by gunbc.stage0_rust_honest_frontier_integration's exact_hand_maintained_* joins."
 
-data v1_interpreter_dispatch_generated_repo_path: String = stage0_src_repo_path(
+data v1_interpreter_dispatch_generated_repo_path: v2.std.text.String = stage0_src_repo_path(
   filename: "v1_interpreter_dispatch_generated.rs"
 )
 
-data bootstrap_stage0_crate_layout_generated_repo_path: String = stage0_src_repo_path(
+data bootstrap_stage0_crate_layout_generated_repo_path: v2.std.text.String = stage0_src_repo_path(
   filename: "bootstrap_stage0_crate_layout_generated.rs"
 )
 
 data generated_artifact_emit_authority_ref: std.decl_ref.DeclarationRef = std.decl_ref.DeclarationRef {
   module_path: "gunbc.generated_artifact_emit",
   decl_name: "artifact_generate",
-  field: WholeDeclaration
+  field: std.decl_ref.WholeDeclaration
 }
 
-fn generated_artifact_repo_paths() -> List<String> {
-  list_map(xs: generated_artifact_registry, f: fn(a) { artifact_path(a: a) })
+fn generated_artifact_repo_paths() -> v2.std.collection.List<v2.std.text.String> {
+  v2.std.algebra.list_map(xs: gunbc.generated_artifact.generated_artifact_registry, f: fn(a) { gunbc.generated_artifact.artifact_path(a: a) })
 }
 
-fn generated_artifact_stage0_src_repo_paths() -> List<String> {
-  filter(
+fn generated_artifact_stage0_src_repo_paths() -> v2.std.collection.List<v2.std.text.String> {
+  v2.std.algebra.filter(
     xs: generated_artifact_repo_paths(),
     predicate: fn(path) { rust_source_path_has_prefix(path: path, prefix: stage0_src_repo_prefix) }
   )
 }
 
-fn generated_artifact_stage0_src_disposition_rows() -> List<RustSourceLifecycleRow> {
-  list_map(
+fn generated_artifact_stage0_src_disposition_rows() -> v2.std.collection.List<RustSourceLifecycleRow> {
+  v2.std.algebra.list_map(
     xs: generated_artifact_stage0_src_repo_paths(),
     f: fn(path) {
       RustSourceLifecycleRow {
@@ -364,16 +367,16 @@ fn generated_artifact_stage0_src_disposition_rows() -> List<RustSourceLifecycleR
   )
 }
 
-fn disposition_authority_rows() -> List<RustSourceLifecycleRow> {
-  fold_list(
+fn disposition_authority_rows() -> v2.std.collection.List<RustSourceLifecycleRow> {
+  v2.std.algebra.fold_list(
     xs: generated_artifact_stage0_src_disposition_rows(),
     empty: rust_source_lifecycle_residue_rows,
-    cons: fn(acc, row) { list_snoc_item(xs: acc, item: row) }
+    cons: fn(acc, row) { v2.std.algebra.list_snoc_item(xs: acc, item: row) }
   )
 }
 
-fn derived_hand_maintained_disposition_repo_paths() -> List<String> {
-  filter(
+fn derived_hand_maintained_disposition_repo_paths() -> v2.std.collection.List<v2.std.text.String> {
+  v2.std.algebra.filter(
     xs: derived_hand_maintained_stage0_repo_paths(),
     predicate: fn(path) {
       !path_in_list(path: path, paths: generated_artifact_stage0_src_repo_paths())
@@ -381,15 +384,15 @@ fn derived_hand_maintained_disposition_repo_paths() -> List<String> {
   )
 }
 
-fn generated_artifact_layout_overlap_repo_paths() -> List<String> {
-  filter(
+fn generated_artifact_layout_overlap_repo_paths() -> v2.std.collection.List<v2.std.text.String> {
+  v2.std.algebra.filter(
     xs: derived_hand_maintained_stage0_repo_paths(),
     predicate: fn(path) { path_in_list(path: path, paths: generated_artifact_stage0_src_repo_paths()) }
   )
 }
 
 fn generated_artifact_layout_overlap_subset_of_hand_maintained_holds() -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: generated_artifact_layout_overlap_repo_paths(),
     empty: true,
     cons: fn(ok, path) {
@@ -399,7 +402,7 @@ fn generated_artifact_layout_overlap_subset_of_hand_maintained_holds() -> Bool {
 }
 
 fn generated_artifact_stage0_src_disposition_rows_well_formed() -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: generated_artifact_stage0_src_disposition_rows(),
     empty: true,
     cons: fn(ok, row) { ok && lifecycle_row_well_formed(row: row) }
@@ -407,80 +410,80 @@ fn generated_artifact_stage0_src_disposition_rows_well_formed() -> Bool {
 }
 
 fn generated_artifact_stage0_src_disjoint_from_residue_holds() -> Bool {
-  !any(
+  !v2.std.algebra.any(
     xs: generated_artifact_stage0_src_repo_paths(),
     predicate: fn(path) { path_in_list(path: path, paths: residue_lifecycle_repo_paths()) }
   )
 }
 
-fn partition_crate_lib_repo_path(crate_dir: String) -> String {
+fn partition_crate_lib_repo_path(crate_dir: v2.std.text.String) -> v2.std.text.String {
   concat(crate_dir, "/src/lib.rs")
 }
 
-fn derived_partition_crate_lib_repo_paths() -> List<String> {
-  list_map(
-    xs: stage0_partition_crate_rows(),
+fn derived_partition_crate_lib_repo_paths() -> v2.std.collection.List<v2.std.text.String> {
+  v2.std.algebra.list_map(
+    xs: v2.workflow.rust_crate_partition.stage0_partition_crate_rows(),
     f: fn(row) { partition_crate_lib_repo_path(crate_dir: row.crate_dir) }
   )
 }
 
-fn list_concat_unique(acc: List<String>, items: List<String>) -> List<String> {
-  fold_list(
+fn list_concat_unique(acc: v2.std.collection.List<v2.std.text.String>, items: v2.std.collection.List<v2.std.text.String>) -> v2.std.collection.List<v2.std.text.String> {
+  v2.std.algebra.fold_list(
     xs: items,
     empty: acc,
     cons: fn(acc_paths, path) {
-      if any(xs: acc_paths, predicate: fn(p) { p == path }) {
+      if v2.std.algebra.any(xs: acc_paths, predicate: fn(p) { p == path }) {
         acc_paths
       } else {
-        list_snoc_item(xs: acc_paths, item: path)
+        v2.std.algebra.list_snoc_item(xs: acc_paths, item: path)
       }
     }
   )
 }
 
-fn derived_authority_join_repo_paths() -> List<String> {
+fn derived_authority_join_repo_paths() -> v2.std.collection.List<v2.std.text.String> {
   let from_generated = derived_generated_stage0_repo_paths()
   list_concat_unique(acc: from_generated, items: derived_hand_maintained_stage0_repo_paths())
 }
 
-fn rust_source_path_has_prefix(path: String, prefix: String) -> Bool {
+fn rust_source_path_has_prefix(path: v2.std.text.String, prefix: v2.std.text.String) -> Bool {
   starts_with(s: path, prefix: prefix)
 }
 
-fn path_matches_discovery_prefix_hint(path: String) -> Bool {
-  any(
+fn path_matches_discovery_prefix_hint(path: v2.std.text.String) -> Bool {
+  v2.std.algebra.any(
     xs: rust_source_discovery_prefix_hints,
     predicate: fn(prefix) { rust_source_path_has_prefix(path: path, prefix: prefix) }
   )
 }
 
-data residue_cssl_assembly_reason: String = "hand-retained cssl seed-linked closure assembly kernel — not regen-emitted; counted scaffold until harness consolidation emits it"
+data residue_cssl_assembly_reason: v2.std.text.String = "hand-retained cssl seed-linked closure assembly kernel — not regen-emitted; counted scaffold until harness consolidation emits it"
 
-data residue_cssl_assembly_dissolution: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: cssl_seed_linked_closure_assembly.rs migrates to generated_stage0_files membership or a typed emit producer row deletes the hand file")
+data residue_cssl_assembly_dissolution: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: cssl_seed_linked_closure_assembly.rs migrates to gunbc.stage0_emit_plan_generated.generated_stage0_files membership or a typed emit producer row deletes the hand file")
 
-data residue_module_path_index_reason: String = "hand_maintained_stage0_dirs lists module_path_index/ but file membership is not enumerated by any join authority yet"
+data residue_module_path_index_reason: v2.std.text.String = "hand_maintained_stage0_dirs lists module_path_index/ but file membership is not enumerated by v2.std.algebra.any join authority yet"
 
-data residue_module_path_index_dissolution: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: module_path_index/*.rs paths derive from hand_maintained_stage0_dirs + host census, or the directory dissolves into generated emit")
+data residue_module_path_index_dissolution: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: module_path_index/*.rs paths derive from hand_maintained_stage0_dirs + host census, or the directory dissolves into generated emit")
 
-data residue_frontier_module_gap_reason: String = "frontier module with behavioral receipt roster row but not yet on hand_maintained_stage0_filenames / generated_stage0_files join"
+data residue_frontier_module_gap_reason: v2.std.text.String = "frontier module with behavioral receipt roster row but not yet on v2.compiler.self_host.stage0_crate_layout.hand_maintained_stage0_filenames / gunbc.stage0_emit_plan_generated.generated_stage0_files join"
 
-data residue_frontier_module_gap_dissolution: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: the module basename appears on hand_maintained_stage0_filenames() or generated_stage0_files and this residue row deletes")
+data residue_frontier_module_gap_dissolution: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: the module basename appears on v2.compiler.self_host.stage0_crate_layout.hand_maintained_stage0_filenames() or gunbc.stage0_emit_plan_generated.generated_stage0_files and this residue row deletes")
 
-data residue_stage0_core_lib_reason: String = "src/v1/stage0_core/src/lib.rs exists on disk but is absent from stage0_partition_crate_rows — authority contradiction surfaced for operator resolution"
+data residue_stage0_core_lib_reason: v2.std.text.String = "src/v1/stage0_core/src/lib.rs exists on disk but is absent from v2.workflow.rust_crate_partition.stage0_partition_crate_rows — authority contradiction surfaced for operator resolution"
 
-data residue_stage0_core_lib_dissolution: std.dissolution.DissolutionCondition = unbound_dissolution(description: "dissolve-on: stage0_partition_crate_rows enrolls src/v1/stage0_core OR the crate deletes")
+data residue_stage0_core_lib_dissolution: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "dissolve-on: v2.workflow.rust_crate_partition.stage0_partition_crate_rows enrolls src/v1/stage0_core OR the crate deletes")
 
-fn residue_row(path: String, reason: String, dissolution: std.dissolution.DissolutionCondition) -> RustSourceLifecycleRow {
+fn residue_row(path: v2.std.text.String, reason: v2.std.text.String, dissolution: std.dissolution.DissolutionCondition) -> RustSourceLifecycleRow {
   RustSourceLifecycleRow {
     path: path,
     roles: [],
     maintenance_dispositions: [
-      HandScaffold { reason: reason as std.types.NonEmptyStr, dissolution: dissolution }
+      HandScaffold { reason: reason as NonEmptyStr, dissolution: dissolution }
     ]
   }
 }
 
-data rust_source_lifecycle_residue_rows: List<RustSourceLifecycleRow> = [
+data rust_source_lifecycle_residue_rows: v2.std.collection.List<RustSourceLifecycleRow> = [
   residue_row(
     path: "src/v1/stage0/src/cssl_seed_linked_closure_assembly.rs",
     reason: residue_cssl_assembly_reason,
@@ -523,16 +526,16 @@ data rust_source_lifecycle_residue_rows: List<RustSourceLifecycleRow> = [
   )
 ]
 
-fn residue_lifecycle_repo_paths() -> List<String> {
-  list_map(xs: rust_source_lifecycle_residue_rows, f: fn(row) { row.path })
+fn residue_lifecycle_repo_paths() -> v2.std.collection.List<v2.std.text.String> {
+  v2.std.algebra.list_map(xs: rust_source_lifecycle_residue_rows, f: fn(row) { row.path })
 }
 
-fn file_grain_lifecycle_repo_paths() -> List<String> {
+fn file_grain_lifecycle_repo_paths() -> v2.std.collection.List<v2.std.text.String> {
   let with_residue = list_concat_unique(acc: derived_authority_join_repo_paths(), items: residue_lifecycle_repo_paths())
   list_concat_unique(acc: with_residue, items: generated_artifact_stage0_src_repo_paths())
 }
 
-fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
+fn witness_observation_covering_lifecycle_plus_extra(extra_path: v2.std.text.String) -> gunbc.stage0_rust_host_observation.RustManifestObserved {
   let lifecycle_paths = file_grain_lifecycle_repo_paths()
   let classified = observed_classified_repo_paths(
     file_grain_paths: lifecycle_paths
@@ -546,7 +549,7 @@ fn witness_observation_covering_lifecycle_plus_extra(extra_path: String) -> gunb
   }
 }
 
-fn witness_hand_maintained_growth_observation() -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
+fn witness_hand_maintained_growth_observation() -> gunbc.stage0_rust_host_observation.RustManifestObserved {
   let from_generated = derived_generated_stage0_repo_paths()
   let prior_file_grain = list_concat_unique(acc: from_generated, items: residue_lifecycle_repo_paths())
   let current_file_grain = file_grain_lifecycle_repo_paths()
@@ -565,7 +568,7 @@ fn witness_hand_maintained_growth_observation() -> gunbc.stage0_rust_host_observ
   }
 }
 
-fn witness_honest_minimal_observation_ok() -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
+fn witness_honest_minimal_observation_ok() -> gunbc.stage0_rust_host_observation.RustManifestObserved {
   let lifecycle_paths = file_grain_lifecycle_repo_paths()
   let classified = observed_classified_repo_paths(
     file_grain_paths: lifecycle_paths
@@ -579,8 +582,8 @@ fn witness_honest_minimal_observation_ok() -> gunbc.stage0_rust_host_observation
   }
 }
 
-fn first_classified_repo_path(classified: List<String>) -> String {
-  fold_list(
+fn first_classified_repo_path(classified: v2.std.collection.List<v2.std.text.String>) -> v2.std.text.String {
+  v2.std.algebra.fold_list(
     xs: classified,
     empty: "",
     cons: fn(first, path) {
@@ -593,13 +596,13 @@ fn first_classified_repo_path(classified: List<String>) -> String {
   )
 }
 
-fn witness_duplicate_tracked_observation() -> gunbc.stage0_rust_host_observation.RustSourceHostObservation {
+fn witness_duplicate_tracked_observation() -> gunbc.stage0_rust_host_observation.RustManifestObserved {
   let lifecycle_paths = file_grain_lifecycle_repo_paths()
   let classified = observed_classified_repo_paths(
     file_grain_paths: lifecycle_paths
   )
   let dup_path = first_classified_repo_path(classified: classified)
-  let tracked_with_dup = list_snoc_item(xs: classified, item: dup_path)
+  let tracked_with_dup = v2.std.algebra.list_snoc_item(xs: classified, item: dup_path)
   gunbc.stage0_rust_host_observation.RustManifestObserved {
     repository_revision: "witness-deadbeef",
     manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
@@ -617,28 +620,28 @@ fn rust_maintenance_disposition_well_formed(disposition: RustMaintenanceDisposit
   match disposition {
     Generated { authority: ref } => declaration_ref_populated(ref: ref)
     EmitFrom { authority: ref } => declaration_ref_populated(ref: ref)
-    DeleteWith { roadmap_node: node } => !((node as String) == "")
+    DeleteWith { roadmap_node: node } => !((node as v2.std.text.String) == "")
     RetainedKernel { reason: reason } => !(reason == "")
     HandScaffold { reason: reason, dissolution: d } =>
-      !((reason as String) == "") && !(dissolution_description(condition: d) == "")
+      !((reason as v2.std.text.String) == "") && !(std.dissolution.dissolution_description(condition: d) == "")
   }
 }
 
-data lifecycle_row_well_formed_query_scaffold: std.disposition.Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+data lifecycle_row_well_formed_query_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.stage0_rust_source_lifecycle_scaffold",
     decl_name: "lifecycle_row_well_formed",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
-data lifecycle_row_well_formed_query_dissolve_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: lifecycle_row_well_formed — interim scaffold obligation-shape validator; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes row well-formedness (authority dag/gunbc/v1_deletion_plan.dag)")
+data lifecycle_row_well_formed_query_dissolve_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "🟡 dissolve-on: lifecycle_row_well_formed — interim scaffold obligation-shape validator; DISSOLVES WHEN V1FinishLine ZeroHandMaintainedRust acceptance graph subsumes row well-formedness (authority dag/gunbc/v1_deletion_plan.dag)")
 
 fn lifecycle_row_well_formed(row: RustSourceLifecycleRow) -> Bool {
   !(row.path == "")
-    && length(xs: row.maintenance_dispositions) > 0
-    && fold_list(
+    && v2.std.algebra.length(xs: row.maintenance_dispositions) > 0
+    && v2.std.algebra.fold_list(
       xs: row.maintenance_dispositions,
       empty: true,
       cons: fn(ok, disposition) {
@@ -648,18 +651,18 @@ fn lifecycle_row_well_formed(row: RustSourceLifecycleRow) -> Bool {
 }
 
 fn rust_source_lifecycle_residue_rows_well_formed() -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: rust_source_lifecycle_residue_rows,
     empty: true,
     cons: fn(ok, row) { ok && lifecycle_row_well_formed(row: row) }
   )
 }
 
-fn list_paths_all_unique(paths: List<String>) -> Bool {
-  fold_list(
+fn list_paths_all_unique(paths: v2.std.collection.List<v2.std.text.String>) -> Bool {
+  v2.std.algebra.fold_list(
     xs: paths,
     empty: true,
-    cons: fn(ok, path) { ok && path_occurrence_count(paths: paths, target: path) == 1 }
+    cons: fn(ok, path) { ok && std.keyed_roster.path_occurrence_count(paths: paths, target: path) == 1 }
   )
 }
 
@@ -671,70 +674,44 @@ fn duplicate_exact_paths_zero_holds() -> Bool {
   list_paths_all_unique(paths: file_grain_lifecycle_repo_paths())
 }
 
-fn generated_repo_paths_cover_authority_holds() -> Bool {
-  fold_list(
-    xs: generated_stage0_files,
-    empty: true,
-    cons: fn(ok, basename) {
-      ok && any(
-        xs: derived_generated_stage0_repo_paths(),
-        predicate: fn(p) { p == stage0_src_repo_path(filename: basename) }
-      )
-    }
-  )
-}
-
-fn generated_authority_subset_of_derived_holds() -> Bool {
-  fold_list(
-    xs: derived_generated_stage0_repo_paths(),
-    empty: true,
-    cons: fn(ok, path) {
-      let basename = replace(path, stage0_src_repo_prefix, "")
-      ok && is_generated_stage0_file(basename: basename)
-    }
-  )
-}
-
 fn partition_crate_paths_complete_holds() -> Bool {
-  length(xs: derived_partition_crate_lib_repo_paths()) == length(xs: stage0_partition_crate_rows())
+  v2.std.algebra.length(xs: derived_partition_crate_lib_repo_paths()) == v2.std.algebra.length(xs: v2.workflow.rust_crate_partition.stage0_partition_crate_rows())
 }
 
 fn derived_generated_hand_disjoint_holds() -> Bool {
-  !any(
+  !v2.std.algebra.any(
     xs: derived_hand_maintained_stage0_repo_paths(),
     predicate: fn(path) {
-      any(xs: derived_generated_stage0_repo_paths(), predicate: fn(gen_path) { gen_path == path })
+      v2.std.algebra.any(xs: derived_generated_stage0_repo_paths(), predicate: fn(gen_path) { gen_path == path })
     }
   )
 }
 
 fn classified_residue_disjoint_holds() -> Bool {
-  !any(
+  !v2.std.algebra.any(
     xs: residue_lifecycle_repo_paths(),
     predicate: fn(residue_path) {
-      any(xs: derived_authority_join_repo_paths(), predicate: fn(derived_path) { derived_path == residue_path })
+      v2.std.algebra.any(xs: derived_authority_join_repo_paths(), predicate: fn(derived_path) { derived_path == residue_path })
     }
   )
 }
 
 fn file_grain_paths_avoid_discovery_prefix_holds() -> Bool {
-  !any(
+  !v2.std.algebra.any(
     xs: file_grain_lifecycle_repo_paths(),
     predicate: fn(file_path) { path_matches_discovery_prefix_hint(path: file_path) }
   )
 }
 
 fn manifest_state_verdict_scaffold_holds() -> Bool {
-  match rust_source_manifest_state_verdict(observation: current_stage0_rust_source_observation()) {
+  match rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observation.current_stage0_rust_source_observation()) {
     ManifestStateScaffoldOk => true
     ManifestStateScaffoldRefused { cause: _ } => false
   }
 }
 
 fn stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds() -> Bool {
-  generated_repo_paths_cover_authority_holds()
-    && generated_authority_subset_of_derived_holds()
-    && partition_crate_paths_complete_holds()
+  partition_crate_paths_complete_holds()
     && derived_generated_hand_disjoint_holds()
     && classified_residue_disjoint_holds()
     && file_grain_paths_avoid_discovery_prefix_holds()
@@ -744,7 +721,7 @@ fn stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds() -> Bool {
     && generated_artifact_layout_overlap_subset_of_hand_maintained_holds()
     && generated_artifact_stage0_src_disposition_rows_well_formed()
     && generated_artifact_stage0_src_disjoint_from_residue_holds()
-    && seed_growth_roster_well_formed_gate_holds()
+    && gunbc.seed_growth_admission.seed_growth_roster_well_formed_gate_holds()
 }
 
 fn stage0_rust_lifecycle_scaffold_mechanical_checks_holds() -> Bool {
@@ -752,4 +729,4 @@ fn stage0_rust_lifecycle_scaffold_mechanical_checks_holds() -> Bool {
     && manifest_state_verdict_scaffold_holds()
 }
 
-data rust_source_lifecycle_partition_contradiction_note: String = "OPEN: src/v1/stage0_core/src/lib.rs is tracked on disk but stage0_partition_crate_rows has no src/v1/stage0_core row. Residue row surfaces the contradiction; operator resolves via partition row or crate deletion."
+data rust_source_lifecycle_partition_contradiction_note: v2.std.text.String = "OPEN: src/v1/stage0_core/src/lib.rs is tracked on disk but v2.workflow.rust_crate_partition.stage0_partition_crate_rows has no src/v1/stage0_core row. Residue row surfaces the contradiction; operator resolves via partition row or crate deletion."

@@ -1,0 +1,70 @@
+module test.claim.required_regen_admission_witness
+
+
+data witness_note: String = "Discriminating RED controls for the required-regen admission wall: zero planned or executed populations must refuse rather than vacuously agree; a genuine match with independent denominators may admit."
+
+test fn witness_zero_planned_population_refuses() -> Bool {
+  match v2.workflow.required_regen.required_regen_sync_admission(
+    generated_outcomes: [],
+    hand_outcomes: [],
+    authority_digest: "fnv1a64:deadbeefdeadbeef",
+    planned_surfaces: 0,
+    executed_surfaces: 0
+  ) {
+    v2.workflow.required_regen.RequiredRegenSyncRefused { refusals } =>
+      refusals |> any(r => match r { v2.workflow.required_regen.EmptyCommittedPopulation => true _ => false })
+    v2.workflow.required_regen.RequiredRegenSyncRunnable { attempt: _ } => false
+  }
+}
+
+test fn witness_zero_executed_population_refuses() -> Bool {
+  match v2.workflow.required_regen.required_regen_sync_admission(
+    generated_outcomes: [],
+    hand_outcomes: [],
+    authority_digest: "fnv1a64:deadbeefdeadbeef",
+    planned_surfaces: 3,
+    executed_surfaces: 0
+  ) {
+    v2.workflow.required_regen.RequiredRegenSyncRefused { refusals } =>
+      refusals |> any(r => match r { v2.workflow.required_regen.EmptyEmitResult => true _ => false })
+    v2.workflow.required_regen.RequiredRegenSyncRunnable { attempt: _ } => false
+  }
+}
+
+test fn witness_planned_executed_mismatch_refuses() -> Bool {
+  match v2.workflow.required_regen.required_regen_sync_admission(
+    generated_outcomes: [],
+    hand_outcomes: [],
+    authority_digest: "fnv1a64:deadbeefdeadbeef",
+    planned_surfaces: 3,
+    executed_surfaces: 2
+  ) {
+    v2.workflow.required_regen.RequiredRegenSyncRefused { refusals } =>
+      refusals |> any(r => match r {
+        v2.workflow.required_regen.PlannedExecutedMismatch { planned: 3, executed: 2 } => true
+        _ => false
+      })
+    v2.workflow.required_regen.RequiredRegenSyncRunnable { attempt: _ } => false
+  }
+}
+
+test fn witness_nonempty_matching_population_admits() -> Bool {
+  match v2.workflow.required_regen.required_regen_sync_admission(
+    generated_outcomes: [v2.workflow.required_regen.SurfaceMatches { relative_path: "std_algebra.rs" }],
+    hand_outcomes: [],
+    authority_digest: "fnv1a64:deadbeefdeadbeef",
+    planned_surfaces: 1,
+    executed_surfaces: 1
+  ) {
+    v2.workflow.required_regen.RequiredRegenSyncRunnable { attempt: attempt } =>
+      attempt.authority_digest == "fnv1a64:deadbeefdeadbeef"
+    v2.workflow.required_regen.RequiredRegenSyncRefused { refusals: _ } => false
+  }
+}
+
+test fn witness_holds() -> Bool {
+  witness_zero_planned_population_refuses()
+    && witness_zero_executed_population_refuses()
+    && witness_planned_executed_mismatch_refuses()
+    && witness_nonempty_matching_population_admits()
+}

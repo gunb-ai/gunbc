@@ -1,17 +1,17 @@
 module test.claim.long.gauntlet_lane_enrollment_witness
 
 
-data gauntlet_lane_enrollment_note: String = "Executing consumer for the FalsifierCadenceJob lane (gunbc.commit_workflow falsifier_cadence_surface_note / bare_deenrollment_wall_note). It exists because the lane's whole value is the difference between 're-homed' and 'dropped', and that difference is invisible in a diff: both look like a surface list edit. Three claims, the third a RED control so the first two cannot pass vacuously. This file lives under test/claim/long/ for HOMING consistency with the rows it guards, but is enrolled per-PR on GithubActionsCiJob deliberately — it is a pure roster fold with no live-tree read and no host effect, measured well inside the fast-lane budget, and its whole point is to red on the PR that de-enrolls something rather than up to 4 hours later."
+data gauntlet_lane_enrollment_note: v2.std.text.String = "Executing consumer for the gunbc.commit_workflow.FalsifierCadenceJob lane (gunbc.commit_workflow falsifier_cadence_surface_note / bare_deenrollment_wall_note). It exists because the lane's whole value is the difference between 're-homed' and 'dropped', and that difference is invisible in a diff: both look like a surface list edit. Three claims, the third a RED control so the first two cannot pass vacuously. This file lives under test/claim/long/ for HOMING consistency with the rows it guards, but is enrolled per-PR on gunbc.commit_workflow.GithubActionsCiJob deliberately — it is a pure roster fold with no live-tree read and no host effect, measured well inside the fast-lane budget, and its whole point is to red on the PR that de-enrolls something rather than up to 4 hours later."
 
 fn synthetic_rehomed_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
   gunbc.commit_workflow.CommitCheckEnrollment {
     check: gunbc.commit_workflow.CommitWitnessClaim {
       entry: "src/v2/test/claim/long/synthetic_rehomed_witness_test.dag",
       check_fns: ["synthetic_rehomed_holds"],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
+      kind: std.realization_schedule.ExecutionWitnessKind,
+      span: std.realization_schedule.SpanUndeclared
     },
-    surfaces: [FalsifierCadenceJob]
+    surfaces: [gunbc.commit_workflow.FalsifierCadenceJob]
   }
 }
 
@@ -20,10 +20,10 @@ fn synthetic_pr_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
     check: gunbc.commit_workflow.CommitWitnessClaim {
       entry: "src/v2/test/claim/synthetic_pr_witness_test.dag",
       check_fns: ["synthetic_pr_holds"],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
+      kind: std.realization_schedule.ExecutionWitnessKind,
+      span: std.realization_schedule.SpanUndeclared
     },
-    surfaces: [GithubActionsCiJob]
+    surfaces: [gunbc.commit_workflow.GithubActionsCiJob]
   }
 }
 
@@ -32,25 +32,25 @@ fn synthetic_bare_deenrolled_row() -> gunbc.commit_workflow.CommitCheckEnrollmen
     check: gunbc.commit_workflow.CommitWitnessClaim {
       entry: "src/v2/test/claim/long/synthetic_dropped_witness_test.dag",
       check_fns: ["synthetic_dropped_holds"],
-      kind: ExecutionWitnessKind,
-      span: SpanUndeclared
+      kind: std.realization_schedule.ExecutionWitnessKind,
+      span: std.realization_schedule.SpanUndeclared
     },
-    surfaces: [GitPrePushHook, GithubActionsCiRegenJob]
+    surfaces: [gunbc.commit_workflow.GitPrePushHook, gunbc.commit_workflow.GithubActionsCiRegenJob]
   }
 }
 
-fn falsifier_entries_contain(entries: List<std.realization_schedule.ScheduleWitnessEntry>, f: String) -> Bool {
-  any(entries, e => e.function == f)
+fn falsifier_entries_contain(entries: v2.std.collection.List<std.realization_schedule.ScheduleWitnessEntry>, f: v2.std.text.String) -> v2.Bool {
+  v2.std.algebra.any(entries, e => e.function == f)
 }
 
-data substrate_long_lane_is_a_sibling_cadence_note: String = "wave1_gate1_d_census_subsumption_witness_holds moved off FalsifierCadenceJob onto falsifier_substrate_long_lane_rows (nightly falsifier batch 6) when main landed the Class C split. That is a re-home between two cadence lanes, NOT a de-enrollment, so the invariant this file guards still holds — but the pin has to read the lane the row actually sits on. Dropping the pin instead would have been the narrowing this witness exists to prevent: the row would then be free to vanish from BOTH lanes with nothing red. The check below therefore asserts substrate-long-lane membership by function name, which is the same claim ('this re-homed row still executes on a cadence') read against the correct authority."
+data substrate_long_lane_is_a_sibling_cadence_note: v2.std.text.String = "wave1_gate1_d_census_subsumption_witness_holds moved off gunbc.commit_workflow.FalsifierCadenceJob onto gunbc.ci_layer_roots.falsifier_substrate_long_lane_rows (nightly falsifier batch 6) when main landed the Class C split. That is a re-home between two cadence lanes, NOT a de-enrollment, so the invariant this file guards still holds — but the pin has to read the lane the row actually sits on. Dropping the pin instead would have been the narrowing this witness exists to prevent: the row would then be free to vanish from BOTH lanes with nothing red. The check below therefore asserts substrate-long-lane membership by function name, which is the same claim ('this re-homed row still executes on a cadence') read against the correct authority."
 
-fn substrate_long_lane_contains(f: String) -> Bool {
+fn substrate_long_lane_contains(f: v2.std.text.String) -> v2.Bool {
   v2.std.algebra.any(gunbc.ci_layer_roots.falsifier_substrate_long_lane_rows, row => row.function == f)
 }
 
-test fn witness_rehomed_rows_are_cadence_enrolled() -> Bool {
-  let entries = live_roster_falsifier_witness_entries()
+test fn witness_rehomed_rows_are_cadence_enrolled() -> v2.Bool {
+  let entries = gunbc.commit_workflow.live_roster_falsifier_witness_entries()
   substrate_long_lane_contains(f: "wave1_gate1_d_census_subsumption_witness_holds")
     && falsifier_entries_contain(entries: entries, f: "wave1_gate1_d_ingested_bind_executes_witness_holds")
     && falsifier_entries_contain(entries: entries, f: "wave1_gate1_d_ingested_loop_executes_witness_holds")
@@ -60,57 +60,57 @@ test fn witness_rehomed_rows_are_cadence_enrolled() -> Bool {
     && falsifier_entries_contain(entries: entries, f: "witness_parse_binding_fidelity_distinct_identifiers_holds")
 }
 
-test fn witness_split_entries_keep_cheap_half_per_pr() -> Bool {
-  let cadence = live_roster_falsifier_witness_entries()
+test fn witness_split_entries_keep_cheap_half_per_pr() -> v2.Bool {
+  let cadence = gunbc.commit_workflow.live_roster_falsifier_witness_entries()
   !falsifier_entries_contain(entries: cadence, f: "lens_affected_set_provenance_producer_git_diff_wire_holds")
     && !falsifier_entries_contain(entries: cadence, f: "witness_resolve_distinct_param_bindings_holds")
 }
 
-test fn gauntlet_lane_rehome_is_never_bare_deenrollment_holds() -> Bool {
-  live_roster_has_no_bare_deenrolled_witness()
-    && roster_has_no_bare_deenrolled_witness(
+test fn gauntlet_lane_rehome_is_never_bare_deenrollment_holds() -> v2.Bool {
+  gunbc.commit_workflow.live_roster_has_no_bare_deenrolled_witness()
+    && gunbc.commit_workflow.roster_has_no_bare_deenrolled_witness(
          roster: [synthetic_pr_row(), synthetic_rehomed_row()]
        )
 }
 
-test fn gauntlet_lane_rehome_bare_deenrollment_RED_control_holds() -> Bool {
-  !roster_has_no_bare_deenrolled_witness(
+test fn gauntlet_lane_rehome_bare_deenrollment_RED_control_holds() -> v2.Bool {
+  !gunbc.commit_workflow.roster_has_no_bare_deenrolled_witness(
     roster: [synthetic_pr_row(), synthetic_rehomed_row(), synthetic_bare_deenrolled_row()]
   )
 }
 
-data gate_half_of_the_wall_note: String = "The GATE half, added 2026-07-26 when an audit found the wall above covers only CommitWitnessClaim rows. A CommitSpecGate could be moved to surfaces: [FalsifierCadenceJob] — or to [] outright — and execute nowhere with nothing red, because roster_has_no_bare_deenrolled_witness filters on enrollment_is_witness_claim, which answers false for a gate. That made the gate the single enrollment shape whose de-enrollment was invisible, in a lane about to be used to re-home three of them. The claims below mirror the witness half exactly, INCLUDING the surface asymmetry that makes them two predicates rather than one: the regen-job row is a POSITIVE control here (a gate on GithubActionsCiRegenJob is correctly enrolled — project_ci_regen_job_gates executes it) where the byte-identical witness row is the NEGATIVE control above. If those two ever agree, one of them is wrong; gate_enrollment_surface_asymmetry_note carries the reasoning."
+data gate_half_of_the_wall_note: v2.std.text.String = "The GATE half, added 2026-07-26 when an audit found the wall above covers only gunbc.commit_workflow.CommitWitnessClaim rows. A gunbc.commit_workflow.CommitSpecGate could be moved to surfaces: [gunbc.commit_workflow.FalsifierCadenceJob] — or to [] outright — and execute nowhere with nothing red, because gunbc.commit_workflow.roster_has_no_bare_deenrolled_witness filters on enrollment_is_witness_claim, which answers false for a gate. That made the gate the single enrollment shape whose de-enrollment was invisible, in a lane about to be used to re-home three of them. The claims below mirror the witness half exactly, INCLUDING the surface asymmetry that makes them two predicates rather than one: the regen-job row is a POSITIVE control here (a gate on gunbc.commit_workflow.GithubActionsCiRegenJob is correctly enrolled — project_ci_regen_job_gates executes it) where the byte-identical witness row is the NEGATIVE control above. If those two ever agree, one of them is wrong; gate_enrollment_surface_asymmetry_note carries the reasoning."
 
 fn synthetic_cadence_gate_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
   gunbc.commit_workflow.CommitCheckEnrollment {
-    check: gunbc.commit_workflow.CommitSpecGate { gate: CheapClaimPoolGate },
-    surfaces: [FalsifierCadenceJob]
+    check: gunbc.commit_workflow.CommitSpecGate { gate: gunbc.ci_gate.CheapClaimPoolGate },
+    surfaces: [gunbc.commit_workflow.FalsifierCadenceJob]
   }
 }
 
 fn synthetic_regen_gate_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
   gunbc.commit_workflow.CommitCheckEnrollment {
-    check: gunbc.commit_workflow.CommitSpecGate { gate: RegenVerifyGate },
-    surfaces: [GithubActionsCiRegenJob]
+    check: gunbc.commit_workflow.CommitSpecGate { gate: gunbc.ci_gate.GeneratedArtifactDriftGate },
+    surfaces: [gunbc.commit_workflow.GithubActionsCiRegenJob]
   }
 }
 
 fn synthetic_bare_deenrolled_gate_row() -> gunbc.commit_workflow.CommitCheckEnrollment {
   gunbc.commit_workflow.CommitCheckEnrollment {
-    check: gunbc.commit_workflow.CommitSpecGate { gate: CheapClaimPoolGate },
-    surfaces: [GitPrePushHook]
+    check: gunbc.commit_workflow.CommitSpecGate { gate: gunbc.ci_gate.CheapClaimPoolGate },
+    surfaces: [gunbc.commit_workflow.GitPrePushHook]
   }
 }
 
-test fn gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds() -> Bool {
-  live_roster_has_no_bare_deenrolled_gate()
-    && roster_has_no_bare_deenrolled_gate(
+test fn gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds() -> v2.Bool {
+  gunbc.commit_workflow.live_roster_has_no_bare_deenrolled_gate()
+    && gunbc.commit_workflow.roster_has_no_bare_deenrolled_gate(
          roster: [synthetic_cadence_gate_row(), synthetic_regen_gate_row()]
        )
 }
 
-test fn gauntlet_lane_gate_bare_deenrollment_RED_control_holds() -> Bool {
-  !roster_has_no_bare_deenrolled_gate(
+test fn gauntlet_lane_gate_bare_deenrollment_RED_control_holds() -> v2.Bool {
+  !gunbc.commit_workflow.roster_has_no_bare_deenrolled_gate(
     roster: [synthetic_cadence_gate_row(), synthetic_bare_deenrolled_gate_row()]
   )
 }

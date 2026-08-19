@@ -71,6 +71,7 @@ type VarBindingKind
 type CallSemantics
   = PlainCallSemantics
   | LookupCallSemantics
+  | FunctionValueCallSemantics
 
 type MethodSemantics
   = PlainMethodSemantics

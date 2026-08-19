@@ -3663,6 +3663,29 @@ fn regen_build_module_index(
 /// The two source roots the self-host regen compiles: `src/v1` entry seeds and `dag`
 /// (the import-resolution index). Single authority for both `regen_stage0` and the
 /// regen affected-set skip witness.
+/// Ported from main at the merge that brought coproduct_reflection's caller: whether a
+/// directory tree holds any `.dag` file at all, skipping cargo's own output directories.
+pub(crate) fn dag_tree_holds_any_file(dir: &Path) -> bool {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return false,
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            if is_cargo_target_output_dir(dir, &path) {
+                continue;
+            }
+            if dag_tree_holds_any_file(&path) {
+                return true;
+            }
+        } else if path.extension().and_then(|e| e.to_str()) == Some("dag") {
+            return true;
+        }
+    }
+    false
+}
+
 pub fn regen_source_roots(workspace: &Path) -> Vec<PathBuf> {
     // src/v2 is here because dag/ modules legitimately reference v2 ones -- with
     // imports gone, a bare-name closure follows those references and reaches

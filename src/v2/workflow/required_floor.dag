@@ -247,8 +247,18 @@ data no_seen_qualified_names: List<String> = []
 // where any witness should end. The measured median is 1.0ms, so an ordinary row sits two
 // orders of magnitude under the warning and three under the ceiling.
 //
-// A row over the ceiling has exactly two honest remedies, and the refusal names both: reduce
-// what the witness reaches for, or move it to a designated long/ home that CI does not run.
+// A row over the ceiling has exactly two honest remedies, and RELOCATION IS NOT ONE OF THEM:
+// reduce what the witness reaches for, or enroll it in a lane that declares its own dated
+// ceiling AND names the row as an executing consumer.
+//
+// This comment used to offer "move it to a designated long/ home that CI does not run", which
+// is the move the 2026-08-04 admission ruling forbids and which the interpreter's own refusal
+// text argues against three files away (v1_interpreter.rs, EvaluationBudgetExceeded: "RELOCATING
+// THE FILE DOES NOT DISCHARGE IT"). Two authorities in one tree disagreed about the remedy, and
+// this was the one recommending the defect. Nothing executes a long/ home -- the tree carries
+// witnesses.yml and fleet-converge.yml, and the falsifier cadence died in the floor cut -- so
+// relocating a row deletes its coverage while retaining its source, which is the gunbc#7762
+// specimen exactly. Found by quiet-ibex-39 while censusing the runaways.
 // The warn value is a judgement -- the operator set the ceiling, not the warning -- and it is
 // placed an order of magnitude below the ceiling so the signal arrives while a fix is still
 // cheap.

@@ -9,11 +9,11 @@ data observation_ci_render_tone_note: String = "Tone contract (operator, 2026-07
 data ci_one_decimal: std.nat.Nat = 10
 
 fn ci_gibibyte_tenths(b: std.measure.ByteSize) -> std.nat.Nat {
-  (byte_size_count(b) * ci_one_decimal) / gibibyte_scale_factor_bytes()
+  (std.measure.byte_size_count(b) * ci_one_decimal) / std.measure.gibibyte_scale_factor_bytes()
 }
 
 fn ci_milliseconds_per_minute() -> std.nat.Nat {
-  milliseconds_per_second() * seconds_per_minute()
+  std.measure.milliseconds_per_second() * std.measure.seconds_per_minute()
 }
 
 data ci_minute_switch_seconds: std.nat.Nat = 90
@@ -28,36 +28,36 @@ fn ci_human_bytes(b: std.measure.ByteSize) -> String {
 }
 
 fn ci_human_percent(bp: std.measure.BasisPoint) -> String {
-  concat(ci_tenths_text(tenths: basis_point_count(bp: bp) / 10), "%")
+  concat(ci_tenths_text(tenths: std.measure.basis_point_count(bp: bp) / 10), "%")
 }
 
 fn ci_human_duration(d: std.measure.Millisecond) -> String {
-  let ms = millisecond_count(m: d)
-  if ms < milliseconds_per_second() {
+  let ms = std.measure.millisecond_count(m: d)
+  if ms < std.measure.milliseconds_per_second() {
     concat(to_string(ms), "ms")
-  } else if ms < (ci_minute_switch_seconds * milliseconds_per_second()) {
-    concat(to_string(ms / milliseconds_per_second()), " seconds")
+  } else if ms < (ci_minute_switch_seconds * std.measure.milliseconds_per_second()) {
+    concat(to_string(ms / std.measure.milliseconds_per_second()), " seconds")
   } else {
     concat(to_string(ms / ci_milliseconds_per_minute()), " minutes")
   }
 }
 
 fn ci_human_elapsed(d: std.measure.Nanosecond) -> String {
-  let ns = nanosecond_count(n: d)
-  if ns < nanoseconds_per_millisecond() {
+  let ns = std.measure.nanosecond_count(n: d)
+  if ns < std.measure.nanoseconds_per_millisecond() {
     concat(to_string(ns), "ns")
   } else {
-    ci_human_duration(d: nanosecond_to_millisecond_floor(n: d))
+    ci_human_duration(d: std.measure.nanosecond_to_millisecond_floor(n: d))
   }
 }
 
 data ci_human_duration_note: String = "A second duration projection beside gunbc.ci_render.format_duration is deliberate and is not a fork: that one is the COMPACT technical form for receipt boxes and timing tables (230ms, 41s), this one is the SENTENCE form for arm's-length prose (10 minutes). Same fact, two surfaces, chosen by the tone contract rather than by taste. If a third caller wants a third spelling, that is the signal to unify them behind one carrier with a declared style axis rather than to add a fourth."
 
-// ObservationEvent retains exact Nanosecond wall time through classification and ordering. Arm's-length lines keep existing millisecond-and-larger spelling byte-stable, while a sub-millisecond event prints its exact nanosecond count instead of fabricating 0ms. The floor conversion is confined to this named presentation boundary.
+// std.observation.ObservationEvent retains exact std.measure.Nanosecond wall time through classification and ordering. Arm's-length lines keep existing std.measure.millisecond-and-larger spelling byte-stable, while a sub-std.measure.millisecond event prints its exact std.measure.nanosecond count instead of fabricating 0ms. The floor conversion is confined to this named presentation boundary.
 fn ci_measured_bytes_text(m: std.observation.Measured<std.measure.ByteSize>) -> String {
   match m {
-    MeasuredValue { value: b } => ci_human_bytes(b: b)
-    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+    std.observation.MeasuredValue { value: b } => ci_human_bytes(b: b)
+    std.observation.MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
   }
 }
 
@@ -66,20 +66,20 @@ fn ci_measured_bytes_text(m: std.observation.Measured<std.measure.ByteSize>) -> 
 // indistinguishable from one that finished instantly.
 fn ci_measured_elapsed_text(m: std.observation.Measured<std.measure.Nanosecond>) -> String {
   match m {
-    MeasuredValue { value: d } => ci_human_elapsed(d: d)
-    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+    std.observation.MeasuredValue { value: d } => ci_human_elapsed(d: d)
+    std.observation.MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
   }
 }
 
 fn ci_measured_percent_text(m: std.observation.Measured<std.measure.BasisPoint>) -> String {
   match m {
-    MeasuredValue { value: bp } => ci_human_percent(bp: bp)
-    MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
+    std.observation.MeasuredValue { value: bp } => ci_human_percent(bp: bp)
+    std.observation.MeasuredUnavailable { cause: c } => concat("unreadable (", concat(c, ")"))
   }
 }
 
 fn ci_glyph(id: std.symbols.SymbolId, tier: std.symbols.Tier) -> String {
-  match resolve_symbol(id: id, tier: tier) {
+  match extdeps.render.glyphs.resolve_symbol(id: id, tier: tier) {
     Present { value: g } => g
     Absent => "?"
   }
@@ -98,9 +98,9 @@ type LinePlacement
 // Law 4's asymmetry made structural. Placement is DERIVED from the line's attention, never chosen at the call site, so an anomaly cannot be written into a collapsed group: the group is exactly where a reader will not look, and burying a refusal there is how a stopped line reads as silence. This is the construction that replaces the review instruction not to hide refusals.
 fn ci_line_placement(attention: std.observation.AttentionLevel) -> LinePlacement {
   match attention {
-    Ambient => InsideCollapsedGroup
-    Notable => OutsideGroup
-    Anomaly => OutsideGroup
+    std.observation.Ambient => InsideCollapsedGroup
+    std.observation.Notable => OutsideGroup
+    std.observation.Anomaly => OutsideGroup
   }
 }
 
@@ -142,17 +142,17 @@ fn ci_subject_activity(subject: std.observation.ObservationSubject) -> Observati
     init: ObservationActivity { run: "", batch: "", entry: "", module_path: "", declaration: "", phase: "" },
     f: (acc, seg) =>
       match seg {
-        RunSegment { id: i } =>
+        std.observation.RunSegment { id: i } =>
           ObservationActivity { run: i, batch: acc.batch, entry: acc.entry, module_path: acc.module_path, declaration: acc.declaration, phase: acc.phase }
-        BatchSegment { index: _, label: l } =>
+        std.observation.BatchSegment { index: _, label: l } =>
           ObservationActivity { run: acc.run, batch: l, entry: acc.entry, module_path: acc.module_path, declaration: acc.declaration, phase: acc.phase }
-        EntrySegment { source_path: p } =>
+        std.observation.EntrySegment { source_path: p } =>
           ObservationActivity { run: acc.run, batch: acc.batch, entry: p, module_path: acc.module_path, declaration: acc.declaration, phase: acc.phase }
-        ModuleSegment { module_path: m } =>
+        std.observation.ModuleSegment { module_path: m } =>
           ObservationActivity { run: acc.run, batch: acc.batch, entry: acc.entry, module_path: m, declaration: acc.declaration, phase: acc.phase }
-        DeclarationSegment { declaration: d } =>
-          ObservationActivity { run: acc.run, batch: acc.batch, entry: acc.entry, module_path: acc.module_path, declaration: observation_declaration_key(d: d), phase: acc.phase }
-        PhaseSegment { name: n } =>
+        std.observation.DeclarationSegment { declaration: d } =>
+          ObservationActivity { run: acc.run, batch: acc.batch, entry: acc.entry, module_path: acc.module_path, declaration: std.observation.observation_declaration_key(d: d), phase: acc.phase }
+        std.observation.PhaseSegment { name: n } =>
           ObservationActivity { run: acc.run, batch: acc.batch, entry: acc.entry, module_path: acc.module_path, declaration: acc.declaration, phase: n }
       }
   )
@@ -188,10 +188,10 @@ fn ci_subject_detail_text(subject: std.observation.ObservationSubject) -> String
 
 fn ci_outcome_text(o: std.observation.ObservationOutcome) -> String {
   match o {
-    Done => "done"
-    Refused { diagnostic: d } => concat("refused: ", d)
-    Failed { error: e, output: _ } => concat("failed: ", e)
-    TimedOut { basis: k, budget: b, elapsed: e } =>
+    std.observation.Done => "done"
+    std.observation.Refused { diagnostic: d } => concat("refused: ", d)
+    std.observation.Failed { error: e, output: _ } => concat("failed: ", e)
+    std.observation.TimedOut { basis: k, budget: b, elapsed: e } =>
       concat(
         "timed out after ",
         concat(
@@ -199,21 +199,21 @@ fn ci_outcome_text(o: std.observation.ObservationOutcome) -> String {
           concat(
             " ",
             concat(
-              clock_basis_label(b: k) as String,
-              concat(" (budget ", concat(ci_human_duration(d: b), concat(" ", concat(clock_basis_label(b: k) as String, ")"))))
+              std.observation.clock_basis_label(b: k) as String,
+              concat(" (budget ", concat(ci_human_duration(d: b), concat(" ", concat(std.observation.clock_basis_label(b: k) as String, ")"))))
             )
           )
         )
       )
-    Skipped { reason: r } => concat("skipped: ", r)
-    Final { shown_failures: n } => concat("finished with ", concat(to_string(n), " problems shown"))
+    std.observation.Skipped { reason: r } => concat("skipped: ", r)
+    std.observation.Final { shown_failures: n } => concat("finished with ", concat(to_string(n), " problems shown"))
   }
 }
 
 fn ci_duration_suffix(wall: std.observation.Measured<std.measure.Nanosecond>) -> String {
   match wall {
-    MeasuredValue { value: w } => concat(" in ", ci_human_elapsed(d: w))
-    MeasuredUnavailable { cause: c } => concat(" (duration unmeasured: ", concat(c, ")"))
+    std.observation.MeasuredValue { value: w } => concat(" in ", ci_human_elapsed(d: w))
+    std.observation.MeasuredUnavailable { cause: c } => concat(" (duration unmeasured: ", concat(c, ")"))
   }
 }
 
@@ -221,21 +221,21 @@ data ci_duration_absence_note: String = "An unmeasured duration NAMES ITSELF rat
 
 // Every outcome line carries its duration. The reference implementation studied for this lane omits them, which is why a reader cannot tell a fast green from a slow one without diffing timestamps by hand — and the slow green is the one that becomes next month's wall.
 fn ci_event_line_at_attention(event: std.observation.ObservationEvent, attention: std.observation.AttentionLevel) -> RenderedLine {
-  let presentation = observation_presentation(c: observation_event_class(event: event))
+  let presentation = std.observation.observation_presentation(c: std.observation.observation_event_class(event: event))
   let subject = ci_subject_leaf_text(subject: event.subject)
   match event.transition {
-    Begin =>
+    std.observation.Begin =>
       RenderedLine { glyph: presentation.glyph, text: concat("started ", subject), attention: attention }
-    Step { k: k, n: n } =>
+    std.observation.Step { k: k, n: n } =>
       RenderedLine {
         glyph: presentation.glyph,
         text: concat(subject, concat(": ", concat(to_string(k), concat(" of ", to_string(n))))),
         attention: attention
       }
-    Concluded { outcome: o } =>
+    std.observation.Concluded { outcome: o } =>
       RenderedLine {
         glyph: presentation.glyph,
-        text: concat(subject, concat(" ", concat(ci_outcome_text(o: o), ci_duration_suffix(wall: observation_wall(event: event))))),
+        text: concat(subject, concat(" ", concat(ci_outcome_text(o: o), ci_duration_suffix(wall: std.observation.observation_wall(event: event))))),
         attention: attention
       }
   }
@@ -244,7 +244,7 @@ fn ci_event_line_at_attention(event: std.observation.ObservationEvent, attention
 fn ci_event_line(event: std.observation.ObservationEvent, basis: std.observation.AttentionBasis) -> RenderedLine {
   ci_event_line_at_attention(
     event: event,
-    attention: observation_attention(event: event, basis: basis)
+    attention: std.observation.observation_attention(event: event, basis: basis)
   )
 }
 
@@ -273,17 +273,17 @@ fn ci_heartbeat_line(sample: HeartbeatSample) -> RenderedLine {
     concat(", pressure ", ci_measured_percent_text(m: sample.pressure)))))
   )
   RenderedLine {
-    glyph: StatusPulse,
+    glyph: std.symbols.StatusPulse,
     text: concat(ci_human_duration(d: sample.elapsed), concat(" in — ", concat(identity, concat(". ", vitals)))),
-    attention: Ambient
+    attention: std.observation.Ambient
   }
 }
 
 fn ci_hold_cause_text(hold: std.observation.SchedulerHold) -> String {
   match hold {
-    PsiPressure { avg10: bp } =>
+    std.observation.PsiPressure { avg10: bp } =>
       concat("blocked on memory reclaim (pressure ", concat(ci_human_percent(bp: bp), ")"))
-    CurrentHighWater { current: c, high_water: hw } =>
+    std.observation.CurrentHighWater { current: c, high_water: hw } =>
       concat("blocked on the memory high-water line (", concat(ci_human_bytes(b: c), concat(" of ", concat(ci_human_bytes(b: hw), ")"))))
     _ => "blocked on scheduler admission"
   }
@@ -291,26 +291,26 @@ fn ci_hold_cause_text(hold: std.observation.SchedulerHold) -> String {
 
 // Law 3 rendered: quiet past T names the child, past 2T the grandchild, recursively to the leaf. The escalation APPENDS — it never repaints, because a CI log cannot be redrawn — so the reader watches attention walk down the tree in real time. Depth comes from std.observation, not from a threshold invented here.
 fn ci_escalation_line(quiet_subject: std.observation.ObservationSubject, active_leaf: std.observation.ObservationSubject, quiet: std.measure.Millisecond, t: std.observation.DwellThreshold) -> RenderedLine {
-  let surfaced = observation_escalation_subject(quiet_subject: quiet_subject, active_leaf: active_leaf, quiet: quiet, t: t)
+  let surfaced = std.observation.observation_escalation_subject(quiet_subject: quiet_subject, active_leaf: active_leaf, quiet: quiet, t: t)
   RenderedLine {
-    glyph: StatusDwell,
+    glyph: std.symbols.StatusDwell,
     text: concat(
       ci_subject_leaf_text(subject: surfaced),
       concat(" has been quiet for ", concat(ci_human_duration(d: quiet), " — still working"))
     ),
-    attention: Notable
+    attention: std.observation.Notable
   }
 }
 
 fn ci_escalation_blocked_line(quiet_subject: std.observation.ObservationSubject, active_leaf: std.observation.ObservationSubject, quiet: std.measure.Millisecond, t: std.observation.DwellThreshold, hold: std.observation.SchedulerHold) -> RenderedLine {
-  let surfaced = observation_escalation_subject(quiet_subject: quiet_subject, active_leaf: active_leaf, quiet: quiet, t: t)
+  let surfaced = std.observation.observation_escalation_subject(quiet_subject: quiet_subject, active_leaf: active_leaf, quiet: quiet, t: t)
   RenderedLine {
-    glyph: StatusBlocked,
+    glyph: std.symbols.StatusBlocked,
     text: concat(
       ci_subject_leaf_text(subject: surfaced),
       concat(" quiet for ", concat(ci_human_duration(d: quiet), concat(" — ", ci_hold_cause_text(hold: hold))))
     ),
-    attention: Anomaly
+    attention: std.observation.Anomaly
   }
 }
 
@@ -323,10 +323,10 @@ type EscalationScan {
 
 // The escalation law has two rates and they are not the same number. The REVEAL DEPTH grows linearly — quiet over T — because the tree is walked one level per threshold. The EMISSION POINTS double — T, 2T, 4T, 8T — so a window that stays quiet does not turn into a per-minute drumbeat saying the same thing; each successive line costs twice the silence to earn and carries strictly more information than the last. That is law 4 and law 3 agreeing rather than competing: attention escalates, but the log stays quiet at arm's length. The exponent roster is bounded by construction, so a window that never ends emits a bounded number of lines instead of growing without limit.
 fn ci_escalation_emission_count(quiet: std.measure.Millisecond, t: std.observation.DwellThreshold) -> std.nat.Nat {
-  let q = millisecond_count(m: quiet)
+  let q = std.measure.millisecond_count(m: quiet)
   let scanned = fold(
     ci_escalation_exponents,
-    init: EscalationScan { count: 0, threshold: millisecond_count(m: t.period) },
+    init: EscalationScan { count: 0, threshold: std.measure.millisecond_count(m: t.period) },
     f: (acc, k) =>
       if acc.threshold <= q {
         EscalationScan { count: acc.count + 1, threshold: acc.threshold * 2 }
@@ -340,7 +340,7 @@ fn ci_escalation_emission_count(quiet: std.measure.Millisecond, t: std.observati
 data ci_responsiveness_note: String = "The responsiveness law stated as a predicate the flagship can execute against a real captured window: a subject quiet past T must have produced at least one line naming it. The captured crawl window of run 30044816605 fails this by construction — ten minutes quiet, zero lines — which is what makes it the right acceptance fixture rather than a synthetic one. A planted silent phase reds this predicate; that is the RED control, and it is the same shape as the historical defect."
 
 fn ci_window_is_responsive(quiet: std.measure.Millisecond, t: std.observation.DwellThreshold) -> Bool {
-  if millisecond_count(m: quiet) <= millisecond_count(m: t.period) {
+  if std.measure.millisecond_count(m: quiet) <= std.measure.millisecond_count(m: t.period) {
     true
   } else {
     ci_escalation_emission_count(quiet: quiet, t: t) > 0
@@ -348,11 +348,11 @@ fn ci_window_is_responsive(quiet: std.measure.Millisecond, t: std.observation.Dw
 }
 
 fn ci_group_open(title: String) -> String {
-  concat(annotation_group_prefix, title)
+  concat(extdeps.github.log_annotations.annotation_group_prefix, title)
 }
 
 fn ci_group_close() -> String {
-  annotation_endgroup
+  extdeps.github.log_annotations.annotation_endgroup
 }
 
 fn ci_collapsed_summary(green_count: std.nat.Nat) -> String {
@@ -370,15 +370,15 @@ type FloorRunSummary {
 
 fn ci_run_summary_glyph(summary: FloorRunSummary) -> std.symbols.SymbolId {
   if summary.failures > 0 {
-    NodeFailed
+    std.symbols.NodeFailed
   } else if summary.refusals > 0 {
-    StatusRefused
+    std.symbols.StatusRefused
   } else {
-    NodeCompleted
+    std.symbols.NodeCompleted
   }
 }
 
-// The run summary keeps Refused and Failed apart, because a summary that collapses them undoes at the last line exactly what the outcome sum spends the model establishing. A run that only refused stopped deliberately and its glyph says so; a run carrying any failure is broken, and breakage dominates the summary glyph because it is the stronger claim about the run. Both counts appear in the text either way, so the glyph chooses emphasis and never hides a number.
+// The run summary keeps std.observation.Refused and std.observation.Failed apart, because a summary that collapses them undoes at the last line exactly what the outcome sum spends the model establishing. A run that only refused stopped deliberately and its glyph says so; a run carrying any failure is broken, and breakage dominates the summary glyph because it is the stronger claim about the run. Both counts appear in the text either way, so the glyph chooses emphasis and never hides a number.
 fn ci_run_summary_line(summary: FloorRunSummary) -> RenderedLine {
   let problems = summary.refusals + summary.failures
   RenderedLine {
@@ -390,34 +390,34 @@ fn ci_run_summary_line(summary: FloorRunSummary) -> RenderedLine {
       concat(", ", concat(to_string(summary.refusals),
       concat(" refused and ", concat(to_string(summary.failures), " failed"))))))))
     ),
-    attention: if problems == 0 { Ambient } else { Anomaly }
+    attention: if problems == 0 { std.observation.Ambient } else { std.observation.Anomaly }
   }
 }
 
 // Refusals and failures are re-rendered at the end of the run as well as at the moment they happen. A GitHub Actions log is routinely truncated in the middle and is read from the bottom, so a refusal that appeared only at its own timestamp is a refusal the reader will not find. Restating it is not duplication of the FACT — it is the same event projected to a second position, which is what an append-only medium requires.
 fn ci_refusal_restate_line(subject: std.observation.ObservationSubject, diagnostic: std.types.NonEmptyStr) -> RenderedLine {
   RenderedLine {
-    glyph: StatusRefused,
-    text: concat(observation_subject_render(subject: subject), concat(" — ", neutralize_workflow_commands(text: diagnostic))),
-    attention: Anomaly
+    glyph: std.symbols.StatusRefused,
+    text: concat(std.observation.observation_subject_render(subject: subject), concat(" — ", extdeps.github.log_annotations.neutralize_workflow_commands(text: diagnostic))),
+    attention: std.observation.Anomaly
   }
 }
 
 data ci_subject_text_guard_note: String = "A restated diagnostic is text this repo relays from a SUBJECT process, so it goes through extdeps.github.log_annotations.neutralize_workflow_commands: a child whose captured stderr happens to begin with the workflow-command prefix would otherwise mint annotations in the parent run that no gunbc code authored. Consuming the existing guard rather than re-deriving it is the point — the neutralization rule is that module's fact, not this renderer's."
 
 
-data ci_measurement_rss_note: String = "Measurement-feed projection (wiring flip): peak-RSS and cgroup samples are not progress Begin/Concluded pairs — they are Measured facts about the run. This line is Ambient, identity-first (the label), vitals in human GiB via ci_measured_bytes_text, never a raw byte dump. Placement consumers and receipts still read the typed facts; this is the log surface only."
+data ci_measurement_rss_note: String = "Measurement-feed projection (wiring flip): peak-RSS and cgroup samples are not progress std.observation.Begin/std.observation.Concluded pairs — they are std.observation.Measured facts about the run. This line is std.observation.Ambient, identity-first (the label), vitals in human GiB via ci_measured_bytes_text, never a raw byte dump. Placement consumers and receipts still read the typed facts; this is the log surface only."
 
 fn ci_measurement_rss_line(label: std.types.NonEmptyStr, rss: std.observation.Measured<std.measure.ByteSize>) -> RenderedLine {
   RenderedLine {
-    glyph: StatusPulse,
+    glyph: std.symbols.StatusPulse,
     text: concat(label, concat(" — ", ci_measured_bytes_text(m: rss))),
-    attention: Ambient
+    attention: std.observation.Ambient
   }
 }
 
-data observation_ci_render_disposition: std.disposition.Disposition = Terminal {
-  reason: "The CI-log renderer is Terminal, not a scaffold: append-only line projection is what the GitHub Actions medium IS, not an interim stand-in for a richer one. The TTY renderer is a sibling projection of the same carriers rather than this module's successor, and the dashboard is a third. What dissolves later is the hand-rolled emit sites this renderer replaces, each counted by the P3 census."
+data observation_ci_render_disposition: std.disposition.Disposition = std.disposition.Terminal {
+  reason: "The CI-log renderer is std.disposition.Terminal, not a scaffold: append-only line projection is what the GitHub Actions medium IS, not an interim stand-in for a richer one. The TTY renderer is a sibling projection of the same carriers rather than this module's successor, and the dashboard is a third. What dissolves later is the hand-rolled emit sites this renderer replaces, each counted by the P3 census."
 }
 
 // ---------------------------------------------------------------------------
@@ -455,14 +455,14 @@ fn ci_routine_projection(
   event: std.observation.ObservationEvent,
   grain: std.observation.ObservationGrain?,
 ) -> RoutineProjection {
-  match observation_class_density(c: observation_event_class(event: event)) {
-    AnomalyExpanded => EmittedAtLeaf { reason: AnomalyPierces }
-    SummaryAlwaysShown => EmittedAtLeaf { reason: RunSummaryShown }
-    RoutineCollapsible =>
+  match std.observation.observation_class_density(c: std.observation.observation_event_class(event: event)) {
+    std.observation.AnomalyExpanded => EmittedAtLeaf { reason: AnomalyPierces }
+    std.observation.SummaryAlwaysShown => EmittedAtLeaf { reason: RunSummaryShown }
+    std.observation.RoutineCollapsible =>
       match grain {
         Absent => EmittedAtLeaf { reason: LeafGrainRequested }
         Present { value: g } =>
-          match observation_subject_prefix_at_grain(subject: event.subject, grain: g) {
+          match std.observation.observation_subject_prefix_at_grain(subject: event.subject, grain: g) {
             Absent => EmittedAtLeaf { reason: NoAncestorAtGrain }
             Present { value: ancestor } => FoldedIntoRollup { at: ancestor }
           }
@@ -472,13 +472,13 @@ fn ci_routine_projection(
 
 fn ci_rollup_summary_glyph(rollup: std.observation.ObservationRollup) -> std.symbols.SymbolId {
   if rollup.counts.failed > 0 {
-    NodeFailed
+    std.symbols.NodeFailed
   } else if rollup.counts.refused > 0 {
-    StatusRefused
+    std.symbols.StatusRefused
   } else if rollup.counts.timed_out > 0 {
-    StatusTimedOut
+    std.symbols.StatusTimedOut
   } else {
-    NodeCompleted
+    std.symbols.NodeCompleted
   }
 }
 
@@ -501,13 +501,13 @@ fn ci_rollup_measurement_note(rollup: std.observation.ObservationRollup) -> Stri
 //
 // Peak renders only when a batch-scoped reading exists. The seed cannot supply one: its only
 // memory fact is the PROCESS high-water mark, which is monotone over the whole run, so attributing
-// it to a batch reported `peak 11.5 GiB` beside a four-millisecond single-witness batch — a real
+// it to a batch reported `peak 11.5 GiB` beside a four-std.measure.millisecond single-witness batch — a real
 // number located on the wrong subject, which DESIGN section 5 treats as the same defect class as a
 // wrong number. Absence is disclosed by ci_rollup_measurement_note rather than filled in.
 fn ci_rollup_peak_text(rollup: std.observation.ObservationRollup) -> String {
   match rollup.peak_rss {
-    MeasuredValue { value: v } => concat(" · peak ", ci_measured_bytes_text(m: rollup.peak_rss))
-    MeasuredUnavailable { cause: _ } => ""
+    std.observation.MeasuredValue { value: v } => concat(" · peak ", ci_measured_bytes_text(m: rollup.peak_rss))
+    std.observation.MeasuredUnavailable { cause: _ } => ""
   }
 }
 
@@ -527,14 +527,14 @@ fn ci_batch_summary_line(rollup: std.observation.ObservationRollup) -> RenderedL
       ci_rollup_peak_text(rollup: rollup),
       ci_rollup_measurement_note(rollup: rollup),
     ], ""),
-    attention: if problems == 0 { Ambient } else { Anomaly }
+    attention: if problems == 0 { std.observation.Ambient } else { std.observation.Anomaly }
   }
 }
 
-// The duration crosses as the std.measure carrier, never a bare Nat named `*_nanos`. Wrapping it
+// The duration crosses as the std.measure carrier, never a bare std.nat.Nat named `*_nanos`. Wrapping it
 // immediately inside the body would NOT discharge that — the PARAMETER surface is what a caller can
-// get wrong, and a caller passing milliseconds into a `work_nanos: Nat` would have typechecked. The
-// seed constructs no carrier of its own: it calls `nanosecond(count:)` across the interpreter
+// get wrong, and a caller passing milliseconds into a `work_nanos: std.nat.Nat` would have typechecked. The
+// seed constructs no carrier of its own: it calls `std.measure.nanosecond(count:)` across the interpreter
 // boundary and passes the result back in, so the constructor stays the single authority (a record
 // built in Rust would have forked it). Same shape as gunbc.floor_component_receipt's surface.
 //
@@ -586,7 +586,7 @@ fn ci_batch_summary_text(
   let classified = passed + unaffected + failed
   ci_render_line(
     line: RenderedLine {
-      glyph: if failed > 0 { NodeFailed } else { NodeCompleted },
+      glyph: if failed > 0 { std.symbols.NodeFailed } else { std.symbols.NodeCompleted },
       text: join([
         batch_label,
         " — ",
@@ -598,9 +598,9 @@ fn ci_batch_summary_text(
         " work",
         ci_population_reconciliation_text(declared: declared_population, classified: classified),
       ], ""),
-      attention: if failed > 0 { Anomaly } else { Ambient }
+      attention: if failed > 0 { std.observation.Anomaly } else { std.observation.Ambient }
     },
-    tier: Ascii,
+    tier: std.symbols.Ascii,
   )
 }
 
@@ -610,7 +610,7 @@ fn ci_batch_summary_text(
 
 data ci_witness_claim_result_note: String = "Bazel-shaped claim-result lines for every witness the floor executes. The seed transports subject, function, verdict and wall time; every choice about how the line READS lives here. Subject is either a dotted module path (test.claim.foo) or a repo-relative entry path (dag/test/claim/foo_test.dag); both normalize to a //package:target label. Column width is a display policy, not a semantic fact — the outcome and duration are always present so a fast green and a slow green read differently at arm's length."
 
-data ci_witness_claim_result_interim_scalar_note: String = "KNOWN BLIND SPOT, NOT A FORMATTING SIMPLIFICATION. Wave 6 routes E1 formatting through this authority but the seed still collapses ClaimOutcome to passed: Bool at the boundary because the hot path cannot afford per-line interpreter eval. That collapse is lossy in the direction that hides the class gunbc#8423 just surfaced: Pass, Fail, and TimedOut all become two display tokens, and TimedOut — budget interruption, not a semantic verdict — is the one that matters. The Bool must not become the shared interface other consumers key on. Warn-tier cost debt remains a separate projection (ci_witness_budget_warn_text). Dissolve-on: replace subject/function/passed/wall with ONE typed per-witness receipt the floor produces once; the renderer projects human lines from the PRODUCT of two independent facts — (1) outcome: ClaimOutcome (Pass | Fail | NotBool | RuntimeError | TimedOut\{elapsed_ms,budget_ms,kind:BudgetKind\}) where TimedOut is the sole budget-refusal variant and elapsed_ms is a lower bound, not a measured duration; (2) disposition: ExpectedRedArm Held | NowPassing | BudgetRefused when enrolled, else not enrolled. The failed / stale_quarantine / budget_refused reporting channels on RequiredFloorOutcome are a run-level partition, not per-witness facts — do not key the renderer on them. Held rows currently print nothing (261 of 795 measured); a follow-up renderer must not assume only refusals get lines."
+data ci_witness_claim_result_interim_scalar_note: String = "KNOWN BLIND SPOT, NOT A FORMATTING SIMPLIFICATION. Wave 6 routes E1 formatting through this authority but the seed still collapses ClaimOutcome to passed: Bool at the boundary because the hot path cannot afford per-line interpreter eval. That collapse is lossy in the direction that hides the class gunbc#8423 just surfaced: Pass, Fail, and std.observation.TimedOut all become two display tokens, and std.observation.TimedOut — budget interruption, not a semantic verdict — is the one that matters. The Bool must not become the shared interface other consumers key on. Warn-tier cost debt remains a separate projection (ci_witness_budget_warn_text). Dissolve-on: replace subject/function/passed/wall with ONE typed per-witness receipt the floor produces once; the renderer projects human lines from the PRODUCT of two independent facts — (1) outcome: ClaimOutcome (Pass | Fail | NotBool | RuntimeError | std.observation.TimedOut\{elapsed_ms,budget_ms,kind:BudgetKind\}) where std.observation.TimedOut is the sole budget-refusal variant and elapsed_ms is a lower bound, not a measured duration; (2) disposition: ExpectedRedArm Held | NowPassing | BudgetRefused when enrolled, else not enrolled. The failed / stale_quarantine / budget_refused reporting channels on RequiredFloorOutcome are a run-level partition, not per-witness facts — do not key the renderer on them. Held rows currently print nothing (261 of 795 measured); a follow-up renderer must not assume only refusals get lines."
 
 data ci_witness_claim_column_width: std.nat.Nat = 60
 
@@ -654,7 +654,7 @@ fn ci_witness_pad_to_column(label: String, width: std.nat.Nat) -> String {
   if len >= width {
     label
   } else {
-    concat(label, repeat_string(s: " ", n: width - len))
+    concat(label, std.render_repeat_string_bootstrap.repeat_string(s: " ", n: width - len))
   }
 }
 
@@ -671,7 +671,7 @@ fn ci_witness_claim_result_text(
   concat(padded, ci_witness_claim_suffix(passed: passed, wall: wall))
 }
 
-data ci_witness_budget_warn_note: String = "Per-witness budget warning for the floor fold's warn tier — distinct from S1 claim-result lines. A witness over its warn threshold but under the hard budget is reported and allowed to finish; the line names qualified identity, observed wall, warn threshold and ceiling so the population is observable rather than reconstructed from timings. Durations cross as std.measure Millisecond at this seam; the seed converts wall_nanos and policy thresholds at the boundary."
+data ci_witness_budget_warn_note: String = "Per-witness budget warning for the floor fold's warn tier — distinct from S1 claim-result lines. A witness over its warn threshold but under the hard budget is reported and allowed to finish; the line names qualified identity, observed wall, warn threshold and ceiling so the population is observable rather than reconstructed from timings. Durations cross as std.measure std.measure.Millisecond at this seam; the seed converts wall_nanos and policy thresholds at the boundary."
 
 fn ci_witness_budget_warn_text(
   qualified: String,
@@ -686,12 +686,111 @@ fn ci_witness_budget_warn_text(
       concat(
         " ",
         concat(
-          to_string(millisecond_count(m: wall)),
+          to_string(std.measure.millisecond_count(m: wall)),
           concat(
             "ms > ",
             concat(
-              to_string(millisecond_count(m: warn)),
-              concat("ms warn (ceiling ", concat(to_string(millisecond_count(m: budget)), "ms)"))
+              to_string(std.measure.millisecond_count(m: warn)),
+              concat("ms warn (ceiling ", concat(to_string(std.measure.millisecond_count(m: budget)), "ms)"))
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+data ci_shared_fill_row_note: String = "fill_ms is SELF time and inclusive_ms includes the fills nested inside this one, because these caches compose: building the module graph builds the reference edges and the path index on its way, so a sum over inclusive figures counts each inner scan once per enclosing scan. std.observation.Measured on the first floor receipt, a 17890ms module-graph fill contained a 12054ms path-index fill and a 5141ms reference-edge fill and was ~695ms of its own. The total is summed over SELF; inclusive is carried beside it because it is what names the caller that caused the inner scans. One line per SHARED FILL in the floor fold — a process-global corpus computation, what it cost, which claim paid it, and how many claims and modules read that same fill for free. Distinct from ci_witness_budget_warn_text, which reports the wall time of one row: this reports the part of that wall time that did not belong to that row. The disposition is derived from the payer and the consumer breadth by gunbc.witness_row_cost gunbc.witness_row_cost.shared_fill_disposition, so the line never carries a verdict the seed authored beside the numbers that decide it."
+
+fn ci_shared_fill_row_text(
+  cache: String,
+  key: String,
+  fill: std.measure.Millisecond,
+  inclusive: std.measure.Millisecond,
+  payer: gunbc.witness_row_cost.SharedFillPayer,
+  consumer_claims: std.nat.Nat,
+  consumer_modules: std.nat.Nat,
+  modules: String,
+) -> String {
+  concat(
+    "[floor-shared-fill] cache=",
+    concat(
+      cache,
+      concat(
+        " key=",
+        concat(
+          key,
+          concat(
+            " fill_ms=",
+            concat(
+              to_string(std.measure.millisecond_count(m: fill)),
+              concat(
+                " inclusive_ms=",
+              concat(
+                to_string(std.measure.millisecond_count(m: inclusive)),
+              concat(
+                " paid_by=",
+                concat(
+                  gunbc.witness_row_cost.shared_fill_payer_tag(payer: payer),
+                  concat(
+                    " consumer_claims=",
+                    concat(
+                      to_string(consumer_claims),
+                      concat(
+                        " consumer_modules=",
+                        concat(
+                          to_string(consumer_modules),
+                          concat(
+                            " disposition=",
+                            concat(
+                              gunbc.witness_row_cost.shared_fill_disposition_tag(
+                                disposition: gunbc.witness_row_cost.shared_fill_disposition(
+                                  payer: payer,
+                                  consumer_modules: consumer_modules
+                                )
+                              ),
+                              concat(" modules=", modules)
+                            )
+                          )
+                        )
+                      )
+                    )
+                  )
+                )
+              )
+              )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+}
+
+// THE TOTAL LINE CARRIES BOTH DENOMINATORS AND THE HOLE. shared_fill_ms is the part of fill_ms
+// that removing any one module cannot recover; unattributed_hits is the count of reads served by
+// a fill this ledger did not observe, which is the honest statement that the shared figure is a
+// LOWER bound rather than the whole of the sharing.
+fn ci_shared_fill_total_text(
+  fills: std.nat.Nat,
+  fill: std.measure.Millisecond,
+  shared_fill: std.measure.Millisecond,
+  unattributed_hits: std.nat.Nat,
+) -> String {
+  concat(
+    "[floor-shared-fill] TOTAL fills=",
+    concat(
+      to_string(fills),
+      concat(
+        " fill_ms=",
+        concat(
+          to_string(std.measure.millisecond_count(m: fill)),
+          concat(
+            " shared_fill_ms=",
+            concat(
+              to_string(std.measure.millisecond_count(m: shared_fill)),
+              concat(" unattributed_hits=", to_string(unattributed_hits))
             )
           )
         )

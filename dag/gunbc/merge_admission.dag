@@ -35,134 +35,131 @@ type AdmissionPolicy
   | KeyedReceipt
 
 data gunbc_repo_standard: RepoStandard = RepoStandard {
-  default_branch: gunbc_default_branch_name,
+  default_branch: gunbc.repo_identity.gunbc_default_branch_name,
   allowed_strategies: [SquashMerge],
   require_up_to_date: false,
   merge_queue_required: false,
   branch_name_convention: "session/<id>",
 }
 
-data gate_content_hash_variant_tag_scaffold: std.disposition.Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
+data gate_content_hash_variant_tag_scaffold: std.disposition.Disposition = std.disposition.Scaffold {
+  dissolves_to: std.disposition.SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "gunbc.merge_admission",
     decl_name: "gate_content_hash",
-    field: WholeDeclaration
+    field: std.decl_ref.WholeDeclaration
   }
 }
 
 fn gate_content_hash_structural(g: gunbc.ci_gate.Gate) -> std.content_hash.Fnv1a64Structural {
   match g {
-    EmitHostGate => content_hash_atom(value: "EmitHostGate")
-    CheapClaimPoolGate => content_hash_atom(value: "CheapClaimPoolGate")
-    ExtdepsExternalAuthorityGate => content_hash_atom(value: "ExtdepsExternalAuthorityGate")
-    DagCompileCleanGate => content_hash_atom(value: "DagCompileCleanGate")
-    GeneratedArtifactDriftGate => content_hash_atom(value: "GeneratedArtifactDriftGate")
-    ExtdepsScopePlacementGate => content_hash_atom(value: "ExtdepsScopePlacementGate")
-    ProseRowIntroductionGate => content_hash_atom(value: "ProseRowIntroductionGate")
-    SourceRootIngestGate => content_hash_atom(value: "SourceRootIngestGate")
-    RegenVerifyGate => content_hash_atom(value: "RegenVerifyGate")
-    SelfHostReadsRealBytesGate => content_hash_atom(value: "SelfHostReadsRealBytesGate")
-    SelfHostStalenessGate => content_hash_atom(value: "SelfHostStalenessGate")
+    gunbc.ci_gate.EmitHostGate => std.content_hash.content_hash_atom(value: "gunbc.ci_gate.EmitHostGate")
+    gunbc.ci_gate.CheapClaimPoolGate => std.content_hash.content_hash_atom(value: "gunbc.ci_gate.CheapClaimPoolGate")
+    gunbc.ci_gate.ExtdepsExternalAuthorityGate => std.content_hash.content_hash_atom(value: "gunbc.ci_gate.ExtdepsExternalAuthorityGate")
+    gunbc.ci_gate.DagCompileCleanGate => std.content_hash.content_hash_atom(value: "gunbc.ci_gate.DagCompileCleanGate")
+    gunbc.ci_gate.GeneratedArtifactDriftGate => std.content_hash.content_hash_atom(value: "gunbc.ci_gate.GeneratedArtifactDriftGate")
+    gunbc.ci_gate.ExtdepsScopePlacementGate => std.content_hash.content_hash_atom(value: "gunbc.ci_gate.ExtdepsScopePlacementGate")
+    gunbc.ci_gate.ProseRowIntroductionGate => std.content_hash.content_hash_atom(value: "gunbc.ci_gate.ProseRowIntroductionGate")
+    gunbc.ci_gate.SourceRootIngestGate => std.content_hash.content_hash_atom(value: "gunbc.ci_gate.SourceRootIngestGate")
   }
 }
 
 fn gate_content_hash(g: gunbc.ci_gate.Gate) -> std.content_hash.ContentHash {
-  as_content_hash_structural(structural: gate_content_hash_structural(g: g))
+  std.content_hash.as_content_hash_structural(structural: gate_content_hash_structural(g: g))
 }
 
 fn witness_fn_list_hash_structural(fns: List<String>) -> std.content_hash.Fnv1a64Structural {
-  fold(fns, init: content_hash_atom(value: "witness-fn-list"), f: fn(acc, fn_name) {
-    content_hash_combine_structural(acc, content_hash_atom(value: fn_name))
+  fold(fns, init: std.content_hash.content_hash_atom(value: "witness-fn-list"), f: fn(acc, fn_name) {
+    std.content_hash.content_hash_combine_structural(acc, std.content_hash.content_hash_atom(value: fn_name))
   })
 }
 
 fn witness_fn_list_hash(fns: List<String>) -> std.content_hash.ContentHash {
-  as_content_hash_structural(structural: witness_fn_list_hash_structural(fns: fns))
+  std.content_hash.as_content_hash_structural(structural: witness_fn_list_hash_structural(fns: fns))
 }
 
 fn witness_kind_content_hash_structural(kind: std.realization_schedule.WitnessKind) -> std.content_hash.Fnv1a64Structural {
   match kind {
-    CorpusWitnessKind => content_hash_atom(value: "CorpusWitnessKind")
-    ExecutionWitnessKind => content_hash_atom(value: "ExecutionWitnessKind")
-    NativeBundleWitnessKind => content_hash_atom(value: "NativeBundleWitnessKind")
+    std.realization_schedule.CorpusWitnessKind => std.content_hash.content_hash_atom(value: "std.realization_schedule.CorpusWitnessKind")
+    std.realization_schedule.ExecutionWitnessKind => std.content_hash.content_hash_atom(value: "std.realization_schedule.ExecutionWitnessKind")
+    std.realization_schedule.NativeBundleWitnessKind => std.content_hash.content_hash_atom(value: "std.realization_schedule.NativeBundleWitnessKind")
   }
 }
 
 fn witness_kind_content_hash(kind: std.realization_schedule.WitnessKind) -> std.content_hash.ContentHash {
-  as_content_hash_structural(structural: witness_kind_content_hash_structural(kind: kind))
+  std.content_hash.as_content_hash_structural(structural: witness_kind_content_hash_structural(kind: kind))
 }
 
 fn witness_seam_content_hash_structural(seam: std.realization_schedule.WitnessSeam) -> std.content_hash.Fnv1a64Structural {
-  content_hash_combine_structural(
-    content_hash_atom(value: seam.producer),
-    content_hash_atom(value: seam.consumer)
+  std.content_hash.content_hash_combine_structural(
+    std.content_hash.content_hash_atom(value: seam.producer),
+    std.content_hash.content_hash_atom(value: seam.consumer)
   )
 }
 
 fn witness_seam_content_hash(seam: std.realization_schedule.WitnessSeam) -> std.content_hash.ContentHash {
-  as_content_hash_structural(structural: witness_seam_content_hash_structural(seam: seam))
+  std.content_hash.as_content_hash_structural(structural: witness_seam_content_hash_structural(seam: seam))
 }
 
 fn clock_basis_content_hash_structural(clock: std.measure.ClockBasis) -> std.content_hash.Fnv1a64Structural {
   match clock {
-    WallClock => content_hash_atom(value: "WallClock")
-    CpuClock => content_hash_atom(value: "CpuClock")
+    std.measure.WallClock => std.content_hash.content_hash_atom(value: "std.measure.WallClock")
+    std.measure.CpuClock => std.content_hash.content_hash_atom(value: "std.measure.CpuClock")
   }
 }
 
 fn witness_cost_basis_content_hash_structural(basis: std.realization_schedule.WitnessCostBasis) -> std.content_hash.Fnv1a64Structural {
   match basis {
-    MeasuredAtExactSubject { clock, duration, receipt } =>
-      content_hash_combine_structural(
-        left: content_hash_combine_structural(
+    std.realization_schedule.MeasuredAtExactSubject { clock, duration, receipt } =>
+      std.content_hash.content_hash_combine_structural(
+        left: std.content_hash.content_hash_combine_structural(
           left: clock_basis_content_hash_structural(clock: clock),
-          right: content_hash_tagged_structural(
-            tag: "MeasuredAtExactSubject",
-            payload: content_hash_atom(value: receipt)
+          right: std.content_hash.content_hash_tagged_structural(
+            tag: "std.realization_schedule.MeasuredAtExactSubject",
+            payload: std.content_hash.content_hash_atom(value: receipt)
           )
         ),
-        right: content_hash_atom(value: concat("", millisecond_count(m: duration)))
+        right: std.content_hash.content_hash_atom(value: concat("", std.measure.millisecond_count(m: duration)))
       )
-    EstimatedFromSiblingClass { clock, source_witness, basis } =>
-      content_hash_combine_structural(
-        left: content_hash_combine_structural(
+    std.realization_schedule.EstimatedFromSiblingClass { clock, source_witness, basis } =>
+      std.content_hash.content_hash_combine_structural(
+        left: std.content_hash.content_hash_combine_structural(
           left: clock_basis_content_hash_structural(clock: clock),
-          right: content_hash_tagged_structural(
-            tag: "EstimatedFromSiblingClass",
-            payload: content_hash_atom(value: source_witness)
+          right: std.content_hash.content_hash_tagged_structural(
+            tag: "std.realization_schedule.EstimatedFromSiblingClass",
+            payload: std.content_hash.content_hash_atom(value: source_witness)
           )
         ),
-        right: content_hash_atom(value: basis)
+        right: std.content_hash.content_hash_atom(value: basis)
       )
   }
 }
 
 fn scheduled_witness_envelope_content_hash_structural(envelope: std.realization_schedule.ScheduledWitnessEnvelope) -> std.content_hash.Fnv1a64Structural {
-  content_hash_combine_structural(
-    left: content_hash_combine_structural(
-      left: witness_consumer_cadence_content_hash_structural(cadence: envelope.path_classification),
-      right: content_hash_atom(value: concat("", millisecond_count(m: envelope.wall_budget)))
+  std.content_hash.content_hash_combine_structural(
+    left: std.content_hash.content_hash_combine_structural(
+      left: std.witness_admission.witness_consumer_cadence_content_hash_structural(cadence: envelope.path_classification),
+      right: std.content_hash.content_hash_atom(value: concat("", std.measure.millisecond_count(m: envelope.wall_budget)))
     ),
-    right: content_hash_atom(value: concat("", millisecond_count(m: envelope.max_staleness)))
+    right: std.content_hash.content_hash_atom(value: concat("", std.measure.millisecond_count(m: envelope.max_staleness)))
   )
 }
 
 fn witness_span_content_hash_structural(span: std.realization_schedule.WitnessSpan) -> std.content_hash.Fnv1a64Structural {
   match span {
-    SpanUndeclared => content_hash_atom(value: "SpanUndeclared")
-    SpanSeams { seams } =>
-      fold(seams, init: content_hash_atom(value: "SpanSeams"), f: fn(acc, seam) {
-        content_hash_combine_structural(
+    std.realization_schedule.SpanUndeclared => std.content_hash.content_hash_atom(value: "std.realization_schedule.SpanUndeclared")
+    std.realization_schedule.SpanSeams { seams } =>
+      fold(seams, init: std.content_hash.content_hash_atom(value: "std.realization_schedule.SpanSeams"), f: fn(acc, seam) {
+        std.content_hash.content_hash_combine_structural(
           acc,
           witness_seam_content_hash_structural(seam: seam)
         )
       })
-    SpanEnrolled { seams, cost_basis, envelope } =>
-      content_hash_combine_structural(
-        left: content_hash_combine_structural(
-          left: fold(seams, init: content_hash_atom(value: "SpanEnrolled"), f: fn(acc, seam) {
-            content_hash_combine_structural(
+    std.realization_schedule.SpanEnrolled { seams, cost_basis, envelope } =>
+      std.content_hash.content_hash_combine_structural(
+        left: std.content_hash.content_hash_combine_structural(
+          left: fold(seams, init: std.content_hash.content_hash_atom(value: "std.realization_schedule.SpanEnrolled"), f: fn(acc, seam) {
+            std.content_hash.content_hash_combine_structural(
               acc,
               witness_seam_content_hash_structural(seam: seam)
             )
@@ -175,34 +172,34 @@ fn witness_span_content_hash_structural(span: std.realization_schedule.WitnessSp
 }
 
 fn witness_span_content_hash(span: std.realization_schedule.WitnessSpan) -> std.content_hash.ContentHash {
-  as_content_hash_structural(structural: witness_span_content_hash_structural(span: span))
+  std.content_hash.as_content_hash_structural(structural: witness_span_content_hash_structural(span: span))
 }
 
 fn check_kind_content_hash_structural(check: gunbc.commit_workflow.CommitCheckKind) -> std.content_hash.Fnv1a64Structural {
   match check {
-    CommitSpecGate { gate: g } =>
-      content_hash_tagged_structural(tag: "CommitSpecGate", payload: gate_content_hash_structural(g: g))
-    CommitWitnessClaim { entry, check_fns, kind, span } =>
-      content_hash_combine_structural(
-        left: content_hash_combine_structural(
-          left: content_hash_tagged_structural(
-            tag: "CommitWitnessClaim",
-            payload: content_hash_atom(value: entry)
+    gunbc.commit_workflow.CommitSpecGate { gate: g } =>
+      std.content_hash.content_hash_tagged_structural(tag: "gunbc.commit_workflow.CommitSpecGate", payload: gate_content_hash_structural(g: g))
+    gunbc.commit_workflow.CommitWitnessClaim { entry, check_fns, kind, span } =>
+      std.content_hash.content_hash_combine_structural(
+        left: std.content_hash.content_hash_combine_structural(
+          left: std.content_hash.content_hash_tagged_structural(
+            tag: "gunbc.commit_workflow.CommitWitnessClaim",
+            payload: std.content_hash.content_hash_atom(value: entry)
           ),
           right: witness_fn_list_hash_structural(fns: check_fns)
         ),
-        right: content_hash_combine_structural(
+        right: std.content_hash.content_hash_combine_structural(
           left: witness_kind_content_hash_structural(kind: kind),
           right: witness_span_content_hash_structural(span: span)
         )
       )
-    CommitCargoFmtCheck =>
-      content_hash_atom(value: "CommitCargoFmtCheck")
+    gunbc.commit_workflow.CommitCargoFmtCheck =>
+      std.content_hash.content_hash_atom(value: "gunbc.commit_workflow.CommitCargoFmtCheck")
   }
 }
 
 fn check_kind_content_hash(check: gunbc.commit_workflow.CommitCheckKind) -> std.content_hash.ContentHash {
-  as_content_hash_structural(structural: check_kind_content_hash_structural(check: check))
+  std.content_hash.as_content_hash_structural(structural: check_kind_content_hash_structural(check: check))
 }
 
 fn enrollment_content_hash_structural(e: gunbc.commit_workflow.CommitCheckEnrollment) -> std.content_hash.Fnv1a64Structural {
@@ -214,8 +211,8 @@ fn enrollment_content_hash(e: gunbc.commit_workflow.CommitCheckEnrollment) -> st
 }
 
 fn gate_roster_content_hash(roster: List<gunbc.commit_workflow.CommitCheckEnrollment>) -> GateRosterHash {
-  fold(roster, init: content_hash_atom(value: "gate-roster-v1"), f: fn(acc, row) {
-    content_hash_combine_structural(
+  fold(roster, init: std.content_hash.content_hash_atom(value: "gate-roster-v1"), f: fn(acc, row) {
+    std.content_hash.content_hash_combine_structural(
       acc,
       enrollment_content_hash_structural(e: row)
     )
@@ -227,7 +224,7 @@ fn merge_admission_fixture_tree_wire_hex(structural: std.content_hash.Fnv1a64Str
   if digits.length() >= 40 {
     substring(s: digits, start: 0, end: 40) as std.types.NonEmptyStr
   } else {
-    zero_pad_left(digits: digits, width: 40) as std.types.NonEmptyStr
+    std.decimal.zero_pad_left(digits: digits, width: 40) as std.types.NonEmptyStr
   }
 }
 
@@ -253,13 +250,13 @@ fn merge_admission_witness_git_tree_wire(label: std.types.NonEmptyStr) -> std.ty
     "c000000000000000000000000000000000000002" as std.types.NonEmptyStr
   } else {
     merge_admission_fixture_tree_wire_hex(
-      structural: content_hash_atom(value: label)
+      structural: std.content_hash.content_hash_atom(value: label)
     )
   }
 }
 
 fn merge_admission_fixture_git_sha1(hex: std.types.NonEmptyStr) -> extdeps.git.object_store.GitObjectId {
-  match git_sha1_object_id(hex: hex as String) {
+  match extdeps.git.object_store.git_sha1_object_id(hex: hex as String) {
     Present { value: oid } => oid
     Absent =>
       extdeps.git.object_store.GitSha1ObjectId {
@@ -274,9 +271,9 @@ fn merge_admission_fixture_git_tree_from_structural(structural: std.content_hash
 
 fn merge_admission_fixture_git_tree_from_tagged(tag: std.types.NonEmptyStr, base: extdeps.git.object_store.GitObjectId) -> extdeps.git.object_store.GitObjectId {
   merge_admission_fixture_git_tree_from_structural(
-    structural: content_hash_tagged_structural(
+    structural: std.content_hash.content_hash_tagged_structural(
       tag: tag,
-      payload: content_hash_atom(value: git_object_id_wire_hex(oid: base))
+      payload: std.content_hash.content_hash_atom(value: extdeps.git.object_store.git_object_id_wire_hex(oid: base))
     )
   )
 }
@@ -286,10 +283,10 @@ fn merge_admission_witness_git_tree(label: std.types.NonEmptyStr) -> extdeps.git
 }
 
 fn merge_admission_witness_gate_roster(label: std.types.NonEmptyStr) -> GateRosterHash {
-  content_hash_atom(value: label)
+  std.content_hash.content_hash_atom(value: label)
 }
 
-data current_gate_roster_hash: GateRosterHash = gate_roster_content_hash(roster: commit_gate_roster)
+data current_gate_roster_hash: GateRosterHash = gate_roster_content_hash(roster: gunbc.commit_workflow.commit_gate_roster)
 
 type CoveredGateConclusion {
   gate: std.content_hash.ContentHash
@@ -325,7 +322,7 @@ type CheckCoverage
       required_roster: std.content_hash.ContentHash
     }
 
-data check_coverage_subject_universe_note: String = "CHECK COVERAGE IS A TOTAL CLASSIFICATION OVER AN EXPLICIT SUBJECT UNIVERSE (operator mandate 2026-08-01). The subject is (required PR head, required gate-roster identity, nonempty required gate population). No check runs is CheckCoverageAbsent, never an empty list that all() can call green. A run still executing is Running. A dependency stop is Stopped and carries both the completed and UNEXECUTED populations plus a cause, so batch-1 drift stopping the witness batches cannot masquerade as a witness verdict. Complete is the only arm admission examines for success. Stale carries both observed and required identities; it is not repaired by relabeling the observation. Adding a coverage state requires a new coproduct arm and turns every exhaustive consumer red until classified — unclassified is structurally unavailable."
+data check_coverage_subject_universe_note: String = "CHECK COVERAGE IS A TOTAL CLASSIFICATION OVER AN EXPLICIT SUBJECT UNIVERSE (operator mandate 2026-08-01). The subject is (required PR head, required gate-roster identity, nonempty required gate population). No check runs is CheckCoverageAbsent, never an empty list that all() can call green. A run still executing is Running. A dependency stop is Stopped and carries both the completed and UNEXECUTED populations plus a cause, so batch-1 drift stopping the witness batches cannot masquerade as a witness verdict. Complete is the only arm admission examines for success. extdeps.github.checks.Stale carries both observed and required identities; it is not repaired by relabeling the observation. Adding a coverage state requires a new coproduct arm and turns every exhaustive consumer red until classified — unclassified is structurally unavailable."
 
 data check_coverage_external_consumer_boundary_note: String = "BOUNDARY, NOT AN END-TO-END CLOSURE CLAIM. This module is the repository's admission authority and now makes the correct semantics representable and executable. The live fail-open observed 2026-08-01 was in the external dashboard readout: it reported no failing or pending checks with ok=true when the healed head had NO run. That consumer is ctrl session-dashboard: scripts/session-dashboard/lib/summarize_checks.mjs supplies the check classification consumed by pr_merge_ready_digest.mjs and server.mjs. It lives outside this repository and is not changed here. Until it conforms to classify_check_coverage_admission, the operational rule is stricter than its readout: never merge unless an executing run explicitly names the current PR head and reaches every required witness; an auto-heal head with no subsequent run is untested."
 
@@ -546,14 +543,14 @@ data merge_admission_enforcement_policy: AdmissionPolicy = KeyedReceipt
 
 fn check_conclusion_admits_merge_admission_floor(c: extdeps.github.checks.CheckConclusion) -> Bool {
   match c {
-    Success => true
-    Skipped => false
-    ActionRequired => false
-    Cancelled => false
-    Failure => false
-    Neutral => false
-    Stale => false
-    TimedOut => false
+    extdeps.github.checks.Success => true
+    extdeps.github.checks.Skipped => false
+    extdeps.github.checks.ActionRequired => false
+    extdeps.github.checks.Cancelled => false
+    extdeps.github.checks.Failure => false
+    extdeps.github.checks.Neutral => false
+    extdeps.github.checks.Stale => false
+    extdeps.github.checks.TimedOut => false
   }
 }
 
@@ -564,9 +561,9 @@ fn classify_merge_admission_verdict(
 ) -> MergeAdmissionVerdict {
   if !check_conclusion_admits_merge_admission_floor(c: receipt.conclusion) {
     MergeDeniedNotSuccess
-  } else if !git_object_id_eq(left: receipt.base_tree_hash, right: merge_target_tree_hash) {
+  } else if !extdeps.git.object_store.git_object_id_eq(left: receipt.base_tree_hash, right: merge_target_tree_hash) {
     MergeDeniedStaleBase
-  } else if !content_hash_eq_structural(left: receipt.gate_roster_hash, right: current_roster_hash) {
+  } else if !std.content_hash.content_hash_eq_structural(left: receipt.gate_roster_hash, right: current_roster_hash) {
     MergeDeniedStaleRoster
   } else {
     MergeAdmitted
@@ -575,7 +572,7 @@ fn classify_merge_admission_verdict(
 
 data merge_admission_attempt_scope_note: String = "ATTEMPT SCOPE (ruling 2026-07-30): the receipt carries the walk-attempt identity in the PAYLOAD, not just the path, and the gate requires receipt.attempt_id == current — path identity alone is not enough, because a misrouted read must fail on the content too. A receipt from another attempt is neither stale nor fresh: it is NOT THE SUBJECT, so MergeDeniedWrongAttempt is checked FIRST, before conclusion, base, and roster — asking whether a foreign receipt's base is current would be answering a question about the wrong run. The identity derives from GITHUB_RUN_ID + GITHUB_RUN_ATTEMPT + GITHUB_JOB on GitHub; non-GitHub execution must supply GUNBC_WALK_ATTEMPT_ID explicitly or the walk-side composition refuses — never a silent constant like a bare local, which would make every local run one attempt and the wrong-attempt refusal unreachable off CI. Deleting or recreating the attempt directory at walk start remains hygiene; correctness never depends on cleaning a shared path."
 
-data git_object_id_grounding_note: String = "The tested base tree is a GitObjectId, not a ContentHash. DESIGN's own §3 residue records that ContentHash is one brand over two unrelated hash families (structural fnv1a64 fingerprints and cited cryptographic digests) with no modeled discriminant; a Git tree object id is a THIRD domain, and admitting it into the same brand would let a gate-roster structural fingerprint inhabit the tested-tree field and typecheck. extdeps.git.object_store.GitObjectId is the existing single authority and already models the SHA-1/SHA-256 repository-format transition, so this grounds on it rather than minting a GitTreeOid nickname beside it (§3). Equality and the validating textual constructors live THERE, not here: both are generic Git behaviour, and holding them in this consumer was a fork this module briefly carried (review 2026-07-30)."
+data git_object_id_grounding_note: String = "The tested base tree is a extdeps.git.object_store.GitObjectId, not a std.content_hash.ContentHash. DESIGN's own §3 residue records that std.content_hash.ContentHash is one brand over two unrelated hash families (structural fnv1a64 fingerprints and cited cryptographic digests) with no modeled discriminant; a Git tree object id is a THIRD domain, and admitting it into the same brand would let a gate-roster structural fingerprint inhabit the tested-tree field and typecheck. extdeps.git.object_store.GitObjectId is the existing single authority and already models the SHA-1/SHA-256 repository-format transition, so this grounds on it rather than minting a GitTreeOid nickname beside it (§3). Equality and the validating textual constructors live THERE, not here: both are generic Git behaviour, and holding them in this consumer was a fork this module briefly carried (review 2026-07-30)."
 
 type MergeAdmissionReceiptV2 {
   attempt_id: gunbc.merge_admission_subject.WalkAttemptId
@@ -595,19 +592,19 @@ fn classify_merge_admission_verdict_v2(
   merge_target_tree_hash: extdeps.git.object_store.GitObjectId,
   current_roster_hash: GateRosterHash,
 ) -> MergeAdmissionVerdict {
-  if !walk_attempt_id_eq(left: receipt.attempt_id, right: current_attempt_id) {
+  if !gunbc.merge_admission_subject.walk_attempt_id_eq(left: receipt.attempt_id, right: current_attempt_id) {
     MergeDeniedWrongAttempt
-  } else if !walk_attempt_id_eq(left: tested_subject.attempt_id, right: current_attempt_id) {
+  } else if !gunbc.merge_admission_subject.walk_attempt_id_eq(left: tested_subject.attempt_id, right: current_attempt_id) {
     MergeDeniedWrongAttempt
   } else if !(receipt.tested_head_sha == tested_subject.head_sha) {
     MergeDeniedSubjectMismatch
-  } else if !git_object_id_eq(left: receipt.tested_base_tree_hash, right: tested_subject.base_tree_hash) {
+  } else if !extdeps.git.object_store.git_object_id_eq(left: receipt.tested_base_tree_hash, right: tested_subject.base_tree_hash) {
     MergeDeniedSubjectMismatch
   } else if !check_conclusion_admits_merge_admission_floor(c: receipt.conclusion) {
     MergeDeniedNotSuccess
-  } else if !git_object_id_eq(left: receipt.tested_base_tree_hash, right: merge_target_tree_hash) {
+  } else if !extdeps.git.object_store.git_object_id_eq(left: receipt.tested_base_tree_hash, right: merge_target_tree_hash) {
     MergeDeniedStaleBase
-  } else if !content_hash_eq_structural(left: receipt.gate_roster_hash, right: current_roster_hash) {
+  } else if !std.content_hash.content_hash_eq_structural(left: receipt.gate_roster_hash, right: current_roster_hash) {
     MergeDeniedStaleRoster
   } else {
     MergeAdmitted
@@ -625,11 +622,11 @@ fn merge_admission_verdict_label(v: MergeAdmissionVerdict) -> String {
   }
 }
 
-data merge_admission_current_context_staging_note: String = "STAGED INVOCABLE ENTRY, NOT A LIVE CONSUMER (review 46238, incident 2026-08-01). tools.merge_admission_current_context can fetch the current merge target, read attempt-scoped TestedSubject and MergeAdmissionReceiptV2 wires, and classify them against current_gate_roster_hash, but no production path invokes the entry and no production path mints either V2 wire. It therefore closes no runtime admission gap today. What IS delivered and executing is the discovery-corpus control pair: classify_merge_admission_verdict_v2 refuses a receipt carrying a synthetic changed-roster hash against the current roster, and admits a receipt minted under the current roster. A correctly computed but uninvoked verdict is staging, not a warning and not a wall."
+data merge_admission_current_context_staging_note: String = "STAGED INVOCABLE ENTRY, NOT A LIVE CONSUMER (review 46238, incident 2026-08-01). tools.merge_admission_current_context can fetch the current merge target, read attempt-scoped gunbc.merge_admission_subject.TestedSubject and MergeAdmissionReceiptV2 wires, and classify them against current_gate_roster_hash, but no production path invokes the entry and no production path mints either V2 wire. It therefore closes no runtime admission gap today. What IS delivered and executing is the discovery-corpus control pair: classify_merge_admission_verdict_v2 refuses a receipt carrying a synthetic changed-roster hash against the current roster, and admits a receipt minted under the current roster. A correctly computed but uninvoked verdict is staging, not a warning and not a wall."
 
-data merge_admission_v2_production_wires_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "FIRST DISSOLVE-ON: production captures TestedSubject before the floor, mints MergeAdmissionReceiptV2 after the floor, and persists both through merge_admission_tested_subject_path and merge_admission_floor_receipt_path for the same WalkAttemptId. Until both producers execute, tools.merge_admission_current_context has no production subject or evidence to consume and cannot be called live.")
+data merge_admission_v2_production_wires_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "FIRST DISSOLVE-ON: production captures gunbc.merge_admission_subject.TestedSubject before the floor, mints MergeAdmissionReceiptV2 after the floor, and persists both through merge_admission_tested_subject_path and merge_admission_floor_receipt_path for the same gunbc.merge_admission_subject.WalkAttemptId. Until both producers execute, tools.merge_admission_current_context has no production subject or evidence to consume and cannot be called live.")
 
-data merge_admission_required_check_binding_dissolution_trigger: std.dissolution.DissolutionCondition = unbound_dissolution(description: "SECOND DISSOLVE-ON, after merge_admission_v2_production_wires_dissolution_trigger: gunbc.ci_failure_class.merge_freshness_gating_status changes from GatingComputedDeferred to the existing GatingEnforced arm after operator sign-off and the ci_failure_class prerequisites named by gunbc.plans.merge_admission_gate_shape_proposal. That transition binds the V2 current-context verdict into the approved merge-time consumption path so a denial refuses rather than merely being invocable. The later policy-content increment is already declared by gate_content_hash_variant_tag_scaffold: replacing gate_content_hash's variant-tag placeholder fires that SingleAuthority dissolution; it is not part of this staged increment.")
+data merge_admission_required_check_binding_dissolution_trigger: std.dissolution.DissolutionCondition = std.dissolution.unbound_dissolution(description: "SECOND DISSOLVE-ON, after merge_admission_v2_production_wires_dissolution_trigger: gunbc.ci_failure_class.merge_freshness_gating_status changes from GatingComputedDeferred to the existing GatingEnforced arm after operator sign-off and the ci_failure_class prerequisites named by gunbc.plans.merge_admission_gate_shape_proposal. That transition binds the V2 current-context verdict into the approved merge-time consumption path so a denial refuses rather than merely being invocable. The later policy-content increment is already declared by gate_content_hash_variant_tag_scaffold: replacing gate_content_hash's variant-tag placeholder fires that std.disposition.SingleAuthority dissolution; it is not part of this staged increment.")
 
 fn merge_admission_verdict_would_block(v: MergeAdmissionVerdict) -> Bool {
   match v {
@@ -682,10 +679,10 @@ fn policy_admits(
   current_roster_hash: GateRosterHash,
 ) -> Bool {
   match policy {
-    PerPrGateOnly => check_conclusion_is_success(c: receipt.conclusion)
+    PerPrGateOnly => extdeps.github.checks.check_conclusion_is_success(c: receipt.conclusion)
     RequireUpToDateBase =>
-      check_conclusion_is_success(c: receipt.conclusion)
-        && git_object_id_eq(left: receipt.base_tree_hash, right: merge_target_tree_hash)
+      extdeps.github.checks.check_conclusion_is_success(c: receipt.conclusion)
+        && extdeps.git.object_store.git_object_id_eq(left: receipt.base_tree_hash, right: merge_target_tree_hash)
     KeyedReceipt =>
       receipt_is_admissible(
         receipt: receipt,

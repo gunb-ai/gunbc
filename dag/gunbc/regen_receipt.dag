@@ -1,0 +1,27 @@
+module gunbc.regen_receipt
+
+
+data regen_receipt_note: String = "Typed receipt for a non-mutating stage0 regen verify run via claim_executor --required-regen. first_generation_equal and fixed_point_equal are DISTINCT questions and must never collapse. The host binary materializes this carrier at runtime; fixed_point_equal is answered by a second invocation (--required-regen-fixed-point), not a second code path inside one run."
+
+type RegenReceipt {
+  commit_sha: String
+  authority_digest: String
+  committed_generated_digest: String
+  candidate_generated_digest: String
+  first_generation_equal: Bool
+  fixed_point_equal: Bool
+  changed_paths: List<String>
+  candidate_artifact: String
+}
+
+data stage0_regen_candidate_dir_rel: String = "target/stage0-regen-candidate"
+
+data stage0_regen_receipt_rel: String = "target/stage0-regen-receipt.json"
+
+data stage0_regen_candidate_artifact_name: String = "stage0-regen-candidate"
+
+data stage0_regen_receipt_artifact_name: String = "stage0-regen-receipt"
+
+fn stage0_regen_receipt_is_green(receipt: RegenReceipt) -> Bool {
+  receipt.first_generation_equal && receipt.fixed_point_equal
+}

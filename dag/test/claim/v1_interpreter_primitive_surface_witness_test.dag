@@ -17,8 +17,8 @@ test fn derived_surface_excludes_deleted_bridge_arm() -> Bool {
   !v1_interpreter_free_call_arms() |> any(r => r.authored_spelling == "interpreter_dispatch_arm_rows")
 }
 
-test fn stage0_source_identity_supply_scaffold_is_enumerated() -> Bool {
-  v1_interpreter_free_call_arms()
+test fn stage0_emission_source_identities_host_scaffold_deleted() -> Bool {
+  !v1_interpreter_free_call_arms()
     |> any(r => r.authored_spelling == "stage0_emission_source_identities_host")
 }
 

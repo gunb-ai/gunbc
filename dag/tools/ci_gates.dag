@@ -2,33 +2,26 @@ module tools.ci_gates
 
 
 fn exit_ok(e: std.process.ProcessExit) -> Bool {
-  match e { ExitSuccess => true  _ => false }
+  match e { std.process.ExitSuccess => true  _ => false }
 }
 
 fn run_spec_gate(g: gunbc.ci_gate.Gate) -> std.process.ProcessExit {
   match g {
-    EmitHostGate => run_emit_host_ci_gate()
-    CheapClaimPoolGate => run_cheap_claim_pool_ci_gate()
-    ExtdepsExternalAuthorityGate => run_extdeps_external_authority_ci_gate()
-    DagCompileCleanGate => run_dag_compile_clean_gate()
-    GeneratedArtifactDriftGate => run_generated_artifact_drift_gate()
-    ExtdepsScopePlacementGate => run_extdeps_scope_placement_gate()
-    ProseRowIntroductionGate => run_prose_row_introduction_gate()
-    SourceRootIngestGate => exit_failure(
+    gunbc.ci_gate.EmitHostGate => tools.emit_host_gate.run_emit_host_ci_gate()
+    gunbc.ci_gate.CheapClaimPoolGate => tools.cheap_claim_pool_gate.run_cheap_claim_pool_ci_gate()
+    gunbc.ci_spec.ExtdepsExternalAuthorityGate => tools.extdeps_external_authority_gate.run_extdeps_external_authority_ci_gate()
+    gunbc.ci_spec.DagCompileCleanGate => tools.dag_compile_clean_gate.run_dag_compile_clean_gate()
+    gunbc.ci_spec.GeneratedArtifactDriftGate => tools.generated_artifact_gate.run_generated_artifact_drift_gate()
+    gunbc.ci_spec.ExtdepsScopePlacementGate => tools.extdeps_scope_placement_gate.run_extdeps_scope_placement_gate()
+    gunbc.ci_spec.ProseRowIntroductionGate => tools.prose_row_introduction_gate.run_prose_row_introduction_gate()
+    gunbc.ci_spec.SourceRootIngestGate => std.process.exit_failure(
       reason: "SourceRootIngestGate: run via ci_floor_plan v2.workflow.source_root_ingest_gate (slice 3)"
-    )
-    RegenVerifyGate => run_regen_verify_gate()
-    SelfHostReadsRealBytesGate => exit_failure(
-      reason: "SelfHostReadsRealBytesGate: run via ci_floor_plan (self_host_realized_comparison_claims.reads_real_bytes_both_sides_holds)"
-    )
-    SelfHostStalenessGate => exit_failure(
-      reason: "SelfHostStalenessGate: run via ci_floor_plan (self_host_realized_comparison_claims.staleness_gate_holds)"
     )
   }
 }
 
 fn run_gate_list(gates: List<gunbc.ci_gate.Gate>) -> std.process.ProcessExit {
-  fold(gates, init: ExitSuccess, f: fn(acc, g) {
+  fold(gates, init: std.process.ExitSuccess, f: fn(acc, g) {
     if exit_ok(e: acc) { run_spec_gate(g: g) } else { acc }
   })
 }
@@ -38,5 +31,5 @@ func run_ci_gates_sequential(spec: gunbc.ci_spec.CiSpec) -> std.process.ProcessE
 }
 
 func main() -> std.process.ProcessExit {
-  run_gate_list(gates: gunbc_ci_gates)
+  run_gate_list(gates: gunbc.ci_spec.gunbc_ci_gates)
 }

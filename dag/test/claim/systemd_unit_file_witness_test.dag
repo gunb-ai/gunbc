@@ -2,7 +2,7 @@ module test.claim.systemd_unit_file_witness_test
 
 
 fn sample() -> extdeps.systemd.unit_file.SystemdUnitFile {
-  extdeps.systemd.unit_file.SystemdUnitFile {
+  extdeps.systemd.unit_file.ServiceUnitFile {
     unit: [
       extdeps.systemd.unit_file.Description { text: "gunbc Spark serving" as std.types.NonEmptyStr },
       extdeps.systemd.unit_file.After { target: "network-online.target" as std.types.NonEmptyStr },
@@ -12,7 +12,7 @@ fn sample() -> extdeps.systemd.unit_file.SystemdUnitFile {
       extdeps.systemd.unit_file.ExecStart { command: "/opt/x/bin/ollama serve" as std.types.NonEmptyStr },
       extdeps.systemd.unit_file.Restart { policy: "on-failure" as std.types.NonEmptyStr },
     ],
-    install: [extdeps.systemd.unit_file.WantedBy { target: "default.target" as std.types.NonEmptyStr }],
+    install: extdeps.systemd.unit_file.Installable { directives: [extdeps.systemd.unit_file.WantedBy { target: "default.target" as std.types.NonEmptyStr }] },
   }
 }
 
@@ -25,7 +25,7 @@ fn sample() -> extdeps.systemd.unit_file.SystemdUnitFile {
 // here independently of the serializer's own composition.
 test fn a_unit_file_serializes_to_exactly_these_bytes() -> Bool {
   extdeps.systemd.unit_file.serialize_systemd_unit_file(file: sample()) ==
-    "[Unit]\nDescription=gunbc Spark serving\nAfter=network-online.target\n[Service]\nType=simple\nExecStart=/opt/x/bin/ollama serve\nRestart=on-failure\n[Install]\nWantedBy=default.target\n"
+    "[Unit]\nDescription=gunbc Spark serving\nAfter=network-online.target\n\n[Service]\nType=simple\nExecStart=/opt/x/bin/ollama serve\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n"
 }
 
 // systemd's parser is line-oriented; a final directive with no newline is the classic silently
@@ -49,17 +49,44 @@ test fn sections_are_emitted_in_unit_service_install_order() -> Bool {
 // rendered bytes a function of the record alone rather than of which fields happened to be nonempty.
 test fn an_empty_section_still_emits_its_header() -> Bool {
   extdeps.systemd.unit_file.serialize_systemd_unit_file(
-    file: extdeps.systemd.unit_file.SystemdUnitFile {
+    file: extdeps.systemd.unit_file.ServiceUnitFile {
       unit: [extdeps.systemd.unit_file.Description { text: "d" as std.types.NonEmptyStr }],
       service: [],
-      install: [],
+      install: extdeps.systemd.unit_file.Installable { directives: [] },
     },
-  ) == "[Unit]\nDescription=d\n[Service]\n[Install]\n"
+  ) == "[Unit]\nDescription=d\n\n[Service]\n\n[Install]\n"
+}
+
+// THE DISCRIMINATING PAIR for the install section, and the reason it is a named type rather than a
+// list that happens to be empty. These two files differ in their bytes, so a model that could not
+// tell them apart could not render both -- and the second is the shape three live fleet units have.
+test fn a_not_installable_unit_omits_the_install_section_entirely() -> Bool {
+  extdeps.systemd.unit_file.serialize_systemd_unit_file(
+    file: extdeps.systemd.unit_file.ServiceUnitFile {
+      unit: [extdeps.systemd.unit_file.Description { text: "d" as std.types.NonEmptyStr }],
+      service: [extdeps.systemd.unit_file.ServiceType { mode: "oneshot" as std.types.NonEmptyStr }],
+      install: extdeps.systemd.unit_file.NotInstallable,
+    },
+  ) == "[Unit]\nDescription=d\n\n[Service]\nType=oneshot\n"
+}
+
+test fn installable_and_not_installable_render_differently() -> Bool {
+  let base_unit = [extdeps.systemd.unit_file.Description { text: "d" as std.types.NonEmptyStr }]
+  let base_service = [extdeps.systemd.unit_file.ServiceType { mode: "oneshot" as std.types.NonEmptyStr }]
+  extdeps.systemd.unit_file.serialize_systemd_unit_file(
+    file: extdeps.systemd.unit_file.ServiceUnitFile { unit: base_unit, service: base_service, install: extdeps.systemd.unit_file.NotInstallable },
+  ) != extdeps.systemd.unit_file.serialize_systemd_unit_file(
+    file: extdeps.systemd.unit_file.ServiceUnitFile {
+      unit: base_unit,
+      service: base_service,
+      install: extdeps.systemd.unit_file.Installable { directives: [] },
+    },
+  )
 }
 
 // ── The directive names are systemd's, and each is pinned to a distinct constant ────────────────
 
-// `ServiceType` renders as `Type=`, NOT `ServiceType=`. The variant is named for what it is in the
+// `extdeps.systemd.unit_file.ServiceType` renders as `Type=`, NOT `extdeps.systemd.unit_file.ServiceType=`. The variant is named for what it is in the
 // model; the wire name is systemd's. Nothing but an assertion on the literal catches a variant whose
 // constructor name leaked into the emitted bytes.
 test fn service_type_renders_as_the_type_directive() -> Bool {
@@ -68,30 +95,124 @@ test fn service_type_renders_as_the_type_directive() -> Bool {
 }
 
 test fn each_unit_directive_renders_its_own_systemd_name() -> Bool {
-  extdeps.systemd.unit_file.systemd_unit_directive_line(directive: extdeps.systemd.unit_file.Description { text: "a" as std.types.NonEmptyStr }) == "Description=a"
-    && extdeps.systemd.unit_file.systemd_unit_directive_line(directive: extdeps.systemd.unit_file.After { target: "b" as std.types.NonEmptyStr }) == "After=b"
-    && extdeps.systemd.unit_file.systemd_unit_directive_line(directive: extdeps.systemd.unit_file.Wants { target: "c" as std.types.NonEmptyStr }) == "Wants=c"
+  extdeps.systemd.unit_file.systemd_unit_directive_line(directive: extdeps.systemd.unit_file.Description { text: "a" as std.types.NonEmptyStr }) == "extdeps.systemd.unit_file.Description=a"
+    && extdeps.systemd.unit_file.systemd_unit_directive_line(directive: extdeps.systemd.unit_file.After { target: "b" as std.types.NonEmptyStr }) == "extdeps.systemd.unit_file.After=b"
+    && extdeps.systemd.unit_file.systemd_unit_directive_line(directive: extdeps.systemd.unit_file.Wants { target: "c" as std.types.NonEmptyStr }) == "extdeps.systemd.unit_file.Wants=c"
 }
 
 test fn each_service_directive_renders_its_own_systemd_name() -> Bool {
-  extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.ExecStart { command: "a" as std.types.NonEmptyStr }) == "ExecStart=a"
-    && extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.Restart { policy: "b" as std.types.NonEmptyStr }) == "Restart=b"
+  extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.ExecStart { command: "a" as std.types.NonEmptyStr }) == "extdeps.systemd.unit_file.ExecStart=a"
+    && extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.Restart { policy: "b" as std.types.NonEmptyStr }) == "extdeps.systemd.unit_file.Restart=b"
     && extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.Environment { assignment: "K=v" as std.types.NonEmptyStr })
-      == "Environment=K=v"
+      == "extdeps.systemd.unit_file.Environment=K=v"
     && extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.WorkingDirectory { path: "/d" as std.types.NonEmptyStr })
-      == "WorkingDirectory=/d"
+      == "extdeps.systemd.unit_file.WorkingDirectory=/d"
 }
 
 test fn each_install_directive_renders_its_own_systemd_name() -> Bool {
-  extdeps.systemd.unit_file.systemd_install_directive_line(directive: extdeps.systemd.unit_file.WantedBy { target: "a" as std.types.NonEmptyStr }) == "WantedBy=a"
+  extdeps.systemd.unit_file.systemd_install_directive_line(directive: extdeps.systemd.unit_file.WantedBy { target: "a" as std.types.NonEmptyStr }) == "extdeps.systemd.unit_file.WantedBy=a"
     && extdeps.systemd.unit_file.systemd_install_directive_line(directive: extdeps.systemd.unit_file.RequiredBy { target: "b" as std.types.NonEmptyStr })
-      == "RequiredBy=b"
+      == "extdeps.systemd.unit_file.RequiredBy=b"
 }
 
-// An `Environment=` value legitimately contains `=`. Splitting on the first separator is the obvious
+// An `extdeps.systemd.unit_file.Environment=` value legitimately contains `=`. Splitting on the first separator is the obvious
 // wrong implementation, and this pins the whole assignment through.
 test fn an_environment_assignment_keeps_its_own_equals_sign() -> Bool {
   extdeps.systemd.unit_file.systemd_service_directive_line(
     directive: extdeps.systemd.unit_file.Environment { assignment: "OLLAMA_HOST=127.0.0.1:11434" as std.types.NonEmptyStr },
-  ) == "Environment=OLLAMA_HOST=127.0.0.1:11434"
+  ) == "extdeps.systemd.unit_file.Environment=OLLAMA_HOST=127.0.0.1:11434"
+}
+
+// ── The timer section ───────────────────────────────────────────────────────────────────────────
+
+// THE KEYSTONE FOR THE TIMER ARM, and its oracle is deliberately not this repository. These are the
+// exact bytes of /etc/systemd/system/gunbc-srv1-green-fleet-converge.timer as read from srv1 on
+// 2026-08-18, a file systemd has loaded and run. A literal transcribed from the renderer's own
+// current output would be a change detector; a literal transcribed from a file the target system
+// already accepts is an external authority, and it is what makes "the shared model is a safe
+// destination" a claim about systemd rather than a claim about our own spacing.
+//
+// It is also the file that could not be rendered at all before this arm existed: it has a [Timer]
+// section and no [Service], which the previous three-mandatory-section record had no way to express.
+test fn the_live_fleet_converge_timer_serializes_to_exactly_its_deployed_bytes() -> Bool {
+  extdeps.systemd.unit_file.serialize_systemd_unit_file(
+    file: extdeps.systemd.unit_file.TimerUnitFile {
+      unit: [extdeps.systemd.unit_file.Description { text: "gunbc fleet converge cadence" as std.types.NonEmptyStr }],
+      timer: [
+        extdeps.systemd.unit_file.TimerUnit { target: "gunbc-srv1-green-fleet-converge.service" as std.types.NonEmptyStr },
+        extdeps.systemd.unit_file.OnCalendar { expression: "*:0/15" as std.types.NonEmptyStr },
+        extdeps.systemd.unit_file.Persistent { enabled: true },
+        extdeps.systemd.unit_file.RandomizedDelaySec { duration: "90" as std.types.NonEmptyStr },
+      ],
+      install: extdeps.systemd.unit_file.Installable { directives: [extdeps.systemd.unit_file.WantedBy { target: "timers.target" as std.types.NonEmptyStr }] },
+    },
+  ) == "[Unit]\nDescription=gunbc fleet converge cadence\n\n[Timer]\nUnit=gunbc-srv1-green-fleet-converge.service\nOnCalendar=*:0/15\nPersistent=true\nRandomizedDelaySec=90\n\n[Install]\nWantedBy=timers.target\n"
+}
+
+// The monotonic-timer form, from the live gunbc-srv1-green-belt.timer on the same host. It shares no
+// directive with the calendar form above except Unit=, so the two together exercise every timer
+// variant this module models.
+test fn the_live_belt_timer_serializes_to_exactly_its_deployed_bytes() -> Bool {
+  extdeps.systemd.unit_file.serialize_systemd_unit_file(
+    file: extdeps.systemd.unit_file.TimerUnitFile {
+      unit: [extdeps.systemd.unit_file.Description { text: "gunbc roadmap belt tick cadence" as std.types.NonEmptyStr }],
+      timer: [
+        extdeps.systemd.unit_file.TimerUnit { target: "gunbc-srv1-green-belt.service" as std.types.NonEmptyStr },
+        extdeps.systemd.unit_file.OnBootSec { duration: "2min" as std.types.NonEmptyStr },
+        extdeps.systemd.unit_file.OnUnitInactiveSec { duration: "60s" as std.types.NonEmptyStr },
+        extdeps.systemd.unit_file.AccuracySec { duration: "5s" as std.types.NonEmptyStr },
+      ],
+      install: extdeps.systemd.unit_file.Installable { directives: [extdeps.systemd.unit_file.WantedBy { target: "timers.target" as std.types.NonEmptyStr }] },
+    },
+  ) == "[Unit]\nDescription=gunbc roadmap belt tick cadence\n\n[Timer]\nUnit=gunbc-srv1-green-belt.service\nOnBootSec=2min\nOnUnitInactiveSec=60s\nAccuracySec=5s\n\n[Install]\nWantedBy=timers.target\n"
+}
+
+// `extdeps.systemd.unit_file.TimerUnit` renders as `Unit=`, not `extdeps.systemd.unit_file.TimerUnit=` — the same variant-name-versus-wire-name trap
+// `extdeps.systemd.unit_file.ServiceType` carries, and the one most likely to leak here because [Unit] is also a section name.
+test fn the_timer_unit_directive_renders_as_the_bare_unit_key() -> Bool {
+  extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.TimerUnit { target: "a.service" as std.types.NonEmptyStr })
+    == "Unit=a.service"
+    && !string_contains(
+      extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.TimerUnit { target: "a.service" as std.types.NonEmptyStr }),
+      "extdeps.systemd.unit_file.TimerUnit",
+    )
+}
+
+test fn each_timer_directive_renders_its_own_systemd_name() -> Bool {
+  extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.OnCalendar { expression: "*:0/15" as std.types.NonEmptyStr })
+    == "extdeps.systemd.unit_file.OnCalendar=*:0/15"
+    && extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.OnBootSec { duration: "2min" as std.types.NonEmptyStr })
+      == "extdeps.systemd.unit_file.OnBootSec=2min"
+    && extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.OnUnitInactiveSec { duration: "60s" as std.types.NonEmptyStr })
+      == "extdeps.systemd.unit_file.OnUnitInactiveSec=60s"
+    && extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.AccuracySec { duration: "5s" as std.types.NonEmptyStr })
+      == "extdeps.systemd.unit_file.AccuracySec=5s"
+    && extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.RandomizedDelaySec { duration: "90" as std.types.NonEmptyStr })
+      == "extdeps.systemd.unit_file.RandomizedDelaySec=90"
+}
+
+// systemd accepts `true`/`false` and this is a modeled Bool, so the spelling is decided here once.
+// The false arm is asserted because it is the one no live unit exercises.
+test fn persistent_renders_systemds_own_boolean_spelling() -> Bool {
+  extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.Persistent { enabled: true }) == "extdeps.systemd.unit_file.Persistent=true"
+    && extdeps.systemd.unit_file.systemd_timer_directive_line(directive: extdeps.systemd.unit_file.Persistent { enabled: false }) == "extdeps.systemd.unit_file.Persistent=false"
+}
+
+// The three service directives added for the live fleet units. `User=`/`Group=` are the pair whose
+// variant names had to differ from their wire names, so a leak shows up as `extdeps.systemd.unit_file.ServiceUser=`.
+test fn the_added_service_directives_render_their_own_systemd_names() -> Bool {
+  extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.ServiceUser { name: "briansrls" as std.types.NonEmptyStr })
+    == "User=briansrls"
+    && extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.ServiceGroup { name: "briansrls" as std.types.NonEmptyStr })
+      == "Group=briansrls"
+    && extdeps.systemd.unit_file.systemd_service_directive_line(
+      directive: extdeps.systemd.unit_file.EnvironmentFile { path: "/etc/x.env" as std.types.NonEmptyStr },
+    ) == "extdeps.systemd.unit_file.EnvironmentFile=/etc/x.env"
+}
+
+// `extdeps.systemd.unit_file.EnvironmentFile=` is not a spelling of `extdeps.systemd.unit_file.Environment=`. One names a file, the other carries an
+// assignment, and a renderer that fused them would silently turn a path into a variable named by it.
+test fn environment_and_environment_file_are_distinct_directives() -> Bool {
+  extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.EnvironmentFile { path: "/etc/x.env" as std.types.NonEmptyStr })
+    != extdeps.systemd.unit_file.systemd_service_directive_line(directive: extdeps.systemd.unit_file.Environment { assignment: "/etc/x.env" as std.types.NonEmptyStr })
 }

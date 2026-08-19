@@ -288,7 +288,6 @@ data fallback_arm_seed_compiled_fallback_inventory: List<SeedCompiledFallbackInv
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/derived_realization_schedule.rs", disposition: LegitimateConstant { reason: "derived realization schedule bridge" } },
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/bin/claim_batch.rs", disposition: LegitimateConstant { reason: "CLI argv surface" } },
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/bin/claim_executor.rs", disposition: LegitimateConstant { reason: "CLI argv surface" } },
-  SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/bin/regen_stage0.rs", disposition: LegitimateConstant { reason: "regen host tool" } },
   SeedCompiledFallbackInventoryRow { path: "src/v1/stage0/src/bin/auth_declared_but_unwired_witness.rs", disposition: LegitimateConstant { reason: "witness binary; env-var fallback RED controls" } }
 ]
 
@@ -296,8 +295,8 @@ fn fallback_arm_seed_inventory_count() -> Int {
   length(xs: fallback_arm_seed_compiled_fallback_inventory)
 }
 
-fn fallback_arm_seed_inventory_count_is_25_holds() -> Bool {
-  fallback_arm_seed_inventory_count() == 25
+fn fallback_arm_seed_inventory_count_is_24_holds() -> Bool {
+  fallback_arm_seed_inventory_count() == 24
 }
 
 fn fallback_arm_census_lens_path_has_no_answers_on_open() -> Bool {

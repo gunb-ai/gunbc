@@ -257,6 +257,7 @@ type LanguageSpec {
   string_interp: StringInterpSyntax
 
   callable_type_template: String?
+  callable_value_wrap_template: String?
   naming_case: NamingCase
   async_call_prefix: String
   bridge_method_prefix: String
@@ -322,22 +323,22 @@ fn rust_spec() -> LanguageSpec {
   LanguageSpec {
     target_name: "rust",
     reserved_words: ReservedWords {
-      keywords: rust_reserved,
-      strategy: SuffixEscape { suffix: rust_reserved_escape_suffix }
+      keywords: extdeps.languages.rust.emit.rust_reserved,
+      strategy: SuffixEscape { suffix: extdeps.languages.rust.emit.rust_reserved_escape_suffix }
     },
     scaffold: ProjectScaffold {
       manifest_file: "Cargo.toml",
       module_init_file: null,
-      source_file_extension: rust_source_extension,
-      source_dir: rust_source_dir
+      source_file_extension: extdeps.languages.rust.emit.rust_source_extension,
+      source_dir: extdeps.languages.rust.emit.rust_source_dir
     },
     serialization: SerializationSpec {
-      struct_derives: rust_struct_derives,
-      struct_derives_copy: rust_struct_derives_copy,
-      enum_derives: rust_enum_derives,
-      enum_derives_copy: rust_enum_derives_copy,
-      tag_attribute: rust_serde_tag,
-      rename_attribute_template: rust_serde_rename_template,
+      struct_derives: extdeps.languages.rust.emit.rust_struct_derives,
+      struct_derives_copy: extdeps.languages.rust.emit.rust_struct_derives_copy,
+      enum_derives: extdeps.languages.rust.emit.rust_enum_derives,
+      enum_derives_copy: extdeps.languages.rust.emit.rust_enum_derives_copy,
+      tag_attribute: extdeps.languages.rust.emit.rust_serde_tag,
+      rename_attribute_template: extdeps.languages.rust.emit.rust_serde_rename_template,
       derive_attribute: null,
       default_value: null
     },
@@ -349,7 +350,7 @@ fn rust_spec() -> LanguageSpec {
       name_style: SnakeCaseTestNames,
       async_decorator: "#[tokio::test]"
     },
-    visibility: KeywordVisibility { prefix: rust_visibility },
+    visibility: KeywordVisibility { prefix: extdeps.languages.rust.emit.rust_visibility },
     sharing: SharingStrategy {
       needs_sharing: true,
       wrap_template: "Rc<{0}>",
@@ -406,15 +407,15 @@ fn rust_spec() -> LanguageSpec {
     },
     items: ItemKeywords {
       func_keyword: item_keyword_for_kind(forms: extdeps.languages.rust.syntax.rust_item_forms, kind: FuncForm),
-      async_prefix: rust_async_prefix,
+      async_prefix: extdeps.languages.rust.emit.rust_async_prefix,
       struct_keyword: item_keyword_for_kind(forms: extdeps.languages.rust.syntax.rust_item_forms, kind: StructForm),
       enum_keyword: item_keyword_for_kind(forms: extdeps.languages.rust.syntax.rust_item_forms, kind: EnumForm),
       type_alias_keyword: item_keyword_for_kind(forms: extdeps.languages.rust.syntax.rust_item_forms, kind: TypeAliasForm),
-      param_separator: rust_param_separator, return_arrow: rust_return_arrow,
-      param_type_sep: rust_param_type_sep,
+      param_separator: extdeps.languages.rust.emit.rust_param_separator, return_arrow: extdeps.languages.rust.emit.rust_return_arrow,
+      param_type_sep: extdeps.languages.rust.emit.rust_param_type_sep,
       module_keyword: item_keyword_for_kind(forms: extdeps.languages.rust.syntax.rust_item_forms, kind: ModuleForm),
-      import_keyword: rust_import_keyword,
-      import_from_keyword: rust_import_from_keyword
+      import_keyword: extdeps.languages.rust.emit.rust_import_keyword,
+      import_from_keyword: extdeps.languages.rust.emit.rust_import_from_keyword
     },
     expression_semantics: ExpressionSemantics {
       if_value_form: IfExpression,
@@ -426,20 +427,20 @@ fn rust_spec() -> LanguageSpec {
       return_suffix: "",
       suppress_unit_return: false
     },
-    lambda_template: rust_lambda_template,
-    error_expr_template: rust_error_expr_template,
-    list_literal_empty: rust_list_literal_empty,
-    list_literal_template: rust_list_literal_template,
-    null_coalesce_template: rust_null_coalesce_template,
-    error_type_template: rust_error_type_template,
-    type_arg_open: rust_type_arg_open,
-    type_arg_close: rust_type_arg_close,
-    void_type: rust_void_type,
+    lambda_template: extdeps.languages.rust.emit.rust_lambda_template,
+    error_expr_template: extdeps.languages.rust.emit.rust_error_expr_template,
+    list_literal_empty: extdeps.languages.rust.emit.rust_list_literal_empty,
+    list_literal_template: extdeps.languages.rust.emit.rust_list_literal_template,
+    null_coalesce_template: extdeps.languages.rust.emit.rust_null_coalesce_template,
+    error_type_template: extdeps.languages.rust.emit.rust_error_type_template,
+    type_arg_open: extdeps.languages.rust.emit.rust_type_arg_open,
+    type_arg_close: extdeps.languages.rust.emit.rust_type_arg_close,
+    void_type: extdeps.languages.rust.emit.rust_void_type,
     tuple_syntax: TupleSyntax {
-      empty: rust_tuple_empty,
-      pair_template: rust_tuple_pair_template,
-      multi_template: rust_tuple_multi_template,
-      separator: rust_tuple_separator,
+      empty: extdeps.languages.rust.emit.rust_tuple_empty,
+      pair_template: extdeps.languages.rust.emit.rust_tuple_pair_template,
+      multi_template: extdeps.languages.rust.emit.rust_tuple_multi_template,
+      separator: extdeps.languages.rust.emit.rust_tuple_separator,
       first_accessor: ".0",
       second_accessor: ".1"
     },
@@ -450,6 +451,7 @@ fn rust_spec() -> LanguageSpec {
       escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
     },
     callable_type_template: "Rc<dyn Fn(\{params\}) -> \{return\}>",
+    callable_value_wrap_template: extdeps.languages.rust.emit.rust_callable_value_wrap_template,
     naming_case: SnakeCase,
     async_call_prefix: "",
     bridge_method_prefix: "",
@@ -599,6 +601,7 @@ fn python_spec() -> LanguageSpec {
       escape_pairs: [EscapePair { from: "{", to: "{{" }, EscapePair { from: "}", to: "}}" }]
     },
     callable_type_template: null,
+    callable_value_wrap_template: null,
     naming_case: SnakeCase,
     async_call_prefix: "await ",
     bridge_method_prefix: "",
@@ -748,6 +751,7 @@ fn go_spec() -> LanguageSpec {
       escape_pairs: [EscapePair { from: "%", to: "%%" }]
     },
     callable_type_template: null,
+    callable_value_wrap_template: null,
     naming_case: CamelCase,
     async_call_prefix: "",
     bridge_method_prefix: "v2rt.",
@@ -897,6 +901,7 @@ fn dag_spec() -> LanguageSpec {
       escape_pairs: [EscapePair { from: "{", to: "\\{" }, EscapePair { from: "}", to: "\\}" }]
     },
     callable_type_template: null,
+    callable_value_wrap_template: null,
     naming_case: AsAuthored,
     async_call_prefix: "",
     bridge_method_prefix: "",
@@ -925,7 +930,7 @@ fn language_spec_for_target(target: v1.compiler.artifact.RenderTarget) -> Langua
 
 fn target_keyword(target: v1.compiler.artifact.RenderTarget, key: String) -> String {
   match target {
-    Rust => match lookup(rust_keywords, key: key) { Present { value: kw } => kw  Absent => key }
+    Rust => match lookup(extdeps.languages.rust.emit.rust_keywords, key: key) { Present { value: kw } => kw  Absent => key }
     Go => match lookup(extdeps.languages.go.emit.go_keywords, key: key) { Present { value: kw } => kw  Absent => key }
     Python => match lookup(extdeps.languages.python.emit.python_keywords, key: key) { Present { value: kw } => kw  Absent => key }
     Dag => key
@@ -964,7 +969,7 @@ fn binop_symbol(target: v1.compiler.artifact.RenderTarget, op: std.syntax.BinOp,
 
 fn is_string_like(target: v1.compiler.artifact.RenderTarget, name: String) -> Bool {
   match target {
-    Rust => rust_string_types |> any(t => t == name)
+    Rust => extdeps.languages.rust.emit.rust_string_types |> any(t => t == name)
     Go => extdeps.languages.go.emit.go_string_types |> any(t => t == name)
     Python => extdeps.languages.python.emit.python_string_types |> any(t => t == name)
     Dag => false

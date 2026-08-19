@@ -117,6 +117,10 @@ data rust_import_from_keyword: String = ""
 
 data rust_lambda_template: String = "|{0}| {1}"
 
+// A DAG arrow-typed value realizes in Rust as Rc<dyn Fn(..) -> ..> (rust_callable_type_template),
+// so a closure produced where an arrow is DECLARED must be wrapped and must own its captures.
+data rust_callable_value_wrap_template: String = "Rc::new(move {0})"
+
 data rust_error_expr_template: String = "panic!({0})"
 
 data rust_list_literal_empty: String = "Rc::new(vec![])"

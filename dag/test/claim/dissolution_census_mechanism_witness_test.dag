@@ -1,0 +1,73 @@
+module test.claim.dissolution_census_mechanism_witness_test
+
+// Mechanism half of the dissolution-census split (DESIGN.md "witness cost
+// derives from purpose", operator ruling 2026-08-04): std.roster_frontier.fold_frontier_expiry's
+// bound/pending/fired/unbound classification proven on a planted roster, so
+// this file never imports gunbc.census_closure_frontier or the ~20-module
+// extdeps fan-in it concatenates. The breadth-preserving half stays the
+// irreducible census in dag/test/claim/long/dissolution_census_witness_test.dag.
+
+fn planted_bound_ref() -> std.decl_ref.DeclarationRef {
+  std.decl_ref.decl_ref(module_path: "test.claim.dissolution_census_mechanism_witness_test", decl_name: "planted_bound_target")
+}
+
+fn planted_rows() -> List<std.roster_frontier.FrontierRow> {
+  [
+    std.roster_frontier.frontier_row_decl(
+      ref: planted_bound_ref(),
+      reason: "planted fixture row: bound dissolution mechanism coverage",
+      dissolution: std.dissolution.bound_dissolution(ref: planted_bound_ref()),
+    ),
+    std.roster_frontier.frontier_row_decl(
+      ref: std.decl_ref.decl_ref(module_path: "test.claim.dissolution_census_mechanism_witness_test", decl_name: "planted_unbound_target"),
+      reason: "planted fixture row: unbound dissolution mechanism coverage",
+      dissolution: std.dissolution.unbound_dissolution(description: "planted fixture: irreducible policy note, never fires"),
+    ),
+  ]
+}
+
+test fn supplying_a_bound_rows_declaration_reds_the_gate() -> Bool {
+  let before = std.roster_frontier.fold_frontier_expiry(rows: planted_rows(), present_decls: [])
+  let after = std.roster_frontier.fold_frontier_expiry(rows: planted_rows(), present_decls: [planted_bound_ref()])
+  before.fired_still_present_count == 0
+    && after.fired_still_present_count == 1
+    && after.pending_count == before.pending_count - 1
+    && after.unbound_count == before.unbound_count
+    && !std.roster_frontier.frontier_expiry_clean(report: after)
+}
+
+test fn unbound_rows_stay_unbound_under_any_present_decls() -> Bool {
+  let probes = [
+    std.decl_ref.decl_ref(module_path: "extdeps.docker.endpoint", decl_name: "docker_default_endpoint"),
+    planted_bound_ref(),
+  ]
+  let base = std.roster_frontier.fold_frontier_expiry(rows: planted_rows(), present_decls: [])
+  let probed = std.roster_frontier.fold_frontier_expiry(rows: planted_rows(), present_decls: probes)
+  probed.unbound_count == base.unbound_count
+}
+
+fn w_unbound_dissolution_empty_literal_red() -> Bool {
+  compile_dag_rust_emit_check(
+    "module dissolution_empty_literal_red\nimport std.dissolution { DissolutionCondition, std.dissolution.unbound_dissolution }\ndata bad: DissolutionCondition = std.dissolution.unbound_dissolution(description: \"\")\n",
+    "src/dissolution_empty_literal_red.rs",
+    [],
+    []
+  )
+}
+
+fn w_unbound_dissolution_nonempty_literal_green() -> Bool {
+  compile_dag_rust_emit_check(
+    "module dissolution_nonempty_literal_green\nimport std.dissolution { DissolutionCondition, std.dissolution.unbound_dissolution }\ndata ok: DissolutionCondition = std.dissolution.unbound_dissolution(description: \"a real condition\")\n",
+    "src/dissolution_nonempty_literal_green.rs",
+    [],
+    []
+  )
+}
+
+test fn unbound_dissolution_empty_literal_refuses() -> Bool {
+  !w_unbound_dissolution_empty_literal_red()
+}
+
+test fn unbound_dissolution_nonempty_literal_accepts() -> Bool {
+  w_unbound_dissolution_nonempty_literal_green()
+}

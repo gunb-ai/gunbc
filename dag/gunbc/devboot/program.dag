@@ -9,7 +9,7 @@ module gunbc.devboot.program
 data devboot_program_package: String = "v1-compiler"
 
 fn offered_programs() -> List<String> {
-  ["gunbc", "claim_batch", "claim_executor", "regen_stage0"]
+  ["gunbc", "claim_batch", "claim_executor"]
 }
 
 type ProgramSelection

@@ -3,11 +3,11 @@ module gunbc.spark_serving_unit_render
 
 // THE ONE PLACE A SPARK SERVING UNIT BECOMES BYTES.
 //
-// `SparkServingUserUnitSpec` is deliberately typed fields and NOT systemd INI syntax -- its own
+// `gunbc.spark_serving_install_paths.SparkServingUserUnitSpec` is deliberately typed fields and NOT systemd INI syntax -- its own
 // authority note says so. That left a gap rather than a decision: nothing could turn the spec into a
 // file, so `WriteUserUnitFile` had no bytes to deliver and the unit member had nothing to be
 // observed against. The missing piece was never gunbc's to invent, because spelling `[Service]` and
-// `ExecStart=` here would have made this module a second systemd authority (§3). It belongs to
+// `extdeps.systemd.unit_file.ExecStart=` here would have made this module a second systemd authority (§3). It belongs to
 // `extdeps.systemd.unit_file`, which is cited to systemd.unit(5) and systemd.service(5); this module
 // only maps gunbc's typed fields onto it.
 //
@@ -26,7 +26,7 @@ fn spark_serving_exec_start_command(spec: gunbc.spark_serving_install_paths.Spar
 // The runtime and model roots come from the install-paths authority rather than from the spec's
 // relative strings, so the unit and the installer cannot disagree about where the runtime lives.
 fn spark_serving_user_unit_file(spec: gunbc.spark_serving_install_paths.SparkServingUserUnitSpec) -> extdeps.systemd.unit_file.SystemdUnitFile {
-  extdeps.systemd.unit_file.SystemdUnitFile {
+  extdeps.systemd.unit_file.ServiceUnitFile {
     unit: [
       extdeps.systemd.unit_file.Description { text: spec.description },
       extdeps.systemd.unit_file.After { target: spec.after },
@@ -41,7 +41,7 @@ fn spark_serving_user_unit_file(spec: gunbc.spark_serving_install_paths.SparkSer
       extdeps.systemd.unit_file.ExecStart { command: spark_serving_exec_start_command(spec: spec) },
       extdeps.systemd.unit_file.Restart { policy: spec.restart },
     ],
-    install: [extdeps.systemd.unit_file.WantedBy { target: spec.wanted_by }],
+    install: extdeps.systemd.unit_file.Installable { directives: [extdeps.systemd.unit_file.WantedBy { target: spec.wanted_by }] },
   }
 }
 

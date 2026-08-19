@@ -1,22 +1,16 @@
 module gunbc.generated_projection_paths
 
 
-type GeneratedProjectionPathSource
-  = CommittedGeneratedArtifact
-  | Stage0EmittedRust
-
+// One source remains after the stage0_emit_plan deletion, so a row is its path. The
+// collision refusal still does real work — two committed artifacts claiming one path —
+// but it can no longer name WHICH sources collided, because there is only one.
 type GeneratedProjectionPathRow {
   path: String
-  source: GeneratedProjectionPathSource
 }
 
-type GeneratedProjectionPathsRefusal
-  = GeneratedProjectionPathCollision {
-      path: String,
-      first_source: GeneratedProjectionPathSource,
-      duplicate_source: GeneratedProjectionPathSource
-    }
-  | GeneratedProjectionStage0PlanRefused { cause: gunbc.stage0_emit_plan.Stage0EmissionPlanRefusalCause }
+type GeneratedProjectionPathsRefusal = GeneratedProjectionPathCollision {
+  path: String
+}
 
 type GeneratedProjectionPathsOutcome
   = GeneratedProjectionPathsAccepted { paths: List<String> }
@@ -34,15 +28,8 @@ fn deterministic_generated_projection_paths_from_rows(
       GeneratedProjectionPathRowsRefused { cause } => GeneratedProjectionPathRowsRefused { cause: cause }
       GeneratedProjectionPathRowsAccepted { rows: accepted } => {
         if accepted |> any(candidate => candidate.path == row.path) {
-          let first_source = fold(accepted, init: row.source, f: fn(found, candidate) {
-            if candidate.path == row.path { candidate.source } else { found }
-          })
           GeneratedProjectionPathRowsRefused {
-            cause: GeneratedProjectionPathCollision {
-              path: row.path,
-              first_source: first_source,
-              duplicate_source: row.source
-            }
+            cause: GeneratedProjectionPathCollision { path: row.path }
           }
         } else {
           GeneratedProjectionPathRowsAccepted { rows: concat(accepted, [row]) }
@@ -58,23 +45,8 @@ fn deterministic_generated_projection_paths_from_rows(
   }
 }
 
-fn deterministic_generated_projection_paths_from_stage0_plan(
-  outcome: gunbc.stage0_emit_plan.Stage0EmissionPlanOutcome
-) -> GeneratedProjectionPathsOutcome {
-  let committed = committed_generated_artifact_paths()
-    |> map(path => GeneratedProjectionPathRow { path: path, source: CommittedGeneratedArtifact })
-  match outcome {
-    Stage0EmissionPlanRefused { cause } => GeneratedProjectionPathsRefused {
-      cause: GeneratedProjectionStage0PlanRefused { cause: cause }
-    }
-    Stage0EmissionPlanAccepted { rows } => {
-      let stage0 = generated_stage0_paths_from_plan_rows(rows: rows)
-        |> map(path => GeneratedProjectionPathRow { path: path, source: Stage0EmittedRust })
-      deterministic_generated_projection_paths_from_rows(rows: concat(committed, stage0))
-    }
-  }
-}
-
 fn deterministic_generated_projection_paths() -> GeneratedProjectionPathsOutcome {
-  deterministic_generated_projection_paths_from_stage0_plan(outcome: stage0_emission_plan())
+  let rows = gunbc.generated_artifact.committed_generated_artifact_paths()
+    |> map(path => GeneratedProjectionPathRow { path: path })
+  deterministic_generated_projection_paths_from_rows(rows: rows)
 }

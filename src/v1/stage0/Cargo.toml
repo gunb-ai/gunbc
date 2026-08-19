@@ -54,11 +54,6 @@ name = "gunbc"
 path = "src/main.rs"
 
 [[bin]]
-name = "regen_stage0"
-path = "src/bin/regen_stage0.rs"
-# cache-bust-v2-binary-20260526
-
-[[bin]]
 name = "cssl_assemble"
 path = "src/bin/cssl_assemble.rs"
 
@@ -201,15 +196,6 @@ path = "src/bin/p1_cohort_probe.rs"
 [[bin]]
 name = "measure_worker_private_memory"
 path = "src/bin/measure_worker_private_memory.rs"
-
-# Host-physics CI witness: regen self-host fixed-point affected-set skip. Prints
-# regen_not_affected_skip | run_regen for the generated ci regen step by intersecting
-# the merge-base diff with the [src/v1, dag] regen input closure (shared authority
-# cli_run::regen_input_sources). Empty diff / diff failure / closure failure → run_regen
-# (fail-closed; main + the 4-hourly falsifier run regen cold as the control).
-[[bin]]
-name = "regen_floor_skip_witness"
-path = "src/bin/regen_floor_skip_witness.rs"
 
 # Host-physics floor witness for the v1 interpreter recorded-fixture record ->
 # hermetic-replay -> fail-closed lifecycle (DESIGN §5 determinism). Drives the real

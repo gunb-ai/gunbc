@@ -313,6 +313,7 @@ fn call_semantics_name(value: v1.std.core.CallSemantics) -> String {
   match value {
     PlainCallSemantics => "PlainCallSemantics"
     LookupCallSemantics => "LookupCallSemantics"
+    FunctionValueCallSemantics => "FunctionValueCallSemantics"
   }
 }
 

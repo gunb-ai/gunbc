@@ -1,7 +1,7 @@
 module test.claim.observation_ci_render_witness_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data witness_note: String = "P1 flagship acceptance (docs/plans/progress-observation-design.md section 5): re-render the CAPTURED crawl window of run 30044816605 through the escalation law and produce named activity where there was silence. The fixture below is not invented — every number is read off that run's log: the heartbeat at t=33m carried current=16107200512 swap=34359738368 psi_some_avg10=9.01 and named no subject, and the module the process was actually inside for the whole window, v2.compiler.normalized_tree, was disclosed only at walk end as typecheck-attribution ms=606984. The renderer is a pure function of the stream, which is exactly what makes replaying a real captured run possible."
 
@@ -41,29 +41,29 @@ fn crawl_leaf_subject() -> std.observation.ObservationSubject {
 
 fn crawl_heartbeat() -> gunbc.observation_ci_render.HeartbeatSample {
   gunbc.observation_ci_render.HeartbeatSample {
-    elapsed: millisecond(count: 1980000),
+    elapsed: std.measure.millisecond(count: 1980000),
     active: crawl_leaf_subject(),
     entry_index: 214,
     entry_total: 602,
-    rss: std.observation.MeasuredValue { value: byte_size(crawl_heartbeat_rss_bytes) },
-    swap: std.observation.MeasuredValue { value: byte_size(crawl_heartbeat_swap_bytes) },
-    pressure: std.observation.MeasuredValue { value: basis_point(count: crawl_heartbeat_pressure_bp) }
+    rss: std.observation.MeasuredValue { value: std.measure.byte_size(crawl_heartbeat_rss_bytes) },
+    swap: std.observation.MeasuredValue { value: std.measure.byte_size(crawl_heartbeat_swap_bytes) },
+    pressure: std.observation.MeasuredValue { value: std.measure.basis_point(count: crawl_heartbeat_pressure_bp) }
   }
 }
 
 fn crawl_basis() -> std.observation.AttentionBasis {
-  std.observation.AttentionBasis { average: millisecond(count: 1000), maximum: millisecond(count: 5000) }
+  std.observation.AttentionBasis { average: std.measure.millisecond(count: 1000), maximum: std.measure.millisecond(count: 5000) }
 }
 
 test fn w_human_units_replace_raw_byte_dumps() -> Bool {
-  ci_human_bytes(b: byte_size(crawl_heartbeat_rss_bytes)) == "15.0 GiB" &&
-  ci_human_bytes(b: byte_size(crawl_heartbeat_swap_bytes)) == "32.0 GiB" &&
-  ci_human_percent(bp: basis_point(count: crawl_heartbeat_pressure_bp)) == "9.0%" &&
-  ci_human_duration(d: millisecond(count: crawl_module_wall_ms)) == "10 minutes"
+  gunbc.observation_ci_render.ci_human_bytes(b: std.measure.byte_size(crawl_heartbeat_rss_bytes)) == "15.0 GiB" &&
+  gunbc.observation_ci_render.ci_human_bytes(b: std.measure.byte_size(crawl_heartbeat_swap_bytes)) == "32.0 GiB" &&
+  gunbc.observation_ci_render.ci_human_percent(bp: std.measure.basis_point(count: crawl_heartbeat_pressure_bp)) == "9.0%" &&
+  gunbc.observation_ci_render.ci_human_duration(d: std.measure.millisecond(count: crawl_module_wall_ms)) == "10 minutes"
 }
 
 test fn w_heartbeat_names_its_subject_where_the_capture_was_silent() -> Bool {
-  let line = ci_heartbeat_line(sample: crawl_heartbeat())
+  let line = gunbc.observation_ci_render.ci_heartbeat_line(sample: crawl_heartbeat())
   string_contains(s: line.text, pattern: crawl_quiet_module) &&
   string_contains(s: line.text, pattern: "entry 214 of 602") &&
   string_contains(s: line.text, pattern: "15.0 GiB") &&
@@ -71,64 +71,64 @@ test fn w_heartbeat_names_its_subject_where_the_capture_was_silent() -> Bool {
 }
 
 test fn w_heartbeat_puts_identity_before_vitals() -> Bool {
-  let line = ci_heartbeat_line(sample: crawl_heartbeat())
+  let line = gunbc.observation_ci_render.ci_heartbeat_line(sample: crawl_heartbeat())
   starts_with(s: line.text, prefix: "33 minutes in — still in witness discovery") &&
   string_contains(s: line.text, pattern: "memory 15.0 GiB")
 }
 
 test fn w_heartbeat_uses_the_clock_pulse_glyph() -> Bool {
-  let line = ci_heartbeat_line(sample: crawl_heartbeat())
-  ci_render_line(line: line, tier: Emoji) == concat("🕐 ", line.text)
+  let line = gunbc.observation_ci_render.ci_heartbeat_line(sample: crawl_heartbeat())
+  gunbc.observation_ci_render.ci_render_line(line: line, tier: std.symbols.Emoji) == concat("🕐 ", line.text)
 }
 
 test fn w_escalation_surfaces_the_quiet_module_at_one_threshold() -> Bool {
-  let line = ci_escalation_line(
+  let line = gunbc.observation_ci_render.ci_escalation_line(
     quiet_subject: crawl_entry_subject(),
     active_leaf: crawl_leaf_subject(),
-    quiet: millisecond(count: 120000),
-    t: observation_dwell_threshold
+    quiet: std.measure.millisecond(count: 120000),
+    t: std.observation.observation_dwell_threshold
   )
   string_contains(s: line.text, pattern: crawl_quiet_module) &&
   string_contains(s: line.text, pattern: "quiet for 2 minutes") &&
-  line.attention == Notable
+  line.attention == std.observation.Notable
 }
 
 test fn w_escalation_surfaces_the_cause_at_the_deeper_threshold() -> Bool {
-  let line = ci_escalation_blocked_line(
+  let line = gunbc.observation_ci_render.ci_escalation_blocked_line(
     quiet_subject: crawl_entry_subject(),
     active_leaf: crawl_leaf_subject(),
-    quiet: millisecond(count: 240000),
-    t: observation_dwell_threshold,
-    hold: std.observation.PsiPressure { avg10: basis_point(count: crawl_heartbeat_pressure_bp) }
+    quiet: std.measure.millisecond(count: 240000),
+    t: std.observation.observation_dwell_threshold,
+    hold: std.observation.PsiPressure { avg10: std.measure.basis_point(count: crawl_heartbeat_pressure_bp) }
   )
   string_contains(s: line.text, pattern: "blocked on memory reclaim") &&
   string_contains(s: line.text, pattern: "9.0%") &&
-  line.attention == Anomaly
+  line.attention == std.observation.Anomaly
 }
 
 test fn w_escalation_is_recursive_over_the_captured_window() -> Bool {
-  observation_escalation_depth(quiet: millisecond(count: 600000), t: observation_dwell_threshold) == 10 &&
-  observation_escalation_depth(quiet: millisecond(count: 120000), t: observation_dwell_threshold) == 2
+  std.observation.observation_escalation_depth(quiet: std.measure.millisecond(count: 600000), t: std.observation.observation_dwell_threshold) == 10 &&
+  std.observation.observation_escalation_depth(quiet: std.measure.millisecond(count: 120000), t: std.observation.observation_dwell_threshold) == 2
 }
 
 test fn w_outcome_lines_carry_durations() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: crawl_entry_subject(),
-    transition: std.observation.Concluded { outcome: Done },
-    durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 230))),
+    transition: std.observation.Concluded { outcome: std.observation.Done },
+    durations: std.observation.observation_durations_wall(elapsed: std.measure.millisecond_to_nanosecond(m: std.measure.millisecond(count: 230))),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
-  string_contains(s: ci_event_line(event: event, basis: crawl_basis()).text, pattern: "in 230ms")
+  string_contains(s: gunbc.observation_ci_render.ci_event_line(event: event, basis: crawl_basis()).text, pattern: "in 230ms")
 }
 
 test fn w_sub_millisecond_duration_never_renders_as_zero() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: crawl_entry_subject(),
-    transition: std.observation.Concluded { outcome: Done },
-    durations: observation_durations_wall(elapsed: nanosecond(count: 999999)),
+    transition: std.observation.Concluded { outcome: std.observation.Done },
+    durations: std.observation.observation_durations_wall(elapsed: std.measure.nanosecond(count: 999999)),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
-  let text = ci_event_line(event: event, basis: crawl_basis()).text
+  let text = gunbc.observation_ci_render.ci_event_line(event: event, basis: crawl_basis()).text
   string_contains(s: text, pattern: "in 999999ns") &&
   !string_contains(s: text, pattern: "in 0ms")
 }
@@ -136,45 +136,45 @@ test fn w_sub_millisecond_duration_never_renders_as_zero() -> Bool {
 test fn w_refusal_never_renders_inside_a_collapsed_group() -> Bool {
   let refusal = std.observation.ObservationEvent {
     subject: crawl_entry_subject(),
-    transition: std.observation.Concluded { outcome: Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as std.types.NonEmptyStr } },
-    durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 2472000))),
+    transition: std.observation.Concluded { outcome: std.observation.Refused { diagnostic: "FLOOR-BATCH-OVER-BUDGET" as std.types.NonEmptyStr } },
+    durations: std.observation.observation_durations_wall(elapsed: std.measure.millisecond_to_nanosecond(m: std.measure.millisecond(count: 2472000))),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
-  let line = ci_event_line(event: refusal, basis: crawl_basis())
-  line.attention == Anomaly &&
-  ci_line_placement(attention: line.attention) == OutsideGroup
+  let line = gunbc.observation_ci_render.ci_event_line(event: refusal, basis: crawl_basis())
+  line.attention == std.observation.Anomaly &&
+  gunbc.observation_ci_render.ci_line_placement(attention: line.attention) == gunbc.observation_ci_render.OutsideGroup
 }
 
 test fn w_routine_green_collapses_inside_a_group() -> Bool {
   let green = std.observation.ObservationEvent {
     subject: crawl_entry_subject(),
-    transition: std.observation.Concluded { outcome: Done },
-    durations: observation_durations_wall(elapsed: millisecond_to_nanosecond(m: millisecond(count: 230))),
+    transition: std.observation.Concluded { outcome: std.observation.Done },
+    durations: std.observation.observation_durations_wall(elapsed: std.measure.millisecond_to_nanosecond(m: std.measure.millisecond(count: 230))),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
-  let line = ci_event_line(event: green, basis: crawl_basis())
-  line.attention == Ambient &&
-  ci_line_placement(attention: line.attention) == InsideCollapsedGroup &&
-  ci_collapsed_summary(green_count: 213) == "… 213 more finished cleanly"
+  let line = gunbc.observation_ci_render.ci_event_line(event: green, basis: crawl_basis())
+  line.attention == std.observation.Ambient &&
+  gunbc.observation_ci_render.ci_line_placement(attention: line.attention) == gunbc.observation_ci_render.InsideCollapsedGroup &&
+  gunbc.observation_ci_render.ci_collapsed_summary(green_count: 213) == "… 213 more finished cleanly"
 }
 
 test fn w_failure_and_refusal_are_restated_at_the_end() -> Bool {
-  let summary = ci_run_summary_line(summary: gunbc.observation_ci_render.FloorRunSummary {
+  let summary = gunbc.observation_ci_render.ci_run_summary_line(summary: gunbc.observation_ci_render.FloorRunSummary {
     entries_complete: 213,
     entries_total: 602,
     refusals: 1,
     failures: 0,
-    wall: millisecond(count: 2472000)
+    wall: std.measure.millisecond(count: 2472000)
   })
-  let restate = ci_refusal_restate_line(subject: crawl_entry_subject(), diagnostic: "FLOOR-BATCH-OVER-BUDGET" as std.types.NonEmptyStr)
+  let restate = gunbc.observation_ci_render.ci_refusal_restate_line(subject: crawl_entry_subject(), diagnostic: "FLOOR-BATCH-OVER-BUDGET" as std.types.NonEmptyStr)
   string_contains(s: summary.text, pattern: "213 of 602") &&
   string_contains(s: summary.text, pattern: "1 refused") &&
-  summary.attention == Anomaly &&
+  summary.attention == std.observation.Anomaly &&
   string_contains(s: restate.text, pattern: "FLOOR-BATCH-OVER-BUDGET")
 }
 
 test fn w_relayed_diagnostic_cannot_mint_workflow_commands() -> Bool {
-  let restate = ci_refusal_restate_line(
+  let restate = gunbc.observation_ci_render.ci_refusal_restate_line(
     subject: crawl_entry_subject(),
     diagnostic: "budget exceeded\n::error::a child process said this" as std.types.NonEmptyStr
   )
@@ -183,45 +183,45 @@ test fn w_relayed_diagnostic_cannot_mint_workflow_commands() -> Bool {
 }
 
 test fn w_group_markers_come_from_the_github_authority() -> Bool {
-  ci_group_open(title: "witness discovery") == "::group::witness discovery" &&
-  ci_group_close() == "::endgroup::"
+  gunbc.observation_ci_render.ci_group_open(title: "witness discovery") == "::group::witness discovery" &&
+  gunbc.observation_ci_render.ci_group_close() == "::endgroup::"
 }
 
 test fn w_captured_window_would_have_spoken_four_times() -> Bool {
-  ci_escalation_emission_count(quiet: millisecond(count: 600000), t: observation_dwell_threshold) == 4 &&
-  ci_escalation_emission_count(quiet: millisecond(count: 120000), t: observation_dwell_threshold) == 2 &&
-  ci_escalation_emission_count(quiet: millisecond(count: 30000), t: observation_dwell_threshold) == 0
+  gunbc.observation_ci_render.ci_escalation_emission_count(quiet: std.measure.millisecond(count: 600000), t: std.observation.observation_dwell_threshold) == 4 &&
+  gunbc.observation_ci_render.ci_escalation_emission_count(quiet: std.measure.millisecond(count: 120000), t: std.observation.observation_dwell_threshold) == 2 &&
+  gunbc.observation_ci_render.ci_escalation_emission_count(quiet: std.measure.millisecond(count: 30000), t: std.observation.observation_dwell_threshold) == 0
 }
 
 test fn w_a_silent_phase_past_the_threshold_is_not_responsive() -> Bool {
-  ci_window_is_responsive(quiet: millisecond(count: 30000), t: observation_dwell_threshold) &&
-  ci_window_is_responsive(quiet: millisecond(count: 600000), t: observation_dwell_threshold)
+  gunbc.observation_ci_render.ci_window_is_responsive(quiet: std.measure.millisecond(count: 30000), t: std.observation.observation_dwell_threshold) &&
+  gunbc.observation_ci_render.ci_window_is_responsive(quiet: std.measure.millisecond(count: 600000), t: std.observation.observation_dwell_threshold)
 }
 
 test fn w_escalation_emission_stays_bounded_under_unbounded_silence() -> Bool {
-  ci_escalation_emission_count(quiet: millisecond(count: 999999999), t: observation_dwell_threshold) <= 13
+  gunbc.observation_ci_render.ci_escalation_emission_count(quiet: std.measure.millisecond(count: 999999999), t: std.observation.observation_dwell_threshold) <= 13
 }
 
 test fn w_run_summary_keeps_refused_and_failed_apart() -> Bool {
-  let refused_only = gunbc.observation_ci_render.FloorRunSummary { entries_complete: 213, entries_total: 602, refusals: 1, failures: 0, wall: millisecond(count: 2472000) }
-  let failed_only = gunbc.observation_ci_render.FloorRunSummary { entries_complete: 601, entries_total: 602, refusals: 0, failures: 1, wall: millisecond(count: 600000) }
-  let both = gunbc.observation_ci_render.FloorRunSummary { entries_complete: 200, entries_total: 602, refusals: 2, failures: 3, wall: millisecond(count: 600000) }
-  let clean = gunbc.observation_ci_render.FloorRunSummary { entries_complete: 602, entries_total: 602, refusals: 0, failures: 0, wall: millisecond(count: 600000) }
-  ci_run_summary_glyph(summary: refused_only) == StatusRefused &&
-  ci_run_summary_glyph(summary: failed_only) == NodeFailed &&
-  ci_run_summary_glyph(summary: both) == NodeFailed &&
-  ci_run_summary_glyph(summary: clean) == NodeCompleted &&
-  string_contains(s: ci_run_summary_line(summary: both).text, pattern: "2 refused and 3 failed")
+  let refused_only = gunbc.observation_ci_render.FloorRunSummary { entries_complete: 213, entries_total: 602, refusals: 1, failures: 0, wall: std.measure.millisecond(count: 2472000) }
+  let failed_only = gunbc.observation_ci_render.FloorRunSummary { entries_complete: 601, entries_total: 602, refusals: 0, failures: 1, wall: std.measure.millisecond(count: 600000) }
+  let both = gunbc.observation_ci_render.FloorRunSummary { entries_complete: 200, entries_total: 602, refusals: 2, failures: 3, wall: std.measure.millisecond(count: 600000) }
+  let clean = gunbc.observation_ci_render.FloorRunSummary { entries_complete: 602, entries_total: 602, refusals: 0, failures: 0, wall: std.measure.millisecond(count: 600000) }
+  gunbc.observation_ci_render.ci_run_summary_glyph(summary: refused_only) == std.symbols.StatusRefused &&
+  gunbc.observation_ci_render.ci_run_summary_glyph(summary: failed_only) == std.symbols.NodeFailed &&
+  gunbc.observation_ci_render.ci_run_summary_glyph(summary: both) == std.symbols.NodeFailed &&
+  gunbc.observation_ci_render.ci_run_summary_glyph(summary: clean) == std.symbols.NodeCompleted &&
+  string_contains(s: gunbc.observation_ci_render.ci_run_summary_line(summary: both).text, pattern: "2 refused and 3 failed")
 }
 
 test fn w_unmeasured_duration_names_its_cause_rather_than_vanishing() -> Bool {
   let event = std.observation.ObservationEvent {
     subject: crawl_entry_subject(),
-    transition: std.observation.Concluded { outcome: Done },
-    durations: observation_durations_wall_unavailable(cause: "clock unavailable in this leg" as std.types.NonEmptyStr),
+    transition: std.observation.Concluded { outcome: std.observation.Done },
+    durations: std.observation.observation_durations_wall_unavailable(cause: "clock unavailable in this leg" as std.types.NonEmptyStr),
     rss: std.observation.MeasuredUnavailable { cause: "not sampled per entry" as std.types.NonEmptyStr }
   }
-  let line = ci_event_line(event: event, basis: crawl_basis())
+  let line = gunbc.observation_ci_render.ci_event_line(event: event, basis: crawl_basis())
   string_contains(s: line.text, pattern: "duration unmeasured: clock unavailable in this leg")
 }
 
@@ -249,113 +249,113 @@ fn proj_leaf_subject(entry: std.types.NonEmptyStr) -> std.observation.Observatio
   }
 }
 
-fn proj_event(subject: std.observation.ObservationSubject, transition: std.observation.ObservationTransition) -> std.observation.ObservationEvent {
+fn proj_event(subject: std.observation.ObservationSubject, transition: ObservationTransition) -> std.observation.ObservationEvent {
   std.observation.ObservationEvent {
     subject: subject,
     transition: transition,
-    durations: observation_durations_wall(elapsed: nanosecond(count: 1500000)),
-    rss: std.observation.MeasuredValue { value: byte_size(count: 4096) },
+    durations: std.observation.observation_durations_wall(elapsed: std.measure.nanosecond(count: 1500000)),
+    rss: std.observation.MeasuredValue { value: std.measure.byte_size(count: 4096) },
   }
 }
 
 test fn w_a_passing_witness_folds_into_its_batch_and_emits_nothing() -> Bool {
-  match ci_routine_projection(
-    event: proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: Done }),
-    grain: Present { value: BatchGrain },
+  match gunbc.observation_ci_render.ci_routine_projection(
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
+    grain: Present { value: std.observation.BatchGrain },
   ) {
-    FoldedIntoRollup { at: a } => observation_subject_contains(ancestor: a, descendant: proj_leaf_subject(entry: "dag/a.dag"))
-    EmittedAtLeaf { reason: _ } => false
+    gunbc.observation_ci_render.FoldedIntoRollup { at: a } => std.observation.observation_subject_contains(ancestor: a, descendant: proj_leaf_subject(entry: "dag/a.dag"))
+    gunbc.observation_ci_render.EmittedAtLeaf { reason: _ } => false
   }
 }
 
 test fn w_RED_a_failure_pierces_the_fold_at_its_exact_leaf() -> Bool {
-  match ci_routine_projection(
-    event: proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: Failed { error: "witness red", output: "" } }),
-    grain: Present { value: BatchGrain },
+  match gunbc.observation_ci_render.ci_routine_projection(
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Failed { error: "witness red", output: "" } }),
+    grain: Present { value: std.observation.BatchGrain },
   ) {
-    FoldedIntoRollup { at: _ } => false
-    EmittedAtLeaf { reason: r } => match r {
-      AnomalyPierces => true
+    gunbc.observation_ci_render.FoldedIntoRollup { at: _ } => false
+    gunbc.observation_ci_render.EmittedAtLeaf { reason: r } => match r {
+      gunbc.observation_ci_render.AnomalyPierces => true
       _ => false
     }
   }
 }
 
 test fn w_RED_a_refusal_pierces_the_fold_too() -> Bool {
-  match ci_routine_projection(
-    event: proj_event(subject: proj_leaf_subject(entry: "dag/c.dag"), transition: std.observation.Concluded { outcome: Refused { diagnostic: "admission refused" } }),
-    grain: Present { value: BatchGrain },
+  match gunbc.observation_ci_render.ci_routine_projection(
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/c.dag"), transition: std.observation.Concluded { outcome: std.observation.Refused { diagnostic: "admission refused" } }),
+    grain: Present { value: std.observation.BatchGrain },
   ) {
-    FoldedIntoRollup { at: _ } => false
-    EmittedAtLeaf { reason: r } => match r { AnomalyPierces => true, _ => false }
+    gunbc.observation_ci_render.FoldedIntoRollup { at: _ } => false
+    gunbc.observation_ci_render.EmittedAtLeaf { reason: r } => match r { gunbc.observation_ci_render.AnomalyPierces => true, _ => false }
   }
 }
 
 test fn w_verbose_leaf_grain_emits_every_routine_event() -> Bool {
-  match ci_routine_projection(
-    event: proj_event(subject: proj_leaf_subject(entry: "dag/d.dag"), transition: std.observation.Concluded { outcome: Done }),
+  match gunbc.observation_ci_render.ci_routine_projection(
+    event: proj_event(subject: proj_leaf_subject(entry: "dag/d.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
     grain: none,
   ) {
-    FoldedIntoRollup { at: _ } => false
-    EmittedAtLeaf { reason: r } => match r { LeafGrainRequested => true, _ => false }
+    gunbc.observation_ci_render.FoldedIntoRollup { at: _ } => false
+    gunbc.observation_ci_render.EmittedAtLeaf { reason: r } => match r { gunbc.observation_ci_render.LeafGrainRequested => true, _ => false }
   }
 }
 
 test fn w_RED_an_event_with_no_ancestor_at_the_grain_is_emitted_not_dropped() -> Bool {
-  match ci_routine_projection(
-    event: proj_event(subject: proj_batch_subject(), transition: std.observation.Concluded { outcome: Done }),
-    grain: Present { value: ModuleGrain },
+  match gunbc.observation_ci_render.ci_routine_projection(
+    event: proj_event(subject: proj_batch_subject(), transition: std.observation.Concluded { outcome: std.observation.Done }),
+    grain: Present { value: std.observation.ModuleGrain },
   ) {
-    FoldedIntoRollup { at: _ } => false
-    EmittedAtLeaf { reason: r } => match r { NoAncestorAtGrain => true, _ => false }
+    gunbc.observation_ci_render.FoldedIntoRollup { at: _ } => false
+    gunbc.observation_ci_render.EmittedAtLeaf { reason: r } => match r { gunbc.observation_ci_render.NoAncestorAtGrain => true, _ => false }
   }
 }
 
 test fn w_batch_summary_reports_the_folded_counts() -> Bool {
   let folded = fold(
     [
-      proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: Done }),
-      proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: Done }),
-      proj_event(subject: proj_leaf_subject(entry: "dag/c.dag"), transition: std.observation.Concluded { outcome: Skipped { reason: "unaffected" } }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/c.dag"), transition: std.observation.Concluded { outcome: std.observation.Skipped { reason: "unaffected" } }),
     ],
-    init: observation_rollup_open(subject: proj_batch_subject()),
-    f: (acc, e) => match observation_rollup_accept(rollup: acc, event: e) {
-      RollupAccepted { rollup: r } => r
-      RollupSubjectOutOfScope { subject: _ } => acc
+    init: std.observation.observation_rollup_open(subject: proj_batch_subject()),
+    f: (acc, e) => match std.observation.observation_rollup_accept(rollup: acc, event: e) {
+      std.observation.RollupAccepted { rollup: r } => r
+      std.observation.RollupSubjectOutOfScope { subject: _ } => acc
     }
   )
-  let line = ci_batch_summary_line(rollup: folded)
+  let line = gunbc.observation_ci_render.ci_batch_summary_line(rollup: folded)
   string_contains(s: line.text, pattern: "2 passed")
     && string_contains(s: line.text, pattern: "1 skipped")
     && string_contains(s: line.text, pattern: "0 failed")
-    && match line.attention { Ambient => true, _ => false }
+    && match line.attention { std.observation.Ambient => true, _ => false }
 }
 
 test fn w_RED_a_batch_carrying_a_failure_summarises_as_an_anomaly() -> Bool {
   let folded = fold(
     [
-      proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: Done }),
-      proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: Failed { error: "red", output: "" } }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done }),
+      proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Failed { error: "red", output: "" } }),
     ],
-    init: observation_rollup_open(subject: proj_batch_subject()),
-    f: (acc, e) => match observation_rollup_accept(rollup: acc, event: e) {
-      RollupAccepted { rollup: r } => r
-      RollupSubjectOutOfScope { subject: _ } => acc
+    init: std.observation.observation_rollup_open(subject: proj_batch_subject()),
+    f: (acc, e) => match std.observation.observation_rollup_accept(rollup: acc, event: e) {
+      std.observation.RollupAccepted { rollup: r } => r
+      std.observation.RollupSubjectOutOfScope { subject: _ } => acc
     }
   )
-  let line = ci_batch_summary_line(rollup: folded)
+  let line = gunbc.observation_ci_render.ci_batch_summary_line(rollup: folded)
   string_contains(s: line.text, pattern: "1 failed")
-    && match line.attention { Anomaly => true, _ => false }
+    && match line.attention { std.observation.Anomaly => true, _ => false }
 }
 
 // The seed seam, exercised the way the seed uses it: scalars in, one finished ASCII line out. The
 // two REDs below are the pair that keeps it honest — an all-green batch must not carry an anomaly
 // glyph, and an absent memory reading must not print as a measurement of zero.
 test fn w_the_seed_seam_renders_one_ascii_line_from_scalars() -> Bool {
-  let line = ci_batch_summary_text(
+  let line = gunbc.observation_ci_render.ci_batch_summary_text(
     batch_index: 2, batch_label: "witness discovery" as std.types.NonEmptyStr,
     declared_population: 9015, passed: 5319, unaffected: 3731, deferred: 1078,
-    failed: 0, work: nanosecond(count: 105994413000),
+    failed: 0, work: std.measure.nanosecond(count: 105994413000),
   )
   string_contains(s: line, pattern: "witness discovery")
     && string_contains(s: line, pattern: "5319 passed")
@@ -368,15 +368,15 @@ test fn w_the_seed_seam_renders_one_ascii_line_from_scalars() -> Bool {
 // one says `1 failed` — which stays green if the green line renders the failure glyph, because the
 // texts differ anyway. Assert the exact leading token in both directions instead.
 test fn w_RED_the_green_and_failed_summaries_carry_exactly_their_own_status_token() -> Bool {
-  let green = ci_batch_summary_text(
+  let green = gunbc.observation_ci_render.ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as std.types.NonEmptyStr,
     declared_population: 3, passed: 3, unaffected: 0, deferred: 0,
-    failed: 0, work: nanosecond(count: 1000),
+    failed: 0, work: std.measure.nanosecond(count: 1000),
   )
-  let red = ci_batch_summary_text(
+  let red = gunbc.observation_ci_render.ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as std.types.NonEmptyStr,
     declared_population: 3, passed: 2, unaffected: 0, deferred: 0,
-    failed: 1, work: nanosecond(count: 1000),
+    failed: 1, work: std.measure.nanosecond(count: 1000),
   )
   green.starts_with(prefix: "[x] ")
     && !string_contains(s: green, pattern: "[!]")
@@ -386,55 +386,55 @@ test fn w_RED_the_green_and_failed_summaries_carry_exactly_their_own_status_toke
 // A partition that does not add up to the population is DISCLOSED, never absorbed into an arm. The
 // shipped version reported `0 refused` while 1,078 rows sat deferred in a category it did not carry.
 test fn w_RED_a_partition_that_misses_rows_says_so() -> Bool {
-  let short = ci_batch_summary_text(
+  let short = gunbc.observation_ci_render.ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as std.types.NonEmptyStr,
     declared_population: 10, passed: 4, unaffected: 0, deferred: 0,
-    failed: 0, work: nanosecond(count: 1000),
+    failed: 0, work: std.measure.nanosecond(count: 1000),
   )
-  let exact = ci_batch_summary_text(
+  let exact = gunbc.observation_ci_render.ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as std.types.NonEmptyStr,
     declared_population: 4, passed: 4, unaffected: 0, deferred: 0,
-    failed: 0, work: nanosecond(count: 1000),
+    failed: 0, work: std.measure.nanosecond(count: 1000),
   )
   string_contains(s: short, pattern: "6 of 10 unclassified")
     && !string_contains(s: exact, pattern: "unclassified")
 }
 
 test fn w_RED_the_seed_summary_claims_no_peak_because_it_has_no_batch_scoped_one() -> Bool {
-  let line = ci_batch_summary_text(
+  let line = gunbc.observation_ci_render.ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as std.types.NonEmptyStr,
     declared_population: 1, passed: 1, unaffected: 0, deferred: 0,
-    failed: 0, work: nanosecond(count: 1000),
+    failed: 0, work: std.measure.nanosecond(count: 1000),
   )
   !string_contains(s: line, pattern: "peak")
 }
 
 // The seed supplies no refusal count, so a displayed `0 refused` would be a claim the fold looked.
 test fn w_RED_the_summary_does_not_claim_zero_refused_it_cannot_verify() -> Bool {
-  let line = ci_batch_summary_text(
+  let line = gunbc.observation_ci_render.ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as std.types.NonEmptyStr,
     declared_population: 1, passed: 1, unaffected: 0, deferred: 0,
-    failed: 0, work: nanosecond(count: 1000),
+    failed: 0, work: std.measure.nanosecond(count: 1000),
   )
   !string_contains(s: line, pattern: "refused")
 }
 
 test fn w_RED_the_summary_duration_is_labelled_work_not_elapsed_wall() -> Bool {
-  let line = ci_batch_summary_text(
+  let line = gunbc.observation_ci_render.ci_batch_summary_text(
     batch_index: 1, batch_label: "b" as std.types.NonEmptyStr,
     declared_population: 2, passed: 2, unaffected: 0, deferred: 0,
-    failed: 0, work: nanosecond(count: 5000000),
+    failed: 0, work: std.measure.nanosecond(count: 5000000),
   )
   string_contains(s: line, pattern: "work")
 }
 
-// The seed reads `routine_rollup_folds`, not the Optional it derives from, so this is the pair that
+// The seed reads `gunbc.output_policy.routine_rollup_folds`, not the Optional it derives from, so this is the pair that
 // keeps the two from drifting apart: the Bool must agree with the grain at every verbosity. A
 // witness on the Optional alone would have stayed green through the defect that shipped — the seed
 // was calling a function with the wrong parameter and reading the resulting error as `false`.
 fn proj_grain_says_fold(verbose: Bool, quiet: Bool) -> Bool {
-  match routine_rollup_grain_for(
-    verbosity: resolve_verbosity(env: gunbc.output_policy.VerbosityEnv { verbose: verbose, quiet: quiet })
+  match gunbc.output_policy.routine_rollup_grain_for(
+    verbosity: gunbc.output_policy.resolve_verbosity(env: gunbc.output_policy.VerbosityEnv { verbose: verbose, quiet: quiet })
   ) {
     Present { value: _ } => true
     Absent => false
@@ -442,44 +442,44 @@ fn proj_grain_says_fold(verbose: Bool, quiet: Bool) -> Bool {
 }
 
 test fn w_the_bool_seam_agrees_with_the_grain_at_every_verbosity() -> Bool {
-  (routine_rollup_folds(verbose: false, quiet: false) == proj_grain_says_fold(verbose: false, quiet: false))
-    && (routine_rollup_folds(verbose: true, quiet: false) == proj_grain_says_fold(verbose: true, quiet: false))
-    && (routine_rollup_folds(verbose: false, quiet: true) == proj_grain_says_fold(verbose: false, quiet: true))
+  (gunbc.output_policy.routine_rollup_folds(verbose: false, quiet: false) == proj_grain_says_fold(verbose: false, quiet: false))
+    && (gunbc.output_policy.routine_rollup_folds(verbose: true, quiet: false) == proj_grain_says_fold(verbose: true, quiet: false))
+    && (gunbc.output_policy.routine_rollup_folds(verbose: false, quiet: true) == proj_grain_says_fold(verbose: false, quiet: true))
 }
 
 test fn w_RED_verbose_does_not_fold_but_normal_and_quiet_do() -> Bool {
-  routine_rollup_folds(verbose: false, quiet: false)
-    && routine_rollup_folds(verbose: false, quiet: true)
-    && !routine_rollup_folds(verbose: true, quiet: false)
+  gunbc.output_policy.routine_rollup_folds(verbose: false, quiet: false)
+    && gunbc.output_policy.routine_rollup_folds(verbose: false, quiet: true)
+    && !gunbc.output_policy.routine_rollup_folds(verbose: true, quiet: false)
 }
 
 fn proj_folds_at_batch(e: std.observation.ObservationEvent) -> Bool {
-  match ci_routine_projection(event: e, grain: Present { value: BatchGrain }) {
-    FoldedIntoRollup { at: _ } => true
-    EmittedAtLeaf { reason: _ } => false
+  match gunbc.observation_ci_render.ci_routine_projection(event: e, grain: Present { value: std.observation.BatchGrain }) {
+    gunbc.observation_ci_render.FoldedIntoRollup { at: _ } => true
+    gunbc.observation_ci_render.EmittedAtLeaf { reason: _ } => false
   }
 }
 
 // The seed transports this verdict instead of restating the rule, so it has to AGREE with the
 // projection it stands in for — that agreement is the whole reason the Rust arm stopped being a
-// second representation. Asserted in both directions against ci_routine_projection itself.
+// second representation. Asserted in both directions against gunbc.observation_ci_render.ci_routine_projection itself.
 test fn w_the_transported_fold_verdict_agrees_with_the_projection() -> Bool {
-  let pass_event = proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: Done })
-  let fail_event = proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: Failed { error: "x", output: "" } })
-  let pass_agrees = concluded_outcome_folds(passed: true) == proj_folds_at_batch(e: pass_event)
-  let fail_agrees = concluded_outcome_folds(passed: false) == proj_folds_at_batch(e: fail_event)
+  let pass_event = proj_event(subject: proj_leaf_subject(entry: "dag/a.dag"), transition: std.observation.Concluded { outcome: std.observation.Done })
+  let fail_event = proj_event(subject: proj_leaf_subject(entry: "dag/b.dag"), transition: std.observation.Concluded { outcome: std.observation.Failed { error: "x", output: "" } })
+  let pass_agrees = gunbc.output_policy.concluded_outcome_folds(passed: true) == proj_folds_at_batch(e: pass_event)
+  let fail_agrees = gunbc.output_policy.concluded_outcome_folds(passed: false) == proj_folds_at_batch(e: fail_event)
   pass_agrees && fail_agrees
 }
 
 test fn w_RED_a_pass_folds_and_a_failure_does_not() -> Bool {
-  concluded_outcome_folds(passed: true) && !concluded_outcome_folds(passed: false)
+  gunbc.output_policy.concluded_outcome_folds(passed: true) && !gunbc.output_policy.concluded_outcome_folds(passed: false)
 }
 
 // The deferred population sits BESIDE the declared one, so a run that defers rows and disposes of
 // every declared row reconciles clean. Summing deferred in reported a false over-count on a healthy
 // floor run — 9478 declared, 9478 passed, 1084 deferred — and this pins that reading.
 test fn w_RED_deferred_rows_do_not_over_count_against_the_declared_population() -> Bool {
-  let text = ci_batch_summary_text(
+  let text = gunbc.observation_ci_render.ci_batch_summary_text(
     batch_index: 0,
     batch_label: "witness discovery" as std.types.NonEmptyStr,
     declared_population: 9478,
@@ -487,7 +487,7 @@ test fn w_RED_deferred_rows_do_not_over_count_against_the_declared_population() 
     unaffected: 0,
     deferred: 1084,
     failed: 0,
-    work: nanosecond(count: 120000000000)
+    work: std.measure.nanosecond(count: 120000000000)
   )
   string_contains(s: text, pattern: "1084 deferred")
     && !string_contains(s: text, pattern: "over-counted")
@@ -496,7 +496,7 @@ test fn w_RED_deferred_rows_do_not_over_count_against_the_declared_population() 
 
 // And a genuine gap still reports: 10 declared, 6 disposed of, deferred irrelevant to that fact.
 test fn w_RED_a_real_partition_gap_still_reports_with_deferred_rows_present() -> Bool {
-  let text = ci_batch_summary_text(
+  let text = gunbc.observation_ci_render.ci_batch_summary_text(
     batch_index: 0,
     batch_label: "witness discovery" as std.types.NonEmptyStr,
     declared_population: 10,
@@ -504,46 +504,46 @@ test fn w_RED_a_real_partition_gap_still_reports_with_deferred_rows_present() ->
     unaffected: 1,
     deferred: 99,
     failed: 1,
-    work: nanosecond(count: 1000)
+    work: std.measure.nanosecond(count: 1000)
   )
   string_contains(s: text, pattern: "unclassified")
 }
 
 test fn w_witness_claim_line_from_module_path_holds() -> Bool {
-  let text = ci_witness_claim_result_text(
+  let text = gunbc.observation_ci_render.ci_witness_claim_result_text(
     subject: "test.claim.observation_ci_render_witness_test",
     function: "w_witness_claim_line_from_module_path_holds",
     passed: true,
-    wall: nanosecond(count: 230000000)
+    wall: std.measure.nanosecond(count: 230000000)
   )
   string_contains(s: text, pattern: "//test/claim/observation_ci_render_witness_test:w_witness_claim_line_from_module_path_holds")
     && string_contains(s: text, pattern: "PASSED in 230ms")
 }
 
 test fn w_witness_claim_line_from_entry_path_holds() -> Bool {
-  let text = ci_witness_claim_result_text(
+  let text = gunbc.observation_ci_render.ci_witness_claim_result_text(
     subject: "dag/test/claim/foo_test.dag",
     function: "witness_holds",
     passed: false,
-    wall: nanosecond(count: 1500000000)
+    wall: std.measure.nanosecond(count: 1500000000)
   )
   string_contains(s: text, pattern: "//dag/test/claim/foo_test:witness_holds")
     && string_contains(s: text, pattern: "FAILED in 1 seconds")
 }
 
-// Pins the 90s minute-switch boundary shared by ci_human_elapsed and the Rust mirror.
+// Pins the 90s minute-switch boundary shared by gunbc.observation_ci_render.ci_human_elapsed and the Rust mirror.
 test fn w_witness_claim_duration_minute_switch_boundary_holds() -> Bool {
-  let just_under = ci_witness_claim_result_text(
+  let just_under = gunbc.observation_ci_render.ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
     passed: true,
-    wall: nanosecond(count: 89000000000)
+    wall: std.measure.nanosecond(count: 89000000000)
   )
-  let at_switch = ci_witness_claim_result_text(
+  let at_switch = gunbc.observation_ci_render.ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
     passed: true,
-    wall: nanosecond(count: 90000000000)
+    wall: std.measure.nanosecond(count: 90000000000)
   )
   string_contains(s: just_under, pattern: "89 seconds")
     && !string_contains(s: just_under, pattern: "minutes")
@@ -552,49 +552,49 @@ test fn w_witness_claim_duration_minute_switch_boundary_holds() -> Bool {
 }
 
 test fn w_RED_human_elapsed_minute_switch_boundary_holds() -> Bool {
-  ci_human_elapsed(d: nanosecond(count: 89000000000)) == "89 seconds"
-    && ci_human_elapsed(d: nanosecond(count: 90000000000)) == "1 minutes"
+  gunbc.observation_ci_render.ci_human_elapsed(d: std.measure.nanosecond(count: 89000000000)) == "89 seconds"
+    && gunbc.observation_ci_render.ci_human_elapsed(d: std.measure.nanosecond(count: 90000000000)) == "1 minutes"
 }
 
 test fn w_witness_bazel_target_label_normalizes_both_subject_shapes() -> Bool {
-  ci_witness_bazel_target_label(
+  gunbc.observation_ci_render.ci_witness_bazel_target_label(
     subject: "gunbc.output_policy",
     function: "resolve_channel_policy"
   ) == "//gunbc/output_policy:resolve_channel_policy"
-    && ci_witness_bazel_target_label(
+    && gunbc.observation_ci_render.ci_witness_bazel_target_label(
       subject: "src/v2/workflow/required_floor.dag",
       function: "required_floor_claim_manifest"
     ) == "//src/v2/workflow/required_floor:required_floor_claim_manifest"
 }
 
 test fn w_witness_budget_warn_line_holds() -> Bool {
-  ci_witness_budget_warn_text(
+  gunbc.observation_ci_render.ci_witness_budget_warn_text(
     qualified: "test.claim.foo.w_bar",
-    wall: millisecond(count: 600),
-    warn: millisecond(count: 500),
-    budget: millisecond(count: 1000)
+    wall: std.measure.millisecond(count: 600),
+    warn: std.measure.millisecond(count: 500),
+    budget: std.measure.millisecond(count: 1000)
   ) == "[floor-witness-slow] test.claim.foo.w_bar 600ms > 500ms warn (ceiling 1000ms)"
 }
 
 // Mirror drift control for S1: a legacy formatter used "PASS"/"FAIL" without the trailing
 // ED and bracket-prefixed families. Either drift reds this witness.
 test fn w_RED_witness_claim_result_rejects_legacy_pass_token() -> Bool {
-  let text = ci_witness_claim_result_text(
+  let text = gunbc.observation_ci_render.ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
     passed: true,
-    wall: nanosecond(count: 230000000)
+    wall: std.measure.nanosecond(count: 230000000)
   )
   string_contains(s: text, pattern: "PASSED in 230ms")
     && !string_contains(s: text, pattern: "PASS in")
 }
 
 test fn w_RED_witness_claim_result_rejects_bracket_prefix() -> Bool {
-  let text = ci_witness_claim_result_text(
+  let text = gunbc.observation_ci_render.ci_witness_claim_result_text(
     subject: "test.claim.foo",
     function: "w_bar",
     passed: false,
-    wall: nanosecond(count: 500000000)
+    wall: std.measure.nanosecond(count: 500000000)
   )
   text.starts_with(prefix: "//test/claim/foo:w_bar")
     && !string_contains(s: text, pattern: "[floor-")
@@ -603,13 +603,66 @@ test fn w_RED_witness_claim_result_rejects_bracket_prefix() -> Bool {
 // Mirror drift control for S2: the ceiling clause is load-bearing; omitting it reads as a
 // different verdict class than budget warning.
 test fn w_RED_witness_budget_warn_requires_ceiling_clause() -> Bool {
-  let text = ci_witness_budget_warn_text(
+  let text = gunbc.observation_ci_render.ci_witness_budget_warn_text(
     qualified: "test.claim.foo.w_bar",
-    wall: millisecond(count: 600),
-    warn: millisecond(count: 500),
-    budget: millisecond(count: 1000)
+    wall: std.measure.millisecond(count: 600),
+    warn: std.measure.millisecond(count: 500),
+    budget: std.measure.millisecond(count: 1000)
   )
   string_contains(s: text, pattern: "(ceiling 1000ms)")
     && string_contains(s: text, pattern: "[floor-witness-slow]")
     && !string_contains(s: text, pattern: "warn_ms")
+}
+
+// THE ORACLE FOR THE SEED'S SHARED-FILL LINE. The literal is the agreement point: cli_run's
+// render_shared_fill_row_text_mirror asserts the same bytes on the Rust side, so a drift on
+// either side reds one of the two rather than silently forking the format.
+test fn w_shared_fill_row_line_holds() -> Bool {
+  gunbc.observation_ci_render.ci_shared_fill_row_text(
+    cache: "reference_edges",
+    key: "dag+src/v2",
+    fill: std.measure.millisecond(count: 695),
+    inclusive: std.measure.millisecond(count: 17890),
+    payer: gunbc.witness_row_cost.SharedFillPaidByClaim { qualified: "test.claim.foo.w_bar" },
+    consumer_claims: 3,
+    consumer_modules: 2,
+    modules: "test.claim.foo,test.claim.other"
+  ) == "[floor-shared-fill] cache=reference_edges key=dag+src/v2 fill_ms=695 inclusive_ms=17890 paid_by=test.claim.foo.w_bar consumer_claims=3 consumer_modules=2 disposition=shared modules=test.claim.foo,test.claim.other"
+}
+
+test fn w_shared_fill_total_line_holds() -> Bool {
+  gunbc.observation_ci_render.ci_shared_fill_total_text(
+    fills: 9,
+    fill: std.measure.millisecond(count: 60000),
+    shared_fill: std.measure.millisecond(count: 42000),
+    unattributed_hits: 0
+  ) == "[floor-shared-fill] TOTAL fills=9 fill_ms=60000 shared_fill_ms=42000 unattributed_hits=0"
+}
+
+// THE DISCRIMINATING HALF. The line above would read identically for a fill whose cost really is
+// its payer's, so the verdict has to be exercised where it changes: one module reading a fill is
+// a removable cost, two is not, and a fill paid before any claim ran is neither. A single Bool
+// over "is it shared" could not separate the third state from the first.
+test fn w_shared_fill_disposition_separates_three_states() -> Bool {
+  gunbc.witness_row_cost.shared_fill_disposition(
+    payer: gunbc.witness_row_cost.SharedFillPaidByClaim { qualified: "test.claim.foo.w_bar" },
+    consumer_modules: 1
+  ) == gunbc.witness_row_cost.SharedFillExclusiveToOneModule
+    && gunbc.witness_row_cost.shared_fill_disposition(
+      payer: gunbc.witness_row_cost.SharedFillPaidByClaim { qualified: "test.claim.foo.w_bar" },
+      consumer_modules: 2
+    ) == gunbc.witness_row_cost.SharedFillSharedAcrossModules
+    && gunbc.witness_row_cost.shared_fill_disposition(
+      payer: gunbc.witness_row_cost.SharedFillPaidOutsideFold,
+      consumer_modules: 5
+    ) == gunbc.witness_row_cost.SharedFillOutsideFold
+}
+
+// RED CONTROL: preparation cost must not be readable as a witness's removable cost. If the
+// payer arm were ever dropped and the count consulted alone, an outside-fold fill with several
+// consumers would classify shared and a lone one exclusive — both of which would license a
+// paring conversation about a cost no witness owns.
+test fn w_RED_outside_fold_fill_is_not_classified_as_a_module_cost() -> Bool {
+  gunbc.witness_row_cost.shared_fill_disposition(payer: gunbc.witness_row_cost.SharedFillPaidOutsideFold, consumer_modules: 1)
+    != gunbc.witness_row_cost.SharedFillExclusiveToOneModule
 }

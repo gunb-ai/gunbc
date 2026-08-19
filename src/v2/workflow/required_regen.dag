@@ -1,0 +1,169 @@
+module v2.workflow.required_regen
+
+
+// ONE FOLD OVER EMITTED SURFACES — no roster, no skip arm, no bare v2.Bool at the seam.
+// The host derives the compared populations from emit output and a directory read;
+// this module owns the verdict only.
+
+type RegenSurfaceOutcome
+  = SurfaceMatches { relative_path: v2.std.text.String }
+  | SurfaceDrifted {
+      relative_path: v2.std.text.String
+      committed_digest: v2.std.text.String
+      candidate_digest: v2.std.text.String
+    }
+  | EmittedNotCommitted { relative_path: v2.std.text.String }
+  | CommittedNotEmitted { relative_path: v2.std.text.String }
+
+type HandMaintainedOutcome
+  = HandMatches { filename: v2.std.text.String }
+  | HandDrifted { filename: v2.std.text.String }
+  | HandNoCandidate { filename: v2.std.text.String }
+  | HandUnverifiable { filename: v2.std.text.String, reason: v2.std.text.String }
+
+type RequiredRegenRefusal
+  = GeneratedDrift { paths: v2.std.collection.List<v2.std.text.String> }
+  | SurfacePopulationMismatch {
+      emitted_not_committed: v2.std.collection.List<v2.std.text.String>
+      committed_not_emitted: v2.std.collection.List<v2.std.text.String>
+    }
+  | CompileRefused { reason: v2.std.text.String }
+  | HandUnverifiableRefused { entries: v2.std.collection.List<v2.std.text.String> }
+  | PlannedExecutedMismatch { planned: Int, executed: Int }
+  | EmptyCommittedPopulation
+  | EmptyEmitResult
+  | CandidateTreeAbsent { reason: v2.std.text.String }
+
+type RequiredRegenAttempt {
+  generated_outcomes: v2.std.collection.List<RegenSurfaceOutcome>
+  hand_outcomes: v2.std.collection.List<HandMaintainedOutcome>
+  authority_digest: v2.std.text.String
+}
+
+type RequiredRegenSyncAdmission
+  = RequiredRegenSyncRunnable { attempt: RequiredRegenAttempt }
+  | RequiredRegenSyncRefused { refusals: v2.std.collection.List<RequiredRegenRefusal> }
+
+data no_regen_refusals: v2.std.collection.List<RequiredRegenRefusal> = []
+
+data no_string_paths: v2.std.collection.List<v2.std.text.String> = []
+
+fn surface_is_drift(o: RegenSurfaceOutcome) -> v2.Bool {
+  match o {
+    SurfaceDrifted { relative_path: _ } => true
+    EmittedNotCommitted { relative_path: _ } => true
+    CommittedNotEmitted { relative_path: _ } => true
+    SurfaceMatches { relative_path: _ } => false
+  }
+}
+
+fn collect_generated_drift_paths(
+  acc: v2.std.collection.List<v2.std.text.String>,
+  o: RegenSurfaceOutcome
+) -> v2.std.collection.List<v2.std.text.String> {
+  match o {
+    SurfaceDrifted { relative_path: path } => v2.std.algebra.Cons { head: path, tail: acc }
+    EmittedNotCommitted { relative_path: path } => v2.std.algebra.Cons { head: path, tail: acc }
+    CommittedNotEmitted { relative_path: path } => v2.std.algebra.Cons { head: path, tail: acc }
+    SurfaceMatches { relative_path: _ } => acc
+  }
+}
+
+fn hand_is_unverifiable(o: HandMaintainedOutcome) -> v2.Bool {
+  match o {
+    HandUnverifiable { filename: _, reason: _ } => true
+    HandMatches { filename: _ } => false
+    HandDrifted { filename: _ } => false
+    HandNoCandidate { filename: _ } => false
+  }
+}
+
+fn collect_hand_unverifiable(
+  acc: v2.std.collection.List<v2.std.text.String>,
+  o: HandMaintainedOutcome
+) -> v2.std.collection.List<v2.std.text.String> {
+  match o {
+    HandUnverifiable { filename: name, reason: reason } =>
+      v2.std.algebra.Cons { head: concat(name, concat(": ", reason)), tail: acc }
+    HandMatches { filename: _ } => acc
+    HandDrifted { filename: _ } => acc
+    HandNoCandidate { filename: _ } => acc
+  }
+}
+
+// Hand-maintained DRIFT is expected on a clean tree (main.rs and known emitter gaps).
+// Only UNVERIFIABLE hand rows refuse sync admission.
+fn required_regen_sync_admission(
+  generated_outcomes: v2.std.collection.List<RegenSurfaceOutcome>,
+  hand_outcomes: v2.std.collection.List<HandMaintainedOutcome>,
+  authority_digest: v2.std.text.String,
+  planned_surfaces: Int,
+  executed_surfaces: Int
+) -> RequiredRegenSyncAdmission {
+  if planned_surfaces <= 0 {
+    return RequiredRegenSyncRefused {
+      refusals: v2.std.algebra.Cons { head: EmptyCommittedPopulation, tail: no_regen_refusals }
+    }
+  }
+  if executed_surfaces <= 0 {
+    return RequiredRegenSyncRefused {
+      refusals: v2.std.algebra.Cons { head: EmptyEmitResult, tail: no_regen_refusals }
+    }
+  }
+  if planned_surfaces != executed_surfaces {
+    return RequiredRegenSyncRefused {
+      refusals: v2.std.algebra.Cons {
+        head: PlannedExecutedMismatch {
+          planned: planned_surfaces,
+          executed: executed_surfaces
+        },
+        tail: no_regen_refusals
+      }
+    }
+  }
+  let drift_paths = v2.std.algebra.fold_list(
+    xs: generated_outcomes,
+    empty: no_string_paths,
+    cons: fn(acc, o) {
+      if surface_is_drift(o: o) {
+        collect_generated_drift_paths(acc: acc, o: o)
+      } else {
+        acc
+      }
+    }
+  )
+  if v2.std.algebra.length(xs: drift_paths) > 0 {
+    return RequiredRegenSyncRefused {
+      refusals: v2.std.algebra.Cons {
+        head: GeneratedDrift { paths: drift_paths },
+        tail: no_regen_refusals
+      }
+    }
+  }
+  let hand_bad = v2.std.algebra.fold_list(
+    xs: hand_outcomes,
+    empty: no_string_paths,
+    cons: fn(acc, o) {
+      if hand_is_unverifiable(o: o) {
+        collect_hand_unverifiable(acc: acc, o: o)
+      } else {
+        acc
+      }
+    }
+  )
+  if v2.std.algebra.length(xs: hand_bad) > 0 {
+    return RequiredRegenSyncRefused {
+      refusals: v2.std.algebra.Cons {
+        head: HandUnverifiableRefused { entries: hand_bad },
+        tail: no_regen_refusals
+      }
+    }
+  }
+  RequiredRegenSyncRunnable {
+    attempt: RequiredRegenAttempt {
+      generated_outcomes: generated_outcomes,
+      hand_outcomes: hand_outcomes,
+      authority_digest: authority_digest
+    }
+  }
+}

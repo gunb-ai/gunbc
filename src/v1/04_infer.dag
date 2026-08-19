@@ -3338,14 +3338,15 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
           }
         } else { call_fold_acc_type }
         let method_resolution = resolve_known_method_node(
-          receiver: method_receiver,
-          receiver_type: resolve_method_receiver_type(receiver_type: first_arg_type, env: scope.type_env),
-          method_name: func_name,
-          fold_accumulator_type: if call_fold_info != none { Present { value: refined_call_fold_acc_type } } else { none },
-          service_registry: scope.service_registry,
-          source_indices: scope.type_env.source_indices
-        )
-        let is_known_method = method_resolution.result_type != none
+            receiver: method_receiver,
+            receiver_type: resolve_method_receiver_type(receiver_type: first_arg_type, env: scope.type_env),
+            method_name: func_name,
+            fold_accumulator_type: if call_fold_info != none { Present { value: refined_call_fold_acc_type } } else { none },
+            service_registry: scope.service_registry,
+            source_indices: scope.type_env.source_indices
+          )
+        let callee_is_body_binding = map_has(scope.body_locals, func_name)
+        let is_known_method = !callee_is_body_binding && method_resolution.result_type != none
         if is_known_method && typed_args |> count > 0 {
           let receiver = method_receiver
           let remaining = typed_args |> skip(1)
@@ -3408,7 +3409,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
             ),
             diagnostics: concat(concat(arg_diags, method_resolution.diagnostics), template_subst_diags)
           }
-        } else if func_name == "empty_map" {
+        } else if !callee_is_body_binding && func_name == "empty_map" {
           let bare_m = bare_map_node()
           match expected {
             Present { value: exp } =>
@@ -3476,7 +3477,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
                   }
               }
           }
-        } else if func_name == "empty_set" {
+        } else if !callee_is_body_binding && func_name == "empty_set" {
           let bare_s = bare_set_node()
           match expected {
             Present { value: exp } =>
@@ -3544,7 +3545,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
                   }
               }
           }
-        } else if infer_builtin_call_type(name: func_name) != none {
+        } else if !callee_is_body_binding && infer_builtin_call_type(name: func_name) != none {
           let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name: func_name, typed_args: typed_args, scope: scope, span: span)
           let bt = tier2b.bt
           let call_semantics = if func_name == "lookup" {
@@ -3580,7 +3581,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: InferScope, expected: v1.std.
             }
             InferResult {
               typed: make_named_expr_node(
-                name: func_name, expr_data: v1.std.core.ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                name: func_name, expr_data: ExprCall { call_semantics: Present { value: if callee_is_body_binding { FunctionValueCallSemantics } else { PlainCallSemantics } }, descent_evidence: none },
                 children: typed_arg_nodes,
                 inferred: Present { value: v1.std.core.Resolved { node: resolved_type } },
                 span: span,

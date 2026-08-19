@@ -10,7 +10,7 @@ fn run_family_ledger_row(row: gunbc.proactive_verification_ledger.FamilyVerifica
       )
     FalsifierPredictOnlyBatch => false
     CompileCleanGate => false
-    RegenVerifyGate => false
+    RequiredRegenGate => false
   }
 }
 

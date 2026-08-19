@@ -1,35 +1,35 @@
 module test.claim.stage0_rust_source_lifecycle_scaffold_witness
 
 
-data stage0_rust_source_lifecycle_scaffold_witness_note: String = "Stage0 lifecycle scaffold witnesses after the PR B host activation. The live observation must inhabit RustManifestObserved with path evidence; typed host refusals remain distinct inputs to the existing verdict. The lifecycle classification is still an honest scaffold and may remain red on the repository-wide unclassified population."
+data stage0_rust_source_lifecycle_scaffold_witness_note: v2.std.text.String = "Stage0 lifecycle scaffold witnesses after the PR B host activation. The live observation must inhabit gunbc.stage0_rust_host_observation.RustManifestObserved with path evidence; typed host refusals remain distinct inputs to the existing verdict. The lifecycle classification is still an honest scaffold and may remain red on the repository-wide unclassified population."
 
 test fn scaffold_note_declares_scaffold_not_live_instrument() -> Bool {
-  string_contains(s: stage0_rust_source_lifecycle_scaffold_note, pattern: "SCAFFOLD")
-    && string_contains(s: stage0_rust_source_lifecycle_scaffold_note, pattern: "NOT the live ZeroHandMaintainedRust")
+  string_contains(s: gunbc.stage0_rust_source_lifecycle_scaffold.stage0_rust_source_lifecycle_scaffold_note, pattern: "SCAFFOLD")
+    && string_contains(s: gunbc.stage0_rust_source_lifecycle_scaffold.stage0_rust_source_lifecycle_scaffold_note, pattern: "NOT the live ZeroHandMaintainedRust")
 }
 
 test fn scaffold_manifest_state_verdict_query_is_scaffold_disposition() -> Bool {
-  match rust_source_manifest_state_verdict_query_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict_query_scaffold {
+    std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
 test fn scaffold_lifecycle_row_well_formed_query_is_scaffold_disposition() -> Bool {
-  match lifecycle_row_well_formed_query_scaffold {
-    Scaffold { dissolves_to: SingleAuthority, bind: _ } => true
+  match gunbc.stage0_rust_source_lifecycle_scaffold.lifecycle_row_well_formed_query_scaffold {
+    std.disposition.Scaffold { dissolves_to: std.disposition.SingleAuthority, bind: _ } => true
     _ => false
   }
 }
 
 test fn scaffold_note_cites_zero_hand_maintained_rust_roadmap_row() -> Bool {
-  string_contains(s: stage0_rust_source_lifecycle_scaffold_note, pattern: "observation prerequisite")
-    && string_contains(s: stage0_rust_source_lifecycle_scaffold_note, pattern: "v1-honest-frontier")
+  string_contains(s: gunbc.stage0_rust_source_lifecycle_scaffold.stage0_rust_source_lifecycle_scaffold_note, pattern: "observation prerequisite")
+    && string_contains(s: gunbc.stage0_rust_source_lifecycle_scaffold.stage0_rust_source_lifecycle_scaffold_note, pattern: "v1-honest-frontier")
 }
 
 
 test fn scaffold_host_observation_hand_rust_receipt_is_bounded() -> Bool {
-  let refs = stage0_rust_observation_seed_growth_justification.hand_authored_declarations
+  let refs = gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification.hand_authored_declarations
   let named = refs |> map(r => r.decl_name)
   let expected = [
     "Stage0CargoManifestBinParse",
@@ -39,22 +39,22 @@ test fn scaffold_host_observation_hand_rust_receipt_is_bounded() -> Bool {
     "stage0_cargo_manifest_parser_tests",
     "eval_builtin_inner"
   ]
-  length(xs: refs) == 6
+  v2.std.algebra.length(xs: refs) == 6
     && string_contains(
-      s: stage0_rust_observation_seed_growth_justification.reason,
+      s: gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification.reason,
       pattern: "impl std::fmt::Display for Stage0CargoBinManifestParseRefusal"
     )
     && (refs |> all(r => !(r.module_path == "") && !(r.decl_name == "")))
-    && (expected |> all(e => named |> any(n => n == e)))
-    && stage0_rust_observation_seed_growth_justification.owning_dissolution_lane as String == "v1-hand-queue-drain"
-    && match stage0_cargo_manifest_parser_seed_scaffold {
-      Scaffold { dissolves_to: RealizationDispatch, bind: bind } =>
+    && (expected |> all(e => named |> v2.std.algebra.any(n => n == e)))
+    && gunbc.stage0_rust_host_observation.stage0_rust_observation_seed_growth_justification.owning_dissolution_lane as v2.std.text.String == "v1-hand-queue-drain"
+    && match gunbc.stage0_rust_host_observation.stage0_cargo_manifest_parser_seed_scaffold {
+      std.disposition.Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>
         bind.module_path == "v1_compiler.cli_run"
           && bind.decl_name == "parse_stage0_cargo_manifest_bin_paths"
       _ => false
     }
-    && match stage0_cargo_manifest_projection_seed_scaffold {
-      Scaffold { dissolves_to: RealizationDispatch, bind: bind } =>
+    && match gunbc.stage0_rust_host_observation.stage0_cargo_manifest_projection_seed_scaffold {
+      std.disposition.Scaffold { dissolves_to: std.disposition.RealizationDispatch, bind: bind } =>
         bind.module_path == "v1_compiler.v1_interpreter"
           && bind.decl_name == "eval_builtin_inner"
       _ => false
@@ -63,50 +63,40 @@ test fn scaffold_host_observation_hand_rust_receipt_is_bounded() -> Bool {
 
 
 test fn scaffold_join_mechanical_checks_holds() -> Bool {
-  stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds()
-}
-
-
-test fn scaffold_generated_paths_match_authority_count_holds() -> Bool {
-  length(xs: derived_generated_stage0_repo_paths()) == generated_stage0_file_count()
+  gunbc.stage0_rust_source_lifecycle_scaffold.stage0_rust_lifecycle_scaffold_join_mechanical_checks_holds()
 }
 
 test fn w_scaffold_generated_hand_disjoint_holds() -> Bool {
-  derived_generated_hand_disjoint_holds()
+  gunbc.stage0_rust_source_lifecycle_scaffold.derived_generated_hand_disjoint_holds()
 }
 
 test fn scaffold_classified_residue_disjoint_holds() -> Bool {
-  classified_residue_disjoint_holds()
-}
-
-test fn scaffold_generated_authority_bidirectional_holds() -> Bool {
-  generated_repo_paths_cover_authority_holds() && generated_authority_subset_of_derived_holds()
+  gunbc.stage0_rust_source_lifecycle_scaffold.classified_residue_disjoint_holds()
 }
 
 test fn scaffold_partition_crate_paths_complete_holds() -> Bool {
-  partition_crate_paths_complete_holds()
+  gunbc.stage0_rust_source_lifecycle_scaffold.partition_crate_paths_complete_holds()
 }
 
 test fn scaffold_duplicate_exact_paths_zero_holds() -> Bool {
-  duplicate_exact_paths_zero_holds()
+  gunbc.stage0_rust_source_lifecycle_scaffold.duplicate_exact_paths_zero_holds()
 }
 
 test fn scaffold_file_grain_avoids_discovery_prefix_holds() -> Bool {
-  file_grain_paths_avoid_discovery_prefix_holds()
+  gunbc.stage0_rust_source_lifecycle_scaffold.file_grain_paths_avoid_discovery_prefix_holds()
 }
 
 test fn scaffold_cargo_manifest_ref_points_at_host_observation_boundary() -> Bool {
-  stage0_cargo_bin_manifest_authority_ref.module_path == "gunbc.stage0_rust_host_observation"
-    && stage0_cargo_bin_manifest_authority_ref.decl_name == "current_stage0_rust_source_observation"
+  gunbc.stage0_rust_source_lifecycle_scaffold.stage0_cargo_bin_manifest_authority_ref.module_path == "gunbc.stage0_rust_host_observation"
+    && gunbc.stage0_rust_source_lifecycle_scaffold.stage0_cargo_bin_manifest_authority_ref.decl_name == "current_stage0_rust_source_observation"
 }
 
 test fn scaffold_authority_refs_populated_holds() -> Bool {
-  !(generated_stage0_files_authority_ref.module_path == "")
-    && behavioral_oracle_carrier_ref.decl_name == "compiler_module_behavioral_transport_roster"
+  gunbc.stage0_rust_source_lifecycle_scaffold.behavioral_oracle_carrier_ref.decl_name == "compiler_module_behavioral_transport_roster"
 }
 
 test fn scaffold_observed_ratchet_red_control_newly_unclassified_reds() -> Bool {
-  match rust_source_manifest_state_verdict(
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(
     observation: gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: "deadbeef",
       manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
@@ -122,31 +112,31 @@ test fn scaffold_observed_ratchet_red_control_newly_unclassified_reds() -> Bool 
       cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
     }
   ) {
-    ManifestStateScaffoldRefused { cause: DerivedNewlyUnclassified { count: _ } } => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: _ } } => true
     _ => false
   }
 }
 
 test fn scaffold_observed_ratchet_red_control_hand_maintained_growth_reds() -> Bool {
-  match rust_source_manifest_state_verdict(observation: witness_hand_maintained_growth_observation()) {
-    ManifestStateScaffoldRefused { cause: DerivedHandMaintainedGrew { prior: _, current: _ } } => true
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_source_lifecycle_scaffold.witness_hand_maintained_growth_observation()) {
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedHandMaintainedGrew { prior: _, current: _ } } => true
     _ => false
   }
 }
 
 test fn scaffold_observed_derives_unclassified_from_path_evidence_red_control() -> Bool {
-  match rust_source_manifest_state_verdict(
-    observation: witness_observation_covering_lifecycle_plus_extra(
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(
+    observation: gunbc.stage0_rust_source_lifecycle_scaffold.witness_observation_covering_lifecycle_plus_extra(
       extra_path: "src/v1/stage0/src/synthetic_untracked.rs"
     )
   ) {
-    ManifestStateScaffoldRefused { cause: DerivedNewlyUnclassified { count: _ } } => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedNewlyUnclassified { count: _ } } => true
     _ => false
   }
 }
 
 test fn scaffold_observed_refuses_missing_host_evidence_fields() -> Bool {
-  match rust_source_manifest_state_verdict(
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(
     observation: gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: "",
       manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "beef000000000000" },
@@ -155,20 +145,20 @@ test fn scaffold_observed_refuses_missing_host_evidence_fields() -> Bool {
       cargo_bin_repo_paths: []
     }
   ) {
-    ManifestStateScaffoldRefused { cause: _ } => true
-    ManifestStateScaffoldOk => false
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: _ } => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldOk => false
   }
 }
 
 test fn scaffold_observed_honest_minimal_observation_ok() -> Bool {
-  match rust_source_manifest_state_verdict(observation: witness_honest_minimal_observation_ok()) {
-    ManifestStateScaffoldOk => true
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_source_lifecycle_scaffold.witness_honest_minimal_observation_ok()) {
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldOk => true
     _ => false
   }
 }
 
 test fn scaffold_observed_cargo_path_untracked_reds() -> Bool {
-  match rust_source_manifest_state_verdict(
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(
     observation: gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: "deadbeef",
       manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
@@ -177,13 +167,13 @@ test fn scaffold_observed_cargo_path_untracked_reds() -> Bool {
       cargo_bin_repo_paths: ["src/v1/stage0/src/main.rs"]
     }
   ) {
-    ManifestStateScaffoldRefused { cause: ObservedCargoPathUntracked { path: _ } } => true
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.ObservedCargoPathUntracked { path: _ } } => true
     _ => false
   }
 }
 
 test fn scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition() -> Bool {
-  match rust_source_manifest_state_verdict(
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(
     observation: gunbc.stage0_rust_host_observation.RustManifestObserved {
       repository_revision: "deadbeef",
       manifest_content_identity: std.content_hash.Fnv1a64Structural { digest: "abc1230000000000" },
@@ -192,55 +182,55 @@ test fn scaffold_observed_cargo_role_does_not_supply_lifecycle_disposition() -> 
       cargo_bin_repo_paths: ["src/v1/stage0/src/synthetic_cargo_bin.rs"]
     }
   ) {
-    ManifestStateScaffoldRefused {
-      cause: CargoTargetMissingLifecycleDisposition { path: path }
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused {
+      cause: gunbc.stage0_rust_source_lifecycle_scaffold.CargoTargetMissingLifecycleDisposition { path: path }
     } => path == "src/v1/stage0/src/synthetic_cargo_bin.rs"
     _ => false
   }
 }
 
 test fn scaffold_observed_git_refusal_surfaces_typed_cause() -> Bool {
-  match rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observation.GitObservationRefused { detail: "git unavailable" }) {
-    ManifestStateScaffoldRefused { cause: HostGitObservationRefused { detail: detail } } => detail == "git unavailable"
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_host_observation.GitObservationRefused { detail: "git unavailable" }) {
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.HostGitObservationRefused { detail: detail } } => detail == "git unavailable"
     _ => false
   }
 }
 
 test fn scaffold_observed_manifest_read_refusal_surfaces_typed_cause() -> Bool {
-  match rust_source_manifest_state_verdict(
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(
     observation: gunbc.stage0_rust_host_observation.RustManifestReadRefused { detail: "manifest unreadable" }
   ) {
-    ManifestStateScaffoldRefused { cause: HostManifestReadRefused { detail: detail } } => detail == "manifest unreadable"
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.HostManifestReadRefused { detail: detail } } => detail == "manifest unreadable"
     _ => false
   }
 }
 
 test fn scaffold_observed_manifest_parse_refusal_surfaces_typed_cause() -> Bool {
-  match rust_source_manifest_state_verdict(
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(
     observation: gunbc.stage0_rust_host_observation.RustManifestParseRefused { detail: "manifest malformed" }
   ) {
-    ManifestStateScaffoldRefused { cause: HostManifestParseRefused { detail: detail } } => detail == "manifest malformed"
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.HostManifestParseRefused { detail: detail } } => detail == "manifest malformed"
     _ => false
   }
 }
 
 // Constructs the empty condition through the NON-LITERAL path deliberately.
-// The literal form `unbound_dissolution(description: "")` is now refused at
-// compile (the parameter is NonEmptyStr), which is the wall. Refinement at
+// The literal form `std.dissolution.unbound_dissolution(description: "")` is now refused at
+// compile (the parameter is std.types.NonEmptyStr), which is the wall. Refinement at
 // non-literal positions is still deferred, so that gap is exactly what the
 // downstream well-formedness guard defends -- and this control has to reach it
 // through the gap in order to keep proving the guard works (DESIGN 4b(4):
 // production machinery dissolves on a climb, the evidence stays enrolled).
-fn synthetic_nonliteral_text(text: String) -> std.types.NonEmptyStr {
+fn synthetic_nonliteral_text(text: v2.std.text.String) -> std.types.NonEmptyStr {
   concat(text, "")
 }
 
-fn synthetic_empty_condition(text: String) -> std.dissolution.DissolutionCondition {
-  unbound_dissolution(description: synthetic_nonliteral_text(text: text))
+fn synthetic_empty_condition(text: v2.std.text.String) -> std.dissolution.DissolutionCondition {
+  std.dissolution.unbound_dissolution(description: synthetic_nonliteral_text(text: text))
 }
 
 test fn scaffold_residue_red_control_empty_dissolve_on_reds() -> Bool {
-  !lifecycle_row_well_formed(
+  !gunbc.stage0_rust_source_lifecycle_scaffold.lifecycle_row_well_formed(
     row: gunbc.stage0_rust_source_lifecycle_scaffold.residue_row(
       path: "synthetic/unclassified.rs",
       reason: "red control",
@@ -250,8 +240,8 @@ test fn scaffold_residue_red_control_empty_dissolve_on_reds() -> Bool {
 }
 
 test fn scaffold_observed_duplicate_tracked_paths_reds() -> Bool {
-  match rust_source_manifest_state_verdict(observation: witness_duplicate_tracked_observation()) {
-    ManifestStateScaffoldRefused { cause: DerivedDuplicateExactPaths { count: _ } } => true
+  match gunbc.stage0_rust_source_lifecycle_scaffold.rust_source_manifest_state_verdict(observation: gunbc.stage0_rust_source_lifecycle_scaffold.witness_duplicate_tracked_observation()) {
+    gunbc.stage0_rust_source_lifecycle_scaffold.ManifestStateScaffoldRefused { cause: gunbc.stage0_rust_source_lifecycle_scaffold.DerivedDuplicateExactPaths { count: _ } } => true
     _ => false
   }
 }
@@ -261,45 +251,45 @@ test fn scaffold_residue_red_control_duplicate_path_reds() -> Bool {
     "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs",
     "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
   ]
-  !list_paths_all_unique(paths: paths)
-    && path_occurrence_count(
+  !gunbc.stage0_rust_source_lifecycle_scaffold.list_paths_all_unique(paths: paths)
+    && std.keyed_roster.path_occurrence_count(
       paths: paths,
       target: "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"
     ) == 2
 }
 
 test fn scaffold_v1_interpreter_dispatch_generated_is_layout_member() -> Bool {
-  path_in_list(
-    path: v1_interpreter_dispatch_generated_repo_path,
-    paths: derived_hand_maintained_stage0_repo_paths()
+  gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(
+    path: gunbc.stage0_rust_source_lifecycle_scaffold.v1_interpreter_dispatch_generated_repo_path,
+    paths: gunbc.stage0_rust_source_lifecycle_scaffold.derived_hand_maintained_stage0_repo_paths()
   )
 }
 
 test fn scaffold_v1_interpreter_dispatch_generated_excluded_from_disposition_population() -> Bool {
-  !path_in_list(
-    path: v1_interpreter_dispatch_generated_repo_path,
-    paths: derived_hand_maintained_disposition_repo_paths()
+  !gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(
+    path: gunbc.stage0_rust_source_lifecycle_scaffold.v1_interpreter_dispatch_generated_repo_path,
+    paths: gunbc.stage0_rust_source_lifecycle_scaffold.derived_hand_maintained_disposition_repo_paths()
   )
 }
 
 test fn scaffold_v1_interpreter_dispatch_generated_is_a_registry_member_by_identity_join() -> Bool {
-  path_in_list(
-    path: v1_interpreter_dispatch_generated_repo_path,
-    paths: generated_artifact_stage0_src_repo_paths()
+  gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(
+    path: gunbc.stage0_rust_source_lifecycle_scaffold.v1_interpreter_dispatch_generated_repo_path,
+    paths: gunbc.stage0_rust_source_lifecycle_scaffold.generated_artifact_stage0_src_repo_paths()
   )
 }
 
 test fn scaffold_v1_interpreter_dispatch_generated_disposition_is_emit_from_generated_artifact_emit_authority() -> Bool {
-  any(
-    xs: generated_artifact_stage0_src_disposition_rows(),
+  v2.std.algebra.any(
+    xs: gunbc.stage0_rust_source_lifecycle_scaffold.generated_artifact_stage0_src_disposition_rows(),
     predicate: fn(row) {
-      row.path == v1_interpreter_dispatch_generated_repo_path
-        && length(xs: row.maintenance_dispositions) == 1
-        && any(
+      row.path == gunbc.stage0_rust_source_lifecycle_scaffold.v1_interpreter_dispatch_generated_repo_path
+        && v2.std.algebra.length(xs: row.maintenance_dispositions) == 1
+        && v2.std.algebra.any(
           xs: row.maintenance_dispositions,
           predicate: fn(disposition) {
             match disposition {
-              EmitFrom { authority: authority } =>
+              gunbc.stage0_rust_source_lifecycle_scaffold.EmitFrom { authority: authority } =>
                 authority.module_path == "gunbc.generated_artifact_emit"
                   && authority.decl_name == "artifact_generate"
               _ => false
@@ -311,22 +301,22 @@ test fn scaffold_v1_interpreter_dispatch_generated_disposition_is_emit_from_gene
 }
 
 test fn scaffold_bootstrap_stage0_crate_layout_generated_is_a_registry_member_by_identity_join() -> Bool {
-  path_in_list(
-    path: bootstrap_stage0_crate_layout_generated_repo_path,
-    paths: generated_artifact_stage0_src_repo_paths()
+  gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(
+    path: gunbc.stage0_rust_source_lifecycle_scaffold.bootstrap_stage0_crate_layout_generated_repo_path,
+    paths: gunbc.stage0_rust_source_lifecycle_scaffold.generated_artifact_stage0_src_repo_paths()
   )
 }
 
 test fn scaffold_bootstrap_stage0_crate_layout_generated_disposition_is_emit_from_generated_artifact_emit_authority() -> Bool {
-  any(
-    xs: generated_artifact_stage0_src_disposition_rows(),
+  v2.std.algebra.any(
+    xs: gunbc.stage0_rust_source_lifecycle_scaffold.generated_artifact_stage0_src_disposition_rows(),
     predicate: fn(row) {
-      row.path == bootstrap_stage0_crate_layout_generated_repo_path
-        && any(
+      row.path == gunbc.stage0_rust_source_lifecycle_scaffold.bootstrap_stage0_crate_layout_generated_repo_path
+        && v2.std.algebra.any(
           xs: row.maintenance_dispositions,
           predicate: fn(disposition) {
             match disposition {
-              EmitFrom { authority: authority } =>
+              gunbc.stage0_rust_source_lifecycle_scaffold.EmitFrom { authority: authority } =>
                 authority.module_path == "gunbc.generated_artifact_emit"
                   && authority.decl_name == "artifact_generate"
               _ => false
@@ -338,36 +328,36 @@ test fn scaffold_bootstrap_stage0_crate_layout_generated_disposition_is_emit_fro
 }
 
 test fn scaffold_bootstrap_stage0_crate_layout_generated_not_residue() -> Bool {
-  !path_in_list(
-    path: bootstrap_stage0_crate_layout_generated_repo_path,
-    paths: residue_lifecycle_repo_paths()
+  !gunbc.stage0_rust_source_lifecycle_scaffold.path_in_list(
+    path: gunbc.stage0_rust_source_lifecycle_scaffold.bootstrap_stage0_crate_layout_generated_repo_path,
+    paths: gunbc.stage0_rust_source_lifecycle_scaffold.residue_lifecycle_repo_paths()
   )
 }
 
 test fn scaffold_generated_artifact_emit_authority_ref_populated() -> Bool {
-  generated_artifact_emit_authority_ref.module_path == "gunbc.generated_artifact_emit"
-    && generated_artifact_emit_authority_ref.decl_name == "artifact_generate"
+  gunbc.stage0_rust_source_lifecycle_scaffold.generated_artifact_emit_authority_ref.module_path == "gunbc.generated_artifact_emit"
+    && gunbc.stage0_rust_source_lifecycle_scaffold.generated_artifact_emit_authority_ref.decl_name == "artifact_generate"
 }
 
 test fn scaffold_generated_artifact_layout_overlap_repo_paths_is_exactly_v1_interpreter_dispatch() -> Bool {
-  generated_artifact_layout_overlap_repo_paths() == [v1_interpreter_dispatch_generated_repo_path]
+  gunbc.stage0_rust_source_lifecycle_scaffold.generated_artifact_layout_overlap_repo_paths() == [gunbc.stage0_rust_source_lifecycle_scaffold.v1_interpreter_dispatch_generated_repo_path]
 }
 
 test fn scaffold_generated_artifact_layout_overlap_subset_of_hand_maintained_holds_green() -> Bool {
-  generated_artifact_layout_overlap_subset_of_hand_maintained_holds()
+  gunbc.stage0_rust_source_lifecycle_scaffold.generated_artifact_layout_overlap_subset_of_hand_maintained_holds()
 }
 
 test fn scaffold_generated_artifact_stage0_src_disposition_rows_well_formed_green() -> Bool {
-  generated_artifact_stage0_src_disposition_rows_well_formed()
+  gunbc.stage0_rust_source_lifecycle_scaffold.generated_artifact_stage0_src_disposition_rows_well_formed()
 }
 
 test fn scaffold_generated_artifact_stage0_src_disjoint_from_residue_holds_green() -> Bool {
-  generated_artifact_stage0_src_disjoint_from_residue_holds()
+  gunbc.stage0_rust_source_lifecycle_scaffold.generated_artifact_stage0_src_disjoint_from_residue_holds()
 }
 
 test fn scaffold_disposition_population_excludes_exactly_the_registry_overlap_paths() -> Bool {
-  let disposition_count = length(xs: derived_hand_maintained_disposition_repo_paths())
-  let layout_count = length(xs: derived_hand_maintained_stage0_repo_paths())
-  let overlap_count = length(xs: generated_artifact_layout_overlap_repo_paths())
+  let disposition_count = v2.std.algebra.length(xs: gunbc.stage0_rust_source_lifecycle_scaffold.derived_hand_maintained_disposition_repo_paths())
+  let layout_count = v2.std.algebra.length(xs: gunbc.stage0_rust_source_lifecycle_scaffold.derived_hand_maintained_stage0_repo_paths())
+  let overlap_count = v2.std.algebra.length(xs: gunbc.stage0_rust_source_lifecycle_scaffold.generated_artifact_layout_overlap_repo_paths())
   disposition_count == layout_count - overlap_count
 }
