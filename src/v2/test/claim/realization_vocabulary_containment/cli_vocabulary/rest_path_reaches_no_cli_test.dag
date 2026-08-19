@@ -183,3 +183,128 @@ test fn dropping_the_definition_edge_roster_surfaces_more() -> Bool {
     exempt_edges: fan_control_admitted_cli_edges
   ) > 0
 }
+
+// ---------------------------------------------------------------------------
+// ROOT: dag/gunbc, and the rule the whole boundary reduces to.
+//
+// REALIZATION INFRASTRUCTURE MAY REACH TRANSPORT VOCABULARY; CONSUMERS MAY NOT,
+// EXCEPT BY EXACT NAMED ADMISSION. That is the #8535 boundary in a form that reds.
+// The prose version says CLI-backed handlers are one realization cell; this says
+// which modules ARE that cell and refuses the rest by name.
+//
+// The six modules here reaching extdeps.shell.exec are two different things, and
+// the split is by what the module IS rather than by what it imports.
+// ---------------------------------------------------------------------------
+
+// Realization infrastructure. Reaching transport vocabulary is what these locations
+// are FOR, which is the same reason the jq definition site is path-rostered above --
+// same rule, same shape. retained_shell_script defines the counted bridges and calls
+// transport_script_seal; bash_materialized_transport is the only other
+// admit_callers-sealed caller of that seal; host_effect_realize is the realization
+// core and reaches the vocabulary through retained_srvn.
+data transport_realization_edges: List<String> = [
+  "dag/gunbc/retained_shell_script.dag",
+  "dag/gunbc/bash_materialized_transport.dag",
+  "dag/gunbc/host_effect_realize.dag"
+]
+
+// CONSUMERS HOLDING A TRANSPORT, admitted as exact pairs so that a SEVENTH consumer
+// reds instead of being absorbed by a prefix broad enough to cover it.
+//
+// The reason on each is the finding, not a justification: all three reach the
+// vocabulary through retained_foreign, whose declared dissolves_to is the bash
+// emitter -- the destination for foreign executors and pre-runtime bootstrap -- while
+// all three appear to run inside a present gunbc runtime, which would make their real
+// destination typed effects. So the admission records a bucket that is probably
+// wrong rather than laundering it, and when someone fixes the bucket the admission
+// comes OFF instead of being re-justified.
+//
+// This population was reached twice independently: by a retained_foreign call census
+// (#8535) and by this import-graph scan, which additionally separated out
+// provider_wire_evidence. Two routes landing on one set is why these are named
+// rather than guessed.
+data transport_consumer_admitted_edges: List<RealizationVocabImportEdge> = [
+  RealizationVocabImportEdge {
+    importer_path: "dag/gunbc/package_delivery.dag",
+    vocab_module: "extdeps.shell.exec"
+  },
+  RealizationVocabImportEdge {
+    importer_path: "dag/gunbc/codex_app_server_press.dag",
+    vocab_module: "extdeps.shell.exec"
+  },
+  RealizationVocabImportEdge {
+    importer_path: "dag/gunbc/provider_wire_evidence.dag",
+    vocab_module: "extdeps.shell.exec"
+  }
+]
+
+data gunbc_scan_roots: List<String> = [
+  "dag/gunbc"
+]
+
+test fn gunbc_consumers_reach_transport_vocabulary_only_by_named_admission() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: gunbc_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: transport_realization_edges,
+    exempt_edges: transport_consumer_admitted_edges
+  ) == 0
+}
+
+// DISCRIMINATION AT THIS SCOPE, established here rather than inherited. See the
+// general rule below -- this is the control the rule exists to make mandatory.
+test fn withdrawing_the_consumer_admissions_surfaces_exactly_three() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: gunbc_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: transport_realization_edges,
+    exempt_edges: no_admitted_cli_edges
+  ) == 3
+}
+
+// The realization-edge roster must be load-bearing too: drop it and the count rises
+// past the three consumers, proving those paths carry facts the scan really saw.
+test fn dropping_the_transport_realization_roster_surfaces_more() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: gunbc_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: [],
+    exempt_edges: transport_consumer_admitted_edges
+  ) > 0
+}
+
+// ROOT: dag/test. Path-rostered, and the reason is plain -- these are the witnesses
+// that exercise this vocabulary deliberately, including the ones proving the argv
+// refusal and the jq lowering. A test that could not import the thing it tests would
+// be a test of nothing. Stated as a roster rather than left as an unscanned gap, so
+// the exclusion is visible instead of implied by absence.
+data witness_exercise_edges: List<String> = [
+  "dag/test/"
+]
+
+test fn test_corpus_reaches_cli_vocabulary_only_as_declared_exercise() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: ["dag/test"],
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: witness_exercise_edges,
+    exempt_edges: no_admitted_cli_edges
+  ) == 0
+}
+
+// ---------------------------------------------------------------------------
+// THE GENERAL RULE FOR WIDENING, written down because the next person to add a root
+// will reach for the inherited control and it will pass while proving nothing.
+//
+// RE-ESTABLISH DISCRIMINATION AT THE NEW SCOPE. DO NOT INHERIT IT.
+//
+// A narrow root's RED control proves the scan discriminates over THAT root. Widen the
+// root and it proves nothing about the new subtrees: a nonzero fact count shows the
+// scan read something, not that it descended where the dirty modules live. This was
+// caught here under a green -- dag/extdeps reported clean and would have reported
+// clean had bmc/ never been reached at all.
+//
+// So every root added carries, at its own scope: a withdrawal control with an exact
+// expected count, and a roster-drop control asserting the count RISES. The second is
+// the same question aimed at the roster instead of the scan, and it matters because
+// an edge roster that no fact matches is indistinguishable from a correct one.
+// ---------------------------------------------------------------------------
