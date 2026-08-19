@@ -6189,6 +6189,152 @@ pub fn record_lit_ref_names(
     }
 }
 
+pub fn emitter_attested_anonymous_head_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "ROOT-3 THIRD ATTESTATION ARM (board row 3, materialization_carriers 51-site census): an ANONYMOUS record literal (no authored type name at the literal) is rendered by emit_typed_record_lit with a head the EMITTER decides — the resolved/inferred nominal type, or a fields-signature lookup — so the emitted text spells a name the authored source never does (compile_stage_memo `retention: {...}` renders `ProviderRetention { .. }`). The authored-source text gate (reference_derived_candidate_authored) therefore refuses exactly the candidate whose use-line the emitted bytes need, and rustc reports E0422 on the head the emitter itself wrote. The correction is not a widened text gate: attestation for this class comes from the same decision chain the candidate proposer uses for the tn-Absent arm (emit_inferred_type_leaf_name when the summary is known, else anonymous_record_lit_surface_name — both already consulted by record_lit_ref_names), so the admitted set is precisely `heads the emitter will render for anonymous literals in this module's items`, never a deep-inferred over-collection (the AuthoredTokenOrdinal fabrication class enters via type-surface collection, not via this walk, and stays refused). Registry resolution, export proof, local-decl, kernel and already-imported filters all still apply downstream — this arm only replaces WHICH evidence attests the reference: the emitted occurrence rather than an authored spelling that structurally cannot exist. Dissolve-on: the same trigger the text gate declares (P2a candidate-producer / BoundReferenceProvider deriving use-lines from bound-reference structure).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn collect_anonymous_record_lit_heads(
+    n: Rc<Node>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
+) -> Rc<Vec<String>> {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        let self_head = match (*n.expr_data.clone()).clone() {
+            ExprData::ExprRecordLit { parent_enum: _, .. } => {
+                match record_lit_type_name_at(n.clone(), source_indices.clone()) {
+                    Some(_) => Rc::new(vec![]),
+                    None => {
+                        let inferred =
+                            emit_inferred_type_leaf_name(n.clone(), source_indices.clone());
+                        if ((inferred.clone() != "".to_string())
+                            && v1_rt::map_contains_key(&type_summaries, inferred.clone()))
+                        {
+                            Rc::new(vec![inferred.clone()])
+                        } else {
+                            {
+                                let anon = anonymous_record_lit_surface_name(
+                                    n.clone(),
+                                    source_indices.clone(),
+                                    type_summaries.clone(),
+                                );
+                                if (anon.clone() != "".to_string()) {
+                                    Rc::new(vec![anon.clone()])
+                                } else {
+                                    Rc::new(vec![])
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            _ => Rc::new(vec![]),
+        };
+        let list_fields = v1_rt::concat(
+            v1_rt::concat(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.children.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_anonymous_record_lit_heads(
+                                c.clone(),
+                                source_indices.clone(),
+                                type_summaries.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.params.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_anonymous_record_lit_heads(
+                                c.clone(),
+                                source_indices.clone(),
+                                type_summaries.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            ),
+            v1_rt::concat(
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.uses.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_anonymous_record_lit_heads(
+                                c.clone(),
+                                source_indices.clone(),
+                                type_summaries.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+                Rc::new({
+                    let mut __result = Vec::new();
+                    for c in n.properties.clone().iter().cloned() {
+                        __result.extend(
+                            (*collect_anonymous_record_lit_heads(
+                                c.clone(),
+                                source_indices.clone(),
+                                type_summaries.clone(),
+                            ))
+                            .iter()
+                            .cloned(),
+                        );
+                    }
+                    __result
+                }),
+            ),
+        );
+        let opt_fields = v1_rt::concat(
+            match n.body.clone() {
+                Some(b) => collect_anonymous_record_lit_heads(
+                    b.clone(),
+                    source_indices.clone(),
+                    type_summaries.clone(),
+                ),
+                None => Rc::new(vec![]),
+            },
+            v1_rt::concat(
+                match n.transport.clone() {
+                    Some(t) => collect_anonymous_record_lit_heads(
+                        t.clone(),
+                        source_indices.clone(),
+                        type_summaries.clone(),
+                    ),
+                    None => Rc::new(vec![]),
+                },
+                match n.type_annotation.clone() {
+                    Some(t) => collect_anonymous_record_lit_heads(
+                        t.clone(),
+                        source_indices.clone(),
+                        type_summaries.clone(),
+                    ),
+                    None => Rc::new(vec![]),
+                },
+            ),
+        );
+        v1_rt::concat(
+            self_head.clone(),
+            v1_rt::concat(list_fields.clone(), opt_fields.clone()),
+        )
+    })
+}
+
 pub fn collect_items_field_import_surface_names(
     items: Rc<Vec<Rc<Node>>>,
     emit_info: Rc<EmitGraphInfo>,
@@ -7104,7 +7250,7 @@ pub fn expand_variant_payload_struct_imports(
 pub fn reference_derived_authored_source_gate_note() -> String {
     thread_local! {
         static CACHED: String = {
-            "reference_derived_use_lines synthesizes a use-line only for a candidate the module's authored source text ATTESTS (NewlineIndex char_codes), and there are exactly two attesting forms, both decided by reference_derived_candidate_authored. Direct: the candidate's own name is spelled. Variant-induced: the candidate is a unit-only enum and the module spells at least one variant that binds UNAMBIGUOUSLY back to it — derive_variant_to_enum maps a variant shared by two enums to the empty string, so a homonym never equals the enum name and is REFUSED rather than picked. A name that enters the candidate set only via inferred/type-summary over-collection — attested by neither form — must not become a pub use. Empty/unavailable module source REFUSES every candidate (fail-closed): ⊤-as-ignorance must not admit the full candidate set (§5 absorbing fallback). Receipt: after occurrence-binding stage0 enrollment, AuthoredTokenOrdinal entered the registry and std.http_path (which never mentions it) emitted a fabricated pub use — that name is a record, not a unit-only enum, so the variant-induced arm cannot readmit it. Second receipt (Root K): the emitter qualifies variants as Parent::Variant in pattern and nested-argument positions where the source spells only the variant, so asking whether the PARENT was spelled refused a parent the module demonstrably uses — 109 of 132 sites. UnlistedImportUse names are already spelled at the use site, so they pass when source text is readable. Declared residue, in two classes that fail at DIFFERENT stages — this gate is a filter over a candidate set, so it can only refuse, never propose. Refused HERE: a parent enum with neither its own name nor any binding variant spelled, and a non-enum candidate whose only evidence is over-collection. Never REACHING here, and therefore unfixable by any gate decision: a name the candidate collector never proposes. Measured by execution — forcing this gate to admit unconditionally and re-emitting v2.lens.complexity_accumulator_copy.analyze still produces no use-line for Behavior, whose unit-only variant Transform is spelled bare in a pattern position and binds unambiguously, so the arm's preconditions hold and the name is simply absent upstream. That class is pre-existing and unchanged by Root K (identical count in both arms), and it is where the remaining sites live: widening this gate further cannot reach them. Dissolve-on: derive use-lines from the module's bound-reference structure (P2a candidate-producer / BoundReferenceProvider) — this text-attestation gate is the conservative interim, not the destination.".to_string()
+            "reference_derived_use_lines synthesizes a use-line only for an ATTESTED candidate: two authored-source-text forms decided by reference_derived_candidate_authored (NewlineIndex char_codes), plus one emitter-attested form decided by collect_anonymous_record_lit_heads (emitter_attested_anonymous_head_note — a head the emitter itself renders for an anonymous record literal, which the authored text structurally cannot spell). Direct: the candidate's own name is spelled. Variant-induced: the candidate is a unit-only enum and the module spells at least one variant that binds UNAMBIGUOUSLY back to it — derive_variant_to_enum maps a variant shared by two enums to the empty string, so a homonym never equals the enum name and is REFUSED rather than picked. A name that enters the candidate set only via inferred/type-summary over-collection — attested by neither form — must not become a pub use. Empty/unavailable module source REFUSES every candidate (fail-closed): ⊤-as-ignorance must not admit the full candidate set (§5 absorbing fallback). Receipt: after occurrence-binding stage0 enrollment, AuthoredTokenOrdinal entered the registry and std.http_path (which never mentions it) emitted a fabricated pub use — that name is a record, not a unit-only enum, so the variant-induced arm cannot readmit it. Second receipt (Root K): the emitter qualifies variants as Parent::Variant in pattern and nested-argument positions where the source spells only the variant, so asking whether the PARENT was spelled refused a parent the module demonstrably uses — 109 of 132 sites. UnlistedImportUse names are already spelled at the use site, so they pass when source text is readable. Declared residue, in two classes that fail at DIFFERENT stages — this gate is a filter over a candidate set, so it can only refuse, never propose. Refused HERE: a parent enum with neither its own name nor any binding variant spelled, and a non-enum candidate whose only evidence is over-collection. Never REACHING here, and therefore unfixable by any gate decision: a name the candidate collector never proposes. Measured by execution — forcing this gate to admit unconditionally and re-emitting v2.lens.complexity_accumulator_copy.analyze still produces no use-line for Behavior, whose unit-only variant Transform is spelled bare in a pattern position and binds unambiguously, so the arm's preconditions hold and the name is simply absent upstream. That class is pre-existing and unchanged by Root K (identical count in both arms), and it is where the remaining sites live: widening this gate further cannot reach them. Dissolve-on: derive use-lines from the module's bound-reference structure (P2a candidate-producer / BoundReferenceProvider) — this text-attestation gate is the conservative interim, not the destination.".to_string()
         };
     }
     CACHED.with(|c: &String| c.clone())
@@ -7265,6 +7411,21 @@ pub fn reference_derived_use_lines(
             emit_info.type_summaries.clone(),
             emit_info.variant_to_enum.clone(),
         );
+        let emitter_attested_anon_heads = unique_strings(Rc::new({
+            let mut __result = Vec::new();
+            for item in items.clone().iter().cloned() {
+                __result.extend(
+                    (*collect_anonymous_record_lit_heads(
+                        item.clone(),
+                        source_indices.clone(),
+                        emit_info.type_summaries.clone(),
+                    ))
+                    .iter()
+                    .cloned(),
+                );
+            }
+            __result
+        }));
         let candidates = Rc::new({
             let mut __result = Vec::new();
             for name in Rc::new({
@@ -7282,12 +7443,21 @@ pub fn reference_derived_use_lines(
                 .iter()
                 .cloned()
                 {
-                    if reference_derived_candidate_authored(
+                    if (reference_derived_candidate_authored(
                         module_source.clone(),
                         name.clone(),
                         emit_info.type_summaries.clone(),
                         emit_info.variant_to_enum.clone(),
-                    ) {
+                    ) || {
+                        let mut __found = false;
+                        for h in emitter_attested_anon_heads.clone().iter().cloned() {
+                            if (h.clone() == name.clone()) {
+                                __found = true;
+                                break;
+                            }
+                        }
+                        __found
+                    }) {
                         __result.push(name);
                     }
                 }
