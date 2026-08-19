@@ -15,6 +15,7 @@ fn inert_row(unit: String, reason: String) -> FrontierRow {
 }
 
 data inert_carrier_roster: List<FrontierRow> = [
+  inert_row(unit: "Attempt", reason: "modeled compute-fabric carrier from Compute fabric wave 1 (#8413): product.fabric.execution.Attempt is constructed only by fabric_terminal_contract_witness_test; it is deliberately a terminal contract, not a mechanism, and awaits the scheduling/retry consumer the rest of the fabric will build against it"),
   inert_row(unit: "DownstreamSupportRoster", reason: "modeled downstream coverage-roster carrier from the extdeps modeling preflight (#7571): it is the declared home for support/coverage rows that an upstream module may not carry, and the plan text names it, but no module constructs or reads one yet"),
   inert_row(unit: "CargoDependency", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
   inert_row(unit: "CargoPackage", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
@@ -23,6 +24,7 @@ data inert_carrier_roster: List<FrontierRow> = [
   inert_row(unit: "GitCliReportedVersion", reason: "modeled git-cli extdeps carrier with no live consumer yet"),
   inert_row(unit: "GitPushRequest", reason: "modeled git publication-transport carrier (extdeps.git.publication_transport slice 1): witness-tested in publication_publisher_witness_test with no non-test consumer yet; live transport binding awaits tools.publication_publisher slice"),
   inert_row(unit: "LocalAlias", reason: "inert G1 fixture type in qualified_module_projection_stripped_fixture.dag (see inert_carrier_local_alias_roster_note)"),
+  inert_row(unit: "Offer", reason: "modeled compute-fabric carrier from Compute fabric wave 1 (#8413): product.fabric.supply.Offer is constructed only by fabric_terminal_contract_witness_test; it is deliberately a terminal contract, not a mechanism, and awaits the selection-fold consumer (SelectionPolicy) the rest of the fabric will build against it"),
   inert_row(unit: "ReactHookSite", reason: "modeled typescript extdeps carrier with no live consumer yet"),
   inert_row(unit: "SystemdUnitStatus", reason: "modeled systemd extdeps carrier with no live consumer yet"),
   inert_row(unit: "TerminatingOneShotFrontier", reason: "modeled std.witness_purpose frontier coproduct from #7965 (Slice C-a): its variants name the two substrate absences that block a terminating one-shot classification, and only its own test file references it, so it is inert by the seed rule until the classifier consumes it"),
