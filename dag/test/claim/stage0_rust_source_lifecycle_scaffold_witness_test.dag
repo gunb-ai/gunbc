@@ -404,8 +404,21 @@ test fn scaffold_generated_artifact_emit_authority_ref_populated() -> Bool {
     && generated_artifact_emit_authority_ref.decl_name == "artifact_generate"
 }
 
-test fn scaffold_generated_artifact_layout_overlap_repo_paths_is_exactly_v1_interpreter_dispatch() -> Bool {
-  generated_artifact_layout_overlap_repo_paths() == [v1_interpreter_dispatch_generated_repo_path]
+// THE SECOND INSTANCE THIS JOIN ALWAYS PREDICTED. `generated_artifact_disposition_derivation_note`
+// already names `bootstrap_stage0_crate_layout_generated.rs` (Stage0CrateLayoutGeneratedRsArtifact)
+// as the second registry member the overlap surfaces, and the repo-path constant for it has been
+// declared beside `v1_interpreter_dispatch_generated_repo_path` all along -- what was missing was
+// its layout membership, which landed 2026-08-19 when the crate-layout authority stopped omitting
+// the three files that made `--required-regen` refuse. So this pin widens from one path to two
+// because the population caught up with the note, not because the invariant weakened: the claim is
+// still an exact identity join against a closed registry, and a third overlap would still red.
+//
+// Both members remain generated -- the overlap is precisely the set of layout members whose
+// CONTENTS come from the artifact registry rather than from a hand, which is why
+// `derived_hand_maintained_disposition_repo_paths()` subtracts it.
+test fn scaffold_generated_artifact_layout_overlap_repo_paths_is_exactly_the_two_registry_members() -> Bool {
+  generated_artifact_layout_overlap_repo_paths()
+    == [bootstrap_stage0_crate_layout_generated_repo_path, v1_interpreter_dispatch_generated_repo_path]
 }
 
 test fn scaffold_generated_artifact_layout_overlap_subset_of_hand_maintained_holds_green() -> Bool {
