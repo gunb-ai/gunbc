@@ -771,23 +771,70 @@ fn main() {
         // why it is wrong: it would make the interpreter LOAD-BEARING FOR A NEW
         // capability at the moment two lanes are deleting it, converting removable debt
         // into an architectural dependency.
-        Commands::Converge { .. } | Commands::Serve { .. } => Verdict {
+        Commands::Converge { .. } => Verdict {
             status: 2,
             message: Some(
-                "error: `converge` and `serve` are not wired to the retained engine.\n  \
-                 cause: their cli_run handlers are deleted, and neither may be rebuilt \
-                 on the frozen v1 engine. Converge's terminal route is the modeled \
-                 convergence spine (fleet_converge_timer -> fleet_converge_apply -> \
-                 host_effect_realize); serve is a desired SERVICE OCCURRENCE that \
-                 convergence observes and reconciles, not a command. Implementing \
-                 either through resolve+interpret would pin the interpreter that is \
-                 being removed.\n  \
-                 status: declared Y-incomplete for both verbs, not a runtime failure. \
-                 See PR #8286."
+                "error: `converge` is not wired to the retained engine.\n  \
+                 cause: its cli_run handler is deleted and may not be rebuilt on the \
+                 frozen v1 engine. Converge's terminal route is the modeled convergence \
+                 spine (fleet_converge_timer -> fleet_converge_apply -> \
+                 host_effect_realize), which EXISTS — so this verb has a successor to \
+                 route to and needs no host seam.\n  \
+                 status: declared Y-incomplete, not a runtime failure. See PR #8286."
                     .to_string(),
             ),
         }
         .apply(),
+
+        // SERVE IS WIRED AGAIN, AND IT IS A FROZEN QUARRY ROUTE RATHER THAN A DESIGN.
+        // #8286 deleted this seam together with converge's, but the two are not the same
+        // case and deleting them as one population is what made this wrong. Converge has
+        // a successor that EXISTS (the convergence spine above). Serve's declared
+        // successor — gunbc.roadmap_serve roadmap_serve_interpreted_scaffold, dissolving
+        // to emit-on-demand of the serve closure — was never built, so the deletion
+        // removed a live outward-facing production route with no minimal Y able to hold
+        // the boundary. DESIGN section 3 names that exact carve-out: a gap-intolerant
+        // boundary keeps the staged form, and where no Y can hold it at all, X stays but
+        // stays FROZEN. This restores X and freezes it.
+        //
+        // FROZEN MEANS: no new options, no new verbs, no new routes into the interpreter,
+        // no completion work. The substantive claim of the deleted refusal still stands
+        // and is NOT retracted — serve is a desired service occurrence that convergence
+        // should observe and reconcile, and gunbc.host_effect carries no service-occurrence
+        // member to express that with. This seam is what runs until it does.
+        //
+        // The engine objection is recorded rather than argued away: this does make the
+        // interpreter load-bearing for a capability two lanes are deleting. It is not a
+        // NEW dependency — it is the one that existed until #8286 — but if this route
+        // starts attracting completion work, the freeze has been repealed by drift.
+        Commands::Serve {
+            source_roots,
+            entry,
+            function,
+            host,
+            port,
+            release_revision,
+            eval_budget_cpu_ms,
+            eval_budget_wall_ms,
+        } => {
+            cli_run::handle_serve(
+                source_roots,
+                entry,
+                function,
+                host,
+                port,
+                release_revision,
+                cli_run::ServeEvaluationBudget {
+                    cpu_limit_ms: eval_budget_cpu_ms,
+                    wall_limit_ms: eval_budget_wall_ms,
+                },
+            );
+            Verdict {
+                status: 0,
+                message: None,
+            }
+            .apply()
+        }
     };
 }
 
