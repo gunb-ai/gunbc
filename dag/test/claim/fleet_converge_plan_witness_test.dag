@@ -130,7 +130,7 @@ test fn plan_body_names_subject_host_and_generation() -> Bool {
       string_contains(s: artifact.plan_body, pattern: "subject_host:srv1")
         && string_contains(s: artifact.plan_body, pattern: "plan_generation:5")
         && string_contains(s: artifact.plan_body, pattern: "lease_key:fleet-converge-plan:srv1")
-        && artifact.plan_lease.generation == 5
+        && artifact.plan_lease.epoch.generation == 5
         && artifact.observed_baseline_hex != "0000000000000000"
     Absent => false
   }

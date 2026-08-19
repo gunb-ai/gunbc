@@ -106,7 +106,22 @@ test fn host_standup_fleet_converge_policy_is_derived_or_unsound() -> Bool {
 }
 
 test fn compute_fabric_shape_authority_is_referenced_not_redeclared() -> Bool {
-  witness_fabric_binds_need_to_opportunity()
+  fold(
+    host_standup_spine,
+    init: false,
+    f: (acc, s) =>
+      acc || match s.phase {
+        Assimilation { phase: ComputeFabricEnroll } =>
+          match s.disposition {
+            DeclaredGap { interim_realization: _, refusal: r } =>
+              string_contains(s: r, pattern: "product.fabric.work Shape")
+                && !string_contains(s: r, pattern: "product.compute_fabric.connect")
+            ModeledCompose { authorities: _ } => false
+          }
+        Prefix { phase: _ } => acc
+        Assimilation { phase: _ } => acc
+      }
+  )
 }
 
 test fn green_place_pin_coherent_references_gunbc_gate_not_input_satisfied() -> Bool {

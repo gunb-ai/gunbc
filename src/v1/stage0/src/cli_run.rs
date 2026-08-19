@@ -16595,6 +16595,12 @@ fn capture_scoped_run_stderr<T>(_f: impl FnOnce() -> T) -> Result<(T, Vec<u8>), 
 /// deploy then has to refuse; the `.dag` one refuses to TRUST wire bytes read
 /// back from some other process. Same rule, two boundaries, and the boundary
 /// each guards is the reason it cannot be deleted in favour of the other.
+fn release_revision_text_valid(text: &str) -> bool {
+    text.len() == 40
+        && text
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+}
 
 /// The process-wide evaluation budget this serve process enforces.
 ///
@@ -16615,10 +16621,244 @@ pub struct ServeEvaluationBudget {
 /// The machine-readable refusal. The stable `code` is the contract — `std.evaluation_budget`
 /// `evaluation_budget_refusal_code` — and both quantities plus the clock are reported so a
 /// consumer can tell a spin from a stall without parsing prose.
+fn serve_budget_refusal_body(
+    entry: &str,
+    clock_key: &str,
+    elapsed_nanos: u128,
+    limit_ms: u64,
+) -> String {
+    format!(
+        "{{\"code\":\"evaluation_budget_exceeded\",\"entry\":{},\"clock\":\"{}\",\"elapsed_ns\":{},\"limit_ms\":{}}}\n",
+        serve_json_string(entry),
+        clock_key,
+        elapsed_nanos,
+        limit_ms
+    )
+}
 
 /// Minimal JSON string escaping for the refusal body. The entry name comes from a launch
 /// argument rather than a request, but it is escaped anyway: a body that can be malformed by its
 /// own configuration is a fabricated-output path, and the cost of not assuming is two lines.
+fn serve_json_string(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+pub fn handle_serve(
+    source_roots: Vec<String>,
+    entry_file: String,
+    function: String,
+    host: String,
+    port: u16,
+    release_revision: String,
+    serve_budget: ServeEvaluationBudget,
+) {
+    if source_roots.is_empty() {
+        eprintln!("error: provide at least one --source-root");
+        std::process::exit(1);
+    }
+    // Bound BEFORE the graph is compiled and before the listener binds: a
+    // process that cannot say which release it is must never reach a state
+    // where something can route traffic to it and read its identity back.
+    if !release_revision_text_valid(&release_revision) {
+        eprintln!(
+            "error: --release-revision must be exactly 40 lowercase hex digits \
+             (git object name); got {:?} ({} chars). This is the identity this \
+             process publishes through /healthz and that deployment ordering \
+             reads back — a branch name, an abbreviated sha, or an empty value \
+             is not a revision.",
+            release_revision,
+            release_revision.chars().count()
+        );
+        std::process::exit(1);
+    }
+    let index = process_shared_index(&source_roots);
+    let sources = match load_sources_for_entry_with_pool(&index, &entry_file) {
+        Ok(sources) => sources,
+        Err(msg) => {
+            eprintln!("error: {}", msg);
+            std::process::exit(1);
+        }
+    };
+    eprintln!("resolved {} sources", sources.len());
+    let (graph, source_indices, compile_clean_diags) = match resolved_graph_from_sources_with_index(
+        &index,
+        sources,
+        ResolveTypecheckGate::Strict,
+        &entry_file,
+        ResolvedGraphMemoShare::Memoize,
+    ) {
+        Ok(parts) => parts,
+        Err(msg) => {
+            eprintln!("error: {}", msg);
+            std::process::exit(1);
+        }
+    };
+    if compile_clean_diags
+        .iter()
+        .any(|d| compile_clean_diagnostic_is_hard(d))
+    {
+        for d in compile_clean_diags
+            .iter()
+            .filter(|d| compile_clean_diagnostic_is_hard(d))
+        {
+            eprintln!("error: {}", format_error_node(d, &source_indices));
+        }
+        std::process::exit(1);
+    }
+    let ctx = v1_interpreter::InterpContext::new(
+        &graph,
+        source_indices.clone(),
+        v1_interpreter::ExecutionMode::Wet,
+    );
+    let listener = match std::net::TcpListener::bind((host.as_str(), port)) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("error: failed to bind {}:{}: {}", host, port, e);
+            std::process::exit(1);
+        }
+    };
+    // The budget is announced at startup because "unset" is a policy state that must be visible.
+    // A process serving with no bound and a process serving with a bound are different
+    // operational facts, and the difference has to be readable without inspecting argv.
+    eprintln!(
+        "gunbc serve listening on {}:{} -> {}() release_revision={} eval_budget_cpu_ms={} eval_budget_wall_ms={}",
+        host,
+        port,
+        function,
+        release_revision,
+        serve_budget
+            .cpu_limit_ms
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "unset".to_string()),
+        serve_budget
+            .wall_limit_ms
+            .map(|v| v.to_string())
+            .unwrap_or_else(|| "unset".to_string()),
+    );
+    v1_interpreter::with_active_context(&ctx, || {
+        for stream in listener.incoming() {
+            let mut stream = match stream {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("serve: accept error: {}", e);
+                    continue;
+                }
+            };
+            match serve_read_request(&mut stream) {
+                Err(reason) => serve_write_response(
+                    &mut stream,
+                    400,
+                    "text/plain; charset=utf-8",
+                    &format!("bad request: {}\n", reason),
+                ),
+                Ok((method, path, body)) => {
+                    let args: Vec<(Option<String>, v1_interpreter::Value)> = vec![
+                        (Some("method".to_string()), str_value(method)),
+                        (Some("path".to_string()), str_value(path)),
+                        (Some("body".to_string()), str_value(body)),
+                        // Captured once above and cloned per request: the value
+                        // is fixed for the process lifetime, so no request can
+                        // observe a different release than any other request.
+                        (
+                            Some("release_revision".to_string()),
+                            str_value(release_revision.clone()),
+                        ),
+                    ];
+                    // THE DEADLINE IS ARMED HERE, AROUND THIS CALL, AND THE SCOPE IS THE POINT.
+                    // Before this existed the serve path armed nothing, so a route evaluation
+                    // that did not return also prevented the `Err` arm below from ever running:
+                    // the 500 existed and was unreachable, and because the loop is serial the
+                    // stuck request held the accept queue for every later one. The guard both
+                    // arms and restores — a leaked deadline would be worse than none here,
+                    // since `ctx` outlives every request and a stale CPU baseline would refuse
+                    // all subsequent requests for the life of the process.
+                    let result = {
+                        let _budget = ctx.enter_evaluation_budget(
+                            &function,
+                            serve_budget.cpu_limit_ms,
+                            serve_budget.wall_limit_ms,
+                        );
+                        v1_interpreter::run_in_context_with_args(&ctx, &function, &args, true)
+                    };
+                    match result {
+                        Err(v1_interpreter::InterpError::EvaluationBudgetExceeded {
+                            entry,
+                            clock,
+                            elapsed_nanos,
+                            limit_ms,
+                        }) => {
+                            // Refusal rendering is HOST-SIDE by necessity, not by preference:
+                            // the evaluation that would have rendered it is the one that was
+                            // just aborted, so asking it to describe its own abort would put
+                            // recovery behind the evaluator that failed.
+                            //
+                            // 500, not 503: this request is deterministic against a fixed
+                            // policy, so it will cross again on retry. A status meaning
+                            // "temporary capacity" would assert something the model does not
+                            // know, and no `Retry-After` is attached for the same reason
+                            // (`std.evaluation_budget.evaluation_budget_retry_semantics_note`).
+                            eprintln!(
+                                "serve: refused {} on {} clock: elapsed_ns={} limit_ms={}",
+                                entry,
+                                clock.key(),
+                                elapsed_nanos,
+                                limit_ms
+                            );
+                            serve_write_response(
+                                &mut stream,
+                                500,
+                                "application/json; charset=utf-8",
+                                &serve_budget_refusal_body(
+                                    &entry,
+                                    clock.key(),
+                                    elapsed_nanos,
+                                    limit_ms,
+                                ),
+                            )
+                        }
+                        Err(e) => serve_write_response(
+                            &mut stream,
+                            500,
+                            "text/plain; charset=utf-8",
+                            &format!("handler error: {}\n", e),
+                        ),
+                        Ok(val) => match serve_wire_fields(&val, &ctx) {
+                            Some((status, content_type, resp_body)) => serve_write_response(
+                                &mut stream,
+                                status,
+                                &content_type,
+                                &resp_body,
+                            ),
+                            None => serve_write_response(
+                                &mut stream,
+                                500,
+                                "text/plain; charset=utf-8",
+                                &format!(
+                                    "handler returned `{}`, not ServeWireResponse {{ status: Int, content_type_label: String, body: String }}\n",
+                                    ctx.format_value(&val)
+                                ),
+                            ),
+                        },
+                    }
+                }
+            }
+        }
+    });
+}
 
 /// Read one HTTP/1.1 request: request line + headers (only Content-Length is
 /// consumed) + exactly Content-Length body bytes. Anything else is a typed
@@ -16627,9 +16867,142 @@ pub struct ServeEvaluationBudget {
 /// (request line + headers) at MAX_HEAD cumulative, the body at MAX_BODY,
 /// with the underlying stream capped via Read::take so no read path can
 /// allocate past head+body even before the typed checks fire.
+fn serve_read_request(
+    stream: &mut std::net::TcpStream,
+) -> Result<(String, String, String), String> {
+    use std::io::{BufRead, Read};
+    const MAX_HEAD: usize = 16 << 10;
+    const MAX_BODY: usize = 1 << 20;
+    stream
+        .set_read_timeout(Some(std::time::Duration::from_secs(10)))
+        .map_err(|e| format!("set_read_timeout: {}", e))?;
+    let mut reader = std::io::BufReader::new((&mut *stream).take((MAX_HEAD + MAX_BODY) as u64));
+    let mut request_line = String::new();
+    let mut head_bytes = reader
+        .read_line(&mut request_line)
+        .map_err(|e| format!("read request line: {}", e))?;
+    if head_bytes > MAX_HEAD {
+        return Err(format!(
+            "request line of {} bytes exceeds the {} byte serve head limit",
+            head_bytes, MAX_HEAD
+        ));
+    }
+    let mut parts = request_line.split_whitespace();
+    let method = parts.next().ok_or("empty request line")?.to_string();
+    let target = parts.next().ok_or("missing request target")?.to_string();
+    if !target.starts_with('/') {
+        return Err(format!(
+            "request target must be origin-form, got {:?}",
+            target
+        ));
+    }
+    let mut content_length: Option<usize> = None;
+    loop {
+        let mut line = String::new();
+        let n = reader
+            .read_line(&mut line)
+            .map_err(|e| format!("read header: {}", e))?;
+        if n == 0 {
+            return Err("connection closed before end of headers".to_string());
+        }
+        head_bytes += n;
+        if head_bytes > MAX_HEAD {
+            return Err(format!(
+                "headers of {} bytes exceed the {} byte serve head limit",
+                head_bytes, MAX_HEAD
+            ));
+        }
+        let line = line.trim_end();
+        if line.is_empty() {
+            break;
+        }
+        if let Some((name, value)) = line.split_once(':') {
+            if name.eq_ignore_ascii_case("content-length") {
+                if content_length.is_some() {
+                    return Err("duplicate Content-Length header".to_string());
+                }
+                content_length = Some(
+                    value
+                        .trim()
+                        .parse()
+                        .map_err(|e| format!("bad Content-Length: {}", e))?,
+                );
+            }
+        }
+    }
+    let content_length = content_length.unwrap_or(0);
+    if content_length > MAX_BODY {
+        return Err(format!(
+            "body of {} bytes exceeds the {} byte serve limit",
+            content_length, MAX_BODY
+        ));
+    }
+    let mut body_bytes = vec![0u8; content_length];
+    reader
+        .read_exact(&mut body_bytes)
+        .map_err(|e| format!("read body: {}", e))?;
+    let body = String::from_utf8(body_bytes).map_err(|e| format!("body not utf-8: {}", e))?;
+    Ok((method, target, body))
+}
+
+fn serve_write_response(
+    stream: &mut std::net::TcpStream,
+    status: u16,
+    content_type: &str,
+    body: &str,
+) {
+    use std::io::Write;
+    let reason = match status {
+        200 => "OK",
+        400 => "Bad Request",
+        404 => "Not Found",
+        405 => "Method Not Allowed",
+        409 => "Conflict",
+        500 => "Internal Server Error",
+        501 => "Not Implemented",
+        502 => "Bad Gateway",
+        503 => "Service Unavailable",
+        _ => "",
+    };
+    let response = format!(
+        "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+        status,
+        reason,
+        content_type,
+        body.len(),
+        body
+    );
+    if let Err(e) = stream.write_all(response.as_bytes()) {
+        eprintln!("serve: write error: {}", e);
+    }
+}
 
 /// Read back the .dag handler's ServeWireResponse record. None = wrong shape
 /// (surfaced as a typed 500 by the caller, never a fabricated response).
+fn serve_wire_fields(
+    val: &v1_interpreter::Value,
+    ctx: &v1_interpreter::InterpContext,
+) -> Option<(u16, String, String)> {
+    if let v1_interpreter::Value::Record { type_name, fields } = val {
+        if !ctx.sym_eq(*type_name, "ServeWireResponse") {
+            return None;
+        }
+        let status = match ctx.field(fields, "status") {
+            Some(v1_interpreter::Value::Int(n)) if (100..=599).contains(n) => *n as u16,
+            _ => return None,
+        };
+        let content_type = match ctx.field(fields, "content_type_label") {
+            Some(Value::Str(s)) => s.to_string(),
+            _ => return None,
+        };
+        let body = match ctx.field(fields, "body") {
+            Some(Value::Str(s)) => s.to_string(),
+            _ => return None,
+        };
+        return Some((status, content_type, body));
+    }
+    None
+}
 
 /// VISIBILITY WIDENED by the cli-run cut for the same §3 reason as `witness_layer_roots`:
 /// this is the SINGLE AUTHORITY for reading a `.dag` `ProcessExit` value, and the driver
