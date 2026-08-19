@@ -13,6 +13,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 env:
   CARGO_TERM_COLOR: always
+  GUNBC_EXPECTED_RED_ROSTER_JOIN: expected_red_roster_join.tsv
 jobs:
   witnesses:
     runs-on: [self-hosted, linux, arm64]
