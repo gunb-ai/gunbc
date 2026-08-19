@@ -63,7 +63,7 @@ pub use crate::v1_compiler_emit_core_support::{
 pub use crate::v1_compiler_emit_core_support::{EmitResult, TestProjection};
 pub use crate::v1_compiler_infer::InferScope;
 pub use crate::v1_compiler_infer::{
-    build_emit_graph_info, build_params_scope, declared_return_type_node,
+    build_emit_graph_info, build_params_scope, call_args_by_name, declared_return_type_node,
     expand_type_for_field_access, expr_span, extend_scope, is_where_refinement_type,
     resolved_type_name,
 };
@@ -110,6 +110,10 @@ pub use crate::v1_compiler_ownership::{
 };
 pub use crate::v1_compiler_resolve::get_exported_names;
 pub use crate::v1_compiler_runtime_rust::rust_runtime_source;
+pub use crate::v1_compiler_trait_bound_witness::{
+    v1_call_forwarding_clone_bound_wrapper_param_names,
+    v1_rc_match_scrutinee_clone_bound_param_names, v1_union_clone_param_names,
+};
 pub use crate::v1_compiler_trait_derive_emit::{
     rust_nominal_identity_carrier_shape_eligible, rust_symbol_wrapped_ord_carrier_shape_eligible,
     trait_derive_emit_fn_clone_bound_keyed_carrier_module, v1_clone_bounded_type_params,
@@ -121,7 +125,9 @@ pub use crate::v1_compiler_trait_derive_emit::{
 };
 use crate::v1_rt;
 use crate::v1_rt::{VecCompat, VecJoin};
-use crate::v1_std_core::CallSemantics::{LookupCallSemantics, PlainCallSemantics};
+use crate::v1_std_core::CallSemantics::{
+    FunctionValueCallSemantics, LookupCallSemantics, PlainCallSemantics,
+};
 use crate::v1_std_core::Cardinality::{CardOptional, Required};
 use crate::v1_std_core::CompilerDiagnostic::{InternalError, UnlistedImportUse};
 use crate::v1_std_core::Connective::{Conj, Disj, NoConnective};
@@ -5322,6 +5328,7 @@ pub fn emit_rust(typed: Rc<ResolvedGraph>) -> Rc<EmitResult> {
         let emit_info = Rc::new(EmitGraphInfo {
             type_summaries: base_info.type_summaries.clone(),
             type_decl_items: base_info.type_decl_items.clone(),
+            fn_decl_items: base_info.fn_decl_items.clone(),
             recursive_type_set: base_info.recursive_type_set.clone(),
             fielded_variants: base_info.fielded_variants.clone(),
             positional_payload_variants: base_info.positional_payload_variants.clone(),
@@ -5830,6 +5837,7 @@ pub fn emit_module(
         let emit_info = Rc::new(EmitGraphInfo {
             type_summaries: base_info.type_summaries.clone(),
             type_decl_items: base_info.type_decl_items.clone(),
+            fn_decl_items: base_info.fn_decl_items.clone(),
             recursive_type_set: base_info.recursive_type_set.clone(),
             fielded_variants: base_info.fielded_variants.clone(),
             positional_payload_variants: base_info.positional_payload_variants.clone(),
@@ -12275,6 +12283,7 @@ pub fn emit_typed_item(
                             let fn_emit_info = Rc::new(EmitGraphInfo {
                                 type_summaries: emit_info.type_summaries.clone(),
                                 type_decl_items: emit_info.type_decl_items.clone(),
+                                fn_decl_items: emit_info.fn_decl_items.clone(),
                                 recursive_type_set: emit_info.recursive_type_set.clone(),
                                 fielded_variants: emit_info.fielded_variants.clone(),
                                 positional_payload_variants: emit_info
@@ -14541,6 +14550,197 @@ pub fn emit_variant_from_child(
     }
 }
 
+pub fn v1_fn_body_derived_clone_param_names_note() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Extracted from emit_fn_def (dashboard node adhoc-574e999b-39c, Row 1b) rather than duplicated: this is the SAME derivation emit_fn_def already ran for the function being emitted -- structural (v1_generic_params_needing_clone_bound) unioned with RC-match-scrutinee (v1_rc_match_scrutinee_clone_bound_param_names, trait_bound_witness.dag) -- now callable a second time on a CALLEE's own declared params/inferred/body (looked up via emit_info.fn_decl_items), so a wrapper fn that forwards its args directly into an already-Clone-bounded callee can derive its own bound from that callee's real requirement (DESIGN.md S5 construction-over-validation: the fact already exists on the callee's declaration Node, never a text scan of emitted Rust) instead of the emitter reasoning about it ad hoc at each call site (DESIGN.md S2 -- one derivation, two call sites).".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
+pub fn v1_fn_body_derived_clone_param_names(
+    params: Rc<Vec<Rc<Node>>>,
+    inferred: Rc<Node>,
+    body: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    {
+        let si = source_indices.clone();
+        let type_params = function_type_params(params.clone());
+        let value_params = function_value_params(params.clone());
+        let generic_param_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in type_params.clone().iter().cloned() {
+                __result.push(generic_param_name_at(p.clone(), si.clone()));
+            }
+            __result
+        });
+        let value_param_names = Rc::new({
+            let mut __result = Vec::new();
+            for p in value_params.clone().iter().cloned() {
+                __result.push(p.name.clone());
+            }
+            __result
+        });
+        let ret_name = authored_name_at(si.clone(), inferred.clone());
+        let return_is_bare_generic = ((Rc::new({
+            let mut __result = Vec::new();
+            for g in generic_param_names.clone().iter().cloned() {
+                if (g.clone() == ret_name.clone()) {
+                    __result.push(g);
+                }
+            }
+            __result
+        })
+        .len() as i64)
+            > 0);
+        let body_is_param_ref = ((Rc::new({
+            let mut __result = Vec::new();
+            for n in value_param_names.clone().iter().cloned() {
+                if (n.clone() == body.name.clone()) {
+                    __result.push(n);
+                }
+            }
+            __result
+        })
+        .len() as i64)
+            > 0);
+        let derived_clone_param_names = v1_generic_params_needing_clone_bound(
+            generic_param_names.clone(),
+            value_params.clone(),
+            return_is_bare_generic.clone(),
+            ret_name.clone(),
+            body_is_param_ref.clone(),
+            inferred.clone(),
+            emit_info.clone_impl_required_type_params.clone(),
+            emit_info.type_decl_items.clone(),
+            si.clone(),
+        );
+        let rc_match_clone_param_names = match (*body.expr_data.clone()).clone() {
+            ExprData::ExprMatch => {
+                let scrutinee = match_scrutinee(body.clone());
+                match scrutinee.inferred.clone().as_deref().cloned() {
+                    Some(InferredNode::Resolved { node: rt, .. }) => {
+                        let scrut_type = authored_name_at(si.clone(), rt.clone());
+                        let arms = match_arm_nodes(body.clone());
+                        let rc_match = analyze_rc_match(
+                            scrutinee.clone(),
+                            arms.clone(),
+                            scrut_type.clone(),
+                            shared_types.clone(),
+                            emit_info.clone(),
+                            si.clone(),
+                        );
+                        v1_rc_match_scrutinee_clone_bound_param_names(
+                            generic_param_names.clone(),
+                            Rc::new({
+                                let mut __result = Vec::new();
+                                for c in rt.children.clone().iter().cloned() {
+                                    __result.push(authored_name_at(si.clone(), c.clone()));
+                                }
+                                __result
+                            }),
+                            rc_match.needs_deref.clone(),
+                        )
+                    }
+                    _ => Rc::new(vec![]),
+                }
+            }
+            _ => Rc::new(vec![]),
+        };
+        v1_union_clone_param_names(
+            derived_clone_param_names.clone(),
+            rc_match_clone_param_names.clone(),
+        )
+    }
+}
+
+pub fn v1_call_forwarding_clone_bound_param_names(
+    generic_param_names: Rc<Vec<String>>,
+    body: Rc<Node>,
+    fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
+    emit_info: Rc<EmitGraphInfo>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+) -> Rc<Vec<String>> {
+    {
+        let si = source_indices.clone();
+        let call_node = match (*body.expr_data.clone()).clone() {
+            ExprData::ExprCall { .. } => Some(body.clone()),
+            ExprData::ExprLambda => {
+                let lb = lambda_body(body.clone());
+                match (*lb.expr_data.clone()).clone() {
+                    ExprData::ExprCall { .. } => Some(lb.clone()),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        match call_node.clone() {
+            None => Rc::new(vec![]),
+            Some(call) => {
+                let callee_name = expr_call_func_at(call.clone(), si.clone());
+                match v1_rt::map_get(&fn_decl_items, callee_name.clone()) {
+                    None => Rc::new(vec![]),
+                    Some(callee_item) => match callee_item.body.clone() {
+                        None => Rc::new(vec![]),
+                        Some(callee_body) => {
+                            let callee_params = callee_item.params.clone();
+                            let callee_value_params = function_value_params(callee_params.clone());
+                            let callee_type_params = function_type_params(callee_params.clone());
+                            let callee_generic_param_names = Rc::new({
+                                let mut __result = Vec::new();
+                                for p in callee_type_params.clone().iter().cloned() {
+                                    __result.push(generic_param_name_at(p.clone(), si.clone()));
+                                }
+                                __result
+                            });
+                            let callee_clone_param_names = v1_fn_body_derived_clone_param_names(
+                                callee_params.clone(),
+                                resolved_type(callee_item.clone()),
+                                callee_body.clone(),
+                                emit_info.clone(),
+                                shared_types.clone(),
+                                si.clone(),
+                            );
+                            if ((callee_clone_param_names.clone().len() as i64) == 0) {
+                                Rc::new(vec![])
+                            } else {
+                                {
+                                    let arg_by_name = call_args_by_name(call.clone(), si.clone());
+                                    let forwarded = Rc::new({
+                                        let mut __result = Vec::new();
+                                        for cp in callee_value_params.clone().iter().cloned() {
+                                            __result.extend((*{
+                            let callee_param_type_name = resolved_type_name(cp.clone(), si.clone());
+let callee_param_type_arg_names = Rc::new({ let mut __result = Vec::new(); for c in resolved_type(cp.clone()).children.clone().iter().cloned() { __result.push(authored_name_at(si.clone(), c.clone())); } __result });
+let arg_type_name = match v1_rt::map_get(&arg_by_name, cp.name.clone()) {
+    Some(arg_node) => resolved_type_name(arg_node.clone(), si.clone()),
+    None => "".to_string(),
+};
+let arg_type_arg_names = match v1_rt::map_get(&arg_by_name, cp.name.clone()) {
+    Some(arg_node) => Rc::new({ let mut __result = Vec::new(); for c in resolved_type(arg_node.clone()).children.clone().iter().cloned() { __result.push(authored_name_at(si.clone(), c.clone())); } __result }),
+    None => Rc::new(vec![]),
+};
+v1_call_forwarding_clone_bound_wrapper_param_names(callee_param_type_name.clone(), callee_param_type_arg_names.clone(), callee_generic_param_names.clone(), callee_clone_param_names.clone(), arg_type_name.clone(), arg_type_arg_names.clone(), generic_param_names.clone())
+}).iter().cloned());
+                                        }
+                                        __result
+                                    });
+                                    v1_union_clone_param_names(Rc::new(vec![]), forwarded.clone())
+                                }
+                            }
+                        }
+                    },
+                }
+            }
+        }
+    }
+}
+
 pub fn emit_fn_def(
     name: String,
     params: Rc<Vec<Rc<Node>>>,
@@ -14616,16 +14816,25 @@ pub fn emit_fn_def(
                 })
                 .len() as i64)
                     > 0);
-                let derived_clone_param_names = v1_generic_params_needing_clone_bound(
-                    generic_param_names.clone(),
-                    value_params.clone(),
-                    return_is_bare_generic.clone(),
-                    ret_name.clone(),
-                    body_is_param_ref.clone(),
+                let self_derived_clone_param_names = v1_fn_body_derived_clone_param_names(
+                    params.clone(),
                     inferred.clone(),
-                    emit_info.clone_impl_required_type_params.clone(),
-                    emit_info.type_decl_items.clone(),
+                    body.clone(),
+                    emit_info.clone(),
+                    shared_types.clone(),
                     si.clone(),
+                );
+                let call_forwarding_clone_param_names = v1_call_forwarding_clone_bound_param_names(
+                    generic_param_names.clone(),
+                    body.clone(),
+                    emit_info.fn_decl_items.clone(),
+                    emit_info.clone(),
+                    shared_types.clone(),
+                    si.clone(),
+                );
+                let derived_clone_param_names_with_rc_match = v1_union_clone_param_names(
+                    self_derived_clone_param_names.clone(),
+                    call_forwarding_clone_param_names.clone(),
                 );
                 let module_path = scope.type_env.clone().module_path.clone();
                 let clone_param_names = if (((generic_param_names.clone().len() as i64) > 0)
@@ -14633,7 +14842,7 @@ pub fn emit_fn_def(
                 {
                     generic_param_names.clone()
                 } else {
-                    derived_clone_param_names.clone()
+                    derived_clone_param_names_with_rc_match.clone()
                 };
                 let needs_clone_bound = ((clone_param_names.clone().len() as i64) > 0);
                 let type_params_str = if needs_clone_bound.clone() {
@@ -14770,6 +14979,37 @@ pub fn return_type_is_unit(
     }
 }
 
+pub fn rust_declared_return_is_callable(emit_info: Rc<EmitGraphInfo>) -> bool {
+    match emit_info.fn_return_type.clone() {
+        Some(ret) => (ret.connective.clone() == Connective::Arrow),
+        None => false,
+    }
+}
+
+pub fn rust_callable_return_wrap(
+    body_str: String,
+    texpr: Rc<Node>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let is_lambda_body = match (*texpr.expr_data.clone()).clone() {
+            ExprData::ExprLambda => true,
+            _ => false,
+        };
+        let wrap_template = language_spec(RenderTarget::Rust)
+            .callable_value_wrap_template
+            .clone();
+        if (is_lambda_body.clone() && rust_declared_return_is_callable(emit_info.clone())) {
+            match wrap_template.clone() {
+                Some(t) => apply_type_template1(t.clone(), body_str.clone()),
+                None => body_str.clone(),
+            }
+        } else {
+            body_str.clone()
+        }
+    }
+}
+
 pub fn emit_rust_fn_body_expr(
     texpr: Rc<Node>,
     return_is_unit: bool,
@@ -14789,14 +15029,18 @@ pub fn emit_rust_fn_body_expr(
             emit_info.clone(),
         )
     } else {
-        emit_typed_expr(
+        rust_callable_return_wrap(
+            emit_typed_expr(
+                texpr.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+                1024,
+            ),
             texpr.clone(),
-            registry.clone(),
-            scope.clone(),
-            depth.clone(),
-            shared_types.clone(),
             emit_info.clone(),
-            1024,
         )
     }
 }
@@ -18830,6 +19074,13 @@ pub fn emit_rust_expr_field_access(
     }
 }
 
+pub fn call_semantics_is_function_value(cs: Option<CallSemantics>) -> bool {
+    match cs.clone() {
+        Some(CallSemantics::FunctionValueCallSemantics) => true,
+        _ => false,
+    }
+}
+
 pub fn emit_rust_expr_call(
     expr: Rc<Node>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -18839,12 +19090,15 @@ pub fn emit_rust_expr_call(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*expr.expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => {
+        ExprData::ExprCall {
+            call_semantics: cs, ..
+        } => {
             let f = expr_call_func_at(expr.clone(), scope.type_env.clone().source_indices.clone());
             emit_typed_call_expr(
                 f.clone(),
                 expr.children.clone(),
                 expr.inferred.clone(),
+                call_semantics_is_function_value(cs.clone()),
                 registry.clone(),
                 scope.clone(),
                 depth.clone(),
@@ -19760,6 +20014,7 @@ pub fn emit_typed_call_expr(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
     inferred: Option<Rc<InferredNode>>,
+    callee_is_function_value: bool,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
     scope: Rc<InferScope>,
     depth: i64,
@@ -19811,6 +20066,7 @@ pub fn emit_typed_call_expr(
                 emit_typed_call(
                     func.clone(),
                     args.clone(),
+                    callee_is_function_value.clone(),
                     registry.clone(),
                     scope.clone(),
                     depth.clone(),
@@ -19819,7 +20075,9 @@ pub fn emit_typed_call_expr(
                 )
             }
         };
-        if rust_runtime_bridge_wraps_collection_result_in_rc(func.clone()) {
+        if ((callee_is_function_value.clone() == false)
+            && rust_runtime_bridge_wraps_collection_result_in_rc(func.clone()))
+        {
             rust_shared_wrap_ctor(call_str.clone())
         } else {
             call_str.clone()
@@ -19862,7 +20120,7 @@ pub fn rust_call_arg_fail_closed_unwrap(
     }
 }
 
-pub fn emit_typed_call(
+pub fn emit_typed_function_value_call(
     func: String,
     args: Rc<Vec<Rc<Node>>>,
     registry: Rc<HashMap<String, Rc<ItemInfo>>>,
@@ -19872,6 +20130,55 @@ pub fn emit_typed_call(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     {
+        let arg_strs = Rc::new({
+            let mut __result = Vec::new();
+            for a in args.clone().iter().cloned() {
+                __result.push(emit_cloned_arg(
+                    arg_value(a.clone()),
+                    registry.clone(),
+                    scope.clone(),
+                    depth.clone(),
+                    shared_types.clone(),
+                    emit_info.clone(),
+                ));
+            }
+            __result
+        });
+        v1_rt::concat(
+            v1_rt::concat(
+                v1_rt::concat(
+                    emit_ident(func.clone(), RenderTarget::Rust),
+                    "(".to_string(),
+                ),
+                arg_strs.clone().join(&", ".to_string()),
+            ),
+            ")".to_string(),
+        )
+    }
+}
+
+pub fn emit_typed_call(
+    func: String,
+    args: Rc<Vec<Rc<Node>>>,
+    callee_is_function_value: bool,
+    registry: Rc<HashMap<String, Rc<ItemInfo>>>,
+    scope: Rc<InferScope>,
+    depth: i64,
+    shared_types: Rc<BTreeSet<String>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        if callee_is_function_value.clone() {
+            return emit_typed_function_value_call(
+                func.clone(),
+                args.clone(),
+                registry.clone(),
+                scope.clone(),
+                depth.clone(),
+                shared_types.clone(),
+                emit_info.clone(),
+            );
+        }
         if (func.clone() == "get".to_string()) {
             {
                 let get_args = order_typed_call_args(args.clone(), func.clone(), scope.clone());
@@ -20121,8 +20428,10 @@ pub fn emit_typed_call(
             shared_types.clone(),
             emit_info.clone(),
         );
-        let is_rt = v1_rt::map_contains_key(&rt_functions(), func.clone());
-        let is_rt_ref_map = v1_rt::map_contains_key(&rt_ref_map_functions(), func.clone());
+        let is_rt = ((callee_is_function_value.clone() == false)
+            && v1_rt::map_contains_key(&rt_functions(), func.clone()));
+        let is_rt_ref_map = ((callee_is_function_value.clone() == false)
+            && v1_rt::map_contains_key(&rt_ref_map_functions(), func.clone()));
         let arg_strs = Rc::new({
             let mut __result = Vec::new();
             for pair in Rc::new(
@@ -21190,6 +21499,7 @@ pub fn emit_rust_fold_method_call(
                         Some(acc_name) => Rc::new(EmitGraphInfo {
                             type_summaries: emit_info.type_summaries.clone(),
                             type_decl_items: emit_info.type_decl_items.clone(),
+                            fn_decl_items: emit_info.fn_decl_items.clone(),
                             recursive_type_set: emit_info.recursive_type_set.clone(),
                             fielded_variants: emit_info.fielded_variants.clone(),
                             positional_payload_variants: emit_info
@@ -21233,6 +21543,7 @@ pub fn emit_rust_fold_method_call(
                             Some(acc_name) => Rc::new(EmitGraphInfo {
                                 type_summaries: emit_info.type_summaries.clone(),
                                 type_decl_items: emit_info.type_decl_items.clone(),
+                                fn_decl_items: emit_info.fn_decl_items.clone(),
                                 recursive_type_set: emit_info.recursive_type_set.clone(),
                                 fielded_variants: emit_info.fielded_variants.clone(),
                                 positional_payload_variants: emit_info
@@ -25537,7 +25848,9 @@ pub fn emit_rust_tco_non_self_call(
     emit_info: Rc<EmitGraphInfo>,
 ) -> String {
     match (*frame.expr.clone().expr_data.clone()).clone() {
-        ExprData::ExprCall { .. } => {
+        ExprData::ExprCall {
+            call_semantics: cs, ..
+        } => {
             let f = expr_call_func_at(
                 frame.expr.clone(),
                 frame.scope.clone().type_env.clone().source_indices.clone(),
@@ -25545,6 +25858,7 @@ pub fn emit_rust_tco_non_self_call(
             let call_str = emit_typed_call(
                 f.clone(),
                 frame.expr.clone().children.clone(),
+                call_semantics_is_function_value(cs.clone()),
                 registry.clone(),
                 frame.scope.clone(),
                 frame.depth.clone(),
