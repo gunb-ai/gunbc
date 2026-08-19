@@ -89,12 +89,58 @@ either total:
   generic fn/inherent-impl body calling `.clone()` on an unbounded type parameter, no derive
   involved. A structurally different mechanism from the `CacheLookupResult<T>` sites.
 
-Verdict: the two `CacheLookupResult<T>` sites belong in **1a**, not 1b. §4's table above is
-corrected to 14/14, matching #8460 §10.3 exactly. This was **arm (ii) — a categorization slip in
-this session's re-derivation**, not genuine movement between bases (consistent with §3's
-site-for-site match: nothing about *which* 51 sites exist changed, only which row two of them were
-filed under). #8460's board was right; this document's first draft was wrong and is now corrected
-in place rather than left standing beside a second, disagreeing account.
+Verdict at time of writing: the two `CacheLookupResult<T>` sites belong in **1a**, not 1b. §4's
+table above is corrected to 14/14, matching #8460 §10.3 exactly. This was treated as **arm (ii) —
+a categorization slip in this session's re-derivation**, not genuine movement between bases
+(consistent with §3's site-for-site match: nothing about *which* 51 sites exist changed, only which
+row two of them were filed under).
+
+**CONTESTED, 2026-08-19, by `smart-ram-730` — pending `deep-swift-570`'s executed answer.** The
+reasoning above reads the derive as the defect: "a `derive(Clone)`-generated impl whose bound the
+emitter didn't add." That is not what `derive(Clone)` emits on `CacheLookupResult<T>` — it emits
+`impl<T: Clone> Clone for CacheLookupResult<T>`, a *conditional* bound that is present, not missing.
+The candidate counter-reading: the defect is on the **caller** — `realize_route<T>` /
+`classify_write<T>` are generic fns whose *emitted signatures* carry no `T: Clone`, so inside their
+bodies the conditional impl doesn't apply and rustc reports "trait bounds were not satisfied" —
+which would make these two sites the **1b mechanism (missing bound on a generated fn/inherent-impl
+signature) wearing 1a's error text**, not 1a. Under that reading the derived-impl-vs-fn-signature
+axis is a proxy that fails exactly at a call site inside a generic fn that touches a
+conditionally-derived impl — the same shape the code-keyed (E0599-vs-E0599) partition failed on
+earlier.
+
+**The discriminating question, decidable by execution, not by re-reading text a third time:** does
+adding `T: Clone` to `realize_route<T>`/`classify_write<T>`'s emitted signature clear both errors,
+with no change to the `derive` on `CacheLookupResult<T>`? Yes → 1b, and this table needs a second
+correction. No → 1a stands as corrected above. `deep-swift-570` holds these two sites as part of
+their in-flight `emit_fn_def` repair and was asked to answer this directly by execution; **this
+document is not being re-corrected a third time on prose alone — only on that executed answer.**
+
+**Update, same day: a claim arrived, and it is being held rather than acted on.** `deep-swift-570`
+reported their branch's `git diff main...HEAD -- src/v1/trait_derive_emit.dag` is empty — only
+`emit_fn_def` and a new `trait_bound_witness.dag` decision core changed — and concluded the two
+sites are 1b. `smart-ram-730` flagged, correctly, that this under-powers the question: an empty
+diff on the derive-emission path proves proposition **A** (the repair touches only signatures), not
+proposition **B** (a signature-only repair actually clears both `E0599`s). "The derive was never
+touched" and "the derive needed touching and wasn't" are indistinguishable from a diff alone — only
+running the fix and reading the result decides between them. **Holding this row at provisional,
+still 1a per §4 above, until `deep-swift-570`'s CI run against `561bf1166b1` reports which of three
+outcomes actually happened:** both `:564`/`:580` gone with nothing new → B holds, correct to 1b;
+gone but a new error appears → the defect moved, neither classification is safe yet, needs its own
+row; either site survives → B is false, 1a stands. No further correction lands on diff-scope or
+message-phrasing reasoning alone — only on that executed result.
+
+**The axis, stated explicitly per the ask that follows from this exchange:** "1a = derived impls,
+1b = fn/inherent-impl signatures" is ambiguous precisely where a call site sits inside a generic fn
+whose body invokes a conditionally-derived impl — both disputed rows sit there, and it is why the
+same two sites have now been reclassified by error-text reading and contested by mechanism reading
+in one day. The load-bearing question is not *which diagnostic phrasing appears* but **whose
+emitted signature is missing the bound** — the derive's (1a) or the caller's generic fn (1b). Error
+text is evidence toward that question, not the axis itself; the settlement above followed message
+phrasing, and phrasing is exactly what this counter-reading shows can point at the wrong signature
+when a conditional impl is involved. Until `deep-swift-570`'s executed answer lands, treat §4's
+14/14 row assignment for `std_cache_interface.rs:564,580` as **provisional**, not settled — the
+totals (14/14, 51 overall) are unaffected either way; only the row these two sites file under is
+open.
 
 ## 5. T7 / "99 E0308 sites" — resolved for `stern-fox-619`, restated against this base
 
