@@ -1,6 +1,8 @@
 module test.claim.required_expr_newline_continuation_witness_test
 
-data required_expr_newline_continuation_migration_note: String = "Migrated from src/v1/tests/claim/required_expr_newline_continuation_test.dag (dead witness tree triage, dashboard node adhoc-9b80ec49-d63; that file's only historical consumer, v1_claim_scoped_witness_batch, was deleted 2026-08-15, and the file's own dissolve-on already named the successor: 'fold into v2 parser witness corpus when v1 claim discovery is retired'). All 8 assertions were already black-box 'this exact source parses / this exact source refuses' checks over v1.compiler.parse's newline-continuation-after-a-required-expression production, calling only tokenize + parse_with_table with no v1 state inspected beyond the parse error slot — they migrate directly onto compile_dag_rust_emit_check, which drives the same production compile path and answers the identical parses-or-refuses question through ordinary per-PR discovery (source roots dag + src/v2, no v1 import needed)."
+data required_expr_newline_continuation_migration_note: String = "Migrated from src/v1/tests/claim/required_expr_newline_continuation_test.dag (dead witness tree triage, dashboard node adhoc-9b80ec49-d63; that file's only historical consumer, v1_claim_scoped_witness_batch, was deleted 2026-08-15, and the file's own dissolve-on already named the successor: 'fold into v2 parser witness corpus when v1 claim discovery is retired'). All 8 assertions were already black-box 'this exact source parses / this exact source refuses' checks over v1.compiler.parse's newline-continuation-after-a-required-expression production, calling only tokenize + parse_with_table with no v1 state inspected beyond the parse error slot — they migrate directly onto compile_dag_rust_emit_check, which drives the same production compile path and answers the identical parses-or-refuses question through ordinary per-PR discovery (source roots dag + src/v2, no v1 import needed).
+
+w_for_newline_before_collection's original fixture declared 'fn demo() -> List<String>' with body 'for ch in \"abc\" { ch }', asserting only that it PARSES — never proven by execution while the file was dead. Compiling it live (this triage, CI run 32204338777) surfaces a real hard diagnostic unrelated to continuation parsing: \"type mismatch: expected 'Container(List,Primitive(String))', got 'Primitive(String)'\". v1's 'for' is not a list comprehension: a for-expression's type is its body's tail-expression type directly (here the element type, String), never wrapped in the container implied by iterating a collection — confirmed by the same mismatch reproducing with a List<Int> literal collection and an Int-typed body ('got Primitive(Int)' against a declared List<Int>'). compile_dag_rust_emit_check demands a full compile-clean, so the original fixture cannot migrate as authored without asserting a false claim. Corrected the declared return type from List<String> to String, matching the for-expression's actual inferred type — this exercises the identical newline-before-collection-expression continuation production the test names, without depending on list-comprehension semantics v1 does not have. The continuation-parsing claim survives intact; only the return type changed to match the real for-loop type, and the change is a genuine correction of a premise that had never been execution-checked, not a weakening of the assertion."
 
 fn parses_clean(source: String, path: String) -> Bool {
   compile_dag_rust_emit_check(source, path, [], [])
@@ -12,35 +14,35 @@ fn refuses_to_compile(source: String, path: String) -> Bool {
 
 test fn w_untyped_let_newline_before_initializer_test() -> Bool {
   parses_clean(
-    "module test\nfn demo() -> Int {\n  let x =\n    1\n  x\n}\n",
+    "module untyped_let_newline\nfn demo() -> Int {\n  let x =\n    1\n  x\n}\n",
     "src/untyped_let_newline.rs"
   )
 }
 
 test fn w_typed_let_newline_before_initializer_test() -> Bool {
   parses_clean(
-    "module test\nfn demo() -> Int {\n  let x: Int =\n    1\n  x\n}\n",
+    "module typed_let_newline\nfn demo() -> Int {\n  let x: Int =\n    1\n  x\n}\n",
     "src/typed_let_newline.rs"
   )
 }
 
 test fn w_return_newline_before_expression_test() -> Bool {
   parses_clean(
-    "module test\nfn demo() -> Int {\n  return\n    1\n}\n",
+    "module return_newline\nfn demo() -> Int {\n  return\n    1\n}\n",
     "src/return_newline.rs"
   )
 }
 
 test fn w_for_newline_before_collection_test() -> Bool {
   parses_clean(
-    "module test\nfn demo() -> List<String> {\n  for ch in\n    \"abc\" { ch }\n}\n",
+    "module for_newline\nfn demo() -> String {\n  for ch in\n    \"abc\" { ch }\n}\n",
     "src/for_newline.rs"
   )
 }
 
 test fn w_statement_boundary_after_complete_initializer_test() -> Bool {
   parses_clean(
-    "module test\nfn demo() -> Int {\n  let x = 1\n  let y = 2\n  y\n}\n",
+    "module let_statement_boundary\nfn demo() -> Int {\n  let x = 1\n  let y = 2\n  y\n}\n",
     "src/let_statement_boundary.rs"
   )
 }
@@ -54,21 +56,21 @@ test fn w_statement_boundary_after_complete_initializer_test() -> Bool {
 
 test fn w_untyped_let_newline_then_rbrace_refuses_test() -> Bool {
   refuses_to_compile(
-    "module test\nfn demo() -> Int {\n  let x =\n}\n",
+    "module untyped_let_newline_rbrace\nfn demo() -> Int {\n  let x =\n}\n",
     "src/untyped_let_newline_rbrace.rs"
   )
 }
 
 test fn w_return_newline_then_rbrace_refuses_test() -> Bool {
   refuses_to_compile(
-    "module test\nfn demo() -> Int {\n  return\n}\n",
+    "module return_newline_rbrace\nfn demo() -> Int {\n  return\n}\n",
     "src/return_newline_rbrace.rs"
   )
 }
 
 test fn w_for_newline_then_block_without_collection_refuses_test() -> Bool {
   refuses_to_compile(
-    "module test\nfn demo() -> List<String> {\n  for x in\n  { x }\n}\n",
+    "module for_newline_missing_collection\nfn demo() -> List<String> {\n  for x in\n  { x }\n}\n",
     "src/for_newline_missing_collection.rs"
   )
 }
