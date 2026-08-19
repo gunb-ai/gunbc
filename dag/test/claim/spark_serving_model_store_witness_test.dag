@@ -128,16 +128,16 @@ test fn an_exact_store_carries_the_desired_identity() -> Bool {
 // digest differs from the digest it publishes, THIS is the claim that stays green while srv6 replans
 // forever -- which is why the module comment names that as the one unverified upstream property and
 // the canary as what decides it.
+// THE HEX IS DERIVED, NOT TYPED IN. The first version of this witness carried the desired hex as a
+// literal, and when the operator re-pinned desired state on 2026-08-19 the literal stayed behind --
+// so the claim reddened on a repin that was correct. A witness asserting that a host holding THE
+// DECLARED MODEL converges has to read the declaration, or it is asserting that a host holding one
+// particular historical model converges.
 test fn a_host_holding_the_declared_model_reconciles_as_converged() -> Bool {
   match subject_release() {
     Absent => false
     Present { value: r } => {
       let desired = serialize_content_hash(hash: r.model.identity) as String
-      // DERIVED, NOT TYPED IN. The first version of this witness carried the desired hex as a
-      // literal, and when the operator re-pinned desired state on 2026-08-19 the literal stayed
-      // behind -- so the claim reddened on a repin that was correct. A witness asserting that a host
-      // holding THE DECLARED MODEL converges has to read the declaration, or it is asserting that a
-      // host holding one particular historical model converges.
       let hex = strip_sha256_prefix(text: desired)
       match spark_serving_classify_model_store(
         manifest_body: join([
