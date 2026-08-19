@@ -1,8 +1,8 @@
 module v2.std.compilers.cli_surface
 
 import std.algebra { Empty }
-import std.types { String, Int, Bool }
-import v2.std.algebra { fold_list, list_snoc_item, length }
+import std.types { String }
+import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { List, Map }
 import v2.std.compilers.target_model {
   BoundToken,
@@ -14,24 +14,13 @@ import v2.std.compilers.target_model {
 }
 import v2.std.diagnostic {
   Accepted,
-  Diagnostic,
   None,
   Outcome,
-  ExternalContractUnknown,
   Rejected,
-  Unavailable,
   bind_outcome,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
+  outcome_accepted
 }
-import v2.std.node {
-  Atom,
-  Node,
-  Symbol,
-  SyntheticOccurrence,
-  TypeNode
-}
+import v2.std.node { Symbol }
 
 
 // WHY THIS EXISTS, and why it is a sibling rather than a transform of the text carrier.
@@ -52,11 +41,31 @@ import v2.std.node {
 // argument boundaries selects this serializer; one that wants source text selects the existing
 // one. Both read one grammar.
 
-// Sealed, and deliberately WITHOUT an exported mint. TransportScript needs transport_script_seal
-// because production modules must build one; nothing outside this module has any business
-// constructing a CLI argument, because an argument is a RESULT of the grammar fold, never an
-// authored value. So the wall here is stronger than TransportScript's: there is no admitted
-// caller list to add a name to, because there is no mint to admit anyone to.
+// SEALED AT THE RECORD, NOT AT THE MINT -- and the difference is a live hole, stated here
+// because an earlier revision of this comment claimed the opposite and was wrong.
+//
+// WHAT HOLDS: sole_constructor means no other module can write CliSurface { arguments: ... } or
+// cast into one. The record literal and the cast are both closed (04_infer
+// sole_constructor_construction_diags judges the two forms through one authority).
+//
+// WHAT DOES NOT HOLD: bound_tokens_cli_arguments below is public and takes tokens, lex rules AND
+// binding spellings FROM ITS CALLER, so any module can synthesize whatever token sequence and lex
+// table it likes and receive a sealed CliSurface carrying arbitrary content. You cannot author
+// the record; you can author its contents. That is the mint-function hole gunbc.guarantee_probe_corpus
+// already enumerates as sole_ctor_mint_fn_hole_probe, reproduced here.
+//
+// SO THE EARLIER CLAIM WAS BACKWARDS. This is WEAKER than extdeps.shell.exec TransportScript, not
+// stronger: transport_script_seal is admit_callers-restricted to two named production decls, while
+// this fold admits everyone. The claim was made, reviewed, and corroborated once before anyone
+// checked it -- which is why it is written down here rather than quietly amended.
+//
+// WHY IT IS NOT CLOSED IN THIS COMMIT: the fix is to stop taking caller-supplied grammar at all --
+// the fold should be reachable only already bound to a target model, so the lex table is the
+// target's rather than the caller's -- and that shape is decided by whether the jq path consumes
+// translate's target model or bypasses it entirely. Sealing to an admit_callers roster now would
+// admit only this probe, which is a wall around an empty room. DISSOLVES WITH: the wave that adds
+// the first production consumer, which is also the wave that answers the target-model question.
+
 type CliArgument sole_constructor { text: String }
 
 type CliSurface sole_constructor { arguments: List<CliArgument> }
@@ -67,26 +76,6 @@ fn cli_surface_arguments(surface: CliSurface) -> List<CliArgument> {
 
 fn cli_argument_text(argument: CliArgument) -> String {
   argument.text
-}
-
-fn cli_surface_argument_count(surface: CliSurface) -> Int {
-  length(xs: surface.arguments)
-}
-
-// The refusal that keeps a missing CLI serializer from degrading into source text. A target whose
-// surface serializer is unwired must REFUSE (DESIGN section 5): answering with the text serializer
-// would be the absorbing fallback -- a plausible artifact standing where an unanswerable question
-// was, and the boundary loss would be invisible precisely because text can hold anything.
-fn target_surface_serializer_unwired_diagnostic(target_identity: Symbol) -> Diagnostic {
-  Diagnostic {
-    reason: ^target_surface_serializer_unwired,
-    at: node_locus(node: Node {
-      kind: TypeNode { connective: Atom { identity: target_identity } },
-      children: [],
-      occurrence_id: SyntheticOccurrence
-    }),
-    correction: Unavailable { reason: ExternalContractUnknown }
-  }
 }
 
 // The sibling fold. Structurally identical to bound_tokens_source_text except that the
