@@ -12,8 +12,9 @@ import gunbc.host_build_cache_catalog_gate {
   ProvisionBuildCacheCatalogRealizable,
   ProvisionBuildCacheCatalogRefused,
 }
-import gunbc.host_effect { HostEffect, ProvisionBuildCache }
+import gunbc.host_effect { HostEffect, EnsureBuildCacheInstance }
 import gunbc.host_toolchain_ensure { host_toolchain_ensure, BuildCache }
+import gunbc.build_cache_instance { ci_cache_instance }
 import product.placement_supply { HostIdentity }
 import gunbc.host_layout { gunbc_managed_compile_pool_slice }
 import gunbc.build_cache_instance {
@@ -242,12 +243,12 @@ fn provision_build_cache_verdict(
   }
 }
 
-fn provision_build_cache_effect_for_catalog(catalog_id: CacheInterfaceId) -> HostEffect {
-  ProvisionBuildCache { catalog_id: catalog_id }
+fn provision_build_cache_effect_for_host(host: HostIdentity) -> HostEffect {
+  EnsureBuildCacheInstance { desired: ci_cache_instance(host: host) }
 }
 
-fn provision_build_cache_default_effect() -> HostEffect {
-  provision_build_cache_effect_for_catalog(catalog_id: sccache_local_id)
+fn provision_build_cache_default_effect(host: HostIdentity) -> HostEffect {
+  provision_build_cache_effect_for_host(host: host)
 }
 
 fn provision_build_cache_routes_through_host_effect_apply() -> Bool {
