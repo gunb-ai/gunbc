@@ -163,6 +163,27 @@ fn efficiency_percent(e: EfficiencyRating) -> Nat {
   }
 }
 
+// A POPULATION WHOSE EXACT PART IS NOT YET READ IS A REAL STATE OF A REAL
+// PURCHASE, and it is the state the operator's pending configuration is in
+// right now: eight 64 GiB RDIMMs are arriving and the exact part number has not
+// been read. Capacity is still answerable — the sticks state their capacity —
+// but DRAW IS NOT, because the chip count per rank comes from the module's data
+// width and its rank count, and a 64 GiB DDR4 module can be 2Rx4, 4Rx4 or a
+// stacked-die part with materially different device counts.
+//
+// So this is a coproduct rather than an optional field, and the unread arm
+// carries what IS known plus the obligation that closes it. Assuming 2Rx4 to
+// keep the arithmetic runnable would be the fabricated plausible output at its
+// most expensive: the figure feeds a power allocation, and a wrong one is not
+// discovered until the rack is energised.
+type MemoryPopulationEvidence
+  = PopulationModuleRead { population: PopulationOption }
+  | PopulationModuleUnread {
+      stick_capacity: ByteSize
+      dimm_count: Nat
+      read_obligation: NonEmptyStr
+    }
+
 // A node's electrical inputs. Board idle draw and per-chip DRAM power are
 // declared by the caller because this repository cites no row for either yet;
 // naming them as fields keeps them visible as the two figures a reader must
@@ -172,11 +193,37 @@ type NodeElectricalInputs {
   sockets: Nat
   cpu: CpuModelCatalogRow
   context: MemoryElectricalContext
-  population: PopulationOption
+  memory: MemoryPopulationEvidence
   dram_power_per_chip: Milliwatt
   board_idle_draw: Watt
   psu_rated_output: Watt
   psu_efficiency: EfficiencyRating
+}
+
+// WHY THE REFUSAL IS TYPED AND NOT A ZERO. A node whose memory draw could not be
+// derived is not a node that draws only its processor: reporting the CPU-plus-
+// board figure would be an answer a placement decision would happily divide a
+// power budget by. The refusal names the obligation, so the missing read is
+// countable and actionable rather than absorbed.
+type DrawRefusalCause
+  = MemoryModuleUnread {
+      stick_capacity: ByteSize
+      dimm_count: Nat
+      read_obligation: NonEmptyStr
+    }
+
+type NodeDrawReading
+  = NodeDrawDerived { dc_load: Watt, wall_draw: Watt }
+  | NodeDrawRefused { cause: DrawRefusalCause }
+
+fn memory_evidence_refusal(memory: MemoryPopulationEvidence) -> DrawRefusalCause? {
+  match memory {
+    PopulationModuleRead { population: _ } => none
+    PopulationModuleUnread { stick_capacity: c, dimm_count: n, read_obligation: o } =>
+      Present {
+        value: MemoryModuleUnread { stick_capacity: c, dimm_count: n, read_obligation: o },
+      }
+  }
 }
 
 // CPU draw is the catalog TDP, once per socket. An earlier home for this
@@ -187,19 +234,31 @@ fn cpu_draw_watts(inputs: NodeElectricalInputs) -> Watt {
   watt(count: watt_count(w: inputs.cpu.tdp_watts) * inputs.sockets)
 }
 
-fn dc_load_watts(inputs: NodeElectricalInputs) -> Watt {
+// The arithmetic over a READ population. Total, and reached only through
+// node_draw below, which is where the unread arm is refused.
+fn dc_load_over_read_population(inputs: NodeElectricalInputs, population: PopulationOption) -> Watt {
   watt(
     count: watt_count(w: cpu_draw_watts(inputs: inputs))
-      + watt_count(w: memory_power(population: inputs.population, power_per_chip: inputs.dram_power_per_chip)) * inputs.sockets
+      + watt_count(w: memory_power(population: population, power_per_chip: inputs.dram_power_per_chip)) * inputs.sockets
       + watt_count(w: inputs.board_idle_draw),
   )
 }
 
-fn wall_draw_watts(inputs: NodeElectricalInputs) -> Watt {
-  watt(
-    count: watt_count(w: dc_load_watts(inputs: inputs)) * 100
-      / efficiency_percent(e: inputs.psu_efficiency),
-  )
+fn wall_from_dc(dc: Watt, efficiency: EfficiencyRating) -> Watt {
+  watt(count: watt_count(w: dc) * 100 / efficiency_percent(e: efficiency))
+}
+
+fn node_draw(inputs: NodeElectricalInputs) -> NodeDrawReading {
+  match inputs.memory {
+    PopulationModuleUnread { stick_capacity: c, dimm_count: n, read_obligation: o } =>
+      NodeDrawRefused {
+        cause: MemoryModuleUnread { stick_capacity: c, dimm_count: n, read_obligation: o },
+      }
+    PopulationModuleRead { population: p } => {
+      let dc = dc_load_over_read_population(inputs: inputs, population: p)
+      NodeDrawDerived { dc_load: dc, wall_draw: wall_from_dc(dc: dc, efficiency: inputs.psu_efficiency) }
+    }
+  }
 }
 
 // PSU ADEQUACY IS A TYPED VERDICT CARRYING BOTH NUMBERS, not a Bool. A false
@@ -208,10 +267,9 @@ fn wall_draw_watts(inputs: NodeElectricalInputs) -> Watt {
 type PsuAdequacy
   = PsuAdequate { dc_load: Watt, rated: Watt, headroom: Watt }
   | PsuUndersized { dc_load: Watt, rated: Watt, shortfall: Watt }
+  | PsuUndecidable { cause: DrawRefusalCause }
 
-fn psu_adequacy(inputs: NodeElectricalInputs) -> PsuAdequacy {
-  let load = dc_load_watts(inputs: inputs)
-  let rated = inputs.psu_rated_output
+fn psu_adequacy_for_load(load: Watt, rated: Watt) -> PsuAdequacy {
   if watt_count(w: load) <= watt_count(w: rated) {
     PsuAdequate {
       dc_load: load,
@@ -224,6 +282,16 @@ fn psu_adequacy(inputs: NodeElectricalInputs) -> PsuAdequacy {
       rated: rated,
       shortfall: watt(count: watt_count(w: load) - watt_count(w: rated)),
     }
+  }
+}
+
+// A supply cannot be judged adequate for a load nobody could compute, and it
+// must not be judged adequate for the load MINUS its memory either.
+fn psu_adequacy(inputs: NodeElectricalInputs) -> PsuAdequacy {
+  match node_draw(inputs: inputs) {
+    NodeDrawRefused { cause: c } => PsuUndecidable { cause: c }
+    NodeDrawDerived { dc_load: dc, wall_draw: _ } =>
+      psu_adequacy_for_load(load: dc, rated: inputs.psu_rated_output)
   }
 }
 
@@ -286,12 +354,30 @@ fn envelope_divergence(derived: WallPowerReading, measured: WallPowerReading) ->
   }
 }
 
-fn derived_wall_power(inputs: NodeElectricalInputs) -> WallPowerReading {
-  WallPowerDerived { watts: wall_draw_watts(inputs: inputs) }
+type DerivedWallPower
+  = DerivedWallPowerReading { reading: WallPowerReading }
+  | DerivedWallPowerRefused { cause: DrawRefusalCause }
+
+fn derived_wall_power(inputs: NodeElectricalInputs) -> DerivedWallPower {
+  match node_draw(inputs: inputs) {
+    NodeDrawRefused { cause: c } => DerivedWallPowerRefused { cause: c }
+    NodeDrawDerived { dc_load: _, wall_draw: w } =>
+      DerivedWallPowerReading { reading: WallPowerDerived { watts: w } }
+  }
 }
 
 // --- capacity, for the projector -----------------------------------------------------------------
 
+// CAPACITY ANSWERS EVEN WHEN DRAW REFUSES, and that asymmetry is the point
+// rather than an inconsistency: a stick states its capacity on the label, so an
+// unread part number costs nothing here — while the device count that decides
+// draw is exactly what the part number carries. Two questions, two different
+// evidence requirements, answered independently.
 fn node_memory_capacity(inputs: NodeElectricalInputs) -> ByteSize {
-  byte_size(count: byte_size_count(b: inputs.population.total_bytes) * inputs.sockets)
+  match inputs.memory {
+    PopulationModuleRead { population: p } =>
+      byte_size(count: byte_size_count(b: p.total_bytes) * inputs.sockets)
+    PopulationModuleUnread { stick_capacity: c, dimm_count: n, read_obligation: _ } =>
+      byte_size(count: byte_size_count(b: c) * n * inputs.sockets)
+  }
 }

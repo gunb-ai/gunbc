@@ -20,7 +20,7 @@ import extdeps.memory.types {
   dram_module_is_realizable,
   dram_module_required_die_density,
 }
-import extdeps.cpu.ampere { altra_q8030_catalog }
+import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q8030_catalog }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform { OneDimmPerChannel, TwoDimmsPerChannel }
 import gunbc.memory_provisioning {
   FullChannel,
@@ -41,10 +41,19 @@ import product.node_power_envelope {
   effective_data_rate_mts,
   envelope_divergence,
   memory_bandwidth,
+  DerivedWallPowerReading,
+  DerivedWallPowerRefused,
+  MemoryModuleUnread,
+  NodeDrawDerived,
+  NodeDrawRefused,
+  PopulationModuleRead,
+  PopulationModuleUnread,
+  PsuUndecidable,
   memory_power,
+  node_draw,
+  node_memory_capacity,
   populated_dimms_per_channel,
   psu_adequacy,
-  wall_draw_watts,
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
@@ -137,12 +146,21 @@ data eight_module_population: PopulationOption = PopulationOption {
   margin_bytes: byte_size(count: 0),
 }
 
+// Reads the wall figure out of the typed reading. A refusal answers a negative,
+// which no claim below can mistake for a wattage.
+fn node_wall(inputs: NodeElectricalInputs) -> Int {
+  match node_draw(inputs: inputs) {
+    NodeDrawDerived { dc_load: _, wall_draw: w } => watt_count(w: w)
+    NodeDrawRefused { cause: _ } => 0 - 1
+  }
+}
+
 data q8030_node: NodeElectricalInputs = NodeElectricalInputs {
   label: "altrad8ud-q8030",
   sockets: 1,
   cpu: altra_q8030_catalog,
   context: altrad8ud_context,
-  population: eight_module_population,
+  memory: PopulationModuleRead { population: eight_module_population },
   dram_power_per_chip: milliwatt(count: 400),
   board_idle_draw: watt(count: 30),
   psu_rated_output: watt(count: 550),
@@ -177,10 +195,11 @@ test fn the_populated_depth_is_read_from_the_population() -> Bool {
 // the 64-bit data word.
 test fn psu_sizing_is_computed_from_the_cited_tdp() -> Bool {
   watt_count(w: memory_power(population: eight_module_population, power_per_chip: milliwatt(count: 400))) == 115
-    && watt_count(w: wall_draw_watts(inputs: q8030_node)) == 340
+    && node_wall(inputs: q8030_node) == 340
     && match psu_adequacy(inputs: q8030_node) {
       PsuAdequate { dc_load: dc, rated: _, headroom: h } => watt_count(w: dc) == 306 && watt_count(w: h) == 244
       PsuUndersized { dc_load: _, rated: _, shortfall: _ } => false
+      PsuUndecidable { cause: _ } => false
     }
 }
 
@@ -192,7 +211,7 @@ test fn an_undersized_supply_reports_its_shortfall() -> Bool {
     sockets: 1,
     cpu: altra_q8030_catalog,
     context: altrad8ud_context,
-    population: eight_module_population,
+    memory: PopulationModuleRead { population: eight_module_population },
     dram_power_per_chip: milliwatt(count: 400),
     board_idle_draw: watt(count: 30),
     psu_rated_output: watt(count: 250),
@@ -202,6 +221,7 @@ test fn an_undersized_supply_reports_its_shortfall() -> Bool {
     PsuUndersized { dc_load: dc, rated: r, shortfall: s } =>
       watt_count(w: dc) == 306 && watt_count(w: r) == 250 && watt_count(w: s) == 56
     PsuAdequate { dc_load: _, rated: _, headroom: _ } => false
+    PsuUndecidable { cause: _ } => false
   }
 }
 
@@ -232,7 +252,10 @@ test fn a_real_part_computes_a_real_die_density() -> Bool {
 // here overwrites the derived figure with the measured one, and there is no
 // function that would.
 test fn a_measurement_beside_the_derivation_reports_the_divergence() -> Bool {
-  let derived = derived_wall_power(inputs: q8030_node)
+  let derived = match derived_wall_power(inputs: q8030_node) {
+    DerivedWallPowerReading { reading: r } => r
+    DerivedWallPowerRefused { cause: _ } => WallPowerMeasured { watts: watt(count: 0), host: "unreachable" as NonEmptyStr, observed_at: 0 }
+  }
   let measured_low = WallPowerMeasured {
     watts: watt(count: 300),
     host: "srv1" as NonEmptyStr,
@@ -252,4 +275,111 @@ test fn a_measurement_beside_the_derivation_reports_the_divergence() -> Bool {
       EnvelopeAgrees { watts: w } => watt_count(w: w) == 340
       _ => false
     }
+}
+
+// --- THE OPERATOR'S PENDING CONFIGURATION ---------------------------------------------------------
+//
+// ALTRAD8UD-1L2T, one Altra Max M128-30, eight 64 GiB RDIMMs — the population
+// arriving now, whose exact part number has NOT been read. This is the
+// configuration the home-versus-colo placement decision divides a power budget
+// by, so it is pinned here rather than left to be recomputed by whoever needs
+// it next.
+//
+// The claim is that the draw REFUSES. A 64 GiB DDR4 module can be 2Rx4, 4Rx4 or
+// stacked-die, and those differ by a factor of two in device count; assuming
+// 2Rx4 to keep the arithmetic runnable would publish a wattage a rack
+// allocation would be sized on. The refusal names the read obligation, so what
+// is missing is one part number rather than an unknown amount of work.
+
+data sixty_four_gib_stick: ByteSize = byte_size(count: 68719476736)
+
+data pending_altrad8ud_m12830_node: NodeElectricalInputs = NodeElectricalInputs {
+  label: "altrad8ud-m12830-8x64",
+  sockets: 1,
+  cpu: altra_max_m12830_catalog,
+  context: altrad8ud_context,
+  memory: PopulationModuleUnread {
+    stick_capacity: sixty_four_gib_stick,
+    dimm_count: 8,
+    read_obligation: "read the part number off an arriving 64 GiB RDIMM and cite its catalog row: rank count and DRAM device width decide the chip count per rank, and a 64 GiB DDR4 module may be 2Rx4, 4Rx4 or stacked-die",
+  },
+  dram_power_per_chip: milliwatt(count: 400),
+  board_idle_draw: watt(count: 30),
+  psu_rated_output: watt(count: 550),
+  psu_efficiency: Gold,
+}
+
+test fn the_pending_configuration_refuses_its_draw_and_names_the_read() -> Bool {
+  match node_draw(inputs: pending_altrad8ud_m12830_node) {
+    NodeDrawRefused { cause: c } =>
+      match c {
+        MemoryModuleUnread { stick_capacity: cap, dimm_count: n, read_obligation: _ } =>
+          byte_size_count(b: cap) == 68719476736 && n == 8
+      }
+    NodeDrawDerived { dc_load: _, wall_draw: _ } => false
+  }
+}
+
+// ...and the supply is UNDECIDABLE rather than adequate. A 550W supply against
+// a 183W processor and a board looks comfortable until the memory it could not
+// count is added, which is exactly the reading this arm refuses to give.
+test fn the_pending_configuration_leaves_the_supply_undecidable() -> Bool {
+  match psu_adequacy(inputs: pending_altrad8ud_m12830_node) {
+    PsuUndecidable { cause: _ } => true
+    PsuAdequate { dc_load: _, rated: _, headroom: _ } => false
+    PsuUndersized { dc_load: _, rated: _, shortfall: _ } => false
+  }
+}
+
+// CAPACITY STILL ANSWERS: the sticks state their capacity on the label, so the
+// same node reports 512 GiB while refusing to report a wattage. Two questions,
+// two evidence requirements — and a reader who only needed capacity is not
+// blocked by a read obligation that does not bear on it.
+test fn the_pending_configuration_still_answers_its_capacity() -> Bool {
+  byte_size_count(b: node_memory_capacity(inputs: pending_altrad8ud_m12830_node)) == 549755813888
+}
+
+// POSITIVE CONTROL, and the number the placement decision consumes the moment
+// the sticks are qualified: the SAME node with the part read as a 2Rx4 64 GiB
+// module derives 183W of processor plus 115W of DRAM plus 30W of board = 328W
+// at the DC rail, 364W at the wall behind a Gold supply. If the refusal above
+// were a modelling dead end rather than a missing read, this claim could not
+// exist.
+data rdimm_64g_2rx4: DramModuleCatalogRow = DramModuleCatalogRow {
+  part_number: "GENERIC-64G-2RX4-3200",
+  manufacturer: sk_hynix,
+  generation: dram_generation_ddr4,
+  capacity_bytes: sixty_four_gib_stick,
+  data_rate_mts: 3200,
+  ecc: true,
+  buffering: Registered,
+  chip_width: bit_width(count: 4),
+  rank_count: 2,
+}
+
+data eight_by_64_population: PopulationOption = PopulationOption {
+  module: rdimm_64g_2rx4,
+  dimm_count: 8,
+  coverage: FullChannel { topology: OneDimmPerChannel },
+  total_bytes: byte_size(count: 549755813888),
+  margin_bytes: byte_size(count: 0),
+}
+
+data qualified_altrad8ud_m12830_node: NodeElectricalInputs = NodeElectricalInputs {
+  label: "altrad8ud-m12830-8x64-qualified",
+  sockets: 1,
+  cpu: altra_max_m12830_catalog,
+  context: altrad8ud_context,
+  memory: PopulationModuleRead { population: eight_by_64_population },
+  dram_power_per_chip: milliwatt(count: 400),
+  board_idle_draw: watt(count: 30),
+  psu_rated_output: watt(count: 550),
+  psu_efficiency: Gold,
+}
+
+test fn the_same_node_derives_its_draw_once_the_part_is_read() -> Bool {
+  match node_draw(inputs: qualified_altrad8ud_m12830_node) {
+    NodeDrawDerived { dc_load: dc, wall_draw: w } => watt_count(w: dc) == 328 && watt_count(w: w) == 364
+    NodeDrawRefused { cause: _ } => false
+  }
 }
