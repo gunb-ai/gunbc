@@ -189,48 +189,67 @@ mentions on main are **inside string literals** — `gunbc.host_standup` names
 which is prose, not a code dependency. So there is no production *decision* consumer and it is
 deleted outright, needing no terminal market Y first — only that #8413 stop importing its `Shape`.
 
-**The census, re-measured at `origin/main` and corrected — the first version of this section was
-both too narrow and wrong in one place.**
+**The census, re-measured twice and corrected twice. The version before this one asserted a
+structural fact that was false, and the method that produced it is the finding.**
 
-*Structural consumers: zero.* Every reference to `product.compute_fabric` anywhere in the corpus is
-**a string literal**. There is no `import` of it. That is the finding that shapes Cut B, and it is
-uncomfortable: the replacement doctrine's "the deletion is the census" **does not apply here**,
-because nothing refuses when the module is gone. Deleting it is silent by construction, so the
-census must be done by reading before the deletion, not discovered by it. A cut that relies on
-compile refusals to find its dependents will find none and conclude, wrongly, that it is finished.
+*What I claimed:* every reference to `product.compute_fabric` is a string literal, so the deletion
+refuses nothing and "the deletion is the census" does not apply here.
 
-*What actually references it, by class:*
+*What is true:* `dag/test/claim/host_standup_spine_witness_test.dag` declares
+`compute_fabric_shape_authority_is_referenced_not_redeclared`, whose body is a direct call to the
+module's own `witness_fabric_binds_need_to_opportunity()`, and
+`compute_fabric_resource_witness_test.dag` calls it too. Both predate the base I measured. The
+deletion **does** refuse, and the doctrine's guarantee partly holds.
 
-| class | sites | breaks loudly on deletion? |
-| --- | --- | --- |
-| the module itself, 139 lines, 7 types | `dag/product/compute_fabric.dag` | — |
-| **5 witnesses inside the production module** (`witness_need_is_only_fabric_plus_program`, `witness_shape_is_derived_from_program`, `witness_fabric_binds_need_to_opportunity`, `witness_exec_and_ci_are_just_programs`, `witness_hard_requirement_unmet_is_unmet`) | same file | no — they die with it |
-| a separate witness file | `dag/test/claim/compute_fabric_resource_witness_test.dag` | no |
-| two `refusal:` / `authority_or_interim:` prose strings | `gunbc.host_standup` | no — and they become false |
-| five plan documents | `bounded_input_cost_envelope_scheduling`, `compute_envelope_model`, `dag_v2_defork_audit`, `inert_layer_lens`, `realization_measurement_loop` | no |
-| DESIGN §2's storage-decomposition example | fixed separately in #8559 | no |
-| #8413's `Shape` import | the branch | yes — the only one |
+*Why the method failed, which matters more than the claim:* I grepped the **module name**. That
+witness calls a **bare function name** with no qualifier, so no amount of grepping for
+`compute_fabric` could ever have found it. A `.dag` reference takes at least three forms —
+qualified name, bare name, namespace projection — and checking only the first has cleared live
+files wrongly before. The defect is not that I missed a file; it is that a single-form grep cannot
+answer the question I asked of it, and I reported its output as a structural fact.
 
-Several of the plan documents cite types the module **no longer has** (`WorkDemand`,
-`ParallelismShape`, `ResourceEnvelope`, `execution_receipt_digest`); its own
-`compute_fabric_resource_model_dissolution_receipt` records them as dissolved in #5904. So the
-prose was already stale before this cut, and the cut is not what makes it wrong.
+**#8413 merged to main as `08b6f7ea4d` while Cut B was in flight**, which adds three *real* imports
+and changes the cut's shape:
 
-**Correction — the `Endpoint` claim in the first version of this section was itself wrong.** I
-wrote that `src/v2/test/claim/grounding_lens_test.dag` "cites `product.compute_fabric.Endpoint`,
-which does not exist — a fabricated citation, the §3 class". It is not a citation. It is a
-**controlled fixture**: `product_namespace_fixture_decls()` hand-builds two `concept_decl` rows to
-test that a `product.*` namespace is not layer-excluded, and the sibling row names
-`product.network_topology.Url`, which also does not exist. The test needs a string *shaped like* a
-product-namespace qualified name; whether it resolves is irrelevant to what it asserts, and DESIGN
-§5 names an independently authored fixture as a legitimate oracle. I read a fixture as a citation
-because the string looked like one — the same confident-answer-to-the-adjacent-question failure
-this document keeps charging elsewhere, and it is recorded rather than quietly deleted because a
+```
+dag/product/fabric/supply.dag:6                              import product.compute_fabric { Shape }
+dag/product/fabric/work.dag:5                                import product.compute_fabric { Shape }
+dag/test/claim/fabric_terminal_contract_witness_test.dag:7   import product.compute_fabric { Shape, HardRequirements }
+```
+
+**The resolution: `Shape` and `HardRequirements` move into `product.fabric.work`, and everything
+else in `product.compute_fabric` is deleted.** This is the doctrine rather than a preference — the
+dead module's only surviving load-bearing content *is* `Shape`, and a replacement migration moves
+the surviving authority to its rightful owner instead of hunting for a substitute so the old file
+can die with its contents intact. `Shape` belongs to work: it is what a `WorkSpec` requires and
+what an `Offer` offers, and `work.dag` already destructures it in `shape_material` behind a
+deliberate compile wall on axis growth.
+
+The structural check that makes it free: **`supply.dag` already imports `product.fabric.work`**
+(verified internal graph: `work <- identity`; `supply <- identity, demand, work`). No new edge, no
+cycle. It also moves *toward* §12's layout, which assigns work the work-side vocabulary — and it
+mints nothing and evolves nothing, so neither `ExecutionClassRef` nor `ResourceSupplyRef` is
+needed. Those two were named in an earlier brief as the available alternatives; **neither exists on
+main**, and naming unavailable carriers as the sanctioned path is how a brief pushes an
+implementer toward minting one inside a deletion.
+
+*The rest of the census:* five witnesses inside the production module; a separate witness file;
+two `gunbc.host_standup` prose strings that become false on deletion; five plan documents, several
+citing types the module no longer has (`WorkDemand`, `ParallelismShape`, `ResourceEnvelope`) which
+its own `compute_fabric_resource_model_dissolution_receipt` records as dissolved in #5904; and
+DESIGN §2, fixed separately in #8559. One coverage obligation must survive the cut rather than die
+with it: that receipt names `witness_hard_requirement_unmet_is_unmet` as the thread-floor coverage
+for the #5904 dissolution, so deleting the witness *and* the receipt recording it would retire a
+coverage claim with nobody deciding to.
+
+**Correction, kept rather than deleted — the `Endpoint` claim was also wrong.** An earlier version
+recorded `grounding_lens_test.dag` as citing a non-existent `product.compute_fabric.Endpoint`, "a
+fabricated citation, the §3 class". It is a **controlled fixture**: `product_namespace_fixture_decls()`
+hand-builds two `concept_decl` rows to test that a `product.*` namespace is not layer-excluded, and
+its sibling names `product.network_topology.Url`, which also does not exist. The test needs a
+string *shaped like* a product qualified name, not one that resolves. Two false findings in one
+section, both stated confidently, both about whether a string was a reference — recorded because a
 plan that silently drops its own false claims teaches nothing.
-
-*Nothing in Cut B is required to change that fixture.* If it is touched at all, the reason is
-legibility (after the deletion it names a module that no longer exists and will read as a stale
-citation to the next person), not correctness.
 
 **Do not evolve `Shape`.** Do not grow it into memory, storage, topology, network or isolation to
 make anything compile. At the terminal-carrier grain use `ExecutionClassRef` / `ResourceSupplyRef`
