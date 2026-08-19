@@ -1611,21 +1611,6 @@ mod compiler_tests {
     }
 
     #[test]
-    fn caret_parse_smoke_native_compile_emit_witnesses() {
-        use crate::v1_tests_claim_caret_parse_smoke_test::*;
-        assert!(w_caret_tokenizes_as_sh_caret());
-        assert!(w_caret_paren_tokenizes_as_caret_then_lparen());
-        assert!(w_parse_caret_ident_produces_literal());
-        assert!(w_parse_caret_paren_produces_discriminant_call());
-        assert!(w_parse_expr_caret_paren_full_pipeline());
-        assert!(w_parse_expr_caret_var_arg_produces_discriminant_call());
-        assert!(w_parse_module_let_caret_paren());
-        assert!(w_compile_to_resolved_caret_probe5b_has_no_caret_function_error());
-        assert!(w_emit_caret_ident_symbol_literal());
-        assert!(w_emit_caret_paren_discriminant_sugar());
-    }
-
-    #[test]
     fn self_parse_all_modules() {
         let result = std::thread::Builder::new()
             .stack_size(64 * 1024 * 1024)
@@ -1885,10 +1870,6 @@ mod compiler_tests {
             coerce_primitive_type(RenderTarget::Rust, "Json".into()),
             "serde_json::Value"
         );
-        assert_eq!(
-            coerce_primitive_type(RenderTarget::Rust, "Hash".into()),
-            "v1_rt::Hash"
-        );
     }
 
     #[test]
@@ -2076,7 +2057,6 @@ mod compiler_tests {
         assert_eq!(is_copy(RenderTarget::Rust, "Bytes".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Secret".into()), Some(false));
         assert_eq!(is_copy(RenderTarget::Rust, "Json".into()), Some(false));
-        assert_eq!(is_copy(RenderTarget::Rust, "Hash".into()), Some(false));
     }
 
     #[test]

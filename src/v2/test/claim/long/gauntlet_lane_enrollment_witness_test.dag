@@ -1,11 +1,11 @@
 module test.claim.long.gauntlet_lane_enrollment_witness
 
 import gunbc.ci_layer_roots { SubstrateLongLaneRow, falsifier_substrate_long_lane_rows }
-import gunbc.ci_gate { Gate, CheapClaimPoolGate, RegenVerifyGate }
+import gunbc.ci_gate { Gate, CheapClaimPoolGate, GeneratedArtifactDriftGate }
 import gunbc.commit_workflow {
   CommitCheckEnrollment, CommitCheckKind, CommitWitnessClaim, CommitCargoFmtCheck,
   CommitSpecGate,
-  CommitWorkflowSurface, GithubActionsCiJob, GithubActionsCiRegenJob,
+  CommitWorkflowSurface, GithubActionsCiJob,
   GitPrePushHook, FalsifierCadenceJob,
   roster_has_no_bare_deenrolled_witness,
   live_roster_has_no_bare_deenrolled_witness,
@@ -55,7 +55,7 @@ fn synthetic_bare_deenrolled_row() -> CommitCheckEnrollment {
       kind: ExecutionWitnessKind,
       span: SpanUndeclared
     },
-    surfaces: [GitPrePushHook, GithubActionsCiRegenJob]
+    surfaces: [GitPrePushHook]
   }
 }
 
@@ -99,7 +99,7 @@ test fn gauntlet_lane_rehome_bare_deenrollment_RED_control_holds() -> Bool {
   )
 }
 
-data gate_half_of_the_wall_note: String = "The GATE half, added 2026-07-26 when an audit found the wall above covers only CommitWitnessClaim rows. A CommitSpecGate could be moved to surfaces: [FalsifierCadenceJob] — or to [] outright — and execute nowhere with nothing red, because roster_has_no_bare_deenrolled_witness filters on enrollment_is_witness_claim, which answers false for a gate. That made the gate the single enrollment shape whose de-enrollment was invisible, in a lane about to be used to re-home three of them. The claims below mirror the witness half exactly, INCLUDING the surface asymmetry that makes them two predicates rather than one: the regen-job row is a POSITIVE control here (a gate on GithubActionsCiRegenJob is correctly enrolled — project_ci_regen_job_gates executes it) where the byte-identical witness row is the NEGATIVE control above. If those two ever agree, one of them is wrong; gate_enrollment_surface_asymmetry_note carries the reasoning."
+data gate_half_of_the_wall_note: String = "The GATE half, added 2026-07-26 when an audit found the wall above covers only CommitWitnessClaim rows. A CommitSpecGate could be moved to surfaces: [FalsifierCadenceJob] — or to [] outright — and execute nowhere with nothing red, because roster_has_no_bare_deenrolled_witness filters on enrollment_is_witness_claim, which answers false for a gate. That made the gate the single enrollment shape whose de-enrollment was invisible, in a lane about to be used to re-home three of them. The claims below mirror the witness half exactly, minus the surface asymmetry, which is RETIRED. AMENDED 2026-08-19 (regen root cut): the positive control here used to be a gate on GithubActionsCiRegenJob, paired against a byte-identical witness row that had to FAIL — the pair demonstrated that regen counted for gates and never for witnesses. That surface was the entire asymmetry and it is deleted, so the two enrollment predicates collapsed into one (gunbc.commit_workflow enrollment_is_scheduled) and NO row can demonstrate the distinction any more, because it no longer exists. The pair is re-pointed rather than dropped: synthetic_enrolled_gate_row rides GithubActionsCiJob and must pass, synthetic_bare_deenrolled_gate_row rides GitPrePushHook alone and must red. That still discriminates the claim that survives — a declared row must ride a surface that executes it — and GitPrePushHook still counts for neither kind. What is no longer witnessed, stated rather than quietly dropped: that the gate and witness predicates DIFFER. If a future surface executes one kind and not the other, the split and its controls have to be reintroduced. enrollment_surface_asymmetry_retired_note carries the retirement."
 
 fn synthetic_cadence_gate_row() -> CommitCheckEnrollment {
   CommitCheckEnrollment {
@@ -108,10 +108,15 @@ fn synthetic_cadence_gate_row() -> CommitCheckEnrollment {
   }
 }
 
-fn synthetic_regen_gate_row() -> CommitCheckEnrollment {
+// Was synthetic_regen_gate_row, on GithubActionsCiRegenJob. That surface is deleted with
+// the regen root cut and it WAS the whole gate/witness asymmetry, so this row can no longer
+// demonstrate the asymmetry — nothing can. It is re-pointed at the per-PR floor and keeps the
+// claim that survives: a gate riding an executing surface is correctly enrolled, paired against
+// synthetic_bare_deenrolled_gate_row on GitPrePushHook, which is not.
+fn synthetic_enrolled_gate_row() -> CommitCheckEnrollment {
   CommitCheckEnrollment {
-    check: CommitSpecGate { gate: RegenVerifyGate },
-    surfaces: [GithubActionsCiRegenJob]
+    check: CommitSpecGate { gate: GeneratedArtifactDriftGate },
+    surfaces: [GithubActionsCiJob]
   }
 }
 
@@ -125,7 +130,7 @@ fn synthetic_bare_deenrolled_gate_row() -> CommitCheckEnrollment {
 test fn gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds() -> Bool {
   live_roster_has_no_bare_deenrolled_gate()
     && roster_has_no_bare_deenrolled_gate(
-         roster: [synthetic_cadence_gate_row(), synthetic_regen_gate_row()]
+         roster: [synthetic_cadence_gate_row(), synthetic_enrolled_gate_row()]
        )
 }
 

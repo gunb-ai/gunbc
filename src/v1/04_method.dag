@@ -142,8 +142,6 @@ fn builtin_function_registry() -> Map<String, Node> {
   let m = map_insert(m, "witness_layer_roots_compile_clean_emit_check", bool_type)
   let m = map_insert(m, "consume_floor_compile_clean_gate_verdict", bool_type)
   let m = map_insert(m, "consume_floor_compile_clean_gate_failure_detail", string_type)
-  let m = map_insert(m, "record_regen_verify_gate_failure_detail", unit_type)
-  let m = map_insert(m, "consume_regen_verify_gate_failure_detail", string_type)
   let m = map_insert(m, "record_generated_artifact_drift_gate_failure_detail", unit_type)
   let m = map_insert(m, "consume_generated_artifact_drift_gate_failure_detail", string_type)
   let m = map_insert(m, "witness_compile_clean_cli_floor_verdicts_agree", bool_type)

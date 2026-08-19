@@ -5,7 +5,7 @@ import v2.lens.fallback_arm_census {
   fallback_arm_census_lens_path_has_no_answers_on_open,
   fallback_arm_census_reconciliation_holds_live,
   fallback_arm_census_total_live,
-  fallback_arm_seed_inventory_count_is_25_holds
+  fallback_arm_seed_inventory_count_is_24_holds
 }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import v2.std.logic { Bool }
@@ -31,7 +31,7 @@ test fn fallback_arm_census_class_counts_nonnegative_holds() -> Bool {
 }
 
 test fn fallback_arm_seed_inventory_count_holds() -> Bool {
-  fallback_arm_seed_inventory_count_is_25_holds()
+  fallback_arm_seed_inventory_count_is_24_holds()
 }
 
 test fn fallback_arm_census_self_applies_holds() -> Bool {

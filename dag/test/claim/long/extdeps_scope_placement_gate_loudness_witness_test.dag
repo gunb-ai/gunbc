@@ -1,0 +1,153 @@
+module test.claim.long.extdeps_scope_placement_gate_loudness_witness
+
+import extdeps.filesystem.filesystem_io
+import gunbc.extdeps_scope_frontier {
+  legacy_extdeps_scope_frontier_manifest_path, parse_frontier_manifest,
+  manifest_line_observation,
+  ManifestLinesAdded, ManifestDiffUnreadable,
+  AddedPathsObserved,
+}
+import tools.extdeps_scope_placement_gate {
+  scope_placement_failure_reason,
+  scope_placement_membership_verdict,
+  scope_placement_freeze_verdict,
+  manifest_remove_only_exit,
+}
+import gunbc.test_module_hygiene { failure_receipt_companion }
+import std.process { ProcessExit, ExitSuccess }
+import std.types { String, Bool, List }
+
+data loudness_witness_note: String = "Floor loudness for tools.extdeps_scope_placement_gate (gunbc#7644): lands the seed-runner loudness path + extdeps_scope_placement_gate production companion only; six other production _passes gates remain mute (counted frontier in tools.floor_effect_gate_witness floor_gate_failure_receipt_note). Per-arm fixtures exercise gate REASON GENERATION with synthetic observations (supporting evidence). Executed RED: red_seed_runner_failure_detail_projects_located_receipt calls production seed_runner_bool_false_failure_detail against seed_runner_loudness_probe_passes, an always-false _passes probe declared IN THIS ENTRY beside its _failure_receipt companion. THE PROBE PAIR MOVED HERE (2026-08-18) AND THAT MOVE IS THE POINT: claim_executor evaluates the derived companion in the WITNESS entry's context, so the pair has to be reachable from here — and reaching it by importing tools.floor_effect_gate_witness dragged that entry's whole gate closure (ci_gates, the compile-clean, generated-artifact and regen-verify gates) into a witness that asserts none of them. Measured import closure: 718 modules / 10.1 MB of source before, 62 modules / 0.49 MB after; the witness was the floor's second most expensive row at 78.6s. Nothing about the claim changed — the same production fn is called against the same located receipt text, and the probe pair is deleted from tools.floor_effect_gate_witness rather than duplicated. It is a func (not test fn), so floor discovery, which selects TestMarkedDecl only, does not enroll it. MUTATION CONTROL RE-EXECUTED AGAINST THE MOVED PAIR (2026-08-18, remote sandbox at 3abc17b54c9): renaming seed_runner_loudness_probe_failure_receipt so the companion derivation misses it makes this row FAIL (rc=1) while all seven rows of this entry pass at head (rc=0) — so the claim still discriminates on the production path after the move, and does not merely assert its own literal. Mutation control executed 2026-08-05 at b0a17f608a, when the probe pair still lived on tools.floor_effect_gate_witness: disposable detached worktree, removed _passes handling from production failure_receipt_companion (holds-only), rebuilt claim_batch, re-ran witness — FAIL red_seed_runner_failure_detail_projects_located_receipt (eval_self 0ms, resolved; not resolution); detail collapsed to bare returned Bool(false) without THIS CHANGE or dag/extdeps/browser/opera.dag. Current head PASS; head detail includes returned Bool(false) | extdeps scope placement gate: THIS CHANGE ... dag/extdeps/browser/opera.dag. Guarantee rung: observed validation on the production seed_runner path; no construction wall claimed for seed/.dag mirror parity (DESIGN section 7 seed retention). REMEASURED AGAINST THE FLOOR'S OWN LINE (witness-cost-class lane, gunbc.roadmap_authority adhoc-0e6f8ea5-158, 2026-08-19) AND FALSIFIED AS A WITNESS-COST REPAIR: the narrowing's own commit measured import closure (718 modules/10.1MB -> 62/0.49MB) and standalone entry-resolve time (30.726s -> 1.005s), but standalone resolve time is not the number the floor's ceiling judges. Run 32177951514 (head 59653f569e, which git merge-base --is-ancestor confirms is a descendant of this repair's ff56305b731) is the last floor observation of this identity before #8457 quarantined the module by name (test.claim.long. prefix) out of required_floor's discovery entirely -- there is no floor line for it after that quarantine, and none will exist until the module returns to floor scope. That last, post-repair line: [floor-witness-slow] red_seed_runner_failure_detail_projects_located_receipt 75926ms, BUDGET-REFUSED against the 1552ms ceiling (an exact measured cost, not a bound -- the witness ran to completion), and [floor-claim-memory] recorded this as the single worst claim in that run, growing RSS by 1.00GB to 10.12GB. 75926ms is statistically the same order as this identity's own PRE-repair floor history (42983-97260ms across four earlier CI runs, docs/plans/measurements/floor-slow-rows-2026-08-17.tsv) -- the 718-to-62-module import-closure narrowing left the floor cost effectively unchanged. EXEMPLAR 1 IS THEREFORE UNCONFIRMED, joining the Class B and loop/bind candidates as this lane's third falsification: import-closure pollution, as a witness-cost class with a demonstrated fixable member, tested empty across all three candidates this lane investigated. What is NOT retracted: the closure narrowing itself is real and DESIGN.md §3-legitimate (fewer modules genuinely load faster in isolation), it is retained as a correctness improvement, and it may have cut cold standalone resolve time as measured -- what is refuted is that it moved the FLOOR's own per-row cost, which is the only number the 1552ms ceiling enforces. Same shape as this lane's Class B correction: the right repair, the wrong quantity measured. All three falsifications point at the same underlying object: a fixed, corpus-wide load/index cost paid once per MultiEntryIndex rather than once per entry's import closure (DESIGN.md's floor-shared-compute-memoization open thread on build_both_closure_edge_index, whose closure-size-independence claim this lane's measurements corroborate rather than re-derive)."
+
+fn read_manifest_rows() -> List<String> {
+  parse_frontier_manifest(
+    content: filesystem_read(path: legacy_extdeps_scope_frontier_manifest_path).content
+  )
+}
+
+fn exit_reason_of(e: ProcessExit) -> String {
+  scope_placement_failure_reason(exit: e)
+}
+
+fn exit_is_failure(e: ProcessExit) -> Bool {
+  match e { ExitSuccess => false  _ => true }
+}
+
+fn reason_names_all(exit: ProcessExit, markers: List<String>) -> Bool {
+  let reason = exit_reason_of(e: exit)
+  reason != "" && all(markers, m => string_contains(s: reason, pattern: m))
+}
+
+func seed_runner_loudness_probe_passes() -> Bool {
+  false
+}
+
+func seed_runner_loudness_probe_failure_receipt() -> String {
+  scope_placement_failure_reason(
+    exit: scope_placement_membership_verdict(
+      observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+    )
+  )
+}
+
+test fn red_floor_entry_companion_names_declared_failure_receipt_fn() -> Bool {
+  match failure_receipt_companion(function: "extdeps_scope_placement_gate_passes") {
+    Present { value: companion } => companion == "extdeps_scope_placement_gate_failure_receipt"
+    Absent => false
+  }
+}
+
+test fn red_seed_runner_failure_detail_projects_located_receipt() -> Bool {
+  let detail = seed_runner_bool_false_failure_detail(
+    witness: "seed_runner_loudness_probe_passes"
+  )
+  detail != "returned Bool(false)"
+    && string_contains(s: detail, pattern: "returned Bool(false) | ")
+    && string_contains(s: detail, pattern: "THIS CHANGE")
+    && string_contains(s: detail, pattern: "dag/extdeps/browser/opera.dag")
+}
+
+test fn red_membership_fixture_names_change_and_path() -> Bool {
+  reason_names_all(
+    exit: scope_placement_membership_verdict(
+      observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+    ),
+    markers: ["THIS CHANGE", "dag/extdeps/browser/opera.dag"]
+  )
+}
+
+test fn red_freeze_fixture_names_manifest_smuggling() -> Bool {
+  let probe = read_manifest_rows().first()
+  reason_names_all(
+    exit: scope_placement_freeze_verdict(
+      observation: AddedPathsObserved { paths: [probe] }
+    ),
+    markers: ["frozen-manifest", "legacy_manifest_freeze_sha"]
+  )
+}
+
+fn synthetic_manifest_add_diff() -> String {
+  let manifest = legacy_extdeps_scope_frontier_manifest_path
+  join([
+    concat("diff --git a/", manifest, " b/", manifest),
+    "index 1111111..2222222 100644",
+    concat("--- a/", manifest),
+    concat("+++ b/", manifest),
+    "@@ -0,0 +1 @@",
+    "+dag/extdeps/vendor/reverted_module.dag",
+    "diff --git a/dag/gunbc/other.dag b/dag/gunbc/other.dag",
+    "--- a/dag/gunbc/other.dag",
+    "+++ b/dag/gunbc/other.dag",
+    "@@ -1 +1 @@",
+    "+data unrelated: String"
+  ], "\n")
+}
+
+test fn red_manifest_lines_added_fixture_names_row() -> Bool {
+  let observation = manifest_line_observation(diff_text: synthetic_manifest_add_diff())
+  match observation {
+    ManifestLinesAdded { rows: rows } =>
+      (rows |> count) == 1
+        && contains(
+             xs: rows,
+             item: "dag/extdeps/vendor/reverted_module.dag",
+             eq: fn(a, b) { a == b }
+           )
+        && reason_names_all(
+             exit: manifest_remove_only_exit(observation: observation),
+             markers: ["ADDS row(s)", "dag/extdeps/vendor/reverted_module.dag"]
+           )
+    _ => false
+  }
+}
+
+test fn red_manifest_diff_unreadable_fixture_refuses() -> Bool {
+  let manifest = legacy_extdeps_scope_frontier_manifest_path
+  let truncated = join([
+    concat("diff --git a/", manifest, " b/", manifest),
+    "index 1111111..2222222 100644",
+    concat("--- a/", manifest)
+  ], "\n")
+  let observation = manifest_line_observation(diff_text: truncated)
+  match observation {
+    ManifestDiffUnreadable =>
+      reason_names_all(
+        exit: manifest_remove_only_exit(observation: observation),
+        markers: ["remove-only", "unreadable"]
+      )
+    _ => false
+  }
+}
+
+test fn red_failure_reason_never_empty_on_refusal() -> Bool {
+  exit_is_failure(
+    e: scope_placement_membership_verdict(
+      observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+    )
+  )
+    && exit_reason_of(
+         e: scope_placement_membership_verdict(
+           observation: AddedPathsObserved { paths: ["dag/extdeps/browser/opera.dag"] }
+         )
+       ) != ""
+}

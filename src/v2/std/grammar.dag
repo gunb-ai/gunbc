@@ -289,10 +289,27 @@ type GrammarProduction {
   emitted: Node
 }
 
+// SYNC TOKENS ARE AN ENUMERATION, NOT A PREDICATE.
+//
+// A grammar's error-recovery sync tokens are finite and known at authoring time — every producer in
+// the corpus writes either an empty set or a literal list of keyword classes. Carrying them as
+// `Set<Symbol>` made them a POINTWISE-POWER characteristic function (`std.types` grounds
+// `Set<element> = PointwisePower<element>`), which is the right grounding for a set in general and
+// the wrong carrier for six literal keywords: a characteristic function cannot be enumerated, so
+// the whole grammar value became unhashable through this one field.
+//
+// That was not a theoretical loss. `prepare_grammar` is memoized cross-claim on
+// (declaration identity, content hash of the grammar), and the interpreter's content-hash walk
+// BAILS on a closure — so the memo could never form its key, never store, and never hit, for every
+// language in the corpus and not only `.dag`. The measured consequence was a full ~12s grammar
+// preparation on every parse, including of an empty module.
+//
+// The field is therefore the enumeration it always was. `Set` keeps its grounding untouched; what
+// changed is that this field stopped borrowing a power-set to carry a list.
 type GrammarRoot {
   start: Symbol
   productions: List<GrammarProduction>
-  sync_tokens: Set<Symbol>
+  sync_tokens: List<Symbol>
 }
 
 type ValidatedGrammarRoot {
@@ -347,8 +364,8 @@ fn grammar_named_edge(name: Symbol, target: Node) -> Edge {
   }
 }
 
-fn grammar_empty_sync_tokens() -> Set<Symbol> {
-  Set { member: fn(_) { false } }
+fn grammar_empty_sync_tokens() -> List<Symbol> {
+  []
 }
 
 fn grammar_empty_node() -> Node {

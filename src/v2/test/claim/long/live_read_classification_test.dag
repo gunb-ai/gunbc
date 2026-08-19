@@ -1,0 +1,387 @@
+module v2.test.claim.long.live_read_classification_test
+
+import v2.lens.live_read_classification {
+  live_read_classification,
+  live_read_classification_from_facts,
+  live_read_classification_from_facts_v0,
+  live_read_classification_g2_from_facts,
+  live_read_classification_g2_from_facts_v0,
+  classification_is_local,
+  classification_has_runtime_read,
+  classification_has_corpus_scan_carrier,
+  classification_has_filesystem_read_carrier,
+  classification_has_literal_path,
+  runtime_read_carrier_module_names,
+  runtime_read_touched_by_path_g1,
+  runtime_read_touched_by_path_g2,
+  g2_implies_reads_live_tree,
+  live_read_selection_projection_from_facts
+}
+import v2.lens.witness_cost_locality { ModuleImportFact }
+import v2.std.live_read {
+  LiveReadSelectionProjection,
+  LiveReadSelectionClassified,
+  LiveReadSelectionRefused,
+  LiveReadClassification,
+  LiveReadCarrierHome,
+  FilesystemReadCarrier,
+  ModuleDeclarationFactsCarrier,
+  DeclFactsReflectionCarrier,
+  live_read_carrier_homes_v0
+}
+import v2.std.collection { List }
+import v2.std.node { Atom, Conj, Edge, Node, Positional, SyntheticOccurrence, TypeNode }
+import v2.std.compilers.lexing { symbol_intern_lexeme }
+import v2.std.fn_index {
+  FnArrowDecl,
+  fn_arrow_decl_facts_live,
+  fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger
+}
+import std.disposition { Scaffold, Terminal }
+import v2.std.live_tree { LiveTreeDisposition, ReadsLiveTree }
+import v2.std.logic { Bool }
+import v2.std.text { String }
+import v2.test.claim.complexity.accumulator_copy_roster_gate {
+  accumulator_copy_roster_gate_entry_live_tree_disposition
+}
+
+data fixture_carriers: List<LiveReadCarrierHome> = [
+  LiveReadCarrierHome { module: "fix.corpus_reader", kind: DeclFactsReflectionCarrier },
+  LiveReadCarrierHome { module: "fix.roster_gate", kind: FilesystemReadCarrier },
+  LiveReadCarrierHome { module: "fix.compile_scope", kind: ModuleDeclarationFactsCarrier }
+]
+
+data fixture_unit_closure: List<String> = ["fix.entry", "fix.std_logic", "fix.std_text"]
+
+data fixture_two_hop_closure: List<String> = ["fix.entry", "fix.mid", "fix.std_logic", "fix.corpus_reader"]
+
+data fixture_roster_gate_closure: List<String> = ["fix.witness", "fix.roster_gate", "fix.std_logic"]
+
+data fixture_scope_closure: List<String> = ["fix.lever_entry", "fix.compile_scope"]
+
+data fixture_two_hop_facts: List<ModuleImportFact> = [
+  ModuleImportFact { module: "fix.entry", imports: ["fix.mid", "fix.std_logic"] },
+  ModuleImportFact { module: "fix.mid", imports: ["fix.corpus_reader"] },
+  ModuleImportFact { module: "fix.corpus_reader", imports: [] }
+]
+
+data fixture_severed_facts: List<ModuleImportFact> = [
+  ModuleImportFact { module: "fix.entry", imports: ["fix.mid", "fix.std_logic"] },
+  ModuleImportFact { module: "fix.mid", imports: [] },
+  ModuleImportFact { module: "fix.corpus_reader", imports: [] }
+]
+
+data fixture_roster_gate_facts: List<ModuleImportFact> = [
+  ModuleImportFact { module: "fix.witness", imports: ["fix.roster_gate", "fix.std_logic"] },
+  ModuleImportFact { module: "fix.roster_gate", imports: [] }
+]
+
+data fixture_roster_gate_severed_facts: List<ModuleImportFact> = [
+  ModuleImportFact { module: "fix.witness", imports: ["fix.std_logic"] },
+  ModuleImportFact { module: "fix.roster_gate", imports: [] }
+]
+
+data fixture_scope_facts: List<ModuleImportFact> = [
+  ModuleImportFact { module: "fix.lever_entry", imports: ["fix.compile_scope"] },
+  ModuleImportFact { module: "fix.compile_scope", imports: [] }
+]
+
+fn verdict_of(closure: List<String>) -> LiveReadClassification {
+  live_read_classification(closure_modules: closure, carrier_homes: fixture_carriers)
+}
+
+test fn unit_closure_is_local_read() -> Bool {
+  classification_is_local(classification: verdict_of(closure: fixture_unit_closure))
+}
+
+test fn two_hop_decl_facts_carrier_is_runtime_read() -> Bool {
+  classification_has_runtime_read(classification: verdict_of(closure: fixture_two_hop_closure))
+    && classification_has_corpus_scan_carrier(classification: verdict_of(closure: fixture_two_hop_closure))
+}
+
+test fn roster_gate_import_is_filesystem_runtime_read() -> Bool {
+  classification_has_filesystem_read_carrier(classification: verdict_of(closure: fixture_roster_gate_closure))
+    && !classification_has_corpus_scan_carrier(classification: verdict_of(closure: fixture_roster_gate_closure))
+}
+
+test fn compile_scope_import_is_corpus_scan_runtime_read() -> Bool {
+  classification_has_corpus_scan_carrier(classification: verdict_of(closure: fixture_scope_closure))
+}
+
+test fn two_hop_facts_classify_as_runtime_read() -> Bool {
+  classification_has_runtime_read(
+    classification: live_read_classification_from_facts(
+      entry_module: "fix.entry",
+      facts: fixture_two_hop_facts,
+      carrier_homes: fixture_carriers
+    )
+  )
+}
+
+test fn severed_mid_hop_is_local_read() -> Bool {
+  classification_is_local(
+    classification: live_read_classification_from_facts(
+      entry_module: "fix.entry",
+      facts: fixture_severed_facts,
+      carrier_homes: fixture_carriers
+    )
+  )
+}
+
+test fn roster_gate_facts_classify_filesystem_carrier() -> Bool {
+  let c = live_read_classification_from_facts(
+    entry_module: "fix.witness",
+    facts: fixture_roster_gate_facts,
+    carrier_homes: fixture_carriers
+  )
+  classification_has_filesystem_read_carrier(classification: c)
+}
+
+test fn red_control_roster_gate_severed_is_local() -> Bool {
+  classification_is_local(
+    classification: live_read_classification_from_facts(
+      entry_module: "fix.witness",
+      facts: fixture_roster_gate_severed_facts,
+      carrier_homes: fixture_carriers
+    )
+  )
+}
+
+test fn scope_facts_classify_module_declaration_scan() -> Bool {
+  classification_has_corpus_scan_carrier(
+    classification: live_read_classification_from_facts(
+      entry_module: "fix.lever_entry",
+      facts: fixture_scope_facts,
+      carrier_homes: fixture_carriers
+    )
+  )
+}
+
+test fn g1_runtime_read_touched_by_nonempty_path() -> Bool {
+  runtime_read_touched_by_path_g1(
+    classification: verdict_of(closure: fixture_roster_gate_closure),
+    touched_path: "dag/std/logic.dag"
+  )
+}
+
+test fn g1_local_read_not_touched() -> Bool {
+  !runtime_read_touched_by_path_g1(
+    classification: verdict_of(closure: fixture_unit_closure),
+    touched_path: "dag/std/logic.dag"
+  )
+}
+
+data fixture_v0_two_hop_facts: List<ModuleImportFact> = [
+  ModuleImportFact { module: "fix.entry", imports: ["fix.mid"] },
+  ModuleImportFact { module: "fix.mid", imports: ["v2.std.decl_index"] },
+  ModuleImportFact { module: "v2.std.decl_index", imports: [] }
+]
+
+test fn v0_registry_two_hop_decl_index_runtime_read() -> Bool {
+  classification_has_runtime_read(
+    classification: live_read_classification_from_facts_v0(
+      entry_module: "fix.entry",
+      facts: fixture_v0_two_hop_facts
+    )
+  )
+}
+
+data roster_gate_corpus_facts: List<ModuleImportFact> = [
+  ModuleImportFact {
+    module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    imports: [
+      "v2.lens.complexity_accumulator_copy.roster_gate",
+      "v2.std.logic",
+      "v2.std.text",
+      "v2.std.live_tree"
+    ]
+  },
+  ModuleImportFact {
+    module: "v2.lens.complexity_accumulator_copy.roster_gate",
+    imports: []
+  }
+]
+
+data g2_union_corpus_facts: List<ModuleImportFact> = [
+  ModuleImportFact {
+    module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    imports: [
+      "v2.lens.complexity_accumulator_copy.roster_gate",
+      "tools.dag_compile_clean_scope",
+      "v2.std.logic",
+      "v2.std.text",
+      "v2.std.live_tree"
+    ]
+  },
+  ModuleImportFact {
+    module: "v2.lens.complexity_accumulator_copy.roster_gate",
+    imports: []
+  },
+  ModuleImportFact {
+    module: "tools.dag_compile_clean_scope",
+    imports: []
+  }
+]
+
+// The one named live integration for this module: a single call to fn_arrow_decl_facts_live()
+// (a whole-tree scan) grounds every G2 roster-gate assertion below. Three tests used to each
+// call it independently against the identical entry/facts/carrier_homes triple, paying the
+// live scan three times for one fixed input — DESIGN §5 witness-cost-derives-from-purpose
+// forbids a test claiming arbitrary computation merely because it is a test. Every other test
+// in this module classifies over explicit fixture facts and never reaches this authority.
+fn roster_gate_g2_live_classification() -> LiveReadClassification {
+  live_read_classification_g2_from_facts(
+    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
+    facts: roster_gate_corpus_facts,
+    decls: fn_arrow_decl_facts_live(),
+    carrier_homes: live_read_carrier_homes_v0
+  )
+}
+
+test fn g2_roster_gate_live_integration_holds() -> Bool {
+  let c = roster_gate_g2_live_classification()
+  classification_has_filesystem_read_carrier(classification: c)
+    && classification_has_literal_path(
+      classification: c,
+      path: "src/v2/std/algebra.dag"
+    )
+    && runtime_read_touched_by_path_g2(
+      classification: c,
+      touched_path: "src/v2/std/algebra.dag"
+    )
+    && runtime_read_touched_by_path_g2(
+      classification: c,
+      touched_path: "src/v2/lens/complexity_accumulator_copy.dag"
+    )
+    && g2_implies_reads_live_tree(classification: c)
+    && accumulator_copy_roster_gate_entry_live_tree_disposition() == ReadsLiveTree
+}
+
+test fn g2_unknown_path_pattern_fail_closed_touched() -> Bool {
+  let c = live_read_classification_from_facts(
+    entry_module: "fix.witness",
+    facts: fixture_roster_gate_facts,
+    carrier_homes: fixture_carriers
+  )
+  match c {
+    RuntimeRead { carriers: carriers } =>
+      runtime_read_touched_by_path_g2(
+        classification: c,
+        touched_path: "dag/unrelated.dag"
+      )
+    LocalRead => false
+  }
+}
+
+
+test fn g2_fn_arrow_marshal_host_scaffold_receipt_is_checkable() -> Bool {
+  match fn_arrow_skeleton_g2_marshal_host_scaffold_dissolution_trigger {
+    Scaffold { dissolves_to: _, bind: _ } => true
+    Terminal { reason: _ } => false
+  }
+}
+
+data live_read_selection_control_law: String = "WHY THESE THREE REPLACE THE UNION TEST. g2_union_retains_g1_import_carriers_with_g2_literal_paths asserted that a completed G2 answer keeps the G1 import carriers. That assertion could only ever pass because the union supplied them: this witness's own closure does not contain the carrier homes its fixture facts name, so fn_arrow_decl_facts_live() — entry-closure scoped — returns no declarations for them, and no reachable-invocation evidence for that subject exists in this context at all. Remove the union and the same subject silently answers LocalRead, which is UNDER-selection: the floor would skip a witness that reads the tree, and a skipped witness looks like a faster green floor rather than a failure. The union was therefore masking absent evidence, not carrying a real fact.
+
+The three controls below separate the states the single union test conflated: evidence present and negative (local), evidence absent (refuse), evidence present and imprecise (conservative runtime read). Planted declarations supply the coverage the live entry-closure cannot, so complete-facts cases are reachable here rather than waiting on the whole-tree manifest."
+
+fn selection_atom_node(lexeme: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Atom { identity: symbol_intern_lexeme(lexeme: lexeme) } },
+    children: [],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+fn selection_body_node(callee: String) -> Node {
+  Node {
+    kind: TypeNode { connective: Conj },
+    children: [ Edge { label: Positional, target: selection_atom_node(lexeme: callee) } ],
+    occurrence_id: SyntheticOccurrence
+  }
+}
+
+data selection_control_facts: List<ModuleImportFact> = [
+  ModuleImportFact {
+    module: "synthetic.live_read_selection.entry",
+    imports: [ "v2.compiler.self_host" ]
+  },
+  ModuleImportFact { module: "v2.compiler.self_host", imports: [] }
+]
+
+fn selection_entry_seed_decl() -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: "synthetic.live_read_selection.entry.seed",
+    name: "seed",
+    output: selection_body_node(callee: "carrier_fn"),
+    params: []
+  }
+}
+
+fn selection_carrier_home_decl(callee: String) -> FnArrowDecl {
+  FnArrowDecl {
+    qualified_name: "v2.compiler.self_host.carrier_fn",
+    name: "carrier_fn",
+    output: selection_body_node(callee: callee),
+    params: []
+  }
+}
+
+fn selection_projection_over(decls: List<FnArrowDecl>) -> LiveReadSelectionProjection {
+  live_read_selection_projection_from_facts(
+    entry_module: "synthetic.live_read_selection.entry",
+    facts: selection_control_facts,
+    decls: decls,
+    carrier_homes: live_read_carrier_homes_v0
+  )
+}
+
+fn projection_is_refused(p: LiveReadSelectionProjection) -> Bool {
+  match p {
+    LiveReadSelectionRefused { cause: c } => !string_is_empty(s: c)
+    LiveReadSelectionClassified { classification: k } => classification_is_local(classification: k) && false
+  }
+}
+
+fn projection_classification_is_local(p: LiveReadSelectionProjection) -> Bool {
+  match p {
+    LiveReadSelectionRefused { cause: _ } => false
+    LiveReadSelectionClassified { classification: c } => classification_is_local(classification: c)
+  }
+}
+
+fn projection_classification_has_runtime_read(p: LiveReadSelectionProjection) -> Bool {
+  match p {
+    LiveReadSelectionRefused { cause: _ } => false
+    LiveReadSelectionClassified { classification: c } =>
+      classification_has_runtime_read(classification: c)
+  }
+}
+
+test fn g2_complete_facts_reachable_home_without_carrier_call_is_local() -> Bool {
+  projection_classification_is_local(
+    p: selection_projection_over(
+      decls: [
+        selection_entry_seed_decl(),
+        selection_carrier_home_decl(callee: "string_concat")
+      ]
+    )
+  )
+}
+
+
+
+test fn g2_missing_carrier_home_facts_refuse_rather_than_local() -> Bool {
+  projection_is_refused(p: selection_projection_over(decls: [ selection_entry_seed_decl() ]))
+}
+
+test fn g2_reachable_carrier_call_with_unknown_argument_is_runtime_read() -> Bool {
+  projection_classification_has_runtime_read(
+    p: selection_projection_over(
+      decls: [
+        selection_entry_seed_decl(),
+        selection_carrier_home_decl(callee: "filesystem_read")
+      ]
+    )
+  )
+}

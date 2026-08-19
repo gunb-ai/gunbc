@@ -41,7 +41,7 @@ import v1.std.core {
   FieldAccessStyle, StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue, FieldSummary,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding,
-  CallSemantics, PlainCallSemantics, LookupCallSemantics,
+  CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
   ServiceMethodSemantics,
   ExprErrorKind, ParseRecoveryError, SemanticExprError, InternalExprError,
@@ -1839,6 +1839,9 @@ fn type_name_transparently_aliases_to(
   }
 }
 
+// The peeling entry point, retained for the record-literal FIELD site, which has
+// no prepared call plan to carry a peeled formal. It peels inside the ExprRecordLit
+// arm exactly as before, so a non-record-literal actual still pays nothing.
 fn structured_application_site_type_mismatch(
   formal: Node,
   actual_expr: Node,
@@ -1846,8 +1849,32 @@ fn structured_application_site_type_mismatch(
 ) -> Bool {
   match actual_expr.expr_data {
     ExprRecordLit { parent_enum: _ } =>
+      structured_application_site_type_mismatch_with_peeled(
+        formal: formal,
+        formal_peeled: peel_nominal_alias_identity(n: formal, env: scope.type_env, module_name: scope.module_name),
+        actual_expr: actual_expr,
+        scope: scope
+      )
+    _ => false
+  }
+}
+
+// Takes the peeled formal the caller ALREADY HAS instead of recomputing it. At the
+// direct-call seam build_call_application_plan stores peel(formal_subst) as
+// CallFormalApplication.formal, and this predicate was handed formal_subst and then
+// recomputed exactly that peel -- the same function on the same node, once per
+// structured record-literal argument. #8431 built the value and left this consumer
+// recomputing it. Both formals are carried because the body still needs the unpeeled
+// one for structured_application_lit_is_declared_optional_variant.
+fn structured_application_site_type_mismatch_with_peeled(
+  formal: Node,
+  formal_peeled: Node,
+  actual_expr: Node,
+  scope: InferScope
+) -> Bool {
+  match actual_expr.expr_data {
+    ExprRecordLit { parent_enum: _ } =>
       let source_indices = scope.type_env.source_indices
-      let formal_peeled = peel_nominal_alias_identity(n: formal, env: scope.type_env, module_name: scope.module_name)
       if type_node_is_callable(n: formal_peeled) {
         false
       } else {
@@ -1981,30 +2008,59 @@ fn direct_call_structured_record_literal_resolved_type_mismatch(
   }
 }
 
-fn direct_call_structured_application_mismatch_diags(
+type CallFormalApplication {
+  index: Int
+  param_name: String
+  formal_subst: Node
+  formal: Node
+  matched_arg: Optional<Node>
+}
+
+data call_application_plan_note: String = "Cost shape (DESIGN §6 bare-minimum-cost) and single authority (§3). direct_call_arg_mismatch_diags and direct_call_structured_application_mismatch_diags were line-for-line duplicates of the same per-formal prologue: param_node_type_expr, substitute_generics, peel_nominal_alias_identity, authored_name_at, and the named-then-positional actual search. Both run over the SAME value_params, typed_args and call_subst at the one direct-call seam, so every formal was canonicalized twice per call. peel_nominal_alias_identity is resolve_node_bounded, an unmemoized recursive rebuild allocating a fresh Node per level, and it measured as the ENTIRE cost of the conformance seam: on gunbc.host_effect_realize the two timed peels inside direct_call_arg_mismatch_diags accounted for that function to within instrument overhead (62719ms + 62804ms against 125438ms over 330 calls), while the timer around direct_call_arg_type_mismatch never entered the top fourteen operations and substitute_generics already short-circuits an empty substitution. That module holds 63% of all corpus type inference. Building the binding ONCE and passing it to both consumers is the deduplication, not a cache: no map is introduced, so nothing here becomes an order-exposing operation in the v2.std.determinism denominator. Behavior is identical because every recomputed term is a pure function of arguments both callers already share."
+
+fn build_call_application_plan(
   value_params: List<Node>,
   typed_args: List<Node>,
   call_subst: Map<String, Node>,
+  type_env: TypeEnv,
+  module_name: String
+) -> List<CallFormalApplication> {
+  let source_indices = type_env.source_indices
+  map(
+    value_params |> enumerate,
+    pair =>
+      let formal_raw = param_node_type_expr(n: pair.second)
+      let formal_subst = substitute_generics(n: formal_raw, subst: call_subst, source_indices: source_indices)
+      let param_name = authored_name_at(source_indices: source_indices, node: pair.second)
+      CallFormalApplication {
+        index: pair.first,
+        param_name: param_name,
+        formal_subst: formal_subst,
+        formal: peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name),
+        matched_arg: match typed_args |> filter(ta => arg_has_name(arg: ta, name: param_name, source_indices: source_indices)) |> first {
+          Present { value: named_ta } => Present { value: named_ta }
+          Absent => typed_args |> skip(pair.first) |> first
+        }
+      }
+  )
+}
+
+fn direct_call_structured_application_mismatch_diags(
+  plan: List<CallFormalApplication>,
   scope: InferScope
 ) -> List<ErrorNode> {
   let type_env = scope.type_env
   let module_name = scope.module_name
   let source_indices = type_env.source_indices
   flat_map(
-    value_params |> enumerate,
-    pair =>
-      let formal_raw = param_node_type_expr(n: pair.second)
-      let formal_subst = substitute_generics(n: formal_raw, subst: call_subst, source_indices: source_indices)
-      let formal = peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name)
-      let param_name = authored_name_at(source_indices: source_indices, node: pair.second)
-      let matched_arg = match typed_args |> filter(ta => arg_has_name(arg: ta, name: param_name, source_indices: source_indices)) |> first {
-        Present { value: named_ta } => Present { value: named_ta }
-        Absent => typed_args |> skip(pair.first) |> first
-      }
-      match matched_arg {
+    plan,
+    app =>
+      let formal_subst = app.formal_subst
+      let formal = app.formal
+      match app.matched_arg {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
-          if structured_application_site_type_mismatch(formal: formal_subst, actual_expr: actual_expr, scope: scope)
+          if structured_application_site_type_mismatch_with_peeled(formal: formal_subst, formal_peeled: formal, actual_expr: actual_expr, scope: scope)
             || direct_call_structured_record_literal_resolved_type_mismatch(
               formal: formal, actual_expr: actual_expr, type_env: type_env, module_name: module_name, source_indices: source_indices) {
             let actual_raw = resolved_type(n: actual_expr)
@@ -2316,25 +2372,16 @@ data direct_call_shape_wall_note: String = "WALL (DESIGN §5) — the compile se
 // Record-literal actuals skip this path; handoff lives in
 // direct_call_structured_application_mismatch_diags (+ resolved-type legacy checks there).
 fn direct_call_arg_mismatch_diags(
-  value_params: List<Node>,
-  typed_args: List<Node>,
-  call_subst: Map<String, Node>,
+  plan: List<CallFormalApplication>,
   type_env: TypeEnv,
   module_name: String
 ) -> List<ErrorNode> {
   let source_indices = type_env.source_indices
   flat_map(
-    value_params |> enumerate,
-    pair =>
-      let formal_raw = param_node_type_expr(n: pair.second)
-      let formal_subst = substitute_generics(n: formal_raw, subst: call_subst, source_indices: source_indices)
-      let formal = peel_nominal_alias_identity(n: formal_subst, env: type_env, module_name: module_name)
-      let param_name = authored_name_at(source_indices: source_indices, node: pair.second)
-      let matched_arg = match typed_args |> filter(ta => arg_has_name(arg: ta, name: param_name, source_indices: source_indices)) |> first {
-        Present { value: named_ta } => Present { value: named_ta }
-        Absent => typed_args |> skip(pair.first) |> first
-      }
-      match matched_arg {
+    plan,
+    app =>
+      let formal = app.formal
+      match app.matched_arg {
         Present { value: ta } =>
           let actual_expr = arg_value(n: ta)
           if match actual_expr.expr_data {
@@ -3509,19 +3556,22 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
           module_name: scope.module_name,
           call_span: span
         )
+        let call_application_plan = build_call_application_plan(
+          value_params: value_params_for_check,
+          typed_args: typed_args,
+          call_subst: call_subst,
+          type_env: scope.type_env,
+          module_name: scope.module_name
+        )
         let arg_compat_diags = if module_skips_direct_call_arg_check(module_name: scope.module_name) { [] } else {
           direct_call_arg_mismatch_diags(
-            value_params: value_params_for_check,
-            typed_args: typed_args,
-            call_subst: call_subst,
+            plan: call_application_plan,
             type_env: scope.type_env,
             module_name: scope.module_name
           )
         }
         let structured_arg_diags = direct_call_structured_application_mismatch_diags(
-          value_params: value_params_for_check,
-          typed_args: typed_args,
-          call_subst: call_subst,
+          plan: call_application_plan,
           scope: scope
         )
         InferResult {
@@ -3562,7 +3612,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             source_indices: scope.type_env.source_indices
           )
         }
-        let is_known_method = method_resolution.result_type != none
+        let callee_is_body_binding = map_has(scope.body_locals, func_name)
+        let is_known_method = !callee_is_body_binding && method_resolution.result_type != none
         if is_known_method && typed_args |> count > 0 {
           let receiver = method_receiver
           let remaining = typed_args |> skip(1)
@@ -3625,7 +3676,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             ),
             diagnostics: concat(concat(arg_diags, method_resolution.diagnostics), template_subst_diags)
           }
-        } else if func_name == "empty_map" {
+        } else if !callee_is_body_binding && func_name == "empty_map" {
           let bare_m = bare_map_node()
           match expected {
             Present { value: exp } =>
@@ -3693,7 +3744,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
               }
           }
-        } else if func_name == "empty_set" {
+        } else if !callee_is_body_binding && func_name == "empty_set" {
           let bare_s = bare_set_node()
           match expected {
             Present { value: exp } =>
@@ -3761,7 +3812,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
               }
           }
-        } else if infer_builtin_call_type(name: func_name) != none {
+        } else if !callee_is_body_binding && infer_builtin_call_type(name: func_name) != none {
           let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name: func_name, typed_args: typed_args, scope: scope, span: span)
           let bt = tier2b.bt
           let call_semantics = if func_name == "lookup" {
@@ -3797,7 +3848,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             }
             InferResult {
               typed: make_named_expr_node(
-                name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                name: func_name, expr_data: ExprCall { call_semantics: Present { value: if callee_is_body_binding { FunctionValueCallSemantics } else { PlainCallSemantics } }, descent_evidence: none },
                 children: typed_arg_nodes,
                 inferred: Present { value: Resolved { node: resolved_type } },
                 span: span,
