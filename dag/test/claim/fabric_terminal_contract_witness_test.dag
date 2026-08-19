@@ -4,9 +4,8 @@ import std.types { NonEmptyStr, String, Bool, Int }
 import std.measure { money_amount_micro, money_amount_micro_count, hardware_thread_count, second, MoneyRate }
 import std.content_hash { content_hash_of_value }
 import std.currency { Usd }
-import product.compute_fabric { Shape, HardRequirements }
 import product.fabric.identity { FabricIdentity, fabric_identity_key, DemandKey, WorkKey }
-import product.fabric.work { Work, WorkContract, ExecutionRequirements, WorkStep, derive_work_key, work_for, ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects }
+import product.fabric.work { Shape, HardRequirements, Work, WorkContract, ExecutionRequirements, WorkStep, derive_work_key, work_for, ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects }
 import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, demand_work, demand_reservation_price, demand_maximum_buy_order }
 import product.fabric.supply { Offer, QuotedPerSecond, offer_quote_amount, offer_quote_currency, ObservedSupply, QuotedSupply }
 import product.fabric.execution { Attempt, InitialAttempt, InfrastructureRetry, LeaseIdentity, Receipt, ExecutionReceipt, ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence, ReceiptAdmissible, ReceiptFromDifferentLease, ReceiptFromDifferentAttempt, ReceiptFingerprintIncomparable, ReceiptGenerationStale, admit_receipt_for_grant }
