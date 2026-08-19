@@ -173,5 +173,5 @@ test fn witness_pre_repair_grammar_restores_the_RED() -> Bool {
   let pre = pre_repair_grammar_from(base: g)
   pre_repair_swap_targeted_exactly_one(base: g)
     && refuses_all(rules: rules, grammar: pre, sources: [single_param_lambda_source, authored_algebra_shape_source])
-    && accepts_all(rules: rules, grammar: pre, sources: non_interference_sources())
+    && accepts_all(rules: rules, grammar: pre, sources: [match_arm_unchanged_source, sum_decl_unchanged_source])
 }
