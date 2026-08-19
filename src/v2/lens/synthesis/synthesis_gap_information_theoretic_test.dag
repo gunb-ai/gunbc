@@ -1,0 +1,90 @@
+module v2.test.lens_synthesis.synthesis_gap_information_theoretic
+
+import v2.lens.complexity { ComplexityBound, ConstantComplexity, SizedComplexity, UnknownComplexity, complexity_lens }
+import v2.lens.synthesis {
+  InformationTheoretic,
+  SynthesisGap,
+  SynthesisNoTechnique,
+  SynthesisOptimal,
+  assess_information_theoretic,
+  synthesis_lens
+}
+import v2.std.algebra { non_empty }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Cardinality,
+  ComputationNode,
+  Edge,
+  Node,
+  Positional,
+  Transform,
+  TypeNode,
+  SyntheticOccurrence
+}
+import v2.std.report { SynthesisGapDecisionTree, SynthesisGapInformationTheoretic }
+
+data synthesis_gap_it_leaf: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^synthesis_gap_it_atom_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data synthesis_gap_it_body: Node = Node {
+  kind: ComputationNode { behavior: Transform },
+  children: [
+    Edge { label: Positional, target: synthesis_gap_it_leaf }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data synthesis_gap_it_inner: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Positional, target: synthesis_gap_it_body }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data synthesis_gap_it_input: Node = Node {
+  kind: TypeNode { connective: Cardinality },
+  children: [
+    Edge { label: Positional, target: synthesis_gap_it_inner }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+data synthesis_gap_it_sentinel: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^synthesis_gap_it_sentinel_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+test fn synthesis_gap_it_lens_non_empty() -> Bool {
+  non_empty(synthesis_lens(n: synthesis_gap_it_input, declared_technique: InformationTheoretic))
+}
+
+fn synthesis_gap_it_known_reason_node(realization: ComplexityBound) -> Node {
+  match assess_information_theoretic(n: synthesis_gap_it_input, realization: realization) {
+    SynthesisGap { realization_cost: _, lower_bound: _, report: r } =>
+      match r.reason {
+        SynthesisGapDecisionTree => synthesis_gap_it_sentinel
+        SynthesisGapInformationTheoretic => synthesis_gap_it_input
+      }
+    SynthesisOptimal { realization_cost: _, lower_bound: _ } => synthesis_gap_it_sentinel
+    SynthesisNoTechnique { diagnostic: _ } => synthesis_gap_it_sentinel
+  }
+}
+
+fn synthesis_gap_it_first_reason_node() -> Node {
+  let realization = complexity_lens(n: synthesis_gap_it_input)
+  match realization {
+    UnknownComplexity { diagnostic: _ } => synthesis_gap_it_sentinel
+    ConstantComplexity => synthesis_gap_it_known_reason_node(realization: realization)
+    SizedComplexity { class: _, variables: _ } => synthesis_gap_it_known_reason_node(realization: realization)
+  }
+}
+
+test fn synthesis_gap_it_reason_claim_holds() -> Bool {
+  synthesis_gap_it_first_reason_node() == synthesis_gap_it_input
+}

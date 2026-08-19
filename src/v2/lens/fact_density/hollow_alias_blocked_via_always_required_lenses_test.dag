@@ -1,0 +1,45 @@
+module v2.test.lens_fact_density.hollow_alias_blocked_via_always_required_lenses
+
+import v2.compiler.compile {
+  always_required_lenses,
+  run_required_lens_gates
+}
+import v2.compiler.infer { InferredTree }
+
+import v2.std.diagnostic { Accepted, Rejected }
+import v2.std.logic { Bool }
+import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
+import v2.test.lens_common.infer_fixture {
+  claim_atom_node,
+  claim_inferred_facts,
+  claim_inferred_tree
+}
+
+data hollow_alias_ar_root: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^hollow_alias_ar_subject } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data hollow_alias_ar_authority: Node = claim_atom_node(s: ^hollow_alias_ar_symbol)
+
+fn hollow_alias_ar_tree() -> InferredTree {
+  claim_inferred_tree(
+    root: hollow_alias_ar_root,
+    facts: claim_inferred_facts(
+      type_symbol: ^hollow_alias_ar_type_sym,
+      algebra_symbol: ^hollow_alias_ar_algebra_sym,
+      descent_symbol: ^hollow_alias_ar_descent_sym
+    )
+  )
+}
+
+test fn hollow_alias_blocked_via_always_required_lenses_holds() -> Bool {
+  match run_required_lens_gates(
+    inferred: hollow_alias_ar_tree(),
+    lenses: always_required_lenses()
+  ) {
+    Rejected { diagnostics: r } => r.head.reason == ^fact_density_hollow_alias_locus
+    Accepted { value: _, diagnostics: _ } => false
+  }
+}
