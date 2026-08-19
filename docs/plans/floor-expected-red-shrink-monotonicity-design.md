@@ -48,6 +48,18 @@ The freeze gate is pure git plumbing: it never has to run anything, because "did
 
 Tested against the 197-identity split named in the brief: 164 land in Repaid, 28 in Retired, and the 5 wrongly-dropped identities land in **none of the three** — which is the correct outcome, since they should have refused.
 
+**A second, independent Repaid specimen, recorded here so Layer B's builder does not have to reconstruct it (sharp-raven-273, `msg_74de9469`, verified against the merged commits):** `gunbc#8460` — titled *"Two emitter roots: a builtin answering a bound call, and a bare closure where an arrow was declared"* — removed 52 identities from `floor_expected_red.dag`'s roster with none added, measured at identity grain between the parent and merge commits:
+
+```
+parent 6e98c30ac3   358 identities
+merged 48fb26ae89   306 identities
+removed 52, added 0
+diffstat for that file: 22 insertions / 17 deletions
+counters reconcile: 8638+358 = 8996 before, 8702+306 = 9008 after
+```
+
+Two facts this specimen carries that the `#8437` split above does not: first, **the identity-grain constraint now has a number on it** — 52 identities moved inside 17 deleted lines because the roster is packed as chunked `List<String>`, many identities per line, so a line-level diff read (hunks, added/removed lines, a plain `git diff` delta) would have understated this change by more than 3x and would miss this class of removal entirely; this is the concrete receipt for why Layer A must stay identity-grain (§3 above) rather than being pulled back to a cheaper line-level read on the grounds that a diff is cheaper — it is cheaper and it is blind. Second, **the removal was almost certainly Repaid, not a shrink defect**: the PR's own error-count receipt shows 52 rows greening, main stayed green at `failed=0` with them gone, and the modules stayed live in `dag/test/claim/` rather than moving to a `long/` home — so this is the required-removal case a shrink-only wall must pass without complaint, not the illegitimate one. What makes it worth recording rather than trusting to be self-evident later: **the PR body (5262 characters, with a detailed error-count receipt) contains the strings "roster" and "expected_red" exactly zero times** — a 52-identity roster change landed fully undisclosed inside a PR whose stated subject was emitter-root behavior, discoverable only by an identity-grain diff against `floor_expected_red.dag` itself, never from the PR's own description. Layer B's Repaid disposition (point 2 above) is the mechanism that would have classified all 52 correctly *if it existed*; it does not yet, per this note's Status line, so `#8460` stands as the recorded backfill case rather than a claim that anything already checks it.
+
 ## 4. Refusal shape
 
 An identity in `removed` with no matching disposition is a typed, located, counted refusal — `cause=FloorExpectedRedUndispositionedShrink`, one line per identity up to a cap plus a count, mirroring `refuse_frozen_path_deferral_additions`'s own message shape (§5's "no absorbing fallback": the arm never widens or waves the row through, and there is no environment-variable or flag escape hatch, matching the freeze gate's own no-fallback discipline). The message names the three legitimate paths (still-passing evidence, corpus deletion, or a named Superseded row) so the failure is actionable rather than merely blocking.
