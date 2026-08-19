@@ -960,7 +960,7 @@ fn ci_freshness() {
     if let Err(ref diff) = pass1.freshness {
         panic!(
             "Stage0 is STALE — does not match self-compile output.\n\
-             Run `cargo run -p v1-compiler --bin regen_stage0` to update.\n\
+             Run `claim_executor --required-regen` to verify.\n\
              Diff:\n{}",
             diff
         );

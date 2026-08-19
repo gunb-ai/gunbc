@@ -12,10 +12,7 @@ import gunbc.ci_gate {
   ExtdepsExternalAuthorityGate,
   DagCompileCleanGate,
   GeneratedArtifactDriftGate,
-  SourceRootIngestGate,
-  RegenVerifyGate,
-  SelfHostReadsRealBytesGate,
-  SelfHostStalenessGate
+  SourceRootIngestGate
 }
 import gunbc.commit_workflow {
   CommitCheckEnrollment,
@@ -23,7 +20,6 @@ import gunbc.commit_workflow {
   CommitWitnessClaim,
   CommitCargoFmtCheck,
   GithubActionsCiJob,
-  GithubActionsCiRegenJob,
   GitPrePushHook,
   FalsifierCadenceJob,
   commit_gate_roster
@@ -130,7 +126,7 @@ fn placement_shadow_multi_fn_identity() -> CommitCheckEnrollment {
 fn placement_shadow_entry_wide_identity() -> CommitCheckEnrollment {
   CommitCheckEnrollment {
     check: CommitWitnessClaim {
-      entry: "src/v2/test/claim/execution/bind_eval_by_execution_test.dag",
+      entry: "src/v2/test/claim/execution/long/bind_eval_by_execution_test.dag",
       check_fns: [],
       kind: ExecutionWitnessKind,
       span: SpanUndeclared

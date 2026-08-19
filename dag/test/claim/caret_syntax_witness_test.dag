@@ -1,0 +1,41 @@
+module test.claim.caret_syntax_witness_test
+
+data caret_syntax_migration_note: String = "Migrated from src/v1/tests/claim/caret_parse_smoke_test.dag (dead witness tree triage, dashboard node adhoc-9b80ec49-d63). That file's tokenizer/token-stream/parse-tree tests (w_caret_tokenizes_as_sh_caret, w_caret_paren_tokenizes_as_caret_then_lparen, w_parse_caret_ident_produces_literal, w_parse_caret_paren_produces_discriminant_call, w_parse_expr_caret_paren_full_pipeline, w_parse_expr_caret_var_arg_produces_discriminant_call, w_parse_module_let_caret_paren) were white-box tokenizer/parser-internals checks with no black-box equivalent and are RETIRED with this migration — they never executed (the file lived under src/v1/tests/claim, whose only historical consumer, v1_claim_scoped_witness_batch, was deleted 2026-08-15) and their claims (caret lexes as ShCaret, ^(expr) parses to a discriminant call, ^ident parses to a symbol literal) are covered black-box below by the three ALREADY-UNENROLLED plain fns the source file itself sketched (w_compile_to_resolved_caret_probe5b_has_no_caret_function_error, w_emit_caret_ident_symbol_literal, w_emit_caret_paren_discriminant_sugar) and never promoted to 'test fn': this file promotes that exact pattern onto compile_dag_rust_emit_check, the same production v1 compile path the old scoped batch used, but reachable from ordinary per-PR discovery (source roots dag + src/v2, no v1 import needed)."
+
+fn caret_probe5b_source() -> String {
+  "module caret.probe5b\n\nfn probe() -> Bool {\n  let sugar = ^(1)\n  true\n}\n"
+}
+
+fn caret_emit_tag_source() -> String {
+  "module caret.emit_tag\n\nfn caret_tag() -> Bool {\n  let t = ^caret_emit_tag\n  t == ^caret_emit_tag\n}\n"
+}
+
+fn caret_emit_disc_source() -> String {
+  "module caret.emit_disc\n\ntype CaretShape\n  = CaretAlpha { x: Int }\n\nfn caret_disc() -> String {\n  let v = CaretAlpha { x: 1 }\n  discriminant(v: ^(v))\n}\n"
+}
+
+// A bare ^ident followed by a real fn named '^' would misparse as a call to a
+// function literally spelled '^' if the caret-sugar production ever regressed;
+// that shows up as a located "function '^'" diagnostic, which makes compile
+// fail and compile_dag_rust_emit_check return false.
+test fn w_caret_paren_let_binding_compiles_clean_test() -> Bool {
+  compile_dag_rust_emit_check(caret_probe5b_source(), "src/caret_probe5b.rs", [], [])
+}
+
+test fn w_caret_ident_emits_as_symbol_literal_test() -> Bool {
+  compile_dag_rust_emit_check(
+    caret_emit_tag_source(),
+    "src/caret_emit_tag.rs",
+    ["\"caret_emit_tag\""],
+    []
+  )
+}
+
+test fn w_caret_paren_emits_as_discriminant_sugar_test() -> Bool {
+  compile_dag_rust_emit_check(
+    caret_emit_disc_source(),
+    "src/caret_emit_disc.rs",
+    ["CaretAlpha"],
+    ["compile_error"]
+  )
+}

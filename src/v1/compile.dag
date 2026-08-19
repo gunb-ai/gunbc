@@ -379,6 +379,7 @@ fn call_semantics_name(value: CallSemantics) -> String {
   match value {
     PlainCallSemantics => "PlainCallSemantics"
     LookupCallSemantics => "LookupCallSemantics"
+    FunctionValueCallSemantics => "FunctionValueCallSemantics"
   }
 }
 

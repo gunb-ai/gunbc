@@ -2114,9 +2114,9 @@ impl ExpectedRedDisposition {
                 completion: v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget,
                 ..
             } => Self::StaleQuarantineAssertionReturnedTrue,
-            ClaimOutcome::RuntimeError { .. } | ClaimOutcome::NotBool { .. } => {
-                Self::InfrastructureOrReferentFailure
-            }
+            ClaimOutcome::HostToolUnresolved { .. }
+            | ClaimOutcome::RuntimeError { .. }
+            | ClaimOutcome::NotBool { .. } => Self::InfrastructureOrReferentFailure,
         }
     }
 
@@ -2652,6 +2652,38 @@ fn claim_result_for_outcome(
             host_dependency_refusal: None,
             resolve_realization,
         },
+        ClaimOutcome::HostToolUnresolved { name, probed } => {
+            let hint = if probed.is_empty() {
+                "no candidates probed".to_string()
+            } else {
+                probed.join(", ")
+            };
+            let host_dependency_refusal = Some(HostDependencyRefusal {
+                tool: name.clone(),
+                hint,
+            });
+            ClaimResult {
+                function,
+                entry: entry.clone(),
+                ok: false,
+                detail: format!(
+                    "host tool unresolved: {:?} (probed: {})",
+                    name,
+                    probed.join(", ")
+                ),
+                wall_nanos,
+                resolve_nanos,
+                corpus_resolve_nanos: 0,
+                corpus_eval_nanos: 0,
+                corpus_witnesses: 0,
+                runtime_unit_count: single_claim_runtime_unit_count(),
+                witness_row_costs: Vec::new(),
+                expectation_refusal: None,
+                budget_refusal: None,
+                host_dependency_refusal,
+                resolve_realization,
+            }
+        }
         ClaimOutcome::TimedOut {
             elapsed_ms,
             budget_ms,
@@ -3891,7 +3923,9 @@ struct DiscoveryBatchBudgets {
 
 /// Budgets are scoped by LANE, never by witness kind.
 ///
-/// The fast-lane eval budget (operator 5s rule) governs the per-PR discovery corpus and its
+/// The fast-lane eval budget (operator ruling 2026-08-17, superseding the 5s rule of 2026-07-12;
+/// the live ceiling is `v2.workflow.required_floor` `required_floor_claim_budget_ms` /
+/// `required_floor_claim_warn_ms` — never transcribed here) governs the per-PR discovery corpus and its
 /// cold replays — witnesses whose own eval must stay cheap or move to a `long/` lane. A
 /// Hermetic batch that carries its own lane roster draws that lane's dated ceiling instead:
 /// selecting on `is_hermetic()` alone armed the 5s per-PR budget on the substrate long lane,
@@ -4121,7 +4155,8 @@ fn scoped_witness_summary_outcome(
             ClaimOutcome::Pass => ("executed", "true".to_string()),
             ClaimOutcome::Fail
             | ClaimOutcome::NotBool { .. }
-            | ClaimOutcome::RuntimeError { .. } => ("executed", "false".to_string()),
+            | ClaimOutcome::RuntimeError { .. }
+            | ClaimOutcome::HostToolUnresolved { .. } => ("executed", "false".to_string()),
             ClaimOutcome::TimedOut {
                 elapsed_ms,
                 budget_ms,
@@ -10300,6 +10335,10 @@ fn run() -> Result<ExitCode, ExitCode> {
     let mut floor_worker_role: Option<FloorWorkerRole> = None;
     let mut scoped_batch_id: Option<String> = None;
     let mut required_floor_mode = false;
+    let mut required_regen_mode = false;
+    let mut required_regen_fixed_point_mode = false;
+    let mut regen_candidate_dir = "target/stage0-regen-candidate".to_string();
+    let mut regen_receipt_path = "target/stage0-regen-receipt.json".to_string();
 
     let mut i = 1;
     while i < args.len() {
@@ -10320,6 +10359,20 @@ fn run() -> Result<ExitCode, ExitCode> {
             }
             "--required-floor" => {
                 required_floor_mode = true;
+            }
+            "--required-regen" => {
+                required_regen_mode = true;
+            }
+            "--required-regen-fixed-point" => {
+                required_regen_fixed_point_mode = true;
+            }
+            "--regen-candidate-dir" => {
+                i += 1;
+                regen_candidate_dir = require_value(&args, i, "--regen-candidate-dir")?;
+            }
+            "--regen-receipt" => {
+                i += 1;
+                regen_receipt_path = require_value(&args, i, "--regen-receipt")?;
             }
             "--plan-entry" => {
                 i += 1;
@@ -10405,6 +10458,56 @@ fn run() -> Result<ExitCode, ExitCode> {
     // and the absence of those flags is the point rather than an omission. `run_required_floor`
     // refuses when planned, executed and terminal identity counts disagree, so a silently short
     // roster cannot report as a pass.
+    if required_regen_fixed_point_mode {
+        return match v1_compiler::cli_run::run_required_regen_fixed_point(&regen_receipt_path, None)
+        {
+            Ok(outcome) => {
+                eprintln!(
+                    "required-regen-fixed-point: fixed_point_equal={} first_generation_equal={}",
+                    outcome.receipt.fixed_point_equal, outcome.receipt.first_generation_equal
+                );
+                for failure in &outcome.failures {
+                    eprintln!("required-regen-fixed-point: FAIL {failure}");
+                }
+                if outcome.failures.is_empty() {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                }
+            }
+            Err(e) => {
+                eprintln!("required-regen-fixed-point: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
+    if required_regen_mode {
+        return match v1_compiler::cli_run::run_required_regen(
+            &regen_candidate_dir,
+            &regen_receipt_path,
+        ) {
+            Ok(outcome) => {
+                eprintln!(
+                    "required-regen: first_generation_equal={} candidate={}",
+                    outcome.receipt.first_generation_equal, outcome.receipt.candidate_artifact
+                );
+                for failure in &outcome.failures {
+                    eprintln!("required-regen: FAIL {failure}");
+                }
+                if outcome.failures.is_empty() {
+                    Ok(ExitCode::SUCCESS)
+                } else {
+                    Err(ExitCode::from(1))
+                }
+            }
+            Err(e) => {
+                eprintln!("required-regen: refused: {e}");
+                Err(ExitCode::from(1))
+            }
+        };
+    }
+
     if required_floor_mode {
         let commit = std::env::var("GITHUB_SHA").unwrap_or_else(|_| "local".to_string());
         return match v1_compiler::cli_run::run_required_floor(
@@ -10419,7 +10522,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                 );
                 eprintln!(
                     "required-floor: planned={} executed={} terminal={} passed={} \
-                     known_red_held={} failed={} stale_quarantine={} budget_refused={}",
+                     known_red_held={} failed={} stale_quarantine={} budget_refused={} \
+                     host_tool_unresolved={}",
                     outcome.claims_planned,
                     outcome.claims_executed,
                     outcome.receipt_identities,
@@ -10427,26 +10531,33 @@ fn run() -> Result<ExitCode, ExitCode> {
                     outcome.known_red_held,
                     outcome.failures.len(),
                     outcome.stale_quarantine.len(),
-                    outcome.budget_refused.len()
+                    outcome.budget_refused.len(),
+                    outcome.host_tool_unresolved.len()
                 );
                 for failure in &outcome.failures {
                     eprintln!("required-floor: FAIL {failure}");
                 }
-                // THREE CAUSES, THREE COUNTS, ONE STOPPED LINE. All three refuse the run, and
+                // FOUR CAUSES, FOUR COUNTS, ONE STOPPED LINE. All four refuse the run, and
                 // they are reported apart because their remedies differ: a FAIL is a defect to
                 // fix, a STALE-QUARANTINE is a fix that already landed and a roster row to
-                // delete, a BUDGET-REFUSED is a cost to reduce. Summing them into `failed`
-                // would make an un-quarantine indistinguishable from a regression in the alert
-                // signature, which is the conflation `std.witness_admission` rules out.
+                // delete, a BUDGET-REFUSED is a cost to reduce, a HOST-TOOL-UNRESOLVED is an
+                // infra gap to provision (never a witness-cost chase). Summing them into
+                // `failed` would make an un-quarantine indistinguishable from a regression in
+                // the alert signature, which is the conflation `std.witness_admission` rules
+                // out.
                 for stale in &outcome.stale_quarantine {
                     eprintln!("required-floor: STALE-QUARANTINE {stale}");
                 }
                 for refused in &outcome.budget_refused {
                     eprintln!("required-floor: BUDGET-REFUSED {refused}");
                 }
+                for unresolved in &outcome.host_tool_unresolved {
+                    eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
+                }
                 if outcome.failures.is_empty()
                     && outcome.stale_quarantine.is_empty()
                     && outcome.budget_refused.is_empty()
+                    && outcome.host_tool_unresolved.is_empty()
                 {
                     Ok(ExitCode::SUCCESS)
                 } else {

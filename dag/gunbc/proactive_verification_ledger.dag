@@ -18,7 +18,7 @@ type VerificationExecutionShape
   = ClaimWitness { entry: String, function: String }
   | FalsifierPredictOnlyBatch
   | CompileCleanGate
-  | RegenVerifyGate
+  | RequiredRegenGate
 
 type VerificationDisposition
   = ExecutableNow
@@ -50,7 +50,7 @@ data spine_witness_parity_recipe: String = "claim_executor --source-root dag --s
 
 data spine_compile_clean_recipe: String = "claim_executor batch-1 dag_compile_clean_gate (--target dag whole-tree; same authority as gunbc_ci_floor_plan)"
 
-data spine_regen_recipe: String = "regen_stage0 --emit-fresh target/v2-emit-fresh-realize --write-manifest target/v2-emit-fresh-realize/roster_manifest.txt --verify (RegenVerifyGate transport)"
+data spine_regen_recipe: String = "claim_executor --required-regen then --required-regen-fixed-point (RequiredRegenGate transport; first_generation_equal and fixed_point_equal are distinct invocations)"
 
 data family_partition_note: String = "Nine witness-realization families (#6879 kernel partition): add (serial kernel), match+loop+fold_closure (lane 3), field_access+complement (lane 2), meet_join+variant_construct+classical_not_ingested (lane 4). Emitter clean across all nine — eval/harness gaps closed by #6912 and #6917. Family KnownRed disposition = exact (entry, function) projection of known_red_probe_roster; un-quarantine deletes the probe row."
 
@@ -74,10 +74,10 @@ data proactive_verification_spine_rows: List<SpineVerificationLedgerRow> = [
   SpineVerificationLedgerRow {
     id: ^regen_behavioral_fixed_point,
     kind: RegenBehavioralFixedPoint,
-    title: "Regen behavioral fixed point (regen_stage0 --verify two-generation equivalence)",
-    execution: RegenVerifyGate,
+    title: "Regen behavioral fixed point (claim_executor --required-regen fold)",
+    execution: RequiredRegenGate,
     disposition: BlockedOnCiFloorCutover,
-    dissolution: unbound_dissolution(description: "emitter_fixed_point + ci_floor_cutover; regen_verify gate green by execution")
+    dissolution: unbound_dissolution(description: "required_regen fold green by execution; first_generation_equal and fixed_point_equal both true")
   }
 ]
 
@@ -113,7 +113,7 @@ data proactive_verification_family_rows: List<FamilyVerificationLedgerRow> = [
     id: ^family_equals_classical_not_ingested,
     title: "emit_host_classical_not_ingested family equals_eval agreement",
     execution: ClaimWitness {
-      entry: "src/v2/test/claim/execution/emit_host_classical_not_ingested_equals_eval_test.dag",
+      entry: "src/v2/test/claim/execution/long/emit_host_classical_not_ingested_equals_eval_test.dag",
       function: "emit_host_classical_not_ingested_equals_eval_holds"
     },
     dissolution: unbound_dissolution(description: "ledger all-green at v1_delete")
@@ -199,7 +199,7 @@ fn family_row_has_live_probe_red(row: FamilyVerificationLedgerRow) -> Bool {
       schedule_contains_entry(xs: known_red_probe_roster(), entry: e, function: f)
     FalsifierPredictOnlyBatch => false
     CompileCleanGate => false
-    RegenVerifyGate => false
+    RequiredRegenGate => false
   }
 }
 

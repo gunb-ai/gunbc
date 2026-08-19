@@ -20,6 +20,7 @@ import gunbc.fleet_workflow_steps {
   ci_fleet_key_agent_step,
   ci_fleet_key_agent_cleanup_step,
   gunbc_ci_aux_step_timeout_minutes,
+  gunbc_ci_spark_serving_step_timeout_minutes,
   gunbc_ci_artifact_transfer_step_timeout_minutes,
   gunbc_ci_fleet_job_backstop_timeout_minutes,
   gunbc_ci_release_build_step_timeout_minutes,
@@ -174,7 +175,7 @@ fn fleet_converge_spark_linger_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_spark_linger_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }
 }
 
@@ -188,7 +189,7 @@ fn fleet_converge_spark_observe_step() -> Step {
     working_directory: none,
     if_condition: Present { value: fleet_converge_spark_observe_step_if },
     continue_on_error: none,
-    timeout_minutes: Present { value: gunbc_ci_aux_step_timeout_minutes }
+    timeout_minutes: Present { value: gunbc_ci_spark_serving_step_timeout_minutes }
   }
 }
 

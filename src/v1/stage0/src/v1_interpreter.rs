@@ -942,6 +942,25 @@ pub enum InterpError {
     StringRealizationStraddle {
         detail: String,
     },
+    /// A pool root contributed NO `.dag` files to a parse-only corpus walk.
+    ///
+    /// Its own variant rather than a `TypeError` because the class is exactly the
+    /// empty-observation narrow DESIGN names: a pool that silently lost its subject was
+    /// indistinguishable from a pool that legitimately matched nothing, so every row over
+    /// it kept passing on a population smaller than its author declared.
+    ///
+    /// The variant CARRIES the classification rather than a rendered sentence: which of the
+    /// three states each root is in -- missing, naming a file, or a directory with no `.dag`
+    /// under it -- because they have different causes and different fixes, and collapsing them
+    /// re-commits the same state-space conflation one level down. A `String` here would have
+    /// done exactly that collapse at the boundary: the type would exist, be classified, and then
+    /// die into prose no consumer could match on. The message is derived from these fields in
+    /// `Display`, which is the one direction that cannot lose them.
+    PoolRootContributesNothing {
+        caller: &'static str,
+        declared: usize,
+        defects: Vec<(String, crate::coproduct_reflection::PoolRootDefect)>,
+    },
     PatternMatchFailure {
         value: String,
     },
@@ -1070,7 +1089,7 @@ impl fmt::Display for InterpError {
             } => {
                 write!(
                     f,
-                    "eval budget exceeded: {}ms thread-CPU > {}ms fast-lane budget (operator 5s rule 2026-07-12). This budget is enforced on THREAD CPU, not wall. RELOCATING THE FILE DOES NOT DISCHARGE IT: moving a witness under a long/ dir removes it from per-PR discovery without giving it an executing consumer, which deletes the coverage while retaining the source (the gunbc#7762 specimen behind the 2026-08-04 admission ruling). Either reduce the witness's cost, or enroll it in a lane that declares its own dated ceiling AND names the row as an executing consumer.",
+                    "eval budget exceeded: {}ms thread-CPU > {}ms fast-lane budget (operator ruling 2026-08-17, superseding the 5s rule of 2026-07-12; ceiling from required_floor_claim_budget_ms). This budget is enforced on THREAD CPU, not wall. RELOCATING THE FILE DOES NOT DISCHARGE IT: moving a witness under a long/ dir removes it from per-PR discovery without giving it an executing consumer, which deletes the coverage while retaining the source (the gunbc#7762 specimen behind the 2026-08-04 admission ruling). Either reduce the witness's cost, or enroll it in a lane that declares its own dated ceiling AND names the row as an executing consumer.",
                     elapsed_ms, budget_ms
                 )
             }
@@ -1089,6 +1108,19 @@ impl fmt::Display for InterpError {
             }
             InterpError::StringRealizationStraddle { detail } => {
                 write!(f, "string realization straddle: {}", detail)
+            }
+            InterpError::PoolRootContributesNothing {
+                caller,
+                declared,
+                defects,
+            } => {
+                write!(
+                    f,
+                    "pool root contributes nothing: {}",
+                    crate::coproduct_reflection::pool_root_refusal_message(
+                        defects, *declared, caller
+                    )
+                )
             }
             InterpError::PatternMatchFailure { value } => {
                 write!(f, "non-exhaustive pattern match on: {}", value)
@@ -1177,15 +1209,12 @@ struct PrepareGrammarCrossClaimMemo {
 thread_local! {
     static PREPARE_GRAMMAR_CROSS_CLAIM_MEMO: RefCell<PrepareGrammarCrossClaimMemo> =
         RefCell::new(PrepareGrammarCrossClaimMemo::default());
-    static ZERO_ARG_PURE_CROSS_CLAIM_MEMO: RefCell<HashMap<usize, Value>> =
-        RefCell::new(HashMap::new());
     static CROSS_CLAIM_FN_KEEPALIVE: RefCell<Vec<Rc<Node>>> = RefCell::new(Vec::new());
 }
 
 pub fn clear_cross_claim_pure_memos() {
     PREPARE_GRAMMAR_CROSS_CLAIM_MEMO
         .with(|m| *m.borrow_mut() = PrepareGrammarCrossClaimMemo::default());
-    ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| m.borrow_mut().clear());
     CROSS_CLAIM_FN_KEEPALIVE.with(|k| k.borrow_mut().clear());
 }
 
@@ -1221,10 +1250,6 @@ fn try_cross_claim_pure_memo(
         let memo_key = (Rc::as_ptr(fn_node) as usize, content_hash);
         return PREPARE_GRAMMAR_CROSS_CLAIM_MEMO.with(|m| m.borrow().map.get(&memo_key).cloned());
     }
-    if args.is_empty() && func_name == "ci_heal_binary_source_skew_guard_script" {
-        let ptr = Rc::as_ptr(fn_node) as usize;
-        return ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| m.borrow().get(&ptr).cloned());
-    }
     None
 }
 
@@ -1247,14 +1272,6 @@ fn store_cross_claim_pure_memo(
                 });
             }
         }
-        return;
-    }
-    if args.is_empty() && func_name == "ci_heal_binary_source_skew_guard_script" {
-        keep_cross_claim_fn(fn_node);
-        ZERO_ARG_PURE_CROSS_CLAIM_MEMO.with(|m| {
-            m.borrow_mut()
-                .insert(Rc::as_ptr(fn_node) as usize, result.clone());
-        });
     }
 }
 
@@ -1839,7 +1856,8 @@ pub struct InterpContext {
     published_mock_keys: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
     whole_tree_published_keys: Option<Rc<std::collections::HashSet<String>>>,
     governed_services: RefCell<Option<Rc<std::collections::HashSet<String>>>>,
-    // Cooperative per-witness eval deadline (fast-lane 5s rule, operator 2026-07-12).
+    // Cooperative per-witness eval deadline (operator ruling 2026-08-17; ceiling supplied by the
+    // caller from `v2.workflow.required_floor` `required_floor_claim_budget_ms`).
     // The bound must unwind from INSIDE eval as a typed error: witness evals run on
     // in-process worker threads with no kill authority, so a wall-clock bound imposed
     // from outside cannot terminate them (the Phase A governor lesson). The budget is
@@ -2820,7 +2838,7 @@ fn call_function_inner(
 /// It advances only while THIS thread is actually running on a core, so it excludes both
 /// blocking-I/O waits (a witness reading the live tree cold) and scheduler time-slicing (many
 /// witnesses sharing cores under the adaptive governor). That is exactly the "assuming the
-/// infra isn't the problem" clause of the operator's 5s rule: a genuine non-terminating eval
+/// infra isn't the problem" clause of the operator's eval-budget ruling: a genuine non-terminating eval
 /// burns CPU and is still caught, while a bounded scan whose WALL time was inflated by infra is
 /// not misclassified. On unix this reads `CLOCK_THREAD_CPUTIME_ID`; elsewhere (dev only — CI is
 /// linux) it falls back to a process-monotonic wall clock. A clock error yields 0, which makes
@@ -4424,6 +4442,19 @@ fn eval_call(node: &Rc<Node>, env: &Rc<Env>, ctx: &InterpContext) -> InterpResul
             Ok((name, val))
         })
         .collect::<InterpResult<_>>()?;
+
+    // A LEXICAL BINDING SHADOWS EVERY NAME-KEYED TIER (nearest-first precedence, the same law
+    // 04_infer states at call_locals_shadow_note and now applies to the builtin tiers too). A
+    // parameter or let named `lookup`, `count`, `filter`, ... is a function VALUE, and answering
+    // its call from the builtin table by spelling calls a different function than the program
+    // names -- silently, wherever the two arities happen to agree. `ctx.lookup_fn` (module-level
+    // declarations) deliberately stays BELOW the builtins as before: this moves the lexical tier
+    // only.
+    if let Some(closure @ Value::Closure { .. }) = env.lookup(ctx.sym(&func_name)) {
+        let closure = closure.clone();
+        let arg_vals: Vec<Value> = args.iter().map(|(_, v)| v.clone()).collect();
+        return apply_closure(&closure, &arg_vals, env, ctx);
+    }
 
     v1_bridge_family_arms!(v1_bridge_dispatch, func_name, args, node, ctx);
 
@@ -11575,52 +11606,6 @@ macro_rules! v1_builtin_arms {
                 .map(Some)
             },
 
-            // DECLARED SCAFFOLD supplying gunbc.stage0_emit_plan with SOURCE identities only.
-            // It parses cli_run::regen_input_sources through the module-binding authority path;
-            // it never observes EmitResult. Dissolve-on: generated_artifact_gate accepts a
-            // v2.compiler.source_authority.ModuleStorageIndex.
-            arm "free_call.stage0_emission_source_identities_host" { "stage0_emission_source_identities_host" } => {
-                if !$positional.is_empty() {
-                    return Err(InterpError::TypeError {
-                        msg: "stage0_emission_source_identities_host takes no arguments".to_string(),
-                    });
-                }
-                let workspace = crate::cli_run::workspace_root();
-                let identities = crate::cli_run::stage0_emission_source_identities(&workspace)
-                    .map_err(|msg| InterpError::TypeError { msg })?;
-                let items = identities
-                    .into_iter()
-                    .map(|identity| Value::Record {
-                        type_name: $ctx.sym("Stage0SourceModuleIdentity"),
-                        fields: Rc::new(sorted_fields(vec![
-                            ($ctx.sym("module_path"), str_value(identity.module_path)),
-                            (
-                                $ctx.sym("provenance"),
-                                Value::Variant {
-                                    type_name: $ctx.sym("Stage0SourceIdentityProvenance"),
-                                    variant_name: $ctx.sym("ParsedFromRegenSourceClosure"),
-                                    fields: Rc::new(Vec::new()),
-                                },
-                            ),
-                            (
-                                $ctx.sym("source_tree"),
-                                Value::Variant {
-                                    type_name: $ctx.sym("Stage0SourceTree"),
-                                    variant_name: $ctx.sym(identity.source_tree),
-                                    fields: Rc::new(Vec::new()),
-                                },
-                            ),
-                            ($ctx.sym("storage_path"), str_value(identity.storage_path)),
-                        ])),
-                    })
-                    .collect::<Vec<_>>();
-                Ok(Some(Value::Variant {
-                    type_name: $ctx.sym("Stage0SourceIdentitySupply"),
-                    variant_name: $ctx.sym("Stage0SourceIdentitySupplyAvailable"),
-                    fields: Rc::new(vec![($ctx.sym("identities"), list_value(items))]),
-                }))
-            },
-
             arm "free_call.to_string" { "to_string" } => {
                 let v = $positional.first().ok_or_else(|| InterpError::TypeError {
                     msg: "to_string requires 1 argument".to_string(),
@@ -12706,17 +12691,6 @@ macro_rules! v1_builtin_arms {
 
             arm "free_call.consume_floor_compile_clean_gate_failure_detail" { "consume_floor_compile_clean_gate_failure_detail" } => Ok(Some(str_value(
                 crate::cli_run::consume_floor_compile_clean_gate_failure_detail(),
-            ))),
-
-            arm "free_call.record_regen_verify_gate_failure_detail" { "record_regen_verify_gate_failure_detail" } => {
-                if let [Value::Str(detail)] = $positional.as_slice() {
-                    crate::cli_run::record_regen_verify_gate_failure_detail(detail.to_string());
-                }
-                Ok(Some(Value::Unit))
-            },
-
-            arm "free_call.consume_regen_verify_gate_failure_detail" { "consume_regen_verify_gate_failure_detail" } => Ok(Some(str_value(
-                crate::cli_run::consume_regen_verify_gate_failure_detail(),
             ))),
 
             arm "free_call.record_generated_artifact_drift_gate_failure_detail" { "record_generated_artifact_drift_gate_failure_detail" } => {

@@ -34,21 +34,20 @@ import v2.std.decl_index { DeclFact, decl_facts }
 // count match is not a match. Removing a root that is merely unnamed makes the rows over it pass
 // vacuously -- cheaper AND unfalsifiable, which is worse than the cost it saved.
 //
-// LIVE INERT ROOT, recorded rather than removed (census 2026-08-18, report-first): the
-// dag/extdeps/external_authority entry below contributes ZERO files. The module is the FILE
-// dag/extdeps/external_authority.dag, and corpus_dag_files_for_roots walks a root only
-// `if root_path.is_dir()`, so a root naming a file is skipped in silence -- no diagnostic, no
-// count, no refusal. The row it was meant to serve
+// INERT ROOT, FOUND THEN REMOVED (census 2026-08-18, report-first): dag/extdeps/external_authority
+// contributed ZERO files. The module is the FILE dag/extdeps/external_authority.dag, and
+// corpus_dag_files_for_roots walks a root only `if root_path.is_dir()`, so a root naming a file was
+// skipped in silence -- no diagnostic, no count, no refusal. The row it was meant to serve
 // (decl_facts_reflection_imported_external_authority_positive_control) passes regardless, because
 // the parent qualified name it asserts comes from RESOLUTION through the prepared scope, not from
-// this pool. It is left in place pending the counted refusal for zero-contributing roots; it is
-// the only such root among the 41 pool-walk root literals in the corpus.
+// this pool. It was the only such root among the 41 pool-walk root literals in the corpus, and it
+// is gone: it served as the positive control for the zero-contributing-root refusal, red on the
+// gate landing and green on this removal.
 data decl_facts_reflection_fixture_pool_roots: List<String> = [
   "dag/test/fixture/decl_facts_reflection",
   "dag/test/fixture/decl_facts_reflection_duplicate_qn/primary",
   "test/fixture_roots/decl_facts_reflection_duplicate_qn/shadow",
   "dag/extdeps/units",
-  "dag/extdeps/external_authority",
 ]
 
 // Skeleton outer-constructor lexeme witnesses need only parse-tree facts under specimens/;

@@ -217,9 +217,51 @@ data ampere_altra_avl_authority: ExternalAuthority = ExternalAuthority {
 
 data ampere_altra_avl_current_issue: NonEmptyStr = "1.15 (December 2025)"
 
+
+// The Ampere Altra family product brief, cited for the per-SKU table (core
+// count, sustained frequency, TDP, socket, memory channels). Distinct from the
+// datasheet authorities above: the datasheet grounds the family's cache and
+// socket geometry, the brief is where the SKU table lives.
+data ampere_altra_family_product_brief_authority: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "amperecomputing.com/briefs/ampere-altra-family-product-brief"
+  }
+}
+
+// Q80-30, live-fetched 2026-08-18 from the family product brief: 80 cores,
+// 3.0 GHz sustained, 161W, 4926-pin FCLGA, eight 72-bit DDR4-3200 channels.
+// Cache geometry and socket are family facts already cited above and are
+// reused rather than re-stated — this is an Altra Classic part, so it takes
+// the classic L3 row exactly as Q64-30 does.
+//
+// The row is added because extdeps.cloud.ubicloud's catalog note names it as
+// that module's own grounding successor: the vendor states its arm64 runners
+// are backed by dedicated Q80-30 cores, and until this row existed the
+// architecture field alone carried that claim.
+data altra_q8030_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+  model_number: "Q80-30",
+  oem_listing_id: none,
+  vendor: ampere_vendor,
+  architecture: Aarch64,
+  cores: 80,
+  threads: hardware_thread_count(80),
+  nominal_sustained_per_thread_hz: hertz(3000000000),
+  socket: ampere_lga4926_socket,
+  socket_citations: socket_lga4926_citations,
+  tdp_watts: watt(161),
+  l1_cache: ampere_altra_l1_cache_geometry,
+  l1_cache_citations: ampere_altra_l1_cache_citations,
+  l2_cache: ampere_altra_l2_cache_geometry,
+  l2_cache_citations: ampere_altra_l2_cache_citations,
+  l3_cache: ampere_altra_classic_l3_cache_geometry,
+  l3_cache_citations: ampere_altra_classic_l3_cache_citations,
+}
+
 // THE MODULE'S OWN ROSTER OF CATALOG ROWS, for the same reason as the AMD side: one authority for
 // "every Ampere processor modelled here", edited beside the rows it names.
 data ampere_cpu_catalog_rows: List<CpuModelCatalogRow> = [
   altra_max_m12830_catalog,
   altra_q6430_catalog,
+  altra_q8030_catalog,
 ]

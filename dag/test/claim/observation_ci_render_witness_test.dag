@@ -3,6 +3,14 @@ module test.claim.observation_ci_render_witness_test
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 import std.types { NonEmptyStr, String, Bool, List }
 import std.nat { Nat }
+import gunbc.witness_row_cost {
+  SharedFillPaidByClaim,
+  SharedFillPaidOutsideFold,
+  SharedFillOutsideFold,
+  SharedFillExclusiveToOneModule,
+  SharedFillSharedAcrossModules,
+  shared_fill_disposition,
+}
 import std.symbols { Tier, Emoji, Unicode, Ascii, StatusPulse, StatusDwell, StatusBlocked, StatusRefused, NodeFailed, NodeCompleted }
 import std.measure { nanosecond, millisecond, millisecond_to_nanosecond, byte_size, basis_point }
 import std.observation {
@@ -79,6 +87,8 @@ import gunbc.observation_ci_render {
   ci_witness_claim_result_text,
   ci_witness_bazel_target_label,
   ci_witness_budget_warn_text,
+  ci_shared_fill_row_text,
+  ci_shared_fill_total_text,
   ci_human_elapsed,
   HeartbeatSample,
   FloorRunSummary,
@@ -700,4 +710,57 @@ test fn w_RED_witness_budget_warn_requires_ceiling_clause() -> Bool {
   string_contains(s: text, pattern: "(ceiling 1000ms)")
     && string_contains(s: text, pattern: "[floor-witness-slow]")
     && !string_contains(s: text, pattern: "warn_ms")
+}
+
+// THE ORACLE FOR THE SEED'S SHARED-FILL LINE. The literal is the agreement point: cli_run's
+// render_shared_fill_row_text_mirror asserts the same bytes on the Rust side, so a drift on
+// either side reds one of the two rather than silently forking the format.
+test fn w_shared_fill_row_line_holds() -> Bool {
+  ci_shared_fill_row_text(
+    cache: "reference_edges",
+    key: "dag+src/v2",
+    fill: millisecond(count: 695),
+    inclusive: millisecond(count: 17890),
+    payer: SharedFillPaidByClaim { qualified: "test.claim.foo.w_bar" },
+    consumer_claims: 3,
+    consumer_modules: 2,
+    modules: "test.claim.foo,test.claim.other"
+  ) == "[floor-shared-fill] cache=reference_edges key=dag+src/v2 fill_ms=695 inclusive_ms=17890 paid_by=test.claim.foo.w_bar consumer_claims=3 consumer_modules=2 disposition=shared modules=test.claim.foo,test.claim.other"
+}
+
+test fn w_shared_fill_total_line_holds() -> Bool {
+  ci_shared_fill_total_text(
+    fills: 9,
+    fill: millisecond(count: 60000),
+    shared_fill: millisecond(count: 42000),
+    unattributed_hits: 0
+  ) == "[floor-shared-fill] TOTAL fills=9 fill_ms=60000 shared_fill_ms=42000 unattributed_hits=0"
+}
+
+// THE DISCRIMINATING HALF. The line above would read identically for a fill whose cost really is
+// its payer's, so the verdict has to be exercised where it changes: one module reading a fill is
+// a removable cost, two is not, and a fill paid before any claim ran is neither. A single Bool
+// over "is it shared" could not separate the third state from the first.
+test fn w_shared_fill_disposition_separates_three_states() -> Bool {
+  shared_fill_disposition(
+    payer: SharedFillPaidByClaim { qualified: "test.claim.foo.w_bar" },
+    consumer_modules: 1
+  ) == SharedFillExclusiveToOneModule
+    && shared_fill_disposition(
+      payer: SharedFillPaidByClaim { qualified: "test.claim.foo.w_bar" },
+      consumer_modules: 2
+    ) == SharedFillSharedAcrossModules
+    && shared_fill_disposition(
+      payer: SharedFillPaidOutsideFold,
+      consumer_modules: 5
+    ) == SharedFillOutsideFold
+}
+
+// RED CONTROL: preparation cost must not be readable as a witness's removable cost. If the
+// payer arm were ever dropped and the count consulted alone, an outside-fold fill with several
+// consumers would classify shared and a lone one exclusive — both of which would license a
+// paring conversation about a cost no witness owns.
+test fn w_RED_outside_fold_fill_is_not_classified_as_a_module_cost() -> Bool {
+  shared_fill_disposition(payer: SharedFillPaidOutsideFold, consumer_modules: 1)
+    != SharedFillExclusiveToOneModule
 }

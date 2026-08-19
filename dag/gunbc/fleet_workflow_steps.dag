@@ -402,6 +402,18 @@ fn ci_release_bins_pack_step() -> Step {
 
 data gunbc_ci_aux_step_timeout_minutes: Int = 5
 
+data gunbc_ci_spark_serving_step_timeout_minutes: Int = 60
+
+data gunbc_ci_spark_serving_step_timeout_note: String = "Spark serving converge/observe step budget, raised from the shared aux 5m (operator authorization 2026-08-19). STATED AS AN ENVELOPE, NOT A MEASUREMENT, because the neighbouring gates in this module earn their numbers and this one cannot yet. What IS modeled: the ollama runtime archive at 1542416321 bytes, cited on extdeps.ollama.binary_release. What is NOT: the model blob closure has no modeled byte size at all — the desired model is identified by its manifest digest rather than a size — and throughput from the executor to a spark target has never been measured. So a cold install downloads a ~1.5GB runtime plus a model of unmodeled size over a link of unmeasured bandwidth, and no honest derivation produces a minute count from that. 5m was not a considered budget for this step, it was the shared aux default, and it cannot cover a cold install under any plausible bandwidth.
+
+WHAT IS OBSERVED, and why this is not a hypothetical envelope: run 32213195686 (2026-08-19T03:49:56Z, read-only spark_observe) reports state=absent for BOTH spark targets — on srv6 the user unit is-active exits 4, the api/version and api/tags probes exit 7 against a refused connection, and the runtime receipt file does not exist. So the first canary is a guaranteed cold install of the full closure rather than a converged no-op, and the step budget has to cover acquisition of an unmodeled model closure on a host observed to hold none of it. The 5m default would have killed that install mid-download every time, and because publication is split from acquisition it would have done so silently-safely — dying in the attempt workspace, publishing nothing, and looking like a timeout rather than a budget defect.
+
+Why the step needed its own constant rather than a bump to gunbc_ci_aux_step_timeout_minutes: that value is multiplied by the step count in the fleet job backstop, so raising it would inflate every unrelated aux step and the job cap together — a per-site cost paid fleet-wide to fix one step.
+
+STEADY STATE IS SECONDS, NOT MINUTES. A converged host plans zero rows and the slice returns without transferring anything; this envelope is paid only on a cold or drifted target. A run that approaches it is therefore evidence about the install path, not a budget to raise again.
+
+DISSOLVE-ON: the first successful srv6 canary produces the measurement this envelope stands in for — replace the number with that receipt, dated and cited to its run id, per the rule the v1-compiler test-targets gate states one constant down (raising a budget needs a measurement, not a round number)."
+
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_minutes: Duration = 15
 
 data gunbc_ci_v1_compiler_tests_compile_gate_timeout_note: String = "v1-compiler-tests retained-kernel execution gate step budget. Originally a compile-contract gate (operator ruling 2026-08-05, PR A / fierce-heron-177): reordered after the release build and switched to cargo test --release --no-run so v1-compiler compiles once per job. --no-run removed 2026-08-11 with the suite cutover; the crate shrank from 98 modules / 740 tests to the 9 declared retained modules / 30 tests, which execute rather than only compile. Warm runs should complete in seconds once the release artifact is warm; 15m retains the prior cold-host envelope without raising the cap."
@@ -445,7 +457,7 @@ fn gunbc_ci_build_job_backstop_timeout_minutes() -> Int {
 }
 
 fn gunbc_ci_fleet_job_backstop_timeout_minutes() -> Int {
-  gunbc_ci_prelude_allowance_minutes + (13 * gunbc_ci_aux_step_timeout_minutes)
+  gunbc_ci_prelude_allowance_minutes + (11 * gunbc_ci_aux_step_timeout_minutes) + (2 * gunbc_ci_spark_serving_step_timeout_minutes)
 }
 
 data gunbc_ci_release_build_step_timeout_minutes: Int = 45

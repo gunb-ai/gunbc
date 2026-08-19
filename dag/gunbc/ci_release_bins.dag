@@ -28,18 +28,31 @@ The distinction that correction collapsed is the load-bearing one. USING AN ENGI
 
 What made the error invisible was that nothing on this branch objected. Their surviving invokers are transports, not compile-time references, so the crate still built; the two witnesses that would have redded the roster change are deleted by a sibling lane, so CI would have been green on loan. The check that found it was a one-command sweep of the deleted bin names across dag/, src/v2/ and .github/, which turned up five live structural invocation sites — three production transports for discover_source_root_ingest alone, plus fleet-converge pack lines for all four. A deletion census trained on who DEFINES a thing must also ask who CALLS it.
 
-Dissolve-on (hand membership of witness_declared_release_bins): a host census of production WitnessBin.bin_name literals derives this list (non_fold_residue_units_from_module_source shape), so a transport spelling a free string not yet enrolled is a typed census refusal rather than a hand edit; then this list and its roster row delete."
+Dissolve-on (hand membership of witness_declared_release_bins): a host census of production WitnessBin.bin_name literals derives this list (non_fold_residue_units_from_module_source shape), so a transport spelling a free string not yet enrolled is a typed census refusal rather than a hand edit; then this list and its roster row delete.
+
+REMOVAL (2026-08-18, regen root cut + resolution-divergence cut union with #8409). Three release bins deleted from the derived pack — never hand-edit fleet-converge.yml; regenerate from this authority after membership changes:
+- regen_floor_skip_witness (ci_floor_invoked_bins) — regen skip witness deleted with regen_stage0 root cut
+- regen_stage0 (witness_declared_release_bins) — regen root cut; verification is claim_executor --required-regen
+- resolution_divergence_census (witness_declared_release_bins) — silent-pick gate deleted end-to-end (#8409)
+
+LESSON (fleet-converge survivor): the floor cut removed the twenty-binary build from ci.yml but the identical build survived in fleet-converge.yml because deletion was described by workflow removed rather than population removed. This cut surfaces that second consumer.
+
+FOURTH REMOVAL (2026-08-19, the two bins the FLOOR-Y cutover left behind), justified per bin rather than by a class sentence:
+- floor_skip_discovery_witness (ci_floor_invoked_bins) — source deleted by 611fd027708 (FLOOR-Y cutover, #8283); the row was not deleted with it
+- selection_control_skip_witness (ci_floor_invoked_bins) — same commit, same omission
+
+These are the exact residue the LESSON paragraph above predicted and did not finish collecting: that cut described its deletion as workflow removed rather than population removed, found the fleet-converge survivor, and still left two dead names in the population feeding it. Measured consequence — every fleet-converge dispatch after the cutover failed at the build step with no bin target named floor_skip_discovery_witness. It went unseen for two days because this roster feeds only fleet-converge.yml, which is dispatch-only, so no per-PR run ever builds the pack. Last green dispatch was 2026-08-17T19:09Z, whose tree still carried both sources; the first dispatch after the cutover was the first to refuse.
+
+The check that found it was the sweep this module already prescribes one paragraph up — every enrolled name against the real bin sources, rather than only the row cargo happened to name first. Both rosters were swept; these two were the entire stale set."
 
 data ci_floor_invoked_bins: List<String> = [
   "claim_executor",
   "gunbc",
-  "regen_floor_skip_witness",
 ]
 
 data witness_declared_release_bins: List<String> = [
   "discover_source_root_ingest",
   "claim_batch",
-  "regen_stage0",
   "interp_recorded_fixture_witness",
   "v1_src_dag_parse",
   "auth_declared_but_unwired_witness",
