@@ -38837,13 +38837,13 @@ fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
 
 /// The module carrying the floor's authored thresholds and the long-home roster. Named once,
 /// and evaluated in its OWN exact scope exactly as every claim is, so the module that supplies
-/// the admission facts is not privileged with a wider namespace than the claims they admit.
-const REQUIRED_FLOOR_MANIFEST_MODULE: &str = "v2.workflow.required_floor";
+/// the policy constants is not privileged with a wider namespace than the claims they bound.
+const REQUIRED_FLOOR_POLICY_MODULE: &str = "v2.workflow.required_floor";
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
 ///
-/// Read the active sources once, strict-prepare one subject once, evaluate the manifest inside
-/// that subject, fold the manifest once, reduce one receipt. There is no plan resolve, no
+/// Read the active sources once, strict-prepare one subject once, project the claim roster from
+/// that subject's inventory, fold it once, reduce one receipt. There is no plan resolve, no
 /// policy resolve, no compile-clean resolve, no discovery-producer resolve, no batch, no
 /// positional clamp, no worker, no coordinator, no child process and no prepared-subject
 /// cache — not because they are switched off on this path but because this function does not
@@ -39064,8 +39064,11 @@ fn floor_value_shape(v: Option<&v1_interpreter::Value>) -> String {
 /// a budget is applied, never what it is.
 fn floor_required_int(ctx: &v1_interpreter::InterpContext, func: &str) -> Result<u64, String> {
     let qualified = format!("v2.workflow.required_floor.{func}");
+    // STRICTLY POSITIVE, because the deleted admission decoder refused non-positive budgets and
+    // a replacement that accepts zero is a weaker wall wearing the same name. A zero ceiling is
+    // not a lenient policy — it refuses every witness before it evaluates one.
     match v1_interpreter::run_in_context(ctx, &qualified, false) {
-        Ok(v1_interpreter::Value::Int(n)) if n >= 0 => Ok(n as u64),
+        Ok(v1_interpreter::Value::Int(n)) if n > 0 => Ok(n as u64),
         Ok(other) => Err(format!(
             "{qualified}: expected a non-negative Int, got {}",
             floor_value_shape(Some(&other))
@@ -39497,9 +39500,9 @@ pub fn run_required_floor(
         published_started.elapsed().as_millis(),
         published.as_ref().map(|k| k.len()).unwrap_or(0)
     );
-    let manifest_scope = claim_scope_for(&prepared, REQUIRED_FLOOR_MANIFEST_MODULE)?;
+    let policy_scope = claim_scope_for(&prepared, REQUIRED_FLOOR_POLICY_MODULE)?;
     let hermetic = evaluation_frame(
-        &manifest_scope,
+        &policy_scope,
         v1_interpreter::ExecutionMode::Hermetic,
         None,
         published.clone(),
@@ -39509,7 +39512,7 @@ pub fn run_required_floor(
     // five channel decisions out of a world this function had already built.
     install_output_policy_in(&hermetic, source_roots);
 
-    // ── 3. the manifest, folded in .dag ───────────────────────────────────────────────────
+    // ── 3. the claim roster, projected from the prepared inventory ───────────────────────
     //
     // T3/T4/T5 SPLIT THIS REGION because it is the whole blank interval. Between the
     // preparation line and the first `floor: claims = ...` line nothing is printed, so a run
@@ -39555,6 +39558,17 @@ pub fn run_required_floor(
     // was the whole of the phase's quadratic cost.
     let claim_budget_ms = floor_required_int(&hermetic, "required_floor_claim_budget_ms")?;
     let claim_warn_ms = floor_required_int(&hermetic, "required_floor_claim_warn_ms")?;
+    // THE TWO TIERS ARE ORDERED, and reading them independently cannot see that. The warn tier
+    // reports a row an order of magnitude above where an ordinary witness lands and lets it
+    // finish; the hard tier stops it. A warn at or above the ceiling is an inverted policy that
+    // never warns, and both values would still typecheck as ordinary positive Ints.
+    if claim_warn_ms >= claim_budget_ms {
+        return Err(format!(
+            "REQUIRED-FLOOR REFUSAL cause=ClaimBudgetTiersInverted warn_ms={claim_warn_ms} \
+             budget_ms={claim_budget_ms} — the warning tier must sit strictly below the hard \
+             ceiling or it can never fire before the deadline it is meant to precede"
+        ));
+    }
     let long_home_prefixes: Vec<String> = {
         let value = v1_interpreter::run_in_context(
             &hermetic,
@@ -39576,17 +39590,16 @@ pub fn run_required_floor(
                 }
             }
         }
-        if out.is_empty() {
-            return Err(
-                "REQUIRED-FLOOR REFUSAL cause=LongHomePrefixesEmpty — the long-home roster \
-                 decoded to zero prefixes, which would silently admit the long home into the \
-                 required floor"
-                    .to_string(),
-            );
-        }
+        // NO EMPTY-ROSTER REFUSAL, and the first version of this decode had one. It was
+        // backwards: an empty exception roster is the DESIRED terminal state, so refusing on it
+        // would make "at least one exclusion must exist forever" a structural requirement of the
+        // floor. Once the long home is discharged, admitting those witnesses to the ordinary
+        // population is the intended result, not an error. A decode that fails still refuses
+        // above — a failed read and a legitimately empty roster are different states.
         out
     };
     let mut claims: Vec<RequiredFloorClaim> = Vec::new();
+    let mut planned_identities: HashSet<String> = HashSet::new();
     let mut long_declined = 0usize;
     let mut live_declined = 0usize;
     let mut sites_offered = 0usize;
@@ -39604,8 +39617,25 @@ pub fn run_required_floor(
                 live_declined += 1;
                 continue;
             }
+            let qualified = format!("{}.{}", file.module_path, function);
+            // ONE EXECUTABLE CLAIM PER QUALIFIED IDENTITY, REFUSED HERE AND NAMED.
+            //
+            // The deleted manifest carried this invariant and refused BEFORE running anything,
+            // naming the offending declaration. `receipt_identities` is NOT the same wall: it
+            // compares populations after all 9,122 claims have executed, so a duplicate costs a
+            // full duplicated evaluation before anything notices, and a count mismatch says only
+            // that two populations disagree -- never which identity caused it. Planned-identity
+            // uniqueness and receipt completeness are different properties, and the terminal
+            // `planned == executed == receipted` check remains as the second, separate one.
+            if let Some(prior) = planned_identities.replace(qualified.clone()) {
+                return Err(format!(
+                    "REQUIRED-FLOOR REFUSAL cause=DuplicateWitnessIdentity identity={prior} — \
+                     one qualified declaration resolved to more than one executable claim; the \
+                     roster cannot name the same witness twice"
+                ));
+            }
             claims.push(RequiredFloorClaim {
-                qualified: format!("{}.{}", file.module_path, function),
+                qualified: qualified.clone(),
                 module_path: file.module_path.clone(),
                 function: function.clone(),
                 execution_mode: v1_interpreter::ExecutionMode::Hermetic,
@@ -39625,7 +39655,7 @@ pub fn run_required_floor(
         live_declined
     );
 
-    // THE EXPECTED-RED ROSTER, read from its .dag authority in the manifest's own frame — it
+    // THE EXPECTED-RED ROSTER, read from its .dag authority in the policy module's frame — it
     // must be decoded BEFORE that frame is dropped below, and it is a separate evaluation from
     // the manifest because it answers a different question: the manifest says which claims
     // exist, this says which of them are known to fail while someone fixes them.
@@ -39786,7 +39816,7 @@ pub fn run_required_floor(
     // the next run says, and if the step survives then the cost is elsewhere and this was still
     // correct — an unread value held across the longest phase of the program has no defence.
     drop(hermetic);
-    drop(manifest_scope);
+    drop(policy_scope);
 
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
     eprintln!("floor: claims = {}", claims.len());
