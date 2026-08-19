@@ -3,6 +3,7 @@ module v2.test.claim_pipeline.resolve
 import v2.compiler.normalize { normalize }
 import v2.compiler.resolve { resolve }
 import v2.extdeps.languages.dag {
+  dag_language_model_surface_empty_prelude,
   dag_language_model_void
 }
 import v2.std.diagnostic { Accepted, Rejected }
@@ -54,6 +55,17 @@ fn spine_resolve_accepts_normalized_tree() -> Bool {
   }
 }
 
+fn spine_resolve_rejects_noncanonical_root_atom() -> Bool {
+  match normalize(parse_tree: spine_resolve_service_parse_tree()) {
+    Accepted { value: normalized, diagnostics: _ } =>
+      match resolve(tree: normalized, lm: dag_language_model_surface_empty_prelude()) {
+        Accepted { value: _, diagnostics: _ } => false
+        Rejected { diagnostics: _ } => true
+      }
+    Rejected { diagnostics: _ } => false
+  }
+}
+
 fn spine_resolve_bool_atom(b: Bool) -> Node {
   match b {
     true =>
@@ -83,6 +95,14 @@ data claim_pipeline_resolve_accepts_normalize_chain: TestClaim = EqualsClaim {
   label: "claim_pipeline/resolve: resolve accepts normalize output on the void language model",
   anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
   lhs: spine_resolve_bool_atom(b: spine_resolve_accepts_normalized_tree()),
+  rhs: spine_resolve_bool_atom(b: true),
+  classification: TestClassification { tier: Tier1, layer: Unit }
+}
+
+data claim_pipeline_resolve_rejects_noncanonical_root_atom: TestClaim = EqualsClaim {
+  label: "claim_pipeline/resolve: resolve rejects a root atom absent from both module declarations and canonical_symbols",
+  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
+  lhs: spine_resolve_bool_atom(b: spine_resolve_rejects_noncanonical_root_atom()),
   rhs: spine_resolve_bool_atom(b: true),
   classification: TestClassification { tier: Tier1, layer: Unit }
 }
