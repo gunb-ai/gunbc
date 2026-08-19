@@ -36,40 +36,15 @@ import v2.std.logic { Bool }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.node {
   Arrow,
-  Atom,
   ComputationNode,
   Node,
   Transform,
   TypeNode,
-  node_synthetic,
   well_formed
 }
 import v2.std.node_query { find_arrow_body_child }
-import v2.std.verification {
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
-}
 
 data body_lowering_add_module_source: String = "module add_probe\n\nfn add(x: Int, y: Int) -> Int { x + y }\n"
-
-fn body_lowering_bool_node(pass: Bool) -> Node {
-  if pass {
-    node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^body_lowering_norm_pass } },
-      children: []
-    )
-  } else {
-    node_synthetic(
-      kind: TypeNode { connective: Atom { identity: ^body_lowering_norm_fail } },
-      children: []
-    )
-  }
-}
 
 fn body_lowering_normalized_module() -> Optional<NormalizedTree> {
   let lm = dag_language_model()
@@ -158,7 +133,7 @@ fn body_lower_has_arrow_token(root: Node) -> Bool {
   }
 }
 
-fn body_lowering_fn_body_subtree_holds() -> Bool {
+test fn body_lowering_fn_body_subtree_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
@@ -173,7 +148,7 @@ fn body_lowering_fn_body_subtree_holds() -> Bool {
   }
 }
 
-fn body_lowering_arrow_token_holds() -> Bool {
+test fn body_lowering_arrow_token_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
@@ -194,7 +169,7 @@ fn body_lower_collect_atoms(root: Node, acc: List<Symbol>) -> List<Symbol> {
   })
 }
 
-fn body_lowering_has_plus_token() -> Bool {
+test fn body_lowering_has_plus_token() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
@@ -210,7 +185,7 @@ fn body_lowering_has_plus_token() -> Bool {
   }
 }
 
-fn body_lowering_binary_infix_holds() -> Bool {
+test fn body_lowering_binary_infix_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
@@ -229,7 +204,7 @@ fn body_lowering_binary_infix_holds() -> Bool {
   }
 }
 
-fn body_lowering_expr_infix_holds() -> Bool {
+test fn body_lowering_expr_infix_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
@@ -248,7 +223,7 @@ fn body_lowering_expr_infix_holds() -> Bool {
   }
 }
 
-fn body_lowering_fn_body_infix_holds() -> Bool {
+test fn body_lowering_fn_body_infix_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
@@ -267,14 +242,14 @@ fn body_lowering_fn_body_infix_holds() -> Bool {
   }
 }
 
-fn body_lowering_fn_decl_found() -> Bool {
+test fn body_lowering_fn_decl_found() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Present { value: _ } => true
     Absent => false
   }
 }
 
-fn body_lowering_domain_holds() -> Bool {
+test fn body_lowering_domain_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
@@ -293,7 +268,7 @@ fn body_lowering_domain_holds() -> Bool {
   }
 }
 
-fn body_lowering_body_holds() -> Bool {
+test fn body_lowering_body_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
@@ -312,7 +287,7 @@ fn body_lowering_body_holds() -> Bool {
   }
 }
 
-fn body_lowering_return_holds() -> Bool {
+test fn body_lowering_return_holds() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
@@ -327,7 +302,7 @@ fn body_lowering_return_holds() -> Bool {
   }
 }
 
-fn body_lowering_arrow_direct_well_formed() -> Bool {
+test fn body_lowering_arrow_direct_well_formed() -> Bool {
   match body_lowering_parsed_fn_decl() {
     Absent => false
     Present { value: fn_decl } =>
@@ -338,14 +313,14 @@ fn body_lowering_arrow_direct_well_formed() -> Bool {
   }
 }
 
-fn body_lowering_module_well_formed() -> Bool {
+test fn body_lowering_module_well_formed() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } => well_formed(n: tree.root)
   }
 }
 
-fn body_lowering_normalized_resolves() -> Bool {
+test fn body_lowering_normalized_resolves() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
@@ -356,7 +331,7 @@ fn body_lowering_normalized_resolves() -> Bool {
   }
 }
 
-fn body_lowering_normalize_accepts() -> Bool {
+test fn body_lowering_normalize_accepts() -> Bool {
   match body_lowering_normalized_module() {
     Present { value: _ } => true
     Absent => false
@@ -382,7 +357,7 @@ fn body_lowering_tree_contains_atom(root: Node, wanted: Symbol) -> Bool {
   }
 }
 
-fn body_lowering_fixture_resolves() -> Bool {
+test fn body_lowering_fixture_resolves() -> Bool {
   let lm = dag_language_model()
   match admit_normalized_tree(root: dag_add_arrow_with_body_fixture, diagnostics: None) {
     Rejected { diagnostics: _ } => false
@@ -419,7 +394,7 @@ fn body_lowering_transform_operand_identities(arrow: Node) -> List<Symbol> {
   }
 }
 
-fn body_lowering_normalized_operator_is_plus() -> Bool {
+test fn body_lowering_normalized_operator_is_plus() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
@@ -478,7 +453,7 @@ fn body_lowering_domain_named_count(arrow: Node) -> Int {
   }
 }
 
-fn body_lowering_normalized_domain_has_two_params() -> Bool {
+test fn body_lowering_normalized_domain_has_two_params() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
@@ -490,7 +465,7 @@ fn body_lowering_normalized_domain_has_two_params() -> Bool {
   }
 }
 
-fn body_lowering_normalized_operand2_lexeme_is_y() -> Bool {
+test fn body_lowering_normalized_operand2_lexeme_is_y() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
@@ -556,7 +531,7 @@ fn body_lowering_transform_child_count(arrow: Node) -> Int {
   }
 }
 
-fn body_lowering_normalized_transform_has_three_children() -> Bool {
+test fn body_lowering_normalized_transform_has_three_children() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
@@ -568,7 +543,7 @@ fn body_lowering_normalized_transform_has_three_children() -> Bool {
   }
 }
 
-fn body_lowering_domain_operand2_match() -> Bool {
+test fn body_lowering_domain_operand2_match() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
@@ -620,7 +595,7 @@ fn body_lower_arrow_domain_first_binding(arrow: Node) -> Optional<Symbol> {
   }
 }
 
-fn body_lowering_domain_operand1_match() -> Bool {
+test fn body_lowering_domain_operand1_match() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
@@ -648,7 +623,7 @@ fn body_lowering_parsed_has_param_bindings() -> Bool {
   }
 }
 
-fn body_lowering_normalized_operand1_lexeme_is_x() -> Bool {
+test fn body_lowering_normalized_operand1_lexeme_is_x() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
@@ -722,7 +697,7 @@ fn body_lowering_normalized_matches_fixture_operands() -> Bool {
   }
 }
 
-fn body_lowering_normalized_left_operand_is_atom() -> Bool {
+test fn body_lowering_normalized_left_operand_is_atom() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
@@ -746,7 +721,7 @@ fn body_lowering_left_operand_is_param_x() -> Bool {
   }
 }
 
-fn body_lowering_normalized_arrow_root_resolves() -> Bool {
+test fn body_lowering_normalized_arrow_root_resolves() -> Bool {
   let lm = dag_language_model()
   match body_lowering_normalized_module() {
     Absent => false
@@ -766,7 +741,7 @@ fn body_lowering_normalized_arrow_root_resolves() -> Bool {
   }
 }
 
-fn body_lowering_normalize_yields_arrow() -> Bool {
+test fn body_lowering_normalize_yields_arrow() -> Bool {
   match body_lowering_normalized_module() {
     Absent => false
     Present { value: tree } =>
@@ -784,20 +759,4 @@ fn body_lowering_normalize_yields_arrow() -> Bool {
             }
       }
   }
-}
-
-data claim_body_lowering_normalize_add_resolves: TestClaim = EqualsClaim {
-  label: "manual/body-lowering-normalize: census add module normalizes then resolves",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: body_lowering_bool_node(pass: body_lowering_normalized_resolves()),
-  rhs: body_lowering_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_body_lowering_normalize_add_yields_arrow: TestClaim = EqualsClaim {
-  label: "manual/body-lowering-normalize: census add module normalizes fn_decl to Arrow with Transform body",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: body_lowering_bool_node(pass: body_lowering_normalize_yields_arrow()),
-  rhs: body_lowering_bool_node(pass: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
 }
