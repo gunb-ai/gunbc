@@ -195,7 +195,7 @@ fn cpp_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Can
   }
 }
 
-fn cpp_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn cpp_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   match cpp_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -210,11 +210,11 @@ fn cpp_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.Inferred
   }
 }
 
-fn cpp_add_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn cpp_add_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   cpp_add_inferred_facts_for(node: key)
 }
 
-data cpp_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data cpp_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: cpp_add_emitted_root,
   facts: std.types.Map {
     lookup: cpp_add_facts_lookup

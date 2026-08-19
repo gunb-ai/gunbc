@@ -7,18 +7,18 @@ data rust_body_add_swapped_source_text: String = "fn add(x: i32, y: i32) -> i32 
 
 data rust_body_add_minus_source_text: String = "fn add(x: i32, y: i32) -> i32 { x - y }"
 
-fn rust_body_add_facts_miss(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn rust_body_add_facts_miss(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
-fn rust_body_add_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn rust_body_add_inferred_tree_for(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: rust_body_add_facts_miss }
   }
 }
 
-fn rust_body_add_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn rust_body_add_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match table_fixture_add_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
@@ -29,7 +29,7 @@ fn rust_body_add_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compil
   }
 }
 
-fn rust_body_add_producer_swapped_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn rust_body_add_producer_swapped_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match table_fixture_add_arrow_with_body_swapped_operands() {
     Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {

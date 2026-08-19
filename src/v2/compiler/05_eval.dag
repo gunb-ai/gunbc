@@ -353,7 +353,7 @@ type TestClaimTypedInput<T> {
 type TestClaimEvalSubject<T> {
   claim: v2.std.verification.TestClaim
   context: EvalContext
-  tree: v2.compiler.infer.InferredTree
+  tree: v2.compiler.inferred_tree.InferredTree
   input: TestClaimTypedInput<T>
 }
 
@@ -635,7 +635,7 @@ fn eval_grounding_not_derived_digest_node() -> v2.std.node.Node {
   }
 }
 
-fn inferred_facts_digest(facts: v2.compiler.infer.InferredFacts) -> v2.std.node.Hash {
+fn inferred_facts_digest(facts: v2.compiler.inferred_tree.InferredFacts) -> v2.std.node.Hash {
   match facts.grounding {
     DerivedGrounding { grounding: g } =>
       combine_hash(
@@ -659,7 +659,7 @@ fn inferred_facts_digest(facts: v2.compiler.infer.InferredFacts) -> v2.std.node.
   }
 }
 
-fn inferred_node_facts_cache_digest(tree: v2.compiler.infer.InferredTree, node: v2.std.node.Node) -> v2.std.node.Hash {
+fn inferred_node_facts_cache_digest(tree: v2.compiler.inferred_tree.InferredTree, node: v2.std.node.Node) -> v2.std.node.Hash {
   combine_hash(
     a: content_hash(n: node),
     b: match inferred_facts_witness_for_eval(tree: tree, node: node) {
@@ -670,7 +670,7 @@ fn inferred_node_facts_cache_digest(tree: v2.compiler.infer.InferredTree, node: 
   )
 }
 
-fn inferred_tree_evaluated_facts_digest(tree: v2.compiler.infer.InferredTree) -> v2.std.node.Hash {
+fn inferred_tree_evaluated_facts_digest(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.node.Hash {
   fold_node(
     n: tree.root,
     algebra: v2.std.node.NodeFold {
@@ -684,7 +684,7 @@ fn inferred_tree_evaluated_facts_digest(tree: v2.compiler.infer.InferredTree) ->
   )
 }
 
-fn inferred_tree_digest(tree: v2.compiler.infer.InferredTree) -> v2.std.node.Hash {
+fn inferred_tree_digest(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.node.Hash {
   combine_hash(
     a: content_hash(n: tree.root),
     b: inferred_tree_evaluated_facts_digest(tree: tree)
@@ -837,11 +837,11 @@ fn eval_default_interpretation() -> v2.std.runtime.InterpretationAlgebra {
   v2_evaluator_interpretation()
 }
 
-fn inferred_facts_witness_for_eval(tree: v2.compiler.infer.InferredTree, node: v2.std.node.Node) -> Witness<v2.compiler.infer.InferredFacts> {
+fn inferred_facts_witness_for_eval(tree: v2.compiler.inferred_tree.InferredTree, node: v2.std.node.Node) -> Witness<v2.compiler.inferred_tree.InferredFacts> {
   witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
 }
 
-fn inferred_facts_for_eval(tree: v2.compiler.infer.InferredTree, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredFacts> {
+fn inferred_facts_for_eval(tree: v2.compiler.inferred_tree.InferredTree, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredFacts> {
   match inferred_facts_witness_for_eval(tree: tree, node: node) {
     Holds { value: facts } =>
       if !inferred_facts_grounding_derived(facts: facts) {
@@ -875,7 +875,7 @@ fn inferred_facts_for_eval(tree: v2.compiler.infer.InferredTree, node: v2.std.no
   }
 }
 
-fn eval_structural_node_for_eval(tree: v2.compiler.infer.InferredTree, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+fn eval_structural_node_for_eval(tree: v2.compiler.inferred_tree.InferredTree, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   bind_outcome(
     o: inferred_facts_for_eval(tree: tree, node: node),
     f: fn(_facts) {
@@ -913,13 +913,13 @@ fn control_transfer_value(
 
 type RuntimeValueAcceptanceWitness {
   resolved_type: Witness<v2.std.node.Node>
-  inhabitance: Witness<v2.compiler.infer.InferredFacts>
-  canonical: Witness<v2.compiler.infer.InferredFacts>
+  inhabitance: Witness<v2.compiler.inferred_tree.InferredFacts>
+  canonical: Witness<v2.compiler.inferred_tree.InferredFacts>
 }
 
 fn eval_runtime_value_acceptance_witness(
   node: v2.std.node.Node,
-  facts: v2.compiler.infer.InferredFacts,
+  facts: v2.compiler.inferred_tree.InferredFacts,
   value: v2.std.runtime.RuntimeValue
 ) -> RuntimeValueAcceptanceWitness {
   RuntimeValueAcceptanceWitness {
@@ -956,7 +956,7 @@ fn eval_runtime_value_acceptance_witness(
 
 fn eval_accept_runtime_value_with_facts(
   node: v2.std.node.Node,
-  facts: v2.compiler.infer.InferredFacts,
+  facts: v2.compiler.inferred_tree.InferredFacts,
   value: v2.std.runtime.RuntimeValue
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   let witness = eval_runtime_value_acceptance_witness(node: node, facts: facts, value: value)
@@ -1429,8 +1429,8 @@ fn eval_effect_io_roundtrip(
 fn eval_value_node(
   node: v2.std.node.Node,
   _args: List<v2.std.runtime.RuntimeValue>,
-  _facts: v2.compiler.infer.InferredFacts,
-  _tree: v2.compiler.infer.InferredTree,
+  _facts: v2.compiler.inferred_tree.InferredFacts,
+  _tree: v2.compiler.inferred_tree.InferredTree,
   interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
   environment: v2.std.runtime.EvaluationEnvironment,
   _runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime
@@ -1445,8 +1445,8 @@ fn eval_value_node(
 fn eval_transform_node(
   node: v2.std.node.Node,
   args: List<v2.std.runtime.RuntimeValue>,
-  _facts: v2.compiler.infer.InferredFacts,
-  tree: v2.compiler.infer.InferredTree,
+  _facts: v2.compiler.inferred_tree.InferredFacts,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
   environment: v2.std.runtime.EvaluationEnvironment,
@@ -1527,7 +1527,7 @@ fn eval_transform_node(
 
 fn eval_branch_node_eval(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
   environment: v2.std.runtime.EvaluationEnvironment,
@@ -1573,8 +1573,8 @@ fn eval_branch_node_eval(
 fn eval_branch_node(
   node: v2.std.node.Node,
   _args: List<v2.std.runtime.RuntimeValue>,
-  _facts: v2.compiler.infer.InferredFacts,
-  tree: v2.compiler.infer.InferredTree,
+  _facts: v2.compiler.inferred_tree.InferredFacts,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
   environment: v2.std.runtime.EvaluationEnvironment,
@@ -1595,8 +1595,8 @@ fn eval_branch_node(
 fn eval_loop_node(
   node: v2.std.node.Node,
   _args: List<v2.std.runtime.RuntimeValue>,
-  _facts: v2.compiler.infer.InferredFacts,
-  _tree: v2.compiler.infer.InferredTree,
+  _facts: v2.compiler.inferred_tree.InferredFacts,
+  _tree: v2.compiler.inferred_tree.InferredTree,
   interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
   environment: v2.std.runtime.EvaluationEnvironment,
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime
@@ -1620,7 +1620,7 @@ fn eval_loop_node(
 
 fn eval_bind_node_eval(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
   environment: v2.std.runtime.EvaluationEnvironment,
@@ -1685,8 +1685,8 @@ fn eval_bind_node_eval(
 fn eval_bind_node(
   node: v2.std.node.Node,
   _args: List<v2.std.runtime.RuntimeValue>,
-  _facts: v2.compiler.infer.InferredFacts,
-  tree: v2.compiler.infer.InferredTree,
+  _facts: v2.compiler.inferred_tree.InferredFacts,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
   environment: v2.std.runtime.EvaluationEnvironment,
@@ -1714,7 +1714,7 @@ fn eval_match_scrutinee_edge(node: v2.std.node.Node) -> v2.std.diagnostic.Outcom
 
 fn eval_match_node_eval(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
   environment: v2.std.runtime.EvaluationEnvironment,
@@ -1763,8 +1763,8 @@ fn eval_match_node_eval(
 fn eval_match_node(
   node: v2.std.node.Node,
   _args: List<v2.std.runtime.RuntimeValue>,
-  _facts: v2.compiler.infer.InferredFacts,
-  tree: v2.compiler.infer.InferredTree,
+  _facts: v2.compiler.inferred_tree.InferredFacts,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   interpreter: v2.std.runtime.RuntimeBehaviorInterpreter,
   environment: v2.std.runtime.EvaluationEnvironment,
@@ -1786,8 +1786,8 @@ fn eval_computation_node(
   behavior: v2.std.node.Behavior,
   node: v2.std.node.Node,
   args: List<v2.std.runtime.RuntimeValue>,
-  facts: v2.compiler.infer.InferredFacts,
-  tree: v2.compiler.infer.InferredTree,
+  facts: v2.compiler.inferred_tree.InferredFacts,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
@@ -1877,7 +1877,7 @@ fn eval_computation_node(
 fn eval_interpret_node(
   node: v2.std.node.Node,
   args: List<v2.std.runtime.RuntimeValue>,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
@@ -1964,7 +1964,7 @@ fn eval_append_child_value(
 
 fn eval_fold_init(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
@@ -1996,7 +1996,7 @@ fn eval_fold_init(
 
 fn eval_fold_control_transfer_state(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
@@ -2036,7 +2036,7 @@ fn eval_fold_is_callee_reference_edge(
 
 fn eval_fold_callee_reference_child_state(
   edge: v2.std.node.Edge,
-  tree: v2.compiler.infer.InferredTree
+  tree: v2.compiler.inferred_tree.InferredTree
 ) -> EvalFoldState {
   EvalFoldState {
     node: edge.target,
@@ -2062,7 +2062,7 @@ fn eval_fold_is_closure_argument_edge(
 
 fn eval_fold_closure_argument_child_state(
   edge: v2.std.node.Edge,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   environment: v2.std.runtime.EvaluationEnvironment
 ) -> EvalFoldState {
   EvalFoldState {
@@ -2086,7 +2086,7 @@ fn eval_fold_closure_argument_child_state(
 fn eval_fold_child_for_edge(
   acc: EvalFoldState,
   edge: v2.std.node.Edge,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
@@ -2123,7 +2123,7 @@ fn eval_fold_child_for_edge(
 fn eval_fold_child_edge_step(
   acc: EvalFoldState,
   edge: v2.std.node.Edge,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
@@ -2151,7 +2151,7 @@ fn eval_fold_child_edge_step(
 
 fn eval_fold_tree(
   n: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
@@ -2196,7 +2196,7 @@ fn eval_maybe_complete_node(
   node: v2.std.node.Node,
   progress: EvalProgress,
   args: List<v2.std.runtime.RuntimeValue>,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
@@ -2234,7 +2234,7 @@ fn eval_fold_step(
   acc: EvalFoldState,
   edge: v2.std.node.Edge,
   child: EvalFoldState,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
@@ -2288,7 +2288,7 @@ fn eval_runtime_node_is_control_transfer(node: v2.std.node.Node) -> Bool {
 
 fn eval_runtime_control_node(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
@@ -2360,7 +2360,7 @@ fn eval_runtime_control_node(
 
 fn eval_runtime_node_via_data_flow_fold(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
@@ -2379,7 +2379,7 @@ fn eval_runtime_node_via_data_flow_fold(
 
 fn eval_runtime_node(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   environment: v2.std.runtime.EvaluationEnvironment,
   runtime: v2.extdeps.runtimes.v2_evaluator.V4EvaluatorRuntime,
@@ -2407,7 +2407,7 @@ fn eval_runtime_node(
 }
 
 fn eval_with_context(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   context: EvalContext,
   inputs: Inputs
 ) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
@@ -2429,7 +2429,7 @@ fn eval_with_context(
   }
 }
 
-fn eval(tree: v2.compiler.infer.InferredTree, interpretation: v2.std.runtime.InterpretationAlgebra, inputs: Inputs) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+fn eval(tree: v2.compiler.inferred_tree.InferredTree, interpretation: v2.std.runtime.InterpretationAlgebra, inputs: Inputs) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   if well_formed(n: tree.root) {
     if well_formed(n: inputs.root) {
       eval_runtime_node(
@@ -2448,7 +2448,7 @@ fn eval(tree: v2.compiler.infer.InferredTree, interpretation: v2.std.runtime.Int
   }
 }
 
-fn eval_node(tree: v2.compiler.infer.InferredTree, inputs: Inputs) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+fn eval_node(tree: v2.compiler.inferred_tree.InferredTree, inputs: Inputs) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   bind_outcome(
     o: eval(tree: tree, interpretation: eval_default_interpretation(), inputs: inputs),
     f: fn(value) {
@@ -2620,7 +2620,7 @@ fn accepted_runtime_value_outcome_eq(a: v2.std.diagnostic.Outcome<v2.std.runtime
 
 fn run_test_claim_runtime_assert(
   claim: v2.std.verification.TestClaim,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   interpretation: v2.std.runtime.InterpretationAlgebra,
   actual: v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue>,
   at: v2.std.node.Node
@@ -2738,7 +2738,7 @@ fn run_test_claim(
 fn eval_test_claim_subject(
   claim: v2.std.verification.TestClaim,
   context: EvalContext,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   evaluator_pin: v2.std.node.Symbol
 ) -> TestClaimEvalSubject<v2.std.node.Node> {
   let input = test_claim_input(c: claim)

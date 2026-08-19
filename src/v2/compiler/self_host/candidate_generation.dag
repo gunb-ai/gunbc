@@ -87,7 +87,7 @@ fn generate_translate_self_emit_candidate(
 }
 
 fn generate_rust_emission_candidate(
-  inferred: v2.compiler.infer.InferredTree,
+  inferred: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<RustEmissionCandidate> {
   bind_outcome(
@@ -153,7 +153,7 @@ fn mint_artifact_from_rust_emission_candidate(
 }
 
 fn mint_provenanced_rust_artifact(
-  inferred: v2.compiler.infer.InferredTree,
+  inferred: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel,
   module_path: String
 ) -> v2.std.diagnostic.Outcome<ProvenancedRustArtifact> {
@@ -169,7 +169,7 @@ fn mint_provenanced_rust_artifact(
 }
 
 fn mint_written_provenanced_rust_artifact(
-  inferred: v2.compiler.infer.InferredTree,
+  inferred: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel,
   module_path: String,
   workspace_dir: String

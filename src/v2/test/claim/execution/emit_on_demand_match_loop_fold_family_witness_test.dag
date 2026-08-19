@@ -22,7 +22,7 @@ fn family_open_test_store() -> Optional<std.artifact_store.ArtifactStore> {
   }
 }
 
-fn family_native_key_for(tree: v2.compiler.infer.InferredTree) -> std.content_hash.ContentHash {
+fn family_native_key_for(tree: v2.compiler.inferred_tree.InferredTree) -> std.content_hash.ContentHash {
   emit_on_demand_key(
     closure_digest: inferred_tree_digest(tree: tree),
     emitter_identity: family_emitter,
@@ -50,34 +50,34 @@ fn match_fixture_inputs() -> v2.compiler.eval.Inputs {
   )
 }
 
-fn match_primary_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn match_primary_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   emit_match_eval_producer_tree()
 }
 
-fn match_alt_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn match_alt_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   emit_match_eval_swapped_producer_tree()
 }
 
-fn loop_primary_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn loop_primary_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   emit_loop_eval_producer_tree()
 }
 
-fn loop_alt_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn loop_alt_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   emit_loop_eval_wrong_value_producer_tree()
 }
 
-fn fold_primary_tree() -> v2.compiler.infer.InferredTree {
+fn fold_primary_tree() -> v2.compiler.inferred_tree.InferredTree {
   emit_fold_eval_tree_for(root: fold_fixture_param_canonical_arrow)
 }
 
-fn fold_alt_tree() -> v2.compiler.infer.InferredTree {
+fn fold_alt_tree() -> v2.compiler.inferred_tree.InferredTree {
   emit_fold_eval_tree_for(root: fold_fixture_param_wrong_arrow)
 }
 
 fn mlf_family_members(
-  match_tree: v2.compiler.infer.InferredTree,
-  loop_tree: v2.compiler.infer.InferredTree,
-  fold_tree: v2.compiler.infer.InferredTree
+  match_tree: v2.compiler.inferred_tree.InferredTree,
+  loop_tree: v2.compiler.inferred_tree.InferredTree,
+  fold_tree: v2.compiler.inferred_tree.InferredTree
 ) -> List<v2.compiler.emit_module.EmitFamilyMember> {
   [
     v2.compiler.emit_module.EmitFamilyMember {
@@ -172,8 +172,8 @@ fn mlf_family_member_run_refused(
 fn mlf_family_primary_agreements(
   workspace: String,
   source: Medium<String>,
-  match_tree: v2.compiler.infer.InferredTree,
-  loop_tree: v2.compiler.infer.InferredTree
+  match_tree: v2.compiler.inferred_tree.InferredTree,
+  loop_tree: v2.compiler.inferred_tree.InferredTree
 ) -> Bool {
   emit_match_eval_verdict_is_pass(
     run: run_test_claim_from_source_emit_vs_eval_cached(
@@ -207,7 +207,7 @@ fn mlf_family_primary_agreements(
 fn mlf_family_alt_loop_mismatch(
   workspace: String,
   source: Medium<String>,
-  loop_alt: v2.compiler.infer.InferredTree
+  loop_alt: v2.compiler.inferred_tree.InferredTree
 ) -> Bool {
   emit_loop_eval_verdict_is_fail(
     run: run_test_claim_from_source_emit_vs_eval_cached(
@@ -283,9 +283,9 @@ fn mlf_family_one_build_with_sources(
   workspace_alt: String,
   source: Medium<String>,
   alt_source: Medium<String>,
-  match_tree: v2.compiler.infer.InferredTree,
-  loop_tree: v2.compiler.infer.InferredTree,
-  loop_alt: v2.compiler.infer.InferredTree
+  match_tree: v2.compiler.inferred_tree.InferredTree,
+  loop_tree: v2.compiler.inferred_tree.InferredTree,
+  loop_alt: v2.compiler.inferred_tree.InferredTree
 ) -> Bool {
   mlf_family_primary_runs(workspace: workspace_primary, source: source)
     && mlf_family_primary_agreements(

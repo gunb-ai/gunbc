@@ -1,7 +1,7 @@
 module v2.compiler.symbol_index_fill
 
 
-data symbol_index_fill_extdeps_coupling_disposition: std.disposition.Disposition = Scaffold {
+data symbol_index_fill_extdeps_coupling_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.std.qualified_name",
@@ -10,7 +10,7 @@ data symbol_index_fill_extdeps_coupling_disposition: std.disposition.Disposition
   }
 }
 
-data symbol_index_containment_disposition: std.disposition.Disposition = Scaffold {
+data symbol_index_containment_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.compiler.symbol_index_fill",
@@ -40,7 +40,7 @@ fn symbol_index_fill_containment_edge(
         )
       } else {
         let child_path = qualified_name_snoc(qn: path, segment: sym)
-        let with_binding = symbol_index_insert(
+        let with_binding = v2.std.symbol_index.symbol_index_insert(
           index: index,
           qualified_path: child_path,
           resolved: edge.target
@@ -86,7 +86,7 @@ fn symbol_index_fill_containment_node(
         match edge.label {
           Named { name: sym } =>
             let variant_path = qualified_name_snoc(qn: path, segment: sym)
-            let with_variant = symbol_index_insert(
+            let with_variant = v2.std.symbol_index.symbol_index_insert(
               index: acc,
               qualified_path: variant_path,
               resolved: edge.target
@@ -159,9 +159,9 @@ fn symbol_index_fill_alias_binding(
   match alias_binding_row_from_decl_node(decl: decl, module_root: root) {
     Rejected { diagnostics: _ } => index
     Accepted { value: row, diagnostics: _ } =>
-      match symbol_index_lookup(index: index, qualified_path: row.target) {
+      match v2.std.symbol_index.symbol_index_lookup(index: index, qualified_path: row.target) {
         Present { value: resolved } =>
-          symbol_index_insert(
+          v2.std.symbol_index.symbol_index_insert(
             index: index,
             qualified_path: qualified_name_snoc(qn: module_qn, segment: row.binding),
             resolved: resolved
@@ -206,7 +206,7 @@ fn symbol_index_fill_unique_variant_aliases(
             match e.label {
               Named { name: sym } =>
                 if disj_variant_count_of(counts: counts, sym: sym) == 1 {
-                  symbol_index_insert(
+                  v2.std.symbol_index.symbol_index_insert(
                     index: a2,
                     qualified_path: qualified_name_snoc(qn: module_qn, segment: sym),
                     resolved: e.target

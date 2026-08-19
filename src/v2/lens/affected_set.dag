@@ -367,7 +367,7 @@ fn affected_set_closure(dependencies: List<v2.std.dependency.DependencyView>, ed
   state.acc
 }
 
-fn affected_set_reading(graph: v2.compiler.infer.InferredTree, edit_locus: v2.std.node.Node) -> v2.lens.affected_set.AffectedSetReading {
+fn affected_set_reading(graph: v2.compiler.inferred_tree.InferredTree, edit_locus: v2.std.node.Node) -> v2.lens.affected_set.AffectedSetReading {
   let dependency_reading = dependency_lens(root: graph.root)
   let closure = affected_set_closure(dependencies: dependency_reading, edit_locus: edit_locus)
   AffectedSetReading {

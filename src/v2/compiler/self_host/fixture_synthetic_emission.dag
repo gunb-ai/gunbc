@@ -135,7 +135,7 @@ fn advance_fixture_behavior_receipt_cargo_green(
 }
 
 fn mint_synthetic_emitted_artifact_from_fixture_inferred(
-  inferred: v2.compiler.infer.InferredTree,
+  inferred: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel,
   module_path: String,
   fixture_lane_tag: String
@@ -159,7 +159,7 @@ fn mint_synthetic_emitted_artifact_from_fixture_inferred(
 }
 
 fn mint_written_synthetic_emitted_artifact_from_fixture_inferred(
-  inferred: v2.compiler.infer.InferredTree,
+  inferred: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel,
   module_path: String,
   workspace_dir: String,

@@ -277,7 +277,7 @@ fn add_body_ts_canonical_grounding_for(node: v2.std.node.Node) -> Witness<v2.std
   }
 }
 
-fn add_body_ts_inferred_facts_for(node: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn add_body_ts_inferred_facts_for(node: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   match add_body_ts_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -292,18 +292,18 @@ fn add_body_ts_inferred_facts_for(node: v2.std.node.Node) -> Optional<v2.compile
   }
 }
 
-fn add_body_ts_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn add_body_ts_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   add_body_ts_inferred_facts_for(node: key)
 }
 
-fn add_body_ts_inferred_tree_for(root: v2.std.node.Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn add_body_ts_inferred_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: add_body_ts_facts_lookup }
   }
 }
 
-fn add_body_ts_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn add_body_ts_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match table_fixture_add_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
@@ -314,7 +314,7 @@ fn add_body_ts_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler
   }
 }
 
-fn add_body_ts_producer_swapped_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn add_body_ts_producer_swapped_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match table_fixture_add_arrow_with_body_swapped_operands() {
     Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {

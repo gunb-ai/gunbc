@@ -30,17 +30,17 @@ fn path_matches_any_substring(path: String, subs: List<String>) -> Bool {
 
 fn consumer_for_explicit_rosters(entry: String, function: String) -> std.witness_admission.WitnessConsumerCadence {
   if schedule_contains_entry(
-    xs: falsifier_self_host_wet_entries(),
+    xs: v2.compiler.self_host.wet_receipt_enrollment.falsifier_self_host_wet_entries(),
     entry: entry,
     function: function
   ) {
-    if falsifier_self_host_wet_cadence_is_active() {
+    if v2.compiler.self_host.wet_receipt_enrollment.falsifier_self_host_wet_cadence_is_active() {
       FalsifierSelfHostWet
     } else {
       std.witness_admission.OfflineLocalRecipe
     }
   } else if schedule_contains_entry(
-    xs: falsifier_native_cache_cold_roster(),
+    xs: v2.compiler.self_host.wet_receipt_enrollment.falsifier_native_cache_cold_roster(),
     entry: entry,
     function: function
   ) {
@@ -58,7 +58,7 @@ fn consumer_for_explicit_rosters(entry: String, function: String) -> std.witness
   ) {
     QuarantineProbeExpectRed
   } else if schedule_contains_entry(
-    xs: falsifier_self_host_wet_known_red_entries,
+    xs: v2.compiler.self_host.wet_receipt_enrollment.falsifier_self_host_wet_known_red_entries,
     entry: entry,
     function: function
   ) {
@@ -115,7 +115,7 @@ fn witness_consumer_cadence_for_row(
 
 data witness_path_policy_admission_wall_note: String = "THE ARM THIS WALL CLOSED, and why it needed a wall rather than a stronger reconciliation. witness_consumer_cadence_for_row answers WHICH policy claims a row; this function answers whether that policy is an admissible answer, and until 2026-08-04 it conflated the two by refusing only NoConsumer. So OfflineLocalRecipe — the verdict a broad directory pattern produces — was accepted unconditionally, and moving a file under such a directory both removed it from per-PR discovery and satisfied admission. The exact-admission authority already forbids exactly this shape: explicit_witness_admission_cadence_executes refuses OfflineLocalRecipe on an admission row so that an admission cannot execute nowhere. The path side now meets the same bar, with the frozen legacy population (gunbc.witness_deferral_freeze) as the only exemption and that exemption itself joined by identity in both directions.
 
-READING ORDER IS LOAD-BEARING. The explicit rosters are consulted FIRST and are total for the rows they cover, so this path-policy fold decides only rows no roster claims — the same precedence witness_row_excluded_two_kinds_note states for exclusion. One consequence is deliberate and is NOT closed here: consumer_for_explicit_rosters maps a falsifier_self_host_wet row to OfflineLocalRecipe while falsifier_self_host_wet_cadence_active is false, and that reaches WitnessHasExecutingConsumer through the explicit arm rather than through this path-policy fold — the falsifier-cadence coverage misclassification is closed at witness_execution_standing_for_row (DeclaredCadenceUnrealized, dashboard node adhoc-1eb1a9f9-ad9), not here; it is adjacent scope, named here so it is not mistaken for covered."
+READING ORDER IS LOAD-BEARING. The explicit rosters are consulted FIRST and are total for the rows they cover, so this path-policy fold decides only rows no roster claims — the same precedence witness_row_excluded_two_kinds_note states for exclusion. One consequence is deliberate and is NOT closed here: consumer_for_explicit_rosters maps a falsifier_self_host_wet row to OfflineLocalRecipe while falsifier_self_host_wet_cadence_active is false, and that reaches std.witness_admission.WitnessHasExecutingConsumer through the explicit arm rather than through this path-policy fold — the falsifier-cadence coverage misclassification is closed at witness_execution_standing_for_row (std.witness_admission.DeclaredCadenceUnrealized, dashboard node adhoc-1eb1a9f9-ad9), not here; it is adjacent scope, named here so it is not mistaken for covered."
 
 fn witness_path_policy_execution_standing_in(
   entry: String,
@@ -193,9 +193,9 @@ fn witness_execution_standing_for_row(
       }
     _ =>
       if witness_cadence_has_scheduled_route(cadence: explicit) {
-        WitnessHasExecutingConsumer { cadence: explicit }
+        std.witness_admission.WitnessHasExecutingConsumer { cadence: explicit }
       } else {
-        DeclaredCadenceUnrealized { cadence: explicit, entry: entry, function: function }
+        std.witness_admission.DeclaredCadenceUnrealized { cadence: explicit, entry: entry, function: function }
       }
   }
 }
@@ -312,8 +312,8 @@ fn witness_admission_explicit_consumer_manifest() -> List<String> {
   fold_list(
     xs:       concat(
         concat(
-          concat(falsifier_self_host_wet_entries(), bin_witness_wet_entries),
-          concat(known_red_probe_roster(), falsifier_self_host_wet_known_red_entries)
+          concat(v2.compiler.self_host.wet_receipt_enrollment.falsifier_self_host_wet_entries(), bin_witness_wet_entries),
+          concat(known_red_probe_roster(), v2.compiler.self_host.wet_receipt_enrollment.falsifier_self_host_wet_known_red_entries)
         ),
         concat(
           concat(
@@ -412,7 +412,7 @@ fn witness_exclusion_explicit_roster_rows_consistent_holds() -> Bool {
 }
 
 fn witness_exclusion_falsifier_rows_consistent_holds() -> Bool {
-  if !falsifier_self_host_wet_cadence_is_active() {
+  if !v2.compiler.self_host.wet_receipt_enrollment.falsifier_self_host_wet_cadence_is_active() {
     true
   } else {
     !any(
@@ -420,7 +420,7 @@ fn witness_exclusion_falsifier_rows_consistent_holds() -> Bool {
       predicate: fn(row) {
         witness_exclusion_row_is_falsifier_wet(row: row)
           && !schedule_entries_cover_pattern(
-            xs: falsifier_self_host_wet_entries(),
+            xs: v2.compiler.self_host.wet_receipt_enrollment.falsifier_self_host_wet_entries(),
             pattern: row.pattern
           )
       }

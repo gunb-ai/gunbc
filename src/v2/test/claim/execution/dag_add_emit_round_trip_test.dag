@@ -66,7 +66,7 @@ fn dag_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Can
   }
 }
 
-fn dag_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn dag_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   match dag_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -81,11 +81,11 @@ fn dag_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.Inferred
   }
 }
 
-fn dag_add_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn dag_add_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   dag_add_inferred_facts_for(node: key)
 }
 
-data dag_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data dag_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: dag_add_emitted_root,
   facts: std.types.Map {
     lookup: dag_add_facts_lookup
@@ -158,7 +158,7 @@ test fn dag_add_domain_coerce_accepts_holds() -> Bool {
 
 test fn dag_add_domain_translate_accepts_holds() -> Bool {
   match translate_emitted_node(
-    tree: v2.compiler.infer.InferredTree {
+    tree: v2.compiler.inferred_tree.InferredTree {
       root: dag_arrow_domain_conj_node(),
       facts: std.types.Map { lookup: dag_add_facts_lookup }
     },

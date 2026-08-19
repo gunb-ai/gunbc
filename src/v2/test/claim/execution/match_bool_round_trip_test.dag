@@ -82,7 +82,7 @@ fn match_bool_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.
   }
 }
 
-fn match_bool_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn match_bool_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   match match_bool_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -97,11 +97,11 @@ fn match_bool_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.Infer
   }
 }
 
-fn match_bool_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn match_bool_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   match_bool_inferred_facts_for(node: key)
 }
 
-data match_bool_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data match_bool_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: match_bool_emitted_root,
   facts: std.types.Map {
     lookup: match_bool_facts_lookup

@@ -165,7 +165,7 @@ fn add_arrow_eval_parse_tokens(tokens: v2.std.compilers.lexing.TokenStream) -> v
   )
 }
 
-fn add_arrow_source_ingested_add_infers() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn add_arrow_source_ingested_add_infers() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   let lm = v2.extdeps.languages.dag.dag_language_model()
   v2.std.diagnostic.bind_outcome(
     o: v2.compiler.tokenize.tokenize(text: v2.compiler.ingested_fixture_arrows.ingested_add_module_source, file: ^add_arrow_eval_source_file, rules: lm.lex),
@@ -269,7 +269,7 @@ fn add_arrow_eval_tree_root(call: v2.std.node.Node, expected: v2.std.node.Node) 
   }
 }
 
-fn add_arrow_eval_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.infer.InferredFacts> {
+fn add_arrow_eval_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   v2.std.optional.optional_present(value: v2.test.lens_common.infer_fixture.claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: add_arrow_eval_i64_node(),
@@ -277,8 +277,8 @@ fn add_arrow_eval_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optiona
     ))
 }
 
-fn add_arrow_eval_admitted_tree(root: v2.std.node.Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn add_arrow_eval_admitted_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map {
       lookup: add_arrow_eval_facts_lookup
@@ -291,7 +291,7 @@ fn add_arrow_eval_inferred_run_tree(
   left_lex: String,
   right_lex: String,
   expected_lex: String
-) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match add_arrow_eval_add_call_optional(callee: callee, left_lex: left_lex, right_lex: right_lex) {
     Present { value: call } =>
       match add_arrow_eval_int_literal_optional(lexeme: expected_lex) {
@@ -325,7 +325,7 @@ fn add_arrow_eval_claim(input: v2.std.node.Node, expected: v2.std.node.Node) -> 
   }
 }
 
-fn add_arrow_eval_subject(tree: v2.compiler.infer.InferredTree, input: v2.std.node.Node, expected: v2.std.node.Node) -> v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> {
+fn add_arrow_eval_subject(tree: v2.compiler.inferred_tree.InferredTree, input: v2.std.node.Node, expected: v2.std.node.Node) -> v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> {
   v2.compiler.eval.TestClaimEvalSubject {
     claim: add_arrow_eval_claim(input: input, expected: expected),
     context: add_arrow_eval_context(),
@@ -708,8 +708,8 @@ fn add_arrow_eval_lazy_arm_loop_node() -> v2.std.node.Node {
   }
 }
 
-fn add_arrow_eval_loop_admitted_tree(root: v2.std.node.Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn add_arrow_eval_loop_admitted_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map {
       lookup: fn(key) {

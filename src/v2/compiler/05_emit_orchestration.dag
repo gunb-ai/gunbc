@@ -2,7 +2,7 @@ module v2.compiler.emit_orchestration
 
 
 
-fn orch_emit_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn orch_emit_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
@@ -36,7 +36,7 @@ fn orch_emit_from_registry(
     o: orch_emit_registry_emitted_root(medium: medium, construct_tag: construct_tag),
     f: fn(emitted_root) {
       v2.compiler.emit.emit(
-        tree: v2.compiler.infer.InferredTree {
+        tree: v2.compiler.inferred_tree.InferredTree {
           root: emitted_root,
           facts: std.types.Map { lookup: orch_emit_facts_lookup }
         },
@@ -49,7 +49,7 @@ fn orch_emit_from_registry(
 fn orch_emit_node_spelling(emitted_root: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<String> {
   bind_outcome(
     o: v2.compiler.emit.emit(
-      tree: v2.compiler.infer.InferredTree {
+      tree: v2.compiler.inferred_tree.InferredTree {
         root: emitted_root,
         facts: std.types.Map { lookup: orch_emit_facts_lookup }
       },

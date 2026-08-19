@@ -3,7 +3,7 @@ module v2.test.manual.bash_emit_command
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn bash_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn bash_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
@@ -55,7 +55,7 @@ test fn bash_emit_lhs_exact_arrow_emitted_rejects_holds() -> Bool {
   bash_lhs_exact_arrow_emitted_rejects()
 }
 
-data bash_emit_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data bash_emit_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: bash_emitted_command,
   facts: std.types.Map {
     lookup: bash_facts_lookup
@@ -108,7 +108,7 @@ test fn bash_emit_missing_rules_rejects_holds() -> Bool {
   }
 }
 
-data bash_bound_words_emit_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data bash_bound_words_emit_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: bash_bound_words_emitted_command,
   facts: std.types.Map {
     lookup: bash_facts_lookup
@@ -129,7 +129,7 @@ test fn bash_emit_bound_words_holds() -> Bool {
   }
 }
 
-data bash_embedded_quote_emit_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data bash_embedded_quote_emit_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: bash_embedded_quote_emitted_command,
   facts: std.types.Map {
     lookup: bash_facts_lookup
@@ -150,7 +150,7 @@ test fn bash_emit_embedded_quote_holds() -> Bool {
   }
 }
 
-data bash_source_root_ingest_gate_emit_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data bash_source_root_ingest_gate_emit_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: bash_source_root_ingest_gate_emitted_command,
   facts: std.types.Map {
     lookup: bash_facts_lookup
@@ -179,7 +179,7 @@ fn bash_emit_slice4_holds(
   source_text: String,
   target: v2.std.compilers.target_model.TargetModel
 ) -> Bool {
-  let tree = v2.compiler.infer.InferredTree {
+  let tree = v2.compiler.inferred_tree.InferredTree {
     root: emitted,
     facts: std.types.Map { lookup: bash_facts_lookup }
   }
@@ -282,7 +282,7 @@ test fn bash_emit_pipe_and_or_flat_wrong_model_holds() -> Bool {
 }
 
 fn bash_emit_pipe_brace_grouped_wrong_flat_model_rejects() -> Bool {
-  let tree = v2.compiler.infer.InferredTree {
+  let tree = v2.compiler.inferred_tree.InferredTree {
     root: bash_pipe_and_or_brace_grouped_emitted,
     facts: std.types.Map { lookup: bash_facts_lookup }
   }

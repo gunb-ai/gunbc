@@ -14,7 +14,7 @@ fn selected_logic_compiler_identity() -> std.content_hash.Fnv1a64Structural {
 
 fn selected_logic_identity(
   function_name: std.types.NonEmptyStr,
-  tree: v2.compiler.infer.InferredTree
+  tree: v2.compiler.inferred_tree.InferredTree
 ) -> std.selected_witness_bundle.SelectedWitnessIdentity {
   std.selected_witness_bundle.SelectedWitnessIdentity {
     entry: "src/v2/test/claim/execution/native_selected_witness_bundle_test.dag",
@@ -25,7 +25,7 @@ fn selected_logic_identity(
 
 fn selected_logic_native_member(
   function_name: std.types.NonEmptyStr,
-  tree: v2.compiler.infer.InferredTree
+  tree: v2.compiler.inferred_tree.InferredTree
 ) -> std.selected_witness_bundle.SelectedWitnessMember {
   std.selected_witness_bundle.NativeSelected {
     witness: selected_logic_identity(function_name: function_name, tree: tree),
@@ -37,9 +37,9 @@ fn selected_logic_native_member(
 }
 
 fn selected_logic_plan_for(
-  meet_tree: v2.compiler.infer.InferredTree,
-  join_tree: v2.compiler.infer.InferredTree,
-  complement_tree: v2.compiler.infer.InferredTree
+  meet_tree: v2.compiler.inferred_tree.InferredTree,
+  join_tree: v2.compiler.inferred_tree.InferredTree,
+  complement_tree: v2.compiler.inferred_tree.InferredTree
 ) -> std.selected_witness_bundle.SelectedWitnessPlan {
   std.selected_witness_bundle.SelectedWitnessPlan {
     compiler_identity: selected_logic_compiler_identity(),
@@ -96,7 +96,7 @@ fn selected_verdict_for_byte(actual: Optional<std.bit.Byte>, expected_octet: Int
   }
 }
 
-fn interpreted_value(tree: v2.compiler.infer.InferredTree, context: v2.compiler.eval.EvalContext, root: Node) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
+fn interpreted_value(tree: v2.compiler.inferred_tree.InferredTree, context: v2.compiler.eval.EvalContext, root: Node) -> v2.std.diagnostic.Outcome<v2.std.runtime.RuntimeValue> {
   eval_with_context(
     tree: tree,
     context: context,
@@ -105,7 +105,7 @@ fn interpreted_value(tree: v2.compiler.infer.InferredTree, context: v2.compiler.
 }
 
 fn interpreted_meet_join_verdict(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   root: Node,
   expected_true: Bool
 ) -> std.selected_witness_bundle.SelectedWitnessVerdict {
@@ -122,7 +122,7 @@ fn interpreted_meet_join_verdict(
 }
 
 fn interpreted_complement_verdict(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   expected_true: Bool
 ) -> std.selected_witness_bundle.SelectedWitnessVerdict {
   match interpreted_value(
@@ -142,7 +142,7 @@ fn interpreted_complement_verdict(
 }
 
 fn interpreted_value_meet_join_equals(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   root: Node,
   expected_true: Bool
 ) -> Bool {
@@ -157,7 +157,7 @@ fn interpreted_value_meet_join_equals(
   }
 }
 
-fn interpreted_value_complement_equals(tree: v2.compiler.infer.InferredTree, expected_true: Bool) -> Bool {
+fn interpreted_value_complement_equals(tree: v2.compiler.inferred_tree.InferredTree, expected_true: Bool) -> Bool {
   match interpreted_value(
     tree: tree,
     context: emit_complement_eval_context(),
@@ -220,9 +220,9 @@ test fn native_selected_witness_bundle_interpreter_complement_wrong_body_oracle_
 }
 
 fn selected_logic_interpreted_verdicts(
-  meet_tree: v2.compiler.infer.InferredTree,
-  join_tree: v2.compiler.infer.InferredTree,
-  complement_tree: v2.compiler.infer.InferredTree
+  meet_tree: v2.compiler.inferred_tree.InferredTree,
+  join_tree: v2.compiler.inferred_tree.InferredTree,
+  complement_tree: v2.compiler.inferred_tree.InferredTree
 ) -> SelectedLogicVerdicts {
   SelectedLogicVerdicts {
     meet: interpreted_meet_join_verdict(
@@ -570,9 +570,9 @@ fn selected_logic_execution_holds(
   test_id: String,
   plan: std.selected_witness_bundle.SelectedWitnessPlan,
   members: v2.std.collection.List<v2.compiler.emit_module.EmitFamilyMember>,
-  meet_tree: v2.compiler.infer.InferredTree,
-  join_tree: v2.compiler.infer.InferredTree,
-  complement_tree: v2.compiler.infer.InferredTree,
+  meet_tree: v2.compiler.inferred_tree.InferredTree,
+  join_tree: v2.compiler.inferred_tree.InferredTree,
+  complement_tree: v2.compiler.inferred_tree.InferredTree,
   primary: Bool,
   family_evidence: v2.std.collection.List<std.selected_witness_bundle.NativeBundleFamilyCutoverEvidence>
 ) -> Bool {

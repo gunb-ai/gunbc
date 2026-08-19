@@ -3,7 +3,7 @@ module v2.test.lens_application.apply_lens_introspect_rejection_is_advisory
 
 data apply_lens_mode_root: Node = claim_atom_node(s: ^apply_lens_mode_symbol)
 
-fn apply_lens_mode_tree() -> v2.compiler.infer.InferredTree {
+fn apply_lens_mode_tree() -> v2.compiler.inferred_tree.InferredTree {
   claim_inferred_tree(
     root: apply_lens_mode_root,
     facts: claim_inferred_facts(
@@ -14,7 +14,7 @@ fn apply_lens_mode_tree() -> v2.compiler.infer.InferredTree {
   )
 }
 
-fn apply_lens_mode_rejecting_gate(_tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn apply_lens_mode_rejecting_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   outcome_rejected(
     compile_lens_gate_rejected_diagnostic(at: port_locus(port: ^apply_lens_mode_gate_at))
   )

@@ -284,7 +284,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
     PatternResolved { node: scrut_node } =>
       let source_indices = env.source_indices
       if contains(variant_name, ".") {
-        match symbol_index_lookup(index: env.symbol_index, qualified_name: variant_name) {
+        match v1.compiler.infer_env.symbol_index_lookup(index: env.symbol_index, qualified_name: variant_name) {
           Present { value: resolved } =>
             if (resolved.connective == v1.std.core.Disj) {
               match find_child_named(n: resolved, name: qualified_last_segment(name: variant_name), source_indices: source_indices) {

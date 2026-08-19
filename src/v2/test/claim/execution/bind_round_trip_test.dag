@@ -90,7 +90,7 @@ fn bind_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Canoni
   }
 }
 
-fn bind_round_trip_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn bind_round_trip_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   match bind_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -105,11 +105,11 @@ fn bind_round_trip_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.
   }
 }
 
-fn bind_round_trip_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn bind_round_trip_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   bind_round_trip_inferred_facts_for(node: key)
 }
 
-data bind_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data bind_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: bind_emitted_root,
   facts: std.types.Map {
     lookup: bind_round_trip_facts_lookup

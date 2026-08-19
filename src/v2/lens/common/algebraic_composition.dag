@@ -4,7 +4,7 @@ module v2.lens.common.algebraic_composition
 type EffectClassification {}
 
 type IdempotencyVerdict
-  = AlgebraicIdempotenceProven { law: Witness<v2.compiler.infer.InferredFacts> }
+  = AlgebraicIdempotenceProven { law: Witness<v2.compiler.inferred_tree.InferredFacts> }
   | RequiresAlgebraWitness
 
 type OwnershipMode

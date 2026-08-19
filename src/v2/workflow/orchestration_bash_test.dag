@@ -3,13 +3,13 @@ module v2.workflow.orchestration_bash_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn orch_bash_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn orch_bash_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
 fn orch_emit_bash(root: Node, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(
-    tree: v2.compiler.infer.InferredTree {
+    tree: v2.compiler.inferred_tree.InferredTree {
       root: root,
       facts: std.types.Map { lookup: orch_bash_facts_lookup }
     },

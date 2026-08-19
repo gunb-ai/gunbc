@@ -11,7 +11,7 @@ fn serialize_target(tree: v2.compiler.translate.TargetNodeTree, target: v2.std.c
   serialize_source_for_emitted(emitted: tree, target: target)
 }
 fn emit(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
 ) -> Outcome<Medium<String>> {
   bind_outcome(

@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data emit_field_eval_subgraph_node: Node = dag_field_access_body_fixture
 
-fn emit_field_eval_facts_with_descent(node: v2.std.node.Node, descent_symbol: v2.std.node.Symbol) -> v2.compiler.infer.InferredFacts {
+fn emit_field_eval_facts_with_descent(node: v2.std.node.Node, descent_symbol: v2.std.node.Symbol) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
@@ -18,18 +18,18 @@ fn emit_field_eval_facts_with_descent(node: v2.std.node.Node, descent_symbol: v2
   )
 }
 
-fn emit_field_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.infer.InferredFacts {
+fn emit_field_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredFacts {
   emit_field_eval_facts_with_descent(
     node: node,
     descent_symbol: ^emit_field_eval_generic_descent
   )
 }
 
-fn emit_field_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn emit_field_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_present(value: emit_field_eval_generic_facts(node: key))
 }
 
-fn emit_field_eval_alt_descent_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn emit_field_eval_alt_descent_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_present(value: emit_field_eval_facts_with_descent(
     node: key,
     descent_symbol: ^emit_field_eval_alt_descent
@@ -57,18 +57,18 @@ fn rust_field_access_emit_host_wrong_field_body() -> v2.std.node.Node {
   }
 }
 
-fn emit_field_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn emit_field_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   outcome_accepted(
-    value: v2.compiler.infer.InferredTree {
+    value: v2.compiler.inferred_tree.InferredTree {
       root: dag_field_access_arrow_with_body_fixture,
       facts: std.types.Map { lookup: emit_field_eval_composed_facts }
     }
   )
 }
 
-fn emit_field_eval_alt_descent_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn emit_field_eval_alt_descent_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   outcome_accepted(
-    value: v2.compiler.infer.InferredTree {
+    value: v2.compiler.inferred_tree.InferredTree {
       root: dag_field_access_arrow_with_body_fixture,
       facts: std.types.Map { lookup: emit_field_eval_alt_descent_composed_facts }
     }
@@ -245,7 +245,7 @@ fn emit_field_eval_claim(rhs_result_node: v2.std.node.Node) -> v2.std.verificati
   }
 }
 
-fn emit_field_eval_subject(tree: v2.compiler.infer.InferredTree) -> TestClaimEvalSubject<v2.std.node.Node> {
+fn emit_field_eval_subject(tree: v2.compiler.inferred_tree.InferredTree) -> TestClaimEvalSubject<v2.std.node.Node> {
   eval_test_claim_subject(
     claim: emit_field_eval_claim(rhs_result_node: emit_field_eval_subgraph_node),
     context: emit_field_eval_context(),
@@ -254,7 +254,7 @@ fn emit_field_eval_subject(tree: v2.compiler.infer.InferredTree) -> TestClaimEva
   )
 }
 
-fn emit_field_eval_wrong_fixture_subject(tree: v2.compiler.infer.InferredTree) -> TestClaimEvalSubject<v2.std.node.Node> {
+fn emit_field_eval_wrong_fixture_subject(tree: v2.compiler.inferred_tree.InferredTree) -> TestClaimEvalSubject<v2.std.node.Node> {
   eval_test_claim_subject(
     claim: emit_field_eval_claim(rhs_result_node: rust_field_access_emit_host_wrong_field_body()),
     context: emit_field_eval_context(),
@@ -263,7 +263,7 @@ fn emit_field_eval_wrong_fixture_subject(tree: v2.compiler.infer.InferredTree) -
   )
 }
 
-fn emit_field_eval_run(tree: v2.compiler.infer.InferredTree) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
+fn emit_field_eval_run(tree: v2.compiler.inferred_tree.InferredTree) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: emit_field_eval_subject(tree: tree),
     target: rust_field_access_target_model_staging()

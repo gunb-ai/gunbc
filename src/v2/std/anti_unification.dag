@@ -41,7 +41,7 @@ fn anti_unify(a: v2.std.node.Node, b: v2.std.node.Node) -> v2.std.node.Node {
     } else {
       if is_leaf(a) {
         if is_leaf(b) {
-          if exact_structural_equality_zip_fold(source_facts: a, candidate: b) {
+          if v2.std.exact_structural_equality_zip_fold_predicate.exact_structural_equality_zip_fold(source_facts: a, candidate: b) {
             node_synthetic(kind: a.kind, children: [])
           } else {
             hole_node()

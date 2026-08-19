@@ -52,7 +52,7 @@ fn ingested_arrow_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.st
     }
   )
 }
-fn ingested_canonical_inferred_tree_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn ingested_canonical_inferred_tree_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   bind_outcome(
     o: ingested_arrow_from_source(source: source),
     f: fn(arrow) {
@@ -62,9 +62,9 @@ fn ingested_canonical_inferred_tree_from_source(source: String) -> v2.std.diagno
 }
 
 fn ingested_classical_not_staging_facts_lookup(
-  canonical: v2.compiler.infer.InferredTree,
+  canonical: v2.compiler.inferred_tree.InferredTree,
   key: v2.std.node.Node
-) -> Optional<v2.compiler.infer.InferredFacts> {
+) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   match inferred_facts_witness_for_node(tree: canonical, node: key) {
     Holds { value: facts } =>
       Present { value: facts }
@@ -73,7 +73,7 @@ fn ingested_classical_not_staging_facts_lookup(
   }
 }
 
-fn ingested_staging_inferred_tree_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn ingested_staging_inferred_tree_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   bind_outcome(
     o: ingested_arrow_from_source(source: source),
     f: fn(arrow) {
@@ -81,7 +81,7 @@ fn ingested_staging_inferred_tree_from_source(source: String) -> v2.std.diagnost
         o: infer(tree: arrow),
         f: fn(inferred) {
           outcome_accepted(
-            value: v2.compiler.infer.InferredTree {
+            value: v2.compiler.inferred_tree.InferredTree {
               root: inferred.root,
               facts: std.types.Map {
                 lookup: fn(key) {
@@ -96,12 +96,12 @@ fn ingested_staging_inferred_tree_from_source(source: String) -> v2.std.diagnost
   )
 }
 
-fn ingested_emit_shape_frontier_tree_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn ingested_emit_shape_frontier_tree_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   bind_outcome(
     o: ingested_arrow_from_source(source: source),
     f: fn(arrow) {
       outcome_accepted(
-        value: v2.compiler.infer.InferredTree {
+        value: v2.compiler.inferred_tree.InferredTree {
           root: arrow,
           facts: std.types.Map {
             lookup: fn(_key) {
@@ -114,7 +114,7 @@ fn ingested_emit_shape_frontier_tree_from_source(source: String) -> v2.std.diagn
   )
 }
 
-fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   bind_outcome(
     o: ingested_arrow_from_source(source: source),
     f: fn(arrow) {
@@ -122,7 +122,7 @@ fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> v2.std.di
         o: infer(tree: arrow),
         f: fn(inferred) {
           outcome_accepted(
-            value: v2.compiler.infer.InferredTree {
+            value: v2.compiler.inferred_tree.InferredTree {
               root: inferred.root,
               facts: std.types.Map {
                 lookup: fn(key) {
@@ -137,7 +137,7 @@ fn ingested_wet_emit_eval_composed_tree_from_source(source: String) -> v2.std.di
   )
 }
 
-fn ingested_inferred_tree_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn ingested_inferred_tree_from_source(source: String) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   ingested_staging_inferred_tree_from_source(source: source)
 }
 
@@ -185,7 +185,7 @@ fn ingested_arrow_has_match_body(source: String) -> Bool {
   }
 }
 
-fn ingested_classical_not_generic_facts(node: v2.std.node.Node) -> v2.compiler.infer.InferredFacts {
+fn ingested_classical_not_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
@@ -198,7 +198,7 @@ fn ingested_classical_not_generic_facts(node: v2.std.node.Node) -> v2.compiler.i
   )
 }
 
-fn ingested_classical_not_composed_facts(key: v2.std.node.Node) -> v2.compiler.infer.InferredFacts {
+fn ingested_classical_not_composed_facts(key: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredFacts {
   ingested_classical_not_generic_facts(node: key)
 }
 
@@ -359,7 +359,7 @@ fn ingested_classical_not_claim(rhs_result_node: v2.std.node.Node) -> v2.std.ver
   }
 }
 
-fn ingested_classical_not_subject(tree: v2.compiler.infer.InferredTree, subgraph: v2.std.node.Node) -> TestClaimEvalSubject<v2.std.node.Node> {
+fn ingested_classical_not_subject(tree: v2.compiler.inferred_tree.InferredTree, subgraph: v2.std.node.Node) -> TestClaimEvalSubject<v2.std.node.Node> {
   eval_test_claim_subject(
     claim: ingested_classical_not_claim(rhs_result_node: subgraph),
     context: ingested_classical_not_context(),
@@ -368,7 +368,7 @@ fn ingested_classical_not_subject(tree: v2.compiler.infer.InferredTree, subgraph
   )
 }
 
-fn ingested_classical_not_run(tree: v2.compiler.infer.InferredTree, subgraph: v2.std.node.Node) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
+fn ingested_classical_not_run(tree: v2.compiler.inferred_tree.InferredTree, subgraph: v2.std.node.Node) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: ingested_classical_not_subject(tree: tree, subgraph: subgraph),
     target: rust_classical_not_ingested_target_model_staging()

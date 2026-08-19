@@ -143,7 +143,7 @@ fn python_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.
   }
 }
 
-fn python_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn python_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   match python_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -158,11 +158,11 @@ fn python_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.Infer
   }
 }
 
-fn python_add_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn python_add_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   python_add_inferred_facts_for(node: key)
 }
 
-data python_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data python_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: python_add_emitted_root,
   facts: std.types.Map {
     lookup: python_add_facts_lookup

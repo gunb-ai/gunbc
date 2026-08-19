@@ -19,7 +19,7 @@ data anchor_stub_target_model: v2.std.compilers.target_model.TargetModel = v2.st
 }
 
 data anchor_stub_source: Medium<String> = extdeps.communication.medium.Medium { carried: std.algebra.Empty, fidelity: Lossless }
-data anchor_stub_inferred_facts: v2.compiler.infer.InferredFacts = claim_inferred_facts_from_nodes(
+data anchor_stub_inferred_facts: v2.compiler.inferred_tree.InferredFacts = claim_inferred_facts_from_nodes(
   resolved: anchor_stub_empty_conj,
   algebra: anchor_stub_empty_conj,
   descent: v2.std.witness.Violates {
@@ -31,18 +31,18 @@ data anchor_stub_inferred_facts: v2.compiler.infer.InferredFacts = claim_inferre
   }
 )
 
-data anchor_stub_empty_facts_map: Map<Node, v2.compiler.infer.InferredFacts> = std.types.Map {
+data anchor_stub_empty_facts_map: Map<Node, v2.compiler.inferred_tree.InferredFacts> = std.types.Map {
   lookup: fn(_) {
     Absent
   }
 }
 
-data anchor_stub_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data anchor_stub_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: anchor_stub_empty_conj,
   facts: anchor_stub_empty_facts_map
 }
 
-fn anchor_infer_rejects() -> Outcome<v2.compiler.infer.InferredTree> {
+fn anchor_infer_rejects() -> Outcome<v2.compiler.inferred_tree.InferredTree> {
   infer(tree: anchor_stub_empty_conj)
 }
 

@@ -67,9 +67,9 @@ type TokenSequenceItemKind
 
 type GroundingGatePassed {}
 
-data translate_grounding_gate_absent_facts_note: String = "Refuse only recorded v2.compiler.infer.GroundingNotDerived on the v2.std.witness.Holds arm, routing that variant through v2.compiler.infer.canonical_grounding_from_inferred_facts so the typed ^infer_grounding_not_derived diagnostic propagates (review 46789). v2.compiler.infer.DerivedGrounding on v2.std.witness.Holds accepts without re-running canonical admission. infer_facts_lookup_miss (v2.std.witness.Violates) is the compatibility class for trees with no infer judgment at a node: emit_orchestration's synthetic v2.compiler.infer.InferredTree (`orch_emit_facts_lookup`) and test-only shape-frontier carriers carry an empty facts map by construction, so lookup miss means no infer judgment exists — not an underived one recorded and erased (review 47246). Production paths (`cross_language_compile`, canonical infer→emit) pass infer's facts map facts-flow-forward. Eval refuses lookup miss because eval never runs on synthetic trees; translate is also consumed by emit, so absence is a named compatibility frontier until v2-inferred-tree-completeness splits the carrier. translate() opens with translate_grounding_derived_gate_subtree so mixed derived-root/underived-child trees cannot bypass fold attach or bodied-arrow shortcuts. translate_grounding_derived_gate_at_producer is the producer-entry call site for that same gate. translate_derived_parent_underived_child_gate refuses a recorded underived child under a derived parent during fold; translate_grounding_derived_gate_subtree covers bodied-arrow and import-carrier shortcuts that preserve producer IR without v2.std.node.fold_node (review 46681). TranslateFoldAcc retains the source parent/child nodes because fold init rebuilds with empty children and facts.lookup keys on structural node equality. The four translate_grounding_*_gate* fns return v2.std.diagnostic.Outcome<GroundingGatePassed>: a zero-information accept carrier (same wire-schema gate pattern as target_model.dag CtorTemplateUnit), not v2.std.diagnostic.Outcome<Bool> — Bool would admit a meaningful false the gate never produces. std.algebra.Empty is a FreeMonoid variant, not a unit type, so v2.std.diagnostic.Outcome<std.algebra.Empty> is an unresolved compile error. Callers bind with v2.std.diagnostic.bind_outcome(fn(_) => ...) and never read the payload; the signal is v2.std.diagnostic.Accepted vs v2.std.diagnostic.Rejected disposition only."
+data translate_grounding_gate_absent_facts_note: String = "Refuse only recorded v2.compiler.infer.GroundingNotDerived on the v2.std.witness.Holds arm, routing that variant through v2.compiler.infer.canonical_grounding_from_inferred_facts so the typed ^infer_grounding_not_derived diagnostic propagates (review 46789). v2.compiler.infer.DerivedGrounding on v2.std.witness.Holds accepts without re-running canonical admission. infer_facts_lookup_miss (v2.std.witness.Violates) is the compatibility class for trees with no infer judgment at a node: emit_orchestration's synthetic v2.compiler.inferred_tree.InferredTree (`orch_emit_facts_lookup`) and test-only shape-frontier carriers carry an empty facts map by construction, so lookup miss means no infer judgment exists — not an underived one recorded and erased (review 47246). Production paths (`cross_language_compile`, canonical infer→emit) pass infer's facts map facts-flow-forward. Eval refuses lookup miss because eval never runs on synthetic trees; translate is also consumed by emit, so absence is a named compatibility frontier until v2-inferred-tree-completeness splits the carrier. translate() opens with translate_grounding_derived_gate_subtree so mixed derived-root/underived-child trees cannot bypass fold attach or bodied-arrow shortcuts. translate_grounding_derived_gate_at_producer is the producer-entry call site for that same gate. translate_derived_parent_underived_child_gate refuses a recorded underived child under a derived parent during fold; translate_grounding_derived_gate_subtree covers bodied-arrow and import-carrier shortcuts that preserve producer IR without v2.std.node.fold_node (review 46681). TranslateFoldAcc retains the source parent/child nodes because fold init rebuilds with empty children and facts.lookup keys on structural node equality. The four translate_grounding_*_gate* fns return v2.std.diagnostic.Outcome<GroundingGatePassed>: a zero-information accept carrier (same wire-schema gate pattern as target_model.dag CtorTemplateUnit), not v2.std.diagnostic.Outcome<Bool> — Bool would admit a meaningful false the gate never produces. std.algebra.Empty is a FreeMonoid variant, not a unit type, so v2.std.diagnostic.Outcome<std.algebra.Empty> is an unresolved compile error. Callers bind with v2.std.diagnostic.bind_outcome(fn(_) => ...) and never read the payload; the signal is v2.std.diagnostic.Accepted vs v2.std.diagnostic.Rejected disposition only."
 
-fn translate_grounding_derived_gate(tree: v2.compiler.infer.InferredTree, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<GroundingGatePassed> {
+fn translate_grounding_derived_gate(tree: v2.compiler.inferred_tree.InferredTree, node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<GroundingGatePassed> {
   match v2.compiler.infer.inferred_facts_witness_for_node(tree: tree, node: node) {
     Holds { value: facts } =>
       match facts.grounding {
@@ -87,7 +87,7 @@ fn translate_grounding_derived_gate(tree: v2.compiler.infer.InferredTree, node: 
 }
 
 fn translate_derived_parent_underived_child_gate(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   parent: v2.std.node.Node,
   child: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<GroundingGatePassed> {
@@ -104,7 +104,7 @@ fn translate_derived_parent_underived_child_gate(
 }
 
 fn translate_grounding_derived_gate_subtree(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   root: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<GroundingGatePassed> {
   v2.std.algebra.fold_list(
@@ -122,7 +122,7 @@ fn translate_grounding_derived_gate_subtree(
 }
 
 fn translate_bodied_arrow_shortcut_after_subtree_gate(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   arrow: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   v2.std.diagnostic.bind_outcome(
@@ -134,7 +134,7 @@ fn translate_bodied_arrow_shortcut_after_subtree_gate(
 }
 
 fn translate_projection_absent_bodied_arrow_fold_init(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   node: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   v2.std.diagnostic.bind_outcome(
@@ -146,7 +146,7 @@ fn translate_projection_absent_bodied_arrow_fold_init(
 }
 
 fn translate_import_shortcut_after_subtree_gate(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   import_node: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   v2.std.diagnostic.bind_outcome(
@@ -158,7 +158,7 @@ fn translate_import_shortcut_after_subtree_gate(
 }
 
 fn translate_grounding_derived_gate_at_producer(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   node: v2.std.node.Node
 ) -> v2.std.diagnostic.Outcome<GroundingGatePassed> {
   translate_grounding_derived_gate(tree: tree, node: node)
@@ -1145,7 +1145,7 @@ fn coercion_candidates_from_target_model(
 }
 fn coerce_grounded_node(
   source: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<v2.std.coercion.CoercionResult> {
   match v2.std.coercion.coercion_identity_from_target_model(source: source, target: target) {
@@ -3416,7 +3416,7 @@ fn translate_type_fold_init_acc(node: v2.std.node.Node) -> v2.std.diagnostic.Out
 
 fn translate_projection_absent_fold_init_acc(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<TranslateFoldAcc> {
   match translate_projection_absent_fold_init(node: node, tree: tree, target: target) {
@@ -3444,7 +3444,7 @@ fn translate_computation_fold_init(node: v2.std.node.Node) -> v2.std.diagnostic.
 }
 fn translate_projection_absent_coerce_from_grounding_or_evidence(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match coerce_grounded_node(source: node, tree: tree, target: target) {
@@ -3476,7 +3476,7 @@ fn translate_projection_absent_coerce_from_grounding_or_evidence(
 }
 fn translate_projection_absent_fold_init(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match node.kind {
@@ -3525,7 +3525,7 @@ fn translate_grammar_relation_row_match(target: v2.std.compilers.target_model.Ta
 }
 fn translate_type_expression_tree(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel,
   projection: v2.std.compilers.target_model.TargetTypeExpressionProjection
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
@@ -3562,7 +3562,7 @@ fn translate_type_expression_tree(
 }
 fn translate_node_with_projection(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   v2.std.diagnostic.bind_outcome(
@@ -3641,7 +3641,7 @@ fn translate_type_expression_children_in_node(
 }
 fn translate_node_computation(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   v2.std.diagnostic.bind_outcome(
@@ -3663,7 +3663,7 @@ fn translate_node_computation(
 }
 fn translate_node_projection_absent_fold(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   translate_fold_acc_rebuilt(
@@ -3782,7 +3782,7 @@ fn is_dag_import_carrier(emitted: v2.std.node.Node) -> Bool {
 
 fn translate_node_projection_absent(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   v2.std.diagnostic.bind_outcome(
@@ -3820,7 +3820,7 @@ fn translate_node_projection_absent(
 }
 fn translate_node(
   node: v2.std.node.Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match target_bundle_child_optional_type_expr_projection(target: target) {
@@ -3855,7 +3855,7 @@ fn translate_fold_step(
   acc: v2.std.diagnostic.Outcome<TranslateFoldAcc>,
   edge: v2.std.node.Edge,
   child: v2.std.diagnostic.Outcome<TranslateFoldAcc>,
-  tree: v2.compiler.infer.InferredTree
+  tree: v2.compiler.inferred_tree.InferredTree
 ) -> v2.std.diagnostic.Outcome<TranslateFoldAcc> {
   match acc {
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
@@ -3892,7 +3892,7 @@ fn translate_fold_step(
   }
 }
 fn translate(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<TargetNodeTree> {
   v2.std.diagnostic.bind_outcome(
@@ -3903,7 +3903,7 @@ fn translate(
   )
 }
 
-fn translate_emitted_node(tree: v2.compiler.infer.InferredTree, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+fn translate_emitted_node(tree: v2.compiler.inferred_tree.InferredTree, target: v2.std.compilers.target_model.TargetModel) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   v2.std.diagnostic.bind_outcome(
     o: translate(tree: tree, target: target),
     f: fn(emitted) {

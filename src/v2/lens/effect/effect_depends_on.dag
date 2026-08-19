@@ -18,7 +18,7 @@ data effect_dependency: v2.std.dependency.DependencyView = v2.std.dependency.Dep
   usage_site: effect_child
 }
 
-fn effect_claim_facts() -> v2.compiler.infer.InferredFacts {
+fn effect_claim_facts() -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^effect_type_symbol,
     algebra_symbol: ^effect_algebra_symbol,
@@ -26,12 +26,12 @@ fn effect_claim_facts() -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn effect_claim_tree() -> v2.compiler.infer.InferredTree {
+fn effect_claim_tree() -> v2.compiler.inferred_tree.InferredTree {
   claim_inferred_tree(root: effect_root, facts: effect_claim_facts())
 }
 
 type LensEffectClaim {
-  input: v2.compiler.infer.InferredTree
+  input: v2.compiler.inferred_tree.InferredTree
   expected: v2.lens.effect.EffectFact
   actual: Witness<v2.lens.effect.EffectFact>
 }

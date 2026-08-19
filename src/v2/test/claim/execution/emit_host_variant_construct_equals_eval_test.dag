@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data emit_variant_construct_eval_subgraph_node: Node = dag_variant_construct_body_fixture
 
-fn emit_variant_construct_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.infer.InferredFacts {
+fn emit_variant_construct_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
@@ -18,20 +18,20 @@ fn emit_variant_construct_eval_generic_facts(node: v2.std.node.Node) -> v2.compi
   )
 }
 
-fn emit_variant_construct_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn emit_variant_construct_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_present(value: emit_variant_construct_eval_generic_facts(node: key))
 }
 
-fn emit_variant_construct_eval_tree_for(root: v2.std.node.Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn emit_variant_construct_eval_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: emit_variant_construct_eval_composed_facts }
   }
 }
 
-data emit_variant_construct_eval_tree: v2.compiler.infer.InferredTree = emit_variant_construct_eval_tree_for(root: dag_variant_construct_arrow_with_body_fixture)
+data emit_variant_construct_eval_tree: v2.compiler.inferred_tree.InferredTree = emit_variant_construct_eval_tree_for(root: dag_variant_construct_arrow_with_body_fixture)
 
-data emit_variant_construct_eval_wrong_value_tree: v2.compiler.infer.InferredTree = emit_variant_construct_eval_tree_for(root: dag_variant_construct_arrow_with_body_wrong_value_fixture)
+data emit_variant_construct_eval_wrong_value_tree: v2.compiler.inferred_tree.InferredTree = emit_variant_construct_eval_tree_for(root: dag_variant_construct_arrow_with_body_wrong_value_fixture)
 
 fn emit_variant_construct_eval_octet_value(n: Int) -> v2.std.runtime.RuntimeValue {
   v2.std.runtime.RuntimePrimitive {
@@ -251,7 +251,7 @@ fn emit_variant_construct_eval_claim(rhs_result_node: v2.std.node.Node) -> v2.st
   }
 }
 
-fn emit_variant_construct_eval_subject(tree: v2.compiler.infer.InferredTree) -> TestClaimEvalSubject<v2.std.node.Node> {
+fn emit_variant_construct_eval_subject(tree: v2.compiler.inferred_tree.InferredTree) -> TestClaimEvalSubject<v2.std.node.Node> {
   eval_test_claim_subject(
     claim: emit_variant_construct_eval_claim(rhs_result_node: emit_variant_construct_eval_subgraph_node),
     context: emit_variant_construct_eval_context(),
@@ -260,7 +260,7 @@ fn emit_variant_construct_eval_subject(tree: v2.compiler.infer.InferredTree) -> 
   )
 }
 
-fn emit_variant_construct_eval_run(tree: v2.compiler.infer.InferredTree) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
+fn emit_variant_construct_eval_run(tree: v2.compiler.inferred_tree.InferredTree) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: emit_variant_construct_eval_subject(tree: tree),
     target: rust_variant_construct_target_model_staging()

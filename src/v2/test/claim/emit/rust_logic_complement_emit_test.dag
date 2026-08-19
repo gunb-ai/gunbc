@@ -3,20 +3,20 @@ module v2.test.emit.rust_logic_complement_emit
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn rust_logic_complement_emit_facts_miss(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn rust_logic_complement_emit_facts_miss(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
-fn rust_logic_complement_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn rust_logic_complement_emit_inferred_tree_for(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: rust_logic_complement_emit_facts_miss }
   }
 }
 
-data rust_logic_complement_emit_inferred_tree: v2.compiler.infer.InferredTree = rust_logic_complement_emit_inferred_tree_for(root: dag_complement_arrow_with_body_fixture)
+data rust_logic_complement_emit_inferred_tree: v2.compiler.inferred_tree.InferredTree = rust_logic_complement_emit_inferred_tree_for(root: dag_complement_arrow_with_body_fixture)
 
-data rust_logic_complement_emit_swapped_inferred_tree: v2.compiler.infer.InferredTree = rust_logic_complement_emit_inferred_tree_for(root: dag_complement_arrow_with_body_swapped_arms_fixture)
+data rust_logic_complement_emit_swapped_inferred_tree: v2.compiler.inferred_tree.InferredTree = rust_logic_complement_emit_inferred_tree_for(root: dag_complement_arrow_with_body_swapped_arms_fixture)
 
 test fn rust_logic_complement_emit_accepts() -> Bool {
   match emit(

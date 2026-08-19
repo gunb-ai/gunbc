@@ -68,7 +68,7 @@ fn c_add_canonical_grounding_for(node: Node) -> Witness<v2.std.constraints.Canon
   }
 }
 
-fn c_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn c_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   match c_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -83,11 +83,11 @@ fn c_add_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFa
   }
 }
 
-fn c_add_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn c_add_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   c_add_inferred_facts_for(node: key)
 }
 
-data c_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data c_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: c_add_emitted_root,
   facts: std.types.Map { lookup: c_add_facts_lookup }
 }
@@ -134,7 +134,7 @@ test fn c_add_serialize_rejects_missing_translation_rules_holds() -> Bool {
 }
 
 test fn c_add_emit_wrong_node_refuses_holds() -> Bool {
-  let wrong_tree = v2.compiler.infer.InferredTree {
+  let wrong_tree = v2.compiler.inferred_tree.InferredTree {
     root: c_add_wrong_emitted_root,
     facts: std.types.Map { lookup: c_add_facts_lookup }
   }

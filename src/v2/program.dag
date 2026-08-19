@@ -252,7 +252,7 @@ fn program_context_with_effect_io() -> v2.compiler.eval.EvalContext {
   )
 }
 
-fn program_facts_for(node: v2.std.node.Node) -> v2.compiler.infer.InferredFacts {
+fn program_facts_for(node: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: program_unit_type(),
@@ -260,7 +260,7 @@ fn program_facts_for(node: v2.std.node.Node) -> v2.compiler.infer.InferredFacts 
   )
 }
 
-fn program_facts_lookup(node: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn program_facts_lookup(node: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   if node == program_pick_if_branch_with_effect_io {
     optional_present(value: program_facts_for(node: program_pick_if_branch_with_effect_io))
   } else if node == program_effect_io_roundtrip {
@@ -278,8 +278,8 @@ fn program_facts_lookup(node: v2.std.node.Node) -> Optional<v2.compiler.infer.In
   }
 }
 
-fn program_tree(root: v2.std.node.Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn program_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: program_facts_lookup }
   }
@@ -308,7 +308,7 @@ fn program_pick_if_call(callee: v2.std.node.Node) -> v2.std.node.Node {
   }
 }
 
-fn program_pick_if_arrow_facts_lookup(node: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn program_pick_if_arrow_facts_lookup(node: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_present(value: claim_inferred_facts_from_nodes(
       resolved: node,
       algebra: program_i64_type(),
@@ -316,8 +316,8 @@ fn program_pick_if_arrow_facts_lookup(node: v2.std.node.Node) -> Optional<v2.com
     ))
 }
 
-fn program_pick_if_arrow_tree(callee: v2.std.node.Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn program_pick_if_arrow_tree(callee: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: callee,
     facts: std.types.Map { lookup: program_pick_if_arrow_facts_lookup }
   }

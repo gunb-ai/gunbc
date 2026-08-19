@@ -53,7 +53,7 @@ fn lbe_bind_value(
   v2.std.diagnostic.Accepted { value: env, diagnostics: v2.std.diagnostic.None }
 }
 
-fn lbe_inferred_facts(resolved: Node) -> v2.compiler.infer.InferredFacts {
+fn lbe_inferred_facts(resolved: Node) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: resolved,
     algebra: resolved,
@@ -63,9 +63,9 @@ fn lbe_inferred_facts(resolved: Node) -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn lbe_inferred_tree(root: Node) -> v2.compiler.infer.InferredTree {
+fn lbe_inferred_tree(root: Node) -> v2.compiler.inferred_tree.InferredTree {
   let facts = lbe_inferred_facts(resolved: root)
-  v2.compiler.infer.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map {
       lookup: fn(_) {

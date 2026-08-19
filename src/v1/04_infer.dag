@@ -384,7 +384,7 @@ fn variant_reference_inferred_node(expected: v1.std.core.Node?, name: String, ow
 
 fn variant_owner_node(scope: v1.compiler.infer.InferScope, name: String) -> v1.std.core.Node? {
   if contains(name, ".") {
-    match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: name) {
+    match v1.compiler.infer_env.symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: name) {
       Present { value: resolved } =>
         if resolved.connective == v1.std.core.Disj && has_child_named(n: resolved, name: qualified_last_segment(name: name), source_indices: scope.type_env.source_indices) {
           Present { value: resolved }
@@ -2932,7 +2932,7 @@ fn qualified_value_projection(texpr: v1.std.core.Node, scope: v1.compiler.infer.
       match spine_root_is_shadowed(scope: scope, root: spine.root) {
         true => none
         false =>
-          match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: spine.dotted) {
+          match v1.compiler.infer_env.symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: spine.dotted) {
             Absent => none
             Present { value: decl } =>
               let raw_value_type = match decl.inferred {
@@ -3653,7 +3653,7 @@ fn infer_expr_body(texpr: v1.std.core.Node, scope: v1.compiler.infer.InferScope,
             true => none
             false =>
               let dotted = concat(recv_spine.dotted, ".", method_name)
-              match symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: dotted) {
+              match v1.compiler.infer_env.symbol_index_lookup(index: scope.type_env.symbol_index, qualified_name: dotted) {
                 Absent => none
                 Present { value: _ } =>
                   Present { value: infer_expr(
@@ -4453,10 +4453,10 @@ fn needs_alias_field_expansion(n: v1.std.core.Node, env: v1.compiler.infer_env.T
 
 data call_locals_shadow_note: String = "Body-scope binders shadow the fn-sig lookup in the ExprCall arm (nearest-first precedence: body locals > module fns > census global_bare). Without this gate a corpus-unique census homonym out-precedes a `let` callee: refinement.dag's `let classify = by.classify; match classify(base)` typed the scrutinee as a v2 lens test module's `fn classify -> Optional<Finding>`, refusing the match arms against the wrong enum (variant not found in Optional + non-exhaustive missing Absent/Present). The gate reads body_locals — the strict body-grain subset (let / match pattern / fn+lambda params) of scope.locals — because the module context pre-seeds locals with variant and service census bindings that must NOT eclipse fn sigs (an imported 0-arg fn would lose its sig to its own census row: html_fragment.dag's html_markup_medium() typed as an unresolved primitive). Absent sends the call down the local-callable path exactly as the pre-census seed did. Companion precedence law lives in func_sig_from_global_bare (infer_lookup): the census fallback never serves an algebra method-template name (filter/any/contains/…) — a whole-pool census entry for the UNLOADED v2.std.algebra must not preempt the known-method bridge (main-parity: on main such free calls type through the bridge; a census-served sig typed filter(xs, f) as a plain call to a never-loaded module and the runtime died NoSuchFunction)."
 
-data peel_alias_fixpoint_guard_note: String = "Termination (§4 boundedness) and diagnostic completeness (§5): peel iterates resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). The fixed-point/non-alias arm is a legitimate speculative probe miss ONLY when resolve_node returns no diagnostics. The old Node return projected .resolved and discarded .diagnostics, making that quiet miss byte-identical to a real resolver refusal and zeroing the refusal's frequency before CompileResult, compile-clean, and the diagnostic census could observe it. The peel now returns the existing NodeResolveResult authority and accumulates every hop's diagnostics. ExprFieldAccess and record-literal alias field discovery are judgment-producing callers and must carry those diagnostics. Variant-membership and emit-shaping callers are metadata-only probes: they may inspect .resolved but do not admit an executable artifact or own a diagnostic ledger, so making them emit would turn speculative shape lookup into a false red. No second peel outcome vocabulary is minted beside the resolver's own typed carrier."
+data peel_alias_fixpoint_guard_note: String = "Termination (§4 boundedness) and diagnostic completeness (§5): peel iterates v1.compiler.infer_resolve.resolve_node toward a groundable form; a node that resolves to ITSELF (a self-resolving generic constructor such as List — NoConnective, children>0, inferred=none, unbound-or-identity under resolve) is a resolve FIXED POINT, the expansion frontier. Without the once==n check the recurse arm loops forever on that shape (measured: one peel call spun 3M+ iterations / 396M resolve calls on the #6640 total-census tree, witness test.claim.bmc_bootstrap_provision_witness, fp trace c1f861179e→d33138c3f8→256ee7d351 repeating — progress-then-self-loop, no >1-cycle, so consecutive-equal suffices; a memo cannot terminate it, only make each spin fast). The fixed-point/non-alias arm is a legitimate speculative probe miss ONLY when v1.compiler.infer_resolve.resolve_node returns no diagnostics. The old Node return projected .resolved and discarded .diagnostics, making that quiet miss byte-identical to a real resolver refusal and zeroing the refusal's frequency before CompileResult, compile-clean, and the diagnostic census could observe it. The peel now returns the existing NodeResolveResult authority and accumulates every hop's diagnostics. ExprFieldAccess and record-literal alias field discovery are judgment-producing callers and must carry those diagnostics. Variant-membership and emit-shaping callers are metadata-only probes: they may inspect .resolved but do not admit an executable artifact or own a diagnostic ledger, so making them emit would turn speculative shape lookup into a false red. No second peel outcome vocabulary is minted beside the resolver's own typed carrier."
 
 fn peel_alias_once_for_field_access(n: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv, module_name: String, seen: Map<String, Bool>) -> v1.compiler.infer_resolve.NodeResolveResult {
-  let once = resolve_node(n: n, env: env, module_name: module_name)
+  let once = v1.compiler.infer_resolve.resolve_node(n: n, env: env, module_name: module_name)
   let resolved_once = once.resolved
   if (resolved_once.connective == v1.std.core.Conj || resolved_once.connective == v1.std.core.Disj) {
     once
@@ -7914,7 +7914,7 @@ fn symbol_index_insert_item(
     match namespace_alias_target_path(item: item, source_indices: source_indices) {
       Absent => index
       Present { value: target_path } =>
-        match symbol_index_lookup(index: index, qualified_name: target_path) {
+        match v1.compiler.infer_env.symbol_index_lookup(index: index, qualified_name: target_path) {
           Absent => index
           Present { value: target_node } =>
             symbol_index_insert_decl(
@@ -8023,7 +8023,7 @@ fn symbol_index_insert_unique_disj_variant_aliases(
               match map_get(corpus_variant_counts, vname) {
                 Present { value: 1 } =>
                   if map_get(corpus_item_counts, vname) != none || overlay_skips_kernel_name(name: vname) {
-                    symbol_index_insert(
+                    v1.compiler.infer_env.symbol_index_insert(
                       index: a2,
                       qualified_name: concat(module_path, ".", vname),
                       resolved: item
@@ -8040,7 +8040,7 @@ fn symbol_index_insert_unique_disj_variant_aliases(
                   )
                   }
                 _ =>
-                  symbol_index_insert(
+                  v1.compiler.infer_env.symbol_index_insert(
                     index: a2,
                     qualified_name: concat(module_path, ".", vname),
                     resolved: item
@@ -8057,7 +8057,7 @@ fn symbol_index_insert_unique_disj_variant_aliases(
 fn build_symbol_index_census_raw_nodes(module_nodes: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_env.SymbolIndex {
   let corpus_variant_counts = corpus_disj_variant_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
   let corpus_item_counts = corpus_item_name_counts_nodes(module_nodes: module_nodes, source_indices: source_indices)
-  fold(module_nodes, init: empty_symbol_index(), f: (index, module_node) =>
+  fold(module_nodes, init: v1.compiler.infer_env.empty_symbol_index(), f: (index, module_node) =>
     let module_path = authored_name_at(source_indices: source_indices, node: module_node)
     let items = module_items(n: module_node)
     let with_items = fold(items, init: index, f: (acc, item) =>
@@ -8129,7 +8129,7 @@ fn census_upgrade_sig_binding(binding: v1.compiler.infer_env.TypeBinding, module
     match node.inferred {
       Present { value: v1.std.core.Resolved { node: raw_ret } } =>
         let env = census_fn_sig_env(census: census, module_path: module_path, tp_names: tp_names, source_indices: source_indices)
-        let ret_result = resolve_node(n: raw_ret, env: env, module_name: module_path)
+        let ret_result = v1.compiler.infer_resolve.resolve_node(n: raw_ret, env: env, module_name: module_path)
         if (ret_result.diagnostics |> count) == 0 {
           let preserved = preserve_nominal_brand_on_resolve(identity: raw_ret, structural: ret_result.resolved, brand_name: authored_name_at(source_indices: source_indices, node: raw_ret), source_indices: source_indices)
           v1.compiler.infer_env.TypeBinding {
@@ -8232,7 +8232,7 @@ fn census_upgrade_type_expr(raw: v1.std.core.Node, env: v1.compiler.infer_env.Ty
     )
     node_with_children(n: raw, children: fields2)
   } else {
-    let r = resolve_node(n: raw, env: env, module_name: module_path)
+    let r = v1.compiler.infer_resolve.resolve_node(n: raw, env: env, module_name: module_path)
     if (r.diagnostics |> count) == 0 {
       preserve_nominal_brand_on_resolve(identity: raw, structural: r.resolved, brand_name: authored_name_at(source_indices: source_indices, node: raw), source_indices: source_indices)
     } else { raw }
@@ -8314,14 +8314,14 @@ fn symbol_index_with_bare_fill(closure: v1.compiler.infer_env.SymbolIndex, tree:
 }
 
 fn build_symbol_index_qualified_fill(modules: List<v1.std.core.Node>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> v1.compiler.infer_env.SymbolIndex {
-  let raw = fold(modules, init: empty_symbol_index(), f: (index, module_node) =>
+  let raw = fold(modules, init: v1.compiler.infer_env.empty_symbol_index(), f: (index, module_node) =>
     let module_path = authored_name_at(source_indices: source_indices, node: module_node)
     let items = module_items(n: module_node)
     let with_items = fold(items, init: index, f: (acc, item) =>
       match local_binding_for_item(item: item, source_indices: source_indices) {
         Absent => acc
         Present { value: binding } =>
-          symbol_index_insert(index: acc, qualified_name: concat(concat(module_path, "."), binding.name), resolved: binding.resolved)
+          v1.compiler.infer_env.symbol_index_insert(index: acc, qualified_name: concat(concat(module_path, "."), binding.name), resolved: binding.resolved)
       }
     )
     let counts = disj_variant_name_counts(items: items, source_indices: source_indices)
@@ -8332,7 +8332,7 @@ fn build_symbol_index_qualified_fill(modules: List<v1.std.core.Node>, source_ind
             let vname = authored_name_at(source_indices: source_indices, node: child)
             match map_get(counts, vname) {
               Present { value: 1 } =>
-                symbol_index_insert(index: a2, qualified_name: concat(concat(module_path, "."), vname), resolved: item)
+                v1.compiler.infer_env.symbol_index_insert(index: a2, qualified_name: concat(concat(module_path, "."), vname), resolved: item)
               _ => a2
             }
           )
@@ -8391,7 +8391,7 @@ fn build_type_env(module: v1.compiler.resolve.ResolvedModule, parent_index: Map<
   let node_fields = inductive_fields_list_to_map(fields: std.node.compiler_inductive_fields)
   let kernel_recursive_types = map_keys(std.node.compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
   let kernel_recursive_type_set = fold(map_keys(std.node.compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
-  let kernel = v1.compiler.infer_env.TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  let kernel = v1.compiler.infer_env.TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: v1.compiler.infer_env.empty_symbol_index() }
 
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let scope_parents = [kernel]
@@ -8401,7 +8401,7 @@ fn build_type_env(module: v1.compiler.resolve.ResolvedModule, parent_index: Map<
       match namespace_alias_target_path(item: item, source_indices: source_indices) {
         Absent => []
         Present { value: target_path } =>
-          match symbol_index_lookup(index: symbol_index, qualified_name: target_path) {
+          match v1.compiler.infer_env.symbol_index_lookup(index: symbol_index, qualified_name: target_path) {
             Present { value: _ } => []
             Absent => [make_error_node(diagnostic: v1.std.core.UnresolvedType { name: target_path, span: item.span }, module_name: module_name_str)]
           }
@@ -8414,7 +8414,7 @@ fn build_type_env(module: v1.compiler.resolve.ResolvedModule, parent_index: Map<
       match namespace_alias_target_path(item: item, source_indices: source_indices) {
         Absent => acc
         Present { value: target_path } =>
-          match symbol_index_lookup(index: symbol_index, qualified_name: target_path) {
+          match v1.compiler.infer_env.symbol_index_lookup(index: symbol_index, qualified_name: target_path) {
             Absent => acc
             Present { value: target_node } =>
               let binding = namespace_alias_binding_for_target(
@@ -8528,7 +8528,7 @@ fn build_type_env_unresolved(module: v1.compiler.resolve.ResolvedModule, parent_
   let absent_variant = v1.std.core.Node { name: "Absent", span: kernel_span(name: "Absent"), ident_span: Present { value: kernel_span(name: "Absent") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_optional = v1.std.core.Node { name: "Optional", span: kernel_span(name: "Optional"), ident_span: Present { value: kernel_span(name: "Optional") }, children: [present_variant, absent_variant], connective: Disj, params: [], inferred: none, return_cardinality: v1.std.core.Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   let kernel_bindings = map_insert(kernel_bindings, intern(table: intern_table, s: "Optional").id, v1.compiler.infer_env.TypeBinding { name: "Optional", resolved: kernel_optional, provenance: SubValueUnknown })
-  let kernel = v1.compiler.infer_env.TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  let kernel = v1.compiler.infer_env.TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: [], recursive_type_set: empty_map(), inductive_fields: empty_map(), source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: v1.compiler.infer_env.empty_symbol_index() }
 
   let module_name_str = authored_name_at(source_indices: source_indices, node: module.module)
   let scope_parents = [kernel]
@@ -8587,7 +8587,7 @@ fn build_type_env_unresolved(module: v1.compiler.resolve.ResolvedModule, parent_
   let merged_inductive_fields = merge_inductive_fields(left: parent_inductive_fields, right: local_inductive_fields)
   let ancestry_str_bindings = ancestry_cache.str_bindings
   let visible_str_bindings = map_merge(ancestry_str_bindings, local_str_bindings)
-  let unresolved_env = v1.compiler.infer_env.TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  let unresolved_env = v1.compiler.infer_env.TypeEnv { module_path: module_name_str, bindings: local_bindings, str_bindings: local_str_bindings, ancestry_str_bindings: ancestry_str_bindings, parents: scope_parents, recursive_types: cycle_set, recursive_type_set: cross_type_set, inductive_fields: merged_inductive_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: v1.compiler.infer_env.empty_symbol_index() }
   let type_env_cache = v1.compiler.infer_env.TypeEnvCache {
     deps_map: all_deps_map,
     str_bindings: visible_str_bindings,
@@ -9045,7 +9045,7 @@ fn typecheck_module(resolved: v1.compiler.resolve.ResolvedModule, parent_index: 
 }
 
 fn typecheck_module_isolated(resolved: v1.compiler.resolve.ResolvedModule, parent_index: Map<String, v1.compiler.infer_items.TypedModule>, source_indices: Map<String, v1.std.core.NewlineIndex>, intern_table: v1.std.core.InternTable) -> v1.compiler.infer.TypecheckModuleResult {
-  typecheck_module(resolved: resolved, parent_index: parent_index, variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table, symbol_index: empty_symbol_index(), global_variant_base: empty_map())
+  typecheck_module(resolved: resolved, parent_index: parent_index, variant_surfaces: empty_map(), source_indices: source_indices, intern_table: intern_table, symbol_index: v1.compiler.infer_env.empty_symbol_index(), global_variant_base: empty_map())
 }
 
 type EnvResolveResult {
@@ -9100,7 +9100,7 @@ fn topo_resolve_types(
       match map_get(env.bindings, ident) {
         Present { value: binding } =>
           let pre = binding.resolved
-          let result = resolve_node(n: pre, env: env, module_name: module_name)
+          let result = v1.compiler.infer_resolve.resolve_node(n: pre, env: env, module_name: module_name)
           let resolved = preserve_nominal_brand_on_resolve(
             identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
           let updated_binding = v1.compiler.infer_env.TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown }
@@ -9123,7 +9123,7 @@ fn topo_resolve_types(
     match map_get(env.bindings, ident) {
       Present { value: binding } =>
         let pre = binding.resolved
-        let result = resolve_node(n: pre, env: env, module_name: module_name)
+        let result = v1.compiler.infer_resolve.resolve_node(n: pre, env: env, module_name: module_name)
         let resolved = preserve_nominal_brand_on_resolve(
           identity: pre, structural: result.resolved, brand_name: binding.name, source_indices: env.source_indices)
         let updated_binding = v1.compiler.infer_env.TypeBinding { name: name, resolved: resolved, provenance: SubValueUnknown }
@@ -9361,7 +9361,7 @@ fn compiler_kernel_type_env(source_indices: Map<String, v1.std.core.NewlineIndex
   let node_fields = inductive_fields_list_to_map(fields: std.node.compiler_inductive_fields)
   let kernel_recursive_types = map_keys(std.node.compiler_recursive_types) |> map(name => intern(table: intern_table, s: name).id)
   let kernel_recursive_type_set = fold(map_keys(std.node.compiler_recursive_types), init: empty_map(), f: (acc, name) => map_insert(acc, intern(table: intern_table, s: name).id, true))
-  v1.compiler.infer_env.TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: empty_symbol_index() }
+  v1.compiler.infer_env.TypeEnv { module_path: "", bindings: kernel_bindings, str_bindings: str_bindings_from_bindings(bindings: kernel_bindings), ancestry_str_bindings: empty_map(), parents: [], recursive_types: kernel_recursive_types, recursive_type_set: kernel_recursive_type_set, inductive_fields: node_fields, source_indices: source_indices, intern_table: intern_table, source_visible_names: empty_map(), symbol_index: v1.compiler.infer_env.empty_symbol_index() }
 }
 
 fn rewire_type_env_parent_links(modules: List<v1.compiler.infer_items.TypedModule>, source_indices: Map<String, v1.std.core.NewlineIndex>) -> List<v1.compiler.infer_items.TypedModule> {

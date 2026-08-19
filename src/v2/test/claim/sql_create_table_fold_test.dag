@@ -3,7 +3,7 @@ module v2.test.claim.sql_create_table_fold
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn sql_fold_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn sql_fold_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
@@ -13,7 +13,7 @@ fn sql_fold_fold_serialize(
 ) -> v2.std.diagnostic.Outcome<String> {
   match sql_fold_operation_emitted_witness(op: op) {
     Holds { value: emitted } =>
-      let tree = v2.compiler.infer.InferredTree {
+      let tree = v2.compiler.inferred_tree.InferredTree {
         root: emitted,
         facts: std.types.Map { lookup: sql_fold_facts_lookup }
       }

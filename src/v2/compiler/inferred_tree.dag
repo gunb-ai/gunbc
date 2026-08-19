@@ -1,7 +1,7 @@
 module v2.compiler.inferred_tree
 
 
-// InferredFacts/InferredTree/InferredFactsEntry are the SHAPE infer's pass
+// v2.compiler.inferred_tree.InferredFacts/InferredTree/InferredFactsEntry are the SHAPE infer's pass
 // produces and consumers hold -- not the pass itself. They lived inside
 // v2.compiler.infer (the 04_infer.dag fold implementation), which imports
 // v2.compiler.resolve for its own logic; any consumer that wanted only these
@@ -26,10 +26,10 @@ type InferredFacts {
 
 type InferredTree {
   root: v2.std.node.Node
-  facts: v2.std.collection.Map<v2.std.node.Node, InferredFacts>
+  facts: v2.std.collection.Map<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts>
 }
 
 type InferredFactsEntry {
   node: v2.std.node.Node
-  facts: InferredFacts
+  facts: v2.compiler.inferred_tree.InferredFacts
 }

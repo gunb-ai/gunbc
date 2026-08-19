@@ -381,7 +381,7 @@ fn inventory_row_for_contract(
   ci_entries: List<std.realization_schedule.ScheduleWitnessEntry>,
   prepush_entries: List<std.realization_schedule.ScheduleWitnessEntry>
 ) -> LensEnforcementInventoryRow {
-  let unbound = lens_contract_is_unbound(c: c)
+  let unbound = v2.lens.enforcement.receipts.lens_contract_is_unbound(c: c)
   let receipt_lookup = find_receipt(cid: c.entry.lens_id, receipts: receipts)
   let has_receipt = match receipt_lookup {
     ReceiptFound { value: _ } => true
@@ -494,7 +494,7 @@ fn inventory_unbound_rows_match_contract_unbound(
     match find_inventory_row(inventory: inventory, id: c.entry.lens_id) {
       InventoryRowAbsent => false
       InventoryRowFound { value: row } =>
-        row.consumer_unbound == lens_contract_is_unbound(c: c)
+        row.consumer_unbound == v2.lens.enforcement.receipts.lens_contract_is_unbound(c: c)
     }
   })
 }

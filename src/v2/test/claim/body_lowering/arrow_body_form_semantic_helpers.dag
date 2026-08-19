@@ -126,7 +126,7 @@ fn arrow_body_form_eval_runtime_int_equals(value: v2.std.runtime.RuntimeValue, n
   }
 }
 
-fn arrow_body_form_eval_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn arrow_body_form_eval_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_present(value: claim_inferred_facts_from_nodes(
     resolved: key,
     algebra: arrow_body_form_eval_int_type_node(),
@@ -134,8 +134,8 @@ fn arrow_body_form_eval_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compi
   ))
 }
 
-fn arrow_body_form_eval_admitted_tree(root: v2.std.node.Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn arrow_body_form_eval_admitted_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: arrow_body_form_eval_facts_lookup }
   }

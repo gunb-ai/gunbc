@@ -3,7 +3,7 @@ module v2.test.manual.emit_directive_rust
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn emit_directive_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn emit_directive_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
@@ -33,7 +33,7 @@ data emit_directive_rust_quoted_expected: String = "eprintln!(\"say \\\"hi\\\"\"
 
 fn emit_directive_rust_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(
-    tree: v2.compiler.infer.InferredTree {
+    tree: v2.compiler.inferred_tree.InferredTree {
       root: rust_emit_directive_emitted_call,
       facts: std.types.Map { lookup: emit_directive_facts_lookup }
     },
@@ -43,7 +43,7 @@ fn emit_directive_rust_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagno
 
 fn emit_directive_bash_emit(d: v2.std.diagnostic.EmitDirective) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   emit(
-    tree: v2.compiler.infer.InferredTree {
+    tree: v2.compiler.inferred_tree.InferredTree {
       root: emit_directive_bash_emitted_command,
       facts: std.types.Map { lookup: emit_directive_facts_lookup }
     },

@@ -67,7 +67,7 @@ fn field_access_canonical_grounding_for(node: Node) -> Witness<v2.std.constraint
   }
 }
 
-fn field_access_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn field_access_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   match field_access_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -82,11 +82,11 @@ fn field_access_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.Inf
   }
 }
 
-fn field_access_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn field_access_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   field_access_inferred_facts_for(node: key)
 }
 
-data field_access_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data field_access_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: field_access_emitted_root,
   facts: std.types.Map { lookup: field_access_facts_lookup }
 }

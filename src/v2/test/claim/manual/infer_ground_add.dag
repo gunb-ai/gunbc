@@ -157,8 +157,8 @@ fn infer_receipt_context() -> v2.compiler.eval.EvalContext {
   )
 }
 
-fn infer_receipt_empty_tree(root: Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn infer_receipt_empty_tree(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map {
       lookup: fn(_) {
@@ -188,7 +188,7 @@ fn infer_receipt_case_pin(case: InferReceiptCase) -> v2.std.node.Symbol {
   }
 }
 
-fn infer_outcome_node_projection(actual: v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree>) -> v2.std.diagnostic.Outcome<Node> {
+fn infer_outcome_node_projection(actual: v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree>) -> v2.std.diagnostic.Outcome<Node> {
   match actual {
     Accepted { value: tree, diagnostics: ad } =>
       v2.std.diagnostic.Accepted { value: tree.root, diagnostics: ad }
@@ -280,7 +280,7 @@ fn fixture_add_resolved_tree() -> v2.compiler.resolve.ResolvedTree {
 }
 }
 
-fn anchor_infer_add() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn anchor_infer_add() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   infer(tree: fixture_add_resolved_tree())
 }
 

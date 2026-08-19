@@ -44,7 +44,7 @@ fn use_classify(view: v2.std.dependency.DependencyView) -> v2.std.dependency.Cla
   classify_dependency_view(classifier: use_relation_dependency_kind_classifier(), view: view)
 }
 
-fn use_classification_fact(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> UseClassificationFact {
+fn use_classification_fact(tree: v2.compiler.inferred_tree.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> UseClassificationFact {
   UseClassificationFact {
     uses: fold(dependencies, init: [], f: fn(acc, view) {
       list_snoc_item(xs: acc, item: use_classify(view: view))
@@ -52,7 +52,7 @@ fn use_classification_fact(tree: v2.compiler.infer.InferredTree, dependencies: L
   }
 }
 
-fn use_classification_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<UseClassificationFact> {
+fn use_classification_witness(tree: v2.compiler.inferred_tree.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<UseClassificationFact> {
   v2.std.witness.Holds {
     value: use_classification_fact(tree: tree, dependencies: dependencies)
   }
@@ -110,11 +110,11 @@ fn rollup_unused(use_fact: UseClassificationFact) -> UnusedParametersFact {
   }
 }
 
-fn unused_parameters_fact(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> UnusedParametersFact {
+fn unused_parameters_fact(tree: v2.compiler.inferred_tree.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> UnusedParametersFact {
   rollup_unused(use_fact: use_classification_fact(tree: tree, dependencies: dependencies))
 }
 
-fn unused_parameters_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<UnusedParametersFact> {
+fn unused_parameters_witness(tree: v2.compiler.inferred_tree.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<UnusedParametersFact> {
   v2.std.witness.Holds {
     value: unused_parameters_fact(tree: tree, dependencies: dependencies)
   }

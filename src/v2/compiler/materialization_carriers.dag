@@ -49,7 +49,7 @@ fn v2_compiler_materialization_demands() -> List<std.materialization_ladder.Fram
 }
 
 fn parse_table_memo_provider() -> std.materialization_ladder.CacheProvider {
-  provider_from_catalog(
+  extdeps.cache.materialization.provider_from_catalog(
     facts: parse_table_memo_facts,
     scope: v2_compile_process_site(),
     coverage: CoversAllComputations
@@ -57,7 +57,7 @@ fn parse_table_memo_provider() -> std.materialization_ladder.CacheProvider {
 }
 
 fn compile_stage_memo_provider() -> std.materialization_ladder.CacheProvider {
-  provider_from_catalog(
+  extdeps.cache.materialization.provider_from_catalog(
     facts: compile_stage_memo_facts,
     scope: v2_compile_process_site(),
     coverage: CoversAllComputations

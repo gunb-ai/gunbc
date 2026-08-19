@@ -5,7 +5,7 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data emit_match_eval_subgraph_node: Node = dag_match_if_body_fixture
 
-fn emit_match_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.infer.InferredFacts {
+fn emit_match_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
@@ -18,15 +18,15 @@ fn emit_match_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.infer.In
   )
 }
 
-fn emit_match_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn emit_match_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_present(value: emit_match_eval_generic_facts(node: key))
 }
 
-fn emit_match_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn emit_match_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match table_fixture_match_arrow_with_body() {
     Accepted { value: root, diagnostics: _ } =>
       outcome_accepted(
-        value: v2.compiler.infer.InferredTree {
+        value: v2.compiler.inferred_tree.InferredTree {
           root: root,
           facts: std.types.Map { lookup: emit_match_eval_composed_facts }
         }
@@ -35,11 +35,11 @@ fn emit_match_eval_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infe
   }
 }
 
-fn emit_match_eval_swapped_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn emit_match_eval_swapped_producer_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match table_fixture_match_arrow_with_body_swapped_arms() {
     Accepted { value: root, diagnostics: _ } =>
       outcome_accepted(
-        value: v2.compiler.infer.InferredTree {
+        value: v2.compiler.inferred_tree.InferredTree {
           root: root,
           facts: std.types.Map { lookup: emit_match_eval_composed_facts }
         }
@@ -219,7 +219,7 @@ fn emit_match_eval_claim(rhs_result_node: v2.std.node.Node) -> v2.std.verificati
   }
 }
 
-fn emit_match_eval_subject(tree: v2.compiler.infer.InferredTree) -> TestClaimEvalSubject<v2.std.node.Node> {
+fn emit_match_eval_subject(tree: v2.compiler.inferred_tree.InferredTree) -> TestClaimEvalSubject<v2.std.node.Node> {
   eval_test_claim_subject(
     claim: emit_match_eval_claim(rhs_result_node: emit_match_eval_subgraph_node),
     context: emit_match_eval_context(),
@@ -228,7 +228,7 @@ fn emit_match_eval_subject(tree: v2.compiler.infer.InferredTree) -> TestClaimEva
   )
 }
 
-fn emit_match_eval_run(tree: v2.compiler.infer.InferredTree) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
+fn emit_match_eval_run(tree: v2.compiler.inferred_tree.InferredTree) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
   run_test_claim_emit_vs_eval(
     subject: emit_match_eval_subject(tree: tree),
     target: rust_match_target_model_staging()

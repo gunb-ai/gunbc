@@ -3,7 +3,7 @@ module v2.test.execution.emit_host_module_equals_eval
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn emit_module_single_add_decls() -> List<v2.compiler.infer.InferredTree> {
+fn emit_module_single_add_decls() -> List<v2.compiler.inferred_tree.InferredTree> {
   [emit_eval_subject_tree()]
 }
 
@@ -28,7 +28,7 @@ fn emit_module_expected_two_source() -> String {
   )
 }
 
-fn emit_module_two_add_decls() -> List<v2.compiler.infer.InferredTree> {
+fn emit_module_two_add_decls() -> List<v2.compiler.inferred_tree.InferredTree> {
   [emit_eval_subject_tree(), emit_eval_subject_tree()]
 }
 

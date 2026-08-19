@@ -144,7 +144,7 @@ fn roster_rejects_with(probe: v2.test.long.mandatory_tag_gate_witness.GrainProbe
   match probe {
     GrainStageRejected => false
     GrainTree { root: root } =>
-      let inferred = v2.compiler.infer.InferredTree { root: root, facts: v2.std.collection.empty_map() }
+      let inferred = v2.compiler.inferred_tree.InferredTree { root: root, facts: v2.std.collection.empty_map() }
       fold(v2.compiler.compile.always_required_root_lenses(), init: false, f: fn(acc, lens) {
         acc
           || match lens.gate(inferred) {

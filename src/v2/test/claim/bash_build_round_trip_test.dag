@@ -9,7 +9,7 @@ data bash_build_round_trip_exit_42_golden: String = "exit 42"
 data bash_build_round_trip_and_then_golden: String = "'true' && 'false'"
 data bash_build_round_trip_pipe_golden: String = "'echo' 'hi' | 'wc' '-c'"
 
-fn bash_build_round_trip_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn bash_build_round_trip_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
@@ -30,7 +30,7 @@ fn bash_build_round_trip_via_emit_matches_golden(
   target: v2.std.compilers.target_model.TargetModel,
   golden: String
 ) -> Bool {
-  let tree = v2.compiler.infer.InferredTree {
+  let tree = v2.compiler.inferred_tree.InferredTree {
     root: emitted,
     facts: std.types.Map { lookup: bash_build_round_trip_facts_lookup }
   }

@@ -187,7 +187,7 @@ fn resolve_push_before(push_before: PushBeforeInput?, head_sha: String?) -> Diff
         BaselineRefused {
           reason: "push event but before SHA is empty — cannot derive affected-set baseline; halting the floor (AFFECTED-SET REFUSAL)"
         }
-      } else if before == zero_sha {
+      } else if before == extdeps.git.hooks.zero_sha {
         BaselineRefused {
           reason: "push event before SHA is the zero SHA (new branch creation) — no prior commit to diff against; halting the floor (AFFECTED-SET REFUSAL)"
         }
@@ -219,13 +219,13 @@ fn resolve_diff_baseline_by_event(
   push_parent_ref: std.types.GitRef,
   default_remote_name: String
 ) -> DiffBaselineResolution {
-  if event.event_name == github_event_name_pull_request {
+  if event.event_name == extdeps.github.actions.github_event_name_pull_request {
     resolve_merge_target(base_ref: event.base_ref, default_remote_name: default_remote_name)
-  } else if event.event_name == github_event_name_push {
+  } else if event.event_name == extdeps.github.actions.github_event_name_push {
     resolve_push_before(push_before: event.push_before, head_sha: event.head_sha)
-  } else if event.event_name == github_event_name_workflow_dispatch
-    || event.event_name == github_event_name_merge_group
-    || event.event_name == github_event_name_schedule
+  } else if event.event_name == extdeps.github.actions.github_event_name_workflow_dispatch
+    || event.event_name == extdeps.github.actions.github_event_name_merge_group
+    || event.event_name == extdeps.github.actions.github_event_name_schedule
     || event.event_name == "" {
     BaselineSelected { baseline: PushParent { ref: push_parent_ref } }
   } else {

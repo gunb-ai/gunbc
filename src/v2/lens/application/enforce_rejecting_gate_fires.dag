@@ -3,7 +3,7 @@ module v2.test.lens_application.enforce_rejecting_gate_fires
 
 data enforce_reject_root: Node = claim_atom_node(s: ^enforce_reject_symbol)
 
-fn enforce_reject_tree() -> v2.compiler.infer.InferredTree {
+fn enforce_reject_tree() -> v2.compiler.inferred_tree.InferredTree {
   claim_inferred_tree(
     root: enforce_reject_root,
     facts: claim_inferred_facts(
@@ -14,7 +14,7 @@ fn enforce_reject_tree() -> v2.compiler.infer.InferredTree {
   )
 }
 
-fn enforce_rejecting_gate(_tree: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
+fn enforce_rejecting_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> Outcome<Witness<Node>> {
   outcome_rejected(
     compile_lens_gate_rejected_diagnostic(at: port_locus(port: ^enforce_reject_gate_at))
   )

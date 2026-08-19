@@ -21,7 +21,7 @@ data rejecting_lens_authority_node: Node = v2.std.node.Node {
   occurrence_id: SyntheticOccurrence
 }
 
-fn rejecting_lens_gate(_tree: v2.compiler.infer.InferredTree) -> Outcome<Witness<Node>> {
+fn rejecting_lens_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> Outcome<Witness<Node>> {
   outcome_rejected(
     compile_lens_gate_rejected_diagnostic(at: port_locus(port: ^rejecting_lens_gate_at))
   )

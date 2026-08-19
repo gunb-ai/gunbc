@@ -248,7 +248,7 @@ fn coercion_wrap_find_witness_rejection_with_refinement_algebra(
   upstream: v2.std.diagnostic.NonEmptyDiagnostics,
   refinement_algebra: v2.std.node.Node,
 ) -> v2.std.diagnostic.Outcome<v2.std.diagnostic.NonEmptyDiagnostics> {
-  if refinement_widening_is_strict_coarsening(algebra: refinement_algebra) {
+  if v2.std.refinement_widening_predicate.refinement_widening_is_strict_coarsening(algebra: refinement_algebra) {
     v2.std.diagnostic.Accepted {
       value: v2.std.diagnostic.NonEmptyDiagnostics {
         head: coercion_not_realized_diagnostic(source: source, kind: WouldLoseInformation),

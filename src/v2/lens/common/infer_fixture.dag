@@ -33,8 +33,8 @@ fn claim_canonical_grounding(
 fn claim_inferred_facts_witness(
   grounding: v2.std.constraints.CanonicalGrounding,
   descent: Witness<v2.std.cardinality.TerminationProof>
-) -> v2.compiler.infer.InferredFacts {
-  v2.compiler.infer.InferredFacts {
+) -> v2.compiler.inferred_tree.InferredFacts {
+  v2.compiler.inferred_tree.InferredFacts {
     grounding: v2.compiler.infer.DerivedGrounding { grounding: grounding },
     descent: descent
   }
@@ -44,7 +44,7 @@ fn claim_inferred_facts_from_nodes(
   resolved: Node,
   algebra: Node,
   descent: Witness<v2.std.cardinality.TerminationProof>
-) -> v2.compiler.infer.InferredFacts {
+) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_witness(
     grounding: v2.std.constraints.CanonicalGrounding {
       node: resolved,
@@ -67,7 +67,7 @@ fn claim_inferred_facts(
   type_symbol: v2.std.node.Symbol,
   algebra_symbol: v2.std.node.Symbol,
   descent_symbol: v2.std.node.Symbol,
-) -> v2.compiler.infer.InferredFacts {
+) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_witness(
     grounding: claim_canonical_grounding(
       type_symbol: type_symbol,
@@ -82,7 +82,7 @@ fn claim_inferred_facts(
   )
 }
 
-fn claim_inferred_facts_map(facts: v2.compiler.infer.InferredFacts) -> Map<Node, v2.compiler.infer.InferredFacts> {
+fn claim_inferred_facts_map(facts: v2.compiler.inferred_tree.InferredFacts) -> Map<Node, v2.compiler.inferred_tree.InferredFacts> {
   std.types.Map {
     lookup: fn(_) {
       Present { value: facts }
@@ -90,13 +90,13 @@ fn claim_inferred_facts_map(facts: v2.compiler.infer.InferredFacts) -> Map<Node,
   }
 }
 
-fn claim_inferred_tree(root: Node, facts: v2.compiler.infer.InferredFacts) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn claim_inferred_tree(root: Node, facts: v2.compiler.inferred_tree.InferredFacts) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: claim_inferred_facts_map(facts: facts)
   }
 }
 
-fn claim_inferred_facts_for_tree(tree: v2.compiler.infer.InferredTree, node: Node) -> Witness<v2.compiler.infer.InferredFacts> {
+fn claim_inferred_facts_for_tree(tree: v2.compiler.inferred_tree.InferredTree, node: Node) -> Witness<v2.compiler.inferred_tree.InferredFacts> {
   witness_from_optional(opt: tree.facts.lookup(node), absent: infer_facts_lookup_miss_diagnostic(key: node))
 }

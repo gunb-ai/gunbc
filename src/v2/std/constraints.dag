@@ -78,7 +78,7 @@ fn constraint_satisfaction_holds(
   candidate: Node,
   predicate: ConstraintSatisfactionPredicate,
 ) -> Bool {
-  constraint_satisfaction_preservation_holds(
+  v2.std.constraint_satisfaction_predicate.constraint_satisfaction_preservation_holds(
     source_facts: source_facts,
     candidate: candidate,
     algebra: predicate.algebra

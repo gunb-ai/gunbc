@@ -104,7 +104,7 @@ fn emit_eval_context(call_primitive: fn(Node, List<RuntimeValue>, EvaluationEnvi
   )
 }
 
-fn emit_eval_generic_facts(node: Node) -> v2.compiler.infer.InferredFacts {
+fn emit_eval_generic_facts(node: Node) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
@@ -117,15 +117,15 @@ fn emit_eval_generic_facts(node: Node) -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn emit_eval_composed_facts(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn emit_eval_composed_facts(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   match rust_add_inferred_tree.facts.lookup(node) {
     Present { value: f } => optional_present(value: f)
     Absent => optional_present(value: emit_eval_generic_facts(node: node))
   }
 }
 
-fn emit_eval_subject_tree() -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn emit_eval_subject_tree() -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: rust_fixture_emitted_add_fn,
     facts: std.types.Map { lookup: emit_eval_composed_facts }
   }

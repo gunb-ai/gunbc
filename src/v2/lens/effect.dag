@@ -6,13 +6,13 @@ type EffectFact {
 }
 
 fn effect_classify(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   view: v2.std.dependency.DependencyView
 ) -> v2.std.dependency.ClassifiedDependencyView<v2.lens.common.algebraic_composition.EffectClassification> {
   classify_dependency_view(classifier: effect_classifier, view: view)
 }
 
-fn effect_fact(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> EffectFact {
+fn effect_fact(tree: v2.compiler.inferred_tree.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> EffectFact {
   EffectFact {
     dependencies: fold(dependencies, init: [], f: fn(acc, view) {
       list_snoc_item(xs: acc, item: effect_classify(tree: tree, view: view))
@@ -20,12 +20,12 @@ fn effect_fact(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.d
   }
 }
 
-fn effect_usage_facts_witness(tree: v2.compiler.infer.InferredTree, source: Node) -> Witness<v2.compiler.infer.InferredFacts> {
+fn effect_usage_facts_witness(tree: v2.compiler.inferred_tree.InferredTree, source: Node) -> Witness<v2.compiler.inferred_tree.InferredFacts> {
   witness_from_optional(opt: tree.facts.lookup(source), absent: infer_facts_lookup_miss_diagnostic(key: source))
 }
 
 fn effect_first_upstream_diagnostic(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   fact: EffectFact
 ) -> Optional<v2.std.diagnostic.Diagnostic> {
   fold(fact.dependencies, init: optional_absent(), f: fn(acc, dep) {
@@ -51,7 +51,7 @@ fn effect_witness_diagnostic() -> v2.std.diagnostic.Diagnostic {
   }
 }
 
-fn effect_witness(tree: v2.compiler.infer.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<EffectFact> {
+fn effect_witness(tree: v2.compiler.inferred_tree.InferredTree, dependencies: List<v2.std.dependency.DependencyView>) -> Witness<EffectFact> {
   let fact = effect_fact(tree: tree, dependencies: dependencies)
   let upstream = effect_first_upstream_diagnostic(tree: tree, fact: fact)
   match optional_present_witness(opt: upstream) {

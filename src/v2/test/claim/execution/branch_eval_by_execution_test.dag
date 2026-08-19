@@ -246,7 +246,7 @@ fn branch_tree_root(call: v2.std.node.Node, expected: v2.std.node.Node) -> v2.st
   }
 }
 
-fn branch_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn branch_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_present(value: claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: branch_i64_node(),
@@ -254,8 +254,8 @@ fn branch_facts_lookup(key: v2.std.node.Node) -> Optional<v2.compiler.infer.Infe
     ))
 }
 
-fn branch_admitted_tree(root: v2.std.node.Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn branch_admitted_tree(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map {
       lookup: branch_facts_lookup
@@ -263,7 +263,7 @@ fn branch_admitted_tree(root: v2.std.node.Node) -> v2.compiler.infer.InferredTre
   }
 }
 
-fn branch_inferred_run_tree(callee: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn branch_inferred_run_tree(callee: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   let call = branch_pick_call(callee: callee)
   let root = branch_tree_root(call: call, expected: expected)
   outcome_accepted(value: branch_admitted_tree(root: root))
@@ -280,7 +280,7 @@ fn branch_claim(input: v2.std.node.Node, expected: v2.std.node.Node) -> v2.std.v
 }
 
 fn branch_subject(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   input: v2.std.node.Node,
   expected: v2.std.node.Node
 ) -> TestClaimEvalSubject<v2.std.node.Node> {

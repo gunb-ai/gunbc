@@ -185,7 +185,7 @@ fn eval_termination_proof() -> v2.std.cardinality.TerminationProof {
   }
 }
 
-fn eval_facts_for_node(node: Node) -> v2.compiler.infer.InferredFacts {
+fn eval_facts_for_node(node: Node) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: eval_i64_node(),
@@ -193,7 +193,7 @@ fn eval_facts_for_node(node: Node) -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn eval_fact_lookup(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn eval_fact_lookup(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   if node == eval_two_literal {
     optional_present(value: eval_facts_for_node(node: eval_two_literal))
   } else if node == eval_add_subgraph_node {
@@ -203,8 +203,8 @@ fn eval_fact_lookup(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
   }
 }
 
-fn eval_inferred_tree() -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn eval_inferred_tree() -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: eval_add_subgraph(),
     facts: std.types.Map {
       lookup: eval_fact_lookup

@@ -17,7 +17,7 @@ data rollup_contains_dependency: v2.std.dependency.DependencyView = v2.std.depen
   usage_site: rollup_parameter
 }
 
-fn rollup_facts() -> v2.compiler.infer.InferredFacts {
+fn rollup_facts() -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^rollup_type_symbol,
     algebra_symbol: ^rollup_algebra_symbol,
@@ -25,12 +25,12 @@ fn rollup_facts() -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn rollup_tree() -> v2.compiler.infer.InferredTree {
+fn rollup_tree() -> v2.compiler.inferred_tree.InferredTree {
   claim_inferred_tree(root: rollup_function, facts: rollup_facts())
 }
 
 type LensRollupUnusedClaim {
-  input: v2.compiler.infer.InferredTree
+  input: v2.compiler.inferred_tree.InferredTree
   expected: v2.lens.unused_parameters.UnusedParametersFact
   actual: Witness<v2.lens.unused_parameters.UnusedParametersFact>
 }

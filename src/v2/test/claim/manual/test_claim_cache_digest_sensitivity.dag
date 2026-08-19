@@ -29,7 +29,7 @@ fn tcc_cache_eval_node_b() -> Node {
   claim_atom_node(s: ^tcc_cache_eval_b_sym)
 }
 
-fn tcc_cache_tree_facts_for_reason(reason: v2.std.node.Symbol) -> v2.compiler.infer.InferredTree {
+fn tcc_cache_tree_facts_for_reason(reason: v2.std.node.Symbol) -> v2.compiler.inferred_tree.InferredTree {
   claim_inferred_tree(
     root: tcc_cache_root(),
     facts: claim_inferred_facts(
@@ -55,7 +55,7 @@ fn tcc_cache_stub_claim() -> v2.std.verification.TestClaim {
 }
 
 fn tcc_cache_subject(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   evaluator_input: Node
 ) -> TestClaimEvalSubject<Node> {
   v2.compiler.eval.TestClaimEvalSubject {

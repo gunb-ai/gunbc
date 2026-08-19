@@ -35,7 +35,7 @@ fn translate_underived_value_node() -> Node {
   translate_underived_value_specimen
 }
 
-fn translate_underived_value_specimen_facts() -> Optional<v2.compiler.infer.InferredFacts> {
+fn translate_underived_value_specimen_facts() -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   match infer(tree: translate_underived_value_specimen) {
     Accepted { value: tree, diagnostics: _ } =>
       tree.facts.lookup(translate_underived_value_specimen)
@@ -53,7 +53,7 @@ fn translate_mixed_tree_root() -> Node {
   )
 }
 
-fn translate_mixed_tree_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn translate_mixed_tree_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
     translate_underived_value_specimen_facts()
   } else if content_hash(n: key) == content_hash(n: translate_mixed_tree_root()) {
@@ -63,12 +63,12 @@ fn translate_mixed_tree_facts_lookup(key: Node) -> Optional<v2.compiler.infer.In
   }
 }
 
-data translate_mixed_derived_root_underived_child_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data translate_mixed_derived_root_underived_child_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: translate_mixed_tree_root(),
   facts: std.types.Map { lookup: translate_mixed_tree_facts_lookup }
 }
 
-fn translate_absent_parent_underived_child_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn translate_absent_parent_underived_child_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
     translate_underived_value_specimen_facts()
   } else {
@@ -76,7 +76,7 @@ fn translate_absent_parent_underived_child_facts_lookup(key: Node) -> Optional<v
   }
 }
 
-data translate_absent_parent_underived_child_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data translate_absent_parent_underived_child_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: translate_mixed_tree_root(),
   facts: std.types.Map { lookup: translate_absent_parent_underived_child_facts_lookup }
 }
@@ -91,14 +91,14 @@ fn translate_bodyless_emission_root_with_poison_child_root() -> Node {
   )
 }
 
-fn translate_bodyless_emission_root_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn translate_bodyless_emission_root_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   match infer(tree: python_emitted_add_fn_node()) {
     Accepted { value: tree, diagnostics: _ } => tree.facts.lookup(node)
     Rejected { diagnostics: _ } => optional_absent()
   }
 }
 
-fn translate_bodyless_emission_root_with_poison_child_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn translate_bodyless_emission_root_with_poison_child_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
     translate_underived_value_specimen_facts()
   } else if content_hash(n: key) == content_hash(n: translate_bodyless_emission_root_with_poison_child_root()) {
@@ -108,7 +108,7 @@ fn translate_bodyless_emission_root_with_poison_child_facts_lookup(key: Node) ->
   }
 }
 
-data translate_bodyless_emission_root_with_poison_child_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data translate_bodyless_emission_root_with_poison_child_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: translate_bodyless_emission_root_with_poison_child_root(),
   facts: std.types.Map { lookup: translate_bodyless_emission_root_with_poison_child_facts_lookup }
 }
@@ -133,7 +133,7 @@ fn translate_bodied_arrow_shortcut_root() -> v2.std.diagnostic.Outcome<Node> {
   )
 }
 
-fn translate_bodied_arrow_shortcut_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn translate_bodied_arrow_shortcut_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   if content_hash(n: key) == content_hash(n: translate_underived_value_specimen) {
     translate_underived_value_specimen_facts()
   } else {
@@ -141,12 +141,12 @@ fn translate_bodied_arrow_shortcut_facts_lookup(key: Node) -> Optional<v2.compil
   }
 }
 
-fn translate_bodied_arrow_shortcut_underived_descendant_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn translate_bodied_arrow_shortcut_underived_descendant_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   bind_outcome(
     o: translate_bodied_arrow_shortcut_root(),
     f: fn(root) {
       outcome_accepted(
-        value: v2.compiler.infer.InferredTree {
+        value: v2.compiler.inferred_tree.InferredTree {
           root: root,
           facts: std.types.Map { lookup: translate_bodied_arrow_shortcut_facts_lookup }
         }
@@ -172,12 +172,12 @@ fn translate_projection_absent_fold_bodied_arrow_wrapped_root() -> v2.std.diagno
   )
 }
 
-fn translate_projection_absent_fold_bodied_arrow_underived_descendant_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn translate_projection_absent_fold_bodied_arrow_underived_descendant_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   bind_outcome(
     o: translate_projection_absent_fold_bodied_arrow_wrapped_root(),
     f: fn(root) {
       outcome_accepted(
-        value: v2.compiler.infer.InferredTree {
+        value: v2.compiler.inferred_tree.InferredTree {
           root: root,
           facts: std.types.Map { lookup: translate_bodied_arrow_shortcut_facts_lookup }
         }

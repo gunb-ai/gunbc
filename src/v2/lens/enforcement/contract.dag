@@ -46,7 +46,7 @@ data lens_contract_complexity_derived_kernel: LensContract = {
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: complexity_derived_kernel_boundary
+  boundary: v2.lens.enforcement.complexity_contract_subject.complexity_derived_kernel_boundary
 }
 
 data lens_contract_complexity_optimality: LensContract = {
@@ -55,7 +55,7 @@ data lens_contract_complexity_optimality: LensContract = {
   claimed_scope: v2.lens.enforcement.vocab.ScopeRoster { roots: ["dag", "src/v1", "src/v2"] },
   consumer_witness: NoConsumerWitness,
   exemptions: [],
-  boundary: complexity_optimality_boundary
+  boundary: v2.lens.enforcement.complexity_contract_subject.complexity_optimality_boundary
 }
 
 data lens_contract_emitted_binary_effect_confinement: LensContract = {

@@ -113,7 +113,7 @@ data srv3_pxe_network_boot_chain: extdeps.provisioning.network_boot.NetworkBootC
 data srv3_autoinstall_bootstrap_password_hash: std.types.NonEmptyStr = "$6$exDY1mhS4KUYCE/2$zmn9ToZwTKLhCw.b4/b.ZRTIZM30JZ4QrOQ2aOXJ8yk96xpcCof0kxKwuX1kqLG/ygbJ1f8wxED22bTL4F46P0"
 
 data srv3_autoinstall_identity: extdeps.os.ubuntu_autoinstall.AutoinstallIdentity = extdeps.os.ubuntu_autoinstall.AutoinstallIdentity {
-  hostname: operator_host_srv3,
+  hostname: gunbc.fleet_intent_network.operator_host_srv3,
   username: "ubuntu",
   realname: "gunbc fleet node srv3",
   hashed_password: srv3_autoinstall_bootstrap_password_hash,
@@ -133,7 +133,7 @@ data srv3_ubuntu_autoinstall: extdeps.os.ubuntu_autoinstall.UbuntuAutoinstallPay
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   install_openssh_server: true,
-  ssh_authorized_keys: fleet_authorized_keys,
+  ssh_authorized_keys: gunbc.fleet_ssh_access.fleet_authorized_keys,
   ssh_password_auth: false,
   storage_policy: StoragePolicyAbsent,
 }
@@ -147,7 +147,7 @@ data srv3_ubuntu_autoinstall_on_iso: extdeps.os.ubuntu_autoinstall.UbuntuAutoins
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   install_openssh_server: true,
-  ssh_authorized_keys: fleet_authorized_keys,
+  ssh_authorized_keys: gunbc.fleet_ssh_access.fleet_authorized_keys,
   ssh_password_auth: false,
   storage_policy: StoragePolicyDirectLayout,
 }
@@ -155,7 +155,7 @@ data srv3_ubuntu_autoinstall_on_iso: extdeps.os.ubuntu_autoinstall.UbuntuAutoins
 data srv4_console_password_hash: std.types.NonEmptyStr = "$6$gYMJusSKbtQHFdti$ouwvFuAeH0gdZkTSVJgEWwotvA7TzhxKch/pjg/2RyuR3cc4rEnnCsUnB.gH3cGz9vlszdSdiTZznCVmVrxv60"
 
 data srv4_autoinstall_identity: extdeps.os.ubuntu_autoinstall.AutoinstallIdentity = extdeps.os.ubuntu_autoinstall.AutoinstallIdentity {
-  hostname: operator_host_srv4,
+  hostname: gunbc.fleet_intent_network.operator_host_srv4,
   username: "ubuntu",
   realname: "gunbc fleet node srv4",
   hashed_password: srv4_console_password_hash,
@@ -170,7 +170,7 @@ data srv4_ubuntu_autoinstall_on_iso: extdeps.os.ubuntu_autoinstall.UbuntuAutoins
   locale: "en_US.UTF-8",
   keyboard_layout: "us",
   install_openssh_server: true,
-  ssh_authorized_keys: fleet_authorized_keys,
+  ssh_authorized_keys: gunbc.fleet_ssh_access.fleet_authorized_keys,
   ssh_password_auth: false,
   storage_policy: StoragePolicyDirectLayout,
 }
@@ -205,7 +205,7 @@ type HostAutoinstall {
 }
 
 data srv3_autoinstall_spec: HostAutoinstall = HostAutoinstall {
-  host: operator_host_srv3,
+  host: gunbc.fleet_intent_network.operator_host_srv3,
   payload: srv3_ubuntu_autoinstall,
 }
 
@@ -227,9 +227,9 @@ fn fleet_install_server_specs_for(mechanism: gunbc.os_install_mechanism.OsInstal
 }
 
 data srv3_install_server_spec: InstallServerSpec = InstallServerSpec {
-  host: operator_host_srv3,
+  host: gunbc.fleet_intent_network.operator_host_srv3,
   plan: srv3_pxe_os_install_plan,
-  serving_segment: operator_lan_segment,
+  serving_segment: gunbc.fleet_intent_network.operator_lan_segment,
 }
 
 data fleet_install_server_specs: List<InstallServerSpec> = fleet_install_server_specs_for(

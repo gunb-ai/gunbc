@@ -52,7 +52,7 @@ type BorrowedCensusDecl {
 
 fn borrowed_census_decl(type_env: v1.compiler.infer_env.TypeEnv, name: String) -> v1.compiler.infer_lookup.BorrowedCensusDecl? {
   if contains(name, ".") {
-    match symbol_index_lookup(index: type_env.symbol_index, qualified_name: name) {
+    match v1.compiler.infer_env.symbol_index_lookup(index: type_env.symbol_index, qualified_name: name) {
       Present { value: node } =>
         Present { value: v1.compiler.infer_lookup.BorrowedCensusDecl { owner_module_path: qualified_all_but_last(name: name), node: node } }
       Absent => none
@@ -141,7 +141,7 @@ fn constructor_declaration_for_admission(
   let decl_name = qualified_last_segment(name: name)
   let qualified = if contains(name, ".") { name } else { concat(owner_module_path, ".", name) }
   let identity = ExactDeclarationIdentity { owner_module_path: owner_module_path, decl_name: decl_name }
-  match symbol_index_lookup(index: type_env.symbol_index, qualified_name: qualified) {
+  match v1.compiler.infer_env.symbol_index_lookup(index: type_env.symbol_index, qualified_name: qualified) {
     Present { value: node } =>
       ExactConstructorDeclaration { identity: identity, declaration: node }
     Absent =>

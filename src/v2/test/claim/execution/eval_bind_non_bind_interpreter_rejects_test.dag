@@ -9,7 +9,7 @@ test fn eval_bind_node_eval_rejects_value_interpreter_holds() -> Bool {
     occurrence_id: SyntheticOccurrence,
     children: []
   }
-  let tree = v2.compiler.infer.InferredTree {
+  let tree = v2.compiler.inferred_tree.InferredTree {
     root: node,
     facts: std.types.Map {
       lookup: fn(n) {

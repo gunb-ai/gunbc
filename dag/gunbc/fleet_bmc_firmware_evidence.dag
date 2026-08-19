@@ -76,7 +76,7 @@ fn bmc_firmware_capability_standing(
 data fleet_bmc_firmware_attestation_dissolution_trigger: String = "🟡 dissolve-on: an authenticated Redfish read of /redfish/v1/Managers/bmc FirmwareVersion against srv1 (192.168.1.183) and srv2 (192.168.1.184), landed as BmcFirmwareObservation rows in gunbc.fleet_bmc_observation. Both endpoints answer Redfish and return 401 unauthenticated (measured 2026-08-10); the credential is bmc-srvN-admin in Secret Manager, which the session that authored these rows could not reach. Until that read runs, srv1/srv2 firmware is an operator statement and the BmcFirmwareEvidenceAttested arm is what says so. When the observations land, srv1_bmc_firmware_evidence and srv2_bmc_firmware_evidence move to BmcFirmwareEvidenceObserved and the two attestation rows below are DELETED — an attestation superseded by a read is not kept beside it (DESIGN §2)."
 
 data srv1_bmc_firmware_attestation: BmcFirmwareAttestation = BmcFirmwareAttestation {
-  endpoint: srv1_baseboard.bmc,
+  endpoint: gunbc.fleet_intent.srv1_baseboard.bmc,
   firmware: extdeps.bmc.capability.BmcFirmwareVersion {
     family: OpenBmc,
     version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
@@ -86,7 +86,7 @@ data srv1_bmc_firmware_attestation: BmcFirmwareAttestation = BmcFirmwareAttestat
 }
 
 data srv2_bmc_firmware_attestation: BmcFirmwareAttestation = BmcFirmwareAttestation {
-  endpoint: srv2_baseboard.bmc,
+  endpoint: gunbc.fleet_intent.srv2_baseboard.bmc,
   firmware: extdeps.bmc.capability.BmcFirmwareVersion {
     family: OpenBmc,
     version: firmware_semantic_version(major: 2, minor: 7, patch: 0),
@@ -104,9 +104,9 @@ data srv2_bmc_firmware_evidence: BmcFirmwareEvidence = BmcFirmwareEvidenceAttest
 }
 
 data srv3_bmc_firmware_evidence: BmcFirmwareEvidence = BmcFirmwareEvidenceObserved {
-  observation: srv3_bmc_firmware_observation,
+  observation: gunbc.fleet_bmc_observation.srv3_bmc_firmware_observation,
 }
 
 data srv4_bmc_firmware_evidence: BmcFirmwareEvidence = BmcFirmwareEvidenceObserved {
-  observation: srv4_bmc_firmware_observation,
+  observation: gunbc.fleet_bmc_observation.srv4_bmc_firmware_observation,
 }

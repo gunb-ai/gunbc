@@ -40,7 +40,7 @@ fn sr_mod_canonical_witness(resolved: Node) -> v2.std.constraints.CanonicalGroun
   }
 }
 
-fn sr_mod_claim_facts() -> v2.compiler.infer.InferredFacts {
+fn sr_mod_claim_facts() -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^sr_mod_type_symbol,
     algebra_symbol: ^sr_mod_algebra_symbol,
@@ -48,7 +48,7 @@ fn sr_mod_claim_facts() -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn sr_mod_claim_fact_map(facts: v2.compiler.infer.InferredFacts) -> Map<Node, v2.compiler.infer.InferredFacts> {
+fn sr_mod_claim_fact_map(facts: v2.compiler.inferred_tree.InferredFacts) -> Map<Node, v2.compiler.inferred_tree.InferredFacts> {
   std.types.Map {
     lookup: fn(_) {
       Present { value: facts }
@@ -56,9 +56,9 @@ fn sr_mod_claim_fact_map(facts: v2.compiler.infer.InferredFacts) -> Map<Node, v2
   }
 }
 
-fn sr_mod_claim_tree() -> v2.compiler.infer.InferredTree {
+fn sr_mod_claim_tree() -> v2.compiler.inferred_tree.InferredTree {
   let facts = sr_mod_claim_facts()
-  v2.compiler.infer.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: sr_mod_root,
     facts: sr_mod_claim_fact_map(facts: facts)
   }

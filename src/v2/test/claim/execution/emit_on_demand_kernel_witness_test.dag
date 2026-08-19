@@ -19,7 +19,7 @@ fn kernel_closure_digest() -> std.content_hash.Fnv1a64Structural {
   content_hash_atom(value: "emit-host-add-kernel-fixture")
 }
 
-fn kernel_native_key_for(tree: v2.compiler.infer.InferredTree) -> std.content_hash.ContentHash {
+fn kernel_native_key_for(tree: v2.compiler.inferred_tree.InferredTree) -> std.content_hash.ContentHash {
   emit_on_demand_key(
     closure_digest: inferred_tree_digest(tree: tree),
     emitter_identity: kernel_emitter,
@@ -32,8 +32,8 @@ fn kernel_native_key() -> std.content_hash.ContentHash {
   kernel_native_key_for(tree: emit_eval_subject_tree())
 }
 
-fn kernel_alt_subject_tree() -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn kernel_alt_subject_tree() -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: rust_fixture_emitted_add_fn,
     facts: rust_add_inferred_tree.facts
   }
@@ -148,7 +148,7 @@ fn kernel_add_fixture_inputs() -> v2.compiler.eval.Inputs {
 
 fn kernel_cached_run_with_source_for_tree(
   workspace: String,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   source: Medium<String>,
   expect_compile_skipped: Bool
 ) -> Bool {
@@ -178,7 +178,7 @@ fn kernel_cache_root_for(test_id: String) -> String {
 
 fn kernel_cached_run_checks_for_tree(
   workspace: String,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   expect_compile_skipped: Bool
 ) -> Bool {
   match emit(tree: tree, target: rust_target_model_staging()) {
@@ -193,7 +193,7 @@ fn kernel_cached_run_checks_for_tree(
   }
 }
 
-fn kernel_cached_cold_then_warm_for_tree(workspace: String, tree: v2.compiler.infer.InferredTree) -> Bool {
+fn kernel_cached_cold_then_warm_for_tree(workspace: String, tree: v2.compiler.inferred_tree.InferredTree) -> Bool {
   match emit(tree: tree, target: rust_target_model_staging()) {
     Accepted { value: source, diagnostics: _ } =>
       kernel_cached_run_with_source_for_tree(

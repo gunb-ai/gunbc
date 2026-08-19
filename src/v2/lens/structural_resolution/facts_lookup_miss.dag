@@ -28,7 +28,7 @@ data sr_lookup_dependency: v2.std.dependency.DependencyView = v2.std.dependency.
   usage_site: sr_lookup_use
 }
 
-fn sr_lookup_resolved_facts() -> v2.compiler.infer.InferredFacts {
+fn sr_lookup_resolved_facts() -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^sr_lookup_type_symbol,
     algebra_symbol: ^sr_lookup_algebra_symbol,
@@ -36,11 +36,11 @@ fn sr_lookup_resolved_facts() -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn sr_lookup_usage_site_witness() -> Optional<v2.compiler.infer.InferredFacts> {
+fn sr_lookup_usage_site_witness() -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
-fn sr_lookup_claim_fact_map() -> Map<Node, v2.compiler.infer.InferredFacts> {
+fn sr_lookup_claim_fact_map() -> Map<Node, v2.compiler.inferred_tree.InferredFacts> {
   let resolved = sr_lookup_resolved_facts()
   std.types.Map {
     lookup: fn(key) {
@@ -53,8 +53,8 @@ fn sr_lookup_claim_fact_map() -> Map<Node, v2.compiler.infer.InferredFacts> {
   }
 }
 
-fn sr_lookup_claim_tree() -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn sr_lookup_claim_tree() -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: sr_lookup_decl,
     facts: sr_lookup_claim_fact_map()
   }

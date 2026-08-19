@@ -75,11 +75,11 @@ fn branch_infer_positional_target(body: Node, index: Int) -> Node {
   }
 }
 
-fn branch_infer_run(tree: v2.compiler.resolve.ResolvedTree) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn branch_infer_run(tree: v2.compiler.resolve.ResolvedTree) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   infer(tree: tree)
 }
 
-fn branch_infer_cond_child_is_bool(tree: v2.compiler.infer.InferredTree, body: Node) -> Bool {
+fn branch_infer_cond_child_is_bool(tree: v2.compiler.inferred_tree.InferredTree, body: Node) -> Bool {
   let cond = branch_infer_positional_target(body: body, index: 0)
   match inferred_facts_witness_for_node(tree: tree, node: cond) {
     Holds { value: facts } =>
@@ -92,7 +92,7 @@ fn branch_infer_cond_child_is_bool(tree: v2.compiler.infer.InferredTree, body: N
   }
 }
 
-fn branch_infer_branch_result_is_int(tree: v2.compiler.infer.InferredTree, body: Node) -> Bool {
+fn branch_infer_branch_result_is_int(tree: v2.compiler.inferred_tree.InferredTree, body: Node) -> Bool {
   match inferred_facts_witness_for_node(tree: tree, node: body) {
     Holds { value: facts } =>
       match inferred_facts_resolved_type(facts: facts) {

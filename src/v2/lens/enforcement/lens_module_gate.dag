@@ -591,7 +591,7 @@ fn lens_module_gate_unenrolled_count_from_facts(
   facts: List<v2.lens.module_graph.ModuleDeclarationFact>,
   bound_module_paths: List<String>
 ) -> Int {
-  lens_registry_completeness_unenrolled_count_from_facts(
+  v2.lens.registry.completeness.lens_registry_completeness_unenrolled_count_from_facts(
     facts: facts,
     bound_module_paths: bound_module_paths
   )
@@ -602,7 +602,7 @@ fn lens_module_gate_unjustified_count_from_facts(
   surfaces: List<LensInvariantSurface>
 ) -> Int {
   count_where(xs: facts, predicate: fn(fact) {
-    lens_registry_completeness_is_candidate(module_name: fact.module)
+    v2.lens.registry.completeness.lens_registry_completeness_is_candidate(module_name: fact.module)
       && !lens_module_gate_surface_for_module(module: fact.module, surfaces: surfaces)
   })
 }
@@ -687,14 +687,14 @@ fn lens_module_gate_audit_residue_count_from_surfaces(surfaces: List<LensInvaria
 
 fn lens_module_gate_unenrolled_count() -> Int {
   lens_module_gate_unenrolled_count_from_facts(
-    facts: lens_registry_completeness_live_facts(),
-    bound_module_paths: lens_registry_completeness_bound_module_paths()
+    facts: v2.lens.registry.completeness.lens_registry_completeness_live_facts(),
+    bound_module_paths: v2.lens.registry.completeness.lens_registry_completeness_bound_module_paths()
   )
 }
 
 fn lens_module_gate_unjustified_count() -> Int {
   lens_module_gate_unjustified_count_from_facts(
-    facts: lens_registry_completeness_live_facts(),
+    facts: v2.lens.registry.completeness.lens_registry_completeness_live_facts(),
     surfaces: lens_module_gate_surfaces()
   )
 }

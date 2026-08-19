@@ -5,18 +5,18 @@ data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInpu
 
 data rust_match_emit_swapped_source_text: String = "fn one_or_two() -> i32 { match (true) { true => 2, false => 1 } }"
 
-fn rust_match_emit_facts_miss(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn rust_match_emit_facts_miss(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
-fn rust_match_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn rust_match_emit_inferred_tree_for(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: rust_match_emit_facts_miss }
   }
 }
 
-fn rust_match_emit_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn rust_match_emit_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match table_fixture_match_arrow_with_body() {
     Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {
@@ -27,7 +27,7 @@ fn rust_match_emit_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.comp
   }
 }
 
-fn rust_match_emit_swapped_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn rust_match_emit_swapped_producer_inferred_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match table_fixture_match_arrow_with_body_swapped_arms() {
     Accepted { value: root, diagnostics: d } =>
       v2.std.diagnostic.Accepted {

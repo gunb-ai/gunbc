@@ -27,13 +27,13 @@ fn ci_cargo_eagain_retry_core_golden(command: String) -> String {
   )
 }
 
-fn orch_retry_probe_facts(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn orch_retry_probe_facts(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
 test fn orch_retry_row_direct_emit_accepted_holds() -> Bool {
   match emit(
-    tree: v2.compiler.infer.InferredTree {
+    tree: v2.compiler.inferred_tree.InferredTree {
       root: orch_retry_emitted_command,
       facts: std.types.Map { lookup: orch_retry_probe_facts }
     },
@@ -257,7 +257,7 @@ test fn orch_retry_1level_emit_has_teeth_holds() -> Bool {
 
 test fn orch_retry_escalation_final_row_emit_holds() -> Bool {
   match emit(
-    tree: v2.compiler.infer.InferredTree {
+    tree: v2.compiler.inferred_tree.InferredTree {
       root: orch_retry_escalation_final_emitted_command,
       facts: std.types.Map { lookup: orch_retry_probe_facts }
     },
@@ -273,7 +273,7 @@ test fn orch_retry_escalation_final_row_emit_holds() -> Bool {
 
 test fn orch_retry_escalation_step_row_emit_holds() -> Bool {
   match emit(
-    tree: v2.compiler.infer.InferredTree {
+    tree: v2.compiler.inferred_tree.InferredTree {
       root: orch_retry_escalation_step_emitted_command,
       facts: std.types.Map { lookup: orch_retry_probe_facts }
     },
@@ -292,7 +292,7 @@ test fn orch_retry_escalation_step_row_emit_holds() -> Bool {
 
 test fn orch_retry_1level_row_direct_emit_accepted_holds() -> Bool {
   match emit(
-    tree: v2.compiler.infer.InferredTree {
+    tree: v2.compiler.inferred_tree.InferredTree {
       root: orch_retry_1level_emitted_command,
       facts: std.types.Map { lookup: orch_retry_probe_facts }
     },

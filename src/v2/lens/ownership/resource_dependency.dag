@@ -17,7 +17,7 @@ data ownership_dependency: v2.std.dependency.DependencyView = v2.std.dependency.
   usage_site: ownership_child
 }
 
-fn ownership_claim_facts() -> v2.compiler.infer.InferredFacts {
+fn ownership_claim_facts() -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^ownership_type_symbol,
     algebra_symbol: ^ownership_algebra_symbol,
@@ -25,12 +25,12 @@ fn ownership_claim_facts() -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn ownership_claim_tree() -> v2.compiler.infer.InferredTree {
+fn ownership_claim_tree() -> v2.compiler.inferred_tree.InferredTree {
   claim_inferred_tree(root: ownership_root, facts: ownership_claim_facts())
 }
 
 type LensOwnershipClaim {
-  input: v2.compiler.infer.InferredTree
+  input: v2.compiler.inferred_tree.InferredTree
   expected: v2.lens.ownership.OwnershipFact
   actual: Witness<v2.lens.ownership.OwnershipFact>
 }

@@ -204,7 +204,7 @@ fn resolve_edit_locus_from_provenance(
 
 fn affected_set_reading_from_git_diff(
   edit_read: EditLocusRead,
-  graph: v2.compiler.infer.InferredTree,
+  graph: v2.compiler.inferred_tree.InferredTree,
   git_diff: GitDiffNameOnly,
   bindings: std.algebra.FreeMonoid<EditLocusBinding>
 ) -> Witness<v2.lens.affected_set.AffectedSetReading> {
@@ -221,7 +221,7 @@ fn affected_set_reading_from_git_diff(
 }
 
 fn affected_set_reading_from_git_diff_provenance(
-  graph: v2.compiler.infer.InferredTree,
+  graph: v2.compiler.inferred_tree.InferredTree,
   git_diff: GitDiffNameOnly,
   provenance: std.algebra.FreeMonoid<v2.std.artifact.NodeArtifactProvenance>
 ) -> Witness<v2.lens.affected_set.AffectedSetReading> {

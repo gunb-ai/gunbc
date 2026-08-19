@@ -173,12 +173,12 @@ fn rust_call_target_model(authority_source_text: String) -> v2.std.compilers.tar
   }
 }
 
-fn rust_call_facts_miss(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn rust_call_facts_miss(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
-fn rust_call_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn rust_call_inferred_tree_for(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: rust_call_facts_miss }
   }

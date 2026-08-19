@@ -10,7 +10,7 @@ fn compile_eval_thesis_termination_proof() -> v2.std.cardinality.TerminationProo
   }
 }
 
-fn compile_eval_thesis_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn compile_eval_thesis_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   if key == v2_eval_bool_literal_pin {
     optional_present(value: claim_inferred_facts_from_nodes(
         resolved: v2_eval_bool_literal_pin,
@@ -28,8 +28,8 @@ fn compile_eval_thesis_facts_lookup(key: Node) -> Optional<v2.compiler.infer.Inf
   }
 }
 
-fn compile_eval_thesis_inferred(root: Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn compile_eval_thesis_inferred(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map {
       lookup: compile_eval_thesis_facts_lookup

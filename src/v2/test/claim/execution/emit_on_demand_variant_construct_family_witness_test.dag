@@ -15,7 +15,7 @@ data variant_construct_family_provider: std.materialization_ladder.CacheProvider
   retention: persistent_retention(capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: byte_size(count: 1000000) } }, at_capacity: std.cache_interface.ReplaceExisting { strategy: LeastRecentlyUsed } })
 )
 
-fn variant_construct_family_native_key_for(tree: v2.compiler.infer.InferredTree) -> std.content_hash.ContentHash {
+fn variant_construct_family_native_key_for(tree: v2.compiler.inferred_tree.InferredTree) -> std.content_hash.ContentHash {
   emit_on_demand_key(
     closure_digest: inferred_tree_digest(tree: tree),
     emitter_identity: variant_construct_family_emitter,
@@ -46,7 +46,7 @@ fn variant_construct_family_cache_root_for(test_id: String) -> String {
 
 fn variant_construct_family_cached_run_with_source(
   workspace: String,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   source: Medium<String>,
   expect_compile_skipped: Bool,
   expected_octet: Int
@@ -73,7 +73,7 @@ fn variant_construct_family_cached_run_with_source(
 
 fn variant_construct_family_cached_run_checks(
   workspace: String,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   expect_compile_skipped: Bool,
   expected_octet: Int
 ) -> Bool {
@@ -92,7 +92,7 @@ fn variant_construct_family_cached_run_checks(
 
 fn variant_construct_family_cached_cold_then_warm(
   workspace: String,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   expected_octet: Int
 ) -> Bool {
   match emit(tree: tree, target: rust_variant_construct_target_model_staging()) {

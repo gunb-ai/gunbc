@@ -18,7 +18,7 @@ data idempotency_dependency: v2.std.dependency.DependencyView = v2.std.dependenc
   usage_site: idempotency_child
 }
 
-fn idempotency_claim_facts() -> v2.compiler.infer.InferredFacts {
+fn idempotency_claim_facts() -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^idempotency_type_symbol,
     algebra_symbol: ^idempotency_algebra_symbol,
@@ -26,12 +26,12 @@ fn idempotency_claim_facts() -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn idempotency_claim_tree() -> v2.compiler.infer.InferredTree {
+fn idempotency_claim_tree() -> v2.compiler.inferred_tree.InferredTree {
   claim_inferred_tree(root: idempotency_root, facts: idempotency_claim_facts())
 }
 
 type LensIdempotencyClaim {
-  input: v2.compiler.infer.InferredTree
+  input: v2.compiler.inferred_tree.InferredTree
   expected: v2.lens.idempotency.IdempotencyFact
   actual: Witness<v2.lens.idempotency.IdempotencyFact>
 }

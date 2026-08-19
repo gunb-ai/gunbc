@@ -45,7 +45,7 @@ fn derisk_assemble_accepts(src: String) -> Bool {
   }
 }
 
-fn derisk_infer_outcome_for(src: String) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn derisk_infer_outcome_for(src: String) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   bind_outcome(o: derisk_assemble_for(src: src), f: fn(resolved) { infer(tree: resolved) })
 }
 

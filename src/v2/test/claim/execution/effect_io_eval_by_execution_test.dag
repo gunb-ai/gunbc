@@ -120,7 +120,7 @@ fn effect_io_eval_context_unbound() -> v2.compiler.eval.EvalContext {
   )
 }
 
-fn effect_io_eval_facts_for(node: Node) -> v2.compiler.infer.InferredFacts {
+fn effect_io_eval_facts_for(node: Node) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: effect_io_pure_unit_type_node(),
@@ -128,7 +128,7 @@ fn effect_io_eval_facts_for(node: Node) -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn effect_io_eval_fact_lookup(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn effect_io_eval_fact_lookup(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   if node == effect_io_eval_roundtrip_node {
     optional_present(value: effect_io_eval_facts_for(node: effect_io_eval_roundtrip_node))
   } else if node == effect_io_eval_locator_literal {
@@ -140,8 +140,8 @@ fn effect_io_eval_fact_lookup(node: Node) -> Optional<v2.compiler.infer.Inferred
   }
 }
 
-fn effect_io_eval_tree() -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn effect_io_eval_tree() -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: effect_io_eval_roundtrip_node,
     facts: std.types.Map { lookup: effect_io_eval_fact_lookup }
   }

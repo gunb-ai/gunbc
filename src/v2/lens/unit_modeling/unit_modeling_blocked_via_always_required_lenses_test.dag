@@ -22,7 +22,7 @@ data unit_ar_root: Node = v2.std.node.Node {
 
 data unit_ar_authority: Node = claim_atom_node(s: ^unit_ar_symbol)
 
-fn unit_ar_tree() -> v2.compiler.infer.InferredTree {
+fn unit_ar_tree() -> v2.compiler.inferred_tree.InferredTree {
   claim_inferred_tree(
     root: unit_ar_root,
     facts: claim_inferred_facts(

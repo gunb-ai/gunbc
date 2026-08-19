@@ -3,12 +3,12 @@ module v2.test.emit.rust_literal_bind_emit
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn rust_literal_bind_facts_miss(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn rust_literal_bind_facts_miss(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
-fn rust_literal_bind_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn rust_literal_bind_inferred_tree_for(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: rust_literal_bind_facts_miss }
   }

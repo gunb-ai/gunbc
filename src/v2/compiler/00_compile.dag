@@ -84,41 +84,41 @@ fn always_required_root_lenses() -> List<CompileLens> {
   [accumulator_copy_lens, determinism_lens, machine_shape_lens, mandatory_tag_lens]
 }
 
-fn accumulator_copy_root_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn accumulator_copy_root_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   accumulator_copy_compile_gate(node: tree.root)
 }
 
-fn determinism_root_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn determinism_root_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   determinism_compile_gate(node: tree.root)
 }
 
-fn machine_shape_root_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn machine_shape_root_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   machine_shape_compile_gate(node: tree.root)
 }
 
-fn mandatory_tag_root_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn mandatory_tag_root_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   mandatory_tag_compile_gate(node: tree.root)
 }
 
-fn fact_density_hollow_alias_compile_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn fact_density_hollow_alias_compile_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   fact_density_hollow_alias_gate(node: tree.root)
 }
 
-fn unit_modeling_compile_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn unit_modeling_compile_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   unit_modeling_gate(node: tree.root)
 }
 
-fn lifecycle_carrier_compile_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn lifecycle_carrier_compile_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   lifecycle_carrier_gate(node: tree.root)
 }
 
-fn run_compile_lens_gate(lens: CompileLens, inferred: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn run_compile_lens_gate(lens: CompileLens, inferred: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   lens.gate(inferred)
 }
 
 fn apply_compile_lens_introspect(
   lens: CompileLens,
-  inferred: v2.compiler.infer.InferredTree
+  inferred: v2.compiler.inferred_tree.InferredTree
 ) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   match run_compile_lens_gate(lens: lens, inferred: inferred) {
     Accepted { value: w, diagnostics: od } =>
@@ -133,7 +133,7 @@ fn apply_compile_lens_introspect(
 
 fn apply_compile_lens(
   lens: CompileLens,
-  inferred: v2.compiler.infer.InferredTree,
+  inferred: v2.compiler.inferred_tree.InferredTree,
   mode: CompileLensMode
 ) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   match mode {
@@ -154,7 +154,7 @@ fn empty_lens_gate_witnesses() -> List<LensGateWitness> {
 }
 
 fn run_required_lens_gates(
-  inferred: v2.compiler.infer.InferredTree,
+  inferred: v2.compiler.inferred_tree.InferredTree,
   lenses: List<CompileLens>
 ) -> v2.std.diagnostic.Outcome<List<LensGateWitness>> {
   bind_outcome(
@@ -187,7 +187,7 @@ fn run_required_lens_gates(
 }
 
 fn run_required_lens_gates_on_subtree(
-  inferred: v2.compiler.infer.InferredTree,
+  inferred: v2.compiler.inferred_tree.InferredTree,
   lenses: List<CompileLens>
 ) -> v2.std.diagnostic.Outcome<List<LensGateWitness>> {
   bind_outcome(
@@ -196,7 +196,7 @@ fn run_required_lens_gates_on_subtree(
       algebra: v2.std.node.NodeFold {
         init: fn(n0) {
           run_required_lens_gates(
-            inferred: v2.compiler.infer.InferredTree { root: n0, facts: inferred.facts },
+            inferred: v2.compiler.inferred_tree.InferredTree { root: n0, facts: inferred.facts },
             lenses: lenses
           )
         },
@@ -217,14 +217,14 @@ fn run_required_lens_gates_on_subtree(
 }
 
 fn compile_inferred_translate(
-  inferred: v2.compiler.infer.InferredTree,
+  inferred: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.std.diagnostic.Outcome<extdeps.communication.medium.Medium<String>> {
   v2.compiler.emit.emit(tree: inferred, target: target)
 }
 
 fn compile_inferred(
-  inferred: v2.compiler.infer.InferredTree,
+  inferred: v2.compiler.inferred_tree.InferredTree,
   mode: CompileMode
 ) -> v2.std.diagnostic.Outcome<CompileOutput> {
   match mode {

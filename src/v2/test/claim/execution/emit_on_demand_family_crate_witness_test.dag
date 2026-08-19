@@ -8,19 +8,19 @@ data emit_on_demand_family_crate_note: String = "Family-grain build receipt (std
 data family_crate_cache_root: String = emit_on_demand_family_cache_root(family: "family_crate")
 data family_crate_emitter: String = "v2.compiler.emit"
 
-fn family_crate_meet_tree() -> v2.compiler.infer.InferredTree {
+fn family_crate_meet_tree() -> v2.compiler.inferred_tree.InferredTree {
   meet_join_eval_tree_for(root: dag_meet_arrow_with_body_fixture)
 }
 
-fn family_crate_meet_alt_tree() -> v2.compiler.infer.InferredTree {
+fn family_crate_meet_alt_tree() -> v2.compiler.inferred_tree.InferredTree {
   meet_join_eval_tree_for(root: dag_meet_arrow_with_body_swapped_arms_fixture)
 }
 
-fn family_crate_join_tree() -> v2.compiler.infer.InferredTree {
+fn family_crate_join_tree() -> v2.compiler.inferred_tree.InferredTree {
   meet_join_eval_tree_for(root: dag_join_arrow_with_body_fixture)
 }
 
-fn family_crate_complement_tree() -> v2.compiler.infer.InferredTree {
+fn family_crate_complement_tree() -> v2.compiler.inferred_tree.InferredTree {
   emit_complement_eval_tree_for(root: dag_complement_arrow_with_body_fixture)
 }
 
@@ -41,11 +41,11 @@ fn family_crate_members() -> v2.std.collection.List<v2.compiler.emit_module.Emit
   ]
 }
 
-fn family_crate_join_alt_tree() -> v2.compiler.infer.InferredTree {
+fn family_crate_join_alt_tree() -> v2.compiler.inferred_tree.InferredTree {
   meet_join_eval_tree_for(root: dag_join_arrow_with_body_swapped_arms_fixture)
 }
 
-fn family_crate_complement_alt_tree() -> v2.compiler.infer.InferredTree {
+fn family_crate_complement_alt_tree() -> v2.compiler.inferred_tree.InferredTree {
   emit_complement_eval_tree_for(root: dag_complement_arrow_with_body_swapped_arms_fixture)
 }
 
@@ -176,7 +176,7 @@ fn family_crate_member_run_with_target(
 fn family_crate_meet_join_member_agreement_divergence(
   workspace: String,
   source: Medium<String>,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   subgraph: Node,
   member_id: String
 ) -> Optional<v2.std.native_agreement.NativeAgreementDivergence> {
@@ -195,7 +195,7 @@ fn family_crate_meet_join_member_agreement_divergence(
 fn family_crate_meet_join_member_agreement(
   workspace: String,
   source: Medium<String>,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   subgraph: Node,
   member_id: String
 ) -> Bool {

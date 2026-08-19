@@ -82,7 +82,7 @@ fn idempotent_operation_eval_context() -> v2.compiler.eval.EvalContext {
   )
 }
 
-fn idempotent_operation_inferred_facts(root: Node) -> v2.compiler.infer.InferredFacts {
+fn idempotent_operation_inferred_facts(root: Node) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: root,
     algebra: root,
@@ -95,9 +95,9 @@ fn idempotent_operation_inferred_facts(root: Node) -> v2.compiler.infer.Inferred
   )
 }
 
-fn idempotent_operation_inferred_tree(root: Node) -> v2.compiler.infer.InferredTree {
+fn idempotent_operation_inferred_tree(root: Node) -> v2.compiler.inferred_tree.InferredTree {
   let facts = idempotent_operation_inferred_facts(root: root)
-  v2.compiler.infer.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map {
       lookup: fn(_) {

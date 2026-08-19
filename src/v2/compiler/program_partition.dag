@@ -3,7 +3,7 @@ module v2.compiler.program_partition
 
 
 type ProgramPartition {
-  ambient: v2.compiler.infer.InferredTree
+  ambient: v2.compiler.inferred_tree.InferredTree
   segment: v2.std.program_segment.ProgramSegment
   root: v2.std.node.Node
   boundary: v2.std.program_segment.PartitionBoundaryPolicy
@@ -304,7 +304,7 @@ fn partition_subtree_root_contained_in_ambient(
 
 fn partition_grounding_subject_in_segment(
   segment_root: v2.std.node.Node,
-  facts: v2.compiler.infer.InferredFacts
+  facts: v2.compiler.inferred_tree.InferredFacts
 ) -> Bool {
   node_in_subtree_by_identity(
     root: segment_root,
@@ -316,7 +316,7 @@ fn partition_fail_closed_boundary_admits(
   segment_root: v2.std.node.Node,
   boundary: v2.std.program_segment.PartitionBoundaryPolicy,
   node: v2.std.node.Node,
-  facts: v2.compiler.infer.InferredFacts
+  facts: v2.compiler.inferred_tree.InferredFacts
 ) -> Bool {
   match boundary {
     AmbientContextAvailable => true
@@ -326,11 +326,11 @@ fn partition_fail_closed_boundary_admits(
 }
 
 fn partition_closure_entry_for_node(
-  ambient: v2.compiler.infer.InferredTree,
+  ambient: v2.compiler.inferred_tree.InferredTree,
   segment_root: v2.std.node.Node,
   boundary: v2.std.program_segment.PartitionBoundaryPolicy,
   node: v2.std.node.Node
-) -> Outcome<v2.compiler.infer.InferredFactsEntry> {
+) -> Outcome<v2.compiler.inferred_tree.InferredFactsEntry> {
   match ambient.facts.lookup(node) {
     Present { value: facts } =>
       if partition_fail_closed_boundary_admits(
@@ -348,16 +348,16 @@ fn partition_closure_entry_for_node(
   }
 }
 
-fn partition_empty_inferred_facts_entries() -> List<v2.compiler.infer.InferredFactsEntry> {
+fn partition_empty_inferred_facts_entries() -> List<v2.compiler.inferred_tree.InferredFactsEntry> {
   []
 }
 
 fn facts_closure_entries_fold(
-  ambient: v2.compiler.infer.InferredTree,
+  ambient: v2.compiler.inferred_tree.InferredTree,
   segment_root: v2.std.node.Node,
   boundary: v2.std.program_segment.PartitionBoundaryPolicy,
   nodes: List<v2.std.node.Node>
-) -> Outcome<List<v2.compiler.infer.InferredFactsEntry>> {
+) -> Outcome<List<v2.compiler.inferred_tree.InferredFactsEntry>> {
   fold_list(
     xs: nodes,
     empty: outcome_accepted(value: partition_empty_inferred_facts_entries()),
@@ -383,7 +383,7 @@ fn facts_closure_entries_fold(
   )
 }
 
-fn facts_closure_fold(partition: ProgramPartition) -> Outcome<Map<v2.std.node.Node, v2.compiler.infer.InferredFacts>> {
+fn facts_closure_fold(partition: ProgramPartition) -> Outcome<Map<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts>> {
   match partition.boundary {
     AmbientContextAvailable =>
       outcome_accepted(value: partition.ambient.facts)
@@ -403,7 +403,7 @@ fn facts_closure_fold(partition: ProgramPartition) -> Outcome<Map<v2.std.node.No
 }
 
 fn resolve_program_segment_root(
-  program: v2.compiler.infer.InferredTree,
+  program: v2.compiler.inferred_tree.InferredTree,
   segment: v2.std.program_segment.ProgramSegment
 ) -> Outcome<v2.std.node.Node> {
   match segment {
@@ -422,7 +422,7 @@ fn resolve_program_segment_root(
   }
 }
 
-fn partition_inferred_tree(partition: ProgramPartition) -> Outcome<v2.compiler.infer.InferredTree> {
+fn partition_inferred_tree(partition: ProgramPartition) -> Outcome<v2.compiler.inferred_tree.InferredTree> {
   if !well_formed(n: partition.root) {
     outcome_rejected(d: partition_empty_segment_diagnostic(root: partition.root))
   } else {
@@ -430,7 +430,7 @@ fn partition_inferred_tree(partition: ProgramPartition) -> Outcome<v2.compiler.i
       o: facts_closure_fold(partition: partition),
       f: fn(facts) {
         outcome_accepted(
-          value: v2.compiler.infer.InferredTree {
+          value: v2.compiler.inferred_tree.InferredTree {
             root: partition.root,
             facts: facts
           }
@@ -441,7 +441,7 @@ fn partition_inferred_tree(partition: ProgramPartition) -> Outcome<v2.compiler.i
 }
 
 fn resolve_program_partition(
-  program: v2.compiler.infer.InferredTree,
+  program: v2.compiler.inferred_tree.InferredTree,
   segment: v2.std.program_segment.ProgramSegment,
   boundary: v2.std.program_segment.PartitionBoundaryPolicy
 ) -> Outcome<ProgramPartition> {
@@ -554,7 +554,7 @@ fn emit_partition(
 }
 
 fn emit_for_target(
-  program: v2.compiler.infer.InferredTree,
+  program: v2.compiler.inferred_tree.InferredTree,
   segment: v2.std.program_segment.ProgramSegment,
   target: v2.std.compilers.target_model.TargetModel,
   boundary: v2.std.program_segment.PartitionBoundaryPolicy

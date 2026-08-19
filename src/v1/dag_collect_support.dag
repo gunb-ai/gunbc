@@ -29,7 +29,7 @@ fn dag_collect_pack_slots(slots: Map<String, v1.compiler.dag_collect_support.Dag
 }
 
 fn json_quote(s: String) -> String {
-  concat("\"", escape_json_string(s: s), "\"")
+  concat("\"", v1.compiler.emit_core_support.escape_json_string(s: s), "\"")
 }
 
 fn inferred_fingerprint(value: InferredNode?) -> String {

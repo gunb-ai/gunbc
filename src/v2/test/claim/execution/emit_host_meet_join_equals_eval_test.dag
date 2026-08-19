@@ -3,7 +3,7 @@ module v2.test.execution.emit_host_meet_join_equals_eval
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
 
-fn meet_join_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.infer.InferredFacts {
+fn meet_join_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
@@ -16,12 +16,12 @@ fn meet_join_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.infer.Inf
   )
 }
 
-fn meet_join_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn meet_join_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_present(value: meet_join_eval_generic_facts(node: key))
 }
 
-fn meet_join_eval_tree_for(root: v2.std.node.Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn meet_join_eval_tree_for(root: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: meet_join_eval_composed_facts }
   }
@@ -192,7 +192,7 @@ fn meet_join_eval_claim(rhs_result_node: v2.std.node.Node) -> v2.std.verificatio
   }
 }
 
-fn meet_join_eval_subject(tree: v2.compiler.infer.InferredTree, subgraph: v2.std.node.Node) -> TestClaimEvalSubject<v2.std.node.Node> {
+fn meet_join_eval_subject(tree: v2.compiler.inferred_tree.InferredTree, subgraph: v2.std.node.Node) -> TestClaimEvalSubject<v2.std.node.Node> {
   eval_test_claim_subject(
     claim: meet_join_eval_claim(rhs_result_node: subgraph),
     context: meet_join_eval_context(),

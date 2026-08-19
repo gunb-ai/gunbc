@@ -52,7 +52,7 @@ fn artifact_path(a: GeneratedArtifact) -> String {
     DesignArtifact => "DESIGN.md"
     GithooksPrePushArtifact => ".githooks/pre-push"
     GithooksPreCommitArtifact => ".githooks/pre-commit"
-    GeneratedArtifactMergeDriverArtifact => generated_artifact_merge_driver_script_path
+    GeneratedArtifactMergeDriverArtifact => gunbc.generated_artifact_merge_driver.generated_artifact_merge_driver_script_path
     RunnerDeployArtifact => ".github/fleet-runner-deploy.manifest"
     Stage0CrateLayoutGeneratedDagArtifact => "dag/gunbc/stage0_crate_layout_generated.dag"
     Stage0CrateLayoutGeneratedRsArtifact => "src/v1/stage0/src/bootstrap_stage0_crate_layout_generated.rs"

@@ -47,7 +47,7 @@ fn runtime_run_append_receipt(
 fn runtime_run_eval_node(
   state: RuntimeRunState,
   node: Node,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   context: v2.compiler.eval.EvalContext
 ) -> RuntimeRunState {
   let result = eval_with_context(
@@ -64,7 +64,7 @@ fn runtime_run_eval_node(
 fn runtime_run_step_from_frontier(
   frontier: v2.workflow.scheduler.RunnableFrontier,
   state: RuntimeRunState,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   context: v2.compiler.eval.EvalContext
 ) -> RuntimeRunState {
   fold(frontier.ready, init: state, f: fn(acc, node) {
@@ -75,7 +75,7 @@ fn runtime_run_step_from_frontier(
 fn runtime_run_step_state(
   nodes: List<Node>,
   dependencies: List<v2.std.dependency.DependencyView>,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   context: v2.compiler.eval.EvalContext,
   state: RuntimeRunState
 ) -> RuntimeRunState {
@@ -120,7 +120,7 @@ fn runtime_run_result_from_state(
 fn runtime_run(
   nodes: List<Node>,
   dependencies: List<v2.std.dependency.DependencyView>,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   context: v2.compiler.eval.EvalContext
 ) -> RuntimeRunResult {
   let state = fold(

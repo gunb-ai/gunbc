@@ -20,7 +20,7 @@ data fact_bundle_cl_root: Node = v2.std.node.Node {
 
 data fact_bundle_cl_authority: Node = claim_atom_node(s: ^fact_bundle_cl_symbol)
 
-fn fact_bundle_cl_tree() -> v2.compiler.infer.InferredTree {
+fn fact_bundle_cl_tree() -> v2.compiler.inferred_tree.InferredTree {
   claim_inferred_tree(
     root: fact_bundle_cl_root,
     facts: claim_inferred_facts(

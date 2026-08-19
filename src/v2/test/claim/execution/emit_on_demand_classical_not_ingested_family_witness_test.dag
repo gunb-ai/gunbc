@@ -15,7 +15,7 @@ data classical_not_family_provider: std.materialization_ladder.CacheProvider = s
   retention: std.materialization_ladder.persistent_retention(capacity: std.cache_interface.CapacityBounded { limit: std.cache_interface.ByteCapacity { limit: std.cache_interface.ExactLimit { value: std.measure.byte_size(count: 1000000) } }, at_capacity: std.cache_interface.ReplaceExisting { strategy: std.cache_interface.LeastRecentlyUsed } })
 )
 
-fn classical_not_family_native_key_for(tree: v2.compiler.infer.InferredTree) -> std.content_hash.ContentHash {
+fn classical_not_family_native_key_for(tree: v2.compiler.inferred_tree.InferredTree) -> std.content_hash.ContentHash {
   std.emit_on_demand.emit_on_demand_key(
     closure_digest: v2.compiler.eval.inferred_tree_digest(tree: tree),
     emitter_identity: classical_not_family_emitter,
@@ -32,15 +32,15 @@ fn classical_not_family_test_store() -> std.artifact_store.ArtifactStore {
   }
 }
 
-fn classical_not_family_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn classical_not_family_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_wet_emit_eval_composed_tree_from_source(source: v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_source)
 }
 
-fn classical_not_family_alt_tree() -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn classical_not_family_alt_tree() -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_wet_emit_eval_composed_tree_from_source(source: v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_swapped_source)
 }
 
-fn classical_not_family_subject(tree: v2.compiler.infer.InferredTree) -> v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> {
+fn classical_not_family_subject(tree: v2.compiler.inferred_tree.InferredTree) -> v2.compiler.eval.TestClaimEvalSubject<v2.std.node.Node> {
   v2.compiler.eval.eval_test_claim_subject(
     claim: v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_claim(rhs_result_node: v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_eval_subgraph_canonical()),
     context: v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_context(),
@@ -63,7 +63,7 @@ fn classical_not_family_cache_root_for(test_id: String) -> String {
 
 fn classical_not_family_cached_run_with_source(
   workspace: String,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   source: extdeps.communication.medium.Medium<String>,
   expect_compile_skipped: Bool,
   expected_octet: Int
@@ -90,7 +90,7 @@ fn classical_not_family_cached_run_with_source(
 
 fn classical_not_family_cached_run_checks(
   workspace: String,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   expect_compile_skipped: Bool,
   expected_octet: Int
 ) -> Bool {
@@ -109,7 +109,7 @@ fn classical_not_family_cached_run_checks(
 
 fn classical_not_family_cached_cold_then_warm(
   workspace: String,
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   expected_octet: Int
 ) -> Bool {
   match v2.compiler.emit.emit(tree: tree, target: v2.extdeps.languages.rust_test.rust_classical_not_ingested_target_model_staging()) {
@@ -224,7 +224,7 @@ test fn emit_on_demand_classical_not_closure_keys_differ_for_distinct_trees_hold
   }
 }
 
-fn classical_not_cached_agreement_pass(workspace: String, tree: v2.compiler.infer.InferredTree) -> Bool {
+fn classical_not_cached_agreement_pass(workspace: String, tree: v2.compiler.inferred_tree.InferredTree) -> Bool {
   v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_verdict_is_pass(
     run: v2.compiler.emit_host.run_test_claim_from_source_emit_vs_eval_cached(
       subject: classical_not_family_subject(tree: tree),
@@ -236,7 +236,7 @@ fn classical_not_cached_agreement_pass(workspace: String, tree: v2.compiler.infe
   )
 }
 
-fn classical_not_cached_wrong_fixture_mismatch(workspace: String, tree: v2.compiler.infer.InferredTree) -> Bool {
+fn classical_not_cached_wrong_fixture_mismatch(workspace: String, tree: v2.compiler.inferred_tree.InferredTree) -> Bool {
   v2.test.long.emit_host_classical_not_ingested_equals_eval.ingested_classical_not_verdict_is_semantic_mismatch(
     run: v2.compiler.emit_host.run_test_claim_from_source_emit_vs_eval_cached(
       subject: classical_not_family_subject(tree: tree),

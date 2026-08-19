@@ -56,7 +56,7 @@ fn typescript_pr3_canonical_grounding_for(node: Node) -> Witness<v2.std.constrai
   }
 }
 
-fn typescript_pr3_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn typescript_pr3_inferred_facts_for(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   match typescript_pr3_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => optional_absent()
     Holds { value: grounding } =>
@@ -71,11 +71,11 @@ fn typescript_pr3_inferred_facts_for(node: Node) -> Optional<v2.compiler.infer.I
   }
 }
 
-fn typescript_pr3_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn typescript_pr3_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   typescript_pr3_inferred_facts_for(node: key)
 }
 
-data typescript_pr3_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data typescript_pr3_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: typescript_pr3_emitted_root,
   facts: std.types.Map { lookup: typescript_pr3_facts_lookup }
 }

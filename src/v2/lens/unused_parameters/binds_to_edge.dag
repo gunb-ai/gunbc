@@ -17,7 +17,7 @@ data unused_parameters_dependency: v2.std.dependency.DependencyView = v2.std.dep
   usage_site: unused_parameters_child
 }
 
-fn unused_parameters_claim_facts() -> v2.compiler.infer.InferredFacts {
+fn unused_parameters_claim_facts() -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^unused_parameters_type_symbol,
     algebra_symbol: ^unused_parameters_algebra_symbol,
@@ -25,12 +25,12 @@ fn unused_parameters_claim_facts() -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn unused_parameters_claim_tree() -> v2.compiler.infer.InferredTree {
+fn unused_parameters_claim_tree() -> v2.compiler.inferred_tree.InferredTree {
   claim_inferred_tree(root: unused_parameters_root, facts: unused_parameters_claim_facts())
 }
 
 type LensUseClassificationClaim {
-  input: v2.compiler.infer.InferredTree
+  input: v2.compiler.inferred_tree.InferredTree
   expected: v2.lens.unused_parameters.UseClassificationFact
   actual: Witness<v2.lens.unused_parameters.UseClassificationFact>
 }

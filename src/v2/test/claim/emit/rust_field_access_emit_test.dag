@@ -34,12 +34,12 @@ fn rust_field_access_emit_wrong_field_root() -> Node {
   )
 }
 
-fn rust_field_access_emit_facts_miss(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn rust_field_access_emit_facts_miss(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
-fn rust_field_access_emit_inferred_tree_for(root: Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn rust_field_access_emit_inferred_tree_for(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map { lookup: rust_field_access_emit_facts_miss }
   }

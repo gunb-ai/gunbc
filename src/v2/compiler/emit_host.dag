@@ -827,7 +827,7 @@ fn run_test_claim_from_source_emit_vs_eval_cached(
 
 fn run_test_claim_module_emit_vs_eval(
   subject: v2.compiler.eval.TestClaimEvalSubject<Node>,
-  module_decls: v2.std.collection.List<v2.compiler.infer.InferredTree>,
+  module_decls: v2.std.collection.List<v2.compiler.inferred_tree.InferredTree>,
   target: v2.std.compilers.target_model.TargetModel
 ) -> TestClaimRun<Node, RuntimeValue> {
   run_test_claim_from_source_emit_vs_eval(

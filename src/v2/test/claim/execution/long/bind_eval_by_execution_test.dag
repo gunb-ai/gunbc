@@ -174,7 +174,7 @@ fn bind_tree_root(call: Node, expected: Node) -> Node {
   }
 }
 
-fn bind_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn bind_facts_lookup(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_present(value: claim_inferred_facts_from_nodes(
       resolved: key,
       algebra: bind_i64_node(),
@@ -182,8 +182,8 @@ fn bind_facts_lookup(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
     ))
 }
 
-fn bind_admitted_tree(root: Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn bind_admitted_tree(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map {
       lookup: bind_facts_lookup
@@ -191,7 +191,7 @@ fn bind_admitted_tree(root: Node) -> v2.compiler.infer.InferredTree {
   }
 }
 
-fn bind_inferred_run_tree(callee: Node, expected: Node) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn bind_inferred_run_tree(callee: Node, expected: Node) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   let call = bind_pick_call(callee: callee)
   let root = bind_tree_root(call: call, expected: expected)
   outcome_accepted(value: bind_admitted_tree(root: root))
@@ -208,7 +208,7 @@ fn bind_claim(input: Node, expected: Node) -> v2.std.verification.TestClaim {
 }
 
 fn bind_subject(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   input: Node,
   expected: Node
 ) -> TestClaimEvalSubject<Node> {

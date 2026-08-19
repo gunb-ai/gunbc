@@ -30,7 +30,7 @@ data sr_dependency: v2.std.dependency.DependencyView = v2.std.dependency.Depende
   usage_site: sr_use
 }
 
-fn sr_claim_facts() -> v2.compiler.infer.InferredFacts {
+fn sr_claim_facts() -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^sr_type_symbol,
     algebra_symbol: ^sr_algebra_symbol,
@@ -38,7 +38,7 @@ fn sr_claim_facts() -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn sr_claim_fact_map(facts: v2.compiler.infer.InferredFacts) -> Map<Node, v2.compiler.infer.InferredFacts> {
+fn sr_claim_fact_map(facts: v2.compiler.inferred_tree.InferredFacts) -> Map<Node, v2.compiler.inferred_tree.InferredFacts> {
   std.types.Map {
     lookup: fn(_) {
       Present { value: facts }
@@ -46,9 +46,9 @@ fn sr_claim_fact_map(facts: v2.compiler.infer.InferredFacts) -> Map<Node, v2.com
   }
 }
 
-fn sr_claim_tree() -> v2.compiler.infer.InferredTree {
+fn sr_claim_tree() -> v2.compiler.inferred_tree.InferredTree {
   let facts = sr_claim_facts()
-  v2.compiler.infer.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: sr_decl,
     facts: sr_claim_fact_map(facts: facts)
   }

@@ -23,7 +23,7 @@ fn claim_symbol_node(s: v2.std.node.Symbol) -> Node {
 }
 }
 
-fn always_reject_lens_gate(_tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn always_reject_lens_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   outcome_rejected(
     compile_lens_gate_rejected_diagnostic(
       at: port_locus(port: ^rejecting_lens_gate_at)
@@ -33,7 +33,7 @@ fn always_reject_lens_gate(_tree: v2.compiler.infer.InferredTree) -> v2.std.diag
 
 data rejecting_lens: v2.compiler.compile.CompileLens = v2.compiler.compile.CompileLens { gate: always_reject_lens_gate }
 
-fn grounding_sanity_gate(tree: v2.compiler.infer.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
+fn grounding_sanity_gate(tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
   outcome_accepted(v2.std.witness.Holds { value: tree.root })
 }
 

@@ -34,7 +34,7 @@ fn rust_rec_nine_arrow_node() -> v2.std.node.Node {
 
 data rust_rec_nine_eval_subgraph_node: Node = rust_rec_nine_field_access_body_node()
 
-fn rust_rec_nine_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.infer.InferredFacts {
+fn rust_rec_nine_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
@@ -47,12 +47,12 @@ fn rust_rec_nine_eval_generic_facts(node: v2.std.node.Node) -> v2.compiler.infer
   )
 }
 
-fn rust_rec_nine_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn rust_rec_nine_eval_composed_facts(key: v2.std.node.Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_present(value: rust_rec_nine_eval_generic_facts(node: key))
 }
 
-fn rust_rec_nine_eval_inferred_tree() -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn rust_rec_nine_eval_inferred_tree() -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: rust_rec_nine_arrow_node(),
     facts: std.types.Map { lookup: rust_rec_nine_eval_composed_facts }
   }
@@ -245,7 +245,7 @@ fn rust_rec_nine_eval_claim(rhs_result_node: v2.std.node.Node) -> v2.std.verific
   }
 }
 
-fn rust_rec_nine_eval_subject(tree: v2.compiler.infer.InferredTree) -> TestClaimEvalSubject<v2.std.node.Node> {
+fn rust_rec_nine_eval_subject(tree: v2.compiler.inferred_tree.InferredTree) -> TestClaimEvalSubject<v2.std.node.Node> {
   eval_test_claim_subject(
     claim: rust_rec_nine_eval_claim(rhs_result_node: rust_rec_nine_eval_subgraph_node),
     context: rust_rec_nine_eval_context(),
@@ -255,7 +255,7 @@ fn rust_rec_nine_eval_subject(tree: v2.compiler.infer.InferredTree) -> TestClaim
 }
 
 fn rust_rec_nine_eval_run(
-  tree: v2.compiler.infer.InferredTree,
+  tree: v2.compiler.inferred_tree.InferredTree,
   target: v2.std.compilers.target_model.TargetModel
 ) -> v2.compiler.eval.TestClaimRun<v2.std.node.Node, v2.std.runtime.RuntimeValue> {
   run_test_claim_emit_vs_eval(

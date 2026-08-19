@@ -16,7 +16,7 @@ fn parse_authored_occurrence_binding_source(
 ) -> v1.gunbc.occurrence_binding_parser_walk.ParsedOccurrenceBindingSource {
   let index = build_newline_index(file: file, source: source)
   let parsed = parse_with_table(
-    tokens: tokenize(source: source, file: file),
+    tokens: v1.compiler.tokenize.tokenize(source: source, file: file),
     source_indices: map_insert(empty_map(), file, index),
     intern_table: empty_intern_table(),
   )

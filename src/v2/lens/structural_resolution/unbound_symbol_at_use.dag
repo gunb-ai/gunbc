@@ -40,7 +40,7 @@ fn sr_unbound_canonical_witness(resolved: Node) -> v2.std.constraints.CanonicalG
   }
 }
 
-fn sr_unbound_resolved_facts() -> v2.compiler.infer.InferredFacts {
+fn sr_unbound_resolved_facts() -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts(
     type_symbol: ^sr_unbound_type_symbol,
     algebra_symbol: ^sr_unbound_algebra_symbol,
@@ -48,11 +48,11 @@ fn sr_unbound_resolved_facts() -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn sr_unbound_usage_site_witness() -> Optional<v2.compiler.infer.InferredFacts> {
+fn sr_unbound_usage_site_witness() -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_absent()
 }
 
-fn sr_unbound_claim_fact_map() -> Map<Node, v2.compiler.infer.InferredFacts> {
+fn sr_unbound_claim_fact_map() -> Map<Node, v2.compiler.inferred_tree.InferredFacts> {
   let resolved = sr_unbound_resolved_facts()
   std.types.Map {
     lookup: fn(key) {
@@ -65,8 +65,8 @@ fn sr_unbound_claim_fact_map() -> Map<Node, v2.compiler.infer.InferredFacts> {
   }
 }
 
-fn sr_unbound_claim_tree() -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn sr_unbound_claim_tree() -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: sr_unbound_decl,
     facts: sr_unbound_claim_fact_map()
   }

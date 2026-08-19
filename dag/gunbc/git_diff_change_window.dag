@@ -71,14 +71,14 @@ type GitDiffWindowPrepareOutcome
   | GitDiffWindowPrepareRefused { cause: ChangeWindowPreparationRefusal }
 
 fn git_diff_window_required_string(doc: extdeps.languages.json.emit.JsonValue, key: String) -> String? {
-  match json_object_unique_member(v: doc, key: key) {
+  match extdeps.languages.json.parse.json_object_unique_member(v: doc, key: key) {
     JsonMemberAbsent => none
     JsonMemberDuplicated { count: _ } => none
     JsonMemberNotAnObject => none
     JsonMemberFound { value: v } =>
       match v {
         JsonString { value: raw } =>
-          let line = trim(raw)
+          let line = std.algebra.trim(raw)
           if line == "" { none } else { Present { value: line } }
         JsonNull => none
         JsonBool { value: _ } => none
@@ -188,7 +188,7 @@ fn git_diff_window_json(window: GitExactDiffWindow) -> String {
 }
 
 fn git_diff_window_from_json(text: String) -> GitDiffWindowObservation {
-  match parse_json(s: text) {
+  match extdeps.languages.json.parse.parse_json(s: text) {
     Absent =>
       GitDiffWindowMalformed { detail: "git diff window payload is not valid JSON" }
     Present { value: doc } =>

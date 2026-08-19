@@ -2,7 +2,7 @@ module v2.test.lens_structural_resolution.claim_carrier
 
 
 type LensStructuralResolutionClaim {
-  input: v2.compiler.infer.InferredTree
+  input: v2.compiler.inferred_tree.InferredTree
   expected: v2.lens.structural_resolution.StructuralResolutionFact
 }
 

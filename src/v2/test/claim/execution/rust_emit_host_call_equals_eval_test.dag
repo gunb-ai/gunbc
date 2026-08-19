@@ -113,7 +113,7 @@ fn emit_call_eval_context(
   )
 }
 
-fn emit_call_eval_generic_facts(node: Node) -> v2.compiler.infer.InferredFacts {
+fn emit_call_eval_generic_facts(node: Node) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: rust_emit_host_runtime_primitive_type_node(),
@@ -126,15 +126,15 @@ fn emit_call_eval_generic_facts(node: Node) -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn emit_call_eval_composed_facts(key: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn emit_call_eval_composed_facts(key: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   match rust_call_facts_miss(key: key) {
     Present { value: f } => optional_present(value: f)
     Absent => optional_present(value: emit_call_eval_generic_facts(node: key))
   }
 }
 
-fn emit_call_eval_producer_tree() -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn emit_call_eval_producer_tree() -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: rust_call_helper_arrow(),
     facts: std.types.Map { lookup: emit_call_eval_composed_facts }
   }

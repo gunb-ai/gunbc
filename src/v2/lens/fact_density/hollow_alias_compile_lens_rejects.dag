@@ -10,7 +10,7 @@ data hollow_alias_cl_root: Node = v2.std.node.Node {
 
 data hollow_alias_cl_authority: Node = claim_atom_node(s: ^hollow_alias_cl_symbol)
 
-fn hollow_alias_cl_tree() -> v2.compiler.infer.InferredTree {
+fn hollow_alias_cl_tree() -> v2.compiler.inferred_tree.InferredTree {
   claim_inferred_tree(
     root: hollow_alias_cl_root,
     facts: claim_inferred_facts(

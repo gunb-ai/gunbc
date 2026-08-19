@@ -79,14 +79,14 @@ fn pipeline_resolved_source(source: String, file: v2.std.node.Symbol) -> v2.std.
   )
 }
 
-fn pipeline_inferred_arrow_from_resolved(resolved: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn pipeline_inferred_arrow_from_resolved(resolved: v2.std.node.Node) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   match pipeline_find_arrow_in_module(root: resolved) {
     Present { value: arrow } => infer(tree: arrow)
     Absent => infer(tree: resolved)
   }
 }
 
-fn pipeline_inferred_source(source: String, file: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree> {
+fn pipeline_inferred_source(source: String, file: v2.std.node.Symbol) -> v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree> {
   bind_outcome(
     o: pipeline_resolved_source(source: source, file: file),
     f: fn(resolved) {
@@ -102,7 +102,7 @@ fn pipeline_outcome_is_accepted(o: v2.std.diagnostic.Outcome<v2.std.node.Node>) 
   }
 }
 
-fn pipeline_inferred_outcome_is_accepted(o: v2.std.diagnostic.Outcome<v2.compiler.infer.InferredTree>) -> Bool {
+fn pipeline_inferred_outcome_is_accepted(o: v2.std.diagnostic.Outcome<v2.compiler.inferred_tree.InferredTree>) -> Bool {
   match o {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

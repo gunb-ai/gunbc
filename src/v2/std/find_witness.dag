@@ -77,25 +77,25 @@ fn preservation_predicate_holds(
   predicate: PreservationPredicate
 ) -> Bool {
   if predicate.preservation_rule == ^preservation_rule_constraint_satisfaction {
-    constraint_satisfaction_preservation_holds(
+    v2.std.constraint_satisfaction_predicate.constraint_satisfaction_preservation_holds(
       source_facts: source_facts,
       candidate: candidate,
       algebra: predicate.algebra
     )
   } else if predicate.preservation_rule == ^preservation_rule_exact_structural_equality_zip_fold {
-    exact_structural_equality_zip_fold_preservation_holds(
+    v2.std.exact_structural_equality_zip_fold_predicate.exact_structural_equality_zip_fold_preservation_holds(
       source_facts: source_facts,
       candidate: candidate,
       algebra: predicate.algebra
     )
   } else if predicate.preservation_rule == ^preservation_rule_refinement_widening {
-    refinement_widening_preservation_holds(
+    v2.std.refinement_widening_predicate.refinement_widening_preservation_holds(
       source_facts: source_facts,
       candidate: candidate,
       algebra: predicate.algebra
     )
   } else if predicate.preservation_rule == ^preservation_rule_project_to_core {
-    project_to_core_preservation_holds(
+    v2.std.project_to_core_predicate.project_to_core_preservation_holds(
       source_facts: source_facts,
       candidate: candidate,
       algebra: predicate.algebra

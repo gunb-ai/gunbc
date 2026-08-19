@@ -84,7 +84,7 @@ fn english_emit_add_canonical_grounding_for(node: v2.std.node.Node) -> v2.std.wi
   }
 }
 
-fn english_emit_add_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.infer.InferredFacts> {
+fn english_emit_add_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   match english_emit_add_canonical_grounding_for(node: node) {
     Violates { diagnostic: d } => v2.std.optional.optional_absent()
     Holds { value: grounding } =>
@@ -99,11 +99,11 @@ fn english_emit_add_inferred_facts_for(node: v2.std.node.Node) -> v2.std.optiona
   }
 }
 
-fn english_emit_add_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.infer.InferredFacts> {
+fn english_emit_add_facts_lookup(key: v2.std.node.Node) -> v2.std.optional.Optional<v2.compiler.inferred_tree.InferredFacts> {
   english_emit_add_inferred_facts_for(node: key)
 }
 
-data english_emit_add_inferred_tree: v2.compiler.infer.InferredTree = v2.compiler.infer.InferredTree {
+data english_emit_add_inferred_tree: v2.compiler.inferred_tree.InferredTree = v2.compiler.inferred_tree.InferredTree {
   root: english_emit_add_emitted_root,
   facts: std.types.Map {
     lookup: english_emit_add_facts_lookup

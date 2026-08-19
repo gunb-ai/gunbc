@@ -25,7 +25,7 @@ fn runtime_run_termination_proof() -> v2.std.cardinality.TerminationProof {
   }
 }
 
-fn runtime_run_facts_for(node: Node) -> v2.compiler.infer.InferredFacts {
+fn runtime_run_facts_for(node: Node) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: effect_io_pure_unit_type_node(),
@@ -33,7 +33,7 @@ fn runtime_run_facts_for(node: Node) -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn runtime_run_fact_lookup(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn runtime_run_fact_lookup(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   if node == runtime_run_node_a {
     optional_present(value: runtime_run_facts_for(node: runtime_run_node_a))
   } else if node == runtime_run_node_b {
@@ -43,8 +43,8 @@ fn runtime_run_fact_lookup(node: Node) -> Optional<v2.compiler.infer.InferredFac
   }
 }
 
-fn runtime_run_test_tree() -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn runtime_run_test_tree() -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: runtime_run_node_a,
     facts: std.types.Map { lookup: runtime_run_fact_lookup }
   }

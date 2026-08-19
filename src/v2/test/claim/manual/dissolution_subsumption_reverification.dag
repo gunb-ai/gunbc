@@ -291,7 +291,7 @@ fn subsumption_termination_proof() -> v2.std.cardinality.TerminationProof {
   }
 }
 
-fn subsumption_facts(node: Node) -> v2.compiler.infer.InferredFacts {
+fn subsumption_facts(node: Node) -> v2.compiler.inferred_tree.InferredFacts {
   claim_inferred_facts_from_nodes(
     resolved: node,
     algebra: node,
@@ -299,12 +299,12 @@ fn subsumption_facts(node: Node) -> v2.compiler.infer.InferredFacts {
   )
 }
 
-fn subsumption_fact_lookup(node: Node) -> Optional<v2.compiler.infer.InferredFacts> {
+fn subsumption_fact_lookup(node: Node) -> Optional<v2.compiler.inferred_tree.InferredFacts> {
   optional_present(value: subsumption_facts(node: node))
 }
 
-fn subsumption_inferred_tree(root: Node) -> v2.compiler.infer.InferredTree {
-  v2.compiler.infer.InferredTree {
+fn subsumption_inferred_tree(root: Node) -> v2.compiler.inferred_tree.InferredTree {
+  v2.compiler.inferred_tree.InferredTree {
     root: root,
     facts: std.types.Map {
       lookup: subsumption_fact_lookup
