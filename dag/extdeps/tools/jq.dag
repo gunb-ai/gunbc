@@ -113,8 +113,6 @@ type JqInvocation {
 type JqCliOption
   = JqCliOptionRawOutput
   | JqCliOptionExitStatus
-  | JqCliOptionArgJson
-  | JqCliOptionArg
 
 // ABSENCE IS A DECLARED ROW, NOT A MISSING ONE. An earlier revision returned Optional<JqCliOption>
 // and answered Absent for JqProgramExit -- which makes "this policy deliberately requires no
@@ -141,13 +139,6 @@ fn jq_selection_for_exit_policy(policy: JqExitPolicy) -> JqCliSelection {
   }
 }
 
-fn jq_option_for_binding(binding: JqBinding) -> JqCliOption {
-  match binding {
-    JqJsonBinding { name: _, value: _ } => JqCliOptionArgJson
-    JqTextBinding { name: _, value: _ } => JqCliOptionArg
-  }
-}
-
 // LEVEL TWO: an option identity selects its CITED SPELLING. jqlang.org/manual/ is the authority
 // for every string below; the long form is canonical because it is self-describing at a call
 // site, and the short alias is recorded as a fact about jq rather than used.
@@ -155,8 +146,6 @@ fn jq_option_token_class(option: JqCliOption) -> Symbol {
   match option {
     JqCliOptionRawOutput => ^jq_opt_raw_output
     JqCliOptionExitStatus => ^jq_opt_exit_status
-    JqCliOptionArgJson => ^jq_opt_argjson
-    JqCliOptionArg => ^jq_opt_arg
   }
 }
 
@@ -169,27 +158,11 @@ fn jq_option_long_name(option: JqCliOption) -> NonEmptyStr {
   match option {
     JqCliOptionRawOutput => "raw-output"
     JqCliOptionExitStatus => "exit-status"
-    JqCliOptionArgJson => "argjson"
-    JqCliOptionArg => "arg"
   }
 }
 
 fn jq_option_canonical_spelling(option: JqCliOption) -> NonEmptyStr {
   cli_long_option_spelling(name: jq_option_long_name(option: option))
-}
-
-// The short aliases jq also accepts. Declared so the corpus records what jq's surface IS, and
-// deliberately not consulted by the lowering: a caller cannot ask for -r over --raw-output,
-// because which form is canonical is jq's decision and not the caller's.
-// The short names jq also accepts, again bare: the grammar renders one hyphen. argjson and arg
-// have no short form, which is a fact about jq rather than an omission here.
-fn jq_option_short_name(option: JqCliOption) -> Optional<NonEmptyStr> {
-  match option {
-    JqCliOptionRawOutput => Present { value: "r" }
-    JqCliOptionExitStatus => Present { value: "e" }
-    JqCliOptionArgJson => Absent
-    JqCliOptionArg => Absent
-  }
 }
 
 // The lex table jq itself authors: one row per option identity, spelling from the cited rows
@@ -206,14 +179,6 @@ fn jq_cli_lex_rules() -> ModeledLexRules {
         TokenRule {
           token_class: jq_option_token_class(option: JqCliOptionExitStatus),
           pattern: LiteralPattern { text: jq_option_canonical_spelling(option: JqCliOptionExitStatus) }
-        },
-        TokenRule {
-          token_class: jq_option_token_class(option: JqCliOptionArgJson),
-          pattern: LiteralPattern { text: jq_option_canonical_spelling(option: JqCliOptionArgJson) }
-        },
-        TokenRule {
-          token_class: jq_option_token_class(option: JqCliOptionArg),
-          pattern: LiteralPattern { text: jq_option_canonical_spelling(option: JqCliOptionArg) }
         },
       ]
     }

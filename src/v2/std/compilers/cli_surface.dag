@@ -87,17 +87,18 @@ import v2.std.optional { Absent, Present }
 type CliArgumentSyntax { fragments: List<ConcreteSyntaxToken> }
 
 // THE SHARED RENDERING RULE, owned here and not by any tool row. A tool declares WHICH names
-// exist and which form is canonical; how a long name becomes two hyphens plus the name, or a
-// short name one hyphen plus the character, is one rule every POSIX-conventional tool shares
-// (IEEE Std 1003.1-2024 XBD 12). A tool row storing "--raw-output" would re-spell that rule per
-// tool and could silently disagree with it.
+// exist and which form is canonical; how a long name becomes two hyphens plus the name is one
+// rule every POSIX-conventional tool shares (IEEE Std 1003.1-2024 XBD 12). A tool row storing
+// "--raw-output" would re-spell that rule per tool and could silently disagree with it.
+//
+// Only the LONG form is modeled, because only the long form has a consumer. The short-form
+// renderer was authored beside it and deleted unused: POSIX guideline 3 is cited in the design
+// note, but a citation is not a consumer, and a rule nothing calls cannot be shown to be right.
+// It returns with the first tool row that selects a short spelling.
 fn cli_long_option_spelling(name: NonEmptyStr) -> NonEmptyStr {
   concat("--", name)
 }
 
-fn cli_short_option_spelling(name: NonEmptyStr) -> NonEmptyStr {
-  concat("-", name)
-}
 
 type CliArgument sole_constructor { text: String }
 
