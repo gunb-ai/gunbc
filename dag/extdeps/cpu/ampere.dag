@@ -213,8 +213,8 @@ data ampere_altra_avl_current_issue: std.types.NonEmptyStr = "1.15 (December 202
 // count, sustained frequency, TDP, socket, memory channels). Distinct from the
 // datasheet authorities above: the datasheet grounds the family's cache and
 // socket geometry, the brief is where the SKU table lives.
-data ampere_altra_family_product_brief_authority: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
+data ampere_altra_family_product_brief_authority: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
     scheme: Https
     locator: "amperecomputing.com/briefs/ampere-altra-family-product-brief"
   }
@@ -230,11 +230,11 @@ data ampere_altra_family_product_brief_authority: ExternalAuthority = ExternalAu
 // that module's own grounding successor: the vendor states its arm64 runners
 // are backed by dedicated Q80-30 cores, and until this row existed the
 // architecture field alone carried that claim.
-data altra_q8030_catalog: CpuModelCatalogRow = CpuModelCatalogRow {
+data altra_q8030_catalog: extdeps.cpu.types.CpuModelCatalogRow = extdeps.cpu.types.CpuModelCatalogRow {
   model_number: "Q80-30",
   oem_listing_id: none,
   vendor: ampere_vendor,
-  architecture: Aarch64,
+  architecture: extdeps.toolchain.types.Aarch64,
   cores: 80,
   threads: hardware_thread_count(80),
   nominal_sustained_per_thread_hz: hertz(3000000000),

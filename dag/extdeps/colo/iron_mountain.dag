@@ -1,35 +1,30 @@
 module extdeps.colo.iron_mountain
 
-import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressUnread, RetailRateStanding, RatesQuoteOnly }
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.ironmountain.com/data-centers/locations/new-jersey-data-center"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.colo.iron_mountain",
       decl_name: "iron_mountain_nje1",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
-data iron_mountain_nje1: ColoFacilityRow = ColoFacilityRow {
+data iron_mountain_nje1: extdeps.colo.types.ColoFacilityRow = extdeps.colo.types.ColoFacilityRow {
   operator_label: "Iron Mountain Data Centers",
   facility_label: "Iron Mountain NJE-1 Edison",
-  address: AddressUnread {
+  address: extdeps.colo.types.AddressUnread {
     obligation: "The operator's page (read 2026-08-18) places NJE-1 in Edison on a 43-acre campus, about 830,000 square feet and 30 MW, roughly 30 miles from Manhattan, but the sweep did not capture the street address; read the spec sheet before treating this as a candidate.",
   },
   municipality: "Edison",
@@ -37,7 +32,7 @@ data iron_mountain_nje1: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Enterprise and compliance-weighted operator; retail cabinets exist but the motion targets regulated enterprise. Middlesex County drive from the Hudson waterfront.",
 }
 
-data iron_mountain_retail_rates: RetailRateStanding = RatesQuoteOnly {
+data iron_mountain_retail_rates: extdeps.colo.types.RetailRateStanding = extdeps.colo.types.RatesQuoteOnly {
   contact_route: "ironmountain.com sales",
   obligation: "No published cabinet pricing on the pages read 2026-08-18.",
 }

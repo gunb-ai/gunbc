@@ -44,7 +44,7 @@ type PreparedFloorSubjectRefusal
 type PreparedFloorSubjectServe
   = PreparedFloorSubjectReady {
       identity: v2.workflow.floor_preparation.PreparedClaimSubjectIdentity
-      entries: List<PreparedFloorEntryArtifact>
+      entries: List<v2.workflow.floor_preparation.PreparedFloorEntryArtifact>
     }
   | PreparedFloorSubjectRefused { cause: PreparedFloorSubjectRefusal }
 
@@ -312,7 +312,7 @@ fn prepared_floor_serve_one(
         ) {
           ProviderHit { artifact: artifact, identity: _ } =>
             PreparedFloorServeContinue {
-              entries: concat([PreparedFloorEntryArtifact {
+              entries: concat([v2.workflow.floor_preparation.PreparedFloorEntryArtifact {
                 witness: entry.witness,
                 artifact: artifact,
               }], entries),

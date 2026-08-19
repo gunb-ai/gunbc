@@ -1,37 +1,32 @@
 module extdeps.colo.summit
 
-import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "summithq.com/data-centers/secaucus-new-jersey-data-center/"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.colo.summit",
       decl_name: "summit_secaucus",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
-data summit_provenance_note: NonEmptyStr = "Summit (summithq.com) markets a Secaucus, NJ data center, read 2026-08-18. Every infrastructure figure below is the operator page's own claim. See summit_evocative_shared_address_note: the street address and the equipment fingerprint on this page match Evocative EWR1's, and neither operator's page mentions the other, so which operator sells what in the building on a given day is a quote question, not a fact this module can carry."
+data summit_provenance_note: std.types.NonEmptyStr = "Summit (summithq.com) markets a Secaucus, NJ data center, read 2026-08-18. Every infrastructure figure below is the operator page's own claim. See summit_evocative_shared_address_note: the street address and the equipment fingerprint on this page match Evocative EWR1's, and neither operator's page mentions the other, so which operator sells what in the building on a given day is a quote question, not a fact this module can carry."
 
-data summit_secaucus: ColoFacilityRow = ColoFacilityRow {
+data summit_secaucus: extdeps.colo.types.ColoFacilityRow = extdeps.colo.types.ColoFacilityRow {
   operator_label: "Summit",
   facility_label: "Summit Secaucus",
-  address: AddressListed {
+  address: extdeps.colo.types.AddressListed {
     street: "1 Enterprise Avenue N, Secaucus, NJ 07094",
     citation: "summithq.com Secaucus data center page, read 2026-08-18",
   },
@@ -40,9 +35,9 @@ data summit_secaucus: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Operator page (read 2026-08-18): 101.5k sqft; 20 MW expandable with 5 MW provisioned; four 1.4 MW UPS units in N+1; four 2 MW diesel generators; four 400-ton chillers in N+1; VRLA battery backup rated ten minutes at full load; two diverse entrance vaults; carriers listed AT&T, Verizon, Zayo, NTT, Lumen, Cogent, Comcast, Lightpath; SOC 2 Type II, SOC 3, PCI-DSS, HIPAA, HECVAT claimed. Private suites and custom deployments named; single-cabinet retail grain not stated.",
 }
 
-data summit_evocative_shared_address_note: NonEmptyStr = "Summit's page lists 1 Enterprise Avenue N, Secaucus - the same street address directory sources give for Evocative EWR1 - and the two operators' infrastructure claims are a near-exact fingerprint match (four 1.4 MW UPS units, four 2 MW generators, four 400-ton N+1 chillers, ~101.5k vs ~105k sqft). Neither page names the other, and no acquisition or sublease relationship was readable from either surface on 2026-08-18. One building appears to stand behind both selling surfaces, on the 300 JFK Blvd East Weehawken pattern (Digital Realty and Centersquare). The RFQ to either operator must ask who operates the facility today and who the colocation contract is actually with."
+data summit_evocative_shared_address_note: std.types.NonEmptyStr = "Summit's page lists 1 Enterprise Avenue N, Secaucus - the same street address directory sources give for Evocative EWR1 - and the two operators' infrastructure claims are a near-exact fingerprint match (four 1.4 MW UPS units, four 2 MW generators, four 400-ton N+1 chillers, ~101.5k vs ~105k sqft). Neither page names the other, and no acquisition or sublease relationship was readable from either surface on 2026-08-18. One building appears to stand behind both selling surfaces, on the 300 JFK Blvd East Weehawken pattern (Digital Realty and Centersquare). The RFQ to either operator must ask who operates the facility today and who the colocation contract is actually with."
 
-data summit_retail_rates: RetailRateStanding = RatesQuoteOnly {
+data summit_retail_rates: extdeps.colo.types.RetailRateStanding = extdeps.colo.types.RatesQuoteOnly {
   contact_route: "contact form via summithq.com",
   obligation: "No pricing is published on any page read 2026-08-18, and the page markets suites and custom deployments rather than per-cabinet retail. The quote must establish whether a small reversible footprint (2U to one cabinet) is sold at all, and who the contracting operator at 1 Enterprise Avenue N is.",
 }

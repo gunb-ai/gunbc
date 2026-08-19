@@ -1,122 +1,109 @@
 module extdeps.colo.natcoweb
 
-import std.types { NonEmptyStr, List }
-import std.nat { Nat }
-import std.measure { MoneyPerMonth, MoneyPerHour, money_amount_micro, ampere, bandwidth, rack_unit }
-import std.currency { Usd }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressUnread,
-  RetailPlanRow, PowerAllocation, FeedAmpsVoltsUnstated,
-  TransitAllocation, UnmeteredPort, Ipv4Allocation, Ipv4Usable,
-  SetupCharge, SetupWaived, RetailRateStanding, RatesPublished, RemoteHandsWindowRate,
-}
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "natcoweb.com/colocation.html"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.colo.natcoweb",
       decl_name: "natcoweb_clifton",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
-data natcoweb_provenance_note: NonEmptyStr = "Natcoweb Corp is a hosting and colocation operator selling retail rack space in Clifton, NJ, read 2026-08-18 from natcoweb.com/colocation.html. It is one of only two operators in this census publishing a full retail colocation price table (the other is InterServer), and the only one publishing per-U pricing from a single unit up. The published plans state breaker amperage with NO voltage anywhere on the page, so every power figure below is a typed amps-without-volts reading rather than a derived wattage. Included transfer is 10 Mbps or less on every plan - two to three orders of magnitude below the census's other published anchor - so the sticker prices are not comparable to a 1 Gbps unmetered placement without a bandwidth-upgrade quote. STALENESS FLAG (operator concern, re-verified 2026-08-18): a second same-day fetch of the operator page confirms the 1/10 Mbps figures are what the LIVE page says, publishes no gigabit upgrade price, and carries no last-updated date - so the rows are an accurate reading of a possibly stale surface, and the quote must confirm every figure before any is treated as current."
+data natcoweb_provenance_note: std.types.NonEmptyStr = "Natcoweb Corp is a hosting and colocation operator selling retail rack space in Clifton, NJ, read 2026-08-18 from natcoweb.com/colocation.html. It is one of only two operators in this census publishing a full retail colocation price table (the other is InterServer), and the only one publishing per-U pricing from a single unit up. The published plans state breaker amperage with NO voltage anywhere on the page, so every power figure below is a typed amps-without-volts reading rather than a derived wattage. Included transfer is 10 Mbps or less on every plan - two to three orders of magnitude below the census's other published anchor - so the sticker prices are not comparable to a 1 Gbps unmetered placement without a std.measure.bandwidth-upgrade quote. STALENESS FLAG (operator concern, re-verified 2026-08-18): a second same-day fetch of the operator page confirms the 1/10 Mbps figures are what the LIVE page says, publishes no gigabit upgrade price, and carries no last-updated date - so the rows are an accurate reading of a possibly stale surface, and the quote must confirm every figure before any is treated as current."
 
-data natcoweb_clifton: ColoFacilityRow = ColoFacilityRow {
+data natcoweb_clifton: extdeps.colo.types.ColoFacilityRow = extdeps.colo.types.ColoFacilityRow {
   operator_label: "Natcoweb",
   facility_label: "Natcoweb Clifton",
-  address: AddressUnread {
+  address: extdeps.colo.types.AddressUnread {
     obligation: "natcoweb.com states Clifton, NJ (thirty minutes from Manhattan) with no street address on the colocation page read 2026-08-18; directory sources place the operator at 100 Delawanna Ave, Clifton - the same building as Colocation America NJ1 - but that placement was not readable from the operator's own surface and belongs in the quote. Confirm the exact street address and whose meet-me room the cross-connects land in.",
   },
   municipality: "Clifton",
   region_code: "NJ",
-  facility_note: "Operator page (read 2026-08-18): SSAE 16 certified building; diverse redundant fiber to the Equinix suites at 111 8th Ave and Hudson St in New York; bandwidth sold as pure Cogent or a Level(3)/Zayo/Cogent blend; free VLAN creation; additional IPv4 at 1 USD per address per month.",
+  facility_note: "Operator page (read 2026-08-18): SSAE 16 certified building; diverse redundant fiber to the Equinix suites at 111 8th Ave and Hudson St in New York; std.measure.bandwidth sold as pure Cogent or a Level(3)/Zayo/Cogent blend; free VLAN creation; additional IPv4 at 1 USD per address per month.",
 }
 
-data natcoweb_plan_1u: RetailPlanRow = RetailPlanRow {
+data natcoweb_plan_1u: extdeps.colo.types.RetailPlanRow = extdeps.colo.types.RetailPlanRow {
   plan_label: "1U RackSpace",
-  rack_units: rack_unit(count: 1),
-  power: FeedAmpsVoltsUnstated { amps: ampere(count: 1), voltage_obligation: "page states 1 Amp with no voltage; confirm circuit voltage and continuous-load policy in quote" },
-  transit: UnmeteredPort { port_speed: bandwidth(count: 1000000) },
-  ipv4: Ipv4Usable { usable_addresses: 1, block_note: "1 IP address included per plan table" },
-  monthly: MoneyPerMonth { amount: money_amount_micro(count: 65000000), currency: Usd },
-  setup: SetupWaived,
+  rack_units: std.measure.rack_unit(count: 1),
+  power: extdeps.colo.types.FeedAmpsVoltsUnstated { amps: std.measure.ampere(count: 1), voltage_obligation: "page states 1 Amp with no voltage; confirm circuit voltage and continuous-load policy in quote" },
+  transit: extdeps.colo.types.UnmeteredPort { port_speed: std.measure.bandwidth(count: 1000000) },
+  ipv4: extdeps.colo.types.Ipv4Usable { usable_addresses: 1, block_note: "1 IP address included per plan table" },
+  monthly: std.measure.MoneyPerMonth { amount: std.measure.money_amount_micro(count: 65000000), currency: std.currency.Usd },
+  setup: extdeps.colo.types.SetupWaived,
   term_note: "month-to-month; no long-term contracts or prepayments per operator page",
   citation: "natcoweb.com/colocation.html, read 2026-08-18; stated as 1 Mbps included on a 1G dedicated port - the included service is a committed rate, so it is carried as a 1 Mbps unmetered reading with the 1G physical port in this note",
 }
 
-data natcoweb_plan_10u: RetailPlanRow = RetailPlanRow {
+data natcoweb_plan_10u: extdeps.colo.types.RetailPlanRow = extdeps.colo.types.RetailPlanRow {
   plan_label: "10U RackSpace (10 Mbps committed)",
-  rack_units: rack_unit(count: 10),
-  power: FeedAmpsVoltsUnstated { amps: ampere(count: 10), voltage_obligation: "page states 10 Amp with no voltage; confirm circuit voltage and continuous-load policy in quote" },
-  transit: UnmeteredPort { port_speed: bandwidth(count: 10000000) },
-  ipv4: Ipv4Usable { usable_addresses: 4, block_note: "4 IP addresses included per plan table" },
-  monthly: MoneyPerMonth { amount: money_amount_micro(count: 460000000), currency: Usd },
-  setup: SetupWaived,
+  rack_units: std.measure.rack_unit(count: 10),
+  power: extdeps.colo.types.FeedAmpsVoltsUnstated { amps: std.measure.ampere(count: 10), voltage_obligation: "page states 10 Amp with no voltage; confirm circuit voltage and continuous-load policy in quote" },
+  transit: extdeps.colo.types.UnmeteredPort { port_speed: std.measure.bandwidth(count: 10000000) },
+  ipv4: extdeps.colo.types.Ipv4Usable { usable_addresses: 4, block_note: "4 IP addresses included per plan table" },
+  monthly: std.measure.MoneyPerMonth { amount: std.measure.money_amount_micro(count: 460000000), currency: std.currency.Usd },
+  setup: extdeps.colo.types.SetupWaived,
   term_note: "month-to-month; scheduled data-center access on this tier",
   citation: "natcoweb.com/colocation.html, read 2026-08-18; 10 Mbps included on a 1G dedicated port - committed rate carried as the unmetered reading, physical port in this note",
 }
 
-data natcoweb_plan_20u: RetailPlanRow = RetailPlanRow {
+data natcoweb_plan_20u: extdeps.colo.types.RetailPlanRow = extdeps.colo.types.RetailPlanRow {
   plan_label: "20U RackSpace (10 Mbps committed)",
-  rack_units: rack_unit(count: 20),
-  power: FeedAmpsVoltsUnstated { amps: ampere(count: 15), voltage_obligation: "page states 15 Amp with no voltage; confirm circuit voltage and continuous-load policy in quote" },
-  transit: UnmeteredPort { port_speed: bandwidth(count: 10000000) },
-  ipv4: Ipv4Usable { usable_addresses: 4, block_note: "4 IP addresses included per plan table" },
-  monthly: MoneyPerMonth { amount: money_amount_micro(count: 870000000), currency: Usd },
-  setup: SetupWaived,
+  rack_units: std.measure.rack_unit(count: 20),
+  power: extdeps.colo.types.FeedAmpsVoltsUnstated { amps: std.measure.ampere(count: 15), voltage_obligation: "page states 15 Amp with no voltage; confirm circuit voltage and continuous-load policy in quote" },
+  transit: extdeps.colo.types.UnmeteredPort { port_speed: std.measure.bandwidth(count: 10000000) },
+  ipv4: extdeps.colo.types.Ipv4Usable { usable_addresses: 4, block_note: "4 IP addresses included per plan table" },
+  monthly: std.measure.MoneyPerMonth { amount: std.measure.money_amount_micro(count: 870000000), currency: std.currency.Usd },
+  setup: extdeps.colo.types.SetupWaived,
   term_note: "month-to-month; scheduled data-center access on this tier; port upgradeable toward 10G per plan table",
   citation: "natcoweb.com/colocation.html, read 2026-08-18",
 }
 
-data natcoweb_plan_full_cabinet: RetailPlanRow = RetailPlanRow {
+data natcoweb_plan_full_cabinet: extdeps.colo.types.RetailPlanRow = extdeps.colo.types.RetailPlanRow {
   plan_label: "Full Cabinet (10 Mbps committed)",
-  rack_units: rack_unit(count: 42),
-  power: FeedAmpsVoltsUnstated { amps: ampere(count: 20), voltage_obligation: "page states 20 Amp with no voltage; confirm circuit voltage, phase, and continuous-load policy in quote" },
-  transit: UnmeteredPort { port_speed: bandwidth(count: 10000000) },
-  ipv4: Ipv4Usable { usable_addresses: 4, block_note: "4 IP addresses included per plan table" },
-  monthly: MoneyPerMonth { amount: money_amount_micro(count: 1250000000), currency: Usd },
-  setup: SetupWaived,
+  rack_units: std.measure.rack_unit(count: 42),
+  power: extdeps.colo.types.FeedAmpsVoltsUnstated { amps: std.measure.ampere(count: 20), voltage_obligation: "page states 20 Amp with no voltage; confirm circuit voltage, phase, and continuous-load policy in quote" },
+  transit: extdeps.colo.types.UnmeteredPort { port_speed: std.measure.bandwidth(count: 10000000) },
+  ipv4: extdeps.colo.types.Ipv4Usable { usable_addresses: 4, block_note: "4 IP addresses included per plan table" },
+  monthly: std.measure.MoneyPerMonth { amount: std.measure.money_amount_micro(count: 1250000000), currency: std.currency.Usd },
+  setup: extdeps.colo.types.SetupWaived,
   term_note: "month-to-month; 24/7 data-center access on this tier; port upgradeable toward 10G per plan table",
   citation: "natcoweb.com/colocation.html, read 2026-08-18; cabinet U count not stated on the page - 42U is the industry-standard full cabinet and is carried here as the plan's nominal size pending quote confirmation",
 }
 
-data natcoweb_plans: List<RetailPlanRow> = [
+data natcoweb_plans: std.types.List<extdeps.colo.types.RetailPlanRow> = [
   natcoweb_plan_1u,
   natcoweb_plan_10u,
   natcoweb_plan_20u,
   natcoweb_plan_full_cabinet,
 ]
 
-data natcoweb_remote_hands: List<RemoteHandsWindowRate> = [
-  RemoteHandsWindowRate {
+data natcoweb_remote_hands: std.types.List<extdeps.colo.types.RemoteHandsWindowRate> = [
+  extdeps.colo.types.RemoteHandsWindowRate {
     window_label: "scheduled",
-    hourly: MoneyPerHour { amount: money_amount_micro(count: 150000000), currency: Usd },
+    hourly: std.measure.MoneyPerHour { amount: std.measure.money_amount_micro(count: 150000000), currency: std.currency.Usd },
     minimum_note: "minimum billing increment not stated on the page read 2026-08-18",
     citation: "natcoweb.com/colocation.html, read 2026-08-18",
   },
-  RemoteHandsWindowRate {
+  extdeps.colo.types.RemoteHandsWindowRate {
     window_label: "urgent",
-    hourly: MoneyPerHour { amount: money_amount_micro(count: 250000000), currency: Usd },
+    hourly: std.measure.MoneyPerHour { amount: std.measure.money_amount_micro(count: 250000000), currency: std.currency.Usd },
     minimum_note: "minimum billing increment not stated on the page read 2026-08-18",
     citation: "natcoweb.com/colocation.html, read 2026-08-18",
   },
 ]
 
-data natcoweb_retail_rates: RetailRateStanding = RatesPublished {
-  plans_note: "Four plans published from 1U to full cabinet, all month-to-month with free setup. Every power figure is amps with no stated voltage and every plan includes 10 Mbps or less of committed transfer, so the published prices bound the space cost but decide nothing about a watt-sized, gigabit-sized placement until a quote supplies voltage, usable continuous watts, and bandwidth-upgrade pricing.",
+data natcoweb_retail_rates: extdeps.colo.types.RetailRateStanding = extdeps.colo.types.RatesPublished {
+  plans_note: "Four plans published from 1U to full cabinet, all month-to-month with free setup. Every power figure is amps with no stated voltage and every plan includes 10 Mbps or less of committed transfer, so the published prices bound the space cost but decide nothing about a watt-sized, gigabit-sized placement until a quote supplies voltage, usable continuous watts, and std.measure.bandwidth-upgrade pricing.",
 }

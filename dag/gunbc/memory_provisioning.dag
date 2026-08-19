@@ -1,31 +1,5 @@
 module gunbc.memory_provisioning
 
-import std.types { Bool, List, NonEmptyStr }
-import std.nat { Nat, nat_max, nat_min }
-import std.measure { ByteSize, byte_size, byte_size_count, gigabyte, hardware_thread_count_value }
-import std.decl_ref { DeclarationRef, decl_ref }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
-import extdeps.ci_runner.types {
-  CpuEntitlement,
-  DedicatedPhysicalCore,
-  EntitlementUnstated,
-  QuotedBasisUnresolved,
-  QuotedByteMagnitude,
-  QuotedDecimalGigabytes,
-  ResolvedBytes,
-  SmtSharedVcpu,
-  quoted_magnitude_bytes,
-}
-import extdeps.cpu.types { CpuModelCatalogRow }
-import extdeps.cpu.ampere_altra_platform_hw_design.platform {
-  DimmsPerChannelTopology,
-  OneDimmPerChannel,
-  TwoDimmsPerChannel,
-  dimms_per_channel_count,
-}
-import extdeps.memory.types { DramModuleCatalogRow }
-import extdeps.boards.asrock_rack { asrock_altrad8ud_download_authority }
 
 
 // ---------------------------------------------------------------------------
@@ -41,24 +15,24 @@ import extdeps.boards.asrock_rack { asrock_altrad8ud_download_authority }
 
 // A NONEMPTY citation list, by construction. A profile is a policy claim about
 // what the market provides, so it must name the rows it read; making the list
-// a plain List would allow the empty one, and an uncited profile is exactly
+// a plain std.types.List would allow the empty one, and an uncited profile is exactly
 // the state this carrier exists to forbid. head plus tail is the same shape
 // std.realization uses for declared staged intermediates and for the same
 // reason: the empty case has no constructor rather than a check.
 type CitedBasis {
-  primary: DeclarationRef
-  additional: List<DeclarationRef>
+  primary: std.decl_ref.DeclarationRef
+  additional: std.types.List<std.decl_ref.DeclarationRef>
 }
 
-fn basis_refs(b: CitedBasis) -> List<DeclarationRef> {
+fn basis_refs(b: CitedBasis) -> std.types.List<std.decl_ref.DeclarationRef> {
   concat([b.primary], b.additional)
 }
 
-fn basis_count(b: CitedBasis) -> Nat {
+fn basis_count(b: CitedBasis) -> std.nat.Nat {
   1 + count(b.additional)
 }
 
-// ONE SERVICE PROFILE. memory_per_entitlement is a QuotedByteMagnitude, whose
+// ONE SERVICE PROFILE. memory_per_entitlement is a extdeps.ci_runner.types.QuotedByteMagnitude, whose
 // arm IS the basis: a profile sized in decimal GB and one sized in binary GiB
 // are different values of different Measure types, so the 7.4 percent gap has
 // no silent path into a target. Declaring the basis is a DECISION — the
@@ -66,10 +40,10 @@ fn basis_count(b: CitedBasis) -> Nat {
 // reading the purchase is sized against — and here that decision is made by
 // choosing a constructor rather than by filling in a field beside a number.
 type RunnerServiceProfile {
-  label: NonEmptyStr
-  architecture: Architecture
-  entitlement: CpuEntitlement
-  memory_per_entitlement: QuotedByteMagnitude
+  label: std.types.NonEmptyStr
+  architecture: extdeps.toolchain.types.Architecture
+  entitlement: extdeps.ci_runner.types.CpuEntitlement
+  memory_per_entitlement: extdeps.ci_runner.types.QuotedByteMagnitude
   basis: CitedBasis
 }
 
@@ -78,11 +52,11 @@ type RunnerServiceProfile {
 // 192GB target the gap is over 14GB, more than the margin between two DIMM
 // SKUs.
 type EntitlementBytes
-  = EntitlementBytesDeclared { bytes: ByteSize }
+  = EntitlementBytesDeclared { bytes: std.measure.ByteSize }
   | EntitlementBytesBasisUndeclared
 
 fn entitlement_bytes(profile: RunnerServiceProfile) -> EntitlementBytes {
-  match quoted_magnitude_bytes(quoted: profile.memory_per_entitlement) {
+  match extdeps.ci_runner.types.quoted_magnitude_bytes(quoted: profile.memory_per_entitlement) {
     ResolvedBytes { bytes } => EntitlementBytesDeclared { bytes: bytes }
     QuotedBasisUnresolved { numeral, unit_label } => EntitlementBytesBasisUndeclared
   }
@@ -95,15 +69,15 @@ fn entitlement_bytes(profile: RunnerServiceProfile) -> EntitlementBytes {
 // make an unstated-entitlement profile silently claim the more conservative
 // number and read as safe.
 type CpuEntitlementSupply
-  = EntitlementsAvailable { count: Nat }
+  = EntitlementsAvailable { count: std.nat.Nat }
   | EntitlementKindUnstated
 
-fn cpu_entitlement_supply(cpu: CpuModelCatalogRow, entitlement: CpuEntitlement) -> CpuEntitlementSupply {
+fn cpu_entitlement_supply(cpu: extdeps.cpu.types.CpuModelCatalogRow, entitlement: extdeps.ci_runner.types.CpuEntitlement) -> CpuEntitlementSupply {
   match entitlement {
-    DedicatedPhysicalCore => EntitlementsAvailable { count: cpu.cores }
+    extdeps.ci_runner.types.DedicatedPhysicalCore => EntitlementsAvailable { count: cpu.cores }
     SmtSharedVcpu { threads_per_core } =>
-      EntitlementsAvailable { count: hardware_thread_count_value(t: cpu.threads) }
-    EntitlementUnstated => EntitlementKindUnstated
+      EntitlementsAvailable { count: std.measure.hardware_thread_count_value(t: cpu.threads) }
+    extdeps.ci_runner.types.EntitlementUnstated => EntitlementKindUnstated
   }
 }
 
@@ -121,19 +95,19 @@ fn cpu_entitlement_supply(cpu: CpuModelCatalogRow, entitlement: CpuEntitlement) 
 // different board, not a smaller expectation.
 type ServiceBound = CpuBound | EvenlyBound
 
-fn service_bound(cpu_entitlements: Nat, memory_entitlements: Nat) -> ServiceBound {
+fn service_bound(cpu_entitlements: std.nat.Nat, memory_entitlements: std.nat.Nat) -> ServiceBound {
   if cpu_entitlements < memory_entitlements { CpuBound } else { EvenlyBound }
 }
 
 // ONE POPULATION READ THROUGH ONE PROFILE.
 type ProfileCapacity {
-  profile_label: NonEmptyStr
-  dimm_count: Nat
-  total_bytes: ByteSize
-  servable_entitlements: Nat
-  cpu_entitlements: Nat
-  memory_entitlements: Nat
-  surplus_entitlements: Nat
+  profile_label: std.types.NonEmptyStr
+  dimm_count: std.nat.Nat
+  total_bytes: std.measure.ByteSize
+  servable_entitlements: std.nat.Nat
+  cpu_entitlements: std.nat.Nat
+  memory_entitlements: std.nat.Nat
+  surplus_entitlements: std.nat.Nat
   bound: ServiceBound
 }
 
@@ -143,24 +117,24 @@ type ProfileCapacityRefusalCause
   | ProfilePopulationRefused { cause: PopulationRefusalCause }
 
 type ProfileCapacityDerivation
-  = ProfileCapacitiesDerived { capacities: List<ProfileCapacity> }
+  = ProfileCapacitiesDerived { capacities: std.types.List<ProfileCapacity> }
   | ProfileCapacityRefused {
-      profile_label: NonEmptyStr
+      profile_label: std.types.NonEmptyStr
       cause: ProfileCapacityRefusalCause
     }
 
 fn capacity_for_option(
   profile: RunnerServiceProfile,
   option: PopulationOption,
-  per_entitlement: ByteSize,
-  cpu_entitlements: Nat,
+  per_entitlement: std.measure.ByteSize,
+  cpu_entitlements: std.nat.Nat,
 ) -> ProfileCapacity {
-  let memory_entitlements = byte_size_count(b: option.total_bytes) / byte_size_count(b: per_entitlement)
+  let memory_entitlements = std.measure.byte_size_count(b: option.total_bytes) / std.measure.byte_size_count(b: per_entitlement)
   ProfileCapacity {
     profile_label: profile.label,
     dimm_count: option.dimm_count,
     total_bytes: option.total_bytes,
-    servable_entitlements: nat_min(a: cpu_entitlements, b: memory_entitlements),
+    servable_entitlements: std.nat.nat_min(a: cpu_entitlements, b: memory_entitlements),
     cpu_entitlements: cpu_entitlements,
     memory_entitlements: memory_entitlements,
     surplus_entitlements: memory_entitlements - cpu_entitlements,
@@ -179,9 +153,9 @@ fn capacity_for_option(
 // different targets, which is the whole point of carrying the axis.
 fn derive_profile_capacity(
   geometry: MemoryChannelGeometry,
-  cpu: CpuModelCatalogRow,
+  cpu: extdeps.cpu.types.CpuModelCatalogRow,
   profile: RunnerServiceProfile,
-  modules: List<DramModuleCatalogRow>,
+  modules: std.types.List<extdeps.memory.types.DramModuleCatalogRow>,
 ) -> ProfileCapacityDerivation {
   match entitlement_bytes(profile: profile) {
     EntitlementBytesBasisUndeclared =>
@@ -191,7 +165,7 @@ fn derive_profile_capacity(
         EntitlementKindUnstated =>
           ProfileCapacityRefused { profile_label: profile.label, cause: ProfileEntitlementUnstated }
         EntitlementsAvailable { count } => {
-          let required = byte_size(count: byte_size_count(b: bytes) * count)
+          let required = std.measure.byte_size(count: std.measure.byte_size_count(b: bytes) * count)
           match derive_populations(geometry: geometry, required: required, modules: modules) {
             PopulationDerivationRefused { board_label, cause } =>
               ProfileCapacityRefused {
@@ -222,10 +196,10 @@ fn derive_profile_capacity(
 // side by side rather than one blended number.
 fn derive_all_profile_capacities(
   geometry: MemoryChannelGeometry,
-  cpu: CpuModelCatalogRow,
-  profiles: List<RunnerServiceProfile>,
-  modules: List<DramModuleCatalogRow>,
-) -> List<ProfileCapacityDerivation> {
+  cpu: extdeps.cpu.types.CpuModelCatalogRow,
+  profiles: std.types.List<RunnerServiceProfile>,
+  modules: std.types.List<extdeps.memory.types.DramModuleCatalogRow>,
+) -> std.types.List<ProfileCapacityDerivation> {
   map(profiles, p => derive_profile_capacity(geometry: geometry, cpu: cpu, profile: p, modules: modules))
 }
 
@@ -236,23 +210,23 @@ fn derive_all_profile_capacities(
 // specification states the admitted topologies as a closed set — a population
 // outside them is unsupported, not a smaller supported one.
 type MemoryChannelGeometry {
-  board_label: NonEmptyStr
-  channels: Nat
-  max_topology: DimmsPerChannelTopology
-  authority: ExternalAuthority
+  board_label: std.types.NonEmptyStr
+  channels: std.nat.Nat
+  max_topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.DimmsPerChannelTopology
+  authority: extdeps.external_authority.ExternalAuthority
 }
 
-fn geometry_slot_count(g: MemoryChannelGeometry) -> Nat {
-  g.channels * dimms_per_channel_count(topology: g.max_topology)
+fn geometry_slot_count(g: MemoryChannelGeometry) -> std.nat.Nat {
+  g.channels * extdeps.cpu.ampere_altra_platform_hw_design.platform.dimms_per_channel_count(topology: g.max_topology)
 }
 
 // The topologies at or below the board's maximum. Enumerated from the closed
 // coproduct rather than counted out as a range, so a topology the platform
 // authority does not admit has no way into the candidate set.
-fn admitted_topologies(g: MemoryChannelGeometry) -> List<DimmsPerChannelTopology> {
+fn admitted_topologies(g: MemoryChannelGeometry) -> std.types.List<extdeps.cpu.ampere_altra_platform_hw_design.platform.DimmsPerChannelTopology> {
   match g.max_topology {
-    OneDimmPerChannel => [OneDimmPerChannel]
-    TwoDimmsPerChannel => [OneDimmPerChannel, TwoDimmsPerChannel]
+    extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel => [extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel]
+    extdeps.cpu.ampere_altra_platform_hw_design.platform.TwoDimmsPerChannel => [extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel, extdeps.cpu.ampere_altra_platform_hw_design.platform.TwoDimmsPerChannel]
   }
 }
 
@@ -268,11 +242,11 @@ fn admitted_topologies(g: MemoryChannelGeometry) -> List<DimmsPerChannelTopology
 // both coarse, so a population that meets a target almost always exceeds it;
 // reporting only "met" would let a purchase round silently up to the next SKU.
 type PopulationOption {
-  module: DramModuleCatalogRow
-  topology: DimmsPerChannelTopology
-  dimm_count: Nat
-  total_bytes: ByteSize
-  margin_bytes: ByteSize
+  module: extdeps.memory.types.DramModuleCatalogRow
+  topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.DimmsPerChannelTopology
+  dimm_count: std.nat.Nat
+  total_bytes: std.measure.ByteSize
+  margin_bytes: std.measure.ByteSize
 }
 
 // WHY A DERIVATION CAN REFUSE, and why each cause carries its numbers: a
@@ -284,40 +258,40 @@ type PopulationOption {
 // support statement.
 type PopulationRefusalCause
   = TargetUnreachableInSlotGeometry {
-      required_bytes: ByteSize
-      best_reachable_bytes: ByteSize
-      shortfall_bytes: ByteSize
+      required_bytes: std.measure.ByteSize
+      best_reachable_bytes: std.measure.ByteSize
+      shortfall_bytes: std.measure.ByteSize
     }
   | NoModuleCandidatesOffered
   | MixedCapacityPopulationUnsupported
 
 type PopulationDerivation
-  = PopulationsDerived { options: List<PopulationOption> }
+  = PopulationsDerived { options: std.types.List<PopulationOption> }
   | PopulationDerivationRefused {
-      board_label: NonEmptyStr
+      board_label: std.types.NonEmptyStr
       cause: PopulationRefusalCause
     }
 
-fn population_total_bytes(module: DramModuleCatalogRow, dimm_count: Nat) -> ByteSize {
-  byte_size(count: byte_size_count(b: module.capacity_bytes) * dimm_count)
+fn population_total_bytes(module: extdeps.memory.types.DramModuleCatalogRow, dimm_count: std.nat.Nat) -> std.measure.ByteSize {
+  std.measure.byte_size(count: std.measure.byte_size_count(b: module.capacity_bytes) * dimm_count)
 }
 
 fn option_for(
   g: MemoryChannelGeometry,
-  module: DramModuleCatalogRow,
-  topology: DimmsPerChannelTopology,
-  required: ByteSize,
-) -> List<PopulationOption> {
-  let dimm_count = g.channels * dimms_per_channel_count(topology: topology)
+  module: extdeps.memory.types.DramModuleCatalogRow,
+  topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.DimmsPerChannelTopology,
+  required: std.measure.ByteSize,
+) -> std.types.List<PopulationOption> {
+  let dimm_count = g.channels * extdeps.cpu.ampere_altra_platform_hw_design.platform.dimms_per_channel_count(topology: topology)
   let total = population_total_bytes(module: module, dimm_count: dimm_count)
-  if byte_size_count(b: total) >= byte_size_count(b: required) {
+  if std.measure.byte_size_count(b: total) >= std.measure.byte_size_count(b: required) {
     [
       PopulationOption {
         module: module,
         topology: topology,
         dimm_count: dimm_count,
         total_bytes: total,
-        margin_bytes: byte_size(count: byte_size_count(b: total) - byte_size_count(b: required)),
+        margin_bytes: std.measure.byte_size(count: std.measure.byte_size_count(b: total) - std.measure.byte_size_count(b: required)),
       },
     ]
   } else {
@@ -327,9 +301,9 @@ fn option_for(
 
 fn options_for_module(
   g: MemoryChannelGeometry,
-  module: DramModuleCatalogRow,
-  required: ByteSize,
-) -> List<PopulationOption> {
+  module: extdeps.memory.types.DramModuleCatalogRow,
+  required: std.measure.ByteSize,
+) -> std.types.List<PopulationOption> {
   fold(
     admitted_topologies(g: g),
     init: [],
@@ -338,13 +312,13 @@ fn options_for_module(
   )
 }
 
-fn best_reachable_bytes(g: MemoryChannelGeometry, modules: List<DramModuleCatalogRow>) -> ByteSize {
+fn best_reachable_bytes(g: MemoryChannelGeometry, modules: std.types.List<extdeps.memory.types.DramModuleCatalogRow>) -> std.measure.ByteSize {
   let slots = geometry_slot_count(g: g)
-  byte_size(
+  std.measure.byte_size(
     count: fold(
       modules,
       init: 0,
-      f: (acc, m) => nat_max(a: acc, b: byte_size_count(b: m.capacity_bytes) * slots),
+      f: (acc, m) => std.nat.nat_max(a: acc, b: std.measure.byte_size_count(b: m.capacity_bytes) * slots),
     ),
   )
 }
@@ -359,8 +333,8 @@ fn best_reachable_bytes(g: MemoryChannelGeometry, modules: List<DramModuleCatalo
 // stays a pure derivation over whatever is offered.
 fn derive_populations(
   geometry: MemoryChannelGeometry,
-  required: ByteSize,
-  modules: List<DramModuleCatalogRow>,
+  required: std.measure.ByteSize,
+  modules: std.types.List<extdeps.memory.types.DramModuleCatalogRow>,
 ) -> PopulationDerivation {
   if count(modules) == 0 {
     PopulationDerivationRefused {
@@ -380,7 +354,7 @@ fn derive_populations(
         cause: TargetUnreachableInSlotGeometry {
           required_bytes: required,
           best_reachable_bytes: best,
-          shortfall_bytes: byte_size(count: byte_size_count(b: required) - byte_size_count(b: best)),
+          shortfall_bytes: std.measure.byte_size(count: std.measure.byte_size_count(b: required) - std.measure.byte_size_count(b: best)),
         },
       }
     } else {
@@ -409,7 +383,7 @@ fn admit_mixed_capacity_population(geometry: MemoryChannelGeometry) -> Populatio
 // basis. A refused benchmark carries its cause straight through to the
 // population refusal, so the buyer is told the figure was never grounded
 // rather than being handed a population computed from a rounded ratio.
-fn derivation_option_count(d: PopulationDerivation) -> Nat {
+fn derivation_option_count(d: PopulationDerivation) -> std.nat.Nat {
   match d {
     PopulationsDerived { options } => count(options)
     PopulationDerivationRefused { board_label, cause } => 0
@@ -434,8 +408,8 @@ fn derivation_option_count(d: PopulationDerivation) -> Nat {
 data asrock_altrad8ud_1l2t_geometry: MemoryChannelGeometry = MemoryChannelGeometry {
   board_label: "ASRock Rack ALTRAD8UD-1L2T",
   channels: 8,
-  max_topology: OneDimmPerChannel,
-  authority: asrock_altrad8ud_download_authority,
+  max_topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel,
+  authority: extdeps.boards.asrock_rack.asrock_altrad8ud_download_authority,
 }
 
 
@@ -444,32 +418,32 @@ data asrock_altrad8ud_1l2t_geometry: MemoryChannelGeometry = MemoryChannelGeomet
 // none of them invents a figure.
 // ---------------------------------------------------------------------------
 
-data ubicloud_arm_shapes_ref: DeclarationRef = decl_ref(
+data ubicloud_arm_shapes_ref: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   module_path: "extdeps.cloud.ubicloud",
   decl_name: "ubicloud_runner_catalog_shapes",
 )
 
-data blacksmith_shapes_ref: DeclarationRef = decl_ref(
+data blacksmith_shapes_ref: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   module_path: "extdeps.ci_runner.blacksmith",
   decl_name: "blacksmith_runner_catalog",
 )
 
-data github_shapes_ref: DeclarationRef = decl_ref(
+data github_shapes_ref: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   module_path: "extdeps.ci_runner.github_actions",
   decl_name: "github_actions_runner_catalog",
 )
 
-data depot_shapes_ref: DeclarationRef = decl_ref(
+data depot_shapes_ref: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   module_path: "extdeps.ci_runner.depot",
   decl_name: "depot_runner_catalog",
 )
 
-data warpbuild_shapes_ref: DeclarationRef = decl_ref(
+data warpbuild_shapes_ref: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   module_path: "extdeps.ci_runner.warpbuild",
   decl_name: "warpbuild_runner_catalog",
 )
 
-data circleci_shapes_ref: DeclarationRef = decl_ref(
+data circleci_shapes_ref: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   module_path: "extdeps.ci_runner.circleci",
   decl_name: "circleci_runner_catalog",
 )
@@ -485,9 +459,9 @@ data circleci_shapes_ref: DeclarationRef = decl_ref(
 // target inspectable rather than assumed.
 data arm_value_profile: RunnerServiceProfile = RunnerServiceProfile {
   label: "arm-value",
-  architecture: Aarch64,
-  entitlement: DedicatedPhysicalCore,
-  memory_per_entitlement: QuotedDecimalGigabytes { value: gigabyte(count: 3) },
+  architecture: extdeps.toolchain.types.Aarch64,
+  entitlement: extdeps.ci_runner.types.DedicatedPhysicalCore,
+  memory_per_entitlement: extdeps.ci_runner.types.QuotedDecimalGigabytes { value: std.measure.gigabyte(count: 3) },
   basis: CitedBasis { primary: ubicloud_arm_shapes_ref, additional: [blacksmith_shapes_ref] },
 }
 
@@ -498,9 +472,9 @@ data arm_value_profile: RunnerServiceProfile = RunnerServiceProfile {
 // be resolved by averaging.
 data arm_memory_profile: RunnerServiceProfile = RunnerServiceProfile {
   label: "arm-memory",
-  architecture: Aarch64,
-  entitlement: DedicatedPhysicalCore,
-  memory_per_entitlement: QuotedDecimalGigabytes { value: gigabyte(count: 4) },
+  architecture: extdeps.toolchain.types.Aarch64,
+  entitlement: extdeps.ci_runner.types.DedicatedPhysicalCore,
+  memory_per_entitlement: extdeps.ci_runner.types.QuotedDecimalGigabytes { value: std.measure.gigabyte(count: 4) },
   basis: CitedBasis {
     primary: github_shapes_ref,
     additional: [depot_shapes_ref, warpbuild_shapes_ref],
@@ -515,16 +489,16 @@ data arm_memory_profile: RunnerServiceProfile = RunnerServiceProfile {
 // looked better sourced while being less honest about the spread.
 data x64_standard_profile: RunnerServiceProfile = RunnerServiceProfile {
   label: "x64-standard",
-  architecture: X86_64,
-  entitlement: SmtSharedVcpu { threads_per_core: 2 },
-  memory_per_entitlement: QuotedDecimalGigabytes { value: gigabyte(count: 4) },
+  architecture: extdeps.toolchain.types.X86_64,
+  entitlement: extdeps.ci_runner.types.SmtSharedVcpu { threads_per_core: 2 },
+  memory_per_entitlement: extdeps.ci_runner.types.QuotedDecimalGigabytes { value: std.measure.gigabyte(count: 4) },
   basis: CitedBasis {
     primary: github_shapes_ref,
     additional: [depot_shapes_ref, warpbuild_shapes_ref, circleci_shapes_ref],
   },
 }
 
-fn declared_service_profiles() -> List<RunnerServiceProfile> {
+fn declared_service_profiles() -> std.types.List<RunnerServiceProfile> {
   [arm_value_profile, arm_memory_profile, x64_standard_profile]
 }
 
@@ -542,6 +516,6 @@ fn declared_service_profiles() -> List<RunnerServiceProfile> {
 // DATA when their rows land — no change to this module is owed, only rows.
 // Until then the answered candidate set is exactly one board and one
 // processor, and that is a smaller claim than the question asked.
-fn answered_candidate_board_count() -> Nat {
+fn answered_candidate_board_count() -> std.nat.Nat {
   1
 }

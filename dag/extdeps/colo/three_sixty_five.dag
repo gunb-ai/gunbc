@@ -1,37 +1,32 @@
 module extdeps.colo.three_sixty_five
 
-import std.types { NonEmptyStr, List }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, AddressUnread, RetailRateStanding, RatesQuoteOnly }
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "365datacenters.com/facilities-network/"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.colo.three_sixty_five",
       decl_name: "three_sixty_five_facilities",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
-data three_sixty_five_note: NonEmptyStr = "365 Data Centers sells retail colocation from rack units through quarter and half cabinets per its company overview PDF (read 2026-08-18). Its footprint in this census carries the Atlantic Metro and Sungard Availability Services lineages: the small Weehawken site appears in directories as Atlantic Metro EWR1, and the Philadelphia floor at 1500 Spring Garden joined via the 2022 Sungard AS colocation sale. An InterServer expansion into a 365 New Jersey site is press-released (datacenterdynamics, read 2026-08-18), which is a live example of the operator hosting retail hosts."
+data three_sixty_five_note: std.types.NonEmptyStr = "365 Data Centers sells retail colocation from rack units through quarter and half cabinets per its company overview PDF (read 2026-08-18). Its footprint in this census carries the Atlantic Metro and Sungard Availability Services lineages: the small Weehawken site appears in directories as Atlantic Metro EWR1, and the Philadelphia floor at 1500 Spring Garden joined via the 2022 Sungard AS colocation sale. An InterServer expansion into a 365 New Jersey site is press-released (datacenterdynamics, read 2026-08-18), which is a live example of the operator hosting retail hosts."
 
-data three_sixty_five_carlstadt: ColoFacilityRow = ColoFacilityRow {
+data three_sixty_five_carlstadt: extdeps.colo.types.ColoFacilityRow = extdeps.colo.types.ColoFacilityRow {
   operator_label: "365 Data Centers",
   facility_label: "365 NJ3 Carlstadt",
-  address: AddressListed {
+  address: extdeps.colo.types.AddressListed {
     street: "410 Commerce Boulevard, Carlstadt, NJ 07072",
     citation: "datacenters.com 365 NJ3 profile and 365datacenters.com Carlstadt page, read 2026-08-18",
   },
@@ -40,10 +35,10 @@ data three_sixty_five_carlstadt: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Meadowlands-corridor retail site roughly ten miles west of Manhattan per the operator's page, read 2026-08-18.",
 }
 
-data three_sixty_five_bridgewater: ColoFacilityRow = ColoFacilityRow {
+data three_sixty_five_bridgewater: extdeps.colo.types.ColoFacilityRow = extdeps.colo.types.ColoFacilityRow {
   operator_label: "365 Data Centers",
   facility_label: "365 NJ1 Bridgewater",
-  address: AddressListed {
+  address: extdeps.colo.types.AddressListed {
     street: "999 Frontier Road, Bridgewater, NJ 08807",
     citation: "datacentermap 365 Bridgewater profile, read 2026-08-18",
   },
@@ -52,10 +47,10 @@ data three_sixty_five_bridgewater: ColoFacilityRow = ColoFacilityRow {
   facility_note: "About 20 MW marketed per datacentermap, read 2026-08-18; roughly forty miles west of the Hudson waterfront, so it trades operator travel for suburban cost.",
 }
 
-data three_sixty_five_weehawken: ColoFacilityRow = ColoFacilityRow {
+data three_sixty_five_weehawken: extdeps.colo.types.ColoFacilityRow = extdeps.colo.types.ColoFacilityRow {
   operator_label: "365 Data Centers",
   facility_label: "365 Weehawken (legacy Atlantic Metro EWR1)",
-  address: AddressUnread {
+  address: extdeps.colo.types.AddressUnread {
     obligation: "Directories place a small 365 site in Weehawken at about 0.281 MW (datacentermap, read 2026-08-18) but no street address was captured; read the operator's facility sheet before treating this as a candidate.",
   },
   municipality: "Weehawken",
@@ -63,10 +58,10 @@ data three_sixty_five_weehawken: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Smallest site in this census by marketed power; retained because it is inside the near-Jersey-City radius and the operator sells retail granularity.",
 }
 
-data three_sixty_five_philadelphia: ColoFacilityRow = ColoFacilityRow {
+data three_sixty_five_philadelphia: extdeps.colo.types.ColoFacilityRow = extdeps.colo.types.ColoFacilityRow {
   operator_label: "365 Data Centers",
   facility_label: "365 PHL-1500 Philadelphia",
-  address: AddressListed {
+  address: extdeps.colo.types.AddressListed {
     street: "1500 Spring Garden Street, Philadelphia, PA 19130",
     citation: "datacenterhawk 365 PHL-1500 profile, read 2026-08-18",
   },
@@ -75,14 +70,14 @@ data three_sixty_five_philadelphia: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Roughly 135,000 square feet with about 70,000 square feet of raised floor and 10 MW marketed per datacenterhawk, read 2026-08-18; multi-operator building shared with an H5 floor.",
 }
 
-data three_sixty_five_facilities: List<ColoFacilityRow> = [
+data three_sixty_five_facilities: std.types.List<extdeps.colo.types.ColoFacilityRow> = [
   three_sixty_five_carlstadt,
   three_sixty_five_bridgewater,
   three_sixty_five_weehawken,
   three_sixty_five_philadelphia,
 ]
 
-data three_sixty_five_retail_rates: RetailRateStanding = RatesQuoteOnly {
+data three_sixty_five_retail_rates: extdeps.colo.types.RetailRateStanding = extdeps.colo.types.RatesQuoteOnly {
   contact_route: "365datacenters.com sales",
   obligation: "Company overview lists rack-unit, quarter and half cabinet products but publishes no prices (read 2026-08-18); quotes required per site.",
 }

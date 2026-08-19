@@ -1,25 +1,10 @@
 module extdeps.ci_runner.types
 
-import std.types { Bool, List, NonEmptyStr }
-import std.nat { Nat }
-import std.decl_ref { DeclarationRef }
-import extdeps.toolchain.types { Architecture }
-import std.measure {
-  ByteSize,
-  Gibibyte,
-  Gigabyte,
-  HardwareThreadCount,
-  byte_size,
-  gibibyte_count,
-  gigabyte_count,
-}
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Continuous_integration"
   }
 }
@@ -29,7 +14,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // inhabits; it does NOT enumerate providers, dispatch among them, or hold any
 // provider's rows. Adding a provider is a new module beside its peers, never
 // an edit here — which is also why provider identity below is a
-// DeclarationRef into the provider's own module rather than a variant of a
+// std.decl_ref.DeclarationRef into the provider's own module rather than a variant of a
 // central enum that every new provider would have to widen.
 
 // WHAT ONE UNIT OF ADVERTISED CPU ACTUALLY IS. A published "vCPU" is not one
@@ -41,7 +26,7 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // factor of two.
 type CpuEntitlement
   = DedicatedPhysicalCore
-  | SmtSharedVcpu { threads_per_core: Nat }
+  | SmtSharedVcpu { threads_per_core: std.nat.Nat }
   | EntitlementUnstated
 
 // A PUBLISHED MEMORY FIGURE, with its basis carried STRUCTURALLY rather than
@@ -78,21 +63,21 @@ type CpuEntitlement
 // its own sake. Recorded here so the next author meets the question instead of
 // rediscovering it.
 type QuotedByteMagnitude
-  = QuotedDecimalGigabytes { value: Gigabyte }
-  | QuotedBinaryGibibytes { value: Gibibyte }
-  | QuotedWithoutBasis { numeral: Nat, unit_label: NonEmptyStr }
+  = QuotedDecimalGigabytes { value: std.measure.Gigabyte }
+  | QuotedBinaryGibibytes { value: std.measure.Gibibyte }
+  | QuotedWithoutBasis { numeral: std.nat.Nat, unit_label: std.types.NonEmptyStr }
 
 // The conversion, and its refusal. Only a stated basis yields bytes.
 type QuotedByteResolution
-  = ResolvedBytes { bytes: ByteSize }
-  | QuotedBasisUnresolved { numeral: Nat, unit_label: NonEmptyStr }
+  = ResolvedBytes { bytes: std.measure.ByteSize }
+  | QuotedBasisUnresolved { numeral: std.nat.Nat, unit_label: std.types.NonEmptyStr }
 
 fn quoted_magnitude_bytes(quoted: QuotedByteMagnitude) -> QuotedByteResolution {
   match quoted {
     QuotedDecimalGigabytes { value } =>
-      ResolvedBytes { bytes: byte_size(count: gigabyte_count(g: value) * 1000000000) }
+      ResolvedBytes { bytes: std.measure.byte_size(count: std.measure.gigabyte_count(g: value) * 1000000000) }
     QuotedBinaryGibibytes { value } =>
-      ResolvedBytes { bytes: byte_size(count: gibibyte_count(g: value) * 1073741824) }
+      ResolvedBytes { bytes: std.measure.byte_size(count: std.measure.gibibyte_count(g: value) * 1073741824) }
     QuotedWithoutBasis { numeral, unit_label } =>
       QuotedBasisUnresolved { numeral: numeral, unit_label: unit_label }
   }
@@ -102,15 +87,15 @@ fn quoted_magnitude_bytes(quoted: QuotedByteMagnitude) -> QuotedByteResolution {
 // ratios within one vendor's own unit — memory over vCPUs is basis-free
 // because both figures carry the same unstated basis, which is exactly why a
 // ratio can be read where a byte comparison cannot.
-fn quoted_numeral(quoted: QuotedByteMagnitude) -> Nat {
+fn quoted_numeral(quoted: QuotedByteMagnitude) -> std.nat.Nat {
   match quoted {
-    QuotedDecimalGigabytes { value } => gigabyte_count(g: value)
-    QuotedBinaryGibibytes { value } => gibibyte_count(g: value)
+    QuotedDecimalGigabytes { value } => std.measure.gigabyte_count(g: value)
+    QuotedBinaryGibibytes { value } => std.measure.gibibyte_count(g: value)
     QuotedWithoutBasis { numeral, unit_label } => numeral
   }
 }
 
-fn quoted_unit_label(quoted: QuotedByteMagnitude) -> NonEmptyStr {
+fn quoted_unit_label(quoted: QuotedByteMagnitude) -> std.types.NonEmptyStr {
   match quoted {
     QuotedDecimalGigabytes { value } => "GB"
     QuotedBinaryGibibytes { value } => "GiB"
@@ -118,21 +103,21 @@ fn quoted_unit_label(quoted: QuotedByteMagnitude) -> NonEmptyStr {
   }
 }
 
-// ONE PUBLISHED RUNNER SIZE. vcpus is a HardwareThreadCount rather than a bare
-// Nat, matching what the CPU side of this repo already carries
+// ONE PUBLISHED RUNNER SIZE. vcpus is a std.measure.HardwareThreadCount rather than a bare
+// std.nat.Nat, matching what the CPU side of this repo already carries
 // (UbicloudRunnerCatalogRow.vcpus, CpuModelCatalogRow.threads) — a shared shape
 // is the wrong place to downgrade a unit those rows already model.
 //
 // The entitlement axis above says what one of these is BACKED BY; it does not
 // change what is being counted, which is advertised hardware threads either
-// way. Conversion to a bare Nat happens only at the arithmetic boundary in the
+// way. Conversion to a bare std.nat.Nat happens only at the arithmetic boundary in the
 // census fold.
 type RunnerShapeRow {
-  provider: DeclarationRef
-  label: NonEmptyStr
-  architecture: Architecture
+  provider: std.decl_ref.DeclarationRef
+  label: std.types.NonEmptyStr
+  architecture: extdeps.toolchain.types.Architecture
   entitlement: CpuEntitlement
-  vcpus: HardwareThreadCount
+  vcpus: std.measure.HardwareThreadCount
   memory: QuotedByteMagnitude
 }
 
@@ -142,16 +127,16 @@ type RunnerShapeRow {
 // recalled rather than fetched is indistinguishable from a cited one
 // downstream, and a runner catalog is exactly the kind of fact that moves.
 type RunnerCatalogAvailability
-  = RunnerShapesCited { rows: List<RunnerShapeRow> }
-  | RunnerShapesUnavailable { cause: NonEmptyStr }
+  = RunnerShapesCited { rows: std.types.List<RunnerShapeRow> }
+  | RunnerShapesUnavailable { cause: std.types.NonEmptyStr }
 
-fn runner_shape_rows(availability: RunnerCatalogAvailability) -> List<RunnerShapeRow> {
+fn runner_shape_rows(availability: RunnerCatalogAvailability) -> std.types.List<RunnerShapeRow> {
   match availability {
     RunnerShapesCited { rows } => rows
     RunnerShapesUnavailable { cause } => []
   }
 }
 
-fn shape_is_architecture(row: RunnerShapeRow, architecture: Architecture) -> Bool {
+fn shape_is_architecture(row: RunnerShapeRow, architecture: extdeps.toolchain.types.Architecture) -> std.types.Bool {
   row.architecture == architecture
 }

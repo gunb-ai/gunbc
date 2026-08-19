@@ -1,41 +1,30 @@
 module extdeps.colo.halsey_165
 
-import std.types { NonEmptyStr, List }
-import std.nat { Nat }
-import std.measure { MoneyPerMonth, MoneyOnce, MoneyPerHour, money_amount_micro }
-import std.currency { Usd }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types {
-  ColoFacilityRow, AddressListed,
-  RetailRateStanding, RatesQuoteOnly, CrossConnectFee, RemoteHandsWindowRate,
-}
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.165halsey.com/colocation/"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.colo.halsey_165",
       decl_name: "halsey_165_newark",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
-data halsey_165_newark: ColoFacilityRow = ColoFacilityRow {
+data halsey_165_newark: extdeps.colo.types.ColoFacilityRow = extdeps.colo.types.ColoFacilityRow {
   operator_label: "165 Halsey Street (building colocation)",
   facility_label: "165 Halsey Street carrier hotel, Newark",
-  address: AddressListed {
+  address: extdeps.colo.types.AddressListed {
     street: "165 Halsey Street, Newark, NJ 07102",
     citation: "165halsey.com, read 2026-08-18",
   },
@@ -44,29 +33,29 @@ data halsey_165_newark: ColoFacilityRow = ColoFacilityRow {
   facility_note: "The building's own carrier-neutral colocation business: a roughly 1.2 million square foot carrier hotel marketing over 80 MW, about 360,000 square feet of colocation, and direct access to sixty-plus networks per 165halsey.com read 2026-08-18. Other operators (Hivelocity under its own module; historically zColo, later DataBank) sell from suites in the same building - the building operator and the in-building resellers are separate upstream authorities.",
 }
 
-data halsey_165_cross_connect: CrossConnectFee = CrossConnectFee {
-  monthly: MoneyPerMonth { amount: money_amount_micro(count: 0), currency: Usd },
-  install: MoneyOnce { amount: money_amount_micro(count: 500000000), currency: Usd },
+data halsey_165_cross_connect: extdeps.colo.types.CrossConnectFee = extdeps.colo.types.CrossConnectFee {
+  monthly: std.measure.MoneyPerMonth { amount: std.measure.money_amount_micro(count: 0), currency: std.currency.Usd },
+  install: std.measure.MoneyOnce { amount: std.measure.money_amount_micro(count: 500000000), currency: std.currency.Usd },
   fee_note: "No monthly recurring charge on cross-connects; 500 dollars non-recurring per install after capacity is in place. The zero-MRC cross-connect policy is the building's stated differentiator against metro incumbents.",
   citation: "165halsey.com connectivity page, read 2026-08-18",
 }
 
-data halsey_165_remote_hands: List<RemoteHandsWindowRate> = [
-  RemoteHandsWindowRate {
+data halsey_165_remote_hands: std.types.List<extdeps.colo.types.RemoteHandsWindowRate> = [
+  extdeps.colo.types.RemoteHandsWindowRate {
     window_label: "Monday-Friday 06:00-18:00",
-    hourly: MoneyPerHour { amount: money_amount_micro(count: 175000000), currency: Usd },
+    hourly: std.measure.MoneyPerHour { amount: std.measure.money_amount_micro(count: 175000000), currency: std.currency.Usd },
     minimum_note: "billed at a one hour minimum",
     citation: "165halsey.com remote-hands page, read 2026-08-18",
   },
-  RemoteHandsWindowRate {
+  extdeps.colo.types.RemoteHandsWindowRate {
     window_label: "Monday-Friday 18:00-23:00",
-    hourly: MoneyPerHour { amount: money_amount_micro(count: 250000000), currency: Usd },
+    hourly: std.measure.MoneyPerHour { amount: std.measure.money_amount_micro(count: 250000000), currency: std.currency.Usd },
     minimum_note: "billed at a one hour minimum",
     citation: "165halsey.com remote-hands page, read 2026-08-18",
   },
 ]
 
-data halsey_165_retail_rates: RetailRateStanding = RatesQuoteOnly {
+data halsey_165_retail_rates: extdeps.colo.types.RetailRateStanding = extdeps.colo.types.RatesQuoteOnly {
   contact_route: "leasing contact via 165halsey.com",
   obligation: "Cross-connect and remote-hands rates are published (rows above) but cabinet and power pricing is not; a written quote for the reference load is required.",
 }

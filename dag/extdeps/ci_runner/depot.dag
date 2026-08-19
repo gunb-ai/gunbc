@@ -1,31 +1,17 @@
 module extdeps.ci_runner.depot
 
-import std.types { List, NonEmptyStr }
-import std.nat { Nat }
-import std.measure { hardware_thread_count }
-import std.decl_ref { DeclarationRef, decl_ref }
-import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
-import extdeps.ci_runner.types {
-  EntitlementUnstated,
-  RunnerCatalogAvailability,
-  QuotedWithoutBasis,
-  RunnerShapeRow,
-  RunnerShapesCited,
-}
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "depot.dev/docs/github-actions/runner-types"
   }
 }
 
-data depot_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+data depot_catalog_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
 
-data depot_provider_identity: DeclarationRef = decl_ref(
+data depot_provider_identity: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   module_path: "extdeps.ci_runner.depot",
   decl_name: "depot_catalog_authority",
 )
@@ -37,34 +23,34 @@ data depot_provider_identity: DeclarationRef = decl_ref(
 //
 // The page states no basis for "GB" and states no per-vCPU core entitlement.
 fn depot_shape(
-  label: NonEmptyStr,
-  architecture: Architecture,
-  vcpus: Nat,
-  quoted_numeral: Nat,
-) -> RunnerShapeRow {
-  RunnerShapeRow {
+  label: std.types.NonEmptyStr,
+  architecture: extdeps.toolchain.types.Architecture,
+  vcpus: std.nat.Nat,
+  quoted_numeral: std.nat.Nat,
+) -> extdeps.ci_runner.types.RunnerShapeRow {
+  extdeps.ci_runner.types.RunnerShapeRow {
     provider: depot_provider_identity,
     label: label,
     architecture: architecture,
-    entitlement: EntitlementUnstated,
-    vcpus: hardware_thread_count(vcpus),
-    memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
+    entitlement: extdeps.ci_runner.types.EntitlementUnstated,
+    vcpus: std.measure.hardware_thread_count(vcpus),
+    memory: extdeps.ci_runner.types.QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
   }
 }
 
-data depot_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+data depot_runner_catalog: extdeps.ci_runner.types.RunnerCatalogAvailability = extdeps.ci_runner.types.RunnerShapesCited {
   rows: [
-    depot_shape(label: "depot-ubuntu-24.04-arm", architecture: Aarch64, vcpus: 2, quoted_numeral: 8),
-    depot_shape(label: "depot-ubuntu-24.04-arm-4", architecture: Aarch64, vcpus: 4, quoted_numeral: 16),
-    depot_shape(label: "depot-ubuntu-24.04-arm-8", architecture: Aarch64, vcpus: 8, quoted_numeral: 32),
-    depot_shape(label: "depot-ubuntu-24.04-arm-16", architecture: Aarch64, vcpus: 16, quoted_numeral: 64),
-    depot_shape(label: "depot-ubuntu-24.04-arm-32", architecture: Aarch64, vcpus: 32, quoted_numeral: 128),
-    depot_shape(label: "depot-ubuntu-24.04-arm-64", architecture: Aarch64, vcpus: 64, quoted_numeral: 256),
-    depot_shape(label: "depot-ubuntu-24.04", architecture: X86_64, vcpus: 2, quoted_numeral: 8),
-    depot_shape(label: "depot-ubuntu-24.04-4", architecture: X86_64, vcpus: 4, quoted_numeral: 16),
-    depot_shape(label: "depot-ubuntu-24.04-8", architecture: X86_64, vcpus: 8, quoted_numeral: 32),
-    depot_shape(label: "depot-ubuntu-24.04-16", architecture: X86_64, vcpus: 16, quoted_numeral: 64),
-    depot_shape(label: "depot-ubuntu-24.04-32", architecture: X86_64, vcpus: 32, quoted_numeral: 128),
-    depot_shape(label: "depot-ubuntu-24.04-64", architecture: X86_64, vcpus: 64, quoted_numeral: 256),
+    depot_shape(label: "depot-ubuntu-24.04-arm", architecture: extdeps.toolchain.types.Aarch64, vcpus: 2, quoted_numeral: 8),
+    depot_shape(label: "depot-ubuntu-24.04-arm-4", architecture: extdeps.toolchain.types.Aarch64, vcpus: 4, quoted_numeral: 16),
+    depot_shape(label: "depot-ubuntu-24.04-arm-8", architecture: extdeps.toolchain.types.Aarch64, vcpus: 8, quoted_numeral: 32),
+    depot_shape(label: "depot-ubuntu-24.04-arm-16", architecture: extdeps.toolchain.types.Aarch64, vcpus: 16, quoted_numeral: 64),
+    depot_shape(label: "depot-ubuntu-24.04-arm-32", architecture: extdeps.toolchain.types.Aarch64, vcpus: 32, quoted_numeral: 128),
+    depot_shape(label: "depot-ubuntu-24.04-arm-64", architecture: extdeps.toolchain.types.Aarch64, vcpus: 64, quoted_numeral: 256),
+    depot_shape(label: "depot-ubuntu-24.04", architecture: extdeps.toolchain.types.X86_64, vcpus: 2, quoted_numeral: 8),
+    depot_shape(label: "depot-ubuntu-24.04-4", architecture: extdeps.toolchain.types.X86_64, vcpus: 4, quoted_numeral: 16),
+    depot_shape(label: "depot-ubuntu-24.04-8", architecture: extdeps.toolchain.types.X86_64, vcpus: 8, quoted_numeral: 32),
+    depot_shape(label: "depot-ubuntu-24.04-16", architecture: extdeps.toolchain.types.X86_64, vcpus: 16, quoted_numeral: 64),
+    depot_shape(label: "depot-ubuntu-24.04-32", architecture: extdeps.toolchain.types.X86_64, vcpus: 32, quoted_numeral: 128),
+    depot_shape(label: "depot-ubuntu-24.04-64", architecture: extdeps.toolchain.types.X86_64, vcpus: 64, quoted_numeral: 256),
   ],
 }

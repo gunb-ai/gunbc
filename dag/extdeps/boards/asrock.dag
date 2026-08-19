@@ -1,28 +1,20 @@
 module extdeps.boards.asrock
 
-import std.types { String, NonEmptyStr, Int }
-import std.nat { Nat }
-import std.measure { MegatransfersPerSecond, megatransfers_per_second }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.cpu.types { CpuSocket }
-import extdeps.cpu.ampere { ampere_lga4926_socket }
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.asrockrack.com/general/productdetail.asp?Model=ALTRAD8UD-1L2T"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.boards.asrock",
       decl_name: "asrock_altrad8ud_1l2t_mechanical",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
@@ -33,29 +25,29 @@ data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
 // single-socket Ampere Altra board. Module-local record on the mt_collins platform pattern;
 // when a shared baseboard-profile authority lands on main, this row re-grounds onto it.
 type AsrockAltrad8ud1l2tMechanical {
-  board_label: NonEmptyStr
-  form_factor_label: NonEmptyStr
-  processor_socket_count: Nat
-  socket: CpuSocket
-  processor_support_label: NonEmptyStr
-  dimm_slots_total: Nat
-  dimms_per_channel: Nat
-  ddr4_max_data_rate: MegatransfersPerSecond
-  network_label: NonEmptyStr
-  citation: NonEmptyStr
+  board_label: std.types.NonEmptyStr
+  form_factor_label: std.types.NonEmptyStr
+  processor_socket_count: std.nat.Nat
+  socket: extdeps.cpu.types.CpuSocket
+  processor_support_label: std.types.NonEmptyStr
+  dimm_slots_total: std.nat.Nat
+  dimms_per_channel: std.nat.Nat
+  ddr4_max_data_rate: std.measure.MegatransfersPerSecond
+  network_label: std.types.NonEmptyStr
+  citation: std.types.NonEmptyStr
 }
 
 data asrock_altrad8ud_1l2t_mechanical: AsrockAltrad8ud1l2tMechanical = AsrockAltrad8ud1l2tMechanical {
   board_label: "ASRock Rack ALTRAD8UD-1L2T",
   form_factor_label: "deep micro-ATX (9.6 x 10.5 in)",
   processor_socket_count: 1,
-  socket: ampere_lga4926_socket,
+  socket: extdeps.cpu.ampere.ampere_lga4926_socket,
   processor_support_label: "LGA 4926, Ampere Altra / Altra Max",
   dimm_slots_total: 8,
   dimms_per_channel: 1,
-  ddr4_max_data_rate: megatransfers_per_second(count: 3200),
+  ddr4_max_data_rate: std.measure.megatransfers_per_second(count: 3200),
   network_label: "2x 10GbE (Intel X550) + 1x 1GbE (Intel i210) per the vendor page",
   citation: "asrockrack.com product page for ALTRAD8UD-1L2T, read 2026-08-18",
 }
 
-data asrock_altrad8ud_channel_note: NonEmptyStr = "Eight DIMM slots at one DIMM per channel on the vendor page - the board exposes eight of the SoC's memory channels, so the one-DIMM-per-channel population IS the full population; there is no second-DIMM headroom on this platform, unlike the 16-slot dual-socket boards and the 32-slot 2DPC systems."
+data asrock_altrad8ud_channel_note: std.types.NonEmptyStr = "Eight DIMM slots at one DIMM per channel on the vendor page - the board exposes eight of the SoC's memory channels, so the one-DIMM-per-channel population IS the full population; there is no second-DIMM headroom on this platform, unlike the 16-slot dual-socket boards and the 32-slot 2DPC systems."

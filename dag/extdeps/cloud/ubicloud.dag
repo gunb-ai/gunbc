@@ -165,10 +165,10 @@ fn ubicloud_runner_catalog() -> List<UbicloudRunnerCatalogRow> {
 // surface actually states. Every other architecture REFUSES rather than
 // receiving a fabricated default.
 type UbicloudThreadsPerPhysicalCore
-  = ThreadsPerPhysicalCore { count: Nat }
-  | ThreadsPerCoreUnpublished { architecture: Architecture }
+  = ThreadsPerPhysicalCore { count: std.nat.Nat }
+  | ThreadsPerCoreUnpublished { architecture: extdeps.toolchain.types.Architecture }
 
-fn ubicloud_threads_per_physical_core(architecture: Architecture) -> UbicloudThreadsPerPhysicalCore {
+fn ubicloud_threads_per_physical_core(architecture: extdeps.toolchain.types.Architecture) -> UbicloudThreadsPerPhysicalCore {
   match architecture {
     X86_64 => ThreadsPerPhysicalCore { count: 2 }
     Aarch64 => ThreadsPerPhysicalCore { count: 1 }
@@ -196,7 +196,7 @@ fn ubicloud_threads_per_physical_core(architecture: Architecture) -> UbicloudThr
 // threads on one core), and the byte basis (this module records the vendor's
 // decimal-suffixed figure read as decimal GB, so its rows take the DECIMAL
 // arm where every other surveyed provider takes the basis-less one).
-fn ubicloud_shape_entitlement(architecture: Architecture) -> CpuEntitlement {
+fn ubicloud_shape_entitlement(architecture: extdeps.toolchain.types.Architecture) -> CpuEntitlement {
   match ubicloud_threads_per_physical_core(architecture: architecture) {
     ThreadsPerPhysicalCore { count } =>
       if count == 1 { DedicatedPhysicalCore } else { SmtSharedVcpu { threads_per_core: count } }

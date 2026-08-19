@@ -1,31 +1,17 @@
 module extdeps.ci_runner.blacksmith
 
-import std.types { List, NonEmptyStr }
-import std.nat { Nat }
-import std.measure { hardware_thread_count }
-import std.decl_ref { DeclarationRef, decl_ref }
-import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
-import extdeps.ci_runner.types {
-  EntitlementUnstated,
-  RunnerCatalogAvailability,
-  QuotedWithoutBasis,
-  RunnerShapeRow,
-  RunnerShapesCited,
-}
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "docs.blacksmith.sh/blacksmith-runners/overview"
   }
 }
 
-data blacksmith_instance_types_authority: ExternalAuthority = extdeps_external_authority_anchor
+data blacksmith_instance_types_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
 
-data blacksmith_provider_identity: DeclarationRef = decl_ref(
+data blacksmith_provider_identity: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   module_path: "extdeps.ci_runner.blacksmith",
   decl_name: "blacksmith_instance_types_authority",
 )
@@ -34,39 +20,39 @@ data blacksmith_provider_identity: DeclarationRef = decl_ref(
 // families are modelled: the subject is arm64-versus-x64 server provisioning,
 // and the Windows and macOS families answer a different question. The vendor
 // writes memory as a bare "GB" with no basis definition anywhere on the page,
-// so every row takes QuotedWithoutBasis.
+// so every row takes extdeps.ci_runner.types.QuotedWithoutBasis.
 //
 // The vendor describes these runners as bare metal but does not state a
 // per-vCPU core entitlement, so the entitlement axis is Unstated rather than
 // DedicatedPhysicalCore — "bare metal" is a statement about the host, not
 // about what one advertised vCPU is backed by.
 fn blacksmith_shape(
-  label: NonEmptyStr,
-  architecture: Architecture,
-  vcpus: Nat,
-  quoted_numeral: Nat,
-) -> RunnerShapeRow {
-  RunnerShapeRow {
+  label: std.types.NonEmptyStr,
+  architecture: extdeps.toolchain.types.Architecture,
+  vcpus: std.nat.Nat,
+  quoted_numeral: std.nat.Nat,
+) -> extdeps.ci_runner.types.RunnerShapeRow {
+  extdeps.ci_runner.types.RunnerShapeRow {
     provider: blacksmith_provider_identity,
     label: label,
     architecture: architecture,
-    entitlement: EntitlementUnstated,
-    vcpus: hardware_thread_count(vcpus),
-    memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
+    entitlement: extdeps.ci_runner.types.EntitlementUnstated,
+    vcpus: std.measure.hardware_thread_count(vcpus),
+    memory: extdeps.ci_runner.types.QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
   }
 }
 
-data blacksmith_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+data blacksmith_runner_catalog: extdeps.ci_runner.types.RunnerCatalogAvailability = extdeps.ci_runner.types.RunnerShapesCited {
   rows: [
-    blacksmith_shape(label: "blacksmith-2vcpu-ubuntu-2404-arm", architecture: Aarch64, vcpus: 2, quoted_numeral: 6),
-    blacksmith_shape(label: "blacksmith-4vcpu-ubuntu-2404-arm", architecture: Aarch64, vcpus: 4, quoted_numeral: 12),
-    blacksmith_shape(label: "blacksmith-8vcpu-ubuntu-2404-arm", architecture: Aarch64, vcpus: 8, quoted_numeral: 24),
-    blacksmith_shape(label: "blacksmith-16vcpu-ubuntu-2404-arm", architecture: Aarch64, vcpus: 16, quoted_numeral: 48),
-    blacksmith_shape(label: "blacksmith-32vcpu-ubuntu-2404-arm", architecture: Aarch64, vcpus: 32, quoted_numeral: 96),
-    blacksmith_shape(label: "blacksmith-2vcpu-ubuntu-2404", architecture: X86_64, vcpus: 2, quoted_numeral: 8),
-    blacksmith_shape(label: "blacksmith-4vcpu-ubuntu-2404", architecture: X86_64, vcpus: 4, quoted_numeral: 16),
-    blacksmith_shape(label: "blacksmith-8vcpu-ubuntu-2404", architecture: X86_64, vcpus: 8, quoted_numeral: 32),
-    blacksmith_shape(label: "blacksmith-16vcpu-ubuntu-2404", architecture: X86_64, vcpus: 16, quoted_numeral: 64),
-    blacksmith_shape(label: "blacksmith-32vcpu-ubuntu-2404", architecture: X86_64, vcpus: 32, quoted_numeral: 128),
+    blacksmith_shape(label: "blacksmith-2vcpu-ubuntu-2404-arm", architecture: extdeps.toolchain.types.Aarch64, vcpus: 2, quoted_numeral: 6),
+    blacksmith_shape(label: "blacksmith-4vcpu-ubuntu-2404-arm", architecture: extdeps.toolchain.types.Aarch64, vcpus: 4, quoted_numeral: 12),
+    blacksmith_shape(label: "blacksmith-8vcpu-ubuntu-2404-arm", architecture: extdeps.toolchain.types.Aarch64, vcpus: 8, quoted_numeral: 24),
+    blacksmith_shape(label: "blacksmith-16vcpu-ubuntu-2404-arm", architecture: extdeps.toolchain.types.Aarch64, vcpus: 16, quoted_numeral: 48),
+    blacksmith_shape(label: "blacksmith-32vcpu-ubuntu-2404-arm", architecture: extdeps.toolchain.types.Aarch64, vcpus: 32, quoted_numeral: 96),
+    blacksmith_shape(label: "blacksmith-2vcpu-ubuntu-2404", architecture: extdeps.toolchain.types.X86_64, vcpus: 2, quoted_numeral: 8),
+    blacksmith_shape(label: "blacksmith-4vcpu-ubuntu-2404", architecture: extdeps.toolchain.types.X86_64, vcpus: 4, quoted_numeral: 16),
+    blacksmith_shape(label: "blacksmith-8vcpu-ubuntu-2404", architecture: extdeps.toolchain.types.X86_64, vcpus: 8, quoted_numeral: 32),
+    blacksmith_shape(label: "blacksmith-16vcpu-ubuntu-2404", architecture: extdeps.toolchain.types.X86_64, vcpus: 16, quoted_numeral: 64),
+    blacksmith_shape(label: "blacksmith-32vcpu-ubuntu-2404", architecture: extdeps.toolchain.types.X86_64, vcpus: 32, quoted_numeral: 128),
   ],
 }

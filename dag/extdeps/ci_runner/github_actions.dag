@@ -1,31 +1,17 @@
 module extdeps.ci_runner.github_actions
 
-import std.types { List, NonEmptyStr }
-import std.nat { Nat }
-import std.measure { hardware_thread_count }
-import std.decl_ref { DeclarationRef, decl_ref }
-import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
-import extdeps.ci_runner.types {
-  EntitlementUnstated,
-  RunnerCatalogAvailability,
-  QuotedWithoutBasis,
-  RunnerShapeRow,
-  RunnerShapesCited,
-}
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "docs.github.com/en/actions/reference/runners/larger-runners"
   }
 }
 
-data github_actions_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+data github_actions_catalog_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
 
-data github_actions_provider_identity: DeclarationRef = decl_ref(
+data github_actions_provider_identity: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   module_path: "extdeps.ci_runner.github_actions",
   decl_name: "github_actions_catalog_authority",
 )
@@ -40,37 +26,37 @@ data github_actions_provider_identity: DeclarationRef = decl_ref(
 //
 // The page states no basis for "GB" and states no per-vCPU core entitlement.
 fn github_actions_shape(
-  label: NonEmptyStr,
-  architecture: Architecture,
-  vcpus: Nat,
-  quoted_numeral: Nat,
-) -> RunnerShapeRow {
-  RunnerShapeRow {
+  label: std.types.NonEmptyStr,
+  architecture: extdeps.toolchain.types.Architecture,
+  vcpus: std.nat.Nat,
+  quoted_numeral: std.nat.Nat,
+) -> extdeps.ci_runner.types.RunnerShapeRow {
+  extdeps.ci_runner.types.RunnerShapeRow {
     provider: github_actions_provider_identity,
     label: label,
     architecture: architecture,
-    entitlement: EntitlementUnstated,
-    vcpus: hardware_thread_count(vcpus),
-    memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
+    entitlement: extdeps.ci_runner.types.EntitlementUnstated,
+    vcpus: std.measure.hardware_thread_count(vcpus),
+    memory: extdeps.ci_runner.types.QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
   }
 }
 
-data github_actions_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+data github_actions_runner_catalog: extdeps.ci_runner.types.RunnerCatalogAvailability = extdeps.ci_runner.types.RunnerShapesCited {
   rows: [
-    github_actions_shape(label: "ubuntu-latest-arm-2core", architecture: Aarch64, vcpus: 2, quoted_numeral: 8),
-    github_actions_shape(label: "ubuntu-latest-arm-4core", architecture: Aarch64, vcpus: 4, quoted_numeral: 16),
-    github_actions_shape(label: "ubuntu-latest-arm-5core", architecture: Aarch64, vcpus: 5, quoted_numeral: 14),
-    github_actions_shape(label: "ubuntu-latest-arm-8core", architecture: Aarch64, vcpus: 8, quoted_numeral: 32),
-    github_actions_shape(label: "ubuntu-latest-arm-16core", architecture: Aarch64, vcpus: 16, quoted_numeral: 64),
-    github_actions_shape(label: "ubuntu-latest-arm-32core", architecture: Aarch64, vcpus: 32, quoted_numeral: 128),
-    github_actions_shape(label: "ubuntu-latest-arm-64core", architecture: Aarch64, vcpus: 64, quoted_numeral: 208),
-    github_actions_shape(label: "ubuntu-latest-2core", architecture: X86_64, vcpus: 2, quoted_numeral: 8),
-    github_actions_shape(label: "ubuntu-latest-4core", architecture: X86_64, vcpus: 4, quoted_numeral: 16),
-    github_actions_shape(label: "ubuntu-latest-8core", architecture: X86_64, vcpus: 8, quoted_numeral: 32),
-    github_actions_shape(label: "ubuntu-latest-12core", architecture: X86_64, vcpus: 12, quoted_numeral: 30),
-    github_actions_shape(label: "ubuntu-latest-16core", architecture: X86_64, vcpus: 16, quoted_numeral: 64),
-    github_actions_shape(label: "ubuntu-latest-32core", architecture: X86_64, vcpus: 32, quoted_numeral: 128),
-    github_actions_shape(label: "ubuntu-latest-64core", architecture: X86_64, vcpus: 64, quoted_numeral: 256),
-    github_actions_shape(label: "ubuntu-latest-96core", architecture: X86_64, vcpus: 96, quoted_numeral: 384),
+    github_actions_shape(label: "ubuntu-latest-arm-2core", architecture: extdeps.toolchain.types.Aarch64, vcpus: 2, quoted_numeral: 8),
+    github_actions_shape(label: "ubuntu-latest-arm-4core", architecture: extdeps.toolchain.types.Aarch64, vcpus: 4, quoted_numeral: 16),
+    github_actions_shape(label: "ubuntu-latest-arm-5core", architecture: extdeps.toolchain.types.Aarch64, vcpus: 5, quoted_numeral: 14),
+    github_actions_shape(label: "ubuntu-latest-arm-8core", architecture: extdeps.toolchain.types.Aarch64, vcpus: 8, quoted_numeral: 32),
+    github_actions_shape(label: "ubuntu-latest-arm-16core", architecture: extdeps.toolchain.types.Aarch64, vcpus: 16, quoted_numeral: 64),
+    github_actions_shape(label: "ubuntu-latest-arm-32core", architecture: extdeps.toolchain.types.Aarch64, vcpus: 32, quoted_numeral: 128),
+    github_actions_shape(label: "ubuntu-latest-arm-64core", architecture: extdeps.toolchain.types.Aarch64, vcpus: 64, quoted_numeral: 208),
+    github_actions_shape(label: "ubuntu-latest-2core", architecture: extdeps.toolchain.types.X86_64, vcpus: 2, quoted_numeral: 8),
+    github_actions_shape(label: "ubuntu-latest-4core", architecture: extdeps.toolchain.types.X86_64, vcpus: 4, quoted_numeral: 16),
+    github_actions_shape(label: "ubuntu-latest-8core", architecture: extdeps.toolchain.types.X86_64, vcpus: 8, quoted_numeral: 32),
+    github_actions_shape(label: "ubuntu-latest-12core", architecture: extdeps.toolchain.types.X86_64, vcpus: 12, quoted_numeral: 30),
+    github_actions_shape(label: "ubuntu-latest-16core", architecture: extdeps.toolchain.types.X86_64, vcpus: 16, quoted_numeral: 64),
+    github_actions_shape(label: "ubuntu-latest-32core", architecture: extdeps.toolchain.types.X86_64, vcpus: 32, quoted_numeral: 128),
+    github_actions_shape(label: "ubuntu-latest-64core", architecture: extdeps.toolchain.types.X86_64, vcpus: 64, quoted_numeral: 256),
+    github_actions_shape(label: "ubuntu-latest-96core", architecture: extdeps.toolchain.types.X86_64, vcpus: 96, quoted_numeral: 384),
   ],
 }

@@ -1,35 +1,30 @@
 module extdeps.colo.colocation_america
 
-import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.colocationamerica.com/data-center-locations/new-jersey"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.colo.colocation_america",
       decl_name: "colocation_america_njdc1",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
-data colocation_america_njdc1: ColoFacilityRow = ColoFacilityRow {
+data colocation_america_njdc1: extdeps.colo.types.ColoFacilityRow = extdeps.colo.types.ColoFacilityRow {
   operator_label: "Colocation America",
   facility_label: "Colocation America NJDC1 (in-building at 100 Delawanna)",
-  address: AddressListed {
+  address: extdeps.colo.types.AddressListed {
     street: "100 Delawanna Avenue, Suite 200, Clifton, NJ 07014",
     citation: "colocationamerica.com New Jersey page, read 2026-08-18 (page fetched directly)",
   },
@@ -38,7 +33,7 @@ data colocation_america_njdc1: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Retail reseller operating inside the Digital Realty EWR20 building (building rows under extdeps.colo.digital_realty). Sells 1U, 2U, 4U, quarter, half and full cabinets per its navigation and directory profiles read 2026-08-18 - the finest published retail granularity in the Clifton building.",
 }
 
-data colocation_america_retail_rates: RetailRateStanding = RatesQuoteOnly {
+data colocation_america_retail_rates: extdeps.colo.types.RetailRateStanding = extdeps.colo.types.RatesQuoteOnly {
   contact_route: "quote form on colocationamerica.com",
   obligation: "Granularity is published but prices are not on the pages read 2026-08-18; per-U and quarter-cabinet quotes required.",
 }

@@ -1,35 +1,30 @@
 module extdeps.colo.netrality
 
-import std.types { NonEmptyStr }
-import std.decl_ref { DeclarationRef, WholeDeclaration }
-import extdeps.colo.types { ColoFacilityRow, AddressListed, RetailRateStanding, RatesQuoteOnly }
 
-import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
-import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "netrality.com/data-center/401-north-broad-philadelphia/"
   }
 }
 
-data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
-  subject: ExternalSubjectRef {
-    declaration: DeclarationRef {
+data extdeps_model_scope: extdeps.external_authority.ExternalModelScope = extdeps.external_authority.ExternalModelScope {
+  subject: extdeps.external_authority.ExternalSubjectRef {
+    declaration: std.decl_ref.DeclarationRef {
       module_path: "extdeps.colo.netrality",
       decl_name: "netrality_401_n_broad",
-      field: WholeDeclaration
+      field: std.decl_ref.WholeDeclaration
     }
   },
   first_citation: extdeps_external_authority_anchor,
   further_citations: []
 }
 
-data netrality_401_n_broad: ColoFacilityRow = ColoFacilityRow {
+data netrality_401_n_broad: extdeps.colo.types.ColoFacilityRow = extdeps.colo.types.ColoFacilityRow {
   operator_label: "Netrality Data Centers",
   facility_label: "Netrality 401 North Broad, Philadelphia",
-  address: AddressListed {
+  address: extdeps.colo.types.AddressListed {
     street: "401 North Broad Street, Philadelphia, PA 19108",
     citation: "netrality.com 401 North Broad pages, read 2026-08-18",
   },
@@ -38,7 +33,7 @@ data netrality_401_n_broad: ColoFacilityRow = ColoFacilityRow {
   facility_note: "Philadelphia's principal carrier hotel: roughly 1.3 million square feet with about 283,000 square feet of raised floor per directory profiles read 2026-08-18; retail cabinets and cages beside wholesale; 73-plus networks, several exchanges, AWS and Google cloud on-ramps claimed by the operator. The eastern-PA anchor row of this census.",
 }
 
-data netrality_retail_rates: RetailRateStanding = RatesQuoteOnly {
+data netrality_retail_rates: extdeps.colo.types.RetailRateStanding = extdeps.colo.types.RatesQuoteOnly {
   contact_route: "netrality.com sales",
   obligation: "No published cabinet pricing on pages read 2026-08-18.",
 }

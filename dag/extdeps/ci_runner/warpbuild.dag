@@ -1,31 +1,17 @@
 module extdeps.ci_runner.warpbuild
 
-import std.types { List, NonEmptyStr }
-import std.nat { Nat }
-import std.measure { hardware_thread_count }
-import std.decl_ref { DeclarationRef, decl_ref }
-import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
-import extdeps.ci_runner.types {
-  EntitlementUnstated,
-  RunnerCatalogAvailability,
-  QuotedWithoutBasis,
-  RunnerShapeRow,
-  RunnerShapesCited,
-}
 
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "www.warpbuild.com/docs/ci/cloud-runners"
   }
 }
 
-data warpbuild_catalog_authority: ExternalAuthority = extdeps_external_authority_anchor
+data warpbuild_catalog_authority: extdeps.external_authority.ExternalAuthority = extdeps_external_authority_anchor
 
-data warpbuild_provider_identity: DeclarationRef = decl_ref(
+data warpbuild_provider_identity: std.decl_ref.DeclarationRef = std.decl_ref.decl_ref(
   module_path: "extdeps.ci_runner.warpbuild",
   decl_name: "warpbuild_catalog_authority",
 )
@@ -35,32 +21,32 @@ data warpbuild_provider_identity: DeclarationRef = decl_ref(
 //
 // The page states no basis for "GB" and states no per-vCPU core entitlement.
 fn warpbuild_shape(
-  label: NonEmptyStr,
-  architecture: Architecture,
-  vcpus: Nat,
-  quoted_numeral: Nat,
-) -> RunnerShapeRow {
-  RunnerShapeRow {
+  label: std.types.NonEmptyStr,
+  architecture: extdeps.toolchain.types.Architecture,
+  vcpus: std.nat.Nat,
+  quoted_numeral: std.nat.Nat,
+) -> extdeps.ci_runner.types.RunnerShapeRow {
+  extdeps.ci_runner.types.RunnerShapeRow {
     provider: warpbuild_provider_identity,
     label: label,
     architecture: architecture,
-    entitlement: EntitlementUnstated,
-    vcpus: hardware_thread_count(vcpus),
-    memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
+    entitlement: extdeps.ci_runner.types.EntitlementUnstated,
+    vcpus: std.measure.hardware_thread_count(vcpus),
+    memory: extdeps.ci_runner.types.QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
   }
 }
 
-data warpbuild_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
+data warpbuild_runner_catalog: extdeps.ci_runner.types.RunnerCatalogAvailability = extdeps.ci_runner.types.RunnerShapesCited {
   rows: [
-    warpbuild_shape(label: "warp-ubuntu-latest-arm64-2x", architecture: Aarch64, vcpus: 2, quoted_numeral: 8),
-    warpbuild_shape(label: "warp-ubuntu-latest-arm64-4x", architecture: Aarch64, vcpus: 4, quoted_numeral: 16),
-    warpbuild_shape(label: "warp-ubuntu-latest-arm64-8x", architecture: Aarch64, vcpus: 8, quoted_numeral: 32),
-    warpbuild_shape(label: "warp-ubuntu-latest-arm64-16x", architecture: Aarch64, vcpus: 16, quoted_numeral: 64),
-    warpbuild_shape(label: "warp-ubuntu-latest-arm64-32x", architecture: Aarch64, vcpus: 32, quoted_numeral: 128),
-    warpbuild_shape(label: "warp-ubuntu-latest-x64-2x", architecture: X86_64, vcpus: 2, quoted_numeral: 8),
-    warpbuild_shape(label: "warp-ubuntu-latest-x64-4x", architecture: X86_64, vcpus: 4, quoted_numeral: 16),
-    warpbuild_shape(label: "warp-ubuntu-latest-x64-8x", architecture: X86_64, vcpus: 8, quoted_numeral: 32),
-    warpbuild_shape(label: "warp-ubuntu-latest-x64-16x", architecture: X86_64, vcpus: 16, quoted_numeral: 64),
-    warpbuild_shape(label: "warp-ubuntu-latest-x64-32x", architecture: X86_64, vcpus: 32, quoted_numeral: 128),
+    warpbuild_shape(label: "warp-ubuntu-latest-arm64-2x", architecture: extdeps.toolchain.types.Aarch64, vcpus: 2, quoted_numeral: 8),
+    warpbuild_shape(label: "warp-ubuntu-latest-arm64-4x", architecture: extdeps.toolchain.types.Aarch64, vcpus: 4, quoted_numeral: 16),
+    warpbuild_shape(label: "warp-ubuntu-latest-arm64-8x", architecture: extdeps.toolchain.types.Aarch64, vcpus: 8, quoted_numeral: 32),
+    warpbuild_shape(label: "warp-ubuntu-latest-arm64-16x", architecture: extdeps.toolchain.types.Aarch64, vcpus: 16, quoted_numeral: 64),
+    warpbuild_shape(label: "warp-ubuntu-latest-arm64-32x", architecture: extdeps.toolchain.types.Aarch64, vcpus: 32, quoted_numeral: 128),
+    warpbuild_shape(label: "warp-ubuntu-latest-x64-2x", architecture: extdeps.toolchain.types.X86_64, vcpus: 2, quoted_numeral: 8),
+    warpbuild_shape(label: "warp-ubuntu-latest-x64-4x", architecture: extdeps.toolchain.types.X86_64, vcpus: 4, quoted_numeral: 16),
+    warpbuild_shape(label: "warp-ubuntu-latest-x64-8x", architecture: extdeps.toolchain.types.X86_64, vcpus: 8, quoted_numeral: 32),
+    warpbuild_shape(label: "warp-ubuntu-latest-x64-16x", architecture: extdeps.toolchain.types.X86_64, vcpus: 16, quoted_numeral: 64),
+    warpbuild_shape(label: "warp-ubuntu-latest-x64-32x", architecture: extdeps.toolchain.types.X86_64, vcpus: 32, quoted_numeral: 128),
   ],
 }
