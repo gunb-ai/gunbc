@@ -1,0 +1,86 @@
+module v2.test.lens_application.apply_lens_enforce_uses_projection
+
+import v2.lens.application {
+  DeclarationId,
+  DeclarationScope,
+  EnforceableLens,
+  Lens,
+  LensEnforcement,
+  apply_lens_enforce
+}
+import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_accepted }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  ComputationNode,
+  Conj,
+  Edge,
+  Named,
+  Node,
+  Path,
+  Symbol,
+  TypeNode,
+  SyntheticOccurrence
+}
+
+data projection_test_section: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^projection_section_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data projection_test_root: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge {
+      label: Named { name: ^projection_section_step },
+      target: projection_test_section
+    }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+fn projection_test_read(root: Node) -> Outcome<Symbol> {
+  match root.kind {
+    TypeNode { connective: Atom { identity: id } } => outcome_accepted(value: id)
+    TypeNode { connective: Conj } => outcome_accepted(value: ^projection_test_symbol)
+    ComputationNode { behavior: _ } => outcome_accepted(value: ^projection_test_symbol)
+  }
+}
+
+data projection_test_lens: Lens<Symbol> = Lens { read: projection_test_read }
+
+fn projection_test_project(output: Symbol) -> Symbol {
+  ^projection_projected_symbol
+}
+
+fn projection_test_violates(output: Symbol, declared: Symbol) -> Bool {
+  output == ^projection_budget_fail && declared == ^projection_budget_fail
+}
+
+data projection_test_enforcement: LensEnforcement<Symbol, Symbol, Symbol> = LensEnforcement {
+  project: projection_test_project,
+  violates: projection_test_violates
+}
+
+data projection_test_enforceable: EnforceableLens<Symbol, Symbol, Symbol> = EnforceableLens {
+  lens: projection_test_lens,
+  enforcement: projection_test_enforcement
+}
+
+data projection_test_declaration: DeclarationId = DeclarationId {
+  path: Path { steps: [^projection_section_step] }
+}
+
+test fn apply_lens_enforce_projection_claim_holds() -> Bool {
+  match apply_lens_enforce(
+    enforceable: projection_test_enforceable,
+    section: DeclarationScope { declaration: projection_test_declaration },
+    root: projection_test_root,
+    budget: ^projection_budget_ok
+  ) {
+    Accepted { value: result, diagnostics: _ } =>
+      result.output == ^projection_section_symbol && result.projected == ^projection_projected_symbol
+    Rejected { diagnostics: _ } => false
+  }
+}

@@ -1,0 +1,30 @@
+module test.claim.match_arm_pattern_identity_emission_witness_test
+
+data match_arm_pattern_identity_emission_migration_note: String = "Migrated (partial) from src/v1/tests/claim/v1_match_pattern_identity_test.dag (dead witness tree triage, dashboard node adhoc-9b80ec49-d63; that file's only historical consumer, v1_claim_scoped_witness_batch, was deleted 2026-08-15, so none of its 5 tests had ever executed). The source file's own note names the exact defect class this witness protects: Node.match_pattern was once missing from both v1 identity readers (dag_collect_support.dag_node_surface_fingerprint_rec, the content fingerprint; and dag_collect.dag_collect_node_tree, the DAG artifact collector), so two Match arms differing ONLY in their pattern aliased to the same cache identity and the second arm was silently treated as a duplicate of the first anywhere that key drove deduplication -- compile.dag's DAG artifact node table. That is an emitter-behaviour defect class: a real fixed instance of it would manifest as a missing or duplicated arm body in the emitted Rust text. Two of the four original assertions (distinct-literal-pattern and distinct-variant-name fingerprints) migrate directly onto compile_dag_rust_emit_check as a black-box 'both arm bodies survive to emission, distinctly' check -- compiling a match with differently-patterned, differently-bodied arms and requiring every arm's distinguishing marker string to appear in the emitted program. The remaining two assertions (w_variant_pattern_field_bindings_are_registered_as_dag_artifacts, w_unrelated_field_binding_is_not_registered) test dag_collect_insert_slots/dag_node_key directly against a hand-built Node -- DAG-artifact-table registration bookkeeping with no representation in single-shot emitted Rust text, since compile_dag_rust_emit_check observes one compiled program's output and not the incremental artifact table's membership. Those two are RETIRED with this note as their receipt rather than migrated: v1 is semantics-frozen with active maintenance per gunbc.v1_maintenance_standing, and a v1-compiler-local cargo test remains the correct restoration path if that registration surface needs a live regression check again."
+
+fn arm_reaches_emission(source: String, path: String, markers: List<String>) -> Bool {
+  compile_dag_rust_emit_check(source, path, markers, [])
+}
+
+// Two arms differing ONLY in a literal pattern, each with a distinct body
+// marker. If the two arms aliased to one DAG-artifact identity, the second
+// arm's body would go missing (or the first's would be duplicated onto it)
+// in the emitted program -- this cannot pass vacuously, since a collapsed or
+// misrouted arm drops one of the required marker strings from the output.
+test fn w_match_arms_distinct_literal_patterns_all_reachable_test() -> Bool {
+  arm_reaches_emission(
+    "module match_literal_distinct\nfn probe(x: Int) -> String {\n  match x {\n    0 => \"branch_zero_marker\"\n    1 => \"branch_one_marker\"\n    _ => \"branch_other_marker\"\n  }\n}\n",
+    "src/match_literal_distinct.rs",
+    ["branch_zero_marker", "branch_one_marker", "branch_other_marker"]
+  )
+}
+
+// Two arms differing ONLY in variant name, same shape as above but over a
+// coproduct's variant tag rather than a literal.
+test fn w_match_arms_distinct_variant_names_all_reachable_test() -> Bool {
+  arm_reaches_emission(
+    "module match_variant_distinct\ntype Choice = A | B\nfn probe(x: Choice) -> String {\n  match x {\n    A => \"branch_a_marker\"\n    B => \"branch_b_marker\"\n  }\n}\n",
+    "src/match_variant_distinct.rs",
+    ["branch_a_marker", "branch_b_marker"]
+  )
+}

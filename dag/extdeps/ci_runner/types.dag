@@ -1,0 +1,157 @@
+module extdeps.ci_runner.types
+
+import std.types { Bool, List, NonEmptyStr }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef }
+import extdeps.toolchain.types { Architecture }
+import std.measure {
+  ByteSize,
+  Gibibyte,
+  Gigabyte,
+  HardwareThreadCount,
+  byte_size,
+  gibibyte_count,
+  gigabyte_count,
+}
+
+import extdeps.external_authority { ExternalAuthority }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "en.wikipedia.org/wiki/Continuous_integration"
+  }
+}
+
+// THE AGNOSTIC SHAPE ONLY. Per DESIGN's external-upstream decomposition rule
+// this hub defines the contract every CI runner provider's published catalog
+// inhabits; it does NOT enumerate providers, dispatch among them, or hold any
+// provider's rows. Adding a provider is a new module beside its peers, never
+// an edit here — which is also why provider identity below is a
+// DeclarationRef into the provider's own module rather than a variant of a
+// central enum that every new provider would have to widen.
+
+// WHAT ONE UNIT OF ADVERTISED CPU ACTUALLY IS. A published "vCPU" is not one
+// thing across providers: Ubicloud states that an arm64 vCPU is a DEDICATED
+// physical core, while an x64 vCPU is one of two threads sharing one. Most
+// providers state neither, and that third state is the common one — so it is
+// a named arm, not a default. Collapsing it would make a memory-per-vCPU
+// figure look comparable across providers when the denominators differ by a
+// factor of two.
+type CpuEntitlement
+  = DedicatedPhysicalCore
+  | SmtSharedVcpu { threads_per_core: Nat }
+  | EntitlementUnstated
+
+// A PUBLISHED MEMORY FIGURE, with its basis carried STRUCTURALLY rather than
+// as a field beside a scale-free number.
+//
+// The two known arms are distinct std.measure types at distinct Scales, so a
+// decimal figure and a binary one cannot be compared, summed or substituted
+// without a conversion someone had to write — the 7.4% error has no silent
+// path. The third arm is not a third unit: it is the ABSENCE of one. None of
+// the surveyed vendor pages says which "GB" it means, so what those pages
+// publish is an uninterpreted numeral plus a unit word, and calling it either
+// magnitude would be inventing the fact the page withholds.
+//
+// This is why the arm carries a bare numeral and the others do not: a numeral
+// under an unstated basis is precisely not yet a magnitude, and dressing it in
+// a Measure type would assert the basis the arm exists to deny.
+//
+// ON THE RELATIONSHIP TO extdeps.pricing.object_storage ByteBasis, because the
+// two encode the same three states and a reader should not have to work out
+// whether this is a second vocabulary for one axis. ByteBasis tags the unit
+// LABEL a vendor quoted a RATE in, at a boundary where the vendor's ambiguity
+// is itself the fact being recorded; it qualifies a price, and the magnitude
+// it qualifies is supplied separately. This carrier is the MAGNITUDE, and it
+// carries the distinction in its type rather than beside it, which is what
+// makes a cross-basis comparison unwritable instead of merely detectable.
+//
+// They are not merged here, and the reason is a scope judgement rather than a
+// claim that the overlap is imaginary: the single-authority form would be
+// ByteBasis re-homed onto std.measure — which that module's own ClockBasis
+// note already argues for, on the ground that an authority half the corpus
+// cannot reach is not an authority — and that migration crosses
+// object_storage, gunbc.econ.scm_serving_model and three witnesses. Doing it
+// under a provisioning brief would be a load-bearing edit nobody reviewed for
+// its own sake. Recorded here so the next author meets the question instead of
+// rediscovering it.
+type QuotedByteMagnitude
+  = QuotedDecimalGigabytes { value: Gigabyte }
+  | QuotedBinaryGibibytes { value: Gibibyte }
+  | QuotedWithoutBasis { numeral: Nat, unit_label: NonEmptyStr }
+
+// The conversion, and its refusal. Only a stated basis yields bytes.
+type QuotedByteResolution
+  = ResolvedBytes { bytes: ByteSize }
+  | QuotedBasisUnresolved { numeral: Nat, unit_label: NonEmptyStr }
+
+fn quoted_magnitude_bytes(quoted: QuotedByteMagnitude) -> QuotedByteResolution {
+  match quoted {
+    QuotedDecimalGigabytes { value } =>
+      ResolvedBytes { bytes: byte_size(count: gigabyte_count(g: value) * 1000000000) }
+    QuotedBinaryGibibytes { value } =>
+      ResolvedBytes { bytes: byte_size(count: gibibyte_count(g: value) * 1073741824) }
+    QuotedWithoutBasis { numeral, unit_label } =>
+      QuotedBasisUnresolved { numeral: numeral, unit_label: unit_label }
+  }
+}
+
+// The numeral a vendor printed, in whatever unit it printed. Used ONLY for
+// ratios within one vendor's own unit — memory over vCPUs is basis-free
+// because both figures carry the same unstated basis, which is exactly why a
+// ratio can be read where a byte comparison cannot.
+fn quoted_numeral(quoted: QuotedByteMagnitude) -> Nat {
+  match quoted {
+    QuotedDecimalGigabytes { value } => gigabyte_count(g: value)
+    QuotedBinaryGibibytes { value } => gibibyte_count(g: value)
+    QuotedWithoutBasis { numeral, unit_label } => numeral
+  }
+}
+
+fn quoted_unit_label(quoted: QuotedByteMagnitude) -> NonEmptyStr {
+  match quoted {
+    QuotedDecimalGigabytes { value } => "GB"
+    QuotedBinaryGibibytes { value } => "GiB"
+    QuotedWithoutBasis { numeral, unit_label } => unit_label
+  }
+}
+
+// ONE PUBLISHED RUNNER SIZE. vcpus is a HardwareThreadCount rather than a bare
+// Nat, matching what the CPU side of this repo already carries
+// (UbicloudRunnerCatalogRow.vcpus, CpuModelCatalogRow.threads) — a shared shape
+// is the wrong place to downgrade a unit those rows already model.
+//
+// The entitlement axis above says what one of these is BACKED BY; it does not
+// change what is being counted, which is advertised hardware threads either
+// way. Conversion to a bare Nat happens only at the arithmetic boundary in the
+// census fold.
+type RunnerShapeRow {
+  provider: DeclarationRef
+  label: NonEmptyStr
+  architecture: Architecture
+  entitlement: CpuEntitlement
+  vcpus: HardwareThreadCount
+  memory: QuotedByteMagnitude
+}
+
+// A provider whose published surface this repository could not read lands
+// here with a stated cause, never as remembered numbers. Same shape as the
+// object-storage rate rows and for the same reason: a plausible figure
+// recalled rather than fetched is indistinguishable from a cited one
+// downstream, and a runner catalog is exactly the kind of fact that moves.
+type RunnerCatalogAvailability
+  = RunnerShapesCited { rows: List<RunnerShapeRow> }
+  | RunnerShapesUnavailable { cause: NonEmptyStr }
+
+fn runner_shape_rows(availability: RunnerCatalogAvailability) -> List<RunnerShapeRow> {
+  match availability {
+    RunnerShapesCited { rows } => rows
+    RunnerShapesUnavailable { cause } => []
+  }
+}
+
+fn shape_is_architecture(row: RunnerShapeRow, architecture: Architecture) -> Bool {
+  row.architecture == architecture
+}

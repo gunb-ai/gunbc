@@ -1,0 +1,220 @@
+module gunbc.runner_shape_census
+
+import std.types { Bool, List, NonEmptyStr }
+import std.measure { hardware_thread_count_value }
+import std.nat { Nat }
+import std.decl_ref { DeclarationRef, declaration_ref_eq }
+import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
+import extdeps.ci_runner.types {
+  CpuEntitlement,
+  QuotedByteMagnitude,
+  QuotedWithoutBasis,
+  quoted_numeral,
+  quoted_unit_label,
+  RunnerCatalogAvailability,
+  RunnerShapeRow,
+  runner_shape_rows,
+  shape_is_architecture,
+}
+import extdeps.ci_runner.blacksmith { blacksmith_runner_catalog }
+import extdeps.ci_runner.circleci { circleci_runner_catalog }
+import extdeps.ci_runner.depot { depot_runner_catalog }
+import extdeps.ci_runner.github_actions { github_actions_runner_catalog }
+import extdeps.ci_runner.warpbuild { warpbuild_runner_catalog }
+import extdeps.cloud.ubicloud { ubicloud_runner_catalog_shapes }
+
+// THE ROSTER AND THE DISPATCH LIVE HERE, not in the extdeps hub. Which
+// providers this repository has looked at is an observation this repository
+// made — a receipt in the observing layer — and DESIGN's external-upstream
+// decomposition rule is explicit that a generic hub may not enumerate
+// concrete products or dispatch among their authorities. Adding a provider
+// adds a module beside its peers and one line here; it edits no shared shape.
+fn surveyed_runner_catalogs() -> List<RunnerCatalogAvailability> {
+  [
+    ubicloud_runner_catalog_shapes,
+    blacksmith_runner_catalog,
+    github_actions_runner_catalog,
+    depot_runner_catalog,
+    warpbuild_runner_catalog,
+    circleci_runner_catalog,
+  ]
+}
+
+fn surveyed_runner_shapes() -> List<RunnerShapeRow> {
+  fold(surveyed_runner_catalogs(), init: [], f: (acc, c) => concat(acc, runner_shape_rows(availability: c)))
+}
+
+fn shapes_for(rows: List<RunnerShapeRow>, provider: DeclarationRef, architecture: Architecture) -> List<RunnerShapeRow> {
+  filter(rows, r => declaration_ref_eq(a: r.provider, b: provider) && shape_is_architecture(row: r, architecture: architecture))
+}
+
+// THE MEMORY-PER-vCPU READING FOR ONE (provider x architecture), and the whole
+// reason it is a derivation with a refusal rather than a stored number.
+//
+// The reading is a quotient of two figures in the vendor's OWN quoted unit, so
+// it needs no byte-basis conversion — 48 GB over 16 vCPU is 3 GB per vCPU
+// whichever G is meant, and the result is carried as a QuotedByteMagnitude in
+// that same unit rather than as a scale-free number. What it does need is for the provider's sizes to
+// AGREE, and one surveyed provider's do not: GitHub's arm64 sizes are mostly
+// four GB per vCPU but include a 5-vCPU/14 GB size and a 64-vCPU/208 GB size.
+// A provider-level constant would have had to pick one and discard the others,
+// so a non-uniform provider refuses and names a witnessing size instead.
+type MemoryPerVcpuReading
+  = UniformMemoryPerVcpu { per_vcpu: QuotedByteMagnitude, sizes_agreeing: Nat }
+  | RatioNotUniformAcrossSizes {
+      first_per_vcpu: QuotedByteMagnitude
+      divergent_label: NonEmptyStr
+      divergent_per_vcpu: QuotedByteMagnitude
+    }
+  | NonIntegralRatioInSizes { label: NonEmptyStr }
+  | UnitLabelNotUniformAcrossSizes { first_label: NonEmptyStr, divergent_label: NonEmptyStr }
+  | NoShapesForProviderArchitecture
+
+type RatioAccum {
+  seen: Nat
+  first: Nat
+  divergent: List<RunnerShapeRow>
+  non_integral: List<RunnerShapeRow>
+}
+
+fn ratio_step(acc: RatioAccum, row: RunnerShapeRow) -> RatioAccum {
+  if hardware_thread_count_value(t: row.vcpus) == 0 {
+    RatioAccum { seen: acc.seen, first: acc.first, divergent: acc.divergent, non_integral: concat(acc.non_integral, [row]) }
+  } else {
+    let numeral = quoted_numeral(quoted: row.memory)
+    let vcpus = hardware_thread_count_value(t: row.vcpus)
+    let q = numeral / vcpus
+    if numeral - (q * vcpus) != 0 {
+      RatioAccum { seen: acc.seen, first: acc.first, divergent: acc.divergent, non_integral: concat(acc.non_integral, [row]) }
+    } else {
+      if acc.seen == 0 {
+        RatioAccum { seen: 1, first: q, divergent: acc.divergent, non_integral: acc.non_integral }
+      } else {
+        if q == acc.first {
+          RatioAccum { seen: acc.seen + 1, first: acc.first, divergent: acc.divergent, non_integral: acc.non_integral }
+        } else {
+          RatioAccum { seen: acc.seen + 1, first: acc.first, divergent: concat(acc.divergent, [row]), non_integral: acc.non_integral }
+        }
+      }
+    }
+  }
+}
+
+fn memory_per_vcpu(
+  rows: List<RunnerShapeRow>,
+  provider: DeclarationRef,
+  architecture: Architecture,
+) -> MemoryPerVcpuReading {
+  let selected = shapes_for(rows: rows, provider: provider, architecture: architecture)
+  if count(selected) == 0 {
+    NoShapesForProviderArchitecture
+  } else {
+    let acc = fold(
+      selected,
+      init: RatioAccum { seen: 0, first: 0, divergent: [], non_integral: [] },
+      f: (a, r) => ratio_step(acc: a, row: r),
+    )
+    if count(acc.non_integral) != 0 {
+      NonIntegralRatioInSizes { label: first_label(rows: acc.non_integral) }
+    } else {
+      match sample_unit_label(rows: selected) {
+        SampleUnitLabelMixed { first_label, divergent_label } =>
+          UnitLabelNotUniformAcrossSizes { first_label: first_label, divergent_label: divergent_label }
+        SampleUnitLabelUniform { label } =>
+          if count(acc.divergent) != 0 {
+            RatioNotUniformAcrossSizes {
+              first_per_vcpu: per_vcpu_magnitude(numeral: acc.first, unit_label: label),
+              divergent_label: first_label(rows: acc.divergent),
+              divergent_per_vcpu: per_vcpu_magnitude(numeral: first_ratio(rows: acc.divergent), unit_label: label),
+            }
+          } else {
+            UniformMemoryPerVcpu {
+              per_vcpu: per_vcpu_magnitude(numeral: acc.first, unit_label: label),
+              sizes_agreeing: acc.seen,
+            }
+          }
+      }
+    }
+  }
+}
+
+// The ratio inherits the unit the rows were quoted in, and deliberately stays
+// on the basis-less arm even when the sampled rows carry a stated one: a
+// quotient of two figures is a figure per vCPU in that same unit, and
+// promoting it to a decimal magnitude here would assert a basis the census
+// never needed and cannot check across a mixed sample.
+fn per_vcpu_magnitude(numeral: Nat, unit_label: NonEmptyStr) -> QuotedByteMagnitude {
+  QuotedWithoutBasis { numeral: numeral, unit_label: unit_label }
+}
+
+// THE SAMPLE'S UNIT WORD, checked for unanimity rather than taken from
+// whichever row the fold happened to visit last.
+//
+// The previous form folded with an arm that overwrote the accumulator
+// unconditionally, so it returned the TAIL row's label while reading like a
+// unanimity check — a mixed sample would have silently relabelled the derived
+// per-vCPU magnitude with whatever came last (review 53633). Both label arms
+// are constructible today, so this was reachable rather than theoretical.
+//
+// A ratio is only meaningful across figures quoted in ONE unit, so a mixed
+// sample is not a labelling nuisance to resolve — it is a sample that has no
+// single ratio, and it refuses.
+type SampleUnitLabel
+  = SampleUnitLabelUniform { label: NonEmptyStr }
+  | SampleUnitLabelMixed { first_label: NonEmptyStr, divergent_label: NonEmptyStr }
+
+type UnitLabelAccum {
+  seen: Bool
+  first: NonEmptyStr
+  divergent: List<NonEmptyStr>
+}
+
+fn unit_label_step(acc: UnitLabelAccum, row: RunnerShapeRow) -> UnitLabelAccum {
+  let label = quoted_unit_label(quoted: row.memory)
+  if !acc.seen {
+    UnitLabelAccum { seen: true, first: label, divergent: acc.divergent }
+  } else {
+    if label == acc.first {
+      acc
+    } else {
+      UnitLabelAccum { seen: true, first: acc.first, divergent: concat(acc.divergent, [label]) }
+    }
+  }
+}
+
+fn sample_unit_label(rows: List<RunnerShapeRow>) -> SampleUnitLabel {
+  let acc = fold(
+    rows,
+    init: UnitLabelAccum { seen: false, first: "GB" as NonEmptyStr, divergent: [] },
+    f: (a, r) => unit_label_step(acc: a, row: r),
+  )
+  if count(acc.divergent) == 0 {
+    SampleUnitLabelUniform { label: acc.first }
+  } else {
+    SampleUnitLabelMixed {
+      first_label: acc.first,
+      divergent_label: fold(acc.divergent, init: acc.first, f: (x, l) => l),
+    }
+  }
+}
+
+fn first_label(rows: List<RunnerShapeRow>) -> NonEmptyStr {
+  fold(rows, init: "none" as NonEmptyStr, f: (acc, r) => if acc == "none" { r.label } else { acc })
+}
+
+fn first_ratio(rows: List<RunnerShapeRow>) -> Nat {
+  fold(
+    rows,
+    init: zero_ratio(),
+    f: (acc, r) =>
+      if acc == zero_ratio() {
+        quoted_numeral(quoted: r.memory) / hardware_thread_count_value(t: r.vcpus)
+      } else {
+        acc
+      },
+  )
+}
+
+fn zero_ratio() -> Nat {
+  0
+}

@@ -16,7 +16,7 @@ import v2.std.algebra {
 import v2.std.collection { Absent, Present }
 import v2.std.compilers.lexing { symbol_lexeme }
 import v2.std.decl_index { DeclFact }
-import v2.std.node { Node, TypeNode, Atom, Conj }
+import v2.std.node { Edge, Named, Node, NodeFold, Positional, TypeNode, Atom, Conj, fold_node }
 import v2.std.node_query { node_positional_child_targets }
 
 type OuterRecordConstructorLexeme = String
@@ -143,6 +143,96 @@ fn decl_fact_skeleton_for_resolution(
     DeclFactResolvedAmbiguous { qualified_name: _, match_count: _ } => Absent
   }
 }
+
+// AUTHORED ATOM LEXEMES, EXCLUDING CONSTRUCTOR SPELLINGS — the discriminator the
+// floor_expected_red coherence check needs, derived from edge PROVENANCE rather than
+// lexeme shape (DESIGN §4: a heuristic is never necessary in a closed system).
+//
+// The host marks a record-literal's authored constructor name with a SECOND, NAMED
+// edge (record_construction_spelling) beside the ordinary positional child edge — both
+// edges target the same content-addressed atom, so excluding only the named-edge child
+// during a single walk is not enough: the constructor lexeme still surfaces via the
+// positional path. The correct move is a two-pass value subtraction over the whole
+// subtree: collect every lexeme that appears at the target of ANY
+// record_construction_spelling edge (that IS what "is a constructor spelling" means at
+// the host boundary), then collect every atom lexeme in the subtree, then subtract the
+// first set from the second. Nothing here inspects a lexeme's spelling, characters, or
+// naming convention — every exclusion is earned by an edge label the host already
+// writes for a different reason (record_construction_census_witness_test).
+//
+// The result is deliberately OVER-inclusive, never under-inclusive: an atom reached by
+// a call, a parameter reference, or a nullary-variant-value binding is not excluded by
+// this pass (only construction spellings are), so such an atom survives into the
+// "authored" set rather than being silently dropped. That is the safe failure
+// direction for a coherence check — a spurious member produces a located, nameable
+// refusal; a heuristic that instead matched on shape could instead OMIT an authored
+// identity from the compared set, which is the empty-observation narrow DESIGN §5
+// forbids. A consumer that hits this residue should model the missing atom kind at
+// this derivation, not add an exclusion lexeme here — an exclusion list is the shape
+// filter this function exists to avoid, reintroduced one lexeme at a time.
+type AtomLexemeCensus {
+  all_atom_lexemes: List<SkeletonMarshalAtomLexeme>
+  construction_spelling_lexemes: List<SkeletonMarshalAtomLexeme>
+  self_is_atom: Bool
+  self_lexeme: SkeletonMarshalAtomLexeme
+}
+
+fn skeleton_edge_is_construction_spelling(e: Edge) -> Bool {
+  match e.label {
+    Named { name: nm } => nm == ^record_construction_spelling
+    Positional => false
+  }
+}
+
+fn skeleton_atom_lexeme_census_fold(n: Node) -> AtomLexemeCensus {
+  fold_node(
+    n: n,
+    algebra: NodeFold {
+      init: fn(n0) {
+        match n0.kind {
+          TypeNode { connective: Atom { identity: s } } =>
+            AtomLexemeCensus {
+              all_atom_lexemes: [symbol_lexeme(sym: s)],
+              construction_spelling_lexemes: Empty,
+              self_is_atom: true,
+              self_lexeme: symbol_lexeme(sym: s)
+            }
+          _ =>
+            AtomLexemeCensus {
+              all_atom_lexemes: Empty,
+              construction_spelling_lexemes: Empty,
+              self_is_atom: false,
+              self_lexeme: ""
+            }
+        }
+      },
+      step: fn(acc, e, child) {
+        AtomLexemeCensus {
+          all_atom_lexemes: concat(acc.all_atom_lexemes, child.all_atom_lexemes),
+          construction_spelling_lexemes: concat(
+            acc.construction_spelling_lexemes,
+            if skeleton_edge_is_construction_spelling(e: e) && child.self_is_atom {
+              Cons { head: child.self_lexeme, tail: child.construction_spelling_lexemes }
+            } else {
+              child.construction_spelling_lexemes
+            }
+          ),
+          self_is_atom: acc.self_is_atom,
+          self_lexeme: acc.self_lexeme
+        }
+      }
+    }
+  )
+}
+
+fn node_skeleton_authored_non_construction_atom_lexemes(node: Node) -> List<SkeletonMarshalAtomLexeme> {
+  let census = skeleton_atom_lexeme_census_fold(n: node)
+  filter(census.all_atom_lexemes, fn(lex) {
+    !contains(xs: census.construction_spelling_lexemes, item: lex, eq: fn(a, b) { a == b })
+  })
+}
+
+data authored_non_construction_atom_lexeme_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: same closed spelling authority as skeleton_marshal_atom_lexeme_dissolve_on. Also widens if a future decl_facts consumer's subject body carries ExprCall/param-reference/nullary-variant-value atoms alongside string literals — this derivation stays over-inclusive rather than under-inclusive for that residue by design (see the function's own note), so a consumer needing an exact string-literal-only set still has an open obligation rather than a false guarantee.")
 
 data outer_record_constructor_lexeme_dissolve_on: DissolutionCondition = unbound_dissolution(description: "Dissolve-on: a closed enum or branded digest for each outer record-constructor spelling atom, grounded on extdeps/languages/dag ingest productions, so String aliases at the skeleton marshal boundary become unwritable.")
 

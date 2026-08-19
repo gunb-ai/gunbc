@@ -21,27 +21,47 @@ fn main() -> ExitCode {
     };
 
     let v1_dir = cwd.join("src/v1");
-    let read_dir = match std::fs::read_dir(&v1_dir) {
-        Ok(d) => d,
-        Err(e) => {
-            eprintln!("v1_src_dag_parse: read_dir {}: {e}", v1_dir.display());
-            return ExitCode::from(1);
+    // RECURSIVE, and the non-recursive predecessor is why this file changed at all.
+    // `read_dir(src/v1)` sees the 46 top-level modules and nothing below them, so three
+    // authored files were outside the only instrument that can see a v1 parse error:
+    // gunbc/occurrence_binding_parser_walk.dag, gunbc/namespace_reference_derived_closure_
+    // production_observations.dag, and tests/claim/checkpoint_identity_keying_witness_test.dag
+    // -- the last holding every `test fn` src/v1 declares. The subtree most likely to carry
+    // a defect was the subtree the check could not reach, and nothing reported that: a walk
+    // that finds no files in a directory it never opened is indistinguishable from a clean one.
+    let mut dag_paths: Vec<std::path::PathBuf> = Vec::new();
+    let mut stack: Vec<std::path::PathBuf> = vec![v1_dir.clone()];
+    while let Some(dir) = stack.pop() {
+        let read_dir = match std::fs::read_dir(&dir) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("v1_src_dag_parse: read_dir {}: {e}", dir.display());
+                return ExitCode::from(1);
+            }
+        };
+        for entry in read_dir.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                // `target/` under a nested Cargo.toml is build output, never authored source.
+                if path.file_name().map(|n| n == "target").unwrap_or(false) {
+                    continue;
+                }
+                // `tests/fixtures/` holds deliberately partial or malformed inputs
+                // authored FOR the parser's own tests -- a fixture that fails to parse
+                // is the fixture doing its job, not a defect. The existing corpus
+                // discovery in `compiler_tests` excludes them on the same grounds.
+                if path.file_name().map(|n| n == "fixtures").unwrap_or(false)
+                    && dir.file_name().map(|n| n == "tests").unwrap_or(false)
+                {
+                    continue;
+                }
+                stack.push(path);
+            } else if path.extension().map(|ext| ext == "dag").unwrap_or(false) {
+                dag_paths.push(path);
+            }
         }
-    };
-
-    let mut entries: Vec<_> = read_dir.flatten().collect();
-    entries.sort_by_key(|e| e.file_name());
-
-    let dag_paths: Vec<_> = entries
-        .into_iter()
-        .filter(|e| {
-            e.path()
-                .extension()
-                .map(|ext| ext == "dag")
-                .unwrap_or(false)
-        })
-        .map(|e| e.path())
-        .collect();
+    }
+    dag_paths.sort();
 
     if dag_paths.is_empty() {
         eprintln!("v1_src_dag_parse: no .dag files found in src/v1/ — check run directory");
