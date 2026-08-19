@@ -1,6 +1,7 @@
 module gunbc.runner_shape_census
 
 import std.types { Bool, List, NonEmptyStr }
+import std.measure { hardware_thread_count_value }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
@@ -66,6 +67,7 @@ type MemoryPerVcpuReading
       divergent_per_vcpu: QuotedByteMagnitude
     }
   | NonIntegralRatioInSizes { label: NonEmptyStr }
+  | UnitLabelNotUniformAcrossSizes { first_label: NonEmptyStr, divergent_label: NonEmptyStr }
   | NoShapesForProviderArchitecture
 
 type RatioAccum {
@@ -76,12 +78,13 @@ type RatioAccum {
 }
 
 fn ratio_step(acc: RatioAccum, row: RunnerShapeRow) -> RatioAccum {
-  if row.vcpus == 0 {
+  if hardware_thread_count_value(t: row.vcpus) == 0 {
     RatioAccum { seen: acc.seen, first: acc.first, divergent: acc.divergent, non_integral: concat(acc.non_integral, [row]) }
   } else {
     let numeral = quoted_numeral(quoted: row.memory)
-    let q = numeral / row.vcpus
-    if numeral - (q * row.vcpus) != 0 {
+    let vcpus = hardware_thread_count_value(t: row.vcpus)
+    let q = numeral / vcpus
+    if numeral - (q * vcpus) != 0 {
       RatioAccum { seen: acc.seen, first: acc.first, divergent: acc.divergent, non_integral: concat(acc.non_integral, [row]) }
     } else {
       if acc.seen == 0 {
@@ -114,17 +117,22 @@ fn memory_per_vcpu(
     if count(acc.non_integral) != 0 {
       NonIntegralRatioInSizes { label: first_label(rows: acc.non_integral) }
     } else {
-      if count(acc.divergent) != 0 {
-        RatioNotUniformAcrossSizes {
-          first_per_vcpu: per_vcpu_magnitude(numeral: acc.first, sample: selected),
-          divergent_label: first_label(rows: acc.divergent),
-          divergent_per_vcpu: per_vcpu_magnitude(numeral: first_ratio(rows: acc.divergent), sample: acc.divergent),
-        }
-      } else {
-        UniformMemoryPerVcpu {
-          per_vcpu: per_vcpu_magnitude(numeral: acc.first, sample: selected),
-          sizes_agreeing: acc.seen,
-        }
+      match sample_unit_label(rows: selected) {
+        SampleUnitLabelMixed { first_label, divergent_label } =>
+          UnitLabelNotUniformAcrossSizes { first_label: first_label, divergent_label: divergent_label }
+        SampleUnitLabelUniform { label } =>
+          if count(acc.divergent) != 0 {
+            RatioNotUniformAcrossSizes {
+              first_per_vcpu: per_vcpu_magnitude(numeral: acc.first, unit_label: label),
+              divergent_label: first_label(rows: acc.divergent),
+              divergent_per_vcpu: per_vcpu_magnitude(numeral: first_ratio(rows: acc.divergent), unit_label: label),
+            }
+          } else {
+            UniformMemoryPerVcpu {
+              per_vcpu: per_vcpu_magnitude(numeral: acc.first, unit_label: label),
+              sizes_agreeing: acc.seen,
+            }
+          }
       }
     }
   }
@@ -135,12 +143,59 @@ fn memory_per_vcpu(
 // quotient of two figures is a figure per vCPU in that same unit, and
 // promoting it to a decimal magnitude here would assert a basis the census
 // never needed and cannot check across a mixed sample.
-fn per_vcpu_magnitude(numeral: Nat, sample: List<RunnerShapeRow>) -> QuotedByteMagnitude {
-  QuotedWithoutBasis { numeral: numeral, unit_label: sample_unit_label(rows: sample) }
+fn per_vcpu_magnitude(numeral: Nat, unit_label: NonEmptyStr) -> QuotedByteMagnitude {
+  QuotedWithoutBasis { numeral: numeral, unit_label: unit_label }
 }
 
-fn sample_unit_label(rows: List<RunnerShapeRow>) -> NonEmptyStr {
-  fold(rows, init: "GB" as NonEmptyStr, f: (acc, r) => quoted_unit_label(quoted: r.memory))
+// THE SAMPLE'S UNIT WORD, checked for unanimity rather than taken from
+// whichever row the fold happened to visit last.
+//
+// The previous form folded with an arm that overwrote the accumulator
+// unconditionally, so it returned the TAIL row's label while reading like a
+// unanimity check — a mixed sample would have silently relabelled the derived
+// per-vCPU magnitude with whatever came last (review 53633). Both label arms
+// are constructible today, so this was reachable rather than theoretical.
+//
+// A ratio is only meaningful across figures quoted in ONE unit, so a mixed
+// sample is not a labelling nuisance to resolve — it is a sample that has no
+// single ratio, and it refuses.
+type SampleUnitLabel
+  = SampleUnitLabelUniform { label: NonEmptyStr }
+  | SampleUnitLabelMixed { first_label: NonEmptyStr, divergent_label: NonEmptyStr }
+
+type UnitLabelAccum {
+  seen: Bool
+  first: NonEmptyStr
+  divergent: List<NonEmptyStr>
+}
+
+fn unit_label_step(acc: UnitLabelAccum, row: RunnerShapeRow) -> UnitLabelAccum {
+  let label = quoted_unit_label(quoted: row.memory)
+  if !acc.seen {
+    UnitLabelAccum { seen: true, first: label, divergent: acc.divergent }
+  } else {
+    if label == acc.first {
+      acc
+    } else {
+      UnitLabelAccum { seen: true, first: acc.first, divergent: concat(acc.divergent, [label]) }
+    }
+  }
+}
+
+fn sample_unit_label(rows: List<RunnerShapeRow>) -> SampleUnitLabel {
+  let acc = fold(
+    rows,
+    init: UnitLabelAccum { seen: false, first: "GB" as NonEmptyStr, divergent: [] },
+    f: (a, r) => unit_label_step(acc: a, row: r),
+  )
+  if count(acc.divergent) == 0 {
+    SampleUnitLabelUniform { label: acc.first }
+  } else {
+    SampleUnitLabelMixed {
+      first_label: acc.first,
+      divergent_label: fold(acc.divergent, init: acc.first, f: (x, l) => l),
+    }
+  }
 }
 
 fn first_label(rows: List<RunnerShapeRow>) -> NonEmptyStr {
@@ -152,7 +207,11 @@ fn first_ratio(rows: List<RunnerShapeRow>) -> Nat {
     rows,
     init: zero_ratio(),
     f: (acc, r) =>
-      if acc == zero_ratio() { quoted_numeral(quoted: r.memory) / r.vcpus } else { acc },
+      if acc == zero_ratio() {
+        quoted_numeral(quoted: r.memory) / hardware_thread_count_value(t: r.vcpus)
+      } else {
+        acc
+      },
   )
 }
 

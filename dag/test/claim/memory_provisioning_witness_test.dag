@@ -2,12 +2,14 @@ module test.claim.memory_provisioning_witness_test
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { byte_size, byte_size_count, gibibyte, gigabyte }
-import std.decl_ref { decl_ref, declaration_ref_eq }
+import std.measure { byte_size, byte_size_count, gibibyte, gigabyte, hardware_thread_count }
+import std.decl_ref { DeclarationRef, decl_ref, declaration_ref_eq }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import extdeps.vendor.samsung { samsung }
 import extdeps.ci_runner.types {
   DedicatedPhysicalCore,
+  QuotedByteMagnitude,
+  RunnerShapeRow,
   QuotedBinaryGibibytes,
   QuotedDecimalGigabytes,
   QuotedWithoutBasis,
@@ -28,6 +30,7 @@ import extdeps.memory.types { DramModuleCatalogRow, Registered, bit_width, dram_
 import gunbc.runner_shape_census {
   NoShapesForProviderArchitecture,
   NonIntegralRatioInSizes,
+  UnitLabelNotUniformAcrossSizes,
   RatioNotUniformAcrossSizes,
   UniformMemoryPerVcpu,
   memory_per_vcpu,
@@ -106,10 +109,12 @@ test fn ubicloud_and_blacksmith_publish_three_gb_per_arm_vcpu() -> Bool {
             quoted_numeral(quoted: per_vcpu) == 3 && sizes_agreeing == 5
           RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
           NonIntegralRatioInSizes { label } => false
+          UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
           NoShapesForProviderArchitecture => false
         }
     RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
     NonIntegralRatioInSizes { label } => false
+    UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
     NoShapesForProviderArchitecture => false
   }
 }
@@ -124,6 +129,7 @@ test fn depot_publishes_four_gb_per_arm_vcpu() -> Bool {
     UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } => quoted_numeral(quoted: per_vcpu) == 4
     RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
     NonIntegralRatioInSizes { label } => false
+    UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
     NoShapesForProviderArchitecture => false
   }
 }
@@ -139,6 +145,7 @@ test fn a_provider_with_non_uniform_sizes_refuses_a_single_ratio() -> Bool {
     architecture: Aarch64,
   ) {
     NonIntegralRatioInSizes { label } => true
+    UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
     RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => true
     UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } => false
     NoShapesForProviderArchitecture => false
@@ -156,6 +163,7 @@ test fn circleci_x86_docker_is_two_gb_per_vcpu() -> Bool {
     UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } => quoted_numeral(quoted: per_vcpu) == 2
     RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
     NonIntegralRatioInSizes { label } => false
+    UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
     NoShapesForProviderArchitecture => false
   }
 }
@@ -535,5 +543,76 @@ test fn q8030_capacity_differs_between_the_two_arm_profiles() -> Bool {
             }
         }
     ProfileCapacityRefused { profile_label, cause } => false
+  }
+}
+
+// RED CONTROL for the labelling seam (review 53633). A sample mixing "GB" and
+// "GiB" rows has no single ratio, and the census REFUSES rather than adopting
+// one of the labels.
+//
+// The defect this pins was silent and directional: the previous fold
+// overwrote its accumulator on every row, so it returned whichever label came
+// LAST while reading like a unanimity check. This control is ordered so that
+// the divergent row is the tail — under the old fold it would have returned
+// "GiB" happily, so the control fails against the defect rather than merely
+// passing against the fix.
+test fn a_mixed_unit_label_sample_refuses_a_ratio() -> Bool {
+  match memory_per_vcpu(
+    rows: [
+      synthetic_shape(vcpus: 2, numeral: 6, decimal: false),
+      synthetic_shape(vcpus: 4, numeral: 12, decimal: true),
+    ],
+    provider: synthetic_provider(),
+    architecture: Aarch64,
+  ) {
+    UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => first_label != divergent_label
+    UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } => false
+    RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
+    NonIntegralRatioInSizes { label } => false
+    NoShapesForProviderArchitecture => false
+  }
+}
+
+// POSITIVE CONTROL on the same instrument: the identical rows in one unit do
+// yield a ratio, so the refusal above is discriminating on the label axis and
+// not on the synthetic rows generally.
+test fn the_same_sample_in_one_unit_yields_a_ratio() -> Bool {
+  match memory_per_vcpu(
+    rows: [
+      synthetic_shape(vcpus: 2, numeral: 6, decimal: true),
+      synthetic_shape(vcpus: 4, numeral: 12, decimal: true),
+    ],
+    provider: synthetic_provider(),
+    architecture: Aarch64,
+  ) {
+    UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } =>
+      quoted_numeral(quoted: per_vcpu) == 3 && sizes_agreeing == 2
+    UnitLabelNotUniformAcrossSizes { first_label, divergent_label } => false
+    RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
+    NonIntegralRatioInSizes { label } => false
+    NoShapesForProviderArchitecture => false
+  }
+}
+
+fn synthetic_provider() -> DeclarationRef {
+  decl_ref(module_path: "test.claim.memory_provisioning_witness_test", decl_name: "synthetic_provider")
+}
+
+fn synthetic_shape(vcpus: Nat, numeral: Nat, decimal: Bool) -> RunnerShapeRow {
+  RunnerShapeRow {
+    provider: synthetic_provider(),
+    label: "synthetic",
+    architecture: Aarch64,
+    entitlement: EntitlementUnstated,
+    vcpus: hardware_thread_count(vcpus),
+    memory: synthetic_memory(numeral: numeral, decimal: decimal),
+  }
+}
+
+fn synthetic_memory(numeral: Nat, decimal: Bool) -> QuotedByteMagnitude {
+  if decimal {
+    QuotedDecimalGigabytes { value: gigabyte(count: numeral) }
+  } else {
+    QuotedBinaryGibibytes { value: gibibyte(count: numeral) }
   }
 }

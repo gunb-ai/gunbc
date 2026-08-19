@@ -11,7 +11,6 @@ import std.measure {
   byte_size_count,
   gigabyte,
   hardware_thread_count,
-  hardware_thread_count_value,
 }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.ci_runner.types {
@@ -240,7 +239,7 @@ fn ubicloud_runner_shape(row: UbicloudRunnerCatalogRow) -> RunnerShapeRow {
     label: row.runs_on_label,
     architecture: row.cpu_architecture,
     entitlement: ubicloud_shape_entitlement(architecture: row.cpu_architecture),
-    vcpus: hardware_thread_count_value(t: row.vcpus),
+    vcpus: row.vcpus,
     memory: QuotedDecimalGigabytes {
       value: gigabyte(count: byte_size_count(b: row.memory_bytes) / 1000000000),
     },

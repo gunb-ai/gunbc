@@ -2,6 +2,7 @@ module extdeps.ci_runner.warpbuild
 
 import std.types { List, NonEmptyStr }
 import std.nat { Nat }
+import std.measure { hardware_thread_count }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.ci_runner.types {
@@ -44,7 +45,7 @@ fn warpbuild_shape(
     label: label,
     architecture: architecture,
     entitlement: EntitlementUnstated,
-    vcpus: vcpus,
+    vcpus: hardware_thread_count(vcpus),
     memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
   }
 }
