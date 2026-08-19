@@ -1247,6 +1247,28 @@ lane's actual position:
 - The other three `openbmc.JsonProjection` operations are unmigrated, and two of them
   (`ObjectMapperServiceCount`, `ObjectMapperServiceAt`) need `--argjson` lowering, which is unbuilt.
 - No negative falsifier exists yet proving a REST path reaches none of these carriers.
+- **The wet receipt does not execute in CI, and this is a declared gap rather than an enrollment.**
+  The hermetic floor refuses `jq.Process.RunWithStdin` (no `mock_response`) and mocking would
+  defeat the assertion, so the file is named in `cli_run.rs` `floor_prepared_subject_exclusions`.
+  No wet lane exists to host it: the falsifier and wet batches died with the floor cut, and
+  `v2.workflow.required_floor` deliberately defers wet lanes until the question can be "asked
+  against a live consumer". So the claim sits at **UNEXECUTED-IN-CI**, evidenced only by the
+  recorded run above and reproducible locally with:
+
+  ```
+  claim_batch --wet --source-root dag --source-root src/v2     --entry dag/test/manual/process_argv_expansion_receipt_test.dag     --functions case4_expansion_carrier_splices
+  ```
+
+  **Re-enrollment trigger:** a wet lane with a live consumer exists again.
+
+  The first attempt at this admission added rows to `gunbc.ci_layer_roots`
+  (`witness_exclusion_frontier` + `bin_witness_wet_entries`) and a commit message asserting they
+  would take effect. They did not — `run_required_floor` consults the Rust list and nothing else,
+  and the CI receipt was an unchanged `modules_excluded=2`. Both rows were reverted rather than
+  left standing: a row in a roster with no live consumer is specification-without-execution, and
+  the enrollment half would have been worse than useless, since it would have *claimed* an
+  executing consumer for a witness nothing runs. Recorded because the mistake is instructive —
+  I read a neighbouring row's shape as the mechanism instead of tracing the mechanism's caller.
 - The wet receipt run reports `[expectation-frontier] 1 site(s), 1 dispatch(es) undeclared:
   jq.Process.RunWithStdin=1`. That is the new handler's dispatch not being declared to the
   expectation registry. It is left standing rather than silenced because it is exactly the shape §5

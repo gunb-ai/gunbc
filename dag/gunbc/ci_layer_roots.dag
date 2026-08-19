@@ -133,12 +133,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     dissolution: unbound_dissolution(description: "mock_response coverage lands for the git.Inspect revision-addressed operations used by current_stage0_rust_source_observation AND this assertion is re-checked under a fixed mock; or the fn enrolls on a scheduled wet lane. Either way this row deletes.")
   },
   WitnessExclusionRow {
-    pattern: "process_argv_expansion_receipt_test.dag",
-    classification: BinWitnessWet,
-    reason: "SUBSTANTIATED per-row (found 2026-08-19, PR #8467 CI red, run 32234654398, 1 of 9201): case4_expansion_carrier_splices dispatches jq.Process.RunWithStdin, which carries no mock_response, so the hermetic envelope REFUSES rather than skipping and one refusing member fails the run. PUBLISHING A MOCK IS THE WRONG REPAIR HERE, for the reason the stage0 rows above record: this witness's ENTIRE content is that a real jq exits 0 only when it receives two argv words rather than one concatenated one, so a mocked RunWithStdin would let it pass without any process ever running — a green that cannot fail, asserting nothing about the boundary defect it exists to detect. Path was not admission either: the file sits under dag/test/manual/ and was swept into unshrunk discovery regardless, exactly as DESIGN's witness-cost ruling says a directory cannot decide an admission question. This row only keeps it off the hermetic batch; its real executing consumer is the bin_witness_wet_entries enrollment below, under WitnessHasExecutingConsumer standing. CLASSIFIED BinWitnessWet, NOT OfflineLocalRecipe: the two differ in what they CLAIM, since BinWitnessWet projects SchedulingEnrolled while OfflineLocalRecipe projects SchedulingDark, so the offline label on a row that really does run per-PR would understate its own coverage -- and per DESIGN's witness-cost ruling a broad offline path verdict is exactly the unconditional admission that was retired. BinWitnessWet is also the arm the reconciliation witness holds to account: an unbacked BinWitnessWet row reds, and this one is backed by the entry below.",
-    dissolution: unbound_dissolution(description: "the argv boundary law becomes observable without executing a process -- e.g. the emitted argument vector is inspectable at the host seam as typed data rather than only through a real exit code -- at which point the assertion moves hermetic and this row deletes")
-  },
-  WitnessExclusionRow {
     pattern: "claim/long/mandatory_tag_extdeps_corpus",
     classification: OfflineLocalRecipe,
     reason: "interpreted corpus walk prices out of every CI lane (measured ~33s/module parse, hours full run; see corpus_witness_note in the test file); the CI-cadence corpus consumer is the retained host projection v2.lens.mandatory_tag.corpus_scan",
@@ -939,7 +933,6 @@ data bin_witness_wet_entries: List<ScheduleWitnessEntry> = [
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "the_digest_is_of_the_file_cargo_named_not_of_some_other_real_file"),
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "changing_only_the_source_bytes_names_exactly_the_artifact_axis"),
   bin_wet(entry: "dag/test/claim/self_host_artifact_materialization_real_execution_witness_test.dag", f: "rebuilding_identical_source_in_place_moves_no_axis"),
-  bin_wet(entry: "dag/test/manual/process_argv_expansion_receipt_test.dag", f: "case4_expansion_carrier_splices"),
   bin_wet(entry: "dag/test/claim/stage0_regen_convergence_real_execution_witness_test.dag", f: "a_real_regen_stage0_verify_run_reports_zero_divergence"),
   bin_wet(entry: "dag/test/claim/stage0_regen_convergence_real_execution_witness_test.dag", f: "w_RED_an_unrecognized_flag_does_not_report_the_success_marker"),
   bin_wet(entry: "dag/test/claim/run_verdict_exit_status_witness_test.dag", f: "run_failure_verdict_reaches_nonzero_exit"),

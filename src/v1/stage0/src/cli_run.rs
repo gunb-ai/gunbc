@@ -38004,6 +38004,25 @@ pub fn floor_prepared_subject_exclusions() -> Vec<String> {
     vec![
         "test/fixture/meta_exec_confinement_scan/".to_string(),
         "test/manual/ownership_movable_test.dag".to_string(),
+        // WET RECEIPT, AND IT HAS NO CI CONSUMER TODAY — stated plainly rather than dressed up
+        // as an enrollment. case4_expansion_carrier_splices dispatches a real jq through
+        // jq.Process.RunWithStdin, which carries no mock_response, so the hermetic floor refuses
+        // it and one refusing member fails the run. Mocking is not the repair: the witness exists
+        // to prove that a REAL jq exits 0 only on two argv words rather than one concatenated
+        // one, and a mocked dispatch passes it without any process running.
+        //
+        // The first attempt at this fix added rows to gunbc.ci_layer_roots
+        // (witness_exclusion_frontier + bin_witness_wet_entries) and asserted they would take
+        // effect. They did not: run_required_floor consults THIS list and nothing else, the CI
+        // receipt was an unchanged modules_excluded=2, and the wet batches those rosters feed
+        // were deleted with the old floor. Adding a row to a roster with no live consumer is
+        // specification-without-execution, so both rows were reverted rather than left standing.
+        //
+        // What this exclusion buys is a green floor; what it does NOT buy is coverage. The claim
+        // sits at UNEXECUTED-IN-CI with a local recipe recorded in the design note (§15), and
+        // re-enrolls when a wet lane exists again — which required_floor.dag deliberately defers
+        // until it can be "asked against a live consumer".
+        "test/manual/process_argv_expansion_receipt_test.dag".to_string(),
     ]
 }
 
