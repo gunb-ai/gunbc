@@ -415,7 +415,17 @@ fn write_emitted_tree(dest_src: &Path, emitted: &HashMap<String, String>) -> Res
     }
     fs::create_dir_all(dest_src).map_err(|e| format!("create {}: {e}", dest_src.display()))?;
     for (path, content) in emitted {
-        let out_path = dest_src.join(path);
+        // Emit keys are heterogeneous (some "src/foo.rs", some bare "Cargo.toml" —
+        // same class of key-space mismatch documented on generated_basenames_from_emit),
+        // but committed_generated_basenames only ever names flat basenames under
+        // stage0/src with no subdirectories, so joining the raw key onto dest_src
+        // (itself already ".../src") double-nested every "src/"-prefixed path and
+        // left verify_candidate_tree looking in a directory with nothing in it.
+        let basename = Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path);
+        let out_path = dest_src.join(basename);
         if let Some(parent) = out_path.parent() {
             fs::create_dir_all(parent).map_err(|e| format!("create {}: {e}", parent.display()))?;
         }
