@@ -6260,6 +6260,29 @@ fn render_rust_param_sig_type(param: Node, generic_param_names: List<String>, sh
   render_rust_fn_sig_type(n: type_node, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
 }
 
+// The `+ 'static` is not a restriction the source language can feel, which is why it is
+// unconditional rather than gated on whether the closure reaches a stored position.
+//
+// An arrow type realizes in Rust as `Rc<dyn Fn(..) -> ..>` (v1.compiler.languages rust_spec
+// callable_type_template). A `dyn` trait object defaults to the `'static` lifetime, so a function
+// whose body closes over its arrow-typed parameters and returns one of those cannot compile unless
+// those parameters are `'static` — rustc E0310 at the `Rc::new(move |..| ..)` site, which is the
+// realization's own consequence rather than anything the authored source asked for.
+//
+// The bound could therefore be gated on "this closure is stored", but the gate would separate no
+// programs: the substrate has no reference or lifetime concept at all, so every closure it can
+// construct captures owned or Rc-shared values and is already `'static`. A bound that cannot reject
+// any expressible program is a statement of what the substrate already guarantees, not a constraint
+// on callers — and the gated form would have to thread the enclosing function's return type into a
+// renderer that today sees only the parameter, buying a distinction with no observable difference.
+//
+// This is the same shape as the `+ Clone` beside it, which is unconditional for the same reason.
+// It belongs here rather than in v2/std/staging.dag because the obligation is created by the
+// realization choice: the source declares an arrow, and only the Rust row decides that an arrow
+// becomes `Rc<dyn Fn>`. Declaring it at the source would require inventing Rust lifetime syntax in
+// a medium-agnostic language — `'static` appears in no .dag source module — and would leave the
+// next arrow-into-Rc site to be rediscovered the same way (DESIGN §3 layer inversion, §5
+// construction over validation).
 fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types: Set<String>, source_indices: Map<String, NewlineIndex>, variant_to_enum: Map<String, String>, env: TypeEnv) -> String {
   if n.params |> count > 0 {
     let param_types = n.params |> map(p => render_rust_fn_sig_type(n: param_node_type_expr(n: p), generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env))
@@ -6268,7 +6291,7 @@ fn emit_rust_param_type(n: Node, generic_param_names: List<String>, shared_types
       Present { value: Resolved { node: rt } } => render_rust_fn_sig_type(n: rt, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
       _ => "()"
     }
-    concat("impl Fn(", param_str, ") -> ", ret_str, " + Clone")
+    concat("impl Fn(", param_str, ") -> ", ret_str, " + Clone + 'static")
   } else {
     render_rust_fn_sig_type(n: n, generic_param_names: generic_param_names, shared_types: shared_types, source_indices: source_indices, variant_to_enum: variant_to_enum, env: env)
   }
