@@ -16,8 +16,7 @@ import gunbc.ci_gate {
   EmitHostGate, CheapClaimPoolGate,
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
   ProseRowIntroductionGate,
-  SourceRootIngestGate, RegenVerifyGate,
-  SelfHostReadsRealBytesGate, SelfHostStalenessGate
+  SourceRootIngestGate
 }
 import gunbc.ci_layer_roots {
   witness_layer_roots,
@@ -27,7 +26,6 @@ import gunbc.cli_invoke {
   claim_executor_run_plan_shell,
   PlanFunction,
   CiFloorPlan,
-  CiRegenFloorPlan,
   CiPlanArtifactPlan,
   plan_function_name,
   claim_executor_verify_artifacts_shell,
@@ -53,12 +51,6 @@ import gunbc.fleet_main_revision { fleet_desired_ref_name }
 import gunbc.ci_deploy_target_host { gunbc_ci_deploy_srv1_runner_spec }
 import gunbc.merge_admission_produce {
   ci_repo_root_shell,
-}
-import v2.workflow.ci_regen_rustfmt_path_emit {
-  ci_regen_ensure_rustfmt_path_script,
-}
-import v2.workflow.ci_heal_skew_guard_emit {
-  ci_heal_binary_source_skew_guard_script,
 }
 import extdeps.git {
   git_remote_ref_parts,
@@ -456,49 +448,6 @@ fn gunbc_ci_floor_only_script(spec: CiSpec) -> String {
   )
 }
 
-data regen_floor_skip_witness_bin: String = "regen_floor_skip_witness"
-
-data ci_regen_floor_skip_policy_note: String = "Affected-set-scoped regen admission (pull_request only): on a pull_request event, regen_floor_skip_witness intersects the merge-base diff with the [src/v1, dag] regen input closure (shared authority cli_run::regen_input_sources — the exact set regen_stage0 compiles; both the RegenVerifyGate and the SelfHostStalenessGate invoke regen_stage0, so the closure covers both). A PR diff touching none of src/v1/** (emitter source + committed stage0 outputs), v1's transitive dag import-closure, or the Cargo/toolchain build config cannot change the self-host fixed-point, so the regen step exits 0 immediately (a required step that passes because the self-host fixed-point is provably unchanged — regen runs before the floor so emitter drift fails fast, with no floor or merge-admission dependency). Empty diff / diff failure / closure failure runs regen (fail-closed). COLD CONTROL: the skip is gated to pull_request events via GITHUB_EVENT_NAME, so push-to-main and workflow_dispatch run regen UNCONDITIONALLY (no witness). A wrong closure that lets a PR wrongly skip therefore surfaces as a counted divergence on the very next merge to main — the squash-merge main-push run has an empty diff and runs regen cold, reding main if the seed is stale (a one-merge acceptance window, the discovery-flip shape). The 4-hourly falsifier does NOT run regen_stage0; the unconditional main-push regen is the cold control."
-
-fn ci_regen_floor_skip_shortcut_script() -> String {
-  concat(
-    concat("# ", concat(ci_regen_floor_skip_policy_note, "\n")),
-    concat(
-      "if [ \"$GITHUB_EVENT_NAME\" = \"pull_request\" ]; then\n",
-      concat(
-        concat(
-          concat("  _ci_regen_skip=$(", concat(artifact_shell_path(name: regen_floor_skip_witness_bin), " 2>/dev/null || echo run_regen)")),
-          "\n  if [ \"$_ci_regen_skip\" = \"regen_not_affected_skip\" ]; then\n"
-        ),
-        concat(
-          "      echo \"gunbc ci regen: pull_request diff does not intersect the [src/v1, dag] regen input closure — self-host fixed-point provably unchanged; skipping (push-to-main runs regen unconditionally as the cold control)\"\n",
-          concat("      exit 0\n", concat("  fi\n", "fi\n"))
-        )
-      )
-    )
-  )
-}
-
-fn gunbc_ci_regen_floor_only_script(spec: CiSpec) -> String {
-  concat(
-    concat(ci_regen_ensure_rustfmt_path_script(), "\n"),
-    concat(
-      concat("ROOT=", ci_repo_root_shell(), "\n"),
-      concat(
-        concat(git_fetch_script(policy: spec.diff_policy), "\n"),
-        concat(
-          concat(ci_regen_floor_skip_shortcut_script(), "\n"),
-          concat(scheduler_invoke_with(spec: spec, plan_function: CiRegenFloorPlan), "\n")
-        )
-      )
-    )
-  )
-}
-
-fn gunbc_ci_regen_floor_run(spec: CiSpec) -> String {
-  gunbc_ci_regen_floor_only_script(spec: spec)
-}
-
 fn gunbc_ci_workflow_run(spec: CiSpec) -> String {
   gunbc_ci_floor_only_script(spec: spec)
 }
@@ -643,38 +592,19 @@ fn gunbc_ci_fleet_key_agent_cleanup_script() -> String {
   "if [ -n \"$\{SSH_AGENT_PID:-}\" ]; then ssh-agent -k || true; fi\n"
 }
 
-// Fleet timer self-install bootstrap (operator verdict join 2, parent verification
-// msg_8d84ae4f): the LIVE invocation wire for fleet_timer_self_install_wet — without
-// this job the self-install route had zero callers, a disconnected mechanism. The job
-// runs on a fleet runner and installs the timer on THE MACHINE IT RUNS ON (self-install:
-// no remote host is contacted); dispatch it once per bootstrap host, thereafter the
-// installed timer sustains itself.
-data gunbc_ci_fleet_timer_install_shell_emit_scaffold: Disposition = Scaffold {
-  dissolves_to: SingleAuthority,
-  bind: DeclarationRef {
-    module_path: "gunbc.ci_spec",
-    decl_name: "gunbc_ci_fleet_timer_install_invoke",
-    field: WholeDeclaration
-  }
-}
-
-data gunbc_ci_fleet_timer_install_shell_emit_dissolution_trigger: DissolutionCondition = unbound_dissolution(description: "🟡 dissolve-on: gunbc_ci_fleet_timer_install_invoke — concat-built foreign-executor (GitHub Actions run:) shell invoking gunbc run on gunbc.fleet_converge_timer_install fleet_timer_self_install_wet; DISSOLVES WHEN bash-emit (#5828 / ROADMAP 6-shell-slice0 / shell→intent Phase 2) binds the step to orchestration emit over the typed gunbc.WitnessBin.Run route")
-
-fn gunbc_ci_fleet_timer_install_invoke() -> String {
-  concat(
-    concat("# ", concat(dissolution_description(condition: gunbc_ci_fleet_timer_install_shell_emit_dissolution_trigger), "\n")),
-    concat(
-      concat("ROOT=", ci_repo_root_shell(), "\n"),
-      gunbc_run_shell(
-        source_roots: witness_layer_roots,
-        entry: "dag/gunbc/fleet_converge_timer_install.dag",
-        function: "fleet_timer_self_install_wet",
-        rooted: true,
-        claim_run: false
-      )
-    )
-  )
-}
+// THE FLEET-TIMER SELF-INSTALL WIRE IS DELETED (2026-08-18). It emitted a GitHub Actions
+// `run:` step invoking `gunbc.fleet_converge_timer_install fleet_timer_self_install_wet`,
+// and its own comment recorded that the step existed because the self-install route
+// otherwise "had zero callers, a disconnected mechanism". That step lived in `ci.yml`,
+// which #8283 deleted, so the wire returned to being exactly the disconnected mechanism it
+// was added to prevent: measured at deletion, `gunbc_ci_fleet_timer_install_invoke` had no
+// consumer but the `DeclarationRef` inside its own `Scaffold` row, and
+// `fleet_timer_self_install` appears in neither surviving workflow.
+//
+// Its registered `Scaffold` and unbound `DissolutionCondition` go with it. Both described a
+// concat-built foreign-executor shell awaiting bash-emit; deleting the emitter discharges
+// the obligation instead of carrying it, and an unbound condition whose subject no longer
+// exists can never report itself fired.
 
 data gunbc_fleet_converge_plan_artifact_name: String = "fleet-converge-plan"
 
@@ -1094,15 +1024,11 @@ fn gunbc_ci_heal_dispatch_invoke() -> String {
 
 data ci_heal_dispatch_invoke_note: String = "After a successful push the heal invokes tools.ci_heal_dispatch, which binds the modeled github.Workflows.CreateDispatch operation. The moving branch ref and immutable HEALED_HEAD are distinct inputs. The dispatched run binds the branch resolution recorded in github.sha and its checkout head to that immutable input before any witness can count. The workflow RunStep projects github.token into its GITHUB_TOKEN environment because GitHub Actions does not inject the installation token as a process variable by default; CreateDispatch auth_source reads that env var. A transport refusal makes the gunbc invocation nonzero; the surrounding heal script classifies HealDispatchRefused, keeps revalidation required, and fails loudly. There is deliberately no fallback to the ordinary push event and no silent retry."
 
-data ci_heal_binary_source_skew_note: String = "THE PAIRING THE HEAL JOB NEVER MODELED (incident 2026-07-29). A generated artifact's identity is (authority source x compiler), and this job silently pairs TWO DIFFERENT REVISIONS of that product: the release binary comes from `build`, which uses the default pull_request checkout — the MERGE ref (main + PR) — while this job checks out `github.head_ref`, the BRANCH HEAD, because it pushes the regeneration back (ci_heal_branch_checkout_note reasons carefully about the push semantics and never about the binary's provenance; it calls build's output 'the release gunbc binary', treating a projection of one revision as a context-free tool). The skew is latent until a seed change adds a Rust->.dag call: then the merge-ref binary invokes a `.dag` function the branch-head tree does not contain, `lookup_fn` misses, and the run dies mid-regen. Live receipt: #7348 landed the scoped-run observation seed, whose Rust calls gunbc.observation_seed_render.scoped_run_begin_write_measured; every open PR whose branch head predated it went red at once (#7392, #7394, #7395 — identical failure, none of them at fault), while main stayed green because ci_regen_heal_if skips this job on push. Reproduced by execution: ONE binary built from the merge ref, run against a pre-#7348 tree -> the exact CI failure; run against the same tree with origin/main merged in -> ExitSuccess, zero drift. The guard below refuses the unsound pairing instead of discovering it as a mid-regen crash."
+data ci_heal_binary_source_skew_note: String = "RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard this note describes is DELETED and no function implements it. Everything below is the incident record that produced it, kept because the receipt outlives the mechanism; read it in the past tense. THE PAIRING THE HEAL JOB NEVER MODELED (incident 2026-07-29). A generated artifact's identity is (authority source x compiler), and this job silently pairs TWO DIFFERENT REVISIONS of that product: the release binary comes from `build`, which uses the default pull_request checkout — the MERGE ref (main + PR) — while this job checks out `github.head_ref`, the BRANCH HEAD, because it pushes the regeneration back (ci_heal_branch_checkout_note reasons carefully about the push semantics and never about the binary's provenance; it calls build's output 'the release gunbc binary', treating a projection of one revision as a context-free tool). The skew is latent until a seed change adds a Rust->.dag call: then the merge-ref binary invokes a `.dag` function the branch-head tree does not contain, `lookup_fn` misses, and the run dies mid-regen. Live receipt: #7348 landed the scoped-run observation seed, whose Rust calls gunbc.observation_seed_render.scoped_run_begin_write_measured; every open PR whose branch head predated it went red at once (#7392, #7394, #7395 — identical failure, none of them at fault), while main stayed green because ci_regen_heal_if skips this job on push. Reproduced by execution: ONE binary built from the merge ref, run against a pre-#7348 tree -> the exact CI failure; run against the same tree with origin/main merged in -> ExitSuccess, zero drift. The guard below refuses the unsound pairing instead of discovering it as a mid-regen crash."
 
-data ci_heal_binary_source_skew_guard_note: String = "THE COMPARAND IS THE BUILT-FROM REVISION, NOT A BRANCH NAME (operator ruling 2026-07-29). The first cut of this guard compared against `origin/main`, and that was wrong on the operator's own objection: `origin/main` names several different things — the one on this runner, the one on a developer's machine, and the actual source of truth — so a guard keyed on it asserts a relationship between the tree and WHICHEVER main this box last fetched, and can even race an advance mid-run. There is no ambiguity to resolve because the question was never about main: it is 'was this binary compiled from a revision this tree can satisfy'. `github.sha` answers it exactly — on a pull_request it IS the merge commit the build job checked out, so the guard compares the tree against the binary's own provenance, in the same workflow run, with no floating ref anywhere. The guard fails closed if that revision cannot be resolved: an unverifiable provenance is a refusal, never an assumed-fine.\n\nPRECISION IS ALSO THE POINT (DESIGN §5 — refuse, never widen; and never manufacture friction the defect does not warrant). A blanket 'tree must equal the built-from revision' would red nearly every PR to catch a rare pairing — a wall priced in other people's time. The DECIDABLE condition that actually matters is narrower: the binary is unsound against this tree exactly when the built-from revision carries SEED commits (src/v1 — the Rust the binary is compiled from) this tree lacks, because only those can introduce a Rust->.dag expectation the tree cannot satisfy. `git rev-list HEAD..$BUILT_FROM -- src/v1` is exactly that set: empty on the overwhelming majority of PRs (a .dag-only advance cannot skew a compiled binary), non-empty precisely in the #7348 shape. VERIFIED BY EXECUTION on the incident itself: at the pre-#7348 branch point the set is two commits and one of them IS 445bac31c (#7348), so the guard names the responsible commit in its own refusal; at current main and at the same branch after the advance was merged in, the set is empty and the guard is silent — the heal that went green on #7395 is the live receipt for the passing arm. On non-empty the step REFUSES rather than regenerating with a compiler that disagrees with the tree, which is the fabricated-plausible-output arm §5 forbids: main_wet would write whatever artifacts that mismatched pair produces and the commit-push step would push them to the branch. NOT IN SCOPE: preventing a stale branch from MERGING at all. That is merge-admission policy, it needs a source-of-truth model this repo does not have yet (operator: the SCM lane after v1 deletion), and this guard deliberately does not pretend to supply one — it protects the one pairing this job has agency over."
+data ci_heal_binary_source_skew_guard_note: String = "RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard is DELETED. The operator ruling of 2026-07-29 recorded below is kept as the ruling it was, not as a description of live behaviour. THE COMPARAND IS THE BUILT-FROM REVISION, NOT A BRANCH NAME (operator ruling 2026-07-29). The first cut of this guard compared against `origin/main`, and that was wrong on the operator's own objection: `origin/main` names several different things — the one on this runner, the one on a developer's machine, and the actual source of truth — so a guard keyed on it asserts a relationship between the tree and WHICHEVER main this box last fetched, and can even race an advance mid-run. There is no ambiguity to resolve because the question was never about main: it is 'was this binary compiled from a revision this tree can satisfy'. `github.sha` answers it exactly — on a pull_request it IS the merge commit the build job checked out, so the guard compares the tree against the binary's own provenance, in the same workflow run, with no floating ref anywhere. The guard fails closed if that revision cannot be resolved: an unverifiable provenance is a refusal, never an assumed-fine.\n\nPRECISION IS ALSO THE POINT (DESIGN §5 — refuse, never widen; and never manufacture friction the defect does not warrant). A blanket 'tree must equal the built-from revision' would red nearly every PR to catch a rare pairing — a wall priced in other people's time. The DECIDABLE condition that actually matters is narrower: the binary is unsound against this tree exactly when the built-from revision carries SEED commits (src/v1 — the Rust the binary is compiled from) this tree lacks, because only those can introduce a Rust->.dag expectation the tree cannot satisfy. `git rev-list HEAD..$BUILT_FROM -- src/v1` is exactly that set: empty on the overwhelming majority of PRs (a .dag-only advance cannot skew a compiled binary), non-empty precisely in the #7348 shape. VERIFIED BY EXECUTION on the incident itself: at the pre-#7348 branch point the set is two commits and one of them IS 445bac31c (#7348), so the guard names the responsible commit in its own refusal; at current main and at the same branch after the advance was merged in, the set is empty and the guard is silent — the heal that went green on #7395 is the live receipt for the passing arm. On non-empty the step REFUSES rather than regenerating with a compiler that disagrees with the tree, which is the fabricated-plausible-output arm §5 forbids: main_wet would write whatever artifacts that mismatched pair produces and the commit-push step would push them to the branch. NOT IN SCOPE: preventing a stale branch from MERGING at all. That is merge-admission policy, it needs a source-of-truth model this repo does not have yet (operator: the SCM lane after v1 deletion), and this guard deliberately does not pretend to supply one — it protects the one pairing this job has agency over."
 
-data ci_heal_skew_auto_remedy_note: String = "THE GUARD APPLIES ITS OWN REMEDY (operator ruling 2026-07-29: 'we can also try to apply the remedy automatically'). The first cut printed 'merge the base branch, then re-run' and exited 1, which is a correct refusal and a wasted round trip: the job holds contents:write, already pushes commits to this branch, and the fix is a merge it is fully authorized to perform. Making a human perform a mechanical repair the machine can do is the kind of toil this pipeline exists to remove.\n\nThis is a REPAIR, not a widen, and the distinction is the whole reason it is admissible under DESIGN §5. The refused arm does not proceed despite the skew — it REMOVES the skew by bringing the tree up to the revision the binary was built from, then re-checks the same condition it just failed. Regeneration runs only if that second check passes, so the artifacts are still projected by a compiler the tree agrees with. Nothing is assumed; the invariant is re-established and re-verified.\n\nBoth failure arms stay closed. A merge that CONFLICTS aborts and refuses with the original diagnostic plus the conflicting paths — the machine will not resolve semantic conflicts on an author's behalf. A merge that succeeds but leaves the seed still ahead (possible if the base moved again mid-run) refuses too, rather than looping. The remedy is attempted exactly once."
-
-fn gunbc_ci_heal_binary_source_skew_guard_script() -> String {
-  ci_heal_binary_source_skew_guard_script()
-}
+data ci_heal_skew_auto_remedy_note: String = "RETIRED 2026-08-18 WITH THE REGEN ROOT CUT: the guard and its remedy are DELETED. The operator ruling of 2026-07-29 recorded below is kept as the ruling it was, not as a description of live behaviour. THE GUARD APPLIES ITS OWN REMEDY (operator ruling 2026-07-29: 'we can also try to apply the remedy automatically'). The first cut printed 'merge the base branch, then re-run' and exited 1, which is a correct refusal and a wasted round trip: the job holds contents:write, already pushes commits to this branch, and the fix is a merge it is fully authorized to perform. Making a human perform a mechanical repair the machine can do is the kind of toil this pipeline exists to remove.\n\nThis is a REPAIR, not a widen, and the distinction is the whole reason it is admissible under DESIGN §5. The refused arm does not proceed despite the skew — it REMOVES the skew by bringing the tree up to the revision the binary was built from, then re-checks the same condition it just failed. Regeneration runs only if that second check passes, so the artifacts are still projected by a compiler the tree agrees with. Nothing is assumed; the invariant is re-established and re-verified.\n\nBoth failure arms stay closed. A merge that CONFLICTS aborts and refuses with the original diagnostic plus the conflicting paths — the machine will not resolve semantic conflicts on an author's behalf. A merge that succeeds but leaves the seed still ahead (possible if the base moved again mid-run) refuses too, rather than looping. The remedy is attempted exactly once."
 
 data ci_heal_author_commit_artifact_dir: String = "heal-author-commit-required"
 
