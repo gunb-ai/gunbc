@@ -39,7 +39,10 @@ census entry claimed otherwise; it was wrong.
 
 ## 3. Measured blast radii, not estimated
 
-- **`HeldLease`: 8 files** — the authority, 2 witnesses, and 5 production consumers
+- **`HeldLease`: 10 files** at main `8687f2a6a30` — the authority, 4 witnesses, and 5 production
+  consumers. (This read 8 when written against an earlier base; two witness consumers landed
+  between. Corrected by Cut A's re-measurement rather than left to float — a census with no base
+  named is not a measurement.)
   (`codex_app_server_press`, `codex_supervised_turn`, `fleet_converge_plan`,
   `fleet_converge_plan_cli`, `plans/host_effect_orchestration`). Small enough that extracting the
   identity+ownership coordinate is tractable rather than a sweep.
@@ -101,7 +104,7 @@ Reviewed and approved, with the named carrier being `LeaseEpoch` rather than `Le
 because it includes the generation and so is an epoch rather than an identity.
 
 ```
-type LeaseEpoch { lease_key: LeaseKey, resource_fingerprint: ContentHash,
+type LeaseEpoch { lease_key: NonEmptyStr, resource_fingerprint: ContentHash,
                   owner_fingerprint: ContentHash, generation: Int }
 type HeldLease  { epoch: LeaseEpoch, observed: HeldLeaseObservedState }
 ```
@@ -219,7 +222,7 @@ authority and is a smaller interception point (verified present, with consumers 
 ### The order
 
 - **Cut A — canonical lease epoch.** Land `LeaseEpoch` in `std.temporal_effect` and migrate all
-  `HeldLease` consumers (8 files). Upstream authority preparation, first, because Grant, Receipt,
+  `HeldLease` consumers (10 files at `8687f2a6a30`). Upstream authority preparation, first, because Grant, Receipt,
   settlement, teardown and component fencing would otherwise all build against a temporary carrier.
 - **Cut B — delete the dead root.** Delete `product.compute_fabric`, remove #8413's dependency on
   its thread-only `Shape`, drop the subject-only witnesses, and classify the compile refusals.
@@ -335,3 +338,27 @@ consumes the landed authority, or #8413 itself carries the complete replacement 
 *into* the still-open #8413 branch, so its final diff is the product protocol rather than every
 prerequisite migration absorbed into one unreviewable change. That is what answers the bankruptcy
 concern without discarding 16 commits of review-hardened work (§6).
+
+## 14. Two corrections from Cut A's implementation, kept so Cut B does not inherit them
+
+**`LeaseKey` does not exist and must not be minted here.** §7 above originally spelled
+`lease_key: LeaseKey`; there is no such type, and I had not checked. Cut A refused to mint it and
+the refusal is correct: a bare `type LeaseKey = NonEmptyStr` carries no construction wall, which is
+the hollow-alias mode §4b names — a richer type name is not safety until construction and
+acceptance enforce the distinction. It would also be worse than ordinary debt at this location,
+because minting an unenforced brand *inside* the authority a consolidation cut exists to establish
+cements a nickname at exactly the place every downstream module will cite. There is additionally no
+grounded syntactic law for these keys to refine on: they are host-scoped and attempt-scoped strings
+built by two different consumers. **The field is `NonEmptyStr`.** A branded key may land later, but
+only together with its validating mint — strictly additive to the record, blocked by nothing here.
+
+**The per-witness run recipe is narrower than the brief claimed.** The brief told Cut A that
+`gunbc run --source-root dag --source-root src/v2 --entry <claim file> --function <fn>` runs a
+single witness, with the not-`ProcessExit` refusal carrying the Bool. That route is real — verified
+by execution on `temporal_effect_spine_witness_test.dag`, which resolved and evaluated despite
+carrying zero import lines — but Cut A hit unresolved *type* references through it
+(`std.temporal_effect` `Millisecond`, `std.roster_frontier` `DissolutionCondition`) on the clean
+tree. So the route is not generally available, and the boundary is not yet established. Until it
+is, **the required-floor run is the only execution receipt that covers every witness**, and a cut
+whose controls depend on per-witness invocation should plan for a CI round trip rather than assume
+a local one.
