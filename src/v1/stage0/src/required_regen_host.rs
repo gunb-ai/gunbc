@@ -210,11 +210,6 @@ fn compile_stage0(workspace: &Path) -> Result<HashMap<String, String>, String> {
             .and_then(|n| n.to_str())
             .unwrap_or(file.path.as_str())
             .to_string();
-        if std::env::var("GUNBC_REGEN_DUMP_FILE").as_deref() == Ok(basename.as_str()) {
-            eprintln!("=== DUMP BEGIN {basename} ===");
-            eprintln!("{}", file.content);
-            eprintln!("=== DUMP END {basename} ===");
-        }
         out.insert(basename, file.content.clone());
     }
     Ok(out)
@@ -525,8 +520,27 @@ fn tree_digest_from_map(
     Ok(digest_label(payload.as_bytes()))
 }
 
+/// rustfmt is not guaranteed idempotent on a single pass for every input: some
+/// borderline formatting decisions (e.g. a `let` binding whose RHS is a
+/// single-line-condensed `if { .. } else { match .. } }`) only reach their
+/// stable shape on a second pass. Comparing a once-formatted candidate
+/// against a committed file that rustfmt itself would reformat further is a
+/// false drift, not a real content difference — so normalize to rustfmt's own
+/// fixed point (bounded, and refused rather than silently accepted if rustfmt
+/// never converges) instead of trusting a single pass.
 fn normalize_generated_source(content: &str) -> Result<String, String> {
-    normalize_generated_source_attempt(content)
+    const MAX_PASSES: usize = 8;
+    let mut current = normalize_generated_source_attempt(content)?;
+    for _ in 1..MAX_PASSES {
+        let next = normalize_generated_source_attempt(&current)?;
+        if next == current {
+            return Ok(current);
+        }
+        current = next;
+    }
+    Err(format!(
+        "rustfmt did not reach a fixed point within {MAX_PASSES} passes"
+    ))
 }
 
 fn normalize_generated_source_attempt(content: &str) -> Result<String, String> {
