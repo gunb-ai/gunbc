@@ -11,7 +11,7 @@ fn parse_fixture_pattern(source: String) -> v1.tests.claim.pattern_binder_declar
   let file = "pattern-binder-declaration-node.dag"
   let index = build_newline_index(file: file, source: source)
   let result = parse_pattern(
-    tokens: token_stream_new(all: tokenize(source: source, file: file)),
+    tokens: v1.compiler.parse.token_stream_new(all: tokenize(source: source, file: file)),
     ctx: v1.compiler.parse.ParseContext {
       source_indices: map_insert(empty_map(), file, index),
       intern_table: empty_intern_table(),

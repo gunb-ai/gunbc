@@ -48,7 +48,7 @@ fn resolve_decl_fact_by_qualified_name(
 fn skeleton_marshal_atom_lexeme_optional(node: v2.std.node.Node) -> SkeletonMarshalAtomLexeme? {
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } =>
-      Present { value: symbol_lexeme(sym: sym) }
+      Present { value: v2.std.compilers.lexing.symbol_lexeme(sym: sym) }
     TypeNode { connective: Conj } =>
       fold(
         node_positional_child_targets(node: node),
@@ -84,7 +84,7 @@ fn node_skeleton_marshal_atom_lexemes(node: v2.std.node.Node) -> List<SkeletonMa
   )
   match node.kind {
     TypeNode { connective: Atom { identity: sym } } =>
-      std.algebra.Cons { head: symbol_lexeme(sym: sym), tail: child_lexemes }
+      std.algebra.Cons { head: v2.std.compilers.lexing.symbol_lexeme(sym: sym), tail: child_lexemes }
     _ => child_lexemes
   }
 }

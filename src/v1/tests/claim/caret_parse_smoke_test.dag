@@ -127,19 +127,19 @@ test fn w_caret_paren_tokenizes_as_caret_then_lparen() -> Bool {
 
 test fn w_parse_caret_ident_produces_literal() -> Bool {
   let tokens = tokenize(source: "^foo_tag", file: "test.dag")
-  let r = parse_caret_expr(tokens: token_stream_new(all: tokens), ctx: caret_parse_ctx())
+  let r = parse_caret_expr(tokens: v1.compiler.parse.token_stream_new(all: tokens), ctx: caret_parse_ctx())
   r.err == none && caret_expr_is_symbol_literal(expr: r.expr)
 }
 
 test fn w_parse_caret_paren_produces_discriminant_call() -> Bool {
   let tokens = tokenize(source: "^(alpha)", file: "test.dag")
-  let r = parse_caret_expr(tokens: token_stream_new(all: tokens), ctx: caret_parse_ctx())
+  let r = parse_caret_expr(tokens: v1.compiler.parse.token_stream_new(all: tokens), ctx: caret_parse_ctx())
   r.err == none && caret_expr_is_discriminant_call(expr: r.expr)
 }
 
 test fn w_parse_expr_caret_paren_full_pipeline() -> Bool {
   let tokens = tokenize(source: "^(alpha)", file: "test.dag")
-  let r = parse_expr(tokens: token_stream_new(all: tokens), ctx: caret_parse_ctx())
+  let r = parse_expr(tokens: v1.compiler.parse.token_stream_new(all: tokens), ctx: caret_parse_ctx())
   r.err == none
     && caret_token_stream_only_eof_remains(stream: r.tokens)
     && caret_expr_is_discriminant_call(expr: r.expr)
@@ -147,13 +147,13 @@ test fn w_parse_expr_caret_paren_full_pipeline() -> Bool {
 
 test fn w_parse_expr_caret_var_arg_produces_discriminant_call() -> Bool {
   let tokens = tokenize(source: "^(alpha)", file: "test.dag")
-  let r = parse_expr(tokens: token_stream_new(all: tokens), ctx: caret_parse_ctx())
+  let r = parse_expr(tokens: v1.compiler.parse.token_stream_new(all: tokens), ctx: caret_parse_ctx())
   r.err == none && caret_expr_is_discriminant_call(expr: r.expr)
 }
 
 test fn w_parse_module_let_caret_paren() -> Bool {
   let tokens = tokenize(source: caret_probe5b_source(), file: "caret_probe5b.dag")
-  let r = parse_module(tokens: token_stream_new(all: tokens), ctx: caret_parse_ctx())
+  let r = parse_module(tokens: v1.compiler.parse.token_stream_new(all: tokens), ctx: caret_parse_ctx())
   r.err == none
 }
 

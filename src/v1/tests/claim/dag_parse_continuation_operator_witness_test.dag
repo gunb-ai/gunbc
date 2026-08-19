@@ -130,7 +130,7 @@ test fn w_dual_role_minus_still_two_statements() -> Bool {
   let source = "module test\nfn foo() -> Int { 0 }\nfn bar(x: Int) -> Int { x }\nfn demo() -> Int {\n  let a = foo\n  -bar(1)\n  a\n}\n"
   let ctx = newline_parse_ctx(file: file, source: source)
   let r = parse_module(
-    tokens: token_stream_new(all: tokenize(source: source, file: file)),
+    tokens: v1.compiler.parse.token_stream_new(all: tokenize(source: source, file: file)),
     ctx: ctx
   )
   if r.err != none { return false }

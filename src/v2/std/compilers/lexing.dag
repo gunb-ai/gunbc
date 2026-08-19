@@ -237,7 +237,7 @@ fn fold_lex_pattern<R>(pattern: LexPattern, algebra: LexPatternFold<R>) -> R {
 }
 
 fn lex_empty_node() -> Node {
-  stamp_node_shape_synthetic(shape: type_shape(connective: Conj, children: []))
+  v2.std.node_shape.stamp_node_shape_synthetic(shape: v2.std.node_shape.type_shape(connective: v2.std.node.Conj, children: []))
 }
 
 fn lex_void_lex_rules_evidence_node() -> Node {
@@ -259,7 +259,7 @@ fn symbol_intern_lexeme(lexeme: Lexeme) -> v2.std.node.Symbol {
   symbol_intern_lexeme(lexeme: lexeme)
 }
 
-data symbol_lexeme_host_disposition: std.disposition.Disposition = Scaffold {
+data symbol_lexeme_host_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: RealizationDispatch,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.std.compilers.lexing",
