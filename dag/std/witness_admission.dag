@@ -2,7 +2,9 @@ module std.witness_admission
 
 import std.content_hash { Fnv1a64Structural, content_hash_atom }
 
-data witness_admission_authority_note: String = "Phase 0(b) admission invariant (docs/plans/module-identity-storage-binding-design.md): every enrolled witness row names an executing consumer — discovery rows run per selection; SelfEmitted receipts run on the falsifier wet cadence; known-red quarantined rows run on a probe cadence expecting red (greening is a counted un-quarantine event); operator-ruled OFFLINE rows carry an explicit local-recipe consumer. Enrolled-with-zero-consumers is a typed refusal, never silent. The prior dissolve-on FIRED 2026-07-22: witness exclusion rows now carry derived consumer classification on this module's WitnessConsumerCadence authority (gunbc.ci_layer_roots.witness_exclusion_frontier; group-of-units ruling, gunbc.roster_registry). Homed in dag/std (std.witness_admission) so dag-tree consumers resolve it in dag-only closures — the authority moved here from src/v2/std 2026-07-23 when gunbc.ci_layer_roots became a consumer. This module remains the cadence vocabulary authority; dissolves into the enforcement-intent registry when that thread lands."
+data witness_admission_authority_note: String = "Phase 0(b) admission invariant (docs/plans/module-identity-storage-binding-design.md): every enrolled witness row names an executing consumer — discovery rows run per selection; SelfEmitted receipts run on the falsifier wet cadence; known-red quarantined rows run on a probe cadence expecting red (greening is a counted un-quarantine event); operator-ruled OFFLINE rows carry an explicit local-recipe consumer. Enrolled-with-zero-consumers is a typed refusal, never silent. The prior dissolve-on FIRED 2026-07-22: witness exclusion rows now carry derived consumer classification on this module's WitnessConsumerCadence authority (gunbc.ci_layer_roots.witness_exclusion_frontier; group-of-units ruling, gunbc.roster_registry). Homed in dag/std (std.witness_admission) so dag-tree consumers resolve it in dag-only closures — the authority moved here from src/v2/std 2026-07-23 when gunbc.ci_layer_roots became a consumer. This module remains the cadence vocabulary authority; dissolves into the enforcement-intent registry when that thread lands.
+
+LIVE-EXECUTION CAVEAT (2026-08-19, dashboard node adhoc-1eb1a9f9-ad9; operator ruling relayed by royal-hawk-392, revised same day to withdraw an earlier restore-the-executor instruction): the sentence above describes what each cadence arm MEANS, not that a scheduler for it is currently running. falsifier.yml, the workflow that scheduled FalsifierSelfHostWet / FalsifierRehomedBinWet / FalsifierSubstrateLongLane / BinWitnessWet / QuarantineProbeExpectRed, was deleted at 611fd02770 (2026-08-15, #8283) — FLOOR-Y's deliberate cut, which reserved re-adding a scheduled executor for a separate future operator agreement rather than restoring or improvising one here. Cadence membership (WitnessConsumerCadence) is a classification of WHICH policy claims a row and stays correct; it is not proof anything executes that row — v2.workflow.witness_admission witness_execution_standing_for_row answers coverage only through DeclaredCadenceUnrealized | WitnessHasExecutingConsumer, gated on a closed per-cadence predicate naming which of the nine cadences presently have a live scheduled route (today: DiscoverySelection, OfflineLocalRecipe, FixtureExplicitRoster only), never on enum membership alone and never on a registry carrier — no WitnessCadenceRealization mechanism exists or is planned by this change. This is a RETROSPECTIVE declaration, not a new drop: the five falsifier-family cadences above lost their executing consumer at 611fd02770/#8283, and every row classified into one of them has read as covered ever since despite executing nowhere. DeclaredCadenceUnrealized types that gap rather than closing it; restoring a scheduled route for any of these cadences is a separate, later operator decision, not implied by this note."
 
 type WitnessConsumerCadence
   = DiscoverySelection
@@ -128,6 +130,22 @@ fn witness_consumer_cadence_eq(a: WitnessConsumerCadence, b: WitnessConsumerCade
   }
 }
 
+data witness_cadence_has_scheduled_route_note: String = "THE CLOSED PER-CADENCE REALIZATION GATE (added 2026-08-19, dashboard node adhoc-1eb1a9f9-ad9). Cadence membership answers WHICH POLICY a row belongs to; this answers whether that policy currently has anything executing it. It is an exhaustive match over the nine WitnessConsumerCadence arms, not a registry carrier — no WitnessCadenceRealization mechanism exists, per the operator's explicit reversal of an earlier instruction to build one. Today exactly three arms have a live scheduled route: DiscoverySelection (per-PR discovery), OfflineLocalRecipe (an explicit local-recipe consumer is, by definition, the executing consumer), and FixtureExplicitRoster (an explicit admission row IS the enrollment). The five falsifier-family arms — FalsifierSelfHostWet, FalsifierRehomedBinWet, FalsifierSubstrateLongLane, BinWitnessWet, QuarantineProbeExpectRed — return false: falsifier.yml, the workflow that scheduled all five, was deleted at 611fd02770 (2026-08-15, #8283), and no replacement executor exists. NoConsumer also returns false and is unreachable at the one call site that consults this gate, since that site only reaches it after NoConsumer has already been dispatched separately. Restoring a scheduled route for any of the five is a separate, later, explicitly-agreed operator decision — this gate is the mechanical fact of today's state, not a policy choice made here."
+
+fn witness_cadence_has_scheduled_route(cadence: WitnessConsumerCadence) -> Bool {
+  match cadence {
+    DiscoverySelection => true
+    FalsifierSelfHostWet => false
+    FalsifierRehomedBinWet => false
+    FalsifierSubstrateLongLane => false
+    BinWitnessWet => false
+    QuarantineProbeExpectRed => false
+    OfflineLocalRecipe => true
+    FixtureExplicitRoster => true
+    NoConsumer => false
+  }
+}
+
 fn witness_consumer_cadence_content_hash_structural(cadence: WitnessConsumerCadence) -> Fnv1a64Structural {
   match cadence {
     DiscoverySelection => content_hash_atom(value: "DiscoverySelection")
@@ -183,13 +201,16 @@ AXIS ONE — WitnessExecutionStanding, what actually runs this witness. WitnessH
 
 AXIS TWO — FrozenBaselineStanding, whether the migration ratchet still holds, a property of the ROSTER rather than of any row. Allowed and Shrank both permit the tolerated arm; Grew and Stale refuse regardless of any individual row, because a baseline that grew is the escape hatch reopening and a baseline naming a departed witness is an exemption the next witness to take that name inherits.
 
-THE GATES DERIVE, and they are deliberately different: the coverage question admits ONLY WitnessHasExecutingConsumer, so seven hundred dark witnesses never read as covered; the floor gate additionally tolerates LegacyFrozenPathDeferral while axis two holds, so the tree stays green under the ratchet without anything claiming those rows execute."
+THE GATES DERIVE, and they are deliberately different: the coverage question admits ONLY WitnessHasExecutingConsumer, so seven hundred dark witnesses never read as covered; the floor gate additionally tolerates LegacyFrozenPathDeferral while axis two holds, so the tree stays green under the ratchet without anything claiming those rows execute.
+
+AXIS ONE, FIFTH ARM (added 2026-08-19, dashboard node adhoc-1eb1a9f9-ad9): DeclaredCadenceUnrealized is distinct from every other refusing arm because it is not a path-policy classification at all — it is an explicit or legacy roster row whose cadence names a real policy (FalsifierSelfHostWet, FalsifierRehomedBinWet, FalsifierSubstrateLongLane, BinWitnessWet, QuarantineProbeExpectRed today) that currently has no scheduled executing route, since falsifier.yml was deleted at 611fd02770 (#8283). It differs from UnexecutedDeferredWitness (nothing claims the row) and from LegacyFrozenPathDeferral (a path-policy tolerance, not a named cadence): here a cadence claims the row and would cover it once realized, but does not today. Like every refusing arm it reads false from both witness_has_executing_consumer and witness_floor_admission_holds — a declared-but-unrealized cadence is not floor-tolerated debt, it is an uncovered gap that happens to already have a name."
 
 type WitnessExecutionStanding
   = WitnessHasExecutingConsumer { cadence: WitnessConsumerCadence }
   | LegacyFrozenPathDeferral { entry: String, function: String }
   | UnclassifiedPathDeferral { entry: String, function: String }
   | UnexecutedDeferredWitness { entry: String, function: String }
+  | DeclaredCadenceUnrealized { cadence: WitnessConsumerCadence, entry: String, function: String }
 
 type FrozenBaselineStanding
   = FrozenBaselineDebtAllowed

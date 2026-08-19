@@ -1,0 +1,236 @@
+module test.claim.deployed_tree_remote_witness
+
+import std.types { Bool, String, NonEmptyStr, FilePath, Int, List }
+import std.process { ProcessExit, ExitSuccess, ExitFailure }
+import extdeps.git {
+  GitRemoteUrlAt,
+  GitRemoteUrlMember,
+  GitRemoteUrlObservation,
+  GitRemoteUrlObserved,
+  GitRemoteUrlAbsent,
+  GitRemoteUrlRepositoryUnusable,
+  GitRemoteUrlReadRefused,
+  git_remote_url_observation_of,
+  git_remote_url_config_key,
+}
+import extdeps.github.github { github_https_clone_url }
+import gunbc.roadmap_dashboard_instance { srv1_green_dashboard_instance }
+import gunbc.live_deploy.spec {
+  OwnedArtifactKind,
+  GunbcSourceTree,
+  ServeBinary,
+  DispatchWorktreeRoot,
+  AttemptStateRoot,
+  SystemdUnit,
+  BeltTimerUnit,
+  FleetConvergeTimerUnit,
+  TailscaleServeMapping,
+  DeployedTreeRemoteUnit,
+  DeploymentArtifactStep,
+  deployment_owned_steps,
+  srv1_green_deployment_names,
+}
+
+import gunbc.repository { gunbc_repository }
+import gunbc.deployed_tree_remote {
+  DeployedTreeRemoteOutcome,
+  RemoteAlreadyConverged,
+  RemoteConverged,
+  RemoteSetRefused,
+  RemoteReadBackAbsent,
+  RemoteReadBackMismatched,
+  RemoteReadBackRefused,
+  RemoteRepositoryUnusable,
+  deployed_tree_remote_desired,
+  deployed_tree_remote_exit,
+  deployed_tree_remote_name,
+}
+
+fn green_at() -> GitRemoteUrlAt {
+  GitRemoteUrlAt {
+    repository_path: "/opt/gunbc-green/gunbc" as FilePath,
+    name: deployed_tree_remote_name,
+  }
+}
+
+fn observed_url(o: GitRemoteUrlObservation) -> String {
+  match o {
+    GitRemoteUrlObserved { member: m } => m.url as String
+    GitRemoteUrlAbsent { at: _ } => "<absent>"
+    GitRemoteUrlRepositoryUnusable { at: _, exit_code: _, stderr: _ } => "<unusable>"
+    GitRemoteUrlReadRefused { at: _, exit_code: _, stderr: _ } => "<refused>"
+  }
+}
+
+// THE KEYSTONE, AND THE ONLY CLAIM THAT DECIDES WHETHER A WRITE IS LICENSED.
+//
+// `git remote get-url` answers 2 for an unconfigured remote and 128 when the path is not a
+// repository. Those two exits are the whole difference between "add this member" and "refuse the
+// plan": collapsing them lets an inaccessible or malformed repository present as an ordinary
+// absence, and a config write then proceeds against state that was never observed. That is the
+// empty-observation narrow — a read that could not answer, rendered as the answer.
+//
+// The exits are git's own, transcribed from srv1 on 2026-08-18 where the live belt logged
+// `remote get-url origin (exit=2)` with `error: No such remote 'origin'`.
+test fn an_unconfigured_remote_is_absent_not_unusable() -> Bool {
+  observed_url(o: git_remote_url_observation_of(
+    at: green_at(), exit_code: 2, stderr: "error: No such remote 'origin'", url: "",
+  )) == "<absent>"
+}
+
+test fn a_path_that_is_not_a_repository_is_unusable_not_absent() -> Bool {
+  observed_url(o: git_remote_url_observation_of(
+    at: green_at(), exit_code: 128, stderr: "fatal: not a git repository", url: "",
+  )) == "<unusable>"
+}
+
+// The pair asserted together, because each alone passes under a decoder that answers one constant.
+test fn absent_and_unusable_are_distinct_observations() -> Bool {
+  let absent = observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 2, stderr: "", url: ""))
+  let unusable = observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 128, stderr: "", url: ""))
+  absent != unusable
+}
+
+// A zero exit with empty stdout is UNREADABLE, not an observed empty URL: git can exit zero and
+// print nothing, and an empty string is not an address. Precedent: the same rule in
+// `gunbc.roadmap_publish_observe` `worktree_head_observation_note`.
+test fn a_zero_exit_with_no_output_is_refused_not_an_empty_url() -> Bool {
+  let blank = observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 0, stderr: "", url: "   "))
+  blank == "<refused>"
+}
+
+test fn an_observed_url_is_trimmed() -> Bool {
+  observed_url(o: git_remote_url_observation_of(
+    at: green_at(), exit_code: 0, stderr: "", url: "https://github.com/gunb-ai/gunbc.git\n",
+  )) == "https://github.com/gunb-ai/gunbc.git"
+}
+
+// An unrecognised nonzero exit refuses rather than guessing which of the two known causes it was.
+test fn an_unknown_exit_code_is_refused() -> Bool {
+  let unknown = observed_url(o: git_remote_url_observation_of(at: green_at(), exit_code: 7, stderr: "?", url: ""))
+  unknown == "<refused>"
+}
+
+// ── The property, not a hand-spelled key ────────────────────────────────────────────────────────
+
+test fn the_config_key_is_projected_from_the_remote_name() -> Bool {
+  git_remote_url_config_key(name: deployed_tree_remote_name) as String == "remote.origin.url"
+}
+
+// The desired URL is DERIVED from the repository authority, so a witness pinning a literal would
+// pass against a hand-spelled URL too. Both sides are asserted: the exact bytes, and that those
+// bytes are what the projection produces.
+test fn the_desired_url_is_the_derived_public_clone_url() -> Bool {
+  let desired = deployed_tree_remote_desired(repository_path: "/opt/gunbc-green/gunbc" as FilePath)
+  let url = desired.url as String
+  let derived = github_https_clone_url(repo: gunbc_repository) as String
+  url == derived && url == "https://github.com/gunb-ai/gunbc.git"
+}
+
+// Identity is repository x remote name. Two slots on one host both call their remote `origin`, so a
+// key that dropped the repository would fuse blue's member and green's into one.
+test fn identity_separates_two_slots_on_one_host() -> Bool {
+  let green = deployed_tree_remote_desired(repository_path: "/opt/gunbc-green/gunbc" as FilePath)
+  let blue = deployed_tree_remote_desired(repository_path: "/opt/gunbc/gunbc" as FilePath)
+  let gp = green.at.repository_path as String
+  let bp = blue.at.repository_path as String
+  let gn = green.at.name as String
+  let bn = blue.at.name as String
+  let gu = green.url as String
+  let bu = blue.url as String
+  gp != bp && gn == bn && gu == bu
+}
+
+// ── A zero exit from the setter is not convergence ──────────────────────────────────────────────
+
+fn exit_is_success(e: ProcessExit) -> Bool {
+  match e {
+    ExitSuccess => true
+    ExitFailure { code: _, reason: _ } => false
+  }
+}
+
+fn member() -> GitRemoteUrlMember {
+  deployed_tree_remote_desired(repository_path: "/opt/gunbc-green/gunbc" as FilePath)
+}
+
+// Only an exact read-back reports success. Every other terminal state fails, including the two that
+// follow a setter which reported no error at all — a mismatched read-back and an absent one. Those
+// are precisely the states a "did the command exit zero" check would call converged.
+test fn only_an_exact_read_back_reports_success() -> Bool {
+  exit_is_success(e: deployed_tree_remote_exit(outcome: RemoteAlreadyConverged { member: member() }))
+    && exit_is_success(e: deployed_tree_remote_exit(
+      outcome: RemoteConverged {
+        member: member(),
+        previous: GitRemoteUrlAbsent { at: green_at() },
+      },
+    ))
+    && !exit_is_success(e: deployed_tree_remote_exit(
+      outcome: RemoteReadBackMismatched {
+        at: green_at(),
+        expected: "https://github.com/gunb-ai/gunbc.git" as NonEmptyStr,
+        observed: "https://example.invalid/other.git" as NonEmptyStr,
+      },
+    ))
+    && !exit_is_success(e: deployed_tree_remote_exit(outcome: RemoteReadBackAbsent { at: green_at() }))
+    && !exit_is_success(e: deployed_tree_remote_exit(
+      outcome: RemoteSetRefused { at: green_at(), stderr: "denied" },
+    ))
+    && !exit_is_success(e: deployed_tree_remote_exit(
+      outcome: RemoteRepositoryUnusable { at: green_at(), exit_code: 128, stderr: "fatal" },
+    ))
+    && !exit_is_success(e: deployed_tree_remote_exit(
+      outcome: RemoteReadBackRefused { at: green_at(), exit_code: 7, stderr: "?" },
+    ))
+}
+
+
+// ── The prerequisite is ordered before its consumer ─────────────────────────────────────────────
+//
+// Apply walks deployment_owned_steps in order, so member POSITION IS EXECUTION ORDER. The remote
+// is a prerequisite of every belt tick: with no origin, fleet_desired_observe's ls-remote refuses
+// and the tick faults. An earlier cut of this change appended the member LAST, after the belt
+// timer, so a candidate belt could fire against the known-broken observation state before the
+// correction ran — a self-inflicted refusal on every fresh deploy, and an inversion of
+// deployment_apply_order_note's own rule that dependencies precede their consumers.
+//
+// Third is the EARLIEST correct position rather than an arbitrary improvement: convergence needs
+// the tree (it configures that repository) and the binary (the unit's ExecStart invokes it), and
+// those are members one and two. Earlier would red the first deploy of a fresh slot, which is the
+// concern that put it last to begin with — so this position satisfies both constraints, and the
+// original placement satisfied only one.
+//
+// Asserted as a filtered SEQUENCE rather than absolute indices, so inserting an unrelated member
+// leaves this green while a genuine reordering reds it.
+
+fn ordering_tag(kind: OwnedArtifactKind) -> String {
+  match kind {
+    GunbcSourceTree => "tree"
+    ServeBinary => "binary"
+    DeployedTreeRemoteUnit => "remote"
+    BeltTimerUnit => "belt"
+    TailscaleServeMapping => "route"
+    DispatchWorktreeRoot => ""
+    AttemptStateRoot => ""
+    SystemdUnit => ""
+    FleetConvergeTimerUnit => ""
+  }
+}
+
+fn ordered_tags() -> List<String> {
+  fold(
+    deployment_owned_steps(
+      instance: srv1_green_dashboard_instance(),
+      names: srv1_green_deployment_names(instance: srv1_green_dashboard_instance()),
+    ),
+    init: [],
+    f: (acc, step) => {
+      let tag = ordering_tag(kind: step.kind)
+      if tag == "" { acc } else { concat(acc, [tag]) }
+    },
+  )
+}
+
+test fn the_remote_converges_after_its_inputs_and_before_the_belt() -> Bool {
+  join(ordered_tags(), ",") == "tree,binary,remote,belt,route"
+}

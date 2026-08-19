@@ -1,0 +1,129 @@
+module test.claim.floor_expected_red_coherence_witness_test
+
+import v2.std.algebra { count_where, length }
+import v2.std.decl_index { DeclFact, decl_facts }
+import v2.workflow.floor_expected_red_coherence {
+  AuthoredIdentityMissingFromRoster,
+  ChunkCoherenceCoherent,
+  ChunkCoherenceRefused,
+  ChunkDeclRef,
+  ChunkNotLinkedIntoAggregator,
+  floor_expected_red_chunk_coherence_check,
+}
+import test.fixture.floor_expected_red_coherence.severed_chunk_fixture {
+  severed_fixture_roster,
+}
+
+data fixture_pool_roots: List<String> = ["dag/test/fixture/floor_expected_red_coherence"]
+data fixture_facts: List<DeclFact> = decl_facts(pool_roots: fixture_pool_roots)
+
+data fixture_module: String = "test.fixture.floor_expected_red_coherence.severed_chunk_fixture"
+
+data fixture_all_chunks: List<ChunkDeclRef> = [
+  ChunkDeclRef { qualified_name: "test.fixture.floor_expected_red_coherence.severed_chunk_fixture.severed_fixture_chunk_linked_a", short_name: "severed_fixture_chunk_linked_a" },
+  ChunkDeclRef { qualified_name: "test.fixture.floor_expected_red_coherence.severed_chunk_fixture.severed_fixture_chunk_linked_b", short_name: "severed_fixture_chunk_linked_b" },
+  ChunkDeclRef { qualified_name: "test.fixture.floor_expected_red_coherence.severed_chunk_fixture.severed_fixture_chunk_severed", short_name: "severed_fixture_chunk_severed" },
+]
+
+data fixture_aggregator_qn: String = "test.fixture.floor_expected_red_coherence.severed_chunk_fixture.severed_fixture_chunks"
+
+// RED PROOF: the severed chunk's two identities are authored but never reach the
+// evaluated roster, and its short name never appears in the aggregator body. The
+// check must refuse and must name both causes -- this is the discriminating negative
+// control the required build order demands before any green path is written.
+test fn w_severed_fixture_refuses_with_named_causes() -> Bool {
+  match floor_expected_red_chunk_coherence_check(
+    facts: fixture_facts,
+    chunks: fixture_all_chunks,
+    aggregator_qualified_name: fixture_aggregator_qn,
+    evaluated_roster: severed_fixture_roster()
+  ) {
+    ChunkCoherenceRefused { causes } => length(xs: causes) > 0
+    ChunkCoherenceCoherent { checked_chunk_count: _, checked_identity_count: _ } => false
+  }
+}
+
+test fn w_severed_fixture_names_the_orphaned_identities() -> Bool {
+  match floor_expected_red_chunk_coherence_check(
+    facts: fixture_facts,
+    chunks: fixture_all_chunks,
+    aggregator_qualified_name: fixture_aggregator_qn,
+    evaluated_roster: severed_fixture_roster()
+  ) {
+    ChunkCoherenceRefused { causes } =>
+      count_where(xs: causes, predicate: fn(c) {
+        match c {
+          AuthoredIdentityMissingFromRoster { identity, source_chunk_qualified_name: _, message: _ } =>
+            identity == "fixture.severed.orphaned_first" || identity == "fixture.severed.orphaned_second"
+          _ => false
+        }
+      }) == 2
+    ChunkCoherenceCoherent { checked_chunk_count: _, checked_identity_count: _ } => false
+  }
+}
+
+test fn w_severed_fixture_names_the_broken_link() -> Bool {
+  match floor_expected_red_chunk_coherence_check(
+    facts: fixture_facts,
+    chunks: fixture_all_chunks,
+    aggregator_qualified_name: fixture_aggregator_qn,
+    evaluated_roster: severed_fixture_roster()
+  ) {
+    ChunkCoherenceRefused { causes } =>
+      count_where(xs: causes, predicate: fn(c) {
+        match c {
+          ChunkNotLinkedIntoAggregator { chunk_qualified_name: _, chunk_short_name, aggregator_qualified_name: _ } =>
+            chunk_short_name == "severed_fixture_chunk_severed"
+          _ => false
+        }
+      }) == 1
+    ChunkCoherenceCoherent { checked_chunk_count: _, checked_identity_count: _ } => false
+  }
+}
+
+test fn w_severed_fixture_refusal_message_names_the_derivation_not_an_exclusion() -> Bool {
+  match floor_expected_red_chunk_coherence_check(
+    facts: fixture_facts,
+    chunks: fixture_all_chunks,
+    aggregator_qualified_name: fixture_aggregator_qn,
+    evaluated_roster: severed_fixture_roster()
+  ) {
+    ChunkCoherenceRefused { causes } =>
+      count_where(xs: causes, predicate: fn(c) {
+        match c {
+          AuthoredIdentityMissingFromRoster { identity: _, source_chunk_qualified_name: _, message } =>
+            string_contains(s: message, pattern: "node_skeleton_authored_non_construction_atom_lexemes")
+              && string_contains(s: message, pattern: "NOT to add an exclusion lexeme")
+          _ => false
+        }
+      }) > 0
+    ChunkCoherenceCoherent { checked_chunk_count: _, checked_identity_count: _ } => false
+  }
+}
+
+// POSITIVE CONTROL: with only the two linked chunks checked (the honest roster the
+// fixture's own aggregator actually calls), the check finds full coherence.
+//
+// This file's fixture witnesses are the complete, permanent proof of the mechanism
+// (see v2.workflow.floor_expected_red_coherence's floor_expected_red_chunk_coherence_check_note).
+// floor_expected_red.dag's own 20 chunks against its own evaluated roster is a
+// separate, pre-existing, unowned gap this file does not close -- see that module's
+// live_floor_expected_red_coherence_join_gap_note for the measured cost and natural
+// home of that still-open work.
+data fixture_linked_only_chunks: List<ChunkDeclRef> = [
+  ChunkDeclRef { qualified_name: "test.fixture.floor_expected_red_coherence.severed_chunk_fixture.severed_fixture_chunk_linked_a", short_name: "severed_fixture_chunk_linked_a" },
+  ChunkDeclRef { qualified_name: "test.fixture.floor_expected_red_coherence.severed_chunk_fixture.severed_fixture_chunk_linked_b", short_name: "severed_fixture_chunk_linked_b" },
+]
+
+test fn w_severed_fixture_linked_chunks_only_is_coherent() -> Bool {
+  match floor_expected_red_chunk_coherence_check(
+    facts: fixture_facts,
+    chunks: fixture_linked_only_chunks,
+    aggregator_qualified_name: fixture_aggregator_qn,
+    evaluated_roster: severed_fixture_roster()
+  ) {
+    ChunkCoherenceCoherent { checked_chunk_count, checked_identity_count } =>
+      checked_chunk_count == 2 && checked_identity_count == 3
+    ChunkCoherenceRefused { causes: _ } => false
+  }
+}
