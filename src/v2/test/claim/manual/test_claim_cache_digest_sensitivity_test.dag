@@ -314,7 +314,23 @@ fn tcc_cache_byte_offset_over_ceiling() -> Int {
   tcc_cache_byte_offset_pow_9()
 }
 
-test fn tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling() -> Bool {
+// DEMOTED with the eight below (2026-08-19, fixing the main-red at f44a125428/#8505):
+// these two rows reach the SAME over-ceiling regime — both evaluate
+// tcc_cache_byte_offset_pow_9() = 256^9 = 2^72, above i64::MAX — so they belong to the
+// demoted population and were missed when the other eight were demoted. Enrolled, they do
+// not merely assert a vacuous pair: they ERROR, and took the required floor red.
+//
+// AND THE DEMOTION NOTE BELOW HAS A FALSE PREMISE, corrected here rather than copied. It
+// says the runtime "silently wraps to 0 ... (verified by execution: pow_9 == 0)". It does
+// not. int_mul REFUSES: `integer overflow: 4294967296 * 4294967296 does not fit in a
+// 64-bit Int`, typed and located, which is the floor's own failure text. That is the
+// substrate behaving correctly (DESIGN section 5: a wrong answer is a loud error), and it
+// means the regime is unreachable by REFUSAL, not by silent wrap. The demotion verdict is
+// unchanged — the claims still cannot be stated with executable fixtures on this
+// realization — but the reason a reader would carry forward was wrong, and a wrap-to-0
+// premise would license writing another fixture that "just returns 0" instead of one that
+// refuses.
+fn tcc_cache_byte_offset_exact_ceiling_digest_differs_from_over_ceiling() -> Bool {
   byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_exact_ceiling())) !=
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling()))
 }
@@ -323,7 +339,7 @@ fn tcc_cache_byte_offset_same_quotient() -> Int {
   int_add(a: tcc_cache_byte_offset_over_ceiling(), b: tcc_cache_byte_limb_base)
 }
 
-test fn tcc_cache_byte_offset_same_quotient_low_limbs_digest_differs() -> Bool {
+fn tcc_cache_byte_offset_same_quotient_low_limbs_digest_differs() -> Bool {
   byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_over_ceiling())) !=
     byte_offset_cache_key_fingerprint(key: byte_offset_cache_key(i: tcc_cache_byte_offset_same_quotient()))
 }
@@ -333,7 +349,9 @@ test fn tcc_cache_byte_offset_same_quotient_low_limbs_digest_differs() -> Bool {
 // 256^9 = 2^72 — above i64::MAX. The runtime Int is Value::Int(i64) with unchecked
 // release-mode `a * b`, so every pow_9..pow_37 fixture silently wraps to 0 (verified by
 // execution: pow_9 == 0, pow_13 == 0, pow_37 == 0, while pow_2 == 65536), making each
-// pair literally identical inputs (0 vs 0, or 0 vs -0). The digest algorithm itself does
+// pair literally identical inputs (0 vs 0, or 0 vs -0). [CORRECTED 2026-08-19: the wrap
+// premise is false — int_mul refuses with a typed overflow diagnostic; see the note above
+// the two rows demoted alongside these. The verdict stands, the stated reason did not.] The digest algorithm itself does
 // not alias on these pairs (symbolic simulation of the limb arithmetic: all pairs
 // differ); the regime is unreachable from any representable Int, so the claims cannot be
 // stated with executable fixtures on this realization.
