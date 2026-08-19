@@ -232,5 +232,5 @@ fn family_census_clean(css: String, f: gunbc.design.state_response.StateFamily, 
 
 fn constant_rulings_all_located(channels: List<gunbc.design.state_response.ChannelScope>) -> Bool {
   all(constant_by_law_rulings(channels: channels), r =>
-    r.module_path.length() > 0 && r.decl_name.length() > 0)
+    (r.module_path as String).length() > 0 && (r.decl_name as String).length() > 0)
 }

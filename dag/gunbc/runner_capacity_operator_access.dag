@@ -101,9 +101,9 @@ fn runner_capacity_in_band_admission_probes() -> gunbc.runner_capacity_operator_
 
 fn runner_capacity_executing_principal_for_host(host: product.placement_supply.HostIdentity) -> std.types.NonEmptyStr {
   if (host as String) == (gunbc.fleet_intent_network.operator_host_srv3 as String) {
-    gunbc.runner_host_deploy.srv3_runner_host_deploy.runner_user
+    gunbc.runner_host_deploy.srv3_runner_host_deploy.runner_user as std.types.NonEmptyStr
   } else if (host as String) == (gunbc.fleet_intent_network.operator_host_srv4 as String) {
-    gunbc.runner_host_deploy.srv4_runner_host_deploy.runner_user
+    gunbc.runner_host_deploy.srv4_runner_host_deploy.runner_user as std.types.NonEmptyStr
   } else {
     "briansrls" as std.types.NonEmptyStr
   }
