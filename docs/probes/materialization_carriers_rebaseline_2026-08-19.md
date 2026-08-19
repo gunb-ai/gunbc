@@ -216,3 +216,46 @@ Unchanged from #8460, continued: any lane sends a head SHA, this session re-runs
 above against it and publishes the delta, with two-arm discipline (the fix measured on two bases)
 whenever a landing might be confused with base drift. Addressed to `silent-raven-853`,
 `deep-swift-570`, `stern-fox-619`, and `smart-ram-730`.
+
+## 8. `fast_probe.sh` — removed, per `review 53640` (DESIGN.md §3/§5)
+
+This session had committed `docs/probes/fast_probe.sh`, a hand-shell fast-iteration probe (single
+module, `cargo check` rather than `cargo build --release`) for cheaper turnaround while validating
+the git-provenance divergence idea below. `review 53640` on PR #8490 (`REQUEST_CHANGES`) named it a
+net-new dissolution obligation with no `Scaffold`/`dissolve-on:` marker and no operator verdict —
+DESIGN.md §5's 2026-08-10 ruling: *"A dissolution condition describes how admitted debt ends. It
+does not authorize creating the debt… unmarked debt is the same violation plus concealment."* The
+review also found it a parallel representation of `curated_cargo_probe_one.sh` (§3 — two shell
+probes over one subject, different flags, no consumption relation between them), two Python
+programs authored as shell heredocs (the medium-as-string pattern `v2.lens.medium_structure_containment`
+exists to block), and a stale-binary hash that covers only `src/v1/**` while `cargo build -p
+v1-compiler` compiles the transitive workspace closure — a coverage claim wider than what the hash
+actually denominates.
+
+All four hold on inspection. This session cannot self-issue the operator verdict DESIGN.md
+requires to land it as an approved scaffold, so the compliant route — named directly in the review
+and in DESIGN §5's shell→intent rule — is deletion before merge: a branch-local canary is fully
+open, but the rule for that route is *"deleted before merge, leaving the modeled facts the final
+route consumes."* `fast_probe.sh` is removed from this PR. Two findings from its short life are
+worth keeping as prose so a future lane doesn't have to rediscover them by hand-rolling the same
+tool again:
+
+- **A cargo-workspace-membership silent-zero.** A crate emitted under `$ROOT/target/...` is still
+  inside the repo's Cargo workspace, so `cargo check` there refuses ("believes it's in a workspace
+  when it's not") before printing any `compiler-message` JSON — indistinguishable from a genuine
+  0-error-sites result unless stderr is checked. Any future probe emitting a crate under the repo
+  tree needs to build outside it (`curated_cargo_probe_one.sh`'s `mktemp -d "${TMPDIR:-/tmp}/..."`
+  pattern already does this) and should treat empty-JSON-with-nonempty-stderr as a typed harness
+  refusal, never a clean measurement.
+- **Branch-base vs. main drift invalidates a naive site-set diff.** Per `deep-swift-570`'s report
+  (msg_28058dcd): comparing a branch's error-site population against main is not single-variable
+  when the branch's merge-base predates recent main commits — sites main added or removed
+  independently of the branch's own diff will appear as the branch's delta. A future comparison
+  tool should stamp `git merge-base HEAD origin/main` alongside each measurement and warn (or
+  refuse) when two runs being diffed don't share a base, the same way a stale compiler binary would
+  invalidate a result.
+
+Both remain open observations, not committed mechanism. If a fast-iteration probe is wanted going
+forward, the compliant path is either an operator-approved `Scaffold` naming its own dissolution
+trigger, or extending `curated_cargo_probe_one.sh` itself (single authority) rather than a second
+script beside it.
