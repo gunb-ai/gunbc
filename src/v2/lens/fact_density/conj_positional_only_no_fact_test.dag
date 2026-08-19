@@ -1,0 +1,31 @@
+module v2.test.lens_fact_density.conj_positional_only_no_fact
+
+import v2.lens.fact_density { NoFact, carrier_spec_fact }
+import v2.std.logic { Bool }
+import v2.std.node {
+  Atom,
+  Conj,
+  Edge,
+  Node,
+  Positional,
+  TypeNode,
+  SyntheticOccurrence
+}
+
+data conj_positional_only_child: Node = Node {
+  kind: TypeNode { connective: Atom { identity: ^conj_positional_only_child_symbol } },
+  children: [],
+  occurrence_id: SyntheticOccurrence
+}
+
+data conj_positional_only_input: Node = Node {
+  kind: TypeNode { connective: Conj },
+  children: [
+    Edge { label: Positional, target: conj_positional_only_child }
+  ],
+  occurrence_id: SyntheticOccurrence
+}
+
+test fn conj_positional_only_no_fact_claim_holds() -> Bool {
+  carrier_spec_fact(carrier: conj_positional_only_input) == NoFact
+}

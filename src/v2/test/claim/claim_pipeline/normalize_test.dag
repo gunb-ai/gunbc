@@ -10,19 +10,8 @@ import v2.std.node {
   Edge,
   Named,
   Node,
-  Symbol,
   TypeNode,
   SyntheticOccurrence
-}
-import v2.std.verification {
-  CompilesClaim,
-  EqualsClaim,
-  ManualAnchorAbsent,
-  TestClaim,
-  TestClassification,
-  Tier1,
-  Unit,
-  manual_claim_anchor
 }
 
 data spine_normalize_module_subject: Node = Node {
@@ -49,7 +38,7 @@ fn spine_normalize_service_parse_tree() -> Node {
 }
 }
 
-fn spine_normalize_accepts_well_formed_sugar() -> Bool {
+test fn spine_normalize_accepts_well_formed_sugar() -> Bool {
   match normalize(parse_tree: spine_normalize_service_parse_tree()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
@@ -78,7 +67,7 @@ fn spine_normalize_child_is_service_sugar_atom(n: Node) -> Bool {
   }
 }
 
-fn spine_normalize_dissolves_interior_service_sugar() -> Bool {
+test fn spine_normalize_dissolves_interior_service_sugar() -> Bool {
   match normalize(parse_tree: spine_normalize_nested_service_parse_tree()) {
     Accepted { value: normalized, diagnostics: _ } =>
       fold(normalized.root.children, init: true, f: fn(acc, e) {
@@ -103,28 +92,4 @@ fn spine_normalize_bool_atom(b: Bool) -> Node {
         occurrence_id: SyntheticOccurrence
 }
   }
-}
-
-data claim_pipeline_normalize_module_compiles: TestClaim = CompilesClaim {
-  label: "claim_pipeline/normalize: v2.compiler.normalize stage module compiles",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  input: spine_normalize_module_subject,
-  expected_value: spine_normalize_module_subject,
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_pipeline_normalize_accepts_sugar_tree: TestClaim = EqualsClaim {
-  label: "claim_pipeline/normalize: normalize accepts well-formed C3 service sugar ParseTree",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: spine_normalize_bool_atom(b: spine_normalize_accepts_well_formed_sugar()),
-  rhs: spine_normalize_bool_atom(b: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
-}
-
-data claim_pipeline_normalize_dissolves_interior_sugar: TestClaim = EqualsClaim {
-  label: "claim_pipeline/normalize: normalize dissolves interior C3 service sugar to Conj",
-  anchor: manual_claim_anchor(anchor: ManualAnchorAbsent),
-  lhs: spine_normalize_bool_atom(b: spine_normalize_dissolves_interior_service_sugar()),
-  rhs: spine_normalize_bool_atom(b: true),
-  classification: TestClassification { tier: Tier1, layer: Unit }
 }
