@@ -1,0 +1,483 @@
+module test.claim.fabric_terminal_contract_witness
+
+import std.types { NonEmptyStr, String, Bool, Int }
+import std.measure { money_amount_micro, money_amount_micro_count, hardware_thread_count, second, MoneyRate }
+import std.content_hash { content_hash_of_value }
+import std.currency { Usd }
+import product.compute_fabric { Shape, HardRequirements }
+import product.fabric.identity { FabricIdentity, fabric_identity_key, DemandKey, WorkKey }
+import product.fabric.work { Work, WorkContract, ExecutionRequirements, WorkStep, derive_work_key, work_for, ReceiptSatisfiable, IdempotentUnderKey, OpaqueEffects }
+import product.fabric.demand { Demand, AdmissionTerms, BuyTerms, SatisfactionRequirement, demand_work, demand_reservation_price, demand_maximum_buy_order }
+import product.fabric.supply { Offer, QuotedPerSecond, offer_quote_amount, offer_quote_currency, ObservedSupply, QuotedSupply }
+import product.fabric.execution { Attempt, InitialAttempt, InfrastructureRetry, LeaseIdentity, Receipt, ExecutionReceipt, ExecutionGrant, FabricGrantObject, FabricGrantContext, FabricGrantEvidence, ReceiptAdmissible, ReceiptFromDifferentLease, ReceiptFromDifferentAttempt, ReceiptFingerprintIncomparable, ReceiptGenerationStale, admit_receipt_for_grant }
+
+import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// The acceptance test for the terminal contract: two synthetic SCM bindings must
+// project into the same core carriers without the core naming either of them.
+
+// These fixtures stand in for a GitHub binding and a GitLab binding. Nothing
+// in this file imports a provider module, and nothing in product.fabric.*
+// names one - that absence IS the claim under test. The two bindings differ
+// only in the provenance they carry on their Demand, and the discriminating
+// assertion is that the Work identity they produce is IDENTICAL while the
+// demands remain distinct. If a provider fact ever leaks into Work, this
+// witness reds without anyone needing to notice the leak.
+data fixture_shape: Shape = Shape { hard: HardRequirements { threads: hardware_thread_count(8) } }
+
+data fixture_requirements: ExecutionRequirements = ExecutionRequirements {
+  shape: fixture_shape,
+  capabilities: "linux-arm64",
+  trust_domain: "fleet-owned",
+}
+
+data fixture_contract: WorkContract = WorkContract {
+  program: "gunbc-required-floor",
+  steps: [WorkStep { step_id: "floor", resumability: ReceiptSatisfiable }],
+  source: "sha256:tree-abc",
+  inputs: "manifest-inputs-1",
+  runtime_closure: "toolchain-rust-1.89",
+  effect_contract: "effects-read-only",
+  output_contract: "outputs-verdict",
+}
+
+// The key is DERIVED, never authored. An earlier version of this file declared
+// a constant and placed it into both synthetic demands, which made the headline
+// neutrality test unfalsifiable: it would have passed against a key that
+// ignored every contract input, while claiming to prove the opposite.
+
+data fixture_work_key: WorkKey = derive_work_key(
+  contract: fixture_contract,
+  requirements: fixture_requirements,
+)
+
+fn work_for_principal(p: NonEmptyStr) -> Work<NonEmptyStr> {
+  work_for(principal: p, contract: fixture_contract, requirements: fixture_requirements)
+}
+
+// A contract differing in ONE semantic input - the source tree - and one
+// differing only in a scheduling-irrelevant way are the two controls the
+// derivation has to separate.
+
+data other_source_contract: WorkContract = WorkContract {
+  program: "gunbc-required-floor",
+  steps: [WorkStep { step_id: "floor", resumability: ReceiptSatisfiable }],
+  source: "sha256:tree-DIFFERENT",
+  inputs: "manifest-inputs-1",
+  runtime_closure: "toolchain-rust-1.89",
+  effect_contract: "effects-read-only",
+  output_contract: "outputs-verdict",
+}
+
+// Same contract, same capabilities and trust domain, DIFFERENT shape. Before
+// the shape fed the digest these derived one key while carrying different
+// machine requirements, and fungibility compares shape - so dedup identity and
+// matching constraints disagreed about whether two things were the same work.
+
+data bigger_shape_requirements: ExecutionRequirements = ExecutionRequirements {
+  shape: Shape { hard: HardRequirements { threads: hardware_thread_count(64) } },
+  capabilities: "linux-arm64",
+  trust_domain: "fleet-owned",
+}
+
+data other_runtime_requirements: ExecutionRequirements = ExecutionRequirements {
+  shape: fixture_shape,
+  capabilities: "linux-amd64",
+  trust_domain: "fleet-owned",
+}
+
+fn buy_terms(reservation: Int, ceiling: Int) -> BuyTerms {
+  BuyTerms {
+    budget_account: "acct-fleet",
+    currency: Usd,
+    reservation_price: money_amount_micro(reservation),
+    maximum_buy_order: money_amount_micro(ceiling),
+  }
+}
+
+fn demand_from_binding(
+  key: DemandKey,
+  provenance: NonEmptyStr,
+  reservation: Int,
+  ceiling: Int,
+) -> Demand<NonEmptyStr> {
+  Demand {
+    id: FabricIdentity { principal: "operator", key: key },
+    work: FabricIdentity { principal: "operator", key: fixture_work_key },
+    origin: provenance,
+    submitted_at: "2026-08-18T00:00:00Z",
+    admission: AdmissionTerms {
+      priority_class: "required-gate",
+      deadline: none,
+      buy: buy_terms(reservation: reservation, ceiling: ceiling),
+    },
+    satisfaction: SatisfactionRequirement {
+      terminal_receipt_may_satisfy: true,
+      new_attempt_required: false,
+      step_reuse_permitted: true,
+    },
+  }
+}
+
+data github_binding_demand: Demand<NonEmptyStr> = demand_from_binding(
+  key: "demand-gh-1",
+  provenance: "github:pull/8387/head",
+  reservation: 500,
+  ceiling: 1000,
+)
+
+data gitlab_binding_demand: Demand<NonEmptyStr> = demand_from_binding(
+  key: "demand-gl-1",
+  provenance: "gitlab:merge_request/42/head",
+  reservation: 250,
+  ceiling: 400,
+)
+
+// The load-bearing claim: two providers, one Work.
+
+test fn two_bindings_project_into_one_work_identity() -> Bool {
+  fabric_identity_key(id: demand_work(d: github_binding_demand))
+    == fabric_identity_key(id: demand_work(d: gitlab_binding_demand))
+    && github_binding_demand.origin != gitlab_binding_demand.origin
+    && fabric_identity_key(id: github_binding_demand.id)
+      != fabric_identity_key(id: gitlab_binding_demand.id)
+}
+
+// The derivation controls. Without these the test above is satisfied by a key
+// that ignores its inputs entirely, which is what an authored constant was.
+
+test fn one_changed_semantic_input_changes_the_work_key() -> Bool {
+  derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
+    != derive_work_key(contract: other_source_contract, requirements: fixture_requirements)
+}
+
+// Requirements are part of the promise, not scheduling trivia: work that needs
+// a different architecture does not promise the same answer, so it must not
+// share a key with work that does.
+
+test fn changed_execution_requirements_change_the_work_key() -> Bool {
+  derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
+    != derive_work_key(contract: fixture_contract, requirements: other_runtime_requirements)
+}
+
+// And the direction that matters most for the fabric: identical semantics
+// reached through two different providers derive the SAME key, so the
+// deduplication the whole design rests on is a property of the function rather
+// than of two fixtures happening to be given one constant.
+
+test fn identical_contracts_derive_one_key_regardless_of_who_asked() -> Bool {
+  derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
+    == derive_work_key(
+      contract: WorkContract {
+        program: "gunbc-required-floor",
+        steps: [WorkStep { step_id: "floor", resumability: ReceiptSatisfiable }],
+        source: "sha256:tree-abc",
+        inputs: "manifest-inputs-1",
+        runtime_closure: "toolchain-rust-1.89",
+        effect_contract: "effects-read-only",
+        output_contract: "outputs-verdict",
+      },
+      requirements: fixture_requirements,
+    )
+}
+
+// Cost differs between the two demands while the Work they attach to does not.
+// This is the structural form of cost does not enter the work key.
+
+// A machine that cannot run one of them is not an interchangeable executor for
+// both, so a differing shape must derive a differing key.
+
+test fn a_different_machine_shape_changes_the_work_key() -> Bool {
+  derive_work_key(contract: fixture_contract, requirements: fixture_requirements)
+    != derive_work_key(contract: fixture_contract, requirements: bigger_shape_requirements)
+}
+
+test fn cost_terms_differ_without_forking_work() -> Bool {
+  money_amount_micro_count(m: demand_reservation_price(d: github_binding_demand)) == 500
+    && money_amount_micro_count(m: demand_reservation_price(d: gitlab_binding_demand)) == 250
+    && money_amount_micro_count(m: demand_maximum_buy_order(d: github_binding_demand)) == 1000
+    && (demand_work(d: github_binding_demand).key as String)
+      == (demand_work(d: gitlab_binding_demand).key as String)
+}
+
+// Different principals are different Work, even at an identical contract.
+
+test fn principals_do_not_share_work_identity() -> Bool {
+  let mine = work_for_principal(p: "operator")
+  let theirs = work_for_principal(p: "other-tenant")
+  (mine.id.key as String) == (theirs.id.key as String)
+    && (mine.id.principal as String) != (theirs.id.principal as String)
+}
+
+// An owned offer states zero explicitly; absence is not free.
+
+data owned_offer: Offer<NonEmptyStr> = Offer {
+  id: FabricIdentity { principal: "operator", key: "offer-srv3-slot" },
+  executor: "srv3",
+  shape: fixture_shape,
+  capabilities: "linux-arm64",
+  trust_domain: "fleet-owned",
+  quantity_bound: 1,
+  ready_at: "2026-08-18T00:00:00Z",
+  quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(0), currency: Usd }),
+  evidence: ObservedSupply { observed_at: "2026-08-18T00:00:00Z", receipt: "obs-srv3-1" },
+}
+
+data rented_offer: Offer<NonEmptyStr> = Offer {
+  id: FabricIdentity { principal: "operator", key: "offer-rented-1" },
+  executor: "rented-pool",
+  shape: fixture_shape,
+  capabilities: "linux-arm64",
+  trust_domain: "rented",
+  quantity_bound: 64,
+  ready_at: "2026-08-18T00:04:00Z",
+  quote: QuotedPerSecond(MoneyRate { amount: money_amount_micro(900), currency: Usd }),
+  evidence: QuotedSupply {
+    quoted_at: "2026-08-18T00:00:00Z",
+    valid_until: "2026-08-18T01:00:00Z",
+    receipt: "quote-rented-1",
+  },
+}
+
+test fn owned_supply_states_zero_rather_than_absent() -> Bool {
+  money_amount_micro_count(m: offer_quote_amount(q: owned_offer.quote)) == 0
+    && money_amount_micro_count(m: offer_quote_amount(q: rented_offer.quote)) == 900
+    && offer_quote_currency(q: owned_offer.quote) == Usd
+    && owned_offer.quantity_bound == 1
+    && rented_offer.quantity_bound == 64
+}
+
+// Observed and quoted supply are one type with two evidences.
+
+test fn observed_and_quoted_supply_share_one_offer_type() -> Bool {
+  match owned_offer.evidence {
+    ObservedSupply { observed_at: _, receipt: _ } =>
+      match rented_offer.evidence {
+        QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } => true
+        ObservedSupply { observed_at: _, receipt: _ } => false
+      }
+    QuotedSupply { quoted_at: _, valid_until: _, receipt: _ } => false
+  }
+}
+
+// A retry is a new attempt naming its cause, never a mutated old one.
+
+data lease_gen_9: LeaseIdentity = LeaseIdentity {
+  lease_key: "lease-attempt-1",
+  resource_fingerprint: content_hash_of_value(value: "srv3-slot-2"),
+  generation: 9,
+}
+
+data first_attempt: Attempt<NonEmptyStr> = Attempt {
+  id: FabricIdentity { principal: "operator", key: "attempt-1" },
+  work: FabricIdentity { principal: "operator", key: fixture_work_key },
+  lineage: InitialAttempt {
+    initiating_demand: FabricIdentity { principal: "operator", key: "demand-gh-1" },
+  },
+  created_at: "2026-08-18T00:00:00Z",
+}
+
+data retry_attempt: Attempt<NonEmptyStr> = Attempt {
+  id: FabricIdentity { principal: "operator", key: "attempt-2" },
+  work: FabricIdentity { principal: "operator", key: fixture_work_key },
+  lineage: InfrastructureRetry {
+    prior_attempt: FabricIdentity { principal: "operator", key: "attempt-1" },
+    cause_receipt: "obs-worker-lost-1",
+  },
+  created_at: "2026-08-18T00:10:00Z",
+}
+
+test fn retry_is_a_new_attempt_naming_its_cause() -> Bool {
+  (first_attempt.id.key as String) != (retry_attempt.id.key as String)
+    && (first_attempt.work.key as String) == (retry_attempt.work.key as String)
+    && match retry_attempt.lineage {
+      InfrastructureRetry { prior_attempt: prior, cause_receipt: _ } =>
+        (prior.key as String) == (first_attempt.id.key as String)
+      InitialAttempt { initiating_demand: _ } => false
+      RequestedReexecution { initiating_demand: _ } => false
+    }
+}
+
+// A receipt carries the generation it was produced under, so a stale producer is
+// distinguishable from a current one.
+
+data stale_receipt: Receipt<NonEmptyStr> = Receipt {
+  id: FabricIdentity { principal: "operator", key: "receipt-1" },
+  attempt: FabricIdentity { principal: "operator", key: "attempt-1" },
+  lease: LeaseIdentity {
+    lease_key: "lease-attempt-1",
+    resource_fingerprint: content_hash_of_value(value: "srv3-slot-2"),
+    generation: 8,
+  },
+  payload: ExecutionReceipt {
+    step_id: "floor",
+    outputs: content_hash_of_value(value: "outputs-1"),
+    billable: second(count: 3600),
+    completed_at: "2026-08-18T01:00:00Z",
+  },
+}
+
+data fixture_grant: ExecutionGrant<NonEmptyStr> = ExecutionGrant {
+  id: FabricIdentity { principal: "operator", key: "grant-1" },
+  object: FabricGrantObject { offer: owned_offer.id, quote: owned_offer.quote },
+  context: FabricGrantContext {
+    demand: github_binding_demand.id,
+    work: FabricIdentity { principal: "operator", key: fixture_work_key },
+    attempt: first_attempt.id,
+    executor: "srv3",
+    lease: lease_gen_9,
+    issued_at: "2026-08-18T01:00:00Z",
+    maximum_liability: money_amount_micro(1000000),
+  },
+  evidence: FabricGrantEvidence {
+    fungibility_receipt: "fungibility-1",
+    offer_authority: "offer-authority-1",
+    resource_conservation: "resource-conservation-1",
+    budget_conservation: "budget-conservation-1",
+    principal_authority: "principal-authority-1",
+  },
+  resource_reservations: ["reservation-cpu-1"],
+  money_reservation: "reservation-money-1",
+}
+
+// The receipt that makes the fence discriminating. It is at the SAME
+// generation as the grant and names the same attempt, and differs only in
+// which slice of the host it was produced against. A fence comparing
+// generations alone accepts it, which is the defect this fixture exists to
+// catch: generation is a small integer every lease starts at and increments
+// independently, so two unrelated leases share a number almost immediately.
+
+data other_slice_receipt: Receipt<NonEmptyStr> = Receipt {
+  id: FabricIdentity { principal: "operator", key: "receipt-2" },
+  attempt: FabricIdentity { principal: "operator", key: "attempt-1" },
+  lease: LeaseIdentity {
+    lease_key: "lease-attempt-1",
+    resource_fingerprint: content_hash_of_value(value: "srv3-slot-7"),
+    generation: 9,
+  },
+  payload: ExecutionReceipt {
+    step_id: "floor",
+    outputs: content_hash_of_value(value: "outputs-2"),
+    billable: second(count: 3600),
+    completed_at: "2026-08-18T01:00:00Z",
+  },
+}
+
+// Same attempt KEY, different principal. This is the cross-tenant case: two
+// tenants naming their attempt identically must not share receipts, and a
+// key-only comparison admits this one.
+
+data foreign_principal_receipt: Receipt<NonEmptyStr> = Receipt {
+  id: FabricIdentity { principal: "other-tenant", key: "receipt-4" },
+  attempt: FabricIdentity { principal: "other-tenant", key: "attempt-1" },
+  lease: lease_gen_9,
+  payload: ExecutionReceipt {
+    step_id: "floor",
+    outputs: content_hash_of_value(value: "outputs-4"),
+    billable: second(count: 3600),
+    completed_at: "2026-08-18T01:00:00Z",
+  },
+}
+
+data foreign_attempt_receipt: Receipt<NonEmptyStr> = Receipt {
+  id: FabricIdentity { principal: "operator", key: "receipt-3" },
+  attempt: FabricIdentity { principal: "operator", key: "attempt-99" },
+  lease: lease_gen_9,
+  payload: ExecutionReceipt {
+    step_id: "floor",
+    outputs: content_hash_of_value(value: "outputs-3"),
+    billable: second(count: 3600),
+    completed_at: "2026-08-18T01:00:00Z",
+  },
+}
+
+fn admission_label(r: Receipt<NonEmptyStr>) -> NonEmptyStr {
+  match admit_receipt_for_grant(r: r, g: fixture_grant) {
+    ReceiptAdmissible => "admissible"
+    ReceiptFromDifferentLease => "different-lease"
+    ReceiptFromDifferentAttempt => "different-attempt"
+    ReceiptFingerprintIncomparable => "fingerprint-incomparable"
+    ReceiptGenerationStale { presented: _, current: _ } => "generation-stale"
+  }
+}
+
+// Acceptance must compare the WHOLE lease identity. The three refusals below
+// are each reachable only if a different part of that identity is checked:
+// generation alone cannot tell same-generation-different-slice from current,
+// and cannot tell a foreign attempt from a stale one.
+
+test fn acceptance_compares_lease_identity_not_only_generation() -> Bool {
+  admission_label(r: stale_receipt) == "generation-stale"
+    && admission_label(r: other_slice_receipt) == "different-lease"
+    && admission_label(r: foreign_attempt_receipt) == "different-attempt"
+}
+
+// The cross-tenant control. Identity is the pair, so an attempt key alone is
+// not an attempt; a receipt carrying another principal's identically-named
+// attempt is refused rather than admitted.
+
+test fn a_receipt_from_another_principal_is_not_the_same_attempt() -> Bool {
+  admission_label(r: foreign_principal_receipt) == "different-attempt"
+}
+
+// The positive control. Without it every refusal above is satisfied by an
+// admission function that refuses everything.
+
+test fn a_receipt_from_the_granted_lease_is_admissible() -> Bool {
+  match admit_receipt_for_grant(
+    r: Receipt {
+      id: FabricIdentity { principal: "operator", key: "receipt-ok" },
+      attempt: first_attempt.id,
+      lease: lease_gen_9,
+      payload: ExecutionReceipt {
+        step_id: "floor",
+        outputs: content_hash_of_value(value: "outputs-ok"),
+        billable: second(count: 10),
+        completed_at: "2026-08-18T01:00:00Z",
+      },
+    },
+    g: fixture_grant,
+  ) {
+    ReceiptAdmissible => true
+    ReceiptFromDifferentLease => false
+    ReceiptFromDifferentAttempt => false
+    ReceiptFingerprintIncomparable => false
+    ReceiptGenerationStale { presented: _, current: _ } => false
+  }
+}
+
+// Resumability is declared per step, so a step with opaque effects cannot be
+// mistaken for a checkpointable one. The three tiers are discriminated
+// SEPARATELY rather than folded to a Bool: "may this be replayed" has three
+// answers, and idempotent-under-key differs from opaque-effects in what the
+// fabric is permitted to do, so a projection that answered false for both
+// would erase the distinction this type exists to carry.
+
+fn resumability_tier_of(step: WorkStep) -> NonEmptyStr {
+  match step.resumability {
+    ReceiptSatisfiable => "receipt-satisfiable"
+    IdempotentUnderKey { idempotency_key: _ } => "idempotent-under-key"
+    OpaqueEffects { reason: _ } => "opaque-effects"
+  }
+}
+
+test fn resumability_is_declared_not_assumed() -> Bool {
+  let satisfiable = resumability_tier_of(step: WorkStep {
+    step_id: "build",
+    resumability: ReceiptSatisfiable,
+  })
+  let idempotent_tier = resumability_tier_of(step: WorkStep {
+    step_id: "deploy",
+    resumability: IdempotentUnderKey { idempotency_key: content_hash_of_value(value: "deploy-1") },
+  })
+  let opaque = resumability_tier_of(step: WorkStep {
+    step_id: "arbitrary-shell",
+    resumability: OpaqueEffects { reason: "foreign workflow step declares no effects" },
+  })
+  satisfiable == "receipt-satisfiable"
+    && idempotent_tier == "idempotent-under-key"
+    && opaque == "opaque-effects"
+    && idempotent_tier != opaque
+}
