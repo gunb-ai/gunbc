@@ -128,9 +128,12 @@ test fn missing_prepared_identity_refuses() -> Bool {
     request: canonical_request(),
     probes: [probe_for(entry: entry_a())],
   ) {
-    PreparedFloorSubjectRefused {
-      cause: PreparedFloorMissingProbeIdentities { missing: missing }
-    } => missing.count() == 1 && missing.first().entry == witness_b().entry
+    PreparedFloorSubjectRefused { cause: cause } =>
+      match cause {
+        PreparedFloorMissingProbeIdentities { missing: missing } =>
+          missing.count() == 1 && missing.first().entry == witness_b().entry
+        _ => false
+      }
     _ => false
   }
 }
@@ -177,9 +180,11 @@ test fn duplicate_selected_identity_refuses() -> Bool {
     request: request_with(selected: [entry_a(), entry_a()]),
     probes: [probe_for(entry: entry_a())],
   ) {
-    PreparedFloorSubjectRefused {
-      cause: PreparedFloorDuplicateSelectedIdentities { duplicates: duplicates }
-    } => duplicates.count() == 2
+    PreparedFloorSubjectRefused { cause: cause } =>
+      match cause {
+        PreparedFloorDuplicateSelectedIdentities { duplicates: duplicates } => duplicates.count() == 2
+        _ => false
+      }
     _ => false
   }
 }
@@ -189,9 +194,11 @@ test fn duplicate_probe_identity_refuses() -> Bool {
     request: request_with(selected: [entry_a()]),
     probes: [probe_for(entry: entry_a()), probe_for(entry: entry_a())],
   ) {
-    PreparedFloorSubjectRefused {
-      cause: PreparedFloorDuplicateProbeIdentities { duplicates: duplicates }
-    } => duplicates.count() == 2
+    PreparedFloorSubjectRefused { cause: cause } =>
+      match cause {
+        PreparedFloorDuplicateProbeIdentities { duplicates: duplicates } => duplicates.count() == 2
+        _ => false
+      }
     _ => false
   }
 }
@@ -202,9 +209,12 @@ test fn unexpected_probe_identity_refuses() -> Bool {
     request: request_with(selected: [entry_a()]),
     probes: [probe_for(entry: entry_a()), probe_for(entry: extra)],
   ) {
-    PreparedFloorSubjectRefused {
-      cause: PreparedFloorUnexpectedProbeIdentities { unexpected: unexpected }
-    } => unexpected.count() == 1 && unexpected.first().entry == witness_extra().entry
+    PreparedFloorSubjectRefused { cause: cause } =>
+      match cause {
+        PreparedFloorUnexpectedProbeIdentities { unexpected: unexpected } =>
+          unexpected.count() == 1 && unexpected.first().entry == witness_extra().entry
+        _ => false
+      }
     _ => false
   }
 }

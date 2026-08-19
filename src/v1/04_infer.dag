@@ -2477,14 +2477,6 @@ fn unresolved_method_frontier() -> List<v1.compiler.infer.UnresolvedMethodFronti
       dissolution: unbound_dissolution(description: "reconciling the two optionality representations (cardinality-marked node vs the nominal Optional coproduct) so an optional receiver keeps its optional surface at method lookup")
     },
     {
-      module_name: "gunbc.source_integration_landing_spine",
-      method: "map",
-      occurrences: 1,
-      receiver_shape: "Node(Optional)",
-      cause: "same optional-functor class as the v1.compiler.trace row, in its OTHER surface form: here the Optional survives as a named node rather than collapsing to its inner product, and neither form carries a method surface. Two shapes for one concept is itself the defect the trigger names.",
-      dissolution: unbound_dissolution(description: "reconciling the two optionality representations so an optional receiver keeps its optional surface at method lookup")
-    },
-    {
       module_name: "test.claim.sccache_local_content_verified_on_read",
       method: "contains",
       occurrences: 1,
