@@ -699,17 +699,17 @@ fn basis_policy_label(p: BasisAllocationPolicy) -> NonEmptyStr {
 // lot divides evenly, so a refusal there would make the basis unanswerable for
 // ordinary stock while losing no fabrication risk that the retained remainder
 // does not already close.
+// BasisLandedCurrencyUnrecorded is DEFENSIVE, and named rather than assumed
+// away: the cost reading and the currency reading are two projections of one
+// ProcurementLot field, so they cannot disagree today — a lot with readable
+// micros always has a readable currency. Nothing in the type system says so,
+// which is exactly why that arm is a typed refusal instead of an assumption. It
+// dissolves if the two readings ever become one call.
 type BasisRefusalCause
   = BasisLotUnknown { lot: InventoryLotIdentity }
   | BasisLotDuplicated { lot: InventoryLotIdentity }
   | BasisLandedCostUnsettled { lot: InventoryLotIdentity }
   | BasisLandedCostHeldPrivately { lot: InventoryLotIdentity }
-  // Defensive, and named rather than assumed away: the cost reading and the
-  // currency reading are two projections of ONE ProcurementLot field, so they
-  // cannot disagree today — a lot with readable micros always has a readable
-  // currency. Nothing in the type system says so, which is exactly why this arm
-  // is a typed refusal instead of an assumption. It dissolves if the two
-  // readings ever become one call.
   | BasisLandedCurrencyUnrecorded { lot: InventoryLotIdentity }
   | BasisCurrencyMismatchAcrossLots { first: CurrencyCode, other: CurrencyCode }
 
