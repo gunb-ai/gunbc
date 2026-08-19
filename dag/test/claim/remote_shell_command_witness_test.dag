@@ -1,0 +1,105 @@
+module test.claim.remote_shell_command_witness
+
+import v2.std.algebra { list_map }
+import gunbc.remote_shell_command {
+  simple_command,
+  emit_remote_shell,
+  shell_parse,
+  remote_exec_command_string,
+  SimpleCommandBuilt,
+  SimpleCommandRefused,
+  ShellParseAccepted,
+  ShellParseRejected,
+  RemoteExecCommandBuilt,
+  RemoteExecCommandRefused,
+  PosixShellInterpreted,
+  Unknown,
+}
+
+data remote_shell_command_witness_note: String = "Hermetic proof of shell_parse(emit_remote_shell(simple_command(argv))) == argv, per the acceptance law in gunbc.remote_shell_command remote_shell_command_roundtrip_law_note. Three fixtures are required and present: a word containing a single quote (breaks naive concatenation of the escape), a word containing a space (breaks naive whitespace-joins), and a word containing a shell metacharacter (breaks naive unquoted joins). No live SSH target is touched here -- see remote_exec_command_live_confirmation for the declared, unexecuted remote-side receipt."
+
+fn round_trips(argv: List<NonEmptyStr>) -> Bool {
+  match simple_command(argv: argv) {
+    SimpleCommandRefused { cause: _ } => false
+    SimpleCommandBuilt { command: cmd } => {
+      let rendered = emit_remote_shell(command: cmd)
+      match shell_parse(text: rendered as String) {
+        ShellParseRejected { failure: _ } => false
+        ShellParseAccepted { words: parsed } =>
+          parsed == list_map(xs: argv, f: fn(w) { w as String })
+      }
+    }
+  }
+}
+
+test fn witness_roundtrip_plain_word_holds() -> Bool {
+  round_trips(argv: ["whoami"])
+}
+
+test fn witness_roundtrip_multi_word_argv_holds() -> Bool {
+  round_trips(argv: ["jq", "-r", ".status"])
+}
+
+test fn witness_roundtrip_single_quote_word_holds() -> Bool {
+  round_trips(argv: ["it's-a-test"])
+}
+
+test fn witness_roundtrip_space_word_holds() -> Bool {
+  round_trips(argv: ["a path with spaces/file.txt"])
+}
+
+test fn witness_roundtrip_metacharacter_word_holds() -> Bool {
+  round_trips(argv: ["$(whoami); rm -rf / #"])
+}
+
+test fn witness_roundtrip_jq_program_holds() -> Bool {
+  round_trips(argv: [".data[] | select(.ready == true) | .name"])
+}
+
+test fn witness_roundtrip_leading_and_trailing_quote_holds() -> Bool {
+  round_trips(argv: ["'quoted'"])
+}
+
+test fn witness_emit_remote_shell_produces_one_string_holds() -> Bool {
+  match simple_command(argv: ["jq", "it's here"]) {
+    SimpleCommandRefused { cause: _ } => false
+    SimpleCommandBuilt { command: cmd } =>
+      emit_remote_shell(command: cmd) as String == "'jq' 'it'\\''s here'"
+  }
+}
+
+test fn witness_simple_command_refuses_empty_argv_holds() -> Bool {
+  match simple_command(argv: []) {
+    SimpleCommandBuilt { command: _ } => false
+    SimpleCommandRefused { cause: _ } => true
+  }
+}
+
+test fn witness_shell_parse_rejects_unterminated_quote_holds() -> Bool {
+  match shell_parse(text: "'unterminated") {
+    ShellParseAccepted { words: _ } => false
+    ShellParseRejected { failure: _ } => true
+  }
+}
+
+test fn witness_shell_parse_rejects_unquoted_text_holds() -> Bool {
+  match shell_parse(text: "bare") {
+    ShellParseAccepted { words: _ } => false
+    ShellParseRejected { failure: _ } => true
+  }
+}
+
+test fn witness_remote_exec_command_string_refuses_unknown_interpretation_holds() -> Bool {
+  match remote_exec_command_string(argv: ["echo", "hi"], interpretation: Unknown) {
+    RemoteExecCommandBuilt { command: _ } => false
+    RemoteExecCommandRefused { cause: _ } => true
+  }
+}
+
+test fn witness_remote_exec_command_string_builds_under_posix_shell_interpretation_holds() -> Bool {
+  match remote_exec_command_string(argv: ["jq", ".status"], interpretation: PosixShellInterpreted) {
+    RemoteExecCommandRefused { cause: _ } => false
+    RemoteExecCommandBuilt { command: c } =>
+      c as String == "'jq' '.status'"
+  }
+}
