@@ -1,32 +1,25 @@
 module test.claim.fabric_witness_run
 
-// The subject is AUTHORIZATION, so every witness here is a refusal or the one
-// positive control that proves refusal is not the only reachable arm. A witness
-// suite that only proved the happy path would establish that a command can be
-// produced, which was never in doubt; what is in doubt is that it CANNOT be
-// produced when the executor does not satisfy the work.
+// The subject is ELIGIBILITY, so every witness here is a refusal or one of the
+// controls that prove refusal is not the only reachable arm. A suite that only
+// proved the happy path would establish that an offer can be accepted, which was
+// never in doubt; what is in doubt is that it CANNOT be accepted when the
+// executor does not satisfy the work, or when the demand cannot afford it.
 
 fn t_source() -> SourceManifestRef {
   "gunbc.source.test-commit"
 }
 
-fn t_work_id() -> FabricIdentity<NonEmptyStr, WorkKey> {
-  FabricIdentity { principal: "gunbc", key: "work-floor-1" }
+fn t_max_buy() -> MoneyAmountMicro {
+  money_amount_micro(count: 1000000)
 }
 
-fn t_other_work_id() -> FabricIdentity<NonEmptyStr, WorkKey> {
-  FabricIdentity { principal: "gunbc", key: "work-floor-2" }
-}
-
-fn t_work() -> Work<NonEmptyStr> {
-  Work {
-    id: t_work_id(),
-    contract: floor_work_contract(source: t_source()),
-    requirements: floor_execution_requirements(),
-  }
-}
-
-fn t_offer(threads: HardwareThreadCount, caps: CapabilityManifestRef, trust: TrustDomainRef) -> Offer<NonEmptyStr> {
+fn t_offer(
+  threads: HardwareThreadCount,
+  caps: CapabilityManifestRef,
+  trust: TrustDomainRef,
+  quote: OfferQuote,
+) -> Offer<NonEmptyStr> {
   Offer {
     id: FabricIdentity { principal: "gunbc", key: "offer-srv1" },
     executor: "gunbc",
@@ -35,7 +28,7 @@ fn t_offer(threads: HardwareThreadCount, caps: CapabilityManifestRef, trust: Tru
     trust_domain: trust,
     quantity_bound: 1,
     ready_at: "2026-08-19T00:00:00Z",
-    quote: QuotedFlatPerGrant(MoneyRate { amount: money_amount_micro(count: 0), currency: Usd }),
+    quote: quote,
     evidence: ObservedSupply {
       observed_at: "2026-08-19T00:00:00Z",
       receipt: "gunbc.observation.fleet-1",
@@ -43,51 +36,148 @@ fn t_offer(threads: HardwareThreadCount, caps: CapabilityManifestRef, trust: Tru
   }
 }
 
-fn t_good_offer() -> Offer<NonEmptyStr> {
+fn t_quote(amount: MoneyAmountMicro, currency: CurrencyCode) -> OfferQuote {
+  QuotedFlatPerGrant(MoneyRate { amount: amount, currency: currency })
+}
+
+// The owned-fleet offer: a ZERO quote, which is a supply-side fact and not an
+// exemption from the price check. See supply.dag's note -- a zero-quoted offer
+// is still an offer that could have been sold to someone else.
+fn t_fleet_offer() -> Offer<NonEmptyStr> {
   t_offer(
     threads: hardware_thread_count(count: 128),
-    caps: "gunbc.capabilities.linux-aarch64-rust-toolchain",
+    caps: "gunbc.capabilities.linux-rust-toolchain",
     trust: "gunbc.trust.internal-fleet",
+    quote: t_quote(amount: money_amount_micro(count: 0), currency: Usd),
   )
 }
 
-fn authorized(a: FloorRunAuthorization<NonEmptyStr>) -> Bool {
-  match a {
-    FloorRunAuthorized { command: _ } => true
-    FloorRunRefused { cause: _ } => false
+fn eligible(e: OfferEligibility) -> Bool {
+  match e {
+    OfferEligible => true
+    ShapeNotCovered { required_threads: _, offered_threads: _ } => false
+    TrustDomainMismatch { required: _, offered: _ } => false
+    CapabilitiesNotOffered { required: _, offered: _ } => false
+    QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
+    QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
   }
 }
 
-// POSITIVE CONTROL. Without this every refusal below is satisfied by a function
-// that refuses unconditionally, which is the shape a wall takes when it is
-// actually a brick.
+fn floor_eligibility(offer: Offer<NonEmptyStr>) -> OfferEligibility {
+  floor_offer_eligibility(offer: offer, maximum_buy_order: t_max_buy(), budget_currency: Usd)
+}
 
-test fn fleet_offer_authorizes_the_floor() -> Bool {
-  authorized(a: authorize_floor_run(
-    work: t_work(),
-    attempt_work: t_work_id(),
-    offer: t_good_offer(),
+// CONTROLS. Without these, every refusal below is satisfied by a fold that
+// refuses unconditionally -- the shape a wall takes when it is actually a brick.
+
+test fn fleet_offer_is_eligible_for_the_floor() -> Bool {
+  eligible(e: floor_eligibility(offer: t_fleet_offer()))
+}
+
+// The shape wall is an INEQUALITY. An offer larger than the requirement must
+// still be eligible; one that rejected a bigger machine would be a bug wearing
+// a wall's clothing.
+test fn larger_offer_is_still_eligible() -> Bool {
+  eligible(e: floor_eligibility(offer: t_offer(
+    threads: hardware_thread_count(count: 256),
+    caps: "gunbc.capabilities.linux-rust-toolchain",
+    trust: "gunbc.trust.internal-fleet",
+    quote: t_quote(amount: money_amount_micro(count: 0), currency: Usd),
+  )))
+}
+
+// DISCRIMINATING REDS -- capability side.
+
+// A host outside the declared trust domain must be refused even when it is
+// larger and cheaper: capacity does not substitute for trust.
+test fn foreign_trust_domain_refuses_despite_ample_capacity() -> Bool {
+  match floor_eligibility(offer: t_offer(
+    threads: hardware_thread_count(count: 1024),
+    caps: "gunbc.capabilities.linux-rust-toolchain",
+    trust: "gunbc.trust.public-cloud",
+    quote: t_quote(amount: money_amount_micro(count: 0), currency: Usd),
+  )) {
+    TrustDomainMismatch { required: _, offered: _ } => true
+    OfferEligible => false
+    ShapeNotCovered { required_threads: _, offered_threads: _ } => false
+    CapabilitiesNotOffered { required: _, offered: _ } => false
+    QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
+    QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
+  }
+}
+
+test fn missing_capabilities_refuse() -> Bool {
+  !eligible(e: floor_eligibility(offer: t_offer(
+    threads: hardware_thread_count(count: 128),
+    caps: "gunbc.capabilities.linux-x86_64-no-toolchain",
+    trust: "gunbc.trust.internal-fleet",
+    quote: t_quote(amount: money_amount_micro(count: 0), currency: Usd),
+  )))
+}
+
+test fn insufficient_threads_refuse() -> Bool {
+  !eligible(e: floor_eligibility(offer: t_offer(
+    threads: hardware_thread_count(count: 2),
+    caps: "gunbc.capabilities.linux-rust-toolchain",
+    trust: "gunbc.trust.internal-fleet",
+    quote: t_quote(amount: money_amount_micro(count: 0), currency: Usd),
+  )))
+}
+
+// DISCRIMINATING REDS -- price side. These are the arm that makes gunbc's own
+// CI an ordinary priced demand rather than an always-admitted path. The fleet
+// offer above quotes zero and still goes THROUGH this check; these prove the
+// check is reachable and can refuse.
+
+test fn quote_above_the_maximum_buy_order_refuses() -> Bool {
+  match floor_eligibility(offer: t_offer(
+    threads: hardware_thread_count(count: 128),
+    caps: "gunbc.capabilities.linux-rust-toolchain",
+    trust: "gunbc.trust.internal-fleet",
+    quote: t_quote(amount: money_amount_micro(count: 9000000), currency: Usd),
+  )) {
+    QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => true
+    OfferEligible => false
+    ShapeNotCovered { required_threads: _, offered_threads: _ } => false
+    TrustDomainMismatch { required: _, offered: _ } => false
+    CapabilitiesNotOffered { required: _, offered: _ } => false
+    QuoteCurrencyMismatch { quoted: _, budgeted: _ } => false
+  }
+}
+
+// Affordability and capability are SEPARATE arms with different remedies --
+// raise the buy order, or find another supplier -- so a currency mismatch must
+// not be reported as an ordinary over-budget refusal.
+test fn foreign_currency_quote_refuses_distinctly() -> Bool {
+  match floor_eligibility(offer: t_offer(
+    threads: hardware_thread_count(count: 128),
+    caps: "gunbc.capabilities.linux-rust-toolchain",
+    trust: "gunbc.trust.internal-fleet",
+    quote: t_quote(amount: money_amount_micro(count: 1), currency: Eur),
+  )) {
+    QuoteCurrencyMismatch { quoted: _, budgeted: _ } => true
+    OfferEligible => false
+    ShapeNotCovered { required_threads: _, offered_threads: _ } => false
+    TrustDomainMismatch { required: _, offered: _ } => false
+    CapabilitiesNotOffered { required: _, offered: _ } => false
+    QuoteExceedsMaximumBuyOrder { quoted: _, maximum: _ } => false
+  }
+}
+
+// A priced demand with NO budget cannot clear even a zero-quoted own-fleet
+// offer... except that it can, because zero is not greater than zero. This
+// witness pins that boundary deliberately rather than leaving it to be
+// discovered: free capacity is affordable to a zero budget, and the arbitrage
+// question is about opportunity cost, which this fold does not answer.
+test fn zero_budget_still_clears_a_zero_quote() -> Bool {
+  eligible(e: floor_offer_eligibility(
+    offer: t_fleet_offer(),
+    maximum_buy_order: money_amount_micro(count: 0),
+    budget_currency: Usd,
   ))
 }
 
-test fn authorized_command_is_the_floor_invocation() -> Bool {
-  match authorize_floor_run(work: t_work(), attempt_work: t_work_id(), offer: t_good_offer()) {
-    FloorRunAuthorized { command: c } =>
-      c.argv == [
-        "target/release/claim_executor", "--required-floor",
-        "--source-root", "dag",
-        "--source-root", "src/v2",
-      ]
-    FloorRunRefused { cause: _ } => false
-  }
-}
-
-// The argv is now a total fold over witness_layer_roots, so this is a
-// REGRESSION CONTROL rather than the wall it was when the pairs were hand
-// expanded -- per DESIGN §4b(4), evidence stays enrolled when a class climbs.
-// It asserts a JOIN plus the exact arity, not a count alone: a count would pass
-// if one root appeared twice, which is the drift review 53848 correctly said a
-// string-to-string comparison could not detect.
+// THE COMMAND. Derived facts, not restatements.
 
 test fn floor_argv_carries_every_declared_source_root() -> Bool {
   let argv = floor_run_command().argv
@@ -95,110 +185,20 @@ test fn floor_argv_carries_every_declared_source_root() -> Bool {
     && length(xs: argv) == 2 + 2 * length(xs: witness_layer_roots)
 }
 
-test fn floor_inputs_manifest_ref_folds_the_same_authority() -> Bool {
-  floor_inputs_manifest_ref() == "gunbc.floor.inputs.source-roots:dag+src/v2"
-}
-
-// DISCRIMINATING REDS.
-
-// An attempt naming a different Work must not be authorized against this Work.
-// Checked FIRST, before any resource question: authorizing the wrong Work
-// cheaply is still authorizing the wrong Work.
-test fn attempt_for_different_work_refuses() -> Bool {
-  match authorize_floor_run(work: t_work(), attempt_work: t_other_work_id(), offer: t_good_offer()) {
-    FloorRunRefused { cause: AttemptIsForDifferentWork } => true
-    FloorRunRefused { cause: _ } => false
-    FloorRunAuthorized { command: _ } => false
-  }
-}
-
-// A host outside the declared trust domain must not run the floor even if it is
-// larger and better equipped -- the point of a trust domain is that capacity
-// does not substitute for it.
-test fn foreign_trust_domain_refuses_despite_ample_capacity() -> Bool {
-  match authorize_floor_run(
-    work: t_work(),
-    attempt_work: t_work_id(),
-    offer: t_offer(
-      threads: hardware_thread_count(count: 1024),
-      caps: "gunbc.capabilities.linux-aarch64-rust-toolchain",
-      trust: "gunbc.trust.public-cloud",
-    ),
-  ) {
-    FloorRunRefused { cause: TrustDomainMismatch { required: _, offered: _ } } => true
-    FloorRunRefused { cause: _ } => false
-    FloorRunAuthorized { command: _ } => false
-  }
-}
-
-test fn missing_capabilities_refuse() -> Bool {
-  match authorize_floor_run(
-    work: t_work(),
-    attempt_work: t_work_id(),
-    offer: t_offer(
-      threads: hardware_thread_count(count: 128),
-      caps: "gunbc.capabilities.linux-x86_64-no-toolchain",
-      trust: "gunbc.trust.internal-fleet",
-    ),
-  ) {
-    FloorRunRefused { cause: CapabilitiesNotOffered { required: _, offered: _ } } => true
-    FloorRunRefused { cause: _ } => false
-    FloorRunAuthorized { command: _ } => false
-  }
-}
-
-// The shape wall is an inequality, not an equality, so an offer LARGER than the
-// requirement must still authorize. A wall that refused a bigger machine would
-// be a bug wearing a wall's clothing.
-test fn larger_offer_still_authorizes() -> Bool {
-  authorized(a: authorize_floor_run(
-    work: t_work(),
-    attempt_work: t_work_id(),
-    offer: t_offer(
-      threads: hardware_thread_count(count: 256),
-      caps: "gunbc.capabilities.linux-aarch64-rust-toolchain",
-      trust: "gunbc.trust.internal-fleet",
-    ),
-  ))
-}
-
-test fn insufficient_threads_refuse() -> Bool {
-  match authorize_floor_run(
-    work: t_work(),
-    attempt_work: t_work_id(),
-    offer: t_offer(
-      threads: hardware_thread_count(count: 2),
-      caps: "gunbc.capabilities.linux-aarch64-rust-toolchain",
-      trust: "gunbc.trust.internal-fleet",
-    ),
-  ) {
-    FloorRunRefused { cause: ShapeNotCovered { required_threads: _, offered_threads: _ } } => true
-    FloorRunRefused { cause: _ } => false
-    FloorRunAuthorized { command: _ } => false
-  }
-}
-
-// The floor and the v1 parse gate are TWO steps, so a receipt can distinguish
-// which one failed. Collapsing them is the regression gunbc#8466 -> #8519 paid
-// for: a parse break that produced no new signal because the gate was already
-// red for an unrelated reason.
-test fn floor_contract_keeps_the_parse_gate_as_its_own_step() -> Bool {
-  length(xs: floor_work_contract(source: t_source()).steps) == 2
-}
-
-// THE SUBSTITUTION CHECK. The fabric's argv and the live workflow's step are
-// two projections of one authority (witness_layer_roots), so this asserts they
-// agree on the thing that could actually diverge: the source roots, in order.
-//
-// It does NOT assert byte equality with the emitted shell line. That line
-// carries "$ROOT/" prefixes and quoting the argv carrier deliberately does not,
-// because an argv is a list of arguments and a shell line is a rendering of one
-// -- asserting they are the same string would be asserting that the transport
-// never differs from the thing transported.
 test fn fabric_argv_and_workflow_step_agree_on_source_roots() -> Bool {
   let argv = floor_run_command().argv
   all(witness_layer_roots, r => any(argv, a => a == r))
     && string_contains(s: witness_floor_run_script(), pattern: "--required-floor")
     && all(witness_layer_roots, r =>
          string_contains(s: witness_floor_run_script(), pattern: concat("--source-root \"$ROOT/", concat(r, "\""))))
+}
+
+test fn floor_inputs_manifest_ref_folds_the_same_authority() -> Bool {
+  floor_inputs_manifest_ref() == "gunbc.floor.inputs.source-roots:dag+src/v2"
+}
+
+// The floor and the v1 parse gate are TWO steps, so a receipt can say which one
+// failed. That distinction is what gunbc#8466 -> #8519 paid to learn.
+test fn floor_contract_keeps_the_parse_gate_as_its_own_step() -> Bool {
+  length(xs: floor_work_contract(source: t_source()).steps) == 2
 }

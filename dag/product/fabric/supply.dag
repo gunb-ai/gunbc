@@ -1,11 +1,14 @@
 module product.fabric.supply
 
 import std.types { Timestamp, Int }
-import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyPerHour, MoneyOnce }
+import std.measure {
+  MoneyAmountMicro, MoneyPerSecond, MoneyPerHour, MoneyOnce,
+  HardwareThreadCount, hardware_thread_count_value, money_amount_micro_count,
+}
 import std.currency { CurrencyCode }
 import product.fabric.identity { FabricIdentity, OfferKey }
 import product.fabric.demand { ObservationReceiptRef }
-import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef }
+import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef, ExecutionRequirements }
 
 // An Offer is a supplier's statement of capacity it is willing to sell. Owned
 // capacity and rented capacity are ONE type: what differs is the evidence behind
@@ -132,3 +135,75 @@ type Offer<P> {
 
 type SelectionPolicy =
   | CheapestFungibleWithDelayValuation
+
+// FUNGIBILITY IS THE FABRIC'S QUESTION, NOT A CONSUMER'S.
+//
+// This fold arrived here from gunbc.fabric_witness_run, where it had been
+// written as authorize_floor_run with a FloorRunRefusal coproduct. Nothing in
+// it was ever about the floor: comparing a Work's requirements against an
+// Offer's capabilities is provider-neutral, and work.dag's own header already
+// calls fungibility "selection's first and load-bearing step". A consumer that
+// owns this fold is a consumer that will answer it differently from the next
+// consumer, which is the fork the fabric exists to prevent.
+//
+// AFFORDABILITY IS DELIBERATELY A SEPARATE ARM FROM CAPABILITY. A demand that
+// cannot afford an offer and a demand an offer cannot serve are different
+// facts with different remedies -- raise the buy order, or find another
+// supplier -- and collapsing them into one "not eligible" loses which.
+
+type OfferEligibility
+  = OfferEligible
+  | ShapeNotCovered { required_threads: HardwareThreadCount, offered_threads: HardwareThreadCount }
+  | TrustDomainMismatch { required: TrustDomainRef, offered: TrustDomainRef }
+  | CapabilitiesNotOffered { required: CapabilityManifestRef, offered: CapabilityManifestRef }
+  | QuoteExceedsMaximumBuyOrder { quoted: MoneyAmountMicro, maximum: MoneyAmountMicro }
+  | QuoteCurrencyMismatch { quoted: CurrencyCode, budgeted: CurrencyCode }
+
+fn offer_covers_shape(offered: Shape, needed: Shape) -> Bool {
+  hardware_thread_count_value(t: offered.hard.threads) >= hardware_thread_count_value(t: needed.hard.threads)
+}
+
+// A ZERO-QUOTED OFFER IS STILL AN OFFER THAT COULD HAVE BEEN SOLD TO SOMEONE
+// ELSE. That sentence is the whole arbitrage, and it is on this carrier because
+// this is where the mistake is available to make: the zero is a SUPPLY-SIDE
+// FACT, the opportunity cost is a DEMAND-SIDE QUESTION, and reading the first as
+// answering the second is exactly what makes an always-admitted path invisible.
+// An owned-fleet offer quoting zero is not free capacity; it is capacity whose
+// price we chose not to charge ourselves, and the demand must still clear it or
+// the opportunity cost of running our own work stops being computable.
+//
+// So this fold takes BuyTerms and applies them whatever the quote is. There is
+// no arm that skips the price check because the quote was zero, and there is no
+// parameter that admits a privileged demand.
+
+// The budget ceiling arrives as SCALARS rather than as demand.BuyTerms, because
+// supply must not import demand -- a backward edge this module already carries
+// once for ObservationReceiptRef and must not deepen. The demand side supplies
+// them at the call site, which is also where they are known.
+
+fn offer_eligibility_for<P>(
+  requirements: ExecutionRequirements,
+  offer: Offer<P>,
+  maximum_buy_order: MoneyAmountMicro,
+  budget_currency: CurrencyCode,
+) -> OfferEligibility {
+  if requirements.trust_domain != offer.trust_domain {
+    TrustDomainMismatch { required: requirements.trust_domain, offered: offer.trust_domain }
+  } else if requirements.capabilities != offer.capabilities {
+    CapabilitiesNotOffered { required: requirements.capabilities, offered: offer.capabilities }
+  } else if !offer_covers_shape(offered: offer.shape, needed: requirements.shape) {
+    ShapeNotCovered {
+      required_threads: requirements.shape.hard.threads,
+      offered_threads: offer.shape.hard.threads,
+    }
+  } else if offer_quote_currency(q: offer.quote) != budget_currency {
+    QuoteCurrencyMismatch { quoted: offer_quote_currency(q: offer.quote), budgeted: budget_currency }
+  } else if money_amount_micro_count(m: offer_quote_amount(q: offer.quote)) > money_amount_micro_count(m: maximum_buy_order) {
+    QuoteExceedsMaximumBuyOrder {
+      quoted: offer_quote_amount(q: offer.quote),
+      maximum: maximum_buy_order,
+    }
+  } else {
+    OfferEligible
+  }
+}
