@@ -31,9 +31,9 @@ import extdeps.version.semver { semver_version_label }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.layout {
-  Doc, DocConcat,
+  Doc,
   LayoutProtocol,
-  doc_concat, doc_line_of, doc_text,
+  doc_text,
   render
 }
 import extdeps.systemd.unit_file {
@@ -68,7 +68,7 @@ import gunbc.live_deploy.spec {
   TeardownDisposition, TeardownActs, TeardownRefuses,
   tree_sync_unit_path,
 }
-import gunbc.host_layout { belt_spawn_workdir_env_var, fleet_converge_receipt_dir }
+import gunbc.host_layout { belt_spawn_workdir_env_var }
 import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_for_host,
   deploy_memory_cap_script_author_precedes_shadow_revert,
@@ -353,8 +353,12 @@ fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
 // (emit_systemd_unit_doc / emit_belt_service_unit_doc: User=+Group=svc.service_user).
 // Receipt *publication* (superseding a stale root-owned file) is atomic rename in
 // gunbc.fleet_converge_cli (gunbc.host_layout fleet_converge_receipt_atomic_publish_note).
-// Receipt *directory bootstrap* (existence + service-principal ownership) stays on deploy
-// via install_d_owned_command on fleet_converge_receipt_dir — orthogonal problems.
+// Receipt *directory bootstrap* (existence + service-principal ownership) is on deploy, but NOT
+// here: this member's apply arm is a retirement poison (the cadence is on-demand via
+// fleet-converge.yml plan/apply, sleek-heron-218), so the bootstrap it used to carry has not run
+// on any fresh instance root since that retirement. It rides BeltTimerUnit apply against the
+// per-instance receipts directory instead — see belt_receipt_dir_bootstrap_note. Publication and
+// bootstrap remain orthogonal problems; only the bootstrap's home moved.
 fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
   let svc = spec.service
   doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
