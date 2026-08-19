@@ -1,9 +1,5 @@
 module v2.workflow.required_floor
 
-import v2.std.algebra { Cons, Empty }
-import v2.std.collection { List }
-import std.dissolution { DissolutionCondition, unbound_dissolution }
-import v2.std.text { String }
 
 // THE ROSTER IS IMPORTED HERE SO IT IS REACHABLE, NOT SO IT IS RE-EXPORTED.
 //
@@ -16,7 +12,6 @@ import v2.std.text { String }
 // `v2.workflow.floor_expected_red.floor_expected_red_roster` by its real qualified name. A
 // thin accessor here would be a second name for one authority, and this module would then own
 // a fact it does not produce.
-import v2.workflow.floor_expected_red { floor_expected_red_roster }
 
 // BARE-NAME AMBIGUITY IS COMPUTED AND DISCARDED, one rung below where the machinery already
 // stands. This is an ACKNOWLEDGEMENT of debt the floor cut discovered on its base, not debt the
@@ -82,7 +77,7 @@ data floor_bare_name_ambiguity_next_rung_trigger: std.dissolution.DissolutionCon
 // real modelling question, and when it is asked it will be asked against a live consumer.
 //
 // These rows are NOT COVERED by anything. The host reports the count every run.
-fn long_home_prefixes() -> List<String> {
+fn long_home_prefixes() -> v2.std.collection.List<v2.std.text.String> {
   std.algebra.Cons {
     head: "test.claim.long.",
     tail: std.algebra.Cons {

@@ -41111,17 +41111,3 @@ fn witness_eval_verdict_from_claim_outcome(
         },
     }
 }
-
-pub fn run_required_regen(
-    candidate_dir_rel: &str,
-    receipt_rel: &str,
-) -> Result<required_regen_host::RequiredRegenOutcome, String> {
-    required_regen_host::run_required_regen(candidate_dir_rel, receipt_rel)
-}
-
-pub fn run_required_regen_fixed_point(
-    receipt_rel: &str,
-    pass1_digest: Option<String>,
-) -> Result<required_regen_host::RequiredRegenOutcome, String> {
-    required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
-}
