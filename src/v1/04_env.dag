@@ -806,7 +806,7 @@ fn global_bare_lookup(env: v1.compiler.infer_env.TypeEnv, name: String) -> v1.co
         if global_bare_module_on_chain(env_module_path: env.module_path, cand_module_path: mp) {
           Present { value: binding }
         } else {
-          Absent
+          none
         }
       } else {
         Present { value: binding }

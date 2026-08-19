@@ -241,7 +241,7 @@ fn v1_map_key_required_type_names(
   seed_type_exprs: List<Node>,
   extra_seed_names: List<String>,
   type_decl_items: Map<String, Node>,
-  source_indices: Map<String, NewlineIndex>
+  source_indices: Map<String, v1.std.core.NewlineIndex>
 ) -> Set<String> {
   let declared_type_names = map_keys(type_decl_items)
   let scanned = seed_type_exprs |> fold(init: MapKeyRequirementRound { names: empty_set(), added: 0 }, f: (acc, te) =>

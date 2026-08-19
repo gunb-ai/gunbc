@@ -1,7 +1,7 @@
 module std.state_durability
 
 
-data state_durability_boundary_contract: std.disposition.Disposition = Terminal {
+data state_durability_boundary_contract: std.disposition.Disposition = std.disposition.Terminal {
   reason: "Desired world-state lifetime is explicit before realization: RuntimeLifetimeOnly or DurableAcross named lifecycle boundaries. The closed boundary coproduct prevents a generic Persistent label from standing in for service restart, control-plane restart, host restart, power loss, software replacement, or factory reset."
 }
 
