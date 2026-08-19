@@ -2804,12 +2804,30 @@ pub fn structured_application_site_type_mismatch(
 ) -> bool {
     match (*actual_expr.expr_data.clone()).clone() {
         ExprData::ExprRecordLit { parent_enum: _, .. } => {
-            let source_indices = scope.type_env.clone().source_indices.clone();
-            let formal_peeled = peel_nominal_alias_identity(
+            structured_application_site_type_mismatch_with_peeled(
                 formal.clone(),
-                scope.type_env.clone(),
-                scope.module_name.clone(),
-            );
+                peel_nominal_alias_identity(
+                    formal.clone(),
+                    scope.type_env.clone(),
+                    scope.module_name.clone(),
+                ),
+                actual_expr.clone(),
+                scope.clone(),
+            )
+        }
+        _ => false,
+    }
+}
+
+pub fn structured_application_site_type_mismatch_with_peeled(
+    formal: Rc<Node>,
+    formal_peeled: Rc<Node>,
+    actual_expr: Rc<Node>,
+    scope: Rc<InferScope>,
+) -> bool {
+    match (*actual_expr.expr_data.clone()).clone() {
+        ExprData::ExprRecordLit { parent_enum: _, .. } => {
+            let source_indices = scope.type_env.clone().source_indices.clone();
             if type_node_is_callable(formal_peeled.clone()) {
                 false
             } else {
@@ -3090,8 +3108,9 @@ pub fn direct_call_structured_application_mismatch_diags(
                         match app.matched_arg.clone() {
                             Some(ta) => {
                                 let actual_expr = arg_value(ta.clone());
-                                if (structured_application_site_type_mismatch(
+                                if (structured_application_site_type_mismatch_with_peeled(
                                     formal_subst.clone(),
+                                    formal.clone(),
                                     actual_expr.clone(),
                                     scope.clone(),
                                 )

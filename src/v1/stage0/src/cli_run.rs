@@ -39155,26 +39155,9 @@ fn str_list(items: impl IntoIterator<Item = String>) -> v1_interpreter::Value {
     ))
 }
 
-fn record_value(
-    ctx: &v1_interpreter::InterpContext,
-    type_name: &str,
-    fields: Vec<(&str, v1_interpreter::Value)>,
-) -> v1_interpreter::Value {
-    v1_interpreter::Value::Record {
-        type_name: ctx.sym(type_name),
-        fields: Rc::new(
-            fields
-                .into_iter()
-                .map(|(n, v)| (ctx.sym(n), v))
-                .collect::<Vec<_>>(),
-        ),
-    }
-}
-
-/// The module whose `required_floor_attempt` folds the manifest. Named once: the manifest is
-/// evaluated in its OWN exact scope, exactly as every claim is, so the program that decides
-/// which claims exist is not itself privileged with a wider namespace than the claims it
-/// admits.
+/// The module carrying the floor's authored thresholds and the long-home roster. Named once,
+/// and evaluated in its OWN exact scope exactly as every claim is, so the module that supplies
+/// the admission facts is not privileged with a wider namespace than the claims they admit.
 const REQUIRED_FLOOR_MANIFEST_MODULE: &str = "v2.workflow.required_floor";
 
 /// THE REQUIRED FLOOR, AS ONE ATTEMPT.
@@ -39396,6 +39379,21 @@ fn floor_value_shape(v: Option<&v1_interpreter::Value>) -> String {
 // subject, and the recursive spelling already in this file for dependency edges would recurse
 // once per element -- fine for a handful of edges, a stack overflow here. Depth belongs on the
 // heap when the depth is the population size.
+/// One nullary `.dag` Int authority, decoded. The floor's per-claim thresholds are authored in
+/// `v2.workflow.required_floor` and read here rather than re-spelled in Rust: the host owns when
+/// a budget is applied, never what it is.
+fn floor_required_int(ctx: &v1_interpreter::InterpContext, func: &str) -> Result<u64, String> {
+    let qualified = format!("v2.workflow.required_floor.{func}");
+    match v1_interpreter::run_in_context(ctx, &qualified, false) {
+        Ok(v1_interpreter::Value::Int(n)) if n >= 0 => Ok(n as u64),
+        Ok(other) => Err(format!(
+            "{qualified}: expected a non-negative Int, got {}",
+            floor_value_shape(Some(&other))
+        )),
+        Err(e) => Err(format!("{qualified}: {e}")),
+    }
+}
+
 fn floor_decode_list<'a>(
     ctx: &v1_interpreter::InterpContext,
     v: Option<&'a v1_interpreter::Value>,
@@ -39842,137 +39840,41 @@ pub fn run_required_floor(
     floor_seam("site-projection");
     let projection_started = std::time::Instant::now();
     let files = &prepared.witness_files;
-    // THE SITE CARRIES ITS MODULE. `InventoryWitnessFile` already holds `module_path`, read from
-    // the same inventory entry in the same iteration, so the site is complete at construction.
+    // ONE DECISION, MADE ONCE, WHERE THE FACTS ALREADY ARE.
     //
-    // This replaced a second projection of the WHOLE inventory into an entry-to-module list --
-    // 3,680 records marshalled into the interpreter -- which the .dag manifest then JOINED back
-    // onto the sites by `entry`. Both lists came from one collection keyed by one file path, so
-    // the join re-derived inside the fold a fact this loop held two lines earlier, and its answer
-    // was always "exactly one". The refusal for the other cases had no reachable producer.
-    // EVERY DISCOVERED SITE IS OFFERED TO THE MANIFEST, and the manifest decides which are
-    // required-floor claims.
+    // WHAT THIS REPLACED, and why it was not an optimisation. The required outcome of this whole
+    // region is exactly: exclude a witness whose AUTHORED module sits in the long home, exclude
+    // one that reads the live tree, claim everything else Hermetic. That decision used to be
+    // made TWICE — once by `required_floor_manifest` over 10,498 records marshalled into the
+    // interpreter, and again here in Rust, applying the same prefix test to explain the
+    // difference between sites offered and claims returned. Between the two sat an interpreted
+    // fold whose only product was a population this host could compute directly from facts it
+    // already held in `prepared.witness_files`.
     //
-    // This host previously partitioned the population itself, by testing whether a file's PATH
-    // contained the long home. That made a directory the admission authority — the 2026-08-04
-    // ruling's exact root cause — and it decided at file grain, so one expensive witness took
-    // every cheap sibling in its file out of the floor with it. It was also a SECOND authority:
-    // `WitnessDisposition` already modelled the answer in `.dag` and nothing consulted it.
+    // THE AUTHORED FACTS STAY AUTHORED. `long_home_prefixes`, the claim budget and the warn
+    // threshold are still read from `v2.workflow.required_floor`, so the prefix list and both
+    // thresholds remain .dag authorities and are not re-spelled in Rust. What is deleted is the
+    // reconstruction, never the fact.
     //
-    // The disposition now lives where it is authored — `v2.workflow.required_floor`
-    // `disposition_for_module`, a grant over a namespace subtree joined by the prefix relation,
-    // with `RequiredFloor` as the fail-closed default. Discovery's job is to report what exists;
-    // deciding what that means is the manifest's.
+    // THE TEST IS ON THE MODULE'S AUTHORED NAME, never its path — the 2026-08-04 ruling's actual
+    // requirement, and the reason the inventory carries `module_path` beside each file. A
+    // directory deciding admission was that ruling's root cause; reading the declaration is what
+    // fixes it, and that is preserved here exactly.
     //
-    // The exclusion is still counted, and counted from the claim list rather than from a
-    // predicate this host applies: sites offered minus claims returned is what the manifest
-    // declined, so the number cannot drift from the decision that produced it.
-    let mut sites: Vec<v1_interpreter::Value> = Vec::new();
-    // THE SAME POPULATION, KEPT IN HOST SHAPE, so the decline can be reported as a PARTITION
-    // rather than as a subtraction. `sites_offered - claims.len()` says how many rows vanished
-    // and nothing about why; two independent hacks decline rows here, and a single difference
-    // cannot distinguish them, cannot notice a row declined by neither, and cannot notice a row
-    // counted by both.
-    let mut site_facts: Vec<(String, String, bool)> = Vec::new();
-    for file in files {
-        for function in &file.functions {
-            site_facts.push((
-                format!("{}.{}", file.module_path, function),
-                file.module_path.clone(),
-                file.reads_live_tree,
-            ));
-            sites.push(record_value(
-                &hermetic,
-                "WitnessSite",
-                vec![
-                    ("entry", v1_interpreter::str_value(file.path.clone())),
-                    ("function", v1_interpreter::str_value(function.clone())),
-                    (
-                        "module_path",
-                        v1_interpreter::str_value(file.module_path.clone()),
-                    ),
-                    (
-                        "reads_live_tree",
-                        v1_interpreter::Value::Bool(file.reads_live_tree),
-                    ),
-                ],
-            ));
-        }
-    }
-    let sites_offered = sites.len();
-    eprintln!(
-        "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={}",
-        projection_started.elapsed().as_millis(),
-        sites_offered,
-        files.len()
-    );
-    let subject = record_value(
-        &hermetic,
-        "ObservedSubjectIdentity",
-        vec![
-            ("commit", v1_interpreter::str_value(commit.to_string())),
-            (
-                "source_digest",
-                v1_interpreter::str_value(prepared.subject_digest.clone()),
-            ),
-            (
-                "modules_resolved",
-                v1_interpreter::Value::Int(prepared.modules_resolved as i64),
-            ),
-            (
-                "modules_excluded",
-                v1_interpreter::Value::Int(prepared.modules_excluded as i64),
-            ),
-        ],
-    );
-    let empty_sites =
-        v1_interpreter::Value::List(Rc::new(Vec::<v1_interpreter::Value>::new().into()));
-    floor_seam("manifest-evaluation");
-    let manifest_eval_started = std::time::Instant::now();
-    let admission = v1_interpreter::run_in_context_with_args(
-        &hermetic,
-        "required_floor_attempt",
-        &[
-            (Some("subject".to_string()), subject),
-            (
-                Some("hermetic_sites".to_string()),
-                v1_interpreter::Value::List(Rc::new(sites.into())),
-            ),
-            (Some("wet_sites".to_string()), empty_sites),
-        ],
-        false,
-    )
-    .map_err(|e| format!("required_floor_attempt: {e}"))?;
-    eprintln!(
-        "[floor-phase] phase=manifest-evaluation state=completed wall_ms={}",
-        manifest_eval_started.elapsed().as_millis()
-    );
-    floor_seam("admission-decode");
-    let admission_decode_started = std::time::Instant::now();
-    let mut claims = required_floor_claims_from_admission(&hermetic, &admission)?;
-    eprintln!(
-        "[floor-phase] phase=admission-decode state=completed wall_ms={} claims={}",
-        admission_decode_started.elapsed().as_millis(),
-        claims.len()
-    );
-    // WHAT THE MANIFEST DECLINED, derived from the two populations rather than recomputed. A
-    // site offered and not returned as a claim carries a non-required disposition, and those
-    // rows are NOT covered by this floor — reported every run in those words, because the
-    // gunbc#7762 failure was not that rows were deferred but that the deferral was silent.
-    // THE DECLINE IS A PARTITION, AND IT IS PROVED HERE RATHER THAN ASSERTED.
+    // THE PARTITION IS NOW EXACT BY CONSTRUCTION, not by reconciliation. Every site takes exactly
+    // one arm below, so `claims + declined == offered` holds because the loop cannot do
+    // otherwise. The former `SitePartitionInexact` and unexplained-decline refusals existed to
+    // catch the two computations disagreeing; with one computation they have no reachable
+    // producer, so they are deleted rather than left standing as walls nothing can trip.
     //
-    // Two hacks decline rows: the long-home prefix test and the live-tree declaration. A single
-    // `offered - claims` difference cannot tell them apart, cannot see a row declined by
-    // NEITHER (which would be a silent disappearance — the exact gunbc#7762 failure), and
-    // cannot see a row that both would claim. So the three populations are computed by identity
-    // and required to reconstruct the whole:
-    //
-    //     offered = executed ⊎ long-home-declined ⊎ live-tree-declined
-    //
-    // The prefixes are DECODED from the `.dag` authority rather than restated here, because a
-    // host-side copy of that list is a second authority that would drift the moment either side
-    // moved — and the drift would show up as this partition disagreeing, which is a confusing
-    // way to learn about a copy-paste.
+    // DUPLICATE ENROLLMENT IS UNCHANGED AND UNMOVED, and this is the one invariant the deleted
+    // fold genuinely carried. It is caught downstream by `receipt_identities`, a HashSet keyed on
+    // the same qualified name: two claims sharing a name give executed=2, receipted=1, and
+    // `ClaimIdentityCountsDisagree` refuses. The manifest's enrollment map was a second mechanism
+    // for that one invariant — and, being a growing `Value::Map` re-hashed once per fold step,
+    // was the whole of the phase's quadratic cost.
+    let claim_budget_ms = floor_required_int(&hermetic, "required_floor_claim_budget_ms")?;
+    let claim_warn_ms = floor_required_int(&hermetic, "required_floor_claim_warn_ms")?;
     let long_home_prefixes: Vec<String> = {
         let value = v1_interpreter::run_in_context(
             &hermetic,
@@ -39981,83 +39883,67 @@ pub fn run_required_floor(
         )
         .map_err(|e| format!("long_home_prefixes: {e}"))?;
         let items = floor_decode_list(&hermetic, Some(&value))
-            .map_err(|e| format!("long_home_prefixes: {e}"))?;
+            .map_err(|why| format!("long_home_prefixes decode: {why}"))?;
         let mut out = Vec::new();
         for item in items {
             match item {
                 v1_interpreter::Value::Str(s) => out.push(s.to_string()),
                 other => {
                     return Err(format!(
-                        "long_home_prefixes: expected a module-path prefix, got {}",
+                        "long_home_prefixes: expected String rows, got {}",
                         floor_value_shape(Some(other))
-                    ));
+                    ))
                 }
             }
+        }
+        if out.is_empty() {
+            return Err(
+                "REQUIRED-FLOOR REFUSAL cause=LongHomePrefixesEmpty — the long-home roster \
+                 decoded to zero prefixes, which would silently admit the long home into the \
+                 required floor"
+                    .to_string(),
+            );
         }
         out
     };
-    {
-        let executed: HashSet<&str> = claims.iter().map(|c| c.qualified.as_str()).collect();
-        let mut long_declined = 0usize;
-        let mut live_declined = 0usize;
-        let mut both = 0usize;
-        let mut unexplained: Vec<&str> = Vec::new();
-        for (qualified, module_path, reads_live_tree) in &site_facts {
-            if executed.contains(qualified.as_str()) {
+    let mut claims: Vec<RequiredFloorClaim> = Vec::new();
+    let mut long_declined = 0usize;
+    let mut live_declined = 0usize;
+    let mut sites_offered = 0usize;
+    for file in files {
+        let long_home = long_home_prefixes
+            .iter()
+            .any(|prefix| file.module_path.starts_with(prefix.as_str()));
+        for function in &file.functions {
+            sites_offered += 1;
+            if long_home {
+                long_declined += 1;
                 continue;
             }
-            let long_home = long_home_prefixes
-                .iter()
-                .any(|p| module_path.starts_with(p));
-            // ASSIGNED IN A FIXED ORDER SO THE ARMS STAY DISJOINT, with the overlap counted
-            // separately rather than hidden by whichever test ran first. A row that is both
-            // long-home and live-tree is a real thing and it is worth knowing how many there
-            // are, but it must be attributed once.
-            match (long_home, *reads_live_tree) {
-                (true, true) => {
-                    long_declined += 1;
-                    both += 1;
-                }
-                (true, false) => long_declined += 1,
-                (false, true) => live_declined += 1,
-                // DECLINED BY NEITHER HACK. This is the arm that must stay empty: the manifest
-                // dropped a row for a reason this host cannot name, which is precisely a silent
-                // narrowing of the roster.
-                (false, false) => unexplained.push(qualified.as_str()),
+            if file.reads_live_tree {
+                live_declined += 1;
+                continue;
             }
-        }
-        let declined = long_declined + live_declined + unexplained.len();
-        if declined > 0 {
-            eprintln!(
-                "[floor-disposition] {declined} of {sites_offered} discovered site(s) are NOT \
-                 required-floor and NOT RUN HERE: {long_declined} long-home-declined \
-                 ({both} of them also declare ReadsLiveTree), {live_declined} live-tree-declined \
-                 — each needs an executing consumer on another cadence, and none exists yet on \
-                 this branch"
-            );
-        }
-        if !unexplained.is_empty() {
-            unexplained.sort_unstable();
-            let shown: Vec<&str> = unexplained.iter().copied().take(20).collect();
-            return Err(format!(
-                "REQUIRED-FLOOR REFUSAL cause=SiteDeclinedWithoutDisposition count={} — a \
-                 discovered site was neither executed nor declined by a named disposition, so \
-                 the roster narrowed for a reason nothing can report; first {}: {}",
-                unexplained.len(),
-                shown.len(),
-                shown.join(", ")
-            ));
-        }
-        if claims.len() + declined != sites_offered {
-            return Err(format!(
-                "REQUIRED-FLOOR REFUSAL cause=SitePartitionInexact offered={} executed={} \
-                 declined={} — the three populations must reconstruct the offered set exactly",
-                sites_offered,
-                claims.len(),
-                declined
-            ));
+            claims.push(RequiredFloorClaim {
+                qualified: format!("{}.{}", file.module_path, function),
+                module_path: file.module_path.clone(),
+                function: function.clone(),
+                execution_mode: v1_interpreter::ExecutionMode::Hermetic,
+                budget_ms: claim_budget_ms,
+                warn_ms: claim_warn_ms,
+            });
         }
     }
+    eprintln!(
+        "[floor-phase] phase=site-projection state=completed wall_ms={} sites={} files={} \
+         claims={} declined_long={} declined_live={}",
+        projection_started.elapsed().as_millis(),
+        sites_offered,
+        files.len(),
+        claims.len(),
+        long_declined,
+        live_declined
+    );
 
     // THE EXPECTED-RED ROSTER, read from its .dag authority in the manifest's own frame — it
     // must be decoded BEFORE that frame is dropped below, and it is a separate evaluation from
@@ -40220,7 +40106,6 @@ pub fn run_required_floor(
     // the next run says, and if the step survives then the cost is elsewhere and this was still
     // correct — an unread value held across the longest phase of the program has no defence.
     drop(hermetic);
-    drop(admission);
     drop(manifest_scope);
 
     // ── 4. fold the manifest ──────────────────────────────────────────────────────────────
@@ -40899,233 +40784,6 @@ fn witness_eval_verdict_from_claim_outcome(
             },
         },
     }
-}
-
-/// Read the `.dag` admission. A refusal is reported with every offending row rather than the
-/// first, because a manifest with three conflicting declarations should take one round-trip to
-
-fn required_floor_claims_from_admission(
-    ctx: &v1_interpreter::InterpContext,
-    admission: &v1_interpreter::Value,
-) -> Result<Vec<RequiredFloorClaim>, String> {
-    // EVERY STEP MARKED, BECAUSE THE ONE UNMARKED REGION IS WHERE THE TIME WAS.
-    //
-    // Run 31942605651 completed manifest-evaluation at 11:14:12 and was cancelled at 13:48:13
-    // having printed neither arm's entry marker -- so 2h34m elapsed inside this function before
-    // reaching either. That region was left unmarked on my reasoning that it is a sym_eq and two
-    // binary searches and "cannot cost hours on its face". That was an assumption about cost
-    // stated as a bound, and it was wrong. Each step now emits, so no step can absorb time
-    // silently.
-    let entered = std::time::Instant::now();
-    eprintln!("[floor-phase] phase=admission-decode state=started");
-    let v1_interpreter::Value::Variant {
-        variant_name,
-        fields,
-        ..
-    } = admission
-    else {
-        return Err(
-            "required_floor_attempt did not answer a RequiredFloorAdmission variant".to_string(),
-        );
-    };
-    eprintln!(
-        "[floor-phase-progress] phase=admission-decode step=destructured wall_ms={} {}",
-        entered.elapsed().as_millis(),
-        floor_resource_sample()
-    );
-    let refused = ctx.sym_eq(*variant_name, "RequiredFloorRefused");
-    eprintln!(
-        "[floor-phase-progress] phase=admission-decode step=arm-resolved refused={} wall_ms={} {}",
-        refused,
-        entered.elapsed().as_millis(),
-        floor_resource_sample()
-    );
-    if refused {
-        // T5a — THE REFUSAL RENDER IS ITS OWN TERM because it is the arm that can cost more
-        // than the decode it reports on. `{r:?}` walks an interpreter `Value` structurally, and
-        // a refusal carries records that share substructure: Debug re-renders each occurrence
-        // rather than the shared node, so a cheap-looking format over a few thousand rows is not
-        // bounded by the row count. A run that refuses would otherwise spend that time inside a
-        // function whose seam says "decode", attributing a diagnostic's cost to the decode loop.
-        // THE SEAM MOVES WITH EXECUTION, or the heartbeat lies about where the run is.
-        // `floor_seam` was last set to "admission-decode" by the caller, and the heartbeat prints
-        // whatever it holds — so a run stalled inside THIS arm reported `phase=admission-decode`
-        // for its entire life, which is indistinguishable in the log from a run stalled BEFORE the
-        // arm was entered. A reader then cannot tell "never reached the render" from "spent three
-        // hours inside it", and the natural conclusion is that no progress instrument exists.
-        floor_seam("refusal-render");
-        let refusal_render_started = std::time::Instant::now();
-        let refusal_count = match ctx.field(fields, "refusals") {
-            Some(v1_interpreter::Value::List(items)) => items.len(),
-            _ => 0,
-        };
-        eprintln!("[floor-phase] phase=refusal-render state=started total={refusal_count}");
-        // The SAME progress obligation as the decode loop, and it was missing here first. A
-        // censored run keeps only what was already printed, so an arm with an entry marker and a
-        // completion timer and nothing between teaches nothing when it is the arm that stalls --
-        // and a rate plus a denominator is a completion estimate obtainable WITHOUT completing.
-        // Every 16 rather than every 256 because a refusal render is few rows of possibly enormous
-        // output, so the interesting variance is per-row, not across thousands.
-        let rendered = match ctx.field(fields, "refusals") {
-            Some(v1_interpreter::Value::List(items)) => items
-                .iter()
-                .enumerate()
-                .map(|(i, r)| {
-                    if i % 16 == 0 {
-                        eprintln!(
-                            "[floor-phase-progress] phase=refusal-render rendered={i} total={} wall_ms={} {}",
-                            items.len(),
-                            refusal_render_started.elapsed().as_millis(),
-                            floor_resource_sample()
-                        );
-                    }
-                    format!("{r:?}")
-                })
-                .collect::<Vec<_>>()
-                .join("\n  "),
-            _ => "<refusal list unreadable>".to_string(),
-        };
-        eprintln!(
-            "[floor-phase] phase=refusal-render state=completed wall_ms={} total={} rendered_bytes={}",
-            refusal_render_started.elapsed().as_millis(),
-            refusal_count,
-            rendered.len()
-        );
-        return Err(format!(
-            "REQUIRED-FLOOR REFUSAL cause=ManifestInadmissible — the claim manifest carries \
-             refusals, so the floor does not run its clean subset and report on the rest:\n  \
-             {rendered}"
-        ));
-    }
-    if !ctx.sym_eq(*variant_name, "RequiredFloorRunnable") {
-        return Err("required_floor_attempt answered an unknown admission arm".to_string());
-    }
-    let Some(v1_interpreter::Value::Record { fields: af, .. }) = ({
-        let r = ctx.field(fields, "attempt");
-        eprintln!(
-            "[floor-phase-progress] phase=admission-decode step=attempt-field wall_ms={} {}",
-            entered.elapsed().as_millis(),
-            floor_resource_sample()
-        );
-        r
-    }) else {
-        return Err("RequiredFloorRunnable carries no attempt record".to_string());
-    };
-    // THE REFUSAL NAMES THE SHAPE IT OBSERVED, not merely that the shape was wrong.
-    //
-    // "the attempt carries no claim list" is true of an absent field, of a record, of a variant
-    // and of a scalar alike, so it identifies the seam and nothing else. Reaching this arm costs
-    // a full preparation plus manifest evaluation — measured at 28 minutes on the first run that
-    // ever got here — and spending that to learn only that the field was not a list makes the
-    // next attempt cost the same again. What discriminates the causes is the constructor.
-    let claims_field = ctx.field(af, "claims");
-    let claims_shape = floor_value_shape(claims_field);
-    eprintln!(
-        "[floor-phase-progress] phase=admission-decode step=claims-field wall_ms={} observed={} {}",
-        entered.elapsed().as_millis(),
-        claims_shape,
-        floor_resource_sample()
-    );
-    let rows = floor_decode_list(ctx, claims_field).map_err(|why| {
-        format!("the attempt's `claims` field is not a list — {why} (field shape {claims_shape})")
-    })?;
-    // T5b — the ordinary decode loop, reported separately from the refusal arm above so that
-    // "the decode is slow" and "the refusal diagnostic is slow" are never one number.
-    // Same obligation as the refusal arm: carry the seam into the loop so the heartbeat names
-    // the loop rather than the phase that called it. Without this the decode's own ticks and the
-    // heartbeat disagree about the phase name, and a reader filtering the log on
-    // "admission-decode" — the name the heartbeat kept printing — silently excludes every
-    // `phase=claim-decode` progress line and concludes the loop has no counter at all.
-    floor_seam("claim-decode");
-    let decode_loop_started = std::time::Instant::now();
-    eprintln!(
-        "[floor-phase] phase=claim-decode state=started total={}",
-        rows.len()
-    );
-    let mut out = Vec::with_capacity(rows.len());
-    // PROGRESS, NOT JUST COMPLETION. A timer printed after a loop reports the loop's cost only if
-    // the loop terminates; a run killed inside it leaves "entered" and "finished" equally silent,
-    // so decoded-0 and decoded-9000 present identically. The tick is what separates them.
-    for (decoded, row) in rows.iter().enumerate() {
-        if decoded % 256 == 0 {
-            eprintln!(
-                "[floor-phase-progress] phase=claim-decode decoded={decoded} total={} wall_ms={} {}",
-                rows.len(),
-                decode_loop_started.elapsed().as_millis(),
-                floor_resource_sample()
-            );
-        }
-        let v1_interpreter::Value::Record { fields: cf, .. } = row else {
-            return Err("a manifest claim is not a record".to_string());
-        };
-        let Some(v1_interpreter::Value::Record { fields: df, .. }) = ctx.field(cf, "declaration")
-        else {
-            return Err("a manifest claim carries no declaration identity".to_string());
-        };
-        let module_path = match ctx.field(df, "module_path") {
-            Some(v1_interpreter::Value::Str(s)) => s.to_string(),
-            _ => return Err("a claim identity carries no module path".to_string()),
-        };
-        let function = match ctx.field(df, "function") {
-            Some(v1_interpreter::Value::Str(s)) => s.to_string(),
-            _ => return Err("a claim identity carries no function name".to_string()),
-        };
-        let budget_ms = match ctx.field(cf, "budget_ms") {
-            Some(v1_interpreter::Value::Int(n)) if *n > 0 => *n as u64,
-            // A non-positive budget is refused rather than defaulted: a zero deadline that
-            // reads as "no limit" is the absorbing fallback, and one that reads as "refuse
-            // instantly" fails every claim for a reason unrelated to the claim.
-            other => {
-                return Err(format!(
-                    "claim {module_path}.{function} carries a non-positive budget ({other:?})"
-                ))
-            }
-        };
-        let warn_ms = match ctx.field(cf, "warn_ms") {
-            Some(v1_interpreter::Value::Int(n)) if *n > 0 => *n as u64,
-            other => {
-                return Err(format!(
-                "claim {module_path}.{function} carries a non-positive warn threshold ({other:?})"
-            ))
-            }
-        };
-        let execution_mode = match ctx.field(cf, "execution_mode") {
-            Some(v1_interpreter::Value::Variant {
-                variant_name: m, ..
-            }) => {
-                if ctx.sym_eq(*m, "Hermetic") {
-                    v1_interpreter::ExecutionMode::Hermetic
-                } else if ctx.sym_eq(*m, "Wet") {
-                    v1_interpreter::ExecutionMode::Wet
-                } else if ctx.sym_eq(*m, "Record") {
-                    v1_interpreter::ExecutionMode::Record
-                } else {
-                    return Err(format!(
-                        "claim {module_path}.{function} names an unknown execution mode"
-                    ));
-                }
-            }
-            _ => {
-                return Err(format!(
-                    "claim {module_path}.{function} carries no execution mode"
-                ))
-            }
-        };
-        out.push(RequiredFloorClaim {
-            qualified: format!("{module_path}.{function}"),
-            module_path,
-            function,
-            execution_mode,
-            budget_ms,
-            warn_ms,
-        });
-    }
-    eprintln!(
-        "[floor-phase] phase=claim-decode state=completed wall_ms={} claims={}",
-        decode_loop_started.elapsed().as_millis(),
-        out.len()
-    );
-    Ok(out)
 }
 
 pub fn run_required_regen(
