@@ -359,7 +359,7 @@ data lean_primitive_facts_catalog: List<LeanPrimitiveFacts> = [
   lean_facts_bool
 ]
 
-data lean_bool_grounding: v2.std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
+data lean_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
 
 fn lean_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {

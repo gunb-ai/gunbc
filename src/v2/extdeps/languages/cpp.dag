@@ -1165,4 +1165,4 @@ fn cpp_lex() -> v2.std.compilers.lexing.LexRules {
   v2.std.compilers.lexing.ModeledLexRules { root: v2.std.compilers.lexing.LexRuleSet { rules: cpp_lex_rules() } }
 }
 
-data cpp_bool_grounding: v2.std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
+data cpp_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra

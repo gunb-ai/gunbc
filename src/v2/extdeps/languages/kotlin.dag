@@ -235,7 +235,7 @@ fn kotlin_concrete_tokens() -> List<v2.std.compilers.target_model.ConcreteSyntax
 
 data kotlin_source_text: String = "fun add(x: Int, y: Int): Int { return x + y }"
 
-data kotlin_bool_grounding: v2.std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
+data kotlin_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
 
 fn kotlin_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {

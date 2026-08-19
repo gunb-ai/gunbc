@@ -299,7 +299,7 @@ data go_string_facts_catalog: List<GoStringPrimitiveFacts> = [
   go_facts_string,
 ]
 
-data go_bool_grounding: v2.std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
+data go_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
 
 fn go_inhabitant_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {

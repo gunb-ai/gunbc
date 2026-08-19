@@ -51,7 +51,7 @@ data ts_facts_boolean: TsBooleanPrimitiveFacts = TsBooleanPrimitiveFacts {
   encoding: ^ts_repr_boolean_ecma_boolean,
 }
 
-data ts_bool_grounding: v2.std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
+data ts_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
 
 data ts_numeric_facts_catalog: List<TsEcma262NumericPrimitiveFactsUnion> = [
   TsNumericFactsNumber { facts: ts_facts_number },

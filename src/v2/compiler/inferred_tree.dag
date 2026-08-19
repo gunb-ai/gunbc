@@ -26,7 +26,7 @@ type InferredFacts {
 
 type InferredTree {
   root: v2.std.node.Node
-  facts: v2.std.collection.Map<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts>
+  facts: std.types.Map<v2.std.node.Node, v2.compiler.inferred_tree.InferredFacts>
 }
 
 type InferredFactsEntry {

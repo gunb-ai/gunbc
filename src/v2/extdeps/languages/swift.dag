@@ -248,7 +248,7 @@ data swift_nonnumeric_facts_catalog: List<SwiftNonNumericPrimitiveFacts> = [
   swift_facts_void
 ]
 
-data swift_bool_grounding: v2.std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
+data swift_bool_grounding: std.algebra.BooleanAlgebra<Bool> = v2.std.logic.bool_boolean_algebra
 
 fn swift_atom(id: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node {
