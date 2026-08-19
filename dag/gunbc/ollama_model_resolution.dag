@@ -82,6 +82,55 @@ fn gpt_oss_20b_resolution() -> TrackedReferenceResolution<OllamaModelRef, Ollama
   )
 }
 
+// THE BLOB CLOSURE THE RESOLVED MANIFEST NAMES, frozen at resolution time along with the manifest
+// identity itself.
+//
+// WHY IT IS STORED RATHER THAN READ AT EXECUTION. A materializer that fetched the manifest and then
+// decided from its contents which blobs to fetch would be deciding what to install from bytes it had
+// just downloaded -- upstream would be choosing the plan. Freezing the closure here means the plan
+// is fully determined before any network contact, so what actually gets fetched is checkable against
+// this file rather than against whatever the registry answered.
+//
+// EVERY ENTRY IS A DIGEST, and that is the half of the store that IS content-addressed: the registry
+// serves /v2/library/gpt-oss/blobs/sha256:<hex> and the bytes it returns either hash to <hex> or the
+// fetch refused. Measured 2026-08-19: the config blob and four layers, taken from the same manifest
+// body whose sha256 is the resolved identity above.
+type OllamaBlobDigest sole_constructor {
+  hex: NonEmptyStr
+  media_type: NonEmptyStr
+}
+
+fn ollama_blob_digest(hex: NonEmptyStr, media_type: NonEmptyStr) -> OllamaBlobDigest {
+  OllamaBlobDigest { hex: hex, media_type: media_type }
+}
+
+data gpt_oss_20b_blob_closure: List<OllamaBlobDigest> = [
+  OllamaBlobDigest {
+    hex: "776beb3adb235076157cfea408b8ea2a2d25eae99d7f5da997f607f6b69fa0fa" as NonEmptyStr,
+    media_type: "application/vnd.docker.container.image.v1+json" as NonEmptyStr,
+  },
+  OllamaBlobDigest {
+    hex: "e7b273f9636059a689e3ddcab3716e4f65abe0143ac978e46673ad0e52d09efb" as NonEmptyStr,
+    media_type: "application/vnd.ollama.image.model" as NonEmptyStr,
+  },
+  OllamaBlobDigest {
+    hex: "fa6710a93d78da62641e192361344be7a8c0a1c3737f139cf89f20ce1626b99c" as NonEmptyStr,
+    media_type: "application/vnd.ollama.image.template" as NonEmptyStr,
+  },
+  OllamaBlobDigest {
+    hex: "f60356777647e927149cbd4c0ec1314a90caba9400ad205ddc4ce47ed001c2d6" as NonEmptyStr,
+    media_type: "application/vnd.ollama.image.license" as NonEmptyStr,
+  },
+  OllamaBlobDigest {
+    hex: "d8ba2f9a17b3bbdeb5690efaa409b3fcb0b56296a777c7a69c78aa33bbddf182" as NonEmptyStr,
+    media_type: "application/vnd.ollama.image.params" as NonEmptyStr,
+  },
+]
+
+fn gpt_oss_20b_blob_closure_size() -> Int {
+  length(gpt_oss_20b_blob_closure)
+}
+
 fn ollama_manifest_reading_wire(reading: OllamaManifestReading) -> String {
   join([reading.authority as String, "@", reading.observed_at, "=", reading.observed_identity.hex as String], "")
 }

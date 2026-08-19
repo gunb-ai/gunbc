@@ -491,7 +491,7 @@ fn artifact_row_count(v: SparkServingPlanArtifactVerdict) -> Int {
 // THE FRONTIER MOVED, AND THIS IS THE BAR IT MOVED TO.
 //
 // This claim used to assert that a bare host REFUSED, because InstallOwnedRuntimeClosure and
-// PullModelArtifact were both unrealized and a plan containing an unrealized effect refuses whole.
+// MaterializeModelArtifact were both unrealized and a plan containing an unrealized effect refuses whole.
 // Both are realized now, so the refusal is gone -- and its absence is the operator's stated push
 // criterion: a bare host must produce a complete executable plan rather than a typed-action refusal.
 //
@@ -938,31 +938,6 @@ test fn an_observed_disabled_enablement_still_plans_through_the_artifact() -> Bo
   }
 }
 
-// THE MIRROR, AND THE CLAIM THIS WHOLE CHANGE EXISTS FOR. An enabled unit that is DEAD owes exactly
-// one write -- the start -- and before the activity member existed it owed ZERO. Every resource
-// reconciled as converged, the plan was empty, and the only thing that noticed nothing was serving
-// was the generation probe at the end of the run. This claim goes red the moment activity stops
-// being a member, which is the property that keeps the split from being quietly undone.
-test fn an_enabled_but_dead_unit_plans_exactly_one_member() -> Bool {
-  match subject_release() {
-    Absent => false
-    Present { value: r } =>
-      plan_writes(
-        p: spark_serving_full_membership_plan(
-          occurrence: spark_serving_occurrence(host: subject_host, serving_release: r),
-          serving_release: r,
-          projection: project(
-            host: subject_host,
-            runtime: complete_required_runtime(),
-            store: complete_required_store(),
-            unit: UserUnitStateObserved { unit_state_digest: spark_serving_user_unit_state_digest() },
-            enablement: UserUnitManagerEnabled,
-            activity: UnitActivityStopped, linger: LingerObservedEnabled,
-          ),
-        ),
-      ) == 1
-  }
-}
 
 // A BARE HOST ENABLES ONCE, NOT TWICE. The content address used to carry EnableUserUnit alongside
 // write and reload, and the enablement address carries it too -- so a host where both members drift

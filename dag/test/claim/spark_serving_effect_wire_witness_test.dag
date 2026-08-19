@@ -9,7 +9,7 @@ import gunbc.spark_serving_realization {
   GrantContainerRuntimeAccess,
   InstallOwnedRuntimeClosure,
   InstallRuntimePackage,
-  PullModelArtifact,
+  MaterializeModelArtifact,
   ReloadSystemManager,
   ReloadUserManager,
   RunContainerAsOwnUser,
@@ -36,7 +36,7 @@ test fn w_each_serving_effect_wires_to_its_own_name() -> Bool {
     && fleet_converge_spark_serving_effect_wire(effect: EnableUserUnit) == "EnableUserUnit"
     && fleet_converge_spark_serving_effect_wire(effect: InstallRuntimePackage) == "InstallRuntimePackage"
     && fleet_converge_spark_serving_effect_wire(effect: InstallOwnedRuntimeClosure) == "InstallOwnedRuntimeClosure"
-    && fleet_converge_spark_serving_effect_wire(effect: PullModelArtifact) == "PullModelArtifact"
+    && fleet_converge_spark_serving_effect_wire(effect: MaterializeModelArtifact) == "MaterializeModelArtifact"
     && fleet_converge_spark_serving_effect_wire(effect: GrantContainerRuntimeAccess) == "GrantContainerRuntimeAccess"
     && fleet_converge_spark_serving_effect_wire(effect: RunContainerAsOwnUser) == "RunContainerAsOwnUser"
 }

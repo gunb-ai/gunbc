@@ -390,7 +390,7 @@ type ServingInstallEffect
   | EnableLingerForOwnAccount
   | InstallRuntimePackage
   | InstallOwnedRuntimeClosure
-  | PullModelArtifact
+  | MaterializeModelArtifact
   | GrantContainerRuntimeAccess
   | RunContainerAsOwnUser
 
@@ -405,11 +405,11 @@ fn serving_install_effect_requires_privilege(effect: ServingInstallEffect) -> Bo
 fn realization_install_effects(realization: SparkServingRealization) -> List<ServingInstallEffect> {
   match realization {
     UserUnitRealization =>
-      [InstallOwnedRuntimeClosure, WriteUserUnitFile, ReloadUserManager, EnableUserUnit, StartUserUnit, EnableLingerForOwnAccount, PullModelArtifact]
+      [InstallOwnedRuntimeClosure, WriteUserUnitFile, ReloadUserManager, EnableUserUnit, StartUserUnit, EnableLingerForOwnAccount, MaterializeModelArtifact]
     SystemUnitRealization =>
-      [InstallRuntimePackage, WriteSystemUnitFile, ReloadSystemManager, EnableSystemUnit, PullModelArtifact]
+      [InstallRuntimePackage, WriteSystemUnitFile, ReloadSystemManager, EnableSystemUnit, MaterializeModelArtifact]
     RootlessContainerRealization =>
-      [GrantContainerRuntimeAccess, RunContainerAsOwnUser, PullModelArtifact]
+      [GrantContainerRuntimeAccess, RunContainerAsOwnUser, MaterializeModelArtifact]
   }
 }
 
@@ -656,7 +656,7 @@ data spark_serving_runtime_selection_is_declared_intent_note: String = "Measured
 // So the model is: an effect MUTATES a subject, a subject has an OWNER, and an actor who is not that
 // owner must escalate. Privilege then EMERGES rather than being declared, and it emerges correctly in
 // cases a hand-drawn table gets wrong: the same WriteSystemUnitFile needs no grant when the actor IS
-// root, and PullModelArtifact needs none because it writes a store the serving account already owns.
+// root, and MaterializeModelArtifact needs none because it writes a store the serving account already owns.
 // A table cannot express either, because it never mentions who is acting.
 //
 // This also makes a whole class of future error unwritable. If someone re-homes the unit directory,
@@ -729,7 +729,7 @@ fn effect_mutation_subject(
     ReloadUserManager => UserUnitRegistry { owner: actor }
     EnableUserUnit => UserUnitRegistry { owner: actor }
     StartUserUnit => UserUnitRegistry { owner: actor }
-    PullModelArtifact => ModelArtifactStore { owner: actor }
+    MaterializeModelArtifact => ModelArtifactStore { owner: actor }
     RunContainerAsOwnUser => ContainerRuntimeAsOwnUser { owner: actor }
   }
 }
@@ -807,7 +807,7 @@ fn effect_actuation(
     ReloadUserManager => ActuatedByOwnerDirectly
     EnableUserUnit => ActuatedByOwnerDirectly
     StartUserUnit => ActuatedByOwnerDirectly
-    PullModelArtifact => ActuatedByOwnerDirectly
+    MaterializeModelArtifact => ActuatedByOwnerDirectly
     RunContainerAsOwnUser => ActuatedByOwnerDirectly
   }
 }

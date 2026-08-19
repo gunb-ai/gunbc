@@ -463,7 +463,7 @@ fn fleet_converge_spark_serving_effect_wire(effect: ServingInstallEffect) -> Str
     StartUserUnit => "StartUserUnit"
     InstallRuntimePackage => "InstallRuntimePackage"
     InstallOwnedRuntimeClosure => "InstallOwnedRuntimeClosure"
-    PullModelArtifact => "PullModelArtifact"
+    MaterializeModelArtifact => "MaterializeModelArtifact"
     GrantContainerRuntimeAccess => "GrantContainerRuntimeAccess"
     RunContainerAsOwnUser => "RunContainerAsOwnUser"
   }

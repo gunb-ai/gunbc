@@ -15,7 +15,7 @@ import gunbc.spark_serving_realization {
   EnableSystemUnit,
   InstallRuntimePackage,
   InstallOwnedRuntimeClosure,
-  PullModelArtifact,
+  MaterializeModelArtifact,
   GrantContainerRuntimeAccess,
   RunContainerAsOwnUser,
 }
@@ -30,7 +30,22 @@ import gunbc.typed_remote_file_write {
   typed_remote_file_write_seal,
 }
 import gunbc.file_access { FileTreeScope }
+import gunbc.ollama_model_resolution {
+  OllamaBlobDigest,
+  gpt_oss_20b_blob_closure,
+  gpt_oss_20b_manifest_digest_2026_08_19,
+}
 import gunbc.spark_serving_install_paths {
+  spark_serving_desired_model_blobs_dir,
+  spark_serving_desired_model_manifest_dir,
+  spark_serving_desired_model_manifest_path,
+  spark_serving_staged_manifest_path,
+  spark_serving_staged_blob_path,
+  spark_serving_manifest_checksum_path,
+  spark_serving_blob_checksum_path,
+  spark_serving_published_blob_path,
+  spark_serving_registry_manifest_url,
+  spark_serving_registry_blob_url,
   spark_serving_user_unit_path,
   spark_serving_user_unit_dir,
   spark_serving_runtimes_parent,
@@ -121,7 +136,7 @@ fn spark_serving_reload_user_manager_remote_argv() -> SparkServingInstallRemoteC
 
 // ENABLE, NOT `enable --now`, AND THE `--now` IS WHAT THIS CHANGE REMOVES.
 //
-// The fused form was justified by an ordering argument that was true: PullModelArtifact runs after
+// The fused form was justified by an ordering argument that was true: MaterializeModelArtifact runs after
 // EnableUserUnit and targets a RUNNING server, so something had to start the unit, and `--now` was
 // the nearest thing to hand. What it cost was the distinction. Enablement is persistence -- whether
 // the unit returns after a reboot -- and activity is whether it is running right now; `--now`
@@ -218,39 +233,117 @@ data spark_serving_api_readiness_retry_delay_seconds: String = "2"
 data spark_serving_api_readiness_retry_max_seconds: String = "180"
 data spark_serving_api_readiness_connect_timeout_seconds: String = "5"
 
-fn spark_serving_pull_model_artifact_steps() -> SparkServingInstallRemoteCommandsVerdict {
-  spark_serving_concat_step_verdicts(verdicts: [
+fn spark_serving_materialize_model_artifact_steps() -> SparkServingInstallRemoteCommandsVerdict {
+  spark_serving_concat_step_verdicts(verdicts: concat(
+    concat(
+      [
+        spark_serving_admit_portable_remote_argv(
+          identity: "ensure-readiness-scratch" as NonEmptyStr,
+          raws: ["mkdir", "-p", spark_serving_readiness_scratch_root() as String],
+        ),
+        spark_serving_admit_portable_remote_argv(
+          identity: "ensure-model-blobs-dir" as NonEmptyStr,
+          raws: ["mkdir", "-p", spark_serving_desired_model_blobs_dir() as String],
+        ),
+        spark_serving_admit_portable_remote_argv(
+          identity: "fetch-manifest-by-reference" as NonEmptyStr,
+          raws: [
+            "curl", "-fsSL", "--connect-timeout", spark_serving_api_readiness_connect_timeout_seconds,
+            "-o", spark_serving_staged_manifest_path() as String,
+            spark_serving_registry_manifest_url(),
+          ],
+        ),
+        spark_serving_admit_typed_file_step(
+          identity: "declare-manifest-checksum" as NonEmptyStr,
+          path: spark_serving_manifest_checksum_path(),
+          content: spark_serving_checksum_line(
+            hex: gpt_oss_20b_manifest_digest_2026_08_19.hex,
+            path: spark_serving_staged_manifest_path() as String,
+          ),
+        ),
+        spark_serving_admit_portable_remote_argv(
+          identity: "verify-manifest-identity" as NonEmptyStr,
+          raws: [
+            "sha256sum", "--check", "--status",
+            spark_serving_manifest_checksum_path() as String,
+          ],
+        ),
+      ],
+      flat_map(gpt_oss_20b_blob_closure, b => spark_serving_materialize_blob_steps(blob: b)),
+    ),
+    [
+      spark_serving_admit_portable_remote_argv(
+        identity: "ensure-manifest-dir" as NonEmptyStr,
+        raws: ["mkdir", "-p", spark_serving_desired_model_manifest_dir() as String],
+      ),
+      spark_serving_admit_portable_remote_argv(
+        identity: "publish-manifest" as NonEmptyStr,
+        raws: [
+          "mv", "-f",
+          spark_serving_staged_manifest_path() as String,
+          spark_serving_desired_model_manifest_path() as String,
+        ],
+      ),
+    ],
+  ))
+}
+
+// ONE BLOB, FETCHED BY DIGEST AND VERIFIED BEFORE IT IS PUBLISHED INTO THE STORE.
+//
+// The staging path is deliberately not the final blob path: writing straight into blobs/ and
+// checking afterwards would leave a corrupt file at the name the store reads, and the observe side
+// answers presence by filename. Staged, verified, then moved -- so a blob that exists under its
+// digest name is a blob that hashed to it.
+fn spark_serving_materialize_blob_steps(blob: OllamaBlobDigest) -> List<SparkServingInstallRemoteCommandsVerdict> {
+  [
     spark_serving_admit_portable_remote_argv(
-      identity: "ensure-readiness-scratch" as NonEmptyStr,
-      raws: ["mkdir", "-p", spark_serving_readiness_scratch_root() as String],
+      identity: concat("fetch-blob-", blob.hex as String) as NonEmptyStr,
+      raws: [
+        "curl", "-fsSL", "--connect-timeout", spark_serving_api_readiness_connect_timeout_seconds,
+        "-o", spark_serving_staged_blob_path(hex: blob.hex) as String,
+        spark_serving_registry_blob_url(hex: blob.hex),
+      ],
     ),
     spark_serving_admit_typed_file_step(
-      identity: "write-health-request-body" as NonEmptyStr,
-      path: spark_serving_health_request_body_path(),
-      content: spark_serving_health_request_body(),
+      identity: concat("declare-checksum-blob-", blob.hex as String) as NonEmptyStr,
+      path: spark_serving_blob_checksum_path(hex: blob.hex),
+      content: spark_serving_checksum_line(
+        hex: blob.hex,
+        path: spark_serving_staged_blob_path(hex: blob.hex) as String,
+      ),
     ),
     spark_serving_admit_portable_remote_argv(
-      identity: "await-serving-api" as NonEmptyStr,
+      identity: concat("verify-blob-", blob.hex as String) as NonEmptyStr,
       raws: [
-        "curl", "-fsS",
-        "--retry", spark_serving_api_readiness_retry_attempts,
-        "--retry-delay", spark_serving_api_readiness_retry_delay_seconds,
-        "--retry-connrefused",
-        "--retry-max-time", spark_serving_api_readiness_retry_max_seconds,
-        "--connect-timeout", spark_serving_api_readiness_connect_timeout_seconds,
-        "-o", "/dev/null",
-        spark_serving_local_api_version_url(),
+        "sha256sum", "--check", "--status",
+        spark_serving_blob_checksum_path(hex: blob.hex) as String,
       ],
     ),
     spark_serving_admit_portable_remote_argv(
-      identity: "pull-model-artifact" as NonEmptyStr,
+      identity: concat("publish-blob-", blob.hex as String) as NonEmptyStr,
       raws: [
-        spark_serving_required_runtime_executable_path() as String,
-        "pull",
-        ollama_model_ref_wire(ref: spark_serving_desired_model_ref),
+        "mv", "-f",
+        spark_serving_staged_blob_path(hex: blob.hex) as String,
+        spark_serving_published_blob_path(hex: blob.hex) as String,
       ],
     ),
-  ])
+  ]
+}
+
+// THE VERIFICATION IS THE WHOLE POINT, AND IT REFUSES RATHER THAN WARNS.
+//
+// `sha256sum --check --status` exits non-zero on a mismatch, and a non-zero step fails the whole
+// sequence -- so bytes that do not hash to the declared digest never reach the store, and the run
+// stops with a named failing step rather than continuing against a file nobody vouched for.
+//
+// THE EXPECTED DIGEST ARRIVES AS A FILE, NOT AS SHELL. The first version of this piped an echo into
+// sha256sum, and the portability wall refused it: `sh -c` with a pipe is shell interpolation at the
+// far side, which is precisely the class this fleet does not send. That refusal was right and the
+// remedy is not a quieter spelling -- it is that delivering BYTES to a remote path is already a
+// modeled operation (gunbc.typed_remote_file_write, the same one that writes the unit file), so the
+// checksum line travels as content and the verification is a plain portable argv over it.
+fn spark_serving_checksum_line(hex: NonEmptyStr, path: String) -> String {
+  join([hex as String, "  ", path, "\n"], "")
 }
 
 // NO WILDCARD, and each unimplemented effect refuses under its OWN name (#8323's construction,
@@ -553,7 +646,7 @@ fn realize_spark_serving_install_effect_command(
         reason: "spark_serving_converge_realize: InstallRuntimePackage is not implemented in the Spark serving slice",
       }
     InstallOwnedRuntimeClosure => spark_serving_install_owned_runtime_closure_steps()
-    PullModelArtifact => spark_serving_pull_model_artifact_steps()
+    MaterializeModelArtifact => spark_serving_materialize_model_artifact_steps()
     GrantContainerRuntimeAccess =>
       SparkServingInstallRemoteCommandsRefused {
         reason: "spark_serving_converge_realize: GrantContainerRuntimeAccess is not implemented in the Spark serving slice",

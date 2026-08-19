@@ -20,7 +20,7 @@ import gunbc.spark_serving_realization {
   ObservedGrantPopulation,
   GrantPopulationObserved,
   GrantPopulationUnobserved,
-  PullModelArtifact,
+  MaterializeModelArtifact,
   GrantContainerRuntimeAccess,
   RunContainerAsOwnUser,
   SystemPrincipal,
@@ -79,11 +79,11 @@ test fn w_escalation_follows_ownership_of_the_mutated_subject() -> Bool {
 }
 
 // AN ACTOR-OWNED SUBJECT NEEDS NOTHING, and this is where the model beats the table on a case the
-// table gets wrong by omission rather than by error: PullModelArtifact writes a store the serving
+// table gets wrong by omission rather than by error: MaterializeModelArtifact writes a store the serving
 // account already owns, and a user unit lives in that account's own registry. Neither belongs in a
 // sudoers file for ANY actor that owns them.
 test fn w_effects_on_actor_owned_subjects_never_escalate() -> Bool {
-  !effect_requires_escalation(effect: PullModelArtifact, actor: automation())
+  !effect_requires_escalation(effect: MaterializeModelArtifact, actor: automation())
     && !effect_requires_escalation(effect: WriteUserUnitFile, actor: automation())
     && !effect_requires_escalation(effect: EnableUserUnit, actor: automation())
     && !effect_requires_escalation(effect: RunContainerAsOwnUser, actor: automation())

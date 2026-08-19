@@ -534,7 +534,7 @@ fn spark_serving_frozen_linger_effect(row: FleetConvergeSparkServingTypedAction)
 // point. The projection carries runtime_observed and model_observed; this carrier destructured only
 // unit, enablement and linger, so both were silently dropped -- a refused runtime probe omitted the
 // runtime member, the member read as ABSENT, and InstallOwnedRuntimeClosure became selectable. Same
-// for the model and PullModelArtifact. That is actuation from ignorance: the remedy for "the runtime
+// for the model and MaterializeModelArtifact. That is actuation from ignorance: the remedy for "the runtime
 // is not there" and for "we could not look" are different, and omission collapses them.
 //
 // Adding two more Bool fields would have reproduced the very bug -- the defect was a completeness

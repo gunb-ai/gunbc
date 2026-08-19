@@ -27,7 +27,7 @@ import gunbc.spark_serving_realization {
   EnableUserUnit,
   StartUserUnit,
   EnableLingerForOwnAccount,
-  PullModelArtifact,
+  MaterializeModelArtifact,
 }
 
 data spark_serving_member_realization_authority_note: String = "Per-member-type realization bundle for Spark serving: maps membership_reconcile actions/effects onto the EXISTING gunbc.spark_serving_realization ServingInstallEffect vocabulary (UserUnitRealization scope only — never live_deploy SystemdUnit/system-scoped handlers). MemberEffect<M> classifies change; this module supplies how to realize each action for SparkServingMember addresses. Admission boundaries and API readiness observations stay outside this bundle."
@@ -60,7 +60,7 @@ fn spark_serving_install_effects_for_address(address: SparkServingResourceAddres
     SparkServingUserUnitRegistrationAddress => [ReloadUserManager]
     SparkServingUserUnitEnablementAddress => [EnableUserUnit]
     SparkServingUserUnitActivityAddress => [StartUserUnit]
-    SparkServingModelSlotAddress { slot: _ } => [PullModelArtifact]
+    SparkServingModelSlotAddress { slot: _ } => [MaterializeModelArtifact]
     SparkServingLingerAddress => [EnableLingerForOwnAccount]
   }
 }

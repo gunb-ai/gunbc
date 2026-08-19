@@ -11,7 +11,7 @@ import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
 import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_required_release }
 import extdeps.ollama.binary_release { ollama_required_release, ollama_binary_release_asset_name }
-import extdeps.ollama.model_store { ollama_manifest_rel_path, ollama_model_store_layout }
+import extdeps.ollama.model_store { ollama_manifest_rel_path, ollama_model_store_layout, ollama_default_registry, ollama_default_namespace, ollama_blob_file_name }
 import gunbc.spark_serving_desired { spark_serving_desired_model_ref }
 
 data spark_serving_install_paths_note: String = "Owned-runtime layout for UserUnitRealization + InstallOwnedRuntimeClosure on Spark hosts. Executor home is gunbc.spark_serving_runtime_receipt; unit basename is gunbc.spark_serving_unit_identity spark_serving_unit_name. Unit desired state is SparkServingUserUnitSpec (typed fields, not systemd INI syntax); gunbc.spark_serving_membership spark_serving_user_unit_file_write_intent carries path+spec for generic remote file delivery (#8298 consumer on integration branch)."
@@ -69,6 +69,86 @@ fn spark_serving_desired_model_manifest_path() -> FilePath {
       tag: spark_serving_desired_model_ref.tag,
     )),
   ) as FilePath
+}
+
+// The directory the manifest is published INTO, needed because the publish step must create it
+// before the move and the manifest path is a file inside a per-model, per-registry tree.
+fn spark_serving_desired_model_manifest_dir() -> FilePath {
+  concat(
+    spark_serving_models_root() as String,
+    concat("/", concat(
+      ollama_model_store_layout.manifests_dir_rel,
+      concat("/", concat(
+        ollama_default_registry as String,
+        concat("/", concat(
+          ollama_default_namespace as String,
+          concat("/", spark_serving_desired_model_ref.name as String),
+        )),
+      )),
+    )),
+  ) as FilePath
+}
+
+// STAGING PATHS, and they are outside the store on purpose. A fetch that lands directly at the name
+// the store reads publishes a half-written or wrong-hashed file the instant curl creates it, and the
+// observe side answers blob presence by FILENAME -- so a corrupt download would read as installed.
+fn spark_serving_staged_manifest_path() -> FilePath {
+  concat(spark_serving_readiness_scratch_root() as String, "/staged-manifest") as FilePath
+}
+
+fn spark_serving_staged_blob_path(hex: NonEmptyStr) -> FilePath {
+  concat(
+    spark_serving_readiness_scratch_root() as String,
+    concat("/staged-blob-", hex as String),
+  ) as FilePath
+}
+
+// The checksum files sha256sum --check reads. They live in the readiness scratch beside the staged
+// bytes they vouch for, so a failed run leaves nothing behind in the store.
+fn spark_serving_manifest_checksum_path() -> FilePath {
+  concat(spark_serving_readiness_scratch_root() as String, "/staged-manifest.sha256") as FilePath
+}
+
+fn spark_serving_blob_checksum_path(hex: NonEmptyStr) -> FilePath {
+  concat(
+    spark_serving_readiness_scratch_root() as String,
+    concat("/staged-blob-", concat(hex as String, ".sha256")),
+  ) as FilePath
+}
+
+fn spark_serving_published_blob_path(hex: NonEmptyStr) -> FilePath {
+  concat(
+    spark_serving_desired_model_blobs_dir() as String,
+    concat("/", ollama_blob_file_name(digest_hex: hex)),
+  ) as FilePath
+}
+
+// THE REGISTRY URLS, and the asymmetry between them is upstream's, not ours.
+//
+// The manifest is addressed BY REFERENCE because registry.ollama.ai serves no other form: measured
+// 2026-08-19, GET /v2/library/gpt-oss/manifests/sha256:<hex> answers 404 under every Accept header,
+// so no client version can fetch a manifest by digest from it. The reference is therefore a LOCATOR
+// and never the identity -- the fetch is followed immediately by a digest verification against the
+// frozen resolution, and a republished tag fails that check loudly instead of installing silently.
+//
+// Blobs ARE digest-addressed and the same measurement confirms it (307 to a redirect, 200, bytes
+// hashing to the requested digest), so the blob half needs no such compensation.
+fn spark_serving_registry_manifest_url() -> String {
+  join([
+    "https://", ollama_default_registry as String, "/v2/",
+    ollama_default_namespace as String, "/",
+    spark_serving_desired_model_ref.name as String, "/manifests/",
+    spark_serving_desired_model_ref.tag as String,
+  ], "")
+}
+
+fn spark_serving_registry_blob_url(hex: NonEmptyStr) -> String {
+  join([
+    "https://", ollama_default_registry as String, "/v2/",
+    ollama_default_namespace as String, "/",
+    spark_serving_desired_model_ref.name as String, "/blobs/sha256:",
+    hex as String,
+  ], "")
 }
 
 fn spark_serving_desired_model_blobs_dir() -> FilePath {

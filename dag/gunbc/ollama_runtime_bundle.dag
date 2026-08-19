@@ -288,7 +288,7 @@ fn model_store_missing_blobs(observation: ModelStoreObservation) -> List<NonEmpt
 //
 // Only a complete store contributes an observed member, and only a member's absence or difference
 // makes reconcile plan a pull. So an exact manifest with a complete blob closure yields the desired
-// value, the member compares equal, no MemberAction is produced, no PullModelArtifact is selected,
+// value, the member compares equal, no MemberAction is produced, no MaterializeModelArtifact is selected,
 // and nothing contacts upstream -- by construction of the projection, not by a guard someone must
 // remember to write.
 //

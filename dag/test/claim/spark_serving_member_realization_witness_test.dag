@@ -34,7 +34,7 @@ import gunbc.spark_serving_realization {
   ReloadUserManager,
   EnableUserUnit,
   EnableLingerForOwnAccount,
-  PullModelArtifact,
+  MaterializeModelArtifact,
   WriteSystemUnitFile,
   ReloadSystemManager,
   EnableSystemUnit,
@@ -148,7 +148,7 @@ test fn w_member_realization_model_slot_change_is_pull_model_artifact() -> Bool 
   }
   let effects = spark_serving_install_effects_for_member_effect(effect: effect)
   length(effects) == 1
-    && spark_serving_install_effects_include(effects: effects, needle: PullModelArtifact)
+    && spark_serving_install_effects_include(effects: effects, needle: MaterializeModelArtifact)
 }
 
 test fn w_member_realization_linger_change_is_enable_linger() -> Bool {

@@ -87,7 +87,7 @@ data spark_serving_health_prompt: NonEmptyStr = "Reply with exactly one word: po
 // have to be read from the last one and a truncated stream would decode as a complete object that
 // simply had not finished -- the exact confusion `HealthGenerationIncomplete` exists to name.
 // KNOWN GAP, NAMED RATHER THAN DISCOVERED ON A HOST. The body file is written by the
-// PullModelArtifact sequence, and that effect fires only when the model slot drifts. So a host that
+// MaterializeModelArtifact sequence, and that effect fires only when the model slot drifts. So a host that
 // is already converged -- in particular one converged by code that predates this file -- has no body
 // on disk, the generate probe fails, and health reports `ServingHealthUnobserved` until some effect
 // re-runs. That is the honest reading of the evidence rather than a wrong verdict, which is why this

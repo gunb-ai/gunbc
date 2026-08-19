@@ -780,7 +780,7 @@ fn spark_serving_model_blobs_listing_argv() -> List<String> {
 // The listing above establishes that a file with the expected name exists. It establishes nothing
 // about what is IN it, and a truncated or corrupted blob keeps its name: an interrupted pull, a full
 // disk, a partially written layer all leave a correctly-named file. Reporting that store complete
-// suppresses PullModelArtifact, so the repair for a corrupt model is exactly the operation the
+// suppresses MaterializeModelArtifact, so the repair for a corrupt model is exactly the operation the
 // observation prevents. That is a fail-open whose failure mode is a host that can never self-heal.
 //
 // Ollama names each blob for its own sha256, so the expected value travels WITH the file and needs

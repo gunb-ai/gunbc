@@ -114,7 +114,7 @@ data spark_serving_desired_model_ref: OllamaModelRef = ollama_gpt_oss_20b_model_
 // WHAT THE REPUBLISH DID, since the failure was read as host drift for a week. On 2026-08-19 the
 // registry, srv6's manifest file, and srv6's /api/tags all answered 17052f91a42e97... The pin
 // disagreed with all three, so the model member reconciled as drift on every pass and planned a pull
-// forever -- and the pull could not have fixed it, because PullModelArtifact runs
+// forever -- and the pull could not have fixed it, because MaterializeModelArtifact runs
 // `ollama pull gpt-oss:20b` and fetches whatever the tag names NOW. A digest pin behind a
 // tag-addressed remedy is unenforceable by construction.
 //

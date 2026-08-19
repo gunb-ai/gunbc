@@ -1,7 +1,7 @@
 module test.claim.spark_serving_runtime_install_witness
 
 import std.types { String, List, Bool, NonEmptyStr }
-import gunbc.spark_serving_realization { InstallOwnedRuntimeClosure, PullModelArtifact }
+import gunbc.spark_serving_realization { InstallOwnedRuntimeClosure, MaterializeModelArtifact }
 import gunbc.spark_serving_converge_realize {
   SparkServingInstallRemoteCommandsPresent,
   SparkServingInstallRemoteCommandsRefused,
@@ -60,7 +60,7 @@ type IndexScan { found: Bool, idx: Int }
 
 fn pull_steps() -> List<NonEmptyStr> {
   match realize_spark_serving_install_effect_command(
-    effect: PullModelArtifact,
+    effect: MaterializeModelArtifact,
     executor_login: spark_serving_default_executor_login(),
   ) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => []
@@ -72,7 +72,7 @@ fn pull_steps() -> List<NonEmptyStr> {
 // than reading an empty argv as a satisfied condition.
 fn pull_step_argv(identity: String) -> List<String>? {
   match realize_spark_serving_install_effect_command(
-    effect: PullModelArtifact,
+    effect: MaterializeModelArtifact,
     executor_login: spark_serving_default_executor_login(),
   ) {
     SparkServingInstallRemoteCommandsRefused { reason: _ } => none
@@ -238,91 +238,33 @@ test fn both_scratch_roots_are_reset_before_they_are_created() -> Bool {
     && index_of(identity: "create-staging-tree") < index_of(identity: "extract-archive")
 }
 
-// THE FRONTIER MOVED, AND THIS CLAIM MOVED WITH IT. It previously asserted PullModelArtifact was
+// THE FRONTIER MOVED, AND THIS CLAIM MOVED WITH IT. It previously asserted MaterializeModelArtifact was
 // unrealized, and said in its own comment that landing the realizer must fail it rather than let a
 // stale frontier description stand. The realizer landed, so this now asserts the opposite.
 //
 // THE EXECUTABLE MUST BE THE PLANNED ONE. A bare "ollama" would resolve through ambient PATH -- a
 // second unmodeled runtime authority, and on a bare host it resolves to nothing at all, which is the
 // exact host this branch exists to restore. The claim asserts the content-addressed path AND that it
-// is not the bare name, because a check for "ends with ollama" passes on both.
+// RETIRED WITH A RECEIPT: five claims stood here -- one on `ollama pull`'s argv and four on the
+// readiness ladder that preceded it. They are gone because the remedy they described is gone.
 //
-// It asserts the ARM AND THE ARGV, not merely that something came back. `realize_...` returns a
-// verdict whose refusal arm is a perfectly ordinary value, so a realizer that refused every call
-// would be indistinguishable from one that worked if the claim only checked that a verdict was
-// produced -- and the words go through the portable-word allowlist, which is a real way for this
-// particular step to refuse.
-test fn pull_model_artifact_names_the_planned_executable() -> Bool {
-  match pull_step_argv(identity: "pull-model-artifact") {
-    Absent => false
-    Present { value: words } =>
-      length(words) == 3
-        && string_contains(words[0], "/runtimes/")
-        && string_contains(words[0], "/bin/ollama")
-        && words[0] != "ollama"
-        && words[1] == "pull"
-        && words[2] == "gpt-oss:20b"
-  }
-}
-
-// ── The readiness ladder (P0-6b) ────────────────────────────────────────────────────────────────
-
-// THE PULL WAITS BEFORE IT PULLS. `ollama pull` is an API client, so issued against a unit that is
-// still starting it fails on connection refused and reports a broken host that was merely slow.
-// Asserted as an ORDERING against the exact sequence, because a readiness step that ran after the
-// pull would contain every command this file names and wait for nothing.
-test fn the_pull_waits_for_the_serving_api_first() -> Bool {
-  join(map(pull_steps(), id => id as String), ",")
-    == "ensure-readiness-scratch,write-health-request-body,await-serving-api,pull-model-artifact"
-}
-
-// THE WAIT IS BOUNDED AND RETRIES THE CASE IT EXISTS FOR.
+// WHAT REPLACED IT. MaterializeModelArtifact fetches the manifest and every blob it names and writes
+// them into the model store directly, verifying each against the digest frozen in
+// gunbc.ollama_model_resolution. It is not an API client, so there is no server to wait for and the
+// readiness ladder has nothing left to protect -- keeping it would have been a wait for a condition
+// no step in the sequence depends on. The claims that replace these live in
+// test.claim.spark_serving_model_materialization_witness, asserted against the sequence that now
+// exists rather than against the one that used to.
 //
-// Two ways this step can be present and useless, and both are asserted against. Without
-// `--retry-connrefused` curl treats a refused connection as a hard failure and never retries -- which
-// is precisely the state a starting unit is in, so the flag's absence makes the whole wait inert
-// while leaving it visible in the plan. And without `--retry-max-time` the retry window is unbounded
-// in wall-clock, turning a failed convergence into a hang: the deadline is what makes this a wait
-// rather than a stall.
-test fn the_readiness_wait_is_bounded_and_retries_connection_refused() -> Bool {
-  match pull_step_argv(identity: "await-serving-api") {
-    Absent => false
-    Present { value: words } =>
-      any(words, w => w == "--retry-connrefused")
-        && any(words, w => w == "--retry-max-time")
-        && any(words, w => w == "--retry")
-        && any(words, w => w == "--connect-timeout")
-  }
-}
-
-// THE PROBE DIALS LOOPBACK, NOT THE BIND ADDRESS. The unit listens on `0.0.0.0` so the endpoint is
-// reachable across the LAN; nothing CONNECTS to `0.0.0.0`, and a probe that named it would be leaning
-// on a kernel convenience rather than dialling the service the way a client does. Both halves are
-// asserted -- naming loopback and NOT naming the wildcard -- because a URL built by string-joining the
-// bind row would satisfy a check for "contains the port" while dialling the wrong address.
-test fn the_readiness_probe_dials_loopback_not_the_bind_address() -> Bool {
-  match pull_step_argv(identity: "await-serving-api") {
-    Absent => false
-    Present { value: words } =>
-      any(words, w => string_contains(w, "http://127.0.0.1:11434/api/version"))
-        && !any(words, w => string_contains(w, "0.0.0.0"))
-  }
-}
-
-// THE RESPONSE IS DISCARDED, and that is the point of this claim rather than an omission from it.
-//
-// An earlier revision wrote the body to a file so "the observer could decide it", but the observer
-// probes the endpoint itself when it forms a verdict -- so the file was written and never read. The
-// claim now pins the absence: nothing under the readiness scratch is named as an output here, because
-// an artifact with no reader is work the next person has to explain.
-test fn the_readiness_probe_discards_the_response_body() -> Bool {
-  match pull_step_argv(identity: "await-serving-api") {
-    Absent => false
-    Present { value: words } =>
-      any(words, w => w == "/dev/null")
-        && !any(words, w => string_contains(w, "api-version.json"))
-  }
-}
+// WHAT IS NOT ESTABLISHED, AND IS NOT BEING QUIETLY ASSUMED: whether a RUNNING ollama picks up a
+// model whose manifest and blobs appeared on disk beneath it, or whether it holds a cached view
+// until it restarts. The old pull went through the API and so could not raise the question; direct
+// file placement does. The model-store observation reads the filesystem and would report convergence
+// either way, so the fact that would expose a stale in-memory view is the TERMINAL HEALTH generation
+// -- which is exactly the probe this lane already runs after an empty replan. The first srv5
+// materialization decides it, and if the answer is that a restart is owed, the remedy belongs on the
+// activity member (a materialized model invalidates a running server's view) rather than as a
+// readiness wait bolted to the front.
 
 // PULLING IS NOT PART OF INSTALLING THE RUNTIME. The two effects are separate members with separate
 // remedies, and fusing them would make a model repair reinstall the runtime -- so the runtime
