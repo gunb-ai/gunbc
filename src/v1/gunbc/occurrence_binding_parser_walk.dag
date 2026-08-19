@@ -25,7 +25,7 @@ fn parse_authored_occurrence_binding_source(
     Present { value: module_path } =>
       ParsedOccurrenceBindingSourceReady {
         transport: parsed.occurrence_transport,
-        module_path: module_path as NonEmptyStr,
+        module_path: module_path as std.types.NonEmptyStr,
       }
   }
 }
