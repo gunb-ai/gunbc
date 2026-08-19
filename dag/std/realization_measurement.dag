@@ -19,7 +19,6 @@ import std.realization_schedule {
   CostBasis,
   Measured,
   cost_account_measured,
-  cost_account_predicted_zero,
   cost_account_time_count,
 }
 
@@ -65,7 +64,9 @@ fn cost_account_measured_from_time_and_space<S>(time: Measure<Time, S, Nat>, spa
 }
 
 fn time_measure_list_total<S>(times: List<Measure<Time, S, Nat>>) -> Measure<Time, S, Nat> {
-  fold(times, init: time_measure(count: 0), f: (acc, t) => time_measure_seq(a: acc, b: t))
+  time_measure(
+    count: fold(times, init: 0, f: (acc, t) => acc + measure_count(m: t))
+  )
 }
 
 type ConcurrentMemoryPeakSample {
@@ -156,8 +157,7 @@ fn witness_measured_rollup_differs_from_predicted_zero<S>(wall_time: Measure<Tim
     let measured_count = cost_account_time_count(
       account: cost_account_measured_from_time(time: wall_time)
     )
-    let predicted_count = cost_account_time_count(account: cost_account_predicted_zero())
-    measured_count != predicted_count
+    measured_count != 0
       && measured_count == measure_count(m: wall_time)
   }
 }

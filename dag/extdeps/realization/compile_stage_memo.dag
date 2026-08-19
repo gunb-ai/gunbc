@@ -2,6 +2,7 @@ module extdeps.realization.compile_stage_memo
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
+import v2.std.optional { Absent }
 
 import extdeps.cache.types { CacheInterfaceCatalogFacts, ContentAddressed, CatalogCasContentEncoding }
 import std.cache_identity { CacheInterfaceId }
@@ -63,14 +64,14 @@ data compile_stage_memo_facts: CacheInterfaceCatalogFacts = {
       field: "locality"
       evidence: OperatorObserved {
         note: "scoped to compile_ingest_staging pipeline; drops with the ingest walk — within-run stage memo (v2.std.staging.cached_stage)"
-        observed_at: "2026-08-19"
+        observed_at: Absent
       }
     },
     {
       field: "key_derivation"
       evidence: OperatorObserved {
         note: "stage input content-addressed at the cached_stage lookup site; miss runs the stage, hit skips recompute"
-        observed_at: "2026-08-19"
+        observed_at: Absent
       }
     },
   ]

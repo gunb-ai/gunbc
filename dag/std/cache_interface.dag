@@ -1,6 +1,7 @@
 module std.cache_interface
 
 import std.types { NonEmptyStr, Bool, Int, LogicalTime }
+import v2.std.optional { Optional }
 import std.decl_ref { DeclarationRef }
 import std.content_hash { ContentHash }
 import std.measure { Nano, ByteSize, Second, second, Nanosecond, nanosecond, nanosecond_count }
@@ -226,7 +227,7 @@ type KeyDerivationFacts {
 type CacheRowEvidence
   = VendorCitation { source: NonEmptyStr, url: NonEmptyStr }
   | RunnerObserved { receipt: NonEmptyStr, observed_at: LogicalTime }
-  | OperatorObserved { note: NonEmptyStr, observed_at: LogicalTime }
+  | OperatorObserved { note: NonEmptyStr, observed_at: Optional<LogicalTime> }
   | CiReceiptCitation { workflow_run_id: NonEmptyStr, step_id: NonEmptyStr }
 
 type CacheEvidence {
