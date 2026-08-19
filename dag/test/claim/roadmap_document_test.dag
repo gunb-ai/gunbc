@@ -39,7 +39,7 @@ fn status_node() -> RoadmapNode {
     signoff: Unsigned,
   }
 }
-fn child_node() -> RoadmapNode {
+fn roadmap_document_child_node() -> RoadmapNode {
   RoadmapNode {
     identity: "rnfx_ABYCNZ3BDSY98CHYC51T" as RoadmapNodeIdentity,
     node: child_id,
@@ -63,7 +63,7 @@ fn expansion_section() -> RoadmapSection {
     title: "6. Expansion",
     elements: [section_group(
       label: "",
-      nodes: [status_node(), child_node()],
+      nodes: [status_node(), roadmap_document_child_node()],
       edges: [RoadmapEdge { child: child_id, parent: status_id }],
     )],
   }
