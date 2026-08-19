@@ -48,7 +48,7 @@ import test.claim.memory_provisioning_witness_test {
   the_same_sample_in_one_unit_yields_a_ratio,
 }
 
-fn weigh(b: Bool, w: Nat) -> Nat { if b { 0 } else { w } }
+fn weigh(b: Bool, w: Nat) -> Nat { if b { w - w } else { w } }
 
 fn suite_failure_mask() -> Nat {
   weigh(b: ubicloud_and_blacksmith_publish_three_gb_per_arm_vcpu(), w: 1)
