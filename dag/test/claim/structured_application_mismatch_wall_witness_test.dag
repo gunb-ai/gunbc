@@ -7,7 +7,7 @@ data structured_application_mismatch_wall_witness_note: String = "Permanent regr
 
 fn w_missing_variant_terminal_at_mechanism_field_red() -> Bool {
   compile_dag_rust_emit_check(
-    "module fieldwall_missing_variant\nimport std.types { String }\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\nimport std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }\n\ndata whole_declaration_anchor: String = \"anchor\"\n\ndata missing_variant_specimen: Disposition = std.disposition.Scaffold {\n  dissolves_to: Terminal { reason: \"phantom-mechanism\" },\n  bind: DeclarationRef {\n    module_path: \"fieldwall_missing_variant\",\n    decl_name: \"whole_declaration_anchor\",\n    field: WholeDeclaration,\n  },\n}\n",
+    "module fieldwall_missing_variant\nimport std.types { String }\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\nimport std.disposition { Disposition, Scaffold, Terminal, SingleAuthority }\n\ndata whole_declaration_anchor: String = \"anchor\"\n\ndata missing_variant_specimen: Disposition = Scaffold {\n  dissolves_to: Terminal { reason: \"phantom-mechanism\" },\n  bind: DeclarationRef {\n    module_path: \"fieldwall_missing_variant\",\n    decl_name: \"whole_declaration_anchor\",\n    field: WholeDeclaration,\n  },\n}\n",
     "src/fieldwall_missing_variant.rs",
     [],
     []
@@ -16,7 +16,7 @@ fn w_missing_variant_terminal_at_mechanism_field_red() -> Bool {
 
 fn w_single_authority_at_mechanism_field_green() -> Bool {
   compile_dag_rust_emit_check(
-    "module fieldwall_missing_variant_green\nimport std.types { String }\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\nimport std.disposition { Disposition, Scaffold, SingleAuthority }\n\ndata whole_declaration_anchor: String = \"anchor\"\n\ndata missing_variant_specimen: Disposition = std.disposition.Scaffold {\n  dissolves_to: SingleAuthority,\n  bind: DeclarationRef {\n    module_path: \"fieldwall_missing_variant_green\",\n    decl_name: \"whole_declaration_anchor\",\n    field: WholeDeclaration,\n  },\n}\n",
+    "module fieldwall_missing_variant_green\nimport std.types { String }\nimport std.decl_ref { DeclarationRef, WholeDeclaration }\nimport std.disposition { Disposition, Scaffold, SingleAuthority }\n\ndata whole_declaration_anchor: String = \"anchor\"\n\ndata missing_variant_specimen: Disposition = Scaffold {\n  dissolves_to: SingleAuthority,\n  bind: DeclarationRef {\n    module_path: \"fieldwall_missing_variant_green\",\n    decl_name: \"whole_declaration_anchor\",\n    field: WholeDeclaration,\n  },\n}\n",
     "src/fieldwall_missing_variant_green.rs",
     [],
     []

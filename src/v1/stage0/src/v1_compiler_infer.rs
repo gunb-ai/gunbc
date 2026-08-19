@@ -4256,7 +4256,7 @@ pub fn unresolved_method_frontier() -> Rc<Vec<Rc<UnresolvedMethodFrontierRow>>> 
     module_name: "gunbc.source_integration_landing_spine".to_string(),
     method: "map".to_string(),
     occurrences: 1,
-    receiver_shape: "Node(v2.std.optional.Optional)".to_string(),
+    receiver_shape: "Node(Optional)".to_string(),
     cause: "same optional-functor class as the v1.compiler.trace row, in its OTHER surface form: here the Optional survives as a named node rather than collapsing to its inner product, and neither form carries a method surface. Two shapes for one concept is itself the defect the trigger names.".to_string(),
     dissolution: unbound_dissolution("reconciling the two optionality representations so an optional receiver keeps its optional surface at method lookup".to_string()),
 }), Rc::new(UnresolvedMethodFrontierRow {

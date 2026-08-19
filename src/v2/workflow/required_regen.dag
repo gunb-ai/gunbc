@@ -96,7 +96,7 @@ fn collect_hand_unverifiable(
 fn required_regen_sync_admission(
   generated_outcomes: List<RegenSurfaceOutcome>,
   hand_outcomes: List<HandMaintainedOutcome>,
-  authority_digest: v2.std.text.String,
+  authority_digest: String,
   planned_surfaces: Int,
   executed_surfaces: Int
 ) -> RequiredRegenSyncAdmission {
