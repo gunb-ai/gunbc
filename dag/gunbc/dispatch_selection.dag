@@ -267,7 +267,7 @@ fn automatic_refusal_reason_for_inventory(
               first_blocking_native_limit_bucket_for_automatic_draw(
                 observations: bundle.limits,
               )
-            Absent => optional_absent()
+            Absent => v2.std.optional.optional_absent()
           }
       }
     },
@@ -1156,9 +1156,9 @@ fn optional_offer_when_kind_matches(
   kind: extdeps.llm.cli_lifecycle.ProviderKind,
 ) -> ProviderOffer? {
   if provider_offer_kind(offer: offer) == kind {
-    optional_present(value: offer)
+    v2.std.optional.optional_present(value: offer)
   } else {
-    optional_absent()
+    v2.std.optional.optional_absent()
   }
 }
 

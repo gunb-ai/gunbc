@@ -89,7 +89,7 @@ fn spark_serving_runtime_archive_admission_receipt_json(
     members: [
       extdeps.languages.json.emit.JsonKeyValue {
         key: spark_serving_runtime_receipt_release_asset_digest_member,
-        value: JsonString { value: receipt.release_asset_digest_hex as String },
+        value: extdeps.languages.json.emit.JsonString { value: receipt.release_asset_digest_hex as String },
       },
     ],
   })

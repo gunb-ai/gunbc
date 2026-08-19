@@ -22,29 +22,29 @@ fn without_suffix(s: String, suffix: String) -> String {
 
 fn failure_receipt_companion(function: String) -> Optional<String> {
   if ends_with(s: function, suffix: "_holds") {
-    optional_present(
+    v2.std.optional.optional_present(
       value: concat(without_suffix(s: function, suffix: "_holds"), "_failure_receipt")
     )
   } else if ends_with(s: function, suffix: "_passes") {
-    optional_present(
+    v2.std.optional.optional_present(
       value: concat(without_suffix(s: function, suffix: "_passes"), "_failure_receipt")
     )
   } else {
-    optional_absent()
+    v2.std.optional.optional_absent()
   }
 }
 
 fn witness_verdict_diagnostic_companion(function: String) -> Optional<String> {
   if ends_with(s: function, suffix: "_holds") {
-    optional_present(
+    v2.std.optional.optional_present(
       value: concat(without_suffix(s: function, suffix: "_holds"), "_verdict_diagnostic")
     )
   } else if ends_with(s: function, suffix: "_passes") {
-    optional_present(
+    v2.std.optional.optional_present(
       value: concat(without_suffix(s: function, suffix: "_passes"), "_verdict_diagnostic")
     )
   } else {
-    optional_absent()
+    v2.std.optional.optional_absent()
   }
 }
 
@@ -87,7 +87,7 @@ fn expand_explicit_pairs_or_refuse(inputs: List<ExplicitExpandInput>) -> ExpandE
         Refused { reason: reason } => Refused { reason: reason }
         Expanded { pairs: acc_pairs } => {
           if is_file_grain_function(function: inp.function) {
-            let names = floor_discovery_scan_test_decl_names(content: inp.content)
+            let names = v2.workflow.floor_naming_hygiene.floor_discovery_scan_test_decl_names(content: inp.content)
             if length(xs: names) == 0 {
               Refused { reason: file_grain_empty_refusal(entry: inp.entry) }
             } else {
@@ -113,5 +113,5 @@ fn expand_explicit_pairs_or_refuse(inputs: List<ExplicitExpandInput>) -> ExpandE
 }
 
 fn enumerate_entry_test_names(content: String) -> List<String> {
-  floor_discovery_scan_test_decl_names(content: content)
+  v2.workflow.floor_naming_hygiene.floor_discovery_scan_test_decl_names(content: content)
 }

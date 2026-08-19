@@ -547,7 +547,7 @@ fn serialize_markdown_document(doc: std.markdown.MarkdownDocument) -> String {
 fn try_serialize_markdown_document(doc: std.markdown.MarkdownDocument) -> std.markup.MarkupSerializeResult {
   match find_first_rejected_url_in_document(doc: doc) {
     Present { value: _ } =>
-      Rejected { reason: "URL scheme not allowlisted for markdown link/image" }
+      std.markup.Rejected { reason: "URL scheme not allowlisted for markdown link/image" }
     Absent =>
       std.markup.Serialized { html: serialize_markdown_document(doc: doc) }
   }

@@ -67,7 +67,7 @@ fn seed_growth_justification_well_formed(j: gunbc.seed_growth.SeedGrowthJustific
 }
 
 fn seed_growth_roster_all_declarations() -> List<std.decl_ref.DeclarationRef> {
-  list_append(
+  v2.std.algebra.list_append(
     left: stage0_rust_observation_seed_growth_justification.hand_authored_declarations,
     right: observation_scoped_run_seed_growth_justification().hand_authored_declarations
   )
@@ -129,7 +129,7 @@ fn seed_growth_join_declarations(
 fn seed_growth_roster_mechanical_checks_holds() -> Bool {
   let roster = seed_growth_justification_roster()
   length(xs: roster) >= 1
-    && fold_list(
+    && v2.std.algebra.fold_list(
       xs: roster,
       empty: true,
       cons: fn(ok, j) { ok && seed_growth_justification_well_formed(j: j) }

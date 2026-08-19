@@ -40,7 +40,7 @@ type InterpreterPrimitiveDispatchArm {
 
 data dispatch_emit_site_authority_note: String = "dispatch_emit_site REPLACES prefix-convention site routing. Each row names its own emit site directly, closed over InterpreterDispatchEmitSite; EvalCallBridgeFamilySite carries the bridge family's own module so gunbc.v1_interpreter_dispatch_emit can key one generated enum per family instead of one shared enum spanning all v4 bridge families. This is the dissolve-on the prior dispatch_emit_site_routing_scaffold_note named: the field now exists, so starts_with(v4_bridge.)/starts_with(native_intercept.) string-prefix parsing and the parallel known_dispatch_emit_site_keys validator delete in favor of reading this field directly."
 
-data eval_call_bridge_family_module_typing_note: String = "EvalCallBridgeFamilySite.module is v2.std.qualified_name.QualifiedName, not a bare NonEmptyStr (operator correction, PR 7801, 2026-08-04). A raw string field on an otherwise closed coproduct was the same convention-over-construction defect the coproduct itself replaced -- a spelling routing key instead of an exact, resolvable module identity. QualifiedName is the corpus's single module-identity authority (std.observation's dissolve-on names it as the eventual home for module_path); every construction site builds it with qualified_name_from_dotted_string rather than an inline string literal, and gunbc.v1_interpreter_dispatch_emit reads it back through qualified_name_to_dotted_string at the one site that still needs the dotted form for Rust-identifier derivation."
+data eval_call_bridge_family_module_typing_note: String = "EvalCallBridgeFamilySite.module is v2.std.qualified_name.QualifiedName, not a bare NonEmptyStr (operator correction, PR 7801, 2026-08-04). A raw string field on an otherwise closed coproduct was the same convention-over-construction defect the coproduct itself replaced -- a spelling routing key instead of an exact, resolvable module identity. QualifiedName is the corpus's single module-identity authority (std.observation's dissolve-on names it as the eventual home for module_path); every construction site builds it with v2.std.qualified_name.qualified_name_from_dotted_string rather than an inline string literal, and gunbc.v1_interpreter_dispatch_emit reads it back through qualified_name_to_dotted_string at the one site that still needs the dotted form for Rust-identifier derivation."
 
 type ShapeDerivability
   = ShapeNotDerivableFromDispatch
@@ -1735,7 +1735,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "resolve_type_node",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
-      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.node") },
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.node") },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1744,7 +1744,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "symbol_intern_lexeme",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
-      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.compilers.lexing") },
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.compilers.lexing") },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1753,16 +1753,16 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "symbol_lexeme",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
-      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.compilers.lexing") },
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.compilers.lexing") },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
       arm: InterpreterPrimitiveArmId { identity: "v4_bridge.qualified_name_from_dotted_string" },
       form: FreeCall,
-      authored_spelling: "qualified_name_from_dotted_string",
+      authored_spelling: "v2.std.qualified_name.qualified_name_from_dotted_string",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
-      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.qualified_name") },
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.qualified_name") },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1771,7 +1771,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "coproduct_nullary_inhabitants",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
-      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.node_query") },
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.node_query") },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1780,7 +1780,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "concept_decl_facts_live",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
-      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.concept_index") },
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.concept_index") },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1789,7 +1789,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "fn_arrow_decl_facts_live",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
-      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.fn_index") },
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.fn_index") },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1798,7 +1798,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "fn_arrow_decl_substrate_is_whole_tree",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
-      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.fn_index") },
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.fn_index") },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1807,7 +1807,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "corpus_dependency_view_per_pr_substrate_refuse",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
-      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.lens.affected_set.corpus_dependency_view") },
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.lens.affected_set.corpus_dependency_view") },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {
@@ -1816,7 +1816,7 @@ fn v1_interpreter_authored_roster_arms() -> List<InterpreterPrimitiveDispatchArm
       authored_spelling: "data_init_decl_facts_live",
       realization_module: "v1_interpreter",
       dispatch_symbol: "eval_call",
-      dispatch_emit_site: EvalCallBridgeFamilySite { module: qualified_name_from_dotted_string(dotted: "v2.std.data_index") },
+      dispatch_emit_site: EvalCallBridgeFamilySite { module: v2.std.qualified_name.qualified_name_from_dotted_string(dotted: "v2.std.data_index") },
       enumeration: AuthoredInRoster,
     },
     InterpreterPrimitiveDispatchArm {

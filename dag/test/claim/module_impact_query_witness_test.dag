@@ -50,7 +50,7 @@ fn chain_reading(
 ) -> v2.lens.module_impact_query.ImpactReading {
   v2.lens.module_impact_query.module_impact_reading(
     seeds: seeds,
-    direction: DependentsOf,
+    direction: v2.lens.module_impact_query.DependentsOf,
     edges: chain_edges,
     nodes: fixture_nodes,
     import_facts: chain_import_facts,
@@ -73,7 +73,7 @@ test fn witness_dependents_of_walks_the_edge_population_backwards() -> Bool {
 test fn witness_dependencies_of_is_the_opposite_direction() -> Bool {
   let reading = v2.lens.module_impact_query.module_impact_reading(
     seeds: [mod_a],
-    direction: DependenciesOf,
+    direction: v2.lens.module_impact_query.DependenciesOf,
     edges: chain_edges,
     nodes: fixture_nodes,
     import_facts: chain_import_facts,
@@ -155,7 +155,7 @@ data undeclared_target_edges: List<v2.lens.module_graph.ModuleDependencyEdge> = 
 test fn witness_undeclared_target_lands_as_a_typed_cause() -> Bool {
   let reading = v2.lens.module_impact_query.module_impact_reading(
     seeds: [mod_a],
-    direction: DependenciesOf,
+    direction: v2.lens.module_impact_query.DependenciesOf,
     edges: undeclared_target_edges,
     nodes: fixture_nodes,
     import_facts: chain_import_facts,
@@ -181,7 +181,7 @@ data pool_mismatch_note: String = "F3 control (operator ruling 2026-08-08). m.gh
 test fn witness_declared_but_absent_target_is_not_silently_dropped() -> Bool {
   let reading = v2.lens.module_impact_query.module_impact_reading(
     seeds: [mod_a],
-    direction: DependenciesOf,
+    direction: v2.lens.module_impact_query.DependenciesOf,
     edges: declared_but_absent_edges,
     nodes: fixture_nodes,
     import_facts: chain_import_facts,
@@ -200,7 +200,7 @@ test fn witness_declared_but_absent_target_is_not_silently_dropped() -> Bool {
 test fn witness_pool_mismatch_forbids_an_exact_standing() -> Bool {
   let reading = v2.lens.module_impact_query.module_impact_reading(
     seeds: [mod_a],
-    direction: DependenciesOf,
+    direction: v2.lens.module_impact_query.DependenciesOf,
     edges: declared_but_absent_edges,
     nodes: fixture_nodes,
     import_facts: chain_import_facts,
@@ -231,7 +231,7 @@ data mixed_cycle_facts: List<v2.lens.module_graph.ImportResolutionFact> = [
 fn cycle_reading(facts: List<v2.lens.module_graph.ImportResolutionFact>) -> v2.lens.module_impact_query.ImpactReading {
   v2.lens.module_impact_query.module_impact_reading(
     seeds: [mod_a],
-    direction: DependenciesOf,
+    direction: v2.lens.module_impact_query.DependenciesOf,
     edges: cycle_edges,
     nodes: fixture_nodes,
     import_facts: facts,
@@ -295,7 +295,7 @@ data two_disjoint_cycle_import_facts: List<v2.lens.module_graph.ImportResolution
 fn two_disjoint_cycles_reading() -> v2.lens.module_impact_query.ImpactReading {
   v2.lens.module_impact_query.module_impact_reading(
     seeds: [mod_a, mod_c],
-    direction: DependenciesOf,
+    direction: v2.lens.module_impact_query.DependenciesOf,
     edges: two_disjoint_cycle_edges,
     nodes: fixture_nodes,
     import_facts: two_disjoint_cycle_import_facts,
@@ -479,9 +479,9 @@ test fn witness_a_complete_but_pool_relative_outcome_withholds_skip_authority() 
 data differential_control_note: String = "OPERATOR ruling item 6. The production selector asks, per entry, whether any touched path lies in that entry's FORWARD dependency closure; this lane answers it once in reverse. The two must agree exactly over the same edge population: entry E's forward closure contains M if and only if E is among the reverse consumers of M. This witness asserts that biconditional in BOTH directions over every module in a fixture population — a one-directional check would pass on a reverse answer that silently narrows, which is the failure mode that matters when a selector decides what NOT to run."
 
 fn forward_closure_of(entry: v2.lens.module_impact_query.ModuleIdentity) -> List<v2.lens.module_impact_query.ModuleIdentity> {
-  module_impact_reading(
+  v2.lens.module_impact_query.module_impact_reading(
     seeds: [entry],
-    direction: DependenciesOf,
+    direction: v2.lens.module_impact_query.DependenciesOf,
     edges: chain_edges,
     nodes: fixture_nodes,
     import_facts: chain_import_facts,
@@ -490,9 +490,9 @@ fn forward_closure_of(entry: v2.lens.module_impact_query.ModuleIdentity) -> List
 }
 
 fn reverse_consumers_of(target: v2.lens.module_impact_query.ModuleIdentity) -> List<v2.lens.module_impact_query.ModuleIdentity> {
-  module_impact_reading(
+  v2.lens.module_impact_query.module_impact_reading(
     seeds: [target],
-    direction: DependentsOf,
+    direction: v2.lens.module_impact_query.DependentsOf,
     edges: chain_edges,
     nodes: fixture_nodes,
     import_facts: chain_import_facts,
@@ -512,11 +512,11 @@ fn biconditional_holds_for(entry: v2.lens.module_impact_query.ModuleIdentity, ta
 data differential_universe: List<v2.lens.module_impact_query.ModuleIdentity> = [mod_a, mod_b, mod_c]
 
 test fn witness_reverse_agrees_with_forward_closure_in_both_directions() -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: differential_universe,
     empty: true,
     cons: fn(acc, entry) {
-      acc && fold_list(
+      acc && v2.std.algebra.fold_list(
         xs: differential_universe,
         empty: true,
         cons: fn(inner, target) {
@@ -530,7 +530,7 @@ test fn witness_reverse_agrees_with_forward_closure_in_both_directions() -> Bool
 test fn witness_the_differential_control_can_fail() -> Bool {
   module_in(xs: forward_closure_of(entry: mod_a), m: mod_c)
     && module_in(xs: reverse_consumers_of(target: mod_c), m: mod_a)
-    && count_where(xs: forward_closure_of(entry: mod_c), predicate: fn(_) { true }) == 1
+    && v2.std.algebra.count_where(xs: forward_closure_of(entry: mod_c), predicate: fn(_) { true }) == 1
 }
 
 
@@ -542,7 +542,7 @@ test fn witness_a_fully_unresolved_surface_is_partial_not_an_empty_answer() -> B
     && outcome_reached_count(outcome: outcome) == 0
     && match outcome {
       ChangedSurfacePartial { reading: _, unresolved_subjects } =>
-        count_where(xs: unresolved_subjects, predicate: fn(_) { true }) == 2
+        v2.std.algebra.count_where(xs: unresolved_subjects, predicate: fn(_) { true }) == 2
       ChangedSurfaceComplete { reading: _ } => false
       ChangedSurfaceRefused { reason: _ } => false
     }
@@ -558,7 +558,7 @@ test fn witness_a_deleted_path_present_in_both_lists_yields_one_base_subject() -
   )
   match outcome {
     ChangedSurfacePartial { reading: _, unresolved_subjects } =>
-      count_where(xs: unresolved_subjects, predicate: fn(_) { true }) == 1
+      v2.std.algebra.count_where(xs: unresolved_subjects, predicate: fn(_) { true }) == 1
         && any(xs: unresolved_subjects, predicate: fn(u) {
           match u.cause {
             BaseGraphUnavailable => u.path == "fixture/b.dag"

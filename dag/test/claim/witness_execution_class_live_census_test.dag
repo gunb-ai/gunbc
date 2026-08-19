@@ -3,16 +3,16 @@ module gunbc.test.claim.witness_execution_class_live_census_test
 
 data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = ReadsLiveTree
 
-data live_census_note: String = "CI-0 live-roster consumer (operator bar, msg_be57b9db; disposition fabrication corrected per review 50716): the classifier is exercised against the LIVE enrolled discovery roster — the same floor_discovery_producer walk over the same witness_discovery_scan_dirs the floor's corpus batch scans, PLUS the enrolled bundle entry's home dir (src/v2/test/claim/execution, outside the discovery dirs), so every classified identity's LiveTreeDisposition comes from the WALKED file-grain declaration, never a hand-supplied constant. An earlier revision passed SubstrateInputsOnly for the enrolled bundle members while their entry file declares ReadsLiveTree — a fabricated input that forced NativeRequired; under declared_class_precedence their honest class is NativeLiveObservation (LiveObservationAxis precedes CarriageAxis). Carriage joins from the plan two ways, neither fabricating a disposition: a walked test-fn identity that is an enrolled member gets CarriedInEnrolledBundle on its own walk row; an enrolled member that is NOT an authored test fn (the three logic members are emitted-tree names, not test declarations — the fn-grain vs plan-grain reconciliation Commit D owns) gets a plan-grain row whose disposition is derived by the walk's own resolution authority applied to its entry file (plan_entry_disposition -> floor_discovery_resolve_entry_live_tree over Filesystem.Read), so the bundle file's ReadsLiveTree comes from its authored declaration. Assertions are structural laws and identity joins, never tree-copied count literals (DESIGN §5 oracle rule): partition exactness, exactly-once at identity grain, and every enrolled plan member joining exactly one row whose class is a carried class (NativeRequired or NativeLiveObservation — a carried member never classifies as blocked). Residue, declared: the floor also walks source-root *_test.dag files outside these dirs; classifying that wider universe from .dag awaits the module-identity walk (the same wider-universe residue the discovery flip note carries)."
+data live_census_note: String = "CI-0 live-roster consumer (operator bar, msg_be57b9db; disposition fabrication corrected per review 50716): the classifier is exercised against the LIVE enrolled discovery roster — the same floor_discovery_producer walk over the same witness_discovery_scan_dirs the floor's corpus batch scans, PLUS the enrolled bundle entry's home dir (src/v2/test/claim/execution, outside the discovery dirs), so every classified identity's LiveTreeDisposition comes from the WALKED file-grain declaration, never a hand-supplied constant. An earlier revision passed SubstrateInputsOnly for the enrolled bundle members while their entry file declares ReadsLiveTree — a fabricated input that forced NativeRequired; under declared_class_precedence their honest class is NativeLiveObservation (LiveObservationAxis precedes CarriageAxis). Carriage joins from the plan two ways, neither fabricating a disposition: a walked test-fn identity that is an enrolled member gets CarriedInEnrolledBundle on its own walk row; an enrolled member that is NOT an authored test fn (the three logic members are emitted-tree names, not test declarations — the fn-grain vs plan-grain reconciliation Commit D owns) gets a plan-grain row whose disposition is derived by the walk's own resolution authority applied to its entry file (plan_entry_disposition -> v2.workflow.floor_discovery_producer.floor_discovery_resolve_entry_live_tree over Filesystem.Read), so the bundle file's ReadsLiveTree comes from its authored declaration. Assertions are structural laws and identity joins, never tree-copied count literals (DESIGN §5 oracle rule): partition exactness, exactly-once at identity grain, and every enrolled plan member joining exactly one row whose class is a carried class (NativeRequired or NativeLiveObservation — a carried member never classifies as blocked). Residue, declared: the floor also walks source-root *_test.dag files outside these dirs; classifying that wider universe from .dag awaits the module-identity walk (the same wider-universe residue the discovery flip note carries)."
 
-data bundle_disposition_note: String = "The bundle entry lives outside witness_discovery_scan_dirs and its home dir is not a test-row home (floor_test_marked_decl_allowed_in_entry restricts row production to the enrolled discovery dirs), so its file-grain disposition is derived by applying the walk's OWN resolution authority — floor_discovery_resolve_entry_live_tree over a real Filesystem.Read of the entry — never a hand-supplied constant (review 50716) and never a second disposition parser."
+data bundle_disposition_note: String = "The bundle entry lives outside witness_discovery_scan_dirs and its home dir is not a test-row home (floor_test_marked_decl_allowed_in_entry restricts row production to the enrolled discovery dirs), so its file-grain disposition is derived by applying the walk's OWN resolution authority — v2.workflow.floor_discovery_producer.floor_discovery_resolve_entry_live_tree over a real Filesystem.Read of the entry — never a hand-supplied constant (review 50716) and never a second disposition parser."
 
 fn live_discovery_state() -> v2.workflow.floor_discovery_producer.FloorDiscoveryWalkState {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: gunbc.ci_layer_roots.witness_discovery_scan_dirs,
-    empty: floor_discovery_walk_state_zero(),
+    empty: v2.workflow.floor_discovery_producer.floor_discovery_walk_state_zero(),
     cons: fn(acc, dir) {
-      floor_discovery_walk_dir(state: acc, dir_path: dir, exclude_substrings: [])
+      v2.workflow.floor_discovery_producer.floor_discovery_walk_dir(state: acc, dir_path: dir, exclude_substrings: [])
     }
   )
 }
@@ -22,7 +22,7 @@ fn plan_entry_disposition(entry: String) -> Optional<v2.std.live_tree.LiveTreeDi
   if !read_out.success {
     Absent
   } else {
-    match floor_discovery_resolve_entry_live_tree(entry_path: entry, content: read_out.content) {
+    match v2.workflow.floor_discovery_producer.floor_discovery_resolve_entry_live_tree(entry_path: entry, content: read_out.content) {
       EntryLiveTreeDispositionRefused { reason: _ } => Absent
       EntryLiveTreeResolved { disposition: d } => Present { value: d }
     }
@@ -30,7 +30,7 @@ fn plan_entry_disposition(entry: String) -> Optional<v2.std.live_tree.LiveTreeDi
 }
 
 fn plan_carries(plan: std.selected_witness_bundle.SelectedWitnessPlan, entry: String, function: String) -> Bool {
-  any(xs: plan.members, predicate: fn(member) {
+  v2.std.algebra.any(xs: plan.members, predicate: fn(member) {
     match member {
       NativeSelected { witness: w, realization: _ } =>
         (w.entry == entry) && (w.function == function)
@@ -48,10 +48,10 @@ fn empty_class_rows() -> List<gunbc.witness_execution_class.WitnessClassRow> {
 }
 
 fn plan_member_rows(plan: std.selected_witness_bundle.SelectedWitnessPlan, state: v2.workflow.floor_discovery_producer.FloorDiscoveryWalkState) -> List<gunbc.witness_execution_class.WitnessClassRow> {
-  fold_list(xs: plan.members, empty: empty_class_rows(), cons: fn(acc, member) {
+  v2.std.algebra.fold_list(xs: plan.members, empty: empty_class_rows(), cons: fn(acc, member) {
     match member {
       NativeSelected { witness: w, realization: _ } =>
-        match plan_carries(plan: plan, entry: w.entry, function: w.function) && any(xs: state.rows, predicate: fn(r) { (r.entry == w.entry) && (r.function == w.function) }) {
+        match plan_carries(plan: plan, entry: w.entry, function: w.function) && v2.std.algebra.any(xs: state.rows, predicate: fn(r) { (r.entry == w.entry) && (r.function == w.function) }) {
           true => acc
           false => concat(acc, [gunbc.witness_execution_class.WitnessClassRow {
             entry: w.entry,
@@ -73,7 +73,7 @@ fn plan_member_rows(plan: std.selected_witness_bundle.SelectedWitnessPlan, state
 }
 
 fn discovery_class_rows(state: v2.workflow.floor_discovery_producer.FloorDiscoveryWalkState, plan: std.selected_witness_bundle.SelectedWitnessPlan) -> List<gunbc.witness_execution_class.WitnessClassRow> {
-  fold_list(xs: state.rows, empty: empty_class_rows(), cons: fn(acc, r) {
+  v2.std.algebra.fold_list(xs: state.rows, empty: empty_class_rows(), cons: fn(acc, r) {
     concat(acc, [gunbc.witness_execution_class.WitnessClassRow {
       entry: r.entry,
       function: r.function,
@@ -101,9 +101,9 @@ test fn witness_live_roster_census_holds() -> Bool {
       Present { value: _ } => false
     }
     && length(xs: state.rows) > 0
-  let plan = selected_logic_primary_plan()
+  let plan = v2.test.execution.native_selected_witness_bundle.selected_logic_primary_plan()
   let rows = concat(discovery_class_rows(state: state, plan: plan), plan_member_rows(plan: plan, state: state))
-  let plan_dispositions_resolved = fold_list(xs: plan.members, empty: true, cons: fn(acc, member) {
+  let plan_dispositions_resolved = v2.std.algebra.fold_list(xs: plan.members, empty: true, cons: fn(acc, member) {
     acc && match member {
       NativeSelected { witness: w, realization: _ } =>
         match plan_entry_disposition(entry: w.entry) {
@@ -113,17 +113,17 @@ test fn witness_live_roster_census_holds() -> Bool {
       InterpreterFrontier { witness: _, cause: _, reason: _, dissolution: _ } => true
     }
   })
-  let carried_rows = fold_list(xs: rows, empty: empty_class_rows(), cons: fn(acc, r) {
+  let carried_rows = v2.std.algebra.fold_list(xs: rows, empty: empty_class_rows(), cons: fn(acc, r) {
     match r.class {
       NativeRequired => concat(acc, [r])
       NativeLiveObservation => concat(acc, [r])
       _ => acc
     }
   })
-  let plan_join = fold_list(xs: plan.members, empty: true, cons: fn(acc, member) {
+  let plan_join = v2.std.algebra.fold_list(xs: plan.members, empty: true, cons: fn(acc, member) {
       acc && match member {
         NativeSelected { witness: w, realization: _ } =>
-          any(xs: carried_rows, predicate: fn(r) { (r.entry == w.entry) && (r.function == w.function) })
+          v2.std.algebra.any(xs: carried_rows, predicate: fn(r) { (r.entry == w.entry) && (r.function == w.function) })
         InterpreterFrontier { witness: _, cause: _, reason: _, dissolution: _ } => true
       }
     })

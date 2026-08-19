@@ -220,7 +220,7 @@ fn host_matches(a: product.placement_supply.HostIdentity, b: product.placement_s
 // prerequisites recorded FOR THE SUBJECT are consulted: another host's absent prerequisite is not
 // evidence about this one, in either direction.
 fn first_absent_prerequisite(subject: product.placement_supply.HostIdentity, prerequisites: List<SparkServingPrerequisite>) -> SparkServingRefusal? {
-  fold_list(xs: prerequisites, empty: no_absent_prerequisite, cons: fn(acc, p) {
+  v2.std.algebra.fold_list(xs: prerequisites, empty: no_absent_prerequisite, cons: fn(acc, p) {
     match acc {
       Present { value: found } => Present { value: found }
       Absent => match p {
@@ -237,7 +237,7 @@ fn first_absent_prerequisite(subject: product.placement_supply.HostIdentity, pre
 // the empty-observation narrow (DESIGN section 5): "nobody recorded a prerequisite for srv5" and
 // "srv5's prerequisites hold" are different states and the first must not actuate.
 fn admits_identity_binding(subject: product.placement_supply.HostIdentity, prerequisites: List<SparkServingPrerequisite>) -> Bool {
-  fold_list(xs: prerequisites, empty: false, cons: fn(acc, p) {
+  v2.std.algebra.fold_list(xs: prerequisites, empty: false, cons: fn(acc, p) {
     match p {
       HostIdentityBindingAdmitted { host: h } => acc || host_matches(a: h, b: subject)
       ManagedHostAccessGrounded { host: _ } => acc
@@ -247,7 +247,7 @@ fn admits_identity_binding(subject: product.placement_supply.HostIdentity, prere
 }
 
 fn admits_managed_access(subject: product.placement_supply.HostIdentity, prerequisites: List<SparkServingPrerequisite>) -> Bool {
-  fold_list(xs: prerequisites, empty: false, cons: fn(acc, p) {
+  v2.std.algebra.fold_list(xs: prerequisites, empty: false, cons: fn(acc, p) {
     match p {
       ManagedHostAccessGrounded { host: h } => acc || host_matches(a: h, b: subject)
       HostIdentityBindingAdmitted { host: _ } => acc

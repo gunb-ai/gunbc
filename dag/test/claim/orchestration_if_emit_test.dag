@@ -12,7 +12,7 @@ fn orch_if_streq_empty_then_intent() -> v2.std.orchestration.PipelineStep {
     cond: v2.std.orchestration.StrEmpty { operand: "\"$1\"" },
     then_: v2.std.orchestration.Pipeline {
       steps: [
-        Do {
+        v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "verdict=absent",
             env: [],
@@ -32,7 +32,7 @@ fn orch_if_streq_empty_then_perturbed_intent() -> v2.std.orchestration.PipelineS
     cond: v2.std.orchestration.StrEmpty { operand: "\"$2\"" },
     then_: v2.std.orchestration.Pipeline {
       steps: [
-        Do {
+        v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "verdict=absent",
             env: [],
@@ -56,7 +56,7 @@ fn orch_if_streq_else_intent() -> v2.std.orchestration.PipelineStep {
     cond: v2.std.orchestration.StrEq { lhs: "\"$1\"", rhs: "\"$2\"" },
     then_: v2.std.orchestration.Pipeline {
       steps: [
-        Do {
+        v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "verdict=converged",
             env: [],
@@ -70,7 +70,7 @@ fn orch_if_streq_else_intent() -> v2.std.orchestration.PipelineStep {
     else_: Present {
       value: v2.std.orchestration.Pipeline {
         steps: [
-          Do {
+          v2.std.orchestration.Do {
             run: v2.std.orchestration.Run {
               command: "verdict=drifted",
               env: [],
@@ -91,7 +91,7 @@ fn orch_if_exit_zero_negated_golden() -> String {
 
 fn orch_if_exit_zero_negated_intent() -> v2.std.orchestration.PipelineStep {
   v2.std.orchestration.If {
-    cond: Not {
+    cond: v2.std.orchestration.Not {
       inner: v2.std.orchestration.ExitZero {
         run: v2.std.orchestration.Run {
           command: "mkdir -p \"$7\"",
@@ -103,7 +103,7 @@ fn orch_if_exit_zero_negated_intent() -> v2.std.orchestration.PipelineStep {
     },
     then_: v2.std.orchestration.Pipeline {
       steps: [
-        Do {
+        v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "echo missing",
             env: [],
@@ -128,13 +128,13 @@ fn orch_if_run_redirect_ignore_fail_intent() -> v2.std.orchestration.PipelineSte
       run: v2.std.orchestration.Run {
         command: "(cd \"$checkout\" && git fetch --prune origin)",
         env: [],
-        redirect: Present { value: DiscardAll },
-        capture: Present { value: IgnoreFail }
+        redirect: Present { value: v2.std.orchestration.DiscardAll },
+        capture: Present { value: v2.std.orchestration.IgnoreFail }
       }
     },
     then_: v2.std.orchestration.Pipeline {
       steps: [
-        Do {
+        v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "echo ok",
             env: [],
@@ -161,7 +161,7 @@ fn orch_if_log_matches_intent() -> v2.std.orchestration.PipelineStep {
     },
     then_: v2.std.orchestration.Pipeline {
       steps: [
-        Do {
+        v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "echo retry",
             env: [],
@@ -188,7 +188,7 @@ fn orch_if_and_tests_intent() -> v2.std.orchestration.PipelineStep {
     },
     then_: v2.std.orchestration.Pipeline {
       steps: [
-        Do {
+        v2.std.orchestration.Do {
           run: v2.std.orchestration.Run {
             command: "pin_ok=1",
             env: [],

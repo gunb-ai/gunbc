@@ -34,7 +34,7 @@ data source_binding_fixture_read: v2.compiler.source_authority.DagSourceReadWitn
     fidelity: Lossless,
   },
   artifact: v2.std.artifact.Artifact {
-    kind: SourceFile,
+    kind: v2.std.artifact.SourceFile,
     id: ^source_binding_fixture_artifact,
     file_path: "dag/test/claim/source_binding_fixture.dag",
   },

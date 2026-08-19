@@ -504,7 +504,7 @@ fn assimilation_input_is_required(
   required: List<AssimilationCompleteInput>,
   wanted: AssimilationCompleteInput,
 ) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: required,
     empty: false,
     cons: fn(acc, r) {
@@ -606,7 +606,7 @@ fn assimilation_complete_first_failure(
   gate: AssimilationCompleteGate,
   required: List<AssimilationCompleteInput>,
 ) -> AssimilationCompleteVerdict? {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: required,
     empty: Absent,
     cons: fn(acc, wanted_input) {
@@ -649,7 +649,7 @@ fn assimilation_complete_all_satisfied(
   match assimilation_gate_roster_refusal(gate: gate, required: required) {
     Present { value: _ } => false
     Absent =>
-      fold_list(
+      v2.std.algebra.fold_list(
         xs: required,
         empty: true,
         cons: fn(acc, wanted_input) {

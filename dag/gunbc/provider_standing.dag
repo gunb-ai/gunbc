@@ -410,25 +410,25 @@ fn first_blocking_native_limit_bucket_for_automatic_draw(
               LimitExhausted { subject: s, native_token: _ } =>
                 match s {
                   ProviderNativeLimitBucket { credential: _, native_key: key } =>
-                    optional_present(value: key)
-                  _ => optional_absent()
+                    v2.std.optional.optional_present(value: key)
+                  _ => v2.std.optional.optional_absent()
                 }
               LimitRateLimited { subject: s, native_token: _ } =>
                 match s {
                   ProviderNativeLimitBucket { credential: _, native_key: key } =>
-                    optional_present(value: key)
-                  _ => optional_absent()
+                    v2.std.optional.optional_present(value: key)
+                  _ => v2.std.optional.optional_absent()
                 }
               LimitUnavailableUntilReset { subject: s, cause: _, reset: _, reason: _ } =>
                 match s {
                   ProviderNativeLimitBucket { credential: _, native_key: key } =>
-                    optional_present(value: key)
-                  _ => optional_absent()
+                    v2.std.optional.optional_present(value: key)
+                  _ => v2.std.optional.optional_absent()
                 }
-              _ => optional_absent()
+              _ => v2.std.optional.optional_absent()
             }
           } else {
-            optional_absent()
+            v2.std.optional.optional_absent()
           }
       }
     },
@@ -448,9 +448,9 @@ fn optional_kind_when_eligible(
   eligible_kinds: List<extdeps.llm.cli_lifecycle.ProviderKind>,
 ) -> extdeps.llm.cli_lifecycle.ProviderKind? {
   if any(eligible_kinds, eligible => eligible == kind) {
-    optional_present(value: kind)
+    v2.std.optional.optional_present(value: kind)
   } else {
-    optional_absent()
+    v2.std.optional.optional_absent()
   }
 }
 

@@ -122,7 +122,7 @@ fn scan_checkout_status_field(acc: CheckoutStatusScan, field: String) -> Checkou
         staged: acc.staged,
         tracked: acc.tracked,
         untracked: if path_is_deployed(path: path) {
-          list_append(acc.untracked, [path])
+          v2.std.algebra.list_append(acc.untracked, [path])
         } else {
           acc.untracked
         },
@@ -131,8 +131,8 @@ fn scan_checkout_status_field(acc: CheckoutStatusScan, field: String) -> Checkou
       }
     } else {
       CheckoutStatusScan {
-        staged: if x != " " { list_append(acc.staged, [path]) } else { acc.staged },
-        tracked: if y != " " { list_append(acc.tracked, [path]) } else { acc.tracked },
+        staged: if x != " " { v2.std.algebra.list_append(acc.staged, [path]) } else { acc.staged },
+        tracked: if y != " " { v2.std.algebra.list_append(acc.tracked, [path]) } else { acc.tracked },
         untracked: acc.untracked,
         expect_rename_source: x == "R" || x == "C",
         malformed: acc.malformed,
@@ -160,7 +160,7 @@ fn scan_ignored_deployed_paths(paths_nul: String) -> List<String> {
     split(s: paths_nul, delimiter: from_code_point(0)),
     init: [],
     f: (acc, path) =>
-      if path != "" && path_is_deployed(path: path) { list_append(acc, [path]) } else { acc },
+      if path != "" && path_is_deployed(path: path) { v2.std.algebra.list_append(acc, [path]) } else { acc },
   )
 }
 

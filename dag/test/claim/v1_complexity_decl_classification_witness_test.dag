@@ -32,14 +32,14 @@ data planted_duplicate_population: List<v2.std.decl_index.DeclFact> = [
     qualified_name: "v1.compiler.complexity.planted_duplicate_control_RED",
     name: "planted_duplicate_control_RED",
     kind: DataItem,
-    node: enforcement_red_probe_body_leaf,
+    node: v2.lens.enforcement.receipts.enforcement_red_probe_body_leaf,
     rel_path: "synthetic/v1_complexity_planted_duplicate_a.dag"
   },
   v2.std.decl_index.DeclFact {
     qualified_name: "v1.compiler.complexity.planted_duplicate_control_RED",
     name: "planted_duplicate_control_RED",
     kind: DataItem,
-    node: enforcement_red_probe_body_leaf,
+    node: v2.lens.enforcement.receipts.enforcement_red_probe_body_leaf,
     rel_path: "synthetic/v1_complexity_planted_duplicate_b.dag"
   },
 ]
@@ -49,14 +49,14 @@ data distinct_control_population: List<v2.std.decl_index.DeclFact> = [
     qualified_name: "v1.compiler.complexity.distinct_control_first",
     name: "distinct_control_first",
     kind: DataItem,
-    node: enforcement_red_probe_body_leaf,
+    node: v2.lens.enforcement.receipts.enforcement_red_probe_body_leaf,
     rel_path: "synthetic/v1_complexity_distinct_a.dag"
   },
   v2.std.decl_index.DeclFact {
     qualified_name: "v1.compiler.complexity.distinct_control_second",
     name: "distinct_control_second",
     kind: DataItem,
-    node: enforcement_red_probe_body_leaf,
+    node: v2.lens.enforcement.receipts.enforcement_red_probe_body_leaf,
     rel_path: "synthetic/v1_complexity_distinct_b.dag"
   },
 ]

@@ -23,7 +23,7 @@ data dimensionless_anchor_qn: String = "extdeps.units.dimensionless.extdeps_exte
 
 test fn decl_facts_reflection_data_ref_with_coproduct_type_is_not_variant_value() -> Bool {
   match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_field_projection(qn: scaffold_with_data_ref_qn, field: "dissolves_to") {
-    Present { value: projection } => value_projection_is_not_variant_value(node: projection)
+    Present { value: projection } => v2.std.data_initializer_identity.value_projection_is_not_variant_value(node: projection)
     Absent => false
   }
 }
@@ -123,11 +123,11 @@ test fn decl_facts_reflection_single_authority_vs_realization_dispatch_distinct(
 test fn decl_facts_reflection_whole_declaration_vs_named_field_field_grain() -> Bool {
   match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_field_projection(qn: whole_declaration_bind_qn, field: "bind") {
     Present { value: whole_bind } =>
-      match record_field_projection_optional(record: whole_bind, label: "field") {
+      match v2.std.data_initializer_identity.record_field_projection_optional(record: whole_bind, label: "field") {
         Present { value: whole_field } =>
           match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_field_projection(qn: scaffold_named_field_bind_qn, field: "bind") {
             Present { value: named_bind } =>
-              match record_field_projection_optional(record: named_bind, label: "field") {
+              match v2.std.data_initializer_identity.record_field_projection_optional(record: named_bind, label: "field") {
                 Present { value: named_field } =>
                   match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_projection_variant_label_optional(node: whole_field) {
                     Present { value: whole } =>
@@ -150,8 +150,8 @@ test fn decl_facts_reflection_whole_declaration_vs_named_field_field_grain() -> 
 test fn decl_facts_reflection_scaffold_dissolves_to_resolves_single_authority() -> Bool {
   match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_field_projection(qn: missing_variant_specimen_qn, field: "dissolves_to") {
     Present { value: projection } =>
-      value_projection_is_resolved_variant(node: projection)
-        && match resolved_variant_name_optional(node: projection) {
+      v2.std.data_initializer_identity.value_projection_is_resolved_variant(node: projection)
+        && match v2.std.data_initializer_identity.resolved_variant_name_optional(node: projection) {
           Present { value: variant } => variant == "SingleAuthority"
           Absent => false
         }
@@ -198,7 +198,7 @@ test fn decl_facts_reflection_explicit_import_does_not_resolve_to_b() -> Bool {
 
 test fn decl_facts_reflection_nullary_mechanism_projection_shape() -> Bool {
   match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_nullary_value_projection(qn: mechanism_single_authority_qn) {
-    Present { value: projection } => value_projection_is_resolved_variant(node: projection)
+    Present { value: projection } => v2.std.data_initializer_identity.value_projection_is_resolved_variant(node: projection)
     Absent => false
   }
 }
@@ -211,17 +211,17 @@ test fn decl_fact_lookup_duplicate_qualified_identity_returns_ambiguous_both_can
 
 test fn decl_facts_reflection_unimported_globally_unique_refuses_constructor_resolution() -> Bool {
   match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_fact_node(qn: unimported_globally_unique_specimen_qn) {
-    Present { value: node } => data_initializer_is_constructor_resolution_refused_projection(node: node)
+    Present { value: node } => v2.std.data_initializer_identity.data_initializer_is_constructor_resolution_refused_projection(node: node)
     Absent => false
   }
 }
 
 test fn decl_facts_reflection_lookup_missing_vs_present_fact_distinct() -> Bool {
   let bogus_qn: String = "test.fixture.decl_facts_reflection.specimens.nonexistent_data_row"
-  decl_fact_lookup_is_missing(lookup: test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_lookup(qn: bogus_qn))
+  v2.std.data_initializer_identity.decl_fact_lookup_is_missing(lookup: test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_lookup(qn: bogus_qn))
     && match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_fact_node(qn: missing_variant_specimen_qn) {
       Present { value: node } =>
-        !data_initializer_is_typechecked_subject_absent_projection(node: node)
+        !v2.std.data_initializer_identity.data_initializer_is_typechecked_subject_absent_projection(node: node)
       Absent => false
     }
 }
@@ -229,11 +229,11 @@ test fn decl_facts_reflection_lookup_missing_vs_present_fact_distinct() -> Bool 
 test fn decl_facts_reflection_refused_vs_not_variant_value_projections_distinct() -> Bool {
   match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_fact_node(qn: unimported_globally_unique_specimen_qn) {
     Present { value: refused_node } =>
-      if data_initializer_is_constructor_resolution_refused_projection(node: refused_node) {
+      if v2.std.data_initializer_identity.data_initializer_is_constructor_resolution_refused_projection(node: refused_node) {
         match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_field_projection(qn: scaffold_with_data_ref_qn, field: "dissolves_to") {
           Present { value: not_variant_projection } =>
-            value_projection_is_not_variant_value(node: not_variant_projection)
-              && !data_initializer_is_typechecked_subject_absent_projection(node: refused_node)
+            v2.std.data_initializer_identity.value_projection_is_not_variant_value(node: not_variant_projection)
+              && !v2.std.data_initializer_identity.data_initializer_is_typechecked_subject_absent_projection(node: refused_node)
           Absent => false
         }
       } else {

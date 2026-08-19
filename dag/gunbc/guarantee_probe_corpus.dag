@@ -225,7 +225,7 @@ fn synthetic_program_harness_revision_from_digest(probe: gunbc.guarantee_measure
 }
 
 fn infer_eval_node_structural_hash(node: Node) -> std.content_hash.Fnv1a64Structural {
-  structural_content_hash(digest: content_hash(n: node).digest as std.content_hash.Fnv1a64StructuralDigestHex)
+  structural_content_hash(digest: v2.std.node.content_hash(n: node).digest as std.content_hash.Fnv1a64StructuralDigestHex)
 }
 
 fn synthetic_infer_eval_subject_revision_from_node(node: Node) -> gunbc.guarantee_measurement.MeasurementRevision {
@@ -542,7 +542,7 @@ fn probe_ids_are_lexicographically_ordered(ids: List<gunbc.guarantee_measurement
 
 fn non_empty_diagnostics_count_reason(nes: v2.std.diagnostic.NonEmptyDiagnostics, reason: v2.std.node.Symbol) -> std.nat.Nat {
   let head_count = if nes.head.reason == reason { 1 } else { 0 }
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: nes.tail,
     empty: head_count,
     cons: fn(acc, d) {

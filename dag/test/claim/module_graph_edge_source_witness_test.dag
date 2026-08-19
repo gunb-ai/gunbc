@@ -1,7 +1,7 @@
 module test.claim.module_graph_edge_source_witness
 
 
-data witness_subject_note: String = "THE EDGE SOURCE IS A UNION OF TWO PRODUCERS, AND UNTIL NOW NOTHING EXECUTED THAT. dependency_resolution_facts_live unions explicit-import facts with reference-derived facts, and the two producers share a signature — so a call site that passed the SAME producer into both arms kept compiling, kept returning well-formed edges, and silently dropped every dependency that only a bare reference establishes. That is exactly what happened during this lane's homonym rename (review 50749); the compiler could not see it and no witness covered the seam.
+data witness_subject_note: String = "THE EDGE SOURCE IS A UNION OF TWO PRODUCERS, AND UNTIL NOW NOTHING EXECUTED THAT. v2.lens.module_graph.dependency_resolution_facts_live unions explicit-import facts with reference-derived facts, and the two producers share a signature — so a call site that passed the SAME producer into both arms kept compiling, kept returning well-formed edges, and silently dropped every dependency that only a bare reference establishes. That is exactly what happened during this lane's homonym rename (review 50749); the compiler could not see it and no witness covered the seam.
 
 WHY A FIXTURE TREE RATHER THAN HAND-BUILT LISTS. A unit test of union_import_resolution_fact_lists proves the fold and leaves the defect untouched, because the defect is in WHICH PRODUCERS the production function calls — the fold receives whatever it is handed. So this points the production function itself at a four-module fixture: consumer imports provider_imported and provider_shared explicitly, and reaches provider_referenced ONLY through a qualified container.member reference with no import. The union is then asserted at identity grain in both directions — every expected edge present, and no surplus target — so a missing arm reds on the reference-only edge and a doubled arm reds on the surplus.
 
@@ -15,7 +15,7 @@ data imported_provider: String = "test.fixture.module_graph_edge_source.provider
 data referenced_provider: String = "test.fixture.module_graph_edge_source.provider_referenced"
 
 fn fixture_edges() -> List<v2.lens.module_graph.ModuleDependencyEdge> {
-  dependency_resolution_facts_live(
+  v2.lens.module_graph.dependency_resolution_facts_live(
     pool_roots: fixture_roots,
     importer_roots: fixture_roots,
     exclude_substrings: fixture_exclude
@@ -23,7 +23,7 @@ fn fixture_edges() -> List<v2.lens.module_graph.ModuleDependencyEdge> {
 }
 
 fn fixture_import_facts() -> List<v2.lens.module_graph.ImportResolutionFact> {
-  import_resolution_facts_live(
+  v2.lens.module_graph.import_resolution_facts_live(
     pool_roots: fixture_roots,
     importer_roots: fixture_roots,
     exclude_substrings: fixture_exclude
@@ -31,7 +31,7 @@ fn fixture_import_facts() -> List<v2.lens.module_graph.ImportResolutionFact> {
 }
 
 fn fixture_reference_facts() -> List<v2.lens.module_graph.ImportResolutionFact> {
-  reference_derived_import_resolution_facts_live(
+  v2.lens.module_graph.reference_derived_import_resolution_facts_live(
     pool_roots: fixture_roots,
     importer_roots: fixture_roots,
     exclude_substrings: fixture_exclude

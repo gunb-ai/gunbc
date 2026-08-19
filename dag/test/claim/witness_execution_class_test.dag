@@ -1,14 +1,14 @@
 module gunbc.test.claim.witness_execution_class_test
 
 
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 fn pure_disposition() -> Optional<v2.std.live_tree.LiveTreeDisposition> {
-  Present { value: SubstrateInputsOnly }
+  Present { value: v2.std.live_tree.SubstrateInputsOnly }
 }
 
 fn live_disposition() -> Optional<v2.std.live_tree.LiveTreeDisposition> {
-  Present { value: ReadsLiveTree }
+  Present { value: v2.std.live_tree.ReadsLiveTree }
 }
 
 test fn witness_classifier_precedence_effect_then_interpreter_subject() -> Bool {

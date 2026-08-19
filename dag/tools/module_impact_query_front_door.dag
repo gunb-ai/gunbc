@@ -27,11 +27,11 @@ data front_door_admissions: List<gunbc.namespace_reference_derived_closure_admis
 ]
 
 fn front_door_nodes() -> List<v2.lens.module_graph.ModuleDeclarationFact> {
-  module_declaration_facts_live(pool_roots: front_door_pool_roots)
+  v2.lens.module_graph.module_declaration_facts_live(pool_roots: front_door_pool_roots)
 }
 
 fn front_door_edges() -> List<v2.lens.module_graph.ModuleDependencyEdge> {
-  dependency_resolution_facts_live(
+  v2.lens.module_graph.dependency_resolution_facts_live(
     pool_roots: front_door_pool_roots,
     importer_roots: front_door_importer_roots,
     exclude_substrings: front_door_exclude_substrings
@@ -39,7 +39,7 @@ fn front_door_edges() -> List<v2.lens.module_graph.ModuleDependencyEdge> {
 }
 
 fn front_door_import_facts() -> List<v2.lens.module_graph.ImportResolutionFact> {
-  import_resolution_facts_live(
+  v2.lens.module_graph.import_resolution_facts_live(
     pool_roots: front_door_pool_roots,
     importer_roots: front_door_importer_roots,
     exclude_substrings: front_door_exclude_substrings
@@ -47,9 +47,9 @@ fn front_door_import_facts() -> List<v2.lens.module_graph.ImportResolutionFact> 
 }
 
 fn dependents_of_module(module_name: String) -> v2.lens.module_impact_query.ImpactReading {
-  module_impact_reading(
+  v2.lens.module_impact_query.module_impact_reading(
     seeds: [v2.lens.module_impact_query.ModuleIdentity { name: module_name }],
-    direction: DependentsOf,
+    direction: v2.lens.module_impact_query.DependentsOf,
     edges: front_door_edges(),
     nodes: front_door_nodes(),
     import_facts: front_door_import_facts(),
@@ -58,9 +58,9 @@ fn dependents_of_module(module_name: String) -> v2.lens.module_impact_query.Impa
 }
 
 fn dependencies_of_module(module_name: String) -> v2.lens.module_impact_query.ImpactReading {
-  module_impact_reading(
+  v2.lens.module_impact_query.module_impact_reading(
     seeds: [v2.lens.module_impact_query.ModuleIdentity { name: module_name }],
-    direction: DependenciesOf,
+    direction: v2.lens.module_impact_query.DependenciesOf,
     edges: front_door_edges(),
     nodes: front_door_nodes(),
     import_facts: front_door_import_facts(),
@@ -69,9 +69,9 @@ fn dependencies_of_module(module_name: String) -> v2.lens.module_impact_query.Im
 }
 
 fn dependents_of_path(path: String) -> v2.lens.module_impact_query.ImpactReading {
-  module_impact_reading(
-    seeds: impact_seeds_for_path(nodes: front_door_nodes(), path: path),
-    direction: DependentsOf,
+  v2.lens.module_impact_query.module_impact_reading(
+    seeds: v2.lens.module_impact_query.impact_seeds_for_path(nodes: front_door_nodes(), path: path),
+    direction: v2.lens.module_impact_query.DependentsOf,
     edges: front_door_edges(),
     nodes: front_door_nodes(),
     import_facts: front_door_import_facts(),
@@ -108,7 +108,7 @@ fn render_cycle(cycle: v2.lens.module_impact_query.ImpactCycle) -> String {
 }
 
 fn render_modules(modules: List<v2.lens.module_impact_query.ModuleIdentity>) -> String {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: modules,
     empty: "",
     cons: fn(acc, m) {
@@ -122,7 +122,7 @@ fn render_modules(modules: List<v2.lens.module_impact_query.ModuleIdentity>) -> 
 }
 
 fn render_lines(lines: List<String>) -> String {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: lines,
     empty: "",
     cons: fn(acc, line) {
@@ -140,23 +140,23 @@ fn render_reading(
   reading: v2.lens.module_impact_query.ImpactReading,
   nodes: List<v2.lens.module_graph.ModuleDeclarationFact>
 ) -> String {
-  let reached_lines = list_reverse(xs: fold_list(
+  let reached_lines = v2.std.algebra.list_reverse(xs: v2.std.algebra.fold_list(
     xs: reading.reached,
     empty: no_lines,
     cons: fn(acc, m) {
       std.algebra.Cons {
-        head: "    {m.name}   [{render_modules_paths(paths: impact_paths_for_module(nodes: nodes, module_id: m))}]",
+        head: "    {m.name}   [{render_modules_paths(paths: v2.lens.module_impact_query.impact_paths_for_module(nodes: nodes, module_id: m))}]",
         tail: acc
       }
     }
   ))
-  let cause_lines = list_reverse(xs: fold_list(
+  let cause_lines = v2.std.algebra.list_reverse(xs: v2.std.algebra.fold_list(
     xs: reading.causes,
     empty: no_lines,
     cons: fn(acc, c) { std.algebra.Cons { head: render_cause(cause: c), tail: acc } }
   ))
-  let analysis = module_cycle_analysis(reading: reading)
-  let cycle_lines = list_reverse(xs: fold_list(
+  let analysis = v2.lens.module_impact_query.module_cycle_analysis(reading: reading)
+  let cycle_lines = v2.std.algebra.list_reverse(xs: v2.std.algebra.fold_list(
     xs: analysis.cycles,
     empty: no_lines,
     cons: fn(acc, c) { std.algebra.Cons { head: render_cycle(cycle: c), tail: acc } }
@@ -174,7 +174,7 @@ fn render_reading(
 }
 
 fn render_modules_paths(paths: List<String>) -> String {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: paths,
     empty: "",
     cons: fn(acc, p) {
@@ -188,7 +188,7 @@ fn render_modules_paths(paths: List<String>) -> String {
 }
 
 fn count_text<T>(xs: List<T>) -> String {
-  fold_list(xs: xs, empty: 0, cons: fn(acc, _) { acc + 1 }) as String
+  v2.std.algebra.fold_list(xs: xs, empty: 0, cons: fn(acc, _) { acc + 1 }) as String
 }
 
 data front_door_default_subject: String = "v2.lens.module_graph"
@@ -254,10 +254,10 @@ fn render_outcome(outcome: v2.lens.module_impact_query.ChangedSurfaceImpactOutco
       render_lines(lines: [
         "change impact — outcome: COMPLETE",
         "  standing: {render_standing(reading: reading)}",
-        "  skip authority: {render_skip_authority(authority: changed_surface_skip_authority(outcome: outcome))}",
-        "  may be affected — DependentsOf ({count_text(xs: reading.reached)} module(s))",
+        "  skip authority: {render_skip_authority(authority: v2.lens.module_impact_query.changed_surface_skip_authority(outcome: outcome))}",
+        "  may be affected — v2.lens.module_impact_query.DependentsOf ({count_text(xs: reading.reached)} module(s))",
         "  causes ({count_text(xs: reading.causes)}):",
-        render_lines(lines: list_reverse(xs: fold_list(
+        render_lines(lines: v2.std.algebra.list_reverse(xs: v2.std.algebra.fold_list(
           xs: reading.causes,
           empty: no_lines,
           cons: fn(acc, c) { std.algebra.Cons { head: render_cause(cause: c), tail: acc } }
@@ -267,16 +267,16 @@ fn render_outcome(outcome: v2.lens.module_impact_query.ChangedSurfaceImpactOutco
       render_lines(lines: [
         "change impact — outcome: PARTIAL (the answer is NOT whole; unresolved subjects below)",
         "  standing: {render_standing(reading: reading)}",
-        "  skip authority: {render_skip_authority(authority: changed_surface_skip_authority(outcome: outcome))}",
-        "  may be affected — DependentsOf ({count_text(xs: reading.reached)} module(s))",
+        "  skip authority: {render_skip_authority(authority: v2.lens.module_impact_query.changed_surface_skip_authority(outcome: outcome))}",
+        "  may be affected — v2.lens.module_impact_query.DependentsOf ({count_text(xs: reading.reached)} module(s))",
         "  unresolved subjects ({count_text(xs: unresolved_subjects)}):",
-        render_lines(lines: list_reverse(xs: fold_list(
+        render_lines(lines: v2.std.algebra.list_reverse(xs: v2.std.algebra.fold_list(
           xs: unresolved_subjects,
           empty: no_lines,
           cons: fn(acc, u) { std.algebra.Cons { head: render_unresolved_subject(subject: u), tail: acc } }
         ))),
         "  causes ({count_text(xs: reading.causes)}):",
-        render_lines(lines: list_reverse(xs: fold_list(
+        render_lines(lines: v2.std.algebra.list_reverse(xs: v2.std.algebra.fold_list(
           xs: reading.causes,
           empty: no_lines,
           cons: fn(acc, c) { std.algebra.Cons { head: render_cause(cause: c), tail: acc } }
@@ -286,10 +286,10 @@ fn render_outcome(outcome: v2.lens.module_impact_query.ChangedSurfaceImpactOutco
 }
 
 fn front_door_changed_surface_outcome() -> v2.lens.module_impact_query.ChangedSurfaceImpactOutcome {
-  match floor_observe_git_diff_name_status_for_ci() {
+  match v2.workflow.floor_diff_observe.floor_observe_git_diff_name_status_for_ci() {
     NameStatusDiffFail { reason } => v2.lens.module_impact_query.ChangedSurfaceRefused { reason: reason }
     NameStatusDiffOk { changed_paths, departed_paths } =>
-      changed_surface_impact_outcome(
+      v2.lens.module_impact_query.changed_surface_impact_outcome(
         changed_paths: changed_paths,
         departed_paths: departed_paths,
         edges: front_door_edges(),

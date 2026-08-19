@@ -44,7 +44,7 @@ fn cli_tool_for_enrollment_requirement(requirement: HostCliEnrollmentRequirement
 }
 
 fn first_absent_codex_wet_materialization_host_cli_dependency() -> HostCliDependencyAbsent? {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: codex_wet_materialization_host_cli_requirements,
     empty: none,
     cons: fn(acc, requirement) {
@@ -82,8 +82,8 @@ fn host_cli_dependency_failure_receipt(
   observation: HostCliDependencyObservation,
 ) -> Optional<String> {
   match observation {
-    HostCliDependencyPresent => optional_absent()
+    HostCliDependencyPresent => v2.std.optional.optional_absent()
     HostCliDependencyAbsent { tool, hint } =>
-      optional_present(value: host_dependency_absent_wire(tool: tool, hint: hint))
+      v2.std.optional.optional_present(value: host_dependency_absent_wire(tool: tool, hint: hint))
   }
 }

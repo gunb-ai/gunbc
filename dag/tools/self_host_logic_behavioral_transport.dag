@@ -147,7 +147,7 @@ fn slb_comparison_observation() -> v2.compiler.self_host.promotion_admission.Beh
     v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_comparison_population_unreported }
   } else if pass_run.success
     && string_contains(s: pass_run.stdout, pattern: slb_receipt_pass_marker) {
-    v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+    v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
   } else if string_contains(s: pass_run.stdout, pattern: slb_receipt_fail_marker) {
     v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorDiverges { at_case: pass_run.stdout } }
   } else {
@@ -162,7 +162,7 @@ fn slb_comparison_observation() -> v2.compiler.self_host.promotion_admission.Beh
     }
   } else if string_contains(s: fault_run.stdout, pattern: slb_cases_marker())
     && string_contains(s: fault_run.stdout, pattern: slb_receipt_fail_marker) {
-    v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+    v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
   } else {
     v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_fault_run_unreported }
   }
@@ -191,11 +191,11 @@ fn slb_behavioral_receipt_holds() -> Bool {
           match o.equivalence {
             Observed { value: e } =>
               match e {
-                BehaviorAgrees =>
+                v2.compiler.self_host.promotion_admission.BehaviorAgrees =>
                   match o.fault {
                     Observed { value: f } =>
                       match f {
-                        FaultCaught => true
+                        v2.compiler.self_host.promotion_admission.FaultCaught => true
                         FaultNotCaught { at_case: _ } => false
                       }
                     ObservationUnavailable { cause: _ } => false

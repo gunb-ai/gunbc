@@ -10,7 +10,7 @@ fn census_of(source: String) -> gunbc.compile_diagnostic_census.CompileDiagnosti
 }
 
 fn measured_harness_source_material(paths: List<String>) -> std.types.NonEmptyStr {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: paths,
     empty: "guarantee-probe-harness-source" as std.types.NonEmptyStr,
     cons: fn(acc, path) {

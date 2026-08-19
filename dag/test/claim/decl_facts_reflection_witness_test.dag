@@ -1,7 +1,7 @@
 module test.claim.decl_facts_reflection_witness_test
 
 
-data decl_facts_reflection_witness_note: String = "Step-1 prerequisite (#7796), PARTIAL: outer record-constructor SPELLING (OuterRecordConstructorLexeme) is reflected and tested via executing witnesses. Nullary variant VALUE parent/arm identity is exercised through decl_facts() on the lookup_fn_node marshal seam (w_nullary_variant_value_absent_without_infer_stamping_top_level, w_nullary_variant_value_absent_without_infer_stamping_nested, and decl_facts_initializer_projection_witness_test explicit-import rows). Exact parent-variant occurrence identity remains open — see decl_facts_nullary_variant_value_identity_gap_note. Rust tests in v1-compiler-tests are developer convenience only (compile-only in CI; nextest retired 2026-07-11)."
+data decl_facts_reflection_witness_note: String = "Step-1 prerequisite (#7796), PARTIAL: outer record-constructor SPELLING (OuterRecordConstructorLexeme) is reflected and tested via executing witnesses. Nullary variant VALUE parent/arm identity is exercised through decl_facts() on the lookup_fn_node marshal seam (w_nullary_variant_value_absent_without_infer_stamping_top_level, w_nullary_variant_value_absent_without_infer_stamping_nested, and decl_facts_initializer_projection_witness_test explicit-import rows). Exact parent-variant occurrence identity remains open — see v2.std.decl_facts_skeleton.decl_facts_nullary_variant_value_identity_gap_note. Rust tests in v1-compiler-tests are developer convenience only (compile-only in CI; nextest retired 2026-07-11)."
 
 data qn_planted_scaffold_specimen: String = "test.fixture.decl_facts_reflection.specimens.planted_scaffold_specimen"
 data qn_planted_terminal_specimen: String = "test.fixture.decl_facts_reflection.specimens.planted_terminal_specimen"
@@ -43,10 +43,10 @@ test fn w_plain_int_specimen_has_no_coproduct_constructor_lexemes() -> Bool {
     qn: qn_planted_plain_int_specimen
   ) {
     Present { value: skeleton } =>
-      !skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "Scaffold")
-        && !skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "Terminal")
-        && !skeleton_contains_marshal_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
-        && !skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "DeclarationRef")
+      !v2.std.decl_facts_skeleton.skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "Scaffold")
+        && !v2.std.decl_facts_skeleton.skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "Terminal")
+        && !v2.std.decl_facts_skeleton.skeleton_contains_marshal_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
+        && !v2.std.decl_facts_skeleton.skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "DeclarationRef")
     Absent => false
   }
 }
@@ -54,7 +54,7 @@ test fn w_plain_int_specimen_has_no_coproduct_constructor_lexemes() -> Bool {
 test fn w_nullary_variant_value_absent_without_infer_stamping_top_level() -> Bool {
   match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_nullary_value_projection(qn: qn_planted_nullary_disposition_specimen) {
     Present { value: projection } =>
-      value_projection_is_resolved_variant(node: projection)
+      v2.std.data_initializer_identity.value_projection_is_resolved_variant(node: projection)
         && match test.claim.decl_facts_reflection_witness_support.decl_facts_reflection_resolved_nullary_variant_name(
           qn: qn_planted_nullary_disposition_specimen
         ) {
@@ -71,8 +71,8 @@ test fn w_nullary_variant_value_absent_without_infer_stamping_nested() -> Bool {
     field: "dissolves_to"
   ) {
     Present { value: projection } =>
-      value_projection_is_resolved_variant(node: projection)
-        && match resolved_variant_name_optional(node: projection) {
+      v2.std.data_initializer_identity.value_projection_is_resolved_variant(node: projection)
+        && match v2.std.data_initializer_identity.resolved_variant_name_optional(node: projection) {
           Present { value: v } => v == "SingleAuthority"
           Absent => false
         }
@@ -86,9 +86,9 @@ test fn w_fn_body_param_reference_does_not_gain_constructor_lexemes() -> Bool {
     qn: qn_uses_param_only
   ) {
     Present { value: skeleton } =>
-      !skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "Scaffold")
-        && !skeleton_contains_marshal_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
-        && !skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "DeclarationRef")
+      !v2.std.decl_facts_skeleton.skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "Scaffold")
+        && !v2.std.decl_facts_skeleton.skeleton_contains_marshal_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
+        && !v2.std.decl_facts_skeleton.skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "DeclarationRef")
     Absent => false
   }
 }
@@ -99,29 +99,29 @@ test fn w_fn_body_local_bindings_do_not_gain_constructor_lexemes() -> Bool {
     qn: qn_uses_local
   ) {
     Present { value: skeleton } =>
-      !skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "Scaffold")
-        && !skeleton_contains_marshal_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
-        && !skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "DeclarationRef")
+      !v2.std.decl_facts_skeleton.skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "Scaffold")
+        && !v2.std.decl_facts_skeleton.skeleton_contains_marshal_atom_lexeme(node: skeleton, lexeme: "SingleAuthority")
+        && !v2.std.decl_facts_skeleton.skeleton_contains_outer_record_constructor_lexeme(node: skeleton, lexeme: "DeclarationRef")
     Absent => false
   }
 }
 
 test fn w_gap_note_names_infer_binding_kind_authority() -> Bool {
   string_contains(
-    s: decl_facts_nullary_variant_value_identity_gap_note,
+    s: v2.std.decl_facts_skeleton.decl_facts_nullary_variant_value_identity_gap_note,
     pattern: "VariantValueBinding",
   ) && string_contains(
-    s: decl_facts_nullary_variant_value_identity_gap_note,
+    s: v2.std.decl_facts_skeleton.decl_facts_nullary_variant_value_identity_gap_note,
     pattern: "marshal_data_initializer_projection",
   )
 }
 
 test fn w_authority_note_names_constructor_lexeme_not_variant_identity() -> Bool {
   string_contains(
-    s: decl_facts_outer_record_constructor_lexeme_authority_note,
+    s: v2.std.decl_facts_skeleton.decl_facts_outer_record_constructor_lexeme_authority_note,
     pattern: "OuterRecordConstructorLexeme",
   ) && string_contains(
-    s: decl_facts_outer_record_constructor_lexeme_authority_note,
+    s: v2.std.decl_facts_skeleton.decl_facts_outer_record_constructor_lexeme_authority_note,
     pattern: "not variant identity",
   )
 }

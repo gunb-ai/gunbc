@@ -15,7 +15,7 @@ fn pa_artifact(hex: String) -> v2.compiler.self_host.generation.GeneratedArtifac
   match sha512_hex_digest(hex: hex) {
     Present { value: d } =>
       v2.compiler.self_host.generation.ArtifactMaterialized { digest: v2.compiler.self_host.generation.observed_artifact_digest(observed: d) }
-    Absent => ArtifactNotMaterialized
+    Absent => v2.compiler.self_host.generation.ArtifactNotMaterialized
   }
 }
 
@@ -210,16 +210,16 @@ fn pa_good() -> v2.compiler.self_host.promotion_admission.SelfHostCandidate {
     candidate_equivalence: pa_equivalence(
       subject: pa_candidate_identity(),
       cases: pa_corpus_cases,
-      outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+      outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
     ),
     successor_equivalence: pa_equivalence(
       subject: pa_successor_identity(),
       cases: pa_corpus_cases,
-      outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+      outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
     ),
     discriminating_fault: pa_fault(
       subject: pa_candidate_identity(),
-      outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+      outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
     ),
     candidate_provenance: pa_provenance(
       subject: pa_candidate_identity(),
@@ -238,7 +238,7 @@ fn pa_good() -> v2.compiler.self_host.promotion_admission.SelfHostCandidate {
 // fixed-point authority this exact candidate would have been REFUSED for the sole
 // reason that its emitted source bytes were not the seed's.
 test fn source_different_but_behaviorally_equivalent_is_promoted() -> Bool {
-  pa_admitted(o: admit_promotion(c: pa_good()))
+  pa_admitted(o: v2.compiler.self_host.promotion_admission.admit_promotion(c: pa_good()))
 }
 
 // THE OTHER HALF, and the one that matters more. Every identity axis here is
@@ -248,7 +248,7 @@ test fn source_different_but_behaviorally_equivalent_is_promoted() -> Bool {
 test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
   let ident = pa_identical_identity()
   let cand = pa_identical_candidate()
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: v2.compiler.self_host.promotion_admission.SelfHostCandidate {
       candidate: cand,
       successor: v2.compiler.self_host.generation.SuccessorGeneration {
@@ -262,7 +262,7 @@ test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
         oracle: ident,
         corpus: pa_corpus(expected: pa_corpus_cases),
         cases_compared: pa_corpus_cases,
-        outcome: Observed {
+        outcome: v2.compiler.self_host.promotion_admission.Observed {
           value: v2.compiler.self_host.promotion_admission.BehaviorDiverges { at_case: "classical_and(True,False)" }
         }
       },
@@ -271,25 +271,25 @@ test fn byte_identical_but_behaviorally_wrong_is_refused() -> Bool {
         oracle: ident,
         corpus: pa_corpus(expected: pa_corpus_cases),
         cases_compared: pa_corpus_cases,
-        outcome: Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       },
       discriminating_fault: pa_fault(
         subject: ident,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
       ),
       candidate_provenance: pa_provenance(subject: ident, producer: ident),
       successor_provenance: pa_provenance(subject: ident, producer: ident)
     }
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(o: o, cause: ^refusal_behavior_diverged_from_oracle)
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(o: o, cause: ^refusal_behavior_diverged_from_oracle)
 }
 
 // A corpus that never proved it could fail admits nothing. Without this arm the
 // equivalence receipt is satisfiable by a corpus that agrees because it cannot
 // disagree.
 test fn uncaught_planted_fault_is_refused() -> Bool {
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
@@ -302,12 +302,12 @@ test fn uncaught_planted_fault_is_refused() -> Bool {
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
@@ -326,7 +326,7 @@ test fn uncaught_planted_fault_is_refused() -> Bool {
     )
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(o: o, cause: ^refusal_discriminating_fault_not_caught)
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(o: o, cause: ^refusal_discriminating_fault_not_caught)
 }
 
 // THE UNAVAILABLE-IS-NOT-EQUIVALENT CONTROL. The fault run could not be observed at
@@ -334,7 +334,7 @@ test fn uncaught_planted_fault_is_refused() -> Bool {
 // not be silently treated as either. Refusal names the unavailability so the deficit
 // stays countable rather than being absorbed into a green.
 test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Bool {
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
@@ -347,12 +347,12 @@ test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Boo
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
@@ -369,7 +369,7 @@ test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Boo
     )
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(
       o: o,
       cause: ^refusal_receipt_observation_unavailable
     )
@@ -377,7 +377,7 @@ test fn unavailable_fault_observation_is_refused_not_assumed_equivalent() -> Boo
 
 // Agreement over zero cases is agreement over nothing.
 test fn empty_behavioral_corpus_is_refused() -> Bool {
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
@@ -391,18 +391,18 @@ test fn empty_behavioral_corpus_is_refused() -> Bool {
         subject: pa_candidate_identity(),
         corpus: pa_corpus(expected: 0),
         cases: 0,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence_on(
         subject: pa_successor_identity(),
         corpus: pa_corpus(expected: 0),
         cases: 0,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       discriminating_fault: pa_fault_on(
         subject: pa_candidate_identity(),
         corpus: pa_corpus(expected: 0),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -415,7 +415,7 @@ test fn empty_behavioral_corpus_is_refused() -> Bool {
     )
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(o: o, cause: ^refusal_empty_behavioral_corpus)
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(o: o, cause: ^refusal_empty_behavioral_corpus)
 }
 
 // A receipt gathered under a DIFFERENT toolchain refuses as stale. This is the axis
@@ -430,7 +430,7 @@ test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> Bool {
     build_configuration: pa_candidate_identity().build_configuration,
     materialized_artifact: pa_candidate_identity().materialized_artifact
   }
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
@@ -443,16 +443,16 @@ test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> Bool {
       candidate_equivalence: pa_equivalence(
         subject: stale_subject,
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -465,14 +465,14 @@ test fn receipt_from_a_different_toolchain_is_refused_as_stale() -> Bool {
     )
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(o: o, cause: ^refusal_stale_receipt_subject)
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(o: o, cause: ^refusal_stale_receipt_subject)
 }
 
 // A build that failed is not a build. Stated separately from behavioral divergence
 // because a candidate that does not compile and one that compiles and misbehaves are
 // different states with different remedies.
 test fn failed_successor_build_is_refused() -> Bool {
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
@@ -485,16 +485,16 @@ test fn failed_successor_build_is_refused() -> Bool {
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -507,7 +507,7 @@ test fn failed_successor_build_is_refused() -> Bool {
     )
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(o: o, cause: ^refusal_build_not_green)
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(o: o, cause: ^refusal_build_not_green)
 }
 
 // THE SELF-AUTHORIZATION CONTROL. A provenance receipt claiming the candidate
@@ -515,7 +515,7 @@ test fn failed_successor_build_is_refused() -> Bool {
 // fixed by construction when the generation was built, not against whatever the
 // receipt asserts.
 test fn candidate_cannot_authorize_its_own_provenance() -> Bool {
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
@@ -528,16 +528,16 @@ test fn candidate_cannot_authorize_its_own_provenance() -> Bool {
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -550,7 +550,7 @@ test fn candidate_cannot_authorize_its_own_provenance() -> Bool {
     )
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(
       o: o,
       cause: ^refusal_provenance_not_declared_producer
     )
@@ -565,9 +565,9 @@ test fn candidate_as_its_own_oracle_is_refused() -> Bool {
     oracle: pa_candidate_identity(),
     corpus: pa_corpus(expected: pa_corpus_cases),
     cases_compared: pa_corpus_cases,
-    outcome: Observed { value: BehaviorAgrees }
+    outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
   }
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
@@ -581,11 +581,11 @@ test fn candidate_as_its_own_oracle_is_refused() -> Bool {
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -598,7 +598,7 @@ test fn candidate_as_its_own_oracle_is_refused() -> Bool {
     )
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(o: o, cause: ^refusal_oracle_not_declared_seed)
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(o: o, cause: ^refusal_oracle_not_declared_seed)
 }
 
 // DISCRIMINATING RED for the unmaterialized-artifact arm at the PROMOTION seam
@@ -612,13 +612,13 @@ test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
     target_model: pa_candidate_identity().target_model,
     toolchain: pa_candidate_identity().toolchain,
     build_configuration: pa_candidate_identity().build_configuration,
-    materialized_artifact: ArtifactNotMaterialized
+    materialized_artifact: v2.compiler.self_host.generation.ArtifactNotMaterialized
   }
   let unbuilt_candidate = v2.compiler.self_host.generation.CandidateGeneration {
     identity: unbuilt_identity,
     produced_by_seed: pa_seed()
   }
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: v2.compiler.self_host.promotion_admission.SelfHostCandidate {
       candidate: unbuilt_candidate,
       successor: v2.compiler.self_host.generation.SuccessorGeneration {
@@ -636,16 +636,16 @@ test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
       candidate_equivalence: pa_equivalence(
         subject: unbuilt_identity,
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: unbuilt_identity,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: unbuilt_identity,
@@ -658,7 +658,7 @@ test fn unmaterialized_candidate_artifact_is_refused_at_promotion() -> Bool {
     }
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(o: o, cause: ^refusal_artifact_not_materialized)
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(o: o, cause: ^refusal_artifact_not_materialized)
 }
 
 // DISCRIMINATING RED: chain splicing. Candidate A is bundled with a successor whose
@@ -677,7 +677,7 @@ test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
     identity: pa_successor_identity(),
     produced_by_candidate: other_candidate
   }
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: v2.compiler.self_host.promotion_admission.SelfHostCandidate {
       candidate: pa_candidate(),
       successor: spliced_successor,
@@ -692,16 +692,16 @@ test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -714,7 +714,7 @@ test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
     }
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(
       o: o,
       cause: ^refusal_successor_not_produced_by_candidate
     )
@@ -724,7 +724,7 @@ test fn spliced_candidate_and_successor_chains_are_refused() -> Bool {
 // corpus than the one equivalence was measured on, so the fault receipt vouches for
 // teeth the equivalence run never had.
 test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
@@ -737,12 +737,12 @@ test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       discriminating_fault: pa_fault_on(
         subject: pa_candidate_identity(),
@@ -750,7 +750,7 @@ test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
           identity: "SOME-OTHER-corpus",
           expected_cases: pa_corpus_cases
         },
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -763,7 +763,7 @@ test fn fault_proven_on_a_different_corpus_is_refused() -> Bool {
     )
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(
       o: o,
       cause: ^refusal_corpus_mismatch_across_receipts
     )
@@ -784,7 +784,7 @@ test fn same_identity_different_seed_splice_is_refused() -> Bool {
     identity: pa_candidate_identity(),
     produced_by_seed: other_seed
   }
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: v2.compiler.self_host.promotion_admission.SelfHostCandidate {
       candidate: pa_candidate(),
       successor: v2.compiler.self_host.generation.SuccessorGeneration {
@@ -802,16 +802,16 @@ test fn same_identity_different_seed_splice_is_refused() -> Bool {
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -824,7 +824,7 @@ test fn same_identity_different_seed_splice_is_refused() -> Bool {
     }
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(
       o: o,
       cause: ^refusal_successor_not_produced_by_candidate
     )
@@ -837,7 +837,7 @@ test fn same_identity_different_seed_splice_is_refused() -> Bool {
 // reached the rest. Under the label-only join the two receipts agreed and the bundle was
 // admitted; the count sat beside the name proving nothing.
 test fn truncated_successor_run_is_refused() -> Bool {
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
@@ -850,16 +850,16 @@ test fn truncated_successor_run_is_refused() -> Bool {
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: 1,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -872,7 +872,7 @@ test fn truncated_successor_run_is_refused() -> Bool {
     )
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(o: o, cause: ^refusal_corpus_population_mismatch)
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(o: o, cause: ^refusal_corpus_population_mismatch)
 }
 
 // The mirror: a run comparing MORE cases than its corpus declares did not execute the
@@ -880,7 +880,7 @@ test fn truncated_successor_run_is_refused() -> Bool {
 // whatever the runner happened to do, which is the same unjoined-number defect pointing
 // the other way.
 test fn overlong_run_against_its_declared_corpus_is_refused() -> Bool {
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
@@ -893,16 +893,16 @@ test fn overlong_run_against_its_declared_corpus_is_refused() -> Bool {
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases + 5,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence(
         subject: pa_successor_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -915,7 +915,7 @@ test fn overlong_run_against_its_declared_corpus_is_refused() -> Bool {
     )
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(o: o, cause: ^refusal_corpus_population_mismatch)
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(o: o, cause: ^refusal_corpus_population_mismatch)
 }
 
 // DISCRIMINATING RED for the second half of the corpus join. Both receipts name the SAME
@@ -923,7 +923,7 @@ test fn overlong_run_against_its_declared_corpus_is_refused() -> Bool {
 // passes and the label join passes — yet the two ran different corpora under one name.
 // Joining identity alone admits this; joining the declared size too refuses it.
 test fn same_named_corpus_declaring_two_sizes_is_refused() -> Bool {
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle(
       candidate_build: pa_build(
         subject: pa_candidate_identity(),
@@ -936,17 +936,17 @@ test fn same_named_corpus_declaring_two_sizes_is_refused() -> Bool {
       candidate_equivalence: pa_equivalence(
         subject: pa_candidate_identity(),
         cases: pa_corpus_cases,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       successor_equivalence: pa_equivalence_on(
         subject: pa_successor_identity(),
         corpus: pa_corpus(expected: 3),
         cases: 3,
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees }
       ),
       discriminating_fault: pa_fault(
         subject: pa_candidate_identity(),
-        outcome: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+        outcome: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
       ),
       candidate_provenance: pa_provenance(
         subject: pa_candidate_identity(),
@@ -959,7 +959,7 @@ test fn same_named_corpus_declaring_two_sizes_is_refused() -> Bool {
     )
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(
       o: o,
       cause: ^refusal_corpus_mismatch_across_receipts
     )
@@ -987,25 +987,25 @@ fn pa_bundle_from_observation(
   o: v2.compiler.self_host.promotion_admission.BehavioralComparisonObservation
 ) -> v2.compiler.self_host.promotion_admission.SelfHostCandidate {
   pa_bundle(
-    candidate_build: build_receipt_from_observation(
+    candidate_build: v2.compiler.self_host.promotion_admission.build_receipt_from_observation(
       o: o,
       subject: pa_candidate_identity()
     ),
-    successor_build: build_receipt_from_observation(
+    successor_build: v2.compiler.self_host.promotion_admission.build_receipt_from_observation(
       o: o,
       subject: pa_successor_identity()
     ),
-    candidate_equivalence: equivalence_receipt_from_observation(
+    candidate_equivalence: v2.compiler.self_host.promotion_admission.equivalence_receipt_from_observation(
       o: o,
       subject: pa_candidate_identity(),
       oracle: pa_seed_identity()
     ),
-    successor_equivalence: equivalence_receipt_from_observation(
+    successor_equivalence: v2.compiler.self_host.promotion_admission.equivalence_receipt_from_observation(
       o: o,
       subject: pa_successor_identity(),
       oracle: pa_seed_identity()
     ),
-    discriminating_fault: fault_receipt_from_observation(
+    discriminating_fault: v2.compiler.self_host.promotion_admission.fault_receipt_from_observation(
       o: o,
       subject: pa_candidate_identity(),
       planted_fault: "classical_not called on mismatched input"
@@ -1026,12 +1026,12 @@ fn pa_bundle_from_observation(
 // everything routed through the seam.
 test fn fully_observed_run_projects_into_an_admitted_promotion() -> Bool {
   pa_admitted(
-    o: admit_promotion(
+    o: v2.compiler.self_host.promotion_admission.admit_promotion(
       c: pa_bundle_from_observation(
         o: pa_observation(
           build: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen },
-          equivalence: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees },
-          fault: v2.compiler.self_host.promotion_admission.Observed { value: FaultCaught }
+          equivalence: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees },
+          fault: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.FaultCaught }
         )
       )
     )
@@ -1044,17 +1044,17 @@ test fn fully_observed_run_projects_into_an_admitted_promotion() -> Bool {
 // through the seam as the unavailable observation it actually is, admission refuses under
 // its own name instead of inheriting a verdict from an exit status.
 test fn unreported_fault_observation_refuses_through_the_seam() -> Bool {
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle_from_observation(
       o: pa_observation(
         build: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BuildGreen },
-        equivalence: v2.compiler.self_host.promotion_admission.Observed { value: BehaviorAgrees },
+        equivalence: v2.compiler.self_host.promotion_admission.Observed { value: v2.compiler.self_host.promotion_admission.BehaviorAgrees },
         fault: v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_fault_run_unreported }
       )
     )
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(
       o: o,
       cause: ^refusal_receipt_observation_unavailable
     )
@@ -1064,7 +1064,7 @@ test fn unreported_fault_observation_refuses_through_the_seam() -> Bool {
 // behavioral verdict, and the observation says so rather than reporting agreement over a
 // comparison that never ran.
 test fn unbuilt_run_refuses_through_the_seam() -> Bool {
-  let o = admit_promotion(
+  let o = v2.compiler.self_host.promotion_admission.admit_promotion(
     c: pa_bundle_from_observation(
       o: pa_observation(
         build: v2.compiler.self_host.promotion_admission.ObservationUnavailable { cause: ^slb_stage_incomplete },
@@ -1074,7 +1074,7 @@ test fn unbuilt_run_refuses_through_the_seam() -> Bool {
     )
   )
   !pa_admitted(o: o)
-    && promotion_refusal_carries(
+    && v2.compiler.self_host.promotion_admission.promotion_refusal_carries(
       o: o,
       cause: ^refusal_receipt_observation_unavailable
     )

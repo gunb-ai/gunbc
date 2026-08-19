@@ -219,7 +219,7 @@ fn project_article_to_pin_constraints(
   ) {
     Present { value: s } => PinConstraintsRefused { causes: s }
     Absent =>
-      match pcf_emit(c: v2.extdeps.formats.icestorm_pcf.PcfConstraints {
+      match v2.extdeps.formats.icestorm_pcf.pcf_emit(c: v2.extdeps.formats.icestorm_pcf.PcfConstraints {
         statements: constraint_statements(control: control, bindings: bindings, assignments: assignments),
       }) {
         PcfEmitted { source: src } =>

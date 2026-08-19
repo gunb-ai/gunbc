@@ -28,7 +28,7 @@ data pulls_list_operation: v2.std.operation_argv.OperationRef = v2.std.operation
 }
 
 fn render_pull_request_read_failure(cause: PullRequestReadFailure) -> String {
-  let at = operation_ref_label(at: pulls_list_operation)
+  let at = v2.std.operation_argv.operation_ref_label(at: pulls_list_operation)
   match cause {
     PullRequestCredentialUnavailable { repository, reason } =>
       join([
@@ -74,7 +74,7 @@ data ls_remote_operation: v2.std.operation_argv.OperationRef = v2.std.operation_
 data ls_remote_operation_ref_note: String = "WHY A REF AND NOT THE STRING `git.Core.LsRemoteHeads`. An earlier cut of this module carried the identity as a free String, which is a second textual naming scheme for something the declaration already names, and which goes stale silently when the operation is renamed - nothing anywhere can tell that it did (DESIGN 3, cite the symbol). An OperationRef is the corpus's single vocabulary for `which operation`, and the difference is decidability rather than tidiness: shell_transport_operation_rows enumerates the declared rows each carrying its own `at`, so a ref naming nothing is findable from that enumeration, and a sentence fragment is not reachable from it at all.\\n\\nWHY THE REF IS WRITTEN HERE RATHER THAN DERIVED, which is the sharper question and is refused on purpose. Deriving it would mean selecting the row out of shell_transport_operation_rows, and that builtin reads the declarations in the live source tree. This module's whole property is that it adjudicates over values a caller already holds - see belt_observes_note - which is what makes every arm, including the refusals, reachable with no network, no token, and no tree. Buying a staleness check with that property would be a bad trade: it would move the module from pure to ReadsLiveTree, and the arms that a witness can currently construct directly would become dependent on what the tree happens to contain.\\n\\nSo the check belongs OUTSIDE this module, over the corpus's refs at once, where the enumeration is already being read for other reasons - not inlined at each site that names an operation."
 
 fn render_remote_branch_read_failure(cause: RemoteBranchReadFailure) -> String {
-  let at = operation_ref_label(at: ls_remote_operation)
+  let at = v2.std.operation_argv.operation_ref_label(at: ls_remote_operation)
   match cause {
     RefAdvertisementRefused { remote, exit_code, stderr } =>
       join([

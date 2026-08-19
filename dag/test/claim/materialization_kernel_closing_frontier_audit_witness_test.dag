@@ -23,10 +23,10 @@ test fn materialization_kernel_progress_is_nonzero_and_incomplete() -> Bool {
 fn find_clause(clauses: List<gunbc.materialization_kernel_closing_frontier_audit.FrontierClause>, id: String) -> gunbc.materialization_kernel_closing_frontier_audit.FrontierClause? {
   clauses
     |> fold(
-      init: optional_absent(),
+      init: v2.std.optional.optional_absent(),
       f: (acc, c) => match acc {
         Present { value: _ } => acc
-        Absent => if c.id == id { optional_present(value: c) } else { optional_absent() }
+        Absent => if c.id == id { v2.std.optional.optional_present(value: c) } else { v2.std.optional.optional_absent() }
       }
     )
 }

@@ -378,11 +378,11 @@ data atlas_impact_claim_note: String = "ACCEPTANCE 8 and 9. No impact mark exist
 
 fn atlas_fixture_reading(standing_is_exact: Bool) -> v2.lens.module_impact_query.ImpactReading {
   v2.lens.module_impact_query.ImpactReading {
-    direction: DependentsOf,
+    direction: v2.lens.module_impact_query.DependentsOf,
     seeds: [v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" }],
     reached: [v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" }],
     explanation: [],
-    standing: if standing_is_exact { ExactForGraphSubject } else { ProvisionalForObservedPool },
+    standing: if standing_is_exact { v2.lens.module_impact_query.ExactForGraphSubject } else { v2.lens.module_impact_query.ProvisionalForObservedPool },
     causes: []
   }
 }
@@ -411,11 +411,11 @@ data atlas_empty_reached_note: String = "The discriminating pair for the empty-o
 
 test fn an_empty_reached_set_is_not_the_same_state_as_no_reading() -> Bool {
   let empty_reading = v2.lens.module_impact_query.ImpactReading {
-    direction: DependentsOf,
+    direction: v2.lens.module_impact_query.DependentsOf,
     seeds: [v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" }],
     reached: [],
     explanation: [],
-    standing: ExactForGraphSubject,
+    standing: v2.lens.module_impact_query.ExactForGraphSubject,
     causes: []
   }
   let computed = atlas_impact_from_reading(reading: empty_reading)

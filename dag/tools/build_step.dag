@@ -54,18 +54,18 @@ fn verify_artifact_exists(art: BuildArtifact) -> Node {
           art.path
         ])
       ),
-      bash_build_exit(code: "1")
+      v2.extdeps.languages.bash_build.bash_build_exit(code: "1")
     ])
   )
 }
 
 fn verify_artifact_nonempty(art: BuildArtifact) -> Node {
-  bash_build_if(
+  v2.extdeps.languages.bash_build.bash_build_if(
     cond: build_test_empty(path: art.path),
-    body: bash_build_stmt_list_from_nodes(stmts: [
+    body: v2.extdeps.languages.bash_build.bash_build_stmt_list_from_nodes(stmts: [
       build_verify_echo(
-        msg: bash_build_word_concat_parts(parts: [
-          bash_build_word_lit(
+        msg: v2.extdeps.languages.bash_build.bash_build_word_concat_parts(parts: [
+          v2.extdeps.languages.bash_build.bash_build_word_lit(
             text: concat(
               "::error::build verification: declared artifact '",
               concat(art.name, "' is zero-byte after a 'successful' build (sccache served a truncated/empty cached artifact — DESIGN §5 fail-open); failing closed: ")
@@ -74,7 +74,7 @@ fn verify_artifact_nonempty(art: BuildArtifact) -> Node {
           art.path
         ])
       ),
-      bash_build_exit(code: "1")
+      v2.extdeps.languages.bash_build.bash_build_exit(code: "1")
     ])
   )
 }

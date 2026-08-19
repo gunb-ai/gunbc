@@ -127,12 +127,12 @@ test fn operation_argv_corpus_outside_legacy_vocabulary_is_the_majority() -> Boo
 }
 
 test fn operation_argv_corpus_RED_smuggled_executable_is_refused_and_located() -> Bool {
-  let label = operation_argv_refusal_label(
+  let label = v2.std.operation_argv.operation_argv_refusal_label(
     m: shell_materialize_operation_argv(
       operation_argv_fixture_path,
       "ArgvExecutablePositionProbe",
       "SmuggleExecutable",
-      [operation_argv_bind_text(name: "bin", text: "/usr/bin/curl")]
+      [v2.std.operation_argv.operation_argv_bind_text(name: "bin", text: "/usr/bin/curl")]
     )
   )
   string_contains(label, "ExecutablePositionNotLiteral") && string_contains(label, "ArgvExecutablePositionProbe.SmuggleExecutable")
@@ -143,11 +143,11 @@ test fn operation_argv_corpus_RED_literal_executable_control_materializes() -> B
     operation_argv_fixture_path,
     "ArgvExecutablePositionProbe",
     "LiteralExecutable",
-    [operation_argv_bind_text(name: "flag", text: "--version")]
+    [v2.std.operation_argv.operation_argv_bind_text(name: "flag", text: "--version")]
   ) {
     ArgvMaterialized { argv: argv } =>
       length(xs: argv) == 2
-        && match list_head(xs: argv) {
+        && match v2.std.algebra.list_head(xs: argv) {
           HeadFound { value: head } => head == "true"
           HeadAbsent => false
         }

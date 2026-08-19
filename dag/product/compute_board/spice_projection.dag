@@ -53,7 +53,7 @@ fn component_node(
       if net_identity_eq(a: n, b: reference) {
         Ground
       } else {
-        Named { node: v2.extdeps.formats.spice.NamedNode { name: net_local_label(n: n) as String } }
+        v2.extdeps.formats.spice.Named { node: v2.extdeps.formats.spice.NamedNode { name: net_local_label(n: n) as String } }
       }
   }
 }
@@ -68,11 +68,11 @@ fn spice_component(
   let name = component_local_label(c: component_identity(c: c)) as String
   match c {
     ResistorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, resistance: m } =>
-      v2.extdeps.formats.spice.Resistor { name: name, n_plus: plus, n_minus: minus, value: spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: SpiceKilo) }
+      v2.extdeps.formats.spice.Resistor { name: name, n_plus: plus, n_minus: minus, value: v2.extdeps.formats.spice.spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: v2.extdeps.formats.spice.SpiceKilo) }
     CapacitorInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, capacitance: m } =>
-      v2.extdeps.formats.spice.Capacitor { name: name, n_plus: plus, n_minus: minus, value: spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: SpiceNano) }
+      v2.extdeps.formats.spice.Capacitor { name: name, n_plus: plus, n_minus: minus, value: v2.extdeps.formats.spice.spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: v2.extdeps.formats.spice.SpiceNano) }
     IndependentVoltageSourceInstance { identity: _, part: _, positive_terminal: _, negative_terminal: _, potential_difference: m } =>
-      v2.extdeps.formats.spice.VoltageSource { name: name, n_plus: plus, n_minus: minus, value: spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: SpiceUnitScale) }
+      v2.extdeps.formats.spice.VoltageSource { name: name, n_plus: plus, n_minus: minus, value: v2.extdeps.formats.spice.spice_scaled_value(magnitude: to_string(measure_count(m)), suffix: v2.extdeps.formats.spice.SpiceUnitScale) }
   }
 }
 
@@ -80,7 +80,7 @@ fn spice_netlist(intent: product.compute_board.analog.AnalogCircuitIntent, refer
   v2.extdeps.formats.spice.SpiceNetlist {
     title: intent.title as String,
     body: fold(intent.components, init: std.algebra.Empty, f: fn(acc, c) {
-      list_snoc_item(xs: acc, item: v2.extdeps.formats.spice.DeckComponent { component: spice_component(intent: intent, reference: reference, c: c) })
+      v2.std.algebra.list_snoc_item(xs: acc, item: v2.extdeps.formats.spice.DeckComponent { component: spice_component(intent: intent, reference: reference, c: c) })
     }),
   }
 }
@@ -185,7 +185,7 @@ fn first_refusal(
 // so the refusal has to happen here, before a line is built, or a component silently loses its
 // name and the deck describes a different circuit.
 fn spelling_refusal(c: product.compute_board.analog.ElectricalComponentInstance) -> SpiceProjectionRefusal? {
-  if spice_identifier_is_admissible(spelling: component_local_label(c: component_identity(c: c)) as String) {
+  if v2.extdeps.formats.spice.spice_identifier_is_admissible(spelling: component_local_label(c: component_identity(c: c)) as String) {
     none
   } else {
     Present { value: IdentityNotSpellableInTarget { component: component_local_label(c: component_identity(c: c)) } }
@@ -197,7 +197,7 @@ fn net_spelling_refusal(intent: product.compute_board.analog.AnalogCircuitIntent
     match acc {
       Present { value: r } => Present { value: r }
       Absent =>
-        if net_identity_eq(a: net.identity, b: reference) || spice_identifier_is_admissible(spelling: net_local_label(n: net.identity) as String) {
+        if net_identity_eq(a: net.identity, b: reference) || v2.extdeps.formats.spice.spice_identifier_is_admissible(spelling: net_local_label(n: net.identity) as String) {
           none
         } else {
           Present { value: NetNotSpellableInTarget { net: net_local_label(n: net.identity) } }
@@ -234,7 +234,7 @@ fn project_analog_to_spice(
       SpiceSliceProjected {
         receipt: SpiceEmissionReceipt {
           source_article: article_identity,
-          source: spice_emit(netlist: spice_netlist(intent: intent, reference: reference)),
+          source: v2.extdeps.formats.spice.spice_emit(netlist: spice_netlist(intent: intent, reference: reference)),
         },
       }
   }
@@ -272,11 +272,11 @@ fn project_article_to_ngspice_run(admitted: product.compute_board.admission.Admi
       SpiceSliceProjected {
         receipt: SpiceEmissionReceipt {
           source_article: article.identity,
-          source: spice_emit_ngspice(netlist: v2.extdeps.formats.spice.SpiceNetlist {
+          source: v2.extdeps.formats.spice.spice_emit_ngspice(netlist: v2.extdeps.formats.spice.SpiceNetlist {
             title: spice_netlist(intent: intent, reference: reference).title,
-            body: list_snoc_item(
+            body: v2.std.algebra.list_snoc_item(
               xs: spice_netlist(intent: intent, reference: reference).body,
-              item: v2.extdeps.formats.spice.DeckDirective { directive: Op }
+              item: v2.extdeps.formats.spice.DeckDirective { directive: v2.extdeps.formats.spice.Op }
             ),
           }),
         },

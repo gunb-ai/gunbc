@@ -231,7 +231,7 @@ fn expand_reached(
   conns: List<InterlayerConnection>,
   reached: List<Int>,
 ) -> List<Int> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: conns,
     empty: reached,
     cons: fn(acc, c) {
@@ -259,7 +259,7 @@ fn net_reached_ordinals(
 ) -> List<Int> {
   let conns = connections_of_net(vs: vs, net: net)
   let on = realizations_of_net(rs: rs, net: net)
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: on,
     empty: [seed],
     cons: fn(acc, _unused) { expand_reached(conns: conns, reached: acc) },
@@ -319,7 +319,7 @@ fn connection_orphan_endpoints(
 ) -> List<CopperRefusalCause> {
   let on = realizations_of_net(rs: rs, net: v.net)
   let realized = map(on, r => copper_layer_ordinal(r: r.layer))
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: interlayer_ordinals(v: v),
     empty: no_refusal_causes,
     cons: fn(acc, o) {
@@ -352,7 +352,7 @@ fn interlayer_refusal_causes(
     filter(vs, v => copper_layer_ordinal(r: v.from_layer) == copper_layer_ordinal(r: v.to_layer)),
     v => InterlayerConnectionJoinsALayerToItself { net: v.net, ordinal: copper_layer_ordinal(r: v.from_layer) },
   )
-  let orphaned = fold_list(
+  let orphaned = v2.std.algebra.fold_list(
     xs: vs,
     empty: no_refusal_causes,
     cons: fn(acc, v) { acc + connection_orphan_endpoints(rs: rs, v: v) },

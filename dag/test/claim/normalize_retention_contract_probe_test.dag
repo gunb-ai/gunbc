@@ -18,9 +18,9 @@ data unterminated_string_source: String = "module frontier_probe\n\ndata d: Stri
 fn classify_reasons(first: v2.std.node.Symbol, rest: List<v2.std.node.Symbol>) -> gunbc.tools.frontier_ingestion_probe.FrontendStage {
   classify_normalize_diagnostics(
     d: v2.std.diagnostic.NonEmptyDiagnostics {
-      head: module_unavailable_diagnostic(reason: first, module_file: ^frontier_probe),
-      tail: fold_list(xs: rest, empty: [] as List<v2.std.diagnostic.Diagnostic>, cons: fn(acc, r) {
-        concat(acc, [module_unavailable_diagnostic(reason: r, module_file: ^frontier_probe)])
+      head: v2.std.diagnostic.module_unavailable_diagnostic(reason: first, module_file: ^frontier_probe),
+      tail: v2.std.algebra.fold_list(xs: rest, empty: [] as List<v2.std.diagnostic.Diagnostic>, cons: fn(acc, r) {
+        concat(acc, [v2.std.diagnostic.module_unavailable_diagnostic(reason: r, module_file: ^frontier_probe)])
       }),
     }
   )
@@ -32,8 +32,8 @@ fn classify_reasons(first: v2.std.node.Symbol, rest: List<v2.std.node.Symbol>) -
 // explicitly: collapsing it would let a refused preparation satisfy a claim about lexing.
 test fn classifier_separates_lex_from_accepted() -> Bool {
   match classify_source(source: unterminated_string_source) {
-    v2.std.diagnostic.Accepted { value: st, diagnostics: _ } => frontend_stage_eq(a: st, b: LexRefused)
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: st, diagnostics: _ } => frontend_stage_eq(a: st, b: LexRefused)
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -136,8 +136,8 @@ test fn stage_labels_are_pairwise_distinct() -> Bool {
     frontend_stage_label(s: NormalizeOther),
     frontend_stage_label(s: NormalizeAccepted),
   ]
-  fold_list(xs: labels, empty: true, cons: fn(acc, l) {
-    acc && ((fold_list(xs: labels, empty: 0, cons: fn(n, m) {
+  v2.std.algebra.fold_list(xs: labels, empty: true, cons: fn(acc, l) {
+    acc && ((v2.std.algebra.fold_list(xs: labels, empty: 0, cons: fn(n, m) {
       if l == m { n + 1 } else { n }
     })) == 1)
   })
@@ -149,13 +149,13 @@ test fn stage_labels_are_pairwise_distinct() -> Bool {
 // doubled member — are exercised further down, because each is a census containing every roster
 // member and so passes any per-label existence check.
 fn observations_for_whole_roster() -> List<gunbc.tools.frontier_ingestion_probe.MemberObservation> {
-  fold_list(xs: frontier_roster, empty: [] as List<gunbc.tools.frontier_ingestion_probe.MemberObservation>, cons: fn(acc, m) {
+  v2.std.algebra.fold_list(xs: frontier_roster, empty: [] as List<gunbc.tools.frontier_ingestion_probe.MemberObservation>, cons: fn(acc, m) {
     concat(acc, [gunbc.tools.frontier_ingestion_probe.MemberObservation { label: m.label, stage: NormalizeOther }])
   })
 }
 
 fn observations_missing_one() -> List<gunbc.tools.frontier_ingestion_probe.MemberObservation> {
-  fold_list(xs: frontier_roster, empty: [] as List<gunbc.tools.frontier_ingestion_probe.MemberObservation>, cons: fn(acc, m) {
+  v2.std.algebra.fold_list(xs: frontier_roster, empty: [] as List<gunbc.tools.frontier_ingestion_probe.MemberObservation>, cons: fn(acc, m) {
     if m.label == ^entry {
       acc
     } else {
@@ -174,7 +174,7 @@ test fn census_missing_one_member_is_incomplete_RED() -> Bool {
 
 // A count equality would accept this: fifteen observations, none of them a roster member.
 test fn census_of_the_right_size_but_wrong_members_is_incomplete_RED() -> Bool {
-  let wrong = fold_list(xs: frontier_roster, empty: [] as List<gunbc.tools.frontier_ingestion_probe.MemberObservation>, cons: fn(acc, m) {
+  let wrong = v2.std.algebra.fold_list(xs: frontier_roster, empty: [] as List<gunbc.tools.frontier_ingestion_probe.MemberObservation>, cons: fn(acc, m) {
     concat(acc, [gunbc.tools.frontier_ingestion_probe.MemberObservation { label: ^not_a_roster_member, stage: NormalizeOther }])
   })
   gunbc.tools.frontier_ingestion_probe.census_is_complete(obs: wrong) == false

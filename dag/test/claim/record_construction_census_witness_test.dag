@@ -20,7 +20,7 @@ fn census_spelling_names_target(spelling: String, target: v2.std.node.Symbol) ->
 }
 
 fn census_construction_fold(n: v2.std.node.Node, target: v2.std.node.Symbol) -> test.claim.record_construction_census_witness_test.CensusConstructionCount {
-  fold_node(
+  v2.std.node.fold_node(
     n: n,
     algebra: v2.std.node.NodeFold {
       init: fn(n0) {

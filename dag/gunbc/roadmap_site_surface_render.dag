@@ -76,7 +76,7 @@ fn healthz_body_with_release_identity(
   release_revision: std.types.CommitSha,
   surface_bundle_identity: std.content_hash.Fnv1a64Structural,
 ) -> String {
-  serialize_json(v: json_object(members: list_append(
+  serialize_json(v: json_object(members: v2.std.algebra.list_append(
     healthz_surface_members(
       roadmap: roadmap,
       dispatch: dispatch,

@@ -52,11 +52,11 @@ fn atlas_page_snapshot_impacted(exact: Bool) -> gunbc.repo_atlas_projection.Repo
     nodes: atlas_page_fixture_nodes(),
     observation: AtlasChangesNotObserved,
     impact: atlas_impact_from_reading(reading: v2.lens.module_impact_query.ImpactReading {
-      direction: DependentsOf,
+      direction: v2.lens.module_impact_query.DependentsOf,
       seeds: [v2.lens.module_impact_query.ModuleIdentity { name: "fixture.alpha" }],
       reached: [v2.lens.module_impact_query.ModuleIdentity { name: "fixture.beta" }],
       explanation: [],
-      standing: if exact { ExactForGraphSubject } else { ProvisionalForObservedPool },
+      standing: if exact { v2.lens.module_impact_query.ExactForGraphSubject } else { v2.lens.module_impact_query.ProvisionalForObservedPool },
       causes: []
     }))
 }

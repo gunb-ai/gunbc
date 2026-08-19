@@ -5,13 +5,13 @@ data cited_symbol_resolution_long_witness_note: String = "G1 corpus-scale cited-
 
 data cited_symbol_long_witness_layer_facts: List<v2.std.decl_index.DeclFact> = decl_facts(pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
 
-data cited_symbol_long_witness_layer_modules: List<v2.lens.module_graph.ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
+data cited_symbol_long_witness_layer_modules: List<v2.lens.module_graph.ModuleDeclarationFact> = v2.lens.module_graph.module_declaration_facts_live(pool_roots: gunbc.ci_layer_roots.witness_layer_roots)
 
 fn cited_symbol_hand_authored_census_live() -> v2.std.decl_ref_resolution.DeclarationRefResolutionCensus {
   let pool = hand_authored_works_resolution_pool_roots()
   let facts = decl_facts(pool_roots: pool)
-  let modules = module_declaration_facts_live(pool_roots: pool)
-  declaration_ref_resolution_census(
+  let modules = v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
+  v2.std.decl_ref_resolution.declaration_ref_resolution_census(
     refs: hand_authored_production_doc_declaration_refs(),
     facts: facts,
     modules: modules
@@ -25,8 +25,8 @@ test fn cited_symbol_hand_authored_binds_all_resolve() -> Bool {
 test fn cited_symbol_hand_authored_census_is_zero_refusals() -> Bool {
   let pool = hand_authored_works_resolution_pool_roots()
   let facts = decl_facts(pool_roots: pool)
-  let modules = module_declaration_facts_live(pool_roots: pool)
-  let census = declaration_ref_resolution_census(
+  let modules = v2.lens.module_graph.module_declaration_facts_live(pool_roots: pool)
+  let census = v2.std.decl_ref_resolution.declaration_ref_resolution_census(
     refs: hand_authored_production_doc_declaration_refs(),
     facts: facts,
     modules: modules
@@ -39,7 +39,7 @@ test fn cited_symbol_hand_authored_census_is_zero_refusals() -> Bool {
 }
 
 test fn cited_symbol_resolution_lens_is_green_on_live_corpus() -> Bool {
-  cited_symbol_resolution_violation_count() == 0
+  v2.lens.cited_symbol_resolution.cited_symbol_resolution_violation_count() == 0
 }
 
 test fn doc_graph_works_refs_all_resolve() -> Bool {
@@ -63,7 +63,7 @@ test fn cited_symbol_refusal_count_red_on_dangling_fixture() -> Bool {
       field: WholeDeclaration,
     },
   ]
-  cited_declaration_ref_refusal_count(
+  v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
     refs: dangling,
     facts: cited_symbol_long_witness_layer_facts,
     modules: cited_symbol_long_witness_layer_modules
@@ -71,17 +71,17 @@ test fn cited_symbol_refusal_count_red_on_dangling_fixture() -> Bool {
 }
 
 test fn cited_symbol_planted_doc_graph_controls_all_refuse() -> Bool {
-  cited_symbol_planted_control_refusal_count() == 3
+  v2.lens.cited_symbol_resolution.cited_symbol_planted_control_refusal_count() == 3
 }
 
 test fn cited_symbol_enrolled_population_refusal_proves_gate_not_vacuous() -> Bool {
-  cited_symbol_enrolled_refusal_count() >= 3 && cited_symbol_resolution_violation_count() == cited_symbol_enrolled_refusal_count() - cited_symbol_planted_control_refusal_count()
+  v2.lens.cited_symbol_resolution.cited_symbol_enrolled_refusal_count() >= 3 && v2.lens.cited_symbol_resolution.cited_symbol_resolution_violation_count() == v2.lens.cited_symbol_resolution.cited_symbol_enrolled_refusal_count() - v2.lens.cited_symbol_resolution.cited_symbol_planted_control_refusal_count()
 }
 
 test fn cited_symbol_planted_ambiguous_control_refuses_via_resolver() -> Bool {
-  match resolve_declaration_ref(
-    ref: cited_symbol_planted_ambiguous_control_ref,
-    facts: cited_symbol_planted_ambiguous_control_facts,
+  match v2.std.decl_ref_resolution.resolve_declaration_ref(
+    ref: v2.lens.cited_symbol_resolution.cited_symbol_planted_ambiguous_control_ref,
+    facts: v2.lens.cited_symbol_resolution.cited_symbol_planted_ambiguous_control_facts,
     modules: cited_symbol_long_witness_layer_modules
   ) {
     DeclarationRefAmbiguous { reference: _, candidates: c } => length(xs: c) == 2
@@ -97,7 +97,7 @@ test fn cited_symbol_production_census_ambiguous_count_is_zero() -> Bool {
 }
 
 test fn cited_symbol_resolves_node_kind_authority() -> Bool {
-  match resolve_declaration_ref(
+  match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: std.decl_ref.DeclarationRef {
       module_path: "v2.std.node",
       decl_name: "NodeKind",
@@ -115,7 +115,7 @@ test fn cited_symbol_resolves_node_kind_authority() -> Bool {
 }
 
 test fn cited_symbol_resolves_decl_ref_constructor() -> Bool {
-  match resolve_declaration_ref(
+  match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: decl_ref(module_path: "std.decl_ref", decl_name: "decl_ref"),
     facts: cited_symbol_long_witness_layer_facts,
     modules: cited_symbol_long_witness_layer_modules
@@ -129,7 +129,7 @@ test fn cited_symbol_resolves_decl_ref_constructor() -> Bool {
 }
 
 test fn cited_symbol_refuses_module_absent() -> Bool {
-  match resolve_declaration_ref(
+  match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: std.decl_ref.DeclarationRef {
       module_path: "synthetic.g1_module_absent_RED",
       decl_name: "any",
@@ -147,7 +147,7 @@ test fn cited_symbol_refuses_module_absent() -> Bool {
 }
 
 test fn cited_symbol_refuses_declaration_absent() -> Bool {
-  match resolve_declaration_ref(
+  match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: std.decl_ref.DeclarationRef {
       module_path: "v2.std.node",
       decl_name: "NoSuchDecl_G1_RED",
@@ -170,18 +170,18 @@ test fn cited_symbol_refuses_ambiguous_binding() -> Bool {
       qualified_name: "std.node.g1_ambiguous",
       name: "g1_ambiguous",
       kind: FnItem,
-      node: enforcement_red_probe_body_leaf,
+      node: v2.lens.enforcement.receipts.enforcement_red_probe_body_leaf,
       rel_path: "synthetic/a.dag",
     },
     v2.std.decl_index.DeclFact {
       qualified_name: "std.node.g1_ambiguous",
       name: "g1_ambiguous",
       kind: FnItem,
-      node: enforcement_red_probe_body_leaf,
+      node: v2.lens.enforcement.receipts.enforcement_red_probe_body_leaf,
       rel_path: "synthetic/b.dag",
     },
   ]
-  match resolve_declaration_ref(
+  match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: std.decl_ref.DeclarationRef {
       module_path: "v2.std.node",
       decl_name: "g1_ambiguous",
@@ -199,7 +199,7 @@ test fn cited_symbol_refuses_ambiguous_binding() -> Bool {
 }
 
 test fn cited_symbol_refuses_named_field_absent() -> Bool {
-  match resolve_declaration_ref(
+  match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: std.decl_ref.DeclarationRef {
       module_path: "v2.std.node",
       decl_name: "NodeKind",

@@ -84,7 +84,7 @@ fn signal_admission_refusal(bindings: std.types.List<VerilogBinding>, name: prod
   match spelling_for(bindings: bindings, name: name) {
     Absent => Present { value: SignalSpellingUnbound { signal: name as std.types.NonEmptyStr } }
     Present { value: sp } =>
-      if verilog_identifier_is_admissible(spelling: sp) {
+      if v2.extdeps.languages.verilog.verilog_identifier_is_admissible(spelling: sp) {
         none
       } else {
         Present { value: SignalSpellingNotAdmissible { signal: name as std.types.NonEmptyStr, spelling: sp } }
@@ -132,7 +132,7 @@ fn symbol_for(bindings: std.types.List<VerilogBinding>, name: product.compute_bo
 }
 
 fn binding_spellings_for(bindings: std.types.List<VerilogBinding>) -> Map<v2.std.node.Symbol, String> {
-  fold(bindings, init: verilog_base_spellings(), f: fn(acc, b) {
+  fold(bindings, init: v2.extdeps.languages.verilog.verilog_base_spellings(), f: fn(acc, b) {
     map_insert(acc, b.symbol, b.spelling)
   })
 }
@@ -147,17 +147,17 @@ fn direction_symbol(s: product.compute_board.digital_control.DigitalSignal) -> v
 fn expr_node(bindings: std.types.List<VerilogBinding>, e: product.compute_board.digital_control.DigitalExpr) -> Node {
   match e {
     SignalRef { signal: n } =>
-      verilog_signal_reference(name: symbol_or_unbound(bindings: bindings, name: n))
+      v2.extdeps.languages.verilog.verilog_signal_reference(name: symbol_or_unbound(bindings: bindings, name: n))
     Negation { operand: inner } =>
-      verilog_unary_application(operator: ^verilog_op_not, operand: expr_node(bindings: bindings, e: inner))
+      v2.extdeps.languages.verilog.verilog_unary_application(operator: ^verilog_op_not, operand: expr_node(bindings: bindings, e: inner))
     Conjunction { left: l, right: r } =>
-      verilog_binary_application(
+      v2.extdeps.languages.verilog.verilog_binary_application(
         left: expr_node(bindings: bindings, e: l),
         operator: ^verilog_op_and,
         right: expr_node(bindings: bindings, e: r)
       )
     Disjunction { left: l, right: r } =>
-      verilog_binary_application(
+      v2.extdeps.languages.verilog.verilog_binary_application(
         left: expr_node(bindings: bindings, e: l),
         operator: ^verilog_op_or,
         right: expr_node(bindings: bindings, e: r)
@@ -178,19 +178,19 @@ fn symbol_or_unbound(bindings: std.types.List<VerilogBinding>, name: product.com
 
 fn port_list_node(bindings: std.types.List<VerilogBinding>, signals: std.types.List<product.compute_board.digital_control.DigitalSignal>) -> Node {
   match signals {
-    Empty => verilog_conj(children: [])
+    Empty => v2.extdeps.languages.verilog.verilog_conj(children: [])
     Cons { head: s, tail: rest } =>
       match rest {
         Empty =>
-          verilog_port_list_one(
-            port: verilog_ansi_port(
+          v2.extdeps.languages.verilog.verilog_port_list_one(
+            port: v2.extdeps.languages.verilog.verilog_ansi_port(
               direction: direction_symbol(s: s),
               name: symbol_or_unbound(bindings: bindings, name: s.name)
             )
           )
         Cons { head: _, tail: _ } =>
-          verilog_port_list_cons(
-            port: verilog_ansi_port(
+          v2.extdeps.languages.verilog.verilog_port_list_cons(
+            port: v2.extdeps.languages.verilog.verilog_ansi_port(
               direction: direction_symbol(s: s),
               name: symbol_or_unbound(bindings: bindings, name: s.name)
             ),
@@ -202,19 +202,19 @@ fn port_list_node(bindings: std.types.List<VerilogBinding>, signals: std.types.L
 
 fn assign_list_node(bindings: std.types.List<VerilogBinding>, equations: std.types.List<product.compute_board.digital_control.DigitalEquation>) -> Node {
   match equations {
-    Empty => verilog_conj(children: [])
+    Empty => v2.extdeps.languages.verilog.verilog_conj(children: [])
     Cons { head: eq, tail: rest } =>
       match rest {
         Empty =>
-          verilog_assign_list_one(
-            assignment: verilog_continuous_assign(
+          v2.extdeps.languages.verilog.verilog_assign_list_one(
+            assignment: v2.extdeps.languages.verilog.verilog_continuous_assign(
               lhs: symbol_or_unbound(bindings: bindings, name: eq.driven),
               value: expr_node(bindings: bindings, e: eq.expression)
             )
           )
         Cons { head: _, tail: _ } =>
-          verilog_assign_list_cons(
-            assignment: verilog_continuous_assign(
+          v2.extdeps.languages.verilog.verilog_assign_list_cons(
+            assignment: v2.extdeps.languages.verilog.verilog_continuous_assign(
               lhs: symbol_or_unbound(bindings: bindings, name: eq.driven),
               value: expr_node(bindings: bindings, e: eq.expression)
             ),
@@ -225,7 +225,7 @@ fn assign_list_node(bindings: std.types.List<VerilogBinding>, equations: std.typ
 }
 
 fn intent_module_node(bindings: std.types.List<VerilogBinding>, intent: product.compute_board.digital_control.DigitalControlIntent) -> Node {
-  verilog_module_declaration(
+  v2.extdeps.languages.verilog.verilog_module_declaration(
     name: symbol_or_unbound(bindings: bindings, name: intent.block_name),
     ports: port_list_node(bindings: bindings, signals: intent.signals),
     assignments: assign_list_node(bindings: bindings, equations: intent.equations)
@@ -240,7 +240,7 @@ fn project_intent_to_verilog(
   match first_admission_refusal(bindings: bindings, intent: intent) {
     Present { value: r } => VerilogProjectionRefused { cause: r }
     Absent =>
-      match verilog_emit_module(
+      match v2.extdeps.languages.verilog.verilog_emit_module(
         module_node: intent_module_node(bindings: bindings, intent: intent),
         spellings: binding_spellings_for(bindings: bindings)
       ) {

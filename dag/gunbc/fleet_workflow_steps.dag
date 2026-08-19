@@ -60,7 +60,7 @@ fn ci_prelude_steps_with_checkout(checkout: extdeps.github.actions.Step, exact_h
     extdeps.github.actions.RunStep {
       name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
       id: none,
-      run: ci_pin_rustup_default_script(),
+      run: v2.workflow.ci_workflow_run_emit.ci_pin_rustup_default_script(),
       shell: none,
       env: none,
       working_directory: none,
@@ -95,7 +95,7 @@ fn ci_isolate_toolchain_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
     name: Present { value: "Isolate toolchain dirs" },
     id: none,
-    run: ci_isolate_toolchain_script(build_jobs_count: ci_cargo_build_jobs_count()),
+    run: v2.workflow.ci_workflow_run_emit.ci_isolate_toolchain_script(build_jobs_count: ci_cargo_build_jobs_count()),
     shell: none,
     env: none,
     working_directory: none,
@@ -109,7 +109,7 @@ fn ci_native_cache_root_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
     name: Present { value: ci_native_cache_derive_step_name },
     id: none,
-    run: ci_native_cache_root_script(),
+    run: v2.workflow.ci_workflow_run_emit.ci_native_cache_root_script(),
     shell: none,
     env: none,
     working_directory: none,
@@ -157,7 +157,7 @@ fn ci_release_build_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
     name: Present { value: "Build release bins (claim_executor + gunbc)" },
     id: Present { value: "release_build" },
-    run: ci_release_build_script(),
+    run: v2.workflow.ci_release_build_emit.ci_release_build_script(),
     shell: none,
     env: none,
     working_directory: none,
@@ -287,7 +287,7 @@ fn ci_native_cache_root_step() -> extdeps.github.actions.Step {
   extdeps.github.actions.RunStep {
     name: Present { value: ci_native_cache_derive_step_name },
     id: none,
-    run: ci_native_cache_root_script(),
+    run: v2.workflow.ci_workflow_run_emit.ci_native_cache_root_script(),
     shell: none,
     env: none,
     working_directory: none,
@@ -326,7 +326,7 @@ fn ci_prelude_steps_with_checkout(checkout: extdeps.github.actions.Step, exact_h
     extdeps.github.actions.RunStep {
       name: Present { value: "Pin rustup default (isolated RUSTUP_HOME has no default toolchain)" },
       id: none,
-      run: ci_pin_rustup_default_script(),
+      run: v2.workflow.ci_workflow_run_emit.ci_pin_rustup_default_script(),
       shell: none,
       env: none,
       working_directory: none,

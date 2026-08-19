@@ -77,7 +77,7 @@ fn cssl_write_shims_from_repo(
   out_dir: String,
   shims: List<CuratedSeedLinkedShimWrite>
 ) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: shims,
     empty: true,
     cons: fn(ok, shim) {
@@ -152,7 +152,7 @@ fn cssl_supplemental_claims_ok(
   gunbc_bin: String,
   claim_runs: List<CuratedSeedLinkedClaimRun>
 ) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: claim_runs,
     empty: true,
     cons: fn(ok, run) {

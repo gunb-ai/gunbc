@@ -136,7 +136,7 @@ fn bmc_firmware_classification(
     Absent =>
       std.upsert_decision.UpsertClassification {
         verdict: UnknownRefused,
-        decision: Refuse {
+        decision: std.upsert_decision.Refuse {
           reason: "bmc firmware observation absent; refuse both noop and update",
         },
       }
@@ -155,7 +155,7 @@ fn bmc_firmware_classification(
             Absent =>
               std.upsert_decision.UpsertClassification {
                 verdict: Drifted,
-                decision: Refuse {
+                decision: std.upsert_decision.Refuse {
                   reason: concat(
                     "bmc firmware drift observed, but no exact approved board-compatible image artifact is available: ",
                     bmc_firmware_intent_mismatch_reason(
@@ -169,7 +169,7 @@ fn bmc_firmware_classification(
               if approved.board != board {
                 std.upsert_decision.UpsertClassification {
                   verdict: Conflict,
-                  decision: Refuse {
+                  decision: std.upsert_decision.Refuse {
                     reason: concat(
                       "approved bmc firmware artifact does not match the target board and declared firmware track: ",
                       bmc_firmware_intent_mismatch_reason(
@@ -187,7 +187,7 @@ fn bmc_firmware_classification(
                   BmcFirmwareIntentMismatch { required: _, observed: _ } =>
                     std.upsert_decision.UpsertClassification {
                       verdict: Conflict,
-                      decision: Refuse {
+                      decision: std.upsert_decision.Refuse {
                         reason: concat(
                           "approved bmc firmware artifact does not match the target board and declared firmware track: ",
                           bmc_firmware_intent_mismatch_reason(
@@ -202,7 +202,7 @@ fn bmc_firmware_classification(
                       Absent =>
                         std.upsert_decision.UpsertClassification {
                           verdict: Drifted,
-                          decision: Refuse {
+                          decision: std.upsert_decision.Refuse {
                             reason: concat(
                               "bmc firmware drift and approved artifact are known, but the current UpdateService surface has not been observed: ",
                               bmc_firmware_intent_mismatch_reason(
@@ -230,7 +230,7 @@ fn bmc_firmware_classification(
                         } else {
                           std.upsert_decision.UpsertClassification {
                             verdict: Conflict,
-                            decision: Refuse {
+                            decision: std.upsert_decision.Refuse {
                               reason: concat(
                                 "observed UpdateService does not identify an updateable active image for the exact target controller and firmware: ",
                                 bmc_firmware_intent_mismatch_reason(
@@ -602,7 +602,7 @@ fn bmc_fan_policy_durability_gated_convergence(
     BmcFanPolicyDurabilityVerdictRefused { verdict: verdict } =>
       std.upsert_decision.UpsertClassification {
         verdict: UnknownRefused,
-        decision: Refuse {
+        decision: std.upsert_decision.Refuse {
           reason: concat(
             "bmc fan realizer does not satisfy the declared state lifetime: ",
             bmc_fan_durability_refusal_reason(verdict: verdict),
@@ -617,7 +617,7 @@ fn bmc_fan_policy_durability_gated_convergence(
         BmcFanProjectionLiveDigestRefused { cause: cause } =>
           std.upsert_decision.UpsertClassification {
             verdict: UnknownRefused,
-            decision: Refuse {
+            decision: std.upsert_decision.Refuse {
               reason: bmc_fan_projection_live_digest_refusal_reason(
                 cause: cause,
               ),
@@ -695,7 +695,7 @@ fn bmc_fan_policy_qualify_with_projection(
                 Absent =>
                   std.upsert_decision.UpsertClassification {
                     verdict: UnknownRefused,
-                    decision: Refuse {
+                    decision: std.upsert_decision.Refuse {
                       reason: "bmc fan state cannot converge without an exact board-and-firmware projection for both curve and installed-tach topology",
                     },
                   }
@@ -711,7 +711,7 @@ fn bmc_fan_policy_qualify_with_projection(
                     FanPolicySuitabilityRefused { cause: cause } =>
                       std.upsert_decision.UpsertClassification {
                         verdict: UnknownRefused,
-                        decision: Refuse {
+                        decision: std.upsert_decision.Refuse {
                           reason: bmc_fan_policy_suitability_refusal_reason(
                             cause: cause,
                           ),
@@ -737,7 +737,7 @@ fn bmc_fan_policy_qualify_with_projection(
                           } =>
                             std.upsert_decision.UpsertClassification {
                               verdict: UnknownRefused,
-                              decision: Refuse {
+                              decision: std.upsert_decision.Refuse {
                                 reason: concat(
                                   "bmc fan durability evidence construction refused: ",
                                   bmc_fan_durability_evidence_construction_refusal_reason(
@@ -791,7 +791,7 @@ fn bmc_fan_policy_classification(
     Absent =>
       std.upsert_decision.UpsertClassification {
         verdict: UnknownRefused,
-        decision: Refuse {
+        decision: std.upsert_decision.Refuse {
           reason: "bmc fan-policy observation absent; Redfish InitialDuty is not curve evidence",
         },
       }
@@ -802,7 +802,7 @@ fn bmc_fan_policy_classification(
       ) {
         std.upsert_decision.UpsertClassification {
           verdict: Conflict,
-          decision: Refuse {
+          decision: std.upsert_decision.Refuse {
             reason: bmc_fan_policy_suitability_refusal_reason(
               cause: FanPolicyFirmwareMustConvergeBeforeRealizer,
             ),

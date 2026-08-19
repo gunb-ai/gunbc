@@ -40,7 +40,7 @@ fn declared_paths() -> FreeMonoid<String> {
 fn declared_without_entry() -> FreeMonoid<String> {
   v2.std.algebra.fold_list(
     xs: declared_paths(),
-    empty: no_paths,
+    empty: v2.lens.module_graph.no_paths,
     cons: fn(acc, p) {
       if string_eq(a: p, b: conformance_entry) {
         acc

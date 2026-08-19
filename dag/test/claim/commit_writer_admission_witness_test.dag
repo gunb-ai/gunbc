@@ -1,7 +1,7 @@
 module test.claim.commit_writer_admission_witness
 
 
-data commit_writer_admission_witness_note: String = "Executable reproduction for commit 218dea61248d plus complete-population controls. The unmerged index carries Base/Ours/Theirs. The independent stage-0 observation carries the exact three committed marker blocks and refuses at their line locations. Every normal index entry must have exactly one observed blob, no extra or duplicate blob may appear, the index/object/content identities must agree, and decode/classification must be available. Artifact classification is projected from ModuleStorageIndex and bound to the same GitPath and indexed object; a naked or mismatched TestClaimArtifact cannot exempt source text. Isolated and out-of-order marker tokens admit, while the effective per-path conflict-marker-size fact drives the real begin/separator/end grammar."
+data commit_writer_admission_witness_note: String = "Executable reproduction for commit 218dea61248d plus complete-population controls. The unmerged index carries Base/Ours/Theirs. The independent stage-0 observation carries the exact three committed marker blocks and refuses at their line locations. Every normal index entry must have exactly one observed blob, no extra or duplicate blob may appear, the index/object/content identities must agree, and decode/classification must be available. Artifact classification is projected from ModuleStorageIndex and bound to the same GitPath and indexed object; a naked or mismatched v2.std.artifact.TestClaimArtifact cannot exempt source text. Isolated and out-of-order marker tokens admit, while the effective per-path conflict-marker-size fact drives the real begin/separator/end grammar."
 
 fn publication_grant_path() -> extdeps.git.object_store.GitPath {
   match git_decode_path_octets(octets: [
@@ -46,7 +46,7 @@ fn other_blob_oid() -> extdeps.git.object_store.GitObjectId {
 
 fn source_artifact() -> v2.std.artifact.Artifact {
   v2.std.artifact.Artifact {
-    kind: SourceFile,
+    kind: v2.std.artifact.SourceFile,
     id: ^publication_grant_source,
     file_path: "dag/gunbc/publication_grant.dag",
   }
@@ -54,7 +54,7 @@ fn source_artifact() -> v2.std.artifact.Artifact {
 
 fn fixture_artifact() -> v2.std.artifact.Artifact {
   v2.std.artifact.Artifact {
-    kind: TestClaimArtifact,
+    kind: v2.std.artifact.TestClaimArtifact,
     id: ^conflict_marker_fixture,
     file_path: "dag/test/claim/conflict_marker_fixture.dag",
   }
@@ -291,7 +291,7 @@ test fn tracked_test_fixture_bound_to_same_path_and_blob_admits() -> Bool {
 test fn source_path_with_test_claim_refuses() -> Bool {
   let authority = module_storage_for(artifact: source_artifact())
   let claimed = v2.std.artifact.Artifact {
-    kind: TestClaimArtifact,
+    kind: v2.std.artifact.TestClaimArtifact,
     id: ^source_path_test_claim,
     file_path: "dag/gunbc/publication_grant.dag",
   }
@@ -320,7 +320,7 @@ test fn source_path_with_test_claim_refuses() -> Bool {
 test fn mismatched_provenance_file_path_refuses() -> Bool {
   let authority = module_storage_for(artifact: source_artifact())
   let mismatched = v2.std.artifact.Artifact {
-    kind: TestClaimArtifact,
+    kind: v2.std.artifact.TestClaimArtifact,
     id: ^mismatched_fixture_claim,
     file_path: "dag/test/claim/conflict_marker_fixture.dag",
   }
@@ -350,7 +350,7 @@ test fn mismatched_provenance_file_path_refuses() -> Bool {
 test fn fabricated_matching_artifact_refuses() -> Bool {
   let authority = module_storage_for(artifact: source_artifact())
   let fabricated = v2.std.artifact.Artifact {
-    kind: TestClaimArtifact,
+    kind: v2.std.artifact.TestClaimArtifact,
     id: ^fabricated_matching_fixture,
     file_path: "dag/gunbc/publication_grant.dag",
   }

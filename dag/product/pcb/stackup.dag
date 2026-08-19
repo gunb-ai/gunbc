@@ -59,7 +59,7 @@ fn stackup_ply_thickness(p: StackupPly) -> Int {
 
 fn stackup_total_thickness(s: Stackup) -> std.measure.Micrometer {
   let top = micrometer_count(m: s.top.thickness)
-  let below = fold_list(
+  let below = v2.std.algebra.fold_list(
     xs: s.plies,
     empty: 0,
     cons: fn(acc, p) { acc + stackup_ply_thickness(p: p) },

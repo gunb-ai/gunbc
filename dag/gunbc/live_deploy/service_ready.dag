@@ -102,7 +102,7 @@ fn service_not_ready_with_captured_diagnosis(refusal: ServiceNotReady, text: Str
 }
 
 fn live_deploy_readback_ready_set(graph_node: Node) -> List<Node> {
-  ready_set(graph_node: graph_node)
+  v2.std.dependency.ready_set(graph_node: graph_node)
 }
 
 fn live_deploy_readiness_poll_bound_seconds() -> std.measure.Second {

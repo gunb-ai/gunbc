@@ -324,14 +324,14 @@ fn admit_realization(
 // was both an empty-literal type error and silently wrong (it never dropped the head), which is
 // what re-inventing an existing concept buys.
 fn list_head_of(xs: List<ServingRequirementRefusal>) -> ServingRequirementRefusal? {
-  match list_head(xs: xs) {
+  match v2.std.algebra.list_head(xs: xs) {
     HeadFound { value: v } => Present { value: v }
     HeadAbsent => none
   }
 }
 
 fn list_tail_of(xs: List<ServingRequirementRefusal>) -> List<ServingRequirementRefusal> {
-  match list_tail(xs: xs) {
+  match v2.std.algebra.list_tail(xs: xs) {
     TailFound { tail: t } => t
     TailAbsent => xs
   }
@@ -949,9 +949,9 @@ fn escalation_shortfall(
           else { concat(acc, [required]) }
         },
       )
-      match list_head(missing) {
+      match v2.std.algebra.list_head(missing) {
         HeadAbsent => NoNewPrivilegeRequired
-        HeadFound { value: f } => match list_tail(missing) {
+        HeadFound { value: f } => match v2.std.algebra.list_tail(missing) {
           TailAbsent => NewPrivilegeRequired { first: f, more: [] }
           TailFound { tail: t } => NewPrivilegeRequired { first: f, more: t }
         }

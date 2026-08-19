@@ -19,9 +19,9 @@ fn run_direct_rust_door_emit_write_compile_smoke() -> Bool {
   let dir = shell.Mktemp.Dir()
   let src_dir = shell.Mkdir.Parents(path: concat(dir.path, "/src"))
   let pipeline_ok = match v2.compiler.self_host.fixture_synthetic_emission.mint_written_synthetic_emitted_artifact_from_fixture_inferred(
-    inferred: direct_rust_door_inferred_tree,
+    inferred: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_inferred_tree,
     target: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_target_model(),
-    module_path: direct_rust_door_module_path,
+    module_path: v2.compiler.self_host.direct_rust_door_fixture.direct_rust_door_module_path,
     workspace_dir: dir.path,
     fixture_lane_tag: direct_rust_door_fixture_lane_tag
   ) {

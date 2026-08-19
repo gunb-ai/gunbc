@@ -108,25 +108,25 @@ fn yaml_is_flow_sequence_text(text: String) -> Bool {
 fn yaml_parse_flow_sequence(text: String) -> extdeps.languages.yaml.types.YamlValue {
   let inner = substring(s: text, start: 1, end: text.length() - 1)
   if inner == "" {
-    YamlSequence { elements: [] }
+    extdeps.languages.yaml.types.YamlSequence { elements: [] }
   } else {
-    YamlSequence { elements: map(split(s: inner, delimiter: ", "), t => yaml_parse_scalar_text(text: t)) }
+    extdeps.languages.yaml.types.YamlSequence { elements: map(split(s: inner, delimiter: ", "), t => yaml_parse_scalar_text(text: t)) }
   }
 }
 
 fn yaml_parse_scalar_text(text: String) -> extdeps.languages.yaml.types.YamlValue {
   if text == "''" {
-    YamlString { value: "" }
+    extdeps.languages.yaml.types.YamlString { value: "" }
   } else if starts_with(s: text, prefix: "\"") && ends_with(s: text, suffix: "\"") && (text.length() >= 2) {
-    YamlString { value: yaml_unescape_double_quoted(s: substring(s: text, start: 1, end: text.length() - 1)) }
+    extdeps.languages.yaml.types.YamlString { value: yaml_unescape_double_quoted(s: substring(s: text, start: 1, end: text.length() - 1)) }
   } else if text == "true" {
-    YamlBool { value: true }
+    extdeps.languages.yaml.types.YamlBool { value: true }
   } else if text == "false" {
-    YamlBool { value: false }
+    extdeps.languages.yaml.types.YamlBool { value: false }
   } else if yaml_looks_like_int(s: text) {
-    YamlInt { lexeme: text }
+    extdeps.languages.yaml.types.YamlInt { lexeme: text }
   } else {
-    YamlString { value: text }
+    extdeps.languages.yaml.types.YamlString { value: text }
   }
 }
 
@@ -202,11 +202,11 @@ fn yaml_parse_mapping_entry_from_text(text: String, lines: List<String>, index: 
 
 fn yaml_parse_mapping_entries(lines: List<String>, index: Int, indent: Int, acc: List<extdeps.languages.yaml.types.YamlKeyValue>) -> YamlBlockResult {
   if !yaml_has_line_at(lines: lines, index: index) {
-    ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: index }
+    ParsedYamlBlock { value: extdeps.languages.yaml.types.YamlMapping { entries: acc }, next_index: index }
   } else if yaml_indent_at(lines: lines, index: index) != indent {
-    ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: index }
+    ParsedYamlBlock { value: extdeps.languages.yaml.types.YamlMapping { entries: acc }, next_index: index }
   } else if starts_with(s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent), prefix: "- ") {
-    ParsedYamlBlock { value: YamlMapping { entries: acc }, next_index: index }
+    ParsedYamlBlock { value: extdeps.languages.yaml.types.YamlMapping { entries: acc }, next_index: index }
   } else {
     match yaml_parse_mapping_entry(lines: lines, index: index, indent: indent) {
       ParsedYamlEntry { entry: e, next_index: ni } =>
@@ -221,7 +221,7 @@ fn yaml_parse_seq_item(lines: List<String>, index: Int, indent: Int) -> YamlSeqI
   let item_text = substring(s: content, start: 2, end: content.length())
   if item_text == "|" {
     let lit = yaml_collect_literal_lines_from(lines: lines, index: index + 1, content_indent: indent + 2, acc: [])
-    ParsedYamlSeqItem { value: YamlString { value: lit.text }, next_index: lit.next_index }
+    ParsedYamlSeqItem { value: extdeps.languages.yaml.types.YamlString { value: lit.text }, next_index: lit.next_index }
   } else if yaml_is_flow_sequence_text(text: item_text) {
     ParsedYamlSeqItem { value: yaml_parse_flow_sequence(text: item_text), next_index: index + 1 }
   } else if string_contains(s: item_text, pattern: ": ") || ends_with(s: item_text, suffix: ":") {
@@ -240,11 +240,11 @@ fn yaml_parse_seq_item(lines: List<String>, index: Int, indent: Int) -> YamlSeqI
 
 fn yaml_parse_seq_items(lines: List<String>, index: Int, indent: Int, acc: List<extdeps.languages.yaml.types.YamlValue>) -> YamlBlockResult {
   if !yaml_has_line_at(lines: lines, index: index) {
-    ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: index }
+    ParsedYamlBlock { value: extdeps.languages.yaml.types.YamlSequence { elements: acc }, next_index: index }
   } else if yaml_indent_at(lines: lines, index: index) != indent {
-    ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: index }
+    ParsedYamlBlock { value: extdeps.languages.yaml.types.YamlSequence { elements: acc }, next_index: index }
   } else if !starts_with(s: yaml_strip_indent(line: yaml_line_at(lines: lines, index: index), indent: indent), prefix: "- ") {
-    ParsedYamlBlock { value: YamlSequence { elements: acc }, next_index: index }
+    ParsedYamlBlock { value: extdeps.languages.yaml.types.YamlSequence { elements: acc }, next_index: index }
   } else {
     match yaml_parse_seq_item(lines: lines, index: index, indent: indent) {
       ParsedYamlSeqItem { value: v, next_index: ni } =>

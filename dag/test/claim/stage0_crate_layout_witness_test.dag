@@ -22,13 +22,13 @@ module test.claim.stage0_crate_layout_witness
 // from, which is a live drift wall independent of self-host progress.
 
 test fn w_generated_stage0_filenames_match_frontier() -> Bool {
-  generated_stage0_filenames.length() == hand_maintained_stage0_filenames().length()
+  generated_stage0_filenames.length() == v2.compiler.self_host.stage0_crate_layout.hand_maintained_stage0_filenames().length()
     && generated_stage0_filenames
-      |> all(f => hand_maintained_stage0_filenames() |> any(g => g == f))
+      |> all(f => v2.compiler.self_host.stage0_crate_layout.hand_maintained_stage0_filenames() |> any(g => g == f))
 }
 
 test fn w_generated_stage0_dirs_match_frontier() -> Bool {
-  generated_stage0_dirs.length() == hand_maintained_stage0_dirs().length()
+  generated_stage0_dirs.length() == v2.compiler.self_host.stage0_crate_layout.hand_maintained_stage0_dirs().length()
     && generated_stage0_dirs
-      |> all(d => hand_maintained_stage0_dirs() |> any(g => g == d))
+      |> all(d => v2.compiler.self_host.stage0_crate_layout.hand_maintained_stage0_dirs() |> any(g => g == d))
 }

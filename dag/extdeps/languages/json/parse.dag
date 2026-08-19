@@ -96,7 +96,7 @@ fn parse_json_string_at(s: String, i: Int) -> JsonParse {
     JsonTextParseFail { end: e } => JsonParseFail { at: e }
     JsonTextParseOk { end: e } =>
       JsonParsed {
-        value: JsonString { value: json_unescape(s: substring(s: s, start: i + 1, end: e - 1)) },
+        value: extdeps.languages.json.emit.JsonString { value: json_unescape(s: substring(s: s, start: i + 1, end: e - 1)) },
         next: e,
       }
   }
@@ -107,7 +107,7 @@ fn parse_json_number_at(s: String, i: Int) -> JsonParse {
     JsonTextParseFail { end: e } => JsonParseFail { at: e }
     JsonTextParseOk { end: e } =>
       JsonParsed {
-        value: JsonNumber { lexeme: json_number_lexeme_unchecked(s: substring(s: s, start: i, end: e)) },
+        value: extdeps.languages.json.emit.JsonNumber { lexeme: json_number_lexeme_unchecked(s: substring(s: s, start: i, end: e)) },
         next: e,
       }
   }
@@ -134,7 +134,7 @@ fn json_string_value_or_empty(v: extdeps.languages.json.emit.JsonValue) -> Strin
   }
 }
 
-data json_member_lookup_note: String = "RFC 8259 permits duplicate names in an object and does not say which one wins, so JsonObject keeps members as an authored LIST rather than a map. A reader that folds that list into last-wins silently picks a value the document never committed to - and for an identity field like schema or verdict, last-wins is exactly how a document carrying two verdicts reads as whichever one an attacker put second. This lookup therefore reports duplication as its own outcome instead of resolving it, leaving the choice to refuse with the domain decoder that knows the field is an identity. JsonMemberNotAnObject is separate from JsonMemberAbsent for the same reason: a scalar document has not omitted a field, it has no fields at all, and collapsing the two would let a bare string satisfy an absence check."
+data json_member_lookup_note: String = "RFC 8259 permits duplicate names in an object and does not say which one wins, so extdeps.languages.json.emit.JsonObject keeps members as an authored LIST rather than a map. A reader that folds that list into last-wins silently picks a value the document never committed to - and for an identity field like schema or verdict, last-wins is exactly how a document carrying two verdicts reads as whichever one an attacker put second. This lookup therefore reports duplication as its own outcome instead of resolving it, leaving the choice to refuse with the domain decoder that knows the field is an identity. JsonMemberNotAnObject is separate from JsonMemberAbsent for the same reason: a scalar document has not omitted a field, it has no fields at all, and collapsing the two would let a bare string satisfy an absence check."
 
 type JsonMemberLookup
   = JsonMemberFound { value: extdeps.languages.json.emit.JsonValue }
@@ -193,11 +193,11 @@ fn parse_json_array_elements(s: String, i: Int, acc: List<extdeps.languages.json
 fn parse_json_array_at(s: String, i: Int) -> JsonParse {
   let p = json_text_skip_ws(s: s, i: i + 1)
   if char_at(s: s, i: p) == "]" {
-    JsonParsed { value: JsonArray { elements: [] }, next: p + 1 }
+    JsonParsed { value: extdeps.languages.json.emit.JsonArray { elements: [] }, next: p + 1 }
   } else {
     match parse_json_array_elements(s: s, i: p, acc: []) {
       JsonArrayAccFail { at: a } => JsonParseFail { at: a }
-      JsonArrayAccOk { elements: els, next: n } => JsonParsed { value: JsonArray { elements: els }, next: n }
+      JsonArrayAccOk { elements: els, next: n } => JsonParsed { value: extdeps.languages.json.emit.JsonArray { elements: els }, next: n }
     }
   }
 }
@@ -237,11 +237,11 @@ fn parse_json_object_members(s: String, i: Int, acc: List<extdeps.languages.json
 fn parse_json_object_at(s: String, i: Int) -> JsonParse {
   let p = json_text_skip_ws(s: s, i: i + 1)
   if char_at(s: s, i: p) == "}" {
-    JsonParsed { value: JsonObject { members: [] }, next: p + 1 }
+    JsonParsed { value: extdeps.languages.json.emit.JsonObject { members: [] }, next: p + 1 }
   } else {
     match parse_json_object_members(s: s, i: p, acc: []) {
       JsonObjectAccFail { at: a } => JsonParseFail { at: a }
-      JsonObjectAccOk { members: ms, next: n } => JsonParsed { value: JsonObject { members: ms }, next: n }
+      JsonObjectAccOk { members: ms, next: n } => JsonParsed { value: extdeps.languages.json.emit.JsonObject { members: ms }, next: n }
     }
   }
 }
@@ -255,8 +255,8 @@ fn parse_json_value_at(s: String, i: Int) -> JsonParse {
     if c == "{" { parse_json_object_at(s: s, i: p) }
     else if c == "[" { parse_json_array_at(s: s, i: p) }
     else if c == "\"" { parse_json_string_at(s: s, i: p) }
-    else if c == "t" { parse_json_literal_at(s: s, i: p, lit: "true", v: JsonBool { value: true }) }
-    else if c == "f" { parse_json_literal_at(s: s, i: p, lit: "false", v: JsonBool { value: false }) }
+    else if c == "t" { parse_json_literal_at(s: s, i: p, lit: "true", v: extdeps.languages.json.emit.JsonBool { value: true }) }
+    else if c == "f" { parse_json_literal_at(s: s, i: p, lit: "false", v: extdeps.languages.json.emit.JsonBool { value: false }) }
     else if c == "n" { parse_json_literal_at(s: s, i: p, lit: "null", v: JsonNull) }
     else if c == "-" || is_json_digit_char(c: c) { parse_json_number_at(s: s, i: p) }
     else { JsonParseFail { at: p } }

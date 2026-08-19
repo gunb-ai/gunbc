@@ -32,17 +32,17 @@ type LifecycleTotalityReceipt
   | LifecycleTotalityObservationRefused
 
 fn raw_disposition_authority_paths() -> List<String> {
-  list_map(xs: disposition_authority_rows(), f: fn(row) { row.path })
+  v2.std.algebra.list_map(xs: disposition_authority_rows(), f: fn(row) { row.path })
 }
 
 fn exact_duplicate_paths_within_authority(paths: List<String>) -> List<String> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: paths,
     empty: empty_string_list,
     cons: fn(acc, path) {
       if path_occurrence_count(paths: paths, target: path) > 1
         && !path_in_list(path: path, paths: acc) {
-        list_snoc_item(xs: acc, item: path)
+        v2.std.algebra.list_snoc_item(xs: acc, item: path)
       } else {
         acc
       }
@@ -61,7 +61,7 @@ fn exact_cross_axis_overlap_paths(
 }
 
 fn well_formed_maintenance_disposition_paths() -> List<String> {
-  list_map(
+  v2.std.algebra.list_map(
     xs: filter(
       xs: disposition_authority_rows(),
       predicate: fn(row) { lifecycle_row_well_formed(row: row) }
@@ -117,7 +117,7 @@ fn row_has_ill_formed_maintenance_disposition(row: gunbc.stage0_rust_source_life
 }
 
 fn exact_ill_formed_maintenance_disposition_paths() -> List<String> {
-  list_map(
+  v2.std.algebra.list_map(
     xs: filter(
       xs: disposition_authority_rows(),
       predicate: fn(row) { row_has_ill_formed_maintenance_disposition(row: row) }

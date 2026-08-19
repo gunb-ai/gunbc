@@ -33,8 +33,8 @@ data declared_consumed_input_units: List<ConsumedInputUnit> = [
 ]
 
 fn unit_is_affected(u: ConsumedInputUnit, paths: List<String>) -> Bool {
-  if corpus_dependency_view_per_pr_substrate_ready() {
-    entry_affected_by_dependency_view(
+  if v2.lens.affected_set.corpus_dependency_view.corpus_dependency_view_per_pr_substrate_ready() {
+    v2.lens.affected_set.entry_selection.entry_affected_by_dependency_view(
       entry_path: u.entry_path,
       pool_roots: gunbc.ci_layer_roots.witness_layer_roots,
       touched_paths: paths
@@ -80,7 +80,7 @@ fn should_run_gates(paths: List<String>, git_success: Bool) -> Bool {
 }
 
 fn witness_dag_only_gates_when_substrate_ready() -> Bool {
-  if corpus_dependency_view_per_pr_substrate_ready() {
+  if v2.lens.affected_set.corpus_dependency_view.corpus_dependency_view_per_pr_substrate_ready() {
     should_run_gates(paths: ["src/v2/std/text.dag"], git_success: true) == false
   } else {
     should_run_gates(paths: ["src/v2/std/text.dag"], git_success: true) == true
@@ -88,7 +88,7 @@ fn witness_dag_only_gates_when_substrate_ready() -> Bool {
 }
 
 fn witness_empty_paths_gates_when_substrate_ready() -> Bool {
-  if corpus_dependency_view_per_pr_substrate_ready() {
+  if v2.lens.affected_set.corpus_dependency_view.corpus_dependency_view_per_pr_substrate_ready() {
     should_run_gates(paths: [], git_success: true) == false
   } else {
     should_run_gates(paths: [], git_success: true) == true
@@ -96,7 +96,7 @@ fn witness_empty_paths_gates_when_substrate_ready() -> Bool {
 }
 
 fn witness_declared_unit_unaffected_by_other_dag_when_substrate_ready() -> Bool {
-  if corpus_dependency_view_per_pr_substrate_ready() {
+  if v2.lens.affected_set.corpus_dependency_view.corpus_dependency_view_per_pr_substrate_ready() {
     unit_must_run(
       unit: "coproduct_reflection_conformance_test",
       paths: ["src/v2/std/text.dag"]

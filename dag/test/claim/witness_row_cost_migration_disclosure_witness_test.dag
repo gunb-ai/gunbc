@@ -53,8 +53,8 @@ fn rows_filter_and_count_agree_and_are_located_holds() -> Bool {
   ]
   let mandatory = witness_row_cost_mandatory_migration_rows(rows: rows)
   witness_row_cost_mandatory_migration_count(rows: rows) == 2 &&
-    count_where(xs: mandatory, predicate: row => true) == 2 &&
-    for_all(xs: mandatory, predicate: row => row.declaration.decl_name != ("fast_row" as std.types.NonEmptyStr))
+    v2.std.algebra.count_where(xs: mandatory, predicate: row => true) == 2 &&
+    v2.std.algebra.for_all(xs: mandatory, predicate: row => row.declaration.decl_name != ("fast_row" as std.types.NonEmptyStr))
 }
 
 fn zero_over_threshold_rows_counts_zero_holds() -> Bool {

@@ -1,7 +1,7 @@
 module test.claim.seed_honesty_discharge_unavailable_test
 
 
-data seed_honesty_discharge_unavailable_offline_recipe_note: String = "MOVED OUT OF src/v2/test/claim/execution/ INTO dag/test/claim/ (review 47620), and the move is the substance rather than tidying. That directory carries a dir-grain OfflineLocalRecipe exclusion whose stated reason is the emit-vs-eval execution corpus home, and dag/gunbc/ci_layer_roots witness_discovery_scan_dirs does not list that tree at all. These witnesses are hermetic -- constructed DiverseCompilationRun fixtures, no host read anywhere -- so they never belonged in an emit-vs-eval execution home; they sat there incidentally. Deleting the seed-honesty QuarantineProbeExpectRed enrollment while leaving the file there would have removed the only thing scheduling it and left BOTH the closing contract and its permanent control running nowhere on the merge-gating path: a one-time RedControlExecuted receipt backing a regression wall that never executes again, which is specification-without-execution for the exact wall this change claims to keep. WHAT ACTUALLY MAKES THE MOVE THE REPAIR, corrected after reading the executor rather than the roster names. An earlier revision of this note justified the move as gaining positive membership in witness_discovery_scan_dirs. That justification was WRONG, and the mechanism is worth stating because the name misleads: claim_executor invoke_floor_discovery_producer_over_corpus uses scan_dirs for EXACTLY ONE thing, the discover_owned_data_decls loop, and hands the witness producer discover_floor_corpus_rows_from_host_facts only source_roots and exclude_substrings. So witness discovery is a SOURCE-ROOT walk for *_test.dag minus exclusions; witness_discovery_scan_dirs is the owned-data-decl scope, not the witness scope. The old location was therefore already reachable by the walk. What excluded it was the exclusion substring test/claim/execution/, which the walk does honor -- so the operative repair is leaving a path that matches an exclusion pattern, and the scan-dir half of the earlier justification named a mechanism that does not govern witnesses at all. v1_seed_honesty_decision_closing_contract_holds WAS enrolled QuarantineProbeExpectRed while seed_honesty_decision was SeedHonestyUndecided; the operator verdict of 2026-08-02 recorded FixedPointTrustSufficient, the aggregate greened, and the quarantine enrollment was deleted in the same change. The closing contract executes five conjuncts: a reflexive claim/check artifact refuses with a located bootstrap_self_verify_same_artifact diagnostic, a separately identified planted divergence refuses with bootstrap_self_verify_diverged, mismatched source/compiler/hash-pin provenance refuses with bootstrap_self_verify_provenance_mismatch, a distinct equal-content pair with equal provenance passes so none of the refusals is a blanket red, and the decision carries a NonEmptyStr rationale in one of the two decided arms.\n\nWHY THE EXPECT-RED PROBE WAS FLIPPED RATHER THAN DELETED. DESIGN 4b(4) rules that a climb dissolves the redundant lower-rung PRODUCTION machinery and keeps the discriminating evidence enrolled, because deleting the evidence recreates specification-without-execution one rung up. seed_honesty_undecided_keeps_closing_contract_red read the live decision constant, so once the verdict landed it could only assert the state that no longer exists -- it had to either go red or be deleted, and both are wrong. The conjunction is therefore now a FUNCTION of the decision, seed_honesty_closing_contract_over, applied to the live constant by the contract and to SeedHonestyUndecided by the permanent control seed_honesty_undecided_would_keep_closing_contract_red. That control keeps the fifth conjunct load-bearing: if someone weakened the decision arm so an undecided value satisfied the contract, the contract itself would stay green and only this control would red. Without it the aggregate would pass on four conjuncts that were already passing before the verdict.\n\nThe unavailable-evidence witnesses keep the larger DDC discharge fail-closed independently of the verdict, which is deliberate -- the verdict removes the DDC prerequisite edge from the v1-exit finish lines, it does not admit unavailable evidence."
+data seed_honesty_discharge_unavailable_offline_recipe_note: String = "MOVED OUT OF src/v2/test/claim/execution/ INTO dag/test/claim/ (review 47620), and the move is the substance rather than tidying. That directory carries a dir-grain OfflineLocalRecipe exclusion whose stated reason is the emit-vs-eval execution corpus home, and dag/gunbc/ci_layer_roots witness_discovery_scan_dirs does not list that tree at all. These witnesses are hermetic -- constructed DiverseCompilationRun fixtures, no host read anywhere -- so they never belonged in an emit-vs-eval execution home; they sat there incidentally. Deleting the seed-honesty QuarantineProbeExpectRed enrollment while leaving the file there would have removed the only thing scheduling it and left BOTH the closing contract and its permanent control running nowhere on the merge-gating path: a one-time RedControlExecuted receipt backing a regression wall that never executes again, which is specification-without-execution for the exact wall this change claims to keep. WHAT ACTUALLY MAKES THE MOVE THE REPAIR, corrected after reading the executor rather than the roster names. An earlier revision of this note justified the move as gaining positive membership in witness_discovery_scan_dirs. That justification was WRONG, and the mechanism is worth stating because the name misleads: claim_executor invoke_floor_discovery_producer_over_corpus uses scan_dirs for EXACTLY ONE thing, the discover_owned_data_decls loop, and hands the witness producer discover_floor_corpus_rows_from_host_facts only source_roots and exclude_substrings. So witness discovery is a SOURCE-ROOT walk for *_test.dag minus exclusions; witness_discovery_scan_dirs is the owned-data-decl scope, not the witness scope. The old location was therefore already reachable by the walk. What excluded it was the exclusion substring test/claim/execution/, which the walk does honor -- so the operative repair is leaving a path that matches an exclusion pattern, and the scan-dir half of the earlier justification named a mechanism that does not govern witnesses at all. v1_seed_honesty_decision_closing_contract_holds WAS enrolled QuarantineProbeExpectRed while v2.workflow.bootstrap.seed_honesty_decision was SeedHonestyUndecided; the operator verdict of 2026-08-02 recorded FixedPointTrustSufficient, the aggregate greened, and the quarantine enrollment was deleted in the same change. The closing contract executes five conjuncts: a reflexive claim/check artifact refuses with a located bootstrap_self_verify_same_artifact diagnostic, a separately identified planted divergence refuses with bootstrap_self_verify_diverged, mismatched source/compiler/hash-pin provenance refuses with bootstrap_self_verify_provenance_mismatch, a distinct equal-content pair with equal provenance passes so none of the refusals is a blanket red, and the decision carries a NonEmptyStr rationale in one of the two decided arms.\n\nWHY THE EXPECT-RED PROBE WAS FLIPPED RATHER THAN DELETED. DESIGN 4b(4) rules that a climb dissolves the redundant lower-rung PRODUCTION machinery and keeps the discriminating evidence enrolled, because deleting the evidence recreates specification-without-execution one rung up. seed_honesty_undecided_keeps_closing_contract_red read the live decision constant, so once the verdict landed it could only assert the state that no longer exists -- it had to either go red or be deleted, and both are wrong. The conjunction is therefore now a FUNCTION of the decision, seed_honesty_closing_contract_over, applied to the live constant by the contract and to SeedHonestyUndecided by the permanent control seed_honesty_undecided_would_keep_closing_contract_red. That control keeps the fifth conjunct load-bearing: if someone weakened the decision arm so an undecided value satisfied the contract, the contract itself would stay green and only this control would red. Without it the aggregate would pass on four conjuncts that were already passing before the verdict.\n\nThe unavailable-evidence witnesses keep the larger DDC discharge fail-closed independently of the verdict, which is deliberate -- the verdict removes the DDC prerequisite edge from the v1-exit finish lines, it does not admit unavailable evidence."
 
 data seed_honesty_primary_compiler: v2.std.node.Symbol = ^seed_honesty_primary_compiler
 data seed_honesty_secondary_compiler: v2.std.node.Symbol = ^seed_honesty_secondary_compiler
@@ -117,7 +117,7 @@ fn seed_honesty_closing_contract_over(decision: v2.workflow.bootstrap.SeedHonest
 }
 
 test fn v1_seed_honesty_decision_closing_contract_holds() -> Bool {
-  seed_honesty_closing_contract_over(decision: seed_honesty_decision)
+  seed_honesty_closing_contract_over(decision: v2.workflow.bootstrap.seed_honesty_decision)
 }
 
 test fn seed_honesty_check_four_poles_hold_before_decision() -> Bool {
@@ -142,7 +142,7 @@ fn seed_honesty_fabricated_agreement(
         compiler: primary_compiler,
         output: ^seed_honesty_fabricated_output,
         output_hash: v2.workflow.bootstrap.BootstrapHashPin {
-          digest: pinned_v4_fixed_point_hash,
+          digest: v2.workflow.bootstrap.pinned_v4_fixed_point_hash,
           pin: ^pinned_v4_fixed_point_hash_pin
         }
       },
@@ -151,7 +151,7 @@ fn seed_honesty_fabricated_agreement(
         compiler: secondary_compiler,
         output: ^seed_honesty_fabricated_output,
         output_hash: v2.workflow.bootstrap.BootstrapHashPin {
-          digest: pinned_v4_fixed_point_hash,
+          digest: v2.workflow.bootstrap.pinned_v4_fixed_point_hash,
           pin: ^pinned_v4_fixed_point_hash_pin
         }
       },
@@ -160,7 +160,7 @@ fn seed_honesty_fabricated_agreement(
         secondary: secondary_compiler
       },
       agreed_hash: v2.workflow.bootstrap.BootstrapHashPin {
-        digest: pinned_v4_fixed_point_hash,
+        digest: v2.workflow.bootstrap.pinned_v4_fixed_point_hash,
         pin: ^pinned_v4_fixed_point_hash_pin
       }
     }
@@ -168,7 +168,7 @@ fn seed_honesty_fabricated_agreement(
 }
 
 fn seed_honesty_discharge_refuses_when_unavailable() -> Bool {
-  match bootstrap_seed_honesty_discharge {
+  match v2.workflow.bootstrap.bootstrap_seed_honesty_discharge {
     Violates { diagnostic: d } => d.reason == ^bootstrap_diverse_compilation_mismatch
     Holds { value: _ } => false
   }

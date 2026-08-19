@@ -66,8 +66,8 @@ test fn cross_realization_parser_branch_mutation_red_control_holds() -> Bool {
 }
 
 test fn cross_realization_bash_branch_mutation_red_control_holds() -> Bool {
-  let authority = bash_membership_runtime_scan_loop
-  let drifted = bash_membership_runtime_scan_loop_drift_sketch
+  let authority = v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_runtime_scan_loop
+  let drifted = v2.extdeps.languages.bash_proc_self_cgroup.bash_membership_runtime_scan_loop_drift_sketch
   string_contains(s: authority, pattern: "[ -z \"$_cg_ctl\" ]")
     && !string_contains(s: drifted, pattern: "[ -z \"$_cg_ctl\" ]")
     && string_contains(s: drifted, pattern: "[ \"$_cg_h\" = \"0\" ]; then")

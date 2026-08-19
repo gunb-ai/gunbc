@@ -44,11 +44,11 @@ fn authored_parse_outcome(
   attachment: std.source_annotation.AnnotationAttachmentResult
 ) -> AuthoredParseOutcome {
   match std.source_annotation.admit_annotations(result: attachment) {
-    std.source_annotation.AnnotationsAdmitted { graph: graph } =>
+    AnnotationsAdmitted { graph: graph } =>
       AuthoredParseAccepted {
         artifact: AuthoredParseArtifact { semantic: semantic, annotations: graph },
       }
-    std.source_annotation.AnnotationsRefused { refusals: refusals } =>
+    AnnotationsRefused { refusals: refusals } =>
       AuthoredParseRejected { semantic: semantic, refusals: refusals }
   }
 }
@@ -204,7 +204,7 @@ fn grammar_lookup_production(root: v2.std.grammar.GrammarRoot, name: v2.std.node
     xs: v2.std.algebra.filter(xs: root.productions, predicate: fn(p) { p.name == name }),
     index: 0
   ) {
-    v2.std.optional.Present { value: production } => v2.std.witness.Holds { value: production }
+    Present { value: production } => v2.std.witness.Holds { value: production }
     v2.std.optional.Absent =>
       v2.std.witness.Violates {
         diagnostic: parse_grammar_undefined_nonterminal_diagnostic(
@@ -252,15 +252,15 @@ fn parse_table_memo_store_refused_diagnostic(at: v2.std.diagnostic.Locus) -> v2.
 
 fn parse_table_memo_store_refused_reason(d: v2.std.diagnostic.Diagnostic) -> Bool {
   match d {
-    v2.std.diagnostic.Diagnostic { reason: r, at: _, correction: _ } =>
+    Diagnostic { reason: r, at: _, correction: _ } =>
       r == ^parse_table_memo_store_refused
   }
 }
 
 fn parse_table_memo_lookup_refuses_store(table: ParseTable, key: ParsePositionKey) -> Bool {
   match parse_table_lookup(table: table, key: key) {
-    v2.std.witness.Violates { diagnostic: d } => parse_table_memo_store_refused_reason(d: d)
-    v2.std.witness.Holds { value: _ } => false
+    Violates { diagnostic: d } => parse_table_memo_store_refused_reason(d: d)
+    Holds { value: _ } => false
   }
 }
 
@@ -271,9 +271,9 @@ fn parse_table_memo_insert_refused(
 ) -> Bool {
   let after = parse_table_insert(table: table, key: key, value: value)
   match v2.std.collection.map_get(m: after.entries, key: key) {
-    v2.std.diagnostic.Accepted { value: v2.std.optional.Absent } => true
-    v2.std.diagnostic.Accepted { value: v2.std.optional.Present { value: _ } } => false
-    v2.std.diagnostic.Rejected { diagnostics: _ } => false
+    Accepted { value: v2.std.optional.Absent } => true
+    Accepted { value: v2.std.optional.Present { value: _ } } => false
+    Rejected { diagnostics: _ } => false
   }
 }
 
@@ -466,7 +466,7 @@ fn parse_table_subject(table: ParseTable, key: ParsePositionKey) -> v2.std.node.
 
 fn parse_current_position(tokens: v2.std.collection.List<v2.std.compilers.lexing.Token>) -> Int {
   match v2.std.algebra.list_head(xs: tokens) {
-    v2.std.algebra.HeadFound { value: t } => t.start + 1
+    HeadFound { value: t } => t.start + 1
     v2.std.algebra.HeadAbsent => 0
   }
 }
@@ -532,7 +532,7 @@ fn parse_mint_from_source(
 
 fn parse_minted_id_from_node(n: v2.std.node.Node) -> v2.std.collection.List<std.occurrence_identity.OccurrenceId> {
   match n.occurrence_id {
-    v2.std.node.MintedOccurrence { id: id } => std.algebra.Cons { head: id, tail: std.algebra.Empty }
+    MintedOccurrence { id: id } => std.algebra.Cons { head: id, tail: std.algebra.Empty }
     v2.std.node.SyntheticOccurrence => std.algebra.Empty
   }
 }
@@ -560,7 +560,7 @@ fn parse_stamp_terminal(
   )
   let identity = match stamp {
     v2.std.grammar.StampClass => tok.class
-    v2.std.grammar.StampBinding { binding: b } => b
+    StampBinding { binding: b } => b
     v2.std.grammar.StampLexeme => v2.std.compilers.lexing.symbol_intern_lexeme(lexeme: tok.lexeme)
   }
   ParseStampResult {
@@ -711,7 +711,7 @@ fn parse_flatten_diag_batches(batches: v2.std.collection.List<v2.std.collection.
   ).reverse()
 }
 
-fn parse_char_is_arm_pattern_lead(c: v2.std.text.Char) -> Bool {
+fn parse_char_is_arm_pattern_lead(c: std.types.Char) -> Bool {
   (c == 95) || ((c >= 65) && (c <= 90))
 }
 
@@ -733,15 +733,15 @@ fn parse_scan_fat_arrow_after_lbrace(tokens: v2.std.collection.List<v2.std.compi
   if depth <= 0 {
     match parse_token_first(tokens: tokens) {
       v2.std.optional.Absent => false
-      v2.std.optional.Present { value: tok } => parse_token_lexeme_is(tok: tok, lit: "=>")
+      Present { value: tok } => parse_token_lexeme_is(tok: tok, lit: "=>")
     }
   } else {
     match parse_token_first(tokens: tokens) {
       v2.std.optional.Absent => false
-      v2.std.optional.Present { value: tok } =>
+      Present { value: tok } =>
         match v2.std.algebra.list_tail(xs: tokens) {
           v2.std.algebra.TailAbsent => false
-          v2.std.algebra.TailFound { tail: rest } =>
+          TailFound { tail: rest } =>
             parse_scan_fat_arrow_after_lbrace(
               tokens: rest,
               depth: parse_next_brace_depth(tok: tok, depth: depth)
@@ -753,7 +753,7 @@ fn parse_scan_fat_arrow_after_lbrace(tokens: v2.std.collection.List<v2.std.compi
 
 fn parse_tokens_drop_one(tokens: v2.std.collection.List<v2.std.compilers.lexing.Token>) -> v2.std.collection.List<v2.std.compilers.lexing.Token> {
   match v2.std.algebra.list_tail(xs: tokens) {
-    v2.std.algebra.TailFound { tail: rest } => rest
+    TailFound { tail: rest } => rest
     v2.std.algebra.TailAbsent => []
   }
 }
@@ -769,12 +769,12 @@ fn parse_tokens_drop(tokens: v2.std.collection.List<v2.std.compilers.lexing.Toke
 fn parse_looks_like_match_arm_start(tokens: v2.std.collection.List<v2.std.compilers.lexing.Token>) -> Bool {
   match parse_token_first(tokens: tokens) {
     v2.std.optional.Absent => false
-    v2.std.optional.Present { value: tok0 } =>
+    Present { value: tok0 } =>
       match v2.std.text.string_head(s: tok0.lexeme) {
-        v2.std.text.CharFound { value: c } =>
+        CharFound { value: c } =>
           if parse_char_is_arm_pattern_lead(c: c) {
             match parse_token_second(tokens: tokens) {
-              v2.std.optional.Present { value: tok1 } =>
+              Present { value: tok1 } =>
                 if parse_token_lexeme_is(tok: tok1, lit: "=>") {
                   true
                 } else if parse_token_lexeme_is(tok: tok1, lit: "{") {
@@ -801,7 +801,7 @@ fn parse_stamp_match_arm_stmt_nodes(
 ) -> ParseStampResult {
   if v2.std.algebra.length(xs: acc_nodes) == 1 {
     match v2.std.collection.list_at_optional(xs: acc_nodes, index: 0) {
-      v2.std.optional.Present { value: only } => ParseStampResult { node: only, prov: prov }
+      Present { value: only } => ParseStampResult { node: only, prov: prov }
       v2.std.optional.Absent => ParseStampResult { node: v2.std.grammar.grammar_empty_node(), prov: prov }
     }
   } else {
@@ -919,12 +919,12 @@ fn parse_nonterminal_memoized_core(
     production: prod_name
   }
   match grammar_lookup_production(root: root, name: prod_name) {
-    v2.std.witness.Violates { diagnostic: d } =>
+    Violates { diagnostic: d } =>
       ParseExprRejected { diagnostics: [d], table: table }
-    v2.std.witness.Holds { value: production } =>
+    Holds { value: production } =>
       let table_at_lookup = parse_table_record_lookup_call(table: table)
       match parse_table_lookup(table: table_at_lookup, key: key) {
-        v2.std.witness.Holds { value: inner } =>
+        Holds { value: inner } =>
           let table_hit = parse_table_record_hit(table: table_at_lookup)
           match inner {
             ParseMemoRejected { diagnostics: diags } =>
@@ -944,7 +944,7 @@ fn parse_nonterminal_memoized_core(
                 table: table_hit
               }
           }
-        v2.std.witness.Violates { diagnostic: _ } =>
+        Violates { diagnostic: _ } =>
           let table_miss = parse_table_record_miss(table: table_at_lookup)
           let inner = parse_expr(
             expr: production.expression,
@@ -1065,9 +1065,9 @@ fn first_list_intersect(left: v2.std.collection.List<v2.std.node.Symbol>, right:
 
 fn production_first_row_lookup(rows: std.types.Map<v2.std.node.Symbol, v2.std.collection.List<v2.std.node.Symbol>>, name: v2.std.node.Symbol) -> v2.std.collection.List<v2.std.node.Symbol> {
   match v2.std.collection.map_get(m: rows, key: name) {
-    v2.std.diagnostic.Accepted { value: v2.std.optional.Present { value: terminals }, diagnostics: _ } => terminals
-    v2.std.diagnostic.Accepted { value: v2.std.optional.Absent, diagnostics: _ } => grammar_empty_terminal_list()
-    v2.std.diagnostic.Rejected { diagnostics: _ } => grammar_empty_terminal_list()
+    Accepted { value: v2.std.optional.Present { value: terminals }, diagnostics: _ } => terminals
+    Accepted { value: v2.std.optional.Absent, diagnostics: _ } => grammar_empty_terminal_list()
+    Rejected { diagnostics: _ } => grammar_empty_terminal_list()
   }
 }
 
@@ -1211,9 +1211,9 @@ fn collect_choice_ambiguities_in_expr(
   acc: v2.std.collection.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow>
 ) -> v2.std.collection.List<v2.std.grammar_choice_ambiguity.GrammarChoiceAmbiguityRow> {
   match expr {
-    v2.std.grammar.Terminal { token_class: _, stamp: _ } => acc
-    v2.std.grammar.Nonterminal { production: _ } => acc
-    v2.std.grammar.Sequence { left: left, right: right } =>
+    Terminal { token_class: _, stamp: _ } => acc
+    Nonterminal { production: _ } => acc
+    Sequence { left: left, right: right } =>
       collect_choice_ambiguities_in_expr(
         expr: right,
         production: production,
@@ -1227,7 +1227,7 @@ fn collect_choice_ambiguities_in_expr(
           acc: acc
         )
       )
-    v2.std.grammar.Choice { left: left, right: right } => {
+    Choice { left: left, right: right } => {
       let left_first = expr_first_fold(expr: left, nullable_set: nullable_set, first_rows: first_rows)
       let right_first = expr_first_fold(expr: right, nullable_set: nullable_set, first_rows: first_rows)
       let acc1 = append_choice_ambiguity_row(
@@ -1250,7 +1250,7 @@ fn collect_choice_ambiguities_in_expr(
         )
       )
     }
-    v2.std.grammar.Optional { element: element } =>
+    Optional { element: element } =>
       collect_choice_ambiguities_in_expr(
         expr: element,
         production: production,
@@ -1258,7 +1258,7 @@ fn collect_choice_ambiguities_in_expr(
         first_rows: first_rows,
         acc: acc
       )
-    v2.std.grammar.Repeat { element: element } =>
+    Repeat { element: element } =>
       collect_choice_ambiguities_in_expr(
         expr: element,
         production: production,
@@ -1442,8 +1442,8 @@ fn compute_left_corner_closure(
         empty: reachable,
         cons: fn(acc, sym) {
           match grammar_lookup_production(root: root, name: sym) {
-            v2.std.witness.Violates { diagnostic: _ } => acc
-            v2.std.witness.Holds { value: prod } =>
+            Violates { diagnostic: _ } => acc
+            Holds { value: prod } =>
               v2.std.algebra.fold_list(
                 xs: expr_direct_left_corner_list(expr: prod.expression, nullable_set: nullable_set),
                 empty: acc,
@@ -1487,8 +1487,8 @@ fn expr_has_undefined_nonterminal(expr: v2.std.grammar.GrammarExpr, root: v2.std
       terminal: fn(_, _) { false },
       nonterminal: fn(p) {
         match grammar_lookup_production(root: root, name: p) {
-          v2.std.witness.Violates { diagnostic: _ } => true
-          v2.std.witness.Holds { value: _ } => false
+          Violates { diagnostic: _ } => true
+          Holds { value: _ } => false
         }
       },
       sequence: fn(left_undef, right_undef) { left_undef || right_undef },
@@ -1501,8 +1501,8 @@ fn expr_has_undefined_nonterminal(expr: v2.std.grammar.GrammarExpr, root: v2.std
 
 fn grammar_has_undefined_nonterminals(root: v2.std.grammar.GrammarRoot) -> Bool {
   match grammar_lookup_production(root: root, name: root.start) {
-    v2.std.witness.Violates { diagnostic: _ } => true
-    v2.std.witness.Holds { value: _ } =>
+    Violates { diagnostic: _ } => true
+    Holds { value: _ } =>
       v2.std.algebra.any(
         xs: root.productions,
         predicate: fn(p) { expr_has_undefined_nonterminal(expr: p.expression, root: root) }
@@ -1520,7 +1520,7 @@ fn grammar_has_duplicate_productions(root: v2.std.grammar.GrammarRoot) -> Bool {
 fn parse_diag_cons(d: v2.std.diagnostic.Diagnostic, acc: v2.std.diagnostic.Diagnostics) -> v2.std.diagnostic.Diagnostics {
   match acc {
     v2.std.diagnostic.None => v2.std.diagnostic.Some { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: d, tail: [] } }
-    v2.std.diagnostic.Some { diagnostics: ned } =>
+    Some { diagnostics: ned } =>
       v2.std.diagnostic.Some {
         diagnostics: v2.std.diagnostic.NonEmptyDiagnostics {
           head: d,
@@ -1537,7 +1537,7 @@ fn parse_diags_to_diagnostics(diags: v2.std.collection.List<v2.std.diagnostic.Di
 fn parse_diags_to_non_empty(diags: v2.std.collection.List<v2.std.diagnostic.Diagnostic>, default: v2.std.diagnostic.Diagnostic) -> v2.std.diagnostic.NonEmptyDiagnostics {
   match parse_diags_to_diagnostics(diags: diags) {
     v2.std.diagnostic.None => v2.std.diagnostic.NonEmptyDiagnostics { head: default, tail: [] }
-    v2.std.diagnostic.Some { diagnostics: ned } => ned
+    Some { diagnostics: ned } => ned
   }
 }
 
@@ -1554,10 +1554,10 @@ fn parse_grammar_choice_overlap_residue_diagnostic(at: v2.std.diagnostic.Locus, 
 fn diagnostics_from_diagnostic_list(items: v2.std.collection.List<v2.std.diagnostic.Diagnostic>) -> v2.std.diagnostic.Diagnostics {
   match v2.std.collection.list_at_optional(xs: items, index: 0) {
     v2.std.optional.Absent => v2.std.diagnostic.None
-    v2.std.optional.Present { value: first } =>
+    Present { value: first } =>
       match v2.std.algebra.list_tail(xs: items) {
         v2.std.algebra.TailAbsent => v2.std.diagnostic.Some { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: std.algebra.Empty } }
-        v2.std.algebra.TailFound { tail: rest } =>
+        TailFound { tail: rest } =>
           v2.std.diagnostic.Some { diagnostics: v2.std.diagnostic.NonEmptyDiagnostics { head: first, tail: rest } }
       }
   }
@@ -1612,8 +1612,8 @@ fn grammar_validate_and_analyze(root: v2.std.grammar.GrammarRoot, at: v2.std.dia
 
 fn grammar_validate_for_parse(root: v2.std.grammar.GrammarRoot, at: v2.std.diagnostic.Locus) -> v2.std.diagnostic.Outcome<v2.std.grammar.ValidatedGrammarRoot> {
   match grammar_validate_and_analyze(root: root, at: at) {
-    v2.std.diagnostic.Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
-    v2.std.diagnostic.Accepted { value: modeled, diagnostics: residue } =>
+    Rejected { diagnostics: d } => v2.std.diagnostic.Rejected { diagnostics: d }
+    Accepted { value: modeled, diagnostics: residue } =>
       v2.std.diagnostic.Accepted { value: modeled.validated, diagnostics: residue }
   }
 }
@@ -1639,14 +1639,14 @@ fn parse_skip_to_sync(tokens: v2.std.collection.List<v2.std.compilers.lexing.Tok
 
 fn parse_token_first(tokens: v2.std.collection.List<v2.std.compilers.lexing.Token>) -> v2.std.optional.Optional<v2.std.compilers.lexing.Token> {
   match v2.std.algebra.list_head(xs: tokens) {
-    v2.std.algebra.HeadFound { value: v } => v2.std.optional.Present { value: v }
+    HeadFound { value: v } => v2.std.optional.Present { value: v }
     v2.std.algebra.HeadAbsent => v2.std.optional.Absent
   }
 }
 
 fn parse_token_second(tokens: v2.std.collection.List<v2.std.compilers.lexing.Token>) -> v2.std.optional.Optional<v2.std.compilers.lexing.Token> {
   match v2.std.algebra.list_tail(xs: tokens) {
-    v2.std.algebra.TailFound { tail: rest } => parse_token_first(tokens: rest)
+    TailFound { tail: rest } => parse_token_first(tokens: rest)
     v2.std.algebra.TailAbsent => v2.std.optional.Absent
   }
 }
@@ -1665,11 +1665,11 @@ fn parse_expr_terminal(
 ) -> ParseExprResult {
   match parse_token_first(tokens: tokens) {
     v2.std.optional.Absent => ParseExprRejected { diagnostics: [], table: table }
-    v2.std.optional.Present { value: tok } =>
+    Present { value: tok } =>
       match tok.class == token_class {
         true =>
           match v2.std.algebra.list_tail(xs: tokens) {
-            v2.std.algebra.TailFound { tail: remaining } =>
+            TailFound { tail: remaining } =>
               if token_class == ^dag_token_int_literal {
                 let minted = parse_mint_from_source(
                   prov: prov,
@@ -1681,7 +1681,7 @@ fn parse_expr_terminal(
                   lexeme: tok.lexeme,
                   occurrence_id: v2.std.node.node_occurrence_minted(id: minted.id)
                 ) {
-                  v2.std.diagnostic.Accepted { value: captured, diagnostics: _ } =>
+                  Accepted { value: captured, diagnostics: _ } =>
                     ParseExprAccepted {
                       remaining: remaining,
                       captured: captured,
@@ -1689,7 +1689,7 @@ fn parse_expr_terminal(
                       prov: minted.prov,
                       table: table
                     }
-                  v2.std.diagnostic.Rejected { diagnostics: d } =>
+                  Rejected { diagnostics: d } =>
                     ParseExprRejected { diagnostics: d, table: table }
                 }
               } else {
@@ -1849,7 +1849,7 @@ fn parse_choice_first_dispatch(
         } else {
           ParseExprRejected { diagnostics: [], table: table }
         }
-      v2.std.optional.Present { value: tok } =>
+      Present { value: tok } =>
         parse_choice_on_present_token(
           left: left,
           right: right,
@@ -1987,7 +1987,7 @@ fn parse_expr_with_first(
   prov: ParseProvenanceState
 ) -> ParseExprResult {
   match expr {
-    v2.std.grammar.Terminal { token_class: token_class, stamp: stamp } =>
+    Terminal { token_class: token_class, stamp: stamp } =>
       parse_expr_terminal(
         token_class: token_class,
         stamp: stamp,
@@ -1995,7 +1995,7 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
-    v2.std.grammar.Nonterminal { production: prod_name } =>
+    Nonterminal { production: prod_name } =>
       parse_nonterminal_memoized(
         all_tokens: all_tokens,
         tokens: tokens,
@@ -2004,7 +2004,7 @@ fn parse_expr_with_first(
         prod_name: prod_name,
         prov: prov
       )
-    v2.std.grammar.Sequence { left: left, right: right } =>
+    Sequence { left: left, right: right } =>
       parse_expr_sequence(
         left: left,
         right: right,
@@ -2014,7 +2014,7 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
-    v2.std.grammar.Choice { left: left, right: right } =>
+    Choice { left: left, right: right } =>
       parse_choice_first_dispatch(
         left: left,
         right: right,
@@ -2024,7 +2024,7 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
-    v2.std.grammar.Optional { element: element } =>
+    Optional { element: element } =>
       parse_expr_optional(
         element: element,
         tokens: tokens,
@@ -2033,7 +2033,7 @@ fn parse_expr_with_first(
         table: table,
         prov: prov
       )
-    v2.std.grammar.Repeat { element: element } =>
+    Repeat { element: element } =>
       parse_expr_repeat(
         element: element,
         tokens: tokens,
@@ -2070,9 +2070,9 @@ fn parse_production_memo_stats(
 ) -> ParseMemoStats {
   let root = validated.root
   match grammar_lookup_production(root: root, name: production_name) {
-    v2.std.witness.Violates { diagnostic: _ } =>
+    Violates { diagnostic: _ } =>
       ParseMemoStats { hits: 0, misses: 0, lookup_calls: 0 }
-    v2.std.witness.Holds { value: production } =>
+    Holds { value: production } =>
       let prov = parse_prov_initial()
       let table = parse_table_for_production(validated: validated, all_tokens: tokens)
       match parse_expr(
@@ -2100,7 +2100,7 @@ fn parse_production_prepared(
   let root = validated.root
   let at = v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port)
   match grammar_lookup_production(root: root, name: production_name) {
-    v2.std.witness.Holds { value: production } =>
+    Holds { value: production } =>
       let prov = parse_prov_initial()
       let table = parse_table_for_production_analyzed(validated: validated, analysis: analysis, all_tokens: tokens)
       match parse_expr(
@@ -2133,7 +2133,7 @@ fn parse_production_prepared(
             )
           }
       }
-    v2.std.witness.Violates { diagnostic: d } =>
+    Violates { diagnostic: d } =>
       v2.std.diagnostic.Rejected { diagnostics: v2.std.diagnostic.diagnostics_singleton(d: d) }
   }
 }
@@ -2161,9 +2161,9 @@ fn parse_production_tree(
     validated: validated,
     production_name: production_name
   ) {
-    v2.std.diagnostic.Accepted { value: artifact, diagnostics: d } =>
+    Accepted { value: artifact, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: artifact.tree, diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: r } =>
+    Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }
@@ -2174,10 +2174,10 @@ fn prepare_grammar(grammar: v2.std.grammar.ParseGrammar) -> v2.std.diagnostic.Ou
     match grammar {
       v2.std.grammar.VoidGrammar =>
         v2.std.diagnostic.Accepted { value: PreparedVoidGrammar, diagnostics: v2.std.diagnostic.None }
-      v2.std.grammar.ModeledGrammar { root: root } =>
+      ModeledGrammar { root: root } =>
         match grammar_validate_and_analyze(root: root, at: at) {
-          v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-          v2.std.diagnostic.Accepted { value: modeled, diagnostics: validation_residue } =>
+          Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+          Accepted { value: modeled, diagnostics: validation_residue } =>
             v2.std.diagnostic.Accepted {
               value: PreparedModeled { modeled: modeled },
               diagnostics: validation_residue
@@ -2198,8 +2198,8 @@ fn overlap_residue_stage_from_prepared(prepared: PreparedGrammar) -> v2.std.opti
 
 fn overlap_residue_stage_from_parse_grammar(grammar: v2.std.grammar.ParseGrammar) -> v2.std.optional.Optional<v2.compiler.parse_diagnostic.NonEmptyParseStageDiagnostics> {
   match prepare_grammar(grammar: grammar) {
-    v2.std.diagnostic.Rejected { diagnostics: _ } => v2.std.optional.optional_absent()
-    v2.std.diagnostic.Accepted { value: prepared, diagnostics: _ } =>
+    Rejected { diagnostics: _ } => v2.std.optional.optional_absent()
+    Accepted { value: prepared, diagnostics: _ } =>
       overlap_residue_stage_from_prepared(prepared: prepared)
   }
 }
@@ -2228,12 +2228,12 @@ fn parse_module_prepared(
         analysis: modeled.analysis,
         production_name: modeled.validated.root.start
       ) {
-        v2.std.diagnostic.Accepted { value: artifact, diagnostics: parse_diags } =>
+        Accepted { value: artifact, diagnostics: parse_diags } =>
           v2.std.diagnostic.Accepted {
             value: artifact,
             diagnostics: v2.std.diagnostic.diagnostics_merge(outer: validation_residue, inner: parse_diags)
           }
-        v2.std.diagnostic.Rejected { diagnostics: parse_rejected } =>
+        Rejected { diagnostics: parse_rejected } =>
           v2.std.diagnostic.Rejected {
             diagnostics: v2.std.diagnostic.rejected_with_pending(pending: validation_residue, rejected: parse_rejected)
           }
@@ -2243,17 +2243,17 @@ fn parse_module_prepared(
 
 fn parse_module(tokens: v2.std.compilers.lexing.TokenStream, grammar: v2.std.grammar.ParseGrammar) -> v2.std.diagnostic.Outcome<ParseArtifact> {
   match prepare_grammar(grammar: grammar) {
-    v2.std.diagnostic.Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
-    v2.std.diagnostic.Accepted { value: prepared, diagnostics: validation_residue } =>
+    Rejected { diagnostics: diags } => v2.std.diagnostic.Rejected { diagnostics: diags }
+    Accepted { value: prepared, diagnostics: validation_residue } =>
       parse_module_prepared(tokens: tokens, prepared: prepared, validation_residue: validation_residue)
   }
 }
 
 fn parse(tokens: v2.std.compilers.lexing.TokenStream, grammar: v2.std.grammar.ParseGrammar) -> v2.std.diagnostic.Outcome<v2.std.grammar.ParseTree> {
   match parse_module(tokens: tokens, grammar: grammar) {
-    v2.std.diagnostic.Accepted { value: artifact, diagnostics: d } =>
+    Accepted { value: artifact, diagnostics: d } =>
       v2.std.diagnostic.Accepted { value: artifact.tree, diagnostics: d }
-    v2.std.diagnostic.Rejected { diagnostics: r } =>
+    Rejected { diagnostics: r } =>
       v2.std.diagnostic.Rejected { diagnostics: r }
   }
 }

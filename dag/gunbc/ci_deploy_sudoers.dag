@@ -44,7 +44,7 @@ fn posix_sudo_grant_generic_mover_lint_ok(g: gunbc.fleet_posix_accounts.PosixSud
 }
 
 fn deploy_access_sudo_grants_lint_ok(access: gunbc.ci_deploy_access.DeployAccess) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: access.principal.sudo_grants,
     empty: true,
     cons: (acc, g) =>
@@ -68,7 +68,7 @@ fn deploy_sudoers_line_for_grant(access: gunbc.ci_deploy_access.DeployAccess, g:
 }
 
 fn deploy_sudoers_dropin_body(access: gunbc.ci_deploy_access.DeployAccess) -> String {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: access.principal.sudo_grants,
     empty: "",
     cons: (acc, g) =>

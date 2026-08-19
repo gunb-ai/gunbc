@@ -79,10 +79,10 @@ data confinement_census_capability: gunbc.repository_census_coverage.CensusMetho
 data confinement_census_denominator_note: String = "THE DENOMINATOR IS ASSEMBLED BY A DIFFERENT PROCEDURE THAN THE ROWS, which is the only reason the join can catch anything. Enumeration flattens all four declared rosters into one key list in roster order and knows nothing about axes. Classification walks each roster SEPARATELY and stamps the axis it came from. So a dropped axis, a roster walked twice, or a key stamped onto the wrong list shows up as a located missing, unexpected or duplicated subject rather than as a total that still happens to add up. The independence is at the PROCEDURE level and no further: both sides read the same four declared rosters, so this join cannot detect an error inside those rosters themselves — it detects an error in how a census walks them. That is the defect class actually paid for here (a concat census that missed an axis reported 117 where the population was 204), and overstating the independence would be the same substitution one level up."
 
 fn confinement_surface_declared_keys() -> List<gunbc.repository_census_observation.CensusSubjectKey> {
-  let exact = target_ast_vocab_modules |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
-  let prefixes = target_ast_vocab_module_prefixes |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
-  let edges = realization_edge_path_prefixes |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
-  let exceptions = realization_vocab_grandfathered_edge_keys() |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
+  let exact = v2.lens.realization_vocabulary_containment.target_ast_vocab_modules |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
+  let prefixes = v2.lens.realization_vocabulary_containment.target_ast_vocab_module_prefixes |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
+  let edges = v2.lens.realization_vocabulary_containment.realization_edge_path_prefixes |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
+  let exceptions = v2.lens.realization_vocabulary_containment.realization_vocab_grandfathered_edge_keys() |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
   append(append(append(exact, prefixes), edges), exceptions)
 }
 
@@ -94,13 +94,13 @@ fn confinement_surface_row(key: String, axis: ConfinementSurfaceAxis) -> gunbc.r
 }
 
 fn confinement_surface_axis_of_declared_key() -> List<gunbc.repository_census_observation.CensusObservedRow> {
-  let exact = target_ast_vocab_modules
+  let exact = v2.lens.realization_vocabulary_containment.target_ast_vocab_modules
     |> map(key => confinement_surface_row(key: key, axis: ExactVocabularyModule))
-  let prefixes = target_ast_vocab_module_prefixes
+  let prefixes = v2.lens.realization_vocabulary_containment.target_ast_vocab_module_prefixes
     |> map(key => confinement_surface_row(key: key, axis: VocabularyModulePrefix))
-  let edges = realization_edge_path_prefixes
+  let edges = v2.lens.realization_vocabulary_containment.realization_edge_path_prefixes
     |> map(key => confinement_surface_row(key: key, axis: RealizationEdgePathPrefix))
-  let exceptions = realization_vocab_grandfathered_edge_keys()
+  let exceptions = v2.lens.realization_vocabulary_containment.realization_vocab_grandfathered_edge_keys()
     |> map(key => confinement_surface_row(key: key, axis: DeclaredExceptionUnit))
   append(append(append(exact, prefixes), edges), exceptions)
 }
@@ -139,11 +139,11 @@ fn confinement_surface_coverage(revision: gunbc.guarantee_measurement.Measuremen
 data confinement_conformance_note: String = "THE CONFORMANCE CONTROLS EXECUTE INSIDE THE CORPUS, which is the difference between licensing a design decision and guarding it. A mutation probe run in a disposable worktree demonstrates that a classifier discriminates and then vanishes with the worktree; nothing re-runs it, so it is evidence about a moment rather than standing evidence. These two controls are ordinary functions this module evaluates, reached by an enrolled witness, so the discrimination is re-established on every affected change. The discriminating input is the classifier output with one whole axis dropped — the same defect probe 5 plants — and conformance requires that the reconciliation REFUSE it. The positive control requires that the real output reconcile. Both are needed: a classifier that refuses everything passes the first alone, and one that accepts everything passes the second alone. What this cannot establish is that the dropped axis was the right defect to plant; that judgement is the author's, and it is the honest frontier of the receipt."
 
 fn confinement_surface_defective_rows() -> List<gunbc.repository_census_observation.CensusObservedRow> {
-  let exact = target_ast_vocab_modules
+  let exact = v2.lens.realization_vocabulary_containment.target_ast_vocab_modules
     |> map(key => confinement_surface_row(key: key, axis: ExactVocabularyModule))
-  let prefixes = target_ast_vocab_module_prefixes
+  let prefixes = v2.lens.realization_vocabulary_containment.target_ast_vocab_module_prefixes
     |> map(key => confinement_surface_row(key: key, axis: VocabularyModulePrefix))
-  let edges = realization_edge_path_prefixes
+  let edges = v2.lens.realization_vocabulary_containment.realization_edge_path_prefixes
     |> map(key => confinement_surface_row(key: key, axis: RealizationEdgePathPrefix))
   append(append(exact, prefixes), edges)
 }
@@ -312,7 +312,7 @@ fn confinement_surface_supports_undeclared_key_absence(
 }
 
 fn confinement_surface_prefix_grain_keys() -> List<gunbc.repository_census_observation.CensusSubjectKey> {
-  let prefixes = target_ast_vocab_module_prefixes |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
-  let edges = realization_edge_path_prefixes |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
+  let prefixes = v2.lens.realization_vocabulary_containment.target_ast_vocab_module_prefixes |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
+  let edges = v2.lens.realization_vocabulary_containment.realization_edge_path_prefixes |> map(key => key as gunbc.repository_census_observation.CensusSubjectKey)
   append(prefixes, edges)
 }

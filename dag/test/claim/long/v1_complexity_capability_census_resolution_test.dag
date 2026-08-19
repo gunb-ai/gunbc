@@ -11,10 +11,10 @@ data census_resolution_pool_roots: List<String> = ["dag", "src/v2", "src/v1"]
 
 data census_resolution_facts: List<v2.std.decl_index.DeclFact> = decl_facts(pool_roots: census_resolution_pool_roots)
 
-data census_resolution_modules: List<v2.lens.module_graph.ModuleDeclarationFact> = module_declaration_facts_live(pool_roots: census_resolution_pool_roots)
+data census_resolution_modules: List<v2.lens.module_graph.ModuleDeclarationFact> = v2.lens.module_graph.module_declaration_facts_live(pool_roots: census_resolution_pool_roots)
 
 test fn census_every_declaration_ref_resolves_exactly() -> Bool {
-  cited_declaration_ref_refusal_count(
+  v2.std.decl_ref_resolution.cited_declaration_ref_refusal_count(
     refs: capability_all_declaration_refs(rows: v1_complexity_inventory_roster),
     facts: census_resolution_facts,
     modules: census_resolution_modules
@@ -24,7 +24,7 @@ test fn census_every_declaration_ref_resolves_exactly() -> Bool {
 data census_resolution_red_controls_note: String = "Three planted refusals, one per failure mode the substring check could not see. A declaration that does not exist must refuse with DeclarationRefDeclarationAbsent rather than greening because the spelling appears in a note; a module that does not exist must refuse with DeclarationRefModuleAbsent. Both are controlled fixtures authored here, which is the oracle form the repository sanctions — this witness authors the input and the expected verdict."
 
 test fn census_absent_declaration_refuses() -> Bool {
-  match resolve_declaration_ref(
+  match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: decl_ref(module_path: "v1.compiler.complexity", decl_name: "this_declaration_does_not_exist_in_the_seed"),
     facts: census_resolution_facts,
     modules: census_resolution_modules
@@ -35,7 +35,7 @@ test fn census_absent_declaration_refuses() -> Bool {
 }
 
 test fn census_absent_module_refuses() -> Bool {
-  match resolve_declaration_ref(
+  match v2.std.decl_ref_resolution.resolve_declaration_ref(
     ref: decl_ref(module_path: "v1.compiler.this_module_does_not_exist", decl_name: "classify_complexity"),
     facts: census_resolution_facts,
     modules: census_resolution_modules
@@ -47,7 +47,7 @@ test fn census_absent_module_refuses() -> Bool {
 
 // The discriminating control for the exact defect the operator named: a name that survives only inside a note string must NOT resolve. 'basis Derived' appears verbatim in the seed's cost_account_space_from_summary note, so a substring check finds it; as a DeclarationRef it is not a declaration and resolution refuses. This is the difference between the old check and this one, executed.
 test fn census_prose_only_name_does_not_resolve() -> Bool {
-  !declaration_ref_resolves(
+  !v2.std.decl_ref_resolution.declaration_ref_resolves(
     ref: decl_ref(module_path: "v1.compiler.complexity", decl_name: "Derived"),
     facts: census_resolution_facts,
     modules: census_resolution_modules
@@ -58,7 +58,7 @@ test fn census_resolved_identity_carries_observed_path() -> Bool {
   match capability_cited_carrier(c: asymptotic_class_and_dominance) {
     Absent => false
     Present { value: r } =>
-      match resolve_declaration_ref(
+      match v2.std.decl_ref_resolution.resolve_declaration_ref(
         ref: r,
         facts: census_resolution_facts,
         modules: census_resolution_modules
@@ -76,7 +76,7 @@ test fn census_shared_substrate_carrier_resolves() -> Bool {
   match capability_cited_carrier(c: call_graph_and_scc) {
     Absent => false
     Present { value: r } =>
-      match resolve_declaration_ref(
+      match v2.std.decl_ref_resolution.resolve_declaration_ref(
         ref: r,
         facts: census_resolution_facts,
         modules: census_resolution_modules
@@ -89,9 +89,9 @@ test fn census_shared_substrate_carrier_resolves() -> Bool {
   }
 }
 
-data w_admission_predicate_is_vacuous_note: String = "CENSUS FINDING, moved here from the fast lane because its imports were measurably expensive (see closure_cost_note in the fast-lane companion: this control's v2.lens closure cost an unrelated witness ~1.1s of its 5s budget). The control itself is unchanged and strengthened from the original: asserting that complexity_variables_admits EXISTS establishes nothing, since a real implementation satisfies that too. This uses the tree's own typed admission — v2.lens.complexity declares complexity_variables_vacuous_validation as a VacuousValidation carrying vacuous_admits_marker, which IS the module stating its predicate admits everything — and executes the predicate beside it. Synthesizing a rejected input is not available as a control precisely because the predicate rejects nothing; that is the finding."
+data w_admission_predicate_is_vacuous_note: String = "CENSUS FINDING, moved here from the fast lane because its imports were measurably expensive (see closure_cost_note in the fast-lane companion: this control's v2.lens closure cost an unrelated witness ~1.1s of its 5s budget). The control itself is unchanged and strengthened from the original: asserting that v2.lens.complexity.complexity_variables_admits EXISTS establishes nothing, since a real implementation satisfies that too. This uses the tree's own typed admission — v2.lens.complexity declares v2.lens.complexity.complexity_variables_vacuous_validation as a VacuousValidation carrying v2.std.refinement.vacuous_admits_marker, which IS the module stating its predicate admits everything — and executes the predicate beside it. Synthesizing a rejected input is not available as a control precisely because the predicate rejects nothing; that is the finding."
 
 test fn census_complexity_admission_predicate_is_vacuous_by_execution() -> Bool {
-  complexity_variables_admits(xs: []) &&
-  complexity_variables_vacuous_validation.vacuous == vacuous_admits_marker
+  v2.lens.complexity.complexity_variables_admits(xs: []) &&
+  v2.lens.complexity.complexity_variables_vacuous_validation.vacuous == v2.std.refinement.vacuous_admits_marker
 }

@@ -12,9 +12,9 @@ fn confinement_witness_revision() -> gunbc.guarantee_measurement.MeasurementRevi
 }
 
 fn confinement_witness_roster_total() -> Int {
-  let exact = count(target_ast_vocab_modules)
-  let prefixes = count(target_ast_vocab_module_prefixes)
-  let edges = count(realization_edge_path_prefixes)
+  let exact = count(v2.lens.realization_vocabulary_containment.target_ast_vocab_modules)
+  let prefixes = count(v2.lens.realization_vocabulary_containment.target_ast_vocab_module_prefixes)
+  let edges = count(v2.lens.realization_vocabulary_containment.realization_edge_path_prefixes)
   let exceptions = count(v2.lens.realization_vocabulary_containment.realization_vocab_grandfathered_edge_keys())
   exact + prefixes + edges + exceptions
 }
@@ -165,7 +165,7 @@ test fn witness_the_claim_carries_every_declared_key_by_identity() -> Bool {
     Present { value: claim } => {
       let claimed = confinement_surface_claimed_keys(claim: claim)
       let declared = confinement_surface_declared_keys()
-      all(declared, key => any(claimed, seen => (seen as String) == (key as String)))
+      all(declared, key => v2.std.algebra.any(claimed, seen => (seen as String) == (key as String)))
     }
     Absent => false
   }
@@ -182,7 +182,7 @@ test fn witness_an_undeclared_key_is_absent_from_the_claimed_population() -> Boo
   match confinement_surface_population_claim(revision: confinement_witness_revision()) {
     Present { value: claim } => {
       let claimed = confinement_surface_claimed_keys(claim: claim)
-      !any(claimed, seen => (seen as String) == "v2.workflow.definitely_not_confined")
+      !v2.std.algebra.any(claimed, seen => (seen as String) == "v2.workflow.definitely_not_confined")
     }
     Absent => false
   }
@@ -193,7 +193,7 @@ data confinement_prefix_grain_witness_note: String = "THE GRAIN CHECK, RUN AGAIN
 test fn witness_a_confinement_prefix_key_matches_a_non_descendant_by_string_prefix() -> Bool {
   let prefix = "v2.workflow.bash"
   let sibling = "v2.workflow.bash_command_fold_serialize"
-  let declared = any(target_ast_vocab_module_prefixes, key => key == prefix)
+  let declared = v2.std.algebra.any(v2.lens.realization_vocabulary_containment.target_ast_vocab_module_prefixes, key => key == prefix)
   let matches_as_string_prefix = starts_with(sibling, prefix)
   let is_not_namespace_descendant = !starts_with(sibling, concat(prefix, "."))
   declared && matches_as_string_prefix && is_not_namespace_descendant

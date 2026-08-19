@@ -62,7 +62,7 @@ test fn witness_ssh_mock_stdout_is_discriminating_red() -> Bool {
 }
 
 fn witness_argv_join(argv: List<String>) -> String {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: argv,
     empty: "",
     cons: (acc, word) => if acc == "" { word } else { concat(acc, concat(" ", word)) },

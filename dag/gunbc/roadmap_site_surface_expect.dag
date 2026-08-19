@@ -24,8 +24,8 @@ fn healthz_projected_member_or_empty(doc: extdeps.languages.json.emit.JsonValue,
 }
 
 fn healthz_projected_members(doc: extdeps.languages.json.emit.JsonValue) -> List<extdeps.languages.json.emit.JsonKeyValue> {
-  list_append(
-    list_append(
+  v2.std.algebra.list_append(
+    v2.std.algebra.list_append(
       healthz_projected_member_or_empty(doc: doc, key: healthz_surface_status_key),
       healthz_projected_member_or_empty(doc: doc, key: healthz_surface_service_key),
     ),

@@ -130,7 +130,7 @@ fn ci_sccache_eligibility() -> extdeps.cache.materialization.CatalogProviderElig
   provider_for_capacity_bounded_role(
     facts: sccache_local_facts,
     scope: empty_frame_path,
-    coverage: std.materialization_ladder.CoversIdentities { identities: [ci_release_build_script()] }
+    coverage: std.materialization_ladder.CoversIdentities { identities: [v2.workflow.ci_release_build_emit.ci_release_build_script()] }
   )
 }
 
@@ -325,9 +325,9 @@ fn resolve_realization_finalization_holds(
 ) -> Bool {
   unattributed_physical_resolves == 0
     && (realizations |> count) == ci_floor_expected_resolve_obligation_count()
-    && for_all(ci_floor_expected_resolve_obligations(), exp =>
+    && v2.std.algebra.for_all(ci_floor_expected_resolve_obligations(), exp =>
         resolve_obligation_receipt_has_identity(realizations: realizations, id: exp.identity))
-    && for_all(realizations, r => realization_is_well_formed(r: r))
+    && v2.std.algebra.for_all(realizations, r => realization_is_well_formed(r: r))
     && !same_obligation_realized_twice(realizations: realizations)
     && !unknown_obligation_appeared(realizations: realizations)
 }

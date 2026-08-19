@@ -1,18 +1,18 @@
 module gunbc.test.claim.dag_line_comment_annotation_channel_test
 
 
-data dag_line_comment_annotation_channel_note: String = "THE PRODUCTION '//' CHANNEL, asserted against the LexArtifact rather than against Accepted. Before this rule was registered, dag_lex_rules carried NO annotation rule at all, so a '//' line was not lexed as a comment: it tokenized as two dag_token_slash tokens followed by whatever its payload happened to lex as. A comment therefore 'lexed' BY ACCIDENT, exactly when every character in its payload had a semantic rule, and refused at the first character that did not — measured: '-' passed while the em-dash, the backtick and '@' each refused, and the em-dash passed inside a string literal where it is string content.\n\nThat is why an Accepted-only control is a FALSE CONTROL for this capability: 'module m // a b' lexing proves that slash-slash-ident-ident is lexable, not that a comment was recognised. Every claim below therefore reads the artifact — the annotation the channel captured, and the semantic stream it must NOT have polluted. The payload controls use characters with no semantic lex rule precisely because under the accidental route they were the refusing cases; under a real channel the payload is opaque and they are ordinary text."
+data dag_line_comment_annotation_channel_note: String = "THE PRODUCTION '//' CHANNEL, asserted against the LexArtifact rather than against Accepted. Before this rule was registered, v2.extdeps.languages.dag.dag_lex_rules carried NO annotation rule at all, so a '//' line was not lexed as a comment: it tokenized as two dag_token_slash tokens followed by whatever its payload happened to lex as. A comment therefore 'lexed' BY ACCIDENT, exactly when every character in its payload had a semantic rule, and refused at the first character that did not — measured: '-' passed while the em-dash, the backtick and '@' each refused, and the em-dash passed inside a string literal where it is string content.\n\nThat is why an Accepted-only control is a FALSE CONTROL for this capability: 'module m // a b' lexing proves that slash-slash-ident-ident is lexable, not that a comment was recognised. Every claim below therefore reads the artifact — the annotation the channel captured, and the semantic stream it must NOT have polluted. The payload controls use characters with no semantic lex rule precisely because under the accidental route they were the refusing cases; under a real channel the payload is opaque and they are ordinary text."
 
 fn artifact_of(source: String) -> v2.std.compilers.lexing.LexArtifact? {
-  match lex_walk_artifact(source: source, file: ^annotation_probe, rules: dag_lex_rules()) {
-    v2.std.diagnostic.Accepted { value: a, diagnostics: _ } => Present { value: a }
-    v2.std.diagnostic.Rejected { diagnostics: _ } => Absent
+  match v2.compiler.tokenize.lex_walk_artifact(source: source, file: ^annotation_probe, rules: v2.extdeps.languages.dag.dag_lex_rules()) {
+    Accepted { value: a, diagnostics: _ } => Present { value: a }
+    Rejected { diagnostics: _ } => Absent
   }
 }
 
 fn annotation_count(source: String) -> Int {
   match artifact_of(source: source) {
-    Present { value: a } => length(xs: lex_artifact_annotations(artifact: a))
+    Present { value: a } => length(xs: v2.std.compilers.lexing.lex_artifact_annotations(artifact: a))
     Absent => 0 - 1
   }
 }
@@ -24,10 +24,10 @@ fn no_lexemes() -> List<String> {
 fn token_lexemes(source: String) -> List<String> {
   match artifact_of(source: source) {
     Present { value: a } =>
-      fold_list(
-        xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: a)),
+      v2.std.algebra.fold_list(
+        xs: v2.std.compilers.lexing.token_stream_all(stream: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: a)),
         empty: no_lexemes(),
-        cons: fn(acc, t) { concat(acc, [symbol_lexeme(sym: t.class)]) }
+        cons: fn(acc, t) { concat(acc, [v2.std.compilers.lexing.symbol_lexeme(sym: t.class)]) }
       )
     Absent => no_lexemes()
   }
@@ -44,16 +44,16 @@ fn rendered_token_stream(source: String) -> String {
   match artifact_of(source: source) {
     Absent => "REFUSED"
     Present { value: a } =>
-      fold_list(
-        xs: token_stream_all(stream: lex_artifact_semantic_tokens(artifact: a)),
+      v2.std.algebra.fold_list(
+        xs: v2.std.compilers.lexing.token_stream_all(stream: v2.std.compilers.lexing.lex_artifact_semantic_tokens(artifact: a)),
         empty: "",
-        cons: fn(acc, t) { "{acc}|{symbol_lexeme(sym: t.class)}:{t.lexeme}" }
+        cons: fn(acc, t) { "{acc}|{v2.std.compilers.lexing.symbol_lexeme(sym: t.class)}:{t.lexeme}" }
       )
   }
 }
 
 fn lexemes_contain(xs: List<String>, s: String) -> Bool {
-  fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == s) })
+  v2.std.algebra.fold_list(xs: xs, empty: false, cons: fn(acc, x) { acc || (x == s) })
 }
 
 data plain_comment_source: String = "module annotation_probe\n\n// a b\n"

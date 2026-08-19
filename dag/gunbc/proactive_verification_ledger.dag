@@ -251,7 +251,7 @@ fn ledger_v1_delete_required_green_count() -> Int {
 }
 
 fn ledger_has_spine_kind(kind: VerificationReceiptKind) -> Bool {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: proactive_verification_spine_rows,
     empty: false,
     cons: fn(acc, row) { acc || (row.kind == kind) }

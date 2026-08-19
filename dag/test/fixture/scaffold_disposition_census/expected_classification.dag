@@ -116,14 +116,14 @@ data scaffold_census_planted_ambiguous_control_facts: List<v2.std.decl_index.Dec
     qualified_name: scaffold_census_planted_ambiguous_qualified_name,
     name: "g1_planted_ambiguous_scaffold_control_RED",
     kind: DataItem,
-    node: enforcement_red_probe_body_leaf,
+    node: v2.lens.enforcement.receipts.enforcement_red_probe_body_leaf,
     rel_path: "synthetic/scaffold_census_ambiguous_a.dag"
   },
   v2.std.decl_index.DeclFact {
     qualified_name: scaffold_census_planted_ambiguous_qualified_name,
     name: "g1_planted_ambiguous_scaffold_control_RED",
     kind: DataItem,
-    node: enforcement_red_probe_body_leaf,
+    node: v2.lens.enforcement.receipts.enforcement_red_probe_body_leaf,
     rel_path: "synthetic/scaffold_census_ambiguous_b.dag"
   }
 ]

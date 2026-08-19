@@ -48,7 +48,7 @@ fn product_reachability_verdicts_for_paths(
   tracked_paths: List<String>,
   cargo_bin_repo_paths: List<String>
 ) -> List<RustProductReachabilityVerdict> {
-  list_map(
+  v2.std.algebra.list_map(
     xs: tracked_paths,
     f: fn(path) {
       product_reachability_verdict_for_path(
@@ -93,26 +93,26 @@ fn exact_paths_from_verdicts(
   include_test_only: Bool,
   include_refused: Bool
 ) -> List<String> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: verdicts,
     empty: empty_string_list,
     cons: fn(acc, verdict) {
       match verdict {
         ProductReachable { path: path, entry_path: entry_path } =>
           if include_product {
-            list_snoc_item(xs: acc, item: path)
+            v2.std.algebra.list_snoc_item(xs: acc, item: path)
           } else {
             acc
           }
         TestOnlyReachable { path: path } =>
           if include_test_only {
-            list_snoc_item(xs: acc, item: path)
+            v2.std.algebra.list_snoc_item(xs: acc, item: path)
           } else {
             acc
           }
         ReachabilityRefused { path: path, unresolved_edge: unresolved_edge } =>
           if include_refused {
-            list_snoc_item(xs: acc, item: path)
+            v2.std.algebra.list_snoc_item(xs: acc, item: path)
           } else {
             acc
           }

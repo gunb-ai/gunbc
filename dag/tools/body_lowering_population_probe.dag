@@ -52,11 +52,11 @@ data body_lowering_batch_selection: List<v2.std.node.Symbol> = [
 ]
 
 fn is_selected(label: v2.std.node.Symbol) -> Bool {
-  fold_list(xs: body_lowering_batch_selection, empty: false, cons: fn(acc, sel) { acc || (sel == label) })
+  v2.std.algebra.fold_list(xs: body_lowering_batch_selection, empty: false, cons: fn(acc, sel) { acc || (sel == label) })
 }
 
 fn body_lowering_execution_batch() -> List<gunbc.tools.frontier_ingestion_probe.FrontierMember> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: body_lowering_subject_roster,
     empty: [] as List<gunbc.tools.frontier_ingestion_probe.FrontierMember>,
     cons: fn(acc, s) {
@@ -77,7 +77,7 @@ fn standing_of(s: BodyLoweringSubject, obs: List<gunbc.tools.frontier_ingestion_
   match s.realization {
     UnauthoredSpecimenClass => SubjectUnmeasured { cause: ^no_committed_specimen_identity }
     LiveFileSubject { path: _ } =>
-      fold_list(
+      v2.std.algebra.fold_list(
         xs: obs,
         empty: SubjectUnmeasured { cause: ^not_selected_into_execution_batch },
         cons: fn(acc, o) { if o.label == s.label { SubjectObserved { stage: o.stage } } else { acc } }
@@ -86,7 +86,7 @@ fn standing_of(s: BodyLoweringSubject, obs: List<gunbc.tools.frontier_ingestion_
 }
 
 fn standings_from(obs: List<gunbc.tools.frontier_ingestion_probe.MemberObservation>) -> List<BodyLoweringSubjectStanding> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: body_lowering_subject_roster,
     empty: [] as List<BodyLoweringSubjectStanding>,
     cons: fn(acc, s) {
@@ -144,7 +144,7 @@ fn refusal_standing_of(s: BodyLoweringSubject, cause: v2.std.node.Symbol) -> Bod
 }
 
 fn all_subjects_unmeasured(cause: v2.std.node.Symbol) -> List<BodyLoweringSubjectStanding> {
-  fold_list(
+  v2.std.algebra.fold_list(
     xs: body_lowering_subject_roster,
     empty: [] as List<BodyLoweringSubjectStanding>,
     cons: fn(acc, s) {
@@ -172,7 +172,7 @@ data body_lowering_prior_standing: List<BodyLoweringSubjectStanding> = [
 ]
 
 fn observation_line(o: gunbc.tools.frontier_ingestion_probe.MemberObservation) -> String {
-  concat(symbol_lexeme(sym: o.label), concat(" ", frontend_stage_label(s: o.stage)))
+  concat(v2.std.compilers.lexing.symbol_lexeme(sym: o.label), concat(" ", frontend_stage_label(s: o.stage)))
 }
 
 fn census_report() -> String {
@@ -180,7 +180,7 @@ fn census_report() -> String {
     CensusRefusedAtWorld => "REFUSED_AT_WORLD"
     CensusRefusedAtReconciliation { cause: _ } => "REFUSED_AT_RECONCILIATION"
     CensusTaken { roster_identity: _, observations: obs } =>
-      fold_list(
+      v2.std.algebra.fold_list(
         xs: obs,
         empty: "",
         cons: fn(acc, o) {

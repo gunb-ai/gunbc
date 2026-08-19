@@ -213,11 +213,11 @@ fn axis_is_materialized(a: v2.compiler.self_host.generation.GeneratedArtifactIde
 
 fn axis_identity(artifact: v2.compiler.self_host.generation.GeneratedArtifactIdentity) -> v2.compiler.self_host.generation.GenerationIdentity {
   v2.compiler.self_host.generation.GenerationIdentity {
-    producer_compiler: symbol_identity_digest(sym: "axis-derivation-producer-compiler"),
-    source_closure: symbol_identity_digest(sym: "axis-derivation-source-closure"),
-    target_model: symbol_identity_digest(sym: "axis-derivation-target-model"),
-    toolchain: symbol_identity_digest(sym: "axis-derivation-toolchain"),
-    build_configuration: symbol_identity_digest(sym: "axis-derivation-build-configuration"),
+    producer_compiler: v2.std.node.symbol_identity_digest(sym: "axis-derivation-producer-compiler"),
+    source_closure: v2.std.node.symbol_identity_digest(sym: "axis-derivation-source-closure"),
+    target_model: v2.std.node.symbol_identity_digest(sym: "axis-derivation-target-model"),
+    toolchain: v2.std.node.symbol_identity_digest(sym: "axis-derivation-toolchain"),
+    build_configuration: v2.std.node.symbol_identity_digest(sym: "axis-derivation-build-configuration"),
     materialized_artifact: artifact
   }
 }
@@ -230,7 +230,7 @@ fn moved_axis_count(both: TwoBuilds) -> Int {
         0 - 1
       } else {
         length(
-          xs: generation_identity_mismatched_axes(
+          xs: v2.compiler.self_host.generation.generation_identity_mismatched_axes(
             left: axis_identity(artifact: f),
             right: axis_identity(artifact: s)
           )
@@ -250,14 +250,14 @@ test fn changing_only_the_source_bytes_names_exactly_the_artifact_axis() -> Bool
       axis_is_materialized(a: f)
         && axis_is_materialized(a: s)
         && moved_axis_count(both: both) == 1
-        && for_all(
-          xs: generation_identity_mismatched_axes(
+        && v2.std.algebra.for_all(
+          xs: v2.compiler.self_host.generation.generation_identity_mismatched_axes(
             left: axis_identity(artifact: f),
             right: axis_identity(artifact: s)
           ),
           predicate: fn(named) {
-            generation_axis_symbol(axis: named) ==
-              generation_axis_symbol(axis: MaterializedArtifactAxis)
+            v2.compiler.self_host.generation.generation_axis_symbol(axis: named) ==
+              v2.compiler.self_host.generation.generation_axis_symbol(axis: v2.compiler.self_host.generation.MaterializedArtifactAxis)
           }
         )
   }
