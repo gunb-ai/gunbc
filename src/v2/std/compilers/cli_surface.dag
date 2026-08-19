@@ -5,12 +5,10 @@ import std.types { String }
 import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { List, Map }
 import v2.std.compilers.target_model {
-  BoundToken,
   ConcreteSyntaxToken,
-  FixedToken,
   LexRules,
-  bound_spelling_from_map,
-  lex_rules_literal_for_class
+  bound_tokens_source_text,
+  render_target_text
 }
 import v2.std.diagnostic {
   Accepted,
@@ -66,6 +64,11 @@ import v2.std.node { Symbol }
 // admit only this probe, which is a wall around an empty room. DISSOLVES WITH: the wave that adds
 // the first production consumer, which is also the wave that answers the target-model question.
 
+// One argv argument, as GRAMMAR: the fragments that compose it, before any spelling is resolved.
+// Not sealed -- it is an input shape a tool's rows author, and sealing an input a caller must
+// build would only push the forgery one level out. What is sealed is the OUTPUT.
+type CliArgumentSyntax { fragments: List<ConcreteSyntaxToken> }
+
 type CliArgument sole_constructor { text: String }
 
 type CliSurface sole_constructor { arguments: List<CliArgument> }
@@ -78,49 +81,68 @@ fn cli_argument_text(argument: CliArgument) -> String {
   argument.text
 }
 
-// The sibling fold. Structurally identical to bound_tokens_source_text except that the
-// accumulator is a list of arguments and each resolved spelling is snoc'd as its own argument
-// rather than concatenated onto a running string.
-fn bound_tokens_cli_arguments(
-  tokens: List<ConcreteSyntaxToken>,
+// THE FOLD IS NESTED, AND THE NESTING IS THE WHOLE POINT.
+//
+// An earlier revision folded a FLAT List<ConcreteSyntaxToken> one-token-one-argument, and its
+// witness supplied exactly two tokens and asserted exactly two arguments. That witness chose the
+// argument split before the serializer ran, so it established "one token supplied, one argument
+// retained" and NOT "the grammar groups fragments into arguments". The distinction is not
+// pedantic: concatenation is not inherently where CLI structure dies -- concatenation at the
+// WRONG STRUCTURAL LEVEL is. Within one argument concatenation is exactly right
+// (["--color", "=", "never"] is one argument --color=never; ["-", "e", "r"] is one argument -er);
+// across arguments it destroys the boundary.
+//
+// So there are two folds, not one. The inner fold resolves each fragment's spelling and
+// concatenates WITHIN one argument. The outer fold preserves the argument boundary BETWEEN them.
+// Both directions are then reachable from the same fragments, which is what makes the witness
+// discriminating rather than self-fulfilling.
+fn cli_argument_from_fragments(
+  fragments: List<ConcreteSyntaxToken>,
+  lex: LexRules,
+  binding_spellings: Map<Symbol, String>
+) -> Outcome<CliArgument> {
+  bind_outcome(
+    o: bound_tokens_source_text(
+      tokens: fragments,
+      lex: lex,
+      binding_spellings: binding_spellings
+    ),
+    f: fn(text) {
+      outcome_accepted(CliArgument { text: render_target_text(t: text) })
+    }
+  )
+}
+
+fn serialize_cli_arguments(
+  arguments: List<CliArgumentSyntax>,
   lex: LexRules,
   binding_spellings: Map<Symbol, String>
 ) -> Outcome<CliSurface> {
   bind_outcome(
     o: fold_list(
-      xs: tokens,
+      xs: arguments,
       empty: Accepted { value: Empty, diagnostics: None },
-      cons: fn(acc, token) {
+      cons: fn(acc, argument) {
         match acc {
           Rejected { diagnostics: r } => Rejected { diagnostics: r }
           Accepted { value: partial, diagnostics: ad } =>
-            match token {
-              FixedToken { token_class: tc } =>
-                bind_outcome(
-                  o: lex_rules_literal_for_class(rules: lex, token_class: tc),
-                  f: fn(spelling) {
-                    Accepted {
-                      value: list_snoc_item(xs: partial, item: CliArgument { text: spelling }),
-                      diagnostics: ad
-                    }
-                  }
-                )
-              BoundToken { token_class: _, binding: b } =>
-                bind_outcome(
-                  o: bound_spelling_from_map(binding_spellings: binding_spellings, binding: b),
-                  f: fn(spelling) {
-                    Accepted {
-                      value: list_snoc_item(xs: partial, item: CliArgument { text: spelling }),
-                      diagnostics: ad
-                    }
-                  }
-                )
+            match cli_argument_from_fragments(
+              fragments: argument.fragments,
+              lex: lex,
+              binding_spellings: binding_spellings
+            ) {
+              Rejected { diagnostics: r } => Rejected { diagnostics: r }
+              Accepted { value: rendered, diagnostics: _ } =>
+                Accepted {
+                  value: list_snoc_item(xs: partial, item: rendered),
+                  diagnostics: ad
+                }
             }
         }
       }
     ),
-    f: fn(arguments) {
-      outcome_accepted(CliSurface { arguments: arguments })
+    f: fn(rendered) {
+      outcome_accepted(CliSurface { arguments: rendered })
     }
   )
 }
