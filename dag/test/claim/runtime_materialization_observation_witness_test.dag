@@ -172,10 +172,16 @@ test fn a_missing_completion_receipt_is_not_complete() -> Bool {
 // AND THE PROBE ACTUALLY ASKS FOR IT. The arm above is unreachable unless the observer runs a leg
 // that can fail, so this pins the argv: a receipt arm nothing probes for is a state the type can
 // express and the producer can never emit.
+//
+// IT READS THE RECEIPT RATHER THAN TESTING FOR IT. This claim asserted `test -f` -- existence -- and
+// existence is exactly the evidence that could not support the conclusion: a receipt file present at
+// the right path says a file is there, not that it names THIS materialization. A tree left by a
+// previous release carries a receipt too. `cat` is what makes the identity comparison possible, so
+// the claim pins the reading command and explicitly refuses the existence test it used to require.
 test fn the_observer_probes_for_the_completion_receipt() -> Bool {
   let argv = spark_serving_runtime_materialization_receipt_probe_argv()
-  length(argv) == 3
-    && argv[0] == "test"
-    && argv[1] == "-f"
-    && string_contains(argv[2], "gunbc-materialization-receipt")
+  length(argv) == 2
+    && argv[0] == "cat"
+    && argv[0] != "test"
+    && string_contains(argv[1], "gunbc-materialization-receipt")
 }

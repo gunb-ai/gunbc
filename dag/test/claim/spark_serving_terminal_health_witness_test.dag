@@ -1,0 +1,185 @@
+module test.claim.spark_serving_terminal_health_witness_test
+
+import std.types { String, Bool, NonEmptyStr }
+import gunbc.spark_serving_terminal_health {
+  SparkServingTerminalHealth,
+  ServingConverged,
+  ResourcesConvergedButServingUnhealthy,
+  ServingHealthUnobserved,
+  SparkServingHealthDefect,
+  HealthVersionDisagrees,
+  HealthVersionUndecodable,
+  HealthGenerationUndecodable,
+  HealthGenerationIncomplete,
+  HealthGenerationWrongModel,
+  HealthGenerationUnexpectedText,
+  spark_serving_health_from_captures,
+  spark_serving_health_is_converged,
+  spark_serving_health_wire,
+  spark_serving_health_version_probe_argv,
+  spark_serving_health_generate_probe_argv,
+  spark_serving_health_request_body,
+}
+import gunbc.fleet_known_hosts_anchor { portable_remote_words }
+
+// The version the cited release row carries, as the API reports it: bare, without the `v` the
+// release tag carries. Written here as the API would send it so the fixture exercises the prefix
+// rule in `ollama_reported_version_matches_release` rather than sidestepping it.
+data good_version: String = "{\"version\":\"0.32.9\"}"
+
+fn generation(model: String, done: String, response: String) -> String {
+  join(["{\"model\":\"", model, "\",\"done\":", done, ",\"response\":\"", response, "\"}"], "")
+}
+
+fn good_generation() -> String {
+  generation(model: "gpt-oss:20b", done: "true", response: "pong")
+}
+
+fn health(version_stdout: String, generate_stdout: String) -> SparkServingTerminalHealth {
+  spark_serving_health_from_captures(
+    version_stdout: version_stdout,
+    generate_stdout: generate_stdout,
+  )
+}
+
+fn defect_wire(h: SparkServingTerminalHealth) -> String {
+  match h {
+    ServingConverged { reported_version: _, served_model: _ } => "<converged>"
+    ServingHealthUnobserved { cause: _ } => "<unobserved>"
+    ResourcesConvergedButServingUnhealthy { defect: d } =>
+      match d {
+        HealthVersionDisagrees { observed: _ } => "version-disagrees"
+        HealthVersionUndecodable { detail: _ } => "version-undecodable"
+        HealthGenerationUndecodable { detail: _ } => "generation-undecodable"
+        HealthGenerationIncomplete => "generation-incomplete"
+        HealthGenerationWrongModel { observed: _ } => "generation-wrong-model"
+        HealthGenerationUnexpectedText { observed: _ } => "generation-unexpected-text"
+      }
+  }
+}
+
+// THE POSITIVE CONTROL. Without it every claim below is satisfied by a function that calls
+// everything unhealthy, which is the cheapest way to pass a suite of negative claims.
+test fn a_serving_host_that_answers_correctly_is_converged() -> Bool {
+  spark_serving_health_is_converged(health: health(version_stdout: good_version, generate_stdout: good_generation()))
+}
+
+// THE DISCRIMINATING CLAIM. `done:false` carries the right model and the right text, so every check
+// that reads the response body alone accepts it -- and it means the model started and did not
+// finish. A host in this state serves partial answers and reports success.
+test fn an_unfinished_generation_is_not_converged() -> Bool {
+  let h = health(
+    version_stdout: good_version,
+    generate_stdout: generation(model: "gpt-oss:20b", done: "false", response: "pong"),
+  )
+  !spark_serving_health_is_converged(health: h)
+    && defect_wire(h: h) == "generation-incomplete"
+}
+
+// A DIFFERENT MODEL IS NOT THE PLANNED ONE. This is what a stale unit or a moved tag produces: the
+// host serves, fluently, and serves something nobody asked for.
+test fn a_host_serving_a_different_model_is_not_converged() -> Bool {
+  let h = health(
+    version_stdout: good_version,
+    generate_stdout: generation(model: "llama3:8b", done: "true", response: "pong"),
+  )
+  !spark_serving_health_is_converged(health: h)
+    && defect_wire(h: h) == "generation-wrong-model"
+}
+
+// TEXT IS COMPARED, NOT MERELY COUNTED. A model that answers something else has loaded and run, so
+// every liveness check that accepts a non-empty completion passes here.
+test fn an_unexpected_completion_is_not_converged() -> Bool {
+  let h = health(
+    version_stdout: good_version,
+    generate_stdout: generation(model: "gpt-oss:20b", done: "true", response: "I cannot help with that"),
+  )
+  !spark_serving_health_is_converged(health: h)
+    && defect_wire(h: h) == "generation-unexpected-text"
+}
+
+// A WRONG RUNTIME VERSION IS ITS OWN DEFECT, because its remedy is the runtime member rather than
+// the model member -- a stale root on PATH, or a unit pointing at a previous materialization.
+test fn a_disagreeing_runtime_version_is_not_converged() -> Bool {
+  let h = health(version_stdout: "{\"version\":\"0.1.0\"}", generate_stdout: good_generation())
+  !spark_serving_health_is_converged(health: h)
+    && defect_wire(h: h) == "version-disagrees"
+}
+
+// UNOBSERVED IS A THIRD STATE, and this is the claim that keeps it one.
+//
+// A probe that produced nothing has refuted nothing. Folding it into unhealthy would report a defect
+// nobody saw; folding it into healthy would report convergence nobody measured. Both directions are
+// asserted -- not converged AND not a defect -- because a two-valued verdict satisfies either half
+// alone.
+test fn an_unobserved_probe_is_neither_healthy_nor_a_defect() -> Bool {
+  let no_version = health(version_stdout: "", generate_stdout: good_generation())
+  let no_generation = health(version_stdout: good_version, generate_stdout: "   ")
+  !spark_serving_health_is_converged(health: no_version)
+    && defect_wire(h: no_version) == "<unobserved>"
+    && !spark_serving_health_is_converged(health: no_generation)
+    && defect_wire(h: no_generation) == "<unobserved>"
+}
+
+// A CONTRADICTION IS NOT A VALUE. Two `model` members disagree about what was served, and taking the
+// first renders the contradiction as a verdict. It refuses instead.
+test fn a_duplicated_response_member_refuses_rather_than_taking_the_first() -> Bool {
+  let h = health(
+    version_stdout: good_version,
+    generate_stdout: "{\"model\":\"gpt-oss:20b\",\"model\":\"llama3:8b\",\"done\":true,\"response\":\"pong\"}",
+  )
+  !spark_serving_health_is_converged(health: h)
+    && defect_wire(h: h) == "generation-undecodable"
+}
+
+// NON-JSON IS UNDECODABLE, NOT UNHEALTHY-BY-DEFAULT. An HTML error page from a proxy is a real thing
+// to receive on this port, and it must not decode into a confident statement about the model.
+test fn a_non_json_response_is_undecodable() -> Bool {
+  let h = health(version_stdout: good_version, generate_stdout: "<html>502 Bad Gateway</html>")
+  !spark_serving_health_is_converged(health: h)
+    && defect_wire(h: h) == "generation-undecodable"
+}
+
+// BOTH PROBE ARGVS MUST SURVIVE THE PORTABLE-WORD ADMISSION, and this is the claim that keeps the
+// health verdict from lying by silence.
+//
+// Every remote leg re-parses argv on the far side, so `portable_remote_words` refuses any word
+// carrying quotes, spaces or shell metacharacters. If a probe word failed that admission the leg
+// would never run, the capture would be empty, and the health fold would report
+// `ServingHealthUnobserved` -- FOREVER, and indistinguishable from an unreachable host. The failure
+// would look like a network problem and be a string problem, which is the worst kind of diagnostic to
+// hand an operator at 3am.
+//
+// This is exactly why the request body travels as a file: `--data @path` keeps the JSON out of argv.
+// The claim asserts the whole argv is admitted rather than spot-checking the URL, because it is the
+// body path and the Content-Type header that were most at risk.
+test fn both_health_probe_argvs_are_portable_remote_words() -> Bool {
+  match portable_remote_words(raws: spark_serving_health_version_probe_argv()) {
+    Absent => false
+    Present { value: _ } =>
+      match portable_remote_words(raws: spark_serving_health_generate_probe_argv()) {
+        Absent => false
+        Present { value: _ } => true
+      }
+  }
+}
+
+// THE CONTROL THAT PROVES THE ADMISSION ABOVE CAN SAY NO. Without it the claim passes on an
+// admission function that accepts everything, which would make it decoration.
+test fn an_inlined_json_body_would_be_refused_as_argv() -> Bool {
+  match portable_remote_words(raws: ["curl", "--data", spark_serving_health_request_body()]) {
+    Absent => true
+    Present { value: _ } => false
+  }
+}
+
+// The wire rendering names the verdict, so a receipt line distinguishes the three states rather than
+// printing one word for all of them.
+test fn the_health_wire_distinguishes_the_three_states() -> Bool {
+  string_contains(spark_serving_health_wire(health: health(version_stdout: good_version, generate_stdout: good_generation())), "serving-converged")
+    && string_contains(spark_serving_health_wire(health: health(version_stdout: "", generate_stdout: "")), "serving-health-unobserved")
+    && string_contains(
+         spark_serving_health_wire(health: health(version_stdout: good_version, generate_stdout: generation(model: "gpt-oss:20b", done: "false", response: "pong"))),
+         "resources-converged-but-serving-unhealthy",
+       )
+}

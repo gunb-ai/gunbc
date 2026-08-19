@@ -10,6 +10,9 @@ import gunbc.model_artifact { ModelArtifact, model_artifact_from_observed_digest
 import extdeps.ollama.api {
   OllamaModelRef,
   OllamaModelDigest,
+  OllamaEndpoint,
+  ApiVersion,
+  ollama_endpoint_path,
   ollama_default_port,
 }
 import extdeps.ollama.binary_release {
@@ -70,6 +73,31 @@ data spark_serving_desired_bind_listen: SparkServingBindListen = SparkServingBin
 
 fn spark_serving_desired_bind_host_port() -> String {
   spark_serving_bind_listen_wire(bind: spark_serving_desired_bind_listen)
+}
+
+// A LISTEN ADDRESS IS NOT A CONNECT ADDRESS, and the two were one string.
+//
+// The unit binds `0.0.0.0` because the endpoint is meant to be reachable across the LAN. Nothing
+// CONNECTS to `0.0.0.0`: it names "every local interface" to a listener, and a probe that dialled it
+// would be relying on a kernel convenience that says nothing about whether the intended interface is
+// serving. The on-host readiness probe therefore dials loopback on the same port -- same service,
+// stated as the address a client actually uses -- and the port is taken from the one bind row so the
+// two cannot drift into naming different services.
+data spark_serving_local_probe_host: NonEmptyStr = "127.0.0.1" as NonEmptyStr
+
+fn spark_serving_local_probe_host_port() -> String {
+  join([spark_serving_local_probe_host as String, ":", to_string(spark_serving_desired_bind_listen.port)], "")
+}
+
+// The path comes from `extdeps.ollama.api` `ollama_endpoint_path`, not from a literal here. Writing
+// "/api/version" would be a second spelling of a fact the cited endpoint model already owns, and the
+// two would drift silently the first time upstream moved it.
+fn spark_serving_local_endpoint_url(endpoint: OllamaEndpoint) -> String {
+  join(["http://", spark_serving_local_probe_host_port(), ollama_endpoint_path(endpoint: endpoint)], "")
+}
+
+fn spark_serving_local_api_version_url() -> String {
+  spark_serving_local_endpoint_url(endpoint: ApiVersion)
 }
 
 data spark_serving_desired_endpoint_intent: ServingEndpointIntent = UnauthenticatedEndpoint

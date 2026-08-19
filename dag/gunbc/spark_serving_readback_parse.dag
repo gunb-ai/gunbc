@@ -82,6 +82,82 @@ fn spark_serving_parse_version_json(stdout: String) -> SparkServingReadbackField
   }
 }
 
+// /api/generate DECODES HERE TOO, for the reason the note above gives: this module is where an
+// ollama response body becomes typed fields, and a second decoder living beside a consumer would be
+// the string_contains path the note forbids, reintroduced one module over.
+//
+// `done` IS A BOOLEAN ON THE WIRE, so it needs its own reader. Passing it through the string reader
+// would find a non-string and report the member refused, which would render a perfectly complete
+// response as undecodable -- a refusal caused by the reader rather than by the response.
+fn spark_serving_json_member_bool(lookup: JsonMemberLookup) -> SparkServingReadbackField {
+  match lookup {
+    JsonMemberFound { value: v } =>
+      match v {
+        JsonBool { value: b } =>
+          SparkServingReadbackPresent { value: if b { "true" } else { "false" } }
+        JsonString { value: _ } =>
+          SparkServingReadbackRefused {
+            cause: "ollama response member done is a string, not a boolean" as NonEmptyStr,
+          }
+        JsonNull =>
+          SparkServingReadbackRefused {
+            cause: "ollama response member done is null" as NonEmptyStr,
+          }
+        JsonNumber { lexeme: _ } =>
+          SparkServingReadbackRefused {
+            cause: "ollama response member done is a number, not a boolean" as NonEmptyStr,
+          }
+        JsonArray { elements: _ } =>
+          SparkServingReadbackRefused {
+            cause: "ollama response member done is an array, not a boolean" as NonEmptyStr,
+          }
+        JsonObject { members: _ } =>
+          SparkServingReadbackRefused {
+            cause: "ollama response member done is an object, not a boolean" as NonEmptyStr,
+          }
+      }
+    JsonMemberAbsent =>
+      SparkServingReadbackRefused {
+        cause: "ollama /api/generate response carried no done member, so completion was not stated" as NonEmptyStr,
+      }
+    JsonMemberDuplicated { count: n } =>
+      SparkServingReadbackRefused {
+        cause: join([
+          "ollama /api/generate response member done is duplicated (count=", to_string(n), ")",
+        ], "") as NonEmptyStr,
+      }
+    JsonMemberNotAnObject =>
+      SparkServingReadbackRefused {
+        cause: "ollama /api/generate response body is not a JSON object" as NonEmptyStr,
+      }
+  }
+}
+
+fn spark_serving_parse_generate_member(stdout: String, member: String) -> SparkServingReadbackField {
+  match parse_json(s: stdout) {
+    Absent =>
+      SparkServingReadbackRefused {
+        cause: "ollama /api/generate body is not parseable JSON" as NonEmptyStr,
+      }
+    Present { value: doc } =>
+      spark_serving_readback_field_from_member_lookup(
+        lookup: json_object_unique_member(v: doc, key: member),
+        member: member,
+      )
+  }
+}
+
+fn spark_serving_parse_generate_done(stdout: String) -> SparkServingReadbackField {
+  match parse_json(s: stdout) {
+    Absent =>
+      SparkServingReadbackRefused {
+        cause: "ollama /api/generate body is not parseable JSON" as NonEmptyStr,
+      }
+    Present { value: doc } =>
+      spark_serving_json_member_bool(lookup: json_object_unique_member(v: doc, key: "done"))
+  }
+}
+
 type SparkServingTagsModelSearch
   = SparkServingTagsModelSearchOk { repository: String, digest: String }
   | SparkServingTagsModelSearchRefused { cause: NonEmptyStr }

@@ -121,23 +121,68 @@ fn spark_serving_required_runtime_staging_root() -> FilePath {
   ) as FilePath
 }
 
+// THE ATTEMPT WORKSPACE IS NOT THE STAGING TREE, and merging them was a real defect rather than an
+// untidiness. The archive and its checksum manifest used to be written INSIDE staging, and staging is
+// exactly what `mv -T` publishes -- so every published runtime root carried the ~1.5 GB tarball it was
+// extracted from, plus an `archive.sha256`, sitting beside the binary. A root addressed by
+// materialization identity then contained files that are no part of that identity.
+//
+// The workspace holds what the ATTEMPT needs and the runtime does not: the download and the manifest
+// checked against it. It is removed when the attempt ends, either way. Staging holds only extracted
+// runtime contents and the receipt, so "the published tree is the runtime and nothing else" holds by
+// construction rather than by a cleanup step someone has to remember.
+// Readiness capture is NOT the install workspace. Pulling a model is a different effect from
+// installing the runtime and must not depend on a directory the install sequence creates and deletes,
+// so the probe response lands under its own root that outlives neither more nor less than the probe.
+fn spark_serving_readiness_scratch_root() -> FilePath {
+  concat(
+    spark_serving_runtimes_parent() as String,
+    "/.readiness",
+  ) as FilePath
+}
+
+fn spark_serving_health_request_body_path() -> FilePath {
+  concat(
+    spark_serving_readiness_scratch_root() as String,
+    "/generate-request.json",
+  ) as FilePath
+}
+
+fn spark_serving_required_runtime_workspace_root() -> FilePath {
+  concat(
+    spark_serving_runtimes_parent() as String,
+    concat("/.workspace-", ollama_runtime_materialization_identity_for_required_release().digest as String),
+  ) as FilePath
+}
+
 fn spark_serving_required_runtime_staged_archive_path() -> FilePath {
   concat(
-    spark_serving_required_runtime_staging_root() as String,
+    spark_serving_required_runtime_workspace_root() as String,
     concat("/", ollama_binary_release_asset_name(binary_release: ollama_required_release) as String),
   ) as FilePath
 }
 
 fn spark_serving_required_runtime_checksum_manifest_path() -> FilePath {
   concat(
-    spark_serving_required_runtime_staging_root() as String,
+    spark_serving_required_runtime_workspace_root() as String,
     "/archive.sha256",
   ) as FilePath
 }
 
-// The receipt is written LAST and lives INSIDE the published root, so its presence is evidence that
-// every prior step completed. A receipt beside the root could outlive a failed publish and report a
-// tree that is not there.
+// THE RECEIPT ARRIVES BY THE PUBLISHING RENAME. It is written into staging as the last step before
+// publication, so it reaches its final path -- the one below, which the observer reads -- as part of
+// the same atomic `mv` that publishes the tree. Writing it into the final root AFTER the publish would
+// make it a separate step with its own failure, leaving a fully published runtime that every observer
+// reports incomplete. Written into staging, the receipt cannot exist unless the tree naming it was
+// published whole, and it cannot outlive a publish that never happened.
+fn spark_serving_required_runtime_staged_receipt_path() -> FilePath {
+  concat(
+    spark_serving_required_runtime_staging_root() as String,
+    "/.gunbc-materialization-receipt",
+  ) as FilePath
+}
+
+// Where the receipt ends up, and therefore where the observer looks for it.
 fn spark_serving_required_runtime_receipt_path() -> FilePath {
   concat(
     spark_serving_required_runtime_root() as String,

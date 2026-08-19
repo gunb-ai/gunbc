@@ -121,6 +121,7 @@ type RuntimeMaterializationDefect
   | RuntimeExecutableMissing { expected_relative_path: NonEmptyStr }
   | RuntimeExecutableNotExecutable { expected_relative_path: NonEmptyStr }
   | RuntimeMaterializationReceiptMissing
+  | RuntimeMaterializationReceiptIdentityMismatch { observed: NonEmptyStr }
 
 // WHAT THIS CARRIER DOES NOT YET DO, named so it is not mistaken for closed.
 //
@@ -171,6 +172,8 @@ fn runtime_materialization_defect_label(defect: RuntimeMaterializationDefect) ->
     RuntimeExecutableNotExecutable { expected_relative_path: p } =>
       join(["executable-not-executable:", p as String], "")
     RuntimeMaterializationReceiptMissing => "materialization-receipt-missing"
+    RuntimeMaterializationReceiptIdentityMismatch { observed: o } =>
+      join(["materialization-receipt-identity-mismatch:", o as String], "")
   }
 }
 
@@ -242,6 +245,12 @@ fn runtime_materialization_was_observed(observation: RuntimeMaterializationObser
 //
 // Naming the missing blobs is not diagnostics for its own sake: it is what lets a repair fetch what
 // is absent instead of re-pulling a multi-gigabyte model to recover one truncated layer.
+//
+// A BLOB WHOSE BYTES DO NOT MATCH ITS NAME IS ITS OWN STATE. `ModelStoreCorrupt` is not Absent --
+// the file is there and a listing finds it -- and not a refusal, because the observation succeeded
+// and the answer is known. It could be folded into Incomplete and reconcile would behave the same,
+// but the operator question differs: a missing blob was never fetched, a corrupt one was fetched and
+// damaged, and the second says something about the host that the first does not.
 type ModelStoreObservation
   = ModelStoreAbsent
   | ModelStoreIncomplete {
@@ -252,6 +261,10 @@ type ModelStoreObservation
   | ModelStoreComplete {
       manifest_identity: NonEmptyStr
       blob_closure_size: Int
+    }
+  | ModelStoreCorrupt {
+      manifest_identity: NonEmptyStr
+      first_corrupt_blob: NonEmptyStr
     }
   | ModelStoreObservationRefused { cause: NonEmptyStr }
 
@@ -266,6 +279,7 @@ fn model_store_missing_blobs(observation: ModelStoreObservation) -> List<NonEmpt
     } => concat([b], rest)
     ModelStoreAbsent => []
     ModelStoreComplete { manifest_identity: _, blob_closure_size: _ } => []
+    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => []
     ModelStoreObservationRefused { cause: _ } => []
   }
 }
@@ -298,6 +312,15 @@ fn model_store_missing_blobs(observation: ModelStoreObservation) -> List<NonEmpt
 fn model_store_state_digest(observation: ModelStoreObservation) -> NonEmptyStr? {
   match observation {
     ModelStoreComplete { manifest_identity: id, blob_closure_size: _ } => Present { value: id }
+    ModelStoreCorrupt { manifest_identity: id, first_corrupt_blob: b } =>
+      Present {
+        value: content_hash_atom(
+          value: join([
+            "ollama-model-store-corrupt|manifest=", id as String,
+            "|corrupt=", b as String,
+          ], "") as NonEmptyStr,
+        ).digest as NonEmptyStr,
+      }
     ModelStoreIncomplete {
       manifest_identity: id,
       first_missing_blob: b,
@@ -321,6 +344,7 @@ fn model_store_state_digest(observation: ModelStoreObservation) -> NonEmptyStr? 
 
 fn model_store_was_observed(observation: ModelStoreObservation) -> Bool {
   match observation {
+    ModelStoreCorrupt { manifest_identity: _, first_corrupt_blob: _ } => true
     ModelStoreComplete { manifest_identity: _, blob_closure_size: _ } => true
     ModelStoreIncomplete {
       manifest_identity: _,

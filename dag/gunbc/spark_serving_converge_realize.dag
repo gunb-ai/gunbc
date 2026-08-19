@@ -17,7 +17,7 @@ import gunbc.spark_serving_realization {
   GrantContainerRuntimeAccess,
   RunContainerAsOwnUser,
 }
-import gunbc.spark_serving_desired { spark_serving_automation_principal_login, spark_serving_desired_model_ref }
+import gunbc.spark_serving_desired { spark_serving_automation_principal_login, spark_serving_desired_model_ref, spark_serving_local_api_version_url }
 import extdeps.ollama.api { ollama_model_ref_wire }
 import gunbc.spark_serving_unit_identity { spark_serving_unit_name }
 import gunbc.remote_operation { RemoteOperation, RemoteArgv, RemoteFileBytes, remote_operation_argv, PlannedRemoteStep }
@@ -34,10 +34,13 @@ import gunbc.spark_serving_install_paths {
   spark_serving_runtimes_parent,
   spark_serving_required_runtime_root,
   spark_serving_required_runtime_staging_root,
+  spark_serving_required_runtime_workspace_root,
+  spark_serving_readiness_scratch_root,
+  spark_serving_health_request_body_path,
+  spark_serving_required_runtime_staged_receipt_path,
   spark_serving_required_runtime_staged_archive_path,
   spark_serving_required_runtime_staged_executable_path,
   spark_serving_required_runtime_checksum_manifest_path,
-  spark_serving_required_runtime_receipt_path,
   spark_serving_required_runtime_executable_path,
 }
 import extdeps.ollama.binary_release {
@@ -49,6 +52,7 @@ import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for
 import std.types { FilePath }
 import gunbc.spark_serving_runtime_receipt { spark_serving_executor_home }
 import gunbc.spark_serving_unit_render { spark_serving_desired_user_unit_text }
+import gunbc.spark_serving_terminal_health { spark_serving_health_request_body }
 
 data spark_serving_converge_realize_authority_note: String = "Seam 2 realization for Spark serving frozen install_effects. Maps a frozen ServingInstallEffect to a gunbc.remote_operation RemoteOperation — never through effect_actuation shell strings (that module is privilege-derivation only; serving_privilege_derivation_witness_test). Two operation kinds, because a file write is bytes and bytes ride stdin, never argv: argv arms are EnableLingerForOwnAccount [sudo, -n, loginctl, enable-linger, login]; ReloadUserManager [systemctl, --user, daemon-reload]; EnableUserUnit [systemctl, --user, enable, --now, unit] — no interpolation, unit basename from gunbc.spark_serving_unit_identity. The file-bytes arm is WriteUserUnitFile, whose content comes from gunbc.spark_serving_unit_render and whose path is admitted by typed_remote_file_write_seal (containment under the executor home plus far-side portability); its seal refusal is carried through with its own cause. Every remaining effect refuses; a sequence containing one refuses whole."
 
@@ -152,15 +156,79 @@ fn spark_serving_enable_user_unit_remote_argv() -> SparkServingInstallRemoteComm
 // The digest remains the identity every comparison is made on -- the label names what to fetch, and
 // the observation says what arrived, and conflating those is how a moved tag becomes an undetected
 // substitution.
+// THE PULL WAITED FOR NOTHING, and that is why it is a sequence now.
+//
+// `ollama pull` is an API client: it talks to the serving process rather than doing the work itself.
+// Issued the moment the unit is written it reaches a socket nobody is listening on yet, fails on
+// connection refused, and the whole convergence reports a failed pull for a host that was merely
+// still starting. Retrying the convergence is not a fix -- it makes the outcome depend on how long
+// the last run happened to take.
+//
+// THE WAIT IS BOUNDED, FROZEN, AND NOT A SHELL LOOP. `curl` performs the retry itself, so the bound
+// lives in the plan as reviewable argv rather than in a `while` whose exit condition is invisible to
+// the artifact. `--retry-connrefused` is the load-bearing flag: without it curl treats a refused
+// connection as a hard failure and never retries, which is the exact case being waited on.
+//
+// The bound is a real bound, not a long one: `--retry-max-time` caps the whole retry window, so the
+// step fails loudly at a known deadline instead of hanging. A host that cannot serve within it has a
+// problem a longer wait would only hide.
+//
+// WHY NO `systemctl is-active` STEP, though the readiness ladder names one. It is a point check taken
+// immediately after the unit is started, so it observes `activating` and fails for a host that is
+// converging normally -- and if it were retried to fix that, it would be a second, weaker spelling of
+// the wait below. Reaching the API is the stronger fact: it says the process is up AND serving, which
+// is what the pull actually requires.
+//
+// WHY THE VERSION AGREEMENT IS NOT A STEP HERE. Deciding whether the reported version matches the
+// desired release is a COMPARISON, and `extdeps.ollama.binary_release`
+// `ollama_reported_version_matches_release` is where that comparison lives -- including the detail
+// that the API reports a bare version while the release row carries a `v` prefix. Expressing it as a
+// remote `grep` would fork that authority into a shell literal that cannot express the prefix rule
+// and would match a substring of a longer version.
+//
+// AND THE RESPONSE IS DISCARDED, not captured. An earlier revision of this step wrote it to a file
+// "so the observer can decide it" -- but the observer probes the endpoint itself, live, at the time
+// it forms a verdict. The file was written and never read: an artifact whose only reader was a
+// sentence in this comment. Waiting is this step's whole job, so the body goes to /dev/null and the
+// step's product is the fact that it exited zero.
+data spark_serving_api_readiness_retry_attempts: String = "60"
+data spark_serving_api_readiness_retry_delay_seconds: String = "2"
+data spark_serving_api_readiness_retry_max_seconds: String = "180"
+data spark_serving_api_readiness_connect_timeout_seconds: String = "5"
+
 fn spark_serving_pull_model_artifact_steps() -> SparkServingInstallRemoteCommandsVerdict {
-  spark_serving_admit_portable_remote_argv(
-    identity: "pull-model-artifact" as NonEmptyStr,
-    raws: [
-      spark_serving_required_runtime_executable_path() as String,
-      "pull",
-      ollama_model_ref_wire(ref: spark_serving_desired_model_ref),
-    ],
-  )
+  spark_serving_concat_step_verdicts(verdicts: [
+    spark_serving_admit_portable_remote_argv(
+      identity: "ensure-readiness-scratch" as NonEmptyStr,
+      raws: ["mkdir", "-p", spark_serving_readiness_scratch_root() as String],
+    ),
+    spark_serving_admit_typed_file_step(
+      identity: "write-health-request-body" as NonEmptyStr,
+      path: spark_serving_health_request_body_path(),
+      content: spark_serving_health_request_body(),
+    ),
+    spark_serving_admit_portable_remote_argv(
+      identity: "await-serving-api" as NonEmptyStr,
+      raws: [
+        "curl", "-fsS",
+        "--retry", spark_serving_api_readiness_retry_attempts,
+        "--retry-delay", spark_serving_api_readiness_retry_delay_seconds,
+        "--retry-connrefused",
+        "--retry-max-time", spark_serving_api_readiness_retry_max_seconds,
+        "--connect-timeout", spark_serving_api_readiness_connect_timeout_seconds,
+        "-o", "/dev/null",
+        spark_serving_local_api_version_url(),
+      ],
+    ),
+    spark_serving_admit_portable_remote_argv(
+      identity: "pull-model-artifact" as NonEmptyStr,
+      raws: [
+        spark_serving_required_runtime_executable_path() as String,
+        "pull",
+        ollama_model_ref_wire(ref: spark_serving_desired_model_ref),
+      ],
+    ),
+  ])
 }
 
 // NO WILDCARD, and each unimplemented effect refuses under its OWN name (#8323's construction,
@@ -253,9 +321,20 @@ fn spark_serving_write_user_unit_operation() -> SparkServingInstallRemoteCommand
 // `test -x` step is here to stop the sequence BEFORE publishing a tree that is visibly wrong, not to
 // serve as that proof.
 //
-// THE RECEIPT IS WRITTEN LAST, inside the published root. Its presence is therefore evidence that
-// every prior step completed, and it cannot outlive a failed publish.
+// THE RECEIPT IS WRITTEN LAST INTO STAGING, and reaches the published root by the same rename that
+// publishes the tree. Its presence is therefore evidence that every prior step completed, and it
+// cannot outlive a failed publish -- nor can a publish succeed and leave the receipt behind, which is
+// what a separate post-publish write would risk.
+//
+// PUBLICATION REMOVES ANY TREE ALREADY AT THE FINAL PATH, and that step is safe for a structural
+// reason rather than a hopeful one: `mv -T` refuses a populated destination, so without the removal a
+// second attempt after any interruption could never republish and "incomplete is repairable" would be
+// false. What makes the removal admissible is that reconcile emits no operation for a member already
+// in the desired state -- so this sequence is unreachable for a host whose runtime observes Complete,
+// and the tree being removed is by construction one nothing is serving from. That precondition is not
+// left to reading: `a_complete_runtime_plans_no_install_steps` fails if reconcile ever emits it.
 fn spark_serving_install_owned_runtime_closure_steps() -> SparkServingInstallRemoteCommandsVerdict {
+  let workspace = spark_serving_required_runtime_workspace_root() as String
   let staging = spark_serving_required_runtime_staging_root() as String
   let archive = spark_serving_required_runtime_staged_archive_path() as String
   let manifest = spark_serving_required_runtime_checksum_manifest_path() as String
@@ -275,12 +354,12 @@ fn spark_serving_install_owned_runtime_closure_steps() -> SparkServingInstallRem
               raws: ["mkdir", "-p", spark_serving_runtimes_parent() as String],
             ),
             spark_serving_admit_portable_remote_argv(
-              identity: "reset-attempt-staging" as NonEmptyStr,
-              raws: ["rm", "-rf", staging],
+              identity: "reset-attempt-workspace" as NonEmptyStr,
+              raws: ["rm", "-rf", workspace],
             ),
             spark_serving_admit_portable_remote_argv(
-              identity: "create-attempt-staging" as NonEmptyStr,
-              raws: ["mkdir", "-p", staging],
+              identity: "create-attempt-workspace" as NonEmptyStr,
+              raws: ["mkdir", "-p", workspace],
             ),
             spark_serving_admit_portable_remote_argv(
               identity: "download-archive" as NonEmptyStr,
@@ -294,16 +373,32 @@ fn spark_serving_install_owned_runtime_closure_steps() -> SparkServingInstallRem
               identity: "admit-archive-digest" as NonEmptyStr,
               raws: ["sha256sum", "--check", "--status", manifest],
             ),
+            spark_serving_admit_portable_remote_argv(
+              identity: "reset-staging-tree" as NonEmptyStr,
+              raws: ["rm", "-rf", staging],
+            ),
+            spark_serving_admit_portable_remote_argv(
+              identity: "create-staging-tree" as NonEmptyStr,
+              raws: ["mkdir", "-p", staging],
+            ),
             spark_serving_runtime_extract_argv(archive: archive, staging: staging),
             spark_serving_admit_portable_remote_argv(
               identity: "require-staged-entrypoint" as NonEmptyStr,
               raws: ["test", "-x", staged_exe],
             ),
+            SparkServingInstallRemoteCommandsPresent { steps: receipt_steps },
+            spark_serving_admit_portable_remote_argv(
+              identity: "reset-unpublished-runtime-root" as NonEmptyStr,
+              raws: ["rm", "-rf", final_root],
+            ),
             spark_serving_admit_portable_remote_argv(
               identity: "publish-runtime-root" as NonEmptyStr,
               raws: ["mv", "-T", staging, final_root],
             ),
-            SparkServingInstallRemoteCommandsPresent { steps: receipt_steps },
+            spark_serving_admit_portable_remote_argv(
+              identity: "discard-attempt-workspace" as NonEmptyStr,
+              raws: ["rm", "-rf", workspace],
+            ),
           ])
       }
   }
@@ -354,7 +449,7 @@ fn spark_serving_runtime_checksum_manifest_write() -> SparkServingInstallRemoteC
 fn spark_serving_runtime_receipt_write() -> SparkServingInstallRemoteCommandsVerdict {
   spark_serving_admit_typed_file_step(
     identity: "write-materialization-receipt" as NonEmptyStr,
-    path: spark_serving_required_runtime_receipt_path(),
+    path: spark_serving_required_runtime_staged_receipt_path(),
     content: ollama_runtime_materialization_identity_for_required_release().digest as String,
   )
 }

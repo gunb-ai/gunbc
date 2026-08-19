@@ -49,7 +49,12 @@ import gunbc.spark_serving_observed_members {
   LingerObservedEnabled,
   LingerObservedDisabled,
 }
+import gunbc.spark_serving_terminal_health {
+  spark_serving_health_is_converged,
+  spark_serving_health_wire,
+}
 import gunbc.spark_serving_observe {
+  spark_serving_observe_terminal_health,
   spark_serving_observe_host_via_locus,
   spark_serving_observe_user_unit_pair,
   spark_serving_observe_runtime_materialization,
@@ -149,9 +154,25 @@ data spark_serving_slice_verdict_noop_converged: String = "wet-noop-converged"
 
 data spark_serving_slice_verdict_applied_converged: String = "wet-applied-converged"
 
+// THE APPLIED-CONVERGED VERDICT NOW CARRIES ITS HEALTH EVIDENCE, so this is a prefix test rather
+// than an equality. Left as equality it would have reported a genuinely healthy host as unconverged
+// the moment the verdict gained a suffix -- a silent inversion at the actuation boundary, where the
+// exit status is derived from this answer.
+//
+// The prefix requires the separating SPACE, and that single character is what separates the two
+// outcomes. A healthy host reads `wet-noop-converged <evidence>`; an unhealthy one reads
+// `wet-noop-converged-but-<defect>`, where the next character is a hyphen. So the unhealthy verdict
+// contains the converged word as a substring and is still correctly rejected -- which is why this is
+// a prefix test against the word plus a space, and never a `string_contains`.
+//
+// Both converged words are covered because the health gate now sits on BOTH paths: the steady-state
+// noop path is the one a fleet spends almost all of its time on, so covering only the applied path
+// would have left the common case claiming convergence with no serving evidence at all.
 fn spark_serving_slice_verdict_is_converged(verdict: String) -> Bool {
   verdict == spark_serving_slice_verdict_noop_converged
     || verdict == spark_serving_slice_verdict_applied_converged
+    || starts_with(s: verdict, prefix: join([spark_serving_slice_verdict_applied_converged, " "], ""))
+    || starts_with(s: verdict, prefix: join([spark_serving_slice_verdict_noop_converged, " "], ""))
 }
 
 // A HOST REPORT CARRIES ITS OWN VERDICT, NOT JUST ITS RENDERING. The receipt line used to be
@@ -205,6 +226,40 @@ fn spark_serving_converge_slice_would_apply_verdict(
   ], "")
 }
 
+// AND THE GENERATION IS NOW RUN, discharging what the replan comment below used to declare it owed.
+//
+// CONVERGED IS A CONJUNCTION, and the verdict word says which half failed. An empty replan says the
+// modeled members match, not that the server answers -- two facts, so two verdicts. The replan
+// decides RESOURCES, this probe decides SERVING, and only a host passing both is reported converged.
+// A host that reconciles but cannot serve gets its own word rather than the converged one with a
+// caveat elsewhere in the line, because the receipt is what a reader greps and a caveat that is not
+// in the verdict is a caveat nobody sees.
+//
+// THE CONVERGED WORD IS A PARAMETER, because this gate sits on BOTH converged paths and they are not
+// the same event. `wet-noop-converged` means the host already matched and nothing was written;
+// `wet-applied-converged` means operations executed and the replan came back empty. Hardcoding the
+// applied word here would have reported writes on a run that made none -- a receipt claiming an
+// actuation that never happened, which is worse than the missing health evidence this gate adds.
+//
+// STATED COST, because it is real and recurring: every converged run now pays one model generation.
+// That is the cheapest evidence that actually proves serving -- nothing short of a completion
+// distinguishes a serving host from a listening socket -- but it means the steady-state poll is no
+// longer free. Whether terminal evidence is owed on EVERY convergence or on a declared cadence is an
+// evidence-frequency policy, and it needs its own carrier rather than being settled here by whichever
+// call site happened to be written first.
+fn spark_serving_terminal_health_verdict(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  converged_verdict: String,
+) -> String {
+  let health = spark_serving_observe_terminal_health(context: context, host: host)
+  if spark_serving_health_is_converged(health: health) {
+    join([converged_verdict, " ", spark_serving_health_wire(health: health)], "")
+  } else {
+    join([converged_verdict, "-but-", spark_serving_health_wire(health: health)], "")
+  }
+}
+
 // CONVERGED MEANS THE WHOLE POPULATION RECONCILES, NOT THAT LINGER CAME BACK YES.
 //
 // The read-back after apply was the linger probe alone. That was survivable only while linger was
@@ -219,11 +274,9 @@ fn spark_serving_converge_slice_would_apply_verdict(
 // commands exited 0" but "the host is now in the declared state" -- and it is exactly what
 // distinguishes convergence from execution.
 //
-// NOT CLAIMED HERE, and named rather than left for a reader to assume: this does not run a
-// generation. An empty replan says the modeled members match; it does not say the server answers.
-// The terminal serving evidence -- a non-streaming generate returning done=true, the planned model
-// identity, and exactly pong -- is owed by the run that first restores a host, and belongs with the
-// wet receipt rather than with this verdict.
+// The probe runs only after this replan is empty. Probing a host that still owes writes would answer
+// a question nobody asked -- of course it does not serve, it is not built yet -- and would spend a
+// two-minute generation timeout to say so.
 fn spark_serving_applied_replan_verdict(
   context: FleetSshExecutionContext,
   host: HostIdentity,
@@ -246,7 +299,11 @@ fn spark_serving_applied_replan_verdict(
       join(["wet-applied-replan-refused ", why], "")
     SparkServingPlanArtifactReady { artifact: replanned } =>
       if length(replanned.spark_serving_typed_actions) == 0 {
-        spark_serving_slice_verdict_applied_converged
+        spark_serving_terminal_health_verdict(
+          context: context,
+          host: host,
+          converged_verdict: spark_serving_slice_verdict_applied_converged,
+        )
       } else {
         join([
           "wet-applied-replan-nonempty rows=",
@@ -266,7 +323,11 @@ fn spark_serving_converge_slice_exec_verdict(
   effect_count: Int,
 ) -> String {
   if effect_count == 0 {
-    spark_serving_slice_verdict_noop_converged
+    spark_serving_terminal_health_verdict(
+      context: context,
+      host: host,
+      converged_verdict: spark_serving_slice_verdict_noop_converged,
+    )
   } else {
     match spark_serving_exec_frozen_typed_rows(
       artifact: artifact,
@@ -276,7 +337,11 @@ fn spark_serving_converge_slice_exec_verdict(
       SparkServingFrozenRemoteExecRefused { reason: why } =>
         join(["wet-apply-refused ", why], "")
       SparkServingFrozenRemoteExecConvergedNoop =>
-        spark_serving_slice_verdict_noop_converged
+        spark_serving_terminal_health_verdict(
+          context: context,
+          host: host,
+          converged_verdict: spark_serving_slice_verdict_noop_converged,
+        )
       SparkServingFrozenRemoteExecApplied { standings } =>
         if spark_serving_step_sequence_failed(standings: standings) {
           join([

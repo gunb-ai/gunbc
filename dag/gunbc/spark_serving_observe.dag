@@ -14,11 +14,18 @@ import extdeps.languages.json.parse {
 }
 import extdeps.languages.json.emit { JsonValue, JsonArray, JsonObject, JsonString, JsonNumber, JsonBool, JsonNull }
 import extdeps.ollama.model_store { ollama_blob_file_name }
+import gunbc.spark_serving_terminal_health {
+  SparkServingTerminalHealth,
+  spark_serving_health_from_captures,
+  spark_serving_health_version_probe_argv,
+  spark_serving_health_generate_probe_argv,
+}
 import gunbc.ollama_runtime_bundle {
   ModelStoreObservation,
   ModelStoreAbsent,
   ModelStoreIncomplete,
   ModelStoreComplete,
+  ModelStoreCorrupt,
   ModelStoreObservationRefused,
 }
 import gunbc.ollama_runtime_bundle {
@@ -31,6 +38,7 @@ import gunbc.ollama_runtime_bundle {
   RuntimeExecutableMissing,
   RuntimeExecutableNotExecutable,
   RuntimeMaterializationReceiptMissing,
+  RuntimeMaterializationReceiptIdentityMismatch,
   ollama_runtime_materialization_identity_for_required_release,
 }
 import extdeps.ollama.binary_release { ollama_required_release }
@@ -745,6 +753,71 @@ fn spark_serving_model_blobs_listing_argv() -> List<String> {
   ["ls", "-A", spark_serving_desired_model_blobs_dir() as String]
 }
 
+// BLOB CONTENTS, NOT BLOB NAMES -- and the distinction is the whole no-repull law.
+//
+// The listing above establishes that a file with the expected name exists. It establishes nothing
+// about what is IN it, and a truncated or corrupted blob keeps its name: an interrupted pull, a full
+// disk, a partially written layer all leave a correctly-named file. Reporting that store complete
+// suppresses PullModelArtifact, so the repair for a corrupt model is exactly the operation the
+// observation prevents. That is a fail-open whose failure mode is a host that can never self-heal.
+//
+// Ollama names each blob for its own sha256, so the expected value travels WITH the file and needs
+// no separate manifest at compare time: hashing the blob and comparing to the hex in its own name is
+// the integrity check, self-describing and read-only. Observation must not mutate, which rules out
+// writing a checksum document on the target the way the installer legitimately does.
+//
+// THE COST IS REAL AND IS NOT HIDDEN. This hashes the full closure -- gigabytes -- on every
+// observation, and that is the honest price of the claim on a first canary. The cheaper steady-state
+// reading is immutability plus a previously admitted receipt, and that is an evidence-frequency
+// POLICY with its own carrier and its own decision, not something to arrive at by quietly checking
+// names and calling it complete. Until such a policy exists, this pays the cost.
+// The argv needs the required digests before the classifier runs, so the decode happens once here and
+// once inside the classifier. A decode that refuses yields an EMPTY argv list, which makes sha256sum
+// read no files and produce no lines -- and the classifier then refuses on its own decode, so the
+// empty case cannot be mistaken for "every blob verified".
+fn spark_serving_manifest_required_digests(manifest_body: String) -> List<NonEmptyStr> {
+  match spark_serving_manifest_decode(body: manifest_body) {
+    SparkServingManifestDigests { first: f, further: r } => concat([f], r)
+    SparkServingManifestUnparseable => []
+    SparkServingManifestMalformed { detail: _ } => []
+    SparkServingManifestNamesNoBlobs => []
+  }
+}
+
+fn spark_serving_model_blob_digest_argv(digest_hexes: List<NonEmptyStr>) -> List<String> {
+  concat(
+    ["sha256sum"],
+    map(digest_hexes, h => join([
+      spark_serving_desired_model_blobs_dir() as String,
+      "/",
+      ollama_blob_file_name(digest_hex: h) as String,
+    ], "")),
+  )
+}
+
+// Each `sha256sum` line is "<hex>  <path>". A blob is intact when the computed hex equals the hex
+// its own filename carries; anything else -- a short read, a rewritten layer, a name that does not
+// match its bytes -- is a mismatch, and the FIRST one is reported rather than a count, because an
+// operator repairs a named blob and not a number.
+fn spark_serving_first_corrupt_blob(stdout: String, expected: List<NonEmptyStr>) -> NonEmptyStr? {
+  fold(expected, init: none, f: fn(acc, want) {
+    match acc {
+      Present { value: found } => Present { value: found }
+      Absent =>
+        if any(
+          split(trim(s: stdout), "\n"),
+          line =>
+            string_contains(line, ollama_blob_file_name(digest_hex: want) as String)
+              && trim(s: split(trim(s: line), " ")[0]) == (want as String),
+        ) {
+          none
+        } else {
+          Present { value: want }
+        }
+    }
+  })
+}
+
 // THE MANIFEST'S BLOB CLOSURE, DECODED BY THE JSON PARSER RATHER THAN SCANNED FOR.
 //
 // A `grep -o sha256:[0-9a-f]*` over the body would find the same digests today and would also find
@@ -1004,11 +1077,26 @@ fn spark_serving_observe_model_store(
                       ], "") as NonEmptyStr,
                     }
                   } else {
-                    spark_serving_classify_model_store(
-                      manifest_body: manifest.stdout,
-                      manifest_digest_stdout: digest.stdout,
-                      blobs_listing: blobs.stdout,
-                    )
+                    match spark_serving_probe_leg(
+                      context: context, host: host,
+                      raw_words: spark_serving_model_blob_digest_argv(
+                        digest_hexes: spark_serving_manifest_required_digests(
+                          manifest_body: manifest.stdout,
+                        ),
+                      ),
+                    ) {
+                      Absent =>
+                        ModelStoreObservationRefused {
+                          cause: "model blob digest leg did not run, so blob contents were never verified" as NonEmptyStr,
+                        }
+                      Present { value: blobdigests } =>
+                        spark_serving_classify_model_store(
+                          manifest_body: manifest.stdout,
+                          manifest_digest_stdout: digest.stdout,
+                          blobs_listing: blobs.stdout,
+                          blob_digest_stdout: blobdigests.stdout,
+                        )
+                    }
                   }
               }
             }
@@ -1025,6 +1113,7 @@ fn spark_serving_classify_model_store(
   manifest_body: String,
   manifest_digest_stdout: String,
   blobs_listing: String,
+  blob_digest_stdout: String,
 ) -> ModelStoreObservation {
   let present = split(trim(s: blobs_listing), "\n")
   match spark_serving_manifest_decode(body: manifest_body) {
@@ -1058,9 +1147,14 @@ fn spark_serving_classify_model_store(
         Present { value: ident } =>
           match missing.first() {
             Absent =>
-              ModelStoreComplete {
-                manifest_identity: ident,
-                blob_closure_size: length(required),
+              match spark_serving_first_corrupt_blob(stdout: blob_digest_stdout, expected: required) {
+                Present { value: bad } =>
+                  ModelStoreCorrupt { manifest_identity: ident, first_corrupt_blob: bad }
+                Absent =>
+                  ModelStoreComplete {
+                    manifest_identity: ident,
+                    blob_closure_size: length(required),
+                  }
               }
             Present { value: head } =>
               ModelStoreIncomplete {
@@ -1190,8 +1284,50 @@ fn spark_serving_classify_runtime_executable_absence(
 // check and publication, so its presence is the one on-disk fact that covers the steps a directory
 // listing cannot see. Reading it is the difference between "something executable is at the expected
 // path" and "the closure this path names was installed by a sequence that completed".
+//
+// IT READS THE CONTENT, NOT JUST EXISTENCE. The installer writes the materialization identity into
+// this file, so `cat` plus a comparison establishes that the receipt names THE PLANNED closure --
+// where `test -f` established only that some receipt was there. A receipt left by a previous
+// materialization at a different identity is exactly the case that matters: the content-addressed
+// root makes that unlikely by construction, and an observation that cannot tell the difference is
+// still one that would be believed if it happened.
 fn spark_serving_runtime_materialization_receipt_probe_argv() -> List<String> {
-  ["test", "-f", spark_serving_required_runtime_receipt_path() as String]
+  ["cat", spark_serving_required_runtime_receipt_path() as String]
+}
+
+// TERMINAL SERVING HEALTH, OBSERVED. Two legs, in order: the version endpoint says the runtime that
+// answers is the planned one, and the generate endpoint says it can actually serve the planned model.
+//
+// A leg that did not run yields the EMPTY capture rather than a fabricated body, and the health fold
+// renders that as `ServingHealthUnobserved` -- so an unreachable endpoint reports as unobserved, not
+// as unhealthy. The distinction matters because the two have different next steps: unhealthy means
+// investigate the host, unobserved means the probe never got an answer to judge.
+fn spark_serving_observe_terminal_health(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+) -> SparkServingTerminalHealth {
+  spark_serving_health_from_captures(
+    version_stdout: spark_serving_probe_stdout_or_empty(
+      context: context, host: host, raw_words: spark_serving_health_version_probe_argv(),
+    ),
+    generate_stdout: spark_serving_probe_stdout_or_empty(
+      context: context, host: host, raw_words: spark_serving_health_generate_probe_argv(),
+    ),
+  )
+}
+
+// A FAILED LEG IS AN EMPTY CAPTURE, NOT A MISSING ONE. `curl -fsS` exits nonzero on an HTTP error and
+// writes nothing useful, so returning its stdout regardless would hand the decoder an error page to
+// interpret. Empty is the honest input: it decodes to unobserved.
+fn spark_serving_probe_stdout_or_empty(
+  context: FleetSshExecutionContext,
+  host: HostIdentity,
+  raw_words: List<String>,
+) -> String {
+  match spark_serving_probe_leg(context: context, host: host, raw_words: raw_words) {
+    Absent => ""
+    Present { value: r } => if r.success { r.stdout } else { "" }
+  }
 }
 
 fn spark_serving_observe_runtime_materialization(
@@ -1255,6 +1391,14 @@ fn spark_serving_observe_runtime_materialization(
                           RuntimeMaterializationIncomplete {
                             identity: identity,
                             first_defect: RuntimeMaterializationReceiptMissing,
+                            further_defects: [],
+                          }
+                        } else if trim(s: receipt.stdout) != (identity.digest as String) {
+                          RuntimeMaterializationIncomplete {
+                            identity: identity,
+                            first_defect: RuntimeMaterializationReceiptIdentityMismatch {
+                              observed: trim(s: receipt.stdout) as NonEmptyStr,
+                            },
                             further_defects: [],
                           }
                         } else {

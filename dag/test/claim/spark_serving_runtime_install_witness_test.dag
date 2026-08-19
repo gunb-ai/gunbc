@@ -58,6 +58,35 @@ fn step_argv(identity: String) -> List<String> {
 // an absent identity so a typo'd step name reads as a loud failure rather than a plausible index.
 type IndexScan { found: Bool, idx: Int }
 
+fn pull_steps() -> List<NonEmptyStr> {
+  match realize_spark_serving_install_effect_command(
+    effect: PullModelArtifact,
+    executor_login: spark_serving_default_executor_login(),
+  ) {
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => []
+    SparkServingInstallRemoteCommandsPresent { steps: sts } => map(sts, st => st.identity)
+  }
+}
+
+// Returns Absent when the step is not present at all, so a claim over a missing step refuses rather
+// than reading an empty argv as a satisfied condition.
+fn pull_step_argv(identity: String) -> List<String>? {
+  match realize_spark_serving_install_effect_command(
+    effect: PullModelArtifact,
+    executor_login: spark_serving_default_executor_login(),
+  ) {
+    SparkServingInstallRemoteCommandsRefused { reason: _ } => none
+    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
+      fold(sts, init: none, f: fn(acc, st) {
+        if (st.identity as String) == identity {
+          remote_operation_argv(operation: st.operation)
+        } else {
+          acc
+        }
+      })
+  }
+}
+
 fn index_of(identity: String) -> Int {
   let scan = fold(
     install_steps(),
@@ -79,23 +108,43 @@ fn index_of(identity: String) -> Int {
 
 // THE CONTROL ON THE INSTRUMENT ITSELF. Distinct constants, not a Boolean: asserting only that two
 // indices differ would pass on the broken version for any two identities where one was absent.
+// THE EXPECTATIONS ARE DERIVED FROM THE SEQUENCE, not spelled beside it.
+//
+// This control pinned literal step names and literal positions, so it broke when the publication
+// split renamed `reset-attempt-staging` and moved the receipt from index 9 to 10 -- and it broke as a
+// silent `false`, not as a missing name, because `index_of` answers -1 for a step that is not there.
+// That is a control failing for a reason unrelated to what it controls.
+//
+// The subject here is the HELPER's contract, and the sequence is pinned exactly once, by
+// `install_steps_are_named_in_execution_order`. So the positions are read back from the sequence
+// itself: first is 0, last is length-1, an interior step reports its own index, and an absent one
+// reports -1. That still proves `index_of` reports REAL positions rather than a constant -- the bug
+// it was written for, where it returned length-2 for every identity -- while surviving any rename
+// that leaves the ordering claim to catch the ordering.
 test fn index_of_reports_real_positions_and_refuses_absent_ones() -> Bool {
-  index_of(identity: "ensure-runtimes-parent") == 0
-    && index_of(identity: "reset-attempt-staging") == 1
-    && index_of(identity: "write-materialization-receipt") == 9
-    && index_of(identity: "no-such-step") == 0 - 1
+  let steps = install_steps()
+  let n = length(steps)
+  match steps.first() {
+    Absent => false
+    Present { value: head } =>
+      index_of(identity: head as String) == 0
+        && index_of(identity: steps[n - 1] as String) == n - 1
+        && index_of(identity: steps[3] as String) == 3
+        && index_of(identity: "no-such-step") == 0 - 1
+        && n > 4
+  }
 }
 
 // THE EFFECT REALIZES AT ALL. It refused entirely until this change, so the plan could never select
 // it however well the rest of the vertical worked.
 test fn install_owned_runtime_closure_realizes() -> Bool {
-  length(install_steps()) == 10
+  length(install_steps()) == 14
 }
 
 // The named steps, in order. Asserted positionally because order is the load-bearing property.
 test fn install_steps_are_named_in_execution_order() -> Bool {
   join(map(install_steps(), id => id as String), ",")
-    == "ensure-runtimes-parent,reset-attempt-staging,create-attempt-staging,download-archive,write-checksum-manifest,admit-archive-digest,extract-archive,require-staged-entrypoint,publish-runtime-root,write-materialization-receipt"
+    == "ensure-runtimes-parent,reset-attempt-workspace,create-attempt-workspace,download-archive,write-checksum-manifest,admit-archive-digest,reset-staging-tree,create-staging-tree,extract-archive,require-staged-entrypoint,write-materialization-receipt,reset-unpublished-runtime-root,publish-runtime-root,discard-attempt-workspace"
 }
 
 // THE DISCRIMINATING CLAIM. `sha256sum <archive>` exits zero on any readable file and puts its answer
@@ -131,16 +180,62 @@ test fn publication_follows_digest_admission_and_entrypoint_check() -> Bool {
     && index_of(identity: "download-archive") < index_of(identity: "admit-archive-digest")
 }
 
-// The receipt is last, so its presence on a host is evidence the whole sequence completed.
-test fn the_materialization_receipt_is_written_last() -> Bool {
-  index_of(identity: "write-materialization-receipt") == length(install_steps()) - 1
+// RETIRED, WITH ITS REASON: `the_materialization_receipt_is_written_last`.
+//
+// It asserted the receipt occupied the final position, which was true of a sequence that wrote the
+// receipt INTO THE PUBLISHED ROOT after publishing. That sequence had a hole: publish could succeed
+// and the receipt write fail, leaving a complete runtime every observer reports incomplete. The
+// receipt is now written into staging and arrives by the publishing rename, so it is no longer last
+// and the old assertion is false of the correct sequence. Renumbering it would have preserved the
+// spelling of a claim whose subject moved; the obligation it carried -- a receipt cannot exist unless
+// the tree completed -- is carried below, and carried more strongly.
+
+// THE RECEIPT CANNOT OUTLIVE A FAILED PUBLISH, which is the property the retired claim was reaching
+// for. It is written after the entrypoint check (so it names a tree that passed it) and before the
+// publish (so it travels with the rename). Both bounds are asserted: written after the check alone
+// would allow a post-publish write, and before the publish alone would allow it to precede extraction.
+test fn the_materialization_receipt_travels_with_the_publish() -> Bool {
+  index_of(identity: "require-staged-entrypoint") < index_of(identity: "write-materialization-receipt")
+    && index_of(identity: "write-materialization-receipt") < index_of(identity: "publish-runtime-root")
 }
 
-// THE STAGING TREE IS RESET BEFORE IT IS USED. Without this a previous interrupted attempt's partial
-// tree is extracted over, producing a tree that is neither attempt.
-test fn staging_is_reset_before_it_is_created() -> Bool {
-  index_of(identity: "reset-attempt-staging") < index_of(identity: "create-attempt-staging")
-    && index_of(identity: "create-attempt-staging") < index_of(identity: "download-archive")
+// PUBLICATION CAN REPLACE AN EXISTING TREE. `mv -T` refuses a populated destination, so without the
+// reset step a host interrupted once could never republish and the incomplete state would be
+// permanent rather than repairable. Asserted as an ordering, because a reset AFTER the publish is
+// the same commands in an order that deletes the runtime it just installed.
+test fn publication_can_replace_an_incomplete_tree() -> Bool {
+  index_of(identity: "reset-unpublished-runtime-root") < index_of(identity: "publish-runtime-root")
+    && index_of(identity: "reset-unpublished-runtime-root") > index_of(identity: "require-staged-entrypoint")
+}
+
+// THE ACQUISITION WORKSPACE IS NOT PUBLISHED. The archive and its checksum manifest used to live
+// inside the staging tree, so `mv -T` published a ~1.5 GB tarball into a content-addressed runtime
+// root.
+//
+// The claim reads PATHS, not step names, and it reads the two ends: the archive lands in the
+// workspace, and the tree handed to `mv` is the staging root with no workspace path in it. Extraction
+// is deliberately not asserted to avoid the workspace -- it reads the archive FROM there and writes
+// INTO staging, so naming both roots is correct for that step and only that step. Asserting its
+// absence would have been a claim about the wrong thing that happened to be false.
+test fn the_downloaded_archive_is_not_published_into_the_runtime() -> Bool {
+  let download = step_argv(identity: "download-archive")
+  let publish = step_argv(identity: "publish-runtime-root")
+  any(download, w => string_contains(w, "/.workspace-"))
+    && !any(download, w => string_contains(w, "/.staging-"))
+    && any(publish, w => string_contains(w, "/.staging-"))
+    && !any(publish, w => string_contains(w, "/.workspace-"))
+    && index_of(identity: "discard-attempt-workspace") > index_of(identity: "publish-runtime-root")
+}
+
+// BOTH SCRATCH ROOTS ARE RESET BEFORE THEY ARE USED. Without this a previous interrupted attempt's
+// partial contents are written over, producing a tree that is neither attempt. Asserted for the
+// workspace and the staging tree separately, because they are now separate locations with separate
+// lifetimes and a single claim over one would leave the other unguarded.
+test fn both_scratch_roots_are_reset_before_they_are_created() -> Bool {
+  index_of(identity: "reset-attempt-workspace") < index_of(identity: "create-attempt-workspace")
+    && index_of(identity: "create-attempt-workspace") < index_of(identity: "download-archive")
+    && index_of(identity: "reset-staging-tree") < index_of(identity: "create-staging-tree")
+    && index_of(identity: "create-staging-tree") < index_of(identity: "extract-archive")
 }
 
 // THE FRONTIER MOVED, AND THIS CLAIM MOVED WITH IT. It previously asserted PullModelArtifact was
@@ -157,29 +252,75 @@ test fn staging_is_reset_before_it_is_created() -> Bool {
 // would be indistinguishable from one that worked if the claim only checked that a verdict was
 // produced -- and the words go through the portable-word allowlist, which is a real way for this
 // particular step to refuse.
-test fn pull_model_artifact_realizes_as_one_pull_command() -> Bool {
-  match realize_spark_serving_install_effect_command(
-    effect: PullModelArtifact,
-    executor_login: spark_serving_default_executor_login(),
-  ) {
-    SparkServingInstallRemoteCommandsRefused { reason: _ } => false
-    SparkServingInstallRemoteCommandsPresent { steps: sts } =>
-      match sts.first() {
-        Absent => false
-        Present { value: st } =>
-          length(sts) == 1
-            && (st.identity as String) == "pull-model-artifact"
-            && match remote_operation_argv(operation: st.operation) {
-                 Absent => false
-                 Present { value: words } =>
-                   length(words) == 3
-                     && string_contains(words[0], "/runtimes/")
-                     && string_contains(words[0], "/bin/ollama")
-                     && words[0] != "ollama"
-                     && words[1] == "pull"
-                     && words[2] == "gpt-oss:20b"
-               }
-      }
+test fn pull_model_artifact_names_the_planned_executable() -> Bool {
+  match pull_step_argv(identity: "pull-model-artifact") {
+    Absent => false
+    Present { value: words } =>
+      length(words) == 3
+        && string_contains(words[0], "/runtimes/")
+        && string_contains(words[0], "/bin/ollama")
+        && words[0] != "ollama"
+        && words[1] == "pull"
+        && words[2] == "gpt-oss:20b"
+  }
+}
+
+// ── The readiness ladder (P0-6b) ────────────────────────────────────────────────────────────────
+
+// THE PULL WAITS BEFORE IT PULLS. `ollama pull` is an API client, so issued against a unit that is
+// still starting it fails on connection refused and reports a broken host that was merely slow.
+// Asserted as an ORDERING against the exact sequence, because a readiness step that ran after the
+// pull would contain every command this file names and wait for nothing.
+test fn the_pull_waits_for_the_serving_api_first() -> Bool {
+  join(map(pull_steps(), id => id as String), ",")
+    == "ensure-readiness-scratch,write-health-request-body,await-serving-api,pull-model-artifact"
+}
+
+// THE WAIT IS BOUNDED AND RETRIES THE CASE IT EXISTS FOR.
+//
+// Two ways this step can be present and useless, and both are asserted against. Without
+// `--retry-connrefused` curl treats a refused connection as a hard failure and never retries -- which
+// is precisely the state a starting unit is in, so the flag's absence makes the whole wait inert
+// while leaving it visible in the plan. And without `--retry-max-time` the retry window is unbounded
+// in wall-clock, turning a failed convergence into a hang: the deadline is what makes this a wait
+// rather than a stall.
+test fn the_readiness_wait_is_bounded_and_retries_connection_refused() -> Bool {
+  match pull_step_argv(identity: "await-serving-api") {
+    Absent => false
+    Present { value: words } =>
+      any(words, w => w == "--retry-connrefused")
+        && any(words, w => w == "--retry-max-time")
+        && any(words, w => w == "--retry")
+        && any(words, w => w == "--connect-timeout")
+  }
+}
+
+// THE PROBE DIALS LOOPBACK, NOT THE BIND ADDRESS. The unit listens on `0.0.0.0` so the endpoint is
+// reachable across the LAN; nothing CONNECTS to `0.0.0.0`, and a probe that named it would be leaning
+// on a kernel convenience rather than dialling the service the way a client does. Both halves are
+// asserted -- naming loopback and NOT naming the wildcard -- because a URL built by string-joining the
+// bind row would satisfy a check for "contains the port" while dialling the wrong address.
+test fn the_readiness_probe_dials_loopback_not_the_bind_address() -> Bool {
+  match pull_step_argv(identity: "await-serving-api") {
+    Absent => false
+    Present { value: words } =>
+      any(words, w => string_contains(w, "http://127.0.0.1:11434/api/version"))
+        && !any(words, w => string_contains(w, "0.0.0.0"))
+  }
+}
+
+// THE RESPONSE IS DISCARDED, and that is the point of this claim rather than an omission from it.
+//
+// An earlier revision wrote the body to a file so "the observer could decide it", but the observer
+// probes the endpoint itself when it forms a verdict -- so the file was written and never read. The
+// claim now pins the absence: nothing under the readiness scratch is named as an output here, because
+// an artifact with no reader is work the next person has to explain.
+test fn the_readiness_probe_discards_the_response_body() -> Bool {
+  match pull_step_argv(identity: "await-serving-api") {
+    Absent => false
+    Present { value: words } =>
+      any(words, w => w == "/dev/null")
+        && !any(words, w => string_contains(w, "api-version.json"))
   }
 }
 
@@ -188,5 +329,6 @@ test fn pull_model_artifact_realizes_as_one_pull_command() -> Bool {
 // closure's step list must not contain the pull.
 test fn the_runtime_install_sequence_does_not_pull_the_model() -> Bool {
   index_of(identity: "pull-model-artifact") == 0 - 1
-    && length(install_steps()) == 10
+    && index_of(identity: "await-serving-api") == 0 - 1
+    && length(install_steps()) == 14
 }

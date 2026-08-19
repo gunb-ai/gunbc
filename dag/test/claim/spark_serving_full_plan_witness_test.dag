@@ -2,7 +2,15 @@ module test.claim.spark_serving_full_plan_witness_test
 
 import std.types { Bool, List, NonEmptyStr, String, Int }
 import product.placement_supply { HostIdentity }
-import gunbc.membership_reconcile { MembershipPlan, membership_write_count }
+import gunbc.membership_reconcile {
+  MembershipPlan,
+  membership_write_count,
+  MemberAdded,
+  MemberChanged,
+  MemberRemoved,
+  MemberRemovalRefused,
+  MemberRosterDuplicateKeyRefused,
+}
 import std.content_hash { serialize_content_hash }
 import gunbc.ollama_runtime_bundle {
   ModelStoreObservation,
@@ -14,7 +22,6 @@ import gunbc.ollama_runtime_bundle {
   RuntimeMaterializationObservationRefused,
   RuntimeMaterializationIncomplete,
   RuntimeMaterializationAbsent,
-  RuntimeMaterializationObservationRefused,
   RuntimeExecutableMissing,
   ollama_runtime_materialization_identity_for_required_release,
 }
@@ -28,6 +35,8 @@ import gunbc.spark_serving_release {
 import gunbc.spark_serving_membership {
   SparkServingMember,
   SparkServingMemberAt,
+  SparkServingResourceAddress,
+  SparkServingRuntimeRootAddress,
   spark_serving_desired_members,
 }
 import gunbc.spark_serving_observed_members {
@@ -522,6 +531,77 @@ test fn a_unit_only_drift_freezes_exactly_one_row() -> Bool {
         ),
       ) == 1
   }
+}
+
+// ── The precondition the publish sequence rests on ──────────────────────────────────────────────
+
+// Counts frozen rows addressed at the RUNTIME ROOT specifically, rather than rows in total. The
+// distinction is the whole point: "no writes at all" and "no runtime write" are different facts, and
+// only the second is what the publish sequence needs.
+fn runtime_rows(v: SparkServingPlanArtifactVerdict) -> Int {
+  match v {
+    SparkServingPlanArtifactRefused { cause: _ } => 0 - 1
+    SparkServingPlanArtifactReady { artifact: a } =>
+      length(filter(a.spark_serving_typed_actions, row =>
+        match row.action {
+          MemberAdded { at: _, to: m } => is_runtime_root(address: m.address)
+          MemberChanged { at: _, from: _, to: m } => is_runtime_root(address: m.address)
+          MemberRemoved { at: _, from: m } => is_runtime_root(address: m.address)
+          MemberRemovalRefused { from: _, cause: _ } => false
+          MemberRosterDuplicateKeyRefused { roster: _, first: _, duplicate: _ } => false
+        }))
+  }
+}
+
+fn is_runtime_root(address: SparkServingResourceAddress) -> Bool {
+  match address {
+    SparkServingRuntimeRootAddress => true
+    SparkServingUserUnitAddress => false
+    SparkServingUserUnitEnablementAddress => false
+    SparkServingModelSlotAddress { slot: _ } => false
+    SparkServingLingerAddress => false
+  }
+}
+
+// THE PUBLISH SEQUENCE REMOVES ANY TREE AT THE FINAL PATH, and this is what makes that admissible.
+//
+// `mv -T` refuses a populated destination, so without a removal step a second attempt after any
+// interruption could never republish -- "incomplete is repairable" would be prose. The removal is
+// safe only if the sequence is unreachable for a host whose runtime is already Complete, and that is
+// a property of reconcile rather than of the realizer: an unchanged member yields no action.
+//
+// Read in BOTH directions deliberately. Asserting only "a complete runtime freezes no runtime row"
+// would also pass if the fixture froze nothing at all, or if the projection had quietly stopped
+// producing runtime members -- so the same fixture with the runtime bare must freeze exactly one, and
+// the unit drift must be visible in both arms. A claim that cannot distinguish "correctly silent"
+// from "structurally mute" is measuring nothing.
+test fn a_complete_runtime_plans_no_install_steps() -> Bool {
+  let converged_runtime = artifact_verdict(
+    host: subject_host,
+    projection: project(
+      host: subject_host,
+      runtime: complete_required_runtime(),
+      store: complete_required_store(),
+      unit: UserUnitStateObserved { unit_state_digest: "drifted-unit-bytes" as NonEmptyStr },
+      enablement: UserUnitEnabled,
+      linger: LingerObservedEnabled,
+    ),
+  )
+  let bare_runtime_same_drift = artifact_verdict(
+    host: subject_host,
+    projection: project(
+      host: subject_host,
+      runtime: bare_runtime(),
+      store: complete_required_store(),
+      unit: UserUnitStateObserved { unit_state_digest: "drifted-unit-bytes" as NonEmptyStr },
+      enablement: UserUnitEnabled,
+      linger: LingerObservedEnabled,
+    ),
+  )
+  runtime_rows(v: converged_runtime) == 0
+    && runtime_rows(v: bare_runtime_same_drift) == 1
+    && artifact_row_count(v: converged_runtime) == 1
+    && artifact_row_count(v: bare_runtime_same_drift) == 2
 }
 
 // A host in exactly the desired state freezes NO rows. This is the control that proves convergence
