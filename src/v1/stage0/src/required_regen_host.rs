@@ -364,7 +364,8 @@ fn compare_generated_surfaces(
                 .map_err(|e| format!("read committed {}: {e}", committed_path.display()))?,
         )?;
         let candidate = emitted
-            .get(basename)
+            .get(&format!("src/{basename}"))
+            .or_else(|| emitted.get(basename))
             .ok_or_else(|| format!("emit missing generated file {basename}"))?;
         let candidate_norm = normalize_generated_source(candidate)?;
         if committed != candidate_norm {
@@ -506,7 +507,8 @@ fn tree_digest_from_map(
     let mut payload = String::new();
     for name in basenames {
         let content = emitted
-            .get(name)
+            .get(&format!("src/{name}"))
+            .or_else(|| emitted.get(name))
             .ok_or_else(|| format!("emit missing {name} for digest"))?;
         let norm = normalize_generated_source(content)?;
         payload.push_str(name);
