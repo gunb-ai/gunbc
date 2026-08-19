@@ -33,6 +33,7 @@ import gunbc.ollama_runtime_bundle {
 }
 import gunbc.spark_serving_observe {
   spark_serving_unit_outcome_from_probe_results,
+  spark_serving_runtime_materialization_receipt_probe_argv,
   SparkServingObservationReportRefused,
   SparkServingObservationsProduced,
   spark_serving_observation_report_succeeded,
@@ -45,13 +46,14 @@ import gunbc.spark_serving_runtime_receipt {
   spark_serving_parse_runtime_receipt_json,
   spark_serving_runtime_receipt_field_from_probe,
   spark_serving_runtime_receipt_probe_words,
+  spark_serving_materialization_receipt_field_from_probe,
 }
 
 data witness_required_release_asset_digest_hex: String = "79617139521db251c716d6229505d7530171ff4d68e476d0c22dabc15726a237"
 
 data witness_jetpack5_release_asset_digest_hex: String = "721af44a33380893cb35c2124832e64563e9abbd40b4c0280167110ff390dead"
 
-fn witness_runtime_release_asset_digest_present(hex: String) -> SparkServingReadbackPresent {
+fn witness_runtime_materialization_identity_present(hex: String) -> SparkServingReadbackPresent {
   SparkServingReadbackPresent { value: hex }
 }
 
@@ -78,7 +80,7 @@ fn readback_absent() -> SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitAbsent,
     runtime_version: SparkServingReadbackAbsent,
-    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
     model_manifest_digest: SparkServingReadbackAbsent,
@@ -94,7 +96,7 @@ fn readback_unreachable() -> SparkServingReadback {
       cause: "unit LoadState probe leg did not run" as NonEmptyStr,
     },
     runtime_version: SparkServingReadbackAbsent,
-    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
     model_manifest_digest: SparkServingReadbackAbsent,
@@ -108,7 +110,7 @@ fn readback_active_incomplete() -> SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
     model_manifest_digest: SparkServingReadbackAbsent,
@@ -122,7 +124,7 @@ fn readback_active_complete() -> SparkServingReadback {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_materialization_identity: witness_runtime_materialization_identity_present(hex: witness_required_release_asset_digest_hex),
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
@@ -225,6 +227,49 @@ test fn runtime_receipt_probe_success_populates_digest_field() -> Bool {
   }
 }
 
+// THE TWO RECEIPTS ARE TWO SUBJECTS ON TWO MACHINES, and this pair of claims is what keeps them
+// from being confused again. The archive-admission receipt below records which release archive THE
+// EXECUTOR admitted; the materialization receipt records which closure was published to THE TARGET.
+// The read-only observation asks the second question, and for a while it asked it by cat-ing the
+// first receipt's path over SSH on a host where nothing writes it -- measured on srv6 as
+// `state=refused cause=... ollama-runtime-receipt.json: No such file or directory` while the
+// converge path called the same host converged.
+test fn the_materialization_receipt_probe_reads_the_runtime_root_not_the_executor_receipt() -> Bool {
+  let words = spark_serving_runtime_materialization_receipt_probe_argv()
+  words.length() == 2
+    && words.first() == "cat"
+    && !string_contains(s: words.skip(n: 1).first(), pattern: "ollama-runtime-receipt.json")
+    && string_contains(s: words.skip(n: 1).first(), pattern: "/runtimes/")
+}
+
+// A materialization receipt that exists but is EMPTY names no closure, so it refuses rather than
+// presenting an empty identity that every comparison would then treat as a real one.
+test fn an_empty_materialization_receipt_refuses_rather_than_presenting_nothing() -> Bool {
+  match spark_serving_materialization_receipt_field_from_probe(
+    probe: Present {
+      value: SshSessionExecResult { exit_code: 0, success: true, stdout: "  \n", stderr: "" },
+    },
+  ) {
+    SparkServingReadbackRefused { cause: c } => string_contains(s: c as String, pattern: "empty")
+    SparkServingReadbackPresent { value: _ } => false
+    SparkServingReadbackAbsent => false
+  }
+}
+
+// The positive control, so the refusal above is not this reader refusing everything: bare digest
+// content is taken as the identity, trimmed, with no JSON structure invented around it.
+test fn a_materialization_receipt_presents_its_bare_digest() -> Bool {
+  match spark_serving_materialization_receipt_field_from_probe(
+    probe: Present {
+      value: SshSessionExecResult { exit_code: 0, success: true, stdout: "abc123\n", stderr: "" },
+    },
+  ) {
+    SparkServingReadbackPresent { value: v } => v == "abc123"
+    SparkServingReadbackRefused { cause: _ } => false
+    SparkServingReadbackAbsent => false
+  }
+}
+
 test fn runtime_receipt_probe_words_target_executor_receipt_path() -> Bool {
   let words = spark_serving_runtime_receipt_probe_words()
   words.length() == 2
@@ -252,7 +297,7 @@ test fn different_runtime_version_refuses_loaded_identity() -> Bool {
     host: "srv6",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: "0.11.0-rc1" },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_materialization_identity: witness_runtime_materialization_identity_present(hex: witness_required_release_asset_digest_hex),
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
@@ -269,7 +314,7 @@ test fn different_runtime_version_refuses_observation() -> Bool {
     host: "srv6",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: "10.11.0" },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_materialization_identity: witness_runtime_materialization_identity_present(hex: witness_required_release_asset_digest_hex),
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
@@ -308,7 +353,7 @@ test fn active_incomplete_readback_refuses_observation() -> Bool {
       h == "srv5"
         && (
           string_contains(s: c as String, pattern: "fingerprint")
-            || string_contains(s: c as String, pattern: "runtime_release_asset_digest")
+            || string_contains(s: c as String, pattern: "runtime_materialization_identity")
             || string_contains(s: c as String, pattern: "install receipt")
         )
     SparkServingAbsent { host: _ } => false
@@ -321,7 +366,7 @@ test fn missing_runtime_receipt_probe_refuses_active_observation() -> Bool {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: SparkServingReadbackRefused {
+    runtime_materialization_identity: SparkServingReadbackRefused {
       cause: "runtime install receipt probe failed exit=1 stderr=No such file" as NonEmptyStr,
     },
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
@@ -364,7 +409,7 @@ test fn inactive_unit_readback_refuses_observation() -> Bool {
     host: "srv6",
     unit_outcome: SparkServingUnitInactive,
     runtime_version: SparkServingReadbackAbsent,
-    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
     model_manifest_digest: SparkServingReadbackAbsent,
@@ -385,7 +430,7 @@ test fn api_field_refusal_surfaces_before_fingerprint_refusal() -> Bool {
     runtime_version: SparkServingReadbackRefused {
       cause: "ollama /api/version body is not parseable JSON" as NonEmptyStr,
     },
-    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
     model_name: SparkServingReadbackAbsent,
     model_tag: SparkServingReadbackAbsent,
     model_manifest_digest: SparkServingReadbackAbsent,
@@ -431,7 +476,7 @@ test fn unobserved_nvidia_driver_refuses_active_observation() -> Bool {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_materialization_identity: witness_runtime_materialization_identity_present(hex: witness_required_release_asset_digest_hex),
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
@@ -450,7 +495,7 @@ test fn driver_too_old_refuses_active_observation() -> Bool {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_materialization_identity: witness_runtime_materialization_identity_present(hex: witness_required_release_asset_digest_hex),
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
@@ -469,7 +514,7 @@ test fn driver_too_old_report_is_not_success() -> Bool {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: witness_runtime_release_asset_digest_present(hex: witness_required_release_asset_digest_hex),
+    runtime_materialization_identity: witness_runtime_materialization_identity_present(hex: witness_required_release_asset_digest_hex),
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },
@@ -502,7 +547,7 @@ test fn version_only_without_asset_digest_refuses_loaded_identity() -> Bool {
     host: "srv5",
     unit_outcome: SparkServingUnitActive,
     runtime_version: SparkServingReadbackPresent { value: witness_pinned_runtime_version_wire },
-    runtime_release_asset_digest: SparkServingReadbackAbsent,
+    runtime_materialization_identity: SparkServingReadbackAbsent,
     model_name: SparkServingReadbackPresent { value: "gpt-oss" },
     model_tag: SparkServingReadbackPresent { value: "20b" },
     model_manifest_digest: SparkServingReadbackPresent { value: witness_model_digest },

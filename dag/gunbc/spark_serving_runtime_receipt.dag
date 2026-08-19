@@ -70,6 +70,47 @@ fn spark_serving_parse_runtime_receipt_json(stdout: String) -> SparkServingReadb
   }
 }
 
+// THE MATERIALIZATION RECEIPT READ, which is a different receipt on a different machine from the
+// archive-admission one above and must not be confused with it.
+//
+// The archive-admission receipt records which release archive THE EXECUTOR admitted -- a fact about
+// srv1, written by gunbc.package_delivery through the local filesystem. The materialization receipt
+// is written INTO the runtime root on the host the closure was published to, and names that closure's
+// identity. Observing a Spark host asks the second question, and for a while it asked it by reading
+// the first receipt's path over SSH on a machine where nothing writes it: every observation of a
+// correctly converged host refused with a No-such-file, while the converge path called the same host
+// converged.
+//
+// Bare content, not JSON: the installer writes the identity digest and nothing else, so a parse step
+// here would be inventing structure the writer does not produce.
+fn spark_serving_materialization_receipt_field_from_probe(
+  probe: SshSessionExecResult?,
+) -> SparkServingReadbackField {
+  match probe {
+    Absent =>
+      SparkServingReadbackRefused {
+        cause: "runtime materialization receipt probe leg did not run" as NonEmptyStr,
+      }
+    Present { value: r } =>
+      if r.success {
+        if trim(s: r.stdout) == "" {
+          SparkServingReadbackRefused {
+            cause: "runtime materialization receipt is empty, so the published closure names no identity" as NonEmptyStr,
+          }
+        } else {
+          SparkServingReadbackPresent { value: trim(s: r.stdout) }
+        }
+      } else {
+        SparkServingReadbackRefused {
+          cause: join([
+            "runtime materialization receipt probe failed exit=", to_string(r.exit_code),
+            " stderr=", r.stderr,
+          ], "") as NonEmptyStr,
+        }
+      }
+  }
+}
+
 fn spark_serving_runtime_receipt_field_from_probe(
   probe: SshSessionExecResult?,
 ) -> SparkServingReadbackField {

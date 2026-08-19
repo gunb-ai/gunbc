@@ -1,8 +1,9 @@
 module gunbc.spark_serving_loaded_release
 
 import std.types { String, NonEmptyStr }
+import std.algebra { trim }
 import product.placement_supply { HostIdentity }
-import gunbc.ollama_runtime_bundle { ollama_runtime_materialization_identity_for_observed_release }
+import extdeps.ollama.binary_release { ollama_required_release, ollama_reported_version_matches_release }
 import gunbc.model_artifact { ModelArtifact, model_artifact_from_observed_digest }
 import extdeps.ollama.api { OllamaModelRef, ollama_model_digest_from_wire }
 import gunbc.spark_serving_readback_parse {
@@ -36,7 +37,7 @@ type SparkServingReadback {
   host: HostIdentity
   unit_outcome: SparkServingUnitProbeOutcome
   runtime_version: SparkServingReadbackField
-  runtime_release_asset_digest: SparkServingReadbackField
+  runtime_materialization_identity: SparkServingReadbackField
   model_name: SparkServingReadbackField
   model_tag: SparkServingReadbackField
   model_manifest_digest: SparkServingReadbackField
@@ -73,12 +74,12 @@ fn derive_loaded_spark_serving_release(readback: SparkServingReadback) -> SparkS
       match spark_serving_readback_field_present_value(field: readback.runtime_version) {
         Absent => none
         Present { value: ver } =>
-          match spark_serving_readback_field_present_value(field: readback.runtime_release_asset_digest) {
+          match spark_serving_readback_field_present_value(field: readback.runtime_materialization_identity) {
             Absent => none
-            Present { value: asset_digest_hex } =>
-              match ollama_runtime_materialization_identity_for_observed_release(
+            Present { value: receipt_identity } =>
+              match spark_serving_admit_observed_runtime_identity(
                 version: ver,
-                asset_digest_hex: asset_digest_hex,
+                receipt_identity: receipt_identity,
               ) {
                 Absent => none
                 Present { value: runtime_digest } =>
@@ -101,7 +102,7 @@ fn derive_loaded_spark_serving_release(readback: SparkServingReadback) -> SparkS
                                   Present {
                                     value: SparkServingRelease {
                                       runtime: RuntimeArtifactIdentity {
-                                        closure_digest: runtime_digest.digest as NonEmptyStr,
+                                        closure_digest: runtime_digest as NonEmptyStr,
                                       },
                                       model: model,
                                     }
@@ -113,6 +114,42 @@ fn derive_loaded_spark_serving_release(readback: SparkServingReadback) -> SparkS
               }
           }
       }
+  }
+}
+
+// THE RUNTIME IDENTITY COMES OFF THE HOST BEING OBSERVED, and getting that wrong is what this
+// function's existence records.
+//
+// WHAT WAS HERE. The identity was RECONSTRUCTED from two probes: the live /api/version wire and a
+// `release_asset_digest_hex` read out of ollama-runtime-receipt.json. That receipt is written by
+// gunbc.package_delivery on the EXECUTOR, as a record of which release archive the executor admitted
+// -- a fact about srv1. The read-only observation probed it over SSH on the TARGET, where nothing
+// writes it, so every observation of a correctly converged Spark refused with
+// `cat: .../ollama-runtime-receipt.json: No such file or directory` while the converge path called
+// the same host converged. Two readers, one path string, two machines, and the disagreement was
+// visible for days as a state=refused nobody could act on.
+//
+// WHAT IT READS NOW. The installer writes a materialization receipt INTO the runtime root it just
+// published, on the host it published it to, containing the materialization identity directly. That
+// is the same receipt spark_serving_observe_runtime_materialization already reads on the converge
+// path -- so the two readers now agree by construction rather than by coincidence, and the identity
+// is taken rather than recomputed.
+//
+// THE CROSS-CHECK SURVIVES, in a directer form. The old reconstruction implicitly caught a replaced
+// binary: a new version paired with an old asset digest matched no known release and the join
+// answered Absent. That indirection is gone, so the check is now stated as itself -- the version the
+// endpoint reports must be the version the required release declares. A receipt left behind by a
+// materialization that no longer matches what is running refuses here rather than being believed.
+fn spark_serving_admit_observed_runtime_identity(
+  version: String,
+  receipt_identity: String,
+) -> String? {
+  if !ollama_reported_version_matches_release(version: version, rel: ollama_required_release) {
+    none
+  } else if trim(s: receipt_identity) == "" {
+    none
+  } else {
+    Present { value: trim(s: receipt_identity) }
   }
 }
 
@@ -137,7 +174,7 @@ fn derive_spark_serving_observation(readback: SparkServingReadback) -> SparkServ
     SparkServingUnitActive =>
       match spark_serving_first_readback_refusal(fields: [
         readback.runtime_version,
-        readback.runtime_release_asset_digest,
+        readback.runtime_materialization_identity,
         readback.model_name,
         readback.model_tag,
         readback.model_manifest_digest,
