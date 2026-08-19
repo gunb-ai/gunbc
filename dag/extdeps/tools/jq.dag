@@ -224,9 +224,18 @@ type JqProcessPlan {
   stdin: String?
 }
 
+// THE CAUSE IS TYPED, NOT PROSE. An earlier revision carried a NonEmptyStr reason that
+// jq_lowering_refused_diagnostic never read, so both unlowered axes collapsed to one
+// ^jq_lowering_refused identity and the two witnesses could only assert a generic Rejected --
+// authored payload, carried briefly, then erased. Each cause now projects a distinct diagnostic
+// identity the witnesses assert, so the two refusals are distinguishable by a consumer.
+type JqLoweringRefusal
+  = JqBindingLoweringUnwired
+  | JqFileInputLoweringUnwired
+
 type JqLowering
   = JqLowered { plan: JqProcessPlan }
-  | JqLoweringRefused { reason: NonEmptyStr }
+  | JqLoweringRefused { cause: JqLoweringRefusal }
 
 // The lowering REFUSES the axes this wave has no live consumer for, rather than emitting a
 // plausible guess. Bindings land with ObjectMapperServiceAt (the --argjson vertical) and file
@@ -236,15 +245,11 @@ type JqLowering
 fn jq_invocation_lower(invocation: JqInvocation) -> JqLowering {
   match invocation.bindings {
     Cons { head: _, tail: _ } =>
-      JqLoweringRefused {
-        reason: "jq bindings are not lowered yet; the --arg/--argjson vertical lands with ObjectMapperServiceAt"
-      }
+      JqLoweringRefused { cause: JqBindingLoweringUnwired }
     Empty =>
       match invocation.input {
         JqInputFile { path: _ } =>
-          JqLoweringRefused {
-            reason: "jq file input is not lowered yet; the operand vertical lands with the remote population"
-          }
+          JqLoweringRefused { cause: JqFileInputLoweringUnwired }
         JqInputStdin { content: content } =>
           JqLowered {
             plan: JqProcessPlan {
@@ -285,11 +290,53 @@ fn jq_selected_option_argument(selection: JqCliSelection) -> List<CliArgumentSyn
   }
 }
 
-// The one function a domain module calls. It returns the exact argument vector, or refuses.
+// THE COMPLETE RESULT, because argv alone cannot carry a jq invocation. An earlier revision made
+// jq_invocation_cli_arguments the public entry: it projected plan.arguments into a CliSurface and
+// DISCARDED plan.stdin, so the program's input silently vanished at the module boundary. The
+// witness did not catch it, and could not have: "stdin does not appear in argv" is satisfied just
+// as well by stdin being lost entirely. A negative control that coexists with total loss is not
+// evidence of correct routing.
+//
+// This carrier also gives tool identity its first real consumer, so which binary runs stops being
+// ambient. A handler consumes THIS, never a bare CliSurface it must reopen the JqInvocation to
+// complete -- that would give the process projection two authorities.
+type JqAdmittedProcessPlan sole_constructor {
+  tool: CliTool
+  surface: CliSurface
+  stdin: String?
+}
+
+fn jq_admitted_plan_surface(plan: JqAdmittedProcessPlan) -> CliSurface { plan.surface }
+
+fn jq_admitted_plan_stdin(plan: JqAdmittedProcessPlan) -> String? { plan.stdin }
+
+fn jq_invocation_process_plan(invocation: JqInvocation) -> Outcome<JqAdmittedProcessPlan> {
+  match jq_invocation_lower(invocation: invocation) {
+    JqLoweringRefused { cause: cause } =>
+      outcome_rejected(jq_lowering_refused_diagnostic(cause: cause))
+    JqLowered { plan: plan } =>
+      bind_outcome(
+        o: serialize_cli_arguments(
+          arguments: plan.arguments,
+          lex: jq_cli_lex_rules(),
+          binding_spellings: plan.binding_spellings
+        ),
+        f: fn(surface) {
+          outcome_accepted(JqAdmittedProcessPlan {
+            tool: jq_cli_tool,
+            surface: surface,
+            stdin: plan.stdin
+          })
+        }
+      )
+  }
+}
+
+// The argv-only projection, retained because the boundary witness asserts over it directly.
 fn jq_invocation_cli_arguments(invocation: JqInvocation) -> Outcome<CliSurface> {
   match jq_invocation_lower(invocation: invocation) {
-    JqLoweringRefused { reason: reason } =>
-      outcome_rejected(jq_lowering_refused_diagnostic(reason: reason))
+    JqLoweringRefused { cause: cause } =>
+      outcome_rejected(jq_lowering_refused_diagnostic(cause: cause))
     JqLowered { plan: plan } =>
       serialize_cli_arguments(
         arguments: plan.arguments,
@@ -299,9 +346,16 @@ fn jq_invocation_cli_arguments(invocation: JqInvocation) -> Outcome<CliSurface> 
   }
 }
 
-fn jq_lowering_refused_diagnostic(reason: NonEmptyStr) -> Diagnostic {
+fn jq_lowering_refusal_identity(cause: JqLoweringRefusal) -> Symbol {
+  match cause {
+    JqBindingLoweringUnwired => ^jq_binding_lowering_unwired
+    JqFileInputLoweringUnwired => ^jq_file_input_lowering_unwired
+  }
+}
+
+fn jq_lowering_refused_diagnostic(cause: JqLoweringRefusal) -> Diagnostic {
   Diagnostic {
-    reason: ^jq_lowering_refused,
+    reason: jq_lowering_refusal_identity(cause: cause),
     at: node_locus(node: Node {
       kind: TypeNode { connective: Atom { identity: ^jq_invocation_lowering } },
       children: [],

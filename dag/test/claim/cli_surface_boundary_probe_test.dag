@@ -16,7 +16,8 @@ import v2.std.compilers.lexing {
   ModeledLexRules,
   TokenRule
 }
-import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken, bound_tokens_source_text, render_target_text }
+import v2.std.compilers.target_model { BoundToken, ConcreteSyntaxToken, FixedToken, bound_tokens_source_text, render_target_text }
+import v2.std.node { Symbol }
 import v2.std.diagnostic { Accepted, Rejected }
 
 // WAVE 0 (docs/plans/cli-invocation-emission-design.md).
@@ -169,5 +170,29 @@ test fn keystone_flat_text_is_nonempty() -> Bool {
     Accepted { value: text, diagnostics: _ } =>
       render_target_text(t: text) == "--color=never"
     Rejected { diagnostics: _ } => false
+  }
+}
+
+
+// A MISSING BINDING REFUSES. This is the perturbation control for the fail-open this fold used
+// to inherit: target_model's bound-token lookup answers an absent map entry with the binding
+// SYMBOL'S OWN NAME, so a generic serializer would have emitted the literal argument
+// "probe_unbound_value" -- a plausible-looking argv the process would then have run. Defensible
+// for compiler source text, where the symbol name is a legitimate rendering; fabricated
+// plausible output for runtime CLI data (DESIGN section 5).
+//
+// The assertion is deliberately Rejected-vs-Accepted rather than a text comparison: if the
+// fallback ever returns, this goes red because the fold ACCEPTS, and no assertion about the
+// emitted text is needed to see it.
+test fn a_bound_fragment_with_no_spelling_refuses() -> Bool {
+  match serialize_cli_arguments(
+    arguments: [CliArgumentSyntax {
+      fragments: [BoundToken { token_class: ^probe_value_class, binding: ^probe_unbound_value }]
+    }],
+    lex: probe_lex_rules(),
+    binding_spellings: empty_map()
+  ) {
+    Rejected { diagnostics: _ } => true
+    Accepted { value: _, diagnostics: _ } => false
   }
 }

@@ -5,31 +5,39 @@ import std.types { NonEmptyStr, String }
 import v2.std.algebra { fold_list, list_snoc_item }
 import v2.std.collection { List, Map }
 import v2.std.compilers.target_model {
+  BoundToken,
   ConcreteSyntaxToken,
+  FixedToken,
   LexRules,
-  bound_tokens_source_text,
-  render_target_text
+  lex_rules_literal_for_class
 }
+import v2.std.collection { map_get }
 import v2.std.diagnostic {
   Accepted,
+  Diagnostic,
+  ExternalContractUnknown,
   None,
   Outcome,
   ShortCircuit,
   StageDiagnosticPolicy,
+  Unavailable,
   append_outcome_value,
   Rejected,
   bind_outcome,
-  outcome_accepted
+  node_locus,
+  outcome_accepted,
+  outcome_rejected
 }
-import v2.std.node { Symbol }
+import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
+import v2.std.optional { Absent, Present }
 
 
 // WHY THIS EXISTS.
 //
-// CliArgumentSyntax preserves the GROUPING a tool's CLI projection selected. bound_tokens_source_text
-// is reused only INSIDE one argument, where concatenation is correct (["--color","=","never"] is the
-// single argument --color=never). The outer fold preserves boundaries BETWEEN arguments, which is
-// the information an argv vector carries and source text cannot.
+// CliArgumentSyntax preserves the GROUPING a tool's CLI projection selected. Fragments concatenate
+// only INSIDE one argument, where concatenation is correct (["--color","=","never"] is the single
+// argument --color=never). The outer fold preserves boundaries BETWEEN arguments, which is the
+// information an argv vector carries and source text cannot.
 //
 // This module consumes ConcreteSyntaxToken. It does NOT consume compiler translate output and is
 // independent of TargetModel as a semantic authority -- an earlier revision of this comment
@@ -118,20 +126,85 @@ fn cli_argument_text(argument: CliArgument) -> String {
 // concatenates WITHIN one argument. The outer fold preserves the argument boundary BETWEEN them.
 // Both directions are then reachable from the same fragments, which is what makes the witness
 // discriminating rather than self-fulfilling.
+// A MISSING BINDING REFUSES HERE. It does not fall back to the binding's own symbol name.
+//
+// This fold used to route through target_model bound_tokens_source_text, whose bound-token
+// lookup answers an absent entry with the symbol's interned spelling instead of a refusal. That
+// is defensible for compiler source text, where the symbol name IS a legitimate rendering. It is
+// fail-open for runtime CLI data: a missing jq_program_text binding would have emitted the
+// literal argument "jq_program_text" -- a plausible-looking argv the process would then run.
+// DESIGN section 5: no fabricated plausible output. Absence is a typed, located refusal.
+//
+// So the two carriers keep their own folds, which is also what the carrier ruling requires. The
+// shared authority is TOKEN-GRAIN SPELLING (lex_rules_literal_for_class, and the map lookup
+// below), not sequence composition: emitted source composes through TargetText via text_atom and
+// target_text_seq, an argv argument composes into a CliArgument here, and no already-composed
+// String is ever lifted into either carrier.
+fn required_bound_spelling(
+  binding_spellings: Map<Symbol, String>,
+  binding: Symbol
+) -> Outcome<String> {
+  match map_get(binding_spellings, binding) {
+    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+    Accepted { value: found, diagnostics: pending } =>
+      match found {
+        Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
+        Absent => outcome_rejected(cli_binding_spelling_missing_diagnostic(binding: binding))
+      }
+  }
+}
+
+fn cli_binding_spelling_missing_diagnostic(binding: Symbol) -> Diagnostic {
+  Diagnostic {
+    reason: ^cli_binding_spelling_missing,
+    at: node_locus(node: Node {
+      kind: TypeNode { connective: Atom { identity: binding } },
+      children: [],
+      occurrence_id: SyntheticOccurrence
+    }),
+    correction: Unavailable { reason: ExternalContractUnknown }
+  }
+}
+
+fn cli_fragment_spelling(
+  fragment: ConcreteSyntaxToken,
+  lex: LexRules,
+  binding_spellings: Map<Symbol, String>
+) -> Outcome<String> {
+  match fragment {
+    FixedToken { token_class: tc } =>
+      lex_rules_literal_for_class(rules: lex, token_class: tc)
+    BoundToken { token_class: _, binding: b } =>
+      required_bound_spelling(binding_spellings: binding_spellings, binding: b)
+  }
+}
+
 fn cli_argument_from_fragments(
   fragments: List<ConcreteSyntaxToken>,
   lex: LexRules,
   binding_spellings: Map<Symbol, String>
 ) -> Outcome<CliArgument> {
   bind_outcome(
-    o: bound_tokens_source_text(
-      tokens: fragments,
-      lex: lex,
-      binding_spellings: binding_spellings
+    o: fold_list(
+      xs: fragments,
+      empty: outcome_accepted(""),
+      cons: fn(acc, fragment) {
+        bind_outcome(
+          o: acc,
+          f: fn(partial) {
+            bind_outcome(
+              o: cli_fragment_spelling(
+                fragment: fragment,
+                lex: lex,
+                binding_spellings: binding_spellings
+              ),
+              f: fn(spelling) { outcome_accepted(concat(partial, spelling)) }
+            )
+          }
+        )
+      }
     ),
-    f: fn(text) {
-      outcome_accepted(CliArgument { text: render_target_text(t: text) })
-    }
+    f: fn(text) { outcome_accepted(CliArgument { text: text }) }
   )
 }
 
