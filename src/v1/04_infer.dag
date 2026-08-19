@@ -176,6 +176,7 @@ import v1.compiler.infer_lookup {
   KnownMethodResolution,
   resolve_known_method_node, resolve_scrutinee_type_node, resolve_method_receiver_type,
   lookup_structural_method,
+  DeclaredArgContract, ContractKnown, MethodUnresolved, ContractUnavailable, declared_arg_types_for_method,
   field_summary_for_type,
   lookup_field_type_node, lookup_coproduct_common_field_node, product_field_result_type,
   map_value_type_in_env, map_key_type_in_env, set_element_type_in_env,
@@ -3089,7 +3090,7 @@ fn derive_element_provenance(coll_expr: Node, elem_type: Node, scope: InferScope
   }
 }
 
-fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, scope: InferScope) -> List<ArgInferResult> {
+fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fold_info: ArgInferResult?, fold_acc_type: Node, element_type: Node, elem_provenance: SubValueRelation, arg_contract: DeclaredArgContract, scope: InferScope) -> List<ArgInferResult> {
   let is_fold = method_name_is(opt: method_name, expected: "fold")
   method_args |> enumerate |> map(idx_pair =>
     let a = idx_pair.second
@@ -3151,7 +3152,21 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
           lambda_param_provenance: nf_prov_map
         }
       } else { scope }
-      infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
+      match arg_contract {
+        MethodUnresolved => infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
+        ContractUnavailable =>
+          let ar = infer_expr(texpr: nf_lam_value, scope: nf_scope, expected: none)
+          let contract_diag = categorized_error(message: "no declared argument contract is available for this method call; refusing rather than substituting the receiver element type", span: a.span, module_name: nf_scope.module_name, category: "method-arg-contract-unavailable")
+          ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
+        ContractKnown { types: declared_types } =>
+          match declared_types |> skip(idx) |> first {
+            Present { value: declared_type } => infer_arg_with_element_type(arg: a, element_type: declared_type, scope: nf_scope)
+            Absent =>
+              let ar = infer_expr(texpr: nf_lam_value, scope: nf_scope, expected: none)
+              let contract_diag = categorized_error(message: "no declared argument contract is available at this parameter position; refusing rather than substituting the receiver element type", span: a.span, module_name: nf_scope.module_name, category: "method-arg-contract-unavailable")
+              ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: a, source_indices: nf_scope.type_env.source_indices), value: ar.typed, span: a.span, name_span: a.span), diagnostics: concat(ar.diagnostics, [contract_diag]) }
+          }
+      }
     }
   )
 }
@@ -3494,7 +3509,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             let first_type = resolved_type(n: first_result.typed)
             let elem_type = for_each_element_type_node(n: first_type, source_indices: scope.type_env.source_indices)
             let call_elem_provenance = derive_element_provenance(coll_expr: first_result.typed, elem_type: elem_type, scope: scope)
-            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, scope: scope)
+            let remaining_results = infer_method_args_with_fold(method_name: call_method_name, method_args: call_method_args, fold_info: call_fold_info, fold_acc_type: call_fold_acc_type, element_type: elem_type, elem_provenance: call_elem_provenance, arg_contract: MethodUnresolved, scope: scope)
             concat(
               [ArgInferResult { typed_arg: make_arg_node(name: arg_name_at(n: first_arg, source_indices: scope.type_env.source_indices), value: first_result.typed, span: first_arg.span, name_span: first_arg.span), diagnostics: first_result.diagnostics }],
               remaining_results
@@ -3958,7 +3973,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
         Absent => error_type
       }
       let mc_elem_provenance = derive_element_provenance(coll_expr: recv_typed, elem_type: recv_elem_type, scope: scope)
-      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, scope: scope)
+      let mc_arg_contract = declared_arg_types_for_method(receiver_type: recv_rt, method_name: method_name, source_indices: scope.type_env.source_indices)
+      let mc_arg_infer_results = infer_method_args_with_fold(method_name: mc_method_name, method_args: mc_args, fold_info: fold_info, fold_acc_type: fold_acc_type, element_type: recv_elem_type, elem_provenance: mc_elem_provenance, arg_contract: mc_arg_contract, scope: scope)
       let typed_mc_args = mc_arg_infer_results |> map(air => air.typed_arg)
       let mc_arg_diags = flat_map(mc_arg_infer_results, air => air.diagnostics)
       let mc_acc_is_under_resolved = !is_fully_resolved(n: fold_acc_type, source_indices: scope.type_env.source_indices)
