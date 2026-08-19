@@ -38733,6 +38733,11 @@ pub struct RequiredFloorClaim {
 /// The site-projection loop's one decision, per identity, kept instead of discarded into three
 /// anonymous `usize` counters. Execution/admission derives from THIS alone — never from
 /// `LongHomeStorageAgreement` below, which observes a different, purely diagnostic fact.
+///
+/// Modeled authority: `v2.workflow.required_floor` `RequiredFloorDisposition`
+/// (`src/v2/workflow/required_floor.dag`). This Rust type is the realization of that `.dag`
+/// declaration, not its origin — the three arms and their meaning are declared there first; this
+/// enum's shape must track it rather than the reverse.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RequiredFloorDisposition {
     /// Admitted into `claims`: the module's authored name did not match a long-home prefix and
@@ -38765,6 +38770,13 @@ pub struct RequiredFloorDispositionRow {
 /// declared module — a `git mv` can land a file under `long/` without updating its declaration
 /// (still executing) or a file can be renamed out of `long/` while keeping a long-prefixed
 /// declaration (still declined).
+///
+/// Modeled authority: `v2.workflow.required_floor` `LongHomeStorageAgreement`
+/// (`src/v2/workflow/required_floor.dag`), including the derivation
+/// `long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool)` that names the same
+/// Cartesian product this file's `long_home_storage_agreement(bool, bool)` below realizes. The
+/// four arms are not a hand-picked enum: they are total over `(path_is_long, module_is_long)`,
+/// and that totality is declared in `.dag`, not invented here.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LongHomeStorageAgreement {
     /// Path and module agree: both long.
@@ -38802,6 +38814,10 @@ fn is_long_home_path(path: &str) -> bool {
 /// prefix list -- only the two booleans the caller has already derived -- so this function
 /// cannot itself read a path or a module name and cannot become a second admission authority by
 /// accretion.
+///
+/// Realizes `v2.workflow.required_floor` `long_home_storage_agreement` in
+/// `src/v2/workflow/required_floor.dag` — the match arms below must stay in exact correspondence
+/// with that `.dag` function's arms.
 fn long_home_storage_agreement(
     path_is_long: bool,
     module_is_long: bool,

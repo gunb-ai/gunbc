@@ -2,7 +2,56 @@ module v2.workflow.required_floor
 
 import v2.std.algebra { Cons, Empty }
 import v2.std.collection { List }
+import v2.std.logic { Bool }
 import v2.std.text { String }
+import v2.workflow.floor_expected_red { floor_expected_red_roster }
+
+// IDENTITY-GRAINED FLOOR DISPOSITION RECEIPT (operator ruling 2026-08-19).
+//
+// Every executable claim the fold plans gets exactly one `RequiredFloorDisposition`, keyed by
+// its qualified `module.function` identity. This is the single authority for that fact: the
+// host loop in `v1_compiler.cli_run` `run_required_floor` computes admission by testing a
+// claim's authored module name against `long_home_prefixes()` above and whether it reads the
+// live tree, then REALIZES the arm this type already names — it does not invent a second
+// admission concept. A `Declined*` arm here is a fact about why a claim's identity is excluded
+// from the executed roster; it is never itself the mechanism deciding execution order or
+// eligibility for a DIFFERENT gate.
+type RequiredFloorDisposition =
+    Planned
+  | DeclinedLongModule { matched_prefix: String }
+  | DeclinedLiveTree
+
+// LONG-HOME STORAGE HYGIENE — A DIAGNOSTIC, NEVER AN ADMISSION INPUT.
+//
+// Two independent boolean facts about one file: does its PATH sit under a directory this repo
+// treats as the long home (`/test/claim/long/`-shaped), and does its AUTHORED MODULE NAME start
+// with one of `long_home_prefixes()` above (the fact `RequiredFloorDisposition` actually reads).
+// The 2026-08-04 admission ruling already established that only the second fact may gate
+// execution — see this module's header comment on `is_long_home`. `LongHomeStorageAgreement` is
+// the derived cross-check that reports when the two facts diverge (a file physically homed in
+// the long directory whose module name never opted in, or the reverse), so the divergence is
+// visible without ever feeding back into admission. Naming it as a Cartesian product of two
+// booleans rather than a bespoke four-arm guess is the point: the four arms below are nothing
+// but `(path_is_long, module_is_long)`, and `long_home_storage_agreement` is total over that
+// product, not a hand-picked subset.
+type LongHomeStorageAgreement =
+    LongPathAndLongModule
+  | ShortPathAndShortModule
+  | LongPathButExecutingModule
+  | ShortPathButDeclinedModule
+
+fn long_home_storage_agreement(path_is_long: Bool, module_is_long: Bool) -> LongHomeStorageAgreement {
+  match path_is_long {
+    True => match module_is_long {
+      True => LongPathAndLongModule {}
+      False => LongPathButExecutingModule {}
+    }
+    False => match module_is_long {
+      True => ShortPathButDeclinedModule {}
+      False => ShortPathAndShortModule {}
+    }
+  }
+}
 
 // THE ROSTER IS IMPORTED HERE SO IT IS REACHABLE, NOT SO IT IS RE-EXPORTED.
 //
@@ -15,7 +64,6 @@ import v2.std.text { String }
 // `v2.workflow.floor_expected_red.floor_expected_red_roster` by its real qualified name. A
 // thin accessor here would be a second name for one authority, and this module would then own
 // a fact it does not produce.
-import v2.workflow.floor_expected_red { floor_expected_red_roster }
 
 //
 // THREE PREFIXES, NOT ONE, and the count is what found that. A single `test.claim.long.` test
