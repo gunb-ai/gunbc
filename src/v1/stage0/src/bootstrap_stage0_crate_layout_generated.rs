@@ -33,7 +33,12 @@ pub const HAND_MAINTAINED_STAGE0_FILES: &[&str] = &[
     "v2_compiler_program_partition.rs",
     "v2_compiler_tokenize.rs",
     "v2_compiler_infer.rs",
-    "v1_interpreter_dispatch_generated.rs"
+    "v1_interpreter_dispatch_generated.rs",
+    "source_closure.rs",
+    "required_regen_host.rs",
+    "cssl_seed_linked_closure_assembly.rs",
+    "v2_compiler_compile.rs",
+    "v2_compiler_program_assembly.rs"
 ];
 
 #[rustfmt::skip]
