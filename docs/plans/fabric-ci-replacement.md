@@ -191,3 +191,59 @@ the right to spend the fleet on a commit. In the fabric's own vocabulary that is
 authenticated author, which is precisely the shape `std.access` exists to refuse. The reconciler
 framing improves this too: a reconciler derives its work from declared desired state, and declared
 desired state has an author.
+
+## 10. Two blocking corrections — the plan tests the wrong commit, and the lease fences nothing
+
+Both from the reviewer's working notes ahead of the verdict. Both confirmed. Both are mine, and the
+first is one I had already written down and failed to apply.
+
+### The PR subject is GitHub's synthetic merge commit, not the PR head
+
+`actions/checkout@v5` on a `pull_request` event checks out **`refs/pull/N/merge`** — a commit
+GitHub *constructs* by merging the PR head into the base. So today's CI does not test the branch;
+it tests **the branch as merged into main**.
+
+§4 of this plan says the Work is "required floor at tree T" derived from a polled commit. Applied
+to PRs that would test the **head tree**, which is a different subject and a **strictly weaker
+one**: a PR that is green in isolation and breaks when combined with main would pass. That is a
+semantic-conflict class the current CI catches and the replacement as drawn would not — and losing
+a refusal is exactly what §2 says disqualifies a minimum replacement.
+
+It is worse than an oversight, because I have this written down. My own note
+(`branch-tree-identical-ci-subject-is-not`) opens: *"run A evaluated the synthetic merge of the
+branch into one main commit, run B into a later main commit"* — and its stated rule is to check the
+**merge subject, not just head**, before treating two runs as comparable. I applied it to comparing
+runs and did not apply it to defining the Work.
+
+**Consequences the plan must now carry:**
+
+- The Work identity is **not** the head tree. It is the merge result, which means the identity
+  depends on **two** commits — PR head *and* base — so it changes when main moves even though the
+  PR did not. That also refutes the §8 question-4 hope that "an identical tree does not re-run":
+  the tree is not the input.
+- Someone must **construct** the merge, since we would no longer be handed `refs/pull/N/merge`.
+  That is a real operation with a real failure mode (conflicts), and a conflicted merge is a typed
+  refusal, not an absent check.
+- **`fetch-depth: 0` is load-bearing** and now visibly so: constructing a merge needs history.
+
+### `LeaseEpoch` alone fences nothing without a durable compare-and-swap
+
+§4 claims the epoch is load-bearing because "two pollers, or a poller restarted mid-run, must not
+both hold a grant on the same work". The epoch is the right **token** and the sentence is
+nonetheless wrong as an argument: a value does not exclude anyone. Two reconcilers can both read
+epoch *N*, both believe they hold it, and both issue a grant.
+
+Fencing requires a **durable single-writer transition** — a compare-and-swap on persisted state
+where exactly one writer observes success at each epoch, and the loser refuses rather than
+proceeding. Without it, `LeaseEpoch` is a label on a race.
+
+This is the §5 trap in its purest form applied to my own design: I named a carrier and treated the
+name as the guarantee, which is precisely what DESIGN §4b means by *richer type names are not
+safety*. Cut A extracted the epoch as an immutable coordinate; **it never claimed to provide the
+transition**, and I read the extraction as though it had.
+
+**So the plan acquires a prerequisite it did not have:** durable state with an atomic transition.
+That is the first genuinely new *stateful* infrastructure in this proposal — the poller was new
+process, this is new persistence — and it needs to be named as such rather than absorbed into "the
+reconciler keeps track". Where that state lives, and what makes its CAS atomic, is now an open
+question ahead of the four in §8.
