@@ -2,9 +2,9 @@ module test.claim.long.dag_arrow_lambda_witness_test
 
 import v2.std.text { String }
 import v2.std.logic { Bool }
-import v2.std.algebra { fold_list }
+import v2.std.algebra { fold_list, for_all }
 import v2.std.grammar { GrammarRoot, GrammarProduction, GrammarExpr, ParseGrammar, ModeledGrammar, VoidGrammar }
-import v2.std.compilers.lexing { lex_artifact_semantic_tokens }
+import v2.std.compilers.lexing { LexRuleSet, lex_artifact_semantic_tokens }
 import v2.compiler.tokenize { lex_walk_artifact }
 import v2.compiler.parse { parse_module }
 import v2.extdeps.languages.dag {
@@ -14,10 +14,10 @@ import v2.extdeps.languages.dag {
   dag_grammar_nonterminal
 }
 
-data arrow_lambda_witness_note: String = "CI2-0 grammar-extension proof obligation (operator repair sequencing msg_7152180b item a; premise corrected by direct probe 2026-08-10): the v2 grammar already admits |> — the measured corpus-wide parse wall in dag/std/algebra.dag, a dependency the v2 compiler itself imports, is the ARROW LAMBDA, v1-only surface syntax. This witness admits it parse-only, mirroring the v1 frontend's exact admission (single bare ident, or parenthesized >=2 idents; () and (x) are NOT lambdas in v1 and stay refused). The rule-removed RED rebuilds the grammar with the EXPR production's expression swapped back to the pre-repair shape, selected by DECLARED production identity with the replacement count asserted, so the discrimination is single-variable at the production grain. Non-interference rows pin the neighbors that share tokens with the new arm: match-arm fat arrows, named args, parenthesized arithmetic, and the recently-landed leading-pipe sum admission."
+data arrow_lambda_witness_note: String = "CI2-0 grammar-extension proof obligation (operator repair sequencing msg_7152180b item a; premise corrected by direct probe 2026-08-10): the v2 grammar already admits |> — the measured corpus-wide parse wall in dag/std/algebra.dag, a dependency the v2 compiler itself imports, is the ARROW LAMBDA, v1-only surface syntax. This witness admits it parse-only, mirroring the v1 frontend's exact admission (single bare ident, or parenthesized >=2 idents; () and (x) are NOT lambdas in v1 and stay refused). The rule-removed RED rebuilds the grammar with the EXPR production's expression swapped back to the pre-repair shape, selected by DECLARED production identity with the replacement count asserted, so the discrimination is single-variable at the production grain. Non-interference rows pin the neighbors that share tokens with the new arm: match-arm fat arrows, named args, parenthesized arithmetic, and the recently-landed leading-pipe sum admission. TWO CLAIMS, NOT FOURTEEN (witness-cost consolidation, 2026-08-19): every source here probes ONE mechanism -- whether a given grammar admits a given surface shape -- and the cost of a row is not the parse, which is over three lines of source, but the frontend construction ahead of it: dag_lex_rules() and a 6,230-line dag_grammar() were rebuilt once per claim because each claim evaluates in a fresh frame, and the pre-repair claim rebuilt the grammar five more times because pre_repair_grammar() and its swap check each called dag_grammar() again. Nineteen builds served thirteen three-line sources. The rows are now folded through ONE constructed frontend per grammar under test: the live grammar builds once and every admitted, non-interference and refused-shape source is asserted against it, and the pre-repair grammar is derived from that same base value and asserted against the discriminating subset. The fixture population, the sources, and every assertion are UNCHANGED -- what is removed is the repeated construction, not a claim. WHAT THIS COSTS, stated rather than left to be discovered: a failure now names a claim rather than a source, so the failing fixture is read from the fold rather than from the row name. That is the price of the consolidation and it is why the three source lists are named by what they assert."
 
-fn parse_accepts_with(source: String, grammar: ParseGrammar) -> Bool {
-  match lex_walk_artifact(source: source, file: ^lambda_probe, rules: dag_lex_rules()) {
+fn parse_accepts_with(source: String, rules: LexRuleSet, grammar: ParseGrammar) -> Bool {
+  match lex_walk_artifact(source: source, file: ^lambda_probe, rules: rules) {
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
     v2.std.diagnostic.Accepted { value: a, diagnostics: _ } =>
       match parse_module(tokens: lex_artifact_semantic_tokens(artifact: a), grammar: grammar) {
@@ -27,8 +27,44 @@ fn parse_accepts_with(source: String, grammar: ParseGrammar) -> Bool {
   }
 }
 
-fn parse_accepts(source: String) -> Bool {
-  parse_accepts_with(source: source, grammar: dag_grammar())
+fn accepts_all(rules: LexRuleSet, grammar: ParseGrammar, sources: List<String>) -> Bool {
+  for_all(xs: sources, predicate: fn(src) {
+    parse_accepts_with(source: src, rules: rules, grammar: grammar)
+  })
+}
+
+fn refuses_all(rules: LexRuleSet, grammar: ParseGrammar, sources: List<String>) -> Bool {
+  for_all(xs: sources, predicate: fn(src) {
+    parse_accepts_with(source: src, rules: rules, grammar: grammar) == false
+  })
+}
+
+fn admitted_lambda_sources() -> List<String> {
+  [
+    single_param_lambda_source,
+    multi_param_lambda_source,
+    lambda_in_pipeline_source,
+    authored_algebra_shape_source,
+    lambda_block_body_source
+  ]
+}
+
+fn non_interference_sources() -> List<String> {
+  [
+    match_arm_unchanged_source,
+    named_arg_unchanged_source,
+    paren_arithmetic_unchanged_source,
+    sum_decl_unchanged_source
+  ]
+}
+
+fn refused_shape_sources() -> List<String> {
+  [
+    missing_body_source,
+    missing_param_source,
+    single_paren_param_source,
+    zero_param_source
+  ]
 }
 
 data single_param_lambda_source: String = "module zz_lambda_probe\n\nfn f(xs: List<Int>) -> Bool {\n  any(xs, p => p == 1)\n}\n"
@@ -102,8 +138,8 @@ fn swapped_count(productions: List<GrammarProduction>) -> Int {
   })
 }
 
-fn pre_repair_grammar() -> ParseGrammar {
-  match dag_grammar() {
+fn pre_repair_grammar_from(base: ParseGrammar) -> ParseGrammar {
+  match base {
     ModeledGrammar { root: r } =>
       ModeledGrammar {
         root: GrammarRoot {
@@ -116,69 +152,26 @@ fn pre_repair_grammar() -> ParseGrammar {
   }
 }
 
-fn pre_repair_swap_targeted_exactly_one() -> Bool {
-  match dag_grammar() {
+fn pre_repair_swap_targeted_exactly_one(base: ParseGrammar) -> Bool {
+  match base {
     ModeledGrammar { root: r } => swapped_count(productions: r.productions) == 1
     VoidGrammar => false
   }
 }
 
-test fn witness_single_param_lambda_parses() -> Bool {
-  parse_accepts(source: single_param_lambda_source)
-}
-
-test fn witness_multi_param_lambda_parses() -> Bool {
-  parse_accepts(source: multi_param_lambda_source)
-}
-
-test fn witness_lambda_in_pipeline_parses() -> Bool {
-  parse_accepts(source: lambda_in_pipeline_source)
-}
-
-test fn witness_authored_algebra_shape_parses() -> Bool {
-  parse_accepts(source: authored_algebra_shape_source)
-}
-
-test fn witness_lambda_block_body_parses() -> Bool {
-  parse_accepts(source: lambda_block_body_source)
-}
-
-test fn witness_match_arm_fat_arrow_unchanged() -> Bool {
-  parse_accepts(source: match_arm_unchanged_source)
-}
-
-test fn witness_named_arg_unchanged() -> Bool {
-  parse_accepts(source: named_arg_unchanged_source)
-}
-
-test fn witness_paren_arithmetic_unchanged() -> Bool {
-  parse_accepts(source: paren_arithmetic_unchanged_source)
-}
-
-test fn witness_sum_decl_unchanged() -> Bool {
-  parse_accepts(source: sum_decl_unchanged_source)
-}
-
-test fn witness_missing_body_refuses_RED() -> Bool {
-  parse_accepts(source: missing_body_source) == false
-}
-
-test fn witness_missing_param_refuses_RED() -> Bool {
-  parse_accepts(source: missing_param_source) == false
-}
-
-test fn witness_single_paren_param_refuses_RED() -> Bool {
-  parse_accepts(source: single_paren_param_source) == false
-}
-
-test fn witness_zero_param_refuses_RED() -> Bool {
-  parse_accepts(source: zero_param_source) == false
+test fn witness_dag_grammar_arrow_lambda_admission_holds() -> Bool {
+  let rules = dag_lex_rules()
+  let g = dag_grammar()
+  accepts_all(rules: rules, grammar: g, sources: admitted_lambda_sources())
+    && accepts_all(rules: rules, grammar: g, sources: non_interference_sources())
+    && refuses_all(rules: rules, grammar: g, sources: refused_shape_sources())
 }
 
 test fn witness_pre_repair_grammar_restores_the_RED() -> Bool {
-  pre_repair_swap_targeted_exactly_one()
-    && (parse_accepts_with(source: single_param_lambda_source, grammar: pre_repair_grammar()) == false)
-    && (parse_accepts_with(source: authored_algebra_shape_source, grammar: pre_repair_grammar()) == false)
-    && parse_accepts_with(source: match_arm_unchanged_source, grammar: pre_repair_grammar())
-    && parse_accepts_with(source: sum_decl_unchanged_source, grammar: pre_repair_grammar())
+  let rules = dag_lex_rules()
+  let g = dag_grammar()
+  let pre = pre_repair_grammar_from(base: g)
+  pre_repair_swap_targeted_exactly_one(base: g)
+    && refuses_all(rules: rules, grammar: pre, sources: [single_param_lambda_source, authored_algebra_shape_source])
+    && accepts_all(rules: rules, grammar: pre, sources: non_interference_sources())
 }
