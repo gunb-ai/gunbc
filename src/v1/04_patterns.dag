@@ -159,8 +159,30 @@ fn synthesize_witness_holds_variant(scrut: v1.std.core.Node) -> v1.std.core.Node
   v1.std.core.Node { name: "Holds", span: scrut.span, ident_span: Present { value: v1.std.core.kernel_span(name: "Holds") }, children: [value_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
 
-fn synthesize_witness_violates_variant(scrut: v1.std.core.Node) -> v1.std.core.Node {
-  let diagnostic_type = v1.std.core.Node { name: "Diagnostic", span: scrut.span, ident_span: Present { value: v1.std.core.kernel_span(name: "Diagnostic") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+// Witness is a kernel type, so its Violates arm is SYNTHESIZED rather than
+// declared, and the payload node was minted with the bare name "Diagnostic"
+// and no children -- an opaque leaf. Under imports that leaf resolved through
+// the pool to whatever module the file had imported Diagnostic from; with the
+// imports gone it resolves to nothing, so `Violates { diagnostic: d }` bound d
+// to a name with no fields and `d.reason` reported no such field on a type
+// whose declaration has exactly that field.
+//
+// The name is resolved through the env's own type lookup instead of being
+// minted opaque, so the payload IS the declared Diagnostic wherever one is
+// visible. The opaque leaf remains the answer when none is, which is the
+// pre-existing behaviour for a corpus that declares no Diagnostic at all --
+// this widens what the synthesis can find, never what it accepts.
+fn resolved_kernel_diagnostic_type(scrut: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv, opaque: v1.std.core.Node) -> v1.std.core.Node {
+  match globally_unique_declaring_module(env: env, name: "Diagnostic") {
+    Present { value: mp } =>
+      v1.std.core.Node { name: concat(mp, ".", "Diagnostic"), span: opaque.span, ident_span: Present { value: v1.std.core.kernel_span(name: concat(mp, ".", "Diagnostic")) }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+    Absent => opaque
+  }
+}
+
+fn synthesize_witness_violates_variant(scrut: v1.std.core.Node, env: v1.compiler.infer_env.TypeEnv) -> v1.std.core.Node {
+  let opaque_diagnostic_type = v1.std.core.Node { name: "Diagnostic", span: scrut.span, ident_span: Present { value: v1.std.core.kernel_span(name: "Diagnostic") }, children: [], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
+  let diagnostic_type = resolved_kernel_diagnostic_type(scrut: scrut, env: env, opaque: opaque_diagnostic_type)
   let diagnostic_field = v1.std.core.Node { name: "diagnostic", span: scrut.span, ident_span: Present { value: v1.std.core.kernel_span(name: "diagnostic") }, children: [], connective: NoConnective, params: [], inferred: Present { value: v1.std.core.Resolved { node: diagnostic_type } }, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
   v1.std.core.Node { name: "Violates", span: scrut.span, ident_span: Present { value: v1.std.core.kernel_span(name: "Violates") }, children: [diagnostic_field], connective: NoConnective, params: [], inferred: none, return_cardinality: Required, uses: [], body: none, transport: none, properties: [], type_annotation: none, is_self_recursive: false, has_non_tail_self_call: false, match_pattern: none, expr_data: NoExprData }
 }
@@ -295,7 +317,7 @@ fn lookup_variant_in_type(scrut: PatternSubject, variant_name: String, module_na
         } else if witness_subject && variant_name == "Holds" {
           node_lookup_resolved(node: synthesize_witness_holds_variant(scrut: scrut_node))
         } else if witness_subject && variant_name == "Violates" {
-          node_lookup_resolved(node: synthesize_witness_violates_variant(scrut: scrut_node))
+          node_lookup_resolved(node: synthesize_witness_violates_variant(scrut: scrut_node, env: env))
         } else {
           let scrut_name = authored_name_at(source_indices: source_indices, node: scrut_node)
 

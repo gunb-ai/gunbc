@@ -624,6 +624,21 @@ fn name_is_declared_somewhere(env: v1.compiler.infer_env.TypeEnv, name: String) 
   }
 }
 
+// A KERNEL type the compiler synthesizes -- Witness's Violates payload -- names
+// a type the corpus declares, not a name written at any use site, so the
+// containment chain of whatever module happens to be compiling is not the right
+// filter for it: `Diagnostic` is declared exactly once corpus-wide, and
+// global_bare_lookup refused it from every module outside v2.std.diagnostic's
+// own chain. This answers only the unambiguous case -- one declaration, no
+// chain test -- and is for synthesis, never for a name a user wrote.
+fn globally_unique_declaring_module(env: v1.compiler.infer_env.TypeEnv, name: String) -> String? {
+  match map_get(env.symbol_index.global_bare, name) {
+    Present { value: GlobalBareUniqueBinding { module_path: mp, binding: _ } } =>
+      Present { value: mp }
+    _ => none
+  }
+}
+
 fn bare_name_miss_diagnostic(env: v1.compiler.infer_env.TypeEnv, name: String, span: std.types.SourceSpan) -> v1.std.core.CompilerDiagnostic {
   let cands = global_bare_strict_ambiguity_candidates(env: env, name: name)
   if cands |> count > 0 {

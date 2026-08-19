@@ -1092,6 +1092,18 @@ pub fn name_is_declared_somewhere(env: Rc<TypeEnv>, name: String) -> bool {
     env.symbol_index.global_bare.get(&name).is_some()
 }
 
+pub fn globally_unique_declaring_module(env: Rc<TypeEnv>, name: String) -> Option<String> {
+    match env.symbol_index.global_bare.get(&name) {
+        Some(state) => match &**state {
+            GlobalBareLookupState::GlobalBareUniqueBinding { module_path, .. } => {
+                Some(module_path.clone())
+            }
+            _ => None,
+        },
+        None => None,
+    }
+}
+
 pub fn bare_name_miss_diagnostic(
     env: Rc<TypeEnv>,
     name: String,

@@ -379,7 +379,7 @@ pub fn synthesize_witness_holds_variant(scrut: Rc<Node>) -> Rc<Node> {
     }
 }
 
-pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
+pub fn synthesize_witness_violates_variant(scrut: Rc<Node>, env: Rc<TypeEnv>) -> Rc<Node> {
     {
         let diagnostic_type = Rc::new(Node {
             name: "Diagnostic".to_string(),
@@ -401,6 +401,20 @@ pub fn synthesize_witness_violates_variant(scrut: Rc<Node>) -> Rc<Node> {
             expr_data: Rc::new(ExprData::NoExprData),
             ident: None,
         });
+        let diagnostic_type = match crate::v1_compiler_infer_env::globally_unique_declaring_module(
+            env.clone(),
+            "Diagnostic".to_string(),
+        ) {
+            Some(mp) => {
+                let qualified = format!("{mp}.Diagnostic");
+                Rc::new(Node {
+                    name: qualified.clone(),
+                    ident_span: Some(kernel_span(qualified)),
+                    ..(*diagnostic_type).clone()
+                })
+            }
+            None => diagnostic_type,
+        };
         let diagnostic_field = Rc::new(Node {
             name: "diagnostic".to_string(),
             span: scrut.span.clone(),
@@ -653,6 +667,7 @@ pub fn lookup_variant_in_type(
                                             node_lookup_resolved(
                                                 synthesize_witness_violates_variant(
                                                     scrut_node.clone(),
+                                                    env.clone(),
                                                 ),
                                             )
                                         } else {
