@@ -194,7 +194,7 @@ fn runner_slot_service_units_range(host: product.placement_supply.HostIdentity, 
     []
   } else {
     concat(
-      [gunbc.runner_lifecycle.runner_slot_unit_name(slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: host, slot_index: slot })],
+      [gunbc.runner_lifecycle.runner_slot_unit_name(slot: gunbc.build_cache_instance.RunnerSlotIdentity { host: host, slot_index: slot }) as std.types.NonEmptyStr],
       runner_slot_service_units_range(host: host, slot: slot + 1, limit: limit)
     )
   }
