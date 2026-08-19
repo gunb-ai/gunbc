@@ -4,10 +4,10 @@ import std.types { List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
-import extdeps.pricing.object_storage { ByteBasisUnstated }
 import extdeps.ci_runner.types {
   EntitlementUnstated,
   RunnerCatalogAvailability,
+  QuotedWithoutBasis,
   RunnerShapeRow,
   RunnerShapesCited,
 }
@@ -42,7 +42,7 @@ fn github_actions_shape(
   label: NonEmptyStr,
   architecture: Architecture,
   vcpus: Nat,
-  memory_gb: Nat,
+  quoted_numeral: Nat,
 ) -> RunnerShapeRow {
   RunnerShapeRow {
     provider: github_actions_provider_identity,
@@ -50,28 +50,26 @@ fn github_actions_shape(
     architecture: architecture,
     entitlement: EntitlementUnstated,
     vcpus: vcpus,
-    quoted_memory_amount: memory_gb,
-    quoted_memory_unit_label: "GB",
-    byte_basis: ByteBasisUnstated,
+    memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
   }
 }
 
 data github_actions_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
   rows: [
-    github_actions_shape(label: "ubuntu-latest-arm-2core", architecture: Aarch64, vcpus: 2, memory_gb: 8),
-    github_actions_shape(label: "ubuntu-latest-arm-4core", architecture: Aarch64, vcpus: 4, memory_gb: 16),
-    github_actions_shape(label: "ubuntu-latest-arm-5core", architecture: Aarch64, vcpus: 5, memory_gb: 14),
-    github_actions_shape(label: "ubuntu-latest-arm-8core", architecture: Aarch64, vcpus: 8, memory_gb: 32),
-    github_actions_shape(label: "ubuntu-latest-arm-16core", architecture: Aarch64, vcpus: 16, memory_gb: 64),
-    github_actions_shape(label: "ubuntu-latest-arm-32core", architecture: Aarch64, vcpus: 32, memory_gb: 128),
-    github_actions_shape(label: "ubuntu-latest-arm-64core", architecture: Aarch64, vcpus: 64, memory_gb: 208),
-    github_actions_shape(label: "ubuntu-latest-2core", architecture: X86_64, vcpus: 2, memory_gb: 8),
-    github_actions_shape(label: "ubuntu-latest-4core", architecture: X86_64, vcpus: 4, memory_gb: 16),
-    github_actions_shape(label: "ubuntu-latest-8core", architecture: X86_64, vcpus: 8, memory_gb: 32),
-    github_actions_shape(label: "ubuntu-latest-12core", architecture: X86_64, vcpus: 12, memory_gb: 30),
-    github_actions_shape(label: "ubuntu-latest-16core", architecture: X86_64, vcpus: 16, memory_gb: 64),
-    github_actions_shape(label: "ubuntu-latest-32core", architecture: X86_64, vcpus: 32, memory_gb: 128),
-    github_actions_shape(label: "ubuntu-latest-64core", architecture: X86_64, vcpus: 64, memory_gb: 256),
-    github_actions_shape(label: "ubuntu-latest-96core", architecture: X86_64, vcpus: 96, memory_gb: 384),
+    github_actions_shape(label: "ubuntu-latest-arm-2core", architecture: Aarch64, vcpus: 2, quoted_numeral: 8),
+    github_actions_shape(label: "ubuntu-latest-arm-4core", architecture: Aarch64, vcpus: 4, quoted_numeral: 16),
+    github_actions_shape(label: "ubuntu-latest-arm-5core", architecture: Aarch64, vcpus: 5, quoted_numeral: 14),
+    github_actions_shape(label: "ubuntu-latest-arm-8core", architecture: Aarch64, vcpus: 8, quoted_numeral: 32),
+    github_actions_shape(label: "ubuntu-latest-arm-16core", architecture: Aarch64, vcpus: 16, quoted_numeral: 64),
+    github_actions_shape(label: "ubuntu-latest-arm-32core", architecture: Aarch64, vcpus: 32, quoted_numeral: 128),
+    github_actions_shape(label: "ubuntu-latest-arm-64core", architecture: Aarch64, vcpus: 64, quoted_numeral: 208),
+    github_actions_shape(label: "ubuntu-latest-2core", architecture: X86_64, vcpus: 2, quoted_numeral: 8),
+    github_actions_shape(label: "ubuntu-latest-4core", architecture: X86_64, vcpus: 4, quoted_numeral: 16),
+    github_actions_shape(label: "ubuntu-latest-8core", architecture: X86_64, vcpus: 8, quoted_numeral: 32),
+    github_actions_shape(label: "ubuntu-latest-12core", architecture: X86_64, vcpus: 12, quoted_numeral: 30),
+    github_actions_shape(label: "ubuntu-latest-16core", architecture: X86_64, vcpus: 16, quoted_numeral: 64),
+    github_actions_shape(label: "ubuntu-latest-32core", architecture: X86_64, vcpus: 32, quoted_numeral: 128),
+    github_actions_shape(label: "ubuntu-latest-64core", architecture: X86_64, vcpus: 64, quoted_numeral: 256),
+    github_actions_shape(label: "ubuntu-latest-96core", architecture: X86_64, vcpus: 96, quoted_numeral: 384),
   ],
 }

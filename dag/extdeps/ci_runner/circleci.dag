@@ -4,10 +4,10 @@ import std.types { List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
-import extdeps.pricing.object_storage { ByteBasisUnstated }
 import extdeps.ci_runner.types {
   EntitlementUnstated,
   RunnerCatalogAvailability,
+  QuotedWithoutBasis,
   RunnerShapeRow,
   RunnerShapesCited,
 }
@@ -37,7 +37,7 @@ fn circleci_shape(
   label: NonEmptyStr,
   architecture: Architecture,
   vcpus: Nat,
-  memory_gb: Nat,
+  quoted_numeral: Nat,
 ) -> RunnerShapeRow {
   RunnerShapeRow {
     provider: circleci_provider_identity,
@@ -45,24 +45,22 @@ fn circleci_shape(
     architecture: architecture,
     entitlement: EntitlementUnstated,
     vcpus: vcpus,
-    quoted_memory_amount: memory_gb,
-    quoted_memory_unit_label: "GB",
-    byte_basis: ByteBasisUnstated,
+    memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
   }
 }
 
 data circleci_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
   rows: [
-    circleci_shape(label: "arm.medium", architecture: Aarch64, vcpus: 2, memory_gb: 8),
-    circleci_shape(label: "arm.large", architecture: Aarch64, vcpus: 4, memory_gb: 16),
-    circleci_shape(label: "arm.xlarge", architecture: Aarch64, vcpus: 8, memory_gb: 32),
-    circleci_shape(label: "arm.2xlarge", architecture: Aarch64, vcpus: 16, memory_gb: 64),
-    circleci_shape(label: "small", architecture: X86_64, vcpus: 1, memory_gb: 2),
-    circleci_shape(label: "medium", architecture: X86_64, vcpus: 2, memory_gb: 4),
-    circleci_shape(label: "medium+", architecture: X86_64, vcpus: 3, memory_gb: 6),
-    circleci_shape(label: "large", architecture: X86_64, vcpus: 4, memory_gb: 8),
-    circleci_shape(label: "xlarge", architecture: X86_64, vcpus: 8, memory_gb: 16),
-    circleci_shape(label: "2xlarge", architecture: X86_64, vcpus: 16, memory_gb: 32),
-    circleci_shape(label: "2xlarge+", architecture: X86_64, vcpus: 20, memory_gb: 40),
+    circleci_shape(label: "arm.medium", architecture: Aarch64, vcpus: 2, quoted_numeral: 8),
+    circleci_shape(label: "arm.large", architecture: Aarch64, vcpus: 4, quoted_numeral: 16),
+    circleci_shape(label: "arm.xlarge", architecture: Aarch64, vcpus: 8, quoted_numeral: 32),
+    circleci_shape(label: "arm.2xlarge", architecture: Aarch64, vcpus: 16, quoted_numeral: 64),
+    circleci_shape(label: "small", architecture: X86_64, vcpus: 1, quoted_numeral: 2),
+    circleci_shape(label: "medium", architecture: X86_64, vcpus: 2, quoted_numeral: 4),
+    circleci_shape(label: "medium+", architecture: X86_64, vcpus: 3, quoted_numeral: 6),
+    circleci_shape(label: "large", architecture: X86_64, vcpus: 4, quoted_numeral: 8),
+    circleci_shape(label: "xlarge", architecture: X86_64, vcpus: 8, quoted_numeral: 16),
+    circleci_shape(label: "2xlarge", architecture: X86_64, vcpus: 16, quoted_numeral: 32),
+    circleci_shape(label: "2xlarge+", architecture: X86_64, vcpus: 20, quoted_numeral: 40),
   ],
 }

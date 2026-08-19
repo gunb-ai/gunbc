@@ -6,6 +6,10 @@ import std.decl_ref { DeclarationRef, declaration_ref_eq }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
 import extdeps.ci_runner.types {
   CpuEntitlement,
+  QuotedByteMagnitude,
+  QuotedWithoutBasis,
+  quoted_numeral,
+  quoted_unit_label,
   RunnerCatalogAvailability,
   RunnerShapeRow,
   runner_shape_rows,
@@ -48,17 +52,18 @@ fn shapes_for(rows: List<RunnerShapeRow>, provider: DeclarationRef, architecture
 //
 // The reading is a quotient of two figures in the vendor's OWN quoted unit, so
 // it needs no byte-basis conversion — 48 GB over 16 vCPU is 3 GB per vCPU
-// whichever G is meant. What it does need is for the provider's sizes to
+// whichever G is meant, and the result is carried as a QuotedByteMagnitude in
+// that same unit rather than as a scale-free number. What it does need is for the provider's sizes to
 // AGREE, and one surveyed provider's do not: GitHub's arm64 sizes are mostly
 // four GB per vCPU but include a 5-vCPU/14 GB size and a 64-vCPU/208 GB size.
 // A provider-level constant would have had to pick one and discard the others,
 // so a non-uniform provider refuses and names a witnessing size instead.
 type MemoryPerVcpuReading
-  = UniformMemoryPerVcpu { gb_per_vcpu: Nat, sizes_agreeing: Nat }
+  = UniformMemoryPerVcpu { per_vcpu: QuotedByteMagnitude, sizes_agreeing: Nat }
   | RatioNotUniformAcrossSizes {
-      first_gb_per_vcpu: Nat
+      first_per_vcpu: QuotedByteMagnitude
       divergent_label: NonEmptyStr
-      divergent_gb_per_vcpu: Nat
+      divergent_per_vcpu: QuotedByteMagnitude
     }
   | NonIntegralRatioInSizes { label: NonEmptyStr }
   | NoShapesForProviderArchitecture
@@ -74,8 +79,9 @@ fn ratio_step(acc: RatioAccum, row: RunnerShapeRow) -> RatioAccum {
   if row.vcpus == 0 {
     RatioAccum { seen: acc.seen, first: acc.first, divergent: acc.divergent, non_integral: concat(acc.non_integral, [row]) }
   } else {
-    let q = row.quoted_memory_amount / row.vcpus
-    if row.quoted_memory_amount - (q * row.vcpus) != 0 {
+    let numeral = quoted_numeral(quoted: row.memory)
+    let q = numeral / row.vcpus
+    if numeral - (q * row.vcpus) != 0 {
       RatioAccum { seen: acc.seen, first: acc.first, divergent: acc.divergent, non_integral: concat(acc.non_integral, [row]) }
     } else {
       if acc.seen == 0 {
@@ -110,15 +116,31 @@ fn memory_per_vcpu(
     } else {
       if count(acc.divergent) != 0 {
         RatioNotUniformAcrossSizes {
-          first_gb_per_vcpu: acc.first,
+          first_per_vcpu: per_vcpu_magnitude(numeral: acc.first, sample: selected),
           divergent_label: first_label(rows: acc.divergent),
-          divergent_gb_per_vcpu: first_ratio(rows: acc.divergent),
+          divergent_per_vcpu: per_vcpu_magnitude(numeral: first_ratio(rows: acc.divergent), sample: acc.divergent),
         }
       } else {
-        UniformMemoryPerVcpu { gb_per_vcpu: acc.first, sizes_agreeing: acc.seen }
+        UniformMemoryPerVcpu {
+          per_vcpu: per_vcpu_magnitude(numeral: acc.first, sample: selected),
+          sizes_agreeing: acc.seen,
+        }
       }
     }
   }
+}
+
+// The ratio inherits the unit the rows were quoted in, and deliberately stays
+// on the basis-less arm even when the sampled rows carry a stated one: a
+// quotient of two figures is a figure per vCPU in that same unit, and
+// promoting it to a decimal magnitude here would assert a basis the census
+// never needed and cannot check across a mixed sample.
+fn per_vcpu_magnitude(numeral: Nat, sample: List<RunnerShapeRow>) -> QuotedByteMagnitude {
+  QuotedWithoutBasis { numeral: numeral, unit_label: sample_unit_label(rows: sample) }
+}
+
+fn sample_unit_label(rows: List<RunnerShapeRow>) -> NonEmptyStr {
+  fold(rows, init: "GB" as NonEmptyStr, f: (acc, r) => quoted_unit_label(quoted: r.memory))
 }
 
 fn first_label(rows: List<RunnerShapeRow>) -> NonEmptyStr {
@@ -129,7 +151,8 @@ fn first_ratio(rows: List<RunnerShapeRow>) -> Nat {
   fold(
     rows,
     init: zero_ratio(),
-    f: (acc, r) => if acc == zero_ratio() { r.quoted_memory_amount / r.vcpus } else { acc },
+    f: (acc, r) =>
+      if acc == zero_ratio() { quoted_numeral(quoted: r.memory) / r.vcpus } else { acc },
   )
 }
 

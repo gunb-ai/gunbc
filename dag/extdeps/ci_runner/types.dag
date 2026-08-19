@@ -4,7 +4,7 @@ import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef }
 import extdeps.toolchain.types { Architecture }
-import extdeps.pricing.object_storage { ByteBasis }
+import std.measure { ByteSize, Gibibyte, Gigabyte, byte_size, gibibyte_count, gigabyte_count }
 
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.uri { Uri, Https }
@@ -36,25 +36,69 @@ type CpuEntitlement
   | SmtSharedVcpu { threads_per_core: Nat }
   | EntitlementUnstated
 
-// ONE PUBLISHED RUNNER SIZE.
+// A PUBLISHED MEMORY FIGURE, with its basis carried STRUCTURALLY rather than
+// as a field beside a scale-free number.
 //
-// The memory figure is carried as the vendor's QUOTED NUMBER plus its quoted
-// unit word plus a typed basis, and deliberately NOT as a ByteSize: none of
-// these vendors states whether its "GB" is 10^9 or 2^30, and a row that
-// converted anyway would bake a 7.4% error into the one number a DIMM
-// population is compared against. The ratio a profile reads is a quotient of
-// two figures in the SAME quoted unit, so it needs no conversion; only the
-// comparison against physical DIMM capacity does, and that is where the basis
-// must be declared or the comparison refused.
+// The two known arms are distinct std.measure types at distinct Scales, so a
+// decimal figure and a binary one cannot be compared, summed or substituted
+// without a conversion someone had to write — the 7.4% error has no silent
+// path. The third arm is not a third unit: it is the ABSENCE of one. None of
+// the surveyed vendor pages says which "GB" it means, so what those pages
+// publish is an uninterpreted numeral plus a unit word, and calling it either
+// magnitude would be inventing the fact the page withholds.
+//
+// This is why the arm carries a bare numeral and the others do not: a numeral
+// under an unstated basis is precisely not yet a magnitude, and dressing it in
+// a Measure type would assert the basis the arm exists to deny.
+type QuotedByteMagnitude
+  = QuotedDecimalGigabytes { value: Gigabyte }
+  | QuotedBinaryGibibytes { value: Gibibyte }
+  | QuotedWithoutBasis { numeral: Nat, unit_label: NonEmptyStr }
+
+// The conversion, and its refusal. Only a stated basis yields bytes.
+type QuotedByteResolution
+  = ResolvedBytes { bytes: ByteSize }
+  | QuotedBasisUnresolved { numeral: Nat, unit_label: NonEmptyStr }
+
+fn quoted_magnitude_bytes(quoted: QuotedByteMagnitude) -> QuotedByteResolution {
+  match quoted {
+    QuotedDecimalGigabytes { value } =>
+      ResolvedBytes { bytes: byte_size(count: gigabyte_count(g: value) * 1000000000) }
+    QuotedBinaryGibibytes { value } =>
+      ResolvedBytes { bytes: byte_size(count: gibibyte_count(g: value) * 1073741824) }
+    QuotedWithoutBasis { numeral, unit_label } =>
+      QuotedBasisUnresolved { numeral: numeral, unit_label: unit_label }
+  }
+}
+
+// The numeral a vendor printed, in whatever unit it printed. Used ONLY for
+// ratios within one vendor's own unit — memory over vCPUs is basis-free
+// because both figures carry the same unstated basis, which is exactly why a
+// ratio can be read where a byte comparison cannot.
+fn quoted_numeral(quoted: QuotedByteMagnitude) -> Nat {
+  match quoted {
+    QuotedDecimalGigabytes { value } => gigabyte_count(g: value)
+    QuotedBinaryGibibytes { value } => gibibyte_count(g: value)
+    QuotedWithoutBasis { numeral, unit_label } => numeral
+  }
+}
+
+fn quoted_unit_label(quoted: QuotedByteMagnitude) -> NonEmptyStr {
+  match quoted {
+    QuotedDecimalGigabytes { value } => "GB"
+    QuotedBinaryGibibytes { value } => "GiB"
+    QuotedWithoutBasis { numeral, unit_label } => unit_label
+  }
+}
+
+// ONE PUBLISHED RUNNER SIZE.
 type RunnerShapeRow {
   provider: DeclarationRef
   label: NonEmptyStr
   architecture: Architecture
   entitlement: CpuEntitlement
   vcpus: Nat
-  quoted_memory_amount: Nat
-  quoted_memory_unit_label: NonEmptyStr
-  byte_basis: ByteBasis
+  memory: QuotedByteMagnitude
 }
 
 // A provider whose published surface this repository could not read lands

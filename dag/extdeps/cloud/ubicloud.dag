@@ -9,16 +9,17 @@ import std.measure {
   HardwareThreadCount,
   byte_size,
   byte_size_count,
+  gigabyte,
   hardware_thread_count,
   hardware_thread_count_value,
 }
 import std.decl_ref { DeclarationRef, decl_ref }
-import extdeps.pricing.object_storage { DecimalGigabyte }
 import extdeps.ci_runner.types {
   CpuEntitlement,
   DedicatedPhysicalCore,
   EntitlementUnstated,
   RunnerCatalogAvailability,
+  QuotedDecimalGigabytes,
   RunnerShapeRow,
   RunnerShapesCited,
   SmtSharedVcpu,
@@ -218,7 +219,8 @@ fn ubicloud_threads_per_physical_core(architecture: Architecture) -> UbicloudThr
 // from the citation note above rather than from a default: the entitlement
 // (an arm64 vCPU is a dedicated physical core; an x64 vCPU is one of two
 // threads on one core), and the byte basis (this module records the vendor's
-// decimal-suffixed figure read as decimal GB).
+// decimal-suffixed figure read as decimal GB, so its rows take the DECIMAL
+// arm where every other surveyed provider takes the basis-less one).
 fn ubicloud_shape_entitlement(architecture: Architecture) -> CpuEntitlement {
   match ubicloud_threads_per_physical_core(architecture: architecture) {
     ThreadsPerPhysicalCore { count } =>
@@ -239,9 +241,9 @@ fn ubicloud_runner_shape(row: UbicloudRunnerCatalogRow) -> RunnerShapeRow {
     architecture: row.cpu_architecture,
     entitlement: ubicloud_shape_entitlement(architecture: row.cpu_architecture),
     vcpus: hardware_thread_count_value(t: row.vcpus),
-    quoted_memory_amount: byte_size_count(b: row.memory_bytes) / 1000000000,
-    quoted_memory_unit_label: "GB",
-    byte_basis: DecimalGigabyte,
+    memory: QuotedDecimalGigabytes {
+      value: gigabyte(count: byte_size_count(b: row.memory_bytes) / 1000000000),
+    },
   }
 }
 

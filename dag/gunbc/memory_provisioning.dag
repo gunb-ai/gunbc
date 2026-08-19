@@ -2,16 +2,20 @@ module gunbc.memory_provisioning
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat, nat_max, nat_min }
-import std.measure { ByteSize, byte_size, byte_size_count, hardware_thread_count_value }
+import std.measure { ByteSize, byte_size, byte_size_count, gigabyte, hardware_thread_count_value }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.external_authority { ExternalAuthority }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
-import extdeps.pricing.object_storage { BinaryGibibyte, ByteBasis, ByteBasisUnstated, DecimalGigabyte }
 import extdeps.ci_runner.types {
   CpuEntitlement,
   DedicatedPhysicalCore,
   EntitlementUnstated,
+  QuotedBasisUnresolved,
+  QuotedByteMagnitude,
+  QuotedDecimalGigabytes,
+  ResolvedBytes,
   SmtSharedVcpu,
+  quoted_magnitude_bytes,
 }
 import extdeps.cpu.types { CpuModelCatalogRow }
 import extdeps.cpu.ampere_altra_platform_hw_design.platform {
@@ -54,35 +58,33 @@ fn basis_count(b: CitedBasis) -> Nat {
   1 + count(b.additional)
 }
 
-// ONE SERVICE PROFILE. memory_gb_per_entitlement is carried in the same quoted
-// unit the surveyed providers publish, and declared_basis is what turns that
-// quoted figure into bytes. The basis is a field rather than a constant
-// because it is a DECISION: providers state none, and DIMMs are binary, so
-// somebody must declare which reading the purchase is sized against.
+// ONE SERVICE PROFILE. memory_per_entitlement is a QuotedByteMagnitude, whose
+// arm IS the basis: a profile sized in decimal GB and one sized in binary GiB
+// are different values of different Measure types, so the 7.4 percent gap has
+// no silent path into a target. Declaring the basis is a DECISION — the
+// surveyed providers state none, DIMMs are binary, and somebody must say which
+// reading the purchase is sized against — and here that decision is made by
+// choosing a constructor rather than by filling in a field beside a number.
 type RunnerServiceProfile {
   label: NonEmptyStr
   architecture: Architecture
   entitlement: CpuEntitlement
-  memory_gb_per_entitlement: Nat
-  declared_basis: ByteBasis
+  memory_per_entitlement: QuotedByteMagnitude
   basis: CitedBasis
 }
 
-// The conversion, and its refusal. ByteBasisUnstated is not a third unit — it
-// is the absence of one, so a profile carrying it cannot be turned into bytes
-// and says so rather than picking a reading. The gap is 7.4 percent, which on
-// a 192GB target is over 14GB: more than the margin between two DIMM SKUs.
+// The conversion, and its refusal. A profile carrying an unresolved basis
+// cannot be turned into bytes and says so rather than picking a reading; on a
+// 192GB target the gap is over 14GB, more than the margin between two DIMM
+// SKUs.
 type EntitlementBytes
   = EntitlementBytesDeclared { bytes: ByteSize }
   | EntitlementBytesBasisUndeclared
 
 fn entitlement_bytes(profile: RunnerServiceProfile) -> EntitlementBytes {
-  match profile.declared_basis {
-    DecimalGigabyte =>
-      EntitlementBytesDeclared { bytes: byte_size(count: profile.memory_gb_per_entitlement * 1000000000) }
-    BinaryGibibyte =>
-      EntitlementBytesDeclared { bytes: byte_size(count: profile.memory_gb_per_entitlement * 1073741824) }
-    ByteBasisUnstated => EntitlementBytesBasisUndeclared
+  match quoted_magnitude_bytes(quoted: profile.memory_per_entitlement) {
+    ResolvedBytes { bytes } => EntitlementBytesDeclared { bytes: bytes }
+    QuotedBasisUnresolved { numeral, unit_label } => EntitlementBytesBasisUndeclared
   }
 }
 
@@ -479,14 +481,13 @@ data circleci_shapes_ref: DeclarationRef = decl_ref(
 // ratio borrowed across machine classes.
 //
 // The basis is declared decimal because that is how the cited surfaces quote
-// it; declaring it is what makes the resulting byte target inspectable rather
-// than assumed.
+// it; declaring it through the constructor is what makes the resulting byte
+// target inspectable rather than assumed.
 data arm_value_profile: RunnerServiceProfile = RunnerServiceProfile {
   label: "arm-value",
   architecture: Aarch64,
   entitlement: DedicatedPhysicalCore,
-  memory_gb_per_entitlement: 3,
-  declared_basis: DecimalGigabyte,
+  memory_per_entitlement: QuotedDecimalGigabytes { value: gigabyte(count: 3) },
   basis: CitedBasis { primary: ubicloud_arm_shapes_ref, additional: [blacksmith_shapes_ref] },
 }
 
@@ -499,8 +500,7 @@ data arm_memory_profile: RunnerServiceProfile = RunnerServiceProfile {
   label: "arm-memory",
   architecture: Aarch64,
   entitlement: DedicatedPhysicalCore,
-  memory_gb_per_entitlement: 4,
-  declared_basis: DecimalGigabyte,
+  memory_per_entitlement: QuotedDecimalGigabytes { value: gigabyte(count: 4) },
   basis: CitedBasis {
     primary: github_shapes_ref,
     additional: [depot_shapes_ref, warpbuild_shapes_ref],
@@ -517,8 +517,7 @@ data x64_standard_profile: RunnerServiceProfile = RunnerServiceProfile {
   label: "x64-standard",
   architecture: X86_64,
   entitlement: SmtSharedVcpu { threads_per_core: 2 },
-  memory_gb_per_entitlement: 4,
-  declared_basis: DecimalGigabyte,
+  memory_per_entitlement: QuotedDecimalGigabytes { value: gigabyte(count: 4) },
   basis: CitedBasis {
     primary: github_shapes_ref,
     additional: [depot_shapes_ref, warpbuild_shapes_ref, circleci_shapes_ref],

@@ -2,13 +2,16 @@ module test.claim.memory_provisioning_witness_test
 
 import std.types { Bool, List, NonEmptyStr }
 import std.nat { Nat }
-import std.measure { byte_size, byte_size_count }
+import std.measure { byte_size, byte_size_count, gibibyte, gigabyte }
 import std.decl_ref { decl_ref, declaration_ref_eq }
 import extdeps.toolchain.types { Aarch64, X86_64 }
 import extdeps.vendor.samsung { samsung }
-import extdeps.pricing.object_storage { BinaryGibibyte, ByteBasisUnstated, DecimalGigabyte }
 import extdeps.ci_runner.types {
   DedicatedPhysicalCore,
+  QuotedBinaryGibibytes,
+  QuotedDecimalGigabytes,
+  QuotedWithoutBasis,
+  quoted_numeral,
   EntitlementUnstated,
   RunnerShapesCited,
   SmtSharedVcpu,
@@ -95,17 +98,17 @@ fn rdimm_64g() -> DramModuleCatalogRow { rdimm(part: "SYNTH-64G", capacity: 64 *
 test fn ubicloud_and_blacksmith_publish_three_gb_per_arm_vcpu() -> Bool {
   let rows = surveyed_runner_shapes()
   match memory_per_vcpu(rows: rows, provider: ubicloud_provider_identity, architecture: Aarch64) {
-    UniformMemoryPerVcpu { gb_per_vcpu, sizes_agreeing } =>
-      gb_per_vcpu == 3
+    UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } =>
+      quoted_numeral(quoted: per_vcpu) == 3
         && sizes_agreeing == 5
         && match memory_per_vcpu(rows: rows, provider: blacksmith_provider_identity, architecture: Aarch64) {
-          UniformMemoryPerVcpu { gb_per_vcpu, sizes_agreeing } =>
-            gb_per_vcpu == 3 && sizes_agreeing == 5
-          RatioNotUniformAcrossSizes { first_gb_per_vcpu, divergent_label, divergent_gb_per_vcpu } => false
+          UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } =>
+            quoted_numeral(quoted: per_vcpu) == 3 && sizes_agreeing == 5
+          RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
           NonIntegralRatioInSizes { label } => false
           NoShapesForProviderArchitecture => false
         }
-    RatioNotUniformAcrossSizes { first_gb_per_vcpu, divergent_label, divergent_gb_per_vcpu } => false
+    RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
     NonIntegralRatioInSizes { label } => false
     NoShapesForProviderArchitecture => false
   }
@@ -118,8 +121,8 @@ test fn depot_publishes_four_gb_per_arm_vcpu() -> Bool {
     provider: depot_provider_identity,
     architecture: Aarch64,
   ) {
-    UniformMemoryPerVcpu { gb_per_vcpu, sizes_agreeing } => gb_per_vcpu == 4
-    RatioNotUniformAcrossSizes { first_gb_per_vcpu, divergent_label, divergent_gb_per_vcpu } => false
+    UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } => quoted_numeral(quoted: per_vcpu) == 4
+    RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
     NonIntegralRatioInSizes { label } => false
     NoShapesForProviderArchitecture => false
   }
@@ -136,8 +139,8 @@ test fn a_provider_with_non_uniform_sizes_refuses_a_single_ratio() -> Bool {
     architecture: Aarch64,
   ) {
     NonIntegralRatioInSizes { label } => true
-    RatioNotUniformAcrossSizes { first_gb_per_vcpu, divergent_label, divergent_gb_per_vcpu } => true
-    UniformMemoryPerVcpu { gb_per_vcpu, sizes_agreeing } => false
+    RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => true
+    UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } => false
     NoShapesForProviderArchitecture => false
   }
 }
@@ -150,8 +153,8 @@ test fn circleci_x86_docker_is_two_gb_per_vcpu() -> Bool {
     provider: circleci_provider_identity,
     architecture: X86_64,
   ) {
-    UniformMemoryPerVcpu { gb_per_vcpu, sizes_agreeing } => gb_per_vcpu == 2
-    RatioNotUniformAcrossSizes { first_gb_per_vcpu, divergent_label, divergent_gb_per_vcpu } => false
+    UniformMemoryPerVcpu { per_vcpu, sizes_agreeing } => quoted_numeral(quoted: per_vcpu) == 2
+    RatioNotUniformAcrossSizes { first_per_vcpu, divergent_label, divergent_per_vcpu } => false
     NonIntegralRatioInSizes { label } => false
     NoShapesForProviderArchitecture => false
   }
@@ -227,8 +230,7 @@ test fn the_same_quoted_figure_differs_under_a_binary_basis() -> Bool {
       label: "arm-value-binary",
       architecture: Aarch64,
       entitlement: DedicatedPhysicalCore,
-      memory_gb_per_entitlement: 3,
-      declared_basis: BinaryGibibyte,
+      memory_per_entitlement: QuotedBinaryGibibytes { value: gibibyte(count: 3) },
       basis: arm_value_profile.basis,
     },
   ) {
@@ -249,8 +251,7 @@ test fn an_undeclared_basis_refuses_the_capacity_derivation() -> Bool {
       label: "basis-undeclared",
       architecture: Aarch64,
       entitlement: DedicatedPhysicalCore,
-      memory_gb_per_entitlement: 3,
-      declared_basis: ByteBasisUnstated,
+      memory_per_entitlement: QuotedWithoutBasis { numeral: 3, unit_label: "GB" },
       basis: arm_value_profile.basis,
     },
     modules: [rdimm_64g()],

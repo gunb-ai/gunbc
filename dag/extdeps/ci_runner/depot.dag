@@ -4,10 +4,10 @@ import std.types { List, NonEmptyStr }
 import std.nat { Nat }
 import std.decl_ref { DeclarationRef, decl_ref }
 import extdeps.toolchain.types { Aarch64, Architecture, X86_64 }
-import extdeps.pricing.object_storage { ByteBasisUnstated }
 import extdeps.ci_runner.types {
   EntitlementUnstated,
   RunnerCatalogAvailability,
+  QuotedWithoutBasis,
   RunnerShapeRow,
   RunnerShapesCited,
 }
@@ -39,7 +39,7 @@ fn depot_shape(
   label: NonEmptyStr,
   architecture: Architecture,
   vcpus: Nat,
-  memory_gb: Nat,
+  quoted_numeral: Nat,
 ) -> RunnerShapeRow {
   RunnerShapeRow {
     provider: depot_provider_identity,
@@ -47,25 +47,23 @@ fn depot_shape(
     architecture: architecture,
     entitlement: EntitlementUnstated,
     vcpus: vcpus,
-    quoted_memory_amount: memory_gb,
-    quoted_memory_unit_label: "GB",
-    byte_basis: ByteBasisUnstated,
+    memory: QuotedWithoutBasis { numeral: quoted_numeral, unit_label: "GB" },
   }
 }
 
 data depot_runner_catalog: RunnerCatalogAvailability = RunnerShapesCited {
   rows: [
-    depot_shape(label: "depot-ubuntu-24.04-arm", architecture: Aarch64, vcpus: 2, memory_gb: 8),
-    depot_shape(label: "depot-ubuntu-24.04-arm-4", architecture: Aarch64, vcpus: 4, memory_gb: 16),
-    depot_shape(label: "depot-ubuntu-24.04-arm-8", architecture: Aarch64, vcpus: 8, memory_gb: 32),
-    depot_shape(label: "depot-ubuntu-24.04-arm-16", architecture: Aarch64, vcpus: 16, memory_gb: 64),
-    depot_shape(label: "depot-ubuntu-24.04-arm-32", architecture: Aarch64, vcpus: 32, memory_gb: 128),
-    depot_shape(label: "depot-ubuntu-24.04-arm-64", architecture: Aarch64, vcpus: 64, memory_gb: 256),
-    depot_shape(label: "depot-ubuntu-24.04", architecture: X86_64, vcpus: 2, memory_gb: 8),
-    depot_shape(label: "depot-ubuntu-24.04-4", architecture: X86_64, vcpus: 4, memory_gb: 16),
-    depot_shape(label: "depot-ubuntu-24.04-8", architecture: X86_64, vcpus: 8, memory_gb: 32),
-    depot_shape(label: "depot-ubuntu-24.04-16", architecture: X86_64, vcpus: 16, memory_gb: 64),
-    depot_shape(label: "depot-ubuntu-24.04-32", architecture: X86_64, vcpus: 32, memory_gb: 128),
-    depot_shape(label: "depot-ubuntu-24.04-64", architecture: X86_64, vcpus: 64, memory_gb: 256),
+    depot_shape(label: "depot-ubuntu-24.04-arm", architecture: Aarch64, vcpus: 2, quoted_numeral: 8),
+    depot_shape(label: "depot-ubuntu-24.04-arm-4", architecture: Aarch64, vcpus: 4, quoted_numeral: 16),
+    depot_shape(label: "depot-ubuntu-24.04-arm-8", architecture: Aarch64, vcpus: 8, quoted_numeral: 32),
+    depot_shape(label: "depot-ubuntu-24.04-arm-16", architecture: Aarch64, vcpus: 16, quoted_numeral: 64),
+    depot_shape(label: "depot-ubuntu-24.04-arm-32", architecture: Aarch64, vcpus: 32, quoted_numeral: 128),
+    depot_shape(label: "depot-ubuntu-24.04-arm-64", architecture: Aarch64, vcpus: 64, quoted_numeral: 256),
+    depot_shape(label: "depot-ubuntu-24.04", architecture: X86_64, vcpus: 2, quoted_numeral: 8),
+    depot_shape(label: "depot-ubuntu-24.04-4", architecture: X86_64, vcpus: 4, quoted_numeral: 16),
+    depot_shape(label: "depot-ubuntu-24.04-8", architecture: X86_64, vcpus: 8, quoted_numeral: 32),
+    depot_shape(label: "depot-ubuntu-24.04-16", architecture: X86_64, vcpus: 16, quoted_numeral: 64),
+    depot_shape(label: "depot-ubuntu-24.04-32", architecture: X86_64, vcpus: 32, quoted_numeral: 128),
+    depot_shape(label: "depot-ubuntu-24.04-64", architecture: X86_64, vcpus: 64, quoted_numeral: 256),
   ],
 }
