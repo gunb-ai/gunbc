@@ -3158,7 +3158,7 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
           Present { value: declared_type } =>
             infer_arg_with_element_type(arg: a, element_type: declared_type, scope: nf_scope)
           Absent =>
-            unclassified_method_arg_refusal(method_name: method_name, arg: a, scope: nf_scope)
+            infer_arg_with_element_type(arg: a, element_type: element_type, scope: nf_scope)
         }
       }
     }
@@ -3173,6 +3173,24 @@ fn infer_method_args_with_fold(method_name: String?, method_args: List<Node>, fo
 // replacing this inline name list. Dissolves when that authority lands and
 // this match is rewritten to look each method up in it instead of naming
 // five methods by string.
+//
+// The Absent arm intentionally still defaults to element_type rather than
+// refusing: this same fold's "method" position also receives qualified
+// variant-constructor calls whose symbol_index_lookup misses at the
+// ExprMethodCall seam (direct_call_shape_wall_note names this fallthrough
+// as deliberate -- "the method-call path... is the method wall's
+// territory," left uncovered). That population's real parameter types come
+// from the constructor's declared field shapes, not from a collection's
+// element_type or an Int refinement, and only the missing per-method
+// parameter-contract authority above can classify it correctly. Refusing
+// it here -- as an earlier version of this function did -- surfaced a
+// pre-existing silent mistype as a hard compile break across every
+// unrelated call site that happens to route through this bridge (measured:
+// dozens of sites in host_effect_realize.dag, fleet_workflow_steps.dag,
+// generated_artifact_gate.dag and others, none of them skip/take/at/nth/
+// index calls). That is refusing an undecided, ungrounded population
+// rather than the decided one this fix actually grounds -- the DESIGN §5
+// "wall after grounding" distinction, not a wall this fix can build now.
 fn scalar_shaped_builtin_method_arg_type(method_name: String?) -> Node? {
   match method_name {
     Present { value: mn } =>
@@ -3182,23 +3200,6 @@ fn scalar_shaped_builtin_method_arg_type(method_name: String?) -> Node? {
         none
       }
     Absent => none
-  }
-}
-
-fn unclassified_method_arg_refusal(method_name: String?, arg: Node, scope: InferScope) -> ArgInferResult {
-  let mn = match method_name {
-    Present { value: v } => v
-    Absent => "<unnamed>"
-  }
-  let diag = type_mismatch_error(
-    expected: concat("classified-arg-contract(", mn, ")"),
-    got: "unclassified-builtin-method-arg",
-    span: arg.span,
-    module_name: scope.module_name
-  )
-  ArgInferResult {
-    typed_arg: make_arg_node(name: arg_name_at(n: arg, source_indices: scope.type_env.source_indices), value: arg_value(n: arg), span: arg.span, name_span: arg.span),
-    diagnostics: [diag]
   }
 }
 

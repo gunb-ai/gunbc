@@ -5487,9 +5487,9 @@ pub fn infer_method_args_with_fold(
                                             declared_type,
                                             nf_scope.clone(),
                                         ),
-                                        None => unclassified_method_arg_refusal(
-                                            method_name.clone(),
+                                        None => infer_arg_with_element_type(
                                             a.clone(),
+                                            element_type.clone(),
                                             nf_scope.clone(),
                                         ),
                                     }
@@ -5515,29 +5515,6 @@ pub fn scalar_shaped_builtin_method_arg_type(method_name: Option<String>) -> Opt
         }
         None => None,
     }
-}
-
-pub fn unclassified_method_arg_refusal(
-    method_name: Option<String>,
-    arg: Rc<Node>,
-    scope: Rc<InferScope>,
-) -> Rc<ArgInferResult> {
-    let mn = method_name.unwrap_or_else(|| "<unnamed>".to_string());
-    let diag = type_mismatch_error(
-        format!("classified-arg-contract({})", mn),
-        "unclassified-builtin-method-arg".to_string(),
-        arg.span.clone(),
-        scope.module_name.clone(),
-    );
-    Rc::new(ArgInferResult {
-        typed_arg: make_arg_node(
-            arg_name_at(arg.clone(), scope.type_env.clone().source_indices.clone()),
-            arg_value(arg.clone()),
-            arg.span.clone(),
-            arg.span.clone(),
-        ),
-        diagnostics: Rc::new(vec![diag]),
-    })
 }
 
 pub fn is_lambda_expr(e: Rc<Node>) -> bool {
