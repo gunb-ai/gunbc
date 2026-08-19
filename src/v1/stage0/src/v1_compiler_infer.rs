@@ -747,6 +747,29 @@ pub fn internal_expr_error_node(message: String, span: Rc<SourceSpan>) -> Rc<Nod
 
 pub fn lookup_variant_parent_enum(scope: Rc<InferScope>, name: String) -> Option<String> {
     match v1_rt::map_get(&scope.locals.clone(), name.clone()) {
+        Some(binding)
+            if (binding.resolved.connective.clone() == Connective::Disj)
+                && has_child_named(
+                    binding.resolved.clone(),
+                    name.clone(),
+                    scope.type_env.clone().source_indices.clone(),
+                ) =>
+        {
+            // The binding ALREADY holds the owning coproduct (build_global_bare_variant_locals
+            // admits a name only after proving `owner.connective == Disj` and
+            // `has_child_named(owner, name)`), so re-deriving that owner through the
+            // per-scope type_env is a second authority for a fact this node carries.
+            // Measured: it is also a failing one — lookup_type_for answered NONE in 82 of
+            // 84 scopes for `Https`, because the variant locals are merged corpus-wide
+            // while the type_env stays per-module, so a nullary arm of a loaded module
+            // reached the interpreter with no VariantValueBinding and died as
+            // NoSuchVariable. This arm returns exactly what the surviving 2 scopes
+            // returned; it does not widen what counts as a variant.
+            Some(authored_name_at(
+                scope.type_env.clone().source_indices.clone(),
+                binding.resolved.clone(),
+            ))
+        }
         Some(binding) => match lookup_type_for(scope.type_env.clone(), binding.resolved.clone()) {
             Some(parent) => {
                 let is_coproduct = (parent.connective.clone() == Connective::Disj);

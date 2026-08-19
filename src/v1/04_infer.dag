@@ -307,19 +307,32 @@ fn internal_expr_error_node(message: String, span: std.types.SourceSpan) -> v1.s
   make_expr_error_node(kind: InternalExprError, message: message, span: span)
 }
 
+// The first arm short-circuits a second authority. The binding ALREADY holds the owning
+// coproduct -- build_global_bare_variant_locals admits a name only after proving
+// owner.connective == Disj and has_child_named -- so re-deriving that owner through the
+// per-scope type_env restates a fact this node carries. Measured on the namespace-cut
+// branch, it is also a FAILING restatement: lookup_type_for answered Absent in 82 of 84
+// scopes for `Https`, because the variant locals are merged corpus-wide while type_env
+// stays per-module, so a nullary arm of a LOADED module reached the interpreter with no
+// VariantValueBinding and died as NoSuchVariable. The arm returns exactly what the
+// surviving 2 scopes returned; it does not widen what counts as a variant.
 fn lookup_variant_parent_enum(scope: v1.compiler.infer.InferScope, name: String) -> String? {
 
   match map_get(scope.locals, name) {
     Present { value: binding } =>
-      match lookup_type_for(env: scope.type_env, node: binding.resolved) {
-        Present { value: parent } =>
-          let is_coproduct = parent.connective == v1.std.core.Disj
-          if is_coproduct {
-            if has_child_named(n: parent, name: name, source_indices: scope.type_env.source_indices) {
-              Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved) }
+      if binding.resolved.connective == v1.std.core.Disj && has_child_named(n: binding.resolved, name: name, source_indices: scope.type_env.source_indices) {
+        Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved) }
+      } else {
+        match lookup_type_for(env: scope.type_env, node: binding.resolved) {
+          Present { value: parent } =>
+            let is_coproduct = parent.connective == v1.std.core.Disj
+            if is_coproduct {
+              if has_child_named(n: parent, name: name, source_indices: scope.type_env.source_indices) {
+                Present { value: authored_name_at(source_indices: scope.type_env.source_indices, node: binding.resolved) }
+              } else { none }
             } else { none }
-          } else { none }
-        Absent => none
+          Absent => none
+        }
       }
     Absent => none
   }
