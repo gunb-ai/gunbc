@@ -5583,6 +5583,18 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
         None => {
             let mut built: HashMap<String, Rc<Node>> = HashMap::new();
             for module in ctx.modules.iter() {
+                // The index is keyed by the DECLARATION's authored name, which is bare;
+                // a reference may be spelled with its full containment address. Keying
+                // only the bare form made every qualified cast target miss, so the alias
+                // chain never reached its `String` kernel and `x as std.types.NonEmptyStr`
+                // refused with "cannot cast String to std.types.NonEmptyStr" -- 674 rows,
+                // the largest failure class on this branch, all of them a spelling miss
+                // rather than a real type disagreement.
+                //
+                // Both keys are EXACT addresses, never a leaf fallback: a reference whose
+                // prefix names no module (`no.such.module.NonEmptyStr`) matches neither
+                // key and still refuses. This is address validation, not widening.
+                let module_path = authored_name_at(ctx.si(), module.module.clone());
                 for item in module.items.iter() {
                     if eval_profile_enabled() {
                         TYPE_LOOKUP_ITEMS.with(|c| c.set(c.get() + 1));
@@ -5590,6 +5602,13 @@ fn lookup_type_item_across_modules(ctx: &InterpContext, type_name: &str) -> Opti
                     let name = authored_name_at(ctx.si(), item.clone());
                     if name.is_empty() {
                         continue;
+                    }
+                    if !module_path.is_empty() && !name.contains('.') {
+                        // Unique by construction (module path + declaration name), so
+                        // there is no first-wins ambiguity on this key.
+                        built
+                            .entry(format!("{}.{}", module_path, name))
+                            .or_insert_with(|| item.clone());
                     }
                     // First declaration wins, matching the scan's early return.
                     built.entry(name).or_insert_with(|| item.clone());
