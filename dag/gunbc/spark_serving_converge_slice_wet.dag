@@ -71,6 +71,7 @@ import gunbc.spark_serving_converge_apply {
   spark_serving_exec_frozen_typed_rows,
   spark_serving_step_sequence_failed,
   spark_serving_step_sequence_wire,
+  spark_serving_step_failure_causes_wire,
   SparkServingFrozenApplied,
   SparkServingFrozenApplyRefused,
   SparkServingFrozenRemoteExecApplied,
@@ -347,6 +348,8 @@ fn spark_serving_converge_slice_exec_verdict(
           join([
             "wet-apply-exec-refused ",
             spark_serving_step_sequence_wire(standings: standings),
+            " ",
+            spark_serving_step_failure_causes_wire(standings: standings),
           ], "")
         } else {
               match spark_serving_probe_linger(transport: transport) {

@@ -34,6 +34,7 @@ import gunbc.remote_operation {
   PlannedRemoteStep,
   remote_execution_permits_continuation,
   remote_step_standing_wire,
+  remote_step_failure_cause,
 }
 import gunbc.typed_remote_file_write {
   TypedRemoteFileWriteAdmitted,
@@ -254,4 +255,29 @@ fn spark_serving_step_sequence_failed(standings: List<RemoteStepStanding>) -> Bo
 
 fn spark_serving_step_sequence_wire(standings: List<RemoteStepStanding>) -> String {
   join(map(standings, st => remote_step_standing_wire(standing: st)), " ")
+}
+
+// THE HALT NAMES ITS CAUSE, NOT ONLY ITS STEP.
+//
+// The sequence wire above says WHICH step stopped the line and which tail was never reached, which
+// is what it was built for. It does not say WHY, and the cause is not missing from the model --
+// RemoteStepFailed carries the execution, and remote_step_failure_cause reads the refusal out of it
+// in the vocabulary the execution answered in. The cause was being discarded at the rendering
+// boundary, one function short of the operator.
+//
+// That is a stopped line whose analysis cannot begin: a four-step read-back convergence can refuse
+// for a seal violation, a mode mismatch, a rename failure, or a read-back byte difference, and
+// `failed:write-user-unit-file` is the same six words for all four. The factory model requires the
+// analysis to precede the restart, so the receipt must carry what the analysis needs.
+fn spark_serving_step_failure_causes_wire(standings: List<RemoteStepStanding>) -> String {
+  join(
+    flat_map(standings, st =>
+      match remote_step_failure_cause(standing: st) {
+        Absent => []
+        Present { value: why } =>
+          [join([remote_step_standing_wire(standing: st), " cause=", why], "")]
+      }
+    ),
+    " ",
+  )
 }
