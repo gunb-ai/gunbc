@@ -1,6 +1,6 @@
 module extdeps.systemd.unit_file
 
-import std.types { NonEmptyStr, String, List }
+import std.types { NonEmptyStr, String, List, Bool }
 import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
 import extdeps.uri { Uri, Https }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
@@ -66,7 +66,35 @@ type SystemdServiceDirective
   | ExecStart { command: NonEmptyStr }
   | Restart { policy: NonEmptyStr }
   | Environment { assignment: NonEmptyStr }
+  | EnvironmentFile { path: NonEmptyStr }
   | WorkingDirectory { path: NonEmptyStr }
+  | ServiceUser { name: NonEmptyStr }
+  | ServiceGroup { name: NonEmptyStr }
+
+// `ServiceUser`/`ServiceGroup` follow `ServiceType`'s precedent exactly, and for the same reason it
+// exists: `User` and `Group` are words this corpus uses for other subjects, and the wire name is
+// systemd's rather than the variant's. `EnvironmentFile=` is a distinct directive from
+// `Environment=`, not a spelling of it -- one names a file systemd reads, the other carries an
+// assignment inline -- so they are two variants and a consumer cannot reach one meaning the other.
+
+// A TIMER'S DIRECTIVES, which is the section that made the unit-type coproduct below necessary.
+//
+// `TimerUnit` renders as `Unit=` -- the service this timer activates. It is named for what it is
+// because `Unit` alone would read as the `[Unit]` section, which is a different thing present in
+// every unit file including this one.
+//
+// The monotonic timers (`OnBootSec`, `OnUnitInactiveSec`) and the wallclock timer (`OnCalendar`)
+// are deliberately separate variants rather than one `TimerSchedule { key, value }`: systemd gives
+// them different semantics -- a monotonic timer measures from an event, a calendar timer from a
+// clock -- and fusing them into a key-value pair would put the distinction back into a string.
+type SystemdTimerDirective
+  = TimerUnit { target: NonEmptyStr }
+  | OnCalendar { expression: NonEmptyStr }
+  | OnBootSec { duration: NonEmptyStr }
+  | OnUnitInactiveSec { duration: NonEmptyStr }
+  | AccuracySec { duration: NonEmptyStr }
+  | RandomizedDelaySec { duration: NonEmptyStr }
+  | Persistent { enabled: Bool }
 
 type SystemdInstallDirective
   = WantedBy { target: NonEmptyStr }
@@ -89,7 +117,25 @@ fn systemd_service_directive_line(directive: SystemdServiceDirective) -> String 
     ExecStart { command: v } => join(["ExecStart=", v as String], "")
     Restart { policy: v } => join(["Restart=", v as String], "")
     Environment { assignment: v } => join(["Environment=", v as String], "")
+    EnvironmentFile { path: v } => join(["EnvironmentFile=", v as String], "")
     WorkingDirectory { path: v } => join(["WorkingDirectory=", v as String], "")
+    ServiceUser { name: v } => join(["User=", v as String], "")
+    ServiceGroup { name: v } => join(["Group=", v as String], "")
+  }
+}
+
+// `Persistent=` takes systemd's boolean literal, so the Bool is rendered here rather than carried as
+// a string by the consumer: a modeled Bool cannot be spelled `yes`, `1`, or `True` at a call site,
+// and systemd accepts only its own spelling.
+fn systemd_timer_directive_line(directive: SystemdTimerDirective) -> String {
+  match directive {
+    TimerUnit { target: v } => join(["Unit=", v as String], "")
+    OnCalendar { expression: v } => join(["OnCalendar=", v as String], "")
+    OnBootSec { duration: v } => join(["OnBootSec=", v as String], "")
+    OnUnitInactiveSec { duration: v } => join(["OnUnitInactiveSec=", v as String], "")
+    AccuracySec { duration: v } => join(["AccuracySec=", v as String], "")
+    RandomizedDelaySec { duration: v } => join(["RandomizedDelaySec=", v as String], "")
+    Persistent { enabled: v } => if v { "Persistent=true" } else { "Persistent=false" }
   }
 }
 
@@ -100,48 +146,106 @@ fn systemd_install_directive_line(directive: SystemdInstallDirective) -> String 
   }
 }
 
-// A unit file is exactly three sections in systemd's order. Modeling it as a record rather than a
-// list of (section, directives) pairs means a file with two `[Service]` sections, or with its
-// sections transposed, is likewise unwritable rather than merely discouraged.
+// A UNIT FILE IS ITS TYPE, AND ITS TYPE DECIDES WHICH SECTIONS EXIST.
+//
+// The previous shape was one record of three mandatory lists, which was right for the single
+// consumer it was written for and wrong for every other unit systemd defines. A `.timer` file has
+// `[Timer]` and no `[Service]`; systemd refuses to load one carrying the wrong section. Modeling the
+// file as a record forced every unit to have a `[Service]`, so a timer could only be rendered by
+// emitting a section its own unit type forbids -- which meant the shared model was not a safe
+// destination for the three hand-rendering consumers, and rendering a timer through it would have
+// produced a file the host rejects.
+//
+// A coproduct over the unit TYPE puts that class at the top of the §4b ladder: `[Service]` in a
+// timer has no constructor. Section order and section membership both stop being things a renderer
+// has to get right, because neither is expressible any other way. A new unit type (`.slice`,
+// `.socket`, `.path`) is one more variant and one more arm -- the same §2-horizontal row the
+// directive vocabulary above is built from.
 
-type SystemdUnitFile {
-  unit: List<SystemdUnitDirective>
-  service: List<SystemdServiceDirective>
-  install: List<SystemdInstallDirective>
-}
+// WHETHER A UNIT IS INSTALLABLE IS A FACT ABOUT THE UNIT, NOT AN EMPTY LIST.
+//
+// Three of the units this module now renders are started by their own timer and are never enabled,
+// so they carry no `[Install]` section at all -- not an `[Install]` with nothing under it. An empty
+// list cannot say which of those two a unit is, and the difference is observable in the bytes.
+// Naming it makes the distinction explicit at the construction site: a consumer states that a unit
+// is activated by something else, rather than leaving a list empty and hoping the renderer agrees
+// about what that meant.
+type SystemdInstallSection
+  = NotInstallable
+  | Installable { directives: List<SystemdInstallDirective> }
+
+type SystemdUnitFile
+  = ServiceUnitFile {
+      unit: List<SystemdUnitDirective>,
+      service: List<SystemdServiceDirective>,
+      install: SystemdInstallSection,
+    }
+  | TimerUnitFile {
+      unit: List<SystemdUnitDirective>,
+      timer: List<SystemdTimerDirective>,
+      install: SystemdInstallSection,
+    }
 
 data systemd_unit_section_header: String = "[Unit]"
 
 data systemd_service_section_header: String = "[Service]"
 
+data systemd_timer_section_header: String = "[Timer]"
+
 data systemd_install_section_header: String = "[Install]"
 
-// SERIALIZATION IS TOTAL, and every unit file ends with a trailing newline: systemd's parser is
-// line-oriented and a final directive without one is the classic silently-truncated last line.
-// Because the byte comparison that observes an already-delivered unit compares against exactly this
-// output, the trailing newline is load-bearing for convergence and not cosmetic -- a renderer that
-// omitted it would diff against every correctly-written file on disk forever.
-fn serialize_systemd_unit_file(file: SystemdUnitFile) -> String {
-  join(
-    concat(
-      concat(
-        concat(
-          [systemd_unit_section_header],
-          map(file.unit, d => systemd_unit_directive_line(directive: d)),
-        ),
-        concat(
-          [systemd_service_section_header],
-          map(file.service, d => systemd_service_directive_line(directive: d)),
-        ),
-      ),
+fn systemd_install_section_block(section: SystemdInstallSection) -> List<List<String>> {
+  match section {
+    NotInstallable => []
+    Installable { directives: ds } => [
       concat(
         [systemd_install_section_header],
-        concat(
-          map(file.install, d => systemd_install_directive_line(directive: d)),
-          [""],
-        ),
+        map(ds, d => systemd_install_directive_line(directive: d)),
       ),
-    ),
+    ]
+  }
+}
+
+// SECTIONS ARE SEPARATED BY A BLANK LINE, which is systemd's own convention in every unit it ships
+// and the form every unit currently live on the fleet already has. An earlier revision of this
+// serializer emitted none, because its one consumer had never been written to a host and so nothing
+// had ever compared its bytes against a real file. Adopting the conventional form here is what lets
+// the hand-rendering consumers migrate onto this module byte-for-byte instead of each keeping its
+// own renderer to preserve its own spacing -- which is how one format acquires four authorities.
+//
+// The trailing blank entry after the LAST section is what produces the terminating newline, so the
+// two facts have one mechanism rather than a separate append: systemd's parser is line-oriented and
+// a final directive without a newline is the classic silently-truncated last line. Because an
+// already-delivered unit is observed by comparing bytes against exactly this output, both the
+// separators and the terminator are load-bearing for convergence, not cosmetic.
+fn systemd_sections_text(sections: List<List<String>>) -> String {
+  join(
+    fold(sections, init: [], f: (acc, section) => concat(acc, concat(section, [""]))),
     "\n",
   )
+}
+
+fn serialize_systemd_unit_file(file: SystemdUnitFile) -> String {
+  match file {
+    ServiceUnitFile { unit: u, service: sv, install: inst } =>
+      systemd_sections_text(
+        sections: concat(
+          [
+            concat([systemd_unit_section_header], map(u, d => systemd_unit_directive_line(directive: d))),
+            concat([systemd_service_section_header], map(sv, d => systemd_service_directive_line(directive: d))),
+          ],
+          systemd_install_section_block(section: inst),
+        ),
+      )
+    TimerUnitFile { unit: u, timer: tm, install: inst } =>
+      systemd_sections_text(
+        sections: concat(
+          [
+            concat([systemd_unit_section_header], map(u, d => systemd_unit_directive_line(directive: d))),
+            concat([systemd_timer_section_header], map(tm, d => systemd_timer_directive_line(directive: d))),
+          ],
+          systemd_install_section_block(section: inst),
+        ),
+      )
+  }
 }
