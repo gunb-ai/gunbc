@@ -2114,9 +2114,9 @@ impl ExpectedRedDisposition {
                 completion: v1_compiler::cli_run::BudgetCompletion::CompletedOverBudget,
                 ..
             } => Self::StaleQuarantineAssertionReturnedTrue,
-            ClaimOutcome::RuntimeError { .. } | ClaimOutcome::NotBool { .. } => {
-                Self::InfrastructureOrReferentFailure
-            }
+            ClaimOutcome::HostToolUnresolved { .. }
+            | ClaimOutcome::RuntimeError { .. }
+            | ClaimOutcome::NotBool { .. } => Self::InfrastructureOrReferentFailure,
         }
     }
 
@@ -2652,6 +2652,38 @@ fn claim_result_for_outcome(
             host_dependency_refusal: None,
             resolve_realization,
         },
+        ClaimOutcome::HostToolUnresolved { name, probed } => {
+            let hint = if probed.is_empty() {
+                "no candidates probed".to_string()
+            } else {
+                probed.join(", ")
+            };
+            let host_dependency_refusal = Some(HostDependencyRefusal {
+                tool: name.clone(),
+                hint,
+            });
+            ClaimResult {
+                function,
+                entry: entry.clone(),
+                ok: false,
+                detail: format!(
+                    "host tool unresolved: {:?} (probed: {})",
+                    name,
+                    probed.join(", ")
+                ),
+                wall_nanos,
+                resolve_nanos,
+                corpus_resolve_nanos: 0,
+                corpus_eval_nanos: 0,
+                corpus_witnesses: 0,
+                runtime_unit_count: single_claim_runtime_unit_count(),
+                witness_row_costs: Vec::new(),
+                expectation_refusal: None,
+                budget_refusal: None,
+                host_dependency_refusal,
+                resolve_realization,
+            }
+        }
         ClaimOutcome::TimedOut {
             elapsed_ms,
             budget_ms,
@@ -4123,7 +4155,8 @@ fn scoped_witness_summary_outcome(
             ClaimOutcome::Pass => ("executed", "true".to_string()),
             ClaimOutcome::Fail
             | ClaimOutcome::NotBool { .. }
-            | ClaimOutcome::RuntimeError { .. } => ("executed", "false".to_string()),
+            | ClaimOutcome::RuntimeError { .. }
+            | ClaimOutcome::HostToolUnresolved { .. } => ("executed", "false".to_string()),
             ClaimOutcome::TimedOut {
                 elapsed_ms,
                 budget_ms,
@@ -10421,7 +10454,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                 );
                 eprintln!(
                     "required-floor: planned={} executed={} terminal={} passed={} \
-                     known_red_held={} failed={} stale_quarantine={} budget_refused={}",
+                     known_red_held={} failed={} stale_quarantine={} budget_refused={} \
+                     host_tool_unresolved={}",
                     outcome.claims_planned,
                     outcome.claims_executed,
                     outcome.receipt_identities,
@@ -10429,26 +10463,33 @@ fn run() -> Result<ExitCode, ExitCode> {
                     outcome.known_red_held,
                     outcome.failures.len(),
                     outcome.stale_quarantine.len(),
-                    outcome.budget_refused.len()
+                    outcome.budget_refused.len(),
+                    outcome.host_tool_unresolved.len()
                 );
                 for failure in &outcome.failures {
                     eprintln!("required-floor: FAIL {failure}");
                 }
-                // THREE CAUSES, THREE COUNTS, ONE STOPPED LINE. All three refuse the run, and
+                // FOUR CAUSES, FOUR COUNTS, ONE STOPPED LINE. All four refuse the run, and
                 // they are reported apart because their remedies differ: a FAIL is a defect to
                 // fix, a STALE-QUARANTINE is a fix that already landed and a roster row to
-                // delete, a BUDGET-REFUSED is a cost to reduce. Summing them into `failed`
-                // would make an un-quarantine indistinguishable from a regression in the alert
-                // signature, which is the conflation `std.witness_admission` rules out.
+                // delete, a BUDGET-REFUSED is a cost to reduce, a HOST-TOOL-UNRESOLVED is an
+                // infra gap to provision (never a witness-cost chase). Summing them into
+                // `failed` would make an un-quarantine indistinguishable from a regression in
+                // the alert signature, which is the conflation `std.witness_admission` rules
+                // out.
                 for stale in &outcome.stale_quarantine {
                     eprintln!("required-floor: STALE-QUARANTINE {stale}");
                 }
                 for refused in &outcome.budget_refused {
                     eprintln!("required-floor: BUDGET-REFUSED {refused}");
                 }
+                for unresolved in &outcome.host_tool_unresolved {
+                    eprintln!("required-floor: HOST-TOOL-UNRESOLVED {unresolved}");
+                }
                 if outcome.failures.is_empty()
                     && outcome.stale_quarantine.is_empty()
                     && outcome.budget_refused.is_empty()
+                    && outcome.host_tool_unresolved.is_empty()
                 {
                     Ok(ExitCode::SUCCESS)
                 } else {
