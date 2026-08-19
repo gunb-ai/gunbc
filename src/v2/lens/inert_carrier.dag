@@ -18,7 +18,6 @@ data inert_carrier_roster: List<FrontierRow> = [
   inert_row(unit: "DownstreamSupportRoster", reason: "modeled downstream coverage-roster carrier from the extdeps modeling preflight (#7571): it is the declared home for support/coverage rows that an upstream module may not carry, and the plan text names it, but no module constructs or reads one yet"),
   inert_row(unit: "CargoDependency", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
   inert_row(unit: "CargoPackage", reason: "modeled cargo-manifest carrier awaiting the emitted-crate-partition consumer"),
-  inert_row(unit: "FloorWitnessRow", reason: "modeled floor-receipt carrier with no live consumer yet"),
   inert_row(unit: "FreeOutput", reason: "modeled output carrier with no live consumer yet"),
   inert_row(unit: "GcpProject", reason: "modeled gcp extdeps carrier with no live consumer yet"),
   inert_row(unit: "GitCliReportedVersion", reason: "modeled git-cli extdeps carrier with no live consumer yet"),
