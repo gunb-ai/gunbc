@@ -50,6 +50,7 @@ pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
 mod phase_profile;
+pub(crate) mod shared_fill;
 pub(crate) mod test_module_hygiene_bridge;
 pub use floor_discovery_snapshot::{
     append_discovery_trace_row, build_floor_discovery_request,
@@ -1493,9 +1494,13 @@ pub fn build_module_path_index(source_roots: &[String]) -> HashMap<String, Strin
         .join("\u{1f}");
     MODULE_PATH_INDEX_CACHE.with(|cache| {
         if let Some(index) = cache.borrow().get(&key) {
+            shared_fill::record_hit("module_path_index", &key);
             return index.clone();
         }
+        shared_fill::begin_fill();
+        let start = std::time::Instant::now();
         let index = build_module_path_index_uncached(source_roots);
+        shared_fill::record_fill("module_path_index", &key, start.elapsed().as_nanos() as u64);
         cache.borrow_mut().insert(key, index.clone());
         index
     })
@@ -6024,9 +6029,17 @@ pub fn build_module_graph_facts_live(pool_roots: &[String]) -> ModuleGraphFactsL
     let key = pool_roots_for_module_graph_closure(pool_roots).join("\u{1f}");
     MODULE_GRAPH_FACTS_CACHE.with(|cache| {
         if let Some(facts) = cache.borrow().get(&key) {
+            shared_fill::record_hit("module_graph_facts", &key);
             return facts.clone();
         }
+        shared_fill::begin_fill();
+        let start = std::time::Instant::now();
         let facts = build_module_graph_facts_live_uncached(pool_roots);
+        shared_fill::record_fill(
+            "module_graph_facts",
+            &key,
+            start.elapsed().as_nanos() as u64,
+        );
         cache.borrow_mut().insert(key, facts.clone());
         facts
     })
@@ -29656,8 +29669,14 @@ pub fn reference_resolution_facts(
         exclude_substrings.join("\u{1e}")
     );
     if let Some(cached) = REFERENCE_EDGE_CACHE.with(|c| c.borrow().get(&cache_key).cloned()) {
+        shared_fill::record_hit("reference_edges", &cache_key);
         return cached;
     }
+    // THE WHOLE-POOL PARSE PASS BELOW IS THE FLOOR'S LARGEST SHARED FILL. Timed and attributed
+    // from here so the claim that happens to reach it first is not read as the claim that costs
+    // it; see `shared_fill` for why the per-row number alone cannot answer that.
+    shared_fill::begin_fill();
+    let reference_edges_fill_start = std::time::Instant::now();
     let mut unaccounted: Vec<ReferenceAccountingRefusal> = Vec::new();
 
     // ── Pass 1: parse the pool once. Build the exported-name→module index (precedence: first root
@@ -29861,6 +29880,11 @@ pub fn reference_resolution_facts(
     }
 
     unaccounted.sort_by(|a, b| a.path.cmp(&b.path));
+    shared_fill::record_fill(
+        "reference_edges",
+        &cache_key,
+        reference_edges_fill_start.elapsed().as_nanos() as u64,
+    );
     REFERENCE_UNACCOUNTED_CACHE.with(|c| c.borrow_mut().insert(cache_key.clone(), unaccounted));
     REFERENCE_EDGE_CACHE.with(|c| c.borrow_mut().insert(cache_key, edges.clone()));
     edges
@@ -31285,7 +31309,7 @@ struct NonFoldReport {
 
 fn nfr_build_report() -> &'static NonFoldReport {
     static REPORT: std::sync::OnceLock<NonFoldReport> = std::sync::OnceLock::new();
-    REPORT.get_or_init(|| {
+    shared_fill::once(&REPORT, "non_fold_residue", "corpus", || {
         let files = corpus_dag_files();
         let closed_coproduct_names = nfr_closed_coproduct_names(&files);
         NonFoldReport {
@@ -32141,7 +32165,9 @@ fn compute_inert_carrier_data(files: &[(String, String)]) -> InertCarrierData {
 
 fn build_inert_carrier_data() -> &'static InertCarrierData {
     static CACHE: OnceLock<InertCarrierData> = OnceLock::new();
-    CACHE.get_or_init(|| compute_inert_carrier_data(&corpus_dag_files()))
+    shared_fill::once(&CACHE, "inert_carrier_data", "corpus", || {
+        compute_inert_carrier_data(&corpus_dag_files())
+    })
 }
 
 pub fn inert_carrier_names_live() -> Vec<String> {
@@ -32547,13 +32573,18 @@ struct ClaAuditBuiltinCache {
 
 fn cla_cached_builtin_cache() -> &'static ClaAuditBuiltinCache {
     static CACHE: OnceLock<ClaAuditBuiltinCache> = OnceLock::new();
-    CACHE.get_or_init(|| {
-        let summary = complexity_linearity_audit_corpus_default_roots();
-        ClaAuditBuiltinCache {
-            finding_count: summary.findings.len() as i64,
-            sites: summary.findings.iter().map(|f| f.site.clone()).collect(),
-        }
-    })
+    shared_fill::once(
+        &CACHE,
+        "complexity_linearity_audit",
+        "default_roots",
+        || {
+            let summary = complexity_linearity_audit_corpus_default_roots();
+            ClaAuditBuiltinCache {
+                finding_count: summary.findings.len() as i64,
+                sites: summary.findings.iter().map(|f| f.site.clone()).collect(),
+            }
+        },
+    )
 }
 
 pub fn complexity_linearity_syntactic_finding_count() -> i64 {
@@ -32607,9 +32638,14 @@ fn cla_compute_wildcard_facts(roots: &[String]) -> Vec<ComplexityLinearityWildca
 
 fn cla_cached_wildcard_facts() -> &'static ClaWildcardFactsCache {
     static CACHE: OnceLock<ClaWildcardFactsCache> = OnceLock::new();
-    CACHE.get_or_init(|| ClaWildcardFactsCache {
-        facts: cla_compute_wildcard_facts(&witness_layer_roots()),
-    })
+    shared_fill::once(
+        &CACHE,
+        "complexity_linearity_wildcard",
+        "witness_layer_roots",
+        || ClaWildcardFactsCache {
+            facts: cla_compute_wildcard_facts(&witness_layer_roots()),
+        },
+    )
 }
 
 pub fn complexity_linearity_wildcard_facts() -> &'static [ComplexityLinearityWildcardFactRaw] {
@@ -32817,8 +32853,10 @@ struct FacCensusCache {
 
 fn fac_cached_census_facts() -> &'static FacCensusCache {
     static CACHE: OnceLock<FacCensusCache> = OnceLock::new();
-    CACHE.get_or_init(|| FacCensusCache {
-        facts: fac_compute_census_facts(&witness_layer_roots()),
+    shared_fill::once(&CACHE, "fallback_arm_census", "witness_layer_roots", || {
+        FacCensusCache {
+            facts: fac_compute_census_facts(&witness_layer_roots()),
+        }
     })
 }
 
@@ -33072,10 +33110,15 @@ fn doc_graph_report(extra_roots: &[String]) -> std::sync::Arc<DocGraphReport> {
         OnceLock::new();
     let cache = CACHE.get_or_init(|| std::sync::Mutex::new(HashMap::new()));
     let mut guard = cache.lock().expect("doc_graph_report cache poisoned");
+    let key = extra_roots.join("\u{1f}");
     if let Some(r) = guard.get(extra_roots) {
+        shared_fill::record_hit("doc_graph_report", &key);
         return r.clone();
     }
+    shared_fill::begin_fill();
+    let start = std::time::Instant::now();
     let report = std::sync::Arc::new(build_doc_graph_report(extra_roots));
+    shared_fill::record_fill("doc_graph_report", &key, start.elapsed().as_nanos() as u64);
     guard.insert(extra_roots.to_vec(), report.clone());
     report
 }
@@ -33232,7 +33275,12 @@ fn build_test_migration_behavior_discovery_report() -> TestMigrationBehaviorDisc
 
 fn test_migration_behavior_discovery_report() -> &'static TestMigrationBehaviorDiscoveryReport {
     static REPORT: OnceLock<TestMigrationBehaviorDiscoveryReport> = OnceLock::new();
-    REPORT.get_or_init(build_test_migration_behavior_discovery_report)
+    shared_fill::once(
+        &REPORT,
+        "test_migration_behavior_discovery",
+        "corpus",
+        build_test_migration_behavior_discovery_report,
+    )
 }
 
 pub fn test_migration_legacy_behavior_ids() -> Vec<String> {
@@ -33350,7 +33398,12 @@ fn build_test_migration_debt_report() -> TestMigrationDebtReport {
 
 fn test_migration_debt_report() -> &'static TestMigrationDebtReport {
     static REPORT: OnceLock<TestMigrationDebtReport> = OnceLock::new();
-    REPORT.get_or_init(build_test_migration_debt_report)
+    shared_fill::once(
+        &REPORT,
+        "test_migration_debt",
+        "corpus",
+        build_test_migration_debt_report,
+    )
 }
 
 pub fn test_migration_debt_module_names() -> Vec<String> {
@@ -40427,6 +40480,11 @@ pub fn run_required_floor(
         // because its time was filesystem reads and its CPU never approached the limit.
         frame.set_witness_eval_budget(Some(claim.budget_ms));
         frame.set_witness_wall_budget(Some(claim.budget_ms));
+        // NAME WHO IS RUNNING, so a shared computation filled during this claim is attributed to
+        // it rather than to nobody. The wall time this row is about to be charged is not
+        // necessarily its own; `shared_fill` records which part was a first touch of a
+        // process-global corpus cache and which later claims read that same fill for free.
+        shared_fill::set_current_claim(Some(&claim.qualified));
         set_phase(FloorPhase::Eval, &claim.qualified);
         // WHAT ONE CLAIM COSTS IN MEMORY, for the same reason the scope is measured beside it:
         // the fold's resident set swings ~5.6GB and the scope turned out to account for 0.02GB
@@ -40683,10 +40741,20 @@ pub fn run_required_floor(
         }
     }
     outcome.receipt_identities = receipted.len();
+    // THE FOLD IS OVER, so nothing after this point is any witness's cost. Cleared before the
+    // report is rendered rather than after, so a gate that fills a cache on its way out cannot
+    // be charged to the last row that happened to run.
+    shared_fill::set_current_claim(None);
     eprintln!(
         "floor: evaluating {claims_planned} / {claims_planned} ({}ms)",
         eval_started.elapsed().as_millis()
     );
+    // WHAT THE PER-ROW NUMBERS ABOVE DO NOT SAY. Each line names one shared computation, what
+    // its fill cost, which claim paid it, and how many claims and modules read that same fill
+    // for free. A `shared` fill does not go away when its payer is removed from the floor — the
+    // next claim to touch it pays the same seconds — so a paring decision that reads only the
+    // per-row wall time is deciding on an attribution artifact.
+    eprint!("{}", shared_fill::report());
     // CONSTRUCTIONS AGAINST DISTINCT SCOPES. Equal means the manifest's claim order was grouped
     // by module and each scope was built exactly once; higher means it was not, and the excess
     // is rebuilding this reports rather than absorbs. `modules_per_scope` is carried here now
