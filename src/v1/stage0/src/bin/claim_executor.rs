@@ -3924,8 +3924,10 @@ struct DiscoveryBatchBudgets {
 /// Budgets are scoped by LANE, never by witness kind.
 ///
 /// The fast-lane eval budget (operator ruling 2026-08-17, superseding the 5s rule of 2026-07-12;
-/// the live ceiling is `v2.workflow.required_floor` `required_floor_claim_safety_limit_ms` /
-/// `required_floor_claim_warn_ms` — never transcribed here) governs the per-PR discovery corpus and its
+/// the live ceiling is `v2.workflow.required_floor` `required_floor_claim_cpu_safety_limit_ms` /
+/// `required_floor_claim_wall_safety_limit_ms` / `required_floor_claim_warn_ms` — two independent
+/// safety deadlines per the 2026-08-19 budget policy cut's superseding correction, never
+/// transcribed here) governs the per-PR discovery corpus and its
 /// cold replays — witnesses whose own eval must stay cheap or move to a `long/` lane. A
 /// Hermetic batch that carries its own lane roster draws that lane's dated ceiling instead:
 /// selecting on `is_hermetic()` alone armed the 5s per-PR budget on the substrate long lane,
@@ -10524,7 +10526,7 @@ fn run() -> Result<ExitCode, ExitCode> {
                     "required-floor: planned={} executed={} terminal={} passed={} \
                      known_red_held={} failed={} stale_quarantine={} \
                      interrupted_before_verdict={} completed_over_cost_requirement={} \
-                     host_tool_unresolved={}",
+                     host_tool_unresolved={} over_cost_line_diagnostic={}",
                     outcome.claims_planned,
                     outcome.claims_executed,
                     outcome.receipt_identities,
@@ -10534,7 +10536,8 @@ fn run() -> Result<ExitCode, ExitCode> {
                     outcome.stale_quarantine.len(),
                     outcome.interrupted_before_verdict.len(),
                     outcome.completed_over_cost_requirement.len(),
-                    outcome.host_tool_unresolved.len()
+                    outcome.host_tool_unresolved.len(),
+                    outcome.over_cost_line_diagnostic
                 );
                 for failure in &outcome.failures {
                     eprintln!("required-floor: FAIL {failure}");
