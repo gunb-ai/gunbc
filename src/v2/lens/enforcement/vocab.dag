@@ -110,7 +110,7 @@ fn self_application_ok(s: SelfApplicationStatus) -> Bool {
   }
 }
 
-data narrowing_reason_same_variant_disposition: std.disposition.Disposition = Scaffold {
+data narrowing_reason_same_variant_disposition: std.disposition.Disposition = std.disposition.Scaffold {
   dissolves_to: SingleAuthority,
   bind: std.decl_ref.DeclarationRef {
     module_path: "v2.lens.enforcement.vocab",
