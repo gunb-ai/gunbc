@@ -3456,17 +3456,15 @@ fn dag_lex_token_symbol(sym: Symbol) -> Bool {
   )
 }
 
-fn dag_sync_tokens() -> Set<Symbol> {
-  Set {
-    member: fn(sym) {
-      sym == ^dag_token_kw_module ||
-      sym == ^dag_token_kw_import ||
-      sym == ^dag_token_kw_alias ||
-      sym == ^dag_token_kw_type ||
-      sym == ^dag_token_kw_data ||
-      sym == ^dag_token_kw_fn
-    }
-  }
+fn dag_sync_tokens() -> List<Symbol> {
+  [
+    ^dag_token_kw_module,
+    ^dag_token_kw_import,
+    ^dag_token_kw_alias,
+    ^dag_token_kw_type,
+    ^dag_token_kw_data,
+    ^dag_token_kw_fn
+  ]
 }
 
 

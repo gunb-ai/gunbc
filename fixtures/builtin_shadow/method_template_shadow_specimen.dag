@@ -1,0 +1,13 @@
+module fixtures.builtin_shadow.method_template_shadow_specimen
+
+// The SILENT half of the same class: `to_string` is a method-template name whose builtin accepts
+// exactly the argument the program supplies, so both realizations answered from the builtin and
+// the program's own function was never called -- no diagnostic anywhere. Measured before the fix:
+// interpreted result "7" and emitted `(x).to_string()`. After: "SHADOWED" and `to_string(x)`.
+fn render(to_string: fn(Int) -> String, x: Int) -> String {
+  to_string(x)
+}
+
+fn shadowed_method_template_result() -> String {
+  render(to_string: n => "SHADOWED", x: 7)
+}
