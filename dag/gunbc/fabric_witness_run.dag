@@ -14,6 +14,8 @@ import product.fabric.work {
   ProgramRef, SourceManifestRef, ArtifactManifestRef, EffectContractRef, OutputContractRef,
 }
 import product.fabric.supply { Offer }
+import extdeps.exec.command { ArgvCommand }
+import std.types { String, List }
 
 // THE FABRIC RUNS THE WITNESSES.
 //
@@ -35,7 +37,7 @@ type FloorRunRefusal
   | AttemptIsForDifferentWork
 
 type FloorRunAuthorization<P>
-  = FloorRunAuthorized { command: NonEmptyStr }
+  = FloorRunAuthorized { command: ArgvCommand }
   | FloorRunRefused { cause: FloorRunRefusal }
 
 // The floor's contract. Every field is a fact about WHAT is promised, never
@@ -55,7 +57,7 @@ fn floor_work_contract(source: SourceManifestRef) -> WorkContract {
       WorkStep { step_id: "required-floor", resumability: ReceiptSatisfiable },
     ],
     source: source,
-    inputs: "gunbc.floor.inputs.source-roots:dag+src/v2",
+    inputs: floor_inputs_manifest_ref(),
     runtime_closure: "gunbc.toolchain.rust-1.93.0+clippy+rustfmt",
     effect_contract: "gunbc.floor.effects.read-only-corpus",
     output_contract: "gunbc.floor.outputs.required-floor-summary",
@@ -70,13 +72,60 @@ fn floor_execution_requirements() -> ExecutionRequirements {
   }
 }
 
-// The exact argv the floor runs under. It is derived from the contract's own
-// source-root inputs rather than spelled twice: the workflow's command and this
-// command are one fact, and the witness beside this module asserts they are
-// equal to the emitted workflow's literal step.
+// THE SOURCE ROOTS ARE ONE FACT WITH TWO PROJECTIONS.
+//
+// The first version of this module spelled them twice -- once as a colon-tagged
+// blob in the contract's `inputs`, once inside a hand-authored argv string --
+// and carried a comment claiming the argv "is derived from the contract's own
+// source-root inputs". Nothing derived it. That comment asserted a mechanism
+// that did not exist, which is worse than the duplication it was describing:
+// the duplication is visible, the false claim tells a reader not to look.
+// Caught in review, not by me.
+//
+// Now one list is the authority and both the manifest ref and the argv are
+// folded from it, so adding a source root cannot change one and miss the other.
 
-fn floor_run_command() -> NonEmptyStr {
-  "target/release/claim_executor --required-floor --source-root dag --source-root src/v2"
+fn floor_source_roots() -> List<String> {
+  ["dag", "src/v2"]
+}
+
+fn floor_inputs_manifest_ref() -> ArtifactManifestRef {
+  concat("gunbc.floor.inputs.source-roots:", join(floor_source_roots(), "+"))
+}
+
+// A modeled command, not a string blob. extdeps.exec.command already owns the
+// argv carrier, so authoring a shell line here would have been a second
+// representation of "how a process is invoked" -- the medium-as-string tell the
+// review named.
+//
+// THE ARGV'S SOURCE-ROOT PAIRS ARE HAND-EXPANDED, AND THAT IS A SUBSTRATE GAP
+// RATHER THAN A CHOICE. Each root contributes TWO argv elements
+// ("--source-root", "<root>") because claim_executor takes no "--flag=value"
+// form -- checked against its parser, not assumed. Expanding one list element
+// into two therefore needs a flat-map, and the substrate has neither a flatten
+// builtin (zero occurrences corpus-wide) nor list destructuring in match
+// patterns (probed: `[h, ...t]` is a parse error). So the fold that would make
+// this derivation total is not expressible today.
+//
+// What IS derived stays derived: floor_inputs_manifest_ref folds the same list,
+// so the two representations the review found cannot drift apart silently. The
+// residue is the expansion below, and it is closed by an EXECUTING witness
+// rather than by a comment -- floor_argv_carries_every_declared_source_root
+// reds if a root is added here and not there. Validation standing where
+// construction was unavailable, declared as such.
+//
+// DISSOLVES WHEN the substrate gains a list flat-map (or match-pattern list
+// destructuring), at which point this becomes one fold over floor_source_roots
+// and the witness becomes a regression control rather than the wall.
+
+fn floor_run_command() -> ArgvCommand {
+  ArgvCommand {
+    argv: [
+      "target/release/claim_executor", "--required-floor",
+      "--source-root", "dag",
+      "--source-root", "src/v2",
+    ],
+  }
 }
 
 fn shape_covers(offered: Shape, needed: Shape) -> Bool {

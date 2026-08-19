@@ -73,9 +73,32 @@ test fn fleet_offer_authorizes_the_floor() -> Bool {
 test fn authorized_command_is_the_floor_invocation() -> Bool {
   match authorize_floor_run(work: t_work(), attempt_work: t_work_id(), offer: t_good_offer()) {
     FloorRunAuthorized { command: c } =>
-      c == "target/release/claim_executor --required-floor --source-root dag --source-root src/v2"
+      c.argv == [
+        "target/release/claim_executor", "--required-floor",
+        "--source-root", "dag",
+        "--source-root", "src/v2",
+      ]
     FloorRunRefused { cause: _ } => false
   }
+}
+
+// THE RESIDUE WALL. floor_run_command hand-expands one argv pair per source
+// root because the substrate has no flat-map; this is the executing check that
+// the expansion still matches the declared authority. Adding a root to
+// floor_source_roots without adding its pair to the argv reds here.
+//
+// It asserts a JOIN, not a count: a count would pass if someone wrote the same
+// root twice, which is exactly the drift the review said a string-to-string
+// comparison could not detect.
+
+test fn floor_argv_carries_every_declared_source_root() -> Bool {
+  let argv = floor_run_command().argv
+  all(floor_source_roots(), r => string_list_contains(xs: argv, wanted: r))
+    && length(xs: argv) == 2 + 2 * length(xs: floor_source_roots())
+}
+
+test fn floor_inputs_manifest_ref_folds_the_same_authority() -> Bool {
+  floor_inputs_manifest_ref() == "gunbc.floor.inputs.source-roots:dag+src/v2"
 }
 
 // DISCRIMINATING REDS.
