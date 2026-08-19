@@ -31,17 +31,20 @@ import extdeps.version.semver { semver_version_label }
 import std.disposition { Disposition, Scaffold, RealizationDispatch }
 import std.decl_ref { DeclarationRef, WholeDeclaration }
 import std.layout {
-  Doc, DocConcat,
+  Doc,
   LayoutProtocol,
-  doc_concat, doc_line_of, doc_text,
+  doc_text,
   render
 }
 import extdeps.systemd.unit_file {
-  SystemdUnitFile, ServiceUnitFile,
-  SystemdInstallSection, NotInstallable,
-  SystemdUnitDirective, Description,
-  SystemdServiceDirective, ServiceType, ExecStart,
-  WorkingDirectory, ServiceUser, ServiceGroup,
+  SystemdUnitFile, ServiceUnitFile, TimerUnitFile,
+  SystemdInstallSection, NotInstallable, Installable,
+  SystemdUnitDirective, Description, After, Wants,
+  SystemdServiceDirective, ServiceType, ExecStart, Restart,
+  Environment, EnvironmentFile, WorkingDirectory, ServiceUser, ServiceGroup,
+  SystemdTimerDirective, TimerUnit, OnCalendar, OnBootSec, OnUnitInactiveSec,
+  AccuracySec, RandomizedDelaySec, Persistent,
+  SystemdInstallDirective, WantedBy,
   serialize_systemd_unit_file,
 }
 import gunbc.live_deploy.spec {
@@ -66,7 +69,7 @@ import gunbc.live_deploy.spec {
   TeardownDisposition, TeardownActs, TeardownRefuses,
   tree_sync_unit_path,
 }
-import gunbc.host_layout { belt_spawn_workdir_env_var, fleet_converge_receipt_dir, instance_receipts_dir }
+import gunbc.host_layout { belt_spawn_workdir_env_var, instance_receipts_dir }
 import gunbc.host_axis_caps {
   deploy_memory_cap_apply_script_for_host,
   deploy_memory_cap_script_author_precedes_shadow_revert,
@@ -263,31 +266,30 @@ fn emit_systemd_unit_doc(spec: DeploymentSpec, revision: ReleaseRevisionBinding)
   let svc = spec.service
   let port = to_string(svc.listen.port)
   let host = svc.listen.host
-  doc_concat(parts: [
-    doc_line_of(text: "[Unit]"),
-    doc_line_of(text: "Description=gunbc roadmap HTTP server (gunbc serve)"),
-    doc_line_of(text: "After=network-online.target tailscaled.service"),
-    doc_line_of(text: "Wants=network-online.target"),
-    doc_line_of(text: ""),
-    doc_line_of(text: "[Service]"),
-    doc_line_of(text: "Type=simple"),
-    doc_line_of(text: concat("User=", svc.service_user)),
-    doc_line_of(text: concat("Group=", svc.service_user)),
-    doc_line_of(text: concat("WorkingDirectory=", svc.repo_root)),
-    doc_line_of(text: join([
-      "ExecStart=", svc.serve_binary,
-      " serve --source-root dag --source-root src/v2",
-      " --entry dag/gunbc/roadmap_serve.dag --function ", svc.serve_function as String,
-      " --host ", host, " --port ", port,
-      " --release-revision ", release_revision_execstart_text(binding: revision),
-      eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
-      eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
-    ], "")),
-    doc_line_of(text: "Restart=on-failure"),
-    doc_line_of(text: ""),
-    doc_line_of(text: "[Install]"),
-    doc_line_of(text: "WantedBy=multi-user.target"),
-  ])
+  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc roadmap HTTP server (gunbc serve)" as NonEmptyStr },
+      After { target: "network-online.target tailscaled.service" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: "simple" as NonEmptyStr },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      WorkingDirectory { path: svc.repo_root },
+      ExecStart { command: join([
+        svc.serve_binary as String,
+        " serve --source-root dag --source-root src/v2",
+        " --entry dag/gunbc/roadmap_serve.dag --function ", svc.serve_function as String,
+        " --host ", host, " --port ", port,
+        " --release-revision ", release_revision_execstart_text(binding: revision),
+        eval_budget_flag_text(flag: "--eval-budget-cpu-ms", limit: svc.serve_cpu_limit),
+        eval_budget_flag_text(flag: "--eval-budget-wall-ms", limit: svc.serve_wall_limit),
+      ], "") as NonEmptyStr },
+      Restart { policy: "on-failure" as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "multi-user.target" as NonEmptyStr }] },
+  }))
 }
 
 data belt_tick_cadence_note: String = "OnUnitInactiveSec, NOT OnUnitActiveSec, and the difference is a fail-closed choice rather than a formatting one. OnUnitActiveSec measures from when the tick STARTED, so a tick that runs longer than the cadence schedules its successor while it is still running and ticks pile up back-to-back — for a unit whose job is spawning agent sessions, that converts a slow tick into overlapping spawns. OnUnitInactiveSec measures from when the previous tick FINISHED, so the gap is real regardless of how long a tick takes and the belt can never outrun itself. systemd additionally refuses to start a Type=oneshot unit that is already active, so the two together make overlap unwritable rather than unlikely.\\n\\n60s is the operator's stated default for this lane and is deliberately not tuned against anything: a tick against an unchanged frontier is an idempotent reconcile that observes live tmux sessions and does nothing (belt_run_once_note), so the cost of a too-fast cadence is an observation, not an action. AccuracySec=5s keeps systemd from coalescing the timer into a distant wakeup window, which is the default behavior and would otherwise make the effective cadence unpredictable.\\n\\nOnBootSec=2min rather than firing immediately: at boot the tree sync, the serve unit and tailscale are all converging, and a belt tick that spawns before the repo tree is in place produces SpawnFailed rows for a condition that resolves itself within seconds. The delay costs one cadence period and removes a class of self-inflicted refusals from the receipt."
@@ -296,42 +298,41 @@ data belt_tick_cadence: String = "60s"
 
 fn emit_belt_service_unit_doc(spec: DeploymentSpec) -> Doc {
   let svc = spec.service
-  doc_concat(parts: [
-    doc_line_of(text: "[Unit]"),
-    doc_line_of(text: "Description=gunbc roadmap belt tick (one reconcile pass over the ready frontier)"),
-    doc_line_of(text: "After=network-online.target"),
-    doc_line_of(text: "Wants=network-online.target"),
-    doc_line_of(text: ""),
-    doc_line_of(text: "[Service]"),
-    doc_line_of(text: "Type=oneshot"),
-    doc_line_of(text: concat("User=", svc.service_user)),
-    doc_line_of(text: concat("Group=", svc.service_user)),
-    doc_line_of(text: concat("WorkingDirectory=", svc.repo_root)),
-    doc_line_of(text: join([
-      "Environment=", belt_spawn_workdir_env_var as String, "=", svc.repo_root,
-    ], "")),
-    doc_line_of(text: join([
-      "ExecStart=", svc.serve_binary,
-      " run --source-root dag --source-root src/v2",
-      " --entry dag/gunbc/roadmap_belt_actuate.dag --function belt_run_once_cli",
-    ], "")),
-  ])
+  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc roadmap belt tick (one reconcile pass over the ready frontier)" as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      WorkingDirectory { path: svc.repo_root },
+      Environment { assignment: join([
+        belt_spawn_workdir_env_var as String, "=", svc.repo_root as String,
+      ], "") as NonEmptyStr },
+      ExecStart { command: join([
+        svc.serve_binary as String,
+        " run --source-root dag --source-root src/v2",
+        " --entry dag/gunbc/roadmap_belt_actuate.dag --function belt_run_once_cli",
+      ], "") as NonEmptyStr },
+    ],
+    install: NotInstallable,
+  }))
 }
 
 fn emit_belt_timer_unit_doc(spec: DeploymentSpec) -> Doc {
-  doc_concat(parts: [
-    doc_line_of(text: "[Unit]"),
-    doc_line_of(text: "Description=gunbc roadmap belt tick cadence"),
-    doc_line_of(text: ""),
-    doc_line_of(text: "[Timer]"),
-    doc_line_of(text: concat("Unit=", deployment_belt_service_unit_name(names: spec.names) as String)),
-    doc_line_of(text: "OnBootSec=2min"),
-    doc_line_of(text: concat("OnUnitInactiveSec=", belt_tick_cadence)),
-    doc_line_of(text: "AccuracySec=5s"),
-    doc_line_of(text: ""),
-    doc_line_of(text: "[Install]"),
-    doc_line_of(text: "WantedBy=timers.target"),
-  ])
+  doc_text(text: serialize_systemd_unit_file(file: TimerUnitFile {
+    unit: [Description { text: "gunbc roadmap belt tick cadence" as NonEmptyStr }],
+    timer: [
+      TimerUnit { target: deployment_belt_service_unit_name(names: spec.names) },
+      OnBootSec { duration: "2min" as NonEmptyStr },
+      OnUnitInactiveSec { duration: belt_tick_cadence as NonEmptyStr },
+      AccuracySec { duration: "5s" as NonEmptyStr },
+    ],
+    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+  }))
 }
 
 // THE DEPLOYED TREE'S REMOTE, CONVERGED BY ITS OWNER.
@@ -405,41 +406,44 @@ fn apply_belt_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
 // (emit_systemd_unit_doc / emit_belt_service_unit_doc: User=+Group=svc.service_user).
 // Receipt *publication* (superseding a stale root-owned file) is atomic rename in
 // gunbc.fleet_converge_cli (gunbc.host_layout fleet_converge_receipt_atomic_publish_note).
-// Receipt *directory bootstrap* (existence + service-principal ownership) stays on deploy
-// via install_d_owned_command on fleet_converge_receipt_dir — orthogonal problems.
+// Receipt *directory bootstrap* (existence + service-principal ownership) is on deploy, but NOT
+// here: this member's apply arm is a retirement poison (the cadence is on-demand via
+// fleet-converge.yml plan/apply, sleek-heron-218), so the bootstrap it used to carry has not run
+// on any fresh instance root since that retirement. It rides BeltTimerUnit apply against the
+// per-instance receipts directory instead — see belt_receipt_dir_bootstrap_note. Publication and
+// bootstrap remain orthogonal problems; only the bootstrap's home moved.
 fn emit_fleet_converge_service_unit_doc(spec: DeploymentSpec) -> Doc {
   let svc = spec.service
-  doc_concat(parts: [
-    doc_line_of(text: "[Unit]"),
-    doc_line_of(text: "Description=gunbc fleet converge (self)"),
-    doc_line_of(text: "After=network-online.target"),
-    doc_line_of(text: "Wants=network-online.target"),
-    doc_line_of(text: ""),
-    doc_line_of(text: "[Service]"),
-    doc_line_of(text: "Type=oneshot"),
-    doc_line_of(text: concat("User=", svc.service_user)),
-    doc_line_of(text: concat("Group=", svc.service_user)),
-    doc_line_of(text: concat("WorkingDirectory=", svc.repo_root)),
-    doc_line_of(text: join([
-      "ExecStart=", svc.serve_binary, " converge --host self",
-    ], "")),
-  ])
+  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+    unit: [
+      Description { text: "gunbc fleet converge (self)" as NonEmptyStr },
+      After { target: "network-online.target" as NonEmptyStr },
+      Wants { target: "network-online.target" as NonEmptyStr },
+    ],
+    service: [
+      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceUser { name: svc.service_user },
+      ServiceGroup { name: svc.service_user },
+      WorkingDirectory { path: svc.repo_root },
+      ExecStart { command: join([svc.serve_binary as String, " converge --host self"], "") as NonEmptyStr },
+    ],
+    install: NotInstallable,
+  }))
 }
 
 fn emit_fleet_converge_timer_unit_doc(spec: DeploymentSpec) -> Doc {
-  doc_concat(parts: [
-    doc_line_of(text: "[Unit]"),
-    doc_line_of(text: "Description=gunbc fleet converge cadence"),
-    doc_line_of(text: ""),
-    doc_line_of(text: "[Timer]"),
-    doc_line_of(text: concat("Unit=", deployment_fleet_converge_service_unit_name(names: spec.names) as String)),
-    doc_line_of(text: concat("OnCalendar=", fleet_converge_timer_on_calendar)),
-    doc_line_of(text: "Persistent=true"),
-    doc_line_of(text: concat("RandomizedDelaySec=", to_string(second_count(s: fleet_converge_timer_randomized_delay)))),
-    doc_line_of(text: ""),
-    doc_line_of(text: "[Install]"),
-    doc_line_of(text: "WantedBy=timers.target"),
-  ])
+  doc_text(text: serialize_systemd_unit_file(file: TimerUnitFile {
+    unit: [Description { text: "gunbc fleet converge cadence" as NonEmptyStr }],
+    timer: [
+      TimerUnit { target: deployment_fleet_converge_service_unit_name(names: spec.names) },
+      OnCalendar { expression: fleet_converge_timer_on_calendar as NonEmptyStr },
+      Persistent { enabled: true },
+      RandomizedDelaySec {
+        duration: to_string(second_count(s: fleet_converge_timer_randomized_delay)) as NonEmptyStr,
+      },
+    ],
+    install: Installable { directives: [WantedBy { target: "timers.target" as NonEmptyStr }] },
+  }))
 }
 
 fn apply_fleet_converge_service_unit_write_step(spec: DeploymentSpec) -> PipelineStep {
@@ -527,22 +531,26 @@ data tree_sync_git_whitelist_note: String = "The .git/ leg is a WHITELIST sync (
 
 fn emit_tree_sync_unit_doc(spec: DeploymentSpec, tree_path: String) -> Doc {
   let user = spec.service.service_user
-  doc_concat(parts: [
-    doc_line_of(text: "[Unit]"),
-    doc_line_of(text: "Description=gunbc source tree sync (service-user-principal rsync from CI runner checkout)"),
-    doc_line_of(text: ""),
-    doc_line_of(text: "[Service]"),
-    doc_line_of(text: "Type=oneshot"),
-    doc_line_of(text: concat("User=", user)),
-    doc_line_of(text: concat("Group=", user)),
-    doc_line_of(text: concat("EnvironmentFile=", spec.names.tree_sync_env_path as String)),
-    doc_line_of(text: join([
-      "ExecStart=/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(), " \"$\{GUNBC_TREE_SRC\}/\" ", tree_path, "/",
-    ], "")),
-    doc_line_of(text: join([
-      "ExecStart=/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC\}/.git/\" ", tree_path, "/.git/",
-    ], "")),
-  ])
+  doc_text(text: serialize_systemd_unit_file(file: ServiceUnitFile {
+    unit: [Description {
+      text: "gunbc source tree sync (service-user-principal rsync from CI runner checkout)" as NonEmptyStr,
+    }],
+    service: [
+      ServiceType { mode: "oneshot" as NonEmptyStr },
+      ServiceUser { name: user },
+      ServiceGroup { name: user },
+      EnvironmentFile { path: spec.names.tree_sync_env_path },
+      ExecStart { command: join([
+        "/usr/bin/rsync -rlpt --delete ", deployed_tree_rsync_exclude_flags(),
+        " \"$\{GUNBC_TREE_SRC\}/\" ", tree_path, "/",
+      ], "") as NonEmptyStr },
+      ExecStart { command: join([
+        "/usr/bin/rsync -rlpt --exclude=objects/pack/*.keep --exclude=objects/pack/tmp_pack_* --include=/HEAD --include=/objects/*** --include=/packed-refs --include=/refs/*** --exclude=* \"$\{GUNBC_TREE_SRC\}/.git/\" ",
+        tree_path, "/.git/",
+      ], "") as NonEmptyStr },
+    ],
+    install: NotInstallable,
+  }))
 }
 
 fn apply_tree_sync_unit_write_step(spec: DeploymentSpec, tree_path: String) -> PipelineStep {
