@@ -199,18 +199,18 @@ test fn pick_probe_eval_equals_holds() -> Bool {
     && pick_ingested_pick_false_executes_holds()
 }
 
+// ONE RESOLVE, TWO ARMS (witness-cost consolidation, 2026-08-19). The then-arm and
+// else-arm magnitude claims were two claims over ONE source at ONE stage, differing
+// only in an arm index, and each ran the whole source-to-resolved pipeline in its own
+// frame to get there. The resolved module is bound once and both arms are asserted
+// against it; neither assertion changed. pick_probe_resolved_else_arm_has_magnitude_child_holds
+// is deleted with a receipt in the gunbc.witness_deferral_freeze shrink log, and its
+// roster row goes in this change, since a frozen row naming an absent witness is a
+// StaleFrozenPathDeferral refusal.
 test fn pick_probe_resolved_then_arm_has_magnitude_child_holds() -> Bool {
-  pick_probe_module_arm_has_magnitude_child_holds(
-    module_outcome: pick_ingested_resolved_module_from_source(source: pick_ingested_source),
-    arm_index: 1
-  )
-}
-
-test fn pick_probe_resolved_else_arm_has_magnitude_child_holds() -> Bool {
-  pick_probe_module_arm_has_magnitude_child_holds(
-    module_outcome: pick_ingested_resolved_module_from_source(source: pick_ingested_source),
-    arm_index: 2
-  )
+  let resolved = pick_ingested_resolved_module_from_source(source: pick_ingested_source)
+  pick_probe_module_arm_has_magnitude_child_holds(module_outcome: resolved, arm_index: 1)
+    && pick_probe_module_arm_has_magnitude_child_holds(module_outcome: resolved, arm_index: 2)
 }
 
 test fn pick_probe_normalized_then_arm_has_magnitude_child_holds() -> Bool {
