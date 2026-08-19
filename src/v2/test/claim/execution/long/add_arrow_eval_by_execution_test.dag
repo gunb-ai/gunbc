@@ -315,39 +315,23 @@ fn add_arrow_eval_tokenize_source() -> Outcome<TokenStream> {
   tokenize(text: ingested_add_module_source, file: ^add_arrow_eval_source_file, rules: lm.lex)
 }
 
-test fn add_arrow_eval_tokenize_holds() -> Bool {
-  match add_arrow_eval_tokenize_source() {
-    Accepted { value: _, diagnostics: _ } => true
-    Rejected { diagnostics: _ } => false
-  }
-}
 
-test fn add_arrow_eval_parse_holds() -> Bool {
-  match add_arrow_eval_tokenize_source() {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match add_arrow_eval_parse_tokens(tokens: tokens) {
-        Accepted { value: _, diagnostics: _ } => true
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
 
-test fn add_arrow_eval_normalize_holds() -> Bool {
-  match add_arrow_eval_tokenize_source() {
-    Accepted { value: tokens, diagnostics: _ } =>
-      match add_arrow_eval_parse_tokens(tokens: tokens) {
-        Accepted { value: parsed, diagnostics: _ } =>
-          match normalize(parse_tree: parsed) {
-            Accepted { value: _, diagnostics: _ } => true
-            Rejected { diagnostics: _ } => false
-          }
-        Rejected { diagnostics: _ } => false
-      }
-    Rejected { diagnostics: _ } => false
-  }
-}
 
+// ONE PIPELINE RUN, NOT FOUR (witness-cost consolidation, 2026-08-19). This claim
+// used to be the deepest step of a staircase: separate tokenize, parse, normalize
+// and resolve claims, each redoing every stage before its own, so four stages cost
+// ten stage-runs across four fresh frames. Each earlier claim asserted only that
+// its stage ACCEPTED, and this one cannot reach resolve unless all three did -- a
+// tokenize, parse or normalize refusal reds this row exactly as it redded its own.
+// So the three are removed as subsumed rather than as unimportant, and what is lost
+// is which stage failed, read from the refusal rather than from the row name.
+//
+// add_arrow_eval_produced_add_body_executes_holds went with them: its body was
+// byte-identical to add_arrow_eval_source_driven_add_executes_holds, same fixture,
+// same operands, same expected value. Both deletions are receipted in the
+// gunbc.witness_deferral_freeze shrink log, and the roster rows go in this change
+// because a frozen row naming an absent witness is a StaleFrozenPathDeferral refusal.
 test fn add_arrow_eval_resolve_holds() -> Bool {
   let lm = dag_language_model()
   match add_arrow_eval_tokenize_source() {
@@ -700,20 +684,6 @@ test fn add_arrow_eval_source_driven_add_executes_holds() -> Bool {
   }
 }
 
-test fn add_arrow_eval_produced_add_body_executes_holds() -> Bool {
-  match table_fixture_add_arrow_with_body() {
-    Accepted { value: arrow, diagnostics: _ } =>
-      add_arrow_eval_run_passes(
-        run: add_arrow_eval_run(
-          callee: arrow,
-          left_lex: "2",
-          right_lex: "3",
-          expected_lex: "5"
-        )
-      )
-    Rejected { diagnostics: _ } => false
-  }
-}
 
 test fn add_arrow_eval_generality_executes_holds() -> Bool {
   match table_fixture_add_arrow_with_body() {

@@ -1,0 +1,99 @@
+module extdeps.colo.interserver
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { MoneyPerMonth, money_amount_micro, watt, bandwidth, rack_unit }
+import std.currency { Usd }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.colo.types {
+  ColoFacilityRow, AddressListed,
+  RetailPlanRow, PowerAllocation, AllocatedWatts, FeedAmps,
+  TransitAllocation, UnmeteredPort, Ipv4Allocation, Ipv4Usable,
+  SetupCharge, SetupWaived, RetailRateStanding, RatesPublished,
+}
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.interserver.net/colocation/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.colo.interserver",
+      decl_name: "interserver_secaucus",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+data interserver_source_grade_note: NonEmptyStr = "SOURCE GRADE IS SECONDARY AND SAYS SO. Two direct fetches of interserver.net on 2026-08-18 were refused by the vendor's own intrusion-prevention layer (an HTTP 403 naming a known false-positive string, from two distinct client routes), so every plan figure below is read from the whtop.com plan tracker rows for interserver.net, which carry an added date and a last-updated date of 2026-05-17. The tracker is a price-tracking aggregator, not the vendor; a direct read or a written quote upgrades these rows and may contradict them. The 2026-05-17 update REPRICED the shared-rack tiers upward from the long-standing 400 and 750 dollar figures still circulating in search snippets, and DISCONTINUED the published full-cabinet plan - a stale-snippet trap recorded here so the next reader does not re-import the dead prices."
+
+data interserver_secaucus: ColoFacilityRow = ColoFacilityRow {
+  operator_label: "InterServer",
+  facility_label: "InterServer TEB2 Secaucus",
+  address: AddressListed {
+    street: "110 Meadowlands Parkway, Secaucus, NJ 07094",
+    citation: "whtop.com interserver.net plan pages, read 2026-08-18; datacentermap lists the facility as InterServer TEB2",
+  },
+  municipality: "Secaucus",
+  region_code: "NJ",
+  facility_note: "InterServer is a Secaucus-headquartered host operating its own facility and selling retail colocation with month-to-month billing, free racking, remote KVM and 24/7 staffing per the tracked plan descriptions. InterServer also partners into other facilities (a DataVerge Jersey City NJ1 arrangement and a 365 Data Centers expansion are both press-released); the plan rows below are for TEB2.",
+}
+
+data interserver_single_server_1u_plan: RetailPlanRow = RetailPlanRow {
+  plan_label: "Secaucus single server (1U)",
+  rack_units: rack_unit(count: 1),
+  power: AllocatedWatts { allocation: watt(count: 250) },
+  transit: UnmeteredPort { port_speed: bandwidth(count: 1000000000) },
+  ipv4: Ipv4Usable { usable_addresses: 1, block_note: "1 VLAN IP (/30) per the tracked plan row" },
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 100000000), currency: Usd },
+  setup: SetupWaived,
+  term_note: "month-to-month per plan description",
+  citation: "whtop.com/plans/interserver.net/38201, plan updated 2026-05-17, read 2026-08-18",
+}
+
+data interserver_per_u_power_ceiling_note: NonEmptyStr = "The 1U tier's 250 W allocation is the only published per-U power figure in this census, and it prices per-U space at 100 USD per 250 W - which means NO published per-U product from this operator admits a dense 2U node drawing 650-700 W. A pilot-scale placement of one such node is either the 10U quarter tier (1,500 W, 705 USD) or a custom-quoted 2U allocation; any per-U planning rate for a high-draw node is an assumption until such a quote exists. Recorded because a componentized per-U-plus-per-watt planning rate circulating in planning material cannot be derived from the published tier pair (solving the quarter and half rows for a linear per-U plus per-watt decomposition yields a NEGATIVE per-watt coefficient, so the tiers do not price that way)."
+
+data interserver_quarter_rack_plan: RetailPlanRow = RetailPlanRow {
+  plan_label: "Secaucus 1/4 shared rack (10U)",
+  rack_units: rack_unit(count: 10),
+  power: AllocatedWatts { allocation: watt(count: 1500) },
+  transit: UnmeteredPort { port_speed: bandwidth(count: 1000000000) },
+  ipv4: Ipv4Usable { usable_addresses: 5, block_note: "/29 VLAN per the tracked plan row" },
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 705000000), currency: Usd },
+  setup: SetupWaived,
+  term_note: "month-to-month per plan description",
+  citation: "whtop.com/plans/interserver.net/60480, plan updated 2026-05-17, read 2026-08-18",
+}
+
+data interserver_half_rack_plan: RetailPlanRow = RetailPlanRow {
+  plan_label: "Secaucus 1/2 shared rack (20U)",
+  rack_units: rack_unit(count: 20),
+  power: AllocatedWatts { allocation: watt(count: 2500) },
+  transit: UnmeteredPort { port_speed: bandwidth(count: 5000000000) },
+  ipv4: Ipv4Usable { usable_addresses: 14, block_note: "/30 plus /28 per the tracked plan row" },
+  monthly: MoneyPerMonth { amount: money_amount_micro(count: 1445000000), currency: Usd },
+  setup: SetupWaived,
+  term_note: "month-to-month per plan description",
+  citation: "whtop.com/plans/interserver.net/60481, plan updated 2026-05-17, read 2026-08-18",
+}
+
+data interserver_published_plans: List<RetailPlanRow> = [
+  interserver_single_server_1u_plan,
+  interserver_quarter_rack_plan,
+  interserver_half_rack_plan,
+]
+
+data interserver_full_cabinet_withdrawal_note: NonEmptyStr = "The tracked full-cabinet plan (48U, 20 A at 208 V stated as 16 A usable, 1 Gbps unmetered, five IPv4, 1,200 dollars a month, free setup) is marked discontinued as of 2026-05-17 on whtop.com/plans/interserver.net/38204. Recorded as history rather than as a live plan: a full cabinet from this operator is quote-only as of the capture date, and the withdrawal of the cheapest full-cabinet tier while the shared tiers repriced upward is itself a market observation about power economics in this metro."
+
+data interserver_retail_rates: RetailRateStanding = RatesPublished {
+  plans_note: "Quarter and half shared-rack tiers published with prices, power allocations, transit and IP counts; full cabinet withdrawn from publication 2026-05-17 and presumed quote-only.",
+}

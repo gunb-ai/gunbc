@@ -39,17 +39,48 @@ import v2.std.text { String }
 // emitted where an arrow return was declared), so witnesses red against those defects now agree.
 // That run named 57; the other 5 had already been removed on main by the time it landed. The count is NOT the whole population affected, and the rest is stated
 // exactly here rather than left to the waves: 38 modules were relocated carrying 429 `test fn`
-// declarations. Of those 429 rows, 111 were enrolled here (the 469 -> 358 delta), 111 were
-// observed over budget or failing (102 budget_refused pre-quarantine, 8 tipped in 32189985063,
-// 1 straggler in 32193032348), and the remaining 207 are healthy witnesses enrolled nowhere,
-// which no number in this file counts. They return when their module does.
+// declarations. THE PARTITION MUST BE DISJOINT, and an earlier revision of this block was not:
+// it read "111 enrolled, 111 over-budget, 207 healthy", which sums to 429 only by counting the
+// 102 rows that are BOTH enrolled here AND over budget on both sides of the sum. Enrolment and
+// cost are independent axes, so the partition is taken on enrolment and the cost facts are
+// stated inside each part:
 //
-// The three figures above are checkable against the tree and the run counters, and they are
-// stated because the earlier revision of this line said 361 while the roster carried 358, said
-// 108 where the delta is 111, and described its collateral as "roughly 200". A bounded
-// population is the one thing a rung drop must not round: sharp-raven-273's monotone-shrink
-// wall reads this carrier as its baseline, so a stale count here is load-bearing for work
-// that is not mine. Found by tidy-lark-471's external review, not by me.
+//   111 enrolled here and removed (the 469 -> 358 delta), which the pre-quarantine run
+//       32177951514 partitions exactly -- 469 = 367 held red + 97 budget-refused + 5 passed
+//       over budget -- so the 111 are 9 held red, 97 budget-refused, and all 5 passed-over-budget.
+//     5 unenrolled and budget-refused.
+//
+//   97 AND 102 ARE BOTH CORRECT AND NAME DIFFERENT SETS, which is what made the earlier
+//   accounts read as contradictory; neither may be written as a bare `budget_refused`:
+//     budget-interrupted identities, global                    102
+//       enrolled here AND budget-interrupted                    97
+//       unenrolled AND budget-interrupted                        5
+//     enrolled here AND completed-over-budget (stale_quarantine)  5
+//   313 passing when they were relocated, enrolled nowhere, counted by no number in this file.
+//       NINE of those later tipped over the ceiling once wave 1 removed the slow head (8 in
+//       32186963581, 1 straggler in 32193032348), so 304 have never been observed over budget.
+//       THE EIGHT ARE 32186963581, not 32189985063, and the counters decide it without reading
+//       any prose: 32186963581 failed=8 known_red_held=361, 32189985063 failed=1
+//       known_red_held=358, 32193032348 failed=1 known_red_held=358. Only one run observed
+//       eight. The wrong id survived three rewrites of this block including mine, while the
+//       SECOND WAVE paragraph below named the right one the whole time -- one file, two
+//       accounts of one population, which is why the run counters and not the neighbouring
+//       sentence are the authority here.
+//
+//   111 + 5 + 313 = 429. Independently: `grep -c '^test fn'` over the 38 relocated modules is
+//   also 429, and differencing the two floor runs gives the same split (below).
+//
+// THE PROBLEM POPULATION IS NOT ONE NUMBER EITHER, which is why several circulated at once:
+// 107 rows were over budget or failing at quarantine time (102 budget-refused + 5 passed over
+// budget), and 116 including the 9 that tipped afterwards. 102 is the interrupted rows alone.
+//
+// The figures above are checkable against the tree and the run counters, and they are stated
+// because the earlier revision of this line said 361 while the roster carried 358, said 108
+// where the delta is 111, and described its collateral as "roughly 200". A bounded population
+// is the one thing a rung drop must not round: sharp-raven-273's monotone-shrink wall reads
+// this carrier as its baseline, so a stale count here is load-bearing for work that is not
+// mine. The 358/111 corrections are tidy-lark-471's external review; the disjointness and the
+// per-part cost split are royal-hawk-392's.
 //
 // HISTORY: cut at 820 on tree 380c242c79a; 25 were removed after the first complete
 // run on main (611fd027708) observed them PASSING and red the build naming themselves, which is the
@@ -96,6 +127,37 @@ import v2.std.text { String }
 //       roadmap_page_witness 29, live_read_classification 17, add_arrow_eval_by_execution 13.
 // Nothing refuses on their absence. Nothing counts them. That is why they are written here.
 //
+// A JOIN AGAINST THE DEFERRAL FREEZE, AND THE INFERENCE I DREW FROM IT WAS WRONG (recorded
+// 2026-08-19, corrected the same day by still-wolf-510 against a live run). The join is real:
+// this roster and gunbc.witness_deferral_freeze name the same identities in 38-40 places
+// depending on the head. What I concluded from it -- that those rows can never leave, because
+// nothing executes them, so the self-emptying rule can never fire -- IS FALSE, and it was an
+// assumption about a mechanism I did not read.
+//
+// The required floor excludes by AUTHORED MODULE NAME via required_floor long_home_prefixes.
+// It does not consult the freeze at all. The freeze is an ADMISSION standing -- whether a row
+// may remain without an executing consumer -- and the floor gate tolerates
+// LegacyFrozenPathDeferral; it never suppresses execution. So a frozen path and a discovered
+// module are independent facts, and an identity can be both.
+//
+// MEASURED, on green main run 32201531653: planned=9022 executed=9022 passed=8664
+// known_red_held=358 failed=0, and the intersection's own members appear in that run's output
+// -- test.claim.ci_exclusion_proof.ci_exclusion_proof_sentinel reports FAILED in 13640ns, which
+// is a row executing and being held exactly as enrolled. These rows are evaluated every run and
+// can leave the moment they pass.
+//
+// SO THE DEFECT IS THE OTHER WAY ROUND, and it is smaller and mechanical: the freeze rows are
+// STALE. They assert path-deferral for identities that have an executing consumer -- the
+// required floor itself -- so the honest disposition is to retire those freeze rows with a
+// receipt, not to find the roster rows a cadence. The construction wall still earns its place,
+// because the intersection is a contradiction whichever way it is resolved and nothing detects
+// it today.
+//
+// KEPT RATHER THAN QUIETLY REWRITTEN because the error is this document's own subject: I joined
+// two carriers correctly and then read one carrier's meaning off its name instead of its
+// mechanism, which is exactly the stale-citation class DESIGN section 3 names, committed while
+// correcting three other people's counts in the same file.
+//
 // WHAT THIS IS NOT, stated because the shape is dangerous: this is NOT the self-emptying rule.
 // Every other removal from this roster came from OBSERVING a pass. These rows were removed by
 // relocation, and a roster that silently went 469 -> 361 is indistinguishable, to every
@@ -132,14 +194,108 @@ import v2.std.text { String }
 // exceeds by 42x. The measurement was a lower bound and I read it as a value. Its 3 witnesses
 // leave with it; no roster row named it, so the relocation left the roster at 358 (306 after the #8460 removals).
 //
+// THE SECOND DERIVATION, kept because a coverage-loss figure asserted once is exactly what this
+// declaration exists to prevent. Differencing the two floor runs on main reproduces the split
+// above from run counters alone, without reading the tree:
+//   pre  32177951514 @59653f569e  planned=9420 passed=8951 known_red=367 stale_quarantine=5 budget_refused=102
+//   post 32193032348 @6f3d374de0  planned=8997 passed=8638 known_red=358 stale_quarantine=0 budget_refused=0
+//   passed 313 + known_red 9 + budget_refused 102 + passed-over-budget 5 = 429.
+// The 6-identity gap against `planned` (9420 - 8997 = 423, not 429) is six identities that
+// LANDED between the two runs, in the three commits separating those heads. It is not a
+// discrepancy in this population, and it is stated so the next reader does not read 423 as the
+// answer.
+//
+// WHAT IS STILL NOT DERIVED, named rather than left to be assumed: which INDIVIDUAL identities
+// make up the 313. The figures above are exact in aggregate and unavailable at identity grain,
+// because the floor reports per-identity outcomes only as log lines and a scraped log is not an
+// oracle. Closing that needs the floor to emit an identity-grained receipt, not a better scrape.
+// So this block is SUPPORTING EVIDENCE for that receipt, not a substitute for it.
+//
+// AND `budget_refused=0` ON THE POST RUN IS NOT THE POPULATION DISAPPEARING. It means the floor
+// stopped executing it. The 116 identities that were ever observed over budget or failing are
+// still owed a remeasurement, at identity grain, against a cause -- not a green counter.
+//
+// A COST FIGURE HERE IS NOT A PROPERTY OF ITS WITNESS WHEN AN UNREPORTED LAZY SHARED FILL IS IN
+// PLAY, and this quarantine proved it by accident.
+// test.claim.emitter_nested_refinement_cast_witness_test
+// single_refinement_carrier_emits_no_unsupported_cast cost 746ms on the pre run and 45941ms on
+// the post run, unchanged in itself; its sibling in the same file costs 763ms. The relocated
+// modules included every earlier caller of `compile_dag_rust_emit_check`, so the one-time
+// `build_module_path_index_from_witness_roots` construction relocated onto the first surviving
+// caller and that row became main's only failure.
+//
+// THE LAW IS NARROW, and stating it wider was this note's own first error (operator ruling,
+// 2026-08-18): a restoration receipt is confounded WHEN CHANGING THE POPULATION CHANGES WHICH
+// CLAIM PAYS AN UNREPORTED LAZY SHARED FILL. It is NOT that every restoration is confounded
+// until every subject is prepared. Preparation is the remedy for THIS class -- process-scoped
+// lazy first-touch construction -- and #8470 already applied it to the concrete instance above
+// by paying the module-path index in floor preparation. It is not the remedy for closure
+// pollution, fixture/live-index coupling, repeated end-to-end crossings, duplicate coverage,
+// true whole-tree censuses, or genuinely size-scaling algorithmic cost, which are separate
+// classes with separate owning layers. The remaining members of the lazy-fill class are what
+// #8464's process-scoped cold-fill inventory is for, and they are the only ones this paragraph
+// speaks about.
+//
 // RESTORATION TRIGGER: the cost lane. Measured by three sessions independently on 2026-08-18,
 // the cost is the EVALUATION CONTEXT, not the witnesses -- a row taking 71s on the floor runs
-// in 70-85ms in isolation, a 12s row in 31ms, and dag_arrow_lambda rebuilds a 6,230-line
-// grammar once per witness for 3-line sources because each claim gets a fresh frame by design.
-// No witness has yet been found that is genuinely slow. When a module's cost is repaired it
+// in 70-85ms in isolation, and a 12s row in 31ms.
+//
+// ONE CLAUSE OF THAT PARAGRAPH IS REFUTED BY EXECUTION (quiet-bee-353, 2026-08-19, gunbc#8478,
+// remote executor, release claim_batch). It read: "dag_arrow_lambda rebuilds a 6,230-line
+// grammar once per witness for 3-line sources because each claim gets a fresh frame by design."
+// Folding that file from nineteen grammar builds to two DID NOT PAY -- 210.9s for the two
+// folded claims against ~208s for the fourteen they replaced -- so the fold was reverted and
+// the file left byte-identical. Solving the terms out of those runs: a `dag_grammar()`
+// construction is ~0.5s and a single three-line parse through the interpreted frontend is ~12s.
+// The apparatus is not the cost; the parse is. The arrow row must therefore NOT be planned as a
+// witness-side repair, and twelve seconds to parse three lines is a frontend cost-shape defect
+// that is plausibly the real subject behind several rows in this quarantine rather than an
+// evaluation-context tax.
+//
+// SO "no witness has yet been found that is genuinely slow" IS NO LONGER ESTABLISHED, and this
+// line is corrected rather than deleted because the claim was load-bearing for how the whole
+// lane was planned: it licensed treating every relocated row as an apparatus problem. What is
+// still true is that the two measured extremes above are apparatus. What is not established is
+// that the residue is. When a module's cost is repaired it
 // returns to the floor WHOLE and its healthy siblings return with it, so the collateral
 // dissolves with work already scheduled rather than needing its own cleanup. This declaration
 // is deleted when the relocated population reaches zero.
+//
+// FIRST RESTORATION DECISION, 2026-08-19: NOT YET, and the module returns WHOLE when it does.
+// Recorded here because the session that declared this trigger is archived, so the next reader
+// would otherwise find a trigger with no one holding it and no account of what was already
+// decided against.
+//
+// The evidence offered was dag_arrow_lambda_witness_test, the densest parse-bearing module in
+// the relocated population: same instrument, same flags, same budget, merge base 2c65eeacf32
+// against a sync-token change. 12 of its 14 rows go 12237-14143ms to 193-555ms, 24x to 69x; the
+// module total goes 228167ms to 27876ms; rows under the 1552ms ceiling go 0 of 14 to 12 of 14.
+// The BEFORE column is the finding rather than the AFTER: fourteen rows parsing fourteen
+// DIFFERENT sources agreed within 14% of each other, which is not fourteen expensive witnesses,
+// it is one defect wearing fourteen names.
+//
+// Refused on two grounds, neither of them doubt about that measurement.
+//
+// FIRST, the AFTER column was measured on an unmerged branch head. Restoring against it would
+// baseline the roster on a tree that does not exist, and if that branch changes before it lands
+// the restoration rests on numbers nothing can reproduce. The trigger is repaired cost, and
+// cost is repaired when the repair is IN main.
+//
+// SECOND, and this one is the trigger's own words: a module "returns to the floor WHOLE". Two
+// of the fourteen are still over budget -- the first row pays the surviving preparation, and
+// pre_repair pays two because it builds a MODIFIED grammar and so legitimately owes a second.
+// Restoring twelve would split one file across two homes and mint a second module whose only
+// membership rule is a cost threshold, which is the directory deciding an admission question
+// (the 2026-08-04 ruling this file already cites). The correct wait is for the first-row
+// constant to fall, after which all fourteen clear together and the module moves once.
+//
+// AND THE MEASUREMENT THAT SHOULD PRECEDE THE NEXT ONE, for the other 37 modules rather than
+// this one: at least nine of the 38 were free riders that merely touched a shared corpus fill
+// first, so quarantining them relocated the bill to the next module instead of removing it --
+// watched changing hands on one cache key at identity grain. Floor observation noise is
+// RELATIVE and flat at 4-5%, p95 13.5%, so the audit question for a quarantine decision is
+// whether its observation sat within ~13.5% of the ceiling. Both decision runs behind the
+// second wave clear that test by a wide margin, at 27x and 30x the ceiling.
 
 // The rows are carried in fixed-size chunks and flattened, because one Cons chain 820 deep is a
 // parse-depth hazard, not because the chunk boundaries mean anything. They do not: a chunk is a

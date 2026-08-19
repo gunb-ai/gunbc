@@ -151,6 +151,7 @@ type DeploymentServiceConfig {
   unit_name: NonEmptyStr
   serve_binary: NonEmptyStr
   serve_function: NonEmptyStr
+  instance_root: NonEmptyStr
   repo_root: NonEmptyStr
   service_user: NonEmptyStr
   listen: HttpServerListenConfig
@@ -449,6 +450,7 @@ fn deployment_service_config(
     unit_name: names.unit_name,
     serve_binary: instance.serve_binary as String as NonEmptyStr,
     serve_function: instance.serve_function,
+    instance_root: instance.instance_root as String as NonEmptyStr,
     repo_root: instance.repo_root as String as NonEmptyStr,
     service_user: gunbc_service_user,
     listen: HttpServerListenConfig {

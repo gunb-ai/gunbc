@@ -1,0 +1,62 @@
+module extdeps.boards.supermicro
+
+import std.types { String, NonEmptyStr, Int }
+import std.nat { Nat }
+import std.measure { MegatransfersPerSecond, megatransfers_per_second }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+import extdeps.cpu.types { CpuSocket }
+import extdeps.cpu.ampere { ampere_lga4926_socket }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "www.supermicro.com/en/products/motherboard/r12spd-a"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.boards.supermicro",
+      decl_name: "supermicro_r12spd_a_mechanical",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// Supermicro R12SPD-A, read 2026-08-18 from the vendor product surface and quick-reference:
+// SINGLE-socket LGA 4926 for Ampere Altra AND Altra Max (up to 250 W TDP), with SIXTEEN
+// DDR4-3200 DIMM slots - eight channels at two DIMMs per channel on one socket, the
+// memory-richest single-socket geometry in this census. The form factor is PROPRIETARY
+// (Supermicro MegaDC), not ATX-family: chassis compatibility is a per-build obligation, not
+// an assumption. Module-local record on the mt_collins/asrock pattern.
+type SupermicroR12spdAMechanical {
+  board_label: NonEmptyStr
+  form_factor_label: NonEmptyStr
+  processor_socket_count: Nat
+  socket: CpuSocket
+  processor_support_label: NonEmptyStr
+  dimm_slots_total: Nat
+  dimms_per_channel: Nat
+  ddr4_max_data_rate: MegatransfersPerSecond
+  citation: NonEmptyStr
+}
+
+data supermicro_r12spd_a_mechanical: SupermicroR12spdAMechanical = SupermicroR12spdAMechanical {
+  board_label: "Supermicro R12SPD-A",
+  form_factor_label: "proprietary (Supermicro MegaDC family), not ATX-compatible",
+  processor_socket_count: 1,
+  socket: ampere_lga4926_socket,
+  processor_support_label: "LGA 4926, Ampere Altra / Altra Max up to 250 W TDP",
+  dimm_slots_total: 16,
+  dimms_per_channel: 2,
+  ddr4_max_data_rate: megatransfers_per_second(count: 3200),
+  citation: "supermicro.com R12SPD-A product page and quick-reference QRG-2483, read 2026-08-18",
+}
+
+data supermicro_r12spd_single_socket_note: NonEmptyStr = "The R12 name reads like a dual-socket family but the board is SINGLE socket - a pairing plan written as one board with two processors does not fit it; two processors means two boards. Recorded because exactly that misread occurred in planning before the vendor surface was checked."

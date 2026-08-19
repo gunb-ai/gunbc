@@ -1,0 +1,69 @@
+module extdeps.realestate.nj_industrial
+
+import std.types { NonEmptyStr, List }
+import std.nat { Nat }
+import std.measure { MoneyPerMonth, MoneyPerSquareFootYear, money_amount_micro, SquareFoot, square_foot }
+import std.currency { Usd }
+import std.decl_ref { DeclarationRef, WholeDeclaration }
+
+import extdeps.external_authority { ExternalAuthority, ExternalModelScope, ExternalSubjectRef }
+import extdeps.uri { Uri, Https }
+
+data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
+  uri: Uri {
+    scheme: Https
+    locator: "warecre.com/properties/north-jersey/"
+  }
+}
+
+data extdeps_model_scope: ExternalModelScope = ExternalModelScope {
+  subject: ExternalSubjectRef {
+    declaration: DeclarationRef {
+      module_path: "extdeps.realestate.nj_industrial",
+      decl_name: "nj_industrial_market_snapshot",
+      field: WholeDeclaration
+    }
+  },
+  first_citation: extdeps_external_authority_anchor,
+  further_citations: []
+}
+
+// Market-aggregate readings and specimen listings for northern New Jersey light-industrial /
+// flex / small-bay warehouse space, read 2026-08-18. Each row carries its own citation and
+// source grade; the aggregates are broker/aggregator reads, never a contract rate. Rents in
+// this market are quoted in USD per square foot per YEAR; the specimen rows below convert to
+// a monthly figure only where the listing itself quoted monthly.
+
+type AnnualRentPerSqftMicro {
+  asking_rent: MoneyPerSquareFootYear
+  basis_note: NonEmptyStr
+  citation: NonEmptyStr
+}
+
+type IndustrialListingSpecimen {
+  listing_label: NonEmptyStr
+  municipality: NonEmptyStr
+  floor_area: SquareFoot
+  monthly_rent: MoneyPerMonth
+  power_note: NonEmptyStr
+  citation: NonEmptyStr
+}
+
+data nj_industrial_market_snapshot: AnnualRentPerSqftMicro = AnnualRentPerSqftMicro {
+  asking_rent: MoneyPerSquareFootYear { amount: money_amount_micro(count: 14000000), currency: Usd },
+  basis_note: "statewide New Jersey industrial average asking rent, aggregator read; northern-NJ port-adjacent submarkets quote above this and small-bay product is the tightest segment (sub-5-percent vacancy per the same read, against 9.6 percent statewide) - so the figure is a floor for the target corridor, not an estimate of any specific bay",
+  citation: "tenantbase.com 2026 industrial cost survey + warecre.com market notes, read 2026-08-18; aggregator grade, superseded by any actual listing or quote",
+}
+
+data belleville_specimen: IndustrialListingSpecimen = IndustrialListingSpecimen {
+  listing_label: "522 Cortlandt St, Belleville - whole-building warehouse",
+  municipality: "Belleville",
+  floor_area: square_foot(count: 9200),
+  monthly_rent: MoneyPerMonth { amount: money_amount_micro(count: 11000000000), currency: Usd },
+  power_note: "no electrical service figures published in the listing read; amperage, voltage, and phase are a per-listing question and load-bearing for any compute use",
+  citation: "warecre.com north-jersey listings, read 2026-08-18; computes to about 14.35 USD per sqft-year, consistent with the statewide aggregate row",
+}
+
+data readyspaces_smallbay_note: NonEmptyStr = "ReadySpaces (co-warehousing operator; Kearny 35 O'Brien St, North Bergen 7001 Anpesil Dr, Saddle Brook 575 N Midland Ave) publishes small flex bays of 80 to 1,500 sqft at roughly 960 to 4,110 USD per month, read 2026-08-18 from warecre.com listings. At the specimen extremes that is roughly 34 or more USD per sqft-year - a 2x-plus premium over raw leased industrial, paying for month-to-month terms and shared amenities. Carried as a market observation: the co-warehousing product is shared space without tenant-controlled 24/7 power or cooling density, so it prices the flexibility ceiling of the market rather than being a plausible compute host."
+
+data lease_shape_obligation: NonEmptyStr = "None of the listings read on 2026-08-18 stated lease type (NNN versus modified gross versus gross), tenant electrical capacity, HVAC condition, or landlord consent posture for continuous-load equipment. Every one of those is a per-listing quote question; an NNN rent understates occupancy cost by taxes, insurance, and CAM, which in this market commonly add 3 to 5 USD per sqft-year - a range that is itself an aggregator recollection and must be replaced by the actual listing's figures."

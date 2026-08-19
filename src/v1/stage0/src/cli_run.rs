@@ -3511,6 +3511,12 @@ fn compile_clean_scoping_active() -> bool {
 
 pub const CLASS_B_ENTRY_REL: &str = "src/v2/extdeps/languages/rust_test_fixtures.dag";
 pub const CLASS_B_TRANSPORT_REL: &str = "src/v2/workflow/class_b_import_closure_transport.dag";
+/// Rows 1-2's shape+call, relocated out of CLASS_B_TRANSPORT_REL so a witness reaching only
+/// rows 1-2 does not inherit the transport module's extdeps.git / extdeps.git.inspect /
+/// gunbc.ci_layer_roots closure (DESIGN.md §3 relocation-not-refork; the same signature
+/// extdeps_scope_placement_gate_loudness_witness's repair fixed). The transport module imports
+/// this one back for rows 1-2's own use, so it is part of the gate's input closure too.
+pub const CLASS_B_PROBE_REL: &str = "src/v2/workflow/class_b_import_closure_probe.dag";
 pub const CLASS_B_BINDING_REL: &str = "dag/gunbc/declared_import_closure_binding.dag";
 pub const CLASS_B_OVERLAY_REL: &str = "dag/gunbc/class_b_import_closure_overlay.dag";
 pub const CLASS_B_FIXTURES_PREFIX: &str = "fixtures/class_b_import_closure";
@@ -3519,6 +3525,7 @@ const CLASS_B_DECLARED_POOL_ROOTS_DATA_NAME: &str = "class_b_declared_import_poo
 pub const CLASS_B_GATE_INPUT_ENTRIES: &[&str] = &[
     CLASS_B_ENTRY_REL,
     CLASS_B_TRANSPORT_REL,
+    CLASS_B_PROBE_REL,
     CLASS_B_BINDING_REL,
     CLASS_B_OVERLAY_REL,
 ];
@@ -6276,7 +6283,7 @@ pub fn load_sources_for_entry(
     source_roots: &[String],
     entry_path: &str,
 ) -> Result<Vec<Rc<v1_compiler_compile::SourceFile>>, String> {
-    let index = build_multi_entry_index(source_roots);
+    let index = process_shared_index(source_roots);
     load_sources_for_entry_with_pool(&index, entry_path)
 }
 
@@ -18784,9 +18791,9 @@ fn frozen_path_deferral_keys() -> &'static [String] {
     })
 }
 
-fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
+fn frozen_path_deferral_rows_from_source(content: &str) -> Vec<(String, Vec<String>)> {
     const HEAD: &str = "FrozenPathDeferral {";
-    let mut keys: Vec<String> = Vec::new();
+    let mut rows: Vec<(String, Vec<String>)> = Vec::new();
     let mut cursor = 0usize;
     while let Some(offset) = content[cursor..].find(HEAD) {
         let at = cursor + offset;
@@ -18815,6 +18822,14 @@ fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
                  function list — a freeze row covering nothing is a row that should be deleted"
             );
         }
+        rows.push((entry, functions));
+    }
+    rows
+}
+
+fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
+    let mut keys: Vec<String> = Vec::new();
+    for (entry, functions) in frozen_path_deferral_rows_from_source(content) {
         for function in functions {
             let key = witness_admission_manifest_key(&entry, &function);
             if !keys.iter().any(|k| k == &key) {
@@ -18823,6 +18838,97 @@ fn frozen_path_deferral_keys_from_source(content: &str) -> Vec<String> {
         }
     }
     keys
+}
+
+/// The same freeze rows, joined against the ENROLLED-ROSTER identity space instead of the
+/// admission-key space: `module.function` (as `floor_expected_red_roster` writes it) rather
+/// than `entry::function` (as `witness_admission_manifest_key` writes it). Two different keys
+/// over the same two facts, kept as two functions rather than one that returns both — a caller
+/// asking "is this frozen?" wants the admission key; a caller asking "is this row also known-red?"
+/// wants the qualified name, and conflating them would let a shape mismatch hide a real miss.
+///
+/// The module name is read from each entry file's own `module ...` line (`extract_module_path`),
+/// the same authority `run_required_floor` reads for every other qualified name it reports — not
+/// re-derived from the path string, which would silently diverge from the interpreter's own
+/// binding the day a file's module line stops matching its directory.
+fn frozen_path_deferral_qualified_identities_from_source(
+    content: &str,
+    root: &std::path::Path,
+) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for (entry, functions) in frozen_path_deferral_rows_from_source(content) {
+        let file_content = match std::fs::read_to_string(root.join(&entry)) {
+            Ok(c) => c,
+            // A frozen row naming a file the tree no longer carries is stale-path debt, not a
+            // roster-intersection question — `collect_stale_frozen_path_deferrals` already owns
+            // that disposition, so this join skips it rather than panicking a second authority.
+            Err(_) => continue,
+        };
+        let module = match extract_module_path(&file_content) {
+            Some(m) => m,
+            None => continue,
+        };
+        for function in functions {
+            out.push((entry.clone(), format!("{module}.{function}")));
+        }
+    }
+    out
+}
+
+/// The contradictory-intersection wall's pure decision: which frozen (entry, qualified-name)
+/// rows also name an identity enrolled in `floor_expected_red_roster`. Pure and side-effect-free
+/// so it is testable without a corpus checkout or a git repository — the file-reading half
+/// (`frozen_path_deferral_qualified_identities_from_source`) and the git-head half
+/// (`current_git_head_or_unresolved`) are kept out of it deliberately.
+fn expected_red_freeze_intersection(
+    frozen_qualified: &[(String, String)],
+    expected_red_roster: &HashSet<String>,
+) -> Vec<(String, String)> {
+    let mut colliding: Vec<(String, String)> = frozen_qualified
+        .iter()
+        .filter(|(_, qualified)| expected_red_roster.contains(qualified))
+        .cloned()
+        .collect();
+    colliding.sort();
+    colliding.dedup();
+    colliding
+}
+
+fn current_git_head_or_unresolved() -> String {
+    std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|| "HEAD-unresolved".to_string())
+}
+
+fn format_expected_red_freeze_intersection_refusal(
+    colliding: &[(String, String)],
+    head: &str,
+) -> String {
+    let mut detail = String::new();
+    for (entry, qualified) in colliding {
+        detail.push_str(&format!("\n  - {qualified} (frozen via entry \"{entry}\")"));
+    }
+    format!(
+        "REQUIRED-FLOOR REFUSAL cause=ExpectedRedFreezeIntersection count={} head={head} — {} \
+         identity(ies) are simultaneously enrolled in \
+         v2.workflow.floor_expected_red.floor_expected_red_roster (known-red, removable only by \
+         an observed pass) AND path-deferred in dag/gunbc/witness_deferral_freeze.dag \
+         frozen_path_deferrals (LegacyFrozenPathDeferral, admitted as never-executed). Both \
+         claims cannot hold of one identity: this roster's own did-not-execute check below \
+         proves every enrolled row here DOES execute, so the freeze row is stale evidence, not a \
+         live exemption. This count is bound to the head above — measure again at merge time, \
+         never cite it bare. Disposition: retire the frozen_path_deferrals row (it already has \
+         an executing consumer — this required floor) with a receipt in \
+         witness_deferral_freeze.dag's shrink log, or if the identity is not genuinely \
+         executing, fix floor_expected_red_roster/required_floor's admission instead of leaving \
+         the contradiction standing. Colliding identities:{detail}",
+        colliding.len(),
+        colliding.len()
+    )
 }
 
 fn quoted_after_field(text: &str, field: &str) -> Option<String> {
@@ -25546,6 +25652,100 @@ mod node_frontier_plumbing_controls {
         );
     }
 
+    // The contradictory-intersection wall's file-reading half: an entry path resolves through
+    // its own `module ...` line, not through the path string, and a frozen row naming a file the
+    // tree does not carry is skipped here (that disposition belongs to
+    // `collect_stale_frozen_path_deferrals`) rather than panicking a second authority.
+    #[test]
+    fn frozen_path_deferral_qualified_identities_reads_the_entrys_own_module_line() {
+        let dir = std::env::temp_dir().join(format!(
+            "gunbc_freeze_qualified_{}_{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(dir.join("test/claim")).expect("mkdir fixture root");
+        std::fs::write(
+            dir.join("test/claim/one_test.dag"),
+            "module test.claim.one\n\nfn x_holds() -> Bool { true }\n",
+        )
+        .expect("write fixture entry");
+        let source = concat!(
+            "data frozen_path_deferrals: List<FrozenPathDeferral> = [\n",
+            "  FrozenPathDeferral { entry: \"test/claim/one_test.dag\", functions: [\"x_holds\"] },\n",
+            "  FrozenPathDeferral { entry: \"test/claim/missing_test.dag\", functions: [\"y_holds\"] },\n",
+            "]\n"
+        );
+        let qualified = super::frozen_path_deferral_qualified_identities_from_source(source, &dir);
+        assert_eq!(
+            qualified,
+            vec![(
+                "test/claim/one_test.dag".to_string(),
+                "test.claim.one.x_holds".to_string()
+            )],
+            "the missing entry is skipped, not panicked, and the module line — not the path — \
+             names the qualified identity"
+        );
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    // DISCRIMINATING RED: a frozen row whose qualified identity is also enrolled in
+    // floor_expected_red_roster must be caught, by identity, not by count — planting one
+    // colliding row beside one non-colliding row proves the join is selective rather than
+    // vacuously "any freeze row plus any roster makes a hit."
+    #[test]
+    fn expected_red_freeze_intersection_catches_the_planted_collision() {
+        let frozen = vec![
+            (
+                "test/claim/known_red_test.dag".to_string(),
+                "test.claim.known_red.stays_red_holds".to_string(),
+            ),
+            (
+                "test/claim/other_test.dag".to_string(),
+                "test.claim.other.unrelated_holds".to_string(),
+            ),
+        ];
+        let mut roster: std::collections::HashSet<String> = std::collections::HashSet::new();
+        roster.insert("test.claim.known_red.stays_red_holds".to_string());
+        roster.insert("test.claim.some_third_thing.holds".to_string());
+
+        let colliding = super::expected_red_freeze_intersection(&frozen, &roster);
+        assert_eq!(
+            colliding,
+            vec![(
+                "test/claim/known_red_test.dag".to_string(),
+                "test.claim.known_red.stays_red_holds".to_string()
+            )],
+            "only the row present in BOTH rosters collides — the unrelated frozen row and the \
+             unrelated roster entry must not appear"
+        );
+
+        let refusal =
+            super::format_expected_red_freeze_intersection_refusal(&colliding, "deadbeef");
+        assert!(refusal.contains("cause=ExpectedRedFreezeIntersection"));
+        assert!(refusal.contains("count=1"));
+        assert!(refusal.contains("head=deadbeef"));
+        assert!(refusal.contains("test.claim.known_red.stays_red_holds"));
+        assert!(
+            !refusal.contains("test.claim.other.unrelated_holds"),
+            "the refusal must name exactly the colliding identities, not the whole frozen roster"
+        );
+    }
+
+    // POSITIVE CONTROL: disjoint rosters must produce no collision and no refusal text — the
+    // wall's ordinary, contradiction-free path stays silent rather than firing on every run.
+    #[test]
+    fn expected_red_freeze_intersection_is_empty_when_rosters_are_disjoint() {
+        let frozen = vec![(
+            "test/claim/other_test.dag".to_string(),
+            "test.claim.other.unrelated_holds".to_string(),
+        )];
+        let mut roster: std::collections::HashSet<String> = std::collections::HashSet::new();
+        roster.insert("test.claim.some_third_thing.holds".to_string());
+
+        let colliding = super::expected_red_freeze_intersection(&frozen, &roster);
+        assert!(colliding.is_empty(), "{colliding:?}");
+    }
+
     // The freeze's second direction, live: every frozen identity must still exist in the tree and
     // still be offline-classified. This is an identity join, never a count — a size comparison
     // would go green on any pair of compensating edits.
@@ -30340,7 +30540,7 @@ fn commit_witness_field_str(
 
 fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String> {
     let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
+    let index = process_shared_index(&roots);
     let (graph, source_indices) = resolve_entry_with_index(&index, COMMIT_WORKFLOW_ENTRY)?;
     let ctx = make_eval_context(
         &graph,
@@ -30354,7 +30554,7 @@ fn ci_floor_commit_witness_claim_pairs() -> Result<Vec<(String, String)>, String
 
 pub fn commit_witness_claim_pair_resolvable(entry: &str, function: &str) -> bool {
     let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
+    let index = process_shared_index(&roots);
     let mut entry_cache = std::collections::HashMap::new();
     matches!(
         commit_witness_claim_pair_resolvability_with_index(
@@ -30448,7 +30648,7 @@ pub fn commit_witness_claim_roster_defects() -> Vec<(String, String, String)> {
         )];
     };
     let roots = witness_layer_roots();
-    let index = build_multi_entry_index(&roots);
+    let index = process_shared_index(&roots);
     let mut entry_cache = std::collections::HashMap::new();
     let mut defects = Vec::new();
     for (entry, function) in pairs {
@@ -39468,6 +39668,45 @@ pub fn run_required_floor(
         index_warm_started.elapsed().as_millis(),
         warmed_modules
     );
+    // WARM THE SHARED MultiEntryIndex HERE, for the same reason as the module-path index
+    // above: otherwise ONE ARBITRARY CLAIM PAYS FOR IT (witness cost class 2).
+    //
+    // `commit_witness_claim_pair_resolvable` (the commit-witness roster's host arm, and its
+    // sibling `ci_floor_commit_witness_claim_pairs` / `commit_witness_claim_roster_defects`)
+    // used to call `build_multi_entry_index(&roots)` directly instead of going through
+    // `process_shared_index`, the existing thread-local shared-index cache every other
+    // production call site already uses (`resolve_entry_graph_shared` and friends). That
+    // meant every one of those functions re-walked and re-parsed the whole witness corpus on
+    // EVERY call, uncached — even though `process_shared_index` would have served the same
+    // `MultiEntryIndex` for free after the first build.
+    //
+    // MEASURED: `commit_witness_claim_pair_resolvable`, invoked exactly once by
+    // `commit_witness_claim_roster_red_control_holds` (the fast-lane RED control for the
+    // synthetic stale (entry, function) pair), cost 62.7-83.0s for that single call — the
+    // full one-time corpus walk+parse billed against one witness with a ~1-5s ceiling. As
+    // with the module-path index, quarantining the victim does not remove the cost, it only
+    // relocates it onto whichever claim runs next.
+    //
+    // The three call sites were switched to `process_shared_index(&roots)` (this fix); this
+    // warm call additionally ensures the shared cache is already hot before the per-claim
+    // loop starts, so the cost is paid here, in preparation, rather than by whichever claim
+    // happens to touch it first. `witness_layer_roots()` is the exact roots value all three
+    // call sites resolve internally (not the `source_roots` parameter above), so the roots
+    // key here must match theirs; `canonical_shared_index_roots` normalizes relative and
+    // absolute forms to the same key regardless.
+    //
+    // dissolve-on: same as the module-path-index warm above — when the shared index derives
+    // from the prepared inventory instead of a second disk walk, this warm call becomes
+    // unnecessary rather than merely redundant, because there is no second authority to warm.
+    let shared_index_warm_started = std::time::Instant::now();
+    let warmed_shared_index_modules = process_shared_index(&witness_layer_roots())
+        .source_files
+        .len();
+    eprintln!(
+        "[floor-phase] phase=shared-index-warm state=completed wall_ms={} modules={}",
+        shared_index_warm_started.elapsed().as_millis(),
+        warmed_shared_index_modules
+    );
     let prepare_ms = prepare_started.elapsed().as_millis();
     eprintln!(
         "floor: active sources = {}",
@@ -39890,6 +40129,37 @@ pub fn run_required_floor(
         "[floor-known-red] roster carries {} enrolled identity(ies)",
         expected_red_roster.len()
     );
+
+    // CONTRADICTORY-INTERSECTION WALL: `floor_expected_red_roster` (this roster — removable
+    // only by an OBSERVED PASS, per its own header) and `witness_deferral_freeze`'s
+    // `frozen_path_deferrals` (`LegacyFrozenPathDeferral` — admitted as NEVER EXECUTED) make
+    // opposite claims about the same identity. Both cannot be true of one row: an identity that
+    // executes here (as every enrolled row must, on pain of `ExpectedRedIdentityDidNotExecute`
+    // below) is proof the freeze's classification for it is stale, and an identity that is
+    // genuinely never executed cannot legitimately be "known red, awaiting an observed pass" —
+    // there is no pass to observe. Construction, not validation (DESIGN.md §5): the two rosters
+    // are cross-referenced from their own source authorities on every required-floor run, so the
+    // contradiction cannot re-accumulate silently the way it did before this wall existed.
+    {
+        let freeze_content = std::fs::read_to_string(
+            workspace_root().join(WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL),
+        )
+        .map_err(|e| {
+            format!("witness deferral freeze: failed to read {WITNESS_DEFERRAL_FREEZE_AUTHORITY_REL}: {e}")
+        })?;
+        let frozen_qualified = frozen_path_deferral_qualified_identities_from_source(
+            &freeze_content,
+            &workspace_root(),
+        );
+        let colliding = expected_red_freeze_intersection(&frozen_qualified, &expected_red_roster);
+        if !colliding.is_empty() {
+            let head = current_git_head_or_unresolved();
+            return Err(format_expected_red_freeze_intersection_refusal(
+                &colliding, &head,
+            ));
+        }
+    }
+
     let roster_join_path = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN").ok();
     let roster_join_only = std::env::var("GUNBC_EXPECTED_RED_ROSTER_JOIN_ONLY")
         .ok()
@@ -40363,11 +40633,49 @@ pub fn run_required_floor(
                 budget_ms,
                 kind,
                 completion,
-            } => outcome.failures.push(format!(
-                "{} exceeded its {kind:?} budget (cost is {} {elapsed_ms}ms against {budget_ms}ms)",
-                claim.qualified,
-                completion.elapsed_reading()
-            )),
+                // AND AN UNENROLLED BUDGET REFUSAL IS NOT A DEFECT EITHER. The enrolled arm above
+                // already rules that a budget refusal produces no verdict and therefore is not a
+                // failure; that fact is a property of the interruption, not of the roster, so it
+                // holds identically for a row nobody enrolled. Reporting it in `failures` said the
+                // opposite — `failures` is the channel whose remedy is "fix the defect", and it is
+                // what the alert signature reads to distinguish a regression from a cost debt. A
+                // row that was preempted before answering has no defect to fix and may well be
+                // passing, so routing it here made an unmeasured cost indistinguishable from a
+                // broken witness, in the direction that manufactures alarm.
+                //
+                // The consequence this closes is concrete: a row that PASSES and exceeds its budget
+                // had no honest state anywhere. Enrolled, it asserted an expected failure that does
+                // not occur and reported twice. Unenrolled, it landed here and read as a defect.
+                // Cost is not a verdict, so the verdict channels cannot carry it — and now they do
+                // not. The line still stops, because the cost is still owed; it stops saying the
+                // true thing about why.
+                // TWO READINGS, AND THEY ARE NOT THE SAME CLAIM. `Interrupted` means the deadline
+                // fired before the witness answered: no verdict exists, the figure is a LOWER BOUND
+                // and the row's real cost is unmeasured. `CompletedOverBudget` means the witness ran
+                // to completion and then was found over budget: the verdict IS known and the figure
+                // is EXACT. Printing one sentence for both would repeat the conflation this arm
+                // exists to remove — asserting "correctness unknown" over a row that demonstrably
+                // answered is as wrong as calling a cost a defect.
+            } => outcome.budget_refused.push(match completion {
+                BudgetCompletion::Interrupted => format!(
+                    "{} was BUDGET-REFUSED and went UNDECIDED: {kind:?}, cost at least \
+                     {elapsed_ms}ms against {budget_ms}ms. Not enrolled as expected-red, so \
+                     nothing claims it is broken — but the deadline preempted the verdict, so \
+                     whether it passes is UNKNOWN and its real cost is UNMEASURED: the figure \
+                     is the interrupt point, not this row's cost. Reduce the cost, or move it \
+                     to a lane declaring its own ceiling, so the witness reaches a verdict.",
+                    claim.qualified
+                ),
+                BudgetCompletion::CompletedOverBudget => format!(
+                    "{} reached its verdict and then exceeded its budget: {kind:?}, cost \
+                     exactly {elapsed_ms}ms against {budget_ms}ms. The witness ran to \
+                     completion, so this is a measurement rather than a bound and the cost is \
+                     known and actionable. This is a cost debt only — it is not a defect and \
+                     it does not belong on the expected-red roster, which asserts an expected \
+                     FAILURE this row does not exhibit.",
+                    claim.qualified
+                ),
+            }),
         }
     }
     outcome.receipt_identities = receipted.len();

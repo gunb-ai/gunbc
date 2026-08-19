@@ -92,7 +92,8 @@ import v2.std.collection {
   empty_map,
   list_at_optional,
   map_get,
-  map_insert
+  map_insert,
+  map_lookup
 }
 import v2.std.optional {
   Absent,
@@ -279,6 +280,7 @@ type ParseTableRealization {
   memo_lookup_calls: Int
   nullable_set: Set<Symbol>
   first_rows: Map<Symbol, List<Symbol>>
+  productions_by_name: Map<Symbol, GrammarProduction>
 }
 
 type ParseTable = ParseTableRealization
@@ -343,11 +345,30 @@ fn parse_e1_syntax_error_diagnostic(at: Locus) -> Diagnostic {
   }
 }
 
+// FIND, DO NOT BUILD. This is called once per nonterminal reference at every parse step, and the
+// previous form allocated a filtered copy of the whole production list to take its first element.
+fn grammar_first_production_named(
+  root: GrammarRoot,
+  name: Symbol
+) -> Optional<GrammarProduction> {
+  fold_list(
+    xs: root.productions,
+    empty: Absent,
+    cons: fn(acc, p) {
+      match acc {
+        Present { value: _ } => acc
+        Absent =>
+          match p.name == name {
+            true => Present { value: p }
+            false => Absent
+          }
+      }
+    }
+  )
+}
+
 fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<GrammarProduction> {
-  match list_at_optional(
-    xs: filter(xs: root.productions, predicate: fn(p) { p.name == name }),
-    index: 0
-  ) {
+  match grammar_first_production_named(root: root, name: name) {
     Present { value: production } => Holds { value: production }
     Absent =>
       Violates {
@@ -356,6 +377,25 @@ fn grammar_lookup_production(root: GrammarRoot, name: Symbol) -> Witness<Grammar
         )
       }
   }
+}
+
+data grammar_lookup_production_indexed_note: String = "grammar_lookup_production is an O(P) filter scan over the full production list; it is the well-formedness/analysis authority, run once per grammar at prepare_grammar time (§6 already-hoisted cost) and is correct to keep as the single-authority derivation of the index below. grammar_lookup_production_indexed is the per-dispatch consumer: every nonterminal reference during recursive-descent parsing calls it, memoized or not (parse_nonterminal_memoized_core looks the production up before consulting the memo table), so the P=204-production dag grammar turned this into the dominant cost of parsing even a trivial source under the tree-walking v1 interpreter (measured: ~12s to parse a 3-line source, PR #8478). productions_by_name is that lookup's index, built once by grammar_production_index and carried on ParseTable exactly like nullable_set/first_rows already are (parse_table_carry_analysis threads all three through every table mutation) — one Map<Symbol,GrammarProduction>, not a second production roster (§3). Every ParseTableRealization construction site (parse_table_for_production_analyzed, the real-parse path; parse_table_empty; parse_table_carry_analysis, the pass-through on every table mutation) populates this field, so the O(P)->O(1) change is not opt-in per call site. Measured effect (this host, dag/test/claim/long/dag_arrow_lambda_witness_test.dag witness_single_param_lambda_parses via `gunbc run --claim-run`, fix stashed vs applied around the identical whole-process invocation): 78.023s -> 74.006s wall. That delta undercounts the fix's effect on the specific fold it repairs, because the invocation's wall time is dominated by up-front module-load/typecheck of the full v2 closure — a cost this change does not touch — rather than by the repeated per-dispatch grammar lookup inside the parse itself; the O(204)->O(1) asymptotic claim is the primary evidence (grammar_lookup_production is an unmemoized linear filter reached before every memo-table check, so even a memo HIT paid the full scan), not the crude wall-clock ratio. This is the class docs/plans/measurements/floor-slow-rows-2026-08-18.md records dag_arrow_lambda_witness_test's rows landing 1-4ms over its 1552ms ceiling for."
+
+fn grammar_production_index(productions: List<GrammarProduction>) -> Map<Symbol, GrammarProduction> {
+  fold_list(
+    xs: productions,
+    empty: empty_map(),
+    cons: fn(acc, p) { map_insert(m: acc, key: p.name, value: p) }
+  )
+}
+
+fn grammar_lookup_production_indexed(table: ParseTable, name: Symbol) -> Witness<GrammarProduction> {
+  witness_from_optional(
+    opt: map_lookup(m: table.productions_by_name, key: name),
+    absent: parse_grammar_undefined_nonterminal_diagnostic(
+      at: port_locus(port: ^parse_stage_locus_port)
+    )
+  )
 }
 
 fn parse_table_memo_miss_diagnostic(at: Locus) -> Diagnostic {
@@ -462,7 +502,8 @@ fn parse_table_carry_analysis(table: ParseTable, entries: Map<ParsePositionKey, 
     memo_misses: misses,
     memo_lookup_calls: lookups,
     nullable_set: table.nullable_set,
-    first_rows: table.first_rows
+    first_rows: table.first_rows,
+    productions_by_name: table.productions_by_name
   }
 }
 
@@ -567,7 +608,8 @@ fn parse_table_for_production_analyzed(
     memo_misses: 0,
     memo_lookup_calls: 0,
     nullable_set: analysis.nullable_set,
-    first_rows: analysis.first_rows
+    first_rows: analysis.first_rows,
+    productions_by_name: grammar_production_index(productions: validated.root.productions)
   }
 }
 
@@ -594,7 +636,8 @@ fn parse_table_empty() -> ParseTable {
     memo_misses: 0,
     memo_lookup_calls: 0,
     nullable_set: Set { member: fn(_) { false } },
-    first_rows: empty_map()
+    first_rows: empty_map(),
+    productions_by_name: empty_map()
   }
 }
 
@@ -1062,7 +1105,7 @@ fn parse_nonterminal_memoized_core(
     position: parse_current_position(tokens: tokens),
     production: prod_name
   }
-  match grammar_lookup_production(root: root, name: prod_name) {
+  match grammar_lookup_production_indexed(table: table, name: prod_name) {
     Violates { diagnostic: d } =>
       ParseExprRejected { diagnostics: [d], table: table }
     Holds { value: production } =>
@@ -1152,19 +1195,67 @@ fn compute_nullable_step(ns: Set<Symbol>, p: GrammarProduction) -> Set<Symbol> {
   }
 }
 
-fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
+// ONE ROUND of the nullable fixpoint: every production gets a chance to join the set given what
+// the set already holds.
+fn compute_nullable_round(root: GrammarRoot, ns: Set<Symbol>) -> Set<Symbol> {
   fold_list(
     xs: root.productions,
-    empty: Set { member: fn(_) { false } },
-    cons: fn(acc, _) {
-      fold_list(
-        xs: root.productions,
-        empty: acc,
-        cons: fn(ns, p) {
-          compute_nullable_step(ns: ns, p: p)
-        }
-      )
+    empty: ns,
+    cons: fn(acc, p) {
+      compute_nullable_step(ns: acc, p: p)
     }
+  )
+}
+
+// THE CONVERGENCE MEASURE. `Set` is a `PointwisePower` — a characteristic function — so two sets
+// cannot be compared directly, and the fixpoint cannot stop by testing `next == previous`. It can
+// stop on a MONOTONE MEASURE instead: `compute_nullable_step` only ever inserts, so the number of
+// productions the set admits rises until the round adds nothing, and equal counts across a round
+// mean equal sets. Counting over `root.productions` is exact here because that is the only
+// population `compute_nullable_step` can insert from.
+fn nullable_member_count(root: GrammarRoot, ns: Set<Symbol>) -> Int {
+  fold_list(
+    xs: root.productions,
+    empty: 0,
+    cons: fn(acc, p) {
+      if ns.member(p.name) { acc + 1 } else { acc }
+    }
+  )
+}
+
+// ITERATE TO CONVERGENCE, BOUNDED BY THE SAME COUNT THE OLD SHAPE SPENT UNCONDITIONALLY.
+//
+// The previous form ran exactly `length(productions)` rounds every time — the outer fold ignored
+// its element and existed only to repeat the inner one — because that many rounds is the standard
+// worst-case bound for this fixpoint. It is a bound, not a cost: on the live `.dag` grammar the
+// set stops growing at round 4 of 38, so 34 rounds recomputed an answer that could no longer
+// change. `fuel` keeps that worst case exactly (never more), and the count check leaves as soon as
+// a round adds nothing, so the RESULT is identical and only the redundant rounds are gone.
+fn compute_nullable_fixpoint(
+  root: GrammarRoot,
+  ns: Set<Symbol>,
+  seen_count: Int,
+  fuel: Int
+) -> Set<Symbol> {
+  if fuel == 0 {
+    ns
+  } else {
+    let next = compute_nullable_round(root: root, ns: ns)
+    let next_count = nullable_member_count(root: root, ns: next)
+    if next_count == seen_count {
+      next
+    } else {
+      compute_nullable_fixpoint(root: root, ns: next, seen_count: next_count, fuel: fuel - 1)
+    }
+  }
+}
+
+fn compute_nullable_set(root: GrammarRoot) -> Set<Symbol> {
+  compute_nullable_fixpoint(
+    root: root,
+    ns: Set { member: fn(_) { false } },
+    seen_count: 0,
+    fuel: length(xs: root.productions)
   )
 }
 
@@ -1290,30 +1381,79 @@ fn compute_production_first_row_terminals(
   ).terminals
 }
 
+fn compute_production_first_rows_round(
+  root: GrammarRoot,
+  nullable_set: Set<Symbol>,
+  rows: Map<Symbol, List<Symbol>>
+) -> Map<Symbol, List<Symbol>> {
+  fold_list(
+    xs: root.productions,
+    empty: rows,
+    cons: fn(acc, p) {
+      map_insert(
+        m: acc,
+        key: p.name,
+        value: compute_production_first_row_terminals(
+          rows: acc,
+          p: p,
+          nullable_set: nullable_set
+        )
+      )
+    }
+  )
+}
+
+// The same monotone measure as the nullable fixpoint, one level down: a FIRST row only ever gains
+// terminals (`first_list_union` inserts, never removes), so the total across all rows rises until
+// a round adds nothing. Measured on the live `.dag` grammar this one needs MORE than four rounds —
+// unlike nullable — which is why the stopping rule is a measured convergence rather than a
+// constant anybody picked.
+fn production_first_rows_total(root: GrammarRoot, rows: Map<Symbol, List<Symbol>>) -> Int {
+  fold_list(
+    xs: root.productions,
+    empty: 0,
+    cons: fn(acc, p) {
+      acc + length(xs: production_first_row_lookup(rows: rows, name: p.name))
+    }
+  )
+}
+
+fn compute_production_first_rows_fixpoint(
+  root: GrammarRoot,
+  nullable_set: Set<Symbol>,
+  rows: Map<Symbol, List<Symbol>>,
+  seen_total: Int,
+  fuel: Int
+) -> Map<Symbol, List<Symbol>> {
+  if fuel == 0 {
+    rows
+  } else {
+    let next = compute_production_first_rows_round(root: root, nullable_set: nullable_set, rows: rows)
+    let next_total = production_first_rows_total(root: root, rows: next)
+    if next_total == seen_total {
+      next
+    } else {
+      compute_production_first_rows_fixpoint(
+        root: root,
+        nullable_set: nullable_set,
+        rows: next,
+        seen_total: next_total,
+        fuel: fuel - 1
+      )
+    }
+  }
+}
+
 fn compute_production_first_rows(
   root: GrammarRoot,
   nullable_set: Set<Symbol>
 ) -> Map<Symbol, List<Symbol>> {
-  fold_list(
-    xs: root.productions,
-    empty: empty_map(),
-    cons: fn(acc, _) {
-      fold_list(
-        xs: root.productions,
-        empty: acc,
-        cons: fn(rows, p) {
-          map_insert(
-            m: rows,
-            key: p.name,
-            value: compute_production_first_row_terminals(
-              rows: rows,
-              p: p,
-              nullable_set: nullable_set
-            )
-          )
-        }
-      )
-    }
+  compute_production_first_rows_fixpoint(
+    root: root,
+    nullable_set: nullable_set,
+    rows: empty_map(),
+    seen_total: 0,
+    fuel: length(xs: root.productions)
   )
 }
 
@@ -1413,12 +1553,18 @@ fn collect_choice_ambiguities_in_expr(
   }
 }
 
-fn compute_grammar_first_analysis(root: GrammarRoot) -> GrammarFirstAnalysis {
-  let nullable_set = compute_nullable_set(root: root)
+fn compute_grammar_first_analysis_given(
+  root: GrammarRoot,
+  nullable_set: Set<Symbol>
+) -> GrammarFirstAnalysis {
   GrammarFirstAnalysis {
     nullable_set: nullable_set,
     first_rows: compute_production_first_rows(root: root, nullable_set: nullable_set)
   }
+}
+
+fn compute_grammar_first_analysis(root: GrammarRoot) -> GrammarFirstAnalysis {
+  compute_grammar_first_analysis_given(root: root, nullable_set: compute_nullable_set(root: root))
 }
 
 fn grammar_choice_ambiguity_roster_from_analysis(
@@ -1572,56 +1718,143 @@ fn expr_direct_left_corner_list(expr: GrammarExpr, nullable_set: Set<Symbol>) ->
   expr_corner_nullable_fold(expr: expr, nullable_set: nullable_set).corners
 }
 
-fn compute_left_corner_closure(
-  start: List<Symbol>,
-  nullable_set: Set<Symbol>,
-  root: GrammarRoot
-) -> List<Symbol> {
+fn left_corner_list_union(left: List<Symbol>, right: List<Symbol>) -> List<Symbol> {
+  fold_list(
+    xs: right,
+    empty: left,
+    cons: fn(acc, name) {
+      if contains(xs: acc, item: name, eq: fn(a, b) { a == b }) {
+        acc
+      } else {
+        list_snoc_item(xs: acc, item: name)
+      }
+    }
+  )
+}
+
+// ONE RELATION, NOT ONE CLOSURE PER PRODUCTION.
+//
+// Left recursion asks, of every production, whether it is reachable from itself through left
+// corners. That is ONE reachability relation over the grammar, and every production's answer is a
+// lookup in it. The previous form asked the question 38 separate times on the live `.dag` grammar
+// — a complete transitive closure rebuilt from scratch per production, each running a fixed number
+// of rounds with no convergence check, and each step re-finding a production by filtering the whole
+// list. Measured, that was 7272ms of an 11.7s grammar preparation, and the preparation runs on
+// every parse.
+//
+// The rows below are seeded with each production's DIRECT left corners and then expanded to their
+// fixpoint. The result per production is the same set the per-production closure produced — the
+// transitive closure of the same edge relation — so this is the identical question asked once.
+fn left_corner_direct_rows(root: GrammarRoot, nullable_set: Set<Symbol>) -> Map<Symbol, List<Symbol>> {
   fold_list(
     xs: root.productions,
-    empty: start,
-    cons: fn(reachable, _) {
-      fold_list(
-        xs: reachable,
-        empty: reachable,
-        cons: fn(acc, sym) {
-          match grammar_lookup_production(root: root, name: sym) {
-            Violates { diagnostic: _ } => acc
-            Holds { value: prod } =>
-              fold_list(
-                xs: expr_direct_left_corner_list(expr: prod.expression, nullable_set: nullable_set),
-                empty: acc,
-                cons: fn(r, name) {
-                  if contains(xs: r, item: name, eq: fn(a, b) { a == b }) {
-                    r
-                  } else {
-                    list_snoc_item(xs: r, item: name)
-                  }
-                }
-              )
-          }
-        }
+    empty: empty_map(),
+    cons: fn(acc, p) {
+      map_insert(
+        m: acc,
+        key: p.name,
+        value: expr_direct_left_corner_list(expr: p.expression, nullable_set: nullable_set)
+      )
+    }
+  )
+}
+
+fn left_corner_row(rows: Map<Symbol, List<Symbol>>, name: Symbol) -> List<Symbol> {
+  match v2.std.collection.map_get(m: rows, key: name) {
+    Accepted { value: Present { value: reached }, diagnostics: _ } => reached
+    Accepted { value: Absent, diagnostics: _ } => std.algebra.Empty
+    Rejected { diagnostics: _ } => std.algebra.Empty
+  }
+}
+
+fn left_corner_expand_row(
+  rows: Map<Symbol, List<Symbol>>,
+  reached: List<Symbol>
+) -> List<Symbol> {
+  fold_list(
+    xs: reached,
+    empty: reached,
+    cons: fn(acc, sym) {
+      left_corner_list_union(left: acc, right: left_corner_row(rows: rows, name: sym))
+    }
+  )
+}
+
+fn left_corner_round(
+  root: GrammarRoot,
+  rows: Map<Symbol, List<Symbol>>
+) -> Map<Symbol, List<Symbol>> {
+  fold_list(
+    xs: root.productions,
+    empty: rows,
+    cons: fn(acc, p) {
+      map_insert(
+        m: acc,
+        key: p.name,
+        value: left_corner_expand_row(rows: acc, reached: left_corner_row(rows: acc, name: p.name))
+      )
+    }
+  )
+}
+
+fn left_corner_total(root: GrammarRoot, rows: Map<Symbol, List<Symbol>>) -> Int {
+  fold_list(
+    xs: root.productions,
+    empty: 0,
+    cons: fn(acc, p) {
+      acc + length(xs: left_corner_row(rows: rows, name: p.name))
+    }
+  )
+}
+
+fn left_corner_fixpoint(
+  root: GrammarRoot,
+  rows: Map<Symbol, List<Symbol>>,
+  seen_total: Int,
+  fuel: Int
+) -> Map<Symbol, List<Symbol>> {
+  if fuel == 0 {
+    rows
+  } else {
+    let next = left_corner_round(root: root, rows: rows)
+    let next_total = left_corner_total(root: root, rows: next)
+    if next_total == seen_total {
+      next
+    } else {
+      left_corner_fixpoint(root: root, rows: next, seen_total: next_total, fuel: fuel - 1)
+    }
+  }
+}
+
+fn left_corner_rows(root: GrammarRoot, nullable_set: Set<Symbol>) -> Map<Symbol, List<Symbol>> {
+  let seeded = left_corner_direct_rows(root: root, nullable_set: nullable_set)
+  left_corner_fixpoint(
+    root: root,
+    rows: seeded,
+    seen_total: left_corner_total(root: root, rows: seeded),
+    fuel: length(xs: root.productions)
+  )
+}
+
+// The nullable set is a parameter here because `grammar_validate_and_analyze` already computes it
+// for the FIRST analysis: the previous shape recomputed it inside this check, so one preparation
+// paid for the same fixpoint three times over.
+fn grammar_has_left_recursion_given(root: GrammarRoot, nullable_set: Set<Symbol>) -> Bool {
+  let rows = left_corner_rows(root: root, nullable_set: nullable_set)
+  any(
+    xs: root.productions,
+    predicate: fn(p) {
+      contains(
+        xs: left_corner_row(rows: rows, name: p.name),
+        item: p.name,
+        eq: fn(a, b) { a == b }
       )
     }
   )
 }
 
 fn grammar_has_left_recursion(root: GrammarRoot) -> Bool {
-  let nullable_set = compute_nullable_set(root: root)
-  any(
-    xs: root.productions,
-    predicate: fn(p) {
-      contains(
-        xs: compute_left_corner_closure(
-          start: expr_direct_left_corner_list(expr: p.expression, nullable_set: nullable_set),
-          nullable_set: nullable_set,
-          root: root
-        ),
-        item: p.name,
-        eq: fn(a, b) { a == b }
-      )
-    }
-  )
+  grammar_has_left_recursion_given(root: root, nullable_set: compute_nullable_set(root: root))
 }
 
 fn expr_has_undefined_nonterminal(expr: GrammarExpr, root: GrammarRoot) -> Bool {
@@ -1719,6 +1952,9 @@ fn grammar_overlap_residue_diagnostics(at: Locus, roster: List<GrammarChoiceAmbi
   )
 }
 
+// ONE nullable fixpoint for the whole preparation. The left-recursion check and the FIRST analysis
+// both need the nullable set, and computing it here rather than inside each of them is the
+// difference between one fixpoint per preparation and three.
 fn grammar_validate_and_analyze(root: GrammarRoot, at: Locus) -> Outcome<PreparedModeledGrammar> {
   if grammar_has_undefined_nonterminals(root: root) {
     Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_undefined_nonterminal_diagnostic(at: at)) }
@@ -1726,10 +1962,11 @@ fn grammar_validate_and_analyze(root: GrammarRoot, at: Locus) -> Outcome<Prepare
     if grammar_has_duplicate_productions(root: root) {
       Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_duplicate_production_diagnostic(at: at)) }
     } else {
-      if grammar_has_left_recursion(root: root) {
+      let nullable_set = compute_nullable_set(root: root)
+      if grammar_has_left_recursion_given(root: root, nullable_set: nullable_set) {
         Rejected { diagnostics: diagnostics_singleton(d: parse_grammar_left_recursive_diagnostic(at: at)) }
       } else {
-        let analysis = compute_grammar_first_analysis(root: root)
+        let analysis = compute_grammar_first_analysis_given(root: root, nullable_set: nullable_set)
         let ambiguity_roster = grammar_choice_ambiguity_roster_from_analysis(root: root, analysis: analysis)
         let nullable_rows = grammar_nullable_ambiguity_rows(roster: ambiguity_roster)
         if !is_empty(xs: nullable_rows) {
