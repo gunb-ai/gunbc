@@ -50,6 +50,8 @@ pub(crate) mod floor_discovery_snapshot;
 pub(crate) mod materialization_provider_consumer;
 #[path = "phase_profile.rs"]
 mod phase_profile;
+#[path = "required_regen_host.rs"]
+mod required_regen_host;
 pub(crate) mod test_module_hygiene_bridge;
 pub use floor_discovery_snapshot::{
     append_discovery_trace_row, build_floor_discovery_request,
@@ -40820,4 +40822,18 @@ fn witness_eval_verdict_from_claim_outcome(
             },
         },
     }
+}
+
+pub fn run_required_regen(
+    candidate_dir_rel: &str,
+    receipt_rel: &str,
+) -> Result<required_regen_host::RequiredRegenOutcome, String> {
+    required_regen_host::run_required_regen(candidate_dir_rel, receipt_rel)
+}
+
+pub fn run_required_regen_fixed_point(
+    receipt_rel: &str,
+    pass1_digest: Option<String>,
+) -> Result<required_regen_host::RequiredRegenOutcome, String> {
+    required_regen_host::run_required_regen_fixed_point(receipt_rel, pass1_digest)
 }

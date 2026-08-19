@@ -1,9 +1,5 @@
 module product.installed_bom_reconcile
 
-import std.types { Bool, List, Int, NonEmptyStr }
-import product.placement_supply { HostIdentity }
-import extdeps.memory.types { DramModuleCatalogRow, MemoryPopulationRow }
-import extdeps.cpu.types { CpuModelCatalogRow }
 
 // WHAT A HOST IS BELIEVED TO CONTAIN IS NOT WHAT IT CONTAINS, and this module exists to keep the
 // two apart. An EXPECTATION is a claim someone makes about an installed bill of materials before
@@ -27,20 +23,20 @@ import extdeps.cpu.types { CpuModelCatalogRow }
 // where a part was bought. Those are private facts; the public model carries what the hardware
 // is, not what it cost.
 
-type DimmSlotLocator = NonEmptyStr where brand("DimmSlotLocator")
+type DimmSlotLocator = std.types.NonEmptyStr where brand("DimmSlotLocator")
 
 // An observed part number either decodes to a cited catalog row or it does not, and the second
 // case is a first-class arm rather than a silent drop. A part with no catalog row is not a
 // mismatch and not a match: it is a grounding obligation, and reconciliation refuses on it so the
 // obligation surfaces instead of being answered by whichever comparison happened to be cheapest.
 type ObservedDimmIdentity
-  = ObservedDimmCataloged { catalog: DramModuleCatalogRow }
-  | ObservedDimmUncataloged { part_number: NonEmptyStr }
+  = ObservedDimmCataloged { catalog: extdeps.memory.types.DramModuleCatalogRow }
+  | ObservedDimmUncataloged { part_number: std.types.NonEmptyStr }
 
 type ObservedDimmSlot {
   locator: DimmSlotLocator
   identity: ObservedDimmIdentity
-  serial: NonEmptyStr?
+  serial: std.types.NonEmptyStr?
 }
 
 // TWO INSTRUMENTS, TWO GRAINS, ONE RECONCILIATION. The BMC Redfish read this fleet already
@@ -50,13 +46,13 @@ type ObservedDimmSlot {
 // are arms of one coproduct feeding one fold. Forking the verdict per instrument would make the
 // slot-grain answer and the population-grain answer two authorities for one question.
 type HostDimmObservation
-  = DimmSlotsObserved { host: HostIdentity, slots: List<ObservedDimmSlot> }
-  | DimmPopulationObserved { host: HostIdentity, rows: List<MemoryPopulationRow> }
-  | DimmObservationAbsent { host: HostIdentity, cause: NonEmptyStr }
+  = DimmSlotsObserved { host: product.placement_supply.HostIdentity, slots: List<ObservedDimmSlot> }
+  | DimmPopulationObserved { host: product.placement_supply.HostIdentity, rows: List<extdeps.memory.types.MemoryPopulationRow> }
+  | DimmObservationAbsent { host: product.placement_supply.HostIdentity, cause: std.types.NonEmptyStr }
 
 type HostDimmExpectation {
-  host: HostIdentity
-  catalog: DramModuleCatalogRow
+  host: product.placement_supply.HostIdentity
+  catalog: extdeps.memory.types.DramModuleCatalogRow
   stick_count: Int
 }
 
@@ -72,9 +68,9 @@ type DimmDiscrepancyLocation
   | AtPopulationGrain
 
 type DimmSlotDiscrepancy {
-  host: HostIdentity
+  host: product.placement_supply.HostIdentity
   location: DimmDiscrepancyLocation
-  expected_part: NonEmptyStr
+  expected_part: std.types.NonEmptyStr
   observed: ObservedDimmIdentity
 }
 
@@ -93,19 +89,19 @@ type DimmCountReconcile
 // nothing. It sits at mechanically preventable, held by dimm_refusal_is_grounded and its witness,
 // and it climbs when the substrate can seal a constructor to one fold.
 type DimmReconcileVerdict
-  = DimmPopulationConfirmed { host: HostIdentity, stick_count: Int }
+  = DimmPopulationConfirmed { host: product.placement_supply.HostIdentity, stick_count: Int }
   | DimmPopulationRefused {
-      host: HostIdentity
+      host: product.placement_supply.HostIdentity
       discrepancies: List<DimmSlotDiscrepancy>
       count: DimmCountReconcile
     }
-  | DimmObservationHostMismatch { expectation_host: HostIdentity, observation_host: HostIdentity }
-  | DimmPopulationUnconfirmed { host: HostIdentity, cause: NonEmptyStr }
+  | DimmObservationHostMismatch { expectation_host: product.placement_supply.HostIdentity, observation_host: product.placement_supply.HostIdentity }
+  | DimmPopulationUnconfirmed { host: product.placement_supply.HostIdentity, cause: std.types.NonEmptyStr }
 
 fn slot_discrepancies(
-  host: HostIdentity,
+  host: product.placement_supply.HostIdentity,
   slots: List<ObservedDimmSlot>,
-  expected_part: NonEmptyStr,
+  expected_part: std.types.NonEmptyStr,
 ) -> List<DimmSlotDiscrepancy> {
   if slots.length() == 0 {
     []
@@ -157,9 +153,9 @@ fn slot_discrepancies(
 // AtPopulationGrain rather than being given a fabricated slot name. One discrepancy per differing
 // ROW, not per differing stick: the row is the grain the instrument actually reported.
 fn population_discrepancies(
-  host: HostIdentity,
-  rows: List<MemoryPopulationRow>,
-  expected_part: NonEmptyStr,
+  host: product.placement_supply.HostIdentity,
+  rows: List<extdeps.memory.types.MemoryPopulationRow>,
+  expected_part: std.types.NonEmptyStr,
 ) -> List<DimmSlotDiscrepancy> {
   if rows.length() == 0 {
     []
@@ -192,7 +188,7 @@ fn population_discrepancies(
   }
 }
 
-fn population_stick_total(rows: List<MemoryPopulationRow>) -> Int {
+fn population_stick_total(rows: List<extdeps.memory.types.MemoryPopulationRow>) -> Int {
   if rows.length() == 0 {
     0
   } else {
@@ -203,7 +199,7 @@ fn population_stick_total(rows: List<MemoryPopulationRow>) -> Int {
   }
 }
 
-fn dimm_observation_host(observation: HostDimmObservation) -> HostIdentity {
+fn dimm_observation_host(observation: HostDimmObservation) -> product.placement_supply.HostIdentity {
   match observation {
     DimmSlotsObserved { host, slots: _ } => host
     DimmPopulationObserved { host, rows: _ } => host
@@ -335,21 +331,21 @@ fn dimm_discrepancy_report(verdicts: List<DimmReconcileVerdict>) -> List<DimmSlo
 // outcome. The expectation carries the cited row, and its model_number is what the comparison
 // reads.
 type HostProcessorObservation
-  = ProcessorModelObserved { host: HostIdentity, model_number: NonEmptyStr }
-  | ProcessorObservationAbsent { host: HostIdentity, cause: NonEmptyStr }
+  = ProcessorModelObserved { host: product.placement_supply.HostIdentity, model_number: std.types.NonEmptyStr }
+  | ProcessorObservationAbsent { host: product.placement_supply.HostIdentity, cause: std.types.NonEmptyStr }
 
 type HostProcessorExpectation {
-  host: HostIdentity
-  catalog: CpuModelCatalogRow
+  host: product.placement_supply.HostIdentity
+  catalog: extdeps.cpu.types.CpuModelCatalogRow
 }
 
 type ProcessorReconcileVerdict
-  = ProcessorModelConfirmed { host: HostIdentity, model_number: NonEmptyStr }
-  | ProcessorModelRefused { host: HostIdentity, expected: NonEmptyStr, observed: NonEmptyStr }
-  | ProcessorObservationHostMismatch { expectation_host: HostIdentity, observation_host: HostIdentity }
-  | ProcessorModelUnconfirmed { host: HostIdentity, cause: NonEmptyStr }
+  = ProcessorModelConfirmed { host: product.placement_supply.HostIdentity, model_number: std.types.NonEmptyStr }
+  | ProcessorModelRefused { host: product.placement_supply.HostIdentity, expected: std.types.NonEmptyStr, observed: std.types.NonEmptyStr }
+  | ProcessorObservationHostMismatch { expectation_host: product.placement_supply.HostIdentity, observation_host: product.placement_supply.HostIdentity }
+  | ProcessorModelUnconfirmed { host: product.placement_supply.HostIdentity, cause: std.types.NonEmptyStr }
 
-fn processor_observation_host(observation: HostProcessorObservation) -> HostIdentity {
+fn processor_observation_host(observation: HostProcessorObservation) -> product.placement_supply.HostIdentity {
   match observation {
     ProcessorModelObserved { host, model_number: _ } => host
     ProcessorObservationAbsent { host, cause: _ } => host
