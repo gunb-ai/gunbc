@@ -89,3 +89,97 @@ test fn rest_path_reaches_no_target_ast_vocabulary() -> Bool {
     exempt_edges: no_admitted_cli_edges
   ) == 0
 }
+
+// ---------------------------------------------------------------------------
+// WIDENING, ROOT BY ROOT. The boundary above is enforced in two directories and
+// prose everywhere else, which is the whole of its limitation. Each root below is a
+// SEPARATE assertion rather than one widened list, so a failure names the root that
+// broke instead of reporting that something, somewhere, reaches CLI vocabulary.
+// ---------------------------------------------------------------------------
+
+// The paths permitted to reach CLI construction vocabulary because constructing a
+// CLI surface is what they are FOR. This is the lens's existing realization-edge
+// mechanism used as designed: jq's own extdeps module defines the jq CLI surface,
+// so its edge to cli_surface is internal to the vocabulary rather than a leak out of
+// anywhere. Note this is a PATH prefix and the fan control admission is an exact
+// edge -- the difference is deliberate: a definition site is a location whose whole
+// purpose is this vocabulary, while an admission is one consumer that happens to
+// need it and must not silently become two.
+data cli_vocab_definition_edges: List<String> = [
+  "dag/extdeps/tools/jq.dag",
+  "src/v2/std/compilers/cli_surface.dag"
+]
+
+// ROOT: all of dag/extdeps. Widens past bmc/ and transports/ to every cited
+// upstream module. Lands with exactly one admitted edge -- the fan control jq
+// edge already named above -- and the jq definition site on the edge roster.
+data extdeps_scan_roots: List<String> = [
+  "dag/extdeps"
+]
+
+test fn extdeps_reaches_no_cli_construction_vocabulary() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: extdeps_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: cli_vocab_definition_edges,
+    exempt_edges: fan_control_admitted_cli_edges
+  ) == 0
+}
+
+// ROOT: the compiler substrate. This is the strongest claim in the file and the one
+// with no admissions at all: std, the compiler stages, the lenses and the workflow
+// layer construct no process invocation whatsoever. If any of these ever needs a
+// CLI surface, that is an architectural event and it should red here first.
+data substrate_scan_roots: List<String> = [
+  "src/v2/std",
+  "src/v2/compiler",
+  "src/v2/lens",
+  "src/v2/workflow"
+]
+
+test fn compiler_substrate_reaches_no_cli_construction_vocabulary() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: substrate_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: cli_vocab_definition_edges,
+    exempt_edges: no_admitted_cli_edges
+  ) == 0
+}
+
+// NON-VACUITY, and it is why the two clean results above mean anything. A root the
+// scan never read reports zero leaks exactly as a clean root does. These assert the
+// scans acquired real facts, so a zero is a finding rather than a silence -- the
+// same distinction the withdraw-the-admission control makes for the REST roots,
+// made here for roots that have no known edge to withdraw.
+test fn widened_scans_actually_read_the_tree() -> Bool {
+  (vocab_scan_fact_count_live(scan_roots: extdeps_scan_roots) > 0)
+    && (vocab_scan_fact_count_live(scan_roots: substrate_scan_roots) > 0)
+    && (vocab_scan_fact_count_live(scan_roots: rest_path_scan_roots) > 0)
+}
+
+// DISCRIMINATION FOR THE WIDENED ROOT, not just the narrow one. A nonzero fact
+// count proves the extdeps scan read SOMETHING; it does not prove it descended into
+// bmc/ where the only known edge lives. Withdrawing the admission over the WIDE root
+// must surface that edge exactly as it does over the narrow one -- otherwise
+// "dag/extdeps is clean" could be clean because the subtree containing the one dirty
+// module was never reached.
+test fn withdrawing_the_admission_surfaces_the_edge_under_the_wide_root() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: extdeps_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: cli_vocab_definition_edges,
+    exempt_edges: no_admitted_cli_edges
+  ) == 1
+}
+
+// AND THE EDGE ROSTER ITSELF MUST BE LOAD-BEARING. Drop the jq definition site from
+// the permitted paths and the count must RISE, which is what proves that roster is
+// admitting a real edge rather than naming a path the scan never had a fact for.
+test fn dropping_the_definition_edge_roster_surfaces_more() -> Bool {
+  vocab_leak_count_live_in(
+    scan_roots: extdeps_scan_roots,
+    vocab: cli_process_vocabulary(),
+    edge_prefixes: [],
+    exempt_edges: fan_control_admitted_cli_edges
+  ) > 0
+}

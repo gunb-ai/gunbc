@@ -417,6 +417,15 @@ fn vocab_leak_count_in(
   ))
 }
 
+// NON-VACUITY PRIMITIVE. A clean root and a root the scan never read both report
+// zero leaks, and those are different states -- bottom-as-answer against
+// bottom-as-ignorance, the empty-observation narrow. Counting the facts the scan
+// actually acquired is what separates them, so a widened root set can prove it read
+// something rather than assert it.
+fn vocab_scan_fact_count_live(scan_roots: List<String>) -> Int {
+  length(xs: layer_import_facts_live(std_roots: scan_roots, extdeps_roots: []))
+}
+
 fn vocab_leak_count_live_in(
   scan_roots: List<String>,
   vocab: RealizationVocabularySet,
