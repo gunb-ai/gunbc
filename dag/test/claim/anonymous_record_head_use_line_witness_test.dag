@@ -1,0 +1,16 @@
+module test.claim.anonymous_record_head_use_line_witness_test
+
+data anonymous_record_head_use_line_witness_note: String = "Board row 3 (root K, materialization_carriers 51-site census): an ANONYMOUS record literal — no authored type name at the literal — is rendered by emit_typed_record_lit with a head the emitter decides from the inferred/resolved type, so the emitted Rust spells a name the authored source never does. The authored-source attestation gate (reference_derived_candidate_authored) refused exactly that candidate, no use-line was synthesized, and rustc reported E0422/E0433 on the head the emitter itself wrote (live specimens: extdeps.realization.compile_stage_memo / parse_table_memo `retention: \{...\}` rendering `ProviderRetention \{ .. \}` with no import). This witness reproduces the mechanism through the real emit pipeline: the fixture references ProviderRetention ONLY through an anonymous literal in argument position (the name is spelled nowhere in the fixture source), and asserts the emitted module carries both the emitter-decided head and its synthesized use-line. RED against the pre-fix emitter (use-line absent), green with collect_anonymous_record_lit_heads (emitter_attested_anonymous_head_note, 05_emit_rust.dag). The negative assertion pins the over-collection boundary: a name from the provider module the fixture never constructs must not gain a use-line. dissolve-on: never — permanent regression control for the emitter-attested anonymous-head arm."
+
+fn w_anonymous_record_head_gets_use_line() -> Bool {
+  compile_dag_rust_emit_check(
+    "module anonhead_fixture\n\nimport std.cache_interface \{\n  retention_growth_is_bounded,\n  ReleasedAtProviderScopeExit,\n  CapacityUnbounded,\n\}\n\nfn anonhead_probe() -> Bool \{\n  retention_growth_is_bounded(r: \{ release_policy: ReleasedAtProviderScopeExit, capacity: CapacityUnbounded \})\n\}\n",
+    "src/anonhead_fixture.rs",
+    ["use crate::std_cache_interface::\{ProviderRetention\};", "ProviderRetention \{"],
+    ["use crate::std_cache_interface::CacheStoreView;"]
+  )
+}
+
+test fn anonymous_record_head_use_line_synthesized() -> Bool {
+  w_anonymous_record_head_gets_use_line()
+}
