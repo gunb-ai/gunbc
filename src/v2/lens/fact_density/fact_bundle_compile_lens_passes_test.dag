@@ -1,43 +1,28 @@
 module v2.test.lens_fact_density.fact_bundle_compile_lens_passes
 
-import v2.compiler.compile {
-  CompileLensEnforce,
-  apply_compile_lens,
-  fact_density_lens
-}
-import v2.compiler.infer { InferredTree }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.test.lens_common.infer_fixture {
-  claim_atom_node,
-  claim_inferred_facts,
-  claim_inferred_tree
-}
-
-data fact_bundle_cl_child: Node = v2.std.node.Node {
+data fact_bundle_cl_child: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^fact_bundle_cl_child_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data fact_bundle_cl_root: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+data fact_bundle_cl_root: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^fact_bundle_cl_field_name },
+      label: v2.std.node.Named { name: ^fact_bundle_cl_field_name },
       target: fact_bundle_cl_child
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data fact_bundle_cl_authority: Node = claim_atom_node(s: ^fact_bundle_cl_symbol)
+data fact_bundle_cl_authority: v2.std.node.Node = v2.test.lens_common.infer_fixture.claim_atom_node(s: ^fact_bundle_cl_symbol)
 
 fn fact_bundle_cl_tree() -> v2.compiler.inferred_tree.InferredTree {
-  claim_inferred_tree(
+  v2.test.lens_common.infer_fixture.claim_inferred_tree(
     root: fact_bundle_cl_root,
-    facts: claim_inferred_facts(
+    facts: v2.test.lens_common.infer_fixture.claim_inferred_facts(
       type_symbol: ^fact_bundle_cl_type_sym,
       algebra_symbol: ^fact_bundle_cl_algebra_sym,
       descent_symbol: ^fact_bundle_cl_descent_sym
@@ -45,11 +30,11 @@ fn fact_bundle_cl_tree() -> v2.compiler.inferred_tree.InferredTree {
   )
 }
 
-test fn fact_bundle_compile_lens_passes_holds() -> Bool {
-  match apply_compile_lens(
-    lens: fact_density_lens,
+test fn fact_bundle_compile_lens_passes_holds() -> v2.std.logic.Bool {
+  match v2.compiler.compile.apply_compile_lens(
+    lens: v2.compiler.compile.fact_density_lens,
     inferred: fact_bundle_cl_tree(),
-    mode: CompileLensEnforce
+    mode: v2.compiler.compile.CompileLensEnforce
   ) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

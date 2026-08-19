@@ -1,33 +1,12 @@
 module v2.test.manual.llvm_ir_b2_omni_in_b_probe
 
-import v2.extdeps.languages.llvm_ir {
-  BasicBlock,
-  ConstantOperand,
-  ConditionalBr,
-  Defined,
-  FunctionBody,
-  IntegerType,
-  IntConstant,
-  LlvmType,
-  LocalRef,
-  PhiIncoming,
-  PhiNode,
-  RetValue,
-  UnconditionalBr,
-  block_successors,
-  block_well_formed
-}
-import v2.std.cardinality { NonZeroNat }
-import v2.std.nat { Zero }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-
-fn llvm_probe_atom(s: v2.std.node.Symbol) -> Node {
+fn llvm_probe_atom(s: v2.std.node.Symbol) -> v2.std.node.Node {
   v2.std.node.Node { kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: s } }, children: [],
- occurrence_id: SyntheticOccurrence
+ occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-data llvm_probe_type: v2.extdeps.languages.llvm_ir.LlvmType = v2.extdeps.languages.llvm_ir.IntegerType { bits: v2.std.cardinality.NonZeroNat { prev: Zero } }
+data llvm_probe_type: v2.extdeps.languages.llvm_ir.LlvmType = v2.extdeps.languages.llvm_ir.IntegerType { bits: v2.std.cardinality.NonZeroNat { prev: v2.std.nat.Zero } }
 
 data llvm_probe_left_incoming: v2.extdeps.languages.llvm_ir.PhiIncoming = v2.extdeps.languages.llvm_ir.PhiIncoming {
   value: v2.extdeps.languages.llvm_ir.ConstantOperand { constant: v2.extdeps.languages.llvm_ir.IntConstant { ty: llvm_probe_type, value: 0 } },
@@ -83,13 +62,13 @@ data llvm_probe_function_body: v2.extdeps.languages.llvm_ir.FunctionBody = v2.ex
 }
 
 test fn llvm_probe_receipt_holds() -> Bool {
-  block_well_formed(b: llvm_probe_entry_block)
-  && block_well_formed(b: llvm_probe_left_block)
-  && block_well_formed(b: llvm_probe_right_block)
-  && block_well_formed(b: llvm_probe_merge_block)
-  && block_successors(t: llvm_probe_entry_block.terminator) == [^llvm_probe_left_symbol, ^llvm_probe_right_symbol]
-  && block_successors(t: llvm_probe_left_block.terminator) == [^llvm_probe_merge_symbol]
-  && block_successors(t: llvm_probe_right_block.terminator) == [^llvm_probe_merge_symbol]
+  v2.extdeps.languages.llvm_ir.block_well_formed(b: llvm_probe_entry_block)
+  && v2.extdeps.languages.llvm_ir.block_well_formed(b: llvm_probe_left_block)
+  && v2.extdeps.languages.llvm_ir.block_well_formed(b: llvm_probe_right_block)
+  && v2.extdeps.languages.llvm_ir.block_well_formed(b: llvm_probe_merge_block)
+  && v2.extdeps.languages.llvm_ir.block_successors(t: llvm_probe_entry_block.terminator) == [^llvm_probe_left_symbol, ^llvm_probe_right_symbol]
+  && v2.extdeps.languages.llvm_ir.block_successors(t: llvm_probe_left_block.terminator) == [^llvm_probe_merge_symbol]
+  && v2.extdeps.languages.llvm_ir.block_successors(t: llvm_probe_right_block.terminator) == [^llvm_probe_merge_symbol]
   && llvm_probe_merge_block.phis == [llvm_probe_phi]
 }
 

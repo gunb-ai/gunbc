@@ -1,80 +1,58 @@
 module v2.test.lens_idempotency.write_effect
 
-import v2.compiler.infer { InferredFacts, InferredTree }
-import v2.lens.idempotency {
-  IdempotencyFact,
-  RequiresAlgebraWitness,
-  idempotency_fact,
-  idempotency_fact_eq,
-  idempotency_witness
-}
-import v2.std.dependency {
-  ClassifiedDependencyView,
-  DependencyView,
-  EffectDependsOn
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Named, Node, TypeNode, SyntheticOccurrence }
-import v2.std.witness { Violates, Witness }
-import v2.test.lens_common.infer_fixture {
-  claim_atom_node,
-  claim_inferred_facts,
-  claim_inferred_tree
-}
+data idempotency_child: v2.std.node.Node = v2.test.lens_common.infer_fixture.claim_atom_node(s: ^idempotency_child_symbol)
 
-data idempotency_child: Node = claim_atom_node(s: ^idempotency_child_symbol)
-
-data idempotency_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^idempotency_root_symbol } },
+data idempotency_root: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^idempotency_root_symbol } },
   children: [
-    Edge { label: Named { name: ^idempotency_edge_symbol }, target: idempotency_child }
+    v2.std.node.Edge { label: v2.std.node.Named { name: ^idempotency_edge_symbol }, target: idempotency_child }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data idempotency_dependency: DependencyView = DependencyView {
+data idempotency_dependency: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
   source: idempotency_root,
   dependent: idempotency_child,
-  kind: EffectDependsOn,
+  kind: v2.std.dependency.EffectDependsOn,
   usage_site: idempotency_child
 }
 
-fn idempotency_claim_facts() -> InferredFacts {
-  claim_inferred_facts(
+fn idempotency_claim_facts() -> v2.compiler.infer.InferredFacts {
+  v2.test.lens_common.infer_fixture.claim_inferred_facts(
     type_symbol: ^idempotency_type_symbol,
     algebra_symbol: ^idempotency_algebra_symbol,
     descent_symbol: ^idempotency_descent_symbol,
   )
 }
 
-fn idempotency_claim_tree() -> InferredTree {
-  claim_inferred_tree(root: idempotency_root, facts: idempotency_claim_facts())
+fn idempotency_claim_tree() -> v2.compiler.infer.InferredTree {
+  v2.test.lens_common.infer_fixture.claim_inferred_tree(root: idempotency_root, facts: idempotency_claim_facts())
 }
 
 type LensIdempotencyClaim {
-  input: InferredTree
-  expected: IdempotencyFact
-  actual: Witness<IdempotencyFact>
+  input: v2.compiler.infer.InferredTree
+  expected: v2.lens.idempotency.IdempotencyFact
+  actual: v2.std.witness.Witness<v2.lens.idempotency.IdempotencyFact>
 }
 
 data idempotency_write_effect_claim: LensIdempotencyClaim = LensIdempotencyClaim {
   input: idempotency_claim_tree(),
-  expected: IdempotencyFact {
+  expected: v2.lens.idempotency.IdempotencyFact {
     dependencies: [
-      ClassifiedDependencyView {
+      v2.std.dependency.ClassifiedDependencyView {
         dependency: idempotency_dependency,
-        classification: RequiresAlgebraWitness
+        classification: v2.lens.idempotency.RequiresAlgebraWitness
       }
     ]
   },
-  actual: idempotency_witness(tree: idempotency_claim_tree(), dependencies: [idempotency_dependency])
+  actual: v2.lens.idempotency.idempotency_witness(tree: idempotency_claim_tree(), dependencies: [idempotency_dependency])
 }
 
-test fn idempotency_write_effect_claim_holds() -> Bool {
+test fn idempotency_write_effect_claim_holds() -> v2.std.logic.Bool {
   match idempotency_write_effect_claim.actual {
     Violates { diagnostic: _ } =>
-      idempotency_fact_eq(
-        a: idempotency_fact(
+      v2.lens.idempotency.idempotency_fact_eq(
+        a: v2.lens.idempotency.idempotency_fact(
           tree: idempotency_write_effect_claim.input,
           dependencies: [idempotency_dependency]
         ),

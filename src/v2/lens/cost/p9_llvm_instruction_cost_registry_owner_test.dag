@@ -1,28 +1,21 @@
 module v2.test.lens_cost.p9_llvm_instruction_cost_registry_owner
 
-import v2.lens.registry {
-  LensOwnedFnV0,
-  lens_owned_fn_llvm_instruction_cost,
-  lens_owned_fn_registry_v0
-}
-import v2.std.algebra { count_equal, unique }
-
-fn p9_owned_fn_name_eq(left: LensOwnedFnV0, right: LensOwnedFnV0) -> Bool {
+fn p9_owned_fn_name_eq(left: v2.lens.registry.LensOwnedFnV0, right: v2.lens.registry.LensOwnedFnV0) -> Bool {
   left.fn_name == right.fn_name
 }
 
-fn p9_owned_fn_row_eq(left: LensOwnedFnV0, right: LensOwnedFnV0) -> Bool {
+fn p9_owned_fn_row_eq(left: v2.lens.registry.LensOwnedFnV0, right: v2.lens.registry.LensOwnedFnV0) -> Bool {
   left.fn_name == right.fn_name && left.owner_module_path == right.owner_module_path
 }
 
 test fn p9_registry_fn_names_unique() -> Bool {
-  unique(xs: lens_owned_fn_registry_v0, eq: p9_owned_fn_name_eq)
+  v2.std.algebra.unique(xs: v2.lens.registry.lens_owned_fn_registry_v0, eq: p9_owned_fn_name_eq)
 }
 
 fn p9_registry_canonical_row_count() -> Int {
-  count_equal(
-    xs: lens_owned_fn_registry_v0,
-    item: lens_owned_fn_llvm_instruction_cost,
+  v2.std.algebra.count_equal(
+    xs: v2.lens.registry.lens_owned_fn_registry_v0,
+    item: v2.lens.registry.lens_owned_fn_llvm_instruction_cost,
     eq: p9_owned_fn_row_eq
   )
 }

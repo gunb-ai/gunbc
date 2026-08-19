@@ -1,12 +1,7 @@
 module v2.test.claim_pipeline.infer
 
-import v2.compiler.infer { infer }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.test.manual.infer_ground_add { fixture_add_resolved_tree }
-
-test fn spine_infer_accepts_resolved_tree() -> Bool {
-  match infer(tree: fixture_add_resolved_tree()) {
+test fn spine_infer_accepts_resolved_tree() -> v2.std.logic.Bool {
+  match v2.compiler.infer.infer(tree: v2.test.manual.infer_ground_add.fixture_add_resolved_tree()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }

@@ -1,255 +1,215 @@
 module v2.test.manual.resolve_compile_anchor
 
-import v2.compiler.normalized_tree { NormalizedTree, admit_normalized_roots, admit_normalized_tree }
-import v2.compiler.name_resolve {
-  Admission,
-  Import,
-  ImportVisible,
-  ResolutionSubject,
-  resolve_with_admission_policy
-}
-import v2.std.cross_tree.resolution { source_root_index_empty }
-import v2.compiler.resolve { resolve, ResolvedTree }
-import v2.extdeps.languages.dag {
-  dag_grammar_atom,
-  dag_language_model_surface_empty_prelude,
-  dag_language_model_void,
-  dag_named_edge
-}
-import std.algebra { Cons, Empty, FreeMonoid }
-import v2.std.algebra { fold_list_node }
-import v2.std.diagnostic {
-  Accepted,
-  None,
-  Outcome,
-  Rejected
-}
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Bind,
-  ComputationNode,
-  Conj,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  TypeNode,
-  SyntheticOccurrence
-}
-import v2.std.qualified_name { QualifiedName }
-import v2.std.resolution_policy { ImportScoped }
-
-fn service_atom_conj_tree() -> Node {
+fn service_atom_conj_tree() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
       v2.std.node.Edge {
-        label: Positional,
+        label: v2.std.node.Positional,
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode {
             connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_service }
           },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
 fn anchor_resolve_service_atom_via_canonical_symbols() -> v2.std.diagnostic.Outcome<v2.compiler.resolve.ResolvedTree> {
   v2.compiler.resolve.resolve(
     tree: service_atom_conj_tree(),
-    lm: dag_language_model_void()
+    lm: v2.extdeps.languages.dag.dag_language_model_void()
   )
 }
 
 fn anchor_resolve_empty_prelude_service_atom() -> v2.std.diagnostic.Outcome<v2.compiler.resolve.ResolvedTree> {
   v2.compiler.resolve.resolve(
     tree: service_atom_conj_tree(),
-    lm: dag_language_model_surface_empty_prelude()
+    lm: v2.extdeps.languages.dag.dag_language_model_surface_empty_prelude()
   )
 }
 
 fn anchor_resolve_multi_edge_conj_via_canonical_symbols() -> v2.std.diagnostic.Outcome<v2.compiler.resolve.ResolvedTree> {
-  match admit_normalized_tree(
+  match v2.compiler.normalized_tree.admit_normalized_tree(
     root: v2.std.node.Node {
-      kind: v2.std.node.TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
       children: [
         v2.std.node.Edge {
-          label: Named { name: ^anchor_decl_first },
+          label: v2.std.node.Named { name: ^anchor_decl_first },
           target: v2.std.node.Node {
             kind: v2.std.node.TypeNode {
               connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_service }
             },
             children: [],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: v2.std.node.SyntheticOccurrence
           }
         },
         v2.std.node.Edge {
-          label: Named { name: ^anchor_decl_second },
+          label: v2.std.node.Named { name: ^anchor_decl_second },
           target: v2.std.node.Node {
             kind: v2.std.node.TypeNode {
               connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_type }
             },
             children: [],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: v2.std.node.SyntheticOccurrence
           }
         }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
 },
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   ) {
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: dag_language_model_void())
+    Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: v2.extdeps.languages.dag.dag_language_model_void())
   }
 }
 
 fn anchor_resolve_bind_binder_use() -> v2.std.diagnostic.Outcome<v2.compiler.resolve.ResolvedTree> {
-  match admit_normalized_tree(
+  match v2.compiler.normalized_tree.admit_normalized_tree(
     root: v2.std.node.Node {
-      kind: v2.std.node.TypeNode { connective: Conj },
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
       children: [
         v2.std.node.Edge {
-          label: Named { name: ^anchor_decl_first },
+          label: v2.std.node.Named { name: ^anchor_decl_first },
           target: v2.std.node.Node {
-            kind: v2.std.node.ComputationNode { behavior: Bind },
+            kind: v2.std.node.ComputationNode { behavior: v2.std.node.Bind },
             children: [
               v2.std.node.Edge {
-                label: Positional,
+                label: v2.std.node.Positional,
                 target: v2.std.node.Node {
                   kind: v2.std.node.TypeNode {
                     connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_fn }
                   },
                   children: [],
-                  occurrence_id: SyntheticOccurrence
+                  occurrence_id: v2.std.node.SyntheticOccurrence
                 }
               },
               v2.std.node.Edge {
-                label: Positional,
+                label: v2.std.node.Positional,
                 target: v2.std.node.Node {
                   kind: v2.std.node.TypeNode {
                     connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_service }
                   },
                   children: [],
-                  occurrence_id: SyntheticOccurrence
+                  occurrence_id: v2.std.node.SyntheticOccurrence
                 }
               },
               v2.std.node.Edge {
-                label: Positional,
+                label: v2.std.node.Positional,
                 target: v2.std.node.Node {
                   kind: v2.std.node.TypeNode {
                     connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_fn }
                   },
                   children: [],
-                  occurrence_id: SyntheticOccurrence
+                  occurrence_id: v2.std.node.SyntheticOccurrence
                 }
               }
             ],
-            occurrence_id: SyntheticOccurrence
+            occurrence_id: v2.std.node.SyntheticOccurrence
           }
         }
       ],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
 },
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   ) {
     Rejected { diagnostics: r } => v2.std.diagnostic.Rejected { diagnostics: r }
-    Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: dag_language_model_void())
+    Accepted { value: t, diagnostics: _ } => v2.compiler.resolve.resolve(tree: t, lm: v2.extdeps.languages.dag.dag_language_model_void())
   }
 }
 
-fn resolve_imported_qn_node() -> Node {
-  fold_list_node(
+fn resolve_imported_qn_node() -> v2.std.node.Node {
+  v2.std.algebra.fold_list_node(
     xs: std.algebra.Cons { head: ^anchor_imported_path_segment, tail: std.algebra.Empty },
     item_node: fn(sym) {
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: v2.std.node.SyntheticOccurrence
 }
     }
   )
 }
 
-fn resolve_imported_module_root() -> Node {
+fn resolve_imported_module_root() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header,
-        target: dag_grammar_atom(id: ^dag_surface_module_header)
+        target: v2.extdeps.languages.dag.dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header_qualified_name,
         target: resolve_imported_qn_node()
       ),
       v2.std.node.Edge {
-        label: Named { name: ^anchor_imported_decl },
+        label: v2.std.node.Named { name: ^anchor_imported_decl },
         target: v2.std.node.Node {
           kind: v2.std.node.TypeNode {
             connective: v2.std.node.Atom { identity: ^dag_c3_surface_sugar_service }
           },
           children: [],
-          occurrence_id: SyntheticOccurrence
+          occurrence_id: v2.std.node.SyntheticOccurrence
         }
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn resolve_subject_qn_node() -> Node {
-  fold_list_node(
+fn resolve_subject_qn_node() -> v2.std.node.Node {
+  v2.std.algebra.fold_list_node(
     xs: std.algebra.Cons { head: ^anchor_subject_path_segment, tail: std.algebra.Empty },
     item_node: fn(sym) {
       v2.std.node.Node {
         kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: sym } },
         children: [],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: v2.std.node.SyntheticOccurrence
 }
     }
   )
 }
 
-fn resolve_subject_module_root() -> Node {
+fn resolve_subject_module_root() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header,
-        target: dag_grammar_atom(id: ^dag_surface_module_header)
+        target: v2.extdeps.languages.dag.dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header_qualified_name,
         target: resolve_subject_qn_node()
       )
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn resolve_subject_module_root_with_import_use() -> Node {
+fn resolve_subject_module_root_with_import_use() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header,
-        target: dag_grammar_atom(id: ^dag_surface_module_header)
+        target: v2.extdeps.languages.dag.dag_grammar_atom(id: ^dag_surface_module_header)
       ),
-      dag_named_edge(
+      v2.extdeps.languages.dag.dag_named_edge(
         name: ^dag_surface_module_header_qualified_name,
         target: resolve_subject_qn_node()
       ),
       v2.std.node.Edge {
-        label: Named { name: ^anchor_subject_import_use },
+        label: v2.std.node.Named { name: ^anchor_subject_import_use },
         target: resolve_imported_use_tree()
       }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -257,8 +217,8 @@ fn resolve_subject_name() -> v2.std.qualified_name.QualifiedName {
   std.algebra.Cons { head: ^anchor_subject_path_segment, tail: std.algebra.Empty }
 }
 
-fn resolve_roots_single_import() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
-  admit_normalized_roots(
+fn resolve_roots_single_import() -> v2.std.diagnostic.Outcome<std.algebra.FreeMonoid<v2.compiler.normalized_tree.NormalizedTree>> {
+  v2.compiler.normalized_tree.admit_normalized_roots(
     roots: std.algebra.Cons {
     head: resolve_subject_module_root_with_import_use(),
     tail: std.algebra.Cons {
@@ -266,15 +226,15 @@ fn resolve_roots_single_import() -> v2.std.diagnostic.Outcome<FreeMonoid<v2.comp
       tail: std.algebra.Empty
     }
   },
-    diagnostics: None
+    diagnostics: v2.std.diagnostic.None
   )
 }
 
-fn resolve_imported_use_tree() -> Node {
+fn resolve_imported_use_tree() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^anchor_imported_decl } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
@@ -282,12 +242,12 @@ fn resolve_import_target() -> v2.std.qualified_name.QualifiedName {
   std.algebra.Cons { head: ^anchor_imported_path_segment, tail: std.algebra.Empty }
 }
 
-test fn resolve_with_admission_imported_binding_accepts() -> Bool {
+test fn resolve_with_admission_imported_binding_accepts() -> v2.std.logic.Bool {
   match resolve_roots_single_import() {
     Rejected { diagnostics: _ } => false
     Accepted { value: admitted, diagnostics: _ } =>
-    match resolve_with_admission_policy(
-      lm: dag_language_model_surface_empty_prelude(),
+    match v2.compiler.name_resolve.resolve_with_admission_policy(
+      lm: v2.extdeps.languages.dag.dag_language_model_surface_empty_prelude(),
       roots: admitted,
       admission: v2.compiler.name_resolve.Admission {
         subject: v2.compiler.name_resolve.ResolutionSubject {
@@ -296,14 +256,14 @@ test fn resolve_with_admission_imported_binding_accepts() -> Bool {
         imports: std.algebra.Cons {
           head: v2.compiler.name_resolve.Import {
             target: resolve_import_target(),
-            visibility: ImportVisible
+            visibility: v2.compiler.name_resolve.ImportVisible
           },
           tail: std.algebra.Empty
         }
       },
-      index: source_root_index_empty(),
+      index: v2.std.cross_tree.resolution.source_root_index_empty(),
       active_roots: std.algebra.Empty,
-      policy: ImportScoped
+      policy: v2.std.resolution_policy.ImportScoped
     ) {
       Accepted { value: _, diagnostics: _ } => true
       Rejected { diagnostics: _ } => false

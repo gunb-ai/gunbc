@@ -1,31 +1,10 @@
 module v2.test.manual.add_body_producer_claim
 
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.test.complexity_gate.table_fixture_add_subject_producer {
-  table_fixture_add_arrow_with_body
-}
-import v2.extdeps.languages.dag { dag_add_binary_body_fixture }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Arrow,
-  Atom,
-  ComputationNode,
-  Edge,
-  Named,
-  Node,
-  Positional,
-  Transform,
-  TypeNode,
-  node_synthetic,
-  well_formed
-}
-import v2.std.node_query { find_arrow_body_child }
-
-test fn add_body_table_fixture_arrow_accepts() -> Bool {
-  match table_fixture_add_arrow_with_body() {
+test fn add_body_table_fixture_arrow_accepts() -> v2.std.logic.Bool {
+  match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      well_formed(n: arrow)
-        && match find_arrow_body_child(root: arrow) {
+      v2.std.node.well_formed(n: arrow)
+        && match v2.std.node_query.find_arrow_body_child(root: arrow) {
           Accepted { value: body, diagnostics: _ } =>
             match body.kind {
               ComputationNode { behavior: _ } => true
@@ -37,27 +16,27 @@ test fn add_body_table_fixture_arrow_accepts() -> Bool {
   }
 }
 
-fn add_arrow_swapped_operand_body() -> Node {
-  node_synthetic(
+fn add_arrow_swapped_operand_body() -> v2.std.node.Node {
+  v2.std.node.node_synthetic(
     kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
     children: [
       v2.std.node.Edge {
-        label: Positional,
-        target: node_synthetic(
+        label: v2.std.node.Positional,
+        target: v2.std.node.node_synthetic(
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_token_plus } },
           children: []
         )
       },
       v2.std.node.Edge {
-        label: Positional,
-        target: node_synthetic(
+        label: v2.std.node.Positional,
+        target: v2.std.node.node_synthetic(
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_param_y } },
           children: []
         )
       },
       v2.std.node.Edge {
-        label: Positional,
-        target: node_synthetic(
+        label: v2.std.node.Positional,
+        target: v2.std.node.node_synthetic(
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_param_x } },
           children: []
         )
@@ -66,56 +45,56 @@ fn add_arrow_swapped_operand_body() -> Node {
   )
 }
 
-test fn add_body_operand_order_differs() -> Bool {
-  let canonical = dag_add_binary_body_fixture
+test fn add_body_operand_order_differs() -> v2.std.logic.Bool {
+  let canonical = v2.extdeps.languages.dag.dag_add_binary_body_fixture
   let swapped = add_arrow_swapped_operand_body()
   canonical != swapped
 }
 
-fn add_body_arrow_with_atom_body_rejects() -> Bool {
-  let arrow = node_synthetic(
-    kind: v2.std.node.TypeNode { connective: Arrow },
+fn add_body_arrow_with_atom_body_rejects() -> v2.std.logic.Bool {
+  let arrow = v2.std.node.node_synthetic(
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Arrow },
     children: [
       v2.std.node.Edge {
-        label: Positional,
-        target: node_synthetic(
+        label: v2.std.node.Positional,
+        target: v2.std.node.node_synthetic(
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_type_int } },
           children: []
         )
       },
       v2.std.node.Edge {
-        label: Positional,
-        target: node_synthetic(
+        label: v2.std.node.Positional,
+        target: v2.std.node.node_synthetic(
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_type_int } },
           children: []
         )
       },
       v2.std.node.Edge {
-        label: Positional,
-        target: node_synthetic(
+        label: v2.std.node.Positional,
+        target: v2.std.node.node_synthetic(
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_binding_type_int } },
           children: []
         )
       },
       v2.std.node.Edge {
-        label: Named { name: ^arrow_body_edge },
-        target: node_synthetic(
+        label: v2.std.node.Named { name: ^arrow_body_edge },
+        target: v2.std.node.node_synthetic(
           kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^add_body_producer_fail } },
           children: []
         )
       }
     ]
   )
-  !well_formed(n: arrow)
+  !v2.std.node.well_formed(n: arrow)
 }
 
-test fn add_body_edge_targets_binary_transform() -> Bool {
-  match table_fixture_add_arrow_with_body() {
+test fn add_body_edge_targets_binary_transform() -> v2.std.logic.Bool {
+  match v2.test.complexity_gate.table_fixture_add_subject_producer.table_fixture_add_arrow_with_body() {
     Accepted { value: arrow, diagnostics: _ } =>
-      match find_arrow_body_child(root: arrow) {
+      match v2.std.node_query.find_arrow_body_child(root: arrow) {
         Accepted { value: body, diagnostics: _ } =>
           match body.kind {
-            ComputationNode { behavior: Transform } => true
+            ComputationNode { behavior: v2.std.node.Transform } => true
             _ => false
           }
         Rejected { diagnostics: _ } => false

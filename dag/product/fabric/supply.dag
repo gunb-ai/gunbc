@@ -1,12 +1,5 @@
 module product.fabric.supply
 
-import std.types { Timestamp, Int }
-import std.measure { MoneyAmountMicro, MoneyPerSecond, MoneyPerHour, MoneyOnce }
-import std.currency { CurrencyCode }
-import product.fabric.identity { FabricIdentity, OfferKey }
-import product.fabric.demand { ObservationReceiptRef }
-import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef }
-
 // An Offer is a supplier's statement of capacity it is willing to sell. Owned
 // capacity and rented capacity are ONE type: what differs is the evidence behind
 // the statement, not the kind of thing being stated.
@@ -54,11 +47,11 @@ import product.fabric.work { Shape, CapabilityManifestRef, TrustDomainRef }
 // compares normalized quotes; it does not model any supplier's tariff.
 
 type OfferQuote =
-  | QuotedPerSecond(MoneyPerSecond)
-  | QuotedPerHour(MoneyPerHour)
-  | QuotedFlatPerGrant(MoneyOnce)
+  | QuotedPerSecond(std.measure.MoneyPerSecond)
+  | QuotedPerHour(std.measure.MoneyPerHour)
+  | QuotedFlatPerGrant(std.measure.MoneyOnce)
 
-fn offer_quote_amount(q: OfferQuote) -> MoneyAmountMicro {
+fn offer_quote_amount(q: OfferQuote) -> std.measure.MoneyAmountMicro {
   match q {
     QuotedPerSecond(r) => r.amount
     QuotedPerHour(r) => r.amount
@@ -66,7 +59,7 @@ fn offer_quote_amount(q: OfferQuote) -> MoneyAmountMicro {
   }
 }
 
-fn offer_quote_currency(q: OfferQuote) -> CurrencyCode {
+fn offer_quote_currency(q: OfferQuote) -> std.currency.CurrencyCode {
   match q {
     QuotedPerSecond(r) => r.currency
     QuotedPerHour(r) => r.currency
@@ -75,21 +68,21 @@ fn offer_quote_currency(q: OfferQuote) -> CurrencyCode {
 }
 
 type OfferEvidence
-  = ObservedSupply { observed_at: Timestamp, receipt: ObservationReceiptRef }
+  = ObservedSupply { observed_at: std.types.Timestamp, receipt: product.fabric.demand.ObservationReceiptRef }
   | QuotedSupply {
-      quoted_at: Timestamp,
-      valid_until: Timestamp,
-      receipt: ObservationReceiptRef,
+      quoted_at: std.types.Timestamp,
+      valid_until: std.types.Timestamp,
+      receipt: product.fabric.demand.ObservationReceiptRef,
     }
 
 type Offer<P> {
-  id: FabricIdentity<P, OfferKey>
+  id: product.fabric.identity.FabricIdentity<P, product.fabric.identity.OfferKey>
   executor: P
-  shape: Shape
-  capabilities: CapabilityManifestRef
-  trust_domain: TrustDomainRef
-  quantity_bound: Int
-  ready_at: Timestamp
+  shape: product.fabric.work.Shape
+  capabilities: product.fabric.work.CapabilityManifestRef
+  trust_domain: product.fabric.work.TrustDomainRef
+  quantity_bound: std.types.Int
+  ready_at: std.types.Timestamp
   quote: OfferQuote
   evidence: OfferEvidence
 }

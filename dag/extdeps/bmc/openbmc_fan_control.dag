@@ -1,145 +1,39 @@
 module extdeps.bmc.openbmc_fan_control
 
-import std.algebra { Empty, trim }
-import v2.std.diagnostic { Accepted, Rejected }
-
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Https, Uri }
-import extdeps.ssh.password_session {
-  PasswordSshExecResult,
-  PasswordSshSession,
-  password_ssh_session_copy_file,
-}
-import extdeps.crypto.hash { Digest, sha256_digest }
-import extdeps.languages.json.emit {
-  json_array,
-  json_int,
-  json_kv,
-  json_object,
-  json_string,
-  serialize_json,
-}
-import extdeps.tools.jq {
-  JqInputStdin,
-  JqInvocation,
-  JqProgram,
-  JqProgramExit,
-  JqRawOutput,
-  jq_authority,
-  JqOutcome,
-  JqOutputAbsent,
-  JqOutputPresent,
-  JqExecutionRefused,
-  jq_classify_observation,
-  jq_execute_admitted_plan,
-  jq_invocation_process_plan
-}
-import extdeps.systemd.systemctl { systemctl_authority }
-import extdeps.bmc.openbmc_operation {
-  OpenBmcCopyFilePreservingMetadata,
-  OpenBmcDiskUsageKib,
-  OpenBmcFanConfigDesired,
-  OpenBmcFanConfigQuery,
-  OpenBmcFanConfigScalar,
-  OpenBmcFanConfigValidate,
-  OpenBmcFanConfigVerify,
-  OpenBmcFanControllerCount,
-  OpenBmcFanControllerNameAt,
-  OpenBmcFanInputAt,
-  OpenBmcFanInputCountAt,
-  OpenBmcFileSha256,
-  OpenBmcMakeDirectory,
-  OpenBmcMinimumDuty,
-  OpenBmcNegativeHysteresis,
-  OpenBmcOperation,
-  OpenBmcOutputCount,
-  OpenBmcOutputAt,
-  OpenBmcParentDirectory,
-  OpenBmcPathExists,
-  OpenBmcPathIsNonemptyFile,
-  OpenBmcPathIsWritable,
-  OpenBmcPositiveHysteresis,
-  OpenBmcReadFile,
-  OpenBmcReadingAt,
-  OpenBmcReadingCount,
-  OpenBmcRemoveDirectory,
-  OpenBmcRemoveFile,
-  OpenBmcRenameReplace,
-  OpenBmcResolvePath,
-  OpenBmcSensorFailsafeDuty,
-  OpenBmcSensorServices,
-  OpenBmcSensorThreshold,
-  OpenBmcSensorValue,
-  OpenBmcStepwiseCount,
-  OpenBmcSynchronizeFilesystems,
-  OpenBmcSystemdIsActive,
-  OpenBmcSystemdRestart,
-  OpenBmcThresholdProperty,
-  OpenBmcUtcTimestamp,
-  OpenBmcWaitSeconds,
-  OpenBmcWarningLow,
-  OpenBmcCriticalLow,
-  OpenBmcZoneFailsafe,
-  OpenBmcZoneFailsafeDuty,
-  openbmc_busctl_authority,
-}
-import extdeps.bmc.openbmc_password_ssh_transport {
-  openbmc_password_ssh_transport_note,
-}
-import std.measure {
-  ByteSize,
-  Celsius,
-  CelsiusDelta,
-  Percent,
-  RevolutionsPerMinute,
-  Second,
-  celsius,
-  celsius_count,
-  celsius_delta,
-  celsius_delta_count,
-  byte_size,
-  percent,
-  percent_count,
-  rpm,
-  rpm_count,
-  second_count,
-}
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr, String }
-
 data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
   uri: extdeps.uri.Uri {
-    scheme: Https,
+    scheme: extdeps.uri.Https,
     locator: "www.freedesktop.org/software/systemd/man/latest/busctl.html",
   },
 }
 
-data openbmc_fan_control_authority_anchor_scaffold_note: String = "SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads the correct openbmc_busctl_authority alias as absent, so the literal anchor duplicates its projection; openbmc_busctl_authority remains the semantic authority. This copy dissolves with the host seam under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus witness."
+data openbmc_fan_control_authority_anchor_scaffold_note: std.types.String = "SCAFFOLD (mandatory-tag corpus cadence) - the host scanner reads the correct openbmc_busctl_authority alias as absent, so the literal anchor duplicates its projection; openbmc_busctl_authority remains the semantic authority. This copy dissolves with the host seam under the corpus_scan_scaffold_note in v2.lens.mandatory_tag.corpus_scan when native witness realization runs the parse-grain corpus witness."
 
-data openbmc_systemctl_is_active_authority_note: String = "The systemctl(1) is-active contract names the unit-state tokens and assigns a nonzero exit status when no named unit is active. This decoder admits only the exact inactive token as the typed false observation; other non-active states remain typed refusals rather than being collapsed into inactive."
+data openbmc_systemctl_is_active_authority_note: std.types.String = "The systemctl(1) is-active contract names the unit-state tokens and assigns a nonzero exit status when no named unit is active. This decoder admits only the exact inactive token as the typed false observation; other non-active states remain typed refusals rather than being collapsed into inactive."
 
-data openbmc_systemctl_is_active_authority: extdeps.external_authority.ExternalAuthority = systemctl_authority
+data openbmc_systemctl_is_active_authority: extdeps.external_authority.ExternalAuthority = extdeps.systemd.systemctl.systemctl_authority
 
-data openbmc_json_projection_authority: extdeps.external_authority.ExternalAuthority = jq_authority
+data openbmc_json_projection_authority: extdeps.external_authority.ExternalAuthority = extdeps.tools.jq.jq_authority
 
 type OpenBmcLocalTransformResult {
-  exit_code: Int
-  success: Bool
-  content: String
-  stderr: String
+  exit_code: std.types.Int
+  success: std.types.Bool
+  content: std.types.String
+  stderr: std.types.String
 }
 
 type OpenBmcSelection<T>
   = OpenBmcSelectionZero
   | OpenBmcSelectionOne { value: T }
-  | OpenBmcSelectionMany { count: Int }
+  | OpenBmcSelectionMany { count: std.types.Int }
 
 type OpenBmcCollection<T>
   = OpenBmcCollectionZero
   | OpenBmcCollectionOne { value: T }
-  | OpenBmcCollectionMany { values: List<T> }
+  | OpenBmcCollectionMany { values: std.types.List<T> }
 
 fn openbmc_collection_from_values<T>(
-  values: List<T>,
+  values: std.types.List<T>,
 ) -> OpenBmcCollection<T> {
   if values.length() == 0 {
     OpenBmcCollectionZero
@@ -156,33 +50,33 @@ type OpenBmcStepwiseController {
   sensor_failsafe_duty: std.measure.Percent
   positive_hysteresis: std.measure.CelsiusDelta
   negative_hysteresis: std.measure.CelsiusDelta
-  readings: List<std.measure.Celsius>
-  outputs: List<std.measure.Percent>
+  readings: std.types.List<std.measure.Celsius>
+  outputs: std.types.List<std.measure.Percent>
 }
 
-fn openbmc_fan_config_desired_json(desired: extdeps.bmc.openbmc_operation.OpenBmcFanConfigDesired) -> String {
-  serialize_json(v: json_object(members: [
-    json_kv(key: "minimum", value: json_int(n: percent_count(desired.minimum_duty))),
-    json_kv(key: "zone_failsafe_duty", value: json_int(n: percent_count(desired.zone_failsafe_duty))),
-    json_kv(key: "sensor_failsafe", value: json_int(n: percent_count(desired.sensor_failsafe_duty))),
-    json_kv(key: "positive_hysteresis", value: json_int(n: celsius_delta_count(desired.positive_hysteresis))),
-    json_kv(key: "negative_hysteresis", value: json_int(n: celsius_delta_count(desired.negative_hysteresis))),
-    json_kv(
+fn openbmc_fan_config_desired_json(desired: extdeps.bmc.openbmc_operation.OpenBmcFanConfigDesired) -> std.types.String {
+  extdeps.languages.json.emit.serialize_json(v: extdeps.languages.json.emit.json_object(members: [
+    extdeps.languages.json.emit.json_kv(key: "minimum", value: extdeps.languages.json.emit.json_int(n: std.measure.percent_count(desired.minimum_duty))),
+    extdeps.languages.json.emit.json_kv(key: "zone_failsafe_duty", value: extdeps.languages.json.emit.json_int(n: std.measure.percent_count(desired.zone_failsafe_duty))),
+    extdeps.languages.json.emit.json_kv(key: "sensor_failsafe", value: extdeps.languages.json.emit.json_int(n: std.measure.percent_count(desired.sensor_failsafe_duty))),
+    extdeps.languages.json.emit.json_kv(key: "positive_hysteresis", value: extdeps.languages.json.emit.json_int(n: std.measure.celsius_delta_count(desired.positive_hysteresis))),
+    extdeps.languages.json.emit.json_kv(key: "negative_hysteresis", value: extdeps.languages.json.emit.json_int(n: std.measure.celsius_delta_count(desired.negative_hysteresis))),
+    extdeps.languages.json.emit.json_kv(
       key: "readings",
-      value: json_array(elements: desired.readings |> map(value => json_int(n: celsius_count(value)))),
+      value: extdeps.languages.json.emit.json_array(elements: desired.readings |> map(value => extdeps.languages.json.emit.json_int(n: std.measure.celsius_count(value)))),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "outputs",
-      value: json_array(elements: desired.outputs |> map(value => json_int(n: percent_count(value)))),
+      value: extdeps.languages.json.emit.json_array(elements: desired.outputs |> map(value => extdeps.languages.json.emit.json_int(n: std.measure.percent_count(value)))),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "fan_pid_entry",
-      value: json_string(s: desired.fan_controller_name as String),
+      value: extdeps.languages.json.emit.json_string(s: desired.fan_controller_name as std.types.String),
     ),
-    json_kv(
+    extdeps.languages.json.emit.json_kv(
       key: "fan_inputs",
-      value: json_array(elements: desired.fan_inputs |> map(value =>
-        json_string(s: value as String)
+      value: extdeps.languages.json.emit.json_array(elements: desired.fan_inputs |> map(value =>
+        extdeps.languages.json.emit.json_string(s: value as std.types.String)
       )),
     ),
   ]))
@@ -190,7 +84,7 @@ fn openbmc_fan_config_desired_json(desired: extdeps.bmc.openbmc_operation.OpenBm
 
 type OpenBmcFanController {
   name: std.types.NonEmptyStr
-  inputs: List<std.types.NonEmptyStr>
+  inputs: std.types.List<std.types.NonEmptyStr>
 }
 
 type OpenBmcFanConfigObservation {
@@ -200,29 +94,29 @@ type OpenBmcFanConfigObservation {
 
 type OpenBmcFanConfigObservationResult
   = OpenBmcFanConfigObserved { observation: OpenBmcFanConfigObservation }
-  | OpenBmcFanConfigObservationRefused { reason: String }
+  | OpenBmcFanConfigObservationRefused { reason: std.types.String }
 
 type OpenBmcPathResult
   = OpenBmcPathObserved { path: std.types.NonEmptyStr }
-  | OpenBmcPathRefused { reason: String }
+  | OpenBmcPathRefused { reason: std.types.String }
 
 type OpenBmcBoolResult
-  = OpenBmcBoolObserved { value: Bool }
-  | OpenBmcBoolRefused { reason: String }
+  = OpenBmcBoolObserved { value: std.types.Bool }
+  | OpenBmcBoolRefused { reason: std.types.String }
 
 type OpenBmcByteSizeResult
   = OpenBmcByteSizeObserved { value: std.measure.ByteSize }
-  | OpenBmcByteSizeRefused { reason: String }
+  | OpenBmcByteSizeRefused { reason: std.types.String }
 
 type OpenBmcInstantResult
   = OpenBmcInstantObserved { observed_at: std.types.EpochMs }
-  | OpenBmcInstantRefused { reason: String }
+  | OpenBmcInstantRefused { reason: std.types.String }
 
 fn openbmc_path_result(
   remote: extdeps.ssh.password_session.PasswordSshExecResult,
 ) -> OpenBmcPathResult {
   if remote.exit_code != 0 || !remote.success {
-    let reason = if trim(remote.stderr) == "" {
+    let reason = if std.algebra.trim(remote.stderr) == "" {
       "path transport did not report exit-zero success"
     } else {
       remote.stderr
@@ -230,7 +124,7 @@ fn openbmc_path_result(
     OpenBmcPathRefused { reason: reason }
   } else {
     let paths = split(s: remote.stdout, delimiter: "\n")
-      |> map(path => trim(path))
+      |> map(path => std.algebra.trim(path))
       |> filter(path => path != "")
     if paths.length() == 0 {
       OpenBmcPathRefused { reason: "path response is empty" }
@@ -248,21 +142,21 @@ fn openbmc_zone_failsafe_result(
   remote: extdeps.ssh.password_session.PasswordSshExecResult,
 ) -> OpenBmcBoolResult {
   if remote.exit_code != 0 || !remote.success {
-    let reason = if trim(remote.stderr) == "" {
+    let reason = if std.algebra.trim(remote.stderr) == "" {
       "zone failsafe transport did not report exit-zero success"
     } else {
       remote.stderr
     }
     OpenBmcBoolRefused { reason: reason }
   } else {
-    let tokens = split(s: trim(remote.stdout), delimiter: " ")
-      |> filter(token => trim(token) != "")
-    if tokens.length() != 2 || trim(tokens.first()) != "b" {
+    let tokens = split(s: std.algebra.trim(remote.stdout), delimiter: " ")
+      |> filter(token => std.algebra.trim(token) != "")
+    if tokens.length() != 2 || std.algebra.trim(tokens.first()) != "b" {
       OpenBmcBoolRefused {
         reason: "zone failsafe response does not have one typed boolean payload",
       }
     } else {
-      let payload = trim(tokens.skip(n: 1).first())
+      let payload = std.algebra.trim(tokens.skip(n: 1).first())
       if payload == "true" {
         OpenBmcBoolObserved { value: true }
       } else if payload == "false" {
@@ -281,14 +175,14 @@ fn openbmc_path_probe_result(
     OpenBmcBoolObserved { value: true }
   } else if remote.exit_code == 1
     && !remote.success
-    && trim(remote.stdout) == ""
-    && trim(remote.stderr) == "" {
+    && std.algebra.trim(remote.stdout) == ""
+    && std.algebra.trim(remote.stderr) == "" {
     OpenBmcBoolObserved { value: false }
   } else {
-    let reason = if trim(remote.stderr) == "" {
+    let reason = if std.algebra.trim(remote.stderr) == "" {
       concat(
         "path predicate response is not the expected positive or negative shape; observed stdout: ",
-        trim(remote.stdout),
+        std.algebra.trim(remote.stdout),
       )
     } else {
       remote.stderr
@@ -302,19 +196,19 @@ fn openbmc_service_active_result(
 ) -> OpenBmcBoolResult {
   if remote.exit_code == 0
     && remote.success
-    && trim(remote.stdout) == "active"
-    && trim(remote.stderr) == "" {
+    && std.algebra.trim(remote.stdout) == "active"
+    && std.algebra.trim(remote.stderr) == "" {
     OpenBmcBoolObserved { value: true }
   } else if remote.exit_code == 3
     && !remote.success
-    && trim(remote.stdout) == "inactive"
-    && trim(remote.stderr) == "" {
+    && std.algebra.trim(remote.stdout) == "inactive"
+    && std.algebra.trim(remote.stderr) == "" {
     OpenBmcBoolObserved { value: false }
   } else {
-    let reason = if trim(remote.stderr) == "" {
+    let reason = if std.algebra.trim(remote.stderr) == "" {
       concat(
         "service-active response is not the expected active or inactive shape; observed stdout: ",
-        trim(remote.stdout),
+        std.algebra.trim(remote.stdout),
       )
     } else {
       remote.stderr
@@ -327,27 +221,27 @@ fn openbmc_disk_usage_result(
   remote: extdeps.ssh.password_session.PasswordSshExecResult,
 ) -> OpenBmcByteSizeResult {
   if remote.exit_code != 0 || !remote.success {
-    let reason = if trim(remote.stderr) == "" {
+    let reason = if std.algebra.trim(remote.stderr) == "" {
       "disk usage transport did not report exit-zero success"
     } else {
       remote.stderr
     }
     OpenBmcByteSizeRefused { reason: reason }
   } else {
-    let lines = split(s: trim(remote.stdout), delimiter: "\n")
+    let lines = split(s: std.algebra.trim(remote.stdout), delimiter: "\n")
     if lines.length() < 2 {
       OpenBmcByteSizeRefused { reason: "disk usage response has no data row" }
     } else {
       let fields = split(
-        s: trim(lines.skip(n: 1).first()),
+        s: std.algebra.trim(lines.skip(n: 1).first()),
         delimiter: " ",
-      ) |> filter(field => trim(field) != "")
+      ) |> filter(field => std.algebra.trim(field) != "")
       if fields.length() < 4 {
         OpenBmcByteSizeRefused {
           reason: "disk usage data row has no available-kibibyte field",
         }
       } else {
-        match parse_int(s: trim(fields.skip(n: 3).first())) {
+        match parse_int(s: std.algebra.trim(fields.skip(n: 3).first())) {
           Absent =>
             OpenBmcByteSizeRefused {
               reason: "available-kibibyte field is not an integer",
@@ -358,7 +252,7 @@ fn openbmc_disk_usage_result(
                 reason: "available-kibibyte field is negative",
               }
             } else {
-              OpenBmcByteSizeObserved { value: byte_size(kibibytes * 1024) }
+              OpenBmcByteSizeObserved { value: std.measure.byte_size(kibibytes * 1024) }
             }
         }
       }
@@ -370,14 +264,14 @@ fn openbmc_epoch_result(
   remote: extdeps.ssh.password_session.PasswordSshExecResult,
 ) -> OpenBmcInstantResult {
   if remote.exit_code != 0 || !remote.success {
-    let reason = if trim(remote.stderr) == "" {
+    let reason = if std.algebra.trim(remote.stderr) == "" {
       "UTC timestamp transport did not report exit-zero success"
     } else {
       remote.stderr
     }
     OpenBmcInstantRefused { reason: reason }
   } else {
-    match parse_int(s: trim(remote.stdout)) {
+    match parse_int(s: std.algebra.trim(remote.stdout)) {
       Absent =>
         OpenBmcInstantRefused { reason: "UTC epoch-second response is not an integer" }
       Present { value: epoch_seconds } =>
@@ -731,7 +625,7 @@ fn openbmc_execute(
         username: session.username,
         password: session.password,
         known_hosts_path: session.known_hosts_path,
-        seconds: second_count(duration),
+        seconds: std.measure.second_count(duration),
       )
   }
   extdeps.ssh.password_session.PasswordSshExecResult {
@@ -745,14 +639,14 @@ fn openbmc_execute(
 service openbmc.JsonProjection {
   operation ProjectFanConfig {
     input {
-      desired_json: String
+      desired_json: std.types.String
       path: std.types.NonEmptyStr
     }
     output {
-      value: String from "stdout"
-      success: Bool from "exit_success"
-      exit_code: Int from "exit_code"
-      stderr: String from "stderr"
+      value: std.types.String from "stdout"
+      success: std.types.Bool from "exit_success"
+      exit_code: std.types.Int from "exit_code"
+      stderr: std.types.String from "stderr"
     }
     readonly
     transport shell {
@@ -767,16 +661,16 @@ service openbmc.JsonProjection {
     }
     exit {
       0 => Unit
-      nonzero => String "OpenBMC fan config projection failed"
+      nonzero => std.types.String "OpenBMC fan config projection failed"
     }
   }
 
   operation ObjectMapperServiceCount {
-    input { content: String }
+    input { content: std.types.String }
     output {
-      value: String from "stdout"
-      success: Bool from "exit_success"
-      stderr: String from "stderr"
+      value: std.types.String from "stdout"
+      success: std.types.Bool from "exit_success"
+      stderr: std.types.String from "stderr"
     }
     readonly
     transport shell {
@@ -785,16 +679,16 @@ service openbmc.JsonProjection {
     }
     exit {
       0 => Unit
-      nonzero => String "ObjectMapper service count projection failed"
+      nonzero => std.types.String "ObjectMapper service count projection failed"
     }
   }
 
   operation ObjectMapperServiceAt {
-    input { content: String, index: Int }
+    input { content: std.types.String, index: std.types.Int }
     output {
-      value: String from "stdout"
-      success: Bool from "exit_success"
-      stderr: String from "stderr"
+      value: std.types.String from "stdout"
+      success: std.types.Bool from "exit_success"
+      stderr: std.types.String from "stderr"
     }
     readonly
     transport shell {
@@ -803,7 +697,7 @@ service openbmc.JsonProjection {
     }
     exit {
       0 => Unit
-      nonzero => String "ObjectMapper service projection failed"
+      nonzero => std.types.String "ObjectMapper service projection failed"
     }
   }
 
@@ -872,12 +766,12 @@ type OpenBmcSensorServicesResult
   = OpenBmcSensorServicesObserved {
       services: OpenBmcCollection<std.types.NonEmptyStr>,
     }
-  | OpenBmcSensorServicesRefused { reason: String }
+  | OpenBmcSensorServicesRefused { reason: std.types.String }
 
 type OpenBmcSensorValueResult
-  = OpenBmcSensorValueObserved { value: Int }
+  = OpenBmcSensorValueObserved { value: std.types.Int }
   | OpenBmcSensorValueAbsent
-  | OpenBmcSensorValueRefused { reason: String }
+  | OpenBmcSensorValueRefused { reason: std.types.String }
 
 // exit_code, not `success: Bool`. Two fields for one fact is a second representation: success is
 // exactly exit_code == 0, derived here where the three states are decided rather than carried
@@ -887,23 +781,23 @@ type OpenBmcSensorValueResult
 // load-bearing: a non-numeric reading emits NOTHING and exits zero, which the decoder below reads
 // as OpenBmcSensorValueAbsent -- a real third state beside Refused and Observed. That is why this
 // path must NOT carry jq's --exit-status: it would collapse Absent into Refused on a live sensor.
-data openbmc_sensor_integer_program: String = "if (.data | type) == \"number\" then (.data | round) else empty end"
+data openbmc_sensor_integer_program: std.types.String = "if (.data | type) == \"number\" then (.data | round) else empty end"
 
 // One place builds the sensor projection invocation, so both call sites cannot drift apart.
-fn openbmc_sensor_integer_projection(content: String) -> OpenBmcSensorValueResult {
-  match jq_invocation_process_plan(invocation: JqInvocation {
-    program: JqProgram { source: openbmc_sensor_integer_program },
-    bindings: Empty,
-    input: JqInputStdin { content: content },
-    output_encoding: JqRawOutput,
-    exit_policy: JqProgramExit,
+fn openbmc_sensor_integer_projection(content: std.types.String) -> OpenBmcSensorValueResult {
+  match extdeps.tools.jq.jq_invocation_process_plan(invocation: extdeps.tools.jq.JqInvocation {
+    program: extdeps.tools.jq.JqProgram { source: openbmc_sensor_integer_program },
+    bindings: std.algebra.Empty,
+    input: extdeps.tools.jq.JqInputStdin { content: content },
+    output_encoding: extdeps.tools.jq.JqRawOutput,
+    exit_policy: extdeps.tools.jq.JqProgramExit,
   }) {
     Rejected { diagnostics: _ } =>
       OpenBmcSensorValueRefused { reason: "sensor value projection could not be lowered to a jq invocation" }
     Accepted { value: plan, diagnostics: _ } => {
-      let observed = jq_execute_admitted_plan(plan: plan)
+      let observed = extdeps.tools.jq.jq_execute_admitted_plan(plan: plan)
       openbmc_sensor_integer_projection_result(
-        outcome: jq_classify_observation(plan: plan, observation: observed),
+        outcome: extdeps.tools.jq.jq_classify_observation(plan: plan, observation: observed),
       )
     }
   }
@@ -915,14 +809,14 @@ fn openbmc_sensor_integer_projection(content: String) -> OpenBmcSensorValueResul
 // jq_classify_observation now owns that reading, against the policy carried on the plan, so this
 // function decides only what OpenBMC alone can decide: whether a present projection is an integer.
 fn openbmc_sensor_integer_projection_result(
-  outcome: JqOutcome,
+  outcome: extdeps.tools.jq.JqOutcome,
 ) -> OpenBmcSensorValueResult {
   match outcome {
     JqExecutionRefused { exit_code: _, stderr: stderr } =>
       OpenBmcSensorValueRefused { reason: stderr }
     JqOutputAbsent => OpenBmcSensorValueAbsent
     JqOutputPresent { text: text } =>
-      match parse_int(s: trim(text)) {
+      match parse_int(s: std.algebra.trim(text)) {
         Absent =>
           OpenBmcSensorValueRefused {
             reason: "sensor value projection is not an integer",
@@ -937,7 +831,7 @@ type OpenBmcTachThresholdSource
   | OpenBmcCriticalLowThreshold
 
 type OpenBmcTachHealth
-  = OpenBmcTachThresholdUnstated { sensor: std.types.NonEmptyStr, reason: String }
+  = OpenBmcTachThresholdUnstated { sensor: std.types.NonEmptyStr, reason: std.types.String }
   | OpenBmcTachBelowThreshold {
       sensor: std.types.NonEmptyStr,
       reading_rpm: std.measure.RevolutionsPerMinute,
@@ -963,17 +857,17 @@ fn openbmc_tach_health_sensor(
 
 type OpenBmcTachHealthResult
   = OpenBmcTachHealthObserved { health: OpenBmcTachHealth }
-  | OpenBmcTachHealthRefused { reason: String }
+  | OpenBmcTachHealthRefused { reason: std.types.String }
 
 type OpenBmcDigestResult
   = OpenBmcDigestObserved { digest: extdeps.crypto.hash.Digest }
-  | OpenBmcDigestRefused { reason: String }
+  | OpenBmcDigestRefused { reason: std.types.String }
 
 fn openbmc_object_mapper_services_rec(
-  content: String,
-  index: Int,
-  count: Int,
-  built: List<std.types.NonEmptyStr>,
+  content: std.types.String,
+  index: std.types.Int,
+  count: std.types.Int,
+  built: std.types.List<std.types.NonEmptyStr>,
 ) -> OpenBmcSensorServicesResult {
   if index >= count {
     OpenBmcSensorServicesObserved {
@@ -984,7 +878,7 @@ fn openbmc_object_mapper_services_rec(
       content: content,
       index: index,
     )
-    if !projected.success || trim(projected.value) == "" {
+    if !projected.success || std.algebra.trim(projected.value) == "" {
       OpenBmcSensorServicesRefused {
         reason: join(["ObjectMapper service projection failed: ", projected.stderr], ""),
       }
@@ -993,7 +887,7 @@ fn openbmc_object_mapper_services_rec(
         content: content,
         index: index + 1,
         count: count,
-        built: append(built, items: [trim(projected.value) as std.types.NonEmptyStr]),
+        built: append(built, items: [std.algebra.trim(projected.value) as std.types.NonEmptyStr]),
       )
     }
   }
@@ -1018,7 +912,7 @@ fn openbmc_sensor_service(
         reason: join(["ObjectMapper service count failed: ", count_result.stderr], ""),
       }
     } else {
-      match parse_int(s: trim(count_result.value)) {
+      match parse_int(s: std.algebra.trim(count_result.value)) {
         Absent =>
           OpenBmcSensorServicesRefused {
             reason: "ObjectMapper service count is not an integer",
@@ -1094,7 +988,7 @@ fn openbmc_tach_health_from_floor(
   source: OpenBmcTachThresholdSource,
 ) -> OpenBmcTachHealthResult {
   OpenBmcTachHealthObserved {
-    health: if rpm_count(reading) < rpm_count(minimum) {
+    health: if std.measure.rpm_count(reading) < std.measure.rpm_count(minimum) {
       OpenBmcTachBelowThreshold {
         sensor: sensor,
         reading_rpm: reading,
@@ -1139,7 +1033,7 @@ fn openbmc_tach_health_for_binding(
         session: session,
         service: service,
         sensor_path: sensor_path,
-        threshold: OpenBmcWarningLow,
+        threshold: extdeps.bmc.openbmc_operation.OpenBmcWarningLow,
       ) {
         OpenBmcSensorValueObserved { value: minimum } =>
           if minimum < 0 {
@@ -1147,8 +1041,8 @@ fn openbmc_tach_health_for_binding(
           } else {
             openbmc_tach_health_from_floor(
               sensor: sensor,
-              reading: rpm(reading),
-              minimum: rpm(minimum),
+              reading: std.measure.rpm(reading),
+              minimum: std.measure.rpm(minimum),
               source: OpenBmcWarningLowThreshold,
             )
           }
@@ -1158,7 +1052,7 @@ fn openbmc_tach_health_for_binding(
             session: session,
             service: service,
             sensor_path: sensor_path,
-            threshold: OpenBmcCriticalLow,
+            threshold: extdeps.bmc.openbmc_operation.OpenBmcCriticalLow,
           ) {
             OpenBmcSensorValueObserved { value: minimum } =>
               if minimum < 0 {
@@ -1166,8 +1060,8 @@ fn openbmc_tach_health_for_binding(
               } else {
                 openbmc_tach_health_from_floor(
                   sensor: sensor,
-                  reading: rpm(reading),
-                  minimum: rpm(minimum),
+                  reading: std.measure.rpm(reading),
+                  minimum: std.measure.rpm(minimum),
                   source: OpenBmcCriticalLowThreshold,
                 )
               }
@@ -1190,7 +1084,7 @@ fn openbmc_tach_health(
   sensor: std.types.NonEmptyStr,
 ) -> OpenBmcTachHealthResult {
   let sensor_path = join(
-    ["/xyz/openbmc_project/sensors/fan_tach/", sensor as String],
+    ["/xyz/openbmc_project/sensors/fan_tach/", sensor as std.types.String],
     "",
   ) as std.types.NonEmptyStr
   match openbmc_sensor_service(session: session, sensor_path: sensor_path) {
@@ -1233,32 +1127,32 @@ fn openbmc_file_sha256(
   if !result.success {
     OpenBmcDigestRefused { reason: result.stderr }
   } else {
-    let words = split(s: trim(result.stdout), delimiter: " ")
+    let words = split(s: std.algebra.trim(result.stdout), delimiter: " ")
       |> filter(word => word != "")
     let hex = words.first()
     if hex.length() != 64 {
       OpenBmcDigestRefused { reason: "OpenBMC SHA-256 response is not 64 hexadecimal digits" }
     } else {
-      OpenBmcDigestObserved { digest: sha256_digest(hex: hex as std.types.NonEmptyStr) }
+      OpenBmcDigestObserved { digest: extdeps.crypto.hash.sha256_digest(hex: hex as std.types.NonEmptyStr) }
     }
   }
 }
 
 type OpenBmcIntegerResult
-  = OpenBmcIntegerObserved { value: Int }
-  | OpenBmcIntegerRefused { reason: String }
+  = OpenBmcIntegerObserved { value: std.types.Int }
+  | OpenBmcIntegerRefused { reason: std.types.String }
 
 type OpenBmcStringResult
   = OpenBmcStringObserved { value: std.types.NonEmptyStr }
-  | OpenBmcStringRefused { reason: String }
+  | OpenBmcStringRefused { reason: std.types.String }
 
 type OpenBmcIntegerListResult
-  = OpenBmcIntegerListObserved { values: List<Int> }
-  | OpenBmcIntegerListRefused { reason: String }
+  = OpenBmcIntegerListObserved { values: std.types.List<std.types.Int> }
+  | OpenBmcIntegerListRefused { reason: std.types.String }
 
 type OpenBmcFanControllerListResult
-  = OpenBmcFanControllerListObserved { values: List<OpenBmcFanController> }
-  | OpenBmcFanControllerListRefused { reason: String }
+  = OpenBmcFanControllerListObserved { values: std.types.List<OpenBmcFanController> }
+  | OpenBmcFanControllerListRefused { reason: std.types.String }
 
 type OpenBmcFanSeries = OpenBmcReadings | OpenBmcOutputs
 
@@ -1289,7 +1183,7 @@ fn openbmc_fan_config_integer(
   if !result.success {
     OpenBmcIntegerRefused { reason: result.stderr }
   } else {
-    match parse_int(s: trim(result.stdout)) {
+    match parse_int(s: std.algebra.trim(result.stdout)) {
       Absent => OpenBmcIntegerRefused { reason: "OpenBMC integer response is invalid" }
       Present { value } => OpenBmcIntegerObserved { value: value }
     }
@@ -1306,14 +1200,14 @@ fn openbmc_fan_config_string(
     config_path: config_path,
     query: query,
   )
-  if !result.success || trim(result.stdout) == "" {
+  if !result.success || std.algebra.trim(result.stdout) == "" {
     OpenBmcStringRefused { reason: result.stderr }
   } else {
-    OpenBmcStringObserved { value: trim(result.stdout) as std.types.NonEmptyStr }
+    OpenBmcStringObserved { value: std.algebra.trim(result.stdout) as std.types.NonEmptyStr }
   }
 }
 
-fn openbmc_fan_series_query(series: OpenBmcFanSeries, index: Int) -> extdeps.bmc.openbmc_operation.OpenBmcFanConfigQuery {
+fn openbmc_fan_series_query(series: OpenBmcFanSeries, index: std.types.Int) -> extdeps.bmc.openbmc_operation.OpenBmcFanConfigQuery {
   match series {
     OpenBmcReadings => extdeps.bmc.openbmc_operation.OpenBmcReadingAt { index: index }
     OpenBmcOutputs => extdeps.bmc.openbmc_operation.OpenBmcOutputAt { index: index }
@@ -1324,9 +1218,9 @@ fn openbmc_fan_config_integer_list_rec(
   session: extdeps.ssh.password_session.PasswordSshSession,
   config_path: std.types.NonEmptyStr,
   series: OpenBmcFanSeries,
-  index: Int,
-  count: Int,
-  built: List<Int>,
+  index: std.types.Int,
+  count: std.types.Int,
+  built: std.types.List<std.types.Int>,
 ) -> OpenBmcIntegerListResult {
   if index >= count {
     OpenBmcIntegerListObserved { values: built }
@@ -1356,8 +1250,8 @@ fn openbmc_fan_config_integer_list(
   series: OpenBmcFanSeries,
 ) -> OpenBmcIntegerListResult {
   let count_query = match series {
-    OpenBmcReadings => OpenBmcReadingCount
-    OpenBmcOutputs => OpenBmcOutputCount
+    OpenBmcReadings => extdeps.bmc.openbmc_operation.OpenBmcReadingCount
+    OpenBmcOutputs => extdeps.bmc.openbmc_operation.OpenBmcOutputCount
   }
   match openbmc_fan_config_integer(
     session: session,
@@ -1384,10 +1278,10 @@ fn openbmc_fan_config_integer_list(
 fn openbmc_fan_input_list_rec(
   session: extdeps.ssh.password_session.PasswordSshSession,
   config_path: std.types.NonEmptyStr,
-  fan_index: Int,
-  input_index: Int,
-  count: Int,
-  built: List<std.types.NonEmptyStr>,
+  fan_index: std.types.Int,
+  input_index: std.types.Int,
+  count: std.types.Int,
+  built: std.types.List<std.types.NonEmptyStr>,
 ) -> OpenBmcFanControllerListResult {
   if input_index >= count {
     match openbmc_fan_config_string(
@@ -1427,7 +1321,7 @@ fn openbmc_fan_input_list_rec(
 fn openbmc_fan_controller_at(
   session: extdeps.ssh.password_session.PasswordSshSession,
   config_path: std.types.NonEmptyStr,
-  fan_index: Int,
+  fan_index: std.types.Int,
 ) -> OpenBmcFanControllerListResult {
   match openbmc_fan_config_integer(
     session: session,
@@ -1454,9 +1348,9 @@ fn openbmc_fan_controller_at(
 fn openbmc_fan_controllers_rec(
   session: extdeps.ssh.password_session.PasswordSshSession,
   config_path: std.types.NonEmptyStr,
-  index: Int,
-  count: Int,
-  built: List<OpenBmcFanController>,
+  index: std.types.Int,
+  count: std.types.Int,
+  built: std.types.List<OpenBmcFanController>,
 ) -> OpenBmcFanControllerListResult {
   if index >= count {
     OpenBmcFanControllerListObserved { values: built }
@@ -1487,7 +1381,7 @@ fn openbmc_fan_controllers(
   match openbmc_fan_config_integer(
     session: session,
     config_path: config_path,
-    query: OpenBmcFanControllerCount,
+    query: extdeps.bmc.openbmc_operation.OpenBmcFanControllerCount,
   ) {
     OpenBmcIntegerRefused { reason } => OpenBmcFanControllerListRefused { reason: reason }
     OpenBmcIntegerObserved { value: count } =>
@@ -1506,7 +1400,7 @@ fn openbmc_fan_controllers(
 }
 
 fn openbmc_fan_controller_collection(
-  values: List<OpenBmcFanController>,
+  values: std.types.List<OpenBmcFanController>,
 ) -> OpenBmcCollection<OpenBmcFanController> {
   if values.length() == 0 {
     OpenBmcCollectionZero
@@ -1520,8 +1414,8 @@ fn openbmc_fan_controller_collection(
 fn openbmc_fan_config_queries_rec(
   session: extdeps.ssh.password_session.PasswordSshSession,
   config_path: std.types.NonEmptyStr,
-  queries: List<extdeps.bmc.openbmc_operation.OpenBmcFanConfigQuery>,
-  built: List<Int>,
+  queries: std.types.List<extdeps.bmc.openbmc_operation.OpenBmcFanConfigQuery>,
+  built: std.types.List<std.types.Int>,
 ) -> OpenBmcIntegerListResult {
   if queries.length() == 0 {
     OpenBmcIntegerListObserved { values: built }
@@ -1566,11 +1460,11 @@ fn openbmc_fan_config_observe_one(
   config_path: std.types.NonEmptyStr,
 ) -> OpenBmcFanConfigObservationResult {
   let scalar_queries = [
-    OpenBmcMinimumDuty,
-    OpenBmcZoneFailsafeDuty,
-    OpenBmcSensorFailsafeDuty,
-    OpenBmcPositiveHysteresis,
-    OpenBmcNegativeHysteresis,
+    extdeps.bmc.openbmc_operation.OpenBmcMinimumDuty,
+    extdeps.bmc.openbmc_operation.OpenBmcZoneFailsafeDuty,
+    extdeps.bmc.openbmc_operation.OpenBmcSensorFailsafeDuty,
+    extdeps.bmc.openbmc_operation.OpenBmcPositiveHysteresis,
+    extdeps.bmc.openbmc_operation.OpenBmcNegativeHysteresis,
   ]
   match openbmc_fan_config_queries_rec(
     session: session,
@@ -1609,13 +1503,13 @@ fn openbmc_fan_config_observe_one(
                   config_path: config_path,
                   stepwise: OpenBmcSelectionOne {
                     value: OpenBmcStepwiseController {
-                      minimum_duty: percent(scalars.first()),
-                      zone_failsafe_duty: percent(scalars.skip(n: 1).first()),
-                      sensor_failsafe_duty: percent(scalars.skip(n: 2).first()),
-                      positive_hysteresis: celsius_delta(scalars.skip(n: 3).first()),
-                      negative_hysteresis: celsius_delta(scalars.skip(n: 4).first()),
-                      readings: readings |> map(value => celsius(value)),
-                      outputs: outputs |> map(value => percent(value)),
+                      minimum_duty: std.measure.percent(scalars.first()),
+                      zone_failsafe_duty: std.measure.percent(scalars.skip(n: 1).first()),
+                      sensor_failsafe_duty: std.measure.percent(scalars.skip(n: 2).first()),
+                      positive_hysteresis: std.measure.celsius_delta(scalars.skip(n: 3).first()),
+                      negative_hysteresis: std.measure.celsius_delta(scalars.skip(n: 4).first()),
+                      readings: readings |> map(value => std.measure.celsius(value)),
+                      outputs: outputs |> map(value => std.measure.percent(value)),
                     },
                   },
                 )
@@ -1632,7 +1526,7 @@ fn openbmc_fan_config_observe(
   match openbmc_fan_config_integer(
     session: session,
     config_path: config_path,
-    query: OpenBmcStepwiseCount,
+    query: extdeps.bmc.openbmc_operation.OpenBmcStepwiseCount,
   ) {
     OpenBmcIntegerRefused { reason } =>
       OpenBmcFanConfigObservationRefused { reason: reason }
@@ -1744,14 +1638,14 @@ fn openbmc_disk_usage_kib(
 fn openbmc_utc_timestamp(
   session: extdeps.ssh.password_session.PasswordSshSession,
 ) -> OpenBmcInstantResult {
-  let remote = openbmc_execute(session: session, operation: OpenBmcUtcTimestamp)
+  let remote = openbmc_execute(session: session, operation: extdeps.bmc.openbmc_operation.OpenBmcUtcTimestamp)
   openbmc_epoch_result(remote: remote)
 }
 
 fn openbmc_make_directory(
   session: extdeps.ssh.password_session.PasswordSshSession,
   path: std.types.NonEmptyStr,
-  parents: Bool,
+  parents: std.types.Bool,
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
   openbmc_execute(
     session: session,
@@ -1804,7 +1698,7 @@ fn openbmc_rename_replace(
 fn openbmc_synchronize_filesystems(
   session: extdeps.ssh.password_session.PasswordSshSession,
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
-  openbmc_execute(session: session, operation: OpenBmcSynchronizeFilesystems)
+  openbmc_execute(session: session, operation: extdeps.bmc.openbmc_operation.OpenBmcSynchronizeFilesystems)
 }
 
 fn openbmc_wait_seconds(
@@ -1819,11 +1713,11 @@ fn openbmc_upload_file(
   local_path: std.types.NonEmptyStr,
   remote_path: std.types.NonEmptyStr,
 ) -> extdeps.ssh.password_session.PasswordSshExecResult {
-  password_ssh_session_copy_file(
+  extdeps.ssh.password_session.password_ssh_session_copy_file(
     session: session,
     source_path: local_path,
     destination_path: remote_path,
   )
 }
 
-data openbmc_fan_typed_operation_note: String = "OpenBMC fan observation and mutation are a composition of typed argv and typed file-transfer operations. ObjectMapper and sensor values are requested from busctl as JSON and projected through typed local jq operations; no consumer parses busctl's presentation text. The jq programs are confined to this extdeps realizer as fixed semantic projections; gunbc intent never constructs shell syntax. Password material remains on sshpass fd 0. The caller separately models which file-publication operations establish a durability commit barrier."
+data openbmc_fan_typed_operation_note: std.types.String = "OpenBMC fan observation and mutation are a composition of typed argv and typed file-transfer operations. ObjectMapper and sensor values are requested from busctl as JSON and projected through typed local jq operations; no consumer parses busctl's presentation text. The jq programs are confined to this extdeps realizer as fixed semantic projections; gunbc intent never constructs shell syntax. Password material remains on sshpass fd 0. The caller separately models which file-publication operations establish a durability commit barrier."

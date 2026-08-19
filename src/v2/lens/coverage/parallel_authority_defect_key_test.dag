@@ -1,24 +1,15 @@
 module v2.test.lens_coverage.parallel_authority_defect_key
 
-import v2.lens.coverage {
-  CoverageDefectAcceptance,
-  CoverageDefectAcceptanceKey,
-  ParallelAuthority,
-  coverage_defect_parallel_authority
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-
-data parallel_authority_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^parallel_authority_symbol } },
+data parallel_authority_node: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^parallel_authority_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data expected_parallel_authority_acceptance: CoverageDefectAcceptance = {
-  concern: CoverageDefectAcceptanceKey { lens: ParallelAuthority }
+data expected_parallel_authority_acceptance: v2.lens.coverage.CoverageDefectAcceptance = {
+  concern: v2.lens.coverage.CoverageDefectAcceptanceKey { lens: v2.lens.coverage.ParallelAuthority }
 }
 
-test fn parallel_authority_defect_key_claim_holds() -> Bool {
-  coverage_defect_parallel_authority == expected_parallel_authority_acceptance
+test fn parallel_authority_defect_key_claim_holds() -> v2.std.logic.Bool {
+  v2.lens.coverage.coverage_defect_parallel_authority == expected_parallel_authority_acceptance
 }

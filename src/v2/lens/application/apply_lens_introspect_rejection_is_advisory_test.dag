@@ -1,29 +1,11 @@
 module v2.test.lens_application.apply_lens_introspect_rejection_is_advisory
 
-import v2.compiler.compile {
-  CompileLens,
-  CompileLensEnforce,
-  CompileLensIntrospect,
-  apply_compile_lens,
-  compile_lens_gate_rejected_diagnostic
-}
-import v2.compiler.infer { InferredTree }
-import v2.std.diagnostic { Accepted, Diagnostics, None, Outcome, Rejected, Some, outcome_rejected, port_locus }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol }
-import v2.std.witness { Holds, Violates, Witness }
-import v2.test.lens_common.infer_fixture {
-  claim_atom_node,
-  claim_inferred_facts,
-  claim_inferred_tree
-}
-
-data apply_lens_mode_root: Node = claim_atom_node(s: ^apply_lens_mode_symbol)
+data apply_lens_mode_root: v2.std.node.Node = v2.test.lens_common.infer_fixture.claim_atom_node(s: ^apply_lens_mode_symbol)
 
 fn apply_lens_mode_tree() -> v2.compiler.inferred_tree.InferredTree {
-  claim_inferred_tree(
+  v2.test.lens_common.infer_fixture.claim_inferred_tree(
     root: apply_lens_mode_root,
-    facts: claim_inferred_facts(
+    facts: v2.test.lens_common.infer_fixture.claim_inferred_facts(
       type_symbol: ^apply_lens_mode_type_symbol,
       algebra_symbol: ^apply_lens_mode_algebra_symbol,
       descent_symbol: ^apply_lens_mode_descent_symbol,
@@ -31,44 +13,44 @@ fn apply_lens_mode_tree() -> v2.compiler.inferred_tree.InferredTree {
   )
 }
 
-fn apply_lens_mode_rejecting_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<Witness<Node>> {
-  outcome_rejected(
-    compile_lens_gate_rejected_diagnostic(at: port_locus(port: ^apply_lens_mode_gate_at))
+fn apply_lens_mode_rejecting_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<v2.std.node.Node>> {
+  v2.std.diagnostic.outcome_rejected(
+    v2.compiler.compile.compile_lens_gate_rejected_diagnostic(at: v2.std.diagnostic.port_locus(port: ^apply_lens_mode_gate_at))
   )
 }
 
 data apply_lens_mode_rejecting_lens: v2.compiler.compile.CompileLens = v2.compiler.compile.CompileLens { gate: apply_lens_mode_rejecting_gate }
 
-fn apply_lens_mode_gate_rejects_enforce() -> Bool {
-  match apply_compile_lens(
+fn apply_lens_mode_gate_rejects_enforce() -> v2.std.logic.Bool {
+  match v2.compiler.compile.apply_compile_lens(
     lens: apply_lens_mode_rejecting_lens,
     inferred: apply_lens_mode_tree(),
-    mode: CompileLensEnforce
+    mode: v2.compiler.compile.CompileLensEnforce
   ) {
     Rejected { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
     Accepted { value: _, diagnostics: _ } => false
   }
 }
 
-fn introspect_witness_violates_reason_matches(w: Witness<Node>) -> Bool {
+fn introspect_witness_violates_reason_matches(w: v2.std.witness.Witness<v2.std.node.Node>) -> v2.std.logic.Bool {
   match w {
     Violates { diagnostic: d } => d.reason == ^compile_lens_gate_rejected
     Holds { value: _ } => false
   }
 }
 
-fn introspect_diagnostics_head_reason_matches(od: v2.std.diagnostic.Diagnostics) -> Bool {
+fn introspect_diagnostics_head_reason_matches(od: v2.std.diagnostic.Diagnostics) -> v2.std.logic.Bool {
   match od {
     Some { diagnostics: r } => r.head.reason == ^compile_lens_gate_rejected
     None => false
   }
 }
 
-fn apply_lens_mode_gate_is_advisory_in_introspect() -> Bool {
-  match apply_compile_lens(
+fn apply_lens_mode_gate_is_advisory_in_introspect() -> v2.std.logic.Bool {
+  match v2.compiler.compile.apply_compile_lens(
     lens: apply_lens_mode_rejecting_lens,
     inferred: apply_lens_mode_tree(),
-    mode: CompileLensIntrospect
+    mode: v2.compiler.compile.CompileLensIntrospect
   ) {
     Accepted { value: w, diagnostics: od } =>
       introspect_witness_violates_reason_matches(w: w) &&
@@ -77,6 +59,6 @@ fn apply_lens_mode_gate_is_advisory_in_introspect() -> Bool {
   }
 }
 
-test fn apply_lens_introspect_rejection_is_advisory_claim_holds() -> Bool {
+test fn apply_lens_introspect_rejection_is_advisory_claim_holds() -> v2.std.logic.Bool {
   apply_lens_mode_gate_rejects_enforce() && apply_lens_mode_gate_is_advisory_in_introspect()
 }

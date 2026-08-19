@@ -1,68 +1,6 @@
 module test.claim.node_power_envelope_witness
 
-import std.types { Bool, Int, NonEmptyStr }
-import std.nat { Nat }
-import std.measure {
-  ByteSize,
-  bandwidth_count,
-  byte_size,
-  byte_size_count,
-  megatransfers_per_second,
-  megatransfers_per_second_count,
-  milliwatt,
-  watt,
-  watt_count,
-}
-import extdeps.vendor.sk_hynix { sk_hynix }
-import extdeps.memory.jedec { ddr4_generation_catalog }
-import extdeps.memory.types {
-  DramModuleCatalogRow,
-  Registered,
-  bit_width,
-  dram_generation_ddr4,
-  dram_module_is_realizable,
-  dram_module_required_die_density,
-}
-import extdeps.cpu.ampere { altra_max_m12830_catalog, altra_q8030_catalog }
-import extdeps.cpu.ampere_altra_platform_hw_design.platform { OneDimmPerChannel, TwoDimmsPerChannel }
-import gunbc.memory_provisioning {
-  FullChannel,
-  PopulationOption,
-  asrock_altrad8ud_1l2t_geometry,
-  mt_collins_per_socket_geometry,
-}
-import product.node_power_envelope {
-  DerivationReadsHigh,
-  EnvelopeAgrees,
-  Gold,
-  MemoryElectricalContext,
-  altra_two_dpc_ceilings,
-  ceiling_is_cited,
-  NodeElectricalInputs,
-  PsuAdequate,
-  PsuUndersized,
-  WallPowerMeasured,
-  derived_wall_power,
-  effective_data_rate,
-  envelope_divergence,
-  memory_bandwidth,
-  DerivedWallPowerReading,
-  DerivedWallPowerRefused,
-  MemoryModuleUnread,
-  NodeDrawDerived,
-  NodeDrawRefused,
-  PopulationModuleRead,
-  PopulationModuleUnread,
-  PsuUndecidable,
-  memory_power,
-  node_draw,
-  node_memory_capacity,
-  populated_dimms_per_channel,
-  psu_adequacy,
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // RELOCATED 2026-08-19 from test.claim.hardware_selection, whose module was
 // deleted at the root. Four of its eight claims tested the deleted candidate
@@ -75,110 +13,110 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // The physics claims survive, against the relocated functions and against real
 // cited rows rather than a hand-authored Platform literal.
 
-data stick_32g: ByteSize = byte_size(count: 34359738368)
+data stick_32g: std.measure.ByteSize = std.measure.byte_size(count: 34359738368)
 
-data mod_2rx4_32g: DramModuleCatalogRow = DramModuleCatalogRow {
+data mod_2rx4_32g: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types.DramModuleCatalogRow {
   part_number: "GENERIC-32G-2RX4-3200",
-  manufacturer: sk_hynix,
-  generation: dram_generation_ddr4,
+  manufacturer: extdeps.vendor.sk_hynix.sk_hynix,
+  generation: extdeps.memory.types.dram_generation_ddr4,
   capacity_bytes: stick_32g,
   data_rate_mts: 3200,
   ecc: true,
-  buffering: Registered,
-  chip_width: bit_width(count: 4),
+  buffering: extdeps.memory.types.Registered,
+  chip_width: extdeps.memory.types.bit_width(count: 4),
   rank_count: 2,
 }
 
-data mod_1rx4_16g: DramModuleCatalogRow = DramModuleCatalogRow {
+data mod_1rx4_16g: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types.DramModuleCatalogRow {
   part_number: "HMA82GR7AFR4N-VK",
-  manufacturer: sk_hynix,
-  generation: dram_generation_ddr4,
-  capacity_bytes: byte_size(count: 17179869184),
+  manufacturer: extdeps.vendor.sk_hynix.sk_hynix,
+  generation: extdeps.memory.types.dram_generation_ddr4,
+  capacity_bytes: std.measure.byte_size(count: 17179869184),
   data_rate_mts: 2666,
   ecc: true,
-  buffering: Registered,
-  chip_width: bit_width(count: 4),
+  buffering: extdeps.memory.types.Registered,
+  chip_width: extdeps.memory.types.bit_width(count: 4),
   rank_count: 1,
 }
 
-data mod_1rx8_32g_impossible: DramModuleCatalogRow = DramModuleCatalogRow {
+data mod_1rx8_32g_impossible: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types.DramModuleCatalogRow {
   part_number: "FAKE-32G-1RX8-3200",
-  manufacturer: sk_hynix,
-  generation: dram_generation_ddr4,
+  manufacturer: extdeps.vendor.sk_hynix.sk_hynix,
+  generation: extdeps.memory.types.dram_generation_ddr4,
   capacity_bytes: stick_32g,
   data_rate_mts: 3200,
   ecc: true,
-  buffering: Registered,
-  chip_width: bit_width(count: 8),
+  buffering: extdeps.memory.types.Registered,
+  chip_width: extdeps.memory.types.bit_width(count: 8),
   rank_count: 1,
 }
 
 // The board geometries are the CITED upstream rows, not restated here: this
 // module's context adds only the platform's rated transfer rate.
-data altrad8ud_context: MemoryElectricalContext = MemoryElectricalContext {
-  geometry: asrock_altrad8ud_1l2t_geometry,
-  max_data_rate: megatransfers_per_second(count: 3200),
-  two_dpc_ceilings: altra_two_dpc_ceilings,
+data altrad8ud_context: product.node_power_envelope.MemoryElectricalContext = product.node_power_envelope.MemoryElectricalContext {
+  geometry: gunbc.memory_provisioning.asrock_altrad8ud_1l2t_geometry,
+  max_data_rate: std.measure.megatransfers_per_second(count: 3200),
+  two_dpc_ceilings: product.node_power_envelope.altra_two_dpc_ceilings,
 }
 
-data mt_collins_context: MemoryElectricalContext = MemoryElectricalContext {
-  geometry: mt_collins_per_socket_geometry,
-  max_data_rate: megatransfers_per_second(count: 3200),
-  two_dpc_ceilings: altra_two_dpc_ceilings,
+data mt_collins_context: product.node_power_envelope.MemoryElectricalContext = product.node_power_envelope.MemoryElectricalContext {
+  geometry: gunbc.memory_provisioning.mt_collins_per_socket_geometry,
+  max_data_rate: std.measure.megatransfers_per_second(count: 3200),
+  two_dpc_ceilings: product.node_power_envelope.altra_two_dpc_ceilings,
 }
 
 // A two-deep population on the Mt. Collins per-socket geometry: sixteen slots
 // across eight channels, both slots filled.
-data sixteen_module_population: PopulationOption = PopulationOption {
+data sixteen_module_population: gunbc.memory_provisioning.PopulationOption = gunbc.memory_provisioning.PopulationOption {
   module: mod_2rx4_32g,
   dimm_count: 16,
-  coverage: FullChannel { topology: TwoDimmsPerChannel },
-  total_bytes: byte_size(count: 549755813888),
-  margin_bytes: byte_size(count: 0),
+  coverage: gunbc.memory_provisioning.FullChannel { topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.TwoDimmsPerChannel },
+  total_bytes: std.measure.byte_size(count: 549755813888),
+  margin_bytes: std.measure.byte_size(count: 0),
 }
 
-data sixteen_module_1rx4_population: PopulationOption = PopulationOption {
+data sixteen_module_1rx4_population: gunbc.memory_provisioning.PopulationOption = gunbc.memory_provisioning.PopulationOption {
   module: mod_1rx4_16g,
   dimm_count: 8,
-  coverage: FullChannel { topology: OneDimmPerChannel },
-  total_bytes: byte_size(count: 137438953472),
-  margin_bytes: byte_size(count: 0),
+  coverage: gunbc.memory_provisioning.FullChannel { topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel },
+  total_bytes: std.measure.byte_size(count: 137438953472),
+  margin_bytes: std.measure.byte_size(count: 0),
 }
 
-data eight_module_population: PopulationOption = PopulationOption {
+data eight_module_population: gunbc.memory_provisioning.PopulationOption = gunbc.memory_provisioning.PopulationOption {
   module: mod_2rx4_32g,
   dimm_count: 8,
-  coverage: FullChannel { topology: OneDimmPerChannel },
-  total_bytes: byte_size(count: 274877906944),
-  margin_bytes: byte_size(count: 0),
+  coverage: gunbc.memory_provisioning.FullChannel { topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel },
+  total_bytes: std.measure.byte_size(count: 274877906944),
+  margin_bytes: std.measure.byte_size(count: 0),
 }
 
 // Reads the wall figure out of the typed reading. A refusal answers a negative,
 // which no claim below can mistake for a wattage.
-fn node_wall(inputs: NodeElectricalInputs) -> Int {
-  match node_draw(inputs: inputs) {
-    NodeDrawDerived { dc_load: _, wall_draw: w } => watt_count(w: w)
+fn node_wall(inputs: product.node_power_envelope.NodeElectricalInputs) -> std.types.Int {
+  match product.node_power_envelope.node_draw(inputs: inputs) {
+    NodeDrawDerived { dc_load: _, wall_draw: w } => std.measure.watt_count(w: w)
     NodeDrawRefused { cause: _ } => 0 - 1
   }
 }
 
-data q8030_node: NodeElectricalInputs = NodeElectricalInputs {
+data q8030_node: product.node_power_envelope.NodeElectricalInputs = product.node_power_envelope.NodeElectricalInputs {
   label: "altrad8ud-q8030",
   sockets: 1,
-  cpu: altra_q8030_catalog,
+  cpu: extdeps.cpu.ampere.altra_q8030_catalog,
   context: altrad8ud_context,
-  memory: PopulationModuleRead { population: eight_module_population },
-  dram_power_per_chip: milliwatt(count: 400),
-  board_idle_draw: watt(count: 30),
-  psu_rated_output: watt(count: 550),
-  psu_efficiency: Gold,
+  memory: product.node_power_envelope.PopulationModuleRead { population: eight_module_population },
+  dram_power_per_chip: std.measure.milliwatt(count: 400),
+  board_idle_draw: std.measure.watt(count: 30),
+  psu_rated_output: std.measure.watt(count: 550),
+  psu_efficiency: product.node_power_envelope.Gold,
 }
 
 // THE 2DPC DOWNCLOCK IS RANK-DEPENDENT — the claim that survived the module
 // deletion unchanged, now stated against the relocated function.
-fn rate_at(dimms_per_channel: Nat, rank_count: Nat) -> Nat {
-  megatransfers_per_second_count(
-    r: effective_data_rate(
+fn rate_at(dimms_per_channel: std.nat.Nat, rank_count: std.nat.Nat) -> std.nat.Nat {
+  std.measure.megatransfers_per_second_count(
+    r: product.node_power_envelope.effective_data_rate(
       context: mt_collins_context,
       dimms_per_channel: dimms_per_channel,
       rank_count: rank_count,
@@ -186,7 +124,7 @@ fn rate_at(dimms_per_channel: Nat, rank_count: Nat) -> Nat {
   )
 }
 
-test fn downclock_is_rank_dependent() -> Bool {
+test fn downclock_is_rank_dependent() -> std.types.Bool {
   rate_at(dimms_per_channel: 2, rank_count: 1) == 3200
     && rate_at(dimms_per_channel: 2, rank_count: 2) == 2933
     && rate_at(dimms_per_channel: 2, rank_count: 4) == 2400
@@ -198,10 +136,10 @@ test fn downclock_is_rank_dependent() -> Bool {
 // Carrying them with a typed evidence standing makes the gap countable — this
 // claim is what turns green the day a real citation lands, and it will need
 // updating then, which is the point.
-test fn the_two_dpc_ceilings_declare_themselves_uncited() -> Bool {
-  count(altra_two_dpc_ceilings.rows) == 2
-    && fold(altra_two_dpc_ceilings.rows, init: true, f: fn(acc, row) {
-      acc && !ceiling_is_cited(evidence: row.evidence)
+test fn the_two_dpc_ceilings_declare_themselves_uncited() -> std.types.Bool {
+  count(product.node_power_envelope.altra_two_dpc_ceilings.rows) == 2
+    && fold(product.node_power_envelope.altra_two_dpc_ceilings.rows, init: true, f: fn(acc, row) {
+      acc && !product.node_power_envelope.ceiling_is_cited(evidence: row.evidence)
     })
 }
 
@@ -209,9 +147,9 @@ test fn the_two_dpc_ceilings_declare_themselves_uncited() -> Bool {
 // board that admits two DIMMs per channel but was populated one-deep is
 // electrically one-deep, and the only authority for which happened is the
 // PopulationOption's own coverage.
-test fn the_populated_depth_is_read_from_the_population() -> Bool {
-  populated_dimms_per_channel(population: sixteen_module_population) == 2
-    && populated_dimms_per_channel(population: eight_module_population) == 1
+test fn the_populated_depth_is_read_from_the_population() -> std.types.Bool {
+  product.node_power_envelope.populated_dimms_per_channel(population: sixteen_module_population) == 2
+    && product.node_power_envelope.populated_dimms_per_channel(population: eight_module_population) == 1
 }
 
 // PSU SIZING IS COMPUTED, and its verdict carries both numbers. 161W of
@@ -222,11 +160,11 @@ test fn the_populated_depth_is_read_from_the_population() -> Bool {
 // because the chip count comes from the module width against the ECC word:
 // dram_chips_per_rank derives the count from the 72-bit ECC word rather than
 // the 64-bit data word.
-test fn psu_sizing_is_computed_from_the_cited_tdp() -> Bool {
-  watt_count(w: memory_power(population: eight_module_population, power_per_chip: milliwatt(count: 400))) == 115
+test fn psu_sizing_is_computed_from_the_cited_tdp() -> std.types.Bool {
+  std.measure.watt_count(w: product.node_power_envelope.memory_power(population: eight_module_population, power_per_chip: std.measure.milliwatt(count: 400))) == 115
     && node_wall(inputs: q8030_node) == 340
-    && match psu_adequacy(inputs: q8030_node) {
-      PsuAdequate { dc_load: dc, rated: _, headroom: h } => watt_count(w: dc) == 306 && watt_count(w: h) == 244
+    && match product.node_power_envelope.psu_adequacy(inputs: q8030_node) {
+      PsuAdequate { dc_load: dc, rated: _, headroom: h } => std.measure.watt_count(w: dc) == 306 && std.measure.watt_count(w: h) == 244
       PsuUndersized { dc_load: _, rated: _, shortfall: _ } => false
       PsuUndecidable { cause: _ } => false
     }
@@ -234,74 +172,74 @@ test fn psu_sizing_is_computed_from_the_cited_tdp() -> Bool {
 
 // RED CONTROL: the same node behind a supply that cannot carry it reports the
 // shortfall, not a Boolean false a buyer cannot act on.
-test fn an_undersized_supply_reports_its_shortfall() -> Bool {
-  let small = NodeElectricalInputs {
+test fn an_undersized_supply_reports_its_shortfall() -> std.types.Bool {
+  let small = product.node_power_envelope.NodeElectricalInputs {
     label: "altrad8ud-q8030-undersized",
     sockets: 1,
-    cpu: altra_q8030_catalog,
+    cpu: extdeps.cpu.ampere.altra_q8030_catalog,
     context: altrad8ud_context,
-    memory: PopulationModuleRead { population: eight_module_population },
-    dram_power_per_chip: milliwatt(count: 400),
-    board_idle_draw: watt(count: 30),
-    psu_rated_output: watt(count: 250),
-    psu_efficiency: Gold,
+    memory: product.node_power_envelope.PopulationModuleRead { population: eight_module_population },
+    dram_power_per_chip: std.measure.milliwatt(count: 400),
+    board_idle_draw: std.measure.watt(count: 30),
+    psu_rated_output: std.measure.watt(count: 250),
+    psu_efficiency: product.node_power_envelope.Gold,
   }
-  match psu_adequacy(inputs: small) {
+  match product.node_power_envelope.psu_adequacy(inputs: small) {
     PsuUndersized { dc_load: dc, rated: r, shortfall: s } =>
-      watt_count(w: dc) == 306 && watt_count(w: r) == 250 && watt_count(w: s) == 56
+      std.measure.watt_count(w: dc) == 306 && std.measure.watt_count(w: r) == 250 && std.measure.watt_count(w: s) == 56
     PsuAdequate { dc_load: _, rated: _, headroom: _ } => false
     PsuUndecidable { cause: _ } => false
   }
 }
 
-test fn memory_bandwidth_is_derived_from_the_populated_topology() -> Bool {
-  bandwidth_count(b: memory_bandwidth(context: altrad8ud_context, population: eight_module_population)) == 204800000000
-    && bandwidth_count(b: memory_bandwidth(context: mt_collins_context, population: sixteen_module_population)) == 187712000000
+test fn memory_bandwidth_is_derived_from_the_populated_topology() -> std.types.Bool {
+  std.measure.bandwidth_count(b: product.node_power_envelope.memory_bandwidth(context: altrad8ud_context, population: eight_module_population)) == 204800000000
+    && std.measure.bandwidth_count(b: product.node_power_envelope.memory_bandwidth(context: mt_collins_context, population: sixteen_module_population)) == 187712000000
 }
 
 // A single-rank module cannot interleave, so it does not reach the bus's rated
 // throughput even at its rated clock — the axis that made rank a real tradeoff
 // rather than a preference.
-test fn a_single_rank_population_does_not_reach_the_rated_bus() -> Bool {
-  bandwidth_count(b: memory_bandwidth(context: altrad8ud_context, population: sixteen_module_1rx4_population))
-    < bandwidth_count(b: memory_bandwidth(context: altrad8ud_context, population: eight_module_population))
+test fn a_single_rank_population_does_not_reach_the_rated_bus() -> std.types.Bool {
+  std.measure.bandwidth_count(b: product.node_power_envelope.memory_bandwidth(context: altrad8ud_context, population: sixteen_module_1rx4_population))
+    < std.measure.bandwidth_count(b: product.node_power_envelope.memory_bandwidth(context: altrad8ud_context, population: eight_module_population))
 }
 
-test fn realizability_rejects_an_impossible_sku() -> Bool {
-  dram_module_is_realizable(module: mod_2rx4_32g, jedec: ddr4_generation_catalog)
-    && !dram_module_is_realizable(module: mod_1rx8_32g_impossible, jedec: ddr4_generation_catalog)
+test fn realizability_rejects_an_impossible_sku() -> std.types.Bool {
+  extdeps.memory.types.dram_module_is_realizable(module: mod_2rx4_32g, jedec: extdeps.memory.jedec.ddr4_generation_catalog)
+    && !extdeps.memory.types.dram_module_is_realizable(module: mod_1rx8_32g_impossible, jedec: extdeps.memory.jedec.ddr4_generation_catalog)
 }
 
-test fn a_real_part_computes_a_real_die_density() -> Bool {
-  byte_size_count(b: dram_module_required_die_density(module: mod_1rx4_16g)) == 1073741824
+test fn a_real_part_computes_a_real_die_density() -> std.types.Bool {
+  std.measure.byte_size_count(b: extdeps.memory.types.dram_module_required_die_density(module: mod_1rx4_16g)) == 1073741824
 }
 
 // DERIVED AND OBSERVED ARE TWO FACTS OF THE SAME SHAPE. A measurement that
 // disagrees with the derivation is reported as the divergence it is; nothing
 // here overwrites the derived figure with the measured one, and there is no
 // function that would.
-test fn a_measurement_beside_the_derivation_reports_the_divergence() -> Bool {
-  let derived = match derived_wall_power(inputs: q8030_node) {
+test fn a_measurement_beside_the_derivation_reports_the_divergence() -> std.types.Bool {
+  let derived = match product.node_power_envelope.derived_wall_power(inputs: q8030_node) {
     DerivedWallPowerReading { reading: r } => r
-    DerivedWallPowerRefused { cause: _ } => WallPowerMeasured { watts: watt(count: 0), host: "unreachable" as NonEmptyStr, observed_at: 0 }
+    DerivedWallPowerRefused { cause: _ } => product.node_power_envelope.WallPowerMeasured { watts: std.measure.watt(count: 0), host: "unreachable" as std.types.NonEmptyStr, observed_at: 0 }
   }
-  let measured_low = WallPowerMeasured {
-    watts: watt(count: 300),
-    host: "srv1" as NonEmptyStr,
+  let measured_low = product.node_power_envelope.WallPowerMeasured {
+    watts: std.measure.watt(count: 300),
+    host: "srv1" as std.types.NonEmptyStr,
     observed_at: 1786600000000,
   }
-  let measured_equal = WallPowerMeasured {
-    watts: watt(count: 340),
-    host: "srv1" as NonEmptyStr,
+  let measured_equal = product.node_power_envelope.WallPowerMeasured {
+    watts: std.measure.watt(count: 340),
+    host: "srv1" as std.types.NonEmptyStr,
     observed_at: 1786600000000,
   }
-  match envelope_divergence(derived: derived, measured: measured_low) {
+  match product.node_power_envelope.envelope_divergence(derived: derived, measured: measured_low) {
     DerivationReadsHigh { derived: d, measured: m, excess: e } =>
-      watt_count(w: d) == 340 && watt_count(w: m) == 300 && watt_count(w: e) == 40
+      std.measure.watt_count(w: d) == 340 && std.measure.watt_count(w: m) == 300 && std.measure.watt_count(w: e) == 40
     _ => false
   }
-    && match envelope_divergence(derived: derived, measured: measured_equal) {
-      EnvelopeAgrees { watts: w } => watt_count(w: w) == 340
+    && match product.node_power_envelope.envelope_divergence(derived: derived, measured: measured_equal) {
+      EnvelopeAgrees { watts: w } => std.measure.watt_count(w: w) == 340
       _ => false
     }
 }
@@ -320,30 +258,30 @@ test fn a_measurement_beside_the_derivation_reports_the_divergence() -> Bool {
 // allocation would be sized on. The refusal names the read obligation, so what
 // is missing is one part number rather than an unknown amount of work.
 
-data sixty_four_gib_stick: ByteSize = byte_size(count: 68719476736)
+data sixty_four_gib_stick: std.measure.ByteSize = std.measure.byte_size(count: 68719476736)
 
-data pending_altrad8ud_m12830_node: NodeElectricalInputs = NodeElectricalInputs {
+data pending_altrad8ud_m12830_node: product.node_power_envelope.NodeElectricalInputs = product.node_power_envelope.NodeElectricalInputs {
   label: "altrad8ud-m12830-8x64",
   sockets: 1,
-  cpu: altra_max_m12830_catalog,
+  cpu: extdeps.cpu.ampere.altra_max_m12830_catalog,
   context: altrad8ud_context,
-  memory: PopulationModuleUnread {
+  memory: product.node_power_envelope.PopulationModuleUnread {
     stick_capacity: sixty_four_gib_stick,
     dimm_count: 8,
     read_obligation: "read the part number off an arriving 64 GiB RDIMM and cite its catalog row: rank count and DRAM device width decide the chip count per rank, and a 64 GiB DDR4 module may be 2Rx4, 4Rx4 or stacked-die",
   },
-  dram_power_per_chip: milliwatt(count: 400),
-  board_idle_draw: watt(count: 30),
-  psu_rated_output: watt(count: 550),
-  psu_efficiency: Gold,
+  dram_power_per_chip: std.measure.milliwatt(count: 400),
+  board_idle_draw: std.measure.watt(count: 30),
+  psu_rated_output: std.measure.watt(count: 550),
+  psu_efficiency: product.node_power_envelope.Gold,
 }
 
-test fn the_pending_configuration_refuses_its_draw_and_names_the_read() -> Bool {
-  match node_draw(inputs: pending_altrad8ud_m12830_node) {
+test fn the_pending_configuration_refuses_its_draw_and_names_the_read() -> std.types.Bool {
+  match product.node_power_envelope.node_draw(inputs: pending_altrad8ud_m12830_node) {
     NodeDrawRefused { cause: c } =>
       match c {
         MemoryModuleUnread { stick_capacity: cap, dimm_count: n, read_obligation: _ } =>
-          byte_size_count(b: cap) == 68719476736 && n == 8
+          std.measure.byte_size_count(b: cap) == 68719476736 && n == 8
       }
     NodeDrawDerived { dc_load: _, wall_draw: _ } => false
   }
@@ -352,8 +290,8 @@ test fn the_pending_configuration_refuses_its_draw_and_names_the_read() -> Bool 
 // ...and the supply is UNDECIDABLE rather than adequate. A 550W supply against
 // a 183W processor and a board looks comfortable until the memory it could not
 // count is added, which is exactly the reading this arm refuses to give.
-test fn the_pending_configuration_leaves_the_supply_undecidable() -> Bool {
-  match psu_adequacy(inputs: pending_altrad8ud_m12830_node) {
+test fn the_pending_configuration_leaves_the_supply_undecidable() -> std.types.Bool {
+  match product.node_power_envelope.psu_adequacy(inputs: pending_altrad8ud_m12830_node) {
     PsuUndecidable { cause: _ } => true
     PsuAdequate { dc_load: _, rated: _, headroom: _ } => false
     PsuUndersized { dc_load: _, rated: _, shortfall: _ } => false
@@ -364,8 +302,8 @@ test fn the_pending_configuration_leaves_the_supply_undecidable() -> Bool {
 // same node reports 512 GiB while refusing to report a wattage. Two questions,
 // two evidence requirements — and a reader who only needed capacity is not
 // blocked by a read obligation that does not bear on it.
-test fn the_pending_configuration_still_answers_its_capacity() -> Bool {
-  byte_size_count(b: node_memory_capacity(inputs: pending_altrad8ud_m12830_node)) == 549755813888
+test fn the_pending_configuration_still_answers_its_capacity() -> std.types.Bool {
+  std.measure.byte_size_count(b: product.node_power_envelope.node_memory_capacity(inputs: pending_altrad8ud_m12830_node)) == 549755813888
 }
 
 // POSITIVE CONTROL, and the number the placement decision consumes the moment
@@ -374,41 +312,41 @@ test fn the_pending_configuration_still_answers_its_capacity() -> Bool {
 // at the DC rail, 364W at the wall behind a Gold supply. If the refusal above
 // were a modelling dead end rather than a missing read, this claim could not
 // exist.
-data rdimm_64g_2rx4: DramModuleCatalogRow = DramModuleCatalogRow {
+data rdimm_64g_2rx4: extdeps.memory.types.DramModuleCatalogRow = extdeps.memory.types.DramModuleCatalogRow {
   part_number: "GENERIC-64G-2RX4-3200",
-  manufacturer: sk_hynix,
-  generation: dram_generation_ddr4,
+  manufacturer: extdeps.vendor.sk_hynix.sk_hynix,
+  generation: extdeps.memory.types.dram_generation_ddr4,
   capacity_bytes: sixty_four_gib_stick,
   data_rate_mts: 3200,
   ecc: true,
-  buffering: Registered,
-  chip_width: bit_width(count: 4),
+  buffering: extdeps.memory.types.Registered,
+  chip_width: extdeps.memory.types.bit_width(count: 4),
   rank_count: 2,
 }
 
-data eight_by_64_population: PopulationOption = PopulationOption {
+data eight_by_64_population: gunbc.memory_provisioning.PopulationOption = gunbc.memory_provisioning.PopulationOption {
   module: rdimm_64g_2rx4,
   dimm_count: 8,
-  coverage: FullChannel { topology: OneDimmPerChannel },
-  total_bytes: byte_size(count: 549755813888),
-  margin_bytes: byte_size(count: 0),
+  coverage: gunbc.memory_provisioning.FullChannel { topology: extdeps.cpu.ampere_altra_platform_hw_design.platform.OneDimmPerChannel },
+  total_bytes: std.measure.byte_size(count: 549755813888),
+  margin_bytes: std.measure.byte_size(count: 0),
 }
 
-data qualified_altrad8ud_m12830_node: NodeElectricalInputs = NodeElectricalInputs {
+data qualified_altrad8ud_m12830_node: product.node_power_envelope.NodeElectricalInputs = product.node_power_envelope.NodeElectricalInputs {
   label: "altrad8ud-m12830-8x64-qualified",
   sockets: 1,
-  cpu: altra_max_m12830_catalog,
+  cpu: extdeps.cpu.ampere.altra_max_m12830_catalog,
   context: altrad8ud_context,
-  memory: PopulationModuleRead { population: eight_by_64_population },
-  dram_power_per_chip: milliwatt(count: 400),
-  board_idle_draw: watt(count: 30),
-  psu_rated_output: watt(count: 550),
-  psu_efficiency: Gold,
+  memory: product.node_power_envelope.PopulationModuleRead { population: eight_by_64_population },
+  dram_power_per_chip: std.measure.milliwatt(count: 400),
+  board_idle_draw: std.measure.watt(count: 30),
+  psu_rated_output: std.measure.watt(count: 550),
+  psu_efficiency: product.node_power_envelope.Gold,
 }
 
-test fn the_same_node_derives_its_draw_once_the_part_is_read() -> Bool {
-  match node_draw(inputs: qualified_altrad8ud_m12830_node) {
-    NodeDrawDerived { dc_load: dc, wall_draw: w } => watt_count(w: dc) == 328 && watt_count(w: w) == 364
+test fn the_same_node_derives_its_draw_once_the_part_is_read() -> std.types.Bool {
+  match product.node_power_envelope.node_draw(inputs: qualified_altrad8ud_m12830_node) {
+    NodeDrawDerived { dc_load: dc, wall_draw: w } => std.measure.watt_count(w: dc) == 328 && std.measure.watt_count(w: w) == 364
     NodeDrawRefused { cause: _ } => false
   }
 }

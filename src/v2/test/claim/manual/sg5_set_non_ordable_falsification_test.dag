@@ -1,20 +1,10 @@
 module v2.test.manual.sg5_set_non_ordable_falsification
 
-import v2.compiler.translate { translate_type_expression_project }
-import v2.extdeps.languages.rust {
-  rust_sg5_non_ordable_type_node,
-  rust_sg5_set_non_ordable_source_type_node,
-  rust_sg2_type_expr_target_model,
-  rust_type_expression_projection
-}
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-
-test fn sg5_set_non_ordable_projection_rejects() -> Bool {
-  match translate_type_expression_project(
-    node: rust_sg5_set_non_ordable_source_type_node(),
-    target: rust_sg2_type_expr_target_model(),
-    projection: rust_type_expression_projection()
+test fn sg5_set_non_ordable_projection_rejects() -> v2.std.logic.Bool {
+  match v2.compiler.translate.translate_type_expression_project(
+    node: v2.extdeps.languages.rust.rust_sg5_set_non_ordable_source_type_node(),
+    target: v2.extdeps.languages.rust.rust_sg2_type_expr_target_model(),
+    projection: v2.extdeps.languages.rust.rust_type_expression_projection()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: _ } => true

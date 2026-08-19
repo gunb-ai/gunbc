@@ -1,12 +1,5 @@
 module product.fabric.execution
 
-import std.types { NonEmptyStr, Timestamp, List, Int }
-import std.measure { MoneyAmountMicro, Second }
-import std.content_hash { ContentHash, compare_content_hash, ContentHashEqual, ContentHashDifferent, ContentHashCrossFamilyIncomparable }
-import product.fabric.identity { fabric_identity_eq, FabricIdentity, ExecutionAttemptKey, DemandKey, WorkKey, GrantKey, OfferKey, ReceiptKey }
-import product.fabric.demand { ObservationReceiptRef }
-import product.fabric.supply { OfferQuote }
-
 // An Attempt is one concrete try at a Work. Retries create attempts; they never
 // create new Work and never mutate a failed attempt back into a pending one.
 
@@ -22,32 +15,32 @@ import product.fabric.supply { OfferQuote }
 // mutable status: the host lives on the ExecutionGrant, and the position in the run is
 // DERIVED from accepted receipts, never stored.
 type ExecutionAttemptLineage<P>
-  = InitialAttempt { initiating_demand: FabricIdentity<P, DemandKey> }
+  = InitialAttempt { initiating_demand: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey> }
   | InfrastructureRetry {
-      prior_attempt: FabricIdentity<P, ExecutionAttemptKey>,
-      cause_receipt: ObservationReceiptRef,
+      prior_attempt: product.fabric.identity.FabricIdentity<P, product.fabric.identity.ExecutionAttemptKey>,
+      cause_receipt: product.fabric.demand.ObservationReceiptRef,
     }
-  | RequestedReexecution { initiating_demand: FabricIdentity<P, DemandKey> }
+  | RequestedReexecution { initiating_demand: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey> }
 
 type Attempt<P> {
-  id: FabricIdentity<P, ExecutionAttemptKey>
-  work: FabricIdentity<P, WorkKey>
+  id: product.fabric.identity.FabricIdentity<P, product.fabric.identity.ExecutionAttemptKey>
+  work: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>
   lineage: ExecutionAttemptLineage<P>
-  created_at: Timestamp
+  created_at: std.types.Timestamp
 }
 
 // A resource claim is a quantity reserved against a conserved appropriation. The
 // money claim and the compute claims are the same shape at different magnitudes,
 // which is why one parameterized ledger serves both.
 
-type ReservationRef = NonEmptyStr where brand("ReservationRef")
+type ReservationRef = std.types.NonEmptyStr where brand("ReservationRef")
 
-type LeaseKey = NonEmptyStr where brand("LeaseKey")
+type LeaseKey = std.types.NonEmptyStr where brand("LeaseKey")
 
 type LeaseIdentity {
   lease_key: LeaseKey
-  resource_fingerprint: ContentHash
-  generation: Int
+  resource_fingerprint: std.content_hash.ContentHash
+  generation: std.types.Int
 }
 
 // resource_fingerprint names the EXACT reserved claim, not the host. Naming
@@ -75,34 +68,34 @@ type FabricGrantAction =
   | ExecuteAttempt
 
 type FabricGrantObject<P> {
-  offer: FabricIdentity<P, OfferKey>
-  quote: OfferQuote
+  offer: product.fabric.identity.FabricIdentity<P, product.fabric.identity.OfferKey>
+  quote: product.fabric.supply.OfferQuote
 }
 
 type FabricGrantContext<P> {
-  demand: FabricIdentity<P, DemandKey>
-  work: FabricIdentity<P, WorkKey>
-  attempt: FabricIdentity<P, ExecutionAttemptKey>
+  demand: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey>
+  work: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>
+  attempt: product.fabric.identity.FabricIdentity<P, product.fabric.identity.ExecutionAttemptKey>
   executor: P
   lease: LeaseIdentity
-  issued_at: Timestamp
-  maximum_liability: MoneyAmountMicro
+  issued_at: std.types.Timestamp
+  maximum_liability: std.measure.MoneyAmountMicro
 }
 
 type FabricGrantEvidence {
-  fungibility_receipt: ObservationReceiptRef
-  offer_authority: ObservationReceiptRef
-  resource_conservation: ObservationReceiptRef
-  budget_conservation: ObservationReceiptRef
-  principal_authority: ObservationReceiptRef
+  fungibility_receipt: product.fabric.demand.ObservationReceiptRef
+  offer_authority: product.fabric.demand.ObservationReceiptRef
+  resource_conservation: product.fabric.demand.ObservationReceiptRef
+  budget_conservation: product.fabric.demand.ObservationReceiptRef
+  principal_authority: product.fabric.demand.ObservationReceiptRef
 }
 
 type ExecutionGrant<P> {
-  id: FabricIdentity<P, GrantKey>
+  id: product.fabric.identity.FabricIdentity<P, product.fabric.identity.GrantKey>
   object: FabricGrantObject<P>
   context: FabricGrantContext<P>
   evidence: FabricGrantEvidence
-  resource_reservations: List<ReservationRef>
+  resource_reservations: std.types.List<ReservationRef>
   money_reservation: ReservationRef
 }
 
@@ -117,22 +110,22 @@ type ExecutionGrant<P> {
 // on the lease generation still being canonical.
 
 type ReceiptPayload
-  = MaterializationReceipt { source: ContentHash, verified_at: Timestamp }
+  = MaterializationReceipt { source: std.content_hash.ContentHash, verified_at: std.types.Timestamp }
   | ExecutionReceipt {
-      step_id: NonEmptyStr,
-      outputs: ContentHash,
-      billable: Second,
-      completed_at: Timestamp,
+      step_id: std.types.NonEmptyStr,
+      outputs: std.content_hash.ContentHash,
+      billable: std.measure.Second,
+      completed_at: std.types.Timestamp,
     }
   | SettlementReceipt {
       reservation: ReservationRef,
-      actual_spend: MoneyAmountMicro,
-      settled_at: Timestamp,
+      actual_spend: std.measure.MoneyAmountMicro,
+      settled_at: std.types.Timestamp,
     }
 
 type Receipt<P> {
-  id: FabricIdentity<P, ReceiptKey>
-  attempt: FabricIdentity<P, ExecutionAttemptKey>
+  id: product.fabric.identity.FabricIdentity<P, product.fabric.identity.ReceiptKey>
+  attempt: product.fabric.identity.FabricIdentity<P, product.fabric.identity.ExecutionAttemptKey>
   lease: LeaseIdentity
   payload: ReceiptPayload
 }
@@ -148,11 +141,11 @@ type Receipt<P> {
 // release evidence, and MISSING RELEASE EVIDENCE HOLDS THE RESERVATION rather
 // than assuming the supplier stopped charging. Assuming release is the arm
 // that quietly under-reserves against a machine still billing.
-fn receipt_lease_generation<P>(r: Receipt<P>) -> Int {
+fn receipt_lease_generation<P>(r: Receipt<P>) -> std.types.Int {
   r.lease.generation
 }
 
-fn grant_lease_generation<P>(g: ExecutionGrant<P>) -> Int {
+fn grant_lease_generation<P>(g: ExecutionGrant<P>) -> std.types.Int {
   g.context.lease.generation
 }
 
@@ -189,15 +182,15 @@ type ReceiptAdmission =
   | ReceiptFromDifferentLease
   | ReceiptFromDifferentAttempt
   | ReceiptFingerprintIncomparable
-  | ReceiptGenerationStale { presented: Int, current: Int }
+  | ReceiptGenerationStale { presented: std.types.Int, current: std.types.Int }
 
 fn admit_receipt_for_grant<P>(r: Receipt<P>, g: ExecutionGrant<P>) -> ReceiptAdmission {
-  if !fabric_identity_eq(left: r.attempt, right: g.context.attempt) {
+  if !product.fabric.identity.fabric_identity_eq(left: r.attempt, right: g.context.attempt) {
     ReceiptFromDifferentAttempt
   } else if r.lease.lease_key != g.context.lease.lease_key {
     ReceiptFromDifferentLease
   } else {
-    match compare_content_hash(
+    match std.content_hash.compare_content_hash(
       left: r.lease.resource_fingerprint,
       right: g.context.lease.resource_fingerprint,
     ) {

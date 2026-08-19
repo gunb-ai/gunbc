@@ -1,12 +1,5 @@
 module extdeps.accounting.encumbrance
 
-import std.measure { Measure, measure_add, measure_le }
-import std.nat { Nat }
-import std.types { NonEmptyStr, List, Timestamp }
-import extdeps.accounting.budget { Appropriation }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.uri { Uri, Https }
-
 // Encumbrance accounting, the upstream this module models. In fund and
 // governmental accounting a commitment is recorded against an appropriation
 // BEFORE the cash moves: an appropriation authorizes a ceiling, an encumbrance
@@ -26,9 +19,9 @@ import extdeps.uri { Uri, Https }
 // operation at both scales and forking it per subject would duplicate the
 // conservation argument along with it.
 
-data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
-  uri: Uri {
-    scheme: Https
+data extdeps_external_authority_anchor: extdeps.external_authority.ExternalAuthority = extdeps.external_authority.ExternalAuthority {
+  uri: extdeps.uri.Uri {
+    scheme: extdeps.uri.Https
     locator: "en.wikipedia.org/wiki/Encumbrance_(accounting)"
   }
 }
@@ -40,9 +33,9 @@ data extdeps_external_authority_anchor: ExternalAuthority = ExternalAuthority {
 // because when a commitment ended is part of the commitment's record.
 
 type EncumbranceState<Q, S> =
-  | Held { maximum_liability: Measure<Q, S, Nat> }
-  | Expended { actual: Measure<Q, S, Nat>, settled_at: Timestamp }
-  | Released { reason: NonEmptyStr, released_at: Timestamp }
+  | Held { maximum_liability: std.measure.Measure<Q, S, std.nat.Nat> }
+  | Expended { actual: std.measure.Measure<Q, S, std.nat.Nat>, settled_at: std.types.Timestamp }
+  | Released { reason: std.types.NonEmptyStr, released_at: std.types.Timestamp }
 
 // This carrier deliberately holds NO generation and no fencing vocabulary.
 // An earlier version put a generation on every encumbrance and a stale-
@@ -54,13 +47,13 @@ type EncumbranceState<Q, S> =
 // then calls the transition here.
 
 type Encumbrance<Q, S> {
-  reference: NonEmptyStr
+  reference: std.types.NonEmptyStr
   state: EncumbranceState<Q, S>
 }
 
 type EncumbranceLedger<Q, S> {
-  appropriation: Appropriation<Q, S>
-  entries: List<Encumbrance<Q, S>>
+  appropriation: extdeps.accounting.budget.Appropriation<Q, S>
+  entries: std.types.List<Encumbrance<Q, S>>
 }
 
 // Committed funds are DERIVED from the entries, never stored. A stored balance
@@ -69,19 +62,19 @@ type EncumbranceLedger<Q, S> {
 // expenditure both count against the ceiling, because the whole point of
 // encumbering is that an outstanding commitment is already spoken for.
 
-fn encumbrance_charge<Q, S>(e: Encumbrance<Q, S>) -> Measure<Q, S, Nat> {
+fn encumbrance_charge<Q, S>(e: Encumbrance<Q, S>) -> std.measure.Measure<Q, S, std.nat.Nat> {
   match e.state {
     Held { maximum_liability: m } => m
     Expended { actual: a, settled_at: _ } => a
-    Released { reason: _, released_at: _ } => Measure { count: 0 }
+    Released { reason: _, released_at: _ } => std.measure.Measure { count: 0 }
   }
 }
 
-fn committed_total<Q, S>(ledger: EncumbranceLedger<Q, S>) -> Measure<Q, S, Nat> {
+fn committed_total<Q, S>(ledger: EncumbranceLedger<Q, S>) -> std.measure.Measure<Q, S, std.nat.Nat> {
   fold(
     ledger.entries,
-    init: Measure { count: 0 },
-    f: (acc, e) => measure_add(a: acc, b: encumbrance_charge(e: e))
+    init: std.measure.Measure { count: 0 },
+    f: (acc, e) => std.measure.measure_add(a: acc, b: encumbrance_charge(e: e))
   )
 }
 
@@ -94,18 +87,18 @@ fn committed_total<Q, S>(ledger: EncumbranceLedger<Q, S>) -> Measure<Q, S, Nat> 
 
 type EncumbranceRefusal<Q, S> =
   | ExceedsAppropriation {
-      requested: Measure<Q, S, Nat>,
-      committed: Measure<Q, S, Nat>,
-      ceiling: Measure<Q, S, Nat>,
+      requested: std.measure.Measure<Q, S, std.nat.Nat>,
+      committed: std.measure.Measure<Q, S, std.nat.Nat>,
+      ceiling: std.measure.Measure<Q, S, std.nat.Nat>,
     }
-  | UnknownEncumbrance { reference: NonEmptyStr }
-  | DuplicateReference { reference: NonEmptyStr }
+  | UnknownEncumbrance { reference: std.types.NonEmptyStr }
+  | DuplicateReference { reference: std.types.NonEmptyStr }
   | ExpenditureExceedsEncumbrance {
-      reference: NonEmptyStr,
-      actual: Measure<Q, S, Nat>,
-      maximum_liability: Measure<Q, S, Nat>,
+      reference: std.types.NonEmptyStr,
+      actual: std.measure.Measure<Q, S, std.nat.Nat>,
+      maximum_liability: std.measure.Measure<Q, S, std.nat.Nat>,
     }
-  | AlreadyTerminal { reference: NonEmptyStr }
+  | AlreadyTerminal { reference: std.types.NonEmptyStr }
 
 type EncumbranceOutcome<Q, S> =
   | LedgerAdvanced { ledger: EncumbranceLedger<Q, S> }
@@ -118,8 +111,8 @@ type EncumbranceOutcome<Q, S> =
 
 fn reserve_encumbrance<Q, S>(
   ledger: EncumbranceLedger<Q, S>,
-  reference: NonEmptyStr,
-  maximum_liability: Measure<Q, S, Nat>,
+  reference: std.types.NonEmptyStr,
+  maximum_liability: std.measure.Measure<Q, S, std.nat.Nat>,
 ) -> EncumbranceOutcome<Q, S> {
   match entry_matching(ledger: ledger, reference: reference) {
     Cons { head: _, tail: _ } =>
@@ -147,12 +140,12 @@ fn reserve_encumbrance<Q, S>(
 
 fn reserve_fresh_reference<Q, S>(
   ledger: EncumbranceLedger<Q, S>,
-  reference: NonEmptyStr,
-  maximum_liability: Measure<Q, S, Nat>,
+  reference: std.types.NonEmptyStr,
+  maximum_liability: std.measure.Measure<Q, S, std.nat.Nat>,
 ) -> EncumbranceOutcome<Q, S> {
   let committed = committed_total(ledger: ledger)
-  let next = measure_add(a: committed, b: maximum_liability)
-  if measure_le(a: next, b: ledger.appropriation.ceiling) {
+  let next = std.measure.measure_add(a: committed, b: maximum_liability)
+  if std.measure.measure_le(a: next, b: ledger.appropriation.ceiling) {
     LedgerAdvanced {
       ledger: EncumbranceLedger {
         appropriation: ledger.appropriation,
@@ -175,11 +168,11 @@ fn reserve_fresh_reference<Q, S>(
   }
 }
 
-fn entry_matching<Q, S>(ledger: EncumbranceLedger<Q, S>, reference: NonEmptyStr) -> List<Encumbrance<Q, S>> {
+fn entry_matching<Q, S>(ledger: EncumbranceLedger<Q, S>, reference: std.types.NonEmptyStr) -> std.types.List<Encumbrance<Q, S>> {
   ledger.entries |> filter(e => e.reference == reference)
 }
 
-fn held_liability<Q, S>(e: Encumbrance<Q, S>) -> List<Measure<Q, S, Nat>> {
+fn held_liability<Q, S>(e: Encumbrance<Q, S>) -> std.types.List<std.measure.Measure<Q, S, std.nat.Nat>> {
   match e.state {
     Held { maximum_liability: m } => [m]
     Expended { actual: _, settled_at: _ } => []
@@ -189,7 +182,7 @@ fn held_liability<Q, S>(e: Encumbrance<Q, S>) -> List<Measure<Q, S, Nat>> {
 
 fn replace_entry<Q, S>(
   ledger: EncumbranceLedger<Q, S>,
-  reference: NonEmptyStr,
+  reference: std.types.NonEmptyStr,
   next_state: EncumbranceState<Q, S>,
 ) -> EncumbranceLedger<Q, S> {
   EncumbranceLedger {
@@ -213,9 +206,9 @@ fn replace_entry<Q, S>(
 
 fn settle_encumbrance<Q, S>(
   ledger: EncumbranceLedger<Q, S>,
-  reference: NonEmptyStr,
-  actual: Measure<Q, S, Nat>,
-  settled_at: Timestamp,
+  reference: std.types.NonEmptyStr,
+  actual: std.measure.Measure<Q, S, std.nat.Nat>,
+  settled_at: std.types.Timestamp,
 ) -> EncumbranceOutcome<Q, S> {
   let matches = entry_matching(ledger: ledger, reference: reference)
   match matches {
@@ -224,7 +217,7 @@ fn settle_encumbrance<Q, S>(
         match held_liability(e: e) {
           Empty {} => EncumbranceRefused { refusal: AlreadyTerminal { reference: reference } }
           Cons { head: liability, tail: _ } =>
-            if measure_le(a: actual, b: liability) {
+            if std.measure.measure_le(a: actual, b: liability) {
               LedgerAdvanced {
                 ledger: replace_entry(
                   ledger: ledger,
@@ -252,9 +245,9 @@ fn settle_encumbrance<Q, S>(
 
 fn release_encumbrance<Q, S>(
   ledger: EncumbranceLedger<Q, S>,
-  reference: NonEmptyStr,
-  reason: NonEmptyStr,
-  released_at: Timestamp,
+  reference: std.types.NonEmptyStr,
+  reason: std.types.NonEmptyStr,
+  released_at: std.types.Timestamp,
 ) -> EncumbranceOutcome<Q, S> {
   let matches = entry_matching(ledger: ledger, reference: reference)
   match matches {

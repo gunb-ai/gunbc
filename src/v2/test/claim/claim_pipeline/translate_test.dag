@@ -1,13 +1,7 @@
 module v2.test.claim_pipeline.translate
 
-import v2.compiler.translate { translate }
-import v2.extdeps.languages.rust { rust_target_model }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.test.manual.rust_add_emit_translate { rust_add_inferred_tree }
-
-test fn spine_translate_accepts_rust_add_inferred_tree() -> Bool {
-  match translate(tree: rust_add_inferred_tree, target: rust_target_model()) {
+test fn spine_translate_accepts_rust_add_inferred_tree() -> v2.std.logic.Bool {
+  match v2.compiler.translate.translate(tree: v2.test.manual.rust_add_emit_translate.rust_add_inferred_tree, target: v2.extdeps.languages.rust.rust_target_model()) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }

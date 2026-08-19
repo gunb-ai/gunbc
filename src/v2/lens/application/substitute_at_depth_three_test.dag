@@ -1,86 +1,81 @@
 module v2.test.lens_application.substitute_at_depth_three
 
-import v2.lens.application { substitute_at }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Conj, Edge, Named, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
-
-data depth_three_original_leaf: Node = v2.std.node.Node {
+data depth_three_original_leaf: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^depth_three_original_leaf_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data depth_three_replacement_leaf: Node = v2.std.node.Node {
+data depth_three_replacement_leaf: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^depth_three_replacement_leaf_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data depth_three_inner: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+data depth_three_inner: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^depth_three_step_c },
+      label: v2.std.node.Named { name: ^depth_three_step_c },
       target: depth_three_original_leaf
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data depth_three_middle: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+data depth_three_middle: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^depth_three_step_b },
+      label: v2.std.node.Named { name: ^depth_three_step_b },
       target: depth_three_inner
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data depth_three_root: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+data depth_three_root: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^depth_three_step_a },
+      label: v2.std.node.Named { name: ^depth_three_step_a },
       target: depth_three_middle
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data depth_three_expected_root: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Conj },
+data depth_three_expected_root: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
   children: [
     v2.std.node.Edge {
-      label: Named { name: ^depth_three_step_a },
+      label: v2.std.node.Named { name: ^depth_three_step_a },
       target: v2.std.node.Node {
-        kind: v2.std.node.TypeNode { connective: Conj },
+        kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
         children: [
           v2.std.node.Edge {
-            label: Named { name: ^depth_three_step_b },
+            label: v2.std.node.Named { name: ^depth_three_step_b },
             target: v2.std.node.Node {
-              kind: v2.std.node.TypeNode { connective: Conj },
+              kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
               children: [
                 v2.std.node.Edge {
-                  label: Named { name: ^depth_three_step_c },
+                  label: v2.std.node.Named { name: ^depth_three_step_c },
                   target: depth_three_replacement_leaf
                 }
               ],
-              occurrence_id: SyntheticOccurrence
+              occurrence_id: v2.std.node.SyntheticOccurrence
             }
           }
         ],
-        occurrence_id: SyntheticOccurrence
+        occurrence_id: v2.std.node.SyntheticOccurrence
       }
     }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn substitute_at_depth_three_claim_holds() -> Bool {
-  match substitute_at(
+test fn substitute_at_depth_three_claim_holds() -> v2.std.logic.Bool {
+  match v2.lens.application.substitute_at(
     root: depth_three_root,
     path: v2.std.node.Path {
       steps: [^depth_three_step_a, ^depth_three_step_b, ^depth_three_step_c]

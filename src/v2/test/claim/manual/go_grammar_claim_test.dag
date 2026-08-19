@@ -1,29 +1,14 @@
 module v2.test.manual.go_grammar_claim
 
-import v2.compiler.parse {
-  grammar_validate_for_parse,
-  parse_production_tree,
-}
-import v2.compiler.tokenize { tokenize }
-import v2.extdeps.languages.go {
-  go_source_text,
-  go_grammar_root,
-  go_lex
-}
-import v2.std.compilers.lexing { token_stream_remaining }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, port_locus }
-import v2.std.grammar { ParseTree }
-import v2.std.logic { Bool }
-
-test fn go_grammar_validates_fixture() -> Bool {
-  let at = port_locus(port: ^parse_stage_locus_port)
-  match grammar_validate_for_parse(root: go_grammar_root(), at: at) {
+test fn go_grammar_validates_fixture() -> v2.std.logic.Bool {
+  let at = v2.std.diagnostic.port_locus(port: ^parse_stage_locus_port)
+  match v2.compiler.parse.grammar_validate_for_parse(root: v2.extdeps.languages.go.go_grammar_root(), at: at) {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false
   }
 }
 
-test fn go_grammar_parse_accepted() -> Bool {
+test fn go_grammar_parse_accepted() -> v2.std.logic.Bool {
   match go_grammar_parse_fixture() {
     Accepted { value: _, diagnostics: _ } => true
     Rejected { diagnostics: _ } => false

@@ -1,53 +1,31 @@
 module v2.test.workflow.lens_parallelism_family_eval
 
-import v2.std.logic { Bool }
-import v2.std.witness { Holds, Violates }
-import v2.std.dependency {
-  ClassifiedDependencyView,
-  DependencyView,
-  EffectDependsOn,
-  TypeDependsOn
-}
-import v2.lens.common.algebraic_composition { DataDependent }
-import v2.lens.parallelism {
-  EffectCoupled,
-  ParallelismFact,
-  parallelism_fact_eq,
-  parallelism_witness
-}
-import v2.test.lens_parallelism.data_dependency {
-  parallelism_child,
-  parallelism_claim_tree,
-  parallelism_root
-}
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data parallelism_control_effect_dep: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
-  source: parallelism_root,
-  dependent: parallelism_child,
-  kind: EffectDependsOn,
-  usage_site: parallelism_child
+  source: v2.test.lens_parallelism.data_dependency.parallelism_root,
+  dependent: v2.test.lens_parallelism.data_dependency.parallelism_child,
+  kind: v2.std.dependency.EffectDependsOn,
+  usage_site: v2.test.lens_parallelism.data_dependency.parallelism_child
 }
 
 data parallelism_control_type_dep: v2.std.dependency.DependencyView = v2.std.dependency.DependencyView {
-  source: parallelism_root,
-  dependent: parallelism_child,
-  kind: TypeDependsOn,
-  usage_site: parallelism_child
+  source: v2.test.lens_parallelism.data_dependency.parallelism_root,
+  dependent: v2.test.lens_parallelism.data_dependency.parallelism_child,
+  kind: v2.std.dependency.TypeDependsOn,
+  usage_site: v2.test.lens_parallelism.data_dependency.parallelism_child
 }
 
-fn parallelism_control_effect_is_effect_coupled() -> Bool {
-  match parallelism_witness(tree: parallelism_claim_tree(), dependencies: [parallelism_control_effect_dep]) {
+fn parallelism_control_effect_is_effect_coupled() -> v2.std.logic.Bool {
+  match v2.lens.parallelism.parallelism_witness(tree: v2.test.lens_parallelism.data_dependency.parallelism_claim_tree(), dependencies: [parallelism_control_effect_dep]) {
     Holds { value: f } =>
-      parallelism_fact_eq(
+      v2.lens.parallelism.parallelism_fact_eq(
         a: f,
         b: v2.lens.parallelism.ParallelismFact {
           dependencies: [
             v2.std.dependency.ClassifiedDependencyView {
               dependency: parallelism_control_effect_dep,
-              classification: EffectCoupled
+              classification: v2.lens.parallelism.EffectCoupled
             }
           ]
         }
@@ -56,16 +34,16 @@ fn parallelism_control_effect_is_effect_coupled() -> Bool {
   }
 }
 
-fn parallelism_control_effect_not_data_dependent() -> Bool {
-  match parallelism_witness(tree: parallelism_claim_tree(), dependencies: [parallelism_control_effect_dep]) {
+fn parallelism_control_effect_not_data_dependent() -> v2.std.logic.Bool {
+  match v2.lens.parallelism.parallelism_witness(tree: v2.test.lens_parallelism.data_dependency.parallelism_claim_tree(), dependencies: [parallelism_control_effect_dep]) {
     Holds { value: f } =>
-      !parallelism_fact_eq(
+      !v2.lens.parallelism.parallelism_fact_eq(
         a: f,
         b: v2.lens.parallelism.ParallelismFact {
           dependencies: [
             v2.std.dependency.ClassifiedDependencyView {
               dependency: parallelism_control_effect_dep,
-              classification: DataDependent
+              classification: v2.lens.common.algebraic_composition.DataDependent
             }
           ]
         }
@@ -74,17 +52,17 @@ fn parallelism_control_effect_not_data_dependent() -> Bool {
   }
 }
 
-fn parallelism_control_unresolved_violates() -> Bool {
-  match parallelism_witness(tree: parallelism_claim_tree(), dependencies: [parallelism_control_type_dep]) {
+fn parallelism_control_unresolved_violates() -> v2.std.logic.Bool {
+  match v2.lens.parallelism.parallelism_witness(tree: v2.test.lens_parallelism.data_dependency.parallelism_claim_tree(), dependencies: [parallelism_control_type_dep]) {
     Violates { diagnostic: _ } => true
     Holds { value: _ } => false
   }
 }
 
-fn parallelism_discriminating_controls_pass() -> Bool {
+fn parallelism_discriminating_controls_pass() -> v2.std.logic.Bool {
   parallelism_control_effect_is_effect_coupled()
     && parallelism_control_effect_not_data_dependent()
     && parallelism_control_unresolved_violates()
 }
 
-test data witness_lens_parallelism_family_gate_closed: Bool = parallelism_discriminating_controls_pass()
+test data witness_lens_parallelism_family_gate_closed: v2.std.logic.Bool = parallelism_discriminating_controls_pass()

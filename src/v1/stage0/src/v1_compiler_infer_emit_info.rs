@@ -149,20 +149,19 @@ pub fn collect_type_node_import_surface_names(
     })
 }
 
-pub fn emit_graph_fn_decl_items_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "fn_decl_items mirrors type_decl_items (dashboard node adhoc-574e999b-39c): a fn-name-keyed lookup into the SAME typed (post-04_infer, .inferred-populated) module items build_emit_graph_info already folds over, so a caller-side Clone-bound derivation (v1.compiler.trait_bound_witness) can resolve a callee-by-name and re-run emit_fn_def's own derivation on the callee's real declaration Node — never a second, parallel re-parse or re-inference of the callee.".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
+#[serde(tag = "_variant")]
+pub enum RustCorpusRepr {
+    HostNative,
+    FaithfulFreeMonoid,
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct EmitGraphInfo {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     pub type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    pub fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
     pub recursive_type_set: Rc<BTreeSet<String>>,
     pub fielded_variants: Rc<BTreeSet<String>>,
     pub positional_payload_variants: Rc<BTreeSet<String>>,
@@ -186,7 +185,6 @@ pub struct EmitGraphInfo {
 pub struct EmitInfoBuildState {
     pub type_summaries: Rc<HashMap<String, Rc<TypeSummary>>>,
     pub type_decl_items: Rc<HashMap<String, Rc<Node>>>,
-    pub fn_decl_items: Rc<HashMap<String, Rc<Node>>>,
 }
 
 pub fn empty_emit_graph_info_ord_fallback_note() -> String {
@@ -202,7 +200,6 @@ pub fn empty_emit_graph_info() -> Rc<EmitGraphInfo> {
     Rc::new(EmitGraphInfo {
         type_summaries: v1_rt::rc_empty_map::<String, Rc<TypeSummary>>(),
         type_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
-        fn_decl_items: v1_rt::rc_empty_map::<String, Rc<Node>>(),
         recursive_type_set: v1_rt::rc_empty_set::<String>(),
         fielded_variants: v1_rt::rc_empty_set::<String>(),
         positional_payload_variants: v1_rt::rc_empty_set::<String>(),
@@ -231,7 +228,6 @@ pub fn emit_info_with_fn_type_context(
     Rc::new(EmitGraphInfo {
         type_summaries: emit_info.type_summaries.clone(),
         type_decl_items: emit_info.type_decl_items.clone(),
-        fn_decl_items: emit_info.fn_decl_items.clone(),
         recursive_type_set: emit_info.recursive_type_set.clone(),
         fielded_variants: emit_info.fielded_variants.clone(),
         positional_payload_variants: emit_info.positional_payload_variants.clone(),
@@ -259,7 +255,6 @@ pub fn emit_info_with_fn_return(
     Rc::new(EmitGraphInfo {
         type_summaries: emit_info.type_summaries.clone(),
         type_decl_items: emit_info.type_decl_items.clone(),
-        fn_decl_items: emit_info.fn_decl_items.clone(),
         recursive_type_set: emit_info.recursive_type_set.clone(),
         fielded_variants: emit_info.fielded_variants.clone(),
         positional_payload_variants: emit_info.positional_payload_variants.clone(),
@@ -325,19 +320,6 @@ pub fn emit_graph_records_type_decl(
                 && (item.transport.clone() == None))
         }
     }
-}
-
-pub fn emit_graph_records_fn_decl_note() -> String {
-    thread_local! {
-        static CACHED: String = {
-            "Same criterion as v1.compiler.emit_core_support's is_function_item (05_emit_rust.dag's top-level item dispatch), duplicated here rather than imported: this module (v1.compiler.infer_emit_info) is upstream of v1.compiler.emit_core_support in the DAG (04_emit_info.dag has no import of 05_emit_core_support.dag today), and emit_graph_records_type_decl beside it already establishes the precedent of a locally-scoped duplicate one-line item-shape predicate at this stage rather than reaching downstream for one (DESIGN.md S3 -- a fact's home is its layer, and both predicates answer 'what item shape reaches this stage's fold', not 'what does emit_core_support export').".to_string()
-        };
-    }
-    CACHED.with(|c: &String| c.clone())
-}
-
-pub fn emit_graph_records_fn_decl(item: Rc<Node>) -> bool {
-    ((item.body.clone() != None) && (item.type_annotation.clone() == None))
 }
 
 pub fn derive_variant_to_enum(
@@ -896,22 +878,6 @@ pub fn add_emit_item_summary(
                     decl_name.clone(),
                     item.clone(),
                 ),
-                fn_decl_items: state.fn_decl_items.clone(),
-            })
-        } else {
-            state.clone()
-        };
-        let state = if ((decl_name.clone() != "".to_string())
-            && emit_graph_records_fn_decl(item.clone()))
-        {
-            Rc::new(EmitInfoBuildState {
-                type_summaries: state.type_summaries.clone(),
-                type_decl_items: state.type_decl_items.clone(),
-                fn_decl_items: v1_rt::rc_map_insert(
-                    state.fn_decl_items.clone(),
-                    decl_name.clone(),
-                    item.clone(),
-                ),
             })
         } else {
             state.clone()
@@ -1000,7 +966,6 @@ pub fn add_emit_item_summary(
                 Rc::new(EmitInfoBuildState {
                     type_summaries: next_summaries.clone(),
                     type_decl_items: state.type_decl_items.clone(),
-                    fn_decl_items: state.fn_decl_items.clone(),
                 })
             }
             None => state.clone(),

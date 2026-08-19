@@ -1,18 +1,13 @@
 module v2.test.lens_application.application_subterm_at_empty_path
 
-import v2.lens.application { subterm_at }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Path, Symbol, TypeNode, SyntheticOccurrence }
-
-data application_subterm_root: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^application_subterm_symbol } },
+data application_subterm_root: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^application_subterm_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn application_subterm_at_empty_path_claim_holds() -> Bool {
-  match subterm_at(root: application_subterm_root, path: Path { steps: [] }) {
+test fn application_subterm_at_empty_path_claim_holds() -> v2.std.logic.Bool {
+  match v2.lens.application.subterm_at(root: application_subterm_root, path: v2.std.node.Path { steps: [] }) {
     Accepted { value: n, diagnostics: _ } => n == application_subterm_root
     Rejected { diagnostics: _ } => false
   }

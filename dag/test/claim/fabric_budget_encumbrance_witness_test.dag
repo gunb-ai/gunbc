@@ -1,13 +1,5 @@
 module test.claim.fabric_budget_encumbrance_witness
 
-import std.types { NonEmptyStr, Bool, Int, List }
-import std.measure { money_amount_micro, money_amount_micro_count }
-import std.currency { Usd, Eur }
-import std.nat { Nat }
-import extdeps.accounting.budget { Appropriation }
-import extdeps.accounting.encumbrance { EncumbranceLedger, ExceedsAppropriation, UnknownEncumbrance, ExpenditureExceedsEncumbrance, AlreadyTerminal, DuplicateReference }
-import product.fabric.budget { MoneyAccount, MoneyReservationRequest, MoneySettlementRequest, MoneyOutcome, AccountAdvanced, MoneyRefused, CurrencyMismatch, LedgerRefused, StaleLeaseGeneration, reserve_money, settle_money, release_money, account_committed }
-
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 
 // Budget is modeled as a lease over money: something is held exclusively,
@@ -17,24 +9,24 @@ data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
 // ceiling and the generation fence - plus the currency wall the generic
 // kernel deliberately cannot carry.
 
-data usd_account: MoneyAccount = MoneyAccount {
+data usd_account: product.fabric.budget.MoneyAccount = product.fabric.budget.MoneyAccount {
   account: "fleet-ci",
-  currency: Usd,
-  ledger: EncumbranceLedger {
-    appropriation: Appropriation { ceiling: money_amount_micro(count: 1000000) },
+  currency: std.currency.Usd,
+  ledger: extdeps.accounting.encumbrance.EncumbranceLedger {
+    appropriation: extdeps.accounting.budget.Appropriation { ceiling: std.measure.money_amount_micro(count: 1000000) },
     entries: [],
   },
   leases: [],
 }
 
-fn advanced_account(o: MoneyOutcome) -> List<MoneyAccount> {
+fn advanced_account(o: product.fabric.budget.MoneyOutcome) -> std.types.List<product.fabric.budget.MoneyAccount> {
   match o {
     AccountAdvanced { account: a } => [a]
     MoneyRefused { refusal: _ } => []
   }
 }
 
-fn is_refused(o: MoneyOutcome) -> Bool {
+fn is_refused(o: product.fabric.budget.MoneyOutcome) -> std.types.Bool {
   match o {
     AccountAdvanced { account: _ } => false
     MoneyRefused { refusal: _ } => true
@@ -49,7 +41,7 @@ fn is_refused(o: MoneyOutcome) -> Bool {
 // duplicate-reference bug this file now covers. Naming the arm is what makes
 // each test discriminate the wall it claims to be about.
 
-fn refusal_label(o: MoneyOutcome) -> NonEmptyStr {
+fn refusal_label(o: product.fabric.budget.MoneyOutcome) -> std.types.NonEmptyStr {
   match o {
     AccountAdvanced { account: _ } => "advanced"
     MoneyRefused { refusal: r } =>
@@ -68,26 +60,26 @@ fn refusal_label(o: MoneyOutcome) -> NonEmptyStr {
   }
 }
 
-fn reserve_on(a: MoneyAccount, reference: NonEmptyStr, generation: Int, micros: Nat) -> MoneyOutcome {
-  reserve_money(
+fn reserve_on(a: product.fabric.budget.MoneyAccount, reference: std.types.NonEmptyStr, generation: std.types.Int, micros: std.nat.Nat) -> product.fabric.budget.MoneyOutcome {
+  product.fabric.budget.reserve_money(
     a: a,
-    request: MoneyReservationRequest {
+    request: product.fabric.budget.MoneyReservationRequest {
       reference: reference,
       generation: generation,
-      maximum_liability: money_amount_micro(count: micros),
-      currency: Usd,
+      maximum_liability: std.measure.money_amount_micro(count: micros),
+      currency: std.currency.Usd,
     },
   )
 }
 
-fn settle_on(a: MoneyAccount, reference: NonEmptyStr, generation: Int, micros: Nat) -> MoneyOutcome {
-  settle_money(
+fn settle_on(a: product.fabric.budget.MoneyAccount, reference: std.types.NonEmptyStr, generation: std.types.Int, micros: std.nat.Nat) -> product.fabric.budget.MoneyOutcome {
+  product.fabric.budget.settle_money(
     a: a,
-    request: MoneySettlementRequest {
+    request: product.fabric.budget.MoneySettlementRequest {
       reference: reference,
       generation: generation,
-      actual_spend: money_amount_micro(count: micros),
-      currency: Usd,
+      actual_spend: std.measure.money_amount_micro(count: micros),
+      currency: std.currency.Usd,
       settled_at: "2026-08-18T02:00:00Z",
     },
   )
@@ -98,11 +90,11 @@ fn settle_on(a: MoneyAccount, reference: NonEmptyStr, generation: Int, micros: N
 // counts against the budget before any money moves, so a second reservation
 // cannot be admitted against headroom the first one has already spoken for.
 
-test fn a_held_reservation_encumbers_its_full_liability() -> Bool {
+test fn a_held_reservation_encumbers_its_full_liability() -> std.types.Bool {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: a, tail: _ } =>
-      money_amount_micro_count(m: account_committed(a: a)) == 400000
+      std.measure.money_amount_micro_count(m: product.fabric.budget.account_committed(a: a)) == 400000
   }
 }
 
@@ -110,13 +102,13 @@ test fn a_held_reservation_encumbers_its_full_liability() -> Bool {
 // asked to hold 700000 against 600000 of headroom and received a smaller hold
 // would proceed believing it was covered for the larger amount.
 
-test fn a_reservation_over_the_ceiling_refuses_rather_than_partially_holding() -> Bool {
+test fn a_reservation_over_the_ceiling_refuses_rather_than_partially_holding() -> std.types.Bool {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: a, tail: _ } => {
       let second = reserve_on(a: a, reference: "grant-2", generation: 1, micros: 700000)
       refusal_label(o: second) == "exceeds-appropriation"
-        && money_amount_micro_count(m: account_committed(a: a)) == 400000
+        && std.measure.money_amount_micro_count(m: product.fabric.budget.account_committed(a: a)) == 400000
     }
   }
 }
@@ -126,15 +118,15 @@ test fn a_reservation_over_the_ceiling_refuses_rather_than_partially_holding() -
 // conservative maximum would permanently consume headroom it never used, and
 // callers would be pushed toward under-reserving instead.
 
-test fn settling_under_the_hold_returns_the_residue() -> Bool {
+test fn settling_under_the_hold_returns_the_residue() -> std.types.Bool {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } =>
       match advanced_account(o: settle_on(a: held, reference: "grant-1", generation: 1, micros: 250000)) {
         Empty {} => false
         Cons { head: settled, tail: _ } =>
-          money_amount_micro_count(m: account_committed(a: held)) == 400000
-            && money_amount_micro_count(m: account_committed(a: settled)) == 250000
+          std.measure.money_amount_micro_count(m: product.fabric.budget.account_committed(a: held)) == 400000
+            && std.measure.money_amount_micro_count(m: product.fabric.budget.account_committed(a: settled)) == 250000
       }
   }
 }
@@ -144,7 +136,7 @@ test fn settling_under_the_hold_returns_the_residue() -> Bool {
 // reserve path, which is the one place the conservation argument assumed it
 // could not be crossed.
 
-test fn spending_above_the_hold_refuses_instead_of_expanding_it() -> Bool {
+test fn spending_above_the_hold_refuses_instead_of_expanding_it() -> std.types.Bool {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } =>
@@ -157,7 +149,7 @@ test fn spending_above_the_hold_refuses_instead_of_expanding_it() -> Bool {
 // must not be honoured, and the check is decidable at settlement rather than
 // racing, because the reservation carries the generation it was made under.
 
-test fn a_superseded_holder_cannot_settle() -> Bool {
+test fn a_superseded_holder_cannot_settle() -> std.types.Bool {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 7, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } =>
@@ -171,7 +163,7 @@ test fn a_superseded_holder_cannot_settle() -> Bool {
 // commitment against the appropriation two times, and the second charge would
 // be invisible in a ledger that only stored a running total.
 
-test fn a_settled_reservation_cannot_settle_again() -> Bool {
+test fn a_settled_reservation_cannot_settle_again() -> std.types.Bool {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } =>
@@ -187,13 +179,13 @@ test fn a_settled_reservation_cannot_settle_again() -> Bool {
 // Releasing frees the whole hold, so the headroom it occupied becomes
 // available to a later reservation that would otherwise have been refused.
 
-test fn releasing_a_hold_frees_its_headroom() -> Bool {
+test fn releasing_a_hold_frees_its_headroom() -> std.types.Bool {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 900000)) {
     Empty {} => false
     Cons { head: held, tail: _ } => {
       let blocked = reserve_on(a: held, reference: "grant-2", generation: 1, micros: 500000)
       match advanced_account(
-        o: release_money(
+        o: product.fabric.budget.release_money(
           a: held,
           reference: "grant-1",
           generation: 1,
@@ -204,7 +196,7 @@ test fn releasing_a_hold_frees_its_headroom() -> Bool {
         Empty {} => false
         Cons { head: freed, tail: _ } =>
           refusal_label(o: blocked) == "exceeds-appropriation"
-            && money_amount_micro_count(m: account_committed(a: freed)) == 0
+            && std.measure.money_amount_micro_count(m: product.fabric.budget.account_committed(a: freed)) == 0
             && refusal_label(o: reserve_on(a: freed, reference: "grant-2", generation: 1, micros: 500000)) == "advanced"
       }
     }
@@ -218,18 +210,18 @@ test fn releasing_a_hold_frees_its_headroom() -> Bool {
 // needs a rate, and a rate invented at an admission boundary fabricates the
 // exact fact the refusal exists to demand.
 
-test fn a_foreign_currency_reservation_refuses_and_never_converts() -> Bool {
-  let foreign = reserve_money(
+test fn a_foreign_currency_reservation_refuses_and_never_converts() -> std.types.Bool {
+  let foreign = product.fabric.budget.reserve_money(
     a: usd_account,
-    request: MoneyReservationRequest {
+    request: product.fabric.budget.MoneyReservationRequest {
       reference: "grant-eu",
       generation: 1,
-      maximum_liability: money_amount_micro(count: 100000),
-      currency: Eur,
+      maximum_liability: std.measure.money_amount_micro(count: 100000),
+      currency: std.currency.Eur,
     },
   )
   refusal_label(o: foreign) == "currency-mismatch"
-    && money_amount_micro_count(m: account_committed(a: usd_account)) == 0
+    && std.measure.money_amount_micro_count(m: product.fabric.budget.account_committed(a: usd_account)) == 0
 }
 
 // The refusal must be the CURRENCY one specifically. A euro amount inside the
@@ -237,14 +229,14 @@ test fn a_foreign_currency_reservation_refuses_and_never_converts() -> Bool {
 // were merely ordering the mismatch would surface as some other refusal, or as
 // none - which is how a silent cross-currency sum gets in.
 
-test fn the_currency_refusal_is_distinct_from_a_ceiling_refusal() -> Bool {
-  let foreign = reserve_money(
+test fn the_currency_refusal_is_distinct_from_a_ceiling_refusal() -> std.types.Bool {
+  let foreign = product.fabric.budget.reserve_money(
     a: usd_account,
-    request: MoneyReservationRequest {
+    request: product.fabric.budget.MoneyReservationRequest {
       reference: "grant-eu",
       generation: 1,
-      maximum_liability: money_amount_micro(count: 100000),
-      currency: Eur,
+      maximum_liability: std.measure.money_amount_micro(count: 100000),
+      currency: std.currency.Eur,
     },
   )
   match foreign {
@@ -252,7 +244,7 @@ test fn the_currency_refusal_is_distinct_from_a_ceiling_refusal() -> Bool {
     MoneyRefused { refusal: r } =>
       match r {
         CurrencyMismatch { account: _, account_currency: ac, presented_currency: pc } =>
-          ac == Usd && pc == Eur
+          ac == std.currency.Usd && pc == std.currency.Eur
         LedgerRefused { account: _, refusal: _ } => false
         StaleLeaseGeneration { reference: _, presented: _ } => false
       }
@@ -264,13 +256,13 @@ test fn the_currency_refusal_is_distinct_from_a_ceiling_refusal() -> Bool {
 // second half matters because a refusal that still appended would leave the
 // exact state the wall exists to prevent while reporting that it did not.
 
-test fn a_second_hold_under_one_reference_refuses() -> Bool {
+test fn a_second_hold_under_one_reference_refuses() -> std.types.Bool {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } => {
       let duplicate = reserve_on(a: held, reference: "grant-1", generation: 1, micros: 100000)
       refusal_label(o: duplicate) == "duplicate-reference"
-        && money_amount_micro_count(m: account_committed(a: held)) == 400000
+        && std.measure.money_amount_micro_count(m: product.fabric.budget.account_committed(a: held)) == 400000
     }
   }
 }
@@ -281,14 +273,14 @@ test fn a_second_hold_under_one_reference_refuses() -> Bool {
 // both - charging 500000 for one commitment. This asserts a settled reference
 // charges its amount EXACTLY ONCE, which is the property the duplicate broke.
 
-test fn one_settlement_charges_the_appropriation_exactly_once() -> Bool {
+test fn one_settlement_charges_the_appropriation_exactly_once() -> std.types.Bool {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } =>
       match advanced_account(o: settle_on(a: held, reference: "grant-1", generation: 1, micros: 250000)) {
         Empty {} => false
         Cons { head: settled, tail: _ } =>
-          money_amount_micro_count(m: account_committed(a: settled)) == 250000
+          std.measure.money_amount_micro_count(m: product.fabric.budget.account_committed(a: settled)) == 250000
       }
   }
 }
@@ -306,12 +298,12 @@ test fn one_settlement_charges_the_appropriation_exactly_once() -> Bool {
 // is the correct obligation anyway - a retry is a new commitment, and the
 // fabric already models it as a new attempt with its own identity.
 
-test fn a_released_reference_is_not_reusable() -> Bool {
+test fn a_released_reference_is_not_reusable() -> std.types.Bool {
   match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
     Empty {} => false
     Cons { head: held, tail: _ } =>
       match advanced_account(
-        o: release_money(
+        o: product.fabric.budget.release_money(
           a: held,
           reference: "grant-1",
           generation: 1,
@@ -323,7 +315,7 @@ test fn a_released_reference_is_not_reusable() -> Bool {
         Cons { head: freed, tail: _ } =>
           refusal_label(o: reserve_on(a: freed, reference: "grant-1", generation: 1, micros: 400000))
             == "duplicate-reference"
-            && money_amount_micro_count(m: account_committed(a: freed)) == 0
+            && std.measure.money_amount_micro_count(m: product.fabric.budget.account_committed(a: freed)) == 0
             && refusal_label(o: reserve_on(a: freed, reference: "grant-1-retry", generation: 1, micros: 400000)) == "advanced"
       }
   }

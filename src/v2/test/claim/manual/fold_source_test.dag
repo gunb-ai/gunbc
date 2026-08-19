@@ -1,19 +1,15 @@
 module v2.test.manual.fold_source
 
-import std.algebra { Cons, Empty }
-import v2.std.logic { Bool }
-import v2.std.text { SourceFold, String, fold_source }
-
 type CountAcc {
   count: Int
-  done: Bool
+  done: v2.std.logic.Bool
 }
 
-fn count_init(_source: String) -> CountAcc {
+fn count_init(_source: v2.std.text.String) -> CountAcc {
   CountAcc { count: 0, done: false }
 }
 
-fn count_is_done(acc: CountAcc) -> Bool {
+fn count_is_done(acc: CountAcc) -> v2.std.logic.Bool {
   acc.done
 }
 
@@ -22,8 +18,8 @@ fn count_step(acc: CountAcc) -> CountAcc {
   CountAcc { count: next, done: next >= 3 }
 }
 
-fn count_three_algebra() -> SourceFold<CountAcc> {
-  SourceFold {
+fn count_three_algebra() -> v2.std.text.SourceFold<CountAcc> {
+  v2.std.text.SourceFold {
     init: count_init,
     is_done: count_is_done,
     step: count_step
@@ -35,9 +31,9 @@ fn count_three_algebra() -> SourceFold<CountAcc> {
 // stop would have fired, so an algebra that ignores is_done entirely produces the identical
 // count. Two spare bytes past the stop are what make the assertion discriminating — a step that
 // applies after is_done turns true counts five, not three (verified by mutation, gunbc#8505).
-data src_abcde: String = Cons { head: 97, tail: Cons { head: 98, tail: Cons { head: 99, tail: Cons { head: 100, tail: Cons { head: 101, tail: Empty } } } } }
+data src_abcde: v2.std.text.String = std.algebra.Cons { head: 97, tail: std.algebra.Cons { head: 98, tail: std.algebra.Cons { head: 99, tail: std.algebra.Cons { head: 100, tail: std.algebra.Cons { head: 101, tail: std.algebra.Empty } } } } }
 
-test fn witness_fold_source_stops_at_is_done() -> Bool {
-  let result = fold_source(src: src_abcde, algebra: count_three_algebra())
+test fn witness_fold_source_stops_at_is_done() -> v2.std.logic.Bool {
+  let result = v2.std.text.fold_source(src: src_abcde, algebra: count_three_algebra())
   result.count == 3 && result.done
 }

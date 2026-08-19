@@ -1,16 +1,6 @@
 module test.claim.long.where_refinement_enforcement_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import gunbc.compile_diagnostic_census {
-  CompileDiagnosticCensus,
-  CensusObserved,
-  CensusNotRunnable,
-  census_blocking_rows,
-  census_rows_of_class,
-  census_total_count,
-}
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 data where_refinement_enforcement_witness_note: String = "PR #7438 where-refinement witnesses via compile_dag_rust_emit_check, which uses the same compile-clean HARD authority as CI (compile_clean_diagnostic_is_hard — review 45010). CONSTRUCTION WALL (hard TypeMismatch, compile-clean red): decidable predicates at LITERAL sites — gt_zero/range/non_empty on int/string literals including unary-negated int literals (review 45131), record fields, direct returns, data inits, call args, as-casts (review 45036); inherited predicates compose through refined-alias chains at ARBITRARY depth (review 45121 — NonEmptyStr where brand; corrected node://adhoc-2ccd029d-c1d, 2026-08-18 — the prior wording was true only for predicate composition, not for base-type-mismatch detection, which silently degraded past depth 1). CORRECTED (node://adhoc-2ccd029d-c1d): two absorbing-fallback defects fixed at their single authority, both now proven at depth 2 and depth 3, generic over depth by construction (no depth-specific code). (a) kernel_value_declared_type_mismatch (record fields, call args) carried its own duplicate one-level peel of the formal's refinement wrapper instead of reusing the already-correct arbitrary-depth peel_where_refinement_base; past depth 1 it landed on an intermediate alias name and an overly-permissive decl_is_refinement_over_actual check silently deferred to the advisory arm instead of refusing a genuine base-kernel-type mismatch — now it calls peel_where_refinement_base directly (DESIGN §3 single authority), fixing both call sites (record-field init and call-arg checking) from one change. (b) where_refinement_diags_for_predicate (direct returns, data inits — which never reach kernel_value_declared_type_mismatch at all, so this was the only wall there) used expr_literal_int_optional/expr_literal_string_optional's Absent arm to mean 'non-literal, defer to advisory' — but Absent also fires for a literal of the WRONG kind (a String literal at an Int-refined position, or vice versa), so a wrong-kind literal was misclassified as non-literal and silently deferred rather than refused; a new expr_is_any_literal(expr) predicate (00_core.dag) now distinguishes 'any literal, of any kind' (refuse) from 'genuinely not a literal' (unchanged advisory), checked identically in both the int- and string-predicate branches. Emit-side symptom: the generic nested-record data-literal emit template in 05_emit_rust.dag (serde_json::from_value(...).expect(\"valid data definition\")) is correct-by-construction for any literal this wall actually admits; the previously-reachable panic on a type-mismatched literal was a downstream consequence of (a)/(b) admitting bad state, not an independent emit defect, and needed no separate code change once the admission wall closed. DEFERRAL (WhereRefinementUnenforced advisory, compile-clean green): genuinely non-literal values at refined positions and deferred predicates (brand, Pattern) — wall after grounding (decidable, evidence carrier missing); counted via compile_clean_diagnostic_histogram, not silently widened. dissolve-on: feature:refinement-evidence-at-non-literal-positions. Centralized via with_expected_where_refinement_diags (review 44949). Seed-retained host seam (review 45103): src/v1/stage0/src/cli_run.rs compile_dag_rust_emit_check + compile_clean_diagnostic_is_advisory + histogram key — wires the existing builtin consumer to compile_clean_diagnostic_is_hard / WhereRefinementUnenforced counting; no new policy. Witness scaffold dissolves when the v1 compile-clean witness layer can assert diagnostic shape without the seed host bin (docs/plans/witness-realization-plan.md P0 lane). Predicate-kind strings: dissolve-on feature:where-refinement-predicate-coproduct."
 
@@ -307,7 +297,7 @@ data where_refinement_cause_pinning_note: String = "node://adhoc-2ccd029d-c1d fo
 fn depth_wrong_base_type_mismatch_count(source: String) -> Int {
   match compile_dag_diagnostic_census(source) {
     CensusObserved { rows: rows } =>
-      census_total_count(rows: census_blocking_rows(rows: census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
+      gunbc.compile_diagnostic_census.census_total_count(rows: gunbc.compile_diagnostic_census.census_blocking_rows(rows: gunbc.compile_diagnostic_census.census_rows_of_class(rows: rows, wanted: "TypeMismatch")))
     CensusNotRunnable { cause: _ } => -1
   }
 }

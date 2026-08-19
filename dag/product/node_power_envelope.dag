@@ -1,45 +1,5 @@
 module product.node_power_envelope
 
-import std.types { Bool, EpochMs, Int, List, NonEmptyStr }
-import std.nat { Nat }
-import std.measure {
-  Bandwidth,
-  ByteSize,
-  MegatransfersPerSecond,
-  Milliwatt,
-  Percent,
-  Watt,
-  bandwidth_count,
-  bit_width_count,
-  bits_per_byte,
-  byte_size,
-  byte_size_count,
-  mega_factor,
-  megatransfers_per_second,
-  megatransfers_per_second_count,
-  milliwatt,
-  milliwatt_count,
-  milliwatt_to_watt_floor,
-  percent,
-  percent_count,
-  watt,
-  watt_count,
-}
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.cpu.types { CpuModelCatalogRow }
-import extdeps.memory.types {
-  DramModuleCatalogRow,
-  dram_chips_per_rank,
-  dram_data_word_width,
-}
-import extdeps.cpu.ampere_altra_platform_hw_design.platform { dimms_per_channel_count }
-import gunbc.memory_provisioning {
-  FullChannel,
-  MemoryChannelGeometry,
-  PartialChannel,
-  PopulationOption,
-}
-
 // WHAT A NODE DRAWS AND WHAT ITS MEMORY DELIVERS — the electrical and bandwidth
 // half of a build, kept deliberately apart from what the build COSTS
 // (product.build_fulfillment). The two answer different questions and a reader
@@ -76,8 +36,8 @@ import gunbc.memory_provisioning {
 // a one-deep board, and the only authority for which of those happened is the
 // PopulationOption.
 type MemoryElectricalContext {
-  geometry: MemoryChannelGeometry
-  max_data_rate: MegatransfersPerSecond
+  geometry: gunbc.memory_provisioning.MemoryChannelGeometry
+  max_data_rate: std.measure.MegatransfersPerSecond
   two_dpc_ceilings: TwoDpcRateCeilingTable
 }
 
@@ -95,20 +55,20 @@ type MemoryElectricalContext {
 // used is grounded, and the read obligation names what would ground it. This is
 // a declared boundary fact, not a silent constant.
 type RateCeilingEvidence
-  = CeilingCitedToAuthority { authority: ExternalAuthority }
-  | CeilingTranscribedUncited { read_obligation: NonEmptyStr }
+  = CeilingCitedToAuthority { authority: extdeps.external_authority.ExternalAuthority }
+  | CeilingTranscribedUncited { read_obligation: std.types.NonEmptyStr }
 
 type TwoDpcRateCeiling {
-  min_rank_count: Nat
-  ceiling: MegatransfersPerSecond
+  min_rank_count: std.nat.Nat
+  ceiling: std.measure.MegatransfersPerSecond
   evidence: RateCeilingEvidence
 }
 
 type TwoDpcRateCeilingTable {
-  rows: List<TwoDpcRateCeiling>
+  rows: std.types.List<TwoDpcRateCeiling>
 }
 
-fn ceiling_is_cited(evidence: RateCeilingEvidence) -> Bool {
+fn ceiling_is_cited(evidence: RateCeilingEvidence) -> std.types.Bool {
   match evidence {
     CeilingCitedToAuthority { authority: _ } => true
     CeilingTranscribedUncited { read_obligation: _ } => false
@@ -122,14 +82,14 @@ data altra_two_dpc_ceilings: TwoDpcRateCeilingTable = TwoDpcRateCeilingTable {
   rows: [
     TwoDpcRateCeiling {
       min_rank_count: 4,
-      ceiling: megatransfers_per_second(count: 2400),
+      ceiling: std.measure.megatransfers_per_second(count: 2400),
       evidence: CeilingTranscribedUncited {
         read_obligation: "cite the platform or JEDEC DDR4 two-DIMM-per-channel derating table for quad-rank modules; transcribed from the deleted product.hardware_selection, which carried it as a bare literal",
       },
     },
     TwoDpcRateCeiling {
       min_rank_count: 2,
-      ceiling: megatransfers_per_second(count: 2933),
+      ceiling: std.measure.megatransfers_per_second(count: 2933),
       evidence: CeilingTranscribedUncited {
         read_obligation: "cite the platform or JEDEC DDR4 two-DIMM-per-channel derating table for dual-rank modules; transcribed from the deleted product.hardware_selection, which carried it as a bare literal",
       },
@@ -140,9 +100,9 @@ data altra_two_dpc_ceilings: TwoDpcRateCeilingTable = TwoDpcRateCeilingTable {
 // A full-channel population is as deep as its topology says; a partial one has
 // dark channels and the populated ones are single-deep, which is what
 // documented_coverage means by PartialChannel.
-fn populated_dimms_per_channel(population: PopulationOption) -> Nat {
+fn populated_dimms_per_channel(population: gunbc.memory_provisioning.PopulationOption) -> std.nat.Nat {
   match population.coverage {
-    FullChannel { topology: t } => dimms_per_channel_count(topology: t)
+    FullChannel { topology: t } => extdeps.cpu.ampere_altra_platform_hw_design.platform.dimms_per_channel_count(topology: t)
     PartialChannel { channels_populated: _, channels_dark: _ } => 1
   }
 }
@@ -151,13 +111,13 @@ fn populated_dimms_per_channel(population: PopulationOption) -> Nat {
 // loads the bus; how much depends on how many ranks that module presents, so a
 // single-rank pair keeps the platform's rated speed while a quad-rank pair
 // falls to 2400 MT/s. These figures are the platform's published 2DPC table.
-fn min_nat(a: Nat, b: Nat) -> Nat {
+fn min_nat(a: std.nat.Nat, b: std.nat.Nat) -> std.nat.Nat {
   if a < b { a } else { b }
 }
 
-fn min_rate(a: MegatransfersPerSecond, b: MegatransfersPerSecond) -> MegatransfersPerSecond {
-  megatransfers_per_second(
-    count: min_nat(a: megatransfers_per_second_count(r: a), b: megatransfers_per_second_count(r: b)),
+fn min_rate(a: std.measure.MegatransfersPerSecond, b: std.measure.MegatransfersPerSecond) -> std.measure.MegatransfersPerSecond {
+  std.measure.megatransfers_per_second(
+    count: min_nat(a: std.measure.megatransfers_per_second_count(r: a), b: std.measure.megatransfers_per_second_count(r: b)),
   )
 }
 
@@ -167,9 +127,9 @@ fn min_rate(a: MegatransfersPerSecond, b: MegatransfersPerSecond) -> Megatransfe
 // rather than a restatement of what the code does.
 fn ceiling_for_ranks(
   table: TwoDpcRateCeilingTable,
-  rated: MegatransfersPerSecond,
-  rank_count: Nat,
-) -> MegatransfersPerSecond {
+  rated: std.measure.MegatransfersPerSecond,
+  rank_count: std.nat.Nat,
+) -> std.measure.MegatransfersPerSecond {
   fold(table.rows, init: rated, f: fn(acc, row) {
     if rank_count >= row.min_rank_count { min_rate(a: acc, b: row.ceiling) } else { acc }
   })
@@ -177,9 +137,9 @@ fn ceiling_for_ranks(
 
 fn effective_data_rate(
   context: MemoryElectricalContext,
-  dimms_per_channel: Nat,
-  rank_count: Nat,
-) -> MegatransfersPerSecond {
+  dimms_per_channel: std.nat.Nat,
+  rank_count: std.nat.Nat,
+) -> std.measure.MegatransfersPerSecond {
   if dimms_per_channel <= 1 {
     context.max_data_rate
   } else {
@@ -191,26 +151,26 @@ fn effective_data_rate(
   }
 }
 
-fn dram_channel_bus_bytes() -> ByteSize {
-  byte_size(count: bit_width_count(b: dram_data_word_width) / bits_per_byte())
+fn dram_channel_bus_bytes() -> std.measure.ByteSize {
+  std.measure.byte_size(count: std.measure.bit_width_count(b: extdeps.memory.types.dram_data_word_width) / std.measure.bits_per_byte())
 }
 
 // A second rank per channel lets the controller interleave, so a rank-starved
 // population does not reach the bus's rated throughput even at its rated clock.
-fn rank_interleave_percent(rank_count: Nat) -> Percent {
-  if rank_count >= 2 { percent(count: 100) } else { percent(count: 90) }
+fn rank_interleave_percent(rank_count: std.nat.Nat) -> std.measure.Percent {
+  if rank_count >= 2 { std.measure.percent(count: 100) } else { std.measure.percent(count: 90) }
 }
 
 // The platform downclocks to the SLOWEST module present, so the rated figure is
 // the minimum of what the module can do and what the topology admits.
 fn memory_bandwidth(
   context: MemoryElectricalContext,
-  population: PopulationOption,
-) -> Bandwidth {
+  population: gunbc.memory_provisioning.PopulationOption,
+) -> std.measure.Bandwidth {
   let module = population.module
   let rated = min_nat(
     a: module.data_rate_mts,
-    b: megatransfers_per_second_count(
+    b: std.measure.megatransfers_per_second_count(
       r: effective_data_rate(
         context: context,
         dimms_per_channel: populated_dimms_per_channel(population: population),
@@ -218,26 +178,26 @@ fn memory_bandwidth(
       ),
     ),
   )
-  let interleaved = rated * percent_count(p: rank_interleave_percent(rank_count: module.rank_count)) / 100
-  Bandwidth {
+  let interleaved = rated * std.measure.percent_count(p: rank_interleave_percent(rank_count: module.rank_count)) / 100
+  std.measure.Bandwidth {
     count: interleaved
-      * mega_factor()
-      * byte_size_count(b: dram_channel_bus_bytes())
+      * std.measure.mega_factor()
+      * std.measure.byte_size_count(b: dram_channel_bus_bytes())
       * context.geometry.channels,
   }
 }
 
-fn devices_per_stick(module: DramModuleCatalogRow) -> Nat {
-  dram_chips_per_rank(module: module) * module.rank_count
+fn devices_per_stick(module: extdeps.memory.types.DramModuleCatalogRow) -> std.nat.Nat {
+  extdeps.memory.types.dram_chips_per_rank(module: module) * module.rank_count
 }
 
 fn memory_power(
-  population: PopulationOption,
-  power_per_chip: Milliwatt,
-) -> Watt {
-  milliwatt_to_watt_floor(
-    w: milliwatt(
-      count: milliwatt_count(w: power_per_chip)
+  population: gunbc.memory_provisioning.PopulationOption,
+  power_per_chip: std.measure.Milliwatt,
+) -> std.measure.Watt {
+  std.measure.milliwatt_to_watt_floor(
+    w: std.measure.milliwatt(
+      count: std.measure.milliwatt_count(w: power_per_chip)
         * devices_per_stick(module: population.module)
         * population.dimm_count,
     ),
@@ -264,14 +224,14 @@ type EfficiencyRating = Plus80 | Bronze | Silver | Gold | Platinum | Titanium
 // DISSOLVES ON: the 80 PLUS specification cited in extdeps/ with its load-point
 // table, at which point efficiency becomes a function of load rather than of
 // rating alone.
-fn efficiency_percent(e: EfficiencyRating) -> Percent {
+fn efficiency_percent(e: EfficiencyRating) -> std.measure.Percent {
   match e {
-    Plus80 => percent(count: 80)
-    Bronze => percent(count: 85)
-    Silver => percent(count: 88)
-    Gold => percent(count: 90)
-    Platinum => percent(count: 92)
-    Titanium => percent(count: 94)
+    Plus80 => std.measure.percent(count: 80)
+    Bronze => std.measure.percent(count: 85)
+    Silver => std.measure.percent(count: 88)
+    Gold => std.measure.percent(count: 90)
+    Platinum => std.measure.percent(count: 92)
+    Titanium => std.measure.percent(count: 94)
   }
 }
 
@@ -289,11 +249,11 @@ fn efficiency_percent(e: EfficiencyRating) -> Percent {
 // most expensive: the figure feeds a power allocation, and a wrong one is not
 // discovered until the rack is energised.
 type MemoryPopulationEvidence
-  = PopulationModuleRead { population: PopulationOption }
+  = PopulationModuleRead { population: gunbc.memory_provisioning.PopulationOption }
   | PopulationModuleUnread {
-      stick_capacity: ByteSize
-      dimm_count: Nat
-      read_obligation: NonEmptyStr
+      stick_capacity: std.measure.ByteSize
+      dimm_count: std.nat.Nat
+      read_obligation: std.types.NonEmptyStr
     }
 
 // A node's electrical inputs. Board idle draw and per-chip DRAM power are
@@ -301,14 +261,14 @@ type MemoryPopulationEvidence
 // naming them as fields keeps them visible as the two figures a reader must
 // supply, rather than burying a default inside the arithmetic.
 type NodeElectricalInputs {
-  label: NonEmptyStr
-  sockets: Nat
-  cpu: CpuModelCatalogRow
+  label: std.types.NonEmptyStr
+  sockets: std.nat.Nat
+  cpu: extdeps.cpu.types.CpuModelCatalogRow
   context: MemoryElectricalContext
   memory: MemoryPopulationEvidence
-  dram_power_per_chip: Milliwatt
-  board_idle_draw: Watt
-  psu_rated_output: Watt
+  dram_power_per_chip: std.measure.Milliwatt
+  board_idle_draw: std.measure.Watt
+  psu_rated_output: std.measure.Watt
   psu_efficiency: EfficiencyRating
 }
 
@@ -319,13 +279,13 @@ type NodeElectricalInputs {
 // countable and actionable rather than absorbed.
 type DrawRefusalCause
   = MemoryModuleUnread {
-      stick_capacity: ByteSize
-      dimm_count: Nat
-      read_obligation: NonEmptyStr
+      stick_capacity: std.measure.ByteSize
+      dimm_count: std.nat.Nat
+      read_obligation: std.types.NonEmptyStr
     }
 
 type NodeDrawReading
-  = NodeDrawDerived { dc_load: Watt, wall_draw: Watt }
+  = NodeDrawDerived { dc_load: std.measure.Watt, wall_draw: std.measure.Watt }
   | NodeDrawRefused { cause: DrawRefusalCause }
 
 fn memory_evidence_refusal(memory: MemoryPopulationEvidence) -> DrawRefusalCause? {
@@ -342,22 +302,22 @@ fn memory_evidence_refusal(memory: MemoryPopulationEvidence) -> DrawRefusalCause
 // arithmetic took a hand-authored 'typical_draw' beside the catalog row, which
 // is a second representation of one fact that could disagree with the first;
 // TDP is what the vendor states and it is what this reads.
-fn cpu_draw_watts(inputs: NodeElectricalInputs) -> Watt {
-  watt(count: watt_count(w: inputs.cpu.tdp_watts) * inputs.sockets)
+fn cpu_draw_watts(inputs: NodeElectricalInputs) -> std.measure.Watt {
+  std.measure.watt(count: std.measure.watt_count(w: inputs.cpu.tdp_watts) * inputs.sockets)
 }
 
 // The arithmetic over a READ population. Total, and reached only through
 // node_draw below, which is where the unread arm is refused.
-fn dc_load_over_read_population(inputs: NodeElectricalInputs, population: PopulationOption) -> Watt {
-  watt(
-    count: watt_count(w: cpu_draw_watts(inputs: inputs))
-      + watt_count(w: memory_power(population: population, power_per_chip: inputs.dram_power_per_chip)) * inputs.sockets
-      + watt_count(w: inputs.board_idle_draw),
+fn dc_load_over_read_population(inputs: NodeElectricalInputs, population: gunbc.memory_provisioning.PopulationOption) -> std.measure.Watt {
+  std.measure.watt(
+    count: std.measure.watt_count(w: cpu_draw_watts(inputs: inputs))
+      + std.measure.watt_count(w: memory_power(population: population, power_per_chip: inputs.dram_power_per_chip)) * inputs.sockets
+      + std.measure.watt_count(w: inputs.board_idle_draw),
   )
 }
 
-fn wall_from_dc(dc: Watt, efficiency: EfficiencyRating) -> Watt {
-  watt(count: watt_count(w: dc) * 100 / percent_count(p: efficiency_percent(e: efficiency)))
+fn wall_from_dc(dc: std.measure.Watt, efficiency: EfficiencyRating) -> std.measure.Watt {
+  std.measure.watt(count: std.measure.watt_count(w: dc) * 100 / std.measure.percent_count(p: efficiency_percent(e: efficiency)))
 }
 
 fn node_draw(inputs: NodeElectricalInputs) -> NodeDrawReading {
@@ -377,22 +337,22 @@ fn node_draw(inputs: NodeElectricalInputs) -> NodeDrawReading {
 // tells a buyer nothing about which supply to buy instead, and the headroom is
 // exactly the figure the next decision needs.
 type PsuAdequacy
-  = PsuAdequate { dc_load: Watt, rated: Watt, headroom: Watt }
-  | PsuUndersized { dc_load: Watt, rated: Watt, shortfall: Watt }
+  = PsuAdequate { dc_load: std.measure.Watt, rated: std.measure.Watt, headroom: std.measure.Watt }
+  | PsuUndersized { dc_load: std.measure.Watt, rated: std.measure.Watt, shortfall: std.measure.Watt }
   | PsuUndecidable { cause: DrawRefusalCause }
 
-fn psu_adequacy_for_load(load: Watt, rated: Watt) -> PsuAdequacy {
-  if watt_count(w: load) <= watt_count(w: rated) {
+fn psu_adequacy_for_load(load: std.measure.Watt, rated: std.measure.Watt) -> PsuAdequacy {
+  if std.measure.watt_count(w: load) <= std.measure.watt_count(w: rated) {
     PsuAdequate {
       dc_load: load,
       rated: rated,
-      headroom: watt(count: watt_count(w: rated) - watt_count(w: load)),
+      headroom: std.measure.watt(count: std.measure.watt_count(w: rated) - std.measure.watt_count(w: load)),
     }
   } else {
     PsuUndersized {
       dc_load: load,
       rated: rated,
-      shortfall: watt(count: watt_count(w: load) - watt_count(w: rated)),
+      shortfall: std.measure.watt(count: std.measure.watt_count(w: load) - std.measure.watt_count(w: rated)),
     }
   }
 }
@@ -420,10 +380,10 @@ fn psu_adequacy(inputs: NodeElectricalInputs) -> PsuAdequacy {
 // divergence rather than reconciling it. There is deliberately no function that
 // takes a measurement and returns a corrected derivation.
 type WallPowerReading
-  = WallPowerDerived { watts: Watt }
-  | WallPowerMeasured { watts: Watt, host: NonEmptyStr, observed_at: EpochMs }
+  = WallPowerDerived { watts: std.measure.Watt }
+  | WallPowerMeasured { watts: std.measure.Watt, host: std.types.NonEmptyStr, observed_at: std.types.EpochMs }
 
-fn reading_watts(reading: WallPowerReading) -> Watt {
+fn reading_watts(reading: WallPowerReading) -> std.measure.Watt {
   match reading {
     WallPowerDerived { watts: w } => w
     WallPowerMeasured { watts: w, host: _, observed_at: _ } => w
@@ -435,9 +395,9 @@ fn reading_watts(reading: WallPowerReading) -> Watt {
 // that reads high is usually a TDP standing in for a typical draw, while one
 // that reads low usually means a component the model does not carry at all.
 type EnvelopeDivergence
-  = EnvelopeAgrees { watts: Watt }
-  | DerivationReadsHigh { derived: Watt, measured: Watt, excess: Watt }
-  | DerivationReadsLow { derived: Watt, measured: Watt, shortfall: Watt }
+  = EnvelopeAgrees { watts: std.measure.Watt }
+  | DerivationReadsHigh { derived: std.measure.Watt, measured: std.measure.Watt, excess: std.measure.Watt }
+  | DerivationReadsLow { derived: std.measure.Watt, measured: std.measure.Watt, shortfall: std.measure.Watt }
   | DivergenceNotComparable
 
 fn envelope_divergence(derived: WallPowerReading, measured: WallPowerReading) -> EnvelopeDivergence {
@@ -447,19 +407,19 @@ fn envelope_divergence(derived: WallPowerReading, measured: WallPowerReading) ->
       match measured {
         WallPowerDerived { watts: _ } => DivergenceNotComparable
         WallPowerMeasured { watts: m, host: _, observed_at: _ } =>
-          if watt_count(w: d) == watt_count(w: m) {
+          if std.measure.watt_count(w: d) == std.measure.watt_count(w: m) {
             EnvelopeAgrees { watts: d }
-          } else if watt_count(w: d) > watt_count(w: m) {
+          } else if std.measure.watt_count(w: d) > std.measure.watt_count(w: m) {
             DerivationReadsHigh {
               derived: d,
               measured: m,
-              excess: watt(count: watt_count(w: d) - watt_count(w: m)),
+              excess: std.measure.watt(count: std.measure.watt_count(w: d) - std.measure.watt_count(w: m)),
             }
           } else {
             DerivationReadsLow {
               derived: d,
               measured: m,
-              shortfall: watt(count: watt_count(w: m) - watt_count(w: d)),
+              shortfall: std.measure.watt(count: std.measure.watt_count(w: m) - std.measure.watt_count(w: d)),
             }
           }
       }
@@ -485,11 +445,11 @@ fn derived_wall_power(inputs: NodeElectricalInputs) -> DerivedWallPower {
 // unread part number costs nothing here — while the device count that decides
 // draw is exactly what the part number carries. Two questions, two different
 // evidence requirements, answered independently.
-fn node_memory_capacity(inputs: NodeElectricalInputs) -> ByteSize {
+fn node_memory_capacity(inputs: NodeElectricalInputs) -> std.measure.ByteSize {
   match inputs.memory {
     PopulationModuleRead { population: p } =>
-      byte_size(count: byte_size_count(b: p.total_bytes) * inputs.sockets)
+      std.measure.byte_size(count: std.measure.byte_size_count(b: p.total_bytes) * inputs.sockets)
     PopulationModuleUnread { stick_capacity: c, dimm_count: n, read_obligation: _ } =>
-      byte_size(count: byte_size_count(b: c) * n * inputs.sockets)
+      std.measure.byte_size(count: std.measure.byte_size_count(b: c) * n * inputs.sockets)
   }
 }

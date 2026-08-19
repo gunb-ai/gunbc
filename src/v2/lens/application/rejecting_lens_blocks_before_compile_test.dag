@@ -1,70 +1,47 @@
 module v2.test.lens_application.rejecting_lens_blocks_before_compile
 
-import v2.std.host_transport { target_emit_host_runtime_row_unconfigured }
-import v2.compiler.compile {
-  CompileOutput,
-  CompileLens,
-  TranslateTo,
-  Validated,
-  compile_lens_gate_rejected_diagnostic,
-  validate_then_compile
-}
-import v2.compiler.infer { InferredTree }
-import v2.std.compilers.target_model {
-  ProducedDeclUnwired, TargetModel, target_model_emit_transforms_empty }
-import v2.std.compilers.lexing { VoidLexRules }
-import v2.std.collection { empty_map }
-import v2.std.diagnostic { Accepted, Outcome, Rejected, outcome_rejected, port_locus }
-import v2.std.logic { Bool }
-import std.algebra { Empty }
-import v2.std.node { Atom, Conj, Node, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.witness { Witness }
-import v2.test.lens_application.empty_required_lenses_skip_gate {
-  non_empty_diagnostics_contain_reason
-}
-
 data rejecting_lens_target_model_stub: v2.std.compilers.target_model.TargetModel = v2.std.compilers.target_model.TargetModel {
-  produced_decl_support: ProducedDeclUnwired,
+  produced_decl_support: v2.std.compilers.target_model.ProducedDeclUnwired,
   bundle: v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: Conj },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Conj },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 },
-  lex: VoidLexRules,
-  binding_spellings: empty_map(),
-  token_class_emit_transforms: target_model_emit_transforms_empty,
+  lex: v2.std.compilers.lexing.VoidLexRules,
+  binding_spellings: v2.std.collection.empty_map(),
+  token_class_emit_transforms: v2.std.compilers.target_model.target_model_emit_transforms_empty,
   authority_source_text: std.algebra.Empty,
-  runtime_row: target_emit_host_runtime_row_unconfigured
+  runtime_row: v2.std.host_transport.target_emit_host_runtime_row_unconfigured
 }
 
-data rejecting_lens_authority_node: Node = v2.std.node.Node {
+data rejecting_lens_authority_node: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^rejecting_lens_claim_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-fn rejecting_lens_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> Outcome<Witness<Node>> {
-  outcome_rejected(
-    compile_lens_gate_rejected_diagnostic(at: port_locus(port: ^rejecting_lens_gate_at))
+fn rejecting_lens_gate(_tree: v2.compiler.inferred_tree.InferredTree) -> v2.std.diagnostic.Outcome<v2.std.witness.Witness<v2.std.node.Node>> {
+  v2.std.diagnostic.outcome_rejected(
+    v2.compiler.compile.compile_lens_gate_rejected_diagnostic(at: v2.std.diagnostic.port_locus(port: ^rejecting_lens_gate_at))
   )
 }
 
 data rejecting_lens: v2.compiler.compile.CompileLens = v2.compiler.compile.CompileLens { gate: rejecting_lens_gate }
 
-data rejecting_lens_kernel_ambient_source: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^fact_density_kernel_ambient_int } },
+data rejecting_lens_kernel_ambient_source: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^fact_density_kernel_ambient_int } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn rejecting_lens_blocks_before_compile_claim_holds() -> Bool {
-  match validate_then_compile(
+test fn rejecting_lens_blocks_before_compile_claim_holds() -> v2.std.logic.Bool {
+  match v2.compiler.compile.validate_then_compile(
     source: rejecting_lens_kernel_ambient_source,
     lenses: [rejecting_lens],
     mode: v2.compiler.compile.TranslateTo { target: rejecting_lens_target_model_stub }
   ) {
     Rejected { diagnostics: r } =>
-      non_empty_diagnostics_contain_reason(d: r, reason: ^compile_lens_gate_rejected)
+      v2.test.lens_application.empty_required_lenses_skip_gate.non_empty_diagnostics_contain_reason(d: r, reason: ^compile_lens_gate_rejected)
     Accepted { value: _, diagnostics: _ } => false
   }
 }

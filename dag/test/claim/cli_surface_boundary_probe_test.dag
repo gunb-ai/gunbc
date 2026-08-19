@@ -1,25 +1,5 @@
 module test.claim.cli_surface_boundary_probe
 
-import std.algebra { Cons, Empty }
-import std.types { Bool, String }
-import v2.std.algebra { fold_list, list_append, list_snoc_item }
-import v2.std.collection { List, empty_map }
-import v2.std.compilers.cli_surface {
-  CliArgumentSyntax,
-  cli_argument_text,
-  cli_surface_arguments,
-  serialize_cli_arguments
-}
-import v2.std.compilers.lexing {
-  LexRuleSet,
-  LiteralPattern,
-  ModeledLexRules,
-  TokenRule
-}
-import v2.std.compilers.target_model { BoundToken, ConcreteSyntaxToken, FixedToken, bound_tokens_source_text, render_target_text }
-import v2.std.node { Symbol }
-import v2.std.diagnostic { Accepted, Rejected }
-
 // WAVE 0 (docs/plans/cli-invocation-emission-design.md).
 //
 // WHAT AN EARLIER REVISION OF THIS WITNESS GOT WRONG, kept because it is the instructive part:
@@ -33,17 +13,17 @@ import v2.std.diagnostic { Accepted, Rejected }
 // two would be indistinguishable. That is the property an argv vector has and source text does
 // not, so it is the property worth executing.
 
-data probe_dash_option_class: String = "probe_dash_option"
-data probe_equals_class: String = "probe_equals"
-data probe_value_class: String = "probe_value"
+data probe_dash_option_class: std.types.String = "probe_dash_option"
+data probe_equals_class: std.types.String = "probe_equals"
+data probe_value_class: std.types.String = "probe_value"
 
-fn probe_lex_rules() -> ModeledLexRules {
-  ModeledLexRules {
-    root: LexRuleSet {
+fn probe_lex_rules() -> v2.std.compilers.lexing.ModeledLexRules {
+  v2.std.compilers.lexing.ModeledLexRules {
+    root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
-        TokenRule { token_class: ^probe_dash_option, pattern: LiteralPattern { text: "--color" } },
-        TokenRule { token_class: ^probe_equals, pattern: LiteralPattern { text: "=" } },
-        TokenRule { token_class: ^probe_value, pattern: LiteralPattern { text: "never" } },
+        v2.std.compilers.lexing.TokenRule { token_class: ^probe_dash_option, pattern: v2.std.compilers.lexing.LiteralPattern { text: "--color" } },
+        v2.std.compilers.lexing.TokenRule { token_class: ^probe_equals, pattern: v2.std.compilers.lexing.LiteralPattern { text: "=" } },
+        v2.std.compilers.lexing.TokenRule { token_class: ^probe_value, pattern: v2.std.compilers.lexing.LiteralPattern { text: "never" } },
       ]
     }
   }
@@ -53,60 +33,60 @@ fn probe_lex_rules() -> ModeledLexRules {
 // places, so "the SAME fragments grouped two ways" was maintained by author discipline: one
 // grouping could drift while the flattening test kept passing. Both groupings and the flattening
 // check now derive from this list, which makes the keystone mechanically true instead of copied.
-fn probe_fragments() -> List<ConcreteSyntaxToken> {
+fn probe_fragments() -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
   [
-    FixedToken { token_class: ^probe_dash_option },
-    FixedToken { token_class: ^probe_equals },
-    FixedToken { token_class: ^probe_value },
+    v2.std.compilers.target_model.FixedToken { token_class: ^probe_dash_option },
+    v2.std.compilers.target_model.FixedToken { token_class: ^probe_equals },
+    v2.std.compilers.target_model.FixedToken { token_class: ^probe_value },
   ]
 }
 
 // All fragments in ONE argument: within an argument, concatenation is CORRECT.
-fn joined_grouping() -> List<CliArgumentSyntax> {
-  [CliArgumentSyntax { fragments: probe_fragments() }]
+fn joined_grouping() -> v2.std.collection.List<v2.std.compilers.cli_surface.CliArgumentSyntax> {
+  [v2.std.compilers.cli_surface.CliArgumentSyntax { fragments: probe_fragments() }]
 }
 
 // Each fragment its OWN argument: across arguments, concatenation DESTROYS.
-fn separated_grouping() -> List<CliArgumentSyntax> {
-  fold_list(
+fn separated_grouping() -> v2.std.collection.List<v2.std.compilers.cli_surface.CliArgumentSyntax> {
+  v2.std.algebra.fold_list(
     xs: probe_fragments(),
-    empty: Empty,
+    empty: std.algebra.Empty,
     cons: fn(acc, fragment) {
-      list_snoc_item(xs: acc, item: CliArgumentSyntax { fragments: [fragment] })
+      v2.std.algebra.list_snoc_item(xs: acc, item: v2.std.compilers.cli_surface.CliArgumentSyntax { fragments: [fragment] })
     }
   )
 }
 
 // Flatten a grouping back to the fragment sequence it was built from, so the keystone compares
 // the ACTUAL grouping values rather than a third hand-authored list.
-fn flatten_grouping(arguments: List<CliArgumentSyntax>) -> List<ConcreteSyntaxToken> {
-  fold_list(
+fn flatten_grouping(arguments: v2.std.collection.List<v2.std.compilers.cli_surface.CliArgumentSyntax>) -> v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> {
+  v2.std.algebra.fold_list(
     xs: arguments,
-    empty: Empty,
-    cons: fn(acc, argument) { list_append(left: acc, right: argument.fragments) }
+    empty: std.algebra.Empty,
+    cons: fn(acc, argument) { v2.std.algebra.list_append(left: acc, right: argument.fragments) }
   )
 }
 
-fn argument_texts(arguments: List<CliArgumentSyntax>) -> List<String> {
-  match serialize_cli_arguments(
+fn argument_texts(arguments: v2.std.collection.List<v2.std.compilers.cli_surface.CliArgumentSyntax>) -> v2.std.collection.List<std.types.String> {
+  match v2.std.compilers.cli_surface.serialize_cli_arguments(
     arguments: arguments,
     lex: probe_lex_rules(),
-    binding_spellings: empty_map()
+    binding_spellings: v2.std.collection.empty_map()
   ) {
     Accepted { value: surface, diagnostics: _ } =>
-      fold_list(
-        xs: cli_surface_arguments(surface: surface),
-        empty: Empty,
+      v2.std.algebra.fold_list(
+        xs: v2.std.compilers.cli_surface.cli_surface_arguments(surface: surface),
+        empty: std.algebra.Empty,
         cons: fn(acc, argument) {
-          list_snoc_item(xs: acc, item: cli_argument_text(argument: argument))
+          v2.std.algebra.list_snoc_item(xs: acc, item: v2.std.compilers.cli_surface.cli_argument_text(argument: argument))
         }
       )
-    Rejected { diagnostics: _ } => Empty
+    Rejected { diagnostics: _ } => std.algebra.Empty
   }
 }
 
 // Grouped as one: exactly one argument, "--color=never".
-test fn joined_fragments_render_one_argument() -> Bool {
+test fn joined_fragments_render_one_argument() -> std.types.Bool {
   match argument_texts(arguments: joined_grouping()) {
     Empty => false
     Cons { head: only, tail: rest } =>
@@ -118,7 +98,7 @@ test fn joined_fragments_render_one_argument() -> Bool {
 }
 
 // Grouped as three: exactly three arguments, and the middle one is bare "=".
-test fn separated_fragments_render_three_arguments() -> Bool {
+test fn separated_fragments_render_three_arguments() -> std.types.Bool {
   match argument_texts(arguments: separated_grouping()) {
     Empty => false
     Cons { head: a, tail: r1 } =>
@@ -140,13 +120,13 @@ test fn separated_fragments_render_three_arguments() -> Bool {
 // THE KEYSTONE. Both groupings flatten to the same source text, so the text carrier cannot tell
 // them apart at all. Grouping is therefore information the argv carrier holds and text does not
 // -- which is exactly the fact the 17 remote jq rows lose at the ssh seam.
-fn grouping_flat_text(arguments: List<CliArgumentSyntax>) -> String {
-  match bound_tokens_source_text(
+fn grouping_flat_text(arguments: v2.std.collection.List<v2.std.compilers.cli_surface.CliArgumentSyntax>) -> std.types.String {
+  match v2.std.compilers.target_model.bound_tokens_source_text(
     tokens: flatten_grouping(arguments: arguments),
     lex: probe_lex_rules(),
-    binding_spellings: empty_map()
+    binding_spellings: v2.std.collection.empty_map()
   ) {
-    Accepted { value: text, diagnostics: _ } => render_target_text(t: text)
+    Accepted { value: text, diagnostics: _ } => v2.std.compilers.target_model.render_target_text(t: text)
     Rejected { diagnostics: _ } => ""
   }
 }
@@ -155,24 +135,23 @@ fn grouping_flat_text(arguments: List<CliArgumentSyntax>) -> String {
 // both flatten to identical text, so the text carrier cannot separate them at all, while the
 // two assertions above show the argv carrier does. Grouping is exactly the information the argv
 // vector holds and source text loses -- which is what the 17 remote jq rows lose at the ssh seam.
-test fn both_groupings_flatten_to_the_same_text() -> Bool {
+test fn both_groupings_flatten_to_the_same_text() -> std.types.Bool {
   (grouping_flat_text(arguments: joined_grouping()) == "--color=never")
     && (grouping_flat_text(arguments: joined_grouping())
           == grouping_flat_text(arguments: separated_grouping()))
 }
 
-test fn keystone_flat_text_is_nonempty() -> Bool {
-  match bound_tokens_source_text(
+test fn keystone_flat_text_is_nonempty() -> std.types.Bool {
+  match v2.std.compilers.target_model.bound_tokens_source_text(
     tokens: flatten_grouping(arguments: separated_grouping()),
     lex: probe_lex_rules(),
-    binding_spellings: empty_map()
+    binding_spellings: v2.std.collection.empty_map()
   ) {
     Accepted { value: text, diagnostics: _ } =>
-      render_target_text(t: text) == "--color=never"
+      v2.std.compilers.target_model.render_target_text(t: text) == "--color=never"
     Rejected { diagnostics: _ } => false
   }
 }
-
 
 // A MISSING BINDING REFUSES. This is the perturbation control for the fail-open this fold used
 // to inherit: target_model's bound-token lookup answers an absent map entry with the binding
@@ -184,13 +163,13 @@ test fn keystone_flat_text_is_nonempty() -> Bool {
 // The assertion is deliberately Rejected-vs-Accepted rather than a text comparison: if the
 // fallback ever returns, this goes red because the fold ACCEPTS, and no assertion about the
 // emitted text is needed to see it.
-test fn a_bound_fragment_with_no_spelling_refuses() -> Bool {
-  match serialize_cli_arguments(
-    arguments: [CliArgumentSyntax {
-      fragments: [BoundToken { token_class: ^probe_value_class, binding: ^probe_unbound_value }]
+test fn a_bound_fragment_with_no_spelling_refuses() -> std.types.Bool {
+  match v2.std.compilers.cli_surface.serialize_cli_arguments(
+    arguments: [v2.std.compilers.cli_surface.CliArgumentSyntax {
+      fragments: [v2.std.compilers.target_model.BoundToken { token_class: ^probe_value_class, binding: ^probe_unbound_value }]
     }],
     lex: probe_lex_rules(),
-    binding_spellings: empty_map()
+    binding_spellings: v2.std.collection.empty_map()
   ) {
     Rejected { diagnostics: _ } => true
     Accepted { value: _, diagnostics: _ } => false

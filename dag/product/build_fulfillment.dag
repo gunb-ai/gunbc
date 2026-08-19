@@ -1,43 +1,5 @@
 module product.build_fulfillment
 
-import std.types { Bool, Int, List, NonEmptyStr }
-import std.nat { Nat }
-import std.decl_ref { DeclarationRef, declaration_ref_eq }
-import std.measure { MoneyAmountMicro, MoneyOnce, money_amount_micro, money_amount_micro_count, money_once_micros }
-import std.currency { CurrencyCode }
-import extdeps.external_authority { ExternalAuthority }
-import gunbc.memory_provisioning { PopulationOption }
-import extdeps.memory.training { memory_training_step_label }
-import gunbc.host_memory_qualification {
-  PartImplicatedByFailingStep,
-  PartImplication,
-  PartNotImplicated,
-  PartSampleQualificationRequired,
-}
-import product.inventory {
-  ConsumptionAdmissible,
-  ConsumptionRefused,
-  ConsumptionRequest,
-  InventoryEvent,
-  InventoryLotIdentity,
-  LandedCostReadingHeldPrivately,
-  LandedCostCurrencyKnown,
-  LandedCostCurrencyUnrecorded,
-  LandedCostReadingMicros,
-  LandedCostReadingUnsettled,
-  lot_landed_cost_currency,
-  LedgerRefusalCause,
-  ProcurementLot,
-  QuantityReserved,
-  BalanceDerived,
-  BalanceRefused,
-  InsufficientStock,
-  admit_consumption,
-  derive_inventory_balance,
-  inventory_lot_identity_eq,
-  lot_landed_cost_reading,
-}
-
 // INVENTORY-AWARE BUILD FULFILLMENT. Given a node recipe — a board, a processor
 // count, and a DIMM population derived upstream by gunbc.memory_provisioning —
 // this module derives the bill of materials and resolves EVERY line to exactly
@@ -75,7 +37,7 @@ type BuildRole
   | MemoryModule
   | Baseboard
 
-fn build_role_key(role: BuildRole) -> Int {
+fn build_role_key(role: BuildRole) -> std.types.Int {
   match role {
     Processor => 0
     MemoryModule => 1
@@ -83,15 +45,15 @@ fn build_role_key(role: BuildRole) -> Int {
   }
 }
 
-fn build_role_eq(left: BuildRole, right: BuildRole) -> Bool {
+fn build_role_eq(left: BuildRole, right: BuildRole) -> std.types.Bool {
   build_role_key(role: left) == build_role_key(role: right)
 }
 
-fn build_role_label(role: BuildRole) -> NonEmptyStr {
+fn build_role_label(role: BuildRole) -> std.types.NonEmptyStr {
   match role {
-    Processor => "processor" as NonEmptyStr
-    MemoryModule => "memory_module" as NonEmptyStr
-    Baseboard => "baseboard" as NonEmptyStr
+    Processor => "processor" as std.types.NonEmptyStr
+    MemoryModule => "memory_module" as std.types.NonEmptyStr
+    Baseboard => "baseboard" as std.types.NonEmptyStr
   }
 }
 
@@ -101,9 +63,9 @@ fn build_role_label(role: BuildRole) -> NonEmptyStr {
 // second authored number.
 type BomLine {
   role: BuildRole
-  part: DeclarationRef
-  display_label: NonEmptyStr
-  quantity_per_build: Nat
+  part: std.decl_ref.DeclarationRef
+  display_label: std.types.NonEmptyStr
+  quantity_per_build: std.nat.Nat
 }
 
 // WHAT A WHOLE-SYSTEM CANDIDATE ALREADY SHIPS. A Mt. Collins system arrives
@@ -113,8 +75,8 @@ type BomLine {
 // the recipe, and it resolves to its own fulfillment arm that draws nothing.
 type SystemInclusion {
   role: BuildRole
-  part: DeclarationRef
-  quantity_included: Nat
+  part: std.decl_ref.DeclarationRef
+  quantity_included: std.nat.Nat
 }
 
 // THE RECIPE. Memory arrives as a PopulationOption because that is the shape
@@ -127,18 +89,18 @@ type SystemInclusion {
 // in its own header). A dual-socket recipe over a sixteen-slot per-socket
 // geometry therefore needs two processors and thirty-two modules.
 type NodeRecipe {
-  label: NonEmptyStr
-  sockets: Nat
-  processor: DeclarationRef
-  processor_label: NonEmptyStr
-  baseboard: DeclarationRef
-  baseboard_label: NonEmptyStr
-  memory_module: DeclarationRef
-  population: PopulationOption
-  inclusions: List<SystemInclusion>
+  label: std.types.NonEmptyStr
+  sockets: std.nat.Nat
+  processor: std.decl_ref.DeclarationRef
+  processor_label: std.types.NonEmptyStr
+  baseboard: std.decl_ref.DeclarationRef
+  baseboard_label: std.types.NonEmptyStr
+  memory_module: std.decl_ref.DeclarationRef
+  population: gunbc.memory_provisioning.PopulationOption
+  inclusions: std.types.List<SystemInclusion>
 }
 
-fn derive_bom(recipe: NodeRecipe) -> List<BomLine> {
+fn derive_bom(recipe: NodeRecipe) -> std.types.List<BomLine> {
   [
     BomLine {
       role: Processor,
@@ -170,11 +132,11 @@ fn derive_bom(recipe: NodeRecipe) -> List<BomLine> {
 // an observation that could not be made is rendered as the verdict.
 type MarketDepth
   = MarketDepthCited {
-      units_available: Nat
-      unit_price: MoneyOnce
-      authority: ExternalAuthority
+      units_available: std.nat.Nat
+      unit_price: std.measure.MoneyOnce
+      authority: extdeps.external_authority.ExternalAuthority
     }
-  | MarketDepthUnread { obligation: NonEmptyStr }
+  | MarketDepthUnread { obligation: std.types.NonEmptyStr }
   | MarketNotOffered
 
 // WHETHER THIS PART IS ESTABLISHED COMPATIBLE WITH THIS BUILD. The evidence
@@ -190,8 +152,8 @@ type MarketDepth
 // one stops the line.
 type LineCompatibility
   = CompatibilityEstablished
-  | CompatibilityEvidenceUnread { obligation: NonEmptyStr }
-  | CompatibilityRefutedForPlatform { reason: NonEmptyStr }
+  | CompatibilityEvidenceUnread { obligation: std.types.NonEmptyStr }
+  | CompatibilityRefutedForPlatform { reason: std.types.NonEmptyStr }
 
 // THE QUALIFICATION SEAM, READ RATHER THAN RE-DECIDED. gunbc.host_memory_qualification
 // grades an observed platform training failure against a module's structure and
@@ -201,29 +163,29 @@ type LineCompatibility
 // byte-identical status words is a reason to buy one and test it, and dropping
 // it here would shrink the market by construction — the exact defect that module
 // records having shipped once.
-fn compatibility_of(implication: PartImplication) -> LineCompatibility {
+fn compatibility_of(implication: gunbc.host_memory_qualification.PartImplication) -> LineCompatibility {
   match implication {
     PartNotImplicated => CompatibilityEstablished
     PartSampleQualificationRequired { step: s, standing: _ } =>
       CompatibilityEvidenceUnread {
         obligation: join(
-          ["sample-qualify one unit on this platform: it must execute ", memory_training_step_label(step: s) as String, ", which this platform has been observed to fail"],
+          ["sample-qualify one unit on this platform: it must execute ", extdeps.memory.training.memory_training_step_label(step: s) as String, ", which this platform has been observed to fail"],
           "",
-        ) as NonEmptyStr,
+        ) as std.types.NonEmptyStr,
       }
     PartImplicatedByFailingStep { step: s, standing: _ } =>
       CompatibilityRefutedForPlatform {
         reason: join(
-          ["this platform's own syndrome register named ", memory_training_step_label(step: s) as String, " as failing, and this part must execute it"],
+          ["this platform's own syndrome register named ", extdeps.memory.training.memory_training_step_label(step: s) as String, " as failing, and this part must execute it"],
           "",
-        ) as NonEmptyStr,
+        ) as std.types.NonEmptyStr,
       }
   }
 }
 
 type LotOffering {
-  lot: ProcurementLot
-  events: List<InventoryEvent>
+  lot: product.inventory.ProcurementLot
+  events: std.types.List<product.inventory.InventoryEvent>
 }
 
 // A COMPONENT MAY BE OFFERED BY SEVERAL LOTS, and this module REFUSES that case
@@ -239,7 +201,7 @@ type LotOffering {
 // DECLARED policy parameter, at which point this refusal becomes the arm taken
 // when no policy was declared. It does not dissolve into a default.
 type OwnedSupply
-  = OwnedLots { offerings: List<LotOffering> }
+  = OwnedLots { offerings: std.types.List<LotOffering> }
   | NoOwnedLot
 
 // ONE PART'S SUPPLY. Keyed by the part's DeclarationRef and looked up by
@@ -248,7 +210,7 @@ type OwnedSupply
 // rather than resolving first-one-wins, the same rule std.pareto applies to a
 // duplicated axis.
 type SupplyRow {
-  part: DeclarationRef
+  part: std.decl_ref.DeclarationRef
   compatibility: LineCompatibility
   owned: OwnedSupply
   market: MarketDepth
@@ -259,13 +221,13 @@ type SupplyLookup
   | SupplyAbsent
   | SupplyDuplicated
 
-fn supply_row_matches(rows: List<SupplyRow>, part: DeclarationRef) -> Int {
+fn supply_row_matches(rows: std.types.List<SupplyRow>, part: std.decl_ref.DeclarationRef) -> std.types.Int {
   fold(rows, init: 0, f: fn(acc, r) {
-    if declaration_ref_eq(a: r.part, b: part) { acc + 1 } else { acc }
+    if std.decl_ref.declaration_ref_eq(a: r.part, b: part) { acc + 1 } else { acc }
   })
 }
 
-fn supply_for(rows: List<SupplyRow>, part: DeclarationRef) -> SupplyLookup {
+fn supply_for(rows: std.types.List<SupplyRow>, part: std.decl_ref.DeclarationRef) -> SupplyLookup {
   let matches = supply_row_matches(rows: rows, part: part)
   if matches > 1 {
     SupplyDuplicated
@@ -275,15 +237,15 @@ fn supply_for(rows: List<SupplyRow>, part: DeclarationRef) -> SupplyLookup {
         SupplyFound { row } => acc
         SupplyDuplicated => acc
         SupplyAbsent =>
-          if declaration_ref_eq(a: r.part, b: part) { SupplyFound { row: r } } else { acc }
+          if std.decl_ref.declaration_ref_eq(a: r.part, b: part) { SupplyFound { row: r } } else { acc }
       }
     })
   }
 }
 
-fn included_units(inclusions: List<SystemInclusion>, line: BomLine) -> Nat {
+fn included_units(inclusions: std.types.List<SystemInclusion>, line: BomLine) -> std.nat.Nat {
   fold(inclusions, init: 0, f: fn(acc, inc) {
-    if build_role_eq(left: inc.role, right: line.role) && declaration_ref_eq(a: inc.part, b: line.part) {
+    if build_role_eq(left: inc.role, right: line.role) && std.decl_ref.declaration_ref_eq(a: inc.part, b: line.part) {
       acc + inc.quantity_included
     } else {
       acc
@@ -300,69 +262,69 @@ fn included_units(inclusions: List<SystemInclusion>, line: BomLine) -> Nat {
 // that wants to buy eight and draw four states two builds, or two lines.
 type Fulfillment
   = OwnedInventory {
-      lot: InventoryLotIdentity
-      quantity: Nat
-      reservation: InventoryEvent
-      available_after: Nat
+      lot: product.inventory.InventoryLotIdentity
+      quantity: std.nat.Nat
+      reservation: product.inventory.InventoryEvent
+      available_after: std.nat.Nat
     }
   | NewPurchase {
-      part: DeclarationRef
-      quantity: Nat
-      unit_price: MoneyOnce
-      authority: ExternalAuthority
+      part: std.decl_ref.DeclarationRef
+      quantity: std.nat.Nat
+      unit_price: std.measure.MoneyOnce
+      authority: extdeps.external_authority.ExternalAuthority
     }
-  | IncludedInSystem { part: DeclarationRef, quantity: Nat }
+  | IncludedInSystem { part: std.decl_ref.DeclarationRef, quantity: std.nat.Nat }
   | SupplyMissing {
-      part: DeclarationRef
-      requested: Nat
-      owned_available: Nat
-      market_units: Nat
+      part: std.decl_ref.DeclarationRef
+      requested: std.nat.Nat
+      owned_available: std.nat.Nat
+      market_units: std.nat.Nat
     }
-  | CompatibilityUnread { part: DeclarationRef, obligation: NonEmptyStr }
+  | CompatibilityUnread { part: std.decl_ref.DeclarationRef, obligation: std.types.NonEmptyStr }
 
 // A REFUSAL IS NOT A SIXTH FULFILLMENT. SupplyMissing means "the supply was read and
 // it is not there"; a refusal means "the question could not be answered", and
 // answering SupplyMissing for it would report a stockout that was never observed.
 type FulfillmentRefusalCause
-  = SupplyRowAbsent { part: DeclarationRef }
-  | SupplyRowDuplicated { part: DeclarationRef }
-  | PartialSystemInclusion { part: DeclarationRef, included: Nat, required: Nat }
-  | LedgerRefusedDraw { cause: LedgerRefusalCause, requested: Nat, available: Nat }
-  | MarketDepthNotRead { part: DeclarationRef, obligation: NonEmptyStr }
-  | ZeroQuantityLine { part: DeclarationRef }
-  | PartRefutedForPlatform { part: DeclarationRef, reason: NonEmptyStr }
-  | MultipleLotsOfferOneComponent { part: DeclarationRef, lots_offering: Nat }
+  = SupplyRowAbsent { part: std.decl_ref.DeclarationRef }
+  | SupplyRowDuplicated { part: std.decl_ref.DeclarationRef }
+  | PartialSystemInclusion { part: std.decl_ref.DeclarationRef, included: std.nat.Nat, required: std.nat.Nat }
+  | LedgerRefusedDraw { cause: product.inventory.LedgerRefusalCause, requested: std.nat.Nat, available: std.nat.Nat }
+  | MarketDepthNotRead { part: std.decl_ref.DeclarationRef, obligation: std.types.NonEmptyStr }
+  | ZeroQuantityLine { part: std.decl_ref.DeclarationRef }
+  | PartRefutedForPlatform { part: std.decl_ref.DeclarationRef, reason: std.types.NonEmptyStr }
+  | MultipleLotsOfferOneComponent { part: std.decl_ref.DeclarationRef, lots_offering: std.nat.Nat }
   | LotLedgerDoesNotReconcile {
-      cause: LedgerRefusalCause
-      event_ordinal: Nat
-      event_label: NonEmptyStr
+      cause: product.inventory.LedgerRefusalCause
+      event_ordinal: std.nat.Nat
+      event_label: std.types.NonEmptyStr
     }
 
 type LineResolution
   = LineResolved { line: BomLine, fulfillment: Fulfillment }
   | LineRefused { line: BomLine, cause: FulfillmentRefusalCause }
 
-fn fulfillment_label(f: Fulfillment) -> NonEmptyStr {
+fn fulfillment_label(f: Fulfillment) -> std.types.NonEmptyStr {
   match f {
-    OwnedInventory { lot: _, quantity: _, reservation: _, available_after: _ } => "OwnedInventory" as NonEmptyStr
-    NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } => "NewPurchase" as NonEmptyStr
-    IncludedInSystem { part: _, quantity: _ } => "IncludedInSystem" as NonEmptyStr
-    SupplyMissing { part: _, requested: _, owned_available: _, market_units: _ } => "SupplyMissing" as NonEmptyStr
-    CompatibilityUnread { part: _, obligation: _ } => "CompatibilityUnread" as NonEmptyStr
+    OwnedInventory { lot: _, quantity: _, reservation: _, available_after: _ } => "OwnedInventory" as std.types.NonEmptyStr
+    NewPurchase { part: _, quantity: _, unit_price: _, authority: _ } => "NewPurchase" as std.types.NonEmptyStr
+    IncludedInSystem { part: _, quantity: _ } => "IncludedInSystem" as std.types.NonEmptyStr
+    SupplyMissing { part: _, requested: _, owned_available: _, market_units: _ } => "SupplyMissing" as std.types.NonEmptyStr
+    CompatibilityUnread { part: _, obligation: _ } => "CompatibilityUnread" as std.types.NonEmptyStr
   }
 }
 
-fn resolution_label(r: LineResolution) -> NonEmptyStr {
+fn resolution_label(r: LineResolution) -> std.types.NonEmptyStr {
   match r {
     LineResolved { line: _, fulfillment: f } => fulfillment_label(f: f)
-    LineRefused { line: _, cause: _ } => "LineRefused" as NonEmptyStr
+    LineRefused { line: _, cause: _ } => "LineRefused" as std.types.NonEmptyStr
   }
 }
 
 // The market arm, reached only after the owned arm has answered. owned_available
 // is threaded in rather than re-read, so a SupplyMissing line reports the SAME number
 // the ledger refused with.
-fn resolve_from_market(line: BomLine, market: MarketDepth, owned_available: Nat) -> LineResolution {
+fn resolve_from_market(line: BomLine, market: MarketDepth, owned_available: std.nat.Nat) -> LineResolution {
   match market {
     MarketDepthCited { units_available: units, unit_price: price, authority: auth } =>
       if units >= line.quantity_per_build {
@@ -419,19 +381,19 @@ fn resolve_from_offering(
   line: BomLine,
   offering: LotOffering,
   market: MarketDepth,
-  holder: NonEmptyStr,
+  holder: std.types.NonEmptyStr,
 ) -> LineResolution {
-  match derive_inventory_balance(lot: offering.lot, events: offering.events) {
+  match product.inventory.derive_inventory_balance(lot: offering.lot, events: offering.events) {
     BalanceRefused { cause: c, event_ordinal: o, event_label: l } =>
       LineRefused {
         line: line,
         cause: LotLedgerDoesNotReconcile { cause: c, event_ordinal: o, event_label: l },
       }
     BalanceDerived { balance: b } =>
-      match admit_consumption(
+      match product.inventory.admit_consumption(
         lot: offering.lot,
         events: offering.events,
-        request: ConsumptionRequest {
+        request: product.inventory.ConsumptionRequest {
           lot: offering.lot.identity,
           quantity: line.quantity_per_build,
           holder: holder,
@@ -443,7 +405,7 @@ fn resolve_from_offering(
             fulfillment: OwnedInventory {
               lot: offering.lot.identity,
               quantity: line.quantity_per_build,
-              reservation: QuantityReserved {
+              reservation: product.inventory.QuantityReserved {
                 lot: offering.lot.identity,
                 quantity: line.quantity_per_build,
                 holder: holder,
@@ -467,9 +429,9 @@ fn resolve_from_offering(
 
 fn resolve_from_owned(
   line: BomLine,
-  offerings: List<LotOffering>,
+  offerings: std.types.List<LotOffering>,
   market: MarketDepth,
-  holder: NonEmptyStr,
+  holder: std.types.NonEmptyStr,
 ) -> LineResolution {
   if count(offerings) > 1 {
     LineRefused {
@@ -486,7 +448,7 @@ fn resolve_from_owned(
 fn resolve_supplied_line(
   line: BomLine,
   row: SupplyRow,
-  holder: NonEmptyStr,
+  holder: std.types.NonEmptyStr,
 ) -> LineResolution {
   match row.compatibility {
     CompatibilityRefutedForPlatform { reason: r } =>
@@ -513,9 +475,9 @@ fn resolve_supplied_line(
 // recipe than a real half-populated system.
 fn resolve_line(
   line: BomLine,
-  inclusions: List<SystemInclusion>,
-  rows: List<SupplyRow>,
-  holder: NonEmptyStr,
+  inclusions: std.types.List<SystemInclusion>,
+  rows: std.types.List<SupplyRow>,
+  holder: std.types.NonEmptyStr,
 ) -> LineResolution {
   if line.quantity_per_build == 0 {
     LineRefused { line: line, cause: ZeroQuantityLine { part: line.part } }
@@ -547,8 +509,8 @@ fn resolve_line(
 
 fn resolve_build(
   recipe: NodeRecipe,
-  rows: List<SupplyRow>,
-) -> List<LineResolution> {
+  rows: std.types.List<SupplyRow>,
+) -> std.types.List<LineResolution> {
   map(
     derive_bom(recipe: recipe),
     line => resolve_line(line: line, inclusions: recipe.inclusions, rows: rows, holder: recipe.label),
@@ -566,9 +528,9 @@ fn resolve_build(
 // one would let a subsequent cross-currency comparison succeed against a
 // number nobody priced.
 type CashRefusalCause
-  = CashLineRefused { part: DeclarationRef }
-  | CashLineUnfulfilled { part: DeclarationRef }
-  | CashCurrencyMismatch { declared: CurrencyCode, line_currency: CurrencyCode }
+  = CashLineRefused { part: std.decl_ref.DeclarationRef }
+  | CashLineUnfulfilled { part: std.decl_ref.DeclarationRef }
+  | CashCurrencyMismatch { declared: std.currency.CurrencyCode, line_currency: std.currency.CurrencyCode }
 
 // MONEY RIDES std.measure's CARRIER, never a bare Nat beside a currency code.
 // An amount and its currency are ONE fact — MoneyOnce is exactly that carrier —
@@ -578,11 +540,11 @@ type CashRefusalCause
 // right that the flat field was the defect and the witness helpers only mirrored
 // it.
 type CashProjection
-  = CashDerived { cash: MoneyOnce }
+  = CashDerived { cash: std.measure.MoneyOnce }
   | CashNoPurchaseLines
   | CashRefused { cause: CashRefusalCause }
 
-fn cash_step(acc: CashProjection, declared: CurrencyCode, r: LineResolution) -> CashProjection {
+fn cash_step(acc: CashProjection, declared: std.currency.CurrencyCode, r: LineResolution) -> CashProjection {
   match acc {
     CashRefused { cause: c } => CashRefused { cause: c }
     _ =>
@@ -597,15 +559,15 @@ fn cash_step(acc: CashProjection, declared: CurrencyCode, r: LineResolution) -> 
                 match acc {
                   CashDerived { cash: running } =>
                     CashDerived {
-                      cash: MoneyOnce {
-                        amount: money_amount_micro(count: money_once_micros(q: running) + q * money_once_micros(q: price)),
+                      cash: std.measure.MoneyOnce {
+                        amount: std.measure.money_amount_micro(count: std.measure.money_once_micros(q: running) + q * std.measure.money_once_micros(q: price)),
                         currency: declared,
                       },
                     }
                   _ =>
                     CashDerived {
-                      cash: MoneyOnce {
-                        amount: money_amount_micro(count: q * money_once_micros(q: price)),
+                      cash: std.measure.MoneyOnce {
+                        amount: std.measure.money_amount_micro(count: q * std.measure.money_once_micros(q: price)),
                         currency: declared,
                       },
                     }
@@ -623,8 +585,8 @@ fn cash_step(acc: CashProjection, declared: CurrencyCode, r: LineResolution) -> 
 }
 
 fn incremental_cash_now(
-  resolutions: List<LineResolution>,
-  declared_currency: CurrencyCode,
+  resolutions: std.types.List<LineResolution>,
+  declared_currency: std.currency.CurrencyCode,
 ) -> CashProjection {
   fold(resolutions, init: CashNoPurchaseLines, f: fn(acc, r) {
     cash_step(acc: acc, declared: declared_currency, r: r)
@@ -634,21 +596,21 @@ fn incremental_cash_now(
 // --- projection two: owned stock consumed, at lot identity grain ---------------------------------
 
 type LotDraw {
-  lot: InventoryLotIdentity
-  quantity: Nat
+  lot: product.inventory.InventoryLotIdentity
+  quantity: std.nat.Nat
 }
 
-fn draw_step(acc: List<LotDraw>, lot: InventoryLotIdentity, quantity: Nat) -> List<LotDraw> {
+fn draw_step(acc: std.types.List<LotDraw>, lot: product.inventory.InventoryLotIdentity, quantity: std.nat.Nat) -> std.types.List<LotDraw> {
   let merged = map(
     acc,
-    d => if inventory_lot_identity_eq(left: d.lot, right: lot) {
+    d => if product.inventory.inventory_lot_identity_eq(left: d.lot, right: lot) {
       LotDraw { lot: d.lot, quantity: d.quantity + quantity }
     } else {
       d
     },
   )
   let already = fold(acc, init: false, f: fn(seen, d) {
-    seen || inventory_lot_identity_eq(left: d.lot, right: lot)
+    seen || product.inventory.inventory_lot_identity_eq(left: d.lot, right: lot)
   })
   if already { merged } else { concat(acc, [LotDraw { lot: lot, quantity: quantity }]) }
 }
@@ -657,7 +619,7 @@ fn draw_step(acc: List<LotDraw>, lot: InventoryLotIdentity, quantity: Nat) -> Li
 // report one row of the summed quantity rather than two rows a consumer would
 // have to add up — and adding them up is precisely where a second draw against
 // an exhausted lot would hide.
-fn owned_stock_consumed(resolutions: List<LineResolution>) -> List<LotDraw> {
+fn owned_stock_consumed(resolutions: std.types.List<LineResolution>) -> std.types.List<LotDraw> {
   fold(resolutions, init: [], f: fn(acc, r) {
     match r {
       LineRefused { line: _, cause: _ } => acc
@@ -681,9 +643,9 @@ fn owned_stock_consumed(resolutions: List<LineResolution>) -> List<LotDraw> {
 type BasisAllocationPolicy
   = | ProportionalUnitsWithRemainderRetained
 
-fn basis_policy_label(p: BasisAllocationPolicy) -> NonEmptyStr {
+fn basis_policy_label(p: BasisAllocationPolicy) -> std.types.NonEmptyStr {
   match p {
-    ProportionalUnitsWithRemainderRetained => "proportional_units_with_remainder_retained" as NonEmptyStr
+    ProportionalUnitsWithRemainderRetained => "proportional_units_with_remainder_retained" as std.types.NonEmptyStr
   }
 }
 
@@ -706,13 +668,12 @@ fn basis_policy_label(p: BasisAllocationPolicy) -> NonEmptyStr {
 // which is exactly why that arm is a typed refusal instead of an assumption. It
 // dissolves if the two readings ever become one call.
 type BasisRefusalCause
-  = BasisLotUnknown { lot: InventoryLotIdentity }
-  | BasisLotDuplicated { lot: InventoryLotIdentity }
-  | BasisLandedCostUnsettled { lot: InventoryLotIdentity }
-  | BasisLandedCostHeldPrivately { lot: InventoryLotIdentity }
-  | BasisLandedCurrencyUnrecorded { lot: InventoryLotIdentity }
-  | BasisCurrencyMismatchAcrossLots { first: CurrencyCode, other: CurrencyCode }
-
+  = BasisLotUnknown { lot: product.inventory.InventoryLotIdentity }
+  | BasisLotDuplicated { lot: product.inventory.InventoryLotIdentity }
+  | BasisLandedCostUnsettled { lot: product.inventory.InventoryLotIdentity }
+  | BasisLandedCostHeldPrivately { lot: product.inventory.InventoryLotIdentity }
+  | BasisLandedCurrencyUnrecorded { lot: product.inventory.InventoryLotIdentity }
+  | BasisCurrencyMismatchAcrossLots { first: std.currency.CurrencyCode, other: std.currency.CurrencyCode }
 
 // THE BASIS RIDES THE SAME CARRIER, and typing it exposed a hole the bare Nat
 // was hiding: a basis summed across lots landed in DIFFERENT currencies was
@@ -720,21 +681,21 @@ type BasisRefusalCause
 // own sum_landed_cost refuses that case; so does this, with the same shape.
 type BasisProjection
   = BasisDerived {
-      basis: MoneyOnce
-      remainder: MoneyAmountMicro
+      basis: std.measure.MoneyOnce
+      remainder: std.measure.MoneyAmountMicro
       policy: BasisAllocationPolicy
     }
   | BasisNoDraws
   | BasisRefused { cause: BasisRefusalCause }
 
 type LotLookup
-  = LotFound { lot: ProcurementLot }
+  = LotFound { lot: product.inventory.ProcurementLot }
   | LotAbsent
   | LotDuplicated
 
-fn lot_for(lots: List<ProcurementLot>, identity: InventoryLotIdentity) -> LotLookup {
+fn lot_for(lots: std.types.List<product.inventory.ProcurementLot>, identity: product.inventory.InventoryLotIdentity) -> LotLookup {
   let matches = fold(lots, init: 0, f: fn(acc, l) {
-    if inventory_lot_identity_eq(left: l.identity, right: identity) { acc + 1 } else { acc }
+    if product.inventory.inventory_lot_identity_eq(left: l.identity, right: identity) { acc + 1 } else { acc }
   })
   if matches > 1 {
     LotDuplicated
@@ -744,24 +705,24 @@ fn lot_for(lots: List<ProcurementLot>, identity: InventoryLotIdentity) -> LotLoo
         LotFound { lot } => acc
         LotDuplicated => acc
         LotAbsent =>
-          if inventory_lot_identity_eq(left: l.identity, right: identity) { LotFound { lot: l } } else { acc }
+          if product.inventory.inventory_lot_identity_eq(left: l.identity, right: identity) { LotFound { lot: l } } else { acc }
       }
     })
   }
 }
 
-fn basis_for_draw(lot: ProcurementLot, draw: LotDraw) -> BasisProjection {
-  match lot_landed_cost_reading(lot: lot) {
+fn basis_for_draw(lot: product.inventory.ProcurementLot, draw: LotDraw) -> BasisProjection {
+  match product.inventory.lot_landed_cost_reading(lot: lot) {
     LandedCostReadingUnsettled => BasisRefused { cause: BasisLandedCostUnsettled { lot: draw.lot } }
     LandedCostReadingHeldPrivately => BasisRefused { cause: BasisLandedCostHeldPrivately { lot: draw.lot } }
     LandedCostReadingMicros { micros: c } =>
-      match lot_landed_cost_currency(lot: lot) {
+      match product.inventory.lot_landed_cost_currency(lot: lot) {
         LandedCostCurrencyUnrecorded => BasisRefused { cause: BasisLandedCurrencyUnrecorded { lot: draw.lot } }
         LandedCostCurrencyKnown { currency: ccy } => {
           let total = c * draw.quantity
           BasisDerived {
-            basis: MoneyOnce { amount: money_amount_micro(count: total / lot.quantity_acquired), currency: ccy },
-            remainder: money_amount_micro(count: total - (total / lot.quantity_acquired) * lot.quantity_acquired),
+            basis: std.measure.MoneyOnce { amount: std.measure.money_amount_micro(count: total / lot.quantity_acquired), currency: ccy },
+            remainder: std.measure.money_amount_micro(count: total - (total / lot.quantity_acquired) * lot.quantity_acquired),
             policy: ProportionalUnitsWithRemainderRetained,
           }
         }
@@ -769,7 +730,7 @@ fn basis_for_draw(lot: ProcurementLot, draw: LotDraw) -> BasisProjection {
   }
 }
 
-fn basis_step(acc: BasisProjection, lots: List<ProcurementLot>, draw: LotDraw) -> BasisProjection {
+fn basis_step(acc: BasisProjection, lots: std.types.List<product.inventory.ProcurementLot>, draw: LotDraw) -> BasisProjection {
   match acc {
     BasisRefused { cause: c } => BasisRefused { cause: c }
     _ =>
@@ -789,12 +750,12 @@ fn basis_step(acc: BasisProjection, lots: List<ProcurementLot>, draw: LotDraw) -
                     }
                   } else {
                     BasisDerived {
-                      basis: MoneyOnce {
-                        amount: money_amount_micro(count: money_once_micros(q: running) + money_once_micros(q: b)),
+                      basis: std.measure.MoneyOnce {
+                        amount: std.measure.money_amount_micro(count: std.measure.money_once_micros(q: running) + std.measure.money_once_micros(q: b)),
                         currency: running.currency,
                       },
-                      remainder: money_amount_micro(
-                        count: money_amount_micro_count(m: running_rem) + money_amount_micro_count(m: rem),
+                      remainder: std.measure.money_amount_micro(
+                        count: std.measure.money_amount_micro_count(m: running_rem) + std.measure.money_amount_micro_count(m: rem),
                       ),
                       policy: p,
                     }
@@ -807,8 +768,8 @@ fn basis_step(acc: BasisProjection, lots: List<ProcurementLot>, draw: LotDraw) -
 }
 
 fn historical_basis_consumed(
-  draws: List<LotDraw>,
-  lots: List<ProcurementLot>,
+  draws: std.types.List<LotDraw>,
+  lots: std.types.List<product.inventory.ProcurementLot>,
   policy: BasisAllocationPolicy,
 ) -> BasisProjection {
   match policy {
@@ -824,12 +785,12 @@ fn historical_basis_consumed(
 // a large one — a large sentinel would be a number the ceiling could
 // accidentally be, and "unconstrained by this line" is not a quantity.
 type LineDepth
-  = DepthUnits { units: Nat }
+  = DepthUnits { units: std.nat.Nat }
   | DepthUnconstrained
-  | DepthUnread { part: DeclarationRef, obligation: NonEmptyStr }
+  | DepthUnread { part: std.decl_ref.DeclarationRef, obligation: std.types.NonEmptyStr }
   | DepthRefused { cause: FulfillmentRefusalCause }
 
-fn market_units(market: MarketDepth, part: DeclarationRef) -> LineDepth {
+fn market_units(market: MarketDepth, part: std.decl_ref.DeclarationRef) -> LineDepth {
   match market {
     MarketDepthCited { units_available: u, unit_price: _, authority: _ } => DepthUnits { units: u }
     MarketDepthUnread { obligation: o } => DepthUnread { part: part, obligation: o }
@@ -838,7 +799,7 @@ fn market_units(market: MarketDepth, part: DeclarationRef) -> LineDepth {
 }
 
 fn offering_depth(offering: LotOffering) -> LineDepth {
-  match derive_inventory_balance(lot: offering.lot, events: offering.events) {
+  match product.inventory.derive_inventory_balance(lot: offering.lot, events: offering.events) {
     BalanceRefused { cause: c, event_ordinal: o, event_label: l } =>
       DepthRefused { cause: LotLedgerDoesNotReconcile { cause: c, event_ordinal: o, event_label: l } }
     BalanceDerived { balance: b } => DepthUnits { units: b.available }
@@ -876,8 +837,8 @@ fn add_depth(owned: LineDepth, market: LineDepth) -> LineDepth {
 
 fn line_depth(
   line: BomLine,
-  inclusions: List<SystemInclusion>,
-  rows: List<SupplyRow>,
+  inclusions: std.types.List<SystemInclusion>,
+  rows: std.types.List<SupplyRow>,
 ) -> LineDepth {
   if line.quantity_per_build == 0 {
     DepthRefused { cause: ZeroQuantityLine { part: line.part } }
@@ -903,8 +864,8 @@ fn line_depth(
 }
 
 type CeilingRefusalCause
-  = CeilingDepthUnread { part: DeclarationRef, obligation: NonEmptyStr }
-  | CeilingLineRefused { part: DeclarationRef, cause: FulfillmentRefusalCause }
+  = CeilingDepthUnread { part: std.decl_ref.DeclarationRef, obligation: std.types.NonEmptyStr }
+  | CeilingLineRefused { part: std.decl_ref.DeclarationRef, cause: FulfillmentRefusalCause }
 
 // The ceiling and its argmin line are ONE answer, not two: a build count with
 // no bottleneck named is a number a reader cannot act on, and a bottleneck with
@@ -912,7 +873,7 @@ type CeilingRefusalCause
 // that both support exactly thirty builds are two things to fix, and picking
 // one of them would depend on BOM order.
 type ConstructibleCeiling
-  = CeilingDerived { builds: Nat, bottlenecks: List<BomLine>, bottleneck_units: Nat }
+  = CeilingDerived { builds: std.nat.Nat, bottlenecks: std.types.List<BomLine>, bottleneck_units: std.nat.Nat }
   | CeilingUnconstrainedByAnyLine
   | CeilingRefused { cause: CeilingRefusalCause }
 
@@ -946,7 +907,7 @@ fn ceiling_step(acc: ConstructibleCeiling, line: BomLine, depth: LineDepth) -> C
 
 fn max_constructible(
   recipe: NodeRecipe,
-  rows: List<SupplyRow>,
+  rows: std.types.List<SupplyRow>,
 ) -> ConstructibleCeiling {
   fold(derive_bom(recipe: recipe), init: CeilingUnconstrainedByAnyLine, f: fn(acc, line) {
     ceiling_step(

@@ -1,50 +1,35 @@
 module v2.test.lens_synthesis.synthesis_no_technique_diagnostic
 
-import v2.lens.synthesis { AlgebraicRank, synthesis_lens_diagnostics }
-import v2.std.algebra { non_empty }
-import v2.std.logic { Bool }
-import v2.std.node {
-  Atom,
-  Cardinality,
-  ComputationNode,
-  Edge,
-  Node,
-  Positional,
-  Transform,
-  TypeNode,
-  SyntheticOccurrence
-}
-
-data synthesis_no_tech_leaf: Node = v2.std.node.Node {
+data synthesis_no_tech_leaf: v2.std.node.Node = v2.std.node.Node {
   kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^synthesis_no_tech_atom_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data synthesis_no_tech_body: Node = v2.std.node.Node {
-  kind: v2.std.node.ComputationNode { behavior: Transform },
+data synthesis_no_tech_body: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
   children: [
-    v2.std.node.Edge { label: Positional, target: synthesis_no_tech_leaf }
+    v2.std.node.Edge { label: v2.std.node.Positional, target: synthesis_no_tech_leaf }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data synthesis_no_tech_inner: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Cardinality },
+data synthesis_no_tech_inner: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
   children: [
-    v2.std.node.Edge { label: Positional, target: synthesis_no_tech_body }
+    v2.std.node.Edge { label: v2.std.node.Positional, target: synthesis_no_tech_body }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data synthesis_no_tech_input: Node = v2.std.node.Node {
-  kind: v2.std.node.TypeNode { connective: Cardinality },
+data synthesis_no_tech_input: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Cardinality },
   children: [
-    v2.std.node.Edge { label: Positional, target: synthesis_no_tech_inner }
+    v2.std.node.Edge { label: v2.std.node.Positional, target: synthesis_no_tech_inner }
   ],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn synthesis_no_tech_diagnostics_non_empty() -> Bool {
-  non_empty(synthesis_lens_diagnostics(n: synthesis_no_tech_input, declared_technique: AlgebraicRank))
+test fn synthesis_no_tech_diagnostics_non_empty() -> v2.std.logic.Bool {
+  v2.std.algebra.non_empty(v2.lens.synthesis.synthesis_lens_diagnostics(n: synthesis_no_tech_input, declared_technique: v2.lens.synthesis.AlgebraicRank))
 }

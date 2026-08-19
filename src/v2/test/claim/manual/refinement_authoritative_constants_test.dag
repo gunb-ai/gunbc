@@ -1,22 +1,11 @@
 module v2.test.manual.refinement_authoritative_constants
 
-import v2.std.refinement {
-  make_at_least_minus_one_int_at_authoritative,
-  make_at_least_minus_two_int_at_authoritative,
-  make_exact_one_int_at_authoritative,
-  make_non_negative_int_at_authoritative,
-  make_positive_int_at_authoritative,
-  positive_int_authoritative_literal,
-  positive_int_value
-}
-import v2.std.diagnostic { Accepted, Rejected }
-
 test fn witness_positive_int_authoritative_literal_two_accepts() -> Bool {
-  match make_positive_int_at_authoritative(value: 2) {
+  match v2.std.refinement.make_positive_int_at_authoritative(value: 2) {
     Accepted { value: accepted, diagnostics: _ } =>
-      match positive_int_authoritative_literal(value: 2) {
+      match v2.std.refinement.positive_int_authoritative_literal(value: 2) {
         Accepted { value: literal, diagnostics: _ } =>
-          positive_int_value(p: literal) == positive_int_value(p: accepted)
+          v2.std.refinement.positive_int_value(p: literal) == v2.std.refinement.positive_int_value(p: accepted)
         Rejected { diagnostics: _ } => false
       }
     Rejected { diagnostics: _ } => false
@@ -24,35 +13,35 @@ test fn witness_positive_int_authoritative_literal_two_accepts() -> Bool {
 }
 
 test fn witness_positive_int_authoritative_zero_rejects() -> Bool {
-  match make_positive_int_at_authoritative(value: 0) {
+  match v2.std.refinement.make_positive_int_at_authoritative(value: 0) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics } => diagnostics.head.reason == ^positive_int_out_of_range
   }
 }
 
 test fn witness_non_negative_int_authoritative_minus_one_rejects() -> Bool {
-  match make_non_negative_int_at_authoritative(value: -1) {
+  match v2.std.refinement.make_non_negative_int_at_authoritative(value: -1) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics } => diagnostics.head.reason == ^non_negative_int_out_of_range
   }
 }
 
 test fn witness_at_least_minus_one_int_authoritative_minus_two_rejects() -> Bool {
-  match make_at_least_minus_one_int_at_authoritative(value: -2) {
+  match v2.std.refinement.make_at_least_minus_one_int_at_authoritative(value: -2) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics } => diagnostics.head.reason == ^at_least_minus_one_int_out_of_range
   }
 }
 
 test fn witness_at_least_minus_two_int_authoritative_minus_three_rejects() -> Bool {
-  match make_at_least_minus_two_int_at_authoritative(value: -3) {
+  match v2.std.refinement.make_at_least_minus_two_int_at_authoritative(value: -3) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics } => diagnostics.head.reason == ^at_least_minus_two_int_out_of_range
   }
 }
 
 test fn witness_exact_one_int_authoritative_two_rejects() -> Bool {
-  match make_exact_one_int_at_authoritative(value: 2) {
+  match v2.std.refinement.make_exact_one_int_at_authoritative(value: 2) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics } => diagnostics.head.reason == ^exact_one_int_out_of_range
   }

@@ -1,8 +1,6 @@
 module test.claim.checkpoint_identity_keying_witness
 
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-
-data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 // Executing floor migration of src/v1/tests/claim/checkpoint_identity_keying_witness_test.dag
 // (that file cannot execute -- src/v1 is not a --source-root in any workflow, so its

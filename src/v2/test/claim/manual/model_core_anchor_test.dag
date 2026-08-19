@@ -1,53 +1,28 @@
 module v2.test.manual.model_core_anchor
 
-import v2.std.algebra { length }
-import v2.std.logic {
-  Bool,
-  bool_encoding_fact_node,
-  bool_primitive_facts,
-  bool_primitive_facts_node,
-  bool_width_fact_node
-}
-import v2.std.model_core {
-  ModelCoreFactAxisEncoding,
-  ModelCoreFactAxisSignedness,
-  ModelCoreFactAxisWidth,
-  ModelCoreBoolBoundedLatticeIdentities,
-  ModelCoreBoolComplementBounds,
-  ModelCoreBoolComplementInvolution,
-  ModelCoreBoolDistributivity,
-  model_core_bool_fact_lookup,
-  model_core_bool_inhabitance,
-  model_core_bool_law_obligation,
-  model_core_bool_primitive_bundle,
-  bool_model_core,
-  bool_model_core
-}
-import v2.std.witness { Holds, Violates }
-
-test fn model_core_bool_width_fact_holds() -> Bool {
-  match model_core_bool_fact_lookup(
-    facts: bool_primitive_facts,
+test fn model_core_bool_width_fact_holds() -> v2.std.logic.Bool {
+  match v2.std.model_core.model_core_bool_fact_lookup(
+    facts: v2.std.logic.bool_primitive_facts,
     axis: discriminant(v: v2.std.model_core.ModelCoreFactAxisWidth {})
   ) {
-    Holds { value } => value == bool_width_fact_node(width: bool_primitive_facts.width)
+    Holds { value } => value == v2.std.logic.bool_width_fact_node(width: v2.std.logic.bool_primitive_facts.width)
     Violates { diagnostic: _ } => false
   }
 }
 
-test fn model_core_bool_encoding_fact_holds() -> Bool {
-  match model_core_bool_fact_lookup(
-    facts: bool_primitive_facts,
+test fn model_core_bool_encoding_fact_holds() -> v2.std.logic.Bool {
+  match v2.std.model_core.model_core_bool_fact_lookup(
+    facts: v2.std.logic.bool_primitive_facts,
     axis: discriminant(v: v2.std.model_core.ModelCoreFactAxisEncoding {})
   ) {
-    Holds { value } => value == bool_encoding_fact_node(encoding: bool_primitive_facts.encoding)
+    Holds { value } => value == v2.std.logic.bool_encoding_fact_node(encoding: v2.std.logic.bool_primitive_facts.encoding)
     Violates { diagnostic: _ } => false
   }
 }
 
-test fn model_core_bool_unbound_axes_fail_closed() -> Bool {
-  match model_core_bool_fact_lookup(
-    facts: bool_primitive_facts,
+test fn model_core_bool_unbound_axes_fail_closed() -> v2.std.logic.Bool {
+  match v2.std.model_core.model_core_bool_fact_lookup(
+    facts: v2.std.logic.bool_primitive_facts,
     axis: discriminant(v: v2.std.model_core.ModelCoreFactAxisSignedness {})
   ) {
     Holds { value: _ } => false
@@ -55,40 +30,40 @@ test fn model_core_bool_unbound_axes_fail_closed() -> Bool {
   }
 }
 
-test fn model_core_primitives_contract() -> Bool {
-  (length(xs: bool_model_core().primitives) == 1) &&
-  model_core_first_primitive_substrate(core: bool_model_core()) ==
-    bool_primitive_facts_node(facts: bool_primitive_facts) &&
-  model_core_bool_primitive_bundle().substrate_carrier ==
-    bool_primitive_facts_node(facts: bool_primitive_facts) &&
+test fn model_core_primitives_contract() -> v2.std.logic.Bool {
+  (v2.std.algebra.length(xs: v2.std.model_core.bool_model_core().primitives) == 1) &&
+  model_core_first_primitive_substrate(core: v2.std.model_core.bool_model_core()) ==
+    v2.std.logic.bool_primitive_facts_node(facts: v2.std.logic.bool_primitive_facts) &&
+  v2.std.model_core.model_core_bool_primitive_bundle().substrate_carrier ==
+    v2.std.logic.bool_primitive_facts_node(facts: v2.std.logic.bool_primitive_facts) &&
   model_core_bool_width_fact_holds() &&
   model_core_bool_encoding_fact_holds() &&
   model_core_bool_unbound_axes_fail_closed()
 }
 
-test fn model_core_inhabitance_contract() -> Bool {
-  bool_model_core().inhabitance == [model_core_bool_inhabitance()]
+test fn model_core_inhabitance_contract() -> v2.std.logic.Bool {
+  v2.std.model_core.bool_model_core().inhabitance == [v2.std.model_core.model_core_bool_inhabitance()]
 }
 
-test fn model_core_laws_contract() -> Bool {
-  bool_model_core().laws == [
-    model_core_bool_law_obligation(key: ModelCoreBoolBoundedLatticeIdentities),
-    model_core_bool_law_obligation(key: ModelCoreBoolDistributivity),
-    model_core_bool_law_obligation(key: ModelCoreBoolComplementInvolution),
-    model_core_bool_law_obligation(key: ModelCoreBoolComplementBounds),
+test fn model_core_laws_contract() -> v2.std.logic.Bool {
+  v2.std.model_core.bool_model_core().laws == [
+    v2.std.model_core.model_core_bool_law_obligation(key: v2.std.model_core.ModelCoreBoolBoundedLatticeIdentities),
+    v2.std.model_core.model_core_bool_law_obligation(key: v2.std.model_core.ModelCoreBoolDistributivity),
+    v2.std.model_core.model_core_bool_law_obligation(key: v2.std.model_core.ModelCoreBoolComplementInvolution),
+    v2.std.model_core.model_core_bool_law_obligation(key: v2.std.model_core.ModelCoreBoolComplementBounds),
   ]
 }
 
-test fn model_core_payload_contract_holds() -> Bool {
-  let core = bool_model_core()
-  (bool_model_core().inhabitance == core.inhabitance) &&
-  (bool_model_core().laws == core.laws) &&
-  (model_core_first_primitive_substrate(core: bool_model_core()) ==
+test fn model_core_payload_contract_holds() -> v2.std.logic.Bool {
+  let core = v2.std.model_core.bool_model_core()
+  (v2.std.model_core.bool_model_core().inhabitance == core.inhabitance) &&
+  (v2.std.model_core.bool_model_core().laws == core.laws) &&
+  (model_core_first_primitive_substrate(core: v2.std.model_core.bool_model_core()) ==
     model_core_first_primitive_substrate(core: core)) &&
-  (length(xs: core.primitives) == 1) &&
-  (length(xs: core.inhabitance) == 1) &&
-  (length(xs: core.laws) == 4) &&
-  (length(xs: core.partiality.operations) == 0) &&
+  (v2.std.algebra.length(xs: core.primitives) == 1) &&
+  (v2.std.algebra.length(xs: core.inhabitance) == 1) &&
+  (v2.std.algebra.length(xs: core.laws) == 4) &&
+  (v2.std.algebra.length(xs: core.partiality.operations) == 0) &&
   model_core_primitives_contract() &&
   model_core_inhabitance_contract() &&
   model_core_laws_contract()

@@ -1,15 +1,11 @@
 module v2.test.lens_fact_density.computation_not_type_carrier
 
-import v2.lens.fact_density { NotATypeCarrier, carrier_spec_fact }
-import v2.std.logic { Bool }
-import v2.std.node { ComputationNode, Node, Transform, SyntheticOccurrence }
-
-data computation_not_type_carrier_input: Node = Node {
-  kind: ComputationNode { behavior: Transform },
+data computation_not_type_carrier_input: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.ComputationNode { behavior: v2.std.node.Transform },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-test fn computation_not_type_carrier_claim_holds() -> Bool {
-  carrier_spec_fact(carrier: computation_not_type_carrier_input) == NotATypeCarrier
+test fn computation_not_type_carrier_claim_holds() -> v2.std.logic.Bool {
+  v2.lens.fact_density.carrier_spec_fact(carrier: computation_not_type_carrier_input) == v2.lens.fact_density.NotATypeCarrier
 }

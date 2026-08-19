@@ -111,22 +111,22 @@ fn minutes_per_hour() -> std.nat.Nat {
   extdeps.units.iso8601.iso8601_minutes_per_hour()
 }
 
-fn milliseconds_per_second() -> Nat {
+fn milliseconds_per_second() -> std.nat.Nat {
   milli_per_unit()
 }
 
 // The decimal scale factors, declared once beside kibi_factor for the same
 // reason: a consumer writing * 1000000 to turn megatransfers into transfers is
 // re-stating the Mega scale the Scale coproduct above already carries.
-fn milli_per_unit() -> Nat {
+fn milli_per_unit() -> std.nat.Nat {
   1000
 }
 
-fn mega_factor() -> Nat {
+fn mega_factor() -> std.nat.Nat {
   1000 * 1000
 }
 
-fn time_scale_factor_seconds(s: Scale) -> Nat? {
+fn time_scale_factor_seconds(s: Scale) -> std.nat.Nat? {
   match s {
     One => Present { value: 1 }
     ArcsecondAngle => none
@@ -542,7 +542,7 @@ fn milliwatt_to_watt_floor(w: Milliwatt) -> Watt {
   watt(count: milliwatt_count(w: w) / milli_per_unit())
 }
 
-fn milliwatt_count(w: Milliwatt) -> Nat {
+fn milliwatt_count(w: Milliwatt) -> std.nat.Nat {
   measure_count(w)
 }
 

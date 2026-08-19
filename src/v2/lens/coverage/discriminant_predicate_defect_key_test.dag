@@ -1,24 +1,15 @@
 module v2.test.lens_coverage.discriminant_predicate_defect_key
 
-import v2.lens.coverage {
-  CoverageDefectAcceptance,
-  CoverageDefectAcceptanceKey,
-  DiscriminantPredicate,
-  coverage_defect_discriminant_predicate
-}
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Node, Symbol, TypeNode, SyntheticOccurrence }
-
-data discriminant_predicate_node: Node = Node {
-  kind: TypeNode { connective: Atom { identity: ^discriminant_predicate_symbol } },
+data discriminant_predicate_node: v2.std.node.Node = v2.std.node.Node {
+  kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^discriminant_predicate_symbol } },
   children: [],
-  occurrence_id: SyntheticOccurrence
+  occurrence_id: v2.std.node.SyntheticOccurrence
 }
 
-data expected_discriminant_predicate_acceptance: CoverageDefectAcceptance = {
-  concern: CoverageDefectAcceptanceKey { lens: DiscriminantPredicate }
+data expected_discriminant_predicate_acceptance: v2.lens.coverage.CoverageDefectAcceptance = {
+  concern: v2.lens.coverage.CoverageDefectAcceptanceKey { lens: v2.lens.coverage.DiscriminantPredicate }
 }
 
-test fn discriminant_predicate_defect_key_claim_holds() -> Bool {
-  coverage_defect_discriminant_predicate == expected_discriminant_predicate_acceptance
+test fn discriminant_predicate_defect_key_claim_holds() -> v2.std.logic.Bool {
+  v2.lens.coverage.coverage_defect_discriminant_predicate == expected_discriminant_predicate_acceptance
 }

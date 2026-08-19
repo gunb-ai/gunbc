@@ -1,37 +1,5 @@
 module v2.std.compilers.cli_surface
 
-import std.algebra { Empty }
-import std.types { NonEmptyStr, String }
-import v2.std.algebra { fold_list, list_snoc_item }
-import v2.std.collection { List, Map }
-import v2.std.compilers.target_model {
-  BoundToken,
-  ConcreteSyntaxToken,
-  FixedToken,
-  LexRules,
-  lex_rules_literal_for_class
-}
-import v2.std.collection { map_get }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  ExternalContractUnknown,
-  None,
-  Outcome,
-  ShortCircuit,
-  StageDiagnosticPolicy,
-  Unavailable,
-  append_outcome_value,
-  Rejected,
-  bind_outcome,
-  node_locus,
-  outcome_accepted,
-  outcome_rejected
-}
-import v2.std.node { Atom, Node, Symbol, SyntheticOccurrence, TypeNode }
-import v2.std.optional { Absent, Present }
-
-
 // WHY THIS EXISTS.
 //
 // CliArgumentSyntax preserves the GROUPING a tool's CLI projection selected. Fragments concatenate
@@ -84,7 +52,7 @@ import v2.std.optional { Absent, Present }
 // One argv argument, as GRAMMAR: the fragments that compose it, before any spelling is resolved.
 // Not sealed -- it is an input shape a tool's rows author, and sealing an input a caller must
 // build would only push the forgery one level out. What is sealed is the OUTPUT.
-type CliArgumentSyntax { fragments: List<ConcreteSyntaxToken> }
+type CliArgumentSyntax { fragments: v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken> }
 
 // THE SHARED RENDERING RULE, owned here and not by any tool row. A tool declares WHICH names
 // exist and which form is canonical; how a long name becomes two hyphens plus the name is one
@@ -95,20 +63,19 @@ type CliArgumentSyntax { fragments: List<ConcreteSyntaxToken> }
 // renderer was authored beside it and deleted unused: POSIX guideline 3 is cited in the design
 // note, but a citation is not a consumer, and a rule nothing calls cannot be shown to be right.
 // It returns with the first tool row that selects a short spelling.
-fn cli_long_option_spelling(name: NonEmptyStr) -> NonEmptyStr {
+fn cli_long_option_spelling(name: std.types.NonEmptyStr) -> std.types.NonEmptyStr {
   concat("--", name)
 }
 
+type CliArgument sole_constructor { text: std.types.String }
 
-type CliArgument sole_constructor { text: String }
+type CliSurface sole_constructor { arguments: v2.std.collection.List<CliArgument> }
 
-type CliSurface sole_constructor { arguments: List<CliArgument> }
-
-fn cli_surface_arguments(surface: CliSurface) -> List<CliArgument> {
+fn cli_surface_arguments(surface: CliSurface) -> v2.std.collection.List<CliArgument> {
   surface.arguments
 }
 
-fn cli_argument_text(argument: CliArgument) -> String {
+fn cli_argument_text(argument: CliArgument) -> std.types.String {
   argument.text
 }
 
@@ -193,70 +160,70 @@ fn process_argv_expansion_surface(expansion: ProcessArgvExpansion) -> CliSurface
 // target_text_seq, an argv argument composes into a CliArgument here, and no already-composed
 // String is ever lifted into either carrier.
 fn required_bound_spelling(
-  binding_spellings: Map<Symbol, String>,
-  binding: Symbol
-) -> Outcome<String> {
-  match map_get(binding_spellings, binding) {
-    Rejected { diagnostics: ds } => Rejected { diagnostics: ds }
+  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, std.types.String>,
+  binding: v2.std.node.Symbol
+) -> v2.std.diagnostic.Outcome<std.types.String> {
+  match v2.std.collection.map_get(binding_spellings, binding) {
+    Rejected { diagnostics: ds } => v2.std.diagnostic.Rejected { diagnostics: ds }
     Accepted { value: found, diagnostics: pending } =>
       match found {
-        Present { value: spelling } => Accepted { value: spelling, diagnostics: pending }
-        Absent => outcome_rejected(cli_binding_spelling_missing_diagnostic(binding: binding))
+        Present { value: spelling } => v2.std.diagnostic.Accepted { value: spelling, diagnostics: pending }
+        Absent => v2.std.diagnostic.outcome_rejected(cli_binding_spelling_missing_diagnostic(binding: binding))
       }
   }
 }
 
-fn cli_binding_spelling_missing_diagnostic(binding: Symbol) -> Diagnostic {
-  Diagnostic {
+fn cli_binding_spelling_missing_diagnostic(binding: v2.std.node.Symbol) -> v2.std.diagnostic.Diagnostic {
+  v2.std.diagnostic.Diagnostic {
     reason: ^cli_binding_spelling_missing,
-    at: node_locus(node: Node {
-      kind: TypeNode { connective: Atom { identity: binding } },
+    at: v2.std.diagnostic.node_locus(node: v2.std.node.Node {
+      kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: binding } },
       children: [],
-      occurrence_id: SyntheticOccurrence
+      occurrence_id: v2.std.node.SyntheticOccurrence
     }),
-    correction: Unavailable { reason: ExternalContractUnknown }
+    correction: v2.std.diagnostic.Unavailable { reason: v2.std.diagnostic.ExternalContractUnknown }
   }
 }
 
 fn cli_fragment_spelling(
-  fragment: ConcreteSyntaxToken,
-  lex: LexRules,
-  binding_spellings: Map<Symbol, String>
-) -> Outcome<String> {
+  fragment: v2.std.compilers.target_model.ConcreteSyntaxToken,
+  lex: v2.std.compilers.target_model.LexRules,
+  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, std.types.String>
+) -> v2.std.diagnostic.Outcome<std.types.String> {
   match fragment {
     FixedToken { token_class: tc } =>
-      lex_rules_literal_for_class(rules: lex, token_class: tc)
+      v2.std.compilers.target_model.lex_rules_literal_for_class(rules: lex, token_class: tc)
     BoundToken { token_class: _, binding: b } =>
       required_bound_spelling(binding_spellings: binding_spellings, binding: b)
   }
 }
 
 fn cli_argument_from_fragments(
-  fragments: List<ConcreteSyntaxToken>,
-  lex: LexRules,
-  binding_spellings: Map<Symbol, String>
-) -> Outcome<CliArgument> {
-  bind_outcome(
-    o: fold_list(
+  fragments: v2.std.collection.List<v2.std.compilers.target_model.ConcreteSyntaxToken>,
+  lex: v2.std.compilers.target_model.LexRules,
+  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, std.types.String>
+) -> v2.std.diagnostic.Outcome<CliArgument> {
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.algebra.fold_list(
       xs: fragments,
-      empty: outcome_accepted(""),
+      empty: v2.std.diagnostic.outcome_accepted(""),
       cons: fn(acc, fragment) {
-        bind_outcome(
+        v2.std.diagnostic.bind_outcome(
           o: acc,
           f: fn(partial) {
-            bind_outcome(
+            v2.std.diagnostic.bind_outcome(
               o: cli_fragment_spelling(
                 fragment: fragment,
                 lex: lex,
                 binding_spellings: binding_spellings
               ),
-              f: fn(spelling) { outcome_accepted(concat(partial, spelling)) }
+              f: fn(spelling) { v2.std.diagnostic.outcome_accepted(concat(partial, spelling)) }
             )
           }
         )
       }
     ),
-    f: fn(text) { outcome_accepted(CliArgument { text: text }) }
+    f: fn(text) { v2.std.diagnostic.outcome_accepted(CliArgument { text: text }) }
   )
 }
 
@@ -266,28 +233,28 @@ fn cli_argument_from_fragments(
 // because these rows happen to return None today. A generic serializer must not drop diagnostics
 // because its first callers had none.
 fn serialize_cli_arguments(
-  arguments: List<CliArgumentSyntax>,
-  lex: LexRules,
-  binding_spellings: Map<Symbol, String>
-) -> Outcome<CliSurface> {
-  bind_outcome(
-    o: fold_list(
+  arguments: v2.std.collection.List<CliArgumentSyntax>,
+  lex: v2.std.compilers.target_model.LexRules,
+  binding_spellings: v2.std.collection.Map<v2.std.node.Symbol, std.types.String>
+) -> v2.std.diagnostic.Outcome<CliSurface> {
+  v2.std.diagnostic.bind_outcome(
+    o: v2.std.algebra.fold_list(
       xs: arguments,
-      empty: outcome_accepted(Empty),
+      empty: v2.std.diagnostic.outcome_accepted(std.algebra.Empty),
       cons: fn(acc, argument) {
-        append_outcome_value(
+        v2.std.diagnostic.append_outcome_value(
           acc: acc,
           child: cli_argument_from_fragments(
             fragments: argument.fragments,
             lex: lex,
             binding_spellings: binding_spellings
           ),
-          policy: StageDiagnosticPolicy { accumulation: ShortCircuit }
+          policy: v2.std.diagnostic.StageDiagnosticPolicy { accumulation: v2.std.diagnostic.ShortCircuit }
         )
       }
     ),
     f: fn(rendered) {
-      outcome_accepted(CliSurface { arguments: rendered })
+      v2.std.diagnostic.outcome_accepted(CliSurface { arguments: rendered })
     }
   )
 }

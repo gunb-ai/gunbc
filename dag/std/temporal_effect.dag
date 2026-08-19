@@ -31,9 +31,9 @@ type HeldLeaseObservedState
   | LeaseInaccessible
 
 type LeaseEpoch {
-  lease_key: NonEmptyStr
-  resource_fingerprint: ContentHash
-  owner_fingerprint: ContentHash
+  lease_key: std.types.NonEmptyStr
+  resource_fingerprint: std.content_hash.ContentHash
+  owner_fingerprint: std.content_hash.ContentHash
   generation: Int
 }
 
@@ -147,8 +147,8 @@ fn decision_for_held_lease_verdict(
 ) -> std.upsert_decision.UpsertDecision<NextStepApplyPlan> {
   match verdict {
     Converged => Noop
-    Absent => Apply { plan: ApplyAtStep { step_id: pending_step_id } }
-    Drifted => Apply {
+    Absent => std.upsert_decision.Apply { plan: ApplyAtStep { step_id: pending_step_id } }
+    Drifted => std.upsert_decision.Apply {
       plan: DrainThenStartAtStep { step_id: pending_step_id, lease_key: lease.epoch.lease_key },
     }
     Conflict => std.upsert_decision.Refuse { reason: "foreign lease holder on scoped resource" as std.types.NonEmptyStr }

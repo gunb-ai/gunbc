@@ -1,10 +1,5 @@
 module product.fabric.work
 
-import std.types { NonEmptyStr, List }
-import std.content_hash { ContentHash, content_hash_of_value, serialize_content_hash }
-import std.measure { HardwareThreadCount, hardware_thread_count_value }
-import product.fabric.identity { FabricIdentity, WorkKey }
-
 // Work is WHAT is computed, and it is provider-neutral by construction: no field
 // here can name a repository, a pull request, a branch or a commit, because those
 // are facts about who asked and where to report, which live on Demand.
@@ -31,15 +26,15 @@ import product.fabric.identity { FabricIdentity, WorkKey }
 // facts - a source content manifest and a provenance receipt - and Work always
 // consumes the manifest, consuming provenance only where provenance is a
 // declared input.
-type ProgramRef = NonEmptyStr where brand("ProgramRef")
+type ProgramRef = std.types.NonEmptyStr where brand("ProgramRef")
 
-type ArtifactManifestRef = NonEmptyStr where brand("ArtifactManifestRef")
+type ArtifactManifestRef = std.types.NonEmptyStr where brand("ArtifactManifestRef")
 
-type EffectContractRef = NonEmptyStr where brand("EffectContractRef")
+type EffectContractRef = std.types.NonEmptyStr where brand("EffectContractRef")
 
-type OutputContractRef = NonEmptyStr where brand("OutputContractRef")
+type OutputContractRef = std.types.NonEmptyStr where brand("OutputContractRef")
 
-type SourceManifestRef = NonEmptyStr where brand("SourceManifestRef")
+type SourceManifestRef = std.types.NonEmptyStr where brand("SourceManifestRef")
 
 // Resumability is a property of what a step DECLARES, never of the fabric. A step
 // whose effects are undeclared cannot be resumed by any mechanism, so the tier is
@@ -64,17 +59,17 @@ type SourceManifestRef = NonEmptyStr where brand("SourceManifestRef")
 // proof the step completed.
 type ResumabilityTier
   = ReceiptSatisfiable
-  | IdempotentUnderKey { idempotency_key: ContentHash }
-  | OpaqueEffects { reason: NonEmptyStr }
+  | IdempotentUnderKey { idempotency_key: std.content_hash.ContentHash }
+  | OpaqueEffects { reason: std.types.NonEmptyStr }
 
 type WorkStep {
-  step_id: NonEmptyStr
+  step_id: std.types.NonEmptyStr
   resumability: ResumabilityTier
 }
 
 type WorkContract {
   program: ProgramRef
-  steps: List<WorkStep>
+  steps: std.types.List<WorkStep>
   source: SourceManifestRef
   inputs: ArtifactManifestRef
   runtime_closure: ArtifactManifestRef
@@ -94,9 +89,9 @@ type WorkContract {
 // the comparison need a coercion, and a coercion between two spellings of one
 // concept is where the divergence starts.
 
-type CapabilityManifestRef = NonEmptyStr where brand("CapabilityManifestRef")
+type CapabilityManifestRef = std.types.NonEmptyStr where brand("CapabilityManifestRef")
 
-type TrustDomainRef = NonEmptyStr where brand("TrustDomainRef")
+type TrustDomainRef = std.types.NonEmptyStr where brand("TrustDomainRef")
 
 // Shape and HardRequirements moved here when product.compute_fabric was deleted at
 // the root. They are the only load-bearing content that module had: what a WorkSpec
@@ -106,7 +101,7 @@ type TrustDomainRef = NonEmptyStr where brand("TrustDomainRef")
 // ComputeNeed, Opportunity, Connection, connect -- had no decision consumer and was
 // deleted rather than moved.
 
-type HardRequirements { threads: HardwareThreadCount }
+type HardRequirements { threads: std.measure.HardwareThreadCount }
 
 type Shape { hard: HardRequirements }
 
@@ -117,7 +112,7 @@ type ExecutionRequirements {
 }
 
 type Work<P> {
-  id: FabricIdentity<P, WorkKey>
+  id: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>
   contract: WorkContract
   requirements: ExecutionRequirements
 }
@@ -138,7 +133,7 @@ type Work<P> {
 // discipline. Requirements are included because a Work that needs a different
 // architecture or trust domain does not promise the same answer.
 
-fn work_identity_material(contract: WorkContract, requirements: ExecutionRequirements) -> NonEmptyStr {
+fn work_identity_material(contract: WorkContract, requirements: ExecutionRequirements) -> std.types.NonEmptyStr {
   concat(
     contract.program, "\u{1f}",
     work_steps_material(steps: contract.steps), "\u{1f}",
@@ -165,27 +160,27 @@ fn work_identity_material(contract: WorkContract, requirements: ExecutionRequire
 // record, so a shape that grows an axis fails to compile here instead of
 // silently dropping the new axis out of the identity.
 
-fn shape_material(shape: Shape) -> NonEmptyStr {
+fn shape_material(shape: Shape) -> std.types.NonEmptyStr {
   concat(
     "threads:",
-    to_string(hardware_thread_count_value(t: shape.hard.threads))
+    to_string(std.measure.hardware_thread_count_value(t: shape.hard.threads))
   )
 }
 
-fn work_step_material(step: WorkStep) -> NonEmptyStr {
+fn work_step_material(step: WorkStep) -> std.types.NonEmptyStr {
   concat(step.step_id, "\u{1e}", resumability_material(tier: step.resumability))
 }
 
-fn resumability_material(tier: ResumabilityTier) -> NonEmptyStr {
+fn resumability_material(tier: ResumabilityTier) -> std.types.NonEmptyStr {
   match tier {
     ReceiptSatisfiable => "receipt-satisfiable"
     IdempotentUnderKey { idempotency_key: k } =>
-      concat("idempotent-under-key:", serialize_content_hash(hash: k))
+      concat("idempotent-under-key:", std.content_hash.serialize_content_hash(hash: k))
     OpaqueEffects { reason: _ } => "opaque-effects"
   }
 }
 
-fn work_steps_material(steps: List<WorkStep>) -> NonEmptyStr {
+fn work_steps_material(steps: std.types.List<WorkStep>) -> std.types.NonEmptyStr {
   fold(
     steps,
     init: "steps",
@@ -193,9 +188,9 @@ fn work_steps_material(steps: List<WorkStep>) -> NonEmptyStr {
   )
 }
 
-fn derive_work_key(contract: WorkContract, requirements: ExecutionRequirements) -> WorkKey {
-  serialize_content_hash(
-    hash: content_hash_of_value(
+fn derive_work_key(contract: WorkContract, requirements: ExecutionRequirements) -> product.fabric.identity.WorkKey {
+  std.content_hash.serialize_content_hash(
+    hash: std.content_hash.content_hash_of_value(
       value: work_identity_material(contract: contract, requirements: requirements)
     )
   )
@@ -206,7 +201,7 @@ fn derive_work_key(contract: WorkContract, requirements: ExecutionRequirements) 
 
 fn work_for<P>(principal: P, contract: WorkContract, requirements: ExecutionRequirements) -> Work<P> {
   Work {
-    id: FabricIdentity {
+    id: product.fabric.identity.FabricIdentity {
       principal: principal,
       key: derive_work_key(contract: contract, requirements: requirements),
     },

@@ -1,52 +1,41 @@
 module v2.test.manual.sg1b_signature_realization_failclosed
 
-import v2.extdeps.languages.rust { rust_sg2_type_expr_target_model }
-import v2.std.diagnostic { Accepted, Rejected }
-import v2.std.logic { Bool }
-import v2.std.node { Atom, Edge, Node, Positional, Symbol, TypeNode, SyntheticOccurrence }
-import v2.std.compilers.target_model {
-  FunctionBoundaryParam,
-  target_atom_realization_lookup_in_catalog_node,
-  target_function_boundary_site_from_node,
-  target_function_signature_realization_lookup_in_catalog_node,
-}
-
-fn sg1b_fc_probe_node() -> Node {
+fn sg1b_fc_probe_node() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^sg1b_fc_probe_sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn sg1b_fc_boundary_param_with_children() -> Node {
+fn sg1b_fc_boundary_param_with_children() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: discriminant(v: FunctionBoundaryParam) } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: discriminant(v: v2.std.compilers.target_model.FunctionBoundaryParam) } },
     children: [
-      v2.std.node.Edge { label: Positional, target: sg1b_fc_probe_node() }
+      v2.std.node.Edge { label: v2.std.node.Positional, target: sg1b_fc_probe_node() }
     ],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn sg1b_fc_boundary_param_nullary() -> Node {
+fn sg1b_fc_boundary_param_nullary() -> v2.std.node.Node {
   v2.std.node.Node {
-    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: discriminant(v: FunctionBoundaryParam) } },
+    kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: discriminant(v: v2.std.compilers.target_model.FunctionBoundaryParam) } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-fn sg1b_fc_non_conj_catalog() -> Node {
+fn sg1b_fc_non_conj_catalog() -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^sg1b_fc_probe_sym } },
     children: [],
-    occurrence_id: SyntheticOccurrence
+    occurrence_id: v2.std.node.SyntheticOccurrence
 }
 }
 
-test fn sg1b_fc_boundary_site_with_children_rejects_decode_invalid() -> Bool {
-  match target_function_boundary_site_from_node(
+test fn sg1b_fc_boundary_site_with_children_rejects_decode_invalid() -> v2.std.logic.Bool {
+  match v2.std.compilers.target_model.target_function_boundary_site_from_node(
     n: sg1b_fc_boundary_param_with_children(),
     source_carrier: sg1b_fc_probe_node()
   ) {
@@ -55,8 +44,8 @@ test fn sg1b_fc_boundary_site_with_children_rejects_decode_invalid() -> Bool {
   }
 }
 
-test fn sg1b_fc_boundary_site_nullary_accepts() -> Bool {
-  match target_function_boundary_site_from_node(
+test fn sg1b_fc_boundary_site_nullary_accepts() -> v2.std.logic.Bool {
+  match v2.std.compilers.target_model.target_function_boundary_site_from_node(
     n: sg1b_fc_boundary_param_nullary(),
     source_carrier: sg1b_fc_probe_node()
   ) {
@@ -65,23 +54,23 @@ test fn sg1b_fc_boundary_site_nullary_accepts() -> Bool {
   }
 }
 
-test fn sg1b_fc_atom_catalog_non_conj_rejects_decode_invalid() -> Bool {
-  match target_atom_realization_lookup_in_catalog_node(
+test fn sg1b_fc_atom_catalog_non_conj_rejects_decode_invalid() -> v2.std.logic.Bool {
+  match v2.std.compilers.target_model.target_atom_realization_lookup_in_catalog_node(
     catalog: sg1b_fc_non_conj_catalog(),
     source_carrier: sg1b_fc_probe_node(),
-    host_target_model: rust_sg2_type_expr_target_model()
+    host_target_model: v2.extdeps.languages.rust.rust_sg2_type_expr_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d.head.reason == ^target_atom_realization_catalog_row_decode_invalid
   }
 }
 
-test fn sg1b_fc_signature_catalog_non_conj_rejects_decode_invalid() -> Bool {
-  match target_function_signature_realization_lookup_in_catalog_node(
+test fn sg1b_fc_signature_catalog_non_conj_rejects_decode_invalid() -> v2.std.logic.Bool {
+  match v2.std.compilers.target_model.target_function_signature_realization_lookup_in_catalog_node(
     catalog: sg1b_fc_non_conj_catalog(),
     source_carrier: sg1b_fc_probe_node(),
-    boundary_site: FunctionBoundaryParam,
-    host_target_model: rust_sg2_type_expr_target_model()
+    boundary_site: v2.std.compilers.target_model.FunctionBoundaryParam,
+    host_target_model: v2.extdeps.languages.rust.rust_sg2_type_expr_target_model()
   ) {
     Accepted { value: _, diagnostics: _ } => false
     Rejected { diagnostics: d } => d.head.reason == ^target_function_signature_realization_row_decode_invalid

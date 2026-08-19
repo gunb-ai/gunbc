@@ -1,55 +1,16 @@
 module test.claim.bmc_typed_operations_witness
 
-import extdeps.bmc.openbmc_fan_control {
-  OpenBmcCollectionMany,
-  OpenBmcCollectionOne,
-  OpenBmcCollectionZero,
-  OpenBmcBoolObserved,
-  OpenBmcBoolRefused,
-  OpenBmcByteSizeObserved,
-  OpenBmcByteSizeRefused,
-  OpenBmcInstantObserved,
-  OpenBmcInstantRefused,
-  OpenBmcPathObserved,
-  OpenBmcPathRefused,
-  OpenBmcSensorServicesObserved,
-  OpenBmcSensorValueAbsent,
-  OpenBmcSensorValueObserved,
-  OpenBmcSensorValueRefused,
-  OpenBmcTachAtOrAboveThreshold,
-  OpenBmcTachBelowThreshold,
-  OpenBmcTachHealthObserved,
-  OpenBmcTachThresholdUnstated,
-  OpenBmcWarningLowThreshold,
-  openbmc_collection_from_values,
-  openbmc_disk_usage_result,
-  openbmc_epoch_result,
-  openbmc_object_mapper_services_rec,
-  openbmc_sensor_integer_projection_result,
-  openbmc_sensor_threshold_result,
-  openbmc_tach_health_from_floor,
-  openbmc_tach_health_sensor,
-  openbmc_path_result,
-  openbmc_path_probe_result,
-  openbmc_service_active_result,
-  openbmc_zone_failsafe_result,
-}
-import extdeps.tools.jq { JqExecutionRefused, JqOutputAbsent, JqOutputPresent }
-import extdeps.ssh.password_session { PasswordSshExecResult }
-import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
-import std.measure { byte_size_count, rpm, rpm_count }
-
-data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = SubstrateInputsOnly
+data live_tree_disposition: v2.std.live_tree.LiveTreeDisposition = v2.std.live_tree.SubstrateInputsOnly
 
 test fn object_mapper_zero_cardinality_is_preserved() -> Bool {
-  match openbmc_collection_from_values(values: []) {
+  match extdeps.bmc.openbmc_fan_control.openbmc_collection_from_values(values: []) {
     OpenBmcCollectionZero => true
     _ => false
   }
 }
 
 test fn object_mapper_one_cardinality_is_preserved() -> Bool {
-  match openbmc_collection_from_values(
+  match extdeps.bmc.openbmc_fan_control.openbmc_collection_from_values(
     values: ["xyz.openbmc_project.Hwmon-1"],
   ) {
     OpenBmcCollectionOne { value: selected_service } =>
@@ -59,7 +20,7 @@ test fn object_mapper_one_cardinality_is_preserved() -> Bool {
 }
 
 test fn duplicate_object_mapper_matches_remain_many() -> Bool {
-  match openbmc_collection_from_values(
+  match extdeps.bmc.openbmc_fan_control.openbmc_collection_from_values(
     values: [
       "xyz.openbmc_project.Hwmon-1",
       "xyz.openbmc_project.Hwmon-2",
@@ -71,7 +32,7 @@ test fn duplicate_object_mapper_matches_remain_many() -> Bool {
 }
 
 test fn failed_threshold_transport_cannot_become_threshold_unstated() -> Bool {
-  match openbmc_sensor_threshold_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_sensor_threshold_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 255,
       success: false,
@@ -92,8 +53,8 @@ test fn failed_threshold_transport_cannot_become_threshold_unstated() -> Bool {
 // re-enrolled rather than retired (DESIGN section 3 -- evidence for a surviving claim survives the
 // representation that used to hold it).
 test fn failed_sensor_projection_cannot_become_absent() -> Bool {
-  match openbmc_sensor_integer_projection_result(
-    outcome: JqExecutionRefused { exit_code: 2, stderr: "malformed OpenBMC JSON" },
+  match extdeps.bmc.openbmc_fan_control.openbmc_sensor_integer_projection_result(
+    outcome: extdeps.tools.jq.JqExecutionRefused { exit_code: 2, stderr: "malformed OpenBMC JSON" },
   ) {
     OpenBmcSensorValueRefused { reason } => reason == "malformed OpenBMC JSON"
     _ => false
@@ -101,8 +62,8 @@ test fn failed_sensor_projection_cannot_become_absent() -> Bool {
 }
 
 test fn successful_empty_sensor_projection_is_absent() -> Bool {
-  match openbmc_sensor_integer_projection_result(
-    outcome: JqOutputAbsent,
+  match extdeps.bmc.openbmc_fan_control.openbmc_sensor_integer_projection_result(
+    outcome: extdeps.tools.jq.JqOutputAbsent,
   ) {
     OpenBmcSensorValueAbsent => true
     _ => false
@@ -112,8 +73,8 @@ test fn successful_empty_sensor_projection_is_absent() -> Bool {
 // The third state, which the old triple could not express at all: a PRESENT projection carrying a
 // number is an observation. Added with the migration because the outcome type made it stateable.
 test fn present_numeric_sensor_projection_is_observed() -> Bool {
-  match openbmc_sensor_integer_projection_result(
-    outcome: JqOutputPresent { text: "42" },
+  match extdeps.bmc.openbmc_fan_control.openbmc_sensor_integer_projection_result(
+    outcome: extdeps.tools.jq.JqOutputPresent { text: "42" },
   ) {
     OpenBmcSensorValueObserved { value } => value == 42
     _ => false
@@ -121,70 +82,70 @@ test fn present_numeric_sensor_projection_is_observed() -> Bool {
 }
 
 test fn tach_below_controller_threshold_is_not_healthy() -> Bool {
-  match openbmc_tach_health_from_floor(
+  match extdeps.bmc.openbmc_fan_control.openbmc_tach_health_from_floor(
     sensor: "FAN4",
-    reading: rpm(899),
-    minimum: rpm(900),
-    source: OpenBmcWarningLowThreshold,
+    reading: std.measure.rpm(899),
+    minimum: std.measure.rpm(900),
+    source: extdeps.bmc.openbmc_fan_control.OpenBmcWarningLowThreshold,
   ) {
     OpenBmcTachHealthObserved {
-      health: OpenBmcTachBelowThreshold {
+      health: extdeps.bmc.openbmc_fan_control.OpenBmcTachBelowThreshold {
         sensor,
         reading_rpm,
         minimum_rpm,
         source: _,
       },
-    } => sensor == "FAN4" && rpm_count(reading_rpm) == 899 && rpm_count(minimum_rpm) == 900
+    } => sensor == "FAN4" && std.measure.rpm_count(reading_rpm) == 899 && std.measure.rpm_count(minimum_rpm) == 900
     _ => false
   }
 }
 
 test fn tach_at_controller_threshold_is_healthy() -> Bool {
-  match openbmc_tach_health_from_floor(
+  match extdeps.bmc.openbmc_fan_control.openbmc_tach_health_from_floor(
     sensor: "FAN4",
-    reading: rpm(900),
-    minimum: rpm(900),
-    source: OpenBmcWarningLowThreshold,
+    reading: std.measure.rpm(900),
+    minimum: std.measure.rpm(900),
+    source: extdeps.bmc.openbmc_fan_control.OpenBmcWarningLowThreshold,
   ) {
     OpenBmcTachHealthObserved {
-      health: OpenBmcTachAtOrAboveThreshold {
+      health: extdeps.bmc.openbmc_fan_control.OpenBmcTachAtOrAboveThreshold {
         sensor,
         reading_rpm,
         minimum_rpm,
         source: _,
       },
-    } => sensor == "FAN4" && rpm_count(reading_rpm) == 900 && rpm_count(minimum_rpm) == 900
+    } => sensor == "FAN4" && std.measure.rpm_count(reading_rpm) == 900 && std.measure.rpm_count(minimum_rpm) == 900
     _ => false
   }
 }
 
 test fn tach_health_sensor_accessor_covers_every_arm() -> Bool {
-  openbmc_tach_health_sensor(
+  extdeps.bmc.openbmc_fan_control.openbmc_tach_health_sensor(
     health: extdeps.bmc.openbmc_fan_control.OpenBmcTachThresholdUnstated {
       sensor: "FAN1",
       reason: "threshold absent",
     },
   ) == "FAN1"
-    && openbmc_tach_health_sensor(
+    && extdeps.bmc.openbmc_fan_control.openbmc_tach_health_sensor(
       health: extdeps.bmc.openbmc_fan_control.OpenBmcTachBelowThreshold {
         sensor: "FAN2",
-        reading_rpm: rpm(899),
-        minimum_rpm: rpm(900),
-        source: OpenBmcWarningLowThreshold,
+        reading_rpm: std.measure.rpm(899),
+        minimum_rpm: std.measure.rpm(900),
+        source: extdeps.bmc.openbmc_fan_control.OpenBmcWarningLowThreshold,
       },
     ) == "FAN2"
-    && openbmc_tach_health_sensor(
+    && extdeps.bmc.openbmc_fan_control.openbmc_tach_health_sensor(
       health: extdeps.bmc.openbmc_fan_control.OpenBmcTachAtOrAboveThreshold {
         sensor: "FAN3",
-        reading_rpm: rpm(900),
-        minimum_rpm: rpm(900),
-        source: OpenBmcWarningLowThreshold,
+        reading_rpm: std.measure.rpm(900),
+        minimum_rpm: std.measure.rpm(900),
+        source: extdeps.bmc.openbmc_fan_control.OpenBmcWarningLowThreshold,
       },
     ) == "FAN3"
 }
 
 test fn path_transport_whitespace_becomes_one_typed_path() -> Bool {
-  match openbmc_path_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_path_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 0,
       success: true,
@@ -199,7 +160,7 @@ test fn path_transport_whitespace_becomes_one_typed_path() -> Bool {
 }
 
 test fn multiple_nonempty_paths_are_refused() -> Bool {
-  match openbmc_path_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_path_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 0,
       success: true,
@@ -213,7 +174,7 @@ test fn multiple_nonempty_paths_are_refused() -> Bool {
 }
 
 test fn empty_path_transport_is_refused() -> Bool {
-  match openbmc_path_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_path_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 0,
       success: true,
@@ -227,7 +188,7 @@ test fn empty_path_transport_is_refused() -> Bool {
 }
 
 test fn zone_failsafe_transport_becomes_typed_bool() -> Bool {
-  match openbmc_zone_failsafe_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_zone_failsafe_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 0,
       success: true,
@@ -241,7 +202,7 @@ test fn zone_failsafe_transport_becomes_typed_bool() -> Bool {
 }
 
 test fn wrong_busctl_type_cannot_become_zone_failsafe_bool() -> Bool {
-  match openbmc_zone_failsafe_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_zone_failsafe_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 0,
       success: true,
@@ -255,7 +216,7 @@ test fn wrong_busctl_type_cannot_become_zone_failsafe_bool() -> Bool {
 }
 
 test fn disk_usage_transport_becomes_typed_byte_size() -> Bool {
-  match openbmc_disk_usage_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_disk_usage_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 0,
       success: true,
@@ -263,13 +224,13 @@ test fn disk_usage_transport_becomes_typed_byte_size() -> Bool {
       stderr: "",
     },
   ) {
-    OpenBmcByteSizeObserved { value } => byte_size_count(value) == 2560000
+    OpenBmcByteSizeObserved { value } => std.measure.byte_size_count(value) == 2560000
     _ => false
   }
 }
 
 test fn utc_epoch_seconds_become_epoch_milliseconds() -> Bool {
-  match openbmc_epoch_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_epoch_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 0,
       success: true,
@@ -283,7 +244,7 @@ test fn utc_epoch_seconds_become_epoch_milliseconds() -> Bool {
 }
 
 test fn false_path_probe_is_observed_not_transport_refused() -> Bool {
-  match openbmc_path_probe_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_path_probe_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 1,
       success: false,
@@ -297,7 +258,7 @@ test fn false_path_probe_is_observed_not_transport_refused() -> Bool {
 }
 
 test fn exit_one_path_probe_with_stderr_is_refused() -> Bool {
-  match openbmc_path_probe_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_path_probe_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 1,
       success: false,
@@ -312,7 +273,7 @@ test fn exit_one_path_probe_with_stderr_is_refused() -> Bool {
 }
 
 test fn ssh_failure_cannot_masquerade_as_false_path_probe() -> Bool {
-  match openbmc_path_probe_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_path_probe_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 255,
       success: false,
@@ -327,7 +288,7 @@ test fn ssh_failure_cannot_masquerade_as_false_path_probe() -> Bool {
 }
 
 test fn inconsistent_success_projection_is_refused() -> Bool {
-  match openbmc_path_probe_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_path_probe_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 0,
       success: false,
@@ -341,7 +302,7 @@ test fn inconsistent_success_projection_is_refused() -> Bool {
 }
 
 test fn inactive_service_is_observed_not_transport_refused() -> Bool {
-  match openbmc_service_active_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_service_active_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 3,
       success: false,
@@ -355,7 +316,7 @@ test fn inactive_service_is_observed_not_transport_refused() -> Bool {
 }
 
 test fn exit_three_service_probe_with_stderr_is_refused() -> Bool {
-  match openbmc_service_active_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_service_active_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 3,
       success: false,
@@ -370,7 +331,7 @@ test fn exit_three_service_probe_with_stderr_is_refused() -> Bool {
 }
 
 test fn failed_service_state_is_preserved_in_refusal() -> Bool {
-  match openbmc_service_active_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_service_active_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 3,
       success: false,
@@ -385,7 +346,7 @@ test fn failed_service_state_is_preserved_in_refusal() -> Bool {
 }
 
 test fn nonzero_exit_cannot_become_observed_path_when_success_flag_is_true() -> Bool {
-  match openbmc_path_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_path_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 255,
       success: true,
@@ -400,7 +361,7 @@ test fn nonzero_exit_cannot_become_observed_path_when_success_flag_is_true() -> 
 }
 
 test fn nonzero_exit_cannot_become_observed_zone_when_success_flag_is_true() -> Bool {
-  match openbmc_zone_failsafe_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_zone_failsafe_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 255,
       success: true,
@@ -415,7 +376,7 @@ test fn nonzero_exit_cannot_become_observed_zone_when_success_flag_is_true() -> 
 }
 
 test fn nonzero_exit_cannot_become_observed_disk_when_success_flag_is_true() -> Bool {
-  match openbmc_disk_usage_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_disk_usage_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 255,
       success: true,
@@ -430,7 +391,7 @@ test fn nonzero_exit_cannot_become_observed_disk_when_success_flag_is_true() -> 
 }
 
 test fn nonzero_exit_cannot_become_observed_time_when_success_flag_is_true() -> Bool {
-  match openbmc_epoch_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_epoch_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 255,
       success: true,
@@ -445,7 +406,7 @@ test fn nonzero_exit_cannot_become_observed_time_when_success_flag_is_true() -> 
 }
 
 test fn exit_zero_service_probe_requires_exact_active_token() -> Bool {
-  match openbmc_service_active_result(
+  match extdeps.bmc.openbmc_fan_control.openbmc_service_active_result(
     remote: extdeps.ssh.password_session.PasswordSshExecResult {
       exit_code: 0,
       success: true,

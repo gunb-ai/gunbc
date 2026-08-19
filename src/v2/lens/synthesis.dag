@@ -1,8 +1,5 @@
 module v2.lens.synthesis
 
-import v2.lens.complexity { complexity_lens }
-
-
 type LowerBoundTechnique
   = DecisionTree
   | AlgebraicRank
@@ -145,7 +142,7 @@ fn synthesis_lens_known_reports(n: Node, declared_technique: LowerBoundTechnique
 }
 
 fn synthesis_lens(n: Node, declared_technique: LowerBoundTechnique) -> List<v2.std.report.Report> {
-  let realization = complexity_lens(n: n)
+  let realization = v2.lens.complexity.complexity_lens(n: n)
   match realization {
     UnknownComplexity { diagnostic: _ } => std.algebra.Empty
     ConstantComplexity =>
@@ -187,7 +184,7 @@ fn synthesis_lens_known_diagnostics(n: Node, declared_technique: LowerBoundTechn
 }
 
 fn synthesis_lens_diagnostics(n: Node, declared_technique: LowerBoundTechnique) -> List<v2.std.diagnostic.Diagnostic> {
-  let realization = complexity_lens(n: n)
+  let realization = v2.lens.complexity.complexity_lens(n: n)
   match realization {
     UnknownComplexity { diagnostic: d } => std.algebra.Cons { head: d, tail: std.algebra.Empty }
     ConstantComplexity =>

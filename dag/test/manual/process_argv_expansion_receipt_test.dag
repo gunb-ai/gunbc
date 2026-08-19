@@ -1,21 +1,5 @@
 module test.manual.process_argv_expansion_receipt
 
-import std.algebra { Cons, Empty }
-import std.types { Bool, Int, String }
-import v2.std.algebra { fold_list, list_snoc_item }
-import v2.std.collection { List, empty_map }
-import v2.std.compilers.cli_surface {
-  CliArgumentSyntax,
-  cli_argument_text,
-  cli_surface_arguments,
-  serialize_cli_arguments,
-  process_argv_expansion
-}
-import v2.std.compilers.lexing { LexRuleSet, LiteralPattern, ModeledLexRules, TokenRule }
-import v2.std.compilers.target_model { ConcreteSyntaxToken, FixedToken }
-import v2.std.diagnostic { Accepted, Rejected }
-import extdeps.tools.jq { jq_argv_expansion_probe }
-
 // THE FOUR-CASE HOST RECEIPT for the argv splice law (design note, open question 9-ter).
 //
 // Each case alone is ambiguous; the set is the evidence:
@@ -53,33 +37,33 @@ import extdeps.tools.jq { jq_argv_expansion_probe }
 // running, while its entire content is that a REAL jq exits 0 only on two argv words -- a green
 // that cannot fail.
 
-fn probe_lex() -> ModeledLexRules {
-  ModeledLexRules {
-    root: LexRuleSet {
+fn probe_lex() -> v2.std.compilers.lexing.ModeledLexRules {
+  v2.std.compilers.lexing.ModeledLexRules {
+    root: v2.std.compilers.lexing.LexRuleSet {
       rules: [
-        TokenRule { token_class: ^raw_output_opt, pattern: LiteralPattern { text: "--raw-output" } },
-        TokenRule { token_class: ^dot_filter, pattern: LiteralPattern { text: "." } }
+        v2.std.compilers.lexing.TokenRule { token_class: ^raw_output_opt, pattern: v2.std.compilers.lexing.LiteralPattern { text: "--raw-output" } },
+        v2.std.compilers.lexing.TokenRule { token_class: ^dot_filter, pattern: v2.std.compilers.lexing.LiteralPattern { text: "." } }
       ]
     }
   }
 }
 
-fn two_argument_surface() -> List<CliArgumentSyntax> {
+fn two_argument_surface() -> v2.std.collection.List<v2.std.compilers.cli_surface.CliArgumentSyntax> {
   [
-    CliArgumentSyntax { fragments: [FixedToken { token_class: ^raw_output_opt }] },
-    CliArgumentSyntax { fragments: [FixedToken { token_class: ^dot_filter }] }
+    v2.std.compilers.cli_surface.CliArgumentSyntax { fragments: [v2.std.compilers.target_model.FixedToken { token_class: ^raw_output_opt }] },
+    v2.std.compilers.cli_surface.CliArgumentSyntax { fragments: [v2.std.compilers.target_model.FixedToken { token_class: ^dot_filter }] }
   ]
 }
 
 // CASE 4 -- the carrier. jq exits 0 only if it received TWO argv words.
-test fn case4_expansion_carrier_splices() -> Bool {
-  match serialize_cli_arguments(
+test fn case4_expansion_carrier_splices() -> std.types.Bool {
+  match v2.std.compilers.cli_surface.serialize_cli_arguments(
     arguments: two_argument_surface(),
     lex: probe_lex(),
-    binding_spellings: empty_map()
+    binding_spellings: v2.std.collection.empty_map()
   ) {
     Rejected { diagnostics: _ } => false
     Accepted { value: surface, diagnostics: _ } =>
-      jq_argv_expansion_probe(expansion: process_argv_expansion(surface: surface), payload: "1") == 0
+      extdeps.tools.jq.jq_argv_expansion_probe(expansion: v2.std.compilers.cli_surface.process_argv_expansion(surface: surface), payload: "1") == 0
   }
 }

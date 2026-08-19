@@ -1,10 +1,5 @@
 module product.fabric.demand
 
-import std.types { NonEmptyStr, Timestamp, Bool }
-import std.measure { MoneyAmountMicro }
-import std.currency { CurrencyCode }
-import product.fabric.identity { FabricIdentity, DemandKey, WorkKey }
-
 // Demand is WHO currently wants a result and WHERE to report it. Provider facts
 // live here and nowhere else, which is what keeps Work provider-neutral.
 
@@ -36,18 +31,18 @@ import product.fabric.identity { FabricIdentity, DemandKey, WorkKey }
 // declared frame. Three separate fields, because a system that offers only
 // rerun forces the third answer whenever the first is wanted.
 type SatisfactionRequirement {
-  terminal_receipt_may_satisfy: Bool
-  new_attempt_required: Bool
-  step_reuse_permitted: Bool
+  terminal_receipt_may_satisfy: std.types.Bool
+  new_attempt_required: std.types.Bool
+  step_reuse_permitted: std.types.Bool
 }
 
 // Provenance is the binding's stable, idempotent reference to whatever the
 // provider observed. The core treats it as opaque: it is carried so a result can
 // be reported back, and it is never interpreted.
 
-type ObservationReceiptRef = NonEmptyStr where brand("ObservationReceiptRef")
+type ObservationReceiptRef = std.types.NonEmptyStr where brand("ObservationReceiptRef")
 
-type BudgetAccountId = NonEmptyStr where brand("BudgetAccountId")
+type BudgetAccountId = std.types.NonEmptyStr where brand("BudgetAccountId")
 
 // Buy terms are the BUYER half of the posted-offer market. A reservation price is
 // the maximum this demand will pay; a delay valuation prices waiting, without
@@ -82,22 +77,22 @@ type BudgetAccountId = NonEmptyStr where brand("BudgetAccountId")
 // decided. An absent field forces that decision; a wrongly-typed one hides it.
 type BuyTerms {
   budget_account: BudgetAccountId
-  currency: CurrencyCode
-  reservation_price: MoneyAmountMicro
-  maximum_buy_order: MoneyAmountMicro
+  currency: std.currency.CurrencyCode
+  reservation_price: std.measure.MoneyAmountMicro
+  maximum_buy_order: std.measure.MoneyAmountMicro
 }
 
 type AdmissionTerms {
-  priority_class: NonEmptyStr
-  deadline: Timestamp?
+  priority_class: std.types.NonEmptyStr
+  deadline: std.types.Timestamp?
   buy: BuyTerms
 }
 
 type Demand<P> {
-  id: FabricIdentity<P, DemandKey>
-  work: FabricIdentity<P, WorkKey>
+  id: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey>
+  work: product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey>
   origin: ObservationReceiptRef
-  submitted_at: Timestamp
+  submitted_at: std.types.Timestamp
   admission: AdmissionTerms
   satisfaction: SatisfactionRequirement
 }
@@ -108,21 +103,21 @@ type Demand<P> {
 
 type DemandCommand<P>
   = SubmitDemand { demand: Demand<P> }
-  | WithdrawDemand { demand: FabricIdentity<P, DemandKey>, evidence: ObservationReceiptRef }
+  | WithdrawDemand { demand: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey>, evidence: ObservationReceiptRef }
   | SupersedeDemand {
-      superseded: FabricIdentity<P, DemandKey>,
+      superseded: product.fabric.identity.FabricIdentity<P, product.fabric.identity.DemandKey>,
       replacement: Demand<P>,
       evidence: ObservationReceiptRef,
     }
 
-fn demand_work<P>(d: Demand<P>) -> FabricIdentity<P, WorkKey> {
+fn demand_work<P>(d: Demand<P>) -> product.fabric.identity.FabricIdentity<P, product.fabric.identity.WorkKey> {
   d.work
 }
 
-fn demand_reservation_price<P>(d: Demand<P>) -> MoneyAmountMicro {
+fn demand_reservation_price<P>(d: Demand<P>) -> std.measure.MoneyAmountMicro {
   d.admission.buy.reservation_price
 }
 
-fn demand_maximum_buy_order<P>(d: Demand<P>) -> MoneyAmountMicro {
+fn demand_maximum_buy_order<P>(d: Demand<P>) -> std.measure.MoneyAmountMicro {
   d.admission.buy.maximum_buy_order
 }

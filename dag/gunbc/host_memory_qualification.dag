@@ -1,20 +1,5 @@
 module gunbc.host_memory_qualification
 
-import std.types { Bool, EpochMs, List, NonEmptyStr }
-import std.nat { Nat }
-import std.measure { ByteSize }
-import product.placement_supply { HostIdentity }
-import extdeps.boards.types { AsrockRackAltrad8ud1l2t, BaseboardModel, DimmPopulation }
-import extdeps.boards.asrock_rack { asrock_altrad8ud_download_authority }
-import extdeps.external_authority { ExternalAuthority }
-import extdeps.memory.types { DramModuleCatalogRow, JedecDdrGenerationCatalogRow }
-import extdeps.memory.training {
-  LrdimmDataBufferMrep,
-  MemoryTrainingStep,
-  capacity_reachable_as_dual_rank_registered,
-  module_executes_step,
-}
-
 // FOUR INDEPENDENT STANDINGS. None derives another, and that independence is
 // the whole content of this module.
 //
@@ -65,7 +50,7 @@ type HostBootOutcome
 type HostMemoryStanding {
   host: product.placement_supply.HostIdentity
   part_number: std.types.NonEmptyStr
-  population: List<std.types.NonEmptyStr>
+  population: std.types.List<std.types.NonEmptyStr>
   class_support: DimmClassSupport
   part_qualification: SpecificPartQualification
   training: DdrTrainingOutcome
@@ -78,7 +63,7 @@ type HostMemoryStanding {
 // the collapse unwritable rather than warn about it. This predicate exists so
 // a consumer can ASK whether the downstream question is still open, and it
 // answers from the boot axis alone.
-fn host_boot_is_established(standing: HostMemoryStanding) -> Bool {
+fn host_boot_is_established(standing: HostMemoryStanding) -> std.types.Bool {
   match standing.boot {
     BootReachedOperatingSystem => true
     RepeatingFirmwareReset { token: _, cycles: _ } => false
@@ -110,7 +95,7 @@ type CausalExperimentReceipt {
   observed_at: std.types.EpochMs
 }
 
-data srv3_incident_experiments: List<CausalExperimentReceipt> = [
+data srv3_incident_experiments: std.types.List<CausalExperimentReceipt> = [
   CausalExperimentReceipt {
     hypothesis: "Old host firmware caused the DDR training failure",
     intervention: "BMC 2.07.00 -> 3.22.00, then BIOS 2.06 -> 3.10 (reference code 0ACRB_021)",
@@ -144,7 +129,6 @@ data srv3_incident_experiments: List<CausalExperimentReceipt> = [
   },
 ]
 
-
 // --- PLATFORM TRAINING FAILURES AND WHAT THEY IMPLICATE ------------------------------------------
 //
 // RELOCATED HERE 2026-08-19 (operator ruling) when gunbc.memory_part_selection
@@ -168,8 +152,8 @@ data srv3_incident_experiments: List<CausalExperimentReceipt> = [
 // On InferredFromSequencePosition:
 // The step is inferred from position in the boot sequence only.
 type TrainingEvidenceStanding
-  = DecodedFromPlatformSyndrome { register: NonEmptyStr }
-  | AssociatedByIdenticalSignature { signature: NonEmptyStr, source: ExternalAuthority }
+  = DecodedFromPlatformSyndrome { register: std.types.NonEmptyStr }
+  | AssociatedByIdenticalSignature { signature: std.types.NonEmptyStr, source: extdeps.external_authority.ExternalAuthority }
   | InferredFromSequencePosition
   | EvidenceUnobserved
 
@@ -178,11 +162,11 @@ type TrainingEvidenceStanding
 // only in a sparse population is weaker support for rejecting a part in a
 // full population, so the observation carries its own conditions.
 type PlatformTrainingFailure {
-  board: BaseboardModel
-  step: MemoryTrainingStep
+  board: extdeps.boards.types.BaseboardModel
+  step: extdeps.memory.training.MemoryTrainingStep
   standing: TrainingEvidenceStanding
-  observed_population: List<NonEmptyStr>
-  observed_at: EpochMs
+  observed_population: std.types.List<std.types.NonEmptyStr>
+  observed_at: std.types.EpochMs
 }
 
 // WHAT AN OBSERVED STEP FAILURE LICENSES, graded by evidence and scoped to
@@ -202,16 +186,16 @@ type PlatformTrainingFailure {
 type PartImplication
   = PartNotImplicated
   | PartSampleQualificationRequired {
-      step: MemoryTrainingStep
+      step: extdeps.memory.training.MemoryTrainingStep
       standing: TrainingEvidenceStanding
     }
   | PartImplicatedByFailingStep {
-      step: MemoryTrainingStep
+      step: extdeps.memory.training.MemoryTrainingStep
       standing: TrainingEvidenceStanding
     }
 
 fn implication_severity(
-  step: MemoryTrainingStep,
+  step: extdeps.memory.training.MemoryTrainingStep,
   standing: TrainingEvidenceStanding,
 ) -> PartImplication {
   match standing {
@@ -226,13 +210,13 @@ fn implication_severity(
 }
 
 fn implication_for_step(
-  candidate: DramModuleCatalogRow,
+  candidate: extdeps.memory.types.DramModuleCatalogRow,
   failure: PlatformTrainingFailure,
-  target_board: BaseboardModel,
+  target_board: extdeps.boards.types.BaseboardModel,
 ) -> PartImplication {
   if failure.board != target_board {
     PartNotImplicated
-  } else if module_executes_step(module: candidate, step: failure.step) {
+  } else if extdeps.memory.training.module_executes_step(module: candidate, step: failure.step) {
     implication_severity(step: failure.step, standing: failure.standing)
   } else {
     PartNotImplicated
@@ -240,9 +224,9 @@ fn implication_for_step(
 }
 
 fn part_implication(
-  candidate: DramModuleCatalogRow,
-  failures: List<PlatformTrainingFailure>,
-  target_board: BaseboardModel,
+  candidate: extdeps.memory.types.DramModuleCatalogRow,
+  failures: std.types.List<PlatformTrainingFailure>,
+  target_board: extdeps.boards.types.BaseboardModel,
 ) -> PartImplication {
   fold(
     failures,
@@ -278,30 +262,28 @@ fn part_implication(
 // This is derived from JEDEC die density, not from price observation.
 type TopologyPressure
   = CapacityReachableConventionally
-  | CapacityForcesExoticTopology { capacity_bytes: ByteSize }
+  | CapacityForcesExoticTopology { capacity_bytes: std.measure.ByteSize }
 
 fn topology_pressure(
-  candidate: DramModuleCatalogRow,
-  jedec: JedecDdrGenerationCatalogRow,
+  candidate: extdeps.memory.types.DramModuleCatalogRow,
+  jedec: extdeps.memory.types.JedecDdrGenerationCatalogRow,
 ) -> TopologyPressure {
-  if capacity_reachable_as_dual_rank_registered(module: candidate, jedec: jedec) {
+  if extdeps.memory.training.capacity_reachable_as_dual_rank_registered(module: candidate, jedec: jedec) {
     CapacityReachableConventionally
   } else {
     CapacityForcesExoticTopology { capacity_bytes: candidate.capacity_bytes }
   }
 }
 
-
 data altrad8ud_mrep_failure_observation: PlatformTrainingFailure = PlatformTrainingFailure {
-  board: AsrockRackAltrad8ud1l2t,
-  step: LrdimmDataBufferMrep,
+  board: extdeps.boards.types.AsrockRackAltrad8ud1l2t,
+  step: extdeps.memory.training.LrdimmDataBufferMrep,
   standing: AssociatedByIdenticalSignature {
     signature: "SK[0]: 00120001 / MC[0]: 00f100b4",
-    source: asrock_altrad8ud_download_authority,
+    source: extdeps.boards.asrock_rack.asrock_altrad8ud_download_authority,
   },
   observed_population: ["A1"],
   observed_at: 1786590000000,
 }
-
 
 data platform_training_implication_note: String = "RELOCATED 2026-08-19 from the deleted gunbc.memory_part_selection, whose candidate/frontier half was a selection island; this evidence half is qualification, so it lives beside the four standings it grades. The grading rule is mechanical and derived: a candidate is graded by whether it must execute a training step THIS platform has been observed to fail, and by how strongly that failure is evidenced. For the ALTRAD8UD-1L2T the step is the DDR4 data-buffer read-phase calibration (MREP), which only load-reduced modules execute, so the grading is independent of vendor, part number, capacity, speed grade, and presence on any approved-vendor list. THE SEVERITY IS A FUNCTION OF EVIDENCE, and an earlier revision of this module got that wrong in a way worth recording: it refused every module executing the failing step, on any board, at any standing including EvidenceUnobserved. Because capacities near a generation's die-density ceiling are disproportionately load-reduced, that blanket rule removed most of the 64GB DDR4 market by construction — the exact blocklist this module's prose claimed to avoid, reached by a different route, and the opposite of letting a buyer shop the whole market. Now: a decode of this platform's own syndrome register refuses; an association carrying byte-identical controller status words, or an inference from sequence position, requires a SAMPLE before committing to a full population and stays on the Pareto frontier; an unobserved standing implicates nothing. gunbc holds MREP at AssociatedByIdenticalSignature, so the honest verdict for another ALTRAD8UD LRDIMM today is buy-one-and-test, not reject. Failures are scoped to the board they were observed on, so an ALTRAD8UD receipt cannot speak for a different platform. KNOWN GAP, stated rather than papered over: BaseboardModel currently has exactly one variant, so the board scoping is real in the code but has no executing cross-board control — minting a second board purely to test it would be a fabricated entity, and the control lands when a second real board is modeled. The second axis, topology pressure, is derived rather than observed: when a capacity cannot be reached as a dual-rank registered module within the generation's monolithic die-density ceiling, that capacity forces extra ranks or stacking, which is why 64GB DDR4 at older speed grades is disproportionately load-reduced while 32GB is not. A buyer economizing on speed grade at 64GB is therefore not buying the same module more slowly, it is a different topology — which is a reason to sample it, not a reason to refuse it."

@@ -1,16 +1,5 @@
 module product.fabric.budget
 
-import std.types { NonEmptyStr, Int, Timestamp }
-import std.measure { MoneyAmountMicro, Currency, Micro }
-import std.currency { CurrencyCode }
-import product.fabric.demand { BudgetAccountId }
-import product.fabric.execution { ReservationRef }
-import extdeps.accounting.encumbrance {
-  EncumbranceLedger, EncumbranceOutcome, EncumbranceRefusal,
-  LedgerAdvanced, EncumbranceRefused,
-  reserve_encumbrance, settle_encumbrance, release_encumbrance, committed_total,
-}
-
 // The fabric's money binding over the generic encumbrance kernel. Everything
 // about reserve-settle-release lives upstream; what is added here is the one
 // fact the generic kernel cannot carry, and the reason it cannot.
@@ -43,9 +32,9 @@ import extdeps.accounting.encumbrance {
 // cannot happen while this module is stacked above it. Left as the smaller of
 // two wrongs, and cheap to correct once both land.
 type MoneyAccount {
-  account: BudgetAccountId
-  currency: CurrencyCode
-  ledger: EncumbranceLedger<Currency, Micro>
+  account: product.fabric.demand.BudgetAccountId
+  currency: std.currency.CurrencyCode
+  ledger: extdeps.accounting.encumbrance.EncumbranceLedger<std.measure.Currency, std.measure.Micro>
   leases: List<MoneyLease>
 }
 
@@ -67,18 +56,18 @@ type MoneyAccount {
 // not be quantity-generic. The branding lives at the fabric API boundary and
 // projects inward, which is the direction that keeps both true.
 type MoneyReservationRequest {
-  reference: ReservationRef
-  generation: Int
-  maximum_liability: MoneyAmountMicro
-  currency: CurrencyCode
+  reference: product.fabric.execution.ReservationRef
+  generation: std.types.Int
+  maximum_liability: std.measure.MoneyAmountMicro
+  currency: std.currency.CurrencyCode
 }
 
 type MoneySettlementRequest {
-  reference: ReservationRef
-  generation: Int
-  actual_spend: MoneyAmountMicro
-  currency: CurrencyCode
-  settled_at: Timestamp
+  reference: product.fabric.execution.ReservationRef
+  generation: std.types.Int
+  actual_spend: std.measure.MoneyAmountMicro
+  currency: std.currency.CurrencyCode
+  settled_at: std.types.Timestamp
 }
 
 // The generation fence lives HERE, not in the accounting kernel. Temporal
@@ -92,15 +81,15 @@ type MoneySettlementRequest {
 // what a superseded holder's late settlement has to be compared against.
 
 type MoneyLease {
-  reference: ReservationRef
-  generation: Int
+  reference: product.fabric.execution.ReservationRef
+  generation: std.types.Int
 }
 
-fn lease_generation_for(a: MoneyAccount, reference: ReservationRef) -> List<Int> {
+fn lease_generation_for(a: MoneyAccount, reference: product.fabric.execution.ReservationRef) -> List<std.types.Int> {
   a.leases |> filter(l => l.reference == reference) |> map(l => l.generation)
 }
 
-fn fence_admits(a: MoneyAccount, reference: ReservationRef, presented: Int) -> Bool {
+fn fence_admits(a: MoneyAccount, reference: product.fabric.execution.ReservationRef, presented: std.types.Int) -> Bool {
   match lease_generation_for(a: a, reference: reference) {
     Empty {} => false
     Cons { head: held, tail: _ } => held == presented
@@ -109,18 +98,18 @@ fn fence_admits(a: MoneyAccount, reference: ReservationRef, presented: Int) -> B
 
 type MoneyRefusal =
   | CurrencyMismatch {
-      account: BudgetAccountId,
-      account_currency: CurrencyCode,
-      presented_currency: CurrencyCode,
+      account: product.fabric.demand.BudgetAccountId,
+      account_currency: std.currency.CurrencyCode,
+      presented_currency: std.currency.CurrencyCode,
     }
-  | LedgerRefused { account: BudgetAccountId, refusal: EncumbranceRefusal<Currency, Micro> }
-  | StaleLeaseGeneration { reference: ReservationRef, presented: Int }
+  | LedgerRefused { account: product.fabric.demand.BudgetAccountId, refusal: extdeps.accounting.encumbrance.EncumbranceRefusal<std.measure.Currency, std.measure.Micro> }
+  | StaleLeaseGeneration { reference: product.fabric.execution.ReservationRef, presented: std.types.Int }
 
 type MoneyOutcome =
   | AccountAdvanced { account: MoneyAccount }
   | MoneyRefused { refusal: MoneyRefusal }
 
-fn account_with_ledger(a: MoneyAccount, ledger: EncumbranceLedger<Currency, Micro>) -> MoneyAccount {
+fn account_with_ledger(a: MoneyAccount, ledger: extdeps.accounting.encumbrance.EncumbranceLedger<std.measure.Currency, std.measure.Micro>) -> MoneyAccount {
   MoneyAccount { account: a.account, currency: a.currency, ledger: ledger, leases: a.leases }
 }
 
@@ -133,7 +122,7 @@ fn account_with_lease(a: MoneyAccount, lease: MoneyLease) -> MoneyAccount {
   }
 }
 
-fn project_outcome(a: MoneyAccount, outcome: EncumbranceOutcome<Currency, Micro>) -> MoneyOutcome {
+fn project_outcome(a: MoneyAccount, outcome: extdeps.accounting.encumbrance.EncumbranceOutcome<std.measure.Currency, std.measure.Micro>) -> MoneyOutcome {
   match outcome {
     LedgerAdvanced { ledger: l } => AccountAdvanced { account: account_with_ledger(a: a, ledger: l) }
     EncumbranceRefused { refusal: r } =>
@@ -160,7 +149,7 @@ fn reserve_money(a: MoneyAccount, request: MoneyReservationRequest) -> MoneyOutc
     record_lease(
       o: project_outcome(
         a: a,
-        outcome: reserve_encumbrance(
+        outcome: extdeps.accounting.encumbrance.reserve_encumbrance(
           ledger: a.ledger,
           reference: request.reference,
           maximum_liability: request.maximum_liability,
@@ -191,7 +180,7 @@ fn settle_money(a: MoneyAccount, request: MoneySettlementRequest) -> MoneyOutcom
   } else {
     project_outcome(
       a: a,
-      outcome: settle_encumbrance(
+      outcome: extdeps.accounting.encumbrance.settle_encumbrance(
         ledger: a.ledger,
         reference: request.reference,
         actual: request.actual_spend,
@@ -208,10 +197,10 @@ fn settle_money(a: MoneyAccount, request: MoneySettlementRequest) -> MoneyOutcom
 
 fn release_money(
   a: MoneyAccount,
-  reference: ReservationRef,
-  generation: Int,
-  reason: NonEmptyStr,
-  released_at: Timestamp,
+  reference: product.fabric.execution.ReservationRef,
+  generation: std.types.Int,
+  reason: std.types.NonEmptyStr,
+  released_at: std.types.Timestamp,
 ) -> MoneyOutcome {
   if !fence_admits(a: a, reference: reference, presented: generation) {
     MoneyRefused {
@@ -220,7 +209,7 @@ fn release_money(
   } else {
     project_outcome(
       a: a,
-      outcome: release_encumbrance(
+      outcome: extdeps.accounting.encumbrance.release_encumbrance(
         ledger: a.ledger,
         reference: reference,
         reason: reason,
@@ -235,7 +224,7 @@ fn release_money(
 // against. Recording only on success matters: a refused reservation that still
 // wrote a lease would let the fence admit a hold that does not exist.
 
-fn record_lease(o: MoneyOutcome, reference: ReservationRef, generation: Int) -> MoneyOutcome {
+fn record_lease(o: MoneyOutcome, reference: product.fabric.execution.ReservationRef, generation: std.types.Int) -> MoneyOutcome {
   match o {
     AccountAdvanced { account: a } =>
       AccountAdvanced {
@@ -248,6 +237,6 @@ fn record_lease(o: MoneyOutcome, reference: ReservationRef, generation: Int) -> 
   }
 }
 
-fn account_committed(a: MoneyAccount) -> MoneyAmountMicro {
-  committed_total(ledger: a.ledger)
+fn account_committed(a: MoneyAccount) -> std.measure.MoneyAmountMicro {
+  extdeps.accounting.encumbrance.committed_total(ledger: a.ledger)
 }

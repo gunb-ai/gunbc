@@ -1,38 +1,20 @@
 module v2.test.manual.refinement_ordered_iteration
 
-import v2.std.refinement {
-  IterationClassifier,
-  IterationOrdering,
-  StructurallyOrdered,
-  StructurallyUnordered,
-  refine_ordered_iteration,
-}
-import std.algebra { Empty }
-import v2.std.collection { List }
-import v2.std.diagnostic {
-  Accepted,
-  Diagnostic,
-  Locus,
-  Outcome,
-  Rejected,
-  Textual,
-  WholeFile,
-}
-fn ordered_classifier_for_list_int() -> IterationClassifier<List<Int>> {
-  IterationClassifier { classify: fn(_) { StructurallyOrdered } }
+fn ordered_classifier_for_list_int() -> v2.std.refinement.IterationClassifier<v2.std.collection.List<Int>> {
+  v2.std.refinement.IterationClassifier { classify: fn(_) { v2.std.refinement.StructurallyOrdered } }
 }
 
-fn unordered_classifier_for_list_int() -> IterationClassifier<List<Int>> {
-  IterationClassifier { classify: fn(_) { StructurallyUnordered } }
+fn unordered_classifier_for_list_int() -> v2.std.refinement.IterationClassifier<v2.std.collection.List<Int>> {
+  v2.std.refinement.IterationClassifier { classify: fn(_) { v2.std.refinement.StructurallyUnordered } }
 }
 
-fn test_locus() -> Locus {
-  Textual { file: ^refinement_ordered_iteration_test_file, extent: WholeFile }
+fn test_locus() -> v2.std.diagnostic.Locus {
+  v2.std.diagnostic.Textual { file: ^refinement_ordered_iteration_test_file, extent: v2.std.diagnostic.WholeFile }
 }
 
 test fn witness_ordered_classifier_accepts() -> Bool {
-  match refine_ordered_iteration(
-    base: Empty,
+  match v2.std.refinement.refine_ordered_iteration(
+    base: std.algebra.Empty,
     by: ordered_classifier_for_list_int(),
     at: test_locus()
   ) {
@@ -42,8 +24,8 @@ test fn witness_ordered_classifier_accepts() -> Bool {
 }
 
 test fn witness_unordered_classifier_rejects_with_naming_the_leak() -> Bool {
-  match refine_ordered_iteration(
-    base: Empty,
+  match v2.std.refinement.refine_ordered_iteration(
+    base: std.algebra.Empty,
     by: unordered_classifier_for_list_int(),
     at: test_locus()
   ) {
