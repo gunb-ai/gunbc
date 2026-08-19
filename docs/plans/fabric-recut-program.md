@@ -72,11 +72,7 @@ epoch comparator.
 
 ## 5. Open, and deliberately not decided by the author
 
-1. **Cut order.** This is a replacement migration, so the root goes first and the deletion is the
-   census. The old market vocabulary looks like the root, but it has a live consumer:
-   `gunbc.runner_spec_from_offer` → `gunbc.witness_floor_workflow`, which **emits our own CI
-   workflow**. So the cut cannot open by deleting `ComputeOffer`; a gap-intolerant boundary needs
-   the staged form.
+1. *(Resolved — see §10. There are two roots, not one.)*
 2. **Does `StructuralWorkKey` exist at all**, or is it `ComputationIdentity`'s structural member and
    therefore a rename of something already owned? Prefer deletion to renaming.
 3. **Six modules or fewer.** The current split has `execution.dag` importing `identity`, `demand`
@@ -178,3 +174,64 @@ Reviewer's conditions, recorded verbatim in substance so the acceptance bar is n
 Controls 7 and 8 are the pair that matters most and neither is obvious: they are what stop the
 implementation from silently re-equating lease owner with receipt attester after §4's correction.
 Testing only "foreign attester refuses" would pass under exactly the conflation being removed.
+
+
+## 10. Cut order, signed off: two roots, not one
+
+My framing of "the old market vocabulary" as a single root was wrong, and bundling it with the
+workflow consumer would have combined a dead root, a live supply authority and a wrong
+product-interface dependency into one migration.
+
+**X1 — `product.compute_fabric` is dead.** `Fabric`, `Shape`, `Program`, `ComputeNeed`,
+`Opportunity`, `Connection = Bound | Pending | Unmet`, `connect`. Verified: its only non-plan-doc
+mentions on main are **inside string literals** — `gunbc.host_standup` names
+`product.compute_fabric.connect` in a `refusal:` message and an `authority_or_interim:` field,
+which is prose, not a code dependency. So there is no production *decision* consumer and it is
+deleted outright, needing no terminal market Y first — only that #8413 stop importing its `Shape`.
+
+Two things the deletion must handle, found while verifying rather than assumed:
+- **Five witnesses live inside the production module** (`fn witness_*` in `compute_fabric.dag`), so
+  the deletion is not a single file removal.
+- **`src/v2/test/claim/grounding_lens_test.dag` cites `product.compute_fabric.Endpoint`, which does
+  not exist** — zero occurrences in the module. A fabricated citation inside a lens test, the §3
+  class, and it will not surface as a compile refusal when the module is deleted because it is a
+  qualified-name string. Filed here so the deletion does not silently leave it.
+- `host_standup`'s two prose strings become false on deletion and must be updated in the same
+  change; a `refusal:` message naming a deleted authority is a stale claim in a live diagnostic.
+
+**Do not evolve `Shape`.** Do not grow it into memory, storage, topology, network or isolation to
+make anything compile. At the terminal-carrier grain use `ExecutionClassRef` / `ResourceSupplyRef`
+until the resource-envelope replacement lands; putting a new incomplete resource record into #8413
+merely to make the deletion compile is the scaffold arm.
+
+**X2 — `gunbc.ci_fleet.ComputeOffer` is live**, and is the real replacement migration.
+
+**The workflow edge is itself wrong**, which is the finding that reorders everything:
+
+```
+ComputeOffer -> runner_spec_from_offer -> RunnerSpec -> witnesses.yml
+```
+
+`runner_spec_from_offer` derives GitHub labels from the *physical host*, so the customer-facing
+execution class currently depends on physical supply — every supply migration is a workflow
+migration. `gunbc.ci_runner_target` already claims to be the single "which machine runs CI"
+authority and is a smaller interception point (verified present, with consumers in
+`ci_budget_tree` and `fleet_workflow_steps`), though it still delegates its fleet arm back to
+`runner_spec_from_offer`.
+
+### The order
+
+- **Cut A — canonical lease epoch.** Land `LeaseEpoch` in `std.temporal_effect` and migrate all
+  `HeldLease` consumers (8 files). Upstream authority preparation, first, because Grant, Receipt,
+  settlement, teardown and component fencing would otherwise all build against a temporary carrier.
+- **Cut B — delete the dead root.** Delete `product.compute_fabric`, remove #8413's dependency on
+  its thread-only `Shape`, drop the subject-only witnesses, and classify the compile refusals.
+- **Cut C — sever physical supply from the public CI interface.** Make the workflow runner
+  specification derive from a selected execution class or runner-target contract rather than from a
+  physical `ComputeOffer`. This preserves workflow emission while removing the live edge.
+- **Cut D — replace live `ComputeOffer`.** Migrate the remaining consumers to
+  `product.fabric.supply.Offer`. The census covers runner placement, deployment-target selection,
+  fleet convergence, host standup and assimilation, and supply-derived budget projections — **the
+  workflow consumer is a boundary to sever first, not the complete population.**
+
+Cut C is what makes D safe: sever the wrong edge before migrating the authority behind it.
