@@ -1,6 +1,24 @@
 module tools.prose_row_introduction_gate
 
 
+// THIS GATE DOES NOT CURRENTLY RUN, and every present-tense enforcement sentence below describes
+// a wall that is not standing (measured 2026-08-19). DESIGN's "Building & checks" section already
+// declares this as a bounded rung drop: the floor cut of 2026-08-15 deleted the workflows that
+// invoked the effect gates, and names them among what is unguarded until the re-add queue closes.
+// The paragraph below was written while the wall stood and was never updated with it, so a session
+// reading this module has no reason to doubt a gate it describes in the present tense. Nothing is
+// re-added or deleted here: this is the description being corrected to match the mechanism.
+//
+// THE DURABLE LESSON, recorded here because it is what made the gap invisible and it generalises far
+// past this file: THE .dag CALL GRAPH IS NOT THE EXECUTION GRAPH. Post-floor-cut the difference
+// between them is most of the repository. Any claim of the form "this runs in CI" is decided by
+// .github/workflows/ and the fold those workflows invoke -- today one step, `claim_executor
+// --required-floor` -- and NEVER by who calls whom in .dag. Two sessions independently traced the
+// .dag callers of git.Core.DiffUnified0, both concluded it was on a path CI walks every run, and both
+// were wrong; agreeing with each other was not a second observation, because both had read the same
+// artifact. Check the workflow, not the callers.
+//
+// WHAT FOLLOWS DESCRIBES THE INTENDED WALL:
 // THE PER-PR WALL over newly introduced prose-only `data NAME_note: String` rows, at the merge base so
 // the refusal is attributable to the change that caused it. DESIGN 4c makes the class debt; the kernel
 // in gunbc.prose_row_frontier decides membership; this module is only the execution.

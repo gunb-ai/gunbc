@@ -16360,6 +16360,36 @@ pub fn variant_pattern_shape_key(rust_name: String, resolved_parent: Option<Stri
     }
 }
 
+pub fn variant_pattern_shape_str(
+    qualified: String,
+    rust_name: String,
+    resolved_parent: Option<String>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let shape_key = variant_pattern_shape_key(rust_name.clone(), resolved_parent.clone());
+        let is_positional = (v1_rt::set_contains(
+            &emit_info.positional_payload_variants.clone(),
+            shape_key.clone(),
+        ) || v1_rt::set_contains(
+            &emit_info.positional_payload_variants.clone(),
+            qualified.clone(),
+        ));
+        let is_fielded =
+            (v1_rt::set_contains(&emit_info.fielded_variants.clone(), shape_key.clone())
+                || v1_rt::set_contains(&emit_info.fielded_variants.clone(), qualified.clone()));
+        if is_positional.clone() {
+            v1_rt::concat(qualified.clone(), "(_)".to_string())
+        } else {
+            if is_fielded.clone() {
+                v1_rt::concat(qualified.clone(), " { .. }".to_string())
+            } else {
+                qualified.clone()
+            }
+        }
+    }
+}
+
 pub fn emit_variant_pattern(
     name: String,
     parent_enum: Option<String>,
@@ -16419,7 +16449,7 @@ pub fn emit_variant_pattern(
                         }
                     }
                 }
-                None => qualified.clone(),
+                None => qualified,
             }
         } else {
             if ((field_bindings.clone().len() as i64) == 1) {
@@ -16438,7 +16468,7 @@ pub fn emit_variant_pattern(
                                 if is_string_lit_pattern(fb_pat.clone()) {
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            v1_rt::concat(qualified.clone(), "(ref ".to_string()),
+                                            v1_rt::concat(qualified, "(ref ".to_string()),
                                             bind_name.clone(),
                                         ),
                                         ")".to_string(),
@@ -16462,7 +16492,7 @@ pub fn emit_variant_pattern(
                                         );
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(qualified.clone(), "(".to_string()),
+                                                v1_rt::concat(qualified, "(".to_string()),
                                                 inner_pat.clone(),
                                             ),
                                             ")".to_string(),
@@ -16487,10 +16517,7 @@ pub fn emit_variant_pattern(
                                             ));
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(
-                                                    qualified.clone(),
-                                                    " { ref ".to_string(),
-                                                ),
+                                                v1_rt::concat(qualified, " { ref ".to_string()),
                                                 bind_name.clone(),
                                             ),
                                             ", .. }".to_string(),
@@ -16514,7 +16541,7 @@ pub fn emit_variant_pattern(
                                         );
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(qualified.clone(), " { ".to_string()),
+                                                v1_rt::concat(qualified, " { ".to_string()),
                                                 v1_rt::concat(
                                                     v1_rt::concat(
                                                         emit_ident(
@@ -16533,37 +16560,16 @@ pub fn emit_variant_pattern(
                             }
                         }
                     }
-                    None => qualified.clone(),
+                    None => qualified,
                 }
             } else {
                 if ((field_bindings.clone().len() as i64) == 0) {
-                    {
-                        let shape_key =
-                            variant_pattern_shape_key(rust_name.clone(), resolved_parent.clone());
-                        let is_positional = (v1_rt::set_contains(
-                            &emit_info.positional_payload_variants.clone(),
-                            shape_key.clone(),
-                        ) || v1_rt::set_contains(
-                            &emit_info.positional_payload_variants.clone(),
-                            qualified.clone(),
-                        ));
-                        let is_fielded = (v1_rt::set_contains(
-                            &emit_info.fielded_variants.clone(),
-                            shape_key.clone(),
-                        ) || v1_rt::set_contains(
-                            &emit_info.fielded_variants.clone(),
-                            qualified.clone(),
-                        ));
-                        if is_positional.clone() {
-                            v1_rt::concat(qualified.clone(), "(_)".to_string())
-                        } else {
-                            if is_fielded.clone() {
-                                v1_rt::concat(qualified.clone(), " { .. }".to_string())
-                            } else {
-                                qualified.clone()
-                            }
-                        }
-                    }
+                    variant_pattern_shape_str(
+                        qualified,
+                        rust_name.clone(),
+                        resolved_parent.clone(),
+                        emit_info.clone(),
+                    )
                 } else {
                     {
                         let effective_bindings = Rc::new({
@@ -16579,35 +16585,12 @@ pub fn emit_variant_pattern(
                             __result
                         });
                         if ((effective_bindings.clone().len() as i64) == 0) {
-                            {
-                                let shape_key2 = variant_pattern_shape_key(
-                                    rust_name.clone(),
-                                    resolved_parent.clone(),
-                                );
-                                let is_positional2 = (v1_rt::set_contains(
-                                    &emit_info.positional_payload_variants.clone(),
-                                    shape_key2.clone(),
-                                ) || v1_rt::set_contains(
-                                    &emit_info.positional_payload_variants.clone(),
-                                    qualified.clone(),
-                                ));
-                                let is_fielded2 = (v1_rt::set_contains(
-                                    &emit_info.fielded_variants.clone(),
-                                    shape_key2.clone(),
-                                ) || v1_rt::set_contains(
-                                    &emit_info.fielded_variants.clone(),
-                                    qualified.clone(),
-                                ));
-                                if is_positional2.clone() {
-                                    v1_rt::concat(qualified.clone(), "(_)".to_string())
-                                } else {
-                                    if is_fielded2.clone() {
-                                        v1_rt::concat(qualified.clone(), " { .. }".to_string())
-                                    } else {
-                                        qualified.clone()
-                                    }
-                                }
-                            }
+                            variant_pattern_shape_str(
+                                qualified,
+                                rust_name.clone(),
+                                resolved_parent.clone(),
+                                emit_info.clone(),
+                            )
                         } else {
                             {
                                 let binding_strs = Rc::new({
@@ -16715,7 +16698,7 @@ pub fn emit_variant_pattern(
                                 let bindings_str = binding_strs.clone().join(&", ".to_string());
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat(qualified.clone(), " { ".to_string()),
+                                        v1_rt::concat(qualified, " { ".to_string()),
                                         bindings_str.clone(),
                                     ),
                                     ", .. }".to_string(),
@@ -17166,7 +17149,7 @@ pub fn emit_variant_pattern_rc_aware(
                         }
                     }
                 }
-                None => qualified.clone(),
+                None => qualified,
             }
         } else {
             if ((field_bindings.clone().len() as i64) == 1) {
@@ -17185,7 +17168,7 @@ pub fn emit_variant_pattern_rc_aware(
                                 if is_string_lit_pattern(fb_pat.clone()) {
                                     v1_rt::concat(
                                         v1_rt::concat(
-                                            v1_rt::concat(qualified.clone(), "(ref ".to_string()),
+                                            v1_rt::concat(qualified, "(ref ".to_string()),
                                             bind_name.clone(),
                                         ),
                                         ")".to_string(),
@@ -17217,7 +17200,7 @@ pub fn emit_variant_pattern_rc_aware(
                                         );
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(qualified.clone(), "(".to_string()),
+                                                v1_rt::concat(qualified, "(".to_string()),
                                                 inner_pat.clone(),
                                             ),
                                             ")".to_string(),
@@ -17242,10 +17225,7 @@ pub fn emit_variant_pattern_rc_aware(
                                             ));
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(
-                                                    qualified.clone(),
-                                                    " { ref ".to_string(),
-                                                ),
+                                                v1_rt::concat(qualified, " { ref ".to_string()),
                                                 bind_name.clone(),
                                             ),
                                             ", .. }".to_string(),
@@ -17255,10 +17235,7 @@ pub fn emit_variant_pattern_rc_aware(
                                     if field_needs_rc_ref(fb_name.clone(), rc_analysis.clone()) {
                                         v1_rt::concat(
                                             v1_rt::concat(
-                                                v1_rt::concat(
-                                                    qualified.clone(),
-                                                    " { ref ".to_string(),
-                                                ),
+                                                v1_rt::concat(qualified, " { ref ".to_string()),
                                                 emit_ident(fb_name.clone(), RenderTarget::Rust),
                                             ),
                                             ", .. }".to_string(),
@@ -17289,10 +17266,7 @@ pub fn emit_variant_pattern_rc_aware(
                                             );
                                             v1_rt::concat(
                                                 v1_rt::concat(
-                                                    v1_rt::concat(
-                                                        qualified.clone(),
-                                                        " { ".to_string(),
-                                                    ),
+                                                    v1_rt::concat(qualified, " { ".to_string()),
                                                     v1_rt::concat(
                                                         v1_rt::concat(
                                                             emit_ident(
@@ -17312,37 +17286,16 @@ pub fn emit_variant_pattern_rc_aware(
                             }
                         }
                     }
-                    None => qualified.clone(),
+                    None => qualified,
                 }
             } else {
                 if ((field_bindings.clone().len() as i64) == 0) {
-                    {
-                        let shape_key =
-                            variant_pattern_shape_key(rust_name.clone(), resolved_parent.clone());
-                        let is_positional = (v1_rt::set_contains(
-                            &emit_info.positional_payload_variants.clone(),
-                            shape_key.clone(),
-                        ) || v1_rt::set_contains(
-                            &emit_info.positional_payload_variants.clone(),
-                            qualified.clone(),
-                        ));
-                        let is_fielded = (v1_rt::set_contains(
-                            &emit_info.fielded_variants.clone(),
-                            shape_key.clone(),
-                        ) || v1_rt::set_contains(
-                            &emit_info.fielded_variants.clone(),
-                            qualified.clone(),
-                        ));
-                        if is_positional.clone() {
-                            v1_rt::concat(qualified.clone(), "(_)".to_string())
-                        } else {
-                            if is_fielded.clone() {
-                                v1_rt::concat(qualified.clone(), " { .. }".to_string())
-                            } else {
-                                qualified.clone()
-                            }
-                        }
-                    }
+                    variant_pattern_shape_str(
+                        qualified,
+                        rust_name.clone(),
+                        resolved_parent.clone(),
+                        emit_info.clone(),
+                    )
                 } else {
                     {
                         let effective_bindings = Rc::new({
@@ -17358,35 +17311,12 @@ pub fn emit_variant_pattern_rc_aware(
                             __result
                         });
                         if ((effective_bindings.clone().len() as i64) == 0) {
-                            {
-                                let shape_key2 = variant_pattern_shape_key(
-                                    rust_name.clone(),
-                                    resolved_parent.clone(),
-                                );
-                                let is_positional2 = (v1_rt::set_contains(
-                                    &emit_info.positional_payload_variants.clone(),
-                                    shape_key2.clone(),
-                                ) || v1_rt::set_contains(
-                                    &emit_info.positional_payload_variants.clone(),
-                                    qualified.clone(),
-                                ));
-                                let is_fielded2 = (v1_rt::set_contains(
-                                    &emit_info.fielded_variants.clone(),
-                                    shape_key2.clone(),
-                                ) || v1_rt::set_contains(
-                                    &emit_info.fielded_variants.clone(),
-                                    qualified.clone(),
-                                ));
-                                if is_positional2.clone() {
-                                    v1_rt::concat(qualified.clone(), "(_)".to_string())
-                                } else {
-                                    if is_fielded2.clone() {
-                                        v1_rt::concat(qualified.clone(), " { .. }".to_string())
-                                    } else {
-                                        qualified.clone()
-                                    }
-                                }
-                            }
+                            variant_pattern_shape_str(
+                                qualified,
+                                rust_name.clone(),
+                                resolved_parent.clone(),
+                                emit_info.clone(),
+                            )
                         } else {
                             {
                                 let binding_strs = Rc::new({
@@ -17517,7 +17447,7 @@ pub fn emit_variant_pattern_rc_aware(
                                 let bindings_str = binding_strs.clone().join(&", ".to_string());
                                 v1_rt::concat(
                                     v1_rt::concat(
-                                        v1_rt::concat(qualified.clone(), " { ".to_string()),
+                                        v1_rt::concat(qualified, " { ".to_string()),
                                         bindings_str.clone(),
                                     ),
                                     ", .. }".to_string(),
@@ -17537,6 +17467,146 @@ pub fn match_pattern_is_irrefutable(pattern: Rc<MatchPattern>) -> bool {
         MatchPattern::Wildcard => true,
         _ => false,
     }
+}
+
+pub fn variant_pattern_shape_for(
+    name: String,
+    parent_enum: Option<String>,
+    scrut_type: String,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    {
+        let bare_name = qualified_last_segment(name.clone());
+        let resolved_parent = pattern_parent_enum(
+            bare_name.clone(),
+            parent_enum.clone(),
+            scrut_type.clone(),
+            emit_info.type_summaries.clone(),
+        );
+        let optional_variant = (is_optional_variant_name(bare_name.clone())
+            && (is_optional_parent(resolved_parent.clone()) || (resolved_parent.clone() == None)));
+        let rust_name = if optional_variant.clone() {
+            if is_some_like_variant_name(bare_name.clone()) {
+                "Some".to_string()
+            } else {
+                "None".to_string()
+            }
+        } else {
+            bare_name.clone()
+        };
+        let qualified = if optional_variant.clone() {
+            rust_name.clone()
+        } else {
+            variant_pattern_qualified_path(rust_name.clone(), resolved_parent.clone())
+        };
+        variant_pattern_shape_str(
+            qualified.clone(),
+            rust_name.clone(),
+            resolved_parent.clone(),
+            emit_info.clone(),
+        )
+    }
+}
+
+pub fn collect_pattern_rc_variant_guards(
+    pattern: Rc<MatchPattern>,
+    rc_analysis: Rc<RcPatternAnalysis>,
+    shared_types: Rc<BTreeSet<String>>,
+    source_indices: Rc<HashMap<String, Rc<NewlineIndex>>>,
+    emit_info: Rc<EmitGraphInfo>,
+) -> String {
+    stacker::maybe_grow(512 * 1024, 2 * 1024 * 1024, || {
+        match (*pattern.clone()).clone() {
+            MatchPattern::VariantPattern {
+                name: n,
+                parent_enum,
+                field_bindings: fbs,
+                ..
+            } => {
+                let bare_n = qualified_last_segment(n.clone());
+                if (is_optional_variant_name(bare_n.clone())
+                    && is_optional_parent(parent_enum.clone()))
+                {
+                    if ((fbs.clone().len() as i64) == 1) {
+                        match fbs.clone().first().cloned() {
+                            Some(fb) => {
+                                let fb_pat = field_binding_pattern(fb.clone());
+                                let inner_analysis = analyze_rc_pattern(
+                                    fb_pat.clone(),
+                                    "".to_string(),
+                                    shared_types.clone(),
+                                    emit_info.clone(),
+                                    source_indices.clone(),
+                                );
+                                collect_pattern_rc_variant_guards(
+                                    fb_pat.clone(),
+                                    inner_analysis.clone(),
+                                    shared_types.clone(),
+                                    source_indices.clone(),
+                                    emit_info.clone(),
+                                )
+                            }
+                            None => "".to_string(),
+                        }
+                    } else {
+                        "".to_string()
+                    }
+                } else {
+                    {
+                        let resolved_parent = pattern_parent_enum(
+                            bare_n.clone(),
+                            parent_enum.clone(),
+                            "".to_string(),
+                            emit_info.type_summaries.clone(),
+                        );
+                        let parts = Rc::new({
+                            let mut __result = Vec::new();
+                            for fb in fbs.clone().iter().cloned() {
+                                __result.extend((*{
+                        let fb_name = field_binding_name_at(fb.clone(), source_indices.clone());
+if (fb_name.clone() == "0".to_string()) {
+                            {
+                                let fb_pat = field_binding_pattern(fb.clone());
+let payload_scrut = positional_payload_scrut_type(resolved_parent.clone(), bare_n.clone(), fb.clone(), emit_info.clone(), source_indices.clone());
+let inner_analysis = analyze_rc_pattern(fb_pat.clone(), payload_scrut.clone(), shared_types.clone(), emit_info.clone(), source_indices.clone());
+let inner = collect_pattern_rc_variant_guards(fb_pat.clone(), inner_analysis.clone(), shared_types.clone(), source_indices.clone(), emit_info.clone());
+if (inner.clone() == "".to_string()) {
+                                    Rc::new(vec![])
+                                } else {
+                                    Rc::new(vec![inner.clone()])
+                                }
+}
+                        } else {
+                            if field_needs_rc_ref(fb_name.clone(), rc_analysis.clone()) {
+                                {
+                                    let fb_pat = field_binding_pattern(fb.clone());
+if match_pattern_is_irrefutable(fb_pat.clone()) {
+                                        Rc::new(vec![])
+                                    } else {
+                                        match (*fb_pat.clone()).clone() {
+    MatchPattern::VariantPattern { name: inner_n, parent_enum: inner_parent, .. } => {
+                                            let shape = variant_pattern_shape_for(inner_n.clone(), inner_parent.clone(), "".to_string(), emit_info.clone());
+Rc::new(vec![v1_rt::concat(v1_rt::concat(v1_rt::concat(v1_rt::concat("matches!(".to_string(), emit_ident(fb_name.clone(), RenderTarget::Rust)), ".as_ref(), ".to_string()), shape.clone()), ")".to_string())])
+},
+    _ => Rc::new(vec![]),
+}
+                                    }
+}
+                            } else {
+                                Rc::new(vec![])
+                            }
+                        }
+}).iter().cloned());
+                            }
+                            __result
+                        });
+                        parts.clone().join(&" && ".to_string())
+                    }
+                }
+            }
+            _ => "".to_string(),
+        }
+    })
 }
 
 pub fn rc_pattern_preludes(
@@ -23552,6 +23622,17 @@ pub fn emit_typed_match_arm(
         };
         let field_guards =
             collect_pattern_string_guards(arm_pat.clone(), Rc::new(vec![]), si.clone());
+        let rc_variant_guards = if rc_analysis.needs_rc_pattern.clone() {
+            collect_pattern_rc_variant_guards(
+                arm_pat.clone(),
+                rc_analysis.clone(),
+                shared_types.clone(),
+                si.clone(),
+                emit_info.clone(),
+            )
+        } else {
+            "".to_string()
+        };
         let arm_guard_str = match arm_g.clone() {
             Some(g) => emit_typed_expr(
                 g.clone(),
@@ -23564,26 +23645,29 @@ pub fn emit_typed_match_arm(
             ),
             None => "".to_string(),
         };
-        let guard_str = if ((field_guards.clone() != "".to_string())
-            && (arm_guard_str.clone() != "".to_string()))
-        {
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(" if ".to_string(), field_guards.clone()),
-                    " && ".to_string(),
-                ),
+        let guard_parts = Rc::new({
+            let mut __result = Vec::new();
+            for g in Rc::new(vec![
+                field_guards.clone(),
+                rc_variant_guards.clone(),
                 arm_guard_str.clone(),
-            )
-        } else {
-            if (field_guards.clone() != "".to_string()) {
-                v1_rt::concat(" if ".to_string(), field_guards.clone())
-            } else {
-                if (arm_guard_str.clone() != "".to_string()) {
-                    v1_rt::concat(" if ".to_string(), arm_guard_str.clone())
-                } else {
-                    "".to_string()
+            ])
+            .iter()
+            .cloned()
+            {
+                if (g.clone() != "".to_string()) {
+                    __result.push(g);
                 }
             }
+            __result
+        });
+        let guard_str = if ((guard_parts.clone().len() as i64) == 0) {
+            "".to_string()
+        } else {
+            v1_rt::concat(
+                " if ".to_string(),
+                guard_parts.clone().join(&" && ".to_string()),
+            )
         };
         let body_str = match (*arm_b.expr_data.clone()).clone() {
             ExprData::ExprVar {
@@ -26559,6 +26643,17 @@ pub fn emit_typed_tco_match_arm(
         };
         let field_guards =
             collect_pattern_string_guards(arm_pat.clone(), Rc::new(vec![]), si.clone());
+        let rc_variant_guards = if rc_analysis.needs_rc_pattern.clone() {
+            collect_pattern_rc_variant_guards(
+                arm_pat.clone(),
+                rc_analysis.clone(),
+                shared_types.clone(),
+                si.clone(),
+                emit_info.clone(),
+            )
+        } else {
+            "".to_string()
+        };
         let arm_guard_str = match arm_g.clone() {
             Some(g) => emit_typed_expr(
                 g.clone(),
@@ -26571,26 +26666,29 @@ pub fn emit_typed_tco_match_arm(
             ),
             None => "".to_string(),
         };
-        let guard_str = if ((field_guards.clone() != "".to_string())
-            && (arm_guard_str.clone() != "".to_string()))
-        {
-            v1_rt::concat(
-                v1_rt::concat(
-                    v1_rt::concat(" if ".to_string(), field_guards.clone()),
-                    " && ".to_string(),
-                ),
+        let guard_parts = Rc::new({
+            let mut __result = Vec::new();
+            for g in Rc::new(vec![
+                field_guards.clone(),
+                rc_variant_guards.clone(),
                 arm_guard_str.clone(),
-            )
-        } else {
-            if (field_guards.clone() != "".to_string()) {
-                v1_rt::concat(" if ".to_string(), field_guards.clone())
-            } else {
-                if (arm_guard_str.clone() != "".to_string()) {
-                    v1_rt::concat(" if ".to_string(), arm_guard_str.clone())
-                } else {
-                    "".to_string()
+            ])
+            .iter()
+            .cloned()
+            {
+                if (g.clone() != "".to_string()) {
+                    __result.push(g);
                 }
             }
+            __result
+        });
+        let guard_str = if ((guard_parts.clone().len() as i64) == 0) {
+            "".to_string()
+        } else {
+            v1_rt::concat(
+                " if ".to_string(),
+                guard_parts.clone().join(&" && ".to_string()),
+            )
         };
         let body_str = emit_typed_tco_expr(
             arm_b.clone(),
