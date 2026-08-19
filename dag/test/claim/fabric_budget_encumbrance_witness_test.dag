@@ -1,0 +1,330 @@
+module test.claim.fabric_budget_encumbrance_witness
+
+import std.types { NonEmptyStr, Bool, Int, List }
+import std.measure { money_amount_micro, money_amount_micro_count }
+import std.currency { Usd, Eur }
+import std.nat { Nat }
+import extdeps.accounting.budget { Appropriation }
+import extdeps.accounting.encumbrance { EncumbranceLedger, ExceedsAppropriation, UnknownEncumbrance, ExpenditureExceedsEncumbrance, AlreadyTerminal, DuplicateReference }
+import product.fabric.budget { MoneyAccount, MoneyReservationRequest, MoneySettlementRequest, MoneyOutcome, AccountAdvanced, MoneyRefused, CurrencyMismatch, LedgerRefused, StaleLeaseGeneration, reserve_money, settle_money, release_money, account_committed }
+
+data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+// Budget is modeled as a lease over money: something is held exclusively,
+// the holder can be superseded while still believing it holds, and a late
+// settlement from a superseded holder must not be honoured. These witnesses
+// exercise that claim at the two boundaries where it is decidable - the
+// ceiling and the generation fence - plus the currency wall the generic
+// kernel deliberately cannot carry.
+
+data usd_account: MoneyAccount = MoneyAccount {
+  account: "fleet-ci",
+  currency: Usd,
+  ledger: EncumbranceLedger {
+    appropriation: Appropriation { ceiling: money_amount_micro(count: 1000000) },
+    entries: [],
+  },
+  leases: [],
+}
+
+fn advanced_account(o: MoneyOutcome) -> List<MoneyAccount> {
+  match o {
+    AccountAdvanced { account: a } => [a]
+    MoneyRefused { refusal: _ } => []
+  }
+}
+
+fn is_refused(o: MoneyOutcome) -> Bool {
+  match o {
+    AccountAdvanced { account: _ } => false
+    MoneyRefused { refusal: _ } => true
+  }
+}
+
+// Every refusal below names the arm it expects, rather than asserting that
+// something refused. The distinction is not pedantry: `is_refused` is true for
+// a ceiling overrun, a stale generation and a duplicate reference alike, so a
+// ceiling test written against it passes against an implementation that
+// refuses for entirely the wrong reason - and would have passed against the
+// duplicate-reference bug this file now covers. Naming the arm is what makes
+// each test discriminate the wall it claims to be about.
+
+fn refusal_label(o: MoneyOutcome) -> NonEmptyStr {
+  match o {
+    AccountAdvanced { account: _ } => "advanced"
+    MoneyRefused { refusal: r } =>
+      match r {
+        CurrencyMismatch { account: _, account_currency: _, presented_currency: _ } => "currency-mismatch"
+        StaleLeaseGeneration { reference: _, presented: _ } => "stale-generation"
+        LedgerRefused { account: _, refusal: lr } =>
+          match lr {
+            ExceedsAppropriation { requested: _, committed: _, ceiling: _ } => "exceeds-appropriation"
+            UnknownEncumbrance { reference: _ } => "unknown-encumbrance"
+            DuplicateReference { reference: _ } => "duplicate-reference"
+            ExpenditureExceedsEncumbrance { reference: _, actual: _, maximum_liability: _ } => "expenditure-exceeds-encumbrance"
+            AlreadyTerminal { reference: _ } => "already-terminal"
+          }
+      }
+  }
+}
+
+fn reserve_on(a: MoneyAccount, reference: NonEmptyStr, generation: Int, micros: Nat) -> MoneyOutcome {
+  reserve_money(
+    a: a,
+    request: MoneyReservationRequest {
+      reference: reference,
+      generation: generation,
+      maximum_liability: money_amount_micro(count: micros),
+      currency: Usd,
+    },
+  )
+}
+
+fn settle_on(a: MoneyAccount, reference: NonEmptyStr, generation: Int, micros: Nat) -> MoneyOutcome {
+  settle_money(
+    a: a,
+    request: MoneySettlementRequest {
+      reference: reference,
+      generation: generation,
+      actual_spend: money_amount_micro(count: micros),
+      currency: Usd,
+      settled_at: "2026-08-18T02:00:00Z",
+    },
+  )
+}
+
+// Reserving the maximum liability encumbers the full amount up front. This is
+// the property that makes the ceiling meaningful: an outstanding commitment
+// counts against the budget before any money moves, so a second reservation
+// cannot be admitted against headroom the first one has already spoken for.
+
+test fn a_held_reservation_encumbers_its_full_liability() -> Bool {
+  match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
+    Empty {} => false
+    Cons { head: a, tail: _ } =>
+      money_amount_micro_count(m: account_committed(a: a)) == 400000
+  }
+}
+
+// The ceiling refuses rather than admitting a partial hold. A caller that
+// asked to hold 700000 against 600000 of headroom and received a smaller hold
+// would proceed believing it was covered for the larger amount.
+
+test fn a_reservation_over_the_ceiling_refuses_rather_than_partially_holding() -> Bool {
+  match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
+    Empty {} => false
+    Cons { head: a, tail: _ } => {
+      let second = reserve_on(a: a, reference: "grant-2", generation: 1, micros: 700000)
+      refusal_label(o: second) == "exceeds-appropriation"
+        && money_amount_micro_count(m: account_committed(a: a)) == 400000
+    }
+  }
+}
+
+// Settling below the held liability is the ordinary case, and the released
+// residue returns to the appropriation. Without that, reserving a
+// conservative maximum would permanently consume headroom it never used, and
+// callers would be pushed toward under-reserving instead.
+
+test fn settling_under_the_hold_returns_the_residue() -> Bool {
+  match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
+    Empty {} => false
+    Cons { head: held, tail: _ } =>
+      match advanced_account(o: settle_on(a: held, reference: "grant-1", generation: 1, micros: 250000)) {
+        Empty {} => false
+        Cons { head: settled, tail: _ } =>
+          money_amount_micro_count(m: account_committed(a: held)) == 400000
+            && money_amount_micro_count(m: account_committed(a: settled)) == 250000
+      }
+  }
+}
+
+// Spending above what was encumbered refuses instead of expanding the hold.
+// Expanding it would cross the ceiling through the settle path rather than the
+// reserve path, which is the one place the conservation argument assumed it
+// could not be crossed.
+
+test fn spending_above_the_hold_refuses_instead_of_expanding_it() -> Bool {
+  match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
+    Empty {} => false
+    Cons { head: held, tail: _ } =>
+      refusal_label(o: settle_on(a: held, reference: "grant-1", generation: 1, micros: 400001))
+        == "expenditure-exceeds-encumbrance"
+  }
+}
+
+// The generation fence is the lease half. A superseded holder settling late
+// must not be honoured, and the check is decidable at settlement rather than
+// racing, because the reservation carries the generation it was made under.
+
+test fn a_superseded_holder_cannot_settle() -> Bool {
+  match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 7, micros: 400000)) {
+    Empty {} => false
+    Cons { head: held, tail: _ } =>
+      refusal_label(o: settle_on(a: held, reference: "grant-1", generation: 6, micros: 100000))
+        == "stale-generation"
+        && refusal_label(o: settle_on(a: held, reference: "grant-1", generation: 7, micros: 100000)) == "advanced"
+  }
+}
+
+// A terminal entry cannot be settled twice. Double settlement would charge one
+// commitment against the appropriation two times, and the second charge would
+// be invisible in a ledger that only stored a running total.
+
+test fn a_settled_reservation_cannot_settle_again() -> Bool {
+  match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
+    Empty {} => false
+    Cons { head: held, tail: _ } =>
+      match advanced_account(o: settle_on(a: held, reference: "grant-1", generation: 1, micros: 250000)) {
+        Empty {} => false
+        Cons { head: settled, tail: _ } =>
+          refusal_label(o: settle_on(a: settled, reference: "grant-1", generation: 1, micros: 100000))
+            == "already-terminal"
+      }
+  }
+}
+
+// Releasing frees the whole hold, so the headroom it occupied becomes
+// available to a later reservation that would otherwise have been refused.
+
+test fn releasing_a_hold_frees_its_headroom() -> Bool {
+  match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 900000)) {
+    Empty {} => false
+    Cons { head: held, tail: _ } => {
+      let blocked = reserve_on(a: held, reference: "grant-2", generation: 1, micros: 500000)
+      match advanced_account(
+        o: release_money(
+          a: held,
+          reference: "grant-1",
+          generation: 1,
+          reason: "attempt abandoned before execution",
+          released_at: "2026-08-18T02:00:00Z",
+        )
+      ) {
+        Empty {} => false
+        Cons { head: freed, tail: _ } =>
+          refusal_label(o: blocked) == "exceeds-appropriation"
+            && money_amount_micro_count(m: account_committed(a: freed)) == 0
+            && refusal_label(o: reserve_on(a: freed, reference: "grant-2", generation: 1, micros: 500000)) == "advanced"
+      }
+    }
+  }
+}
+
+// The currency wall. MoneyAmountMicro carries no currency code, so a generic
+// ledger would add euros to dollars silently and check the ceiling against a
+// quantity denominating nothing. The account binds the code once and refuses
+// anything presented in another - and it never converts, because a conversion
+// needs a rate, and a rate invented at an admission boundary fabricates the
+// exact fact the refusal exists to demand.
+
+test fn a_foreign_currency_reservation_refuses_and_never_converts() -> Bool {
+  let foreign = reserve_money(
+    a: usd_account,
+    request: MoneyReservationRequest {
+      reference: "grant-eu",
+      generation: 1,
+      maximum_liability: money_amount_micro(count: 100000),
+      currency: Eur,
+    },
+  )
+  refusal_label(o: foreign) == "currency-mismatch"
+    && money_amount_micro_count(m: account_committed(a: usd_account)) == 0
+}
+
+// The refusal must be the CURRENCY one specifically. A euro amount inside the
+// ceiling would be admitted by the kernel on the numbers alone, so if the wall
+// were merely ordering the mismatch would surface as some other refusal, or as
+// none - which is how a silent cross-currency sum gets in.
+
+test fn the_currency_refusal_is_distinct_from_a_ceiling_refusal() -> Bool {
+  let foreign = reserve_money(
+    a: usd_account,
+    request: MoneyReservationRequest {
+      reference: "grant-eu",
+      generation: 1,
+      maximum_liability: money_amount_micro(count: 100000),
+      currency: Eur,
+    },
+  )
+  match foreign {
+    AccountAdvanced { account: _ } => false
+    MoneyRefused { refusal: r } =>
+      match r {
+        CurrencyMismatch { account: _, account_currency: ac, presented_currency: pc } =>
+          ac == Usd && pc == Eur
+        LedgerRefused { account: _, refusal: _ } => false
+        StaleLeaseGeneration { reference: _, presented: _ } => false
+      }
+  }
+}
+
+// Review 53147: the reference must be a KEY. A second hold under a live
+// reference is refused, and the ledger is unchanged by the refusal - the
+// second half matters because a refusal that still appended would leave the
+// exact state the wall exists to prevent while reporting that it did not.
+
+test fn a_second_hold_under_one_reference_refuses() -> Bool {
+  match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
+    Empty {} => false
+    Cons { head: held, tail: _ } => {
+      let duplicate = reserve_on(a: held, reference: "grant-1", generation: 1, micros: 100000)
+      refusal_label(o: duplicate) == "duplicate-reference"
+        && money_amount_micro_count(m: account_committed(a: held)) == 400000
+    }
+  }
+}
+
+// The discriminating half, and the reason the wall is not tidiness. Settlement
+// takes the FIRST match while replacement rewrites EVERY match, so before the
+// refusal existed one settlement of 250000 against two holds wrote 250000 onto
+// both - charging 500000 for one commitment. This asserts a settled reference
+// charges its amount EXACTLY ONCE, which is the property the duplicate broke.
+
+test fn one_settlement_charges_the_appropriation_exactly_once() -> Bool {
+  match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
+    Empty {} => false
+    Cons { head: held, tail: _ } =>
+      match advanced_account(o: settle_on(a: held, reference: "grant-1", generation: 1, micros: 250000)) {
+        Empty {} => false
+        Cons { head: settled, tail: _ } =>
+          money_amount_micro_count(m: account_committed(a: settled)) == 250000
+      }
+  }
+}
+
+// Uniqueness spans EVERY entry, not just the live ones, so a released
+// reference is not reusable. That is the deliberate choice rather than the
+// convenient one: the entries are an append-only record of what was committed
+// and what became of it, and admitting a second "grant-1" after the first was
+// released would put two entries under one name in that record, with only
+// their position to tell them apart. A reader asking what happened to
+// "grant-1" would get an ambiguous answer, and the audit value of the ledger
+// is exactly that the question has one.
+//
+// The cost is that a caller wanting to retry must mint a new reference. That
+// is the correct obligation anyway - a retry is a new commitment, and the
+// fabric already models it as a new attempt with its own identity.
+
+test fn a_released_reference_is_not_reusable() -> Bool {
+  match advanced_account(o: reserve_on(a: usd_account, reference: "grant-1", generation: 1, micros: 400000)) {
+    Empty {} => false
+    Cons { head: held, tail: _ } =>
+      match advanced_account(
+        o: release_money(
+          a: held,
+          reference: "grant-1",
+          generation: 1,
+          reason: "attempt abandoned before execution",
+          released_at: "2026-08-18T02:00:00Z",
+        )
+      ) {
+        Empty {} => false
+        Cons { head: freed, tail: _ } =>
+          refusal_label(o: reserve_on(a: freed, reference: "grant-1", generation: 1, micros: 400000))
+            == "duplicate-reference"
+            && money_amount_micro_count(m: account_committed(a: freed)) == 0
+            && refusal_label(o: reserve_on(a: freed, reference: "grant-1-retry", generation: 1, micros: 400000)) == "advanced"
+      }
+  }
+}

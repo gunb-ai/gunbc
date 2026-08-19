@@ -1,4 +1,4 @@
-module test.claim.long.live_deploy.emit
+module test.claim.live_deploy.emit
 
 import test.claim.live_deploy.deploy_release_fixture { deploy_witness_release_revision, deploy_witness_other_release_revision }
 import std.types { Bool, String, List, NonEmptyStr, Int }
