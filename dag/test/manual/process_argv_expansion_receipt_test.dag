@@ -38,8 +38,20 @@ import extdeps.tools.jq { jq_argv_expansion_probe }
 // is behavior the model rejects is retired with a receipt, not left standing). What survives
 // enrolled is the claim the carrier makes: case 4 is red unless jq receives exactly two words.
 //
-// WET: this executes a real jq process. It is a manual receipt, not a floor witness, and its home
-// under test/manual says so.
+// WET: this executes a real jq process, so it is EXCLUDED from hermetic discovery and ENROLLED in
+// gunbc.ci_layer_roots bin_witness_wet_entries. Both rows are required and they answer different
+// questions: the exclusion keeps it off a batch it cannot pass (jq.Process.RunWithStdin carries no
+// mock_response, and the envelope refuses rather than skipping), while the enrollment is what gives
+// it an executing consumer. Exclusion alone would be deletion-with-the-file-retained -- DESIGN's
+// witness-cost ruling, whose specimen is exactly that.
+//
+// Its home under test/manual/ decides NOTHING: the file was swept into unshrunk discovery by path
+// regardless, which is the same ruling's point that a directory cannot answer an admission
+// question. The rows are the admission; the path is only where it lives.
+//
+// AND A MOCK IS NOT THE REPAIR. Mocking RunWithStdin would make this pass without any process
+// running, while its entire content is that a REAL jq exits 0 only on two argv words -- a green
+// that cannot fail.
 
 fn probe_lex() -> ModeledLexRules {
   ModeledLexRules {
