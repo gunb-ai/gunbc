@@ -1,7 +1,7 @@
 module v2.workflow.required_regen
 
 
-// ONE FOLD OVER EMITTED SURFACES — no roster, no skip arm, no bare v2.Bool at the seam.
+// ONE FOLD OVER EMITTED SURFACES — no roster, no skip arm, no bare Bool at the seam.
 // The host derives the compared populations from emit output and a directory read;
 // this module owns the verdict only.
 
@@ -48,7 +48,7 @@ data no_regen_refusals: v2.std.collection.List<RequiredRegenRefusal> = []
 
 data no_string_paths: v2.std.collection.List<v2.std.text.String> = []
 
-fn surface_is_drift(o: RegenSurfaceOutcome) -> v2.Bool {
+fn surface_is_drift(o: RegenSurfaceOutcome) -> Bool {
   match o {
     SurfaceDrifted { relative_path: _ } => true
     EmittedNotCommitted { relative_path: _ } => true
@@ -62,14 +62,14 @@ fn collect_generated_drift_paths(
   o: RegenSurfaceOutcome
 ) -> v2.std.collection.List<v2.std.text.String> {
   match o {
-    SurfaceDrifted { relative_path: path } => v2.std.algebra.Cons { head: path, tail: acc }
-    EmittedNotCommitted { relative_path: path } => v2.std.algebra.Cons { head: path, tail: acc }
-    CommittedNotEmitted { relative_path: path } => v2.std.algebra.Cons { head: path, tail: acc }
+    SurfaceDrifted { relative_path: path } => std.algebra.Cons { head: path, tail: acc }
+    EmittedNotCommitted { relative_path: path } => std.algebra.Cons { head: path, tail: acc }
+    CommittedNotEmitted { relative_path: path } => std.algebra.Cons { head: path, tail: acc }
     SurfaceMatches { relative_path: _ } => acc
   }
 }
 
-fn hand_is_unverifiable(o: HandMaintainedOutcome) -> v2.Bool {
+fn hand_is_unverifiable(o: HandMaintainedOutcome) -> Bool {
   match o {
     HandUnverifiable { filename: _, reason: _ } => true
     HandMatches { filename: _ } => false
@@ -84,7 +84,7 @@ fn collect_hand_unverifiable(
 ) -> v2.std.collection.List<v2.std.text.String> {
   match o {
     HandUnverifiable { filename: name, reason: reason } =>
-      v2.std.algebra.Cons { head: concat(name, concat(": ", reason)), tail: acc }
+      std.algebra.Cons { head: concat(name, concat(": ", reason)), tail: acc }
     HandMatches { filename: _ } => acc
     HandDrifted { filename: _ } => acc
     HandNoCandidate { filename: _ } => acc
@@ -102,17 +102,17 @@ fn required_regen_sync_admission(
 ) -> RequiredRegenSyncAdmission {
   if planned_surfaces <= 0 {
     return RequiredRegenSyncRefused {
-      refusals: v2.std.algebra.Cons { head: EmptyCommittedPopulation, tail: no_regen_refusals }
+      refusals: std.algebra.Cons { head: EmptyCommittedPopulation, tail: no_regen_refusals }
     }
   }
   if executed_surfaces <= 0 {
     return RequiredRegenSyncRefused {
-      refusals: v2.std.algebra.Cons { head: EmptyEmitResult, tail: no_regen_refusals }
+      refusals: std.algebra.Cons { head: EmptyEmitResult, tail: no_regen_refusals }
     }
   }
   if planned_surfaces != executed_surfaces {
     return RequiredRegenSyncRefused {
-      refusals: v2.std.algebra.Cons {
+      refusals: std.algebra.Cons {
         head: PlannedExecutedMismatch {
           planned: planned_surfaces,
           executed: executed_surfaces
@@ -134,7 +134,7 @@ fn required_regen_sync_admission(
   )
   if v2.std.algebra.length(xs: drift_paths) > 0 {
     return RequiredRegenSyncRefused {
-      refusals: v2.std.algebra.Cons {
+      refusals: std.algebra.Cons {
         head: GeneratedDrift { paths: drift_paths },
         tail: no_regen_refusals
       }
@@ -153,7 +153,7 @@ fn required_regen_sync_admission(
   )
   if v2.std.algebra.length(xs: hand_bad) > 0 {
     return RequiredRegenSyncRefused {
-      refusals: v2.std.algebra.Cons {
+      refusals: std.algebra.Cons {
         head: HandUnverifiableRefused { entries: hand_bad },
         tail: no_regen_refusals
       }

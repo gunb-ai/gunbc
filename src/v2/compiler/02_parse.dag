@@ -64,7 +64,7 @@ fn authored_parse_annotations(artifact: AuthoredParseArtifact) -> std.source_ann
 
 
 type ParseMintSourceResult {
-  id: v2.std.node.OccurrenceId
+  id: std.occurrence_identity.OccurrenceId
   prov: ParseProvenanceState
 }
 
@@ -530,14 +530,14 @@ fn parse_mint_from_source(
   }
 }
 
-fn parse_minted_id_from_node(n: v2.std.node.Node) -> v2.std.collection.List<v2.std.node.OccurrenceId> {
+fn parse_minted_id_from_node(n: v2.std.node.Node) -> v2.std.collection.List<std.occurrence_identity.OccurrenceId> {
   match n.occurrence_id {
     v2.std.node.MintedOccurrence { id: id } => std.algebra.Cons { head: id, tail: std.algebra.Empty }
     v2.std.node.SyntheticOccurrence => std.algebra.Empty
   }
 }
 
-fn parse_minted_id_list(nodes: v2.std.collection.List<v2.std.node.Node>) -> v2.std.collection.List<v2.std.node.OccurrenceId> {
+fn parse_minted_id_list(nodes: v2.std.collection.List<v2.std.node.Node>) -> v2.std.collection.List<std.occurrence_identity.OccurrenceId> {
   v2.std.algebra.fold_list(
     xs: nodes,
     empty: std.algebra.Empty,

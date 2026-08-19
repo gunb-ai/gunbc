@@ -249,7 +249,7 @@ fn proj_leaf_subject(entry: std.types.NonEmptyStr) -> std.observation.Observatio
   }
 }
 
-fn proj_event(subject: std.observation.ObservationSubject, transition: ObservationTransition) -> std.observation.ObservationEvent {
+fn proj_event(subject: std.observation.ObservationSubject, transition: std.observation.ObservationTransition) -> std.observation.ObservationEvent {
   std.observation.ObservationEvent {
     subject: subject,
     transition: transition,

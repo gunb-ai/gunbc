@@ -8,7 +8,7 @@ data noncarrier_name_snippet: String = "module lin\n\nfn f(xs: List<Int>) -> Int
 
 data identity_snippet: String = "module ident\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) { acc })\n}\n"
 
-data real_branch_body_snippet: String = "module rs\n\nfn g(xs: List<Int>) -> Int {\n  fold_list(xs: xs, empty: v2.std.algebra.Empty, cons: fn(acc, r) {\n    if pred(r: r) {\n      list_append(left: acc, right: v2.std.algebra.Cons { head: r, tail: v2.std.algebra.Empty })\n    } else {\n      acc\n    }\n  })\n}\n"
+data real_branch_body_snippet: String = "module rs\n\nfn g(xs: List<Int>) -> Int {\n  fold_list(xs: xs, empty: std.algebra.Empty, cons: fn(acc, r) {\n    if pred(r: r) {\n      list_append(left: acc, right: std.algebra.Cons { head: r, tail: std.algebra.Empty })\n    } else {\n      acc\n    }\n  })\n}\n"
 
 data let_alias_snippet: String = "module alias\n\nfn f(xs: List<Int>) -> Int {\n  fold(xs, init: 0, f: fn(acc, x) {\n    let grown = acc\n    list_append(left: grown, right: x)\n  })\n}\n"
 
@@ -61,8 +61,8 @@ fn findings_of(source_text: String, file: v2.std.node.Symbol) -> v2.std.optional
 
 fn is_empty_findings(fs: v2.std.collection.List<v2.lens.complexity_accumulator_copy.Finding>) -> Bool {
   match fs {
-    v2.std.algebra.Empty => true
-    v2.std.algebra.Cons { head: _, tail: _ } => false
+    std.algebra.Empty => true
+    std.algebra.Cons { head: _, tail: _ } => false
   }
 }
 

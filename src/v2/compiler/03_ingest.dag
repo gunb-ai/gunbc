@@ -7,8 +7,8 @@ fn parse_atom_frontier_class(atom_identity: v2.std.node.Symbol, binding_to_class
   match v2.std.collection.map_get(binding_to_class, atom_identity) {
     v2.std.diagnostic.Accepted { value: opt, diagnostics: _ } =>
       match opt {
-        v2.std.collection.Present { value: token_class } => token_class
-        v2.std.collection.Absent => atom_identity
+        v2.std.optional.Present { value: token_class } => token_class
+        v2.std.optional.Absent => atom_identity
       }
     v2.std.diagnostic.Rejected { diagnostics: _ } => atom_identity
   }
@@ -69,12 +69,12 @@ fn operational_parse_tree_project_to_formal_captures(
   binding_to_class: Map<v2.std.node.Symbol, v2.std.node.Symbol>
 ) -> v2.std.collection.List<v2.std.node.Symbol> {
   match v2.std.grammar.node_atom_identity_optional(node: captured) {
-    v2.std.collection.Present { value: id } =>
+    v2.std.optional.Present { value: id } =>
       v2.std.algebra.list_append(
         left: std.algebra.Empty,
         right: [parse_atom_frontier_class(atom_identity: id, binding_to_class: binding_to_class)]
       )
-    v2.std.collection.Absent =>
+    v2.std.optional.Absent =>
       fold(
         captured.children,
         init: std.algebra.Empty,

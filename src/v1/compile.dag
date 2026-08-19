@@ -469,9 +469,9 @@ fn serialize_method_semantics(value: MethodSemantics?, source_indices: Map<Strin
         ", \"fold_accumulator_type\": ",
         json_optional_node_ref(value: fold_accumulator_type, key_to_id: key_to_id),
         "}")
-    Present { value: ServiceMethodSemantics { service_name: service_name, op_params: op_params } } =>
+    Present { value: v1.std.core.ServiceMethodSemantics { service_name: service_name, op_params: op_params } } =>
       concat(
-        "{\"kind\": \"ServiceMethodSemantics\", \"service_name\": ",
+        "{\"kind\": \"v1.std.core.ServiceMethodSemantics\", \"service_name\": ",
         json_quote(s: service_name),
         ", \"op_params\": ",
         json_list(items: op_params |> map(p => serialize_param(param: p, source_indices: source_indices, key_to_id: key_to_id))),

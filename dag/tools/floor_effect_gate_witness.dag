@@ -12,19 +12,19 @@ func cheap_claim_pool_gate_passes() -> Bool {
 }
 
 func extdeps_external_authority_gate_passes() -> Bool {
-  tools.ci_gates.exit_ok(e: tools.ci_gates.run_spec_gate(g: gunbc.ci_spec.ExtdepsExternalAuthorityGate))
+  tools.ci_gates.exit_ok(e: tools.ci_gates.run_spec_gate(g: gunbc.ci_gate.ExtdepsExternalAuthorityGate))
 }
 
 func dag_compile_clean_gate_passes() -> Bool {
-  tools.ci_gates.exit_ok(e: tools.ci_gates.run_spec_gate(g: gunbc.ci_spec.DagCompileCleanGate))
+  tools.ci_gates.exit_ok(e: tools.ci_gates.run_spec_gate(g: gunbc.ci_gate.DagCompileCleanGate))
 }
 
 func generated_artifact_drift_gate_passes() -> Bool {
-  tools.ci_gates.exit_ok(e: tools.ci_gates.run_spec_gate(g: gunbc.ci_spec.GeneratedArtifactDriftGate))
+  tools.ci_gates.exit_ok(e: tools.ci_gates.run_spec_gate(g: gunbc.ci_gate.GeneratedArtifactDriftGate))
 }
 
 func extdeps_scope_placement_gate_passes() -> Bool {
-  tools.ci_gates.exit_ok(e: tools.ci_gates.run_spec_gate(g: gunbc.ci_spec.ExtdepsScopePlacementGate))
+  tools.ci_gates.exit_ok(e: tools.ci_gates.run_spec_gate(g: gunbc.ci_gate.ExtdepsScopePlacementGate))
 }
 
 func extdeps_scope_placement_gate_failure_receipt() -> String {
@@ -32,7 +32,7 @@ func extdeps_scope_placement_gate_failure_receipt() -> String {
 }
 
 func prose_row_introduction_gate_passes() -> Bool {
-  tools.ci_gates.exit_ok(e: tools.ci_gates.run_spec_gate(g: gunbc.ci_spec.ProseRowIntroductionGate))
+  tools.ci_gates.exit_ok(e: tools.ci_gates.run_spec_gate(g: gunbc.ci_gate.ProseRowIntroductionGate))
 }
 
 func prose_row_introduction_gate_failure_receipt() -> String {

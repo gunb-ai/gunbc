@@ -73,9 +73,9 @@ fn inhabitant_std_projection_symbol(inhabitant: v2.std.node.Node) -> v2.std.diag
         o: v2.std.node_query.find_named_child(root: facts, name: ^facts_field_std_projection),
         f: fn(atom_node) {
           match v2.std.grammar.node_atom_identity_optional(node: atom_node) {
-            v2.std.collection.Present { value: sym } =>
+            v2.std.optional.Present { value: sym } =>
               v2.std.diagnostic.Accepted { value: sym, diagnostics: v2.std.diagnostic.None }
-            v2.std.collection.Absent =>
+            v2.std.optional.Absent =>
               v2.std.diagnostic.outcome_rejected(
                 inhabitant_neutralization_std_projection_missing_diagnostic(node: inhabitant)
               )
@@ -90,9 +90,9 @@ fn inhabitant_type_atom_symbol(inhabitant: v2.std.node.Node) -> v2.std.diagnosti
   match v2.std.node_query.find_named_child(root: inhabitant, name: ^inhabitant_field_atom) {
     v2.std.diagnostic.Accepted { value: atom_node, diagnostics: _ } =>
       match v2.std.grammar.node_atom_identity_optional(node: atom_node) {
-        v2.std.collection.Present { value: sym } =>
+        v2.std.optional.Present { value: sym } =>
           v2.std.diagnostic.Accepted { value: sym, diagnostics: v2.std.diagnostic.None }
-        v2.std.collection.Absent =>
+        v2.std.optional.Absent =>
           v2.std.diagnostic.outcome_rejected(
             inhabitant_neutralization_type_atom_missing_diagnostic(node: inhabitant)
           )
@@ -111,9 +111,9 @@ fn inhabitant_surface_spelling_symbol(inhabitant: v2.std.node.Node) -> v2.std.di
       match v2.std.node_query.find_named_child(root: facts, name: ^facts_field_surface_spelling) {
         v2.std.diagnostic.Accepted { value: atom_node, diagnostics: _ } =>
           match v2.std.grammar.node_atom_identity_optional(node: atom_node) {
-            v2.std.collection.Present { value: sym } =>
+            v2.std.optional.Present { value: sym } =>
               v2.std.diagnostic.Accepted { value: sym, diagnostics: v2.std.diagnostic.None }
-            v2.std.collection.Absent =>
+            v2.std.optional.Absent =>
               v2.std.diagnostic.outcome_rejected(
                 inhabitant_neutralization_surface_spelling_missing_diagnostic(
                   node: inhabitant

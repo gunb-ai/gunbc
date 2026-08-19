@@ -236,7 +236,7 @@ type CommitWriterBindingOwner
   | CommitWriterDashboardInfrastructureOperatorOwner
 
 type CommitWriterBindingDependency {
-  capability: Symbol
+  capability: v2.std.node.Symbol
 }
 
 data commit_writer_complete_staged_index_blob_observation_transport: CommitWriterBindingDependency = CommitWriterBindingDependency {

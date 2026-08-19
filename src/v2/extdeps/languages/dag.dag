@@ -3203,7 +3203,7 @@ fn dag_language_model_empty_canonical_symbol_set() -> v2.std.collection.Set<v2.s
   }
 }
 
-fn dag_language_model_binding_canonical(sym: v2.std.node.Symbol) -> v2.Bool {
+fn dag_language_model_binding_canonical(sym: v2.std.node.Symbol) -> Bool {
   sym == ^dag_binding_fn_add
     || sym == ^dag_binding_param_x
     || sym == ^dag_binding_param_y
@@ -3262,7 +3262,7 @@ fn dag_language_model_canonical_symbols(lm: v2.std.language_model.LanguageModel)
   lm.canonical_symbols
 }
 
-fn dag_lex_token_symbol(sym: v2.std.node.Symbol) -> v2.Bool {
+fn dag_lex_token_symbol(sym: v2.std.node.Symbol) -> Bool {
   v2.std.compilers.lexing.lex_rule_set_token_class_member(
     rules: dag_lex_rules(),
     token_class: sym
@@ -3437,12 +3437,12 @@ fn dag_target_model_lossless_fidelity_quotient() -> v2.std.compilers.target_mode
   )
 }
 
-fn dag_surface_module_header_metadata_edge(name: v2.std.node.Symbol) -> v2.Bool {
+fn dag_surface_module_header_metadata_edge(name: v2.std.node.Symbol) -> Bool {
   (name == ^dag_surface_module_header)
     || (name == ^dag_surface_module_header_qualified_name)
 }
 
-fn dag_resolve_preserve_module_metadata_subtree(node: v2.std.node.Node) -> v2.Bool {
+fn dag_resolve_preserve_module_metadata_subtree(node: v2.std.node.Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
     v2.std.optional.Present { value: id } =>
       (id == ^dag_surface_module_header) || (id == ^dag_surface_qualified_name)
@@ -3450,7 +3450,7 @@ fn dag_resolve_preserve_module_metadata_subtree(node: v2.std.node.Node) -> v2.Bo
   }
 }
 
-fn dag_node_is_module_root_conj(n: v2.std.node.Node) -> v2.Bool {
+fn dag_node_is_module_root_conj(n: v2.std.node.Node) -> Bool {
   match parse_production_emitted_identity_optional(node: n) {
     v2.std.optional.Present { value: id } => id == ^dag_surface_module
     v2.std.optional.Absent =>
@@ -3963,21 +3963,21 @@ data dag_loop_arrow_with_body_fixture: v2.std.node.Node = dag_loop_arrow_with_bo
 data dag_loop_arrow_with_body_wrong_value_fixture: v2.std.node.Node = dag_loop_arrow_with_body_wrong_value_node()
 data dag_fixture_emitted_loop_fn: v2.std.node.Node = dag_loop_arrow_with_body_fixture
 
-fn dag_node_is_kw_true_atom(node: v2.std.node.Node) -> v2.Bool {
+fn dag_node_is_kw_true_atom(node: v2.std.node.Node) -> Bool {
   match node.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } => id == ^dag_token_kw_true
     _ => false
   }
 }
 
-fn dag_node_is_kw_false_atom(node: v2.std.node.Node) -> v2.Bool {
+fn dag_node_is_kw_false_atom(node: v2.std.node.Node) -> Bool {
   match node.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } => id == ^dag_token_kw_false
     _ => false
   }
 }
 
-fn dag_node_is_int_literal_atom(node: v2.std.node.Node) -> v2.Bool {
+fn dag_node_is_int_literal_atom(node: v2.std.node.Node) -> Bool {
   match node.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } => id == ^dag_token_int_literal
     _ => false
@@ -3986,30 +3986,30 @@ fn dag_node_is_int_literal_atom(node: v2.std.node.Node) -> v2.Bool {
 
 data dag_eval_literal_atom_authority_note: v2.std.text.String = "Single authority for eval literal-vs-binding dispatch (v2_eval_is_literal_shaped_node projects this). Fixture pick literals admit both token_class (^dag_pick_lit_*) and branded binding (^dag_binding_pick_lit_*) rows — same ingest surface, two spellings. Complement bool literals (^dag_complement_lit_*) are logic-ingest tokens used as scrutinee/body literals in complement fixtures. dissolve-on: general body producer lands grammar-owned literal classification and this roster folds into it."
 
-fn dag_symbol_is_fixture_pick_literal(id: v2.std.node.Symbol) -> v2.Bool {
+fn dag_symbol_is_fixture_pick_literal(id: v2.std.node.Symbol) -> Bool {
   (id == ^dag_pick_lit_one)
     || (id == ^dag_pick_lit_two)
     || (id == ^dag_binding_pick_lit_one)
     || (id == ^dag_binding_pick_lit_two)
 }
 
-fn dag_symbol_is_complement_bool_literal(id: v2.std.node.Symbol) -> v2.Bool {
+fn dag_symbol_is_complement_bool_literal(id: v2.std.node.Symbol) -> Bool {
   (id == ^dag_complement_lit_true) || (id == ^dag_complement_lit_false)
 }
 
-fn dag_symbol_is_fixture_record_literal_atom(id: v2.std.node.Symbol) -> v2.Bool {
+fn dag_symbol_is_fixture_record_literal_atom(id: v2.std.node.Symbol) -> Bool {
   (id == ^dag_binding_rec_v)
     || (id == ^dag_rec_lit_nine)
     || (id == ^dag_binding_type_variant_true)
 }
 
-fn dag_symbol_is_fixture_body_literal_atom(id: v2.std.node.Symbol) -> v2.Bool {
+fn dag_symbol_is_fixture_body_literal_atom(id: v2.std.node.Symbol) -> Bool {
   dag_symbol_is_fixture_pick_literal(id: id)
     || dag_symbol_is_complement_bool_literal(id: id)
     || dag_symbol_is_fixture_record_literal_atom(id: id)
 }
 
-fn dag_node_is_eval_literal_atom(node: v2.std.node.Node) -> v2.Bool {
+fn dag_node_is_eval_literal_atom(node: v2.std.node.Node) -> Bool {
   dag_node_is_kw_true_atom(node: node)
     || dag_node_is_kw_false_atom(node: node)
     || dag_node_is_int_literal_atom(node: node)
@@ -4020,7 +4020,7 @@ fn dag_node_is_eval_literal_atom(node: v2.std.node.Node) -> v2.Bool {
        }
 }
 
-fn dag_int_literal_node_from_magnitude(magnitude: v2.std.integer.DecimalMagnitude, occurrence_id: v2.std.node.OccurrenceId) -> v2.std.node.Node {
+fn dag_int_literal_node_from_magnitude(magnitude: v2.std.integer.DecimalMagnitude, occurrence_id: std.occurrence_identity.OccurrenceId) -> v2.std.node.Node {
   v2.std.node.Node {
     kind: v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: ^dag_token_int_literal } },
     children: [
@@ -4033,7 +4033,7 @@ fn dag_int_literal_node_from_magnitude(magnitude: v2.std.integer.DecimalMagnitud
   }
 }
 
-fn dag_int_literal_node_from_lexeme(lexeme: v2.std.text.String, occurrence_id: v2.std.node.OccurrenceId) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
+fn dag_int_literal_node_from_lexeme(lexeme: v2.std.text.String, occurrence_id: std.occurrence_identity.OccurrenceId) -> v2.std.diagnostic.Outcome<v2.std.node.Node> {
   match v2.std.integer.integer_string_to_decimal_digits_optional(s: lexeme) {
     v2.std.optional.Present { value: digits } =>
       v2.std.diagnostic.outcome_accepted(
@@ -4104,7 +4104,7 @@ fn dag_int_literal_magnitude_int_from_node(node: v2.std.node.Node) -> v2.std.dia
 }
 
 type DagCanonicalLiteral
-  = DagCanonicalBoolLiteral { value: v2.Bool }
+  = DagCanonicalBoolLiteral { value: Bool }
   | DagCanonicalIntLiteral { magnitude: v2.std.integer.Int }
 
 fn dag_canonical_literal_shape_diagnostic(node: v2.std.node.Node) -> v2.std.diagnostic.Diagnostic {
@@ -4115,7 +4115,7 @@ fn dag_canonical_literal_shape_diagnostic(node: v2.std.node.Node) -> v2.std.diag
   }
 }
 
-data dag_canonical_literal_query_note: v2.std.text.String = "dag_canonical_literal_from_node is the single typed query for inference-facing DAG literal shape. It preserves the v2.Bool-vs-v2.std.integer.Int distinction and the decoded integer magnitude in a coproduct instead of publishing sibling is_* predicates over v2.std.node.Node storage. v2.Bool literals admit exactly the childless true/false atoms. v2.std.integer.Int literals admit exactly one named, decodable magnitude child. Every other shape is a typed refusal."
+data dag_canonical_literal_query_note: v2.std.text.String = "dag_canonical_literal_from_node is the single typed query for inference-facing DAG literal shape. It preserves the Bool-vs-v2.std.integer.Int distinction and the decoded integer magnitude in a coproduct instead of publishing sibling is_* predicates over v2.std.node.Node storage. Bool literals admit exactly the childless true/false atoms. v2.std.integer.Int literals admit exactly one named, decodable magnitude child. Every other shape is a typed refusal."
 
 fn dag_canonical_literal_from_node(node: v2.std.node.Node) -> v2.std.diagnostic.Outcome<DagCanonicalLiteral> {
   if dag_node_is_kw_true_atom(node: node) && (v2.std.algebra.length(xs: node.children) == 0) {
@@ -5448,7 +5448,7 @@ fn dag_round_trip_edge(name: v2.std.node.Symbol, target: v2.std.node.Node) -> v2
   v2.std.node.Edge { label: v2.std.node.Named { name: name }, target: target }
 }
 
-fn dag_round_trip_bool_node(pass: v2.Bool) -> v2.std.node.Node {
+fn dag_round_trip_bool_node(pass: Bool) -> v2.std.node.Node {
   if pass {
     dag_round_trip_atom(s: ^dag_round_trip_axis_ready)
   } else {
@@ -5456,7 +5456,7 @@ fn dag_round_trip_bool_node(pass: v2.Bool) -> v2.std.node.Node {
   }
 }
 
-fn dag_round_trip_lex_ready() -> v2.Bool {
+fn dag_round_trip_lex_ready() -> Bool {
   dag_lex_token_symbol(sym: ^dag_token_kw_module) &&
   dag_lex_token_symbol(sym: ^dag_token_kw_import) &&
   dag_lex_token_symbol(sym: ^dag_token_kw_alias) &&
@@ -5473,7 +5473,7 @@ fn dag_round_trip_lex_ready() -> v2.Bool {
   dag_lex_token_symbol(sym: ^dag_token_arrow)
 }
 
-fn dag_round_trip_grammar_ready(lm: v2.std.language_model.LanguageModel) -> v2.Bool {
+fn dag_round_trip_grammar_ready(lm: v2.std.language_model.LanguageModel) -> Bool {
   v2.std.grammar.grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_module) &&
   v2.std.grammar.grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_module_header) &&
   v2.std.grammar.grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_import_decl) &&
@@ -5482,13 +5482,13 @@ fn dag_round_trip_grammar_ready(lm: v2.std.language_model.LanguageModel) -> v2.B
   v2.std.grammar.grammar_carries_symbol(grammar: lm.grammar, sym: ^dag_production_fn_decl)
 }
 
-fn dag_round_trip_trivia_fidelity_resolved() -> v2.Bool {
+fn dag_round_trip_trivia_fidelity_resolved() -> Bool {
   dag_whitespace_fidelity() == v2.extdeps.languages.fidelity.DeclaredNormalized { feature: DagWhitespaceDeclaredNormalized } &&
   dag_line_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagLineCommentFailClosed } &&
   dag_block_comment_fidelity() == v2.extdeps.languages.fidelity.FailClosed { feature: DagBlockCommentFailClosed }
 }
 
-fn dag_round_trip_authorities_ready() -> v2.Bool {
+fn dag_round_trip_authorities_ready() -> Bool {
   let lm = dag_language_model()
   dag_round_trip_lex_ready() &&
   dag_round_trip_grammar_ready(lm: lm) &&
@@ -5502,7 +5502,7 @@ fn parse_production_emitted_identity_optional(node: v2.std.node.Node) -> v2.std.
   }
 }
 
-fn dag_node_is_fn_decl(node: v2.std.node.Node) -> v2.Bool {
+fn dag_node_is_fn_decl(node: v2.std.node.Node) -> Bool {
   match parse_production_emitted_identity_optional(node: node) {
     v2.std.optional.Present { value: id } => id == ^dag_surface_fn_decl
     v2.std.optional.Absent => false
@@ -5920,14 +5920,14 @@ fn namespace_graft_unwrap_module_working_root(root: v2.std.node.Node) -> v2.std.
   }
 }
 
-fn namespace_graft_has_module_header(root: v2.std.node.Node) -> v2.Bool {
+fn namespace_graft_has_module_header(root: v2.std.node.Node) -> Bool {
   match v2.std.node_query.find_named_child(root: root, name: ^dag_surface_module_header) {
     v2.std.diagnostic.Accepted { value: _, diagnostics: _ } => true
     v2.std.diagnostic.Rejected { diagnostics: _ } => false
   }
 }
 
-fn namespace_graft_node_is_conj(node: v2.std.node.Node) -> v2.Bool {
+fn namespace_graft_node_is_conj(node: v2.std.node.Node) -> Bool {
   match node.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Conj } => true
     _ => false
@@ -6009,7 +6009,7 @@ fn namespace_graft_qualified_name_from_spine_node(node: v2.std.node.Node, acc: v
   }
 }
 
-fn namespace_graft_already_grafted(root: v2.std.node.Node) -> v2.Bool {
+fn namespace_graft_already_grafted(root: v2.std.node.Node) -> Bool {
   let working = namespace_graft_unwrap_module_working_root(root: root)
   if namespace_graft_has_module_header(root: working) {
     false

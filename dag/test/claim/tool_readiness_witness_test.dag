@@ -19,10 +19,10 @@ data witness_unpinned_frontier_row: gunbc.tool_readiness.UnpinnedToolFrontierRow
   }
 }
 
-data expected_rustfmt_identity: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "rustfmt-hermetic-expected" as NonEmptyStr)
-data other_rustfmt_identity: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "rustfmt-host-other" as NonEmptyStr)
-data unrelated_cargo_identity_a: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "cargo-a" as NonEmptyStr)
-data unrelated_cargo_identity_b: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "cargo-b" as NonEmptyStr)
+data expected_rustfmt_identity: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "rustfmt-hermetic-expected" as std.types.NonEmptyStr)
+data other_rustfmt_identity: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "rustfmt-host-other" as std.types.NonEmptyStr)
+data unrelated_cargo_identity_a: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "cargo-a" as std.types.NonEmptyStr)
+data unrelated_cargo_identity_b: std.content_hash.ContentHash = std.content_hash.content_hash_of_value(value: "cargo-b" as std.types.NonEmptyStr)
 
 data rustfmt_pin: extdeps.pin.Pin<extdeps.tools.CliTool> = extdeps.pin.Pin {
   subject: extdeps.tools.rustfmt.rustfmt_cli_tool,
@@ -51,8 +51,8 @@ fn observed(tool_name: String, identity: std.content_hash.ContentHash) -> extdep
 fn context(rows: List<extdeps.realization.emit_on_demand_host.ObservedToolIdentity>) -> extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
   extdeps.realization.emit_on_demand_host.ResolvedBuildContext {
     observed_tool_identities: rows,
-    environment_identity: std.content_hash.content_hash_of_value(value: "environment" as NonEmptyStr),
-    cargo_configuration_identity: std.content_hash.content_hash_of_value(value: "cargo-config" as NonEmptyStr),
+    environment_identity: std.content_hash.content_hash_of_value(value: "environment" as std.types.NonEmptyStr),
+    cargo_configuration_identity: std.content_hash.content_hash_of_value(value: "cargo-config" as std.types.NonEmptyStr),
   }
 }
 

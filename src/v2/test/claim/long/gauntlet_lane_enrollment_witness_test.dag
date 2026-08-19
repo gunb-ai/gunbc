@@ -39,17 +39,17 @@ fn synthetic_bare_deenrolled_row() -> gunbc.commit_workflow.CommitCheckEnrollmen
   }
 }
 
-fn falsifier_entries_contain(entries: v2.std.collection.List<std.realization_schedule.ScheduleWitnessEntry>, f: v2.std.text.String) -> v2.Bool {
+fn falsifier_entries_contain(entries: v2.std.collection.List<std.realization_schedule.ScheduleWitnessEntry>, f: v2.std.text.String) -> Bool {
   v2.std.algebra.any(entries, e => e.function == f)
 }
 
 data substrate_long_lane_is_a_sibling_cadence_note: v2.std.text.String = "wave1_gate1_d_census_subsumption_witness_holds moved off gunbc.commit_workflow.FalsifierCadenceJob onto gunbc.ci_layer_roots.falsifier_substrate_long_lane_rows (nightly falsifier batch 6) when main landed the Class C split. That is a re-home between two cadence lanes, NOT a de-enrollment, so the invariant this file guards still holds — but the pin has to read the lane the row actually sits on. Dropping the pin instead would have been the narrowing this witness exists to prevent: the row would then be free to vanish from BOTH lanes with nothing red. The check below therefore asserts substrate-long-lane membership by function name, which is the same claim ('this re-homed row still executes on a cadence') read against the correct authority."
 
-fn substrate_long_lane_contains(f: v2.std.text.String) -> v2.Bool {
+fn substrate_long_lane_contains(f: v2.std.text.String) -> Bool {
   v2.std.algebra.any(gunbc.ci_layer_roots.falsifier_substrate_long_lane_rows, row => row.function == f)
 }
 
-test fn witness_rehomed_rows_are_cadence_enrolled() -> v2.Bool {
+test fn witness_rehomed_rows_are_cadence_enrolled() -> Bool {
   let entries = gunbc.commit_workflow.live_roster_falsifier_witness_entries()
   substrate_long_lane_contains(f: "wave1_gate1_d_census_subsumption_witness_holds")
     && falsifier_entries_contain(entries: entries, f: "wave1_gate1_d_ingested_bind_executes_witness_holds")
@@ -60,20 +60,20 @@ test fn witness_rehomed_rows_are_cadence_enrolled() -> v2.Bool {
     && falsifier_entries_contain(entries: entries, f: "witness_parse_binding_fidelity_distinct_identifiers_holds")
 }
 
-test fn witness_split_entries_keep_cheap_half_per_pr() -> v2.Bool {
+test fn witness_split_entries_keep_cheap_half_per_pr() -> Bool {
   let cadence = gunbc.commit_workflow.live_roster_falsifier_witness_entries()
   !falsifier_entries_contain(entries: cadence, f: "lens_affected_set_provenance_producer_git_diff_wire_holds")
     && !falsifier_entries_contain(entries: cadence, f: "witness_resolve_distinct_param_bindings_holds")
 }
 
-test fn gauntlet_lane_rehome_is_never_bare_deenrollment_holds() -> v2.Bool {
+test fn gauntlet_lane_rehome_is_never_bare_deenrollment_holds() -> Bool {
   gunbc.commit_workflow.live_roster_has_no_bare_deenrolled_witness()
     && gunbc.commit_workflow.roster_has_no_bare_deenrolled_witness(
          roster: [synthetic_pr_row(), synthetic_rehomed_row()]
        )
 }
 
-test fn gauntlet_lane_rehome_bare_deenrollment_RED_control_holds() -> v2.Bool {
+test fn gauntlet_lane_rehome_bare_deenrollment_RED_control_holds() -> Bool {
   !gunbc.commit_workflow.roster_has_no_bare_deenrolled_witness(
     roster: [synthetic_pr_row(), synthetic_rehomed_row(), synthetic_bare_deenrolled_row()]
   )
@@ -102,14 +102,14 @@ fn synthetic_bare_deenrolled_gate_row() -> gunbc.commit_workflow.CommitCheckEnro
   }
 }
 
-test fn gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds() -> v2.Bool {
+test fn gauntlet_lane_gate_rehome_is_never_bare_deenrollment_holds() -> Bool {
   gunbc.commit_workflow.live_roster_has_no_bare_deenrolled_gate()
     && gunbc.commit_workflow.roster_has_no_bare_deenrolled_gate(
          roster: [synthetic_cadence_gate_row(), synthetic_regen_gate_row()]
        )
 }
 
-test fn gauntlet_lane_gate_bare_deenrollment_RED_control_holds() -> v2.Bool {
+test fn gauntlet_lane_gate_bare_deenrollment_RED_control_holds() -> Bool {
   !gunbc.commit_workflow.roster_has_no_bare_deenrolled_gate(
     roster: [synthetic_cadence_gate_row(), synthetic_bare_deenrolled_gate_row()]
   )

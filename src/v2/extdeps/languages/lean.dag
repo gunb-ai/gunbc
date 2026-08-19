@@ -858,7 +858,7 @@ fn lean_bool_algebra_witness_node() -> v2.std.node.Node {
 fn lean_scalar_algebra_inhabitance_optional(facts: LeanPrimitiveFacts) -> v2.std.collection.Optional<v2.std.model_core.AlgebraInhabitanceDecl> {
   let inhabitant = lean_primitive_facts_node(facts: facts)
   match facts.scalar {
-    LeanIntegerScalar { signedness, width, overflow: _ } => v2.std.collection.Present {
+    LeanIntegerScalar { signedness, width, overflow: _ } => v2.std.optional.Present {
       value: v2.std.model_core.AlgebraInhabitanceDecl {
         algebra: v2.std.algebra.commutative_ring_type_node(inhabitant: inhabitant),
         inhabitant: inhabitant,
@@ -869,22 +869,22 @@ fn lean_scalar_algebra_inhabitance_optional(facts: LeanPrimitiveFacts) -> v2.std
         )
       }
     }
-    BoolScalar => v2.std.collection.Present {
+    BoolScalar => v2.std.optional.Present {
       value: v2.std.model_core.AlgebraInhabitanceDecl {
         algebra: v2.std.algebra.boolean_algebra_type_node(inhabitant: inhabitant),
         inhabitant: inhabitant,
         witness: lean_bool_algebra_witness_node()
       }
     }
-    LeanWidthAdmissionRefused { width: _ } => v2.std.collection.Absent
-    LeanOverflowAdmissionRefused { semantics: _ } => v2.std.collection.Absent
+    LeanWidthAdmissionRefused { width: _ } => v2.std.optional.Absent
+    LeanOverflowAdmissionRefused { semantics: _ } => v2.std.optional.Absent
   }
 }
 
 fn lean_inhabitance_decl_step(acc: List<v2.std.model_core.AlgebraInhabitanceDecl>, facts: LeanPrimitiveFacts) -> List<v2.std.model_core.AlgebraInhabitanceDecl> {
   match lean_scalar_algebra_inhabitance_optional(facts: facts) {
-    v2.std.collection.Present { value: decl } => v2.std.algebra.list_snoc_item(xs: acc, item: decl)
-    v2.std.collection.Absent => acc
+    v2.std.optional.Present { value: decl } => v2.std.algebra.list_snoc_item(xs: acc, item: decl)
+    v2.std.optional.Absent => acc
   }
 }
 

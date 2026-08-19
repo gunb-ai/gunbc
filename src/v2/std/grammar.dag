@@ -50,7 +50,7 @@ fn formal_grammar_symbol_in_alphabet(
   nonterminals: v2.std.collection.Set<FormalNonterminal>,
   terminals: v2.std.collection.Set<FormalTerminal>,
   symbol: FormalGrammarSymbol
-) -> v2.Bool {
+) -> Bool {
   match symbol {
     FormalTerminalOccurrence { terminal: terminal, binding: _ } =>
       terminals.member(terminal)
@@ -63,7 +63,7 @@ fn formal_production_rhs_in_alphabet(
   nonterminals: v2.std.collection.Set<FormalNonterminal>,
   terminals: v2.std.collection.Set<FormalTerminal>,
   production: FormalProduction
-) -> v2.Bool {
+) -> Bool {
   v2.std.algebra.fold_list(
     xs: production.rhs,
     empty: true,
@@ -78,7 +78,7 @@ fn formal_production_rhs_in_alphabet(
   )
 }
 
-fn validate_grammar_all_lhs_in_nonterminals(g: FormalGrammar) -> v2.Bool {
+fn validate_grammar_all_lhs_in_nonterminals(g: FormalGrammar) -> Bool {
   v2.std.algebra.fold_list(
     xs: g.productions,
     empty: true,
@@ -88,7 +88,7 @@ fn validate_grammar_all_lhs_in_nonterminals(g: FormalGrammar) -> v2.Bool {
   )
 }
 
-fn validate_grammar_all_rhs_in_alphabet(g: FormalGrammar) -> v2.Bool {
+fn validate_grammar_all_rhs_in_alphabet(g: FormalGrammar) -> Bool {
   v2.std.algebra.fold_list(
     xs: g.productions,
     empty: true,
@@ -290,7 +290,7 @@ type GrammarRelationRow {
 type ParseTree = v2.std.node.Node
 
 type GrammarSymbolFoldState {
-  found: v2.Bool
+  found: Bool
 }
 
 fn grammar_atom(identity: v2.std.node.Symbol) -> v2.std.node.Node {
@@ -340,15 +340,15 @@ data grammar_free_name_slot_binding: v2.std.node.Symbol = ^grammar_free_name_slo
 
 data grammar_lexeme_stamp_slot_binding: v2.std.node.Symbol = ^grammar_lexeme_stamp_slot
 
-fn formal_binding_is_free_name_slot(binding: v2.std.node.Symbol) -> v2.Bool {
+fn formal_binding_is_free_name_slot(binding: v2.std.node.Symbol) -> Bool {
   binding == ^grammar_free_name_slot
 }
 
-fn formal_binding_is_lexeme_stamp_slot(binding: v2.std.node.Symbol) -> v2.Bool {
+fn formal_binding_is_lexeme_stamp_slot(binding: v2.std.node.Symbol) -> Bool {
   binding == ^grammar_lexeme_stamp_slot
 }
 
-fn formal_binding_is_emitted_atom_from_slot(binding: v2.std.node.Symbol) -> v2.Bool {
+fn formal_binding_is_emitted_atom_from_slot(binding: v2.std.node.Symbol) -> Bool {
   formal_binding_is_free_name_slot(binding: binding)
     || formal_binding_is_lexeme_stamp_slot(binding: binding)
 }
@@ -964,7 +964,7 @@ fn formal_production_emitted_slot_count(production: FormalProduction) -> Int {
   )
 }
 
-fn formal_production_lhs_matches(production: FormalProduction, lhs: v2.std.node.Symbol) -> v2.Bool {
+fn formal_production_lhs_matches(production: FormalProduction, lhs: v2.std.node.Symbol) -> Bool {
   production.lhs.identity == lhs
 }
 
@@ -997,7 +997,7 @@ fn formal_production_matches_lhs_and_slot_count(
   production: FormalProduction,
   lhs: v2.std.node.Symbol,
   emitted_slot_count: Int
-) -> v2.Bool {
+) -> Bool {
   formal_production_lhs_matches(production: production, lhs: lhs) &&
     formal_production_emitted_slot_count(production: production) == emitted_slot_count
 }
@@ -1201,7 +1201,7 @@ fn formal_production_rhs_matches_emitted_conj(
   production: FormalProduction,
   productions: v2.std.collection.List<FormalProduction>,
   emitted: v2.std.node.Node
-) -> v2.Bool {
+) -> Bool {
   match emitted.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
       formal_production_rhs_matches_emitted_conj_conj(
@@ -1217,7 +1217,7 @@ fn formal_production_rhs_matches_emitted_conj_conj(
   production: FormalProduction,
   productions: v2.std.collection.List<FormalProduction>,
   emitted: v2.std.node.Node
-) -> v2.Bool {
+) -> Bool {
   let children = conj_positional_children(parent: emitted)
   let child_count = conj_positional_child_count(children: children)
   match v2.std.algebra.fold_list(
@@ -1241,7 +1241,7 @@ fn formal_production_matches_emitted_child(
   production: FormalProduction,
   productions: v2.std.collection.List<FormalProduction>,
   child: v2.std.node.Node
-) -> v2.Bool {
+) -> Bool {
   match child.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: atom_id } } =>
       match formal_production_rhs_singleton_terminal_identity(production: production) {
@@ -1266,7 +1266,7 @@ fn formal_production_matches_emitted_child(
   }
 }
 
-fn emitted_shape_supported_for_lhs_exact(child: v2.std.node.Node) -> v2.Bool {
+fn emitted_shape_supported_for_lhs_exact(child: v2.std.node.Node) -> Bool {
   match child.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Conj } => true
     v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: _ } } => true
@@ -1673,7 +1673,7 @@ fn grammar_symbol_fold_state(n: v2.std.node.Node, sym: v2.std.node.Symbol) -> Gr
   v2.std.node.fold_node(n: n, algebra: grammar_symbol_fold(sym: sym))
 }
 
-fn grammar_carries_symbol(grammar: ParseGrammar, sym: v2.std.node.Symbol) -> v2.Bool {
+fn grammar_carries_symbol(grammar: ParseGrammar, sym: v2.std.node.Symbol) -> Bool {
   grammar_symbol_fold_state(n: grammar_to_node(grammar: grammar), sym: sym).found
 }
 
@@ -1704,7 +1704,7 @@ fn formal_production_matches_lhs_exact_child(
   lhs: v2.std.node.Symbol,
   child: v2.std.node.Node,
   candidate: FormalProduction
-) -> v2.Bool {
+) -> Bool {
   if emitted_shape_supported_for_lhs_exact(child: child) {
     let emitted_slot_count = emitted_node_slot_count(emitted: child)
     formal_production_matches_lhs_and_slot_count(
@@ -1856,7 +1856,7 @@ fn rebuild_emitted_conj_node(children: v2.std.collection.List<v2.std.node.Node>)
 fn concrete_syntax_fixed_token_matches_terminal(
   token: v2.std.compilers.target_model.ConcreteSyntaxToken,
   terminal: v2.std.node.Symbol
-) -> v2.Bool {
+) -> Bool {
   match token {
     v2.std.compilers.target_model.FixedToken { token_class: token_class } => token_class == terminal
     v2.std.compilers.target_model.BoundToken { token_class: _, binding: _ } => false
@@ -2182,7 +2182,7 @@ fn grammar_relation_row_emitted_reverse_parse_matches(
   row: v2.std.node.Node,
   productions: v2.std.collection.List<FormalProduction>,
   emitted: v2.std.node.Node
-) -> v2.Bool {
+) -> Bool {
   if emitted_shape_supported_for_lhs_exact(child: emitted) {
     match grammar_relation_row_production_from_node(row: row) {
       v2.std.witness.Holds { value: production } =>
@@ -2294,7 +2294,7 @@ type GrammarRelationForwardRowSelection
 fn grammar_relation_forward_row_select_merge(
   acc: GrammarRelationForwardRowSelection,
   row: v2.std.node.Node,
-  matches: v2.Bool
+  matches: Bool
 ) -> GrammarRelationForwardRowSelection {
   if matches {
     match acc {
@@ -2307,13 +2307,13 @@ fn grammar_relation_forward_row_select_merge(
   }
 }
 
-fn grammar_relation_forward_row_select_skip_catalog_edge(name: v2.std.node.Symbol) -> v2.Bool {
+fn grammar_relation_forward_row_select_skip_catalog_edge(name: v2.std.node.Symbol) -> Bool {
   name == ^grammar_relation_rules_formal_productions
 }
 
 fn grammar_relation_row_forward_select(
   rules: v2.std.node.Node,
-  row_matches: fn(v2.std.node.Node) -> v2.Bool
+  row_matches: fn(v2.std.node.Node) -> Bool
 ) -> GrammarRelationForwardRowSelection {
   match rules.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
@@ -2444,7 +2444,7 @@ fn grammar_relation_row_forward_token_spine_selection(
   }
 }
 
-fn grammar_node_carries_surface_identity(node: v2.std.node.Node, surface_identity: v2.std.node.Symbol) -> v2.Bool {
+fn grammar_node_carries_surface_identity(node: v2.std.node.Node, surface_identity: v2.std.node.Symbol) -> Bool {
   match node.kind {
     v2.std.node.TypeNode { connective: v2.std.node.Atom { identity: id } } => id == surface_identity
     v2.std.node.TypeNode { connective: v2.std.node.Conj } =>
@@ -2471,7 +2471,7 @@ fn grammar_node_carries_surface_identity(node: v2.std.node.Node, surface_identit
   }
 }
 
-fn grammar_relation_row_surface_identity_matches(row: v2.std.node.Node, surface_identity: v2.std.node.Symbol) -> v2.Bool {
+fn grammar_relation_row_surface_identity_matches(row: v2.std.node.Node, surface_identity: v2.std.node.Symbol) -> Bool {
   match grammar_relation_row_emitted_fixture(row: row) {
     v2.std.diagnostic.Accepted { value: emitted, diagnostics: _ } =>
       grammar_node_carries_surface_identity(node: emitted, surface_identity: surface_identity)
