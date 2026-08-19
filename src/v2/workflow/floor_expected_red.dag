@@ -356,19 +356,38 @@ fn floor_expected_red_chunk_13() -> List<String> {
   Empty {}
 }
 
-// chunk_14: the 33 body_lowering manual rows quarantined 2026-08-19 (gunbc#8505). Root cause:
-// floor-whole-corpus-scope runtime PatternMatchFailure on the PreparedGrammar match inside
-// v2.compiler.parse parse_module_prepared — the value is a PreparedModeled record whose tag
-// prints as invalid-symbol under the prepared subject, the same record/variant identity
-// reconciliation family as the sixteen compute_board witnesses in gunbc#8449, residual on the
-// parse_module vertical these rows are the first floor consumers of. The same fns pass by
-// execution under per-entry claim_batch on the identical tree (24/24), so the defect is in the
-// floor subject evaluation, not the witnesses. Un-quarantine trigger: the interpreter-side fix
-// (gunbc#8449 lane) — the roster join reports now_passes when it lands. Three of these rows
-// additionally sit at the 1552ms ceiling (budget-refused on some runs); they carry the same
-// root cause and flip with the same fix.
+// chunk_14: EMPTY, and the reason is a cut rather than a fix. The 33 body_lowering manual
+// rows this chunk held on gunbc#8505 are NOT quarantined and NOT enrolled — the three files
+// carrying them are unpromoted, so those claims are back to being visibly uncovered data rows
+// rather than enrolled rows that cannot be decided. That distinction is the whole point:
+// enrolling a row the floor budget-refuses records an expected verdict for a claim that
+// produced none, which reads as coverage and is not, and quarantining them here instead of
+// unpromoting them would have been exactly that dodge.
+//
+// THE COHORT, not the observed failures. Eight rows exceeded the 1552ms ceiling on run
+// 32246856637 (1553-1568ms, over by 1-11ms). Dropping those eight would not have helped:
+// every claim in the three files reaches grammar preparation through a shared zero-arg
+// helper (body_lowering_normalized_module, body_lowering_parsed_fn_decl, and
+// body_lowering_parsed_tree in the match file), so the cheap rows are cheap only because a
+// prior claim already paid and they hit the call memo. A non-payer's measured cost is not
+// evidence of what it costs AS a payer, so removing the eight observed payers would have
+// promoted the next-arriving rows into the same refusal. The cut is therefore scoped by
+// REACHABILITY — every promoted claim that can reach prepare_grammar — which is 35 claims
+// across exactly 3 files, corroborated by those being exactly the 35 body_lowering rows
+// over the 100ms warn in that run.
+//
+// WHY THEY CANNOT BE PROMOTED YET: the cost is a first-payer grammar preparation that the
+// cross-claim prepare_grammar memo cannot amortise, because its key is not content-addressed
+// — the digest mixes raw interner-local ordinals, so it depends on the order claims are
+// evaluated in. Measured: three identical runs give one digest, and reversing only the ORDER
+// in which the same claims are named gives a different digest for the same grammar.
+//
+// RELEASE TRIGGER: the interner-independent hashing fix (dashboard adhoc-e78c4260-d3a).
+// Once the key is a function of the grammar, the preparation amortises across claims and
+// this cohort is promotable in one motion. Nothing here should be re-enrolled before then;
+// re-enrolling without the fix reproduces the undecidable rows this cut removed.
 fn floor_expected_red_chunk_14() -> List<String> {
-  Cons { head: "v2.test.manual.body_lowering_match.body_lowering_match_arms_found", tail: Cons { head: "v2.test.manual.body_lowering_match.body_lowering_match_first_arm_wires", tail: Cons { head: "v2.test.manual.body_lowering_match.body_lowering_match_lowers_to_match", tail: Cons { head: "v2.test.manual.body_lowering_match.body_lowering_match_swapped_arms_normalize_accepts", tail: Cons { head: "v2.test.manual.body_lowering_match.body_lowering_normalize_accepts_match_module", tail: Cons { head: "v2.test.manual.body_lowering_match.body_lowering_normalized_module_has_match", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_arrow_direct_well_formed", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_arrow_token_holds", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_binary_infix_holds", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_body_holds", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_domain_holds", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_domain_operand1_match", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_domain_operand2_match", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_expr_infix_holds", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_fn_body_infix_holds", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_fn_body_subtree_holds", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_fn_decl_found", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_has_plus_token", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_module_well_formed", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalize_accepts", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_arrow_root_resolves", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_domain_has_two_params", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_left_operand_is_atom", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_operand1_lexeme_is_x", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_operand2_lexeme_is_y", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_operator_is_plus", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_resolves", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalized_transform_has_three_children", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_normalize_yields_arrow", tail: Cons { head: "v2.test.manual.body_lowering_normalize_add.body_lowering_return_holds", tail: Cons { head: "v2.test.manual.body_lowering_projection_call.body_lowering_field_access_postfix_rejects", tail: Cons { head: "v2.test.manual.body_lowering_projection_call.body_lowering_normalize_accepts_projection_module", tail: Cons { head: "v2.test.manual.body_lowering_projection_call.body_lowering_projection_lowers_to_transform", tail: Empty {} } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } } }
+  Empty {}
 }
 
 fn floor_expected_red_chunk_15() -> List<String> {
