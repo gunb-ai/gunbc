@@ -474,3 +474,55 @@ That is why a stale binary looks like a modeling error in the file under test.
 binary built from the tree being evaluated. A green or red from the baked binary is a fact about
 the pin, not about the change — and its failure mode is a plausible-looking located diagnostic in
 your own file, which is the fabricated-plausible-output shape aimed at the author's own instrument.
+
+## 15. Cut D is not a type swap, and the reason is a deliberate design decision in `Offer`
+
+Measured before briefing, because the last three specifications in this document were wrong from
+under-measuring. The two carriers do not have the same shape, and the difference is not an
+oversight in either one.
+
+```
+ComputeOffer {                              Offer<P> {
+  provider:         ProviderIdentity          id:             FabricIdentity<P, OfferKey>
+  supply:           ComputeSupplyFacts        executor:       P
+  available_window: AvailabilityWindow        shape:          Shape
+  cost_quote:       CostEstimate?             capabilities:   CapabilityManifestRef
+}                                             trust_domain:   TrustDomainRef
+                                              quantity_bound: Int
+ComputeSupplyFacts {                          ready_at:       Timestamp
+  physical:              ComputeHost          quote:          OfferQuote
+  execution:             ExecutionSurface     evidence:       OfferEvidence
+  cost:                  CostModel?         }
+  observed_performance:  List<PerformanceReceipt>
+}
+```
+
+**`Offer<P>` carries no physical facts at all.** No `ComputeHost`, no `ExecutionSurface`, no
+observed performance. Its `shape` is `Shape { hard: HardRequirements { threads } }` — one axis.
+That is not a gap to be filled: an offer in the terminal model states *what is offered* and *on
+what terms*, and the physical realization behind it is a different layer's fact. The module's own
+reasoning about `remaining_capacity` — derived, never stored, because a stored remainder is a
+second representation of the grant set — is the same discipline applied to a different field.
+
+**The consequence for Cut D:** `runner_spec_from_offer` reads `offer.supply.physical` and
+`offer.supply.execution.os` to derive GitHub runner labels. Those reads have **no counterpart in
+`Offer<P>`**, so "migrate the consumers to `Offer`" is not a mechanical substitution — it is
+under-specified in exactly the way that pushes an implementer toward one of two bad arms: widen
+`Offer` with physical fields (fusing realization into the offer, the §3 error the type was shaped
+to avoid), or drop the derivation and let the labels come from somewhere less grounded.
+
+**The honest options, none of which Cut D may pick unilaterally:**
+
+1. **The label derivation stops reading an offer at all** and reads the fleet host directly —
+   `gunbc.fleet_intent` already owns `compute_host_primary_cpu`, and a self-hosted runner's labels
+   are a fact about the fleet host, not about a commercial offer. This is the arm I currently
+   favour, because it makes the dependency honest rather than relocating it.
+2. **`CiRunnerTarget.FleetSelfHosted` carries the host reference**, so the physical fact enters
+   where the selection is made rather than being reached through a supply record.
+3. `Offer` grows a realization reference — *not* physical fields, but a typed pointer to the
+   realization that would satisfy it. This is the largest change and needs its own sign-off.
+
+**This strengthens the case for Cut C going first.** Closing the workflow's bypass removes the CI
+interface from Cut D's population, which means the physical-facts question is answered once, at
+the runner-target seam, instead of once per consumer during a type migration. Cut D should not be
+dispatched until one of the three options above is signed off.
