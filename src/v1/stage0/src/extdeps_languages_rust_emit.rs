@@ -368,6 +368,15 @@ pub fn rust_lambda_template() -> String {
     CACHED.with(|c: &String| c.clone())
 }
 
+pub fn rust_callable_value_wrap_template() -> String {
+    thread_local! {
+        static CACHED: String = {
+            "Rc::new(move {0})".to_string()
+        };
+    }
+    CACHED.with(|c: &String| c.clone())
+}
+
 pub fn rust_error_expr_template() -> String {
     thread_local! {
         static CACHED: String = {

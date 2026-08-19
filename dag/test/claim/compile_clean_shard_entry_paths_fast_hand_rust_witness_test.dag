@@ -11,13 +11,14 @@ import tools.dag_compile_clean_shard_roster {
   compile_clean_shard_entry_paths_fast_hand_rust_receipt_plan_anchor,
   compile_clean_shard_entry_paths_fast_hand_rust_receipt_witness_entry,
   compile_clean_shard_entry_paths_fast_hand_rust_roadmap_lane_anchor,
-  witness_roster_build_refuses_synthetic_duplicate_facts
 }
 import std.disposition { Scaffold, SingleAuthority }
 import std.types { Bool }
 import v2.std.algebra { length }
 
-data compile_clean_shard_entry_paths_fast_hand_rust_witness_note: String = "HAND-RUST receipt for src/v1/stage0/src/cli_run.rs compile_clean_shard_entry_paths_from_decl_facts / compile_clean_shard_entry_paths_fast (review 47271): host floor-CI mirror of tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths_from via std.keyed_roster.keyed_roster_build — not a parallel authority. Rust duplicate-refusal test must stay aligned with witness_roster_build_refuses_synthetic_duplicate_facts on the same fixture."
+data compile_clean_shard_entry_paths_fast_hand_rust_witness_note: String = "HAND-RUST receipt for src/v1/stage0/src/cli_run.rs compile_clean_shard_entry_paths_from_decl_facts / compile_clean_shard_entry_paths_fast (review 47271): host floor-CI mirror of tools.dag_compile_clean_shard_roster.compile_clean_shard_entry_paths_from via std.keyed_roster.keyed_roster_build — not a parallel authority. Rust duplicate-refusal semantics must stay aligned with witness_roster_build_refuses_synthetic_duplicate_facts (dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag, via tools.dag_compile_clean_shard_roster) on the same fixture."
+
+data compile_clean_shard_entry_paths_fast_hand_rust_duplicate_semantics_dedup_note: String = "Witness cost class: aggregate-only/duplicate coverage (session calm-ram-80, 2026-08-19). This file used to carry test fn compile_clean_shard_entry_paths_fast_hand_rust_fixture_duplicate_semantics_align() -> Bool { witness_roster_build_refuses_synthetic_duplicate_facts() } — a bare re-invocation of a witness already discovered and executed as part of test fn compile_clean_shard_roster_is_well_formed() in dag/test/claim/dag_compile_clean_shard_totality_witness_test.dag. The deleted wrapper asserted nothing of its own: it neither exercised the hand-Rust seam this file exists to receipt nor added a distinct fixture, so every CI run paid witness_roster_build_refuses_synthetic_duplicate_facts's fixture-construction and assertion cost twice for one observation. The claim this row named — that this file's hand-Rust duplicate-refusal semantics stay aligned with the .dag fixture — is grouped here by cross-reference (this note, and the sibling reference on compile_clean_shard_entry_paths_fast_hand_rust_witness_note) rather than by re-executing the shared witness: the alignment obligation is discharged by the single execution already enrolled at compile_clean_shard_roster_is_well_formed, and this file's roster is one witness shorter for it. DISSOLVE-ON: if this file's hand-Rust seam grows an observation witness_roster_build_refuses_synthetic_duplicate_facts cannot make (e.g. a Rust-side fixture the .dag roster construction never exercises), that observation gets its own witness here rather than reviving this wrapper."
 
 test fn compile_clean_shard_entry_paths_fast_hand_rust_scaffold_is_seed_retained() -> Bool {
   match compile_clean_shard_entry_paths_fast_hand_rust_scaffold {
@@ -33,8 +34,4 @@ test fn compile_clean_shard_entry_paths_fast_hand_rust_receipt_is_checkable() ->
     && (compile_clean_shard_entry_paths_fast_hand_rust_receipt_witness_entry == "dag/test/claim/compile_clean_shard_entry_paths_fast_hand_rust_witness_test.dag")
     && (compile_clean_shard_entry_paths_fast_hand_rust_receipt_census == "rg '^pub(crate) const CLI_RUN_COMPILE_CLEAN_SHARD_ENTRY_PATHS_FAST_SCAFFOLD_MARKER' src/v1/stage0/src/cli_run.rs == 1")
     && (compile_clean_shard_entry_paths_fast_hand_rust_loc_delta_net == length(xs: compile_clean_shard_entry_paths_fast_hand_rust_paths))
-}
-
-test fn compile_clean_shard_entry_paths_fast_hand_rust_fixture_duplicate_semantics_align() -> Bool {
-  witness_roster_build_refuses_synthetic_duplicate_facts()
 }

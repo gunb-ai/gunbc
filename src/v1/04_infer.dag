@@ -41,7 +41,7 @@ import v1.std.core {
   FieldAccessStyle, StoredField, EnumAccessor, OptionalUnwrap, TupleFirst, TupleSecond,
   FieldValueShape, PlainValue, OptionalValue, FieldSummary,
   VarBindingKind, LocalValueBinding, FunctionValueBinding, VariantValueBinding, MatchBoundBinding,
-  CallSemantics, PlainCallSemantics, LookupCallSemantics,
+  CallSemantics, PlainCallSemantics, LookupCallSemantics, FunctionValueCallSemantics,
   MethodSemantics, PlainMethodSemantics, AlgebraMethodSemantics,
   ServiceMethodSemantics,
   ExprErrorKind, ParseRecoveryError, SemanticExprError, InternalExprError,
@@ -3590,7 +3590,8 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             source_indices: scope.type_env.source_indices
           )
         }
-        let is_known_method = method_resolution.result_type != none
+        let callee_is_body_binding = map_has(scope.body_locals, func_name)
+        let is_known_method = !callee_is_body_binding && method_resolution.result_type != none
         if is_known_method && typed_args |> count > 0 {
           let receiver = method_receiver
           let remaining = typed_args |> skip(1)
@@ -3653,7 +3654,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             ),
             diagnostics: concat(concat(arg_diags, method_resolution.diagnostics), template_subst_diags)
           }
-        } else if func_name == "empty_map" {
+        } else if !callee_is_body_binding && func_name == "empty_map" {
           let bare_m = bare_map_node()
           match expected {
             Present { value: exp } =>
@@ -3721,7 +3722,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
               }
           }
-        } else if func_name == "empty_set" {
+        } else if !callee_is_body_binding && func_name == "empty_set" {
           let bare_s = bare_set_node()
           match expected {
             Present { value: exp } =>
@@ -3789,7 +3790,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
                   }
               }
           }
-        } else if infer_builtin_call_type(name: func_name) != none {
+        } else if !callee_is_body_binding && infer_builtin_call_type(name: func_name) != none {
           let tier2b = infer_tier2b_builtin_with_kernel_diags(func_name: func_name, typed_args: typed_args, scope: scope, span: span)
           let bt = tier2b.bt
           let call_semantics = if func_name == "lookup" {
@@ -3825,7 +3826,7 @@ fn infer_expr_body(texpr: Node, scope: InferScope, expected: Node?) -> InferResu
             }
             InferResult {
               typed: make_named_expr_node(
-                name: func_name, expr_data: ExprCall { call_semantics: Present { value: PlainCallSemantics }, descent_evidence: none },
+                name: func_name, expr_data: ExprCall { call_semantics: Present { value: if callee_is_body_binding { FunctionValueCallSemantics } else { PlainCallSemantics } }, descent_evidence: none },
                 children: typed_arg_nodes,
                 inferred: Present { value: Resolved { node: resolved_type } },
                 span: span,

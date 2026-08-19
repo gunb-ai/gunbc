@@ -223,47 +223,37 @@ data g2_union_corpus_facts: List<ModuleImportFact> = [
   }
 ]
 
-test fn g2_roster_gate_entry_classifies_literal_paths() -> Bool {
-  let c = live_read_classification_g2_from_facts(
+// The one named live integration for this module: a single call to fn_arrow_decl_facts_live()
+// (a whole-tree scan) grounds every G2 roster-gate assertion below. Three tests used to each
+// call it independently against the identical entry/facts/carrier_homes triple, paying the
+// live scan three times for one fixed input — DESIGN §5 witness-cost-derives-from-purpose
+// forbids a test claiming arbitrary computation merely because it is a test. Every other test
+// in this module classifies over explicit fixture facts and never reaches this authority.
+fn roster_gate_g2_live_classification() -> LiveReadClassification {
+  live_read_classification_g2_from_facts(
     entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
     facts: roster_gate_corpus_facts,
     decls: fn_arrow_decl_facts_live(),
     carrier_homes: live_read_carrier_homes_v0
   )
+}
+
+test fn g2_roster_gate_live_integration_holds() -> Bool {
+  let c = roster_gate_g2_live_classification()
   classification_has_filesystem_read_carrier(classification: c)
     && classification_has_literal_path(
       classification: c,
       path: "src/v2/std/algebra.dag"
     )
-}
-
-test fn g2_roster_gate_literal_path_touched_selects() -> Bool {
-  let c = live_read_classification_g2_from_facts(
-    entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
-    facts: roster_gate_corpus_facts,
-    decls: fn_arrow_decl_facts_live(),
-    carrier_homes: live_read_carrier_homes_v0
-  )
-  runtime_read_touched_by_path_g2(
-    classification: c,
-    touched_path: "src/v2/std/algebra.dag"
-  )
+    && runtime_read_touched_by_path_g2(
+      classification: c,
+      touched_path: "src/v2/std/algebra.dag"
+    )
     && runtime_read_touched_by_path_g2(
       classification: c,
       touched_path: "src/v2/lens/complexity_accumulator_copy.dag"
     )
-}
-
-
-test fn g2_implies_reads_live_tree_for_roster_gate() -> Bool {
-  g2_implies_reads_live_tree(
-    classification: live_read_classification_g2_from_facts(
-      entry_module: "v2.test.claim.complexity.accumulator_copy_roster_gate",
-      facts: roster_gate_corpus_facts,
-      decls: fn_arrow_decl_facts_live(),
-      carrier_homes: live_read_carrier_homes_v0
-    )
-  )
+    && g2_implies_reads_live_tree(classification: c)
     && accumulator_copy_roster_gate_entry_live_tree_disposition() == ReadsLiveTree
 }
 

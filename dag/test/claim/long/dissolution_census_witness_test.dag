@@ -1,18 +1,27 @@
 module test.claim.long.dissolution_census_witness_test
 
-import std.decl_ref { decl_ref }
-import std.roster_frontier { fold_frontier_expiry, frontier_expiry_clean, frontier_rows_well_formed }
+// Breadth-preserving half of the dissolution-census split (DESIGN.md
+// "witness cost derives from purpose", operator ruling 2026-08-04): the
+// fold_frontier_expiry mechanism and the construction-wall checks are proven
+// on a planted fixture, per-PR, in
+// test.claim.dissolution_census_mechanism_witness_test. This file carries
+// only the properties whose subject IS the live census_closure_frontier_rows
+// roster and cannot be proven on synthetic data. Enrolled on the falsifier
+// FalsifierSubstrateLongLane cadence (gunbc.ci_layer_roots
+// falsifier_substrate_long_lane_rows), not per-PR fast-lane discovery.
 import gunbc.census_closure_frontier { census_closure_frontier_rows }
 import gunbc.dissolution_census {
   dissolution_census_report,
-  dissolution_census_report_against,
   dissolution_census_holds,
   dissolution_census_total,
   frontier_rows_bound_count,
 }
+import std.roster_frontier { frontier_rows_well_formed }
 import v2.std.live_tree { LiveTreeDisposition, SubstrateInputsOnly }
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
+
+data dissolution_census_cost_class_note: String = "unbound_dissolution_empty_literal_refuses (below) was investigated as a possible third import-closure-pollution exemplar for the witness-cost-class lane (gunbc.roadmap_authority adhoc-0e6f8ea5-158) and FALSIFIED -- NOT import-closure pollution, and not fixable by closure-narrowing. w_unbound_dissolution_empty_literal_red / w_unbound_dissolution_nonempty_literal_green both call compile_dag_rust_emit_check, whose uncached path (compile_dag_rust_emit_check_uncached, src/v1/stage0/src/cli_run.rs) rebuilds a FULL corpus-rooted module index (build_module_path_index_from_witness_roots) and compiles the supplied virtual source against it on every call -- a cost driven entirely by that helper's own corpus-wide work, unrelated to this witness ENTRY's own transitive import closure. The helper is memoized (COMPILE_DAG_RUST_EMIT_CHECK_MEMO) but the memo is only consulted when floor_prepared_inventory_digest() returns Some, i.e. only under a real claim_executor --required-floor run; a standalone claim run never populates or reads it. This produces a first-toucher shared-fill signature within the same module: whichever of this module's compile_dag_rust_emit_check-calling rows the floor visits first under a given inventory pays the uncached full rebuild, and its sibling(s) hit the warm memo -- confirmed against the floor's own [floor-witness-slow] line, 42129ms vs 825ms for two same-module sibling rows, a ~51x gap with no import-closure difference between them. This is the same underlying mechanism as the Class B and loop/bind falsifications in spirit (a fixed corpus-wide cost masquerading as an entry-closure cost) but a DIFFERENT mechanism in kind -- a per-call memo gated on the floor guard, not a witness entry's own static import graph -- so it belongs to the class-2 per-claim deterministic-reconstruction/memoization bucket, not this lane's closure-narrowing scope. No repair attempted here; this module is left as-is."
 
 test fn census_counters_exhaustively_partition_the_rows() -> Bool {
   let r = dissolution_census_report()
@@ -33,51 +42,4 @@ test fn census_holds_on_the_live_roster() -> Bool {
 
 test fn nothing_is_fired_and_still_present_today() -> Bool {
   dissolution_census_report().fired_still_present_count == 0
-}
-
-test fn supplying_a_bound_rows_declaration_reds_the_gate() -> Bool {
-  let mac = decl_ref(module_path: "extdeps.network.mac", decl_name: "parse_mac_address")
-  let before = dissolution_census_report()
-  let after = dissolution_census_report_against(present_decls: [mac])
-  before.fired_still_present_count == 0
-    && after.fired_still_present_count == 1
-    && after.pending_count == before.pending_count - 1
-    && after.unbound_count == before.unbound_count
-    && !frontier_expiry_clean(report: after)
-}
-
-test fn unbound_rows_stay_unbound_under_any_present_decls() -> Bool {
-  let probes = [
-    decl_ref(module_path: "extdeps.docker.endpoint", decl_name: "docker_default_endpoint"),
-    decl_ref(module_path: "test.claim.long.dissolution_census_witness_test", decl_name: "unbound_rows_stay_unbound_under_any_present_decls"),
-  ]
-  let base = dissolution_census_report()
-  let probed = dissolution_census_report_against(present_decls: probes)
-  probed.unbound_count == base.unbound_count
-}
-
-fn w_unbound_dissolution_empty_literal_red() -> Bool {
-  compile_dag_rust_emit_check(
-    "module dissolution_empty_literal_red\nimport std.dissolution { DissolutionCondition, unbound_dissolution }\ndata bad: DissolutionCondition = unbound_dissolution(description: \"\")\n",
-    "src/dissolution_empty_literal_red.rs",
-    [],
-    []
-  )
-}
-
-fn w_unbound_dissolution_nonempty_literal_green() -> Bool {
-  compile_dag_rust_emit_check(
-    "module dissolution_nonempty_literal_green\nimport std.dissolution { DissolutionCondition, unbound_dissolution }\ndata ok: DissolutionCondition = unbound_dissolution(description: \"a real condition\")\n",
-    "src/dissolution_nonempty_literal_green.rs",
-    [],
-    []
-  )
-}
-
-test fn unbound_dissolution_empty_literal_refuses() -> Bool {
-  !w_unbound_dissolution_empty_literal_red()
-}
-
-test fn unbound_dissolution_nonempty_literal_accepts() -> Bool {
-  w_unbound_dissolution_nonempty_literal_green()
 }

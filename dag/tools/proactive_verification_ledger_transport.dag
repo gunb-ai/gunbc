@@ -20,7 +20,7 @@ fn run_family_ledger_row(row: FamilyVerificationLedgerRow) -> Bool {
       )
     FalsifierPredictOnlyBatch => false
     CompileCleanGate => false
-    RegenVerifyGate => false
+    RequiredRegenGate => false
   }
 }
 

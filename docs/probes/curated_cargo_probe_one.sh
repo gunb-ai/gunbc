@@ -35,8 +35,21 @@
 #   Lane shim authority: dag/tools/self_host_*_behavioral_transport.dag shim_lib_rel per module.
 #   Exit codes: 0 = measurement completed (emit reached cargo — including cargo refuse rows);
 #               1 = line-stop refuse (HARNESS_REFUSE or EMIT_REFUSE; HARNESS_REFUSE sets
-#                   residual_histogram instrument_down:1);
+#                   residual_histogram instrument_down:1; SAME_BASE_REFUSE below shares this code);
 #               2 = usage error.
+#   SAME-BASE REFUSAL (2026-08-19, smart-ram-730): a measurement being compared against a prior
+#   baseline is only meaningful if both were taken at the same tree. PROBE_EXPECT_BASE_SHA=<sha> —
+#   when set, refuses BEFORE any build work if `git rev-parse HEAD` in ROOT does not match, naming
+#   both SHAs. No flag or mode weakens this: absence of the var means no comparison was declared,
+#   never "proceed anyway" — there is deliberately no override arm. Same shape as the stale-binary
+#   check this probe's now-deleted predecessor (fast_probe.sh) named requirement (1): both failure
+#   modes are a confident number computed against the wrong thing, so both refuse rather than warn.
+#   RUNG (2026-08-19, smart-ram-730 review): mechanically preventable WHEN ARMED, not mechanically
+#   preventable — a caller that never sets PROBE_EXPECT_BASE_SHA gets no protection and that failure
+#   is silent, so the check's existence is not coverage. Next-rung trigger, named rather than
+#   stalled: DERIVE the expected base (this worktree's merge-base against origin/main) instead of
+#   requiring it be declared, so there is nothing to remember and nothing to forget. Not tonight's
+#   work; do not bundle it into an unrelated change.
 set -euo pipefail
 
 if [[ $# -lt 1 ]]; then
@@ -49,6 +62,14 @@ SHIM_LIB_REL="${2:-}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$ROOT"
+
+if [[ -n "${PROBE_EXPECT_BASE_SHA:-}" ]]; then
+  ACTUAL_SHA="$(git rev-parse HEAD)"
+  if [[ "$ACTUAL_SHA" != "$PROBE_EXPECT_BASE_SHA" ]]; then
+    echo "curated_cargo_probe: SAME_BASE_REFUSE — tree at $ACTUAL_SHA, comparison baseline expects $PROBE_EXPECT_BASE_SHA" >&2
+    exit 1
+  fi
+fi
 
 # shellcheck source=lib/render_cssl_probe_lib_cargo_toml.sh
 source "$SCRIPT_DIR/lib/render_cssl_probe_lib_cargo_toml.sh"
