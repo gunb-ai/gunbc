@@ -14,7 +14,7 @@ The architecture is already designed and signed. This doc only fills the one hol
 
 | Piece | Where | Status |
 | --- | --- | --- |
-| `ResourceEnvelope` single authority, every knob derived | `compute-envelope-model.md`, `dag/product/compute_fabric.dag` | designed, signed |
+| `ResourceEnvelope` single authority, every knob derived | `compute-envelope-model.md`, `gunbc.fleet_container` | designed, signed (#5904 moved the type; `product.compute_fabric` is deleted) |
 | **"Derivation is the authority; measurement is the falsifier"** | `resource-aware-scheduler.md` (operator ruling 2026-06-25) | signed |
 | `InputEnvelope = BoundedInput \| EnvelopeUnknown` + fail-closed admission | `dag/gunbc/ci_input_envelope.dag` | **landed** (P1) — this is "forcing modeling on inputs" |
 | `CostAccount<S>{ time, space, power, basis }`, `CostBasis = Predicted \| Measured` | `dag/std/realization_schedule.dag` | carrier exists, **`space` always `byte_size(0)`** (`cost_account_predicted_zero`) |

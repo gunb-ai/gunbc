@@ -46,6 +46,8 @@ Measured 2026-06-21 over `dag/**` + `src/v2/**`, reachability cross-checked agai
 | `Partitioner` · `SymbolicCost` (forward-stubs `= Node`) | `compute_fabric.dag` | map→reduce execution decomposition |
 | `execution_receipt_digest` | `compute_fabric.dag` | the digest the 3-dimension unification rests on — a stub returning `work.id`, consumed nowhere |
 
+The 2026-06-21 measurement above is left as measured. Four of its rows name `compute_fabric.dag` as their home: those carriers were dissolved by #5904 and the module itself was deleted at the root afterwards, so the rows record what was inert then, not where anything lives now. The lens must re-derive the class rather than read this table.
+
 **Edge-wired (consumed by a model that is not itself the live source yet):**
 
 | carrier | consumed by | why still inert-at-the-edge |

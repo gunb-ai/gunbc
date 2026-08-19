@@ -1,15 +1,7 @@
-module test.claim.compute_fabric_resource_witness
+module test.claim.fleet_container_demand_envelope_witness
 
 
 data live_tree_disposition: LiveTreeDisposition = SubstrateInputsOnly
-
-test fn compute_fabric_connector_model_holds() -> Bool {
-  witness_need_is_only_fabric_plus_program()
-    && witness_shape_is_derived_from_program()
-    && witness_fabric_binds_need_to_opportunity()
-    && witness_exec_and_ci_are_just_programs()
-    && witness_hard_requirement_unmet_is_unmet()
-}
 
 test fn ci_floor_run_demand_envelope_model_holds() -> Bool {
   witness_run_demand_envelope_fits_budget()
