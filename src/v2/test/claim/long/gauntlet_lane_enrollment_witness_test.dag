@@ -1,7 +1,7 @@
 module test.claim.long.gauntlet_lane_enrollment_witness
 
 import gunbc.ci_layer_roots { SubstrateLongLaneRow, falsifier_substrate_long_lane_rows }
-import gunbc.ci_gate { Gate, CheapClaimPoolGate, RegenVerifyGate }
+import gunbc.ci_gate { Gate, CheapClaimPoolGate, GeneratedArtifactDriftGate }
 import gunbc.commit_workflow {
   CommitCheckEnrollment, CommitCheckKind, CommitWitnessClaim, CommitCargoFmtCheck,
   CommitSpecGate,
@@ -110,7 +110,7 @@ fn synthetic_cadence_gate_row() -> CommitCheckEnrollment {
 
 fn synthetic_regen_gate_row() -> CommitCheckEnrollment {
   CommitCheckEnrollment {
-    check: CommitSpecGate { gate: RegenVerifyGate },
+    check: CommitSpecGate { gate: GeneratedArtifactDriftGate },
     surfaces: [GithubActionsCiRegenJob]
   }
 }

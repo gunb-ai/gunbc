@@ -3,17 +3,15 @@ module tools.floor_effect_gate_witness
 import gunbc.ci_gate { EmitHostGate, CheapClaimPoolGate }
 import gunbc.ci_spec {
   ExtdepsExternalAuthorityGate, DagCompileCleanGate, GeneratedArtifactDriftGate, ExtdepsScopePlacementGate,
-  ProseRowIntroductionGate,
-  RegenVerifyGate
+  ProseRowIntroductionGate
 }
 import tools.ci_gates { exit_ok, run_spec_gate }
 import tools.extdeps_scope_placement_gate { scope_placement_failure_receipt }
 import tools.prose_row_introduction_gate { prose_row_gate_failure_receipt }
 import tools.dag_compile_clean_gate { dag_compile_clean_failure_receipt }
 import tools.generated_artifact_gate { generated_artifact_drift_failure_receipt }
-import tools.regen_verify_gate { regen_verify_failure_receipt }
 
-data floor_gate_failure_receipt_note: String = "claim_executor derives a failure-receipt companion from a Bool witness's own name and evaluates it in THIS entry's context, so the companion must be declared here beside the witness it explains — not only in the gate module that builds the reason. Naming is mechanical: <witness>_passes or <witness>_holds yields <witness>_failure_receipt, delegated to gunbc.test_module_hygiene.failure_receipt_companion (the single authority; cli_run::failure_receipt_companion routes through the same module). The scope_placement_gate_loudness_seed_probe_* pair — a hermetic always-false _passes witness plus its failure_receipt companion — USED to live here solely so dag/test/claim/long/extdeps_scope_placement_gate_loudness_witness_test.dag could execute production seed_runner_bool_false_failure_detail against a located receipt. It is deleted from this entry and declared IN that witness entry instead (seed_runner_loudness_probe_*), because the companion is evaluated in the WITNESS entry's context and importing this module to reach the probe pulled this entry's whole gate closure — 718 modules against the witness's own 62 — into a witness that needs none of it. Mute frontier (identity join on this entry, 2026-08-18): eight _passes witnesses, five _failure_receipt companions (extdeps_scope_placement_gate_failure_receipt, prose_row_introduction_gate_failure_receipt, dag_compile_clean_gate_failure_receipt, generated_artifact_drift_gate_failure_receipt, regen_verify_gate_failure_receipt; the _companion_name helper that used to sit here is deleted with the probe pair — its one reader was the same witness, which now asks gunbc.test_module_hygiene failure_receipt_companion directly). Three production gates still return bare returned Bool(false) on refusal with no located receipt: cheap_claim_pool_gate, emit_host_gate, extdeps_external_authority_gate. Dissolution trigger: a gate leaves this frontier when this entry declares its <witness>_failure_receipt companion beside the _passes witness. Frontier counts are hand-authored prose debt — dissolve-on: derived projection from this entry's declarations (see loudness_witness_note sequencing note)."
+data floor_gate_failure_receipt_note: String = "claim_executor derives a failure-receipt companion from a Bool witness's own name and evaluates it in THIS entry's context, so the companion must be declared here beside the witness it explains — not only in the gate module that builds the reason. Naming is mechanical: <witness>_passes or <witness>_holds yields <witness>_failure_receipt, delegated to gunbc.test_module_hygiene.failure_receipt_companion (the single authority; cli_run::failure_receipt_companion routes through the same module). The scope_placement_gate_loudness_seed_probe_* pair — a hermetic always-false _passes witness plus its failure_receipt companion — USED to live here solely so dag/test/claim/long/extdeps_scope_placement_gate_loudness_witness_test.dag could execute production seed_runner_bool_false_failure_detail against a located receipt. It is deleted from this entry and declared IN that witness entry instead (seed_runner_loudness_probe_*), because the companion is evaluated in the WITNESS entry's context and importing this module to reach the probe pulled this entry's whole gate closure — 718 modules against the witness's own 62 — into a witness that needs none of it. Mute frontier (identity join on this entry, 2026-08-18): seven _passes witnesses, four _failure_receipt companions (extdeps_scope_placement_gate_failure_receipt, prose_row_introduction_gate_failure_receipt, dag_compile_clean_gate_failure_receipt, generated_artifact_drift_gate_failure_receipt; the _companion_name helper that used to sit here is deleted with the probe pair — its one reader was the same witness, which now asks gunbc.test_module_hygiene failure_receipt_companion directly). Three production gates still return bare returned Bool(false) on refusal with no located receipt: cheap_claim_pool_gate, emit_host_gate, extdeps_external_authority_gate. Dissolution trigger: a gate leaves this frontier when this entry declares its <witness>_failure_receipt companion beside the _passes witness. Frontier counts are hand-authored prose debt — dissolve-on: derived projection from this entry's declarations (see loudness_witness_note sequencing note)."
 
 func emit_host_gate_passes() -> Bool {
   tools.ci_gates.exit_ok(e: run_spec_gate(g: EmitHostGate))
@@ -57,12 +55,4 @@ func dag_compile_clean_gate_failure_receipt() -> String {
 
 func generated_artifact_drift_gate_failure_receipt() -> String {
   generated_artifact_drift_failure_receipt()
-}
-
-func regen_verify_gate_passes() -> Bool {
-  tools.ci_gates.exit_ok(e: run_spec_gate(g: RegenVerifyGate))
-}
-
-func regen_verify_gate_failure_receipt() -> String {
-  regen_verify_failure_receipt()
 }

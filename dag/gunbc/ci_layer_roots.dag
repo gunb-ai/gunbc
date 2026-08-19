@@ -466,11 +466,6 @@ data witness_exclusion_frontier: List<WitnessExclusionRow> = [
     reason: excl_substrate_long_lane_reason,
     dissolution: excl_substrate_long_lane_dissolve},
   WitnessExclusionRow {
-    pattern: "rust_test_fixtures_import_closure_witness_test.dag",
-    classification: FalsifierSubstrateLongLane,
-    reason: excl_substrate_long_lane_reason,
-    dissolution: excl_substrate_long_lane_dissolve},
-  WitnessExclusionRow {
     pattern: "synthetic_orphan_admission_witness_test.dag",
     classification: NoConsumer,
     reason: "deliberate no-consumer synthetic path: the admission RED control keys on this reserved (nonexistent) entry to prove enrolled-with-zero-consumers refuses (witness_admission_test, cli_run admission tests)",
@@ -1156,6 +1151,30 @@ data falsifier_substrate_long_lane_note: String = "Nightly falsifier batch 6 (te
 
 data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
   SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
+    function: "census_counters_exhaustively_partition_the_rows",
+    reason: "63.0s measured eval (CI run ci5, subject a5d1c49d9a802c3a, current-shape fold — docs/plans/measurements/floor-slow-rows-2026-08-17.md): the row derives census_closure_frontier_rows(), whose own cost is dominated by the transitive resolve of the ~20 extdeps modules gunbc.census_closure_frontier concatenates into one dissolution-frontier roster, not by the fold_frontier_expiry classification std.roster_frontier itself walks. Its input is the live tree's breadth, so its cost is not bounded by anything the fast lane can see. The discriminating half — that fold_frontier_expiry correctly classifies a bound row as pending/fired and an unbound row as always-unbound under a planted present_decls set — is fixture-shaped and stays per-PR in test.claim.dissolution_census_mechanism_witness_test, so this row carries the census and not the mechanism",
+    dissolution: unbound_dissolution(description: "the concatenated groups in census_closure_frontier_rows resolve at closure cost rather than a ~20-module fan-in (module-identity-vs-storage lane) or v2 self-host gains compile-graph access (gunbc#5364); then the eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured run and re-enrolls per-PR discovery, and this row deletes with its siblings")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
+    function: "bound_and_unbound_partition_the_same_rows",
+    reason: "same census cost class as sibling census_counters_exhaustively_partition_the_rows (63.0s measured module total, CI run ci5)",
+    dissolution: unbound_dissolution(description: "same as census_counters_exhaustively_partition_the_rows row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
+    function: "census_holds_on_the_live_roster",
+    reason: "same census cost class as sibling census_counters_exhaustively_partition_the_rows (63.0s measured module total, CI run ci5)",
+    dissolution: unbound_dissolution(description: "same as census_counters_exhaustively_partition_the_rows row")
+  },
+  SubstrateLongLaneRow {
+    entry: "dag/test/claim/long/dissolution_census_witness_test.dag",
+    function: "nothing_is_fired_and_still_present_today",
+    reason: "same census cost class as sibling census_counters_exhaustively_partition_the_rows (63.0s measured module total, CI run ci5)",
+    dissolution: unbound_dissolution(description: "same as census_counters_exhaustively_partition_the_rows row")
+  },
+  SubstrateLongLaneRow {
     entry: "dag/test/claim/stage0_partition_closure_live_census_test.dag",
     function: "w_live_corpus_partition_closure_holds",
     reason: "173.6s and 177.6s measured eval on two runs (claim_batch, local): the partition-closure census derives the whole-corpus dependency and declaration facts to ask whether the live crate roster holds. Its input is the live tree's breadth, so its cost is not bounded by anything the fast lane can see. The discriminating half is fixture-shaped and stays per-PR in test.claim.stage0_partition_closure_witness_test at 1-4ms, so this row carries the census and not the mechanism. THE MARGIN IS THIN: 177.6s sits about 1.3 percent under this lane's 180000ms ceiling, measured on a contended session container, so it may exceed on a slower runner — that surfaces as a counted cadence failure rather than a blocked merge, which is why enrolling still beats the fast lane",
@@ -1598,18 +1617,6 @@ data falsifier_substrate_long_lane_rows: List<SubstrateLongLaneRow> = [
     function: "live_roadmap_program_view_corpus_projection_receipt",
     reason: "LIVE-AUTHORITY INTEGRATION RECEIPT (operator verdict 2026-08-05, PR #7822): exercises the full declared roadmap closure through gunbc.roadmap_program_view — evidentiary wiring receipt enrolled on the corpus/integration lane for its integration role, not because eval cost exceeds the per-PR business budget. Business algebra stays on planted fixtures in roadmap_program_view_witness_test.dag",
     dissolution: unbound_dissolution(description: "replaced by a cheaper structural wiring receipt that covers the same live-authority join, or live roadmap projection integration receipts become unnecessary")
-  },
-  SubstrateLongLaneRow {
-    entry: "dag/test/claim/long/rust_test_fixtures_import_closure_witness_test.dag",
-    function: "declared_import_closure_lists_rust_import",
-    reason: "Class B row 1 (#7835), cold-control pattern (c): falsifier long-lane backstop for selection misses; per-PR merge-blocking consumer is run_class_b_import_closure_gate on source_root_ingest_gate (same shape as compile-clean/regen cold controls). One observe_declared_import_closure_symbol_binding over class_b_declared_import_pool_roots. CI run 30986525413 measured 0.0ms when scheduled after row 2 (warm shared index); cold single-observe cost is substrate-long.",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run with class_b_declared_import_pool_roots and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
-  },
-  SubstrateLongLaneRow {
-    entry: "dag/test/claim/long/rust_test_fixtures_import_closure_witness_test.dag",
-    function: "ambient_pool_provider_preserves_listed_import",
-    reason: "Class B row 2 (#7835), cold-control pattern (c): falsifier long-lane backstop for selection misses; per-PR merge-blocking consumer is run_class_b_import_closure_gate on source_root_ingest_gate. Two cold observe_declared_import_closure_symbol_binding calls (baseline + perturbed) over class_b_declared_import_pool_roots. CI run 30986525413 measured 48868.8ms (>5s fast-lane budget; ceiling — row 2 is the cold observe, row 1 was warm). Shrinking pool from witness_layer_roots (~3044 modules) to declared-import footprint (~696) is a stronger control, not a budget remedy.",
-    dissolution: unbound_dissolution(description: "eval lands under gunbc_ci_fast_lane_witness_eval_budget on a measured cold run with class_b_declared_import_pool_roots and re-enrolls per-PR discovery, or deletes as duplicate of a faster receipt")
   },
   SubstrateLongLaneRow {
     entry: "src/v2/test/claim/long/realization_vocabulary_containment_witness_test.dag",
